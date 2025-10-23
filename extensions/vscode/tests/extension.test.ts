@@ -12,6 +12,7 @@ import {
   get_file,
   get_theme,
   handle_msg,
+  MessageData,
   read_file,
   render,
   should_auto_render,
@@ -70,10 +71,23 @@ const mock_vscode = vi.hoisted(() => ({
     joinPath: vi.fn((_base: unknown, ...paths: string[]) => ({
       fsPath: paths.join(`/`),
     })),
+    parse: vi.fn((url: string) => ({ toString: () => url })),
   },
   ViewColumn: { Beside: 2 },
   ColorThemeKind: { Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 },
+  UIKind: { Desktop: 1, Web: 2 },
   RelativePattern: vi.fn((base: unknown, pattern: string) => ({ base, pattern })),
+  version: `1.99.0`,
+  env: {
+    appName: `VSCode`,
+    remoteName: undefined,
+    uiKind: 1, // Desktop
+    clipboard: {
+      writeText: vi.fn(() => Promise.resolve()),
+      readText: vi.fn(() => Promise.resolve(``)),
+    },
+    openExternal: vi.fn(() => Promise.resolve(true)),
+  },
 }))
 
 vi.mock(`vscode`, () => mock_vscode)
@@ -92,8 +106,15 @@ describe(`MatterViz Extension`, () => {
     expect(pkg.extensionKind).toEqual([`workspace`])
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+
+    // Import extension module and clear all watchers
+    const ext = await import(`../src/extension`)
+    ext.active_watchers.clear()
+    ext.active_frame_loaders.clear()
+    ext.auto_render_timers.clear()
+    ext.active_auto_render_panels.clear()
 
     mock_fs.readFileSync = vi.fn().mockReturnValue(`mock content`)
     mock_vscode.window.activeTextEditor = null
@@ -154,7 +175,7 @@ describe(`MatterViz Extension`, () => {
   })
 
   test(`file reading: large file should return sentinel`, async () => {
-    const large_file_size = 60 * 1024 * 1024 // 60MB, above MAX_TEXT_FILE_SIZE (50MB)
+    const large_file_size = 2 * 1024 * 1024 * 1024 // 2GB, above MAX_VSCODE_FILE_SIZE (1GB)
     const filename = `large-structure.cif`
     const file_path = `/test/${filename}`
 
@@ -174,7 +195,7 @@ describe(`MatterViz Extension`, () => {
   })
 
   test(`file reading: large binary file should return sentinel with base64 flag`, async () => {
-    const large_file_size = 2 * 1024 * 1024 * 1024 // 2GB, above MAX_BIN_FILE_SIZE
+    const large_file_size = 2 * 1024 * 1024 * 1024 // 2GB, above MAX_VSCODE_FILE_SIZE (1GB)
     const filename = `large-trajectory.traj`
     const file_path = `/test/${filename}`
 
@@ -489,14 +510,380 @@ describe(`MatterViz Extension`, () => {
     )
   })
 
-  test(`extension activation`, () => {
-    activate(mock_context)
+  test(`extension activation`, async () => {
+    await activate(mock_context)
     expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
       `matterviz.render_structure`,
       expect.any(Function),
     )
+    expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
+      `matterviz.report_bug`,
+      expect.any(Function),
+    )
     expect(mock_vscode.window.registerCustomEditorProvider)
       .toHaveBeenCalledWith(`matterviz.viewer`, expect.any(Object), expect.any(Object))
+  })
+
+  describe(`Bug Reporting`, () => {
+    let mock_opened_document: { content: string; language: string } | null = null
+    let report_bug_command: (() => Promise<void>) | null = null
+    let mock_env: {
+      appName: string
+      remoteName: string | undefined
+      uiKind: number
+      clipboard: {
+        writeText: ReturnType<typeof vi.fn>
+        readText: ReturnType<typeof vi.fn>
+      }
+      openExternal: ReturnType<typeof vi.fn>
+    }
+
+    beforeEach(async () => {
+      // Reset state
+      mock_opened_document = null
+      report_bug_command = null
+
+      // Mock clipboard API (must be set up before activation)
+      mock_env = {
+        appName: `Cursor`,
+        remoteName: undefined,
+        uiKind: 1, // Desktop
+        clipboard: {
+          writeText: vi.fn(() => Promise.resolve()),
+          readText: vi.fn(() => Promise.resolve(``)),
+        },
+        openExternal: vi.fn(() => Promise.resolve(true)),
+      }
+      mock_vscode.env = mock_env
+
+      // Capture the report_bug command during activation
+      const command_registry = new Map<string, () => Promise<void>>()
+      mock_vscode.commands.registerCommand = vi.fn(
+        (command_name: string, callback: () => Promise<void>) => {
+          command_registry.set(command_name, callback)
+          return { dispose: vi.fn() }
+        },
+      )
+
+      // Mock workspace.openTextDocument to capture the document content (BEFORE activation)
+      mock_vscode.workspace.openTextDocument = vi.fn((options: {
+        content: string
+        language: string
+      }) => {
+        mock_opened_document = {
+          content: options.content,
+          language: options.language,
+        }
+        return Promise.resolve({
+          uri: { fsPath: `/tmp/bug-report.md` },
+          getText: () => options.content,
+        })
+      })
+
+      // Mock window.showTextDocument (BEFORE activation)
+      mock_vscode.window.showTextDocument = vi.fn(() => Promise.resolve())
+
+      // Mock showInformationMessage to return action choices (BEFORE activation)
+      mock_vscode.window.showInformationMessage = vi.fn(() => Promise.resolve(undefined))
+
+      // Activate extension to register commands
+      await activate(mock_context)
+
+      // Get the report_bug command
+      report_bug_command = command_registry.get(`matterviz.report_bug`) ?? null
+    })
+
+    test(`should generate bug report with environment information`, async () => {
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      expect(mock_opened_document).not.toBeNull()
+      expect(mock_opened_document?.language).toBe(`markdown`)
+
+      const content = mock_opened_document?.content ?? ``
+
+      // Check for main sections
+      expect(content).toContain(`### Environment`)
+      expect(content).toContain(`### System Resources`)
+      expect(content).toContain(`### Active Files & Extension State`)
+      expect(content).toContain(`### Console Logs`)
+
+      // Check environment details
+      expect(content).toContain(`- **Editor**: Cursor`)
+      expect(content).toContain(`- **MatterViz Version**: 0.1.13`)
+      expect(content).toContain(`- **UI Kind**: Desktop`)
+      expect(content).toContain(`- **Remote Session**: No (Local)`)
+
+      // Check system resources
+      expect(content).toContain(`- **Total Memory**:`)
+      expect(content).toContain(`- **Free Memory**:`)
+      expect(content).toContain(`- **Process RSS**:`)
+      expect(content).toContain(`- **Process Heap Used**:`)
+      expect(content).toContain(`- **Process Heap Total**:`)
+
+      // Check console logs instructions
+      expect(content).toContain(`**Please check for console errors/warnings:**`)
+      expect(content).toContain(`Toggle Developer Tools`)
+
+      // Check GitHub link
+      expect(content).toContain(
+        `https://github.com/janosh/matterviz/issues`,
+      )
+
+      // Check timestamp
+      expect(content).toMatch(/\*\*Generated\*\*: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    })
+
+    test(`should detect remote session correctly`, async () => {
+      // Mock remote session
+      mock_env.remoteName = `ssh-remote`
+
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      const content = mock_opened_document?.content ?? ``
+      expect(content).toContain(`- **Remote Session**: Yes (ssh-remote)`)
+    })
+
+    test(`should include active files in report`, async () => {
+      // Start watching some files first
+      const file1_path = `/test/structure.cif`
+      const file2_path = `/test/trajectory.traj`
+
+      await handle_msg({
+        command: `startWatching`,
+        file_path: file1_path,
+        filename: `structure.cif`,
+        request_id: `req1`,
+        frame_index: 0,
+      } as MessageData, mock_webview)
+
+      await handle_msg({
+        command: `startWatching`,
+        file_path: file2_path,
+        filename: `trajectory.traj`,
+        request_id: `req2`,
+        frame_index: 0,
+      } as MessageData, mock_webview)
+
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      const content = mock_opened_document?.content ?? ``
+
+      // Should list both files with bold filenames (not headers)
+      expect(content).toContain(`**structure.cif**`)
+      expect(content).toContain(`**trajectory.traj**`)
+      expect(content).toContain(`- **Path**: \`${file1_path}\``)
+      expect(content).toContain(`- **Path**: \`${file2_path}\``)
+      expect(content).toContain(`- **Has Watcher**: true`)
+
+      // Check for combined section and extension state counters
+      expect(content).toContain(`### Active Files & Extension State`)
+      expect(content).toContain(`- **Active Watchers**: 2`)
+    })
+
+    test(`should handle files with no active watchers`, async () => {
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      const content = mock_opened_document?.content ?? ``
+      expect(content).toContain(`No files currently being watched/rendered.`)
+    })
+
+    test(`should copy to clipboard when user selects that option`, async () => {
+      mock_vscode.window.showInformationMessage = vi.fn(() =>
+        Promise.resolve(`Copy to Clipboard`)
+      )
+
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      const content = mock_opened_document?.content ?? ``
+
+      // Should have called clipboard.writeText with the content
+      expect(mock_env.clipboard.writeText).toHaveBeenCalledWith(content)
+
+      // Should show success message
+      expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        `Debug information copied to clipboard!`,
+      )
+    })
+
+    test(`should open GitHub issues when user selects that option`, async () => {
+      mock_vscode.window.showInformationMessage = vi.fn(() =>
+        Promise.resolve(`Open GitHub Issues`)
+      )
+
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      // Should have opened GitHub issues URL
+      expect(mock_env.openExternal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toString: expect.any(Function),
+        }),
+      )
+
+      // Verify the URL contains the GitHub issues path
+      const call_args = mock_env.openExternal.mock.calls[0]
+      expect(call_args[0].toString()).toContain(
+        `https://github.com/janosh/matterviz/issues/new`,
+      )
+    })
+
+    test(`should format file sizes correctly`, async () => {
+      // Mock different file sizes
+      const test_cases = [
+        { size: 500, expected: `500 B` },
+        { size: 1024, expected: `1.00 KB` },
+        { size: 1024 * 1024, expected: `1.00 MB` },
+        { size: 1024 * 1024 * 1024, expected: `1.00 GB` },
+      ]
+
+      // Create a map to track sizes for each file
+      const file_sizes = new Map<string, number>()
+
+      // Set up persistent mock that uses the file_sizes map
+      mock_vscode.workspace.fs.stat.mockImplementation((uri) => {
+        const size = file_sizes.get(uri.fsPath) ?? 1000
+        return Promise.resolve({ size, type: 1 })
+      })
+
+      // Add files to watchers with their sizes
+      const watcher_promises = test_cases.map((test_case) => {
+        const file_path = `/test/file_${test_case.size}.cif`
+        file_sizes.set(file_path, test_case.size)
+
+        return handle_msg({
+          command: `startWatching`,
+          file_path,
+          filename: `file_${test_case.size}.cif`,
+          request_id: `req_${test_case.size}`,
+          frame_index: 0,
+        } as MessageData, mock_webview)
+      })
+
+      await Promise.all(watcher_promises)
+
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      const content = mock_opened_document?.content ?? ``
+
+      // Check that sizes are formatted correctly
+      for (const test_case of test_cases) {
+        if (test_case.size >= 1024) { // Only check KB and above (bytes might be rounded)
+          expect(content).toContain(test_case.expected)
+        }
+      }
+    })
+
+    test(`should handle file stat errors gracefully`, async () => {
+      // Mock file that exists but throws error on stat
+      const file_path = `/test/error-file.cif`
+
+      await handle_msg({
+        command: `startWatching`,
+        file_path,
+        filename: `error-file.cif`,
+        request_id: `req_error`,
+        frame_index: 0,
+      } as MessageData, mock_webview)
+
+      // Mock stat to throw error for this specific file
+      mock_vscode.workspace.fs.stat.mockRejectedValue(new Error(`File not found`))
+
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      const content = mock_opened_document?.content ?? ``
+
+      // Should still include the file but with "Unknown" size
+      expect(content).toContain(`**error-file.cif**`)
+      expect(content).toContain(`- **Size**: Unknown`)
+    })
+
+    test(`should include extension state counters`, async () => {
+      // Start watching multiple files
+      await handle_msg({
+        command: `startWatching`,
+        file_path: `/test/file1.cif`,
+        filename: `file1.cif`,
+        request_id: `req1`,
+        frame_index: 0,
+      } as MessageData, mock_webview)
+
+      await handle_msg({
+        command: `startWatching`,
+        file_path: `/test/file2.cif`,
+        filename: `file2.cif`,
+        request_id: `req2`,
+        frame_index: 0,
+      } as MessageData, mock_webview)
+
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      const content = mock_opened_document?.content ?? ``
+
+      // Check combined Active Files & Extension State section
+      expect(content).toContain(`### Active Files & Extension State`)
+      expect(content).toContain(`- **Active Watchers**: 2`)
+      expect(content).toMatch(/- \*\*Active Frame Loaders\*\*: \d+/)
+      expect(content).toMatch(/- \*\*Auto-Render Timers\*\*: \d+/)
+      expect(content).toMatch(/- \*\*Active Auto-Render Panels\*\*: \d+/)
+    })
+
+    test(`should handle errors during report generation`, async () => {
+      // Mock openTextDocument to throw an error
+      mock_vscode.workspace.openTextDocument = vi.fn(() =>
+        Promise.reject(new Error(`Failed to create document`))
+      )
+
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      // Should show error message
+      expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining(`Failed to collect debug information`),
+      )
+    })
+
+    test(`should include console logs instructions in bug report`, async () => {
+      expect(report_bug_command).not.toBeNull()
+      if (!report_bug_command) return
+
+      await report_bug_command()
+
+      const content = mock_opened_document?.content ?? ``
+
+      // Check for console logs section with instructions
+      expect(content).toContain(`### Console Logs`)
+      expect(content).toContain(`**Please check for console errors/warnings:**`)
+      expect(content).toContain(`Toggle Developer Tools`)
+      expect(content).toContain(`Tip: You can filter console messages`)
+    })
   })
 
   test(`performance benchmarks`, () => {
@@ -918,13 +1305,13 @@ describe(`MatterViz Extension`, () => {
     })
 
     describe(`lifecycle management`, () => {
-      test(`should handle activation gracefully`, () => {
+      test(`should handle activation gracefully`, async () => {
         const mock_context = {
           extensionUri: { fsPath: `/test/extension` },
           subscriptions: [],
         }
 
-        expect(() => activate(mock_context)).not.toThrow()
+        await expect(activate(mock_context)).resolves.not.toThrow()
 
         expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
           `matterviz.render_structure`,
@@ -1113,11 +1500,11 @@ describe(`MatterViz Extension`, () => {
       expect(should_auto_render(filename)).toBe(expected)
     })
 
-    test(`should register auto-render functionality`, () => {
+    test(`should register auto-render functionality`, async () => {
       const mock_context = {
         subscriptions: { push: vi.fn() },
       } as unknown as ExtensionContext
-      activate(mock_context)
+      await activate(mock_context)
       expect(mock_vscode.workspace.onDidOpenTextDocument).toHaveBeenCalledWith(
         expect.any(Function),
       )
@@ -1130,12 +1517,12 @@ describe(`MatterViz Extension`, () => {
       expect(performance.now() - start).toBeLessThan(10)
     })
 
-    test(`should not trigger on non-file URIs`, () => {
+    test(`should not trigger on non-file URIs`, async () => {
       const mock_context = {
         subscriptions: { push: vi.fn() },
       } as unknown as ExtensionContext
 
-      activate(mock_context)
+      await activate(mock_context)
 
       // Get the registered callback
       const on_did_open_text_document_callback = mock_vscode.workspace
@@ -1152,7 +1539,7 @@ describe(`MatterViz Extension`, () => {
       expect(() => on_did_open_text_document_callback?.(mock_document)).not.toThrow()
     })
 
-    test(`should respect auto_render configuration setting`, () => {
+    test(`should respect auto_render configuration setting`, async () => {
       const mock_context = {
         subscriptions: { push: vi.fn() },
       } as unknown as ExtensionContext
@@ -1165,7 +1552,7 @@ describe(`MatterViz Extension`, () => {
         }),
       })
 
-      activate(mock_context)
+      await activate(mock_context)
 
       // Get the registered callback
       const on_did_open_text_document_callback = mock_vscode.workspace
@@ -1189,7 +1576,7 @@ describe(`MatterViz Extension`, () => {
       // Mock vscode.workspace.fs.stat to throw an error
       mock_vscode.workspace.fs.stat.mockRejectedValue(new Error(`File not found`))
 
-      activate(mock_context)
+      await activate(mock_context)
 
       // Get the registered callback
       const on_did_open_text_document_callback = mock_vscode.workspace

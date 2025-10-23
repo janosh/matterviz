@@ -6,8 +6,6 @@ import type { FrameLoader } from '$lib/trajectory/index'
 import {
   create_frame_loader,
   is_trajectory_file,
-  MAX_BIN_FILE_SIZE,
-  MAX_TEXT_FILE_SIZE,
   parse_trajectory_async,
 } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
@@ -87,13 +85,16 @@ export interface MessageData {
 type WatcherMeta = { request_id?: string; filename?: string; frame_index?: number }
 
 // Track active file watchers by file path
-const active_watchers = new Map<string, vscode.FileSystemWatcher>()
+export const active_watchers = new Map<string, vscode.FileSystemWatcher>()
 // Track active frame loaders by file path
-const active_frame_loaders = new Map<string, FrameLoaderData>()
+export const active_frame_loaders = new Map<string, FrameLoaderData>()
 // Track auto-render timers to clear them on deactivate
-const auto_render_timers = new Map<string, ReturnType<typeof setTimeout>>()
+export const auto_render_timers = new Map<string, ReturnType<typeof setTimeout>>()
 // Track active panels by URI to prevent duplicate opens
-const active_auto_render_panels = new Map<string, vscode.WebviewPanel>()
+export const active_auto_render_panels = new Map<string, vscode.WebviewPanel>()
+
+// File size thresholds for reading files via VSCode API (1GB for both text and binary)
+const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
 
 // Helper: determine view type using content when available
 const infer_view_type = (file: FileData): `trajectory` | `structure` => {
@@ -146,7 +147,7 @@ export const read_file = async (file_path: string): Promise<FileData> => {
     )
   }
 
-  const threshold = is_base64_payload ? MAX_BIN_FILE_SIZE : MAX_TEXT_FILE_SIZE
+  const threshold = MAX_VSCODE_FILE_SIZE
 
   if (file_size > threshold) {
     return {
@@ -713,7 +714,12 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
 }
 
 // Activate extension
-export const activate = (context: vscode.ExtensionContext): void => {
+export const activate = async (context: vscode.ExtensionContext): Promise<void> => {
+  const { default: matterviz } = await import(`../package.json`, {
+    with: { type: `json` },
+  })
+  console.log(`MatterViz extension activated (v${matterviz.version})`)
+
   // Set initial context for currently active editor
   update_supported_resource_context(vscode.window.activeTextEditor?.document.uri)
 
@@ -721,6 +727,10 @@ export const activate = (context: vscode.ExtensionContext): void => {
     vscode.commands.registerCommand(
       `matterviz.render_structure`,
       (uri?: vscode.Uri) => render(context, uri),
+    ),
+    vscode.commands.registerCommand(
+      `matterviz.report_bug`,
+      report_bug,
     ),
     vscode.window.registerCustomEditorProvider(
       `matterviz.viewer`,
@@ -775,6 +785,156 @@ export const activate = (context: vscode.ExtensionContext): void => {
       update_supported_resource_context(editor?.document?.uri)
     }),
   )
+}
+
+// Collect debug information for bug reporting
+async function collect_debug_info(): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const os = require(`os`) // Cursor is still using CommonJS, module-scoped ESM import broke this function on
+
+  // Get MatterViz version
+  const { default: matterviz } = await import(`../package.json`, {
+    with: { type: `json` },
+  })
+
+  // Check if running remotely
+  const remote_name = vscode.env.remoteName
+  const is_remote = !!remote_name
+  const ui_kind = vscode.env.uiKind === vscode.UIKind.Desktop ? `Desktop` : `Web`
+
+  // Get information about active files being rendered
+  const active_files: Array<{
+    filename: string
+    file_path: string
+    file_size?: number
+    has_watcher: boolean
+    has_frame_loader: boolean
+  }> = []
+
+  // Collect file stats asynchronously in parallel
+  const file_stat_promises = Array.from(active_watchers.keys()).map(async (file_path) => {
+    const filename = path.basename(file_path)
+    let file_size: number | undefined
+    try {
+      const uri = vscode.Uri.file(file_path)
+      file_size = (await vscode.workspace.fs.stat(uri)).size
+    } catch {
+      // File might not exist anymore
+    }
+    const has_frame_loader = active_frame_loaders.has(file_path)
+    return { filename, file_path, file_size, has_watcher: true, has_frame_loader }
+  })
+
+  active_files.push(...await Promise.all(file_stat_promises))
+
+  // Get memory usage if available (use global process object)
+  const memory_usage = globalThis.process?.memoryUsage() ?? {
+    rss: 0,
+    heapUsed: 0,
+    heapTotal: 0,
+    external: 0,
+    arrayBuffers: 0,
+  }
+
+  // Format file sizes
+  const format_bytes = (bytes?: number): string => {
+    if (bytes === undefined) return `Unknown`
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+  }
+
+  // Build debug report
+  let report = `### Environment\n\n`
+  report += `- **Editor**: ${vscode.env.appName}\n`
+  report += `- **Editor Version**: ${vscode.version}\n`
+  report += `- **MatterViz Version**: ${matterviz.version}\n`
+  report += `- **OS**: ${os.type()} ${os.platform()} ${os.arch()}\n`
+  report += `- **OS Version**: ${os.release()}\n`
+  report += `- **UI Kind**: ${ui_kind}\n`
+  report += `- **Remote Session**: ${
+    is_remote ? `Yes (${remote_name})` : `No (Local)`
+  }\n\n`
+
+  report += `### System Resources\n\n`
+  report += `- **Total Memory**: ${format_bytes(os.totalmem())}\n`
+  report += `- **Free Memory**: ${format_bytes(os.freemem())}\n`
+  report += `- **Process RSS**: ${format_bytes(memory_usage.rss)}\n`
+  report += `- **Process Heap Used**: ${format_bytes(memory_usage.heapUsed)}\n`
+  report += `- **Process Heap Total**: ${format_bytes(memory_usage.heapTotal)}\n\n`
+
+  report += `### Active Files & Extension State\n\n`
+  report += `- **Active Watchers**: ${active_watchers.size}\n`
+  report += `- **Active Frame Loaders**: ${active_frame_loaders.size}\n`
+  report += `- **Auto-Render Timers**: ${auto_render_timers.size}\n`
+  report += `- **Active Auto-Render Panels**: ${active_auto_render_panels.size}\n\n`
+
+  if (active_files.length === 0) {
+    report += `No files currently being watched/rendered.\n\n`
+  } else {
+    report += `Currently watching/rendering ${active_files.length} file(s):\n\n`
+    for (const file_info of active_files) {
+      report += `**${file_info.filename}**\n`
+      report += `- **Path**: \`${file_info.file_path}\`\n`
+      report += `- **Size**: ${format_bytes(file_info.file_size)}\n`
+      report += `- **Has Watcher**: ${file_info.has_watcher}\n`
+      report += `- **Has Frame Loader**: ${file_info.has_frame_loader}\n\n`
+    }
+  }
+
+  report += `### Console Logs\n\n`
+  report += `**Please check for console errors/warnings:**\n\n`
+  report += `1. Open Developer Tools:\n`
+  report += `   - Cursor/VSCode: Help → Toggle Developer Tools (or Cmd/Ctrl+Shift+I)\n`
+  report += `2. Go to the "Console" tab\n`
+  report +=
+    `3. Look for any errors or warnings related to MatterViz (especially in red)\n`
+  report += `4. Copy and paste any relevant error messages into your GitHub issue\n\n`
+  report +=
+    `Tip: You can filter console messages by typing "matterviz" in the filter box.\n\n`
+
+  report += `---\n\n`
+  report += `**Generated**: ${new Date().toISOString()}\n\n`
+  report += `Please include this information when reporting bugs at:\n`
+  report += `https://github.com/janosh/matterviz/issues\n`
+
+  return report
+}
+
+// Command to report a bug with debug information
+async function report_bug(): Promise<void> {
+  try {
+    // Collect debug information
+    const debug_info = await collect_debug_info()
+
+    // Create a new untitled document with the debug info
+    const doc = await vscode.workspace.openTextDocument({
+      content: debug_info,
+      language: `markdown`,
+    })
+
+    await vscode.window.showTextDocument(doc, { preview: false })
+
+    // Show a message with instructions
+    const action = await vscode.window.showInformationMessage(
+      `Debug information collected. Please copy this information and include it when reporting a bug on GitHub.`,
+      `Copy to Clipboard`,
+      `Open GitHub Issues`,
+    )
+
+    if (action === `Copy to Clipboard`) {
+      await vscode.env.clipboard.writeText(debug_info)
+      vscode.window.showInformationMessage(`Debug information copied to clipboard!`)
+    } else if (action === `Open GitHub Issues`) {
+      vscode.env.openExternal(
+        vscode.Uri.parse(`https://github.com/janosh/matterviz/issues/new`),
+      )
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    vscode.window.showErrorMessage(`Failed to collect debug information: ${message}`)
+  }
 }
 
 // Deactivate extension and clean up resources

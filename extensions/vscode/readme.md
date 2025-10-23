@@ -68,7 +68,7 @@ MatterViz supports [VSCode](https://marketplace.visualstudio.com/items?itemName=
 - ✅ **Remote file access**: Visualize structures and trajectories on remote servers (HPC clusters, cloud instances, etc.)
 - ✅ **No manual file transfer**: Files are read directly from the remote filesystem
 - ✅ **File watching**: Changes to remote files are automatically detected and reloaded
-- ⚠️ **File size limit**: Remote and local files are currently limited to 1GB due to memory constraints (see `MAX_STREAMING_FILE_SIZE` in `node-io.ts`)
+- ⚠️ **File size limit**: Files are currently limited to 1GB to prevent memory issues
 
 ## ⚙️ Configuration & Customization
 
@@ -144,6 +144,22 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 ## ⌨️ Keyboard Shortcuts
 
 - `Ctrl+Shift+V` / `Cmd+Shift+V` → Render structure/trajectory with MatterViz
+
+## 🐛 Bug Reporting
+
+If you encounter any issues with MatterViz, you can use the built-in bug reporting command to collect debug information:
+
+1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
+2. Run **"Report MatterViz Bug"**
+3. The command will open a new document with detailed debug information including:
+   - Your OS and version
+   - VSCode/Cursor version
+   - MatterViz version
+   - Whether you're in a remote session
+   - Files currently being rendered
+   - System resources and memory usage
+   - Extension configuration
+4. Copy the information and include it when [creating a GitHub issue](https://github.com/janosh/matterviz/issues/new)
 
 ## 📄 License
 
