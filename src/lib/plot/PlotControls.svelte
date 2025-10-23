@@ -107,7 +107,7 @@
       ...toggle_props,
       class: `${controls_class}-controls-toggle ${toggle_props?.class ?? ``}`,
       style:
-        `$position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent;` +
+        `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex); background-color: transparent;` +
         (toggle_props?.style ?? ``),
     }}
     pane_props={{
