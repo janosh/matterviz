@@ -1,0 +1,21 @@
+name: Bug Report
+description: File a bug report to help us improve MatterViz
+labels: ['bug']
+body:
+  - type: textarea
+    id: bug-report
+    attributes:
+      label: Bug Report
+      description: |
+        **🔧 VSCode/Cursor Extension Users:** Use the built-in bug reporting command for better diagnostics:
+        1. Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
+        2. Run **"Report MatterViz Bug"**
+        3. Paste the generated debug information below
+
+        **Everyone else:** Please describe:
+        - What happened and what you expected
+        - Steps to reproduce
+        - Your environment (OS, browser/editor, version)
+      placeholder: Describe the bug or paste debug information from "Report MatterViz Bug" command
+    validations:
+      required: true
