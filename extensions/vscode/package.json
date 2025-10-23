@@ -27,11 +27,13 @@
     "commands": [
       {
         "command": "matterviz.render_structure",
-        "title": "Render with MatterViz"
+        "title": "Render",
+        "category": "MatterViz"
       },
       {
         "command": "matterviz.report_bug",
-        "title": "Report MatterViz Bug"
+        "title": "Report Bug",
+        "category": "MatterViz"
       }
     ],
     "keybindings": [

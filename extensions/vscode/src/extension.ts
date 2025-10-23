@@ -11,6 +11,7 @@ import {
 import { Buffer } from 'node:buffer'
 import * as path from 'path'
 import * as vscode from 'vscode'
+import pkg_json from '../package.json' with { type: 'json' }
 import { stream_file_to_buffer } from './node-io'
 
 interface FrameLoaderData {
@@ -714,11 +715,8 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
 }
 
 // Activate extension
-export const activate = async (context: vscode.ExtensionContext): Promise<void> => {
-  const { default: matterviz } = await import(`../package.json`, {
-    with: { type: `json` },
-  })
-  console.log(`MatterViz extension activated (v${matterviz.version})`)
+export const activate = (context: vscode.ExtensionContext) => {
+  console.log(`MatterViz extension activated (v${pkg_json.version})`)
 
   // Set initial context for currently active editor
   update_supported_resource_context(vscode.window.activeTextEditor?.document.uri)
@@ -790,12 +788,7 @@ export const activate = async (context: vscode.ExtensionContext): Promise<void> 
 // Collect debug information for bug reporting
 async function collect_debug_info(): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const os = require(`os`) // Cursor is still using CommonJS, module-scoped ESM import broke this function on
-
-  // Get MatterViz version
-  const { default: matterviz } = await import(`../package.json`, {
-    with: { type: `json` },
-  })
+  const os = require(`os`) // Cursor is still using CommonJS, module-scoped ESM import broke this function on 2025-10-23
 
   // Check if running remotely
   const remote_name = vscode.env.remoteName
@@ -849,7 +842,7 @@ async function collect_debug_info(): Promise<string> {
   let report = `### Environment\n\n`
   report += `- **Editor**: ${vscode.env.appName}\n`
   report += `- **Editor Version**: ${vscode.version}\n`
-  report += `- **MatterViz Version**: ${matterviz.version}\n`
+  report += `- **MatterViz Version**: ${pkg_json.version}\n`
   report += `- **OS**: ${os.type()} ${os.platform()} ${os.arch()}\n`
   report += `- **OS Version**: ${os.release()}\n`
   report += `- **UI Kind**: ${ui_kind}\n`

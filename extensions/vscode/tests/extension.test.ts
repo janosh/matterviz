@@ -4,7 +4,7 @@ import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor } from 'vscode'
-import pkg from '../package.json' with { type: 'json' }
+import pkg_json from '../package.json' with { type: 'json' }
 import {
   activate,
   create_html,
@@ -101,9 +101,9 @@ describe(`MatterViz Extension`, () => {
     dispose: ReturnType<typeof vi.fn>
   }
 
-  test(`extensionKind should be configured as ["ui", "workspace"] for optimal remote performance`, () => {
+  test(`extensionKind should be configured as ["workspace"] to work locally and in remote SSH sessions`, () => {
     // https://github.com/janosh/matterviz/issues/129#issuecomment-3193473225
-    expect(pkg.extensionKind).toEqual([`workspace`])
+    expect(pkg_json.extensionKind).toEqual([`workspace`])
   })
 
   beforeEach(async () => {
@@ -612,7 +612,7 @@ describe(`MatterViz Extension`, () => {
 
       // Check environment details
       expect(content).toContain(`- **Editor**: Cursor`)
-      expect(content).toContain(`- **MatterViz Version**: 0.1.13`)
+      expect(content).toContain(`- **MatterViz Version**: ${pkg_json.version}`)
       expect(content).toContain(`- **UI Kind**: Desktop`)
       expect(content).toContain(`- **Remote Session**: No (Local)`)
 
@@ -1305,13 +1305,13 @@ describe(`MatterViz Extension`, () => {
     })
 
     describe(`lifecycle management`, () => {
-      test(`should handle activation gracefully`, async () => {
+      test(`should handle activation gracefully`, () => {
         const mock_context = {
           extensionUri: { fsPath: `/test/extension` },
           subscriptions: [],
         }
 
-        await expect(activate(mock_context)).resolves.not.toThrow()
+        expect(() => activate(mock_context)).not.toThrow()
 
         expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
           `matterviz.render_structure`,
@@ -1547,7 +1547,7 @@ describe(`MatterViz Extension`, () => {
       // Mock configuration to disable auto_render
       mock_vscode.workspace.getConfiguration.mockReturnValue({
         get: vi.fn((key: string, default_val: string) => {
-          if (key === `auto_render`) return `false`
+          if (key === `auto_render`) return false
           return default_val
         }),
       })
@@ -1576,7 +1576,12 @@ describe(`MatterViz Extension`, () => {
       // Mock vscode.workspace.fs.stat to throw an error
       mock_vscode.workspace.fs.stat.mockRejectedValue(new Error(`File not found`))
 
-      await activate(mock_context)
+      // Enable auto_render in config
+      mock_vscode.workspace.getConfiguration.mockReturnValue({
+        get: vi.fn((key: string) => key === `auto_render` ? true : undefined),
+      })
+
+      activate(mock_context)
 
       // Get the registered callback
       const on_did_open_text_document_callback = mock_vscode.workspace
@@ -1592,7 +1597,7 @@ describe(`MatterViz Extension`, () => {
       // Should show error message when file reading fails
       expect(() => on_did_open_text_document_callback?.(mock_document)).not.toThrow()
 
-      await vi.waitFor(() => { // Wait for error message to be called
+      await vi.waitFor(() => {
         expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
           expect.stringContaining(`MatterViz auto-render failed:`),
         )
