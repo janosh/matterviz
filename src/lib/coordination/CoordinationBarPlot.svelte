@@ -6,7 +6,7 @@
     BarTooltipProps,
     Orientation,
   } from '$lib'
-  import { EmptyState } from '$lib'
+  import { StatusMessage } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
@@ -63,7 +63,7 @@
 
     const base_entries = Array.isArray(structures)
       ? (structures as StructureEntry[])
-      : (`sites` in structures
+      : (is_valid_structure(structures)
         ? [{ label: `Structure`, structure: structures as AnyStructure }]
         : Object.entries(
           structures as Record<
@@ -217,7 +217,9 @@
             label: filename || `Dropped structure`,
             structure: parsed_structure,
           }, ...dropped_entries]
-        } else error_msg = `Structure has no lattice; cannot compute coordination`
+        } else {
+          error_msg = `Structure has no lattice or sites; cannot compute coordination`
+        }
       } catch (exc) {
         error_msg = `Failed to process structure: ${
           exc instanceof Error ? exc.message : String(exc)
@@ -250,10 +252,10 @@
   }
 </script>
 
-<EmptyState bind:message={error_msg} type="error" dismissible />
+<StatusMessage bind:message={error_msg} type="error" dismissible />
 
 {#if bar_series.length === 0}
-  <EmptyState
+  <StatusMessage
     message={allow_file_drop
     ? `Drag and drop structure files here to compute coordination numbers`
     : `No coordination data to display`}
@@ -290,7 +292,7 @@
       label_shift: { x: 2 },
       range: is_horizontal ? ranges.cn : ranges.count,
       ticks: is_horizontal ? cn_ticks : undefined,
-      ...is_horizontal ? x_axis : y_axis,
+      ...(is_horizontal ? x_axis : y_axis),
     }}
     display={{
       x_zero_line: is_horizontal,

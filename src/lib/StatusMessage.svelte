@@ -40,6 +40,8 @@
 {#if message}
   <div
     class="message"
+    role={type === `error` ? `alert` : `status`}
+    aria-live={type === `error` ? `assertive` : `polite`}
     style:background={styles[type].background}
     style:color={styles[type].color}
     style:border={styles[type].border}
@@ -49,7 +51,13 @@
   >
     {message}
     {#if dismissible}
-      <button onclick={() => (message = undefined)}>Dismiss</button>
+      <button
+        type="button"
+        aria-label="Dismiss message"
+        onclick={() => (message = undefined)}
+      >
+        Dismiss
+      </button>
     {/if}
   </div>
 {/if}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { EmptyState } from '$lib'
+  import { StatusMessage } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
@@ -10,6 +10,16 @@
   import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
+
+  function is_xrd_pattern(obj: unknown): obj is XrdPattern {
+    if (!obj || typeof obj !== `object`) return false
+    const record = obj as Record<string, unknown>
+    return (
+      Array.isArray(record.x) &&
+      Array.isArray(record.y) &&
+      record.x.length === record.y.length
+    )
+  }
 
   function format_hkl(hkl: Hkl, format: HklFormat): string {
     if (format === `compact`) { // Use crystallographic overbar notation for negative indices (e.g., 1̄ instead of -1)
@@ -70,7 +80,7 @@
     if (!patterns) return []
     const base_entries = Array.isArray(patterns)
       ? (patterns as PatternEntry[])
-      : (`x` in patterns
+      : (is_xrd_pattern(patterns)
         ? [{ label: `XRD Pattern`, pattern: patterns as XrdPattern }]
         : Object.entries(
           patterns as Record<
@@ -197,7 +207,9 @@
             { label: filename || `Dropped structure`, pattern },
             ...dropped_entries,
           ]
-        } else error_msg = `Structure has no lattice; cannot compute XRD pattern`
+        } else {
+          error_msg = `Structure has no lattice or sites; cannot compute XRD pattern`
+        }
       } catch (exc) {
         error_msg = `Failed to compute XRD pattern: ${
           exc instanceof Error ? exc.message : String(exc)
@@ -228,10 +240,10 @@
   }
 </script>
 
-<EmptyState bind:message={error_msg} type="error" dismissible />
+<StatusMessage bind:message={error_msg} type="error" dismissible />
 
 {#if bar_series.length === 0}
-  <EmptyState
+  <StatusMessage
     message={allow_file_drop
     ? `Drag and drop structure files here to compute XRD patterns`
     : `No XRD data to display`}

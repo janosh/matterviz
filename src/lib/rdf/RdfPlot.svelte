@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { EmptyState } from '$lib'
+  import { StatusMessage } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
+  import { decompress_file, handle_url_drop } from '$lib/io'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import type { Pbc, PymatgenStructure as Structure } from '$lib/structure'
+  import { parse_any_structure } from '$lib/structure/parse'
   import { is_valid_structure } from '$lib/structure/validation'
   import type { ComponentProps, Snippet } from 'svelte'
   import { calculate_all_pair_rdfs, calculate_rdf, type RdfEntry } from './index'
@@ -20,6 +22,8 @@
     n_bins = 75,
     pbc = [true, true, true],
     enable_drop = false,
+    on_file_drop,
+    loading = $bindable(false),
     error_msg = $bindable(undefined),
     children,
     ...rest
@@ -34,6 +38,8 @@
     n_bins?: number
     pbc?: Pbc
     enable_drop?: boolean
+    on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
+    loading?: boolean
     error_msg?: string
     children?: Snippet<[]>
   } & ComponentProps<typeof ScatterPlot> = $props()
@@ -45,28 +51,49 @@
   let dropped: Structure[] = $state([])
   let dragging = $state(false)
 
-  function format_structure_label(struct: Structure, base_label: string): string {
+  function format_structure_label(struct: Structure, label_base: string): string {
     const formula = get_electro_neg_formula(struct)
-    return formula && base_label ? `${formula}: ${base_label}` : formula || base_label
+    return formula && label_base ? `${formula}: ${label_base}` : formula || label_base
   }
 
-  async function handle_drop(ev: DragEvent) {
-    ev.preventDefault()
+  async function handle_drop(event: DragEvent) {
+    event.preventDefault()
     dragging = false
+    if (!enable_drop) return
+    loading = true
     error_msg = undefined
-    const files = ev.dataTransfer?.files
-    if (!files) return
 
-    for (const file of Array.from(files)) {
+    const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
       try {
-        const struct = JSON.parse(await file.text())
-        if (is_valid_structure(struct)) dropped = [...dropped, struct]
-        else error_msg = `${file.name} is not a valid structure file`
+        const text = content instanceof ArrayBuffer
+          ? new TextDecoder().decode(content)
+          : content
+        const parsed_struct = parse_any_structure(text, filename)
+        if (is_valid_structure(parsed_struct)) dropped = [...dropped, parsed_struct]
+        else error_msg = `Structure has no lattice or sites; cannot compute RDF`
       } catch (exc) {
-        error_msg = `Failed to parse ${file.name}: ${
+        error_msg = `Failed to process structure: ${
           exc instanceof Error ? exc.message : String(exc)
         }`
       }
+    }
+
+    try {
+      const handled = await handle_url_drop(event, on_file_drop || compute_and_add)
+        .catch(() => false)
+      if (handled) return
+
+      const file = event.dataTransfer?.files?.[0]
+      if (file) {
+        const { content, filename } = await decompress_file(file)
+        if (content) (on_file_drop || compute_and_add)(content, filename)
+      }
+    } catch (exc) {
+      error_msg = `Failed to load file: ${
+        exc instanceof Error ? exc.message : String(exc)
+      }`
+    } finally {
+      loading = false
     }
   }
 
@@ -89,11 +116,10 @@
             label: format_structure_label(struct, `Structure ${idx + 1}`),
           })
         )
-      } else if (`lattice` in structures && `sites` in structures) {
-        const struct = structures as Structure
+      } else if (is_valid_structure(structures)) {
         struct_list.push({
-          struct,
-          label: format_structure_label(struct, ``),
+          struct: structures,
+          label: format_structure_label(structures, ``),
         })
       } else {
         Object.entries(structures).forEach(([label, struct]) =>
@@ -145,7 +171,7 @@
   )
 </script>
 
-<EmptyState bind:message={error_msg} type="error" dismissible />
+<StatusMessage bind:message={error_msg} type="error" dismissible />
 
 {#if enable_drop && dropped.length > 0}
   <div class="dropped-info">
@@ -155,7 +181,7 @@
 {/if}
 
 {#if series.length === 0}
-  <EmptyState
+  <StatusMessage
     message={enable_drop
     ? `Drag and drop structure files here to visualize RDFs`
     : `No RDF data to display`}
