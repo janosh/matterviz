@@ -1327,7 +1327,7 @@ describe(`MatterViz Extension`, () => {
       [`structure.cif`, true],
       [`molecule.xyz`, true],
       [`crystal.poscar`, true],
-      [`data.json`, true],
+      [`data.json`, false], // "data" is too broad, will not auto-render without structure-specific keywords in filename
       [`structure.xml`, true],
       [`molecule.pdb`, true],
       [`compound.mol`, true],
@@ -1341,7 +1341,7 @@ describe(`MatterViz Extension`, () => {
       [`traj.xtc`, true],
       // Compressed supported files
       [`trajectory.xyz.gz`, true],
-      [`data.json.gz`, true],
+      [`data.json.gz`, false], // "data" is too broad, will not auto-render without structure-specific keywords in filename
       [`structure.cif.gz`, true],
       // Special filenames
       [`POSCAR`, true],

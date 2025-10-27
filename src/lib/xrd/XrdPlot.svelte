@@ -1,13 +1,25 @@
 <script lang="ts">
+  import { StatusMessage } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
   import type { AxisConfig, BarSeries, BarTooltipProps } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
+  import { is_valid_structure } from '$lib/structure/validation'
   import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
+
+  function is_xrd_pattern(obj: unknown): obj is XrdPattern {
+    if (!obj || typeof obj !== `object`) return false
+    const record = obj as Record<string, unknown>
+    return (
+      Array.isArray(record.x) &&
+      Array.isArray(record.y) &&
+      record.x.length === record.y.length
+    )
+  }
 
   function format_hkl(hkl: Hkl, format: HklFormat): string {
     if (format === `compact`) { // Use crystallographic overbar notation for negative indices (e.g., 1̄ instead of -1)
@@ -61,8 +73,6 @@
   } = $props()
 
   let dragover = $state(false)
-
-  // Patterns created from dropped structures
   let dropped_entries = $state<PatternEntry[]>([])
 
   // Normalize various input shapes to a consistent array of { label, pattern, color }
@@ -70,7 +80,7 @@
     if (!patterns) return []
     const base_entries = Array.isArray(patterns)
       ? (patterns as PatternEntry[])
-      : (`x` in patterns
+      : (is_xrd_pattern(patterns)
         ? [{ label: `XRD Pattern`, pattern: patterns as XrdPattern }]
         : Object.entries(
           patterns as Record<
@@ -189,17 +199,16 @@
           ? new TextDecoder().decode(content)
           : content
         const parsed_structure = parse_any_structure(text_content, filename)
-        if (parsed_structure && `lattice` in parsed_structure) {
+        if (is_valid_structure(parsed_structure)) {
           const pattern = compute_xrd_pattern(parsed_structure, {
             wavelength: typeof wavelength === `number` ? wavelength : undefined,
           })
-          const label = filename || `Dropped structure`
-          // Prepend latest dropped pattern for visibility
-          dropped_entries = [{ label, pattern }, ...dropped_entries]
-        } else if (parsed_structure && !(`lattice` in parsed_structure)) {
-          error_msg = `Structure has no lattice; cannot compute XRD pattern`
+          dropped_entries = [
+            { label: filename || `Dropped structure`, pattern },
+            ...dropped_entries,
+          ]
         } else {
-          error_msg = `Failed to parse structure from ${filename}`
+          error_msg = `Structure has no lattice or sites; cannot compute XRD pattern`
         }
       } catch (exc) {
         error_msg = `Failed to compute XRD pattern: ${
@@ -214,7 +223,6 @@
         .catch(() => false)
       if (handled) return
 
-      // Handle file system drops
       const file = event.dataTransfer?.files?.[0]
       if (file) {
         try {
@@ -232,48 +240,58 @@
   }
 </script>
 
-{#snippet tooltip(info: BarTooltipProps)}
-  {@const angle_text = `${format_value(info.x, `.2f`)}°`}
-  {@const intensity_text = `${format_value(info.y, `.1f`)}`}
-  {@const hkls = info.metadata?.hkls as Hkl[] | undefined}
-  {@const d = info.metadata?.d as number | undefined}
-  {@const hkl_text = hkls && hkl_format
+<StatusMessage bind:message={error_msg} type="error" dismissible />
+
+{#if bar_series.length === 0}
+  <StatusMessage
+    message={allow_file_drop
+    ? `Drag and drop structure files here to compute XRD patterns`
+    : `No XRD data to display`}
+  />
+{:else}
+  {#snippet tooltip(info: BarTooltipProps)}
+    {@const angle_text = `${format_value(info.x, `.2f`)}°`}
+    {@const intensity_text = `${format_value(info.y, `.1f`)}`}
+    {@const hkls = info.metadata?.hkls as Hkl[] | undefined}
+    {@const d = info.metadata?.d as number | undefined}
+    {@const hkl_text = hkls && hkl_format
     ? hkls.map((h) => format_hkl(h, hkl_format)).join(`, `)
     : ``}
-  {@const d_text = d != null ? `${format_value(d, `.3f`)} Å` : ``}
-  {@html info.metadata?.label ?? ``}<br />
-  2θ: {angle_text}<br />
-  Intensity: {intensity_text}
-  {#if hkl_text}<br />hkl: {hkl_text}{/if}
-  {#if d_text}<br />d: {d_text}{/if}
-{/snippet}
+    {@const d_text = d != null ? `${format_value(d, `.3f`)} Å` : ``}
+    {@html info.metadata?.label ?? ``}<br />
+    2θ: {angle_text}<br />
+    Intensity: {intensity_text}
+    {#if hkl_text}<br />hkl: {hkl_text}{/if}
+    {#if d_text}<br />d: {d_text}{/if}
+  {/snippet}
 
-<BarPlot
-  {...rest}
-  series={bar_series}
-  bind:orientation
-  x_axis={{
-    label_shift: { y: 20 },
-    range: orientation === `horizontal` ? intensity_range : angle_range,
-    ...(orientation === `horizontal` ? y_axis : x_axis),
-  }}
-  y_axis={{
-    label_shift: { x: 2 },
-    range: orientation === `horizontal` ? angle_range : intensity_range,
-    ...(orientation === `horizontal` ? x_axis : y_axis),
-  }}
-  {tooltip}
-  ondrop={handle_file_drop}
-  ondragover={(event) => {
-    event.preventDefault()
-    if (!allow_file_drop) return
-    dragover = true
-  }}
-  ondragleave={(event) => {
-    event.preventDefault()
-    dragover = false
-  }}
-  class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
-  style={`overflow: visible; ${rest.style ?? ``}`}
-  {children}
-/>
+  <BarPlot
+    {...rest}
+    series={bar_series}
+    bind:orientation
+    x_axis={{
+      label_shift: { y: 20 },
+      range: orientation === `horizontal` ? intensity_range : angle_range,
+      ...(orientation === `horizontal` ? y_axis : x_axis),
+    }}
+    y_axis={{
+      label_shift: { x: 2 },
+      range: orientation === `horizontal` ? angle_range : intensity_range,
+      ...(orientation === `horizontal` ? x_axis : y_axis),
+    }}
+    {tooltip}
+    ondrop={handle_file_drop}
+    ondragover={(event) => {
+      event.preventDefault()
+      if (!allow_file_drop) return
+      dragover = true
+    }}
+    ondragleave={(event) => {
+      event.preventDefault()
+      dragover = false
+    }}
+    class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
+    style={`overflow: visible; ${rest.style ?? ``}`}
+    {children}
+  />
+{/if}

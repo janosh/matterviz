@@ -54,7 +54,6 @@ describe(`Histogram`, () => {
       expected_min_max: [1, 20],
     },
   ])(`$name`, async ({ series, bins, expected_min_max }) => {
-    document.body.innerHTML = ``
     ensure_client_size()
     mount_histogram({ series, bins })
     await Promise.resolve()
@@ -66,7 +65,6 @@ describe(`Histogram`, () => {
   })
 
   test(`multi-series uses maximum counts across series`, async () => {
-    document.body.innerHTML = ``
     ensure_client_size()
     mount_histogram({
       series: [
@@ -82,7 +80,6 @@ describe(`Histogram`, () => {
   })
 
   test(`bins sensitivity: fewer bins increase per-bin counts`, async () => {
-    document.body.innerHTML = ``
     const series = [{ x: [], y: [1, 2, 3, 4, 5, 6, 7, 8, 9], label: `A` }]
     ensure_client_size()
     mount_histogram({ series, bins: 9 })
@@ -90,7 +87,6 @@ describe(`Histogram`, () => {
     const ticks_many = get_y_tick_numbers()
     const max_many = Math.max(...ticks_many)
 
-    document.body.innerHTML = ``
     ensure_client_size()
     mount_histogram({ series, bins: 3 })
     await Promise.resolve()
@@ -101,7 +97,6 @@ describe(`Histogram`, () => {
   })
 
   test(`y_range caps auto count domain`, async () => {
-    document.body.innerHTML = ``
     ensure_client_size()
     mount_histogram({ series: [{ x: [], y: [1, 1, 1, 1, 1] }], bins: 5, y_range: [0, 3] })
     await Promise.resolve()
@@ -111,7 +106,6 @@ describe(`Histogram`, () => {
   })
 
   test(`x_range applies domain; y max tick >= computed max bin count`, async () => {
-    document.body.innerHTML = ``
     const series = [{ x: [], y: [0, 0, 1, 1, 1, 2, 2, 10, 10, 10], label: `A` }]
     ensure_client_size()
     mount_histogram({ series, bins: 5 })
@@ -122,7 +116,6 @@ describe(`Histogram`, () => {
     const full_expected = d3max(full_hist, (b) => b.length) || 0
     expect(full_max).toBeGreaterThanOrEqual(full_expected)
 
-    document.body.innerHTML = ``
     ensure_client_size()
     mount_histogram({ series, bins: 5, x_range: [0, 3] })
     await Promise.resolve()
@@ -134,7 +127,6 @@ describe(`Histogram`, () => {
   })
 
   test(`log y-scale still uses count-based domain`, async () => {
-    document.body.innerHTML = ``
     ensure_client_size()
     mount_histogram({
       series: [{ x: [], y: [1, 1, 1, 1, 1] }],

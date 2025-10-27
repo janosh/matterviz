@@ -63,7 +63,6 @@ describe(`ElementTile`, () => {
       const visible_element = doc_query(`.${selector}`)
       expect(visible_element.textContent).toBe(`${rand_element[selector]}`)
 
-      // Clear and test hiding
       document.body.innerHTML = ``
       mount(ElementTile, {
         target: document.body,
