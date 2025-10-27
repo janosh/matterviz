@@ -113,23 +113,25 @@
   // Derived data
   let selected_series = $derived(
     mode === `single` && selected_property
-      ? series.filter((srs) =>
+      ? series.filter((srs: DataSeries) =>
         (srs.visible ?? true) && srs.label === selected_property
       )
-      : series.filter((srs) => srs.visible ?? true),
+      : series.filter((srs: DataSeries) => srs.visible ?? true),
   )
 
   // Separate series by y-axis
   let y1_series = $derived(
-    selected_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`),
+    selected_series.filter((srs: DataSeries) => (srs.y_axis ?? `y1`) === `y1`),
   )
-  let y2_series = $derived(selected_series.filter((srs) => srs.y_axis === `y2`))
+  let y2_series = $derived(
+    selected_series.filter((srs: DataSeries) => srs.y_axis === `y2`),
+  )
 
   let auto_ranges = $derived.by(() => {
-    const all_values = selected_series.flatMap((s) => s.y)
+    const all_values = selected_series.flatMap((srs: DataSeries) => srs.y)
     const auto_x = get_nice_data_range(
       all_values.map((val) => ({ x: val, y: 0 })),
-      (p) => p.x,
+      ({ x }) => x,
       x_range,
       x_axis.scale_type ?? `linear`,
       range_padding,
@@ -149,11 +151,13 @@
       const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
       const max_count = Math.max(
         0,
-        ...series_list.map((s) => max(hist(s.y), (data) => data.length) || 0),
+        ...series_list.map((srs: DataSeries) =>
+          max(hist(srs.y), (data) => data.length) || 0
+        ),
       )
       const [y0, y1] = get_nice_data_range(
         [{ x: 0, y: 0 }, { x: max_count, y: 0 }],
-        (p) => p.x,
+        ({ x }) => x,
         y_limit,
         scale_type,
         range_padding,
@@ -431,9 +435,9 @@
   function toggle_series_visibility(series_idx: number) {
     if (series_idx >= 0 && series_idx < series.length) {
       // Toggle series visibility
-      series = series.map((s, idx) => {
-        if (idx === series_idx) return { ...s, visible: !(s.visible ?? true) }
-        return s
+      series = series.map((srs: DataSeries, idx: number) => {
+        if (idx === series_idx) return { ...srs, visible: !(srs.visible ?? true) }
+        return srs
       })
       ;(legend?.on_toggle || on_series_toggle)(series_idx)
     }

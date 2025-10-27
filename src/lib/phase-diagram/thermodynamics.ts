@@ -1132,19 +1132,16 @@ export const compute_e_above_hull_4d = (
   // Precompute bounding boxes for fast prefiltering
   const models = build_tetrahedron_models(hull_tetrahedra)
 
-  return points.map((point) => {
+  return points.map(({ x, y, z, w }) => {
     let hull_w: number | null = null
-    const point_3d: Point3D = { x: point.x, y: point.y, z: point.z }
 
     for (const model of models) {
       // Fast bounding box prefilter
       if (
-        point.x < model.min_x - EPS || point.x > model.max_x + EPS ||
-        point.y < model.min_y - EPS || point.y > model.max_y + EPS ||
-        point.z < model.min_z - EPS || point.z > model.max_z + EPS
-      ) {
-        continue
-      }
+        x < model.min_x - EPS || x > model.max_x + EPS ||
+        y < model.min_y - EPS || y > model.max_y + EPS ||
+        z < model.min_z - EPS || z > model.max_z + EPS
+      ) continue
 
       // Check if point's (x,y,z) is inside the 3D projection of the tetrahedron
       const { inside, bary } = point_in_tetrahedron_3d(
@@ -1152,7 +1149,7 @@ export const compute_e_above_hull_4d = (
         model.vertices_3d[1],
         model.vertices_3d[2],
         model.vertices_3d[3],
-        point_3d,
+        { x, y, z },
       )
 
       if (inside) {
@@ -1165,7 +1162,7 @@ export const compute_e_above_hull_4d = (
     }
 
     if (hull_w === null) return 0
-    const distance = point.w - hull_w
+    const distance = w - hull_w
     return distance > EPS ? distance : 0
   })
 }
