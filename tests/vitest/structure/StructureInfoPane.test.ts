@@ -51,8 +51,6 @@ test.each([
       expect(formula_text).not.toContain(`Fractional`)
       expect(formula_text).not.toContain(`Cartesian`)
     }
-
-    document.body.innerHTML = `` // Clean up
   },
 )
 
@@ -77,9 +75,6 @@ test(`structure with > 500 atoms should not create sites section`, () => {
   expect(content).not.toContain(`Fractional`)
   expect(content).not.toContain(`Cartesian`)
   expect(content).not.toContain(`Show Sites`)
-
-  // Clean up
-  document.body.innerHTML = ``
 })
 
 test(`symmetry section displays when symmetry data is available`, () => {
@@ -139,7 +134,6 @@ test(`symmetry section behavior for different structure types`, () => {
     expect(content).toMatch(/\d+/) // space group number
     expect(content).toContain(`Symmetry Ops`) // operations count
   }
-  document.body.innerHTML = ``
 
   // Test molecular structure (no symmetry)
   const molecular_structure = get_dummy_structure(`H`, 5, false)

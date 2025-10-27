@@ -4,6 +4,7 @@ import {
   COMPRESSION_EXTENSIONS_REGEX,
   CONFIG_DIRS_REGEX,
   STRUCT_KEYWORDS_REGEX,
+  STRUCT_KEYWORDS_STRICT_REGEX,
   STRUCTURE_EXTENSIONS_REGEX,
   TRAJ_KEYWORDS_REGEX,
   VASP_FILES_REGEX,
@@ -1582,10 +1583,12 @@ export function is_structure_file(filename: string): boolean {
   // .xyz/.extxyz files: structure unless they have trajectory keywords
   if (/\.(xyz|extxyz)$/i.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
 
-  // Keyword-based detection for YAML/JSON/XML
+  // Keyword-based detection for YAML/XML
   if (/\.(yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
+
+  // More restrictive keyword detection for JSON files
   if (
-    /\.json$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name) &&
+    /\.json$/i.test(name) && STRUCT_KEYWORDS_STRICT_REGEX.test(name) &&
     !TRAJ_KEYWORDS_REGEX.test(name) && !CONFIG_DIRS_REGEX.test(name)
   ) return true
 
