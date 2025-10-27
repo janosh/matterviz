@@ -6,12 +6,14 @@
     BarTooltipProps,
     Orientation,
   } from '$lib'
+  import { EmptyState } from '$lib'
   import { plot_colors } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
   import { BarPlot } from '$lib/plot'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { parse_any_structure } from '$lib/structure/parse'
+  import { is_valid_structure } from '$lib/structure/validation'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { calc_coordination_nums, type CoordinationData } from './calc-coordination'
@@ -210,18 +212,12 @@
           ? new TextDecoder().decode(content)
           : content
         const parsed_structure = parse_any_structure(text_content, filename)
-        if (parsed_structure && `lattice` in parsed_structure) {
-          const label = filename || `Dropped structure`
-          // Prepend latest dropped structure for visibility
-          dropped_entries = [
-            { label, structure: parsed_structure },
-            ...dropped_entries,
-          ]
-        } else if (parsed_structure && !(`lattice` in parsed_structure)) {
-          error_msg = `Structure has no lattice; cannot compute coordination`
-        } else {
-          error_msg = `Failed to parse structure from ${filename}`
-        }
+        if (is_valid_structure(parsed_structure)) {
+          dropped_entries = [{
+            label: filename || `Dropped structure`,
+            structure: parsed_structure,
+          }, ...dropped_entries]
+        } else error_msg = `Structure has no lattice; cannot compute coordination`
       } catch (exc) {
         error_msg = `Failed to process structure: ${
           exc instanceof Error ? exc.message : String(exc)
@@ -237,7 +233,6 @@
         )
       if (handled) return
 
-      // Handle file system drops
       const file = event.dataTransfer?.files?.[0]
       if (file) {
         try {
@@ -255,53 +250,63 @@
   }
 </script>
 
-{#snippet tooltip(info: BarTooltipProps)}
-  {@const cn = info.x}
-  {@const count = info.y}
-  {@const element = info.metadata?.element as string | undefined}
-  {@const structure_label = info.metadata?.structure_label as string | undefined}
-  {#if element}
-    {element} —
-  {/if}
-  {#if structure_label}
-    {structure_label} —
-  {/if}
-  CN: {format_value(cn, `.0f`)}
-  <br />
-  Sites: {format_value(count, `.0f`)}
-{/snippet}
+<EmptyState bind:message={error_msg} type="error" dismissible />
 
-<BarPlot
-  {...rest}
-  series={bar_series}
-  bind:orientation
-  bind:mode
-  x_axis={{
-    label_shift: { y: 20 },
-    range: is_horizontal ? ranges.count : ranges.cn,
-    ticks: is_horizontal ? undefined : cn_ticks,
-    ...(is_horizontal ? y_axis : x_axis),
-  }}
-  y_axis={{
-    label_shift: { x: 2 },
-    range: is_horizontal ? ranges.cn : ranges.count,
-    ticks: is_horizontal ? cn_ticks : undefined,
-    ...is_horizontal ? x_axis : y_axis,
-  }}
-  display={{
-    x_zero_line: is_horizontal,
-    y_zero_line: !is_horizontal,
-  }}
-  {tooltip}
-  ondrop={handle_file_drop}
-  ondragover={(event) => {
-    event.preventDefault()
-    if (!allow_file_drop) return
-    dragover = true
-  }}
-  ondragleave={(event) => {
-    event.preventDefault()
-    dragover = false
-  }}
-  class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
-/>
+{#if bar_series.length === 0}
+  <EmptyState
+    message={allow_file_drop
+    ? `Drag and drop structure files here to compute coordination numbers`
+    : `No coordination data to display`}
+  />
+{:else}
+  {#snippet tooltip(info: BarTooltipProps)}
+    {@const cn = info.x}
+    {@const count = info.y}
+    {@const element = info.metadata?.element as string | undefined}
+    {@const structure_label = info.metadata?.structure_label as string | undefined}
+    {#if element}
+      {element} —
+    {/if}
+    {#if structure_label}
+      {structure_label} —
+    {/if}
+    CN: {format_value(cn, `.0f`)}
+    <br />
+    Sites: {format_value(count, `.0f`)}
+  {/snippet}
+
+  <BarPlot
+    {...rest}
+    series={bar_series}
+    bind:orientation
+    bind:mode
+    x_axis={{
+      label_shift: { y: 20 },
+      range: is_horizontal ? ranges.count : ranges.cn,
+      ticks: is_horizontal ? undefined : cn_ticks,
+      ...(is_horizontal ? y_axis : x_axis),
+    }}
+    y_axis={{
+      label_shift: { x: 2 },
+      range: is_horizontal ? ranges.cn : ranges.count,
+      ticks: is_horizontal ? cn_ticks : undefined,
+      ...is_horizontal ? x_axis : y_axis,
+    }}
+    display={{
+      x_zero_line: is_horizontal,
+      y_zero_line: !is_horizontal,
+    }}
+    {tooltip}
+    ondrop={handle_file_drop}
+    ondragover={(event) => {
+      event.preventDefault()
+      if (!allow_file_drop) return
+      dragover = true
+    }}
+    ondragleave={(event) => {
+      event.preventDefault()
+      dragover = false
+    }}
+    class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
+  />
+{/if}
