@@ -155,7 +155,6 @@ describe(`PlotControls`, () => {
         .find((s) => s.textContent?.includes(`Ticks`)),
     ).toBeUndefined()
 
-    document.body.innerHTML = ``
     mount_controls({ show_ticks: true })
     const tick_inputs = Array.from(
       document.querySelectorAll<HTMLInputElement>(`input[type="number"]`),

@@ -47,6 +47,23 @@ export const STRUCT_KEYWORDS = Object.freeze([
   `phonopy`,
 ]) as readonly string[]
 
+// More restrictive keywords for JSON/YAML files (excludes generic terms like "data")
+export const STRUCT_KEYWORDS_STRICT = Object.freeze([
+  `structure`,
+  `phono`,
+  `vasp`,
+  `crystal`,
+  `material`,
+  `lattice`,
+  `geometry`,
+  `unit_cell`,
+  `unitcell`,
+  `atoms`,
+  `sites`,
+  `phono3py`,
+  `phonopy`,
+]) as readonly string[]
+
 // Regex patterns for keyword matching
 export const TRAJ_KEYWORDS_REGEX = new RegExp(
   `(^|[-_.])(${TRAJ_KEYWORDS.join(`|`)})([-_.]|$)`,
@@ -54,6 +71,11 @@ export const TRAJ_KEYWORDS_REGEX = new RegExp(
 )
 
 export const STRUCT_KEYWORDS_REGEX = new RegExp(`(${STRUCT_KEYWORDS.join(`|`)})`, `i`)
+
+export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
+  `(${STRUCT_KEYWORDS_STRICT.join(`|`)})`,
+  `i`,
+)
 
 export const TRAJ_KEYWORDS_SIMPLE_REGEX = new RegExp(`(${TRAJ_KEYWORDS.join(`|`)})`, `i`)
 
