@@ -2541,7 +2541,7 @@ describe(`Structure File Detection`, () => {
     [`structure.cif.gz`, true],
     [`molecule.xyz.gz`, true],
     [`crystal.poscar.gz`, true],
-    [`data.json.gz`, true],
+    [`data.json.gz`, false], // Generic name, no structure keywords
     [`config.yaml.gz`, false],
     [`structure.xml.gz`, true],
     [`molecule.pdb.gz`, true],
@@ -2553,7 +2553,7 @@ describe(`Structure File Detection`, () => {
     [`STRUCTURE.CIF`, true],
     [`MOLECULE.XYZ`, true],
     [`CRYSTAL.POSCAR`, true],
-    [`DATA.JSON`, true],
+    [`DATA.JSON`, false], // Generic name, no structure keywords
     [`CONFIG.YAML`, false],
     // Unicode filenames
     [`مەركەزیstructure.cif`, true],
@@ -2584,6 +2584,21 @@ describe(`Structure File Detection`, () => {
     [`AgI-fq978185p-phono3py.yaml.gz`, true],
     [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, false],
     [`BeO-zw12zc18p-phono3py.yaml.gz`, true],
+    // JSON files with structure-specific keywords should be detected
+    [`structure.json`, true],
+    [`structure.json.gz`, true],
+    [`crystal.json`, true],
+    [`crystal.json.gz`, true],
+    [`my-structure.json`, true],
+    [`lattice.json.gz`, true],
+    [`phonopy.json`, true],
+    [`phono3py.json.gz`, true],
+    [`material.json`, true],
+    // JSON files without structure keywords should NOT be detected
+    [`config.json`, false],
+    [`settings.json`, false],
+    [`results.json`, false],
+    [`output.json`, false],
     // filenames containing trajectory keywords should not be detected as structure files
     [`trajectory.traj`, false],
     [`md.xyz.gz`, false],
