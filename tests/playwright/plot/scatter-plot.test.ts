@@ -339,6 +339,60 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
   })
 
+  test(`size_values prop with per-point styling and dynamic configuration`, async ({ page }) => {
+    // This test verifies the fix for size_values not working with per-point styling arrays
+    await page.goto(`/scatter-plot`, { waitUntil: `networkidle` })
+
+    // Find the spiral plot (has per-point styling with symbol_type and size_values)
+    const section = page.locator(`section:has(label:has-text("Label Size"))`).last()
+    const plot_locator = section.locator(`.scatter`)
+    await expect(plot_locator).toBeVisible()
+
+    const marker_count = await plot_locator.locator(`.marker`).count()
+    expect(marker_count).toBeGreaterThanOrEqual(30)
+
+    // Test 1: Verify size progression with per-point styling arrays
+    const bbox_0 = await get_marker_bbox(plot_locator, 0)
+    const bbox_15 = await get_marker_bbox(plot_locator, 15)
+    const bbox_30 = await get_marker_bbox(plot_locator, 30)
+    const area_0 = get_bbox_area(bbox_0)
+    const area_15 = get_bbox_area(bbox_15)
+    const area_30 = get_bbox_area(bbox_30)
+
+    expect(area_0).toBeGreaterThan(0)
+    expect(area_15).toBeGreaterThan(area_0)
+    expect(area_30).toBeGreaterThan(area_15)
+    expect(area_30 / area_0).toBeGreaterThan(4) // Expect at least 4x growth
+
+    // Test 2: Verify size_scale.radius_range changes affect marker sizes
+    const max_size_input = section.locator(
+      `label:has-text("Max Size") input[type="number"]`,
+    )
+    await max_size_input.fill(`50`)
+    await page.waitForTimeout(300)
+
+    const updated_bbox = await get_marker_bbox(plot_locator, 30)
+    const updated_area = get_bbox_area(updated_bbox)
+    expect(updated_area).toBeGreaterThan(area_30 * 1.5) // At least 50% larger
+
+    // Test 3: Verify log scale compresses size differences
+    await max_size_input.fill(`25`) // Reset to default
+    await page.waitForTimeout(300)
+
+    const scale_select = section.locator(`label:has-text("Size Scale") select`)
+    const linear_last = await get_marker_bbox(plot_locator, marker_count - 1)
+    const linear_area = get_bbox_area(linear_last)
+
+    await scale_select.selectOption(`log`)
+    await page.waitForTimeout(300)
+
+    const log_last = await get_marker_bbox(plot_locator, marker_count - 1)
+    const log_area = get_bbox_area(log_last)
+
+    expect(log_area).toBeGreaterThan(0)
+    expect(log_area).toBeLessThan(linear_area) // Log scale compresses large values
+  })
+
   // Scale and range tests
 
   const range_test_cases = [
