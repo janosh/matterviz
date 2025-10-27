@@ -185,12 +185,14 @@
   let clip_path_id = $derived(`plot-area-clip-${component_id}`)
 
   // Assign stable IDs to series for keying
-  let series_with_ids = $derived(series.map((s, idx) => {
-    if (!s || typeof s !== `object`) return s
-    // Use series.id if provided, otherwise fall back to index
-    // prevents re-mounts when series are reordered if stable IDs are provided
-    return { ...s, _id: s.id ?? idx }
-  }))
+  let series_with_ids = $derived(
+    series.map((srs: DataSeries, idx: number) => {
+      if (!srs || typeof srs !== `object`) return srs
+      // Use series.id if provided, otherwise fall back to index
+      // prevents re-mounts when series are reordered if stable IDs are provided
+      return { ...srs, _id: srs.id ?? idx }
+    }),
+  )
 
   // State for rectangle zoom selection
   let drag_start_coords = $state<XyObj | null>(null)
@@ -224,22 +226,30 @@
   let all_points = $derived(
     series_with_ids
       .filter(Boolean)
-      .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
+      .flatMap(({ x: xs, y: ys }: DataSeries) =>
+        xs.map((x_val, idx) => ({ x: x_val, y: ys[idx] }))
+      ),
   )
 
   // Separate points by y-axis for range calculations
   let y1_points = $derived(
     series_with_ids
       .filter(Boolean)
-      .filter((s) => (s.visible ?? true) && (s.y_axis ?? `y1`) === `y1`) // Only visible y1 series
-      .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
+      .filter((srs: DataSeries) =>
+        (srs.visible ?? true) && (srs.y_axis ?? `y1`) === `y1`
+      ) // Only visible y1 series
+      .flatMap(({ x: xs, y: ys }: DataSeries) =>
+        xs.map((x_val, idx) => ({ x: x_val, y: ys[idx] }))
+      ),
   )
 
   let y2_points = $derived(
     series_with_ids
       .filter(Boolean)
-      .filter((s) => (s.visible ?? true) && s.y_axis === `y2`) // Only visible y2 series
-      .flatMap(({ x: xs, y: ys }) => xs.map((x, idx) => ({ x, y: ys[idx] }))),
+      .filter((srs: DataSeries) => (srs.visible ?? true) && srs.y_axis === `y2`) // Only visible y2 series
+      .flatMap(({ x: xs, y: ys }: DataSeries) =>
+        xs.map((x_val, idx) => ({ x: x_val, y: ys[idx] }))
+      ),
   )
 
   // Layout: dynamic padding based on tick label widths
@@ -276,7 +286,7 @@
 
   // Compute data color values for color scaling
   let all_color_values = $derived(
-    series_with_ids.filter(Boolean).flatMap((srs) =>
+    series_with_ids.filter(Boolean).flatMap((srs: DataSeries) =>
       srs.color_values?.filter(Boolean) || []
     ),
   )
@@ -285,7 +295,7 @@
   let auto_x_range = $derived(
     get_nice_data_range(
       all_points,
-      (point) => point.x,
+      ({ x }) => x,
       (x_axis.range ?? [null, null]) as [number | null, number | null],
       x_axis.scale_type!,
       range_padding,
@@ -296,7 +306,7 @@
   let auto_y_range = $derived(
     get_nice_data_range(
       y1_points,
-      (point) => point.y,
+      ({ y }) => y,
       (y_axis.range ?? [null, null]) as [number | null, number | null],
       y_axis.scale_type!,
       range_padding,
@@ -307,7 +317,7 @@
   let auto_y2_range = $derived(
     get_nice_data_range(
       y2_points,
-      (point) => point.y,
+      ({ y }) => y,
       (y2_axis.range ?? [null, null]) as [number | null, number | null],
       y2_axis.scale_type!,
       range_padding,
@@ -350,7 +360,9 @@
     // Ensure we only calculate extent on actual numbers, filtering out nulls/undefined
     all_color_values.length > 0
       ? extent(
-        all_color_values.filter((val): val is number => typeof val === `number`),
+        all_color_values.filter((color_val: number | null): color_val is number =>
+          typeof color_val === `number`
+        ),
       )
       : [0, 1],
   ) as [number, number]
@@ -396,11 +408,15 @@
     // Calculate all size values directly here
     const current_all_size_values = series_with_ids
       .filter(Boolean)
-      .flatMap(({ size_values }) => size_values?.filter(Boolean) || [])
+      .flatMap(({ size_values }: DataSeries) => size_values?.filter(Boolean) || [])
 
     // Calculate auto size range directly here
     const current_auto_size_range = current_all_size_values.length > 0
-      ? extent(current_all_size_values.filter((val): val is number => val != null))
+      ? extent(
+        current_all_size_values.filter((
+          size_val: number | null,
+        ): size_val is number => size_val != null),
+      )
       : [0, 1]
 
     const [min_val, max_val] = size_scale.value_range ??
@@ -450,7 +466,7 @@
   // Filter series data to only include points within bounds and augment with internal data
   let filtered_series = $derived(
     series_with_ids
-      .map((data_series, series_idx) => {
+      .map((data_series: DataSeries, series_idx: number) => {
         if (!(data_series?.visible ?? true)) {
           return { ...data_series, visible: false, filtered_data: [] }
         }
@@ -462,36 +478,38 @@
         const { x: xs, y: ys, color_values, size_values, ...rest } = data_series
 
         // Process points internally, adding properties beyond the base Point type
-        const processed_points: InternalPoint[] = xs.map((x, point_idx) => {
-          const y = ys[point_idx]
-          const color_value = color_values?.[point_idx]
-          const size_value = size_values?.[point_idx] // Get size value for the point
+        const processed_points: InternalPoint[] = xs.map(
+          (x_val: number, point_idx: number) => {
+            const y_val = ys[point_idx]
+            const color_value = color_values?.[point_idx]
+            const size_value = size_values?.[point_idx] // Get size value for the point
 
-          // Helper to process array or scalar properties
-          const process_prop = <T>(
-            prop: T[] | T | undefined,
-            point_idx: number,
-          ): T | undefined => {
-            if (!prop) return undefined
-            // If prop is an array, return the element at the point_idx, otherwise return the prop itself (scalar apply-to-all)
-            // prop[point_idx] can be undefined if point_idx out of bounds
-            return Array.isArray(prop) ? prop[point_idx] : prop
-          }
+            // Helper to process array or scalar properties
+            const process_prop = <T>(
+              prop: T[] | T | undefined,
+              point_idx: number,
+            ): T | undefined => {
+              if (!prop) return undefined
+              // If prop is an array, return the element at the point_idx, otherwise return the prop itself (scalar apply-to-all)
+              // prop[point_idx] can be undefined if point_idx out of bounds
+              return Array.isArray(prop) ? prop[point_idx] : prop
+            }
 
-          return {
-            x,
-            y,
-            color_value,
-            metadata: process_prop(rest.metadata, point_idx),
-            point_style: process_prop(rest.point_style, point_idx),
-            point_hover: process_prop(rest.point_hover, point_idx),
-            point_label: process_prop(rest.point_label, point_idx),
-            point_offset: process_prop(rest.point_offset, point_idx),
-            series_idx,
-            point_idx,
-            size_value,
-          }
-        })
+            return {
+              x: x_val,
+              y: y_val,
+              color_value,
+              metadata: process_prop(rest.metadata, point_idx),
+              point_style: process_prop(rest.point_style, point_idx),
+              point_hover: process_prop(rest.point_hover, point_idx),
+              point_label: process_prop(rest.point_label, point_idx),
+              point_offset: process_prop(rest.point_offset, point_idx),
+              series_idx,
+              point_idx,
+              size_value,
+            }
+          },
+        )
 
         // Filter to points within the plot bounds
         const is_valid_dim = (
@@ -507,9 +525,9 @@
           : [y_min, y_max]
 
         const filtered_data_with_extras = processed_points.filter(
-          (pt) =>
-            is_valid_dim(pt.x, x_min, x_max) &&
-            is_valid_dim(pt.y, series_y_min, series_y_max),
+          ({ x, y }) =>
+            is_valid_dim(x, x_min, x_max) &&
+            is_valid_dim(y, series_y_min, series_y_max),
         )
 
         // Return structure consistent with DataSeries but acknowledge internal data structure (filtered_data)
@@ -520,7 +538,9 @@
         }
       })
       // Filter series end up completely empty after point filtering
-      .filter((series_data) => series_data.filtered_data.length > 0),
+      .filter((series_data: DataSeries & { filtered_data: InternalPoint[] }) =>
+        series_data.filtered_data.length > 0
+      ),
   )
 
   // Collect all plot points for legend placement calculation
@@ -548,110 +568,125 @@
     return points
   })
 
+  // Explicitly define the type for display_style matching PlotLegend expectations
+  type LegendDisplayStyle = {
+    symbol_type?: D3SymbolName
+    symbol_color?: string
+    line_color?: string
+    line_dash?: string
+  }
+
   // Prepare data needed for the legend component
   let legend_data = $derived.by(() => {
-    const items = series_with_ids.map((data_series, series_idx) => {
-      const is_visible = data_series?.visible ?? true
-      // Prefer top-level label, fallback to metadata label
-      const explicit_label = data_series?.label ??
-        (typeof data_series?.metadata === `object` &&
-            data_series.metadata !== null &&
-            `label` in data_series.metadata &&
-            typeof data_series.metadata.label === `string`
-          ? data_series.metadata.label
-          : null)
-      // Use explicit label or generate default
-      const label = explicit_label ?? `Series ${series_idx + 1}`
-      const has_explicit_label = explicit_label != null
+    const items = series_with_ids.map(
+      (data_series: DataSeries, series_idx: number) => {
+        const is_visible = data_series?.visible ?? true
+        // Prefer top-level label, fallback to metadata label
+        const explicit_label = data_series?.label ??
+          (typeof data_series?.metadata === `object` &&
+              data_series.metadata !== null &&
+              `label` in data_series.metadata &&
+              typeof data_series.metadata.label === `string`
+            ? data_series.metadata.label
+            : null)
+        // Use explicit label or generate default
+        const label = explicit_label ?? `Series ${series_idx + 1}`
+        const has_explicit_label = explicit_label != null
 
-      // Explicitly define the type for display_style matching PlotLegend expectations
-      type LegendDisplayStyle = {
-        symbol_type?: D3SymbolName
-        symbol_color?: string
-        line_color?: string
-        line_dash?: string
-      }
-      const display_style: LegendDisplayStyle = {
-        symbol_type: DEFAULTS.scatter.symbol_type,
-        symbol_color: `black`, // Default marker color
-        line_color: `black`, // Default line color
-      }
-      const series_markers = data_series?.markers ?? DEFAULT_MARKERS
+        const display_style: LegendDisplayStyle = {
+          symbol_type: DEFAULTS.scatter.symbol_type,
+          symbol_color: `black`, // Default marker color
+          line_color: `black`, // Default line color
+        }
+        const series_markers = data_series?.markers ?? DEFAULT_MARKERS
 
-      // Check point_style (could be object or array)
-      const first_point_style = Array.isArray(data_series?.point_style)
-        ? (data_series.point_style[0] as PointStyle | undefined) // Handle potential undefined
-        : (data_series?.point_style as PointStyle | undefined) // Handle potential undefined
+        // Check point_style (could be object or array)
+        const first_point_style = Array.isArray(data_series?.point_style)
+          ? (data_series.point_style[0] as PointStyle | undefined) // Handle potential undefined
+          : (data_series?.point_style as PointStyle | undefined) // Handle potential undefined
 
-      if (series_markers?.includes(`points`)) {
-        if (first_point_style) {
-          // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
-          let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
-          if (
-            Array.isArray(symbol_names) &&
-            typeof first_point_style.symbol_type === `string` &&
-            symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
-          ) final_shape = first_point_style.symbol_type as D3SymbolName
-          display_style.symbol_type = final_shape
-
-          display_style.symbol_color = first_point_style.fill ??
-            display_style.symbol_color // Use default if nullish
-          if (first_point_style.stroke) {
-            // Use stroke color if fill is none or transparent
+        if (series_markers?.includes(`points`)) {
+          if (first_point_style) {
+            // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
+            let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
             if (
-              !display_style.symbol_color ||
-              display_style.symbol_color === `none` ||
-              display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
-            ) display_style.symbol_color = first_point_style.stroke
+              Array.isArray(symbol_names) &&
+              typeof first_point_style.symbol_type === `string` &&
+              symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
+            ) final_shape = first_point_style.symbol_type as D3SymbolName
+            display_style.symbol_type = final_shape
+
+            display_style.symbol_color = first_point_style.fill ??
+              display_style.symbol_color // Use default if nullish
+            if (first_point_style.stroke) {
+              // Use stroke color if fill is none or transparent
+              if (
+                !display_style.symbol_color ||
+                display_style.symbol_color === `none` ||
+                display_style.symbol_color.startsWith(`rgba(`, 0) // Check if transparent
+              ) display_style.symbol_color = first_point_style.stroke
+            }
           }
+          // else: keep default display_style.symbol_type/color if no point_style
+        } else {
+          // If no points marker, explicitly remove marker style for legend
+          display_style.symbol_type = undefined
+          display_style.symbol_color = undefined
         }
-        // else: keep default display_style.symbol_type/color if no point_style
-      } else {
-        // If no points marker, explicitly remove marker style for legend
-        display_style.symbol_type = undefined
-        display_style.symbol_color = undefined
-      }
 
-      // Check line_style
-      if (series_markers?.includes(`line`)) {
-        // Prefer explicit line stroke
-        let legend_line_color = data_series?.line_style?.stroke
-        if (!legend_line_color) {
-          // Try color scale if available
-          const first_cv = Array.isArray(data_series?.color_values)
-            ? data_series!.color_values!.find((v) => v != null)
-            : undefined
-          legend_line_color =
-            (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
-            first_point_style?.fill ||
-            first_point_style?.stroke ||
-            display_style.symbol_color ||
-            `black`
+        // Check line_style
+        if (series_markers?.includes(`line`)) {
+          // Prefer explicit line stroke
+          let legend_line_color = data_series?.line_style?.stroke
+          if (!legend_line_color) {
+            // Try color scale if available
+            const first_cv = Array.isArray(data_series?.color_values)
+              ? data_series!.color_values!.find((color_val: number | null) =>
+                color_val != null
+              )
+              : undefined
+            legend_line_color =
+              (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
+              first_point_style?.fill ||
+              first_point_style?.stroke ||
+              display_style.symbol_color ||
+              `black`
+          }
+          display_style.line_color = legend_line_color
+          display_style.line_dash = data_series?.line_style?.line_dash
+        } else {
+          // If no line marker, explicitly remove line style for legend
+          display_style.line_dash = undefined
+          display_style.line_color = undefined
         }
-        display_style.line_color = legend_line_color
-        display_style.line_dash = data_series?.line_style?.line_dash
-      } else {
-        // If no line marker, explicitly remove line style for legend
-        display_style.line_dash = undefined
-        display_style.line_color = undefined
-      }
 
-      return {
-        series_idx,
-        label,
-        visible: is_visible,
-        display_style,
-        has_explicit_label,
-      }
-    })
+        return {
+          series_idx,
+          label,
+          visible: is_visible,
+          display_style,
+          has_explicit_label,
+        }
+      },
+    )
 
     // Deduplicate by label - keep first occurrence of each unique label
     const seen_labels = new SvelteSet<string>()
-    return items.filter((item) => {
-      if (seen_labels.has(item.label)) return false
-      seen_labels.add(item.label)
-      return true
-    })
+    return items.filter(
+      (
+        legend_item: {
+          label: string
+          series_idx: number
+          visible: boolean
+          display_style: LegendDisplayStyle
+          has_explicit_label: boolean
+        },
+      ) => {
+        if (seen_labels.has(legend_item.label)) return false
+        seen_labels.add(legend_item.label)
+        return true
+      },
+    )
   })
 
   // Calculate best legend placement using new simple system
@@ -1098,35 +1133,35 @@
   function toggle_series_visibility(series_idx: number) {
     if (series_idx < 0 || series_idx >= series.length || !series[series_idx]) return
 
-    const toggled_series = series[series_idx]
+    const toggled_series = series[series_idx]!
     const new_visibility = !(toggled_series.visible ?? true)
     const target_axis = toggled_series.y_axis ?? `y1`
     const toggled_label = toggled_series.label
 
     // Only create new objects for series that need to change to preserve series IDs
-    series = series.map((s, idx) => {
+    series = series.map((srs: DataSeries, idx: number) => {
       // Toggle all series with the same label (for grouped series like band structures)
-      if (toggled_label && s.label === toggled_label) {
-        return { ...s, visible: new_visibility }
+      if (toggled_label && srs.label === toggled_label) {
+        return { ...srs, visible: new_visibility }
       }
 
       // Also toggle the specific series if it has no label
       if (idx === series_idx && !toggled_label) {
-        return { ...s, visible: new_visibility }
+        return { ...srs, visible: new_visibility }
       }
 
       // If we're showing a series, hide incompatible series on same axis
-      if (new_visibility && (s.y_axis ?? `y1`) === target_axis) {
-        if (!have_compatible_units(toggled_series, s)) {
+      if (new_visibility && (srs.y_axis ?? `y1`) === target_axis) {
+        if (!have_compatible_units(toggled_series, srs)) {
           // Only create new object if we need to change visibility
-          if (s.visible ?? true) {
-            return { ...s, visible: false }
+          if (srs.visible ?? true) {
+            return { ...srs, visible: false }
           }
         }
       }
 
       // Keep the SAME object reference for unchanged series (preserves cached ID)
-      return s
+      return srs
     })
   }
 
@@ -1135,12 +1170,12 @@
     const double_clicked_series = series[double_clicked_idx]
     const double_clicked_label = double_clicked_series?.label
 
-    const current_visibility = series.map((s: DataSeries) => s?.visible ?? true)
+    const current_visibility = series.map((srs: DataSeries) => srs?.visible ?? true)
     const visible_count =
       current_visibility.filter((visible: boolean) => visible).length
 
     // Check if the group is currently isolated (all series with this label visible, others hidden)
-    const group_is_isolated = series.every((srs, idx) => {
+    const group_is_isolated = series.every((srs: DataSeries, idx: number) => {
       // For unlabeled series, use index comparison; for labeled, use label comparison
       const is_in_group = double_clicked_label
         ? srs.label === double_clicked_label
@@ -1152,13 +1187,13 @@
     if (group_is_isolated && previous_series_visibility) {
       // Restore previous visibility state
       // Only create new objects for series whose visibility actually changes
-      series = series.map((s, idx) => {
+      series = series.map((srs: DataSeries, idx: number) => {
         const target_visibility = previous_series_visibility![idx]
-        const current_visibility = s?.visible ?? true
+        const current_visibility = srs?.visible ?? true
         if (current_visibility !== target_visibility) {
-          return { ...s, visible: target_visibility }
+          return { ...srs, visible: target_visibility }
         }
-        return s // Preserve object reference
+        return srs // Preserve object reference
       })
       previous_series_visibility = null // Clear memory
     } else {
@@ -1168,17 +1203,17 @@
         previous_series_visibility = [...current_visibility] // Store current state
       }
       // Only create new objects for series whose visibility needs to change
-      series = series.map((s, idx) => {
+      series = series.map((srs: DataSeries, idx: number) => {
         // For unlabeled series, use index comparison; for labeled, use label comparison
         const is_in_group = double_clicked_label
-          ? s.label === double_clicked_label
+          ? srs.label === double_clicked_label
           : idx === double_clicked_idx
         const target_visibility = is_in_group
-        const current_visibility = s?.visible ?? true
+        const current_visibility = srs?.visible ?? true
         if (current_visibility !== target_visibility) {
-          return { ...s, visible: target_visibility }
+          return { ...srs, visible: target_visibility }
         }
-        return s // Preserve object reference
+        return srs // Preserve object reference
       })
     }
   }
@@ -1609,6 +1644,11 @@
                 {@const apply_controls = using_controls &&
           (!has_multiple_series ||
             series_data._id === series_with_ids[selected_series_idx]?._id)}
+                {@const computed_radius_value = point.size_value != null
+          ? size_scale_fn(point.size_value)
+          : apply_controls
+          ? styles.point?.size ?? point.point_style?.radius ?? 4
+          : point.point_style?.radius ?? 4}
                 <ScatterPoint
                   x={screen_x}
                   y={screen_y}
@@ -1617,13 +1657,8 @@
                   point.point_idx === tooltip_point.point_idx}
                   style={{
                     ...point.point_style,
-                    radius: apply_controls
-                      ? styles.point?.size ?? (point.size_value != null
-                        ? size_scale_fn(point.size_value)
-                        : point.point_style?.radius ?? 4)
-                      : point.size_value != null
-                      ? size_scale_fn(point.size_value)
-                      : point.point_style?.radius ?? 4,
+                    // When size_value is present, it should always determine the radius
+                    radius: computed_radius_value,
                     stroke_width: apply_controls
                       ? styles.point?.stroke_width ??
                         point.point_style?.stroke_width ?? 1

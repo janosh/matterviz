@@ -100,13 +100,17 @@
   let clip_path_id = `chart-clip-${crypto?.randomUUID?.()}`
 
   // Compute auto ranges from visible series
-  let visible_series = $derived(series.filter((srs) => srs?.visible ?? true))
+  let visible_series = $derived(
+    series.filter((srs: BarSeries) => srs?.visible ?? true),
+  )
 
   // Separate series by y-axis
   let y1_series = $derived(
-    visible_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`),
+    visible_series.filter((srs: BarSeries) => (srs.y_axis ?? `y1`) === `y1`),
   )
-  let y2_series = $derived(visible_series.filter((srs) => srs.y_axis === `y2`))
+  let y2_series = $derived(
+    visible_series.filter((srs: BarSeries) => srs.y_axis === `y2`),
+  )
 
   let auto_ranges = $derived.by(() => {
     // Calculate separate ranges for y1 and y2 axes
@@ -115,7 +119,7 @@
       y_limit: typeof y_range,
       scale_type: string,
     ) => {
-      let points = series_list.flatMap((srs) =>
+      let points = series_list.flatMap((srs: BarSeries) =>
         srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
       )
 
@@ -125,8 +129,8 @@
 
         // Only include visible bar series (not lines) in stacking
         series_list
-          .filter((srs) => srs.render_mode !== `line`)
-          .forEach((srs) =>
+          .filter((srs: BarSeries) => srs.render_mode !== `line`)
+          .forEach((srs: BarSeries) =>
             srs.x.forEach((x_val, idx) => {
               const y_val = srs.y[idx] ?? 0
               const totals = stacked_totals.get(x_val) ?? { pos: 0, neg: 0 }
@@ -143,8 +147,8 @@
             ...(neg < 0 ? [{ x: x_val, y: neg }] : []),
           ]),
           ...series_list
-            .filter((srs) => srs.render_mode === `line`)
-            .flatMap((srs) =>
+            .filter((srs: BarSeries) => srs.render_mode === `line`)
+            .flatMap((srs: BarSeries) =>
               srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
             ),
         ]
@@ -180,8 +184,8 @@
     }
 
     // Get all x values for x_range calculation
-    const all_x_points = visible_series.flatMap((s) =>
-      s.x.map((x_val) => ({ x: x_val, y: 0 }))
+    const all_x_points = visible_series.flatMap((srs: BarSeries) =>
+      srs.x.map((x_val) => ({ x: x_val, y: 0 }))
     )
 
     const x_scale_type = x_axis.scale_type ?? `linear`
@@ -402,7 +406,7 @@
 
   // Legend data and handlers
   let legend_data = $derived.by<LegendItem[]>(() =>
-    series.map((srs, idx) => ({
+    series.map((srs: BarSeries, idx: number) => ({
       series_idx: idx,
       label: srs.label ?? `Series ${idx + 1}`,
       visible: srs.visible ?? true,
@@ -420,8 +424,8 @@
 
   function toggle_series_visibility(series_idx: number) {
     if (series_idx >= 0 && series_idx < series.length) {
-      series = series.map((s, idx) =>
-        idx === series_idx ? { ...s, visible: !(s.visible ?? true) } : s
+      series = series.map((srs: BarSeries, idx: number) =>
+        idx === series_idx ? { ...srs, visible: !(srs.visible ?? true) } : srs
       )
     }
   }
@@ -430,23 +434,25 @@
   let bar_points_for_placement = $derived.by(() => {
     if (!width || !height || !visible_series.length) return []
 
-    return visible_series.flatMap((srs) => {
+    return visible_series.flatMap((srs: BarSeries) => {
       const is_line = srs.render_mode === `line`
       // Use original series index to look up stacked_offsets
       const series_idx = series.indexOf(srs)
       const series_offsets = stacked_offsets[series_idx] ?? []
       const use_y2 = srs.y_axis === `y2`
       const y_scale = use_y2 ? scales.y2 : scales.y
-      return srs.x.map((x_val, bar_idx) => {
-        const y_val = srs.y[bar_idx]
-        const base = !is_line && mode === `stacked`
-          ? (series_offsets[bar_idx] ?? 0)
-          : 0
-        const [bar_x, bar_y] = orientation === `vertical`
-          ? [scales.x(x_val), y_scale(base + y_val)]
-          : [scales.x(base + y_val), scales.y(x_val)]
-        return { x: bar_x, y: bar_y }
-      }).filter((p) => isFinite(p.x) && isFinite(p.y))
+      return srs.x
+        .map((x_val, bar_idx) => {
+          const y_val = srs.y[bar_idx]
+          const base = !is_line && mode === `stacked`
+            ? (series_offsets[bar_idx] ?? 0)
+            : 0
+          const [bar_x, bar_y] = orientation === `vertical`
+            ? [scales.x(x_val), y_scale(base + y_val)]
+            : [scales.x(base + y_val), scales.y(x_val)]
+          return { x: bar_x, y: bar_y }
+        })
+        .filter(({ x, y }) => isFinite(x) && isFinite(y))
     })
   })
 
@@ -500,7 +506,7 @@
   // Stack offsets (only for bar series in stacked mode, grouped by y-axis)
   let stacked_offsets = $derived.by(() => {
     if (mode !== `stacked`) return [] as number[][]
-    const max_len = Math.max(0, ...series.map((srs) => srs.y.length))
+    const max_len = Math.max(0, ...series.map((srs: BarSeries) => srs.y.length))
     const offsets = series.map(() => Array.from({ length: max_len }, () => 0))
 
     // Separate accumulators for y1 and y2 axes
@@ -509,7 +515,7 @@
     const y2_pos_acc = Array.from({ length: max_len }, () => 0)
     const y2_neg_acc = Array.from({ length: max_len }, () => 0)
 
-    series.forEach((srs, series_idx) => {
+    series.forEach((srs: BarSeries, series_idx: number) => {
       if (!(srs?.visible ?? true) || srs.render_mode === `line`) return
 
       const use_y2 = srs.y_axis === `y2`
@@ -530,10 +536,9 @@
   let group_info = $derived.by(() => {
     if (mode !== `grouped`) return { bar_series_count: 0, bar_series_indices: [] }
     const bar_series_indices = series
-      .map((
-        srs,
-        idx,
-      ) => ((srs?.visible ?? true) && srs.render_mode !== `line` ? idx : -1))
+      .map((srs: BarSeries, idx: number) =>
+        (srs?.visible ?? true) && srs.render_mode !== `line` ? idx : -1
+      )
       .filter((idx) => idx >= 0)
     return { bar_series_count: bar_series_indices.length, bar_series_indices }
   })

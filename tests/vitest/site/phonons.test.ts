@@ -102,21 +102,21 @@ describe(`Phonon Module Tests`, () => {
 
     // Test all band structures
     for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
-      band_struct.qpoints.forEach((qpoint) => {
-        expect(qpoint.frac_coords).toBeDefined()
-        expect(Array.isArray(qpoint.frac_coords)).toBe(true)
-        expect(qpoint.frac_coords).toHaveLength(3)
+      band_struct.qpoints.forEach((q_point) => {
+        expect(q_point.frac_coords).toBeDefined()
+        expect(Array.isArray(q_point.frac_coords)).toBe(true)
+        expect(q_point.frac_coords).toHaveLength(3)
 
         // Fractional coordinates should be finite numbers
-        qpoint.frac_coords.forEach((coord) => {
+        q_point.frac_coords.forEach((coord) => {
           expect(typeof coord).toBe(`number`)
           expect(Number.isFinite(coord)).toBe(true)
         })
 
-        // Verify qpoint has distance property
-        expect(typeof qpoint.distance).toBe(`number`)
-        expect(Number.isFinite(qpoint.distance)).toBe(true)
-        expect(qpoint.distance).toBeGreaterThanOrEqual(0)
+        // Verify q_point has distance property
+        expect(typeof q_point.distance).toBe(`number`)
+        expect(Number.isFinite(q_point.distance)).toBe(true)
+        expect(q_point.distance).toBeGreaterThanOrEqual(0)
       })
     }
   })
