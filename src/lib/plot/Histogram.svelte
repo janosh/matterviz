@@ -13,6 +13,7 @@
   import {
     calc_auto_padding,
     constrain_tooltip_position,
+    LABEL_GAP_DEFAULT,
     measure_text_width,
   } from './layout'
   import {
@@ -238,18 +239,22 @@
       })
       : { ...default_padding, ...padding }
 
-    // Expand right padding if y2 ticks are shown
-    if (width && height && y2_series.length && current_ticks_y2.length) {
+    // Add y2 axis label space (calc_auto_padding only accounts for tick labels)
+    if (
+      width && height && y2_series.length && current_ticks_y2.length && y2_axis.label
+    ) {
       const y2_tick_width = Math.max(
         0,
         ...current_ticks_y2.map((tick) =>
           measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
         ),
       )
-      // Need space for: tick shift (8px) + tick width + gap (30px) + label space (20px if present)
       const tick_shift = y2_axis.tick_label_shift?.x ?? 8
-      const label_space = y2_axis.label ? 20 : 0
-      new_pad.r = Math.max(new_pad.r, tick_shift + y2_tick_width + 30 + label_space)
+      const label_thickness = Math.round(12 * 1.2)
+      new_pad.r = Math.max(
+        new_pad.r,
+        y2_tick_width + LABEL_GAP_DEFAULT + tick_shift + label_thickness,
+      )
     }
 
     // Only update if padding actually changed
@@ -346,7 +351,8 @@
           const bar_y = y_scale(bin.length)
           if (isFinite(bar_x) && isFinite(bar_y)) {
             // Add multiple points for taller bars to increase their weight
-            const weight = Math.ceil(bin.length / 10) // More points for taller bars
+            // Cap to prevent O(N·count/10) blow-ups for large counts
+            const weight = Math.min(20, Math.ceil(bin.length / 10))
             for (let idx = 0; idx < weight; idx++) points.push({ x: bar_x, y: bar_y })
           }
         }
@@ -463,6 +469,8 @@
 </script>
 
 <div class="histogram" bind:clientWidth={width} bind:clientHeight={height} {...rest}>
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <svg
     bind:this={svg_element}
     onmouseenter={() => (hovered = true)}
@@ -474,8 +482,8 @@
     }}
     ondblclick={handle_double_click}
     style:cursor="crosshair"
-    role="button"
-    aria-label="Interactive histogram with zoom and pan controls"
+    role="img"
+    aria-label="Interactive histogram. Drag to zoom, double-click to reset."
     tabindex="0"
     onkeydown={(event) => {
       if (event.key === `Escape` && drag_state.start) {
@@ -629,8 +637,8 @@
         )}
         {@const shift_x = y_axis.label_shift?.x ?? 0}
         {@const shift_y = y_axis.label_shift?.y ?? 0}
-        {@const label_gap = 30}
-        {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - label_gap) + shift_x}
+        {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - LABEL_GAP_DEFAULT) +
+          shift_x}
         {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 + shift_y}
         <text
           x={y_label_x}
@@ -699,8 +707,8 @@
           {@const shift_x = y2_axis.label_shift?.x ?? 0}
           {@const shift_y = y2_axis.label_shift?.y ?? 0}
           {@const tick_shift = y2_axis.tick_label_shift?.x ?? 8}
-          {@const label_gap = 30}
-          {@const y2_label_x = width - pad.r + tick_shift + max_y2_tick_width + label_gap +
+          {@const y2_label_x = width - pad.r + tick_shift + max_y2_tick_width +
+          LABEL_GAP_DEFAULT +
           shift_x}
           {@const y2_label_y = pad.t + (height - pad.t - pad.b) / 2 + shift_y}
           <text
@@ -730,7 +738,7 @@
         <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
       {/if}
     {/if}
-    {#if display.y_zero_line && y2_series.length > 0 &&
+    {#if (display.y2_zero_line ?? display.y_zero_line) && y2_series.length > 0 &&
         (y2_axis.scale_type ?? `linear`) === `linear` &&
         ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
       {@const zero_y2 = scales.y2(0)}
@@ -853,8 +861,8 @@
     flex: var(--histogram-svg-flex, 1);
     overflow: var(--histogram-svg-overflow, visible);
     fill: var(--text-color);
-    font-weight: var(--scatter-font-weight);
-    font-size: var(--scatter-font-size);
+    font-weight: var(--histogram-font-weight);
+    font-size: var(--histogram-font-size);
   }
   g:is(.x-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */

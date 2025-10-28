@@ -262,21 +262,37 @@
     colors.element = element_color_schemes[color_scheme as ColorSchemeName]
   })
 
+  let symmetry_run_id = 0
+  let symmetry_error = $state<string>()
+
   // Trigger symmetry analysis when structure is loaded
   $effect(() => {
     if (!structure || !(`lattice` in structure)) {
       symmetry_data = null
+      symmetry_error = undefined
       return
     }
 
-    // Reset symmetry data for new structure
+    const current_structure = structure
+    const run_id = ++symmetry_run_id
     symmetry_data = null
+    symmetry_error = undefined
+
     ensure_moyo_wasm_ready()
-      .then(() => analyze_structure_symmetry(structure, 1e-4, `Standard`))
+      .then(() =>
+        run_id === symmetry_run_id
+          ? analyze_structure_symmetry(current_structure, 1e-4, `Standard`)
+          : null
+      )
       .then((data) => {
-        if (`lattice` in structure) symmetry_data = data
+        if (data && run_id === symmetry_run_id) symmetry_data = data
       })
-      .catch((err) => console.error(`Symmetry analysis failed:`, err))
+      .catch((err) => {
+        if (run_id === symmetry_run_id) {
+          symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
+          console.error(`Symmetry analysis failed:`, err)
+        }
+      })
   })
 
   // Measurement mode and selection state
@@ -725,6 +741,15 @@
     <div class="bottom-left">
       {@render bottom_left?.({ structure: displayed_structure })}
     </div>
+
+    {#if symmetry_error}
+      <div class="symmetry-error">
+        <span>{symmetry_error}</span>
+        <button onclick={() => (symmetry_error = undefined)} aria-label="Dismiss">
+          ×
+        </button>
+      </div>
+    {/if}
   {:else if structure}
     <p class="warn">No sites found in structure</p>
   {:else}
@@ -879,5 +904,35 @@
   }
   .error-state button:hover {
     background: var(--error-color-hover, #ff5252);
+  }
+  .symmetry-error {
+    position: absolute;
+    bottom: 1rem;
+    right: 1rem;
+    background: rgba(255, 165, 0, 0.95);
+    color: #000;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    gap: 1rem;
+    max-width: min(90%, 400px);
+    font-size: 0.9rem;
+    z-index: 1000;
+  }
+  .symmetry-error span {
+    flex: 1;
+  }
+  .symmetry-error button {
+    background: transparent;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0.7;
+  }
+  .symmetry-error button:hover {
+    opacity: 1;
   }
 </style>

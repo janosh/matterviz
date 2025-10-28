@@ -1032,6 +1032,9 @@
     link_distance: 10,
     placement_ticks: 200, // Increased from 120 for better settling
     link_distance_range: [5, 20], // Default min and max distance (replacing max_link_distance)
+    max_labels: 300, // Maximum labels before falling back to simple offsets
+    charge_strength: 50, // Repulsion strength for markers
+    charge_distance_max: 30, // Limit range of repulsion
     ...label_placement_config,
   })
 
@@ -1095,6 +1098,14 @@
       return
     }
 
+    // Guard: skip force simulation if too many labels (performance)
+    if (label_nodes.length > actual_label_config.max_labels) {
+      label_positions = Object.fromEntries(
+        label_nodes.map((n) => [n.id, { x: n.x!, y: n.y! }]),
+      )
+      return
+    }
+
     // Run force simulation
     const simulation = forceSimulation([...label_nodes, ...anchor_nodes])
       .force(
@@ -1126,12 +1137,11 @@
       `charge`,
       forceManyBody().strength((node) => {
         const anchor = node as AnchorNode
-        // Only apply repulsion to anchor nodes (markers)
         if (anchor.point_radius !== undefined && anchor.fx !== undefined) {
-          return -50 // Repel labels away from markers
+          return -actual_label_config.charge_strength
         }
-        return 0 // No effect on label nodes
-      }).distanceMax(30), // Limit range of repulsion
+        return 0
+      }).distanceMax(actual_label_config.charge_distance_max),
     )
 
     simulation.stop().tick(actual_label_config.placement_ticks)
@@ -1303,9 +1313,14 @@
     const new_x = event.clientX - svg_rect.left - legend_drag_offset.x
     const new_y = event.clientY - svg_rect.top - legend_drag_offset.y
 
-    // Constrain to plot bounds (with some margin)
-    const constrained_x = Math.max(0, Math.min(width - 100, new_x)) // Assume legend width ~100px
-    const constrained_y = Math.max(0, Math.min(height - 50, new_y)) // Assume legend height ~50px
+    // Get actual legend dimensions for accurate bounds checking
+    const legend_el = event.currentTarget as HTMLElement
+    const { width: legend_width, height: legend_height } = legend_el
+      .getBoundingClientRect()
+
+    // Constrain to plot bounds using measured legend size
+    const constrained_x = Math.max(0, Math.min(width - legend_width, new_x))
+    const constrained_y = Math.max(0, Math.min(height - legend_height, new_y))
 
     legend_manual_position = { x: constrained_x, y: constrained_y }
   }

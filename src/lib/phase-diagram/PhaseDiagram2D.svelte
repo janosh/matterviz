@@ -660,7 +660,7 @@
     position: relative;
     container-type: size; /* enable cqh/cqw for responsive sizing */
     width: 100%;
-    height: var(--pd-height, 620px);
+    height: var(--pd-height, auto);
     background: var(--surface-bg, #f8f9fa);
     border-radius: 4px;
   }

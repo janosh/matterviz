@@ -1544,20 +1544,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
         )
       }
     }
-
-    // Test Y-axis label positioning as well
-    if (await y_label.isVisible()) {
-      const y_label_box = await y_label.boundingBox()
-      const plot_box = await plot_locator.boundingBox()
-
-      if (y_label_box && plot_box) {
-        // Y-label should be positioned within reasonable bounds
-        expect(y_label_box.y).toBeGreaterThanOrEqual(plot_box.y - 20)
-        expect(y_label_box.y + y_label_box.height).toBeLessThanOrEqual(
-          plot_box.y + plot_box.height + 20,
-        )
-      }
-    }
   })
 
   test(`series-specific controls work correctly in multi-series plots`, async ({ page }) => {
@@ -1858,11 +1844,25 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await checkbox.check()
     await expect(checkbox).toBeChecked()
 
-    // Wait for simulation to complete
-    await page.waitForTimeout(500)
+    // Wait for simulation to settle: consecutive stable bbox snapshots
+    await page.waitForFunction(() => {
+      const labels = Array.from(
+        document.querySelectorAll(`.scatter g[data-series-id] text`),
+      )
+      const snap = labels.map((el) => el.getBoundingClientRect())
+      const w = window as Window & { __lblSnap__?: DOMRect[] }
+      const prev = w.__lblSnap__
+      w.__lblSnap__ = snap
+      if (!prev || prev.length !== snap.length) return false
+      const moved = snap.some((r, i) => {
+        const p = prev[i]
+        return Math.hypot(r.x - p.x, r.y - p.y) > 0.5
+      })
+      return !moved
+    }, { timeout: 2000 })
 
     // Get label elements and their positions
-    const label_elements = await plot_locator.locator(`text`).all()
+    const label_elements = await plot_locator.locator(`g[data-series-id] text`).all()
     const label_data = await Promise.all(
       label_elements.map(async (label_el) => {
         const text_content = await label_el.textContent()

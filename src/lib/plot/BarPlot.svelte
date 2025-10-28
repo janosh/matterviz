@@ -26,7 +26,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
-  import { calc_auto_padding, measure_text_width } from './layout'
+  import { calc_auto_padding, LABEL_GAP_DEFAULT, measure_text_width } from './layout'
 
   let {
     series = $bindable([]),
@@ -713,8 +713,8 @@
         )}
           {@const shift_x = y_axis.label_shift?.x ?? 0}
           {@const shift_y = y_axis.label_shift?.y ?? 0}
-          {@const label_gap = 30}
-          {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - label_gap) + shift_x}
+          {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - LABEL_GAP_DEFAULT) +
+          shift_x}
           {@const y_label_y = pad.t + chart_height / 2 + shift_y}
           <text
             x={y_label_x}
@@ -789,8 +789,8 @@
             {@const shift_x = y2_axis.label_shift?.x ?? 0}
             {@const shift_y = y2_axis.label_shift?.y ?? 0}
             {@const tick_shift = y2_axis.tick_label_shift?.x ?? 8}
-            {@const label_gap = 30}
-            {@const y2_label_x = width - pad.r + tick_shift + max_y2_tick_width + label_gap +
+            {@const y2_label_x = width - pad.r + tick_shift + max_y2_tick_width +
+          LABEL_GAP_DEFAULT +
           shift_x}
             {@const y2_label_y = pad.t + chart_height / 2 + shift_y}
             <text

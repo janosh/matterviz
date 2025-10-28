@@ -230,7 +230,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
       series.label = series.point_label?.text || `Style ${series_idx + 1}`
     }
     // Create a metadata array with empty objects except for the first one
-    series.metadata = Array(n_points).fill({}).map((_, idx) => ({
+    series.metadata = Array.from({ length: n_points }, (_, idx) => ({
       series_name: series.point_label.text,
     }))
 
