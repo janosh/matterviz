@@ -275,7 +275,10 @@
           measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
         ),
       )
-      new_pad.r = Math.max(new_pad.r, 10 + y2_tick_width + (y2_axis.label ? 40 : 0))
+      // Need space for: tick shift (8px) + tick width + gap (30px) + label space (20px if present)
+      const tick_shift = y2_axis.tick_label_shift?.x ?? 8
+      const label_space = y2_axis.label ? 20 : 0
+      new_pad.r = Math.max(new_pad.r, tick_shift + y2_tick_width + 30 + label_space)
     }
 
     // Only update if padding actually changed (prevents infinite loop)
@@ -710,7 +713,8 @@
         )}
           {@const shift_x = y_axis.label_shift?.x ?? 0}
           {@const shift_y = y_axis.label_shift?.y ?? 0}
-          {@const y_label_x = Math.max(15, pad.l - max_y_tick_width - 35) + shift_x}
+          {@const label_gap = 30}
+          {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - label_gap) + shift_x}
           {@const y_label_y = pad.t + chart_height / 2 + shift_y}
           <text
             x={y_label_x}
@@ -773,9 +777,21 @@
             {/if}
           {/each}
           {#if y2_axis.label}
+            {@const max_y2_tick_width = Math.max(
+          0,
+          ...ticks.y2.map((tick) =>
+            measure_text_width(
+              format_value(tick, y2_axis.format),
+              `12px sans-serif`,
+            )
+          ),
+        )}
             {@const shift_x = y2_axis.label_shift?.x ?? 0}
             {@const shift_y = y2_axis.label_shift?.y ?? 0}
-            {@const y2_label_x = width - pad.r + 50 + shift_x}
+            {@const tick_shift = y2_axis.tick_label_shift?.x ?? 8}
+            {@const label_gap = 30}
+            {@const y2_label_x = width - pad.r + tick_shift + max_y2_tick_width + label_gap +
+          shift_x}
             {@const y2_label_y = pad.t + chart_height / 2 + shift_y}
             <text
               x={y2_label_x}
@@ -1077,20 +1093,27 @@
   .bar-plot {
     position: relative;
     width: 100%;
-    height: 100%;
-    min-height: var(--barplot-min-height, 200px);
+    height: auto;
+    min-height: var(--barplot-min-height, 300px);
     container-type: size;
     z-index: var(--barplot-z-index, auto);
     border-radius: var(--border-radius, 4px);
+    flex: var(--barplot-flex, 1);
+    display: var(--barplot-display, flex);
+    flex-direction: column;
+  }
+  svg {
+    width: var(--barplot-svg-width, 100%);
+    height: var(--barplot-svg-height, 100%);
+    flex: var(--barplot-svg-flex, 1);
+    overflow: var(--barplot-svg-overflow, visible);
+    fill: var(--text-color);
+    font-weight: var(--scatter-font-weight);
+    font-size: var(--scatter-font-size);
   }
   .bar-plot.dragover {
     border: var(--barplot-dragover-border, var(--dragover-border));
     background-color: var(--barplot-dragover-bg, var(--dragover-bg));
-  }
-  svg {
-    width: 100%;
-    height: 100%;
-    overflow: var(--svg-overflow, visible);
   }
   g:is(.x-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em);

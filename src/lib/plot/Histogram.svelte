@@ -10,7 +10,11 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { extract_series_color, prepare_legend_data } from './data-transform'
   import { get_relative_coords } from './interactions'
-  import { calc_auto_padding, constrain_tooltip_position } from './layout'
+  import {
+    calc_auto_padding,
+    constrain_tooltip_position,
+    measure_text_width,
+  } from './layout'
   import {
     create_scale,
     generate_ticks,
@@ -234,6 +238,20 @@
       })
       : { ...default_padding, ...padding }
 
+    // Expand right padding if y2 ticks are shown
+    if (width && height && y2_series.length && current_ticks_y2.length) {
+      const y2_tick_width = Math.max(
+        0,
+        ...current_ticks_y2.map((tick) =>
+          measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
+        ),
+      )
+      // Need space for: tick shift (8px) + tick width + gap (30px) + label space (20px if present)
+      const tick_shift = y2_axis.tick_label_shift?.x ?? 8
+      const label_space = y2_axis.label ? 20 : 0
+      new_pad.r = Math.max(new_pad.r, tick_shift + y2_tick_width + 30 + label_space)
+    }
+
     // Only update if padding actually changed
     if (
       pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
@@ -445,40 +463,39 @@
 </script>
 
 <div class="histogram" bind:clientWidth={width} bind:clientHeight={height} {...rest}>
-  {#if width && height}
-    <svg
-      bind:this={svg_element}
-      onmouseenter={() => (hovered = true)}
-      onmousedown={handle_mouse_down}
-      onmouseleave={() => {
-        hovered = false
-        hover_info = null
-        on_bar_hover?.(null)
-      }}
-      ondblclick={handle_double_click}
-      style:cursor="crosshair"
-      role="button"
-      aria-label="Interactive histogram with zoom and pan controls"
-      tabindex="0"
-      onkeydown={(event) => {
-        if (event.key === `Escape` && drag_state.start) {
-          drag_state = { start: null, current: null, bounds: null }
-        }
-        if ([`Enter`, ` `].includes(event.key)) {
-          event.preventDefault()
-          handle_double_click()
-        }
-      }}
-    >
-      <!-- Tooltip -->
-      {#if hover_info}
-        {@const tooltip_x = scales.x(hover_info.value)}
-        {@const y_cfg = (hover_info.axis === `y2`) ? y2_axis : y_axis}
-        {@const tooltip_y = (hover_info.axis === `y2` ? scales.y2 : scales.y)(
+  <svg
+    bind:this={svg_element}
+    onmouseenter={() => (hovered = true)}
+    onmousedown={handle_mouse_down}
+    onmouseleave={() => {
+      hovered = false
+      hover_info = null
+      on_bar_hover?.(null)
+    }}
+    ondblclick={handle_double_click}
+    style:cursor="crosshair"
+    role="button"
+    aria-label="Interactive histogram with zoom and pan controls"
+    tabindex="0"
+    onkeydown={(event) => {
+      if (event.key === `Escape` && drag_state.start) {
+        drag_state = { start: null, current: null, bounds: null }
+      }
+      if ([`Enter`, ` `].includes(event.key)) {
+        event.preventDefault()
+        handle_double_click()
+      }
+    }}
+  >
+    <!-- Tooltip -->
+    {#if hover_info}
+      {@const tooltip_x = scales.x(hover_info.value)}
+      {@const y_cfg = (hover_info.axis === `y2`) ? y2_axis : y_axis}
+      {@const tooltip_y = (hover_info.axis === `y2` ? scales.y2 : scales.y)(
         hover_info.count,
       )}
-        {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
-        {@const tooltip_pos = constrain_tooltip_position(
+      {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
+      {@const tooltip_pos = constrain_tooltip_position(
         tooltip_x,
         tooltip_y,
         tooltip_size.width,
@@ -486,278 +503,302 @@
         width,
         height,
       )}
-        <foreignObject
-          x={tooltip_pos.x}
-          y={tooltip_pos.y}
-          width={tooltip_size.width}
-          height={tooltip_size.height}
-        >
-          <div class="tooltip">
-            {#if tooltip}
-              {@render tooltip(hover_info)}
-            {:else}
-              <div>Value: {format_value(hover_info.value, x_axis.format || `.3~s`)}</div>
-              <div>Count: {format_value(hover_info.count, y_cfg.format || `.3~s`)}</div>
-              {#if mode === `overlay`}<div>{hover_info.property}</div>{/if}
-            {/if}
-          </div>
-        </foreignObject>
-      {/if}
+      <foreignObject
+        x={tooltip_pos.x}
+        y={tooltip_pos.y}
+        width={tooltip_size.width}
+        height={tooltip_size.height}
+      >
+        <div class="tooltip">
+          {#if tooltip}
+            {@render tooltip(hover_info)}
+          {:else}
+            <div>Value: {format_value(hover_info.value, x_axis.format || `.3~s`)}</div>
+            <div>Count: {format_value(hover_info.count, y_cfg.format || `.3~s`)}</div>
+            {#if mode === `overlay`}<div>{hover_info.property}</div>{/if}
+          {/if}
+        </div>
+      </foreignObject>
+    {/if}
 
-      <!-- Zoom Selection Rectangle -->
-      {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
+    <!-- Zoom Selection Rectangle -->
+    {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
         isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&
         isFinite(drag_state.current.y)}
-        {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
-        {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
-        {@const rect_width = Math.abs(drag_state.start.x - drag_state.current.x)}
-        {@const rect_height = Math.abs(drag_state.start.y - drag_state.current.y)}
-        <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
-      {/if}
+      {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
+      {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
+      {@const rect_width = Math.abs(drag_state.start.x - drag_state.current.x)}
+      {@const rect_height = Math.abs(drag_state.start.y - drag_state.current.y)}
+      <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
+    {/if}
 
-      <!-- X-axis -->
-      <g class="x-axis">
-        <line
-          x1={pad.l}
-          x2={width - pad.r}
-          y1={height - pad.b}
-          y2={height - pad.b}
-          stroke={x_axis.color || `var(--border-color, gray)`}
-          stroke-width="1"
-        />
-        {#each ticks.x as tick (tick)}
-          {@const tick_x = scales.x(tick as number)}
-          {@const custom_label = get_tick_label(tick as number, x_axis.ticks)}
-          <g class="tick" transform="translate({tick_x}, {height - pad.b})">
-            {#if display.x_grid}
-              <line
-                y1={-(height - pad.b - pad.t)}
-                y2="0"
-                stroke="var(--border-color, gray)"
-                stroke-dasharray="4"
-                stroke-width="1"
-                {...x_axis.grid_style ?? {}}
-              />
-            {/if}
+    <!-- X-axis -->
+    <g class="x-axis">
+      <line
+        x1={pad.l}
+        x2={width - pad.r}
+        y1={height - pad.b}
+        y2={height - pad.b}
+        stroke={x_axis.color || `var(--border-color, gray)`}
+        stroke-width="1"
+      />
+      {#each ticks.x as tick (tick)}
+        {@const tick_x = scales.x(tick as number)}
+        {@const custom_label = get_tick_label(tick as number, x_axis.ticks)}
+        <g class="tick" transform="translate({tick_x}, {height - pad.b})">
+          {#if display.x_grid}
             <line
-              y1="0"
-              y2="5"
-              stroke={x_axis.color || `var(--border-color, gray)`}
+              y1={-(height - pad.b - pad.t)}
+              y2="0"
+              stroke="var(--border-color, gray)"
+              stroke-dasharray="4"
               stroke-width="1"
+              {...x_axis.grid_style ?? {}}
             />
-            <text y="18" text-anchor="middle" fill={x_axis.color || `var(--text-color)`}>
-              {custom_label ?? format_value(tick, x_axis.format)}
-            </text>
-          </g>
-        {/each}
-        <text
-          x={(pad.l + width - pad.r) / 2 + (x_axis.label_shift?.x ?? 0)}
-          y={height - 10 + (x_axis.label_shift?.y ?? 0)}
-          text-anchor="middle"
-          fill={x_axis.color || `var(--text-color)`}
-        >
-          {@html x_axis.label}
-        </text>
-      </g>
+          {/if}
+          <line
+            y1="0"
+            y2="5"
+            stroke={x_axis.color || `var(--border-color, gray)`}
+            stroke-width="1"
+          />
+          <text y="18" text-anchor="middle" fill={x_axis.color || `var(--text-color)`}>
+            {custom_label ?? format_value(tick, x_axis.format)}
+          </text>
+        </g>
+      {/each}
+      <text
+        x={(pad.l + width - pad.r) / 2 + (x_axis.label_shift?.x ?? 0)}
+        y={height - 10 + (x_axis.label_shift?.y ?? 0)}
+        text-anchor="middle"
+        fill={x_axis.color || `var(--text-color)`}
+      >
+        {@html x_axis.label}
+      </text>
+    </g>
 
-      <!-- Y-axis -->
-      <g class="y-axis">
+    <!-- Y-axis -->
+    <g class="y-axis">
+      <line
+        x1={pad.l}
+        x2={pad.l}
+        y1={pad.t}
+        y2={height - pad.b}
+        stroke={y_axis.color || `var(--border-color, gray)`}
+        stroke-width="1"
+      />
+      {#each ticks.y as tick (tick)}
+        {@const tick_y = scales.y(tick as number)}
+        {@const custom_label = get_tick_label(tick as number, y_axis.ticks)}
+        <g class="tick" transform="translate({pad.l}, {tick_y})">
+          {#if display.y_grid}
+            <line
+              x1="0"
+              x2={width - pad.l - pad.r}
+              stroke="var(--border-color, gray)"
+              stroke-dasharray="4"
+              stroke-width="1"
+              {...y_axis.grid_style ?? {}}
+            />
+          {/if}
+          <line
+            x1="-5"
+            x2="0"
+            stroke={y_axis.color || `var(--border-color, gray)`}
+            stroke-width="1"
+          />
+          <text
+            x="-10"
+            text-anchor="end"
+            dominant-baseline="central"
+            fill={y_axis.color || `var(--text-color)`}
+          >
+            {custom_label ?? format_value(tick, y_axis.format)}
+          </text>
+        </g>
+      {/each}
+      {#if y_axis.label}
+        {@const max_y_tick_width = Math.max(
+          0,
+          ...ticks.y.map((tick) =>
+            measure_text_width(
+              format_value(tick, y_axis.format),
+              `12px sans-serif`,
+            )
+          ),
+        )}
+        {@const shift_x = y_axis.label_shift?.x ?? 0}
+        {@const shift_y = y_axis.label_shift?.y ?? 0}
+        {@const label_gap = 30}
+        {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - label_gap) + shift_x}
+        {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 + shift_y}
+        <text
+          x={y_label_x}
+          y={y_label_y}
+          text-anchor="middle"
+          fill={y_axis.color || `var(--text-color)`}
+          transform="rotate(-90, {y_label_x}, {y_label_y})"
+        >
+          {@html y_axis.label}
+        </text>
+      {/if}
+    </g>
+
+    <!-- Y2-axis (Right) -->
+    {#if y2_series.length > 0}
+      <g class="y2-axis">
         <line
-          x1={pad.l}
-          x2={pad.l}
+          x1={width - pad.r}
+          x2={width - pad.r}
           y1={pad.t}
           y2={height - pad.b}
-          stroke={y_axis.color || `var(--border-color, gray)`}
+          stroke={y2_axis.color || `var(--border-color, gray)`}
           stroke-width="1"
         />
-        {#each ticks.y as tick (tick)}
-          {@const tick_y = scales.y(tick as number)}
-          {@const custom_label = get_tick_label(tick as number, y_axis.ticks)}
-          <g class="tick" transform="translate({pad.l}, {tick_y})">
-            {#if display.y_grid}
+        {#each ticks.y2 as tick (tick)}
+          {@const tick_y = scales.y2(tick as number)}
+          {@const custom_label = get_tick_label(tick as number, y2_axis.ticks)}
+          <g class="tick" transform="translate({width - pad.r}, {tick_y})">
+            {#if display.y2_grid}
               <line
-                x1="0"
-                x2={width - pad.l - pad.r}
+                x1={-(width - pad.l - pad.r)}
+                x2="0"
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
                 stroke-width="1"
-                {...y_axis.grid_style ?? {}}
+                {...y2_axis.grid_style ?? {}}
               />
             {/if}
             <line
-              x1="-5"
-              x2="0"
-              stroke={y_axis.color || `var(--border-color, gray)`}
+              x1="0"
+              x2="5"
+              stroke={y2_axis.color || `var(--border-color, gray)`}
               stroke-width="1"
             />
             <text
-              x="-10"
-              text-anchor="end"
+              x={y2_axis.tick_label_shift?.x ?? 8}
+              y={y2_axis.tick_label_shift?.y ?? 0}
+              text-anchor="start"
               dominant-baseline="central"
-              fill={y_axis.color || `var(--text-color)`}
+              fill={y2_axis.color || `var(--text-color)`}
             >
-              {custom_label ?? format_value(tick, y_axis.format)}
+              {custom_label ?? format_value(tick, y2_axis.format)}
             </text>
           </g>
         {/each}
-        {#if y_axis.label}
-          {@const y_label_x = 15 + (y_axis.label_shift?.x ?? 0)}
-          {@const y_label_y = (pad.t + height - pad.b) / 2 + (y_axis.label_shift?.y ?? 0)}
+        {#if y2_axis.label}
+          {@const max_y2_tick_width = Math.max(
+          0,
+          ...ticks.y2.map((tick) =>
+            measure_text_width(
+              format_value(tick, y2_axis.format),
+              `12px sans-serif`,
+            )
+          ),
+        )}
+          {@const shift_x = y2_axis.label_shift?.x ?? 0}
+          {@const shift_y = y2_axis.label_shift?.y ?? 0}
+          {@const tick_shift = y2_axis.tick_label_shift?.x ?? 8}
+          {@const label_gap = 30}
+          {@const y2_label_x = width - pad.r + tick_shift + max_y2_tick_width + label_gap +
+          shift_x}
+          {@const y2_label_y = pad.t + (height - pad.t - pad.b) / 2 + shift_y}
           <text
-            x={y_label_x}
-            y={y_label_y}
+            x={y2_label_x}
+            y={y2_label_y}
             text-anchor="middle"
-            fill={y_axis.color || `var(--text-color)`}
-            transform="rotate(-90, {y_label_x}, {y_label_y})"
+            fill={y2_axis.color || `var(--text-color)`}
+            transform="rotate(-90, {y2_label_x}, {y2_label_y})"
           >
-            {@html y_axis.label}
+            {@html y2_axis.label}
           </text>
         {/if}
       </g>
+    {/if}
 
-      <!-- Y2-axis (Right) -->
-      {#if y2_series.length > 0}
-        <g class="y2-axis">
-          <line
-            x1={width - pad.r}
-            x2={width - pad.r}
-            y1={pad.t}
-            y2={height - pad.b}
-            stroke={y2_axis.color || `var(--border-color, gray)`}
-            stroke-width="1"
-          />
-          {#each ticks.y2 as tick (tick)}
-            {@const tick_y = scales.y2(tick as number)}
-            {@const custom_label = get_tick_label(tick as number, y2_axis.ticks)}
-            <g class="tick" transform="translate({width - pad.r}, {tick_y})">
-              {#if display.y2_grid}
-                <line
-                  x1={-(width - pad.l - pad.r)}
-                  x2="0"
-                  stroke="var(--border-color, gray)"
-                  stroke-dasharray="4"
-                  stroke-width="1"
-                  {...y2_axis.grid_style ?? {}}
-                />
-              {/if}
-              <line
-                x1="0"
-                x2="5"
-                stroke={y2_axis.color || `var(--border-color, gray)`}
-                stroke-width="1"
-              />
-              <text
-                x={y2_axis.tick_label_shift?.x ?? 8}
-                y={y2_axis.tick_label_shift?.y ?? 0}
-                text-anchor="start"
-                dominant-baseline="central"
-                fill={y2_axis.color || `var(--text-color)`}
-              >
-                {custom_label ?? format_value(tick, y2_axis.format)}
-              </text>
-            </g>
-          {/each}
-          {#if y2_axis.label}
-            {@const y2_label_x = width - pad.r + 50 + (y2_axis.label_shift?.x ?? 0)}
-            {@const y2_label_y = (pad.t + height - pad.b) / 2 +
-          (y2_axis.label_shift?.y ?? 0)}
-            <text
-              x={y2_label_x}
-              y={y2_label_y}
-              text-anchor="middle"
-              fill={y2_axis.color || `var(--text-color)`}
-              transform="rotate(-90, {y2_label_x}, {y2_label_y})"
-            >
-              {@html y2_axis.label}
-            </text>
-          {/if}
-        </g>
+    <!-- Zero lines -->
+    {#if display.x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
+      {@const x0 = scales.x(0)}
+      {#if isFinite(x0)}
+        <line class="zero-line" x1={x0} x2={x0} y1={pad.t} y2={height - pad.b} />
       {/if}
-
-      <!-- Zero lines -->
-      {#if display.x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-        {@const x0 = scales.x(0)}
-        {#if isFinite(x0)}
-          <line class="zero-line" x1={x0} x2={x0} y1={pad.t} y2={height - pad.b} />
-        {/if}
-      {/if}
-      {#if display.y_zero_line && (y_axis.scale_type ?? `linear`) === `linear` &&
+    {/if}
+    {#if display.y_zero_line && (y_axis.scale_type ?? `linear`) === `linear` &&
         ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
-        {@const zero_y = scales.y(0)}
-        {#if isFinite(zero_y)}
-          <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
-        {/if}
+      {@const zero_y = scales.y(0)}
+      {#if isFinite(zero_y)}
+        <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
       {/if}
-      {#if display.y_zero_line && y2_series.length > 0 &&
+    {/if}
+    {#if display.y_zero_line && y2_series.length > 0 &&
         (y2_axis.scale_type ?? `linear`) === `linear` &&
         ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
-        {@const zero_y2 = scales.y2(0)}
-        {#if isFinite(zero_y2)}
-          <line
-            class="zero-line"
-            x1={pad.l}
-            x2={width - pad.r}
-            y1={zero_y2}
-            y2={zero_y2}
-          />
-        {/if}
+      {@const zero_y2 = scales.y2(0)}
+      {#if isFinite(zero_y2)}
+        <line
+          class="zero-line"
+          x1={pad.l}
+          x2={width - pad.r}
+          y1={zero_y2}
+          y2={zero_y2}
+        />
       {/if}
+    {/if}
 
-      <!-- Histogram bars -->
-      {#each histogram_data as
-        { id, bins, color, label, y_scale, y_axis },
-        series_idx
-        (id ?? series_idx)
-      }
-        <g class="histogram-series" data-series-idx={series_idx}>
-          {#each bins as bin, bin_idx (bin_idx)}
-            {@const bar_x = scales.x(bin.x0!)}
-            {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
-            {@const bar_height = Math.max(0, (height - pad.b) - y_scale(bin.length))}
-            {@const bar_y = y_scale(bin.length)}
-            {@const value = (bin.x0! + bin.x1!) / 2}
-            {#if bar_height > 0}
-              <rect
-                x={bar_x}
-                y={bar_y}
-                width={bar_width}
-                height={bar_height}
-                fill={color}
-                opacity={bar.opacity}
-                stroke={bar.stroke_color}
-                stroke-opacity={bar.stroke_opacity}
-                stroke-width={bar.stroke_width}
-                role="button"
-                tabindex="0"
-                onmousemove={(evt) =>
-                handle_mouse_move(
-                  evt,
-                  value,
-                  bin.length,
-                  label,
-                  (y_axis ?? `y1`) as `y1` | `y2`,
-                )}
-                onmouseleave={() => {
-                  hover_info = null
-                  change(null)
-                  on_bar_hover?.(null)
-                }}
-                onclick={(event) =>
-                on_bar_click?.({ value, count: bin.length, property: label, event })}
-                onkeydown={(event: KeyboardEvent) => {
-                  if ([`Enter`, ` `].includes(event.key)) {
-                    event.preventDefault()
-                    on_bar_click?.({ value, count: bin.length, property: label, event })
-                  }
-                }}
-                style:cursor={on_bar_click ? `pointer` : undefined}
-              />
-            {/if}
-          {/each}
-        </g>
-      {/each}
-    </svg>
-  {/if}
+    <!-- Histogram bars -->
+    {#each histogram_data as
+      { id, bins, color, label, y_scale, y_axis },
+      series_idx
+      (id ?? series_idx)
+    }
+      <g class="histogram-series" data-series-idx={series_idx}>
+        {#each bins as bin, bin_idx (bin_idx)}
+          {@const bar_x = scales.x(bin.x0!)}
+          {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
+          {@const bar_height = Math.max(0, (height - pad.b) - y_scale(bin.length))}
+          {@const bar_y = y_scale(bin.length)}
+          {@const value = (bin.x0! + bin.x1!) / 2}
+          {#if bar_height > 0}
+            <rect
+              x={bar_x}
+              y={bar_y}
+              width={bar_width}
+              height={bar_height}
+              fill={color}
+              opacity={bar.opacity}
+              stroke={bar.stroke_color}
+              stroke-opacity={bar.stroke_opacity}
+              stroke-width={bar.stroke_width}
+              role="button"
+              tabindex="0"
+              onmousemove={(evt) =>
+              handle_mouse_move(
+                evt,
+                value,
+                bin.length,
+                label,
+                (y_axis ?? `y1`) as `y1` | `y2`,
+              )}
+              onmouseleave={() => {
+                hover_info = null
+                change(null)
+                on_bar_hover?.(null)
+              }}
+              onclick={(event) =>
+              on_bar_click?.({ value, count: bin.length, property: label, event })}
+              onkeydown={(event: KeyboardEvent) => {
+                if ([`Enter`, ` `].includes(event.key)) {
+                  event.preventDefault()
+                  on_bar_click?.({ value, count: bin.length, property: label, event })
+                }
+              }}
+              style:cursor={on_bar_click ? `pointer` : undefined}
+            />
+          {/if}
+        {/each}
+      </g>
+    {/each}
+  </svg>
 
   {#if show_controls}
     <HistogramControls
@@ -798,14 +839,22 @@
   .histogram {
     position: relative;
     width: var(--histogram-width, 100%);
-    height: var(--histogram-height, 100%);
+    height: var(--histogram-height, auto);
     min-height: var(--histogram-min-height, 300px);
     container-type: size; /* enable cqh for panes if explicit height is set */
     z-index: var(--histogram-z-index, auto);
+    flex: var(--histogram-flex, 1);
+    display: var(--histogram-display, flex);
+    flex-direction: column;
   }
   svg {
-    width: 100%;
-    height: 100%;
+    width: var(--histogram-svg-width, 100%);
+    height: var(--histogram-svg-height, 100%);
+    flex: var(--histogram-svg-flex, 1);
+    overflow: var(--histogram-svg-overflow, visible);
+    fill: var(--text-color);
+    font-weight: var(--scatter-font-weight);
+    font-size: var(--scatter-font-size);
   }
   g:is(.x-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */

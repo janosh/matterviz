@@ -127,15 +127,15 @@ Demonstrate various point styles, custom tooltips, and hover effects:
   import { ScatterPlot } from 'matterviz'
 
   // Generate data for demonstration
-  const point_count = 10
-  const x_values = Array(point_count).fill(0).map((_, idx) => idx + 1)
+  const n_points = 10
+  const x_values = Array(n_points).fill(0).map((_, idx) => idx + 1)
 
   // Create series with different point styles
   const series_with_styles = [
     // Extra large red points with thick border
     {
       x: x_values,
-      y: Array(point_count).fill(10),
+      y: Array(n_points).fill(10),
       point_style: {
         fill: 'crimson',
         radius: 12,
@@ -148,7 +148,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
     // Medium green semi-transparent points with dramatic hover effect
     {
       x: x_values,
-      y: Array(point_count).fill(8),
+      y: Array(n_points).fill(8),
       point_style: {
         fill: 'mediumseagreen',
         radius: 8,
@@ -166,7 +166,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
     // Outline-only points (hollow) with color change on hover
     {
       x: x_values,
-      y: Array(point_count).fill(6),
+      y: Array(n_points).fill(6),
       point_style: {
         fill: 'purple',
         fill_opacity: 0.4,
@@ -188,7 +188,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
     // Tiny points with extreme hover growth
     {
       x: x_values,
-      y: Array(point_count).fill(4),
+      y: Array(n_points).fill(4),
       point_style: {
         fill: 'orange',
         radius: 3,
@@ -203,7 +203,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
     // Micro dots with custom glow effect
     {
       x: x_values,
-      y: Array(point_count).fill(2),
+      y: Array(n_points).fill(2),
       point_style: {
         fill: 'dodgerblue',
         radius: 1.5, // Extremely small
@@ -230,7 +230,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
       series.label = series.point_label?.text || `Style ${series_idx + 1}`
     }
     // Create a metadata array with empty objects except for the first one
-    series.metadata = Array(point_count).fill({}).map((_, idx) => ({
+    series.metadata = Array(n_points).fill({}).map((_, idx) => ({
       series_name: series.point_label.text,
     }))
 
@@ -282,7 +282,7 @@ This example demonstrates how to apply different styles _and sizes_ to individua
   let label_size = $state(14)
   let size_scale = $state({ radius_range: [2, 15], type: 'linear' }) // [min_radius, max_radius]
 
-  const point_count = 40
+  const n_points = 40
 
   let spiral_data = $state({
     x: [],
@@ -294,7 +294,7 @@ This example demonstrates how to apply different styles _and sizes_ to individua
   })
 
   // Generate initial points (run once)
-  for (let idx = 0; idx < point_count; idx++) {
+  for (let idx = 0; idx < n_points; idx++) {
     // Calculate angle and radius for spiral
     const angle = idx * 0.5
     const radius = 1 + idx * 0.3
@@ -310,7 +310,7 @@ This example demonstrates how to apply different styles _and sizes_ to individua
     // Store angle in metadata
     spiral_data.metadata.push({ angle, radius })
     // Change color gradually along the spiral
-    const hue = (idx / point_count) * 360
+    const hue = (idx / n_points) * 360
     // Change marker type based on index
     const symbol_type = symbol_names[idx % symbol_names.length]
 
@@ -697,7 +697,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
   import { symbol_names } from 'matterviz/labels'
   import * as math from 'matterviz/math'
 
-  const point_count = 50
+  const n_points = 50
 
   // Series 1: Exponential Decay
   const decay_data = {
@@ -708,8 +708,8 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     label: 'Exponential Decay',
     metadata: [],
   }
-  for (let idx = 0; idx < point_count; idx++) {
-    const x_val = 0.1 + (idx / (point_count - 1)) * 10 // x from 0.1 to 10.1
+  for (let idx = 0; idx < n_points; idx++) {
+    const x_val = 0.1 + (idx / (n_points - 1)) * 10 // x from 0.1 to 10.1
     const y_val = 10000 * Math.exp(-0.5 * x_val)
     decay_data.x.push(x_val)
     // Ensure y is not exactly 0 for log scale, clamp to a small positive value
@@ -728,8 +728,8 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
     label: 'Log Sine Wave',
     metadata: [],
   }
-  for (let idx = 0; idx < point_count * 2; idx++) { // More points for smoother curve
-    const x_val = Math.pow(10, -1 + (idx / (point_count * 2 - 1)) * 4) // x from 0.1 to 1000 log-spaced
+  for (let idx = 0; idx < n_points * 2; idx++) { // More points for smoother curve
+    const x_val = Math.pow(10, -1 + (idx / (n_points * 2 - 1)) * 4) // x from 0.1 to 1000 log-spaced
     const y_val = 500 + 400 * Math.sin(Math.log10(x_val) * 5)
     log_sine_data.x.push(x_val)
     const safe_y_val = Math.max(y_val, math.LOG_EPS) // Clamp potential near-zero y
@@ -1196,16 +1196,28 @@ This example demonstrates how the color bar automatically positions itself in on
 
 When points are clustered closely together, manually positioning labels can become tedious and result in overlaps. The `ScatterPlot` component offers an automatic label placement feature using a force simulation (`d3-force`). This feature intelligently positions labels to minimize overlaps while keeping them close to their corresponding data points.
 
-To enable this feature, set `auto_placement: true` within the `point_label` object for the desired points.
+To enable this feature, set `auto_placement: true` within the `point_label` object for the desired points. The system automatically:
 
-This example demonstrates automatic placement with several clusters of points:
+- **Prevents label overlaps** using improved rectangular collision detection
+- **Avoids marker overlap** with a repulsion force that keeps labels clear of their markers
+- **Respects font sizes** by accurately calculating label dimensions
+- **Stays within bounds** by constraining labels to the plot area
+
+This example demonstrates automatic placement with both clustered points (showing collision avoidance) and isolated markers (showing how labels position below markers without overlap):
 
 ```svelte example
 <script>
   import { ScatterPlot } from 'matterviz'
 
-  // Function to generate a cluster of points
-  const generate_cluster = (center_x, center_y, count, radius, label_prefix) => {
+  // Function to generate a dense cluster of points
+  const generate_cluster = (
+    center_x,
+    center_y,
+    count,
+    radius,
+    label_prefix,
+    font_size,
+  ) => {
     const points = {
       x: [],
       y: [],
@@ -1217,43 +1229,68 @@ This example demonstrates automatic placement with several clusters of points:
       const dist = Math.random() * radius
       points.x.push(center_x + Math.cos(angle) * dist)
       points.y.push(center_y + Math.sin(angle) * dist)
-      points.point_style.push({ fill: 'rebeccapurple', radius: 9 })
+      points.point_style.push({ fill: 'rebeccapurple', radius: 8 })
       points.point_label.push({
-        text: `${label_prefix}-${idx + 1}`,
-        auto_placement: true, // Enable auto-placement
-        font_size: '14px', // Increased font size
+        text: `${label_prefix}${idx + 1}`,
+        auto_placement: true,
+        font_size: font_size,
       })
     }
     return points
   }
 
-  // Generate multiple clusters
-  const cluster1 = generate_cluster(20, 80, 8, 5, 'C1')
-  const cluster2 = generate_cluster(80, 20, 10, 8, 'C2')
-  const cluster3 = generate_cluster(50, 50, 12, 10, 'C3')
-  const cluster4 = generate_cluster(15, 15, 6, 4, 'C4')
+  // Function to generate isolated markers (well-spaced)
+  const generate_isolated = (positions, label_prefix, font_size) => {
+    const points = {
+      x: [],
+      y: [],
+      point_style: [],
+      point_label: [],
+    }
+    for (let idx = 0; idx < positions.length; idx++) {
+      const [px, py] = positions[idx]
+      points.x.push(px)
+      points.y.push(py)
+      points.point_style.push({ fill: 'darkorange', radius: 10 })
+      points.point_label.push({
+        text: `${label_prefix}${idx + 1}`,
+        auto_placement: true,
+        font_size: font_size,
+      })
+    }
+    return points
+  }
 
-  // Combine into a single series for simplicity in this demo
+  // Dense clusters (test collision avoidance)
+  const cluster1 = generate_cluster(25, 75, 10, 6, 'Dense-', '13px')
+  const cluster2 = generate_cluster(75, 25, 8, 5, 'Packed-', '11px')
+
+  // Isolated markers (test marker avoidance and boundary constraints)
+  const isolated = generate_isolated(
+    [[10, 10], [90, 90], [10, 90], [90, 10], [50, 50]],
+    'Solo-',
+    '16px',
+  )
+
+  // Combine all points
   const combined_series = {
-    x: [...cluster1.x, ...cluster2.x, ...cluster3.x, ...cluster4.x],
-    y: [...cluster1.y, ...cluster2.y, ...cluster3.y, ...cluster4.y],
+    x: [...cluster1.x, ...cluster2.x, ...isolated.x],
+    y: [...cluster1.y, ...cluster2.y, ...isolated.y],
     point_style: [
       ...cluster1.point_style,
       ...cluster2.point_style,
-      ...cluster3.point_style,
-      ...cluster4.point_style,
+      ...isolated.point_style,
     ],
     point_label: [
       ...cluster1.point_label,
       ...cluster2.point_label,
-      ...cluster3.point_label,
-      ...cluster4.point_label,
+      ...isolated.point_label,
     ],
   }
 
   let auto_place_enabled = $state(true)
 
-  // Derive the series data reactively so it updates when auto_place_enabled changes
+  // Derive the series data reactively
   const series_data = $derived([{
     ...combined_series,
     point_label: combined_series.point_label.map((lbl) => ({
@@ -1269,6 +1306,12 @@ This example demonstrates automatic placement with several clusters of points:
     Enable Automatic Label Placement
   </label>
 
+  <p style="margin-bottom: 1em; font-size: 0.95em; opacity: 0.9">
+    Toggle to compare: with auto-placement ON, clustered labels (purple markers) separate
+    to avoid overlap, and isolated labels (orange markers) position below their markers.
+    With it OFF, you'll see overlaps.
+  </p>
+
   <ScatterPlot
     series={series_data.map((s) => ({ ...s, markers: 'points' }))}
     x_axis={{ label: 'X Position', range: [0, 100] }}
@@ -1278,7 +1321,12 @@ This example demonstrates automatic placement with several clusters of points:
 </div>
 ```
 
-Try toggling the checkbox to see the difference between manual (default) offset and automatic placement.
+**Key improvements in action:**
+
+- **Dense clusters** (purple): Labels intelligently spread out using improved collision detection
+- **Isolated markers** (orange): Labels position below markers with proper spacing
+- **Different font sizes**: System accurately accounts for label dimensions (11px, 13px, 16px)
+- **Boundary awareness**: Labels near plot edges stay within the visible area
 
 ## External Vertical Color Bar with Dynamic Controls
 
@@ -1289,18 +1337,18 @@ This example shows how to place the color bar vertically on the right side of th
   import { ColorScaleSelect, ScatterPlot } from 'matterviz'
 
   // Generate data where color value relates to y-value
-  const point_count = 50
+  const n_points = 50
   const vertical_color_data = {
-    x: Array(point_count).fill(0).map((_, idx) => (idx / point_count) * 90 + 5), // Range 5 to 95
-    y: Array(point_count).fill(0).map(() => Math.random() * 90 + 5), // Range 5 to 95
+    x: Array(n_points).fill(0).map((_, idx) => (idx / n_points) * 90 + 5), // Range 5 to 95
+    y: Array(n_points).fill(0).map(() => Math.random() * 90 + 5), // Range 5 to 95
     // Color value based on the y-coordinate
-    color_values: Array(point_count).fill(0).map((_, idx) => idx * 2 + 1), // 1..99
+    color_values: Array(n_points).fill(0).map((_, idx) => idx * 2 + 1), // 1..99
     point_style: {
       radius: 6,
       stroke: `black`,
       stroke_width: 0.5,
     },
-    metadata: Array(point_count).fill(0).map((_, idx) => ({ value: idx * 2 })),
+    metadata: Array(n_points).fill(0).map((_, idx) => ({ value: idx * 2 })),
   }
 
   // Adjust right padding to make space for the external color bar
@@ -1456,4 +1504,68 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
   y_axis={{ range: [-5, 5], label: 'Y Axis (Fixed Range)' }}
   style="height: 400px"
 />
+```
+
+## Multiple Plots in 2×2 Grid Layout
+
+Display multiple scatter plots in a responsive 2×2 grid:
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  const make_data = (fn) => {
+    const x_vals = Array.from({ length: 30 }, (_, idx) => idx)
+    return { x: x_vals, y: x_vals.map(fn) }
+  }
+
+  const plots = [
+    { title: 'Linear', data: make_data((x) => 2 * x + Math.random() * 10) },
+    {
+      title: 'Quadratic',
+      data: make_data((x) => (x - 15) ** 2 / 10 + Math.random() * 5),
+    },
+    {
+      title: 'Exponential',
+      data: make_data((x) => Math.exp(x / 10) + Math.random() * 2),
+    },
+    {
+      title: 'Sine',
+      data: make_data((x) => 15 + 10 * Math.sin(x / 3) + Math.random() * 2),
+    },
+  ]
+</script>
+
+<div class="grid">
+  {#each plots as { title, data }}
+    <div class="cell">
+      <h4>{title}</h4>
+      <ScatterPlot series={[data]} x_axis={{ label: 'x' }} y_axis={{ label: 'y' }} />
+    </div>
+  {/each}
+</div>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1em;
+    margin: 2em 0;
+  }
+  .cell {
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    padding: 3pt;
+  }
+  .cell h4 {
+    margin: 0;
+    text-align: center;
+    font-size: 1em;
+  }
+  @media (min-width: 768px) {
+    .grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>
 ```
