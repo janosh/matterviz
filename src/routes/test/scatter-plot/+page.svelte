@@ -394,7 +394,7 @@
   })
 
   // Create a dataset with points arranged in a spiral pattern
-  const point_count = 40
+  const n_points = 40
 
   // Reactive generation of spiral data based on controls
   let spiral_data = $derived.by(() => {
@@ -407,7 +407,7 @@
     }
 
     // Generate points in a spiral pattern
-    for (let idx = 0; idx < point_count; idx++) {
+    for (let idx = 0; idx < n_points; idx++) {
       // Calculate angle and radius for spiral
       const angle = idx * 0.5
       const radius = 1 + idx * 0.3
@@ -423,7 +423,7 @@
       // Store angle in metadata
       data.metadata.push({ angle, radius } as Record<string, unknown>) // Cast pushed object
       // Change color gradually along the spiral
-      const hue = (idx / point_count) * 360
+      const hue = (idx / n_points) * 360
       // Change marker type based on index
       const symbol_type = symbol_names[idx % symbol_names.length]
 

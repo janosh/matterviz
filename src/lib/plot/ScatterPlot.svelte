@@ -39,7 +39,7 @@
   } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
-  import { forceCollide, forceLink, forceSimulation } from 'd3-force'
+  import { forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
   import {
     scaleLinear,
     scaleLog,
@@ -1011,13 +1011,30 @@
     update_tooltip_point(coords.x, coords.y, evt)
   }
 
+  // Helper function to parse font size from string like "14px" or "1.2em"
+  function parse_font_size(font_size_str: string | undefined): number {
+    if (!font_size_str) return 12 // Default font size
+    const match = font_size_str.match(/^(\d+(?:\.\d+)?)(px|em|rem)?$/)
+    if (match) {
+      const value = parseFloat(match[1])
+      const unit = match[2]
+      // Convert em/rem to px (assuming 1em = 16px)
+      if (unit === `em` || unit === `rem`) return value * 16
+      return value
+    }
+    return 12 // Fallback
+  }
+
   // Merge user config with defaults before the effect that uses it
   let actual_label_config = $derived({
-    collision_strength: 1.1,
+    collision_strength: 1.5, // Increased from 1.1 for stronger overlap prevention
     link_strength: 0.8,
     link_distance: 10,
-    placement_ticks: 120,
+    placement_ticks: 200, // Increased from 120 for better settling
     link_distance_range: [5, 20], // Default min and max distance (replacing max_link_distance)
+    max_labels: 300, // Maximum labels before falling back to simple offsets
+    charge_strength: 50, // Repulsion strength for markers
+    charge_distance_max: 30, // Limit range of repulsion
     ...label_placement_config,
   })
 
@@ -1042,22 +1059,34 @@
         const id = `${point.series_idx}-${point.point_idx}`
         const anchor_id = `anchor-${id}`
 
+        // Parse font size for better dimension estimation
+        const font_size = parse_font_size(point.point_label.font_size)
+        const char_width = font_size * 0.6 // More accurate character width estimation
+        const estimated_width = point.point_label.text.length * char_width + 10
+        const estimated_height = font_size * 1.2 // Account for line height
+
+        // Get marker radius for positioning
+        const marker_radius = point.point_style?.radius ?? 3
+
         label_nodes.push({
           id,
           anchor_x,
           anchor_y,
           point_node: point,
-          label_width: point.point_label.text.length * 6 + 10,
-          label_height: 14,
+          label_width: estimated_width,
+          label_height: estimated_height,
+          // Position label below marker by default to avoid overlap
           x: anchor_x + (point.point_label.offset?.x ?? 5),
-          y: anchor_y + (point.point_label.offset?.y ?? 0),
+          y: anchor_y +
+            (point.point_label.offset?.y ??
+              (marker_radius + estimated_height / 2 + 3)),
         })
 
         anchor_nodes.push({
           id: anchor_id,
           fx: anchor_x,
           fy: anchor_y,
-          point_radius: point.point_style?.radius ?? 3,
+          point_radius: marker_radius,
         })
 
         links.push({ source: id, target: anchor_id })
@@ -1069,8 +1098,16 @@
       return
     }
 
+    // Guard: skip force simulation if too many labels (performance)
+    if (label_nodes.length > actual_label_config.max_labels) {
+      label_positions = Object.fromEntries(
+        label_nodes.map((n) => [n.id, { x: n.x!, y: n.y! }]),
+      )
+      return
+    }
+
     // Run force simulation
-    forceSimulation([...label_nodes, ...anchor_nodes])
+    const simulation = forceSimulation([...label_nodes, ...anchor_nodes])
       .force(
         `link`,
         forceLink(links)
@@ -1083,21 +1120,53 @@
         forceCollide().radius((node) => {
           const label = node as LabelNode
           const anchor = node as AnchorNode
-          return label.label_width
-            ? Math.max(label.label_width, label.label_height) / 2 + 2
-            : (anchor.point_radius ?? 0) + 2
+          if (label.label_width) {
+            // Use diagonal distance for better rectangular approximation
+            const diagonal = Math.sqrt(
+              label.label_width * label.label_width +
+                label.label_height * label.label_height,
+            )
+            return diagonal / 2 + 2
+          }
+          return (anchor.point_radius ?? 0) + 2
         }).strength(actual_label_config.collision_strength),
       )
-      .stop()
-      .tick(actual_label_config.placement_ticks)
 
-    // Apply distance constraints and store final positions
+    // Add repulsion force to prevent labels from overlapping their markers
+    simulation.force(
+      `charge`,
+      forceManyBody().strength((node) => {
+        const anchor = node as AnchorNode
+        if (anchor.point_radius !== undefined && anchor.fx !== undefined) {
+          return -actual_label_config.charge_strength
+        }
+        return 0
+      }).distanceMax(actual_label_config.charge_distance_max),
+    )
+
+    simulation.stop().tick(actual_label_config.placement_ticks)
+
+    // Apply boundary constraints, distance constraints, and store final positions
     const [min_dist, max_dist] = actual_label_config.link_distance_range ??
       [null, null]
+
     for (const node of label_nodes) {
       let final_x = node.x!
       let final_y = node.y!
 
+      // Clamp to plot boundaries (keep labels within visible area)
+      const half_width = node.label_width / 2
+      const half_height = node.label_height / 2
+      final_x = Math.max(
+        pad.l + half_width,
+        Math.min(width - pad.r - half_width, final_x),
+      )
+      final_y = Math.max(
+        pad.t + half_height,
+        Math.min(height - pad.b - half_height, final_y),
+      )
+
+      // Apply distance constraints after boundary clamping
       if (min_dist || max_dist) {
         const dx = final_x - node.anchor_x
         const dy = final_y - node.anchor_y
@@ -1244,9 +1313,14 @@
     const new_x = event.clientX - svg_rect.left - legend_drag_offset.x
     const new_y = event.clientY - svg_rect.top - legend_drag_offset.y
 
-    // Constrain to plot bounds (with some margin)
-    const constrained_x = Math.max(0, Math.min(width - 100, new_x)) // Assume legend width ~100px
-    const constrained_y = Math.max(0, Math.min(height - 50, new_y)) // Assume legend height ~50px
+    // Get actual legend dimensions for accurate bounds checking
+    const legend_el = event.currentTarget as HTMLElement
+    const { width: legend_width, height: legend_height } = legend_el
+      .getBoundingClientRect()
+
+    // Constrain to plot bounds using measured legend size
+    const constrained_x = Math.max(0, Math.min(width - legend_width, new_x))
+    const constrained_y = Math.max(0, Math.min(height - legend_height, new_y))
 
     legend_manual_position = { x: constrained_x, y: constrained_y }
   }
@@ -1861,18 +1935,22 @@
   div.scatter {
     position: relative; /* Needed for absolute positioning of children like ColorBar */
     width: var(--scatter-width, 100%);
-    height: var(--scatter-height, 100%);
+    height: var(--scatter-height, auto);
     min-height: var(--scatter-min-height, 350px);
     container-type: size; /* enable cqh for panes */
     container-name: scatter-plot;
     z-index: var(--scatter-z-index);
+    flex: var(--scatter-flex, 1); /* Allow filling available space in flex containers */
+    display: var(--scatter-display, flex);
+    flex-direction: column;
   }
   svg {
-    width: 100%;
-    height: 100%;
+    width: var(--scatter-svg-width, 100%);
+    height: var(--scatter-svg-height, 100%);
+    flex: var(--scatter-svg-flex, 1);
+    overflow: var(--scatter-svg-overflow, visible);
     fill: var(--text-color);
     font-weight: var(--scatter-font-weight);
-    overflow: visible;
     font-size: var(--scatter-font-size);
   }
   line {

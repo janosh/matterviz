@@ -2,12 +2,7 @@
   import type { AnyStructure, Site } from '$lib'
   import { DraggablePane, element_data, format_num, Icon, type InfoItem } from '$lib'
   import { electro_neg_formula, get_density } from '$lib/structure'
-  import {
-    analyze_structure_symmetry,
-    ensure_moyo_wasm_ready,
-    wyckoff_positions_from_moyo,
-    WyckoffTable,
-  } from '$lib/symmetry'
+  import { wyckoff_positions_from_moyo, WyckoffTable } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -21,6 +16,7 @@
     pane_props = {},
     highlighted_sites = $bindable([]),
     selected_sites = $bindable([]),
+    symmetry_data = null,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     structure: AnyStructure
@@ -30,31 +26,11 @@
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
     selected_sites?: number[] // Sites selected from Wyckoff table click
+    symmetry_data?: MoyoDataset | null // Symmetry analysis data (bindable for external access)
   } = $props()
 
   let copied_items = new SvelteSet<string>()
   let sites_expanded = $state(false)
-  let sym_data = $state<MoyoDataset | null>(null)
-
-  // Reset symmetry data when structure changes
-  $effect(() => {
-    if (structure) sym_data = null
-  })
-
-  // Load symmetry data when pane is opened
-  $effect(() => {
-    if (!pane_open || !(`lattice` in structure) || sym_data) return
-
-    const current = structure
-    ensure_moyo_wasm_ready()
-      .then(() => analyze_structure_symmetry(current, 1e-4, `Standard`))
-      .then((data) => {
-        if (structure === current) sym_data = data
-      })
-      .catch((err) => {
-        console.error(`Symmetry analysis failed`, err)
-      })
-  })
 
   async function copy_to_clipboard(label: string, value: string, key: string) {
     try {
@@ -138,8 +114,8 @@
     }
 
     // Symmetry Info
-    if (`lattice` in structure && sym_data) {
-      const { operations } = sym_data
+    if (`lattice` in structure && symmetry_data) {
+      const { operations } = symmetry_data
       const is_identity3 = (mat: number[]) => String(mat) === `1,0,0,0,1,0,0,0,1`
       let translations = 0, rotations = 0, roto_translations = 0
       for (const op of operations) {
@@ -155,17 +131,17 @@
         items: [
           {
             label: `Space Group`,
-            value: String(sym_data.number),
+            value: String(symmetry_data.number),
             key: `symmetry-space-group`,
           },
           {
             label: `Hall Number`,
-            value: String(sym_data.hall_number),
+            value: String(symmetry_data.hall_number),
             key: `symmetry-hall-number`,
           },
           {
             label: `Pearson Symbol`,
-            value: sym_data.pearson_symbol,
+            value: symmetry_data.pearson_symbol,
             key: `symmetry-pearson-symbol`,
           },
           {
@@ -314,7 +290,7 @@
   })
 
   // Compute Wyckoff positions from symmetry data
-  let wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
+  let wyckoff_positions = $derived(wyckoff_positions_from_moyo(symmetry_data))
 </script>
 
 <DraggablePane
@@ -363,12 +339,11 @@
             <span>{label}</span>
             <span title={tooltip}>{@html value}</span>
             {#if key !== `sites-toggle` && key && copied_items.has(key)}
-              <div class="copy-checkmark-overlay">
-                <Icon
-                  icon="Check"
-                  style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-                />
-              </div>
+              <Icon
+                icon="Check"
+                style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+                class="copy-checkmark"
+              />
             {/if}
           </div>
         {/if}
@@ -401,7 +376,7 @@
   section div:hover {
     background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
   }
-  .copy-checkmark-overlay {
+  section :global(.copy-checkmark) {
     position: absolute;
     top: 50%;
     right: 3pt;

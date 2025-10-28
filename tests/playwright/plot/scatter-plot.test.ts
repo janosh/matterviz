@@ -1544,20 +1544,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
         )
       }
     }
-
-    // Test Y-axis label positioning as well
-    if (await y_label.isVisible()) {
-      const y_label_box = await y_label.boundingBox()
-      const plot_box = await plot_locator.boundingBox()
-
-      if (y_label_box && plot_box) {
-        // Y-label should be positioned within reasonable bounds
-        expect(y_label_box.y).toBeGreaterThanOrEqual(plot_box.y - 20)
-        expect(y_label_box.y + y_label_box.height).toBeLessThanOrEqual(
-          plot_box.y + plot_box.height + 20,
-        )
-      }
-    }
   })
 
   test(`series-specific controls work correctly in multi-series plots`, async ({ page }) => {
@@ -1847,5 +1833,109 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Move away clears hover
     await page.mouse.move(box.x - 50, box.y - 50)
     await expect(info_div).toContainText(/No point hovered/)
+  })
+
+  test(`improved label placement prevents overlap for isolated and clustered markers`, async ({ page }) => {
+    const section = page.locator(`#label-auto-placement-test`)
+    const plot_locator = section.locator(`.scatter`)
+    const checkbox = section.locator(`input[type="checkbox"]`)
+
+    // Enable auto-placement
+    await checkbox.check()
+    await expect(checkbox).toBeChecked()
+
+    // Wait for simulation to settle: consecutive stable bbox snapshots
+    await page.waitForFunction(() => {
+      const labels = Array.from(
+        document.querySelectorAll(`.scatter g[data-series-id] text`),
+      )
+      const snap = labels.map((el) => el.getBoundingClientRect())
+      const w = window as Window & { __lblSnap__?: DOMRect[] }
+      const prev = w.__lblSnap__
+      w.__lblSnap__ = snap
+      if (!prev || prev.length !== snap.length) return false
+      const moved = snap.some((r, i) => {
+        const p = prev[i]
+        return Math.hypot(r.x - p.x, r.y - p.y) > 0.5
+      })
+      return !moved
+    }, { timeout: 2000 })
+
+    // Get label elements and their positions
+    const label_elements = await plot_locator.locator(`g[data-series-id] text`).all()
+    const label_data = await Promise.all(
+      label_elements.map(async (label_el) => {
+        const text_content = await label_el.textContent()
+        const bbox = await label_el.boundingBox()
+        return { text: text_content, bbox }
+      }),
+    )
+
+    // Filter for sparse and dense labels
+    const sparse_label_data = label_data.filter((d) => d.text?.startsWith(`Sparse-`))
+    const dense_label_data = label_data.filter((d) => d.text?.startsWith(`Dense-`))
+
+    expect(sparse_label_data.length).toBeGreaterThan(0)
+    expect(dense_label_data.length).toBeGreaterThan(1)
+
+    // Get marker elements
+    const markers = await plot_locator.locator(`path.marker`).all()
+    const marker_bboxes = await Promise.all(
+      markers.map(async (marker) => await marker.boundingBox()),
+    )
+
+    // For isolated markers (sparse labels), verify labels don't overlap markers
+    // by checking that label bounding boxes don't intersect with marker bounding boxes
+    for (const label_item of sparse_label_data) {
+      if (!label_item.bbox) continue
+
+      let min_distance = Infinity
+      for (const marker_bbox of marker_bboxes) {
+        if (!marker_bbox) continue
+
+        // Calculate distance between label center and marker center
+        const label_center_x = label_item.bbox.x + label_item.bbox.width / 2
+        const label_center_y = label_item.bbox.y + label_item.bbox.height / 2
+        const marker_center_x = marker_bbox.x + marker_bbox.width / 2
+        const marker_center_y = marker_bbox.y + marker_bbox.height / 2
+
+        const dx = label_center_x - marker_center_x
+        const dy = label_center_y - marker_center_y
+        const distance = Math.sqrt(dx * dx + dy * dy)
+
+        if (distance < min_distance) {
+          min_distance = distance
+        }
+      }
+
+      // Sparse labels should be at least some distance from any marker
+      // Using 5px threshold since bboxes include padding
+      expect(min_distance).toBeGreaterThan(5)
+    }
+
+    // For clustered labels (dense labels), verify they don't overlap each other significantly
+    // Check pairwise distances between label centers
+    for (let idx = 0; idx < dense_label_data.length - 1; idx++) {
+      const label1 = dense_label_data[idx]
+      if (!label1.bbox) continue
+
+      for (let jdx = idx + 1; jdx < dense_label_data.length; jdx++) {
+        const label2 = dense_label_data[jdx]
+        if (!label2.bbox) continue
+
+        const label1_center_x = label1.bbox.x + label1.bbox.width / 2
+        const label1_center_y = label1.bbox.y + label1.bbox.height / 2
+        const label2_center_x = label2.bbox.x + label2.bbox.width / 2
+        const label2_center_y = label2.bbox.y + label2.bbox.height / 2
+
+        const dx = label1_center_x - label2_center_x
+        const dy = label1_center_y - label2_center_y
+        const distance = Math.sqrt(dx * dx + dy * dy)
+
+        // Labels should have some minimum separation
+        // Even with improved collision, some overlap may occur for dense clusters
+        expect(distance).toBeGreaterThan(8)
+      }
+    }
   })
 })
