@@ -471,3 +471,90 @@ Interactive zoom and pan for exploring large datasets. Click and drag to zoom, d
   style="height: 450px"
 />
 ```
+
+## Multiple Plots in 2×2 Grid Layout
+
+Display multiple bar plots in a responsive 2×2 grid:
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  const make_data = (fn, label_fn) => {
+    const x_vals = Array.from({ length: 6 }, (_, idx) => idx + 1)
+    return {
+      x: x_vals,
+      y: x_vals.map(fn),
+      labels: x_vals.map(label_fn),
+    }
+  }
+
+  const plots = [
+    {
+      title: `Reaction Rates`,
+      data: make_data((x) => 2 * x + Math.random() * 3, (x) => `R${x}`),
+      x_label: `Reaction`,
+      y_label: `Rate (mol/s)`,
+      color: `#4c6ef5`,
+    },
+    {
+      title: `Crystal Lattice`,
+      data: make_data((x) => 3 + Math.sqrt(x) * 2 + Math.random(), (x) => `L${x}`),
+      x_label: `Structure`,
+      y_label: `Lattice (Å)`,
+      color: `#51cf66`,
+    },
+    {
+      title: `Band Gaps`,
+      data: make_data((x) => 1 + x * 0.5 + Math.random() * 0.3, (x) => `M${x}`),
+      x_label: `Material`,
+      y_label: `Gap (eV)`,
+      color: `#ff6b6b`,
+    },
+    {
+      title: `Formation Energy`,
+      data: make_data((x) => -2 + x * 0.3 + Math.random() * 0.5, (x) => `C${x}`),
+      x_label: `Compound`,
+      y_label: `Energy (eV)`,
+      color: `#ffd43b`,
+    },
+  ]
+</script>
+
+<div class="grid">
+  {#each plots as { title, data, x_label, y_label, color }}
+    <div class="cell">
+      <h4>{title}</h4>
+      <BarPlot
+        series={[{ ...data, color }]}
+        x_axis={{ label: x_label }}
+        y_axis={{ label: y_label }}
+      />
+    </div>
+  {/each}
+</div>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1em;
+    margin: 2em 0;
+  }
+  .cell {
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    padding: 3pt;
+  }
+  .cell h4 {
+    margin: 0;
+    text-align: center;
+    font-size: 1em;
+  }
+  @media (min-width: 768px) {
+    .grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>
+```

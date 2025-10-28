@@ -8,6 +8,8 @@
   import type { PymatgenStructure } from '$lib/structure'
   import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
+  import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -79,6 +81,8 @@
     displayed_structure = $bindable<AnyStructure | undefined>(undefined),
     // Track hidden elements across component lifecycle
     hidden_elements = $bindable(new Set<ElementSymbol>()),
+    // Symmetry analysis data (bindable for external access)
+    symmetry_data = $bindable<MoyoDataset | null>(null),
     children,
     on_file_load,
     on_error,
@@ -129,6 +133,8 @@
       displayed_structure?: AnyStructure
       // Track which elements are hidden (bindable across frames in trajectories)
       hidden_elements?: Set<ElementSymbol>
+      // Symmetry analysis data (bindable for external access)
+      symmetry_data?: MoyoDataset | null
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
       children?: Snippet<[{ structure?: AnyStructure }]>
@@ -254,6 +260,41 @@
 
   $effect(() => {
     colors.element = element_color_schemes[color_scheme as ColorSchemeName]
+  })
+
+  let symmetry_run_id = 0
+  let symmetry_error = $state<string>()
+
+  // Trigger symmetry analysis when structure is loaded
+  $effect(() => {
+    if (!structure || !(`lattice` in structure)) {
+      symmetry_data = null
+      symmetry_error = undefined
+      return
+    }
+
+    const current_structure = structure
+    const run_id = ++symmetry_run_id
+    symmetry_data = null
+    symmetry_error = undefined
+
+    ensure_moyo_wasm_ready()
+      .then(() =>
+        run_id === symmetry_run_id
+          ? analyze_structure_symmetry(current_structure, 1e-4, `Standard`)
+          : null
+      )
+      .then((data) => {
+        if (data && run_id === symmetry_run_id) {
+          untrack(() => symmetry_data = data)
+        }
+      })
+      .catch((err) => {
+        if (run_id === symmetry_run_id) {
+          symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
+          console.error(`Symmetry analysis failed:`, err)
+        }
+      })
   })
 
   // Measurement mode and selection state
@@ -640,7 +681,8 @@
           <StructureInfoPane
             {structure}
             bind:pane_open={info_pane_open}
-            bind:selected_sites
+            {selected_sites}
+            {symmetry_data}
             {@attach tooltip({ content: `Structure info pane` })}
           />
         {/if}
@@ -701,6 +743,15 @@
     <div class="bottom-left">
       {@render bottom_left?.({ structure: displayed_structure })}
     </div>
+
+    {#if symmetry_error}
+      <div class="symmetry-error">
+        <span>{symmetry_error}</span>
+        <button onclick={() => (symmetry_error = undefined)} aria-label="Dismiss">
+          ×
+        </button>
+      </div>
+    {/if}
   {:else if structure}
     <p class="warn">No sites found in structure</p>
   {:else}
@@ -855,5 +906,35 @@
   }
   .error-state button:hover {
     background: var(--error-color-hover, #ff5252);
+  }
+  .symmetry-error {
+    position: absolute;
+    bottom: 1rem;
+    right: 1rem;
+    background: rgba(255, 165, 0, 0.95);
+    color: #000;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    gap: 1rem;
+    max-width: min(90%, 400px);
+    font-size: 0.9rem;
+    z-index: 1000;
+  }
+  .symmetry-error span {
+    flex: 1;
+  }
+  .symmetry-error button {
+    background: transparent;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0.7;
+  }
+  .symmetry-error button:hover {
+    opacity: 1;
   }
 </style>

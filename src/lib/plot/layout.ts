@@ -1,6 +1,9 @@
 import { format_value } from '$lib/labels'
 import type { AxisConfig, Sides } from '$lib/plot'
 
+// Default gap between tick labels and axis labels
+export const LABEL_GAP_DEFAULT = 30
+
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null
 
@@ -22,7 +25,7 @@ export interface AutoPaddingConfig {
   default_padding: Required<Sides> // Default padding to use as baseline
   y_axis?: AxisConfig & { tick_values?: (string | number)[] }
   y2_axis?: AxisConfig & { tick_values?: (string | number)[] }
-  label_gap?: number // Gap between tick labels and axis labels (default: 45px)
+  label_gap?: number // Gap between tick labels and axis labels (default: LABEL_GAP_DEFAULT)
 }
 
 // Helper to measure max tick width
@@ -39,7 +42,7 @@ export const calc_auto_padding = ({
   default_padding,
   y_axis = {},
   y2_axis = {},
-  label_gap = 45,
+  label_gap = LABEL_GAP_DEFAULT,
 }: AutoPaddingConfig): Required<Sides> => {
   const y_ticks = y_axis.tick_values ?? []
   const y_format = y_axis.format ?? ``

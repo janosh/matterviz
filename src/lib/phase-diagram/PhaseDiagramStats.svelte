@@ -210,12 +210,11 @@
           <span>{label}:</span>
           <span>{@html value}</span>
           {#if key && copied_items.has(key)}
-            <div class="copy-checkmark-overlay">
-              <Icon
-                icon="Check"
-                style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-              />
-            </div>
+            <Icon
+              icon="Check"
+              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+              class="copy-checkmark"
+            />
           {/if}
         </div>
       {/each}
@@ -275,7 +274,7 @@
     background: var(--pane-bg-hover);
     border-radius: 3pt;
   }
-  .copy-checkmark-overlay {
+  section :global(.copy-checkmark) {
     position: absolute;
     top: 50%;
     right: 3pt;
