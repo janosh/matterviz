@@ -8,6 +8,8 @@
   import type { PymatgenStructure } from '$lib/structure'
   import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
+  import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -79,6 +81,8 @@
     displayed_structure = $bindable<AnyStructure | undefined>(undefined),
     // Track hidden elements across component lifecycle
     hidden_elements = $bindable(new Set<ElementSymbol>()),
+    // Symmetry analysis data (bindable for external access)
+    symmetry_data = $bindable<MoyoDataset | null>(null),
     children,
     on_file_load,
     on_error,
@@ -129,6 +133,8 @@
       displayed_structure?: AnyStructure
       // Track which elements are hidden (bindable across frames in trajectories)
       hidden_elements?: Set<ElementSymbol>
+      // Symmetry analysis data (bindable for external access)
+      symmetry_data?: MoyoDataset | null
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
       children?: Snippet<[{ structure?: AnyStructure }]>
@@ -254,6 +260,23 @@
 
   $effect(() => {
     colors.element = element_color_schemes[color_scheme as ColorSchemeName]
+  })
+
+  // Trigger symmetry analysis when structure is loaded
+  $effect(() => {
+    if (!structure || !(`lattice` in structure)) {
+      symmetry_data = null
+      return
+    }
+
+    // Reset symmetry data for new structure
+    symmetry_data = null
+    ensure_moyo_wasm_ready()
+      .then(() => analyze_structure_symmetry(structure, 1e-4, `Standard`))
+      .then((data) => {
+        if (`lattice` in structure) symmetry_data = data
+      })
+      .catch((err) => console.error(`Symmetry analysis failed:`, err))
   })
 
   // Measurement mode and selection state
@@ -640,7 +663,8 @@
           <StructureInfoPane
             {structure}
             bind:pane_open={info_pane_open}
-            bind:selected_sites
+            {selected_sites}
+            {symmetry_data}
             {@attach tooltip({ content: `Structure info pane` })}
           />
         {/if}
