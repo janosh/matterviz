@@ -121,7 +121,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 ```svelte example
 <script>
   import { Histogram } from 'matterviz'
-  import { generate_normal, generate_exponential, generate_uniform, generate_gamma } from '$site/plot-utils'
+  import * as utils from '$site/plot-utils'
 
   let x_axis = $state({scale_type: `linear`})
   let y_axis = $state({scale_type: `linear`, label: `Count (Normal/Uniform)`})
@@ -130,10 +130,10 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   let bar = $state({ opacity: 0.6, stroke_width: 1.5 })
 
   let series = $state([
-    { y: generate_normal(1200, 5, 2), label: `Normal (μ=5, σ=2)`, line_style: { stroke: `crimson` } },
-    { y: generate_exponential(1200, 0.3), label: `Exponential (λ=0.3)`, line_style: { stroke: `royalblue` }, y_axis: `y2` },
-    { y: generate_uniform(1200, 0, 15), label: `Uniform (0-15)`, line_style: { stroke: `mediumseagreen` } },
-    { y: generate_gamma(1000, 2, 3), label: `Gamma (α=2, β=3)`, line_style: { stroke: `darkorange` }, y_axis: `y2` },
+    { y: utils.generate_normal(1200, 5, 2), label: `Normal (μ=5, σ=2)`, line_style: { stroke: `crimson` } },
+    { y: utils.generate_exponential(1200, 0.3), label: `Exponential (λ=0.3)`, line_style: { stroke: `royalblue` }, y_axis: `y2` },
+    { y: utils.generate_uniform(1200, 0, 15), label: `Uniform (0-15)`, line_style: { stroke: `mediumseagreen` } },
+    { y: utils.generate_gamma(1000, 2, 3), label: `Gamma (α=2, β=3)`, line_style: { stroke: `darkorange` }, y_axis: `y2` },
   ])
 
   function toggle_series(idx) {
@@ -198,11 +198,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 ```svelte example
 <script>
   import { Histogram } from 'matterviz'
-  import {
-    generate_log_normal,
-    generate_pareto,
-    generate_power_law,
-  } from '$site/plot-utils'
+  import * as utils from '$site/plot-utils'
 
   let x_axis = $state({ scale_type: `linear` })
   let y_axis = $state({ scale_type: `log` })
@@ -216,17 +212,17 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 
   let series = $state([
     {
-      y: generate_log_normal(1500, 2, 1),
+      y: utils.generate_log_normal(1500, 2, 1),
       label: `Log-Normal (μ=2, σ=1)`,
       line_style: { stroke: `darkorange` },
     },
     {
-      y: generate_power_law(1500, 2.5),
+      y: utils.generate_power_law(1500, 2.5),
       label: `Power Law (α=2.5)`,
       line_style: { stroke: `darkgreen` },
     },
     {
-      y: generate_pareto(1200, 1, 3),
+      y: utils.generate_pareto(1200, 1, 3),
       label: `Pareto (α=3)`,
       line_style: { stroke: `darkviolet` },
     },
@@ -272,13 +268,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 ```svelte example
 <script>
   import { Histogram } from 'matterviz'
-  import {
-    generate_age_distribution,
-    generate_bimodal,
-    generate_discrete,
-    generate_mixture,
-    generate_skewed,
-  } from '$site/plot-utils'
+  import * as utils from '$site/plot-utils'
   import { format_num } from 'matterviz'
 
   let selected = $state(`bimodal`)
@@ -292,27 +282,27 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 
   let distributions = $derived({
     bimodal: {
-      data: generate_bimodal(1500),
+      data: utils.generate_bimodal(1500),
       label: `Bimodal Distribution`,
       color: `#e74c3c`,
     },
     skewed: {
-      data: generate_skewed(1200),
+      data: utils.generate_skewed(1200),
       label: `Right-Skewed Distribution`,
       color: `#3498db`,
     },
     discrete: {
-      data: generate_discrete(1000),
+      data: utils.generate_discrete(1000),
       label: `Survey Responses (1-10)`,
       color: `#2ecc71`,
     },
     age: {
-      data: generate_age_distribution(2000),
+      data: utils.generate_age_distribution(2000),
       label: `Age Distribution`,
       color: `#9b59b6`,
     },
     mixture: {
-      data: generate_mixture(1800),
+      data: utils.generate_mixture(1800),
       label: `Complex Mixture`,
       color: `#f39c12`,
     },
@@ -371,14 +361,14 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 ```svelte example
 <script>
   import { Histogram } from 'matterviz'
-  import { generate_mixed_data, generate_complex_distribution } from '$site/plot-utils'
+  import * as utils from '$site/plot-utils'
 
   let bin_counts = $state([10, 25, 50, 100])
   let show_overlay = $state(true)
   let data_type = $state(`mixed`)
   let bar = $state({ opacity: 0.6 })
 
-  const base_data = $derived(data_type === `mixed` ? generate_mixed_data(3000) : generate_complex_distribution(3000))
+  const base_data = $derived(data_type === `mixed` ? utils.generate_mixed_data(3000) : utils.generate_complex_distribution(3000))
   const colors = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`]
 
   let series = $derived(
@@ -427,7 +417,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 ```svelte example
 <script>
   import { Histogram } from 'matterviz'
-  import { generate_financial_data, generate_scientific_data } from '$site/plot-utils'
+  import * as utils from '$site/plot-utils'
 
   let color_scheme = $state(`default`)
   let x_format = $state(`number`)
@@ -450,7 +440,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
     y_axis.label = y_format === `percentage` ? `Percentage` : `Count`
     y_axis.format = y_format === `percentage` ? `.1%` : y_formats[y_format]
   })
-  let data = $derived(data_source === `financial` ? generate_financial_data(1200) : generate_scientific_data(1200))
+  let data = $derived(data_source === `financial` ? utils.generate_financial_data(1200) : utils.generate_scientific_data(1200))
   let series = $derived([{
     y: data,
     label: data_source === `financial` ? `Stock Prices` : `Scientific Measurements`,
@@ -494,7 +484,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 ```svelte example
 <script>
   import { Histogram } from 'matterviz'
-  import { generate_large_dataset, generate_sparse_data } from '$site/plot-utils'
+  import * as utils from '$site/plot-utils'
 
   let dataset_size = $state(10000)
   let data_type = $state(`normal`)
@@ -502,9 +492,9 @@ Y: {#each [`linear`, `log`] as scale (scale)}
   let mode = $state(`single`)
 
   let performance_data = $derived({
-    normal: generate_large_dataset(dataset_size, `normal`),
-    uniform: generate_large_dataset(dataset_size, `uniform`),
-    sparse: generate_sparse_data(dataset_size),
+    normal: utils.generate_large_dataset(dataset_size, `normal`),
+    uniform: utils.generate_large_dataset(dataset_size, `uniform`),
+    sparse: utils.generate_sparse_data(dataset_size),
   })
 
   let series_data = $derived(
@@ -573,4 +563,85 @@ points, {bins} bins, {mode} mode
     <strong>{property}</strong><br>Value: {value.toFixed(2)}<br>Count: {count}
   {/snippet}
 </Histogram>
+```
+
+## Multiple Plots in 2×2 Grid Layout
+
+Display multiple histograms in a responsive 2×2 grid:
+
+```svelte example
+<script>
+  import { Histogram } from 'matterviz'
+  import * as utils from '$site/plot-utils'
+
+  const plots = [
+    {
+      title: `Normal Distribution`,
+      data: utils.generate_normal(1000, 50, 10),
+      color: `#4c6ef5`,
+      x_label: `Value`,
+      bins: 40,
+    },
+    {
+      title: `Exponential Distribution`,
+      data: utils.generate_exponential(1000, 0.05),
+      color: `#ff6b6b`,
+      x_label: `Time`,
+      bins: 35,
+    },
+    {
+      title: `Uniform Distribution`,
+      data: utils.generate_uniform(1000, 0, 100),
+      color: `#51cf66`,
+      x_label: `Random Value`,
+      bins: 30,
+    },
+    {
+      title: `Gamma Distribution`,
+      data: utils.generate_gamma(1000, 2, 15),
+      color: `#ffd43b`,
+      x_label: `Measurement`,
+      bins: 40,
+    },
+  ]
+</script>
+
+<div class="grid">
+  {#each plots as { title, data, color, x_label, bins }}
+    <div class="cell">
+      <h4>{title}</h4>
+      <Histogram
+        series={[{ y: data, line_style: { stroke: color } }]}
+        {bins}
+        x_axis={{ label: x_label }}
+        y_axis={{ label: `Count` }}
+        show_legend={false}
+      />
+    </div>
+  {/each}
+</div>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1em;
+    margin: 2em 0;
+  }
+  .cell {
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    padding: 3pt;
+  }
+  .cell h4 {
+    margin: 0;
+    text-align: center;
+    font-size: 1em;
+  }
+  @media (min-width: 768px) {
+    .grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>
 ```

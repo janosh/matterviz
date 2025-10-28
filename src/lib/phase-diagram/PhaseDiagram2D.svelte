@@ -461,12 +461,13 @@
 {#snippet user_content(
   { x_scale_fn, pad, height, y_scale_fn, y_range, width }: UserContentProps,
 )}
-  {@const [x1, y0] = [x_scale_fn(1), y_scale_fn(y_range[0])]}
+  {@const [x0, x1, y0] = [x_scale_fn(0), x_scale_fn(1), y_scale_fn(y_range[0])]}
   {@const stroke = {
     stroke: `var(--scatter-grid-stroke, gray)`,
     'stroke-width': `var(--scatter-grid-width, 0.4)`,
     'stroke-dasharray': `var(--scatter-grid-dash, 4)`,
   }}
+  <line y1={pad.t} y2={height - pad.b} x1={x0} x2={x0} {...stroke} />
   <line y1={pad.t} y2={height - pad.b} {x1} x2={x1} {...stroke} />
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
@@ -504,7 +505,13 @@
         ticks: 4,
         ...x_axis,
       }}
-      y_axis={{ label: `E<sub>form</sub> (eV/atom)`, range: y_domain, ticks: 4, ...y_axis }}
+      y_axis={{
+        label: `E<sub>form</sub> (eV/atom)`,
+        range: y_domain,
+        ticks: 4,
+        label_shift: { y: 15 },
+        ...y_axis,
+      }}
       legend={null}
       color_bar={{
         title: `E<sub>above hull</sub> (eV/atom)`,
@@ -651,8 +658,9 @@
 <style>
   .phase-diagram-2d {
     position: relative;
+    container-type: size; /* enable cqh/cqw for responsive sizing */
     width: 100%;
-    height: var(--pd-height, 620px);
+    height: var(--pd-height, auto);
     background: var(--surface-bg, #f8f9fa);
     border-radius: 4px;
   }
@@ -678,9 +686,11 @@
     border-radius: 3px;
     color: var(--text-color, currentColor);
     transition: background-color 0.2s;
+    display: flex;
+    font-size: clamp(1em, 2cqmin, 2.5em);
   }
   .control-buttons button:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));
   }
 
   .drag-overlay {

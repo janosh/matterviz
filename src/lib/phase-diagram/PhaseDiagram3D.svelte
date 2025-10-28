@@ -1217,6 +1217,7 @@
 <style>
   .phase-diagram-3d {
     position: relative;
+    container-type: size; /* enable cqh/cqw for responsive sizing */
     width: 100%;
     height: var(--pd-height, 500px);
     background: var(--surface-bg, #f8f9fa);
@@ -1251,9 +1252,11 @@
     border-radius: 3px;
     color: var(--text-color, currentColor);
     transition: background-color 0.2s;
+    display: flex;
+    font-size: clamp(1em, 2cqmin, 2.5em);
   }
   .control-buttons button:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));
   }
   .tooltip {
     position: fixed;

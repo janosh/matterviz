@@ -334,12 +334,11 @@
           <span>{label}</span>
           <span title={tooltip} {@attach create_tooltip()}>{@html value}</span>
           {#if copied_items.has(key ?? label)}
-            <div class="copy-checkmark-overlay">
-              <Icon
-                icon="Check"
-                style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-              />
-            </div>
+            <Icon
+              icon="Check"
+              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+              class="copy-checkmark"
+            />
           {/if}
         </div>
       {/each}
@@ -362,7 +361,7 @@
   section div:hover {
     background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
   }
-  .copy-checkmark-overlay {
+  section :global(.copy-checkmark) {
     position: absolute;
     top: 50%;
     right: 3pt;
