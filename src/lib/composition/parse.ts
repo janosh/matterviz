@@ -268,6 +268,25 @@ export const sort_by_electronegativity = (symbols: ElementSymbol[]) =>
     return elec_neg1 !== elec_neg2 ? elec_neg1 - elec_neg2 : el1.localeCompare(el2)
   })
 
+// Sort element symbols according to Hill notation (C first, H second, then alphabetical).
+// This is the standard notation for organic compounds in chemistry.
+export const sort_by_hill_notation = (symbols: ElementSymbol[]): ElementSymbol[] => {
+  const has_carbon = symbols.includes(`C`)
+  return symbols.sort((el_a, el_b) => {
+    // Equal elements must return 0 (sort invariant)
+    if (el_a === el_b) return 0
+    // Carbon always comes first
+    if (el_a === `C`) return -1
+    if (el_b === `C`) return 1
+    // If carbon present, hydrogen comes second
+    if (has_carbon) {
+      if (el_a === `H`) return -1
+      if (el_b === `H`) return 1
+    }
+    return el_a.localeCompare(el_b) // All other elements alphabetically
+  })
+}
+
 // Create electronegativity-sorted formula
 export const get_electro_neg_formula = (
   input: string | CompositionType | AnyStructure,
@@ -282,3 +301,105 @@ export const get_electro_neg_formula = (
     delim,
     amount_format,
   )
+
+// Type for element with oxidation state information
+export type ElementWithOxidation = {
+  element: ElementSymbol
+  amount: number
+  oxidation_state?: number
+  original_index: number
+}
+
+// Type for composition with oxidation states
+export type CompositionWithOxidation = Record<
+  ElementSymbol,
+  { amount: number; oxidation_state?: number }
+>
+
+// Parse oxidation state string (e.g. "+2", "2+", "-", "[2-]") to number.
+const parse_oxidation_state = (oxidation_str: string): number => {
+  // Handle bare signs: "+", "-" are treated as ±1
+  if (oxidation_str === `+` || oxidation_str === `-`) {
+    return oxidation_str === `+` ? 1 : -1
+  }
+  // Handle formats like "2+", "+2", "2-", "-2"
+  const ox_match = oxidation_str.match(/([+-]?)(\d+)([+-]?)/)
+  if (!ox_match) return 0
+
+  const [, sign_before, number, sign_after] = ox_match
+  const sign = sign_before || sign_after || `+`
+  return sign === `-` ? -parseInt(number, 10) : parseInt(number, 10)
+}
+
+// Parse chemical formula string with oxidation states into structured data.
+// Supports both ^2+ and [2+] syntax for oxidation states.
+// Examples: "Fe^2+O3", "Fe[2+]O3", "Ca^2+Cl^-2"
+// Tracks original element order from the input string.
+export const parse_formula_with_oxidation = (
+  formula: string,
+): ElementWithOxidation[] => {
+  const elements: ElementWithOxidation[] = []
+  const cleaned_formula = expand_parentheses(formula.replace(/\s/g, ``))
+
+  // Regex to match: Element, optional oxidation state (^2+ or [2+]), optional count
+  // Pattern: ([A-Z][a-z]?)  - element symbol
+  //          (?:\^([+-]?\d+[+-]?)|  - ^2+ or ^+2 syntax
+  //          \[([+-]?\d+[+-]?)\])?  - [2+] or [+2] syntax
+  //          (\d*)  - optional count
+  const regex = /([A-Z][a-z]?)(?:\^([+-]?\d+[+-]?)|\[([+-]?\d+[+-]?)\])?(\d*)/g
+
+  let match: RegExpExecArray | null
+  let original_index = 0
+
+  while ((match = regex.exec(cleaned_formula)) !== null) {
+    const element = match[1] as ElementSymbol
+    const oxidation_str = match[2] || match[3] // Either ^2+ or [2+] syntax
+    const count = match[4] ? parseInt(match[4], 10) : 1
+
+    if (!elem_symbols.includes(element)) {
+      throw new Error(`Invalid element symbol: ${element}`)
+    }
+
+    const oxidation_state = oxidation_str
+      ? parse_oxidation_state(oxidation_str)
+      : undefined
+
+    // Find or add element entry
+    const existing = elements.find((el) => el.element === element)
+    if (existing) {
+      existing.amount += count
+      // Keep the first oxidation state if specified
+      if (oxidation_state !== undefined && existing.oxidation_state === undefined) {
+        existing.oxidation_state = oxidation_state
+      }
+    } else {
+      elements.push({
+        element,
+        amount: count,
+        oxidation_state,
+        original_index: original_index++,
+      })
+    }
+  }
+
+  return elements
+}
+
+// Convert CompositionWithOxidation to ElementWithOxidation array.
+// Does not preserve original order since objects don't have a defined order.
+export const composition_with_oxidation_to_elements = (
+  composition: CompositionWithOxidation,
+): ElementWithOxidation[] => {
+  return Object.entries(composition).map(([element, data], idx) => ({
+    element: element as ElementSymbol,
+    amount: data.amount,
+    oxidation_state: data.oxidation_state,
+    original_index: idx,
+  }))
+}
+
+export function format_oxi_state(oxidation?: number): string {
+  if (oxidation === undefined || oxidation === 0) return ``
+  const sign = oxidation > 0 ? `+` : `-`
+  return `${sign}${Math.abs(oxidation)}`
+}

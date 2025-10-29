@@ -276,6 +276,10 @@
           value: `Hold Shift/Cmd/Ctrl + drag to pan the scene`,
         },
         {
+          label: `Camera Reset`,
+          value: `Double-click anywhere to reset camera to default view`,
+        },
+        {
           label: `Colors`,
           value: `Click legend labels to change colors, double-click to reset`,
         },

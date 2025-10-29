@@ -183,3 +183,42 @@
     </TableInset>
   {/snippet}
 </PeriodicTable>
+
+<h2>2×2 Grid Layout</h2>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2em">
+  {#each [
+      {
+        title: `Atomic Mass`,
+        property: `atomic_mass`,
+        color_scale: `interpolateBlues`,
+      },
+      { title: `Density`, property: `density`, color_scale: `interpolateReds` },
+      {
+        title: `Melting Point`,
+        property: `melting_point`,
+        color_scale: `interpolateOranges`,
+      },
+      {
+        title: `Boiling Point`,
+        property: `boiling_point`,
+        color_scale: `interpolateGreens`,
+      },
+    ] as const as
+    { title, property, color_scale }
+    (title)
+  }
+    <PeriodicTable
+      tile_props={{ show_name: false, show_number: false }}
+      heatmap_values={element_data.map((el) => el[property] || 0)}
+      {color_scale}
+      show_color_bar={false}
+    >
+      {#snippet inset()}
+        <TableInset style="display: grid; place-content: center">
+          <h4 style="margin: 0">{title}</h4>
+        </TableInset>
+      {/snippet}
+    </PeriodicTable>
+  {/each}
+</div>

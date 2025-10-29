@@ -111,8 +111,10 @@ export interface SettingsConfig {
     initial_zoom: SettingType<number>
     fov: SettingType<number>
     rotation_damping: SettingType<number>
+    rotate_speed: SettingType<number>
     zoom_speed: SettingType<number>
     pan_speed: SettingType<number>
+    zoom_to_cursor: SettingType<boolean>
     max_zoom: SettingType<number | undefined>
     min_zoom: SettingType<number | undefined>
     auto_rotate: SettingType<number>
@@ -401,6 +403,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0,
       maximum: 1,
     },
+    rotate_speed: {
+      value: 1.0,
+      description: `Mouse rotation sensitivity (set to 0 to disable rotation)`,
+      minimum: 0,
+      maximum: 2.0,
+    },
     zoom_speed: {
       value: 0.5,
       description: `Mouse wheel zoom sensitivity`,
@@ -413,13 +421,19 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0.1,
       maximum: 2.0,
     },
+    zoom_to_cursor: {
+      value: true,
+      description: `Zoom toward cursor position instead of scene center`,
+    },
     max_zoom: {
-      value: undefined,
-      description: `Maximum zoom level (undefined = no limit)`,
+      value: 500,
+      description:
+        `Maximum zoom level (orthographic: larger = more zoomed out, perspective: larger = further away)`,
     },
     min_zoom: {
-      value: undefined,
-      description: `Minimum zoom level (undefined = no limit)`,
+      value: 10,
+      description:
+        `Minimum zoom level (orthographic: smaller = more zoomed in, perspective: smaller = closer)`,
     },
     auto_rotate: {
       value: 0.2,

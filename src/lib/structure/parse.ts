@@ -106,7 +106,7 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   // Clean symbol (remove suffixes like _pv, /hash)
   const clean_symbol = symbol.split(/[_/]/)[0]
 
-  if (elem_symbols.includes(clean_symbol as ElementSymbol)) {
+  if (elem_symbols && elem_symbols.includes(clean_symbol as ElementSymbol)) {
     return clean_symbol as ElementSymbol
   }
 

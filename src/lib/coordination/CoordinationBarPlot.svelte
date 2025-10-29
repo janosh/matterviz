@@ -250,6 +250,12 @@
       loading = false
     }
   }
+  let display = $state({ x_zero_line: false, y_zero_line: false })
+  // Update display when orientation changes
+  $effect(() => {
+    display.x_zero_line = is_horizontal
+    display.y_zero_line = !is_horizontal
+  })
 </script>
 
 <StatusMessage bind:message={error_msg} type="error" dismissible />
@@ -294,10 +300,7 @@
       ticks: is_horizontal ? cn_ticks : undefined,
       ...(is_horizontal ? x_axis : y_axis),
     }}
-    display={{
-      x_zero_line: is_horizontal,
-      y_zero_line: !is_horizontal,
-    }}
+    bind:display
     {tooltip}
     ondrop={handle_file_drop}
     ondragover={(event) => {
