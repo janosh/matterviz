@@ -183,3 +183,68 @@
     </TableInset>
   {/snippet}
 </PeriodicTable>
+
+<h2>2×2 Grid Layout</h2>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2em">
+  <PeriodicTable
+    tile_props={{ show_name: false }}
+    heatmap_values={element_data.map((el) => el.atomic_mass || 0)}
+    color_scale="interpolateBlues"
+    show_color_bar={false}
+    links="name"
+    {onenter}
+  >
+    {#snippet inset()}
+      <TableInset style="display: grid; place-content: center">
+        <h4 style="margin: 0; text-align: center">Atomic Mass</h4>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
+
+  <PeriodicTable
+    tile_props={{ show_name: false }}
+    heatmap_values={element_data.map((el) => el.density || 0)}
+    color_scale="interpolateReds"
+    show_color_bar={false}
+    links="name"
+    log
+    {onenter}
+  >
+    {#snippet inset()}
+      <TableInset style="display: grid; place-content: center">
+        <h4 style="margin: 0; text-align: center">Density (log)</h4>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
+
+  <PeriodicTable
+    tile_props={{ show_name: false }}
+    heatmap_values={element_data.map((el) => el.melting_point || 0)}
+    color_scale="interpolateOranges"
+    show_color_bar={false}
+    links="name"
+    {onenter}
+  >
+    {#snippet inset()}
+      <TableInset style="display: grid; place-content: center">
+        <h4 style="margin: 0; text-align: center">Melting Point</h4>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
+
+  <PeriodicTable
+    tile_props={{ show_name: false }}
+    heatmap_values={element_data.map((el) => el.boiling_point || 0)}
+    color_scale="interpolateGreens"
+    show_color_bar={false}
+    links="name"
+    {onenter}
+  >
+    {#snippet inset()}
+      <TableInset style="display: grid; place-content: center">
+        <h4 style="margin: 0; text-align: center">Boiling Point</h4>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
+</div>

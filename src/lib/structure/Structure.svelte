@@ -452,22 +452,6 @@
     on_camera_reset?.({ structure, camera_has_moved, camera_position: [0, 0, 0] })
   }
 
-  function handle_double_click(event: MouseEvent) {
-    // Ignore double-clicks on buttons and interactive elements
-    const target = event.target as HTMLElement
-    if (
-      target.tagName === `BUTTON` ||
-      target.tagName === `INPUT` ||
-      target.tagName === `SELECT` ||
-      target.tagName === `TEXTAREA` ||
-      target.closest(`button, input, select, textarea, a, label`)
-    ) {
-      return
-    }
-    // Reset camera view on double-click
-    reset_camera()
-  }
-
   const emit_file_load_event = (
     structure: AnyStructure,
     filename: string,
@@ -604,7 +588,12 @@
   bind:clientHeight={height}
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
-  ondblclick={handle_double_click}
+  ondblclick={() => {
+    const target = event.target as HTMLElement
+    // Only reset camera if double-click was on the canvas (not in UI overlays)
+    if (!target.closest(`canvas`)) return
+    reset_camera() // Reset camera view on double-click
+  }}
   ondrop={handle_file_drop}
   ondragover={(event) => {
     event.preventDefault()

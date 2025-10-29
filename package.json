@@ -100,8 +100,8 @@
       "default": "./dist/bands/index.js"
     },
     "./composition": {
-      "types": "./dist/composition.d.ts",
-      "default": "./dist/composition.js"
+      "types": "./dist/composition/index.d.ts",
+      "default": "./dist/composition/index.js"
     },
     "./colors": {
       "types": "./dist/colors/index.d.ts",

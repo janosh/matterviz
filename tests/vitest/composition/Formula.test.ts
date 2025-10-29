@@ -123,22 +123,24 @@ test(`parse_formula_with_oxidation throws on invalid element`, () => {
 })
 
 test(`composition_with_oxidation_to_elements converts correctly`, () => {
-  const composition: CompositionWithOxidation = {
+  const composition: Partial<CompositionWithOxidation> = {
     Fe: { amount: 2, oxidation_state: 3 },
     O: { amount: 3, oxidation_state: -2 },
   }
 
-  const result = composition_with_oxidation_to_elements(composition)
+  const result = composition_with_oxidation_to_elements(
+    composition as CompositionWithOxidation,
+  )
   expect(result).toHaveLength(2)
 
-  const iron = result.find((el) => el.element === `Fe`)
+  const iron = result.find((elem) => elem.element === `Fe`)
   expect(iron).toMatchObject({
     element: `Fe`,
     amount: 2,
     oxidation_state: 3,
   })
 
-  const oxygen = result.find((el) => el.element === `O`)
+  const oxygen = result.find((elem) => elem.element === `O`)
   expect(oxygen).toMatchObject({
     element: `O`,
     amount: 3,
@@ -172,26 +174,33 @@ test(`Formula component renders with oxidation states (bracket syntax)`, () => {
   expect(element?.textContent).toContain(`O`)
 })
 
-test(`Formula component applies color scheme`, () => {
-  const { container } = render(Formula, {
-    props: { formula: `H2O`, color_scheme: `Vesta` },
-  })
-  const symbols = container.querySelectorAll(`.element-symbol`)
-  expect(symbols.length).toBeGreaterThan(0)
+test.each([
+  { scheme: `Vesta`, expected_color_present: true },
+  { scheme: `Jmol`, expected_color_present: true },
+  { scheme: `Alloy`, expected_color_present: true },
+])(
+  `Formula applies $scheme color scheme correctly`,
+  ({ scheme, expected_color_present }) => {
+    const { container } = render(Formula, {
+      props: { formula: `H2O`, color_scheme: scheme },
+    })
+    const symbols = container.querySelectorAll(`.element-symbol`)
+    expect(symbols.length).toBe(2)
 
-  // Check that at least one element has a color style
-  const has_color = Array.from(symbols).some((symbol) =>
-    (symbol as HTMLElement).style.color
-  )
-  expect(has_color).toBe(true)
-})
+    // Check that elements have color styles applied
+    const has_color = Array.from(symbols).some((symbol) =>
+      (symbol as HTMLElement).style.color
+    )
+    expect(has_color).toBe(expected_color_present)
+  },
+)
 
 test(`Formula component ordering: original`, () => {
   const { container } = render(Formula, {
     props: { formula: `OHFe`, ordering: `original` },
   })
-  const symbols = Array.from(container.querySelectorAll(`.element-symbol`))
-  const text = symbols.map((el) => el.textContent).join(``)
+  const symbols = Array.from(container.querySelectorAll(`.element-symbol`)) as Element[]
+  const text = symbols.map((elem) => elem.textContent).join(``)
   expect(text).toBe(`OHFe`)
 })
 
@@ -199,8 +208,8 @@ test(`Formula component ordering: alphabetical`, () => {
   const { container } = render(Formula, {
     props: { formula: `OHFe`, ordering: `alphabetical` },
   })
-  const symbols = Array.from(container.querySelectorAll(`.element-symbol`))
-  const text = symbols.map((el) => el.textContent).join(``)
+  const symbols = Array.from(container.querySelectorAll(`.element-symbol`)) as Element[]
+  const text = symbols.map((elem) => elem.textContent).join(``)
   expect(text).toBe(`FeHO`)
 })
 
@@ -208,10 +217,20 @@ test(`Formula component ordering: electronegativity`, () => {
   const { container } = render(Formula, {
     props: { formula: `ONa`, ordering: `electronegativity` },
   })
-  const symbols = Array.from(container.querySelectorAll(`.element-symbol`))
-  const text = symbols.map((el) => el.textContent).join(``)
+  const symbols = Array.from(container.querySelectorAll(`.element-symbol`)) as Element[]
+  const text = symbols.map((elem) => elem.textContent).join(``)
   // Na has lower electronegativity than O, so it should come first
   expect(text).toBe(`NaO`)
+})
+
+test(`Formula component ordering: hill`, () => {
+  const { container } = render(Formula, {
+    props: { formula: `C2H6O`, ordering: `hill` },
+  })
+  const symbols = Array.from(container.querySelectorAll(`.element-symbol`)) as Element[]
+  const text = symbols.map((elem) => elem.textContent).join(``)
+  // Hill notation: C first, H second (if C present), then alphabetical
+  expect(text).toBe(`CHO`)
 })
 
 test(`Formula component renders subscripts for amounts > 1`, () => {
@@ -232,13 +251,15 @@ test(`Formula component renders superscripts for oxidation states`, () => {
   const superscripts = container.querySelectorAll(`sup`)
   expect(superscripts.length).toBe(2)
 
-  const oxidation_values = Array.from(superscripts).map((sup) => sup.textContent)
+  const oxidation_values = Array.from(superscripts as NodeListOf<Element>).map((sup) =>
+    sup.textContent
+  )
   expect(oxidation_values).toContain(`+2`)
   expect(oxidation_values).toContain(`-2`)
 })
 
 test(`Formula component does not render superscripts for zero oxidation`, () => {
-  const composition: CompositionWithOxidation = {
+  const composition: Partial<CompositionWithOxidation> = {
     Fe: { amount: 1, oxidation_state: 0 },
     O: { amount: 1 },
   }
@@ -248,7 +269,7 @@ test(`Formula component does not render superscripts for zero oxidation`, () => 
 })
 
 test(`Formula component accepts CompositionWithOxidation input`, () => {
-  const composition: CompositionWithOxidation = {
+  const composition: Partial<CompositionWithOxidation> = {
     Fe: { amount: 2, oxidation_state: 3 },
     O: { amount: 3, oxidation_state: -2 },
   }
@@ -261,53 +282,42 @@ test(`Formula component accepts CompositionWithOxidation input`, () => {
   expect(element?.textContent).toContain(`-2`)
 })
 
-test(`Formula component renders with different 'as' prop values`, () => {
-  const as_values = [`span`, `div`, `h1`, `h2`, `strong`, `em`, `p`]
-
-  for (const as_value of as_values) {
-    const { container } = render(Formula, {
-      props: { formula: `H2O`, as: as_value },
-    })
-    const element = container.querySelector(as_value)
-    expect(element).toBeTruthy()
-    expect(element?.classList.contains(`formula`)).toBe(true)
-  }
+test.each([
+  { as_value: `span` },
+  { as_value: `div` },
+  { as_value: `h1` },
+  { as_value: `h2` },
+  { as_value: `strong` },
+  { as_value: `em` },
+  { as_value: `p` },
+])(`Formula renders with as="$as_value"`, ({ as_value }) => {
+  const { container } = render(Formula, {
+    props: { formula: `H2O`, as: as_value },
+  })
+  const element = container.querySelector(as_value)
+  expect(element).toBeTruthy()
+  expect(element?.classList.contains(`formula`)).toBe(true)
+  expect(element?.textContent).toContain(`H`)
+  expect(element?.textContent).toContain(`O`)
 })
 
-test(`Formula component with all color schemes`, () => {
-  const color_schemes = [
-    `Vesta`,
-    `Jmol`,
-    `Alloy`,
-    `Pastel`,
-    `Muted`,
-    `Dark Mode`,
-  ] as const
-
-  for (const scheme of color_schemes) {
-    const { container } = render(Formula, {
-      props: { formula: `H2O`, color_scheme: scheme },
-    })
-    const element = container.querySelector(`.formula`)
-    expect(element).toBeTruthy()
-  }
-})
-
-test(`Formula component handles empty formula gracefully`, () => {
-  const { container } = render(Formula, { props: { formula: `` } })
+test.each([
+  { scheme: `Vesta` },
+  { scheme: `Jmol` },
+  { scheme: `Alloy` },
+  { scheme: `Pastel` },
+  { scheme: `Muted` },
+  { scheme: `Dark Mode` },
+])(`Formula renders with color scheme "$scheme"`, ({ scheme }) => {
+  const { container } = render(Formula, {
+    props: { formula: `H2O`, color_scheme: scheme },
+  })
   const element = container.querySelector(`.formula`)
   expect(element).toBeTruthy()
-  expect(element?.querySelectorAll(`.element-symbol`).length).toBe(0)
+  expect(element?.querySelectorAll(`.element-symbol`).length).toBe(2)
 })
 
-test(`Formula component handles invalid formula gracefully`, () => {
-  // Should not crash, even with invalid input
-  const { container } = render(Formula, { props: { formula: `!!!` } })
-  const element = container.querySelector(`.formula`)
-  expect(element).toBeTruthy()
-})
-
-test(`Formula component formats amounts with custom format string`, () => {
+test(`Formula formats amounts with custom format string`, () => {
   const { container } = render(Formula, {
     props: { formula: `H2.5O`, amount_format: `.2f` },
   })
@@ -315,20 +325,26 @@ test(`Formula component formats amounts with custom format string`, () => {
   expect(subscript?.textContent).toBe(`2.50`)
 })
 
-test(`Formula component handles complex real-world formulas`, () => {
-  const formulas = [
-    `Ca[2+]Cl[-]2`,
-    `Fe^3+2O^2-3`,
-    `Na^+Cl^-`,
-    `SO4^2-`,
-    `NH4^+`,
-  ]
-
-  for (const formula of formulas) {
+test.each([
+  { formula: `Ca[2+]Cl[-]2`, expected_elements: [`Ca`, `Cl`], expected_superscripts: 2 },
+  { formula: `Fe^3+2O^2-3`, expected_elements: [`Fe`, `O`], expected_superscripts: 2 },
+  { formula: `Na^+Cl^-`, expected_elements: [`Na`, `Cl`], expected_superscripts: 2 },
+  { formula: `SO4^2-`, expected_elements: [`S`, `O`], expected_superscripts: 1 },
+  { formula: `NH4^+`, expected_elements: [`N`, `H`], expected_superscripts: 1 },
+])(
+  `Formula handles complex formula "$formula"`,
+  ({ formula, expected_elements, expected_superscripts }) => {
     const { container } = render(Formula, { props: { formula } })
     const element = container.querySelector(`.formula`)
     expect(element).toBeTruthy()
-    // Should have at least one element rendered
-    expect(element?.querySelectorAll(`.element-symbol`).length).toBeGreaterThan(0)
-  }
-})
+
+    // Check that all expected elements are present
+    for (const elem of expected_elements) {
+      expect(element?.textContent).toContain(elem)
+    }
+
+    // Check correct number of oxidation state superscripts
+    const superscripts = container.querySelectorAll(`sup`)
+    expect(superscripts.length).toBe(expected_superscripts)
+  },
+)

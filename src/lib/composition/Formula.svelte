@@ -34,7 +34,7 @@
     amount_format?: string
     tooltip_side?: TooltipSide
     tooltip_offset?: number
-    on_click?: (element: ElementSymbol, event: MouseEvent) => void
+    on_click?: (element: ElementSymbol, event: MouseEvent | KeyboardEvent) => void
   } = $props()
 
   const parsed_elements = $derived.by((): ElementWithOxidation[] => {
@@ -107,7 +107,7 @@
       onkeydown={(event) => {
         if (event.key === `Enter` || event.key === ` `) {
           event.preventDefault()
-          on_click?.(element, event as unknown as MouseEvent)
+          on_click?.(element, event)
         }
       }}
     >
@@ -160,16 +160,16 @@
 <style>
   .formula {
     display: inline;
+    font-size: var(--formula-font-size);
   }
   .element-group {
     display: inline-block;
     white-space: nowrap;
-    padding: 0.2em;
-    margin: -0.2em 0.1em -0.2em -0.2em;
-    cursor: pointer;
+    padding: var(--formula-padding, 0.1em);
+    margin: var(--formula-margin, -0.1em 0.1em -0.1em -0.1em);
   }
   .element-symbol {
-    font-weight: 500;
+    font-weight: var(--formula-font-weight, 500);
     transition: transform 0.2s;
   }
   .element-symbol.dark-border {
@@ -190,40 +190,40 @@
     position: fixed;
     display: flex;
     align-items: center;
-    gap: 5pt;
-    padding: 3pt 4pt;
-    background: var(--tooltip-bg, rgba(0, 0, 0, 0.9));
-    border-radius: 3pt;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    gap: var(--formula-tooltip-gap, 5pt);
+    padding: var(--formula-tooltip-padding, 3pt 4pt);
+    background: var(--formula-tooltip-bg, rgba(0, 0, 0, 0.9));
+    border-radius: var(--formula-tooltip-border-radius, 3pt);
+    box-shadow: var(--formula-tooltip-box-shadow, 0 4px 12px rgba(0, 0, 0, 0.3));
     z-index: var(--tooltip-z-index, 2);
   }
   .element-name {
-    color: var(--tooltip-text);
+    color: var(--formula-tooltip-text-color);
     white-space: nowrap;
   }
   .script-wrapper {
     display: inline-flex;
     flex-direction: column;
     align-items: flex-start;
-    margin-left: -0.15em;
-    line-height: 0.6;
+    margin-left: var(--formula-script-margin-left, -0.15em);
+    line-height: var(--formula-script-line-height, 0.6);
   }
   .script-wrapper:empty {
     display: none;
   }
   .amt, .oxi {
-    font-size: 0.7em;
-    line-height: 1;
+    font-size: var(--formula-script-font-size, 0.7em);
+    line-height: var(--formula-script-inner-line-height, 1);
   }
   .amt {
     order: 2;
-    transform: translateY(-0.15em);
+    transform: translateY(var(--formula-subscript-offset, -0.15em));
   }
   .amt.no-sup {
-    transform: translateY(0.3em);
+    transform: translateY(var(--formula-subscript-offset-no-sup, 0.3em));
   }
   .oxi {
     order: 1;
-    transform: translateY(-0.65em);
+    transform: translateY(var(--formula-superscript-offset, -0.65em));
   }
 </style>

@@ -270,18 +270,22 @@ export const sort_by_electronegativity = (symbols: ElementSymbol[]) =>
 
 // Sort element symbols according to Hill notation (C first, H second, then alphabetical).
 // This is the standard notation for organic compounds in chemistry.
-export const sort_by_hill_notation = (symbols: ElementSymbol[]): ElementSymbol[] =>
-  symbols.sort((el_a, el_b) => {
+export const sort_by_hill_notation = (symbols: ElementSymbol[]): ElementSymbol[] => {
+  const has_carbon = symbols.includes(`C`)
+  return symbols.sort((el_a, el_b) => {
+    // Equal elements must return 0 (sort invariant)
+    if (el_a === el_b) return 0
     // Carbon always comes first
     if (el_a === `C`) return -1
     if (el_b === `C`) return 1
     // If carbon present, hydrogen comes second
-    if (symbols.includes(`C`)) {
+    if (has_carbon) {
       if (el_a === `H`) return -1
       if (el_b === `H`) return 1
     }
     return el_a.localeCompare(el_b) // All other elements alphabetically
   })
+}
 
 // Create electronegativity-sorted formula
 export const get_electro_neg_formula = (
