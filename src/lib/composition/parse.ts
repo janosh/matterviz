@@ -351,14 +351,19 @@ export const parse_formula_with_oxidation = (
     const oxidation_str = oxidation_caret || oxidation_bracket
 
     if (oxidation_str) {
-      // Handle formats like "2+", "+2", "2-", "-2"
-      const ox_match = oxidation_str.match(/([+-]?)(\d+)([+-]?)/)
-      if (ox_match) {
-        const sign_before = ox_match[1]
-        const number = parseInt(ox_match[2], 10)
-        const sign_after = ox_match[3]
-        const sign = sign_before || sign_after || `+`
-        oxidation_state = sign === `-` ? -number : number
+      // Handle bare signs first: "+", "-", "[+]", "[-]" should be treated as ±1
+      if (oxidation_str === `+` || oxidation_str === `-`) {
+        oxidation_state = oxidation_str === `+` ? 1 : -1
+      } else {
+        // Handle formats like "2+", "+2", "2-", "-2"
+        const ox_match = oxidation_str.match(/([+-]?)(\d+)([+-]?)/)
+        if (ox_match) {
+          const sign_before = ox_match[1]
+          const number = parseInt(ox_match[2], 10)
+          const sign_after = ox_match[3]
+          const sign = sign_before || sign_after || `+`
+          oxidation_state = sign === `-` ? -number : number
+        }
       }
     }
 
