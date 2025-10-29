@@ -223,16 +223,20 @@
     current_values={{
       camera_projection: scene_props.camera_projection,
       auto_rotate: scene_props.auto_rotate,
+      rotate_speed: scene_props.rotate_speed,
       zoom_speed: scene_props.zoom_speed,
       pan_speed: scene_props.pan_speed,
+      zoom_to_cursor: scene_props.zoom_to_cursor,
       rotation_damping: scene_props.rotation_damping,
       rotation: scene_props.rotation,
     }}
     on_reset={() => {
       scene_props.camera_projection = DEFAULTS.structure.camera_projection
       scene_props.auto_rotate = DEFAULTS.structure.auto_rotate
+      scene_props.rotate_speed = DEFAULTS.structure.rotate_speed
       scene_props.zoom_speed = DEFAULTS.structure.zoom_speed
       scene_props.pan_speed = DEFAULTS.structure.pan_speed
+      scene_props.zoom_to_cursor = DEFAULTS.structure.zoom_to_cursor
       scene_props.rotation_damping = DEFAULTS.structure.rotation_damping
       scene_props.rotation = [...DEFAULTS.structure.rotation]
     }}
@@ -276,6 +280,25 @@
       />
     </label>
     <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.rotate_speed.description })}
+    >
+      Rotate speed
+      <input
+        type="number"
+        min={0}
+        max={2}
+        step={0.05}
+        bind:value={scene_props.rotate_speed}
+      />
+      <input
+        type="range"
+        min={0}
+        max={2}
+        step={0.05}
+        bind:value={scene_props.rotate_speed}
+      />
+    </label>
+    <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_speed.description })}
     >
       Zoom speed
@@ -312,6 +335,12 @@
         step={0.01}
         bind:value={scene_props.pan_speed}
       />
+    </label>
+    <label
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_to_cursor.description })}
+    >
+      <input type="checkbox" bind:checked={scene_props.zoom_to_cursor} />
+      <span>Zoom to cursor</span>
     </label>
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.rotation_damping.description })}

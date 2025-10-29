@@ -55,7 +55,7 @@
     wrapper = $bindable(undefined),
     width = $bindable(0),
     height = $bindable(0),
-    reset_text = `Reset camera`,
+    reset_text = `Reset camera (or double-click)`,
     color_scheme = $bindable(`Vesta`),
     hovered = $bindable(false),
     dragover = $bindable(false),
@@ -394,6 +394,9 @@
   let camera_is_moving = $state(false)
   let scene = $state(undefined)
   let camera = $state(undefined)
+  let orbit_controls = $state(undefined)
+  let rotation_target_ref = $state<[number, number, number] | undefined>(undefined)
+  let initial_computed_zoom = $state<number | undefined>(undefined)
   let camera_move_timeout: ReturnType<typeof setTimeout> | null = $state(null)
 
   // Custom toggle handlers for mutual exclusion
@@ -425,7 +428,44 @@
     // Reset camera position to trigger automatic positioning
     scene_props.camera_position = [0, 0, 0]
     camera_has_moved = false
+
+    // Manually reset zoom and pan using the exposed initial values
+    if (orbit_controls && camera) {
+      // Reset the target to the structure center (pan reset)
+      if (orbit_controls.target && rotation_target_ref) {
+        const [x, y, z] = rotation_target_ref
+        orbit_controls.target.set(x, y, z)
+      }
+
+      // Reset zoom for orthographic camera
+      if (`zoom` in camera && initial_computed_zoom !== undefined) {
+        camera.zoom = initial_computed_zoom
+        camera.updateProjectionMatrix()
+      }
+
+      // Call update to apply changes immediately
+      if (typeof orbit_controls.update === `function`) {
+        orbit_controls.update()
+      }
+    }
+
     on_camera_reset?.({ structure, camera_has_moved, camera_position: [0, 0, 0] })
+  }
+
+  function handle_double_click(event: MouseEvent) {
+    // Ignore double-clicks on buttons and interactive elements
+    const target = event.target as HTMLElement
+    if (
+      target.tagName === `BUTTON` ||
+      target.tagName === `INPUT` ||
+      target.tagName === `SELECT` ||
+      target.tagName === `TEXTAREA` ||
+      target.closest(`button, input, select, textarea, a, label`)
+    ) {
+      return
+    }
+    // Reset camera view on double-click
+    reset_camera()
   }
 
   const emit_file_load_event = (
@@ -564,6 +604,7 @@
   bind:clientHeight={height}
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
+  ondblclick={handle_double_click}
   ondrop={handle_file_drop}
   ondragover={(event) => {
     event.preventDefault()
@@ -731,6 +772,9 @@
             bind:measured_sites
             bind:scene
             bind:camera
+            bind:orbit_controls
+            bind:rotation_target_ref
+            bind:initial_computed_zoom
             bind:hidden_elements
             {measure_mode}
             {width}
