@@ -50,21 +50,25 @@
 
   const sorted_elements = $derived.by((): ElementWithOxidation[] => {
     const elements = [...parsed_elements]
-    if (ordering === `alphabetical`) {
-      return elements.sort((el_a, el_b) => el_a.element.localeCompare(el_b.element))
+
+    // Define sort comparators
+    const comparators: Record<
+      FormulaOrdering,
+      (a: ElementWithOxidation, b: ElementWithOxidation) => number
+    > = {
+      alphabetical: (el_a, el_b) => el_a.element.localeCompare(el_b.element),
+      original: (el_a, el_b) => el_a.original_index - el_b.original_index,
+      electronegativity: (el_a, el_b) => {
+        const sorted_symbols = sort_by_electronegativity([el_a.element, el_b.element])
+        return sorted_symbols[0] === el_a.element ? -1 : 1
+      },
+      hill: (el_a, el_b) => {
+        const sorted_symbols = sort_by_hill_notation([el_a.element, el_b.element])
+        return sorted_symbols[0] === el_a.element ? -1 : 1
+      },
     }
-    if (ordering === `electronegativity`) {
-      const sorted = sort_by_electronegativity(elements.map((el) => el.element))
-      return sorted.map((sym: ElementSymbol) =>
-        elements.find((el) => el.element === sym)!
-      )
-    }
-    if (ordering === `hill`) {
-      return sort_by_hill_notation(elements.map((el) => el.element)).map((
-        sym: ElementSymbol,
-      ) => elements.find((el) => el.element === sym)!)
-    }
-    return elements.sort((el_a, el_b) => el_a.original_index - el_b.original_index)
+
+    return elements.sort(comparators[ordering])
   })
 
   let hovered_element = $state<ElementSymbol | null>(null)
@@ -92,11 +96,9 @@
 
 <svelte:element this={as} {...rest} class="formula {rest.class ?? ``}">
   {#each sorted_elements as { element, amount, oxidation_state } (element)}
-    {@const has_both = amount !== 1 && oxidation_state !== undefined &&
-      oxidation_state !== 0}
-    {@const has_oxi = oxidation_state !== undefined && oxidation_state !== 0}
     {@const color = element_color_schemes[color_scheme]?.[element] ?? `#666666`}
     {@const lum = luminance(color)}
+    {@const has_oxidation = oxidation_state !== undefined && oxidation_state !== 0}
     <span
       class="element-group"
       role="button"
@@ -118,13 +120,11 @@
         style:color
       >
         {element}</span>
-      <span class="script-wrapper">{#if has_oxi}
-          <sup class="oxi" class:with-sub={has_both}>{
-            format_oxi_state(oxidation_state)
-          }</sup>
+      <span class="script-wrapper">{#if has_oxidation}
+          <sup class="oxi">{format_oxi_state(oxidation_state)}</sup>
         {/if}
         {#if amount !== 1}
-          <sub class="amt" class:no-sup={!has_oxi}>{
+          <sub class="amt" class:no-sup={!has_oxidation}>{
             format_num(amount, amount_format)
           }</sub>
         {/if}
@@ -196,10 +196,6 @@
     border-radius: var(--formula-tooltip-border-radius, 3pt);
     box-shadow: var(--formula-tooltip-box-shadow, 0 4px 12px rgba(0, 0, 0, 0.3));
     z-index: var(--tooltip-z-index, 2);
-  }
-  .element-name {
-    color: var(--formula-tooltip-text-color);
-    white-space: nowrap;
   }
   .script-wrapper {
     display: inline-flex;

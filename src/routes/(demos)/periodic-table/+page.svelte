@@ -209,7 +209,7 @@
     (title)
   }
     <PeriodicTable
-      tile_props={{ show_name: false }}
+      tile_props={{ show_name: false, show_number: false }}
       heatmap_values={element_data.map((el) => el[property] || 0)}
       {color_scale}
       show_color_bar={false}

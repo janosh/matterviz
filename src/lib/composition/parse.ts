@@ -316,6 +316,21 @@ export type CompositionWithOxidation = Record<
   { amount: number; oxidation_state?: number }
 >
 
+// Parse oxidation state string (e.g. "+2", "2+", "-", "[2-]") to number.
+const parse_oxidation_state = (oxidation_str: string): number => {
+  // Handle bare signs: "+", "-" are treated as ±1
+  if (oxidation_str === `+` || oxidation_str === `-`) {
+    return oxidation_str === `+` ? 1 : -1
+  }
+  // Handle formats like "2+", "+2", "2-", "-2"
+  const ox_match = oxidation_str.match(/([+-]?)(\d+)([+-]?)/)
+  if (!ox_match) return 0
+
+  const [, sign_before, number, sign_after] = ox_match
+  const sign = sign_before || sign_after || `+`
+  return sign === `-` ? -parseInt(number, 10) : parseInt(number, 10)
+}
+
 // Parse chemical formula string with oxidation states into structured data.
 // Supports both ^2+ and [2+] syntax for oxidation states.
 // Examples: "Fe^2+O3", "Fe[2+]O3", "Ca^2+Cl^-2"
@@ -338,34 +353,16 @@ export const parse_formula_with_oxidation = (
 
   while ((match = regex.exec(cleaned_formula)) !== null) {
     const element = match[1] as ElementSymbol
-    const oxidation_caret = match[2] // ^2+ syntax
-    const oxidation_bracket = match[3] // [2+] syntax
+    const oxidation_str = match[2] || match[3] // Either ^2+ or [2+] syntax
     const count = match[4] ? parseInt(match[4], 10) : 1
 
     if (!elem_symbols.includes(element)) {
       throw new Error(`Invalid element symbol: ${element}`)
     }
 
-    // Parse oxidation state from either syntax
-    let oxidation_state: number | undefined
-    const oxidation_str = oxidation_caret || oxidation_bracket
-
-    if (oxidation_str) {
-      // Handle bare signs first: "+", "-", "[+]", "[-]" should be treated as ±1
-      if (oxidation_str === `+` || oxidation_str === `-`) {
-        oxidation_state = oxidation_str === `+` ? 1 : -1
-      } else {
-        // Handle formats like "2+", "+2", "2-", "-2"
-        const ox_match = oxidation_str.match(/([+-]?)(\d+)([+-]?)/)
-        if (ox_match) {
-          const sign_before = ox_match[1]
-          const number = parseInt(ox_match[2], 10)
-          const sign_after = ox_match[3]
-          const sign = sign_before || sign_after || `+`
-          oxidation_state = sign === `-` ? -number : number
-        }
-      }
-    }
+    const oxidation_state = oxidation_str
+      ? parse_oxidation_state(oxidation_str)
+      : undefined
 
     // Find or add element entry
     const existing = elements.find((el) => el.element === element)
