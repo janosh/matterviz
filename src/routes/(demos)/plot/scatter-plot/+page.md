@@ -958,6 +958,7 @@ This example combines multiple features including different display modes, custo
     }
     return output
   })
+  let display = $state({ x_grid: grid.x })
 </script>
 
 <div>
@@ -1046,7 +1047,7 @@ This example combines multiple features including different display modes, custo
     series={random_series.map((s) => ({ ...s, markers: 'points' }))}
     x_axis={{ label: axis_labels.x, range: [-15, 15], ticks: ticks.x }}
     y_axis={{ label: axis_labels.y, range: [-15, 15], ticks: ticks.y }}
-    display={{ x_grid: grid.x }}
+    bind:display
     style="height: 400px; position: relative;"
     legend={{
       wrapper_style: `

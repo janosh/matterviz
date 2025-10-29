@@ -162,6 +162,7 @@
   class="element-tile {category}"
   class:active
   class:last-active={selected.last_element === element}
+  class:clickable={Boolean(onclick)}
   style:background-color={Array.isArray(value) && bg_colors?.length > 1 ? `transparent` : fallback_bg_color}
   style:color={text_color}
   {@attach text_color ? null : contrast_color()}
@@ -247,6 +248,9 @@
   }
   .element-tile.active, .element-tile:hover {
     border: var(--elem-tile-hover-border-width, 1px) solid;
+  }
+  .element-tile.clickable {
+    cursor: pointer;
   }
   .last-active {
     border: 1px dotted;
