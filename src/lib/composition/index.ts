@@ -3,6 +3,7 @@ import type { ElementSymbol } from '$lib'
 export { default as BarChart } from './BarChart.svelte'
 export { default as BubbleChart } from './BubbleChart.svelte'
 export { default as Composition } from './Composition.svelte'
+export { default as Formula } from './Formula.svelte'
 export * from './parse'
 export { default as PieChart } from './PieChart.svelte'
 

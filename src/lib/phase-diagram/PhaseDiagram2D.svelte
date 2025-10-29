@@ -416,6 +416,7 @@
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     };`,
   )
+  let display = $state({ x_grid: false, y_grid: false })
 </script>
 
 <svelte:document
@@ -498,7 +499,7 @@
   {#key reset_counter}
     <ScatterPlot
       series={scatter_series}
-      display={{ x_grid: false, y_grid: false }}
+      bind:display
       x_axis={{
         label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
         range: x_domain,

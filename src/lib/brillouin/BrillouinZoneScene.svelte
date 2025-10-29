@@ -23,8 +23,10 @@
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = DEFAULTS.structure.max_zoom,
     min_zoom = DEFAULTS.structure.min_zoom,
+    rotate_speed = DEFAULTS.structure.rotate_speed,
     zoom_speed = DEFAULTS.structure.zoom_speed,
     pan_speed = DEFAULTS.structure.pan_speed,
+    zoom_to_cursor = DEFAULTS.structure.zoom_to_cursor,
     fov = DEFAULTS.structure.fov,
     initial_zoom = DEFAULTS.structure.initial_zoom,
     ambient_light = DEFAULTS.structure.ambient_light,
@@ -51,8 +53,10 @@
     rotation_damping?: number
     max_zoom?: number
     min_zoom?: number
+    rotate_speed?: number
     zoom_speed?: number
     pan_speed?: number
+    zoom_to_cursor?: boolean
     fov?: number
     initial_zoom?: number
     ambient_light?: number
@@ -117,12 +121,15 @@
   const orbit_controls_props = $derived({
     position: [0, 0, 0],
     target: rotation_target,
+    enableRotate: rotate_speed > 0,
+    rotateSpeed: rotate_speed,
     enableZoom: zoom_speed > 0,
     zoomSpeed: is_ortho ? zoom_speed * 2 : zoom_speed,
+    zoomToCursor: zoom_to_cursor,
     enablePan: pan_speed > 0,
     panSpeed: pan_speed,
-    maxZoom: is_ortho ? max_zoom || 200 : max_zoom,
-    minZoom: is_ortho ? min_zoom || 0.1 : min_zoom,
+    maxZoom: max_zoom,
+    minZoom: min_zoom,
     autoRotate: Boolean(auto_rotate),
     autoRotateSpeed: auto_rotate,
     enableDamping: Boolean(rotation_damping),

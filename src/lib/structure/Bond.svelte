@@ -4,13 +4,13 @@
   import type { InstancedMesh } from 'three'
   import { Color, InstancedBufferAttribute, Matrix4, ShaderMaterial } from 'three'
 
-  let { group, saturation = 0.5, brightness = 0.6 }: {
+  let { group, saturation = 0.5, brightness = 0.7 }: {
     group: BondGroupWithGradients
     saturation?: number
     brightness?: number
   } = $props()
-  let mesh: InstancedMesh | undefined = $state()
 
+  let mesh: InstancedMesh | undefined = $state()
   // Reusable buffers to avoid reallocation on every update
   let colors_start = new Float32Array(0)
   let colors_end = new Float32Array(0)
@@ -24,12 +24,10 @@
     varying vec3 vNormal;
 
     void main() {
-      // Colors from Three.js Color class are in linear RGB, pass them through
       vColorStart = instanceColorStart;
       vColorEnd = instanceColorEnd;
       vYPosition = position.y;
-      mat3 normalMat = normalMatrix;
-      vNormal = normalize(normalMat * normal);
+      vNormal = normalize(normalMatrix * normal);
       gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
     }
   `
@@ -44,7 +42,6 @@
     varying float vYPosition;
     varying vec3 vNormal;
 
-    // Linear to sRGB conversion (gamma correction)
     vec3 linearTosRGB(vec3 linear) {
       return vec3(
         linear.r <= 0.0031308 ? linear.r * 12.92 : 1.055 * pow(linear.r, 1.0/2.4) - 0.055,
@@ -53,31 +50,33 @@
       );
     }
 
-    // Desaturate and darken colors for bonds
-    vec3 desaturateBondColor(vec3 color) {
-      // Convert to grayscale
-      float gray = dot(color, vec3(0.299, 0.587, 0.114));
-      // Mix with gray (controlled by saturation) and darken (controlled by brightness)
-      return mix(vec3(gray), color, saturation) * brightness;
-    }
-
     void main() {
-      // Mix colors first: bottom (-0.5) = start color, top (+0.5) = end color
-      vec3 baseColor = mix(vColorStart, vColorEnd, vYPosition + 0.5);
+      vec3 base_color = mix(vColorStart, vColorEnd, vYPosition + 0.5);
 
-      // Desaturate and darken bond colors
-      baseColor = desaturateBondColor(baseColor);
+      // Desaturate and darken for visual distinction from atoms
+      float gray = dot(base_color, vec3(0.299, 0.587, 0.114));
+      base_color = mix(vec3(gray), base_color, saturation) * brightness;
 
-      // Apply lighting to the mixed color
-      vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
-      float diffuse = max(dot(vNormal, lightDir), 0.0);
+      // Apply lighting
+      vec3 light_dir = normalize(vec3(1.0, 1.0, 1.0));
+      float diffuse = max(dot(vNormal, light_dir), 0.0);
+      vec3 final_color = base_color * (ambientIntensity + directionalIntensity * diffuse);
 
-      vec3 finalColor = baseColor * (ambientIntensity + directionalIntensity * diffuse);
-
-      // Convert to sRGB for display
-      gl_FragColor = vec4(linearTosRGB(finalColor), 1.0);
+      gl_FragColor = vec4(linearTosRGB(final_color), 1.0);
     }
   `
+
+  function set_color_buffer(
+    buffer: Float32Array,
+    idx: number,
+    color: string,
+    temp_color: Color,
+  ) {
+    temp_color.set(color).convertSRGBToLinear()
+    buffer[idx * 3] = temp_color.r
+    buffer[idx * 3 + 1] = temp_color.g
+    buffer[idx * 3 + 2] = temp_color.b
+  }
 
   $effect(() => {
     if (!mesh) return
@@ -86,36 +85,24 @@
     const matrix = new Matrix4()
     const temp_color = new Color()
 
-    // Reallocate color buffers if needed
+    // Reallocate buffers if instance count changed
     if (colors_start.length !== count * 3) {
       colors_start = new Float32Array(count * 3)
       colors_end = new Float32Array(count * 3)
     }
 
-    // Set matrices and colors in single loop
+    // Update instance matrices and colors
     for (let idx = 0; idx < count; idx++) {
       const instance = group.instances[idx]
-
-      // Set matrix
       matrix.fromArray(instance.matrix)
       mesh.setMatrixAt(idx, matrix)
-
-      // Set start color
-      temp_color.set(instance.color_start)
-      colors_start[idx * 3] = temp_color.r
-      colors_start[idx * 3 + 1] = temp_color.g
-      colors_start[idx * 3 + 2] = temp_color.b
-
-      // Set end color
-      temp_color.set(instance.color_end)
-      colors_end[idx * 3] = temp_color.r
-      colors_end[idx * 3 + 1] = temp_color.g
-      colors_end[idx * 3 + 2] = temp_color.b
+      set_color_buffer(colors_start, idx, instance.color_start, temp_color)
+      set_color_buffer(colors_end, idx, instance.color_end, temp_color)
     }
 
     mesh.instanceMatrix.needsUpdate = true
 
-    // Update or create color attributes
+    // Update geometry color attributes
     const { geometry } = mesh
     for (
       const [name, buffer] of [

@@ -298,6 +298,7 @@
     label_shift: { y: 15 },
     ...y_axis,
   })
+  let display = $state({ x_grid: false, y_grid: true, y_zero_line: true })
 </script>
 
 <ScatterPlot
@@ -310,7 +311,7 @@
     ...x_axis,
   }}
   y_axis={final_y_axis}
-  display={{ x_grid: false, y_grid: true, y_zero_line: true }}
+  bind:display
   legend={show_legend && Object.keys(band_structs_dict).length > 1 ? {} : null}
   hover_config={{ threshold_px: 50 }}
   {...rest}

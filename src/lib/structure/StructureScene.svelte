@@ -42,8 +42,10 @@
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = DEFAULTS.structure.max_zoom,
     min_zoom = DEFAULTS.structure.min_zoom,
+    rotate_speed = DEFAULTS.structure.rotate_speed,
     zoom_speed = DEFAULTS.structure.zoom_speed,
     pan_speed = DEFAULTS.structure.pan_speed,
+    zoom_to_cursor = DEFAULTS.structure.zoom_to_cursor,
     show_atoms = DEFAULTS.structure.show_atoms,
     show_bonds = DEFAULTS.structure.show_bonds,
     show_site_labels = DEFAULTS.structure.show_site_labels,
@@ -85,6 +87,9 @@
     rotation = DEFAULTS.structure.rotation,
     scene = $bindable(undefined),
     camera = $bindable(undefined),
+    orbit_controls = $bindable(undefined),
+    rotation_target_ref = $bindable<Vec3 | undefined>(undefined),
+    initial_computed_zoom = $bindable<number | undefined>(undefined),
     hidden_elements = $bindable(new Set()),
   }: {
     structure?: AnyStructure
@@ -97,8 +102,10 @@
     // zoom level of the camera
     max_zoom?: number
     min_zoom?: number
+    rotate_speed?: number // rotation speed. set to 0 to disable rotation.
     zoom_speed?: number // zoom speed. set to 0 to disable zooming.
     pan_speed?: number // pan speed. set to 0 to disable panning.
+    zoom_to_cursor?: boolean // zoom toward cursor position instead of scene center
     show_atoms?: boolean
     show_bonds?: ShowBonds
     show_site_labels?: boolean
@@ -142,6 +149,9 @@
     // Expose scene and camera for external use (e.g., export pane)
     scene?: Scene
     camera?: Camera
+    orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`] // OrbitControls instance
+    rotation_target_ref?: Vec3 // Expose rotation target for reset
+    initial_computed_zoom?: number // Expose initial zoom for reset
     hidden_elements?: Set<ElementSymbol>
   } = $props()
 
@@ -149,6 +159,20 @@
   $effect(() => {
     scene = threlte.scene
     camera = threlte.camera.current
+  })
+
+  // Expose rotation target for external reset
+  $effect(() => {
+    rotation_target_ref = rotation_target
+  })
+
+  // Track initial computed zoom for reset
+  let stored_initial_zoom = $state<number | undefined>(undefined)
+  $effect(() => {
+    if (stored_initial_zoom === undefined && computed_zoom > 0) {
+      stored_initial_zoom = computed_zoom
+    }
+    initial_computed_zoom = stored_initial_zoom
   })
 
   let bond_pairs: BondPair[] = $state([])
@@ -409,13 +433,16 @@
 
   let orbit_controls_props = $derived({
     position: [0, 0, 0],
+    enableRotate: rotate_speed > 0,
+    rotateSpeed: rotate_speed,
     enableZoom: zoom_speed > 0,
     zoomSpeed: camera_projection === `orthographic` ? zoom_speed * 2 : zoom_speed,
+    zoomToCursor: zoom_to_cursor,
     enablePan: pan_speed > 0,
     panSpeed: pan_speed,
     target: rotation_target,
-    maxZoom: camera_projection === `orthographic` ? (max_zoom || 200) : max_zoom,
-    minZoom: camera_projection === `orthographic` ? (min_zoom || 0.1) : min_zoom,
+    maxZoom: max_zoom,
+    minZoom: min_zoom,
     autoRotate: Boolean(auto_rotate),
     autoRotateSpeed: auto_rotate,
     enableDamping: Boolean(rotation_damping),
@@ -497,7 +524,7 @@
     near={camera_near}
     far={camera_far}
   >
-    <extras.OrbitControls {...orbit_controls_props}>
+    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
       {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
     </extras.OrbitControls>
   </T.PerspectiveCamera>
@@ -509,7 +536,7 @@
     near={-100}
     far={camera_far}
   >
-    <extras.OrbitControls {...orbit_controls_props}>
+    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
       {#if gizmo}<extras.Gizmo {...gizmo_props} />{/if}
     </extras.OrbitControls>
   </T.OrthographicCamera>
