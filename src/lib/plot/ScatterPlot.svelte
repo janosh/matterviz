@@ -1553,12 +1553,15 @@
                   : point.point_style?.fill ?? `cornflowerblue`}
                   {...point_events &&
                   Object.fromEntries(
-                    Object.entries(point_events).map((
-                      [event_name, handler],
-                    ) => [event_name, (event: Event) => handler({ point, event })]),
+                    Object.entries(point_events)
+                      .filter(([event_name]) => event_name !== `onclick`).map((
+                        [event_name, handler],
+                      ) => [event_name, (event: Event) => handler({ point, event })]),
                   )}
                   onclick={(event: MouseEvent) => {
-                    // Construct handler props synchronously to avoid stale derived reads
+                    // Call user-provided onclick handler first if it exists
+                    point_events?.onclick?.({ point, event })
+                    // then handle internal logic
                     const props = construct_handler_props(point)
                     tooltip_point = point
                     if (props) on_point_click?.({ ...props, event })

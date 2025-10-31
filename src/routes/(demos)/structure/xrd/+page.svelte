@@ -27,7 +27,7 @@
   }
 
   // On-the-fly computed patterns
-  const compute_ids = structures.map((struct) => struct.id ?? ``)
+  const compute_ids = structures.map(get_struct_id)
   let compute_id = $state<string>(compute_ids[0] || ``)
   const computed_struct = $derived<PymatgenStructure | null>(
     structures_by_id[compute_id] ?? null,
@@ -78,17 +78,17 @@
       }
     }
   })
-  let selected_patterns = $derived<{ label: string; pattern: XrdPattern }[]>(
-    selected_ids
-      .map((id) => structures_by_id[id]).filter(Boolean).map((struct) => {
-        const struct_id = get_struct_id(struct)
-        const pat = xrd_cache.get(struct_id)
-        return pat
-          ? { label: `${struct_id} ${formula_for(struct_id)}`, pattern: pat }
-          : null
-      })
-      .filter(Boolean) as { label: string; pattern: XrdPattern }[],
-  )
+  let selected_patterns = $derived.by(() => {
+    const out: { label: string; pattern: XrdPattern }[] = []
+    for (const id of selected_ids) {
+      const struct = structures_by_id[id]
+      if (!struct) continue
+      const sid = get_struct_id(struct)
+      const pat = xrd_cache.get(sid)
+      if (pat) out.push({ label: `${sid} ${formula_for(sid)}`, pattern: pat })
+    }
+    return out
+  })
 
   // Precomputed carousel removed; computing on the fly below
 
