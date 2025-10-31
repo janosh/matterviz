@@ -39,7 +39,6 @@
     can_compute_e_form = false,
     stable_entries,
     unstable_entries,
-    total_unstable_count,
     camera,
     merged_controls,
     controls_open = $bindable(false),
@@ -73,7 +72,6 @@
     // Data for visualization
     stable_entries: PlotEntry3D[]
     unstable_entries: PlotEntry3D[]
-    total_unstable_count: number
     // Camera state
     camera: CameraState
     // Legend configuration
@@ -206,7 +204,7 @@
               merged_controls.show_counts
               ? ` (${
                 unstable_entries.filter((e) => e.visible).length
-              }/${total_unstable_count})`
+              }/${unstable_entries.length})`
               : ``
             }</span>
         </div>
