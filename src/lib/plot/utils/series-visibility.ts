@@ -37,7 +37,7 @@ export function handle_legend_double_click(
   prev_visibility: boolean[] | null,
 ): { series: DataSeries[]; previous_visibility: boolean[] | null } {
   const label = series[idx]?.label
-  const current = series.map((s) => s?.visible ?? true)
+  const current = series.map((srs) => srs?.visible ?? true)
   const is_isolated = series.every((s, i) => {
     const in_group = label ? s.label === label : i === idx
     return in_group ? (s?.visible ?? true) : !(s?.visible ?? true)

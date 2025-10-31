@@ -616,7 +616,7 @@
   </label>
   {#key enable_auto_placement}
     <ScatterPlot
-      series={auto_placement_test_series.map((s) => ({ ...s, markers: `points` }))}
+      series={auto_placement_test_series.map((srs) => ({ ...srs, markers: `points` }))}
       x_axis={{ label: `X`, range: [0, 100] }}
       y_axis={{ label: `Y`, range: [0, 100] }}
       style="height: 450px; width: 100%"
@@ -652,7 +652,7 @@
   </div>
 
   <ScatterPlot
-    series={auto_placement_plot_series.map((s) => ({ ...s, markers: `points` }))}
+    series={auto_placement_plot_series.map((srs) => ({ ...srs, markers: `points` }))}
     x_axis={{ label: `X Position`, range: [0, 100] }}
     y_axis={{ label: `Y Position`, range: [0, 100] }}
     color_scale={{ scheme: `Turbo` }}
@@ -669,24 +669,24 @@
   <h2>Legend Rendering Tests</h2>
   <h3>Single Series (Default Legend) - No Legend Expected</h3>
   <ScatterPlot
-    series={legend_single_series.map((s) => ({ ...s, markers: `points` }))}
+    series={legend_single_series.map((srs) => ({ ...srs, markers: `points` }))}
     id="legend-single-default"
   />
   <h3>Single Series (legend=null) - No Legend Expected</h3>
   <ScatterPlot
-    series={legend_single_series.map((s) => ({ ...s, markers: `points` }))}
+    series={legend_single_series.map((srs) => ({ ...srs, markers: `points` }))}
     legend={null}
     id="legend-single-null"
   />
   <h3>Single Series (Configured Legend) - Legend Expected</h3>
   <ScatterPlot
-    series={legend_single_series.map((s) => ({ ...s, markers: `points` }))}
+    series={legend_single_series.map((srs) => ({ ...srs, markers: `points` }))}
     legend={{ layout: `horizontal` }}
     id="legend-single-config"
   />
   <h3>Multi Series (Default Legend) - Legend Expected</h3>
   <ScatterPlot
-    series={legend_multi_series.map((s) => ({ ...s, markers: `points` }))}
+    series={legend_multi_series.map((srs) => ({ ...srs, markers: `points` }))}
     legend={{ draggable: true }}
     id="legend-multi-default"
   />
@@ -939,7 +939,7 @@
   <h2>Point Event Test</h2>
   <p>Clicking a point should update the text below.</p>
   <ScatterPlot
-    series={point_event_data.map((s) => ({ ...s, markers: `points` }))}
+    series={point_event_data.map((srs) => ({ ...srs, markers: `points` }))}
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y` }}
     point_events={{

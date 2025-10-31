@@ -36,6 +36,10 @@
     ScatterPoint,
   } from '$lib/plot'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
+  import {
+    handle_legend_double_click,
+    toggle_series_visibility,
+  } from '$lib/plot/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
@@ -1034,22 +1038,6 @@
     )
   })
 
-  // Function to toggle series visibility
-  function toggle_series_visibility(series_idx: number) {
-    series = toggle_series_visibility(series, series_idx)
-  }
-
-  // Function to handle double-click on legend item
-  function handle_legend_double_click(double_clicked_idx: number) {
-    const result = handle_legend_double_click(
-      series,
-      double_clicked_idx,
-      previous_series_visibility,
-    )
-    series = result.series
-    previous_series_visibility = result.previous_visibility
-  }
-
   // Legend drag handlers
   function handle_legend_drag_start(event: MouseEvent) {
     if (!svg_element) return
@@ -1698,9 +1686,19 @@
         draggable={legend?.draggable ?? true}
         {...legend}
         on_toggle={(legend?.on_toggle as ((series_idx: number) => void) | undefined) ??
-        toggle_series_visibility}
+        ((series_idx: number) => {
+          series = toggle_series_visibility(series, series_idx)
+        })}
         on_double_click={(legend?.on_double_click as ((series_idx: number) => void) | undefined) ??
-        handle_legend_double_click}
+        ((double_clicked_idx: number) => {
+          const result = handle_legend_double_click(
+            series,
+            double_clicked_idx,
+            previous_series_visibility,
+          )
+          series = result.series
+          previous_series_visibility = result.previous_visibility
+        })}
         wrapper_style={`
           position: absolute;
           left: ${

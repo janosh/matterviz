@@ -45,7 +45,7 @@ describe(`toggle_series_visibility`, () => {
       { x: [5], y: [6], label: `A`, visible: true },
     ]
     const result = toggle_series_visibility(series, 0)
-    expect(result.map((s) => s.visible)).toEqual([false, true, false])
+    expect(result.map((srs) => srs.visible)).toEqual([false, true, false])
   })
 
   test(`hides incompatible units when making series visible`, () => {
@@ -54,7 +54,29 @@ describe(`toggle_series_visibility`, () => {
       { x: [3], y: [4], unit: `GPa`, visible: true },
     ]
     const result = toggle_series_visibility(series, 0)
-    expect(result.map((s) => s.visible)).toEqual([true, false])
+    expect(result.map((srs) => srs.visible)).toEqual([true, false])
+  })
+
+  test(`keeps compatible units visible when toggling series`, () => {
+    const series: DataSeries[] = [
+      { x: [1], y: [2], unit: `eV`, visible: false },
+      { x: [3], y: [4], unit: `eV`, visible: true },
+      { x: [5], y: [6], unit: `GPa`, visible: true },
+    ]
+    const result = toggle_series_visibility(series, 0)
+    expect(result.map((srs) => srs.visible)).toEqual([true, true, false])
+  })
+
+  test(`only affects series on same y-axis`, () => {
+    const series: DataSeries[] = [
+      { x: [1], y: [2], unit: `eV`, y_axis: `y1`, visible: false },
+      { x: [3], y: [4], unit: `eV`, y_axis: `y2`, visible: true },
+      { x: [5], y: [6], unit: `GPa`, y_axis: `y1`, visible: true },
+    ]
+    const result = toggle_series_visibility(series, 0)
+    // Series 0 (eV, y1) becomes visible, series 1 (eV, y2) stays visible (different axis),
+    // series 2 (GPa, y1) becomes hidden (same axis, incompatible unit)
+    expect(result.map((srs) => srs.visible)).toEqual([true, true, false])
   })
 })
 
@@ -66,7 +88,7 @@ describe(`handle_legend_double_click`, () => {
       { x: [5], y: [6], label: `C`, visible: true },
     ]
     const result = handle_legend_double_click(series, 1, null)
-    expect(result.series.map((s) => s.visible)).toEqual([false, true, false])
+    expect(result.series.map((srs) => srs.visible)).toEqual([false, true, false])
     expect(result.previous_visibility).toEqual([true, true, true])
   })
 
@@ -77,7 +99,7 @@ describe(`handle_legend_double_click`, () => {
       { x: [5], y: [6], label: `C`, visible: false },
     ]
     const result = handle_legend_double_click(series, 1, [true, true, true])
-    expect(result.series.map((s) => s.visible)).toEqual([true, true, true])
+    expect(result.series.map((srs) => srs.visible)).toEqual([true, true, true])
     expect(result.previous_visibility).toBe(null)
   })
 
@@ -94,7 +116,7 @@ describe(`handle_legend_double_click`, () => {
         { x: [7], y: [8], label: `D`, visible: new_vis },
       ]
       const result = handle_legend_double_click(series, 1, [true, true, true])
-      expect(result.series.map((s) => s.visible)).toEqual([true, true, true, new_vis])
+      expect(result.series.map((srs) => srs.visible)).toEqual([true, true, true, new_vis])
       expect(result.previous_visibility).toBe(null)
     },
   )
@@ -106,7 +128,7 @@ describe(`handle_legend_double_click`, () => {
       { x: [5], y: [6], label: `A`, visible: true },
     ]
     const result = handle_legend_double_click(series, 0, null)
-    expect(result.series.map((s) => s.visible)).toEqual([true, false, true])
+    expect(result.series.map((srs) => srs.visible)).toEqual([true, false, true])
   })
 
   test(`does not save previous visibility when only one series is visible`, () => {
@@ -124,6 +146,20 @@ describe(`handle_legend_double_click`, () => {
       { x: [5], y: [6], visible: true },
     ]
     const result = handle_legend_double_click(series, 1, null)
-    expect(result.series.map((s) => s.visible)).toEqual([false, true, false])
+    expect(result.series.map((srs) => srs.visible)).toEqual([false, true, false])
+  })
+
+  test.each([
+    { idx: -1, desc: `negative index` },
+    { idx: 10, desc: `out of bounds index` },
+  ])(`handles invalid index gracefully - $desc`, ({ idx }) => {
+    const series: DataSeries[] = [
+      { x: [1], y: [2], label: `A`, visible: true },
+      { x: [3], y: [4], label: `B`, visible: true },
+    ]
+    const result = handle_legend_double_click(series, idx, null)
+    // All series should remain visible (no isolation occurs)
+    expect(result.series.map((srs) => srs.visible)).toEqual([true, true])
+    expect(result.previous_visibility).toBe(null)
   })
 })
