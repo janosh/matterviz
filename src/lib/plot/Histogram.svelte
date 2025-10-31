@@ -527,9 +527,10 @@
           {#if tooltip}
             {@render tooltip(hover_info)}
           {:else}
+            {@const formatter = active_y_axis === `y2` ? y2_axis.format : y_axis.format}
             <div>Value: {format_value(value, x_axis.format || `.3~s`)}</div>
             <div>
-              Count: {format_value(count, y_axis.format || `.3~s`)}
+              Count: {format_value(count, formatter || `.3~s`)}
             </div>
             {#if mode === `overlay`}<div>{property}</div>{/if}
           {/if}

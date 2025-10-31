@@ -985,12 +985,14 @@
       closest_series &&
       min_screen_dist_sq <= hover_threshold_px_sq
     ) {
+      // Construct handler props synchronously to avoid stale derived reads
+      const props = construct_handler_props(closest_point_internal)
       tooltip_point = closest_point_internal
       // Construct object matching change signature
       const { x, y, metadata } = closest_point_internal
       change({ x, y, metadata, series: closest_series })
-      // Call hover handler - handler_props is derived from tooltip_point
-      if (evt && handler_props) on_point_hover?.({ ...handler_props, event: evt })
+      // Call hover handler with synchronously constructed props
+      if (evt && props) on_point_hover?.({ ...props, event: evt })
     } else {
       tooltip_point = null
       change(null)
@@ -1350,12 +1352,13 @@
     return [screen_x, screen_y]
   }
 
-  // Derive handler props from hovered point for both tooltip and event handlers
-  let handler_props = $derived.by((): ScatterHandlerProps | null => {
-    if (!tooltip_point) return null
-    const hovered_series = series_with_ids[tooltip_point.series_idx]
+  // Helper function to construct ScatterHandlerProps synchronously from InternalPoint
+  function construct_handler_props(
+    point: InternalPoint,
+  ): ScatterHandlerProps | null {
+    const hovered_series = series_with_ids[point.series_idx]
     if (!hovered_series) return null
-    const { x, y, color_value, metadata, series_idx } = tooltip_point
+    const { x, y, color_value, metadata, series_idx } = point
     const cx = x_axis.format?.startsWith(`%`)
       ? x_scale_fn(new Date(x))
       : x_scale_fn(x)
@@ -1379,6 +1382,12 @@
         tick_format: color_bar?.tick_format ?? null,
       },
     }
+  }
+
+  // Derive handler props from hovered point for both tooltip and event handlers
+  let handler_props = $derived.by((): ScatterHandlerProps | null => {
+    if (!tooltip_point) return null
+    return construct_handler_props(tooltip_point)
   })
 
   let using_controls = $derived(controls.show)
@@ -1796,8 +1805,10 @@
                     ) => [event_name, (event: Event) => handler({ point, event })]),
                   )}
                   onclick={(event: MouseEvent) => {
+                    // Construct handler props synchronously to avoid stale derived reads
+                    const props = construct_handler_props(point)
                     tooltip_point = point
-                    if (handler_props) on_point_click?.({ ...handler_props, event })
+                    if (props) on_point_click?.({ ...props, event })
                   }}
                 />
               {/each}
