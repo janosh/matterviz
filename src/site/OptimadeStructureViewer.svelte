@@ -16,13 +16,11 @@
   import { Structure } from '$lib/structure'
   import { optimade_to_pymatgen } from '$lib/structure/parse'
   import { tooltip } from 'svelte-multiselect'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  interface Props {
-    structure_id?: string
-    selected_provider?: string
-  }
-  let { structure_id: init_structure_id, selected_provider: init_provider }: Props =
-    $props()
+  let { structure_id: init_structure_id, selected_provider: init_provider, ...rest }:
+    & { structure_id?: string; selected_provider?: string }
+    & HTMLAttributes<HTMLDivElement> = $props()
 
   let structure = $state<PymatgenStructure | null>(null)
   let [loading_struct, loading_suggestions] = $state([false, false])
@@ -136,7 +134,7 @@
   </button>
 </div>
 
-<div class="main-layout full-bleed">
+<div class="main-layout full-bleed" {...rest}>
   <div class="db-column">
     <h3>
       Providers

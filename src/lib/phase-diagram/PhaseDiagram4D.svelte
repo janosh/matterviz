@@ -215,16 +215,10 @@
       entry.is_stable || entry.e_above_hull === 0
     ),
   )
-
   const unstable_entries = $derived(
     plot_entries.filter((entry: PlotEntry3D) =>
       (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
     ),
-  )
-
-  // Total counts based on hull-enriched entries
-  const total_unstable_count = $derived(
-    plot_entries.filter((e) => (e.e_above_hull ?? 0) > 0 && !e.is_stable).length,
   )
 
   // Canvas rendering
@@ -1073,7 +1067,6 @@
         {max_hull_dist_in_data}
         {stable_entries}
         {unstable_entries}
-        {total_unstable_count}
         {camera}
         {merged_controls}
         toggle_props={{ class: `legend-controls-btn` }}

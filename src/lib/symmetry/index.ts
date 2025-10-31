@@ -39,7 +39,7 @@ export function to_cell_json(structure: PymatgenStructure): string {
     m21,
     m22,
   ]
-  const positions = structure.sites.map((s) => s.abc)
+  const positions = structure.sites.map((site) => site.abc)
   const numbers = structure.sites.map((site, idx) => {
     const sym = site.species?.[0]?.element
     const num = sym !== null ? symbol_to_atomic_number[sym] : undefined

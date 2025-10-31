@@ -10,7 +10,7 @@
     x_axis = {},
     y_axis = {},
     y2_axis = {},
-    display = {},
+    display = $bindable({}),
     show_controls = $bindable(false),
     controls_open = $bindable(false),
     ...rest
@@ -32,7 +32,7 @@
   {x_axis}
   {y_axis}
   {y2_axis}
-  {display}
+  bind:display
   {...rest}
 >
   <SettingsSection

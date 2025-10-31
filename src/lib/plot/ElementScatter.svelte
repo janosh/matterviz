@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { AxisConfig, InternalPoint } from '$lib'
   import { element_data, format_num, ScatterPlot } from '$lib'
+  import type { AxisConfig, InternalPoint } from '$lib/plot'
   import { selected } from '$lib/state.svelte'
   import type { ComponentProps } from 'svelte'
 

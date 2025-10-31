@@ -345,7 +345,7 @@
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(
-    plot_series.some((s) => s.y_axis === `y2` && s.visible),
+    plot_series.some((srs) => srs.y_axis === `y2` && srs.visible),
   )
 
   // Step navigation functions

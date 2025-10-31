@@ -152,7 +152,7 @@ describe(`PlotControls`, () => {
     mount_controls({ show_ticks: false })
     expect(
       Array.from(document.querySelectorAll(`section`))
-        .find((s) => s.textContent?.includes(`Ticks`)),
+        .find((section) => section.textContent?.includes(`Ticks`)),
     ).toBeUndefined()
 
     mount_controls({ show_ticks: true })
@@ -177,7 +177,7 @@ describe(`PlotControls`, () => {
 
     const expected_sections = [`Display`, `Axis Range`, `Tick Format`]
     expected_sections.forEach((name) => {
-      const section = sections.find((s) => s.textContent?.includes(name))
+      const section = sections.find((section) => section.textContent?.includes(name))
       const reset = section?.querySelector<HTMLButtonElement>(`button`)
       expect(reset).not.toBeNull()
     })
