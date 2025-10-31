@@ -423,7 +423,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     zoom_to_cursor: {
       value: true,
-      description: `Zoom toward cursor position instead of scene center`,
+      description:
+        `Zoom toward cursor position instead of scene center (double click canvas to reset camera)`,
     },
     max_zoom: {
       value: 500,

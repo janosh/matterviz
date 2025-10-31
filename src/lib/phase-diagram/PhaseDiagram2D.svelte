@@ -89,8 +89,7 @@
   )
 
   // Process data and element set
-  const processed_entries = $derived(effective_entries)
-  const pd_data = $derived(thermo.process_pd_entries(processed_entries))
+  const pd_data = $derived(thermo.process_pd_entries(effective_entries))
 
   const elements = $derived.by(() => {
     if (pd_data.elements.length > 2) {
@@ -242,11 +241,6 @@
     ),
   )
 
-  // Total counts based on hull-enriched entries
-  const total_unstable_count = $derived(
-    plot_entries.filter((e) => (e.e_above_hull ?? 0) > 0 && !e.is_stable).length,
-  )
-
   const camera_default = {
     zoom: PD_DEFAULTS.binary.camera_zoom,
     center_x: PD_DEFAULTS.binary.camera_center_x,
@@ -259,10 +253,17 @@
   let drag_over = $state(false)
 
   // Structure popup state
-  let modal_open = $state(false)
-  let selected_structure = $state<AnyStructure | null>(null)
-  let selected_entry = $state<PlotEntry3D | null>(null)
-  let modal_place_right = $state(true)
+  let structure_popup = $state<{
+    open: boolean
+    structure: AnyStructure | null
+    entry: PlotEntry3D | null
+    place_right: boolean
+  }>({
+    open: false,
+    structure: null,
+    entry: null,
+    place_right: true,
+  })
 
   // Axis mapping helpers ------------------------------------------------------
   const x_domain = $derived<[number, number]>([0, 1])
@@ -334,23 +335,12 @@
   const scatter_series = $derived([scatter_points_series, ...hull_segments_series])
 
   const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(processed_entries),
+    helpers.calc_max_hull_dist_in_data(effective_entries),
   )
 
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
-    phase_stats = thermo.get_phase_diagram_stats(processed_entries, elements, 3)
-  })
-
-  $effect(() => {
-    const total_entries = processed_entries.length
-    if (total_entries > label_threshold) {
-      show_stable_labels = false
-      show_unstable_labels = false
-    } else {
-      show_stable_labels = true
-      show_unstable_labels = false
-    }
+    phase_stats = thermo.get_phase_diagram_stats(effective_entries, elements, 3)
   })
 
   function extract_structure_from_entry(entry: PlotEntry3D): AnyStructure | null {
@@ -397,9 +387,7 @@
   }
 
   function close_structure_popup() {
-    modal_open = false
-    selected_structure = null
-    selected_entry = null
+    structure_popup = { open: false, structure: null, entry: null, place_right: true }
   }
 
   // Fullscreen handling
@@ -471,188 +459,179 @@
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
 
-<div
-  {...rest}
-  class="phase-diagram-2d {rest.class ?? ``}"
-  class:dragover={drag_over}
-  style={`${style}; ${rest.style ?? ``}`}
-  bind:this={wrapper}
-  role="application"
-  tabindex="-1"
-  onkeydown={handle_keydown}
-  ondrop={handle_file_drop}
-  ondragover={(event) => {
-    event.preventDefault()
-    drag_over = true
-  }}
-  ondragleave={(event) => {
-    event.preventDefault()
-    drag_over = false
-  }}
-  aria-label="Binary phase diagram visualization"
->
-  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
-    {phase_stats?.chemical_system}
-  </h3>
-  {#key reset_counter}
-    <ScatterPlot
-      series={scatter_series}
-      bind:display
-      x_axis={{
-        label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
-        range: x_domain,
-        ticks: 4,
-        ...x_axis,
-      }}
-      y_axis={{
-        label: `E<sub>form</sub> (eV/atom)`,
-        range: y_domain,
-        ticks: 4,
-        label_shift: { y: 15 },
-        ...y_axis,
-      }}
-      legend={null}
-      color_bar={{
-        title: `E<sub>above hull</sub> (eV/atom)`,
-        wrapper_style:
-          `position: absolute; top: 2em; left: 50%; transform: translateX(-50%); width: 260px;`,
-        bar_style: `height: 16px;`,
-      }}
-      {tooltip}
-      {user_content}
-      point_events={{
-        click: ({ point }) => {
-          const entry = (point?.metadata as unknown) as PlotEntry3D
-          on_point_click?.(entry)
-          if (enable_structure_preview && entry) {
-            const structure = extract_structure_from_entry(entry)
-            if (structure) {
-              selected_structure = structure
-              selected_entry = entry
-              modal_place_right = helpers.calculate_modal_side(wrapper)
-              modal_open = true
-            }
+{#key reset_counter}
+  <ScatterPlot
+    {...rest}
+    class="phase-diagram-2d {rest.class ?? ``} {drag_over ? `dragover` : ``}"
+    style={`${style}; ${rest.style ?? ``}`}
+    bind:wrapper
+    role="application"
+    tabindex="-1"
+    onkeydown={handle_keydown}
+    ondrop={handle_file_drop}
+    ondragover={(event) => {
+      event.preventDefault()
+      drag_over = true
+    }}
+    ondragleave={(event) => {
+      event.preventDefault()
+      drag_over = false
+    }}
+    aria-label="Binary phase diagram visualization"
+    series={scatter_series}
+    bind:display
+    x_axis={{
+      label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
+      range: x_domain,
+      ticks: 4,
+      ...x_axis,
+    }}
+    y_axis={{
+      label: `E<sub>form</sub> (eV/atom)`,
+      range: y_domain,
+      ticks: 4,
+      label_shift: { y: 15 },
+      ...y_axis,
+    }}
+    legend={null}
+    color_bar={{
+      title: `E<sub>above hull</sub> (eV/atom)`,
+      bar_style: `width: 220px; height: 16px;`,
+    }}
+    {tooltip}
+    {user_content}
+    on_point_click={(data) => {
+      const entry = data.metadata as unknown as PlotEntry3D
+      on_point_click?.(entry)
+      if (enable_structure_preview && entry) {
+        const structure = extract_structure_from_entry(entry)
+        if (structure) {
+          // Determine placement based on click position in viewport
+          const viewport_width = globalThis.innerWidth
+          const click_x = data.event.clientX
+          const space_on_right = viewport_width - click_x
+          const space_on_left = click_x
+          const place_right = space_on_right >= space_on_left
+
+          structure_popup = {
+            open: true,
+            structure,
+            entry,
+            place_right,
           }
-        },
-        mouseenter: ({ point, event }) => {
-          const entry = (point?.metadata as unknown) as PlotEntry3D
-          hover_data = entry
-            ? {
-              entry,
-              position: {
-                x: (event as MouseEvent).clientX,
-                y: (event as MouseEvent).clientY,
-              },
-            }
-            : null
-          on_point_hover?.(hover_data)
-        },
-        mousemove: ({ point, event }) => {
-          const entry = (point?.metadata as unknown) as PlotEntry3D
-          hover_data = entry
-            ? {
-              entry,
-              position: {
-                x: (event as MouseEvent).clientX,
-                y: (event as MouseEvent).clientY,
-              },
-            }
-            : null
-          on_point_hover?.(hover_data)
-        },
-        mouseleave: () => {
-          hover_data = null
-          on_point_hover?.(hover_data)
-        },
-      }}
-      padding={{ t: 30, b: 60, l: 60, r: 30 }}
-    />
-  {/key}
+          // Stop propagation to prevent the click from immediately closing the popup
+          data.event.stopPropagation()
+        }
+      }
+    }}
+    on_point_hover={(data) => {
+      if (!data) {
+        hover_data = null
+        on_point_hover?.(null)
+        return
+      }
+      const entry = data.metadata as unknown as PlotEntry3D
+      hover_data = entry
+        ? {
+          entry,
+          position: {
+            x: data.event.clientX,
+            y: data.event.clientY,
+          },
+        }
+        : null
+      on_point_hover?.(hover_data)
+    }}
+    padding={{ t: 30, b: 60, l: 60, r: 30 }}
+  >
+    <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
+      {phase_stats?.chemical_system}
+    </h3>
 
-  {#if merged_controls.show}
-    <section class="control-buttons">
-      <button
-        type="button"
-        onclick={reset_all}
-        title="Reset view and settings"
-        class="reset-camera-btn"
-      >
-        <Icon icon="Reset" />
-      </button>
-
-      {#if enable_info_pane && phase_stats}
-        <PhaseDiagramInfoPane
-          bind:pane_open={info_pane_open}
-          {phase_stats}
-          {stable_entries}
-          {unstable_entries}
-          {max_hull_dist_show_phases}
-          {max_hull_dist_show_labels}
-          {label_threshold}
-          toggle_props={{ class: `info-btn` }}
-        />
-      {/if}
-
-      {#if enable_fullscreen}
+    {#if merged_controls.show}
+      <section class="control-buttons">
         <button
           type="button"
-          onclick={() => toggle_fullscreen(wrapper)}
-          title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-          class="fullscreen-btn"
+          onclick={reset_all}
+          title="Reset view and settings"
+          class="reset-camera-btn"
         >
-          <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+          <Icon icon="Reset" />
         </button>
-      {/if}
 
-      <PhaseDiagramControls
-        bind:controls_open={legend_pane_open}
-        bind:color_mode
-        bind:color_scale
-        bind:show_stable
-        bind:show_unstable
-        bind:show_stable_labels
-        bind:show_unstable_labels
-        bind:max_hull_dist_show_phases
-        bind:max_hull_dist_show_labels
-        {max_hull_dist_in_data}
-        {stable_entries}
-        {unstable_entries}
-        {total_unstable_count}
-        {camera}
-        {merged_controls}
-        toggle_props={{ class: `legend-controls-btn` }}
-        bind:energy_source_mode
-        {has_precomputed_e_form}
-        {can_compute_e_form}
-        {has_precomputed_hull}
-        {can_compute_hull}
-      />
-    </section>
-  {/if}
+        {#if enable_info_pane && phase_stats}
+          <PhaseDiagramInfoPane
+            bind:pane_open={info_pane_open}
+            {phase_stats}
+            {stable_entries}
+            {unstable_entries}
+            {max_hull_dist_show_phases}
+            {max_hull_dist_show_labels}
+            {label_threshold}
+            toggle_props={{ class: `info-btn` }}
+          />
+        {/if}
 
-  <!-- Drag over overlay -->
-  {#if drag_over}
-    <div class="drag-overlay">
-      <div class="drag-message">
-        <Icon icon="Info" />
-        <span>Drop JSON file to load phase diagram data</span>
+        {#if enable_fullscreen}
+          <button
+            type="button"
+            onclick={() => toggle_fullscreen(wrapper)}
+            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
+            class="fullscreen-btn"
+          >
+            <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
+          </button>
+        {/if}
+
+        <PhaseDiagramControls
+          bind:controls_open={legend_pane_open}
+          bind:color_mode
+          bind:color_scale
+          bind:show_stable
+          bind:show_unstable
+          bind:show_stable_labels
+          bind:show_unstable_labels
+          bind:max_hull_dist_show_phases
+          bind:max_hull_dist_show_labels
+          {max_hull_dist_in_data}
+          {stable_entries}
+          {unstable_entries}
+          {camera}
+          {merged_controls}
+          toggle_props={{ class: `legend-controls-btn` }}
+          bind:energy_source_mode
+          {has_precomputed_e_form}
+          {can_compute_e_form}
+          {has_precomputed_hull}
+          {can_compute_hull}
+        />
+      </section>
+    {/if}
+
+    <!-- Drag over overlay -->
+    {#if drag_over}
+      <div class="drag-overlay">
+        <div class="drag-message">
+          <Icon icon="Info" />
+          <span>Drop JSON file to load phase diagram data</span>
+        </div>
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  {#if modal_open && selected_structure}
-    <StructurePopup
-      structure={selected_structure}
-      place_right={modal_place_right}
-      stats={{
-        id: selected_entry?.entry_id,
-        e_above_hull: selected_entry?.e_above_hull,
-        e_form: selected_entry?.e_form_per_atom,
-      }}
-      onclose={close_structure_popup}
-    />
-  {/if}
-</div>
+    {#if structure_popup.open && structure_popup.structure}
+      <StructurePopup
+        structure={structure_popup.structure}
+        place_right={structure_popup.place_right}
+        stats={{
+          id: structure_popup.entry?.entry_id,
+          e_above_hull: structure_popup.entry?.e_above_hull,
+          e_form: structure_popup.entry?.e_form_per_atom,
+        }}
+        onclose={close_structure_popup}
+      />
+    {/if}
+  </ScatterPlot>
+{/key}
 
 <style>
   .phase-diagram-2d {
@@ -669,7 +648,6 @@
   .phase-diagram-2d.dragover {
     border: 2px dashed var(--accent-color, #1976d2);
   }
-
   .control-buttons {
     position: absolute;
     top: 1ex;
@@ -691,7 +669,6 @@
   .control-buttons button:hover {
     background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));
   }
-
   .drag-overlay {
     position: absolute;
     inset: 0;
