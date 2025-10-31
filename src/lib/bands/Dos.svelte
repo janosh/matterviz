@@ -121,12 +121,12 @@
   // Calculate axis ranges
   let x_range = $derived.by(() => {
     if (!series_data.length) return undefined
-    const all_x = series_data.flatMap((s) => s.x)
+    const all_x = series_data.flatMap((srs) => srs.x)
     return [Math.min(...all_x), Math.max(...all_x)] as [number, number]
   })
   let y_range = $derived.by(() => {
     if (!series_data.length) return undefined
-    const all_y = series_data.flatMap((s) => s.y)
+    const all_y = series_data.flatMap((srs) => srs.y)
     return [0, Math.max(...all_y)] as [number, number]
   })
 

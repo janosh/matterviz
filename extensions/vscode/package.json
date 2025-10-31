@@ -665,12 +665,12 @@
         },
         "matterviz.histogram.display.x_zero_line": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Show X-axis zero reference line"
         },
         "matterviz.histogram.display.y_zero_line": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Show Y-axis zero reference line"
         },
         "matterviz.bar.bar.color": {
@@ -714,12 +714,12 @@
         },
         "matterviz.bar.display.x_zero_line": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Show X-axis zero reference line"
         },
         "matterviz.bar.display.y_zero_line": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Show Y-axis zero reference line"
         },
         "matterviz.composition.display_mode": {
@@ -797,12 +797,12 @@
         },
         "matterviz.scatter.display.x_zero_line": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Show X-axis zero reference line"
         },
         "matterviz.scatter.display.y_zero_line": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Show Y-axis zero reference line"
         },
         "matterviz.scatter.point.size": {

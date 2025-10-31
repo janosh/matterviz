@@ -52,6 +52,8 @@ export interface BasePhaseDiagramProps<TEntry = PhaseEntry>
   energy_source_mode?: `precomputed` | `on-the-fly`
   // Bindable phase diagram statistics - computed internally but exposed for external use
   phase_stats?: PhaseStats | null
+  // Display configuration for grid lines and other visual elements
+  display?: { x_grid?: boolean; y_grid?: boolean }
 }
 
 // Additional props specific to 3D and 4D phase diagrams

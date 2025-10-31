@@ -300,17 +300,19 @@ export function toggle_series_visibility(
 
   // Handle smart group replacement for new groups
   if (new_visibility && !target_group.is_visible) {
-    const visible_groups = unit_groups.filter((g) => g.is_visible)
+    const visible_groups = unit_groups.filter((group) => group.is_visible)
     if (visible_groups.length >= 2) {
       // Hide lowest priority group (highest priority number)
-      const lowest_priority_group = visible_groups.sort((a, b) => a.priority - b.priority)
+      const lowest_priority_group = visible_groups.sort((g1, g2) =>
+        g1.priority - g2.priority
+      )
         .pop() // Get the last (lowest priority) group
       if (lowest_priority_group) {
         lowest_priority_group.is_visible = false
         // Also hide the actual series in this group
-        lowest_priority_group.series.forEach((srs) => {
-          const series_idx = updated_series.findIndex((s) =>
-            s.label === srs.label && s.unit === srs.unit
+        lowest_priority_group.series.forEach((srs1) => {
+          const series_idx = updated_series.findIndex((srs2) =>
+            srs2.label === srs1.label && srs2.unit === srs1.unit
           )
           if (series_idx !== -1) {
             updated_series[series_idx] = { ...updated_series[series_idx], visible: false }
@@ -351,20 +353,21 @@ function update_group_visibility_and_axes(
 ): void {
   // Update group visibility based on series
   unit_groups.forEach((group) => {
-    group.is_visible = group.series.some((srs) =>
-      series.find((s) => s.label === srs.label && s.unit === srs.unit)?.visible || false
+    group.is_visible = group.series.some((srs1) =>
+      series.find((srs2) => srs2.label === srs1.label && srs2.unit === srs1.unit)
+        ?.visible || false
     )
   })
 
   // Apply 2-group limit
-  const visible_groups = unit_groups.filter((g) => g.is_visible)
+  const visible_groups = unit_groups.filter((group) => group.is_visible)
   if (visible_groups.length > 2) {
     const groups_to_hide = visible_groups.slice(2)
     groups_to_hide.forEach((group) => {
       group.is_visible = false
-      group.series.forEach((srs) => {
-        const series_idx = series.findIndex((s) =>
-          s.label === srs.label && s.unit === srs.unit
+      group.series.forEach((srs1) => {
+        const series_idx = series.findIndex((srs2) =>
+          srs2.label === srs1.label && srs2.unit === srs1.unit
         )
         if (series_idx !== -1) {
           series[series_idx] = { ...series[series_idx], visible: false }
@@ -374,8 +377,8 @@ function update_group_visibility_and_axes(
   }
 
   // Assign axes
-  const final_visible = unit_groups.filter((g) => g.is_visible)
-  final_visible.sort((a, b) => a.priority - b.priority)
+  const final_visible = unit_groups.filter((group) => group.is_visible)
+  final_visible.sort((g1, g2) => g1.priority - g2.priority)
 
   const axis_map = new Map<UnitGroup, `y1` | `y2`>()
   if (final_visible.length === 1) {
@@ -565,11 +568,12 @@ function determine_axis_from_groups(
   })) as DataSeries[]
 
   const groups = group_and_assign_series(mock_series, new Set([property]))
-  const target_group = groups.find((g) =>
-    g.series.some((s) => s.label === property && s.unit === unit)
+  const target_group = groups.find((group) =>
+    group.series.some((srs) => srs.label === property && srs.unit === unit)
   )
 
-  return target_group && groups.filter((g) => g.is_visible).indexOf(target_group) === 1
+  return target_group &&
+      groups.filter((group) => group.is_visible).indexOf(target_group) === 1
     ? `y2`
     : `y1`
 }

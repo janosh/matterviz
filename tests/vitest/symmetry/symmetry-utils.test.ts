@@ -294,6 +294,6 @@ describe(`wyckoff_positions_from_moyo`, () => {
         [`4a`, `4a`, `4a`, `4a`, `2b`, `2b`],
       ),
     )
-    expect(sorted.map((s) => s.wyckoff)).toEqual([`2b`, `4a`])
+    expect(sorted.map((site) => site.wyckoff)).toEqual([`2b`, `4a`])
   })
 })

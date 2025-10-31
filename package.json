@@ -11,7 +11,7 @@
   "bugs": "https://github.com/janosh/matterviz/issues",
   "dependencies": {
     "@spglib/moyo-wasm": "^0.7.1",
-    "@sveltejs/kit": "^2.48.0",
+    "@sveltejs/kit": "^2.48.4",
     "@threlte/core": "^8.1.8",
     "@threlte/extras": "^9.5.5",
     "@types/d3-force": "^3.0.10",
@@ -30,9 +30,9 @@
     "h5wasm": "^0.8.7",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.1.0",
-    "svelte": "^5.42.3",
+    "svelte": "^5.43.2",
     "svelte-multiselect": "11.2.4",
-    "three": "^0.180.0"
+    "three": "^0.181.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
@@ -49,12 +49,12 @@
     "@types/d3-scale-chromatic": "^3.1.0",
     "@types/d3-shape": "^3.1.7",
     "@types/d3-time-format": "^4.0.3",
-    "@types/three": "^0.180.0",
-    "@vitest/coverage-v8": "^4.0.4",
+    "@types/three": "^0.181.0",
+    "@vitest/coverage-v8": "^4.0.6",
     "d3-time-format": "^4.1.0",
     "eslint": "^9.38.0",
-    "eslint-plugin-svelte": "^3.12.5",
-    "happy-dom": "^20.0.8",
+    "eslint-plugin-svelte": "^3.13.0",
+    "happy-dom": "^20.0.10",
     "hastscript": "^9.0.1",
     "mdsvex": "^0.12.6",
     "mdsvexamples": "^0.5.0",
@@ -68,7 +68,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "^8.46.2",
     "vite": "^7.1.12",
-    "vitest": "^4.0.4"
+    "vitest": "^4.0.6"
   },
   "keywords": [
     "svelte",

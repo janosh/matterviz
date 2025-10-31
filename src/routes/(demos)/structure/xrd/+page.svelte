@@ -15,7 +15,7 @@
 
   // Map structures by id for O(1) lookup
   const structures_by_id = $derived<Record<string, PymatgenStructure>>(
-    Object.fromEntries(structures.map((s) => [get_struct_id(s), s])),
+    Object.fromEntries(structures.map((struct) => [get_struct_id(struct), struct])),
   )
 
   // Helper: convert #rrggbb to #rrggbbaa
@@ -27,7 +27,7 @@
   }
 
   // On-the-fly computed patterns
-  const compute_ids = structures.map((s) => s.id ?? ``)
+  const compute_ids = structures.map(get_struct_id)
   let compute_id = $state<string>(compute_ids[0] || ``)
   const computed_struct = $derived<PymatgenStructure | null>(
     structures_by_id[compute_id] ?? null,
@@ -57,10 +57,10 @@
 
   // Multi-select demo: allow overlaying multiple structures
   let selected_ids = $state<string[]>(compute_ids.slice(0, 4))
-  function toggle_select(id: string) {
-    selected_ids = selected_ids.includes(id)
-      ? selected_ids.filter((x) => x !== id)
-      : [...selected_ids, id]
+  function toggle_select(struct_id: string) {
+    selected_ids = selected_ids.includes(struct_id)
+      ? selected_ids.filter((x) => x !== struct_id)
+      : [...selected_ids, struct_id]
   }
   // Fill cache for all selected structures (side-effect done outside of $derived)
   $effect(() => {
@@ -78,19 +78,17 @@
       }
     }
   })
-  let selected_patterns = $derived<{ label: string; pattern: XrdPattern }[]>(
-    selected_ids
-      .map((id) => structures_by_id[id])
-      .filter((s): s is PymatgenStructure => !!s)
-      .map((s) => {
-        const struct_id = get_struct_id(s)
-        const pat = xrd_cache.get(struct_id)
-        return pat
-          ? { label: `${struct_id} ${formula_for(struct_id)}`, pattern: pat }
-          : null
-      })
-      .filter(Boolean) as { label: string; pattern: XrdPattern }[],
-  )
+  let selected_patterns = $derived.by(() => {
+    const out: { label: string; pattern: XrdPattern }[] = []
+    for (const id of selected_ids) {
+      const struct = structures_by_id[id]
+      if (!struct) continue
+      const sid = get_struct_id(struct)
+      const pat = xrd_cache.get(sid)
+      if (pat) out.push({ label: `${sid} ${formula_for(sid)}`, pattern: pat })
+    }
+    return out
+  })
 
   // Precomputed carousel removed; computing on the fly below
 

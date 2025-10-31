@@ -126,27 +126,50 @@ export interface Tooltip {
   items?: { label: string; value: string; color?: string }[]
 }
 
-export interface TooltipProps {
+export interface TooltipProps<Metadata = Record<string, unknown>> {
   x: number
   y: number
-  metadata?: Record<string, unknown> | null
-  color?: string | null
+  metadata?: Metadata | null
   label?: string | null
   series_idx: number
+  x_axis: AxisConfig
+  y_axis: AxisConfig
+  y2_axis?: AxisConfig
 }
 
-export interface ScatterTooltipProps extends TooltipProps {
+export interface ScatterHandlerProps<Metadata = Record<string, unknown>>
+  extends TooltipProps<Metadata> {
   cx: number
   cy: number
   x_formatted: string
   y_formatted: string
+  color_value?: number | null
+  colorbar?: {
+    value?: number | null
+    title?: string | null
+    scale?: unknown
+    tick_format?: string | null
+  }
 }
+export type ScatterHandlerEvent<Metadata = Record<string, unknown>> =
+  & ScatterHandlerProps<Metadata>
+  & { event: MouseEvent }
 
-export interface BarTooltipProps extends TooltipProps {
+export interface BarHandlerProps<Metadata = Record<string, unknown>>
+  extends TooltipProps<Metadata> {
   bar_idx: number
   orient_x: number
   orient_y: number
-  y_axis: `y1` | `y2`
+  active_y_axis: `y1` | `y2`
+  color: string
+}
+
+export interface HistogramHandlerProps<Metadata = Record<string, unknown>>
+  extends TooltipProps<Metadata> {
+  value: number
+  count: number
+  property: string
+  active_y_axis: `y1` | `y2`
 }
 
 export type TimeInterval = `day` | `month` | `year`

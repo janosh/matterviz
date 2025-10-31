@@ -498,8 +498,8 @@ describe(`Trajectory Streaming`, () => {
       })
 
       // Find volume and energy series
-      const volume_series = series.find((s) => s.label === `Volume`)
-      const energy_series = series.find((s) => s.label === `Energy`)
+      const volume_series = series.find((srs) => srs.label === `Volume`)
+      const energy_series = series.find((srs) => srs.label === `Energy`)
 
       // Volume should be properly labeled as "Volume" not "volume" or "Series 1"
       expect(volume_series).toBeDefined()
@@ -514,7 +514,7 @@ describe(`Trajectory Streaming`, () => {
       expect(energy_series?.y).toEqual([-10, -10.5, -11])
 
       // No series should have generic names like "Series 1"
-      const generic_series = series.filter((s) => s.label?.startsWith(`Series `))
+      const generic_series = series.filter((srs) => srs.label?.startsWith(`Series `))
       expect(generic_series).toHaveLength(0)
     })
   })

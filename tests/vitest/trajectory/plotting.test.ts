@@ -93,12 +93,8 @@ function assert_unit_group_constraints(series: DataSeries[]): void {
   expect(visible_units.size).toBeLessThanOrEqual(2)
 }
 
-function find_series_by_label(
-  series: DataSeries[],
-  search_term: string,
-): DataSeries | undefined {
-  return series.find((s) => s.label?.toLowerCase().includes(search_term.toLowerCase()))
-}
+const find_series_by_label = (series: DataSeries[], search_term: string) =>
+  series.find((srs) => srs.label?.toLowerCase().includes(search_term.toLowerCase()))
 
 describe(`generate_plot_series`, () => {
   it(`should handle basic trajectory generation with unit grouping`, () => {
@@ -175,7 +171,7 @@ describe(`generate_plot_series`, () => {
     })
 
     const energy_series = find_series_by_label(series, `energy`)
-    const a_series = series.find((s) => s.label === `A`)
+    const a_series = find_series_by_label(series, `A`)
 
     // Energy gets y1 (higher priority), lattice params get y2
     expect(energy_series?.y_axis).toBe(`y1`)
@@ -320,9 +316,9 @@ describe(`toggle_series_visibility`, () => {
     const updated_series = toggle_series_visibility(initial_series, 1)
 
     // A should NOT be hidden when B is shown (same unit group)
-    expect(updated_series.find((s) => s.label === `A`)?.visible).toBe(true)
-    expect(updated_series.find((s) => s.label === `B`)?.visible).toBe(true)
-    expect(updated_series.find((s) => s.label === `Energy`)?.visible).toBe(true)
+    expect(find_series_by_label(updated_series, `A`)?.visible).toBe(true)
+    expect(find_series_by_label(updated_series, `B`)?.visible).toBe(true)
+    expect(find_series_by_label(updated_series, `Energy`)?.visible).toBe(true)
 
     const visible_units = new Set(
       updated_series.filter((srs) => srs.visible).map((srs) => srs.unit),
@@ -342,10 +338,10 @@ describe(`toggle_series_visibility`, () => {
       const initial_series = create_replacement_test_series()
       const updated = toggle_series_visibility(initial_series, 2) // Show B (same unit as A)
 
-      expect(updated.find((s) => s.label === `Energy`)?.visible).toBe(true)
-      expect(updated.find((s) => s.label === `A`)?.visible).toBe(true)
-      expect(updated.find((s) => s.label === `B`)?.visible).toBe(true)
-      expect(updated.find((s) => s.label === `Volume`)?.visible).toBe(false)
+      expect(find_series_by_label(updated, `Energy`)?.visible).toBe(true)
+      expect(find_series_by_label(updated, `A`)?.visible).toBe(true)
+      expect(find_series_by_label(updated, `B`)?.visible).toBe(true)
+      expect(find_series_by_label(updated, `Volume`)?.visible).toBe(false)
 
       const visible_units = new Set(
         updated.filter((srs) => srs.visible).map((srs) => srs.unit),
@@ -360,10 +356,10 @@ describe(`toggle_series_visibility`, () => {
       // Then show Volume (new unit) - should trigger smart replacement
       updated = toggle_series_visibility(updated, 3)
 
-      expect(updated.find((s) => s.label === `Energy`)?.visible).toBe(true)
-      expect(updated.find((s) => s.label === `Volume`)?.visible).toBe(true)
-      expect(updated.find((s) => s.label === `A`)?.visible).toBe(false)
-      expect(updated.find((s) => s.label === `B`)?.visible).toBe(false)
+      expect(find_series_by_label(updated, `Energy`)?.visible).toBe(true)
+      expect(find_series_by_label(updated, `Volume`)?.visible).toBe(true)
+      expect(find_series_by_label(updated, `A`)?.visible).toBe(false)
+      expect(find_series_by_label(updated, `B`)?.visible).toBe(false)
 
       const visible_units = new Set(
         updated.filter((srs) => srs.visible).map((srs) => srs.unit),
@@ -377,7 +373,7 @@ describe(`toggle_series_visibility`, () => {
       updated = toggle_series_visibility(updated, 3) // Show Volume
 
       assert_unit_group_constraints(updated)
-      expect(updated.filter((s) => s.visible).length).toBeGreaterThan(0)
+      expect(updated.filter((srs) => srs.visible).length).toBeGreaterThan(0)
     })
   })
 })
@@ -488,11 +484,11 @@ describe(`integration and regression tests`, () => {
     })
 
     // Series labels should not include units (units added by axis labeling)
-    series.forEach((s) => expect(s.label).not.toMatch(/\([^)]+\)/))
+    series.forEach((srs) => expect(srs.label).not.toMatch(/\([^)]+\)/))
 
     // But unit field should be properly set
     const energy_series = find_series_by_label(series, `energy`)
-    const a_series = series.find((s) => s.label === `A`)
+    const a_series = find_series_by_label(series, `A`)
     expect(energy_series?.unit).toBe(`eV`)
     if (a_series) expect(a_series.unit).toBe(`Å`)
   })

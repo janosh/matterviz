@@ -122,7 +122,7 @@ const get_colorbar_transform = async (
   if (transform.startsWith(`matrix`)) {
     const parts = transform.match(/matrix\((.+)\)/)
     if (parts && parts[1]) {
-      const values = parts[1].split(`,`).map((s) => parseFloat(s.trim()))
+      const values = parts[1].split(`,`).map((str) => parseFloat(str.trim()))
       if (values.length === 6) {
         const tx = values[4]
         const ty = values[5]

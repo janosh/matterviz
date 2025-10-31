@@ -864,7 +864,7 @@ describe(`Structure string parsing`, () => {
       if (parsed) {
         expect(parsed.sites).toHaveLength(atoms)
         elements.forEach((el) =>
-          expect(parsed?.sites.map((s) => s.species[0].element)).toContain(el)
+          expect(parsed?.sites.map((site) => site.species[0].element)).toContain(el)
         )
         expect(!!(`lattice` in parsed && parsed.lattice)).toBe(has_lattice)
       }

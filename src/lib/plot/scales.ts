@@ -1,8 +1,16 @@
+import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
 import * as math from '$lib/math'
 import type { Point, ScaleType, TimeInterval } from '$lib/plot'
 import { extent, range } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
-import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
+import {
+  scaleLinear,
+  scaleLog,
+  scaleSequential,
+  scaleSequentialLog,
+  scaleTime,
+} from 'd3-scale'
+import * as d3_sc from 'd3-scale-chromatic'
 
 // Type for ticks parameter - can be count, array of values, time interval, or object mapping values to labels
 export type TicksOption = number | number[] | TimeInterval | Record<number, string>
@@ -237,4 +245,65 @@ export function get_tick_label(
     return ticks_option[tick_value] ?? null
   }
   return null
+}
+
+// Create a color scale function from configuration
+export function create_color_scale(
+  color_scale_config:
+    | {
+      type?: ScaleType
+      scheme?: D3ColorSchemeName | D3InterpolateName
+      value_range?: [number, number]
+    }
+    | string,
+  auto_color_range: [number, number],
+) {
+  const scheme = typeof color_scale_config === `string`
+    ? color_scale_config
+    : color_scale_config.scheme
+  const interpolator =
+    (typeof d3_sc[scheme as keyof typeof d3_sc] === `function`
+      ? d3_sc[scheme as keyof typeof d3_sc]
+      : d3_sc.interpolateViridis) as (t: number) => string
+  const [min_val, max_val] =
+    (typeof color_scale_config === `string`
+      ? undefined
+      : color_scale_config.value_range) ?? auto_color_range
+  const scale_type = typeof color_scale_config === `string`
+    ? undefined
+    : color_scale_config.type
+
+  return scale_type === `log`
+    ? scaleSequentialLog(interpolator).domain([
+      Math.max(min_val, math.LOG_EPS),
+      Math.max(max_val, min_val * 1.1),
+    ])
+    : scaleSequential(interpolator).domain([min_val, max_val])
+}
+
+// Create a size scale function from configuration
+export function create_size_scale(
+  config: {
+    type?: ScaleType
+    radius_range?: [number, number]
+    value_range?: [number, number]
+  },
+  all_size_values: (number | null)[],
+) {
+  const [min_radius, max_radius] = config.radius_range ?? [2, 10]
+  const auto_range = all_size_values.length > 0
+    ? extent(all_size_values.filter((v): v is number => v !== null))
+    : [0, 1]
+  const [min_val, max_val] = config.value_range ?? (auto_range as [number, number])
+  const safe_min = min_val ?? 0
+  const safe_max = max_val ?? (safe_min > 0 ? safe_min * 1.1 : 1)
+
+  const scale = config.type === `log`
+    ? scaleLog().domain([
+      Math.max(safe_min, math.LOG_EPS),
+      Math.max(safe_max, safe_min * 1.1),
+    ])
+    : scaleLinear().domain([safe_min, safe_max])
+
+  return scale.range([min_radius, max_radius]).clamp(true)
 }

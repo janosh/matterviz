@@ -181,14 +181,6 @@
   // Cached hull model for e_above_hull queries; recompute only when faces change
   let hull_model = $derived.by(() => thermo.build_lower_hull_model(hull_faces))
 
-  // Total counts based on hull-enriched entries
-  const total_unstable_count = $derived(
-    plot_entries.filter((entry) =>
-      typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 &&
-      !entry.is_stable
-    ).length,
-  )
-
   // Canvas rendering
   let canvas: HTMLCanvasElement
   let ctx: CanvasRenderingContext2D | null = null
@@ -1116,7 +1108,6 @@
         {max_hull_dist_in_data}
         {stable_entries}
         {unstable_entries}
-        {total_unstable_count}
         {camera}
         {merged_controls}
         toggle_props={{ class: `legend-controls-btn` }}

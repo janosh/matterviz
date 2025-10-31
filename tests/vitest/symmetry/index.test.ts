@@ -250,12 +250,12 @@ describe(`structure validation`, () => {
       structure.sites?.forEach((site, idx) => issues.push(...validateSite(site, idx)))
 
       return { id: structure.id || `unknown`, issues }
-    }).filter((s) => s.issues.length > 0)
+    }).filter((site) => site.issues.length > 0)
 
     expect(
       failed.length,
       `Structures with issues:\n${
-        failed.map((s) => `${s.id}: ${s.issues.join(`, `)}`).join(`\n`)
+        failed.map((site) => `${site.id}: ${site.issues.join(`, `)}`).join(`\n`)
       }`,
     ).toBe(0)
   })
@@ -263,10 +263,11 @@ describe(`structure validation`, () => {
   test(`composition consistency`, () => {
     structures.slice(0, 5).forEach((structure) => {
       const elements = new Set(
-        structure.sites.flatMap((s) => s.species.map((sp) => sp.element)),
+        structure.sites.flatMap((site) => site.species.map((sp) => sp.element)),
       )
       const totalOccupancy = structure.sites.reduce(
-        (sum, s) => sum + s.species.reduce((sSum, sp) => sSum + sp.occu, 0),
+        (sum, site) =>
+          sum + site.species.reduce((spec_sum, specie) => spec_sum + specie.occu, 0),
         0,
       )
 
@@ -274,13 +275,8 @@ describe(`structure validation`, () => {
       expect(totalOccupancy).toBeGreaterThan(0)
 
       if (`lattice` in structure && structure.lattice) {
-        expect([
-          structure.lattice.a,
-          structure.lattice.b,
-          structure.lattice.c,
-          structure.lattice.volume,
-        ])
-          .toEqual(expect.arrayContaining([expect.any(Number)]))
+        const { a, b, c, volume } = structure.lattice
+        expect([a, b, c, volume]).toEqual(expect.arrayContaining([expect.any(Number)]))
       }
     })
   })

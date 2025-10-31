@@ -110,7 +110,7 @@ describe.each(structures)(`structure-utils`, (structure) => {
 })
 
 // Consolidated tests for center of mass, formulas, and elements
-test.each(structures.filter((s) => s.id && ref_data[s.id]))(
+test.each(structures.filter((struct) => struct.id && ref_data[struct.id]))(
   `%s calculations`,
   (struct) => {
     const expected_data = ref_data[struct.id as keyof typeof ref_data]
