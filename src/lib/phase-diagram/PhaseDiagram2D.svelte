@@ -9,7 +9,12 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
-  import { type AxisConfig, type ScatterHandlerProps, ScatterPlot } from '$lib/plot'
+  import type {
+    AxisConfig,
+    ScatterHandlerEvent,
+    ScatterHandlerProps,
+  } from '$lib/plot'
+  import { ScatterPlot } from '$lib/plot'
   import { SvelteMap } from 'svelte/reactivity'
   import * as helpers from './helpers'
   import type { BasePhaseDiagramProps } from './index'
@@ -412,35 +417,37 @@
 />
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
-{#snippet tooltip(point: ScatterHandlerProps)}
-  {@const entry = point.metadata as unknown as PlotEntry3D}
-  {@const is_element = is_unary_entry(entry)}
-  {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
-  <div class="tooltip-title">
-    {@html get_electro_neg_formula(entry.composition)}{
-      is_element
-      ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``})`
-      : ``
-    }
-  </div>
+{#snippet tooltip(point: ScatterHandlerProps<PlotEntry3D>)}
+  {@const entry = point.metadata}
+  {#if entry}
+    {@const is_element = is_unary_entry(entry)}
+    {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
+    <div class="tooltip-title">
+      {@html get_electro_neg_formula(entry.composition)}{
+        is_element
+        ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``})`
+        : ``
+      }
+    </div>
 
-  <div>
-    E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
-  </div>
-  <div>
-    E<sub>form</sub>: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
-  </div>
-  {#if entry.entry_id}
-    <div>ID: {entry.entry_id}</div>
-  {/if}
+    <div>
+      E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
+    </div>
+    <div>
+      E<sub>form</sub>: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
+    </div>
+    {#if entry.entry_id}
+      <div>ID: {entry.entry_id}</div>
+    {/if}
 
-  {#if !is_element}
-    {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
-    {@const fractions = Object.entries(entry.composition)
+    {#if !is_element}
+      {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
+      {@const fractions = Object.entries(entry.composition)
     .filter(([, amt]) => amt > 0)
     .map(([el, amt]) => `${el}=${format_fractional(amt / total)}`)}
-    {#if fractions.length > 1}
-      {fractions.join(` | `)}
+      {#if fractions.length > 1}
+        {fractions.join(` | `)}
+      {/if}
     {/if}
   {/if}
 {/snippet}
@@ -500,37 +507,39 @@
     }}
     {tooltip}
     {user_content}
-    on_point_click={(data) => {
-      const entry = data.metadata as unknown as PlotEntry3D
-      on_point_click?.(entry)
-      if (enable_structure_preview && entry) {
-        const structure = extract_structure_from_entry(entry)
-        if (structure) {
-          // Determine placement based on click position in viewport
-          const viewport_width = globalThis.innerWidth
-          const click_x = data.event.clientX
-          const space_on_right = viewport_width - click_x
-          const space_on_left = click_x
-          const place_right = space_on_right >= space_on_left
+    on_point_click={(data: ScatterHandlerEvent<PlotEntry3D>) => {
+      const entry = data.metadata
+      if (entry) {
+        on_point_click?.(entry)
+        if (enable_structure_preview) {
+          const structure = extract_structure_from_entry(entry)
+          if (structure) {
+            // Determine placement based on click position in viewport
+            const viewport_width = globalThis.innerWidth
+            const click_x = data.event.clientX
+            const space_on_right = viewport_width - click_x
+            const space_on_left = click_x
+            const place_right = space_on_right >= space_on_left
 
-          structure_popup = {
-            open: true,
-            structure,
-            entry,
-            place_right,
+            structure_popup = {
+              open: true,
+              structure,
+              entry,
+              place_right,
+            }
+            // Stop propagation to prevent the click from immediately closing the popup
+            data.event.stopPropagation()
           }
-          // Stop propagation to prevent the click from immediately closing the popup
-          data.event.stopPropagation()
         }
       }
     }}
-    on_point_hover={(data) => {
+    on_point_hover={(data: ScatterHandlerEvent<PlotEntry3D> | null) => {
       if (!data) {
         hover_data = null
         on_point_hover?.(null)
         return
       }
-      const entry = data.metadata as unknown as PlotEntry3D
+      const entry = data.metadata
       hover_data = entry
         ? {
           entry,

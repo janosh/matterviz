@@ -45,22 +45,23 @@ export function handle_legend_double_click(
 
   if (is_isolated && prev_visibility) {
     return {
-      series: series.map((
-        s,
-        i,
-      ) => (current[i] !== prev_visibility[i]
-        ? { ...s, visible: prev_visibility[i] }
-        : s)
-      ),
+      series: series.map((srs, idx) => {
+        // Only restore visibility if we have a saved value for this index
+        // (new series added after isolation should keep their current visibility)
+        if (idx < prev_visibility.length && current[idx] !== prev_visibility[idx]) {
+          return { ...srs, visible: prev_visibility[idx] }
+        }
+        return srs
+      }),
       previous_visibility: null,
     }
   }
 
   const new_prev = current.filter((v) => v).length > 1 ? [...current] : null
   return {
-    series: series.map((s, i) => {
-      const in_group = label ? s.label === label : i === idx
-      return (s?.visible ?? true) !== in_group ? { ...s, visible: in_group } : s
+    series: series.map((srs, srs_idx) => {
+      const in_group = label ? srs.label === label : srs_idx === idx
+      return (srs?.visible ?? true) !== in_group ? { ...srs, visible: in_group } : srs
     }),
     previous_visibility: new_prev,
   }

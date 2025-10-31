@@ -16,6 +16,7 @@
     Point,
     PointStyle,
     ScaleType,
+    ScatterHandlerEvent,
     ScatterHandlerProps,
     Sides,
     StyleOverrides,
@@ -129,10 +130,8 @@
       string,
       (payload: { point: InternalPoint; event: Event }) => void
     >
-    on_point_click?: (data: ScatterHandlerProps & { event: MouseEvent }) => void
-    on_point_hover?: (
-      data: (ScatterHandlerProps & { event: MouseEvent }) | null,
-    ) => void
+    on_point_click?: (data: ScatterHandlerEvent) => void
+    on_point_hover?: (data: ScatterHandlerEvent | null) => void
     selected_series_idx?: number
   } = $props()
 

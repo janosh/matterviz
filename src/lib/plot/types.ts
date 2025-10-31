@@ -126,10 +126,10 @@ export interface Tooltip {
   items?: { label: string; value: string; color?: string }[]
 }
 
-export interface TooltipProps {
+export interface TooltipProps<Metadata = Record<string, unknown>> {
   x: number
   y: number
-  metadata?: Record<string, unknown> | null
+  metadata?: Metadata | null
   label?: string | null
   series_idx: number
   x_axis: AxisConfig
@@ -137,7 +137,8 @@ export interface TooltipProps {
   y2_axis?: AxisConfig
 }
 
-export interface ScatterHandlerProps extends TooltipProps {
+export interface ScatterHandlerProps<Metadata = Record<string, unknown>>
+  extends TooltipProps<Metadata> {
   cx: number
   cy: number
   x_formatted: string
@@ -150,8 +151,12 @@ export interface ScatterHandlerProps extends TooltipProps {
     tick_format?: string | null
   }
 }
+export type ScatterHandlerEvent<Metadata = Record<string, unknown>> =
+  & ScatterHandlerProps<Metadata>
+  & { event: MouseEvent }
 
-export interface BarHandlerProps extends TooltipProps {
+export interface BarHandlerProps<Metadata = Record<string, unknown>>
+  extends TooltipProps<Metadata> {
   bar_idx: number
   orient_x: number
   orient_y: number
@@ -159,7 +164,8 @@ export interface BarHandlerProps extends TooltipProps {
   color: string
 }
 
-export interface HistogramHandlerProps extends TooltipProps {
+export interface HistogramHandlerProps<Metadata = Record<string, unknown>>
+  extends TooltipProps<Metadata> {
   value: number
   count: number
   property: string
