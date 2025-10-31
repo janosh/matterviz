@@ -5,14 +5,12 @@
   import { format_value, symbol_names } from '$lib/labels'
   import * as math from '$lib/math'
   import type {
-    AnchorNode,
     AxisConfig,
     ControlsConfig,
     DataSeries,
     DisplayConfig,
     HoverConfig,
     InternalPoint,
-    LabelNode,
     LabelPlacementConfig,
     LegendConfig,
     Point,
@@ -36,6 +34,7 @@
     ScatterPlotControls,
     ScatterPoint,
   } from '$lib/plot'
+  import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
@@ -60,7 +59,7 @@
     x_axis = {},
     y_axis = {},
     y2_axis = {},
-    display = DEFAULTS.scatter.display,
+    display = $bindable(DEFAULTS.scatter.display),
     styles = {},
     controls = {},
     padding = {},
@@ -775,11 +774,11 @@
     }
   })
 
-  // Generate axis ticks
-  let x_tick_values = $derived.by(() => {
-    if (!width || !height) return []
+  // Generate axis ticks - consolidated into single derived for efficiency
+  let axis_ticks = $derived.by(() => {
+    if (!width || !height) return { x: [], y: [], y2: [] }
 
-    // Choose appropriate scale for tick generation
+    // X-axis ticks: choose appropriate scale for tick generation
     // Time scales (format starts with %) use scaleTime for better tick placement
     const x_scale_for_ticks = x_axis.format?.startsWith(`%`)
       ? scaleTime().domain([new Date(x_min), new Date(x_max)])
@@ -787,42 +786,36 @@
       ? scaleLog().domain([x_min, x_max])
       : scaleLinear().domain([x_min, x_max])
 
-    return generate_ticks(
-      [x_min, x_max],
-      x_axis.scale_type!,
-      x_axis.ticks,
-      x_scale_for_ticks,
-      {
-        format: x_axis.format,
-      },
-    )
+    return {
+      x: generate_ticks(
+        [x_min, x_max],
+        x_axis.scale_type!,
+        x_axis.ticks,
+        x_scale_for_ticks,
+        { format: x_axis.format },
+      ),
+      y: generate_ticks(
+        [y_min, y_max],
+        y_axis.scale_type!,
+        y_axis.ticks!,
+        y_scale_fn,
+        { default_count: 5 },
+      ),
+      y2: y2_points.length > 0
+        ? generate_ticks(
+          [y2_min, y2_max],
+          y2_axis.scale_type!,
+          y2_axis.ticks!,
+          y2_scale_fn,
+          { default_count: 5 },
+        )
+        : [],
+    }
   })
 
-  let y_tick_values = $derived.by(() => {
-    if (!width || !height) return []
-    return generate_ticks(
-      [y_min, y_max],
-      y_axis.scale_type!,
-      y_axis.ticks!,
-      y_scale_fn,
-      {
-        default_count: 5,
-      },
-    )
-  })
-
-  let y2_tick_values = $derived.by(() => {
-    if (!width || !height || y2_points.length === 0) return []
-    return generate_ticks(
-      [y2_min, y2_max],
-      y2_axis.scale_type!,
-      y2_axis.ticks!,
-      y2_scale_fn,
-      {
-        default_count: 5,
-      },
-    )
-  })
+  let x_tick_values = $derived(axis_ticks.x)
+  let y_tick_values = $derived(axis_ticks.y)
+  let y2_tick_values = $derived(axis_ticks.y2)
 
   // Define global handlers reference for adding/removing listeners
   const on_window_mouse_move = (evt: MouseEvent) => {
@@ -1009,20 +1002,6 @@
     update_tooltip_point(coords.x, coords.y, evt)
   }
 
-  // Helper function to parse font size from string like "14px" or "1.2em"
-  function parse_font_size(font_size_str: string | undefined): number {
-    if (!font_size_str) return 12 // Default font size
-    const match = font_size_str.match(/^(\d+(?:\.\d+)?)(px|em|rem)?$/)
-    if (match) {
-      const value = parseFloat(match[1])
-      const unit = match[2]
-      // Convert em/rem to px (assuming 1em = 16px)
-      if (unit === `em` || unit === `rem`) return value * 16
-      return value
-    }
-    return 12 // Fallback
-  }
-
   // Merge user config with defaults before the effect that uses it
   let actual_label_config = $derived({
     collision_strength: 1.5, // Increased from 1.1 for stronger overlap prevention
@@ -1037,252 +1016,39 @@
   })
 
   $effect(() => {
-    if (!width || !height) return
-
-    // Collect auto-placed labels and their anchors
-    const label_nodes: LabelNode[] = []
-    const anchor_nodes: AnchorNode[] = []
-    const links: { source: string; target: string }[] = []
-
-    for (const series_data of filtered_series) {
-      for (const point of series_data.filtered_data) {
-        if (!point.point_label?.auto_placement || !point.point_label.text) continue
-
-        const anchor_x = x_axis.format?.startsWith(`%`)
-          ? x_scale_fn(new Date(point.x))
-          : x_scale_fn(point.x)
-        const anchor_y = (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(
-          point.y,
-        )
-        const id = `${point.series_idx}-${point.point_idx}`
-        const anchor_id = `anchor-${id}`
-
-        // Parse font size for better dimension estimation
-        const font_size = parse_font_size(point.point_label.font_size)
-        const char_width = font_size * 0.6 // More accurate character width estimation
-        const estimated_width = point.point_label.text.length * char_width + 10
-        const estimated_height = font_size * 1.2 // Account for line height
-
-        // Get marker radius for positioning
-        const marker_radius = point.point_style?.radius ?? 3
-
-        label_nodes.push({
-          id,
-          anchor_x,
-          anchor_y,
-          point_node: point,
-          label_width: estimated_width,
-          label_height: estimated_height,
-          // Position label below marker by default to avoid overlap
-          x: anchor_x + (point.point_label.offset?.x ?? 5),
-          y: anchor_y +
-            (point.point_label.offset?.y ??
-              (marker_radius + estimated_height / 2 + 3)),
-        })
-
-        anchor_nodes.push({
-          id: anchor_id,
-          fx: anchor_x,
-          fy: anchor_y,
-          point_radius: marker_radius,
-        })
-
-        links.push({ source: id, target: anchor_id })
-      }
-    }
-
-    if (label_nodes.length === 0) {
+    if (!width || !height) {
       label_positions = {}
       return
     }
 
-    // Guard: skip force simulation if too many labels (performance)
-    if (label_nodes.length > actual_label_config.max_labels) {
-      label_positions = Object.fromEntries(
-        label_nodes.map((n) => [n.id, { x: n.x!, y: n.y! }]),
-      )
-      return
-    }
-
-    // Run force simulation
-    const simulation = forceSimulation([...label_nodes, ...anchor_nodes])
-      .force(
-        `link`,
-        forceLink(links)
-          .id((data) => (data as { id: string }).id)
-          .distance(actual_label_config.link_distance)
-          .strength(actual_label_config.link_strength),
-      )
-      .force(
-        `collide`,
-        forceCollide().radius((node) => {
-          const label = node as LabelNode
-          const anchor = node as AnchorNode
-          if (label.label_width) {
-            // Use diagonal distance for better rectangular approximation
-            const diagonal = Math.sqrt(
-              label.label_width * label.label_width +
-                label.label_height * label.label_height,
-            )
-            return diagonal / 2 + 2
-          }
-          return (anchor.point_radius ?? 0) + 2
-        }).strength(actual_label_config.collision_strength),
-      )
-
-    // Add repulsion force to prevent labels from overlapping their markers
-    simulation.force(
-      `charge`,
-      forceManyBody().strength((node) => {
-        const anchor = node as AnchorNode
-        if (anchor.point_radius !== undefined && anchor.fx !== undefined) {
-          return -actual_label_config.charge_strength
-        }
-        return 0
-      }).distanceMax(actual_label_config.charge_distance_max),
+    label_positions = compute_label_positions(
+      filtered_series,
+      actual_label_config,
+      {
+        x_scale_fn,
+        y_scale_fn,
+        y2_scale_fn,
+        x_axis_format: x_axis.format,
+      },
+      { width, height, pad },
+      { forceSimulation, forceLink, forceCollide, forceManyBody },
     )
-
-    simulation.stop().tick(actual_label_config.placement_ticks)
-
-    // Apply boundary constraints, distance constraints, and store final positions
-    const [min_dist, max_dist] = actual_label_config.link_distance_range ??
-      [null, null]
-
-    for (const node of label_nodes) {
-      let final_x = node.x!
-      let final_y = node.y!
-
-      // Clamp to plot boundaries (keep labels within visible area)
-      const half_width = node.label_width / 2
-      const half_height = node.label_height / 2
-      final_x = Math.max(
-        pad.l + half_width,
-        Math.min(width - pad.r - half_width, final_x),
-      )
-      final_y = Math.max(
-        pad.t + half_height,
-        Math.min(height - pad.b - half_height, final_y),
-      )
-
-      // Apply distance constraints after boundary clamping
-      if (min_dist || max_dist) {
-        const dx = final_x - node.anchor_x
-        const dy = final_y - node.anchor_y
-        const dist = Math.sqrt(dx * dx + dy * dy)
-
-        if (max_dist && dist > max_dist) {
-          const scale = max_dist / dist
-          final_x = node.anchor_x + dx * scale
-          final_y = node.anchor_y + dy * scale
-        } else if (min_dist && dist > 0 && dist < min_dist) {
-          const scale = min_dist / dist
-          final_x = node.anchor_x + dx * scale
-          final_y = node.anchor_y + dy * scale
-        }
-      }
-
-      label_positions[node.id] = { x: final_x, y: final_y }
-    }
   })
-
-  // Helper function to check if two series have compatible units
-  function have_compatible_units(series1: DataSeries, series2: DataSeries): boolean {
-    const unit1 = series1.unit
-    const unit2 = series2.unit
-
-    // If either series has no unit, they're compatible
-    if (!unit1 || !unit2) return true
-
-    return unit1 === unit2
-  }
 
   // Function to toggle series visibility
   function toggle_series_visibility(series_idx: number) {
-    if (series_idx < 0 || series_idx >= series.length || !series[series_idx]) return
-
-    const toggled_series = series[series_idx]!
-    const new_visibility = !(toggled_series.visible ?? true)
-    const target_axis = toggled_series.y_axis ?? `y1`
-    const toggled_label = toggled_series.label
-
-    // Only create new objects for series that need to change to preserve series IDs
-    series = series.map((srs: DataSeries, idx: number) => {
-      // Toggle all series with the same label (for grouped series like band structures)
-      if (toggled_label && srs.label === toggled_label) {
-        return { ...srs, visible: new_visibility }
-      }
-
-      // Also toggle the specific series if it has no label
-      if (idx === series_idx && !toggled_label) {
-        return { ...srs, visible: new_visibility }
-      }
-
-      // If we're showing a series, hide incompatible series on same axis
-      if (new_visibility && (srs.y_axis ?? `y1`) === target_axis) {
-        if (!have_compatible_units(toggled_series, srs)) {
-          // Only create new object if we need to change visibility
-          if (srs.visible ?? true) {
-            return { ...srs, visible: false }
-          }
-        }
-      }
-
-      // Keep the SAME object reference for unchanged series (preserves cached ID)
-      return srs
-    })
+    series = toggle_series_visibility(series, series_idx)
   }
 
   // Function to handle double-click on legend item
   function handle_legend_double_click(double_clicked_idx: number) {
-    const double_clicked_series = series[double_clicked_idx]
-    const double_clicked_label = double_clicked_series?.label
-
-    const current_visibility = series.map((srs: DataSeries) => srs?.visible ?? true)
-    const visible_count =
-      current_visibility.filter((visible: boolean) => visible).length
-
-    // Check if the group is currently isolated (all series with this label visible, others hidden)
-    const group_is_isolated = series.every((srs: DataSeries, idx: number) => {
-      // For unlabeled series, use index comparison; for labeled, use label comparison
-      const is_in_group = double_clicked_label
-        ? srs.label === double_clicked_label
-        : idx === double_clicked_idx
-      const is_visible = srs?.visible ?? true
-      return is_in_group ? is_visible : !is_visible
-    })
-
-    if (group_is_isolated && previous_series_visibility) {
-      // Restore previous visibility state
-      // Only create new objects for series whose visibility actually changes
-      series = series.map((srs: DataSeries, idx: number) => {
-        const target_visibility = previous_series_visibility![idx]
-        const current_visibility = srs?.visible ?? true
-        if (current_visibility !== target_visibility) {
-          return { ...srs, visible: target_visibility }
-        }
-        return srs // Preserve object reference
-      })
-      previous_series_visibility = null // Clear memory
-    } else {
-      // Isolate the double-clicked series group
-      // Only store previous state if we are actually isolating (more than one series visible)
-      if (visible_count > 1) {
-        previous_series_visibility = [...current_visibility] // Store current state
-      }
-      // Only create new objects for series whose visibility needs to change
-      series = series.map((srs: DataSeries, idx: number) => {
-        // For unlabeled series, use index comparison; for labeled, use label comparison
-        const is_in_group = double_clicked_label
-          ? srs.label === double_clicked_label
-          : idx === double_clicked_idx
-        const target_visibility = is_in_group
-        const current_visibility = srs?.visible ?? true
-        if (current_visibility !== target_visibility) {
-          return { ...srs, visible: target_visibility }
-        }
-        return srs // Preserve object reference
-      })
-    }
+    const result = handle_legend_double_click(
+      series,
+      double_clicked_idx,
+      previous_series_visibility,
+    )
+    series = result.series
+    previous_series_visibility = result.previous_visibility
   }
 
   // Legend drag handlers
