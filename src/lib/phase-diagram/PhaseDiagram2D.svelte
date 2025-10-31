@@ -3,15 +3,13 @@
     AnyStructure,
     CompositionType,
     ElementSymbol,
-    PlotPoint,
-    ScatterTooltipProps,
     UserContentProps,
   } from '$lib'
   import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
-  import { type AxisConfig, ScatterPlot } from '$lib/plot'
+  import { type AxisConfig, type ScatterHandlerProps, ScatterPlot } from '$lib/plot'
   import { SvelteMap } from 'svelte/reactivity'
   import * as helpers from './helpers'
   import type { BasePhaseDiagramProps } from './index'
@@ -48,6 +46,7 @@
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
+    display = $bindable({ x_grid: false, y_grid: false }),
     x_axis = {},
     y_axis = {},
     ...rest
@@ -416,7 +415,6 @@
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     };`,
   )
-  let display = $state({ x_grid: false, y_grid: false })
 </script>
 
 <svelte:document
@@ -426,7 +424,7 @@
 />
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
-{#snippet tooltip(point: PlotPoint & ScatterTooltipProps)}
+{#snippet tooltip(point: ScatterHandlerProps)}
   {@const entry = point.metadata as unknown as PlotEntry3D}
   {@const is_element = is_unary_entry(entry)}
   {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
