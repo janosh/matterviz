@@ -42,7 +42,6 @@
   } from '$lib/plot/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
-  import { forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
   import {
     scaleLinear,
     scaleLog,
@@ -1027,14 +1026,8 @@
     label_positions = compute_label_positions(
       filtered_series,
       actual_label_config,
-      {
-        x_scale_fn,
-        y_scale_fn,
-        y2_scale_fn,
-        x_axis_format: x_axis.format,
-      },
+      { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis },
       { width, height, pad },
-      { forceSimulation, forceLink, forceCollide, forceManyBody },
     )
   })
 

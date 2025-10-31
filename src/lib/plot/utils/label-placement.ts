@@ -1,5 +1,6 @@
-import type { DataSeries, InternalPoint, LabelPlacementConfig, XyObj } from '$lib/plot'
-import type { forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
+import type { AxisConfig, DataSeries, XyObj } from '$lib/plot'
+import { InternalPoint, LabelPlacementConfig } from '$lib/plot/types'
+import { forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
 import type { ScaleContinuousNumeric } from 'd3-scale'
 
 export interface LabelNode {
@@ -39,23 +40,16 @@ export function compute_label_positions(
     x_scale_fn: ScaleContinuousNumeric<number, number>
     y_scale_fn: ScaleContinuousNumeric<number, number>
     y2_scale_fn: ScaleContinuousNumeric<number, number>
-    x_axis_format?: string
+    x_axis: AxisConfig
   },
   bounds: {
     width: number
     height: number
     pad: { t: number; b: number; l: number; r: number }
   },
-  force_imports: {
-    forceSimulation: typeof forceSimulation
-    forceLink: typeof forceLink
-    forceCollide: typeof forceCollide
-    forceManyBody: typeof forceManyBody
-  },
 ): Record<string, XyObj> {
   const { width, height, pad } = bounds
-  const { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis_format } = scales
-  const { forceSimulation, forceLink, forceCollide, forceManyBody } = force_imports
+  const { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis } = scales
 
   const label_nodes: LabelNode[] = []
   const anchor_nodes: AnchorNode[] = []
@@ -65,7 +59,7 @@ export function compute_label_positions(
     for (const pt of series.filtered_data) {
       if (!pt.point_label?.auto_placement || !pt.point_label.text) continue
 
-      const ax = x_axis_format?.startsWith(`%`)
+      const ax = x_axis.format?.startsWith(`%`)
         ? x_scale_fn(new Date(pt.x))
         : x_scale_fn(pt.x)
       const ay = (series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(pt.y)
