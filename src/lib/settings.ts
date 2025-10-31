@@ -276,11 +276,11 @@ const DISPLAY_CONFIG = {
     description: `Show Y2-axis grid lines`,
   },
   x_zero_line: {
-    value: false,
+    value: true,
     description: `Show X-axis zero reference line`,
   },
   y_zero_line: {
-    value: false,
+    value: true,
     description: `Show Y-axis zero reference line`,
   },
 } as const

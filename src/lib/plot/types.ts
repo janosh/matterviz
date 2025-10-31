@@ -130,23 +130,40 @@ export interface TooltipProps {
   x: number
   y: number
   metadata?: Record<string, unknown> | null
-  color?: string | null
   label?: string | null
   series_idx: number
+  x_axis: AxisConfig
+  y_axis: AxisConfig
+  y2_axis?: AxisConfig
 }
 
-export interface ScatterTooltipProps extends TooltipProps {
+export interface ScatterHandlerProps extends TooltipProps {
   cx: number
   cy: number
   x_formatted: string
   y_formatted: string
+  color_value?: number | null
+  colorbar?: {
+    value?: number | null
+    title?: string | null
+    scale?: unknown
+    tick_format?: string | null
+  }
 }
 
-export interface BarTooltipProps extends TooltipProps {
+export interface BarHandlerProps extends TooltipProps {
   bar_idx: number
   orient_x: number
   orient_y: number
-  y_axis: `y1` | `y2`
+  active_y_axis: `y1` | `y2`
+  color: string
+}
+
+export interface HistogramHandlerProps extends TooltipProps {
+  value: number
+  count: number
+  property: string
+  active_y_axis: `y1` | `y2`
 }
 
 export type TimeInterval = `day` | `month` | `year`

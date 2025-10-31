@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_value } from '$lib/labels'
-  import type { AxisConfig, BarStyle } from '$lib/plot'
+  import type { AxisConfig, BarStyle, HistogramHandlerProps } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import type { BasePlotProps, DataSeries, DisplayConfig } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
@@ -70,9 +70,7 @@
     bar?: BarStyle
     selected_property?: string
     mode?: `single` | `overlay`
-    tooltip?: Snippet<
-      [{ value: number; count: number; property: string; axis: `y1` | `y2` }]
-    >
+    tooltip?: Snippet<[HistogramHandlerProps]>
     change?: (data: { value: number; count: number; property: string } | null) => void
     on_bar_click?: (
       data: {
@@ -104,11 +102,7 @@
   // Core state
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
-  let hover_info = $state<
-    { value: number; count: number; property: string; axis: `y1` | `y2` } | null
-  >(
-    null,
-  )
+  let hover_info = $state<HistogramHandlerProps | null>(null)
   let drag_state = $state<{
     start: { x: number; y: number } | null
     current: { x: number; y: number } | null
@@ -448,10 +442,24 @@
     value: number,
     count: number,
     property: string,
-    axis: `y1` | `y2` = `y1`,
+    active_y_axis: `y1` | `y2` = `y1`,
+    series_idx: number = 0,
   ) {
     hovered = true
-    hover_info = { value, count, property, axis }
+    hover_info = {
+      value,
+      count,
+      property,
+      active_y_axis,
+      x: value,
+      y: count,
+      series_idx,
+      metadata: null,
+      label: property,
+      x_axis,
+      y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
+      y2_axis,
+    }
     change({ value, count, property })
     on_bar_hover?.({ value, count, property, event: evt })
   }
@@ -497,11 +505,9 @@
   >
     <!-- Tooltip -->
     {#if hover_info}
-      {@const tooltip_x = scales.x(hover_info.value)}
-      {@const y_cfg = (hover_info.axis === `y2`) ? y2_axis : y_axis}
-      {@const tooltip_y = (hover_info.axis === `y2` ? scales.y2 : scales.y)(
-        hover_info.count,
-      )}
+      {@const { value, count, property, active_y_axis } = hover_info}
+      {@const tooltip_x = scales.x(value)}
+      {@const tooltip_y = (active_y_axis === `y2` ? scales.y2 : scales.y)(count)}
       {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
       {@const tooltip_pos = constrain_tooltip_position(
         tooltip_x,
@@ -521,9 +527,11 @@
           {#if tooltip}
             {@render tooltip(hover_info)}
           {:else}
-            <div>Value: {format_value(hover_info.value, x_axis.format || `.3~s`)}</div>
-            <div>Count: {format_value(hover_info.count, y_cfg.format || `.3~s`)}</div>
-            {#if mode === `overlay`}<div>{hover_info.property}</div>{/if}
+            <div>Value: {format_value(value, x_axis.format || `.3~s`)}</div>
+            <div>
+              Count: {format_value(count, y_axis.format || `.3~s`)}
+            </div>
+            {#if mode === `overlay`}<div>{property}</div>{/if}
           {/if}
         </div>
       </foreignObject>
@@ -738,7 +746,7 @@
         <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
       {/if}
     {/if}
-    {#if (display.y2_zero_line ?? display.y_zero_line) && y2_series.length > 0 &&
+    {#if (display.y_zero_line) && y2_series.length > 0 &&
         (y2_axis.scale_type ?? `linear`) === `linear` &&
         ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
       {@const zero_y2 = scales.y2(0)}
@@ -786,6 +794,7 @@
                 bin.length,
                 label,
                 (y_axis ?? `y1`) as `y1` | `y2`,
+                series_idx,
               )}
               onmouseleave={() => {
                 hover_info = null

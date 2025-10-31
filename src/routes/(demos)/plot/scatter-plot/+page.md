@@ -39,7 +39,7 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   let hovered_point_info = $state('No point hovered yet.')
 
   // It's good practice to type event handlers if you know the structure
-  function handle_point_click({ point }) {
+  function on_point_click({ point }) {
     const { x, y, metadata, series_idx, point_idx } = point
     clicked_point_info = `Clicked: Point (${x}, ${y}), Series: '${
       metadata?.series_label ??
@@ -103,7 +103,7 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   ]}
   x_axis={{ label: 'X Axis' }}
   y_axis={{ label: 'Y Value' }}
-  point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
+  point_events={{ onclick: on_point_click, ondblclick: handle_point_double_click }}
   on_point_hover={handle_point_hover}
   style="height: 300px"
 />

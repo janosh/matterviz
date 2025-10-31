@@ -15,11 +15,10 @@
     LabelNode,
     LabelPlacementConfig,
     LegendConfig,
-    PlotPoint,
     Point,
     PointStyle,
     ScaleType,
-    ScatterTooltipProps,
+    ScatterHandlerProps,
     Sides,
     StyleOverrides,
     TweenedOptions,
@@ -103,7 +102,7 @@
     current_x_value?: number | null
     tooltip_point?: InternalPoint | null
     hovered?: boolean
-    tooltip?: Snippet<[PlotPoint & ScatterTooltipProps]>
+    tooltip?: Snippet<[ScatterHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
     change?: (data: (Point & { series: DataSeries }) | null) => void
     color_scale?: {
@@ -131,9 +130,9 @@
       string,
       (payload: { point: InternalPoint; event: Event }) => void
     >
-    on_point_click?: (data: { point: InternalPoint; event: MouseEvent }) => void
+    on_point_click?: (data: ScatterHandlerProps & { event: MouseEvent }) => void
     on_point_hover?: (
-      data: { point: InternalPoint | null; event?: MouseEvent },
+      data: (ScatterHandlerProps & { event: MouseEvent }) | null,
     ) => void
     selected_series_idx?: number
   } = $props()
@@ -932,7 +931,7 @@
   function handle_mouse_leave() {
     hovered = false
     tooltip_point = null
-    on_point_hover?.({ point: null, event: undefined })
+    on_point_hover?.(null)
   }
 
   function handle_double_click() {
@@ -988,17 +987,14 @@
     ) {
       tooltip_point = closest_point_internal
       // Construct object matching change signature
-      const { x, y, metadata } = closest_point_internal // Extract base Point props
-      // Call change handler with closest point's data
+      const { x, y, metadata } = closest_point_internal
       change({ x, y, metadata, series: closest_series })
-      // Call hover handler with point data
-      on_point_hover?.({ point: closest_point_internal, event: evt })
+      // Call hover handler - handler_props is derived from tooltip_point
+      if (evt && handler_props) on_point_hover?.({ ...handler_props, event: evt })
     } else {
-      // No point close enough or no points at all
       tooltip_point = null
       change(null)
-      // Call hover handler with null to indicate no point hovered
-      on_point_hover?.({ point: null, event: evt })
+      on_point_hover?.(null)
     }
   }
 
@@ -1353,6 +1349,37 @@
 
     return [screen_x, screen_y]
   }
+
+  // Derive handler props from hovered point for both tooltip and event handlers
+  let handler_props = $derived.by((): ScatterHandlerProps | null => {
+    if (!tooltip_point) return null
+    const hovered_series = series_with_ids[tooltip_point.series_idx]
+    if (!hovered_series) return null
+    const { x, y, color_value, metadata, series_idx } = tooltip_point
+    const cx = x_axis.format?.startsWith(`%`)
+      ? x_scale_fn(new Date(x))
+      : x_scale_fn(x)
+    const cy = (hovered_series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)
+    const coords = { x, y, cx, cy, x_axis, y_axis, y2_axis }
+    return {
+      ...coords,
+      metadata: metadata ?? null,
+      label: hovered_series.label ?? null,
+      series_idx,
+      x_formatted: format_value(x, x_axis.format || `.3~s`),
+      y_formatted: format_value(
+        y,
+        (hovered_series.y_axis === `y2` ? y2_axis.format : y_axis.format) || `.3~s`,
+      ),
+      color_value: color_value ?? null,
+      colorbar: {
+        value: color_value ?? null,
+        title: color_bar?.title ?? null,
+        scale: color_scale,
+        tick_format: color_bar?.tick_format ?? null,
+      },
+    }
+  })
 
   let using_controls = $derived(controls.show)
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
@@ -1768,7 +1795,10 @@
                       [event_name, handler],
                     ) => [event_name, (event: Event) => handler({ point, event })]),
                   )}
-                  onclick={(event: MouseEvent) => on_point_click?.({ point, event })}
+                  onclick={(event: MouseEvent) => {
+                    tooltip_point = point
+                    if (handler_props) on_point_click?.({ ...handler_props, event })
+                  }}
                 />
               {/each}
             {/if}
@@ -1778,9 +1808,8 @@
     </svg>
 
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
-    {#if tooltip_point && hovered}
-      {@const { x, y, metadata, color_value, point_label, point_style, series_idx } =
-      tooltip_point}
+    {#if handler_props && hovered && tooltip_point}
+      {@const { color_value, point_label, point_style, series_idx } = tooltip_point}
       {@const hovered_series = series_with_ids[series_idx]}
       {@const series_markers = hovered_series?.markers ?? DEFAULT_MARKERS}
       {@const is_transparent_or_none = (color: string | undefined | null): boolean =>
@@ -1817,30 +1846,21 @@
       }
       return `rgba(0, 0, 0, 0.7)`
     })()}
-      {@const cx = x_axis.format?.startsWith(`%`) ? x_scale_fn(new Date(x)) : x_scale_fn(x)}
-      {@const cy = (hovered_series?.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)}
-      {@const x_formatted = format_value(x, x_axis.format || `.3~s`)}
-      {@const y_formatted = format_value(
-      y,
-      (hovered_series?.y_axis === `y2` ? y2_axis.format : y_axis.format) || `.3~s`,
-    )}
       {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
       {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
-      {@const style = `position: absolute; left: ${cx + 5}px; top: ${cy}px;
+      {@const style = `position: absolute; left: ${
+      handler_props.cx + 5
+    }px; top: ${handler_props.cy}px;
       background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color});
       z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
       <div class="tooltip overlay" {style}>
         {#if tooltip}
-          {@const tooltip_props = {
-        x_formatted,
-        y_formatted,
-        color_value,
-        label: hovered_series?.label ?? null,
-        series_idx,
-      }}
-          {@render tooltip({ x, y, cx, cy, metadata, ...tooltip_props })}
+          {@render tooltip(handler_props)}
         {:else}
-          {point_label?.text ?? `Point`} - x: {x_formatted}, y: {y_formatted}
+          {point_label?.text ? `${point_label?.text}<br />` : ``}x: {
+            handler_props.x_formatted
+          }<br />y:
+          {handler_props.y_formatted}
         {/if}
       </div>
     {/if}
@@ -1885,7 +1905,7 @@
           top: ${tweened_colorbar_coords.current.y}px;
           transform: ${color_bar_placement?.transform ?? ``};
           ${color_bar?.wrapper_style ?? ``}`}
-        bar_style="width: 280px; height: 20px; {color_bar?.style ?? ``}"
+        bar_style="width: 220px; height: 20px; {color_bar?.style ?? ``}"
         {...color_bar}
       />
     {/if}

@@ -468,12 +468,12 @@
   let last_clicked_point_id = $state<string | null>(null)
   let last_double_clicked_point_id = $state<string | null>(null)
 
-  function handle_point_click({ point }: { point: InternalPoint }) {
+  function on_point_click({ point }: { point: InternalPoint }) {
     last_clicked_point_id =
       `Point: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
   }
 
-  function handle_point_double_click({ point }: { point: InternalPoint }) {
+  function on_point_double_click({ point }: { point: InternalPoint }) {
     last_double_clicked_point_id =
       `DblClick: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
   }
@@ -943,8 +943,8 @@
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y` }}
     point_events={{
-      onclick: handle_point_click,
-      ondblclick: handle_point_double_click,
+      onclick: on_point_click,
+      ondblclick: on_point_double_click,
     }}
   />
   <p data-testid="last-clicked-point">
