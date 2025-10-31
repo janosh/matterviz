@@ -1212,7 +1212,7 @@ export async function parse_trajectory_data(
 
       return create_trajectory_frame(
         positions,
-        species.map((s) => s.element),
+        species.map((specie) => specie.element),
         matrix,
         [true, true, true],
         idx,
@@ -1226,7 +1226,7 @@ export async function parse_trajectory_data(
         filename,
         source_format: `pymatgen_trajectory`,
         frame_count: frames.length,
-        species_list: [...new Set(species.map((s) => s.element))],
+        species_list: [...new Set(species.map((specie) => specie.element))],
         periodic_boundary_conditions: [true, true, true],
       },
     }

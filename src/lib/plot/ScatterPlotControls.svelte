@@ -16,7 +16,7 @@
     x_axis = {},
     y_axis = {},
     y2_axis = {},
-    display = {},
+    display = $bindable({}),
     styles = {},
     selected_series_idx = $bindable(0),
     ...rest
@@ -37,7 +37,7 @@
   })
 </script>
 
-<PlotControls {x_axis} {y_axis} {y2_axis} {display} {...rest}>
+<PlotControls {x_axis} {y_axis} {y2_axis} bind:display {...rest}>
   <!-- Add show_points and show_lines checkboxes to Display section by extending it -->
   <!-- This is done via the Display section in PlotControls, but we need custom controls -->
   <!-- For now, we'll add a separate section for markers -->

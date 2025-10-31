@@ -15,7 +15,7 @@
     x_axis = {},
     y_axis = {},
     y2_axis = {},
-    display = {},
+    display = $bindable({}),
     show_controls = $bindable(false),
     controls_open = $bindable(false),
     auto_y2_range = undefined,
@@ -49,10 +49,10 @@
 <PlotControls
   bind:show_controls
   bind:controls_open
+  bind:display
   {x_axis}
   {y_axis}
   {y2_axis}
-  {display}
   {auto_y2_range}
   {...rest}
 >

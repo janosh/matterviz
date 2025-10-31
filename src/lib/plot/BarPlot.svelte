@@ -2,10 +2,10 @@
   import { format_value } from '$lib/labels'
   import type {
     AxisConfig,
+    BarHandlerProps,
     BarMode,
     BarSeries,
     BarStyle,
-    BarTooltipProps,
     BasePlotProps,
     DisplayConfig,
     LegendConfig,
@@ -14,12 +14,8 @@
     Orientation,
     UserContentProps,
   } from '$lib/plot'
-  import {
-    BarPlotControls,
-    DEFAULT_GRID_STYLE,
-    find_best_plot_area,
-    PlotLegend,
-  } from '$lib/plot'
+  import { BarPlotControls, find_best_plot_area, PlotLegend } from '$lib/plot'
+  import { DEFAULT_GRID_STYLE } from '$lib/plot/types'
   import { get_relative_coords } from '$lib/plot/interactions'
   import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
   import { DEFAULTS } from '$lib/settings'
@@ -35,7 +31,7 @@
     x_axis = {},
     y_axis = {},
     y2_axis = {},
-    display = DEFAULTS.bar.display,
+    display = $bindable(DEFAULTS.bar.display),
     x_range = [null, null],
     y_range = [null, null],
     y2_range = [null, null],
@@ -73,13 +69,13 @@
     show_legend?: boolean
     bar?: BarStyle
     line?: LineStyle
-    tooltip?: Snippet<[BarTooltipProps]>
+    tooltip?: Snippet<[BarHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
-    change?: (data: BarTooltipProps | null) => void
+    change?: (data: BarHandlerProps | null) => void
     on_bar_click?: (
-      data: BarTooltipProps & { event: MouseEvent | KeyboardEvent },
+      data: BarHandlerProps & { event: MouseEvent | KeyboardEvent },
     ) => void
-    on_bar_hover?: (data: BarTooltipProps & { event: MouseEvent } | null) => void
+    on_bar_hover?: (data: (BarHandlerProps & { event: MouseEvent }) | null) => void
   } = $props()
 
   // Initialize bar, line, y2_axis with defaults (runs once)
@@ -474,7 +470,7 @@
   })
 
   // Tooltip state
-  let hover_info = $state<BarTooltipProps | null>(null)
+  let hover_info = $state<BarHandlerProps | null>(null)
 
   function get_bar_data(series_idx: number, bar_idx: number, color: string) {
     const srs = series[series_idx]
@@ -484,18 +480,9 @@
       ? srs.metadata[bar_idx]
       : srs.metadata
     const label = srs.labels?.[bar_idx] ?? null
-    return {
-      x,
-      y,
-      orient_x,
-      orient_y,
-      series_idx,
-      bar_idx,
-      metadata,
-      color,
-      label,
-      y_axis: srs.y_axis ?? `y1`,
-    }
+    const active_y_axis = srs.y_axis ?? `y1`
+    const coords = { x, y, orient_x, orient_y, x_axis, y_axis, y2_axis }
+    return { ...coords, metadata, color, label, series_idx, bar_idx, active_y_axis }
   }
 
   const handle_bar_hover =
@@ -1040,11 +1027,11 @@
     {/if}
 
     {#if hover_info && hovered}
-      {@const srs = series[hover_info.series_idx]}
-      {@const use_y2 = srs?.y_axis === `y2`}
-      {@const active_y_axis = use_y2 ? y2_axis : y_axis}
       {@const cx = scales.x(hover_info.orient_x)}
-      {@const cy = (use_y2 ? scales.y2 : scales.y)(hover_info.orient_y)}
+      {@const cy = (hover_info.active_y_axis === `y2` ? scales.y2 : scales.y)(
+      hover_info.orient_y,
+    )}
+      {@const active_y_config = hover_info.active_y_axis === `y2` ? y2_axis : y_axis}
       <div
         class="tooltip overlay"
         style={`position: absolute; left: ${cx + 6}px; top: ${cy}px; pointer-events: none;`}
@@ -1058,8 +1045,8 @@
             }
           </div>
           <div>
-            {active_y_axis.label || `y`}: {
-              format_value(hover_info.orient_y, active_y_axis.format || `.3~s`)
+            {active_y_config.label || `y`}: {
+              format_value(hover_info.orient_y, active_y_config.format || `.3~s`)
             }
           </div>
         {/if}
@@ -1077,7 +1064,7 @@
         {x_axis}
         {y_axis}
         {y2_axis}
-        {display}
+        bind:display
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
         auto_y2_range={auto_ranges.y2 as [number, number]}

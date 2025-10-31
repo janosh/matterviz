@@ -13,7 +13,7 @@
     x_axis = {},
     y_axis = {},
     y2_axis = {},
-    display = {},
+    display = $bindable({}),
     auto_x_range = [0, 1],
     auto_y_range = [0, 1],
     auto_y2_range = undefined,
@@ -138,20 +138,23 @@
       }}
       style="display: flex; flex-wrap: wrap; gap: 1ex"
     >
-      {#if x_includes_zero}<label><input
-            type="checkbox"
-            bind:checked={display.x_zero_line}
-          /> X zero line</label>{/if}
-      {#if y_includes_zero}<label><input
-            type="checkbox"
-            bind:checked={display.y_zero_line}
-          /> Y zero line</label>{/if}
+      {#if x_includes_zero}
+        <label>
+          <input type="checkbox" bind:checked={display.x_zero_line} /> X zero line
+        </label>
+      {/if}
+      {#if y_includes_zero}
+        <label>
+          <input type="checkbox" bind:checked={display.y_zero_line} /> Y zero line
+        </label>
+      {/if}
       <label><input type="checkbox" bind:checked={display.x_grid} /> X-axis grid</label>
       <label><input type="checkbox" bind:checked={display.y_grid} /> Y-axis grid</label>
-      {#if has_y2_points}<label><input
-            type="checkbox"
-            bind:checked={display.y2_grid}
-          /> Y2-axis grid</label>{/if}
+      {#if has_y2_points}
+        <label>
+          <input type="checkbox" bind:checked={display.y2_grid} /> Y2-axis grid
+        </label>
+      {/if}
     </SettingsSection>
 
     <!-- Base Axis Range controls -->

@@ -63,7 +63,7 @@ export function calculate_rdf(
 
   // Note: Sites with mixed occupancy are treated as the first species only.
   // TODO For proper occupancy support, contributions should be weighted by species occupancy.
-  const elements = sites.map((s) => s.species[0].element)
+  const elements = sites.map((site) => site.species[0].element)
   const centers = center_species
     ? sites.filter((_, idx) => elements[idx] === center_species)
     : sites
@@ -120,7 +120,8 @@ export function calculate_all_pair_rdfs(
   structure: Structure,
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> = {},
 ): RdfPattern[] {
-  const elems = [...new Set(structure.sites.map((s) => s.species[0].element))].sort()
+  const elems = [...new Set(structure.sites.map((site) => site.species[0].element))]
+    .sort()
 
   // If auto_expand is true, expand the structure once and reuse it for all pairs
   // to avoid repeated supercell computations

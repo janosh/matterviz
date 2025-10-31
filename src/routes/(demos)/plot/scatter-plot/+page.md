@@ -39,7 +39,7 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   let hovered_point_info = $state('No point hovered yet.')
 
   // It's good practice to type event handlers if you know the structure
-  function handle_point_click({ point }) {
+  function on_point_click({ point }) {
     const { x, y, metadata, series_idx, point_idx } = point
     clicked_point_info = `Clicked: Point (${x}, ${y}), Series: '${
       metadata?.series_label ??
@@ -103,7 +103,7 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   ]}
   x_axis={{ label: 'X Axis' }}
   y_axis={{ label: 'Y Value' }}
-  point_events={{ onclick: handle_point_click, ondblclick: handle_point_double_click }}
+  point_events={{ onclick: on_point_click, ondblclick: handle_point_double_click }}
   on_point_hover={handle_point_hover}
   style="height: 300px"
 />
@@ -248,7 +248,7 @@ Demonstrate various point styles, custom tooltips, and hover effects:
 </script>
 
 <ScatterPlot
-  series={series_with_styles.map((s) => ({ ...s, markers: 'points' }))}
+  series={series_with_styles.map((srs) => ({ ...srs, markers: 'points' }))}
   x_axis={{ label: 'X Axis' }}
   y_axis={{ label: 'Point Style Examples', range: [0, 12] }}
   change={(point) => (hovered_point = point)}
@@ -451,7 +451,7 @@ This example shows categorized data with color coding, custom tick intervals, an
 {/each}
 
 <ScatterPlot
-  series={series_data.map((s) => ({ ...s, markers: 'points' }))}
+  series={series_data.map((srs) => ({ ...srs, markers: 'points' }))}
   x_axis={{ label: "X Value", range: [-15, 15], ticks: ticks.x }}
   y_axis={{ label: "Y Value", range: [-15, 15], ticks: ticks.y }}
   style="height: 400px;"
@@ -542,7 +542,7 @@ Using time data on the x-axis with custom formatting:
   </label>
 
   <ScatterPlot
-    series={time_series.map((s) => ({ ...s, markers: 'line+points' }))}
+    series={time_series.map((srs) => ({ ...srs, markers: 'line+points' }))}
     x_axis={{ format: date_format, ticks: -7, label: 'Date' }}
     y_axis={{ format: y_format, ticks: 5, label: 'Value' }}
     style="height: 350px"
@@ -843,7 +843,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
   </div>
 
   <ScatterPlot
-    series={all_series.map((s) => ({ ...s, markers: 'line+points' }))}
+    series={all_series.map((srs) => ({ ...srs, markers: 'line+points' }))}
     x_axis={{
       scale_type: x_scale_type,
       range: x_range,
@@ -984,7 +984,7 @@ This example combines multiple features including different display modes, custo
   </div>
 
   <ScatterPlot
-    series={displayed_series.map((s) => ({ ...s, markers: display_mode }))}
+    series={displayed_series.map((srs) => ({ ...srs, markers: display_mode }))}
     x_axis={{ label: axis_labels.x }}
     y_axis={{ label: axis_labels.y }}
     change={(point) => (hovered_point = point)}
@@ -1044,7 +1044,7 @@ This example combines multiple features including different display modes, custo
   </div>
 
   <ScatterPlot
-    series={random_series.map((s) => ({ ...s, markers: 'points' }))}
+    series={random_series.map((srs) => ({ ...srs, markers: 'points' }))}
     x_axis={{ label: axis_labels.x, range: [-15, 15], ticks: ticks.x }}
     y_axis={{ label: axis_labels.y, range: [-15, 15], ticks: ticks.y }}
     bind:display
@@ -1179,7 +1179,7 @@ This example demonstrates how the color bar automatically positions itself in on
 </div>
 
 <ScatterPlot
-  series={plot_series.map((s) => ({ ...s, markers: 'points+text' }))}
+  series={plot_series.map((srs) => ({ ...srs, markers: 'points+text' }))}
   x_axis={{ label: 'X Position', range: [0, 100], format: '.2' }}
   y_axis={{ label: 'Y Position', range: [0, 100], format: '.2' }}
   color_scale={{ scheme: `turbo` }}
@@ -1314,7 +1314,7 @@ This example demonstrates automatic placement with both clustered points (showin
   </p>
 
   <ScatterPlot
-    series={series_data.map((s) => ({ ...s, markers: 'points' }))}
+    series={series_data.map((srs) => ({ ...srs, markers: 'points' }))}
     x_axis={{ label: 'X Position', range: [0, 100] }}
     y_axis={{ label: 'Y Position', range: [0, 100] }}
     style="height: 500px"
@@ -1500,7 +1500,7 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
 </script>
 
 <ScatterPlot
-  series={clipping_series.map((s) => ({ ...s, markers: 'line' }))}
+  series={clipping_series.map((srs) => ({ ...srs, markers: 'line' }))}
   x_axis={{ range: [-5, 5], label: 'X Axis (Fixed Range)' }}
   y_axis={{ range: [-5, 5], label: 'Y Axis (Fixed Range)' }}
   style="height: 400px"
