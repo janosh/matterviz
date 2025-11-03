@@ -99,6 +99,10 @@
       "types": "./dist/bands/index.d.ts",
       "default": "./dist/bands/index.js"
     },
+    "./brillouin": {
+      "types": "./dist/brillouin/index.d.ts",
+      "default": "./dist/brillouin/index.js"
+    },
     "./composition": {
       "types": "./dist/composition/index.d.ts",
       "default": "./dist/composition/index.js"
