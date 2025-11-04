@@ -15,9 +15,9 @@
     UserContentProps,
   } from '$lib/plot'
   import { BarPlotControls, find_best_plot_area, PlotLegend } from '$lib/plot'
-  import { DEFAULT_GRID_STYLE } from '$lib/plot/types'
   import { get_relative_coords } from '$lib/plot/interactions'
   import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
+  import { DEFAULT_GRID_STYLE } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -1073,7 +1073,7 @@
   {/if}
 
   <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
-  {@render children?.()}
+  {@render children?.({ height, width })}
 </div>
 
 <style>
