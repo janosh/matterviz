@@ -153,7 +153,7 @@ export interface ScatterHandlerProps<Metadata = Record<string, unknown>>
 }
 export type ScatterHandlerEvent<Metadata = Record<string, unknown>> =
   & ScatterHandlerProps<Metadata>
-  & { event: MouseEvent }
+  & { event: MouseEvent; point: InternalPoint }
 
 export interface BarHandlerProps<Metadata = Record<string, unknown>>
   extends TooltipProps<Metadata> {

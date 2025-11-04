@@ -51,7 +51,7 @@
     background_color = $bindable(undefined),
     background_opacity = $bindable(0.1),
     show_controls = 0,
-    fullscreen = false,
+    fullscreen = $bindable(false),
     wrapper = $bindable(undefined),
     width = $bindable(0),
     height = $bindable(0),
@@ -562,11 +562,41 @@
     }
   })
 
+  // Detect and apply page background in fullscreen mode
+  function get_page_background(): string {
+    if (typeof window === `undefined`) return ``
+
+    // Try to get background from html or body
+    const html_bg = getComputedStyle(document.documentElement).backgroundColor
+    const body_bg = getComputedStyle(document.body).backgroundColor
+
+    // Check if background is not transparent/unset
+    const is_valid_bg = (bg: string) =>
+      bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
+
+    if (is_valid_bg(html_bg)) return html_bg
+    if (is_valid_bg(body_bg)) return body_bg
+
+    // Fall back to prefers-color-scheme
+    const prefers_dark = window.matchMedia(`(prefers-color-scheme: dark)`).matches
+    return prefers_dark ? `#1a1a1a` : `#ffffff`
+  }
+
+  // Set fullscreen background once wrapper is available or when fullscreen state changes
+  $effect(() => {
+    if (wrapper && typeof window !== `undefined` && fullscreen) { // trigger effect when fullscreen changes
+      const page_bg = get_page_background()
+      wrapper.style.setProperty(`--struct-bg-fullscreen`, page_bg)
+    }
+  })
+
   $effect(() => { // react to 'fullscreen' state changes
     if (typeof window !== `undefined`) {
       if (fullscreen && !document.fullscreenElement && wrapper) {
         wrapper.requestFullscreen().catch(console.error)
-      } else if (!fullscreen && document.fullscreenElement) document.exitFullscreen()
+      } else if (!fullscreen && document.fullscreenElement) {
+        document.exitFullscreen()
+      }
     }
   })
 </script>
