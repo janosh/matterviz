@@ -6,13 +6,13 @@
 
     let { position, children, ...rest }: HTMLAttributes<HTMLDivElement> & {
       position: Vec3
-      children: Snippet<[]>
+      children: Snippet<[{ position: Vec3 }]>
     } = $props()
 </script>
 
 <HTML {position} pointerEvents="none">
   <div {...rest} class="tooltip {rest.class ?? ``}" role="tooltip">
-    {@render children()}
+    {@render children({ position })}
   </div>
 </HTML>
 

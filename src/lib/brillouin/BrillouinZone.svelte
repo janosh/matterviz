@@ -24,7 +24,7 @@
     filename?: string
     file_size?: number
     error_msg?: string
-    is_fullscreen?: boolean
+    fullscreen?: boolean
   }
   let {
     structure = $bindable(undefined),
@@ -87,7 +87,7 @@
       hovered?: boolean
       dragover?: boolean
       allow_file_drop?: boolean
-      fullscreen_toggle?: Snippet<[]> | boolean
+      fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
       data_url?: string
       on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
       spinner_props?: ComponentProps<typeof Spinner>
@@ -253,7 +253,7 @@
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = Boolean(document.fullscreenElement)
-    on_fullscreen_change?.({ structure, bz_data, bz_order, is_fullscreen: fullscreen })
+    on_fullscreen_change?.({ structure, bz_data, bz_order, fullscreen })
   }}
 />
 
@@ -307,7 +307,7 @@
             {@attach tooltip()}
           >
             {#if typeof fullscreen_toggle === `function`}
-              {@render fullscreen_toggle()}
+              {@render fullscreen_toggle({ fullscreen })}
             {:else}
               <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
             {/if}

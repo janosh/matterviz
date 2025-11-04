@@ -41,14 +41,14 @@
     on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
     loading?: boolean
     error_msg?: string
-    children?: Snippet<[]>
+    children?: Snippet<[{ drag_dropped: Structure[] }]>
   } & ComponentProps<typeof ScatterPlot> = $props()
 
   // Set default axis labels if not provided
   x_axis.label ??= `r (Å)`
   y_axis.label ??= `g(r)`
 
-  let dropped: Structure[] = $state([])
+  let drag_dropped: Structure[] = $state([])
   let dragging = $state(false)
 
   function format_structure_label(struct: Structure, label_base: string): string {
@@ -69,8 +69,9 @@
           ? new TextDecoder().decode(content)
           : content
         const parsed_struct = parse_any_structure(text, filename)
-        if (is_valid_structure(parsed_struct)) dropped = [...dropped, parsed_struct]
-        else error_msg = `Structure has no lattice or sites; cannot compute RDF`
+        if (is_valid_structure(parsed_struct)) {
+          drag_dropped = [...drag_dropped, parsed_struct]
+        } else error_msg = `Structure has no lattice or sites; cannot compute RDF`
       } catch (exc) {
         error_msg = `Failed to process structure: ${
           exc instanceof Error ? exc.message : String(exc)
@@ -127,7 +128,7 @@
         )
       }
     }
-    dropped.forEach((struct, idx) =>
+    drag_dropped.forEach((struct, idx) =>
       struct_list.push({
         struct,
         label: format_structure_label(struct, `Dropped ${idx + 1}`),
@@ -173,10 +174,10 @@
 
 <StatusMessage bind:message={error_msg} type="error" dismissible />
 
-{#if enable_drop && dropped.length > 0}
+{#if enable_drop && drag_dropped.length > 0}
   <div class="dropped-info">
-    {dropped.length} structure{dropped.length > 1 ? `s` : ``} loaded
-    <button onclick={() => (dropped = [])}>Clear</button>
+    {drag_dropped.length} structure{drag_dropped.length > 1 ? `s` : ``} loaded
+    <button onclick={() => (drag_dropped = [])}>Clear</button>
   </div>
 {/if}
 
@@ -231,7 +232,7 @@
       {/if}
     {/snippet}
 
-    {@render children?.()}
+    {@render children?.({ drag_dropped })}
   </ScatterPlot>
 {/if}
 

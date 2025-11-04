@@ -34,6 +34,22 @@ describe(`PieChart component`, () => {
       document.querySelectorAll(`path[role="button"]`).length,
     ).toBeGreaterThan(0)
   })
+
+  test(`renders children snippet`, () => {
+    mount(PieChart, {
+      target: document.body,
+      props: {
+        composition: { H: 2, O: 1 },
+        children: () => {
+          const elem = document.createElement(`div`)
+          elem.className = `custom-child`
+          document.body.appendChild(elem)
+        },
+      },
+    })
+
+    expect(document.querySelector(`.custom-child`)).toBeTruthy()
+  })
 })
 
 describe(`PieChart data processing`, () => {

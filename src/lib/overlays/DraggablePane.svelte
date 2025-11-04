@@ -25,7 +25,14 @@
   }: {
     show?: boolean
     show_pane?: boolean
-    children: Snippet<[]>
+    children: Snippet<
+      [{
+        show: boolean
+        show_control_buttons: boolean
+        has_been_dragged: boolean
+        currently_dragging: boolean
+      }]
+    >
     // Toggle button
     toggle_props?: HTMLAttributes<HTMLButtonElement>
     open_icon?: IconName
@@ -229,7 +236,7 @@
       />
     </div>
 
-    {@render children()}
+    {@render children?.({ show, show_control_buttons, has_been_dragged, currently_dragging })}
   </div>
 {/if}
 

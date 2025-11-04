@@ -95,6 +95,16 @@
     range_inputs.y = [y_axis.range?.[0] ?? null, y_axis.range?.[1] ?? null]
     range_inputs.y2 = [y2_axis.range?.[0] ?? null, y2_axis.range?.[1] ?? null]
   })
+
+  let ctrl_state = $derived({
+    show_controls,
+    controls_open,
+    x_axis,
+    y_axis,
+    y2_axis,
+    display,
+    range_inputs,
+  })
 </script>
 
 {#if show_controls}
@@ -116,8 +126,7 @@
       style: `--pane-padding: 12px; --pane-gap: 4px; ${pane_props?.style ?? ``}`,
     }}
   >
-    <!-- Custom controls before base controls -->
-    {@render children?.()}
+    {@render children?.(ctrl_state)}
 
     <!-- Base Display controls -->
     <SettingsSection
@@ -292,6 +301,6 @@
     </SettingsSection>
 
     <!-- Custom controls after base controls -->
-    {@render post_children?.()}
+    {@render post_children?.(ctrl_state)}
   </DraggablePane>
 {/if}

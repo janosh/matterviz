@@ -76,6 +76,10 @@
     // only show every 3rd element to demo missing color
     return full_values.map((value, idx) => (idx % 3 === 0 ? value : 0))
   })
+
+  // Active elements border demo
+  let active_elements_demo = $state([`H`, `C`, `N`, `O`, `Fe`, `Cu`, `Au`, `Ag`])
+  let active_tile_border = $state({ width: `2px`, style: `solid`, color: `#ff0000` })
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
@@ -180,6 +184,40 @@
           disabled={missing_use_category || !missing_heatmap_values?.length}
         />
       </label>
+    </TableInset>
+  {/snippet}
+</PeriodicTable>
+
+<h2>Active Elements Border Styling</h2>
+<p>
+  Customize active element borders with CSS custom property <code
+  >--elem-tile-active-border</code>.
+</p>
+
+<PeriodicTable
+  tile_props={{ show_name: window_width > 800 }}
+  active_elements={active_elements_demo}
+  style={`--elem-tile-active-border: ${active_tile_border.width} ${active_tile_border.style} ${active_tile_border.color}`}
+  {onenter}
+>
+  {#snippet inset()}
+    <TableInset
+      style="display: flex; gap: 1em; place-content: center; flex-wrap: wrap; align-items: center"
+    >
+      <select bind:value={active_tile_border.width}>
+        <option>1px</option>
+        <option>2px</option>
+        <option>3px</option>
+      </select>
+      <select bind:value={active_tile_border.style}>
+        <option>solid</option>
+        <option>dashed</option>
+        <option>dotted</option>
+      </select>
+      <input type="color" bind:value={active_tile_border.color} style="height: 1.5em" />
+      <code style="background: var(--sms-ui-bg); padding: 4px 8px; border-radius: 4px">
+        {active_tile_border.width} {active_tile_border.style} {active_tile_border.color}
+      </code>
     </TableInset>
   {/snippet}
 </PeriodicTable>

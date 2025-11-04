@@ -20,6 +20,7 @@
     bubble_content,
     interactive = true,
     svg_node = $bindable(null),
+    children,
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
     composition: CompositionType
@@ -31,6 +32,7 @@
     bubble_content?: Snippet<[BubbleSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
+    children?: Snippet<[{ hovered_element: ElementSymbol | null }]>
   } = $props()
 
   let element_colors = $derived(
@@ -161,6 +163,8 @@
       </foreignObject>
     {/each}
   {/if}
+
+  {@render children?.({ hovered_element })}
 </svg>
 
 <style>
