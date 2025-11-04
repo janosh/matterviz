@@ -156,4 +156,22 @@ test.describe(`BandsAndDos Component Tests`, () => {
       expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
     }
   })
+
+  test(`renders children snippet content`, async ({ page }) => {
+    // Navigate to section with children (independent-axes)
+    await page.locator(`#independent-axes`).scrollIntoViewIfNeeded()
+
+    // Find the bands-and-dos container after the independent-axes heading
+    const container = page.locator(`#independent-axes + .bands-and-dos`)
+    await expect(container).toBeVisible()
+
+    // Verify the custom overlay child element is rendered
+    const custom_overlay = container.locator(`.custom-overlay`)
+    await expect(custom_overlay).toBeVisible()
+    await expect(custom_overlay).toHaveText(`Custom Overlay`)
+
+    // Verify the main functionality is still working
+    const plots = container.locator(`.scatter`)
+    expect(await plots.count()).toBe(2)
+  })
 })

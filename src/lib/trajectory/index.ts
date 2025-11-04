@@ -57,7 +57,7 @@ export interface TrajHandlerData {
   error_msg?: string
   fps?: number
   mode?: ComponentProps<typeof Trajectory>[`display_mode`]
-  is_fullscreen?: boolean
+  fullscreen?: boolean
 }
 
 // Function interfaces for extensibility

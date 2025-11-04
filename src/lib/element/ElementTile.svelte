@@ -247,7 +247,7 @@
     line-height: 1em;
   }
   .element-tile.active, .element-tile:hover {
-    border: var(--elem-tile-hover-border-width, 1px) solid;
+    border: var(--elem-tile-active-border, 1px solid currentColor);
   }
   .element-tile.clickable {
     cursor: pointer;

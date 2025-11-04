@@ -33,6 +33,7 @@
     segment_content,
     interactive = true,
     svg_node = $bindable(null),
+    children,
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
     composition: CompositionType
@@ -47,6 +48,7 @@
     segment_content?: Snippet<[PieSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
+    children?: Snippet<[{ hovered_element: ElementSymbol | null }]>
   } = $props()
 
   let element_colors = $derived(
@@ -236,6 +238,8 @@
       {@render center_content({ composition, total_atoms })}
     </g>
   {/if}
+
+  {@render children?.({ hovered_element })}
 </svg>
 
 <style>
