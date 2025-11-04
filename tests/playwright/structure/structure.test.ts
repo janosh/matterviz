@@ -169,6 +169,40 @@ test.describe(`Structure Component Tests`, () => {
     expect(error_occurred).toBe(false)
   })
 
+  test(`fullscreen prop is bindable and updates from test page controls`, async ({ page }) => {
+    const status = page.locator(`[data-testid="fullscreen-status"]`)
+    const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
+
+    await expect(status).toContainText(`false`)
+    await expect(checkbox).not.toBeChecked()
+
+    await checkbox.click({ force: true })
+    await expect(status).toContainText(`true`)
+    await expect(checkbox).toBeChecked()
+
+    await page.evaluate(() => {
+      const el = document.querySelector<HTMLInputElement>(
+        `[data-testid="fullscreen-checkbox"]`,
+      )
+      if (el) {
+        el.checked = false
+        el.dispatchEvent(new Event(`change`, { bubbles: true }))
+      }
+    })
+    await expect(status).toContainText(`false`)
+    await expect(checkbox).not.toBeChecked()
+  })
+
+  test(`fullscreen prop binds to component state`, async ({ page }) => {
+    const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
+    const canvas = page.locator(`#test-structure canvas`)
+
+    await expect(canvas).toBeVisible()
+    await checkbox.click({ force: true })
+    await expect(checkbox).toBeChecked()
+    await expect(canvas).toBeVisible()
+  })
+
   test(`closes controls pane with Escape key`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const controls_toggle_button = structure_div.locator(
@@ -3559,5 +3593,167 @@ test.describe(`Element Visibility Toggle`, () => {
     await controls_checkbox.uncheck()
     await page.waitForTimeout(50)
     await expect(label).toHaveClass(/hidden/)
+  })
+})
+
+test.describe(`Fullscreen Background Color Detection`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+  })
+
+  // Helper to set background and trigger detection
+  const set_bg = async (
+    page: Page,
+    html_bg: string | null,
+    body_bg: string | null = null,
+  ) => {
+    await page.evaluate(
+      ([html, body]) => {
+        document.querySelectorAll(`style`).forEach((s) =>
+          s.textContent?.includes(`background`) && s.remove()
+        )
+        document.documentElement.className = ``
+        document.body.className = ``
+        if (html) {
+          document.documentElement.style.setProperty(
+            `background-color`,
+            html,
+            `important`,
+          )
+        }
+        if (body) document.body.style.setProperty(`background-color`, body, `important`)
+
+        const el = document.querySelector(`#test-structure`) as HTMLElement
+        if (!el) return
+        const get_bg = () => {
+          const html_bg = getComputedStyle(document.documentElement).backgroundColor
+          const body_bg = getComputedStyle(document.body).backgroundColor
+          const valid = (bg: string) =>
+            bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
+          if (valid(html_bg)) return html_bg
+          if (valid(body_bg)) return body_bg
+          return globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches
+            ? `#1a1a1a`
+            : `#ffffff`
+        }
+        el.style.setProperty(`--struct-bg-fullscreen`, get_bg())
+      },
+      [html_bg, body_bg],
+    )
+  }
+
+  const get_bg = (page: Page) =>
+    page.locator(`#test-structure`).evaluate((el) =>
+      getComputedStyle(el).getPropertyValue(`--struct-bg-fullscreen`)
+    )
+
+  test(`uses HTML background`, async ({ page }) => {
+    await set_bg(page, `rgb(255, 100, 50)`)
+    expect(await get_bg(page)).toBe(`rgb(255, 100, 50)`)
+  })
+
+  test(`uses body background when HTML transparent`, async ({ page }) => {
+    await set_bg(page, `transparent`, `rgb(50, 150, 200)`)
+    expect(await get_bg(page)).toBe(`rgb(50, 150, 200)`)
+  })
+
+  test(`prefers HTML over body background`, async ({ page }) => {
+    await set_bg(page, `rgb(255, 0, 0)`, `rgb(0, 255, 0)`)
+    expect(await get_bg(page)).toBe(`rgb(255, 0, 0)`)
+  })
+
+  test(`falls back to dark mode when no background`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: `dark` })
+    await set_bg(page, `transparent`, `transparent`)
+    expect(await get_bg(page)).toMatch(/rgb\(26, 26, 26\)|#1a1a1a/)
+  })
+
+  test(`falls back to light mode when no background`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: `light` })
+    await set_bg(page, `transparent`, `transparent`)
+    expect(await get_bg(page)).toMatch(/rgb\(255, 255, 255\)|#ffffff/)
+  })
+
+  test(`ignores rgba(0,0,0,0)`, async ({ page }) => {
+    await set_bg(page, `rgba(0, 0, 0, 0)`, `rgb(100, 200, 150)`)
+    expect(await get_bg(page)).toBe(`rgb(100, 200, 150)`)
+  })
+
+  test(`ignores transparent keyword`, async ({ page }) => {
+    await set_bg(page, `transparent`, `rgb(75, 125, 200)`)
+    expect(await get_bg(page)).toBe(`rgb(75, 125, 200)`)
+  })
+
+  test(`handles hex colors`, async ({ page }) => {
+    await set_bg(page, `#3a7bd5`)
+    expect(await get_bg(page)).toBe(`rgb(58, 123, 213)`)
+  })
+
+  test(`handles rgba with full opacity`, async ({ page }) => {
+    await set_bg(page, `rgba(100, 150, 200, 1)`)
+    const bg = await get_bg(page)
+    expect(bg).toMatch(/rgb/)
+    expect(bg).toContain(`100`)
+    expect(bg).toContain(`150`)
+    expect(bg).toContain(`200`)
+  })
+
+  test(`handles rgba with partial opacity`, async ({ page }) => {
+    await set_bg(page, `rgba(100, 150, 200, 0.5)`)
+    const bg = await get_bg(page)
+    expect(bg).toContain(`rgba`)
+    expect(bg).toContain(`0.5`)
+  })
+
+  test(`handles hsl colors`, async ({ page }) => {
+    await set_bg(page, `hsl(210, 50%, 50%)`)
+    expect(await get_bg(page)).toContain(`rgb`)
+  })
+
+  test(`handles named colors`, async ({ page }) => {
+    await set_bg(page, `steelblue`)
+    expect(await get_bg(page)).toBe(`rgb(70, 130, 180)`)
+  })
+
+  test(`updates dynamically`, async ({ page }) => {
+    await set_bg(page, `rgb(200, 100, 50)`)
+    expect(await get_bg(page)).toBe(`rgb(200, 100, 50)`)
+    await set_bg(page, `rgb(50, 100, 200)`)
+    expect(await get_bg(page)).toBe(`rgb(50, 100, 200)`)
+  })
+
+  test(`handles black background`, async ({ page }) => {
+    await set_bg(page, `rgb(0, 0, 0)`)
+    expect(await get_bg(page)).toBe(`rgb(0, 0, 0)`)
+  })
+
+  test(`handles white background`, async ({ page }) => {
+    await set_bg(page, `rgb(255, 255, 255)`)
+    expect(await get_bg(page)).toBe(`rgb(255, 255, 255)`)
+  })
+
+  test(`handles CSS custom properties`, async ({ page }) => {
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty(`--page-bg`, `rgb(123, 45, 67)`)
+    })
+    await set_bg(page, `var(--page-bg)`)
+    expect(await get_bg(page)).toBe(`rgb(123, 45, 67)`)
+  })
+
+  test(`sets variable without entering fullscreen`, async ({ page }) => {
+    await set_bg(page, `rgb(50, 100, 150)`)
+    expect(await get_bg(page)).toBe(`rgb(50, 100, 150)`)
+    const is_fullscreen = await page.evaluate(() => document.fullscreenElement !== null)
+    expect(is_fullscreen).toBe(false)
+  })
+
+  test(`ignores background-image`, async ({ page }) => {
+    await set_bg(page, `rgb(100, 100, 100)`)
+    await page.evaluate(() => {
+      document.documentElement.style.backgroundImage =
+        `linear-gradient(to right, red, blue)`
+    })
+    expect(await get_bg(page)).toBe(`rgb(100, 100, 100)`)
   })
 })

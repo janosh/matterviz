@@ -939,7 +939,7 @@
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
-    let closest_point_internal: InternalPoint | null = null
+    let closest_point: InternalPoint | null = null
     let closest_series: (DataSeries & { filtered_data: InternalPoint[] }) | null =
       null
     let min_screen_dist_sq = Infinity
@@ -967,7 +967,7 @@
         // Update if this point is closer
         if (screen_distance_sq < min_screen_dist_sq) {
           min_screen_dist_sq = screen_distance_sq
-          closest_point_internal = point
+          closest_point = point
           closest_series = series_data
         }
       }
@@ -975,18 +975,20 @@
 
     // Check if the closest point is within the hover threshold
     if (
-      closest_point_internal &&
+      closest_point &&
       closest_series &&
       min_screen_dist_sq <= hover_threshold_px_sq
     ) {
       // Construct handler props synchronously to avoid stale derived reads
-      const props = construct_handler_props(closest_point_internal)
-      tooltip_point = closest_point_internal
+      const props = construct_handler_props(closest_point)
+      tooltip_point = closest_point
       // Construct object matching change signature
-      const { x, y, metadata } = closest_point_internal
+      const { x, y, metadata } = closest_point
       change({ x, y, metadata, series: closest_series })
       // Call hover handler with synchronously constructed props
-      if (evt && props) on_point_hover?.({ ...props, event: evt })
+      if (evt && props) {
+        on_point_hover?.({ ...props, event: evt, point: closest_point })
+      }
     } else {
       tooltip_point = null
       change(null)

@@ -14,6 +14,7 @@
   let camera_projection = $state<`perspective` | `orthographic`>(`perspective`)
   let show_controls_select = $state<string>(`true`)
   let png_dpi = $state(150)
+  let fullscreen = $state(false)
 
   const show_controls = $derived(
     { true: true, false: false }[show_controls_select] ?? +show_controls_select,
@@ -92,7 +93,12 @@
   <label>Camera Projection: <select id="camera-projection" bind:value={camera_projection}>
       <option value="perspective">perspective</option>
       <option value="orthographic">orthographic</option>
-    </select></label>
+    </select></label><br />
+  <label>Fullscreen: <input
+      data-testid="fullscreen-checkbox"
+      type="checkbox"
+      bind:checked={fullscreen}
+    /></label>
 </section>
 
 <section>
@@ -102,6 +108,7 @@
   <p data-testid="bz-order">{bz_order}</p>
   <p data-testid="show-controls">{show_controls}</p>
   <p data-testid="camera-projection">{camera_projection}</p>
+  <p data-testid="fullscreen-status">{fullscreen}</p>
   <p data-testid="events">{event_calls.map((ec) => ec.event).join(`, `)}</p>
 </section>
 
@@ -120,6 +127,7 @@
   bind:vector_scale
   bind:camera_projection
   bind:png_dpi
+  bind:fullscreen
   {show_controls}
   on_file_load={log_event(`on_file_load`)}
   on_error={log_event(`on_error`)}

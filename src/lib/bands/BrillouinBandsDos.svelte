@@ -89,9 +89,9 @@
     padding={{ r: is_desktop ? 10 : 5, ...bands_props.padding }}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
-    on_point_hover={({ point }) => {
-      hovered_band_point = point
-      bands_props.on_point_hover?.({ point })
+    on_point_hover={(event) => {
+      hovered_band_point = event?.point ?? null
+      bands_props.on_point_hover?.(event)
     }}
     {...bands_props}
   />

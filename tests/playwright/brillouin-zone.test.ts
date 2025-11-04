@@ -110,6 +110,40 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await expect(btn).toBeVisible()
   })
 
+  test(`fullscreen prop is bindable`, async ({ page }) => {
+    const status = page.locator(`[data-testid="fullscreen-status"]`)
+    const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
+
+    await expect(status).toHaveText(`false`)
+    await expect(checkbox).not.toBeChecked()
+
+    await checkbox.click({ force: true })
+    await expect(status).toHaveText(`true`)
+    await expect(checkbox).toBeChecked()
+
+    await page.evaluate(() => {
+      const el = document.querySelector<HTMLInputElement>(
+        `[data-testid="fullscreen-checkbox"]`,
+      )
+      if (el) {
+        el.checked = false
+        el.dispatchEvent(new Event(`change`, { bubbles: true }))
+      }
+    })
+    await expect(status).toHaveText(`false`)
+    await expect(checkbox).not.toBeChecked()
+  })
+
+  test(`fullscreen binds to component state`, async ({ page }) => {
+    const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
+    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
+
+    await expect(canvas).toBeVisible()
+    await checkbox.click({ force: true })
+    await expect(checkbox).toBeChecked()
+    await expect(canvas).toBeVisible()
+  })
+
   test(`Escape closes panes`, async ({ page }) => {
     await page.locator(`#controls-open`).check()
     await expect(page.locator(`[data-testid="controls-open"]`)).toHaveText(`true`)

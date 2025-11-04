@@ -173,9 +173,10 @@
   bind:display
   legend={show_legend ? {} : null}
   hover_config={{ threshold_px: 50 }}
-  on_point_hover={({ point }) => {
-    // Extract frequency value from the hovered point
-    hovered_frequency = is_horizontal ? (point?.y ?? null) : (point?.x ?? null)
+  on_point_hover={(event) => {
+    hovered_frequency = is_horizontal
+      ? (event?.point?.y ?? null)
+      : (event?.point?.x ?? null)
   }}
   {...rest}
 >

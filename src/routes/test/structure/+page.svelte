@@ -17,6 +17,7 @@
   let enable_measure_mode = $state(true)
   let supercell_scaling = $state(`1x1x1`)
   let show_image_atoms = $state(true)
+  let fullscreen = $state(false)
 
   // capture event data for testing
   let event_calls = $state<{ event: string; data: unknown }[]>([])
@@ -190,12 +191,19 @@
       data-testid="supercell-input"
     />
   </label><br />
-  <label>
-    Show Image Atoms:
+  <label>Show Image Atoms:
     <input
       type="checkbox"
       bind:checked={show_image_atoms}
       data-testid="image-atoms-checkbox"
+    />
+  </label>
+  <label>
+    Fullscreen:
+    <input
+      type="checkbox"
+      bind:checked={fullscreen}
+      data-testid="fullscreen-checkbox"
     />
   </label>
   <div style="margin-top: 0.5em">
@@ -240,6 +248,7 @@
   {enable_measure_mode}
   bind:supercell_scaling
   bind:show_image_atoms
+  bind:fullscreen
 />
 
 <div data-testid="pane-open-status" style="margin-top: 10px">
@@ -251,6 +260,7 @@
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
 <div data-testid="gizmo-status">Gizmo Status: {scene_props.show_gizmo}</div>
 <div data-testid="show-buttons-status">Show Buttons Status: {show_controls}</div>
+<div data-testid="fullscreen-status">Fullscreen Status: {fullscreen}</div>
 <div data-testid="performance-mode-status">
   Performance Mode Status: {performance_mode}
 </div>

@@ -40,7 +40,7 @@
     vector_scale = $bindable(1.0),
     camera_projection = $bindable(`perspective`),
     show_controls = 0,
-    fullscreen = false,
+    fullscreen = $bindable(false),
     wrapper = $bindable(undefined),
     width = $bindable(0),
     height = $bindable(0),
