@@ -328,13 +328,23 @@ export interface ControlsConfig {
   pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
 }
 
+export type ControlsState = {
+  show_controls: boolean
+  controls_open: boolean
+  x_axis: AxisConfig
+  y_axis: AxisConfig
+  y2_axis: AxisConfig
+  display: DisplayConfig
+  range_inputs: Record<string, [number | null, number | null]>
+}
+
 export interface PlotControlsProps {
   // Control pane visibility
   show_controls?: boolean
   controls_open?: boolean
   // Custom snippets for additional controls
-  children?: Snippet<[]>
-  post_children?: Snippet<[]>
+  children?: Snippet<[ControlsState]>
+  post_children?: Snippet<[ControlsState]>
   // Grouped axis and display configs (bindable in practice)
   x_axis?: AxisConfig
   y_axis?: AxisConfig
@@ -370,7 +380,7 @@ export interface BasePlotProps {
   controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   // Children
-  children?: Snippet<[]>
+  children?: Snippet<[{ height: number; width: number }]>
 }
 export const line_types = [`solid`, `dashed`, `dotted`] as const
 export type LineType = (typeof line_types)[number]

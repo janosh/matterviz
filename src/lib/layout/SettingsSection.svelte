@@ -12,7 +12,13 @@
   }: HTMLAttributes<HTMLElementTagNameMap[`section`]> & {
     title: string
     current_values: Record<string, unknown>
-    children: Snippet<[]>
+    children: Snippet<
+      [{
+        current_values: Record<string, unknown>
+        has_changes: boolean
+        reference_values: Record<string, unknown>
+      }]
+    >
     on_reset?: () => void
   } = $props()
 
@@ -97,7 +103,7 @@
   {/if}
 </h4>
 <section {...rest} aria-labelledby="settings-section-title">
-  {@render children()}
+  {@render children?.({ current_values, has_changes, reference_values })}
 </section>
 
 <style>

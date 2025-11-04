@@ -1,5 +1,7 @@
 // TypeScript type definitions for band structures and density of states
 
+import type { InternalPoint } from '$lib/plot'
+
 export type BandStructureType = `phonon` | `electronic`
 export type PathMode = `union` | `intersection` | `strict`
 export type FrequencyUnit = `THz` | `eV` | `meV` | `Ha` | `cm-1`
@@ -70,3 +72,9 @@ export type LineKwargs =
   | Record<string, unknown> // Single dict for all lines
   | { acoustic?: Record<string, unknown>; optical?: Record<string, unknown> } // Per mode
   | ((frequencies: number[], band_idx: number) => Record<string, unknown>) // Callable
+
+export interface HoveredData {
+  hovered_frequency?: number | null
+  hovered_band_point?: InternalPoint | null
+  hovered_qpoint_index?: number | null
+}

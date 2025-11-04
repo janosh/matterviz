@@ -114,7 +114,7 @@
       enable_info_pane?: boolean
       enable_measure_mode?: boolean
       info_pane_open?: boolean
-      fullscreen_toggle?: Snippet<[]> | boolean
+      fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
       bottom_left?: Snippet<[{ structure?: AnyStructure }]>
       data_url?: string // URL to load structure from (alternative to providing structure directly)
       // Generic callback for when files are dropped - receives raw content and filename
@@ -137,7 +137,7 @@
       symmetry_data?: MoyoDataset | null
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
-      children?: Snippet<[{ structure?: AnyStructure }]>
+      children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
       on_file_load?: EventHandler
       on_error?: EventHandler
       on_fullscreen_change?: EventHandler
@@ -604,7 +604,7 @@
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = Boolean(document.fullscreenElement)
-    on_fullscreen_change?.({ structure, is_fullscreen: fullscreen })
+    on_fullscreen_change?.({ structure, fullscreen })
   }}
 />
 
@@ -648,7 +648,7 @@
   {...rest}
   class="structure {rest.class ?? ``}"
 >
-  {@render children?.({ structure })}
+  {@render children?.({ structure, fullscreen })}
   {#if loading}
     <Spinner text="Loading structure..." {...spinner_props} />
   {:else if error_msg}

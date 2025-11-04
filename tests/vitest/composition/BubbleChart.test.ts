@@ -32,6 +32,22 @@ describe(`BubbleChart component`, () => {
     const n_buttons = document.querySelectorAll(`circle[role="button"]`).length
     expect(n_buttons).toBeGreaterThan(0)
   })
+
+  test(`renders children content`, () => {
+    mount(BubbleChart, {
+      target: document.body,
+      props: {
+        composition: { H: 2, O: 1 },
+        children: () => {
+          const elem = document.createElement(`div`)
+          elem.className = `custom-child`
+          document.body.appendChild(elem)
+        },
+      },
+    })
+
+    expect(document.querySelector(`.custom-child`)).toBeTruthy()
+  })
 })
 
 describe(`BubbleChart calculations`, () => {

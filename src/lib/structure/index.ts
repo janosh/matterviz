@@ -183,7 +183,7 @@ export interface StructureHandlerData {
   file_size?: number
   total_atoms?: number
   error_msg?: string
-  is_fullscreen?: boolean
+  fullscreen?: boolean
   camera_position?: Vec3
   camera_has_moved?: boolean
   color_scheme?: string

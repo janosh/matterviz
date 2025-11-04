@@ -123,7 +123,7 @@
     error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
     show_controls?: boolean // show/hide the trajectory controls bar
     // show/hide the fullscreen button
-    fullscreen_toggle?: Snippet<[]> | boolean
+    fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
     // automatically start playing when trajectory data is loaded
     auto_play?: boolean
     // display mode: 'structure+scatter' (default), 'structure' (only structure), 'scatter' (only scatter), 'histogram' (only histogram), 'structure+histogram' (structure with histogram)
@@ -779,7 +779,7 @@
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = !!document.fullscreenElement
-    on_fullscreen_change?.({ trajectory, is_fullscreen: fullscreen })
+    on_fullscreen_change?.({ trajectory, fullscreen })
   }}
 />
 
@@ -1042,7 +1042,7 @@
                 class="fullscreen-button"
               >
                 {#if typeof fullscreen_toggle === `function`}
-                  {@render fullscreen_toggle()}
+                  {@render fullscreen_toggle({ fullscreen })}
                 {:else}
                   <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
                 {/if}
