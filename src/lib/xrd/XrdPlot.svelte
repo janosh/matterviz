@@ -8,7 +8,7 @@
   import { parse_any_structure } from '$lib/structure/parse'
   import { is_valid_structure } from '$lib/structure/validation'
   import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { ComponentProps } from 'svelte'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
@@ -51,7 +51,6 @@
     on_file_drop,
     loading = $bindable(false),
     error_msg = $bindable(undefined),
-    children,
     ...rest
   }: ComponentProps<typeof BarPlot> & {
     patterns:
@@ -69,7 +68,6 @@
     on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
     loading?: boolean
     error_msg?: string
-    children?: Snippet<[]>
   } = $props()
 
   let dragover = $state(false)
@@ -292,6 +290,5 @@
     }}
     class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
     style={`overflow: visible; ${rest.style ?? ``}`}
-    {children}
   />
 {/if}

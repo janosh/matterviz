@@ -32,6 +32,7 @@
     bubble_content?: Snippet<[BubbleSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
+    children?: Snippet<[{ hovered_element: ElementSymbol | null }]>
   } = $props()
 
   let element_colors = $derived(
@@ -163,7 +164,7 @@
     {/each}
   {/if}
 
-  {@render children?.()}
+  {@render children?.({ hovered_element })}
 </svg>
 
 <style>

@@ -3,12 +3,12 @@
   import { BrillouinZone, reciprocal_lattice } from '$lib/brillouin'
   import type { InternalPoint } from '$lib/plot'
   import type { PymatgenStructure } from '$lib/structure'
-  import type { ComponentProps } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import * as helpers from './helpers'
-  import type { BaseBandStructure, DosData } from './types'
+  import type { BaseBandStructure, DosData, HoveredData } from './types'
 
   let {
     structure,
@@ -26,6 +26,7 @@
     bands_props?: Partial<ComponentProps<typeof Bands>>
     dos_props?: Partial<ComponentProps<typeof Dos>>
     bz_props?: Partial<ComponentProps<typeof BrillouinZone>>
+    children?: Snippet<[HoveredData]>
   } = $props()
 
   let first_band_struct = $derived(
@@ -84,7 +85,7 @@
   class="bands-dos-brillouin {screen_class} {rest.class ?? ``}"
   bind:clientWidth
 >
-  {@render children?.()}
+  {@render children?.({ hovered_frequency, hovered_band_point, hovered_qpoint_index })}
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
     {band_structs}

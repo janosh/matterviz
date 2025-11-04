@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { ComponentProps } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
-  import type { BaseBandStructure, DosData } from './types'
+  import type { BaseBandStructure, DosData, HoveredData } from './types'
 
   let {
     band_structs,
@@ -20,6 +20,7 @@
     dos_props?: Partial<ComponentProps<typeof Dos>>
     shared_y_axis?: boolean
     class?: string
+    children?: Snippet<[HoveredData]>
   } = $props()
 
   // Shared y-axis configuration - use single object when shared_y_axis is true
@@ -36,7 +37,7 @@
   class="bands-and-dos {rest.class ?? ``}"
   style={`display: grid; grid-template-columns: 1fr 200px; gap: 0;` + (rest.style ?? ``)}
 >
-  {@render children?.()}
+  {@render children?.({ hovered_frequency })}
   <Bands
     {band_structs}
     y_axis={bands_y_axis}

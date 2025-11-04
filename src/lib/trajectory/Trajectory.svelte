@@ -779,7 +779,7 @@
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = !!document.fullscreenElement
-    on_fullscreen_change?.({ trajectory, is_fullscreen: fullscreen })
+    on_fullscreen_change?.({ trajectory, fullscreen })
   }}
 />
 

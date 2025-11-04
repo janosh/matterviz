@@ -48,6 +48,7 @@
     segment_content?: Snippet<[PieSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
+    children?: Snippet<[{ hovered_element: ElementSymbol | null }]>
   } = $props()
 
   let element_colors = $derived(
@@ -238,7 +239,7 @@
     </g>
   {/if}
 
-  {@render children?.()}
+  {@render children?.({ hovered_element })}
 </svg>
 
 <style>

@@ -53,6 +53,7 @@
     segment_content?: Snippet<[BarSegmentData]>
     interactive?: boolean
     svg_node?: SVGSVGElement | null
+    children?: Snippet<[{ hovered_element: ElementSymbol | null }]>
   } = $props()
 
   let element_colors = $derived(
@@ -270,7 +271,7 @@
     {/if}
   {/each}
 
-  {@render children?.()}
+  {@render children?.({ hovered_element })}
 </svg>
 
 <style>
