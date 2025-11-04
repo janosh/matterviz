@@ -33,6 +33,7 @@
     segment_content,
     interactive = true,
     svg_node = $bindable(null),
+    children,
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
     composition: CompositionType
@@ -236,6 +237,8 @@
       {@render center_content({ composition, total_atoms })}
     </g>
   {/if}
+
+  {@render children?.()}
 </svg>
 
 <style>

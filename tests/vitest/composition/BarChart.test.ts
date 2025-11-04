@@ -224,6 +224,22 @@ describe(`BarChart component`, () => {
     // With high min_segment_size_for_label, fewer internal labels should be shown
     expect(bar_labels.length).toBeLessThanOrEqual(6)
   })
+
+  test(`renders children content`, () => {
+    mount(BarChart, {
+      target: document.body,
+      props: {
+        composition: { H: 2, O: 1 },
+        children: () => {
+          const elem = document.createElement(`div`)
+          elem.className = `custom-child`
+          document.body.appendChild(elem)
+        },
+      },
+    })
+
+    expect(document.querySelector(`.custom-child`)).toBeTruthy()
+  })
 })
 
 describe(`BarChart calculations`, () => {

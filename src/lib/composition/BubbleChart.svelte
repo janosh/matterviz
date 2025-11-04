@@ -20,6 +20,7 @@
     bubble_content,
     interactive = true,
     svg_node = $bindable(null),
+    children,
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
     composition: CompositionType
@@ -161,6 +162,8 @@
       </foreignObject>
     {/each}
   {/if}
+
+  {@render children?.()}
 </svg>
 
 <style>

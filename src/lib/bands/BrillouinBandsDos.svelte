@@ -17,6 +17,7 @@
     bands_props = {},
     dos_props = {},
     bz_props = {},
+    children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     structure: PymatgenStructure
@@ -83,6 +84,7 @@
   class="bands-dos-brillouin {screen_class} {rest.class ?? ``}"
   bind:clientWidth
 >
+  {@render children?.()}
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
     {band_structs}

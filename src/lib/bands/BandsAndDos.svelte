@@ -11,6 +11,7 @@
     bands_props = {},
     dos_props = {},
     shared_y_axis = true,
+    children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
@@ -35,6 +36,7 @@
   class="bands-and-dos {rest.class ?? ``}"
   style={`display: grid; grid-template-columns: 1fr 200px; gap: 0;` + (rest.style ?? ``)}
 >
+  {@render children?.()}
   <Bands
     {band_structs}
     y_axis={bands_y_axis}

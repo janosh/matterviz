@@ -341,4 +341,23 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
     }
   })
+
+  test(`renders children snippet content`, async ({ page }) => {
+    // Navigate to section with children (multiple-structures)
+    await page.locator(`#multiple-structures`).scrollIntoViewIfNeeded()
+
+    // Find the container with children (multiple structures example)
+    const container = page.locator(`[data-testid="bz-bands-dos-multiple"]`)
+    await expect(container).toBeVisible()
+
+    // Verify the custom overlay child element is rendered
+    const custom_overlay = container.locator(`.custom-overlay`)
+    await expect(custom_overlay).toBeVisible()
+    await expect(custom_overlay).toHaveText(`Custom Overlay`)
+
+    // Verify all three panels are still working
+    await expect(container.locator(`canvas`).first()).toBeVisible()
+    await expect(container.locator(`svg`).nth(0)).toBeVisible()
+    await expect(container.locator(`svg`).nth(1)).toBeVisible()
+  })
 })

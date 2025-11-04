@@ -34,6 +34,7 @@
     segment_content,
     interactive = true,
     svg_node = $bindable(null),
+    children,
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
     composition: CompositionType
@@ -268,6 +269,8 @@
       </text>
     {/if}
   {/each}
+
+  {@render children?.()}
 </svg>
 
 <style>
