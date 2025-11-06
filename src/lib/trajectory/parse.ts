@@ -310,12 +310,9 @@ const parse_torch_sim_hdf5 = async (
       | number[][]
       | number[][][]
       | null
-    const atomic_numbers_data = find_dataset([
-      `atomic_numbers`,
-      `numbers`,
-      `Z`,
-      `species`,
-    ])?.to_array() as number[] | number[][] | null
+    const atomic_numbers_data = find_dataset(
+      [`atomic_numbers`, `numbers`, `Z`, `species`],
+    )?.to_array() as number[] | number[][] | null
     const cells_data = find_dataset([`cell`, `cells`, `lattice`])?.to_array() as
       | number[][][]
       | null
@@ -333,10 +330,10 @@ const parse_torch_sim_hdf5 = async (
           `atomic numbers (tried: atomic_numbers, numbers, Z, species)`,
         )
       }
+      const missing_str = missing_datasets.join(`, `)
+      const available_str = Array.from(h5_file.keys()).join(`, `)
       throw new Error(
-        `Missing required dataset(s) in HDF5 file: ${
-          missing_datasets.join(`, `)
-        }. Available datasets: ${Array.from(h5_file.keys()).join(`, `)}`,
+        `Missing required dataset(s) in HDF5 file: ${missing_str}. Available datasets: ${available_str}`,
       )
     }
 
@@ -348,23 +345,18 @@ const parse_torch_sim_hdf5 = async (
       : [atomic_numbers_data as number[]]
     const elements = convert_atomic_numbers(atomic_numbers[0])
 
-    const frames = positions.map((frame_positions, idx) => {
-      const lattice_matrix = cells_data?.[idx] as Matrix3x3 | undefined
+    const frames = positions.map((frame_pos, idx) => {
+      const cell = cells_data?.[idx]
+      const lattice_mat = cell ? math.transpose_3x3_matrix(cell as Matrix3x3) : undefined
       const energy = energies_data?.[idx]?.[0]
       const metadata: Record<string, unknown> = {}
       if (energy !== undefined) metadata.energy = energy
-      if (lattice_matrix) {
-        metadata.volume = math.calc_lattice_params(lattice_matrix).volume
+      if (lattice_mat) {
+        metadata.volume = math.calc_lattice_params(lattice_mat).volume
       }
+      const pbc: Pbc = lattice_mat ? [true, true, true] : [false, false, false]
 
-      return create_trajectory_frame(
-        frame_positions,
-        elements,
-        lattice_matrix,
-        lattice_matrix ? [true, true, true] : [false, false, false],
-        idx,
-        metadata,
-      )
+      return create_trajectory_frame(frame_pos, elements, lattice_mat, pbc, idx, metadata)
     })
 
     return {
@@ -444,14 +436,13 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
     }
 
     if (positions.length === elements.length) {
-      frames.push(create_trajectory_frame(
-        positions,
-        elements,
-        lattice_matrix,
-        [true, true, true],
-        step,
-        { volume: math.calc_lattice_params(lattice_matrix).volume },
-      ))
+      const pbc: Pbc = [true, true, true]
+      const { volume } = math.calc_lattice_params(lattice_matrix)
+      frames.push(
+        create_trajectory_frame(positions, elements, lattice_matrix, pbc, step, {
+          volume,
+        }),
+      )
     }
   }
 
