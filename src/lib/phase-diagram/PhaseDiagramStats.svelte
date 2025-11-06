@@ -254,7 +254,7 @@
 
 <style>
   .phase-diagram-stats {
-    background: var(--surface-bg, white);
+    background: var(--pd-stats-bg, var(--pd-bg));
     border-radius: 4px;
     padding: 0 1em 1em;
   }
