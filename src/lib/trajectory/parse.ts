@@ -350,14 +350,16 @@ const parse_torch_sim_hdf5 = async (
     
     
     function transpose(matrix: number[][]): number[][] {
-    return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]))
+    return matrix.map((_, colIndex) => matrix.map(row => row[colIndex]))
   }
 
 
     const frames = positions.map((frame_positions, idx) => {
-      const lattice_matrix = cells_data
-      ? (transpose(cells_data[idx]) as Matrix3x3)
-      : undefined
+      let lattice_matrix: Matrix3x3 | undefined
+      const cell = cells_data?.[idx]
+      if (cell) {
+        lattice_matrix = transpose(cell) as Matrix3x3
+      }
       const energy = energies_data?.[idx]?.[0]
       const metadata: Record<string, unknown> = {}
       if (energy !== undefined) metadata.energy = energy
