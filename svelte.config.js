@@ -52,7 +52,10 @@ export default {
   ],
 
   kit: {
-    adapter: adapter({ fallback: `404.html` }),
+    adapter: adapter({
+      fallback: `404.html`,
+      strict: false, // don't fail on symlinks
+    }),
 
     alias: { $site: `src/site`, $root: `.`, 'matterviz': `src/lib` },
 
