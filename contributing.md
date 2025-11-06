@@ -36,7 +36,13 @@ Run Playwright end-to-end (E2E) tests:
 npx playwright test
 ```
 
+### Test Requirements
+
 **New features should include tests.** Bug fixes should include a test that fails on the old code and passes with your fix.
+
+- Unit tests go in [`tests/vitest/`](tests/vitest)
+- E2E tests go in [`tests/playwright/`](tests/playwright)
+- Test functions should have typing annotations and concise docstrings explaining what they test.
 
 Before you start committing, create and check out a descriptively named branch:
 
