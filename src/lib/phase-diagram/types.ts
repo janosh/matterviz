@@ -154,3 +154,12 @@ export const is_septenary_entry = (entry: PhaseEntry) => get_arity(entry) === 7
 export const is_octonary_entry = (entry: PhaseEntry) => get_arity(entry) === 8
 export const is_nonary_entry = (entry: PhaseEntry) => get_arity(entry) === 9
 export const is_denary_entry = (entry: PhaseEntry) => get_arity(entry) === 10
+
+// Highlight styles for phase diagram entries
+export interface HighlightStyle {
+  effect?: `pulse` | `glow` | `size` | `color`
+  color?: string
+  size_multiplier?: number
+  opacity?: number
+  pulse_speed?: number
+}

@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { AnyStructure, ElementSymbol } from '$lib'
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
-  import { type ColorSchemeName, element_color_schemes } from '$lib/colors'
+  import type { ColorSchemeName } from '$lib/colors'
+  import { element_color_schemes } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
+  import { set_fullscreen_bg } from '$lib/phase-diagram/helpers'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { PymatgenStructure } from '$lib/structure'
@@ -562,35 +564,7 @@
     }
   })
 
-  // Detect and apply page background in fullscreen mode
-  function get_page_background(): string {
-    if (typeof window === `undefined`) return ``
-
-    // Try to get background from html or body
-    const html_bg = getComputedStyle(document.documentElement).backgroundColor
-    const body_bg = getComputedStyle(document.body).backgroundColor
-
-    // Check if background is not transparent/unset
-    const is_valid_bg = (bg: string) =>
-      bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
-
-    if (is_valid_bg(html_bg)) return html_bg
-    if (is_valid_bg(body_bg)) return body_bg
-
-    // Fall back to prefers-color-scheme
-    const prefers_dark = window.matchMedia(`(prefers-color-scheme: dark)`).matches
-    return prefers_dark ? `#1a1a1a` : `#ffffff`
-  }
-
-  // Set fullscreen background once wrapper is available or when fullscreen state changes
-  $effect(() => {
-    if (wrapper && typeof window !== `undefined` && fullscreen) { // trigger effect when fullscreen changes
-      const page_bg = get_page_background()
-      wrapper.style.setProperty(`--struct-bg-fullscreen`, page_bg)
-    }
-  })
-
-  $effect(() => { // react to 'fullscreen' state changes
+  $effect(() => { // fullscreen and background
     if (typeof window !== `undefined`) {
       if (fullscreen && !document.fullscreenElement && wrapper) {
         wrapper.requestFullscreen().catch(console.error)
@@ -598,6 +572,7 @@
         document.exitFullscreen()
       }
     }
+    set_fullscreen_bg(wrapper, fullscreen, `--struct-bg-fullscreen`)
   })
 </script>
 

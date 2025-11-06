@@ -24,19 +24,9 @@
   const handle_keydown = (event: KeyboardEvent) => {
     if (event.key === `Escape`) onclose?.()
   }
-
-  let popup_div = $state<HTMLDivElement | null>(null)
-
-  function handle_click_outside(event: MouseEvent) {
-    if (!popup_div) return
-    const target = event.target as HTMLElement
-    const clicked_inside = target === popup_div || popup_div.contains(target)
-    if (!clicked_inside) onclose?.()
-  }
 </script>
 
 <svelte:window onkeydown={handle_keydown} />
-<svelte:document onclick={handle_click_outside} />
 
 <div
   {...rest}

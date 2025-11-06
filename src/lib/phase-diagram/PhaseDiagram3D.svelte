@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { AnyStructure, ElementSymbol } from '$lib'
-  import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
+  import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { contrast_color } from '$lib/colors'
-  import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
-  import { format_fractional, format_num } from '$lib/labels'
+  import { CopyFeedback, DragOverlay } from '$lib/feedback'
+  import { format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
   import { SvelteMap } from 'svelte/reactivity'
   import {
@@ -19,9 +19,15 @@
   import { default_controls, default_pd_config, PD_STYLE } from './index'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
+  import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import * as thermo from './thermodynamics'
-  import type { HoverData3D, Point3D, TernaryPlotEntry } from './types'
+  import type {
+    HighlightStyle,
+    HoverData3D,
+    Point3D,
+    TernaryPlotEntry,
+  } from './types'
 
   let {
     entries,
@@ -49,11 +55,16 @@
     phase_stats = $bindable(null),
     stable_entries = $bindable([]),
     unstable_entries = $bindable([]),
+    highlighted_entries = $bindable([]),
+    highlight_style = {},
     ...rest
   }: BasePhaseDiagramProps<TernaryPlotEntry> & Hull3DProps & {
     // Bindable stable and unstable entries - computed internally but exposed for external use
     stable_entries?: TernaryPlotEntry[]
     unstable_entries?: TernaryPlotEntry[]
+    // Highlighted entries with customizable visual effects
+    highlighted_entries?: (string | TernaryPlotEntry)[] // Array of entry IDs or full entries
+    highlight_style?: HighlightStyle
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
@@ -203,8 +214,7 @@
   let drag_started = $state(false)
   let last_mouse = $state({ x: 0, y: 0 })
   let hover_data = $state<HoverData3D<TernaryPlotEntry> | null>(null)
-  let copy_feedback_visible = $state(false)
-  let copy_feedback_position = $state({ x: 0, y: 0 })
+  let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
 
   // Drag and drop state
   let drag_over = $state(false)
@@ -232,10 +242,18 @@
   // Pulsating highlight for selected point
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.3 + 0.4 * Math.sin(pulse_time * 4))
+
+  // Merge highlight style with defaults
+  const merged_highlight_style = $derived(
+    helpers.merge_highlight_style(highlight_style),
+  )
+
+  // Helper to check if entry is highlighted
+  const is_highlighted = (entry: TernaryPlotEntry): boolean =>
+    helpers.is_entry_highlighted(entry, highlighted_entries)
+
   $effect(() => {
-    if (!selected_entry) return
-    const reduce = globalThis.matchMedia?.(`(prefers-reduced-motion: reduce)`).matches
-    if (reduce) return
+    if (!selected_entry && !highlighted_entries.length) return
     const animate = () => {
       pulse_time += 0.02
       render_once()
@@ -251,7 +269,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, max_hull_dist_show_phases, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, max_hull_dist_show_phases, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, highlighted_entries.length]
 
     render_once()
   })
@@ -308,11 +326,14 @@
     if (data) on_file_drop?.(data)
   }
 
-  async function copy_to_clipboard(text: string, position: { x: number; y: number }) {
-    await navigator.clipboard.writeText(text)
-    copy_feedback_position = position
-    copy_feedback_visible = true
-    setTimeout(() => copy_feedback_visible = false, 1500)
+  async function copy_entry_data(
+    entry: TernaryPlotEntry,
+    position: { x: number; y: number },
+  ) {
+    await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
+      copy_feedback.visible = visible
+      copy_feedback.position = pos
+    })
   }
 
   const get_point_color = (entry: TernaryPlotEntry): string =>
@@ -644,6 +665,7 @@
     // Draw points with enhanced 3D visualization
     for (const { entry, projected } of points_with_depth) {
       const is_stable = entry.is_stable || entry.e_above_hull === 0
+      const is_entry_highlighted = is_highlighted(entry)
 
       // Use shared color function for consistency
       const color = get_point_color(entry)
@@ -671,18 +693,34 @@
 
       // Draw pulsating highlight for selected entry
       if (selected_entry && entry.entry_id === selected_entry.entry_id) {
-        const highlight_size = size * (1.8 + 0.3 * Math.sin(pulse_time * 4))
-        ctx.fillStyle = `rgba(102, 240, 255, ${pulse_opacity * 0.6})`
-        ctx.strokeStyle = `rgba(102, 240, 255, ${pulse_opacity})`
-        ctx.lineWidth = 2 * container_scale
+        const highlight_size = size * (2.8 + 0.6 * Math.sin(pulse_time * 4))
+        ctx.fillStyle = `rgba(33, 150, 243, ${pulse_opacity * 0.7})`
+        ctx.strokeStyle = `rgba(33, 150, 243, ${pulse_opacity})`
+        ctx.lineWidth = 3 * container_scale
         ctx.beginPath()
         ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
         ctx.fill()
         ctx.stroke()
       }
 
+      // Draw highlight for highlighted entries
+      if (is_entry_highlighted) {
+        helpers.draw_highlight_effect(
+          ctx,
+          projected,
+          size,
+          container_scale,
+          pulse_time,
+          merged_highlight_style,
+        )
+      }
+
       // Draw main point with outline
-      ctx.fillStyle = color
+      const point_color =
+        is_entry_highlighted && merged_highlight_style.effect === `color`
+          ? merged_highlight_style.color
+          : color
+      ctx.fillStyle = point_color
       ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
       ctx.lineWidth = 0.5 * container_scale
 
@@ -873,19 +911,22 @@
     if (was_drag) return // Don't trigger click if this was a drag
 
     const entry = find_entry_at_mouse(event)
-    if (entry) {
-      on_point_click?.(entry)
+    if (!entry) {
+      if (modal_open) close_structure_popup()
+      return
+    }
 
-      if (enable_structure_preview) {
-        const structure = extract_structure_from_entry(entry)
-        if (structure) {
-          selected_structure = structure
-          selected_entry = entry
-          modal_place_right = helpers.calculate_modal_side(wrapper)
-          modal_open = true
-        }
+    on_point_click?.(entry)
+
+    if (enable_structure_preview) {
+      const structure = extract_structure_from_entry(entry)
+      if (structure) {
+        selected_structure = structure
+        selected_entry = entry
+        modal_place_right = helpers.calculate_modal_side(wrapper)
+        modal_open = true
       }
-    } else if (modal_open) close_structure_popup()
+    }
   }
 
   function close_structure_popup() {
@@ -897,7 +938,7 @@
   const handle_double_click = (event: MouseEvent) => {
     const entry = find_entry_at_mouse(event)
     if (entry) {
-      copy_to_clipboard(helpers.build_entry_tooltip_text(entry), {
+      copy_entry_data(entry, {
         x: event.clientX,
         y: event.clientY,
       })
@@ -965,17 +1006,17 @@
     }
   })
 
-  // Fullscreen handling with camera reset on transitions
+  // Fullscreen handling with camera reset
   let was_fullscreen = $state(fullscreen)
   $effect(() => {
     helpers.setup_fullscreen_effect(fullscreen, wrapper, (entering_fullscreen) => {
-      // Reset camera only on fullscreen transitions
       if (entering_fullscreen !== was_fullscreen) {
         camera.center_x = 0
         camera.center_y = -50
         was_fullscreen = entering_fullscreen
       }
     })
+    helpers.set_fullscreen_bg(wrapper, fullscreen, `--pd-3d-bg-fullscreen`)
   })
 
   let style = $derived(
@@ -1129,8 +1170,6 @@
   <!-- Hover tooltip -->
   {#if hover_data}
     {@const { entry, position } = hover_data}
-    {@const is_element = is_unary_entry(entry)}
-    {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
     <div
       class="tooltip"
       style:left="{position.x + 10}px;"
@@ -1139,57 +1178,12 @@
       style:background={get_point_color(entry)}
       {@attach contrast_color({ luminance_threshold: 0.49 })}
     >
-      <div class="tooltip-title">
-        {@html get_electro_neg_formula(entry.composition)}{
-          is_element
-          ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``})`
-          : ``
-        }
-      </div>
-
-      <div>
-        E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
-      </div>
-      <div>
-        E<sub>form</sub>: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
-      </div>
-      {#if entry.entry_id}
-        <div>ID: {entry.entry_id}</div>
-      {/if}
-
-      <!-- Show fractional composition for multi-element compounds -->
-      {#if !is_element}
-        {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
-        {@const fractions = Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0)
-        .map(([el, amt]) => `${el}=${format_fractional(amt / total)}`)}
-        {#if fractions.length > 1}
-          {fractions.join(` | `)}
-        {/if}
-      {/if}
+      <PhaseEntryTooltip {entry} />
     </div>
   {/if}
 
-  <!-- Copy feedback notification -->
-  {#if copy_feedback_visible}
-    <div
-      class="copy-feedback"
-      style:left="{copy_feedback_position.x}px"
-      style:top="{copy_feedback_position.y}px"
-    >
-      <Icon icon="Check" />
-    </div>
-  {/if}
-
-  <!-- Drag over overlay -->
-  {#if drag_over}
-    <div class="drag-overlay">
-      <div class="drag-message">
-        <Icon icon="Info" />
-        <span>Drop JSON file to load phase diagram data</span>
-      </div>
-    </div>
-  {/if}
+  <CopyFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
+  <DragOverlay visible={drag_over} />
 
   {#if modal_open && selected_structure}
     <StructurePopup
@@ -1211,11 +1205,12 @@
     container-type: size; /* enable cqh/cqw for responsive sizing */
     width: 100%;
     height: var(--pd-height, 500px);
-    background: var(--surface-bg, #f8f9fa);
+    background: var(--pd-3d-bg, var(--pd-bg));
     border-radius: 4px;
   }
   .phase-diagram-3d:fullscreen {
     border-radius: 0;
+    background: var(--pd-3d-bg-fullscreen, var(--pd-3d-bg, var(--pd-bg)));
   }
   .phase-diagram-3d.dragover {
     border: 2px dashed var(--accent-color, #1976d2);
@@ -1257,57 +1252,5 @@
     pointer-events: none;
     backdrop-filter: blur(4px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  }
-  .copy-feedback {
-    position: fixed;
-    width: 24px;
-    height: 24px;
-    background: var(--success-color, #4caf50);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transform: translate(-50%, -50%);
-    z-index: 1;
-    animation: copy-success 1.5s ease-out forwards;
-  }
-  @keyframes copy-success {
-    0% {
-      transform: translate(-50%, -50%) scale(0);
-      opacity: 0;
-    }
-    20% {
-      transform: translate(-50%, -50%) scale(1.2);
-      opacity: 1;
-    }
-    40% {
-      transform: translate(-50%, -50%) scale(1);
-      opacity: 1;
-    }
-    100% {
-      transform: translate(-50%, -50%) scale(1);
-      opacity: 0;
-    }
-  }
-
-  .drag-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(25, 118, 210, 0.1);
-    border: 2px dashed var(--accent-color, #1976d2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-  }
-  .drag-message {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    color: var(--accent-color, #1976d2);
-    font-weight: 600;
-    font-size: 1.1em;
   }
 </style>
