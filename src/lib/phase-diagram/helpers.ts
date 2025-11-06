@@ -1,10 +1,11 @@
 import type { ElementSymbol, EnergyModeInfo } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
+import { get_page_background } from '$lib/colors'
 import { elem_symbol_to_name } from '$lib/composition'
 import { format_fractional, format_num } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { PhaseDiagramConfig, PhaseEntry } from './types'
+import type { HighlightStyle, PhaseDiagramConfig, PhaseEntry } from './types'
 import { is_unary_entry } from './types'
 
 // Energy color scale factory (shared)
@@ -172,6 +173,16 @@ export function setup_fullscreen_effect(
   }
 }
 
+export function set_fullscreen_bg(
+  wrapper: HTMLDivElement | undefined,
+  fullscreen: boolean,
+  css_var_name: string,
+): void {
+  if (!wrapper || !fullscreen) return
+  // set fullscreen background to match current page background
+  wrapper.style.setProperty(css_var_name, get_page_background())
+}
+
 // Compute energy source mode information for phase diagram entries. Returns energy mode information including capability flags and resolved mode.
 // This determines whether we can use precomputed energies or need to compute on-the-fly.
 export function compute_energy_mode_info(
@@ -230,4 +241,83 @@ export function get_effective_entries(
     if (e_form === null) return entry
     return { ...entry, e_form_per_atom: e_form }
   })
+}
+
+// Copy text to clipboard with visual feedback
+export async function copy_entry_to_clipboard(
+  entry: PhaseEntry,
+  position: { x: number; y: number },
+  on_feedback: (visible: boolean, pos: { x: number; y: number }) => void,
+): Promise<void> {
+  const text = build_entry_tooltip_text(entry)
+  await navigator.clipboard.writeText(text)
+  on_feedback(true, position)
+  setTimeout(() => on_feedback(false, position), 1500)
+}
+
+export const DEFAULT_HIGHLIGHT_STYLE: Required<HighlightStyle> = {
+  effect: `pulse`,
+  color: `#6cf0ff`,
+  size_multiplier: 1.8,
+  opacity: 0.6,
+  pulse_speed: 4,
+}
+
+export function merge_highlight_style(
+  custom_style: HighlightStyle | undefined,
+): Required<HighlightStyle> {
+  return { ...DEFAULT_HIGHLIGHT_STYLE, ...custom_style }
+}
+
+export function is_entry_highlighted<T extends { entry_id?: string }>(
+  entry: T,
+  highlighted_list: (string | T)[],
+): boolean {
+  if (!highlighted_list.length) return false
+  return highlighted_list.some((item) =>
+    typeof item === `string` ? item === entry.entry_id : item.entry_id === entry.entry_id
+  )
+}
+
+// Add or modify alpha channel in RGB/RGBA color strings
+function apply_alpha_to_color(color: string, alpha: number): string {
+  // Already rgba - replace the last number
+  if (color.includes(`rgba`)) return color.replace(/[\d.]+\)$/, `${alpha})`)
+  if (color.includes(`rgb(`)) { // Convert rgb to rgba with alpha
+    return color.replace(/rgb\(/, `rgba(`).replace(/\)$/, `, ${alpha})`)
+  }
+  return color // Fallback: hex colors would need conversion, for now just return as-is
+}
+
+export function draw_highlight_effect(
+  ctx: CanvasRenderingContext2D,
+  projected: { x: number; y: number },
+  size: number,
+  container_scale: number,
+  pulse_time: number,
+  style: Required<HighlightStyle>,
+): void {
+  const { effect, color: hl_color, size_multiplier, opacity, pulse_speed } = style
+  const pulse_val = effect === `pulse`
+    ? 0.5 + 0.5 * Math.sin(pulse_time * pulse_speed)
+    : 0
+  const hl_size = size * (size_multiplier + (effect === `pulse` ? 0.3 * pulse_val : 0))
+  const hl_opacity = opacity * (effect === `pulse` ? 0.6 + 0.4 * pulse_val : 1)
+
+  if (effect !== `color`) {
+    ctx.lineWidth = 2 * container_scale
+    ctx.beginPath()
+    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
+
+    if (effect === `size`) {
+      ctx.strokeStyle = hl_color
+      ctx.stroke()
+    } else {
+      // pulse or glow - apply opacity to the color
+      ctx.fillStyle = apply_alpha_to_color(hl_color, hl_opacity * 0.6)
+      ctx.strokeStyle = apply_alpha_to_color(hl_color, hl_opacity)
+      ctx.fill()
+      ctx.stroke()
+    }
+  }
 }

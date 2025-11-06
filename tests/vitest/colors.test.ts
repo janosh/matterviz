@@ -1,12 +1,13 @@
 import {
   element_color_schemes,
   get_bg_color,
+  get_page_background,
   is_color,
   luminance,
   pick_contrast_color,
 } from '$lib/colors'
 import { elem_symbols } from '$lib/labels'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from(
@@ -282,4 +283,49 @@ test(`pick_contrast_color uses custom colors`, () => {
       choices: [`blue`, `yellow`],
     }),
   ).toBe(`yellow`)
+})
+
+describe(`get_page_background`, () => {
+  test(`returns empty string in SSR context`, () => {
+    const win = globalThis.window
+    // @ts-expect-error - SSR simulation
+    globalThis.window = undefined
+    expect(get_page_background()).toBe(``)
+    globalThis.window = win
+  })
+
+  test.each([
+    [`#f5f5f5`, `rgba(0, 0, 0, 0)`, false, `#f5f5f5`, `html background`],
+    [`transparent`, `#e0e0e0`, false, `#e0e0e0`, `body background`],
+    [`transparent`, `transparent`, true, `#1a1a1a`, `dark mode fallback`],
+    [`transparent`, `transparent`, false, `#ffffff`, `light mode fallback`],
+  ])(
+    `$4`,
+    (html_bg, body_bg, prefers_dark, expected) => {
+      let call_idx = 0
+      vi.stubGlobal(`getComputedStyle`, (_elem: Element) => {
+        const bg = call_idx++ === 0 ? html_bg : body_bg
+        return { backgroundColor: bg } as CSSStyleDeclaration
+      })
+      vi.stubGlobal(
+        `matchMedia`,
+        (query: string) => ({ matches: prefers_dark, media: query }),
+      )
+      expect(get_page_background()).toBe(expected)
+      vi.unstubAllGlobals()
+    },
+  )
+
+  test(`custom fallback values`, () => {
+    vi.stubGlobal(
+      `getComputedStyle`,
+      () => ({ backgroundColor: `transparent` }) as CSSStyleDeclaration,
+    )
+    vi.stubGlobal(`matchMedia`, (q: string) => ({
+      matches: q.includes(`dark`),
+      media: q,
+    }))
+    expect(get_page_background(`#000`, `#fff`)).toBe(`#000`)
+    vi.unstubAllGlobals()
+  })
 })

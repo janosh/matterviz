@@ -80,9 +80,9 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
         const tooltip_text = await tooltip.textContent()
         // Check that tooltip doesn't contain large decimal numbers like "666.67" or "333.33"
         // but may contain unicode fractions like ⅓, ½, ⅔, etc.
-        if (tooltip_text && tooltip_text.includes(`=`)) {
+        if (tooltip_text && tooltip_text.includes(`Fractional:`)) {
           // If there are fractional compositions shown, verify they don't have long decimals
-          expect(tooltip_text).not.toMatch(/=\d{3,}\.\d+/)
+          expect(tooltip_text).not.toMatch(/\d{3,}\.\d+/)
           // Verify it might contain unicode fractions (optional, as composition varies)
           // Common fractions: ½ ⅓ ⅔ ¼ ¾ ⅕ ⅖ ⅗ ⅘
         }

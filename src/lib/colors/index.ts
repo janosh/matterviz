@@ -133,3 +133,27 @@ export function pick_contrast_color(options: ContrastOptions = {}) {
 export const contrast_color = (options: ContrastOptions = {}) => (node: HTMLElement) => {
   node.style.color = pick_contrast_color({ ...options, bg_color: get_bg_color(node) })
 }
+
+// Detect and return the page background color from html/body elements or user preferences
+export function get_page_background(
+  fallback_dark = `#1a1a1a`,
+  fallback_light = `#ffffff`,
+): string {
+  if (typeof window === `undefined`) return ``
+
+  // Try to get background from html or body
+  const html_bg = getComputedStyle(document.documentElement).backgroundColor
+  const body_bg = getComputedStyle(document.body).backgroundColor
+
+  // Check if background is not transparent/unset
+  const is_valid_bg = (bg: string) =>
+    bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
+
+  // Prefer body background as it's more likely to be styled by the theme
+  if (is_valid_bg(body_bg)) return body_bg
+  if (is_valid_bg(html_bg)) return html_bg
+
+  // Fall back to prefers-color-scheme
+  const prefers_dark = globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches
+  return prefers_dark ? fallback_dark : fallback_light
+}
