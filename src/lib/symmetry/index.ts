@@ -27,18 +27,8 @@ export function to_cell_json(structure: PymatgenStructure): string {
   // nalgebra Matrix3 deserializes as a flat list in COLUMN-MAJOR of the internal basis B
   // Internal B = transpose(row-basis RB). column-major(B) == row-major(RB).
   // So supply row-major of the pymatgen lattice.matrix (RB).
-  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = structure.lattice.matrix
-  const basis: MoyoCell[`lattice`][`basis`] = [
-    m00,
-    m01,
-    m02,
-    m10,
-    m11,
-    m12,
-    m20,
-    m21,
-    m22,
-  ]
+  const [v_a, v_b, v_c] = structure.lattice.matrix
+  const basis: MoyoCell[`lattice`][`basis`] = [...v_a, ...v_b, ...v_c]
   const positions = structure.sites.map((site) => site.abc)
   const numbers = structure.sites.map((site, idx) => {
     const sym = site.species?.[0]?.element
