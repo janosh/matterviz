@@ -7,8 +7,7 @@
   } from '$lib'
   import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
-  import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
-  import { format_fractional, format_num } from '$lib/labels'
+  import { CopyFeedback, DragOverlay } from '$lib/feedback'
   import type {
     AxisConfig,
     ScatterHandlerEvent,
@@ -21,6 +20,7 @@
   import { default_controls, default_pd_config, PD_STYLE } from './index'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
+  import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import * as thermo from './thermodynamics'
   import type { HoverData3D, PhaseEntry, PlotEntry3D } from './types'
@@ -246,16 +246,13 @@
     ),
   )
 
-  const camera_default = {
-    zoom: PD_DEFAULTS.binary.camera_zoom,
-    center_x: PD_DEFAULTS.binary.camera_center_x,
-    center_y: PD_DEFAULTS.binary.camera_center_y,
-  }
-  let camera = $state({ ...camera_default })
   let reset_counter = $state(0)
 
   // Drag and drop state (to match 3D/4D components)
   let drag_over = $state(false)
+
+  // Copy feedback state
+  let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
 
   // Structure popup state
   let structure_popup = $state<{
@@ -354,9 +351,7 @@
     return orig_entry?.structure as AnyStructure || null
   }
 
-  const reset_camera = () => Object.assign(camera, camera_default)
   function reset_all() {
-    reset_camera()
     fullscreen = PD_DEFAULTS.binary.fullscreen
     info_pane_open = PD_DEFAULTS.binary.info_pane_open
     legend_pane_open = PD_DEFAULTS.binary.legend_pane_open
@@ -376,7 +371,6 @@
   const handle_keydown = (event: KeyboardEvent) => {
     if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
     const actions: Record<string, () => void> = {
-      r: reset_camera,
       b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
       s: () => show_stable = !show_stable,
       u: () => show_unstable = !show_unstable,
@@ -391,13 +385,66 @@
     if (data) on_file_drop?.(data)
   }
 
+  async function copy_entry_data(
+    entry: PlotEntry3D,
+    position: { x: number; y: number },
+  ) {
+    await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
+      copy_feedback.visible = visible
+      copy_feedback.position = pos
+    })
+  }
+
   function close_structure_popup() {
     structure_popup = { open: false, structure: null, entry: null, place_right: true }
+  }
+
+  // Track last clicked entry for double-click detection
+  let last_clicked_entry: PlotEntry3D | null = null
+  let last_click_time = 0
+
+  function handle_point_click_internal(data: ScatterHandlerEvent) {
+    const entry = data.metadata as unknown as PlotEntry3D
+    if (!entry) return
+
+    const now = Date.now()
+    const is_double_click = last_clicked_entry === entry &&
+      now - last_click_time < 300
+
+    if (is_double_click) {
+      // Double-click: copy to clipboard
+      copy_entry_data(entry, {
+        x: data.event.clientX,
+        y: data.event.clientY,
+      })
+      last_clicked_entry = null
+      last_click_time = 0
+    } else {
+      // Single click: show structure preview
+      last_clicked_entry = entry
+      last_click_time = now
+
+      on_point_click?.(entry)
+      if (enable_structure_preview) {
+        const structure = extract_structure_from_entry(entry)
+        if (structure) {
+          const viewport_width = globalThis.innerWidth
+          const click_x = data.event.clientX
+          const space_on_right = viewport_width - click_x
+          const space_on_left = click_x
+          const place_right = space_on_right >= space_on_left
+
+          structure_popup = { open: true, structure, entry, place_right }
+          data.event.stopPropagation()
+        }
+      }
+    }
   }
 
   // Fullscreen handling
   $effect(() => {
     helpers.setup_fullscreen_effect(fullscreen, wrapper)
+    helpers.set_fullscreen_bg(wrapper, fullscreen, `--pd-2d-bg-fullscreen`)
   })
 
   let style = $derived(
@@ -417,38 +464,10 @@
 />
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
-{#snippet tooltip(point: ScatterHandlerProps<PlotEntry3D>)}
-  {@const entry = point.metadata}
+{#snippet tooltip(point: ScatterHandlerProps)}
+  {@const entry = point.metadata as unknown as PhaseEntry}
   {#if entry}
-    {@const is_element = is_unary_entry(entry)}
-    {@const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``}
-    <div class="tooltip-title">
-      {@html get_electro_neg_formula(entry.composition)}{
-        is_element
-        ? ` (${elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``})`
-        : ``
-      }
-    </div>
-
-    <div>
-      E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom
-    </div>
-    <div>
-      E<sub>form</sub>: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom
-    </div>
-    {#if entry.entry_id}
-      <div>ID: {entry.entry_id}</div>
-    {/if}
-
-    {#if !is_element}
-      {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
-      {@const fractions = Object.entries(entry.composition)
-    .filter(([, amt]) => amt > 0)
-    .map(([el, amt]) => `${el}=${format_fractional(amt / total)}`)}
-      {#if fractions.length > 1}
-        {fractions.join(` | `)}
-      {/if}
-    {/if}
+    <PhaseEntryTooltip {entry} />
   {/if}
 {/snippet}
 
@@ -473,7 +492,7 @@
     style={`${style}; ${rest.style ?? ``}`}
     bind:wrapper
     role="application"
-    tabindex="-1"
+    tabindex={-1}
     onkeydown={handle_keydown}
     ondrop={handle_file_drop}
     ondragover={(event) => {
@@ -507,39 +526,14 @@
     }}
     {tooltip}
     {user_content}
-    on_point_click={(data: ScatterHandlerEvent<PlotEntry3D>) => {
-      const entry = data.metadata
-      if (entry) {
-        on_point_click?.(entry)
-        if (enable_structure_preview) {
-          const structure = extract_structure_from_entry(entry)
-          if (structure) {
-            // Determine placement based on click position in viewport
-            const viewport_width = globalThis.innerWidth
-            const click_x = data.event.clientX
-            const space_on_right = viewport_width - click_x
-            const space_on_left = click_x
-            const place_right = space_on_right >= space_on_left
-
-            structure_popup = {
-              open: true,
-              structure,
-              entry,
-              place_right,
-            }
-            // Stop propagation to prevent the click from immediately closing the popup
-            data.event.stopPropagation()
-          }
-        }
-      }
-    }}
-    on_point_hover={(data: ScatterHandlerEvent<PlotEntry3D> | null) => {
+    on_point_click={handle_point_click_internal}
+    on_point_hover={(data: ScatterHandlerEvent | null) => {
       if (!data) {
         hover_data = null
         on_point_hover?.(null)
         return
       }
-      const entry = data.metadata
+      const entry = data.metadata as unknown as PlotEntry3D
       hover_data = entry
         ? {
           entry,
@@ -605,7 +599,6 @@
           {max_hull_dist_in_data}
           {stable_entries}
           {unstable_entries}
-          {camera}
           {merged_controls}
           toggle_props={{ class: `legend-controls-btn` }}
           bind:energy_source_mode
@@ -617,15 +610,11 @@
       </section>
     {/if}
 
-    <!-- Drag over overlay -->
-    {#if drag_over}
-      <div class="drag-overlay">
-        <div class="drag-message">
-          <Icon icon="Info" />
-          <span>Drop JSON file to load phase diagram data</span>
-        </div>
-      </div>
-    {/if}
+    <CopyFeedback
+      bind:visible={copy_feedback.visible}
+      position={copy_feedback.position}
+    />
+    <DragOverlay visible={drag_over} />
 
     {#if structure_popup.open && structure_popup.structure}
       <StructurePopup
@@ -643,19 +632,11 @@
 {/key}
 
 <style>
-  .phase-diagram-2d {
-    position: relative;
-    container-type: size; /* enable cqh/cqw for responsive sizing */
-    width: 100%;
-    height: var(--pd-height, auto);
-    background: var(--surface-bg, #f8f9fa);
-    border-radius: 4px;
+  :global(.phase-diagram-2d:fullscreen) {
+    background: var(--pd-2d-bg-fullscreen, var(--pd-2d-bg, var(--pd-bg))) !important;
   }
-  .phase-diagram-2d:fullscreen {
-    border-radius: 0;
-  }
-  .phase-diagram-2d.dragover {
-    border: 2px dashed var(--accent-color, #1976d2);
+  :global(.phase-diagram-2d.dragover) {
+    border: 2px dashed var(--accent-color, #1976d2) !important;
   }
   .control-buttons {
     position: absolute;
@@ -677,24 +658,5 @@
   }
   .control-buttons button:hover {
     background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));
-  }
-  .drag-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(25, 118, 210, 0.1);
-    border: 2px dashed var(--accent-color, #1976d2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-  }
-  .drag-message {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    color: var(--accent-color, #1976d2);
-    font-weight: 600;
-    font-size: 1.1em;
   }
 </style>

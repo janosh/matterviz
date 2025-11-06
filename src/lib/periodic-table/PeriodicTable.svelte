@@ -309,14 +309,13 @@
     {#each element_data as element (element.number)}
       {@const { column, row, category, name, symbol } = element}
       {@const value = heat_values[element.number - 1]}
-      {@const is_in_active_elements = active_elements?.some((active_elem) =>
+      {@const is_active_elem = active_elements?.some((active_elem) =>
         typeof active_elem === `string`
           ? active_elem === symbol
           : active_elem?.symbol === symbol
       )}
       {@const active = active_category === category.replaceAll(` `, `-`) ||
-        active_element?.name === name ||
-        is_in_active_elements}
+        active_element?.name === name || is_active_elem}
       {@const style = `grid-column: ${column}; grid-row: ${row};`}
       <ElementTile
         {element}

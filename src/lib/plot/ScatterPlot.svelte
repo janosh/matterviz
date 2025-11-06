@@ -89,6 +89,7 @@
     on_point_click,
     on_point_hover,
     selected_series_idx = $bindable(0),
+    wrapper = $bindable(undefined),
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -135,6 +136,7 @@
     on_point_click?: (data: ScatterHandlerEvent) => void
     on_point_hover?: (data: ScatterHandlerEvent | null) => void
     selected_series_idx?: number
+    wrapper?: HTMLDivElement
   } = $props()
 
   // Initialize style overrides with defaults (runs once to avoid infinite loop)
@@ -1142,6 +1144,7 @@
 </script>
 
 <div
+  bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
@@ -1558,7 +1561,7 @@
                     // then handle internal logic
                     const props = construct_handler_props(point)
                     tooltip_point = point
-                    if (props) on_point_click?.({ ...props, event })
+                    if (props) on_point_click?.({ ...props, event, point })
                   }}
                 />
               {/each}
@@ -1734,6 +1737,7 @@
     flex: var(--scatter-flex, 1); /* Allow filling available space in flex containers */
     display: var(--scatter-display, flex);
     flex-direction: column;
+    background: var(--scatter-bg, var(--plot-bg));
   }
   svg {
     width: var(--scatter-svg-width, 100%);

@@ -864,6 +864,7 @@
     flex: var(--histogram-flex, 1);
     display: var(--histogram-display, flex);
     flex-direction: column;
+    background: var(--histogram-bg, var(--plot-bg));
   }
   svg {
     width: var(--histogram-svg-width, 100%);

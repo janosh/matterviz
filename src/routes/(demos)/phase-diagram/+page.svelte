@@ -100,6 +100,29 @@
     [`Li`, `Co`, `O`],
   ))
 
+  // Highlight examples - find entries with high energy above hull
+  let highlighted_na_fe_o = $state<string[]>([])
+  let highlighted_li_co_o = $state<string[]>([])
+
+  $effect(() => {
+    if (na_fe_o_entries.length > 0 && highlighted_na_fe_o.length === 0) {
+      const sorted = [...na_fe_o_entries]
+        .filter((e) => typeof e.e_above_hull === `number` && e.entry_id)
+        .sort((a, b) => (b.e_above_hull ?? 0) - (a.e_above_hull ?? 0))
+      highlighted_na_fe_o = sorted.slice(0, 3).map((e) => e.entry_id as string)
+    }
+  })
+
+  $effect(() => {
+    if (li_co_ni_o_data.length > 0 && highlighted_li_co_o.length === 0) {
+      // Find stable entries (on hull)
+      const stable = li_co_ni_o_data
+        .filter((e) => (e.is_stable || (e.e_above_hull ?? 0) < 0.01) && e.entry_id)
+        .slice(0, 5)
+      highlighted_li_co_o = stable.map((e) => e.entry_id as string)
+    }
+  })
+
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
     const li_fe_p_o = loaded_data.get(
@@ -147,6 +170,75 @@
       }
         <PhaseDiagram3D {entries} controls={{ title }} />
       {/each}
+    </div>
+
+    <h2>Highlighted Entries</h2>
+    <p class="section-description">
+      Highlight specific entries with customizable visual effects. Left: pulsating
+      highlight on high-energy entries. Right: subtle glow on stable phases. Double-click
+      entries to toggle highlighting.
+    </p>
+    <div class="ternary-grid">
+      <div>
+        <details style="margin-bottom: 1em; font-size: 0.9em">
+          <summary style="cursor: pointer">
+            Highlighted: {highlighted_na_fe_o.length} entries
+          </summary>
+          <div style="margin: 0.5em 0">
+            <strong>IDs:</strong> {highlighted_na_fe_o.join(`, `) || `none`}
+          </div>
+          <pre
+            style="overflow: auto; max-height: 200px"
+          >
+{JSON.stringify(
+              na_fe_o_entries
+                .filter((e) => e.entry_id && highlighted_na_fe_o.includes(e.entry_id))
+                .map((e) => ({
+                  id: e.entry_id,
+                  formula: e.reduced_formula,
+                  e_hull: e.e_above_hull,
+                })),
+              null,
+              2,
+            )}</pre>
+        </details>
+        <PhaseDiagram3D
+          entries={na_fe_o_entries}
+          controls={{ title: `High Energy Phases (Pulse)` }}
+          bind:highlighted_entries={highlighted_na_fe_o}
+          highlight_style={{ effect: `pulse`, color: `#ff6b6b`, size_multiplier: 2 }}
+        />
+      </div>
+      <div>
+        <details style="margin-bottom: 1em; font-size: 0.9em">
+          <summary style="cursor: pointer">
+            Highlighted: {highlighted_li_co_o.length} entries
+          </summary>
+          <div style="margin: 0.5em 0">
+            <strong>IDs:</strong> {highlighted_li_co_o.join(`, `) || `none`}
+          </div>
+          <pre
+            style="overflow: auto; max-height: 200px"
+          >
+{JSON.stringify(
+              li_co_ni_o_data
+                .filter((e) => e.entry_id && highlighted_li_co_o.includes(e.entry_id))
+                .map((e) => ({
+                  id: e.entry_id,
+                  formula: e.reduced_formula,
+                  e_hull: e.e_above_hull,
+                })),
+              null,
+              2,
+            )}</pre>
+        </details>
+        <PhaseDiagram3D
+          entries={li_co_ni_o_data}
+          controls={{ title: `Stable Phases (Glow)` }}
+          bind:highlighted_entries={highlighted_li_co_o}
+          highlight_style={{ effect: `glow`, color: `#4caf50`, size_multiplier: 1.6, opacity: 0.5 }}
+        />
+      </div>
     </div>
 
     <h2>Quaternary Chemical Systems</h2>

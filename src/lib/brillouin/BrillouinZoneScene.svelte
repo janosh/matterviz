@@ -82,7 +82,15 @@
 
   extras.interactivity()
 
-  const rotation_target: Vec3 = [0, 0, 0]
+  // Compute centroid of BZ vertices for proper rotation center
+  const rotation_target = $derived.by((): Vec3 => {
+    if (!bz_data?.vertices || bz_data.vertices.length === 0) return [0, 0, 0]
+    const sum = bz_data.vertices.reduce(
+      (acc, v) => math.add(acc, v),
+      [0, 0, 0] as Vec3,
+    )
+    return math.scale(sum, 1 / bz_data.vertices.length)
+  })
 
   // BZ size for camera positioning: average magnitude of k-vectors
   const bz_size = $derived.by(() => {

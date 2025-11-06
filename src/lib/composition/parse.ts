@@ -292,7 +292,7 @@ export const get_electro_neg_formula = (
   input: string | CompositionType | AnyStructure,
   plain_text = false,
   delim = ` `,
-  amount_format = `.3~s`,
+  amount_format = `.3~f`,
 ): string =>
   format_formula_generic(
     input,

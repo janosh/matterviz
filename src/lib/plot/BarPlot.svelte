@@ -1088,6 +1088,7 @@
     flex: var(--barplot-flex, 1);
     display: var(--barplot-display, flex);
     flex-direction: column;
+    background: var(--barplot-bg, var(--plot-bg));
   }
   svg {
     width: var(--barplot-svg-width, 100%);

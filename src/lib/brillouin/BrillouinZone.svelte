@@ -2,6 +2,7 @@
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import type { Vec3 } from '$lib/math'
+  import { set_fullscreen_bg } from '$lib/phase-diagram/helpers'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { PymatgenStructure } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
@@ -241,12 +242,13 @@
     }
   }
 
-  $effect(() => {
+  $effect(() => { // fullscreen and background
     if (typeof window === `undefined`) return
     const fs_el = document.fullscreenElement
     if (fullscreen && fs_el !== wrapper && wrapper) {
       wrapper.requestFullscreen().catch(console.error)
     } else if (!fullscreen && fs_el === wrapper) document.exitFullscreen()
+    set_fullscreen_bg(wrapper, fullscreen, `--bz-bg-fullscreen`)
   })
 </script>
 
