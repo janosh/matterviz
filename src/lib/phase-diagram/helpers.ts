@@ -179,8 +179,8 @@ export function set_fullscreen_bg(
   css_var_name: string,
 ): void {
   if (!wrapper || !fullscreen) return
-  // set fullscreen background to match current page background
-  wrapper.style.setProperty(css_var_name, get_page_background())
+  const bg = get_page_background()
+  if (bg) wrapper.style.setProperty(css_var_name, bg)
 }
 
 // Compute energy source mode information for phase diagram entries. Returns energy mode information including capability flags and resolved mode.
@@ -274,19 +274,27 @@ export function is_entry_highlighted<T extends { entry_id?: string }>(
   highlighted_list: (string | T)[],
 ): boolean {
   if (!highlighted_list.length) return false
+  const { entry_id } = entry
+  if (!entry_id) return false
   return highlighted_list.some((item) =>
-    typeof item === `string` ? item === entry.entry_id : item.entry_id === entry.entry_id
+    typeof item === `string` ? item === entry_id : item?.entry_id === entry_id
   )
 }
 
-// Add or modify alpha channel in RGB/RGBA color strings
 function apply_alpha_to_color(color: string, alpha: number): string {
-  // Already rgba - replace the last number
   if (color.includes(`rgba`)) return color.replace(/[\d.]+\)$/, `${alpha})`)
-  if (color.includes(`rgb(`)) { // Convert rgb to rgba with alpha
+  if (color.includes(`rgb(`)) {
     return color.replace(/rgb\(/, `rgba(`).replace(/\)$/, `, ${alpha})`)
   }
-  return color // Fallback: hex colors would need conversion, for now just return as-is
+
+  const hex_match = color.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+  if (hex_match) {
+    let hex = hex_match[1]
+    if (hex.length === 3) hex = hex.split(``).map((c) => c + c).join(``)
+    const [red, green, blue] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16))
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+  }
+  return color
 }
 
 export function draw_highlight_effect(
