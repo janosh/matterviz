@@ -5,7 +5,6 @@
   import type { CrystalSystem } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import * as spg from '$lib/symmetry/spacegroups'
-  import { spacegroup_to_crystal_sys } from '$lib/symmetry/spacegroups'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
@@ -160,7 +159,7 @@
 
 {#snippet tooltip(info: BarHandlerProps)}
   {@const { x: sg, y: count } = info}
-  {@const system = spacegroup_to_crystal_sys(sg)}
+  {@const system = spg.spacegroup_to_crystal_sys(sg)}
   Space Group: {format_value(sg, `.0f`)} ({spg.SPACEGROUP_NUM_TO_SYMBOL[sg]})<br />
   {#if system}
     Crystal System: {system}<br />

@@ -11,7 +11,7 @@
   import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import type { SymmetrySettings } from '$lib/symmetry'
-  import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
+  import * as symmetry from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -87,7 +87,7 @@
     // Symmetry analysis data (bindable for external access)
     symmetry_data = $bindable<MoyoDataset | null>(null),
     // Symmetry analysis settings (bindable for external control)
-    symmetry_settings = $bindable({}),
+    symmetry_settings = $bindable(symmetry.default_sym_settings),
     children,
     on_file_load,
     on_error,
@@ -287,10 +287,10 @@
     symmetry_data = null
     symmetry_error = undefined
 
-    ensure_moyo_wasm_ready()
+    symmetry.ensure_moyo_wasm_ready()
       .then(() =>
         run_id === symmetry_run_id
-          ? analyze_structure_symmetry(current_structure, current_settings)
+          ? symmetry.analyze_structure_symmetry(current_structure, current_settings)
           : null
       )
       .then((data) => {

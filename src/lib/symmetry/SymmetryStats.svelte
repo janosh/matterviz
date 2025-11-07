@@ -82,10 +82,12 @@
         type="number"
         step="1e-5"
         value={settings.symprec}
-        oninput={(evt) =>
-        settings = {
-          ...settings,
-          symprec: parseFloat(evt.currentTarget.value),
+        oninput={(evt) => {
+          const { value } = evt.currentTarget
+          const parsed = parseFloat(value)
+          if (Number.isFinite(parsed)) {
+            settings = { ...settings, symprec: parsed }
+          }
         }}
       />
     </label>

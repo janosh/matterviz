@@ -1,7 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state'
   import { Icon } from '$lib'
-
   import pkg from '$root/package.json'
 
   let online: boolean = $state(true)

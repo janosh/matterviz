@@ -133,6 +133,17 @@
   </Structure>
 </div>
 
+<p style="margin: 2em 0; text-align: center">
+  Drag any structure onto the viewer:
+</p>
+
+<FilePicker
+  files={structure_files}
+  show_category_filters
+  on_drag_end={() => {/* noop to avoid TS complaining */}}
+  style="margin-bottom: 3em"
+/>
+
 <!-- Layout Examples Section -->
 <section style="margin: 4em 0">
   <h2 style="text-align: center; margin-bottom: 2em">Layout Examples</h2>
@@ -181,17 +192,6 @@
     </p>
   {/if}
 </section>
-
-<p style="margin: 2em 0; text-align: center">
-  Drag any structure onto the viewer:
-</p>
-
-<FilePicker
-  files={structure_files}
-  show_category_filters
-  on_drag_end={() => {/* noop to avoid TS complaining */}}
-  style="margin-bottom: 3em"
-/>
 
 <style>
   .symmetry-grid {

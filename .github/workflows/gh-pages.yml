@@ -12,3 +12,8 @@ jobs:
     uses: janosh/workflows/.github/workflows/deno-gh-pages.yml@main
     with:
       deno-version: 2.3.7
+      # TODO remove once site build no longer fails without, started 2025-11-06 with sveltekit 2.48
+      build-cmd: |
+        rm -rf static/{molecules,structures,trajectories}
+        cp -r src/site/{molecules,structures,trajectories} static/
+        deno task build

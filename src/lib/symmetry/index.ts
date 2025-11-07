@@ -1,5 +1,6 @@
 import type { Vec3 } from '$lib'
 import { atomic_number_to_symbol, symbol_to_atomic_number } from '$lib/composition/parse'
+import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import init, { analyze_cell } from '@spglib/moyo-wasm'
@@ -9,15 +10,7 @@ export * from './spacegroups'
 export { default as SymmetryStats } from './SymmetryStats.svelte'
 export { default as WyckoffTable } from './WyckoffTable.svelte'
 
-export const crystal_systems = [
-  `Triclinic`,
-  `Monoclinic`,
-  `Orthorhombic`,
-  `Tetragonal`,
-  `Trigonal`,
-  `Hexagonal`,
-  `Cubic`,
-] as const
+// Keys are standard crystallographic symbols (P, I, F, A, B, C, R)
 export const bravais_lattices = {
   P: `Primitive`,
   I: `Body-centered`,
@@ -28,7 +21,6 @@ export const bravais_lattices = {
   R: `Rhombohedral`,
 } as const
 
-export type CrystalSystem = (typeof crystal_systems)[number]
 export type BravaisLattice = (typeof bravais_lattices)[keyof typeof bravais_lattices]
 
 export type SymmetrySettings = {
@@ -36,8 +28,8 @@ export type SymmetrySettings = {
   algo: `Standard` | `Spglib`
 }
 export const default_sym_settings = {
-  symprec: 1e-4,
-  algo: `Standard`,
+  symprec: DEFAULTS.symmetry.symprec,
+  algo: DEFAULTS.symmetry.algo,
 } as const satisfies SymmetrySettings
 
 export type WyckoffPos = {
