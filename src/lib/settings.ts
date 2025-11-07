@@ -92,6 +92,12 @@ export interface SettingsConfig {
   background_color: SettingType<string>
   background_opacity: SettingType<number>
 
+  // Symmetry Analysis
+  symmetry: {
+    symprec: SettingType<number>
+    algo: SettingType<`Standard` | `Spglib`>
+  }
+
   structure: { // Structure viewer settings
     // Atoms & Bonds
     atom_radius: SettingType<number>
@@ -309,6 +315,21 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     description: `Opacity of the background (0.0 = transparent, 1.0 = opaque)`,
     minimum: 0,
     maximum: 1,
+  },
+
+  // Symmetry Analysis
+  symmetry: {
+    symprec: {
+      value: 1e-4,
+      description: `Symmetry precision tolerance for spacegroup detection`,
+      minimum: 1e-8,
+      maximum: 1,
+    },
+    algo: {
+      value: `Standard` as const,
+      description: `Algorithm for symmetry analysis`,
+      enum: { Standard: `Standard`, Spglib: `Spglib` },
+    },
   },
 
   // Structure viewer settings

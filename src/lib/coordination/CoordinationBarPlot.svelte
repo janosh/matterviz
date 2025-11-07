@@ -2,8 +2,8 @@
   import type {
     AnyStructure,
     AxisConfig,
+    BarHandlerProps,
     BarSeries,
-    BarTooltipProps,
     Orientation,
   } from '$lib'
   import { StatusMessage } from '$lib'
@@ -267,7 +267,7 @@
     : `No coordination data to display`}
   />
 {:else}
-  {#snippet tooltip(info: BarTooltipProps)}
+  {#snippet tooltip(info: BarHandlerProps)}
     {@const cn = info.x}
     {@const count = info.y}
     {@const element = info.metadata?.element as string | undefined}

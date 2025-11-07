@@ -40,8 +40,8 @@ npx playwright test
 
 **New features should include tests.** Bug fixes should include a test that fails on the old code and passes with your fix.
 
-- Unit tests go in [`tests/vitest/`](tests/vitest)
-- E2E tests go in [`tests/playwright/`](tests/playwright)
+- Unit tests go in [`tests/vitest/`](https://github.com/janosh/matterviz/tree/main/tests/vitest)
+- E2E tests go in [`tests/playwright/`](https://github.com/janosh/matterviz/tree/main/tests/playwright)
 - Test functions should have typing annotations and concise docstrings explaining what they test.
 
 Before you start committing, create and check out a descriptively named branch:

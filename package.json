@@ -143,6 +143,10 @@
       "types": "./dist/structure/index.d.ts",
       "default": "./dist/structure/index.js"
     },
+    "./symmetry": {
+      "types": "./dist/symmetry/index.d.ts",
+      "default": "./dist/symmetry/index.js"
+    },
     "./theme": {
       "types": "./dist/theme/index.d.ts",
       "default": "./dist/theme/index.js"

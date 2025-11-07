@@ -3,7 +3,7 @@
   import { plot_colors } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
-  import type { AxisConfig, BarSeries, BarTooltipProps } from '$lib/plot'
+  import type { AxisConfig, BarHandlerProps, BarSeries } from '$lib/plot'
   import { BarPlot } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
   import { is_valid_structure } from '$lib/structure/validation'
@@ -247,7 +247,7 @@
     : `No XRD data to display`}
   />
 {:else}
-  {#snippet tooltip(info: BarTooltipProps)}
+  {#snippet tooltip(info: BarHandlerProps)}
     {@const angle_text = `${format_value(info.x, `.2f`)}°`}
     {@const intensity_text = `${format_value(info.y, `.1f`)}`}
     {@const hkls = info.metadata?.hkls as Hkl[] | undefined}

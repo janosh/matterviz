@@ -1,5 +1,5 @@
 import { BarPlot } from '$lib'
-import type { BarMode, BarSeries, BarTooltipProps, Orientation } from '$lib/plot'
+import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
 import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -170,7 +170,7 @@ describe(`BarPlot`, () => {
       target: document.body,
       props: {
         series: [basic],
-        tooltip: (data: BarTooltipProps) => {
+        tooltip: (data: BarHandlerProps) => {
           const div_el = document.createElement(`div`)
           div_el.className = `custom-tooltip`
           div_el.textContent = `x: ${data.x}, y: ${data.y}`

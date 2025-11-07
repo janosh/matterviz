@@ -4,7 +4,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    files,
+    files = [],
     active_files = [],
     show_category_filters = false,
     on_drag_start,
@@ -25,7 +25,7 @@
     },
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    files: FileInfo[]
+    files?: FileInfo[]
     active_files?: string[]
     show_category_filters?: boolean
     on_drag_start?: (file: FileInfo, event: DragEvent) => void

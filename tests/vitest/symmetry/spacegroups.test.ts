@@ -1,25 +1,16 @@
-import {
-  CRYSTAL_SYSTEM_COLORS,
-  CRYSTAL_SYSTEM_RANGES,
-  CRYSTAL_SYSTEMS,
-  type CrystalSystem,
-  normalize_spacegroup,
-  SPACEGROUP_NUM_TO_SYMBOL,
-  spacegroup_number_to_crystal_system,
-  SPACEGROUP_SYMBOL_TO_NUM,
-  spacegroup_to_crystal_system,
-} from '$lib/symmetry/spacegroups'
+import type { CrystalSystem } from '$lib/symmetry/spacegroups'
+import * as spg from '$lib/symmetry/spacegroups'
 import { describe, expect, test } from 'vitest'
 
 describe(`CRYSTAL_SYSTEM_RANGES`, () => {
   test(`should have 7 contiguous systems from 1-230`, () => {
-    expect(Object.keys(CRYSTAL_SYSTEM_RANGES)).toHaveLength(7)
-    expect(CRYSTAL_SYSTEM_RANGES.triclinic[0]).toBe(1)
-    expect(CRYSTAL_SYSTEM_RANGES.cubic[1]).toBe(230)
+    expect(Object.keys(spg.CRYSTAL_SYSTEM_RANGES)).toHaveLength(7)
+    expect(spg.CRYSTAL_SYSTEM_RANGES.triclinic[0]).toBe(1)
+    expect(spg.CRYSTAL_SYSTEM_RANGES.cubic[1]).toBe(230)
 
-    for (let idx = 0; idx < CRYSTAL_SYSTEMS.length - 1; idx++) {
-      const [, current_max] = CRYSTAL_SYSTEM_RANGES[CRYSTAL_SYSTEMS[idx]]
-      const [next_min] = CRYSTAL_SYSTEM_RANGES[CRYSTAL_SYSTEMS[idx + 1]]
+    for (let idx = 0; idx < spg.CRYSTAL_SYSTEMS.length - 1; idx++) {
+      const [, current_max] = spg.CRYSTAL_SYSTEM_RANGES[spg.CRYSTAL_SYSTEMS[idx]]
+      const [next_min] = spg.CRYSTAL_SYSTEM_RANGES[spg.CRYSTAL_SYSTEMS[idx + 1]]
       expect(next_min).toBe(current_max + 1)
     }
   })
@@ -35,14 +26,14 @@ describe(`CRYSTAL_SYSTEM_RANGES`, () => {
       [`cubic`, 195, 230],
     ] as const,
   )(`should have correct range for %s: [%i, %i]`, (system, min, max) => {
-    expect(CRYSTAL_SYSTEM_RANGES[system]).toEqual([min, max])
+    expect(spg.CRYSTAL_SYSTEM_RANGES[system]).toEqual([min, max])
   })
 })
 
 describe(`CRYSTAL_SYSTEM_COLORS`, () => {
   test(`should match pymatviz colors`, () => {
-    expect(Object.keys(CRYSTAL_SYSTEM_COLORS)).toHaveLength(7)
-    expect(CRYSTAL_SYSTEM_COLORS).toEqual({
+    expect(Object.keys(spg.CRYSTAL_SYSTEM_COLORS)).toHaveLength(7)
+    expect(spg.CRYSTAL_SYSTEM_COLORS).toEqual({
       triclinic: `red`,
       monoclinic: `teal`,
       orthorhombic: `blue`,
@@ -56,7 +47,7 @@ describe(`CRYSTAL_SYSTEM_COLORS`, () => {
 
 describe(`CRYSTAL_SYSTEMS`, () => {
   test(`should have 7 systems in correct order`, () => {
-    expect(CRYSTAL_SYSTEMS).toEqual([
+    expect(spg.CRYSTAL_SYSTEMS).toEqual([
       `triclinic`,
       `monoclinic`,
       `orthorhombic`,
@@ -68,7 +59,7 @@ describe(`CRYSTAL_SYSTEMS`, () => {
   })
 })
 
-describe(`spacegroup_number_to_crystal_system`, () => {
+describe(`spacegroup_num_to_crystal_sys`, () => {
   test.each(
     [
       [1, `triclinic`],
@@ -87,18 +78,18 @@ describe(`spacegroup_number_to_crystal_system`, () => {
       [230, `cubic`],
     ] as const,
   )(`should return %s for space group %i`, (spacegroup, expected_system) => {
-    expect(spacegroup_number_to_crystal_system(spacegroup)).toBe(expected_system)
+    expect(spg.spacegroup_num_to_crystal_sys(spacegroup)).toBe(expected_system)
   })
 
   test.each([0, -1, 231, 1000, -100])(
     `should return null for invalid number %i`,
     (invalid_number) => {
-      expect(spacegroup_number_to_crystal_system(invalid_number)).toBeNull()
+      expect(spg.spacegroup_num_to_crystal_sys(invalid_number)).toBeNull()
     },
   )
 })
 
-describe(`spacegroup_to_crystal_system`, () => {
+describe(`spacegroup_to_crystal_sys`, () => {
   test.each(
     [
       [1, `triclinic`],
@@ -125,13 +116,13 @@ describe(`spacegroup_to_crystal_system`, () => {
       [`I4_1/a-32/d`, `cubic`],
     ] as const,
   )(`should return %s for %s`, (input, expected) => {
-    expect(spacegroup_to_crystal_system(input)).toBe(expected)
+    expect(spg.spacegroup_to_crystal_sys(input)).toBe(expected)
   })
 
   test.each([`invalid`, `P999`, ``, `unknown`, `0`, `231`, `-1`])(
     `should return null for invalid input '%s'`,
     (invalid_input) => {
-      expect(spacegroup_to_crystal_system(invalid_input)).toBeNull()
+      expect(spg.spacegroup_to_crystal_sys(invalid_input)).toBeNull()
     },
   )
 })
@@ -155,13 +146,13 @@ describe(`normalize_spacegroup`, () => {
     [`P999`, null],
     [``, null],
   ])(`should return %s for %s`, (input, expected) => {
-    expect(normalize_spacegroup(input)).toBe(expected)
+    expect(spg.normalize_spacegroup(input)).toBe(expected)
   })
 })
 
 describe(`SPACEGROUP_SYMBOL_TO_NUM`, () => {
   test(`should cover all 230 space groups`, () => {
-    const unique_numbers = new Set(Object.values(SPACEGROUP_SYMBOL_TO_NUM))
+    const unique_numbers = new Set(Object.values(spg.SPACEGROUP_SYMBOL_TO_NUM))
     expect(unique_numbers.size).toBe(230)
     for (let num = 1; num <= 230; num++) {
       expect([...unique_numbers]).toContain(num)
@@ -182,17 +173,17 @@ describe(`SPACEGROUP_SYMBOL_TO_NUM`, () => {
     [`P6_3/mmc`, 194],
     [`I4/mmm`, 139],
   ])(`should map '%s' to %i`, (symbol, number) => {
-    expect(SPACEGROUP_SYMBOL_TO_NUM[symbol]).toBe(number)
+    expect(spg.SPACEGROUP_SYMBOL_TO_NUM[symbol]).toBe(number)
   })
 })
 
 describe(`SPACEGROUP_NUM_TO_SYMBOL`, () => {
   test(`should bidirectionally map all 230 space groups`, () => {
-    expect(Object.keys(SPACEGROUP_NUM_TO_SYMBOL)).toHaveLength(230)
+    expect(Object.keys(spg.SPACEGROUP_NUM_TO_SYMBOL)).toHaveLength(230)
     for (let num = 1; num <= 230; num++) {
-      const symbol = SPACEGROUP_NUM_TO_SYMBOL[num]
+      const symbol = spg.SPACEGROUP_NUM_TO_SYMBOL[num]
       expect(typeof symbol).toBe(`string`)
-      expect(SPACEGROUP_SYMBOL_TO_NUM[symbol]).toBe(num)
+      expect(spg.SPACEGROUP_SYMBOL_TO_NUM[symbol]).toBe(num)
     }
   })
 
@@ -204,7 +195,7 @@ describe(`SPACEGROUP_NUM_TO_SYMBOL`, () => {
     [225, `Fm-3m`],
     [230, `Ia-3d`],
   ])(`should map %i to %s`, (number, expected) => {
-    const symbol = SPACEGROUP_NUM_TO_SYMBOL[number]
+    const symbol = spg.SPACEGROUP_NUM_TO_SYMBOL[number]
     if (Array.isArray(expected)) {
       expect(expected).toContain(symbol)
     } else {
@@ -216,31 +207,31 @@ describe(`SPACEGROUP_NUM_TO_SYMBOL`, () => {
 describe(`Integration tests`, () => {
   test(`should process all 230 space groups through full pipeline`, () => {
     for (let num = 1; num <= 230; num++) {
-      const crystal_system = spacegroup_number_to_crystal_system(num)
-      const symbol = SPACEGROUP_NUM_TO_SYMBOL[num]
+      const crystal_system = spg.spacegroup_num_to_crystal_sys(num)
+      const symbol = spg.SPACEGROUP_NUM_TO_SYMBOL[num]
 
-      expect(CRYSTAL_SYSTEMS).toContain(crystal_system as CrystalSystem)
-      expect(SPACEGROUP_SYMBOL_TO_NUM[symbol]).toBe(num)
-      expect(spacegroup_to_crystal_system(symbol)).toBe(crystal_system)
-      expect(normalize_spacegroup(num)).toBe(num)
-      expect(normalize_spacegroup(symbol)).toBe(num)
+      expect(spg.CRYSTAL_SYSTEMS).toContain(crystal_system as CrystalSystem)
+      expect(spg.SPACEGROUP_SYMBOL_TO_NUM[symbol]).toBe(num)
+      expect(spg.spacegroup_to_crystal_sys(symbol)).toBe(crystal_system)
+      expect(spg.normalize_spacegroup(num)).toBe(num)
+      expect(spg.normalize_spacegroup(symbol)).toBe(num)
     }
   })
 
   test(`should respect crystal system boundaries`, () => {
-    for (const system of CRYSTAL_SYSTEMS) {
-      const [min, max] = CRYSTAL_SYSTEM_RANGES[system]
+    for (const system of spg.CRYSTAL_SYSTEMS) {
+      const [min, max] = spg.CRYSTAL_SYSTEM_RANGES[system]
       const mid = Math.floor((min + max) / 2)
 
-      expect(spacegroup_number_to_crystal_system(min)).toBe(system)
-      expect(spacegroup_number_to_crystal_system(mid)).toBe(system)
-      expect(spacegroup_number_to_crystal_system(max)).toBe(system)
+      expect(spg.spacegroup_num_to_crystal_sys(min)).toBe(system)
+      expect(spg.spacegroup_num_to_crystal_sys(mid)).toBe(system)
+      expect(spg.spacegroup_num_to_crystal_sys(max)).toBe(system)
 
       if (min > 1) {
-        expect(spacegroup_number_to_crystal_system(min - 1)).not.toBe(system)
+        expect(spg.spacegroup_num_to_crystal_sys(min - 1)).not.toBe(system)
       }
       if (max < 230) {
-        expect(spacegroup_number_to_crystal_system(max + 1)).not.toBe(system)
+        expect(spg.spacegroup_num_to_crystal_sys(max + 1)).not.toBe(system)
       }
     }
   })
@@ -250,11 +241,11 @@ describe(`Integration tests`, () => {
     [225, `225`, `Fm-3m`],
     [1, `1`, `P1`],
   ])(`should handle multiple input formats for %i`, (num, num_str, symbol) => {
-    const expected_system = spacegroup_number_to_crystal_system(num)
-    expect(spacegroup_to_crystal_system(num)).toBe(expected_system)
-    expect(spacegroup_to_crystal_system(num_str)).toBe(expected_system)
-    expect(spacegroup_to_crystal_system(symbol)).toBe(expected_system)
-    expect(normalize_spacegroup(num)).toBe(num)
-    expect(normalize_spacegroup(symbol)).toBe(num)
+    const expected_system = spg.spacegroup_num_to_crystal_sys(num)
+    expect(spg.spacegroup_to_crystal_sys(num)).toBe(expected_system)
+    expect(spg.spacegroup_to_crystal_sys(num_str)).toBe(expected_system)
+    expect(spg.spacegroup_to_crystal_sys(symbol)).toBe(expected_system)
+    expect(spg.normalize_spacegroup(num)).toBe(num)
+    expect(spg.normalize_spacegroup(symbol)).toBe(num)
   })
 })

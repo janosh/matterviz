@@ -56,13 +56,13 @@ Showcasing structures with different crystal systems.
 
 ```svelte example
 <script>
-  import { crystal_systems, Structure } from 'matterviz'
+  import { CRYSTAL_SYSTEMS, Structure } from 'matterviz'
   import { structures } from '$site/structures'
 </script>
 
 <ul class="crystal-systems">
   {#each structures.filter((struct) =>
-      crystal_systems.some((system) => struct.id.includes(system))
+      CRYSTAL_SYSTEMS.some((system) => struct.id.includes(system))
     ) as
     structure
   }
