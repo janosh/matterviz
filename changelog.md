@@ -1,5 +1,29 @@
 # Changelog
 
+## [v0.1.14](https://github.com/janosh/matterviz/compare/v0.1.13...v0.1.14)
+
+> 6 November 2025
+
+### 🛠 Enhancements
+
+- Show status messages in RDF/XRD/Coordination plots if empty/on error by @janosh in https://github.com/janosh/matterviz/pull/184
+- `ElementTile` add `--elem-tile-active-border` CSS variable by @janosh in https://github.com/janosh/matterviz/pull/190
+- Introduce highlight styles for phase diagram entries for customizable visual effects on selected entries by @janosh in https://github.com/janosh/matterviz/pull/192
+- SymmetryStats by @janosh in https://github.com/janosh/matterviz/pull/195
+
+### 🐛 Bug Fixes
+
+- Refactor `extension/vscode` file IO to use VSCode API instead of node:fs by @janosh in https://github.com/janosh/matterviz/pull/182
+- fix/transpose cell for torchsim trajectory by @thomasloux in https://github.com/janosh/matterviz/pull/193
+
+### 🧪 Tests
+
+- Test `Bond.svelte` by @janosh in https://github.com/janosh/matterviz/pull/179
+
+## New Contributors
+
+- @thomasloux made their first contribution in https://github.com/janosh/matterviz/pull/193
+
 ## [v0.1.13](https://github.com/janosh/matterviz/compare/v0.1.12...v0.1.13)
 
 > 18 October 2025

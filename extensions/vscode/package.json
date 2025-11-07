@@ -2,7 +2,7 @@
   "name": "matterviz",
   "displayName": "MatterViz",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
@@ -121,6 +121,22 @@
           "minimum": 0,
           "maximum": 1
         },
+        "matterviz.symmetry.symprec": {
+          "type": "number",
+          "default": 0.0001,
+          "description": "Symmetry precision tolerance for spacegroup detection",
+          "minimum": 1e-8,
+          "maximum": 1
+        },
+        "matterviz.symmetry.algo": {
+          "type": "string",
+          "default": "Standard",
+          "description": "Algorithm for symmetry analysis",
+          "enum": [
+            "Standard",
+            "Spglib"
+          ]
+        },
         "matterviz.structure.atom_radius": {
           "type": "number",
           "default": 1,
@@ -231,6 +247,13 @@
           "minimum": 0,
           "maximum": 1
         },
+        "matterviz.structure.rotate_speed": {
+          "type": "number",
+          "default": 1,
+          "description": "Mouse rotation sensitivity (set to 0 to disable rotation)",
+          "minimum": 0,
+          "maximum": 2
+        },
         "matterviz.structure.zoom_speed": {
           "type": "number",
           "default": 0.5,
@@ -245,13 +268,20 @@
           "minimum": 0.1,
           "maximum": 2
         },
+        "matterviz.structure.zoom_to_cursor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Zoom toward cursor position instead of scene center (double click canvas to reset camera)"
+        },
         "matterviz.structure.max_zoom": {
-          "type": "string",
-          "description": "Maximum zoom level (undefined = no limit)"
+          "type": "number",
+          "default": 500,
+          "description": "Maximum zoom level (orthographic: larger = more zoomed out, perspective: larger = further away)"
         },
         "matterviz.structure.min_zoom": {
-          "type": "string",
-          "description": "Minimum zoom level (undefined = no limit)"
+          "type": "number",
+          "default": 10,
+          "description": "Minimum zoom level (orthographic: smaller = more zoomed in, perspective: smaller = closer)"
         },
         "matterviz.structure.auto_rotate": {
           "type": "number",
