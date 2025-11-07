@@ -310,13 +310,10 @@ describe(`SymmetryStats`, () => {
 
     test(`hides tooltips when show_tooltips=false`, () => {
       const sym_data = create_mock_sym_data()
+      const settings = { symprec: 1e-4, algo: `Standard` }
       mount(SymmetryStats, {
         target: document.body,
-        props: {
-          sym_data,
-          show_tooltips: false,
-          settings: { symprec: 1e-4, algo: `Standard` },
-        },
+        props: { sym_data, settings, show_tooltips: false },
       })
 
       const symprec_label = doc_query(`.controls label:has(input[type="number"]) span`)

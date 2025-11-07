@@ -85,7 +85,7 @@
     // Track hidden elements across component lifecycle
     hidden_elements = $bindable(new Set<ElementSymbol>()),
     // Symmetry analysis data (bindable for external access)
-    symmetry_data = $bindable<MoyoDataset | null>(null),
+    sym_data = $bindable<MoyoDataset | null>(null),
     // Symmetry analysis settings (bindable for external control)
     symmetry_settings = $bindable(symmetry.default_sym_settings),
     children,
@@ -139,7 +139,7 @@
       // Track which elements are hidden (bindable across frames in trajectories)
       hidden_elements?: Set<ElementSymbol>
       // Symmetry analysis data (bindable for external access)
-      symmetry_data?: MoyoDataset | null
+      sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
       symmetry_settings?: Partial<SymmetrySettings>
       // structure content as string (alternative to providing structure directly or via data_url)
@@ -275,7 +275,7 @@
   // Trigger symmetry analysis when structure is loaded
   $effect(() => {
     if (!structure || !(`lattice` in structure)) {
-      symmetry_data = null
+      sym_data = null
       symmetry_error = undefined
       return
     }
@@ -284,7 +284,7 @@
     const run_id = ++symmetry_run_id
     // Explicitly reference symmetry_settings to track it for reactivity
     const current_settings = symmetry_settings
-    symmetry_data = null
+    sym_data = null
     symmetry_error = undefined
 
     symmetry.ensure_moyo_wasm_ready()
@@ -295,7 +295,7 @@
       )
       .then((data) => {
         if (data && run_id === symmetry_run_id) {
-          untrack(() => symmetry_data = data)
+          untrack(() => sym_data = data)
         }
       })
       .catch((err) => {
@@ -734,7 +734,7 @@
             {structure}
             bind:pane_open={info_pane_open}
             {selected_sites}
-            {symmetry_data}
+            {sym_data}
             {@attach tooltip({ content: `Structure info pane` })}
           />
         {/if}

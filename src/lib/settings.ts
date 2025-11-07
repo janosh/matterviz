@@ -95,7 +95,7 @@ export interface SettingsConfig {
   // Symmetry Analysis
   symmetry: {
     symprec: SettingType<number>
-    algo: SettingType<`Standard` | `Spglib`>
+    algo: SettingType<`Moyo` | `Spglib`>
   }
 
   structure: { // Structure viewer settings
@@ -326,9 +326,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 1,
     },
     algo: {
-      value: `Standard` as const,
+      value: `Moyo` as const,
       description: `Algorithm for symmetry analysis`,
-      enum: { Standard: `Standard`, Spglib: `Spglib` },
+      enum: { Moyo: `Moyo`, Spglib: `Spglib` },
     },
   },
 

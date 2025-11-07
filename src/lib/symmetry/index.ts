@@ -25,7 +25,7 @@ export type BravaisLattice = (typeof bravais_lattices)[keyof typeof bravais_latt
 
 export type SymmetrySettings = {
   symprec: number
-  algo: `Standard` | `Spglib`
+  algo: `Moyo` | `Spglib`
 }
 export const default_sym_settings = {
   symprec: DEFAULTS.symmetry.symprec,
@@ -76,7 +76,9 @@ export async function analyze_structure_symmetry(
   }
   const cell_json = to_cell_json(struct_or_mol)
   const { symprec, algo } = { ...default_sym_settings, ...settings }
-  return analyze_cell(cell_json, symprec, algo)
+  // Map "Moyo" to "Standard" for moyo-wasm
+  const setting = { Moyo: `Standard` }[algo as string] ?? algo
+  return analyze_cell(cell_json, symprec, setting)
 }
 
 // Helper function to score coordinate simplicity for Wyckoff table

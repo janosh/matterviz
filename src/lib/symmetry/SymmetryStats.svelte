@@ -3,11 +3,14 @@
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { type SymmetrySettings, wyckoff_positions_from_moyo } from './index'
+  import { SETTINGS_CONFIG } from '../settings'
+  import type { SymmetrySettings } from './index'
+  import { default_sym_settings, wyckoff_positions_from_moyo } from './index'
+  import * as spg from './spacegroups'
 
   let {
     sym_data,
-    settings = $bindable({ symprec: 1e-4, algo: `Standard` }),
+    settings = $bindable(default_sym_settings),
     show_tooltips = true,
     children,
     header,
@@ -49,9 +52,11 @@
     symprec:
       `Symmetry precision control in spglib/moyo. Lower values (e.g. 1e-4, the default) are more strict, higher values (e.g. 1e-1) are more tolerant of numerical errors in atomic positions.`,
     algo:
-      `Symmetry detection algorithm: Standard uses moyo's newer recommended settings, spglib is useful if you need compatible results to an existing set of spglib-detected symmetries.`,
+      `Symmetry detection algorithm: Moyo uses moyo's newer recommended settings, Spglib is useful if you need compatible results to an existing set of spglib-detected symmetries.`,
     space_group:
       `International Tables Space group number (1-230) - unique identifier for each space group. Higher numbers indicate more symmetries in the crystal.`,
+    crystal_system:
+      `Crystal system classification based on the unit cell symmetry. Seven systems: triclinic, monoclinic, orthorhombic, tetragonal, trigonal, hexagonal, and cubic.`,
     hermann_mauguin:
       `Hermann-Mauguin symbol describes symmetry operations. Format: Lattice type + Point group symmetry. Example: P4/mmm = Primitive + 4-fold rotation + mirror planes`,
     hall_number:
@@ -99,11 +104,12 @@
         onchange={(evt) =>
         settings = {
           ...settings,
-          algo: evt.currentTarget.value as `Standard` | `Spglib`,
+          algo: evt.currentTarget.value as `Moyo` | `Spglib`,
         }}
       >
-        <option value="Standard">Standard</option>
-        <option value="Spglib">Spglib</option>
+        {#each Object.keys(SETTINGS_CONFIG.symmetry.algo.enum ?? {}) as value (value)}
+          <option {value}>{value}</option>
+        {/each}
       </select>
     </label>
   </div>
@@ -116,6 +122,9 @@
         {@attach tooltip()}
       >
         Space Group <strong>{sym_data.number}</strong>
+      </div>
+      <div title={tooltips?.crystal_system} {@attach tooltip()}>
+        Crystal System <strong>{spg.spacegroup_to_crystal_sys(sym_data.number)}</strong>
       </div>
       <div title={tooltips?.hermann_mauguin} {@attach tooltip()}>
         Hermann-Mauguin <strong>{sym_data.hm_symbol ?? `N/A`}</strong>
