@@ -35,7 +35,7 @@ export const CRYSTAL_SYSTEMS = [
 export type CrystalSystem = (typeof CRYSTAL_SYSTEMS)[number]
 
 // Convert space group number to crystal system
-export function spacegroup_number_to_crystal_system(
+export function spacegroup_num_to_crystal_sys(
   spacegroup: number,
 ): CrystalSystem | null {
   for (const [system, [min, max]] of Object.entries(CRYSTAL_SYSTEM_RANGES)) {
@@ -47,24 +47,18 @@ export function spacegroup_number_to_crystal_system(
 }
 
 // Convert space group (number or symbol) to crystal system
-export function spacegroup_to_crystal_system(
+export function spacegroup_to_crystal_sys(
   spacegroup: number | string,
 ): CrystalSystem | null {
-  if (typeof spacegroup === `number`) {
-    return spacegroup_number_to_crystal_system(spacegroup)
-  }
+  if (typeof spacegroup === `number`) return spacegroup_num_to_crystal_sys(spacegroup)
 
   // Try to parse as symbol
   const number = SPACEGROUP_SYMBOL_TO_NUM[spacegroup]
-  if (number !== undefined) {
-    return spacegroup_number_to_crystal_system(number)
-  }
+  if (number !== undefined) return spacegroup_num_to_crystal_sys(number)
 
   // Try to parse string as number
   const parsed = parseInt(spacegroup, 10)
-  if (!isNaN(parsed)) {
-    return spacegroup_number_to_crystal_system(parsed)
-  }
+  if (!isNaN(parsed)) return spacegroup_num_to_crystal_sys(parsed)
 
   return null
 }
