@@ -1,18 +1,10 @@
 <script lang="ts">
-  import { type BarSeries, type BarTooltipProps, format_num } from '$lib'
+  import { type BarHandlerProps, type BarSeries, format_num } from '$lib'
   import { format_value } from '$lib/labels'
   import { BarPlot } from '$lib/plot'
   import type { CrystalSystem } from '$lib/symmetry'
-  import {
-    CRYSTAL_SYSTEM_COLORS,
-    CRYSTAL_SYSTEM_RANGES,
-    CRYSTAL_SYSTEMS,
-  } from '$lib/symmetry'
-  import {
-    normalize_spacegroup,
-    SPACEGROUP_NUM_TO_SYMBOL,
-    spacegroup_to_crystal_system,
-  } from '$lib/symmetry/spacegroups'
+  import * as symmetry from '$lib/symmetry'
+  import * as spg from '$lib/symmetry/spacegroups'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
@@ -31,7 +23,7 @@
 
   // Normalize input data to space group numbers
   const normalized_data = $derived(
-    data.map(normalize_spacegroup).filter((sg): sg is number => sg !== null),
+    data.map(spg.normalize_spacegroup).filter((sg): sg is number => sg !== null),
   )
 
   // Compute histogram of space group numbers
@@ -53,12 +45,12 @@
       { count: number; spacegroups: number[] }
     >()
 
-    for (const system of CRYSTAL_SYSTEMS) {
+    for (const system of symmetry.CRYSTAL_SYSTEMS) {
       stats.set(system, { count: 0, spacegroups: [] })
     }
 
     for (const [sg, count] of histogram) {
-      const system = spacegroup_to_crystal_system(sg)
+      const system = spg.spacegroup_to_crystal_sys(sg)
       if (system) {
         const stat = stats.get(system)!
         stat.count += count
@@ -95,7 +87,7 @@
 
     // Group data by crystal system
     for (const sg of sorted_spacegroups) {
-      const system = spacegroup_to_crystal_system(sg)
+      const system = spg.spacegroup_to_crystal_sys(sg)
       if (system) {
         let series = series_by_system.get(system)
         if (!series) {
@@ -109,11 +101,11 @@
 
     // Convert to BarSeries array, maintaining order of crystal systems
     const result: BarSeries[] = []
-    for (const system of CRYSTAL_SYSTEMS) {
+    for (const system of symmetry.CRYSTAL_SYSTEMS) {
       const data = series_by_system.get(system)
       if (data) {
         const { x, y } = data
-        const color = CRYSTAL_SYSTEM_COLORS[system]
+        const color = symmetry.CRYSTAL_SYSTEM_COLORS[system]
         result.push({ x, y, color, label: system, bar_width: 0.9, visible: true })
       }
     }
@@ -127,11 +119,11 @@
   const crystal_system_regions = $derived.by(() => {
     const [range_min, range_max] = x_range
 
-    return CRYSTAL_SYSTEMS.map((system) => {
-      const [sg_start, sg_end] = CRYSTAL_SYSTEM_RANGES[system]
+    return symmetry.CRYSTAL_SYSTEMS.map((system) => {
+      const [sg_start, sg_end] = symmetry.CRYSTAL_SYSTEM_RANGES[system]
       const stats = crystal_system_stats.get(system)
       const count = stats?.count ?? 0
-      const color = CRYSTAL_SYSTEM_COLORS[system]
+      const color = symmetry.CRYSTAL_SYSTEM_COLORS[system]
       return { system, sg_start, sg_end, count, color }
     }).filter(
       (region) => region.sg_end >= range_min && region.sg_start <= range_max, // Only visible systems
@@ -165,10 +157,10 @@
   )
 </script>
 
-{#snippet tooltip(info: BarTooltipProps)}
+{#snippet tooltip(info: BarHandlerProps)}
   {@const { x: sg, y: count } = info}
-  {@const system = spacegroup_to_crystal_system(sg)}
-  Space Group: {format_value(sg, `.0f`)} ({SPACEGROUP_NUM_TO_SYMBOL[sg]})<br />
+  {@const system = spg.spacegroup_to_crystal_sys(sg)}
+  Space Group: {format_value(sg, `.0f`)} ({spg.SPACEGROUP_NUM_TO_SYMBOL[sg]})<br />
   {#if system}
     Crystal System: {system}<br />
   {/if}

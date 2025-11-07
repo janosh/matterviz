@@ -22,6 +22,7 @@ export * from './plot'
 export * from './rdf'
 export * from './settings'
 export * from './structure'
+export * from './symmetry'
 export * from './theme'
 export { default as Trajectory } from './trajectory/Trajectory.svelte'
 export * from './utils'
@@ -81,17 +82,6 @@ export interface FileInfo {
   category?: string
   category_icon?: string
 }
-
-export const crystal_systems = [
-  `triclinic`,
-  `monoclinic`,
-  `orthorhombic`,
-  `tetragonal`,
-  `trigonal`,
-  `hexagonal`,
-  `cubic`,
-] as const
-export type CrystalSystem = (typeof crystal_systems)[number]
 
 // Helper function to escape HTML special characters to prevent XSS
 export function escape_html(unsafe_string: string): string {
