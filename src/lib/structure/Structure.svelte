@@ -10,6 +10,7 @@
   import type { PymatgenStructure } from '$lib/structure'
   import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
+  import type { SymmetrySettings } from '$lib/symmetry'
   import { analyze_structure_symmetry, ensure_moyo_wasm_ready } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
@@ -85,6 +86,8 @@
     hidden_elements = $bindable(new Set<ElementSymbol>()),
     // Symmetry analysis data (bindable for external access)
     symmetry_data = $bindable<MoyoDataset | null>(null),
+    // Symmetry analysis settings (bindable for external control)
+    symmetry_settings = $bindable({}),
     children,
     on_file_load,
     on_error,
@@ -137,6 +140,8 @@
       hidden_elements?: Set<ElementSymbol>
       // Symmetry analysis data (bindable for external access)
       symmetry_data?: MoyoDataset | null
+      // Symmetry analysis settings (bindable for external control)
+      symmetry_settings?: Partial<SymmetrySettings>
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
       children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
@@ -277,13 +282,15 @@
 
     const current_structure = structure
     const run_id = ++symmetry_run_id
+    // Explicitly reference symmetry_settings to track it for reactivity
+    const current_settings = symmetry_settings
     symmetry_data = null
     symmetry_error = undefined
 
     ensure_moyo_wasm_ready()
       .then(() =>
         run_id === symmetry_run_id
-          ? analyze_structure_symmetry(current_structure, 1e-4, `Standard`)
+          ? analyze_structure_symmetry(current_structure, current_settings)
           : null
       )
       .then((data) => {

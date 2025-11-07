@@ -6,7 +6,39 @@ import init, { analyze_cell } from '@spglib/moyo-wasm'
 import moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
 
 export * from './spacegroups'
+export { default as SymmetryStats } from './SymmetryStats.svelte'
 export { default as WyckoffTable } from './WyckoffTable.svelte'
+
+export const crystal_systems = [
+  `Triclinic`,
+  `Monoclinic`,
+  `Orthorhombic`,
+  `Tetragonal`,
+  `Trigonal`,
+  `Hexagonal`,
+  `Cubic`,
+] as const
+export const bravais_lattices = {
+  P: `Primitive`,
+  I: `Body-centered`,
+  F: `Face-centered`,
+  A: `A-face centered`,
+  B: `B-face centered`,
+  C: `C-face centered`,
+  R: `Rhombohedral`,
+} as const
+
+export type CrystalSystem = (typeof crystal_systems)[number]
+export type BravaisLattice = (typeof bravais_lattices)[keyof typeof bravais_lattices]
+
+export type SymmetrySettings = {
+  symprec: number
+  algo: `Standard` | `Spglib`
+}
+export const default_sym_settings = {
+  symprec: 1e-4,
+  algo: `Standard`,
+} as const satisfies SymmetrySettings
 
 export type WyckoffPos = {
   wyckoff: string
@@ -44,15 +76,15 @@ export function to_cell_json(structure: PymatgenStructure): string {
 
 export async function analyze_structure_symmetry(
   struct_or_mol: AnyStructure,
-  symprec = 1e-4,
-  setting: `Standard` | `Spglib` = `Standard`,
+  settings: Partial<SymmetrySettings>,
 ): Promise<MoyoDataset> {
   await ensure_moyo_wasm_ready()
   if (!(`lattice` in struct_or_mol)) {
     throw new Error(`Symmetry analysis requires a periodic structure with a lattice`)
   }
   const cell_json = to_cell_json(struct_or_mol)
-  return analyze_cell(cell_json, symprec, setting)
+  const { symprec, algo } = { ...default_sym_settings, ...settings }
+  return analyze_cell(cell_json, symprec, algo)
 }
 
 // Helper function to score coordinate simplicity for Wyckoff table
