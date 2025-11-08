@@ -18,8 +18,11 @@
   import { untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { AtomColorConfig } from './atom-properties'
+  import { get_atom_colors } from './atom-properties'
   import type { StructureHandlerData } from './index'
   import {
+    AtomColorLegend,
     StructureControls,
     StructureExportPane,
     StructureInfoPane,
@@ -60,6 +63,11 @@
     height = $bindable(0),
     reset_text = `Reset camera (or double-click)`,
     color_scheme = $bindable(`Vesta`),
+    atom_color_config = $bindable<Partial<AtomColorConfig>>({
+      mode: DEFAULTS.structure.atom_color_mode,
+      scale: DEFAULTS.structure.atom_color_scale,
+      scale_type: DEFAULTS.structure.atom_color_scale_type,
+    }),
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
@@ -144,6 +152,8 @@
       symmetry_settings?: Partial<SymmetrySettings>
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
+      // Atom coloring configuration
+      atom_color_config?: Partial<AtomColorConfig>
       children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
       on_file_load?: EventHandler
       on_error?: EventHandler
@@ -267,6 +277,18 @@
 
   $effect(() => {
     colors.element = element_color_schemes[color_scheme as ColorSchemeName]
+  })
+
+  // Compute property-based colors for legend display
+  let property_colors = $derived.by(() => {
+    if (!structure || atom_color_config.mode === `element`) return null
+    const result = get_atom_colors(
+      structure,
+      atom_color_config,
+      scene_props.bonding_strategy,
+      sym_data,
+    )
+    return result.colors.length ? result : null
   })
 
   let symmetry_run_id = 0
@@ -751,15 +773,17 @@
 
         <StructureControls
           bind:controls_open
-          bind:scene_props
+          {scene_props}
           bind:lattice_props
           bind:show_image_atoms
           bind:supercell_scaling
           bind:background_color
           bind:background_opacity
           bind:color_scheme
+          bind:atom_color_config
           {structure}
           {supercell_loading}
+          {sym_data}
         />
       {/if}
     </section>
@@ -768,6 +792,8 @@
       elements={get_elem_amounts(supercell_structure ?? structure!)}
       bind:hidden_elements
     />
+
+    <AtomColorLegend {atom_color_config} {property_colors} />
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
@@ -790,6 +816,8 @@
             {measure_mode}
             {width}
             {height}
+            {atom_color_config}
+            {sym_data}
           />
         </Canvas>
       </div>

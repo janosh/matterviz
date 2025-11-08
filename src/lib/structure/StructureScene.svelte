@@ -6,7 +6,10 @@
   import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { Arrow, Cylinder, get_center_of_mass, Lattice } from '$lib/structure'
+  import type { AtomColorConfig } from '$lib/structure/atom-properties'
+  import { get_atom_colors } from '$lib/structure/atom-properties'
   import * as measure from '$lib/structure/measure'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
@@ -91,6 +94,12 @@
     rotation_target_ref = $bindable<Vec3 | undefined>(undefined),
     initial_computed_zoom = $bindable<number | undefined>(undefined),
     hidden_elements = $bindable(new Set()),
+    atom_color_config = {
+      mode: DEFAULTS.structure.atom_color_mode,
+      scale: DEFAULTS.structure.atom_color_scale,
+      scale_type: DEFAULTS.structure.atom_color_scale_type,
+    },
+    sym_data = null,
   }: {
     structure?: AnyStructure
     atom_radius?: number // scale factor for atomic radii
@@ -153,6 +162,8 @@
     rotation_target_ref?: Vec3 // Expose rotation target for reset
     initial_computed_zoom?: number // Expose initial zoom for reset
     hidden_elements?: Set<ElementSymbol>
+    atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
+    sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
   } = $props()
 
   const threlte = useThrelte()
@@ -265,6 +276,18 @@
     } else bond_pairs = []
   })
 
+  // Compute property-based colors when not using element coloring
+  let property_colors = $derived.by(() => {
+    if (!structure || atom_color_config.mode === `element`) return null
+    const result = get_atom_colors(
+      structure,
+      atom_color_config,
+      bonding_strategy,
+      sym_data,
+    )
+    return result.colors.length ? result : null
+  })
+
   let atom_data = $derived.by(() => { // Pre-compute atom data for performance (site_idx, element, occupancy, position, radius, color, ...)
     if (!show_atoms || !structure?.sites) return []
     return structure.sites.flatMap((site, site_idx) => {
@@ -272,6 +295,10 @@
         (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
         0,
       ) * atom_radius
+
+      // Get color from property-based coloring or fall back to element color
+      const site_color = property_colors?.colors[site_idx] ||
+        colors.element?.[site.species[0]?.element]
 
       let start_angle = 0
       return site.species
@@ -282,7 +309,7 @@
           occupancy: occu,
           position: site.xyz,
           radius,
-          color: colors.element?.[element],
+          color: site_color,
           has_partial_occupancy: occu < 1,
           start_phi: 2 * Math.PI * start_angle,
           end_phi: 2 * Math.PI * (start_angle += occu),

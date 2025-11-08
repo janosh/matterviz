@@ -6,7 +6,10 @@
   import { to_degrees, to_radians } from '$lib/math'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
+  import type { AtomColorConfig } from '$lib/structure/atom-properties'
+  import { get_d3_color_scales } from '$lib/structure/atom-properties'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -27,8 +30,14 @@
     background_color = $bindable(undefined),
     background_opacity = $bindable(DEFAULTS.background_opacity),
     color_scheme = $bindable(DEFAULTS.color_scheme),
+    atom_color_config = $bindable<Partial<AtomColorConfig>>({
+      mode: DEFAULTS.structure.atom_color_mode,
+      scale: DEFAULTS.structure.atom_color_scale,
+      scale_type: DEFAULTS.structure.atom_color_scale_type,
+    }),
     structure = undefined,
     supercell_loading = false,
+    sym_data = null,
     pane_props = {},
     toggle_props = {},
     ...rest
@@ -41,8 +50,10 @@
     background_color?: string
     background_opacity?: number
     color_scheme?: string
+    atom_color_config?: Partial<AtomColorConfig>
     structure?: AnyStructure
     supercell_loading?: boolean
+    sym_data?: MoyoDataset | null
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
@@ -54,6 +65,21 @@
       color_scheme = color_scheme_selected[0] as string
     }
   })
+
+  // Atom color config selection state
+  let mode_selected = $state([atom_color_config.mode || `element`])
+  let scale_selected = $state([
+    atom_color_config.scale || DEFAULTS.structure.atom_color_scale,
+  ])
+  let type_selected = $state([atom_color_config.scale_type || `continuous`])
+
+  $effect(() => {
+    if (mode_selected[0]) atom_color_config.mode = mode_selected[0]
+    if (scale_selected[0]) atom_color_config.scale = scale_selected[0]
+    if (type_selected[0]) atom_color_config.scale_type = type_selected[0]
+  })
+
+  const available_color_scales = get_d3_color_scales()
 
   // Atom label color management
   let site_label_hex_color = $state(
@@ -406,12 +432,19 @@
       atom_radius: scene_props.atom_radius,
       same_size_atoms: scene_props.same_size_atoms,
       color_scheme,
+      ...atom_color_config,
     }}
     on_reset={() => {
       scene_props.atom_radius = DEFAULTS.structure.atom_radius
       scene_props.same_size_atoms = DEFAULTS.structure.same_size_atoms
       color_scheme = DEFAULTS.color_scheme
       color_scheme_selected = [DEFAULTS.color_scheme]
+      atom_color_config.mode = DEFAULTS.structure.atom_color_mode
+      atom_color_config.scale = DEFAULTS.structure.atom_color_scale
+      atom_color_config.scale_type = DEFAULTS.structure.atom_color_scale_type
+      mode_selected = [DEFAULTS.structure.atom_color_mode]
+      scale_selected = [DEFAULTS.structure.atom_color_scale]
+      type_selected = [DEFAULTS.structure.atom_color_scale_type]
     }}
   >
     <label
@@ -468,6 +501,53 @@
         {/snippet}
       </Select>
     </label>
+    <label
+      style="align-items: start"
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_mode.description })}
+    >
+      Atom coloring
+      <Select
+        options={Object.keys(SETTINGS_CONFIG.structure.atom_color_mode.enum || {})}
+        maxSelect={1}
+        minSelect={1}
+        bind:selected={mode_selected}
+        liOptionStyle="padding: 3pt 6pt;"
+        style="width: 10em; border: none"
+        disabled={atom_color_config.mode === `wyckoff` && !sym_data}
+      />
+    </label>
+    {#if atom_color_config.mode !== `element`}
+      <label
+        style="align-items: start"
+        {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_scale.description })}
+      >
+        Color scale
+        <Select
+          options={available_color_scales}
+          maxSelect={1}
+          minSelect={1}
+          bind:selected={scale_selected}
+          liOptionStyle="padding: 3pt 6pt;"
+          style="width: 14em; border: none"
+        />
+      </label>
+      <label
+        style="align-items: start"
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.atom_color_scale_type.description,
+        })}
+      >
+        Scale type
+        <Select
+          options={Object.keys(SETTINGS_CONFIG.structure.atom_color_scale_type.enum || {})}
+          maxSelect={1}
+          minSelect={1}
+          bind:selected={type_selected}
+          liOptionStyle="padding: 3pt 6pt;"
+          style="width: 10em; border: none"
+        />
+      </label>
+    {/if}
   </SettingsSection>
 
   {#if scene_props.show_site_labels || scene_props.show_site_indices}

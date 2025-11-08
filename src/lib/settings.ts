@@ -26,6 +26,17 @@ export type ShowBonds = (typeof show_bonds_options)[number]
 
 export type CameraProjection = `perspective` | `orthographic`
 
+export const atom_color_mode_options = [
+  `element`,
+  `coordination`,
+  `wyckoff`,
+  `custom`,
+] as const
+export type AtomColorMode = (typeof atom_color_mode_options)[number]
+
+export const atom_color_scale_type_options = [`continuous`, `categorical`] as const
+export type AtomColorScaleType = (typeof atom_color_scale_type_options)[number]
+
 // Reusable type definitions for common setting patterns
 type DisplayConfigType = {
   x_grid: SettingType<boolean>
@@ -109,6 +120,9 @@ export interface SettingsConfig {
     show_bonds: SettingType<ShowBonds>
     bond_color: SettingType<string>
     bonding_strategy: SettingType<BondingStrategy>
+    atom_color_mode: SettingType<AtomColorMode>
+    atom_color_scale: SettingType<string>
+    atom_color_scale_type: SettingType<AtomColorScaleType>
 
     // Camera & Controls
     show_gizmo: SettingType<boolean>
@@ -383,6 +397,29 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       enum: {
         electroneg_ratio: `Electronegativity Ratio`,
         solid_angle: `Solid Angle`,
+      },
+    },
+    atom_color_mode: {
+      value: `element`,
+      description: `Property to use for atom coloring`,
+      enum: {
+        element: `Element`,
+        coordination: `Coordination Number`,
+        wyckoff: `Wyckoff Position`,
+        custom: `Custom Function`,
+      },
+    },
+    atom_color_scale: {
+      value: `interpolateViridis`,
+      description:
+        `D3 color scale for property-based coloring (e.g., interpolateViridis, interpolatePlasma)`,
+    },
+    atom_color_scale_type: {
+      value: `continuous`,
+      description: `Color scale type for property-based coloring`,
+      enum: {
+        continuous: `Continuous Gradient`,
+        categorical: `Discrete Categories`,
       },
     },
 
