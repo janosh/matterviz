@@ -1,13 +1,18 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { DraggablePane, format_num, Lattice, SettingsSection } from '$lib'
+  import {
+    ColorScaleSelect,
+    DraggablePane,
+    format_num,
+    Lattice,
+    SettingsSection,
+  } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
   import { axis_colors, element_color_schemes } from '$lib/colors'
   import { to_degrees, to_radians } from '$lib/math'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
-  import { get_d3_color_scales } from '$lib/structure/atom-properties'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
@@ -16,7 +21,7 @@
 
   let {
     controls_open = $bindable(false),
-    scene_props = {},
+    scene_props = $bindable({}),
     lattice_props = $bindable({
       show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
       cell_edge_color: DEFAULTS.structure.cell_edge_color,
@@ -67,19 +72,19 @@
   })
 
   // Atom color config selection state
-  let mode_selected = $state([atom_color_config.mode || `element`])
-  let scale_selected = $state([
+  let color_scale_selected = $state([
     atom_color_config.scale || DEFAULTS.structure.atom_color_scale,
   ])
-  let type_selected = $state([atom_color_config.scale_type || `continuous`])
 
   $effect(() => {
-    if (mode_selected[0]) atom_color_config.mode = mode_selected[0]
-    if (scale_selected[0]) atom_color_config.scale = scale_selected[0]
-    if (type_selected[0]) atom_color_config.scale_type = type_selected[0]
+    if (color_scale_selected[0]) atom_color_config.scale = color_scale_selected[0]
+    // Auto-set scale_type based on mode
+    if (atom_color_config.mode === `wyckoff`) {
+      atom_color_config.scale_type = `categorical`
+    } else if (atom_color_config.mode === `coordination`) {
+      atom_color_config.scale_type = `continuous`
+    }
   })
-
-  const available_color_scales = get_d3_color_scales()
 
   // Atom label color management
   let site_label_hex_color = $state(
@@ -442,9 +447,7 @@
       atom_color_config.mode = DEFAULTS.structure.atom_color_mode
       atom_color_config.scale = DEFAULTS.structure.atom_color_scale
       atom_color_config.scale_type = DEFAULTS.structure.atom_color_scale_type
-      mode_selected = [DEFAULTS.structure.atom_color_mode]
-      scale_selected = [DEFAULTS.structure.atom_color_scale]
-      type_selected = [DEFAULTS.structure.atom_color_scale_type]
+      color_scale_selected = [DEFAULTS.structure.atom_color_scale]
     }}
   >
     <label
@@ -506,45 +509,34 @@
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_mode.description })}
     >
       Atom coloring
-      <Select
-        options={Object.keys(SETTINGS_CONFIG.structure.atom_color_mode.enum || {})}
-        maxSelect={1}
-        minSelect={1}
-        bind:selected={mode_selected}
-        liOptionStyle="padding: 3pt 6pt;"
-        style="width: 10em; border: none"
+      <select
+        bind:value={atom_color_config.mode}
         disabled={atom_color_config.mode === `wyckoff` && !sym_data}
-      />
+        style="font-size: 0.95em"
+      >
+        {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as
+          [value, label]
+          (value)
+        }
+          <option {value}>{label}</option>
+        {/each}
+      </select>
     </label>
     {#if atom_color_config.mode !== `element`}
       <label
-        style="align-items: start"
+        style="align-items: start; white-space: nowrap"
         {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_scale.description })}
       >
         Color scale
-        <Select
-          options={available_color_scales}
-          maxSelect={1}
-          minSelect={1}
-          bind:selected={scale_selected}
-          liOptionStyle="padding: 3pt 6pt;"
-          style="width: 14em; border: none"
-        />
-      </label>
-      <label
-        style="align-items: start"
-        {@attach tooltip({
-          content: SETTINGS_CONFIG.structure.atom_color_scale_type.description,
-        })}
-      >
-        Scale type
-        <Select
-          options={Object.keys(SETTINGS_CONFIG.structure.atom_color_scale_type.enum || {})}
-          maxSelect={1}
-          minSelect={1}
-          bind:selected={type_selected}
-          liOptionStyle="padding: 3pt 6pt;"
-          style="width: 10em; border: none"
+        <ColorScaleSelect
+          bind:value={atom_color_config.scale}
+          bind:selected={color_scale_selected}
+          colorbar={{
+            tick_labels: 0,
+            wrapper_style: `width: 100%;`,
+            title_style: `font-size: 0.95em;`,
+          }}
+          style="width: 100%; border: none"
         />
       </label>
     {/if}
@@ -939,6 +931,10 @@
     display: grid;
     gap: 0.3em;
     place-items: center;
+  }
+
+  :global(.controls-pane) {
+    font-size: 0.85em;
   }
 
   @keyframes spin {

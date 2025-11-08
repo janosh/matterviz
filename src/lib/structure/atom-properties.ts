@@ -7,14 +7,13 @@ import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 
-export type AtomColorMode = `element` | `coordination` | `wyckoff` | `custom`
+export type AtomColorMode = `element` | `coordination` | `wyckoff`
 export type AtomColorScaleType = `continuous` | `categorical`
 
 export interface AtomColorConfig {
   mode: AtomColorMode
   scale: string
   scale_type: AtomColorScaleType
-  color_fn?: (site: Site, idx: number) => number | string
 }
 
 export interface AtomPropertyColors {
@@ -58,11 +57,12 @@ const make_categorical = <T>(
 
 const build_prop_colors = (vals: number[], colors: string[]): AtomPropertyColors => {
   const uniq = [...new Set(vals)].sort((a, b) => a - b)
+  // Use sorted uniq array to avoid spreading large arrays into Math.min/max
   return {
     colors,
     values: vals,
-    min_value: Math.min(...vals),
-    max_value: Math.max(...vals),
+    min_value: uniq.length > 0 ? uniq[0] : undefined,
+    max_value: uniq.length > 0 ? uniq[uniq.length - 1] : undefined,
     unique_values: uniq,
   }
 }
@@ -76,7 +76,12 @@ export function apply_color_scale(
   if (type === `categorical`) return make_categorical(vals, scale, (a, b) => a - b)
 
   const fn = get_interp(scale)
-  const [min, max] = [Math.min(...vals), Math.max(...vals)]
+  // Compute min/max in single pass to avoid spreading large arrays
+  let [min, max] = [vals[0], vals[0]]
+  for (const val of vals) {
+    if (val < min) min = val
+    if (val > max) max = val
+  }
   return vals.map((v) => to_hex(fn, max === min ? 0.5 : (v - min) / (max - min)))
 }
 
@@ -101,7 +106,6 @@ export function get_wyckoff_colors(
   scale = DEFAULT,
 ): AtomPropertyColors {
   const n = structure.sites.length
-  // Handle both null/undefined and empty wyckoffs array consistently
   if (!sym_data?.wyckoffs || sym_data.wyckoffs.length === 0) {
     return {
       colors: Array(n).fill(GRAY),
@@ -110,11 +114,17 @@ export function get_wyckoff_colors(
     }
   }
 
-  const letters = sym_data.wyckoffs.map((w) => w ?? `unknown`)
+  // Create unique orbit identifiers: Wyckoff position + element symbol
+  // Each orbit represents a set of symmetrically equivalent sites
+  const orbit_ids = sym_data.wyckoffs.map((wyckoff, idx) => {
+    const element = structure.sites[idx]?.species[0]?.element ?? `?`
+    return wyckoff ? `${wyckoff}|${element}` : `unknown`
+  })
+
   return {
-    colors: apply_categorical_color_scale(letters, scale),
-    values: letters,
-    unique_values: [...new Set(letters)].sort(),
+    colors: apply_categorical_color_scale(orbit_ids, scale),
+    values: orbit_ids,
+    unique_values: [...new Set(orbit_ids)].sort(),
   }
 }
 
@@ -146,20 +156,12 @@ export function get_atom_colors(
   bonding_strategy: BondingStrategy = `electroneg_ratio`,
   sym_data: MoyoDataset | null = null,
 ): AtomPropertyColors {
-  const { mode = `element`, scale = DEFAULT, scale_type = `continuous`, color_fn } =
-    config
+  const { mode = `element`, scale = DEFAULT, scale_type = `continuous` } = config
 
   if (mode === `coordination`) {
     return get_coordination_colors(structure, bonding_strategy, scale, scale_type)
   }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, sym_data, scale)
-  if (mode === `custom`) {
-    if (!color_fn) {
-      console.warn(`Custom color mode requires a color_fn`)
-      return { colors: [], values: [] } // Return empty arrays to indicate no property coloring
-    }
-    return get_custom_colors(structure, color_fn, scale, scale_type)
-  }
   // Element mode, no property colors needed
   return { colors: [], values: [] }
 }

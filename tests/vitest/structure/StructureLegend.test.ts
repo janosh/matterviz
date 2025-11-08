@@ -1,12 +1,12 @@
 import type { CompositionType } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
-import { StructureLegend } from '$lib/structure'
+import { AtomLegend } from '$lib/structure'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
-describe(`StructureLegend Component`, () => {
+describe(`AtomLegend Component`, () => {
   const mock_elements = { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }
 
   test.each([
@@ -42,7 +42,7 @@ describe(`StructureLegend Component`, () => {
       expected_count: 1,
     },
   ])(`$desc`, ({ props, expected_labels, expected_count, check_styling }) => {
-    mount(StructureLegend, { target: document.body, props })
+    mount(AtomLegend, { target: document.body, props })
 
     const labels = document.querySelectorAll(`label`)
     expect(labels).toHaveLength(expected_count)
@@ -65,7 +65,7 @@ describe(`StructureLegend Component`, () => {
   })
 
   test(`color picker functionality`, () => {
-    mount(StructureLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: { elements: { Fe: 2 }, elem_color_picker_title: `Custom title` },
     })
@@ -92,7 +92,7 @@ describe(`StructureLegend Component`, () => {
   ])(
     `handles edge cases correctly`,
     (elements, expected_count, expected_text) => {
-      mount(StructureLegend, { target: document.body, props: { elements } })
+      mount(AtomLegend, { target: document.body, props: { elements } })
 
       const labels = document.querySelectorAll(`label`)
       expect(labels).toHaveLength(expected_count)
@@ -134,7 +134,7 @@ describe(`StructureLegend Component`, () => {
   ])(
     `custom label functions: $desc`,
     ({ get_element_label, elements, show_amounts, expected, verify_spy }) => {
-      mount(StructureLegend, {
+      mount(AtomLegend, {
         target: document.body,
         props: {
           elements,
@@ -160,7 +160,7 @@ describe(`StructureLegend Component`, () => {
   test(`updates label text color when background changes`, async () => {
     // 1. Initialize with a known color
     colors.element.Fe = `#000000`
-    mount(StructureLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: { elements: { Fe: 1 } },
     })

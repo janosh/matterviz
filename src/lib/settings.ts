@@ -406,8 +406,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         element: `Element`,
         coordination: `Coordination Number`,
         wyckoff: `Wyckoff Position`,
-        custom: `Custom Function`,
-      },
+      } as Readonly<Record<AtomColorMode, string>>,
     },
     atom_color_scale: {
       value: `interpolateViridis`,

@@ -1,25 +1,32 @@
-import { AtomColorLegend } from '$lib'
+import { AtomLegend } from '$lib'
 import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
-describe(`AtomColorLegend`, () => {
+describe(`AtomLegend`, () => {
   const create_property_colors = (
     unique_values: (number | string)[],
     colors: string[],
-  ): AtomPropertyColors => ({
-    unique_values,
-    colors,
-    values: unique_values,
-    min_value: typeof unique_values[0] === `number` ? unique_values[0] : 0,
-    max_value: typeof unique_values[unique_values.length - 1] === `number`
-      ? unique_values[unique_values.length - 1]
-      : 0,
-  })
+  ): AtomPropertyColors => {
+    // Create values array with duplicates to simulate real-world site values
+    const values = [...unique_values, ...unique_values]
+    // Compute min/max from numeric entries only
+    const numeric_values = values.filter((val) => typeof val === `number`) as number[]
+    const min_value = numeric_values.length > 0 ? Math.min(...numeric_values) : 0
+    const max_value = numeric_values.length > 0 ? Math.max(...numeric_values) : 0
+
+    return {
+      unique_values,
+      colors,
+      values,
+      min_value,
+      max_value,
+    }
+  }
 
   test(`does not render when mode is element`, () => {
     const config: Partial<AtomColorConfig> = { mode: `element` }
-    mount(AtomColorLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: { atom_color_config: config },
     })
@@ -36,7 +43,7 @@ describe(`AtomColorLegend`, () => {
       [`rgb(0, 0, 255)`, `rgb(128, 0, 128)`, `rgb(255, 0, 0)`],
     )
 
-    mount(AtomColorLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: { atom_color_config: config, property_colors },
     })
@@ -57,7 +64,7 @@ describe(`AtomColorLegend`, () => {
 
     // The key test: this should not throw any errors and should not generate NaN
     expect(() => {
-      mount(AtomColorLegend, {
+      mount(AtomLegend, {
         target: document.body,
         props: { atom_color_config: config, property_colors },
       })
@@ -81,7 +88,7 @@ describe(`AtomColorLegend`, () => {
       [`rgb(0, 0, 255)`, `rgb(255, 0, 0)`],
     )
 
-    mount(AtomColorLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: { atom_color_config: config, property_colors },
     })
@@ -104,7 +111,7 @@ describe(`AtomColorLegend`, () => {
       [`rgb(255, 0, 0)`, `rgb(0, 255, 0)`, `rgb(0, 0, 255)`],
     )
 
-    mount(AtomColorLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: { atom_color_config: config, property_colors },
     })
@@ -129,7 +136,7 @@ describe(`AtomColorLegend`, () => {
       [`rgb(0, 0, 255)`, `rgb(128, 0, 128)`, `rgb(255, 0, 0)`],
     )
 
-    mount(AtomColorLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: { atom_color_config: config, property_colors },
     })
@@ -147,7 +154,7 @@ describe(`AtomColorLegend`, () => {
     }
     const property_colors = create_property_colors([1, 2], [`blue`, `red`])
 
-    mount(AtomColorLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: {
         atom_color_config: config,
@@ -167,7 +174,7 @@ describe(`AtomColorLegend`, () => {
     }
     const property_colors = create_property_colors([1, 2], [`blue`, `red`])
 
-    mount(AtomColorLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: { atom_color_config: config, property_colors },
     })
@@ -183,7 +190,7 @@ describe(`AtomColorLegend`, () => {
     }
     const property_colors = create_property_colors([1, 2], [`blue`, `red`])
 
-    mount(AtomColorLegend, {
+    mount(AtomLegend, {
       target: document.body,
       props: {
         atom_color_config: config,
@@ -214,7 +221,7 @@ describe(`AtomColorLegend`, () => {
       : null
 
     expect(() => {
-      mount(AtomColorLegend, {
+      mount(AtomLegend, {
         target: document.body,
         props: { atom_color_config: config, property_colors },
       })

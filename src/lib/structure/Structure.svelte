@@ -22,11 +22,10 @@
   import { get_atom_colors } from './atom-properties'
   import type { StructureHandlerData } from './index'
   import {
-    AtomColorLegend,
+    AtomLegend,
     StructureControls,
     StructureExportPane,
     StructureInfoPane,
-    StructureLegend,
     StructureScene,
   } from './index'
   import { MAX_SELECTED_SITES } from './measure'
@@ -773,7 +772,7 @@
 
         <StructureControls
           bind:controls_open
-          {scene_props}
+          bind:scene_props
           bind:lattice_props
           bind:show_image_atoms
           bind:supercell_scaling
@@ -788,12 +787,12 @@
       {/if}
     </section>
 
-    <StructureLegend
+    <AtomLegend
+      {atom_color_config}
+      {property_colors}
       elements={get_elem_amounts(supercell_structure ?? structure!)}
       bind:hidden_elements
     />
-
-    <AtomColorLegend {atom_color_config} {property_colors} />
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
@@ -887,7 +886,7 @@
     top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: clamp(6pt, 1cqmin, 9pt);
-    /* buttons need higher z-index than StructureLegend to make info/controls panes occlude legend */
+    /* buttons need higher z-index than AtomLegend to make info/controls panes occlude legend */
     /* we also need crazy high z-index to make info/control pane occlude threlte/extras' <HTML> elements for site labels */
     z-index: var(--struct-buttons-z-index, 100000000);
     opacity: 0;
