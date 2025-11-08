@@ -77,8 +77,8 @@ export async function analyze_structure_symmetry(
   const cell_json = to_cell_json(struct_or_mol)
   const { symprec, algo } = { ...default_sym_settings, ...settings }
   // Map "Moyo" to "Standard" for moyo-wasm
-  const setting = { Moyo: `Standard` }[algo as string] ?? algo
-  return analyze_cell(cell_json, symprec, setting)
+  const moyo_algo = algo === `Moyo` ? `Standard` : algo
+  return analyze_cell(cell_json, symprec, moyo_algo)
 }
 
 // Helper function to score coordinate simplicity for Wyckoff table

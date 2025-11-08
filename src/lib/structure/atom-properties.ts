@@ -89,10 +89,10 @@ export function get_coordination_colors(
   scale = DEFAULT,
   type: AtomColorScaleType = `continuous`,
 ): AtomPropertyColors {
-  const nums = calc_coordination_nums(structure, strategy).sites.map((s) =>
-    s.coordination_num
+  const coord_nums = calc_coordination_nums(structure, strategy).sites.map((site) =>
+    site.coordination_num
   )
-  return build_prop_colors(nums, apply_color_scale(nums, scale, type))
+  return build_prop_colors(coord_nums, apply_color_scale(coord_nums, scale, type))
 }
 
 export function get_wyckoff_colors(
@@ -101,7 +101,8 @@ export function get_wyckoff_colors(
   scale = DEFAULT,
 ): AtomPropertyColors {
   const n = structure.sites.length
-  if (!sym_data?.wyckoffs) {
+  // Handle both null/undefined and empty wyckoffs array consistently
+  if (!sym_data?.wyckoffs || sym_data.wyckoffs.length === 0) {
     return {
       colors: Array(n).fill(GRAY),
       values: Array(n).fill(`unknown`),
@@ -147,7 +148,6 @@ export function get_atom_colors(
 ): AtomPropertyColors {
   const { mode = `element`, scale = DEFAULT, scale_type = `continuous`, color_fn } =
     config
-  const n = structure.sites.length
 
   if (mode === `coordination`) {
     return get_coordination_colors(structure, bonding_strategy, scale, scale_type)
@@ -156,9 +156,10 @@ export function get_atom_colors(
   if (mode === `custom`) {
     if (!color_fn) {
       console.warn(`Custom color mode requires a color_fn`)
-      return { colors: Array(n).fill(GRAY), values: Array(n).fill(0) }
+      return { colors: [], values: [] } // Return empty arrays to indicate no property coloring
     }
     return get_custom_colors(structure, color_fn, scale, scale_type)
   }
+  // Element mode, no property colors needed
   return { colors: [], values: [] }
 }

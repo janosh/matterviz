@@ -39,6 +39,13 @@
     }
 
     const color_map = new Map(values!.map((v, i) => [v, colors![i]]))
+
+    // Handle single-value case to avoid division by zero
+    if (unique_values.length === 1) {
+      const color = color_map.get(unique_values[0])
+      return `linear-gradient(to right, ${color}, ${color})`
+    }
+
     const stops = unique_values.map((v, i) => {
       const pct = (i / (unique_values.length - 1)) * 100
       return `${color_map.get(v)} ${pct}%`

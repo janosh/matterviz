@@ -223,7 +223,10 @@ describe(`get_atom_colors`, () => {
   })
 
   test(`custom without fn`, () => {
-    expect(ap.get_atom_colors(structure, { mode: `custom` }).colors[0]).toBe(`#808080`)
+    // When color_fn is missing, returns empty arrays (no property coloring)
+    const result = ap.get_atom_colors(structure, { mode: `custom` })
+    expect(result.colors).toEqual([])
+    expect(result.values).toEqual([])
   })
 })
 

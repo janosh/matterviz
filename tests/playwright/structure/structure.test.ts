@@ -3610,8 +3610,8 @@ test.describe(`Fullscreen Background Color Detection`, () => {
   ) => {
     await page.evaluate(
       ([html, body]) => {
-        document.querySelectorAll(`style`).forEach((s) =>
-          s.textContent?.includes(`background`) && s.remove()
+        document.querySelectorAll(`style`).forEach((style_el) =>
+          style_el.textContent?.includes(`background`) && style_el.remove()
         )
         document.documentElement.className = ``
         document.body.className = ``
