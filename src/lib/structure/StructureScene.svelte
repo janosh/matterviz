@@ -20,6 +20,13 @@
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
 
+  type InstancedAtomGroup = {
+    element: string
+    radius: number
+    color: string
+    atoms: (typeof atom_data)[number][]
+  }
+
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.15 + 0.25 * Math.sin(pulse_time * 5))
   $effect(() => {
@@ -417,21 +424,13 @@
         .reduce(
           (groups, atom) => {
             const { element, radius, color } = atom
-            const key = `${element}-${format_num(radius, `.3~`)}`
+            const key = `${element}-${format_num(radius, `.3~`)}-${color}`
             const bucket = groups[key] ||
               (groups[key] = { element, radius, color, atoms: [] })
             bucket.atoms.push(atom)
             return groups
           },
-          {} as Record<
-            string,
-            {
-              element: string
-              radius: number
-              color: string
-              atoms: (typeof atom_data)[number][]
-            }
-          >,
+          {} as Record<string, InstancedAtomGroup>,
         ),
     ),
   )

@@ -76,9 +76,20 @@
     atom_color_config.scale || DEFAULTS.structure.atom_color_scale,
   ])
 
+  // Sync local selection to config
   $effect(() => {
-    if (color_scale_selected[0]) atom_color_config.scale = color_scale_selected[0]
-    // Auto-set scale_type based on mode
+    if (
+      color_scale_selected[0] && color_scale_selected[0] !== atom_color_config.scale
+    ) atom_color_config.scale = color_scale_selected[0]
+  })
+  // Sync config to local selection (for external updates)
+  $effect(() => {
+    if (
+      atom_color_config.scale && atom_color_config.scale !== color_scale_selected[0]
+    ) color_scale_selected = [atom_color_config.scale]
+  })
+  // Auto-set scale_type based on mode
+  $effect(() => {
     if (atom_color_config.mode === `wyckoff`) {
       atom_color_config.scale_type = `categorical`
     } else if (atom_color_config.mode === `coordination`) {
