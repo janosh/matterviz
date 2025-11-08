@@ -91,6 +91,8 @@
     displayed_structure = $bindable<AnyStructure | undefined>(undefined),
     // Track hidden elements across component lifecycle
     hidden_elements = $bindable(new Set<ElementSymbol>()),
+    // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
+    hidden_property_values = $bindable(new Set<number | string>()),
     // Symmetry analysis data (bindable for external access)
     sym_data = $bindable<MoyoDataset | null>(null),
     // Symmetry analysis settings (bindable for external control)
@@ -145,6 +147,8 @@
       displayed_structure?: AnyStructure
       // Track which elements are hidden (bindable across frames in trajectories)
       hidden_elements?: Set<ElementSymbol>
+      // Track which property values are hidden (e.g., Wyckoff positions, coordination numbers)
+      hidden_property_values?: Set<number | string>
       // Symmetry analysis data (bindable for external access)
       sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
@@ -627,6 +631,7 @@
     if (
       target.closest(`.control-buttons`) ||
       target.closest(`.structure-legend`) ||
+      target.closest(`.atom-legend`) ||
       target.closest(`.info-pane`) ||
       target.closest(`.export-pane`) ||
       target.closest(`.controls-pane`) ||
@@ -788,10 +793,12 @@
     </section>
 
     <AtomLegend
-      {atom_color_config}
+      bind:atom_color_config
       {property_colors}
       elements={get_elem_amounts(supercell_structure ?? structure!)}
       bind:hidden_elements
+      bind:hidden_property_values
+      {sym_data}
     />
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
@@ -812,6 +819,7 @@
             bind:rotation_target_ref
             bind:initial_computed_zoom
             bind:hidden_elements
+            bind:hidden_property_values
             {measure_mode}
             {width}
             {height}

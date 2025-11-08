@@ -12,8 +12,8 @@
   "dependencies": {
     "@spglib/moyo-wasm": "^0.7.1",
     "@sveltejs/kit": "^2.48.4",
-    "@threlte/core": "^8.1.8",
-    "@threlte/extras": "^9.5.5",
+    "@threlte/core": "^8.2.1",
+    "@threlte/extras": "^9.6.1",
     "@types/d3-force": "^3.0.10",
     "@types/d3-hierarchy": "^3.1.7",
     "@types/js-yaml": "^4.0.9",
@@ -50,9 +50,9 @@
     "@types/d3-shape": "^3.1.7",
     "@types/d3-time-format": "^4.0.3",
     "@types/three": "^0.181.0",
-    "@vitest/coverage-v8": "^4.0.6",
+    "@vitest/coverage-v8": "^4.0.8",
     "d3-time-format": "^4.1.0",
-    "eslint": "^9.38.0",
+    "eslint": "^9.39.1",
     "eslint-plugin-svelte": "^3.13.0",
     "happy-dom": "^20.0.10",
     "hastscript": "^9.0.1",
@@ -66,9 +66,9 @@
     "svelte-preprocess": "^6.0.3",
     "svelte2tsx": "^0.7.45",
     "typescript": "5.9.3",
-    "typescript-eslint": "^8.46.2",
-    "vite": "^7.1.12",
-    "vitest": "^4.0.6"
+    "typescript-eslint": "^8.46.3",
+    "vite": "^7.2.2",
+    "vitest": "^4.0.8"
   },
   "keywords": [
     "svelte",

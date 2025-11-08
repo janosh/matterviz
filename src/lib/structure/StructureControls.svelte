@@ -509,16 +509,12 @@
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_mode.description })}
     >
       Atom coloring
-      <select
-        bind:value={atom_color_config.mode}
-        disabled={atom_color_config.mode === `wyckoff` && !sym_data}
-        style="font-size: 0.95em"
-      >
+      <select bind:value={atom_color_config.mode} style="font-size: 0.95em">
         {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as
           [value, label]
           (value)
         }
-          <option {value}>{label}</option>
+          <option {value} disabled={!sym_data && value === `wyckoff`}>{label}</option>
         {/each}
       </select>
     </label>
