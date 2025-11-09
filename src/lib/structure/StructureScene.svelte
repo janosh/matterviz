@@ -6,7 +6,10 @@
   import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import { Arrow, Cylinder, get_center_of_mass, Lattice } from '$lib/structure'
+  import type { AtomColorConfig } from '$lib/structure/atom-properties'
+  import { get_atom_colors } from '$lib/structure/atom-properties'
   import * as measure from '$lib/structure/measure'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
@@ -16,6 +19,13 @@
   import Bond from './Bond.svelte'
   import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
   import { CanvasTooltip } from './index'
+
+  type InstancedAtomGroup = {
+    element: string
+    radius: number
+    color: string
+    atoms: (typeof atom_data)[number][]
+  }
 
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.15 + 0.25 * Math.sin(pulse_time * 5))
@@ -85,12 +95,19 @@
     active_sites = $bindable([]),
     active_highlight_color = `var(--struct-active-highlight-color, #2563eb)`,
     rotation = DEFAULTS.structure.rotation,
-    scene = $bindable(undefined),
-    camera = $bindable(undefined),
-    orbit_controls = $bindable(undefined),
+    scene = $bindable(),
+    camera = $bindable(),
+    orbit_controls = $bindable(),
     rotation_target_ref = $bindable<Vec3 | undefined>(undefined),
     initial_computed_zoom = $bindable<number | undefined>(undefined),
     hidden_elements = $bindable(new Set()),
+    hidden_property_values = $bindable(new Set<number | string>()),
+    atom_color_config = {
+      mode: DEFAULTS.structure.atom_color_mode,
+      scale: DEFAULTS.structure.atom_color_scale,
+      scale_type: DEFAULTS.structure.atom_color_scale_type,
+    },
+    sym_data = null,
   }: {
     structure?: AnyStructure
     atom_radius?: number // scale factor for atomic radii
@@ -153,6 +170,9 @@
     rotation_target_ref?: Vec3 // Expose rotation target for reset
     initial_computed_zoom?: number // Expose initial zoom for reset
     hidden_elements?: Set<ElementSymbol>
+    hidden_property_values?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
+    atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
+    sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
   } = $props()
 
   const threlte = useThrelte()
@@ -265,24 +285,43 @@
     } else bond_pairs = []
   })
 
-  let atom_data = $derived.by(() => { // Pre-compute atom data for performance (site_idx, element, occupancy, position, radius, color, ...)
+  // Compute property-based colors when not using element coloring
+  let property_colors = $derived.by(() => {
+    if (!structure || atom_color_config.mode === `element`) return null
+    const result = get_atom_colors(
+      structure,
+      atom_color_config,
+      bonding_strategy,
+      sym_data,
+    )
+    return result.colors.length ? result : null
+  })
+
+  let atom_data = $derived.by(() => {
     if (!show_atoms || !structure?.sites) return []
     return structure.sites.flatMap((site, site_idx) => {
+      // Skip sites with hidden property values
+      const prop_val = property_colors?.values[site_idx]
+      if (prop_val !== undefined && hidden_property_values.has(prop_val)) return []
+
       const radius = same_size_atoms ? atom_radius : site.species.reduce(
-        (sum, spec) => sum + spec.occu * (atomic_radii[spec.element] ?? 1),
+        (sum, { element, occu }) => sum + occu * (atomic_radii[element] ?? 1),
         0,
       ) * atom_radius
 
+      const site_color = property_colors?.colors[site_idx] ||
+        colors.element?.[site.species[0]?.element]
+
       let start_angle = 0
       return site.species
-        .filter(({ element }) => !hidden_elements?.has(element))
+        .filter(({ element }) => !hidden_elements.has(element))
         .map(({ element, occu }) => ({
           site_idx,
           element,
           occupancy: occu,
           position: site.xyz,
           radius,
-          color: colors.element?.[element],
+          color: site_color,
           has_partial_occupancy: occu < 1,
           start_phi: 2 * Math.PI * start_angle,
           end_phi: 2 * Math.PI * (start_angle += occu),
@@ -291,18 +330,27 @@
   })
 
   let filtered_bond_pairs = $derived.by(() => {
-    if (!structure?.sites || hidden_elements.size === 0) return bond_pairs
-    return bond_pairs.filter((bond) => {
-      const site_1 = structure.sites[bond.site_idx_1]
-      const site_2 = structure.sites[bond.site_idx_2]
-      const site_1_visible = site_1?.species.some(({ element }) =>
+    if (
+      !structure?.sites ||
+      (hidden_elements.size === 0 && hidden_property_values.size === 0)
+    ) {
+      return bond_pairs
+    }
+
+    const is_site_visible = (site_idx: number) => {
+      const site = structure.sites[site_idx]
+      const has_visible_element = site?.species.some(({ element }) =>
         !hidden_elements.has(element)
       )
-      const site_2_visible = site_2?.species.some(({ element }) =>
-        !hidden_elements.has(element)
-      )
-      return site_1_visible && site_2_visible
-    })
+      const prop_val = property_colors?.values[site_idx]
+      const prop_visible = prop_val === undefined ||
+        !hidden_property_values.has(prop_val)
+      return has_visible_element && prop_visible
+    }
+
+    return bond_pairs.filter(({ site_idx_1, site_idx_2 }) =>
+      is_site_visible(site_idx_1) && is_site_visible(site_idx_2)
+    )
   })
 
   let instanced_bond_groups = $derived.by(() => {
@@ -376,21 +424,13 @@
         .reduce(
           (groups, atom) => {
             const { element, radius, color } = atom
-            const key = `${element}-${format_num(radius, `.3~`)}`
+            const key = `${element}-${format_num(radius, `.3~`)}-${color}`
             const bucket = groups[key] ||
               (groups[key] = { element, radius, color, atoms: [] })
             bucket.atoms.push(atom)
             return groups
           },
-          {} as Record<
-            string,
-            {
-              element: string
-              radius: number
-              color: string
-              atoms: (typeof atom_data)[number][]
-            }
-          >,
+          {} as Record<string, InstancedAtomGroup>,
         ),
     ),
   )
@@ -551,15 +591,18 @@
     <T.Group position={math.scale(rotation_target, -1)}>
       {#if show_atoms}
         <!-- Instanced rendering for full occupancy atoms -->
-        {#each instanced_atom_groups as group (group.element + group.radius)}
+        {#each instanced_atom_groups as
+          { element, radius, color, atoms }
+          (`${element}-${radius}-${color}`)
+        }
           <extras.InstancedMesh
-            key="{group.element}-{group.radius}-{group.atoms.length}"
-            range={group.atoms.length}
+            key="{element}-{format_num(radius, `.3~`)}-{color}-{atoms.length}"
+            range={atoms.length}
             frustumCulled={false}
           >
             <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
-            <T.MeshStandardMaterial color={group.color} />
-            {#each group.atoms as atom (atom.site_idx)}
+            <T.MeshStandardMaterial {color} />
+            {#each atoms as atom (atom.site_idx)}
               <extras.Instance
                 position={atom.position}
                 scale={atom.radius}

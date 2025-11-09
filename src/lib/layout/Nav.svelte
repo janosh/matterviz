@@ -117,7 +117,12 @@
 
   function is_current(path: string) {
     if (path === `/`) return page?.url.pathname === `/` ? `page` : undefined
-    return page?.url.pathname.startsWith(path) ? `page` : undefined
+    // Match exact path or path followed by / to avoid partial matches
+    // e.g. /tc-periodic-v2 should not match /tc-periodic
+    const pathname = page?.url.pathname
+    const exact_match = pathname === path
+    const prefix_match = pathname?.startsWith(path + `/`)
+    return exact_match || prefix_match ? `page` : undefined
   }
 
   const is_child_current = (sub_routes: string[]) =>

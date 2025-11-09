@@ -13,6 +13,8 @@ export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
 export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
   ? Name
   : never
+export const color_scale_types = [`continuous`, `categorical`] as const
+export type ColorScaleType = (typeof color_scale_types)[number]
 
 // color values have to be in hex format since that's the only format
 // <input type="color"> supports

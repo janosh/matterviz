@@ -107,18 +107,18 @@ describe(`SymmetryStats`, () => {
 
       const setting_select = doc_query<HTMLSelectElement>(`.controls select`)
       expect(setting_select).toBeTruthy()
-      expect(setting_select.value).toBe(`Standard`)
+      expect(setting_select.value).toBe(`Moyo`)
 
       // Check both options are present
       const options = Array.from(setting_select.options).map((opt) => opt.value)
-      expect(options).toEqual([`Standard`, `Spglib`])
+      expect(options).toEqual([`Moyo`, `Spglib`])
     })
 
     test(`accepts custom symprec value`, () => {
       const sym_data = create_mock_sym_data()
       mount(SymmetryStats, {
         target: document.body,
-        props: { sym_data, settings: { symprec: 1e-5, algo: `Standard` } },
+        props: { sym_data, settings: { symprec: 1e-5, algo: `Moyo` } },
       })
 
       const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
@@ -301,7 +301,7 @@ describe(`SymmetryStats`, () => {
       expect(symprec_label.title).toContain(`Symmetry precision`)
 
       const setting_label = doc_query(`.controls label:has(select) span`)
-      expect(setting_label.title).toContain(`Standard`)
+      expect(setting_label.title).toContain(`Moyo`)
 
       const space_group_div = Array.from(document.querySelectorAll(`.stats-grid > div`))
         .find((el) => el.textContent?.includes(`Space Group`)) as HTMLElement
@@ -310,13 +310,10 @@ describe(`SymmetryStats`, () => {
 
     test(`hides tooltips when show_tooltips=false`, () => {
       const sym_data = create_mock_sym_data()
+      const settings = { symprec: 1e-4, algo: `Moyo` }
       mount(SymmetryStats, {
         target: document.body,
-        props: {
-          sym_data,
-          show_tooltips: false,
-          settings: { symprec: 1e-4, algo: `Standard` },
-        },
+        props: { sym_data, settings, show_tooltips: false },
       })
 
       const symprec_label = doc_query(`.controls label:has(input[type="number"]) span`)
@@ -328,7 +325,7 @@ describe(`SymmetryStats`, () => {
       // Note: Space Group and sym-ops-summary use template strings, so they always show
       const space_group_div = Array.from(document.querySelectorAll(`.stats-grid > div`))
         .find((el) => el.textContent?.includes(`Space Group`)) as HTMLElement
-      expect(space_group_div.title).toContain(`at 0.0001 (using Standard algo)`)
+      expect(space_group_div.title).toContain(`at 0.0001 (using Moyo algo)`)
 
       const hermann_mauguin_div = Array.from(
         document.querySelectorAll(`.stats-grid > div`),
@@ -393,7 +390,7 @@ describe(`SymmetryStats`, () => {
         const sym_data = create_mock_sym_data()
         mount(SymmetryStats, {
           target: document.body,
-          props: { sym_data, settings: { symprec, algo: `Standard` } },
+          props: { sym_data, settings: { symprec, algo: `Moyo` } },
         })
 
         const symprec_input = doc_query<HTMLInputElement>(

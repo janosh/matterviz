@@ -38,7 +38,7 @@
     fullscreen = $bindable(false),
     enable_fullscreen = true,
     enable_info_pane = true,
-    wrapper = $bindable(undefined),
+    wrapper = $bindable(),
     label_threshold = 50,
     show_stable = $bindable(true),
     show_unstable = $bindable(true),
