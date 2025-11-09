@@ -16,7 +16,7 @@
     pane_props = {},
     highlighted_sites = $bindable([]),
     selected_sites = $bindable([]),
-    symmetry_data = null,
+    sym_data = null,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     structure: AnyStructure
@@ -26,7 +26,7 @@
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
     selected_sites?: number[] // Sites selected from Wyckoff table click
-    symmetry_data?: MoyoDataset | null // Symmetry analysis data (bindable for external access)
+    sym_data?: MoyoDataset | null // Symmetry analysis data (bindable for external access)
   } = $props()
 
   let copied_items = new SvelteSet<string>()
@@ -114,8 +114,8 @@
     }
 
     // Symmetry Info
-    if (`lattice` in structure && symmetry_data) {
-      const { operations } = symmetry_data
+    if (`lattice` in structure && sym_data) {
+      const { operations } = sym_data
       const is_identity3 = (mat: number[]) => String(mat) === `1,0,0,0,1,0,0,0,1`
       let translations = 0, rotations = 0, roto_translations = 0
       for (const op of operations) {
@@ -131,17 +131,17 @@
         items: [
           {
             label: `Space Group`,
-            value: String(symmetry_data.number),
+            value: String(sym_data.number),
             key: `symmetry-space-group`,
           },
           {
             label: `Hall Number`,
-            value: String(symmetry_data.hall_number),
+            value: String(sym_data.hall_number),
             key: `symmetry-hall-number`,
           },
           {
             label: `Pearson Symbol`,
-            value: symmetry_data.pearson_symbol,
+            value: sym_data.pearson_symbol,
             key: `symmetry-pearson-symbol`,
           },
           {
@@ -294,7 +294,7 @@
   })
 
   // Compute Wyckoff positions from symmetry data
-  let wyckoff_positions = $derived(wyckoff_positions_from_moyo(symmetry_data))
+  let wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
 </script>
 
 <DraggablePane

@@ -24,7 +24,7 @@
     enable_drop = false,
     on_file_drop,
     loading = $bindable(false),
-    error_msg = $bindable(undefined),
+    error_msg = $bindable(),
     children,
     ...rest
   }: {

@@ -10,8 +10,8 @@ import { expect, test } from 'vitest'
 test(`parse_formula_with_oxidation parses simple formulas`, () => {
   const result = parse_formula_with_oxidation(`H2O`)
   expect(result).toHaveLength(2)
-  expect(result[0]).toMatchObject({ element: `H`, amount: 2, original_index: 0 })
-  expect(result[1]).toMatchObject({ element: `O`, amount: 1, original_index: 1 })
+  expect(result[0]).toMatchObject({ element: `H`, amount: 2, orig_idx: 0 })
+  expect(result[1]).toMatchObject({ element: `O`, amount: 1, orig_idx: 1 })
 })
 
 test(`parse_formula_with_oxidation handles caret syntax for oxidation states`, () => {
@@ -21,13 +21,13 @@ test(`parse_formula_with_oxidation handles caret syntax for oxidation states`, (
     element: `Fe`,
     amount: 1,
     oxidation_state: 2,
-    original_index: 0,
+    orig_idx: 0,
   })
   expect(result[1]).toMatchObject({
     element: `O`,
     amount: 3,
     oxidation_state: undefined,
-    original_index: 1,
+    orig_idx: 1,
   })
 })
 
@@ -38,13 +38,13 @@ test(`parse_formula_with_oxidation handles bracket syntax for oxidation states`,
     element: `Fe`,
     amount: 1,
     oxidation_state: 2,
-    original_index: 0,
+    orig_idx: 0,
   })
   expect(result[1]).toMatchObject({
     element: `O`,
     amount: 3,
     oxidation_state: undefined,
-    original_index: 1,
+    orig_idx: 1,
   })
 })
 
@@ -106,13 +106,13 @@ test(`parse_formula_with_oxidation handles complex formulas`, () => {
     element: `Ca`,
     amount: 1,
     oxidation_state: 2,
-    original_index: 0,
+    orig_idx: 0,
   })
   expect(result[1]).toMatchObject({
     element: `Cl`,
     amount: 2,
     oxidation_state: -1,
-    original_index: 1,
+    orig_idx: 1,
   })
 })
 
@@ -127,11 +127,11 @@ test(`parse_formula_with_oxidation handles parentheses`, () => {
 test(`parse_formula_with_oxidation preserves original order`, () => {
   const result = parse_formula_with_oxidation(`ZnO2Fe`)
   expect(result[0].element).toBe(`Zn`)
-  expect(result[0].original_index).toBe(0)
+  expect(result[0].orig_idx).toBe(0)
   expect(result[1].element).toBe(`O`)
-  expect(result[1].original_index).toBe(1)
+  expect(result[1].orig_idx).toBe(1)
   expect(result[2].element).toBe(`Fe`)
-  expect(result[2].original_index).toBe(2)
+  expect(result[2].orig_idx).toBe(2)
 })
 
 test(`parse_formula_with_oxidation throws on invalid element`, () => {

@@ -18,8 +18,8 @@
     pane_props = {},
     onclose = () => {},
     on_drag_start = () => {},
-    toggle_pane_btn = $bindable(undefined),
-    pane_div = $bindable(undefined),
+    toggle_pane_btn = $bindable(),
+    pane_div = $bindable(),
     has_been_dragged = $bindable(false),
     currently_dragging = $bindable(false),
   }: {

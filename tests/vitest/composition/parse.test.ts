@@ -352,11 +352,11 @@ describe(`edge cases and error handling`, () => {
   })
 
   test(`should be consistent between conversion functions`, () => {
-    const original_symbols = { Fe: 2, O: 3, H: 1 }
-    const atomic_numbers = atomic_symbol_to_num(original_symbols)
+    const orig_symbols: CompositionType = { Fe: 2, O: 3, H: 1 }
+    const atomic_numbers = atomic_symbol_to_num(orig_symbols)
     const back_to_symbols = atomic_num_to_symbols(atomic_numbers)
 
-    expect(back_to_symbols).toEqual(original_symbols)
+    expect(back_to_symbols).toEqual(orig_symbols)
   })
 })
 
@@ -372,10 +372,10 @@ describe(`formula formatting functions`, () => {
     ],
   ])(
     `get_alphabetical_formula handles strings`,
-    (fe2o3, fe2o3_expected, h2o, h2o_expected, caco3, caco3_expected) => {
-      expect(get_alphabetical_formula(fe2o3)).toBe(fe2o3_expected)
-      expect(get_alphabetical_formula(h2o)).toBe(h2o_expected)
-      expect(get_alphabetical_formula(caco3)).toBe(caco3_expected)
+    (Fe2O3, Fe2O3_expected, H2O, H2O_expected, CaCO3, CaCO3_expected) => {
+      expect(get_alphabetical_formula(Fe2O3)).toBe(Fe2O3_expected)
+      expect(get_alphabetical_formula(H2O)).toBe(H2O_expected)
+      expect(get_alphabetical_formula(CaCO3)).toBe(CaCO3_expected)
     },
   )
 

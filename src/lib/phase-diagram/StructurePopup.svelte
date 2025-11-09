@@ -11,6 +11,7 @@
     height = 400,
     onclose,
     stats,
+    popup_div = $bindable(),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     structure: AnyStructure
@@ -19,6 +20,7 @@
     height?: number
     onclose?: () => void
     stats?: { id?: string; e_above_hull?: number; e_form?: number }
+    popup_div?: HTMLDivElement
   } = $props()
 
   const handle_keydown = (event: KeyboardEvent) => {

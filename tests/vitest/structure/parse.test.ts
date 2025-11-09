@@ -1217,7 +1217,7 @@ Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
 
     // Check that some sites have coordinates that differ from the original unique sites
     // This indicates symmetry operations were applied
-    const original_coords = [
+    const orig_coords = [
       [0.527, 0.3856, 0.7224],
       [0.0279, 0.1245, 0.787],
       [0.6836, 0.1608, 0.8108],
@@ -1226,7 +1226,7 @@ Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
     ]
 
     const has_translated_sites = result?.sites.some((site) =>
-      !original_coords.some((orig) =>
+      !orig_coords.some((orig) =>
         orig.every((coord, idx) => Math.abs(coord - site.abc[idx]) < 0.001)
       )
     )
@@ -1306,10 +1306,10 @@ Na Na 0.000 0.000 0.000`
     expect(result?.sites.length).toBeGreaterThan(0)
 
     // Check that the original site is preserved
-    const original_site = result?.sites.find((site) =>
+    const orig_site = result?.sites.find((site) =>
       site.abc[0] === 0 && site.abc[1] === 0 && site.abc[2] === 0
     )
-    expect(original_site).toBeTruthy()
+    expect(orig_site).toBeTruthy()
 
     // Check that at least one translated site is generated (the valid one)
     const translated_sites = result?.sites.filter((site) =>

@@ -11,8 +11,8 @@
   import type { BrillouinZoneData } from './types'
 
   let {
-    bz_data = $bindable(undefined),
-    camera_position = $bindable(undefined),
+    bz_data = $bindable(),
+    camera_position = $bindable(),
     camera_projection = $bindable(`perspective`),
     surface_color = $bindable(`#4488ff`),
     surface_opacity = $bindable(0.3),
@@ -34,8 +34,8 @@
     gizmo = DEFAULTS.structure.show_gizmo,
     auto_rotate = DEFAULTS.structure.auto_rotate,
     camera_is_moving = $bindable(false),
-    scene = $bindable(undefined),
-    camera = $bindable(undefined),
+    scene = $bindable(),
+    camera = $bindable(),
     k_path_points = [],
     k_path_labels = [],
     hovered_k_point = null,

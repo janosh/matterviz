@@ -1,6 +1,7 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
+import type { ColorScaleType } from '$lib/colors'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
@@ -25,6 +26,14 @@ export const show_bonds_options = [`never`, `always`, `crystals`, `molecules`] a
 export type ShowBonds = (typeof show_bonds_options)[number]
 
 export type CameraProjection = `perspective` | `orthographic`
+
+export const atom_color_mode_options = [
+  `element`,
+  `coordination`,
+  `wyckoff`,
+  `custom`,
+] as const
+export type AtomColorMode = (typeof atom_color_mode_options)[number]
 
 // Reusable type definitions for common setting patterns
 type DisplayConfigType = {
@@ -95,7 +104,7 @@ export interface SettingsConfig {
   // Symmetry Analysis
   symmetry: {
     symprec: SettingType<number>
-    algo: SettingType<`Standard` | `Spglib`>
+    algo: SettingType<`Moyo` | `Spglib`>
   }
 
   structure: { // Structure viewer settings
@@ -109,6 +118,9 @@ export interface SettingsConfig {
     show_bonds: SettingType<ShowBonds>
     bond_color: SettingType<string>
     bonding_strategy: SettingType<BondingStrategy>
+    atom_color_mode: SettingType<AtomColorMode>
+    atom_color_scale: SettingType<string>
+    atom_color_scale_type: SettingType<ColorScaleType>
 
     // Camera & Controls
     show_gizmo: SettingType<boolean>
@@ -326,9 +338,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 1,
     },
     algo: {
-      value: `Standard` as const,
+      value: `Moyo` as const,
       description: `Algorithm for symmetry analysis`,
-      enum: { Standard: `Standard`, Spglib: `Spglib` },
+      enum: { Moyo: `Moyo`, Spglib: `Spglib` },
     },
   },
 
@@ -383,6 +395,28 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       enum: {
         electroneg_ratio: `Electronegativity Ratio`,
         solid_angle: `Solid Angle`,
+      },
+    },
+    atom_color_mode: {
+      value: `element`,
+      description: `Property to use for atom coloring`,
+      enum: {
+        element: `Element`,
+        coordination: `Coordination Number`,
+        wyckoff: `Wyckoff Position`,
+      } as Readonly<Record<AtomColorMode, string>>,
+    },
+    atom_color_scale: {
+      value: `interpolateViridis`,
+      description:
+        `D3 color scale for property-based coloring (e.g., interpolateViridis, interpolatePlasma)`,
+    },
+    atom_color_scale_type: {
+      value: `continuous`,
+      description: `Color scale type for property-based coloring`,
+      enum: {
+        continuous: `Continuous Gradient`,
+        categorical: `Discrete Categories`,
       },
     },
 

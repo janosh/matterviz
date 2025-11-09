@@ -28,9 +28,9 @@
     fullscreen?: boolean
   }
   let {
-    structure = $bindable(undefined),
+    structure = $bindable(),
     bz_order = $bindable(1),
-    bz_data = $bindable(undefined),
+    bz_data = $bindable(),
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
     surface_color = $bindable(`#4488ff`),
@@ -42,7 +42,7 @@
     camera_projection = $bindable(`perspective`),
     show_controls = 0,
     fullscreen = $bindable(false),
-    wrapper = $bindable(undefined),
+    wrapper = $bindable(),
     width = $bindable(0),
     height = $bindable(0),
     hovered = $bindable(false),
@@ -55,7 +55,7 @@
     on_file_drop,
     spinner_props = {},
     loading = $bindable(false),
-    error_msg = $bindable(undefined),
+    error_msg = $bindable(),
     k_path_points = [],
     k_path_labels = [],
     hovered_k_point = null,

@@ -107,7 +107,7 @@
   <Structure
     data_url="/structures/{current_filename}"
     bind:displayed_structure
-    bind:symmetry_data={top_ex_sym_data}
+    bind:sym_data={top_ex_sym_data}
     bind:symmetry_settings={wide_example_symmetry_settings}
     scene_props={{
       active_sites: active_wyckoff_sites,
@@ -162,7 +162,7 @@
         <Structure
           data_url="/structures/{current_filename}"
           show_controls={true}
-          bind:symmetry_data={two_col_sym_data}
+          bind:sym_data={two_col_sym_data}
           bind:symmetry_settings={two_col_sym_settings}
           style="height: 300px; border-radius: 8pt"
         />
@@ -180,7 +180,7 @@
         <Structure
           data_url="/structures/{current_filename}"
           show_controls={true}
-          bind:symmetry_data={stacked_sym_data}
+          bind:sym_data={stacked_sym_data}
           bind:symmetry_settings={stacked_sym_settings}
           style="height: 400px; border-radius: 8pt; margin-top: 1em"
         />
