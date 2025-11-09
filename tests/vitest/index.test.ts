@@ -76,11 +76,11 @@ describe(`Utility Functions`, () => {
 
   describe(`toggle_fullscreen`, () => {
     let mock_wrapper: HTMLDivElement
-    let original_fullscreen_element: Element | null
+    let orig_fullscreen_element: Element | null
 
     beforeEach(() => {
       mock_wrapper = document.createElement(`div`)
-      original_fullscreen_element = document.fullscreenElement
+      orig_fullscreen_element = document.fullscreenElement
       mock_wrapper.requestFullscreen = vi.fn().mockResolvedValue(undefined)
       document.exitFullscreen = vi.fn().mockResolvedValue(undefined)
     })
@@ -88,7 +88,7 @@ describe(`Utility Functions`, () => {
     afterEach(() => {
       vi.restoreAllMocks()
       Object.defineProperty(document, `fullscreenElement`, {
-        value: original_fullscreen_element,
+        value: orig_fullscreen_element,
         writable: false,
         configurable: true,
       })

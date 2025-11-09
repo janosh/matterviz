@@ -25,7 +25,7 @@
     sym_data = null
     if (!pane_open || !structure || !(`lattice` in structure)) return
 
-    analyze_structure_symmetry(structure)
+    analyze_structure_symmetry(structure, {})
       .then((data) => (sym_data = data))
       .catch(console.error)
   })

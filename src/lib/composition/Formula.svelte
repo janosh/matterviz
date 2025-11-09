@@ -57,7 +57,7 @@
       (a: ElementWithOxidation, b: ElementWithOxidation) => number
     > = {
       alphabetical: (el_a, el_b) => el_a.element.localeCompare(el_b.element),
-      original: (el_a, el_b) => el_a.original_index - el_b.original_index,
+      original: (el_a, el_b) => el_a.orig_idx - el_b.orig_idx,
       electronegativity: (el_a, el_b) => {
         const sorted_symbols = sort_by_electronegativity([el_a.element, el_b.element])
         return sorted_symbols[0] === el_a.element ? -1 : 1

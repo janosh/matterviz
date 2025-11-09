@@ -18,12 +18,14 @@
   import { untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { AtomColorConfig } from './atom-properties'
+  import { get_atom_colors } from './atom-properties'
   import type { StructureHandlerData } from './index'
   import {
+    AtomLegend,
     StructureControls,
     StructureExportPane,
     StructureInfoPane,
-    StructureLegend,
     StructureScene,
   } from './index'
   import { MAX_SELECTED_SITES } from './measure'
@@ -45,21 +47,26 @@
   })
 
   let {
-    structure = $bindable(undefined),
-    scene_props: scene_props_in = $bindable(undefined),
-    lattice_props: lattice_props_in = $bindable(undefined),
+    structure = $bindable(),
+    scene_props: scene_props_in = $bindable(),
+    lattice_props: lattice_props_in = $bindable(),
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
     enable_measure_mode = $bindable(true),
-    background_color = $bindable(undefined),
+    background_color = $bindable(),
     background_opacity = $bindable(0.1),
     show_controls = 0,
     fullscreen = $bindable(false),
-    wrapper = $bindable(undefined),
+    wrapper = $bindable(),
     width = $bindable(0),
     height = $bindable(0),
     reset_text = `Reset camera (or double-click)`,
     color_scheme = $bindable(`Vesta`),
+    atom_color_config = $bindable<Partial<AtomColorConfig>>({
+      mode: DEFAULTS.structure.atom_color_mode,
+      scale: DEFAULTS.structure.atom_color_scale,
+      scale_type: DEFAULTS.structure.atom_color_scale_type,
+    }),
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
@@ -74,7 +81,7 @@
     on_file_drop,
     spinner_props = {},
     loading = $bindable(false),
-    error_msg = $bindable(undefined),
+    error_msg = $bindable(),
     performance_mode = $bindable(`quality`),
     // expose selected site indices for external control/highlighting
     selected_sites = $bindable<number[]>([]),
@@ -84,8 +91,10 @@
     displayed_structure = $bindable<AnyStructure | undefined>(undefined),
     // Track hidden elements across component lifecycle
     hidden_elements = $bindable(new Set<ElementSymbol>()),
+    // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
+    hidden_property_values = $bindable(new Set<number | string>()),
     // Symmetry analysis data (bindable for external access)
-    symmetry_data = $bindable<MoyoDataset | null>(null),
+    sym_data = $bindable<MoyoDataset | null>(null),
     // Symmetry analysis settings (bindable for external control)
     symmetry_settings = $bindable(symmetry.default_sym_settings),
     children,
@@ -138,12 +147,16 @@
       displayed_structure?: AnyStructure
       // Track which elements are hidden (bindable across frames in trajectories)
       hidden_elements?: Set<ElementSymbol>
+      // Track which property values are hidden (e.g., Wyckoff positions, coordination numbers)
+      hidden_property_values?: Set<number | string>
       // Symmetry analysis data (bindable for external access)
-      symmetry_data?: MoyoDataset | null
+      sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
       symmetry_settings?: Partial<SymmetrySettings>
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
+      // Atom coloring configuration
+      atom_color_config?: Partial<AtomColorConfig>
       children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
       on_file_load?: EventHandler
       on_error?: EventHandler
@@ -269,13 +282,25 @@
     colors.element = element_color_schemes[color_scheme as ColorSchemeName]
   })
 
+  // Compute property-based colors for legend display
+  let property_colors = $derived.by(() => {
+    if (!structure || atom_color_config.mode === `element`) return null
+    const result = get_atom_colors(
+      structure,
+      atom_color_config,
+      scene_props.bonding_strategy,
+      sym_data,
+    )
+    return result.colors.length ? result : null
+  })
+
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
 
   // Trigger symmetry analysis when structure is loaded
   $effect(() => {
     if (!structure || !(`lattice` in structure)) {
-      symmetry_data = null
+      sym_data = null
       symmetry_error = undefined
       return
     }
@@ -284,7 +309,7 @@
     const run_id = ++symmetry_run_id
     // Explicitly reference symmetry_settings to track it for reactivity
     const current_settings = symmetry_settings
-    symmetry_data = null
+    sym_data = null
     symmetry_error = undefined
 
     symmetry.ensure_moyo_wasm_ready()
@@ -295,7 +320,7 @@
       )
       .then((data) => {
         if (data && run_id === symmetry_run_id) {
-          untrack(() => symmetry_data = data)
+          untrack(() => sym_data = data)
         }
       })
       .catch((err) => {
@@ -606,6 +631,7 @@
     if (
       target.closest(`.control-buttons`) ||
       target.closest(`.structure-legend`) ||
+      target.closest(`.atom-legend`) ||
       target.closest(`.info-pane`) ||
       target.closest(`.export-pane`) ||
       target.closest(`.controls-pane`) ||
@@ -734,7 +760,7 @@
             {structure}
             bind:pane_open={info_pane_open}
             {selected_sites}
-            {symmetry_data}
+            {sym_data}
             {@attach tooltip({ content: `Structure info pane` })}
           />
         {/if}
@@ -758,15 +784,21 @@
           bind:background_color
           bind:background_opacity
           bind:color_scheme
+          bind:atom_color_config
           {structure}
           {supercell_loading}
+          {sym_data}
         />
       {/if}
     </section>
 
-    <StructureLegend
+    <AtomLegend
+      bind:atom_color_config
+      {property_colors}
       elements={get_elem_amounts(supercell_structure ?? structure!)}
       bind:hidden_elements
+      bind:hidden_property_values
+      {sym_data}
     />
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
@@ -787,9 +819,12 @@
             bind:rotation_target_ref
             bind:initial_computed_zoom
             bind:hidden_elements
+            bind:hidden_property_values
             {measure_mode}
             {width}
             {height}
+            {atom_color_config}
+            {sym_data}
           />
         </Canvas>
       </div>
@@ -859,7 +894,7 @@
     top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: clamp(6pt, 1cqmin, 9pt);
-    /* buttons need higher z-index than StructureLegend to make info/controls panes occlude legend */
+    /* buttons need higher z-index than AtomLegend to make info/controls panes occlude legend */
     /* we also need crazy high z-index to make info/control pane occlude threlte/extras' <HTML> elements for site labels */
     z-index: var(--struct-buttons-z-index, 100000000);
     opacity: 0;

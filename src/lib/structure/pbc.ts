@@ -126,7 +126,12 @@ export function get_pbc_image_sites(
   // Add image atoms as new sites using provided (xyz, abc) from find_image_atoms
   for (const [site_idx, img_xyz, img_abc] of image_sites) {
     const orig_site = structure.sites[site_idx]
-    imaged_struct.sites.push({ ...orig_site, abc: img_abc, xyz: img_xyz })
+    imaged_struct.sites.push({
+      ...orig_site,
+      abc: img_abc,
+      xyz: img_xyz,
+      properties: { ...orig_site.properties, orig_site_idx: site_idx },
+    })
   }
 
   return imaged_struct

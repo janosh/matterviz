@@ -143,6 +143,11 @@ describe(`Nav`, () => {
     [`/contact`, `/about`, null],
     [`/`, `/`, `page`],
     [`/home`, `/`, null],
+    // Test fix for partial path matching bug
+    [`/some-page-v2`, `/some-page`, null], // should NOT match (v2 should not match base)
+    [`/some-page-v2`, `/some-page-v2`, `page`], // should match (exact)
+    [`/some-page`, `/some-page-v2`, null], // should NOT match (base should not match v2)
+    [`/some-page/sub`, `/some-page`, `page`], // should match (sub-path)
   ])(`aria-current: pathname=%s link=%s -> %s`, (pathname, link_href, expected) => {
     const mock_page = { url: { pathname } } as Page
     mount(Nav, { target: document.body, props: { routes: [link_href], page: mock_page } })

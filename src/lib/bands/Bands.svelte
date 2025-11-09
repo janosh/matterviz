@@ -20,7 +20,7 @@
     show_legend = true,
     x_axis = {},
     y_axis = {},
-    x_positions = $bindable(undefined),
+    x_positions = $bindable(),
     reference_frequency = null,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {

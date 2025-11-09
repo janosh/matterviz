@@ -36,7 +36,7 @@
     allow_file_drop = true,
     on_file_drop,
     loading = $bindable(false),
-    error_msg = $bindable(undefined),
+    error_msg = $bindable(),
     ...rest
   }: ComponentProps<typeof BarPlot> & {
     structures:

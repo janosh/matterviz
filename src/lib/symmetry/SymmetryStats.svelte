@@ -3,21 +3,28 @@
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { type SymmetrySettings, wyckoff_positions_from_moyo } from './index'
+  import { SETTINGS_CONFIG } from '../settings'
+  import type { SymmetrySettings } from './index'
+  import { default_sym_settings, wyckoff_positions_from_moyo } from './index'
+  import * as spg from './spacegroups'
+
+  type SymSnippet = Snippet<[{ sym_data?: MoyoDataset; settings: SymmetrySettings }]>
 
   let {
     sym_data,
-    settings = $bindable({ symprec: 1e-4, algo: `Standard` }),
+    settings = $bindable(default_sym_settings),
     show_tooltips = true,
     children,
+    precontrols = `Symmetry Stats`,
     header,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     sym_data?: MoyoDataset
     settings?: SymmetrySettings
     show_tooltips?: boolean
-    children?: Snippet<[{ sym_data?: MoyoDataset }]>
-    header?: Snippet<[{ sym_data?: MoyoDataset }]>
+    children?: SymSnippet
+    precontrols?: SymSnippet | string
+    header?: SymSnippet
   } = $props()
 
   const wyckoff_count = $derived(
@@ -49,9 +56,11 @@
     symprec:
       `Symmetry precision control in spglib/moyo. Lower values (e.g. 1e-4, the default) are more strict, higher values (e.g. 1e-1) are more tolerant of numerical errors in atomic positions.`,
     algo:
-      `Symmetry detection algorithm: Standard uses moyo's newer recommended settings, spglib is useful if you need compatible results to an existing set of spglib-detected symmetries.`,
+      `Symmetry detection algorithm: Moyo uses moyo's newer recommended settings, Spglib is useful if you need compatible results to an existing set of spglib-detected symmetries.`,
     space_group:
       `International Tables Space group number (1-230) - unique identifier for each space group. Higher numbers indicate more symmetries in the crystal.`,
+    crystal_system:
+      `Crystal system classification based on the unit cell symmetry. Seven systems: triclinic, monoclinic, orthorhombic, tetragonal, trigonal, hexagonal, and cubic.`,
     hermann_mauguin:
       `Hermann-Mauguin symbol describes symmetry operations. Format: Lattice type + Point group symmetry. Example: P4/mmm = Primitive + 4-fold rotation + mirror planes`,
     hall_number:
@@ -71,11 +80,17 @@
 
 <div {...rest} class="symmetry-stats {rest.class ?? ``}">
   {#if sym_data}
-    {@render header?.({ sym_data })}
+    {@render header?.({ sym_data, settings })}
   {/if}
 
   <!-- Always show controls so users can adjust settings even after errors -->
   <div class="controls">
+    {#if typeof precontrols === `string`}
+      <strong>{precontrols}</strong>
+    {:else if precontrols}
+      {@render precontrols?.({ sym_data, settings })}
+    {/if}
+
     <label>
       <span {@attach tooltip()} title={tooltips?.symprec}>Symprec</span>
       <input
@@ -99,16 +114,17 @@
         onchange={(evt) =>
         settings = {
           ...settings,
-          algo: evt.currentTarget.value as `Standard` | `Spglib`,
+          algo: evt.currentTarget.value as `Moyo` | `Spglib`,
         }}
       >
-        <option value="Standard">Standard</option>
-        <option value="Spglib">Spglib</option>
+        {#each Object.keys(SETTINGS_CONFIG.symmetry.algo.enum ?? {}) as value (value)}
+          <option {value}>{value}</option>
+        {/each}
       </select>
     </label>
   </div>
 
-  {@render children?.({ sym_data })}
+  {@render children?.({ sym_data, settings })}
   {#if sym_data}
     <div class="stats-grid">
       <div
@@ -116,6 +132,9 @@
         {@attach tooltip()}
       >
         Space Group <strong>{sym_data.number}</strong>
+      </div>
+      <div title={tooltips?.crystal_system} {@attach tooltip()}>
+        Crystal System <strong>{spg.spacegroup_to_crystal_sys(sym_data.number)}</strong>
       </div>
       <div title={tooltips?.hermann_mauguin} {@attach tooltip()}>
         Hermann-Mauguin <strong>{sym_data.hm_symbol ?? `N/A`}</strong>
@@ -152,9 +171,9 @@
     display: flex;
     gap: 1em;
     background: var(--surface-bg);
-    padding: 4pt 8pt;
+    padding: 4pt 6pt;
     border-radius: 4pt;
-    margin: 0 0 1em 0;
+    margin-inline: -6pt;
   }
   .controls label {
     display: flex;

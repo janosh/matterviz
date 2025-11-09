@@ -68,8 +68,8 @@ function validate_image_tuples(
     expect(image_xyz.every((coord) => Number.isFinite(coord))).toBe(true)
     expect(image_abc.every((coord) => Number.isFinite(coord))).toBe(true)
 
-    const original_xyz = structure.sites[orig_idx].xyz
-    const distance = euclidean_dist(original_xyz, image_xyz)
+    const orig_xyz = structure.sites[orig_idx].xyz
+    const distance = euclidean_dist(orig_xyz, image_xyz)
     expect(distance).toBeGreaterThan(min_dist)
 
     const orig_abc = structure.sites[orig_idx].abc
@@ -867,8 +867,8 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
   const symmetrized = get_pbc_image_sites(test_structure)
 
   // Check that each image atom in the symmetrized structure has correct abc coordinates
-  const original_count = test_structure.sites.length
-  const image_sites = symmetrized.sites.slice(original_count) // Image atoms are added after original atoms
+  const orig_n_sites = test_structure.sites.length
+  const image_sites = symmetrized.sites.slice(orig_n_sites) // Image atoms are added after original atoms
 
   expect(image_sites.length).toBe(image_atoms.length)
 
@@ -956,8 +956,8 @@ test(`mp-1204603 image sites remain inside unit cell`, () => {
   const with_images = get_pbc_image_sites(structure)
 
   // Slice out just the image sites appended at the end
-  const original_len = structure.sites.length
-  const image_sites = with_images.sites.slice(original_len)
+  const orig_len = structure.sites.length
+  const image_sites = with_images.sites.slice(orig_len)
 
   // Allow deduplication to remove coincident images
   expect(image_sites.length).toBeLessThanOrEqual(image_atoms.length)

@@ -54,7 +54,7 @@
   }
 
   let {
-    trajectory = $bindable(undefined),
+    trajectory = $bindable(),
     data_url,
     current_step_idx = $bindable(0),
     data_extractor = full_data_extractor,
@@ -1221,7 +1221,6 @@
     background-color: var(--traj-dragover-bg, var(--dragover-bg));
     border: var(--traj-dragover-border, var(--dragover-border));
   }
-
   .trajectory-controls {
     display: flex;
     align-items: center;
@@ -1323,7 +1322,6 @@
     gap: clamp(6pt, 1cqw, 1.5ex);
     position: relative;
   }
-
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);
   }
@@ -1336,7 +1334,6 @@
   .play-button.playing:hover:not(:disabled) {
     background: var(--traj-pause-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.1)));
   }
-
   .empty-state {
     padding: 2rem;
     border-radius: var(--border-radius);

@@ -89,7 +89,7 @@
     on_point_click,
     on_point_hover,
     selected_series_idx = $bindable(0),
-    wrapper = $bindable(undefined),
+    wrapper = $bindable(),
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {

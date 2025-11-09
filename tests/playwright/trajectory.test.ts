@@ -1911,7 +1911,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
         global_with_mock.__mockDownload = []
         globalThis.URL.createObjectURL = () => `blob:mock-url`
-        const original_click = HTMLAnchorElement.prototype.click
+        const orig_click = HTMLAnchorElement.prototype.click
         HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
           if (this.download) {
             global_with_mock.__mockDownload.push({
@@ -1920,7 +1920,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
             })
             return
           }
-          original_click.call(this)
+          orig_click.call(this)
         }
       })
 

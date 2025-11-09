@@ -209,7 +209,7 @@ describe(`PeriodicTable`, () => {
   )(
     `error handling for invalid heatmap_values`,
     (heatmap_values, error_msg) => {
-      const original_error = console.error
+      const orig_console_error = console.error
       console.error = vi.fn()
 
       mount(PeriodicTable, {
@@ -222,7 +222,7 @@ describe(`PeriodicTable`, () => {
         expect.stringContaining(error_msg),
       )
 
-      console.error = original_error
+      console.error = orig_console_error
     },
   )
 

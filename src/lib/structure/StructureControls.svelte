@@ -1,19 +1,27 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { DraggablePane, format_num, Lattice, SettingsSection } from '$lib'
+  import {
+    ColorScaleSelect,
+    DraggablePane,
+    format_num,
+    Lattice,
+    SettingsSection,
+  } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
   import { axis_colors, element_color_schemes } from '$lib/colors'
   import { to_degrees, to_radians } from '$lib/math'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
+  import type { AtomColorConfig } from '$lib/structure/atom-properties'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
 
   let {
     controls_open = $bindable(false),
-    scene_props = {},
+    scene_props = $bindable({}),
     lattice_props = $bindable({
       show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
       cell_edge_color: DEFAULTS.structure.cell_edge_color,
@@ -24,11 +32,17 @@
     }),
     show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
     supercell_scaling = $bindable(`1x1x1`),
-    background_color = $bindable(undefined),
+    background_color = $bindable(),
     background_opacity = $bindable(DEFAULTS.background_opacity),
     color_scheme = $bindable(DEFAULTS.color_scheme),
+    atom_color_config = $bindable<Partial<AtomColorConfig>>({
+      mode: DEFAULTS.structure.atom_color_mode,
+      scale: DEFAULTS.structure.atom_color_scale,
+      scale_type: DEFAULTS.structure.atom_color_scale_type,
+    }),
     structure = undefined,
     supercell_loading = false,
+    sym_data = null,
     pane_props = {},
     toggle_props = {},
     ...rest
@@ -41,8 +55,10 @@
     background_color?: string
     background_opacity?: number
     color_scheme?: string
+    atom_color_config?: Partial<AtomColorConfig>
     structure?: AnyStructure
     supercell_loading?: boolean
+    sym_data?: MoyoDataset | null
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
@@ -52,6 +68,32 @@
   $effect(() => {
     if (color_scheme_selected.length > 0) {
       color_scheme = color_scheme_selected[0] as string
+    }
+  })
+
+  // Atom color config selection state
+  let color_scale_selected = $state([
+    atom_color_config.scale || DEFAULTS.structure.atom_color_scale,
+  ])
+
+  // Sync local selection to config
+  $effect(() => {
+    if (
+      color_scale_selected[0] && color_scale_selected[0] !== atom_color_config.scale
+    ) atom_color_config.scale = color_scale_selected[0]
+  })
+  // Sync config to local selection (for external updates)
+  $effect(() => {
+    if (
+      atom_color_config.scale && atom_color_config.scale !== color_scale_selected[0]
+    ) color_scale_selected = [atom_color_config.scale]
+  })
+  // Auto-set scale_type based on mode
+  $effect(() => {
+    if (atom_color_config.mode === `wyckoff`) {
+      atom_color_config.scale_type = `categorical`
+    } else if (atom_color_config.mode === `coordination`) {
+      atom_color_config.scale_type = `continuous`
     }
   })
 
@@ -406,12 +448,17 @@
       atom_radius: scene_props.atom_radius,
       same_size_atoms: scene_props.same_size_atoms,
       color_scheme,
+      ...atom_color_config,
     }}
     on_reset={() => {
       scene_props.atom_radius = DEFAULTS.structure.atom_radius
       scene_props.same_size_atoms = DEFAULTS.structure.same_size_atoms
       color_scheme = DEFAULTS.color_scheme
       color_scheme_selected = [DEFAULTS.color_scheme]
+      atom_color_config.mode = DEFAULTS.structure.atom_color_mode
+      atom_color_config.scale = DEFAULTS.structure.atom_color_scale
+      atom_color_config.scale_type = DEFAULTS.structure.atom_color_scale_type
+      color_scale_selected = [DEFAULTS.structure.atom_color_scale]
     }}
   >
     <label
@@ -468,6 +515,38 @@
         {/snippet}
       </Select>
     </label>
+    <label
+      style="align-items: start"
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_mode.description })}
+    >
+      Atom coloring
+      <select bind:value={atom_color_config.mode} style="font-size: 0.95em">
+        {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as
+          [value, label]
+          (value)
+        }
+          <option {value} disabled={!sym_data && value === `wyckoff`}>{label}</option>
+        {/each}
+      </select>
+    </label>
+    {#if atom_color_config.mode !== `element`}
+      <label
+        style="align-items: start; white-space: nowrap"
+        {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_scale.description })}
+      >
+        Color scale
+        <ColorScaleSelect
+          bind:value={atom_color_config.scale}
+          bind:selected={color_scale_selected}
+          colorbar={{
+            tick_labels: 0,
+            wrapper_style: `width: 100%;`,
+            title_style: `font-size: 0.95em;`,
+          }}
+          style="width: 100%; border: none"
+        />
+      </label>
+    {/if}
   </SettingsSection>
 
   {#if scene_props.show_site_labels || scene_props.show_site_indices}
@@ -859,6 +938,10 @@
     display: grid;
     gap: 0.3em;
     place-items: center;
+  }
+
+  :global(.controls-pane) {
+    font-size: 0.85em;
   }
 
   @keyframes spin {

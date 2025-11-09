@@ -80,7 +80,7 @@ export function find_lowest_energy_unary_refs(
   for (const entry of entries) {
     if (!is_unary_entry(entry)) continue
     const el = Object.keys(entry.composition).find(
-      (el) => entry.composition[el as ElementSymbol] > 0,
+      (el) => (entry.composition[el as ElementSymbol] ?? 0) > 0,
     )
     if (!el) continue
     const atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
@@ -128,7 +128,7 @@ export function get_phase_diagram_stats(
   const composition_counts = (max_arity === 4 ? [1, 2, 3, 4] : [1, 2, 3]).map((target) =>
     processed_entries.filter((entry) =>
       Object.keys(entry.composition).filter(
-        (el) => entry.composition[el as ElementSymbol] > 0,
+        (el) => (entry.composition[el as ElementSymbol] ?? 0) > 0,
       ).length === target
     ).length
   )

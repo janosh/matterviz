@@ -307,7 +307,7 @@ export type ElementWithOxidation = {
   element: ElementSymbol
   amount: number
   oxidation_state?: number
-  original_index: number
+  orig_idx: number
 }
 
 // Type for composition with oxidation states
@@ -349,7 +349,7 @@ export const parse_formula_with_oxidation = (
   const regex = /([A-Z][a-z]?)(?:\^([+-]?\d+[+-]?)|\[([+-]?\d+[+-]?)\])?(\d*)/g
 
   let match: RegExpExecArray | null
-  let original_index = 0
+  let orig_idx = 0
 
   while ((match = regex.exec(cleaned_formula)) !== null) {
     const element = match[1] as ElementSymbol
@@ -377,7 +377,7 @@ export const parse_formula_with_oxidation = (
         element,
         amount: count,
         oxidation_state,
-        original_index: original_index++,
+        orig_idx: orig_idx++,
       })
     }
   }
@@ -394,7 +394,7 @@ export const composition_with_oxidation_to_elements = (
     element: element as ElementSymbol,
     amount: data.amount,
     oxidation_state: data.oxidation_state,
-    original_index: idx,
+    orig_idx: idx,
   }))
 }
 
