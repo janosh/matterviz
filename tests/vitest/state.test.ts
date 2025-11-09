@@ -58,9 +58,9 @@ describe(`State Management`, () => {
     })
 
     test(`preserves other colors when mutating specific ones`, () => {
-      const original_noble_gas = colors.category[`noble-gas`]
+      const orig_noble_gas = colors.category[`noble-gas`]
       colors.category[`alkali-metal`] = `#ff0000`
-      expect(colors.category[`noble-gas`]).toBe(original_noble_gas)
+      expect(colors.category[`noble-gas`]).toBe(orig_noble_gas)
     })
   })
 

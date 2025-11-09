@@ -182,11 +182,11 @@ export function apply_symmetry_operations(
 export function map_wyckoff_to_all_atoms(
   wyckoff_positions: WyckoffPos[],
   displayed_structure: PymatgenStructure,
-  original_structure: PymatgenStructure,
+  orig_structure: PymatgenStructure,
   sym_data: MoyoDataset | null,
   tolerance = 1e-5,
 ): WyckoffPos[] {
-  if (!sym_data?.operations || !displayed_structure.sites || !original_structure.sites) {
+  if (!sym_data?.operations || !displayed_structure.sites || !orig_structure.sites) {
     return wyckoff_positions
   }
 
@@ -203,9 +203,9 @@ export function map_wyckoff_to_all_atoms(
 
   return wyckoff_positions.map((wyckoff_pos) => {
     const indices = (wyckoff_pos.site_indices || [])
-      .filter((idx) => idx < original_structure.sites.length)
+      .filter((idx) => idx < orig_structure.sites.length)
       .flatMap((orig_idx) => {
-        const { abc: orig_abc, species } = original_structure.sites[orig_idx]
+        const { abc: orig_abc, species } = orig_structure.sites[orig_idx]
         const element = species[0]?.element
         const equivalent_positions = apply_symmetry_operations(
           orig_abc,

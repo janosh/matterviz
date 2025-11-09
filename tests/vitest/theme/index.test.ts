@@ -141,7 +141,7 @@ describe(`Theme System`, () => {
 
     test(`get_theme_preference handles localStorage errors gracefully`, () => {
       // Mock localStorage.getItem to throw
-      const original_get_item = localStorage.getItem
+      const orig_get_item = localStorage.getItem
       localStorage.getItem = vi.fn().mockImplementation(() => {
         throw new Error(`localStorage not available`)
       })
@@ -149,7 +149,7 @@ describe(`Theme System`, () => {
       expect(get_theme_preference()).toBe(`auto`)
 
       // Restore
-      localStorage.getItem = original_get_item
+      localStorage.getItem = orig_get_item
     })
   })
 

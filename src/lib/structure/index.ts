@@ -94,7 +94,7 @@ export type AnyStructure = PymatgenStructure | PymatgenMolecule
 export type AnyStructureGraph = AnyStructure & { graph: Graph }
 
 export function get_elem_amounts(structure: AnyStructure) {
-  const elements: Partial<CompositionType> = {}
+  const elements: CompositionType = {}
   for (const site of structure.sites) {
     for (const species of site.species) {
       const { element: elem, occu } = species
@@ -137,13 +137,13 @@ export function electro_neg_formula(structure: AnyStructure): string {
   })))
 }
 
-export const atomic_radii: Partial<CompositionType> = Object.fromEntries(
+export const atomic_radii: CompositionType = Object.fromEntries(
   element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
 )
 
 export function get_elements(structure: AnyStructure): ElementSymbol[] {
-  const elems = structure.sites.flatMap((site) => site.species.map((sp) => sp.element))
-  return [...new Set(elems)].sort() // unique elements
+  const elements = structure.sites.flatMap((site) => site.species.map((sp) => sp.element))
+  return [...new Set(elements)].sort() // unique elements
 }
 
 // unified atomic mass units (u) per cubic angstrom (Å^3)

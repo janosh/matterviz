@@ -158,21 +158,25 @@ describe(`AtomLegend Component`, () => {
   )
 
   test(`updates label text color when background changes`, async () => {
-    // 1. Initialize with a known color
-    colors.element.Fe = `#000000`
-    mount(AtomLegend, {
-      target: document.body,
-      props: { elements: { Fe: 1 } },
-    })
-    const label = doc_query(`label`)
-    const initial_color = getComputedStyle(label).color
+    const orig_fe_color = colors.element.Fe // Capture original value to restore after test
+    try { // 1. Initialize with a known color
+      colors.element.Fe = `#000000`
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { Fe: 1 } },
+      })
+      const label = doc_query(`label`)
+      const initial_color = getComputedStyle(label).color
 
-    // 2. Change the background color in the store
-    colors.element.Fe = `#ffffff`
-    await tick() // Wait for Svelte to process the change
+      // 2. Change the background color in the store
+      colors.element.Fe = `#ffffff`
+      await tick() // Wait for Svelte to process the change
 
-    // 3. Expect contrast_color to update the text color
-    expect(getComputedStyle(label).color).not.toBe(initial_color)
+      // 3. Expect contrast_color to update the text color
+      expect(getComputedStyle(label).color).not.toBe(initial_color)
+    } finally { // Restore original value to avoid state leakage
+      colors.element.Fe = orig_fe_color
+    }
   })
 
   test(`element visibility toggle`, async () => {
