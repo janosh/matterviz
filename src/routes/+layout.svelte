@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { Icon, Nav } from '$lib'
+  import { Icon } from '$lib'
   import '$lib/app.css'
   import { element_data } from '$lib/element'
   import { theme_state } from '$lib/state.svelte'
@@ -11,7 +11,7 @@
   import { Footer } from '$site'
   import { demo_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
-  import { CmdPalette, CopyButton, GitHubCorner } from 'svelte-multiselect'
+  import { CmdPalette, CopyButton, GitHubCorner, Nav } from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
 
   let { children }: { children?: Snippet<[]> } = $props()

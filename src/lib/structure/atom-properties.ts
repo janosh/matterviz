@@ -1,7 +1,7 @@
 // Utility functions for computing atom properties and applying color scales
 
 import type { AnyStructure, Site } from '$lib'
-import type { ColorScaleType } from '$lib/colors'
+import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination'
 import type { AtomColorMode } from '$lib/settings'
 import type { BondingStrategy } from '$lib/structure/bonding'
@@ -11,7 +11,7 @@ import * as d3_sc from 'd3-scale-chromatic'
 
 export interface AtomColorConfig {
   mode: AtomColorMode
-  scale: string
+  scale: string | D3InterpolateName
   scale_type: ColorScaleType
   color_fn?: (site: Site, idx: number) => number | string
 }
@@ -25,7 +25,7 @@ export interface AtomPropertyColors {
 }
 
 const GRAY = `#808080`
-const DEFAULT = `interpolateViridis`
+const DEFAULT_COLOR_SCALE = `interpolateViridis`
 
 export const get_d3_color_scales = () =>
   Object.keys(d3_sc).filter((k) => k.startsWith(`interpolate`))
@@ -33,7 +33,7 @@ export const get_d3_color_scales = () =>
 const get_interp = (scale: string) => {
   const fn = d3_sc[scale as keyof typeof d3_sc]
   if (typeof fn !== `function`) {
-    console.warn(`Unknown D3 scale: ${scale}, using ${DEFAULT}`)
+    console.warn(`Unknown D3 scale: ${scale}, using ${DEFAULT_COLOR_SCALE}`)
     return d3_sc.interpolateViridis as (t: number) => string
   }
   return fn as (t: number) => string
@@ -76,7 +76,7 @@ const build_prop_colors = (
 
 export function apply_color_scale(
   vals: number[],
-  scale = DEFAULT,
+  scale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): { colors: string[]; unique_values?: number[] } {
   if (!vals.length) return { colors: [] }
@@ -99,14 +99,14 @@ export function apply_color_scale(
 
 export const apply_categorical_color_scale = (
   vals: string[],
-  scale = DEFAULT,
+  scale = DEFAULT_COLOR_SCALE,
 ): { colors: string[]; unique_values: string[] } =>
   vals.length ? make_categorical(vals, scale) : { colors: [], unique_values: [] }
 
 export function get_coordination_colors(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
-  scale = DEFAULT,
+  scale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
   const coord_nums = calc_coordination_nums(structure, strategy).sites.map((site) =>
@@ -119,7 +119,7 @@ export function get_coordination_colors(
 export function get_wyckoff_colors(
   structure: AnyStructure,
   sym_data: MoyoDataset | null,
-  scale = DEFAULT,
+  scale = DEFAULT_COLOR_SCALE,
 ): AtomPropertyColors {
   const n = structure.sites.length
   if (!sym_data?.wyckoffs || sym_data.wyckoffs.length === 0) {
@@ -165,7 +165,7 @@ export function get_wyckoff_colors(
 export function get_custom_colors(
   structure: AnyStructure,
   fn: (site: Site, idx: number) => number | string,
-  scale = DEFAULT,
+  scale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
   const vals = structure.sites.map((s, i) => fn(s, i))
@@ -192,15 +192,15 @@ export function get_atom_colors(
   bonding_strategy: BondingStrategy = `electroneg_ratio`,
   sym_data: MoyoDataset | null = null,
 ): AtomPropertyColors {
-  const { mode = `element`, scale = DEFAULT, scale_type = `continuous`, color_fn } =
+  const { mode = `element`, scale = DEFAULT_COLOR_SCALE, scale_type = `continuous` } =
     config
 
   if (mode === `coordination`) {
     return get_coordination_colors(structure, bonding_strategy, scale, scale_type)
   }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, sym_data, scale)
-  if (mode === `custom` && color_fn) {
-    return get_custom_colors(structure, color_fn, scale, scale_type)
+  if (mode === `custom` && config.color_fn) {
+    return get_custom_colors(structure, config.color_fn, scale, scale_type)
   }
   // Element mode or custom without function, no property colors needed
   return { colors: [], values: [] }
