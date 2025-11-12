@@ -130,10 +130,10 @@
         },
         "matterviz.symmetry.algo": {
           "type": "string",
-          "default": "Standard",
+          "default": "Moyo",
           "description": "Algorithm for symmetry analysis",
           "enum": [
-            "Standard",
+            "Moyo",
             "Spglib"
           ]
         },
@@ -196,6 +196,30 @@
           "enum": [
             "electroneg_ratio",
             "solid_angle"
+          ]
+        },
+        "matterviz.structure.atom_color_mode": {
+          "type": "string",
+          "default": "element",
+          "description": "Property to use for atom coloring",
+          "enum": [
+            "element",
+            "coordination",
+            "wyckoff"
+          ]
+        },
+        "matterviz.structure.atom_color_scale": {
+          "type": "string",
+          "default": "interpolateViridis",
+          "description": "D3 color scale for property-based coloring (e.g., interpolateViridis, interpolatePlasma)"
+        },
+        "matterviz.structure.atom_color_scale_type": {
+          "type": "string",
+          "default": "continuous",
+          "description": "Color scale type for property-based coloring",
+          "enum": [
+            "continuous",
+            "categorical"
           ]
         },
         "matterviz.structure.show_gizmo": {

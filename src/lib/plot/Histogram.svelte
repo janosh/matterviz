@@ -2,12 +2,6 @@
   import { format_value } from '$lib/labels'
   import type { AxisConfig, BarStyle, HistogramHandlerProps } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
-  import type { BasePlotProps, DataSeries, DisplayConfig } from '$lib/plot/types'
-  import { DEFAULTS } from '$lib/settings'
-  import { bin, max } from 'd3-array'
-  import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
   import { get_relative_coords } from '$lib/plot/interactions'
   import {
@@ -22,14 +16,20 @@
     get_nice_data_range,
     get_tick_label,
   } from '$lib/plot/scales'
+  import type { BasePlotProps, DataSeries, DisplayConfig } from '$lib/plot/types'
+  import { DEFAULTS } from '$lib/settings'
+  import { bin, max } from 'd3-array'
+  import type { ComponentProps, Snippet } from 'svelte'
+  import { untrack } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
 
   let {
     series = $bindable([]),
-    x_axis = { label: `Value`, format: `.2~s`, scale_type: `linear` },
-    y_axis = { label: `Count`, format: `d`, scale_type: `linear` },
-    y2_axis = { label: `Count`, format: `d`, scale_type: `linear` },
+    x_axis = {},
+    y_axis = {},
+    y2_axis = {},
     display = DEFAULTS.histogram.display,
     x_range = [null, null],
     y_range = [null, null],
@@ -88,16 +88,29 @@
     on_series_toggle?: (series_idx: number) => void
   } = $props()
 
-  bar = { ...DEFAULTS.histogram.bar, ...bar } // Initialize bar style defaults
-  y2_axis = { // Initialize y2_axis defaults
+  const final_x_axis = $derived({
+    label: `Value`,
+    format: `.2~s`,
+    scale_type: `linear` as const,
+    ...x_axis,
+  })
+  const final_y_axis = $derived({
+    label: `Count`,
     format: `d`,
-    scale_type: `linear`,
+    scale_type: `linear` as const,
+    ...y_axis,
+  })
+  const final_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
+  const final_y2_axis = $derived({
+    label: `Count`,
+    format: `d`,
+    scale_type: `linear` as const,
     ticks: 5,
     label_shift: { y: 60 },
     tick_label_shift: { x: 8, y: 0 },
-    range: [null, null],
+    range: [null, null] as [number | null, number | null],
     ...y2_axis,
-  }
+  })
 
   // Core state
   let [width, height] = $state([0, 0])
@@ -132,7 +145,7 @@
       all_values.map((val) => ({ x: val, y: 0 })),
       ({ x }) => x,
       x_range,
-      x_axis.scale_type ?? `linear`,
+      final_x_axis.scale_type ?? `linear`,
       range_padding,
       false,
     )
@@ -166,11 +179,15 @@
       return [y_min, y1] as [number, number]
     }
 
-    const y1_range = calc_y_range(y1_series, y_range, y_axis.scale_type ?? `linear`)
+    const y1_range = calc_y_range(
+      y1_series,
+      y_range,
+      final_y_axis.scale_type ?? `linear`,
+    )
     const y2_auto_range = calc_y_range(
       y2_series,
       y2_range,
-      y2_axis.scale_type ?? `linear`,
+      final_y2_axis.scale_type ?? `linear`,
     )
 
     return { x: auto_x, y: y1_range, y2: y2_auto_range }
@@ -192,14 +209,23 @@
 
   $effect(() => {
     // Support one-sided range pinning: merge user range with auto range for null values
-    const new_x: [number, number] = x_axis.range
-      ? [x_axis.range[0] ?? auto_ranges.x[0], x_axis.range[1] ?? auto_ranges.x[1]]
+    const new_x: [number, number] = final_x_axis.range
+      ? [
+        final_x_axis.range[0] ?? auto_ranges.x[0],
+        final_x_axis.range[1] ?? auto_ranges.x[1],
+      ]
       : auto_ranges.x
-    const new_y: [number, number] = y_axis.range
-      ? [y_axis.range[0] ?? auto_ranges.y[0], y_axis.range[1] ?? auto_ranges.y[1]]
+    const new_y: [number, number] = final_y_axis.range
+      ? [
+        final_y_axis.range[0] ?? auto_ranges.y[0],
+        final_y_axis.range[1] ?? auto_ranges.y[1],
+      ]
       : auto_ranges.y
-    const new_y2: [number, number] = y2_axis.range
-      ? [y2_axis.range[0] ?? auto_ranges.y2[0], y2_axis.range[1] ?? auto_ranges.y2[1]]
+    const new_y2: [number, number] = final_y2_axis.range
+      ? [
+        final_y2_axis.range[0] ?? auto_ranges.y2[0],
+        final_y2_axis.range[1] ?? auto_ranges.y2[1],
+      ]
       : auto_ranges.y2
 
     // Only update if values changed (prevent infinite loop)
@@ -228,22 +254,26 @@
       ? calc_auto_padding({
         padding,
         default_padding,
-        y_axis: { ...y_axis, tick_values: current_ticks_y },
-        y2_axis: { ...y2_axis, tick_values: current_ticks_y2 },
+        y_axis: { ...final_y_axis, tick_values: current_ticks_y },
+        y2_axis: { ...final_y2_axis, tick_values: current_ticks_y2 },
       })
       : { ...default_padding, ...padding }
 
     // Add y2 axis label space (calc_auto_padding only accounts for tick labels)
     if (
-      width && height && y2_series.length && current_ticks_y2.length && y2_axis.label
+      width && height && y2_series.length && current_ticks_y2.length &&
+      final_y2_axis.label
     ) {
       const y2_tick_width = Math.max(
         0,
         ...current_ticks_y2.map((tick) =>
-          measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
+          measure_text_width(
+            format_value(tick, final_y2_axis.format),
+            `12px sans-serif`,
+          )
         ),
       )
-      const tick_shift = y2_axis.tick_label_shift?.x ?? 8
+      const tick_shift = final_y2_axis.tick_label_shift?.x ?? 8
       const label_thickness = Math.round(12 * 1.2)
       new_pad.r = Math.max(
         new_pad.r,
@@ -261,17 +291,17 @@
   // Scales and data
   let scales = $derived({
     x: create_scale(
-      x_axis.scale_type ?? `linear`,
+      final_x_axis.scale_type ?? `linear`,
       ranges.current.x,
       [pad.l, width - pad.r],
     ),
     y: create_scale(
-      y_axis.scale_type ?? `linear`,
+      final_y_axis.scale_type ?? `linear`,
       ranges.current.y,
       [height - pad.b, pad.t],
     ),
     y2: create_scale(
-      y2_axis.scale_type ?? `linear`,
+      final_y2_axis.scale_type ?? `linear`,
       ranges.current.y2,
       [height - pad.b, pad.t],
     ),
@@ -290,7 +320,7 @@
         series_idx,
         label: series_data.label || `Series ${series_idx + 1}`,
         color: selected_series.length === 1
-          ? bar.color
+          ? final_bar.color
           : extract_series_color(series_data),
         bins: bins_arr,
         max_count: max(bins_arr, (data) => data.length) || 0,
@@ -304,8 +334,8 @@
     x: width && height
       ? generate_ticks(
         ranges.current.x,
-        x_axis.scale_type ?? `linear`,
-        x_axis.ticks,
+        final_x_axis.scale_type ?? `linear`,
+        final_x_axis.ticks,
         scales.x,
         { default_count: 8 },
       )
@@ -313,8 +343,8 @@
     y: width && height
       ? generate_ticks(
         ranges.current.y,
-        y_axis.scale_type ?? `linear`,
-        y_axis.ticks,
+        final_y_axis.scale_type ?? `linear`,
+        final_y_axis.ticks,
         scales.y,
         { default_count: 6 },
       )
@@ -322,8 +352,8 @@
     y2: width && height && y2_series.length > 0
       ? generate_ticks(
         ranges.current.y2,
-        y2_axis.scale_type ?? `linear`,
-        y2_axis.ticks,
+        final_y2_axis.scale_type ?? `linear`,
+        final_y2_axis.ticks,
         scales.y2,
         { default_count: 6 },
       )
@@ -432,8 +462,8 @@
 
   function handle_double_click() {
     // Clear axis ranges to reset to auto ranges
-    x_axis = { ...x_axis, range: undefined }
-    y_axis = { ...y_axis, range: undefined }
+    x_axis = { ...final_x_axis, range: undefined }
+    y_axis = { ...final_y_axis, range: undefined }
     y2_axis = { ...y2_axis, range: undefined }
   }
 
@@ -527,8 +557,10 @@
           {#if tooltip}
             {@render tooltip(hover_info)}
           {:else}
-            {@const formatter = active_y_axis === `y2` ? y2_axis.format : y_axis.format}
-            <div>Value: {format_value(value, x_axis.format || `.3~s`)}</div>
+            {@const formatter = active_y_axis === `y2`
+            ? final_y2_axis.format
+            : final_y_axis.format}
+            <div>Value: {format_value(value, final_x_axis.format || `.3~s`)}</div>
             <div>
               Count: {format_value(count, formatter || `.3~s`)}
             </div>
@@ -556,12 +588,12 @@
         x2={width - pad.r}
         y1={height - pad.b}
         y2={height - pad.b}
-        stroke={x_axis.color || `var(--border-color, gray)`}
+        stroke={final_x_axis.color || `var(--border-color, gray)`}
         stroke-width="1"
       />
       {#each ticks.x as tick (tick)}
         {@const tick_x = scales.x(tick as number)}
-        {@const custom_label = get_tick_label(tick as number, x_axis.ticks)}
+        {@const custom_label = get_tick_label(tick as number, final_x_axis.ticks)}
         <g class="tick" transform="translate({tick_x}, {height - pad.b})">
           {#if display.x_grid}
             <line
@@ -570,27 +602,31 @@
               stroke="var(--border-color, gray)"
               stroke-dasharray="4"
               stroke-width="1"
-              {...x_axis.grid_style ?? {}}
+              {...final_x_axis.grid_style ?? {}}
             />
           {/if}
           <line
             y1="0"
             y2="5"
-            stroke={x_axis.color || `var(--border-color, gray)`}
+            stroke={final_x_axis.color || `var(--border-color, gray)`}
             stroke-width="1"
           />
-          <text y="18" text-anchor="middle" fill={x_axis.color || `var(--text-color)`}>
-            {custom_label ?? format_value(tick, x_axis.format)}
+          <text
+            y="18"
+            text-anchor="middle"
+            fill={final_x_axis.color || `var(--text-color)`}
+          >
+            {custom_label ?? format_value(tick, final_x_axis.format)}
           </text>
         </g>
       {/each}
       <text
-        x={(pad.l + width - pad.r) / 2 + (x_axis.label_shift?.x ?? 0)}
-        y={height - 10 + (x_axis.label_shift?.y ?? 0)}
+        x={(pad.l + width - pad.r) / 2 + (final_x_axis.label_shift?.x ?? 0)}
+        y={height - 10 + (final_x_axis.label_shift?.y ?? 0)}
         text-anchor="middle"
-        fill={x_axis.color || `var(--text-color)`}
+        fill={final_x_axis.color || `var(--text-color)`}
       >
-        {@html x_axis.label}
+        {@html final_x_axis.label}
       </text>
     </g>
 
@@ -601,12 +637,12 @@
         x2={pad.l}
         y1={pad.t}
         y2={height - pad.b}
-        stroke={y_axis.color || `var(--border-color, gray)`}
+        stroke={final_y_axis.color || `var(--border-color, gray)`}
         stroke-width="1"
       />
       {#each ticks.y as tick (tick)}
         {@const tick_y = scales.y(tick as number)}
-        {@const custom_label = get_tick_label(tick as number, y_axis.ticks)}
+        {@const custom_label = get_tick_label(tick as number, final_y_axis.ticks)}
         <g class="tick" transform="translate({pad.l}, {tick_y})">
           {#if display.y_grid}
             <line
@@ -615,37 +651,37 @@
               stroke="var(--border-color, gray)"
               stroke-dasharray="4"
               stroke-width="1"
-              {...y_axis.grid_style ?? {}}
+              {...final_y_axis.grid_style ?? {}}
             />
           {/if}
           <line
             x1="-5"
             x2="0"
-            stroke={y_axis.color || `var(--border-color, gray)`}
+            stroke={final_y_axis.color || `var(--border-color, gray)`}
             stroke-width="1"
           />
           <text
             x="-10"
             text-anchor="end"
             dominant-baseline="central"
-            fill={y_axis.color || `var(--text-color)`}
+            fill={final_y_axis.color || `var(--text-color)`}
           >
-            {custom_label ?? format_value(tick, y_axis.format)}
+            {custom_label ?? format_value(tick, final_y_axis.format)}
           </text>
         </g>
       {/each}
-      {#if y_axis.label}
+      {#if final_y_axis.label}
         {@const max_y_tick_width = Math.max(
           0,
           ...ticks.y.map((tick) =>
             measure_text_width(
-              format_value(tick, y_axis.format),
+              format_value(tick, final_y_axis.format),
               `12px sans-serif`,
             )
           ),
         )}
-        {@const shift_x = y_axis.label_shift?.x ?? 0}
-        {@const shift_y = y_axis.label_shift?.y ?? 0}
+        {@const shift_x = final_y_axis.label_shift?.x ?? 0}
+        {@const shift_y = final_y_axis.label_shift?.y ?? 0}
         {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - LABEL_GAP_DEFAULT) +
           shift_x}
         {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 + shift_y}
@@ -653,10 +689,10 @@
           x={y_label_x}
           y={y_label_y}
           text-anchor="middle"
-          fill={y_axis.color || `var(--text-color)`}
+          fill={final_y_axis.color || `var(--text-color)`}
           transform="rotate(-90, {y_label_x}, {y_label_y})"
         >
-          {@html y_axis.label}
+          {@html final_y_axis.label}
         </text>
       {/if}
     </g>
@@ -669,12 +705,12 @@
           x2={width - pad.r}
           y1={pad.t}
           y2={height - pad.b}
-          stroke={y2_axis.color || `var(--border-color, gray)`}
+          stroke={final_y2_axis.color || `var(--border-color, gray)`}
           stroke-width="1"
         />
         {#each ticks.y2 as tick (tick)}
           {@const tick_y = scales.y2(tick as number)}
-          {@const custom_label = get_tick_label(tick as number, y2_axis.ticks)}
+          {@const custom_label = get_tick_label(tick as number, final_y2_axis.ticks)}
           <g class="tick" transform="translate({width - pad.r}, {tick_y})">
             {#if display.y2_grid}
               <line
@@ -683,39 +719,39 @@
                 stroke="var(--border-color, gray)"
                 stroke-dasharray="4"
                 stroke-width="1"
-                {...y2_axis.grid_style ?? {}}
+                {...final_y2_axis.grid_style ?? {}}
               />
             {/if}
             <line
               x1="0"
               x2="5"
-              stroke={y2_axis.color || `var(--border-color, gray)`}
+              stroke={final_y2_axis.color || `var(--border-color, gray)`}
               stroke-width="1"
             />
             <text
-              x={y2_axis.tick_label_shift?.x ?? 8}
-              y={y2_axis.tick_label_shift?.y ?? 0}
+              x={final_y2_axis.tick_label_shift?.x ?? 8}
+              y={final_y2_axis.tick_label_shift?.y ?? 0}
               text-anchor="start"
               dominant-baseline="central"
-              fill={y2_axis.color || `var(--text-color)`}
+              fill={final_y2_axis.color || `var(--text-color)`}
             >
-              {custom_label ?? format_value(tick, y2_axis.format)}
+              {custom_label ?? format_value(tick, final_y2_axis.format)}
             </text>
           </g>
         {/each}
-        {#if y2_axis.label}
+        {#if final_y2_axis.label}
           {@const max_y2_tick_width = Math.max(
           0,
           ...ticks.y2.map((tick) =>
             measure_text_width(
-              format_value(tick, y2_axis.format),
+              format_value(tick, final_y2_axis.format),
               `12px sans-serif`,
             )
           ),
         )}
-          {@const shift_x = y2_axis.label_shift?.x ?? 0}
-          {@const shift_y = y2_axis.label_shift?.y ?? 0}
-          {@const tick_shift = y2_axis.tick_label_shift?.x ?? 8}
+          {@const shift_x = final_y2_axis.label_shift?.x ?? 0}
+          {@const shift_y = final_y2_axis.label_shift?.y ?? 0}
+          {@const tick_shift = final_y2_axis.tick_label_shift?.x ?? 8}
           {@const y2_label_x = width - pad.r + tick_shift + max_y2_tick_width +
           LABEL_GAP_DEFAULT +
           shift_x}
@@ -724,10 +760,10 @@
             x={y2_label_x}
             y={y2_label_y}
             text-anchor="middle"
-            fill={y2_axis.color || `var(--text-color)`}
+            fill={final_y2_axis.color || `var(--text-color)`}
             transform="rotate(-90, {y2_label_x}, {y2_label_y})"
           >
-            {@html y2_axis.label}
+            {@html final_y2_axis.label}
           </text>
         {/if}
       </g>
@@ -740,7 +776,7 @@
         <line class="zero-line" x1={x0} x2={x0} y1={pad.t} y2={height - pad.b} />
       {/if}
     {/if}
-    {#if display.y_zero_line && (y_axis.scale_type ?? `linear`) === `linear` &&
+    {#if display.y_zero_line && (final_y_axis.scale_type ?? `linear`) === `linear` &&
         ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
       {@const zero_y = scales.y(0)}
       {#if isFinite(zero_y)}
@@ -748,7 +784,7 @@
       {/if}
     {/if}
     {#if (display.y_zero_line) && y2_series.length > 0 &&
-        (y2_axis.scale_type ?? `linear`) === `linear` &&
+        (final_y2_axis.scale_type ?? `linear`) === `linear` &&
         ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
       {@const zero_y2 = scales.y2(0)}
       {#if isFinite(zero_y2)}
@@ -782,10 +818,10 @@
               width={bar_width}
               height={bar_height}
               fill={color}
-              opacity={bar.opacity}
-              stroke={bar.stroke_color}
-              stroke-opacity={bar.stroke_opacity}
-              stroke-width={bar.stroke_width}
+              opacity={final_bar.opacity}
+              stroke={final_bar.stroke_color}
+              stroke-opacity={final_bar.stroke_opacity}
+              stroke-width={final_bar.stroke_width}
               role="button"
               tabindex="0"
               onmousemove={(evt) =>

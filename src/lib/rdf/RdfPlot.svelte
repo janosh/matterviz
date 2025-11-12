@@ -26,6 +26,8 @@
     loading = $bindable(false),
     error_msg = $bindable(),
     children,
+    drag_dropped = $bindable([]),
+    dragging = $bindable(false),
     ...rest
   }: {
     patterns?: RdfEntry | RdfEntry[]
@@ -42,14 +44,9 @@
     loading?: boolean
     error_msg?: string
     children?: Snippet<[{ drag_dropped: Structure[] }]>
+    drag_dropped?: Structure[]
+    dragging?: boolean
   } & ComponentProps<typeof ScatterPlot> = $props()
-
-  // Set default axis labels if not provided
-  x_axis.label ??= `r (Å)`
-  y_axis.label ??= `g(r)`
-
-  let drag_dropped: Structure[] = $state([])
-  let dragging = $state(false)
 
   function format_structure_label(struct: Structure, label_base: string): string {
     const formula = get_electro_neg_formula(struct)
@@ -191,8 +188,8 @@
   <ScatterPlot
     {...rest}
     {series}
-    x_axis={{ ...x_axis, range: [0, max_r] }}
-    y_axis={{ ...y_axis, range: [0, max_g * 1.05] }}
+    x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}
+    y_axis={{ label: `g(r)`, range: [0, max_g * 1.05], ...y_axis }}
     styles={{ show_lines: true, show_points: false }}
     class={`${rest.class ?? ``} ${dragging ? `dragging` : ``}`}
     style={rest.style ?? `height: 400px;`}

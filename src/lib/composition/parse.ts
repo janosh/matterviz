@@ -341,20 +341,27 @@ export const parse_formula_with_oxidation = (
   const elements: ElementWithOxidation[] = []
   const cleaned_formula = expand_parentheses(formula.replace(/\s/g, ``))
 
-  // Regex to match: Element, optional oxidation state (^2+ or [2+]), optional count
+  // Regex to match: Element, optional oxidation state and/or count in either order
   // Pattern: ([A-Z][a-z]?)  - element symbol
-  //          (?:\^([+-]?\d+[+-]?)|  - ^2+ or ^+2 syntax
-  //          \[([+-]?\d+[+-]?)\])?  - [2+] or [+2] syntax
-  //          (\d*)  - optional count
-  const regex = /([A-Z][a-z]?)(?:\^([+-]?\d+[+-]?)|\[([+-]?\d+[+-]?)\])?(\d*)/g
+  //          Followed by one of:
+  //          - oxidation then optional count: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])(\d*)
+  //          - count then optional oxidation: (\d+)(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?
+  //          - just oxidation: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])
+  //          - just count: (\d+)
+  //          - neither
+  const regex =
+    /([A-Z][a-z]?)(?:(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])(\d*)|(\d+)(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?)?/g
 
   let match: RegExpExecArray | null
   let orig_idx = 0
 
   while ((match = regex.exec(cleaned_formula)) !== null) {
     const element = match[1] as ElementSymbol
-    const oxidation_str = match[2] || match[3] // Either ^2+ or [2+] syntax
-    const count = match[4] ? parseInt(match[4], 10) : 1
+    // Oxidation can be in groups 2/3 (oxidation first) or 6/7 (count first)
+    // Count can be in group 4 (after oxidation) or 5 (before oxidation)
+    const oxidation_str = match[2] || match[3] || match[6] || match[7]
+    const count_str = match[4] || match[5]
+    const count = count_str ? parseInt(count_str, 10) : 1
 
     if (!elem_symbols.includes(element)) {
       throw new Error(`Invalid element symbol: ${element}`)

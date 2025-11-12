@@ -6,8 +6,8 @@
 
   let {
     y,
-    x_axis = { label: `Atomic Number` },
-    y_axis = { label: ``, format: `~s` },
+    x_axis = {},
+    y_axis = {},
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
@@ -45,8 +45,8 @@
   ]}
   bind:tooltip_point
   bind:hovered
-  {x_axis}
-  {y_axis}
+  x_axis={{ label: `Atomic Number`, ...x_axis }}
+  y_axis={{ format: `~s`, ...y_axis }}
   color_bar={null}
   padding={{ l: 45, r: 10, t: 0, b: 40 }}
   {...rest}

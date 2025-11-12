@@ -39,10 +39,11 @@
   {...rest}
   style={`min-width: 0; ${rest.style ?? ``}`}
 >
-  {#snippet children({ option }: { option: D3InterpolateName })}
+  {#snippet children({ option }: { option: unknown; idx: number })}
+    {@const d3_option = option as D3InterpolateName}
     <ColorBar
-      title={option.replace(/^interpolate/, ``)}
-      color_scale={option}
+      title={d3_option.replace(/^interpolate/, ``)}
+      color_scale={d3_option}
       tick_labels={0}
       title_side="left"
       wrapper_style="width: 100%;"

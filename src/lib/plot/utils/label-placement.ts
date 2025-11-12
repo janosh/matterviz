@@ -1,7 +1,9 @@
 import type { AxisConfig, DataSeries, XyObj } from '$lib/plot'
 import type { InternalPoint, LabelPlacementConfig } from '$lib/plot/types'
 import { forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
-import type { ScaleContinuousNumeric } from 'd3-scale'
+import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
+
+type ScaleFn = ScaleContinuousNumeric<number, number> | ScaleTime<number, number>
 
 export interface LabelNode {
   id: string
@@ -30,16 +32,16 @@ function parse_font_size(size_str?: string): number {
 }
 
 export function compute_label_positions(
-  filtered_series: (DataSeries & { filtered_data: InternalPoint[] })[],
+  filtered_series: DataSeries[],
   config: LabelPlacementConfig & {
     max_labels?: number
     charge_strength?: number
     charge_distance_max?: number
   },
   scales: {
-    x_scale_fn: ScaleContinuousNumeric<number, number>
-    y_scale_fn: ScaleContinuousNumeric<number, number>
-    y2_scale_fn: ScaleContinuousNumeric<number, number>
+    x_scale_fn: ScaleFn
+    y_scale_fn: ScaleFn
+    y2_scale_fn: ScaleFn
     x_axis: AxisConfig
   },
   bounds: {

@@ -45,8 +45,8 @@
     show_angles = null,
     orientation = `vertical`,
     wavelength = null,
-    x_axis = { label: `2θ (degrees)` },
-    y_axis = { label: `Intensity (a.u.)` },
+    x_axis = {},
+    y_axis = {},
     allow_file_drop = true,
     on_file_drop,
     loading = $bindable(false),
@@ -236,6 +236,8 @@
       loading = false
     }
   }
+
+  const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
 </script>
 
 <StatusMessage bind:message={error_msg} type="error" dismissible />
@@ -268,14 +270,23 @@
     series={bar_series}
     bind:orientation
     x_axis={{
-      label_shift: { y: 20 },
-      range: orientation === `horizontal` ? intensity_range : angle_range,
+      label: orientation === `horizontal` ? intensity_label : angle_label,
+
       ...(orientation === `horizontal` ? y_axis : x_axis),
+      label_shift: {
+        y: 20,
+        ...(orientation === `horizontal` ? y_axis : x_axis).label_shift,
+      },
+      range: orientation === `horizontal` ? intensity_range : angle_range,
     }}
     y_axis={{
-      label_shift: { x: 2 },
-      range: orientation === `horizontal` ? angle_range : intensity_range,
+      label: orientation === `horizontal` ? angle_label : intensity_label,
       ...(orientation === `horizontal` ? x_axis : y_axis),
+      label_shift: {
+        x: 2,
+        ...(orientation === `horizontal` ? x_axis : y_axis).label_shift,
+      },
+      range: orientation === `horizontal` ? angle_range : intensity_range,
     }}
     {tooltip}
     ondrop={handle_file_drop}

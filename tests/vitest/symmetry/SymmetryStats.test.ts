@@ -142,7 +142,7 @@ describe(`SymmetryStats`, () => {
       const sym_data = create_mock_sym_data()
       mount(SymmetryStats, {
         target: document.body,
-        props: { sym_data, settings: { symprec: 1e-4, algo: `Standard` } },
+        props: { sym_data, settings: { symprec: 1e-4, algo: `Moyo` } },
       })
 
       const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)

@@ -467,7 +467,7 @@
   // Filter series data to only include points within bounds and augment with internal data
   let filtered_series = $derived(
     series_with_ids
-      .map((data_series: DataSeries, series_idx: number) => {
+      .map((data_series: DataSeries, series_idx: number): DataSeries => {
         if (!(data_series?.visible ?? true)) {
           return { ...data_series, visible: false, filtered_data: [] }
         }
@@ -539,8 +539,10 @@
         }
       })
       // Filter series end up completely empty after point filtering
-      .filter((series_data: DataSeries & { filtered_data: InternalPoint[] }) =>
-        series_data.filtered_data.length > 0
+      .filter((
+        series_data: DataSeries,
+      ): series_data is DataSeries & { filtered_data: InternalPoint[] } =>
+        !!series_data.filtered_data && series_data.filtered_data.length > 0
       ),
   )
 
@@ -580,7 +582,7 @@
   // Prepare data needed for the legend component
   let legend_data = $derived.by(() => {
     const items = series_with_ids.map(
-      (data_series: DataSeries, series_idx: number) => {
+      (data_series: DataSeries & { _id?: string | number }, series_idx: number) => {
         const is_visible = data_series?.visible ?? true
         // Prefer top-level label, fallback to metadata label
         const explicit_label = data_series?.label ??
@@ -942,8 +944,7 @@
     if (!width || !height) return
 
     let closest_point: InternalPoint | null = null
-    let closest_series: (DataSeries & { filtered_data: InternalPoint[] }) | null =
-      null
+    let closest_series: DataSeries | null = null
     let min_screen_dist_sq = Infinity
     const { threshold_px = 20 } = hover_config // Use configured threshold
     const hover_threshold_px_sq = threshold_px * threshold_px
@@ -1013,7 +1014,7 @@
     link_strength: 0.8,
     link_distance: 10,
     placement_ticks: 200, // Increased from 120 for better settling
-    link_distance_range: [5, 20], // Default min and max distance (replacing max_link_distance)
+    link_distance_range: [5, 20] as [number, number], // Default min and max distance (replacing max_link_distance)
     max_labels: 300, // Maximum labels before falling back to simple offsets
     charge_strength: 50, // Repulsion strength for markers
     charge_distance_max: 30, // Limit range of repulsion
