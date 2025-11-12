@@ -58,7 +58,7 @@ export function compute_label_positions(
   const links: { source: string; target: string }[] = []
 
   for (const series of filtered_series) {
-    for (const pt of series.filtered_data) {
+    for (const pt of series.filtered_data ?? []) {
       if (!pt.point_label?.auto_placement || !pt.point_label.text) continue
 
       const ax = x_axis.format?.startsWith(`%`)

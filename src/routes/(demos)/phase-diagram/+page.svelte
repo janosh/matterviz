@@ -64,7 +64,9 @@
 
     return entries.filter((entry) => {
       const elements = Object.keys(entry.composition) as ElementSymbol[]
-      const present_elements = elements.filter((el) => entry.composition[el] > 0)
+      const present_elements = elements.filter((el) =>
+        (entry.composition?.[el] ?? 0) > 0
+      )
 
       // Include entries that contain only our target elements
       return present_elements.every((el) => element_set.has(el))
@@ -79,7 +81,9 @@
     const element_set = new Set(binary_elements)
     return entries.filter((entry) => {
       const elements = Object.keys(entry.composition) as ElementSymbol[]
-      const present_elements = elements.filter((el) => entry.composition[el] > 0)
+      const present_elements = elements.filter((el) =>
+        (entry.composition?.[el] ?? 0) > 0
+      )
       // Include entries that contain only our target elements (unaries allowed)
       return present_elements.every((el) => element_set.has(el))
     })

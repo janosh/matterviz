@@ -896,7 +896,7 @@ describe(`Export functionality`, () => {
       const structure: AnyStructure = {
         id: `test`,
         sites: sites as Site[],
-        lattice: lattice as PymatgenLattice,
+        lattice: lattice as unknown as PymatgenLattice,
       }
 
       tests.forEach(({ format, expected }) => {

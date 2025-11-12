@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import type { ChemicalElement, ElementCategory } from '$lib'
+  import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib'
   import { element_data, PeriodicTable } from '$lib'
   import { TableInset } from '$lib/periodic-table'
   import { ColorBar } from '$lib/plot'
@@ -78,7 +78,16 @@
   })
 
   // Active elements border demo
-  let active_elements_demo = $state([`H`, `C`, `N`, `O`, `Fe`, `Cu`, `Au`, `Ag`])
+  let active_elements: ElementSymbol[] = $state([
+    `H`,
+    `C`,
+    `N`,
+    `O`,
+    `Fe`,
+    `Cu`,
+    `Au`,
+    `Ag`,
+  ])
   let active_tile_border = $state({ width: `2px`, style: `solid`, color: `#ff0000` })
 </script>
 
@@ -196,7 +205,7 @@
 
 <PeriodicTable
   tile_props={{ show_name: window_width > 800 }}
-  active_elements={active_elements_demo}
+  {active_elements}
   style={`--elem-tile-active-border: ${active_tile_border.width} ${active_tile_border.style} ${active_tile_border.color}`}
   {onenter}
 >

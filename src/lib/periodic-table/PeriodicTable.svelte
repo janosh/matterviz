@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { ChemicalElement, ElementCategory, XyObj } from '$lib'
   import { elem_symbols, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
-  import { default_category_colors, is_color } from '$lib/colors'
+  import { is_color } from '$lib/colors'
   import { element_data } from '$lib/element'
   import { ColorBar } from '$lib/plot'
+  import { colors } from '$lib/state.svelte'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -221,10 +222,7 @@
       ) {
         // Use missing color for zero/missing values or when no heatmap data
         if (missing_color === `element-category` && element) {
-          const category_key = element.category.replaceAll(` `, `-`)
-          return `var(--${category_key}-bg-color, ${
-            default_category_colors[category_key] || `#cccccc`
-          })`
+          return colors.category[element.category] || `#cccccc`
         }
         return missing_color
       }
@@ -314,7 +312,7 @@
           ? active_elem === symbol
           : active_elem?.symbol === symbol
       )}
-      {@const active = active_category === category.replaceAll(` `, `-`) ||
+      {@const active = active_category === category ||
         active_element?.name === name || is_active_elem}
       {@const style = `grid-column: ${column}; grid-row: ${row};`}
       <ElementTile
@@ -378,8 +376,7 @@
           {@render tooltip({
           element: tooltip_element,
           value: tooltip_value,
-          active:
-            active_category === tooltip_element.category.replaceAll(` `, `-`) ||
+          active: active_category === tooltip_element.category ||
             active_element?.name === tooltip_element.name,
           bg_color: color_overrides[tooltip_element.symbol] ??
             bg_color(tooltip_value, tooltip_element),

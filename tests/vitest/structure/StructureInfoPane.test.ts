@@ -1,5 +1,4 @@
 import { StructureInfoPane } from '$lib'
-import type { PymatgenStructure } from '$lib/structure'
 import { mount } from 'svelte'
 import { expect, test } from 'vitest'
 import { get_dummy_structure } from '../setup'
@@ -15,7 +14,7 @@ test.each([
   `%i atoms: %s`,
   (atom_count, should_show_sites, _description) => {
     const structure = get_dummy_structure(`H`, atom_count, true)
-    const atom_count_thresholds = [50, 500]
+    const atom_count_thresholds: [number, number] = [50, 500]
     mount(StructureInfoPane, {
       target: document.body,
       props: { structure, pane_open: true, atom_count_thresholds },
@@ -78,7 +77,7 @@ test(`structure with > 500 atoms should not create sites section`, () => {
 })
 
 test(`symmetry section displays when symmetry data is available`, () => {
-  const structure = get_dummy_structure(`H`, 10, true) as PymatgenStructure
+  const structure = get_dummy_structure(`H`, 10, true)
   // Override lattice with custom properties for testing
   structure.lattice = {
     ...structure.lattice,
@@ -110,7 +109,7 @@ test(`symmetry section displays when symmetry data is available`, () => {
 
 test(`symmetry section behavior for different structure types`, () => {
   // Test periodic structure with symmetry
-  const periodic_structure = get_dummy_structure(`H`, 4, true) as PymatgenStructure
+  const periodic_structure = get_dummy_structure(`H`, 4, true)
   periodic_structure.lattice = {
     ...periodic_structure.lattice,
     a: 4.0,
@@ -148,7 +147,7 @@ test(`symmetry section behavior for different structure types`, () => {
 })
 
 test(`symmetry section positioning and error handling`, () => {
-  const structure = get_dummy_structure(`H`, 3, true) as PymatgenStructure
+  const structure = get_dummy_structure(`H`, 3, true)
   structure.lattice = {
     ...structure.lattice,
     a: 3.0,
@@ -186,7 +185,7 @@ test(`symmetry section positioning and error handling`, () => {
 })
 
 test(`Wyckoff table integration with selected sites`, () => {
-  const structure = get_dummy_structure(`H`, 4, true) as PymatgenStructure
+  const structure = get_dummy_structure(`H`, 4, true)
   let selected_sites: number[] = []
 
   mount(StructureInfoPane, {
@@ -212,7 +211,7 @@ test(`Wyckoff table integration with selected sites`, () => {
 })
 
 test(`pane state management works correctly`, () => {
-  const structure = get_dummy_structure(`H`, 2, true) as PymatgenStructure
+  const structure = get_dummy_structure(`H`, 2, true)
   let pane_open = false
 
   mount(StructureInfoPane, {
@@ -233,7 +232,7 @@ test(`pane state management works correctly`, () => {
 })
 
 test(`handles large structures efficiently`, () => {
-  const large_structure = get_dummy_structure(`H`, 500, true) as PymatgenStructure
+  const large_structure = get_dummy_structure(`H`, 500, true)
 
   const start_time = performance.now()
 

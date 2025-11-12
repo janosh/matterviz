@@ -50,7 +50,7 @@ describe(`State Management`, () => {
     })
 
     test.each([
-      [`category`, `alkali-metal`, `#ff0000`],
+      [`category`, `alkali metal`, `#ff0000`],
       [`element`, `H`, `#00ff00`],
     ])(`allows %s color mutations`, (type, key, color) => {
       colors[type as keyof typeof colors][key] = color
@@ -58,9 +58,9 @@ describe(`State Management`, () => {
     })
 
     test(`preserves other colors when mutating specific ones`, () => {
-      const orig_noble_gas = colors.category[`noble-gas`]
-      colors.category[`alkali-metal`] = `#ff0000`
-      expect(colors.category[`noble-gas`]).toBe(orig_noble_gas)
+      const orig_noble_gas = colors.category[`noble gas`]
+      colors.category[`alkali metal`] = `#ff0000`
+      expect(colors.category[`noble gas`]).toBe(orig_noble_gas)
     })
   })
 
@@ -179,7 +179,7 @@ describe(`State Management`, () => {
         periodic_table: { ...periodic_table_state },
       }
 
-      colors.category[`alkali-metal`] = `#ff0000`
+      colors.category[`alkali metal`] = `#ff0000`
 
       expect(selected).toEqual(initial_states.selected)
       expect(tooltip).toEqual(initial_states.tooltip)

@@ -26,11 +26,11 @@ test.describe(`Periodic Table`, () => {
 
     for (const category of element_categories) {
       let count = category_counts[category] as number
-      const css_cls = `.${category.replaceAll(` `, `-`)}`
+      const selector = `[data-category="${category}"]`
       // add 1 to expected count since lanthanides and actinides have placeholder
       // tiles showing where in the periodic table their rows insert
       if ([`lanthanide`, `actinide`].includes(category)) count += 1
-      expect(await page.$$(css_cls), category).toHaveLength(count as number)
+      expect(await page.$$(selector), category).toHaveLength(count as number)
     }
   })
 

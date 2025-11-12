@@ -24,24 +24,27 @@ export function doc_query<T extends HTMLElement>(selector: string): T {
 
 // Test data factory for creating mock structures
 export const get_dummy_structure = (
-  element = `H`,
+  element: ElementSymbol = `H`,
   atoms = 3,
   with_lattice = false,
-) => {
+): PymatgenStructure => {
+  const matrix: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
+  const pbc: Pbc = [false, false, false]
   const structure = {
     sites: Array.from({ length: atoms }, (_, idx) => ({
       species: [{ element, occu: 1, oxidation_state: 0 }],
-      abc: [0, 0, 0],
-      xyz: [idx, 0, 0],
+      abc: [0, 0, 0] as Vec3,
+      xyz: [idx, 0, 0] as Vec3,
       label: `${element}${idx + 1}`,
       properties: {},
     })),
+    lattice: { matrix, pbc, volume: 0, a: 0, b: 0, c: 0, alpha: 0, beta: 0, gamma: 0 },
     charge: 0,
   }
 
   if (with_lattice) {
-    const matrix = [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]]
-    const pbc = [true, true, true]
+    const matrix: Matrix3x3 = [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]]
+    const pbc: Pbc = [true, true, true]
     const lengths = { a: 5.0, b: 5.0, c: 5.0 }
     const angles = { alpha: 90.0, beta: 90.0, gamma: 90.0 }
     const lattice = { ...lengths, ...angles, volume: 125.0, matrix, pbc }
