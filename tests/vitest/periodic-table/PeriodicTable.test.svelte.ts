@@ -228,7 +228,7 @@ describe(`PeriodicTable`, () => {
 
   test.each(
     [
-      [`element-category`, ``], // should be var(--diatomic-nonmetal-bg-color) but CSS custom properties don't resolve in happy-dom
+      [`element-category`, `#ff8c00`], // now returns actual color from default_category_colors
       [`#ff0000`, `#ff0000`],
       [`#666666`, `#666666`],
     ] as const,
