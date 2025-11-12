@@ -36,32 +36,37 @@ export function handle_legend_double_click(
   idx: number,
   prev_visibility: boolean[] | null,
 ): { series: DataSeries[]; previous_visibility: boolean[] | null } {
-  const label = series[idx]?.label
-  const current = series.map((srs) => srs?.visible ?? true)
-  const is_isolated = series.every((s, i) => {
+  if (idx < 0 || idx >= series.length) {
+    return { series, previous_visibility: prev_visibility }
+  }
+
+  const { label } = series[idx]
+  const current = series.map((srs) => srs.visible ?? true)
+  // Only check original series (ignore new ones added after isolation)
+  const check_series = prev_visibility ? series.slice(0, prev_visibility.length) : series
+  const is_isolated = check_series.every((s, i) => {
     const in_group = label ? s.label === label : i === idx
-    return in_group ? (s?.visible ?? true) : !(s?.visible ?? true)
+    return in_group ? s.visible ?? true : !s.visible
   })
 
+  // Restore from isolation
   if (is_isolated && prev_visibility) {
     return {
-      series: series.map((srs, idx) => {
-        // Only restore visibility if we have a saved value for this index
-        // (new series added after isolation should keep their current visibility)
-        if (idx < prev_visibility.length && current[idx] !== prev_visibility[idx]) {
-          return { ...srs, visible: prev_visibility[idx] }
-        }
-        return srs
-      }),
+      series: series.map((srs, idx) =>
+        idx < prev_visibility.length && current[idx] !== prev_visibility[idx]
+          ? { ...srs, visible: prev_visibility[idx] }
+          : srs
+      ),
       previous_visibility: null,
     }
   }
 
-  const new_prev = current.filter((v) => v).length > 1 ? [...current] : null
+  // Isolate series
+  const new_prev = current.filter(Boolean).length > 1 ? [...current] : null
   return {
     series: series.map((srs, srs_idx) => {
       const in_group = label ? srs.label === label : srs_idx === idx
-      return (srs?.visible ?? true) !== in_group ? { ...srs, visible: in_group } : srs
+      return (srs.visible ?? true) !== in_group ? { ...srs, visible: in_group } : srs
     }),
     previous_visibility: new_prev,
   }

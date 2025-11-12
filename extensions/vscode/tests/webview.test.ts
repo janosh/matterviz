@@ -132,13 +132,21 @@ describe(`VSCode Download Integration`, () => {
   })
 
   test(`handles binary data (PNG) correctly`, async () => {
-    vi.resetModules() // Reset modules to clear cached vscode_api variable in webview/main.ts
-    const mock_file_reader = {
-      onload: null as ((event: { target: { result: string } }) => void) | null,
-      readAsDataURL: vi.fn(),
-      result: null as string | null,
-    }
-    globalThis.FileReader = vi.fn(() => mock_file_reader) as unknown as typeof FileReader
+    vi.resetModules()
+    let onload: (() => void) | undefined
+    let result: string | null = null
+
+    globalThis.FileReader = vi.fn(function (this: FileReader) {
+      this.readAsDataURL = vi.fn(() => {
+        setTimeout(() => {
+          result = `data:image/png;base64,ZmFrZSBwbmcgZGF0YQ==`
+          onload?.()
+        }, 0)
+      })
+      Object.defineProperty(this, `onload`, { set: (fn) => (onload = fn) })
+      Object.defineProperty(this, `result`, { get: () => result })
+    }) as unknown as typeof FileReader
+
     const mock_post_message = vi.fn()
     globalThis.acquireVsCodeApi = vi.fn(() => ({
       postMessage: mock_post_message,
@@ -152,13 +160,11 @@ describe(`VSCode Download Integration`, () => {
       `structure.png`,
       `image/png`,
     )
-    expect(mock_file_reader.readAsDataURL).toHaveBeenCalledWith(expect.any(Blob))
-    const data_url = `data:image/png;base64,ZmFrZSBwbmcgZGF0YQ==`
-    mock_file_reader.result = data_url
-    if (mock_file_reader.onload) mock_file_reader.onload({ target: { result: data_url } })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
     expect(mock_post_message).toHaveBeenCalledWith({
       command: `saveAs`,
-      content: data_url,
+      content: `data:image/png;base64,ZmFrZSBwbmcgZGF0YQ==`,
       filename: `structure.png`,
       is_binary: true,
     })
@@ -180,12 +186,13 @@ describe(`VSCode Download Integration`, () => {
 
   test(`handles FileReader errors for binary data`, async () => {
     vi.resetModules()
-    const mock_file_reader = {
-      onload: null as ((event: { target: { result: string } }) => void) | null,
-      onerror: null as (() => void) | null,
-      readAsDataURL: vi.fn(),
-    }
-    globalThis.FileReader = vi.fn(() => mock_file_reader) as unknown as typeof FileReader
+    let onerror: (() => void) | undefined
+
+    globalThis.FileReader = vi.fn(function (this: FileReader) {
+      this.readAsDataURL = vi.fn(() => setTimeout(() => onerror?.(), 0))
+      Object.defineProperty(this, `onerror`, { set: (fn) => (onerror = fn) })
+    }) as unknown as typeof FileReader
+
     const mock_post_message = vi.fn()
     globalThis.acquireVsCodeApi = vi.fn(() => ({
       postMessage: mock_post_message,
@@ -194,12 +201,9 @@ describe(`VSCode Download Integration`, () => {
     }))
     const { setup_vscode_download } = await import(`../src/webview/main`)
     setup_vscode_download()
-
     globalThis.download(new Blob([`data`]), `test.png`, `image/png`)
-    expect(mock_file_reader.readAsDataURL).toHaveBeenCalledWith(expect.any(Blob))
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
-    // Simulate FileReader error
-    if (mock_file_reader.onerror) mock_file_reader.onerror()
     expect(mock_post_message).toHaveBeenCalledWith({
       command: `error`,
       text: `Failed to read binary data for download`,

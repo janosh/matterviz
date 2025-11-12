@@ -30,7 +30,7 @@ import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
 import { readFileSync } from 'fs'
 import process from 'node:process'
 import { join } from 'path'
-import { beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'zlib'
 import { get_dummy_structure } from '../setup'
 
@@ -39,6 +39,9 @@ import { get_dummy_structure } from '../setup'
 let console_error_spy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+})
+afterEach(() => {
+  console_error_spy.mockRestore()
 })
 
 // Helpers to reduce duplication and strengthen invariants
