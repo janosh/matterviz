@@ -394,7 +394,7 @@ export const parse_formula_with_oxidation = (
 
 // Convert OxiComposition to ElementWithOxidation array.
 // Does not preserve original order since objects don't have a defined order.
-export const composition_with_oxidation_to_elements = (
+export const oxi_composition_to_elements = (
   composition: OxiComposition,
 ): ElementWithOxidation[] => {
   return Object.entries(composition).map(([element, data], idx) => ({

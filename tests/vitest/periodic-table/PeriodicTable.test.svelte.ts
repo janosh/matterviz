@@ -158,7 +158,7 @@ describe(`PeriodicTable`, () => {
     (active_category, expected_active) => {
       mount(PeriodicTable, {
         target: document.body,
-        props: { active_category: active_category.replaceAll(` `, `-`) },
+        props: { active_category },
       })
       expect(document.querySelectorAll(`.element-tile.active`).length).toBe(
         expected_active,

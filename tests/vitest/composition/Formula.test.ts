@@ -1,7 +1,7 @@
 import { Formula } from '$lib/composition'
 import type { OxiComposition } from '$lib/composition/parse'
 import {
-  composition_with_oxidation_to_elements,
+  oxi_composition_to_elements,
   parse_formula_with_oxidation,
 } from '$lib/composition/parse'
 import { mount } from 'svelte'
@@ -138,13 +138,13 @@ test(`parse_formula_with_oxidation throws on invalid element`, () => {
   expect(() => parse_formula_with_oxidation(`Xx2O3`)).toThrow(`Invalid element symbol`)
 })
 
-test(`composition_with_oxidation_to_elements converts correctly`, () => {
+test(`oxi_composition_to_elements converts correctly`, () => {
   const composition: Partial<OxiComposition> = {
     Fe: { amount: 2, oxidation_state: 3 },
     O: { amount: 3, oxidation_state: -2 },
   }
 
-  const result = composition_with_oxidation_to_elements(
+  const result = oxi_composition_to_elements(
     composition as OxiComposition,
   )
   expect(result).toHaveLength(2)

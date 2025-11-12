@@ -314,7 +314,7 @@
           ? active_elem === symbol
           : active_elem?.symbol === symbol
       )}
-      {@const active = active_category === category.replaceAll(` `, `-`) ||
+      {@const active = active_category === category ||
         active_element?.name === name || is_active_elem}
       {@const style = `grid-column: ${column}; grid-row: ${row};`}
       <ElementTile
