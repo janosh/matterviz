@@ -116,30 +116,31 @@ export function get_orig_site_idx(
 
 // Expand structure with PBC images - use minimal expansion based on atom positions
 function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
-  if (!(`lattice` in structure) || !structure.lattice) return structure
+  if (!(`lattice` in structure) || !structure.lattice || !structure.sites.length) {
+    return structure
+  }
 
   const { sites, lattice } = structure
-  if (sites.length === 0) return structure
-
   const lattice_T = math.transpose_3x3_matrix(lattice.matrix)
   const pbc = lattice.pbc ?? [true, true, true]
 
-  // For small structures or non-periodic, just expand all
-  if (sites.length < 20 || !pbc.some((p) => p)) {
-    const image_offsets = [-1, 0, 1]
-      .flatMap((dx) =>
-        [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dz) => [dx, dy, dz] as const))
-      )
-      .filter(
-        ([dx, dy, dz]) =>
-          !(dx === 0 && dy === 0 && dz === 0) &&
-          (pbc[0] || dx === 0) &&
-          (pbc[1] || dy === 0) &&
-          (pbc[2] || dz === 0),
-      )
+  // All valid image offsets respecting PBC
+  const all_offsets = [-1, 0, 1]
+    .flatMap((dx) =>
+      [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dz) => [dx, dy, dz] as const))
+    )
+    .filter(
+      ([dx, dy, dz]) =>
+        !(dx === 0 && dy === 0 && dz === 0) &&
+        (pbc[0] || dx === 0) &&
+        (pbc[1] || dy === 0) &&
+        (pbc[2] || dz === 0),
+    )
 
+  // Small structures: expand all atoms
+  if (sites.length < 20 || !pbc.some((p) => p)) {
     const image_sites = sites.flatMap((site, orig_idx) =>
-      image_offsets.map(([dx, dy, dz]) => {
+      all_offsets.map(([dx, dy, dz]) => {
         const img_abc: Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
         return {
           ...site,
@@ -149,77 +150,32 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
         }
       })
     )
-
     return { ...structure, sites: [...sites, ...image_sites] }
   }
 
-  // For larger structures: only add images that could realistically form bonds
-  // Maximum realistic bond distance ~5Å
-  const max_bond_dist = 5.0
-  const cutoff_frac: Vec3 = [
-    max_bond_dist / lattice.a,
-    max_bond_dist / lattice.b,
-    max_bond_dist / lattice.c,
-  ]
+  // Large structures: only expand atoms near boundaries (within 5Å bond distance)
+  const cutoff: Vec3 = [5.0 / lattice.a, 5.0 / lattice.b, 5.0 / lattice.c]
 
-  const image_sites: Site[] = []
+  const image_sites = sites.flatMap((site, orig_idx) => {
+    const norm = site.abc.map((coord) => coord - Math.floor(coord)) as Vec3
 
-  for (let orig_idx = 0; orig_idx < sites.length; orig_idx++) {
-    const site = sites[orig_idx]
-    const [a, b, c] = site.abc
-
-    // Normalize to [0,1)
-    const a_norm = a - Math.floor(a)
-    const b_norm = b - Math.floor(b)
-    const c_norm = c - Math.floor(c)
-
-    // Determine which image cells this atom needs
-    const need_images: [number, number, number][] = []
-
-    for (let dx = -1; dx <= 1; dx++) {
-      if (!pbc[0] && dx !== 0) continue
-      if (dx === -1 && a_norm > cutoff_frac[0]) continue // Too far from lower boundary
-      if (dx === 1 && a_norm < 1 - cutoff_frac[0]) continue // Too far from upper boundary
-      if (dx === 0 && a_norm > cutoff_frac[0] && a_norm < 1 - cutoff_frac[0]) {
-        // Interior in this direction - only need center images
-        for (let dy = -1; dy <= 1; dy++) {
-          if (!pbc[1] && dy !== 0) continue
-          for (let dz = -1; dz <= 1; dz++) {
-            if (!pbc[2] && dz !== 0) continue
-            if (dx === 0 && dy === 0 && dz === 0) continue
-            need_images.push([dx, dy, dz])
-          }
+    return all_offsets
+      .filter(
+        ([dx, dy, dz]) =>
+          (dx === 0 || (dx === -1 ? norm[0] <= cutoff[0] : norm[0] >= 1 - cutoff[0])) &&
+          (dy === 0 || (dy === -1 ? norm[1] <= cutoff[1] : norm[1] >= 1 - cutoff[1])) &&
+          (dz === 0 || (dz === -1 ? norm[2] <= cutoff[2] : norm[2] >= 1 - cutoff[2])),
+      )
+      .map(([dx, dy, dz]) => {
+        const img_abc: Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
+        return {
+          ...site,
+          abc: img_abc,
+          xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
+          properties: { ...site.properties, orig_site_idx: orig_idx },
         }
-        continue
-      }
-
-      for (let dy = -1; dy <= 1; dy++) {
-        if (!pbc[1] && dy !== 0) continue
-        if (dy === -1 && b_norm > cutoff_frac[1]) continue
-        if (dy === 1 && b_norm < 1 - cutoff_frac[1]) continue
-
-        for (let dz = -1; dz <= 1; dz++) {
-          if (!pbc[2] && dz !== 0) continue
-          if (dz === -1 && c_norm > cutoff_frac[2]) continue
-          if (dz === 1 && c_norm < 1 - cutoff_frac[2]) continue
-          if (dx === 0 && dy === 0 && dz === 0) continue
-
-          need_images.push([dx, dy, dz])
-        }
-      }
-    }
-
-    // Create image atoms
-    for (const [dx, dy, dz] of need_images) {
-      const img_abc: Vec3 = [a + dx, b + dy, c + dz]
-      image_sites.push({
-        ...site,
-        abc: img_abc,
-        xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
-        properties: { ...site.properties, orig_site_idx: orig_idx },
       })
-    }
-  }
+  })
 
   return { ...structure, sites: [...sites, ...image_sites] }
 }
