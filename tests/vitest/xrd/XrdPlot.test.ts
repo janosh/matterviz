@@ -1,6 +1,6 @@
 import { XrdPlot } from '$lib'
 import type { XrdPattern } from '$lib/xrd'
-import { ComponentProps, mount } from 'svelte'
+import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 const pattern: XrdPattern = {

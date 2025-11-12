@@ -8,35 +8,35 @@ import { doc_query } from '../setup'
  * Helper function to create mock MoyoDataset for testing
  */
 function create_mock_sym_data(overrides: Partial<MoyoDataset> = {}): MoyoDataset {
-  const default_data: MoyoDataset = {
+  const default_data = {
     number: 225,
     hm_symbol: `Fm-3m`,
     hall_number: 523,
     pearson_symbol: `cF4`,
     operations: [
       {
-        rotation: new Int32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-        translation: new Float64Array([0.0, 0.0, 0.0]),
+        rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const,
+        translation: [0.0, 0.0, 0.0] as const,
       },
       {
-        rotation: new Int32Array([-1, 0, 0, 0, -1, 0, 0, 0, 1]),
-        translation: new Float64Array([0.0, 0.0, 0.5]),
+        rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1] as const,
+        translation: [0.0, 0.0, 0.5] as const,
       },
       {
-        rotation: new Int32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-        translation: new Float64Array([0.5, 0.0, 0.0]),
+        rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const,
+        translation: [0.5, 0.0, 0.0] as const,
       },
     ],
     std_cell: {
       lattice: {
-        basis: new Float64Array([5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0]),
+        basis: [5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0] as const,
       },
       positions: [[0.0, 0.0, 0.0]],
-      numbers: new Int32Array([1]),
+      numbers: [1] as const,
     },
     wyckoffs: [`a`],
   }
-  return { ...default_data, ...overrides }
+  return { ...default_data, ...overrides } as MoyoDataset
 }
 
 describe(`SymmetryStats`, () => {
@@ -177,7 +177,7 @@ describe(`SymmetryStats`, () => {
         wyckoffs: [`a`, `b`, `c`],
         std_cell: {
           lattice: {
-            basis: new Float64Array([5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0]),
+            basis: [5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0] as const,
           },
           positions: [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [0.0, 0.5, 0.0]],
           numbers: [1, 2, 3],
@@ -198,7 +198,7 @@ describe(`SymmetryStats`, () => {
         wyckoffs: [],
         std_cell: {
           lattice: {
-            basis: new Float64Array([5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0]),
+            basis: [5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0] as const,
           },
           positions: [],
           numbers: [],
@@ -245,18 +245,18 @@ describe(`SymmetryStats`, () => {
         operations: [
           {
             // Identity + translation = pure translation
-            rotation: new Int32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-            translation: new Float64Array([0.5, 0.0, 0.0]),
+            rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const,
+            translation: [0.5, 0.0, 0.0] as const,
           },
           {
             // Non-identity rotation, no translation = pure rotation
-            rotation: new Int32Array([-1, 0, 0, 0, -1, 0, 0, 0, 1]),
-            translation: new Float64Array([0.0, 0.0, 0.0]),
+            rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1] as const,
+            translation: [0.0, 0.0, 0.0] as const,
           },
           {
             // Non-identity rotation + translation = roto-translation
-            rotation: new Int32Array([-1, 0, 0, 0, -1, 0, 0, 0, 1]),
-            translation: new Float64Array([0.5, 0.0, 0.0]),
+            rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1] as const,
+            translation: [0.5, 0.0, 0.0] as const,
           },
         ],
       })
@@ -310,7 +310,7 @@ describe(`SymmetryStats`, () => {
 
     test(`hides tooltips when show_tooltips=false`, () => {
       const sym_data = create_mock_sym_data()
-      const settings = { symprec: 1e-4, algo: `Moyo` }
+      const settings = { symprec: 1e-4, algo: `Moyo` as const }
       mount(SymmetryStats, {
         target: document.body,
         props: { sym_data, settings, show_tooltips: false },
@@ -406,23 +406,23 @@ describe(`SymmetryStats`, () => {
         operations: [
           {
             // Identity rotation + translation = pure translation
-            rotation: new Int32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-            translation: new Float64Array([0.5, 0.0, 0.0]),
+            rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const,
+            translation: [0.5, 0.0, 0.0] as const,
           },
           {
             // Non-identity rotation + no translation = pure rotation
-            rotation: new Int32Array([-1, 0, 0, 0, -1, 0, 0, 0, 1]),
-            translation: new Float64Array([0.0, 0.0, 0.0]),
+            rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1] as const,
+            translation: [0.0, 0.0, 0.0] as const,
           },
           {
             // Non-identity rotation + translation = roto-translation
-            rotation: new Int32Array([0, -1, 0, 1, 0, 0, 0, 0, 1]),
-            translation: new Float64Array([0.25, 0.25, 0.0]),
+            rotation: [0, -1, 0, 1, 0, 0, 0, 0, 1] as const,
+            translation: [0.25, 0.25, 0.0] as const,
           },
           {
             // Identity + very small translation (below EPS) = pure rotation
-            rotation: new Int32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-            translation: new Float64Array([EPS / 2, 0.0, 0.0]),
+            rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const,
+            translation: [EPS / 2, 0.0, 0.0] as const,
           },
         ],
       })

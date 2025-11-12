@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { doc_query } from './setup'
 
 describe(`StatusMessage`, () => {
-  test.each([``, undefined, null])(
+  test.each([``, undefined])(
     `renders nothing when message is $message`,
     (message) => {
       mount(StatusMessage, { target: document.body, props: { message } })

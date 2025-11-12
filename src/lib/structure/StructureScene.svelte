@@ -105,7 +105,7 @@
     rotation_target_ref = $bindable<Vec3 | undefined>(undefined),
     initial_computed_zoom = $bindable<number | undefined>(undefined),
     hidden_elements = $bindable(new Set()),
-    hidden_property_values = $bindable(new Set<number | string>()),
+    hidden_prop_vals = $bindable(new Set<number | string>()),
     atom_color_config = {
       mode: DEFAULTS.structure.atom_color_mode,
       scale: DEFAULTS.structure.atom_color_scale,
@@ -175,7 +175,7 @@
     rotation_target_ref?: Vec3 // Expose rotation target for reset
     initial_computed_zoom?: number // Expose initial zoom for reset
     hidden_elements?: Set<ElementSymbol>
-    hidden_property_values?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
+    hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
     atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
   } = $props()
@@ -308,7 +308,7 @@
 
       // Skip sites with hidden property values
       const prop_val = property_colors?.values[orig_idx]
-      if (prop_val !== undefined && hidden_property_values.has(prop_val)) return []
+      if (prop_val !== undefined && hidden_prop_vals.has(prop_val)) return []
 
       const radius = same_size_atoms ? atom_radius : site.species.reduce(
         (sum, { element, occu }) => sum + occu * (atomic_radii[element] ?? 1),
@@ -338,7 +338,7 @@
   let filtered_bond_pairs = $derived.by(() => {
     if (
       !structure?.sites ||
-      (hidden_elements.size === 0 && hidden_property_values.size === 0)
+      (hidden_elements.size === 0 && hidden_prop_vals.size === 0)
     ) {
       return bond_pairs
     }
@@ -351,7 +351,7 @@
       const orig_idx = get_orig_site_idx(site, site_idx)
       const prop_val = property_colors?.values[orig_idx]
       const prop_visible = prop_val === undefined ||
-        !hidden_property_values.has(prop_val)
+        !hidden_prop_vals.has(prop_val)
       return has_visible_element && prop_visible
     }
 

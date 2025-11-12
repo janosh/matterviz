@@ -160,7 +160,7 @@ describe(`Theme System`, () => {
         apply_theme_to_dom(theme as ThemeName)
 
         const root = document.documentElement
-        const expected = globalThis.MATTERVIZ_THEMES[theme as ThemeName] as {
+        const expected = globalThis.MATTERVIZ_THEMES?.[theme as ThemeName] as {
           surface_bg: string
           text_color: string
         }
@@ -251,7 +251,7 @@ describe(`Theme System`, () => {
 
       const root = document.documentElement
       expect(root.getAttribute(`data-theme`)).toBe(theme)
-      const expected = globalThis.MATTERVIZ_THEMES[theme as ThemeName] as {
+      const expected = globalThis.MATTERVIZ_THEMES?.[theme as ThemeName] as {
         surface_bg: string
         text_color: string
       }

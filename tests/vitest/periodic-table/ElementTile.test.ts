@@ -203,15 +203,14 @@ describe(`ElementTile`, () => {
       expect(node.classList.contains(`active`)).toBe(active)
     })
 
-    test(`applies category class based on element category`, () => {
+    test(`applies category as data attribute`, () => {
       mount(ElementTile, {
         target: document.body,
         props: { element: rand_element },
       })
 
       const node = doc_query(`.element-tile`)
-      const expected_class = rand_element.category.replaceAll(` `, `-`)
-      expect(node.classList.contains(expected_class)).toBe(true)
+      expect(node.getAttribute(`data-category`)).toBe(rand_element.category)
     })
   })
 
@@ -371,8 +370,7 @@ describe(`ElementTile`, () => {
         })
 
         const node = doc_query(`.element-tile`)
-        const expected_class = element_with_space.category.replaceAll(` `, `-`)
-        expect(node.classList.contains(expected_class)).toBe(true)
+        expect(node.getAttribute(`data-category`)).toBe(element_with_space.category)
       }
     })
 
@@ -652,8 +650,7 @@ describe(`ElementTile`, () => {
       })
 
       const node = doc_query(`.element-tile`)
-      const expected_color =
-        default_category_colors[rand_element.category.replaceAll(` `, `-`)]
+      const expected_color = default_category_colors[rand_element.category]
       expect(node.style.backgroundColor).toBe(expected_color)
     })
 
@@ -666,6 +663,29 @@ describe(`ElementTile`, () => {
 
       const node = doc_query(`.element-tile`)
       expect(node.style.backgroundColor).toBe(custom_color)
+    })
+
+    test(`reacts to colors.category changes`, async () => {
+      const { colors } = await import(`$lib/state.svelte`)
+      const original_color = colors.category[rand_element.category]
+
+      mount(ElementTile, {
+        target: document.body,
+        props: { element: rand_element },
+      })
+
+      const node = doc_query(`.element-tile`)
+      expect(node.style.backgroundColor).toBe(original_color)
+
+      // Change the category color
+      const new_color = `#abcdef`
+      colors.category[rand_element.category] = new_color
+      await new Promise((resolve) => setTimeout(resolve, 0)) // Wait for reactivity
+
+      expect(node.style.backgroundColor).toBe(new_color)
+
+      // Restore original color
+      colors.category[rand_element.category] = original_color
     })
   })
 

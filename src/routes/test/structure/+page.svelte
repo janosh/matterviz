@@ -23,7 +23,9 @@
   let event_calls = $state<{ event: string; data: unknown }[]>([])
 
   // Structure state - can be overridden by data_url
-  let structure = $state(mp1_struct as unknown as PymatgenStructure)
+  let structure = $state<PymatgenStructure | undefined>(
+    mp1_struct as unknown as PymatgenStructure,
+  )
 
   // Lattice properties for testing - using new dual opacity controls
   let lattice_props = $state({
