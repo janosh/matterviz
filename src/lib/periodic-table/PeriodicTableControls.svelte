@@ -102,15 +102,6 @@
     }
   })
 
-  // Apply category colors to CSS custom properties
-  $effect.pre(() => {
-    if (typeof document !== `undefined`) {
-      for (const [key, val] of Object.entries(colors.category)) {
-        document.documentElement.style.setProperty(`--${key}-bg-color`, val)
-      }
-    }
-  })
-
   // Generic reset function using simple object key access
   function reset_property(prop: keyof typeof defaults): void {
     const default_value = defaults[prop]
@@ -224,7 +215,6 @@
     </h3>
     {#each Object.keys(colors.category) as category (category)}
       <label
-        for="{category}-color"
         onmouseenter={() => (selected.category = category as ElementCategory)}
         onfocus={() => (selected.category = category as ElementCategory)}
         onmouseleave={() => (selected.category = null)}
@@ -232,10 +222,9 @@
       >
         <input
           type="color"
-          id="{category}-color"
           bind:value={colors.category[category]}
         />
-        <span>{category.replaceAll(`-`, ` `)}</span>
+        <span>{category}</span>
         {#if colors.category[category] !== default_category_colors[category]}
           <button
             onclick={(event) => {
@@ -551,6 +540,7 @@
   }
   .category-colors label span {
     flex: 1;
+    min-width: 0; /* Allow text to truncate */
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
@@ -558,6 +548,10 @@
   .category-colors input[type='color'] {
     width: 25px;
     height: 25px;
+    min-width: 25px;
+    min-height: 25px;
     border-radius: 50%;
+    overflow: hidden;
+    cursor: pointer;
   }
 </style>

@@ -27,7 +27,7 @@
     show_amounts = true,
     get_element_label,
     hidden_elements = $bindable(new Set()),
-    hidden_property_values = $bindable(new Set<number | string>()),
+    hidden_prop_vals = $bindable(new Set<number | string>()),
     title = ``,
     sym_data = null,
     ...rest
@@ -41,7 +41,7 @@
     show_amounts?: boolean // Whether to show element amounts
     get_element_label?: (element: string, amount: number) => string // Custom label function
     hidden_elements?: Set<ElementSymbol>
-    hidden_property_values?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
+    hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
     title?: string
     sym_data?: MoyoDataset | null
   } = $props()
@@ -69,7 +69,7 @@
   let previous_mode = $state(atom_color_config.mode)
   $effect(() => {
     if (atom_color_config.mode !== previous_mode) {
-      hidden_property_values = new Set()
+      hidden_prop_vals = new Set()
       previous_mode = atom_color_config.mode
     }
   })
@@ -239,7 +239,7 @@
           (`${atom_color_config.mode}-${value}`)
         }
           {@const color = color_map.get(value)}
-          {@const is_hidden = hidden_property_values.has(value)}
+          {@const is_hidden = hidden_prop_vals.has(value)}
           <div class="legend-item">
             <span
               class="category-label color-swatch"
@@ -254,8 +254,8 @@
               class:visible={is_hidden}
               onclick={(
                 event,
-              ) => (hidden_property_values = toggle_visibility(
-                hidden_property_values,
+              ) => (hidden_prop_vals = toggle_visibility(
+                hidden_prop_vals,
                 value,
                 event,
               ))}

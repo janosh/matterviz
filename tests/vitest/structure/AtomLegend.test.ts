@@ -1,10 +1,10 @@
-import type { CompositionType } from '$lib'
+import type { CompositionType, ElementSymbol } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup.ts'
+import { doc_query } from '../setup'
 
 describe(`AtomLegend Component`, () => {
   const mock_elements = { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }
@@ -180,7 +180,7 @@ describe(`AtomLegend Component`, () => {
   })
 
   test(`element visibility toggle`, async () => {
-    const hidden_elements = new Set()
+    const hidden_elements = new Set<ElementSymbol>()
     mount(AtomLegend, {
       target: document.body,
       props: { elements: { Fe: 2, O: 3 }, hidden_elements },
@@ -254,9 +254,9 @@ describe(`AtomLegend Component`, () => {
 
     test(`switches mode when option is clicked`, async () => {
       const atom_color_config = {
-        mode: `element`,
+        mode: `element` as const,
         scale: ``,
-        scale_type: `continuous`,
+        scale_type: `continuous` as const,
       }
       mount(AtomLegend, {
         target: document.body,
@@ -448,7 +448,7 @@ describe(`AtomLegend Component`, () => {
     })
 
     test(`property value visibility toggle`, async () => {
-      const hidden_property_values = new Set()
+      const hidden_prop_vals = new Set<string | number>()
       mount(AtomLegend, {
         target: document.body,
         props: {
@@ -458,7 +458,7 @@ describe(`AtomLegend Component`, () => {
             values: [4, 6],
             unique_values: [4, 6],
           },
-          hidden_property_values,
+          hidden_prop_vals,
         },
       })
 
@@ -481,7 +481,7 @@ describe(`AtomLegend Component`, () => {
 
   describe(`Mode Switching Behavior`, () => {
     test(`clears hidden property values when switching modes`, async () => {
-      const hidden_property_values = new Set([4, 6])
+      const hidden_prop_vals = new Set([4, 6])
 
       // Mount with coordination mode
       mount(AtomLegend, {
@@ -494,7 +494,7 @@ describe(`AtomLegend Component`, () => {
             values: [4, 6],
             unique_values: [4, 6],
           },
-          hidden_property_values,
+          hidden_prop_vals,
         },
       })
 
@@ -510,7 +510,7 @@ describe(`AtomLegend Component`, () => {
         props: {
           elements: { Fe: 2, O: 3 },
           atom_color_config: { mode: `element`, scale_type: `continuous` },
-          hidden_property_values,
+          hidden_prop_vals,
         },
       })
       await tick()

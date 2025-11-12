@@ -5,10 +5,10 @@
   import ElementTile from '$lib/element/ElementTile.svelte'
   import { format_num } from '$lib/labels'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { CompositionWithOxidation, ElementWithOxidation } from './parse'
+  import type { ElementWithOxidation, OxiComposition } from './parse'
   import {
-    composition_with_oxidation_to_elements,
     format_oxi_state,
+    oxi_composition_to_elements,
     parse_formula_with_oxidation,
     sort_by_electronegativity,
     sort_by_hill_notation,
@@ -27,7 +27,7 @@
     on_click,
     ...rest
   }: HTMLAttributes<HTMLElement> & {
-    formula: string | CompositionWithOxidation
+    formula: string | OxiComposition
     color_scheme?: ColorSchemeName
     ordering?: FormulaOrdering
     as?: string
@@ -41,7 +41,7 @@
     try {
       return typeof formula === `string`
         ? parse_formula_with_oxidation(formula)
-        : composition_with_oxidation_to_elements(formula)
+        : oxi_composition_to_elements(formula)
     } catch (error) {
       console.error(`Failed to parse formula:`, error)
       return []

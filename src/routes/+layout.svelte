@@ -69,7 +69,9 @@
     '/structure/rdf': `RDF`,
     '/structure/xrd': `XRD`,
   }}
-  menu_style="display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;"
+  menu_props={{
+    style: `display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;`,
+  }}
   aria-label="Main navigation"
   {page}
 >

@@ -192,23 +192,23 @@ describe(`get_center_of_mass`, () => {
   test.each([
     {
       sites: [
-        { element: `H`, xyz: [0, 0, 0] as Vec3, occu: 1 },
-        { element: `O`, xyz: [2, 2, 2] as Vec3, occu: 1 },
-        { element: `H`, xyz: [4, 4, 4] as Vec3, occu: 1 },
+        { element: `H`, xyz: [0, 0, 0] as Vec3, occu: 1, oxidation_state: 0 },
+        { element: `O`, xyz: [2, 2, 2] as Vec3, occu: 1, oxidation_state: 0 },
+        { element: `H`, xyz: [4, 4, 4] as Vec3, occu: 1, oxidation_state: 0 },
       ],
       expected: [2.0, 2.0, 2.0] as Vec3,
       desc: `simple structure with equal occupancies`,
     },
     {
       sites: [
-        { element: `H`, xyz: [0, 0, 0] as Vec3, occu: 0.5 },
-        { element: `O`, xyz: [2, 2, 2] as Vec3, occu: 2.0 },
+        { element: `H`, xyz: [0, 0, 0] as Vec3, occu: 0.5, oxidation_state: 0 },
+        { element: `O`, xyz: [2, 2, 2] as Vec3, occu: 2.0, oxidation_state: 0 },
       ],
       expected: [1.6, 1.6, 1.6] as Vec3,
       desc: `weighted occupancies`,
     },
     {
-      sites: [{ element: `H`, xyz: [1, 2, 3] as Vec3, occu: 1 }],
+      sites: [{ element: `H`, xyz: [1, 2, 3] as Vec3, occu: 1, oxidation_state: 0 }],
       expected: [1, 2, 3] as Vec3,
       desc: `single atom structure`,
     },

@@ -1,13 +1,8 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
   import { format_num } from '$lib'
-  import {
-    contrast_color,
-    default_category_colors,
-    is_color,
-    pick_contrast_color,
-  } from '$lib/colors'
-  import { selected } from '$lib/state.svelte'
+  import { contrast_color, is_color, pick_contrast_color } from '$lib/colors'
+  import { colors, selected } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   type SplitLayout =
@@ -60,11 +55,9 @@
     onclick?: (data: { element: ChemicalElement; event: MouseEvent }) => void
   } = $props()
 
-  let category = $derived(element.category.replaceAll(` `, `-`))
   // background color defaults to category color (initialized in colors/index.ts, user editable in PeriodicTableControls.svelte)
-
   let fallback_bg_color = $derived(
-    bg_color ?? default_category_colors[category] ?? `var(--${category}-bg-color)`,
+    bg_color ?? colors.category[element.category] ?? `#cccccc`,
   )
 
   // Determine if we should show the atomic number
@@ -159,7 +152,8 @@
   this={href ? `a` : `div`}
   bind:this={node}
   {...(href ? { href } : {})}
-  class="element-tile {category}"
+  class="element-tile"
+  data-category={element.category}
   class:active
   class:last-active={selected.last_element === element}
   class:clickable={Boolean(onclick)}

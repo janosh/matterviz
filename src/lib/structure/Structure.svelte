@@ -93,7 +93,7 @@
     // Track hidden elements across component lifecycle
     hidden_elements = $bindable(new Set<ElementSymbol>()),
     // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
-    hidden_property_values = $bindable(new Set<number | string>()),
+    hidden_prop_vals = $bindable(new Set<number | string>()),
     // Symmetry analysis data (bindable for external access)
     sym_data = $bindable<MoyoDataset | null>(null),
     // Symmetry analysis settings (bindable for external control)
@@ -149,7 +149,7 @@
       // Track which elements are hidden (bindable across frames in trajectories)
       hidden_elements?: Set<ElementSymbol>
       // Track which property values are hidden (e.g., Wyckoff positions, coordination numbers)
-      hidden_property_values?: Set<number | string>
+      hidden_prop_vals?: Set<number | string>
       // Symmetry analysis data (bindable for external access)
       sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
@@ -799,7 +799,7 @@
       {property_colors}
       elements={get_elem_amounts(supercell_structure ?? structure!)}
       bind:hidden_elements
-      bind:hidden_property_values
+      bind:hidden_prop_vals
       {sym_data}
     />
 
@@ -822,7 +822,7 @@
             bind:rotation_target_ref
             bind:initial_computed_zoom
             bind:hidden_elements
-            bind:hidden_property_values
+            bind:hidden_prop_vals
             {measure_mode}
             {width}
             {height}
