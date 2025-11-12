@@ -129,7 +129,7 @@ export function make_supercell(
         const translation = math.mat3x3_vec3_multiply(orig_T, [ii, jj, kk])
         const label_suffix = det > 1 ? `_${ii}${jj}${kk}` : ``
 
-        for (const site of structure.sites) {
+        for (const [orig_idx, site] of structure.sites.entries()) {
           // Translate to new position in Cartesian coordinates
           const cart_pos = math.add(site.xyz, translation)
 
@@ -154,7 +154,11 @@ export function make_supercell(
             xyz: final_pos,
             abc: frac_pos,
             label: label_suffix ? `${site.label}${label_suffix}` : site.label,
-            properties: site.properties,
+            properties: {
+              ...site.properties,
+              // Track which original unit cell atom this came from
+              orig_unit_cell_idx: orig_idx,
+            },
           })
         }
       }

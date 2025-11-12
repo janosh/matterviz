@@ -20,7 +20,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, OrthographicCamera, Scene } from 'three'
   import type { AtomColorConfig } from './atom-properties'
-  import { get_atom_colors } from './atom-properties'
+  import { get_property_colors } from './atom-properties'
   import type { StructureHandlerData } from './index'
   import {
     AtomLegend,
@@ -284,16 +284,14 @@
   })
 
   // Compute property-based colors for legend display
-  let property_colors = $derived.by(() => {
-    if (!structure || atom_color_config.mode === `element`) return null
-    const result = get_atom_colors(
+  let property_colors = $derived(
+    get_property_colors(
       structure,
       atom_color_config,
       scene_props.bonding_strategy,
       sym_data,
-    )
-    return result.colors.length ? result : null
-  })
+    ),
+  )
 
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
@@ -812,6 +810,7 @@
         <Canvas>
           <StructureScene
             structure={displayed_structure}
+            base_structure={structure}
             {...scene_props}
             {lattice_props}
             bind:camera_is_moving

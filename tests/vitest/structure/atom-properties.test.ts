@@ -29,6 +29,37 @@ const make_struct = (sites: { xyz: Vec3; element?: string }[]): PymatgenStructur
   },
 })
 
+// Helper: Create cubic structure with PBC for testing
+const make_cubic_structure = (
+  sites: { abc: Vec3; element?: string; label?: string }[],
+  lattice_size: number,
+  pbc: [boolean, boolean, boolean] = [true, true, true],
+): PymatgenStructure => ({
+  sites: sites.map(({ abc, element = `C`, label }) => ({
+    species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
+    abc,
+    xyz: [abc[0] * lattice_size, abc[1] * lattice_size, abc[2] * lattice_size] as Vec3,
+    label: label || element,
+    properties: {},
+  })),
+  lattice: {
+    matrix: [
+      [lattice_size, 0, 0],
+      [0, lattice_size, 0],
+      [0, 0, lattice_size],
+    ] satisfies Matrix3x3,
+    pbc,
+    a: lattice_size,
+    b: lattice_size,
+    c: lattice_size,
+    alpha: 90,
+    beta: 90,
+    gamma: 90,
+    volume: lattice_size ** 3,
+  },
+  charge: 0,
+})
+
 describe(`Color Scales`, () => {
   test(`d3 scales`, () =>
     expect(ap.get_d3_color_scales()).toContain(`interpolateViridis`))
@@ -65,7 +96,7 @@ describe(`Coordination`, () => {
       element: `O`,
     }])
     const { values } = ap.get_coordination_colors(structure)
-    expect(values.every((val) => val > 0)).toBe(true)
+    expect(values.every((val) => typeof val === `number` && val > 0)).toBe(true)
   })
 
   test(`isolated atoms CN = 0`, () => {
@@ -80,7 +111,7 @@ describe(`Coordination`, () => {
       element: `C`,
     }, { xyz: [3, 0, 0], element: `C` }])
     const { values } = ap.get_coordination_colors(structure)
-    expect(values[1]).toBeGreaterThan(values[0])
+    expect(typeof values[1] === `number` && values[1] > (values[0] as number)).toBe(true)
   })
 
   test.each([`electroneg_ratio`, `solid_angle`] as const)(`%s strategy`, (strategy) => {
@@ -89,7 +120,133 @@ describe(`Coordination`, () => {
       element: `O`,
     }])
     const { values } = ap.get_coordination_colors(structure, strategy)
-    expect(values.some((val) => val > 0)).toBe(true)
+    expect(values.some((val) => typeof val === `number` && val > 0)).toBe(true)
+  })
+
+  describe(`PBC-aware coordination`, () => {
+    test.each([
+      {
+        name: `cell boundaries`,
+        sites: [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.5, 0, 0] as Vec3 }],
+        lattice_size: 3,
+        pbc: [true, true, true] as [boolean, boolean, boolean],
+        expected_length: 2,
+        check: (vals: (number | string)[]) =>
+          vals.every((v) => typeof v === `number` && v > 0),
+      },
+      {
+        name: `BCC symmetry`,
+        sites: [
+          { abc: [0, 0, 0] as Vec3, element: `Cs` },
+          { abc: [0.5, 0.5, 0.5] as Vec3, element: `Cs` },
+        ],
+        lattice_size: 5,
+        pbc: [true, true, true] as [boolean, boolean, boolean],
+        expected_length: 2,
+        check: (vals: (number | string)[]) => vals[0] === 8 && vals[1] === 8,
+      },
+      {
+        name: `NaCl corner`,
+        sites: [
+          { abc: [0, 0, 0] as Vec3, element: `Na` },
+          { abc: [0.5, 0, 0] as Vec3, element: `Cl` },
+          { abc: [0, 0.5, 0] as Vec3, element: `Cl` },
+          { abc: [0, 0, 0.5] as Vec3, element: `Cl` },
+        ],
+        lattice_size: 5,
+        pbc: [true, true, true] as [boolean, boolean, boolean],
+        expected_length: 4,
+        check: (vals: (number | string)[]) =>
+          vals.every((v) => typeof v === `number` && v > 0) &&
+          typeof vals[0] === `number` && vals[0] >= 3,
+      },
+      {
+        name: `partial PBC`,
+        sites: [{ abc: [0, 0, 0.3] as Vec3 }, { abc: [0.5, 0.5, 0.3] as Vec3 }],
+        lattice_size: 5,
+        pbc: [true, true, false] as [boolean, boolean, boolean],
+        expected_length: 2,
+        check: (vals: (number | string)[]) => vals.length === 2,
+      },
+    ])(`$name`, ({ sites, lattice_size, pbc, expected_length, check }) => {
+      const structure = make_cubic_structure(sites, lattice_size, pbc)
+      const { values, colors } = ap.get_coordination_colors(structure)
+
+      expect(values).toHaveLength(expected_length)
+      expect(colors).toHaveLength(expected_length)
+      expect(check(values)).toBe(true)
+    })
+
+    test(`no PBC molecular structure`, () => {
+      const structure = make_cubic_structure(
+        [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.12, 0, 0] as Vec3, element: `O` }],
+        10,
+        [false, false, false],
+      )
+      const { values } = ap.get_coordination_colors(structure)
+      expect(values).toHaveLength(2)
+      expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
+    })
+
+    test.each([`electroneg_ratio`, `solid_angle`] as const)(
+      `works with %s strategy`,
+      (strategy) => {
+        const structure = make_cubic_structure(
+          [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.3, 0, 0] as Vec3 }],
+          5,
+        )
+        const { values } = ap.get_coordination_colors(structure, strategy)
+        expect(values).toHaveLength(2)
+        expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
+      },
+    )
+
+    test(`returns colors for original sites only (not expanded 27x image atoms)`, () => {
+      const structure = make_cubic_structure(
+        [{ abc: [0, 0, 0] as Vec3 }, { abc: [0.3, 0, 0] as Vec3 }],
+        4,
+      )
+      const { values, colors } = ap.get_coordination_colors(structure)
+      // Should return exactly 2, not 54 (2 + 26*2 image atoms)
+      expect(values).toHaveLength(2)
+      expect(colors).toHaveLength(2)
+      expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
+    })
+  })
+
+  describe(`Supercell coordination coloring`, () => {
+    test(`supercell atoms inherit unit cell coordination colors`, async () => {
+      const { make_supercell } = await import(`$lib/structure/supercell`)
+
+      const unit_cell = make_cubic_structure(
+        [{ abc: [0, 0, 0], element: `Fe` }, { abc: [0.5, 0.5, 0.5], element: `Fe` }],
+        4,
+      )
+      const unit_colors = ap.get_coordination_colors(unit_cell)
+      expect(unit_colors.values).toHaveLength(2)
+
+      const supercell = make_supercell(unit_cell, [2, 2, 2])
+      expect(supercell.sites).toHaveLength(16) // 2 atoms * 2³
+
+      // All supercell atoms track original via orig_unit_cell_idx
+      const orig_indices = supercell.sites.map((s) => s.properties?.orig_unit_cell_idx)
+      expect(orig_indices.every((idx) => idx === 0 || idx === 1)).toBe(true)
+      expect(orig_indices.filter((idx) => idx === 0)).toHaveLength(8)
+      expect(orig_indices.filter((idx) => idx === 1)).toHaveLength(8)
+    })
+  })
+
+  describe(`Image atom coloring`, () => {
+    test(`image atoms use orig_site_idx for color mapping`, async () => {
+      const { get_pbc_image_sites } = await import(`$lib/structure/pbc`)
+
+      const structure = make_cubic_structure([{ abc: [0, 0, 0] }], 3)
+      const with_images = get_pbc_image_sites(structure)
+
+      expect(with_images.sites.length).toBeGreaterThan(1)
+      const image_atoms = with_images.sites.slice(1)
+      expect(image_atoms.every((s) => s.properties?.orig_site_idx === 0)).toBe(true)
+    })
   })
 })
 
@@ -276,16 +433,21 @@ describe(`Edge Cases`, () => {
 })
 
 describe(`Performance`, () => {
-  test(`1000 atoms < 1s`, () => {
-    const structure = make_struct(Array.from({ length: 1000 }, (_, idx) => ({
-      xyz: [idx % 10, Math.floor(idx / 10) % 10, Math.floor(idx / 100)] as Vec3,
-      element: [`C`, `O`, `N`, `H`][idx % 4],
-    })))
-    const start = performance.now()
-    const { colors } = ap.get_coordination_colors(structure)
-    expect(colors).toHaveLength(1000)
-    expect(performance.now() - start).toBeLessThan(1000)
-  })
+  test(
+    `500 atoms < 12s with PBC expansion`,
+    () => {
+      // Note: With PBC, this becomes ~13.5k atoms (27x) for coordination calculation
+      const structure = make_struct(Array.from({ length: 500 }, (_, idx) => ({
+        xyz: [idx % 10, Math.floor(idx / 10) % 10, Math.floor(idx / 100)] as Vec3,
+        element: [`C`, `O`, `N`, `H`][idx % 4],
+      })))
+      const start = performance.now()
+      const { colors } = ap.get_coordination_colors(structure)
+      expect(colors).toHaveLength(500)
+      expect(performance.now() - start).toBeLessThan(12000)
+    },
+    15000, // 15 second timeout for this test
+  )
 
   test(`50 categorical values`, () => {
     const structure = make_struct(

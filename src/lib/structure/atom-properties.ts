@@ -3,6 +3,8 @@
 import type { AnyStructure, Site } from '$lib'
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination'
+import type { Vec3 } from '$lib/math'
+import * as math from '$lib/math'
 import type { AtomColorMode } from '$lib/settings'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -103,15 +105,86 @@ export const apply_categorical_color_scale = (
 ): { colors: string[]; unique_values: string[] } =>
   vals.length ? make_categorical(vals, scale) : { colors: [], unique_values: [] }
 
+// Get original site index for property color lookup.
+// Supercell atoms use orig_unit_cell_idx, image atoms use orig_site_idx, otherwise use site_idx.
+export function get_orig_site_idx(
+  site: Site | undefined,
+  site_idx: number,
+): number {
+  return typeof site?.properties?.orig_unit_cell_idx === `number`
+    ? site.properties.orig_unit_cell_idx
+    : typeof site?.properties?.orig_site_idx === `number`
+    ? site.properties.orig_site_idx
+    : site_idx
+}
+
+// Helper: Expand structure with images from all 26 neighboring cells for PBC coordination
+function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
+  if (!(`lattice` in structure) || !structure.lattice) return structure
+
+  const { sites } = structure
+  const lattice_T = math.transpose_3x3_matrix(structure.lattice.matrix)
+
+  // Pre-allocate array: original sites + 26 images per site
+  const expanded_sites: Site[] = Array(sites.length * 27)
+
+  // Copy original sites
+  for (let idx = 0; idx < sites.length; idx++) {
+    expanded_sites[idx] = sites[idx]
+  }
+
+  let write_idx = sites.length
+
+  for (let orig_idx = 0; orig_idx < sites.length; orig_idx++) {
+    const site = sites[orig_idx]
+    const [a, b, c] = site.abc
+
+    // Add images in all 26 neighboring cells (3x3x3 - 1 for center)
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          if (dx === 0 && dy === 0 && dz === 0) continue
+
+          const img_abc: Vec3 = [a + dx, b + dy, c + dz]
+          expanded_sites[write_idx++] = {
+            ...site,
+            abc: img_abc,
+            xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
+            properties: { ...site.properties, orig_site_idx: orig_idx },
+          }
+        }
+      }
+    }
+  }
+
+  return { ...structure, sites: expanded_sites }
+}
+
 export function get_coordination_colors(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
   scale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
-  const coord_nums = calc_coordination_nums(structure, strategy).sites.map((site) =>
-    site.coordination_num
-  )
+  const orig_site_count = structure.sites.length
+
+  // Check if structure has periodic boundary conditions
+  const has_lattice = `lattice` in structure && structure.lattice !== undefined
+  const pbc = has_lattice ? structure.lattice.pbc : undefined
+  const has_pbc = has_lattice &&
+    (pbc === undefined || pbc.some((is_periodic) => is_periodic))
+
+  // For PBC structures, expand with images from neighboring cells for accurate coordination
+  const coord_structure = has_pbc ? expand_structure_for_pbc(structure) : structure
+
+  // Calculate coordination numbers on the (potentially expanded) structure
+  const all_coord_data = calc_coordination_nums(coord_structure, strategy)
+
+  // Extract coordination numbers only for the original sites (not image atoms)
+  const coord_nums = all_coord_data.sites
+    .slice(0, orig_site_count)
+    .map((site) => site.coordination_num)
+
   const { colors, unique_values } = apply_color_scale(coord_nums, scale, type)
   return build_prop_colors(coord_nums, colors, unique_values)
 }
@@ -131,20 +204,13 @@ export function get_wyckoff_colors(
   }
 
   // Create unique orbit identifiers: Wyckoff position + element symbol
-  // Each orbit represents a set of symmetrically equivalent sites
   const orbit_ids = structure.sites.map((site, idx) => {
-    // For image atoms, use the stored orig_site_idx property if available
-    const { orig_site_idx } = site.properties ?? {}
-    const sym_idx = typeof orig_site_idx === `number` && orig_site_idx >= 0
-      ? orig_site_idx // Use tracked original index for image atoms
-      : idx < sym_data.wyckoffs.length
-      ? idx // Use current index for original sites
-      : null // No valid mapping available
+    const sym_idx = get_orig_site_idx(site, idx)
 
-    if (sym_idx === null) {
+    if (sym_idx >= sym_data.wyckoffs.length) {
       console.error(
-        `[get_wyckoff_colors] Site ${idx} has no Wyckoff position data. Structure has ${n} sites but
-        symmetry data only has ${sym_data.wyckoffs.length}. This site will be colored as 'unknown'.`,
+        `[get_wyckoff_colors] Site ${idx} (maps to ${sym_idx}) has no Wyckoff data. ` +
+          `Structure has ${n} sites but symmetry data only has ${sym_data.wyckoffs.length}.`,
       )
       return `unknown`
     }
@@ -155,11 +221,7 @@ export function get_wyckoff_colors(
   })
 
   const { colors, unique_values } = apply_categorical_color_scale(orbit_ids, scale)
-  return {
-    colors,
-    values: orbit_ids,
-    unique_values,
-  }
+  return { colors, values: orbit_ids, unique_values }
 }
 
 export function get_custom_colors(
@@ -204,4 +266,17 @@ export function get_atom_colors(
   }
   // Element mode or custom without function, no property colors needed
   return { colors: [], values: [] }
+}
+
+// Helper: Get property colors with null safety check
+// Returns null if structure is missing, mode is element, or no colors computed
+export function get_property_colors(
+  structure: AnyStructure | undefined,
+  config: Partial<AtomColorConfig>,
+  bonding_strategy: BondingStrategy,
+  sym_data: MoyoDataset | null,
+): AtomPropertyColors | null {
+  if (!structure || config.mode === `element`) return null
+  const result = get_atom_colors(structure, config, bonding_strategy, sym_data)
+  return result.colors.length ? result : null
 }

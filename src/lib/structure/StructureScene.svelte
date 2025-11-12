@@ -7,7 +7,10 @@
   import { colors } from '$lib/state.svelte'
   import { Arrow, Cylinder, get_center_of_mass, Lattice } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
-  import { get_atom_colors } from '$lib/structure/atom-properties'
+  import {
+    get_orig_site_idx,
+    get_property_colors,
+  } from '$lib/structure/atom-properties'
   import * as measure from '$lib/structure/measure'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { T, useThrelte } from '@threlte/core'
@@ -45,6 +48,7 @@
 
   let {
     structure = undefined,
+    base_structure = undefined,
     atom_radius = DEFAULTS.structure.atom_radius,
     same_size_atoms = false,
     camera_position = DEFAULTS.structure.camera_position,
@@ -110,6 +114,7 @@
     sym_data = null,
   }: {
     structure?: AnyStructure
+    base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
     atom_radius?: number // scale factor for atomic radii
     same_size_atoms?: boolean // whether to use the same radius for all atoms. if not, the radius will be
     // determined by the atomic radius of the element
@@ -286,22 +291,23 @@
   })
 
   // Compute property-based colors when not using element coloring
-  let property_colors = $derived.by(() => {
-    if (!structure || atom_color_config.mode === `element`) return null
-    const result = get_atom_colors(
-      structure,
+  // Use base_structure (original unit cell) for color calculation
+  let property_colors = $derived(
+    get_property_colors(
+      base_structure || structure,
       atom_color_config,
       bonding_strategy,
       sym_data,
-    )
-    return result.colors.length ? result : null
-  })
+    ),
+  )
 
   let atom_data = $derived.by(() => {
     if (!show_atoms || !structure?.sites) return []
     return structure.sites.flatMap((site, site_idx) => {
+      const orig_idx = get_orig_site_idx(site, site_idx)
+
       // Skip sites with hidden property values
-      const prop_val = property_colors?.values[site_idx]
+      const prop_val = property_colors?.values[orig_idx]
       if (prop_val !== undefined && hidden_property_values.has(prop_val)) return []
 
       const radius = same_size_atoms ? atom_radius : site.species.reduce(
@@ -309,7 +315,7 @@
         0,
       ) * atom_radius
 
-      const site_color = property_colors?.colors[site_idx] ||
+      const site_color = property_colors?.colors[orig_idx] ||
         colors.element?.[site.species[0]?.element]
 
       let start_angle = 0
@@ -342,7 +348,8 @@
       const has_visible_element = site?.species.some(({ element }) =>
         !hidden_elements.has(element)
       )
-      const prop_val = property_colors?.values[site_idx]
+      const orig_idx = get_orig_site_idx(site, site_idx)
+      const prop_val = property_colors?.values[orig_idx]
       const prop_visible = prop_val === undefined ||
         !hidden_property_values.has(prop_val)
       return has_visible_element && prop_visible
