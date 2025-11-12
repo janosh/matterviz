@@ -521,7 +521,7 @@ describe(`Structure component nested JSON handling`, () => {
     // Test component renders correctly - no error messages should appear
     mount(Structure, {
       target: document.body,
-      props: { structure: transformed_structure as AnyStructure },
+      props: { structure: transformed_structure as unknown as AnyStructure },
     })
 
     expect(document.body.textContent).not.toContain(`No sites found in structure`)
@@ -530,8 +530,8 @@ describe(`Structure component nested JSON handling`, () => {
 
 // Combined camera projection functionality tests
 test.each([
-  [`perspective`, `orthographic`],
-  [`orthographic`, `perspective`],
+  [`perspective` as const, `orthographic` as const],
+  [`orthographic` as const, `perspective` as const],
 ])(
   `camera projection %s: UI toggle, rendering, zoom settings, and integration`,
   async (initial_projection, target_projection) => {

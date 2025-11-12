@@ -188,7 +188,7 @@ describe(`PeriodicTable`, () => {
       props: {
         active_elements: [`H`, `He`],
         active_element: element_data.find((elem) => elem.symbol === `Li`) ?? null,
-        active_category: `alkali-metal`,
+        active_category: `alkali metal`,
       },
     })
     // Should highlight H, He (from active_elements), Li (from active_element),
@@ -311,7 +311,7 @@ describe(`PeriodicTable`, () => {
     // Test multiple props affecting appearance and behavior in one test
     const props = {
       heatmap_values: [1, 2, 3, 4],
-      color_scale_range: [0, 10],
+      color_scale_range: [0, 10] as [number, number],
       color_overrides: { H: `#ff0000`, He: `#00ff00` },
       tile_props: { show_name: false }, // Use show_name: false to test labels prop
       lanth_act_style: `background-color: red;`,
@@ -682,8 +682,8 @@ describe(`PeriodicTable`, () => {
     })
 
     test.each([
-      [[10, 20, 30, 40, 50], undefined, [10, 50]],
-      [[10, 20, 30, 40, 50], [0, 100], [0, 100]],
+      [[10, 20, 30, 40, 50], undefined, [10, 50] as [number, number]],
+      [[10, 20, 30, 40, 50], [0, 100] as [number, number], [0, 100] as [number, number]],
     ])(
       `calculates range correctly`,
       (heatmap_values, color_scale_range, [exp_min, exp_max]) => {

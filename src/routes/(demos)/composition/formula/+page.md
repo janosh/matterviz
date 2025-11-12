@@ -184,7 +184,7 @@ Use the `as` prop to render formulas as headings, inline text, etc.:
 
 ## Structured Input & Amount Formatting
 
-Use `CompositionWithOxidation` objects and customize number formatting:
+Use `OxiComposition` objects and customize number formatting:
 
 ```svelte example
 <script>

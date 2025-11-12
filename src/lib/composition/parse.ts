@@ -311,7 +311,7 @@ export type ElementWithOxidation = {
 }
 
 // Type for composition with oxidation states
-export type CompositionWithOxidation = Record<
+export type OxiComposition = Record<
   ElementSymbol,
   { amount: number; oxidation_state?: number }
 >
@@ -392,10 +392,10 @@ export const parse_formula_with_oxidation = (
   return elements
 }
 
-// Convert CompositionWithOxidation to ElementWithOxidation array.
+// Convert OxiComposition to ElementWithOxidation array.
 // Does not preserve original order since objects don't have a defined order.
 export const composition_with_oxidation_to_elements = (
-  composition: CompositionWithOxidation,
+  composition: OxiComposition,
 ): ElementWithOxidation[] => {
   return Object.entries(composition).map(([element, data], idx) => ({
     element: element as ElementSymbol,

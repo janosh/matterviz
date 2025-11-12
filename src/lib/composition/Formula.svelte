@@ -5,7 +5,7 @@
   import ElementTile from '$lib/element/ElementTile.svelte'
   import { format_num } from '$lib/labels'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { CompositionWithOxidation, ElementWithOxidation } from './parse'
+  import type { ElementWithOxidation, OxiComposition } from './parse'
   import {
     composition_with_oxidation_to_elements,
     format_oxi_state,
@@ -27,7 +27,7 @@
     on_click,
     ...rest
   }: HTMLAttributes<HTMLElement> & {
-    formula: string | CompositionWithOxidation
+    formula: string | OxiComposition
     color_scheme?: ColorSchemeName
     ordering?: FormulaOrdering
     as?: string

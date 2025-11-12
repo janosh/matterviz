@@ -26,9 +26,9 @@
   let hovered_wyckoff_sites = $state<number[]>([])
   let active_wyckoff_sites = $state<number[]>([])
   // Symmetry data for each example
-  let top_ex_sym_data = $state<MoyoDataset | null>(null)
-  let two_col_sym_data = $state<MoyoDataset | null>(null)
-  let stacked_sym_data = $state<MoyoDataset | null>(null)
+  let top_ex_sym_data = $state<MoyoDataset>()
+  let two_col_sym_data = $state<MoyoDataset>()
+  let stacked_sym_data = $state<MoyoDataset>()
   // Symmetry settings for layout examples (independent controls)
   let wide_example_symmetry_settings = $state<SymmetrySettings>(default_sym_settings)
   let two_col_sym_settings = $state<SymmetrySettings>(default_sym_settings)

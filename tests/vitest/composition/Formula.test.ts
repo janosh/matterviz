@@ -1,5 +1,5 @@
 import { Formula } from '$lib/composition'
-import type { CompositionWithOxidation } from '$lib/composition/parse'
+import type { OxiComposition } from '$lib/composition/parse'
 import {
   composition_with_oxidation_to_elements,
   parse_formula_with_oxidation,
@@ -139,13 +139,13 @@ test(`parse_formula_with_oxidation throws on invalid element`, () => {
 })
 
 test(`composition_with_oxidation_to_elements converts correctly`, () => {
-  const composition: Partial<CompositionWithOxidation> = {
+  const composition: Partial<OxiComposition> = {
     Fe: { amount: 2, oxidation_state: 3 },
     O: { amount: 3, oxidation_state: -2 },
   }
 
   const result = composition_with_oxidation_to_elements(
-    composition as CompositionWithOxidation,
+    composition as OxiComposition,
   )
   expect(result).toHaveLength(2)
 
@@ -191,9 +191,9 @@ test(`Formula component renders with oxidation states (bracket syntax)`, () => {
 })
 
 test.each([
-  { scheme: `Vesta`, expected_color_present: true },
-  { scheme: `Jmol`, expected_color_present: true },
-  { scheme: `Alloy`, expected_color_present: true },
+  { scheme: `Vesta` as const, expected_color_present: true },
+  { scheme: `Jmol` as const, expected_color_present: true },
+  { scheme: `Alloy` as const, expected_color_present: true },
 ])(
   `Formula applies $scheme color scheme correctly`,
   ({ scheme, expected_color_present }) => {
@@ -284,21 +284,21 @@ test(`Formula component renders superscripts for oxidation states`, () => {
 })
 
 test(`Formula component does not render superscripts for zero oxidation`, () => {
-  const composition: Partial<CompositionWithOxidation> = {
+  const composition = {
     Fe: { amount: 1, oxidation_state: 0 },
-    O: { amount: 1 },
-  }
+    O: { amount: 1, oxidation_state: 0 },
+  } as OxiComposition
   // Mounting to document.body
   mount(Formula, { target: document.body, props: { formula: composition } })
   const superscripts = document.querySelectorAll(`sup`)
   expect(superscripts.length).toBe(0)
 })
 
-test(`Formula component accepts CompositionWithOxidation input`, () => {
-  const composition: Partial<CompositionWithOxidation> = {
+test(`Formula component accepts OxiComposition input`, () => {
+  const composition = {
     Fe: { amount: 2, oxidation_state: 3 },
     O: { amount: 3, oxidation_state: -2 },
-  }
+  } as OxiComposition
   // Mounting to document.body
   mount(Formula, { target: document.body, props: { formula: composition } })
   const element = document.querySelector(`.formula`)
@@ -328,12 +328,12 @@ test.each([
 })
 
 test.each([
-  { scheme: `Vesta` },
-  { scheme: `Jmol` },
-  { scheme: `Alloy` },
-  { scheme: `Pastel` },
-  { scheme: `Muted` },
-  { scheme: `Dark Mode` },
+  { scheme: `Vesta` as const },
+  { scheme: `Jmol` as const },
+  { scheme: `Alloy` as const },
+  { scheme: `Pastel` as const },
+  { scheme: `Muted` as const },
+  { scheme: `Dark Mode` as const },
 ])(`Formula renders with color scheme "$scheme"`, ({ scheme }) => {
   // Mounting to document.body
   mount(Formula, {
