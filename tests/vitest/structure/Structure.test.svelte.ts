@@ -537,7 +537,6 @@ test.each([
   async (initial_projection, target_projection) => {
     const scene_props = {
       camera_projection: initial_projection,
-      atom_radius: 1.5,
       auto_rotate: 0.5,
     }
     mount(Structure, {
@@ -579,7 +578,7 @@ test.each([
       `.controls-pane input[type="number"][max="2"]`,
     ) as HTMLInputElement
 
-    expect(parseFloat(radius_input?.value || `0`)).toBeCloseTo(1.5, 1)
+    expect(parseFloat(radius_input?.value || `0`)).toBeCloseTo(1.0, 1)
     expect(parseFloat(auto_rotate_input?.value || `0`)).toBeCloseTo(0.5, 1)
 
     radius_input.value = `2.0`

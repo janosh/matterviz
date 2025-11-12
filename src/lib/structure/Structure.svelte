@@ -18,8 +18,9 @@
   import { untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { Camera, OrthographicCamera, Scene } from 'three'
   import type { AtomColorConfig } from './atom-properties'
-  import { get_atom_colors } from './atom-properties'
+  import { get_property_colors } from './atom-properties'
   import type { StructureHandlerData } from './index'
   import {
     AtomLegend,
@@ -283,16 +284,14 @@
   })
 
   // Compute property-based colors for legend display
-  let property_colors = $derived.by(() => {
-    if (!structure || atom_color_config.mode === `element`) return null
-    const result = get_atom_colors(
+  let property_colors = $derived(
+    get_property_colors(
       structure,
       atom_color_config,
       scene_props.bonding_strategy,
       sym_data,
-    )
-    return result.colors.length ? result : null
-  })
+    ),
+  )
 
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
@@ -426,9 +425,11 @@
   // Track if camera has ever been moved from initial position
   let camera_has_moved = $state(false)
   let camera_is_moving = $state(false)
-  let scene = $state(undefined)
-  let camera = $state(undefined)
-  let orbit_controls = $state(undefined)
+  let scene = $state<Scene | undefined>(undefined)
+  let camera = $state<Camera | undefined>(undefined)
+  let orbit_controls = $state<
+    ComponentProps<typeof StructureScene>[`orbit_controls`]
+  >(undefined)
   let rotation_target_ref = $state<[number, number, number] | undefined>(undefined)
   let initial_computed_zoom = $state<number | undefined>(undefined)
   let camera_move_timeout: ReturnType<typeof setTimeout> | null = $state(null)
@@ -473,8 +474,9 @@
 
       // Reset zoom for orthographic camera
       if (`zoom` in camera && initial_computed_zoom !== undefined) {
-        camera.zoom = initial_computed_zoom
-        camera.updateProjectionMatrix()
+        const ortho_camera = camera as OrthographicCamera
+        ortho_camera.zoom = initial_computed_zoom
+        ortho_camera.updateProjectionMatrix()
       }
 
       // Call update to apply changes immediately
@@ -684,7 +686,7 @@
             {@attach tooltip()}
           >
             {#if typeof fullscreen_toggle === `function`}
-              {@render fullscreen_toggle()}
+              {@render fullscreen_toggle({ fullscreen })}
             {:else}
               <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
             {/if}
@@ -808,6 +810,7 @@
         <Canvas>
           <StructureScene
             structure={displayed_structure}
+            base_structure={structure}
             {...scene_props}
             {lattice_props}
             bind:camera_is_moving

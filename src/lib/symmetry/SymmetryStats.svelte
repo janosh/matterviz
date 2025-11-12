@@ -181,8 +181,9 @@
     place-items: center;
   }
   .controls label input {
-    padding: 2pt 4pt;
-    max-width: 100px;
+    padding: 2pt 5pt;
+    width: 5.5em;
+    box-sizing: border-box;
   }
   .stats-grid {
     display: grid;

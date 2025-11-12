@@ -391,9 +391,9 @@
   }
   .mode-dropdown {
     position: absolute;
-    top: 100%;
+    bottom: 100%;
     right: 0;
-    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
     background: var(--surface-bg);
     border-radius: 4px;
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);

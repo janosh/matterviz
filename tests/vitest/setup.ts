@@ -4,6 +4,14 @@ import * as math from '$lib/math'
 import type { Pbc, PymatgenStructure, Site } from '$lib/structure'
 import { beforeEach, vi } from 'vitest'
 
+// Suppress Three.js multiple instances warning in tests
+const original_warn = console.warn
+console.warn = (...args: unknown[]) => {
+  const message = String(args[0])
+  if (message.includes(`Multiple instances of Three.js`)) return
+  original_warn(...args)
+}
+
 beforeEach(() => {
   document.body.innerHTML = ``
 })

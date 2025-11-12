@@ -1,7 +1,6 @@
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
-import * as fs from 'node:fs'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
@@ -20,13 +19,21 @@ import {
 import type { FileData } from '../src/webview/main'
 
 // Mock modules
-vi.mock(`fs`)
+const mock_fs = vi.hoisted(() => ({
+  readFileSync: vi.fn().mockReturnValue(`mock content`),
+  existsSync: vi.fn().mockReturnValue(true),
+  readdirSync: vi.fn().mockReturnValue([]),
+}))
+
+vi.mock(`fs`, () => mock_fs)
 vi.mock(`path`, async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
   return {
     ...actual,
     basename: vi.fn((p: string) => p.split(`/`).pop() || ``),
     dirname: vi.fn((p: string) => p.split(`/`).slice(0, -1).join(`/`) || `/`),
+    join: vi.fn((...paths: string[]) => paths.join(`/`)),
+    isAbsolute: vi.fn((p: string) => p.startsWith(`/`)),
   }
 })
 
@@ -76,7 +83,9 @@ const mock_vscode = vi.hoisted(() => ({
   ViewColumn: { Beside: 2 },
   ColorThemeKind: { Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 },
   UIKind: { Desktop: 1, Web: 2 },
-  RelativePattern: vi.fn((base: unknown, pattern: string) => ({ base, pattern })),
+  RelativePattern: class {
+    constructor(public base: unknown, public pattern: string) {}
+  },
   version: `1.99.0`,
   env: {
     appName: `VSCode`,
@@ -93,8 +102,6 @@ const mock_vscode = vi.hoisted(() => ({
 vi.mock(`vscode`, () => mock_vscode)
 
 describe(`MatterViz Extension`, () => {
-  const mock_fs = fs
-
   let mock_file_system_watcher: {
     onDidChange: ReturnType<typeof vi.fn>
     onDidDelete: ReturnType<typeof vi.fn>
@@ -116,7 +123,9 @@ describe(`MatterViz Extension`, () => {
     ext.auto_render_timers.clear()
     ext.active_auto_render_panels.clear()
 
-    mock_fs.readFileSync = vi.fn().mockReturnValue(`mock content`)
+    mock_fs.readFileSync.mockReturnValue(`mock content`)
+    mock_fs.existsSync.mockReturnValue(true)
+    mock_fs.readdirSync.mockReturnValue([])
     mock_vscode.window.activeTextEditor = null
 
     // Reset theme to default Light theme to avoid inter-test coupling
@@ -268,7 +277,7 @@ describe(`MatterViz Extension`, () => {
 
     // Step 5: Verify the exact data structure that would be sent to webview
     const parsed_data = JSON.parse(
-      html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ?? `{}`,
+      html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ?? `{}`,
     )
     expect(parsed_data.type).toBe(`trajectory`)
     expect(parsed_data.data.filename).toBe(ase_filename)
@@ -1011,7 +1020,7 @@ describe(`MatterViz Extension`, () => {
       const html = create_html(mock_webview, mock_context, data)
 
       const parsed_data = JSON.parse(
-        html.match(/mattervizData=(.+?)</s)?.[1] || `{}`,
+        html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] || `{}`,
       )
       expect(parsed_data.theme).toBe(`dark`)
     })
@@ -1673,7 +1682,7 @@ H 0.0 1.0 0.0`
       })
 
       const multi_frame_parsed_data = JSON.parse(
-        multi_frame_html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ??
+        multi_frame_html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ??
           `{}`,
       )
 
@@ -1691,7 +1700,7 @@ H 0.0 1.0 0.0`
       })
 
       const single_frame_parsed_data = JSON.parse(
-        single_frame_html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ??
+        single_frame_html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ??
           `{}`,
       )
 
@@ -1705,7 +1714,7 @@ H 0.0 1.0 0.0`
       })
 
       const compressed_parsed_data = JSON.parse(
-        compressed_html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ??
+        compressed_html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ??
           `{}`,
       )
 
@@ -1732,7 +1741,7 @@ H 0.0 1.0 0.0`
       })
 
       const parsed_data = JSON.parse(
-        html.match(/mattervizData=(\{[\s\S]*?\})(?=\s*<\/script>)/)?.[1] ?? `{}`,
+        html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ?? `{}`,
       )
 
       // Should be 'trajectory' since filename contains trajectory keyword

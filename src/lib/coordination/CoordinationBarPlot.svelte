@@ -31,8 +31,8 @@
     split_mode = `by_element`,
     mode = $bindable(`grouped`),
     orientation = `vertical` as Orientation,
-    x_axis = { label: `Coordination Number`, format: `d` },
-    y_axis = { label: `Count`, format: `d` },
+    x_axis = {},
+    y_axis = {},
     allow_file_drop = true,
     on_file_drop,
     loading = $bindable(false),
@@ -256,6 +256,9 @@
     display.x_zero_line = is_horizontal
     display.y_zero_line = !is_horizontal
   })
+
+  const cn_axis = { label: `Coordination Number`, format: `d` }
+  const count_axis = { label: `Count`, format: `d` }
 </script>
 
 <StatusMessage bind:message={error_msg} type="error" dismissible />
@@ -289,16 +292,18 @@
     bind:orientation
     bind:mode
     x_axis={{
-      label_shift: { y: 20 },
+      ...(is_horizontal ? count_axis : cn_axis),
       range: is_horizontal ? ranges.count : ranges.cn,
       ticks: is_horizontal ? undefined : cn_ticks,
-      ...(is_horizontal ? y_axis : x_axis),
+      ...x_axis,
+      label_shift: { y: 20, ...(is_horizontal ? y_axis : x_axis).label_shift },
     }}
     y_axis={{
-      label_shift: { x: 2 },
+      ...(is_horizontal ? cn_axis : count_axis),
       range: is_horizontal ? ranges.cn : ranges.count,
       ticks: is_horizontal ? cn_ticks : undefined,
-      ...(is_horizontal ? x_axis : y_axis),
+      ...y_axis,
+      label_shift: { x: 2, ...(is_horizontal ? x_axis : y_axis).label_shift },
     }}
     bind:display
     {tooltip}

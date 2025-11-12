@@ -1,6 +1,6 @@
 import { XrdPlot } from '$lib'
 import type { XrdPattern } from '$lib/xrd'
-import { mount } from 'svelte'
+import { ComponentProps, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 const pattern: XrdPattern = {
@@ -152,7 +152,7 @@ describe(`XrdPlot`, () => {
     `axis labels: $desc`,
     async ({ orientation, x_axis, y_axis, expect_x_axis, expect_y_axis }) => {
       const target = create_sized_container()
-      const props: Record<string, unknown> = { patterns: pattern }
+      const props: ComponentProps<typeof XrdPlot> = { patterns: pattern }
       if (orientation !== undefined) props.orientation = orientation
       if (x_axis !== undefined) props.x_axis = x_axis
       if (y_axis !== undefined) props.y_axis = y_axis

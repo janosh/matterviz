@@ -1,4 +1,4 @@
-import type DraggablePane from '$lib/DraggablePane.svelte'
+import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { D3SymbolName } from '$lib/labels'
 import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
@@ -109,6 +109,9 @@ export interface DataSeries {
     stroke_width?: number
     line_dash?: string
   }
+  // Internal fields used after processing (not provided by users)
+  filtered_data?: InternalPoint[]
+  _id?: string | number
 }
 
 // Represents the internal structure used within ScatterPlot, merging series-level and point-level data

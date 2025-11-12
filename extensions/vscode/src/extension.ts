@@ -9,6 +9,7 @@ import {
   parse_trajectory_async,
 } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
+import * as fs from 'node:fs'
 import * as path from 'path'
 import * as vscode from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
@@ -93,6 +94,29 @@ export const active_frame_loaders = new Map<string, FrameLoaderData>()
 export const auto_render_timers = new Map<string, ReturnType<typeof setTimeout>>()
 // Track active panels by URI to prevent duplicate opens
 export const active_auto_render_panels = new Map<string, vscode.WebviewPanel>()
+
+let wasm_filename_cache: string | null = null
+
+function get_wasm_filename(ext_path: string): string | null {
+  if (wasm_filename_cache) return wasm_filename_cache
+  const assets_dir = path.join(ext_path, `dist`, `assets`)
+
+  // In tests, the assets directory might not exist
+  if (!fs.existsSync(assets_dir)) {
+    console.warn(`Assets directory not found: ${assets_dir}`)
+    return null
+  }
+
+  const wasm_file = fs.readdirSync(assets_dir).find((file) =>
+    file.startsWith(`moyo_wasm_bg-`) && file.endsWith(`.wasm`)
+  )
+  if (!wasm_file) {
+    console.warn(`moyo-wasm not found in ${assets_dir}`)
+    return null
+  }
+  wasm_filename_cache = wasm_file
+  return wasm_file
+}
 
 // File size thresholds for reading files via VSCode API (1GB for both text and binary)
 const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
@@ -297,12 +321,27 @@ export const create_html = (
   )
   const js_uri = typeof webview_uri === `string` ? webview_uri : webview_uri.toString()
 
+  // Resolve WASM URI for webview (enables symmetry analysis)
+  // Include in data object instead of global scope for cleaner functional approach
+  const wasm_filename = get_wasm_filename(context.extensionUri.fsPath)
+  let moyo_wasm_url: string | undefined
+  if (wasm_filename) {
+    const wasm_uri = webview.asWebviewUri(
+      vscode.Uri.joinPath(context.extensionUri, `dist`, `assets`, wasm_filename),
+    )
+    moyo_wasm_url = typeof wasm_uri === `string` ? wasm_uri : wasm_uri.toString()
+  }
+
+  const webview_data = { ...data, moyo_wasm_url }
+
   return `<!DOCTYPE html>
 <html>
   <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' 'unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' 'unsafe-eval' 'wasm-unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script nonce="${nonce}">window.mattervizData=${JSON.stringify(data)}</script>
+    <script nonce="${nonce}">
+      window.mattervizData=${JSON.stringify(webview_data)};
+    </script>
   </head>
   <body>
     <div id="matterviz-app"></div>
