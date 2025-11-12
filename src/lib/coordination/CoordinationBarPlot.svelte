@@ -257,8 +257,8 @@
     display.y_zero_line = !is_horizontal
   })
 
-  const cn_axis = { label: `Coordination Number`, format: `d`, ...x_axis }
-  const count_axis = { label: `Count`, format: `d`, ...y_axis }
+  const cn_axis = { label: `Coordination Number`, format: `d` }
+  const count_axis = { label: `Count`, format: `d` }
 </script>
 
 <StatusMessage bind:message={error_msg} type="error" dismissible />
@@ -293,17 +293,17 @@
     bind:mode
     x_axis={{
       ...(is_horizontal ? count_axis : cn_axis),
-      label_shift: { y: 20, ...(is_horizontal ? y_axis : x_axis).label_shift },
       range: is_horizontal ? ranges.count : ranges.cn,
       ticks: is_horizontal ? undefined : cn_ticks,
       ...x_axis,
+      label_shift: { y: 20, ...(is_horizontal ? y_axis : x_axis).label_shift },
     }}
     y_axis={{
       ...(is_horizontal ? cn_axis : count_axis),
-      label_shift: { x: 2, ...(is_horizontal ? x_axis : y_axis).label_shift },
       range: is_horizontal ? ranges.cn : ranges.count,
       ticks: is_horizontal ? cn_ticks : undefined,
       ...y_axis,
+      label_shift: { x: 2, ...(is_horizontal ? x_axis : y_axis).label_shift },
     }}
     bind:display
     {tooltip}

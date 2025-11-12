@@ -137,9 +137,14 @@ describe(`VSCode Download Integration`, () => {
     let result: string | null = null
 
     globalThis.FileReader = vi.fn(function (this: FileReader) {
-      this.readAsDataURL = vi.fn(() => {
-        setTimeout(() => {
-          result = `data:image/png;base64,ZmFrZSBwbmcgZGF0YQ==`
+      this.readAsDataURL = vi.fn((blob: Blob) => {
+        setTimeout(async () => {
+          // Read actual Blob content for end-to-end correctness
+          const array_buffer = await blob.arrayBuffer()
+          const uint8_array = new Uint8Array(array_buffer)
+          const binary_string = String.fromCharCode(...uint8_array)
+          const base64_string = btoa(binary_string)
+          result = `data:${blob.type};base64,${base64_string}`
           onload?.()
         }, 0)
       })

@@ -62,7 +62,8 @@ export function handle_legend_double_click(
   }
 
   // Isolate series
-  const new_prev = current.filter(Boolean).length > 1 ? [...current] : null
+  const new_prev = prev_visibility ??
+    (current.filter(Boolean).length > 1 ? [...current] : null)
   return {
     series: series.map((srs, srs_idx) => {
       const in_group = label ? srs.label === label : srs_idx === idx
