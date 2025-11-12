@@ -46,7 +46,7 @@ export function handle_legend_double_click(
   const check_series = prev_visibility ? series.slice(0, prev_visibility.length) : series
   const is_isolated = check_series.every((s, i) => {
     const in_group = label ? s.label === label : i === idx
-    return in_group ? s.visible ?? true : !s.visible
+    return in_group ? s.visible ?? true : !(s.visible ?? true)
   })
 
   // Restore from isolation

@@ -132,6 +132,7 @@ describe(`VSCode Download Integration`, () => {
   })
 
   test(`handles binary data (PNG) correctly`, async () => {
+    vi.useFakeTimers()
     vi.resetModules()
     let onload: (() => void) | undefined
     let result: string | null = null
@@ -165,7 +166,7 @@ describe(`VSCode Download Integration`, () => {
       `structure.png`,
       `image/png`,
     )
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.runAllTimersAsync()
 
     expect(mock_post_message).toHaveBeenCalledWith({
       command: `saveAs`,
@@ -173,6 +174,7 @@ describe(`VSCode Download Integration`, () => {
       filename: `structure.png`,
       is_binary: true,
     })
+    vi.useRealTimers()
   })
 
   test.each([``, `   `])(`rejects invalid filename: "%s"`, (filename) => {
@@ -190,6 +192,7 @@ describe(`VSCode Download Integration`, () => {
   })
 
   test(`handles FileReader errors for binary data`, async () => {
+    vi.useFakeTimers()
     vi.resetModules()
     let onerror: (() => void) | undefined
 
@@ -207,12 +210,13 @@ describe(`VSCode Download Integration`, () => {
     const { setup_vscode_download } = await import(`../src/webview/main`)
     setup_vscode_download()
     globalThis.download(new Blob([`data`]), `test.png`, `image/png`)
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.runAllTimersAsync()
 
     expect(mock_post_message).toHaveBeenCalledWith({
       command: `error`,
       text: `Failed to read binary data for download`,
     })
+    vi.useRealTimers()
   })
 
   test(`handles general exceptions during download`, async () => {
