@@ -18,7 +18,13 @@ declare module '*.md' {
 
 // Global type declarations for theme system
 declare global {
-  const MATTERVIZ_THEMES: Record<string, Record<string, string>> | undefined
-  const MATTERVIZ_CSS_MAP: Record<string, string> | undefined
+  interface Window {
+    MATTERVIZ_THEMES?: Record<string, Record<string, string>>
+    MATTERVIZ_CSS_MAP?: Record<string, string>
+  }
+
+  var MATTERVIZ_THEMES: Record<string, Record<string, string>> | undefined
+
+  var MATTERVIZ_CSS_MAP: Record<string, string> | undefined
 }
 export {}

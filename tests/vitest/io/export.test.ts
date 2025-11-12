@@ -112,9 +112,9 @@ describe(`Export functionality`, () => {
 
     beforeEach(() => {
       mock_xml_serializer = { serializeToString: vi.fn(() => `<svg></svg>`) }
-      globalThis.XMLSerializer = vi.fn(() =>
-        mock_xml_serializer
-      ) as unknown as typeof XMLSerializer
+      globalThis.XMLSerializer = function () {
+        return mock_xml_serializer
+      } as unknown as typeof XMLSerializer
     })
 
     it(`exports SVG with XML/DOCTYPE and font-family`, () => {
@@ -194,9 +194,9 @@ describe(`Export functionality`, () => {
       ) as unknown as HTMLCanvasElement[`getContext`]
       mock_image = create_mock_image()
       mock_xml_serializer = { serializeToString: vi.fn(() => `<svg></svg>`) }
-      globalThis.XMLSerializer = vi.fn(() =>
-        mock_xml_serializer
-      ) as unknown as typeof XMLSerializer
+      globalThis.XMLSerializer = function () {
+        return mock_xml_serializer
+      } as unknown as typeof XMLSerializer
       globalThis.document.createElement = vi.fn((tag) =>
         tag === `canvas`
           ? mock_canvas
@@ -204,7 +204,9 @@ describe(`Export functionality`, () => {
           ? mock_image
           : document.createElement(tag)
       ) as typeof document.createElement
-      globalThis.Image = vi.fn(() => mock_image) as unknown as typeof Image
+      globalThis.Image = function () {
+        return mock_image
+      } as unknown as typeof Image
     })
 
     it(`exports PNG with correct dimensions and DPI`, () => {

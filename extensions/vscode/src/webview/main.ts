@@ -4,6 +4,7 @@ import '$lib/app.css'
 import { decompress_data, detect_compression_format } from '$lib/io/decompress'
 import { parse_structure_file } from '$lib/structure/parse'
 import Structure from '$lib/structure/Structure.svelte'
+import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
 import '$lib/theme/themes'
 import type { LoadingOptions } from '$lib/trajectory/parse'
@@ -32,6 +33,7 @@ export interface MatterVizData {
   data: FileData
   theme: ThemeName
   defaults?: DefaultSettings
+  moyo_wasm_url?: string
 }
 
 export interface ParseResult {
@@ -141,9 +143,6 @@ try {
   console.warn(`VSCode API already acquired or not available:`, error)
   vscode_api = null
 }
-
-const get_matterviz_data = (): MatterVizData | undefined =>
-  (globalThis as unknown as { mattervizData?: MatterVizData }).mattervizData
 
 // Set up VSCode-specific download override for file exports
 export const setup_vscode_download = (): void => {
@@ -437,8 +436,7 @@ const create_display = (
   const Component = is_trajectory ? Trajectory : Structure
 
   // Get defaults and create props
-  const matterviz_data = get_matterviz_data()
-  const defaults = merge(matterviz_data?.defaults)
+  const defaults = merge(globalThis.mattervizData?.defaults)
 
   // Prepare trajectory data for VS Code streaming if supported
   let final_trajectory_data = result.data
@@ -566,12 +564,15 @@ const trajectory_props = (defaults: DefaultSettings) => {
 // Initialize the MatterViz application
 async function initialize() {
   // Get MatterViz data passed from extension
-  const matterviz_data = get_matterviz_data()
-  const { content, filename, is_base64 } = matterviz_data?.data || {}
-  const theme = matterviz_data?.theme
+  const { content, filename, is_base64 } = globalThis.mattervizData?.data || {}
+  const theme = globalThis.mattervizData?.theme
+  const moyo_wasm_url = globalThis.mattervizData?.moyo_wasm_url
   if (!content || !filename) {
     throw new Error(`No data provided to MatterViz app`)
   }
+
+  // Initialize WASM early with URL from extension (for symmetry analysis)
+  if (moyo_wasm_url) await ensure_moyo_wasm_ready(moyo_wasm_url)
 
   // Set up VSCode-specific download override
   setup_vscode_download()
@@ -614,7 +615,7 @@ async function cleanup_matterviz(): Promise<void> {
   initializeMatterViz?: () => Promise<MatterVizApp | null>
   cleanupMatterViz?: () => Promise<void>
 }).initializeMatterViz = async (): Promise<MatterVizApp | null> => {
-  if (!get_matterviz_data()) {
+  if (!globalThis.mattervizData) {
     console.warn(`No mattervizData found on window`)
     return null
   }
@@ -630,13 +631,13 @@ async function cleanup_matterviz(): Promise<void> {
       create_error_display(
         container,
         err,
-        get_matterviz_data()?.data?.filename || `Unknown file`,
+        globalThis.mattervizData?.data?.filename || `Unknown file`,
       )
     }
     vscode_api?.postMessage({
       command: `error`,
       text: `Error rendering ${
-        get_matterviz_data()?.data?.filename || `Unknown file`
+        globalThis.mattervizData?.data?.filename || `Unknown file`
       }: ${err.message}`,
     })
     return null

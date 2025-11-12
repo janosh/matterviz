@@ -1336,7 +1336,13 @@ export function parse_any_structure(
     const parsed = JSON.parse(content)
 
     // Check if it's already a valid structure
-    if (parsed.sites && Array.isArray(parsed.sites)) return parsed
+    if (parsed.sites && Array.isArray(parsed.sites)) {
+      // Ensure PBC is set for structures with lattice
+      if (parsed.lattice && !parsed.lattice.pbc) {
+        parsed.lattice.pbc = [true, true, true]
+      }
+      return parsed
+    }
     // If not, use parse_structure_file to find nested structures
     const structure = parse_structure_file(content, filename)
 
