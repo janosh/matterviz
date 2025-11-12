@@ -67,13 +67,9 @@ const build_prop_colors = (
 ): AtomPropertyColors => {
   const uniq = unique_values ?? [...new Set(vals)].sort((a, b) => a - b)
   // Use sorted uniq array to avoid spreading large arrays into Math.min/max
-  return {
-    colors,
-    values: vals,
-    min_value: uniq.length > 0 ? uniq[0] : undefined,
-    max_value: uniq.length > 0 ? uniq[uniq.length - 1] : undefined,
-    unique_values: uniq,
-  }
+  const min_value = uniq.length > 0 ? uniq[0] : undefined
+  const max_value = uniq.length > 0 ? uniq[uniq.length - 1] : undefined
+  return { colors, values: vals, min_value, max_value, unique_values: uniq }
 }
 
 export function apply_color_scale(
@@ -118,46 +114,114 @@ export function get_orig_site_idx(
     : site_idx
 }
 
-// Helper: Expand structure with images from all 26 neighboring cells for PBC coordination
+// Expand structure with PBC images - use minimal expansion based on atom positions
 function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
   if (!(`lattice` in structure) || !structure.lattice) return structure
 
-  const { sites } = structure
-  const lattice_T = math.transpose_3x3_matrix(structure.lattice.matrix)
+  const { sites, lattice } = structure
+  if (sites.length === 0) return structure
 
-  // Pre-allocate array: original sites + 26 images per site
-  const expanded_sites: Site[] = Array(sites.length * 27)
+  const lattice_T = math.transpose_3x3_matrix(lattice.matrix)
+  const pbc = lattice.pbc ?? [true, true, true]
 
-  // Copy original sites
-  for (let idx = 0; idx < sites.length; idx++) {
-    expanded_sites[idx] = sites[idx]
+  // For small structures or non-periodic, just expand all
+  if (sites.length < 20 || !pbc.some((p) => p)) {
+    const image_offsets = [-1, 0, 1]
+      .flatMap((dx) =>
+        [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dz) => [dx, dy, dz] as const))
+      )
+      .filter(
+        ([dx, dy, dz]) =>
+          !(dx === 0 && dy === 0 && dz === 0) &&
+          (pbc[0] || dx === 0) &&
+          (pbc[1] || dy === 0) &&
+          (pbc[2] || dz === 0),
+      )
+
+    const image_sites = sites.flatMap((site, orig_idx) =>
+      image_offsets.map(([dx, dy, dz]) => {
+        const img_abc: Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
+        return {
+          ...site,
+          abc: img_abc,
+          xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
+          properties: { ...site.properties, orig_site_idx: orig_idx },
+        }
+      })
+    )
+
+    return { ...structure, sites: [...sites, ...image_sites] }
   }
 
-  let write_idx = sites.length
+  // For larger structures: only add images that could realistically form bonds
+  // Maximum realistic bond distance ~5Å
+  const max_bond_dist = 5.0
+  const cutoff_frac: Vec3 = [
+    max_bond_dist / lattice.a,
+    max_bond_dist / lattice.b,
+    max_bond_dist / lattice.c,
+  ]
+
+  const image_sites: Site[] = []
 
   for (let orig_idx = 0; orig_idx < sites.length; orig_idx++) {
     const site = sites[orig_idx]
     const [a, b, c] = site.abc
 
-    // Add images in all 26 neighboring cells (3x3x3 - 1 for center)
+    // Normalize to [0,1)
+    const a_norm = a - Math.floor(a)
+    const b_norm = b - Math.floor(b)
+    const c_norm = c - Math.floor(c)
+
+    // Determine which image cells this atom needs
+    const need_images: [number, number, number][] = []
+
     for (let dx = -1; dx <= 1; dx++) {
+      if (!pbc[0] && dx !== 0) continue
+      if (dx === -1 && a_norm > cutoff_frac[0]) continue // Too far from lower boundary
+      if (dx === 1 && a_norm < 1 - cutoff_frac[0]) continue // Too far from upper boundary
+      if (dx === 0 && a_norm > cutoff_frac[0] && a_norm < 1 - cutoff_frac[0]) {
+        // Interior in this direction - only need center images
+        for (let dy = -1; dy <= 1; dy++) {
+          if (!pbc[1] && dy !== 0) continue
+          for (let dz = -1; dz <= 1; dz++) {
+            if (!pbc[2] && dz !== 0) continue
+            if (dx === 0 && dy === 0 && dz === 0) continue
+            need_images.push([dx, dy, dz])
+          }
+        }
+        continue
+      }
+
       for (let dy = -1; dy <= 1; dy++) {
+        if (!pbc[1] && dy !== 0) continue
+        if (dy === -1 && b_norm > cutoff_frac[1]) continue
+        if (dy === 1 && b_norm < 1 - cutoff_frac[1]) continue
+
         for (let dz = -1; dz <= 1; dz++) {
+          if (!pbc[2] && dz !== 0) continue
+          if (dz === -1 && c_norm > cutoff_frac[2]) continue
+          if (dz === 1 && c_norm < 1 - cutoff_frac[2]) continue
           if (dx === 0 && dy === 0 && dz === 0) continue
 
-          const img_abc: Vec3 = [a + dx, b + dy, c + dz]
-          expanded_sites[write_idx++] = {
-            ...site,
-            abc: img_abc,
-            xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
-            properties: { ...site.properties, orig_site_idx: orig_idx },
-          }
+          need_images.push([dx, dy, dz])
         }
       }
     }
+
+    // Create image atoms
+    for (const [dx, dy, dz] of need_images) {
+      const img_abc: Vec3 = [a + dx, b + dy, c + dz]
+      image_sites.push({
+        ...site,
+        abc: img_abc,
+        xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
+        properties: { ...site.properties, orig_site_idx: orig_idx },
+      })
+    }
   }
 
-  return { ...structure, sites: expanded_sites }
+  return { ...structure, sites: [...sites, ...image_sites] }
 }
 
 export function get_coordination_colors(
@@ -241,11 +305,7 @@ export function get_custom_colors(
 
   const strs = vals.map(String)
   const { colors, unique_values } = apply_categorical_color_scale(strs, scale)
-  return {
-    colors,
-    values: strs,
-    unique_values,
-  }
+  return { colors, values: strs, unique_values }
 }
 
 export function get_atom_colors(

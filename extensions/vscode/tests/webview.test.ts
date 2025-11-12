@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { base64_to_array_buffer, setup_vscode_download } from '../src/webview/main'
 
 declare global { // download function added by VSCode integration
@@ -111,6 +111,8 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
 })
 
 describe(`VSCode Download Integration`, () => {
+  afterEach(vi.useRealTimers)
+
   test(`sets up global download override when VSCode API is available`, async () => {
     vi.resetModules() // Reset modules to clear cached vscode_api variable in webview/main.ts
     const mock_post_message = vi.fn()
@@ -174,7 +176,6 @@ describe(`VSCode Download Integration`, () => {
       filename: `structure.png`,
       is_binary: true,
     })
-    vi.useRealTimers()
   })
 
   test.each([``, `   `])(`rejects invalid filename: "%s"`, (filename) => {
@@ -216,7 +217,6 @@ describe(`VSCode Download Integration`, () => {
       command: `error`,
       text: `Failed to read binary data for download`,
     })
-    vi.useRealTimers()
   })
 
   test(`handles general exceptions during download`, async () => {

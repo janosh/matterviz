@@ -212,6 +212,127 @@ describe(`Coordination`, () => {
       expect(colors).toHaveLength(2)
       expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
     })
+
+    describe(`Boundary detection optimization`, () => {
+      test(`small structure with all atoms near boundaries gets correct coordination`, () => {
+        // 2-atom structure in small cell - both atoms should be near boundaries
+        const structure = make_cubic_structure(
+          [{ abc: [0, 0, 0] as Vec3, element: `C` }, {
+            abc: [0.5, 0.5, 0.5] as Vec3,
+            element: `C`,
+          }],
+          3,
+        )
+        const { values } = ap.get_coordination_colors(structure)
+        expect(values).toHaveLength(2)
+        expect(values.every((cn) => typeof cn === `number` && cn >= 0)).toBe(true)
+      })
+
+      test(`large structure with interior atoms benefits from optimization`, () => {
+        // Create a 4x4x4 grid of atoms in fractional coords (64 atoms total)
+        // Use denser packing so atoms can actually form bonds
+        const grid_sites: { abc: Vec3; element: string }[] = []
+        for (let x_idx = 0; x_idx < 4; x_idx++) {
+          for (let y_idx = 0; y_idx < 4; y_idx++) {
+            for (let z_idx = 0; z_idx < 4; z_idx++) {
+              grid_sites.push({
+                abc: [(x_idx + 0.5) / 5, (y_idx + 0.5) / 5, (z_idx + 0.5) / 5] as Vec3,
+                element: `C`,
+              })
+            }
+          }
+        }
+
+        const structure = make_cubic_structure(grid_sites, 8) // 8 Angstrom cell
+        const { values, colors } = ap.get_coordination_colors(structure)
+
+        expect(values).toHaveLength(64)
+        expect(colors).toHaveLength(64)
+        // Interior atoms should have coordination > 0
+        expect(values.some((cn) => typeof cn === `number` && cn > 0)).toBe(true)
+      })
+
+      test(`atoms at exact cell boundaries get correct coordination`, () => {
+        // Atoms at abc = [0, 0, 0] and [1, 0, 0] (equivalent due to PBC)
+        const structure = make_cubic_structure(
+          [
+            { abc: [0, 0, 0] as Vec3, element: `Na` },
+            { abc: [0.5, 0, 0] as Vec3, element: `Cl` },
+          ],
+          5,
+        )
+        const { values } = ap.get_coordination_colors(structure)
+        expect(values).toHaveLength(2)
+        // Both should have some coordination
+        expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
+      })
+
+      test(`atoms just inside boundary threshold still get images`, () => {
+        // Place atoms very close to boundaries to ensure they're detected
+        // In a 5 Angstrom cell, atoms at 0.1 and 0.9 fractional (0.5 and 4.5 Angstrom)
+        // should see each other through PBC (distance = 1.0 Angstrom through wrap)
+        const structure = make_cubic_structure(
+          [
+            { abc: [0.1, 0.5, 0.5] as Vec3, element: `C` },
+            { abc: [0.9, 0.5, 0.5] as Vec3, element: `C` },
+          ],
+          5,
+        )
+        const { values } = ap.get_coordination_colors(structure)
+        expect(values).toHaveLength(2)
+        // These atoms should see each other through PBC
+        expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
+      })
+
+      test(`mixed interior and boundary atoms both get correct coordination`, () => {
+        // Mix of boundary and interior atoms
+        const structure = make_cubic_structure(
+          [
+            { abc: [0, 0, 0] as Vec3, element: `Fe` }, // boundary
+            { abc: [0.5, 0.5, 0.5] as Vec3, element: `Fe` }, // interior
+            { abc: [0.25, 0.25, 0.25] as Vec3, element: `Fe` }, // interior
+            { abc: [0.75, 0.75, 0.75] as Vec3, element: `Fe` }, // interior
+          ],
+          5,
+        )
+        const { values } = ap.get_coordination_colors(structure)
+        expect(values).toHaveLength(4)
+        expect(values.every((cn) => typeof cn === `number`)).toBe(true)
+      })
+
+      test(`partial PBC only expands in periodic directions`, () => {
+        // Structure with PBC only in x and y, not z
+        const structure = make_cubic_structure(
+          [
+            { abc: [0, 0, 0.1] as Vec3, element: `C` },
+            { abc: [0.5, 0.5, 0.1] as Vec3, element: `C` },
+          ],
+          8,
+          [true, true, false], // PBC only in x, y
+        )
+        const { values } = ap.get_coordination_colors(structure)
+        expect(values).toHaveLength(2)
+        // Should still calculate coordination correctly
+        expect(values.every((cn) => typeof cn === `number` && cn >= 0)).toBe(true)
+      })
+
+      test(`very large cell with sparse atoms`, () => {
+        // Large 50 Angstrom cell with just a few atoms
+        // All atoms should be near boundaries relative to bonding cutoff
+        const structure = make_cubic_structure(
+          [
+            { abc: [0.1, 0.1, 0.1] as Vec3, element: `C` },
+            { abc: [0.2, 0.1, 0.1] as Vec3, element: `O` },
+            { abc: [0.9, 0.9, 0.9] as Vec3, element: `N` },
+          ],
+          50, // Very large cell
+        )
+        const { values, colors } = ap.get_coordination_colors(structure)
+        expect(values).toHaveLength(3)
+        expect(colors).toHaveLength(3)
+        expect(values.every((cn) => typeof cn === `number` && cn >= 0)).toBe(true)
+      })
+    })
   })
 
   describe(`Supercell coordination coloring`, () => {
@@ -433,20 +554,74 @@ describe(`Edge Cases`, () => {
 })
 
 describe(`Performance`, () => {
+  const CI = 3 // CI multiplier
+
   test(
-    `500 atoms < 12s with PBC expansion`,
+    `500 atoms fast`,
     () => {
-      // Note: With PBC, this becomes ~13.5k atoms (27x) for coordination calculation
-      const structure = make_struct(Array.from({ length: 500 }, (_, idx) => ({
-        xyz: [idx % 10, Math.floor(idx / 10) % 10, Math.floor(idx / 100)] as Vec3,
-        element: [`C`, `O`, `N`, `H`][idx % 4],
-      })))
+      const structure = make_struct(
+        Array.from({ length: 500 }, (_, idx) => ({
+          xyz: [idx % 10, Math.floor(idx / 10) % 10, Math.floor(idx / 100)] as Vec3,
+          element: [`C`, `O`, `N`, `H`][idx % 4],
+        })),
+      )
+
       const start = performance.now()
       const { colors } = ap.get_coordination_colors(structure)
+      const elapsed = performance.now() - start
+
       expect(colors).toHaveLength(500)
-      expect(performance.now() - start).toBeLessThan(12000)
+      expect(elapsed).toBeLessThan(1000 * CI) // Old: 4s+, New: ~300ms
     },
-    15000, // 15 second timeout for this test
+    3500, // Fail fast if > 3.5s
+  )
+
+  test(
+    `1000 atoms fast`,
+    () => {
+      const structure = make_struct(
+        Array.from({ length: 1000 }, (_, idx) => ({
+          xyz: [
+            (idx % 10) * 1.5,
+            (Math.floor(idx / 10) % 10) * 1.5,
+            Math.floor(idx / 100) * 1.5,
+          ] as Vec3,
+          element: [`C`, `O`][idx % 2],
+        })),
+      )
+
+      const start = performance.now()
+      const { colors } = ap.get_coordination_colors(structure)
+      const elapsed = performance.now() - start
+
+      expect(colors).toHaveLength(1000)
+      expect(elapsed).toBeLessThan(3000 * CI) // Old: 60s+, New: ~1s
+    },
+    10000, // Fail fast if > 10s
+  )
+
+  test(
+    `512 interior atoms fast`,
+    () => {
+      const grid = 8
+      const sites = Array.from({ length: grid ** 3 }, (_, idx) => ({
+        xyz: [
+          20 + ((idx % grid) / (grid - 1)) * 60,
+          20 + ((Math.floor(idx / grid) % grid) / (grid - 1)) * 60,
+          20 + ((Math.floor(idx / grid ** 2) % grid) / (grid - 1)) * 60,
+        ] as Vec3,
+        element: `C`,
+      }))
+
+      const structure = make_struct(sites)
+      const start = performance.now()
+      const { colors } = ap.get_coordination_colors(structure)
+      const elapsed = performance.now() - start
+
+      expect(colors).toHaveLength(512)
+      expect(elapsed).toBeLessThan(500 * CI) // Old: 20s+, New: ~250ms
+    },
+    2000, // Fail fast if > 2s
   )
 
   test(`50 categorical values`, () => {
