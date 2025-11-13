@@ -49,6 +49,9 @@
     info_pane_open = $bindable(false),
     legend_pane_open = $bindable(false),
     max_hull_dist_show_phases = $bindable(0.5), // eV/atom above hull for showing entries
+    max_hull_dist_show_labels = $bindable(0.1), // eV/atom above hull for showing labels
+    show_stable_labels = $bindable(true),
+    show_unstable_labels = $bindable(false),
     on_file_drop,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
@@ -273,11 +276,6 @@
 
     render_once()
   })
-
-  // Label controls with smart defaults based on entry count
-  let show_stable_labels = $state(true)
-  let show_unstable_labels = $state(false)
-  let max_hull_dist_show_labels = $state(0.1) // eV/atom above hull for showing labels
 
   // Function to extract structure data from a phase diagram entry
   function extract_structure_from_entry(
