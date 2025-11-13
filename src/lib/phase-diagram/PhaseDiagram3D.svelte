@@ -266,7 +266,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, max_hull_dist_show_phases, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, highlighted_entries.length, resolved_text_color]
+    [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, highlighted_entries, resolved_text_color]
 
     render_once()
   })
@@ -690,14 +690,14 @@
 
       // Draw pulsating highlight for selected entry
       if (selected_entry && entry.entry_id === selected_entry.entry_id) {
-        const highlight_size = size * (2.8 + 0.6 * Math.sin(pulse_time * 4))
-        ctx.fillStyle = `rgba(33, 150, 243, ${pulse_opacity * 0.7})`
-        ctx.strokeStyle = `rgba(33, 150, 243, ${pulse_opacity})`
-        ctx.lineWidth = 3 * container_scale
-        ctx.beginPath()
-        ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
-        ctx.fill()
-        ctx.stroke()
+        helpers.draw_selection_highlight(
+          ctx,
+          projected,
+          size,
+          container_scale,
+          pulse_time,
+          pulse_opacity,
+        )
       }
 
       // Draw highlight for highlighted entries

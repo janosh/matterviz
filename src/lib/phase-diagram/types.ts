@@ -27,8 +27,6 @@ export interface PhaseData {
 
   // Materials Project-specific fields (optional)
   attributes?: Record<string, unknown>
-
-  [key: string]: unknown // Allow additional properties for flexibility
 }
 
 // Legacy type aliases for backward compatibility

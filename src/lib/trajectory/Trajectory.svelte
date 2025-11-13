@@ -337,16 +337,13 @@
   $effect(() => {
     if (!plot_series.length) return
 
-    // Extract property keys from visible series
+    // Extract property keys from visible series metadata
     const visible_keys = plot_series
       .filter((srs) => srs.visible)
+      // Get property key from series metadata (stored during series generation)
       .map((srs) => {
-        // Find original property key by matching label in config
-        for (const [key, config] of Object.entries(extended_config)) {
-          if (config.label === srs.label) return key
-        }
-        // Fallback: clean up label to use as key
-        return srs.label?.toLowerCase().replace(/<[^>]*>/g, ``) || ``
+        const metadata = Array.isArray(srs.metadata) ? srs.metadata[0] : srs.metadata
+        return metadata?.property_key
       })
       .filter(Boolean)
 

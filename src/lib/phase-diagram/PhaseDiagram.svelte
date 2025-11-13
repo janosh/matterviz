@@ -9,13 +9,13 @@
 
   // Union type combining all possible props from 2D, 3D, and 4D components
   // Note: This is a superset - each specific component will only use its relevant props
-  type PhaseDiagramProps = BasePhaseDiagramProps & Hull3DProps & { // 2D-specific props
+  type PhaseDiagramProps = BasePhaseDiagramProps & Hull3DProps & {
     x_axis?: AxisConfig
     y_axis?: AxisConfig
   }
 
-  // Component type that accepts our unified props
-  type UnifiedComponent = Component<PhaseDiagramProps>
+  // Type for dynamic component selection (helps TypeScript understand the union)
+  type PDComponent = Component<PhaseDiagramProps>
 
   let {
     entries,
@@ -64,14 +64,15 @@
   const element_count = $derived(elements.length)
 
   // Map element count to corresponding component
-  // Cast to UnifiedComponent to bypass TypeScript's union type complexity
-  const Component = $derived<UnifiedComponent | null>(
+  // Note: Type assertion needed because TypeScript can't infer that all components
+  // accept a compatible superset of props (BasePhaseDiagramProps + dimension-specific)
+  const Component = $derived<PDComponent | null>(
     element_count === 2
-      ? (PhaseDiagram2D as UnifiedComponent)
+      ? (PhaseDiagram2D as PDComponent)
       : element_count === 3
-      ? (PhaseDiagram3D as UnifiedComponent)
+      ? (PhaseDiagram3D as PDComponent)
       : element_count === 4
-      ? (PhaseDiagram4D as UnifiedComponent)
+      ? (PhaseDiagram4D as PDComponent)
       : null,
   )
 </script>

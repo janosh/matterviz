@@ -304,21 +304,24 @@ export interface PolymorphStats {
 
 // Get comparable energy for ranking polymorphs (prioritizes e_above_hull, falls back to per-atom energy)
 function get_entry_energy(entry: PhaseData, prefer_hull: boolean): number | null {
+  // First choice: e_above_hull (if prefer_hull is true)
   if (
     prefer_hull && typeof entry.e_above_hull === `number` &&
     Number.isFinite(entry.e_above_hull)
   ) return entry.e_above_hull
+  // Second choice: energy_per_atom
   if (
     typeof entry.energy_per_atom === `number` && Number.isFinite(entry.energy_per_atom)
   ) return entry.energy_per_atom
+  // Third choice: compute energy_per_atom from total energy and composition
   if (typeof entry.energy === `number` && Number.isFinite(entry.energy)) {
     const total_atoms = Object.values(entry.composition).reduce(
       (sum, amt) => sum + amt,
       0,
     )
-    return total_atoms > 0 ? entry.energy / total_atoms : null
+    if (total_atoms > 0) return entry.energy / total_atoms
   }
-  return null
+  return null // No valid energy data available
 }
 
 // Pre-compute polymorph statistics for all entries at once (O(n²) but done once)
@@ -427,4 +430,39 @@ export function draw_highlight_effect(
       ctx.stroke()
     }
   }
+}
+
+// Draw selection highlight for currently selected entry (with pulsing animation)
+export function draw_selection_highlight(
+  ctx: CanvasRenderingContext2D,
+  projected: { x: number; y: number },
+  base_size: number,
+  container_scale: number,
+  pulse_time: number,
+  pulse_opacity: number,
+  options: {
+    color?: string
+    size_multiplier?: number
+    pulse_amplitude?: number
+    fill_opacity?: number
+    line_width?: number
+  } = {},
+): void {
+  const {
+    color = `rgba(33, 150, 243, 1)`, // Blue by default
+    size_multiplier = 2.8,
+    pulse_amplitude = 0.6,
+    fill_opacity = 0.7,
+    line_width = 3,
+  } = options
+
+  const highlight_size = base_size *
+    (size_multiplier + pulse_amplitude * Math.sin(pulse_time * 4))
+  ctx.fillStyle = apply_alpha_to_color(color, pulse_opacity * fill_opacity)
+  ctx.strokeStyle = apply_alpha_to_color(color, pulse_opacity)
+  ctx.lineWidth = line_width * container_scale
+  ctx.beginPath()
+  ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
+  ctx.fill()
+  ctx.stroke()
 }

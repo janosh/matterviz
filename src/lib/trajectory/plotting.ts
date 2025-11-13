@@ -156,6 +156,7 @@ function create_series_from_stats(
       markers: n < 30 ? `line+points` : `line`,
       metadata: Array(n).fill({
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
+        property_key: key, // Store original property key for robust lookups
       }),
       line_style: { stroke: color, stroke_width: 2 },
       point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
@@ -520,6 +521,7 @@ export function generate_streaming_plot_series(
       markers: data_points.length < 1000 ? `line+points` : `line`,
       metadata: data_points.map(() => ({
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
+        property_key, // Store original property key for robust lookups
       })),
       line_style: { stroke: color, stroke_width: 2 },
       point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },

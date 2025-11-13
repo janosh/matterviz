@@ -504,4 +504,26 @@ describe(`integration and regression tests`, () => {
     expect(labels.y1).toBe(`Visible (eV)`) // Only visible series included
     expect(labels.y2).toBe(`Another (Å)`)
   })
+
+  it.each([
+    { label_search: `energy`, expected_key: `energy` },
+    { label_search: `f`, expected_key: `force_max` },
+    { label_search: `volume`, expected_key: `volume` },
+  ])(
+    `should store property_key=$expected_key in $label_search series metadata`,
+    ({ label_search, expected_key }) => {
+      const trajectory = create_trajectory(COMMON_TRAJECTORIES.multi_property)
+      const series = generate_plot_series(trajectory, test_extractor, {
+        property_config: DEFAULT_PROPERTY_CONFIG,
+      })
+
+      const found_series = find_series_by_label(series, label_search)
+      expect(found_series).toBeDefined()
+      expect(found_series?.metadata).toBeInstanceOf(Array)
+      expect(found_series?.metadata).toHaveLength(3) // 3 frames in COMMON_TRAJECTORIES.multi_property
+
+      const metadata = (found_series?.metadata as Record<string, unknown>[])[0]
+      expect(metadata.property_key).toBe(expected_key)
+    },
+  )
 })
