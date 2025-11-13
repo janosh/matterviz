@@ -10,6 +10,7 @@
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
+  import { toggle_series_visibility } from '$lib/plot/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -52,6 +53,12 @@
     on_file_load?: (data: TrajHandlerData) => void
     on_error?: (data: TrajHandlerData) => void
   }
+  type ControlsProps = {
+    trajectory: TrajectoryType
+    current_step_idx: number
+    total_frames: number
+    on_step_change: (idx: number) => void
+  }
 
   let {
     trajectory = $bindable(),
@@ -71,6 +78,8 @@
     auto_play = false,
     display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
+    visible_properties = $bindable(),
+    property_labels,
     on_play,
     on_pause,
     on_step_change,
@@ -109,16 +118,7 @@
     // spinner props (passed to Spinner component)
     spinner_props?: ComponentProps<typeof Spinner>
     // custom snippets for additional UI elements
-    trajectory_controls?: Snippet<
-      [
-        {
-          trajectory: TrajectoryType
-          current_step_idx: number
-          total_frames: number
-          on_step_change: (idx: number) => void
-        },
-      ]
-    >
+    trajectory_controls?: Snippet<[ControlsProps]>
     // Custom error snippet for advanced error handling
     error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
     show_controls?: boolean // show/hide the trajectory controls bar
@@ -139,7 +139,15 @@
     // - array: exact step indices to label
     // - undefined: no labels
     step_labels?: number | number[]
-    // explicit mapping from property keys to display labels
+    // visible properties - bindable array of property keys currently shown in the plot
+    // - controls which trajectory properties are plotted (e.g., ['energy', 'volume', 'force_max'])
+    // - bindable: reflects current visibility state and can be used for external control
+    // - if not provided, uses default visible properties (energy, force_max, stress_frobenius)
+    // - if specified properties don't exist in data, falls back to automatic selection
+    visible_properties?: string[]
+    // custom labels for trajectory properties - maps property keys to display labels
+    // - e.g., {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
+    // - merged with built-in trajectory_property_config
     property_labels?: Record<string, string>
     // units configuration - developers can override these (deprecated - use property_labels instead)
     units?: {
@@ -290,23 +298,72 @@
     return []
   })
 
-  // Generate plot data - use pre-extracted metadata for indexed trajectories
-  let plot_series = $derived.by(() => {
-    if (trajectory?.plot_metadata) {
-      // Use pre-extracted metadata for indexed trajectories
-      // Convert metadata to plot series format
-      return generate_streaming_plot_series(trajectory.plot_metadata, {
-        property_config: trajectory_property_config,
-      })
-    }
+  // Build extended property config with custom labels if provided
+  let extended_config = $derived.by(() => {
+    if (!property_labels) return trajectory_property_config
 
-    // Traditional mode: use trajectory frames
-    return trajectory
-      ? generate_plot_series(trajectory, data_extractor, {
-        property_config: trajectory_property_config,
-      })
-      : []
+    const custom_config: Record<string, { label: string; unit: string }> = {}
+    for (const [key, label] of Object.entries(property_labels)) {
+      const existing = trajectory_property_config[key] ||
+        trajectory_property_config[key.toLowerCase()]
+      custom_config[key] = { label, unit: existing?.unit || `` }
+    }
+    return { ...trajectory_property_config, ...custom_config }
   })
+
+  // Plot series state (not derived so we can update on legend toggle)
+  let plot_series = $state<DataSeries[]>([])
+
+  // Regenerate plot series when trajectory, config, or visible_properties change
+  $effect(() => {
+    const keys_set = visible_properties ? new Set(visible_properties) : undefined
+
+    if (trajectory?.plot_metadata) {
+      plot_series = generate_streaming_plot_series(trajectory.plot_metadata, {
+        property_config: extended_config,
+        default_visible_properties: keys_set,
+      })
+    } else if (trajectory) {
+      plot_series = generate_plot_series(trajectory, data_extractor, {
+        property_config: extended_config,
+        default_visible_properties: keys_set,
+      })
+    } else {
+      plot_series = []
+    }
+  })
+
+  // Update visible_properties binding when user toggles series visibility in legend
+  $effect(() => {
+    if (!plot_series.length) return
+
+    // Extract property keys from visible series
+    const visible_keys = plot_series
+      .filter((srs) => srs.visible)
+      .map((srs) => {
+        // Find original property key by matching label in config
+        for (const [key, config] of Object.entries(extended_config)) {
+          if (config.label === srs.label) return key
+        }
+        // Fallback: clean up label to use as key
+        return srs.label?.toLowerCase().replace(/<[^>]*>/g, ``) || ``
+      })
+      .filter(Boolean)
+
+    // Only update if changed (use untrack to avoid circular dependency)
+    const current = untrack(() => visible_properties) || []
+    const has_changed = visible_keys.length !== current.length ||
+      !visible_keys.every((key, idx) => key === current[idx])
+
+    if (has_changed) {
+      visible_properties = visible_keys
+    }
+  })
+
+  // Handler for legend toggle - updates plot_series state
+  function handle_legend_toggle(series_idx: number) {
+    plot_series = toggle_series_visibility(plot_series, series_idx)
+  }
 
   let x_axis = $derived({
     label: `Step`,
@@ -325,14 +382,6 @@
     format: `.2~s`,
     label_shift: { y: 80 },
   })
-
-  // Helper function to get current frame data for callbacks
-  function get_current_frame_data() {
-    return {
-      frame: current_frame || undefined,
-      frame_count: total_frames,
-    }
-  }
 
   // hide plot if all plotted values are constant (no variation)
   let show_plot = $derived(
@@ -354,12 +403,11 @@
       current_step_idx++
       // Streaming frame loading handled by reactive effect
       if (trajectory) {
-        const { frame } = get_current_frame_data()
         on_step_change?.({
           trajectory,
           step_idx: current_step_idx,
           frame_count: total_frames,
-          frame,
+          frame: current_frame || undefined,
         })
       }
     }
@@ -370,12 +418,11 @@
       current_step_idx--
       // Streaming frame loading handled by reactive effect
       if (trajectory) {
-        const { frame } = get_current_frame_data()
         on_step_change?.({
           trajectory,
           step_idx: current_step_idx,
           frame_count: total_frames,
-          frame,
+          frame: current_frame || undefined,
         })
       }
     }
@@ -387,12 +434,11 @@
       // Note: streaming frame loading is handled by reactive effect
       // Handle callbacks for both traditional and streaming modes
       if (trajectory) {
-        const { frame } = get_current_frame_data()
         on_step_change?.({
           trajectory,
           step_idx: current_step_idx,
           frame_count: total_frames,
-          frame,
+          frame: current_frame || undefined,
         })
       }
     }
@@ -454,13 +500,12 @@
       // Create new interval with current frame rate
       play_interval = setInterval(() => {
         if (current_step_idx >= total_frames - 1) {
-          const { frame } = get_current_frame_data()
           if (trajectory) {
             on_end?.({
               trajectory,
               step_idx: current_step_idx,
               frame_count: total_frames,
-              frame,
+              frame: current_frame || undefined,
             })
           }
           go_to_step(0) // Loop back to 1st step
@@ -1089,7 +1134,9 @@
             padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
-            legend={scatter_props?.legend}
+            legend={scatter_props?.legend
+            ? { ...scatter_props.legend, on_toggle: handle_legend_toggle }
+            : { on_toggle: handle_legend_toggle }}
             {...scatter_props}
             class="plot {scatter_props.class ?? ``}"
           >
@@ -1114,6 +1161,7 @@
             mode={histogram_props.mode ?? `overlay`}
             show_legend={histogram_props.show_legend ?? plot_series.length > 1}
             legend={histogram_props.legend}
+            on_series_toggle={handle_legend_toggle}
             style="height: 100%"
             {...histogram_props}
             class="plot {histogram_props.class ?? ``}"
