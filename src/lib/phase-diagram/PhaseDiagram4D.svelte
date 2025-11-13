@@ -63,6 +63,19 @@
     margin: { t: 60, r: 60, b: 60, l: 60, ...(config.margin || {}) },
   })
 
+  // Resolve text color for canvas rendering (canvas context can't resolve CSS variables)
+  const resolved_text_color = $derived.by(() => {
+    if (!wrapper) return `#212121`
+    const styles = getComputedStyle(wrapper)
+    // First try to get the configured annotation color
+    const annotation_color = merged_config.colors?.annotation
+    if (annotation_color && !annotation_color.startsWith(`var(`)) {
+      return annotation_color
+    }
+    // Otherwise resolve from CSS variable
+    return styles.getPropertyValue(`--text-color`)?.trim() || `#212121`
+  })
+
   let { // Compute energy mode information
     has_precomputed_e_form,
     has_precomputed_hull,
@@ -484,8 +497,6 @@
   function draw_tetrahedron(): void {
     if (!ctx) return
 
-    const styles = getComputedStyle(canvas)
-
     // Convert vertices to Point3D objects
     const vertices = TETRAHEDRON_VERTICES.map(([x, y, z]) => ({ x, y, z }))
 
@@ -522,7 +533,7 @@
         z: (vertices[0].z + vertices[1].z + vertices[2].z + vertices[3].z) / 4,
       }
 
-      ctx.fillStyle = styles.getPropertyValue(`--pd-text-color`) || `#212121`
+      ctx.fillStyle = resolved_text_color
       ctx.font = `bold 18px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
@@ -671,7 +682,6 @@
 
   function draw_data_points(): void {
     if (!ctx || plot_entries.length === 0) return
-    const styles = getComputedStyle(canvas)
 
     // Collect all points with depth for sorting
     const points_with_depth: {
@@ -765,7 +775,7 @@
       )
 
       if (should_show_label) {
-        ctx.fillStyle = styles.getPropertyValue(`--pd-text-color`) || `#212121`
+        ctx.fillStyle = resolved_text_color
 
         // For compound entries, use name, formula, or entry_id as fallback
         const label = entry.name || entry.reduced_formula || entry.entry_id ||
@@ -782,8 +792,6 @@
   function render_frame(): void {
     if (!ctx || !canvas) return
 
-    const styles = getComputedStyle(canvas)
-
     // Use CSS dimensions for rendering (already scaled by DPR in context)
     const display_width = canvas.clientWidth || 600
     const display_height = canvas.clientHeight || 600
@@ -797,7 +805,7 @@
 
     if (elements.length !== 4) {
       // Show error message
-      ctx.fillStyle = styles.getPropertyValue(`--text-color`) || `#666`
+      ctx.fillStyle = resolved_text_color
       ctx.font = `16px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`

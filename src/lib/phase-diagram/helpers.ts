@@ -302,31 +302,59 @@ export interface PolymorphStats {
   equal: number
 }
 
-// Get comparable energy for ranking polymorphs
+// Energy metric types for consistent polymorph comparison
+type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | null
+
+// Check if value is a finite number
+const is_finite = (val: unknown): val is number =>
+  typeof val === `number` && Number.isFinite(val)
+
+// Compute energy_per_atom from total energy and composition
+function compute_energy_per_atom(entry: PhaseData): number | null {
+  if (!is_finite(entry.energy)) return null
+  const total_atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
+  return total_atoms > 0 ? entry.energy / total_atoms : null
+}
+
+// Get energy value for an entry using a specific metric
 // NOTE: We prioritize absolute energies (e_form_per_atom, energy_per_atom) over e_above_hull
 // because polymorphs of the same composition on the hull all have e_above_hull=0
-function get_entry_energy(entry: PhaseData): number | null {
-  // First choice: e_form_per_atom (formation energy is best for comparing polymorphs)
-  if (
-    typeof entry.e_form_per_atom === `number` && Number.isFinite(entry.e_form_per_atom)
-  ) return entry.e_form_per_atom
-  // Second choice: energy_per_atom
-  if (
-    typeof entry.energy_per_atom === `number` && Number.isFinite(entry.energy_per_atom)
-  ) return entry.energy_per_atom
-  // Third choice: compute energy_per_atom from total energy and composition
-  if (typeof entry.energy === `number` && Number.isFinite(entry.energy)) {
-    const total_atoms = Object.values(entry.composition).reduce(
-      (sum, amt) => sum + amt,
-      0,
-    )
-    if (total_atoms > 0) return entry.energy / total_atoms
+function get_entry_energy_by_metric(
+  entry: PhaseData,
+  metric: EnergyMetric,
+): number | null {
+  if (metric === `e_form_per_atom` && is_finite(entry.e_form_per_atom)) {
+    return entry.e_form_per_atom
   }
-  // Last resort: e_above_hull (will fail to differentiate stable polymorphs with e_above_hull=0)
+  if (metric === `energy_per_atom`) {
+    return is_finite(entry.energy_per_atom)
+      ? entry.energy_per_atom
+      : compute_energy_per_atom(entry)
+  }
+  if (metric === `e_above_hull` && is_finite(entry.e_above_hull)) {
+    return entry.e_above_hull
+  }
+  return null
+}
+
+// Determine which energy metric to use for a composition group
+// Returns the first metric that ALL entries in the group can provide
+function select_group_energy_metric(polymorphs: PhaseData[]): EnergyMetric {
+  // Try e_form_per_atom first (best for comparing polymorphs)
+  if (polymorphs.every((entry) => is_finite(entry.e_form_per_atom))) {
+    return `e_form_per_atom`
+  }
+  // Try energy_per_atom (either direct field or computed from total energy)
   if (
-    typeof entry.e_above_hull === `number` && Number.isFinite(entry.e_above_hull)
-  ) return entry.e_above_hull
-  return null // No valid energy data available
+    polymorphs.every(
+      (entry) =>
+        is_finite(entry.energy_per_atom) || compute_energy_per_atom(entry) !== null,
+    )
+  ) return `energy_per_atom`
+  // Last resort: e_above_hull (will fail to differentiate stable polymorphs with e_above_hull=0)
+  if (polymorphs.every((entry) => is_finite(entry.e_above_hull))) return `e_above_hull`
+
+  return null // No valid metric available for this group
 }
 
 // Pre-compute polymorph statistics for all entries at once (O(n²) but done once)
@@ -335,6 +363,7 @@ export function compute_all_polymorph_stats(
   all_entries: PhaseData[],
 ): Map<string, PolymorphStats> {
   const stats_map = new Map<string, PolymorphStats>()
+  const zero_stats = { total: 0, higher: 0, lower: 0, equal: 0 }
 
   // Group entries by fractional composition (normalized stoichiometry)
   const composition_groups = new Map<string, PhaseData[]>()
@@ -351,19 +380,32 @@ export function compute_all_polymorph_stats(
 
   // Calculate stats for each polymorph group
   for (const polymorphs of composition_groups.values()) {
+    // Select one consistent metric for the entire composition group
+    const group_metric = select_group_energy_metric(polymorphs)
+
+    // If no valid metric available, set all entries in group to zero stats
+    if (group_metric === null) {
+      for (const entry of polymorphs) {
+        if (entry.entry_id) stats_map.set(entry.entry_id, zero_stats)
+      }
+      continue
+    }
+
+    // Compare entries using the consistent group metric
     for (const entry of polymorphs) {
       if (!entry.entry_id) continue
 
-      const entry_energy = get_entry_energy(entry)
+      const entry_energy = get_entry_energy_by_metric(entry, group_metric)
       if (entry_energy === null) {
-        stats_map.set(entry.entry_id, { total: 0, higher: 0, lower: 0, equal: 0 })
+        stats_map.set(entry.entry_id, zero_stats)
         continue
       }
 
       let [total, higher, lower, equal] = [0, 0, 0, 0]
       for (const other of polymorphs) {
         if (other === entry || other.entry_id === entry.entry_id) continue
-        const other_energy = get_entry_energy(other)
+
+        const other_energy = get_entry_energy_by_metric(other, group_metric)
         if (other_energy === null) continue
 
         total++
