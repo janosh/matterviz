@@ -100,6 +100,8 @@
   // Process data and element set
   const pd_data = $derived(thermo.process_pd_entries(effective_entries))
 
+  const polymorph_stats_map = $derived(helpers.compute_all_polymorph_stats(entries)) // Pre-compute polymorph stats once for O(1) tooltip lookups
+
   const elements = $derived.by(() => {
     if (pd_data.elements.length > 2) {
       console.error(
@@ -474,7 +476,7 @@
 {#snippet tooltip(point: ScatterHandlerProps)}
   {@const entry = point.metadata as unknown as PhaseData}
   {#if entry}
-    <PhaseEntryTooltip {entry} all_entries={entries} />
+    <PhaseEntryTooltip {entry} {polymorph_stats_map} />
   {/if}
 {/snippet}
 

@@ -1134,10 +1134,8 @@
             padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
-            legend={scatter_props?.legend
-            ? { ...scatter_props.legend, on_toggle: handle_legend_toggle }
-            : { on_toggle: handle_legend_toggle }}
             {...scatter_props}
+            legend={{ ...scatter_props.legend ?? {}, on_toggle: handle_legend_toggle }}
             class="plot {scatter_props.class ?? ``}"
           >
             {#snippet tooltip({ x, y, metadata })}

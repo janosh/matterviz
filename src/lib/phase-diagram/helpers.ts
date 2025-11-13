@@ -295,115 +295,105 @@ export function get_fractional_composition(
   return fractional
 }
 
-// Check if two fractional compositions are equal (within numerical tolerance)
-function are_fractional_compositions_equal(
-  comp1: Record<string, number>,
-  comp2: Record<string, number>,
-  tolerance = 1e-6, // for comparing fractional compositions (due to floating-point precision)
-): boolean {
-  const keys1 = Object.keys(comp1)
-  const keys2 = Object.keys(comp2)
-  if (keys1.length !== keys2.length) return false
-  for (const key of keys1) {
-    if (!(key in comp2)) return false
-    if (Math.abs(comp1[key] - comp2[key]) > tolerance) return false
-  }
-  return true
+export interface PolymorphStats {
+  total: number
+  higher: number
+  lower: number
+  equal: number
 }
 
-// Calculate polymorph statistics for a given entry among all entries
-export function calculate_polymorph_stats(
-  entry: PhaseData,
+// Get comparable energy for ranking polymorphs (prioritizes e_above_hull, falls back to per-atom energy)
+function get_entry_energy(entry: PhaseData, prefer_hull: boolean): number | null {
+  if (
+    prefer_hull && typeof entry.e_above_hull === `number` &&
+    Number.isFinite(entry.e_above_hull)
+  ) return entry.e_above_hull
+  if (
+    typeof entry.energy_per_atom === `number` && Number.isFinite(entry.energy_per_atom)
+  ) return entry.energy_per_atom
+  if (typeof entry.energy === `number` && Number.isFinite(entry.energy)) {
+    const total_atoms = Object.values(entry.composition).reduce(
+      (sum, amt) => sum + amt,
+      0,
+    )
+    return total_atoms > 0 ? entry.energy / total_atoms : null
+  }
+  return null
+}
+
+// Pre-compute polymorph statistics for all entries at once (O(n²) but done once)
+// Returns a Map keyed by entry_id for O(1) lookups during hover
+export function compute_all_polymorph_stats(
   all_entries: PhaseData[],
-): { total: number; higher: number; lower: number; equal: number } {
-  const entry_fractional = get_fractional_composition(entry.composition)
+): Map<string, PolymorphStats> {
+  const stats_map = new Map<string, PolymorphStats>()
 
-  // First, collect all polymorphs (entries with same fractional composition)
-  const polymorphs = [entry]
-  for (const other of all_entries) {
-    if (other === entry) continue
-    if (entry.entry_id && other.entry_id === entry.entry_id) continue
-
-    const other_fractional = get_fractional_composition(other.composition)
-    if (are_fractional_compositions_equal(entry_fractional, other_fractional)) {
-      polymorphs.push(other)
-    }
+  // Group entries by fractional composition (normalized stoichiometry)
+  const composition_groups = new Map<string, PhaseData[]>()
+  for (const entry of all_entries) {
+    const fractional = get_fractional_composition(entry.composition)
+    const comp_key = Object.entries(fractional)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([elem, frac]) => `${elem}:${frac.toFixed(6)}`)
+      .join(`|`)
+    const group = composition_groups.get(comp_key) ?? []
+    if (group.length === 0) composition_groups.set(comp_key, group)
+    group.push(entry)
   }
 
-  // Determine if all polymorphs have e_above_hull
-  const all_have_hull = polymorphs.every(
-    (phase) =>
-      typeof phase.e_above_hull === `number` && Number.isFinite(phase.e_above_hull),
-  )
+  // Calculate stats for each polymorph group
+  for (const polymorphs of composition_groups.values()) {
+    const prefer_hull = polymorphs.every((p) => typeof p.e_above_hull === `number`)
 
-  // Function to get comparable energy for an entry
-  const get_comparable_energy = (phase: PhaseData): number | null => {
-    if (all_have_hull) {
-      // Use e_above_hull if all polymorphs have it
-      return phase.e_above_hull ?? null
-    }
-    // Otherwise use per-atom energy
-    if (
-      typeof phase.energy_per_atom === `number` &&
-      Number.isFinite(phase.energy_per_atom)
-    ) {
-      return phase.energy_per_atom
-    }
-    // Fall back to energy / total_atoms
-    if (typeof phase.energy === `number` && Number.isFinite(phase.energy)) {
-      const total_atoms = Object.values(phase.composition).reduce(
-        (sum, amt) => sum + amt,
-        0,
-      )
-      if (total_atoms > 0) {
-        return phase.energy / total_atoms
+    for (const entry of polymorphs) {
+      if (!entry.entry_id) continue
+
+      const entry_energy = get_entry_energy(entry, prefer_hull)
+      if (entry_energy === null) {
+        stats_map.set(entry.entry_id, { total: 0, higher: 0, lower: 0, equal: 0 })
+        continue
       }
+
+      let [total, higher, lower, equal] = [0, 0, 0, 0]
+      for (const other of polymorphs) {
+        if (other === entry || other.entry_id === entry.entry_id) continue
+        const other_energy = get_entry_energy(other, prefer_hull)
+        if (other_energy === null) continue
+
+        total++
+        if (other_energy > entry_energy) higher++
+        else if (other_energy < entry_energy) lower++
+        else equal++
+      }
+
+      stats_map.set(entry.entry_id, { total, higher, lower, equal })
     }
-    return null
   }
 
-  const entry_energy = get_comparable_energy(entry)
-  if (entry_energy === null) {
-    return { total: 0, higher: 0, lower: 0, equal: 0 }
-  }
-
-  let total = 0
-  let higher = 0 // count of polymorphs with higher energy (less stable)
-  let lower = 0 // count of polymorphs with lower energy (more stable)
-  let equal = 0 // count of polymorphs with equal energy
-
-  for (const other of polymorphs) {
-    // Skip the entry itself
-    if (other === entry) continue
-    if (entry.entry_id && other.entry_id === entry.entry_id) continue
-
-    const other_energy = get_comparable_energy(other)
-    if (other_energy === null) continue
-
-    total += 1
-
-    if (other_energy > entry_energy) higher += 1
-    else if (other_energy < entry_energy) lower += 1
-    else equal += 1
-  }
-
-  return { total, higher, lower, equal }
+  return stats_map
 }
 
 function apply_alpha_to_color(color: string, alpha: number): string {
+  // Handle existing rgba format
   if (color.includes(`rgba`)) return color.replace(/[\d.]+\)$/, `${alpha})`)
-  if (color.includes(`rgb(`)) {
+
+  if (color.includes(`rgb(`)) { // Convert rgb to rgba
     return color.replace(/rgb\(/, `rgba(`).replace(/\)$/, `, ${alpha})`)
   }
 
-  const hex_match = color.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+  const hex_match = color.match(/^#?([0-9a-fA-F]{3,6})$/) // Convert hex to rgba
   if (hex_match) {
     let hex = hex_match[1]
-    if (hex.length === 3) hex = hex.split(``).map((c) => c + c).join(``)
-    const [red, green, blue] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16))
+    // Expand short form (e.g., "03F") to full form (e.g., "0033FF")
+    if (hex.length === 3) hex = [...hex].map((char) => char + char).join(``)
+
+    const red = parseInt(hex.slice(0, 2), 16)
+    const green = parseInt(hex.slice(2, 4), 16)
+    const blue = parseInt(hex.slice(4, 6), 16)
     return `rgba(${red}, ${green}, ${blue}, ${alpha})`
   }
-  return color
+
+  return color // Return unchanged if format not recognized
 }
 
 export function draw_highlight_effect(

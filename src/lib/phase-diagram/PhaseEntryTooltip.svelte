@@ -3,11 +3,13 @@
   import { is_unary_entry } from '$lib'
   import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
-  import { calculate_polymorph_stats } from './helpers'
+  import type { PolymorphStats } from './helpers'
   import type { PhaseData } from './types'
 
-  let { entry, all_entries }: { entry: PhaseData; all_entries?: PhaseData[] } =
-    $props()
+  let { entry, polymorph_stats_map }: {
+    entry: PhaseData
+    polymorph_stats_map?: Map<string, PolymorphStats>
+  } = $props()
 
   const is_element = $derived(is_unary_entry(entry))
   const elem_symbol = $derived(
@@ -16,8 +18,11 @@
   const elem_name = $derived(
     is_element && elem_symbol ? elem_symbol_to_name[elem_symbol] ?? `` : ``,
   )
+  // O(1) lookup of pre-computed polymorph stats
   const polymorph_stats = $derived(
-    all_entries ? calculate_polymorph_stats(entry, all_entries) : null,
+    entry.entry_id && polymorph_stats_map
+      ? polymorph_stats_map.get(entry.entry_id)
+      : null,
   )
 </script>
 

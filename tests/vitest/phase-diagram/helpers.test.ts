@@ -395,31 +395,72 @@ describe(`helpers: polymorph statistics`, () => {
       ],
       exp: [1, 1, 0, 0],
     },
-  ])(
-    `$name`,
-    ({ entry, all, exp: [tot, hi, lo, eq] }) => {
-      const stats = helpers.calculate_polymorph_stats(entry, all)
-      expect([stats.total, stats.higher, stats.lower, stats.equal]).toEqual([
-        tot,
-        hi,
-        lo,
-        eq,
-      ])
-      expect(stats.total).toBe(stats.higher + stats.lower + stats.equal)
-    },
-  )
+  ])(`$name`, ({ entry, all, exp: [tot, hi, lo, eq] }) => {
+    const stats_map = helpers.compute_all_polymorph_stats(all)
+    const stats = stats_map.get(entry.entry_id ?? ``)
+    expect(stats).toBeDefined()
+    expect(stats).toEqual({ total: tot, higher: hi, lower: lo, equal: eq })
+    if (stats) expect(stats.total).toBe(stats.higher + stats.lower + stats.equal)
+  })
+})
 
-  test(`excludes self by reference even without entry_id`, () => {
-    const entry: PhaseData = {
+describe(`helpers: batch polymorph stats computation`, () => {
+  test(`empty and single-entry edge cases`, () => {
+    expect(helpers.compute_all_polymorph_stats([]).size).toBe(0)
+
+    const single = helpers.compute_all_polymorph_stats([
+      {
+        composition: { Li: 1 },
+        energy: -1,
+        e_above_hull: 0,
+        entry_id: `mp-1`,
+      } as PhaseData,
+    ])
+    expect(single.size).toBe(1)
+    expect(single.get(`mp-1`)).toEqual({ total: 0, higher: 0, lower: 0, equal: 0 })
+  })
+
+  test(`groups polymorphs by fractional composition and ranks by energy`, () => {
+    const lio = (
+      id: string,
+      e_hull: number,
+    ) => ({
       composition: { Li: 1, O: 1 },
+      e_above_hull: e_hull,
+      entry_id: id,
+    } as PhaseData)
+    const entries = [lio(`mp-1`, 0), lio(`mp-2`, 0.5), lio(`mp-3`, 1), {
+      composition: { Li: 2 },
+      e_above_hull: 0,
+      entry_id: `mp-4`,
+    } as PhaseData]
+
+    const stats_map = helpers.compute_all_polymorph_stats(entries)
+    expect(stats_map.size).toBe(4)
+
+    expect(stats_map.get(`mp-1`)).toEqual({ total: 2, higher: 2, lower: 0, equal: 0 })
+    expect(stats_map.get(`mp-2`)).toEqual({ total: 2, higher: 1, lower: 1, equal: 0 })
+    expect(stats_map.get(`mp-3`)).toEqual({ total: 2, higher: 0, lower: 2, equal: 0 })
+    expect(stats_map.get(`mp-4`)).toEqual({ total: 0, higher: 0, lower: 0, equal: 0 })
+  })
+
+  test(`normalizes stoichiometry and skips entries without entry_id`, () => {
+    // Li:O ratio 1:2 and 2:4 are the same fractional composition
+    const lio2_1 = {
+      composition: { Li: 1, O: 2 },
+      e_above_hull: 0,
+      entry_id: `mp-1`,
+    } as PhaseData
+    const lio2_2 = {
+      composition: { Li: 2, O: 4 },
       e_above_hull: 0.1,
+      entry_id: `mp-2`,
     } as PhaseData
-    const other: PhaseData = {
-      composition: { Li: 1, O: 1 },
-      e_above_hull: 0.2,
-    } as PhaseData
-    const stats = helpers.calculate_polymorph_stats(entry, [entry, other])
-    expect(stats.total).toBe(1)
-    expect(stats.higher).toBe(1)
+    const no_id = { composition: { Li: 1, O: 1 }, e_above_hull: 0 } as PhaseData
+
+    const stats_map = helpers.compute_all_polymorph_stats([lio2_1, lio2_2, no_id])
+    expect(stats_map.size).toBe(2) // no_id is skipped
+    expect(stats_map.get(`mp-1`)?.total).toBe(1) // sees mp-2 as polymorph
+    expect(stats_map.get(`mp-2`)?.total).toBe(1) // sees mp-1 as polymorph
   })
 })

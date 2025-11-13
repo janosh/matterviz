@@ -19,9 +19,9 @@
 
   let {
     entries,
-    // Only list props that need special handling in this wrapper:
-    // 1. Bindable props (required to use $bindable())
-    // 2. Props with meaningful defaults (optional)
+    // Note: Explicit bind: directives are required here because Svelte 5 doesn't support
+    // spreading bindable props. Each bindable prop must be individually declared with
+    // $bindable() and explicitly bound when passing to child components.
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     show_stable = $bindable(true),
