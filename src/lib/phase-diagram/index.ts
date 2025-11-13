@@ -1,4 +1,5 @@
 import type { D3InterpolateName } from '$lib/colors'
+import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type {
   HighlightStyle,
@@ -20,9 +21,16 @@ export { default as PhaseDiagramStats } from './PhaseDiagramStats.svelte'
 export * from './thermodynamics'
 export * from './types'
 
+export interface BasePhaseDiagramChildrenProps<AnyDimEntry = PhaseData> {
+  stable_entries: AnyDimEntry[]
+  unstable_entries: AnyDimEntry[]
+  highlighted_entries: (string | AnyDimEntry)[]
+  selected_entry: AnyDimEntry | null
+}
+
 // Base props shared across all phase diagram components (2D, 3D, 4D)
 export interface BasePhaseDiagramProps<AnyDimEntry = PhaseData>
-  extends Omit<HTMLAttributes<HTMLDivElement>, `entries`> {
+  extends Omit<HTMLAttributes<HTMLDivElement>, `entries` | `children`> {
   entries: PhaseData[]
   controls?: Partial<PDControlsType>
   config?: Partial<PhaseDiagramConfig>
@@ -63,6 +71,7 @@ export interface BasePhaseDiagramProps<AnyDimEntry = PhaseData>
   highlighted_entries?: (string | AnyDimEntry)[]
   highlight_style?: HighlightStyle
   selected_entry?: AnyDimEntry | null
+  children?: Snippet<[BasePhaseDiagramChildrenProps<AnyDimEntry>]>
 }
 
 // Additional props specific to 3D and 4D phase diagrams

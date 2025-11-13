@@ -50,6 +50,7 @@
     highlighted_entries = $bindable([]),
     highlight_style = {},
     selected_entry = $bindable(null),
+    children,
     ...rest
   }: BasePhaseDiagramProps<PhaseDiagramEntry> & Hull3DProps & {
     highlight_style?: HighlightStyle
@@ -64,17 +65,9 @@
   })
 
   // Resolve text color for canvas rendering (canvas context can't resolve CSS variables)
-  const resolved_text_color = $derived.by(() => {
-    if (!wrapper) return `#212121`
-    const styles = getComputedStyle(wrapper)
-    // First try to get the configured annotation color
-    const annotation_color = merged_config.colors?.annotation
-    if (annotation_color && !annotation_color.startsWith(`var(`)) {
-      return annotation_color
-    }
-    // Otherwise resolve from CSS variable
-    return styles.getPropertyValue(`--text-color`)?.trim() || `#212121`
-  })
+  const resolved_text_color = $derived(
+    helpers.resolve_canvas_text_color(wrapper, merged_config.colors?.annotation),
+  )
 
   let { // Compute energy mode information
     has_precomputed_e_form,
@@ -118,7 +111,6 @@
       )
       return []
     }
-
     return pd_data.elements
   })
 
@@ -983,7 +975,7 @@
     fullscreen = Boolean(document.fullscreenElement)
   }}
   onmousemove={handle_mouse_move}
-  onmouseup={() => is_dragging = false}
+  onmouseup={() => [is_dragging, drag_started] = [false, false]}
 />
 
 <div
@@ -1006,6 +998,12 @@
   }}
   aria-label="Phase diagram visualization"
 >
+  {@render children?.({
+      stable_entries,
+      unstable_entries,
+      highlighted_entries,
+      selected_entry,
+    })}
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
     {phase_stats?.chemical_system}
   </h3>

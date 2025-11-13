@@ -58,6 +58,7 @@
     x_axis = {},
     y_axis = {},
     selected_entry = $bindable(null),
+    children,
     ...rest
   }: BasePhaseDiagramProps<PhaseDiagramEntry> & {
     x_axis?: AxisConfig
@@ -495,7 +496,6 @@
   <line y1={pad.t} y2={height - pad.b} {x1} x2={x1} {...stroke} />
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
-
 {#key reset_counter}
   <ScatterPlot
     {...rest}
@@ -558,6 +558,12 @@
     }}
     padding={{ t: 30, b: 60, l: 60, r: 30 }}
   >
+    {@render children?.({
+      stable_entries,
+      unstable_entries,
+      highlighted_entries,
+      selected_entry,
+    })}
     <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
       {phase_stats?.chemical_system}
     </h3>

@@ -58,6 +58,7 @@
     highlighted_entries = $bindable([]),
     highlight_style = {},
     selected_entry = $bindable(null),
+    children,
     ...rest
   }: BasePhaseDiagramProps<PhaseDiagramEntry> & Hull3DProps & {
     highlight_style?: HighlightStyle
@@ -925,17 +926,9 @@
   })
 
   // Resolve text color for canvas rendering (canvas context can't resolve CSS variables)
-  const resolved_text_color = $derived.by(() => {
-    if (!wrapper) return `#212121`
-    const styles = getComputedStyle(wrapper)
-    // First try to get the configured annotation color
-    const annotation_color = merged_config.colors?.annotation
-    if (annotation_color && !annotation_color.startsWith(`var(`)) {
-      return annotation_color
-    }
-    // Otherwise resolve from CSS variable
-    return styles.getPropertyValue(`--text-color`)?.trim() || `#212121`
-  })
+  const resolved_text_color = $derived(
+    helpers.resolve_canvas_text_color(wrapper, merged_config.colors?.annotation),
+  )
 
   // Performance: Cache canvas dimensions and formation energy range
   let canvas_dims = $state({ width: 600, height: 600, scale: 1 })
@@ -1014,6 +1007,12 @@
   }}
   aria-label="Ternary phase diagram visualization"
 >
+  {@render children?.({
+      stable_entries,
+      unstable_entries,
+      highlighted_entries,
+      selected_entry,
+    })}
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
     {phase_stats?.chemical_system}
   </h3>
