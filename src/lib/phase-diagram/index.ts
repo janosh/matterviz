@@ -10,6 +10,7 @@ import type {
 } from './types'
 
 export * from './barycentric-coords'
+export { default as PhaseDiagram } from './PhaseDiagram.svelte'
 export { default as PhaseDiagram2D } from './PhaseDiagram2D.svelte'
 export { default as PhaseDiagram3D } from './PhaseDiagram3D.svelte'
 export { default as PhaseDiagram4D } from './PhaseDiagram4D.svelte'
