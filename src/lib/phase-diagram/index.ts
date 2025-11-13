@@ -3,8 +3,8 @@ import type { HTMLAttributes } from 'svelte/elements'
 import type {
   HoverData3D,
   PDControlsType,
+  PhaseData,
   PhaseDiagramConfig,
-  PhaseEntry,
   PhaseStats,
 } from './types'
 
@@ -19,9 +19,9 @@ export * from './thermodynamics'
 export * from './types'
 
 // Base props shared across all phase diagram components (2D, 3D, 4D)
-export interface BasePhaseDiagramProps<TEntry = PhaseEntry>
+export interface BasePhaseDiagramProps<TEntry = PhaseData>
   extends Omit<HTMLAttributes<HTMLDivElement>, `entries`> {
-  entries: PhaseEntry[]
+  entries: PhaseData[]
   controls?: Partial<PDControlsType>
   config?: Partial<PhaseDiagramConfig>
   on_point_click?: (entry: TEntry) => void
@@ -46,7 +46,7 @@ export interface BasePhaseDiagramProps<TEntry = PhaseEntry>
   show_stable_labels?: boolean
   show_unstable_labels?: boolean
   // Callback for when JSON files are dropped
-  on_file_drop?: (entries: PhaseEntry[]) => void
+  on_file_drop?: (entries: PhaseData[]) => void
   // Enable structure preview overlay when hovering over entries with structure data
   enable_structure_preview?: boolean
   energy_source_mode?: `precomputed` | `on-the-fly`
@@ -75,7 +75,7 @@ export interface EnergyModeInfo {
   can_compute_e_form: boolean
   can_compute_hull: boolean
   energy_mode: `precomputed` | `on-the-fly`
-  unary_refs: Record<string, PhaseEntry>
+  unary_refs: Record<string, PhaseData>
 }
 
 // Default legend configuration shared by 3D and 4D diagrams

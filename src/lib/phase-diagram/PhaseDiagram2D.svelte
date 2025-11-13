@@ -7,7 +7,7 @@
   } from '$lib'
   import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
-  import { CopyFeedback, DragOverlay } from '$lib/feedback'
+  import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import type {
     AxisConfig,
     ScatterHandlerEvent,
@@ -23,7 +23,7 @@
   import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import * as thermo from './thermodynamics'
-  import type { HoverData3D, PhaseEntry, PlotEntry3D } from './types'
+  import type { HoverData3D, PhaseData, PhaseDiagramEntry } from './types'
 
   // Binary phase diagram rendered as energy vs composition (x in [0, 1])
   let {
@@ -54,10 +54,12 @@
     display = $bindable({ x_grid: false, y_grid: false }),
     x_axis = {},
     y_axis = {},
+    selected_entry = $bindable(null),
     ...rest
   }: BasePhaseDiagramProps & {
     x_axis?: AxisConfig
     y_axis?: AxisConfig
+    selected_entry?: PhaseDiagramEntry | null
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
@@ -110,12 +112,12 @@
 
   // Coordinate computation ----------------------------------------------------
   function compute_binary_coordinates(
-    raw_entries: PhaseEntry[],
+    raw_entries: PhaseData[],
     elems: ElementSymbol[],
-  ): PlotEntry3D[] {
+  ): PhaseDiagramEntry[] {
     if (elems.length !== 2) return []
     const [el1, el2] = elems
-    const coords: PlotEntry3D[] = []
+    const coords: PhaseDiagramEntry[] = []
     for (const entry of raw_entries) {
       // Require formation energy per atom to place along y
       const e_form = entry.e_form_per_atom
@@ -127,10 +129,10 @@
       coords.push({ ...entry, x: frac_b, y: e_form, z: 0, is_element, visible: true })
     }
     // Ensure elemental references at x=0 and x=1 with y=0 to close the hull
-    const el_a: PlotEntry3D | undefined = coords.find((e) =>
+    const el_a: PhaseDiagramEntry | undefined = coords.find((e) =>
       e.is_element && e.x === 0
     )
-    const el_b: PlotEntry3D | undefined = coords.find((e) =>
+    const el_b: PhaseDiagramEntry | undefined = coords.find((e) =>
       e.is_element && e.x === 1
     )
     if (!el_a) {
@@ -208,7 +210,7 @@
     // Build lower hull in (x, y=e_form)
     // Group by composition fraction (x) and track all entries at each x to
     // robustly handle polymorphs. For the hull input, use the lowest energy per x.
-    const entries_by_x = new SvelteMap<number, PlotEntry3D[]>()
+    const entries_by_x = new SvelteMap<number, PhaseDiagramEntry[]>()
     for (const entry of coords_entries) {
       const existing = entries_by_x.get(entry.x) || []
       existing.push(entry)
@@ -236,12 +238,12 @@
   })
 
   const stable_entries = $derived(
-    plot_entries.filter((entry: PlotEntry3D) =>
+    plot_entries.filter((entry: PhaseDiagramEntry) =>
       entry.is_stable || entry.e_above_hull === 0
     ),
   )
   const unstable_entries = $derived(
-    plot_entries.filter((entry: PlotEntry3D) =>
+    plot_entries.filter((entry: PhaseDiagramEntry) =>
       (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
     ),
   )
@@ -258,7 +260,7 @@
   let structure_popup = $state<{
     open: boolean
     structure: AnyStructure | null
-    entry: PlotEntry3D | null
+    entry: PhaseDiagramEntry | null
     place_right: boolean
   }>({
     open: false,
@@ -345,7 +347,9 @@
     phase_stats = thermo.get_phase_diagram_stats(effective_entries, elements, 3)
   })
 
-  function extract_structure_from_entry(entry: PlotEntry3D): AnyStructure | null {
+  function extract_structure_from_entry(
+    entry: PhaseDiagramEntry,
+  ): AnyStructure | null {
     if (!entry.entry_id) return null
     const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
     return orig_entry?.structure as AnyStructure || null
@@ -366,7 +370,7 @@
     reset_counter += 1
   }
   // Custom hover tooltip state used with ScatterPlot events
-  let hover_data = $state<HoverData3D<PlotEntry3D> | null>(null)
+  let hover_data = $state<HoverData3D<PhaseDiagramEntry> | null>(null)
 
   const handle_keydown = (event: KeyboardEvent) => {
     if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
@@ -386,7 +390,7 @@
   }
 
   async function copy_entry_data(
-    entry: PlotEntry3D,
+    entry: PhaseDiagramEntry,
     position: { x: number; y: number },
   ) {
     await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
@@ -397,14 +401,15 @@
 
   function close_structure_popup() {
     structure_popup = { open: false, structure: null, entry: null, place_right: true }
+    selected_entry = null
   }
 
   // Track last clicked entry for double-click detection
-  let last_clicked_entry: PlotEntry3D | null = null
+  let last_clicked_entry: PhaseDiagramEntry | null = null
   let last_click_time = 0
 
   function handle_point_click_internal(data: ScatterHandlerEvent) {
-    const entry = data.metadata as unknown as PlotEntry3D
+    const entry = data.metadata as unknown as PhaseDiagramEntry
     if (!entry) return
 
     const now = Date.now()
@@ -435,6 +440,7 @@
           const place_right = space_on_right >= space_on_left
 
           structure_popup = { open: true, structure, entry, place_right }
+          selected_entry = entry
           data.event.stopPropagation()
         }
       }
@@ -465,9 +471,9 @@
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
 {#snippet tooltip(point: ScatterHandlerProps)}
-  {@const entry = point.metadata as unknown as PhaseEntry}
+  {@const entry = point.metadata as unknown as PhaseData}
   {#if entry}
-    <PhaseEntryTooltip {entry} />
+    <PhaseEntryTooltip {entry} all_entries={entries} />
   {/if}
 {/snippet}
 
@@ -533,7 +539,7 @@
         on_point_hover?.(null)
         return
       }
-      const entry = data.metadata as unknown as PlotEntry3D
+      const entry = data.metadata as unknown as PhaseDiagramEntry
       hover_data = entry
         ? {
           entry,
@@ -610,7 +616,7 @@
       </section>
     {/if}
 
-    <CopyFeedback
+    <ClickFeedback
       bind:visible={copy_feedback.visible}
       position={copy_feedback.position}
     />

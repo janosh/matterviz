@@ -1,7 +1,7 @@
 import type { ElementSymbol } from '$lib'
 import type { Vec3 } from '$lib/math'
 import { compute_e_form_per_atom, find_lowest_energy_unary_refs } from './thermodynamics'
-import type { PhaseEntry, PlotEntry3D, Point3D, TernaryPlotEntry } from './types'
+import type { PhaseData, PhaseDiagramEntry, Point3D } from './types'
 import { is_unary_entry } from './types'
 
 // ================= Ternary coordinates =================
@@ -75,10 +75,10 @@ export function calculate_face_centroid(p1: Point3D, p2: Point3D, p3: Point3D): 
 }
 
 export function get_ternary_3d_coordinates(
-  entries: PhaseEntry[],
+  entries: PhaseData[],
   elements: ElementSymbol[],
-  el_refs?: Record<string, PhaseEntry>, // Optional: pass precomputed refs to avoid recomputing
-): TernaryPlotEntry[] {
+  el_refs?: Record<string, PhaseData>, // Optional: pass precomputed refs to avoid recomputing
+): PhaseDiagramEntry[] {
   if (elements.length !== 3) {
     throw new Error(
       `Ternary phase diagram requires exactly 3 elements, got ${elements.length}`,
@@ -125,13 +125,13 @@ export function get_ternary_3d_coordinates(
   // Map entries to ternary plot coordinates
   const result = within_system.map((entry) => {
     const barycentric = composition_to_barycentric_3d(entry.composition, elements)
-    const e_form = typeof entry.e_form_per_atom === `number` &&
+    const e_form_per_atom = typeof entry.e_form_per_atom === `number` &&
         Number.isFinite(entry.e_form_per_atom)
       ? entry.e_form_per_atom
       : compute_e_form_per_atom(entry, refs) ?? NaN
-    const xyz = barycentric_to_ternary_xyz(barycentric, e_form)
+    const xyz = barycentric_to_ternary_xyz(barycentric, e_form_per_atom)
     const is_element = is_unary_entry(entry)
-    return { ...entry, ...xyz, barycentric, e_form, is_element, visible: true }
+    return { ...entry, ...xyz, is_element, visible: true }
   })
   return result
 }
@@ -191,9 +191,9 @@ export function barycentric_to_tetrahedral(barycentric: number[]): Point3D {
 }
 
 export function compute_4d_coords(
-  entries: PhaseEntry[],
+  entries: PhaseData[],
   elements: ElementSymbol[],
-): PlotEntry3D[] {
+): PhaseDiagramEntry[] {
   if (elements.length !== 4) {
     throw new Error(`Quaternary phase diagram requires exactly ${4} elements`)
   }

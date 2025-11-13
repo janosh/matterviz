@@ -2,7 +2,7 @@ import type { CompositionType, ElementSymbol } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import * as helpers from '$lib/phase-diagram/helpers'
 import { get_phase_diagram_stats } from '$lib/phase-diagram/thermodynamics'
-import type { PhaseEntry } from '$lib/phase-diagram/types'
+import type { PhaseData } from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`helpers: energy color scale + point color`, () => {
@@ -58,15 +58,15 @@ describe(`helpers: thresholds and tooltips`, () => {
   test(`calc_max_hull_dist_in_data returns robust default and range`, () => {
     expect(helpers.calc_max_hull_dist_in_data([])).toBeCloseTo(0.5)
     const v = helpers.calc_max_hull_dist_in_data([
-      { e_above_hull: 0 } as PhaseEntry,
-      { e_above_hull: 0.2 } as PhaseEntry,
+      { e_above_hull: 0 } as PhaseData,
+      { e_above_hull: 0.2 } as PhaseData,
     ])
     expect(v).toBeGreaterThan(0.2)
   })
 
   test(`build_entry_tooltip_text contains key fields`, () => {
     const t1 = helpers.build_entry_tooltip_text(
-      { composition: { Li: 1 }, energy: -1 } as PhaseEntry,
+      { composition: { Li: 1 }, energy: -1 } as PhaseData,
     )
     expect(t1).toMatch(/Li/)
     const t2 = helpers.build_entry_tooltip_text(
@@ -76,7 +76,7 @@ describe(`helpers: thresholds and tooltips`, () => {
         e_form_per_atom: -3,
         e_above_hull: 0,
         entry_id: `mp-1`,
-      } as PhaseEntry,
+      } as PhaseData,
     )
     expect(t2).toMatch(/E above hull/)
     expect(t2).toMatch(/Formation Energy/)
@@ -109,7 +109,7 @@ describe(`helpers: thresholds and tooltips`, () => {
           e_above_hull: 0.1,
           energy_per_atom: -8 / 3,
         },
-      ] as PhaseEntry[],
+      ] as PhaseData[],
       expected: {
         total: 5,
         unary: 2,
@@ -132,7 +132,7 @@ describe(`helpers: thresholds and tooltips`, () => {
           e_above_hull: 0.2,
           energy_per_atom: -1,
         },
-      ] as PhaseEntry[],
+      ] as PhaseData[],
       expected: {
         total: 2,
         unary: 1,
@@ -161,7 +161,7 @@ describe(`helpers: thresholds and tooltips`, () => {
 
 describe(`helpers: energy range preserves zero formation energy`, () => {
   test(`zero e_form_per_atom is not dropped in energy range`, () => {
-    const entries: PhaseEntry[] = [
+    const entries: PhaseData[] = [
       {
         composition: { A: 1 } as unknown as CompositionType,
         energy: 0,
@@ -221,4 +221,233 @@ describe(`helpers: mouse hit testing`, () => {
     )
     expect(hit).toBe(plot_entries[0])
   })
+})
+
+describe(`helpers: fractional composition`, () => {
+  test(`get_fractional_composition normalizes composition`, () => {
+    const frac1 = helpers.get_fractional_composition({ Li: 1, O: 1 })
+    expect(frac1.Li).toBeCloseTo(0.5)
+    expect(frac1.O).toBeCloseTo(0.5)
+
+    const frac2 = helpers.get_fractional_composition({ Li: 2, O: 2 })
+    expect(frac2.Li).toBeCloseTo(0.5)
+    expect(frac2.O).toBeCloseTo(0.5)
+
+    const frac3 = helpers.get_fractional_composition({ Li: 1, O: 2 })
+    expect(frac3.Li).toBeCloseTo(1 / 3)
+    expect(frac3.O).toBeCloseTo(2 / 3)
+  })
+
+  test(`get_fractional_composition handles empty composition`, () => {
+    const frac = helpers.get_fractional_composition({})
+    expect(Object.keys(frac).length).toBe(0)
+  })
+
+  test(`get_fractional_composition ignores zero amounts`, () => {
+    const frac = helpers.get_fractional_composition({ Li: 1, O: 0 })
+    expect(frac.Li).toBe(1)
+    expect(frac.O).toBeUndefined()
+  })
+})
+
+describe(`helpers: polymorph statistics`, () => {
+  test.each([
+    {
+      name: `no polymorphs when different fractional composition`,
+      entry: {
+        entry_id: `entry-1`,
+        composition: { Li: 1, O: 1 },
+        e_above_hull: 0.1,
+        energy: -5,
+      } as PhaseData,
+      all_entries: [
+        {
+          entry_id: `entry-1`,
+          composition: { Li: 1, O: 1 },
+          e_above_hull: 0.1,
+          energy: -5,
+        },
+        {
+          entry_id: `entry-2`,
+          composition: { Li: 1, O: 2 },
+          e_above_hull: 0.2,
+          energy: -6,
+        },
+      ] as PhaseData[],
+      expected: { total: 0, higher: 0, lower: 0 },
+    },
+    {
+      name: `finds polymorphs with same fractional composition (excludes self)`,
+      entry: {
+        entry_id: `entry-1`,
+        composition: { Li: 1, O: 1 },
+        e_above_hull: 0.1,
+        energy: -5,
+      } as PhaseData,
+      all_entries: [
+        {
+          entry_id: `entry-1`,
+          composition: { Li: 1, O: 1 },
+          e_above_hull: 0.1,
+          energy: -5,
+        },
+        {
+          entry_id: `entry-2`,
+          composition: { Li: 2, O: 2 },
+          e_above_hull: 0.2,
+          energy: -4,
+        },
+        {
+          entry_id: `entry-3`,
+          composition: { Li: 0.5, O: 0.5 },
+          e_above_hull: 0.05,
+          energy: -6,
+        },
+      ] as PhaseData[],
+      expected: { total: 2, higher: 1, lower: 1 },
+    },
+    {
+      name: `counts higher and lower energy polymorphs correctly (excludes self)`,
+      entry: {
+        entry_id: `entry-2`,
+        composition: { Li: 1, O: 1 },
+        e_above_hull: 0.1,
+        energy: -5,
+      } as PhaseData,
+      all_entries: [
+        {
+          entry_id: `entry-1`,
+          composition: { Li: 1, O: 1 },
+          e_above_hull: 0.05,
+          energy: -6,
+        },
+        {
+          entry_id: `entry-2`,
+          composition: { Li: 1, O: 1 },
+          e_above_hull: 0.1,
+          energy: -5,
+        },
+        {
+          entry_id: `entry-3`,
+          composition: { Li: 1, O: 1 },
+          e_above_hull: 0.2,
+          energy: -4,
+        },
+        {
+          entry_id: `entry-4`,
+          composition: { Li: 1, O: 1 },
+          e_above_hull: 0.3,
+          energy: -3,
+        },
+      ] as PhaseData[],
+      expected: { total: 3, higher: 2, lower: 1 },
+    },
+    {
+      name: `handles single entry (no polymorphs)`,
+      entry: {
+        entry_id: `entry-1`,
+        composition: { Li: 1 },
+        e_above_hull: 0,
+        energy: -1,
+      } as PhaseData,
+      all_entries: [
+        {
+          entry_id: `entry-1`,
+          composition: { Li: 1 },
+          e_above_hull: 0,
+          energy: -1,
+        },
+      ] as PhaseData[],
+      expected: { total: 0, higher: 0, lower: 0 },
+    },
+    {
+      name: `normalizes different stoichiometries (excludes self)`,
+      entry: {
+        entry_id: `entry-1`,
+        composition: { Li: 2, O: 4 },
+        e_above_hull: 0.1,
+        energy: -5,
+      } as PhaseData,
+      all_entries: [
+        {
+          entry_id: `entry-1`,
+          composition: { Li: 2, O: 4 },
+          e_above_hull: 0.1,
+          energy: -5,
+        },
+        {
+          entry_id: `entry-2`,
+          composition: { Li: 1, O: 2 },
+          e_above_hull: 0.15,
+          energy: -4.5,
+        },
+        {
+          entry_id: `entry-3`,
+          composition: { Li: 0.5, O: 1 },
+          e_above_hull: 0.05,
+          energy: -5.5,
+        },
+      ] as PhaseData[],
+      expected: { total: 2, higher: 1, lower: 1 },
+    },
+    {
+      name: `shows zeros when no higher or lower polymorphs`,
+      entry: {
+        entry_id: `entry-1`,
+        composition: { Li: 1, O: 1 },
+        e_above_hull: 0,
+        energy: -5,
+      } as PhaseData,
+      all_entries: [
+        {
+          entry_id: `entry-1`,
+          composition: { Li: 1, O: 1 },
+          e_above_hull: 0,
+          energy: -5,
+        },
+        {
+          entry_id: `entry-2`,
+          composition: { Li: 1, O: 1 },
+          e_above_hull: 0.1,
+          energy: -4,
+        },
+        {
+          entry_id: `entry-3`,
+          composition: { Li: 1, O: 1 },
+          e_above_hull: 0.2,
+          energy: -3,
+        },
+      ] as PhaseData[],
+      expected: { total: 2, higher: 2, lower: 0 },
+    },
+    {
+      name: `excludes self by reference even without entry_id`,
+      entry: {
+        composition: { Li: 1, O: 1 },
+        e_above_hull: 0.1,
+        energy: -5,
+      } as PhaseData,
+      all_entries: [] as PhaseData[], // Will be set dynamically in test
+      expected: { total: 1, higher: 1, lower: 0 },
+    },
+  ])(
+    `calculate_polymorph_stats: $name`,
+    ({ entry, all_entries, expected }) => {
+      // Special handling for reference test
+      if (all_entries.length === 0) {
+        all_entries = [
+          entry, // Same reference
+          {
+            composition: { Li: 1, O: 1 },
+            e_above_hull: 0.2,
+            energy: -4,
+          } as PhaseData,
+        ]
+      }
+      const stats = helpers.calculate_polymorph_stats(entry, all_entries)
+      expect(stats.total).toBe(expected.total)
+      expect(stats.higher).toBe(expected.higher)
+      expect(stats.lower).toBe(expected.lower)
+    },
+  )
 })

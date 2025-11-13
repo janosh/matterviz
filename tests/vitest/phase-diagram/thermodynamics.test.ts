@@ -13,7 +13,7 @@ import {
   get_phase_diagram_stats,
   process_pd_entries,
 } from '$lib/phase-diagram/thermodynamics'
-import type { ConvexHullTriangle, PhaseEntry } from '$lib/phase-diagram/types'
+import type { ConvexHullTriangle, PhaseData } from '$lib/phase-diagram/types'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
@@ -36,8 +36,8 @@ function make_paraboloid_points(): { x: number; y: number; z: number }[] {
 function entry(
   composition: Record<string, number>,
   energy: number,
-  opts: Partial<PhaseEntry> = {},
-): PhaseEntry {
+  opts: Partial<PhaseData> = {},
+): PhaseData {
   return {
     composition,
     energy,
@@ -141,7 +141,7 @@ describe(`energies: process_pd_entries categorization and element extraction`, (
       { composition: { B: 2 }, energy: 0, e_above_hull: 0 },
       { composition: { A: 1, B: 1 }, energy: -1, e_above_hull: 0.05 },
       { composition: { A: 1, B: 2 }, energy: -2, e_above_hull: 0 },
-    ] as unknown as PhaseEntry[]
+    ] as unknown as PhaseData[]
     const out = process_pd_entries(entries)
     expect(out.elements.sort()).toEqual([`A`, `B`])
     expect(out.stable_entries.length).toBe(3)
@@ -152,7 +152,7 @@ describe(`energies: process_pd_entries categorization and element extraction`, (
 
 describe(`find_lowest_energy_unary_refs()`, () => {
   test(`picks lowest corrected unary per element`, () => {
-    const entries: PhaseEntry[] = [
+    const entries: PhaseData[] = [
       entry({ Li: 1 }, -1.0),
       entry({ Li: 1 }, -0.9, { correction: -0.2 }), // corrected per atom = -1.1 (lower)
       entry({ O: 2 }, -10.0),
@@ -173,7 +173,7 @@ describe(`find_lowest_energy_unary_refs()`, () => {
   })
 
   test(`ignores non-unary entries and uses energy_per_atom if present`, () => {
-    const entries: PhaseEntry[] = [
+    const entries: PhaseData[] = [
       entry({ Li: 2 }, -2.0), // -1.0 eV/at
       entry({ Li: 1 }, 0, { energy_per_atom: -1.05 }), // should win
       entry({ Li: 1, O: 1 }, -100), // non-unary, ignored
@@ -218,7 +218,7 @@ describe(`compute_e_form_per_atom()`, () => {
 
   test(`returns null when a needed elemental reference is missing`, () => {
     const comp = entry({ Li: 1, O: 1 }, -6.0)
-    const refs = { Li: entry({ Li: 1 }, -1.0) } as Record<string, PhaseEntry>
+    const refs = { Li: entry({ Li: 1 }, -1.0) } as Record<string, PhaseData>
     expect(compute_e_form_per_atom(comp, refs)).toBeNull()
   })
 
@@ -290,7 +290,7 @@ describe(`get_phase_diagram_stats: stability handling`, () => {
         is_stable: opts.is_stable,
         e_above_hull: opts.e_above_hull,
       },
-    ] as PhaseEntry[]
+    ] as PhaseData[]
     const stats = get_phase_diagram_stats(entries, [`Li`], 3)
     expect(stats).not.toBeNull()
     expect(stats?.stable ?? -1).toBe(expected_stable)
@@ -377,7 +377,7 @@ describe(`edge cases and error handling`, () => {
   })
 
   test(`process_pd_entries handles entries without e_above_hull`, () => {
-    const entries: PhaseEntry[] = [
+    const entries: PhaseData[] = [
       // @ts-expect-error: missing e_above_hull
       { composition: { Li: 1 }, energy: 0 },
       // @ts-expect-error: composition
@@ -394,7 +394,7 @@ describe(`edge cases and error handling`, () => {
   })
 
   test(`get_phase_diagram_stats handles entries without energies`, () => {
-    const entries: PhaseEntry[] = [
+    const entries: PhaseData[] = [
       // @ts-expect-error: missing energy_per_atom
       { composition: { Li: 1 }, energy: 0 },
     ]
@@ -411,7 +411,7 @@ describe(`edge cases and error handling`, () => {
   })
 
   test(`compute_e_form_per_atom handles missing energy field`, () => {
-    const entry_no_energy = { composition: { Li: 1 } } as PhaseEntry
+    const entry_no_energy = { composition: { Li: 1 } } as PhaseData
     const refs = { Li: entry({ Li: 1 }, -1.0) }
     const result = compute_e_form_per_atom(entry_no_energy, refs)
     // Should handle gracefully, likely returning null or using default
@@ -419,7 +419,7 @@ describe(`edge cases and error handling`, () => {
   })
 
   test(`find_lowest_energy_unary_refs handles entries with zero composition`, () => {
-    const entries: PhaseEntry[] = [
+    const entries: PhaseData[] = [
       entry({ Li: 0 }, -1.0), // Zero amount
       entry({ Li: 1 }, -0.5),
     ]
@@ -545,11 +545,11 @@ describe(`4D hull edge cases`, () => {
 })
 
 describe(`4D hull validation against quaternary phase diagram data`, () => {
-  const load_quaternary_data = (filename: string): PhaseEntry[] => {
+  const load_quaternary_data = (filename: string): PhaseData[] => {
     const path = `src/site/phase-diagrams/quaternaries/${filename}`
     const buffer = readFileSync(path)
     const data = gunzipSync(buffer).toString()
-    return JSON.parse(data) as PhaseEntry[]
+    return JSON.parse(data) as PhaseData[]
   }
 
   test.each([

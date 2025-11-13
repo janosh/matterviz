@@ -3,7 +3,7 @@
   import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { contrast_color } from '$lib/colors'
-  import { CopyFeedback, DragOverlay } from '$lib/feedback'
+  import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
   import { SvelteMap } from 'svelte/reactivity'
@@ -25,8 +25,8 @@
   import type {
     HighlightStyle,
     HoverData3D,
+    PhaseDiagramEntry,
     Point3D,
-    TernaryPlotEntry,
   } from './types'
 
   let {
@@ -57,14 +57,16 @@
     unstable_entries = $bindable([]),
     highlighted_entries = $bindable([]),
     highlight_style = {},
+    selected_entry = $bindable(null),
     ...rest
-  }: BasePhaseDiagramProps<TernaryPlotEntry> & Hull3DProps & {
+  }: BasePhaseDiagramProps<PhaseDiagramEntry> & Hull3DProps & {
     // Bindable stable and unstable entries - computed internally but exposed for external use
-    stable_entries?: TernaryPlotEntry[]
-    unstable_entries?: TernaryPlotEntry[]
+    stable_entries?: PhaseDiagramEntry[]
+    unstable_entries?: PhaseDiagramEntry[]
     // Highlighted entries with customizable visual effects
-    highlighted_entries?: (string | TernaryPlotEntry)[] // Array of entry IDs or full entries
+    highlighted_entries?: (string | PhaseDiagramEntry)[] // Array of entry IDs or full entries
     highlight_style?: HighlightStyle
+    selected_entry?: PhaseDiagramEntry | null
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
@@ -99,7 +101,7 @@
     ),
   )
 
-  // Process phase diagram data with unified PhaseEntry interface using effective entries
+  // Process phase diagram data with unified PhaseData interface using effective entries
   const processed_entries = $derived(effective_entries)
   const pd_data = $derived(thermo.process_pd_entries(processed_entries))
 
@@ -147,11 +149,11 @@
       return coords_entries
     })()
 
-    const energy_filtered = enriched.filter((entry: TernaryPlotEntry) =>
+    const energy_filtered = enriched.filter((entry: PhaseDiagramEntry) =>
       (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
     )
 
-    return energy_filtered.map((entry: TernaryPlotEntry) => {
+    return energy_filtered.map((entry: PhaseDiagramEntry) => {
       const is_stable = entry.is_stable || entry.e_above_hull === 0
       return {
         ...entry,
@@ -161,10 +163,10 @@
   })
 
   $effect(() => {
-    stable_entries = plot_entries.filter((entry: TernaryPlotEntry) =>
+    stable_entries = plot_entries.filter((entry: PhaseDiagramEntry) =>
       entry.is_stable || entry.e_above_hull === 0
     )
-    unstable_entries = plot_entries.filter((entry: TernaryPlotEntry) =>
+    unstable_entries = plot_entries.filter((entry: PhaseDiagramEntry) =>
       typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 &&
       !entry.is_stable
     )
@@ -213,7 +215,7 @@
   let is_dragging = $state(false)
   let drag_started = $state(false)
   let last_mouse = $state({ x: 0, y: 0 })
-  let hover_data = $state<HoverData3D<TernaryPlotEntry> | null>(null)
+  let hover_data = $state<HoverData3D<PhaseDiagramEntry> | null>(null)
   let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
 
   // Drag and drop state
@@ -222,7 +224,6 @@
   // Structure popup state
   let modal_open = $state(false)
   let selected_structure = $state<AnyStructure | null>(null)
-  let selected_entry = $state<TernaryPlotEntry | null>(null)
   let modal_place_right = $state(true)
 
   // Hull face color (customizable via controls)
@@ -249,7 +250,7 @@
   )
 
   // Helper to check if entry is highlighted
-  const is_highlighted = (entry: TernaryPlotEntry): boolean =>
+  const is_highlighted = (entry: PhaseDiagramEntry): boolean =>
     helpers.is_entry_highlighted(entry, highlighted_entries)
 
   $effect(() => {
@@ -269,7 +270,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, max_hull_dist_show_phases, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, highlighted_entries.length]
+    [show_stable, show_unstable, show_hull_faces, color_mode, color_scale, max_hull_dist_show_phases, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, highlighted_entries.length, resolved_text_color]
 
     render_once()
   })
@@ -281,7 +282,7 @@
 
   // Function to extract structure data from a phase diagram entry
   function extract_structure_from_entry(
-    entry: TernaryPlotEntry,
+    entry: PhaseDiagramEntry,
   ): AnyStructure | null {
     const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
     return orig_entry?.structure as AnyStructure || null
@@ -327,7 +328,7 @@
   }
 
   async function copy_entry_data(
-    entry: TernaryPlotEntry,
+    entry: PhaseDiagramEntry,
     position: { x: number; y: number },
   ) {
     await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
@@ -336,7 +337,7 @@
     })
   }
 
-  const get_point_color = (entry: TernaryPlotEntry): string =>
+  const get_point_color = (entry: PhaseDiagramEntry): string =>
     helpers.get_point_color_for_entry(
       entry,
       color_mode,
@@ -370,7 +371,7 @@
     const triangle_centroid = get_triangle_centroid()
 
     // Calculate the energy center (middle of formation energy range)
-    const formation_energies = plot_entries.map((e) => e.e_form)
+    const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
     const e_form_min = Math.min(0, ...formation_energies)
     const e_form_max = Math.max(0, ...formation_energies)
     const energy_center = (e_form_min + e_form_max) / 2
@@ -437,7 +438,7 @@
     if (!ctx) return
 
     // Get formation energy range for vertical edges
-    const formation_energies = plot_entries.map((e) => e.e_form)
+    const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
     const e_form_min = Math.min(0, ...formation_energies) // Include 0 for elemental references
     const e_form_max = Math.max(0, ...formation_energies) // Include 0 for elemental references
 
@@ -490,11 +491,11 @@
     if (!ctx || elements.length !== 3) return
 
     ctx.save()
-    const styles = getComputedStyle(canvas)
 
     // Draw element labels outside triangle corners
     const centroid = get_triangle_centroid()
-    ctx.fillStyle = styles.getPropertyValue(`--pd-text-color`) || `#212121`
+    // Use resolved text color directly instead of CSS variable
+    ctx.fillStyle = resolved_text_color
     ctx.font = `bold 16px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `middle`
@@ -527,7 +528,7 @@
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
     // Normalize alpha by formation energy: 0 eV -> 0 alpha, min E_form -> hull_face_opacity
-    const formation_energies = plot_entries.map((e) => e.e_form)
+    const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
     const min_fe = Math.min(0, ...formation_energies)
     const norm_alpha = (z: number) => {
       const t = Math.max(0, Math.min(1, (0 - z) / Math.max(1e-6, 0 - min_fe)))
@@ -626,7 +627,7 @@
 
   // Formation energy color bar helpers
   const e_form_range = $derived.by((): [number, number] => {
-    const energies = plot_entries.map((e) => e.e_form)
+    const energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
     const min_fe = energies.length ? Math.min(0, ...energies) : -1
     return [min_fe, 0]
   })
@@ -647,7 +648,7 @@
 
     // Collect all points with depth for sorting
     const points_with_depth: {
-      entry: TernaryPlotEntry
+      entry: PhaseDiagramEntry
       projected: { x: number; y: number; depth: number }
     }[] = []
 
@@ -735,7 +736,7 @@
     if (!ctx || !merged_config.show_labels) return
 
     // Find the lowest energy (most stable) entry at each unique composition
-    const composition_map = new SvelteMap<string, TernaryPlotEntry>()
+    const composition_map = new SvelteMap<string, PhaseDiagramEntry>()
 
     for (const entry of plot_entries) {
       if (!entry.visible || entry.is_element) continue // Skip unary phases as requested
@@ -757,8 +758,8 @@
     }
 
     // Draw labels for hull points (lowest energy at each composition)
-    ctx.fillStyle = getComputedStyle(canvas).getPropertyValue(`--pd-text-color`) ||
-      `#212121`
+    // Use resolved text color directly instead of CSS variable
+    ctx.fillStyle = resolved_text_color
     ctx.font = `12px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `top`
@@ -816,9 +817,8 @@
     ctx.fillRect(0, 0, display_width, display_height)
 
     if (elements.length !== 3) {
-      // Show error message
-      ctx.fillStyle = getComputedStyle(canvas).getPropertyValue(`--text-color`) ||
-        `#666`
+      // Show error message - use resolved text color
+      ctx.fillStyle = resolved_text_color
       ctx.font = `16px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
@@ -892,7 +892,7 @@
     on_point_hover?.(hover_data)
   }
 
-  const find_entry_at_mouse = (event: MouseEvent): TernaryPlotEntry | null =>
+  const find_entry_at_mouse = (event: MouseEvent): PhaseDiagramEntry | null =>
     helpers.find_pd_entry_at_mouse(
       canvas,
       event,
@@ -1017,6 +1017,19 @@
       }
     })
     helpers.set_fullscreen_bg(wrapper, fullscreen, `--pd-3d-bg-fullscreen`)
+  })
+
+  // Resolve text color for canvas rendering (canvas context can't resolve CSS variables)
+  const resolved_text_color = $derived.by(() => {
+    if (!wrapper) return `#212121`
+    const styles = getComputedStyle(wrapper)
+    // First try to get the configured annotation color
+    const annotation_color = merged_config.colors?.annotation
+    if (annotation_color && !annotation_color.startsWith(`var(`)) {
+      return annotation_color
+    }
+    // Otherwise resolve from CSS variable
+    return styles.getPropertyValue(`--text-color`)?.trim() || `#212121`
   })
 
   let style = $derived(
@@ -1178,11 +1191,11 @@
       style:background={get_point_color(entry)}
       {@attach contrast_color({ luminance_threshold: 0.49 })}
     >
-      <PhaseEntryTooltip {entry} />
+      <PhaseEntryTooltip {entry} all_entries={entries} />
     </div>
   {/if}
 
-  <CopyFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
+  <ClickFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
   <DragOverlay visible={drag_over} />
 
   {#if modal_open && selected_structure}

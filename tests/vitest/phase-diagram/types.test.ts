@@ -1,4 +1,4 @@
-import type { PhaseEntry } from '$lib/phase-diagram/types'
+import type { PhaseData } from '$lib/phase-diagram/types'
 import {
   get_arity,
   is_binary_entry,
@@ -15,7 +15,7 @@ import {
 import { describe, expect, test } from 'vitest'
 
 describe(`arity helpers`, () => {
-  const make = (comp: Record<string, number>) => ({ composition: comp } as PhaseEntry)
+  const make = (comp: Record<string, number>) => ({ composition: comp } as PhaseData)
 
   test(`get_arity counts positive amounts only`, () => {
     expect(get_arity(make({ A: 1, B: 0, C: -1 }))).toBe(1)

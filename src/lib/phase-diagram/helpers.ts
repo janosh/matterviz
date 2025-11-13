@@ -5,7 +5,7 @@ import { elem_symbol_to_name } from '$lib/composition'
 import { format_fractional, format_num } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { HighlightStyle, PhaseDiagramConfig, PhaseEntry } from './types'
+import type { HighlightStyle, PhaseData, PhaseDiagramConfig } from './types'
 import { is_unary_entry } from './types'
 
 // Energy color scale factory (shared)
@@ -47,12 +47,12 @@ export function get_point_color_for_entry(
 // Robust drag-and-drop JSON parsing for phase diagram entries
 export async function parse_pd_entries_from_drop(
   event: DragEvent,
-): Promise<PhaseEntry[] | null> {
+): Promise<PhaseData[] | null> {
   event.preventDefault()
   const file = event.dataTransfer?.files?.[0]
   if (!file?.name.endsWith(`.json`)) return null
   try {
-    const data = JSON.parse(await file.text()) as PhaseEntry[]
+    const data = JSON.parse(await file.text()) as PhaseData[]
     if (!Array.isArray(data) || data.length === 0) return null
     if (!data[0].composition || typeof data[0].energy !== `number`) return null
     return data
@@ -64,7 +64,7 @@ export async function parse_pd_entries_from_drop(
 
 // Compute a consistent max energy threshold for controls (shared)
 export function calc_max_hull_dist_in_data(
-  processed_entries: PhaseEntry[],
+  processed_entries: PhaseData[],
 ): number {
   if (processed_entries.length === 0) return 0.5
   const hull_distances = processed_entries
@@ -75,7 +75,7 @@ export function calc_max_hull_dist_in_data(
 }
 
 // Build a tooltip text for any phase entry (shared)
-export function build_entry_tooltip_text(entry: PhaseEntry): string {
+export function build_entry_tooltip_text(entry: PhaseData): string {
   const is_element = is_unary_entry(entry)
   const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
 
@@ -186,8 +186,8 @@ export function set_fullscreen_bg(
 // Compute energy source mode information for phase diagram entries. Returns energy mode information including capability flags and resolved mode.
 // This determines whether we can use precomputed energies or need to compute on-the-fly.
 export function compute_energy_mode_info(
-  entries: PhaseEntry[], // Array of phase entries to analyze
-  find_lowest_energy_unary_refs_fn: (entries: PhaseEntry[]) => Record<string, PhaseEntry>, // Function to find unary references
+  entries: PhaseData[], // Array of phase entries to analyze
+  find_lowest_energy_unary_refs_fn: (entries: PhaseData[]) => Record<string, PhaseData>, // Function to find unary references
   energy_source_mode: `precomputed` | `on-the-fly`, // User-specified energy source mode preference
 ): EnergyModeInfo {
   const has_precomputed_e_form = entries.length > 0 &&
@@ -226,14 +226,14 @@ export function compute_energy_mode_info(
 // Compute effective entries with formation energies based on the energy mode.
 // Returns entries with formation energies populated (either precomputed or on-the-fly)
 export function get_effective_entries(
-  entries: PhaseEntry[], // Original phase entries
+  entries: PhaseData[], // Original phase entries
   energy_mode: `precomputed` | `on-the-fly`, // Energy source mode (precomputed or on-the-fly)
-  unary_refs: Record<string, PhaseEntry>, // Unary reference entries for energy computation
+  unary_refs: Record<string, PhaseData>, // Unary reference entries for energy computation
   compute_e_form_fn: (
-    entry: PhaseEntry,
-    unary_refs: Record<string, PhaseEntry>,
+    entry: PhaseData,
+    unary_refs: Record<string, PhaseData>,
   ) => number | null, // Function to compute formation energy per atom
-): PhaseEntry[] {
+): PhaseData[] {
   if (energy_mode === `precomputed`) return entries
 
   return entries.map((entry) => {
@@ -245,7 +245,7 @@ export function get_effective_entries(
 
 // Copy text to clipboard with visual feedback
 export async function copy_entry_to_clipboard(
-  entry: PhaseEntry,
+  entry: PhaseData,
   position: { x: number; y: number },
   on_feedback: (visible: boolean, pos: { x: number; y: number }) => void,
 ): Promise<void> {
@@ -279,6 +279,79 @@ export function is_entry_highlighted<T extends { entry_id?: string }>(
   return highlighted_list.some((item) =>
     typeof item === `string` ? item === entry_id : item?.entry_id === entry_id
   )
+}
+
+// Calculate fractional composition (normalized composition) for an entry
+export function get_fractional_composition(
+  composition: Record<string, number>,
+): Record<string, number> {
+  const total = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
+  if (total <= 0) return {} // Return empty object if total is zero or negative (invalid composition)
+  const fractional: Record<string, number> = {}
+  for (const [elem, amt] of Object.entries(composition)) {
+    // Only include positive amounts in fractional composition
+    if (amt > 0) fractional[elem] = amt / total
+  }
+  return fractional
+}
+
+// Check if two fractional compositions are equal (within numerical tolerance)
+function are_fractional_compositions_equal(
+  comp1: Record<string, number>,
+  comp2: Record<string, number>,
+  tolerance = 1e-6, // for comparing fractional compositions (due to floating-point precision)
+): boolean {
+  const keys1 = Object.keys(comp1)
+  const keys2 = Object.keys(comp2)
+  if (keys1.length !== keys2.length) return false
+  for (const key of keys1) {
+    if (!(key in comp2)) return false
+    if (Math.abs(comp1[key] - comp2[key]) > tolerance) return false
+  }
+  return true
+}
+
+// Calculate polymorph statistics for a given entry among all entries
+export function calculate_polymorph_stats(
+  entry: PhaseData,
+  all_entries: PhaseData[],
+): { total: number; higher: number; lower: number; equal: number } {
+  const entry_fractional = get_fractional_composition(entry.composition)
+  const entry_energy = entry.e_above_hull ?? entry.energy_per_atom ?? entry.energy
+
+  // Validate entry energy is a valid number
+  if (typeof entry_energy !== `number` || !Number.isFinite(entry_energy)) {
+    return { total: 0, higher: 0, lower: 0, equal: 0 }
+  }
+
+  let total = 0
+  let higher = 0 // count of polymorphs with higher energy (less stable)
+  let lower = 0 // count of polymorphs with lower energy (more stable)
+  let equal = 0 // count of polymorphs with equal energy
+
+  for (const other of all_entries) {
+    // Skip the entry itself (by reference or by entry_id if available)
+    if (other === entry) continue
+    if (entry.entry_id && other.entry_id === entry.entry_id) continue
+
+    const other_fractional = get_fractional_composition(other.composition)
+    if (!are_fractional_compositions_equal(entry_fractional, other_fractional)) {
+      continue // Not a polymorph
+    }
+
+    const other_energy = other.e_above_hull ?? other.energy_per_atom ?? other.energy
+
+    // Validate other energy is a valid number before comparison
+    if (typeof other_energy !== `number` || !Number.isFinite(other_energy)) continue
+
+    total += 1
+
+    if (other_energy > entry_energy) higher += 1
+    else if (other_energy < entry_energy) lower += 1
+    else equal += 1
+  }
+
+  return { total, higher, lower, equal }
 }
 
 function apply_alpha_to_color(color: string, alpha: number): string {

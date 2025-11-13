@@ -3,7 +3,7 @@
   import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { contrast_color } from '$lib/colors'
-  import { CopyFeedback, DragOverlay } from '$lib/feedback'
+  import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { ColorBar } from '$lib/plot'
   import {
     barycentric_to_tetrahedral,
@@ -19,7 +19,7 @@
   import StructurePopup from './StructurePopup.svelte'
   import type { Point4D } from './thermodynamics'
   import * as thermo from './thermodynamics'
-  import type { HighlightStyle, HoverData3D, PlotEntry3D } from './types'
+  import type { HighlightStyle, HoverData3D, PhaseDiagramEntry } from './types'
 
   let {
     entries,
@@ -49,15 +49,17 @@
     unstable_entries = $bindable([]),
     highlighted_entries = $bindable([]),
     highlight_style = {},
+    selected_entry = $bindable(null),
     ...rest
-  }: BasePhaseDiagramProps<PlotEntry3D> & Hull3DProps & {
+  }: BasePhaseDiagramProps<PhaseDiagramEntry> & Hull3DProps & {
     on_point_hover?: (data: HoverData3D | null) => void
     // Bindable stable and unstable entries - computed internally but exposed for external use
-    stable_entries?: PlotEntry3D[]
-    unstable_entries?: PlotEntry3D[]
+    stable_entries?: PhaseDiagramEntry[]
+    unstable_entries?: PhaseDiagramEntry[]
     // Highlighted entries with customizable visual effects
-    highlighted_entries?: (string | PlotEntry3D)[] // Array of entry IDs or full entries
+    highlighted_entries?: (string | PhaseDiagramEntry)[] // Array of entry IDs or full entries
     highlight_style?: HighlightStyle
+    selected_entry?: PhaseDiagramEntry | null
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
@@ -92,7 +94,7 @@
     ),
   )
 
-  // Process phase diagram data with unified PhaseEntry interface using effective entries
+  // Process phase diagram data with unified PhaseData interface using effective entries
   const processed_entries = $derived(effective_entries)
 
   const pd_data = $derived(thermo.process_pd_entries(processed_entries))
@@ -156,7 +158,8 @@
         if (energy_mode === `on-the-fly` && hull_4d.length > 0) {
           // Build 4D points for distance calculation using barycentric coordinates
           // Track indices to map hull distances back to original coords
-          const valid_entries: Array<{ entry: PlotEntry3D; orig_idx: number }> = []
+          const valid_entries: Array<{ entry: PhaseDiagramEntry; orig_idx: number }> =
+            []
           coords.forEach((ent, idx) => {
             if (
               Number.isFinite(ent.e_form_per_atom) &&
@@ -189,7 +192,7 @@
       })()
 
       // Filter by energy threshold and update visibility based on toggles
-      const energy_filtered = enriched.filter((entry: PlotEntry3D) => {
+      const energy_filtered = enriched.filter((entry: PhaseDiagramEntry) => {
         // Handle elemental entries specially
         if (entry.is_element) {
           // Always include reference elemental entries (corner points of tetrahedron)
@@ -208,7 +211,7 @@
           entry.e_above_hull <= max_hull_dist_show_phases
       })
       return energy_filtered
-        .map((entry: PlotEntry3D) => {
+        .map((entry: PhaseDiagramEntry) => {
           const is_stable = entry.is_stable || entry.e_above_hull === 0
           // Update visibility based on current toggle states
           entry.visible = (is_stable && show_stable) || (!is_stable && show_unstable)
@@ -222,10 +225,10 @@
 
   // Stable and unstable entries exposed as bindable props
   $effect(() => {
-    stable_entries = plot_entries.filter((entry: PlotEntry3D) =>
+    stable_entries = plot_entries.filter((entry: PhaseDiagramEntry) =>
       entry.is_stable || entry.e_above_hull === 0
     )
-    unstable_entries = plot_entries.filter((entry: PlotEntry3D) =>
+    unstable_entries = plot_entries.filter((entry: PhaseDiagramEntry) =>
       (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
     )
   })
@@ -256,7 +259,6 @@
   // Structure popup state
   let modal_open = $state(false)
   let selected_structure = $state<AnyStructure | null>(null)
-  let selected_entry = $state<PlotEntry3D | null>(null)
   let modal_place_right = $state(true)
 
   // Hull face color (customizable via controls)
@@ -273,7 +275,7 @@
   )
 
   // Helper to check if entry is highlighted
-  const is_highlighted = (entry: PlotEntry3D): boolean =>
+  const is_highlighted = (entry: PhaseDiagramEntry): boolean =>
     helpers.is_entry_highlighted(entry, highlighted_entries)
 
   $effect(() => {
@@ -321,7 +323,9 @@
   })
 
   // Function to extract structure data from a phase diagram entry
-  function extract_structure_from_entry(entry: PlotEntry3D): AnyStructure | null {
+  function extract_structure_from_entry(
+    entry: PhaseDiagramEntry,
+  ): AnyStructure | null {
     const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
     return orig_entry?.structure as AnyStructure || null
   }
@@ -372,7 +376,7 @@
   }
 
   async function copy_entry_data(
-    entry: PlotEntry3D,
+    entry: PhaseDiagramEntry,
     position: { x: number; y: number },
   ) {
     await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
@@ -381,7 +385,7 @@
     })
   }
 
-  const get_point_color = (entry: PlotEntry3D): string =>
+  const get_point_color = (entry: PhaseDiagramEntry): string =>
     helpers.get_point_color_for_entry(
       entry,
       color_mode,
@@ -674,7 +678,7 @@
 
     // Collect all points with depth for sorting
     const points_with_depth: {
-      entry: PlotEntry3D
+      entry: PhaseDiagramEntry
       projected: { x: number; y: number; depth: number }
     }[] = []
 
@@ -863,7 +867,7 @@
     on_point_hover?.(hover_data)
   }
 
-  const find_entry_at_mouse = (event: MouseEvent): PlotEntry3D | null =>
+  const find_entry_at_mouse = (event: MouseEvent): PhaseDiagramEntry | null =>
     helpers.find_pd_entry_at_mouse(
       canvas,
       event,
@@ -1131,12 +1135,12 @@
       style:background={get_point_color(entry)}
       {@attach contrast_color({ luminance_threshold: 0.49 })}
     >
-      <PhaseEntryTooltip {entry} />
+      <PhaseEntryTooltip {entry} all_entries={entries} />
     </div>
   {/if}
 
-  <!-- Copy feedback notification -->
-  <CopyFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
+  <!-- Click feedback notification -->
+  <ClickFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
 
   <!-- Drag over overlay -->
   <DragOverlay visible={drag_over} />

@@ -2,7 +2,7 @@ import type { CompositionType, ElementSymbol, Sides } from '$lib'
 import type { Vec3 } from '$lib/math'
 
 // Unified phase diagram entry interface supporting both pymatgen and Materials Project formats
-export interface PhaseEntry {
+export interface PhaseData {
   // Core required fields
   composition: CompositionType
   energy: number
@@ -20,26 +20,28 @@ export interface PhaseEntry {
   '@module'?: string
   '@class'?: string
   correction?: number
-  energy_adjustments?: unknown[]
+  energy_adjustments?: Record<string, number>[]
   parameters?: Record<string, unknown>
   data?: Record<string, unknown>
   structure?: Record<string, unknown>
 
   // Materials Project-specific fields (optional)
   attributes?: Record<string, unknown>
+
+  [key: string]: unknown // Allow additional properties for flexibility
 }
 
 // Legacy type aliases for backward compatibility
-export type PDEntry = PhaseEntry
-export type PymatgenEntry = PhaseEntry
+export type PDEntry = PhaseData
+export type PymatgenEntry = PhaseData
 
 // Processed phase diagram data
 export interface PhaseDiagramData {
-  entries: PhaseEntry[]
-  stable_entries: PhaseEntry[]
-  unstable_entries: PhaseEntry[]
+  entries: PhaseData[]
+  stable_entries: PhaseData[]
+  unstable_entries: PhaseData[]
   elements: ElementSymbol[]
-  el_refs: Record<string, PhaseEntry>
+  el_refs: Record<string, PhaseData>
 }
 
 // 3D point for tetrahedral coordinates
@@ -50,7 +52,7 @@ export interface Point3D {
 }
 
 // Plot entry with 3D coordinates for quaternary diagrams
-export interface PlotEntry3D extends PhaseEntry, Point3D {
+export interface PhaseDiagramEntry extends PhaseData, Point3D {
   is_element: boolean
   size?: number
   visible: boolean
@@ -112,14 +114,8 @@ export interface ConvexHullTriangle {
   centroid: Point3D
 }
 
-// Ternary plot entry with additional face information
-export interface TernaryPlotEntry extends PlotEntry3D {
-  barycentric: [number, number, number] // Barycentric coordinates for ternary system
-  e_form: number // for z-axis positioning
-}
-
 // Hover data for tooltips
-export interface HoverData3D<T = PlotEntry3D> {
+export interface HoverData3D<T = PhaseDiagramEntry> {
   entry: T
   position: { x: number; y: number }
 }
@@ -140,20 +136,20 @@ export interface PhaseStats {
 }
 
 // Arity helpers (inlined from former arity.ts)
-export function get_arity(entry: PhaseEntry) {
+export function get_arity(entry: PhaseData) {
   return Object.values(entry.composition).filter((v) => v > 0).length
 }
 
-export const is_unary_entry = (entry: PhaseEntry) => get_arity(entry) === 1
-export const is_binary_entry = (entry: PhaseEntry) => get_arity(entry) === 2
-export const is_ternary_entry = (entry: PhaseEntry) => get_arity(entry) === 3
-export const is_quaternary_entry = (entry: PhaseEntry) => get_arity(entry) === 4
-export const is_quinary_entry = (entry: PhaseEntry) => get_arity(entry) === 5
-export const is_senary_entry = (entry: PhaseEntry) => get_arity(entry) === 6
-export const is_septenary_entry = (entry: PhaseEntry) => get_arity(entry) === 7
-export const is_octonary_entry = (entry: PhaseEntry) => get_arity(entry) === 8
-export const is_nonary_entry = (entry: PhaseEntry) => get_arity(entry) === 9
-export const is_denary_entry = (entry: PhaseEntry) => get_arity(entry) === 10
+export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
+export const is_binary_entry = (entry: PhaseData) => get_arity(entry) === 2
+export const is_ternary_entry = (entry: PhaseData) => get_arity(entry) === 3
+export const is_quaternary_entry = (entry: PhaseData) => get_arity(entry) === 4
+export const is_quinary_entry = (entry: PhaseData) => get_arity(entry) === 5
+export const is_senary_entry = (entry: PhaseData) => get_arity(entry) === 6
+export const is_septenary_entry = (entry: PhaseData) => get_arity(entry) === 7
+export const is_octonary_entry = (entry: PhaseData) => get_arity(entry) === 8
+export const is_nonary_entry = (entry: PhaseData) => get_arity(entry) === 9
+export const is_denary_entry = (entry: PhaseData) => get_arity(entry) === 10
 
 // Highlight styles for phase diagram entries
 export interface HighlightStyle {
