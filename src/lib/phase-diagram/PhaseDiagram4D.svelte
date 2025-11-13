@@ -92,7 +92,9 @@
 
   const pd_data = $derived(thermo.process_pd_entries(processed_entries))
 
-  const polymorph_stats_map = $derived(helpers.compute_all_polymorph_stats(entries)) // Pre-compute polymorph stats once for O(1) tooltip lookups
+  const polymorph_stats_map = $derived(
+    helpers.compute_all_polymorph_stats(processed_entries),
+  ) // Pre-compute polymorph stats once for O(1) tooltip lookups
 
   const elements = $derived.by(() => {
     if (pd_data.elements.length > 4) {
@@ -718,13 +720,6 @@
 
       // Draw pulsating highlight for selected entry (before main point)
       if (selected_entry && entry.entry_id === selected_entry.entry_id) {
-        const highlight_options = {
-          color: `rgba(102, 240, 255, 1)`, // Light cyan
-          size_multiplier: 1.8,
-          pulse_amplitude: 0.3,
-          fill_opacity: 0.6,
-          line_width: 2,
-        }
         helpers.draw_selection_highlight(
           ctx,
           projected,
@@ -732,7 +727,6 @@
           container_scale,
           pulse_time,
           pulse_opacity,
-          highlight_options,
         )
       }
 

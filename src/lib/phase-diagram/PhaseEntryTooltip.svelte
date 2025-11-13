@@ -28,11 +28,13 @@
 
 <div class="tooltip-title">
   {#if entry.entry_id}
-    <strong>ID: {entry.entry_id}</strong>
+    <strong style="display: block">ID: {entry.entry_id}</strong>
   {/if}
-  {@html get_electro_neg_formula(entry.composition)}{
-    is_element && elem_name ? ` (${elem_name})` : ``
-  }
+  <strong style="display: block">
+    {@html get_electro_neg_formula(entry.composition)}{
+      is_element && elem_name ? ` (${elem_name})` : ``
+    }
+  </strong>
 </div>
 
 <div>E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom</div>
@@ -55,11 +57,19 @@
   >
     Polymorphs:
     {polymorph_stats.total}
-    <span title="{polymorph_stats.higher} higher in energy">↑{
-        polymorph_stats.higher
-      }</span>
-    <span title="{polymorph_stats.lower} lower in energy">↓{polymorph_stats.lower}</span>
-    <span title="{polymorph_stats.equal} equal in energy">={polymorph_stats.equal}</span>
+    {#if polymorph_stats.total > 0}
+      <span title="{polymorph_stats.higher} higher in energy">↑{
+          polymorph_stats.higher
+        }</span>
+      <span title="{polymorph_stats.lower} lower in energy">↓{
+          polymorph_stats.lower
+        }</span>
+      {#if polymorph_stats.equal > 0}
+        <span title="{polymorph_stats.equal} equal in energy">
+          ={polymorph_stats.equal}
+        </span>
+      {/if}
+    {/if}
   </div>
 {/if}
 

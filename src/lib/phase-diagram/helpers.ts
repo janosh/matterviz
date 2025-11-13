@@ -302,13 +302,14 @@ export interface PolymorphStats {
   equal: number
 }
 
-// Get comparable energy for ranking polymorphs (prioritizes e_above_hull, falls back to per-atom energy)
-function get_entry_energy(entry: PhaseData, prefer_hull: boolean): number | null {
-  // First choice: e_above_hull (if prefer_hull is true)
+// Get comparable energy for ranking polymorphs
+// NOTE: We prioritize absolute energies (e_form_per_atom, energy_per_atom) over e_above_hull
+// because polymorphs of the same composition on the hull all have e_above_hull=0
+function get_entry_energy(entry: PhaseData): number | null {
+  // First choice: e_form_per_atom (formation energy is best for comparing polymorphs)
   if (
-    prefer_hull && typeof entry.e_above_hull === `number` &&
-    Number.isFinite(entry.e_above_hull)
-  ) return entry.e_above_hull
+    typeof entry.e_form_per_atom === `number` && Number.isFinite(entry.e_form_per_atom)
+  ) return entry.e_form_per_atom
   // Second choice: energy_per_atom
   if (
     typeof entry.energy_per_atom === `number` && Number.isFinite(entry.energy_per_atom)
@@ -321,6 +322,10 @@ function get_entry_energy(entry: PhaseData, prefer_hull: boolean): number | null
     )
     if (total_atoms > 0) return entry.energy / total_atoms
   }
+  // Last resort: e_above_hull (will fail to differentiate stable polymorphs with e_above_hull=0)
+  if (
+    typeof entry.e_above_hull === `number` && Number.isFinite(entry.e_above_hull)
+  ) return entry.e_above_hull
   return null // No valid energy data available
 }
 
@@ -346,12 +351,10 @@ export function compute_all_polymorph_stats(
 
   // Calculate stats for each polymorph group
   for (const polymorphs of composition_groups.values()) {
-    const prefer_hull = polymorphs.every((p) => typeof p.e_above_hull === `number`)
-
     for (const entry of polymorphs) {
       if (!entry.entry_id) continue
 
-      const entry_energy = get_entry_energy(entry, prefer_hull)
+      const entry_energy = get_entry_energy(entry)
       if (entry_energy === null) {
         stats_map.set(entry.entry_id, { total: 0, higher: 0, lower: 0, equal: 0 })
         continue
@@ -360,7 +363,7 @@ export function compute_all_polymorph_stats(
       let [total, higher, lower, equal] = [0, 0, 0, 0]
       for (const other of polymorphs) {
         if (other === entry || other.entry_id === entry.entry_id) continue
-        const other_energy = get_entry_energy(other, prefer_hull)
+        const other_energy = get_entry_energy(other)
         if (other_energy === null) continue
 
         total++
@@ -449,11 +452,11 @@ export function draw_selection_highlight(
   } = {},
 ): void {
   const {
-    color = `rgba(33, 150, 243, 1)`, // Blue by default
-    size_multiplier = 2.8,
-    pulse_amplitude = 0.6,
-    fill_opacity = 0.7,
-    line_width = 3,
+    color = `rgba(102, 240, 255, 1)`, // Light cyan
+    size_multiplier = 1.8,
+    pulse_amplitude = 0.3,
+    fill_opacity = 0.6,
+    line_width = 2,
   } = options
 
   const highlight_size = base_size *

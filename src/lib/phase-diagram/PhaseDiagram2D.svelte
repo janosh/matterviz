@@ -100,7 +100,9 @@
   // Process data and element set
   const pd_data = $derived(thermo.process_pd_entries(effective_entries))
 
-  const polymorph_stats_map = $derived(helpers.compute_all_polymorph_stats(entries)) // Pre-compute polymorph stats once for O(1) tooltip lookups
+  const polymorph_stats_map = $derived(
+    helpers.compute_all_polymorph_stats(effective_entries),
+  ) // Pre-compute polymorph stats once for O(1) tooltip lookups
 
   const elements = $derived.by(() => {
     if (pd_data.elements.length > 2) {

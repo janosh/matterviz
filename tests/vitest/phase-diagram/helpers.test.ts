@@ -257,6 +257,7 @@ describe(`helpers: polymorph statistics`, () => {
     e_hull?: number,
     e_atom?: number,
     e?: number,
+    e_form?: number,
   ): PhaseData =>
     ({
       entry_id: id,
@@ -264,6 +265,7 @@ describe(`helpers: polymorph statistics`, () => {
       e_above_hull: e_hull,
       energy_per_atom: e_atom,
       energy: e,
+      e_form_per_atom: e_form,
     }) as PhaseData
 
   test.each([
@@ -321,14 +323,34 @@ describe(`helpers: polymorph statistics`, () => {
       exp: [2, 2, 0, 0],
     },
     {
-      name: `uses hull energy when all have it`,
+      name: `uses energy_per_atom not e_above_hull for ranking`,
       entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
       all: [
         make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
         make_entry(`2`, { Li: 1, O: 1 }, 0.2, -4.9),
         make_entry(`3`, { Li: 1, O: 1 }, 0.05, -5.1),
       ],
-      exp: [2, 1, 1, 0],
+      exp: [2, 1, 1, 0], // energy_per_atom: -5 vs -4.9 (higher) vs -5.1 (lower)
+    },
+    {
+      name: `REGRESSION: stable polymorphs (e_above_hull=0) ranked by energy_per_atom`,
+      entry: make_entry(`1`, { C: 1 }, 0, -9.0), // diamond
+      all: [
+        make_entry(`1`, { C: 1 }, 0, -9.0), // diamond
+        make_entry(`2`, { C: 1 }, 0, -8.9), // graphite (slightly higher energy)
+        make_entry(`3`, { C: 1 }, 0, -9.1), // hypothetical lower-energy form
+      ],
+      exp: [2, 1, 1, 0], // NOT [2, 0, 0, 2] which was the bug!
+    },
+    {
+      name: `prefers e_form_per_atom over energy_per_atom`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, undefined, -5.0, undefined, -3.0),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, undefined, -5.0, undefined, -3.0),
+        make_entry(`2`, { Li: 1, O: 1 }, undefined, -5.1, undefined, -2.9),
+        make_entry(`3`, { Li: 1, O: 1 }, undefined, -4.9, undefined, -3.1),
+      ],
+      exp: [2, 1, 1, 0], // Uses e_form: -3.0 vs -2.9 (higher) vs -3.1 (lower), ignores energy_per_atom
     },
     {
       name: `falls back to per-atom when hull missing`,

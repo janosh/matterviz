@@ -1132,7 +1132,13 @@
             range_padding={0}
             style="height: 100%"
             {...scatter_props}
-            legend={{ ...scatter_props.legend ?? {}, on_toggle: handle_legend_toggle }}
+            legend={{
+              ...scatter_props.legend ?? {},
+              on_toggle: (series_idx) => {
+                handle_legend_toggle(series_idx)
+                scatter_props.legend?.on_toggle?.(series_idx)
+              },
+            }}
             class="plot {scatter_props.class ?? ``}"
           >
             {#snippet tooltip({ x, y, metadata })}
@@ -1147,6 +1153,7 @@
           </ScatterPlot>
         {:else if display_mode === `histogram` || display_mode === `structure+histogram`}
           <Histogram
+            {...histogram_props}
             series={plot_series}
             x_axis={{
               label: String(histogram_props.x_axis?.label ?? y_axis_labels.y1),
@@ -1156,9 +1163,11 @@
             mode={histogram_props.mode ?? `overlay`}
             show_legend={histogram_props.show_legend ?? plot_series.length > 1}
             legend={histogram_props.legend}
-            on_series_toggle={handle_legend_toggle}
+            on_series_toggle={(series_idx) => {
+              handle_legend_toggle(series_idx)
+              histogram_props.on_series_toggle?.(series_idx)
+            }}
             style="height: 100%"
-            {...histogram_props}
             class="plot {histogram_props.class ?? ``}"
             --ctrl-btn-top="6ex"
           >
