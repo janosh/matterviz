@@ -3,7 +3,7 @@
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import PhaseDiagramStats from './PhaseDiagramStats.svelte'
-  import type { PhaseStats, PlotEntry3D } from './types'
+  import type { PhaseDiagramEntry, PhaseStats } from './types'
 
   let {
     phase_stats,
@@ -18,8 +18,8 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     phase_stats: PhaseStats | null
-    stable_entries: PlotEntry3D[]
-    unstable_entries: PlotEntry3D[]
+    stable_entries: PhaseDiagramEntry[]
+    unstable_entries: PhaseDiagramEntry[]
     max_hull_dist_show_phases: number
     max_hull_dist_show_labels: number
     label_threshold: number

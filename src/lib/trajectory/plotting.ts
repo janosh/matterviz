@@ -156,6 +156,7 @@ function create_series_from_stats(
       markers: n < 30 ? `line+points` : `line`,
       metadata: Array(n).fill({
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
+        property_key: key, // Store original property key for robust lookups
       }),
       line_style: { stroke: color, stroke_width: 2 },
       point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },
@@ -173,26 +174,23 @@ function group_and_assign_series(
 ): UnitGroup[] {
   // Group by unit
   const unit_map = new Map<string, DataSeries[]>()
-  series.forEach((srs) => {
+  for (const srs of series) {
     const unit = srs.unit || `dimensionless`
-    if (!unit_map.has(unit)) unit_map.set(unit, [])
-    const unit_group = unit_map.get(unit)
-    if (unit_group) unit_group.push(srs)
-  })
+    const group = unit_map.get(unit) ?? []
+    group.push(srs)
+    unit_map.set(unit, group)
+  }
 
   // Create unit groups with priority and visibility
   const groups = Array.from(unit_map.entries()).map(([unit, group_series]) => {
     const priority = calculate_priority(unit, group_series)
-    const has_default_visible = group_series.some((srs) =>
-      is_default_visible(srs.label || ``, default_visible_properties)
-    )
+    const has_default_visible = group_series.some((srs) => {
+      const metadata = Array.isArray(srs.metadata) ? srs.metadata[0] : srs.metadata
+      const property_key = (metadata?.property_key as string) || srs.label || ``
+      return is_default_visible(property_key, default_visible_properties)
+    })
 
-    return {
-      unit,
-      series: group_series,
-      priority,
-      is_visible: has_default_visible,
-    }
+    return { unit, series: group_series, priority, is_visible: has_default_visible }
   }).sort((a, b) => a.priority - b.priority)
 
   // Apply 2-group visibility limit
@@ -223,13 +221,13 @@ function apply_group_assignments(series: DataSeries[], unit_groups: UnitGroup[])
   }
 
   // Apply to series
-  series.forEach((srs) => {
+  for (const srs of series) {
     const group = unit_groups.find((g) => g.series.includes(srs))
     if (group) {
       srs.visible = group.is_visible
       srs.y_axis = axis_map.get(group) || `y1`
     }
-  })
+  }
 }
 
 // Helper functions
@@ -238,7 +236,8 @@ function extract_label_and_unit(
   property_config: Record<string, { label: string; unit: string }>,
 ): { clean_label: string; unit: string } {
   const config = property_config[key] || property_config[key.toLowerCase()]
-  return config ? { clean_label: config.label, unit: config.unit } : {
+  if (config) return { clean_label: config.label, unit: config.unit }
+  return {
     clean_label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ` `),
     unit: ``,
   }
@@ -266,16 +265,22 @@ function calculate_priority(unit: string, group_series: DataSeries[]): number {
   return 1000 // Default low priority
 }
 
-function is_default_visible(label: string, default_properties: Set<string>): boolean {
-  const clean_label = label.toLowerCase().replace(/<[^>]*>/g, ``)
-  return Array.from(default_properties).some((prop) => {
-    const prop_lower = prop.toLowerCase()
-    if (prop_lower === `force_max`) {
-      return clean_label.includes(`force`) || clean_label.includes(`fmax`) ||
-        clean_label === `f`
-    }
-    return clean_label.includes(prop_lower)
-  })
+// Normalize property keys for robust matching (handles case, underscores, and common aliases)
+const normalize_property_key = (key: string): string => {
+  const normalized = key.toLowerCase().replace(/<[^>]*>/g, ``).replace(/_/g, ` `).trim()
+  // Map common force property aliases to canonical form
+  return [`fmax`, `f`, `force maximum`].includes(normalized) ? `force max` : normalized
+}
+
+const is_default_visible = (
+  property_key: string,
+  default_properties: Set<string>,
+): boolean => {
+  const normalized_key = normalize_property_key(property_key)
+  for (const prop of default_properties) {
+    if (normalize_property_key(prop) === normalized_key) return true
+  }
+  return false
 }
 
 // Optimized series visibility toggling
@@ -331,20 +336,21 @@ export function toggle_series_visibility(
 
 function create_unit_groups_from_series(series: DataSeries[]): UnitGroup[] {
   const unit_map = new Map<string, DataSeries[]>()
-
-  series.forEach((srs) => {
+  for (const srs of series) {
     const unit = srs.unit || `dimensionless`
-    if (!unit_map.has(unit)) unit_map.set(unit, [])
-    const unit_group = unit_map.get(unit)
-    if (unit_group) unit_group.push(srs)
-  })
+    const group = unit_map.get(unit) ?? []
+    group.push(srs)
+    unit_map.set(unit, group)
+  }
 
-  return Array.from(unit_map.entries()).map(([unit, group_series]) => ({
-    unit,
-    series: group_series,
-    priority: calculate_priority(unit, group_series),
-    is_visible: group_series.some((srs) => srs.visible),
-  })).sort((a, b) => a.priority - b.priority)
+  return Array.from(unit_map.entries())
+    .map(([unit, group_series]) => ({
+      unit,
+      series: group_series,
+      priority: calculate_priority(unit, group_series),
+      is_visible: group_series.some((srs) => srs.visible),
+    }))
+    .sort((a, b) => a.priority - b.priority)
 }
 
 function update_group_visibility_and_axes(
@@ -352,51 +358,43 @@ function update_group_visibility_and_axes(
   unit_groups: UnitGroup[],
 ): void {
   // Update group visibility based on series
-  unit_groups.forEach((group) => {
+  for (const group of unit_groups) {
     group.is_visible = group.series.some((srs1) =>
-      series.find((srs2) => srs2.label === srs1.label && srs2.unit === srs1.unit)
-        ?.visible || false
+      series.find((srs2) => srs2.label === srs1.label && srs2.unit === srs1.unit)?.visible
     )
-  })
+  }
 
   // Apply 2-group limit
-  const visible_groups = unit_groups.filter((group) => group.is_visible)
-  if (visible_groups.length > 2) {
-    const groups_to_hide = visible_groups.slice(2)
-    groups_to_hide.forEach((group) => {
+  if (unit_groups.filter((g) => g.is_visible).length > 2) {
+    for (const group of unit_groups.filter((g) => g.is_visible).slice(2)) {
       group.is_visible = false
-      group.series.forEach((srs1) => {
-        const series_idx = series.findIndex((srs2) =>
+      for (const srs1 of group.series) {
+        const idx = series.findIndex((srs2) =>
           srs2.label === srs1.label && srs2.unit === srs1.unit
         )
-        if (series_idx !== -1) {
-          series[series_idx] = { ...series[series_idx], visible: false }
-        }
-      })
-    })
+        if (idx !== -1) series[idx] = { ...series[idx], visible: false }
+      }
+    }
   }
 
   // Assign axes
-  const final_visible = unit_groups.filter((group) => group.is_visible)
-  final_visible.sort((g1, g2) => g1.priority - g2.priority)
+  const final_visible = unit_groups
+    .filter((group) => group.is_visible)
+    .sort((g1, g2) => g1.priority - g2.priority)
 
   const axis_map = new Map<UnitGroup, `y1` | `y2`>()
-  if (final_visible.length === 1) {
-    axis_map.set(final_visible[0], `y1`)
-  } else if (final_visible.length === 2) {
-    axis_map.set(final_visible[0], `y1`)
-    axis_map.set(final_visible[1], `y2`)
-  }
+  if (final_visible.length >= 1) axis_map.set(final_visible[0], `y1`)
+  if (final_visible.length === 2) axis_map.set(final_visible[1], `y2`)
 
   // Apply to series
-  series.forEach((srs, idx) => {
+  for (const [idx, srs] of series.entries()) {
     const group = unit_groups.find((g) =>
       g.series.some((gs) => gs.label === srs.label && gs.unit === srs.unit)
     )
     if (group && axis_map.has(group)) {
       series[idx] = { ...srs, y_axis: axis_map.get(group) }
     }
-  })
+  }
 }
 
 // Utility functions
@@ -520,6 +518,7 @@ export function generate_streaming_plot_series(
       markers: data_points.length < 1000 ? `line+points` : `line`,
       metadata: data_points.map(() => ({
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
+        property_key, // Store original property key for robust lookups
       })),
       line_style: { stroke: color, stroke_width: 2 },
       point_style: { fill: color, radius: 4, stroke: color, stroke_width: 1 },

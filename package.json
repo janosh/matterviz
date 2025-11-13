@@ -115,6 +115,10 @@
       "types": "./dist/element/index.d.ts",
       "default": "./dist/element/index.js"
     },
+    "./feedback": {
+      "types": "./dist/feedback/index.d.ts",
+      "default": "./dist/feedback/index.js"
+    },
     "./io": {
       "types": "./dist/io.d.ts",
       "default": "./dist/io.js"
@@ -126,6 +130,10 @@
     "./math": {
       "types": "./dist/math.d.ts",
       "default": "./dist/math.js"
+    },
+    "./overlays": {
+      "types": "./dist/overlays/index.d.ts",
+      "default": "./dist/overlays/index.js"
     },
     "./periodic-table": {
       "types": "./dist/periodic-table.d.ts",
