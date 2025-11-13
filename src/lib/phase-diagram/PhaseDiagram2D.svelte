@@ -52,14 +52,16 @@
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
     display = $bindable({ x_grid: false, y_grid: false }),
+    stable_entries = $bindable([]),
+    unstable_entries = $bindable([]),
+    highlighted_entries = $bindable([]),
     x_axis = {},
     y_axis = {},
     selected_entry = $bindable(null),
     ...rest
-  }: BasePhaseDiagramProps & {
+  }: BasePhaseDiagramProps<PhaseDiagramEntry> & {
     x_axis?: AxisConfig
     y_axis?: AxisConfig
-    selected_entry?: PhaseDiagramEntry | null
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
@@ -237,16 +239,15 @@
     ) => (e.is_stable || (e.e_above_hull ?? 0) <= max_hull_dist_show_phases))
   })
 
-  const stable_entries = $derived(
-    plot_entries.filter((entry: PhaseDiagramEntry) =>
-      entry.is_stable || entry.e_above_hull === 0
-    ),
-  )
-  const unstable_entries = $derived(
-    plot_entries.filter((entry: PhaseDiagramEntry) =>
-      (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
-    ),
-  )
+  // Update bindable entries arrays when plot_entries change
+  $effect(() => {
+    stable_entries = plot_entries.filter(
+      (entry: PhaseDiagramEntry) => entry.is_stable || entry.e_above_hull === 0,
+    )
+    unstable_entries = plot_entries.filter(
+      (entry: PhaseDiagramEntry) => (entry.e_above_hull ?? 0) > 0 && !entry.is_stable,
+    )
+  })
 
   let reset_counter = $state(0)
 
@@ -430,6 +431,7 @@
       last_click_time = now
 
       on_point_click?.(entry)
+      selected_entry = entry
       if (enable_structure_preview) {
         const structure = extract_structure_from_entry(entry)
         if (structure) {
@@ -440,7 +442,6 @@
           const place_right = space_on_right >= space_on_left
 
           structure_popup = { open: true, structure, entry, place_right }
-          selected_entry = entry
           data.event.stopPropagation()
         }
       }

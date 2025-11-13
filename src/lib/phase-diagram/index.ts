@@ -1,6 +1,7 @@
 import type { D3InterpolateName } from '$lib/colors'
 import type { HTMLAttributes } from 'svelte/elements'
 import type {
+  HighlightStyle,
   HoverData3D,
   PDControlsType,
   PhaseData,
@@ -19,13 +20,13 @@ export * from './thermodynamics'
 export * from './types'
 
 // Base props shared across all phase diagram components (2D, 3D, 4D)
-export interface BasePhaseDiagramProps<TEntry = PhaseData>
+export interface BasePhaseDiagramProps<AnyDimEntry = PhaseData>
   extends Omit<HTMLAttributes<HTMLDivElement>, `entries`> {
   entries: PhaseData[]
   controls?: Partial<PDControlsType>
   config?: Partial<PhaseDiagramConfig>
-  on_point_click?: (entry: TEntry) => void
-  on_point_hover?: (data: HoverData3D<TEntry> | null) => void
+  on_point_click?: (entry: AnyDimEntry) => void
+  on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
   fullscreen?: boolean
   enable_fullscreen?: boolean
   enable_info_pane?: boolean
@@ -54,6 +55,13 @@ export interface BasePhaseDiagramProps<TEntry = PhaseData>
   phase_stats?: PhaseStats | null
   // Display configuration for grid lines and other visual elements
   display?: { x_grid?: boolean; y_grid?: boolean }
+  // Bindable stable and unstable entries - computed internally but exposed for external use
+  stable_entries?: AnyDimEntry[]
+  unstable_entries?: AnyDimEntry[]
+  // Highlighted entries with customizable visual effects
+  highlighted_entries?: (string | AnyDimEntry)[]
+  highlight_style?: HighlightStyle
+  selected_entry?: AnyDimEntry | null
 }
 
 // Additional props specific to 3D and 4D phase diagrams

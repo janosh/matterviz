@@ -317,10 +317,53 @@ export function calculate_polymorph_stats(
   all_entries: PhaseData[],
 ): { total: number; higher: number; lower: number; equal: number } {
   const entry_fractional = get_fractional_composition(entry.composition)
-  const entry_energy = entry.e_above_hull ?? entry.energy_per_atom ?? entry.energy
 
-  // Validate entry energy is a valid number
-  if (typeof entry_energy !== `number` || !Number.isFinite(entry_energy)) {
+  // First, collect all polymorphs (entries with same fractional composition)
+  const polymorphs = [entry]
+  for (const other of all_entries) {
+    if (other === entry) continue
+    if (entry.entry_id && other.entry_id === entry.entry_id) continue
+
+    const other_fractional = get_fractional_composition(other.composition)
+    if (are_fractional_compositions_equal(entry_fractional, other_fractional)) {
+      polymorphs.push(other)
+    }
+  }
+
+  // Determine if all polymorphs have e_above_hull
+  const all_have_hull = polymorphs.every(
+    (phase) =>
+      typeof phase.e_above_hull === `number` && Number.isFinite(phase.e_above_hull),
+  )
+
+  // Function to get comparable energy for an entry
+  const get_comparable_energy = (phase: PhaseData): number | null => {
+    if (all_have_hull) {
+      // Use e_above_hull if all polymorphs have it
+      return phase.e_above_hull ?? null
+    }
+    // Otherwise use per-atom energy
+    if (
+      typeof phase.energy_per_atom === `number` &&
+      Number.isFinite(phase.energy_per_atom)
+    ) {
+      return phase.energy_per_atom
+    }
+    // Fall back to energy / total_atoms
+    if (typeof phase.energy === `number` && Number.isFinite(phase.energy)) {
+      const total_atoms = Object.values(phase.composition).reduce(
+        (sum, amt) => sum + amt,
+        0,
+      )
+      if (total_atoms > 0) {
+        return phase.energy / total_atoms
+      }
+    }
+    return null
+  }
+
+  const entry_energy = get_comparable_energy(entry)
+  if (entry_energy === null) {
     return { total: 0, higher: 0, lower: 0, equal: 0 }
   }
 
@@ -329,20 +372,13 @@ export function calculate_polymorph_stats(
   let lower = 0 // count of polymorphs with lower energy (more stable)
   let equal = 0 // count of polymorphs with equal energy
 
-  for (const other of all_entries) {
-    // Skip the entry itself (by reference or by entry_id if available)
+  for (const other of polymorphs) {
+    // Skip the entry itself
     if (other === entry) continue
     if (entry.entry_id && other.entry_id === entry.entry_id) continue
 
-    const other_fractional = get_fractional_composition(other.composition)
-    if (!are_fractional_compositions_equal(entry_fractional, other_fractional)) {
-      continue // Not a polymorph
-    }
-
-    const other_energy = other.e_above_hull ?? other.energy_per_atom ?? other.energy
-
-    // Validate other energy is a valid number before comparison
-    if (typeof other_energy !== `number` || !Number.isFinite(other_energy)) continue
+    const other_energy = get_comparable_energy(other)
+    if (other_energy === null) continue
 
     total += 1
 

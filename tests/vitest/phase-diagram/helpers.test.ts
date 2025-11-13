@@ -251,203 +251,175 @@ describe(`helpers: fractional composition`, () => {
 })
 
 describe(`helpers: polymorph statistics`, () => {
+  const make_entry = (
+    id: string,
+    comp: Record<string, number>,
+    e_hull?: number,
+    e_atom?: number,
+    e?: number,
+  ): PhaseData =>
+    ({
+      entry_id: id,
+      composition: comp,
+      e_above_hull: e_hull,
+      energy_per_atom: e_atom,
+      energy: e,
+    }) as PhaseData
+
   test.each([
     {
-      name: `no polymorphs when different fractional composition`,
-      entry: {
-        entry_id: `entry-1`,
-        composition: { Li: 1, O: 1 },
-        e_above_hull: 0.1,
-        energy: -5,
-      } as PhaseData,
-      all_entries: [
-        {
-          entry_id: `entry-1`,
-          composition: { Li: 1, O: 1 },
-          e_above_hull: 0.1,
-          energy: -5,
-        },
-        {
-          entry_id: `entry-2`,
-          composition: { Li: 1, O: 2 },
-          e_above_hull: 0.2,
-          energy: -6,
-        },
-      ] as PhaseData[],
-      expected: { total: 0, higher: 0, lower: 0 },
+      name: `different compositions → no polymorphs`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1),
+      all: [make_entry(`1`, { Li: 1, O: 1 }, 0.1), make_entry(`2`, { Li: 1, O: 2 }, 0.2)],
+      exp: [0, 0, 0, 0],
     },
     {
-      name: `finds polymorphs with same fractional composition (excludes self)`,
-      entry: {
-        entry_id: `entry-1`,
-        composition: { Li: 1, O: 1 },
-        e_above_hull: 0.1,
-        energy: -5,
-      } as PhaseData,
-      all_entries: [
-        {
-          entry_id: `entry-1`,
-          composition: { Li: 1, O: 1 },
-          e_above_hull: 0.1,
-          energy: -5,
-        },
-        {
-          entry_id: `entry-2`,
-          composition: { Li: 2, O: 2 },
-          e_above_hull: 0.2,
-          energy: -4,
-        },
-        {
-          entry_id: `entry-3`,
-          composition: { Li: 0.5, O: 0.5 },
-          e_above_hull: 0.05,
-          energy: -6,
-        },
-      ] as PhaseData[],
-      expected: { total: 2, higher: 1, lower: 1 },
+      name: `same fractional comp → finds polymorphs, excludes self`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, 0.1),
+        make_entry(`2`, { Li: 2, O: 2 }, 0.2),
+        make_entry(`3`, { Li: 0.5, O: 0.5 }, 0.05),
+      ],
+      exp: [2, 1, 1, 0],
     },
     {
-      name: `counts higher and lower energy polymorphs correctly (excludes self)`,
-      entry: {
-        entry_id: `entry-2`,
-        composition: { Li: 1, O: 1 },
-        e_above_hull: 0.1,
-        energy: -5,
-      } as PhaseData,
-      all_entries: [
-        {
-          entry_id: `entry-1`,
-          composition: { Li: 1, O: 1 },
-          e_above_hull: 0.05,
-          energy: -6,
-        },
-        {
-          entry_id: `entry-2`,
-          composition: { Li: 1, O: 1 },
-          e_above_hull: 0.1,
-          energy: -5,
-        },
-        {
-          entry_id: `entry-3`,
-          composition: { Li: 1, O: 1 },
-          e_above_hull: 0.2,
-          energy: -4,
-        },
-        {
-          entry_id: `entry-4`,
-          composition: { Li: 1, O: 1 },
-          e_above_hull: 0.3,
-          energy: -3,
-        },
-      ] as PhaseData[],
-      expected: { total: 3, higher: 2, lower: 1 },
+      name: `counts higher/lower/equal correctly`,
+      entry: make_entry(`2`, { Li: 1, O: 1 }, 0.1),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, 0.05),
+        make_entry(`2`, { Li: 1, O: 1 }, 0.1),
+        make_entry(`3`, { Li: 1, O: 1 }, 0.1),
+        make_entry(`4`, { Li: 1, O: 1 }, 0.2),
+      ],
+      exp: [3, 1, 1, 1],
     },
     {
-      name: `handles single entry (no polymorphs)`,
-      entry: {
-        entry_id: `entry-1`,
-        composition: { Li: 1 },
-        e_above_hull: 0,
-        energy: -1,
-      } as PhaseData,
-      all_entries: [
-        {
-          entry_id: `entry-1`,
-          composition: { Li: 1 },
-          e_above_hull: 0,
-          energy: -1,
-        },
-      ] as PhaseData[],
-      expected: { total: 0, higher: 0, lower: 0 },
+      name: `single entry → no polymorphs`,
+      entry: make_entry(`1`, { Li: 1 }, 0),
+      all: [make_entry(`1`, { Li: 1 }, 0)],
+      exp: [0, 0, 0, 0],
     },
     {
-      name: `normalizes different stoichiometries (excludes self)`,
-      entry: {
-        entry_id: `entry-1`,
-        composition: { Li: 2, O: 4 },
-        e_above_hull: 0.1,
-        energy: -5,
-      } as PhaseData,
-      all_entries: [
-        {
-          entry_id: `entry-1`,
-          composition: { Li: 2, O: 4 },
-          e_above_hull: 0.1,
-          energy: -5,
-        },
-        {
-          entry_id: `entry-2`,
-          composition: { Li: 1, O: 2 },
-          e_above_hull: 0.15,
-          energy: -4.5,
-        },
-        {
-          entry_id: `entry-3`,
-          composition: { Li: 0.5, O: 1 },
-          e_above_hull: 0.05,
-          energy: -5.5,
-        },
-      ] as PhaseData[],
-      expected: { total: 2, higher: 1, lower: 1 },
+      name: `normalizes stoichiometries (1:2 ≈ 2:4 ≈ 0.5:1)`,
+      entry: make_entry(`1`, { Li: 2, O: 4 }, 0.1),
+      all: [
+        make_entry(`1`, { Li: 2, O: 4 }, 0.1),
+        make_entry(`2`, { Li: 1, O: 2 }, 0.15),
+        make_entry(`3`, { Li: 0.5, O: 1 }, 0.05),
+      ],
+      exp: [2, 1, 1, 0],
     },
     {
-      name: `shows zeros when no higher or lower polymorphs`,
-      entry: {
-        entry_id: `entry-1`,
-        composition: { Li: 1, O: 1 },
-        e_above_hull: 0,
-        energy: -5,
-      } as PhaseData,
-      all_entries: [
-        {
-          entry_id: `entry-1`,
-          composition: { Li: 1, O: 1 },
-          e_above_hull: 0,
-          energy: -5,
-        },
-        {
-          entry_id: `entry-2`,
-          composition: { Li: 1, O: 1 },
-          e_above_hull: 0.1,
-          energy: -4,
-        },
-        {
-          entry_id: `entry-3`,
-          composition: { Li: 1, O: 1 },
-          e_above_hull: 0.2,
-          energy: -3,
-        },
-      ] as PhaseData[],
-      expected: { total: 2, higher: 2, lower: 0 },
+      name: `all polymorphs higher energy`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, 0),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, 0),
+        make_entry(`2`, { Li: 1, O: 1 }, 0.1),
+        make_entry(`3`, { Li: 1, O: 1 }, 0.2),
+      ],
+      exp: [2, 2, 0, 0],
     },
     {
-      name: `excludes self by reference even without entry_id`,
-      entry: {
-        composition: { Li: 1, O: 1 },
-        e_above_hull: 0.1,
-        energy: -5,
-      } as PhaseData,
-      all_entries: [] as PhaseData[], // Will be set dynamically in test
-      expected: { total: 1, higher: 1, lower: 0 },
+      name: `uses hull energy when all have it`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
+        make_entry(`2`, { Li: 1, O: 1 }, 0.2, -4.9),
+        make_entry(`3`, { Li: 1, O: 1 }, 0.05, -5.1),
+      ],
+      exp: [2, 1, 1, 0],
+    },
+    {
+      name: `falls back to per-atom when hull missing`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
+        make_entry(`2`, { Li: 1, O: 1 }, undefined, -4.9),
+        make_entry(`3`, { Li: 1, O: 1 }, 0.05, -5.1),
+      ],
+      exp: [2, 1, 1, 0],
+    },
+    {
+      name: `falls back to energy/atoms when per-atom missing`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, undefined, undefined, -10),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, undefined, undefined, -10),
+        make_entry(`2`, { Li: 1, O: 1 }, undefined, undefined, -12),
+        make_entry(`3`, { Li: 1, O: 1 }, undefined, undefined, -8),
+      ],
+      exp: [2, 1, 1, 0],
+    },
+    {
+      name: `prevents mixing hull (≥0) with raw energy (<0)`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1, undefined, -5),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, 0.1, undefined, -5),
+        make_entry(`2`, { Li: 1, O: 1 }, undefined, undefined, -10),
+      ],
+      exp: [1, 0, 1, 0],
+    },
+    {
+      name: `skips invalid energies (NaN/Infinity/missing)`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, 0.1),
+        make_entry(`2`, { Li: 1, O: 1 }, NaN),
+        make_entry(`3`, { Li: 1, O: 1 }, Infinity),
+        make_entry(`4`, { Li: 1, O: 1 }),
+      ],
+      exp: [0, 0, 0, 0],
+    },
+    {
+      name: `returns zeros when entry itself invalid`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, NaN),
+      all: [make_entry(`1`, { Li: 1, O: 1 }, NaN), make_entry(`2`, { Li: 1, O: 1 }, 0.1)],
+      exp: [0, 0, 0, 0],
+    },
+    {
+      name: `prefers energy_per_atom over raw energy`,
+      entry: make_entry(`1`, { Li: 1, O: 1 }, undefined, -5, -10),
+      all: [
+        make_entry(`1`, { Li: 1, O: 1 }, undefined, -5, -10),
+        make_entry(`2`, { Li: 1, O: 1 }, undefined, -4.9, -12),
+        make_entry(`3`, { Li: 1, O: 1 }, undefined, -5.1, -8),
+      ],
+      exp: [2, 1, 1, 0],
+    },
+    {
+      name: `floating-point tolerance in composition`,
+      entry: make_entry(`1`, { Li: 1, O: 2 }, 0.1),
+      all: [
+        make_entry(`1`, { Li: 1, O: 2 }, 0.1),
+        make_entry(`2`, { Li: 1 + 1e-10, O: 2 + 2e-10 }, 0.15),
+      ],
+      exp: [1, 1, 0, 0],
     },
   ])(
-    `calculate_polymorph_stats: $name`,
-    ({ entry, all_entries, expected }) => {
-      // Special handling for reference test
-      if (all_entries.length === 0) {
-        all_entries = [
-          entry, // Same reference
-          {
-            composition: { Li: 1, O: 1 },
-            e_above_hull: 0.2,
-            energy: -4,
-          } as PhaseData,
-        ]
-      }
-      const stats = helpers.calculate_polymorph_stats(entry, all_entries)
-      expect(stats.total).toBe(expected.total)
-      expect(stats.higher).toBe(expected.higher)
-      expect(stats.lower).toBe(expected.lower)
+    `$name`,
+    ({ entry, all, exp: [tot, hi, lo, eq] }) => {
+      const stats = helpers.calculate_polymorph_stats(entry, all)
+      expect([stats.total, stats.higher, stats.lower, stats.equal]).toEqual([
+        tot,
+        hi,
+        lo,
+        eq,
+      ])
+      expect(stats.total).toBe(stats.higher + stats.lower + stats.equal)
     },
   )
+
+  test(`excludes self by reference even without entry_id`, () => {
+    const entry: PhaseData = {
+      composition: { Li: 1, O: 1 },
+      e_above_hull: 0.1,
+    } as PhaseData
+    const other: PhaseData = {
+      composition: { Li: 1, O: 1 },
+      e_above_hull: 0.2,
+    } as PhaseData
+    const stats = helpers.calculate_polymorph_stats(entry, [entry, other])
+    expect(stats.total).toBe(1)
+    expect(stats.higher).toBe(1)
+  })
 })

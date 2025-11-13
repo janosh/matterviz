@@ -52,14 +52,7 @@
     selected_entry = $bindable(null),
     ...rest
   }: BasePhaseDiagramProps<PhaseDiagramEntry> & Hull3DProps & {
-    on_point_hover?: (data: HoverData3D | null) => void
-    // Bindable stable and unstable entries - computed internally but exposed for external use
-    stable_entries?: PhaseDiagramEntry[]
-    unstable_entries?: PhaseDiagramEntry[]
-    // Highlighted entries with customizable visual effects
-    highlighted_entries?: (string | PhaseDiagramEntry)[] // Array of entry IDs or full entries
     highlight_style?: HighlightStyle
-    selected_entry?: PhaseDiagramEntry | null
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
