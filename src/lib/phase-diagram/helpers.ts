@@ -5,7 +5,7 @@ import { elem_symbol_to_name } from '$lib/composition'
 import { format_fractional, format_num } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { HighlightStyle, PhaseDiagramConfig, PhaseEntry } from './types'
+import type { HighlightStyle, PhaseData, PhaseDiagramConfig } from './types'
 import { is_unary_entry } from './types'
 
 // Energy color scale factory (shared)
@@ -44,15 +44,30 @@ export function get_point_color_for_entry(
     : `#666`
 }
 
+// Resolve text color for canvas rendering (canvas context can't resolve CSS variables).
+export function resolve_canvas_text_color(
+  wrapper: HTMLDivElement | undefined, // The wrapper element to read computed styles from
+  annotation_color: string | undefined, // The configured annotation color (may contain CSS var)
+): string { // Resolved text color as a hex string
+  if (!wrapper) return `#212121`
+  const styles = getComputedStyle(wrapper)
+  // First try to get the configured annotation color
+  if (annotation_color && !annotation_color.startsWith(`var(`)) {
+    return annotation_color
+  }
+  // Otherwise resolve from CSS variable
+  return styles.getPropertyValue(`--text-color`)?.trim() || `#212121`
+}
+
 // Robust drag-and-drop JSON parsing for phase diagram entries
 export async function parse_pd_entries_from_drop(
   event: DragEvent,
-): Promise<PhaseEntry[] | null> {
+): Promise<PhaseData[] | null> {
   event.preventDefault()
   const file = event.dataTransfer?.files?.[0]
   if (!file?.name.endsWith(`.json`)) return null
   try {
-    const data = JSON.parse(await file.text()) as PhaseEntry[]
+    const data = JSON.parse(await file.text()) as PhaseData[]
     if (!Array.isArray(data) || data.length === 0) return null
     if (!data[0].composition || typeof data[0].energy !== `number`) return null
     return data
@@ -64,7 +79,7 @@ export async function parse_pd_entries_from_drop(
 
 // Compute a consistent max energy threshold for controls (shared)
 export function calc_max_hull_dist_in_data(
-  processed_entries: PhaseEntry[],
+  processed_entries: PhaseData[],
 ): number {
   if (processed_entries.length === 0) return 0.5
   const hull_distances = processed_entries
@@ -75,7 +90,7 @@ export function calc_max_hull_dist_in_data(
 }
 
 // Build a tooltip text for any phase entry (shared)
-export function build_entry_tooltip_text(entry: PhaseEntry): string {
+export function build_entry_tooltip_text(entry: PhaseData): string {
   const is_element = is_unary_entry(entry)
   const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
 
@@ -186,8 +201,8 @@ export function set_fullscreen_bg(
 // Compute energy source mode information for phase diagram entries. Returns energy mode information including capability flags and resolved mode.
 // This determines whether we can use precomputed energies or need to compute on-the-fly.
 export function compute_energy_mode_info(
-  entries: PhaseEntry[], // Array of phase entries to analyze
-  find_lowest_energy_unary_refs_fn: (entries: PhaseEntry[]) => Record<string, PhaseEntry>, // Function to find unary references
+  entries: PhaseData[], // Array of phase entries to analyze
+  find_lowest_energy_unary_refs_fn: (entries: PhaseData[]) => Record<string, PhaseData>, // Function to find unary references
   energy_source_mode: `precomputed` | `on-the-fly`, // User-specified energy source mode preference
 ): EnergyModeInfo {
   const has_precomputed_e_form = entries.length > 0 &&
@@ -226,14 +241,14 @@ export function compute_energy_mode_info(
 // Compute effective entries with formation energies based on the energy mode.
 // Returns entries with formation energies populated (either precomputed or on-the-fly)
 export function get_effective_entries(
-  entries: PhaseEntry[], // Original phase entries
+  entries: PhaseData[], // Original phase entries
   energy_mode: `precomputed` | `on-the-fly`, // Energy source mode (precomputed or on-the-fly)
-  unary_refs: Record<string, PhaseEntry>, // Unary reference entries for energy computation
+  unary_refs: Record<string, PhaseData>, // Unary reference entries for energy computation
   compute_e_form_fn: (
-    entry: PhaseEntry,
-    unary_refs: Record<string, PhaseEntry>,
+    entry: PhaseData,
+    unary_refs: Record<string, PhaseData>,
   ) => number | null, // Function to compute formation energy per atom
-): PhaseEntry[] {
+): PhaseData[] {
   if (energy_mode === `precomputed`) return entries
 
   return entries.map((entry) => {
@@ -245,7 +260,7 @@ export function get_effective_entries(
 
 // Copy text to clipboard with visual feedback
 export async function copy_entry_to_clipboard(
-  entry: PhaseEntry,
+  entry: PhaseData,
   position: { x: number; y: number },
   on_feedback: (visible: boolean, pos: { x: number; y: number }) => void,
 ): Promise<void> {
@@ -281,20 +296,167 @@ export function is_entry_highlighted<T extends { entry_id?: string }>(
   )
 }
 
+// Calculate fractional composition (normalized composition) for an entry
+export function get_fractional_composition(
+  composition: Record<string, number>,
+): Record<string, number> {
+  const total = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
+  if (total <= 0) return {} // Return empty object if total is zero or negative (invalid composition)
+  const fractional: Record<string, number> = {}
+  for (const [elem, amt] of Object.entries(composition)) {
+    // Only include positive amounts in fractional composition
+    if (amt > 0) fractional[elem] = amt / total
+  }
+  return fractional
+}
+
+export interface PolymorphStats {
+  total: number
+  higher: number
+  lower: number
+  equal: number
+}
+
+// Energy metric types for consistent polymorph comparison
+type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | null
+
+// Check if value is a finite number
+const is_finite = (val: unknown): val is number =>
+  typeof val === `number` && Number.isFinite(val)
+
+// Compute energy_per_atom from total energy and composition
+function compute_energy_per_atom(entry: PhaseData): number | null {
+  if (!is_finite(entry.energy)) return null
+  const total_atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
+  return total_atoms > 0 ? entry.energy / total_atoms : null
+}
+
+// Get energy value for an entry using a specific metric
+// NOTE: We prioritize absolute energies (e_form_per_atom, energy_per_atom) over e_above_hull
+// because polymorphs of the same composition on the hull all have e_above_hull=0
+function get_entry_energy_by_metric(
+  entry: PhaseData,
+  metric: EnergyMetric,
+): number | null {
+  if (metric === `e_form_per_atom` && is_finite(entry.e_form_per_atom)) {
+    return entry.e_form_per_atom
+  }
+  if (metric === `energy_per_atom`) {
+    return is_finite(entry.energy_per_atom)
+      ? entry.energy_per_atom
+      : compute_energy_per_atom(entry)
+  }
+  if (metric === `e_above_hull` && is_finite(entry.e_above_hull)) {
+    return entry.e_above_hull
+  }
+  return null
+}
+
+// Determine which energy metric to use for a composition group
+// Returns the first metric that ALL entries in the group can provide
+function select_group_energy_metric(polymorphs: PhaseData[]): EnergyMetric {
+  // Try e_form_per_atom first (best for comparing polymorphs)
+  if (polymorphs.every((entry) => is_finite(entry.e_form_per_atom))) {
+    return `e_form_per_atom`
+  }
+  // Try energy_per_atom (either direct field or computed from total energy)
+  if (
+    polymorphs.every(
+      (entry) =>
+        is_finite(entry.energy_per_atom) || compute_energy_per_atom(entry) !== null,
+    )
+  ) return `energy_per_atom`
+  // Last resort: e_above_hull (will fail to differentiate stable polymorphs with e_above_hull=0)
+  if (polymorphs.every((entry) => is_finite(entry.e_above_hull))) return `e_above_hull`
+
+  return null // No valid metric available for this group
+}
+
+// Pre-compute polymorph statistics for all entries at once (O(n²) but done once)
+// Returns a Map keyed by entry_id for O(1) lookups during hover
+export function compute_all_polymorph_stats(
+  all_entries: PhaseData[],
+): Map<string, PolymorphStats> {
+  const stats_map = new Map<string, PolymorphStats>()
+  const zero_stats = { total: 0, higher: 0, lower: 0, equal: 0 }
+
+  // Group entries by fractional composition (normalized stoichiometry)
+  const composition_groups = new Map<string, PhaseData[]>()
+  for (const entry of all_entries) {
+    const fractional = get_fractional_composition(entry.composition)
+    const comp_key = Object.entries(fractional)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([elem, frac]) => `${elem}:${frac.toFixed(6)}`)
+      .join(`|`)
+    const group = composition_groups.get(comp_key) ?? []
+    if (group.length === 0) composition_groups.set(comp_key, group)
+    group.push(entry)
+  }
+
+  // Calculate stats for each polymorph group
+  for (const polymorphs of composition_groups.values()) {
+    // Select one consistent metric for the entire composition group
+    const group_metric = select_group_energy_metric(polymorphs)
+
+    // If no valid metric available, set all entries in group to zero stats
+    if (group_metric === null) {
+      for (const entry of polymorphs) {
+        if (entry.entry_id) stats_map.set(entry.entry_id, zero_stats)
+      }
+      continue
+    }
+
+    // Compare entries using the consistent group metric
+    for (const entry of polymorphs) {
+      if (!entry.entry_id) continue
+
+      const entry_energy = get_entry_energy_by_metric(entry, group_metric)
+      if (entry_energy === null) {
+        stats_map.set(entry.entry_id, zero_stats)
+        continue
+      }
+
+      let [total, higher, lower, equal] = [0, 0, 0, 0]
+      for (const other of polymorphs) {
+        if (other === entry || other.entry_id === entry.entry_id) continue
+
+        const other_energy = get_entry_energy_by_metric(other, group_metric)
+        if (other_energy === null) continue
+
+        total++
+        if (other_energy > entry_energy) higher++
+        else if (other_energy < entry_energy) lower++
+        else equal++
+      }
+
+      stats_map.set(entry.entry_id, { total, higher, lower, equal })
+    }
+  }
+
+  return stats_map
+}
+
 function apply_alpha_to_color(color: string, alpha: number): string {
+  // Handle existing rgba format
   if (color.includes(`rgba`)) return color.replace(/[\d.]+\)$/, `${alpha})`)
-  if (color.includes(`rgb(`)) {
+
+  if (color.includes(`rgb(`)) { // Convert rgb to rgba
     return color.replace(/rgb\(/, `rgba(`).replace(/\)$/, `, ${alpha})`)
   }
 
-  const hex_match = color.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+  const hex_match = color.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/) // Convert hex to rgba
   if (hex_match) {
     let hex = hex_match[1]
-    if (hex.length === 3) hex = hex.split(``).map((c) => c + c).join(``)
-    const [red, green, blue] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16))
+    // Expand short form (e.g., "03F") to full form (e.g., "0033FF")
+    if (hex.length === 3) hex = [...hex].map((char) => char + char).join(``)
+
+    const red = parseInt(hex.slice(0, 2), 16)
+    const green = parseInt(hex.slice(2, 4), 16)
+    const blue = parseInt(hex.slice(4, 6), 16)
     return `rgba(${red}, ${green}, ${blue}, ${alpha})`
   }
-  return color
+
+  return color // Return unchanged if format not recognized
 }
 
 export function draw_highlight_effect(
@@ -328,4 +490,39 @@ export function draw_highlight_effect(
       ctx.stroke()
     }
   }
+}
+
+// Draw selection highlight for currently selected entry (with pulsing animation)
+export function draw_selection_highlight(
+  ctx: CanvasRenderingContext2D,
+  projected: { x: number; y: number },
+  base_size: number,
+  container_scale: number,
+  pulse_time: number,
+  pulse_opacity: number,
+  options: {
+    color?: string
+    size_multiplier?: number
+    pulse_amplitude?: number
+    fill_opacity?: number
+    line_width?: number
+  } = {},
+): void {
+  const {
+    color = `rgba(102, 240, 255, 1)`, // Light cyan
+    size_multiplier = 1.8,
+    pulse_amplitude = 0.3,
+    fill_opacity = 0.6,
+    line_width = 2,
+  } = options
+
+  const highlight_size = base_size *
+    (size_multiplier + pulse_amplitude * Math.sin(pulse_time * 4))
+  ctx.fillStyle = apply_alpha_to_color(color, pulse_opacity * fill_opacity)
+  ctx.strokeStyle = apply_alpha_to_color(color, pulse_opacity)
+  ctx.lineWidth = line_width * container_scale
+  ctx.beginPath()
+  ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
+  ctx.fill()
+  ctx.stroke()
 }

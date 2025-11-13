@@ -15,7 +15,7 @@ import {
   TETRAHEDRON_VERTICES,
   TRIANGLE_VERTICES,
 } from '$lib/phase-diagram/barycentric-coords'
-import type { PhaseEntry } from '$lib/phase-diagram/types'
+import type { PhaseData } from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`ternary: constants and projections`, () => {
@@ -82,7 +82,7 @@ describe(`ternary: composition and plotting`, () => {
 
   test(`get_ternary_3d_coordinates filters entries and projects coords`, () => {
     const elements = [`A`, `B`, `C`] as unknown as ElementSymbol[]
-    const entries: PhaseEntry[] = [
+    const entries: PhaseData[] = [
       {
         composition: { A: 1 } as unknown as CompositionType,
         energy: 0,
@@ -179,7 +179,7 @@ describe(`quaternary: barycentric and projection`, () => {
 describe(`quaternary: compute_4d_coords`, () => {
   test(`filters entries outside chemical system and projects coords`, () => {
     const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
-    const entries: PhaseEntry[] = [
+    const entries: PhaseData[] = [
       { composition: { A: 1 } as unknown as CompositionType, energy: 0 },
       { composition: { A: 1, B: 1 } as unknown as CompositionType, energy: 0 },
       { composition: { A: 1, E: 1 } as unknown as CompositionType, energy: 0 },

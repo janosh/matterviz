@@ -19,8 +19,9 @@
 
 <p>
   <code>matterviz</code> is a toolkit for building interactive web UIs for materials
-  science: periodic tables, 3d crystal structures (and molecules), Bohr atoms, nuclei,
-  heatmaps, scatter plots. Check out some of the examples in the navigation bar above.
+  science: 3d crystal structures (and molecules), periodic tables, MD/relaxation
+  trajectories, phase diagrams, heatmaps, scatter plots, etc. Check out of the examples in
+  the navigation bar above.
 </p>
 
 <h2 style="margin-block: 1em">Installation</h2>

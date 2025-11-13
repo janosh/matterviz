@@ -2,9 +2,9 @@
   import type { ElementSymbol } from '$lib'
   import { decompress_data } from '$lib/io/decompress'
   import type {
+    PhaseDiagramEntry,
     PhaseStats,
     PymatgenEntry,
-    TernaryPlotEntry,
   } from '$lib/phase-diagram'
   import {
     PhaseDiagram2D,
@@ -30,8 +30,8 @@
 
   // State for the 3D example with stats display
   let phase_stats = $state<PhaseStats | null>(null)
-  let stable_entries = $state<TernaryPlotEntry[]>([])
-  let unstable_entries = $state<TernaryPlotEntry[]>([])
+  let stable_entries = $state<PhaseDiagramEntry[]>([])
+  let unstable_entries = $state<PhaseDiagramEntry[]>([])
   let max_hull_dist_show_phases = $state(0.5)
 
   onMount(async () => {

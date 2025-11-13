@@ -1,21 +1,29 @@
 <script lang="ts">
-  import { Icon } from '$lib'
+  import { Icon, type IconName } from '$lib'
 
-  let { visible = $bindable(false), position = { x: 0, y: 0 } }: {
+  // Generic feedback component that shows a transient icon at a specific position.
+  // Commonly used for copy-to-clipboard feedback, but can display icons for
+  // various user interactions.
+  let {
+    visible = $bindable(false),
+    position = { x: 0, y: 0 },
+    icon = `Check`,
+  }: {
     visible?: boolean
     position: { x: number; y: number }
+    icon?: IconName
   } = $props()
 </script>
 
 {#if visible}
   {@const { x, y } = position}
-  <div class="copy-feedback" style:left="{x}px" style:top="{y}px">
-    <Icon icon="Check" />
+  <div class="click-feedback" style:left="{x}px" style:top="{y}px">
+    <Icon {icon} />
   </div>
 {/if}
 
 <style>
-  .copy-feedback {
+  .click-feedback {
     position: fixed;
     width: 24px;
     height: 24px;
@@ -24,9 +32,11 @@
     border-radius: 50%;
     display: flex;
     place-content: center;
-    animation: copy-success 1.5s ease-out forwards;
+    animation: click-success 1.5s ease-out forwards;
+    pointer-events: none;
+    z-index: 10000;
   }
-  @keyframes copy-success {
+  @keyframes click-success {
     0% {
       transform: translate(-50%, -50%) scale(0);
       opacity: 0;

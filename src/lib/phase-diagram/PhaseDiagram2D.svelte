@@ -7,7 +7,7 @@
   } from '$lib'
   import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
-  import { CopyFeedback, DragOverlay } from '$lib/feedback'
+  import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import type {
     AxisConfig,
     ScatterHandlerEvent,
@@ -23,7 +23,7 @@
   import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import * as thermo from './thermodynamics'
-  import type { HoverData3D, PhaseEntry, PlotEntry3D } from './types'
+  import type { HoverData3D, PhaseData, PhaseDiagramEntry } from './types'
 
   // Binary phase diagram rendered as energy vs composition (x in [0, 1])
   let {
@@ -52,10 +52,15 @@
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
     display = $bindable({ x_grid: false, y_grid: false }),
+    stable_entries = $bindable([]),
+    unstable_entries = $bindable([]),
+    highlighted_entries = $bindable([]),
     x_axis = {},
     y_axis = {},
+    selected_entry = $bindable(null),
+    children,
     ...rest
-  }: BasePhaseDiagramProps & {
+  }: BasePhaseDiagramProps<PhaseDiagramEntry> & {
     x_axis?: AxisConfig
     y_axis?: AxisConfig
   } = $props()
@@ -96,6 +101,10 @@
   // Process data and element set
   const pd_data = $derived(thermo.process_pd_entries(effective_entries))
 
+  const polymorph_stats_map = $derived(
+    helpers.compute_all_polymorph_stats(effective_entries),
+  ) // Pre-compute polymorph stats once for O(1) tooltip lookups
+
   const elements = $derived.by(() => {
     if (pd_data.elements.length > 2) {
       console.error(
@@ -110,12 +119,12 @@
 
   // Coordinate computation ----------------------------------------------------
   function compute_binary_coordinates(
-    raw_entries: PhaseEntry[],
+    raw_entries: PhaseData[],
     elems: ElementSymbol[],
-  ): PlotEntry3D[] {
+  ): PhaseDiagramEntry[] {
     if (elems.length !== 2) return []
     const [el1, el2] = elems
-    const coords: PlotEntry3D[] = []
+    const coords: PhaseDiagramEntry[] = []
     for (const entry of raw_entries) {
       // Require formation energy per atom to place along y
       const e_form = entry.e_form_per_atom
@@ -127,10 +136,10 @@
       coords.push({ ...entry, x: frac_b, y: e_form, z: 0, is_element, visible: true })
     }
     // Ensure elemental references at x=0 and x=1 with y=0 to close the hull
-    const el_a: PlotEntry3D | undefined = coords.find((e) =>
+    const el_a: PhaseDiagramEntry | undefined = coords.find((e) =>
       e.is_element && e.x === 0
     )
-    const el_b: PlotEntry3D | undefined = coords.find((e) =>
+    const el_b: PhaseDiagramEntry | undefined = coords.find((e) =>
       e.is_element && e.x === 1
     )
     if (!el_a) {
@@ -208,7 +217,7 @@
     // Build lower hull in (x, y=e_form)
     // Group by composition fraction (x) and track all entries at each x to
     // robustly handle polymorphs. For the hull input, use the lowest energy per x.
-    const entries_by_x = new SvelteMap<number, PlotEntry3D[]>()
+    const entries_by_x = new SvelteMap<number, PhaseDiagramEntry[]>()
     for (const entry of coords_entries) {
       const existing = entries_by_x.get(entry.x) || []
       existing.push(entry)
@@ -235,16 +244,15 @@
     ) => (e.is_stable || (e.e_above_hull ?? 0) <= max_hull_dist_show_phases))
   })
 
-  const stable_entries = $derived(
-    plot_entries.filter((entry: PlotEntry3D) =>
-      entry.is_stable || entry.e_above_hull === 0
-    ),
-  )
-  const unstable_entries = $derived(
-    plot_entries.filter((entry: PlotEntry3D) =>
-      (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
-    ),
-  )
+  // Update bindable entries arrays when plot_entries change
+  $effect(() => {
+    stable_entries = plot_entries.filter(
+      (entry: PhaseDiagramEntry) => entry.is_stable || entry.e_above_hull === 0,
+    )
+    unstable_entries = plot_entries.filter(
+      (entry: PhaseDiagramEntry) => (entry.e_above_hull ?? 0) > 0 && !entry.is_stable,
+    )
+  })
 
   let reset_counter = $state(0)
 
@@ -258,7 +266,7 @@
   let structure_popup = $state<{
     open: boolean
     structure: AnyStructure | null
-    entry: PlotEntry3D | null
+    entry: PhaseDiagramEntry | null
     place_right: boolean
   }>({
     open: false,
@@ -345,7 +353,9 @@
     phase_stats = thermo.get_phase_diagram_stats(effective_entries, elements, 3)
   })
 
-  function extract_structure_from_entry(entry: PlotEntry3D): AnyStructure | null {
+  function extract_structure_from_entry(
+    entry: PhaseDiagramEntry,
+  ): AnyStructure | null {
     if (!entry.entry_id) return null
     const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
     return orig_entry?.structure as AnyStructure || null
@@ -366,7 +376,7 @@
     reset_counter += 1
   }
   // Custom hover tooltip state used with ScatterPlot events
-  let hover_data = $state<HoverData3D<PlotEntry3D> | null>(null)
+  let hover_data = $state<HoverData3D<PhaseDiagramEntry> | null>(null)
 
   const handle_keydown = (event: KeyboardEvent) => {
     if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
@@ -386,7 +396,7 @@
   }
 
   async function copy_entry_data(
-    entry: PlotEntry3D,
+    entry: PhaseDiagramEntry,
     position: { x: number; y: number },
   ) {
     await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
@@ -397,14 +407,15 @@
 
   function close_structure_popup() {
     structure_popup = { open: false, structure: null, entry: null, place_right: true }
+    selected_entry = null
   }
 
   // Track last clicked entry for double-click detection
-  let last_clicked_entry: PlotEntry3D | null = null
+  let last_clicked_entry: PhaseDiagramEntry | null = null
   let last_click_time = 0
 
   function handle_point_click_internal(data: ScatterHandlerEvent) {
-    const entry = data.metadata as unknown as PlotEntry3D
+    const entry = data.metadata as unknown as PhaseDiagramEntry
     if (!entry) return
 
     const now = Date.now()
@@ -425,6 +436,7 @@
       last_click_time = now
 
       on_point_click?.(entry)
+      selected_entry = entry
       if (enable_structure_preview) {
         const structure = extract_structure_from_entry(entry)
         if (structure) {
@@ -465,9 +477,9 @@
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
 {#snippet tooltip(point: ScatterHandlerProps)}
-  {@const entry = point.metadata as unknown as PhaseEntry}
+  {@const entry = point.metadata as unknown as PhaseData}
   {#if entry}
-    <PhaseEntryTooltip {entry} />
+    <PhaseEntryTooltip {entry} {polymorph_stats_map} />
   {/if}
 {/snippet}
 
@@ -484,7 +496,6 @@
   <line y1={pad.t} y2={height - pad.b} {x1} x2={x1} {...stroke} />
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
-
 {#key reset_counter}
   <ScatterPlot
     {...rest}
@@ -533,7 +544,7 @@
         on_point_hover?.(null)
         return
       }
-      const entry = data.metadata as unknown as PlotEntry3D
+      const entry = data.metadata as unknown as PhaseDiagramEntry
       hover_data = entry
         ? {
           entry,
@@ -547,6 +558,12 @@
     }}
     padding={{ t: 30, b: 60, l: 60, r: 30 }}
   >
+    {@render children?.({
+      stable_entries,
+      unstable_entries,
+      highlighted_entries,
+      selected_entry,
+    })}
     <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
       {phase_stats?.chemical_system}
     </h3>
@@ -610,7 +627,7 @@
       </section>
     {/if}
 
-    <CopyFeedback
+    <ClickFeedback
       bind:visible={copy_feedback.visible}
       position={copy_feedback.position}
     />
