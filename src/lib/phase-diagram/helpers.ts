@@ -429,7 +429,7 @@ function apply_alpha_to_color(color: string, alpha: number): string {
     return color.replace(/rgb\(/, `rgba(`).replace(/\)$/, `, ${alpha})`)
   }
 
-  const hex_match = color.match(/^#?([0-9a-fA-F]{3,6})$/) // Convert hex to rgba
+  const hex_match = color.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/) // Convert hex to rgba
   if (hex_match) {
     let hex = hex_match[1]
     // Expand short form (e.g., "03F") to full form (e.g., "0033FF")

@@ -365,58 +365,28 @@
   ): { x: number; y: number; depth: number } {
     if (!canvas) return { x: 0, y: 0, depth: 0 }
 
-    // Center coordinates around the volumetric center of the phase diagram
-    const triangle_centroid = get_triangle_centroid()
+    const [elev, azim] = [
+      (camera.elevation * Math.PI) / 180,
+      (camera.azimuth * Math.PI) / 180,
+    ]
+    const [cos_az, sin_az, cos_el, sin_el] = [
+      Math.cos(azim),
+      Math.sin(azim),
+      Math.cos(-elev),
+      Math.sin(-elev),
+    ]
+    const centroid = get_triangle_centroid()
+    const { center: e_ctr, z_scale } = energy_range
 
-    // Calculate the energy center (middle of formation energy range)
-    const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
-    const e_form_min = Math.min(0, ...formation_energies)
-    const e_form_max = Math.max(0, ...formation_energies)
-    const energy_center = (e_form_min + e_form_max) / 2
+    const [dx, dy, dz] = [x - centroid.x, y - centroid.y, (z - e_ctr) * z_scale]
+    const [x1, y1] = [dx * cos_az - dy * sin_az, dx * sin_az + dy * cos_az]
+    const [y2, z2] = [y1 * cos_el - dz * sin_el, y1 * sin_el + dz * cos_el]
 
-    let centered_x = x - triangle_centroid.x
-    let centered_y = y - triangle_centroid.y
-
-    const triangle_height = 1.5 // arbitrary choice, picked for visual appeal
-    const z_depth_ratio = 0.5 // Z-axis depth as fraction of triangle height (tune for visual balance)
-    const target_z_range = triangle_height * z_depth_ratio // Target Z range in coordinate units
-    const energy_range = e_form_max - e_form_min
-    const z_scale = target_z_range / Math.max(energy_range, 0.001) // Avoid division by zero
-    let centered_z = (z - energy_center) * z_scale
-
-    // Apply 3D transformations with fixed z-axis pointing up
-    // Convert camera angles from degrees to radians
-    const elevation_rad = (camera.elevation * Math.PI) / 180
-    const azimuth_rad = (camera.azimuth * Math.PI) / 180
-
-    // Apply azimuth rotation around z-axis (keeps z-axis vertical)
-    const cos_azimuth = Math.cos(azimuth_rad)
-    const sin_azimuth = Math.sin(azimuth_rad)
-
-    const x1 = centered_x * cos_azimuth - centered_y * sin_azimuth
-    const y1 = centered_x * sin_azimuth + centered_y * cos_azimuth
-    const z1 = centered_z // z unchanged by azimuth rotation
-
-    // Apply elevation rotation around the horizontal axis (tilting up/down)
-    // Flip the elevation to fix upside-down diagram
-    const cos_elevation = Math.cos(-elevation_rad) // Negative to flip
-    const sin_elevation = Math.sin(-elevation_rad)
-
-    const x2 = x1 // x unchanged by elevation
-    const y2 = y1 * cos_elevation - z1 * sin_elevation
-    const z2 = y1 * sin_elevation + z1 * cos_elevation
-
-    // Apply perspective projection using actual canvas dimensions
-    const display_width = canvas.clientWidth || 400
-    const display_height = canvas.clientHeight || 400
-    const scale = Math.min(display_width, display_height) * 0.6 * camera.zoom
-    const center_x = display_width / 2 + camera.center_x
-    const center_y = display_height / 2 + camera.center_y
-
+    const scale = canvas_dims.width * 0.6 * camera.zoom
     return {
-      x: center_x + x2 * scale,
-      y: center_y - y2 * scale, // Flip Y for canvas coordinates
-      depth: z2, // For depth sorting
+      x: canvas_dims.width / 2 + camera.center_x + x1 * scale,
+      y: canvas_dims.height / 2 + camera.center_y - y2 * scale,
+      depth: z2,
     }
   }
 
@@ -642,43 +612,16 @@
   })
 
   function draw_data_points(): void {
-    if (!ctx || plot_entries.length === 0) return
+    if (!ctx || sorted_points_cache.length === 0) return
 
-    // Collect all points with depth for sorting
-    const points_with_depth: {
-      entry: PhaseDiagramEntry
-      projected: { x: number; y: number; depth: number }
-    }[] = []
-
-    for (const entry of plot_entries) {
-      // Skip invisible points
-      if (!entry.visible) continue
-
-      const projected = project_3d_point(entry.x, entry.y, entry.z)
-      points_with_depth.push({ entry, projected })
-    }
-
-    // Sort by depth (back to front for proper rendering)
-    points_with_depth.sort((a, b) => a.projected.depth - b.projected.depth)
-
-    // Draw points with enhanced 3D visualization
-    for (const { entry, projected } of points_with_depth) {
+    for (const { entry, projected } of sorted_points_cache) {
       const is_stable = entry.is_stable || entry.e_above_hull === 0
       const is_entry_highlighted = is_highlighted(entry)
-
-      // Use shared color function for consistency
       const color = get_point_color(entry)
+      const size = (entry.size || (is_stable ? 6 : 4)) * canvas_dims.scale
 
-      // Make point size relative to container size for responsive scaling
-      const display_width = canvas.clientWidth || 600
-      const display_height = canvas.clientHeight || 600
-      const container_scale = Math.min(display_width, display_height) / 600
-
-      const base_size = entry.size || (is_stable ? 6 : 4)
-      const size = base_size * container_scale
-
-      // Draw shadow/depth indicator first
-      const shadow_offset = Math.abs(entry.z) * 0.1 * container_scale
+      // Shadow
+      const shadow_offset = Math.abs(entry.z) * 0.1 * canvas_dims.scale
       ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
       ctx.beginPath()
       ctx.arc(
@@ -690,39 +633,35 @@
       )
       ctx.fill()
 
-      // Draw pulsating highlight for selected entry
+      // Highlights
       if (selected_entry && entry.entry_id === selected_entry.entry_id) {
         helpers.draw_selection_highlight(
           ctx,
           projected,
           size,
-          container_scale,
+          canvas_dims.scale,
           pulse_time,
           pulse_opacity,
         )
       }
-
-      // Draw highlight for highlighted entries
       if (is_entry_highlighted) {
         helpers.draw_highlight_effect(
           ctx,
           projected,
           size,
-          container_scale,
+          canvas_dims.scale,
           pulse_time,
           merged_highlight_style,
         )
       }
 
-      // Draw main point with outline
-      const point_color =
+      // Main point
+      ctx.fillStyle =
         is_entry_highlighted && merged_highlight_style.effect === `color`
           ? merged_highlight_style.color
           : color
-      ctx.fillStyle = point_color
       ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
-      ctx.lineWidth = 0.5 * container_scale
-
+      ctx.lineWidth = 0.5 * canvas_dims.scale
       ctx.beginPath()
       ctx.arc(projected.x, projected.y, size, 0, 2 * Math.PI)
       ctx.fill()
@@ -733,20 +672,14 @@
   function draw_hull_labels(): void {
     if (!ctx || !merged_config.show_labels) return
 
-    // Find the lowest energy (most stable) entry at each unique composition
     const composition_map = new SvelteMap<string, PhaseDiagramEntry>()
-
     for (const entry of plot_entries) {
-      if (!entry.visible || entry.is_element) continue // Skip unary phases as requested
-
-      // Create a composition key for grouping
+      if (!entry.visible || entry.is_element) continue
       const comp_key = Object.entries(entry.composition)
         .filter(([, amt]) => amt > 0)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([el, amt]) => `${el}${amt.toFixed(3)}`)
         .join(``)
-
-      // Keep only the entry with lowest formation energy for this composition
       const existing = composition_map.get(comp_key)
       if (
         !existing || (entry.e_form_per_atom ?? 0) < (existing.e_form_per_atom ?? 0)
@@ -755,48 +688,33 @@
       }
     }
 
-    // Draw labels for hull points (lowest energy at each composition)
-    // Use resolved text color directly instead of CSS variable
     ctx.fillStyle = resolved_text_color
     ctx.font = `12px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `top`
 
-    const display_width = canvas.clientWidth || 600
-    const display_height = canvas.clientHeight || 600
-    const container_scale = Math.min(display_width, display_height) / 600
-
     for (const entry of composition_map.values()) {
       const is_stable_point = entry.is_stable || (entry.e_above_hull ?? 0) <= 1e-6
-      const can_label_stable = is_stable_point && show_stable_labels
-      const can_label_unstable = !is_stable_point && show_unstable_labels &&
-        (typeof entry.e_above_hull === `number` &&
-          entry.e_above_hull <= max_hull_dist_show_labels)
-      if (!(can_label_stable || can_label_unstable)) continue
+      const can_label = (is_stable_point && show_stable_labels) ||
+        (!is_stable_point && show_unstable_labels &&
+          (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
+      if (!can_label) continue
 
       const projected = project_3d_point(entry.x, entry.y, entry.z)
-
-      // Generate label from composition
       let formula = entry.reduced_formula || entry.name || ``
-
       if (!formula) {
-        // Format composition as element fractions
         formula = Object.entries(entry.composition)
           .filter(([, amt]) => amt > 0)
           .sort(([el1], [el2]) =>
             elements.indexOf(el1 as ElementSymbol) -
             elements.indexOf(el2 as ElementSymbol)
           )
-          .map(([element, amount]) => {
-            if (Math.abs(amount - 1) < 1e-6) return element
-            return `${element}${format_num(amount, `.2~`)}`
-          })
+          .map(([el, amt]) =>
+            Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`
+          )
           .join(``)
       }
-
-      // Position label below the point with sufficient spacing
-      const label_offset = 16 * container_scale
-      ctx.fillText(formula, projected.x, projected.y + label_offset)
+      ctx.fillText(formula, projected.x, projected.y + 16 * canvas_dims.scale)
     }
   }
 
@@ -952,26 +870,16 @@
     }
   }
 
-  // Update canvas dimensions helper
   function update_canvas_size() {
     if (!canvas) return
-
     const dpr = globalThis.devicePixelRatio || 1
     const container = canvas.parentElement
+    const rect = container?.getBoundingClientRect()
+    const [w, h] = rect ? [rect.width, rect.height] : [400, 400]
 
-    // Update canvas size based on current container
-    if (container) {
-      const rect = container.getBoundingClientRect()
-      const w = Math.max(0, Math.round(rect.width * dpr))
-      const h = Math.max(0, Math.round(rect.height * dpr))
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w
-        canvas.height = h
-      }
-    } else {
-      canvas.width = 400 * dpr
-      canvas.height = 400 * dpr
-    }
+    canvas.width = Math.max(0, Math.round(w * dpr))
+    canvas.height = Math.max(0, Math.round(h * dpr))
+    canvas_dims = { width: w, height: h, scale: Math.min(w, h) / 600 }
 
     ctx = canvas.getContext(`2d`)
     if (ctx) {
@@ -979,7 +887,6 @@
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = `high`
     }
-
     render_once()
   }
 
@@ -1028,6 +935,45 @@
     }
     // Otherwise resolve from CSS variable
     return styles.getPropertyValue(`--text-color`)?.trim() || `#212121`
+  })
+
+  // Performance: Cache canvas dimensions and formation energy range
+  let canvas_dims = $state({ width: 600, height: 600, scale: 1 })
+  const energy_range = $derived.by(() => {
+    const energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
+    const [min, max] = [Math.min(0, ...energies), Math.max(0, ...energies)]
+    const z_scale = 0.75 / Math.max(max - min, 0.001)
+    return { min, max, center: (min + max) / 2, z_scale }
+  })
+
+  // Performance: Pre-compute and cache all point projections + depth sorting
+  const sorted_points_cache = $derived.by(() => {
+    if (!canvas || plot_entries.length === 0) return []
+
+    const elev = (camera.elevation * Math.PI) / 180
+    const azim = (camera.azimuth * Math.PI) / 180
+    const cos_az = Math.cos(azim)
+    const sin_az = Math.sin(azim)
+    const cos_el = Math.cos(-elev)
+    const sin_el = Math.sin(-elev)
+    const centroid = get_triangle_centroid()
+    const { center: e_ctr, z_scale } = energy_range
+    const scale = canvas_dims.width * 0.6 * camera.zoom
+    const cx = canvas_dims.width / 2 + camera.center_x
+    const cy = canvas_dims.height / 2 + camera.center_y
+
+    return plot_entries
+      .filter((e) => e.visible)
+      .map((entry) => {
+        const dx = entry.x - centroid.x
+        const dy = entry.y - centroid.y
+        const dz = (entry.z - e_ctr) * z_scale
+        const [x1, y1] = [dx * cos_az - dy * sin_az, dx * sin_az + dy * cos_az]
+        const [y2, z2] = [y1 * cos_el - dz * sin_el, y1 * sin_el + dz * cos_el]
+        const projected = { x: cx + x1 * scale, y: cy - y2 * scale, depth: z2 }
+        return { entry, projected }
+      })
+      .sort((a, b) => a.projected.depth - b.projected.depth)
   })
 
   let style = $derived(

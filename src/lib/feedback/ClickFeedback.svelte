@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { Icon } from '$lib'
+  import { Icon, type IconName } from '$lib'
 
+  // Generic feedback component that shows a transient icon at a specific position.
+  // Commonly used for copy-to-clipboard feedback, but can display icons for
+  // various user interactions.
   let {
     visible = $bindable(false),
     position = { x: 0, y: 0 },
@@ -8,7 +11,7 @@
   }: {
     visible?: boolean
     position: { x: number; y: number }
-    icon?: string
+    icon?: IconName
   } = $props()
 </script>
 

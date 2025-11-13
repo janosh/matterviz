@@ -681,42 +681,16 @@
   }
 
   function draw_data_points(): void {
-    if (!ctx || plot_entries.length === 0) return
+    if (!ctx || sorted_points_cache.length === 0) return
 
-    // Collect all points with depth for sorting
-    const points_with_depth: {
-      entry: PhaseDiagramEntry
-      projected: { x: number; y: number; depth: number }
-    }[] = []
-
-    for (const entry of plot_entries) {
-      // Skip invisible points
-      if (!entry.visible) continue
-
-      const projected = project_3d_point(entry.x, entry.y, entry.z)
-      points_with_depth.push({ entry, projected })
-    }
-
-    // Sort by depth (back to front for proper rendering)
-    points_with_depth.sort((a, b) => a.projected.depth - b.projected.depth)
-
-    // Draw points with enhanced 3D visualization
-    for (const { entry, projected } of points_with_depth) {
+    for (const { entry, projected } of sorted_points_cache) {
       const is_stable = entry.is_stable || entry.e_above_hull === 0
-
-      // Use shared color function for consistency
+      const is_entry_highlighted = is_highlighted(entry)
       const color = get_point_color(entry)
+      const size = (entry.size || (is_stable ? 6 : 4)) * canvas_dims.scale
 
-      // Make point size relative to container size for responsive scaling
-      const display_width = canvas.clientWidth || 600
-      const display_height = canvas.clientHeight || 600
-      const container_scale = Math.min(display_width, display_height) / 600 // Scale factor based on 600px baseline
-
-      const base_size = entry.size || (is_stable ? 6 : 4)
-      const size = base_size * container_scale // Scale points with container size
-
-      // Draw shadow/depth indicator first (also scale with container)
-      const shadow_offset = Math.abs(entry.z) * 2 * container_scale
+      // Shadow
+      const shadow_offset = Math.abs(entry.z) * 2 * canvas_dims.scale
       ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
       ctx.beginPath()
       ctx.arc(
@@ -728,63 +702,55 @@
       )
       ctx.fill()
 
-      // Draw pulsating highlight for selected entry (before main point)
+      // Highlights
       if (selected_entry && entry.entry_id === selected_entry.entry_id) {
         helpers.draw_selection_highlight(
           ctx,
           projected,
           size,
-          container_scale,
+          canvas_dims.scale,
           pulse_time,
           pulse_opacity,
         )
       }
-
-      // Draw highlight for highlighted entries
-      const is_entry_highlighted = is_highlighted(entry)
       if (is_entry_highlighted) {
         helpers.draw_highlight_effect(
           ctx,
           projected,
           size,
-          container_scale,
+          canvas_dims.scale,
           pulse_time,
           merged_highlight_style,
         )
       }
 
-      // Draw main point with outline
-      const point_color =
+      // Main point
+      ctx.fillStyle =
         is_entry_highlighted && merged_highlight_style.effect === `color`
           ? merged_highlight_style.color
           : color
-      ctx.fillStyle = point_color
       ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
-      ctx.lineWidth = 0.5 * container_scale // Scale line width with container
-
+      ctx.lineWidth = 0.5 * canvas_dims.scale
       ctx.beginPath()
       ctx.arc(projected.x, projected.y, size, 0, 2 * Math.PI)
       ctx.fill()
       ctx.stroke()
 
-      // Draw labels based on controls (do not label elemental corners here; they are labeled near vertices)
-      const should_show_label = merged_config.show_labels && (
+      // Labels
+      const should_label = merged_config.show_labels && (
         (is_stable && show_stable_labels) ||
         (!is_stable && show_unstable_labels &&
           (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
       )
-
-      if (should_show_label) {
+      if (should_label) {
         ctx.fillStyle = resolved_text_color
-
-        // For compound entries, use name, formula, or entry_id as fallback
         const label = entry.name || entry.reduced_formula || entry.entry_id ||
           `Unknown`
-        const font_size = Math.round(12 * container_scale)
+        const font_size = Math.round(12 * canvas_dims.scale)
         ctx.font = `${font_size}px Arial`
         ctx.textAlign = `center`
         ctx.textBaseline = `middle`
-        ctx.fillText(label, projected.x, projected.y + size + 6 * container_scale)
+        ctx.fillText(label, projected.x, projected.y + size + 6 * canvas_dims.scale)
       }
     }
   }
@@ -796,11 +762,9 @@
     const display_width = canvas.clientWidth || 600
     const display_height = canvas.clientHeight || 600
 
-    // Clear canvas
-    ctx.clearRect(0, 0, display_width, display_height)
+    ctx.clearRect(0, 0, display_width, display_height) // Clear canvas
 
-    // Set background - use transparent to inherit from container
-    ctx.fillStyle = `transparent`
+    ctx.fillStyle = `transparent` // Set background - use transparent to inherit from container
     ctx.fillRect(0, 0, display_width, display_height)
 
     if (elements.length !== 4) {
@@ -818,14 +782,11 @@
       return
     }
 
-    // Draw tetrahedron outline
-    draw_structure_outline()
+    draw_structure_outline() // Draw tetrahedron outline
 
-    // Draw convex hull faces (before points so they appear behind)
-    draw_convex_hull_faces()
+    draw_convex_hull_faces() // Draw convex hull faces (before points so they appear behind)
 
-    // Draw data points (on top)
-    draw_data_points()
+    draw_data_points() // Draw data points (on top)
   }
 
   function handle_mouse_down(event: MouseEvent) {
@@ -930,26 +891,16 @@
     }
   }
 
-  // Update canvas dimensions helper
   function update_canvas_size() {
     if (!canvas) return
-
     const dpr = globalThis.devicePixelRatio || 1
     const container = canvas.parentElement
+    const rect = container?.getBoundingClientRect()
+    const [w, h] = rect ? [rect.width, rect.height] : [400, 400]
 
-    // Update canvas size based on current container
-    if (container) {
-      const rect = container.getBoundingClientRect()
-      const w = Math.max(0, Math.round(rect.width * dpr))
-      const h = Math.max(0, Math.round(rect.height * dpr))
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w
-        canvas.height = h
-      }
-    } else {
-      canvas.width = 400 * dpr
-      canvas.height = 400 * dpr
-    }
+    canvas.width = Math.max(0, Math.round(w * dpr))
+    canvas.height = Math.max(0, Math.round(h * dpr))
+    canvas_dims = { width: w, height: h, scale: Math.min(w, h) / 600 }
 
     ctx = canvas.getContext(`2d`)
     if (ctx) {
@@ -957,7 +908,6 @@
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = `high`
     }
-
     render_once()
   }
 
@@ -990,6 +940,32 @@
       }
     })
     helpers.set_fullscreen_bg(wrapper, fullscreen, `--pd-4d-bg-fullscreen`)
+  })
+
+  // Performance: Cache canvas dimensions and pre-compute sorted point projections
+  let canvas_dims = $state({ width: 600, height: 600, scale: 1 })
+  const sorted_points_cache = $derived.by(() => {
+    if (!canvas || plot_entries.length === 0) return []
+
+    const cos_x = Math.cos(camera.rotation_x)
+    const sin_x = Math.sin(camera.rotation_x)
+    const cos_y = Math.cos(camera.rotation_y)
+    const sin_y = Math.sin(camera.rotation_y)
+    const [cx, cy, cz] = [0.5, Math.sqrt(3) / 6, Math.sqrt(6) / 12]
+    const scale = canvas_dims.width * 0.6 * camera.zoom
+    const center_x = canvas_dims.width / 2 + camera.center_x
+    const center_y = canvas_dims.height / 2 + camera.center_y
+
+    return plot_entries
+      .filter((e) => e.visible)
+      .map((entry) => {
+        const [dx, dy, dz] = [entry.x - cx, entry.y - cy, entry.z - cz]
+        const [x1, z1] = [dx * cos_y - dz * sin_y, dx * sin_y + dz * cos_y]
+        const [y2, z2] = [dy * cos_x - z1 * sin_x, dy * sin_x + z1 * cos_x]
+        const [x, y] = [center_x + x1 * scale, center_y - y2 * scale]
+        return { entry, projected: { x, y, depth: z2 } }
+      })
+      .sort((a, b) => a.projected.depth - b.projected.depth)
   })
 
   let style = $derived(
@@ -1143,7 +1119,7 @@
     </div>
   {/if}
 
-  <!-- Click feedback notification -->
+  <!-- Copy-to-clipboard feedback (double-click on point) -->
   <ClickFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
 
   <!-- Drag over overlay -->
