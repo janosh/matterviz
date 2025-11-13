@@ -5,7 +5,7 @@
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { PDControlsType, PlotEntry3D } from './types'
+  import type { PDControlsType, PhaseDiagramEntry } from './types'
 
   interface CameraState {
     elevation?: number // Elevation angle in degrees (for ternary)
@@ -70,8 +70,8 @@
     max_hull_dist_show_labels?: number
     max_hull_dist_in_data?: number
     // Data for visualization
-    stable_entries: PlotEntry3D[]
-    unstable_entries: PlotEntry3D[]
+    stable_entries: PhaseDiagramEntry[]
+    unstable_entries: PhaseDiagramEntry[]
     // Camera state (optional - only used for 3D/4D diagrams)
     camera?: CameraState
     // Legend configuration

@@ -1,14 +1,17 @@
 import type { D3InterpolateName } from '$lib/colors'
+import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type {
+  HighlightStyle,
   HoverData3D,
   PDControlsType,
+  PhaseData,
   PhaseDiagramConfig,
-  PhaseEntry,
   PhaseStats,
 } from './types'
 
 export * from './barycentric-coords'
+export { default as PhaseDiagram } from './PhaseDiagram.svelte'
 export { default as PhaseDiagram2D } from './PhaseDiagram2D.svelte'
 export { default as PhaseDiagram3D } from './PhaseDiagram3D.svelte'
 export { default as PhaseDiagram4D } from './PhaseDiagram4D.svelte'
@@ -18,14 +21,21 @@ export { default as PhaseDiagramStats } from './PhaseDiagramStats.svelte'
 export * from './thermodynamics'
 export * from './types'
 
+export interface BasePhaseDiagramChildrenProps<AnyDimEntry = PhaseData> {
+  stable_entries: AnyDimEntry[]
+  unstable_entries: AnyDimEntry[]
+  highlighted_entries: (string | AnyDimEntry)[]
+  selected_entry: AnyDimEntry | null
+}
+
 // Base props shared across all phase diagram components (2D, 3D, 4D)
-export interface BasePhaseDiagramProps<TEntry = PhaseEntry>
-  extends Omit<HTMLAttributes<HTMLDivElement>, `entries`> {
-  entries: PhaseEntry[]
+export interface BasePhaseDiagramProps<AnyDimEntry = PhaseData>
+  extends Omit<HTMLAttributes<HTMLDivElement>, `entries` | `children`> {
+  entries: PhaseData[]
   controls?: Partial<PDControlsType>
   config?: Partial<PhaseDiagramConfig>
-  on_point_click?: (entry: TEntry) => void
-  on_point_hover?: (data: HoverData3D<TEntry> | null) => void
+  on_point_click?: (entry: AnyDimEntry) => void
+  on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
   fullscreen?: boolean
   enable_fullscreen?: boolean
   enable_info_pane?: boolean
@@ -46,7 +56,7 @@ export interface BasePhaseDiagramProps<TEntry = PhaseEntry>
   show_stable_labels?: boolean
   show_unstable_labels?: boolean
   // Callback for when JSON files are dropped
-  on_file_drop?: (entries: PhaseEntry[]) => void
+  on_file_drop?: (entries: PhaseData[]) => void
   // Enable structure preview overlay when hovering over entries with structure data
   enable_structure_preview?: boolean
   energy_source_mode?: `precomputed` | `on-the-fly`
@@ -54,6 +64,14 @@ export interface BasePhaseDiagramProps<TEntry = PhaseEntry>
   phase_stats?: PhaseStats | null
   // Display configuration for grid lines and other visual elements
   display?: { x_grid?: boolean; y_grid?: boolean }
+  // Bindable stable and unstable entries - computed internally but exposed for external use
+  stable_entries?: AnyDimEntry[]
+  unstable_entries?: AnyDimEntry[]
+  // Highlighted entries with customizable visual effects
+  highlighted_entries?: (string | AnyDimEntry)[]
+  highlight_style?: HighlightStyle
+  selected_entry?: AnyDimEntry | null
+  children?: Snippet<[BasePhaseDiagramChildrenProps<AnyDimEntry>]>
 }
 
 // Additional props specific to 3D and 4D phase diagrams
@@ -75,7 +93,7 @@ export interface EnergyModeInfo {
   can_compute_e_form: boolean
   can_compute_hull: boolean
   energy_mode: `precomputed` | `on-the-fly`
-  unary_refs: Record<string, PhaseEntry>
+  unary_refs: Record<string, PhaseData>
 }
 
 // Default legend configuration shared by 3D and 4D diagrams
@@ -119,8 +137,5 @@ export const PD_STYLE = Object.freeze({
     dash: [3, 3] as [number, number],
     line_width: 2,
   }),
-  z_index: Object.freeze({
-    tooltip: 6000,
-    copy_feedback: 10000,
-  }),
+  z_index: Object.freeze({ tooltip: 6, copy_feedback: 10 }),
 })

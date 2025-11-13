@@ -2,14 +2,14 @@
   import { format_num, Histogram, Icon, type InfoItem } from '$lib'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import type { PhaseStats, PlotEntry3D } from './types'
+  import type { PhaseDiagramEntry, PhaseStats } from './types'
 
   let { phase_stats, stable_entries, unstable_entries, ...rest }:
     & HTMLAttributes<HTMLDivElement>
     & {
       phase_stats: PhaseStats | null
-      stable_entries: PlotEntry3D[]
-      unstable_entries: PlotEntry3D[]
+      stable_entries: PhaseDiagramEntry[]
+      unstable_entries: PhaseDiagramEntry[]
     } = $props()
 
   let copied_items = new SvelteSet<string>()

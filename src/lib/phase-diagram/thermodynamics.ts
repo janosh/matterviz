@@ -4,8 +4,8 @@ import * as math from '$lib/math'
 import type {
   ConvexHullFace,
   ConvexHullTriangle,
+  PhaseData,
   PhaseDiagramData,
-  PhaseEntry,
   Plane,
   Point3D,
 } from './types'
@@ -13,7 +13,7 @@ import { is_unary_entry } from './types'
 
 // ================= Thermodynamics & metadata =================
 
-export function process_pd_entries(entries: PhaseEntry[]): PhaseDiagramData {
+export function process_pd_entries(entries: PhaseData[]): PhaseDiagramData {
   const eps = 1e-6
   const stable_entries = entries.filter((entry) => {
     if (typeof entry.is_stable === `boolean`) return entry.is_stable
@@ -39,7 +39,7 @@ export function process_pd_entries(entries: PhaseEntry[]): PhaseDiagramData {
   return { entries, stable_entries, unstable_entries, elements, el_refs }
 }
 
-function get_corrected_energy_per_atom(entry: PhaseEntry): number | null {
+function get_corrected_energy_per_atom(entry: PhaseData): number | null {
   const atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
   if (atoms <= 0) return null
   const base_total_energy = typeof entry.energy_per_atom === `number`
@@ -50,8 +50,8 @@ function get_corrected_energy_per_atom(entry: PhaseEntry): number | null {
 }
 
 export function compute_e_form_per_atom(
-  entry: PhaseEntry,
-  el_refs: Record<string, PhaseEntry>,
+  entry: PhaseData,
+  el_refs: Record<string, PhaseData>,
 ): number | null {
   const atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
   if (atoms <= 0) return null
@@ -74,9 +74,9 @@ export function compute_e_form_per_atom(
 }
 
 export function find_lowest_energy_unary_refs(
-  entries: PhaseEntry[],
-): Record<string, PhaseEntry> {
-  const refs: Record<string, PhaseEntry> = {}
+  entries: PhaseData[],
+): Record<string, PhaseData> {
+  const refs: Record<string, PhaseData> = {}
   for (const entry of entries) {
     if (!is_unary_entry(entry)) continue
     const el = Object.keys(entry.composition).find(
@@ -107,7 +107,7 @@ export function find_lowest_energy_unary_refs(
 }
 
 export function get_phase_diagram_stats(
-  processed_entries: PhaseEntry[],
+  processed_entries: PhaseData[],
   elements: ElementSymbol[],
   max_arity: 3 | 4,
 ): {
