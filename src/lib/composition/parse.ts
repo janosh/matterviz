@@ -417,9 +417,22 @@ export function generate_chem_sys_subspaces(
 ): string[] {
   let elements: ElementSymbol[]
 
-  if (typeof input === `string`) elements = extract_uniq_elements(input) // If input is a formula string, extract elements
-  else if (Array.isArray(input)) elements = [...new Set(input)] // If input is already an array, use it directly
-  else elements = Object.keys(input) as ElementSymbol[] // If input is a composition object, extract keys
+  if (typeof input === `string`) {
+    // If input is a formula string, extract elements
+    elements = extract_uniq_elements(input)
+  } else if (Array.isArray(input)) {
+    // If input is an array, deduplicate and validate each element symbol
+    const unique_elements = [...new Set(input)]
+    for (const element of unique_elements) {
+      if (!ELEM_SYMBOLS.includes(element)) {
+        throw new Error(`Invalid element symbol: ${element}`)
+      }
+    }
+    elements = unique_elements
+  } else {
+    // If input is a composition object, extract keys (naturally unique)
+    elements = Object.keys(input) as ElementSymbol[]
+  }
 
   const sorted = [...elements].sort()
   const subspaces: string[] = []

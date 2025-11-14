@@ -649,22 +649,22 @@ describe(`generate_chem_sys_subspaces`, () => {
       [[`Li`], [`Li`], `single element`],
       [[], [], `empty array`],
       [[`Zr`, `Nb`], [`Nb`, `Nb-Zr`, `Zr`], `two elements unsorted`],
-      [[`A`, `B`, `C`, `D`].map((sym) => sym.charCodeAt(0) <= 90 ? sym : sym), [
-        `A`,
-        `A-B`,
-        `A-B-C`,
-        `A-B-C-D`,
-        `A-B-D`,
-        `A-C`,
-        `A-C-D`,
-        `A-D`,
-        `B`,
-        `B-C`,
-        `B-C-D`,
-        `B-D`,
-        `C`,
-        `C-D`,
-        `D`,
+      [[`H`, `He`, `Li`, `Be`], [
+        `Be`,
+        `Be-H`,
+        `Be-H-He`,
+        `Be-H-He-Li`,
+        `Be-H-Li`,
+        `Be-He`,
+        `Be-He-Li`,
+        `Be-Li`,
+        `H`,
+        `H-He`,
+        `H-He-Li`,
+        `H-Li`,
+        `He`,
+        `He-Li`,
+        `Li`,
       ], `four element system`],
     ])(
       `should generate subspaces from array %j (%s)`,
@@ -689,6 +689,16 @@ describe(`generate_chem_sys_subspaces`, () => {
       expect(result.sort()).toEqual([`Fe`, `Fe-O`, `O`])
       // Should NOT contain invalid "Fe-Fe"
       expect(result).not.toContain(`Fe-Fe`)
+    })
+
+    test(`should validate element symbols in array input`, () => {
+      // Should throw error for invalid element symbols
+      expect(() => generate_chem_sys_subspaces([`Fe`, `Xx`, `O`])).toThrow(
+        `Invalid element symbol: Xx`,
+      )
+      expect(() => generate_chem_sys_subspaces([`Invalid`])).toThrow(
+        `Invalid element symbol: Invalid`,
+      )
     })
   })
 
