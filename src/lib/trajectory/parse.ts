@@ -1,7 +1,7 @@
 // Parsing functions for trajectory data from various formats
 import type { AnyStructure, ElementSymbol, Pbc, Vec3 } from '$lib'
 import { is_binary } from '$lib'
-import { atomic_number_to_symbol } from '$lib/composition/parse'
+import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import {
   COMPRESSION_EXTENSIONS_REGEX,
   CONFIG_DIRS_REGEX,
@@ -126,7 +126,7 @@ const get_inverse_matrix = (matrix: Matrix3x3): Matrix3x3 => {
 
 // Unified utilities
 const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
-  numbers.map((num) => atomic_number_to_symbol[num] || `X`)
+  numbers.map((num) => ATOMIC_NUMBER_TO_SYMBOL[num] || `X`)
 
 const create_structure = (
   positions: number[][],

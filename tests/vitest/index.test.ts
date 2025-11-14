@@ -10,8 +10,8 @@ test(`src/lib/icons/index.ts re-exports all components`, () => {
 })
 
 test(`categories and element_symbols are exported`, () => {
-  expect(labels.element_categories).toHaveLength(10)
-  expect(labels.elem_symbols).toHaveLength(lib.element_data.length)
+  expect(labels.ELEMENT_CATEGORIES).toHaveLength(10)
+  expect(labels.ELEM_SYMBOLS).toHaveLength(lib.element_data.length)
 })
 
 test(`escape_html function escapes HTML special characters`, () => {

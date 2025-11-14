@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { CompositionType, ElementSymbol } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
-  import { element_color_schemes, pick_contrast_color } from '$lib/colors'
+  import { ELEMENT_COLOR_SCHEMES, pick_contrast_color } from '$lib/colors'
   import { hierarchy, pack } from 'd3-hierarchy'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
@@ -36,7 +36,7 @@
   } = $props()
 
   let element_colors = $derived(
-    element_color_schemes[color_scheme] || element_color_schemes.Vesta,
+    ELEMENT_COLOR_SCHEMES[color_scheme] || ELEMENT_COLOR_SCHEMES.Vesta,
   )
 
   // Calculate bubble data with proper circle packing

@@ -1,3 +1,4 @@
+import type { ElementSymbol } from '$lib'
 import type { Point4D } from '$lib/phase-diagram/thermodynamics'
 import {
   build_lower_hull_model,
@@ -378,9 +379,7 @@ describe(`edge cases and error handling`, () => {
 
   test(`process_pd_entries handles entries without e_above_hull`, () => {
     const entries: PhaseData[] = [
-      // @ts-expect-error: missing e_above_hull
       { composition: { Li: 1 }, energy: 0 },
-      // @ts-expect-error: composition
       { composition: { O: 2 }, energy: 0, is_stable: true },
     ]
     const result = process_pd_entries(entries)
@@ -395,7 +394,6 @@ describe(`edge cases and error handling`, () => {
 
   test(`get_phase_diagram_stats handles entries without energies`, () => {
     const entries: PhaseData[] = [
-      // @ts-expect-error: missing energy_per_atom
       { composition: { Li: 1 }, energy: 0 },
     ]
     const stats = get_phase_diagram_stats(entries, [`Li`], 3)
@@ -567,10 +565,9 @@ describe(`4D hull validation against quaternary phase diagram data`, () => {
 
     expect(testable_entries.length).toBeGreaterThan(0)
 
-    // Get elements
     const elements = Array.from(
-      new Set(testable_entries.flatMap((e) => Object.keys(e.composition))),
-    ).sort()
+      new Set(testable_entries.flatMap((entry) => Object.keys(entry.composition))),
+    ).sort() as ElementSymbol[]
 
     expect(elements.length).toBe(4) // Should be quaternary
 

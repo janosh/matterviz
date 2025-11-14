@@ -1,4 +1,4 @@
-import type { elem_symbols, element_categories } from './labels'
+import type { ELEM_SYMBOLS, ELEMENT_CATEGORIES } from './labels'
 
 export * from './bands'
 export * from './brillouin'
@@ -10,7 +10,7 @@ export * from './element'
 export * from './feedback'
 export { default as FilePicker } from './FilePicker.svelte'
 export { default as Icon } from './Icon.svelte'
-export { icon_data, type IconName } from './icons'
+export { ICON_DATA, type IconName } from './icons'
 export * from './io'
 export * from './labels'
 export * from './layout'
@@ -28,8 +28,8 @@ export { default as Trajectory } from './trajectory/Trajectory.svelte'
 export * from './utils'
 export * from './xrd'
 
-export type ElementCategory = (typeof element_categories)[number]
-export type ElementSymbol = (typeof elem_symbols)[number]
+export type ElementCategory = (typeof ELEMENT_CATEGORIES)[number]
+export type ElementSymbol = (typeof ELEM_SYMBOLS)[number]
 
 export type ChemicalElement = {
   'cpk-hex': string | null

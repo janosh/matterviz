@@ -6,7 +6,7 @@
     LineKwargs,
     PathMode,
   } from '$lib/bands/types'
-  import { plot_colors } from '$lib/colors'
+  import { PLOT_COLORS } from '$lib/colors'
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/types'
   import type { ComponentProps } from 'svelte'
@@ -184,7 +184,7 @@
     const all_series: DataSeries[] = []
 
     for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
-      const color = plot_colors[bs_idx % plot_colors.length]
+      const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
       const structure_label = label || `Structure ${bs_idx + 1}`
 
       for (const branch of bs.branches) {

@@ -1,6 +1,6 @@
 import type { ChemicalElement, ElementCategory } from '$lib'
 import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme/index'
-import { default_category_colors, default_element_colors } from './colors'
+import { DEFAULT_CATEGORY_COLORS, default_element_colors } from './colors'
 import type { Tooltip } from './plot'
 import type { ThemeMode, ThemeType } from './theme'
 
@@ -17,10 +17,10 @@ export const selected = $state<{
 })
 
 export const colors = $state<{
-  category: typeof default_category_colors
+  category: typeof DEFAULT_CATEGORY_COLORS
   element: typeof default_element_colors
 }>({
-  category: { ...default_category_colors },
+  category: { ...DEFAULT_CATEGORY_COLORS },
   element: { ...default_element_colors },
 })
 

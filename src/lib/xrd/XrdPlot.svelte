@@ -1,6 +1,6 @@
 <script lang="ts">
   import { StatusMessage } from '$lib'
-  import { plot_colors } from '$lib/colors'
+  import { PLOT_COLORS } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
   import type { AxisConfig, BarHandlerProps, BarSeries } from '$lib/plot'
@@ -175,7 +175,7 @@
         x: xs,
         y: ys,
         label: include_name ? entry.label : ``,
-        color: entry.color ?? plot_colors[entry_idx % plot_colors.length],
+        color: entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length],
         bar_width: Math.max(peak_width, 0.8),
         visible: true,
         metadata,

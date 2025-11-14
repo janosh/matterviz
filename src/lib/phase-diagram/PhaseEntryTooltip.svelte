@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ElementSymbol } from '$lib'
   import { is_unary_entry } from '$lib'
-  import { elem_symbol_to_name, get_electro_neg_formula } from '$lib/composition'
+  import { ELEM_SYMBOL_TO_NAME, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import type { PolymorphStats } from './helpers'
   import type { PhaseData } from './types'
@@ -16,7 +16,7 @@
     is_element ? (Object.keys(entry.composition)[0] as ElementSymbol) : ``,
   )
   const elem_name = $derived(
-    is_element && elem_symbol ? elem_symbol_to_name[elem_symbol] ?? `` : ``,
+    is_element && elem_symbol ? ELEM_SYMBOL_TO_NAME[elem_symbol] ?? `` : ``,
   )
   // O(1) lookup of pre-computed polymorph stats
   const polymorph_stats = $derived(

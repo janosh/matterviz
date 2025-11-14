@@ -1,6 +1,6 @@
-import type { ChemicalElement } from '$lib'
+import type { ChemicalElement, ElementCategory } from '$lib'
 import { element_data, PeriodicTable, PropertySelect } from '$lib'
-import { category_counts, heatmap_labels } from '$lib/labels'
+import { CATEGORY_COUNTS, ELEM_HEATMAP_LABELS } from '$lib/labels'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -105,8 +105,8 @@ describe(`PeriodicTable`, () => {
     const selected_text = doc_query(
       `div.multiselect > ul.selected`,
     ).textContent?.trim()
-    if (selected_text && heatmap_labels[selected_text]) {
-      const heatmap_key = heatmap_labels[selected_text]
+    if (selected_text && ELEM_HEATMAP_LABELS[selected_text]) {
+      const heatmap_key = ELEM_HEATMAP_LABELS[selected_text]
 
       props.heatmap_values = element_data.map(
         (elem) => elem[heatmap_key] as number,
@@ -153,7 +153,7 @@ describe(`PeriodicTable`, () => {
     })
   })
 
-  test.each(Object.entries(category_counts))(
+  test.each(Object.entries(CATEGORY_COUNTS) as [ElementCategory, number][])(
     `active_category=%s highlights %s tiles`,
     (active_category, expected_active) => {
       mount(PeriodicTable, {
@@ -228,7 +228,7 @@ describe(`PeriodicTable`, () => {
 
   test.each(
     [
-      [`element-category`, `#ff8c00`], // now returns actual color from default_category_colors
+      [`element-category`, `#ff8c00`], // now returns actual color from DEFAULT_CATEGORY_COLORS
       [`#ff0000`, `#ff0000`],
       [`#666666`, `#666666`],
     ] as const,

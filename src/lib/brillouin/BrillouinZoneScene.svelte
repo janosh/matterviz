@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { axis_colors, neg_axis_colors } from '$lib'
+  import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
@@ -107,7 +107,7 @@
     background: { enabled: false },
     className: `responsive-gizmo`,
     ...Object.fromEntries(
-      [...axis_colors, ...neg_axis_colors].map(([axis, color, hover]) => [
+      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover]) => [
         axis,
         {
           color,

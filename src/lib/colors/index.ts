@@ -1,6 +1,6 @@
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { elem_symbols } from '../labels'
+import type { ELEM_SYMBOLS } from '../labels'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
 import jmol_colors from './jmol-colors.json' with { type: 'json' }
@@ -13,13 +13,13 @@ export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
 export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
   ? Name
   : never
-export const color_scale_types = [`continuous`, `categorical`] as const
-export type ColorScaleType = (typeof color_scale_types)[number]
+export const COLOR_SCALE_TYPES = [`continuous`, `categorical`] as const
+export type ColorScaleType = (typeof COLOR_SCALE_TYPES)[number]
 
 // color values have to be in hex format since that's the only format
 // <input type="color"> supports
 // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/color#value
-export const default_category_colors: Record<string, string> = {
+export const DEFAULT_CATEGORY_COLORS: Record<string, string> = {
   'diatomic nonmetal': `#ff8c00`, // darkorange
   'noble gas': `#9932cc`, // darkorchid
   'alkali metal': `#006400`, // darkgreen
@@ -32,20 +32,20 @@ export const default_category_colors: Record<string, string> = {
   actinide: `#6495ed`, // cornflowerblue
 }
 
-export const axis_colors = [
+export const AXIS_COLORS = [
   // [axis name, color, hover color]
   [`x`, `#d75555`, `#e66666`],
   [`y`, `#55b855`, `#66c966`],
   [`z`, `#5555d7`, `#6666e6`],
 ] as const
-export const neg_axis_colors = [
+export const NEG_AXIS_COLORS = [
   [`nx`, `#b84444`, `#cc5555`],
   [`ny`, `#44a044`, `#55b155`],
   [`nz`, `#4444b8`, `#5555c9`],
 ] as const
 
 export type RGBColor = [number, number, number]
-export type ElementColorScheme = Record<(typeof elem_symbols)[number], RGBColor>
+export type ElementColorScheme = Record<(typeof ELEM_SYMBOLS)[number], RGBColor>
 
 const rgb_scheme_to_hex = (obj: Record<string, number[]>): Record<string, string> =>
   Object.fromEntries(
@@ -61,7 +61,7 @@ export const pastel_hex = rgb_scheme_to_hex(pastel_colors)
 export const muted_hex = rgb_scheme_to_hex(muted_colors)
 export const dark_mode_hex = rgb_scheme_to_hex(dark_mode_colors)
 
-export const element_color_schemes = {
+export const ELEMENT_COLOR_SCHEMES = {
   Vesta: vesta_hex,
   Jmol: jmol_hex,
   Alloy: alloy_hex,
@@ -70,7 +70,7 @@ export const element_color_schemes = {
   'Dark Mode': dark_mode_hex,
 } as const
 
-export type ColorSchemeName = keyof typeof element_color_schemes
+export type ColorSchemeName = keyof typeof ELEMENT_COLOR_SCHEMES
 export const default_element_colors = { ...vesta_hex }
 
 // Helper function to detect if a value is a color string
@@ -84,7 +84,7 @@ export const is_color = (val: unknown): val is string => {
     )
 }
 
-export const plot_colors = [ // Color series for e.g. line plots
+export const PLOT_COLORS = [ // Color series for e.g. line plots
   `#63b3ed`,
   `#68d391`,
   `#fbd38d`,

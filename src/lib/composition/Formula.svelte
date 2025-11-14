@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ColorSchemeName, ElementSymbol } from '$lib'
-  import { element_color_schemes, luminance } from '$lib/colors'
+  import { ELEMENT_COLOR_SCHEMES, luminance } from '$lib/colors'
   import { element_data } from '$lib/element'
   import ElementTile from '$lib/element/ElementTile.svelte'
   import { format_num } from '$lib/labels'
@@ -96,7 +96,7 @@
 
 <svelte:element this={as} {...rest} class="formula {rest.class ?? ``}">
   {#each sorted_elements as { element, amount, oxidation_state } (element)}
-    {@const color = element_color_schemes[color_scheme]?.[element] ?? `#666666`}
+    {@const color = ELEMENT_COLOR_SCHEMES[color_scheme]?.[element] ?? `#666666`}
     {@const lum = luminance(color)}
     {@const has_oxidation = oxidation_state !== undefined && oxidation_state !== 0}
     <span
