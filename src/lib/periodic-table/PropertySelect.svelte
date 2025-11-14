@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import { heatmap_labels } from '$lib/labels'
+  import { ELEM_HEATMAP_LABELS } from '$lib/labels'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
 
-  const options = Object.keys(heatmap_labels)
+  const options = Object.keys(ELEM_HEATMAP_LABELS)
   let {
     value = $bindable(null),
     empty = false,
@@ -21,7 +21,7 @@
   } = $props()
 
   $effect.pre(() => {
-    key = heatmap_labels[value ?? ``] ?? null
+    key = ELEM_HEATMAP_LABELS[value ?? ``] ?? null
   })
 </script>
 

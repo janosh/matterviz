@@ -1,5 +1,5 @@
 import type { Vec3 } from '$lib'
-import { atomic_number_to_symbol, symbol_to_atomic_number } from '$lib/composition/parse'
+import { ATOMIC_NUMBER_TO_SYMBOL, SYMBOL_TO_ATOMIC_NUMBER } from '$lib/composition/parse'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
@@ -60,7 +60,7 @@ export function to_cell_json(structure: PymatgenStructure): string {
   const positions = structure.sites.map((site) => site.abc)
   const numbers = structure.sites.map((site, idx) => {
     const sym = site.species?.[0]?.element
-    const num = sym !== null ? symbol_to_atomic_number[sym] : undefined
+    const num = sym !== null ? SYMBOL_TO_ATOMIC_NUMBER[sym] : undefined
     if (typeof num !== `number`) {
       throw new Error(`Unknown element at site ${idx}: ${String(sym)}`)
     }
@@ -118,7 +118,7 @@ export function wyckoff_positions_from_moyo(
   for (const [idx, full] of wyckoffs.entries()) {
     const letter = (full?.match(/[a-z]+$/)?.[0] ?? full ?? ``).toString()
     const atomic_num = numbers[idx]
-    const elem = atomic_number_to_symbol[atomic_num] ?? `?`
+    const elem = ATOMIC_NUMBER_TO_SYMBOL[atomic_num] ?? `?`
     const position = positions[idx]
 
     const key = letter ? `${letter}|${elem}` : `nosym|${elem}|${idx}`

@@ -14,7 +14,7 @@
     PropertySelect,
   } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
-  import { format_num, property_labels } from '$lib/labels'
+  import { ELEM_PROPERTY_LABELS, format_num } from '$lib/labels'
   import { selected } from '$lib/state.svelte'
   import pkg from '$root/package.json'
   import { error } from '@sveltejs/kit'
@@ -50,10 +50,10 @@
   } as const
 
   let key_vals = $derived(
-    Object.keys(property_labels)
+    Object.keys(ELEM_PROPERTY_LABELS)
       .filter((key) => element[key as keyof ChemicalElement])
       .map((key) => {
-        const [label, unit] = property_labels[key as keyof ChemicalElement] ?? []
+        const [label, unit] = ELEM_PROPERTY_LABELS[key as keyof ChemicalElement] ?? []
         let value = element[key as keyof ChemicalElement]
         // if value is number, pretty format it
         if (typeof value === `number`) value = format_num(value)
@@ -86,7 +86,7 @@
       .filter((val): val is number => typeof val === `number`),
   )
   let [y_label, y_unit] = $derived(
-    selected.heatmap_key ? (property_labels[selected.heatmap_key] ?? []) : [],
+    selected.heatmap_key ? (ELEM_PROPERTY_LABELS[selected.heatmap_key] ?? []) : [],
   )
   let color_scale: D3InterpolateName = $state(`interpolateCividis`)
 

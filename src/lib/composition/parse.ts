@@ -3,22 +3,22 @@ import { ELEM_SYMBOLS, format_num } from '$lib'
 import { element_data } from '$lib/element'
 
 // Create symbol/number/mass/electronegativity lookup maps for O(1) access
-export const atomic_number_to_symbol: Record<number, ElementSymbol> = {}
-export const symbol_to_atomic_number: Partial<CompositionType> = {}
-export const atomic_weights = new Map<ElementSymbol, number>()
-export const element_electronegativity_map = new Map<ElementSymbol, number>()
-export const elem_name_to_symbol: Record<string, ElementSymbol> = {}
+export const ATOMIC_NUMBER_TO_SYMBOL: Record<number, ElementSymbol> = {}
+export const SYMBOL_TO_ATOMIC_NUMBER: Partial<CompositionType> = {}
+export const ATOMIC_WEIGHTS = new Map<ElementSymbol, number>()
+export const ELEMENT_ELECTRONEGATIVITY_MAP = new Map<ElementSymbol, number>()
+export const ELEM_NAME_TO_SYMBOL: Record<string, ElementSymbol> = {}
 // @ts-expect-error - record gets built in for loop
-export const elem_symbol_to_name: Record<ElementSymbol, string> = {}
+export const ELEM_SYMBOL_TO_NAME: Record<ElementSymbol, string> = {}
 
 // Populate maps at module load time
 for (const element of element_data) {
-  atomic_number_to_symbol[element.number] = element.symbol
-  symbol_to_atomic_number[element.symbol] = element.number
-  atomic_weights.set(element.symbol, element.atomic_mass)
-  element_electronegativity_map.set(element.symbol, element.electronegativity ?? 0)
-  elem_name_to_symbol[element.name] = element.symbol
-  elem_symbol_to_name[element.symbol] = element.name
+  ATOMIC_NUMBER_TO_SYMBOL[element.number] = element.symbol
+  SYMBOL_TO_ATOMIC_NUMBER[element.symbol] = element.number
+  ATOMIC_WEIGHTS.set(element.symbol, element.atomic_mass)
+  ELEMENT_ELECTRONEGATIVITY_MAP.set(element.symbol, element.electronegativity ?? 0)
+  ELEM_NAME_TO_SYMBOL[element.name] = element.symbol
+  ELEM_SYMBOL_TO_NAME[element.symbol] = element.name
 }
 
 // Check if object has atomic numbers as keys (1-118)
@@ -34,7 +34,7 @@ export const atomic_num_to_symbols = (
 ): CompositionType => {
   const composition: CompositionType = {}
   for (const [atomic_num_str, amount] of Object.entries(atomic_composition)) {
-    const symbol = atomic_number_to_symbol[Number(atomic_num_str)]
+    const symbol = ATOMIC_NUMBER_TO_SYMBOL[Number(atomic_num_str)]
     if (!symbol) throw new Error(`Invalid atomic number: ${atomic_num_str}`)
     if (amount > 0) composition[symbol] = (composition[symbol] || 0) + amount
   }
@@ -47,7 +47,7 @@ export const atomic_symbol_to_num = (
 ): Record<number, number> => {
   const atomic_composition: Record<number, number> = {}
   for (const [symbol, amount] of Object.entries(symbol_composition)) {
-    const atomic_num = symbol_to_atomic_number[symbol as ElementSymbol]
+    const atomic_num = SYMBOL_TO_ATOMIC_NUMBER[symbol as ElementSymbol]
     if (!atomic_num) throw new Error(`Invalid element symbol: ${symbol}`)
     if (amount > 0) {
       atomic_composition[atomic_num] = (atomic_composition[atomic_num] || 0) + amount
@@ -118,7 +118,7 @@ export const fractional_composition = (
       Object.entries(composition)
         .filter(([, amount]) => amount > 0)
         .map(([element, amount]) => {
-          const atomic_mass = atomic_weights.get(element as ElementSymbol)
+          const atomic_mass = ATOMIC_WEIGHTS.get(element as ElementSymbol)
           if (!atomic_mass) throw new Error(`Unknown element: ${element}`)
           return [element, amount * atomic_mass]
         }),
@@ -257,8 +257,8 @@ export const get_alphabetical_formula = (
 
 export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymbol[] =>
   symbols.sort((el_1, el_2) => {
-    const elec_neg_1 = element_electronegativity_map.get(el_1) ?? 0
-    const elec_neg_2 = element_electronegativity_map.get(el_2) ?? 0
+    const elec_neg_1 = ELEMENT_ELECTRONEGATIVITY_MAP.get(el_1) ?? 0
+    const elec_neg_2 = ELEMENT_ELECTRONEGATIVITY_MAP.get(el_2) ?? 0
     return elec_neg_1 !== elec_neg_2 ? elec_neg_1 - elec_neg_2 : el_1.localeCompare(el_2)
   })
 

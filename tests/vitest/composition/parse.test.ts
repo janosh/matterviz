@@ -1,5 +1,5 @@
 import type { AnyStructure, CompositionType } from '$lib'
-import { atomic_number_to_symbol } from '$lib/composition'
+import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition'
 import {
   atomic_num_to_symbols,
   atomic_symbol_to_num,
@@ -329,7 +329,7 @@ describe(`edge cases and error handling`, () => {
   test(`should handle very large compositions`, () => {
     const large_composition: CompositionType = {}
     for (let idx = 1; idx <= 50; idx++) {
-      const symbol = atomic_number_to_symbol[idx] || null
+      const symbol = ATOMIC_NUMBER_TO_SYMBOL[idx] || null
       if (symbol) large_composition[symbol] = idx
     }
 

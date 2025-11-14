@@ -79,7 +79,7 @@
     display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
     visible_properties = $bindable(),
-    property_labels,
+    ELEM_PROPERTY_LABELS,
     on_play,
     on_pause,
     on_step_change,
@@ -148,8 +148,8 @@
     // custom labels for trajectory properties - maps property keys to display labels
     // - e.g., {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
     // - merged with built-in trajectory_property_config
-    property_labels?: Record<string, string>
-    // units configuration - developers can override these (deprecated - use property_labels instead)
+    ELEM_PROPERTY_LABELS?: Record<string, string>
+    // units configuration - developers can override these (deprecated - use ELEM_PROPERTY_LABELS instead)
     units?: {
       energy?: string
       energy_per_atom?: string
@@ -300,10 +300,10 @@
 
   // Build extended property config with custom labels if provided
   let extended_config = $derived.by(() => {
-    if (!property_labels) return trajectory_property_config
+    if (!ELEM_PROPERTY_LABELS) return trajectory_property_config
 
     const custom_config: Record<string, { label: string; unit: string }> = {}
-    for (const [key, label] of Object.entries(property_labels)) {
+    for (const [key, label] of Object.entries(ELEM_PROPERTY_LABELS)) {
       const existing = trajectory_property_config[key] ||
         trajectory_property_config[key.toLowerCase()]
       custom_config[key] = { label, unit: existing?.unit || `` }

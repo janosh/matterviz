@@ -1,5 +1,5 @@
 import type { CompositionType, ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
-import { atomic_weights } from '$lib/composition/parse'
+import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import { element_data } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
@@ -155,7 +155,7 @@ export function get_density(structure: PymatgenStructure): number {
   const elements = get_elem_amounts(structure)
   let mass = 0
   for (const [el, amt] of Object.entries(elements)) {
-    const weight = atomic_weights.get(el as ElementSymbol)
+    const weight = ATOMIC_WEIGHTS.get(el as ElementSymbol)
     if (weight !== undefined) mass += amt * weight
   }
   return (uA3_to_gcm3 * mass) / structure.lattice.volume

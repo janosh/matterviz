@@ -2,10 +2,10 @@
 import { element_data } from '$lib/element'
 import {
   CATEGORY_COUNTS,
+  ELEM_HEATMAP_KEYS,
+  ELEM_HEATMAP_LABELS,
   ELEMENT_CATEGORIES,
   format_num,
-  heatmap_keys,
-  heatmap_labels,
 } from '$lib/labels'
 import { expect, type Page, test } from '@playwright/test'
 import { random_sample } from './helpers'
@@ -227,7 +227,7 @@ test.describe(`Periodic Table`, () => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       // select all heatmaps in sequence making sure non of them crash
-      for (const heatmap_label of Object.keys(heatmap_labels)) {
+      for (const heatmap_label of Object.keys(ELEM_HEATMAP_LABELS)) {
         await page.click(`div.multiselect`)
         // somehow clicking twice helps not to get stuck with a closed multi-select dropdown
         await page.click(`div.multiselect`)
@@ -236,7 +236,7 @@ test.describe(`Periodic Table`, () => {
 
       // check 5 random element tiles display the expected heatmap value
       for (const rand_elem of random_sample(element_data, 5)) {
-        const last_heatmap_key = heatmap_keys.at(-1)
+        const last_heatmap_key = ELEM_HEATMAP_KEYS.at(-1)
         if (!last_heatmap_key) continue
         const heatmap_value = rand_elem[last_heatmap_key]
         if (typeof heatmap_value !== `number`) continue
