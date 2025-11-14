@@ -3,7 +3,9 @@ import { atomic_number_to_symbol } from '$lib/composition'
 import {
   atomic_num_to_symbols,
   atomic_symbol_to_num,
+  extract_uniq_elements,
   fractional_composition,
+  generate_chem_sys_subspaces,
   get_alphabetical_formula,
   get_electro_neg_formula,
   get_total_atoms,
@@ -520,4 +522,338 @@ describe(`formula formatting functions`, () => {
       expect(get_alphabetical_formula(input, false, ` `, amount_format)).toBe(expected)
     },
   )
+})
+
+describe(`extract_uniq_elements`, () => {
+  test.each([
+    [`H2O`, [`H`, `O`], `water`],
+    [`Fe2O3`, [`Fe`, `O`], `iron oxide`],
+    [`NaCl`, [`Cl`, `Na`], `salt - alphabetically sorted`],
+    [`CaCO3`, [`C`, `Ca`, `O`], `calcium carbonate`],
+    [`NbZr2Nb`, [`Nb`, `Zr`], `duplicate elements removed`],
+    [`H2SO4`, [`H`, `O`, `S`], `sulfuric acid`],
+    [`Ca(OH)2`, [`Ca`, `H`, `O`], `with parentheses`],
+    [`Mg(NO3)2`, [`Mg`, `N`, `O`], `with nested parentheses`],
+    [`Al2(SO4)3`, [`Al`, `O`, `S`], `complex formula`],
+    [`C8H10N4O2`, [`C`, `H`, `N`, `O`], `caffeine`],
+    [`H`, [`H`], `single element`],
+    [`Au`, [`Au`], `single gold atom`],
+    [`C60`, [`C`], `fullerene`],
+    [``, [], `empty formula`],
+    [`LiFePO4`, [`Fe`, `Li`, `O`, `P`], `lithium iron phosphate battery`],
+    [`Ca3(PO4)2`, [`Ca`, `O`, `P`], `calcium phosphate`],
+  ])(`should extract unique elements from %s (%s)`, (formula, expected, _description) => {
+    const result = extract_uniq_elements(formula)
+    expect(result.sort()).toEqual(expected.sort())
+  })
+
+  test(`should handle whitespace in formulas`, () => {
+    expect(extract_uniq_elements(` H2 O `).sort()).toEqual([`H`, `O`])
+    expect(extract_uniq_elements(`Ca (OH) 2`).sort()).toEqual([`Ca`, `H`, `O`])
+  })
+
+  test(`should throw error for invalid element symbols`, () => {
+    expect(() => extract_uniq_elements(`Xx2`)).toThrow(`Invalid element symbol: Xx`)
+    expect(() => extract_uniq_elements(`ABC`)).toThrow(`Invalid element symbol: A`)
+  })
+
+  test(`should handle formulas with repeated elements in different positions`, () => {
+    const result = extract_uniq_elements(`CH3CH2OH`)
+    expect(result.sort()).toEqual([`C`, `H`, `O`])
+  })
+
+  test(`should handle complex organic molecules`, () => {
+    const result = extract_uniq_elements(`C6H5CH2CH2OH`)
+    expect(result.sort()).toEqual([`C`, `H`, `O`])
+  })
+
+  test(`should return sorted array`, () => {
+    const result = extract_uniq_elements(`ZnCuFeMgCaH2O`)
+    // Result should be in alphabetical order
+    expect(result).toEqual([`Ca`, `Cu`, `Fe`, `H`, `Mg`, `O`, `Zn`])
+  })
+})
+
+describe(`generate_chem_sys_subspaces`, () => {
+  describe(`string input (formula)`, () => {
+    test.each([
+      [`H2O`, [`H`, `H-O`, `O`], `water`],
+      [`NaCl`, [`Cl`, `Cl-Na`, `Na`], `salt`],
+      [`Fe2O3`, [`Fe`, `Fe-O`, `O`], `iron oxide`],
+      [`CaCO3`, [`C`, `C-Ca`, `C-Ca-O`, `C-O`, `Ca`, `Ca-O`, `O`], `calcium carbonate`],
+      [`LiFePO4`, [
+        `Fe`,
+        `Fe-Li`,
+        `Fe-Li-O`,
+        `Fe-Li-O-P`,
+        `Fe-Li-P`,
+        `Fe-O`,
+        `Fe-O-P`,
+        `Fe-P`,
+        `Li`,
+        `Li-O`,
+        `Li-O-P`,
+        `Li-P`,
+        `O`,
+        `O-P`,
+        `P`,
+      ], `battery material`],
+    ])(
+      `should generate subspaces from formula %s (%s)`,
+      (formula, expected, _description) => {
+        const result = generate_chem_sys_subspaces(formula)
+        expect(result.sort()).toEqual(expected.sort())
+      },
+    )
+
+    test(`should handle formula with duplicate elements`, () => {
+      const result = generate_chem_sys_subspaces(`NbZr2Nb`)
+      expect(result.sort()).toEqual([`Nb`, `Nb-Zr`, `Zr`])
+    })
+
+    test(`should handle single element formula`, () => {
+      const result = generate_chem_sys_subspaces(`C60`)
+      expect(result).toEqual([`C`])
+    })
+
+    test(`should handle empty formula`, () => {
+      const result = generate_chem_sys_subspaces(``)
+      expect(result).toEqual([])
+    })
+
+    test(`should handle complex parentheses`, () => {
+      const result = generate_chem_sys_subspaces(`Ca(OH)2`)
+      expect(result.sort()).toEqual([`Ca`, `Ca-H`, `Ca-H-O`, `Ca-O`, `H`, `H-O`, `O`])
+    })
+
+    test(`should throw error for invalid elements in formula`, () => {
+      expect(() => generate_chem_sys_subspaces(`Xx2`)).toThrow(
+        `Invalid element symbol: Xx`,
+      )
+    })
+  })
+
+  describe(`array input (element symbols)`, () => {
+    test.each([
+      [
+        [`Mo`, `Sc`, `B`],
+        [`B`, `B-Mo`, `B-Mo-Sc`, `B-Sc`, `Mo`, `Mo-Sc`, `Sc`],
+        `original example`,
+      ],
+      [[`H`, `O`], [`H`, `H-O`, `O`], `binary system`],
+      [
+        [`Fe`, `Cr`, `Ni`],
+        [`Cr`, `Cr-Fe`, `Cr-Fe-Ni`, `Cr-Ni`, `Fe`, `Fe-Ni`, `Ni`],
+        `ternary alloy`,
+      ],
+      [[`Li`], [`Li`], `single element`],
+      [[], [], `empty array`],
+      [[`Zr`, `Nb`], [`Nb`, `Nb-Zr`, `Zr`], `two elements unsorted`],
+      [[`A`, `B`, `C`, `D`].map((sym) => sym.charCodeAt(0) <= 90 ? sym : sym), [
+        `A`,
+        `A-B`,
+        `A-B-C`,
+        `A-B-C-D`,
+        `A-B-D`,
+        `A-C`,
+        `A-C-D`,
+        `A-D`,
+        `B`,
+        `B-C`,
+        `B-C-D`,
+        `B-D`,
+        `C`,
+        `C-D`,
+        `D`,
+      ], `four element system`],
+    ])(
+      `should generate subspaces from array %j (%s)`,
+      (elements, expected, _description) => {
+        const result = generate_chem_sys_subspaces(elements)
+        expect(result.sort()).toEqual(expected.sort())
+      },
+    )
+
+    test(`should sort elements before generating subspaces`, () => {
+      const result = generate_chem_sys_subspaces([`Zn`, `Cu`, `Al`])
+      // All subspaces should use alphabetically sorted element order
+      expect(result).toContain(`Al-Cu-Zn`)
+      expect(result).not.toContain(`Zn-Cu-Al`)
+    })
+
+    test(`should handle duplicate elements in array`, () => {
+      // Arrays with duplicates should be deduplicated to match behavior of other input types
+      const result = generate_chem_sys_subspaces([`Fe`, `Fe`, `O`])
+      // Should deduplicate to 2 unique elements: Fe and O
+      expect(result.length).toBe(3) // 2^2 - 1 = 3
+      expect(result.sort()).toEqual([`Fe`, `Fe-O`, `O`])
+      // Should NOT contain invalid "Fe-Fe"
+      expect(result).not.toContain(`Fe-Fe`)
+    })
+  })
+
+  describe(`composition object input`, () => {
+    test.each([
+      [{ H: 2, O: 1 }, [`H`, `H-O`, `O`], `water composition`],
+      [{ Fe: 2, O: 3 }, [`Fe`, `Fe-O`, `O`], `iron oxide composition`],
+      [{ Li: 1, Fe: 1, P: 1, O: 4 }, [
+        `Fe`,
+        `Fe-Li`,
+        `Fe-Li-O`,
+        `Fe-Li-O-P`,
+        `Fe-Li-P`,
+        `Fe-O`,
+        `Fe-O-P`,
+        `Fe-P`,
+        `Li`,
+        `Li-O`,
+        `Li-O-P`,
+        `Li-P`,
+        `O`,
+        `O-P`,
+        `P`,
+      ], `battery material composition`],
+      [
+        { Ca: 1, C: 1, O: 3 },
+        [`C`, `C-Ca`, `C-Ca-O`, `C-O`, `Ca`, `Ca-O`, `O`],
+        `calcium carbonate composition`,
+      ],
+      [{ Na: 1 }, [`Na`], `single element composition`],
+      [{}, [], `empty composition`],
+    ])(
+      `should generate subspaces from composition %j (%s)`,
+      (composition, expected, _description) => {
+        const result = generate_chem_sys_subspaces(composition)
+        expect(result.sort()).toEqual(expected.sort())
+      },
+    )
+
+    test(`should ignore composition amounts, only use keys`, () => {
+      const result1 = generate_chem_sys_subspaces({ Fe: 2, O: 3 })
+      const result2 = generate_chem_sys_subspaces({ Fe: 1, O: 1 })
+      expect(result1.sort()).toEqual(result2.sort())
+    })
+
+    test(`should handle composition with zero values`, () => {
+      // Zero values will still be in the keys
+      const result = generate_chem_sys_subspaces({ Fe: 2, O: 0 })
+      expect(result.sort()).toEqual([`Fe`, `Fe-O`, `O`])
+    })
+  })
+
+  describe(`edge cases and completeness`, () => {
+    test(`should generate correct number of subspaces`, () => {
+      // For n elements, should generate 2^n - 1 subspaces (all non-empty subsets)
+      const test_cases: Array<[number, string[]]> = [
+        [1, [`H`]],
+        [2, [`H`, `O`]],
+        [3, [`H`, `O`, `N`]],
+        [4, [`H`, `O`, `N`, `C`]],
+        [5, [`H`, `O`, `N`, `C`, `S`]],
+      ]
+
+      test_cases.forEach(([expected_num, elements]) => {
+        const result = generate_chem_sys_subspaces(elements)
+        expect(result.length).toBe(2 ** expected_num - 1)
+      })
+    })
+
+    test(`should include all individual elements`, () => {
+      const elements = [`Fe`, `Cr`, `Ni`, `Mo`]
+      const result = generate_chem_sys_subspaces(elements)
+
+      elements.forEach((elem) => {
+        expect(result).toContain(elem)
+      })
+    })
+
+    test(`should include the complete system`, () => {
+      const result = generate_chem_sys_subspaces([`Li`, `Co`, `O`])
+      expect(result).toContain(`Co-Li-O`)
+    })
+
+    test(`should not contain duplicates`, () => {
+      const result = generate_chem_sys_subspaces([`Fe`, `Cr`, `Ni`])
+      const unique_result = [...new Set(result)]
+      expect(result.length).toBe(unique_result.length)
+    })
+
+    test(`should maintain alphabetical order within each subspace`, () => {
+      const result = generate_chem_sys_subspaces([`Zr`, `Mo`, `Nb`])
+
+      result.forEach((subspace) => {
+        const parts = subspace.split(`-`)
+        const sorted_parts = [...parts].sort()
+        expect(parts).toEqual(sorted_parts)
+      })
+    })
+
+    test(`should handle large number of elements`, () => {
+      const elements = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`]
+      const result = generate_chem_sys_subspaces(elements)
+
+      // Should generate 2^10 - 1 = 1023 subspaces
+      expect(result.length).toBe(1023)
+
+      // Check a few specific subspaces
+      expect(result).toContain(`H`)
+      expect(result).toContain(`Ne`)
+      expect(result).toContain(`B-C-F-H-He-Li-N-Ne-O`)
+    })
+
+    test(`should be consistent across different input types`, () => {
+      const formula_result = generate_chem_sys_subspaces(`Fe2O3`)
+      const array_result = generate_chem_sys_subspaces([`Fe`, `O`])
+      const composition_result = generate_chem_sys_subspaces({ Fe: 2, O: 3 })
+
+      expect(formula_result.sort()).toEqual(array_result.sort())
+      expect(array_result.sort()).toEqual(composition_result.sort())
+    })
+
+    test(`should handle mixed case properly`, () => {
+      // Element symbols should be case-sensitive
+      const result = generate_chem_sys_subspaces(`NaCl`)
+      expect(result).toContain(`Cl-Na`)
+      expect(result).not.toContain(`cl-na`)
+    })
+  })
+
+  describe(`practical chemistry examples`, () => {
+    test(`should work for common alloy systems`, () => {
+      // Stainless steel (Fe-Cr-Ni)
+      const stainless = generate_chem_sys_subspaces({ Fe: 70, Cr: 18, Ni: 8 })
+      expect(stainless).toContain(`Cr-Fe-Ni`)
+      expect(stainless).toContain(`Fe-Ni`)
+      expect(stainless.length).toBe(7)
+    })
+
+    test(`should work for battery materials`, () => {
+      // LiFePO4
+      const battery = generate_chem_sys_subspaces(`LiFePO4`)
+      expect(battery).toContain(`Fe-Li-O-P`)
+      expect(battery).toContain(`Li-O`)
+      expect(battery).toContain(`Fe-O-P`)
+      expect(battery.length).toBe(15) // 2^4 - 1
+    })
+
+    test(`should work for perovskites`, () => {
+      // BaTiO3
+      const perovskite = generate_chem_sys_subspaces(`BaTiO3`)
+      expect(perovskite).toContain(`Ba-O-Ti`)
+      expect(perovskite).toContain(`O-Ti`)
+      expect(perovskite.length).toBe(7) // 2^3 - 1
+    })
+
+    test(`should work for high entropy alloys`, () => {
+      // CoCrFeMnNi (Cantor alloy)
+      const hea = generate_chem_sys_subspaces([`Co`, `Cr`, `Fe`, `Mn`, `Ni`])
+      expect(hea).toContain(`Co-Cr-Fe-Mn-Ni`)
+      expect(hea.length).toBe(31) // 2^5 - 1
+
+      // Should contain all quaternary subsystems
+      expect(hea).toContain(`Co-Cr-Fe-Mn`)
+      expect(hea).toContain(`Co-Cr-Fe-Ni`)
+      expect(hea).toContain(`Cr-Fe-Mn-Ni`)
+    })
+  })
 })

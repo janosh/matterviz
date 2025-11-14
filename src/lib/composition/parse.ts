@@ -124,10 +124,7 @@ export const fractional_composition = (
         }),
     )
 
-    const total_weight = Object.values(element_weights).reduce(
-      (sum, weight) => sum + weight,
-      0,
-    )
+    const total_weight = Object.values(element_weights).reduce((sum, wt) => sum + wt, 0)
     if (total_weight === 0) return {}
 
     return Object.fromEntries(
@@ -142,10 +139,9 @@ export const fractional_composition = (
   if (total === 0) return {}
 
   return Object.fromEntries(
-    Object.entries(composition).map(([element, amount]) => [
-      element,
-      (amount ?? 0) / total,
-    ]),
+    Object.entries(composition).map((
+      [element, amount],
+    ) => [element, (amount ?? 0) / total]),
   )
 }
 
@@ -175,9 +171,7 @@ export const parse_composition = (
 }
 
 // Extract composition from structure object
-const structure_to_composition = (
-  structure: Record<string, unknown>,
-): CompositionType => {
+const structure_to_composition = (structure: AnyStructure): CompositionType => {
   if (!structure.sites || !Array.isArray(structure.sites)) {
     throw new Error(`Invalid structure object`)
   }
@@ -186,9 +180,9 @@ const structure_to_composition = (
   for (const site of structure.sites) {
     if (site.species && Array.isArray(site.species)) {
       for (const species of site.species) {
-        const element = species.element as ElementSymbol
-        const occu = species.occu || 1
-        composition[element] = (composition[element] || 0) + occu
+        const element = species.element
+        const occu = species.occu ?? 1
+        composition[element] = (composition[element] ?? 0) + occu
       }
     }
   }
@@ -231,7 +225,7 @@ const format_formula_generic = (
 
     if (typeof input === `string`) composition = parse_composition(input)
     else if (`sites` in input || `lattice` in input) {
-      composition = structure_to_composition(input)
+      composition = structure_to_composition(input as AnyStructure)
     } else composition = input as CompositionType
 
     return format_composition_formula(
@@ -242,7 +236,7 @@ const format_formula_generic = (
       amount_format,
     )
   } catch {
-    return typeof input === `string` ? input : `Unknown`
+    return ``
   }
 }
 
@@ -261,11 +255,11 @@ export const get_alphabetical_formula = (
     amount_format,
   )
 
-export const sort_by_electronegativity = (symbols: ElementSymbol[]) =>
-  symbols.sort((el1, el2) => {
-    const elec_neg1 = element_electronegativity_map.get(el1) ?? 0
-    const elec_neg2 = element_electronegativity_map.get(el2) ?? 0
-    return elec_neg1 !== elec_neg2 ? elec_neg1 - elec_neg2 : el1.localeCompare(el2)
+export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymbol[] =>
+  symbols.sort((el_1, el_2) => {
+    const elec_neg_1 = element_electronegativity_map.get(el_1) ?? 0
+    const elec_neg_2 = element_electronegativity_map.get(el_2) ?? 0
+    return elec_neg_1 !== elec_neg_2 ? elec_neg_1 - elec_neg_2 : el_1.localeCompare(el_2)
   })
 
 // Sort element symbols according to Hill notation (C first, H second, then alphabetical).
@@ -316,7 +310,7 @@ export type OxiComposition = Record<
   { amount: number; oxidation_state?: number }
 >
 
-// Parse oxidation state string (e.g. "+2", "2+", "-", "[2-]") to number.
+// Parse oxidation state string (e.g. "+2", "2+", "-", "[2-]") to number
 const parse_oxidation_state = (oxidation_str: string): number => {
   // Handle bare signs: "+", "-" are treated as ±1
   if (oxidation_str === `+` || oxidation_str === `-`) {
@@ -392,21 +386,51 @@ export const parse_formula_with_oxidation = (
   return elements
 }
 
-// Convert OxiComposition to ElementWithOxidation array.
-// Does not preserve original order since objects don't have a defined order.
+// Convert OxiComposition to ElementWithOxidation array
+// Does not preserve original order since objects don't have a defined order
 export const oxi_composition_to_elements = (
   composition: OxiComposition,
-): ElementWithOxidation[] => {
-  return Object.entries(composition).map(([element, data], idx) => ({
+): ElementWithOxidation[] =>
+  Object.entries(composition).map(([element, data], idx) => ({
     element: element as ElementSymbol,
     amount: data.amount,
     oxidation_state: data.oxidation_state,
     orig_idx: idx,
   }))
-}
 
 export function format_oxi_state(oxidation?: number): string {
   if (oxidation === undefined || oxidation === 0) return ``
   const sign = oxidation > 0 ? `+` : `-`
   return `${sign}${Math.abs(oxidation)}`
+}
+
+// Extract unique element symbols from a formula, sorted alphabetically.
+// Example: "NbZr2Nb" -> ["Nb", "Zr"]
+export const extract_uniq_elements = (formula: string): ElementSymbol[] =>
+  ([...new Set(Object.keys(parse_formula(formula)))] as ElementSymbol[]).sort()
+
+// Generate all sub-chemical systems (chemsys) from a list of elements.
+// Example: ["Mo", "Sc", "B"] → ["B", "Mo", "Sc", "B-Mo", "B-Sc", "Mo-Sc", "B-Mo-Sc"]
+// Can accept a formula string, composition object, or array of element symbols.
+export function generate_chem_sys_subspaces(
+  input: string | CompositionType | ElementSymbol[],
+): string[] {
+  let elements: ElementSymbol[]
+
+  if (typeof input === `string`) elements = extract_uniq_elements(input) // If input is a formula string, extract elements
+  else if (Array.isArray(input)) elements = [...new Set(input)] // If input is already an array, use it directly
+  else elements = Object.keys(input) as ElementSymbol[] // If input is a composition object, extract keys
+
+  const sorted = [...elements].sort()
+  const subspaces: string[] = []
+  const num_elems = sorted.length
+
+  for (let mask = 1; mask < (1 << num_elems); mask++) {
+    const subset: string[] = []
+    for (let idx = 0; idx < num_elems; idx++) {
+      if (mask & (1 << idx)) subset.push(sorted[idx])
+    }
+    subspaces.push(subset.join(`-`))
+  }
+  return subspaces
 }
