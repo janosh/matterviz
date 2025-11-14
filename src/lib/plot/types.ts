@@ -1,5 +1,5 @@
-import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { D3SymbolName } from '$lib/labels'
+import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
@@ -385,11 +385,11 @@ export interface BasePlotProps {
   // Children
   children?: Snippet<[{ height: number; width: number }]>
 }
-export const line_types = [`solid`, `dashed`, `dotted`] as const
-export type LineType = (typeof line_types)[number]
+export const LINE_TYPES = [`solid`, `dashed`, `dotted`] as const
+export type LineType = (typeof LINE_TYPES)[number]
 
 // Define grid cell identifiers
-export const cells_3x3 = [
+export const CELLS_3X3 = [
   `top-left`,
   `top-center`,
   `top-right`,
@@ -400,7 +400,7 @@ export const cells_3x3 = [
   `bottom-center`,
   `bottom-right`,
 ] as const
-export const corner_cells = [
+export const CORNER_CELLS = [
   `top-left`,
   `top-right`,
   `bottom-left`,
@@ -408,8 +408,8 @@ export const corner_cells = [
 ] as const
 
 // Define the structure for GridCell and GridCellCounts for 3x3 grid
-export type Cell3x3 = (typeof cells_3x3)[number]
-export type Corner = (typeof corner_cells)[number]
+export type Cell3x3 = (typeof CELLS_3X3)[number]
+export type Corner = (typeof CORNER_CELLS)[number]
 
 // Default grid line style (SSOT for all plot components)
 export const DEFAULT_GRID_STYLE = {

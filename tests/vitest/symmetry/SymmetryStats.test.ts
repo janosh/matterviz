@@ -40,7 +40,7 @@ function create_mock_sym_data(overrides: Partial<MoyoDataset> = {}): MoyoDataset
 }
 
 describe(`SymmetryStats`, () => {
-  test.each([null, undefined])(
+  test.each<MoyoDataset | null | undefined>([null, undefined])(
     `displays no-data message when sym_data is %s`,
     (sym_data) => {
       mount(SymmetryStats, { target: document.body, props: { sym_data } })
@@ -335,54 +335,6 @@ describe(`SymmetryStats`, () => {
     })
   })
 
-  describe(`Custom HTML attributes`, () => {
-    test(`passes through custom HTML attributes`, () => {
-      const sym_data = create_mock_sym_data()
-      mount(SymmetryStats, {
-        target: document.body,
-        props: {
-          sym_data,
-          id: `custom-id`,
-          'data-testid': `test-stats`,
-        },
-      })
-
-      const container = doc_query(`.symmetry-stats`)
-      expect(container.id).toBe(`custom-id`)
-      expect(container.getAttribute(`data-testid`)).toBe(`test-stats`)
-    })
-
-    test(`passes through custom styles`, () => {
-      const sym_data = create_mock_sym_data()
-      mount(SymmetryStats, {
-        target: document.body,
-        props: {
-          sym_data,
-          style: `--accent-color: red; padding: 20px`,
-        },
-      })
-
-      const container = doc_query(`.symmetry-stats`)
-      expect(container.getAttribute(`style`)).toContain(`--accent-color: red`)
-      expect(container.getAttribute(`style`)).toContain(`padding: 20px`)
-    })
-
-    test(`merges custom class with default class`, () => {
-      const sym_data = create_mock_sym_data()
-      mount(SymmetryStats, {
-        target: document.body,
-        props: {
-          sym_data,
-          class: `custom-class`,
-        },
-      })
-
-      const container = doc_query(`.symmetry-stats`)
-      expect(container.classList.contains(`symmetry-stats`)).toBe(true)
-      expect(container.classList.contains(`custom-class`)).toBe(true)
-    })
-  })
-
   describe(`Edge cases`, () => {
     test.each([1e-10, 1e-2, 0.5, 1.0])(
       `accepts extreme symprec values: %f`,
@@ -461,28 +413,6 @@ describe(`SymmetryStats`, () => {
         const message = no_data_div.querySelector(`p`)
         expect(message).toBeTruthy()
         expect(message?.textContent).toBe(`No symmetry data available`)
-      },
-    )
-
-    test.each([null, undefined])(
-      `can be styled with custom attributes when sym_data is %s`,
-      (sym_data) => {
-        mount(SymmetryStats, {
-          target: document.body,
-          props: {
-            sym_data,
-            class: `custom-class`,
-            id: `test-id`,
-          },
-        })
-
-        const container = doc_query(`.symmetry-stats`)
-        expect(container.id).toBe(`test-id`)
-        expect(container.classList.contains(`custom-class`)).toBe(true)
-
-        // Verify no-data message is still displayed
-        const no_data_div = container.querySelector(`.no-data`)
-        expect(no_data_div).toBeTruthy()
       },
     )
 

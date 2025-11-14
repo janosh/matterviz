@@ -3,7 +3,7 @@
   import type { ChemicalElement } from '$lib'
   import { element_data, ElementStats, PeriodicTable, PropertySelect } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
-  import { property_labels } from '$lib/labels'
+  import { ELEM_PROPERTY_LABELS } from '$lib/labels'
   import type { ScaleContext } from '$lib/periodic-table'
   import { PeriodicTableControls, TableInset } from '$lib/periodic-table'
   import { ColorBar, ColorScaleSelect, ElementScatter } from '$lib/plot'
@@ -36,7 +36,7 @@
   )
 
   let [y_label = ``, y_unit = ``] = $derived(
-    heatmap_key ? property_labels[heatmap_key] : [],
+    heatmap_key ? ELEM_PROPERTY_LABELS[heatmap_key] : [],
   )
 
   // Multi-value property ranges for color bars

@@ -1,4 +1,4 @@
-import { elem_symbols, type ElementSymbol, type Site, type Vec3 } from '$lib'
+import { ELEM_SYMBOLS, type ElementSymbol, type Site, type Vec3 } from '$lib'
 import type { OptimadeStructure } from '$lib/api/optimade'
 import {
   COMPRESSION_EXTENSIONS_REGEX,
@@ -106,7 +106,7 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   // Clean symbol (remove suffixes like _pv, /hash)
   const clean_symbol = symbol.split(/[_/]/)[0]
 
-  if (elem_symbols && elem_symbols.includes(clean_symbol as ElementSymbol)) {
+  if (ELEM_SYMBOLS && ELEM_SYMBOLS.includes(clean_symbol as ElementSymbol)) {
     return clean_symbol as ElementSymbol
   }
 

@@ -9,13 +9,13 @@
 ```svelte example
 <script>
   import { element_data, PeriodicTable, TableInset } from 'matterviz'
-  import { element_color_schemes } from 'matterviz/colors'
+  import { ELEMENT_COLOR_SCHEMES } from 'matterviz/colors'
 
   // Create multi-scheme color data - each element gets an array of 3 colors
   const multi_scheme_colors = element_data.map((el) => [
-    element_color_schemes.Jmol[el.symbol] ?? '#666666',
-    element_color_schemes.Vesta[el.symbol] ?? '#666666',
-    element_color_schemes.Alloy[el.symbol] ?? '#666666',
+    ELEMENT_COLOR_SCHEMES.Jmol[el.symbol] ?? '#666666',
+    ELEMENT_COLOR_SCHEMES.Vesta[el.symbol] ?? '#666666',
+    ELEMENT_COLOR_SCHEMES.Alloy[el.symbol] ?? '#666666',
   ])
 </script>
 
@@ -83,8 +83,8 @@
 ```svelte example
 <script>
   import { PeriodicTable } from 'matterviz'
-  import { element_color_schemes } from 'matterviz/colors'
-  import { elem_symbols } from 'matterviz/labels'
+  import { ELEMENT_COLOR_SCHEMES } from 'matterviz/colors'
+  import { ELEM_SYMBOLS } from 'matterviz/labels'
 
   const subtitles = {
     Vesta:
@@ -101,9 +101,9 @@
   }
 </script>
 
-{#each Object.entries(element_color_schemes) as [id, scheme]}
+{#each Object.entries(ELEMENT_COLOR_SCHEMES) as [id, scheme]}
   {@const color_overrides = Object.fromEntries(
-    elem_symbols.map((key) => [key, scheme[key] ?? 'transparent']),
+    ELEM_SYMBOLS.map((key) => [key, scheme[key] ?? 'transparent']),
   )}
   <section>
     <h3 {id}>{id}</h3>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { StatusMessage } from '$lib'
-  import { plot_colors } from '$lib/colors'
+  import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import type { DataSeries } from '$lib/plot'
@@ -162,7 +162,7 @@
       visible: true,
       markers: `line` as const,
       line_style: {
-        stroke: ent.color ?? plot_colors[idx % plot_colors.length],
+        stroke: ent.color ?? PLOT_COLORS[idx % PLOT_COLORS.length],
         stroke_width: 2,
       },
     })),

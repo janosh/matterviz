@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ElementCategory } from '$lib'
-  import { default_category_colors } from '$lib/colors'
+  import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
   import { colors, selected } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -139,7 +139,7 @@
   // Check if settings in each section have been modified from defaults
   let category_colors_modified = $derived(
     Object.keys(colors.category).some(
-      (key) => colors.category[key] !== default_category_colors[key],
+      (key) => colors.category[key] !== DEFAULT_CATEGORY_COLORS[key],
     ),
   )
 
@@ -173,7 +173,7 @@
   // Reset functions for each section
   function reset_category_colors(): void {
     for (const key of Object.keys(colors.category)) {
-      colors.category[key] = default_category_colors[key]
+      colors.category[key] = DEFAULT_CATEGORY_COLORS[key]
     }
   }
 
@@ -225,11 +225,11 @@
           bind:value={colors.category[category]}
         />
         <span>{category}</span>
-        {#if colors.category[category] !== default_category_colors[category]}
+        {#if colors.category[category] !== DEFAULT_CATEGORY_COLORS[category]}
           <button
             onclick={(event) => {
               event.preventDefault()
-              colors.category[category] = default_category_colors[category]
+              colors.category[category] = DEFAULT_CATEGORY_COLORS[category]
             }}
           >
             reset

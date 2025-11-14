@@ -1,11 +1,11 @@
 import {
-  default_category_colors,
-  element_color_schemes,
+  DEFAULT_CATEGORY_COLORS,
+  ELEMENT_COLOR_SCHEMES,
   get_bg_color,
   is_color,
   luminance,
   pick_contrast_color,
-  plot_colors,
+  PLOT_COLORS,
 } from '$lib/colors'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -13,19 +13,19 @@ describe(`colors module`, () => {
   describe(`color constants`, () => {
     it(`has valid hex colors in all schemes`, () => {
       // Test category colors
-      Object.values(default_category_colors).forEach((color) => {
+      Object.values(DEFAULT_CATEGORY_COLORS).forEach((color) => {
         expect(color).toMatch(/^#[0-9a-f]{6}$/i)
       })
 
       // Test plot colors
-      expect(plot_colors).toHaveLength(10)
-      plot_colors.forEach((color) => {
+      expect(PLOT_COLORS).toHaveLength(10)
+      PLOT_COLORS.forEach((color) => {
         expect(color).toMatch(/^#[0-9a-f]{6}$/i)
       })
-      expect(new Set(plot_colors).size).toBe(plot_colors.length)
+      expect(new Set(PLOT_COLORS).size).toBe(PLOT_COLORS.length)
 
       // Test element color schemes
-      Object.values(element_color_schemes).forEach((scheme) => {
+      Object.values(ELEMENT_COLOR_SCHEMES).forEach((scheme) => {
         Object.values(scheme).forEach((color) => {
           expect(color).toMatch(/^#[0-9a-f]{6}$/i)
         })

@@ -557,7 +557,7 @@ const trajectory_props = (defaults: DefaultSettings) => {
       legend: { show: trajectory.histogram_show_legend },
     },
     spinner_props: { show_progress: trajectory.show_parsing_progress },
-    property_labels: {},
+    ELEM_PROPERTY_LABELS: {},
   }
 }
 

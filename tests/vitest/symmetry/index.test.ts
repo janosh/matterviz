@@ -517,20 +517,20 @@ describe(`site coverage verification`, () => {
 describe(`apply_symmetry_operations`, () => {
   const operations = {
     identity: {
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const,
-      translation: [0, 0, 0] as const,
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
+      translation: [0, 0, 0] as Vec3,
     },
     inversion: {
-      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1] as const,
-      translation: [0, 0, 0] as const,
+      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1] as Vec9,
+      translation: [0, 0, 0] as Vec3,
     },
     translation: {
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const,
-      translation: [0.5, 0.5, 0.5] as const,
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
+      translation: [0.5, 0.5, 0.5] as Vec3,
     },
     rotation_90z: {
-      rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1] as const,
-      translation: [0, 0, 0] as const,
+      rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1] as Vec9,
+      translation: [0, 0, 0] as Vec3,
     },
   }
 

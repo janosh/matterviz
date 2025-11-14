@@ -13,7 +13,7 @@ function create_test_structure(num_sites: number): PymatgenStructure {
   ]
 
   const sites = Array.from({ length: num_sites }, (_, idx) => ({
-    species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
+    species: [{ element: `Fe` as const, occu: 1, oxidation_state: 0 }],
     xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
     abc: [Math.random(), Math.random(), Math.random()] as Vec3,
     label: `Fe${idx}`,

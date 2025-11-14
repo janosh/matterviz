@@ -1,5 +1,5 @@
 // Plotting utilities for trajectory visualization
-import { plot_colors } from '$lib/colors'
+import { PLOT_COLORS } from '$lib/colors'
 import { trajectory_property_config } from '$lib/labels'
 import { get_coefficient_of_variation } from '$lib/math'
 import type { DataSeries } from '$lib/plot'
@@ -36,7 +36,7 @@ export function generate_plot_series(
 
   const {
     property_config = trajectory_property_config,
-    colors = plot_colors,
+    colors = PLOT_COLORS,
     default_visible_properties = DEFAULT_VISIBLE,
   } = options
 
@@ -473,7 +473,7 @@ export function generate_streaming_plot_series(
 
   const {
     property_config = trajectory_property_config,
-    colors = plot_colors,
+    colors = PLOT_COLORS,
     default_visible_properties = DEFAULT_VISIBLE,
     max_points = 10_000, // 10,000 plot points provides good visual fidelity while maintaining browser performance
   } = options

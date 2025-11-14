@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement, ElementCategory, XyObj } from '$lib'
-  import { elem_symbols, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
+  import { ELEM_SYMBOLS, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
   import { is_color } from '$lib/colors'
   import { element_data } from '$lib/element'
   import { ColorBar } from '$lib/plot'
@@ -117,7 +117,7 @@
       } else return heatmap_values
     } else if (typeof heatmap_values == `object`) {
       const bad_keys = Object.keys(heatmap_values).filter(
-        (key) => !elem_symbols.includes(key as ElementSymbol),
+        (key) => !ELEM_SYMBOLS.includes(key as ElementSymbol),
       )
       if (bad_keys.length > 0) {
         console.error(
@@ -125,7 +125,7 @@
         )
         return []
       }
-      return elem_symbols.map((symbol) => heatmap_values[symbol] ?? 0)
+      return ELEM_SYMBOLS.map((symbol) => heatmap_values[symbol] ?? 0)
     }
     return []
   })

@@ -1,13 +1,13 @@
 import { element_data } from '$lib/element'
 import {
   default_fmt,
+  ELEM_HEATMAP_KEYS,
+  ELEM_HEATMAP_LABELS,
+  ELEM_PROPERTY_LABELS,
   format_fractional,
   format_num,
   format_value,
-  heatmap_keys,
-  heatmap_labels,
   parse_si_float,
-  property_labels,
   superscript_digits,
   trajectory_property_config,
 } from '$lib/labels'
@@ -15,13 +15,13 @@ import { format as d3_format } from 'd3-format'
 import { describe, expect, test } from 'vitest'
 
 describe(`labels utils`, () => {
-  test(`heatmap_labels maps each label to a valid heatmap key`, () => {
-    const mapped_keys = new Set(Object.values(heatmap_labels))
-    heatmap_keys.forEach((key) => {
+  test(`ELEM_HEATMAP_LABELS maps each label to a valid heatmap key`, () => {
+    const mapped_keys = new Set(Object.values(ELEM_HEATMAP_LABELS))
+    ELEM_HEATMAP_KEYS.forEach((key) => {
       expect(mapped_keys.has(key)).toBe(true)
     })
     // Ensure 1:1 mapping (no duplicate labels collapsing entries)
-    expect(Object.values(heatmap_labels)).toHaveLength(heatmap_keys.length)
+    expect(Object.values(ELEM_HEATMAP_LABELS)).toHaveLength(ELEM_HEATMAP_KEYS.length)
   })
 
   test.each([
@@ -97,12 +97,12 @@ test(`default_fmt`, () => {
 
 const element_data_keys = Object.keys(element_data[0])
 
-test(`heatmap_keys are valid element data keys`, () => {
-  expect(element_data_keys).toEqual(expect.arrayContaining(heatmap_keys))
+test(`ELEM_HEATMAP_KEYS are valid element data keys`, () => {
+  expect(element_data_keys).toEqual(expect.arrayContaining(ELEM_HEATMAP_KEYS))
 })
 
-test(`property_labels are valid element data keys`, () => {
-  const prop_keys = Object.keys(property_labels)
+test(`ELEM_PROPERTY_LABELS are valid element data keys`, () => {
+  const prop_keys = Object.keys(ELEM_PROPERTY_LABELS)
   expect(element_data_keys).toEqual(expect.arrayContaining(prop_keys))
 })
 
