@@ -1,5 +1,5 @@
 import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
-import { elem_symbols, format_num } from '$lib'
+import { ELEM_SYMBOLS, format_num } from '$lib'
 import { element_data } from '$lib/element'
 
 // Create symbol/number/mass/electronegativity lookup maps for O(1) access
@@ -82,7 +82,7 @@ export const parse_formula = (formula: string): CompositionType => {
     const element = match[1] as ElementSymbol
     const count = match[2] ? parseInt(match[2], 10) : 1
 
-    if (!elem_symbols.includes(element)) {
+    if (!ELEM_SYMBOLS.includes(element)) {
       throw new Error(`Invalid element symbol: ${element}`)
     }
     composition[element] = (composition[element] || 0) + count
@@ -357,7 +357,7 @@ export const parse_formula_with_oxidation = (
     const count_str = match[4] || match[5]
     const count = count_str ? parseInt(count_str, 10) : 1
 
-    if (!elem_symbols.includes(element)) {
+    if (!ELEM_SYMBOLS.includes(element)) {
       throw new Error(`Invalid element symbol: ${element}`)
     }
 

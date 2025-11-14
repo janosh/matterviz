@@ -1,6 +1,6 @@
 import type { ChemicalElement } from '$lib'
 import { element_data, PeriodicTable, PropertySelect } from '$lib'
-import { category_counts, heatmap_labels } from '$lib/labels'
+import { CATEGORY_COUNTS, heatmap_labels } from '$lib/labels'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -153,7 +153,7 @@ describe(`PeriodicTable`, () => {
     })
   })
 
-  test.each(Object.entries(category_counts))(
+  test.each(Object.entries(CATEGORY_COUNTS))(
     `active_category=%s highlights %s tiles`,
     (active_category, expected_active) => {
       mount(PeriodicTable, {
@@ -228,7 +228,7 @@ describe(`PeriodicTable`, () => {
 
   test.each(
     [
-      [`element-category`, `#ff8c00`], // now returns actual color from default_category_colors
+      [`element-category`, `#ff8c00`], // now returns actual color from DEFAULT_CATEGORY_COLORS
       [`#ff0000`, `#ff0000`],
       [`#666666`, `#666666`],
     ] as const,

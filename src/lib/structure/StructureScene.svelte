@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure, BondPair, ElementSymbol, Site, Vec3 } from '$lib'
-  import { atomic_radii, axis_colors, element_data, neg_axis_colors } from '$lib'
+  import { atomic_radii, AXIS_COLORS, element_data, NEG_AXIS_COLORS } from '$lib'
   import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
@@ -455,7 +455,7 @@
 
   let gizmo_props = $derived.by(() => {
     const axis_options = Object.fromEntries(
-      [...axis_colors, ...neg_axis_colors].map(([axis, color, hover_color]) => [
+      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover_color]) => [
         axis,
         {
           color,

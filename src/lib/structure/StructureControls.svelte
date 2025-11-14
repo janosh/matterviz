@@ -8,7 +8,7 @@
     SettingsSection,
   } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
-  import { axis_colors, element_color_schemes } from '$lib/colors'
+  import { AXIS_COLORS, element_color_schemes } from '$lib/colors'
   import { to_degrees, to_radians } from '$lib/math'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
@@ -406,7 +406,7 @@
 
     Axis Rotation
     <div class="rotation-axes">
-      {#each axis_colors as [axis, color], idx (axis)}
+      {#each AXIS_COLORS as [axis, color], idx (axis)}
         <div>
           <div
             {@attach tooltip()}

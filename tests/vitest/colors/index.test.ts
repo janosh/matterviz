@@ -1,5 +1,5 @@
 import {
-  default_category_colors,
+  DEFAULT_CATEGORY_COLORS,
   element_color_schemes,
   get_bg_color,
   is_color,
@@ -13,7 +13,7 @@ describe(`colors module`, () => {
   describe(`color constants`, () => {
     it(`has valid hex colors in all schemes`, () => {
       // Test category colors
-      Object.values(default_category_colors).forEach((color) => {
+      Object.values(DEFAULT_CATEGORY_COLORS).forEach((color) => {
         expect(color).toMatch(/^#[0-9a-f]{6}$/i)
       })
 

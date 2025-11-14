@@ -84,7 +84,7 @@
 <script>
   import { PeriodicTable } from 'matterviz'
   import { element_color_schemes } from 'matterviz/colors'
-  import { elem_symbols } from 'matterviz/labels'
+  import { ELEM_SYMBOLS } from 'matterviz/labels'
 
   const subtitles = {
     Vesta:
@@ -103,7 +103,7 @@
 
 {#each Object.entries(element_color_schemes) as [id, scheme]}
   {@const color_overrides = Object.fromEntries(
-    elem_symbols.map((key) => [key, scheme[key] ?? 'transparent']),
+    ELEM_SYMBOLS.map((key) => [key, scheme[key] ?? 'transparent']),
   )}
   <section>
     <h3 {id}>{id}</h3>

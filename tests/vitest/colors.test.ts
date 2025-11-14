@@ -6,13 +6,13 @@ import {
   luminance,
   pick_contrast_color,
 } from '$lib/colors'
-import { elem_symbols } from '$lib/labels'
+import { ELEM_SYMBOLS } from '$lib/labels'
 import { describe, expect, test, vi } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from(
   { length: 109 },
-  (_, idx) => elem_symbols[idx],
+  (_, idx) => ELEM_SYMBOLS[idx],
 )
 
 // Test if a string is a valid hex color

@@ -1,8 +1,8 @@
 // deno-lint-ignore-file no-await-in-loop
 import { element_data } from '$lib/element'
 import {
-  category_counts,
-  element_categories,
+  CATEGORY_COUNTS,
+  ELEMENT_CATEGORIES,
   format_num,
   heatmap_keys,
   heatmap_labels,
@@ -24,8 +24,8 @@ test.describe(`Periodic Table`, () => {
       element_data.length + n_lanthanide_actinide_placeholders,
     )
 
-    for (const category of element_categories) {
-      let count = category_counts[category] as number
+    for (const category of ELEMENT_CATEGORIES) {
+      let count = CATEGORY_COUNTS[category] as number
       const selector = `[data-category="${category}"]`
       // add 1 to expected count since lanthanides and actinides have placeholder
       // tiles showing where in the periodic table their rows insert

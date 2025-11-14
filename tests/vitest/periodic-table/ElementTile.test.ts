@@ -1,5 +1,5 @@
 import { element_data, ElementTile } from '$lib'
-import { default_category_colors } from '$lib/colors'
+import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
 import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -650,7 +650,7 @@ describe(`ElementTile`, () => {
       })
 
       const node = doc_query(`.element-tile`)
-      const expected_color = default_category_colors[rand_element.category]
+      const expected_color = DEFAULT_CATEGORY_COLORS[rand_element.category]
       expect(node.style.backgroundColor).toBe(expected_color)
     })
 

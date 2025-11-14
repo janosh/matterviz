@@ -1,5 +1,5 @@
 import { element_data } from '$lib/element'
-import { category_counts as expected_counts } from '$lib/labels'
+import { CATEGORY_COUNTS as expected_counts } from '$lib/labels'
 import { expect, test } from 'vitest'
 
 test(`element data`, () => {
@@ -17,9 +17,9 @@ test(`element data`, () => {
 })
 
 test(`category counts`, () => {
-  const category_counts: Record<string, number> = {}
+  const CATEGORY_COUNTS: Record<string, number> = {}
   for (const { category } of element_data) {
-    category_counts[category] = (category_counts[category] ?? 0) + 1
+    CATEGORY_COUNTS[category] = (CATEGORY_COUNTS[category] ?? 0) + 1
   }
-  expect(category_counts).toEqual(expected_counts)
+  expect(CATEGORY_COUNTS).toEqual(expected_counts)
 })
