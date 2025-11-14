@@ -1,18 +1,18 @@
 import {
-  element_color_schemes,
+  ELEMENT_COLOR_SCHEMES,
   get_bg_color,
   get_page_background,
   is_color,
   luminance,
   pick_contrast_color,
 } from '$lib/colors'
-import { elem_symbols } from '$lib/labels'
+import { ELEM_SYMBOLS } from '$lib/labels'
 import { describe, expect, test, vi } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from(
   { length: 109 },
-  (_, idx) => elem_symbols[idx],
+  (_, idx) => ELEM_SYMBOLS[idx],
 )
 
 // Test if a string is a valid hex color
@@ -23,10 +23,10 @@ function is_valid_hex_color(color: string): boolean {
 
 describe(`Element Color Schemes`, () => {
   test(`all schemes exist and are objects`, () => {
-    expect(element_color_schemes).toBeDefined()
-    expect(typeof element_color_schemes).toBe(`object`)
+    expect(ELEMENT_COLOR_SCHEMES).toBeDefined()
+    expect(typeof ELEMENT_COLOR_SCHEMES).toBe(`object`)
 
-    const schemes = Object.keys(element_color_schemes)
+    const schemes = Object.keys(ELEMENT_COLOR_SCHEMES)
     expect(schemes.length).toBeGreaterThanOrEqual(6)
     expect(schemes).toContain(`Vesta`)
     expect(schemes).toContain(`Jmol`)
@@ -37,7 +37,7 @@ describe(`Element Color Schemes`, () => {
   })
 
   test(`each scheme has complete element coverage`, () => {
-    for (const [scheme_name, colors] of Object.entries(element_color_schemes)) {
+    for (const [scheme_name, colors] of Object.entries(ELEMENT_COLOR_SCHEMES)) {
       const scheme_elements = Object.keys(colors)
 
       // Check minimum element count
@@ -57,7 +57,7 @@ describe(`Element Color Schemes`, () => {
   })
 
   test(`all schemes have identical element coverage`, () => {
-    const schemes = Object.entries(element_color_schemes)
+    const schemes = Object.entries(ELEMENT_COLOR_SCHEMES)
     const [first_scheme_name, first_scheme] = schemes[0]
     const first_elements = new Set(Object.keys(first_scheme))
 
@@ -89,7 +89,7 @@ describe(`Element Color Schemes`, () => {
   })
 
   test(`validates color scheme properties`, () => {
-    for (const [scheme_name, colors] of Object.entries(element_color_schemes)) {
+    for (const [scheme_name, colors] of Object.entries(ELEMENT_COLOR_SCHEMES)) {
       // Check all colors are valid hex format
       for (const [element, color] of Object.entries(colors)) {
         expect(
@@ -140,7 +140,7 @@ describe(`Element Color Schemes`, () => {
   })
 
   test(`pastel scheme has pastel characteristics`, () => {
-    const pastel_colors = element_color_schemes.Pastel
+    const pastel_colors = ELEMENT_COLOR_SCHEMES.Pastel
 
     // Check a few elements to ensure they have pastel characteristics (high lightness)
     const sample_elements = [`H`, `C`, `O`, `Fe`, `Au`]
@@ -221,8 +221,8 @@ describe(`is_color function`, () => {
   })
 
   test(`works with actual color scheme values`, () => {
-    expect(is_color(element_color_schemes.Jmol.H)).toBe(true)
-    expect(is_color(element_color_schemes.Vesta.He)).toBe(true)
+    expect(is_color(ELEMENT_COLOR_SCHEMES.Jmol.H)).toBe(true)
+    expect(is_color(ELEMENT_COLOR_SCHEMES.Vesta.He)).toBe(true)
   })
 })
 

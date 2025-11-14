@@ -1,4 +1,4 @@
-export const icon_data = {
+export const ICON_DATA = {
   Alert: {
     viewBox: `0 0 16 16`,
     path:
@@ -468,4 +468,4 @@ export const icon_data = {
   },
 } as const
 
-export type IconName = keyof typeof icon_data
+export type IconName = keyof typeof ICON_DATA

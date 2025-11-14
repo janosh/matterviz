@@ -1,5 +1,5 @@
 // Helper utilities for band structure and DOS data processing
-import { subscript_map } from '$lib/labels'
+import { SUBSCRIPT_MAP } from '$lib/labels'
 import type { Vec3 } from '../math'
 import type * as types from './types'
 
@@ -36,7 +36,7 @@ export function pretty_sym_point(symbol: string): string {
       (_, letter, num) =>
         letter +
         num.split(``).map((digit: string) =>
-          subscript_map[digit as keyof typeof subscript_map] ?? digit
+          SUBSCRIPT_MAP[digit as keyof typeof SUBSCRIPT_MAP] ?? digit
         ).join(``),
     )
 }

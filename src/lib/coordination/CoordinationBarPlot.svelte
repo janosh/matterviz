@@ -7,7 +7,7 @@
     Orientation,
   } from '$lib'
   import { StatusMessage } from '$lib'
-  import { plot_colors } from '$lib/colors'
+  import { PLOT_COLORS } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
   import { BarPlot } from '$lib/plot'
@@ -144,7 +144,7 @@
             x: sorted_cns,
             y: sorted_cns.map((cn) => cn_map.get(cn) ?? 0),
             label: element,
-            color: plot_colors[idx % plot_colors.length],
+            color: PLOT_COLORS[idx % PLOT_COLORS.length],
             bar_width: 0.8,
             visible: true,
             metadata: { element },
@@ -166,7 +166,7 @@
           x: sorted_cns,
           y: sorted_cns.map((cn) => entry.data.cn_histogram.get(cn) ?? 0),
           label: entry.label,
-          color: entry.color ?? plot_colors[idx % plot_colors.length],
+          color: entry.color ?? PLOT_COLORS[idx % PLOT_COLORS.length],
           bar_width: 0.8,
           visible: true,
           metadata: { structure_label: entry.label },
@@ -190,7 +190,7 @@
           x: x_vals,
           y: y_vals,
           label: `All Sites`,
-          color: plot_colors[0],
+          color: PLOT_COLORS[0],
           bar_width: 0.8,
           visible: true,
           metadata: {},

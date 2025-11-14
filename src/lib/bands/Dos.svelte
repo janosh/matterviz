@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { plot_colors } from '$lib/colors'
+  import { PLOT_COLORS } from '$lib/colors'
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/types'
   import type { ComponentProps } from 'svelte'
@@ -73,7 +73,7 @@
 
     for (let dos_idx = 0; dos_idx < dos_entries.length; dos_idx++) {
       const [label, dos] = dos_entries[dos_idx]
-      const color = plot_colors[dos_idx % plot_colors.length]
+      const color = PLOT_COLORS[dos_idx % PLOT_COLORS.length]
 
       // Get frequencies or energies using discriminated union type narrowing
       let x_values = dos.type === `phonon` ? dos.frequencies : dos.energies

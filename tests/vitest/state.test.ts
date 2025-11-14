@@ -1,5 +1,5 @@
 import type { ChemicalElement } from '$lib'
-import { default_category_colors, default_element_colors } from '$lib/colors'
+import { DEFAULT_CATEGORY_COLORS, default_element_colors } from '$lib/colors'
 import {
   colors,
   periodic_table_state,
@@ -44,7 +44,7 @@ describe(`State Management`, () => {
   describe(`colors state`, () => {
     test(`has correct initial values`, () => {
       expect(colors).toEqual({
-        category: default_category_colors,
+        category: DEFAULT_CATEGORY_COLORS,
         element: default_element_colors,
       })
     })

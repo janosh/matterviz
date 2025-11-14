@@ -65,7 +65,7 @@ export function format_value(value: number, formatter?: string): string {
 }
 
 // TODO add labels and units for all elemental properties
-export const property_labels: Partial<
+export const ELEM_PROPERTY_LABELS: Partial<
   Record<keyof ChemicalElement, [string, string | null]>
 > = {
   atomic_mass: [`Atomic Mass`, `u`],
@@ -85,7 +85,7 @@ export const property_labels: Partial<
   specific_heat: [`Specific Heat`, `J/(g K)`],
 } as const
 
-export const heatmap_keys: (keyof ChemicalElement)[] = [
+export const ELEM_HEATMAP_KEYS: (keyof ChemicalElement)[] = [
   `atomic_mass`,
   `atomic_radius`,
   `covalent_radius`,
@@ -96,10 +96,10 @@ export const heatmap_keys: (keyof ChemicalElement)[] = [
   `first_ionization`,
 ]
 
-export const heatmap_labels: Partial<Record<string, keyof ChemicalElement>> = Object
+export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>> = Object
   .fromEntries(
-    heatmap_keys.map((key) => {
-      const [label, unit] = property_labels[key] ?? []
+    ELEM_HEATMAP_KEYS.map((key) => {
+      const [label, unit] = ELEM_PROPERTY_LABELS[key] ?? []
       if (!label) throw `Unexpected missing label ${label}`
       return [label + (unit ? ` (${unit})` : ``), key]
     }),
@@ -184,7 +184,7 @@ export function parse_si_float<T extends string | number | null | undefined>(
   return value
 }
 
-export const category_counts: Record<ElementCategory, number> = {
+export const CATEGORY_COUNTS: Record<ElementCategory, number> = {
   actinide: 15,
   'alkali metal': 6,
   'alkaline earth metal': 6,
@@ -197,7 +197,7 @@ export const category_counts: Record<ElementCategory, number> = {
   'transition metal': 38,
 }
 
-export const element_categories = [
+export const ELEMENT_CATEGORIES = [
   `actinide`,
   `alkali metal`,
   `alkaline earth metal`,
@@ -211,9 +211,9 @@ export const element_categories = [
 ] as const
 
 // deno-fmt-ignore-next-line
-export const elem_symbols = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`Mg`,`Al`,`Si`,`P`,`S`,`Cl`,`Ar`,`K`,`Ca`,`Sc`,`Ti`,`V`,`Cr`,`Mn`,`Fe`,`Co`,`Ni`,`Cu`,`Zn`,`Ga`,`Ge`,`As`,`Se`,`Br`,`Kr`,`Rb`,`Sr`,`Y`,`Zr`,`Nb`,`Mo`,`Tc`,`Ru`,`Rh`,`Pd`,`Ag`,`Cd`,`In`,`Sn`,`Sb`,`Te`,`I`,`Xe`,`Cs`,`Ba`,`La`,`Ce`,`Pr`,`Nd`,`Pm`,`Sm`,`Eu`,`Gd`,`Tb`,`Dy`,`Ho`,`Er`,`Tm`,`Yb`,`Lu`,`Hf`,`Ta`,`W`,`Re`,`Os`,`Ir`,`Pt`,`Au`,`Hg`,`Tl`,`Pb`,`Bi`,`Po`,`At`,`Rn`,`Fr`,`Ra`,`Ac`,`Th`,`Pa`,`U`,`Np`,`Pu`,`Am`,`Cm`,`Bk`,`Cf`,`Es`,`Fm`,`Md`,`No`,`Lr`,`Rf`,`Db`,`Sg`,`Bh`,`Hs`,`Mt`,`Ds`,`Rg`,`Cn`,`Nh`,`Fl`,`Mc`,`Lv`,`Ts`,`Og`] as const
+export const ELEM_SYMBOLS = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`Mg`,`Al`,`Si`,`P`,`S`,`Cl`,`Ar`,`K`,`Ca`,`Sc`,`Ti`,`V`,`Cr`,`Mn`,`Fe`,`Co`,`Ni`,`Cu`,`Zn`,`Ga`,`Ge`,`As`,`Se`,`Br`,`Kr`,`Rb`,`Sr`,`Y`,`Zr`,`Nb`,`Mo`,`Tc`,`Ru`,`Rh`,`Pd`,`Ag`,`Cd`,`In`,`Sn`,`Sb`,`Te`,`I`,`Xe`,`Cs`,`Ba`,`La`,`Ce`,`Pr`,`Nd`,`Pm`,`Sm`,`Eu`,`Gd`,`Tb`,`Dy`,`Ho`,`Er`,`Tm`,`Yb`,`Lu`,`Hf`,`Ta`,`W`,`Re`,`Os`,`Ir`,`Pt`,`Au`,`Hg`,`Tl`,`Pb`,`Bi`,`Po`,`At`,`Rn`,`Fr`,`Ra`,`Ac`,`Th`,`Pa`,`U`,`Np`,`Pu`,`Am`,`Cm`,`Bk`,`Cf`,`Es`,`Fm`,`Md`,`No`,`Lr`,`Rf`,`Db`,`Sg`,`Bh`,`Hs`,`Mt`,`Ds`,`Rg`,`Cn`,`Nh`,`Fl`,`Mc`,`Lv`,`Ts`,`Og`] as const
 
-export const superscript_map = {
+export const SUPERSCRIPT_MAP = {
   '0': `⁰`,
   '1': `¹`,
   '2': `²`,
@@ -227,7 +227,7 @@ export const superscript_map = {
   '+': `⁺`,
   '-': `⁻`,
 } as const
-export const subscript_map = {
+export const SUBSCRIPT_MAP = {
   '0': `₀`,
   '1': `₁`,
   '2': `₂`,
@@ -244,7 +244,7 @@ export function superscript_digits(input: string): string {
   // use replace all signs and digits with their unicode superscript equivalent
   return input.replace(
     /[\d+-]/g,
-    (match) => superscript_map[match as keyof typeof superscript_map] ?? match,
+    (match) => SUPERSCRIPT_MAP[match as keyof typeof SUPERSCRIPT_MAP] ?? match,
   )
 }
 

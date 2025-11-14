@@ -1,7 +1,7 @@
 import type { ElementSymbol, EnergyModeInfo } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import { get_page_background } from '$lib/colors'
-import { elem_symbol_to_name } from '$lib/composition'
+import { ELEM_SYMBOL_TO_NAME } from '$lib/composition'
 import { format_fractional, format_num } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
@@ -95,7 +95,7 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
   const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
 
   const elem_name = is_element
-    ? elem_symbol_to_name[elem_symbol as ElementSymbol] ?? ``
+    ? ELEM_SYMBOL_TO_NAME[elem_symbol as ElementSymbol] ?? ``
     : ``
 
   let text = is_element
