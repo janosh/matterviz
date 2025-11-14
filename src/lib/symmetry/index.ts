@@ -11,7 +11,7 @@ export { default as SymmetryStats } from './SymmetryStats.svelte'
 export { default as WyckoffTable } from './WyckoffTable.svelte'
 
 // Keys are standard crystallographic symbols (P, I, F, A, B, C, R)
-export const bravais_lattices = {
+export const BRAVAIS_LATTICES = {
   P: `Primitive`,
   I: `Body-centered`,
   F: `Face-centered`,
@@ -21,7 +21,7 @@ export const bravais_lattices = {
   R: `Rhombohedral`,
 } as const
 
-export type BravaisLattice = (typeof bravais_lattices)[keyof typeof bravais_lattices]
+export type BravaisLattice = (typeof BRAVAIS_LATTICES)[keyof typeof BRAVAIS_LATTICES]
 
 export type SymmetrySettings = {
   symprec: number

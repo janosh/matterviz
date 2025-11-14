@@ -2,7 +2,7 @@
   import type { AnyStructure, ElementSymbol } from '$lib'
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
-  import { element_color_schemes } from '$lib/colors'
+  import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import { set_fullscreen_bg } from '$lib/phase-diagram/helpers'
   import { DEFAULTS } from '$lib/settings'
@@ -280,7 +280,7 @@
   })
 
   $effect(() => {
-    colors.element = element_color_schemes[color_scheme as ColorSchemeName]
+    colors.element = ELEMENT_COLOR_SCHEMES[color_scheme as ColorSchemeName]
   })
 
   // Compute property-based colors for legend display

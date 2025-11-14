@@ -8,7 +8,7 @@
     SettingsSection,
   } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
-  import { AXIS_COLORS, element_color_schemes } from '$lib/colors'
+  import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { to_degrees, to_radians } from '$lib/math'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
@@ -157,7 +157,7 @@
 
   // Helper function to get example set of colors from an element color scheme
   function get_representative_colors(scheme_name: string): string[] {
-    const scheme = element_color_schemes[scheme_name as ColorSchemeName]
+    const scheme = ELEMENT_COLOR_SCHEMES[scheme_name as ColorSchemeName]
     if (!scheme) return []
 
     // Get colors for common elements: H, C, N, O, Fe, Ca, Si, Al
@@ -492,7 +492,7 @@
     >
       Color scheme
       <Select
-        options={Object.keys(element_color_schemes)}
+        options={Object.keys(ELEMENT_COLOR_SCHEMES)}
         maxSelect={1}
         minSelect={1}
         bind:selected={color_scheme_selected}

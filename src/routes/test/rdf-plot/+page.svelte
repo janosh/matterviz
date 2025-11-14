@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { plot_colors } from '$lib/colors'
+  import { PLOT_COLORS } from '$lib/colors'
   import type { RdfEntry } from '$lib/rdf'
   import { RdfPlot } from '$lib/rdf'
   import type { PymatgenStructure } from '$lib/structure'
@@ -20,7 +20,7 @@
       }),
       element_pair: [`Li`, `O`],
     },
-    color: plot_colors[0],
+    color: PLOT_COLORS[0],
   }
 
   const synthetic_patterns: RdfEntry[] = [
@@ -37,7 +37,7 @@
         }),
         element_pair: [`O`, `O`],
       },
-      color: plot_colors[1],
+      color: PLOT_COLORS[1],
     },
   ]
 

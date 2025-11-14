@@ -1,15 +1,15 @@
 <script lang="ts">
   import type { SVGAttributes } from 'svelte/elements'
-  import { icon_data, type IconName } from './icons'
+  import { ICON_DATA, type IconName } from './icons'
 
   let { icon, ...rest }: { icon: IconName } & SVGAttributes<SVGSVGElement> = $props()
 
   const { path, ...svg_props } = $derived.by(() => {
-    if (!(icon in icon_data)) {
+    if (!(icon in ICON_DATA)) {
       console.error(`Icon '${icon}' not found`)
-      return icon_data.Alert // fallback
+      return ICON_DATA.Alert // fallback
     }
-    return icon_data[icon]
+    return ICON_DATA[icon]
   })
 </script>
 

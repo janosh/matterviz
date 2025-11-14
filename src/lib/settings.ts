@@ -22,18 +22,18 @@ export interface SettingType<T = unknown> {
   context?: `web` | `editor` | `notebook` | `all`
 }
 
-export const show_bonds_options = [`never`, `always`, `crystals`, `molecules`] as const
-export type ShowBonds = (typeof show_bonds_options)[number]
+export const SHOW_BONDS_OPTIONS = [`never`, `always`, `crystals`, `molecules`] as const
+export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
 
 export type CameraProjection = `perspective` | `orthographic`
 
-export const atom_color_mode_options = [
+export const ATOM_COLOR_MODE_OPTIONS = [
   `element`,
   `coordination`,
   `wyckoff`,
   `custom`,
 ] as const
-export type AtomColorMode = (typeof atom_color_mode_options)[number]
+export type AtomColorMode = (typeof ATOM_COLOR_MODE_OPTIONS)[number]
 
 // Reusable type definitions for common setting patterns
 type DisplayConfigType = {
@@ -382,7 +382,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: `always`,
       description: `When to display bonds between atoms`,
       enum: Object.fromEntries(
-        show_bonds_options.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
+        SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
       ) as Readonly<Record<ShowBonds, string>>,
     },
     bond_color: {

@@ -28,7 +28,6 @@ export type Species = {
   occu: number
   oxidation_state: number
 }
-
 export type Site = {
   species: Species[]
   abc: Vec3
@@ -37,16 +36,8 @@ export type Site = {
   properties: Record<string, unknown>
 }
 
-export const lattice_param_keys = [
-  `a`,
-  `b`,
-  `c`,
-  `alpha`,
-  `beta`,
-  `gamma`,
-] as const
-
-export type LatticeParams = { [key in (typeof lattice_param_keys)[number]]: number }
+export const LATTICE_PARAM_KEYS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
+export type LatticeParams = { [key in (typeof LATTICE_PARAM_KEYS)[number]]: number }
 
 export type PymatgenLattice = {
   matrix: Matrix3x3

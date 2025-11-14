@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PymatgenStructure } from '$lib'
-  import { plot_colors } from '$lib/colors'
+  import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition/parse'
   import { Structure } from '$lib/structure'
   import type { XrdPattern } from '$lib/xrd'
@@ -145,7 +145,7 @@
       {@const struct_id = get_struct_id(struct)}
       {@const sel_idx = selected_ids.indexOf(struct_id)}
       {@const series_color = sel_idx >= 0
-        ? plot_colors[sel_idx % plot_colors.length]
+        ? PLOT_COLORS[sel_idx % PLOT_COLORS.length]
         : null}
       {@const btn_bg = series_color ? hex_with_alpha(series_color, 0.15) : null}
       <button
@@ -169,7 +169,7 @@
     <div class="selected-structures-grid">
       {#each selected_ids as struct_id, idx (struct_id)}
         {@const struct_obj = structures_by_id[struct_id]}
-        {@const series_color = plot_colors[idx % plot_colors.length]}
+        {@const series_color = PLOT_COLORS[idx % PLOT_COLORS.length]}
         {#if struct_obj}
           <div
             class="structure-tile"

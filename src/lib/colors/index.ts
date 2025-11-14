@@ -61,7 +61,7 @@ export const pastel_hex = rgb_scheme_to_hex(pastel_colors)
 export const muted_hex = rgb_scheme_to_hex(muted_colors)
 export const dark_mode_hex = rgb_scheme_to_hex(dark_mode_colors)
 
-export const element_color_schemes = {
+export const ELEMENT_COLOR_SCHEMES = {
   Vesta: vesta_hex,
   Jmol: jmol_hex,
   Alloy: alloy_hex,
@@ -70,7 +70,7 @@ export const element_color_schemes = {
   'Dark Mode': dark_mode_hex,
 } as const
 
-export type ColorSchemeName = keyof typeof element_color_schemes
+export type ColorSchemeName = keyof typeof ELEMENT_COLOR_SCHEMES
 export const default_element_colors = { ...vesta_hex }
 
 // Helper function to detect if a value is a color string
@@ -84,7 +84,7 @@ export const is_color = (val: unknown): val is string => {
     )
 }
 
-export const plot_colors = [ // Color series for e.g. line plots
+export const PLOT_COLORS = [ // Color series for e.g. line plots
   `#63b3ed`,
   `#68d391`,
   `#fbd38d`,

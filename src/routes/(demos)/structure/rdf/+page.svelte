@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ElementSymbol, Matrix3x3 } from '$lib'
-  import { plot_colors } from '$lib/colors'
+  import { PLOT_COLORS } from '$lib/colors'
   import { RdfPlot } from '$lib/rdf'
   import type { Pbc, PymatgenStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
@@ -126,7 +126,7 @@
         onclick={() => (selected = selected.includes(key)
         ? selected.filter((k) => k !== key)
         : [...selected, key])}
-        style:background={selected.includes(key) ? `${plot_colors[idx]}20` : null}
+        style:background={selected.includes(key) ? `${PLOT_COLORS[idx]}20` : null}
       >
         {key}
       </button>
