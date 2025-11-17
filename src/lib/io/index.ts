@@ -3,6 +3,7 @@ import { load_binary_traj } from '$lib/trajectory/parse'
 
 export * from './decompress'
 export * from './export'
+export * from './fetch'
 
 // Handle URL-based file drop data by fetching content lazily
 export async function handle_url_drop(
