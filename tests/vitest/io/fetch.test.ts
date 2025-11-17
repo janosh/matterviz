@@ -14,7 +14,7 @@ describe(`to_query`, () => {
     [{ zero: 0, one: 1 }, `zero=0&one=1`, `includes zero values`],
     [{ empty: ``, zero: 0, undef: undefined }, `zero=0`, `mixed empty/zero/undefined`],
     [{ a: `1`, b: `2`, c: `3` }, `a=1&b=2&c=3`, `maintains order`],
-  ])(`%s -> %s (%s)`, (input, expected) => {
+  ])(`%s -> %s (%s)`, (input, expected, _description) => {
     expect(to_query(input)).toBe(expected)
   })
 
@@ -22,5 +22,8 @@ describe(`to_query`, () => {
     const result = to_query({ emoji: `🎉`, text: `こんにちは` })
     expect(result).toContain(`emoji`)
     expect(result).toContain(`text`)
+    // Verify values are properly encoded
+    expect(decodeURIComponent(result)).toContain(`🎉`)
+    expect(decodeURIComponent(result)).toContain(`こんにちは`)
   })
 })

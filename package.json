@@ -147,6 +147,10 @@
       "types": "./dist/plot/index.d.ts",
       "default": "./dist/plot/index.js"
     },
+    "./rdf": {
+      "types": "./dist/rdf/index.d.ts",
+      "default": "./dist/rdf/index.js"
+    },
     "./structure": {
       "types": "./dist/structure/index.d.ts",
       "default": "./dist/structure/index.js"
@@ -167,17 +171,13 @@
       "types": "./dist/time.d.ts",
       "default": "./dist/time.js"
     },
-    "./utils": {
-      "types": "./dist/utils.d.ts",
-      "default": "./dist/utils.js"
-    },
     "./trajectory": {
       "types": "./dist/trajectory/index.d.ts",
       "default": "./dist/trajectory/index.js"
     },
-    "./rdf": {
-      "types": "./dist/rdf/index.d.ts",
-      "default": "./dist/rdf/index.js"
+    "./utils": {
+      "types": "./dist/utils.d.ts",
+      "default": "./dist/utils.js"
     },
     "./xrd": {
       "types": "./dist/xrd/index.d.ts",

@@ -158,11 +158,9 @@ test(`dot function comprehensive`, () => {
   const empty_matrix: number[][] = []
   const undefined_cols_matrix = [[1, 2], undefined, [3, 4]]
 
-  // @ts-expect-error bad input, checking for expected error
   expect(() => math.dot(matrix1, jagged_matrix)).toThrow(
     `Second matrix must be rectangular`,
   )
-  // @ts-expect-error bad input, checking for expected error
   expect(() => math.dot(matrix1, empty_matrix)).toThrow(
     `Number of columns in matrix must be equal to number of elements in vector`,
   )
@@ -1361,14 +1359,24 @@ describe(`det_4x4`, () => {
     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, `zero`],
     [[1e10, 0, 0, 0], [0, 1e10, 0, 0], [0, 0, 1e10, 0], [0, 0, 0, 1e10], 1e40, `large`],
   ])(`%s`, (r0, r1, r2, r3, expected) => {
-    expect(math.det_4x4([r0, r1, r2, r3] as number[][])).toBeCloseTo(expected, -30)
+    expect(math.det_4x4([r0, r1, r2, r3] as math.Matrix4x4)).toBeCloseTo(expected, -30)
   })
 
   test(`barycentric coordinates (tetrahedron unit test)`, () => {
-    const tet_matrix = [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 1, 1, 1]]
+    const tet_matrix: math.Matrix4x4 = [
+      [0, 1, 0, 0],
+      [0, 0, 1, 0],
+      [0, 0, 0, 1],
+      [1, 1, 1, 1],
+    ]
     expect(math.det_4x4(tet_matrix)).toBeCloseTo(-1, 10)
 
-    const bary_matrix = [[0.25, 1, 0, 0], [0.25, 0, 1, 0], [0.25, 0, 0, 1], [1, 1, 1, 1]]
+    const bary_matrix: math.Matrix4x4 = [
+      [0.25, 1, 0, 0],
+      [0.25, 0, 1, 0],
+      [0.25, 0, 0, 1],
+      [1, 1, 1, 1],
+    ]
     expect(math.det_4x4(bary_matrix) / math.det_4x4(tet_matrix)).toBeCloseTo(0.25, 10)
   })
 })

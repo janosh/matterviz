@@ -1,4 +1,4 @@
-import { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3 } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import {
   apply_symmetry_operations,

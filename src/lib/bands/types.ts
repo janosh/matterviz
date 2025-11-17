@@ -1,6 +1,6 @@
 // TypeScript type definitions for band structures and density of states
 
-import { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3 } from '$lib/math'
 import type { InternalPoint } from '$lib/plot'
 
 export type BandStructureType = `phonon` | `electronic`

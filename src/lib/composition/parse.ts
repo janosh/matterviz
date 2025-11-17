@@ -117,15 +117,18 @@ export const fractional_composition = (
   composition: CompositionType,
   by_weight = false,
 ): CompositionType => {
+  // Filter out zero/negative amounts for both branches
+  const filtered = Object.fromEntries(
+    Object.entries(composition).filter(([, amount]) => amount > 0),
+  )
+
   if (by_weight) {
     const element_weights = Object.fromEntries(
-      Object.entries(composition)
-        .filter(([, amount]) => amount > 0)
-        .map(([element, amount]) => {
-          const atomic_mass = ATOMIC_WEIGHTS.get(element as ElementSymbol)
-          if (!atomic_mass) throw new Error(`Unknown element: ${element}`)
-          return [element, amount * atomic_mass]
-        }),
+      Object.entries(filtered).map(([element, amount]) => {
+        const atomic_mass = ATOMIC_WEIGHTS.get(element as ElementSymbol)
+        if (!atomic_mass) throw new Error(`Unknown element: ${element}`)
+        return [element, amount * atomic_mass]
+      }),
     )
 
     const total_weight = Object.values(element_weights).reduce((sum, wt) => sum + wt, 0)
@@ -139,13 +142,11 @@ export const fractional_composition = (
     )
   }
 
-  const total = count_atoms_in_composition(composition)
+  const total = count_atoms_in_composition(filtered)
   if (total === 0) return {}
 
   return Object.fromEntries(
-    Object.entries(composition).map((
-      [element, amount],
-    ) => [element, (amount ?? 0) / total]),
+    Object.entries(filtered).map(([element, amount]) => [element, amount / total]),
   )
 }
 
@@ -398,20 +399,28 @@ export function format_oxi_state(oxidation?: number): string {
 }
 
 // Extract element symbols from a chemical formula.
-// "NbZr2Nb" -> ["Nb", "Zr"] (default: unique, sorted)
-// "NbZr2Nb", {unique: false} -> ["Nb", "Zr", "Nb"] (preserves duplicates & order)
-// "ZrNb", {sorted: false} -> ["Zr", "Nb"] (unique, unsorted, order of appearance)
+// Default (unique=true, sorted=true): "NbZr2Nb" -> ["Nb", "Zr"]
+// unique=false: Fast token extraction preserving order, no validation or parentheses expansion
+//   "NbZr2Nb" -> ["Nb", "Zr", "Nb"], "Fe2(SO4)3" -> ["Fe", "S", "O"]
+// sorted=false: Preserves order of first appearance (only applies when unique=true)
+//   "ZrNb" -> ["Zr", "Nb"]
 export const extract_formula_elements = (
   formula: string,
   { unique = true, sorted = true }: { unique?: boolean; sorted?: boolean } = {},
 ): ElementSymbol[] => {
-  if (!unique) return (formula.match(/[A-Z][a-z]?/g) || []) as ElementSymbol[]
+  if (!unique) {
+    // Fast path: regex token extraction without validation/expansion
+    // Does NOT expand parentheses or validate against ELEM_SYMBOLS
+    return (formula.match(/[A-Z][a-z]?/g) || []) as ElementSymbol[]
+  }
   const symbols = Object.keys(parse_formula(formula)) as ElementSymbol[]
   return sorted ? symbols.sort() : symbols
 }
 
-// Generate all sub-chemical systems from a formula, composition, or element list.
-// ["Mo", "Sc", "B"] → ["B", "Mo", "Sc", "B-Mo", "B-Sc", "Mo-Sc", "B-Mo-Sc"]
+// Generate all non-empty subsets of a chemical system as hyphenated strings.
+// Input: formula string, composition object, or element symbol array
+// Output: All subsets sorted alphabetically: ["B", "Mo", "Sc", "B-Mo", "B-Sc", "Mo-Sc", "B-Mo-Sc"]
+// Complexity: O(2^n) where n = number of unique elements (fine for typical ~1-5 elements)
 export function generate_chem_sys_subspaces(
   input: string | CompositionType | ElementSymbol[],
 ): string[] {
@@ -424,7 +433,14 @@ export function generate_chem_sys_subspaces(
       if (!ELEM_SYMBOLS.includes(elem)) throw new Error(`Invalid element symbol: ${elem}`)
     }
     elements = uniq
-  } else elements = Object.keys(input) as ElementSymbol[]
+  } else {
+    // Validate composition keys against ELEM_SYMBOLS
+    const keys = Object.keys(input) as ElementSymbol[]
+    for (const elem of keys) {
+      if (!ELEM_SYMBOLS.includes(elem)) throw new Error(`Invalid element symbol: ${elem}`)
+    }
+    elements = keys
+  }
 
   const sorted = [...elements].sort()
   const subspaces: string[] = []
@@ -443,6 +459,7 @@ export function generate_chem_sys_subspaces(
 // Normalize CSV of element symbols to valid symbols in periodic order.
 // Filters invalid symbols, removes duplicates, trims whitespace.
 // Example: "Zr, Nb, InvalidElement, H" -> ["H", "Nb", "Zr"]
+// Note: Matching is case-sensitive. Use all_symbols to filter against a subset.
 export const normalize_element_symbols = <T extends string>(
   csv: string,
   all_symbols?: T[],

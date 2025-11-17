@@ -188,10 +188,11 @@ export function dot(
   // The first input is a matrix and the second is a vector
   if (Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
     const mat1 = vec1 as unknown as number[][]
-    if (mat1[0].length !== vec2.length) {
+    const v2 = vec2 as number[]
+    if (mat1[0].length !== v2.length) {
       throw `Number of columns in matrix must be equal to number of elements in vector`
     }
-    return mat1.map((row) => row.reduce((sum, val, index) => sum + val * vec2[index], 0))
+    return mat1.map((row) => row.reduce((sum, val, idx) => sum + val * v2[idx], 0))
   }
 
   // Both inputs are matrices
