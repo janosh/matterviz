@@ -1,5 +1,8 @@
 import { PieChart } from '$lib/composition'
-import { fractional_composition, get_total_atoms } from '$lib/composition/parse'
+import {
+  count_atoms_in_composition,
+  fractional_composition,
+} from '$lib/composition/parse'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
@@ -65,7 +68,7 @@ describe(`PieChart data processing`, () => {
   ])(
     `processes composition correctly`,
     (composition, expected_fractions, expected_total) => {
-      expect(get_total_atoms(composition)).toBe(expected_total)
+      expect(count_atoms_in_composition(composition)).toBe(expected_total)
 
       const fractions = fractional_composition(composition)
       if (Object.keys(expected_fractions).length === 0) {

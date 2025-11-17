@@ -146,7 +146,7 @@ export const fractional_composition = (
 }
 
 // Get total number of atoms
-export const get_total_atoms = (composition: CompositionType): number =>
+export const count_atoms_in_composition = (composition: CompositionType): number =>
   Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
 
 // Parse composition from various input types
@@ -404,46 +404,58 @@ export function format_oxi_state(oxidation?: number): string {
   return `${sign}${Math.abs(oxidation)}`
 }
 
-// Extract unique element symbols from a formula, sorted alphabetically.
-// Example: "NbZr2Nb" -> ["Nb", "Zr"]
-export const extract_uniq_elements = (formula: string): ElementSymbol[] =>
-  ([...new Set(Object.keys(parse_formula(formula)))] as ElementSymbol[]).sort()
+// Extract element symbols from a chemical formula.
+// "NbZr2Nb" -> ["Nb", "Zr"] (default: unique, sorted)
+// "NbZr2Nb", {unique: false} -> ["Nb", "Zr", "Nb"] (preserves duplicates & order)
+// "ZrNb", {sorted: false} -> ["Zr", "Nb"] (unique, unsorted, order of appearance)
+export const extract_formula_elements = (
+  formula: string,
+  { unique = true, sorted = true }: { unique?: boolean; sorted?: boolean } = {},
+): ElementSymbol[] => {
+  if (!unique) return (formula.match(/[A-Z][a-z]?/g) || []) as ElementSymbol[]
+  const symbols = Object.keys(parse_formula(formula)) as ElementSymbol[]
+  return sorted ? symbols.sort() : symbols
+}
 
-// Generate all sub-chemical systems (chemsys) from a list of elements.
-// Example: ["Mo", "Sc", "B"] → ["B", "Mo", "Sc", "B-Mo", "B-Sc", "Mo-Sc", "B-Mo-Sc"]
-// Can accept a formula string, composition object, or array of element symbols.
+// Generate all sub-chemical systems from a formula, composition, or element list.
+// ["Mo", "Sc", "B"] → ["B", "Mo", "Sc", "B-Mo", "B-Sc", "Mo-Sc", "B-Mo-Sc"]
 export function generate_chem_sys_subspaces(
   input: string | CompositionType | ElementSymbol[],
 ): string[] {
   let elements: ElementSymbol[]
 
   if (typeof input === `string`) {
-    // If input is a formula string, extract elements
-    elements = extract_uniq_elements(input)
+    elements = extract_formula_elements(input)
   } else if (Array.isArray(input)) {
-    // If input is an array, deduplicate and validate each element symbol
-    const unique_elements = [...new Set(input)]
-    for (const element of unique_elements) {
-      if (!ELEM_SYMBOLS.includes(element)) {
-        throw new Error(`Invalid element symbol: ${element}`)
-      }
+    const unique = [...new Set(input)]
+    for (const elem of unique) {
+      if (!ELEM_SYMBOLS.includes(elem)) throw new Error(`Invalid element symbol: ${elem}`)
     }
-    elements = unique_elements
+    elements = unique
   } else {
-    // If input is a composition object, extract keys (naturally unique)
     elements = Object.keys(input) as ElementSymbol[]
   }
 
   const sorted = [...elements].sort()
   const subspaces: string[] = []
-  const num_elems = sorted.length
 
-  for (let mask = 1; mask < (1 << num_elems); mask++) {
+  for (let mask = 1; mask < (1 << sorted.length); mask++) {
     const subset: string[] = []
-    for (let idx = 0; idx < num_elems; idx++) {
+    for (let idx = 0; idx < sorted.length; idx++) {
       if (mask & (1 << idx)) subset.push(sorted[idx])
     }
     subspaces.push(subset.join(`-`))
   }
   return subspaces
+}
+
+// Normalize CSV of element symbols to valid symbols in periodic order.
+// Filters invalid symbols, removes duplicates, trims whitespace.
+// Example: "Zr, Nb, InvalidElement, H" -> ["H", "Nb", "Zr"]
+export const normalize_element_symbols = (
+  csv: string,
+  all_symbols?: ElementSymbol[],
+): ElementSymbol[] => {
+  const input_set = new Set(csv.split(`,`).map((sym) => sym.trim()).filter(Boolean))
+  return (all_symbols ?? ELEM_SYMBOLS).filter((sym) => input_set.has(sym))
 }

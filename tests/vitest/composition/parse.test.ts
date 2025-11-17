@@ -3,13 +3,14 @@ import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition'
 import {
   atomic_num_to_symbols,
   atomic_symbol_to_num,
-  extract_uniq_elements,
+  count_atoms_in_composition,
+  extract_formula_elements,
   fractional_composition,
   generate_chem_sys_subspaces,
   get_alphabetical_formula,
   get_electro_neg_formula,
-  get_total_atoms,
   normalize_composition,
+  normalize_element_symbols,
   parse_composition,
   parse_formula,
 } from '$lib/composition/parse'
@@ -243,7 +244,7 @@ describe(`fractional_composition`, () => {
   })
 })
 
-describe(`get_total_atoms`, () => {
+describe(`count_atoms_in_composition`, () => {
   test.each([
     [{ H: 2, O: 1 }, 3, `water`],
     [{ C: 6, H: 12, O: 6 }, 24, `glucose`],
@@ -256,7 +257,7 @@ describe(`get_total_atoms`, () => {
   ])(
     `should calculate total atoms for %s as %i (%s)`,
     (input, expected, _description) => {
-      expect(get_total_atoms(input)).toBe(expected)
+      expect(count_atoms_in_composition(input)).toBe(expected)
     },
   )
 })
@@ -333,7 +334,7 @@ describe(`edge cases and error handling`, () => {
       if (symbol) large_composition[symbol] = idx
     }
 
-    const total = get_total_atoms(large_composition)
+    const total = count_atoms_in_composition(large_composition)
     expect(total).toBeGreaterThan(1000)
 
     const fractions = fractional_composition(large_composition)
@@ -524,53 +525,109 @@ describe(`formula formatting functions`, () => {
   )
 })
 
-describe(`extract_uniq_elements`, () => {
-  test.each([
-    [`H2O`, [`H`, `O`], `water`],
-    [`Fe2O3`, [`Fe`, `O`], `iron oxide`],
-    [`NaCl`, [`Cl`, `Na`], `salt - alphabetically sorted`],
-    [`CaCO3`, [`C`, `Ca`, `O`], `calcium carbonate`],
-    [`NbZr2Nb`, [`Nb`, `Zr`], `duplicate elements removed`],
-    [`H2SO4`, [`H`, `O`, `S`], `sulfuric acid`],
-    [`Ca(OH)2`, [`Ca`, `H`, `O`], `with parentheses`],
-    [`Mg(NO3)2`, [`Mg`, `N`, `O`], `with nested parentheses`],
-    [`Al2(SO4)3`, [`Al`, `O`, `S`], `complex formula`],
-    [`C8H10N4O2`, [`C`, `H`, `N`, `O`], `caffeine`],
-    [`H`, [`H`], `single element`],
-    [`Au`, [`Au`], `single gold atom`],
-    [`C60`, [`C`], `fullerene`],
-    [``, [], `empty formula`],
-    [`LiFePO4`, [`Fe`, `Li`, `O`, `P`], `lithium iron phosphate battery`],
-    [`Ca3(PO4)2`, [`Ca`, `O`, `P`], `calcium phosphate`],
-  ])(`should extract unique elements from %s (%s)`, (formula, expected, _description) => {
-    const result = extract_uniq_elements(formula)
-    expect(result.sort()).toEqual(expected.sort())
+describe(`extract_formula_elements`, () => {
+  describe(`default behavior (unique, sorted)`, () => {
+    test.each([
+      [`H2O`, [`H`, `O`], `water`],
+      [`Fe2O3`, [`Fe`, `O`], `iron oxide`],
+      [`NaCl`, [`Cl`, `Na`], `salt - alphabetically sorted`],
+      [`CaCO3`, [`C`, `Ca`, `O`], `calcium carbonate`],
+      [`NbZr2Nb`, [`Nb`, `Zr`], `duplicate elements removed`],
+      [`H2SO4`, [`H`, `O`, `S`], `sulfuric acid`],
+      [`Ca(OH)2`, [`Ca`, `H`, `O`], `with parentheses`],
+      [`Mg(NO3)2`, [`Mg`, `N`, `O`], `with nested parentheses`],
+      [`Al2(SO4)3`, [`Al`, `O`, `S`], `complex formula`],
+      [`C8H10N4O2`, [`C`, `H`, `N`, `O`], `caffeine`],
+      [`H`, [`H`], `single element`],
+      [`Au`, [`Au`], `single gold atom`],
+      [`C60`, [`C`], `fullerene`],
+      [``, [], `empty formula`],
+      [`LiFePO4`, [`Fe`, `Li`, `O`, `P`], `lithium iron phosphate battery`],
+      [`Ca3(PO4)2`, [`Ca`, `O`, `P`], `calcium phosphate`],
+    ])(
+      `should extract unique sorted elements from %s (%s)`,
+      (formula, expected, _description) => {
+        const result = extract_formula_elements(formula)
+        expect(result).toEqual(expected.sort())
+      },
+    )
+
+    test(`should handle whitespace in formulas`, () => {
+      expect(extract_formula_elements(` H2 O `)).toEqual([`H`, `O`])
+      expect(extract_formula_elements(`Ca (OH) 2`)).toEqual([`Ca`, `H`, `O`])
+    })
+
+    test(`should throw error for invalid element symbols`, () => {
+      expect(() => extract_formula_elements(`Xx2`)).toThrow(`Invalid element symbol: Xx`)
+      expect(() => extract_formula_elements(`ABC`)).toThrow(`Invalid element symbol: A`)
+    })
+
+    test(`should return sorted array by default`, () => {
+      const result = extract_formula_elements(`ZrNbHO`)
+      expect(result).toEqual([`H`, `Nb`, `O`, `Zr`])
+    })
   })
 
-  test(`should handle whitespace in formulas`, () => {
-    expect(extract_uniq_elements(` H2 O `).sort()).toEqual([`H`, `O`])
-    expect(extract_uniq_elements(`Ca (OH) 2`).sort()).toEqual([`Ca`, `H`, `O`])
+  describe(`with unique=false (preserves duplicates and order)`, () => {
+    test.each([
+      [`NbZr2Nb`, [`Nb`, `Zr`, `Nb`], `preserves duplicate Nb`],
+      [`H2O`, [`H`, `O`], `water`],
+      [`Fe2O3`, [`Fe`, `O`], `iron oxide`],
+      [`ZrNb`, [`Zr`, `Nb`], `preserves order of appearance`],
+      [`CH3CH2OH`, [`C`, `H`, `C`, `H`, `O`, `H`], `all duplicates preserved`],
+      [`CaCO3`, [`Ca`, `C`, `O`], `no duplicates in this formula`],
+    ])(
+      `should extract elements with duplicates from %s`,
+      (formula, expected, _description) => {
+        const result = extract_formula_elements(formula, { unique: false })
+        expect(result).toEqual(expected)
+      },
+    )
+
+    test(`should preserve order for simple formulas`, () => {
+      expect(extract_formula_elements(`ZrNbTi`, { unique: false })).toEqual([
+        `Zr`,
+        `Nb`,
+        `Ti`,
+      ])
+    })
+
+    test(`should handle empty formula`, () => {
+      expect(extract_formula_elements(``, { unique: false })).toEqual([])
+    })
   })
 
-  test(`should throw error for invalid element symbols`, () => {
-    expect(() => extract_uniq_elements(`Xx2`)).toThrow(`Invalid element symbol: Xx`)
-    expect(() => extract_uniq_elements(`ABC`)).toThrow(`Invalid element symbol: A`)
+  describe(`with sorted=false (preserves order of first appearance)`, () => {
+    test.each([
+      [`ZrNb`, [`Zr`, `Nb`], `preserves Zr before Nb`],
+      [`NbZr`, [`Nb`, `Zr`], `preserves Nb before Zr`],
+      [`H2O`, [`H`, `O`], `water - H before O`],
+      [`CaCO3`, [`Ca`, `C`, `O`], `preserves Ca, C, O order`],
+      [`NbZr2Nb`, [`Nb`, `Zr`], `first occurrence order`],
+    ])(
+      `should extract unsorted unique elements from %s`,
+      (formula, expected, _description) => {
+        const result = extract_formula_elements(formula, { sorted: false })
+        expect(result).toEqual(expected)
+      },
+    )
+
+    test(`should be different from sorted for some inputs`, () => {
+      const sorted_result = extract_formula_elements(`ZrNb`)
+      const unsorted_result = extract_formula_elements(`ZrNb`, { sorted: false })
+      expect(sorted_result).toEqual([`Nb`, `Zr`])
+      expect(unsorted_result).toEqual([`Zr`, `Nb`])
+    })
   })
 
-  test(`should handle formulas with repeated elements in different positions`, () => {
-    const result = extract_uniq_elements(`CH3CH2OH`)
-    expect(result.sort()).toEqual([`C`, `H`, `O`])
-  })
-
-  test(`should handle complex organic molecules`, () => {
-    const result = extract_uniq_elements(`C6H5CH2CH2OH`)
-    expect(result.sort()).toEqual([`C`, `H`, `O`])
-  })
-
-  test(`should return sorted array`, () => {
-    const result = extract_uniq_elements(`ZnCuFeMgCaH2O`)
-    // Result should be in alphabetical order
-    expect(result).toEqual([`Ca`, `Cu`, `Fe`, `H`, `Mg`, `O`, `Zn`])
+  describe(`option combinations`, () => {
+    test(`unique=false ignores sorted parameter`, () => {
+      // When unique=false, we preserve duplicates and order, sorted param doesn't matter
+      const result1 = extract_formula_elements(`NbZrNb`, { unique: false, sorted: true })
+      const result2 = extract_formula_elements(`NbZrNb`, { unique: false, sorted: false })
+      expect(result1).toEqual([`Nb`, `Zr`, `Nb`])
+      expect(result2).toEqual([`Nb`, `Zr`, `Nb`])
+    })
   })
 })
 
@@ -878,5 +935,80 @@ describe(`generate_chem_sys_subspaces`, () => {
       expect(hea).toContain(`Co-Cr-Fe-Ni`)
       expect(hea).toContain(`Cr-Fe-Mn-Ni`)
     })
+  })
+})
+
+describe(`normalize_element_symbols`, () => {
+  test.each([
+    {
+      input: ``,
+      expected: [],
+      description: `returns empty array for empty string`,
+    },
+    {
+      input: `  ,  ,  `,
+      expected: [],
+      description: `returns empty array for whitespace-only string`,
+    },
+    {
+      input: `H, O, N`,
+      expected: [`H`, `N`, `O`],
+      description: `returns elements in periodic table order`,
+    },
+    {
+      input: `Zr, Nb, H, O`,
+      expected: [`H`, `O`, `Zr`, `Nb`],
+      description: `sorts complex input by periodic order`,
+    },
+    {
+      input: `O, H, N`,
+      expected: [`H`, `N`, `O`],
+      description: `reorders elements regardless of input order`,
+    },
+    {
+      input: `H, InvalidElement, O, BadSymbol`,
+      expected: [`H`, `O`],
+      description: `filters out invalid element symbols`,
+    },
+    {
+      input: `H, Xx, O`,
+      expected: [`H`, `O`],
+      description: `discards non-existent symbols`,
+    },
+    {
+      input: `  H  ,  O  ,  N  `,
+      expected: [`H`, `N`, `O`],
+      description: `trims whitespace around symbols`,
+    },
+    {
+      input: `H,O,N`,
+      expected: [`H`, `N`, `O`],
+      description: `handles CSV without spaces`,
+    },
+    {
+      input: `H, O, H, N, O`,
+      expected: [`H`, `N`, `O`],
+      description: `removes duplicate symbols`,
+    },
+    {
+      input: `H, H, O`,
+      expected: [`H`, `O`],
+      description: `deduplicates adjacent symbols`,
+    },
+  ])(`$description`, ({ input, expected }) => {
+    const result = normalize_element_symbols(input)
+    expect(result).toEqual(expected)
+  })
+
+  test(`works with custom symbol list`, () => {
+    const custom_symbols: ElementSymbol[] = [`Fe`, `Co`, `Ni`]
+    const result = normalize_element_symbols(`Ni, Fe, Cu`, custom_symbols)
+    expect(result).toEqual([`Fe`, `Ni`]) // Cu not in custom list
+  })
+
+  test(`accepts non-ElementSymbol strings in custom list`, () => {
+    const custom_symbols = [`A`, `B`, `C`]
+    const result = normalize_element_symbols(`B, C`, custom_symbols as ElementSymbol[])
+    expect(result).toEqual([`B`, `C`])
   })
 })
