@@ -23,7 +23,7 @@ const make_structure = (
   lattice_params = { a: 5, b: 5, c: 5, alpha: 90, beta: 90, gamma: 90, volume: 125 },
 ): PymatgenStructure => ({
   lattice: {
-    matrix: lattice_matrix as [Vec3, Vec3, Vec3],
+    matrix: lattice_matrix,
     pbc: [true, true, true],
     ...lattice_params,
   },
