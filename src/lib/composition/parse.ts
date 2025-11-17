@@ -109,6 +109,10 @@ export const normalize_composition = (
   return normalized
 }
 
+// Get total number of atoms
+export const count_atoms_in_composition = (composition: CompositionType): number =>
+  Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
+
 export const fractional_composition = (
   composition: CompositionType,
   by_weight = false,
@@ -135,7 +139,7 @@ export const fractional_composition = (
     )
   }
 
-  const total = Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
+  const total = count_atoms_in_composition(composition)
   if (total === 0) return {}
 
   return Object.fromEntries(
@@ -144,10 +148,6 @@ export const fractional_composition = (
     ) => [element, (amount ?? 0) / total]),
   )
 }
-
-// Get total number of atoms
-export const count_atoms_in_composition = (composition: CompositionType): number =>
-  Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
 
 // Parse composition from various input types
 export const parse_composition = (
@@ -424,22 +424,20 @@ export function generate_chem_sys_subspaces(
 ): string[] {
   let elements: ElementSymbol[]
 
-  if (typeof input === `string`) {
-    elements = extract_formula_elements(input)
-  } else if (Array.isArray(input)) {
+  if (typeof input === `string`) elements = extract_formula_elements(input)
+  else if (Array.isArray(input)) {
     const unique = [...new Set(input)]
     for (const elem of unique) {
       if (!ELEM_SYMBOLS.includes(elem)) throw new Error(`Invalid element symbol: ${elem}`)
     }
     elements = unique
-  } else {
-    elements = Object.keys(input) as ElementSymbol[]
-  }
+  } else elements = Object.keys(input) as ElementSymbol[]
 
   const sorted = [...elements].sort()
   const subspaces: string[] = []
+  const subset_count = 2 ** sorted.length
 
-  for (let mask = 1; mask < (1 << sorted.length); mask++) {
+  for (let mask = 1; mask < subset_count; mask++) {
     const subset: string[] = []
     for (let idx = 0; idx < sorted.length; idx++) {
       if (mask & (1 << idx)) subset.push(sorted[idx])
@@ -452,10 +450,12 @@ export function generate_chem_sys_subspaces(
 // Normalize CSV of element symbols to valid symbols in periodic order.
 // Filters invalid symbols, removes duplicates, trims whitespace.
 // Example: "Zr, Nb, InvalidElement, H" -> ["H", "Nb", "Zr"]
-export const normalize_element_symbols = (
+export const normalize_element_symbols = <T extends string>(
   csv: string,
-  all_symbols?: ElementSymbol[],
-): ElementSymbol[] => {
+  all_symbols?: T[],
+): T[] => {
   const input_set = new Set(csv.split(`,`).map((sym) => sym.trim()).filter(Boolean))
-  return (all_symbols ?? ELEM_SYMBOLS).filter((sym) => input_set.has(sym))
+  return (all_symbols ?? (ELEM_SYMBOLS as unknown as T[])).filter((sym) =>
+    input_set.has(sym)
+  )
 }

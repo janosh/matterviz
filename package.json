@@ -163,6 +163,14 @@
       "types": "./dist/theme/themes.d.ts",
       "default": "./dist/theme/themes.js"
     },
+    "./time": {
+      "types": "./dist/time.d.ts",
+      "default": "./dist/time.js"
+    },
+    "./utils": {
+      "types": "./dist/utils.d.ts",
+      "default": "./dist/utils.js"
+    },
     "./trajectory": {
       "types": "./dist/trajectory/index.d.ts",
       "default": "./dist/trajectory/index.js"
