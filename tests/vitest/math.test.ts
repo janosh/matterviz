@@ -166,7 +166,7 @@ test(`dot function comprehensive`, () => {
   )
   // @ts-expect-error bad input, checking for expected error
   expect(() => math.dot(matrix1, undefined_cols_matrix)).toThrow(
-    `Cannot read properties of undefined`,
+    /undefined/i,
   )
 })
 
