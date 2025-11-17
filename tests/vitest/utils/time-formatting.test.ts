@@ -36,6 +36,17 @@ describe(`format_utc_time`, () => {
   ])(`$description`, ({ input, expected }) => {
     expect(format_utc_time(input as Date | string | undefined)).toBe(expected)
   })
+
+  test(`removes milliseconds from output`, () => {
+    const result = format_utc_time(new Date(`2024-01-15T14:30:45.999Z`))
+    expect(result).not.toContain(`.`)
+    expect(result).toBe(`2024-01-15 14:30:45 UTC`)
+  })
+
+  test(`matches expected format pattern`, () => {
+    const result = format_utc_time(new Date(`2024-01-15T14:30:45.123Z`))
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$/)
+  })
 })
 
 describe(`format_relative_time`, () => {
@@ -103,6 +114,12 @@ describe(`format_relative_time`, () => {
     ])(`$description`, ({ date, expected }) => {
       expect(format_relative_time(date, reference)).toBe(expected)
     })
+
+    test(`handles UTC timestamps with specific times`, () => {
+      const ref = new Date(`2025-11-04T22:35:12.178Z`)
+      const past = new Date(`2025-11-04T14:35:12.178Z`) // 8 hours earlier
+      expect(format_relative_time(past, ref)).toBe(`8 hours ago`)
+    })
   })
 
   describe(`future dates`, () => {
@@ -119,6 +136,13 @@ describe(`format_relative_time`, () => {
       const result = format_relative_time(date, reference)
       expect(result).toContain(`UTC`)
       expect(result).not.toContain(`ago`)
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$/)
+    })
+
+    test(`displays specific future date correctly`, () => {
+      const ref = new Date(`2025-11-04T16:00:00Z`)
+      const future = new Date(`2025-11-04T22:35:12Z`)
+      expect(format_relative_time(future, ref)).toBe(`2025-11-04 22:35:12 UTC`)
     })
   })
 
