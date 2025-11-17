@@ -179,6 +179,11 @@ describe(`format_relative_time`, () => {
       expect(format_relative_time(input as string | undefined, reference)).toBe(expected)
     })
 
+    test(`returns N/A for invalid reference_date`, () => {
+      const valid_date = new Date(`2024-01-15T11:00:00.000Z`)
+      expect(format_relative_time(valid_date, `invalid-date`)).toBe(`N/A`)
+    })
+
     test(`uses current time when no reference provided`, () => {
       const recent = new Date(Date.now() - 5 * 60 * 1000) // 5 minutes ago
       const result = format_relative_time(recent)

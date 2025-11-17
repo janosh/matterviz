@@ -11,6 +11,7 @@ export const format_relative_time = (
   const now = reference_date
     ? typeof reference_date === `string` ? new Date(reference_date) : reference_date
     : new Date()
+  if (isNaN(now.getTime())) return `N/A`
 
   const diff_ms = now.getTime() - timestamp.getTime()
   if (diff_ms < 0) return format_utc_time(timestamp)
