@@ -48,25 +48,6 @@ export type PymatgenLattice = {
 export type PymatgenMolecule = { sites: Site[]; charge?: number; id?: string }
 export type PymatgenStructure = PymatgenMolecule & { lattice: PymatgenLattice }
 
-export type Edge = { to_jimage: Vec3; id: number; key: number }
-
-export type Graph = {
-  directed: boolean
-  multigraph: boolean
-  graph: [
-    [`edge_weight_name`, null] | [`edge_weight_units`, null] | [`name`, string],
-  ]
-  nodes: { id: number }[]
-  adjacency: Edge[][]
-}
-
-export type StructureGraph = {
-  '@module': string
-  '@class': string
-  structure: PymatgenStructure
-  graphs: Graph[]
-}
-
 // Bond pair with position vectors, site indices, bond length, strength score, and transformation matrix
 export type BondPair = {
   pos_1: Vec3
@@ -79,10 +60,7 @@ export type BondPair = {
 }
 
 export type IdStructure = PymatgenStructure & { id: string }
-export type StructureWithGraph = IdStructure & { graph: Graph }
-
 export type AnyStructure = PymatgenStructure | PymatgenMolecule
-export type AnyStructureGraph = AnyStructure & { graph: Graph }
 
 export function get_elem_amounts(structure: AnyStructure) {
   const elements: CompositionType = {}

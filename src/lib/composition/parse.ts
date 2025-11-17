@@ -426,11 +426,11 @@ export function generate_chem_sys_subspaces(
 
   if (typeof input === `string`) elements = extract_formula_elements(input)
   else if (Array.isArray(input)) {
-    const unique = [...new Set(input)]
-    for (const elem of unique) {
+    const uniq = [...new Set(input)]
+    for (const elem of uniq) {
       if (!ELEM_SYMBOLS.includes(elem)) throw new Error(`Invalid element symbol: ${elem}`)
     }
-    elements = unique
+    elements = uniq
   } else elements = Object.keys(input) as ElementSymbol[]
 
   const sorted = [...elements].sort()

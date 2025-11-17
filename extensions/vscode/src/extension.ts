@@ -2,7 +2,7 @@ import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
 import { is_structure_file } from '$lib/structure/parse'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
-import type { FrameLoader } from '$lib/trajectory/index'
+import type { FrameLoader } from '$lib/trajectory'
 import {
   create_frame_loader,
   is_trajectory_file,
@@ -340,7 +340,7 @@ export const create_html = (
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' 'unsafe-eval' 'wasm-unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script nonce="${nonce}">
-      window.mattervizData=${JSON.stringify(webview_data)};
+      window.matterviz_data=${JSON.stringify(webview_data)};
     </script>
   </head>
   <body>
