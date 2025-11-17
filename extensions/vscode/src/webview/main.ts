@@ -244,7 +244,7 @@ function request_large_file_content(
   is_compressed: boolean,
   timeout: number = 30_000, // 30 seconds
 ): Promise<
-  string | ArrayBuffer | {
+  string | {
     trajectory: TrajectoryType
     supports_streaming: boolean
     file_path: string

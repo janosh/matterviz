@@ -215,9 +215,7 @@ describe(`Theme System`, () => {
     })
 
     test(`apply_theme_to_dom handles missing global data gracefully`, () => {
-      // @ts-expect-error - setting bad types for testing
       globalThis.MATTERVIZ_THEMES = undefined
-      // @ts-expect-error - setting bad types for testing
       globalThis.MATTERVIZ_CSS_MAP = undefined
 
       expect(() => apply_theme_to_dom(`light`)).not.toThrow()

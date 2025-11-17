@@ -14,14 +14,14 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
     // Parse "2x2x2" format
     const parts = scaling.toLowerCase().split(/[x×,\s]+/).filter((p) => p.trim())
     if (parts.length === 1) {
-      const val = parseInt(parts[0], 10)
-      if (isNaN(val) || val <= 0) {
+      const val = Number(parts[0])
+      if (!Number.isInteger(val) || val <= 0) {
         throw new Error(`Invalid supercell scaling: ${scaling}`)
       }
       return [val, val, val] as Vec3
     } else if (parts.length === 3) {
-      const values = parts.map((val) => parseInt(val, 10))
-      if (values.some((val) => isNaN(val) || val <= 0)) {
+      const values = parts.map((val) => Number(val))
+      if (values.some((val) => !Number.isInteger(val) || val <= 0)) {
         throw new Error(`Invalid supercell scaling: ${scaling}`)
       }
       return values as Vec3

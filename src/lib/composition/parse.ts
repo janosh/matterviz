@@ -402,16 +402,25 @@ export function format_oxi_state(oxidation?: number): string {
 // Default (unique=true, sorted=true): "NbZr2Nb" -> ["Nb", "Zr"]
 // unique=false: Fast token extraction preserving order, no validation or parentheses expansion
 //   "NbZr2Nb" -> ["Nb", "Zr", "Nb"], "Fe2(SO4)3" -> ["Fe", "S", "O"]
+//   Returns string[] since tokens are not validated against ELEM_SYMBOLS
 // sorted=false: Preserves order of first appearance (only applies when unique=true)
 //   "ZrNb" -> ["Zr", "Nb"]
-export const extract_formula_elements = (
+export function extract_formula_elements(
+  formula: string,
+  options: { unique: false; sorted?: boolean },
+): string[]
+export function extract_formula_elements(
+  formula: string,
+  options?: { unique?: true; sorted?: boolean },
+): ElementSymbol[]
+export function extract_formula_elements(
   formula: string,
   { unique = true, sorted = true }: { unique?: boolean; sorted?: boolean } = {},
-): ElementSymbol[] => {
+): ElementSymbol[] | string[] {
   if (!unique) {
     // Fast path: regex token extraction without validation/expansion
     // Does NOT expand parentheses or validate against ELEM_SYMBOLS
-    return (formula.match(/[A-Z][a-z]?/g) || []) as ElementSymbol[]
+    return formula.match(/[A-Z][a-z]?/g) || []
   }
   const symbols = Object.keys(parse_formula(formula)) as ElementSymbol[]
   return sorted ? symbols.sort() : symbols

@@ -113,7 +113,7 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
     TRAJ_FALLBACK_EXTENSIONS_REGEX.test(base_name)
 }
 
-// Cache for optimization
+// Cache inverse matrices by original matrix reference for performance
 const matrix_cache = new WeakMap<math.Matrix3x3, math.Matrix3x3>()
 const get_inverse_matrix = (matrix: math.Matrix3x3): math.Matrix3x3 => {
   const cached = matrix_cache.get(matrix)

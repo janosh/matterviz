@@ -486,7 +486,10 @@ describe(`Export functionality`, () => {
     })
 
     it(`strips HTML tags from chemical formulas`, () => {
-      mock_get_electro_neg_formula.mockReturnValue(`Li<sub>2</sub>O`)
+      // Mock returns HTML when called without plain_text flag
+      mock_get_electro_neg_formula.mockImplementation((_struct, plain_text) =>
+        plain_text ? `Li2O` : `Li<sub>2</sub>O`
+      )
       const structure = {
         id: `lithium_oxide`,
         sites: Array(3).fill({
@@ -503,7 +506,7 @@ describe(`Export functionality`, () => {
       expect(result).not.toContain(`</sub>`)
     })
 
-    it(`sanitizes invalid filename characters and condenses underscores`, () => {
+    it(`preserves ID characters as-is and joins parts with underscores`, () => {
       mock_get_electro_neg_formula.mockReturnValue(`Li2/O`)
       const structure = {
         id: `A/B:C*D?E"FH|`,
@@ -516,7 +519,7 @@ describe(`Export functionality`, () => {
         }),
       } as AnyStructure
       const result = create_structure_filename(structure, `xyz`)
-      // Expect: no reserved chars like / : * ? " | and no HTML tags; underscores condensed
+      // Characters in ID and formula are preserved; parts joined with single underscores
       expect(result).toBe(`A/B:C*D?E"FH|_Li2/O_1sites.xyz`)
       expect(result).not.toContain(`//`)
       expect(result).not.toContain(`__`)

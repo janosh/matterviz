@@ -1359,7 +1359,7 @@ describe(`det_4x4`, () => {
     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, `zero`],
     [[1e10, 0, 0, 0], [0, 1e10, 0, 0], [0, 0, 1e10, 0], [0, 0, 0, 1e10], 1e40, `large`],
   ])(`%s`, (r0, r1, r2, r3, expected) => {
-    expect(math.det_4x4([r0, r1, r2, r3] as math.Matrix4x4)).toBeCloseTo(expected, -30)
+    expect(math.det_4x4([r0, r1, r2, r3] as math.Matrix4x4)).toBeCloseTo(expected, 10)
   })
 
   test(`barycentric coordinates (tetrahedron unit test)`, () => {
@@ -1394,9 +1394,9 @@ describe(`cross_3d`, () => {
     [[1e10, 0, 0], [0, 1e10, 0], [0, 0, 1e20], `large numbers`],
   ])(`%s`, (a, b, expected) => {
     const result = math.cross_3d(a as Vec3, b as Vec3)
-    expect(result).toEqual(
-      expected.map((val) => expect.closeTo(val, val < 1e10 ? 10 : -10)),
-    )
+    // For large values, use lower precision (fewer decimal places to check)
+    const precision = expected.some((val) => Math.abs(val) >= 1e10) ? 5 : 10
+    expect(result).toEqual(expected.map((val) => expect.closeTo(val, precision)))
   })
 
   test(`mathematical properties`, () => {

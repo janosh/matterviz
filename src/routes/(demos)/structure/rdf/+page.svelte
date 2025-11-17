@@ -50,9 +50,9 @@
       }
     }
 
-    const matrix: Matrix3x3 = [[box_size, 0, 0], [0, box_size, 0], [0, 0, box_size]]
-    const pbc: Pbc = [true, true, true]
     const lattice = {
+      matrix: [[box_size, 0, 0], [0, box_size, 0], [0, 0, box_size]] as Matrix3x3,
+      pbc: [true, true, true] as Pbc,
       a: box_size,
       b: box_size,
       c: box_size,
@@ -61,7 +61,7 @@
       gamma: 90,
       volume: box_size ** 3,
     }
-    return { matrix, lattice, pbc, sites }
+    return { lattice, sites }
   })
 </script>
 

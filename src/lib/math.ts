@@ -61,9 +61,7 @@ export function scale<T extends NdVector>(vec: T, factor: number): T {
 }
 
 export const euclidean_dist = (vec1: NdVector, vec2: NdVector): number => {
-  if (vec1.length !== vec2.length) {
-    throw new Error(`Vectors must be of same length`)
-  }
+  if (vec1.length !== vec2.length) throw `Vectors must be of same length`
   return Math.hypot(...vec1.map((x, idx) => x - vec2[idx]))
 }
 
@@ -98,7 +96,7 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   const det = det_3x3(matrix)
 
   if (!Number.isFinite(det) || Math.abs(det) < EPS) {
-    throw new Error(`Matrix is singular or ill-conditioned; cannot invert`)
+    throw `Matrix is singular or ill-conditioned; cannot invert`
   }
 
   const inv_det = 1 / det
@@ -133,32 +131,21 @@ export function mat3x3_vec3_multiply(matrix: Matrix3x3, vector: Vec3): Vec3 {
 }
 
 export function add<T extends NdVector>(...vecs: T[]): T {
-  // add up any number of same-length vectors
-  if (vecs.length === 0) throw new Error(`Cannot add zero vectors`)
-
+  if (vecs.length === 0) throw `Cannot add zero vectors`
   const first_vec = vecs[0]
   const length = first_vec.length
-
-  // Validate all vectors have the same length
   for (const vec of vecs) {
-    if (vec.length !== length) {
-      throw new Error(`All vectors must have the same length`)
-    }
+    if (vec.length !== length) throw `All vectors must have the same length`
   }
-
   const result = new Array(length).fill(0)
   for (const vec of vecs) {
-    for (let idx = 0; idx < length; idx++) {
-      result[idx] += vec[idx]
-    }
+    for (let idx = 0; idx < length; idx++) result[idx] += vec[idx]
   }
   return result as T
 }
 
 export function subtract<T extends NdVector>(vec1: T, vec2: T): T {
-  if (vec1.length !== vec2.length) {
-    throw new Error(`Vectors must be of same length`)
-  }
+  if (vec1.length !== vec2.length) throw `Vectors must be of same length`
   return vec1.map((val, idx) => val - vec2[idx]) as T
 }
 
@@ -166,36 +153,31 @@ export function dot(
   vec1: NdVector | NdVector[],
   vec2: NdVector | NdVector[],
 ): number | number[] | number[][] {
-  // Both inputs are scalars
   if (typeof vec1 === `number` && typeof vec2 === `number`) return vec1 * vec2
-
-  // One input is a scalar and the other is a vector
   if (typeof vec1 === `number` && Array.isArray(vec2)) {
     throw `Scalar and vector multiplication is not supported`
   }
   if (Array.isArray(vec1) && typeof vec2 === `number`) {
     throw `vector and scalar multiplication is not supported`
   }
-
-  // Both inputs are vectors
   if (!Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
     const v1 = vec1 as number[]
     const v2 = vec2 as number[]
     if (v1.length !== v2.length) throw `Vectors must be of same length`
     return v1.reduce((sum, val, idx) => sum + val * v2[idx], 0)
   }
-
-  // The first input is a matrix and the second is a vector
   if (Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
     const mat1 = vec1 as unknown as number[][]
     const v2 = vec2 as number[]
+    // Validate matrix structure
+    if (!mat1.every((row) => Array.isArray(row))) {
+      throw `Matrix must contain only array rows (no undefined or non-array elements)`
+    }
     if (mat1[0].length !== v2.length) {
       throw `Number of columns in matrix must be equal to number of elements in vector`
     }
     return mat1.map((row) => row.reduce((sum, val, idx) => sum + val * v2[idx], 0))
   }
-
-  // Both inputs are matrices
   if (Array.isArray(vec1[0]) && Array.isArray(vec2[0])) {
     const mat1 = vec1 as unknown as number[][]
     const mat2 = vec2 as unknown as number[][]
@@ -203,9 +185,9 @@ export function dot(
       throw `Number of columns in first matrix must be equal to number of rows in second matrix`
     }
     const cols = mat2[0]?.length
-    if (!Number.isFinite(cols)) throw new Error(`Second matrix has no columns`)
+    if (!Number.isFinite(cols)) throw `Second matrix has no columns`
     if (!mat2.every((row) => row.length === cols)) {
-      throw new Error(`Second matrix must be rectangular`)
+      throw `Second matrix must be rectangular`
     }
     return mat1.map((_, ii) =>
       Array.from(
@@ -215,8 +197,6 @@ export function dot(
       )
     )
   }
-
-  // Handle any other cases
   throw `Unsupported input dimensions. Inputs must be scalars, vectors, or matrices.`
 }
 
@@ -226,9 +206,7 @@ export function dot(
 // Voigt notation maps: (1,1)->1, (2,2)->2, (3,3)->3, (2,3)->4, (1,3)->5, (1,2)->6
 export function to_voigt(tensor: number[][]): number[] {
   if (tensor.length !== 3 || !tensor.every((row) => row.length === 3)) {
-    throw new Error(
-      `Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`,
-    )
+    throw `Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`
   }
   const [t11, t12, t13, _t21, t22, t23, _t31, _t32, t33] = tensor.flat()
   return [t11, t22, t33, t23, t13, t12]
@@ -237,17 +215,16 @@ export function to_voigt(tensor: number[][]): number[] {
 // Convert 6-element Voigt notation vector to 3x3 symmetric tensor
 export function from_voigt(voigt: number[]): number[][] {
   if (voigt.length !== 6) {
-    throw new Error(`Expected 6-element Voigt vector, got ${voigt.length} elements`)
+    throw `Expected 6-element Voigt vector, got ${voigt.length} elements`
   }
   const [v1, v2, v3, v4, v5, v6] = voigt
-
   return [[v1, v6, v5], [v6, v2, v4], [v5, v4, v3]]
 }
 
 // Convert flat 9-element array to 3x3 tensor (row-major order)
 export function vec9_to_mat3x3(flat_array: number[]): number[][] {
   if (flat_array.length !== 9) {
-    throw new Error(`Expected 9-element array, got ${flat_array.length} elements`)
+    throw `Expected 9-element array, got ${flat_array.length} elements`
   }
   const [a1, a2, a3, a4, a5, a6, a7, a8, a9] = flat_array
   return [[a1, a2, a3], [a4, a5, a6], [a7, a8, a9]]
@@ -256,9 +233,7 @@ export function vec9_to_mat3x3(flat_array: number[]): number[][] {
 // Convert 3x3 tensor to flat 9-element array (row-major order)
 export function tensor_to_flat_array(tensor: number[][]): number[] {
   if (tensor.length !== 3 || !tensor.every((row) => row.length === 3)) {
-    throw new Error(
-      `Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`,
-    )
+    throw `Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`
   }
 
   const [t11, t12, t13, t21, t22, t23, t31, t32, t33] = tensor.flat()

@@ -107,11 +107,10 @@ export function create_structure_filename(
 
   if (structure.id) parts.push(structure.id) // Add ID if available
 
-  // Add formula
-  const formula_html = get_electro_neg_formula(structure)
-  if (formula_html && formula_html !== `Unknown`) {
-    const formula_plain = formula_html.replace(/<\/?sub>|<\/?sup>/g, ``)
-    parts.push(formula_plain)
+  // Add formula (plain text to avoid HTML in filenames)
+  const formula = get_electro_neg_formula(structure, true)
+  if (formula && formula !== `Unknown`) {
+    parts.push(formula)
   }
 
   // Add space group if available
@@ -325,7 +324,10 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   }
   const lines: string[] = []
 
-  const title = structure.id || get_electro_neg_formula(structure) ||
+  // Use plain text formula for POSCAR title to avoid HTML tags
+  const formula = get_electro_neg_formula(structure, true)
+  const title = structure.id ||
+    (formula && formula !== `Unknown` ? formula : null) ||
     `Generated from structure`
   lines.push(title)
   lines.push(`1.0`) // Scale factor (1.0 for direct coordinates)
