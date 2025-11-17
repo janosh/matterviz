@@ -1,5 +1,5 @@
 // Supercell generation utilities for PymatgenStructure
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { PymatgenStructure, Site } from './index'
 
@@ -65,9 +65,9 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
 // Takes original 3x3 lattice matrix and [nx, ny, nz] scaling factors
 // Returns new scaled lattice matrix
 export function scale_lattice_matrix(
-  orig_matrix: Matrix3x3,
+  orig_matrix: math.Matrix3x3,
   scaling_factors: Vec3,
-): Matrix3x3 {
+): math.Matrix3x3 {
   const [nx, ny, nz] = scaling_factors
 
   // Scale each lattice vector by its corresponding factor
@@ -75,7 +75,7 @@ export function scale_lattice_matrix(
     math.scale(orig_matrix[0], nx),
     math.scale(orig_matrix[1], ny),
     math.scale(orig_matrix[2], nz),
-  ] as Matrix3x3
+  ] as math.Matrix3x3
 }
 
 // Create a supercell from a PymatgenStructure

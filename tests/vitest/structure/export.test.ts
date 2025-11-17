@@ -1,5 +1,5 @@
 import { download } from '$lib/io/fetch'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, PymatgenLattice, Site } from '$lib/structure'
 import {
@@ -26,13 +26,13 @@ import { complex_structure, simple_structure } from '../setup'
 vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
 const mock_download = vi.mocked(download)
 
-// Mock the electro_neg_formula function
-vi.mock(`$lib`, async (import_original) => {
+// Mock the get_electro_neg_formula function
+vi.mock(`$lib/composition`, async (import_original) => {
   const actual = (await import_original()) as Record<string, unknown>
-  return { ...actual, electro_neg_formula: vi.fn() }
+  return { ...actual, get_electro_neg_formula: vi.fn() }
 })
-const { electro_neg_formula } = await import(`$lib`)
-const mock_electro_neg_formula = vi.mocked(electro_neg_formula)
+const { get_electro_neg_formula } = await import(`$lib/composition`)
+const mock_get_electro_neg_formula = vi.mocked(get_electro_neg_formula)
 
 const real_structure_json =
   `{"@module": "pymatgen.core.structure", "@class": "Structure", "charge": 0, "lattice": {"matrix": [[6.256930122878799, 0.0, 3.831264723736088e-16], [1.0061911048045417e-15, 6.256930122878799, 3.831264723736088e-16], [0.0, 0.0, 6.256930122878799]], "pbc": [true, true, true], "a": 6.256930122878799, "b": 6.256930122878799, "c": 6.256930122878799, "alpha": 90.0, "beta": 90.0, "gamma": 90.0, "volume": 244.95364960649798}, "sites": [{"species": [{"element": "Cs", "occu": 1}], "abc": [0.0, 0.0, 0.0], "xyz": [0.0, 0.0, 0.0], "label": "Cs", "properties": {}}]}`
@@ -98,14 +98,14 @@ const export_cases = [
 describe(`Export functionality`, () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mock_electro_neg_formula.mockReturnValue(`H2O`)
+    mock_get_electro_neg_formula.mockReturnValue(`H2O`)
   })
 
   describe(`Structure export (XYZ/JSON)`, () => {
     it.each(export_cases)(
       `exports $name to XYZ`,
       ({ structure, expected_xyz, formula, filename_contains }) => {
-        mock_electro_neg_formula.mockReturnValue(formula)
+        mock_get_electro_neg_formula.mockReturnValue(formula)
         export_structure_as_xyz(structure)
         expect(mock_download).toHaveBeenCalledOnce()
         const [content, filename, mime_type] = mock_download.mock.calls[0]
@@ -123,7 +123,7 @@ describe(`Export functionality`, () => {
     it.each(export_cases)(
       `exports $name to JSON`,
       ({ structure, expected_json, formula, filename_contains }) => {
-        mock_electro_neg_formula.mockReturnValue(formula)
+        mock_get_electro_neg_formula.mockReturnValue(formula)
         export_structure_as_json(structure)
         expect(mock_download).toHaveBeenCalledOnce()
         const [content, filename, mime_type] = mock_download.mock.calls[0]
@@ -151,7 +151,7 @@ describe(`Export functionality`, () => {
       const xyz_content = structure_to_xyz_str(simple_structure)
       const lines = xyz_content.split(`\n`)
       expect(lines[0]).toBe(`3`)
-      expect(lines[1].startsWith(`test_h2o H2O`)).toBe(true)
+      expect(lines[1]).toContain(`test_h2o H2O`)
       expect(lines[2]).toBe(`H 0.757000 0.586000 0.000000`)
       expect(lines[3]).toBe(`O 0.000000 0.000000 0.000000`)
       expect(lines[4]).toBe(`H -0.757000 0.586000 0.000000`)
@@ -168,7 +168,7 @@ describe(`Export functionality`, () => {
     })
 
     it(`handles complex structures with many sites`, () => {
-      mock_electro_neg_formula.mockReturnValue(`LiFeP4O7`)
+      mock_get_electro_neg_formula.mockReturnValue(`LiFeP4O7`)
       const xyz_content = structure_to_xyz_str(complex_structure)
       const lines = xyz_content.split(`\n`)
       expect(lines[0]).toBe(`7`)
@@ -291,8 +291,8 @@ describe(`Export functionality`, () => {
             [2.0, 0.0, 0.0],
             [0.0, 2.0, 0.0],
             [0.0, 0.0, 2.0],
-          ] as Matrix3x3,
-          abc: [0.5, 0.5, 0.5] as Vec3,
+          ] satisfies Matrix3x3,
+          abc: [0.5, 0.5, 0.5] as math.Vec3,
         },
         {
           name: `non-orthogonal`,
@@ -300,8 +300,8 @@ describe(`Export functionality`, () => {
             [2.0, 0.5, 0.0],
             [0.0, 2.0, 0.3],
             [0.0, 0.0, 2.0],
-          ] as Matrix3x3,
-          abc: [0.25, 0.75, 0.5] as Vec3,
+          ] satisfies Matrix3x3,
+          abc: [0.25, 0.75, 0.5] as math.Vec3,
         },
         {
           name: `triclinic`,
@@ -309,8 +309,8 @@ describe(`Export functionality`, () => {
             [3.0, 0.5, 0.2],
             [0.0, 2.5, 0.4],
             [0.0, 0.0, 1.8],
-          ] as Matrix3x3,
-          abc: [0.1, 0.3, 0.7] as Vec3,
+          ] satisfies Matrix3x3,
+          abc: [0.1, 0.3, 0.7] as math.Vec3,
         },
       ],
     )(
@@ -348,11 +348,11 @@ describe(`Export functionality`, () => {
     )
 
     it(`prefers xyz coordinates over abc when both available`, () => {
-      const lattice_matrix = [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [
-        0.0,
-        0.0,
-        2.0,
-      ]] as Matrix3x3
+      const lattice_matrix = [
+        [2.0, 0.0, 0.0],
+        [0.0, 2.0, 0.0],
+        [0.0, 0.0, 2.0],
+      ] satisfies Matrix3x3
       const lattice_params = math.calc_lattice_params(lattice_matrix)
       const structure_both_coords: AnyStructure = {
         id: `both_coords`,
@@ -363,11 +363,7 @@ describe(`Export functionality`, () => {
           label: `H`,
           properties: {},
         }],
-        lattice: {
-          matrix: lattice_matrix,
-          pbc: [true, true, true],
-          ...lattice_params,
-        },
+        lattice: { matrix: lattice_matrix, pbc: [true, true, true], ...lattice_params },
       }
 
       const xyz_content = structure_to_xyz_str(structure_both_coords)
@@ -392,11 +388,11 @@ describe(`Export functionality`, () => {
     })
 
     it(`converts cartesian to fractional for CIF export`, () => {
-      const lattice_matrix = [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [
-        0.0,
-        0.0,
-        2.0,
-      ]] as Matrix3x3
+      const lattice_matrix: Matrix3x3 = [
+        [2.0, 0.0, 0.0],
+        [0.0, 2.0, 0.0],
+        [0.0, 0.0, 2.0],
+      ]
       const lattice_params = math.calc_lattice_params(lattice_matrix)
       const structure_xyz_only: AnyStructure = {
         id: `xyz_only`,
@@ -422,11 +418,11 @@ describe(`Export functionality`, () => {
     })
 
     it(`converts cartesian to fractional for POSCAR export`, () => {
-      const lattice_matrix = [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [
-        0.0,
-        0.0,
-        2.0,
-      ]] as Matrix3x3
+      const lattice_matrix: Matrix3x3 = [
+        [2.0, 0.0, 0.0],
+        [0.0, 2.0, 0.0],
+        [0.0, 0.0, 2.0],
+      ]
       const lattice_params = math.calc_lattice_params(lattice_matrix)
       const structure_xyz_only: AnyStructure = {
         id: `xyz_only`,
@@ -490,7 +486,7 @@ describe(`Export functionality`, () => {
     })
 
     it(`strips HTML tags from chemical formulas`, () => {
-      mock_electro_neg_formula.mockReturnValue(`Li<sub>2</sub>O`)
+      mock_get_electro_neg_formula.mockReturnValue(`Li<sub>2</sub>O`)
       const structure = {
         id: `lithium_oxide`,
         sites: Array(3).fill({
@@ -508,7 +504,7 @@ describe(`Export functionality`, () => {
     })
 
     it(`sanitizes invalid filename characters and condenses underscores`, () => {
-      mock_electro_neg_formula.mockReturnValue(`Li2/O`)
+      mock_get_electro_neg_formula.mockReturnValue(`Li2/O`)
       const structure = {
         id: `A/B:C*D?E"FH|`,
         sites: Array(1).fill({

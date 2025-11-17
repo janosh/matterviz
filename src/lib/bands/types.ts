@@ -1,5 +1,6 @@
 // TypeScript type definitions for band structures and density of states
 
+import { Matrix3x3 } from '$lib/math'
 import type { InternalPoint } from '$lib/plot'
 
 export type BandStructureType = `phonon` | `electronic`
@@ -23,8 +24,8 @@ export interface Branch {
 
 // Base band structure interface
 export interface BaseBandStructure {
-  lattice_rec: {
-    matrix: number[][]
+  recip_lattice: {
+    matrix: Matrix3x3
   }
   qpoints: QPoint[]
   branches: Branch[]
@@ -45,10 +46,7 @@ export interface ElectronicBandStructure extends BaseBandStructure {
   is_spin_polarized: boolean
   efermi?: number
   is_metal?: boolean
-  band_gap?: {
-    energy: number
-    direct: boolean
-  }
+  band_gap?: { energy: number; direct: boolean }
 }
 
 // Phonon DOS: frequencies as independent variable

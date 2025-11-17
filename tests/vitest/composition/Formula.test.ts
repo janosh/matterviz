@@ -66,14 +66,13 @@ test(`parse_formula_with_oxidation handles negative oxidation states`, () => {
 
 test(`parse_formula_with_oxidation handles bare sign oxidation states`, () => {
   // Test bare signs: "+", "-", "[+]", "[-]" should be treated as ±1
-  const test_cases: Array<[string, number]> = [
+  const test_cases: [string, number][] = [
     [`Na^+`, 1],
     [`Cl^-`, -1],
     [`Na[+]`, 1],
     [`Cl[-]`, -1],
     [`K^+Cl^-`, 1], // K should have +1
   ]
-
   for (const [formula, expected_oxidation] of test_cases) {
     const result = parse_formula_with_oxidation(formula)
     expect(result[0].oxidation_state).toBe(expected_oxidation)
@@ -82,7 +81,7 @@ test(`parse_formula_with_oxidation handles bare sign oxidation states`, () => {
 
 test(`parse_formula_with_oxidation handles various oxidation state formats`, () => {
   // Test different formats: +2, 2+, -2, 2-
-  const test_cases: Array<[string, number]> = [
+  const test_cases: [string, number][] = [
     [`Fe^+2O`, 2],
     [`Fe^2+O`, 2],
     [`Fe^-2O`, -2],

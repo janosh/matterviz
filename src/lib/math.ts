@@ -162,13 +162,14 @@ export function subtract<T extends NdVector>(vec1: T, vec2: T): T {
   return vec1.map((val, idx) => val - vec2[idx]) as T
 }
 
-export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[][] {
-  // Handle the case where both inputs are scalars
-  if (typeof vec1 === `number` && typeof vec2 === `number`) {
-    return vec1 * vec2
-  }
+export function dot(
+  vec1: NdVector | NdVector[],
+  vec2: NdVector | NdVector[],
+): number | number[] | number[][] {
+  // Both inputs are scalars
+  if (typeof vec1 === `number` && typeof vec2 === `number`) return vec1 * vec2
 
-  // Handle the case where one input is a scalar and the other is a vector
+  // One input is a scalar and the other is a vector
   if (typeof vec1 === `number` && Array.isArray(vec2)) {
     throw `Scalar and vector multiplication is not supported`
   }
@@ -176,15 +177,15 @@ export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[
     throw `vector and scalar multiplication is not supported`
   }
 
-  // Handle the case where both inputs are vectors
+  // Both inputs are vectors
   if (!Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
-    if (vec1.length !== vec2.length) {
-      throw `Vectors must be of same length`
-    }
-    return vec1.reduce((sum, val, index) => sum + val * vec2[index], 0)
+    const v1 = vec1 as number[]
+    const v2 = vec2 as number[]
+    if (v1.length !== v2.length) throw `Vectors must be of same length`
+    return v1.reduce((sum, val, idx) => sum + val * v2[idx], 0)
   }
 
-  // Handle the case where the first input is a matrix and the second is a vector
+  // The first input is a matrix and the second is a vector
   if (Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
     const mat1 = vec1 as unknown as number[][]
     if (mat1[0].length !== vec2.length) {
@@ -193,7 +194,7 @@ export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[
     return mat1.map((row) => row.reduce((sum, val, index) => sum + val * vec2[index], 0))
   }
 
-  // Handle the case where both inputs are matrices
+  // Both inputs are matrices
   if (Array.isArray(vec1[0]) && Array.isArray(vec2[0])) {
     const mat1 = vec1 as unknown as number[][]
     const mat2 = vec2 as unknown as number[][]
@@ -330,7 +331,7 @@ export function get_coefficient_of_variation(values: number[]): number {
 }
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)
-export function det_4x4(matrix: number[][]): number {
+export function det_4x4(matrix: Matrix4x4): number {
   const [a_row, b_row, c_row, d_row] = matrix
   const [a0, a1, a2, a3] = a_row
   const [b0, b1, b2, b3] = b_row

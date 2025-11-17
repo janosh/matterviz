@@ -36,7 +36,7 @@
     const sites: PymatgenStructure[`sites`] = []
 
     for (const [el, frac] of Object.entries(comp)) {
-      for (let i = 0; i < Math.round((frac / total) * n_atoms); i++) {
+      for (let _ = 0; _ < Math.round((frac / total) * n_atoms); _++) {
         const x = rand() * box_size
         const y = rand() * box_size
         const z = rand() * box_size
@@ -50,20 +50,18 @@
       }
     }
 
-    return {
-      lattice: {
-        matrix: [[box_size, 0, 0], [0, box_size, 0], [0, 0, box_size]] as Matrix3x3,
-        pbc: [true, true, true] as Pbc,
-        a: box_size,
-        b: box_size,
-        c: box_size,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: box_size ** 3,
-      },
-      sites,
+    const matrix: Matrix3x3 = [[box_size, 0, 0], [0, box_size, 0], [0, 0, box_size]]
+    const pbc: Pbc = [true, true, true]
+    const lattice = {
+      a: box_size,
+      b: box_size,
+      c: box_size,
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+      volume: box_size ** 3,
     }
+    return { matrix, lattice, pbc, sites }
   })
 </script>
 

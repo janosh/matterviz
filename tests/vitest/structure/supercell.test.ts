@@ -488,7 +488,7 @@ describe(`performance tests`, () => {
     (atom_count, scaling, expected_atoms, timeout_ms) => {
       const test_structure = {
         lattice: {
-          matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3,
+          matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
           a: 1,
           b: 1,
           c: 1,

@@ -813,7 +813,7 @@ describe(`generate_chem_sys_subspaces`, () => {
   describe(`edge cases and completeness`, () => {
     test(`should generate correct number of subspaces`, () => {
       // For n elements, should generate 2^n - 1 subspaces (all non-empty subsets)
-      const test_cases: Array<[number, ElementSymbol[]]> = [
+      const test_cases: [number, ElementSymbol[]][] = [
         [1, [`H`]],
         [2, [`H`, `O`]],
         [3, [`H`, `O`, `N`]],

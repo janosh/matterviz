@@ -1,4 +1,4 @@
-import type { BondPair, ElementSymbol, Vec3 } from '$lib'
+import type { BondPair, ElementSymbol, Pbc, Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
 import type { PymatgenStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
@@ -48,20 +48,20 @@ function make_random_structure(n_atoms: number): PymatgenStructure {
     xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
     element: elements[idx % elements.length],
   }))
-  return {
-    ...get_test_structure(sites),
-    lattice: {
-      matrix: [[10, 0, 0], [0, 10, 0], [0, 0, 10]] satisfies Matrix3x3,
-      pbc: [true, true, true],
-      a: 10,
-      b: 10,
-      c: 10,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 1000,
-    },
+  const matrix: Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
+  const pbc: Pbc = [true, true, true]
+  const lattice = {
+    matrix,
+    pbc,
+    a: 10,
+    b: 10,
+    c: 10,
+    alpha: 90,
+    beta: 90,
+    gamma: 90,
+    volume: 1000,
   }
+  return { ...get_test_structure(sites), lattice }
 }
 
 describe(`Bonding Algorithms`, () => {

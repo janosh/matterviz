@@ -1,4 +1,4 @@
-import type { NdVector, Vec3 } from '$lib/math'
+import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { describe, expect, it, test } from 'vitest'
 
@@ -131,26 +131,25 @@ test.each([
 
 test(`dot function comprehensive`, () => {
   // Test matrix-vector and matrix-matrix multiplication
-  const matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+  const matrix: math.Matrix3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
   const vector = [2, 3, 4]
   const matrix1 = [[1, 2, 3], [4, 5, 6]]
   const matrix2 = [[7, 8], [9, 10], [11, 12]]
 
-  expect(math.dot(matrix as unknown as NdVector, vector)).toEqual([20, 47, 74])
-  expect(math.dot(matrix1 as unknown as NdVector, matrix2 as unknown as NdVector))
+  expect(math.dot(matrix, vector)).toEqual([20, 47, 74])
+  expect(math.dot(matrix1, matrix2))
     .toEqual([[58, 64], [139, 154]])
 
-  // Test error cases
-  expect(() => math.dot(5 as unknown as NdVector, [1, 2, 3])).toThrow(
+  // @ts-expect-error invalid input, check expected error
+  expect(() => math.dot(5, [1, 2, 3])).toThrow(
     `Scalar and vector multiplication is not supported`,
   )
-  expect(() => math.dot([1, 2, 3], 5 as unknown as NdVector)).toThrow(
+  // @ts-expect-error invalid input, check expected error
+  expect(() => math.dot([1, 2, 3], 5)).toThrow(
     `vector and scalar multiplication is not supported`,
   )
   expect(() => math.dot([1, 2], [3, 4, 5])).toThrow(`Vectors must be of same length`)
-  expect(() =>
-    math.dot(matrix1 as unknown as NdVector, [[1, 2, 3]] as unknown as NdVector)
-  ).toThrow(
+  expect(() => math.dot(matrix1, [[1, 2, 3]])).toThrow(
     `Number of columns in first matrix must be equal to number of rows in second matrix`,
   )
 
@@ -159,15 +158,18 @@ test(`dot function comprehensive`, () => {
   const empty_matrix: number[][] = []
   const undefined_cols_matrix = [[1, 2], undefined, [3, 4]]
 
-  expect(() =>
-    math.dot(matrix1 as unknown as NdVector, jagged_matrix as unknown as NdVector)
-  ).toThrow(`Second matrix must be rectangular`)
-  expect(() =>
-    math.dot(matrix1 as unknown as NdVector, empty_matrix as unknown as NdVector)
-  ).toThrow(`Number of columns in matrix must be equal to number of elements in vector`)
-  expect(() =>
-    math.dot(matrix1 as unknown as NdVector, undefined_cols_matrix as unknown as NdVector)
-  ).toThrow(`Cannot read properties of undefined`)
+  // @ts-expect-error bad input, checking for expected error
+  expect(() => math.dot(matrix1, jagged_matrix)).toThrow(
+    `Second matrix must be rectangular`,
+  )
+  // @ts-expect-error bad input, checking for expected error
+  expect(() => math.dot(matrix1, empty_matrix)).toThrow(
+    `Number of columns in matrix must be equal to number of elements in vector`,
+  )
+  // @ts-expect-error bad input, checking for expected error
+  expect(() => math.dot(matrix1, undefined_cols_matrix)).toThrow(
+    `Cannot read properties of undefined`,
+  )
 })
 
 test.each([
@@ -191,12 +193,12 @@ test.each([
 })
 
 test(`dot matrix operations`, () => {
-  const matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] as unknown as NdVector
-  const vector = [2, 3, 4] as Vec3
+  const matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+  const vector = [2, 3, 4]
   expect(math.dot(matrix, vector)).toEqual([20, 47, 74])
 
-  const matrix1 = [[1, 2, 3], [4, 5, 6]] as unknown as NdVector
-  const matrix2 = [[7, 8], [9, 10], [11, 12]] as unknown as NdVector
+  const matrix1 = [[1, 2, 3], [4, 5, 6]]
+  const matrix2 = [[7, 8], [9, 10], [11, 12]]
   expect(math.dot(matrix1, matrix2)).toEqual([[58, 64], [139, 154]])
 })
 

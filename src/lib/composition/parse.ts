@@ -329,9 +329,7 @@ const parse_oxidation_state = (oxidation_str: string): number => {
 // Supports both ^2+ and [2+] syntax for oxidation states.
 // Examples: "Fe^2+O3", "Fe[2+]O3", "Ca^2+Cl^-2"
 // Tracks original element order from the input string.
-export const parse_formula_with_oxidation = (
-  formula: string,
-): ElementWithOxidation[] => {
+export const parse_formula_with_oxidation = (formula: string): ElementWithOxidation[] => {
   const elements: ElementWithOxidation[] = []
   const cleaned_formula = expand_parentheses(formula.replace(/\s/g, ``))
 
@@ -374,12 +372,7 @@ export const parse_formula_with_oxidation = (
         existing.oxidation_state = oxidation_state
       }
     } else {
-      elements.push({
-        element,
-        amount: count,
-        oxidation_state,
-        orig_idx: orig_idx++,
-      })
+      elements.push({ element, amount: count, oxidation_state, orig_idx: orig_idx++ })
     }
   }
 

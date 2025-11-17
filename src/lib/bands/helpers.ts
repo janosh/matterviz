@@ -1,6 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import type { Vec3 } from '../math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type * as types from './types'
 
 // Physical constants for unit conversions (SI units)
@@ -261,7 +261,7 @@ export function normalize_dos(dos: unknown): types.DosData | null {
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
 export function extract_k_path_points(
   band_struct: types.BaseBandStructure,
-  recip_lattice_matrix: number[][],
+  recip_lattice_matrix: Matrix3x3,
 ): Vec3[] {
   if (!band_struct?.qpoints || !recip_lattice_matrix) return []
 

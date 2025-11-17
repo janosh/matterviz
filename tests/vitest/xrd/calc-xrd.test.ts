@@ -1,4 +1,4 @@
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { compute_xrd_pattern } from '$lib/xrd'
@@ -109,7 +109,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
 describe(`compute_xrd_pattern edge cases`, () => {
   function make_simple_cubic_structure(a_len: number): PymatgenStructure {
     const lattice = {
-      matrix: [[a_len, 0, 0], [0, a_len, 0], [0, 0, a_len]] as Matrix3x3,
+      matrix: [[a_len, 0, 0], [0, a_len, 0], [0, 0, a_len]] satisfies Matrix3x3,
       a: a_len,
       b: a_len,
       c: a_len,
@@ -119,21 +119,14 @@ describe(`compute_xrd_pattern edge cases`, () => {
       volume: a_len * a_len * a_len,
       pbc: [true, true, true],
     } as const
-
-    const structure: PymatgenStructure = {
-      lattice,
-      sites: [
-        {
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H1`,
-          properties: {},
-        },
-      ],
+    const site = {
+      species: [{ element: `H` as const, occu: 1, oxidation_state: 0 }],
+      abc: [0, 0, 0] satisfies Vec3,
+      xyz: [0, 0, 0] satisfies Vec3,
+      label: `H1`,
+      properties: {},
     }
-
-    return structure
+    return { lattice, sites: [site] }
   }
 
   test.each([[`CuKa`, 1.54184], [`MoKa`, 0.71073]] as const)(

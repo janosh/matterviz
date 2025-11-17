@@ -1,5 +1,5 @@
 import type { AnyStructure, Vec3 } from '$lib'
-import { electro_neg_formula } from '$lib'
+import { get_electro_neg_formula } from '$lib/composition'
 import { download } from '$lib/io/fetch'
 import * as math from '$lib/math'
 import {
@@ -108,7 +108,7 @@ export function create_structure_filename(
   if (structure.id) parts.push(structure.id) // Add ID if available
 
   // Add formula
-  const formula_html = electro_neg_formula(structure)
+  const formula_html = get_electro_neg_formula(structure)
   if (formula_html && formula_html !== `Unknown`) {
     const formula_plain = formula_html.replace(/<\/?sub>|<\/?sup>/g, ``)
     parts.push(formula_plain)
@@ -149,7 +149,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // Second line: comment (structure ID, formula, or default)
   const comment_parts: string[] = []
   if (structure.id) comment_parts.push(structure.id)
-  const formula = electro_neg_formula(structure)
+  const formula = get_electro_neg_formula(structure, true)
   if (formula && formula !== `Unknown`) comment_parts.push(formula)
 
   // Include extended XYZ lattice information when available so round-trips preserve lattice
@@ -325,7 +325,7 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   }
   const lines: string[] = []
 
-  const title = structure.id || electro_neg_formula(structure) ||
+  const title = structure.id || get_electro_neg_formula(structure) ||
     `Generated from structure`
   lines.push(title)
   lines.push(`1.0`) // Scale factor (1.0 for direct coordinates)

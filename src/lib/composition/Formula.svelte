@@ -37,7 +37,7 @@
     on_click?: (element: ElementSymbol, event: MouseEvent | KeyboardEvent) => void
   } = $props()
 
-  const parsed_elements = $derived.by((): ElementWithOxidation[] => {
+  const parsed_elements = $derived.by(() => {
     try {
       return typeof formula === `string`
         ? parse_formula_with_oxidation(formula)
@@ -48,23 +48,23 @@
     }
   })
 
-  const sorted_elements = $derived.by((): ElementWithOxidation[] => {
+  const sorted_elements = $derived.by(() => {
     const elements = [...parsed_elements]
 
     // Define sort comparators
     const comparators: Record<
       FormulaOrdering,
-      (a: ElementWithOxidation, b: ElementWithOxidation) => number
+      (el1: ElementWithOxidation, el2: ElementWithOxidation) => number
     > = {
-      alphabetical: (el_a, el_b) => el_a.element.localeCompare(el_b.element),
-      original: (el_a, el_b) => el_a.orig_idx - el_b.orig_idx,
-      electronegativity: (el_a, el_b) => {
-        const sorted_symbols = sort_by_electronegativity([el_a.element, el_b.element])
-        return sorted_symbols[0] === el_a.element ? -1 : 1
+      alphabetical: (el1, el2) => el1.element.localeCompare(el2.element),
+      original: (el1, el2) => el1.orig_idx - el2.orig_idx,
+      electronegativity: (el1, el2) => {
+        const sorted_symbols = sort_by_electronegativity([el1.element, el2.element])
+        return sorted_symbols[0] === el1.element ? -1 : 1
       },
-      hill: (el_a, el_b) => {
-        const sorted_symbols = sort_by_hill_notation([el_a.element, el_b.element])
-        return sorted_symbols[0] === el_a.element ? -1 : 1
+      hill: (el1, el2) => {
+        const sorted_symbols = sort_by_hill_notation([el1.element, el2.element])
+        return sorted_symbols[0] === el1.element ? -1 : 1
       },
     }
 
