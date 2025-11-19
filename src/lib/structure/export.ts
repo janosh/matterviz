@@ -127,7 +127,12 @@ export function create_structure_filename(
     structure.symmetry &&
     typeof structure.symmetry === `object` &&
     `space_group_symbol` in structure.symmetry
-  ) parts.push(sanitize_filename_part(String(structure.symmetry.space_group_symbol)))
+  ) {
+    const space_group = structure.symmetry.space_group_symbol
+    if (space_group && typeof space_group === `string`) {
+      parts.push(sanitize_filename_part(space_group))
+    }
+  }
 
   // Add lattice system if available
   if (
@@ -135,7 +140,12 @@ export function create_structure_filename(
     structure.lattice &&
     typeof structure.lattice === `object` &&
     `lattice_system` in structure.lattice
-  ) parts.push(sanitize_filename_part(String(structure.lattice.lattice_system)))
+  ) {
+    const lattice_system = structure.lattice.lattice_system
+    if (lattice_system && typeof lattice_system === `string`) {
+      parts.push(sanitize_filename_part(lattice_system))
+    }
+  }
 
   // Add number of sites
   if (structure.sites?.length) parts.push(`${structure.sites.length}sites`)

@@ -13,18 +13,16 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
   if (typeof scaling === `string`) {
     // Parse "2x2x2" format
     const parts = scaling.toLowerCase().split(/[x×,\s]+/).filter((p) => p.trim())
-    if (parts.length === 1) {
-      const val = Number(parts[0])
-      if (!Number.isInteger(val) || val <= 0) {
+    if (parts.length === 1 || parts.length === 3) {
+      // Only accept base-10 integer strings (reject scientific/hex/binary/octal notation)
+      if (parts.some((part) => !/^\d+$/.test(part))) {
         throw new Error(`Invalid supercell scaling: ${scaling}`)
       }
-      return [val, val, val] as Vec3
-    } else if (parts.length === 3) {
       const values = parts.map((val) => Number(val))
-      if (values.some((val) => !Number.isInteger(val) || val <= 0)) {
+      if (values.some((val) => val <= 0)) {
         throw new Error(`Invalid supercell scaling: ${scaling}`)
       }
-      return values as Vec3
+      return (parts.length === 1 ? [values[0], values[0], values[0]] : values) as Vec3
     } else {
       throw new Error(
         `Invalid supercell format: ${scaling}. Use formats like "2x2x2" or "3x1x2"`,

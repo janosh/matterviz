@@ -137,6 +137,22 @@ test(`parse_formula_with_oxidation throws on invalid element`, () => {
   expect(() => parse_formula_with_oxidation(`Xx2O3`)).toThrow(`Invalid element symbol`)
 })
 
+test.each([
+  [`Fe^2+Fe^3+`, false, 1, 2], // Non-strict: uses first oxidation state
+  [`Fe^2+Fe^2+`, true, 1, 2], // Strict: matching states OK
+])(`parse_formula_with_oxidation %s strict=%s`, (formula, strict, length, ox_state) => {
+  const result = parse_formula_with_oxidation(formula, strict)
+  expect(result).toHaveLength(length)
+  expect(result[0]).toMatchObject({ element: `Fe`, amount: 2, oxidation_state: ox_state })
+})
+
+test.each([
+  [`Fe^2+Fe^3+`, `Conflicting oxidation states for Fe: +2 and +3`],
+  [`S^2-S^-`, `Conflicting oxidation states for S: -2 and -1`],
+])(`parse_formula_with_oxidation strict throws on %s`, (formula, error_msg) => {
+  expect(() => parse_formula_with_oxidation(formula, true)).toThrow(error_msg)
+})
+
 test(`oxi_composition_to_elements converts correctly`, () => {
   const composition: Partial<OxiComposition> = {
     Fe: { amount: 2, oxidation_state: 3 },

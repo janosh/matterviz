@@ -150,7 +150,7 @@ test(`dot function comprehensive`, () => {
   )
   expect(() => math.dot([1, 2], [3, 4, 5])).toThrow(`Vectors must be of same length`)
   expect(() => math.dot(matrix1, [[1, 2, 3]])).toThrow(
-    `Number of columns in first matrix must be equal to number of rows in second matrix`,
+    `First matrix columns must equal second matrix rows`,
   )
 
   // Test edge cases
@@ -162,11 +162,11 @@ test(`dot function comprehensive`, () => {
     `Second matrix must be rectangular`,
   )
   expect(() => math.dot(matrix1, empty_matrix)).toThrow(
-    `Number of columns in matrix must be equal to number of elements in vector`,
+    `Matrix columns must equal vector length`,
   )
   // @ts-expect-error bad input, checking for expected error
   expect(() => math.dot(matrix1, undefined_cols_matrix)).toThrow(
-    `Second matrix must contain only array rows (no undefined or non-array elements)`,
+    `Second matrix must contain only array rows`,
   )
 })
 

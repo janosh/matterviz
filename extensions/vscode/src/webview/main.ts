@@ -467,14 +467,16 @@ const create_display = (
   const app = mount(Component, { target: container, props })
 
   // VSCode message logging
-  const trajectory = final_trajectory as TrajectoryType
-  const message = is_trajectory
-    ? `Trajectory rendered: ${filename} (${
+  let message: string
+  if (is_trajectory) {
+    const trajectory = final_trajectory as TrajectoryType
+    message = `Trajectory rendered: ${filename} (${
       trajectory.frames?.length ?? 0
     } initial frames, ${trajectory.total_frames ?? `unknown`} total)`
-    : `Structure rendered: ${filename} (${
-      (result.data as PymatgenStructure).sites?.length ?? 0
-    } sites)`
+  } else {
+    const structure = result.data as PymatgenStructure
+    message = `Structure rendered: ${filename} (${structure.sites?.length ?? 0} sites)`
+  }
 
   vscode_api?.postMessage({ command: `log`, text: message })
 

@@ -330,7 +330,11 @@ const parse_oxidation_state = (oxidation_str: string): number => {
 // Supports both ^2+ and [2+] syntax for oxidation states.
 // Examples: "Fe^2+O3", "Fe[2+]O3", "Ca^2+Cl^-2"
 // Tracks original element order from the input string.
-export const parse_formula_with_oxidation = (formula: string): ElementWithOxidation[] => {
+// When strict=true, throws on conflicting oxidation states for the same element.
+export const parse_formula_with_oxidation = (
+  formula: string,
+  strict = false,
+): ElementWithOxidation[] => {
   const elements: ElementWithOxidation[] = []
   const cleaned_formula = expand_parentheses(formula.replace(/\s/g, ``))
 
@@ -368,9 +372,21 @@ export const parse_formula_with_oxidation = (formula: string): ElementWithOxidat
     const existing = elements.find((el) => el.element === element)
     if (existing) {
       existing.amount += count
-      // Keep the first oxidation state if specified
-      if (oxidation_state !== undefined && existing.oxidation_state === undefined) {
+
+      // Handle oxidation state conflicts
+      if (oxidation_state === undefined) {
+        // No oxidation state in current match, nothing to do
+      } else if (existing.oxidation_state === undefined) {
+        // Set oxidation state on first occurrence
         existing.oxidation_state = oxidation_state
+      } else if (strict && existing.oxidation_state !== oxidation_state) {
+        // In strict mode, throw on conflicting oxidation states
+        const format_state = (state: number) => (state > 0 ? `+` : ``) + state
+        throw new Error(
+          `Conflicting oxidation states for ${element}: ${
+            format_state(existing.oxidation_state)
+          } and ${format_state(oxidation_state)}`,
+        )
       }
     } else {
       elements.push({ element, amount: count, oxidation_state, orig_idx: orig_idx++ })

@@ -844,6 +844,32 @@ describe(`Error Handling`, () => {
     const trajectory2 = await parse_trajectory_data(zero_atoms, `test.xyz`)
     expect(trajectory2.frames).toHaveLength(1) // Should skip zero atoms and parse valid frame
   })
+
+  it.each([
+    {
+      desc: `2x3 matrix (only 2 rows)`,
+      lattice: [[1, 0, 0], [0, 1, 0]],
+      error: /Expected 3x3 matrix/,
+    },
+    {
+      desc: `3x2 matrix (rows with only 2 elements)`,
+      lattice: [[1, 0], [0, 1], [0, 0]],
+      error: /Invalid 3x3 matrix structure/,
+    },
+    {
+      desc: `non-array lattice`,
+      lattice: `not a matrix`,
+      error: /Expected 3x3 matrix/,
+    },
+  ])(`should validate 3x3 matrix structure ($desc)`, async ({ lattice, error }) => {
+    const invalid_pymatgen = {
+      '@class': `Trajectory`,
+      species: [{ element: `H` }],
+      coords: [[[0, 0, 0]]],
+      lattice,
+    }
+    await expect(parse_trajectory_data(invalid_pymatgen)).rejects.toThrow(error)
+  })
 })
 
 describe(`Metadata Preservation`, () => {

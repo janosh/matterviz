@@ -67,6 +67,11 @@ describe(`parse_supercell_scaling`, () => {
     `2.5x1x1`, // Non-integer string should be rejected
     `1x2.5x3`, // Non-integer in middle
     `1.5`, // Non-integer single value
+    `1e3`, // Scientific notation should be rejected
+    `2x1e2x3`, // Scientific notation in string
+    `0x10`, // Hex notation should be rejected
+    `0b10`, // Binary notation should be rejected
+    `0o10`, // Octal notation should be rejected
     ``,
     0,
     -1,

@@ -181,6 +181,12 @@ describe(`Export functionality`, () => {
       expect(lines[7]).toBe(`O 1.250000 3.750000 0.000000`)
       expect(lines[8]).toBe(`O 3.750000 3.750000 0.000000`)
       expect(lines).toHaveLength(9)
+
+      // Verify plain_text flag is always true for XYZ title/comment lines
+      expect(mock_get_electro_neg_formula).toHaveBeenCalledWith(
+        expect.any(Object),
+        true,
+      )
     })
   })
 
@@ -504,6 +510,12 @@ describe(`Export functionality`, () => {
       expect(result).toContain(`Li2O`)
       expect(result).not.toContain(`<sub>`)
       expect(result).not.toContain(`</sub>`)
+
+      // Verify plain_text flag is always true to prevent HTML leaking into filenames
+      expect(mock_get_electro_neg_formula).toHaveBeenCalledWith(
+        expect.any(Object),
+        true,
+      )
     })
 
     it(`sanitizes invalid filename characters and condenses underscores`, () => {
@@ -546,6 +558,25 @@ describe(`Export functionality`, () => {
       expect(create_structure_filename(structure, `cif`)).toBe(
         `test_name_here_test_1sites.cif`,
       )
+    })
+
+    it(`avoids null/undefined in filename from symmetry/lattice`, () => {
+      mock_get_electro_neg_formula.mockReturnValue(`Test`)
+      const structure = {
+        id: `test`,
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `H`,
+          properties: {},
+        }],
+        symmetry: { space_group_symbol: null },
+        lattice: { lattice_system: undefined },
+      } as AnyStructure
+      const result = create_structure_filename(structure, `xyz`)
+      expect(result).toBe(`test_Test_1sites.xyz`)
+      expect(result).not.toMatch(/null|undefined/)
     })
   })
 

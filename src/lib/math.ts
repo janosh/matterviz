@@ -162,14 +162,26 @@ export function subtract<T extends NdVector>(vec1: T, vec2: T): T {
   return vec1.map((val, idx) => val - vec2[idx]) as T
 }
 
+// Validate matrix structure and return column count
+function validate_matrix(mat: number[][], name: string): number {
+  if (!mat.every((row) => Array.isArray(row))) {
+    throw new Error(
+      `${name} must contain only array rows (no undefined/non-array elements)`,
+    )
+  }
+  const cols = mat[0]?.length
+  if (!Number.isFinite(cols)) throw new Error(`${name} has no columns`)
+  if (!mat.every((row) => row.length === cols)) {
+    throw new Error(`${name} must be rectangular`)
+  }
+  return cols
+}
+
 export function dot(
   vec1: NdVector | NdVector[],
   vec2: NdVector | NdVector[],
 ): number | number[] | number[][] {
-  // Both inputs are scalars
   if (typeof vec1 === `number` && typeof vec2 === `number`) return vec1 * vec2
-
-  // One input is a scalar and the other is a vector
   if (typeof vec1 === `number` && Array.isArray(vec2)) {
     throw new Error(`Scalar and vector multiplication is not supported`)
   }
@@ -177,85 +189,34 @@ export function dot(
     throw new Error(`Vector and scalar multiplication is not supported`)
   }
 
-  // Both inputs are vectors
+  // Vector dot product
   if (!Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
     const v1 = vec1 as number[]
     const v2 = vec2 as number[]
-    if (v1.length !== v2.length) {
-      throw new Error(`Vectors must be of same length`)
-    }
+    if (v1.length !== v2.length) throw new Error(`Vectors must be of same length`)
     return v1.reduce((sum, val, idx) => sum + val * v2[idx], 0)
   }
 
-  // The first input is a matrix and the second is a vector
+  // Matrix-vector multiplication
   if (Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
-    const mat1 = vec1 as unknown as number[][]
-    const v2 = vec2 as number[]
-
-    // Validate matrix structure
-    if (!mat1.every((row) => Array.isArray(row))) {
-      throw new Error(
-        `Matrix must contain only array rows (no undefined or non-array elements)`,
-      )
+    const mat = vec1 as unknown as number[][]
+    const vec = vec2 as number[]
+    const cols = validate_matrix(mat, `Matrix`)
+    if (cols !== vec.length) {
+      throw new Error(`Matrix columns must equal vector length`)
     }
-
-    // Check first matrix is rectangular
-    const mat1_cols = mat1[0]?.length
-    if (!Number.isFinite(mat1_cols)) {
-      throw new Error(`First matrix has no columns`)
-    }
-    if (!mat1.every((row) => row.length === mat1_cols)) {
-      throw new Error(`First matrix must be rectangular`)
-    }
-
-    if (mat1_cols !== v2.length) {
-      throw new Error(
-        `Number of columns in matrix must be equal to number of elements in vector`,
-      )
-    }
-    return mat1.map((row) => row.reduce((sum, val, idx) => sum + val * v2[idx], 0))
+    return mat.map((row) => row.reduce((sum, val, idx) => sum + val * vec[idx], 0))
   }
 
-  // Both inputs are matrices
+  // Matrix-matrix multiplication
   if (Array.isArray(vec1[0]) && Array.isArray(vec2[0])) {
     const mat1 = vec1 as unknown as number[][]
     const mat2 = vec2 as unknown as number[][]
-
-    // Validate both matrices structure
-    if (!mat1.every((row) => Array.isArray(row))) {
-      throw new Error(
-        `First matrix must contain only array rows (no undefined or non-array elements)`,
-      )
-    }
-    if (!mat2.every((row) => Array.isArray(row))) {
-      throw new Error(
-        `Second matrix must contain only array rows (no undefined or non-array elements)`,
-      )
-    }
-
-    // Check first matrix is rectangular
-    const mat1_cols = mat1[0]?.length
-    if (!Number.isFinite(mat1_cols)) {
-      throw new Error(`First matrix has no columns`)
-    }
-    if (!mat1.every((row) => row.length === mat1_cols)) {
-      throw new Error(`First matrix must be rectangular`)
-    }
-
+    const mat1_cols = validate_matrix(mat1, `First matrix`)
+    const mat2_cols = validate_matrix(mat2, `Second matrix`)
     if (mat1_cols !== mat2.length) {
-      throw new Error(
-        `Number of columns in first matrix must be equal to number of rows in second matrix`,
-      )
+      throw new Error(`First matrix columns must equal second matrix rows`)
     }
-
-    const mat2_cols = mat2[0]?.length
-    if (!Number.isFinite(mat2_cols)) {
-      throw new Error(`Second matrix has no columns`)
-    }
-    if (!mat2.every((row) => row.length === mat2_cols)) {
-      throw new Error(`Second matrix must be rectangular`)
-    }
-
     return mat1.map((_, ii) =>
       Array.from(
         { length: mat2_cols },
@@ -265,9 +226,7 @@ export function dot(
     )
   }
 
-  throw new Error(
-    `Unsupported input dimensions. Inputs must be scalars, vectors, or matrices.`,
-  )
+  throw new Error(`Unsupported input types for dot product`)
 }
 
 // Conversion utilities for vectors and tensors below
