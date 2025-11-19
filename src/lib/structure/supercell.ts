@@ -10,37 +10,33 @@ type SupercellType = PymatgenStructure & {
 // Parse supercell scaling input from various formats. Can be "2x2x2", [2,2,2], or a single number.
 // Returns [x, y, z] scaling factors.
 export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
-  if (typeof scaling === `string`) {
-    // Parse "2x2x2" format
-    const parts = scaling.toLowerCase().split(/[x×,\s]+/).filter((p) => p.trim())
-    if (parts.length === 1 || parts.length === 3) {
-      // Only accept base-10 integer strings (reject scientific/hex/binary/octal notation)
-      if (parts.some((part) => !/^\d+$/.test(part))) {
-        throw new Error(`Invalid supercell scaling: ${scaling}`)
-      }
-      const values = parts.map((val) => Number(val))
-      if (values.some((val) => val <= 0)) {
-        throw new Error(`Invalid supercell scaling: ${scaling}`)
-      }
-      return (parts.length === 1 ? [values[0], values[0], values[0]] : values) as Vec3
-    } else {
-      throw new Error(
-        `Invalid supercell format: ${scaling}. Use formats like "2x2x2" or "3x1x2"`,
-      )
-    }
-  } else if (typeof scaling === `number`) {
+  if (typeof scaling === `number`) {
     if (scaling <= 0 || !Number.isInteger(scaling)) {
       throw new Error(`Supercell scaling must be a positive integer, got: ${scaling}`)
     }
-    return [scaling, scaling, scaling] as Vec3
-  } else if (Array.isArray(scaling) && scaling.length === 3) {
+    return [scaling, scaling, scaling]
+  }
+  if (Array.isArray(scaling) && scaling.length === 3) {
     if (scaling.some((v) => !Number.isInteger(v) || v <= 0)) {
       throw new Error(
         `All supercell scaling factors must be positive integers: ${scaling}`,
       )
     }
     return scaling as Vec3
-  } else throw new Error(`Invalid supercell scaling format: ${scaling}`)
+  }
+  if (typeof scaling === `string`) {
+    // Parse "2x2x2" format
+    const parts = scaling.toLowerCase().split(/[x×,\s]+/).filter((p) => p.trim())
+    if (parts.length === 1 || parts.length === 3) {
+      if (parts.every((p) => /^\d+$/.test(p))) {
+        const values = parts.map(Number)
+        if (values.every((v) => v > 0)) {
+          return (parts.length === 1 ? [values[0], values[0], values[0]] : values) as Vec3
+        }
+      }
+    }
+  }
+  throw new Error(`Invalid supercell scaling: ${scaling}`)
 }
 
 // Generate all lattice points for a supercell. Takes [nx, ny, nz] scaling factors

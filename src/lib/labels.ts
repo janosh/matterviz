@@ -139,13 +139,20 @@ export const format_num = (num: number, fmt?: string | number) => {
   return format(fmt)(num)
 }
 
-// Format file sizes
+// Format file sizes using binary SI units (1024 factor).
 export const format_bytes = (bytes?: number): string => {
   if (bytes === undefined) return `Unknown`
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+
+  const units = [`B`, `KB`, `MB`, `GB`, `TB`, `PB`]
+  let val = bytes
+  let idx = 0
+
+  while (Math.abs(val) >= 1024 && idx < units.length - 1) {
+    val /= 1024
+    idx++
+  }
+
+  return idx === 0 ? `${val} B` : `${val.toFixed(2)} ${units[idx]}`
 }
 
 // Replace common fractional values with unicode glyphs (e.g., 1/2 → ½)

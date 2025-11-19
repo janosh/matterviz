@@ -1,17 +1,19 @@
+// Parse and validate date, returns null if invalid
+export const parse_date = (date?: Date | string): Date | null => {
+  if (!date) return null
+  const parsed = typeof date === `string` ? new Date(date) : date
+  return isNaN(parsed.getTime()) ? null : parsed
+}
+
 // Format date as relative time: "5 hours ago", "2 days ago".
 // Dates treated as UTC to avoid timezone issues. Future dates return absolute UTC time.
 export const format_relative_time = (
   date?: Date | string,
   reference_date?: Date | string,
 ): string => {
-  if (!date) return `N/A`
-  const timestamp = typeof date === `string` ? new Date(date) : date
-  if (isNaN(timestamp.getTime())) return `N/A`
-
-  const now = reference_date
-    ? typeof reference_date === `string` ? new Date(reference_date) : reference_date
-    : new Date()
-  if (isNaN(now.getTime())) return `N/A`
+  const timestamp = parse_date(date)
+  const now = reference_date ? parse_date(reference_date) : new Date()
+  if (!timestamp || !now) return `N/A`
 
   const diff_ms = now.getTime() - timestamp.getTime()
   if (diff_ms < 0) return format_utc_time(timestamp)

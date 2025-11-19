@@ -4,13 +4,12 @@ import { decompress_data } from '$lib/io/decompress'
 // Example: {foo: "bar", baz: 42, empty: ""} → "foo=bar&baz=42"
 export const to_query = (
   params: Record<string, string | number | undefined>,
-): string => {
-  const url_params = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== `` && value !== undefined) url_params.set(key, String(value))
-  }
-  return url_params.toString()
-}
+): string =>
+  new URLSearchParams(
+    Object.entries(params)
+      .filter(([, val]) => val !== `` && val !== undefined)
+      .map(([key, val]) => [key, String(val)]),
+  ).toString()
 
 export async function fetch_zipped<T>(
   url: string,
