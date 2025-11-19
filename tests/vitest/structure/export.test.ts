@@ -506,7 +506,7 @@ describe(`Export functionality`, () => {
       expect(result).not.toContain(`</sub>`)
     })
 
-    it(`preserves ID characters as-is and joins parts with underscores`, () => {
+    it(`sanitizes invalid filename characters and condenses underscores`, () => {
       mock_get_electro_neg_formula.mockReturnValue(`Li2/O`)
       const structure = {
         id: `A/B:C*D?E"FH|`,
@@ -519,11 +519,33 @@ describe(`Export functionality`, () => {
         }),
       } as AnyStructure
       const result = create_structure_filename(structure, `xyz`)
-      // Characters in ID and formula are preserved; parts joined with single underscores
-      expect(result).toBe(`A/B:C*D?E"FH|_Li2/O_1sites.xyz`)
-      expect(result).not.toContain(`//`)
+      // Invalid chars (/, :, *, ?, ", |) should be replaced with underscores and condensed
+      expect(result).toBe(`A_B_C_D_E_FH_Li2_O_1sites.xyz`)
+      expect(result).not.toContain(`/`)
+      expect(result).not.toContain(`:`)
+      expect(result).not.toContain(`*`)
+      expect(result).not.toContain(`?`)
+      expect(result).not.toContain(`"`)
+      expect(result).not.toContain(`|`)
       expect(result).not.toContain(`__`)
       expect(result.endsWith(`.xyz`)).toBe(true)
+    })
+
+    it(`handles consecutive invalid characters`, () => {
+      mock_get_electro_neg_formula.mockReturnValue(`test`)
+      const structure = {
+        id: `___test///name:::here___`,
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `H`,
+          properties: {},
+        }],
+      } as AnyStructure
+      expect(create_structure_filename(structure, `cif`)).toBe(
+        `test_name_here_test_1sites.cif`,
+      )
     })
   })
 

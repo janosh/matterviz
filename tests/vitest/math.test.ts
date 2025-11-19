@@ -146,7 +146,7 @@ test(`dot function comprehensive`, () => {
   )
   // @ts-expect-error invalid input, check expected error
   expect(() => math.dot([1, 2, 3], 5)).toThrow(
-    `vector and scalar multiplication is not supported`,
+    `Vector and scalar multiplication is not supported`,
   )
   expect(() => math.dot([1, 2], [3, 4, 5])).toThrow(`Vectors must be of same length`)
   expect(() => math.dot(matrix1, [[1, 2, 3]])).toThrow(
@@ -166,7 +166,7 @@ test(`dot function comprehensive`, () => {
   )
   // @ts-expect-error bad input, checking for expected error
   expect(() => math.dot(matrix1, undefined_cols_matrix)).toThrow(
-    /undefined/i,
+    `Second matrix must contain only array rows (no undefined or non-array elements)`,
   )
 })
 
@@ -766,8 +766,8 @@ describe(`pbc_dist`, () => {
     ]
     // Test that wrapping respects each axis independently in a triclinic system
     // Key property: enabling PBC on specific axes should give different results than no PBC
-    const pos1: math.Vec3 = [0.5, 1.0, 1.0]
-    const pos2: math.Vec3 = [9.5, 1.0, 11.0]
+    const pos1: Vec3 = [0.5, 1.0, 1.0]
+    const pos2: Vec3 = [9.5, 1.0, 11.0]
 
     const dist_no_pbc = math.pbc_dist(
       pos1,
@@ -1150,10 +1150,7 @@ describe(`tensor conversion utilities`, () => {
           )
         } else {
           const inv = math.matrix_inverse_3x3(matrix)
-          const I = math.dot(
-            matrix as unknown as math.NdVector,
-            inv as unknown as math.NdVector,
-          ) as number[][]
+          const I = math.dot(matrix, inv) as number[][]
 
           // Verify A * A^-1 ≈ I and det(A^-1) = 1/det(A)
           for (let row_idx = 0; row_idx < 3; row_idx++) {

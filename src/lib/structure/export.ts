@@ -97,6 +97,14 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
 }
 
 // Generate a filename for structure exports based on structure metadata
+// Sanitize string for filenames: strip HTML, replace invalid chars, condense underscores
+const sanitize_filename_part = (text: string): string =>
+  text
+    .replace(/<\/?[^>]+>/g, ``) // strip HTML
+    .replace(/[/\\:*?"<>|]/g, `_`) // replace invalid chars
+    .replace(/_+/g, `_`) // condense underscores
+    .replace(/^_|_$/g, ``) // remove leading/trailing underscores
+
 export function create_structure_filename(
   structure: AnyStructure | undefined,
   extension: string,
@@ -105,12 +113,12 @@ export function create_structure_filename(
 
   const parts: string[] = []
 
-  if (structure.id) parts.push(structure.id) // Add ID if available
+  if (structure.id) parts.push(sanitize_filename_part(structure.id))
 
   // Add formula (plain text to avoid HTML in filenames)
   const formula = get_electro_neg_formula(structure, true)
   if (formula && formula !== `Unknown`) {
-    parts.push(formula)
+    parts.push(sanitize_filename_part(formula))
   }
 
   // Add space group if available
@@ -119,7 +127,7 @@ export function create_structure_filename(
     structure.symmetry &&
     typeof structure.symmetry === `object` &&
     `space_group_symbol` in structure.symmetry
-  ) parts.push(String(structure.symmetry.space_group_symbol))
+  ) parts.push(sanitize_filename_part(String(structure.symmetry.space_group_symbol)))
 
   // Add lattice system if available
   if (
@@ -127,7 +135,7 @@ export function create_structure_filename(
     structure.lattice &&
     typeof structure.lattice === `object` &&
     `lattice_system` in structure.lattice
-  ) parts.push(String(structure.lattice.lattice_system))
+  ) parts.push(sanitize_filename_part(String(structure.lattice.lattice_system)))
 
   // Add number of sites
   if (structure.sites?.length) parts.push(`${structure.sites.length}sites`)
