@@ -120,6 +120,8 @@ declare global {
     cleanupMatterViz?: () => Promise<void>
     download?: (data: string | Blob, filename: string) => void
   }
+  // Also declare as global var for direct access via globalThis.matterviz_data
+  // Both are needed: Window.matterviz_data is set by extension.ts, accessed via globalThis
   var matterviz_data: MatterVizData | undefined
 
   // VSCode webview API
@@ -237,19 +239,20 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
   return bytes.buffer
 }
 
+// Type for parsed trajectory response from large file requests
+type ParsedTrajectoryResponse = {
+  trajectory: TrajectoryType
+  supports_streaming: boolean
+  file_path: string
+}
+
 // Request large file content from the extension using chunked streaming
 function request_large_file_content(
   file_path: string,
   filename: string,
   is_compressed: boolean,
   timeout: number = 30_000, // 30 seconds
-): Promise<
-  string | {
-    trajectory: TrajectoryType
-    supports_streaming: boolean
-    file_path: string
-  }
-> {
+): Promise<string | ParsedTrajectoryResponse> {
   if (!vscode_api) throw new Error(`VS Code API not available`)
 
   return new Promise((resolve, reject) => {
@@ -427,8 +430,12 @@ const create_display = (
   // Get defaults and create props
   const defaults = merge(globalThis.matterviz_data?.defaults)
 
+  // Type for trajectory with optional frame loader for streaming
+  type StreamingTrajectory = TrajectoryType & { frame_loader?: FrameLoader }
+
   // Prepare trajectory data for VS Code streaming if supported
-  let final_trajectory = result.data
+  let final_trajectory: TrajectoryType | StreamingTrajectory = result
+    .data as TrajectoryType
 
   if (is_trajectory && result.streaming_info?.supports_streaming) {
     const trajectory = result.data as TrajectoryType
@@ -467,16 +474,13 @@ const create_display = (
   const app = mount(Component, { target: container, props })
 
   // VSCode message logging
-  let message: string
-  if (is_trajectory) {
-    const trajectory = final_trajectory as TrajectoryType
-    message = `Trajectory rendered: ${filename} (${
-      trajectory.frames?.length ?? 0
-    } initial frames, ${trajectory.total_frames ?? `unknown`} total)`
-  } else {
-    const structure = result.data as PymatgenStructure
-    message = `Structure rendered: ${filename} (${structure.sites?.length ?? 0} sites)`
-  }
+  const message = is_trajectory
+    ? `Trajectory rendered: ${filename} (${
+      final_trajectory.frames?.length ?? 0
+    } initial frames, ${final_trajectory.total_frames ?? `unknown`} total)`
+    : `Structure rendered: ${filename} (${
+      (result.data as PymatgenStructure).sites?.length ?? 0
+    } sites)`
 
   vscode_api?.postMessage({ command: `log`, text: message })
 

@@ -164,13 +164,25 @@ export function subtract<T extends NdVector>(vec1: T, vec2: T): T {
 
 // Validate matrix structure and return column count
 function validate_matrix(mat: number[][], name: string): number {
+  // Check for empty matrix (no rows)
+  if (mat.length === 0) {
+    throw new Error(`${name} must have at least one row`)
+  }
+
   if (!mat.every((row) => Array.isArray(row))) {
     throw new Error(
       `${name} must contain only array rows (no undefined/non-array elements)`,
     )
   }
+
   const cols = mat[0]?.length
   if (!Number.isFinite(cols)) throw new Error(`${name} has no columns`)
+
+  // Check for zero columns
+  if (cols === 0) {
+    throw new Error(`${name} must have at least one column`)
+  }
+
   if (!mat.every((row) => row.length === cols)) {
     throw new Error(`${name} must be rectangular`)
   }
@@ -181,14 +193,6 @@ export function dot(
   vec1: NdVector | NdVector[],
   vec2: NdVector | NdVector[],
 ): number | number[] | number[][] {
-  if (typeof vec1 === `number` && typeof vec2 === `number`) return vec1 * vec2
-  if (typeof vec1 === `number` && Array.isArray(vec2)) {
-    throw new Error(`Scalar and vector multiplication is not supported`)
-  }
-  if (Array.isArray(vec1) && typeof vec2 === `number`) {
-    throw new Error(`Vector and scalar multiplication is not supported`)
-  }
-
   // Vector dot product
   if (!Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
     const v1 = vec1 as number[]

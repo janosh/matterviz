@@ -97,12 +97,12 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
 }
 
 // Generate a filename for structure exports based on structure metadata
-// Sanitize string for filenames: strip HTML, replace invalid chars, condense underscores
+// Sanitize string for use in filenames by removing problematic characters.
 const sanitize_filename_part = (text: string): string =>
   text
-    .replace(/<\/?[^>]+>/g, ``) // strip HTML
-    .replace(/[/\\:*?"<>|]/g, `_`) // replace invalid chars
-    .replace(/_+/g, `_`) // condense underscores
+    .replace(/<\/?[^>]+>/g, ``) // strip HTML tags
+    .replace(/[/\\:*?"<>|]/g, `_`) // replace filesystem-invalid chars
+    .replace(/_+/g, `_`) // condense consecutive underscores
     .replace(/^_|_$/g, ``) // remove leading/trailing underscores
 
 export function create_structure_filename(

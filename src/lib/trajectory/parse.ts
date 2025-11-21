@@ -83,6 +83,7 @@ const FORMAT_PATTERNS = {
 } as const
 
 // Validate that data is a proper 3x3 matrix
+// Accepts both regular arrays and typed arrays (Float32Array, Float64Array, etc.)
 function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
   if (!Array.isArray(data) || data.length !== 3) {
     throw new Error(
@@ -91,7 +92,12 @@ function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
       }`,
     )
   }
-  if (!data.every((row) => Array.isArray(row) && row.length === 3)) {
+  // Allow both regular arrays and typed arrays (Float32Array, Float64Array, etc.)
+  const is_valid_row = (row: unknown): boolean =>
+    (Array.isArray(row) || ArrayBuffer.isView(row)) &&
+    (row as { length: number }).length === 3
+
+  if (!data.every(is_valid_row)) {
     throw new Error(`Invalid 3x3 matrix structure`)
   }
   return data as math.Matrix3x3
@@ -129,6 +135,9 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
 }
 
 // Cache inverse matrices by original matrix reference for performance
+// IMPORTANT: This cache assumes lattice matrices are immutable. Mutating a cached
+// matrix in place yields incorrect inverses. Always create new matrix instances
+// if modifications are needed.
 const matrix_cache = new WeakMap<math.Matrix3x3, math.Matrix3x3>()
 const get_inverse_matrix = (matrix: math.Matrix3x3): math.Matrix3x3 => {
   const cached = matrix_cache.get(matrix)

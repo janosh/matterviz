@@ -125,6 +125,10 @@ test(`subtract throws on mismatched lengths`, () => {
 test.each([
   [[1, 2], [3, 4], 11],
   [[1, 2, 3], [4, 5, 6], 32],
+  // Edge cases
+  [[0, 0, 0], [1, 2, 3], 0], // Zero vector
+  [[1], [5], 5], // Single element vectors
+  [[-1, 2, -3], [4, -5, 6], -32], // Negative numbers
 ])(`dot product`, (vec1, vec2, expected) => {
   expect(math.dot(vec1, vec2)).toEqual(expected)
 })
@@ -140,29 +144,23 @@ test(`dot function comprehensive`, () => {
   expect(math.dot(matrix1, matrix2))
     .toEqual([[58, 64], [139, 154]])
 
-  // @ts-expect-error invalid input, check expected error
-  expect(() => math.dot(5, [1, 2, 3])).toThrow(
-    `Scalar and vector multiplication is not supported`,
-  )
-  // @ts-expect-error invalid input, check expected error
-  expect(() => math.dot([1, 2, 3], 5)).toThrow(
-    `Vector and scalar multiplication is not supported`,
-  )
   expect(() => math.dot([1, 2], [3, 4, 5])).toThrow(`Vectors must be of same length`)
+  expect(() => math.dot([], [1, 2])).toThrow(`Vectors must be of same length`)
   expect(() => math.dot(matrix1, [[1, 2, 3]])).toThrow(
     `First matrix columns must equal second matrix rows`,
   )
 
-  // Test edge cases
+  // Test edge cases - rectangular matrix validation
   const jagged_matrix = [[1, 2], [3, 4, 5], [6, 7]]
-  const empty_matrix: number[][] = []
+  const zero_cols_matrix: number[][] = [[], [], []]
   const undefined_cols_matrix = [[1, 2], undefined, [3, 4]]
 
   expect(() => math.dot(matrix1, jagged_matrix)).toThrow(
     `Second matrix must be rectangular`,
   )
-  expect(() => math.dot(matrix1, empty_matrix)).toThrow(
-    `Matrix columns must equal vector length`,
+  // Zero-column matrix triggers validation
+  expect(() => math.dot([[1], [2], [3]], zero_cols_matrix)).toThrow(
+    `Second matrix must have at least one column`,
   )
   // @ts-expect-error bad input, checking for expected error
   expect(() => math.dot(matrix1, undefined_cols_matrix)).toThrow(
@@ -1150,7 +1148,13 @@ describe(`tensor conversion utilities`, () => {
           )
         } else {
           const inv = math.matrix_inverse_3x3(matrix)
-          const I = math.dot(matrix, inv) as number[][]
+          const result = math.dot(matrix, inv)
+
+          // Validate that result is a 2D matrix
+          if (!Array.isArray(result) || !Array.isArray(result[0])) {
+            throw new Error(`Expected matrix result from dot product`)
+          }
+          const I = result as number[][]
 
           // Verify A * A^-1 ≈ I and det(A^-1) = 1/det(A)
           for (let row_idx = 0; row_idx < 3; row_idx++) {
@@ -1389,9 +1393,9 @@ describe(`cross_3d`, () => {
     [[2, 3, 4], [5, 6, 7], [-3, 6, -3], `general`],
     [[0, 0, 0], [1, 2, 3], [0, 0, 0], `zero vector`],
     [[1e10, 0, 0], [0, 1e10, 0], [0, 0, 1e20], `large numbers`],
-  ])(`%s`, (a, b, expected) => {
-    const result = math.cross_3d(a as Vec3, b as Vec3)
-    // For large values, use lower precision (fewer decimal places to check)
+  ])(`%s`, (v1, v2, expected) => {
+    const result = math.cross_3d(v1 as Vec3, v2 as Vec3)
+    // For large values (≥1e10), use lower precision due to floating-point precision limits
     const precision = expected.some((val) => Math.abs(val) >= 1e10) ? 5 : 10
     expect(result).toEqual(expected.map((val) => expect.closeTo(val, precision)))
   })

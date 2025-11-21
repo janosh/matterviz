@@ -372,6 +372,9 @@ describe(`format_bytes`, () => {
   test.each([
     // Undefined and edge cases
     [undefined, `Unknown`],
+    [NaN, `Unknown`],
+    [Infinity, `Unknown`],
+    [-Infinity, `Unknown`],
 
     // Bytes range (< 1024)
     [0, `0 B`],
