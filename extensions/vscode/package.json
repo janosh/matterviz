@@ -294,7 +294,7 @@
         },
         "matterviz.structure.zoom_to_cursor": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Zoom toward cursor position instead of scene center (double click canvas to reset camera)"
         },
         "matterviz.structure.max_zoom": {

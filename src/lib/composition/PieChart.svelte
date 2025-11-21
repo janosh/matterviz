@@ -5,7 +5,7 @@
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
-  import { fractional_composition, get_total_atoms } from './parse'
+  import { count_atoms_in_composition, fractional_composition } from './parse'
 
   // Constants for pie chart calculations
   const VERY_THIN_SLICE_THRESHOLD = 20 // degrees
@@ -55,7 +55,7 @@
     ELEMENT_COLOR_SCHEMES[color_scheme] || ELEMENT_COLOR_SCHEMES.Vesta,
   )
   let fractions = $derived(fractional_composition(composition))
-  let total_atoms = $derived(get_total_atoms(composition))
+  let total_atoms = $derived(count_atoms_in_composition(composition))
   let outer_radius = $derived(size / 2 - stroke_width)
   let inner_radius_adjusted = $derived(Math.min(inner_radius, outer_radius - 10))
   let center = $derived(size / 2)

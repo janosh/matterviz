@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { AnyStructure, Site } from '$lib'
   import { DraggablePane, element_data, format_num, Icon, type InfoItem } from '$lib'
-  import { electro_neg_formula, get_density } from '$lib/structure'
+  import { get_electro_neg_formula } from '$lib/composition'
+  import { get_density } from '$lib/structure'
   import { wyckoff_positions_from_moyo, WyckoffTable } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
@@ -57,7 +58,9 @@
     const structure_items: InfoItem[] = [
       {
         label: `Formula`,
-        value: `${electro_neg_formula(structure)} (${structure.sites.length} sites)`,
+        value: `${
+          get_electro_neg_formula(structure)
+        } (${structure.sites.length} sites)`,
         key: `structure-formula`,
       },
       {

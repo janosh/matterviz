@@ -1051,7 +1051,7 @@ function point_in_tetrahedron_3d(
   // Solve for barycentric coordinates: point = l0*p0 + l1*p1 + l2*p2 + l3*p3
   // with l0 + l1 + l2 + l3 = 1
   // Build the linear system
-  const matrix = [
+  const matrix: math.Matrix4x4 = [
     [p0.x, p1.x, p2.x, p3.x],
     [p0.y, p1.y, p2.y, p3.y],
     [p0.z, p1.z, p2.z, p3.z],
@@ -1068,7 +1068,7 @@ function point_in_tetrahedron_3d(
   // Compute barycentric coordinates using Cramer's rule
   const bary: [number, number, number, number] = [0, 0, 0, 0]
   for (let idx = 0; idx < 4; idx++) {
-    const m_i = matrix.map((row) => [...row])
+    const m_i = matrix.map((row) => [...row]) as math.Matrix4x4
     for (let row = 0; row < 4; row++) {
       m_i[row][idx] = rhs[row]
     }

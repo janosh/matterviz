@@ -1,3 +1,7 @@
+// Check if value is a plain object (not array, null, or other types)
+const is_plain_object = (val: unknown): val is Record<string, unknown> =>
+  typeof val === `object` && val !== null && !Array.isArray(val)
+
 // Merge nested objects (1 level deep).
 export function merge_nested<T extends Record<string, unknown>>(
   obj1: T,
@@ -5,18 +9,8 @@ export function merge_nested<T extends Record<string, unknown>>(
 ): T {
   const result = { ...obj1, ...(obj2 || {}) } as T
   for (const key in obj1) {
-    if (
-      typeof obj1[key] === `object` &&
-      obj1[key] !== null &&
-      !Array.isArray(obj1[key])
-    ) {
-      // Only deep-merge if obj2 value is also a plain object
-      if (
-        obj2?.[key] &&
-        typeof obj2[key] === `object` &&
-        !Array.isArray(obj2[key])
-      ) result[key] = { ...obj1[key], ...obj2[key] }
-      // Otherwise keep the top-level override (already applied above)
+    if (is_plain_object(obj1[key]) && is_plain_object(obj2?.[key])) {
+      result[key] = { ...obj1[key], ...obj2[key] }
     }
   }
   return result

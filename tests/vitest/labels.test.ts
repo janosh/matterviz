@@ -1,9 +1,10 @@
 import { element_data } from '$lib/element'
 import {
-  default_fmt,
+  DEFAULT_FMT,
   ELEM_HEATMAP_KEYS,
   ELEM_HEATMAP_LABELS,
   ELEM_PROPERTY_LABELS,
+  format_bytes,
   format_fractional,
   format_num,
   format_value,
@@ -34,7 +35,7 @@ describe(`labels utils`, () => {
   })
 
   test(`format_num uses defaults and respects overrides`, () => {
-    const [gt_1_fmt, lt_1_fmt] = default_fmt
+    const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
     expect(format_num(1234)).toBe(d3_format(gt_1_fmt)(1234))
     expect(format_num(0.123)).toBe(d3_format(lt_1_fmt)(0.123))
     expect(format_num(1234, gt_1_fmt)).toBe(d3_format(gt_1_fmt)(1234))
@@ -86,13 +87,8 @@ test(`format_num`, () => {
   expect(format_num(-1.14123e-7, `.5~g`)).toBe(`−1.1412e-7`)
 })
 
-test(`default_fmt`, () => {
-  expect(default_fmt).toEqual([`,.3~s`, `.3~g`])
-
-  expect(format_num(12_345)).toBe(`12.3k`)
-  default_fmt[0] = `,.5~s`
-  expect(format_num(12_345)).toBe(`12.345k`)
-  default_fmt[0] = `,.3~s`
+test(`DEFAULT_FMT`, () => {
+  expect(DEFAULT_FMT).toEqual([`,.3~s`, `.3~g`])
 })
 
 const element_data_keys = Object.keys(element_data[0])
@@ -370,4 +366,44 @@ describe(`format_value`, () => {
       expect(format_value(value, formatter)).toBe(expected)
     },
   )
+})
+
+describe(`format_bytes`, () => {
+  test.each([
+    // Undefined and edge cases
+    [undefined, `Unknown`],
+    [NaN, `Unknown`],
+    [Infinity, `Unknown`],
+    [-Infinity, `Unknown`],
+
+    // Bytes range (< 1024)
+    [0, `0 B`],
+    [1, `1 B`],
+    [500, `500 B`],
+    [1023, `1023 B`],
+
+    // Kibibytes range (1024 - 1024*1024)
+    [1024, `1.00 KiB`],
+    [1536, `1.50 KiB`],
+    [10240, `10.00 KiB`],
+    [102400, `100.00 KiB`],
+    [1024 * 1024 - 1, `1024.00 KiB`],
+
+    // Mebibytes range (1024*1024 - 1024*1024*1024)
+    [1024 * 1024, `1.00 MiB`],
+    [1024 * 1024 * 1.5, `1.50 MiB`],
+    [1024 * 1024 * 10, `10.00 MiB`],
+    [1024 * 1024 * 100, `100.00 MiB`],
+    [1024 * 1024 * 500, `500.00 MiB`],
+    [1024 * 1024 * 1024 - 1, `1024.00 MiB`],
+
+    // Gibibytes range (>= 1024*1024*1024)
+    [1024 * 1024 * 1024, `1.00 GiB`],
+    [1024 * 1024 * 1024 * 1.5, `1.50 GiB`],
+    [1024 * 1024 * 1024 * 10, `10.00 GiB`],
+    [1024 * 1024 * 1024 * 100, `100.00 GiB`],
+    [1024 * 1024 * 1024 * 1000, `1000.00 GiB`],
+  ])(`format_bytes(%s) should return %s`, (bytes, expected) => {
+    expect(format_bytes(bytes)).toBe(expected)
+  })
 })

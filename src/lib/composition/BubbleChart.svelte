@@ -6,7 +6,7 @@
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
-  import { get_total_atoms } from './parse'
+  import { count_atoms_in_composition } from './parse'
 
   type BubbleSegmentData = ChartSegmentData & { radius: number; x: number; y: number }
 
@@ -72,7 +72,7 @@
 
     // Get max radius for font scaling
     const max_radius = Math.max(...root.leaves().map((data) => data.r || 0))
-    const total_atoms = get_total_atoms(composition)
+    const total_atoms = count_atoms_in_composition(composition)
 
     return root.leaves().map((node) => {
       const radius = node.r || 0

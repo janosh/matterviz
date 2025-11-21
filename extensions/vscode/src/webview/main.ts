@@ -10,6 +10,7 @@ import '$lib/theme/themes'
 import type { LoadingOptions } from '$lib/trajectory/parse'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 // Add frame loader import
+import type { PymatgenStructure } from '$lib'
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { type DefaultSettings, merge } from '$lib/settings'
 import type {
@@ -17,7 +18,8 @@ import type {
   FrameLoader,
   TrajectoryFrame,
   TrajectoryMetadata,
-} from '$lib/trajectory/index'
+  TrajectoryType,
+} from '$lib/trajectory'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 
@@ -106,14 +108,6 @@ class VSCodeFrameLoader implements FrameLoader {
   }
 }
 
-export interface TrajectoryData {
-  frames?: { structure?: { sites?: unknown[] } }[]
-}
-
-export interface StructureData {
-  sites?: unknown[]
-}
-
 export interface VSCodeAPI {
   postMessage(message: unknown): void
 }
@@ -121,12 +115,14 @@ export interface VSCodeAPI {
 // Extend globalThis interface for MatterViz data
 declare global {
   interface Window {
-    mattervizData?: MatterVizData
+    matterviz_data?: MatterVizData
     initializeMatterViz?: () => Promise<MatterVizApp | null>
     cleanupMatterViz?: () => Promise<void>
     download?: (data: string | Blob, filename: string) => void
   }
-  var mattervizData: MatterVizData | undefined
+  // Also declare as global var for direct access via globalThis.matterviz_data
+  // Both are needed: Window.matterviz_data is set by extension.ts, accessed via globalThis
+  var matterviz_data: MatterVizData | undefined
 
   // VSCode webview API
   function acquireVsCodeApi(): VSCodeAPI
@@ -243,19 +239,20 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
   return bytes.buffer
 }
 
+// Type for parsed trajectory response from large file requests
+type ParsedTrajectoryResponse = {
+  trajectory: TrajectoryType
+  supports_streaming: boolean
+  file_path: string
+}
+
 // Request large file content from the extension using chunked streaming
 function request_large_file_content(
   file_path: string,
   filename: string,
   is_compressed: boolean,
   timeout: number = 30_000, // 30 seconds
-): Promise<
-  string | ArrayBuffer | {
-    trajectory: TrajectoryData
-    supports_streaming: boolean
-    file_path: string
-  }
-> {
+): Promise<string | ParsedTrajectoryResponse> {
   if (!vscode_api) throw new Error(`VS Code API not available`)
 
   return new Promise((resolve, reject) => {
@@ -286,13 +283,8 @@ function request_large_file_content(
     }
 
     globalThis.addEventListener(`message`, handler)
-    vscode_api.postMessage({
-      command: `request_large_file`,
-      request_id,
-      file_path,
-      filename,
-      is_compressed,
-    })
+    const command = `request_large_file`
+    vscode_api.postMessage({ command, request_id, file_path, filename, is_compressed })
 
     timer = setTimeout(() => {
       globalThis.removeEventListener(`message`, handler)
@@ -436,21 +428,25 @@ const create_display = (
   const Component = is_trajectory ? Trajectory : Structure
 
   // Get defaults and create props
-  const defaults = merge(globalThis.mattervizData?.defaults)
+  const defaults = merge(globalThis.matterviz_data?.defaults)
+
+  // Type for trajectory with optional frame loader for streaming
+  type StreamingTrajectory = TrajectoryType & { frame_loader?: FrameLoader }
 
   // Prepare trajectory data for VS Code streaming if supported
-  let final_trajectory_data = result.data
+  let final_trajectory: TrajectoryType | StreamingTrajectory = result
+    .data as TrajectoryType
 
   if (is_trajectory && result.streaming_info?.supports_streaming) {
-    const trajectory_data = result.data as TrajectoryData
+    const trajectory = result.data as TrajectoryType
 
     if (vscode_api && result.streaming_info.file_path) {
       // Create trajectory with frame loader for streaming
-      final_trajectory_data = {
-        ...trajectory_data,
+      final_trajectory = {
+        ...trajectory,
         is_indexed: true, // Mark as indexed so component uses frame loading logic
         // Keep existing frames for initial display
-        frames: trajectory_data.frames || [],
+        frames: trajectory.frames || [],
         // Attach frame loader directly to trajectory
         frame_loader: new VSCodeFrameLoader(result.streaming_info.file_path, vscode_api),
       }
@@ -461,7 +457,7 @@ const create_display = (
   const props = {
     ...(is_trajectory
       ? {
-        trajectory: final_trajectory_data,
+        trajectory: final_trajectory,
         ...trajectory_props(defaults),
         fullscreen_toggle: false, // Disable fullscreen button in VSCode extension
       }
@@ -478,15 +474,13 @@ const create_display = (
   const app = mount(Component, { target: container, props })
 
   // VSCode message logging
-  const trajectory_data = final_trajectory_data as TrajectoryData & {
-    total_frames?: number
-  }
-  const structure_data = result.data as StructureData
   const message = is_trajectory
     ? `Trajectory rendered: ${filename} (${
-      trajectory_data.frames?.length ?? 0
-    } initial frames, ${trajectory_data.total_frames ?? `unknown`} total)`
-    : `Structure rendered: ${filename} (${structure_data.sites?.length ?? 0} sites)`
+      final_trajectory.frames?.length ?? 0
+    } initial frames, ${final_trajectory.total_frames ?? `unknown`} total)`
+    : `Structure rendered: ${filename} (${
+      (result.data as PymatgenStructure).sites?.length ?? 0
+    } sites)`
 
   vscode_api?.postMessage({ command: `log`, text: message })
 
@@ -564,9 +558,9 @@ const trajectory_props = (defaults: DefaultSettings) => {
 // Initialize the MatterViz application
 async function initialize() {
   // Get MatterViz data passed from extension
-  const { content, filename, is_base64 } = globalThis.mattervizData?.data || {}
-  const theme = globalThis.mattervizData?.theme
-  const moyo_wasm_url = globalThis.mattervizData?.moyo_wasm_url
+  const { content, filename, is_base64 } = globalThis.matterviz_data?.data || {}
+  const theme = globalThis.matterviz_data?.theme
+  const moyo_wasm_url = globalThis.matterviz_data?.moyo_wasm_url
   if (!content || !filename) {
     throw new Error(`No data provided to MatterViz app`)
   }
@@ -615,8 +609,8 @@ async function cleanup_matterviz(): Promise<void> {
   initializeMatterViz?: () => Promise<MatterVizApp | null>
   cleanupMatterViz?: () => Promise<void>
 }).initializeMatterViz = async (): Promise<MatterVizApp | null> => {
-  if (!globalThis.mattervizData) {
-    console.warn(`No mattervizData found on window`)
+  if (!globalThis.matterviz_data) {
+    console.warn(`No matterviz_data found on window`)
     return null
   }
 
@@ -631,13 +625,13 @@ async function cleanup_matterviz(): Promise<void> {
       create_error_display(
         container,
         err,
-        globalThis.mattervizData?.data?.filename || `Unknown file`,
+        globalThis.matterviz_data?.data?.filename || `Unknown file`,
       )
     }
     vscode_api?.postMessage({
       command: `error`,
       text: `Error rendering ${
-        globalThis.mattervizData?.data?.filename || `Unknown file`
+        globalThis.matterviz_data?.data?.filename || `Unknown file`
       }: ${err.message}`,
     })
     return null
