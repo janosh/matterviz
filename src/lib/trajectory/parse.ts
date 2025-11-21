@@ -11,7 +11,6 @@ import {
   TRAJ_KEYWORDS_SIMPLE_REGEX,
   XDATCAR_REGEX,
 } from '$lib/constants'
-import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import { parse_xyz } from '$lib/structure/parse'
 import type { Dataset, Entity, Group } from 'h5wasm'
@@ -83,6 +82,27 @@ const FORMAT_PATTERNS = {
   },
 } as const
 
+// Validate that data is a proper 3x3 matrix
+// Accepts both regular arrays and typed arrays (Float32Array, Float64Array, etc.)
+function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
+  if (!Array.isArray(data) || data.length !== 3) {
+    throw new Error(
+      `Expected 3x3 matrix, got array of length ${
+        Array.isArray(data) ? data.length : `non-array`
+      }`,
+    )
+  }
+  // Allow both regular arrays and typed arrays (Float32Array, Float64Array, etc.)
+  const is_valid_row = (row: unknown): boolean =>
+    (Array.isArray(row) || ArrayBuffer.isView(row)) &&
+    (row as { length: number }).length === 3
+
+  if (!data.every(is_valid_row)) {
+    throw new Error(`Invalid 3x3 matrix structure`)
+  }
+  return data as math.Matrix3x3
+}
+
 // Check if file is a trajectory (supports both filename-only and content-based detection)
 export function is_trajectory_file(filename: string, content?: string): boolean {
   if (CONFIG_DIRS_REGEX.test(filename)) return false
@@ -114,9 +134,12 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
     TRAJ_FALLBACK_EXTENSIONS_REGEX.test(base_name)
 }
 
-// Cache for optimization
-const matrix_cache = new WeakMap<Matrix3x3, Matrix3x3>()
-const get_inverse_matrix = (matrix: Matrix3x3): Matrix3x3 => {
+// Cache inverse matrices by original matrix reference for performance
+// IMPORTANT: This cache assumes lattice matrices are immutable. Mutating a cached
+// matrix in place yields incorrect inverses. Always create new matrix instances
+// if modifications are needed.
+const matrix_cache = new WeakMap<math.Matrix3x3, math.Matrix3x3>()
+const get_inverse_matrix = (matrix: math.Matrix3x3): math.Matrix3x3 => {
   const cached = matrix_cache.get(matrix)
   if (cached) return cached
   const inverse = math.matrix_inverse_3x3(matrix)
@@ -131,7 +154,7 @@ const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
 const create_structure = (
   positions: number[][],
   elements: ElementSymbol[],
-  lattice_matrix?: Matrix3x3,
+  lattice_matrix?: math.Matrix3x3,
   pbc?: Pbc,
   force_data?: number[][],
 ): AnyStructure => {
@@ -166,7 +189,7 @@ const create_structure = (
 const create_trajectory_frame = (
   positions: number[][],
   elements: ElementSymbol[],
-  lattice_matrix: Matrix3x3 | undefined,
+  lattice_matrix: math.Matrix3x3 | undefined,
   pbc: Pbc | undefined,
   step: number,
   metadata: Record<string, unknown> = {},
@@ -347,7 +370,9 @@ const parse_torch_sim_hdf5 = async (
 
     const frames = positions.map((frame_pos, idx) => {
       const cell = cells_data?.[idx]
-      const lattice_mat = cell ? math.transpose_3x3_matrix(cell as Matrix3x3) : undefined
+      const lattice_mat = cell
+        ? math.transpose_3x3_matrix(validate_3x3_matrix(cell))
+        : undefined
       const energy = energies_data?.[idx]?.[0]
       const metadata: Record<string, unknown> = {}
       if (energy !== undefined) metadata.energy = energy
@@ -398,9 +423,11 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
   const scale = parseFloat(lines[1])
   if (isNaN(scale)) throw new Error(`Invalid scale factor`)
 
-  const lattice_matrix = lines.slice(2, 5).map((line) =>
-    line.trim().split(/\s+/).map((x) => parseFloat(x) * scale)
-  ) as Matrix3x3
+  const lattice_matrix = validate_3x3_matrix(
+    lines.slice(2, 5).map((line) =>
+      line.trim().split(/\s+/).map((x) => parseFloat(x) * scale)
+    ),
+  )
 
   const element_names = lines[5].trim().split(/\s+/)
   const element_counts = lines[6].trim().split(/\s+/).map(Number)
@@ -503,7 +530,7 @@ const parse_xyz_trajectory = (content: string): TrajectoryType => {
 
     // Extract lattice matrix
     const lattice_match = comment.match(/Lattice\s*=\s*"([^"]+)"/i)
-    let lattice_matrix: Matrix3x3 | undefined
+    let lattice_matrix: math.Matrix3x3 | undefined
     if (lattice_match) {
       const values = lattice_match[1].split(/\s+/).map(Number)
       if (values.length === 9) {
@@ -629,7 +656,7 @@ const parse_ase_trajectory = (buffer: ArrayBuffer, filename?: string): Trajector
       frames.push(create_trajectory_frame(
         positions,
         elements,
-        frame_data.cell as Matrix3x3,
+        frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined,
         frame_data.pbc || [true, true, true],
         idx,
         metadata,
@@ -975,7 +1002,7 @@ export class TrajFrameReader implements FrameLoader {
       if (!numbers || !positions) throw new Error(`Missing atomic numbers or positions`)
 
       // Extract cell and calculate volume if present
-      const cell = frame_data.cell as Matrix3x3 | undefined
+      const cell = frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined
       const metadata: Record<string, unknown> = {
         step: frame_number,
         ...(frame_data.calculator || {}),
@@ -983,7 +1010,7 @@ export class TrajFrameReader implements FrameLoader {
       }
 
       // Calculate volume from cell matrix if available
-      if (cell && Array.isArray(cell) && cell.length === 3) {
+      if (cell) {
         try {
           metadata.volume = Math.abs(math.det_3x3(cell))
         } catch (error) {
@@ -1071,13 +1098,11 @@ export class TrajFrameReader implements FrameLoader {
 
     // Calculate volume from cell if present
     if (frame_data.cell && Array.isArray(frame_data.cell)) {
-      const cell = frame_data.cell as number[][]
-      if (cell.length === 3 && cell[0]?.length === 3) {
-        try {
-          properties.volume = Math.abs(math.det_3x3(cell as Matrix3x3))
-        } catch (error) {
-          console.warn(`Failed to calculate volume for ASE frame ${frame_number}:`, error)
-        }
+      try {
+        const validated_cell = validate_3x3_matrix(frame_data.cell)
+        properties.volume = Math.abs(math.det_3x3(validated_cell))
+      } catch (error) {
+        console.warn(`Failed to calculate volume for ASE frame ${frame_number}:`, error)
       }
     }
 
@@ -1146,7 +1171,7 @@ export async function parse_trajectory_data(
   if (obj[`@class`] === `Trajectory` && obj.species && obj.coords && obj.lattice) {
     const species = obj.species as { element: ElementSymbol }[]
     const coords = obj.coords as number[][][]
-    const matrix = obj.lattice as Matrix3x3
+    const matrix = validate_3x3_matrix(obj.lattice)
     const frame_properties = obj.frame_properties as Record<string, unknown>[] || []
 
     const frames = coords.map((frame_coords, idx) => {

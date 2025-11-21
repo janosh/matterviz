@@ -38,7 +38,7 @@
   }
 
   const mock_band_structure: BaseBandStructure = {
-    lattice_rec: {
+    recip_lattice: {
       matrix: [
         [0.15915494, 0.0, 0.0],
         [0.0, 0.15915494, 0.0],

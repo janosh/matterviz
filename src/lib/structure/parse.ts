@@ -10,7 +10,6 @@ import {
   VASP_FILES_REGEX,
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
-import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
 import { load as yaml_load } from 'js-yaml'
@@ -18,7 +17,7 @@ import { load as yaml_load } from 'js-yaml'
 export interface ParsedStructure {
   sites: Site[]
   lattice?: {
-    matrix: Matrix3x3
+    matrix: math.Matrix3x3
     a: number
     b: number
     c: number
@@ -147,7 +146,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
       return coords as Vec3
     }
 
-    const lattice_vecs: Matrix3x3 = [
+    const lattice_vecs: math.Matrix3x3 = [
       parse_vector(lines[2], 3),
       parse_vector(lines[3], 4),
       parse_vector(lines[4], 5),
@@ -160,7 +159,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
     }
 
     // Scale lattice vectors
-    const scaled_lattice: Matrix3x3 = [
+    const scaled_lattice: math.Matrix3x3 = [
       math.scale(lattice_vecs[0], scale_factor),
       math.scale(lattice_vecs[1], scale_factor),
       math.scale(lattice_vecs[2], scale_factor),
@@ -419,7 +418,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
     if (lattice_match) {
       const lattice_values = lattice_match[1].split(/\s+/).map(parse_coordinate)
       if (lattice_values.length === 9) {
-        const lattice_vectors: Matrix3x3 = [
+        const lattice_vectors: math.Matrix3x3 = [
           [lattice_values[0], lattice_values[1], lattice_values[2]],
           [lattice_values[3], lattice_values[4], lattice_values[5]],
           [lattice_values[6], lattice_values[7], lattice_values[8]],
@@ -867,7 +866,7 @@ export function parse_cif(
     const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
     const lattice_params = math.calc_lattice_params(lattice_matrix)
     const lattice_T = math.transpose_3x3_matrix(lattice_matrix)
-    let lattice_invT: Matrix3x3 | null = null
+    let lattice_invT: math.Matrix3x3 | null = null
     try {
       lattice_invT = math.matrix_inverse_3x3(lattice_T)
     } catch {
@@ -1012,7 +1011,7 @@ export function parse_cif(
 function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   const sites: Site[] = []
   // Phonopy stores lattice vectors as rows, use them directly
-  const lattice_matrix = cell.lattice as Matrix3x3
+  const lattice_matrix = cell.lattice as math.Matrix3x3
 
   // Process each atomic site
   for (const point of cell.points) {
@@ -1406,7 +1405,7 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
     const species = species_raw as string[]
 
     // Optimade stores lattice vectors as rows, so use as is
-    const lattice_matrix = attrs.lattice_vectors as Matrix3x3 | undefined
+    const lattice_matrix = attrs.lattice_vectors as math.Matrix3x3 | undefined
 
     // Parse atomic sites
     const sites: Site[] = []
@@ -1522,7 +1521,7 @@ export function optimade_to_pymatgen(
 
   try {
     // Convert lattice vectors to matrix format
-    const lattice_matrix: Matrix3x3 = [
+    const lattice_matrix: math.Matrix3x3 = [
       attrs.lattice_vectors[0] as Vec3,
       attrs.lattice_vectors[1] as Vec3,
       attrs.lattice_vectors[2] as Vec3,

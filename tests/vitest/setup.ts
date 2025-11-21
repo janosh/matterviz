@@ -1,5 +1,4 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
-import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc, PymatgenStructure, Site } from '$lib/structure'
 import { beforeEach, vi } from 'vitest'
@@ -28,7 +27,7 @@ export const get_dummy_structure = (
   atoms = 3,
   with_lattice = false,
 ): PymatgenStructure => {
-  const matrix: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
+  const matrix: math.Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
   const pbc: Pbc = [false, false, false]
   const structure = {
     sites: Array.from({ length: atoms }, (_, idx) => ({
@@ -43,7 +42,7 @@ export const get_dummy_structure = (
   }
 
   if (with_lattice) {
-    const matrix: Matrix3x3 = [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]]
+    const matrix: math.Matrix3x3 = [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]]
     const pbc: Pbc = [true, true, true]
     const lengths = { a: 5.0, b: 5.0, c: 5.0 }
     const angles = { alpha: 90.0, beta: 90.0, gamma: 90.0 }
@@ -59,7 +58,7 @@ export const get_dummy_structure = (
 // 1. Fractional coordinates: create_test_structure(lattice, elements, frac_coords)
 // 2. Cartesian coordinates: create_test_structure(lattice, sites_data)
 export function create_test_structure(
-  lattice: Matrix3x3 | number,
+  lattice: math.Matrix3x3 | number,
   elements_or_sites:
     | ElementSymbol[]
     | {
@@ -68,7 +67,7 @@ export function create_test_structure(
     }[],
   frac_coords?: Vec3[],
 ): PymatgenStructure {
-  const lattice_matrix: Matrix3x3 = typeof lattice === `number`
+  const lattice_matrix: math.Matrix3x3 = typeof lattice === `number`
     ? [
       [lattice, 0.0, 0.0],
       [0.0, lattice, 0.0],

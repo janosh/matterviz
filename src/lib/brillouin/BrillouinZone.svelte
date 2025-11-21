@@ -100,9 +100,7 @@
       k_path_points?: Vec3[]
       // K-path labels with positions in Cartesian reciprocal space coordinates
       // Each position should match a corresponding point in k_path_points
-      k_path_labels?: Array<
-        { position: [number, number, number]; label: string | null }
-      >
+      k_path_labels?: { position: [number, number, number]; label: string | null }[]
       // Currently hovered k-point in Cartesian reciprocal space coordinates
       hovered_k_point?: [number, number, number] | null
       // Index of the currently hovered q-point in the band structure

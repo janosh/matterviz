@@ -1,3 +1,4 @@
+import type { Matrix3x3 } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import {
   apply_symmetry_operations,
@@ -17,12 +18,12 @@ const make_operation = (rot: number[], trans: number[]): MoyoOperation => ({
 })
 
 const make_structure = (
-  lattice_matrix: number[][],
-  sites: Array<{ elem: string; abc: Vec3; xyz: Vec3 }>,
+  lattice_matrix: Matrix3x3,
+  sites: { elem: string; abc: Vec3; xyz: Vec3 }[],
   lattice_params = { a: 5, b: 5, c: 5, alpha: 90, beta: 90, gamma: 90, volume: 125 },
 ): PymatgenStructure => ({
   lattice: {
-    matrix: lattice_matrix as [Vec3, Vec3, Vec3],
+    matrix: lattice_matrix,
     pbc: [true, true, true],
     ...lattice_params,
   },

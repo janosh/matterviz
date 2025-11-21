@@ -188,8 +188,8 @@ describe(`get_band_xaxis_ticks`, () => {
         GAMMA: [0, 0, 0] as Vec3,
         X: [0.5, 0, 0] as Vec3,
       },
-      lattice_rec: {
-        matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3,
+      recip_lattice: {
+        matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
       },
     }
 
@@ -230,7 +230,7 @@ describe(`find_qpoint_at_distance`, () => {
       X: [0.5, 0, 0] as Vec3,
       K: [0.5, 0.5, 0] as Vec3,
     },
-    lattice_rec: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3 },
+    recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3 },
   }
 
   it.each([
@@ -288,7 +288,7 @@ describe(`extract_k_path_points`, () => {
         X: [0.5, 0, 0] as Vec3,
         K: [1 / 3, 1 / 3, 0] as Vec3,
       },
-      lattice_rec: { matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 1]] as Matrix3x3 },
+      recip_lattice: { matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 1]] satisfies Matrix3x3 },
     }
 
     const recip_lattice: Matrix3x3 = [[2, 0, 0], [0, 2, 0], [0, 0, 1]]
@@ -312,7 +312,7 @@ describe(`extract_k_path_points`, () => {
       bands: [[0, 1]],
       nb_bands: 1,
       labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [1, 0, 0] as Vec3 },
-      lattice_rec: { matrix: identity_lattice },
+      recip_lattice: { matrix: identity_lattice },
     }
 
     // Non-orthogonal: frac[0]*recip[0] + frac[1]*recip[1] + frac[2]*recip[2]
@@ -329,7 +329,7 @@ describe(`extract_k_path_points`, () => {
       bands: [],
       nb_bands: 0,
       labels_dict: {},
-      lattice_rec: { matrix: identity_lattice },
+      recip_lattice: { matrix: identity_lattice },
     }
     expect(extract_k_path_points(empty_bs, identity_lattice)).toEqual([])
   })
@@ -360,7 +360,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
       X: [0.5, 0, 0] as Vec3,
       K: [0.5, 0.5, 0] as Vec3,
     },
-    lattice_rec: { matrix: identity_lattice },
+    recip_lattice: { matrix: identity_lattice },
   }
 
   const x_pos = { 'GAMMA_X': [0, 1.0], 'X_K': [1.0, 1.5] } as Record<
@@ -400,7 +400,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
       bands: [[0, 1, 2, 3, 4]],
       nb_bands: 1,
       labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [0.5, 0, 0] as Vec3 },
-      lattice_rec: { matrix: identity_lattice },
+      recip_lattice: { matrix: identity_lattice },
     }
     const x_pos_repeat = { 'GAMMA_X': [0, 1.0], 'X_GAMMA': [1.0, 2.0] } as Record<
       string,
@@ -433,7 +433,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
         X: [0.5, 0, 0] as Vec3,
         K: [0.5, 0.5, 0] as Vec3,
       },
-      lattice_rec: { matrix: identity_lattice },
+      recip_lattice: { matrix: identity_lattice },
     }
     const x_pos_disc = { 'GAMMA_X': [0, 0.5], 'X_K': [0.5, 0.5] } as Record<
       string,

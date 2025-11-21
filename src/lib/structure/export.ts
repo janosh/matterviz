@@ -1,5 +1,5 @@
 import type { AnyStructure, Vec3 } from '$lib'
-import { electro_neg_formula } from '$lib'
+import { get_electro_neg_formula } from '$lib/composition'
 import { download } from '$lib/io/fetch'
 import * as math from '$lib/math'
 import {
@@ -97,6 +97,14 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
 }
 
 // Generate a filename for structure exports based on structure metadata
+// Sanitize string for use in filenames by removing problematic characters.
+const sanitize_filename_part = (text: string): string =>
+  text
+    .replace(/<\/?[^>]+>/g, ``) // strip HTML tags
+    .replace(/[/\\:*?"<>|]/g, `_`) // replace filesystem-invalid chars
+    .replace(/_+/g, `_`) // condense consecutive underscores
+    .replace(/^_|_$/g, ``) // remove leading/trailing underscores
+
 export function create_structure_filename(
   structure: AnyStructure | undefined,
   extension: string,
@@ -104,14 +112,17 @@ export function create_structure_filename(
   if (!structure) return `structure.${extension}`
 
   const parts: string[] = []
+  // Helper to sanitize and push non-empty parts
+  const safe_push = (value: string | undefined) => {
+    const sanitized = value ? sanitize_filename_part(value) : ``
+    if (sanitized) parts.push(sanitized)
+  }
+  safe_push(structure.id)
 
-  if (structure.id) parts.push(structure.id) // Add ID if available
-
-  // Add formula
-  const formula_html = electro_neg_formula(structure)
-  if (formula_html && formula_html !== `Unknown`) {
-    const formula_plain = formula_html.replace(/<\/?sub>|<\/?sup>/g, ``)
-    parts.push(formula_plain)
+  // Add formula (plain text to avoid HTML in filenames)
+  const formula = get_electro_neg_formula(structure, true)
+  if (formula && formula !== `Unknown`) {
+    safe_push(formula.replaceAll(` `, ``))
   }
 
   // Add space group if available
@@ -120,7 +131,12 @@ export function create_structure_filename(
     structure.symmetry &&
     typeof structure.symmetry === `object` &&
     `space_group_symbol` in structure.symmetry
-  ) parts.push(String(structure.symmetry.space_group_symbol))
+  ) {
+    const space_group = structure.symmetry.space_group_symbol
+    if (space_group && typeof space_group === `string`) {
+      safe_push(space_group.replaceAll(` `, ``))
+    }
+  }
 
   // Add lattice system if available
   if (
@@ -128,12 +144,17 @@ export function create_structure_filename(
     structure.lattice &&
     typeof structure.lattice === `object` &&
     `lattice_system` in structure.lattice
-  ) parts.push(String(structure.lattice.lattice_system))
+  ) {
+    const lattice_system = structure.lattice.lattice_system
+    if (lattice_system && typeof lattice_system === `string`) {
+      safe_push(lattice_system)
+    }
+  }
 
   // Add number of sites
   if (structure.sites?.length) parts.push(`${structure.sites.length}sites`)
 
-  const base_name = parts.length > 0 ? parts.join(`_`) : `structure`
+  const base_name = parts.length > 0 ? parts.join(`-`) : `structure`
   return `${base_name}.${extension}`
 }
 
@@ -149,7 +170,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // Second line: comment (structure ID, formula, or default)
   const comment_parts: string[] = []
   if (structure.id) comment_parts.push(structure.id)
-  const formula = electro_neg_formula(structure)
+  const formula = get_electro_neg_formula(structure, true)
   if (formula && formula !== `Unknown`) comment_parts.push(formula)
 
   // Include extended XYZ lattice information when available so round-trips preserve lattice
@@ -325,7 +346,10 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   }
   const lines: string[] = []
 
-  const title = structure.id || electro_neg_formula(structure) ||
+  // Use plain text formula for POSCAR title to avoid HTML tags
+  const formula = get_electro_neg_formula(structure, true)
+  const title = structure.id ||
+    (formula && formula !== `Unknown` ? formula : null) ||
     `Generated from structure`
   lines.push(title)
   lines.push(`1.0`) // Scale factor (1.0 for direct coordinates)

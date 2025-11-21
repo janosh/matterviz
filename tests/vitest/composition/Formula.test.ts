@@ -66,14 +66,13 @@ test(`parse_formula_with_oxidation handles negative oxidation states`, () => {
 
 test(`parse_formula_with_oxidation handles bare sign oxidation states`, () => {
   // Test bare signs: "+", "-", "[+]", "[-]" should be treated as ±1
-  const test_cases: Array<[string, number]> = [
+  const test_cases: [string, number][] = [
     [`Na^+`, 1],
     [`Cl^-`, -1],
     [`Na[+]`, 1],
     [`Cl[-]`, -1],
     [`K^+Cl^-`, 1], // K should have +1
   ]
-
   for (const [formula, expected_oxidation] of test_cases) {
     const result = parse_formula_with_oxidation(formula)
     expect(result[0].oxidation_state).toBe(expected_oxidation)
@@ -82,7 +81,7 @@ test(`parse_formula_with_oxidation handles bare sign oxidation states`, () => {
 
 test(`parse_formula_with_oxidation handles various oxidation state formats`, () => {
   // Test different formats: +2, 2+, -2, 2-
-  const test_cases: Array<[string, number]> = [
+  const test_cases: [string, number][] = [
     [`Fe^+2O`, 2],
     [`Fe^2+O`, 2],
     [`Fe^-2O`, -2],
@@ -136,6 +135,22 @@ test(`parse_formula_with_oxidation preserves original order`, () => {
 
 test(`parse_formula_with_oxidation throws on invalid element`, () => {
   expect(() => parse_formula_with_oxidation(`Xx2O3`)).toThrow(`Invalid element symbol`)
+})
+
+test.each([
+  [`Fe^2+Fe^3+`, false, 1, 2], // Non-strict: uses first oxidation state
+  [`Fe^2+Fe^2+`, true, 1, 2], // Strict: matching states OK
+])(`parse_formula_with_oxidation %s strict=%s`, (formula, strict, length, ox_state) => {
+  const result = parse_formula_with_oxidation(formula, strict)
+  expect(result).toHaveLength(length)
+  expect(result[0]).toMatchObject({ element: `Fe`, amount: 2, oxidation_state: ox_state })
+})
+
+test.each([
+  [`Fe^2+Fe^3+`, `Conflicting oxidation states for Fe: +2 and +3`],
+  [`S^2-S^-`, `Conflicting oxidation states for S: -2 and -1`],
+])(`parse_formula_with_oxidation strict throws on %s`, (formula, error_msg) => {
+  expect(() => parse_formula_with_oxidation(formula, true)).toThrow(error_msg)
 })
 
 test(`oxi_composition_to_elements converts correctly`, () => {

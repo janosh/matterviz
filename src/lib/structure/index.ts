@@ -1,7 +1,6 @@
 import type { CompositionType, ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
 import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import { element_data } from '$lib/element'
-import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { ComponentProps } from 'svelte'
 import type { Pbc } from './pbc'
@@ -40,32 +39,13 @@ export const LATTICE_PARAM_KEYS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as c
 export type LatticeParams = { [key in (typeof LATTICE_PARAM_KEYS)[number]]: number }
 
 export type PymatgenLattice = {
-  matrix: Matrix3x3
+  matrix: math.Matrix3x3
   pbc: Pbc
   volume: number
 } & LatticeParams
 
 export type PymatgenMolecule = { sites: Site[]; charge?: number; id?: string }
 export type PymatgenStructure = PymatgenMolecule & { lattice: PymatgenLattice }
-
-export type Edge = { to_jimage: Vec3; id: number; key: number }
-
-export type Graph = {
-  directed: boolean
-  multigraph: boolean
-  graph: [
-    [`edge_weight_name`, null] | [`edge_weight_units`, null] | [`name`, string],
-  ]
-  nodes: { id: number }[]
-  adjacency: Edge[][]
-}
-
-export type StructureGraph = {
-  '@module': string
-  '@class': string
-  structure: PymatgenStructure
-  graphs: Graph[]
-}
 
 // Bond pair with position vectors, site indices, bond length, strength score, and transformation matrix
 export type BondPair = {
@@ -79,10 +59,7 @@ export type BondPair = {
 }
 
 export type IdStructure = PymatgenStructure & { id: string }
-export type StructureWithGraph = IdStructure & { graph: Graph }
-
 export type AnyStructure = PymatgenStructure | PymatgenMolecule
-export type AnyStructureGraph = AnyStructure & { graph: Graph }
 
 export function get_elem_amounts(structure: AnyStructure) {
   const elements: CompositionType = {}
@@ -110,11 +87,6 @@ export function format_chemical_formula(
   return formula.join(` `)
 }
 
-export function alphabetical_formula(structure: AnyStructure): string {
-  // concatenate elements in a pymatgen Structure followed by their amount in alphabetical order
-  return format_chemical_formula(structure, (symbols) => symbols.sort())
-}
-
 export function electro_neg_formula(structure: AnyStructure): string {
   // concatenate elements in a pymatgen Structure followed by their amount sorted by electronegativity
   return format_chemical_formula(structure, (symbols) => (symbols.sort((el1, el2) => {
@@ -131,11 +103,6 @@ export function electro_neg_formula(structure: AnyStructure): string {
 export const atomic_radii: CompositionType = Object.fromEntries(
   element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
 )
-
-export function get_elements(structure: AnyStructure): ElementSymbol[] {
-  const elements = structure.sites.flatMap((site) => site.species.map((sp) => sp.element))
-  return [...new Set(elements)].sort() // unique elements
-}
 
 // unified atomic mass units (u) per cubic angstrom (Å^3)
 // to grams per cubic centimeter (g/cm^3)
@@ -157,13 +124,16 @@ export function get_center_of_mass(struct_or_mol: AnyStructure): Vec3 {
   let total_weight = 0
 
   for (const site of struct_or_mol.sites) {
-    // TODO this assumes there's just one species. doesn't handle disordered sites
-    const wt = site.species[0].occu
+    // Handle disordered sites by summing contributions from all species
+    for (const species of site.species) {
+      const atomic_weight = ATOMIC_WEIGHTS.get(species.element) ?? 1
+      const weight = atomic_weight * species.occu
 
-    const scaled_pos = math.scale(site.xyz, wt)
-    center = math.add(center, scaled_pos)
+      const scaled_pos = math.scale(site.xyz, weight)
+      center = math.add(center, scaled_pos)
 
-    total_weight += wt
+      total_weight += weight
+    }
   }
 
   return math.scale(center, 1 / total_weight)

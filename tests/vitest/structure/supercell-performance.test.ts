@@ -73,11 +73,6 @@ describe(`supercell performance profiling`, () => {
     }
     timings.mat_vec_multiply = performance.now() - start
 
-    console.log(`Matrix operations (${iterations} iterations):`)
-    console.log(`  Transpose: ${timings.transpose.toFixed(2)}ms`)
-    console.log(`  Inverse: ${timings.inverse.toFixed(2)}ms`)
-    console.log(`  Mat-Vec multiply: ${timings.mat_vec_multiply.toFixed(2)}ms`)
-
     expect(timings.transpose).toBeLessThan(100)
     expect(timings.inverse).toBeLessThan(500)
     expect(timings.mat_vec_multiply).toBeLessThan(100)
@@ -94,11 +89,11 @@ describe(`supercell performance profiling`, () => {
 
     // Phase 1: Matrix setup
     let start = performance.now()
-    const new_lattice_matrix = [
+    const new_lattice_matrix: Matrix3x3 = [
       math.scale(structure.lattice.matrix[0], nx),
       math.scale(structure.lattice.matrix[1], ny),
       math.scale(structure.lattice.matrix[2], nz),
-    ] as Matrix3x3
+    ]
     const orig_lattice_T = math.transpose_3x3_matrix(structure.lattice.matrix)
     const new_lattice_T = math.transpose_3x3_matrix(new_lattice_matrix)
     const new_lattice_T_inv = math.matrix_inverse_3x3(new_lattice_T)
@@ -210,7 +205,7 @@ describe(`supercell performance profiling`, () => {
 
   test(`compare full supercell generation`, () => {
     const sizes = [50, 100, 200, 500]
-    const results: Array<{ sites: number; time: number }> = []
+    const results: { sites: number; time: number }[] = []
 
     console.log(`\nFull supercell generation (3x3x3):`)
     for (const size of sizes) {

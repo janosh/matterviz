@@ -1,4 +1,4 @@
-import { BubbleChart, get_total_atoms } from '$lib/composition'
+import { BubbleChart, count_atoms_in_composition } from '$lib/composition'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
@@ -57,7 +57,7 @@ describe(`BubbleChart calculations`, () => {
     [{ C: 60 }, 60],
     [{ H: 0.1, O: 0.2 }, 0.3],
   ])(`calculates total atoms correctly`, (composition, expected_total) => {
-    const total = get_total_atoms(composition)
+    const total = count_atoms_in_composition(composition)
 
     if (expected_total < 1) {
       expect(total).toBeCloseTo(expected_total, 1)

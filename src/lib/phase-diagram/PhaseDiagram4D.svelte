@@ -163,8 +163,7 @@
         if (energy_mode === `on-the-fly` && hull_4d.length > 0) {
           // Build 4D points for distance calculation using barycentric coordinates
           // Track indices to map hull distances back to original coords
-          const valid_entries: Array<{ entry: PhaseDiagramEntry; orig_idx: number }> =
-            []
+          const valid_entries: { entry: PhaseDiagramEntry; orig_idx: number }[] = []
           coords.forEach((ent, idx) => {
             if (
               Number.isFinite(ent.e_form_per_atom) &&

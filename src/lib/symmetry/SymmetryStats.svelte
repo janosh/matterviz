@@ -8,23 +8,25 @@
   import { default_sym_settings, wyckoff_positions_from_moyo } from './index'
   import * as spg from './spacegroups'
 
-  type SymSnippet = Snippet<[{ sym_data?: MoyoDataset; settings: SymmetrySettings }]>
+  type SymmetrySnippet = Snippet<
+    [{ sym_data?: MoyoDataset | null; settings: SymmetrySettings }]
+  >
 
   let {
     sym_data,
     settings = $bindable(default_sym_settings),
     show_tooltips = true,
     children,
-    precontrols = `Symmetry Stats`,
+    label = `Symmetry Stats`,
     header,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    sym_data?: MoyoDataset
+    sym_data?: MoyoDataset | null
     settings?: SymmetrySettings
     show_tooltips?: boolean
-    children?: SymSnippet
-    precontrols?: SymSnippet | string
-    header?: SymSnippet
+    children?: SymmetrySnippet
+    label?: SymmetrySnippet | string
+    header?: SymmetrySnippet
   } = $props()
 
   const wyckoff_count = $derived(
@@ -85,10 +87,10 @@
 
   <!-- Always show controls so users can adjust settings even after errors -->
   <div class="controls">
-    {#if typeof precontrols === `string`}
-      <strong>{precontrols}</strong>
-    {:else if precontrols}
-      {@render precontrols?.({ sym_data, settings })}
+    {#if typeof label === `string`}
+      <strong>{label}</strong>
+    {:else if label}
+      {@render label?.({ sym_data, settings })}
     {/if}
 
     <label>

@@ -1,4 +1,4 @@
-import type { NdVector, Vec3 } from '$lib/math'
+import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { describe, expect, it, test } from 'vitest'
 
@@ -125,49 +125,47 @@ test(`subtract throws on mismatched lengths`, () => {
 test.each([
   [[1, 2], [3, 4], 11],
   [[1, 2, 3], [4, 5, 6], 32],
+  // Edge cases
+  [[0, 0, 0], [1, 2, 3], 0], // Zero vector
+  [[1], [5], 5], // Single element vectors
+  [[-1, 2, -3], [4, -5, 6], -32], // Negative numbers
 ])(`dot product`, (vec1, vec2, expected) => {
   expect(math.dot(vec1, vec2)).toEqual(expected)
 })
 
 test(`dot function comprehensive`, () => {
   // Test matrix-vector and matrix-matrix multiplication
-  const matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+  const matrix: math.Matrix3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
   const vector = [2, 3, 4]
   const matrix1 = [[1, 2, 3], [4, 5, 6]]
   const matrix2 = [[7, 8], [9, 10], [11, 12]]
 
-  expect(math.dot(matrix as unknown as NdVector, vector)).toEqual([20, 47, 74])
-  expect(math.dot(matrix1 as unknown as NdVector, matrix2 as unknown as NdVector))
+  expect(math.dot(matrix, vector)).toEqual([20, 47, 74])
+  expect(math.dot(matrix1, matrix2))
     .toEqual([[58, 64], [139, 154]])
 
-  // Test error cases
-  expect(() => math.dot(5 as unknown as NdVector, [1, 2, 3])).toThrow(
-    `Scalar and vector multiplication is not supported`,
-  )
-  expect(() => math.dot([1, 2, 3], 5 as unknown as NdVector)).toThrow(
-    `vector and scalar multiplication is not supported`,
-  )
   expect(() => math.dot([1, 2], [3, 4, 5])).toThrow(`Vectors must be of same length`)
-  expect(() =>
-    math.dot(matrix1 as unknown as NdVector, [[1, 2, 3]] as unknown as NdVector)
-  ).toThrow(
-    `Number of columns in first matrix must be equal to number of rows in second matrix`,
+  expect(() => math.dot([], [1, 2])).toThrow(`Vectors must be of same length`)
+  expect(() => math.dot(matrix1, [[1, 2, 3]])).toThrow(
+    `First matrix columns must equal second matrix rows`,
   )
 
-  // Test edge cases
+  // Test edge cases - rectangular matrix validation
   const jagged_matrix = [[1, 2], [3, 4, 5], [6, 7]]
-  const empty_matrix: number[][] = []
+  const zero_cols_matrix: number[][] = [[], [], []]
   const undefined_cols_matrix = [[1, 2], undefined, [3, 4]]
 
-  expect(() =>
-    math.dot(matrix1 as unknown as NdVector, jagged_matrix as unknown as NdVector)
-  ).toThrow(`Second matrix must be rectangular`)
-  expect(() =>
-    math.dot(matrix1 as unknown as NdVector, empty_matrix as unknown as NdVector)
-  ).toThrow(`Number of columns in matrix must be equal to number of elements in vector`)
-  expect(() =>
-    math.dot(matrix1 as unknown as NdVector, undefined_cols_matrix as unknown as NdVector)
-  ).toThrow(`Cannot read properties of undefined`)
+  expect(() => math.dot(matrix1, jagged_matrix)).toThrow(
+    `Second matrix must be rectangular`,
+  )
+  // Zero-column matrix triggers validation
+  expect(() => math.dot([[1], [2], [3]], zero_cols_matrix)).toThrow(
+    `Second matrix must have at least one column`,
+  )
+  // @ts-expect-error bad input, checking for expected error
+  expect(() => math.dot(matrix1, undefined_cols_matrix)).toThrow(
+    `Second matrix must contain only array rows`,
+  )
 })
 
 test.each([
@@ -191,12 +189,12 @@ test.each([
 })
 
 test(`dot matrix operations`, () => {
-  const matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] as unknown as NdVector
-  const vector = [2, 3, 4] as Vec3
+  const matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+  const vector = [2, 3, 4]
   expect(math.dot(matrix, vector)).toEqual([20, 47, 74])
 
-  const matrix1 = [[1, 2, 3], [4, 5, 6]] as unknown as NdVector
-  const matrix2 = [[7, 8], [9, 10], [11, 12]] as unknown as NdVector
+  const matrix1 = [[1, 2, 3], [4, 5, 6]]
+  const matrix2 = [[7, 8], [9, 10], [11, 12]]
   expect(math.dot(matrix1, matrix2)).toEqual([[58, 64], [139, 154]])
 })
 
@@ -766,8 +764,8 @@ describe(`pbc_dist`, () => {
     ]
     // Test that wrapping respects each axis independently in a triclinic system
     // Key property: enabling PBC on specific axes should give different results than no PBC
-    const pos1: math.Vec3 = [0.5, 1.0, 1.0]
-    const pos2: math.Vec3 = [9.5, 1.0, 11.0]
+    const pos1: Vec3 = [0.5, 1.0, 1.0]
+    const pos2: Vec3 = [9.5, 1.0, 11.0]
 
     const dist_no_pbc = math.pbc_dist(
       pos1,
@@ -1150,10 +1148,13 @@ describe(`tensor conversion utilities`, () => {
           )
         } else {
           const inv = math.matrix_inverse_3x3(matrix)
-          const I = math.dot(
-            matrix as unknown as math.NdVector,
-            inv as unknown as math.NdVector,
-          ) as number[][]
+          const result = math.dot(matrix, inv)
+
+          // Validate that result is a 2D matrix
+          if (!Array.isArray(result) || !Array.isArray(result[0])) {
+            throw new Error(`Expected matrix result from dot product`)
+          }
+          const I = result as number[][]
 
           // Verify A * A^-1 ≈ I and det(A^-1) = 1/det(A)
           for (let row_idx = 0; row_idx < 3; row_idx++) {
@@ -1359,14 +1360,24 @@ describe(`det_4x4`, () => {
     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, `zero`],
     [[1e10, 0, 0, 0], [0, 1e10, 0, 0], [0, 0, 1e10, 0], [0, 0, 0, 1e10], 1e40, `large`],
   ])(`%s`, (r0, r1, r2, r3, expected) => {
-    expect(math.det_4x4([r0, r1, r2, r3] as number[][])).toBeCloseTo(expected, -30)
+    expect(math.det_4x4([r0, r1, r2, r3] as math.Matrix4x4)).toBeCloseTo(expected, 10)
   })
 
   test(`barycentric coordinates (tetrahedron unit test)`, () => {
-    const tet_matrix = [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 1, 1, 1]]
+    const tet_matrix: math.Matrix4x4 = [
+      [0, 1, 0, 0],
+      [0, 0, 1, 0],
+      [0, 0, 0, 1],
+      [1, 1, 1, 1],
+    ]
     expect(math.det_4x4(tet_matrix)).toBeCloseTo(-1, 10)
 
-    const bary_matrix = [[0.25, 1, 0, 0], [0.25, 0, 1, 0], [0.25, 0, 0, 1], [1, 1, 1, 1]]
+    const bary_matrix: math.Matrix4x4 = [
+      [0.25, 1, 0, 0],
+      [0.25, 0, 1, 0],
+      [0.25, 0, 0, 1],
+      [1, 1, 1, 1],
+    ]
     expect(math.det_4x4(bary_matrix) / math.det_4x4(tet_matrix)).toBeCloseTo(0.25, 10)
   })
 })
@@ -1382,11 +1393,11 @@ describe(`cross_3d`, () => {
     [[2, 3, 4], [5, 6, 7], [-3, 6, -3], `general`],
     [[0, 0, 0], [1, 2, 3], [0, 0, 0], `zero vector`],
     [[1e10, 0, 0], [0, 1e10, 0], [0, 0, 1e20], `large numbers`],
-  ])(`%s`, (a, b, expected) => {
-    const result = math.cross_3d(a as Vec3, b as Vec3)
-    expect(result).toEqual(
-      expected.map((val) => expect.closeTo(val, val < 1e10 ? 10 : -10)),
-    )
+  ])(`%s`, (v1, v2, expected) => {
+    const result = math.cross_3d(v1 as Vec3, v2 as Vec3)
+    // For large values (≥1e10), use lower precision due to floating-point precision limits
+    const precision = expected.some((val) => Math.abs(val) >= 1e10) ? 5 : 10
+    expect(result).toEqual(expected.map((val) => expect.closeTo(val, precision)))
   })
 
   test(`mathematical properties`, () => {

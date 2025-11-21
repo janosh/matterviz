@@ -61,7 +61,7 @@ const create_frame_with_lattice = (
         [lattice_params.a || 1, 0, 0],
         [0, lattice_params.b || 1, 0],
         [0, 0, lattice_params.c || 1],
-      ] as Matrix3x3,
+      ] satisfies Matrix3x3,
       pbc: [true, true, true],
       a: lattice_params.a || 1,
       b: lattice_params.b || 1,

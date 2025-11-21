@@ -1,5 +1,5 @@
 // Supercell generation utilities for PymatgenStructure
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { PymatgenStructure, Site } from './index'
 
@@ -7,42 +7,38 @@ type SupercellType = PymatgenStructure & {
   supercell_scaling?: Vec3
 }
 
-// Parse supercell scaling input from various formats. Can be "2x2x2", [2,2,2], or a single number.
+// Parse supercell scaling input from various formats. Can be "2x2x2", "2", [2,2,2], or a single number.
 // Returns [x, y, z] scaling factors.
 export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
-  if (typeof scaling === `string`) {
-    // Parse "2x2x2" format
-    const parts = scaling.toLowerCase().split(/[x×,\s]+/).filter((p) => p.trim())
-    if (parts.length === 1) {
-      const val = parseInt(parts[0], 10)
-      if (isNaN(val) || val <= 0) {
-        throw new Error(`Invalid supercell scaling: ${scaling}`)
-      }
-      return [val, val, val] as Vec3
-    } else if (parts.length === 3) {
-      const values = parts.map((val) => parseInt(val, 10))
-      if (values.some((val) => isNaN(val) || val <= 0)) {
-        throw new Error(`Invalid supercell scaling: ${scaling}`)
-      }
-      return values as Vec3
-    } else {
-      throw new Error(
-        `Invalid supercell format: ${scaling}. Use formats like "2x2x2" or "3x1x2"`,
-      )
-    }
-  } else if (typeof scaling === `number`) {
+  if (typeof scaling === `number`) {
     if (scaling <= 0 || !Number.isInteger(scaling)) {
       throw new Error(`Supercell scaling must be a positive integer, got: ${scaling}`)
     }
-    return [scaling, scaling, scaling] as Vec3
-  } else if (Array.isArray(scaling) && scaling.length === 3) {
+    return [scaling, scaling, scaling]
+  }
+  if (Array.isArray(scaling) && scaling.length === 3) {
     if (scaling.some((v) => !Number.isInteger(v) || v <= 0)) {
       throw new Error(
         `All supercell scaling factors must be positive integers: ${scaling}`,
       )
     }
     return scaling as Vec3
-  } else throw new Error(`Invalid supercell scaling format: ${scaling}`)
+  }
+  if (typeof scaling === `string`) {
+    // Parse "2x2x2" format
+    const parts = scaling.toLowerCase().split(/[x×,\s]+/).filter((p) =>
+      p.trim().length > 0
+    )
+    if (parts.length === 1 || parts.length === 3) {
+      if (parts.every((p) => /^\d+$/.test(p))) {
+        const values = parts.map(Number)
+        if (values.every((v) => v > 0)) {
+          return (parts.length === 1 ? [values[0], values[0], values[0]] : values) as Vec3
+        }
+      }
+    }
+  }
+  throw new Error(`Invalid supercell scaling: ${scaling}`)
 }
 
 // Generate all lattice points for a supercell. Takes [nx, ny, nz] scaling factors
@@ -65,9 +61,9 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
 // Takes original 3x3 lattice matrix and [nx, ny, nz] scaling factors
 // Returns new scaled lattice matrix
 export function scale_lattice_matrix(
-  orig_matrix: Matrix3x3,
+  orig_matrix: math.Matrix3x3,
   scaling_factors: Vec3,
-): Matrix3x3 {
+): math.Matrix3x3 {
   const [nx, ny, nz] = scaling_factors
 
   // Scale each lattice vector by its corresponding factor
@@ -75,7 +71,7 @@ export function scale_lattice_matrix(
     math.scale(orig_matrix[0], nx),
     math.scale(orig_matrix[1], ny),
     math.scale(orig_matrix[2], nz),
-  ] as Matrix3x3
+  ] as math.Matrix3x3
 }
 
 // Create a supercell from a PymatgenStructure

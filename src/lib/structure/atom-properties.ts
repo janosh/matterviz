@@ -3,7 +3,6 @@
 import type { AnyStructure, Site } from '$lib'
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination'
-import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AtomColorMode } from '$lib/settings'
 import type { BondingStrategy } from '$lib/structure/bonding'
@@ -36,7 +35,7 @@ const get_interp = (scale: string) => {
   const fn = d3_sc[scale as keyof typeof d3_sc]
   if (typeof fn !== `function`) {
     console.warn(`Unknown D3 scale: ${scale}, using ${DEFAULT_COLOR_SCALE}`)
-    return d3_sc.interpolateViridis as (t: number) => string
+    return d3_sc.interpolateViridis
   }
   return fn as (t: number) => string
 }
@@ -141,7 +140,7 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
   if (sites.length < 20 || !pbc.some((p) => p)) {
     const image_sites = sites.flatMap((site, orig_idx) =>
       all_offsets.map(([dx, dy, dz]) => {
-        const img_abc: Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
+        const img_abc: math.Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
         return {
           ...site,
           abc: img_abc,
@@ -154,10 +153,10 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
   }
 
   // Large structures: only expand atoms near boundaries (within 5Å bond distance)
-  const cutoff: Vec3 = [5.0 / lattice.a, 5.0 / lattice.b, 5.0 / lattice.c]
+  const cutoff: math.Vec3 = [5.0 / lattice.a, 5.0 / lattice.b, 5.0 / lattice.c]
 
   const image_sites = sites.flatMap((site, orig_idx) => {
-    const norm = site.abc.map((coord) => coord - Math.floor(coord)) as Vec3
+    const norm = site.abc.map((coord) => coord - Math.floor(coord)) as math.Vec3
 
     return all_offsets
       .filter(
@@ -167,7 +166,7 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
           (dz === 0 || (dz === -1 ? norm[2] <= cutoff[2] : norm[2] >= 1 - cutoff[2])),
       )
       .map(([dx, dy, dz]) => {
-        const img_abc: Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
+        const img_abc: math.Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
         return {
           ...site,
           abc: img_abc,

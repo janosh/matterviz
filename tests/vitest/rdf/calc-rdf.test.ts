@@ -242,7 +242,7 @@ describe(`calculate_rdf`, () => {
   test.each([
     {
       name: `triclinic`,
-      lattice: [[5.0, 0.0, 0.0], [1.0, 6.0, 0.0], [0.5, 1.5, 7.0]] as Matrix3x3,
+      lattice: [[5.0, 0.0, 0.0], [1.0, 6.0, 0.0], [0.5, 1.5, 7.0]] satisfies Matrix3x3,
       sites: [
         {
           species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
@@ -272,7 +272,7 @@ describe(`calculate_rdf`, () => {
     },
     {
       name: `monoclinic`,
-      lattice: [[5.0, 0.0, 0.0], [0.0, 6.0, 0.0], [2.0, 0.0, 7.0]] as Matrix3x3,
+      lattice: [[5.0, 0.0, 0.0], [0.0, 6.0, 0.0], [2.0, 0.0, 7.0]] satisfies Matrix3x3,
       sites: [
         {
           species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],

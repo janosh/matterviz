@@ -162,60 +162,75 @@ export function subtract<T extends NdVector>(vec1: T, vec2: T): T {
   return vec1.map((val, idx) => val - vec2[idx]) as T
 }
 
-export function dot(vec1: NdVector, vec2: NdVector): number | number[] | number[][] {
-  // Handle the case where both inputs are scalars
-  if (typeof vec1 === `number` && typeof vec2 === `number`) {
-    return vec1 * vec2
+// Validate matrix structure and return column count
+function validate_matrix(mat: number[][], name: string): number {
+  // Check for empty matrix (no rows)
+  if (mat.length === 0) {
+    throw new Error(`${name} must have at least one row`)
   }
 
-  // Handle the case where one input is a scalar and the other is a vector
-  if (typeof vec1 === `number` && Array.isArray(vec2)) {
-    throw `Scalar and vector multiplication is not supported`
-  }
-  if (Array.isArray(vec1) && typeof vec2 === `number`) {
-    throw `vector and scalar multiplication is not supported`
+  if (!mat.every((row) => Array.isArray(row))) {
+    throw new Error(
+      `${name} must contain only array rows (no undefined/non-array elements)`,
+    )
   }
 
-  // Handle the case where both inputs are vectors
+  const cols = mat[0]?.length
+  if (!Number.isFinite(cols)) throw new Error(`${name} has no columns`)
+
+  // Check for zero columns
+  if (cols === 0) {
+    throw new Error(`${name} must have at least one column`)
+  }
+
+  if (!mat.every((row) => row.length === cols)) {
+    throw new Error(`${name} must be rectangular`)
+  }
+  return cols
+}
+
+export function dot(
+  vec1: NdVector | NdVector[],
+  vec2: NdVector | NdVector[],
+): number | number[] | number[][] {
+  // Vector dot product
   if (!Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
-    if (vec1.length !== vec2.length) {
-      throw `Vectors must be of same length`
-    }
-    return vec1.reduce((sum, val, index) => sum + val * vec2[index], 0)
+    const v1 = vec1 as number[]
+    const v2 = vec2 as number[]
+    if (v1.length !== v2.length) throw new Error(`Vectors must be of same length`)
+    return v1.reduce((sum, val, idx) => sum + val * v2[idx], 0)
   }
 
-  // Handle the case where the first input is a matrix and the second is a vector
+  // Matrix-vector multiplication
   if (Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
-    const mat1 = vec1 as unknown as number[][]
-    if (mat1[0].length !== vec2.length) {
-      throw `Number of columns in matrix must be equal to number of elements in vector`
+    const mat = vec1 as unknown as number[][]
+    const vec = vec2 as number[]
+    const cols = validate_matrix(mat, `Matrix`)
+    if (cols !== vec.length) {
+      throw new Error(`Matrix columns must equal vector length`)
     }
-    return mat1.map((row) => row.reduce((sum, val, index) => sum + val * vec2[index], 0))
+    return mat.map((row) => row.reduce((sum, val, idx) => sum + val * vec[idx], 0))
   }
 
-  // Handle the case where both inputs are matrices
+  // Matrix-matrix multiplication
   if (Array.isArray(vec1[0]) && Array.isArray(vec2[0])) {
     const mat1 = vec1 as unknown as number[][]
     const mat2 = vec2 as unknown as number[][]
-    if (mat1[0].length !== mat2.length) {
-      throw `Number of columns in first matrix must be equal to number of rows in second matrix`
-    }
-    const cols = mat2[0]?.length
-    if (!Number.isFinite(cols)) throw new Error(`Second matrix has no columns`)
-    if (!mat2.every((row) => row.length === cols)) {
-      throw new Error(`Second matrix must be rectangular`)
+    const mat1_cols = validate_matrix(mat1, `First matrix`)
+    const mat2_cols = validate_matrix(mat2, `Second matrix`)
+    if (mat1_cols !== mat2.length) {
+      throw new Error(`First matrix columns must equal second matrix rows`)
     }
     return mat1.map((_, ii) =>
       Array.from(
-        { length: cols },
+        { length: mat2_cols },
         (_, jj) =>
           mat1[ii].reduce((sum, _val, kk) => sum + mat1[ii][kk] * mat2[kk][jj], 0),
       )
     )
   }
 
-  // Handle any other cases
-  throw `Unsupported input dimensions. Inputs must be scalars, vectors, or matrices.`
+  throw new Error(`Unsupported input types for dot product`)
 }
 
 // Conversion utilities for vectors and tensors below
@@ -312,12 +327,9 @@ export function cell_to_lattice_matrix(
 export function det_3x3(matrix: Matrix3x3): number {
   // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
   // where matrix = [[a, b, c], [d, e, f], [g, h, i]]
-  const [row0, row1, row2] = matrix
-  return (
-    row0[0] * (row1[1] * row2[2] - row1[2] * row2[1]) -
-    row0[1] * (row1[0] * row2[2] - row1[2] * row2[0]) +
-    row0[2] * (row1[0] * row2[1] - row1[1] * row2[0])
-  )
+  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = matrix
+  return (m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) +
+    m02 * (m10 * m21 - m11 * m20))
 }
 
 export function get_coefficient_of_variation(values: number[]): number {
@@ -330,7 +342,7 @@ export function get_coefficient_of_variation(values: number[]): number {
 }
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)
-export function det_4x4(matrix: number[][]): number {
+export function det_4x4(matrix: Matrix4x4): number {
   const [a_row, b_row, c_row, d_row] = matrix
   const [a0, a1, a2, a3] = a_row
   const [b0, b1, b2, b3] = b_row

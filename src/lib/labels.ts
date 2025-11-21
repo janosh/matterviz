@@ -105,9 +105,9 @@ export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>>
     }),
   )
 
-// allow users to import default_fmt and change it's items in place to
-// set default number format globally
-export const default_fmt: [string, string] = [`,.3~s`, `.3~g`]
+// Allow users to import DEFAULT_FMT and change its items in place to
+// set the default number format globally
+export const DEFAULT_FMT: [string, string] = [`,.3~s`, `.3~g`]
 
 // Unicode glyphs for common fractions used by format_fractional()
 export const FRACTION_GLYPHS: ReadonlyArray<readonly [number, string]> = [
@@ -133,10 +133,27 @@ export const FRACTION_GLYPHS: ReadonlyArray<readonly [number, string]> = [
 export const format_num = (num: number, fmt?: string | number) => {
   if (num === null) return ``
   if (!fmt || typeof fmt !== `string`) {
-    const [gt_1_fmt, lt_1_fmt] = default_fmt
+    const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
     return format(Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt)(num)
   }
   return format(fmt)(num)
+}
+
+const BYTE_UNITS = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`] as const
+
+// Format file sizes using IEC binary units (1024 factor).
+export const format_bytes = (bytes?: number): string => {
+  if (bytes === undefined || !Number.isFinite(bytes)) return `Unknown`
+
+  let val = bytes
+  let idx = 0
+
+  while (Math.abs(val) >= 1024 && idx < BYTE_UNITS.length - 1) {
+    val /= 1024
+    idx++
+  }
+
+  return idx === 0 ? `${val} B` : `${val.toFixed(2)} ${BYTE_UNITS[idx]}`
 }
 
 // Replace common fractional values with unicode glyphs (e.g., 1/2 → ½)

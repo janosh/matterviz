@@ -12,7 +12,6 @@ const ref_data: Record<
     density: number
     center_of_mass: Vec3
     elements: string[]
-    alphabetical_formula: string
     electro_neg_formula: string
   }
 > = {
@@ -21,7 +20,6 @@ const ref_data: Record<
     density: 1.8019302505603234,
     center_of_mass: [1.564, 1.564, 1.564],
     elements: [`Cs`],
-    alphabetical_formula: `Cs<sub>2</sub>`,
     electro_neg_formula: `Cs<sub>2</sub>`,
   },
   'mp-2': {
@@ -29,15 +27,13 @@ const ref_data: Record<
     density: 11.759135742447171,
     center_of_mass: [0.979, 0.979, 0.979],
     elements: [`Pd`],
-    alphabetical_formula: `Pd<sub>4</sub>`,
     electro_neg_formula: `Pd<sub>4</sub>`,
   },
   'mp-1234': {
     amounts: { Lu: 8, Al: 16 },
     density: 6.63,
-    center_of_mass: [3.535, 3.535, 3.535],
+    center_of_mass: [3.119, 3.119, 3.119],
     elements: [`Al`, `Lu`],
-    alphabetical_formula: `Al<sub>16</sub> Lu<sub>8</sub>`,
     electro_neg_formula: `Lu<sub>8</sub> Al<sub>16</sub>`,
   },
   'mp-30855': {
@@ -45,31 +41,27 @@ const ref_data: Record<
     density: 19.14,
     center_of_mass: [3.535, 3.535, 3.535],
     elements: [`Pt`, `U`],
-    alphabetical_formula: `Pt<sub>6</sub> U<sub>2</sub>`,
     electro_neg_formula: `U<sub>2</sub> Pt<sub>6</sub>`,
   },
   'mp-756175': {
     amounts: { Zr: 16, Bi: 16, O: 56 },
     density: 7.457890165317997,
-    center_of_mass: [4.798, 4.798, 4.798],
+    center_of_mass: [5.261, 5.261, 5.261],
     elements: [`Bi`, `O`, `Zr`],
-    alphabetical_formula: `Bi<sub>16</sub> O<sub>56</sub> Zr<sub>16</sub>`,
     electro_neg_formula: `Zr<sub>16</sub> Bi<sub>16</sub> O<sub>56</sub>`,
   },
   'mp-1229155': {
     amounts: { Ag: 4, Hg: 4, S: 4, Br: 1, Cl: 3 },
     density: 6.107930572082895,
-    center_of_mass: [2.282, 3.522, 6.642],
+    center_of_mass: [2.216, 3.594, 6.502],
     elements: [`Ag`, `Br`, `Cl`, `Hg`, `S`],
-    alphabetical_formula: `Ag<sub>4</sub> Br Cl<sub>3</sub> Hg<sub>4</sub> S<sub>4</sub>`,
     electro_neg_formula: `Ag<sub>4</sub> Hg<sub>4</sub> S<sub>4</sub> Br Cl<sub>3</sub>`,
   },
   'mp-1229168': {
     amounts: { Al: 54, Fe: 4, Ni: 8 },
     density: 3.6567149052096903,
-    center_of_mass: [1.785, 2.959, 12.51],
+    center_of_mass: [1.802, 2.991, 12.542],
     elements: [`Al`, `Fe`, `Ni`],
-    alphabetical_formula: `Al<sub>54</sub> Fe<sub>4</sub> Ni<sub>8</sub>`,
     electro_neg_formula: `Al<sub>54</sub> Fe<sub>4</sub> Ni<sub>8</sub>`,
   },
 }
@@ -87,16 +79,6 @@ describe.each(structures)(`structure-utils`, (structure) => {
     () => {
       const result = struct_utils.get_elem_amounts(structure)
       expect(JSON.stringify(result), id).toBe(JSON.stringify(expected?.amounts))
-    },
-  )
-
-  test.runIf(id && id in ref_data)(
-    `get_elements should return the unique elements in a given structure`,
-    () => {
-      const result = struct_utils.get_elements(structure)
-      expect(JSON.stringify(result), id).toBe(
-        JSON.stringify(Object.keys(expected?.amounts ?? {}).sort()),
-      )
     },
   )
 
@@ -122,21 +104,11 @@ test.each(structures.filter((struct) => struct.id && ref_data[struct.id]))(
       `${struct.id} center_of_mass`,
     ).toEqual(expected_data.center_of_mass)
 
-    // Alphabetical formula
-    const alpha_formula = struct_utils.alphabetical_formula(struct)
-    expect(alpha_formula, `${struct.id} alphabetical_formula`).toEqual(
-      expected_data.alphabetical_formula,
-    )
-
     // Electronegativity formula
     const electro_formula = struct_utils.electro_neg_formula(struct)
     expect(electro_formula, `${struct.id} electro_neg_formula`).toEqual(
       expected_data.electro_neg_formula,
     )
-
-    // Elements
-    const elements = struct_utils.get_elements(struct)
-    expect(elements, `${struct.id} elements`).toEqual(expected_data.elements)
   },
 )
 
@@ -204,7 +176,7 @@ describe(`get_center_of_mass`, () => {
         { element: `H` as const, xyz: [0, 0, 0] as Vec3, occu: 0.5, oxidation_state: 0 },
         { element: `O` as const, xyz: [2, 2, 2] as Vec3, occu: 2.0, oxidation_state: 0 },
       ],
-      expected: [1.6, 1.6, 1.6] as Vec3,
+      expected: [1.969, 1.969, 1.969] as Vec3,
       desc: `weighted occupancies`,
     },
     {
@@ -222,7 +194,7 @@ describe(`get_center_of_mass`, () => {
     ({ sites, expected }) => {
       const structure = create_simple_structure(sites)
       const result = struct_utils.get_center_of_mass(structure)
-      expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 6))
+      expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 3))
     },
   )
 })

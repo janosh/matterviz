@@ -277,7 +277,7 @@ describe(`MatterViz Extension`, () => {
 
     // Step 5: Verify the exact data structure that would be sent to webview
     const parsed_data = JSON.parse(
-      html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ?? `{}`,
+      html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ?? `{}`,
     )
     expect(parsed_data.type).toBe(`trajectory`)
     expect(parsed_data.data.filename).toBe(ase_filename)
@@ -757,9 +757,9 @@ describe(`MatterViz Extension`, () => {
       // Mock different file sizes
       const test_cases = [
         { size: 500, expected: `500 B` },
-        { size: 1024, expected: `1.00 KB` },
-        { size: 1024 * 1024, expected: `1.00 MB` },
-        { size: 1024 * 1024 * 1024, expected: `1.00 GB` },
+        { size: 1024, expected: `1.00 KiB` },
+        { size: 1024 * 1024, expected: `1.00 MiB` },
+        { size: 1024 * 1024 * 1024, expected: `1.00 GiB` },
       ]
 
       // Create a map to track sizes for each file
@@ -1020,7 +1020,7 @@ describe(`MatterViz Extension`, () => {
       const html = create_html(mock_webview, mock_context, data)
 
       const parsed_data = JSON.parse(
-        html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] || `{}`,
+        html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] || `{}`,
       )
       expect(parsed_data.theme).toBe(`dark`)
     })
@@ -1682,7 +1682,7 @@ H 0.0 1.0 0.0`
       })
 
       const multi_frame_parsed_data = JSON.parse(
-        multi_frame_html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ??
+        multi_frame_html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ??
           `{}`,
       )
 
@@ -1700,7 +1700,7 @@ H 0.0 1.0 0.0`
       })
 
       const single_frame_parsed_data = JSON.parse(
-        single_frame_html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ??
+        single_frame_html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ??
           `{}`,
       )
 
@@ -1714,7 +1714,7 @@ H 0.0 1.0 0.0`
       })
 
       const compressed_parsed_data = JSON.parse(
-        compressed_html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ??
+        compressed_html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ??
           `{}`,
       )
 
@@ -1741,7 +1741,7 @@ H 0.0 1.0 0.0`
       })
 
       const parsed_data = JSON.parse(
-        html.match(/mattervizData=(\{[\s\S]*?\});/)?.[1] ?? `{}`,
+        html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ?? `{}`,
       )
 
       // Should be 'trajectory' since filename contains trajectory keyword

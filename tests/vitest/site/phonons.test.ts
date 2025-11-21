@@ -19,10 +19,10 @@ describe(`Phonon Module Tests`, () => {
     // Test all band structures, not just the first one
     for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
       // Check structure and types
-      expect(band_struct.lattice_rec).toBeDefined()
-      expect(band_struct.lattice_rec.matrix).toBeDefined()
-      expect(Array.isArray(band_struct.lattice_rec.matrix)).toBe(true)
-      expect(band_struct.lattice_rec.matrix).toHaveLength(3)
+      expect(band_struct.recip_lattice).toBeDefined()
+      expect(band_struct.recip_lattice.matrix).toBeDefined()
+      expect(Array.isArray(band_struct.recip_lattice.matrix)).toBe(true)
+      expect(band_struct.recip_lattice.matrix).toHaveLength(3)
 
       expect(Array.isArray(band_struct.qpoints)).toBe(true)
       expect(band_struct.qpoints.length).toBeGreaterThan(0)
@@ -232,10 +232,10 @@ describe(`Phonon Module Tests`, () => {
     // Verify reciprocal lattice exists and validate distance consistency
     for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
       // Verify lattice exists (used in distance calculations)
-      expect(band_struct.lattice_rec.matrix).toBeDefined()
-      expect(Array.isArray(band_struct.lattice_rec.matrix)).toBe(true)
-      expect(band_struct.lattice_rec.matrix).toHaveLength(3)
-      band_struct.lattice_rec.matrix.forEach((row) => {
+      expect(band_struct.recip_lattice.matrix).toBeDefined()
+      expect(Array.isArray(band_struct.recip_lattice.matrix)).toBe(true)
+      expect(band_struct.recip_lattice.matrix).toHaveLength(3)
+      band_struct.recip_lattice.matrix.forEach((row) => {
         expect(Array.isArray(row)).toBe(true)
         expect(row).toHaveLength(3)
         row.forEach((val) => {

@@ -150,7 +150,7 @@
     directional_light?: number
     sphere_segments?: number
     lattice_props?: ComponentProps<typeof Lattice>
-    atom_label?: Snippet<[Site, number]>
+    atom_label?: Snippet<[{ site: Site; site_idx: number }]>
     site_label_size?: number
     site_label_offset?: Vec3
     site_label_bg_color?: string
@@ -524,7 +524,7 @@
   {@const pos = math.add(position, site_label_offset)}
   <extras.HTML center position={pos}>
     {#if atom_label}
-      {@render atom_label(site, site_idx)}
+      {@render atom_label({ site, site_idx })}
     {:else}
       <span
         class="atom-label"

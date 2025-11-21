@@ -8,20 +8,15 @@
   import PhaseDiagram4D from './PhaseDiagram4D.svelte'
 
   // Union type combining all possible props from 2D, 3D, and 4D components
-  // Note: This is a superset - each specific component will only use its relevant props
+  // each specific component will only use its relevant props from this super set
   type PhaseDiagramProps = BasePhaseDiagramProps & Hull3DProps & {
     x_axis?: AxisConfig
     y_axis?: AxisConfig
   }
 
-  // Type for dynamic component selection (helps TypeScript understand the union)
-  type PDComponent = Component<PhaseDiagramProps>
-
   let {
     entries,
-    // Note: Explicit bind: directives are required here because Svelte 5 doesn't support
-    // spreading bindable props. Each bindable prop must be individually declared with
-    // $bindable() and explicitly bound when passing to child components.
+    // bindable props not part of rest because Svelte 5 doesn't support spreading bindable props.
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     show_stable = $bindable(true),
@@ -66,19 +61,14 @@
   // Map element count to corresponding component
   // Note: Type assertion needed because TypeScript can't infer that all components
   // accept a compatible superset of props (BasePhaseDiagramProps + dimension-specific)
-  const Component = $derived<PDComponent | null>(
-    element_count === 2
-      ? (PhaseDiagram2D as PDComponent)
-      : element_count === 3
-      ? (PhaseDiagram3D as PDComponent)
-      : element_count === 4
-      ? (PhaseDiagram4D as PDComponent)
-      : null,
-  )
+  const PhaseDiagramComponent = $derived(
+    { 2: PhaseDiagram2D, 3: PhaseDiagram3D, 4: PhaseDiagram4D }[element_count] ??
+      null,
+  ) as Component<PhaseDiagramProps> | null
 </script>
 
-{#if Component}
-  <Component
+{#if PhaseDiagramComponent}
+  <PhaseDiagramComponent
     {entries}
     {...rest}
     bind:fullscreen

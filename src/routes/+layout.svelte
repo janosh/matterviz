@@ -68,6 +68,9 @@
     '/how-to/use-without-svelte': `Use without Svelte`,
     '/structure/rdf': `RDF`,
     '/structure/xrd': `XRD`,
+    '/reciprocal/dos': `DOS`,
+    '/reciprocal/bands-and-dos': `Bands + DOS`,
+    '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
   }}
   menu_props={{
     style: `display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;`,

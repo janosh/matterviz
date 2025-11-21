@@ -1,7 +1,8 @@
 <script lang="ts">
   import { DraggablePane, format_num, Icon, type InfoItem } from '$lib'
+  import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
-  import { type AnyStructure, electro_neg_formula } from '$lib/structure'
+  import { type AnyStructure } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import { tooltip as create_tooltip } from 'svelte-multiselect/attachments'
   import { SvelteSet } from 'svelte/reactivity'
@@ -77,7 +78,7 @@
 
   const safe_formula = (structure: AnyStructure) => {
     try {
-      return electro_neg_formula(structure)
+      return get_electro_neg_formula(structure)
     } catch {
       return null
     }

@@ -1581,16 +1581,15 @@ describe(`parse_structure_file`, () => {
   })
 
   test(`parses simple JSON structure correctly`, () => {
+    const site = {
+      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+      abc: [0, 0, 0],
+      xyz: [0, 0, 0],
+      label: `H1`,
+      properties: {},
+    }
     const simple_structure = {
-      sites: [
-        {
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H1`,
-          properties: {},
-        },
-      ],
+      sites: [site],
       lattice: {
         matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
         a: 1,
