@@ -67,10 +67,8 @@
     scene?: Scene
     camera?: Camera
     k_path_points?: Vec3[]
-    k_path_labels?: Array<
-      { position: [number, number, number]; label: string | null }
-    >
-    hovered_k_point?: [number, number, number] | null
+    k_path_labels?: { position: Vec3; label: string | null }[]
+    hovered_k_point?: Vec3 | null
     hovered_qpoint_index?: number | null
   } = $props()
 

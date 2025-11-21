@@ -4,7 +4,7 @@ import type { Branch, PhononBandStructure, PhononDos, QPoint } from '$lib/bands'
 import * as math from '$lib/math'
 
 interface RawPhononBandStructure {
-  lattice_rec: { matrix: math.Matrix3x3 }
+  recip_lattice: { matrix: math.Matrix3x3 }
   qpoints: math.Vec3[]
   bands: number[][]
   labels_dict: Record<string, math.Vec3>
@@ -25,10 +25,10 @@ function calc_recip_distance(q1: math.Vec3, q2: math.Vec3, lattice_T: math.Matri
 function transform_band_structure(raw: RawPhononBandStructure): PhononBandStructure {
   // Guard against invalid/incomplete data
   if (
-    !raw || !raw.lattice_rec?.matrix || !raw.qpoints || !raw.bands || !raw.labels_dict
+    !raw || !raw.recip_lattice?.matrix || !raw.qpoints || !raw.bands || !raw.labels_dict
   ) throw new Error(`Invalid or incomplete phonon band structure data`)
 
-  const { lattice_rec: { matrix: lattice }, qpoints, bands, labels_dict } = raw
+  const { recip_lattice: { matrix: lattice }, qpoints, bands, labels_dict } = raw
   const [n_qpoints, n_bands] = [qpoints.length, bands.length]
 
   // Guard against empty data
@@ -122,7 +122,7 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
   }))
 
   return {
-    lattice_rec: raw.lattice_rec,
+    recip_lattice: raw.recip_lattice,
     qpoints: q_points,
     branches,
     labels_dict,

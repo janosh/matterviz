@@ -74,8 +74,7 @@
     ) as [ElementSymbol, number][]
     if (element_entries.length === 0) return []
 
-    let [above_labels, below_labels] = [0, 0]
-    let current_x = 0
+    let [current_x, above_labels, below_labels] = [0, 0, 0]
 
     return element_entries.map(([element, amount]) => {
       const fraction = fractions[element] || 0
@@ -109,21 +108,17 @@
         else below_labels++
       }
 
-      return {
-        element,
-        amount,
-        fraction,
-        color,
-        x,
-        width,
+      const text_color = pick_contrast_color({ bg_color: color })
+      const label_props = {
         font_scale,
-        text_color: pick_contrast_color({ bg_color: color }),
+        text_color,
         can_show_label,
         needs_external_label,
         external_label_position,
         label_x: x + width / 2,
         label_y: bar_y + bar_height / 2,
       }
+      return { element, amount, fraction, color, x, width, ...label_props }
     })
   })
 

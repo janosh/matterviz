@@ -64,6 +64,14 @@ describe(`parse_supercell_scaling`, () => {
     `axbxc`,
     `0x1x1`,
     `-1x2x3`,
+    `2.5x1x1`, // Non-integer string should be rejected
+    `1x2.5x3`, // Non-integer in middle
+    `1.5`, // Non-integer single value
+    `1e3`, // Scientific notation should be rejected
+    `2x1e2x3`, // Scientific notation in string
+    `0x10`, // Hex notation should be rejected
+    `0b10`, // Binary notation should be rejected
+    `0o10`, // Octal notation should be rejected
     ``,
     0,
     -1,
@@ -488,7 +496,7 @@ describe(`performance tests`, () => {
     (atom_count, scaling, expected_atoms, timeout_ms) => {
       const test_structure = {
         lattice: {
-          matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3,
+          matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
           a: 1,
           b: 1,
           c: 1,

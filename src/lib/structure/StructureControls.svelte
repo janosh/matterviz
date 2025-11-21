@@ -199,7 +199,7 @@
       show_image_atoms = DEFAULTS.structure.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
-    style="display: flex; flex-wrap: wrap; gap: 1ex"
+    style="display: flex; flex-wrap: wrap; gap: 1.2ex"
   >
     Show <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_atoms.description })}
@@ -931,12 +931,12 @@
 <style>
   .rotation-axes {
     display: flex;
-    gap: 9pt;
-    font-size: 0.8em;
+    gap: 10pt;
+    font-size: 0.85em;
   }
   .rotation-axes > div {
     display: grid;
-    gap: 0.3em;
+    gap: 0.4em;
     place-items: center;
   }
 

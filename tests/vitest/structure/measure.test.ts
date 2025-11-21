@@ -236,17 +236,17 @@ describe(`measure: angles`, () => {
     const test_cases = [
       {
         name: `cubic`,
-        lattice: [[3, 0, 0], [0, 3, 0], [0, 0, 3]] as Matrix3x3,
+        lattice: [[3, 0, 0], [0, 3, 0], [0, 0, 3]] satisfies Matrix3x3,
         pos1: [0, 0, 0] as Vec3,
         pos2: [1.5, 1.5, 1.5] as Vec3,
       },
       {
         name: `triclinic (original bug case)`,
-        lattice: [[6.038698, 0, 0], [0, 6.038698, 0], [
-          3.019349,
-          3.019349,
-          4.167943,
-        ]] as Matrix3x3,
+        lattice: [
+          [6.038698, 0, 0],
+          [0, 6.038698, 0],
+          [3.019349, 3.019349, 4.167943],
+        ] satisfies Matrix3x3,
         pos1: [0, 0, 0] as Vec3,
         pos2: [3.019349, 3.019349, 0] as Vec3,
       },

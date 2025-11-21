@@ -109,19 +109,26 @@ export const normalize_composition = (
   return normalized
 }
 
+// Get total number of atoms
+export const count_atoms_in_composition = (composition: CompositionType): number =>
+  Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
+
 export const fractional_composition = (
   composition: CompositionType,
   by_weight = false,
 ): CompositionType => {
+  // Filter out zero/negative amounts for both branches
+  const filtered = Object.fromEntries(
+    Object.entries(composition).filter(([, amount]) => amount > 0),
+  )
+
   if (by_weight) {
     const element_weights = Object.fromEntries(
-      Object.entries(composition)
-        .filter(([, amount]) => amount > 0)
-        .map(([element, amount]) => {
-          const atomic_mass = ATOMIC_WEIGHTS.get(element as ElementSymbol)
-          if (!atomic_mass) throw new Error(`Unknown element: ${element}`)
-          return [element, amount * atomic_mass]
-        }),
+      Object.entries(filtered).map(([element, amount]) => {
+        const atomic_mass = ATOMIC_WEIGHTS.get(element as ElementSymbol)
+        if (!atomic_mass) throw new Error(`Unknown element: ${element}`)
+        return [element, amount * atomic_mass]
+      }),
     )
 
     const total_weight = Object.values(element_weights).reduce((sum, wt) => sum + wt, 0)
@@ -135,19 +142,13 @@ export const fractional_composition = (
     )
   }
 
-  const total = Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
+  const total = count_atoms_in_composition(filtered)
   if (total === 0) return {}
 
   return Object.fromEntries(
-    Object.entries(composition).map((
-      [element, amount],
-    ) => [element, (amount ?? 0) / total]),
+    Object.entries(filtered).map(([element, amount]) => [element, amount / total]),
   )
 }
-
-// Get total number of atoms
-export const get_total_atoms = (composition: CompositionType): number =>
-  Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
 
 // Parse composition from various input types
 export const parse_composition = (
@@ -329,8 +330,10 @@ const parse_oxidation_state = (oxidation_str: string): number => {
 // Supports both ^2+ and [2+] syntax for oxidation states.
 // Examples: "Fe^2+O3", "Fe[2+]O3", "Ca^2+Cl^-2"
 // Tracks original element order from the input string.
+// When strict=true, throws on conflicting oxidation states for the same element.
 export const parse_formula_with_oxidation = (
   formula: string,
+  strict = false,
 ): ElementWithOxidation[] => {
   const elements: ElementWithOxidation[] = []
   const cleaned_formula = expand_parentheses(formula.replace(/\s/g, ``))
@@ -369,17 +372,24 @@ export const parse_formula_with_oxidation = (
     const existing = elements.find((el) => el.element === element)
     if (existing) {
       existing.amount += count
-      // Keep the first oxidation state if specified
-      if (oxidation_state !== undefined && existing.oxidation_state === undefined) {
+
+      // Handle oxidation state conflicts
+      if (oxidation_state === undefined) {
+        // No oxidation state in current match, nothing to do
+      } else if (existing.oxidation_state === undefined) {
+        // Set oxidation state on first occurrence
         existing.oxidation_state = oxidation_state
+      } else if (strict && existing.oxidation_state !== oxidation_state) {
+        // In strict mode, throw on conflicting oxidation states
+        const format_state = (state: number) => (state > 0 ? `+` : ``) + state
+        throw new Error(
+          `Conflicting oxidation states for ${element}: ${
+            format_state(existing.oxidation_state)
+          } and ${format_state(oxidation_state)}`,
+        )
       }
     } else {
-      elements.push({
-        element,
-        amount: count,
-        oxidation_state,
-        orig_idx: orig_idx++,
-      })
+      elements.push({ element, amount: count, oxidation_state, orig_idx: orig_idx++ })
     }
   }
 
@@ -404,46 +414,78 @@ export function format_oxi_state(oxidation?: number): string {
   return `${sign}${Math.abs(oxidation)}`
 }
 
-// Extract unique element symbols from a formula, sorted alphabetically.
-// Example: "NbZr2Nb" -> ["Nb", "Zr"]
-export const extract_uniq_elements = (formula: string): ElementSymbol[] =>
-  ([...new Set(Object.keys(parse_formula(formula)))] as ElementSymbol[]).sort()
+// Extract element symbols from a chemical formula.
+// Default (unique=true, sorted=true): "NbZr2Nb" -> ["Nb", "Zr"]
+// unique=false: Fast token extraction preserving order without parentheses expansion
+//   "NbZr2Nb" -> ["Nb", "Zr", "Nb"], "Fe2(SO4)3" -> ["Fe", "S", "O"]
+//   Validates tokens against ELEM_SYMBOLS, filtering out invalid ones.
+// sorted=false: Preserves order of first appearance (only applies when unique=true)
+//   "ZrNb" -> ["Zr", "Nb"]
+export function extract_formula_elements(
+  formula: string,
+  { unique = true, sorted = true }: { unique?: boolean; sorted?: boolean } = {},
+): ElementSymbol[] {
+  if (!unique) {
+    // Fast path: regex token extraction without parentheses expansion
+    // Validates against ELEM_SYMBOLS to ensure type safety
+    const matches = formula.match(/[A-Z][a-z]?/g) || []
+    return matches.filter((symbol): symbol is ElementSymbol =>
+      (ELEM_SYMBOLS as readonly string[]).includes(symbol)
+    ) as ElementSymbol[]
+  }
+  const symbols = Object.keys(parse_formula(formula)) as ElementSymbol[]
+  return sorted ? symbols.sort() : symbols
+}
 
-// Generate all sub-chemical systems (chemsys) from a list of elements.
-// Example: ["Mo", "Sc", "B"] → ["B", "Mo", "Sc", "B-Mo", "B-Sc", "Mo-Sc", "B-Mo-Sc"]
-// Can accept a formula string, composition object, or array of element symbols.
+// Generate all non-empty subsets of a chemical system as hyphenated strings.
+// Input: formula string, composition object, or element symbol array
+// Output: All subsets sorted alphabetically: ["B", "Mo", "Sc", "B-Mo", "B-Sc", "Mo-Sc", "B-Mo-Sc"]
+// Complexity: O(2^n) where n = number of unique elements (fine for typical ~1-5 elements)
 export function generate_chem_sys_subspaces(
   input: string | CompositionType | ElementSymbol[],
 ): string[] {
   let elements: ElementSymbol[]
 
-  if (typeof input === `string`) {
-    // If input is a formula string, extract elements
-    elements = extract_uniq_elements(input)
-  } else if (Array.isArray(input)) {
-    // If input is an array, deduplicate and validate each element symbol
-    const unique_elements = [...new Set(input)]
-    for (const element of unique_elements) {
-      if (!ELEM_SYMBOLS.includes(element)) {
-        throw new Error(`Invalid element symbol: ${element}`)
-      }
+  if (typeof input === `string`) elements = extract_formula_elements(input)
+  else if (Array.isArray(input)) {
+    const uniq = [...new Set(input)]
+    for (const elem of uniq) {
+      if (!ELEM_SYMBOLS.includes(elem)) throw new Error(`Invalid element symbol: ${elem}`)
     }
-    elements = unique_elements
+    elements = uniq
   } else {
-    // If input is a composition object, extract keys (naturally unique)
-    elements = Object.keys(input) as ElementSymbol[]
+    // Validate composition keys against ELEM_SYMBOLS
+    const keys = Object.keys(input) as ElementSymbol[]
+    for (const elem of keys) {
+      if (!ELEM_SYMBOLS.includes(elem)) throw new Error(`Invalid element symbol: ${elem}`)
+    }
+    elements = keys
   }
 
   const sorted = [...elements].sort()
   const subspaces: string[] = []
-  const num_elems = sorted.length
+  const subset_count = 2 ** sorted.length
 
-  for (let mask = 1; mask < (1 << num_elems); mask++) {
+  for (let mask = 1; mask < subset_count; mask++) {
     const subset: string[] = []
-    for (let idx = 0; idx < num_elems; idx++) {
+    for (let idx = 0; idx < sorted.length; idx++) {
       if (mask & (1 << idx)) subset.push(sorted[idx])
     }
     subspaces.push(subset.join(`-`))
   }
   return subspaces
+}
+
+// Normalize CSV of element symbols to valid symbols in periodic order.
+// Filters invalid symbols, removes duplicates, trims whitespace.
+// Example: "Zr, Nb, InvalidElement, H" -> ["H", "Nb", "Zr"]
+// Note: Matching is case-sensitive. Use all_symbols to filter against a subset.
+export const normalize_element_symbols = <T extends string>(
+  csv: string,
+  all_symbols?: T[],
+): T[] => {
+  const input_set = new Set(csv.split(`,`).map((sym) => sym.trim()).filter(Boolean))
+  return (all_symbols ?? (ELEM_SYMBOLS as unknown as T[])).filter((sym) =>
+    input_set.has(sym)
+  )
 }

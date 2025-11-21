@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### 💥 Breaking Changes
+
+- **Band structure types**: Renamed `lattice_rec` to `recip_lattice` in `BaseBandStructure` interface for consistency with structure types. External consumers using `$lib/bands` types should update their code accordingly.
+
 ## [v0.1.14](https://github.com/janosh/matterviz/compare/v0.1.13...v0.1.14)
 
 > 6 November 2025
