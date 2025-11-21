@@ -107,7 +107,7 @@ export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>>
 
 // allow users to import DEFAULT_FMT and change it's items in place to
 // set default number format globally
-export const DEFAULT_FMT: readonly [string, string] = [`,.3~s`, `.3~g`]
+export const DEFAULT_FMT: [string, string] = [`,.3~s`, `.3~g`]
 
 // Unicode glyphs for common fractions used by format_fractional()
 export const FRACTION_GLYPHS: ReadonlyArray<readonly [number, string]> = [
@@ -139,11 +139,11 @@ export const format_num = (num: number, fmt?: string | number) => {
   return format(fmt)(num)
 }
 
-// Format file sizes using binary SI units (1024 factor).
+// Format file sizes using IEC binary units (1024 factor).
 export const format_bytes = (bytes?: number): string => {
   if (bytes === undefined) return `Unknown`
 
-  const units = [`B`, `KB`, `MB`, `GB`, `TB`, `PB`]
+  const units = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`]
   let val = bytes
   let idx = 0
 

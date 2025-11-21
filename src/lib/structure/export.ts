@@ -112,13 +112,17 @@ export function create_structure_filename(
   if (!structure) return `structure.${extension}`
 
   const parts: string[] = []
-
-  if (structure.id) parts.push(sanitize_filename_part(structure.id))
+  // Helper to sanitize and push non-empty parts
+  const safe_push = (value: string | undefined) => {
+    const sanitized = value ? sanitize_filename_part(value) : ``
+    if (sanitized) parts.push(sanitized)
+  }
+  safe_push(structure.id)
 
   // Add formula (plain text to avoid HTML in filenames)
   const formula = get_electro_neg_formula(structure, true)
   if (formula && formula !== `Unknown`) {
-    parts.push(sanitize_filename_part(formula))
+    safe_push(formula)
   }
 
   // Add space group if available
@@ -130,7 +134,7 @@ export function create_structure_filename(
   ) {
     const space_group = structure.symmetry.space_group_symbol
     if (space_group && typeof space_group === `string`) {
-      parts.push(sanitize_filename_part(space_group))
+      safe_push(space_group)
     }
   }
 
@@ -143,7 +147,7 @@ export function create_structure_filename(
   ) {
     const lattice_system = structure.lattice.lattice_system
     if (lattice_system && typeof lattice_system === `string`) {
-      parts.push(sanitize_filename_part(lattice_system))
+      safe_push(lattice_system)
     }
   }
 

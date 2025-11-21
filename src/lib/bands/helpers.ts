@@ -270,12 +270,12 @@ export function extract_k_path_points(
     recip_lattice_matrix.some((row) => row?.length !== 3)
   ) throw new Error(`reciprocal_lattice_matrix must be a 3×3 matrix`)
 
-  const [[a, b, c], [d, e, f], [g, h, i]] = recip_lattice_matrix
+  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = recip_lattice_matrix
 
   return band_struct.qpoints.map(({ frac_coords: [x, y, z] }) => [
-    x * a + y * d + z * g,
-    x * b + y * e + z * h,
-    x * c + y * f + z * i,
+    x * m00 + y * m10 + z * m20,
+    x * m01 + y * m11 + z * m21,
+    x * m02 + y * m12 + z * m22,
   ])
 }
 

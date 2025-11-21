@@ -757,9 +757,9 @@ describe(`MatterViz Extension`, () => {
       // Mock different file sizes
       const test_cases = [
         { size: 500, expected: `500 B` },
-        { size: 1024, expected: `1.00 KB` },
-        { size: 1024 * 1024, expected: `1.00 MB` },
-        { size: 1024 * 1024 * 1024, expected: `1.00 GB` },
+        { size: 1024, expected: `1.00 KiB` },
+        { size: 1024 * 1024, expected: `1.00 MiB` },
+        { size: 1024 * 1024 * 1024, expected: `1.00 GiB` },
       ]
 
       // Create a map to track sizes for each file

@@ -323,12 +323,9 @@ export function cell_to_lattice_matrix(
 export function det_3x3(matrix: Matrix3x3): number {
   // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
   // where matrix = [[a, b, c], [d, e, f], [g, h, i]]
-  const [row0, row1, row2] = matrix
-  return (
-    row0[0] * (row1[1] * row2[2] - row1[2] * row2[1]) -
-    row0[1] * (row1[0] * row2[2] - row1[2] * row2[0]) +
-    row0[2] * (row1[0] * row2[1] - row1[1] * row2[0])
-  )
+  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = matrix
+  return (m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) +
+    m02 * (m10 * m21 - m11 * m20))
 }
 
 export function get_coefficient_of_variation(values: number[]): number {

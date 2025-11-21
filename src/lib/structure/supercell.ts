@@ -7,7 +7,7 @@ type SupercellType = PymatgenStructure & {
   supercell_scaling?: Vec3
 }
 
-// Parse supercell scaling input from various formats. Can be "2x2x2", [2,2,2], or a single number.
+// Parse supercell scaling input from various formats. Can be "2x2x2", "2", [2,2,2], or a single number.
 // Returns [x, y, z] scaling factors.
 export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
   if (typeof scaling === `number`) {
@@ -26,7 +26,9 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
   }
   if (typeof scaling === `string`) {
     // Parse "2x2x2" format
-    const parts = scaling.toLowerCase().split(/[x×,\s]+/).filter((p) => p.trim())
+    const parts = scaling.toLowerCase().split(/[x×,\s]+/).filter((p) =>
+      p.trim().length > 0
+    )
     if (parts.length === 1 || parts.length === 3) {
       if (parts.every((p) => /^\d+$/.test(p))) {
         const values = parts.map(Number)
