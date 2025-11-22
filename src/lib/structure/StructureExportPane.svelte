@@ -208,9 +208,9 @@
     font-size: 0.95em;
   }
   .export-buttons button {
-    width: 1.9em;
+    min-width: 1.9em;
     height: 1.6em;
-    padding: 0;
+    padding: 0 4pt;
     margin: 0 0 0 4pt;
     box-sizing: border-box;
   }
