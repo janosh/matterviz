@@ -21,9 +21,17 @@ export function export_canvas_as_png(
     }
 
     // Determine filename from either structure or direct filename
-    const filename = typeof structure_or_filename === `string`
+    let filename = typeof structure_or_filename === `string`
       ? structure_or_filename
       : create_structure_filename(structure_or_filename, `png`)
+
+    // Inject DPI into filename
+    const suffix = `-${Math.round(png_dpi)}dpi`
+    if (filename.toLowerCase().endsWith(`.png`)) {
+      filename = filename.replace(/\.png$/i, `${suffix}.png`)
+    } else {
+      filename = `${filename}${suffix}.png`
+    }
 
     // Convert DPI to multiplier (72 DPI is baseline web resolution)
     // Cap to a reasonable upper bound to avoid excessive memory use

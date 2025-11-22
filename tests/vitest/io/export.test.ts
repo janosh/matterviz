@@ -42,7 +42,7 @@ describe(`Export functionality`, () => {
       expect(mock_canvas.toBlob).toHaveBeenCalled()
       expect(mock_download).toHaveBeenCalledWith(
         expect.any(Blob),
-        expect.stringContaining(`.png`),
+        expect.stringContaining(`-72dpi.png`),
         `image/png`,
       )
     })
@@ -53,7 +53,7 @@ describe(`Export functionality`, () => {
       expect(mock_canvas.toBlob).toHaveBeenCalled()
       expect(mock_download).toHaveBeenCalledWith(
         expect.any(Blob),
-        `custom-filename.png`,
+        `custom-filename-72dpi.png`,
         `image/png`,
       )
     })
@@ -84,7 +84,7 @@ describe(`Export functionality`, () => {
       expect(mock_renderer.setSize).toHaveBeenCalledWith(100, 100, false)
       expect(mock_download).toHaveBeenCalledWith(
         expect.any(Blob),
-        expect.stringContaining(`.png`),
+        expect.stringContaining(`-144dpi.png`),
         `image/png`,
       )
     })
