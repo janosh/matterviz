@@ -79,7 +79,7 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     const markers = scatter.locator(`path.marker`)
     const count_before = await markers.count()
     await number_input.fill(`0`)
-    // Trigger change event explicitly if needed, or blur
+    // Trigger change handlers by blurring the input
     await number_input.blur()
 
     // Wait for info pane to update

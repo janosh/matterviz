@@ -3,9 +3,8 @@ import { expect, test } from '@playwright/test'
 test.describe(`OPTIMADE route`, () => {
   test.beforeEach(async ({ page }) => {
     // Mock structure and links requests
-    await page.route(`**/*`, async (route) => {
+    await page.route(`**/v1/**`, async (route) => {
       const url = route.request().url()
-      console.log(`Intercepted: ${url}`)
       if (url.includes(`providers.optimade.org/v1/links`)) {
         await route.fulfill({
           json: {
@@ -129,14 +128,16 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
 
     // Click on OQMD provider button
-    await page.locator(`button.db-select:has-text("oqmd")`).click()
+    await page.locator(`button.db-select:has-text("oqmd")`).first().click()
 
     // Wait for provider change and verify input is cleared
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
 
     // Verify OQMD provider is selected
     // The selected class is on the parent div of the button
-    await expect(page.locator(`.db-grid > div:has(button.db-select:has-text("oqmd"))`))
+    await expect(
+      page.locator(`.db-grid > div:has(button.db-select:has-text("oqmd"))`).first(),
+    )
       .toHaveClass(
         /selected/,
       )
@@ -200,11 +201,11 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
 
     // Wait for suggestions to load
-    await expect(page.locator(`text=Suggested Structures from`)).toBeVisible()
+    await expect(page.locator(`text=Suggested Structures`)).toBeVisible()
 
     // Capture the structure ID from first suggestion card
-    const first_suggestion_card = page.locator(`.suggestion-card`).first()
-    const structure_id = await first_suggestion_card.locator(`.suggestion-id`)
+    const first_suggestion_card = page.locator(`.structure-suggestions button`).first()
+    const structure_id = await first_suggestion_card.locator(`span`).first()
       .textContent()
 
     // Click on first suggestion card

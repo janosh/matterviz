@@ -37,10 +37,15 @@ describe(`StructureExportPane`, () => {
     mock_scene = {} as Scene
   })
 
-  const get_button = (title_part: string) =>
-    Array.from(document.querySelectorAll(`button`)).find((btn) =>
+  const get_button = (title_part: string) => {
+    const matches = Array.from(document.querySelectorAll(`button`)).filter((btn) =>
       btn.title?.includes(title_part)
     )
+    if (matches.length > 1) {
+      console.warn(`Multiple buttons match "${title_part}": ${matches.length} found`)
+    }
+    return matches[0]
+  }
 
   test(`displays all text export format buttons`, () => {
     mount(StructureExportPane, {
@@ -321,14 +326,14 @@ describe(`StructureExportPane`, () => {
 
     const download_buttons = Array.from(text_section?.querySelectorAll(`button`) || [])
       .filter(
-        (btn) => btn.textContent?.trim() === `⬇`,
+        (btn) => btn.title?.includes(`Download`),
       )
     expect(download_buttons.length).toBe(4)
     download_buttons.forEach((btn) => expect(btn.title).toContain(`Download`))
 
     const copy_buttons = Array.from(text_section?.querySelectorAll(`button`) || [])
       .filter(
-        (btn) => btn.textContent?.trim() === `📋`,
+        (btn) => btn.title?.includes(`Copy`) && btn.title?.includes(`clipboard`),
       )
     expect(copy_buttons.length).toBe(4)
     copy_buttons.forEach((btn) => {
