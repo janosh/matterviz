@@ -69,6 +69,23 @@ test.describe(`OPTIMADE route`, () => {
           })
         } else if (url.includes(`invalid-id`)) {
           await route.fulfill({ json: { data: null } })
+        } else if (url.includes(`mp-149`)) {
+          await route.fulfill({
+            json: {
+              data: {
+                id: `mp-149`,
+                type: `structures`,
+                attributes: {
+                  chemical_formula_descriptive: `Si`,
+                  lattice_vectors: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                  species: [{ name: `Si`, chemical_symbols: [`Si`], concentration: [1] }],
+                  species_at_sites: [`Si`],
+                  cartesian_site_positions: [[0, 0, 0]],
+                  structure_features: [],
+                },
+              },
+            },
+          })
         } else if (url.includes(`page_limit`)) {
           // Mock suggestions response
           await route.fulfill({
@@ -128,19 +145,16 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
 
     // Click on OQMD provider button
-    await page.locator(`button.db-select:has-text("oqmd")`).first().click()
+    await page.locator(`button.db-select`, { hasText: `oqmd` }).click()
 
     // Wait for provider change and verify input is cleared
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
 
     // Verify OQMD provider is selected
     // The selected class is on the parent div of the button
-    await expect(
-      page.locator(`.db-grid > div:has(button.db-select:has-text("oqmd"))`).first(),
+    await expect(page.locator(`.db-grid > div`, { hasText: `oqmd` })).toHaveClass(
+      /selected/,
     )
-      .toHaveClass(
-        /selected/,
-      )
 
     // Verify suggestions section appears (use partial text match)
     await expect(page.locator(`text=Suggested Structures`)).toBeVisible()
@@ -167,7 +181,7 @@ test.describe(`OPTIMADE route`, () => {
     await page.locator(`input.structure-input`).fill(`test-structure-id`)
 
     // Click on a different provider (use first to avoid ambiguity)
-    await page.locator(`button.db-select:has-text("cod")`).first().click()
+    await page.locator(`button.db-select`, { hasText: `cod` }).click()
 
     // Verify input is cleared
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
@@ -180,19 +194,16 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
 
     // Switch to COD provider
-    await page.locator(`button.db-select:has-text("cod")`).first().click()
+    await page.locator(`button.db-select`, { hasText: `cod` }).click()
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
-    await expect(
-      page.locator(`.db-grid > div:has(button.db-select:has-text("cod"))`).first(),
+    await expect(page.locator(`.db-grid > div`, { hasText: `cod` })).toHaveClass(
+      /selected/,
     )
-      .toHaveClass(/selected/)
 
     // Switch back to MP provider
-    await page.locator(`button.db-select:has-text("mp")`).first().click()
+    await page.locator(`button.db-select`, { hasText: `mp` }).click()
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
-    await expect(
-      page.locator(`.db-grid > div:has(button.db-select:has-text("mp"))`).first(),
-    ).toHaveClass(
+    await expect(page.locator(`.db-grid > div`, { hasText: `mp` })).toHaveClass(
       /selected/,
     )
   })
@@ -215,6 +226,6 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`input.structure-input`)).toHaveValue(structure_id ?? ``)
 
     // Verify loading state appears
-    await expect(page.locator(`text=Loading structure data from`)).toBeVisible()
+    await expect(page.locator(`text=Loading structure from`)).toBeVisible()
   })
 })

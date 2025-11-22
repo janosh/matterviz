@@ -41,8 +41,11 @@ describe(`StructureExportPane`, () => {
     const matches = Array.from(document.querySelectorAll(`button`)).filter((btn) =>
       btn.title?.includes(title_part)
     )
+    if (matches.length === 0) {
+      throw new Error(`No button found with title containing "${title_part}"`)
+    }
     if (matches.length > 1) {
-      console.warn(`Multiple buttons match "${title_part}": ${matches.length} found`)
+      throw new Error(`Multiple buttons match "${title_part}": ${matches.length} found`)
     }
     return matches[0]
   }
@@ -195,6 +198,23 @@ describe(`StructureExportPane`, () => {
     await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
   })
 
+  test(`PNG export button disabled when canvas absent or removed`, async () => {
+    wrapper_div.innerHTML = ``
+    mount(StructureExportPane, {
+      target: document.body,
+      props: { structure: simple_structure, wrapper: wrapper_div },
+    })
+
+    const png_btn = get_button(`PNG`)
+    expect(png_btn?.disabled).toBe(true)
+
+    wrapper_div.appendChild(document.createElement(`canvas`))
+    await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
+
+    wrapper_div.innerHTML = ``
+    await vi.waitFor(() => expect(png_btn?.disabled).toBe(true))
+  })
+
   test(`displays 3D model export formats`, () => {
     mount(StructureExportPane, {
       target: document.body,
@@ -216,14 +236,7 @@ describe(`StructureExportPane`, () => {
 
     const export_fn = export_funcs[fn_name as keyof typeof export_funcs]
 
-    // Find the 3D model export section to be specific, though buttons are unique enough here
-    const models_section = Array.from(document.querySelectorAll(`h4`))
-      .find((h4) => h4.textContent?.includes(`Export as 3D model`))?.nextElementSibling
-
-    const format_div = Array.from(models_section?.querySelectorAll(`div`) || []).find((
-      div,
-    ) => div.textContent?.includes(label))
-    const download_btn = format_div?.querySelector(`button`)
+    const download_btn = get_button(`Download ${label}`)
     expect(download_btn).toBeTruthy()
     expect(download_btn?.disabled).toBe(false)
 

@@ -205,6 +205,7 @@
           type="button"
           onclick={() => handle_3d_export(format)}
           disabled={!scene}
+          title="Download {label}"
           {@attach tooltip({ content: hint })}
         >
           ⬇
