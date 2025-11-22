@@ -199,10 +199,11 @@
       show_image_atoms = DEFAULTS.structure.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
-    style="display: flex; flex-wrap: wrap; gap: 1.2ex"
+    style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 12pt"
   >
     Show <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_atoms.description })}
+      style="gap: 6pt"
     >
       <input type="checkbox" bind:checked={scene_props.show_atoms} />
       Atoms
@@ -211,6 +212,7 @@
       {@attach tooltip({
         content: SETTINGS_CONFIG.structure.show_image_atoms.description,
       })}
+      style="gap: 6pt"
     >
       <input type="checkbox" bind:checked={show_image_atoms} />
       Image Atoms
@@ -219,6 +221,7 @@
       {@attach tooltip({
         content: SETTINGS_CONFIG.structure.show_site_labels.description,
       })}
+      style="gap: 6pt"
     >
       <input type="checkbox" bind:checked={scene_props.show_site_labels} />
       Site Labels
@@ -227,6 +230,7 @@
       {@attach tooltip({
         content: SETTINGS_CONFIG.structure.show_site_indices.description,
       })}
+      style="gap: 6pt"
     >
       <input type="checkbox" bind:checked={scene_props.show_site_indices} />
       Site Indices
@@ -236,17 +240,19 @@
         {@attach tooltip({
           content: SETTINGS_CONFIG.structure.show_force_vectors.description,
         })}
+        style="gap: 6pt"
       >
         <input type="checkbox" bind:checked={scene_props.show_force_vectors} />
         Force Vectors
       </label>
     {/if}
-    <label>
+    <label style="gap: 6pt">
       <input type="checkbox" bind:checked={lattice_props.show_cell_vectors} />
       Lattice Vectors
     </label>
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
+      style="gap: 6pt"
     >
       Bonds:
       <select bind:value={scene_props.show_bonds}>
@@ -932,18 +938,47 @@
   .rotation-axes {
     display: flex;
     gap: 10pt;
-    font-size: 0.85em;
   }
   .rotation-axes > div {
     display: grid;
     gap: 0.4em;
     place-items: center;
   }
-
   :global(.controls-pane) {
     font-size: 0.85em;
   }
 
+  :global(.controls-pane section) {
+    display: flex;
+    flex-direction: column;
+    gap: 6pt;
+  }
+  :global(.controls-pane h4) {
+    margin: 10pt 0 4pt !important;
+  }
+  :global(.controls-pane h4:first-of-type) {
+    margin-top: 0 !important;
+  }
+  .pane-row {
+    display: flex;
+    gap: 12pt;
+    justify-content: space-between;
+    width: 100%;
+  }
+  label {
+    display: flex;
+    align-items: center;
+    gap: 10pt;
+  }
+  input,
+  select {
+    font-size: inherit;
+    font-family: inherit;
+  }
+  input[type='range'] {
+    flex: 1;
+    min-width: 40px;
+  }
   @keyframes spin {
     from {
       transform: rotate(0deg);

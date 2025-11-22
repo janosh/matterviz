@@ -1,4 +1,4 @@
-import { ELEM_SYMBOLS, type ElementSymbol, type Site, type Vec3 } from '$lib'
+import type { ElementSymbol } from '$lib'
 import type { OptimadeStructure } from '$lib/api/optimade'
 import {
   COMPRESSION_EXTENSIONS_REGEX,
@@ -10,8 +10,10 @@ import {
   VASP_FILES_REGEX,
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
+import { ELEM_SYMBOLS } from '$lib/labels'
 import * as math from '$lib/math'
-import type { AnyStructure, PymatgenStructure } from '$lib/structure'
+import type { Vec3 } from '$lib/math'
+import type { AnyStructure, PymatgenStructure, Site } from '$lib/structure'
 import { load as yaml_load } from 'js-yaml'
 
 export interface ParsedStructure {

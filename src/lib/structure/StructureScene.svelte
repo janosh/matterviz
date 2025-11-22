@@ -184,6 +184,11 @@
   $effect(() => {
     scene = threlte.scene
     camera = threlte.camera.current
+    if (threlte.renderer) {
+      Object.assign(threlte.renderer.domElement, {
+        __renderer: threlte.renderer,
+      })
+    }
   })
 
   // Expose rotation target for external reset
