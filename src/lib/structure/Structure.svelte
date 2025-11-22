@@ -21,16 +21,14 @@
   import type { Camera, OrthographicCamera, Scene } from 'three'
   import type { AtomColorConfig } from './atom-properties'
   import { get_property_colors } from './atom-properties'
+  import AtomLegend from './AtomLegend.svelte'
   import type { StructureHandlerData } from './index'
-  import {
-    AtomLegend,
-    StructureControls,
-    StructureExportPane,
-    StructureInfoPane,
-    StructureScene,
-  } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import { parse_any_structure } from './parse'
+  import StructureControls from './StructureControls.svelte'
+  import StructureExportPane from './StructureExportPane.svelte'
+  import StructureInfoPane from './StructureInfoPane.svelte'
+  import StructureScene from './StructureScene.svelte'
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void

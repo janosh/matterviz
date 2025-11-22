@@ -2,20 +2,15 @@
 import type { AnyStructure } from '$lib'
 import { download } from '$lib/io/fetch'
 import { create_structure_filename } from '$lib/structure/export'
-import type * as THREE from 'three'
-import { Vector2, WebGLRenderer } from 'three'
-
-export interface CanvasWithRenderer extends HTMLCanvasElement {
-  __customRenderer?: WebGLRenderer
-}
+import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
 
 // Export structure as PNG image from canvas
 export function export_canvas_as_png(
   canvas: HTMLCanvasElement | null,
   structure_or_filename: AnyStructure | string | undefined,
   png_dpi = 150,
-  scene: THREE.Scene | null = null,
-  camera: THREE.Camera | null = null,
+  scene: Scene | null = null,
+  camera: Camera | null = null,
 ): void {
   try {
     if (!canvas) {
@@ -26,14 +21,25 @@ export function export_canvas_as_png(
     }
 
     // Determine filename from either structure or direct filename
-    const filename = typeof structure_or_filename === `string`
+    let filename = typeof structure_or_filename === `string`
       ? structure_or_filename
       : create_structure_filename(structure_or_filename, `png`)
+
+    // Inject DPI into filename
+    const suffix = `-${Math.round(png_dpi)}dpi`
+    if (filename.toLowerCase().endsWith(`.png`)) {
+      filename = filename.replace(/\.png$/i, `${suffix}.png`)
+    } else {
+      filename = `${filename}${suffix}.png`
+    }
 
     // Convert DPI to multiplier (72 DPI is baseline web resolution)
     // Cap to a reasonable upper bound to avoid excessive memory use
     const resolution_multiplier = Math.min(png_dpi / 72, 10)
-    const renderer = (canvas as CanvasWithRenderer).__customRenderer
+    const renderer = (canvas as { __renderer?: WebGLRenderer }).__renderer
+
+    // Force render to populate buffer
+    if (renderer && scene && camera) renderer.render(scene, camera)
 
     if (resolution_multiplier <= 1.1 || !renderer) {
       // Direct capture at current resolution (if DPI is close to 72 or renderer not available)
@@ -262,12 +268,11 @@ export async function export_trajectory_video(
     !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
   ) throw new Error(`WebM video recording not supported in this browser`)
 
-  const canvas_with_renderer = canvas as CanvasWithRenderer
-  const renderer = canvas_with_renderer.__customRenderer
+  const renderer = (canvas as { __renderer?: WebGLRenderer }).__renderer
 
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined
-  let orig_size: THREE.Vector2 | undefined
+  let orig_size: Vector2 | undefined
 
   if (resolution_multiplier !== 1 && renderer) {
     orig_pixel_ratio = renderer.getPixelRatio()

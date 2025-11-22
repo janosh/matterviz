@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-await-in-loop
-import { element_data } from '$lib/element'
+import element_data from '$lib/element/data'
 import { expect, test } from '@playwright/test'
 
 test.describe(`Element detail page`, () => {

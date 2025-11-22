@@ -34,10 +34,21 @@ describe(`StructureExportPane`, () => {
     const canvas = document.createElement(`canvas`)
     wrapper_div.appendChild(canvas)
     document.body.appendChild(wrapper_div)
-
-    // Create minimal mock Scene object
     mock_scene = {} as Scene
   })
+
+  const get_button = (title_part: string) => {
+    const matches = Array.from(document.querySelectorAll(`button`)).filter((btn) =>
+      btn.title?.includes(title_part)
+    )
+    if (matches.length === 0) {
+      throw new Error(`No button found with title containing "${title_part}"`)
+    }
+    if (matches.length > 1) {
+      throw new Error(`Multiple buttons match "${title_part}": ${matches.length} found`)
+    }
+    return matches[0]
+  }
 
   test(`displays all text export format buttons`, () => {
     mount(StructureExportPane, {
@@ -50,10 +61,9 @@ describe(`StructureExportPane`, () => {
       expect(document.body.textContent).toContain(label)
     }
 
-    // Should have exactly 2 buttons per format (download + copy) × 4 formats = 8
-    const h4_elements = Array.from(document.querySelectorAll(`h4`))
-    const text_h4 = h4_elements.find((h4) => h4.textContent?.includes(`Export as text`))
-    const text_section = text_h4?.nextElementSibling
+    // 2 buttons per format (download + copy) * 4 formats = 8
+    const text_section = Array.from(document.querySelectorAll(`h4`))
+      .find((h4) => h4.textContent?.includes(`Export as text`))?.nextElementSibling
     const buttons = text_section?.querySelectorAll(`button`)
     expect(buttons?.length).toBe(8)
   })
@@ -63,77 +73,53 @@ describe(`StructureExportPane`, () => {
     { format: `xyz`, label: `XYZ`, fn_name: `export_structure_as_xyz` },
     { format: `cif`, label: `CIF`, fn_name: `export_structure_as_cif` },
     { format: `poscar`, label: `POSCAR`, fn_name: `export_structure_as_poscar` },
-  ])(
-    `calls correct export function for $label download`,
-    async ({ label, fn_name }) => {
-      mount(StructureExportPane, {
-        target: document.body,
-        props: {
-          structure: simple_structure,
-        },
-      })
+  ])(`calls correct export function for $label download`, async ({ label, fn_name }) => {
+    mount(StructureExportPane, {
+      target: document.body,
+      props: { structure: simple_structure },
+    })
 
-      const export_fn = export_funcs[fn_name as keyof typeof export_funcs]
-      expect(export_fn).not.toHaveBeenCalled()
+    const export_fn = export_funcs[fn_name as keyof typeof export_funcs]
+    expect(export_fn).not.toHaveBeenCalled()
 
-      // Find download button for this format (⬇ button)
-      const format_div = Array.from(document.querySelectorAll(`.export-buttons > div`))
-        .find(
-          (div) => div.textContent?.includes(label),
-        )
-      expect(format_div).toBeTruthy()
+    const download_btn = get_button(`Download ${label}`)
+    expect(download_btn).toBeTruthy()
 
-      const download_btn = format_div?.querySelector(`button[title*="Download"]`)
-      expect(download_btn).toBeTruthy()
-
-      download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
-      await vi.waitFor(() => expect(export_fn).toHaveBeenCalledWith(simple_structure))
-    },
-  )
+    download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
+    await vi.waitFor(() => expect(export_fn).toHaveBeenCalledWith(simple_structure))
+  })
 
   test.each([
     {
-      format: `json`,
       label: `JSON`,
       str_fn_name: `structure_to_json_str`,
       expected_content: `{"test": "json"}`,
     },
     {
-      format: `xyz`,
       label: `XYZ`,
       str_fn_name: `structure_to_xyz_str`,
       expected_content: `3\ntest\nH 0 0 0`,
     },
     {
-      format: `cif`,
       label: `CIF`,
       str_fn_name: `structure_to_cif_str`,
       expected_content: `data_test\n_cell_length_a 1.0`,
     },
     {
-      format: `poscar`,
       label: `POSCAR`,
       str_fn_name: `structure_to_poscar_str`,
       expected_content: `test\n1.0\n1 0 0`,
     },
   ])(
-    `copies $label content to clipboard correctly`,
+    `copies $label content to clipboard`,
     async ({ label, str_fn_name, expected_content }) => {
       mount(StructureExportPane, {
         target: document.body,
-        props: {
-          structure: simple_structure,
-        },
+        props: { structure: simple_structure },
       })
 
       const str_fn = export_funcs[str_fn_name as keyof typeof export_funcs]
-
-      // Find copy button for this format (📋 button)
-      const format_div = Array.from(document.querySelectorAll(`.export-buttons > div`))
-        .find(
-          (div) => div.textContent?.includes(label),
-        )
-      const copy_btn = format_div?.querySelector(`button[title*="Copy"]`)
+      const copy_btn = get_button(`Copy ${label}`)
       expect(copy_btn).toBeTruthy()
 
       copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
@@ -147,32 +133,20 @@ describe(`StructureExportPane`, () => {
 
   test(`shows checkmark feedback after successful copy`, async () => {
     vi.useFakeTimers()
-
     mount(StructureExportPane, {
       target: document.body,
       props: { structure: simple_structure },
     })
 
-    const format_div = Array.from(document.querySelectorAll(`.export-buttons > div`))
-      .find(
-        (div) => div.textContent?.includes(`JSON`),
-      )
-    const copy_btn = format_div?.querySelector(`button[title*="Copy"]`)
-
-    // Initial state should show clipboard emoji
+    const copy_btn = get_button(`Copy JSON`)
     expect(copy_btn?.textContent).toContain(`📋`)
 
     copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
 
-    await vi.waitFor(() => {
-      expect(copy_btn?.textContent).toContain(`✅`)
-    })
+    await vi.waitFor(() => expect(copy_btn?.textContent).toContain(`✅`))
 
-    // After 1 second, should revert to clipboard emoji
     vi.advanceTimersByTime(1000)
-    await vi.waitFor(() => {
-      expect(copy_btn?.textContent).toContain(`📋`)
-    })
+    await vi.waitFor(() => expect(copy_btn?.textContent).toContain(`📋`))
 
     vi.useRealTimers()
   })
@@ -185,12 +159,7 @@ describe(`StructureExportPane`, () => {
       props: { structure: undefined },
     })
 
-    const format_div = Array.from(document.querySelectorAll(`.export-buttons > div`))
-      .find(
-        (div) => div.textContent?.includes(`JSON`),
-      )
-    const copy_btn = format_div?.querySelector(`button[title*="Copy"]`)
-
+    const copy_btn = get_button(`Copy JSON`)
     copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     await vi.waitFor(() => {
@@ -198,7 +167,6 @@ describe(`StructureExportPane`, () => {
         expect.stringContaining(`No structure available for copying`),
       )
     })
-
     console_warn_spy.mockRestore()
   })
 
@@ -220,16 +188,31 @@ describe(`StructureExportPane`, () => {
     expect(dpi_input.max).toBe(`500`)
   })
 
-  test(`PNG export button is enabled with canvas`, () => {
+  test(`PNG export button is enabled with canvas`, async () => {
     mount(StructureExportPane, {
       target: document.body,
       props: { structure: simple_structure, wrapper: wrapper_div },
     })
 
-    const png_buttons = Array.from(document.querySelectorAll(`button`)).filter(
-      (btn) => btn.title?.includes(`PNG`),
-    )
-    expect(png_buttons[0]?.disabled).toBe(false)
+    const png_btn = get_button(`PNG`)
+    await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
+  })
+
+  test(`PNG export button disabled when canvas absent or removed`, async () => {
+    wrapper_div.innerHTML = ``
+    mount(StructureExportPane, {
+      target: document.body,
+      props: { structure: simple_structure, wrapper: wrapper_div },
+    })
+
+    const png_btn = get_button(`PNG`)
+    expect(png_btn?.disabled).toBe(true)
+
+    wrapper_div.appendChild(document.createElement(`canvas`))
+    await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
+
+    wrapper_div.innerHTML = ``
+    await vi.waitFor(() => expect(png_btn?.disabled).toBe(true))
   })
 
   test(`displays 3D model export formats`, () => {
@@ -253,28 +236,14 @@ describe(`StructureExportPane`, () => {
 
     const export_fn = export_funcs[fn_name as keyof typeof export_funcs]
 
-    // Find the 3D model export section
-    const h4_elements = Array.from(document.querySelectorAll(`h4`))
-    const models_h4 = h4_elements.find((h4) =>
-      h4.textContent?.includes(`Export as 3D model`)
-    )
-    expect(models_h4).toBeTruthy()
-
-    const models_section = models_h4?.nextElementSibling
-    expect(models_section).toBeTruthy()
-
-    const format_div = Array.from(models_section?.querySelectorAll(`div`) || []).find((
-      div,
-    ) => div.textContent?.includes(label))
-    const download_btn = format_div?.querySelector(`button`)
+    const download_btn = get_button(`Download ${label}`)
     expect(download_btn).toBeTruthy()
     expect(download_btn?.disabled).toBe(false)
 
     download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    await vi.waitFor(() => {
+    await vi.waitFor(() =>
       expect(export_fn).toHaveBeenCalledWith(mock_scene, simple_structure)
-    })
+    )
   })
 
   test(`3D export buttons are disabled without scene`, () => {
@@ -283,51 +252,35 @@ describe(`StructureExportPane`, () => {
       props: { structure: simple_structure, scene: undefined },
     })
 
-    const h4_elements = Array.from(document.querySelectorAll(`h4`))
-    const models_h4 = h4_elements.find((h4) =>
-      h4.textContent?.includes(`Export as 3D model`)
-    )
-    const models_section = models_h4?.nextElementSibling
+    const models_section = Array.from(document.querySelectorAll(`h4`))
+      .find((h4) => h4.textContent?.includes(`Export as 3D model`))?.nextElementSibling
 
     const buttons = models_section?.querySelectorAll(`button`)
-    buttons?.forEach((btn) => {
-      expect(btn.disabled).toBe(true)
-    })
+    buttons?.forEach((btn) => expect(btn.disabled).toBe(true))
   })
 
-  test(`toggle button has correct title when closed`, () => {
+  test(`toggle button title when closed`, () => {
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: false,
-      },
+      props: { export_pane_open: false },
     })
-
-    const toggle = doc_query(`.structure-export-toggle`)
-    expect(toggle.title).toBe(`Export Structure`)
+    expect(doc_query(`.structure-export-toggle`).title).toBe(`Export Structure`)
   })
 
-  test(`toggle button has empty title when open`, () => {
+  test(`toggle button title when open`, () => {
     mount(StructureExportPane, {
       target: document.body,
-      props: {
-        export_pane_open: true,
-      },
+      props: { export_pane_open: true },
     })
-
-    const toggle = doc_query(`.structure-export-toggle`)
-    expect(toggle.title).toBe(``)
+    expect(doc_query(`.structure-export-toggle`).title).toBe(``)
   })
 
   test(`handles clipboard API errors gracefully`, async () => {
     const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
     const clipboard_error = new Error(`Clipboard API not available`)
 
-    // Mock clipboard.writeText to reject
     Object.assign(navigator, {
-      clipboard: {
-        writeText: vi.fn().mockRejectedValueOnce(clipboard_error),
-      },
+      clipboard: { writeText: vi.fn().mockRejectedValueOnce(clipboard_error) },
     })
 
     mount(StructureExportPane, {
@@ -335,12 +288,7 @@ describe(`StructureExportPane`, () => {
       props: { structure: simple_structure },
     })
 
-    const format_div = Array.from(document.querySelectorAll(`.export-buttons > div`))
-      .find(
-        (div) => div.textContent?.includes(`JSON`),
-      )
-    const copy_btn = format_div?.querySelector(`button[title*="Copy"]`)
-
+    const copy_btn = get_button(`Copy JSON`)
     copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     await vi.waitFor(() => {
@@ -349,7 +297,6 @@ describe(`StructureExportPane`, () => {
         clipboard_error,
       )
     })
-
     console_error_spy.mockRestore()
   })
 
@@ -359,14 +306,9 @@ describe(`StructureExportPane`, () => {
       sites: simple_structure.sites,
     }
 
-    // Mock the functions to throw errors for formats that require lattice
     vi.mocked(export_funcs.structure_to_cif_str).mockImplementationOnce(() => {
       throw new Error(`No lattice found`)
     })
-    vi.mocked(export_funcs.structure_to_poscar_str).mockImplementationOnce(() => {
-      throw new Error(`No lattice found`)
-    })
-
     const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
 
     mount(StructureExportPane, {
@@ -374,12 +316,8 @@ describe(`StructureExportPane`, () => {
       props: { structure: structure_without_lattice },
     })
 
-    // Try to copy CIF
-    const cif_div = Array.from(document.querySelectorAll(`.export-buttons > div`)).find((
-      div,
-    ) => div.textContent?.includes(`CIF`))
-    const cif_copy_btn = cif_div?.querySelector(`button[title*="Copy"]`)
-    cif_copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
+    const copy_btn = get_button(`Copy CIF`)
+    copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     await vi.waitFor(() => {
       expect(console_error_spy).toHaveBeenCalledWith(
@@ -387,7 +325,6 @@ describe(`StructureExportPane`, () => {
         expect.any(Error),
       )
     })
-
     console_error_spy.mockRestore()
   })
 
@@ -397,118 +334,91 @@ describe(`StructureExportPane`, () => {
       props: { structure: simple_structure, scene: mock_scene },
     })
 
-    // Get all buttons from the text export section
-    const h4_elements = Array.from(document.querySelectorAll(`h4`))
-    const text_h4 = h4_elements.find((h4) => h4.textContent?.includes(`Export as text`))
-    expect(text_h4).toBeTruthy()
+    const text_section = Array.from(document.querySelectorAll(`h4`))
+      .find((h4) => h4.textContent?.includes(`Export as text`))?.nextElementSibling
 
-    const text_section = text_h4?.nextElementSibling
-    expect(text_section).toBeTruthy()
+    const download_buttons = Array.from(text_section?.querySelectorAll(`button`) || [])
+      .filter(
+        (btn) => btn.title?.includes(`Download`),
+      )
+    expect(download_buttons.length).toBe(4)
+    download_buttons.forEach((btn) => expect(btn.title).toContain(`Download`))
 
-    // Check download buttons (exact text match)
-    const download_buttons = Array.from(
-      text_section?.querySelectorAll(`button`) || [],
-    ).filter((btn) => btn.textContent?.trim() === `⬇`)
-    expect(download_buttons.length).toBe(4) // JSON, XYZ, CIF, POSCAR
-
-    download_buttons.forEach((btn) => {
-      const title = btn.getAttribute(`title`)
-      expect(title).toBeTruthy()
-      expect(title).toContain(`Download`)
-    })
-
-    // Check copy buttons (exact text match)
-    const copy_buttons = Array.from(
-      text_section?.querySelectorAll(`button`) || [],
-    ).filter((btn) => btn.textContent?.trim() === `📋`)
-    expect(copy_buttons.length).toBe(4) // JSON, XYZ, CIF, POSCAR
-
+    const copy_buttons = Array.from(text_section?.querySelectorAll(`button`) || [])
+      .filter(
+        (btn) => btn.title?.includes(`Copy`) && btn.title?.includes(`clipboard`),
+      )
+    expect(copy_buttons.length).toBe(4)
     copy_buttons.forEach((btn) => {
-      const title = btn.getAttribute(`title`)
-      expect(title).toBeTruthy()
-      expect(title).toContain(`Copy`)
-      expect(title).toContain(`clipboard`)
+      expect(btn.title).toContain(`Copy`)
+      expect(btn.title).toContain(`clipboard`)
     })
   })
 
-  test(`custom pane_props are applied correctly`, () => {
+  test(`custom props are applied correctly`, () => {
     mount(StructureExportPane, {
       target: document.body,
       props: {
         pane_props: { style: `max-height: 400px`, class: `custom-export-pane` },
+        export_pane_open: false,
+        toggle_props: { class: `custom-export-toggle` },
       },
     })
 
     const pane = doc_query(`.export-pane`)
     expect(pane.classList.contains(`custom-export-pane`)).toBe(true)
     expect(pane.style.maxHeight).toBe(`400px`)
-  })
-
-  test(`custom toggle_props are applied correctly`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        export_pane_open: false,
-        toggle_props: { class: `custom-export-toggle` },
-      },
-    })
 
     const toggle = doc_query(`.structure-export-toggle`)
     expect(toggle.classList.contains(`custom-export-toggle`)).toBe(true)
   })
 
-  test(`PNG export button invokes export_canvas_as_png with camera when provided`, async () => {
-    // Need to import the export module to check mocks
+  test(`PNG export button invokes export_canvas_as_png`, async () => {
     const mock_camera = { type: `PerspectiveCamera` } as Camera
+    const png_dpi = 200
 
     mount(StructureExportPane, {
       target: document.body,
       props: {
         structure: simple_structure,
         wrapper: wrapper_div,
-        png_dpi: 200,
+        png_dpi,
         camera: mock_camera,
         scene: mock_scene,
       },
     })
 
-    const png_button = Array.from(document.querySelectorAll(`button`)).find((btn) =>
-      btn.title?.includes(`PNG`)
-    )
-    expect(png_button).toBeTruthy()
-    expect(png_button?.disabled).toBe(false)
+    const png_btn = get_button(`PNG`)
+    expect(png_btn).toBeTruthy()
+    await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
 
-    png_button?.dispatchEvent(new Event(`click`, { bubbles: true }))
+    png_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     await vi.waitFor(() => {
       expect(export_canvas_as_png).toHaveBeenCalledWith(
         wrapper_div.querySelector(`canvas`),
         simple_structure,
-        200,
+        png_dpi,
         mock_scene,
         mock_camera,
       )
     })
   })
 
-  test(`PNG export button invokes export_canvas_as_png with undefined camera when not provided`, async () => {
+  test(`PNG export button uses defaults when optional props missing`, async () => {
     mount(StructureExportPane, {
       target: document.body,
       props: {
         structure: simple_structure,
         wrapper: wrapper_div,
-        png_dpi: 150,
-        camera: undefined,
         scene: mock_scene,
+        // default png_dpi is 150, camera undefined
       },
     })
 
-    const png_button = Array.from(document.querySelectorAll(`button`)).find((btn) =>
-      btn.title?.includes(`PNG`)
-    )
-    expect(png_button).toBeTruthy()
-
-    png_button?.dispatchEvent(new Event(`click`, { bubbles: true }))
+    const png_btn = get_button(`PNG`)
+    await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
+    png_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     await vi.waitFor(() => {
       expect(export_canvas_as_png).toHaveBeenCalledWith(
@@ -516,34 +426,6 @@ describe(`StructureExportPane`, () => {
         simple_structure,
         150,
         mock_scene,
-        undefined,
-      )
-    })
-  })
-
-  test(`PNG export button passes correct DPI value`, async () => {
-    const png_dpi = 300
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        wrapper: wrapper_div,
-        png_dpi,
-      },
-    })
-
-    const png_button = Array.from(document.querySelectorAll(`button`)).find((btn) =>
-      btn.title?.includes(`PNG`)
-    )
-
-    png_button?.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    await vi.waitFor(() => {
-      expect(export_canvas_as_png).toHaveBeenCalledWith(
-        wrapper_div.querySelector(`canvas`),
-        simple_structure,
-        png_dpi,
-        undefined,
         undefined,
       )
     })
