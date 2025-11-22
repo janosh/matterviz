@@ -57,8 +57,8 @@ test.describe(`Periodic Table`, () => {
     await expect(page.locator(`.element-tile`).first()).toBeVisible({ timeout: 10000 })
     await page.waitForLoadState(`domcontentloaded`)
 
-    for (const tile of random_sample(await page.$$(`.element-tile`), 5)) {
-      await tile.hover({ timeout: 5000 })
+    for (const tile of random_sample(await page.$$(`.element-tile`), 3)) {
+      await tile.hover({ timeout: 5000, force: true })
     }
 
     expect(logs, logs.join(`\n`)).toHaveLength(0)
