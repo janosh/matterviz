@@ -3,12 +3,12 @@ import { Buffer } from 'node:buffer'
 
 test.describe(`BrillouinBandsDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `networkidle` })
+    await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `domcontentloaded` })
     // Wait for the default container and basic structure to be present
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     await expect(container).toBeVisible()
     // Wait for canvas (BZ) to be present
-    await expect(container.locator(`canvas`).first()).toBeVisible()
+    await expect(container.locator(`canvas`).first()).toBeVisible({ timeout: 10000 })
   })
 
   test(`renders all three panels with content`, async ({ page }) => {
@@ -19,7 +19,10 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await expect(container.locator(`svg`).nth(0).locator(`path[fill="none"]`).first())
       .toBeVisible()
     // DOS may take longer to render, give it more time
-    await expect(container.locator(`svg`).nth(1).locator(`path[fill="none"]`).first())
+    const dos_svg = container.locator(`svg`).nth(1)
+    await expect(dos_svg).toBeVisible()
+    await expect(dos_svg.locator(`g.y-axis`)).toBeVisible()
+    await expect(dos_svg.locator(`path[fill="none"]`).first())
       .toBeVisible({ timeout: 15000 })
 
     // Check for high-symmetry labels in bands

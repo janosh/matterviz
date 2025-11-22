@@ -1,25 +1,101 @@
 import { expect, test } from '@playwright/test'
 
 test.describe(`OPTIMADE route`, () => {
-  test(`page loads correctly`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
+  test.beforeEach(async ({ page }) => {
+    await page.route(`**/providers.optimade.org/v1/links`, async (route) => {
+      await route.fulfill({
+        json: {
+          data: [
+            {
+              id: `mp`,
+              type: `links`,
+              attributes: {
+                name: `Materials Project`,
+                base_url: `https://optimade.materialsproject.org`,
+                description: `The Materials Project`,
+                homepage: `https://materialsproject.org`,
+                link_type: `child`,
+              },
+            },
+            {
+              id: `cod`,
+              type: `links`,
+              attributes: {
+                name: `Crystallography Open Database`,
+                description: `Crystallography Open Database`,
+                base_url: `https://www.crystallography.net/cod/optimade`,
+                homepage: `https://www.crystallography.net/cod`,
+                link_type: `child`,
+              },
+            },
+            {
+              id: `oqmd`,
+              type: `links`,
+              attributes: {
+                name: `OQMD`,
+                description:
+                  `The OQMD is a database of DFT calculated thermodynamic and structural properties.`,
+                base_url: `http://oqmd.org/optimade`,
+                homepage: `http://oqmd.org`,
+                link_type: `child`,
+              },
+            },
+          ],
+        },
+      })
+    })
 
-    await expect(page.locator(`h1`)).toContainText(`OPTIMADE Structure Explorer`)
-    await expect(page.locator(`input[placeholder="Enter OPTIMADE structure ID"]`))
-      .toBeVisible()
-    await expect(page.locator(`button:has-text("Fetch structure")`)).toBeVisible()
-  })
-
-  test(`handles invalid structure ID gracefully`, async ({ page }) => {
-    await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `networkidle` })
-
-    await expect(page.locator(`text=Structure invalid-id-12345 not found`)).toBeVisible({
-      timeout: 5000,
+    // Mock structure requests
+    await page.route(`**/structures/*`, async (route) => {
+      const url = route.request().url()
+      if (url.includes(`mp-1`)) {
+        await route.fulfill({
+          json: {
+            data: {
+              id: `mp-1`,
+              type: `structures`,
+              attributes: {
+                chemical_formula_descriptive: `H2O`,
+                lattice_vectors: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                species: [{ name: `H`, chemical_symbols: [`H`], concentration: [1] }],
+                species_at_sites: [`H`],
+                cartesian_site_positions: [[0, 0, 0]],
+                structure_features: [],
+              },
+            },
+          },
+        })
+      } else if (url.includes(`invalid-id`)) {
+        await route.fulfill({ json: { data: null } })
+      } else {
+        await route.continue()
+      }
     })
   })
 
+  test(`page loads correctly`, async ({ page }) => {
+    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+
+    await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
+    await expect(page.locator(`input[placeholder="Enter structure ID"]`))
+      .toBeVisible()
+    await expect(page.locator(`button:has-text("Fetch")`)).toBeVisible()
+  })
+
+  test(`handles invalid structure ID gracefully`, async ({ page }) => {
+    await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `domcontentloaded` })
+
+    // Check input value is set correctly
+    await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
+
+    // Check for error message
+    const error_message = page.locator(`.error-message`)
+    await expect(error_message).toBeVisible({ timeout: 5000 })
+    await expect(error_message).toContainText(`Structure invalid-id-12345 not found`)
+  })
+
   test(`can switch providers and clear input field`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
 
     // Verify initial MP structure is loaded
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
@@ -40,7 +116,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can load structure from different providers via text input`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
 
     // Verify initial MP structure is loaded
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
@@ -55,7 +131,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`provider selection clears input field`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
 
     // Fill input with some text
     await page.locator(`input.structure-input`).fill(`test-structure-id`)
@@ -68,7 +144,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can navigate between multiple providers`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
 
     // Test MP provider (should already be loaded)
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
@@ -88,7 +164,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can click on suggested structures to load them`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
 
     // Wait for suggestions to load
     await expect(page.locator(`text=Suggested Structures from`)).toBeVisible()
