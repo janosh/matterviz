@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => ({
       output: { entryFileNames: `webview.js`, format: `iife` },
     },
     emptyOutDir: false,
+    chunkSizeWarningLimit: 6000,
   },
   resolve: {
     alias: {

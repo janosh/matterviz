@@ -3,12 +3,12 @@ import { dom_click } from './utils'
 
 test.describe(`PhaseDiagram3D (Ternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/phase-diagram`, { waitUntil: `networkidle` })
+    await page.goto(`/phase-diagram`, { waitUntil: `domcontentloaded` })
   })
 
   test(`renders ternary diagram canvas and toggles hull faces`, async ({ page }) => {
     await expect(page.getByRole(`heading`, { name: `Phase Diagrams` })).toBeVisible()
-    const ternary_grid = page.locator(`.ternary-grid`)
+    const ternary_grid = page.locator(`.ternary-grid`).first()
     await expect(ternary_grid).toBeVisible()
 
     const diagram = ternary_grid.locator(`.phase-diagram-3d`).first()
