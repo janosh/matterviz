@@ -8,7 +8,7 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
 
   test(`renders binary phase diagram with scatter plot and colorbar`, async ({ page }) => {
     await expect(page.getByRole(`heading`, { name: `Phase Diagrams` })).toBeVisible()
-    const binary_grid = page.locator(`.binary-grid`)
+    const binary_grid = page.locator(`.binary-grid`).first()
     await expect(binary_grid).toBeVisible()
 
     const pd2d = binary_grid.locator(`.phase-diagram-2d`).first()
@@ -79,6 +79,8 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
     const markers = scatter.locator(`path.marker`)
     const count_before = await markers.count()
     await number_input.fill(`0`)
+    // Trigger change handlers by blurring the input
+    await number_input.blur()
 
     // Wait for info pane to update
     await expect
