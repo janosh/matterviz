@@ -111,6 +111,20 @@
       console.error(`Failed to export ${format.toUpperCase()}:`, error)
     }
   }
+
+  let has_canvas = $state(false)
+
+  $effect(() => {
+    if (!wrapper) {
+      has_canvas = false
+      return
+    }
+    const check = () => (has_canvas = Boolean(wrapper.querySelector(`canvas`)))
+    check()
+    const observer = new MutationObserver(check)
+    observer.observe(wrapper, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  })
 </script>
 
 <DraggablePane
@@ -154,7 +168,7 @@
       PNG
       <button
         type="button"
-        disabled={!wrapper?.querySelector(`canvas`)}
+        disabled={!has_canvas}
         onclick={() => {
           const canvas = wrapper?.querySelector(`canvas`) as HTMLCanvasElement
           if (canvas) {
