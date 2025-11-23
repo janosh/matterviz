@@ -1,9 +1,10 @@
 <script lang="ts">
   import { SettingsSection } from '$lib'
-  import type { AxisConfig, BarStyle, DataSeries } from '$lib/plot'
+  import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
-  import type { DisplayConfig, PlotControlsProps } from '$lib/plot/types'
+  import type { PlotControlsProps } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
+  import type { Snippet } from 'svelte'
 
   let {
     series = [],
@@ -19,8 +20,9 @@
     show_controls = $bindable(false),
     controls_open = $bindable(false),
     auto_y2_range = undefined,
+    children,
     ...rest
-  }: Omit<PlotControlsProps, `children` | `post_children`> & {
+  }: Omit<PlotControlsProps, `children` | `post_children`> & PlotConfig & {
     // Series data for multi-series controls
     series?: readonly DataSeries[]
     // Histogram-specific controls
@@ -29,14 +31,10 @@
     bar?: BarStyle
     show_legend?: boolean
     selected_property?: string
-    // Grouped configs
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    y2_axis?: AxisConfig
-    display?: DisplayConfig
     show_controls?: boolean
     controls_open?: boolean
     auto_y2_range?: [number, number]
+    children?: Snippet<[Required<PlotConfig>]>
   } = $props()
 
   bar = { ...DEFAULTS.histogram.bar, ...bar } // Initialize bar styles with defaults (runs once)
@@ -56,6 +54,7 @@
   {auto_y2_range}
   {...rest}
 >
+  {@render children?.({ x_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Histogram"
     current_values={{ bins, mode, show_legend }}

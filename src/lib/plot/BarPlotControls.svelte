@@ -1,8 +1,9 @@
 <script lang="ts">
   import { SettingsSection } from '$lib'
-  import type { AxisConfig, BarMode, DisplayConfig } from '$lib/plot'
+  import type { BarMode, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { Orientation, PlotControlsProps } from '$lib/plot/types'
+  import type { Snippet } from 'svelte'
 
   let {
     orientation = $bindable(`vertical`),
@@ -13,16 +14,16 @@
     display = $bindable({}),
     show_controls = $bindable(false),
     controls_open = $bindable(false),
+    children,
     ...rest
-  }: Omit<PlotControlsProps, `children` | `post_children`> & {
+  }: Omit<PlotControlsProps, `children` | `post_children`> & PlotConfig & {
     orientation?: Orientation
     mode?: BarMode
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    y2_axis?: AxisConfig
-    display?: DisplayConfig
     show_controls?: boolean
     controls_open?: boolean
+    children?: Snippet<
+      [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
+    >
   } = $props()
 </script>
 
@@ -35,6 +36,7 @@
   bind:display
   {...rest}
 >
+  {@render children?.({ orientation, mode, x_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Layout"
     current_values={{ orientation, mode }}
