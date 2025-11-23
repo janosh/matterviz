@@ -8,12 +8,12 @@
   let {
     supercell_scaling = $bindable(`1x1x1`),
     loading = false,
-    open_direction = `down`,
+    direction = `down`,
     align = `right`,
   }: {
     supercell_scaling: string
     loading?: boolean
-    open_direction?: `up` | `down`
+    direction?: `up` | `down`
     align?: `left` | `right`
   } = $props()
 
@@ -75,7 +75,7 @@
   {#if menu_open}
     <div
       class="dropdown"
-      class:open-up={open_direction === `up`}
+      class:open-up={direction === `up`}
       class:align-left={align === `left`}
       transition:fade={{ duration: 100 }}
     >

@@ -801,7 +801,11 @@
       {sym_data}
     >
       {#if structure && `lattice` in structure}
-        <SupercellSelector bind:supercell_scaling loading={supercell_loading} />
+        <SupercellSelector
+          bind:supercell_scaling
+          loading={supercell_loading}
+          direction="up"
+        />
       {/if}
     </AtomLegend>
 

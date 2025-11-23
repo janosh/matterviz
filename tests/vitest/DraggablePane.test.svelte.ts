@@ -40,7 +40,7 @@ describe(`DraggablePane`, () => {
     expect(pane?.getAttribute(`style`)).toContain(`display: none`)
   })
 
-  test(`toggle shows then hides pane`, () => {
+  test(`toggle shows then hides pane`, async () => {
     mount(DraggablePane, { target: document.body, props: default_props })
     const button = doc_query(`.pane-toggle`)
     let pane: Element | null = document.querySelector(`.draggable-pane`)
@@ -48,15 +48,17 @@ describe(`DraggablePane`, () => {
     // Initially hidden
     expect(pane?.classList.contains(`pane-open`)).toBe(false)
 
-    // Click to show (UI updates after a subsequent click due to positioning side-effects)
+    // Click to show
     click(button)
-    pane = document.querySelector(`.draggable-pane`)
-    expect(pane?.classList.contains(`pane-open`)).toBe(false)
-
-    // Second click should make it visible
-    click(button)
+    await tick()
     pane = document.querySelector(`.draggable-pane`)
     expect(pane?.classList.contains(`pane-open`)).toBe(true)
+
+    // Click to hide
+    click(button)
+    await tick()
+    pane = document.querySelector(`.draggable-pane`)
+    expect(pane?.classList.contains(`pane-open`)).toBe(false)
   })
 
   test(`calls onclose when closed`, () => {
@@ -169,21 +171,21 @@ describe(`DraggablePane`, () => {
     expect(pane.getAttribute(`aria-modal`)).toBe(`false`)
   })
 
-  test(`ARIA toggles`, () => {
+  test(`ARIA toggles`, async () => {
     mount(DraggablePane, { target: document.body, props: default_props })
     const button = doc_query(`.pane-toggle`)
 
     // Initially collapsed
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
 
-    // Click to expand (first click updates position, second opens)
+    // Click to expand
     click(button)
-    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
-    click(button)
+    await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
 
     // Click to collapse
     click(button)
+    await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
   })
 

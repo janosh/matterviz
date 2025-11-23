@@ -55,10 +55,12 @@
   let initial_position = $state({ left: `50px`, top: `50px` })
   let show_control_buttons = $state(false)
 
-  function toggle_pane() {
+  function toggle_pane(event: MouseEvent) {
+    event.stopPropagation()
     show = !show
     if (!show) onclose()
   }
+
   function close_pane() {
     show = false
     onclose()
