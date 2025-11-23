@@ -138,6 +138,7 @@ export interface HandlerProps<Metadata = Record<string, unknown>> {
   x_axis: AxisConfig
   y_axis: AxisConfig
   y2_axis?: AxisConfig
+  fullscreen?: boolean
 }
 
 export interface ScatterHandlerProps<Metadata = Record<string, unknown>>
@@ -255,6 +256,7 @@ export type UserContentProps = {
   x_range: [number, number]
   y_range: [number, number]
   y2_range?: [number, number]
+  fullscreen: boolean
 }
 
 export type Orientation = `vertical` | `horizontal`
@@ -323,6 +325,13 @@ export interface StyleOverrides {
   show_lines?: boolean
 }
 
+export interface PlotConfig { // Grouped configuration for plot axes and display settings
+  x_axis?: AxisConfig
+  y_axis?: AxisConfig
+  y2_axis?: AxisConfig
+  display?: DisplayConfig
+}
+
 // Controls configuration
 export interface ControlsConfig {
   show?: boolean
@@ -331,28 +340,19 @@ export interface ControlsConfig {
   pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
 }
 
-export type ControlsState = {
+export type ControlsState = Required<PlotConfig> & {
   show_controls: boolean
   controls_open: boolean
-  x_axis: AxisConfig
-  y_axis: AxisConfig
-  y2_axis: AxisConfig
-  display: DisplayConfig
   range_inputs: Record<string, [number | null, number | null]>
 }
 
-export interface PlotControlsProps {
+export interface PlotControlsProps extends PlotConfig {
   // Control pane visibility
   show_controls?: boolean
   controls_open?: boolean
   // Custom snippets for additional controls
   children?: Snippet<[ControlsState]>
   post_children?: Snippet<[ControlsState]>
-  // Grouped axis and display configs (bindable in practice)
-  x_axis?: AxisConfig
-  y_axis?: AxisConfig
-  y2_axis?: AxisConfig
-  display?: DisplayConfig
   // Auto ranges for reset functionality
   auto_x_range?: [number, number]
   auto_y_range?: [number, number]
@@ -383,7 +383,7 @@ export interface BasePlotProps {
   controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   // Children
-  children?: Snippet<[{ height: number; width: number }]>
+  children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]>
 }
 export const LINE_TYPES = [`solid`, `dashed`, `dotted`] as const
 export type LineType = (typeof LINE_TYPES)[number]

@@ -26,10 +26,12 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
   }
   if (typeof scaling === `string`) {
     // Parse "2x2x2" format
-    const parts = scaling.toLowerCase().split(/[x×,\s]+/).filter((p) =>
-      p.trim().length > 0
+    const parts = scaling.trim().toLowerCase().split(/[x×,\s]+/).filter((p) =>
+      p.length > 0
     )
+
     if (parts.length === 1 || parts.length === 3) {
+      // Check that all parts are strictly digits to avoid scientific notation/hex/etc per tests
       if (parts.every((p) => /^\d+$/.test(p))) {
         const values = parts.map(Number)
         if (values.every((v) => v > 0)) {
@@ -45,12 +47,16 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
 // and returns array of fractional coordinates for lattice points
 export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   const [nx, ny, nz] = scaling_factors
-  const points: Vec3[] = []
+  const count = nx * ny * nz
+  const points = new Array(count)
 
+  let ptr = 0
   // Generate in x, y, z order to match expected test results
   for (let kk = 0; kk < nz; kk++) {
     for (let jj = 0; jj < ny; jj++) {
-      for (let ii = 0; ii < nx; ii++) points.push([ii, jj, kk] as Vec3)
+      for (let ii = 0; ii < nx; ii++) {
+        points[ptr++] = [ii, jj, kk]
+      }
     }
   }
 
@@ -65,13 +71,13 @@ export function scale_lattice_matrix(
   scaling_factors: Vec3,
 ): math.Matrix3x3 {
   const [nx, ny, nz] = scaling_factors
-
+  const [a, b, c] = orig_matrix
   // Scale each lattice vector by its corresponding factor
   return [
-    math.scale(orig_matrix[0], nx),
-    math.scale(orig_matrix[1], ny),
-    math.scale(orig_matrix[2], nz),
-  ] as math.Matrix3x3
+    [a[0] * nx, a[1] * nx, a[2] * nx],
+    [b[0] * ny, b[1] * ny, b[2] * ny],
+    [c[0] * nz, c[1] * nz, c[2] * nz],
+  ]
 }
 
 // Create a supercell from a PymatgenStructure
@@ -98,11 +104,9 @@ export function make_supercell(
     } as SupercellType
   }
 
+  const orig_matrix = structure.lattice.matrix
   // Create new scaled lattice
-  const new_lattice_matrix = scale_lattice_matrix(
-    structure.lattice.matrix,
-    scaling_factors,
-  )
+  const new_lattice_matrix = scale_lattice_matrix(orig_matrix, scaling_factors)
   const lattice_params = math.calc_lattice_params(new_lattice_matrix)
 
   const new_lattice = {
@@ -111,51 +115,63 @@ export function make_supercell(
     ...lattice_params,
   }
 
-  // Pre-compute matrices (constant for all sites)
-  const orig_T = math.transpose_3x3_matrix(structure.lattice.matrix)
-  const new_T = math.transpose_3x3_matrix(new_lattice_matrix)
-  const new_T_inv = math.matrix_inverse_3x3(new_T)
+  // Pre-allocate sites array
+  const n_sites = structure.sites.length
+  const new_sites: Site[] = new Array(n_sites * det)
 
-  const new_sites: Site[] = []
+  // Cache original lattice vectors for manual vector addition
+  const [ax, ay, az] = orig_matrix[0]
+  const [bx, by, bz] = orig_matrix[1]
+  const [cx, cy, cz] = orig_matrix[2]
 
-  // Generate sites
+  let ptr = 0
+
+  // Use local variables for speed
+  const sites = structure.sites
+
+  // Loop order: k, j, i to match typical pymatgen/standard ordering
   for (let kk = 0; kk < nz; kk++) {
     for (let jj = 0; jj < ny; jj++) {
       for (let ii = 0; ii < nx; ii++) {
-        const translation = math.mat3x3_vec3_multiply(orig_T, [ii, jj, kk])
         const label_suffix = det > 1 ? `_${ii}${jj}${kk}` : ``
 
-        for (const [orig_idx, site] of structure.sites.entries()) {
-          // Translate to new position in Cartesian coordinates
-          const cart_pos = math.add(site.xyz, translation)
+        // Pre-calculate translation vector components
+        const tx = ii * ax + jj * bx + kk * cx
+        const ty = ii * ay + jj * by + kk * cy
+        const tz = ii * az + jj * bz + kk * cz
 
-          // Convert to fractional coordinates in new lattice
-          let frac_pos = math.mat3x3_vec3_multiply(new_T_inv, cart_pos)
+        for (let s = 0; s < n_sites; s++) {
+          const site = sites[s]
+          const [x, y, z] = site.xyz
+          const [u, v, w] = site.abc
 
-          // Wrap to unit cell if requested
+          // Direct fractional coordinate calculation
+          // new_abc = (old_abc + [i, j, k]) / [nx, ny, nz]
+          let nu = (u + ii) / nx
+          let nv = (v + jj) / ny
+          let nw = (w + kk) / nz
+
           if (to_unit_cell) {
-            frac_pos = frac_pos.map((coord) => {
-              let wrapped = coord % 1
-              if (wrapped < 0) wrapped += 1
-              if (wrapped >= 0.9999999999) wrapped = 0
-              return wrapped
-            }) as Vec3
+            nu = ((nu % 1) + 1) % 1
+            nv = ((nv % 1) + 1) % 1
+            nw = ((nw % 1) + 1) % 1
+            // Handle edge case close to 1.0
+            if (nu >= 0.9999999999) nu = 0
+            if (nv >= 0.9999999999) nv = 0
+            if (nw >= 0.9999999999) nw = 0
           }
 
-          // Convert back to Cartesian in new lattice
-          const final_pos = math.mat3x3_vec3_multiply(new_T, frac_pos)
-
-          new_sites.push({
+          new_sites[ptr++] = {
             species: site.species,
-            xyz: final_pos,
-            abc: frac_pos,
+            // Direct Cartesian calculation: old_xyz + translation
+            xyz: [x + tx, y + ty, z + tz],
+            abc: [nu, nv, nw],
             label: label_suffix ? `${site.label}${label_suffix}` : site.label,
             properties: {
               ...site.properties,
-              // Track which original unit cell atom this came from
-              orig_unit_cell_idx: orig_idx,
+              orig_unit_cell_idx: s,
             },
-          })
+          }
         }
       }
     }

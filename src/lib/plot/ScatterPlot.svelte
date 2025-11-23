@@ -1,18 +1,18 @@
 <script lang="ts">
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { luminance } from '$lib/colors'
+  import { FullscreenToggle } from '$lib/feedback'
   import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
   import * as math from '$lib/math'
   import type {
-    AxisConfig,
     ControlsConfig,
     DataSeries,
-    DisplayConfig,
     HoverConfig,
     InternalPoint,
     LabelPlacementConfig,
     LegendConfig,
+    PlotConfig,
     Point,
     PointStyle,
     ScaleType,
@@ -59,9 +59,9 @@
 
   let {
     series = [],
-    x_axis = {},
-    y_axis = {},
-    y2_axis = {},
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    y2_axis = $bindable({}),
     display = $bindable(DEFAULTS.scatter.display),
     styles = {},
     controls = {},
@@ -90,14 +90,12 @@
     on_point_hover,
     selected_series_idx = $bindable(0),
     wrapper = $bindable(),
+    fullscreen = $bindable(false),
     children,
+    controls_extra,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  }: HTMLAttributes<HTMLDivElement> & PlotConfig & {
     series?: DataSeries[]
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    y2_axis?: AxisConfig
-    display?: DisplayConfig
     styles?: StyleOverrides
     controls?: ControlsConfig
     padding?: Sides
@@ -107,6 +105,10 @@
     hovered?: boolean
     tooltip?: Snippet<[ScatterHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
+    children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    controls_extra?: Snippet<
+      [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
+    >
     change?: (data: (Point & { series: DataSeries }) | null) => void
     color_scale?: {
       type?: ScaleType
@@ -137,6 +139,7 @@
     on_point_hover?: (data: ScatterHandlerEvent | null) => void
     selected_series_idx?: number
     wrapper?: HTMLDivElement
+    fullscreen?: boolean
   } = $props()
 
   // Initialize style overrides with defaults (runs once to avoid infinite loop)
@@ -1116,6 +1119,7 @@
     const coords = { x, y, cx, cy, x_axis, y_axis, y2_axis }
     return {
       ...coords,
+      fullscreen,
       metadata: metadata ?? null,
       label: hovered_series.label ?? null,
       series_idx,
@@ -1144,14 +1148,25 @@
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === `Escape` && fullscreen) {
+      e.preventDefault()
+      fullscreen = false
+    }
+  }}
+/>
+
 <div
   bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
   class="scatter {rest.class ?? ``}"
+  class:fullscreen
 >
   {#if width && height}
+    <FullscreenToggle bind:fullscreen />
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <svg
       bind:this={svg_element}
@@ -1176,6 +1191,7 @@
         x_range: [x_min, x_max],
         y_range: [y_min, y_max],
         y2_range: [y2_min, y2_max],
+        fullscreen,
       })}
       <g class="x-axis">
         {#if width > 0 && height > 0}
@@ -1633,7 +1649,12 @@
     <!-- Control Pane -->
     {#if controls.show}
       <ScatterPlotControls
-        toggle_props={controls.toggle_props}
+        toggle_props={{
+          ...controls.toggle_props,
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
+            controls.toggle_props?.style ?? ``
+          }`,
+        }}
         pane_props={controls.pane_props}
         {x_axis}
         {y_axis}
@@ -1646,6 +1667,7 @@
         bind:selected_series_idx
         series={series_with_ids}
         has_y2_points={y2_points.length > 0}
+        children={controls_extra}
       />
     {/if}
 
@@ -1723,7 +1745,7 @@
   {/if}
 
   <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
-  {@render children?.()}
+  {@render children?.({ height, width, fullscreen })}
 </div>
 
 <style>
@@ -1739,6 +1761,31 @@
     display: var(--scatter-display, flex);
     flex-direction: column;
     background: var(--scatter-bg, var(--plot-bg));
+  }
+  div.scatter.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999;
+    margin: 0;
+    border-radius: 0;
+    background: var(--plot-bg, white);
+    max-height: none !important;
+  }
+  /* Hide controls and fullscreen toggles by default, show on hover */
+  div.scatter :global(.pane-toggle),
+  div.scatter :global(.fullscreen-toggle) {
+    opacity: 0;
+    transition: opacity 0.2s, background-color 0.2s;
+  }
+  div.scatter:hover :global(.pane-toggle),
+  div.scatter:hover :global(.fullscreen-toggle),
+  div.scatter :global(.pane-toggle:focus-visible),
+  div.scatter :global(.pane-toggle[aria-expanded='true']),
+  div.scatter :global(.fullscreen-toggle:focus) {
+    opacity: 1;
   }
   svg {
     width: var(--scatter-svg-width, 100%);
