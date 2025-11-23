@@ -106,7 +106,9 @@
     tooltip?: Snippet<[ScatterHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
     children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
-    controls_extra?: Snippet
+    controls_extra?: Snippet<
+      [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
+    >
     change?: (data: (Point & { series: DataSeries }) | null) => void
     color_scale?: {
       type?: ScaleType
@@ -1649,7 +1651,9 @@
       <ScatterPlotControls
         toggle_props={{
           ...controls.toggle_props,
-          style: `right: 36px; top: 4px; ${controls.toggle_props?.style ?? ``}`,
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
+            controls.toggle_props?.style ?? ``
+          }`,
         }}
         pane_props={controls.pane_props}
         {x_axis}
@@ -1774,7 +1778,7 @@
   div.scatter :global(.pane-toggle),
   div.scatter :global(.fullscreen-toggle) {
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, background-color 0.2s;
   }
   div.scatter:hover :global(.pane-toggle),
   div.scatter:hover :global(.fullscreen-toggle),

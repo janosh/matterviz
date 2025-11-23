@@ -71,7 +71,7 @@
     selected_property?: string
     mode?: `single` | `overlay`
     tooltip?: Snippet<[HistogramHandlerProps]>
-    controls_extra?: Snippet
+    controls_extra?: Snippet<[Required<PlotConfig>]>
     change?: (data: { value: number; count: number; property: string } | null) => void
     on_bar_click?: (
       data: {
@@ -877,7 +877,9 @@
     <HistogramControls
       toggle_props={{
         ...controls_toggle_props,
-        style: `right: 36px; top: 4px; ${controls_toggle_props?.style ?? ``}`,
+        style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
+          controls_toggle_props?.style ?? ``
+        }`,
       }}
       pane_props={controls_pane_props}
       bind:show_controls
@@ -941,7 +943,7 @@
   .histogram :global(.pane-toggle),
   .histogram :global(.fullscreen-toggle) {
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, background-color 0.2s;
   }
   .histogram:hover :global(.pane-toggle),
   .histogram:hover :global(.fullscreen-toggle),

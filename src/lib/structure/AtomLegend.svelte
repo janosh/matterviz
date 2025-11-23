@@ -1,7 +1,8 @@
 <script lang="ts">
-  import type { CompositionType, ElementSymbol } from '$lib'
+  import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
   import { element_data, format_num, Icon } from '$lib'
   import { contrast_color, default_element_colors } from '$lib/colors'
+  import { ColorBar } from '$lib/plot'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type {
@@ -31,9 +32,10 @@
     hidden_prop_vals = $bindable(new Set<number | string>()),
     title = ``,
     sym_data = null,
+    structure = undefined,
     children,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
     atom_color_config?: Partial<AtomColorConfig>
     property_colors?: AtomPropertyColors | null
     elements?: CompositionType
@@ -46,11 +48,12 @@
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
     title?: string
     sym_data?: MoyoDataset | null
-    children?: Snippet<[{ mode_menu_open: boolean }]>
+    structure?: AnyStructure | null
+    children?: Snippet<[{ mode_menu_open: boolean; structure?: AnyStructure | null }]>
   } = $props()
 
   const titles = {
-    coordination: `Coordination Number`,
+    coordination: `Coordination`,
     wyckoff: `Wyckoff Position`,
   }
 
@@ -93,35 +96,12 @@
   let color_map = $derived(
     new Map(
       // Use unique_values instead of values to avoid undefined colors from duplicates
-      property_colors?.unique_values?.map((val) => {
-        const first_site_idx = property_colors.values.indexOf(val)
-        return [val, property_colors.colors[first_site_idx]]
+      property_colors?.unique_values?.flatMap((val) => {
+        const idx = property_colors.values.indexOf(val)
+        return idx >= 0 ? [[val, property_colors.colors[idx]]] : []
       }) ?? [],
     ),
   )
-
-  // CSS gradient for continuous scales
-  let gradient_css = $derived.by(() => {
-    const { unique_values } = property_colors || {}
-    if (!unique_values?.length || atom_color_config.scale_type !== `continuous`) {
-      return ``
-    }
-
-    // Handle single-value case to avoid division by zero
-    if (unique_values.length === 1) {
-      const color = color_map.get(unique_values[0])
-      return `linear-gradient(to right, ${color}, ${color})`
-    }
-
-    const stops = unique_values
-      .map((v, i) => {
-        const pct = (i / (unique_values.length - 1)) * 100
-        return `${color_map.get(v)} ${pct}%`
-      })
-      .join(`, `)
-
-    return `linear-gradient(to right, ${stops})`
-  })
 
   function toggle_visibility<T>(
     set: Set<T>,
@@ -164,10 +144,15 @@
             disabled={value === `wyckoff` && !sym_data}
             onclick={() => {
               atom_color_config.mode = value as AtomColorConfig[`mode`]
+              if (atom_color_config.mode === `wyckoff`) {
+                atom_color_config.scale_type = `categorical`
+              } else if (atom_color_config.mode === `coordination`) {
+                atom_color_config.scale_type = `continuous`
+              }
               mode_menu_open = false
             }}
           >
-            <span>{label}</span>
+            <span>{titles[value as keyof typeof titles] || label}</span>
           </button>
         {/each}
       </div>
@@ -224,8 +209,8 @@
         </button>
       </div>
     {/each}
-    {@render children?.({ mode_menu_open })}
     {@render mode_selector_snippet()}
+    {@render children?.({ mode_menu_open, structure })}
   </div>
 {:else if show_property_legend}
   <div
@@ -240,15 +225,21 @@
     {/if}
     {#if atom_color_config.scale_type === `continuous` && property_colors}
       <div
-        class="gradient-container"
         title={legend_title}
         {@attach tooltip({ placement: `top` })}
       >
-        <div class="gradient-bar" style:background={gradient_css}></div>
-        <div class="gradient-labels">
-          <span>{format_value(property_colors.min_value ?? 0)}</span>
-          <span>{format_value(property_colors.max_value ?? 0)}</span>
-        </div>
+        <ColorBar
+          color_scale={atom_color_config.scale}
+          range={[property_colors.min_value ?? 0, property_colors.max_value ?? 0]}
+          tick_labels={Array.from(
+            new Set([property_colors.min_value ?? 0, property_colors.max_value ?? 0]),
+          )}
+          tick_side="secondary"
+          bar_style="height: 10px; width: 100px;"
+          wrapper_style="padding: 0; gap: 2px;"
+          style="margin-top: 0"
+          tick_format=".3~f"
+        />
       </div>
     {:else if atom_color_config.scale_type === `categorical` && property_colors}
       {#each property_colors.unique_values || [] as
@@ -285,8 +276,8 @@
         </div>
       {/each}
     {/if}
-    {@render children?.({ mode_menu_open })}
     {@render mode_selector_snippet()}
+    {@render children?.({ mode_menu_open, structure })}
   </div>
 {/if}
 
@@ -376,11 +367,6 @@
     font-size: var(--struct-legend-font, clamp(8pt, 3cqmin, 14pt));
     align-items: center;
   }
-  .gradient-container {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
   .mode-selector {
     position: relative;
     display: flex;
@@ -449,18 +435,6 @@
   .mode-option span {
     white-space: nowrap;
   }
-  .gradient-bar {
-    height: 10px;
-    width: 100px;
-    border-radius: 2px;
-  }
-  .gradient-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.65rem;
-    opacity: 0.75;
-    line-height: 1;
-  }
   .property-legend .legend-item {
     position: relative;
     display: inline-block;
@@ -506,5 +480,10 @@
   .property-legend button.toggle-visibility:hover {
     background: rgba(0, 0, 0, 0.8);
     transform: scale(1.15);
+  }
+  .legend-header h4 {
+    margin: 0;
+    font-size: 1em;
+    font-weight: 600;
   }
 </style>

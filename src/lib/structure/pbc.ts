@@ -32,7 +32,8 @@ export function find_image_atoms(
     Math.hypot(...lattice_vecs[1]),
     Math.hypot(...lattice_vecs[2]),
   )
-  const displacement_eps_sq = (Number.EPSILON * lattice_norm) ** 2 // filters out zero-displacement images due to floating-point errors
+  // Threshold to filter out floating-point-identical (zero-displacement) images; rarely triggers but guards against edge cases
+  const displacement_eps_sq = (1e-10 * lattice_norm) ** 2
 
   // Tolerances determine which atoms are near cell boundaries and need image generation
   // Use provided tolerance or default to physical tolerance of 0.5 Angstroms converted to fractional
@@ -41,6 +42,8 @@ export function find_image_atoms(
   const tolerances = [0, 1, 2].map((dim) => {
     if (tolerance !== undefined) return tolerance
     const vec_len = Math.hypot(...lattice_vecs[dim])
+    // zero-length lattice vector should not occur in valid structures,
+    // but fall back to 0.05 fractional tolerance if it does
     return vec_len > 0 ? PHYSICAL_TOLERANCE / vec_len : 0.05
   })
 
@@ -93,7 +96,7 @@ export function find_image_atoms(
         math.scale(lattice_vecs[2], img_abc[2]),
       ) as Vec3
 
-      // Skip zero-displacement images (should not happen with epsilon nudging)
+      // Skip zero-displacement images (should not happen, guards against FP edge cases)
       const displacement = math.subtract(img_xyz, site.xyz) as Vec3
       const displacement_len_sq = displacement.reduce((sum, val) => sum + val * val, 0)
       if (displacement_len_sq < displacement_eps_sq) continue

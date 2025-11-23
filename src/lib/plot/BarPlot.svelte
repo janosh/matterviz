@@ -70,7 +70,9 @@
     line?: LineStyle
     tooltip?: Snippet<[BarHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
-    controls_extra?: Snippet
+    controls_extra?: Snippet<
+      [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
+    >
     change?: (data: BarHandlerProps | null) => void
     on_bar_click?: (
       data: BarHandlerProps & { event: MouseEvent | KeyboardEvent },
@@ -1069,7 +1071,9 @@
       <BarPlotControls
         toggle_props={{
           ...controls_toggle_props,
-          style: `right: 36px; top: 4px; ${controls_toggle_props?.style ?? ``}`,
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
+            controls_toggle_props?.style ?? ``
+          }`,
         }}
         pane_props={controls_pane_props}
         bind:show_controls
@@ -1122,7 +1126,7 @@
   .bar-plot :global(.pane-toggle),
   .bar-plot :global(.fullscreen-toggle) {
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, background-color 0.2s;
   }
   .bar-plot:hover :global(.pane-toggle),
   .bar-plot:hover :global(.fullscreen-toggle),

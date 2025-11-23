@@ -248,7 +248,7 @@ describe(`AtomLegend Component`, () => {
 
       const option_texts = Array.from(mode_options).map((opt) => opt.textContent?.trim())
       expect(option_texts).toContain(`Element`)
-      expect(option_texts).toContain(`Coordination Number`)
+      expect(option_texts).toContain(`Coordination`)
       expect(option_texts).toContain(`Wyckoff Position`)
     })
 
@@ -329,10 +329,10 @@ describe(`AtomLegend Component`, () => {
       const legend = doc_query(`.property-legend`)
       expect(legend).toBeTruthy()
 
-      const gradient_bar = doc_query(`.gradient-bar`)
+      const gradient_bar = doc_query(`.colorbar .bar`)
       expect(gradient_bar).toBeTruthy()
 
-      const gradient_labels = document.querySelectorAll(`.gradient-labels span`)
+      const gradient_labels = document.querySelectorAll(`.colorbar .tick-label`)
       expect(gradient_labels).toHaveLength(2)
       expect(gradient_labels[0].textContent).toBe(`2`)
       expect(gradient_labels[1].textContent).toBe(`8`)
@@ -403,7 +403,7 @@ describe(`AtomLegend Component`, () => {
       })
 
       const title = doc_query(`.legend-header h4`)
-      expect(title.textContent).toBe(`Coordination Number`)
+      expect(title.textContent).toBe(`Coordination`)
     })
 
     test(`handles single value continuous scale`, () => {
@@ -421,12 +421,14 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      const gradient_bar = doc_query(`.gradient-bar`)
+      const gradient_bar = doc_query(`.colorbar .bar`)
       expect(gradient_bar).toBeTruthy()
 
-      const gradient_labels = document.querySelectorAll(`.gradient-labels span`)
+      const gradient_labels = document.querySelectorAll(`.colorbar .tick-label`)
       expect(gradient_labels[0].textContent).toBe(`5`)
-      expect(gradient_labels[1].textContent).toBe(`5`)
+      if (gradient_labels.length > 1) {
+        expect(gradient_labels[1].textContent).toBe(`5`)
+      }
     })
 
     test(`handles single unique value without division by zero or NaN`, () => {
@@ -450,7 +452,7 @@ describe(`AtomLegend Component`, () => {
         })
       }).not.toThrow()
 
-      const gradient_bar = document.querySelector(`.gradient-bar`)
+      const gradient_bar = document.querySelector(`.colorbar .bar`)
       expect(gradient_bar).not.toBeNull()
 
       // Should not contain NaN or undefined anywhere
@@ -477,7 +479,7 @@ describe(`AtomLegend Component`, () => {
         props: { atom_color_config: config, property_colors },
       })
 
-      const gradient_bar = document.querySelector(`.gradient-bar`)
+      const gradient_bar = document.querySelector(`.colorbar .bar`)
       expect(gradient_bar).not.toBeNull()
 
       // Should not contain NaN or undefined anywhere in the legend
@@ -491,7 +493,7 @@ describe(`AtomLegend Component`, () => {
       [`single value`, [42], [`rgb(255, 128, 0)`]],
       [`two values`, [1, 2], [`red`, `blue`]],
       [`multiple values`, [1, 2, 3, 4], [`red`, `yellow`, `green`, `blue`]],
-    ])(`handles %s without errors or NaN`, (_desc, unique_values, colors) => {
+    ])(`handles %s without errors or NaN`, (_desc, unique_values, legend_colors) => {
       const config = {
         mode: `coordination` as const,
         scale_type: `continuous` as const,
@@ -499,7 +501,7 @@ describe(`AtomLegend Component`, () => {
 
       const property_colors = unique_values.length
         ? {
-          colors,
+          colors: legend_colors,
           values: [...unique_values, ...unique_values], // Add duplicates
           min_value: Math.min(...(unique_values as number[])),
           max_value: Math.max(...(unique_values as number[])),

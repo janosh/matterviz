@@ -9,7 +9,6 @@
     BarSeries,
     ControlsConfig,
     DataSeries,
-    Markers,
     ScatterHandlerProps,
   } from '$lib/plot'
   import { BarPlot, ScatterPlot } from '$lib/plot'
@@ -255,7 +254,7 @@
           y: broadened.y.map(scale),
           label: include_name ? entry.label : ``,
           color: entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length],
-          markers: [`line`] as Markers, // Only line for profile
+          markers: `line`, // Only line for profile
           line_style: { stroke_width: 2 },
           visible: true,
         } as DataSeries
@@ -466,7 +465,10 @@
         }}
         class={(rest.class ?? ``) + (dragover ? ` dragover` : ``)}
         style={`overflow: visible; ${rest.style ?? ``}`}
-        {controls}
+        show_controls={controls.show}
+        controls_open={controls.open}
+        controls_toggle_props={controls.toggle_props}
+        controls_pane_props={controls.pane_props}
         controls_extra={broadening_controls_snippet}
       />
     {/if}
@@ -481,7 +483,6 @@
     width: 100%;
     height: 100%;
   }
-
   /* Hide controls toggle by default, show on hover */
   .xrd-plot-container :global(.pane-toggle) {
     opacity: 0;
@@ -492,7 +493,6 @@
   .xrd-plot-container :global(.pane-toggle[aria-expanded='true']) {
     opacity: 1;
   }
-
   .toggle {
     display: flex;
     align-items: center;
@@ -500,16 +500,15 @@
     cursor: pointer;
     font-weight: 500;
   }
-
   .param-input {
     width: 4.5em;
     padding: 2px 4px;
     border: 1px solid var(--border-color, #ccc);
+    box-sizing: border-box;
     border-radius: 3px;
     background: transparent;
     color: inherit;
   }
-
   :global(.xrd-plot-container .dragover) {
     outline: 2px dashed var(--primary-color, cornflowerblue);
     outline-offset: -2px;
