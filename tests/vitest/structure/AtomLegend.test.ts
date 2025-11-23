@@ -338,6 +338,35 @@ describe(`AtomLegend Component`, () => {
       expect(gradient_labels[1].textContent).toBe(`8`)
     })
 
+    test(`applies custom HTML attributes via rest props`, () => {
+      const config = {
+        mode: `coordination` as const,
+        scale_type: `continuous` as const,
+      }
+      const property_colors = {
+        colors: [`blue`, `red`],
+        values: [1, 2],
+        min_value: 1,
+        max_value: 2,
+        unique_values: [1, 2],
+      }
+
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          atom_color_config: config,
+          property_colors,
+          'data-testid': `test-legend`,
+          style: `z-index: 100;`,
+        },
+      })
+
+      const legend = document.body.querySelector(`.atom-legend`)
+      expect(legend).not.toBeNull()
+      expect(legend?.getAttribute(`data-testid`)).toBe(`test-legend`)
+      expect(legend?.getAttribute(`style`)).toContain(`z-index`)
+    })
+
     test(`displays title for property legend`, () => {
       mount(AtomLegend, {
         target: document.body,
@@ -398,6 +427,97 @@ describe(`AtomLegend Component`, () => {
       const gradient_labels = document.querySelectorAll(`.gradient-labels span`)
       expect(gradient_labels[0].textContent).toBe(`5`)
       expect(gradient_labels[1].textContent).toBe(`5`)
+    })
+
+    test(`handles single unique value without division by zero or NaN`, () => {
+      const config = {
+        mode: `coordination` as const,
+        scale_type: `continuous` as const,
+      }
+      const property_colors = {
+        colors: [`rgb(255, 0, 0)`],
+        values: [5, 5], // Duplicates to simulate real data
+        min_value: 5,
+        max_value: 5,
+        unique_values: [5],
+      }
+
+      // Should not throw any errors
+      expect(() => {
+        mount(AtomLegend, {
+          target: document.body,
+          props: { atom_color_config: config, property_colors },
+        })
+      }).not.toThrow()
+
+      const gradient_bar = document.querySelector(`.gradient-bar`)
+      expect(gradient_bar).not.toBeNull()
+
+      // Should not contain NaN anywhere
+      const legend = document.querySelector(`.property-legend`)
+      expect(legend?.innerHTML).not.toContain(`NaN`)
+    })
+
+    test(`handles two unique values correctly`, () => {
+      const config = {
+        mode: `coordination` as const,
+        scale_type: `continuous` as const,
+      }
+      const property_colors = {
+        colors: [`rgb(0, 0, 255)`, `rgb(255, 0, 0)`],
+        values: [1, 2],
+        min_value: 1,
+        max_value: 2,
+        unique_values: [1, 2],
+      }
+
+      mount(AtomLegend, {
+        target: document.body,
+        props: { atom_color_config: config, property_colors },
+      })
+
+      const gradient_bar = document.querySelector(`.gradient-bar`)
+      expect(gradient_bar).not.toBeNull()
+
+      // Should not contain NaN anywhere in the legend
+      const legend = document.querySelector(`.property-legend`)
+      expect(legend?.innerHTML).not.toContain(`NaN`)
+    })
+
+    test.each([
+      [`empty unique_values`, [], []],
+      [`single value`, [42], [`rgb(255, 128, 0)`]],
+      [`two values`, [1, 2], [`red`, `blue`]],
+      [`multiple values`, [1, 2, 3, 4], [`red`, `yellow`, `green`, `blue`]],
+    ])(`handles %s without errors or NaN`, (_desc, unique_values, colors) => {
+      const config = {
+        mode: `coordination` as const,
+        scale_type: `continuous` as const,
+      }
+
+      const property_colors = unique_values.length
+        ? {
+          colors,
+          values: [...unique_values, ...unique_values], // Add duplicates
+          min_value: Math.min(...(unique_values as number[])),
+          max_value: Math.max(...(unique_values as number[])),
+          unique_values,
+        }
+        : null
+
+      expect(() => {
+        mount(AtomLegend, {
+          target: document.body,
+          props: { atom_color_config: config, property_colors },
+        })
+      }).not.toThrow()
+
+      if (unique_values.length > 0) {
+        const legend = document.body.querySelector(`.property-legend`)
+        if (legend) {
+          expect(legend.innerHTML).not.toContain(`NaN`)
+        }
+      }
     })
   })
 
