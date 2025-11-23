@@ -9,6 +9,7 @@
     AtomPropertyColors,
   } from '$lib/structure/atom-properties'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
+  import type { Snippet } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -30,6 +31,7 @@
     hidden_prop_vals = $bindable(new Set<number | string>()),
     title = ``,
     sym_data = null,
+    children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     atom_color_config?: Partial<AtomColorConfig>
@@ -44,6 +46,7 @@
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
     title?: string
     sym_data?: MoyoDataset | null
+    children?: Snippet<[{ mode_menu_open: boolean }]>
   } = $props()
 
   const titles = {
@@ -170,6 +173,7 @@
 
 {#if show_element_legend}
   <div {...rest} class="atom-legend element-legend {rest.class ?? ``}">
+    {@render children?.({ mode_menu_open })}
     {#each Object.entries(elements!) as [elem, amt], idx (elem + amt)}
       {@const is_hidden = hidden_elements.has(elem as ElementSymbol)}
       <div class="legend-item">
@@ -271,6 +275,7 @@
         {/each}
       </div>
     {/if}
+    {@render children?.({ mode_menu_open })}
   </div>
 {/if}
 

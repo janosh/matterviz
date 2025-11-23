@@ -29,6 +29,7 @@
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
   import StructureScene from './StructureScene.svelte'
+  import SupercellSelector from './SupercellSelector.svelte'
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
@@ -691,7 +692,6 @@
           </button>
         {/if}
 
-        <!-- Measurement mode dropdown (match Trajectory display mode UI) -->
         {#if enable_measure_mode}
           <div
             class="measure-mode-dropdown"
@@ -799,7 +799,11 @@
       bind:hidden_elements
       bind:hidden_prop_vals
       {sym_data}
-    />
+    >
+      {#if structure && `lattice` in structure}
+        <SupercellSelector bind:supercell_scaling loading={supercell_loading} />
+      {/if}
+    </AtomLegend>
 
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
