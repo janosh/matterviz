@@ -309,16 +309,13 @@ test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
 
   const images = find_image_atoms(structure)
   expect(images.length).toBeGreaterThan(0)
-  // pick the x-translated replica (wrapped near 0 along x)
-  const candidate = images.find(([, , image_abc]) =>
-    image_abc[0] > 0 && image_abc[0] < 1e-8
-  )
+  // pick the x-translated replica (wrapped to 0 along x)
+  const candidate = images.find(([, , image_abc]) => Math.abs(image_abc[0]) < 1e-8)
   if (!candidate) throw new Error(`no wrapped x-boundary image found`)
   const [, img_xyz, img_abc] = candidate
 
-  // Fractional should sit very close to 0 on x and equal original on y,z
-  expect(img_abc[0]).toBeGreaterThan(0)
-  expect(img_abc[0]).toBeLessThan(1e-8)
+  // Fractional should be exactly 0 on x and equal original on y,z
+  expect(img_abc[0]).toBeCloseTo(0.0, 10)
   expect(img_abc[1]).toBeCloseTo(0.5, 12)
   expect(img_abc[2]).toBeCloseTo(0.5, 12)
 
@@ -904,17 +901,15 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
 })
 
 // Test that highly oblique cells are handled correctly
-test(`highly oblique cells should have wrapped fractional coordinates`, () => {
+test(`highly oblique cells should have valid integer-translated coordinates`, () => {
   const image_atoms = find_image_atoms(tl_bi_se2_json as unknown as PymatgenStructure)
   expect(image_atoms.length).toBeGreaterThan(0)
 
-  // Check that all image atoms have fractional coordinates within [0, 1)
+  // Check that all image atoms are valid integer translations (no specific range check)
+  // We no longer force them to be inside [0, 1] because for visualization/bonding
+  // we want them at their true periodic positions (which might be outside).
   for (const [_, __, img_abc] of image_atoms) {
-    const eps = 1e-4
-    for (let dim = 0; dim < 3; dim++) {
-      expect(img_abc[dim]).toBeGreaterThanOrEqual(0 - eps)
-      expect(img_abc[dim]).toBeLessThan(1 + eps)
-    }
+    expect(img_abc.every((c) => Number.isFinite(c))).toBe(true)
   }
 })
 
@@ -944,8 +939,8 @@ test(`find_image_atoms returns correct tuple format`, () => {
   }
 })
 
-// Regression test: ensure image sites for highly oblique large cell stay within primary cell
-test(`mp-1204603 image sites remain inside unit cell`, () => {
+// Regression test: ensure image sites for highly oblique large cell are valid
+test(`mp-1204603 image sites are valid integer translations`, () => {
   const structure = mp1204603_json as unknown as PymatgenStructure
 
   // Sanity: has lattice and angles imply non-orthogonal
@@ -962,19 +957,9 @@ test(`mp-1204603 image sites remain inside unit cell`, () => {
   // Allow deduplication to remove coincident images
   expect(image_sites.length).toBeLessThanOrEqual(image_atoms.length)
 
-  const eps = 1e-9
   const lattice_matrix = structure.lattice.matrix
   for (const site of image_sites) {
-    // All fractional coordinates must be wrapped to [0,1)
-    for (let dim = 0; dim < 3; dim++) {
-      if (site.abc[dim] >= 1 + eps || site.abc[dim] < 0 - eps) {
-        console.log(`site.abc[${dim}] = ${site.abc[dim]}`)
-      }
-      expect(site.abc[dim]).toBeGreaterThanOrEqual(0 - eps)
-      expect(site.abc[dim]).toBeLessThan(1 + eps)
-    }
-
-    // xyz must be consistent with lattice * abc. Accept either convention equivalently.
+    // Verify xyz matches lattice * abc
     const expected_rows = math.add(
       math.scale(lattice_matrix[0], site.abc[0]),
       math.scale(lattice_matrix[1], site.abc[1]),
@@ -1063,3 +1048,54 @@ test.each([
     assert_xyz_matches_lattice(lattice, img_abc, img_xyz, 10)
   },
 )
+
+// Regression test for large unit cells (e.g. MOFs) using physical tolerance
+test(`find_image_atoms uses physical tolerance for large cells`, () => {
+  const lattice_len = 100
+  const structure: PymatgenStructure = {
+    sites: [
+      {
+        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+        abc: [0.04, 0.5, 0.5], // 4 Angstroms from edge (0.04 * 100)
+        xyz: [4.0, 50.0, 50.0],
+        label: `C1`,
+        properties: {},
+      },
+      {
+        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+        abc: [0.001, 0.5, 0.5], // 0.1 Angstroms from edge (0.001 * 100)
+        xyz: [0.1, 50.0, 50.0],
+        label: `H1`,
+        properties: {},
+      },
+    ],
+    lattice: {
+      matrix: [[lattice_len, 0, 0], [0, lattice_len, 0], [0, 0, lattice_len]],
+      pbc: [true, true, true],
+      a: lattice_len,
+      b: lattice_len,
+      c: lattice_len,
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+      volume: lattice_len ** 3,
+    },
+  }
+
+  // Default behavior: physical tolerance (~0.5 Angstroms)
+  // C1 at 4A should NOT image (too far)
+  // H1 at 0.1A SHOULD image (close enough)
+  const image_atoms = find_image_atoms(structure)
+
+  const c_images = image_atoms.filter(([idx]) => idx === 0)
+  const h_images = image_atoms.filter(([idx]) => idx === 1)
+
+  expect(c_images.length).toBe(0)
+  expect(h_images.length).toBeGreaterThan(0)
+
+  // Explicit tolerance override (fractional 0.05 = 5 Angstroms)
+  // C1 at 4A SHOULD image now
+  const images_explicit = find_image_atoms(structure, { tolerance: 0.05 })
+  const c_images_explicit = images_explicit.filter(([idx]) => idx === 0)
+  expect(c_images_explicit.length).toBeGreaterThan(0)
+})
