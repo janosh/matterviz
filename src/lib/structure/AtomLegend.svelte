@@ -92,7 +92,11 @@
   // Map from property value to color (computed once, reused in categorical legend)
   let color_map = $derived(
     new Map(
-      property_colors?.values.map((v, i) => [v, property_colors.colors[i]]) ?? [],
+      // Use unique_values instead of values to avoid undefined colors from duplicates
+      property_colors?.unique_values?.map((val) => {
+        const first_site_idx = property_colors.values.indexOf(val)
+        return [val, property_colors.colors[first_site_idx]]
+      }) ?? [],
     ),
   )
 
@@ -173,7 +177,6 @@
 
 {#if show_element_legend}
   <div {...rest} class="atom-legend element-legend {rest.class ?? ``}">
-    {@render children?.({ mode_menu_open })}
     {#each Object.entries(elements!) as [elem, amt], idx (elem + amt)}
       {@const is_hidden = hidden_elements.has(elem as ElementSymbol)}
       <div class="legend-item">
@@ -221,61 +224,69 @@
         </button>
       </div>
     {/each}
+    {@render children?.({ mode_menu_open })}
     {@render mode_selector_snippet()}
   </div>
 {:else if show_property_legend}
-  <div class="atom-legend property-legend atom-color-legend" {...rest}>
-    <div class="legend-header">
-      <h4>{legend_title}</h4>
-      {@render mode_selector_snippet()}
-    </div>
-
-    {#if atom_color_config.scale_type === `continuous` && property_colors}
-      <div class="gradient-bar" style:background={gradient_css}></div>
-      <div class="gradient-labels">
-        <span>{format_value(property_colors.min_value ?? 0)}</span>
-        <span>{format_value(property_colors.max_value ?? 0)}</span>
-      </div>
-    {:else if atom_color_config.scale_type === `categorical` && property_colors}
-      <div class="categorical-legend">
-        {#each property_colors.unique_values || [] as
-          value
-          (`${atom_color_config.mode}-${value}`)
-        }
-          {@const color = color_map.get(value)}
-          {@const is_hidden = hidden_prop_vals.has(value)}
-          <div class="legend-item">
-            <span
-              class="category-label color-swatch"
-              class:hidden={is_hidden}
-              style:background-color={color}
-              {@attach contrast_color()}
-            >
-              {format_value(value)}
-            </span>
-            <button
-              class="toggle-visibility"
-              class:visible={is_hidden}
-              onclick={(
-                event,
-              ) => (hidden_prop_vals = toggle_visibility(
-                hidden_prop_vals,
-                value,
-                event,
-              ))}
-              title={is_hidden
-              ? `Show ${format_value(value)}`
-              : `Hide ${format_value(value)}`}
-              {@attach tooltip({ placement: `top` })}
-              type="button"
-            >
-              ×
-            </button>
-          </div>
-        {/each}
+  <div
+    class="atom-legend property-legend atom-color-legend"
+    class:categorical-legend={atom_color_config.scale_type === `categorical`}
+    {...rest}
+  >
+    {#if legend_title}
+      <div class="legend-header">
+        <h4>{legend_title}</h4>
       </div>
     {/if}
+    {#if atom_color_config.scale_type === `continuous` && property_colors}
+      <div
+        class="gradient-container"
+        title={legend_title}
+        {@attach tooltip({ placement: `top` })}
+      >
+        <div class="gradient-bar" style:background={gradient_css}></div>
+        <div class="gradient-labels">
+          <span>{format_value(property_colors.min_value ?? 0)}</span>
+          <span>{format_value(property_colors.max_value ?? 0)}</span>
+        </div>
+      </div>
+    {:else if atom_color_config.scale_type === `categorical` && property_colors}
+      {#each property_colors.unique_values || [] as
+        value
+        (`${atom_color_config.mode}-${value}`)
+      }
+        {@const color = color_map.get(value)}
+        {@const is_hidden = hidden_prop_vals.has(value)}
+        <div class="legend-item">
+          <span
+            class="category-label color-swatch"
+            class:hidden={is_hidden}
+            style:background-color={color}
+            {@attach contrast_color()}
+          >
+            {format_value(value)}
+          </span>
+          <button
+            class="toggle-visibility"
+            class:visible={is_hidden}
+            onclick={(
+              event,
+            ) => (hidden_prop_vals = toggle_visibility(
+              hidden_prop_vals,
+              value,
+              event,
+            ))}
+            title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
+            {@attach tooltip({ placement: `top` })}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+      {/each}
+    {/if}
     {@render children?.({ mode_menu_open })}
+    {@render mode_selector_snippet()}
   </div>
 {/if}
 
@@ -358,22 +369,17 @@
 
   /* Property Legend Styles */
   .property-legend {
-    bottom: var(--struct-legend-bottom, clamp(2pt, 1.5cqmin, 4pt));
-    right: var(--struct-legend-right, clamp(2pt, 1.5cqmin, 4pt));
-    font-size: var(--struct-legend-font, clamp(7pt, 2.5cqmin, 12pt));
-  }
-  .legend-header {
     display: flex;
+    bottom: var(--struct-legend-bottom, clamp(4pt, 3cqmin, 8pt));
+    right: var(--struct-legend-right, clamp(4pt, 3cqmin, 8pt));
+    gap: var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt));
+    font-size: var(--struct-legend-font, clamp(8pt, 3cqmin, 14pt));
     align-items: center;
-    justify-content: center;
-    gap: 0.3rem;
-    margin-bottom: 0.25rem;
   }
-  .property-legend h4 {
-    margin: 0;
-    font-size: 0.75rem;
-    font-weight: 600;
-    opacity: 0.85;
+  .gradient-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
   .mode-selector {
     position: relative;
@@ -445,39 +451,32 @@
   }
   .gradient-bar {
     height: 10px;
-    width: 150px;
+    width: 100px;
     border-radius: 2px;
-    margin-bottom: 0.2rem;
   }
   .gradient-labels {
     display: flex;
     justify-content: space-between;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     opacity: 0.75;
+    line-height: 1;
   }
-  .categorical-legend {
-    display: flex;
-    flex-direction: row;
-    gap: clamp(3pt, 2cqmin, 7pt);
-    flex-wrap: wrap;
-  }
-  .categorical-legend .legend-item {
+  .property-legend .legend-item {
     position: relative;
     display: inline-block;
   }
   .category-label {
-    padding: var(--struct-legend-padding, 0 2pt);
+    padding: var(--struct-legend-padding, 0 4pt);
     border-radius: var(--struct-legend-radius, 3pt);
     line-height: var(--struct-legend-line-height, 1.3);
     display: inline-block;
     white-space: nowrap;
-    font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt));
     transition: opacity 0.2s ease;
   }
   .category-label.hidden {
     opacity: 0.4;
   }
-  .categorical-legend button.toggle-visibility {
+  .property-legend button.toggle-visibility {
     position: absolute;
     top: -3px;
     right: -7px;
@@ -500,11 +499,11 @@
     z-index: 2;
     pointer-events: auto;
   }
-  .categorical-legend button.toggle-visibility.visible,
-  .categorical-legend .legend-item:hover button.toggle-visibility {
+  .property-legend button.toggle-visibility.visible,
+  .property-legend .legend-item:hover button.toggle-visibility {
     opacity: 1;
   }
-  .categorical-legend button.toggle-visibility:hover {
+  .property-legend button.toggle-visibility:hover {
     background: rgba(0, 0, 0, 0.8);
     transform: scale(1.15);
   }

@@ -32,12 +32,9 @@ export function find_image_atoms(
     Math.hypot(...lattice_vecs[1]),
     Math.hypot(...lattice_vecs[2]),
   )
-  const displacement_eps_sq = (Number.EPSILON * lattice_norm) ** 2
+  const displacement_eps_sq = (Number.EPSILON * lattice_norm) ** 2 // filters out zero-displacement images due to floating-point errors
 
-  // Note: tolerance determines boundary detection for image generation,
-  // while FRACTIONAL_EPS (1e-9) nudges image placement slightly inside cell boundaries
-  // to avoid wrap inconsistencies. These serve different purposes, not to be conflated.
-
+  // Tolerances determine which atoms are near cell boundaries and need image generation
   // Use provided tolerance or default to physical tolerance of 0.5 Angstroms converted to fractional
   // This prevents excessive image generation for large unit cells (e.g. MOFs) where 0.05 fractional is huge
   const PHYSICAL_TOLERANCE = 0.5 // Angstroms

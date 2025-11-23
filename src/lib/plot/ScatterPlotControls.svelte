@@ -21,7 +21,7 @@
     selected_series_idx = $bindable(0),
     children,
     ...rest
-  }: Omit<PlotControlsProps, `children` | `post_children`> & PlotConfig & {
+  }: Omit<PlotControlsProps, `children` | `post_children`> & {
     series?: readonly DataSeries[]
     styles?: StyleOverrides
     selected_series_idx?: number

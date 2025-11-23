@@ -16,7 +16,7 @@
     controls_open = $bindable(false),
     children,
     ...rest
-  }: Omit<PlotControlsProps, `children` | `post_children`> & PlotConfig & {
+  }: Omit<PlotControlsProps, `children` | `post_children`> & {
     orientation?: Orientation
     mode?: BarMode
     show_controls?: boolean

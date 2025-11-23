@@ -453,9 +453,10 @@ describe(`AtomLegend Component`, () => {
       const gradient_bar = document.querySelector(`.gradient-bar`)
       expect(gradient_bar).not.toBeNull()
 
-      // Should not contain NaN anywhere
+      // Should not contain NaN or undefined anywhere
       const legend = document.querySelector(`.property-legend`)
       expect(legend?.innerHTML).not.toContain(`NaN`)
+      expect(legend?.innerHTML).not.toContain(`undefined`)
     })
 
     test(`handles two unique values correctly`, () => {
@@ -479,9 +480,10 @@ describe(`AtomLegend Component`, () => {
       const gradient_bar = document.querySelector(`.gradient-bar`)
       expect(gradient_bar).not.toBeNull()
 
-      // Should not contain NaN anywhere in the legend
+      // Should not contain NaN or undefined anywhere in the legend
       const legend = document.querySelector(`.property-legend`)
       expect(legend?.innerHTML).not.toContain(`NaN`)
+      expect(legend?.innerHTML).not.toContain(`undefined`)
     })
 
     test.each([
@@ -516,6 +518,7 @@ describe(`AtomLegend Component`, () => {
         const legend = document.body.querySelector(`.property-legend`)
         if (legend) {
           expect(legend.innerHTML).not.toContain(`NaN`)
+          expect(legend.innerHTML).not.toContain(`undefined`)
         }
       }
     })
@@ -594,8 +597,32 @@ describe(`AtomLegend Component`, () => {
 
       expect(labels[0].classList.contains(`hidden`)).toBe(true)
       expect(toggle_buttons[0].classList.contains(`visible`)).toBe(true)
-      // Check that the component's internal state has been updated
-      // The UI reflects the change, which is what matters
+    })
+
+    test(`maps colors correctly when sites > unique values`, () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          atom_color_config: { mode: `coordination`, scale_type: `categorical` },
+          property_colors: {
+            colors: [`rgb(255, 0, 0)`, `rgb(255, 0, 0)`, `rgb(0, 0, 255)`],
+            values: [10, 10, 20],
+            unique_values: [10, 20],
+            min_value: 10,
+            max_value: 20,
+          },
+        },
+      })
+
+      const labels = Array.from(
+        document.querySelectorAll(`.category-label`),
+      ) as HTMLElement[]
+      const color_map = new Map(
+        labels.map((l) => [l.textContent?.trim(), l.style.backgroundColor]),
+      )
+
+      expect(color_map.get(`10`)).toBe(`rgb(255, 0, 0)`)
+      expect(color_map.get(`20`)).toBe(`rgb(0, 0, 255)`)
     })
   })
 

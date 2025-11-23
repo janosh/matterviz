@@ -21,7 +21,7 @@
   let input_value = $state(supercell_scaling)
   let input_valid = $derived(is_valid_supercell_input(input_value))
 
-  const presets = [`1x1x1`, `2x2x2`, `2x2x1`, `3x3x3`]
+  const presets = [`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`]
 
   function apply_preset(preset: string) {
     supercell_scaling = preset
@@ -65,7 +65,7 @@
   >
     {#if loading}
       <Spinner
-        style="--spinner-color: currentColor; --spinner-track-color: transparent; --spinner-border-width: 2px; --spinner-size: 1em; margin: 0"
+        style="--spinner-border-width: 2px; --spinner-size: 1em; --spinner-margin: 0; display: inline-block; vertical-align: middle"
       />
     {:else}
       {supercell_scaling}
@@ -113,27 +113,21 @@
     position: relative;
   }
   .toggle-btn {
-    padding: 1px 3px;
-    font-size: clamp(1em, 2cqmin, 2.5em);
-    border: 2px solid var(--accent-color, #4caf50);
-  }
-  .toggle-btn:hover,
-  .toggle-btn.active {
-    opacity: 1;
+    padding: var(--struct-legend-padding, 0 4pt);
+    line-height: var(--struct-legend-line-height, 1.3);
+    vertical-align: middle;
   }
   .dropdown {
     position: absolute;
-    /* Default: open down, align right */
     top: 115%;
     right: 0;
     background: var(--surface-bg, #222);
+    padding: 4px 2px;
     border-radius: 4px;
-    padding: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px 4px;
-    min-width: 140px;
+    gap: 4px;
     z-index: 100;
   }
   .dropdown.open-up {
@@ -144,57 +138,26 @@
     right: auto;
     left: 0;
   }
-  .preset-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: none;
-    padding: 4px 8px;
-    border-radius: 3px;
-    color: inherit;
-    font-size: 0.9em;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
   .preset-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.5);
   }
   .preset-btn.selected {
-    background: var(--accent-color, #4caf50);
-    color: white;
+    border-color: rgba(0, 255, 255, 0.5);
+    background: rgba(0, 255, 255, 0.5);
   }
   input {
     grid-column: 1;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: inherit;
-    padding: 4px 6px;
-    border-radius: 3px;
-    font-size: 0.9em;
     width: 100%;
+    padding: 0 6px;
     box-sizing: border-box;
-  }
-  input:focus {
-    outline: none;
-    border-color: var(--accent-color, #4caf50);
-  }
-  input.invalid {
-    border-color: #ff5252;
   }
   .apply-btn {
     grid-column: 2;
-    background: var(--accent-color, #4caf50);
-    border: none;
-    border-radius: 3px;
-    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    color: white;
-    padding: 0;
   }
   .apply-btn:disabled {
-    opacity: 0.5;
     cursor: not-allowed;
-    background: gray;
   }
 </style>

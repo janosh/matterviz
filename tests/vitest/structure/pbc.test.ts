@@ -5,16 +5,18 @@ import type { PymatgenStructure } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
-import mp1_json from '$site/structures/mp-1.json' with { type: 'json' }
-import mp1204603_json from '$site/structures/mp-1204603.json' with { type: 'json' }
-import mp2_json from '$site/structures/mp-2.json' with { type: 'json' }
+import { structure_map } from '$site/structures'
 import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '$site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
-import tl_bi_se2_json from '$site/structures/TlBiSe2-highly-oblique-cell.json' with {
-  type: 'json',
-}
 import { expect, test } from 'vitest'
+
+const mp_1_struct = structure_map.get(`mp-1`) as PymatgenStructure
+const mp_2_struct = structure_map.get(`mp-2`) as PymatgenStructure
+const mp_1204603_struct = structure_map.get(`mp-1204603`) as PymatgenStructure
+const tl_bi_se2_struct = structure_map.get(
+  `TlBiSe2-highly-oblique-cell`,
+) as PymatgenStructure
 
 // Helpers to reduce duplication while preserving coverage
 function assert_xyz_matches_lattice(
@@ -382,14 +384,14 @@ C        -2.0      10.0      12.0`
 // Comprehensive tests for find_image_atoms with real structure files
 test.each([
   {
-    content: mp1_json,
+    content: mp_1_struct,
     filename: `mp-1.json`,
     expected_min_images: 7, // Based on actual test output: 10 images found, atom at (0,0,0) creates 7 images
     expected_max_images: 15,
     description: `Two Cs atoms, one at (0,0,0), one at (0.5,0.5,0.5)`,
   },
   {
-    content: mp2_json,
+    content: mp_2_struct,
     filename: `mp-2.json`,
     expected_min_images: 10, // Based on actual test output: 13 images found
     expected_max_images: 20,
@@ -424,7 +426,7 @@ test.each([
     // Parse the structure
     let structure: PymatgenStructure
 
-    if (filename.endsWith(`.json`)) structure = content as unknown as PymatgenStructure
+    if (filename.endsWith(`.json`)) structure = content as PymatgenStructure
     else {
       const parsed = parse_structure_file(content as string, filename)
       if (!parsed || !parsed.lattice) {
@@ -432,10 +434,7 @@ test.each([
       }
       structure = {
         sites: parsed.sites,
-        lattice: {
-          ...parsed.lattice,
-          pbc: [true, true, true],
-        },
+        lattice: { ...parsed.lattice, pbc: [true, true, true] },
       } as PymatgenStructure
     }
 
@@ -476,7 +475,7 @@ test.each([
 // Test that image atoms have correct fractional coordinates
 test(`image atoms should have fractional coordinates related by lattice translations`, () => {
   // Use mp-1 structure which should generate image atoms
-  const structure = mp1_json as unknown as PymatgenStructure
+  const structure = mp_1_struct
   const image_atoms = find_image_atoms(structure)
 
   expect(image_atoms.length).toBeGreaterThan(0) // Should have some image atoms
@@ -637,9 +636,7 @@ test.each([
 // Test that all image atoms are positioned correctly within or just outside unit cell
 test(`all image atoms should be positioned at unit cell boundaries`, () => {
   // Test multiple structures
-  for (const content of [mp1_json, mp2_json]) {
-    const structure = content as unknown as PymatgenStructure
-
+  for (const structure of [mp_1_struct, mp_2_struct]) {
     const image_atoms = find_image_atoms(structure)
 
     // Check each image atom position
@@ -713,7 +710,7 @@ test(`image atoms should have fractional coordinates at cell boundaries`, () => 
 
 // Test comprehensive validation of image atom properties
 test(`comprehensive image atom validation`, () => {
-  const structure = mp1_json as unknown as PymatgenStructure
+  const structure = mp_1_struct
   const image_atoms = find_image_atoms(structure)
 
   expect(image_atoms.length).toBeGreaterThan(0)
@@ -723,7 +720,7 @@ test(`comprehensive image atom validation`, () => {
 
 // Test that no duplicate image atoms are created
 test(`image atom generation should not create duplicates`, () => {
-  const structure = mp1_json as unknown as PymatgenStructure
+  const structure = mp_1_struct
   const image_atoms = find_image_atoms(structure)
 
   // Check for duplicate image positions (within tolerance)
@@ -901,21 +898,25 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
 })
 
 // Test that highly oblique cells are handled correctly
-test(`highly oblique cells should have valid integer-translated coordinates`, () => {
-  const image_atoms = find_image_atoms(tl_bi_se2_json as unknown as PymatgenStructure)
+test(`highly oblique cells should have finite, well-defined fractional coordinates`, () => {
+  const image_atoms = find_image_atoms(tl_bi_se2_struct)
   expect(image_atoms.length).toBeGreaterThan(0)
 
-  // Check that all image atoms are valid integer translations (no specific range check)
+  // Check that all image atoms have finite fractional coordinates (no specific range check)
   // We no longer force them to be inside [0, 1] because for visualization/bonding
   // we want them at their true periodic positions (which might be outside).
-  for (const [_, __, img_abc] of image_atoms) {
-    expect(img_abc.every((c) => Number.isFinite(c))).toBe(true)
+  for (const [orig_idx, __, img_abc] of image_atoms) {
+    expect(img_abc.every((coord) => Number.isFinite(coord))).toBe(true)
+
+    // Also verify they are valid integer translations from the original
+    const orig_abc = tl_bi_se2_struct.sites[orig_idx].abc
+    assert_integer_translation(orig_abc, img_abc, 1e-8)
   }
 })
 
 // Test that the new tuple format works correctly for downstream code
 test(`find_image_atoms returns correct tuple format`, () => {
-  const structure = mp1_json as unknown as PymatgenStructure
+  const structure = mp_1_struct
   const image_atoms = find_image_atoms(structure)
 
   expect(image_atoms.length).toBeGreaterThan(0)
@@ -941,7 +942,7 @@ test(`find_image_atoms returns correct tuple format`, () => {
 
 // Regression test: ensure image sites for highly oblique large cell are valid
 test(`mp-1204603 image sites are valid integer translations`, () => {
-  const structure = mp1204603_json as unknown as PymatgenStructure
+  const structure = mp_1204603_struct
 
   // Sanity: has lattice and angles imply non-orthogonal
   expect(`lattice` in structure).toBe(true)

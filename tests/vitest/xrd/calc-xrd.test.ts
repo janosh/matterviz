@@ -1,7 +1,7 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
-import { compute_xrd_pattern } from '$lib/xrd'
+import { add_xrd_pattern, compute_xrd_pattern } from '$lib/xrd'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -200,4 +200,83 @@ describe(`precomputed XRD fixtures are consistent`, () => {
       if (pattern.d_hkls) expect(pattern.d_hkls.length).toBe(pattern.x.length)
     },
   )
+})
+
+describe(`add_xrd_pattern`, () => {
+  // Duplicate simple structure helper
+  function make_simple_cubic_structure(a_len: number) {
+    const lattice = {
+      matrix: [[a_len, 0, 0], [0, a_len, 0], [0, 0, a_len]] satisfies Matrix3x3,
+      a: a_len,
+      b: a_len,
+      c: a_len,
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+      volume: a_len * a_len * a_len,
+      pbc: [true, true, true],
+    }
+    const site = {
+      species: [{ element: `H` as const, occu: 1, oxidation_state: 0 }],
+      abc: [0, 0, 0] satisfies Vec3,
+      xyz: [0, 0, 0] satisfies Vec3,
+      label: `H1`,
+      properties: {},
+    }
+    return { lattice, sites: [site] }
+  }
+
+  test(`computes pattern from valid JSON string`, () => {
+    const structure = make_simple_cubic_structure(3)
+    const json = JSON.stringify(structure)
+    const result = add_xrd_pattern(json, `test.json`, null)
+    expect(result.error).toBeUndefined()
+    expect(result.pattern).toBeDefined()
+    expect(result.pattern?.label).toBe(`test.json`)
+    expect(result.pattern?.pattern.x.length).toBeGreaterThan(0)
+  })
+
+  test(`computes pattern from ArrayBuffer`, () => {
+    const structure = make_simple_cubic_structure(3)
+    const json = JSON.stringify(structure)
+    const buffer = new TextEncoder().encode(json).buffer
+    const result = add_xrd_pattern(buffer, `test.json`, null)
+    expect(result.error).toBeUndefined()
+    expect(result.pattern).toBeDefined()
+  })
+
+  test(`returns error for invalid structure`, () => {
+    const result = add_xrd_pattern(`invalid json`, `test.json`, null)
+    expect(result.error).toBeDefined()
+    expect(result.pattern).toBeUndefined()
+  })
+
+  test(`returns error for structure without lattice`, () => {
+    const structure = { sites: [] } // no lattice
+    const json = JSON.stringify(structure)
+    const result = add_xrd_pattern(json, `test.json`, null)
+    expect(result.error).toMatch(/no lattice/)
+  })
+
+  test(`respects wavelength parameter`, () => {
+    const structure = make_simple_cubic_structure(3)
+    const json = JSON.stringify(structure)
+
+    const res_cu = add_xrd_pattern(json, `cu.json`, 1.54184) // Compute with CuKa (default approx 1.54)
+    const res_mo = add_xrd_pattern(json, `mo.json`, 0.71073) // Compute with MoKa (approx 0.71)
+
+    expect(res_cu.pattern).toBeDefined()
+    expect(res_mo.pattern).toBeDefined()
+
+    // Peaks should be at different angles
+    // For simple cubic a=3, first peak (100) d=3
+    // lambda = 2d sin(theta) => theta = asin(lambda/2d)
+    // 2theta = 2 * asin(lambda/6)
+    const peaks_cu = res_cu.pattern?.pattern.x ?? []
+    const peaks_mo = res_mo.pattern?.pattern.x ?? []
+
+    expect(peaks_cu.length).toBeGreaterThan(0)
+    expect(peaks_mo.length).toBeGreaterThan(0)
+    expect(peaks_cu[0]).not.toBeCloseTo(peaks_mo[0], 1)
+  })
 })

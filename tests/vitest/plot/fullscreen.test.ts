@@ -1,5 +1,5 @@
 import { BarPlot } from '$lib'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 describe(`Plot Fullscreen Toggle`, () => {
@@ -16,9 +16,7 @@ describe(`Plot Fullscreen Toggle`, () => {
 
     mount(BarPlot, {
       target: document.body,
-      props: {
-        series: [{ x: [1], y: [1] }],
-      },
+      props: { series: [{ x: [1], y: [1] }] },
     })
 
     // Trigger a flush/tick? Svelte 5 mount might be sync or async.
@@ -27,30 +25,30 @@ describe(`Plot Fullscreen Toggle`, () => {
 
     // Wait for next tick to allow effect to update width/height if needed?
     // With defined properties, the binding might pick it up.
-    await new Promise((r) => setTimeout(r, 0))
+    await tick()
 
     const plotDiv = document.querySelector(`.bar-plot`)
     expect(plotDiv).toBeTruthy()
     expect(plotDiv?.classList.contains(`fullscreen`)).toBe(false)
 
-    const toggleBtn = document.querySelector(
+    const toggle_btn = document.querySelector(
       `button.fullscreen-toggle`,
     ) as HTMLButtonElement
-    expect(toggleBtn).toBeTruthy()
+    expect(toggle_btn).toBeTruthy()
 
     // Click the button
-    toggleBtn.click()
-    await new Promise((r) => setTimeout(r, 0)) // wait for update
+    toggle_btn.click()
+    await tick()
 
     expect(plotDiv?.classList.contains(`fullscreen`)).toBe(true)
-    expect(toggleBtn.getAttribute(`aria-label`)).toBe(`Exit fullscreen`)
+    expect(toggle_btn.getAttribute(`aria-label`)).toBe(`Exit fullscreen`)
 
     // Click again to exit
-    toggleBtn.click()
-    await new Promise((r) => setTimeout(r, 0))
+    toggle_btn.click()
+    await tick()
 
     expect(plotDiv?.classList.contains(`fullscreen`)).toBe(false)
-    expect(toggleBtn.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
+    expect(toggle_btn.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
 
     // cleanup happens in afterEach but we should ensure mocks are reset
     Object.defineProperty(HTMLElement.prototype, `clientWidth`, {
@@ -77,10 +75,7 @@ describe(`Plot Fullscreen Toggle`, () => {
     const fullscreen = false
     mount(BarPlot, {
       target: document.body,
-      props: {
-        series: [{ x: [1], y: [1] }],
-        fullscreen,
-      },
+      props: { series: [{ x: [1], y: [1] }], fullscreen },
     })
 
     // Wait for mount and size update
@@ -89,12 +84,12 @@ describe(`Plot Fullscreen Toggle`, () => {
     const plotDiv = document.querySelector(`.bar-plot`)
     expect(plotDiv?.classList.contains(`fullscreen`)).toBe(false)
 
-    const toggleBtn = document.querySelector(
+    const toggle_btn = document.querySelector(
       `button.fullscreen-toggle`,
     ) as HTMLButtonElement
-    expect(toggleBtn).toBeTruthy()
-    toggleBtn.click()
-    await new Promise((r) => setTimeout(r, 0))
+    expect(toggle_btn).toBeTruthy()
+    toggle_btn.click()
+    await tick()
     expect(plotDiv?.classList.contains(`fullscreen`)).toBe(true)
   })
 })

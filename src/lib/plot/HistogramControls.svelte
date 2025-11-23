@@ -22,7 +22,7 @@
     auto_y2_range = undefined,
     children,
     ...rest
-  }: Omit<PlotControlsProps, `children` | `post_children`> & PlotConfig & {
+  }: Omit<PlotControlsProps, `children` | `post_children`> & {
     // Series data for multi-series controls
     series?: readonly DataSeries[]
     // Histogram-specific controls

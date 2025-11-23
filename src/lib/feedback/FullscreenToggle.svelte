@@ -29,22 +29,21 @@
   .fullscreen-toggle {
     position: absolute;
     top: var(--ctrl-btn-top, 5pt);
-    right: 4px;
-    z-index: 10;
+    right: var(--fullscreen-btn-right, 4px);
+    z-index: var(--fullscreen-btn-z-index, 10);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2pt;
-    border-radius: 3pt;
+    padding: var(--fullscreen-btn-padding, 2pt);
+    border-radius: var(--fullscreen-btn-border-radius, 3pt);
     background-color: transparent;
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.2s, background-color 0.2s;
   }
-  .fullscreen-toggle:hover,
-  .fullscreen-toggle:focus {
+  .fullscreen-toggle:hover, .fullscreen-toggle:focus {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
-    opacity: 1;
+    opacity: var(--fullscreen-btn-hover-opacity, 1);
   }
   /* Note: Parent component should add styles to show on parent hover */
   /* Example: .parent:hover :global(.fullscreen-toggle) { opacity: 1; } */

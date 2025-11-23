@@ -36,7 +36,8 @@ export function caglioti_fwhm(
 
 // Normalized Gaussian profile. x: position, x0: peak center, fwhm: Full Width at Half Maximum
 function gaussian(x: number, x0: number, fwhm: number): number { // Intensity at x
-  const sigma = fwhm / (2 * Math.sqrt(2 * LOG_2))
+  const safe_fwhm = Math.max(fwhm, 1e-9)
+  const sigma = safe_fwhm / (2 * Math.sqrt(2 * LOG_2))
   const prefactor = 1 / (sigma * Math.sqrt(2 * Math.PI))
   const exponent = -((x - x0) ** 2) / (2 * sigma ** 2)
   return prefactor * Math.exp(exponent)
@@ -44,7 +45,8 @@ function gaussian(x: number, x0: number, fwhm: number): number { // Intensity at
 
 // Normalized Lorentzian profile. x: position, x0: peak center, fwhm: Full Width at Half Maximum
 function lorentzian(x: number, x0: number, fwhm: number): number { // Intensity at x
-  const gamma = fwhm / 2
+  const safe_fwhm = Math.max(fwhm, 1e-9)
+  const gamma = safe_fwhm / 2
   const prefactor = 1 / (Math.PI * gamma)
   const denominator = 1 + ((x - x0) / gamma) ** 2
   return prefactor / denominator
@@ -71,8 +73,18 @@ export function compute_broadened_pattern(
   range: [number, number], // Angular range [min, max] in degrees
   step_size: number = 0.02, // Step size in degrees (default 0.02)
 ): XrdPattern { // Continuous broadened pattern
-  const { U, V, W, shape_factor } = params
+  if (!Number.isFinite(step_size) || step_size <= 0) {
+    throw new Error(`step_size must be > 0 and finite`)
+  }
+
   const [min_angle, max_angle] = range
+  if (
+    !Number.isFinite(min_angle) || !Number.isFinite(max_angle) || max_angle <= min_angle
+  ) {
+    throw new Error(`range must be finite and max > min`)
+  }
+
+  const { U, V, W, shape_factor } = params
 
   // Create x grid
   const n_steps = Math.ceil((max_angle - min_angle) / step_size)

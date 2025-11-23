@@ -13,9 +13,7 @@
     ScatterHandlerProps,
   } from '$lib/plot'
   import { BarPlot, ScatterPlot } from '$lib/plot'
-  import { parse_any_structure } from '$lib/structure/parse'
-  import { is_valid_structure } from '$lib/structure/validation'
-  import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
+  import { add_xrd_pattern } from '$lib/xrd/calc-xrd'
   import type { ComponentProps } from 'svelte'
   import {
     type BroadeningParams,
@@ -37,6 +35,7 @@
   function format_hkl(hkl: Hkl, format: HklFormat): string {
     if (format === `compact`) {
       // Use crystallographic overbar notation for negative indices (e.g., 1̄ instead of -1)
+      // Note: Requires font support for Unicode combining characters (U+0305)
       return hkl
         .map((val) => {
           // Use combining overline character (U+0305) for negative values
@@ -270,30 +269,12 @@
     loading = true
     error_msg = undefined
 
-    const compute_and_add = (
-      content: string | ArrayBuffer,
-      filename: string,
-    ) => {
-      try {
-        const text_content = content instanceof ArrayBuffer
-          ? new TextDecoder().decode(content)
-          : content
-        const parsed_structure = parse_any_structure(text_content, filename)
-        if (is_valid_structure(parsed_structure)) {
-          const pattern = compute_xrd_pattern(parsed_structure, {
-            wavelength: typeof wavelength === `number` ? wavelength : undefined,
-          })
-          dropped_entries = [
-            { label: filename || `Dropped structure`, pattern },
-            ...dropped_entries,
-          ]
-        } else {
-          error_msg = `Structure has no lattice or sites; cannot compute XRD pattern`
-        }
-      } catch (exc) {
-        error_msg = `Failed to compute XRD pattern: ${
-          exc instanceof Error ? exc.message : String(exc)
-        }`
+    const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
+      const result = add_xrd_pattern(content, filename, wavelength)
+      if (result.error) {
+        error_msg = result.error
+      } else if (result.pattern) {
+        dropped_entries = [result.pattern, ...dropped_entries]
       }
     }
 

@@ -937,27 +937,6 @@
     background: var(--plot-bg, white);
     max-height: none !important;
   }
-  .fullscreen-toggle {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    z-index: 10;
-    background: rgba(255, 255, 255, 0.8);
-    border: 1px solid var(--border-color, #ccc);
-    border-radius: 4px;
-    padding: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-color, black);
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-  .histogram:hover .fullscreen-toggle,
-  .fullscreen-toggle:focus {
-    opacity: 1;
-  }
   /* Hide controls and fullscreen toggles by default, show on hover */
   .histogram :global(.pane-toggle),
   .histogram :global(.fullscreen-toggle) {

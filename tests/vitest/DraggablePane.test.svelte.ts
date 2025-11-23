@@ -6,10 +6,8 @@ import { doc_query } from './setup'
 
 describe(`DraggablePane`, () => {
   const default_props = { children: () => `Pane Content` }
-  const click = async (el: Element) => {
+  const click = (el: Element) => {
     el.dispatchEvent(new MouseEvent(`click`, { bubbles: true, cancelable: true }))
-    await tick()
-    await new Promise((r) => setTimeout(r, 0))
   }
 
   test(`renders toggle when show_pane`, () => {
