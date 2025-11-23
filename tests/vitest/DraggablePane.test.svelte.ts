@@ -6,10 +6,8 @@ import { doc_query } from './setup'
 
 describe(`DraggablePane`, () => {
   const default_props = { children: () => `Pane Content` }
-  const click = async (el: Element) => {
+  const click = (el: Element) => {
     el.dispatchEvent(new MouseEvent(`click`, { bubbles: true, cancelable: true }))
-    await tick()
-    await new Promise((r) => setTimeout(r, 0))
   }
 
   test(`renders toggle when show_pane`, () => {
@@ -50,18 +48,20 @@ describe(`DraggablePane`, () => {
     // Initially hidden
     expect(pane?.classList.contains(`pane-open`)).toBe(false)
 
-    // Click to show (UI updates after a subsequent click due to positioning side-effects)
-    await click(button)
-    pane = document.querySelector(`.draggable-pane`)
-    expect(pane?.classList.contains(`pane-open`)).toBe(false)
-
-    // Second click should make it visible
-    await click(button)
+    // Click to show
+    click(button)
+    await tick()
     pane = document.querySelector(`.draggable-pane`)
     expect(pane?.classList.contains(`pane-open`)).toBe(true)
+
+    // Click to hide
+    click(button)
+    await tick()
+    pane = document.querySelector(`.draggable-pane`)
+    expect(pane?.classList.contains(`pane-open`)).toBe(false)
   })
 
-  test(`calls onclose when closed`, async () => {
+  test(`calls onclose when closed`, () => {
     const onclose = vi.fn()
     mount(DraggablePane, {
       target: document.body,
@@ -69,7 +69,7 @@ describe(`DraggablePane`, () => {
     })
 
     const button = doc_query(`.pane-toggle`)
-    await click(button)
+    click(button)
     expect(onclose).toHaveBeenCalled()
   })
 
@@ -178,14 +178,14 @@ describe(`DraggablePane`, () => {
     // Initially collapsed
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
 
-    // Click to expand (first click updates position, second opens)
-    await click(button)
-    expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
-    await click(button)
+    // Click to expand
+    click(button)
+    await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`true`)
 
     // Click to collapse
-    await click(button)
+    click(button)
+    await tick()
     expect(button.getAttribute(`aria-expanded`)).toBe(`false`)
   })
 

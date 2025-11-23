@@ -1,17 +1,17 @@
 <script lang="ts">
+  import { FullscreenToggle } from '$lib/feedback'
   import { format_value } from '$lib/labels'
   import type {
-    AxisConfig,
     BarHandlerProps,
     BarMode,
     BarSeries,
     BarStyle,
     BasePlotProps,
-    DisplayConfig,
     LegendConfig,
     LegendItem,
     LineStyle,
     Orientation,
+    PlotConfig,
     UserContentProps,
   } from '$lib/plot'
   import { BarPlotControls, find_best_plot_area, PlotLegend } from '$lib/plot'
@@ -28,9 +28,9 @@
     series = $bindable([]),
     orientation = $bindable(`vertical`),
     mode = $bindable(`overlay`),
-    x_axis = {},
-    y_axis = {},
-    y2_axis = {},
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    y2_axis = $bindable({}),
     display = $bindable(DEFAULTS.bar.display),
     x_range = [null, null],
     y_range = [null, null],
@@ -51,17 +51,16 @@
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
+    fullscreen = $bindable(false),
     children,
+    controls_extra,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
+  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
     series?: BarSeries[]
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    y2_axis?: AxisConfig
-    display?: DisplayConfig
     hovered?: boolean
     show_controls?: boolean
     controls_open?: boolean
+    fullscreen?: boolean
     // Component-specific props
     orientation?: Orientation
     mode?: BarMode
@@ -71,6 +70,9 @@
     line?: LineStyle
     tooltip?: Snippet<[BarHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
+    controls_extra?: Snippet<
+      [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
+    >
     change?: (data: BarHandlerProps | null) => void
     on_bar_click?: (
       data: BarHandlerProps & { event: MouseEvent | KeyboardEvent },
@@ -534,13 +536,24 @@
   })
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === `Escape` && fullscreen) {
+      e.preventDefault()
+      fullscreen = false
+    }
+  }}
+/>
+
 <div
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
   class="bar-plot {rest.class ?? ``}"
+  class:fullscreen
 >
   {#if width && height}
+    <FullscreenToggle bind:fullscreen />
     <svg
       bind:this={svg_element}
       onmousedown={handle_mouse_down}
@@ -578,6 +591,7 @@
         x_range: ranges.current.x,
         y_range: ranges.current.y,
         y2_range: ranges.current.y2,
+        fullscreen,
       })}
 
       <!-- X-axis -->
@@ -1037,7 +1051,7 @@
         style={`position: absolute; left: ${cx + 6}px; top: ${cy}px; pointer-events: none;`}
       >
         {#if tooltip}
-          {@render tooltip(hover_info)}
+          {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
           <div>
             {x_axis.label || `x`}: {
@@ -1055,7 +1069,12 @@
 
     {#if show_controls}
       <BarPlotControls
-        toggle_props={controls_toggle_props}
+        toggle_props={{
+          ...controls_toggle_props,
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
+            controls_toggle_props?.style ?? ``
+          }`,
+        }}
         pane_props={controls_pane_props}
         bind:show_controls
         bind:controls_open
@@ -1068,12 +1087,13 @@
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
         auto_y2_range={auto_ranges.y2 as [number, number]}
+        children={controls_extra}
       />
     {/if}
   {/if}
 
   <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
-  {@render children?.({ height, width })}
+  {@render children?.({ height, width, fullscreen })}
 </div>
 
 <style>
@@ -1089,6 +1109,31 @@
     display: var(--barplot-display, flex);
     flex-direction: column;
     background: var(--barplot-bg, var(--plot-bg));
+  }
+  .bar-plot.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999;
+    margin: 0;
+    border-radius: 0;
+    background: var(--plot-bg, white);
+    max-height: none !important;
+  }
+  /* Hide controls and fullscreen toggles by default, show on hover */
+  .bar-plot :global(.pane-toggle),
+  .bar-plot :global(.fullscreen-toggle) {
+    opacity: 0;
+    transition: opacity 0.2s, background-color 0.2s;
+  }
+  .bar-plot:hover :global(.pane-toggle),
+  .bar-plot:hover :global(.fullscreen-toggle),
+  .bar-plot :global(.pane-toggle:focus-visible),
+  .bar-plot :global(.pane-toggle[aria-expanded='true']),
+  .bar-plot :global(.fullscreen-toggle:focus) {
+    opacity: 1;
   }
   svg {
     width: var(--barplot-svg-width, 100%);

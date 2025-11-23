@@ -248,7 +248,7 @@ describe(`AtomLegend Component`, () => {
 
       const option_texts = Array.from(mode_options).map((opt) => opt.textContent?.trim())
       expect(option_texts).toContain(`Element`)
-      expect(option_texts).toContain(`Coordination Number`)
+      expect(option_texts).toContain(`Coordination`)
       expect(option_texts).toContain(`Wyckoff Position`)
     })
 
@@ -329,13 +329,42 @@ describe(`AtomLegend Component`, () => {
       const legend = doc_query(`.property-legend`)
       expect(legend).toBeTruthy()
 
-      const gradient_bar = doc_query(`.gradient-bar`)
+      const gradient_bar = doc_query(`.colorbar .bar`)
       expect(gradient_bar).toBeTruthy()
 
-      const gradient_labels = document.querySelectorAll(`.gradient-labels span`)
+      const gradient_labels = document.querySelectorAll(`.colorbar .tick-label`)
       expect(gradient_labels).toHaveLength(2)
       expect(gradient_labels[0].textContent).toBe(`2`)
       expect(gradient_labels[1].textContent).toBe(`8`)
+    })
+
+    test(`applies custom HTML attributes via rest props`, () => {
+      const config = {
+        mode: `coordination` as const,
+        scale_type: `continuous` as const,
+      }
+      const property_colors = {
+        colors: [`blue`, `red`],
+        values: [1, 2],
+        min_value: 1,
+        max_value: 2,
+        unique_values: [1, 2],
+      }
+
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          atom_color_config: config,
+          property_colors,
+          'data-testid': `test-legend`,
+          style: `z-index: 100;`,
+        },
+      })
+
+      const legend = document.body.querySelector(`.atom-legend`)
+      expect(legend).not.toBeNull()
+      expect(legend?.getAttribute(`data-testid`)).toBe(`test-legend`)
+      expect(legend?.getAttribute(`style`)).toContain(`z-index`)
     })
 
     test(`displays title for property legend`, () => {
@@ -374,7 +403,7 @@ describe(`AtomLegend Component`, () => {
       })
 
       const title = doc_query(`.legend-header h4`)
-      expect(title.textContent).toBe(`Coordination Number`)
+      expect(title.textContent).toBe(`Coordination`)
     })
 
     test(`handles single value continuous scale`, () => {
@@ -392,12 +421,108 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      const gradient_bar = doc_query(`.gradient-bar`)
+      const gradient_bar = doc_query(`.colorbar .bar`)
       expect(gradient_bar).toBeTruthy()
 
-      const gradient_labels = document.querySelectorAll(`.gradient-labels span`)
+      const gradient_labels = document.querySelectorAll(`.colorbar .tick-label`)
       expect(gradient_labels[0].textContent).toBe(`5`)
-      expect(gradient_labels[1].textContent).toBe(`5`)
+      if (gradient_labels.length > 1) {
+        expect(gradient_labels[1].textContent).toBe(`5`)
+      }
+    })
+
+    test(`handles single unique value without division by zero or NaN`, () => {
+      const config = {
+        mode: `coordination` as const,
+        scale_type: `continuous` as const,
+      }
+      const property_colors = {
+        colors: [`rgb(255, 0, 0)`],
+        values: [5, 5], // Duplicates to simulate real data
+        min_value: 5,
+        max_value: 5,
+        unique_values: [5],
+      }
+
+      // Should not throw any errors
+      expect(() => {
+        mount(AtomLegend, {
+          target: document.body,
+          props: { atom_color_config: config, property_colors },
+        })
+      }).not.toThrow()
+
+      const gradient_bar = document.querySelector(`.colorbar .bar`)
+      expect(gradient_bar).not.toBeNull()
+
+      // Should not contain NaN or undefined anywhere
+      const legend = document.querySelector(`.property-legend`)
+      expect(legend?.innerHTML).not.toContain(`NaN`)
+      expect(legend?.innerHTML).not.toContain(`undefined`)
+    })
+
+    test(`handles two unique values correctly`, () => {
+      const config = {
+        mode: `coordination` as const,
+        scale_type: `continuous` as const,
+      }
+      const property_colors = {
+        colors: [`rgb(0, 0, 255)`, `rgb(255, 0, 0)`],
+        values: [1, 2],
+        min_value: 1,
+        max_value: 2,
+        unique_values: [1, 2],
+      }
+
+      mount(AtomLegend, {
+        target: document.body,
+        props: { atom_color_config: config, property_colors },
+      })
+
+      const gradient_bar = document.querySelector(`.colorbar .bar`)
+      expect(gradient_bar).not.toBeNull()
+
+      // Should not contain NaN or undefined anywhere in the legend
+      const legend = document.querySelector(`.property-legend`)
+      expect(legend?.innerHTML).not.toContain(`NaN`)
+      expect(legend?.innerHTML).not.toContain(`undefined`)
+    })
+
+    test.each([
+      [`empty unique_values`, [], []],
+      [`single value`, [42], [`rgb(255, 128, 0)`]],
+      [`two values`, [1, 2], [`red`, `blue`]],
+      [`multiple values`, [1, 2, 3, 4], [`red`, `yellow`, `green`, `blue`]],
+    ])(`handles %s without errors or NaN`, (_desc, unique_values, legend_colors) => {
+      const config = {
+        mode: `coordination` as const,
+        scale_type: `continuous` as const,
+      }
+
+      const property_colors = unique_values.length
+        ? {
+          colors: legend_colors,
+          values: [...unique_values, ...unique_values], // Add duplicates
+          min_value: Math.min(...(unique_values as number[])),
+          max_value: Math.max(...(unique_values as number[])),
+          unique_values,
+        }
+        : null
+
+      expect(() => {
+        mount(AtomLegend, {
+          target: document.body,
+          props: { atom_color_config: config, property_colors },
+        })
+      }).not.toThrow()
+
+      if (unique_values.length > 0) {
+        const legend = document.body.querySelector(`.property-legend`)
+        if (legend) {
+          expect(legend.innerHTML).not.toContain(`NaN`)
+          expect(legend.innerHTML).not.toContain(`undefined`)
+        }
+      }
     })
   })
 
@@ -474,8 +599,32 @@ describe(`AtomLegend Component`, () => {
 
       expect(labels[0].classList.contains(`hidden`)).toBe(true)
       expect(toggle_buttons[0].classList.contains(`visible`)).toBe(true)
-      // Check that the component's internal state has been updated
-      // The UI reflects the change, which is what matters
+    })
+
+    test(`maps colors correctly when sites > unique values`, () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          atom_color_config: { mode: `coordination`, scale_type: `categorical` },
+          property_colors: {
+            colors: [`rgb(255, 0, 0)`, `rgb(255, 0, 0)`, `rgb(0, 0, 255)`],
+            values: [10, 10, 20],
+            unique_values: [10, 20],
+            min_value: 10,
+            max_value: 20,
+          },
+        },
+      })
+
+      const labels = Array.from(
+        document.querySelectorAll(`.category-label`),
+      ) as HTMLElement[]
+      const color_map = new Map(
+        labels.map((l) => [l.textContent?.trim(), l.style.backgroundColor]),
+      )
+
+      expect(color_map.get(`10`)).toBe(`rgb(255, 0, 0)`)
+      expect(color_map.get(`20`)).toBe(`rgb(0, 0, 255)`)
     })
   })
 

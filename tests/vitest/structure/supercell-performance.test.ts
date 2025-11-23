@@ -2,6 +2,7 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import { make_supercell, parse_supercell_scaling } from '$lib/structure/supercell'
+import process from 'node:process'
 import { describe, expect, test } from 'vitest'
 
 // Create a large test structure
@@ -21,8 +22,6 @@ function create_test_structure(num_sites: number): PymatgenStructure {
   }))
 
   return {
-    '@module': `pymatgen.core.structure`,
-    '@class': `Structure`,
     lattice: {
       matrix: lattice_matrix,
       a: 10,
@@ -36,8 +35,11 @@ function create_test_structure(num_sites: number): PymatgenStructure {
     },
     sites,
     charge: 0,
-  }
+  } as unknown as PymatgenStructure
 }
+
+// Increase thresholds in CI environment
+const CI_MULTIPLIER = process.env.CI ? 5 : 1
 
 describe(`supercell performance profiling`, () => {
   test(`profile matrix operations`, () => {
@@ -73,9 +75,9 @@ describe(`supercell performance profiling`, () => {
     }
     timings.mat_vec_multiply = performance.now() - start
 
-    expect(timings.transpose).toBeLessThan(100)
-    expect(timings.inverse).toBeLessThan(500)
-    expect(timings.mat_vec_multiply).toBeLessThan(100)
+    expect(timings.transpose).toBeLessThan(100 * CI_MULTIPLIER)
+    expect(timings.inverse).toBeLessThan(500 * CI_MULTIPLIER)
+    expect(timings.mat_vec_multiply).toBeLessThan(100 * CI_MULTIPLIER)
   })
 
   test(`profile supercell generation phases`, () => {
@@ -200,7 +202,8 @@ describe(`supercell performance profiling`, () => {
     )
     console.log(`  Total: ${total.toFixed(2)}ms`)
 
-    expect(total).toBeLessThan(100)
+    // More stringent check: should be significantly faster than 100ms (usually < 5ms now)
+    expect(total).toBeLessThan(15 * CI_MULTIPLIER)
   })
 
   test(`compare full supercell generation`, () => {
@@ -220,6 +223,13 @@ describe(`supercell performance profiling`, () => {
     // Check that it scales reasonably (should be roughly linear)
     const first_rate = results[0].time / results[0].sites
     const last_rate = results[results.length - 1].time / results[results.length - 1].sites
-    expect(last_rate / first_rate).toBeLessThan(2) // Should not degrade more than 2x
+
+    // With linear scaling optimizations, the rate per atom should be very consistent
+    // Allowing small variance (1.5x instead of previous 2x loose bound)
+    expect(last_rate / first_rate).toBeLessThan(1.5)
+
+    // Absolute performance check: 500 atoms (13500 total sites) should take < 10ms
+    const last_result = results[results.length - 1]
+    expect(last_result.time).toBeLessThan(10 * CI_MULTIPLIER)
   })
 })
