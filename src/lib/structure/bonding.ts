@@ -181,6 +181,22 @@ export function electroneg_ratio(
   const max_cutoff = max_radius * 2 * max_distance_ratio
   const spatial = setup_spatial_grid(sites, max_cutoff)
 
+  // Two-pass approach to ensure symmetry between original and image atoms:
+  // 1. Collect all potential bonds and determine closest neighbor distance for each unique atom (orig_idx)
+  // 2. Filter bonds based on penalties using the fully populated closest distances
+
+  interface PotentialBond {
+    site_idx_1: number
+    site_idx_2: number
+    dist: number
+    expected_dist: number
+    base_strength: number
+    orig_idx_a: number
+    orig_idx_b: number
+  }
+
+  const potential_bonds: PotentialBond[] = []
+
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
     const [x1, y1, z1] = sites[idx_a].xyz
     const pa = props[idx_a]
@@ -219,26 +235,73 @@ export function electroneg_ratio(
 
       if (pa.element === pb.element) strength *= same_species_penalty
 
-      const ca = closest.get(idx_a) ?? Infinity
-      const cb = closest.get(idx_b) ?? Infinity
-      if (dist > ca) strength *= Math.exp(-(dist / ca - 1) / 0.5)
-      if (dist > cb) strength *= Math.exp(-(dist / cb - 1) / 0.5)
+      // If raw strength is already too low, we can skip early
+      // (penalty will only reduce it further)
+      if (strength <= strength_threshold) continue
 
-      if (strength > strength_threshold) {
-        bonds.push({
-          pos_1: sites[idx_a].xyz,
-          pos_2: sites[idx_b].xyz,
-          site_idx_1: idx_a,
-          site_idx_2: idx_b,
-          bond_length: dist,
-          strength,
-          transform_matrix: compute_bond_transform(sites[idx_a].xyz, sites[idx_b].xyz),
-        })
-        if (dist < ca) closest.set(idx_a, dist)
-        if (dist < cb) closest.set(idx_b, dist)
-      }
+      const orig_idx_a = sites[idx_a].properties?.orig_site_idx ?? idx_a
+      const orig_idx_b = sites[idx_b].properties?.orig_site_idx ?? idx_b
+
+      // Update closest known normalized distance (dist / expected) for original atoms
+      // Normalized distance handles atoms of different sizes better than raw distance
+      // (e.g. C-H is short but C-C is longer; we don't want C-H to penalize C-C just because H is small)
+      const norm_dist = dist / expected
+      const ca = closest.get(orig_idx_a) ?? Infinity
+      if (norm_dist < ca) closest.set(orig_idx_a, norm_dist)
+
+      const cb = closest.get(orig_idx_b) ?? Infinity
+      if (norm_dist < cb) closest.set(orig_idx_b, norm_dist)
+
+      potential_bonds.push({
+        site_idx_1: idx_a,
+        site_idx_2: idx_b,
+        dist,
+        expected_dist: expected,
+        base_strength: strength,
+        orig_idx_a,
+        orig_idx_b,
+      })
     }
   }
+
+  // Second pass: Apply penalties and filter
+  for (const bond of potential_bonds) {
+    const {
+      site_idx_1,
+      site_idx_2,
+      dist,
+      expected_dist,
+      base_strength,
+      orig_idx_a,
+      orig_idx_b,
+    } = bond
+
+    const ca = closest.get(orig_idx_a) ?? Infinity
+    const cb = closest.get(orig_idx_b) ?? Infinity
+    const norm_dist = dist / expected_dist
+
+    let strength = base_strength
+
+    // Apply penalty if this bond is much longer (relative to radii) than the closest known bond
+    if (norm_dist > ca) strength *= Math.exp(-(norm_dist / ca - 1) / 0.5)
+    if (norm_dist > cb) strength *= Math.exp(-(norm_dist / cb - 1) / 0.5)
+
+    if (strength > strength_threshold) {
+      bonds.push({
+        pos_1: sites[site_idx_1].xyz,
+        pos_2: sites[site_idx_2].xyz,
+        site_idx_1,
+        site_idx_2,
+        bond_length: dist,
+        strength,
+        transform_matrix: compute_bond_transform(
+          sites[site_idx_1].xyz,
+          sites[site_idx_2].xyz,
+        ),
+      })
+    }
+  }
+
   return bonds
 }
 
