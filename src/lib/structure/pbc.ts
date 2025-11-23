@@ -7,7 +7,7 @@ export type Pbc = readonly [boolean, boolean, boolean]
 
 export function find_image_atoms(
   structure: ParsedStructure,
-  { tolerance = 0.05 }: { tolerance?: number } = {},
+  { tolerance }: { tolerance?: number } = {},
 ): [number, Vec3, Vec3][] {
   // Find image atoms for PBC. Returns [atom_idx, image_xyz, image_abc] tuples.
   // Skips image generation for trajectory data with scattered atoms.
@@ -26,18 +26,26 @@ export function find_image_atoms(
   const image_sites: [number, Vec3, Vec3][] = []
   const lattice_vecs = structure.lattice.matrix
 
-  const FRACTIONAL_EPS = 1e-9
   // Scale zero-displacement threshold by lattice length scale to avoid hard-coded magic numbers
   const lattice_norm = Math.max(
     Math.hypot(...lattice_vecs[0]),
     Math.hypot(...lattice_vecs[1]),
     Math.hypot(...lattice_vecs[2]),
   )
-  const displacement_eps_sq = (Number.EPSILON * lattice_norm) ** 2
+  // Threshold to filter out floating-point-identical (zero-displacement) images; rarely triggers but guards against edge cases
+  const displacement_eps_sq = (1e-10 * lattice_norm) ** 2
 
-  // Note: tolerance (default 0.05) determines boundary detection for image generation,
-  // while FRACTIONAL_EPS (1e-9) nudges image placement slightly inside cell boundaries
-  // to avoid wrap inconsistencies. These serve different purposes, not to be conflated.
+  // Tolerances determine which atoms are near cell boundaries and need image generation
+  // Use provided tolerance or default to physical tolerance of 0.5 Angstroms converted to fractional
+  // This prevents excessive image generation for large unit cells (e.g. MOFs) where 0.05 fractional is huge
+  const PHYSICAL_TOLERANCE = 0.5 // Angstroms
+  const tolerances = [0, 1, 2].map((dim) => {
+    if (tolerance !== undefined) return tolerance
+    const vec_len = Math.hypot(...lattice_vecs[dim])
+    // zero-length lattice vector should not occur in valid structures,
+    // but fall back to 0.05 fractional tolerance if it does
+    return vec_len > 0 ? PHYSICAL_TOLERANCE / vec_len : 0.05
+  })
 
   for (const [idx, site] of structure.sites.entries()) {
     // Find edge dimensions and translation directions
@@ -46,8 +54,9 @@ export function find_image_atoms(
     // Find boundary dimensions
     for (let dim = 0; dim < 3; dim++) {
       const coord = site.abc[dim]
-      if (Math.abs(coord) < tolerance) edge_dims.push({ dim, direction: 1 })
-      if (Math.abs(coord - 1) < tolerance) edge_dims.push({ dim, direction: -1 })
+      const dim_tolerance = tolerances[dim]
+      if (Math.abs(coord) < dim_tolerance) edge_dims.push({ dim, direction: 1 })
+      if (Math.abs(coord - 1) < dim_tolerance) edge_dims.push({ dim, direction: -1 })
     }
 
     // Generate all translation combinations
@@ -65,14 +74,14 @@ export function find_image_atoms(
       // Early skip if no net shift across any dimension
       if (selected_shift.every((val) => val === 0)) continue
 
-      // Build fractional coordinates positioned just inside the cell boundary
-      // (instead of exactly at 0/1). This avoids wrap inconsistencies across
-      // supercells and oblique lattices and guarantees a non-zero displacement.
-      const img_abc: Vec3 = [...site.abc]
-      for (let dim = 0; dim < 3; dim++) {
-        if (selected_shift[dim] > 0) img_abc[dim] = 1 - FRACTIONAL_EPS
-        else if (selected_shift[dim] < 0) img_abc[dim] = FRACTIONAL_EPS
-      }
+      // Build fractional coordinates by applying the integer translation
+      // This ensures the image is a true periodic copy (preserving bond lengths)
+      // rather than clamping it to the cell face.
+      const img_abc: Vec3 = [
+        site.abc[0] + selected_shift[0],
+        site.abc[1] + selected_shift[1],
+        site.abc[2] + selected_shift[2],
+      ]
 
       // If no dimension actually shifted, continue
       if (
@@ -87,7 +96,7 @@ export function find_image_atoms(
         math.scale(lattice_vecs[2], img_abc[2]),
       ) as Vec3
 
-      // Skip zero-displacement images (should not happen with epsilon nudging)
+      // Skip zero-displacement images (should not happen, guards against FP edge cases)
       const displacement = math.subtract(img_xyz, site.xyz) as Vec3
       const displacement_len_sq = displacement.reduce((sum, val) => sum + val * val, 0)
       if (displacement_len_sq < displacement_eps_sq) continue

@@ -247,6 +247,10 @@
     structure && `lattice` in structure ? structure.lattice : null,
   )
 
+  let visual_lattice = $derived(
+    base_structure && `lattice` in base_structure ? base_structure.lattice : lattice,
+  )
+
   let rotation_target = $derived(
     lattice
       ? (math.scale(math.add(...lattice.matrix), 0.5) as Vec3)
@@ -814,8 +818,8 @@
         </CanvasTooltip>
       {/if}
 
-      {#if lattice}
-        <Lattice matrix={lattice.matrix} {...lattice_props} />
+      {#if visual_lattice}
+        <Lattice matrix={visual_lattice.matrix} {...lattice_props} />
       {/if}
 
       <!-- Measurement overlays for measured sites -->

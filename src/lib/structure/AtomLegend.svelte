@@ -1,7 +1,8 @@
 <script lang="ts">
-  import type { CompositionType, ElementSymbol } from '$lib'
+  import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
   import { element_data, format_num, Icon } from '$lib'
   import { contrast_color, default_element_colors } from '$lib/colors'
+  import { ColorBar } from '$lib/plot'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type {
@@ -9,6 +10,7 @@
     AtomPropertyColors,
   } from '$lib/structure/atom-properties'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
+  import type { Snippet } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -30,8 +32,10 @@
     hidden_prop_vals = $bindable(new Set<number | string>()),
     title = ``,
     sym_data = null,
+    structure = undefined,
+    children,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
     atom_color_config?: Partial<AtomColorConfig>
     property_colors?: AtomPropertyColors | null
     elements?: CompositionType
@@ -44,10 +48,12 @@
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
     title?: string
     sym_data?: MoyoDataset | null
+    structure?: AnyStructure | null
+    children?: Snippet<[{ mode_menu_open: boolean; structure?: AnyStructure | null }]>
   } = $props()
 
   const titles = {
-    coordination: `Coordination Number`,
+    coordination: `Coordination`,
     wyckoff: `Wyckoff Position`,
   }
 
@@ -89,32 +95,13 @@
   // Map from property value to color (computed once, reused in categorical legend)
   let color_map = $derived(
     new Map(
-      property_colors?.values.map((v, i) => [v, property_colors.colors[i]]) ?? [],
+      // Use unique_values instead of values to avoid undefined colors from duplicates
+      property_colors?.unique_values?.flatMap((val) => {
+        const idx = property_colors.values.indexOf(val)
+        return idx >= 0 ? [[val, property_colors.colors[idx]]] : []
+      }) ?? [],
     ),
   )
-
-  // CSS gradient for continuous scales
-  let gradient_css = $derived.by(() => {
-    const { unique_values } = property_colors || {}
-    if (!unique_values?.length || atom_color_config.scale_type !== `continuous`) {
-      return ``
-    }
-
-    // Handle single-value case to avoid division by zero
-    if (unique_values.length === 1) {
-      const color = color_map.get(unique_values[0])
-      return `linear-gradient(to right, ${color}, ${color})`
-    }
-
-    const stops = unique_values
-      .map((v, i) => {
-        const pct = (i / (unique_values.length - 1)) * 100
-        return `${color_map.get(v)} ${pct}%`
-      })
-      .join(`, `)
-
-    return `linear-gradient(to right, ${stops})`
-  })
 
   function toggle_visibility<T>(
     set: Set<T>,
@@ -157,10 +144,15 @@
             disabled={value === `wyckoff` && !sym_data}
             onclick={() => {
               atom_color_config.mode = value as AtomColorConfig[`mode`]
+              if (atom_color_config.mode === `wyckoff`) {
+                atom_color_config.scale_type = `categorical`
+              } else if (atom_color_config.mode === `coordination`) {
+                atom_color_config.scale_type = `continuous`
+              }
               mode_menu_open = false
             }}
           >
-            <span>{label}</span>
+            <span>{titles[value as keyof typeof titles] || label}</span>
           </button>
         {/each}
       </div>
@@ -218,59 +210,74 @@
       </div>
     {/each}
     {@render mode_selector_snippet()}
+    {@render children?.({ mode_menu_open, structure })}
   </div>
 {:else if show_property_legend}
-  <div class="atom-legend property-legend atom-color-legend" {...rest}>
-    <div class="legend-header">
-      <h4>{legend_title}</h4>
-      {@render mode_selector_snippet()}
-    </div>
-
-    {#if atom_color_config.scale_type === `continuous` && property_colors}
-      <div class="gradient-bar" style:background={gradient_css}></div>
-      <div class="gradient-labels">
-        <span>{format_value(property_colors.min_value ?? 0)}</span>
-        <span>{format_value(property_colors.max_value ?? 0)}</span>
-      </div>
-    {:else if atom_color_config.scale_type === `categorical` && property_colors}
-      <div class="categorical-legend">
-        {#each property_colors.unique_values || [] as
-          value
-          (`${atom_color_config.mode}-${value}`)
-        }
-          {@const color = color_map.get(value)}
-          {@const is_hidden = hidden_prop_vals.has(value)}
-          <div class="legend-item">
-            <span
-              class="category-label color-swatch"
-              class:hidden={is_hidden}
-              style:background-color={color}
-              {@attach contrast_color()}
-            >
-              {format_value(value)}
-            </span>
-            <button
-              class="toggle-visibility"
-              class:visible={is_hidden}
-              onclick={(
-                event,
-              ) => (hidden_prop_vals = toggle_visibility(
-                hidden_prop_vals,
-                value,
-                event,
-              ))}
-              title={is_hidden
-              ? `Show ${format_value(value)}`
-              : `Hide ${format_value(value)}`}
-              {@attach tooltip({ placement: `top` })}
-              type="button"
-            >
-              ×
-            </button>
-          </div>
-        {/each}
+  <div
+    class="atom-legend property-legend atom-color-legend"
+    class:categorical-legend={atom_color_config.scale_type === `categorical`}
+    {...rest}
+  >
+    {#if legend_title}
+      <div class="legend-header">
+        <h4>{legend_title}</h4>
       </div>
     {/if}
+    {#if atom_color_config.scale_type === `continuous` && property_colors}
+      <div
+        title={legend_title}
+        {@attach tooltip({ placement: `top` })}
+      >
+        <ColorBar
+          color_scale={atom_color_config.scale}
+          range={[property_colors.min_value ?? 0, property_colors.max_value ?? 0]}
+          tick_labels={Array.from(
+            new Set([property_colors.min_value ?? 0, property_colors.max_value ?? 0]),
+          )}
+          tick_side="secondary"
+          bar_style="height: 10px; width: 100px;"
+          wrapper_style="padding: 0; gap: 2px;"
+          style="margin-top: 0"
+          tick_format=".3~f"
+        />
+      </div>
+    {:else if atom_color_config.scale_type === `categorical` && property_colors}
+      {#each property_colors.unique_values || [] as
+        value
+        (`${atom_color_config.mode}-${value}`)
+      }
+        {@const color = color_map.get(value)}
+        {@const is_hidden = hidden_prop_vals.has(value)}
+        <div class="legend-item">
+          <span
+            class="category-label color-swatch"
+            class:hidden={is_hidden}
+            style:background-color={color}
+            {@attach contrast_color()}
+          >
+            {format_value(value)}
+          </span>
+          <button
+            class="toggle-visibility"
+            class:visible={is_hidden}
+            onclick={(
+              event,
+            ) => (hidden_prop_vals = toggle_visibility(
+              hidden_prop_vals,
+              value,
+              event,
+            ))}
+            title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
+            {@attach tooltip({ placement: `top` })}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+      {/each}
+    {/if}
+    {@render mode_selector_snippet()}
+    {@render children?.({ mode_menu_open, structure })}
   </div>
 {/if}
 
@@ -353,22 +360,12 @@
 
   /* Property Legend Styles */
   .property-legend {
-    bottom: var(--struct-legend-bottom, clamp(2pt, 1.5cqmin, 4pt));
-    right: var(--struct-legend-right, clamp(2pt, 1.5cqmin, 4pt));
-    font-size: var(--struct-legend-font, clamp(7pt, 2.5cqmin, 12pt));
-  }
-  .legend-header {
     display: flex;
+    bottom: var(--struct-legend-bottom, clamp(4pt, 3cqmin, 8pt));
+    right: var(--struct-legend-right, clamp(4pt, 3cqmin, 8pt));
+    gap: var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt));
+    font-size: var(--struct-legend-font, clamp(8pt, 3cqmin, 14pt));
     align-items: center;
-    justify-content: center;
-    gap: 0.3rem;
-    margin-bottom: 0.25rem;
-  }
-  .property-legend h4 {
-    margin: 0;
-    font-size: 0.75rem;
-    font-weight: 600;
-    opacity: 0.85;
   }
   .mode-selector {
     position: relative;
@@ -438,41 +435,22 @@
   .mode-option span {
     white-space: nowrap;
   }
-  .gradient-bar {
-    height: 10px;
-    width: 150px;
-    border-radius: 2px;
-    margin-bottom: 0.2rem;
-  }
-  .gradient-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.7rem;
-    opacity: 0.75;
-  }
-  .categorical-legend {
-    display: flex;
-    flex-direction: row;
-    gap: clamp(3pt, 2cqmin, 7pt);
-    flex-wrap: wrap;
-  }
-  .categorical-legend .legend-item {
+  .property-legend .legend-item {
     position: relative;
     display: inline-block;
   }
   .category-label {
-    padding: var(--struct-legend-padding, 0 2pt);
+    padding: var(--struct-legend-padding, 0 4pt);
     border-radius: var(--struct-legend-radius, 3pt);
     line-height: var(--struct-legend-line-height, 1.3);
     display: inline-block;
     white-space: nowrap;
-    font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt));
     transition: opacity 0.2s ease;
   }
   .category-label.hidden {
     opacity: 0.4;
   }
-  .categorical-legend button.toggle-visibility {
+  .property-legend button.toggle-visibility {
     position: absolute;
     top: -3px;
     right: -7px;
@@ -495,12 +473,17 @@
     z-index: 2;
     pointer-events: auto;
   }
-  .categorical-legend button.toggle-visibility.visible,
-  .categorical-legend .legend-item:hover button.toggle-visibility {
+  .property-legend button.toggle-visibility.visible,
+  .property-legend .legend-item:hover button.toggle-visibility {
     opacity: 1;
   }
-  .categorical-legend button.toggle-visibility:hover {
+  .property-legend button.toggle-visibility:hover {
     background: rgba(0, 0, 0, 0.8);
     transform: scale(1.15);
+  }
+  .legend-header h4 {
+    margin: 0;
+    font-size: 1em;
+    font-weight: 600;
   }
 </style>

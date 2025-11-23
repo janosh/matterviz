@@ -1,14 +1,14 @@
 <script lang="ts">
   import { SettingsSection } from '$lib'
-  import type { AxisConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type {
     DataSeries,
-    DisplayConfig,
+    PlotConfig,
     PlotControlsProps,
     StyleOverrides,
   } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
+  import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
 
   let {
@@ -19,15 +19,15 @@
     display = $bindable({}),
     styles = {},
     selected_series_idx = $bindable(0),
+    children,
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     series?: readonly DataSeries[]
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    y2_axis?: AxisConfig
-    display?: DisplayConfig
     styles?: StyleOverrides
     selected_series_idx?: number
+    children?: Snippet<
+      [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
+    >
   } = $props()
 
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)
@@ -38,6 +38,7 @@
 </script>
 
 <PlotControls {x_axis} {y_axis} {y2_axis} bind:display {...rest}>
+  {@render children?.({ x_axis, y_axis, y2_axis, display, styles, selected_series_idx })}
   <!-- Add show_points and show_lines checkboxes to Display section by extending it -->
   <!-- This is done via the Display section in PlotControls, but we need custom controls -->
   <!-- For now, we'll add a separate section for markers -->

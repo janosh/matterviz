@@ -2,9 +2,18 @@ import type { CompositionType, ElementSymbol } from '$lib'
 import { element_data } from '$lib/element'
 import * as math from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure/index'
+import { parse_any_structure } from '$lib/structure/parse'
+import { is_valid_structure } from '$lib/structure/validation'
 // copied from pymatgen/analysis/diffraction/atomic_scattering_params.json
 import { ATOMIC_SCATTERING_PARAMS } from './atomic-scattering-params'
-import type { Hkl, HklObj, RecipPoint, XrdOptions, XrdPattern } from './index'
+import type {
+  Hkl,
+  HklObj,
+  PatternEntry,
+  RecipPoint,
+  XrdOptions,
+  XrdPattern,
+} from './index'
 
 // XRD wavelengths in Angstrom (Å)
 export const WAVELENGTHS = {
@@ -324,6 +333,35 @@ export function compute_xrd_pattern(
   }
 
   return { x: xs, y: ys, hkls: hkls_out, d_hkls: d_out }
+}
+
+// Helper function to compute XRD pattern from dropped file content
+export function add_xrd_pattern(
+  content: string | ArrayBufferLike,
+  filename: string,
+  wavelength: number | null,
+): { pattern?: PatternEntry; error?: string } {
+  try {
+    const text_content = typeof content === `string`
+      ? content
+      : new TextDecoder().decode(content as BufferSource)
+    const parsed_structure = parse_any_structure(text_content, filename)
+    if (is_valid_structure(parsed_structure)) {
+      const pattern = compute_xrd_pattern(parsed_structure, {
+        wavelength: typeof wavelength === `number` ? wavelength : undefined,
+      })
+      return { pattern: { label: filename || `Dropped structure`, pattern } }
+    }
+    return {
+      error: `Structure has no lattice or sites; cannot compute XRD pattern`,
+    }
+  } catch (exc) {
+    return {
+      error: `Failed to compute XRD pattern: ${
+        exc instanceof Error ? exc.message : String(exc)
+      }`,
+    }
+  }
 }
 
 export const AVAILABLE_RADIATION = Object.keys(WAVELENGTHS) as RadiationKey[]
