@@ -239,8 +239,13 @@ export function electroneg_ratio(
       // (penalty will only reduce it further)
       if (strength <= strength_threshold) continue
 
-      const orig_idx_a = sites[idx_a].properties?.orig_site_idx ?? idx_a
-      const orig_idx_b = sites[idx_b].properties?.orig_site_idx ?? idx_b
+      // Use helper logic similar to get_orig_site_idx to handle both supercell and image atoms
+      const orig_idx_a = (sites[idx_a].properties?.orig_unit_cell_idx as number) ??
+        (sites[idx_a].properties?.orig_site_idx as number) ??
+        idx_a
+      const orig_idx_b = (sites[idx_b].properties?.orig_unit_cell_idx as number) ??
+        (sites[idx_b].properties?.orig_site_idx as number) ??
+        idx_b
 
       // Update closest known normalized distance (dist / expected) for original atoms
       // Normalized distance handles atoms of different sizes better than raw distance
