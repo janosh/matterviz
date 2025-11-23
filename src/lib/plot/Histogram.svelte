@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { FullscreenToggle } from '$lib/feedback'
   import { format_value } from '$lib/labels'
-  import type { AxisConfig, BarStyle, HistogramHandlerProps } from '$lib/plot'
+  import type { BarStyle, HistogramHandlerProps } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
   import { get_relative_coords } from '$lib/plot/interactions'
@@ -16,7 +17,7 @@
     get_nice_data_range,
     get_tick_label,
   } from '$lib/plot/scales'
-  import type { BasePlotProps, DataSeries, DisplayConfig } from '$lib/plot/types'
+  import type { BasePlotProps, DataSeries, PlotConfig } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -27,10 +28,10 @@
 
   let {
     series = $bindable([]),
-    x_axis = {},
-    y_axis = {},
-    y2_axis = {},
-    display = DEFAULTS.histogram.display,
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    y2_axis = $bindable({}),
+    display = $bindable(DEFAULTS.histogram.display),
     x_range = [null, null],
     y_range = [null, null],
     y2_range = [null, null],
@@ -52,17 +53,16 @@
     on_series_toggle = () => {},
     controls_toggle_props,
     controls_pane_props,
+    fullscreen = $bindable(false),
     children,
+    controls_extra,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & {
+  }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
     series: DataSeries[]
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    y2_axis?: AxisConfig
-    display?: DisplayConfig
     hovered?: boolean
     show_controls?: boolean
     controls_open?: boolean
+    fullscreen?: boolean
     // Component-specific props
     bins?: number
     show_legend?: boolean
@@ -71,6 +71,7 @@
     selected_property?: string
     mode?: `single` | `overlay`
     tooltip?: Snippet<[HistogramHandlerProps]>
+    controls_extra?: Snippet
     change?: (data: { value: number; count: number; property: string } | null) => void
     on_bar_click?: (
       data: {
@@ -506,7 +507,25 @@
   }
 </script>
 
-<div class="histogram" bind:clientWidth={width} bind:clientHeight={height} {...rest}>
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === `Escape` && fullscreen) {
+      e.preventDefault()
+      fullscreen = false
+    }
+  }}
+/>
+
+<div
+  class="histogram"
+  bind:clientWidth={width}
+  bind:clientHeight={height}
+  {...rest}
+  class:fullscreen
+>
+  {#if width && height}
+    <FullscreenToggle bind:fullscreen />
+  {/if}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <svg
@@ -555,7 +574,7 @@
       >
         <div class="tooltip">
           {#if tooltip}
-            {@render tooltip(hover_info)}
+            {@render tooltip({ ...hover_info, fullscreen })}
           {:else}
             {@const formatter = active_y_axis === `y2`
             ? final_y2_axis.format
@@ -856,7 +875,10 @@
 
   {#if show_controls}
     <HistogramControls
-      toggle_props={controls_toggle_props}
+      toggle_props={{
+        ...controls_toggle_props,
+        style: `right: 36px; top: 4px; ${controls_toggle_props?.style ?? ``}`,
+      }}
       pane_props={controls_pane_props}
       bind:show_controls
       bind:controls_open
@@ -873,6 +895,7 @@
       auto_y_range={auto_ranges.y}
       auto_y2_range={auto_ranges.y2}
       {series}
+      children={controls_extra}
     />
   {/if}
 
@@ -886,7 +909,7 @@
   {/if}
 
   <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
-  {@render children?.()}
+  {@render children?.({ height, width, fullscreen })}
 </div>
 
 <style>
@@ -901,6 +924,52 @@
     display: var(--histogram-display, flex);
     flex-direction: column;
     background: var(--histogram-bg, var(--plot-bg));
+  }
+  .histogram.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999;
+    margin: 0;
+    border-radius: 0;
+    background: var(--plot-bg, white);
+    max-height: none !important;
+  }
+  .fullscreen-toggle {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 4px;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-color, black);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .histogram:hover .fullscreen-toggle,
+  .fullscreen-toggle:focus {
+    opacity: 1;
+  }
+  /* Hide controls and fullscreen toggles by default, show on hover */
+  .histogram :global(.pane-toggle),
+  .histogram :global(.fullscreen-toggle) {
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .histogram:hover :global(.pane-toggle),
+  .histogram:hover :global(.fullscreen-toggle),
+  .histogram :global(.pane-toggle:focus-visible),
+  .histogram :global(.pane-toggle[aria-expanded='true']),
+  .histogram :global(.fullscreen-toggle:focus) {
+    opacity: 1;
   }
   svg {
     width: var(--histogram-svg-width, 100%);
