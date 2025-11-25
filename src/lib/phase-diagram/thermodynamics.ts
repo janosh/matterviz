@@ -284,11 +284,17 @@ export function calculate_e_above_hull(
 
     const distances = compute_e_above_hull_4d(interest_points, hull_tetrahedra)
 
+    // Build reverse lookup for O(1) access
+    const idx_to_point_idx = new Map<number, number>()
+    interest_indices.forEach((original_idx, point_idx) => {
+      idx_to_point_idx.set(original_idx, point_idx)
+    })
+
     // Map back
     for (let i = 0; i < interest_data.length; i++) {
       const { entry } = interest_data[i]
       const id = entry.entry_id ?? JSON.stringify(entry.composition)
-      const point_idx = interest_indices.indexOf(i)
+      const point_idx = idx_to_point_idx.get(i) ?? -1
       if (point_idx !== -1) {
         results[id] = Math.max(0, distances[point_idx])
       } else {

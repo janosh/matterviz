@@ -112,60 +112,51 @@
     ) as PymatgenEntry[] | undefined ?? [],
   )
 
-  // Highlight examples - find visible entries with moderate energy above hull
-  let highlighted_na_fe_o = $state<string[]>([])
-  let highlighted_li_co_ni_o = $state<string[]>([])
+  // Helper to pick entries for highlighting demos
+  const pick_entries = (
+    entries: PymatgenEntry[],
+    filter: (e: PymatgenEntry) => boolean,
+    count = 5,
+  ) =>
+    entries.filter((e) => e.entry_id && filter(e)).slice(0, count).map((e) =>
+      e.entry_id!
+    )
 
-  $effect(() => {
-    if (na_fe_o_entries.length > 0 && highlighted_na_fe_o.length === 0) {
-      // Select entries with moderate e_above_hull (visible but not on hull)
-      // Filter for entries within visible range (< 0.5 eV/atom) but above hull (> 0.05)
-      const visible_unstable = [...na_fe_o_entries]
-        .filter((e) => {
-          const e_hull = e.e_above_hull ?? 0
-          return typeof e.e_above_hull === `number` && e.entry_id && e_hull > 0.05 &&
-            e_hull < 0.5
-        })
-        .sort((a, b) => (b.e_above_hull ?? 0) - (a.e_above_hull ?? 0))
-      highlighted_na_fe_o = visible_unstable.slice(0, 5).map((e) =>
-        e.entry_id as string
-      )
-    }
-  })
+  // Highlight demo: visible unstable entries (ternary) and stable entries (quaternary)
+  const highlighted_na_fe_o = $derived(
+    pick_entries(
+      na_fe_o_entries,
+      (e) => (e.e_above_hull ?? 0) > 0.05 && (e.e_above_hull ?? 1) < 0.5,
+    ),
+  )
+  const highlighted_li_co_ni_o = $derived(
+    pick_entries(
+      li_co_ni_o_quaternary,
+      (e) => e.is_stable || (e.e_above_hull ?? 1) < 0.01,
+    ),
+  )
 
-  $effect(() => {
-    if (li_co_ni_o_quaternary.length > 0 && highlighted_li_co_ni_o.length === 0) {
-      // Find stable entries (on hull)
-      const stable = li_co_ni_o_quaternary
-        .filter((e) => (e.is_stable || (e.e_above_hull ?? 0) < 0.01) && e.entry_id)
-        .slice(0, 5)
-      highlighted_li_co_ni_o = stable.map((e) => e.entry_id as string)
-    }
-  })
+  // Helper to assign marker based on entry properties
+  const get_marker = (
+    entry: PymatgenEntry,
+    selected_id?: string,
+    stable_marker: MarkerSymbol = `diamond`,
+  ): MarkerSymbol => {
+    if (entry.entry_id === selected_id) return `star`
+    if (entry.is_stable || (entry.e_above_hull ?? 1) < 0.01) return stable_marker
+    if ((entry.e_above_hull ?? 0) > 0.3) return `triangle`
+    if ((entry.e_above_hull ?? 0) > 0.1) return `cross`
+    return `circle`
+  }
 
   // Marker symbol demo state
   let selected_marker_entry = $state<PhaseDiagramEntry | null>(null)
-  let marker_demo_entries = $derived.by(() => {
-    if (na_fe_o_entries.length === 0) return []
-    // Assign different markers based on entry properties
-    return na_fe_o_entries.map((entry) => {
-      let marker: MarkerSymbol = `circle`
-      // Selected entry gets a star
-      if (selected_marker_entry?.entry_id === entry.entry_id) {
-        marker = `star`
-      } else if (entry.is_stable || (entry.e_above_hull ?? 1) < 0.01) {
-        // Stable entries get diamonds
-        marker = `diamond`
-      } else if ((entry.e_above_hull ?? 0) > 0.3) {
-        // High energy entries get triangles
-        marker = `triangle`
-      } else if ((entry.e_above_hull ?? 0) > 0.1) {
-        // Medium energy entries get crosses
-        marker = `cross`
-      }
-      return { ...entry, marker }
-    })
-  })
+  const marker_demo_entries = $derived(
+    na_fe_o_entries.map((e) => ({
+      ...e,
+      marker: get_marker(e, selected_marker_entry?.entry_id),
+    })),
+  )
 
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
@@ -187,19 +178,12 @@
 
   // Binary marker demo
   let selected_binary_entry = $state<PhaseDiagramEntry | null>(null)
-  const binary_marker_entries = $derived.by(() => {
-    const base = binary_examples[0]?.entries ?? []
-    if (base.length === 0) return []
-    return base.map((entry) => {
-      let marker: MarkerSymbol = `circle`
-      if (selected_binary_entry?.entry_id === entry.entry_id) {
-        marker = `star`
-      } else if (entry.is_stable || (entry.e_above_hull ?? 1) < 0.01) {
-        marker = `square`
-      }
-      return { ...entry, marker }
-    })
-  })
+  const binary_marker_entries = $derived(
+    (binary_examples[0]?.entries ?? []).map((e) => ({
+      ...e,
+      marker: get_marker(e, selected_binary_entry?.entry_id, `square`),
+    })),
+  )
 </script>
 
 <svelte:head>
@@ -315,7 +299,7 @@
         <PhaseDiagram3D
           entries={na_fe_o_entries}
           controls={{ title: `High Energy Phases (Pulse)` }}
-          bind:highlighted_entries={highlighted_na_fe_o}
+          highlighted_entries={highlighted_na_fe_o}
           highlight_style={{
             effect: `pulse`,
             color: `#ff3333`,
@@ -351,7 +335,7 @@
         <PhaseDiagram4D
           entries={li_co_ni_o_quaternary}
           controls={{ title: `Stable Phases (Glow)` }}
-          bind:highlighted_entries={highlighted_li_co_ni_o}
+          highlighted_entries={highlighted_li_co_ni_o}
           highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2, opacity: 0.85 }}
         />
       </div>
