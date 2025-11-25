@@ -1233,6 +1233,7 @@
     width: 100vw !important;
     border-radius: 0 !important;
     background: var(--surface-bg);
+    overflow: hidden;
   }
   /* Content area - grid container for equal sizing */
   .content-area {

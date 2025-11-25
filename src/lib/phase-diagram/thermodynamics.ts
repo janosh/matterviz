@@ -1,17 +1,24 @@
 import type { ElementSymbol } from '$lib'
 import { sort_by_electronegativity } from '$lib/composition/parse'
 import * as math from '$lib/math'
+import {
+  barycentric_to_ternary_xyz,
+  barycentric_to_tetrahedral,
+  composition_to_barycentric_3d,
+  composition_to_barycentric_4d,
+} from './barycentric-coords'
 import type {
   ConvexHullFace,
   ConvexHullTriangle,
   PhaseData,
   PhaseDiagramData,
   Plane,
+  Point2D,
   Point3D,
 } from './types'
 import { is_unary_entry } from './types'
 
-// ================= Thermodynamics & metadata =================
+// --- Thermodynamics & metadata ---
 
 export function process_pd_entries(entries: PhaseData[]): PhaseDiagramData {
   const eps = 1e-6
@@ -106,6 +113,228 @@ export function find_lowest_energy_unary_refs(
   return refs
 }
 
+/** Calculate energy above hull (eV/atom). Missing pure element refs default to E_form = 0. */
+export function calculate_e_above_hull(
+  entry: PhaseData,
+  reference_entries: PhaseData[],
+): number
+export function calculate_e_above_hull(
+  entries: PhaseData[],
+  reference_entries: PhaseData[],
+): Record<string, number>
+export function calculate_e_above_hull(
+  input: PhaseData | PhaseData[],
+  reference_entries: PhaseData[],
+): number | Record<string, number> {
+  const is_single = !Array.isArray(input)
+  const entries_of_interest = is_single ? [input] : input
+
+  if (entries_of_interest.length === 0) return {} // Empty input → empty result (not an error)
+  if (reference_entries.length === 0) {
+    throw new Error(`Reference entries cannot be empty`)
+  }
+
+  // 1. Identify chemical system
+  const elements = Array.from(
+    new Set(reference_entries.flatMap((entry) => Object.keys(entry.composition))),
+  ).sort() as ElementSymbol[]
+
+  // 2. Validate subset
+  const element_set = new Set(elements)
+  for (const entry of entries_of_interest) {
+    for (const el of Object.keys(entry.composition)) {
+      if (!element_set.has(el as ElementSymbol)) {
+        throw new Error(
+          `Entry contains element ${el} not present in reference system: ${
+            elements.join(`-`)
+          }`,
+        )
+      }
+    }
+  }
+
+  // 3. Compute formation energies
+  const refs = find_lowest_energy_unary_refs(reference_entries)
+  const compute_e_form = (e: PhaseData) =>
+    typeof e.e_form_per_atom === `number`
+      ? e.e_form_per_atom
+      : compute_e_form_per_atom(e, refs)
+
+  const interest_data = entries_of_interest.map((entry) => ({
+    entry,
+    e_form: compute_e_form(entry),
+  }))
+
+  // 4. Branch by arity
+  const arity = elements.length
+  const results: Record<string, number> = {}
+
+  if (arity === 1) {
+    // Unary system
+    for (const { entry, e_form } of interest_data) {
+      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      // For unary, e_above_hull is simply e_form (since stable state is 0)
+      // Unless we have multiple polymorphs, in which case the hull is at min(e_form) which should be 0
+      // But compute_e_form_per_atom already subtracts the stable unary reference energy.
+      // So e_form IS e_above_hull for unary systems if correction logic holds.
+      results[id] = e_form ?? NaN
+    }
+  } else if (arity === 2) {
+    // Binary system
+    const [_el1, el2] = elements
+    // Build hull points from references
+    const hull_input_map = new Map<number, number>() // x -> min_e_form
+
+    for (const ref of reference_entries) {
+      const e_form = compute_e_form(ref)
+      if (typeof e_form !== `number`) continue
+      const total = Object.values(ref.composition).reduce((s, v) => s + v, 0)
+      if (total <= 0) continue
+      const x = (ref.composition[el2] || 0) / total
+      const current = hull_input_map.get(x)
+      if (current === undefined || e_form < current) {
+        hull_input_map.set(x, e_form)
+      }
+    }
+    // Ensure endpoints (pure elements default to e_form = 0)
+    if (!hull_input_map.has(0)) hull_input_map.set(0, 0)
+    if (!hull_input_map.has(1)) hull_input_map.set(1, 0)
+
+    const hull_points: Point2D[] = Array.from(hull_input_map, ([x, y]) => ({ x, y }))
+    const lower_hull = compute_lower_hull_2d(hull_points)
+
+    for (const { entry, e_form } of interest_data) {
+      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      if (typeof e_form !== `number`) {
+        results[id] = NaN
+        continue
+      }
+      const total = Object.values(entry.composition).reduce((s, v) => s + v, 0)
+      const x = total > 0 ? (entry.composition[el2] || 0) / total : 0
+      const y_hull = interpolate_hull_2d(lower_hull, x)
+      results[id] = y_hull === null ? NaN : Math.max(0, e_form - y_hull)
+    }
+  } else if (arity === 3) {
+    // Ternary system
+    const ref_points: Point3D[] = []
+    for (const ref of reference_entries) {
+      const e_form = compute_e_form(ref)
+      if (typeof e_form !== `number`) continue
+      try {
+        const bary = composition_to_barycentric_3d(ref.composition, elements)
+        const p = barycentric_to_ternary_xyz(bary, e_form)
+        ref_points.push(p)
+      } catch {
+        // Ignore invalid compositions
+      }
+    }
+    // Ensure corner points (pure elements default to e_form = 0)
+    for (const el of elements) {
+      const corner = barycentric_to_ternary_xyz(
+        composition_to_barycentric_3d({ [el]: 1 }, elements),
+        0,
+      )
+      if (
+        !ref_points.some((p) =>
+          Math.hypot(p.x - corner.x, p.y - corner.y, p.z - corner.z) < 1e-9
+        )
+      ) {
+        ref_points.push(corner)
+      }
+    }
+
+    const hull_triangles = compute_lower_hull_triangles(ref_points)
+    const hull_models = build_lower_hull_model(hull_triangles)
+
+    for (const { entry, e_form } of interest_data) {
+      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      if (typeof e_form !== `number`) {
+        results[id] = NaN
+        continue
+      }
+      try {
+        const bary = composition_to_barycentric_3d(entry.composition, elements)
+        const p = barycentric_to_ternary_xyz(bary, e_form)
+        const z_hull = e_hull_at_xy(hull_models, p.x, p.y)
+        results[id] = z_hull === null ? NaN : Math.max(0, p.z - z_hull)
+      } catch {
+        results[id] = NaN
+      }
+    }
+  } else if (arity === 4) {
+    // Quaternary system
+    const ref_points: Point4D[] = []
+    for (const ref of reference_entries) {
+      const e_form = compute_e_form(ref)
+      if (typeof e_form !== `number`) continue
+      try {
+        const bary = composition_to_barycentric_4d(ref.composition, elements)
+        const tet = barycentric_to_tetrahedral(bary)
+        ref_points.push({ ...tet, w: e_form })
+      } catch {
+        // Ignore invalid
+      }
+    }
+
+    // Ensure corner points (pure elements default to e_form = 0)
+    for (const el of elements) {
+      const tet = barycentric_to_tetrahedral(
+        composition_to_barycentric_4d({ [el]: 1 }, elements),
+      )
+      const corner = { ...tet, w: 0 }
+      const dist = (p: Point4D) =>
+        Math.hypot(p.x - corner.x, p.y - corner.y, p.z - corner.z, p.w)
+      if (!ref_points.some((p) => dist(p) < 1e-9)) ref_points.push(corner)
+    }
+
+    const hull_tetrahedra = compute_lower_hull_4d(ref_points)
+    const interest_points: Point4D[] = []
+    const interest_indices: number[] = []
+
+    interest_data.forEach(({ entry, e_form }, idx) => {
+      if (typeof e_form === `number`) {
+        try {
+          const bary = composition_to_barycentric_4d(entry.composition, elements)
+          const tet = barycentric_to_tetrahedral(bary)
+          interest_points.push({ ...tet, w: e_form })
+          interest_indices.push(idx)
+        } catch {
+          // Skip
+        }
+      }
+    })
+
+    const distances = compute_e_above_hull_4d(interest_points, hull_tetrahedra)
+
+    // Build reverse lookup for O(1) access
+    const idx_to_point_idx = new Map<number, number>()
+    interest_indices.forEach((original_idx, point_idx) => {
+      idx_to_point_idx.set(original_idx, point_idx)
+    })
+
+    // Map back
+    for (let i = 0; i < interest_data.length; i++) {
+      const { entry } = interest_data[i]
+      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      const point_idx = idx_to_point_idx.get(i) ?? -1
+      if (point_idx !== -1) {
+        results[id] = Math.max(0, distances[point_idx])
+      } else {
+        results[id] = NaN
+      }
+    }
+  } else {
+    throw new Error(`Hull calculation not supported for arity ${arity}`)
+  }
+
+  if (is_single) {
+    const id = entries_of_interest[0].entry_id ??
+      JSON.stringify(entries_of_interest[0].composition)
+    return results[id]
+  }
+  return results
+}
+
 export function get_phase_diagram_stats(
   processed_entries: PhaseData[],
   elements: ElementSymbol[],
@@ -183,7 +412,44 @@ export function get_phase_diagram_stats(
   }
 }
 
-// ================= Convex hull geometry =================
+// --- 2D Convex Hull (Binary Phase Diagrams) ---
+
+export function compute_lower_hull_2d(points: Point2D[]): Point2D[] {
+  // Andrew's monotone chain for lower hull
+  // Sort by x then y
+  const sorted = [...points].sort((p1, p2) => (p1.x - p2.x) || (p1.y - p2.y))
+  const lower: Point2D[] = []
+  const cross = (o: Point2D, a: Point2D, b: Point2D) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+
+  for (const p of sorted) {
+    while (
+      lower.length >= 2 &&
+      cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
+    ) lower.pop()
+    lower.push(p)
+  }
+  return lower
+}
+
+export function interpolate_hull_2d(hull: Point2D[], x: number): number | null {
+  if (hull.length < 2) return null
+  // Handle out of bounds by clamping to endpoints
+  if (x <= hull[0].x) return hull[0].y
+  if (x >= hull[hull.length - 1].x) return hull[hull.length - 1].y
+
+  for (let i = 0; i < hull.length - 1; i++) {
+    const p1 = hull[i]
+    const p2 = hull[i + 1]
+    if (x >= p1.x && x <= p2.x) {
+      const t = (x - p1.x) / Math.max(1e-12, p2.x - p1.x)
+      return p1.y * (1 - t) + p2.y * t
+    }
+  }
+  return null
+}
+
+// --- Convex hull geometry ---
 
 const EPS = 1e-9
 
@@ -527,7 +793,7 @@ export const compute_e_above_hull_for_points = (
     return e_above_hull > EPS ? e_above_hull : 0
   })
 
-// ================= 4D Convex Hull (Quaternary Phase Diagrams) =================
+// --- 4D Convex Hull (Quaternary Phase Diagrams) ---
 
 export interface Point4D {
   x: number
@@ -721,6 +987,9 @@ function distance_point_to_line_4d(a: Point4D, b: Point4D, p: Point4D): number {
   return norm_4d(subtract_4d(p, projection))
 }
 
+// Maximum sample size for initial simplex selection in 4D hulls (avoids O(n²) for large datasets)
+const INITIAL_SIMPLEX_SAMPLE_SIZE = 100
+
 function choose_initial_4_simplex(
   points: Point4D[],
 ): [number, number, number, number, number] | null {
@@ -728,7 +997,7 @@ function choose_initial_4_simplex(
 
   // Find two points farthest apart across all dimensions for better numerical stability
   // Sample a small subset if dataset is large to avoid O(n²) scaling
-  const sample_size = Math.min(points.length, 100)
+  const sample_size = Math.min(points.length, INITIAL_SIMPLEX_SAMPLE_SIZE)
   const sample_indices = points.length <= sample_size
     ? points.map((_, idx) => idx)
     : Array.from({ length: sample_size }, (_, idx) =>
@@ -954,6 +1223,7 @@ export function compute_quickhull_4d(points: Point4D[]): ConvexHullTetrahedron[]
 
   // Main Quick Hull iteration
   while (true) {
+    // Step 1: Find face with farthest outside point (the "eye" point)
     let chosen_face_idx = -1
     let chosen_point_idx = -1
     let max_distance = -1
@@ -970,33 +1240,38 @@ export function compute_quickhull_4d(points: Point4D[]): ConvexHullTetrahedron[]
       }
     }
 
-    if (chosen_face_idx === -1) break
+    if (chosen_face_idx === -1) break // All points processed
 
     const eye_idx = chosen_point_idx
-    const visible_face_indices = new Set<number>()
 
+    // Step 2: Find all faces visible from the eye point
+    const visible_face_indices = new Set<number>()
     for (let face_idx = 0; face_idx < faces.length; face_idx++) {
       const face = faces[face_idx]
       const dist = point_plane_signed_distance_4d(face.plane, points[eye_idx])
       if (dist > EPS) visible_face_indices.add(face_idx)
     }
 
+    // Step 3: Build horizon ridges (boundary between visible and non-visible faces)
     const horizon_ridges = build_horizon_4d(faces, visible_face_indices)
     const visible_faces = Array.from(visible_face_indices).sort((a, b) => b - a)
     const candidate_points = collect_candidate_points_4d(
       visible_faces.map((idx) => faces[idx]),
     )
 
+    // Step 4: Remove visible faces (they'll be replaced by new ones through eye point)
     for (const idx of visible_faces) {
       faces.splice(idx, 1)
     }
 
+    // Step 5: Create new faces connecting horizon ridges to eye point
     const new_faces: ConvexHullFace4D[] = []
     for (const [u, v, w] of horizon_ridges) {
       const new_face = make_face_4d(points, u, v, w, eye_idx, interior_point)
       new_faces.push(new_face)
     }
 
+    // Step 6: Reassign outside points from removed faces to new faces
     for (const face of new_faces) face.outside_points.clear()
 
     for (const idx of candidate_points) {

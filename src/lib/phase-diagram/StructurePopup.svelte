@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
+  import { Icon } from '$lib'
   import { format_num } from '$lib/labels'
   import { Structure } from '$lib/structure'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -28,6 +29,12 @@
   }
 </script>
 
+{#snippet close_button()}
+  <button class="close-btn" onclick={() => onclose?.()} title="Close (Esc)">
+    <Icon icon="Cross" />
+  </button>
+{/snippet}
+
 <svelte:window onkeydown={handle_keydown} />
 
 <div
@@ -38,8 +45,6 @@
   tabindex="-1"
   bind:this={popup_div}
 >
-  <button class="close-btn" onclick={() => onclose?.()}>×</button>
-
   {#if stats}
     <div class="structure-stats">
       {#if stats.id}
@@ -55,7 +60,13 @@
     </div>
   {/if}
 
-  <Structure {structure} {width} {height} />
+  <Structure
+    {structure}
+    {width}
+    {height}
+    top_right_controls={close_button}
+    show_controls
+  />
 </div>
 
 <style>
@@ -79,24 +90,15 @@
     right: calc(100% + 1em);
   }
   .close-btn {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 30px;
-    height: 30px;
-    background: rgba(0, 0, 0, 0.5);
-    color: white;
+    background: transparent;
     border: none;
-    border-radius: 50%;
     cursor: pointer;
-    z-index: 2;
-    font-size: 18px;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 0;
+    font-size: inherit;
   }
   .close-btn:hover {
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--pane-btn-bg-hover);
   }
   .structure-stats {
     position: absolute;
