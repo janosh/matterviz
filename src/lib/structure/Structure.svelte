@@ -875,6 +875,7 @@
   }
   .structure:fullscreen {
     background: var(--struct-bg-fullscreen, var(--struct-bg));
+    overflow: hidden;
   }
   .structure:fullscreen :global(canvas) {
     height: 100vh !important;

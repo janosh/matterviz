@@ -390,6 +390,7 @@
   }
   .brillouin-zone:fullscreen {
     background: var(--bz-bg-fullscreen, var(--surface-bg));
+    overflow: hidden;
   }
   .brillouin-zone:fullscreen :global(canvas) {
     height: 100vh !important;
