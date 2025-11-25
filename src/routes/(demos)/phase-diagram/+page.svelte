@@ -353,6 +353,11 @@
       <p>Loading phase diagrams...</p>
     </div>
   {/if}
+
+  <p class="section-description">
+    <strong>Note:</strong> If pure element references are missing from the data, they are
+    automatically added with formation energy = 0 eV/atom (the thermodynamic definition).
+  </p>
 </main>
 
 <style>

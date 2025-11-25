@@ -118,7 +118,8 @@
         class="toggle-btn {energy_source_mode === `on-the-fly` ? `active` : ``}"
         onclick={() => energy_source_mode = `on-the-fly`}
         {@attach tooltip({
-          content: `Compute formation energies and hull distances on the fly`,
+          content:
+            `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E<sub>form</sub> = 0 eV/atom if not provided explicitly.`,
         })}
       >
         On the fly

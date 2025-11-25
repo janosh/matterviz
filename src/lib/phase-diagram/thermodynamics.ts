@@ -113,6 +113,7 @@ export function find_lowest_energy_unary_refs(
   return refs
 }
 
+/** Calculate energy above hull (eV/atom). Missing pure element refs default to E_form = 0. */
 export function calculate_e_above_hull(
   entry: PhaseData,
   reference_entries: PhaseData[],
@@ -128,7 +129,7 @@ export function calculate_e_above_hull(
   const is_single = !Array.isArray(input)
   const entries_of_interest = is_single ? [input] : input
 
-  if (entries_of_interest.length === 0) return {}
+  if (entries_of_interest.length === 0) return {} // Empty input → empty result (not an error)
   if (reference_entries.length === 0) {
     throw new Error(`Reference entries cannot be empty`)
   }
@@ -195,7 +196,7 @@ export function calculate_e_above_hull(
         hull_input_map.set(x, e_form)
       }
     }
-    // Ensure endpoints
+    // Ensure endpoints (pure elements default to e_form = 0)
     if (!hull_input_map.has(0)) hull_input_map.set(0, 0)
     if (!hull_input_map.has(1)) hull_input_map.set(1, 0)
 
@@ -227,10 +228,20 @@ export function calculate_e_above_hull(
         // Ignore invalid compositions
       }
     }
-    // Ensure corner points (formation energy 0)
-    // composition_to_barycentric_3d handles this if we pass correct composition
-    // But if refs are missing corners, hull might be incomplete.
-    // However, standard behavior is to assume provided refs define the system.
+    // Ensure corner points (pure elements default to e_form = 0)
+    for (const el of elements) {
+      const corner = barycentric_to_ternary_xyz(
+        composition_to_barycentric_3d({ [el]: 1 }, elements),
+        0,
+      )
+      if (
+        !ref_points.some((p) =>
+          Math.hypot(p.x - corner.x, p.y - corner.y, p.z - corner.z) < 1e-9
+        )
+      ) {
+        ref_points.push(corner)
+      }
+    }
 
     const hull_triangles = compute_lower_hull_triangles(ref_points)
     const hull_models = build_lower_hull_model(hull_triangles)
@@ -263,6 +274,17 @@ export function calculate_e_above_hull(
       } catch {
         // Ignore invalid
       }
+    }
+
+    // Ensure corner points (pure elements default to e_form = 0)
+    for (const el of elements) {
+      const tet = barycentric_to_tetrahedral(
+        composition_to_barycentric_4d({ [el]: 1 }, elements),
+      )
+      const corner = { ...tet, w: 0 }
+      const dist = (p: Point4D) =>
+        Math.hypot(p.x - corner.x, p.y - corner.y, p.z - corner.z, p.w)
+      if (!ref_points.some((p) => dist(p) < 1e-9)) ref_points.push(corner)
     }
 
     const hull_tetrahedra = compute_lower_hull_4d(ref_points)
@@ -965,6 +987,9 @@ function distance_point_to_line_4d(a: Point4D, b: Point4D, p: Point4D): number {
   return norm_4d(subtract_4d(p, projection))
 }
 
+// Maximum sample size for initial simplex selection in 4D hulls (avoids O(n²) for large datasets)
+const INITIAL_SIMPLEX_SAMPLE_SIZE = 100
+
 function choose_initial_4_simplex(
   points: Point4D[],
 ): [number, number, number, number, number] | null {
@@ -972,7 +997,7 @@ function choose_initial_4_simplex(
 
   // Find two points farthest apart across all dimensions for better numerical stability
   // Sample a small subset if dataset is large to avoid O(n²) scaling
-  const sample_size = Math.min(points.length, 100)
+  const sample_size = Math.min(points.length, INITIAL_SIMPLEX_SAMPLE_SIZE)
   const sample_indices = points.length <= sample_size
     ? points.map((_, idx) => idx)
     : Array.from({ length: sample_size }, (_, idx) =>
@@ -1198,6 +1223,7 @@ export function compute_quickhull_4d(points: Point4D[]): ConvexHullTetrahedron[]
 
   // Main Quick Hull iteration
   while (true) {
+    // Step 1: Find face with farthest outside point (the "eye" point)
     let chosen_face_idx = -1
     let chosen_point_idx = -1
     let max_distance = -1
@@ -1214,33 +1240,38 @@ export function compute_quickhull_4d(points: Point4D[]): ConvexHullTetrahedron[]
       }
     }
 
-    if (chosen_face_idx === -1) break
+    if (chosen_face_idx === -1) break // All points processed
 
     const eye_idx = chosen_point_idx
-    const visible_face_indices = new Set<number>()
 
+    // Step 2: Find all faces visible from the eye point
+    const visible_face_indices = new Set<number>()
     for (let face_idx = 0; face_idx < faces.length; face_idx++) {
       const face = faces[face_idx]
       const dist = point_plane_signed_distance_4d(face.plane, points[eye_idx])
       if (dist > EPS) visible_face_indices.add(face_idx)
     }
 
+    // Step 3: Build horizon ridges (boundary between visible and non-visible faces)
     const horizon_ridges = build_horizon_4d(faces, visible_face_indices)
     const visible_faces = Array.from(visible_face_indices).sort((a, b) => b - a)
     const candidate_points = collect_candidate_points_4d(
       visible_faces.map((idx) => faces[idx]),
     )
 
+    // Step 4: Remove visible faces (they'll be replaced by new ones through eye point)
     for (const idx of visible_faces) {
       faces.splice(idx, 1)
     }
 
+    // Step 5: Create new faces connecting horizon ridges to eye point
     const new_faces: ConvexHullFace4D[] = []
     for (const [u, v, w] of horizon_ridges) {
       const new_face = make_face_4d(points, u, v, w, eye_idx, interior_point)
       new_faces.push(new_face)
     }
 
+    // Step 6: Reassign outside points from removed faces to new faces
     for (const face of new_faces) face.outside_points.clear()
 
     for (const idx of candidate_points) {
