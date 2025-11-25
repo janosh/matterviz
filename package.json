@@ -140,8 +140,8 @@
       "default": "./dist/periodic-table.js"
     },
     "./phase-diagram": {
-      "types": "./dist/phase-diagram.d.ts",
-      "default": "./dist/phase-diagram.js"
+      "types": "./dist/phase-diagram/index.d.ts",
+      "default": "./dist/phase-diagram/index.js"
     },
     "./plot": {
       "types": "./dist/plot/index.d.ts",
