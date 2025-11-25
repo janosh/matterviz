@@ -2,10 +2,11 @@ import type { ElementSymbol, EnergyModeInfo } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import { get_page_background } from '$lib/colors'
 import { ELEM_SYMBOL_TO_NAME } from '$lib/composition'
-import { format_fractional, format_num } from '$lib/labels'
+import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { HighlightStyle, PhaseData, PhaseDiagramConfig } from './types'
+import { symbol } from 'd3-shape'
+import type { HighlightStyle, MarkerSymbol, PhaseData, PhaseDiagramConfig } from './types'
 import { is_unary_entry } from './types'
 
 // Energy color scale factory (shared)
@@ -525,4 +526,90 @@ export function draw_selection_highlight(
   ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
   ctx.fill()
   ctx.stroke()
+}
+
+// Map MarkerSymbol to D3 symbol name (capitalize first letter)
+const MARKER_TO_D3_SYMBOL: Record<MarkerSymbol, string> = {
+  circle: `Circle`,
+  star: `Star`,
+  triangle: `Triangle`,
+  cross: `Cross`,
+  diamond: `Diamond`,
+  square: `Square`,
+  wye: `Wye`,
+}
+
+// Draw a marker symbol on a canvas context at the specified position.
+// Uses d3-shape symbols for consistent rendering with ScatterPlot.
+export function draw_marker_path(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  marker: MarkerSymbol = `circle`,
+): void {
+  const d3_symbol_name = MARKER_TO_D3_SYMBOL[marker]
+  const symbol_type = symbol_map[d3_symbol_name as keyof typeof symbol_map]
+
+  if (!symbol_type) {
+    // Fallback to circle if symbol not found
+    ctx.beginPath()
+    ctx.arc(x, y, size, 0, 2 * Math.PI)
+    return
+  }
+
+  // d3-shape symbol size is the area, so convert radius to area
+  const symbol_area = Math.PI * size * size
+  const path_data = symbol().type(symbol_type).size(symbol_area)()
+
+  if (!path_data) {
+    // Fallback to circle
+    ctx.beginPath()
+    ctx.arc(x, y, size, 0, 2 * Math.PI)
+    return
+  }
+
+  // Create Path2D and translate to position
+  ctx.save()
+  ctx.translate(x, y)
+  const path = new Path2D(path_data)
+  ctx.beginPath()
+  // We need to trace the path for fill/stroke operations
+  // Path2D can be passed directly to fill() and stroke()
+  ctx.restore()
+
+  // Draw using the path at the translated position
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.fill(path)
+  ctx.stroke(path)
+  ctx.restore()
+}
+
+// Draw a marker symbol and return the Path2D for hit testing.
+// This version separates path creation from drawing for more control.
+export function create_marker_path(
+  size: number,
+  marker: MarkerSymbol = `circle`,
+): Path2D {
+  const d3_symbol_name = MARKER_TO_D3_SYMBOL[marker]
+  const symbol_type = symbol_map[d3_symbol_name as keyof typeof symbol_map]
+
+  if (!symbol_type) {
+    // Fallback to circle path
+    const path = new Path2D()
+    path.arc(0, 0, size, 0, 2 * Math.PI)
+    return path
+  }
+
+  const symbol_area = Math.PI * size * size
+  const path_data = symbol().type(symbol_type).size(symbol_area)()
+
+  if (!path_data) {
+    const path = new Path2D()
+    path.arc(0, 0, size, 0, 2 * Math.PI)
+    return path
+  }
+
+  return new Path2D(path_data)
 }
