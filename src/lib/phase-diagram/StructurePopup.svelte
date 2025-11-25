@@ -31,7 +31,7 @@
 
 {#snippet close_button()}
   <button class="close-btn" onclick={() => onclose?.()} title="Close (Esc)">
-    <Icon icon="Close" />
+    <Icon icon="Cross" />
   </button>
 {/snippet}
 
