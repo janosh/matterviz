@@ -152,22 +152,6 @@
     })
   })
 
-  // Binary marker demo
-  let selected_binary_entry = $state<PhaseDiagramEntry | null>(null)
-  const binary_marker_entries = $derived.by(() => {
-    const base = binary_examples[0]?.entries ?? []
-    if (base.length === 0) return []
-    return base.map((entry) => {
-      let marker: MarkerSymbol = `circle`
-      if (selected_binary_entry?.entry_id === entry.entry_id) {
-        marker = `star`
-      } else if (entry.is_stable || (entry.e_above_hull ?? 1) < 0.01) {
-        marker = `square`
-      }
-      return { ...entry, marker }
-    })
-  })
-
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
     const li_fe_p_o = loaded_data.get(
@@ -184,6 +168,22 @@
       { title: `Co-O`, entries: create_binary_subset(li_co_ni_o, [`Co`, `O`]) },
       { title: `Ni-O`, entries: create_binary_subset(li_co_ni_o, [`Ni`, `O`]) },
     ]
+  })
+
+  // Binary marker demo
+  let selected_binary_entry = $state<PhaseDiagramEntry | null>(null)
+  const binary_marker_entries = $derived.by(() => {
+    const base = binary_examples[0]?.entries ?? []
+    if (base.length === 0) return []
+    return base.map((entry) => {
+      let marker: MarkerSymbol = `circle`
+      if (selected_binary_entry?.entry_id === entry.entry_id) {
+        marker = `star`
+      } else if (entry.is_stable || (entry.e_above_hull ?? 1) < 0.01) {
+        marker = `square`
+      }
+      return { ...entry, marker }
+    })
   })
 </script>
 
