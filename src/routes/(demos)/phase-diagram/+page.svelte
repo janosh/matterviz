@@ -56,60 +56,33 @@
     entries_map = new SvelteMap(entries_map)
   }
 
-  // Function to create ternary subset from quaternary data
-  function create_ternary_subset(
-    entries: PymatgenEntry[],
-    ternary_elements: string[],
-  ): PymatgenEntry[] {
-    const element_set = new Set(ternary_elements)
-
-    return entries.filter((entry) => {
-      const elements = Object.keys(entry.composition) as ElementSymbol[]
-      const present_elements = elements.filter((el) =>
-        (entry.composition?.[el] ?? 0) > 0
-      )
-
-      // Include entries that contain only our target elements
-      return present_elements.every((el) => element_set.has(el))
-    })
+  // Filter entries to only include those with compositions from target elements
+  const filter_by_elements = (entries: PymatgenEntry[], elements: string[]) => {
+    const element_set = new Set(elements)
+    return entries.filter((entry) =>
+      (Object.keys(entry.composition) as ElementSymbol[])
+        .filter((el) => (entry.composition?.[el] ?? 0) > 0)
+        .every((el) => element_set.has(el))
+    )
   }
 
-  // Function to create binary subset from quaternary data
-  function create_binary_subset(
-    entries: PymatgenEntry[],
-    binary_elements: [string, string],
-  ): PymatgenEntry[] {
-    const element_set = new Set(binary_elements)
-    return entries.filter((entry) => {
-      const elements = Object.keys(entry.composition) as ElementSymbol[]
-      const present_elements = elements.filter((el) =>
-        (entry.composition?.[el] ?? 0) > 0
-      )
-      // Include entries that contain only our target elements (unaries allowed)
-      return present_elements.every((el) => element_set.has(el))
-    })
-  }
-
-  // Create some ternary examples from quaternary data
-  const na_fe_o_entries = $derived(create_ternary_subset(
-    loaded_data.get(
-      `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
-    ) as PymatgenEntry[] | undefined ?? [],
+  // Create ternary subsets from quaternary data
+  const na_fe_o_entries = $derived(filter_by_elements(
+    (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`) ??
+      []) as PymatgenEntry[],
     [`Na`, `Fe`, `O`],
   ))
 
-  const li_co_ni_o_data = $derived(create_ternary_subset(
-    loaded_data.get(
-      `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
-    ) as PymatgenEntry[] | undefined ?? [],
+  const li_co_ni_o_data = $derived(filter_by_elements(
+    (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`) ??
+      []) as PymatgenEntry[],
     [`Li`, `Co`, `O`],
   ))
 
   // Full quaternary data for Li-Co-Ni-O
   const li_co_ni_o_quaternary = $derived(
-    loaded_data.get(
-      `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
-    ) as PymatgenEntry[] | undefined ?? [],
+    (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`) ??
+      []) as PymatgenEntry[],
   )
 
   // Helper to pick entries for highlighting demos
@@ -160,19 +133,19 @@
 
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
-    const li_fe_p_o = loaded_data.get(
+    const na_fe_p_o = loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
     ) as PymatgenEntry[] | undefined
     const li_co_ni_o = loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
     ) as PymatgenEntry[] | undefined
-    if (!li_fe_p_o || !li_co_ni_o) return []
+    if (!na_fe_p_o || !li_co_ni_o) return []
 
     return [
-      { title: `Na-O`, entries: create_binary_subset(li_fe_p_o, [`Na`, `O`]) },
-      { title: `Fe-O`, entries: create_binary_subset(li_fe_p_o, [`Fe`, `O`]) },
-      { title: `Co-O`, entries: create_binary_subset(li_co_ni_o, [`Co`, `O`]) },
-      { title: `Ni-O`, entries: create_binary_subset(li_co_ni_o, [`Ni`, `O`]) },
+      { title: `Na-O`, entries: filter_by_elements(na_fe_p_o, [`Na`, `O`]) },
+      { title: `Fe-O`, entries: filter_by_elements(na_fe_p_o, [`Fe`, `O`]) },
+      { title: `Co-O`, entries: filter_by_elements(li_co_ni_o, [`Co`, `O`]) },
+      { title: `Ni-O`, entries: filter_by_elements(li_co_ni_o, [`Ni`, `O`]) },
     ]
   })
 

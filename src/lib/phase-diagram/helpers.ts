@@ -522,27 +522,11 @@ export function draw_selection_highlight(
   container_scale: number,
   pulse_time: number,
   pulse_opacity: number,
-  options: {
-    color?: string
-    size_multiplier?: number
-    pulse_amplitude?: number
-    fill_opacity?: number
-    line_width?: number
-  } = {},
 ): void {
-  const {
-    color = `rgba(102, 240, 255, 1)`, // Light cyan
-    size_multiplier = 1.8,
-    pulse_amplitude = 0.3,
-    fill_opacity = 0.6,
-    line_width = 2,
-  } = options
-
-  const highlight_size = base_size *
-    (size_multiplier + pulse_amplitude * Math.sin(pulse_time * 4))
-  ctx.fillStyle = apply_alpha_to_color(color, pulse_opacity * fill_opacity)
-  ctx.strokeStyle = apply_alpha_to_color(color, pulse_opacity)
-  ctx.lineWidth = line_width * container_scale
+  const highlight_size = base_size * (1.8 + 0.3 * Math.sin(pulse_time * 4))
+  ctx.fillStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity * 0.6)
+  ctx.strokeStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity)
+  ctx.lineWidth = 2 * container_scale
   ctx.beginPath()
   ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
   ctx.fill()
