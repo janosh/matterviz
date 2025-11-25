@@ -98,6 +98,7 @@
     // Symmetry analysis settings (bindable for external control)
     symmetry_settings = $bindable(symmetry.default_sym_settings),
     children,
+    top_right_controls,
     on_file_load,
     on_error,
     on_fullscreen_change,
@@ -130,6 +131,7 @@
       info_pane_open?: boolean
       fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
       bottom_left?: Snippet<[{ structure?: AnyStructure }]>
+      top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
       data_url?: string // URL to load structure from (alternative to providing structure directly)
       // Generic callback for when files are dropped - receives raw content and filename
       on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
@@ -789,6 +791,8 @@
           {supercell_loading}
           {sym_data}
         />
+
+        {@render top_right_controls?.()}
       {/if}
     </section>
 
@@ -875,6 +879,7 @@
   }
   .structure:fullscreen {
     background: var(--struct-bg-fullscreen, var(--struct-bg));
+    overflow: hidden;
   }
   .structure:fullscreen :global(canvas) {
     height: 100vh !important;
