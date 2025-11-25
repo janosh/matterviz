@@ -273,10 +273,10 @@ export async function copy_entry_to_clipboard(
 
 export const DEFAULT_HIGHLIGHT_STYLE: Required<HighlightStyle> = {
   effect: `pulse`,
-  color: `#6cf0ff`,
-  size_multiplier: 1.8,
-  opacity: 0.6,
-  pulse_speed: 4,
+  color: `#ff4444`, // Bright red for maximum visibility
+  size_multiplier: 2.5, // Much larger base size
+  opacity: 0.9, // Nearly opaque
+  pulse_speed: 5, // Faster pulsing
 }
 
 export function merge_highlight_style(
@@ -469,28 +469,62 @@ export function draw_highlight_effect(
   style: Required<HighlightStyle>,
 ): void {
   const { effect, color: hl_color, size_multiplier, opacity, pulse_speed } = style
-  const pulse_val = effect === `pulse`
-    ? 0.5 + 0.5 * Math.sin(pulse_time * pulse_speed)
-    : 0
-  const hl_size = size * (size_multiplier + (effect === `pulse` ? 0.3 * pulse_val : 0))
-  const hl_opacity = opacity * (effect === `pulse` ? 0.6 + 0.4 * pulse_val : 1)
 
-  if (effect !== `color`) {
+  if (effect === `pulse`) {
+    // Strong pulsating effect with dramatic size and opacity changes
+    const pulse_val = 0.5 + 0.5 * Math.sin(pulse_time * pulse_speed)
+    const hl_size = size * (size_multiplier + 1.2 * pulse_val) // Much larger pulse amplitude
+    const hl_opacity = opacity * (0.4 + 0.6 * pulse_val) // Stronger opacity variation
+
+    // Draw outer glow ring
+    ctx.lineWidth = (3 + 2 * pulse_val) * container_scale
+    ctx.beginPath()
+    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
+    ctx.fillStyle = apply_alpha_to_color(hl_color, hl_opacity * 0.5)
+    ctx.strokeStyle = apply_alpha_to_color(hl_color, hl_opacity)
+    ctx.fill()
+    ctx.stroke()
+
+    // Draw inner bright ring for extra visibility
+    ctx.lineWidth = 2 * container_scale
+    ctx.beginPath()
+    ctx.arc(projected.x, projected.y, size * 1.3, 0, 2 * Math.PI)
+    ctx.strokeStyle = apply_alpha_to_color(hl_color, hl_opacity * 0.8)
+    ctx.stroke()
+  } else if (effect === `glow`) {
+    // Soft glow effect with multiple layers for depth
+    const hl_size = size * size_multiplier
+
+    // Outer soft glow
+    ctx.beginPath()
+    ctx.arc(projected.x, projected.y, hl_size * 1.5, 0, 2 * Math.PI)
+    ctx.fillStyle = apply_alpha_to_color(hl_color, opacity * 0.2)
+    ctx.fill()
+
+    // Middle glow
+    ctx.beginPath()
+    ctx.arc(projected.x, projected.y, hl_size * 1.2, 0, 2 * Math.PI)
+    ctx.fillStyle = apply_alpha_to_color(hl_color, opacity * 0.4)
+    ctx.fill()
+
+    // Inner glow with stroke
     ctx.lineWidth = 2 * container_scale
     ctx.beginPath()
     ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
-
-    if (effect === `size`) {
-      ctx.strokeStyle = hl_color
-      ctx.stroke()
-    } else {
-      // pulse or glow - apply opacity to the color
-      ctx.fillStyle = apply_alpha_to_color(hl_color, hl_opacity * 0.6)
-      ctx.strokeStyle = apply_alpha_to_color(hl_color, hl_opacity)
-      ctx.fill()
-      ctx.stroke()
-    }
+    ctx.fillStyle = apply_alpha_to_color(hl_color, opacity * 0.6)
+    ctx.strokeStyle = apply_alpha_to_color(hl_color, opacity)
+    ctx.fill()
+    ctx.stroke()
+  } else if (effect === `size`) {
+    // Simple size highlight with stroke
+    const hl_size = size * size_multiplier
+    ctx.lineWidth = 2 * container_scale
+    ctx.beginPath()
+    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
+    ctx.strokeStyle = hl_color
+    ctx.stroke()
   }
+  // effect === `color` is handled in the main drawing code
 }
 
 // Draw selection highlight for currently selected entry (with pulsing animation)

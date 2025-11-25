@@ -112,16 +112,24 @@
     ) as PymatgenEntry[] | undefined ?? [],
   )
 
-  // Highlight examples - find entries with high energy above hull
+  // Highlight examples - find visible entries with moderate energy above hull
   let highlighted_na_fe_o = $state<string[]>([])
   let highlighted_li_co_ni_o = $state<string[]>([])
 
   $effect(() => {
     if (na_fe_o_entries.length > 0 && highlighted_na_fe_o.length === 0) {
-      const sorted = [...na_fe_o_entries]
-        .filter((e) => typeof e.e_above_hull === `number` && e.entry_id)
+      // Select entries with moderate e_above_hull (visible but not on hull)
+      // Filter for entries within visible range (< 0.5 eV/atom) but above hull (> 0.05)
+      const visible_unstable = [...na_fe_o_entries]
+        .filter((e) => {
+          const e_hull = e.e_above_hull ?? 0
+          return typeof e.e_above_hull === `number` && e.entry_id && e_hull > 0.05 &&
+            e_hull < 0.5
+        })
         .sort((a, b) => (b.e_above_hull ?? 0) - (a.e_above_hull ?? 0))
-      highlighted_na_fe_o = sorted.slice(0, 3).map((e) => e.entry_id as string)
+      highlighted_na_fe_o = visible_unstable.slice(0, 5).map((e) =>
+        e.entry_id as string
+      )
     }
   })
 
@@ -308,7 +316,13 @@
           entries={na_fe_o_entries}
           controls={{ title: `High Energy Phases (Pulse)` }}
           bind:highlighted_entries={highlighted_na_fe_o}
-          highlight_style={{ effect: `pulse`, color: `#ff6b6b`, size_multiplier: 2 }}
+          highlight_style={{
+            effect: `pulse`,
+            color: `#ff3333`,
+            size_multiplier: 3.5,
+            opacity: 1,
+            pulse_speed: 6,
+          }}
         />
       </div>
       <div>
@@ -338,7 +352,7 @@
           entries={li_co_ni_o_quaternary}
           controls={{ title: `Stable Phases (Glow)` }}
           bind:highlighted_entries={highlighted_li_co_ni_o}
-          highlight_style={{ effect: `glow`, color: `#4caf50`, size_multiplier: 1.6, opacity: 0.5 }}
+          highlight_style={{ effect: `glow`, color: `#00ff88`, size_multiplier: 3, opacity: 0.9 }}
         />
       </div>
     </div>
