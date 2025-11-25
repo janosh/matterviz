@@ -2,6 +2,7 @@
   import type { ElementSymbol } from '$lib'
   import { decompress_data } from '$lib/io/decompress'
   import type {
+    MarkerSymbol,
     PhaseDiagramEntry,
     PhaseStats,
     PymatgenEntry,
@@ -127,6 +128,46 @@
     }
   })
 
+  // Marker symbol demo state
+  let selected_marker_entry = $state<PhaseDiagramEntry | null>(null)
+  let marker_demo_entries = $derived.by(() => {
+    if (na_fe_o_entries.length === 0) return []
+    // Assign different markers based on entry properties
+    return na_fe_o_entries.map((entry) => {
+      let marker: MarkerSymbol = `circle`
+      // Selected entry gets a star
+      if (selected_marker_entry?.entry_id === entry.entry_id) {
+        marker = `star`
+      } else if (entry.is_stable || (entry.e_above_hull ?? 1) < 0.01) {
+        // Stable entries get diamonds
+        marker = `diamond`
+      } else if ((entry.e_above_hull ?? 0) > 0.3) {
+        // High energy entries get triangles
+        marker = `triangle`
+      } else if ((entry.e_above_hull ?? 0) > 0.1) {
+        // Medium energy entries get crosses
+        marker = `cross`
+      }
+      return { ...entry, marker }
+    })
+  })
+
+  // Binary marker demo
+  let selected_binary_entry = $state<PhaseDiagramEntry | null>(null)
+  const binary_marker_entries = $derived.by(() => {
+    const base = binary_examples[0]?.entries ?? []
+    if (base.length === 0) return []
+    return base.map((entry) => {
+      let marker: MarkerSymbol = `circle`
+      if (selected_binary_entry?.entry_id === entry.entry_id) {
+        marker = `star`
+      } else if (entry.is_stable || (entry.e_above_hull ?? 1) < 0.01) {
+        marker = `square`
+      }
+      return { ...entry, marker }
+    })
+  })
+
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
     const li_fe_p_o = loaded_data.get(
@@ -174,6 +215,41 @@
       }
         <PhaseDiagram3D {entries} controls={{ title }} />
       {/each}
+    </div>
+
+    <h2>Marker Symbols</h2>
+    <p class="section-description">
+      Customize marker shapes to distinguish different entry types. Click an entry to
+      select it (shown as ★). Stable phases use ◆, high-energy phases use △, medium-energy
+      use +.
+    </p>
+    <div class="ternary-grid">
+      <div>
+        <div class="marker-legend">
+          <span>★ Selected</span>
+          <span>◆ Stable</span>
+          <span>△ High E<sub>hull</sub></span>
+          <span>+ Medium E<sub>hull</sub></span>
+          <span>● Default</span>
+        </div>
+        <PhaseDiagram3D
+          entries={marker_demo_entries}
+          controls={{ title: `Na-Fe-O with Markers` }}
+          bind:selected_entry={selected_marker_entry}
+        />
+      </div>
+      <div>
+        <div class="marker-legend">
+          <span>★ Selected</span>
+          <span>■ Stable</span>
+          <span>● Default</span>
+        </div>
+        <PhaseDiagram2D
+          entries={binary_marker_entries}
+          controls={{ title: `Na-O with Markers` }}
+          bind:selected_entry={selected_binary_entry}
+        />
+      </div>
     </div>
 
     <h2>Highlighted Entries</h2>
@@ -345,6 +421,19 @@
     min-height: 200px;
     color: var(--text-color-muted);
   }
+  .marker-legend {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.85em;
+    color: var(--text-color-muted);
+  }
+  .marker-legend span {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
   @media (max-width: 1100px) {
     .ternary-grid,
     .quaternary-grid,
@@ -353,6 +442,9 @@
     }
     .stats-example-grid {
       grid-template-columns: 1fr;
+    }
+    .marker-legend {
+      flex-wrap: wrap;
     }
   }
 </style>
