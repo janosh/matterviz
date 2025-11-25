@@ -2,10 +2,11 @@ import type { ElementSymbol, EnergyModeInfo } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import { get_page_background } from '$lib/colors'
 import { ELEM_SYMBOL_TO_NAME } from '$lib/composition'
-import { format_fractional, format_num } from '$lib/labels'
+import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { HighlightStyle, PhaseData, PhaseDiagramConfig } from './types'
+import { symbol } from 'd3-shape'
+import type { HighlightStyle, MarkerSymbol, PhaseData, PhaseDiagramConfig } from './types'
 import { is_unary_entry } from './types'
 
 // Energy color scale factory (shared)
@@ -272,10 +273,10 @@ export async function copy_entry_to_clipboard(
 
 export const DEFAULT_HIGHLIGHT_STYLE: Required<HighlightStyle> = {
   effect: `pulse`,
-  color: `#6cf0ff`,
-  size_multiplier: 1.8,
-  opacity: 0.6,
-  pulse_speed: 4,
+  color: `#ff4444`, // Bright red for visibility
+  size_multiplier: 1.8, // Moderate base size
+  opacity: 0.85, // High visibility
+  pulse_speed: 3, // Smooth pulsing
 }
 
 export function merge_highlight_style(
@@ -468,28 +469,49 @@ export function draw_highlight_effect(
   style: Required<HighlightStyle>,
 ): void {
   const { effect, color: hl_color, size_multiplier, opacity, pulse_speed } = style
-  const pulse_val = effect === `pulse`
-    ? 0.5 + 0.5 * Math.sin(pulse_time * pulse_speed)
-    : 0
-  const hl_size = size * (size_multiplier + (effect === `pulse` ? 0.3 * pulse_val : 0))
-  const hl_opacity = opacity * (effect === `pulse` ? 0.6 + 0.4 * pulse_val : 1)
 
-  if (effect !== `color`) {
+  if (effect === `pulse`) {
+    // Smooth pulsating effect with moderate size and opacity changes
+    const pulse_val = 0.5 + 0.5 * Math.sin(pulse_time * pulse_speed)
+    const hl_size = size * (size_multiplier + 0.5 * pulse_val) // Moderate pulse amplitude
+    const hl_opacity = opacity * (0.5 + 0.5 * pulse_val) // Smooth opacity variation
+
+    // Draw pulsating ring
+    ctx.lineWidth = (1.5 + 1 * pulse_val) * container_scale
+    ctx.beginPath()
+    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
+    ctx.fillStyle = apply_alpha_to_color(hl_color, hl_opacity * 0.3)
+    ctx.strokeStyle = apply_alpha_to_color(hl_color, hl_opacity)
+    ctx.fill()
+    ctx.stroke()
+  } else if (effect === `glow`) {
+    // Soft glow effect with layered circles for depth
+    const hl_size = size * size_multiplier
+
+    // Outer soft glow
+    ctx.beginPath()
+    ctx.arc(projected.x, projected.y, hl_size * 1.3, 0, 2 * Math.PI)
+    ctx.fillStyle = apply_alpha_to_color(hl_color, opacity * 0.15)
+    ctx.fill()
+
+    // Inner glow with stroke
+    ctx.lineWidth = 1.5 * container_scale
+    ctx.beginPath()
+    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
+    ctx.fillStyle = apply_alpha_to_color(hl_color, opacity * 0.4)
+    ctx.strokeStyle = apply_alpha_to_color(hl_color, opacity * 0.8)
+    ctx.fill()
+    ctx.stroke()
+  } else if (effect === `size`) {
+    // Simple size highlight with stroke
+    const hl_size = size * size_multiplier
     ctx.lineWidth = 2 * container_scale
     ctx.beginPath()
     ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
-
-    if (effect === `size`) {
-      ctx.strokeStyle = hl_color
-      ctx.stroke()
-    } else {
-      // pulse or glow - apply opacity to the color
-      ctx.fillStyle = apply_alpha_to_color(hl_color, hl_opacity * 0.6)
-      ctx.strokeStyle = apply_alpha_to_color(hl_color, hl_opacity)
-      ctx.fill()
-      ctx.stroke()
-    }
+    ctx.strokeStyle = hl_color
+    ctx.stroke()
   }
+  // effect === `color` is handled in the main drawing code
 }
 
 // Draw selection highlight for currently selected entry (with pulsing animation)
@@ -500,29 +522,40 @@ export function draw_selection_highlight(
   container_scale: number,
   pulse_time: number,
   pulse_opacity: number,
-  options: {
-    color?: string
-    size_multiplier?: number
-    pulse_amplitude?: number
-    fill_opacity?: number
-    line_width?: number
-  } = {},
 ): void {
-  const {
-    color = `rgba(102, 240, 255, 1)`, // Light cyan
-    size_multiplier = 1.8,
-    pulse_amplitude = 0.3,
-    fill_opacity = 0.6,
-    line_width = 2,
-  } = options
-
-  const highlight_size = base_size *
-    (size_multiplier + pulse_amplitude * Math.sin(pulse_time * 4))
-  ctx.fillStyle = apply_alpha_to_color(color, pulse_opacity * fill_opacity)
-  ctx.strokeStyle = apply_alpha_to_color(color, pulse_opacity)
-  ctx.lineWidth = line_width * container_scale
+  const highlight_size = base_size * (1.8 + 0.3 * Math.sin(pulse_time * 4))
+  ctx.fillStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity * 0.6)
+  ctx.strokeStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity)
+  ctx.lineWidth = 2 * container_scale
   ctx.beginPath()
   ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
   ctx.fill()
   ctx.stroke()
+}
+
+// Create a Path2D for a marker symbol. Uses d3-shape for consistent rendering with ScatterPlot.
+export function create_marker_path(
+  size: number,
+  marker: MarkerSymbol = `circle`,
+): Path2D {
+  // Capitalize first letter to get D3 symbol name (e.g., 'circle' -> 'Circle')
+  const d3_name = marker.charAt(0).toUpperCase() + marker.slice(1)
+  const symbol_type = symbol_map[d3_name as keyof typeof symbol_map]
+
+  if (!symbol_type) {
+    const path = new Path2D()
+    path.arc(0, 0, size, 0, 2 * Math.PI)
+    return path
+  }
+
+  const symbol_area = Math.PI * size * size
+  const path_data = symbol().type(symbol_type).size(symbol_area)()
+
+  if (!path_data) {
+    const path = new Path2D()
+    path.arc(0, 0, size, 0, 2 * Math.PI)
+    return path
+  }
+
+  return new Path2D(path_data)
 }

@@ -371,7 +371,7 @@
     : `No XRD data to display`}
   />
 {:else}
-  <div class="xrd-plot-container" style="position: relative">
+  <div class="xrd-plot-container" style={`position: relative; ${rest.style ?? ``}`}>
     {#if broadening_enabled}
       <!-- Broadened Profile View -->
       {#snippet tooltip(info: ScatterHandlerProps)}

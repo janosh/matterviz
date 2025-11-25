@@ -1121,6 +1121,7 @@
     border-radius: 0;
     background: var(--plot-bg, white);
     max-height: none !important;
+    overflow: hidden;
   }
   /* Hide controls and fullscreen toggles by default, show on hover */
   .bar-plot :global(.pane-toggle),

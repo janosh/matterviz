@@ -294,6 +294,12 @@
     ),
   )
 
+  // Map MarkerSymbol to D3SymbolName (capitalize first letter)
+  const marker_to_d3_symbol = (marker?: string): string | undefined => {
+    if (!marker) return undefined
+    return marker.charAt(0).toUpperCase() + marker.slice(1)
+  }
+
   const scatter_points_series = $derived.by(() => {
     const visible_entries = plot_entries.filter((e) => e.visible)
     const xs = visible_entries.map((e) => e.x)
@@ -301,22 +307,29 @@
 
     // Stability mode: explicit per-point styles; Energy mode: use color_scale
     const is_energy_mode = color_mode === `energy`
-    const point_style = is_energy_mode ? undefined : visible_entries.map((e) => ({
-      fill: (e.is_stable || e.e_above_hull === 0)
-        ? (merged_config.colors?.stable || `#0072B2`)
-        : (merged_config.colors?.unstable || `#E69F00`),
-      stroke: (e.is_stable || e.e_above_hull === 0) ? `#ffffff` : `#000000`,
-      radius: e.size || ((e.is_stable || e.e_above_hull === 0) ? 6 : 4),
-    }))
+    const point_style = visible_entries.map((e) => {
+      const is_stable = e.is_stable || e.e_above_hull === 0
+      return {
+        fill: is_energy_mode
+          ? undefined
+          : is_stable
+          ? (merged_config.colors?.stable || `#0072B2`)
+          : (merged_config.colors?.unstable || `#E69F00`),
+        stroke: is_stable ? `#ffffff` : `#000000`,
+        radius: e.size || (is_stable ? 6 : 4),
+        symbol_type: marker_to_d3_symbol(e.marker),
+      }
+    })
 
     return {
       x: xs,
       y: ys,
       metadata: visible_entries, // keep PD entry alongside each point
       markers: `points` as const,
+      point_style,
       ...(is_energy_mode
         ? { color_values: visible_entries.map((e) => e.e_above_hull ?? 0) }
-        : { point_style }),
+        : {}),
     }
   })
 
@@ -651,6 +664,7 @@
 <style>
   :global(.phase-diagram-2d:fullscreen) {
     background: var(--pd-2d-bg-fullscreen, var(--pd-2d-bg, var(--pd-bg))) !important;
+    overflow: hidden;
   }
   :global(.phase-diagram-2d.dragover) {
     border: 2px dashed var(--accent-color, #1976d2) !important;

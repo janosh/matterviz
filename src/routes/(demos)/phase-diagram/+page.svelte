@@ -2,6 +2,7 @@
   import type { ElementSymbol } from '$lib'
   import { decompress_data } from '$lib/io/decompress'
   import type {
+    MarkerSymbol,
     PhaseDiagramEntry,
     PhaseStats,
     PymatgenEntry,
@@ -55,95 +56,107 @@
     entries_map = new SvelteMap(entries_map)
   }
 
-  // Function to create ternary subset from quaternary data
-  function create_ternary_subset(
-    entries: PymatgenEntry[],
-    ternary_elements: string[],
-  ): PymatgenEntry[] {
-    const element_set = new Set(ternary_elements)
-
-    return entries.filter((entry) => {
-      const elements = Object.keys(entry.composition) as ElementSymbol[]
-      const present_elements = elements.filter((el) =>
-        (entry.composition?.[el] ?? 0) > 0
-      )
-
-      // Include entries that contain only our target elements
-      return present_elements.every((el) => element_set.has(el))
-    })
+  // Filter entries to only include those with compositions from target elements
+  const filter_by_elements = (entries: PymatgenEntry[], elements: string[]) => {
+    const element_set = new Set(elements)
+    return entries.filter((entry) =>
+      (Object.keys(entry.composition) as ElementSymbol[])
+        .filter((el) => (entry.composition?.[el] ?? 0) > 0)
+        .every((el) => element_set.has(el))
+    )
   }
 
-  // Function to create binary subset from quaternary data
-  function create_binary_subset(
-    entries: PymatgenEntry[],
-    binary_elements: [string, string],
-  ): PymatgenEntry[] {
-    const element_set = new Set(binary_elements)
-    return entries.filter((entry) => {
-      const elements = Object.keys(entry.composition) as ElementSymbol[]
-      const present_elements = elements.filter((el) =>
-        (entry.composition?.[el] ?? 0) > 0
-      )
-      // Include entries that contain only our target elements (unaries allowed)
-      return present_elements.every((el) => element_set.has(el))
-    })
-  }
-
-  // Create some ternary examples from quaternary data
-  const na_fe_o_entries = $derived(create_ternary_subset(
-    loaded_data.get(
-      `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
-    ) as PymatgenEntry[] | undefined ?? [],
+  // Create ternary subsets from quaternary data
+  const na_fe_o_entries = $derived(filter_by_elements(
+    (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`) ??
+      []) as PymatgenEntry[],
     [`Na`, `Fe`, `O`],
   ))
 
-  const li_co_ni_o_data = $derived(create_ternary_subset(
-    loaded_data.get(
-      `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
-    ) as PymatgenEntry[] | undefined ?? [],
+  const li_co_ni_o_data = $derived(filter_by_elements(
+    (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`) ??
+      []) as PymatgenEntry[],
     [`Li`, `Co`, `O`],
   ))
 
-  // Highlight examples - find entries with high energy above hull
-  let highlighted_na_fe_o = $state<string[]>([])
-  let highlighted_li_co_o = $state<string[]>([])
+  // Full quaternary data for Li-Co-Ni-O
+  const li_co_ni_o_quaternary = $derived(
+    (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`) ??
+      []) as PymatgenEntry[],
+  )
 
-  $effect(() => {
-    if (na_fe_o_entries.length > 0 && highlighted_na_fe_o.length === 0) {
-      const sorted = [...na_fe_o_entries]
-        .filter((e) => typeof e.e_above_hull === `number` && e.entry_id)
-        .sort((a, b) => (b.e_above_hull ?? 0) - (a.e_above_hull ?? 0))
-      highlighted_na_fe_o = sorted.slice(0, 3).map((e) => e.entry_id as string)
-    }
-  })
+  // Helper to pick entries for highlighting demos
+  const pick_entries = (
+    entries: PymatgenEntry[],
+    filter: (e: PymatgenEntry) => boolean,
+    count = 5,
+  ) =>
+    entries.filter((e) => e.entry_id && filter(e)).slice(0, count).map((e) =>
+      e.entry_id!
+    )
 
-  $effect(() => {
-    if (li_co_ni_o_data.length > 0 && highlighted_li_co_o.length === 0) {
-      // Find stable entries (on hull)
-      const stable = li_co_ni_o_data
-        .filter((e) => (e.is_stable || (e.e_above_hull ?? 0) < 0.01) && e.entry_id)
-        .slice(0, 5)
-      highlighted_li_co_o = stable.map((e) => e.entry_id as string)
-    }
-  })
+  // Highlight demo: visible unstable entries (ternary) and stable entries (quaternary)
+  const highlighted_na_fe_o = $derived(
+    pick_entries(
+      na_fe_o_entries,
+      (e) => (e.e_above_hull ?? 0) > 0.05 && (e.e_above_hull ?? 1) < 0.5,
+    ),
+  )
+  const highlighted_li_co_ni_o = $derived(
+    pick_entries(
+      li_co_ni_o_quaternary,
+      (e) => e.is_stable || (e.e_above_hull ?? 1) < 0.01,
+    ),
+  )
+
+  // Helper to assign marker based on entry properties
+  const get_marker = (
+    entry: PymatgenEntry,
+    selected_id?: string,
+    stable_marker: MarkerSymbol = `diamond`,
+  ): MarkerSymbol => {
+    if (entry.entry_id === selected_id) return `star`
+    if (entry.is_stable || (entry.e_above_hull ?? 1) < 0.01) return stable_marker
+    if ((entry.e_above_hull ?? 0) > 0.3) return `triangle`
+    if ((entry.e_above_hull ?? 0) > 0.1) return `cross`
+    return `circle`
+  }
+
+  // Marker symbol demo state
+  let selected_marker_entry = $state<PhaseDiagramEntry | null>(null)
+  const marker_demo_entries = $derived(
+    na_fe_o_entries.map((e) => ({
+      ...e,
+      marker: get_marker(e, selected_marker_entry?.entry_id),
+    })),
+  )
 
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
-    const li_fe_p_o = loaded_data.get(
+    const na_fe_p_o = loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
     ) as PymatgenEntry[] | undefined
     const li_co_ni_o = loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
     ) as PymatgenEntry[] | undefined
-    if (!li_fe_p_o || !li_co_ni_o) return []
+    if (!na_fe_p_o || !li_co_ni_o) return []
 
     return [
-      { title: `Na-O`, entries: create_binary_subset(li_fe_p_o, [`Na`, `O`]) },
-      { title: `Fe-O`, entries: create_binary_subset(li_fe_p_o, [`Fe`, `O`]) },
-      { title: `Co-O`, entries: create_binary_subset(li_co_ni_o, [`Co`, `O`]) },
-      { title: `Ni-O`, entries: create_binary_subset(li_co_ni_o, [`Ni`, `O`]) },
+      { title: `Na-O`, entries: filter_by_elements(na_fe_p_o, [`Na`, `O`]) },
+      { title: `Fe-O`, entries: filter_by_elements(na_fe_p_o, [`Fe`, `O`]) },
+      { title: `Co-O`, entries: filter_by_elements(li_co_ni_o, [`Co`, `O`]) },
+      { title: `Ni-O`, entries: filter_by_elements(li_co_ni_o, [`Ni`, `O`]) },
     ]
   })
+
+  // Binary marker demo
+  let selected_binary_entry = $state<PhaseDiagramEntry | null>(null)
+  const binary_marker_entries = $derived(
+    (binary_examples[0]?.entries ?? []).map((e) => ({
+      ...e,
+      marker: get_marker(e, selected_binary_entry?.entry_id, `square`),
+    })),
+  )
 </script>
 
 <svelte:head>
@@ -174,75 +187,6 @@
       }
         <PhaseDiagram3D {entries} controls={{ title }} />
       {/each}
-    </div>
-
-    <h2>Highlighted Entries</h2>
-    <p class="section-description">
-      Highlight specific entries with customizable visual effects. Left: pulsating
-      highlight on high-energy entries. Right: subtle glow on stable phases. Double-click
-      entries to toggle highlighting.
-    </p>
-    <div class="ternary-grid">
-      <div>
-        <details style="margin-bottom: 1em; font-size: 0.9em">
-          <summary style="cursor: pointer">
-            Highlighted: {highlighted_na_fe_o.length} entries
-          </summary>
-          <div style="margin: 0.5em 0">
-            <strong>IDs:</strong> {highlighted_na_fe_o.join(`, `) || `none`}
-          </div>
-          <pre
-            style="overflow: auto; max-height: 200px"
-          >
-{JSON.stringify(
-              na_fe_o_entries
-                .filter((e) => e.entry_id && highlighted_na_fe_o.includes(e.entry_id))
-                .map((e) => ({
-                  id: e.entry_id,
-                  formula: e.reduced_formula,
-                  e_hull: e.e_above_hull,
-                })),
-              null,
-              2,
-            )}</pre>
-        </details>
-        <PhaseDiagram3D
-          entries={na_fe_o_entries}
-          controls={{ title: `High Energy Phases (Pulse)` }}
-          bind:highlighted_entries={highlighted_na_fe_o}
-          highlight_style={{ effect: `pulse`, color: `#ff6b6b`, size_multiplier: 2 }}
-        />
-      </div>
-      <div>
-        <details style="margin-bottom: 1em; font-size: 0.9em">
-          <summary style="cursor: pointer">
-            Highlighted: {highlighted_li_co_o.length} entries
-          </summary>
-          <div style="margin: 0.5em 0">
-            <strong>IDs:</strong> {highlighted_li_co_o.join(`, `) || `none`}
-          </div>
-          <pre
-            style="overflow: auto; max-height: 200px"
-          >
-{JSON.stringify(
-              li_co_ni_o_data
-                .filter((e) => e.entry_id && highlighted_li_co_o.includes(e.entry_id))
-                .map((e) => ({
-                  id: e.entry_id,
-                  formula: e.reduced_formula,
-                  e_hull: e.e_above_hull,
-                })),
-              null,
-              2,
-            )}</pre>
-        </details>
-        <PhaseDiagram3D
-          entries={li_co_ni_o_data}
-          controls={{ title: `Stable Phases (Glow)` }}
-          bind:highlighted_entries={highlighted_li_co_o}
-          highlight_style={{ effect: `glow`, color: `#4caf50`, size_multiplier: 1.6, opacity: 0.5 }}
-        />
-      </div>
     </div>
 
     <h2>Quaternary Chemical Systems</h2>
@@ -294,11 +238,126 @@
         <PhaseDiagramStats {phase_stats} {stable_entries} {unstable_entries} />
       {/if}
     </div>
+
+    <h2>Highlighted Entries</h2>
+    <p class="section-description">
+      Highlight specific entries with customizable visual effects. Left: pulsating
+      highlight on high-energy entries (ternary). Right: subtle glow on stable phases
+      (quaternary). Double-click entries to toggle highlighting.
+    </p>
+    <div class="ternary-grid">
+      <div>
+        <details style="margin-bottom: 1em; font-size: 0.9em">
+          <summary style="cursor: pointer">
+            Highlighted: {highlighted_na_fe_o.length} entries
+          </summary>
+          <div style="margin: 0.5em 0">
+            <strong>IDs:</strong> {highlighted_na_fe_o.join(`, `) || `none`}
+          </div>
+          <pre
+            style="overflow: auto; max-height: 200px"
+          >
+{JSON.stringify(
+              na_fe_o_entries
+                .filter((e) => e.entry_id && highlighted_na_fe_o.includes(e.entry_id))
+                .map((e) => ({
+                  id: e.entry_id,
+                  formula: e.reduced_formula,
+                  e_hull: e.e_above_hull,
+                })),
+              null,
+              2,
+            )}</pre>
+        </details>
+        <PhaseDiagram3D
+          entries={na_fe_o_entries}
+          controls={{ title: `High Energy Phases (Pulse)` }}
+          highlighted_entries={highlighted_na_fe_o}
+          highlight_style={{
+            effect: `pulse`,
+            color: `#ff3333`,
+            size_multiplier: 2,
+            opacity: 0.9,
+            pulse_speed: 3,
+          }}
+        />
+      </div>
+      <div>
+        <details style="margin-bottom: 1em; font-size: 0.9em">
+          <summary style="cursor: pointer">
+            Highlighted: {highlighted_li_co_ni_o.length} entries
+          </summary>
+          <div style="margin: 0.5em 0">
+            <strong>IDs:</strong> {highlighted_li_co_ni_o.join(`, `) || `none`}
+          </div>
+          <pre
+            style="overflow: auto; max-height: 200px"
+          >
+{JSON.stringify(
+              li_co_ni_o_quaternary
+                .filter((e) => e.entry_id && highlighted_li_co_ni_o.includes(e.entry_id))
+                .map((e) => ({
+                  id: e.entry_id,
+                  formula: e.reduced_formula,
+                  e_hull: e.e_above_hull,
+                })),
+              null,
+              2,
+            )}</pre>
+        </details>
+        <PhaseDiagram4D
+          entries={li_co_ni_o_quaternary}
+          controls={{ title: `Stable Phases (Glow)` }}
+          highlighted_entries={highlighted_li_co_ni_o}
+          highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2, opacity: 0.85 }}
+        />
+      </div>
+    </div>
+
+    <h2>Marker Symbols</h2>
+    <p class="section-description">
+      Customize marker shapes to distinguish different entry types. Click an entry to
+      select it (shown as ★). Stable phases use ◆, high-energy phases use △, medium-energy
+      use +.
+    </p>
+    <div class="ternary-grid">
+      <div>
+        <div class="marker-legend">
+          <span>★ Selected</span>
+          <span>◆ Stable</span>
+          <span>△ High E<sub>hull</sub></span>
+          <span>+ Medium E<sub>hull</sub></span>
+          <span>● Default</span>
+        </div>
+        <PhaseDiagram3D
+          entries={marker_demo_entries}
+          controls={{ title: `Na-Fe-O with Markers` }}
+          bind:selected_entry={selected_marker_entry}
+        />
+      </div>
+      <div>
+        <div class="marker-legend">
+          <span>★ Selected</span>
+          <span>■ Stable</span>
+          <span>● Default</span>
+        </div>
+        <PhaseDiagram2D
+          entries={binary_marker_entries}
+          controls={{ title: `Na-O with Markers` }}
+          bind:selected_entry={selected_binary_entry}
+        />
+      </div>
+    </div>
   {:else}
     <div class="loading-state">
       <p>Loading phase diagrams...</p>
     </div>
   {/if}
+
+  <p class="section-description">
+    <strong>Note:</strong> If pure element references are missing from the data, they are
+    automatically added with formation energy = 0 eV/atom (the thermodynamic definition).
+  </p>
 </main>
 
 <style>
@@ -345,6 +404,19 @@
     min-height: 200px;
     color: var(--text-color-muted);
   }
+  .marker-legend {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.85em;
+    color: var(--text-color-muted);
+  }
+  .marker-legend span {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
   @media (max-width: 1100px) {
     .ternary-grid,
     .quaternary-grid,
@@ -353,6 +425,9 @@
     }
     .stats-example-grid {
       grid-template-columns: 1fr;
+    }
+    .marker-legend {
+      flex-wrap: wrap;
     }
   }
 </style>

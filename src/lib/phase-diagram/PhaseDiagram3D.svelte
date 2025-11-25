@@ -619,19 +619,16 @@
       const is_entry_highlighted = is_highlighted(entry)
       const color = get_point_color(entry)
       const size = (entry.size || (is_stable ? 6 : 4)) * canvas_dims.scale
+      const marker = entry.marker || `circle`
 
       // Shadow
       const shadow_offset = Math.abs(entry.z) * 0.1 * canvas_dims.scale
       ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
-      ctx.beginPath()
-      ctx.arc(
-        projected.x + shadow_offset,
-        projected.y + shadow_offset,
-        size * 0.8,
-        0,
-        2 * Math.PI,
-      )
-      ctx.fill()
+      const shadow_path = helpers.create_marker_path(size * 0.8, marker)
+      ctx.save()
+      ctx.translate(projected.x + shadow_offset, projected.y + shadow_offset)
+      ctx.fill(shadow_path)
+      ctx.restore()
 
       // Highlights
       if (selected_entry && entry.entry_id === selected_entry.entry_id) {
@@ -655,17 +652,19 @@
         )
       }
 
-      // Main point
+      // Main point with marker symbol
       ctx.fillStyle =
         is_entry_highlighted && merged_highlight_style.effect === `color`
           ? merged_highlight_style.color
           : color
       ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
       ctx.lineWidth = 0.5 * canvas_dims.scale
-      ctx.beginPath()
-      ctx.arc(projected.x, projected.y, size, 0, 2 * Math.PI)
-      ctx.fill()
-      ctx.stroke()
+      const marker_path = helpers.create_marker_path(size, marker)
+      ctx.save()
+      ctx.translate(projected.x, projected.y)
+      ctx.fill(marker_path)
+      ctx.stroke(marker_path)
+      ctx.restore()
     }
   }
 
@@ -1148,6 +1147,7 @@
   .phase-diagram-3d:fullscreen {
     border-radius: 0;
     background: var(--pd-3d-bg-fullscreen, var(--pd-3d-bg, var(--pd-bg)));
+    overflow: hidden;
   }
   .phase-diagram-3d.dragover {
     border: 2px dashed var(--accent-color, #1976d2);

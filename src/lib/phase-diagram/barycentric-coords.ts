@@ -4,7 +4,7 @@ import { compute_e_form_per_atom, find_lowest_energy_unary_refs } from './thermo
 import type { PhaseData, PhaseDiagramEntry, Point3D } from './types'
 import { is_unary_entry } from './types'
 
-// ================= Ternary coordinates =================
+// --- Ternary coordinates ---
 
 export const TRIANGLE_VERTICES = [
   [1, 0],
@@ -149,7 +149,7 @@ export function get_triangle_vertical_edges(
   return vertices.map((vertex) => [{ ...vertex, z: min_z }, { ...vertex, z: max_z }])
 }
 
-// ================= Quaternary coordinates =================
+// --- Quaternary coordinates ---
 export const TETRAHEDRON_VERTICES = [
   [1, 0, 0],
   [0.5, Math.sqrt(3) / 2, 0],

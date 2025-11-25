@@ -42,18 +42,31 @@ export interface PhaseDiagramData {
   el_refs: Record<string, PhaseData>
 }
 
-// 3D point for tetrahedral coordinates
-export interface Point3D {
+export interface Point2D {
   x: number
   y: number
+}
+
+// 3D point for tetrahedral coordinates
+export interface Point3D extends Point2D {
   z: number
 }
+
+export type MarkerSymbol = // Marker symbol types for phase diagram entries
+  | `circle`
+  | `star`
+  | `triangle`
+  | `cross`
+  | `diamond`
+  | `square`
+  | `wye`
 
 // Plot entry with 3D coordinates for quaternary diagrams
 export interface PhaseDiagramEntry extends PhaseData, Point3D {
   is_element: boolean
   size?: number
   visible: boolean
+  marker?: MarkerSymbol // Optional marker symbol override (default: circle)
 }
 
 // Configuration for phase diagram display
