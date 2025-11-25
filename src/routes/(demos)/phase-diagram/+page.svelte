@@ -105,9 +105,16 @@
     [`Li`, `Co`, `O`],
   ))
 
+  // Full quaternary data for Li-Co-Ni-O
+  const li_co_ni_o_quaternary = $derived(
+    loaded_data.get(
+      `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
+    ) as PymatgenEntry[] | undefined ?? [],
+  )
+
   // Highlight examples - find entries with high energy above hull
   let highlighted_na_fe_o = $state<string[]>([])
-  let highlighted_li_co_o = $state<string[]>([])
+  let highlighted_li_co_ni_o = $state<string[]>([])
 
   $effect(() => {
     if (na_fe_o_entries.length > 0 && highlighted_na_fe_o.length === 0) {
@@ -119,12 +126,12 @@
   })
 
   $effect(() => {
-    if (li_co_ni_o_data.length > 0 && highlighted_li_co_o.length === 0) {
+    if (li_co_ni_o_quaternary.length > 0 && highlighted_li_co_ni_o.length === 0) {
       // Find stable entries (on hull)
-      const stable = li_co_ni_o_data
+      const stable = li_co_ni_o_quaternary
         .filter((e) => (e.is_stable || (e.e_above_hull ?? 0) < 0.01) && e.entry_id)
         .slice(0, 5)
-      highlighted_li_co_o = stable.map((e) => e.entry_id as string)
+      highlighted_li_co_ni_o = stable.map((e) => e.entry_id as string)
     }
   })
 
@@ -217,110 +224,6 @@
       {/each}
     </div>
 
-    <h2>Marker Symbols</h2>
-    <p class="section-description">
-      Customize marker shapes to distinguish different entry types. Click an entry to
-      select it (shown as ★). Stable phases use ◆, high-energy phases use △, medium-energy
-      use +.
-    </p>
-    <div class="ternary-grid">
-      <div>
-        <div class="marker-legend">
-          <span>★ Selected</span>
-          <span>◆ Stable</span>
-          <span>△ High E<sub>hull</sub></span>
-          <span>+ Medium E<sub>hull</sub></span>
-          <span>● Default</span>
-        </div>
-        <PhaseDiagram3D
-          entries={marker_demo_entries}
-          controls={{ title: `Na-Fe-O with Markers` }}
-          bind:selected_entry={selected_marker_entry}
-        />
-      </div>
-      <div>
-        <div class="marker-legend">
-          <span>★ Selected</span>
-          <span>■ Stable</span>
-          <span>● Default</span>
-        </div>
-        <PhaseDiagram2D
-          entries={binary_marker_entries}
-          controls={{ title: `Na-O with Markers` }}
-          bind:selected_entry={selected_binary_entry}
-        />
-      </div>
-    </div>
-
-    <h2>Highlighted Entries</h2>
-    <p class="section-description">
-      Highlight specific entries with customizable visual effects. Left: pulsating
-      highlight on high-energy entries. Right: subtle glow on stable phases. Double-click
-      entries to toggle highlighting.
-    </p>
-    <div class="ternary-grid">
-      <div>
-        <details style="margin-bottom: 1em; font-size: 0.9em">
-          <summary style="cursor: pointer">
-            Highlighted: {highlighted_na_fe_o.length} entries
-          </summary>
-          <div style="margin: 0.5em 0">
-            <strong>IDs:</strong> {highlighted_na_fe_o.join(`, `) || `none`}
-          </div>
-          <pre
-            style="overflow: auto; max-height: 200px"
-          >
-{JSON.stringify(
-              na_fe_o_entries
-                .filter((e) => e.entry_id && highlighted_na_fe_o.includes(e.entry_id))
-                .map((e) => ({
-                  id: e.entry_id,
-                  formula: e.reduced_formula,
-                  e_hull: e.e_above_hull,
-                })),
-              null,
-              2,
-            )}</pre>
-        </details>
-        <PhaseDiagram3D
-          entries={na_fe_o_entries}
-          controls={{ title: `High Energy Phases (Pulse)` }}
-          bind:highlighted_entries={highlighted_na_fe_o}
-          highlight_style={{ effect: `pulse`, color: `#ff6b6b`, size_multiplier: 2 }}
-        />
-      </div>
-      <div>
-        <details style="margin-bottom: 1em; font-size: 0.9em">
-          <summary style="cursor: pointer">
-            Highlighted: {highlighted_li_co_o.length} entries
-          </summary>
-          <div style="margin: 0.5em 0">
-            <strong>IDs:</strong> {highlighted_li_co_o.join(`, `) || `none`}
-          </div>
-          <pre
-            style="overflow: auto; max-height: 200px"
-          >
-{JSON.stringify(
-              li_co_ni_o_data
-                .filter((e) => e.entry_id && highlighted_li_co_o.includes(e.entry_id))
-                .map((e) => ({
-                  id: e.entry_id,
-                  formula: e.reduced_formula,
-                  e_hull: e.e_above_hull,
-                })),
-              null,
-              2,
-            )}</pre>
-        </details>
-        <PhaseDiagram3D
-          entries={li_co_ni_o_data}
-          controls={{ title: `Stable Phases (Glow)` }}
-          bind:highlighted_entries={highlighted_li_co_o}
-          highlight_style={{ effect: `glow`, color: `#4caf50`, size_multiplier: 1.6, opacity: 0.5 }}
-        />
-      </div>
-    </div>
-
     <h2>Quaternary Chemical Systems</h2>
     <p class="section-description">
       4D quaternary phase diagrams project tetrahedral composition coordinates into 3D
@@ -369,6 +272,110 @@
       {#if phase_stats}
         <PhaseDiagramStats {phase_stats} {stable_entries} {unstable_entries} />
       {/if}
+    </div>
+
+    <h2>Highlighted Entries</h2>
+    <p class="section-description">
+      Highlight specific entries with customizable visual effects. Left: pulsating
+      highlight on high-energy entries (ternary). Right: subtle glow on stable phases
+      (quaternary). Double-click entries to toggle highlighting.
+    </p>
+    <div class="ternary-grid">
+      <div>
+        <details style="margin-bottom: 1em; font-size: 0.9em">
+          <summary style="cursor: pointer">
+            Highlighted: {highlighted_na_fe_o.length} entries
+          </summary>
+          <div style="margin: 0.5em 0">
+            <strong>IDs:</strong> {highlighted_na_fe_o.join(`, `) || `none`}
+          </div>
+          <pre
+            style="overflow: auto; max-height: 200px"
+          >
+{JSON.stringify(
+              na_fe_o_entries
+                .filter((e) => e.entry_id && highlighted_na_fe_o.includes(e.entry_id))
+                .map((e) => ({
+                  id: e.entry_id,
+                  formula: e.reduced_formula,
+                  e_hull: e.e_above_hull,
+                })),
+              null,
+              2,
+            )}</pre>
+        </details>
+        <PhaseDiagram3D
+          entries={na_fe_o_entries}
+          controls={{ title: `High Energy Phases (Pulse)` }}
+          bind:highlighted_entries={highlighted_na_fe_o}
+          highlight_style={{ effect: `pulse`, color: `#ff6b6b`, size_multiplier: 2 }}
+        />
+      </div>
+      <div>
+        <details style="margin-bottom: 1em; font-size: 0.9em">
+          <summary style="cursor: pointer">
+            Highlighted: {highlighted_li_co_ni_o.length} entries
+          </summary>
+          <div style="margin: 0.5em 0">
+            <strong>IDs:</strong> {highlighted_li_co_ni_o.join(`, `) || `none`}
+          </div>
+          <pre
+            style="overflow: auto; max-height: 200px"
+          >
+{JSON.stringify(
+              li_co_ni_o_quaternary
+                .filter((e) => e.entry_id && highlighted_li_co_ni_o.includes(e.entry_id))
+                .map((e) => ({
+                  id: e.entry_id,
+                  formula: e.reduced_formula,
+                  e_hull: e.e_above_hull,
+                })),
+              null,
+              2,
+            )}</pre>
+        </details>
+        <PhaseDiagram4D
+          entries={li_co_ni_o_quaternary}
+          controls={{ title: `Stable Phases (Glow)` }}
+          bind:highlighted_entries={highlighted_li_co_ni_o}
+          highlight_style={{ effect: `glow`, color: `#4caf50`, size_multiplier: 1.6, opacity: 0.5 }}
+        />
+      </div>
+    </div>
+
+    <h2>Marker Symbols</h2>
+    <p class="section-description">
+      Customize marker shapes to distinguish different entry types. Click an entry to
+      select it (shown as ★). Stable phases use ◆, high-energy phases use △, medium-energy
+      use +.
+    </p>
+    <div class="ternary-grid">
+      <div>
+        <div class="marker-legend">
+          <span>★ Selected</span>
+          <span>◆ Stable</span>
+          <span>△ High E<sub>hull</sub></span>
+          <span>+ Medium E<sub>hull</sub></span>
+          <span>● Default</span>
+        </div>
+        <PhaseDiagram3D
+          entries={marker_demo_entries}
+          controls={{ title: `Na-Fe-O with Markers` }}
+          bind:selected_entry={selected_marker_entry}
+        />
+      </div>
+      <div>
+        <div class="marker-legend">
+          <span>★ Selected</span>
+          <span>■ Stable</span>
+          <span>● Default</span>
+        </div>
+        <PhaseDiagram2D
+          entries={binary_marker_entries}
+          controls={{ title: `Na-O with Markers` }}
+          bind:selected_entry={selected_binary_entry}
+        />
+      </div>
     </div>
   {:else}
     <div class="loading-state">
