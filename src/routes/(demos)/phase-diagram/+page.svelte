@@ -319,9 +319,9 @@
           highlight_style={{
             effect: `pulse`,
             color: `#ff3333`,
-            size_multiplier: 3.5,
-            opacity: 1,
-            pulse_speed: 6,
+            size_multiplier: 2,
+            opacity: 0.9,
+            pulse_speed: 3,
           }}
         />
       </div>
@@ -352,7 +352,7 @@
           entries={li_co_ni_o_quaternary}
           controls={{ title: `Stable Phases (Glow)` }}
           bind:highlighted_entries={highlighted_li_co_ni_o}
-          highlight_style={{ effect: `glow`, color: `#00ff88`, size_multiplier: 3, opacity: 0.9 }}
+          highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2, opacity: 0.85 }}
         />
       </div>
     </div>
