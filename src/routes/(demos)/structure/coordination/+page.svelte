@@ -1,7 +1,7 @@
 <script lang="ts">
   import { type PymatgenStructure, SETTINGS_CONFIG } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
-  import { get_electro_neg_formula } from '$lib/composition/parse'
+  import { get_electro_neg_formula } from '$lib/composition'
   import type { SplitMode } from '$lib/coordination'
   import { CoordinationBarPlot, SPLIT_MODES } from '$lib/coordination'
   import { Structure } from '$lib/structure'

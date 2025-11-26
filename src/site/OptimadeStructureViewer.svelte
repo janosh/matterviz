@@ -10,8 +10,7 @@
     fetch_optimade_structure,
     fetch_suggested_structures,
   } from '$lib/api/optimade'
-  import { Composition } from '$lib/composition'
-  import { get_electro_neg_formula } from '$lib/composition/parse'
+  import { Composition, get_electro_neg_formula } from '$lib/composition'
   import type { PymatgenStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import { optimade_to_pymatgen } from '$lib/structure/parse'
