@@ -1,5 +1,9 @@
 import type { ElementSymbol } from '$lib'
-import { sort_by_electronegativity } from '$lib/composition/parse'
+import {
+  count_atoms_in_composition,
+  extract_formula_elements,
+  sort_by_electronegativity,
+} from '$lib/composition/parse'
 import * as math from '$lib/math'
 import {
   barycentric_to_ternary_xyz,
@@ -18,23 +22,47 @@ import type {
 } from './types'
 import { is_unary_entry } from './types'
 
-// --- Thermodynamics & metadata ---
+// Normalize composition keys by stripping oxidation states (e.g. "V4+" -> "V")
+// and merging amounts for keys that map to the same element
+function normalize_composition(
+  composition: Record<string, number>,
+): Record<ElementSymbol, number> {
+  const normalized: Record<string, number> = {}
+  for (const [key, amount] of Object.entries(composition)) {
+    // Extract clean element symbol from key (handles oxidation states like "V4+", "Fe2+")
+    const clean_elements = extract_formula_elements(key, { unique: false })
+    // If no valid elements found, preserve the original key (for mock data / testing)
+    if (clean_elements.length === 0) {
+      normalized[key] = (normalized[key] || 0) + amount
+    } else {
+      for (const elem of clean_elements) {
+        normalized[elem] = (normalized[elem] || 0) + amount
+      }
+    }
+  }
+  return normalized as Record<ElementSymbol, number>
+}
 
 export function process_pd_entries(entries: PhaseData[]): PhaseDiagramData {
-  const eps = 1e-6
-  const stable_entries = entries.filter((entry) => {
-    if (typeof entry.is_stable === `boolean`) return entry.is_stable
-    const e_hull = entry.e_above_hull ?? Infinity
-    return e_hull <= eps
-  })
-  const unstable_entries = entries.filter((entry) => {
-    if (typeof entry.is_stable === `boolean`) return !entry.is_stable
-    const e_hull = entry.e_above_hull ?? Infinity
-    return e_hull > eps
-  })
+  // Normalize composition keys to strip oxidation states (e.g. "Fe3+" -> "Fe")
+  const normalized_entries = entries.map((entry) => ({
+    ...entry,
+    composition: normalize_composition(entry.composition),
+  }))
 
+  // Single-pass partition instead of two filter passes
+  const stable_entries: PhaseData[] = []
+  const unstable_entries: PhaseData[] = []
+  for (const entry of normalized_entries) {
+    const stable = typeof entry.is_stable === `boolean`
+      ? entry.is_stable
+      : (entry.e_above_hull ?? Infinity) <= 1e-6
+    ;(stable ? stable_entries : unstable_entries).push(entry)
+  }
+
+  // Extract unique element symbols from normalized compositions
   const elements = Array.from(
-    new Set(entries.flatMap((entry) => Object.keys(entry.composition))),
+    new Set(normalized_entries.flatMap((entry) => Object.keys(entry.composition))),
   ).sort() as ElementSymbol[]
 
   const el_refs = Object.fromEntries(
@@ -43,41 +71,40 @@ export function process_pd_entries(entries: PhaseData[]): PhaseDiagramData {
       .map((entry) => [Object.keys(entry.composition)[0], entry]),
   )
 
-  return { entries, stable_entries, unstable_entries, elements, el_refs }
+  return {
+    entries: normalized_entries,
+    stable_entries,
+    unstable_entries,
+    elements,
+    el_refs,
+  }
 }
 
-function get_corrected_energy_per_atom(entry: PhaseData): number | null {
-  const atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
-  if (atoms <= 0) return null
-  const base_total_energy = typeof entry.energy_per_atom === `number`
-    ? entry.energy_per_atom * atoms
-    : (typeof entry.energy === `number` ? entry.energy : null)
-  if (base_total_energy === null) return null
-  return (base_total_energy + (entry.correction ?? 0)) / atoms
+// Get energy per atom with correction applied, or fallback to raw energy_per_atom/energy
+function get_energy_per_atom(entry: PhaseData): number {
+  const atoms = count_atoms_in_composition(entry.composition) || 1e-12
+  if (typeof entry.correction === `number`) {
+    const total = typeof entry.energy_per_atom === `number`
+      ? entry.energy_per_atom * atoms
+      : (entry.energy ?? 0)
+    return (total + entry.correction) / atoms
+  }
+  return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
 }
 
 export function compute_e_form_per_atom(
   entry: PhaseData,
   el_refs: Record<string, PhaseData>,
 ): number | null {
-  const atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
+  const atoms = count_atoms_in_composition(entry.composition)
   if (atoms <= 0) return null
-  const e_pa = get_corrected_energy_per_atom(entry) ??
-    (typeof entry.energy_per_atom === `number`
-      ? entry.energy_per_atom
-      : entry.energy / atoms)
   let ref_sum = 0
   for (const [el, amt] of Object.entries(entry.composition)) {
     const ref = el_refs[el]
     if (!ref) return null
-    const ref_atoms = Object.values(ref.composition).reduce((sum, amt) => sum + amt, 0)
-    const ref_e_pa = get_corrected_energy_per_atom(ref) ??
-      (typeof ref.energy_per_atom === `number`
-        ? ref.energy_per_atom
-        : (ref.energy as number) / Math.max(1e-12, ref_atoms))
-    ref_sum += (amt / atoms) * ref_e_pa
+    ref_sum += (amt / atoms) * get_energy_per_atom(ref)
   }
-  return e_pa - ref_sum
+  return get_energy_per_atom(entry) - ref_sum
 }
 
 export function find_lowest_energy_unary_refs(
@@ -87,27 +114,12 @@ export function find_lowest_energy_unary_refs(
   for (const entry of entries) {
     if (!is_unary_entry(entry)) continue
     const el = Object.keys(entry.composition).find(
-      (el) => (entry.composition[el as ElementSymbol] ?? 0) > 0,
+      (key) => (entry.composition[key as ElementSymbol] ?? 0) > 0,
     )
     if (!el) continue
-    const atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
-    const e_pa = get_corrected_energy_per_atom(entry) ??
-      (typeof entry.energy_per_atom === `number`
-        ? entry.energy_per_atom
-        : entry.energy / Math.max(1e-12, atoms))
     const current = refs[el]
-    if (!current) {
+    if (!current || get_energy_per_atom(entry) < get_energy_per_atom(current)) {
       refs[el] = entry
-    } else {
-      const c_atoms = Object.values(current.composition).reduce(
-        (sum, amt) => sum + amt,
-        0,
-      )
-      const c_e_pa = get_corrected_energy_per_atom(current) ??
-        (typeof current.energy_per_atom === `number`
-          ? current.energy_per_atom
-          : (current.energy ?? 0) / Math.max(1e-12, c_atoms))
-      if (e_pa < c_e_pa) refs[el] = entry
     }
   }
   return refs
@@ -188,7 +200,7 @@ export function calculate_e_above_hull(
     for (const ref of reference_entries) {
       const e_form = compute_e_form(ref)
       if (typeof e_form !== `number`) continue
-      const total = Object.values(ref.composition).reduce((s, v) => s + v, 0)
+      const total = count_atoms_in_composition(ref.composition)
       if (total <= 0) continue
       const x = (ref.composition[el2] || 0) / total
       const current = hull_input_map.get(x)
@@ -209,7 +221,7 @@ export function calculate_e_above_hull(
         results[id] = NaN
         continue
       }
-      const total = Object.values(entry.composition).reduce((s, v) => s + v, 0)
+      const total = count_atoms_in_composition(entry.composition)
       const x = total > 0 ? (entry.composition[el2] || 0) / total : 0
       const y_hull = interpolate_hull_2d(lower_hull, x)
       results[id] = y_hull === null ? NaN : Math.max(0, e_form - y_hull)
