@@ -45,6 +45,22 @@ test.describe(`Structure Component Tests`, () => {
     await expect(page.locator(`#test-structure .measure-mode-dropdown`)).toHaveCount(0)
   })
 
+  test(`SupercellSelector appears on hover and hides on mouse leave`, async ({ page }) => {
+    const structure = page.locator(`#test-structure`)
+    const supercell = structure.locator(`.supercell-selector`)
+
+    // Initially hidden
+    await expect(supercell).toHaveCSS(`opacity`, `0`)
+
+    // Visible on hover
+    await structure.hover()
+    await expect(supercell).toHaveCSS(`opacity`, `1`)
+
+    // Hidden after mouse leaves
+    await page.mouse.move(0, 0)
+    await expect(supercell).toHaveCSS(`opacity`, `0`)
+  })
+
   test(`reacts to background_color prop change from test page`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const background_color_input = page.locator(
