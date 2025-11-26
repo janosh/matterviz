@@ -22,22 +22,23 @@ import type {
 } from './types'
 import { is_unary_entry } from './types'
 
-// Normalize composition keys by stripping oxidation states (e.g. "V4+" -> "V")
-// and merging amounts for keys that map to the same element
-function normalize_composition(
+// Normalize phase diagram composition keys by stripping oxidation states (e.g. "V4+" -> "V")
+// and merging amounts for keys that map to the same element.
+// Keys without recognizable element tokens are filtered out with a warning.
+// Different from $lib/composition.normalize_composition which only filters non-positive amounts.
+export function normalize_pd_composition_keys(
   composition: Record<string, number>,
 ): Record<ElementSymbol, number> {
   const normalized: Record<string, number> = {}
   for (const [key, amount] of Object.entries(composition)) {
     // Extract clean element symbol from key (handles oxidation states like "V4+", "Fe2+")
     const clean_elements = extract_formula_elements(key, { unique: false })
-    // If no valid elements found, preserve the original key (for mock data / testing)
     if (clean_elements.length === 0) {
-      normalized[key] = (normalized[key] || 0) + amount
-    } else {
-      for (const elem of clean_elements) {
-        normalized[elem] = (normalized[elem] || 0) + amount
-      }
+      console.warn(`Skipping invalid composition key: "${key}"`)
+      continue
+    }
+    for (const elem of clean_elements) {
+      normalized[elem] = (normalized[elem] || 0) + amount
     }
   }
   return normalized as Record<ElementSymbol, number>
@@ -47,7 +48,7 @@ export function process_pd_entries(entries: PhaseData[]): PhaseDiagramData {
   // Normalize composition keys to strip oxidation states (e.g. "Fe3+" -> "Fe")
   const normalized_entries = entries.map((entry) => ({
     ...entry,
-    composition: normalize_composition(entry.composition),
+    composition: normalize_pd_composition_keys(entry.composition),
   }))
 
   // Single-pass partition instead of two filter passes
@@ -80,7 +81,9 @@ export function process_pd_entries(entries: PhaseData[]): PhaseDiagramData {
   }
 }
 
-// Get energy per atom with correction applied, or fallback to raw energy_per_atom/energy
+// Get energy per atom with correction applied, or fallback to raw energy_per_atom/energy.
+// Note: correction is expected to be a total-entry value (eV), not per-atom.
+// This matches the Materials Project convention where corrections are applied to total energies.
 function get_energy_per_atom(entry: PhaseData): number {
   const atoms = count_atoms_in_composition(entry.composition) || 1e-12
   if (typeof entry.correction === `number`) {

@@ -116,6 +116,8 @@ export const normalize_composition = (
 // Handles malformed keys like "B0.", "Fe2+", "Fe[2+]", "Ca^2+" by extracting
 // the element symbol portion. Merges amounts for keys that map to the same element.
 // Returns null if no valid elements can be extracted.
+// NOTE: Only extracts the FIRST valid element from each key. Keys with multiple
+// elements (e.g. "CO3", "Fe2O3") will lose stoichiometry - use parse_formula for those.
 export const sanitize_composition_keys = (
   composition: Record<string, number>,
 ): CompositionType | null => {
