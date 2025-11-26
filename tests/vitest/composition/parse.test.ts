@@ -9,10 +9,15 @@ import {
   generate_chem_sys_subspaces,
   get_alphabetical_formula,
   get_electro_neg_formula,
+  get_hill_formula,
+  get_molecular_weight,
+  get_reduced_formula,
+  is_valid_element,
   normalize_composition,
   normalize_element_symbols,
   parse_composition,
   parse_formula,
+  sanitize_composition_keys,
 } from '$lib/composition/parse'
 import { describe, expect, test } from 'vitest'
 
@@ -138,6 +143,23 @@ describe(`normalize_composition`, () => {
     ],
   ])(`should normalize %s to %s (%s)`, (input, expected, _description) => {
     expect(normalize_composition(input)).toEqual(expected)
+  })
+})
+
+describe(`sanitize_composition_keys`, () => {
+  test.each([
+    [{ Fe: 2, O: 3 }, { Fe: 2, O: 3 }, `valid keys unchanged`],
+    [{ 'Fe2+': 2, 'O2-': 3 }, { Fe: 2, O: 3 }, `strips oxidation states`],
+    [{ 'B0.': 1 }, { B: 1 }, `handles trailing junk`],
+    [{ 'Ca^2+': 1, 'CO3': 1 }, { Ca: 1, C: 1 }, `extracts first valid element`],
+    [{ 'Fe[2+]': 1 }, { Fe: 1 }, `handles bracket notation`],
+    [{ 'V4+': 2, 'V5+': 3 }, { V: 5 }, `merges same element`],
+    [{ invalid: 1, '!!!': 2 }, null, `returns null for no valid elements`],
+    [{ Fe: 0, O: -1 }, null, `ignores non-positive amounts`],
+    [{ Fe: 1, invalid: 2 }, { Fe: 1 }, `filters invalid keys`],
+    [{}, null, `returns null for empty input`],
+  ])(`%s -> %s (%s)`, (input, expected, _description) => {
+    expect(sanitize_composition_keys(input)).toEqual(expected)
   })
 })
 
@@ -629,6 +651,33 @@ describe(`extract_formula_elements`, () => {
       expect(result2).toEqual([`Nb`, `Zr`, `Nb`])
     })
   })
+
+  describe(`oxidation state stripping`, () => {
+    test.each([
+      [`V4+`, [`V`]],
+      [`Fe3+`, [`Fe`]],
+      [`O2-`, [`O`]],
+      [`Cu+`, [`Cu`]],
+      [`S2-`, [`S`]],
+    ])(`%s -> %s`, (formula, expected) => {
+      expect(extract_formula_elements(formula, { unique: false })).toEqual(expected)
+    })
+
+    test(`phase diagram composition keys with oxidation states`, () => {
+      const entries = [{ composition: { 'V4+': 1, 'O2-': 2 } }, {
+        composition: { 'Fe3+': 2 },
+      }]
+      const elements = new Set<string>()
+      for (const { composition } of entries) {
+        for (const key of Object.keys(composition)) {
+          for (const elem of extract_formula_elements(key, { unique: false })) {
+            elements.add(elem)
+          }
+        }
+      }
+      expect(Array.from(elements).sort()).toEqual([`Fe`, `O`, `V`])
+    })
+  })
 })
 
 describe(`generate_chem_sys_subspaces`, () => {
@@ -726,7 +775,7 @@ describe(`generate_chem_sys_subspaces`, () => {
     ])(
       `should generate subspaces from array %j (%s)`,
       (elements, expected, _description) => {
-        const result = generate_chem_sys_subspaces(elements)
+        const result = generate_chem_sys_subspaces(elements as ElementSymbol[])
         expect(result.sort()).toEqual(expected.sort())
       },
     )
@@ -1010,5 +1059,64 @@ describe(`normalize_element_symbols`, () => {
     const custom_symbols = [`A`, `B`, `C`]
     const result = normalize_element_symbols(`B, C`, custom_symbols as ElementSymbol[])
     expect(result).toEqual([`B`, `C`])
+  })
+})
+
+describe(`is_valid_element`, () => {
+  test.each([
+    [`Fe`, true],
+    [`O`, true],
+    [`H`, true],
+    [`Og`, true],
+    [`X`, false],
+    [`Fe2`, false],
+    [``, false],
+    [`fe`, false],
+  ])(`%s -> %s`, (input, expected) => {
+    expect(is_valid_element(input)).toBe(expected)
+  })
+})
+
+describe(`get_hill_formula`, () => {
+  test.each([
+    [`CH4`, `C H<sub>4</sub>`, `methane - C first`],
+    [`H2O`, `H<sub>2</sub> O`, `water - no carbon, alphabetical`],
+    [`C2H6O`, `C<sub>2</sub> H<sub>6</sub> O`, `ethanol - C first, H second`],
+    [`NaCl`, `Cl Na`, `salt - alphabetical (no C)`],
+    [
+      { C: 6, H: 12, O: 6 },
+      `C<sub>6</sub> H<sub>12</sub> O<sub>6</sub>`,
+      `glucose from object`,
+    ],
+  ])(`%s -> %s (%s)`, (input, expected, _desc) => {
+    expect(get_hill_formula(input)).toBe(expected)
+  })
+
+  test(`plain text mode`, () => {
+    expect(get_hill_formula(`CH4`, true)).toBe(`C H4`)
+  })
+})
+
+describe(`get_reduced_formula`, () => {
+  test.each([
+    [{ Fe: 2, O: 4 }, { Fe: 1, O: 2 }, `reduces by GCD of 2`],
+    [{ H: 4, O: 2 }, { H: 2, O: 1 }, `water from H4O2`],
+    [{ Fe: 2, O: 3 }, { Fe: 2, O: 3 }, `already reduced`],
+    [{ C: 1 }, { C: 1 }, `single element`],
+    [{}, {}, `empty composition`],
+    [{ Fe: 1.5, O: 3 }, { Fe: 1.5, O: 3 }, `non-integer unchanged`],
+  ])(`%j -> %j (%s)`, (input, expected, _desc) => {
+    expect(get_reduced_formula(input)).toEqual(expected)
+  })
+})
+
+describe(`get_molecular_weight`, () => {
+  test.each([
+    [{ H: 2, O: 1 }, 18.015, `water`],
+    [{ Na: 1, Cl: 1 }, 58.44, `NaCl`],
+    [{ C: 1 }, 12.011, `carbon`],
+    [{}, 0, `empty`],
+  ])(`%j ≈ %s (%s)`, (input, expected, _desc) => {
+    expect(get_molecular_weight(input)).toBeCloseTo(expected, 1)
   })
 })
