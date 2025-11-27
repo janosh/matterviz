@@ -159,3 +159,41 @@ export function get_page_background(
   const prefers_dark = globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches
   return prefers_dark ? fallback_dark : fallback_light
 }
+
+// Detect dark mode: checks data-theme attribute, localStorage, then OS preference
+export function is_dark_mode(): boolean {
+  if (typeof document === `undefined`) return false
+  const data_theme = document.documentElement.dataset.theme
+  if (data_theme === `dark` || data_theme === `light`) return data_theme === `dark`
+  try {
+    const stored = localStorage.getItem(`theme`)
+    if (stored === `dark` || stored === `light`) return stored === `dark`
+  } catch { /* localStorage may throw in private browsing */ }
+  return globalThis.matchMedia?.(`(prefers-color-scheme: dark)`).matches ?? false
+}
+
+// Watch for dark mode changes and call callback on each change. Returns cleanup function.
+export function watch_dark_mode(on_change: (dark: boolean) => void): () => void {
+  if (typeof document === `undefined`) return () => {} // No-op in SSR
+  const notify = () => on_change(is_dark_mode())
+
+  const observer = new MutationObserver(notify)
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: [`data-theme`],
+  })
+
+  const on_storage = (ev: StorageEvent) => {
+    if (ev.key === `theme`) notify()
+  }
+  globalThis.addEventListener(`storage`, on_storage)
+
+  const media_query = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)
+  media_query?.addEventListener(`change`, notify)
+
+  return () => {
+    observer.disconnect()
+    globalThis.removeEventListener(`storage`, on_storage)
+    media_query?.removeEventListener(`change`, notify)
+  }
+}

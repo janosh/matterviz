@@ -1041,4 +1041,15 @@
   .symmetry-error button:hover {
     opacity: 1;
   }
+  /* SupercellSelector: position at left of legend, show on hover */
+  .structure :global(.supercell-selector) {
+    order: -1; /* Move to left side of AtomLegend flex container */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .structure:hover :global(.supercell-selector) {
+    opacity: 1;
+    pointer-events: auto;
+  }
 </style>
