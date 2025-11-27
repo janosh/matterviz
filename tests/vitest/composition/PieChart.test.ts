@@ -1,8 +1,8 @@
-import { PieChart } from '$lib/composition'
 import {
   count_atoms_in_composition,
   fractional_composition,
-} from '$lib/composition/parse'
+  PieChart,
+} from '$lib/composition'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 

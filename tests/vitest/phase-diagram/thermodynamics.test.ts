@@ -12,12 +12,13 @@ import {
   e_hull_at_xy,
   find_lowest_energy_unary_refs,
   get_phase_diagram_stats,
+  normalize_pd_composition_keys,
   process_pd_entries,
 } from '$lib/phase-diagram/thermodynamics'
 import type { ConvexHullTriangle, PhaseData } from '$lib/phase-diagram/types'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 function make_paraboloid_points(): { x: number; y: number; z: number }[] {
   const pts: { x: number; y: number; z: number }[] = []
@@ -137,17 +138,71 @@ describe(`energies: hull model and e_above_hull evaluation`, () => {
 
 describe(`energies: process_pd_entries categorization and element extraction`, () => {
   test(`splits stable/unstable and extracts elements + el_refs`, () => {
-    const entries = [
-      { composition: { A: 1 }, energy: 0, e_above_hull: 0 },
-      { composition: { B: 2 }, energy: 0, e_above_hull: 0 },
-      { composition: { A: 1, B: 1 }, energy: -1, e_above_hull: 0.05 },
-      { composition: { A: 1, B: 2 }, energy: -2, e_above_hull: 0 },
-    ] as unknown as PhaseData[]
+    const entries: PhaseData[] = [
+      { composition: { Li: 1 }, energy: 0, e_above_hull: 0 },
+      { composition: { Fe: 2 }, energy: 0, e_above_hull: 0 },
+      { composition: { Li: 1, Fe: 1 }, energy: -1, e_above_hull: 0.05 },
+      { composition: { Li: 1, Fe: 2 }, energy: -2, e_above_hull: 0 },
+    ]
     const out = process_pd_entries(entries)
-    expect(out.elements.sort()).toEqual([`A`, `B`])
+    expect(out.elements.sort()).toEqual([`Fe`, `Li`])
     expect(out.stable_entries.length).toBe(3)
     expect(out.unstable_entries.length).toBe(1)
-    expect(Object.keys(out.el_refs).sort()).toEqual([`A`, `B`])
+    expect(Object.keys(out.el_refs).sort()).toEqual([`Fe`, `Li`])
+  })
+})
+
+describe(`normalize_pd_composition_keys`, () => {
+  test(`strips oxidation states from composition keys`, () => {
+    const result = normalize_pd_composition_keys({ 'Fe3+': 2, 'O2-': 3 })
+    expect(result).toEqual({ Fe: 2, O: 3 })
+  })
+
+  test(`merges amounts for duplicate elements after stripping`, () => {
+    const result = normalize_pd_composition_keys({ 'V4+': 1, 'V5+': 2 })
+    expect(result).toEqual({ V: 3 })
+  })
+
+  test(`extracts only first element from multi-element keys`, () => {
+    // Multi-element keys like "Fe2O3" should only use first element (Fe)
+    // This is intentional - such keys should be cleaned upstream
+    const result = normalize_pd_composition_keys({ Fe2O3: 2, Li: 1 })
+    expect(result).toEqual({ Fe: 2, Li: 1 }) // O is NOT extracted
+  })
+
+  test(`warns and filters out invalid composition keys`, () => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const result = normalize_pd_composition_keys({
+      Fe: 2,
+      invalid_key: 1,
+      '!!!': 3,
+      O: 1,
+    })
+    expect(result).toEqual({ Fe: 2, O: 1 })
+    expect(warn_spy).toHaveBeenCalledTimes(2)
+    expect(warn_spy).toHaveBeenCalledWith(
+      `Skipping unrecognized composition key: "invalid_key"`,
+    )
+    expect(warn_spy).toHaveBeenCalledWith(`Skipping unrecognized composition key: "!!!"`)
+
+    warn_spy.mockRestore()
+  })
+
+  test(`filters non-positive and non-finite amounts`, () => {
+    const result = normalize_pd_composition_keys({
+      Fe: 2,
+      O: 0,
+      Na: -1,
+      Cl: NaN,
+      K: Infinity,
+      Ca: 3,
+    })
+    expect(result).toEqual({ Fe: 2, Ca: 3 })
+  })
+
+  test(`handles empty composition`, () => {
+    const result = normalize_pd_composition_keys({})
+    expect(result).toEqual({})
   })
 })
 

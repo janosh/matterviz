@@ -1,8 +1,8 @@
-import { BarChart } from '$lib/composition'
 import {
+  BarChart,
   count_atoms_in_composition,
   fractional_composition,
-} from '$lib/composition/parse'
+} from '$lib/composition'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'

@@ -2,7 +2,7 @@
   import type { AnyStructure } from '$lib'
   import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
-  import { contrast_color } from '$lib/colors'
+  import { contrast_color, is_dark_mode, watch_dark_mode } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { ColorBar } from '$lib/plot'
   import {
@@ -67,10 +67,17 @@
     margin: { t: 60, r: 60, b: 60, l: 60, ...(config.margin || {}) },
   })
 
-  // Resolve text color for canvas rendering (canvas context can't resolve CSS variables)
-  const resolved_text_color = $derived(
-    helpers.resolve_canvas_text_color(wrapper, merged_config.colors?.annotation),
-  )
+  // Reactive dark mode detection for canvas text color
+  let dark_mode = $state(is_dark_mode())
+  $effect(() => watch_dark_mode((dark) => dark_mode = dark))
+  const text_color = $derived.by(() => {
+    // Reference dark_mode to ensure re-evaluation when theme changes
+    void dark_mode
+    if (typeof document === `undefined`) return dark_mode ? `#ffffff` : `#212121`
+    const computed = getComputedStyle(canvas || document.documentElement)
+    return computed.getPropertyValue(`--text-color`)?.trim() ||
+      (dark_mode ? `#ffffff` : `#212121`)
+  })
 
   let { // Compute energy mode information
     has_precomputed_e_form,
@@ -301,7 +308,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity]
+    [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, text_color]
 
     render_once()
   })
@@ -520,7 +527,7 @@
         z: (vertices[0].z + vertices[1].z + vertices[2].z + vertices[3].z) / 4,
       }
 
-      ctx.fillStyle = resolved_text_color
+      ctx.fillStyle = text_color
       ctx.font = `bold 18px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
@@ -729,7 +736,7 @@
           (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
       )
       if (should_label) {
-        ctx.fillStyle = resolved_text_color
+        ctx.fillStyle = text_color
         const label = entry.name || entry.reduced_formula || entry.entry_id ||
           `Unknown`
         const font_size = Math.round(12 * canvas_dims.scale)
@@ -754,8 +761,7 @@
     ctx.fillRect(0, 0, display_width, display_height)
 
     if (elements.length !== 4) {
-      // Show error message
-      ctx.fillStyle = resolved_text_color
+      ctx.fillStyle = text_color
       ctx.font = `16px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`

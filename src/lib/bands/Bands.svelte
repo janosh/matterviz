@@ -68,10 +68,20 @@
   }
 
   // Normalize input to dict format
+  // Supports both matterviz format (qpoints + branches) and pymatgen format (qpoints + bands arrays)
   let band_structs_dict = $derived.by(() => {
     if (!band_structs) return {}
 
-    const is_single = `qpoints` in band_structs && `branches` in band_structs
+    // Detect single band structure
+    // - matterviz format: has qpoints + branches arrays
+    // - pymatgen format: has qpoints + bands arrays (no branches)
+    const is_matterviz_single = `qpoints` in band_structs &&
+      `branches` in band_structs
+    const is_pymatgen_single = `qpoints` in band_structs && `bands` in band_structs &&
+      Array.isArray(band_structs.qpoints) && Array.isArray(band_structs.bands) &&
+      band_structs.qpoints.length > 0 && !(`branches` in band_structs)
+    const is_single = is_matterviz_single || is_pymatgen_single
+
     const result: Record<string, BaseBandStructure> = {}
 
     if (is_single) {

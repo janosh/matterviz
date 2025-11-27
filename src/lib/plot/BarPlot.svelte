@@ -1116,7 +1116,8 @@
     left: 0;
     width: 100vw !important;
     height: 100vh !important;
-    z-index: 9999;
+    /* Must be higher than Structure.svelte's --struct-buttons-z-index (100000000) */
+    z-index: var(--barplot-fullscreen-z-index, 100000001);
     margin: 0;
     border-radius: 0;
     background: var(--plot-bg, white);

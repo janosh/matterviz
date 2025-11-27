@@ -1,9 +1,9 @@
-import { Formula } from '$lib/composition'
-import type { OxiComposition } from '$lib/composition/parse'
 import {
+  Formula,
   oxi_composition_to_elements,
+  type OxiComposition,
   parse_formula_with_oxidation,
-} from '$lib/composition/parse'
+} from '$lib/composition'
 import { mount } from 'svelte'
 import { expect, test } from 'vitest'
 
