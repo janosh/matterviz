@@ -1206,14 +1206,13 @@
 
 <style>
   .trajectory {
-    --border-radius: 4px;
     --min-height: 500px;
     display: flex;
     flex-direction: column;
     height: var(--traj-height, 100%);
     position: relative;
     min-height: var(--traj-min-height, var(--min-height));
-    border-radius: var(--border-radius);
+    border-radius: var(--traj-border-radius, var(--border-radius));
     box-sizing: border-box;
     contain: layout;
     z-index: var(--traj-z-index, 1);
@@ -1347,7 +1346,7 @@
     align-items: center;
     white-space: nowrap;
     padding: var(--trajectory-filename-padding, 3pt 4pt);
-    border-radius: var(--trajectory-filename-border-radius, 2px);
+    border-radius: var(--trajectory-filename-border-radius, var(--border-radius));
     max-width: clamp(150px, 20cqw, 250px);
     overflow: hidden;
     text-overflow: ellipsis;

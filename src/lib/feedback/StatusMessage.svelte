@@ -65,7 +65,7 @@
 <style>
   .message {
     margin-bottom: 0.5em;
-    border-radius: 4px;
+    border-radius: var(--border-radius);
   }
   button {
     margin-left: 1em;

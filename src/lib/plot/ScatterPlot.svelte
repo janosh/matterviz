@@ -1766,6 +1766,7 @@
     display: var(--scatter-display, flex);
     flex-direction: column;
     background: var(--scatter-bg, var(--plot-bg));
+    border-radius: var(--scatter-border-radius, var(--border-radius));
   }
   div.scatter.fullscreen {
     position: fixed;
@@ -1846,7 +1847,7 @@
   .tooltip {
     color: var(--scatter-tooltip-color, light-dark(black, white));
     padding: var(--scatter-tooltip-padding, 1px 4px);
-    border-radius: var(--scatter-tooltip-border-radius, 3px);
+    border-radius: var(--scatter-tooltip-border-radius, var(--border-radius));
     font-size: var(--scatter-tooltip-font-size, 0.8em);
     /* Ensure background fits content width */
     width: var(--scatter-tooltip-width, max-content);

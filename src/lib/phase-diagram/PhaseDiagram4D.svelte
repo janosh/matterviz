@@ -1131,7 +1131,7 @@
     width: 100%;
     height: var(--pd-height, 500px);
     background: var(--pd-4d-bg, var(--pd-bg));
-    border-radius: 4px;
+    border-radius: var(--pd-border-radius, var(--border-radius));
   }
   .phase-diagram-4d:fullscreen {
     border-radius: 0;

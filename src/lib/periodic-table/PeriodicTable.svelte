@@ -423,7 +423,7 @@
     background: var(--tooltip-bg, rgba(0, 0, 0, 0.8));
     color: var(--tooltip-color, light-dark(black, white));
     padding: var(--tooltip-padding, 4px 6px);
-    border-radius: var(--tooltip-border-radius, 6px);
+    border-radius: var(--tooltip-border-radius, var(--border-radius));
     font-size: var(--tooltip-font-size, 14px);
     text-align: var(--tooltip-text-align, center);
     line-height: var(--tooltip-line-height, 1.2);

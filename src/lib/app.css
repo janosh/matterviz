@@ -10,6 +10,7 @@
   /* Svelte MultiSelect */
   --sms-options-bg: var(--page-bg);
   --sms-active-color: light-dark(var(--accent-color), cornflowerblue);
+  --border-radius: 3pt;
 }
 
 /* Targeted theme transitions for performance */

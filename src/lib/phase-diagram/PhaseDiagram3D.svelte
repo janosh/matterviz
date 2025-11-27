@@ -1140,7 +1140,7 @@
     width: 100%;
     height: var(--pd-height, 500px);
     background: var(--pd-3d-bg, var(--pd-bg));
-    border-radius: 4px;
+    border-radius: var(--pd-border-radius, var(--border-radius));
   }
   .phase-diagram-3d:fullscreen {
     border-radius: 0;

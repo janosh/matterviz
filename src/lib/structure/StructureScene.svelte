@@ -916,7 +916,7 @@
   }
   .atom-label {
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
-    border-radius: var(--struct-atom-label-border-radius, 3pt);
+    border-radius: var(--struct-atom-label-border-radius, var(--border-radius));
     padding: var(--struct-atom-label-padding, 0 3px);
     white-space: nowrap;
   }
@@ -941,7 +941,7 @@
   .measure-label {
     background: var(--measure-label-bg, var(--surface-bg));
     color: var(--measure-label-color, var(--text-color));
-    border-radius: 4px;
+    border-radius: var(--border-radius);
     padding: 0 5px;
     user-select: none;
     white-space: pre;

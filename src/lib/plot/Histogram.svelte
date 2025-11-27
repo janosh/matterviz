@@ -926,6 +926,7 @@
     display: var(--histogram-display, flex);
     flex-direction: column;
     background: var(--histogram-bg, var(--plot-bg));
+    border-radius: var(--histogram-border-radius, var(--border-radius));
   }
   .histogram.fullscreen {
     position: fixed;
