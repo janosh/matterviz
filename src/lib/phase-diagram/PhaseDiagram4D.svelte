@@ -70,7 +70,14 @@
   // Reactive dark mode detection for canvas text color
   let dark_mode = $state(is_dark_mode())
   $effect(() => watch_dark_mode((dark) => dark_mode = dark))
-  const text_color = $derived(dark_mode ? `#ffffff` : `#212121`)
+  const text_color = $derived.by(() => {
+    // Reference dark_mode to ensure re-evaluation when theme changes
+    void dark_mode
+    if (typeof document === `undefined`) return dark_mode ? `#ffffff` : `#212121`
+    const computed = getComputedStyle(canvas || document.documentElement)
+    return computed.getPropertyValue(`--text-color`)?.trim() ||
+      (dark_mode ? `#ffffff` : `#212121`)
+  })
 
   let { // Compute energy mode information
     has_precomputed_e_form,

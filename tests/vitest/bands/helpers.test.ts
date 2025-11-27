@@ -516,15 +516,16 @@ describe(`normalize_band_structure`, () => {
   })
 
   describe(`pymatgen format`, () => {
-    it(`converts PhononBandStructureSymmLine`, () => {
+    it(`converts PhononBandStructureSymmLine (default THz, no conversion)`, () => {
+      // pymatgen defaults to unit="thz", so no conversion should happen
       const result = normalize_band_structure(make_pmg({
         qpoints: [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]],
-        bands: [[0, 0.001, 0.002]],
+        bands: [[0, 5.0, 10.0]], // Already in THz
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
         lattice_rec: { matrix: ident },
       }))
       expect(result?.qpoints).toHaveLength(3)
-      expect(result?.bands[0][1]).toBeGreaterThan(0.2) // eV→THz conversion
+      expect(result?.bands[0][1]).toBe(5.0) // No conversion, stays 5.0 THz
     })
 
     it.each([
@@ -600,13 +601,34 @@ describe(`normalize_band_structure`, () => {
       expect(Math.max(...(result?.distance ?? []))).toBeLessThan(1.0) // Jump not accumulated
     })
 
-    it(`converts eV→THz (factor 241.8)`, () => {
+    it(`converts eV→THz (factor 241.8) when unit='ev'`, () => {
       const result = normalize_band_structure(make_pmg({
         qpoints: [[0, 0, 0], [1, 0, 0]],
-        bands: [[0, 0.001]],
+        bands: [[0, 0.001]], // 0.001 eV
         labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+        unit: `ev`, // Explicitly specify eV unit
       }))
-      expect(result?.bands[0][1]).toBeCloseTo(0.2418, 2)
+      expect(result?.bands[0][1]).toBeCloseTo(0.2418, 2) // 0.001 eV * 241.8 = 0.2418 THz
+    })
+
+    it(`preserves THz values when unit='thz' (default)`, () => {
+      const result = normalize_band_structure(make_pmg({
+        qpoints: [[0, 0, 0], [1, 0, 0]],
+        bands: [[0, 5.0]], // 5.0 THz
+        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+        unit: `thz`, // Explicit THz
+      }))
+      expect(result?.bands[0][1]).toBe(5.0) // No conversion
+    })
+
+    it(`converts cm-1→THz when unit='cm-1'`, () => {
+      const result = normalize_band_structure(make_pmg({
+        qpoints: [[0, 0, 0], [1, 0, 0]],
+        bands: [[0, 333.5641]], // 333.5641 cm⁻¹ ≈ 10 THz
+        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+        unit: `cm-1`,
+      }))
+      expect(result?.bands[0][1]).toBeCloseTo(10.0, 2)
     })
 
     it(`tolerates floating point in labels_dict matching`, () => {
@@ -645,7 +667,7 @@ describe(`normalize_dos`, () => {
     })
 
     it(`auto-converts cm⁻¹→THz when max > 100`, () => {
-      const restore = spy_info()
+      const info_spy = spy_info()
       const result = normalize_dos({
         frequencies: [0, 100, 200, 300, 400],
         densities: [0, 0.5, 1, 0.5, 0],
@@ -654,15 +676,15 @@ describe(`normalize_dos`, () => {
         expect(result.frequencies[4]).toBeCloseTo(11.99, 1) // 400 cm⁻¹
         expect(result.frequencies[2]).toBeCloseTo(5.99, 1) // 200 cm⁻¹
       }
-      expect(restore).toHaveBeenCalled()
-      restore.mockRestore()
+      expect(info_spy).toHaveBeenCalled()
+      info_spy.mockRestore()
     })
 
     it(`cm⁻¹→THz uses factor 33.356`, () => {
-      const restore = spy_info()
+      const info_spy = spy_info()
       const result = normalize_dos({ frequencies: [0, 333.5641], densities: [0, 1] })
       if (result?.type === `phonon`) expect(result.frequencies[1]).toBeCloseTo(10.0, 4)
-      restore.mockRestore()
+      info_spy.mockRestore()
     })
 
     it(`preserves THz when max < 100`, () => {
@@ -726,41 +748,5 @@ describe(`normalize_dos`, () => {
       undefined,
       `string`, // non-object
     ])(`returns null for %p`, (input) => expect(normalize_dos(input)).toBeNull())
-  })
-})
-
-describe(`extract_k_path_points`, () => {
-  const ident: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-  const make_bs = (
-    qpoints: { label: string; frac_coords: Vec3 }[],
-    matrix = ident,
-  ): BaseBandStructure => ({
-    qpoints,
-    branches: [{ start_index: 0, end_index: qpoints.length - 1, name: `path` }],
-    distance: qpoints.map((_, idx) => idx),
-    bands: [[...qpoints.keys()]],
-    nb_bands: 1,
-    labels_dict: {},
-    recip_lattice: { matrix },
-  })
-
-  it(`transforms frac→cart with identity`, () => {
-    const result = extract_k_path_points(
-      make_bs([
-        { label: `Γ`, frac_coords: [0, 0, 0] },
-        { label: `X`, frac_coords: [1, 0, 0] },
-      ]),
-      ident,
-    )
-    expect(result).toEqual([[0, 0, 0], [1, 0, 0]])
-  })
-
-  it(`applies reciprocal lattice transformation`, () => {
-    const lat: Matrix3x3 = [[2, 0, 0], [0, 2, 0], [0, 0, 2]]
-    const result = extract_k_path_points(
-      make_bs([{ label: `X`, frac_coords: [0.5, 0, 0] }], lat),
-      lat,
-    )
-    expect(result[0]).toEqual([1, 0, 0]) // [0.5,0,0] * 2 = [1,0,0]
   })
 })

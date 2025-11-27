@@ -22,32 +22,42 @@ import type {
 } from './types'
 import { is_unary_entry } from './types'
 
+// Track warned keys to avoid log spam on large datasets with repeated invalid keys
+const warned_keys = new Set<string>()
+
 // Normalize phase diagram composition keys by stripping oxidation states (e.g. "V4+" -> "V")
 // and merging amounts for keys that map to the same element. Filters non-positive amounts.
 // Only extracts FIRST valid element from each key (e.g. "Fe2O3" -> "Fe", not both Fe and O).
 export function normalize_pd_composition_keys(
   composition: Record<string, number>,
-): Record<ElementSymbol, number> {
-  const normalized: Record<string, number> = {}
+): Partial<Record<ElementSymbol, number>> {
+  const normalized: Partial<Record<ElementSymbol, number>> = {}
   for (const [key, amount] of Object.entries(composition)) {
     if (typeof amount !== `number` || !Number.isFinite(amount) || amount <= 0) continue
     // Extract first valid element symbol from key (handles oxidation states like "V4+", "Fe2+")
     const elem = extract_formula_elements(key, { unique: false })[0]
     if (!elem) {
-      console.warn(`Skipping unrecognized composition key: "${key}"`)
+      // Dedupe warnings to avoid log spam on large datasets
+      if (!warned_keys.has(key)) {
+        warned_keys.add(key)
+        console.warn(`Skipping unrecognized composition key: "${key}"`)
+      }
       continue
     }
     normalized[elem] = (normalized[elem] || 0) + amount
   }
-  return normalized as Record<ElementSymbol, number>
+  return normalized
 }
 
 export function process_pd_entries(entries: PhaseData[]): PhaseDiagramData {
   // Normalize composition keys to strip oxidation states (e.g. "Fe3+" -> "Fe")
-  const normalized_entries = entries.map((entry) => ({
-    ...entry,
-    composition: normalize_pd_composition_keys(entry.composition),
-  }))
+  // Filter out entries whose composition normalizes to {} (all keys invalid or non-positive)
+  const normalized_entries = entries
+    .map((entry) => ({
+      ...entry,
+      composition: normalize_pd_composition_keys(entry.composition),
+    }))
+    .filter((entry) => Object.keys(entry.composition).length > 0)
 
   // Single-pass partition instead of two filter passes
   const stable_entries: PhaseData[] = []
@@ -83,7 +93,8 @@ export function process_pd_entries(entries: PhaseData[]): PhaseDiagramData {
 // Note: correction is expected to be a total-entry value (eV), not per-atom.
 // This matches the Materials Project convention where corrections are applied to total energies.
 function get_energy_per_atom(entry: PhaseData): number {
-  const atoms = count_atoms_in_composition(entry.composition) || 1e-12
+  // Use Math.max instead of || to prevent pathological negative totals from flipping sign
+  const atoms = Math.max(count_atoms_in_composition(entry.composition), 1e-12)
   if (typeof entry.correction === `number`) {
     const total = typeof entry.energy_per_atom === `number`
       ? entry.energy_per_atom * atoms
@@ -223,7 +234,12 @@ export function calculate_e_above_hull(
         continue
       }
       const total = count_atoms_in_composition(entry.composition)
-      const x = total > 0 ? (entry.composition[el2] || 0) / total : 0
+      // Guard for degenerate compositions (mirror the refs loop check)
+      if (total <= 0) {
+        results[id] = NaN
+        continue
+      }
+      const x = (entry.composition[el2] || 0) / total
       const y_hull = interpolate_hull_2d(lower_hull, x)
       results[id] = y_hull === null ? NaN : Math.max(0, e_form - y_hull)
     }
