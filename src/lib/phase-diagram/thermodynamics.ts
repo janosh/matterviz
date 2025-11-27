@@ -23,23 +23,21 @@ import type {
 import { is_unary_entry } from './types'
 
 // Normalize phase diagram composition keys by stripping oxidation states (e.g. "V4+" -> "V")
-// and merging amounts for keys that map to the same element.
-// Keys without recognizable element tokens are filtered out with a warning.
-// Different from $lib/composition.normalize_composition which only filters non-positive amounts.
+// and merging amounts for keys that map to the same element. Filters non-positive amounts.
+// Only extracts FIRST valid element from each key (e.g. "Fe2O3" -> "Fe", not both Fe and O).
 export function normalize_pd_composition_keys(
   composition: Record<string, number>,
 ): Record<ElementSymbol, number> {
   const normalized: Record<string, number> = {}
   for (const [key, amount] of Object.entries(composition)) {
-    // Extract clean element symbol from key (handles oxidation states like "V4+", "Fe2+")
-    const clean_elements = extract_formula_elements(key, { unique: false })
-    if (clean_elements.length === 0) {
-      console.warn(`Skipping invalid composition key: "${key}"`)
+    if (typeof amount !== `number` || !Number.isFinite(amount) || amount <= 0) continue
+    // Extract first valid element symbol from key (handles oxidation states like "V4+", "Fe2+")
+    const elem = extract_formula_elements(key, { unique: false })[0]
+    if (!elem) {
+      console.warn(`Skipping unrecognized composition key: "${key}"`)
       continue
     }
-    for (const elem of clean_elements) {
-      normalized[elem] = (normalized[elem] || 0) + amount
-    }
+    normalized[elem] = (normalized[elem] || 0) + amount
   }
   return normalized as Record<ElementSymbol, number>
 }

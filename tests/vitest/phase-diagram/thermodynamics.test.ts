@@ -163,24 +163,41 @@ describe(`normalize_pd_composition_keys`, () => {
     expect(result).toEqual({ V: 3 })
   })
 
+  test(`extracts only first element from multi-element keys`, () => {
+    // Multi-element keys like "Fe2O3" should only use first element (Fe)
+    // This is intentional - such keys should be cleaned upstream
+    const result = normalize_pd_composition_keys({ Fe2O3: 2, Li: 1 })
+    expect(result).toEqual({ Fe: 2, Li: 1 }) // O is NOT extracted
+  })
+
   test(`warns and filters out invalid composition keys`, () => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-
     const result = normalize_pd_composition_keys({
       Fe: 2,
       invalid_key: 1,
       '!!!': 3,
       O: 1,
     })
-
     expect(result).toEqual({ Fe: 2, O: 1 })
     expect(warn_spy).toHaveBeenCalledTimes(2)
     expect(warn_spy).toHaveBeenCalledWith(
-      `Skipping invalid composition key: "invalid_key"`,
+      `Skipping unrecognized composition key: "invalid_key"`,
     )
-    expect(warn_spy).toHaveBeenCalledWith(`Skipping invalid composition key: "!!!"`)
+    expect(warn_spy).toHaveBeenCalledWith(`Skipping unrecognized composition key: "!!!"`)
 
     warn_spy.mockRestore()
+  })
+
+  test(`filters non-positive and non-finite amounts`, () => {
+    const result = normalize_pd_composition_keys({
+      Fe: 2,
+      O: 0,
+      Na: -1,
+      Cl: NaN,
+      K: Infinity,
+      Ca: 3,
+    })
+    expect(result).toEqual({ Fe: 2, Ca: 3 })
   })
 
   test(`handles empty composition`, () => {
