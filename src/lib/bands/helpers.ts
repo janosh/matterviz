@@ -417,11 +417,7 @@ export function extract_k_path_points(
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = recip_lattice_matrix
 
   return band_struct.qpoints.map((qpoint) => {
-    // Handle both object format {frac_coords: [x,y,z]} and raw array [x,y,z]
-    const coords = Array.isArray(qpoint)
-      ? (qpoint as unknown as [number, number, number])
-      : qpoint.frac_coords
-    const [x, y, z] = coords
+    const [x, y, z] = qpoint.frac_coords
     return [
       x * m00 + y * m10 + z * m20,
       x * m01 + y * m11 + z * m21,
