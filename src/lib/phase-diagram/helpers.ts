@@ -45,21 +45,6 @@ export function get_point_color_for_entry(
     : `#666`
 }
 
-// Resolve text color for canvas rendering (canvas context can't resolve CSS variables).
-export function resolve_canvas_text_color(
-  wrapper: HTMLDivElement | undefined, // The wrapper element to read computed styles from
-  annotation_color: string | undefined, // The configured annotation color (may contain CSS var)
-): string { // Resolved text color as a hex string
-  if (!wrapper) return `#212121`
-  const styles = getComputedStyle(wrapper)
-  // First try to get the configured annotation color
-  if (annotation_color && !annotation_color.startsWith(`var(`)) {
-    return annotation_color
-  }
-  // Otherwise resolve from CSS variable
-  return styles.getPropertyValue(`--text-color`)?.trim() || `#212121`
-}
-
 // Robust drag-and-drop JSON parsing for phase diagram entries
 export async function parse_pd_entries_from_drop(
   event: DragEvent,
