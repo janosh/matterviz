@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { extract_formula_elements } from '$lib/composition/parse'
   import type { AxisConfig } from '$lib/plot'
   import type { Component } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -41,14 +42,18 @@
     ...rest // All other PD props (both common and dimension-specific) go to rest
   }: PhaseDiagramProps = $props()
 
-  // Lightweight element extraction - just count unique elements without processing entries
+  // Lightweight element extraction - count unique elements, stripping oxidation states
+  // (e.g. "V4+" -> "V") to avoid counting the same element multiple times
   function extract_unique_elements(
     entries: { composition: Record<string, number> }[],
   ): string[] {
     const elements = new SvelteSet<string>()
     for (const entry of entries) {
-      for (const elem of Object.keys(entry.composition)) {
-        elements.add(elem)
+      for (const key of Object.keys(entry.composition)) {
+        // Extract valid element symbols, stripping oxidation states
+        for (const elem of extract_formula_elements(key, { unique: false })) {
+          elements.add(elem)
+        }
       }
     }
     return Array.from(elements).sort()

@@ -4,7 +4,8 @@
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import type { SVGAttributes } from 'svelte/elements'
   import { BarChart, BubbleChart, PieChart } from './index'
-  import { get_electro_neg_formula, parse_composition } from './parse'
+  import { get_electro_neg_formula } from './format'
+  import { parse_composition } from './parse'
 
   type CompositionChartMode = `pie` | `bubble` | `bar`
   let {

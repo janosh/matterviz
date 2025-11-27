@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PymatgenStructure } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
-  import { get_electro_neg_formula } from '$lib/composition/parse'
+  import { get_electro_neg_formula } from '$lib/composition'
   import { Structure } from '$lib/structure'
   import type { XrdPattern } from '$lib/xrd'
   import { compute_xrd_pattern, XrdPlot } from '$lib/xrd'

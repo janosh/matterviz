@@ -1,7 +1,7 @@
-import type { AnyStructure, ElementSymbol } from '$lib'
+import type { ElementSymbol } from '$lib'
 import type { CompositionType } from '$lib/composition'
 import { element_data } from '$lib/element'
-import { ELEM_SYMBOLS, format_num } from '$lib/labels'
+import { ELEM_SYMBOLS } from '$lib/labels'
 
 // Create symbol/number/mass/electronegativity lookup maps for O(1) access
 export const ATOMIC_NUMBER_TO_SYMBOL: Record<number, ElementSymbol> = {}
@@ -21,6 +21,10 @@ for (const element of element_data) {
   ELEM_NAME_TO_SYMBOL[element.name] = element.symbol
   ELEM_SYMBOL_TO_NAME[element.symbol] = element.name
 }
+
+// Type guard: check if a string is a valid element symbol
+export const is_valid_element = (sym: string): sym is ElementSymbol =>
+  (ELEM_SYMBOLS as readonly string[]).includes(sym)
 
 // Check if object has atomic numbers as keys (1-118)
 const is_atomic_number_composition = (obj: Record<string | number, number>): boolean => {
@@ -83,9 +87,7 @@ export const parse_formula = (formula: string): CompositionType => {
     const element = match[1] as ElementSymbol
     const count = match[2] ? parseInt(match[2], 10) : 1
 
-    if (!ELEM_SYMBOLS.includes(element)) {
-      throw new Error(`Invalid element symbol: ${element}`)
-    }
+    if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
     composition[element] = (composition[element] || 0) + count
   }
   return composition
@@ -108,6 +110,26 @@ export const normalize_composition = (
     }
   }
   return normalized
+}
+
+// Sanitize composition keys by extracting valid element symbols.
+// Handles malformed keys like "B0.", "Fe2+", "Fe[2+]", "Ca^2+" by extracting
+// the element symbol portion. Merges amounts for keys that map to the same element.
+// Returns null if no valid elements can be extracted.
+// NOTE: Only extracts the FIRST valid element from each key. Keys with multiple
+// elements (e.g. "CO3", "Fe2O3") will lose stoichiometry - use parse_formula for those.
+export const sanitize_composition_keys = (
+  composition: Record<string, number>,
+): CompositionType | null => {
+  const sanitized: Record<string, number> = {}
+  for (const [key, amount] of Object.entries(composition)) {
+    if (typeof amount !== `number` || amount <= 0) continue
+    // Extract first valid element symbol from key (e.g. "B0." -> "B", "Fe2+" -> "Fe")
+    const elem = (key.match(/[A-Z][a-z]?/g) || []).find(is_valid_element)
+    if (elem) sanitized[elem] = (sanitized[elem] || 0) + amount
+  }
+  const result = normalize_composition(sanitized as CompositionType)
+  return Object.keys(result).length > 0 ? result : null
 }
 
 // Get total number of atoms
@@ -172,131 +194,33 @@ export const parse_composition = (
   return normalize_composition(input)
 }
 
-// Extract composition from structure object
-const structure_to_composition = (structure: AnyStructure): CompositionType => {
-  if (!structure.sites || !Array.isArray(structure.sites)) {
-    throw new Error(`Invalid structure object`)
-  }
+// Calculate GCD of two numbers
+const gcd = (
+  num_a: number,
+  num_b: number,
+): number => (num_b === 0 ? num_a : gcd(num_b, num_a % num_b))
 
-  const composition: CompositionType = {}
-  for (const site of structure.sites) {
-    if (site.species && Array.isArray(site.species)) {
-      for (const species of site.species) {
-        const element = species.element
-        const occu = species.occu ?? 1
-        composition[element] = (composition[element] ?? 0) + occu
-      }
-    }
-  }
-  return composition
+// Get reduced formula by dividing all amounts by their GCD
+// Example: Fe2O4 -> FeO2, H4O2 -> H2O
+export const get_reduced_formula = (composition: CompositionType): CompositionType => {
+  const amounts = Object.values(composition).filter((amt) => amt > 0)
+  if (amounts.length === 0) return {}
+  // Find GCD of all amounts (works with integers; for floats, find approximate GCD)
+  const all_integers = amounts.every((amt) => Number.isInteger(amt))
+  if (!all_integers) return composition // Can't reduce non-integer compositions
+  const divisor = amounts.reduce((acc, amt) => gcd(acc, amt))
+  if (divisor <= 1) return composition
+  return Object.fromEntries(
+    Object.entries(composition).map(([elem, amt]) => [elem, amt / divisor]),
+  ) as CompositionType
 }
 
-// Format composition into chemical formula string
-export const format_composition_formula = (
-  composition: CompositionType,
-  sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
-  plain_text = false,
-  delim = ` `,
-  amount_format = `.3~s`,
-): string => {
-  const symbols = Object.keys(composition) as ElementSymbol[]
-
-  return sort_fn(symbols)
-    .filter((el) => composition[el] && composition[el] > 0)
-    .map((el) => {
-      const amount = composition[el]
-      if (amount === 1) return el
-      const formatted_amount = format_num(Number(amount), amount_format)
-      return plain_text
-        ? `${el}${formatted_amount}`
-        : `${el}<sub>${formatted_amount}</sub>`
-    })
-    .join(delim)
-}
-
-// Generic formula formatter with error handling
-const format_formula_generic = (
-  input: string | CompositionType | AnyStructure,
-  sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
-  plain_text = false,
-  delim = ` `,
-  amount_format = `.3~s`,
-): string => {
-  try {
-    let composition: CompositionType
-
-    if (typeof input === `string`) composition = parse_composition(input)
-    else if (`sites` in input || `lattice` in input) {
-      composition = structure_to_composition(input as AnyStructure)
-    } else composition = input as CompositionType
-
-    return format_composition_formula(
-      composition,
-      sort_fn,
-      plain_text,
-      delim,
-      amount_format,
-    )
-  } catch {
-    return ``
-  }
-}
-
-// Create alphabetical formula
-export const get_alphabetical_formula = (
-  input: string | CompositionType | AnyStructure,
-  plain_text = false,
-  delim = ` `,
-  amount_format = `.3~s`,
-): string =>
-  format_formula_generic(
-    input,
-    (symbols) => symbols.sort(),
-    plain_text,
-    delim,
-    amount_format,
-  )
-
-export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymbol[] =>
-  symbols.sort((el_1, el_2) => {
-    const elec_neg_1 = ELEMENT_ELECTRONEGATIVITY_MAP.get(el_1) ?? 0
-    const elec_neg_2 = ELEMENT_ELECTRONEGATIVITY_MAP.get(el_2) ?? 0
-    return elec_neg_1 !== elec_neg_2 ? elec_neg_1 - elec_neg_2 : el_1.localeCompare(el_2)
-  })
-
-// Sort element symbols according to Hill notation (C first, H second, then alphabetical).
-// This is the standard notation for organic compounds in chemistry.
-export const sort_by_hill_notation = (symbols: ElementSymbol[]): ElementSymbol[] => {
-  const has_carbon = symbols.includes(`C`)
-  return symbols.sort((el_a, el_b) => {
-    // Equal elements must return 0 (sort invariant)
-    if (el_a === el_b) return 0
-    // Carbon always comes first
-    if (el_a === `C`) return -1
-    if (el_b === `C`) return 1
-    // If carbon present, hydrogen comes second
-    if (has_carbon) {
-      if (el_a === `H`) return -1
-      if (el_b === `H`) return 1
-    }
-    return el_a.localeCompare(el_b) // All other elements alphabetically
-  })
-}
-
-// Create electronegativity-sorted formula
-export const get_electro_neg_formula = (
-  input: string | CompositionType | AnyStructure,
-  plain_text = false,
-  delim = ` `,
-  amount_format = `.3~f`,
-): string =>
-  format_formula_generic(
-    input,
-    sort_by_electronegativity,
-    plain_text,
-    delim,
-    amount_format,
-  )
+// Calculate molecular weight (sum of atomic masses * amounts)
+export const get_molecular_weight = (composition: CompositionType): number =>
+  Object.entries(composition).reduce((total, [elem, amount]) => {
+    const mass = ATOMIC_WEIGHTS.get(elem as ElementSymbol) ?? 0
+    return total + mass * amount
+  }, 0)
 
 // Type for element with oxidation state information
 export type ElementWithOxidation = {
@@ -361,9 +285,7 @@ export const parse_formula_with_oxidation = (
     const count_str = match[4] || match[5]
     const count = count_str ? parseInt(count_str, 10) : 1
 
-    if (!ELEM_SYMBOLS.includes(element)) {
-      throw new Error(`Invalid element symbol: ${element}`)
-    }
+    if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
 
     const oxidation_state = oxidation_str
       ? parse_oxidation_state(oxidation_str)
@@ -409,12 +331,6 @@ export const oxi_composition_to_elements = (
     orig_idx: idx,
   }))
 
-export function format_oxi_state(oxidation?: number): string {
-  if (oxidation === undefined || oxidation === 0) return ``
-  const sign = oxidation > 0 ? `+` : `-`
-  return `${sign}${Math.abs(oxidation)}`
-}
-
 // Extract element symbols from a chemical formula.
 // Default (unique=true, sorted=true): "NbZr2Nb" -> ["Nb", "Zr"]
 // unique=false: Fast token extraction preserving order without parentheses expansion
@@ -428,11 +344,8 @@ export function extract_formula_elements(
 ): ElementSymbol[] {
   if (!unique) {
     // Fast path: regex token extraction without parentheses expansion
-    // Validates against ELEM_SYMBOLS to ensure type safety
     const matches = formula.match(/[A-Z][a-z]?/g) || []
-    return matches.filter((symbol): symbol is ElementSymbol =>
-      (ELEM_SYMBOLS as readonly string[]).includes(symbol)
-    ) as ElementSymbol[]
+    return matches.filter(is_valid_element) as ElementSymbol[]
   }
   const symbols = Object.keys(parse_formula(formula)) as ElementSymbol[]
   return sorted ? symbols.sort() : symbols
@@ -451,14 +364,13 @@ export function generate_chem_sys_subspaces(
   else if (Array.isArray(input)) {
     const uniq = [...new Set(input)]
     for (const elem of uniq) {
-      if (!ELEM_SYMBOLS.includes(elem)) throw new Error(`Invalid element symbol: ${elem}`)
+      if (!is_valid_element(elem)) throw new Error(`Invalid element symbol: ${elem}`)
     }
     elements = uniq
   } else {
-    // Validate composition keys against ELEM_SYMBOLS
     const keys = Object.keys(input) as ElementSymbol[]
     for (const elem of keys) {
-      if (!ELEM_SYMBOLS.includes(elem)) throw new Error(`Invalid element symbol: ${elem}`)
+      if (!is_valid_element(elem)) throw new Error(`Invalid element symbol: ${elem}`)
     }
     elements = keys
   }

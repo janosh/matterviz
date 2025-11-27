@@ -2,7 +2,7 @@
   import type { AnyStructure, ElementSymbol } from '$lib'
   import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
-  import { contrast_color } from '$lib/colors'
+  import { contrast_color, is_dark_mode, watch_dark_mode } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
@@ -272,7 +272,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, highlighted_entries, resolved_text_color]
+    [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, highlighted_entries, text_color]
 
     render_once()
   })
@@ -462,8 +462,7 @@
 
     // Draw element labels outside triangle corners
     const centroid = get_triangle_centroid()
-    // Use resolved text color directly instead of CSS variable
-    ctx.fillStyle = resolved_text_color
+    ctx.fillStyle = text_color
     ctx.font = `bold 16px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `middle`
@@ -687,7 +686,7 @@
       }
     }
 
-    ctx.fillStyle = resolved_text_color
+    ctx.fillStyle = text_color
     ctx.font = `12px Arial`
     ctx.textAlign = `center`
     ctx.textBaseline = `top`
@@ -732,8 +731,7 @@
     ctx.fillRect(0, 0, display_width, display_height)
 
     if (elements.length !== 3) {
-      // Show error message - use resolved text color
-      ctx.fillStyle = resolved_text_color
+      ctx.fillStyle = text_color
       ctx.font = `16px Arial`
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
@@ -889,6 +887,11 @@
     render_once()
   }
 
+  // Reactive dark mode detection for canvas text color
+  let dark_mode = $state(is_dark_mode())
+  $effect(() => watch_dark_mode((dark) => dark_mode = dark))
+  const text_color = $derived(dark_mode ? `#ffffff` : `#212121`)
+
   $effect(() => {
     if (!canvas) return
 
@@ -922,11 +925,6 @@
     })
     helpers.set_fullscreen_bg(wrapper, fullscreen, `--pd-3d-bg-fullscreen`)
   })
-
-  // Resolve text color for canvas rendering (canvas context can't resolve CSS variables)
-  const resolved_text_color = $derived(
-    helpers.resolve_canvas_text_color(wrapper, merged_config.colors?.annotation),
-  )
 
   // Performance: Cache canvas dimensions and formation energy range
   let canvas_dims = $state({ width: 600, height: 600, scale: 1 })
