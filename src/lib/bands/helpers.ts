@@ -232,6 +232,7 @@ const parse_qpoint = (
 }
 
 const EV_TO_THZ = 241.7989 // 1 eV = 241.8 THz
+const PMG_CM_TO_THZ = 1 / 33.35641 // cm⁻¹ to THz conversion factor
 
 // Convert pymatgen PhononBandStructureSymmLine to matterviz format
 function convert_pymatgen_band_structure(
@@ -241,6 +242,8 @@ function convert_pymatgen_band_structure(
   const raw_bands = pmg.bands as number[][] | undefined
   const labels_dict = pmg.labels_dict as Record<string, Vec3> | undefined
   const lattice_rec = pmg.lattice_rec as { matrix?: Matrix3x3 } | undefined
+  // pymatgen defaults to THz, but may specify 'ev' or 'cm-1'
+  const unit = (pmg.unit as string | undefined)?.toLowerCase() ?? `thz`
 
   if (
     !Array.isArray(raw_qpts) || !Array.isArray(raw_bands) ||
@@ -283,11 +286,18 @@ function convert_pymatgen_band_structure(
     branches.push({ start_index: 0, end_index: qpoints.length - 1, name: `path` })
   }
 
+  // Convert bands to THz based on input unit
+  const convert_to_thz = (val: number): number => {
+    if (unit === `ev`) return val * EV_TO_THZ
+    if (unit === `cm-1`) return val * PMG_CM_TO_THZ
+    return val // THz (default) - no conversion
+  }
+
   return {
     qpoints,
     branches,
     distance,
-    bands: raw_bands.map((band) => band.map((f) => f * EV_TO_THZ)),
+    bands: raw_bands.map((band) => band.map(convert_to_thz)),
     nb_bands: raw_bands.length,
     labels_dict: labels_dict ?? {},
     recip_lattice: { matrix: lattice_rec?.matrix ?? [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
