@@ -232,7 +232,7 @@ const parse_qpoint = (
 }
 
 const EV_TO_THZ = 241.7989 // 1 eV = 241.8 THz
-const PMG_CM_TO_THZ = 1 / 33.35641 // cm⁻¹ to THz conversion factor
+const CM_TO_THZ = 1 / 33.35641 // cm⁻¹ to THz conversion factor
 
 // Convert pymatgen PhononBandStructureSymmLine to matterviz format
 function convert_pymatgen_band_structure(
@@ -289,7 +289,7 @@ function convert_pymatgen_band_structure(
   // Convert bands to THz based on input unit
   const convert_to_thz = (val: number): number => {
     if (unit === `ev`) return val * EV_TO_THZ
-    if (unit === `cm-1`) return val * PMG_CM_TO_THZ
+    if (unit === `cm-1`) return val * CM_TO_THZ
     return val // THz (default) - no conversion
   }
 
@@ -344,9 +344,6 @@ export function normalize_band_structure(
 
   return band_struct as unknown as types.BaseBandStructure
 }
-
-// Conversion factor: 1 THz = 33.35641 cm⁻¹
-const CM_TO_THZ = 1 / 33.35641
 
 // Validate and normalize a DOS object.
 // Supports both matterviz and pymatgen formats.

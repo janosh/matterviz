@@ -203,23 +203,23 @@ describe(`ScatterPoint`, () => {
   test.each([
     { is_selected: false, desc: `is_selected=false` },
     { is_selected: undefined, desc: `is_selected omitted (defaults false)` },
-  ])(`no selection ring when $desc`, ({ is_selected }) => {
+  ])(`no effect ring when $desc`, ({ is_selected }) => {
     const target = doc_query(`div`)
     mount(ScatterPoint, { target, props: { x: 100, y: 100, is_selected } })
-    expect(document.querySelector(`circle.selection-ring`)).toBeFalsy()
+    expect(document.querySelector(`circle.effect-ring`)).toBeFalsy()
   })
 
   test.each([
     { radius: 6, expected_r: `15`, desc: `custom radius 6` },
     { radius: undefined, expected_r: `10`, desc: `default radius 4` },
-  ])(`selection ring radius = style.radius * 2.5 ($desc)`, ({ radius, expected_r }) => {
+  ])(`effect ring radius = style.radius * 2.5 ($desc)`, ({ radius, expected_r }) => {
     const target = doc_query(`div`)
     mount(ScatterPoint, {
       target,
       props: { x: 100, y: 100, is_selected: true, style: { radius } },
     })
 
-    const ring = doc_query(`circle.selection-ring`)
+    const ring = doc_query(`circle.effect-ring`)
     const marker = doc_query(`path.marker`)
     const group = doc_query(`g`)
 
