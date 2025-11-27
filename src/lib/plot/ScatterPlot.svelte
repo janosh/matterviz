@@ -69,6 +69,7 @@
     range_padding = 0.05,
     current_x_value = null,
     tooltip_point = $bindable(null),
+    selected_point = null,
     hovered = $bindable(false),
     tooltip,
     user_content,
@@ -102,6 +103,7 @@
     range_padding?: number
     current_x_value?: number | null
     tooltip_point?: InternalPoint | null
+    selected_point?: { series_idx: number; point_idx: number } | null
     hovered?: boolean
     tooltip?: Snippet<[ScatterHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
@@ -1532,6 +1534,9 @@
                   is_hovered={tooltip_point !== null &&
                   point.series_idx === tooltip_point.series_idx &&
                   point.point_idx === tooltip_point.point_idx}
+                  is_selected={selected_point !== null &&
+                  point.series_idx === selected_point.series_idx &&
+                  point.point_idx === selected_point.point_idx}
                   style={{
                     ...point.point_style,
                     // When size_value is present, it should always determine the radius

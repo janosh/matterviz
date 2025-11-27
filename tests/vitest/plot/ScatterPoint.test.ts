@@ -200,6 +200,42 @@ describe(`ScatterPoint`, () => {
     expect(document.querySelector(`text`)).toBeFalsy()
   })
 
+  test(`renders selection ring when is_selected=true`, () => {
+    const target = doc_query(`div`)
+    mount(ScatterPoint, {
+      target,
+      props: { x: 100, y: 100, is_selected: true, style: { fill: `blue`, radius: 6 } },
+    })
+
+    const selection_ring = doc_query(`circle.selection-ring`)
+    expect(selection_ring).toBeTruthy()
+    expect(selection_ring.getAttribute(`r`)).toBe(`15`) // radius * 2.5 = 6 * 2.5 = 15
+    expect(selection_ring.classList.contains(`selection-ring`)).toBe(true)
+  })
+
+  test(`does not render selection ring when is_selected=false`, () => {
+    const target = doc_query(`div`)
+    mount(ScatterPoint, { target, props: { x: 100, y: 100, is_selected: false } })
+
+    expect(document.querySelector(`circle.selection-ring`)).toBeFalsy()
+  })
+
+  test(`selection ring defaults is_selected to false`, () => {
+    const target = doc_query(`div`)
+    mount(ScatterPoint, { target, props: { x: 100, y: 100 } })
+
+    expect(document.querySelector(`circle.selection-ring`)).toBeFalsy()
+  })
+
+  test(`selection ring uses default radius when style.radius not provided`, () => {
+    const target = doc_query(`div`)
+    mount(ScatterPoint, { target, props: { x: 100, y: 100, is_selected: true } })
+
+    const selection_ring = doc_query(`circle.selection-ring`)
+    expect(selection_ring).toBeTruthy()
+    expect(selection_ring.getAttribute(`r`)).toBe(`10`) // default radius 4 * 2.5 = 10
+  })
+
   test(`handles zero values correctly`, () => {
     const target = doc_query(`div`)
     mount(ScatterPoint, { target, props: { x: 0, y: 0 } })

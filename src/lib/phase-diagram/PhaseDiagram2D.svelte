@@ -2,6 +2,7 @@
   import type {
     AnyStructure,
     CompositionType,
+    D3SymbolName,
     ElementSymbol,
     UserContentProps,
   } from '$lib'
@@ -295,13 +296,15 @@
   )
 
   // Map MarkerSymbol to D3SymbolName (capitalize first letter)
-  const marker_to_d3_symbol = (marker?: string): string | undefined => {
+  const marker_to_d3_symbol = (marker?: string): D3SymbolName | undefined => {
     if (!marker) return undefined
-    return marker.charAt(0).toUpperCase() + marker.slice(1)
+    return (marker.charAt(0).toUpperCase() + marker.slice(1)) as D3SymbolName
   }
 
+  // Pre-compute visible entries to avoid redundant filtering
+  const visible_entries = $derived(plot_entries.filter((e) => e.visible))
+
   const scatter_points_series = $derived.by(() => {
-    const visible_entries = plot_entries.filter((e) => e.visible)
     const xs = visible_entries.map((e) => e.x)
     const ys = visible_entries.map((e) => e.y)
 
@@ -356,6 +359,14 @@
   })
 
   const scatter_series = $derived([scatter_points_series, ...hull_segments_series])
+
+  // Map selected_entry to ScatterPlot point index (series_idx: 0 = points series)
+  const selected_scatter_point = $derived.by(() => {
+    const entry = selected_entry
+    if (!entry) return null
+    const idx = visible_entries.findIndex((e) => e.entry_id === entry.entry_id)
+    return idx >= 0 ? { series_idx: 0, point_idx: idx } : null
+  })
 
   const max_hull_dist_in_data = $derived(
     helpers.calc_max_hull_dist_in_data(effective_entries),
@@ -550,6 +561,7 @@
     }}
     {tooltip}
     {user_content}
+    selected_point={selected_scatter_point}
     on_point_click={handle_point_click_internal}
     on_point_hover={(data: ScatterHandlerEvent | null) => {
       if (!data) {
@@ -561,10 +573,7 @@
       hover_data = entry
         ? {
           entry,
-          position: {
-            x: data.event.clientX,
-            y: data.event.clientY,
-          },
+          position: { x: data.event.clientX, y: data.event.clientY },
         }
         : null
       on_point_hover?.(hover_data)

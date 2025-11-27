@@ -340,8 +340,12 @@ const CM_TO_THZ = 1 / 33.35641
 
 // Validate and normalize a DOS object.
 // Supports both matterviz and pymatgen formats.
-// Also auto-detects and converts cm⁻¹ to THz for legacy data.
-export function normalize_dos(dos: unknown): types.DosData | null {
+// Also auto-detects and converts cm⁻¹ to THz for legacy data (disable with auto_convert_units: false).
+export function normalize_dos(
+  dos: unknown,
+  options: { auto_convert_units?: boolean } = {},
+): types.DosData | null {
+  const { auto_convert_units = true } = options
   if (!dos || typeof dos !== `object`) return null
 
   const dos_obj = dos as Record<string, unknown>
@@ -350,9 +354,7 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   const is_pymatgen = typeof dos_obj[`@class`] === `string` ||
     typeof dos_obj[`@module`] === `string`
 
-  const { densities, frequencies, energies, spin_polarized } = dos_obj as Partial<
-    Record<string, unknown>
-  >
+  const { densities, frequencies, energies, spin_polarized } = dos_obj
 
   if (!Array.isArray(densities)) return null
 
@@ -360,13 +362,13 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   if (Array.isArray(frequencies)) {
     if (frequencies.length !== densities.length) return null
 
-    // Auto-detect if frequencies are in cm⁻¹ instead of THz
+    // Auto-detect if frequencies are in cm⁻¹ instead of THz (unless disabled)
     // Typical phonon frequencies are < 50 THz for most materials
     // If max frequency > 100, it's almost certainly in cm⁻¹
     const max_freq = Math.max(...frequencies as number[])
     let final_frequencies = frequencies as number[]
 
-    if (max_freq > 100) {
+    if (auto_convert_units && max_freq > 100) {
       // Likely in cm⁻¹, convert to THz
       final_frequencies = (frequencies as number[]).map((f) => f * CM_TO_THZ)
       console.info(

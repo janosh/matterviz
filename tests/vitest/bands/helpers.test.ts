@@ -696,6 +696,20 @@ describe(`normalize_dos`, () => {
         expect(result.frequencies).toEqual([0, 5, 10, 15, 20])
       }
     })
+
+    it(`skips cm⁻¹→THz conversion when auto_convert_units: false`, () => {
+      const info_spy = spy_info()
+      const result = normalize_dos(
+        { frequencies: [0, 100, 200, 300, 400], densities: [0, 0.5, 1, 0.5, 0] },
+        { auto_convert_units: false },
+      )
+      if (result?.type === `phonon`) {
+        // Frequencies should remain unchanged (not converted)
+        expect(result.frequencies).toEqual([0, 100, 200, 300, 400])
+      }
+      expect(info_spy).not.toHaveBeenCalled()
+      info_spy.mockRestore()
+    })
   })
 
   describe(`electronic DOS`, () => {
