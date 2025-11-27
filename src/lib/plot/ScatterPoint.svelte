@@ -67,8 +67,18 @@
   {#if is_selected}
     <circle
       r={(style.radius ?? 4) * 2.5}
-      class="selection-ring"
+      class="effect-ring selected"
       fill="var(--point-fill-color, {style.fill ?? `cornflowerblue`})"
+      stroke="var(--effect-ring-stroke, white)"
+      stroke-width="var(--effect-ring-stroke-width, 1)"
+    />
+  {:else if style.is_highlighted && style.highlight_effect?.match(/pulse|glow/)}
+    <circle
+      r={(style.radius ?? 4) * 2}
+      class="effect-ring {style.highlight_effect}"
+      fill={style.highlight_color ?? `#ff4444`}
+      stroke="var(--effect-ring-stroke, white)"
+      stroke-width="var(--effect-ring-stroke-width, 1)"
     />
   {/if}
   <path
@@ -107,18 +117,26 @@
     stroke-width: var(--hover-stroke-width);
     filter: brightness(var(--hover-brightness));
   }
-  .selection-ring {
-    animation: pulse 1s ease-in-out infinite;
+  .effect-ring {
     pointer-events: none;
+    animation: ring-pulse var(--effect-ring-duration, 1s) ease-in-out
+      var(--effect-ring-iterations, infinite);
   }
-  @keyframes pulse {
+  .effect-ring.pulse {
+    --effect-ring-duration: 1.2s;
+  }
+  .effect-ring.glow {
+    --effect-ring-duration: 1.5s;
+    filter: blur(3px);
+  }
+  @keyframes ring-pulse {
     0%, 100% {
       opacity: 0.3;
       transform: scale(1);
     }
     50% {
       opacity: 0.7;
-      transform: scale(1.15);
+      transform: scale(1.2);
     }
   }
   .label-text {
