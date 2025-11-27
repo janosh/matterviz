@@ -160,34 +160,37 @@ export function get_page_background(
   return prefers_dark ? fallback_dark : fallback_light
 }
 
-// Detect dark mode from site theme (data-theme, localStorage) or OS preference
+// Detect dark mode: checks data-theme attribute, localStorage, then OS preference
 export function is_dark_mode(): boolean {
   if (typeof document === `undefined`) return false
-  const { theme } = document.documentElement.dataset
-  if (theme === `dark` || theme === `light`) return theme === `dark`
-  const local = localStorage.getItem(`theme`)
-  if (local === `dark` || local === `light`) return local === `dark`
+  const data_theme = document.documentElement.dataset.theme
+  if (data_theme === `dark` || data_theme === `light`) return data_theme === `dark`
+  const stored_theme = localStorage.getItem(`theme`)
+  if (stored_theme === `dark` || stored_theme === `light`) return stored_theme === `dark`
   return globalThis.matchMedia?.(`(prefers-color-scheme: dark)`).matches ?? false
 }
 
-// Watch for dark mode changes and call callback. Returns cleanup function.
+// Watch for dark mode changes and call callback on each change. Returns cleanup function.
 export function watch_dark_mode(on_change: (dark: boolean) => void): () => void {
-  const observer = new MutationObserver(() => on_change(is_dark_mode()))
+  const notify = () => on_change(is_dark_mode())
+
+  const observer = new MutationObserver(notify)
   observer.observe(document.documentElement, {
     attributes: true,
     attributeFilter: [`data-theme`],
   })
 
-  const on_storage = (ev: StorageEvent) => ev.key === `theme` && on_change(is_dark_mode())
+  const on_storage = (ev: StorageEvent) => {
+    if (ev.key === `theme`) notify()
+  }
   globalThis.addEventListener(`storage`, on_storage)
 
-  const mq = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)
-  const on_media = () => on_change(is_dark_mode())
-  mq?.addEventListener(`change`, on_media)
+  const media_query = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)
+  media_query?.addEventListener(`change`, notify)
 
   return () => {
     observer.disconnect()
     globalThis.removeEventListener(`storage`, on_storage)
-    mq?.removeEventListener(`change`, on_media)
+    media_query?.removeEventListener(`change`, notify)
   }
 }

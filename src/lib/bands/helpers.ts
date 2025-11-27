@@ -193,15 +193,123 @@ export function apply_gaussian_smearing(
   return smeared.map((dens) => dens * normalization)
 }
 
+// Type guards for pymatgen qpoint formats
+const is_vec3 = (val: unknown): val is Vec3 =>
+  Array.isArray(val) && val.length >= 3 && val.slice(0, 3).every(Number.isFinite)
+
+interface PymatgenKpoint {
+  frac_coords: Vec3
+  label?: string | null
+}
+const is_kpoint = (val: unknown): val is PymatgenKpoint =>
+  !!val && typeof val === `object` && `frac_coords` in val &&
+  is_vec3((val as PymatgenKpoint).frac_coords)
+
+const is_pymatgen_format = (obj: Record<string, unknown>): boolean =>
+  typeof obj[`@class`] === `string` || typeof obj[`@module`] === `string` ||
+  (Array.isArray(obj.qpoints) && obj.qpoints.length > 0 && !Array.isArray(obj.branches) &&
+    (is_vec3(obj.qpoints[0]) || is_kpoint(obj.qpoints[0])))
+
+const vec3_dist = (a: Vec3, b: Vec3) => Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
+
+// Extract frac_coords/label from pymatgen qpoint, matching label from labels_dict if needed
+const parse_qpoint = (
+  qpt: unknown,
+  labels_dict?: Record<string, Vec3>,
+): types.QPoint | null => {
+  const frac_coords = is_vec3(qpt)
+    ? [qpt[0], qpt[1], qpt[2]] as Vec3
+    : is_kpoint(qpt)
+    ? qpt.frac_coords
+    : null
+  if (!frac_coords) return null
+
+  const label = (is_kpoint(qpt) && typeof qpt.label === `string` && qpt.label) ||
+    Object.entries(labels_dict ?? {}).find(([, c]) => vec3_dist(frac_coords, c) < 1e-4)
+      ?.[0] ||
+    null
+  return { label, frac_coords }
+}
+
+const EV_TO_THZ = 241.7989 // 1 eV = 241.8 THz
+
+// Convert pymatgen PhononBandStructureSymmLine to matterviz format
+function convert_pymatgen_band_structure(
+  pmg: Record<string, unknown>,
+): types.BaseBandStructure | null {
+  const raw_qpts = pmg.qpoints as unknown[] | undefined
+  const raw_bands = pmg.bands as number[][] | undefined
+  const labels_dict = pmg.labels_dict as Record<string, Vec3> | undefined
+  const lattice_rec = pmg.lattice_rec as { matrix?: Matrix3x3 } | undefined
+
+  if (
+    !Array.isArray(raw_qpts) || !Array.isArray(raw_bands) ||
+    !raw_qpts.length || !raw_bands.length
+  ) return null
+
+  const qpoints = raw_qpts.map((q) => parse_qpoint(q, labels_dict)).filter(
+    Boolean,
+  ) as types.QPoint[]
+  if (!qpoints.length) return null
+
+  // Step distances and discontinuity detection (5x median threshold)
+  const steps = qpoints.slice(1).map((q, idx) =>
+    vec3_dist(qpoints[idx].frac_coords, q.frac_coords)
+  )
+  const sorted = steps.slice().sort((a, b) => a - b)
+  const threshold = (sorted[Math.floor(sorted.length / 2)] ?? 0) * 5
+  const disc_set = new Set(
+    steps.map((s, idx) => s > threshold ? idx + 1 : -1).filter((i) => i >= 0),
+  )
+
+  // Cumulative distance (skip discontinuities)
+  const distance = steps.reduce(
+    (acc, step, idx) => [...acc, disc_set.has(idx + 1) ? acc[idx] : acc[idx] + step],
+    [0],
+  )
+
+  // Branches between labeled points (skip those with discontinuities)
+  const labeled = qpoints.map((q, idx) => q.label ? idx : -1).filter((i) => i >= 0)
+  const branches: types.Branch[] = labeled.slice(0, -1).flatMap((start, idx) => {
+    const end = labeled[idx + 1]
+    if ([...disc_set].some((d) => d > start && d <= end)) return []
+    return [{
+      start_index: start,
+      end_index: end,
+      name: `${qpoints[start].label ?? `?`}-${qpoints[end].label ?? `?`}`,
+    }]
+  })
+  if (!branches.length) {
+    branches.push({ start_index: 0, end_index: qpoints.length - 1, name: `path` })
+  }
+
+  return {
+    qpoints,
+    branches,
+    distance,
+    bands: raw_bands.map((band) => band.map((f) => f * EV_TO_THZ)),
+    nb_bands: raw_bands.length,
+    labels_dict: labels_dict ?? {},
+    recip_lattice: { matrix: lattice_rec?.matrix ?? [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
+  }
+}
+
 export function normalize_band_structure(
   bs: unknown,
 ): types.BaseBandStructure | null {
   if (!bs || typeof bs !== `object`) return null
 
-  const band_struct = bs as Partial<types.BaseBandStructure>
+  const band_struct = bs as Record<string, unknown>
 
-  // Check required fields exist and are arrays
-  const { qpoints, branches, bands, distance } = band_struct
+  // Check if this is pymatgen format and convert if so
+  if (is_pymatgen_format(band_struct)) {
+    return convert_pymatgen_band_structure(band_struct)
+  }
+
+  // Standard matterviz format validation
+  const { qpoints, branches, bands, distance } = band_struct as Partial<
+    types.BaseBandStructure
+  >
   if (
     !Array.isArray(qpoints) ||
     !Array.isArray(branches) ||
@@ -224,14 +332,25 @@ export function normalize_band_structure(
     )
   ) return null
 
-  return band_struct as types.BaseBandStructure
+  return band_struct as unknown as types.BaseBandStructure
 }
 
+// Conversion factor: 1 THz = 33.35641 cm⁻¹
+const CM_TO_THZ = 1 / 33.35641
+
 // Validate and normalize a DOS object.
+// Supports both matterviz and pymatgen formats.
+// Also auto-detects and converts cm⁻¹ to THz for legacy data.
 export function normalize_dos(dos: unknown): types.DosData | null {
   if (!dos || typeof dos !== `object`) return null
 
-  const { densities, frequencies, energies, spin_polarized } = dos as Partial<
+  const dos_obj = dos as Record<string, unknown>
+
+  // Check for pymatgen format (has @class or @module)
+  const is_pymatgen = typeof dos_obj[`@class`] === `string` ||
+    typeof dos_obj[`@module`] === `string`
+
+  const { densities, frequencies, energies, spin_polarized } = dos_obj as Partial<
     Record<string, unknown>
   >
 
@@ -240,7 +359,23 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   // Phonon DOS: has frequencies
   if (Array.isArray(frequencies)) {
     if (frequencies.length !== densities.length) return null
-    return { type: `phonon`, frequencies, densities }
+
+    // Auto-detect if frequencies are in cm⁻¹ instead of THz
+    // Typical phonon frequencies are < 50 THz for most materials
+    // If max frequency > 100, it's almost certainly in cm⁻¹
+    const max_freq = Math.max(...frequencies as number[])
+    let final_frequencies = frequencies as number[]
+
+    if (max_freq > 100) {
+      // Likely in cm⁻¹, convert to THz
+      final_frequencies = (frequencies as number[]).map((f) => f * CM_TO_THZ)
+      console.info(
+        `Phonon DOS frequencies appear to be in cm⁻¹ (max: ${max_freq.toFixed(1)}). ` +
+          `Converting to THz (max: ${(max_freq * CM_TO_THZ).toFixed(1)} THz).`,
+      )
+    }
+
+    return { type: `phonon`, frequencies: final_frequencies, densities }
   }
 
   // Electronic DOS: has energies
@@ -254,11 +389,20 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     }
   }
 
+  // For pymatgen format, log a helpful message if format wasn't recognized
+  if (is_pymatgen) {
+    console.warn(
+      `Pymatgen DOS format detected but missing required fields. ` +
+        `Expected 'frequencies' (phonon) or 'energies' (electronic) arrays.`,
+    )
+  }
+
   return null
 }
 
 // Extract k-path points from band structure and convert to reciprocal space coordinates
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
+// Handles both matterviz format (qpoints as objects) and normalized pymatgen format
 export function extract_k_path_points(
   band_struct: types.BaseBandStructure,
   recip_lattice_matrix: Matrix3x3,
@@ -272,11 +416,18 @@ export function extract_k_path_points(
 
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = recip_lattice_matrix
 
-  return band_struct.qpoints.map(({ frac_coords: [x, y, z] }) => [
-    x * m00 + y * m10 + z * m20,
-    x * m01 + y * m11 + z * m21,
-    x * m02 + y * m12 + z * m22,
-  ])
+  return band_struct.qpoints.map((qpoint) => {
+    // Handle both object format {frac_coords: [x,y,z]} and raw array [x,y,z]
+    const coords = Array.isArray(qpoint)
+      ? (qpoint as unknown as [number, number, number])
+      : qpoint.frac_coords
+    const [x, y, z] = coords
+    return [
+      x * m00 + y * m10 + z * m20,
+      x * m01 + y * m11 + z * m21,
+      x * m02 + y * m12 + z * m22,
+    ] as Vec3
+  })
 }
 
 // Find the q-point index closest to a given distance along the band structure path

@@ -29,11 +29,17 @@
     children?: Snippet<[HoveredData]>
   } = $props()
 
-  let first_band_struct = $derived(
+  // Get the first band structure (raw input)
+  let raw_first_band_struct = $derived(
     `qpoints` in band_structs
       ? band_structs
       : band_structs[Object.keys(band_structs)[0]],
-  ) as BaseBandStructure
+  )
+
+  // Normalize the first band structure (handles both matterviz and pymatgen formats)
+  let first_band_struct = $derived(
+    helpers.normalize_band_structure(raw_first_band_struct),
+  ) as BaseBandStructure | null
 
   // Convert fractional k-point coordinates to Cartesian reciprocal space
   // using the structure's reciprocal lattice (consistent with BZ computation)

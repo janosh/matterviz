@@ -5,7 +5,9 @@ import {
   find_qpoint_at_distance,
   find_qpoint_at_rescaled_x,
   get_band_xaxis_ticks,
+  normalize_band_structure,
   normalize_densities,
+  normalize_dos,
   pretty_sym_point,
 } from '$lib/bands/helpers'
 import type { BaseBandStructure } from '$lib/bands/types'
@@ -453,5 +455,312 @@ describe(`find_qpoint_at_rescaled_x`, () => {
         {},
       ),
     ).toBe(null)
+  })
+})
+
+describe(`normalize_band_structure`, () => {
+  const ident: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+  const make_pmg = (opts: Record<string, unknown>) => ({
+    '@class': `PhononBandStructureSymmLine`,
+    ...opts,
+  })
+
+  describe(`matterviz format`, () => {
+    it(`validates valid band structure`, () => {
+      const result = normalize_band_structure({
+        qpoints: [{ label: `GAMMA`, frac_coords: [0, 0, 0] }, {
+          label: `X`,
+          frac_coords: [0.5, 0, 0],
+        }],
+        branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
+        bands: [[0, 1], [2, 3]],
+        distance: [0, 1.0],
+        nb_bands: 2,
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+        recip_lattice: { matrix: ident },
+      })
+      expect(result?.qpoints).toHaveLength(2)
+      expect(result?.bands).toHaveLength(2)
+    })
+
+    it.each([{}, { qpoints: [] }, { qpoints: [], branches: [] }])(
+      `returns null for %p`,
+      (input) => {
+        expect(normalize_band_structure(input)).toBeNull()
+      },
+    )
+
+    it.each([
+      {
+        desc: `mismatched lengths`,
+        input: {
+          qpoints: [{ label: `Γ`, frac_coords: [0, 0, 0] }],
+          branches: [{ start_index: 0, end_index: 0, name: `t` }],
+          bands: [[0, 1]],
+          distance: [0],
+        },
+      },
+      {
+        desc: `invalid branch`,
+        input: {
+          qpoints: [{ label: `Γ`, frac_coords: [0, 0, 0] }],
+          branches: [{ start_index: 0, end_index: 5, name: `t` }],
+          bands: [[0]],
+          distance: [0],
+        },
+      },
+    ])(
+      `returns null for $desc`,
+      ({ input }) => expect(normalize_band_structure(input)).toBeNull(),
+    )
+  })
+
+  describe(`pymatgen format`, () => {
+    it(`converts PhononBandStructureSymmLine`, () => {
+      const result = normalize_band_structure(make_pmg({
+        qpoints: [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]],
+        bands: [[0, 0.001, 0.002]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
+        lattice_rec: { matrix: ident },
+      }))
+      expect(result?.qpoints).toHaveLength(3)
+      expect(result?.bands[0][1]).toBeGreaterThan(0.2) // eV→THz conversion
+    })
+
+    it.each([
+      { desc: `@class`, input: make_pmg({ qpoints: [[0, 0, 0]], bands: [[0]] }) },
+      {
+        desc: `structure`,
+        input: {
+          qpoints: [[0, 0, 0], [0.5, 0, 0]],
+          bands: [[0, 1]],
+          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+        },
+      },
+    ])(
+      `detects pymatgen by $desc`,
+      ({ input }) => expect(() => normalize_band_structure(input)).not.toThrow(),
+    )
+
+    it(`handles Kpoint objects with labels`, () => {
+      const result = normalize_band_structure({
+        '@module': `pymatgen.phonon.bandstructure`,
+        qpoints: [{ frac_coords: [0, 0, 0], label: `GAMMA` }, {
+          frac_coords: [0.5, 0, 0],
+          label: `X`,
+        }],
+        bands: [[0, 1]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      })
+      expect(result?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
+    })
+
+    it(`matches labels from labels_dict`, () => {
+      const result = normalize_band_structure(make_pmg({
+        qpoints: [[0, 0, 0], [0.5, 0, 0]],
+        bands: [[0, 1]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      }))
+      expect(result?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
+    })
+
+    it(`creates branches covering k-path`, () => {
+      const result = normalize_band_structure(make_pmg({
+        qpoints: [[0, 0, 0], [0.25, 0, 0], [0.5, 0, 0]],
+        bands: [[0, 1, 2]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      }))
+      expect(result?.branches[0].start_index).toBe(0)
+      expect(result?.branches.at(-1)?.end_index).toBe(2)
+    })
+
+    it(`calculates monotonic distance array`, () => {
+      const result = normalize_band_structure(make_pmg({
+        qpoints: [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]],
+        bands: [[0, 1, 2]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+      }))
+      expect(result?.distance[0]).toBe(0)
+      expect(
+        result?.distance.every((dist, idx, arr) => idx === 0 || dist >= arr[idx - 1]),
+      )
+        .toBe(true)
+    })
+
+    it(`handles discontinuities`, () => {
+      const result = normalize_band_structure(make_pmg({
+        qpoints: [[0, 0, 0], [0.05, 0, 0], [0.1, 0, 0], [0.9, 0.9, 0.9], [
+          0.95,
+          0.95,
+          0.95,
+        ], [1, 1, 1]],
+        bands: [[0, 1, 2, 3, 4, 5]],
+        labels_dict: { GAMMA: [0, 0, 0], L: [1, 1, 1] },
+      }))
+      expect(Math.max(...(result?.distance ?? []))).toBeLessThan(1.0) // Jump not accumulated
+    })
+
+    it(`converts eV→THz (factor 241.8)`, () => {
+      const result = normalize_band_structure(make_pmg({
+        qpoints: [[0, 0, 0], [1, 0, 0]],
+        bands: [[0, 0.001]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+      }))
+      expect(result?.bands[0][1]).toBeCloseTo(0.2418, 2)
+    })
+
+    it(`tolerates floating point in labels_dict matching`, () => {
+      const result = normalize_band_structure(make_pmg({
+        qpoints: [[0.00001, -0.00001, 0], [0.49999, 0.00001, 0]],
+        bands: [[0, 1]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      }))
+      expect(result?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
+    })
+  })
+
+  describe(`edge cases`, () => {
+    it.each([null, undefined, `string`, 123, [], {
+      '@class': `X`,
+      qpoints: [],
+      bands: [],
+    }])(
+      `returns null for %p`,
+      (input) => expect(normalize_band_structure(input)).toBeNull(),
+    )
+  })
+})
+
+describe(`normalize_dos`, () => {
+  const spy_info = () => vi.spyOn(console, `info`).mockImplementation(() => {})
+
+  describe(`phonon DOS`, () => {
+    it(`validates with frequencies array`, () => {
+      const result = normalize_dos({
+        frequencies: [0, 1, 2, 3, 4],
+        densities: [0, 0.5, 1, 0.5, 0],
+      })
+      expect(result?.type).toBe(`phonon`)
+      if (result?.type === `phonon`) expect(result.frequencies).toEqual([0, 1, 2, 3, 4])
+    })
+
+    it(`auto-converts cm⁻¹→THz when max > 100`, () => {
+      const restore = spy_info()
+      const result = normalize_dos({
+        frequencies: [0, 100, 200, 300, 400],
+        densities: [0, 0.5, 1, 0.5, 0],
+      })
+      if (result?.type === `phonon`) {
+        expect(result.frequencies[4]).toBeCloseTo(11.99, 1) // 400 cm⁻¹
+        expect(result.frequencies[2]).toBeCloseTo(5.99, 1) // 200 cm⁻¹
+      }
+      expect(restore).toHaveBeenCalled()
+      restore.mockRestore()
+    })
+
+    it(`cm⁻¹→THz uses factor 33.356`, () => {
+      const restore = spy_info()
+      const result = normalize_dos({ frequencies: [0, 333.5641], densities: [0, 1] })
+      if (result?.type === `phonon`) expect(result.frequencies[1]).toBeCloseTo(10.0, 4)
+      restore.mockRestore()
+    })
+
+    it(`preserves THz when max < 100`, () => {
+      const result = normalize_dos({
+        frequencies: [0, 5, 10, 15, 20],
+        densities: [0, 0.5, 1, 0.5, 0],
+      })
+      if (result?.type === `phonon`) {
+        expect(result.frequencies).toEqual([0, 5, 10, 15, 20])
+      }
+    })
+  })
+
+  describe(`electronic DOS`, () => {
+    it(`validates with energies array`, () => {
+      const result = normalize_dos({
+        energies: [-5, -2.5, 0, 2.5, 5],
+        densities: [0.1, 0.5, 1, 0.5, 0.1],
+      })
+      expect(result?.type).toBe(`electronic`)
+      if (result?.type === `electronic`) {
+        expect(result.energies).toEqual([-5, -2.5, 0, 2.5, 5])
+      }
+    })
+
+    it(`preserves spin_polarized flag`, () => {
+      const result = normalize_dos({
+        energies: [-1, 0, 1],
+        densities: [0.5, 1, 0.5],
+        spin_polarized: true,
+      })
+      if (result?.type === `electronic`) expect(result.spin_polarized).toBe(true)
+    })
+  })
+
+  describe(`pymatgen format`, () => {
+    it(`warns on incomplete pymatgen DOS`, () => {
+      const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      expect(normalize_dos({ '@class': `PhononDos`, densities: [0, 0.5, 1] })).toBeNull()
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining(`Pymatgen DOS format detected`),
+      )
+      spy.mockRestore()
+    })
+
+    it(`accepts pymatgen with frequencies`, () => {
+      const result = normalize_dos({
+        '@class': `PhononDos`,
+        frequencies: [0, 5, 10],
+        densities: [0, 1, 0],
+      })
+      expect(result?.type).toBe(`phonon`)
+    })
+  })
+
+  describe(`validation`, () => {
+    it.each([
+      { frequencies: [1, 2, 3] }, // missing densities
+      { frequencies: [1, 2, 3], densities: [0, 1] }, // length mismatch
+      null,
+      undefined,
+      `string`, // non-object
+    ])(`returns null for %p`, (input) => expect(normalize_dos(input)).toBeNull())
+  })
+})
+
+describe(`extract_k_path_points`, () => {
+  const ident: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+  const make_bs = (
+    qpoints: { label: string; frac_coords: Vec3 }[],
+    matrix = ident,
+  ): BaseBandStructure => ({
+    qpoints,
+    branches: [{ start_index: 0, end_index: qpoints.length - 1, name: `path` }],
+    distance: qpoints.map((_, idx) => idx),
+    bands: [[...qpoints.keys()]],
+    nb_bands: 1,
+    labels_dict: {},
+    recip_lattice: { matrix },
+  })
+
+  it(`transforms frac→cart with identity`, () => {
+    const result = extract_k_path_points(
+      make_bs([
+        { label: `Γ`, frac_coords: [0, 0, 0] },
+        { label: `X`, frac_coords: [1, 0, 0] },
+      ]),
+      ident,
+    )
+    expect(result).toEqual([[0, 0, 0], [1, 0, 0]])
+  })
+
+  it(`applies reciprocal lattice transformation`, () => {
+    const lat: Matrix3x3 = [[2, 0, 0], [0, 2, 0], [0, 0, 2]]
+    const result = extract_k_path_points(
+      make_bs([{ label: `X`, frac_coords: [0.5, 0, 0] }], lat),
+      lat,
+    )
+    expect(result[0]).toEqual([1, 0, 0]) // [0.5,0,0] * 2 = [1,0,0]
   })
 })
