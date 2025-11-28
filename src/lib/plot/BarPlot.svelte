@@ -23,6 +23,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import { calc_auto_padding, LABEL_GAP_DEFAULT, measure_text_width } from './layout'
+  import PlotTooltip from './PlotTooltip.svelte'
 
   let {
     series = $bindable([]),
@@ -1046,25 +1047,22 @@
       hover_info.orient_y,
     )}
       {@const active_y_config = hover_info.active_y_axis === `y2` ? y2_axis : y_axis}
-      <div
-        class="tooltip overlay"
-        style={`position: absolute; left: ${cx + 6}px; top: ${cy}px; pointer-events: none;`}
-      >
+      <PlotTooltip x={cx} y={cy} bg_color={hover_info.color}>
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
           <div>
-            {x_axis.label || `x`}: {
+            {@html x_axis.label || `x`}: {
               format_value(hover_info.orient_x, x_axis.format || `.3~s`)
             }
           </div>
           <div>
-            {active_y_config.label || `y`}: {
+            {@html active_y_config.label || `y`}: {
               format_value(hover_info.orient_y, active_y_config.format || `.3~s`)
             }
           </div>
         {/if}
-      </div>
+      </PlotTooltip>
     {/if}
 
     {#if show_controls}

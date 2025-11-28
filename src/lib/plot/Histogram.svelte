@@ -23,6 +23,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import PlotTooltip from './PlotTooltip.svelte'
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
 
@@ -552,43 +553,6 @@
       }
     }}
   >
-    <!-- Tooltip -->
-    {#if hover_info}
-      {@const { value, count, property, active_y_axis } = hover_info}
-      {@const tooltip_x = scales.x(value)}
-      {@const tooltip_y = (active_y_axis === `y2` ? scales.y2 : scales.y)(count)}
-      {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
-      {@const tooltip_pos = constrain_tooltip_position(
-        tooltip_x,
-        tooltip_y,
-        tooltip_size.width,
-        tooltip_size.height,
-        width,
-        height,
-      )}
-      <foreignObject
-        x={tooltip_pos.x}
-        y={tooltip_pos.y}
-        width={tooltip_size.width}
-        height={tooltip_size.height}
-      >
-        <div class="tooltip">
-          {#if tooltip}
-            {@render tooltip({ ...hover_info, fullscreen })}
-          {:else}
-            {@const formatter = active_y_axis === `y2`
-            ? final_y2_axis.format
-            : final_y_axis.format}
-            <div>Value: {format_value(value, final_x_axis.format || `.3~s`)}</div>
-            <div>
-              Count: {format_value(count, formatter || `.3~s`)}
-            </div>
-            {#if mode === `overlay`}<div>{property}</div>{/if}
-          {/if}
-        </div>
-      </foreignObject>
-    {/if}
-
     <!-- Zoom Selection Rectangle -->
     {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
         isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&
@@ -873,6 +837,32 @@
     {/each}
   </svg>
 
+  <!-- Tooltip (outside SVG for proper HTML rendering) -->
+  {#if hover_info}
+    {@const { value, count, property, active_y_axis } = hover_info}
+    {@const tooltip_x = scales.x(value)}
+    {@const tooltip_y = (active_y_axis === `y2` ? scales.y2 : scales.y)(count)}
+    {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
+    {@const tooltip_pos = constrain_tooltip_position(
+      tooltip_x,
+      tooltip_y,
+      tooltip_size.width,
+      tooltip_size.height,
+      width,
+      height,
+    )}
+    {@const active_y_config = active_y_axis === `y2` ? final_y2_axis : final_y_axis}
+    <PlotTooltip x={tooltip_pos.x} y={tooltip_pos.y} offset={{ x: 0, y: 0 }}>
+      {#if tooltip}
+        {@render tooltip({ ...hover_info, fullscreen })}
+      {:else}
+        <div>Value: {format_value(value, final_x_axis.format || `.3~s`)}</div>
+        <div>Count: {format_value(count, active_y_config.format || `.3~s`)}</div>
+        {#if mode === `overlay`}<div>{property}</div>{/if}
+      {/if}
+    </PlotTooltip>
+  {/if}
+
   {#if show_controls}
     <HistogramControls
       toggle_props={{
@@ -966,16 +956,6 @@
   }
   g:is(.x-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
-  }
-  .tooltip {
-    background: var(--tooltip-bg);
-    color: var(--text-color);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    pointer-events: none;
-    white-space: nowrap;
-    border: var(--tooltip-border);
   }
   .histogram-series rect {
     transition: opacity 0.2s ease;

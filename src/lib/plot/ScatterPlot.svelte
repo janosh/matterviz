@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
-  import { luminance } from '$lib/colors'
   import { FullscreenToggle } from '$lib/feedback'
   import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
@@ -30,6 +29,7 @@
     get_tick_label,
     Line,
     PlotLegend,
+    PlotTooltip,
     ScatterPlotControls,
     ScatterPoint,
   } from '$lib/plot'
@@ -1632,23 +1632,15 @@
       }
       return `rgba(0, 0, 0, 0.7)`
     })()}
-      {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
-      {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
-      {@const style = `position: absolute; left: ${
-      handler_props.cx + 5
-    }px; top: ${handler_props.cy}px;
-      background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color});
-      z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
-      <div class="tooltip overlay" {style}>
+      <PlotTooltip x={handler_props.cx} y={handler_props.cy} bg_color={tooltip_bg_color}>
         {#if tooltip}
           {@render tooltip(handler_props)}
         {:else}
-          {point_label?.text ? `${point_label?.text}<br />` : ``}x: {
+          {@html point_label?.text ? `${point_label.text}<br />` : ``}x: {
             handler_props.x_formatted
-          }<br />y:
-          {handler_props.y_formatted}
+          }<br />y: {handler_props.y_formatted}
         {/if}
-      </div>
+      </PlotTooltip>
     {/if}
 
     <!-- Control Pane -->
