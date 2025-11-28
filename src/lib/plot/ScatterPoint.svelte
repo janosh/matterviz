@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
   import { type D3SymbolName, symbol_map } from '$lib/labels'
+  import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
   import type { PointStyle, TweenedOptions, XyObj } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import * as d3_symbols from 'd3-shape'
@@ -19,6 +19,7 @@
     point_tween,
     origin = { x: 0, y: 0 },
     is_hovered = false,
+    is_selected = false,
     ...rest
   }: Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin` | `transform`> & {
     x: number
@@ -30,6 +31,7 @@
     point_tween?: TweenedOptions<XyObj>
     origin?: XyObj
     is_hovered?: boolean
+    is_selected?: boolean
   } = $props()
 
   // get the SVG path data as 'd' attribute
@@ -62,6 +64,23 @@
   style:--hover-brightness={hover.brightness ?? 1.2}
   {...rest}
 >
+  {#if is_selected}
+    <circle
+      r={(style.radius ?? 4) * 2.5}
+      class="effect-ring selected"
+      fill="var(--point-fill-color, {style.fill ?? `cornflowerblue`})"
+      stroke="var(--effect-ring-stroke, white)"
+      stroke-width="var(--effect-ring-stroke-width, 1)"
+    />
+  {:else if style.is_highlighted && style.highlight_effect?.match(/pulse|glow/)}
+    <circle
+      r={(style.radius ?? 4) * 2}
+      class="effect-ring {style.highlight_effect}"
+      fill={style.highlight_color ?? `#ff4444`}
+      stroke="var(--effect-ring-stroke, white)"
+      stroke-width="var(--effect-ring-stroke-width, 1)"
+    />
+  {/if}
   <path
     d={marker_path}
     stroke={style.stroke ?? `transparent`}
@@ -97,6 +116,28 @@
     stroke: var(--hover-stroke);
     stroke-width: var(--hover-stroke-width);
     filter: brightness(var(--hover-brightness));
+  }
+  .effect-ring {
+    pointer-events: none;
+    animation: ring-pulse var(--effect-ring-duration, 1s) ease-in-out
+      var(--effect-ring-iterations, infinite);
+  }
+  .effect-ring.pulse {
+    --effect-ring-duration: 1.2s;
+  }
+  .effect-ring.glow {
+    --effect-ring-duration: 1.5s;
+    filter: blur(3px);
+  }
+  @keyframes ring-pulse {
+    0%, 100% {
+      opacity: 0.3;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.7;
+      transform: scale(1.2);
+    }
   }
   .label-text {
     pointer-events: var(--scatter-point-label-pointer-events, none);

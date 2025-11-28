@@ -100,18 +100,12 @@
   />
 {:else}
   <!-- Error state for unsupported dimensionalities -->
-  <div
-    class="phase-diagram-error"
-    style="display: flex; align-items: center; justify-content: center; height: var(--pd-height, 500px); border: 1px solid var(--text-color, #ccc); border-radius: 4px; background: var(--pd-bg, transparent)"
-  >
+  <div class="phase-diagram-error">
     <div style="text-align: center; padding: 2em; color: var(--text-color, #666)">
       <h3 style="margin: 0 0 1em 0">Unsupported Chemical System</h3>
       <p style="margin: 0">
         Phase diagrams require 2, 3, or 4 elements. Found {element_count} element{
-          element_count ===
-            1
-          ? ``
-          : `s`
+          element_count === 1 ? `` : `s`
         }:
       </p>
       <p style="margin: 0.5em 0 0 0; font-weight: bold">
@@ -120,3 +114,16 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .phase-diagram-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: var(--pd-height, 500px);
+    border: 1px solid var(--text-color, #ccc);
+    border-radius: var(--border-radius);
+    background: var(--pd-bg, transparent);
+  }
+</style>

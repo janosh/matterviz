@@ -354,6 +354,38 @@ describe(`get_phase_diagram_stats: stability handling`, () => {
   })
 })
 
+// Test that entries without e_above_hull are counted as unstable,
+// not stable. This prevents the e_above_hull: 0 placeholder bug.
+describe(`get_phase_diagram_stats: hull distance handling`, () => {
+  test(`entries without e_above_hull are counted as unstable (safe default)`, () => {
+    // Server now omits e_above_hull - component computes it later
+    const server_entries: PhaseData[] = [
+      { composition: { Li: 1 }, energy: 0 }, // no e_above_hull
+      { composition: { Fe: 1 }, energy: 0 }, // no e_above_hull
+      { composition: { Li: 1, Fe: 1 }, energy: -1 }, // no e_above_hull
+    ]
+    const stats = get_phase_diagram_stats(server_entries, [`Li`, `Fe`], 3)
+    // Without e_above_hull, all are unstable (safe default, not a bug)
+    expect(stats?.stable).toBe(0)
+    expect(stats?.unstable).toBe(3)
+  })
+
+  test(`entries with computed hull distances correctly separate stable/unstable`, () => {
+    const computed_entries: PhaseData[] = [
+      { composition: { Li: 1 }, energy: 0, e_above_hull: 0 }, // stable (element ref)
+      { composition: { Fe: 1 }, energy: 0, e_above_hull: 0 }, // stable (element ref)
+      { composition: { Li: 1, Fe: 1 }, energy: -1, e_above_hull: 0 }, // stable (on hull)
+      { composition: { Li: 1, Fe: 2 }, energy: -1.5, e_above_hull: 0.05 }, // unstable
+      { composition: { Li: 2, Fe: 1 }, energy: -0.8, e_above_hull: 0.12 }, // unstable
+    ]
+    const stats = get_phase_diagram_stats(computed_entries, [`Li`, `Fe`], 3)
+    expect(stats?.stable).toBe(3)
+    expect(stats?.unstable).toBe(2)
+    expect(stats?.hull_distance.max).toBeCloseTo(0.12, 6)
+    expect(stats?.hull_distance.avg).toBeCloseTo((0.05 + 0.12) / 5, 6)
+  })
+})
+
 describe(`4D convex hull for quaternary phase diagrams`, () => {
   test(`compute_quickhull_4d returns tetrahedra for 4D points`, () => {
     // Create a simple 4D point cloud

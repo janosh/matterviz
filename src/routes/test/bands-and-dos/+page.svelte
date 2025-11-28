@@ -69,7 +69,7 @@
 >
   <div
     class="custom-overlay"
-    style="position: absolute; top: 10px; right: 10px; background: rgba(255, 255, 255, 0.9); padding: 8px; border-radius: 4px; font-size: 12px; pointer-events: none"
+    style="position: absolute; top: 10px; right: 10px; background: rgba(255, 255, 255, 0.9); padding: 8px; border-radius: var(--border-radius); font-size: 12px; pointer-events: none"
   >
     Custom Overlay
   </div>

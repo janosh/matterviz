@@ -37,6 +37,10 @@ export interface PointStyle {
   symbol_size?: number | null // Optional override for marker size
   shape?: string // Add optional shape (string for flexibility)
   cursor?: string // Cursor style for the point
+  // Highlight support for phase diagrams and other use cases
+  is_highlighted?: boolean
+  highlight_color?: string
+  highlight_effect?: `pulse` | `glow` | `size` | `color` | `both`
 }
 
 export interface HoverStyle {

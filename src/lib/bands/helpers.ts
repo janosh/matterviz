@@ -232,6 +232,7 @@ const parse_qpoint = (
 }
 
 const EV_TO_THZ = 241.7989 // 1 eV = 241.8 THz
+const CM_TO_THZ = 1 / 33.35641 // cm⁻¹ to THz conversion factor
 
 // Convert pymatgen PhononBandStructureSymmLine to matterviz format
 function convert_pymatgen_band_structure(
@@ -241,6 +242,8 @@ function convert_pymatgen_band_structure(
   const raw_bands = pmg.bands as number[][] | undefined
   const labels_dict = pmg.labels_dict as Record<string, Vec3> | undefined
   const lattice_rec = pmg.lattice_rec as { matrix?: Matrix3x3 } | undefined
+  // pymatgen defaults to THz, but may specify 'ev' or 'cm-1'
+  const unit = (pmg.unit as string | undefined)?.toLowerCase() ?? `thz`
 
   if (
     !Array.isArray(raw_qpts) || !Array.isArray(raw_bands) ||
@@ -283,11 +286,18 @@ function convert_pymatgen_band_structure(
     branches.push({ start_index: 0, end_index: qpoints.length - 1, name: `path` })
   }
 
+  // Convert bands to THz based on input unit
+  const convert_to_thz = (val: number): number => {
+    if (unit === `ev`) return val * EV_TO_THZ
+    if (unit === `cm-1`) return val * CM_TO_THZ
+    return val // THz (default) - no conversion
+  }
+
   return {
     qpoints,
     branches,
     distance,
-    bands: raw_bands.map((band) => band.map((f) => f * EV_TO_THZ)),
+    bands: raw_bands.map((band) => band.map(convert_to_thz)),
     nb_bands: raw_bands.length,
     labels_dict: labels_dict ?? {},
     recip_lattice: { matrix: lattice_rec?.matrix ?? [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
@@ -335,13 +345,14 @@ export function normalize_band_structure(
   return band_struct as unknown as types.BaseBandStructure
 }
 
-// Conversion factor: 1 THz = 33.35641 cm⁻¹
-const CM_TO_THZ = 1 / 33.35641
-
 // Validate and normalize a DOS object.
 // Supports both matterviz and pymatgen formats.
-// Also auto-detects and converts cm⁻¹ to THz for legacy data.
-export function normalize_dos(dos: unknown): types.DosData | null {
+// Also auto-detects and converts cm⁻¹ to THz for legacy data (disable with auto_convert_units: false).
+export function normalize_dos(
+  dos: unknown,
+  options: { auto_convert_units?: boolean } = {},
+): types.DosData | null {
+  const { auto_convert_units = true } = options
   if (!dos || typeof dos !== `object`) return null
 
   const dos_obj = dos as Record<string, unknown>
@@ -350,9 +361,7 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   const is_pymatgen = typeof dos_obj[`@class`] === `string` ||
     typeof dos_obj[`@module`] === `string`
 
-  const { densities, frequencies, energies, spin_polarized } = dos_obj as Partial<
-    Record<string, unknown>
-  >
+  const { densities, frequencies, energies, spin_polarized } = dos_obj
 
   if (!Array.isArray(densities)) return null
 
@@ -360,13 +369,13 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   if (Array.isArray(frequencies)) {
     if (frequencies.length !== densities.length) return null
 
-    // Auto-detect if frequencies are in cm⁻¹ instead of THz
+    // Auto-detect if frequencies are in cm⁻¹ instead of THz (unless disabled)
     // Typical phonon frequencies are < 50 THz for most materials
     // If max frequency > 100, it's almost certainly in cm⁻¹
     const max_freq = Math.max(...frequencies as number[])
     let final_frequencies = frequencies as number[]
 
-    if (max_freq > 100) {
+    if (auto_convert_units && max_freq > 100) {
       // Likely in cm⁻¹, convert to THz
       final_frequencies = (frequencies as number[]).map((f) => f * CM_TO_THZ)
       console.info(

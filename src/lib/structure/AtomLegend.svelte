@@ -303,7 +303,7 @@
   }
   .element-legend label {
     padding: var(--struct-legend-padding, 0 4pt);
-    border-radius: var(--struct-legend-radius, 3pt);
+    border-radius: var(--struct-legend-radius, var(--border-radius));
     line-height: var(--struct-legend-line-height, 1.3);
     display: inline-block;
     cursor: pointer;
@@ -392,7 +392,7 @@
     right: 0;
     margin-bottom: 0.25rem;
     background: var(--surface-bg);
-    border-radius: 4px;
+    border-radius: var(--border-radius);
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
@@ -414,12 +414,12 @@
     font-size: 0.85rem;
   }
   .mode-option:first-child {
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
+    border-top-left-radius: var(--border-radius);
+    border-top-right-radius: var(--border-radius);
   }
   .mode-option:last-child {
-    border-bottom-left-radius: 4px;
-    border-bottom-right-radius: 4px;
+    border-bottom-left-radius: var(--border-radius);
+    border-bottom-right-radius: var(--border-radius);
   }
   .mode-option:hover:not(.disabled) {
     background: var(--pane-btn-bg-hover, rgba(128, 128, 128, 0.1));
@@ -441,7 +441,7 @@
   }
   .category-label {
     padding: var(--struct-legend-padding, 0 4pt);
-    border-radius: var(--struct-legend-radius, 3pt);
+    border-radius: var(--struct-legend-radius, var(--border-radius));
     line-height: var(--struct-legend-line-height, 1.3);
     display: inline-block;
     white-space: nowrap;
