@@ -348,12 +348,11 @@
   )
 
   const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(processed_entries),
+    helpers.calc_max_hull_dist_in_data(plot_entries),
   )
-
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
-    phase_stats = thermo.get_phase_diagram_stats(processed_entries, elements, 3)
+    phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 3)
   })
 
   // 3D to 2D projection for ternary diagrams

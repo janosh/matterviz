@@ -392,12 +392,11 @@
   })
 
   const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(effective_entries),
+    helpers.calc_max_hull_dist_in_data(plot_entries),
   )
-
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
-    phase_stats = thermo.get_phase_diagram_stats(effective_entries, elements, 3)
+    phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 3)
   })
 
   function extract_structure_from_entry(

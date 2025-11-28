@@ -405,12 +405,11 @@
   )
 
   const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(processed_entries),
+    helpers.calc_max_hull_dist_in_data(plot_entries),
   )
-
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
-    phase_stats = thermo.get_phase_diagram_stats(processed_entries, elements, 4)
+    phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 4)
   })
 
   // Utility: convert hex color to rgba string with alpha
