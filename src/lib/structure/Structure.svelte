@@ -870,7 +870,7 @@
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);
     min-width: var(--struct-min-width, 300px);
-    border-radius: var(--struct-border-radius, 3pt);
+    border-radius: var(--struct-border-radius, var(--border-radius));
     background: var(--struct-bg-override, var(--struct-bg));
     color: var(--struct-text-color);
   }
@@ -934,7 +934,7 @@
     top: 115%;
     right: 0;
     background: var(--surface-bg);
-    border-radius: 4px;
+    border-radius: var(--border-radius);
     box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
@@ -1004,7 +1004,7 @@
     background: var(--error-color, #ff6b6b);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--border-radius);
     cursor: pointer;
     font-size: 0.9rem;
   }
@@ -1018,7 +1018,7 @@
     background: rgba(255, 165, 0, 0.95);
     color: #000;
     padding: 0.75rem 1rem;
-    border-radius: 6px;
+    border-radius: var(--border-radius);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     display: flex;
     gap: 1rem;

@@ -248,7 +248,7 @@
     display: flex;
     place-items: center;
     padding: var(--pane-toggle-padding, 2pt);
-    border-radius: var(--pane-toggle-border-radius, 3pt);
+    border-radius: var(--pane-toggle-border-radius, var(--border-radius));
     background-color: transparent;
     transition: var(--pane-toggle-transition, background-color 0.2s);
     font-size: var(--pane-toggle-font-size, clamp(0.9em, 2cqmin, 1.4em));
@@ -260,7 +260,7 @@
     position: absolute; /* Use absolute so pane scrolls with page content */
     background: var(--pane-bg, var(--page-bg, light-dark(white, black)));
     border: var(--pane-border, 1px solid rgba(255, 255, 255, 0.15));
-    border-radius: var(--pane-border-radius, 6px);
+    border-radius: var(--pane-border-radius, var(--border-radius));
     padding: var(--pane-padding, 1ex);
     box-sizing: border-box;
     z-index: var(--pane-z-index, 10);

@@ -35,7 +35,7 @@
     align-items: center;
     justify-content: center;
     padding: var(--fullscreen-btn-padding, 2pt);
-    border-radius: var(--fullscreen-btn-border-radius, 3pt);
+    border-radius: var(--fullscreen-btn-border-radius, var(--border-radius));
     background-color: transparent;
     cursor: pointer;
     opacity: 0;

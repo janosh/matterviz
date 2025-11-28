@@ -1104,7 +1104,7 @@
     min-height: var(--barplot-min-height, 300px);
     container-type: size;
     z-index: var(--barplot-z-index, auto);
-    border-radius: var(--border-radius, 4px);
+    border-radius: var(--barplot-border-radius, var(--border-radius));
     flex: var(--barplot-flex, 1);
     display: var(--barplot-display, flex);
     flex-direction: column;

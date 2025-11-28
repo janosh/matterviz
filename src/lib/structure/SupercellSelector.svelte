@@ -123,7 +123,7 @@
     right: 0;
     background: var(--surface-bg, #222);
     padding: 4px 2px;
-    border-radius: 4px;
+    border-radius: var(--struct-border-radius, var(--border-radius));
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     display: grid;
     grid-template-columns: 1fr 1fr;

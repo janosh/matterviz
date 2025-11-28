@@ -164,7 +164,7 @@ export const is_denary_entry = (entry: PhaseData) => get_arity(entry) === 10
 
 // Highlight styles for phase diagram entries
 export interface HighlightStyle {
-  effect?: `pulse` | `glow` | `size` | `color`
+  effect?: `pulse` | `glow` | `size` | `color` | `both`
   color?: string
   size_multiplier?: number
   opacity?: number

@@ -295,7 +295,7 @@
 <style>
   .warning, .error-message {
     padding: 1ex;
-    border-radius: 4px;
+    border-radius: var(--traj-border-radius, var(--border-radius));
     font-size: 0.9em;
   }
   .warning {

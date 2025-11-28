@@ -10,6 +10,7 @@
   /* Svelte MultiSelect */
   --sms-options-bg: var(--page-bg);
   --sms-active-color: light-dark(var(--accent-color), cornflowerblue);
+  --border-radius: 3pt;
 }
 
 /* Targeted theme transitions for performance */
@@ -50,7 +51,7 @@ button, a.btn {
   color: var(--text-color);
   cursor: pointer;
   border: none;
-  border-radius: 3pt;
+  border-radius: var(--border-radius);
   padding: 2pt 4pt;
 }
 button:disabled {
@@ -63,7 +64,7 @@ a:hover {
 code, kbd {
   overflow-wrap: break-word;
   padding: 1pt 3pt;
-  border-radius: 3pt;
+  border-radius: var(--border-radius);
   background-color: var(--code-bg);
 }
 kbd {
@@ -77,7 +78,7 @@ pre code {
 }
 pre {
   position: relative;
-  border-radius: 4pt;
+  border-radius: var(--border-radius);
   font-size: 0.95em;
   background-color: var(--pre-bg);
   padding: 1ex 1em;
@@ -123,7 +124,7 @@ textarea {
 /* Modern flat input styling */
 input {
   border: none;
-  border-radius: 3pt;
+  border-radius: var(--border-radius);
 }
 input[type='number'] {
   min-width: 40px;
@@ -133,7 +134,7 @@ input[type='color'] {
   border: none;
   padding: 0;
   outline: none;
-  border-radius: 3pt;
+  border-radius: var(--border-radius);
   overflow: hidden;
   cursor: pointer;
 }

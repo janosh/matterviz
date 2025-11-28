@@ -2,12 +2,14 @@
   import type {
     AnyStructure,
     CompositionType,
+    D3SymbolName,
     ElementSymbol,
     UserContentProps,
   } from '$lib'
   import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
+  import { symbol_map } from '$lib/labels'
   import type {
     AxisConfig,
     ScatterHandlerEvent,
@@ -23,7 +25,12 @@
   import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import * as thermo from './thermodynamics'
-  import type { HoverData3D, PhaseData, PhaseDiagramEntry } from './types'
+  import type {
+    HighlightStyle,
+    HoverData3D,
+    PhaseData,
+    PhaseDiagramEntry,
+  } from './types'
 
   // Binary phase diagram rendered as energy vs composition (x in [0, 1])
   let {
@@ -55,12 +62,14 @@
     stable_entries = $bindable([]),
     unstable_entries = $bindable([]),
     highlighted_entries = $bindable([]),
+    highlight_style = {},
     x_axis = {},
     y_axis = {},
     selected_entry = $bindable(null),
     children,
     ...rest
   }: BasePhaseDiagramProps<PhaseDiagramEntry> & {
+    highlight_style?: HighlightStyle
     x_axis?: AxisConfig
     y_axis?: AxisConfig
   } = $props()
@@ -73,6 +82,15 @@
     colors: { ...default_pd_config.colors, ...(config.colors || {}) },
     margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
   })
+
+  // Merge highlight style with defaults (consistent with 3D/4D)
+  const merged_highlight_style = $derived(
+    helpers.merge_highlight_style(highlight_style),
+  )
+
+  // Helper to check if entry is highlighted
+  const is_highlighted = (entry: PhaseDiagramEntry): boolean =>
+    helpers.is_entry_highlighted(entry, highlighted_entries)
 
   let { // Compute energy mode information
     has_precomputed_e_form,
@@ -294,41 +312,49 @@
     ),
   )
 
-  // Map MarkerSymbol to D3SymbolName (capitalize first letter)
-  const marker_to_d3_symbol = (marker?: string): string | undefined => {
+  // Map MarkerSymbol to D3SymbolName (type-safe via symbol_map lookup)
+  const marker_to_d3_symbol = (marker?: string): D3SymbolName | undefined => {
     if (!marker) return undefined
-    return marker.charAt(0).toUpperCase() + marker.slice(1)
+    const name = marker.charAt(0).toUpperCase() + marker.slice(1)
+    return name in symbol_map ? (name as D3SymbolName) : undefined
   }
 
-  const scatter_points_series = $derived.by(() => {
-    const visible_entries = plot_entries.filter((e) => e.visible)
-    const xs = visible_entries.map((e) => e.x)
-    const ys = visible_entries.map((e) => e.y)
+  // Pre-compute visible entries to avoid redundant filtering
+  const visible_entries = $derived(plot_entries.filter((e) => e.visible))
 
-    // Stability mode: explicit per-point styles; Energy mode: use color_scale
+  const scatter_points_series = $derived.by(() => {
     const is_energy_mode = color_mode === `energy`
-    const point_style = visible_entries.map((e) => {
-      const is_stable = e.is_stable || e.e_above_hull === 0
+
+    const point_style = visible_entries.map((entry) => {
+      const is_stable = entry.is_stable || entry.e_above_hull === 0
+      const base_radius = entry.size || (is_stable ? 6 : 4)
+      const hl = is_highlighted(entry) ? merged_highlight_style : null
+
       return {
-        fill: is_energy_mode
+        fill: hl && (hl.effect === `color` || hl.effect === `both`)
+          ? hl.color
+          : is_energy_mode
           ? undefined
-          : is_stable
-          ? (merged_config.colors?.stable || `#0072B2`)
-          : (merged_config.colors?.unstable || `#E69F00`),
+          : merged_config.colors?.[is_stable ? `stable` : `unstable`],
         stroke: is_stable ? `#ffffff` : `#000000`,
-        radius: e.size || (is_stable ? 6 : 4),
-        symbol_type: marker_to_d3_symbol(e.marker),
+        radius: hl && (hl.effect === `size` || hl.effect === `both`)
+          ? base_radius * hl.size_multiplier
+          : base_radius,
+        symbol_type: marker_to_d3_symbol(entry.marker),
+        is_highlighted: !!hl,
+        highlight_effect: hl?.effect,
+        highlight_color: hl?.color,
       }
     })
 
     return {
-      x: xs,
-      y: ys,
-      metadata: visible_entries, // keep PD entry alongside each point
+      x: visible_entries.map((entry) => entry.x),
+      y: visible_entries.map((entry) => entry.y),
+      metadata: visible_entries,
       markers: `points` as const,
       point_style,
       ...(is_energy_mode
-        ? { color_values: visible_entries.map((e) => e.e_above_hull ?? 0) }
+        ? { color_values: visible_entries.map((entry) => entry.e_above_hull ?? 0) }
         : {}),
     }
   })
@@ -357,13 +383,23 @@
 
   const scatter_series = $derived([scatter_points_series, ...hull_segments_series])
 
-  const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(effective_entries),
-  )
+  // Map selected_entry to ScatterPlot point index (series_idx: 0 = points series)
+  // Use object identity comparison (e === entry) instead of entry_id comparison
+  // because synthetic elemental entries lack entry_id, and undefined === undefined
+  // would incorrectly match the first entry with undefined entry_id
+  const selected_scatter_point = $derived.by(() => {
+    const entry = selected_entry
+    if (!entry) return null
+    const idx = visible_entries.findIndex((vis_entry) => vis_entry === entry)
+    return idx >= 0 ? { series_idx: 0, point_idx: idx } : null
+  })
 
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(plot_entries),
+  )
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
-    phase_stats = thermo.get_phase_diagram_stats(effective_entries, elements, 3)
+    phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 3)
   })
 
   function extract_structure_from_entry(
@@ -550,6 +586,7 @@
     }}
     {tooltip}
     {user_content}
+    selected_point={selected_scatter_point}
     on_point_click={handle_point_click_internal}
     on_point_hover={(data: ScatterHandlerEvent | null) => {
       if (!data) {
@@ -561,10 +598,7 @@
       hover_data = entry
         ? {
           entry,
-          position: {
-            x: data.event.clientX,
-            y: data.event.clientY,
-          },
+          position: { x: data.event.clientX, y: data.event.clientY },
         }
         : null
       on_point_hover?.(hover_data)

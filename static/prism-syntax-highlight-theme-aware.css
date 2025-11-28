@@ -53,12 +53,12 @@ pre[class*='language-'] {
   padding: 1em;
   margin: 0.5em 0;
   overflow: auto;
-  border-radius: 0.3em;
+  border-radius: var(--border-radius);
 }
 
 :not(pre) > code[class*='language-'] {
   padding: 0.1em 0.3em;
-  border-radius: 0.3em;
+  border-radius: var(--border-radius);
   white-space: normal;
 }
 

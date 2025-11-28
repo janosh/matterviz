@@ -200,6 +200,36 @@ describe(`ScatterPoint`, () => {
     expect(document.querySelector(`text`)).toBeFalsy()
   })
 
+  test.each([
+    { is_selected: false, desc: `is_selected=false` },
+    { is_selected: undefined, desc: `is_selected omitted (defaults false)` },
+  ])(`no effect ring when $desc`, ({ is_selected }) => {
+    const target = doc_query(`div`)
+    mount(ScatterPoint, { target, props: { x: 100, y: 100, is_selected } })
+    expect(document.querySelector(`circle.effect-ring`)).toBeFalsy()
+  })
+
+  test.each([
+    { radius: 6, expected_r: `15`, desc: `custom radius 6` },
+    { radius: undefined, expected_r: `10`, desc: `default radius 4` },
+  ])(`effect ring radius = style.radius * 2.5 ($desc)`, ({ radius, expected_r }) => {
+    const target = doc_query(`div`)
+    mount(ScatterPoint, {
+      target,
+      props: { x: 100, y: 100, is_selected: true, style: { radius } },
+    })
+
+    const ring = doc_query(`circle.effect-ring`)
+    const marker = doc_query(`path.marker`)
+    const group = doc_query(`g`)
+
+    expect(ring).toBeTruthy()
+    expect(ring.getAttribute(`r`)).toBe(expected_r)
+    // Ring must come before marker in DOM so it renders behind
+    const children = Array.from(group.children)
+    expect(children.indexOf(ring)).toBeLessThan(children.indexOf(marker))
+  })
+
   test(`handles zero values correctly`, () => {
     const target = doc_query(`div`)
     mount(ScatterPoint, { target, props: { x: 0, y: 0 } })

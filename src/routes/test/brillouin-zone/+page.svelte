@@ -140,6 +140,6 @@
     margin-bottom: 2em;
     padding: 1em;
     border: 1px solid var(--sms-border);
-    border-radius: 4px;
+    border-radius: var(--border-radius);
   }
 </style>

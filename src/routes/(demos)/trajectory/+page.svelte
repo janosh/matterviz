@@ -28,7 +28,7 @@
       properties are currently displayed.
     </p>
     <strong
-      style="display: block; margin: 1em auto; padding: 1em; background: var(--surface-bg-hover); border-radius: 4px; font-family: monospace; font-size: 0.9em"
+      style="display: block; margin: 1em auto; padding: 1em; background: var(--surface-bg-hover); border-radius: var(--border-radius); font-family: monospace; font-size: 0.9em"
     >
       bind:visible_properties = {JSON.stringify(visible_props_cantor_qha)}
     </strong>

@@ -281,7 +281,7 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
   }
 
   const info_style =
-    `margin: 1em 0; padding: 4pt 8pt; background: rgba(255,255,255,0.1); border-radius: 4px; font-size: 0.9em`
+    `margin: 1em 0; padding: 4pt 8pt; background: rgba(255,255,255,0.1); border-radius: var(--border-radius); font-size: 0.9em`
 </script>
 
 <BarPlot
