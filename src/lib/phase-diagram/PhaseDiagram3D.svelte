@@ -889,7 +889,7 @@
   // Reactive dark mode detection for canvas text color
   let dark_mode = $state(is_dark_mode())
   $effect(() => watch_dark_mode((dark) => dark_mode = dark))
-  const text_color = $derived(dark_mode ? `#ffffff` : `#212121`)
+  const text_color = $derived(helpers.get_canvas_text_color(dark_mode))
 
   $effect(() => {
     if (!canvas) return

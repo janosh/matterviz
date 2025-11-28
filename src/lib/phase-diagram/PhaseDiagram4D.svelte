@@ -70,14 +70,7 @@
   // Reactive dark mode detection for canvas text color
   let dark_mode = $state(is_dark_mode())
   $effect(() => watch_dark_mode((dark) => dark_mode = dark))
-  const text_color = $derived.by(() => {
-    // Reference dark_mode to ensure re-evaluation when theme changes
-    void dark_mode
-    if (typeof document === `undefined`) return dark_mode ? `#ffffff` : `#212121`
-    const computed = getComputedStyle(canvas || document.documentElement)
-    return computed.getPropertyValue(`--text-color`)?.trim() ||
-      (dark_mode ? `#ffffff` : `#212121`)
-  })
+  const text_color = $derived(helpers.get_canvas_text_color(dark_mode))
 
   let { // Compute energy mode information
     has_precomputed_e_form,
@@ -308,7 +301,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, text_color]
+    [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, text_color, elements]
 
     render_once()
   })
