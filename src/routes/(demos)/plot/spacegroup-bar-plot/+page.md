@@ -169,7 +169,7 @@ Simulated space group distributions from Materials Project database:
 </script>
 
 <div
-  style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: 4px; font-size: 0.9em"
+  style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: var(--border-radius); font-size: 0.9em"
 >
   <strong>Dataset:</strong> {materials_db.length} materials with distribution resembling
   real materials databases. Notice how certain space groups like 225 (Fm-3m), 62 (Pnma),

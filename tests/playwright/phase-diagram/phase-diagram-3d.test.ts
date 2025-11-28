@@ -43,6 +43,12 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
       .toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
     await expect(info.getByText(`Stability`)).toBeVisible()
+
+    // Regression: verify unstable phases > 0 (catches possible e_above_hull placeholder bugs)
+    const unstable_text = await info.getByTestId(`pd-unstable-phases`).textContent()
+    const unstable_match = unstable_text?.match(/(\d+)/)
+    const unstable_count = unstable_match ? parseInt(unstable_match[1], 10) : 0
+    expect(unstable_count).toBeGreaterThan(0)
   })
 
   test(`camera elevation/azimuth controls accept numeric changes`, async ({ page }) => {

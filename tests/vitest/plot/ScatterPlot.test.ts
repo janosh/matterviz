@@ -162,4 +162,19 @@ describe(`ScatterPlot`, () => {
       `Custom overlay content`,
     )
   })
+
+  test.each([
+    { selected_point: { series_idx: 0, point_idx: 2 }, desc: `middle point` },
+    { selected_point: { series_idx: 0, point_idx: 0 }, desc: `first point` },
+    { selected_point: { series_idx: 0, point_idx: 4 }, desc: `last point` },
+    { selected_point: null, desc: `null (no selection)` },
+  ])(`selected_point accepts $desc`, ({ selected_point }) => {
+    // Tests that ScatterPlot accepts selected_point prop without errors
+    mount(ScatterPlot, {
+      target: document.body,
+      props: { series: [basic], selected_point },
+    })
+    // Component should render without throwing
+    expect(document.querySelector(`.scatter`)).toBeTruthy()
+  })
 })

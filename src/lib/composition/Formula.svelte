@@ -192,7 +192,7 @@
     gap: var(--formula-tooltip-gap, 5pt);
     padding: var(--formula-tooltip-padding, 3pt 4pt);
     background: var(--formula-tooltip-bg, rgba(0, 0, 0, 0.9));
-    border-radius: var(--formula-tooltip-border-radius, 3pt);
+    border-radius: var(--formula-tooltip-border-radius, var(--border-radius));
     box-shadow: var(--formula-tooltip-box-shadow, 0 4px 12px rgba(0, 0, 0, 0.3));
     z-index: var(--tooltip-z-index, 2);
   }
