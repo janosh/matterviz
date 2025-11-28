@@ -307,9 +307,7 @@
 
   // Build ScatterPlot series --------------------------------------------------
   const hull_polyline = $derived(
-    compute_lower_hull(plot_entries.map((e) => ({ x: e.x, y: e.y }))).sort(
-      (a, b) => a.x - b.x,
-    ),
+    compute_lower_hull(plot_entries).sort((e1, e2) => e1.x - e2.x),
   )
 
   // Map MarkerSymbol to D3SymbolName (type-safe via symbol_map lookup)
