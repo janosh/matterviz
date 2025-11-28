@@ -331,13 +331,13 @@
       const hl = is_highlighted(entry) ? merged_highlight_style : null
 
       return {
-        fill: hl?.effect === `color`
+        fill: hl && (hl.effect === `color` || hl.effect === `both`)
           ? hl.color
           : is_energy_mode
           ? undefined
           : merged_config.colors?.[is_stable ? `stable` : `unstable`],
         stroke: is_stable ? `#ffffff` : `#000000`,
-        radius: hl?.effect === `size`
+        radius: hl && (hl.effect === `size` || hl.effect === `both`)
           ? base_radius * hl.size_multiplier
           : base_radius,
         symbol_type: marker_to_d3_symbol(entry.marker),
@@ -384,10 +384,13 @@
   const scatter_series = $derived([scatter_points_series, ...hull_segments_series])
 
   // Map selected_entry to ScatterPlot point index (series_idx: 0 = points series)
+  // Use object identity comparison (e === entry) instead of entry_id comparison
+  // because synthetic elemental entries lack entry_id, and undefined === undefined
+  // would incorrectly match the first entry with undefined entry_id
   const selected_scatter_point = $derived.by(() => {
     const entry = selected_entry
     if (!entry) return null
-    const idx = visible_entries.findIndex((e) => e.entry_id === entry.entry_id)
+    const idx = visible_entries.findIndex((vis_entry) => vis_entry === entry)
     return idx >= 0 ? { series_idx: 0, point_idx: idx } : null
   })
 

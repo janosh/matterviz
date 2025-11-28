@@ -40,7 +40,7 @@ export interface PointStyle {
   // Highlight support for phase diagrams and other use cases
   is_highlighted?: boolean
   highlight_color?: string
-  highlight_effect?: `pulse` | `glow` | `size` | `color`
+  highlight_effect?: `pulse` | `glow` | `size` | `color` | `both`
 }
 
 export interface HoverStyle {
