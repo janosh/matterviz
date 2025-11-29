@@ -123,7 +123,7 @@
     box-sizing: border-box;
     height: var(--pd-height, 500px);
     border: 1px solid var(--text-color, #ccc);
-    border-radius: var(--border-radius);
+    border-radius: var(--border-radius, 3pt);
     background: var(--pd-bg, transparent);
   }
 </style>

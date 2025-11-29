@@ -430,7 +430,7 @@
   .legend-item {
     display: flex;
     align-items: center;
-    border-radius: var(--pd-border-radius, var(--border-radius));
+    border-radius: var(--pd-border-radius, var(--border-radius, 3pt));
     cursor: pointer;
     white-space: nowrap;
   }
