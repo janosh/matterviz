@@ -513,7 +513,14 @@ describe(`helpers: get_canvas_text_color`, () => {
     },
     // Valid CSS colors returned as-is
     { css: `#333`, dark: false, expected: `#333`, desc: `hex short` },
+    { css: `#333333`, dark: false, expected: `#333333`, desc: `hex full` },
     { css: `rgb(51, 51, 51)`, dark: false, expected: `rgb(51, 51, 51)`, desc: `rgb()` },
+    {
+      css: `rgba(0, 0, 0, 0.87)`,
+      dark: false,
+      expected: `rgba(0, 0, 0, 0.87)`,
+      desc: `rgba()`,
+    },
     { css: `white`, dark: true, expected: `white`, desc: `named color` },
   ])(`$desc → $expected`, ({ css, dark, expected }) => {
     mock_css(css)

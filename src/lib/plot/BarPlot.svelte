@@ -1157,14 +1157,6 @@
     stroke-width: var(--barplot-zoom-rect-stroke-width, 1);
     pointer-events: none;
   }
-  .tooltip {
-    background: var(--tooltip-bg);
-    color: var(--text-color);
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 12px;
-    border: var(--tooltip-border);
-  }
   .bar-label {
     fill: var(--text-color);
     font-size: 11px;

@@ -1599,8 +1599,10 @@
       {@const hovered_series = series_with_ids[series_idx]}
       {@const series_markers = hovered_series?.markers ?? DEFAULT_MARKERS}
       {@const is_transparent_or_none = (color: string | undefined | null): boolean =>
-      !color || color === `none` || color === `transparent` ||
-      (color.startsWith(`rgba(`) && color.endsWith(`, 0)`))}
+      !color ||
+      color === `none` ||
+      color === `transparent` ||
+      /rgba\([^)]+[,/]\s*0(\.0*)?\s*\)$/.test(color)}
       {@const tooltip_bg_color = (() => {
       const scale_color = color_value != null
         ? color_scale_fn(color_value)
@@ -1835,15 +1837,6 @@
   }
   .current-frame-indicator:hover {
     opacity: 0.8;
-  }
-  .tooltip {
-    color: var(--scatter-tooltip-color, light-dark(black, white));
-    padding: var(--scatter-tooltip-padding, 1px 4px);
-    border-radius: var(--scatter-tooltip-border-radius, var(--border-radius));
-    font-size: var(--scatter-tooltip-font-size, 0.8em);
-    /* Ensure background fits content width */
-    width: var(--scatter-tooltip-width, max-content);
-    box-sizing: border-box;
   }
   .zoom-rect {
     fill: var(--scatter-zoom-rect-fill, rgba(100, 100, 255, 0.2));

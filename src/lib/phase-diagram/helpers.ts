@@ -529,7 +529,7 @@ export function get_canvas_text_color(
   const css_value = getComputedStyle(element ?? document.documentElement)
     .getPropertyValue(`--text-color`)?.trim()
   // Check for unsupported CSS functions that canvas can't render
-  return css_value && !/light-dark|var\(/.test(css_value) ? css_value : fallback
+  return css_value && !/light-dark|var\(/i.test(css_value) ? css_value : fallback
 }
 
 // Create a Path2D for a marker symbol. Uses d3-shape for consistent rendering with ScatterPlot.
