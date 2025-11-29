@@ -216,7 +216,7 @@
     </p>
     <div class="binary-grid">
       {#each binary_examples as { title, entries } (title)}
-        <PhaseDiagram2D {entries} controls={{ title }} />
+        <PhaseDiagram2D {entries} controls={{ title }} style="height: 500px" />
       {/each}
     </div>
 
@@ -233,6 +233,7 @@
         bind:stable_entries
         bind:unstable_entries
         bind:max_hull_dist_show_phases
+        style="height: 100%"
       />
       {#if phase_stats}
         <PhaseDiagramStats {phase_stats} {stable_entries} {unstable_entries} />
@@ -345,6 +346,7 @@
           entries={binary_marker_entries}
           controls={{ title: `Na-O with Markers` }}
           bind:selected_entry={selected_binary_entry}
+          style="height: 100%"
         />
       </div>
     </div>

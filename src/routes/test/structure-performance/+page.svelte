@@ -143,9 +143,7 @@
     show_site_indices = parse_bool(`show_site_indices`, show_site_indices)
     show_image_atoms = parse_bool(`show_image_atoms`, show_image_atoms)
     force_large_structure = parse_bool(`force_large_structure`, force_large_structure)
-  })
-
-  $effect(() => {
+    // Initial generation after URL params are loaded
     generate_structure_async(atom_count)
   })
 
@@ -178,7 +176,10 @@
       min="1"
       max="50000"
       step="100"
-      onchange={update_url}
+      onchange={() => {
+        update_url()
+        generate_structure_async(atom_count)
+      }}
     />
   </label>
 
@@ -279,6 +280,7 @@
       onclick={() => {
         atom_count = count as number
         update_url()
+        generate_structure_async(atom_count)
       }}
     >
       {label} ({count})

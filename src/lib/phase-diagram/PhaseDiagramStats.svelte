@@ -70,7 +70,7 @@
 
     const phase_items: InfoItem[] = [
       {
-        label: `Total entries in ${phase_stats.chemical_system} system`,
+        label: `Total entries in ${phase_stats.chemical_system}`,
         value: format_num(phase_stats.total),
         key: `total-entries`,
       },

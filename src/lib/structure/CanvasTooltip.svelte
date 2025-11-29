@@ -11,13 +11,13 @@
 </script>
 
 <HTML {position} pointerEvents="none">
-  <div {...rest} class="tooltip {rest.class ?? ``}" role="tooltip">
+  <div {...rest} role="tooltip">
     {@render children({ position })}
   </div>
 </HTML>
 
 <style>
-  .tooltip {
+  div {
     width: max-content;
     box-sizing: border-box;
     text-align: var(--canvas-tooltip-text-align, left);

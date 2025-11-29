@@ -518,6 +518,20 @@ export function draw_selection_highlight(
   ctx.stroke()
 }
 
+// Get text color for canvas rendering. Canvas 2D context doesn't understand CSS functions
+// like light-dark() or var(), so we fall back to appropriate colors based on dark mode.
+export function get_canvas_text_color(
+  dark_mode: boolean,
+  element?: HTMLElement | null,
+): string {
+  const fallback = dark_mode ? `#ffffff` : `#212121`
+  if (typeof document === `undefined`) return fallback
+  const css_value = getComputedStyle(element ?? document.documentElement)
+    .getPropertyValue(`--text-color`)?.trim()
+  // Check for unsupported CSS functions that canvas can't render
+  return css_value && !/light-dark|var\(/i.test(css_value) ? css_value : fallback
+}
+
 // Create a Path2D for a marker symbol. Uses d3-shape for consistent rendering with ScatterPlot.
 export function create_marker_path(
   size: number,

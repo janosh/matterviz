@@ -6,7 +6,7 @@
     ElementSymbol,
     UserContentProps,
   } from '$lib'
-  import { Icon, is_unary_entry, PD_DEFAULTS, toggle_fullscreen } from '$lib'
+  import { Icon, is_unary_entry, PD_DEFAULTS } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { symbol_map } from '$lib/labels'
@@ -16,7 +16,6 @@
     ScatterHandlerProps,
   } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
-  import { SvelteMap } from 'svelte/reactivity'
   import * as helpers from './helpers'
   import type { BasePhaseDiagramProps } from './index'
   import { default_controls, default_pd_config, PD_STYLE } from './index'
@@ -40,7 +39,6 @@
     on_point_click,
     on_point_hover,
     fullscreen = $bindable(false),
-    enable_fullscreen = true,
     enable_info_pane = true,
     wrapper = $bindable(),
     label_threshold = 50,
@@ -229,47 +227,57 @@
     }
   })
 
-  const plot_entries = $derived.by(() => {
-    if (coords_entries.length === 0) return []
+  // Compute hull points and enriched entries together to avoid redundant hull computation
+  const { plot_entries, hull_points } = $derived.by(() => {
+    if (coords_entries.length === 0) return { plot_entries: [], hull_points: [] }
 
     // Build lower hull in (x, y=e_form)
     // Group by composition fraction (x) and track all entries at each x to
     // robustly handle polymorphs. For the hull input, use the lowest energy per x.
-    const entries_by_x = new SvelteMap<number, PhaseDiagramEntry[]>()
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local var in derived, not reactive state
+    const entries_by_x = new Map<number, PhaseDiagramEntry[]>()
     for (const entry of coords_entries) {
-      const existing = entries_by_x.get(entry.x) || []
-      existing.push(entry)
-      entries_by_x.set(entry.x, existing)
+      const existing = entries_by_x.get(entry.x)
+      if (existing) existing.push(entry)
+      else entries_by_x.set(entry.x, [entry])
     }
-    const hull_input = Array.from(entries_by_x, ([x, entries]) => {
-      const min_y = Math.min(...entries.map((entry) => entry.y))
-      return { x, y: min_y }
-    })
+    const hull_input: HullVertex[] = []
+    for (const [x_coord, grouped_entries] of entries_by_x) {
+      let min_y = Infinity
+      for (const entry of grouped_entries) {
+        if (entry.y < min_y) min_y = entry.y
+      }
+      hull_input.push({ x: x_coord, y: min_y })
+    }
     const hull_points = compute_lower_hull(hull_input)
 
     // Annotate entries with e_above_hull and visibility
-    const enriched = coords_entries.map((e) => {
-      const y_hull = interpolate_on_hull(hull_points, e.x)
-      const above = y_hull == null ? 0 : Math.max(0, e.y - y_hull)
+    const enriched = coords_entries.map((entry) => {
+      const y_hull = interpolate_on_hull(hull_points, entry.x)
+      const above = y_hull == null ? 0 : Math.max(0, entry.y - y_hull)
       const is_stable = above <= 1e-9
       const visible = (is_stable && show_stable) ||
         (!is_stable && show_unstable && above <= max_hull_dist_show_phases)
-      return { ...e, e_above_hull: above, is_stable, visible }
+      return { ...entry, e_above_hull: above, is_stable, visible }
     })
 
-    return enriched.filter((
-      e,
-    ) => (e.is_stable || (e.e_above_hull ?? 0) <= max_hull_dist_show_phases))
+    const plot_entries = enriched.filter((
+      entry,
+    ) => (entry.is_stable || (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases))
+
+    return { plot_entries, hull_points }
   })
 
-  // Update bindable entries arrays when plot_entries change
+  // Update bindable entries arrays when plot_entries change (single pass)
   $effect(() => {
-    stable_entries = plot_entries.filter(
-      (entry: PhaseDiagramEntry) => entry.is_stable || entry.e_above_hull === 0,
-    )
-    unstable_entries = plot_entries.filter(
-      (entry: PhaseDiagramEntry) => (entry.e_above_hull ?? 0) > 0 && !entry.is_stable,
-    )
+    const stable: PhaseDiagramEntry[] = []
+    const unstable: PhaseDiagramEntry[] = []
+    for (const entry of plot_entries) {
+      if (entry.is_stable) stable.push(entry)
+      else unstable.push(entry)
+    }
+    stable_entries = stable
+    unstable_entries = unstable
   })
 
   let reset_counter = $state(0)
@@ -306,11 +314,6 @@
   })
 
   // Build ScatterPlot series --------------------------------------------------
-  const hull_polyline = $derived(
-    compute_lower_hull(plot_entries.map((e) => ({ x: e.x, y: e.y }))).sort(
-      (a, b) => a.x - b.x,
-    ),
-  )
 
   // Map MarkerSymbol to D3SymbolName (type-safe via symbol_map lookup)
   const marker_to_d3_symbol = (marker?: string): D3SymbolName | undefined => {
@@ -324,13 +327,25 @@
 
   const scatter_points_series = $derived.by(() => {
     const is_energy_mode = color_mode === `energy`
+    const count = visible_entries.length
 
-    const point_style = visible_entries.map((entry) => {
+    // Single pass: extract x, y, color_values, and point_style simultaneously
+    const x_vals: number[] = new Array(count)
+    const y_vals: number[] = new Array(count)
+    const color_values: number[] = is_energy_mode ? new Array(count) : []
+    const point_style = new Array(count)
+
+    for (let idx = 0; idx < count; idx++) {
+      const entry = visible_entries[idx]
+      x_vals[idx] = entry.x
+      y_vals[idx] = entry.y
+      if (is_energy_mode) color_values[idx] = entry.e_above_hull ?? 0
+
       const is_stable = entry.is_stable || entry.e_above_hull === 0
       const base_radius = entry.size || (is_stable ? 6 : 4)
       const hl = is_highlighted(entry) ? merged_highlight_style : null
 
-      return {
+      point_style[idx] = {
         fill: hl && (hl.effect === `color` || hl.effect === `both`)
           ? hl.color
           : is_energy_mode
@@ -345,26 +360,24 @@
         highlight_effect: hl?.effect,
         highlight_color: hl?.color,
       }
-    })
+    }
 
     return {
-      x: visible_entries.map((entry) => entry.x),
-      y: visible_entries.map((entry) => entry.y),
+      x: x_vals,
+      y: y_vals,
       metadata: visible_entries,
       markers: `points` as const,
       point_style,
-      ...(is_energy_mode
-        ? { color_values: visible_entries.map((entry) => entry.e_above_hull ?? 0) }
-        : {}),
+      ...(is_energy_mode ? { color_values } : {}),
     }
   })
 
   const hull_segments_series = $derived.by(() => {
-    if (!merged_config.show_hull || hull_polyline.length < 2) return []
+    if (!merged_config.show_hull || hull_points.length < 2) return []
     const segments = []
-    for (let idx = 0; idx < hull_polyline.length - 1; idx++) {
-      const p1 = hull_polyline[idx]
-      const p2 = hull_polyline[idx + 1]
+    for (let idx = 0; idx < hull_points.length - 1; idx++) {
+      const p1 = hull_points[idx]
+      const p2 = hull_points[idx + 1]
       segments.push({
         x: [p1.x, p2.x] as const,
         y: [p1.y, p2.y] as const,
@@ -424,6 +437,23 @@
     max_hull_dist_show_labels = PD_DEFAULTS.binary.max_hull_dist_show_labels
     reset_counter += 1
   }
+
+  // Track whether any settings differ from defaults (to show/hide reset button)
+  // Must match all properties that reset_all() resets
+  const has_changes_to_reset = $derived(
+    fullscreen !== PD_DEFAULTS.binary.fullscreen ||
+      info_pane_open !== PD_DEFAULTS.binary.info_pane_open ||
+      legend_pane_open !== PD_DEFAULTS.binary.legend_pane_open ||
+      color_mode !== PD_DEFAULTS.binary.color_mode ||
+      color_scale !== PD_DEFAULTS.binary.color_scale ||
+      show_stable !== PD_DEFAULTS.binary.show_stable ||
+      show_unstable !== PD_DEFAULTS.binary.show_unstable ||
+      show_stable_labels !== PD_DEFAULTS.binary.show_stable_labels ||
+      show_unstable_labels !== PD_DEFAULTS.binary.show_unstable_labels ||
+      max_hull_dist_show_phases !== PD_DEFAULTS.binary.max_hull_dist_show_phases ||
+      max_hull_dist_show_labels !== PD_DEFAULTS.binary.max_hull_dist_show_labels,
+  )
+
   // Custom hover tooltip state used with ScatterPlot events
   let hover_data = $state<HoverData3D<PhaseDiagramEntry> | null>(null)
 
@@ -532,6 +562,56 @@
   {/if}
 {/snippet}
 
+{#snippet pd_header_controls()}
+  {#if merged_controls.show && !structure_popup.open}
+    {#if has_changes_to_reset}
+      <button
+        type="button"
+        onclick={reset_all}
+        title="Reset view and settings"
+        class="control-btn reset-camera-btn"
+      >
+        <Icon icon="Reset" />
+      </button>
+    {/if}
+
+    {#if enable_info_pane && phase_stats}
+      <PhaseDiagramInfoPane
+        bind:pane_open={info_pane_open}
+        {phase_stats}
+        {stable_entries}
+        {unstable_entries}
+        {max_hull_dist_show_phases}
+        {max_hull_dist_show_labels}
+        {label_threshold}
+        toggle_props={{ class: `control-btn info-btn` }}
+      />
+    {/if}
+
+    <PhaseDiagramControls
+      bind:controls_open={legend_pane_open}
+      bind:color_mode
+      bind:color_scale
+      bind:show_stable
+      bind:show_unstable
+      bind:show_stable_labels
+      bind:show_unstable_labels
+      bind:max_hull_dist_show_phases
+      bind:max_hull_dist_show_labels
+      {max_hull_dist_in_data}
+      {stable_entries}
+      {unstable_entries}
+      {merged_controls}
+      toggle_props={{ class: `control-btn legend-controls-btn` }}
+      bind:energy_source_mode
+      {has_precomputed_e_form}
+      {can_compute_e_form}
+      {has_precomputed_hull}
+      {can_compute_hull}
+    />
+  {/if}
+{/snippet}
+
 {#snippet user_content(
   { x_scale_fn, pad, height, y_scale_fn, y_range, width }: UserContentProps,
 )}
@@ -551,6 +631,7 @@
     class="phase-diagram-2d {rest.class ?? ``} {drag_over ? `dragover` : ``}"
     style={`${style}; ${rest.style ?? ``}`}
     bind:wrapper
+    bind:fullscreen
     role="application"
     tabindex={-1}
     onkeydown={handle_keydown}
@@ -566,6 +647,7 @@
     aria-label="Binary phase diagram visualization"
     series={scatter_series}
     bind:display
+    controls={{ show: false }}
     x_axis={{
       label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
       range: x_domain,
@@ -586,6 +668,7 @@
     }}
     {tooltip}
     {user_content}
+    header_controls={pd_header_controls}
     selected_point={selected_scatter_point}
     on_point_click={handle_point_click_internal}
     on_point_hover={(data: ScatterHandlerEvent | null) => {
@@ -614,65 +697,6 @@
     <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
       {phase_stats?.chemical_system}
     </h3>
-
-    {#if merged_controls.show}
-      <section class="control-buttons">
-        <button
-          type="button"
-          onclick={reset_all}
-          title="Reset view and settings"
-          class="reset-camera-btn"
-        >
-          <Icon icon="Reset" />
-        </button>
-
-        {#if enable_info_pane && phase_stats}
-          <PhaseDiagramInfoPane
-            bind:pane_open={info_pane_open}
-            {phase_stats}
-            {stable_entries}
-            {unstable_entries}
-            {max_hull_dist_show_phases}
-            {max_hull_dist_show_labels}
-            {label_threshold}
-            toggle_props={{ class: `info-btn` }}
-          />
-        {/if}
-
-        {#if enable_fullscreen}
-          <button
-            type="button"
-            onclick={() => toggle_fullscreen(wrapper)}
-            title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-            class="fullscreen-btn"
-          >
-            <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
-          </button>
-        {/if}
-
-        <PhaseDiagramControls
-          bind:controls_open={legend_pane_open}
-          bind:color_mode
-          bind:color_scale
-          bind:show_stable
-          bind:show_unstable
-          bind:show_stable_labels
-          bind:show_unstable_labels
-          bind:max_hull_dist_show_phases
-          bind:max_hull_dist_show_labels
-          {max_hull_dist_in_data}
-          {stable_entries}
-          {unstable_entries}
-          {merged_controls}
-          toggle_props={{ class: `legend-controls-btn` }}
-          bind:energy_source_mode
-          {has_precomputed_e_form}
-          {can_compute_e_form}
-          {has_precomputed_hull}
-          {can_compute_hull}
-        />
-      </section>
-    {/if}
 
     <ClickFeedback
       bind:visible={copy_feedback.visible}
@@ -703,25 +727,19 @@
   :global(.phase-diagram-2d.dragover) {
     border: 2px dashed var(--accent-color, #1976d2) !important;
   }
-  .control-buttons {
-    position: absolute;
-    top: 1ex;
-    right: 1ex;
-    display: flex;
-    gap: 8px;
-  }
-  .control-buttons button {
+  /* Styles for control buttons rendered via header_controls snippet */
+  :global(.phase-diagram-2d .control-btn) {
     background: transparent;
     border: none;
     padding: 4px;
     cursor: pointer;
     border-radius: 3px;
     color: var(--text-color, currentColor);
-    transition: background-color 0.2s;
+    transition: background-color 0.2s, opacity 0.2s;
     display: flex;
     font-size: clamp(1em, 2cqmin, 2.5em);
   }
-  .control-buttons button:hover {
+  :global(.phase-diagram-2d .control-btn:hover) {
     background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));
   }
 </style>

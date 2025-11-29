@@ -37,10 +37,30 @@
   const copy_confirm = `✅`
 
   const text_export_formats = [
-    { label: `JSON`, format: `json` },
-    { label: `XYZ`, format: `xyz` },
-    { label: `CIF`, format: `cif` },
-    { label: `POSCAR`, format: `poscar` },
+    {
+      label: `JSON`,
+      format: `json`,
+      hint:
+        `<a href="https://pymatgen.org" target="_blank">Pymatgen</a> JSON format - Python Materials Genomics structure serialization, widely used in computational materials science`,
+    },
+    {
+      label: `XYZ`,
+      format: `xyz`,
+      hint:
+        `<a href="https://wiki.fysik.dtu.dk/ase" target="_blank">ASE</a> extended XYZ format - human-readable atomic coordinates used by the Atomic Simulation Environment`,
+    },
+    {
+      label: `CIF`,
+      format: `cif`,
+      hint:
+        `Crystallographic Information File - standard format from the <a href="https://iucr.org" target="_blank">IUCr</a> for crystal structure data exchange`,
+    },
+    {
+      label: `POSCAR`,
+      format: `poscar`,
+      hint:
+        `<a href="https://vasp.at" target="_blank">VASP</a> POSCAR format - input geometry file for the Vienna Ab initio Simulation Package`,
+    },
   ] as const
 
   const model_3d_formats = [
@@ -141,9 +161,9 @@
 >
   <h4>Export as text</h4>
   <div class="export-buttons">
-    {#each text_export_formats as { label, format } (format)}
+    {#each text_export_formats as { label, format, hint } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
-        {label}
+        <span {@attach tooltip({ content: hint })}>{label}</span>
         <button
           type="button"
           onclick={() => export_structure(format)}
@@ -200,13 +220,12 @@
   <div class="export-buttons">
     {#each model_3d_formats as { label, format, hint } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
-        {label}
+        <span {@attach tooltip({ content: hint })}>{label}</span>
         <button
           type="button"
           onclick={() => handle_3d_export(format)}
           disabled={!scene}
           title="Download {label}"
-          {@attach tooltip({ content: hint })}
         >
           ⬇
         </button>
