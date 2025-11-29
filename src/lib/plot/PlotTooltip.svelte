@@ -3,13 +3,14 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let { x, y, bg_color, offset = { x: 6, y: 0 }, children, ...rest }:
+  let { x, y, bg_color, offset = { x: 6, y: 0 }, fixed = false, children, ...rest }:
     & HTMLAttributes<HTMLDivElement>
     & {
       x: number
       y: number
       bg_color?: string | null
       offset?: { x: number; y: number }
+      fixed?: boolean // Use position: fixed (for viewport coords) vs absolute
       children: Snippet
     } = $props()
 
@@ -18,8 +19,8 @@
     bg_color != null ? (luminance(bg_color) > 0.5 ? `#000000` : `#ffffff`) : null,
   )
   const style = $derived(
-    `position: absolute; pointer-events: none; left: ${x + offset.x}px;
-    top: ${y + offset.y}px; pointer-events: none; ${rest.style ?? ``}`,
+    `position: ${fixed ? `fixed` : `absolute`}; pointer-events: none;
+    left: ${x + offset.x}px; top: ${y + offset.y}px; ${rest.style ?? ``}`,
   )
 </script>
 
