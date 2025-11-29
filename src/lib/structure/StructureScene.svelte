@@ -324,8 +324,9 @@
         0,
       ) * atom_radius
 
-      const site_color = property_colors?.colors[orig_idx] ||
-        colors.element?.[site.species[0]?.element]
+      // Use property color if available (e.g., coordination number, Wyckoff position)
+      // Otherwise, each species gets its own element color (important for disordered sites)
+      const site_property_color = property_colors?.colors[orig_idx]
 
       let start_angle = 0
       return site.species
@@ -336,7 +337,7 @@
           occupancy: occu,
           position: site.xyz,
           radius,
-          color: site_color,
+          color: site_property_color ?? colors.element?.[element],
           has_partial_occupancy: occu < 1,
           start_phi: 2 * Math.PI * start_angle,
           end_phi: 2 * Math.PI * (start_angle += occu),

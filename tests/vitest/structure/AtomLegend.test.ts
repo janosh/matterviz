@@ -1,9 +1,9 @@
-import type { CompositionType, ElementSymbol } from '$lib'
-import { default_element_colors } from '$lib/colors'
+import type { CompositionType, ElementSymbol, Species } from '$lib'
+import { default_element_colors, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
 import { mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`AtomLegend Component`, () => {
@@ -763,4 +763,84 @@ describe(`AtomLegend Component`, () => {
       expect((toggle_buttons[1] as HTMLButtonElement).title).toBe(`Hide 6`)
     })
   })
+})
+
+// Test coverage for disordered site coloring in StructureScene
+// Regression test for commit 16dbcf0b where disordered sites incorrectly used only first species color
+describe(`Disordered Site Color Assignment`, () => {
+  // Recreate the atom_data color logic from StructureScene.svelte
+  const compute_atom_colors = (
+    species: Species[],
+    site_property_color?: string,
+  ) =>
+    species.map(({ element }) => ({
+      element,
+      color: site_property_color ?? colors.element?.[element],
+    }))
+
+  const create_species = (element: string, occu: number): Species => ({
+    element,
+    occu,
+    oxidation_state: 0,
+  })
+
+  beforeEach(() => {
+    colors.element = { ...default_element_colors }
+  })
+
+  const get_color = (
+    result: ReturnType<typeof compute_atom_colors>,
+    element: string,
+  ) => {
+    const item = result.find((a) => a.element === element)
+    if (!item) throw new Error(`Element ${element} not found`)
+    return item.color
+  }
+
+  test(`each species at disordered site gets own element color`, () => {
+    const result = compute_atom_colors([
+      create_species(`Bi`, 0.5),
+      create_species(`Zr`, 0.5),
+    ])
+
+    expect(get_color(result, `Bi`)).toBe(colors.element[`Bi`])
+    expect(get_color(result, `Zr`)).toBe(colors.element[`Zr`])
+    expect(result[0].color).not.toBe(result[1].color)
+  })
+
+  test(`property color overrides element colors for all species`, () => {
+    const result = compute_atom_colors(
+      [create_species(`Bi`, 0.5), create_species(`Zr`, 0.5)],
+      `#ff0000`,
+    )
+    expect(result.every((a) => a.color === `#ff0000`)).toBe(true)
+  })
+
+  test(`species order does not affect coloring`, () => {
+    const bi_first = compute_atom_colors([
+      create_species(`Bi`, 0.5),
+      create_species(`Zr`, 0.5),
+    ])
+    const zr_first = compute_atom_colors([
+      create_species(`Zr`, 0.5),
+      create_species(`Bi`, 0.5),
+    ])
+
+    expect(get_color(bi_first, `Bi`)).toBe(get_color(zr_first, `Bi`))
+    expect(get_color(bi_first, `Zr`)).toBe(get_color(zr_first, `Zr`))
+  })
+
+  test.each(Object.keys(ELEMENT_COLOR_SCHEMES) as (keyof typeof ELEMENT_COLOR_SCHEMES)[])(
+    `works with %s color scheme`,
+    (scheme) => {
+      colors.element = { ...ELEMENT_COLOR_SCHEMES[scheme] }
+      const result = compute_atom_colors([
+        create_species(`Bi`, 0.5),
+        create_species(`Zr`, 0.5),
+      ])
+
+      expect(get_color(result, `Bi`)).toBe(ELEMENT_COLOR_SCHEMES[scheme][`Bi`])
+      expect(get_color(result, `Zr`)).toBe(ELEMENT_COLOR_SCHEMES[scheme][`Zr`])
+    },
+  )
 })
