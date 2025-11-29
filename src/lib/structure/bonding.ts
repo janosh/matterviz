@@ -21,6 +21,18 @@ function get_majority_species(site: Site) {
   )
 }
 
+// Helper to extract numeric index from site properties
+function get_orig_idx(site: Site, fallback: number): number {
+  const props = site.properties
+  if (!props) return fallback
+
+  const raw = props.orig_unit_cell_idx ?? props.orig_site_idx
+  if (raw === undefined) return fallback
+
+  const num = Number(raw)
+  return Number.isFinite(num) ? num : fallback
+}
+
 // Compute 4x4 transformation matrix for bond cylinder between two positions.
 // Uses Y-up, right-handed coordinate system convention for Three.js compatibility.
 function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
@@ -239,13 +251,9 @@ export function electroneg_ratio(
       // (penalty will only reduce it further)
       if (strength <= strength_threshold) continue
 
-      // Use helper logic similar to get_orig_site_idx to handle both supercell and image atoms
-      const orig_idx_a = (sites[idx_a].properties?.orig_unit_cell_idx as number) ??
-        (sites[idx_a].properties?.orig_site_idx as number) ??
-        idx_a
-      const orig_idx_b = (sites[idx_b].properties?.orig_unit_cell_idx as number) ??
-        (sites[idx_b].properties?.orig_site_idx as number) ??
-        idx_b
+      // Use helper logic to handle both supercell and image atoms with robust normalization
+      const orig_idx_a = get_orig_idx(sites[idx_a], idx_a)
+      const orig_idx_b = get_orig_idx(sites[idx_b], idx_b)
 
       // Update closest known normalized distance (dist / expected) for original atoms
       // Normalized distance handles atoms of different sizes better than raw distance
@@ -288,8 +296,12 @@ export function electroneg_ratio(
     let strength = base_strength
 
     // Apply penalty if this bond is much longer (relative to radii) than the closest known bond
-    if (norm_dist > ca) strength *= Math.exp(-(norm_dist / ca - 1) / 0.5)
-    if (norm_dist > cb) strength *= Math.exp(-(norm_dist / cb - 1) / 0.5)
+    if (norm_dist > ca) {
+      strength *= Math.exp(-(norm_dist / ca - 1) / 0.5)
+    }
+    if (orig_idx_b !== orig_idx_a && norm_dist > cb) {
+      strength *= Math.exp(-(norm_dist / cb - 1) / 0.5)
+    }
 
     if (strength > strength_threshold) {
       bonds.push({
