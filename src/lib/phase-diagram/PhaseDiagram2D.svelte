@@ -16,7 +16,6 @@
     ScatterHandlerProps,
   } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
-  import { SvelteMap } from 'svelte/reactivity'
   import * as helpers from './helpers'
   import type { BasePhaseDiagramProps } from './index'
   import { default_controls, default_pd_config, PD_STYLE } from './index'
@@ -229,47 +228,57 @@
     }
   })
 
-  const plot_entries = $derived.by(() => {
-    if (coords_entries.length === 0) return []
+  // Compute hull points and enriched entries together to avoid redundant hull computation
+  const { plot_entries, hull_points } = $derived.by(() => {
+    if (coords_entries.length === 0) return { plot_entries: [], hull_points: [] }
 
     // Build lower hull in (x, y=e_form)
     // Group by composition fraction (x) and track all entries at each x to
     // robustly handle polymorphs. For the hull input, use the lowest energy per x.
-    const entries_by_x = new SvelteMap<number, PhaseDiagramEntry[]>()
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local var in derived, not reactive state
+    const entries_by_x = new Map<number, PhaseDiagramEntry[]>()
     for (const entry of coords_entries) {
-      const existing = entries_by_x.get(entry.x) || []
-      existing.push(entry)
-      entries_by_x.set(entry.x, existing)
+      const existing = entries_by_x.get(entry.x)
+      if (existing) existing.push(entry)
+      else entries_by_x.set(entry.x, [entry])
     }
-    const hull_input = Array.from(entries_by_x, ([x, entries]) => {
-      const min_y = Math.min(...entries.map((entry) => entry.y))
-      return { x, y: min_y }
-    })
+    const hull_input: HullVertex[] = []
+    for (const [x_coord, grouped_entries] of entries_by_x) {
+      let min_y = Infinity
+      for (const entry of grouped_entries) {
+        if (entry.y < min_y) min_y = entry.y
+      }
+      hull_input.push({ x: x_coord, y: min_y })
+    }
     const hull_points = compute_lower_hull(hull_input)
 
     // Annotate entries with e_above_hull and visibility
-    const enriched = coords_entries.map((e) => {
-      const y_hull = interpolate_on_hull(hull_points, e.x)
-      const above = y_hull == null ? 0 : Math.max(0, e.y - y_hull)
+    const enriched = coords_entries.map((entry) => {
+      const y_hull = interpolate_on_hull(hull_points, entry.x)
+      const above = y_hull == null ? 0 : Math.max(0, entry.y - y_hull)
       const is_stable = above <= 1e-9
       const visible = (is_stable && show_stable) ||
         (!is_stable && show_unstable && above <= max_hull_dist_show_phases)
-      return { ...e, e_above_hull: above, is_stable, visible }
+      return { ...entry, e_above_hull: above, is_stable, visible }
     })
 
-    return enriched.filter((
-      e,
-    ) => (e.is_stable || (e.e_above_hull ?? 0) <= max_hull_dist_show_phases))
+    const plot_entries = enriched.filter((
+      entry,
+    ) => (entry.is_stable || (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases))
+
+    return { plot_entries, hull_points }
   })
 
-  // Update bindable entries arrays when plot_entries change
+  // Update bindable entries arrays when plot_entries change (single pass)
   $effect(() => {
-    stable_entries = plot_entries.filter(
-      (entry: PhaseDiagramEntry) => entry.is_stable || entry.e_above_hull === 0,
-    )
-    unstable_entries = plot_entries.filter(
-      (entry: PhaseDiagramEntry) => (entry.e_above_hull ?? 0) > 0 && !entry.is_stable,
-    )
+    const stable: PhaseDiagramEntry[] = []
+    const unstable: PhaseDiagramEntry[] = []
+    for (const entry of plot_entries) {
+      if (entry.is_stable || entry.e_above_hull === 0) stable.push(entry)
+      else if ((entry.e_above_hull ?? 0) > 0) unstable.push(entry)
+    }
+    stable_entries = stable
+    unstable_entries = unstable
   })
 
   let reset_counter = $state(0)
@@ -306,9 +315,6 @@
   })
 
   // Build ScatterPlot series --------------------------------------------------
-  const hull_polyline = $derived(
-    compute_lower_hull(plot_entries).sort((e1, e2) => e1.x - e2.x),
-  )
 
   // Map MarkerSymbol to D3SymbolName (type-safe via symbol_map lookup)
   const marker_to_d3_symbol = (marker?: string): D3SymbolName | undefined => {
@@ -322,13 +328,25 @@
 
   const scatter_points_series = $derived.by(() => {
     const is_energy_mode = color_mode === `energy`
+    const count = visible_entries.length
 
-    const point_style = visible_entries.map((entry) => {
+    // Single pass: extract x, y, color_values, and point_style simultaneously
+    const x_vals: number[] = new Array(count)
+    const y_vals: number[] = new Array(count)
+    const color_values: number[] = is_energy_mode ? new Array(count) : []
+    const point_style = new Array(count)
+
+    for (let idx = 0; idx < count; idx++) {
+      const entry = visible_entries[idx]
+      x_vals[idx] = entry.x
+      y_vals[idx] = entry.y
+      if (is_energy_mode) color_values[idx] = entry.e_above_hull ?? 0
+
       const is_stable = entry.is_stable || entry.e_above_hull === 0
       const base_radius = entry.size || (is_stable ? 6 : 4)
       const hl = is_highlighted(entry) ? merged_highlight_style : null
 
-      return {
+      point_style[idx] = {
         fill: hl && (hl.effect === `color` || hl.effect === `both`)
           ? hl.color
           : is_energy_mode
@@ -343,26 +361,24 @@
         highlight_effect: hl?.effect,
         highlight_color: hl?.color,
       }
-    })
+    }
 
     return {
-      x: visible_entries.map((entry) => entry.x),
-      y: visible_entries.map((entry) => entry.y),
+      x: x_vals,
+      y: y_vals,
       metadata: visible_entries,
       markers: `points` as const,
       point_style,
-      ...(is_energy_mode
-        ? { color_values: visible_entries.map((entry) => entry.e_above_hull ?? 0) }
-        : {}),
+      ...(is_energy_mode ? { color_values } : {}),
     }
   })
 
   const hull_segments_series = $derived.by(() => {
-    if (!merged_config.show_hull || hull_polyline.length < 2) return []
+    if (!merged_config.show_hull || hull_points.length < 2) return []
     const segments = []
-    for (let idx = 0; idx < hull_polyline.length - 1; idx++) {
-      const p1 = hull_polyline[idx]
-      const p2 = hull_polyline[idx + 1]
+    for (let idx = 0; idx < hull_points.length - 1; idx++) {
+      const p1 = hull_points[idx]
+      const p2 = hull_points[idx + 1]
       segments.push({
         x: [p1.x, p2.x] as const,
         y: [p1.y, p2.y] as const,
