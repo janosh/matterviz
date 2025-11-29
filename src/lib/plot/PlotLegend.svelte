@@ -178,7 +178,7 @@
     gap: 1px 6px; /* row-gap column-gap */
     background-color: var(--plot-legend-bg-color);
     border: var(--plot-legend-border);
-    border-radius: var(--plot-legend-border-radius, var(--border-radius));
+    border-radius: var(--plot-legend-border-radius, var(--border-radius, 3pt));
     font-size: var(--plot-legend-font-size, 0.8em);
     max-width: var(--plot-legend-max-width);
     width: fit-content;

@@ -132,7 +132,7 @@
   svg {
     overflow: visible;
     width: 100%;
-    border-radius: var(--border-radius);
+    border-radius: var(--border-radius, 3pt);
   }
   g.shell {
     animation: spin-right linear infinite;

@@ -65,14 +65,14 @@
 <style>
   .message {
     margin-bottom: 0.5em;
-    border-radius: var(--status-message-border-radius, var(--border-radius));
+    border-radius: var(--status-message-border-radius, var(--border-radius, 3pt));
   }
   button {
     margin-left: 1em;
     padding: 0.25em 0.75em;
     background: #e0e0e0;
     border: 1px solid #ccc;
-    border-radius: var(--status-message-button-border-radius, var(--border-radius));
+    border-radius: var(--status-message-button-border-radius, var(--border-radius, 3pt));
     cursor: pointer;
   }
   button:hover {

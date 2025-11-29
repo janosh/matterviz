@@ -36,7 +36,7 @@
     background: var(--btn-bg);
     border: var(--pane-border);
     color: var(--text-color);
-    border-radius: var(--theme-control-border-radius, var(--border-radius));
+    border-radius: var(--theme-control-border-radius, var(--border-radius, 3pt));
     padding: var(--theme-control-padding, 1pt 2pt);
     backdrop-filter: blur(10px);
     transition: all 0.2s ease;

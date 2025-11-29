@@ -21,7 +21,7 @@
     width: max-content;
     box-sizing: border-box;
     text-align: var(--canvas-tooltip-text-align, left);
-    border-radius: var(--canvas-tooltip-border-radius, var(--border-radius));
+    border-radius: var(--canvas-tooltip-border-radius, var(--border-radius, 3pt));
     background: var(--canvas-tooltip-bg, var(--code-bg));
     padding: var(--canvas-tooltip-padding, 1pt 5pt);
     color: var(--canvas-tooltip-text-color);

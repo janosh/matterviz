@@ -255,7 +255,7 @@
 <style>
   .phase-diagram-stats {
     background: var(--pd-stats-bg, var(--pd-bg));
-    border-radius: var(--pd-border-radius, var(--border-radius));
+    border-radius: var(--pd-border-radius, var(--border-radius, 3pt));
     padding: 0 1em 1em;
   }
   section div {

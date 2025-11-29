@@ -381,7 +381,7 @@
     width: var(--bz-width, 100%);
     max-width: var(--bz-max-width, 100%);
     min-width: var(--bz-min-width, 300px);
-    border-radius: var(--bz-border-radius, var(--border-radius));
+    border-radius: var(--bz-border-radius, var(--border-radius, 3pt));
     background: var(--bz-bg, var(--surface-bg));
     color: var(--bz-text-color, var(--text-color));
   }
@@ -423,7 +423,7 @@
     background-color: transparent;
     display: flex;
     padding: 0;
-    font-size: clamp(1em, 2cqmin, 2.5em);
+    font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
   section.control-buttons :global(button:hover) {
     background-color: var(--pane-btn-bg-hover);

@@ -227,7 +227,7 @@
     display: flex;
     place-items: center;
     place-content: center;
-    border-radius: var(--elem-tile-border-radius, var(--border-radius));
+    border-radius: var(--elem-tile-border-radius, var(--border-radius, 3pt));
     box-sizing: border-box;
     color: var(--elem-tile-text-color);
     /* add persistent invisible border so content doesn't move on hover */

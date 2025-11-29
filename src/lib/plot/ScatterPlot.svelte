@@ -1771,7 +1771,7 @@
     display: var(--scatter-display, flex);
     flex-direction: column;
     background: var(--scatter-bg, var(--plot-bg));
-    border-radius: var(--scatter-border-radius, var(--border-radius));
+    border-radius: var(--scatter-border-radius, var(--border-radius, 3pt));
   }
   div.scatter.fullscreen {
     position: fixed;

@@ -32,7 +32,7 @@
     width: 100%;
     object-fit: cover;
     margin: 0;
-    border-radius: var(--element-photo-border-radius, var(--border-radius));
+    border-radius: var(--element-photo-border-radius, var(--border-radius, 3pt));
   }
   div {
     aspect-ratio: 1;
@@ -47,7 +47,7 @@
       rgba(0, 0, 100, 0.3)
     );
     color: var(--text-color);
-    border-radius: var(--element-photo-border-radius, var(--border-radius));
+    border-radius: var(--element-photo-border-radius, var(--border-radius, 3pt));
     width: 100%;
     container-type: inline-size;
   }
