@@ -737,7 +737,7 @@
     color: var(--text-color, currentColor);
     transition: background-color 0.2s, opacity 0.2s;
     display: flex;
-    font-size: clamp(1em, 2cqmin, 2.5em);
+    font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
   :global(.phase-diagram-2d .control-btn:hover) {
     background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));

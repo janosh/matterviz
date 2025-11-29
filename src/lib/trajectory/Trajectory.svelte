@@ -1212,7 +1212,7 @@
     height: var(--traj-height, 100%);
     position: relative;
     min-height: var(--traj-min-height, var(--min-height));
-    border-radius: var(--traj-border-radius, var(--border-radius));
+    border-radius: var(--traj-border-radius, var(--border-radius, 3pt));
     box-sizing: border-box;
     contain: layout;
     z-index: var(--traj-z-index, 1);
@@ -1281,7 +1281,7 @@
     background: var(--surface-bg-hover);
     backdrop-filter: blur(4px);
     position: relative;
-    border-radius: var(--border-radius) var(--border-radius) 0 0;
+    border-radius: var(--border-radius, 3pt) var(--border-radius, 3pt) 0 0;
   }
   .trajectory-controls:focus-within {
     z-index: var(--traj-controls-z-index, 999999999);
@@ -1346,7 +1346,7 @@
     align-items: center;
     white-space: nowrap;
     padding: var(--trajectory-filename-padding, 3pt 4pt);
-    border-radius: var(--trajectory-filename-border-radius, var(--border-radius));
+    border-radius: var(--trajectory-filename-border-radius, var(--border-radius, 3pt));
     max-width: clamp(150px, 20cqw, 250px);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1388,7 +1388,7 @@
   }
   .empty-state {
     padding: 2rem;
-    border-radius: var(--border-radius);
+    border-radius: var(--border-radius, 3pt);
     background: var(--dropzone-bg);
   }
   .empty-state :where(p, ul) {

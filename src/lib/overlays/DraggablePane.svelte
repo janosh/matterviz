@@ -185,7 +185,7 @@
     bind:this={toggle_pane_btn}
     aria-expanded={show}
     {...toggle_props}
-    style={`font-size: clamp(1em, 2.2cqw, 1.2em); ${toggle_props.style ?? ``}`}
+    style={`font-size: clamp(0.85em, 2.2cqw, 1.2em); ${toggle_props.style ?? ``}`}
     onclick={toggle_pane}
     class="pane-toggle {toggle_props.class ?? ``}"
     {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
@@ -248,10 +248,10 @@
     display: flex;
     place-items: center;
     padding: var(--pane-toggle-padding, 2pt);
-    border-radius: var(--pane-toggle-border-radius, var(--border-radius));
+    border-radius: var(--pane-toggle-border-radius, var(--border-radius, 3pt));
     background-color: transparent;
     transition: var(--pane-toggle-transition, background-color 0.2s);
-    font-size: var(--pane-toggle-font-size, clamp(0.9em, 2cqmin, 1.4em));
+    font-size: var(--pane-toggle-font-size, clamp(0.7em, 2cqmin, 1.4em));
   }
   button.pane-toggle:hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
@@ -260,7 +260,7 @@
     position: absolute; /* Use absolute so pane scrolls with page content */
     background: var(--pane-bg, var(--page-bg, light-dark(white, black)));
     border: var(--pane-border, 1px solid rgba(255, 255, 255, 0.15));
-    border-radius: var(--pane-border-radius, var(--border-radius));
+    border-radius: var(--pane-border-radius, var(--border-radius, 3pt));
     padding: var(--pane-padding, 1ex);
     box-sizing: border-box;
     z-index: var(--pane-z-index, 10);

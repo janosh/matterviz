@@ -34,7 +34,7 @@
     place-items: center;
     text-align: center;
     color: var(--error-color);
-    border-radius: var(--border-radius);
+    border-radius: var(--border-radius, 3pt);
     border: var(--error-border);
     box-sizing: border-box;
     flex: 1;

@@ -1142,7 +1142,7 @@
     width: 100%;
     height: var(--pd-height, 500px);
     background: var(--pd-3d-bg, var(--pd-bg));
-    border-radius: var(--pd-border-radius, var(--border-radius));
+    border-radius: var(--pd-border-radius, var(--border-radius, 3pt));
   }
   .phase-diagram-3d:fullscreen {
     border-radius: 0;
@@ -1176,7 +1176,7 @@
     color: var(--text-color, currentColor);
     transition: background-color 0.2s;
     display: flex;
-    font-size: clamp(1em, 2cqmin, 2.5em);
+    font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
   .control-buttons button:hover {
     background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));

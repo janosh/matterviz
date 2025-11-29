@@ -462,7 +462,7 @@
   /* color gradient bar */
   div.bar {
     position: relative;
-    border-radius: var(--cbar-border-radius, var(--border-radius));
+    border-radius: var(--cbar-border-radius, var(--border-radius, 3pt));
     /* Use CSS variables set inline */
     width: var(--cbar-width);
     height: var(--cbar-height);
