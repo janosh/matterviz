@@ -23,6 +23,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import { calc_auto_padding, LABEL_GAP_DEFAULT, measure_text_width } from './layout'
+  import PlotTooltip from './PlotTooltip.svelte'
 
   let {
     series = $bindable([]),
@@ -52,7 +53,9 @@
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
+    fullscreen_toggle = true,
     children,
+    header_controls,
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
@@ -61,6 +64,7 @@
     show_controls?: boolean
     controls_open?: boolean
     fullscreen?: boolean
+    fullscreen_toggle?: boolean
     // Component-specific props
     orientation?: Orientation
     mode?: BarMode
@@ -70,6 +74,9 @@
     line?: LineStyle
     tooltip?: Snippet<[BarHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
+    header_controls?: Snippet<
+      [{ height: number; width: number; fullscreen: boolean }]
+    >
     controls_extra?: Snippet<
       [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
     >
@@ -553,7 +560,12 @@
   class:fullscreen
 >
   {#if width && height}
-    <FullscreenToggle bind:fullscreen />
+    <div class="header-controls">
+      {@render header_controls?.({ height, width, fullscreen })}
+      {#if fullscreen_toggle}
+        <FullscreenToggle bind:fullscreen />
+      {/if}
+    </div>
     <svg
       bind:this={svg_element}
       onmousedown={handle_mouse_down}
@@ -1046,25 +1058,22 @@
       hover_info.orient_y,
     )}
       {@const active_y_config = hover_info.active_y_axis === `y2` ? y2_axis : y_axis}
-      <div
-        class="tooltip overlay"
-        style={`position: absolute; left: ${cx + 6}px; top: ${cy}px; pointer-events: none;`}
-      >
+      <PlotTooltip x={cx} y={cy} bg_color={hover_info.color}>
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
           <div>
-            {x_axis.label || `x`}: {
+            {@html x_axis.label || `x`}: {
               format_value(hover_info.orient_x, x_axis.format || `.3~s`)
             }
           </div>
           <div>
-            {active_y_config.label || `y`}: {
+            {@html active_y_config.label || `y`}: {
               format_value(hover_info.orient_y, active_y_config.format || `.3~s`)
             }
           </div>
         {/if}
-      </div>
+      </PlotTooltip>
     {/if}
 
     {#if show_controls}
@@ -1124,17 +1133,30 @@
     max-height: none !important;
     overflow: hidden;
   }
+  .header-controls {
+    position: absolute;
+    top: var(--ctrl-btn-top, 5pt);
+    right: var(--fullscreen-btn-right, 4px);
+    z-index: var(--fullscreen-btn-z-index, 10);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-controls :global(.fullscreen-toggle) {
+    position: static; /* Override absolute positioning since container handles it */
+    opacity: 1; /* Always visible when inside header-controls, container controls visibility */
+  }
   /* Hide controls and fullscreen toggles by default, show on hover */
   .bar-plot :global(.pane-toggle),
-  .bar-plot :global(.fullscreen-toggle) {
+  .bar-plot .header-controls {
     opacity: 0;
     transition: opacity 0.2s, background-color 0.2s;
   }
   .bar-plot:hover :global(.pane-toggle),
-  .bar-plot:hover :global(.fullscreen-toggle),
+  .bar-plot:hover .header-controls,
   .bar-plot :global(.pane-toggle:focus-visible),
   .bar-plot :global(.pane-toggle[aria-expanded='true']),
-  .bar-plot :global(.fullscreen-toggle:focus) {
+  .bar-plot .header-controls:focus-within {
     opacity: 1;
   }
   svg {
@@ -1158,14 +1180,6 @@
     stroke: var(--barplot-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
     stroke-width: var(--barplot-zoom-rect-stroke-width, 1);
     pointer-events: none;
-  }
-  .tooltip {
-    background: var(--tooltip-bg);
-    color: var(--text-color);
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 12px;
-    border: var(--tooltip-border);
   }
   .bar-label {
     fill: var(--text-color);
