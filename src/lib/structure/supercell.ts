@@ -48,7 +48,7 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
 export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   const [nx, ny, nz] = scaling_factors
   const count = nx * ny * nz
-  const points = new Array(count)
+  const points: Vec3[] = new Array(count)
 
   let ptr = 0
   // Generate in x, y, z order to match expected test results

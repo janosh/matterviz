@@ -3,6 +3,7 @@ import type { Matrix3x3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, PymatgenLattice, Site } from '$lib/structure'
 import {
+  clean_geometry_for_export,
   create_structure_filename,
   export_structure_as_json,
   export_structure_as_xyz,
@@ -1279,6 +1280,7 @@ describe(`Round-trip CIF and POSCAR exports`, () => {
 describe(`3D Export Color Preservation`, async () => {
   const {
     BufferGeometry,
+    Float32BufferAttribute,
     InstancedBufferAttribute,
     MeshStandardMaterial,
     MeshBasicMaterial,
@@ -1331,7 +1333,7 @@ describe(`3D Export Color Preservation`, async () => {
       expect(extract_bond_color_for_instance(geometry, 0)).toBeNull()
     })
 
-    test(`extracts correct color per instance index`, () => {
+    test(`extracts correct color per instance index and null for out-of-bounds`, () => {
       const geometry = new BufferGeometry()
       geometry.setAttribute(
         `instanceColorStart`,
@@ -1341,14 +1343,31 @@ describe(`3D Export Color Preservation`, async () => {
         `instanceColorEnd`,
         new InstancedBufferAttribute(new Float32Array([0, 0, 1, 1, 0, 0, 0, 1, 0]), 3),
       )
-
       const r0 = extract_bond_color_for_instance(geometry, 0)
       const r1 = extract_bond_color_for_instance(geometry, 1)
       const r2 = extract_bond_color_for_instance(geometry, 2)
+      expect([r0?.r, r0?.g, r0?.b]).toEqual([0.5, 0, 0.5])
+      expect([r1?.r, r1?.g, r1?.b]).toEqual([0.5, 0.5, 0])
+      expect([r2?.r, r2?.g, r2?.b]).toEqual([0, 0.5, 0.5])
+      // out-of-bounds
+      expect(extract_bond_color_for_instance(geometry, -1)).toBeNull()
+      expect(extract_bond_color_for_instance(geometry, 3)).toBeNull()
+    })
+  })
 
-      expect([r0?.r, r0?.g, r0?.b]).toEqual([0.5, 0, 0.5]) // purple
-      expect([r1?.r, r1?.g, r1?.b]).toEqual([0.5, 0.5, 0]) // yellow-ish
-      expect([r2?.r, r2?.g, r2?.b]).toEqual([0, 0.5, 0.5]) // cyan
+  describe(`clean_geometry_for_export`, () => {
+    test.each(
+      [
+        [`instanceColor`, true],
+        [`customColor`, true],
+        [`position`, false],
+        [`color`, false],
+      ] as const,
+    )(`%s removed=%s`, (attr, removed) => {
+      const geometry = new BufferGeometry()
+      geometry.setAttribute(attr, new Float32BufferAttribute([0, 0, 0], 3))
+      clean_geometry_for_export(geometry)
+      expect(geometry.hasAttribute(attr)).toBe(!removed)
     })
   })
 

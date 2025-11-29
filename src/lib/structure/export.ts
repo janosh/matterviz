@@ -62,29 +62,26 @@ export function extract_bond_color_for_instance(
   const color_end_attr = geometry.getAttribute(`instanceColorEnd`)
 
   if (!color_start_attr || !color_end_attr) return null
+  if (instance_idx < 0 || instance_idx >= color_start_attr.count) return null
 
-  // Get RGB values for this instance (3 floats per instance)
-  const start_r = color_start_attr.getX(instance_idx)
-  const start_g = color_start_attr.getY(instance_idx)
-  const start_b = color_start_attr.getZ(instance_idx)
-
-  const end_r = color_end_attr.getX(instance_idx)
-  const end_g = color_end_attr.getY(instance_idx)
-  const end_b = color_end_attr.getZ(instance_idx)
-
-  // Calculate midpoint color for a reasonable approximation of the gradient
-  const mid_color = new Color(
-    (start_r + end_r) / 2,
-    (start_g + end_g) / 2,
-    (start_b + end_b) / 2,
-  )
-
-  return mid_color
+  // Get RGB values for this instance and compute midpoint color
+  const start_rgb: Vec3 = [
+    color_start_attr.getX(instance_idx),
+    color_start_attr.getY(instance_idx),
+    color_start_attr.getZ(instance_idx),
+  ]
+  const end_rgb: Vec3 = [
+    color_end_attr.getX(instance_idx),
+    color_end_attr.getY(instance_idx),
+    color_end_attr.getZ(instance_idx),
+  ]
+  const [mid_r, mid_g, mid_b] = math.scale(math.add(start_rgb, end_rgb), 0.5)
+  return new Color(mid_r, mid_g, mid_b)
 }
 
 // Remove custom/non-standard attributes from geometry that cause export issues
 // Standard GLTF attributes: position, normal, tangent, texcoord_N, color_N, joints_N, weights_N
-function clean_geometry_for_export(geometry: BufferGeometry): void {
+export function clean_geometry_for_export(geometry: BufferGeometry): void {
   const standard_attrs = new Set([
     `position`,
     `normal`,
@@ -105,10 +102,8 @@ function clean_geometry_for_export(geometry: BufferGeometry): void {
     const lower_name = attr_name.toLowerCase()
     if (
       lower_name.includes(`instance`) ||
-      lower_name.includes(`color`) && !standard_attrs.has(lower_name)
-    ) {
-      attrs_to_remove.push(attr_name)
-    }
+      (lower_name.includes(`color`) && !standard_attrs.has(lower_name))
+    ) attrs_to_remove.push(attr_name)
   }
 
   for (const attr_name of attrs_to_remove) {
@@ -860,7 +855,8 @@ export function export_structure_as_obj(
     const mtl_blob = new Blob([mtl_content], { type: `text/plain` })
 
     download(obj_blob, obj_filename, `text/plain`)
-    // Small delay to prevent browser blocking multiple downloads
+    // Small delay to prevent some browsers from blocking rapid successive downloads as potential abuse.
+    // A more robust solution might be to zip both files together.
     setTimeout(() => download(mtl_blob, mtl_filename, `text/plain`), 100)
   } catch (error) {
     console.error(`Error exporting OBJ:`, error)

@@ -39,7 +39,7 @@ function create_test_structure(num_sites: number): PymatgenStructure {
 }
 
 // Increase thresholds in CI environment
-const CI_MULTIPLIER = process.env.CI ? 5 : 1
+const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
 
 describe(`supercell performance profiling`, () => {
   test(`profile matrix operations`, () => {
