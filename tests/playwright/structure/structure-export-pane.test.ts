@@ -161,23 +161,27 @@ test.describe(`StructureExportPane Tests`, () => {
     const { pane_div: export_pane, export_toggle } = await open_export_pane(page)
     await expect(export_pane).toBeVisible()
 
-    // Opening control pane closes export pane due to click-outside handler
+    // Both panes can be open simultaneously (toggle buttons use stopPropagation)
     const control_toggle = page.locator(`.structure-controls-toggle`).first()
     await control_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
 
     const control_pane = page.locator(`.draggable-pane.controls-pane`).first()
     await expect(control_pane).toBeVisible()
-    await expect(export_pane).toBeHidden()
+    await expect(export_pane).toBeVisible() // Both stay open
 
-    // Opening export pane closes control pane
+    // Each pane can be closed independently via its own toggle
+    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+    await expect(export_pane).toBeHidden()
+    await expect(control_pane).toBeVisible() // Control pane stays open
+
+    // Reopen export pane
     await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
     await expect(export_pane).toBeVisible()
-    await expect(control_pane).toBeHidden()
 
-    // Verify they toggle correctly
+    // Close control pane
     await control_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
-    await expect(control_pane).toBeVisible()
-    await expect(export_pane).toBeHidden()
+    await expect(control_pane).toBeHidden()
+    await expect(export_pane).toBeVisible() // Export pane stays open
   })
 
   test(`keyboard navigation and rapid toggle`, async ({ page }) => {
@@ -219,5 +223,64 @@ test.describe(`StructureExportPane Tests`, () => {
     })
     expect(layout_styles.display).toBe(`flex`)
     expect(layout_styles.flexWrap).toBe(`wrap`)
+  })
+
+  test.describe(`format label hover tooltips`, () => {
+    const text_format_tooltips = [
+      {
+        label: `JSON`,
+        expected_text: `Pymatgen`,
+        description: `Python Materials Genomics`,
+      },
+      {
+        label: `XYZ`,
+        expected_text: `ASE`,
+        description: `Atomic Simulation Environment`,
+      },
+      {
+        label: `CIF`,
+        expected_text: `IUCr`,
+        description: `Crystallographic Information File`,
+      },
+      {
+        label: `POSCAR`,
+        expected_text: `VASP`,
+        description: `Vienna Ab initio Simulation Package`,
+      },
+    ]
+
+    for (const { label, expected_text, description } of text_format_tooltips) {
+      test(`${label} format shows tooltip on hover`, async ({ page }) => {
+        const { pane_div } = await open_export_pane(page)
+
+        // Use getByText for reliable span matching
+        const label_span = pane_div.getByText(label, { exact: true })
+        await expect(label_span).toBeVisible()
+        await label_span.hover()
+
+        // Wait for tooltip to appear (svelte-multiselect custom-tooltip)
+        const tooltip_elem = page.locator(`.custom-tooltip`).first()
+        await expect(tooltip_elem).toBeVisible({ timeout: 3000 })
+
+        // Verify tooltip contains expected content
+        const tooltip_text = await tooltip_elem.textContent()
+        expect(tooltip_text).toContain(expected_text)
+        expect(tooltip_text).toContain(description)
+      })
+    }
+
+    test(`tooltip disappears when mouse leaves label`, async ({ page }) => {
+      const { pane_div } = await open_export_pane(page)
+
+      const json_label = pane_div.locator(`span:has-text("JSON")`).first()
+      await json_label.hover()
+
+      const tooltip_elem = page.locator(`.custom-tooltip`).first()
+      await expect(tooltip_elem).toBeVisible({ timeout: 3000 })
+
+      // Move mouse away from the label
+      await pane_div.locator(`h4:has-text("Export as text")`).hover()
+      await expect(tooltip_elem).toBeHidden({ timeout: 3000 })
+    })
   })
 })
