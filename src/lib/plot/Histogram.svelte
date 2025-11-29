@@ -23,6 +23,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import PlotTooltip from './PlotTooltip.svelte'
 
   type LegendConfig = ComponentProps<typeof PlotLegend>
 
@@ -54,7 +55,9 @@
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
+    fullscreen_toggle = true,
     children,
+    header_controls,
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
@@ -63,6 +66,7 @@
     show_controls?: boolean
     controls_open?: boolean
     fullscreen?: boolean
+    fullscreen_toggle?: boolean
     // Component-specific props
     bins?: number
     show_legend?: boolean
@@ -71,6 +75,9 @@
     selected_property?: string
     mode?: `single` | `overlay`
     tooltip?: Snippet<[HistogramHandlerProps]>
+    header_controls?: Snippet<
+      [{ height: number; width: number; fullscreen: boolean }]
+    >
     controls_extra?: Snippet<[Required<PlotConfig>]>
     change?: (data: { value: number; count: number; property: string } | null) => void
     on_bar_click?: (
@@ -524,7 +531,12 @@
   class:fullscreen
 >
   {#if width && height}
-    <FullscreenToggle bind:fullscreen />
+    <div class="header-controls">
+      {@render header_controls?.({ height, width, fullscreen })}
+      {#if fullscreen_toggle}
+        <FullscreenToggle bind:fullscreen />
+      {/if}
+    </div>
   {/if}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -552,43 +564,6 @@
       }
     }}
   >
-    <!-- Tooltip -->
-    {#if hover_info}
-      {@const { value, count, property, active_y_axis } = hover_info}
-      {@const tooltip_x = scales.x(value)}
-      {@const tooltip_y = (active_y_axis === `y2` ? scales.y2 : scales.y)(count)}
-      {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
-      {@const tooltip_pos = constrain_tooltip_position(
-        tooltip_x,
-        tooltip_y,
-        tooltip_size.width,
-        tooltip_size.height,
-        width,
-        height,
-      )}
-      <foreignObject
-        x={tooltip_pos.x}
-        y={tooltip_pos.y}
-        width={tooltip_size.width}
-        height={tooltip_size.height}
-      >
-        <div class="tooltip">
-          {#if tooltip}
-            {@render tooltip({ ...hover_info, fullscreen })}
-          {:else}
-            {@const formatter = active_y_axis === `y2`
-            ? final_y2_axis.format
-            : final_y_axis.format}
-            <div>Value: {format_value(value, final_x_axis.format || `.3~s`)}</div>
-            <div>
-              Count: {format_value(count, formatter || `.3~s`)}
-            </div>
-            {#if mode === `overlay`}<div>{property}</div>{/if}
-          {/if}
-        </div>
-      </foreignObject>
-    {/if}
-
     <!-- Zoom Selection Rectangle -->
     {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
         isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&
@@ -873,6 +848,32 @@
     {/each}
   </svg>
 
+  <!-- Tooltip (outside SVG for proper HTML rendering) -->
+  {#if hover_info}
+    {@const { value, count, property, active_y_axis } = hover_info}
+    {@const tooltip_x = scales.x(value)}
+    {@const tooltip_y = (active_y_axis === `y2` ? scales.y2 : scales.y)(count)}
+    {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
+    {@const tooltip_pos = constrain_tooltip_position(
+      tooltip_x,
+      tooltip_y,
+      tooltip_size.width,
+      tooltip_size.height,
+      width,
+      height,
+    )}
+    {@const active_y_config = active_y_axis === `y2` ? final_y2_axis : final_y_axis}
+    <PlotTooltip x={tooltip_pos.x} y={tooltip_pos.y} offset={{ x: 0, y: 0 }}>
+      {#if tooltip}
+        {@render tooltip({ ...hover_info, fullscreen })}
+      {:else}
+        <div>Value: {format_value(value, final_x_axis.format || `.3~s`)}</div>
+        <div>Count: {format_value(count, active_y_config.format || `.3~s`)}</div>
+        {#if mode === `overlay`}<div>{property}</div>{/if}
+      {/if}
+    </PlotTooltip>
+  {/if}
+
   {#if show_controls}
     <HistogramControls
       toggle_props={{
@@ -942,17 +943,30 @@
     max-height: none !important;
     overflow: hidden;
   }
+  .header-controls {
+    position: absolute;
+    top: var(--ctrl-btn-top, 5pt);
+    right: var(--fullscreen-btn-right, 4px);
+    z-index: var(--fullscreen-btn-z-index, 10);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-controls :global(.fullscreen-toggle) {
+    position: static; /* Override absolute positioning since container handles it */
+    opacity: 1; /* Always visible when inside header-controls, container controls visibility */
+  }
   /* Hide controls and fullscreen toggles by default, show on hover */
   .histogram :global(.pane-toggle),
-  .histogram :global(.fullscreen-toggle) {
+  .histogram .header-controls {
     opacity: 0;
     transition: opacity 0.2s, background-color 0.2s;
   }
   .histogram:hover :global(.pane-toggle),
-  .histogram:hover :global(.fullscreen-toggle),
+  .histogram:hover .header-controls,
   .histogram :global(.pane-toggle:focus-visible),
   .histogram :global(.pane-toggle[aria-expanded='true']),
-  .histogram :global(.fullscreen-toggle:focus) {
+  .histogram .header-controls:focus-within {
     opacity: 1;
   }
   svg {
@@ -966,16 +980,6 @@
   }
   g:is(.x-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
-  }
-  .tooltip {
-    background: var(--tooltip-bg);
-    color: var(--text-color);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    pointer-events: none;
-    white-space: nowrap;
-    border: var(--tooltip-border);
   }
   .histogram-series rect {
     transition: opacity 0.2s ease;

@@ -3,7 +3,7 @@ import type { D3InterpolateName } from '$lib/colors'
 import * as helpers from '$lib/phase-diagram/helpers'
 import { get_phase_diagram_stats } from '$lib/phase-diagram/thermodynamics'
 import type { PhaseData } from '$lib/phase-diagram/types'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 describe(`helpers: energy color scale + point color`, () => {
   test(`get_energy_color_scale returns null when not energy mode or empty`, () => {
@@ -484,5 +484,57 @@ describe(`helpers: batch polymorph stats computation`, () => {
     expect(stats_map.size).toBe(2) // no_id is skipped
     expect(stats_map.get(`mp-1`)?.total).toBe(1) // sees mp-2 as polymorph
     expect(stats_map.get(`mp-2`)?.total).toBe(1) // sees mp-1 as polymorph
+  })
+})
+
+describe(`helpers: get_canvas_text_color`, () => {
+  const mock_css = (css_value: string) => {
+    globalThis.getComputedStyle = vi.fn(() => ({
+      getPropertyValue: () => css_value,
+    })) as unknown as typeof getComputedStyle
+  }
+
+  test.each([
+    // Fallback cases: empty CSS or unsupported functions
+    { css: ``, dark: true, expected: `#ffffff`, desc: `empty CSS (dark)` },
+    { css: ``, dark: false, expected: `#212121`, desc: `empty CSS (light)` },
+    {
+      css: `light-dark(#1f2937, #d0d0d0)`,
+      dark: true,
+      expected: `#ffffff`,
+      desc: `light-dark()`,
+    },
+    { css: `var(--color)`, dark: false, expected: `#212121`, desc: `var()` },
+    {
+      css: `var(--x, light-dark(#000, #fff))`,
+      dark: true,
+      expected: `#ffffff`,
+      desc: `nested`,
+    },
+    // Valid CSS colors returned as-is
+    { css: `#333`, dark: false, expected: `#333`, desc: `hex short` },
+    { css: `#333333`, dark: false, expected: `#333333`, desc: `hex full` },
+    { css: `rgb(51, 51, 51)`, dark: false, expected: `rgb(51, 51, 51)`, desc: `rgb()` },
+    {
+      css: `rgba(0, 0, 0, 0.87)`,
+      dark: false,
+      expected: `rgba(0, 0, 0, 0.87)`,
+      desc: `rgba()`,
+    },
+    { css: `white`, dark: true, expected: `white`, desc: `named color` },
+  ])(`$desc → $expected`, ({ css, dark, expected }) => {
+    mock_css(css)
+    expect(helpers.get_canvas_text_color(dark)).toBe(expected)
+  })
+
+  test(`uses provided element, falls back to documentElement when null`, () => {
+    const mock_elem = {} as HTMLElement
+    mock_css(`#abc`)
+    helpers.get_canvas_text_color(false, mock_elem)
+    expect(globalThis.getComputedStyle).toHaveBeenCalledWith(mock_elem)
+
+    mock_css(`#def`)
+    helpers.get_canvas_text_color(false, null)
+    expect(globalThis.getComputedStyle).toHaveBeenCalledWith(document.documentElement)
   })
 })

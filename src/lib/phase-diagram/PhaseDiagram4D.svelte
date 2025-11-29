@@ -2,9 +2,9 @@
   import type { AnyStructure } from '$lib'
   import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
-  import { contrast_color, is_dark_mode, watch_dark_mode } from '$lib/colors'
+  import { is_dark_mode, watch_dark_mode } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
-  import { ColorBar } from '$lib/plot'
+  import { ColorBar, PlotTooltip } from '$lib/plot'
   import {
     barycentric_to_tetrahedral,
     compute_4d_coords,
@@ -70,14 +70,7 @@
   // Reactive dark mode detection for canvas text color
   let dark_mode = $state(is_dark_mode())
   $effect(() => watch_dark_mode((dark) => dark_mode = dark))
-  const text_color = $derived.by(() => {
-    // Reference dark_mode to ensure re-evaluation when theme changes
-    void dark_mode
-    if (typeof document === `undefined`) return dark_mode ? `#ffffff` : `#212121`
-    const computed = getComputedStyle(canvas || document.documentElement)
-    return computed.getPropertyValue(`--text-color`)?.trim() ||
-      (dark_mode ? `#ffffff` : `#212121`)
-  })
+  const text_color = $derived(helpers.get_canvas_text_color(dark_mode))
 
   let { // Compute energy mode information
     has_precomputed_e_form,
@@ -308,7 +301,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, text_color]
+    [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, text_color, elements]
 
     render_once()
   })
@@ -1091,16 +1084,19 @@
   <!-- Hover tooltip -->
   {#if hover_data}
     {@const { entry, position } = hover_data}
-    <div
-      class="tooltip"
-      style:left="{position.x + 10}px;"
-      style:top="{position.y - 10}px;"
-      style:z-index={PD_STYLE.z_index.tooltip}
-      style:background={get_point_color(entry)}
-      {@attach contrast_color({ luminance_threshold: 0.49 })}
+    {@const tooltip_style =
+      `z-index: ${PD_STYLE.z_index.tooltip}; backdrop-filter: blur(4px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);`}
+    <PlotTooltip
+      x={position.x}
+      y={position.y}
+      offset={{ x: 10, y: -10 }}
+      bg_color={get_point_color(entry)}
+      fixed
+      style={tooltip_style}
     >
       <PhaseEntryTooltip {entry} {polymorph_stats_map} />
-    </div>
+    </PlotTooltip>
   {/if}
 
   <!-- Copy-to-clipboard feedback (double-click on point) -->
@@ -1171,14 +1167,5 @@
   }
   .control-buttons button:hover {
     background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));
-  }
-  .tooltip {
-    position: fixed;
-    padding: 5px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    pointer-events: none;
-    backdrop-filter: blur(4px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
 </style>

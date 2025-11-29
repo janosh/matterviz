@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
-  import { luminance } from '$lib/colors'
   import { FullscreenToggle } from '$lib/feedback'
   import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
@@ -30,6 +29,7 @@
     get_tick_label,
     Line,
     PlotLegend,
+    PlotTooltip,
     ScatterPlotControls,
     ScatterPoint,
   } from '$lib/plot'
@@ -92,7 +92,9 @@
     selected_series_idx = $bindable(0),
     wrapper = $bindable(),
     fullscreen = $bindable(false),
+    fullscreen_toggle = true,
     children,
+    header_controls,
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & PlotConfig & {
@@ -108,6 +110,9 @@
     tooltip?: Snippet<[ScatterHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
     children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    header_controls?: Snippet<
+      [{ height: number; width: number; fullscreen: boolean }]
+    >
     controls_extra?: Snippet<
       [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
     >
@@ -142,6 +147,7 @@
     selected_series_idx?: number
     wrapper?: HTMLDivElement
     fullscreen?: boolean
+    fullscreen_toggle?: boolean
   } = $props()
 
   // Initialize style overrides with defaults (runs once to avoid infinite loop)
@@ -1168,7 +1174,12 @@
   class:fullscreen
 >
   {#if width && height}
-    <FullscreenToggle bind:fullscreen />
+    <div class="header-controls">
+      {@render header_controls?.({ height, width, fullscreen })}
+      {#if fullscreen_toggle}
+        <FullscreenToggle bind:fullscreen />
+      {/if}
+    </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <svg
       bind:this={svg_element}
@@ -1599,8 +1610,10 @@
       {@const hovered_series = series_with_ids[series_idx]}
       {@const series_markers = hovered_series?.markers ?? DEFAULT_MARKERS}
       {@const is_transparent_or_none = (color: string | undefined | null): boolean =>
-      !color || color === `none` || color === `transparent` ||
-      (color.startsWith(`rgba(`) && color.endsWith(`, 0)`))}
+      !color ||
+      color === `none` ||
+      color === `transparent` ||
+      /rgba\([^)]+[,/]\s*0(\.0*)?\s*\)$/.test(color)}
       {@const tooltip_bg_color = (() => {
       const scale_color = color_value != null
         ? color_scale_fn(color_value)
@@ -1632,23 +1645,15 @@
       }
       return `rgba(0, 0, 0, 0.7)`
     })()}
-      {@const tooltip_lum = luminance(tooltip_bg_color ?? `rgba(0, 0, 0, 0.7)`)}
-      {@const tooltip_text_color = tooltip_lum > 0.5 ? `#000000` : `#ffffff`}
-      {@const style = `position: absolute; left: ${
-      handler_props.cx + 5
-    }px; top: ${handler_props.cy}px;
-      background-color: ${tooltip_bg_color}; color: var(--scatter-tooltip-color, ${tooltip_text_color});
-      z-index: calc(var(--scatter-z-index, 0) + 1000); pointer-events: none;`}
-      <div class="tooltip overlay" {style}>
+      <PlotTooltip x={handler_props.cx} y={handler_props.cy} bg_color={tooltip_bg_color}>
         {#if tooltip}
           {@render tooltip(handler_props)}
         {:else}
-          {point_label?.text ? `${point_label?.text}<br />` : ``}x: {
+          {@html point_label?.text ? `${point_label.text}<br />` : ``}x: {
             handler_props.x_formatted
-          }<br />y:
-          {handler_props.y_formatted}
+          }<br />y: {handler_props.y_formatted}
         {/if}
-      </div>
+      </PlotTooltip>
     {/if}
 
     <!-- Control Pane -->
@@ -1782,17 +1787,30 @@
     max-height: none !important;
     overflow: hidden;
   }
+  .header-controls {
+    position: absolute;
+    top: var(--ctrl-btn-top, 5pt);
+    right: var(--fullscreen-btn-right, 4px);
+    z-index: var(--fullscreen-btn-z-index, 10);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-controls :global(.fullscreen-toggle) {
+    position: static; /* Override absolute positioning since container handles it */
+    opacity: 1; /* Always visible when inside header-controls, container controls visibility */
+  }
   /* Hide controls and fullscreen toggles by default, show on hover */
   div.scatter :global(.pane-toggle),
-  div.scatter :global(.fullscreen-toggle) {
+  div.scatter .header-controls {
     opacity: 0;
     transition: opacity 0.2s, background-color 0.2s;
   }
   div.scatter:hover :global(.pane-toggle),
-  div.scatter:hover :global(.fullscreen-toggle),
+  div.scatter:hover .header-controls,
   div.scatter :global(.pane-toggle:focus-visible),
   div.scatter :global(.pane-toggle[aria-expanded='true']),
-  div.scatter :global(.fullscreen-toggle:focus) {
+  div.scatter .header-controls:focus-within {
     opacity: 1;
   }
   svg {
@@ -1843,15 +1861,6 @@
   }
   .current-frame-indicator:hover {
     opacity: 0.8;
-  }
-  .tooltip {
-    color: var(--scatter-tooltip-color, light-dark(black, white));
-    padding: var(--scatter-tooltip-padding, 1px 4px);
-    border-radius: var(--scatter-tooltip-border-radius, var(--border-radius));
-    font-size: var(--scatter-tooltip-font-size, 0.8em);
-    /* Ensure background fits content width */
-    width: var(--scatter-tooltip-width, max-content);
-    box-sizing: border-box;
   }
   .zoom-rect {
     fill: var(--scatter-zoom-rect-fill, rgba(100, 100, 255, 0.2));
