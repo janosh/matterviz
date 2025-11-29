@@ -274,8 +274,8 @@
     const stable: PhaseDiagramEntry[] = []
     const unstable: PhaseDiagramEntry[] = []
     for (const entry of plot_entries) {
-      if (entry.is_stable || entry.e_above_hull === 0) stable.push(entry)
-      else if ((entry.e_above_hull ?? 0) > 0) unstable.push(entry)
+      if (entry.is_stable) stable.push(entry)
+      else unstable.push(entry)
     }
     stable_entries = stable
     unstable_entries = unstable

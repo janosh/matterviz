@@ -96,9 +96,7 @@
     if (!isNaN(cnt) && cnt >= 10 && cnt <= 50000) entry_count = cnt
     const hull = parseFloat(params.get(`hull_dist`) ?? ``)
     if (!isNaN(hull) && hull >= 0) max_hull_dist = hull
-  })
-
-  $effect(() => {
+    // Initial generation after URL params are loaded
     regenerate()
   })
 

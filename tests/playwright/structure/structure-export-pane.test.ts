@@ -231,25 +231,29 @@ test.describe(`StructureExportPane Tests`, () => {
         label: `JSON`,
         expected_text: `Pymatgen`,
         description: `Python Materials Genomics`,
+        link_href: `pymatgen.org`,
       },
       {
         label: `XYZ`,
         expected_text: `ASE`,
         description: `Atomic Simulation Environment`,
+        link_href: `wiki.fysik.dtu.dk/ase`,
       },
       {
         label: `CIF`,
         expected_text: `IUCr`,
         description: `Crystallographic Information File`,
+        link_href: `iucr.org`,
       },
       {
         label: `POSCAR`,
         expected_text: `VASP`,
         description: `Vienna Ab initio Simulation Package`,
+        link_href: `vasp.at`,
       },
     ]
 
-    for (const { label, expected_text, description } of text_format_tooltips) {
+    for (const { label, expected_text, description, link_href } of text_format_tooltips) {
       test(`${label} format shows tooltip on hover`, async ({ page }) => {
         const { pane_div } = await open_export_pane(page)
 
@@ -266,13 +270,18 @@ test.describe(`StructureExportPane Tests`, () => {
         const tooltip_text = await tooltip_elem.textContent()
         expect(tooltip_text).toContain(expected_text)
         expect(tooltip_text).toContain(description)
+
+        // Verify tooltip contains clickable link with correct href
+        const tooltip_link = tooltip_elem.locator(`a[href*="${link_href}"]`)
+        await expect(tooltip_link).toBeVisible()
+        await expect(tooltip_link).toHaveAttribute(`target`, `_blank`)
       })
     }
 
     test(`tooltip disappears when mouse leaves label`, async ({ page }) => {
       const { pane_div } = await open_export_pane(page)
 
-      const json_label = pane_div.locator(`span:has-text("JSON")`).first()
+      const json_label = pane_div.getByText(`JSON`, { exact: true })
       await json_label.hover()
 
       const tooltip_elem = page.locator(`.custom-tooltip`).first()
