@@ -4,25 +4,25 @@ import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
+/** Helper to create a simple children snippet for testing. */
+function make_children(text: string = `Test`) {
+  return ($$anchor: Comment) => {
+    const span = document.createElement(`span`)
+    span.textContent = text
+    $$anchor.before(span)
+  }
+}
+
 describe(`PlotTooltip`, () => {
-  test(`renders with basic x, y positioning and default offset`, () => {
+  test(`renders with basic positioning, default offset, and absolute position`, () => {
     mount(PlotTooltip, {
       target: document.body,
-      props: {
-        x: 100,
-        y: 200,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Test content`
-          $$anchor.before(span)
-        },
-      },
+      props: { x: 100, y: 200, children: make_children(`Test content`) },
     })
 
     const tooltip = doc_query(`.plot-tooltip`)
     expect(tooltip).toBeTruthy()
-    // Default offset is { x: 6, y: 0 }
-    expect(tooltip.style.left).toBe(`106px`)
+    expect(tooltip.style.left).toBe(`106px`) // 100 + default offset 6
     expect(tooltip.style.top).toBe(`200px`)
     expect(tooltip.style.position).toBe(`absolute`)
     expect(tooltip.style.pointerEvents).toBe(`none`)
@@ -32,16 +32,7 @@ describe(`PlotTooltip`, () => {
   test(`applies custom offset`, () => {
     mount(PlotTooltip, {
       target: document.body,
-      props: {
-        x: 50,
-        y: 75,
-        offset: { x: 10, y: -10 },
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Content`
-          $$anchor.before(span)
-        },
-      },
+      props: { x: 50, y: 75, offset: { x: 10, y: -10 }, children: make_children() },
     })
 
     const tooltip = doc_query(`.plot-tooltip`)
@@ -49,151 +40,57 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.top).toBe(`65px`) // 75 + (-10)
   })
 
-  test(`uses fixed positioning when fixed=true`, () => {
+  test.each([
+    { fixed: true, expected: `fixed` },
+    { fixed: false, expected: `absolute` },
+  ])(`uses $expected positioning when fixed=$fixed`, ({ fixed, expected }) => {
     mount(PlotTooltip, {
       target: document.body,
-      props: {
-        x: 100,
-        y: 200,
-        fixed: true,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Fixed tooltip`
-          $$anchor.before(span)
-        },
-      },
+      props: { x: 100, y: 200, fixed, children: make_children() },
     })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.style.position).toBe(`fixed`)
-  })
-
-  test(`uses absolute positioning when fixed=false (default)`, () => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: {
-        x: 100,
-        y: 200,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Absolute tooltip`
-          $$anchor.before(span)
-        },
-      },
-    })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.style.position).toBe(`absolute`)
+    expect(doc_query(`.plot-tooltip`).style.position).toBe(expected)
   })
 
   test(`applies background color`, () => {
     mount(PlotTooltip, {
       target: document.body,
-      props: {
-        x: 0,
-        y: 0,
-        bg_color: `#ff5500`,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Colored bg`
-          $$anchor.before(span)
-        },
-      },
+      props: { x: 0, y: 0, bg_color: `#ff5500`, children: make_children() },
     })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.style.backgroundColor).toBe(`#ff5500`)
+    expect(doc_query(`.plot-tooltip`).style.backgroundColor).toBe(`#ff5500`)
   })
 
-  test(`computes white text for dark backgrounds`, () => {
+  test.each([
+    { bg: `#000000`, expected: `#ffffff`, desc: `black` },
+    { bg: `#1a1a1a`, expected: `#ffffff`, desc: `very dark gray` },
+    { bg: `#333333`, expected: `#ffffff`, desc: `dark gray` },
+    { bg: `#323296`, expected: `#ffffff`, desc: `dark blue` },
+    { bg: `#ffffff`, expected: `#000000`, desc: `white` },
+    { bg: `#e0e0e0`, expected: `#000000`, desc: `light gray` },
+    { bg: `#ffff00`, expected: `#000000`, desc: `yellow` },
+    { bg: `#ffc8c8`, expected: `#000000`, desc: `light pink` },
+  ])(`computes $expected text for $desc background`, ({ bg, expected }) => {
     mount(PlotTooltip, {
       target: document.body,
-      props: {
-        x: 0,
-        y: 0,
-        bg_color: `#000000`, // Black - low luminance
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Dark bg`
-          $$anchor.before(span)
-        },
-      },
+      props: { x: 0, y: 0, bg_color: bg, children: make_children() },
     })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.style.color).toBe(`#ffffff`) // White text
+    expect(doc_query(`.plot-tooltip`).style.color).toBe(expected)
   })
 
-  test(`computes black text for light backgrounds`, () => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: {
-        x: 0,
-        y: 0,
-        bg_color: `#ffffff`, // White - high luminance
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Light bg`
-          $$anchor.before(span)
-        },
-      },
-    })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.style.color).toBe(`#000000`) // Black text
-  })
-
-  test(`does not set text color when bg_color is null`, () => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: {
-        x: 0,
-        y: 0,
-        bg_color: null,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `No bg`
-          $$anchor.before(span)
-        },
-      },
-    })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    // Color should not be set (empty or inherit)
-    expect(tooltip.style.color).toBe(``)
-  })
-
-  test(`does not set text color when bg_color is undefined`, () => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: {
-        x: 0,
-        y: 0,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `No bg`
-          $$anchor.before(span)
-        },
-      },
-    })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.style.color).toBe(``)
-  })
+  test.each([null, undefined])(
+    `does not set text color when bg_color is %s`,
+    (bg_color) => {
+      mount(PlotTooltip, {
+        target: document.body,
+        props: { x: 0, y: 0, bg_color, children: make_children() },
+      })
+      expect(doc_query(`.plot-tooltip`).style.color).toBe(``)
+    },
+  )
 
   test(`applies custom class`, () => {
     mount(PlotTooltip, {
       target: document.body,
-      props: {
-        x: 0,
-        y: 0,
-        class: `custom-tooltip my-class`,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Custom class`
-          $$anchor.before(span)
-        },
-      },
+      props: { x: 0, y: 0, class: `custom-tooltip my-class`, children: make_children() },
     })
 
     const tooltip = doc_query(`.plot-tooltip`)
@@ -209,42 +106,10 @@ describe(`PlotTooltip`, () => {
         x: 0,
         y: 0,
         style: `z-index: 9999; backdrop-filter: blur(4px);`,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Extra style`
-          $$anchor.before(span)
-        },
+        children: make_children(),
       },
     })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.style.zIndex).toBe(`9999`)
-  })
-
-  test.each([
-    { bg: `#1a1a1a`, expected_text: `#ffffff`, desc: `very dark gray` },
-    { bg: `#333333`, expected_text: `#ffffff`, desc: `dark gray` },
-    { bg: `#323296`, expected_text: `#ffffff`, desc: `dark blue` },
-    { bg: `#e0e0e0`, expected_text: `#000000`, desc: `light gray` },
-    { bg: `#ffff00`, expected_text: `#000000`, desc: `yellow (high luminance)` },
-    { bg: `#ffc8c8`, expected_text: `#000000`, desc: `light pink` },
-  ])(`contrasting text color for $desc background`, ({ bg, expected_text }) => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: {
-        x: 0,
-        y: 0,
-        bg_color: bg,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Test`
-          $$anchor.before(span)
-        },
-      },
-    })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.style.color).toBe(expected_text)
+    expect(doc_query(`.plot-tooltip`).style.zIndex).toBe(`9999`)
   })
 
   test(`renders children content correctly`, () => {
@@ -262,13 +127,12 @@ describe(`PlotTooltip`, () => {
       },
     })
 
-    const tooltip = doc_query(`.plot-tooltip`)
-    const content = tooltip.querySelector(`.tooltip-content`)
+    const content = doc_query(`.plot-tooltip`).querySelector(`.tooltip-content`)
     expect(content).toBeTruthy()
     expect(content?.querySelector(`strong`)?.textContent).toBe(`Label:`)
   })
 
-  test(`combines all positioning props correctly`, () => {
+  test(`combines all props correctly`, () => {
     mount(PlotTooltip, {
       target: document.body,
       props: {
@@ -276,21 +140,17 @@ describe(`PlotTooltip`, () => {
         y: 250,
         offset: { x: 15, y: -20 },
         fixed: true,
-        bg_color: `#2a4070`, // Dark blue (luminance < 0.5)
+        bg_color: `#2a4070`,
         style: `box-shadow: 0 2px 8px rgba(0,0,0,0.2);`,
-        children: ($$anchor: Comment) => {
-          const span = document.createElement(`span`)
-          span.textContent = `Full test`
-          $$anchor.before(span)
-        },
+        children: make_children(`Full test`),
       },
     })
 
     const tooltip = doc_query(`.plot-tooltip`)
     expect(tooltip.style.position).toBe(`fixed`)
-    expect(tooltip.style.left).toBe(`165px`) // 150 + 15
-    expect(tooltip.style.top).toBe(`230px`) // 250 + (-20)
+    expect(tooltip.style.left).toBe(`165px`)
+    expect(tooltip.style.top).toBe(`230px`)
     expect(tooltip.style.backgroundColor).toBe(`#2a4070`)
-    expect(tooltip.style.color).toBe(`#ffffff`) // Dark blue -> white text
+    expect(tooltip.style.color).toBe(`#ffffff`)
   })
 })
