@@ -860,7 +860,8 @@ export function export_structure_as_obj(
     const mtl_blob = new Blob([mtl_content], { type: `text/plain` })
 
     download(obj_blob, obj_filename, `text/plain`)
-    // Small delay to prevent browser blocking multiple downloads
+    // Small delay to prevent some browsers from blocking rapid successive downloads as potential abuse.
+    // A more robust solution might be to zip both files together.
     setTimeout(() => download(mtl_blob, mtl_filename, `text/plain`), 100)
   } catch (error) {
     console.error(`Error exporting OBJ:`, error)
