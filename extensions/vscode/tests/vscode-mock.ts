@@ -1,4 +1,6 @@
-export function mock_vscode() {
+import type { Plugin } from 'vite'
+
+export function mock_vscode(): Plugin {
   return {
     name: `vscode-mock`,
     enforce: `pre`,

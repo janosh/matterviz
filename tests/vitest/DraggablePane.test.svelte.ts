@@ -1,11 +1,13 @@
 import { DraggablePane } from '$lib'
-import { mount, tick } from 'svelte'
+import { createRawSnippet, mount, tick } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from './setup'
 
 describe(`DraggablePane`, () => {
-  const default_props = { children: () => `Pane Content` }
+  const default_props = {
+    children: createRawSnippet(() => ({ render: () => `Pane Content` })),
+  }
   const click = (el: Element) => {
     el.dispatchEvent(new MouseEvent(`click`, { bubbles: true, cancelable: true }))
   }

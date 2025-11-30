@@ -1,6 +1,6 @@
 import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
-import { mount } from 'svelte'
+import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 
 const basic: BarSeries = {
@@ -170,12 +170,10 @@ describe(`BarPlot`, () => {
       target: document.body,
       props: {
         series: [basic],
-        tooltip: (data: BarHandlerProps) => {
-          const div_el = document.createElement(`div`)
-          div_el.className = `custom-tooltip`
-          div_el.textContent = `x: ${data.x}, y: ${data.y}`
-          document.body.appendChild(div_el)
-        },
+        tooltip: createRawSnippet<[BarHandlerProps]>((data) => ({
+          render: () =>
+            `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
+        })),
         hovered: true,
       },
     })
@@ -187,13 +185,12 @@ describe(`BarPlot`, () => {
       target: document.body,
       props: {
         series: [basic],
-        children: () => {
+        children: createRawSnippet(() => {
           called = true
-          const div_el = document.createElement(`div`)
-          div_el.className = `custom-bar-child`
-          div_el.textContent = `Custom bar overlay`
-          document.body.appendChild(div_el)
-        },
+          return {
+            render: () => `<div class="custom-bar-child">Custom bar overlay</div>`,
+          }
+        }),
       },
     })
     expect(called).toBe(true)

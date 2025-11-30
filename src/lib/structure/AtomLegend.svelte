@@ -18,7 +18,7 @@
   let {
     atom_color_config = $bindable({
       mode: `element`,
-      scale: ``,
+      scale: undefined,
       scale_type: `continuous`,
     }),
     property_colors = null,
