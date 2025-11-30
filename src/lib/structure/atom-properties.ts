@@ -12,7 +12,7 @@ import * as d3_sc from 'd3-scale-chromatic'
 
 export interface AtomColorConfig {
   mode: AtomColorMode
-  scale: string | D3InterpolateName
+  scale: D3InterpolateName
   scale_type: ColorScaleType
   color_fn?: (site: Site, idx: number) => number | string
 }

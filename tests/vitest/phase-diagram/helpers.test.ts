@@ -132,7 +132,7 @@ describe(`helpers: thresholds and tooltips`, () => {
           e_above_hull: 0.2,
           energy_per_atom: -1,
         },
-      ] as PhaseData[],
+      ] as unknown as PhaseData[],
       expected: {
         total: 2,
         unary: 1,

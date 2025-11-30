@@ -7,7 +7,7 @@
     Lattice,
     SettingsSection,
   } from '$lib'
-  import type { ColorSchemeName } from '$lib/colors'
+  import type { ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { to_degrees, to_radians } from '$lib/math'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
@@ -72,7 +72,7 @@
   })
 
   // Atom color config selection state
-  let color_scale_selected = $state([
+  let color_scale_selected = $state<D3InterpolateName[]>([
     atom_color_config.scale || DEFAULTS.structure.atom_color_scale,
   ])
 

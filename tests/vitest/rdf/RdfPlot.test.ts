@@ -2,7 +2,7 @@ import { RdfPlot } from '$lib'
 import type { RdfPattern } from '$lib/rdf'
 import type { Pbc, PymatgenStructure } from '$lib/structure'
 import { structure_map } from '$site/structures'
-import { mount } from 'svelte'
+import { createRawSnippet, mount } from 'svelte'
 import { describe, test } from 'vitest'
 
 const nacl_structure = structure_map.get(`mp-1234`)
@@ -103,7 +103,7 @@ describe(`RdfPlot`, () => {
       target: document.body,
       props: {
         patterns: { label: `Test`, pattern: create_synthetic_pattern() },
-        children: () => {},
+        children: createRawSnippet(() => ({ render: () => `<div></div>` })),
       },
     })
   })

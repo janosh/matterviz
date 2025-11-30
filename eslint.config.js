@@ -31,6 +31,10 @@ export default [
     },
   },
   {
-    ignores: [`build/`, `.svelte-kit/`, `package/`],
+    files: [`**/*.d.ts`],
+    rules: {
+      '@stylistic/quotes': [`error`, `single`, { avoidEscape: true }],
+    },
   },
+  { ignores: [`build/`, `.svelte-kit/`, `package/`] },
 ]

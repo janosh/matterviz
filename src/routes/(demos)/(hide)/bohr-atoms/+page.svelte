@@ -1,5 +1,6 @@
 <script lang="ts">
   import { BohrAtom, element_data } from 'matterviz/element'
+  // @ts-expect-error - relative markdown import resolution
   import Description from './bohr-atoms.md'
 
   let orbital_period = $state(2)
