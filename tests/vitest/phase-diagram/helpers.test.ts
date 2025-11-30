@@ -1,4 +1,4 @@
-import type { CompositionType, ElementSymbol } from '$lib'
+import type { ElementSymbol } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import * as helpers from '$lib/phase-diagram/helpers'
 import { get_phase_diagram_stats } from '$lib/phase-diagram/thermodynamics'
@@ -122,17 +122,17 @@ describe(`helpers: thresholds and tooltips`, () => {
     },
     {
       name: `quaternary stats counts quaternary entries`,
-      elements: [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[],
+      elements: [`H`, `He`, `Li`, `Be`],
       max_arity: 4 as const,
       entries: [
-        { composition: { A: 1 }, energy: 0, e_above_hull: 0, energy_per_atom: 0 },
+        { composition: { H: 1 }, energy: 0, e_above_hull: 0, energy_per_atom: 0 },
         {
-          composition: { A: 1, B: 1, C: 1, D: 1 },
+          composition: { H: 1, He: 1, Li: 1, Be: 1 },
           energy: -4,
           e_above_hull: 0.2,
           energy_per_atom: -1,
         },
-      ] as unknown as PhaseData[],
+      ] satisfies PhaseData[],
       expected: {
         total: 2,
         unary: 1,
@@ -140,11 +140,11 @@ describe(`helpers: thresholds and tooltips`, () => {
         ternary: 0,
         quaternary: 1,
         elements: 4,
-        system: `A-D-B-C`,
+        system: `He-Li-Be-H`,
       },
-    },
+    } as const,
   ])(`get_phase_diagram_stats: $name`, ({ elements, max_arity, entries, expected }) => {
-    const stats = get_phase_diagram_stats(entries, elements, max_arity)
+    const stats = get_phase_diagram_stats(entries, [...elements], max_arity)
     expect(stats).not.toBeNull()
     if (!stats) return
     expect(stats.total).toBe(expected.total)
@@ -163,25 +163,21 @@ describe(`helpers: energy range preserves zero formation energy`, () => {
   test(`zero e_form_per_atom is not dropped in energy range`, () => {
     const entries: PhaseData[] = [
       {
-        composition: { A: 1 } as unknown as CompositionType,
+        composition: { H: 1 },
         energy: 0,
         energy_per_atom: -1, // differs from e_form_per_atom to ensure we pick 0 over -1
         e_form_per_atom: 0, // critical zero value
         e_above_hull: 0,
       },
       {
-        composition: { B: 1 } as unknown as CompositionType,
+        composition: { He: 1 },
         energy: -2,
         energy_per_atom: -2,
         e_form_per_atom: -2,
         e_above_hull: 0,
       },
     ]
-    const stats = get_phase_diagram_stats(
-      entries,
-      [`A`, `B`] as unknown as ElementSymbol[],
-      3,
-    )
+    const stats = get_phase_diagram_stats(entries, [`H`, `He`], 3)
     // min should be -2, max should be 0, proving 0 was retained (not replaced by -1)
     expect(stats?.energy_range.min).toBeCloseTo(-2)
     expect(stats?.energy_range.max).toBeCloseTo(0)

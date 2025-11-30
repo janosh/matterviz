@@ -32,7 +32,7 @@ export default [
   },
   {
     files: [`**/*.d.ts`],
-    rules: {
+    rules: { // Force single quotes in .d.ts files as TypeScript requires for imports
       '@stylistic/quotes': [`error`, `single`, { avoidEscape: true }],
     },
   },
