@@ -511,7 +511,7 @@ const structure_props = (defaults: DefaultSettings) => {
 
 // Map defaults to trajectory component props
 const trajectory_props = (defaults: DefaultSettings) => {
-  const { trajectory, plot, scatter } = defaults
+  const { trajectory, plot, scatter, histogram } = defaults
   return {
     ...trajectory,
     structure_props: structure_props(defaults),
@@ -526,9 +526,9 @@ const trajectory_props = (defaults: DefaultSettings) => {
       cache_parsed_data: trajectory.cache_parsed_data,
     },
     scatter_props: {
-      markers: scatter.markers,
-      line_width: scatter.line_width,
-      point_size: scatter.point_size,
+      markers: scatter.symbol_type,
+      line_width: scatter.line.width,
+      point_size: scatter.point.size,
       show_legend: scatter.show_legend,
       enable_zoom: plot.enable_zoom,
       zoom_factor: plot.zoom_factor,
@@ -539,16 +539,16 @@ const trajectory_props = (defaults: DefaultSettings) => {
       legend: { show: scatter.show_legend },
     },
     histogram_props: {
-      mode: trajectory.histogram_mode,
-      show_legend: trajectory.histogram_show_legend,
-      bin_count: trajectory.histogram_bin_count,
+      mode: histogram.mode,
+      show_legend: histogram.show_legend,
+      bin_count: histogram.bin_count,
       enable_zoom: plot.enable_zoom,
       zoom_factor: plot.zoom_factor,
       auto_fit_range: plot.auto_fit_range,
       show_grid: plot.grid_lines,
       show_axis_labels: plot.axis_labels,
       animation_duration: plot.animation_duration,
-      legend: { show: trajectory.histogram_show_legend },
+      legend: { show: histogram.show_legend },
     },
     spinner_props: { show_progress: trajectory.show_parsing_progress },
     ELEM_PROPERTY_LABELS: {},
