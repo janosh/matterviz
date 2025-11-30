@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.1.15](https://github.com/janosh/matterviz/compare/v0.1.14...v0.1.15)
+
+> 29 November 2025
+
+### 🛠 Enhancements
+
+- Plot fullscreen mode, supercell selector, XRD broadening by @janosh in https://github.com/janosh/matterviz/pull/206
+- Phase diagrams: add `calculate_e_above_hull` API, custom marker symbols, tweak pulse/glow highlights by @janosh in https://github.com/janosh/matterviz/pull/207
+- Highlight selected entry in `PhaseDiagram2D` by @janosh in https://github.com/janosh/matterviz/pull/209
+
+### 🐛 Bug Fixes
+
+- Respect PBC in coordination number atom colors by @janosh in https://github.com/janosh/matterviz/pull/197
+- Fix blank `Structure` and `BrillouinZone` PNG exports by @janosh in https://github.com/janosh/matterviz/pull/205
+- Add composition utilities and fix phase diagram oxidation state handling by @janosh in https://github.com/janosh/matterviz/pull/208
+
+### 🏷️ Type Hints
+
+- Type fixes by @janosh in https://github.com/janosh/matterviz/pull/198
+
 ## Unreleased
 
 ### 💥 Breaking Changes
