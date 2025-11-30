@@ -1,16 +1,14 @@
 // @vitest-environment happy-dom
 import { PlotTooltip } from '$lib/plot'
-import { mount } from 'svelte'
+import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
 /** Helper to create a simple children snippet for testing. */
 function make_children(text: string = `Test`) {
-  return ($$anchor: Comment) => {
-    const span = document.createElement(`span`)
-    span.textContent = text
-    $$anchor.before(span)
-  }
+  return createRawSnippet(() => ({
+    render: () => `<span>${text}</span>`,
+  }))
 }
 
 describe(`PlotTooltip`, () => {
@@ -118,12 +116,10 @@ describe(`PlotTooltip`, () => {
       props: {
         x: 0,
         y: 0,
-        children: ($$anchor: Comment) => {
-          const div = document.createElement(`div`)
-          div.className = `tooltip-content`
-          div.innerHTML = `<strong>Label:</strong> Value`
-          $$anchor.before(div)
-        },
+        children: createRawSnippet(() => ({
+          render: () =>
+            `<div class="tooltip-content"><strong>Label:</strong> Value</div>`,
+        })),
       },
     })
 

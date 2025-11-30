@@ -255,7 +255,7 @@ describe(`AtomLegend Component`, () => {
     test(`switches mode when option is clicked`, async () => {
       const atom_color_config = {
         mode: `element` as const,
-        scale: ``,
+        scale: `interpolateViridis` as const,
         scale_type: `continuous` as const,
       }
       mount(AtomLegend, {
@@ -779,7 +779,7 @@ describe(`Disordered Site Color Assignment`, () => {
     }))
 
   const create_species = (element: string, occu: number): Species => ({
-    element,
+    element: element as ElementSymbol,
     occu,
     oxidation_state: 0,
   })

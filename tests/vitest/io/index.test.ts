@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 globalThis.fetch = vi.fn()
 
 describe(`handle_url_drop`, () => {
-  let callback: ReturnType<typeof vi.fn>
+  let callback: (
+    content: string | ArrayBuffer,
+    filename: string,
+  ) => void | Promise<void>
   let get_data: ReturnType<typeof vi.fn>
   let drag_event: DragEvent
 

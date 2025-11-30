@@ -3,8 +3,8 @@
   import { ContextMenu } from '$lib'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import type { SVGAttributes } from 'svelte/elements'
-  import { BarChart, BubbleChart, PieChart } from './index'
   import { get_electro_neg_formula } from './format'
+  import { BarChart, BubbleChart, PieChart } from './index'
   import { parse_composition } from './parse'
 
   type CompositionChartMode = `pie` | `bubble` | `bar`
@@ -19,6 +19,8 @@
     mode?: CompositionChartMode
     on_composition_change?: (composition: CompositionType) => void
     color_scheme?: ColorSchemeName
+    size?: number
+    interactive?: boolean
   } = $props()
 
   // Make these reactive so context menu changes propagate

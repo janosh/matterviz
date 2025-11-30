@@ -1,5 +1,5 @@
 import { BubbleChart, count_atoms_in_composition } from '$lib/composition'
-import { mount } from 'svelte'
+import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 describe(`BubbleChart component`, () => {
@@ -38,11 +38,9 @@ describe(`BubbleChart component`, () => {
       target: document.body,
       props: {
         composition: { H: 2, O: 1 },
-        children: () => {
-          const elem = document.createElement(`div`)
-          elem.className = `custom-child`
-          document.body.appendChild(elem)
-        },
+        children: createRawSnippet(() => ({
+          render: () => `<div class="custom-child"></div>`,
+        })),
       },
     })
 

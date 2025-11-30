@@ -1,6 +1,6 @@
 import { ScatterPlot } from '$lib'
 import type { DataSeries } from '$lib/plot'
-import { mount } from 'svelte'
+import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 const basic = {
@@ -148,13 +148,13 @@ describe(`ScatterPlot`, () => {
       target: document.body,
       props: {
         series: [basic],
-        children: () => {
+        children: createRawSnippet(() => {
           called = true
-          const div_el = document.createElement(`div`)
-          div_el.className = `custom-scatter-child`
-          div_el.textContent = `Custom overlay content`
-          document.body.appendChild(div_el)
-        },
+          return {
+            render: () =>
+              `<div class="custom-scatter-child">Custom overlay content</div>`,
+          }
+        }),
       },
     })
     expect(called).toBe(true)

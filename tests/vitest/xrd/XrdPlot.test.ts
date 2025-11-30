@@ -1,6 +1,6 @@
 import { XrdPlot } from '$lib'
 import type { XrdPattern } from '$lib/xrd'
-import { type ComponentProps, mount } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 const pattern: XrdPattern = {
@@ -66,13 +66,12 @@ describe(`XrdPlot`, () => {
       target: document.body,
       props: {
         patterns: pattern,
-        children: () => {
+        children: createRawSnippet(() => {
           called = true
-          const div_el = document.createElement(`div`)
-          div_el.className = `custom-xrd-child`
-          div_el.textContent = `Custom XRD overlay`
-          document.body.appendChild(div_el)
-        },
+          return {
+            render: () => `<div class="custom-xrd-child">Custom XRD overlay</div>`,
+          }
+        }),
       },
     })
     expect(called).toBe(true)

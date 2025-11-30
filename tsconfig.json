@@ -11,6 +11,8 @@
     "sourceMap": true,
 
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
-  }
+    "resolveJsonModule": true,
+    "skipLibCheck": true
+  },
+  "exclude": ["src/scripts", "extensions"]
 }

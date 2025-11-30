@@ -1,7 +1,7 @@
 import type { ChemicalElement, ElementCategory } from '$lib'
 import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { CATEGORY_COUNTS, ELEM_HEATMAP_LABELS } from '$lib/labels'
-import { mount, tick } from 'svelte'
+import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -176,7 +176,10 @@ describe(`PeriodicTable`, () => {
   )(
     `active_elements=%s highlights %s tiles (%s)`,
     (active_elements, expected_active, _description) => {
-      mount(PeriodicTable, { target: document.body, props: { active_elements } })
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { active_elements: [...active_elements] },
+      })
       const active_tiles = document.querySelectorAll(`.element-tile.active`)
       expect(active_tiles.length).toBe(expected_active)
     },
@@ -299,7 +302,7 @@ describe(`PeriodicTable`, () => {
       [null, `DIV`, null],
     ] as const,
   )(`links=%o -> %s tag, %s href`, (links, expected_tag, expected_href) => {
-    mount(PeriodicTable, { target: document.body, props: { links } })
+    mount(PeriodicTable, { target: document.body, props: { links: links as never } })
     const hydrogen_tile = document.querySelector(
       `.element-tile`,
     ) as HTMLElement
@@ -617,7 +620,13 @@ describe(`PeriodicTable`, () => {
       let rendered = false
       mount(PeriodicTable, {
         target: document.body,
-        props: { heatmap_values: [1, 2, 3], inset: () => (rendered = true, ``) },
+        props: {
+          heatmap_values: [1, 2, 3],
+          inset: createRawSnippet(() => {
+            rendered = true
+            return { render: () => `<div></div>` }
+          }),
+        },
       })
 
       expect(document.querySelector(`.colorbar`)).toBeNull()

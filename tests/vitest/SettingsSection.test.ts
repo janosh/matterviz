@@ -1,7 +1,9 @@
 import { SettingsSection } from '$lib'
-import { mount } from 'svelte'
+import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from './setup'
+
+const snippet = (content: string) => createRawSnippet(() => ({ render: () => content }))
 
 describe(`SettingsSection`, () => {
   const base_props = {
@@ -12,7 +14,7 @@ describe(`SettingsSection`, () => {
   test(`renders title correctly`, () => {
     mount(SettingsSection, {
       target: document.body,
-      props: { ...base_props, children: () => `Test content` },
+      props: { ...base_props, children: snippet(`Test content`) },
     })
     expect(doc_query(`h4`).textContent?.trim()).toBe(`Test Section`)
   })
@@ -20,11 +22,11 @@ describe(`SettingsSection`, () => {
   test(`title is required and h4 is always present`, () => {
     mount(SettingsSection, {
       target: document.body,
-      props: { ...base_props, children: () => `Test content` },
+      props: { ...base_props, children: snippet(`Test content`) },
     })
     // h4 should always be present since title is required
     expect(doc_query(`h4`).textContent?.trim()).toBe(`Test Section`)
-    expect(doc_query(`section`).textContent?.trim()).toBe(``)
+    expect(doc_query(`section`).textContent?.trim()).toBe(`Test content`)
   })
 
   test(`does not show reset button initially when values match reference`, () => {
@@ -35,7 +37,7 @@ describe(`SettingsSection`, () => {
         title: `Test Settings`,
         current_values: { setting1: `value` },
         on_reset: vi.fn(),
-        children: () => `Settings content`,
+        children: snippet(`Settings content`),
       },
     })
 
@@ -50,7 +52,7 @@ describe(`SettingsSection`, () => {
         title: `Test Settings`,
         current_values: { setting1: [`a`, `b`, `c`] },
         on_reset: vi.fn(),
-        children: () => `Settings content`,
+        children: snippet(`Settings content`),
       },
     })
 
@@ -65,7 +67,7 @@ describe(`SettingsSection`, () => {
         title: `Test Settings`,
         current_values: { setting1: [{ key: `value1` }, { key: `value2` }] },
         on_reset: vi.fn(),
-        children: () => `Settings content`,
+        children: snippet(`Settings content`),
       },
     })
 
@@ -80,7 +82,7 @@ describe(`SettingsSection`, () => {
         title: `Test Settings`,
         current_values: { setting1: undefined, setting2: null },
         on_reset: vi.fn(),
-        children: () => `Settings content`,
+        children: snippet(`Settings content`),
       },
     })
 
@@ -95,7 +97,7 @@ describe(`SettingsSection`, () => {
         title: `Test Settings`,
         current_values: { setting1: [] },
         on_reset: vi.fn(),
-        children: () => `Settings content`,
+        children: snippet(`Settings content`),
       },
     })
 
