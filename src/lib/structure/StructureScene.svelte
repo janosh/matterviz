@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AnyStructure, BondPair, ElementSymbol, Site, Vec3 } from '$lib'
   import { atomic_radii, AXIS_COLORS, element_data, NEG_AXIS_COLORS } from '$lib'
+  import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
@@ -108,7 +109,7 @@
     hidden_prop_vals = $bindable(new Set<number | string>()),
     atom_color_config = {
       mode: DEFAULTS.structure.atom_color_mode,
-      scale: DEFAULTS.structure.atom_color_scale,
+      scale: DEFAULTS.structure.atom_color_scale as D3InterpolateName,
       scale_type: DEFAULTS.structure.atom_color_scale_type,
     },
     sym_data = null,

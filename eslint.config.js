@@ -31,6 +31,10 @@ export default [
     },
   },
   {
-    ignores: [`build/`, `.svelte-kit/`, `package/`],
+    files: [`**/*.d.ts`],
+    rules: { // Force single quotes in .d.ts files as TypeScript requires for imports
+      '@stylistic/quotes': [`error`, `single`, { avoidEscape: true }],
+    },
   },
+  { ignores: [`build/`, `.svelte-kit/`, `package/`] },
 ]

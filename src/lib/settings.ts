@@ -1,7 +1,7 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
-import type { ColorScaleType } from '$lib/colors'
+import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
@@ -119,7 +119,7 @@ export interface SettingsConfig {
     bond_color: SettingType<string>
     bonding_strategy: SettingType<BondingStrategy>
     atom_color_mode: SettingType<AtomColorMode>
-    atom_color_scale: SettingType<string>
+    atom_color_scale: SettingType<D3InterpolateName>
     atom_color_scale_type: SettingType<ColorScaleType>
 
     // Camera & Controls
