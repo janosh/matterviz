@@ -272,7 +272,7 @@
   ))
 
   // Initialize threshold to auto value on first load
-  let initialized = false
+  let initialized = $state(false)
   $effect(() => {
     if (!initialized && all_enriched_entries.length > 0) {
       initialized = true

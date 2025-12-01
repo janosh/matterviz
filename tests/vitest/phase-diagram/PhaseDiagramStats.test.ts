@@ -85,7 +85,7 @@ describe(`PhaseDiagramStats`, () => {
     expect(text).toContain(`150`)
     expect(text).toContain(`Stable phases`)
     expect(text).toContain(`25`)
-    for (const val of [`2.567`, `0.123`, `1.234`, `0.456`, `0.089`]) {
+    for (const val of [`−2.567`, `0.123`, `−1.234`, `0.456`, `0.089`]) {
       expect(text).toContain(val)
     }
   })

@@ -159,28 +159,26 @@
       const coords = compute_4d_coords(pd_data.entries, elements)
       if (energy_mode !== `on-the-fly` || hull_4d.length === 0) return coords
 
-      // Build 4D points and track indices for mapping hull distances back
-      const valid: { entry: PhaseDiagramEntry; idx: number }[] = coords
-        .map((entry, idx) => ({ entry, idx }))
-        .filter(({ entry: e }) =>
-          Number.isFinite(e.e_form_per_atom) && [e.x, e.y, e.z].every(Number.isFinite)
-        )
-
-      const points_4d: Point4D[] = valid.map(({ entry }) => {
+      // Build 4D points, tracking original indices for mapping hull distances back
+      const valid = coords.flatMap((entry, idx) => {
+        if (
+          !Number.isFinite(entry.e_form_per_atom) ||
+          ![entry.x, entry.y, entry.z].every(Number.isFinite)
+        ) return []
         const amounts = elements.map((el) => entry.composition[el] || 0)
         const total = amounts.reduce((s, a) => s + a, 0)
-        if (!(total > 0)) return { x: NaN, y: NaN, z: NaN, w: NaN }
+        if (!(total > 0)) return []
         const [x, y, z] = amounts.map((a) => a / total)
-        return { x, y, z, w: entry.e_form_per_atom! }
-      }).filter((p) => [p.x, p.y, p.z, p.w].every(Number.isFinite))
-
-      // Build index map for O(1) lookup instead of O(n²) findIndex
-      const idx_to_vi = new Map(valid.map((v, vi) => [v.idx, vi]))
-      const e_hulls = thermo.compute_e_above_hull_4d(points_4d, hull_4d)
-      return coords.map((entry, idx) => {
-        const vi = idx_to_vi.get(idx) ?? -1
-        return { ...entry, e_above_hull: vi >= 0 ? e_hulls[vi] : undefined }
+        return [x, y, z].every(Number.isFinite)
+          ? [{ idx, pt: { x, y, z, w: entry.e_form_per_atom! } }]
+          : []
       })
+      const e_hulls = thermo.compute_e_above_hull_4d(valid.map((v) => v.pt), hull_4d)
+      const hull_map = new Map(valid.map((v, hi) => [v.idx, e_hulls[hi]]))
+      return coords.map((entry, idx) => ({
+        ...entry,
+        e_above_hull: hull_map.get(idx),
+      }))
     } catch (err) {
       console.error(`Error computing quaternary coordinates:`, err)
       return []

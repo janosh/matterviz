@@ -406,7 +406,7 @@ export interface BasePlotProps {
   fullscreen?: boolean
   fullscreen_toggle?: boolean // default: true
   // Callbacks
-  change?: (...args: unknown[]) => void
+  change?: (data: Record<string, unknown> | null) => void
   // Children
   children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]>
 }
