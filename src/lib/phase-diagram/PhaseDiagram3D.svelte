@@ -137,63 +137,44 @@
     }
   })
 
-  // 2) Enrich coords with e_above_hull from cached hull model (before filtering)
+  // Enrich coords with e_above_hull from cached hull model (before filtering)
   const all_enriched_entries = $derived.by(() => {
     if (coords_entries.length === 0) return []
-
-    // Compute or use precomputed hull distances
-    if (energy_mode === `on-the-fly`) {
-      const pts = coords_entries.map((entry) => ({
-        x: entry.x,
-        y: entry.y,
-        z: entry.z,
-      }))
-      const e_hulls = thermo.compute_e_above_hull_for_points(pts, hull_model)
-      return coords_entries.map((entry, idx) => ({
-        ...entry,
-        e_above_hull: e_hulls[idx],
-      }))
-    }
-    return coords_entries
+    if (energy_mode !== `on-the-fly`) return coords_entries
+    const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    const e_hulls = thermo.compute_e_above_hull_for_points(pts, hull_model)
+    return coords_entries.map((e, idx) => ({ ...e, e_above_hull: e_hulls[idx] }))
   })
 
-  // Compute max e_above_hull from ALL enriched entries (before filtering) for slider max and auto-threshold
+  // Auto threshold: show all for few entries, use default for many, interpolate between
   const max_hull_dist_in_data = $derived(
     helpers.calc_max_hull_dist_in_data(all_enriched_entries),
   )
+  const auto_default_threshold = $derived(helpers.compute_auto_hull_dist_threshold(
+    all_enriched_entries.length,
+    max_hull_dist_in_data,
+    PD_DEFAULTS.ternary.max_hull_dist_show_phases,
+  ))
 
-  // Auto-computed threshold: for few entries show all, for many use static default
-  const auto_default_threshold = $derived(
-    helpers.compute_auto_hull_dist_threshold(
-      all_enriched_entries.length,
-      max_hull_dist_in_data,
-      PD_DEFAULTS.ternary.max_hull_dist_show_phases,
-    ),
-  )
-
-  // Set initial threshold to auto-computed value on mount
-  let threshold_initialized = false
+  // Initialize threshold to auto value on first load
+  let initialized = false
   $effect(() => {
-    if (!threshold_initialized && all_enriched_entries.length > 0) {
+    if (!initialized && all_enriched_entries.length > 0) {
+      initialized = true
       max_hull_dist_show_phases = auto_default_threshold
-      threshold_initialized = true
     }
   })
 
-  // 3) Filter and compute visibility based on current threshold
-  const plot_entries = $derived.by(() => {
-    const energy_filtered = all_enriched_entries.filter((entry: PhaseDiagramEntry) =>
-      (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
-    )
-
-    return energy_filtered.map((entry: PhaseDiagramEntry) => {
-      const is_stable = entry.is_stable || entry.e_above_hull === 0
-      return {
-        ...entry,
-        visible: (is_stable && show_stable) || (!is_stable && show_unstable),
-      }
-    })
-  })
+  // Filter by threshold and compute visibility
+  const plot_entries = $derived(
+    all_enriched_entries
+      .filter((e) => (e.e_above_hull ?? 0) <= max_hull_dist_show_phases)
+      .map((e) => ({
+        ...e,
+        visible: ((e.is_stable || e.e_above_hull === 0) && show_stable) ||
+          (!(e.is_stable || e.e_above_hull === 0) && show_unstable),
+      })),
+  )
 
   $effect(() => {
     stable_entries = plot_entries.filter((entry: PhaseDiagramEntry) =>

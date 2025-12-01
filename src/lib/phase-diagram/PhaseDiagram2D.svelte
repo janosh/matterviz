@@ -227,80 +227,68 @@
     }
   })
 
-  // Compute hull points and enriched entries together to avoid redundant hull computation
-  // Split into two stages: (1) enrichment with e_above_hull, (2) filtering with threshold
+  // Compute hull and enrich entries with e_above_hull (before filtering)
   const { all_enriched_entries, hull_points } = $derived.by(() => {
     if (coords_entries.length === 0) {
       return { all_enriched_entries: [], hull_points: [] }
     }
 
-    // Build lower hull in (x, y=e_form)
-    // Group by composition fraction (x) and track all entries at each x to
-    // robustly handle polymorphs. For the hull input, use the lowest energy per x.
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local var in derived, not reactive state
-    const entries_by_x = new Map<number, PhaseDiagramEntry[]>()
+    // Build lower hull: group by x, use lowest energy per x
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local var in derived
+    const by_x = new Map<number, PhaseDiagramEntry[]>()
     for (const entry of coords_entries) {
-      const existing = entries_by_x.get(entry.x)
-      if (existing) existing.push(entry)
-      else entries_by_x.set(entry.x, [entry])
+      ;(by_x.get(entry.x) ?? by_x.set(entry.x, []).get(entry.x))!.push(entry)
     }
-    const hull_input: HullVertex[] = []
-    for (const [x_coord, grouped_entries] of entries_by_x) {
-      let min_y = Infinity
-      for (const entry of grouped_entries) {
-        if (entry.y < min_y) min_y = entry.y
-      }
-      hull_input.push({ x: x_coord, y: min_y })
-    }
+
+    const hull_input: HullVertex[] = [...by_x].map(([x_coord, entries]) => ({
+      x: x_coord,
+      y: Math.min(...entries.map((e) => e.y)),
+    }))
     const hull_points = compute_lower_hull(hull_input)
 
-    // Annotate entries with e_above_hull (visibility computed later after filtering)
     const all_enriched_entries = coords_entries.map((entry) => {
       const y_hull = interpolate_on_hull(hull_points, entry.x)
-      const above = y_hull == null ? 0 : Math.max(0, entry.y - y_hull)
-      const is_stable = above <= 1e-9
-      return { ...entry, e_above_hull: above, is_stable, visible: true }
+      const e_above_hull = y_hull == null ? 0 : Math.max(0, entry.y - y_hull)
+      return {
+        ...entry,
+        e_above_hull,
+        is_stable: e_above_hull <= 1e-9,
+        visible: true,
+      }
     })
-
     return { all_enriched_entries, hull_points }
   })
 
-  // Compute max e_above_hull from ALL enriched entries (before filtering) for slider max and auto-threshold
+  // Auto threshold: show all for few entries, use default for many, interpolate between
   const max_hull_dist_in_data = $derived(
     helpers.calc_max_hull_dist_in_data(all_enriched_entries),
   )
+  const auto_default_threshold = $derived(helpers.compute_auto_hull_dist_threshold(
+    all_enriched_entries.length,
+    max_hull_dist_in_data,
+    PD_DEFAULTS.binary.max_hull_dist_show_phases,
+  ))
 
-  // Auto-computed threshold: for few entries show all, for many use static default
-  const auto_default_threshold = $derived(
-    helpers.compute_auto_hull_dist_threshold(
-      all_enriched_entries.length,
-      max_hull_dist_in_data,
-      PD_DEFAULTS.binary.max_hull_dist_show_phases,
-    ),
-  )
-
-  // Set initial threshold to auto-computed value on mount
-  let threshold_initialized = false
+  // Initialize threshold to auto value on first load
+  let initialized = false
   $effect(() => {
-    if (!threshold_initialized && all_enriched_entries.length > 0) {
+    if (!initialized && all_enriched_entries.length > 0) {
+      initialized = true
       max_hull_dist_show_phases = auto_default_threshold
-      threshold_initialized = true
     }
   })
 
-  // Filter and compute visibility based on current threshold
-  const plot_entries = $derived.by(() => {
-    return all_enriched_entries
-      .filter((entry) =>
-        entry.is_stable || (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
+  // Filter by threshold and compute visibility
+  const plot_entries = $derived(
+    all_enriched_entries
+      .filter((e) =>
+        e.is_stable || (e.e_above_hull ?? 0) <= max_hull_dist_show_phases
       )
-      .map((entry) => ({
-        ...entry,
-        visible: (entry.is_stable && show_stable) ||
-          (!entry.is_stable && show_unstable &&
-            (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases),
-      }))
-  })
+      .map((e) => ({
+        ...e,
+        visible: (e.is_stable && show_stable) || (!e.is_stable && show_unstable),
+      })),
+  )
 
   // Update bindable entries arrays when plot_entries change (single pass)
   $effect(() => {

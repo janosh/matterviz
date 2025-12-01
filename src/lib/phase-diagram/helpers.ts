@@ -75,39 +75,18 @@ export function calc_max_hull_dist_in_data(
   return Math.max(0.1, max_val)
 }
 
-// Thresholds for auto-adjusting max_hull_dist_show_phases based on entry count
-const AUTO_THRESHOLD_LOW_ENTRIES = 25 // Show all entries below this count
-const AUTO_THRESHOLD_HIGH_ENTRIES = 100 // Use static default above this count
-
-/**
- * Compute a smart threshold for showing unstable entries based on entry count.
- * For phase diagrams with very few entries, show all entries regardless of e_above_hull.
- * For well-sampled phase diagrams with many entries, use the static default to reduce clutter.
- * In between, linearly interpolate between showing all and the static default.
- *
- * @param n_entries - Total number of entries in the phase diagram
- * @param max_hull_dist_in_data - Maximum e_above_hull value in the dataset
- * @param static_default - The static default threshold (e.g., 0.1 for binary, 0.5 for ternary)
- * @returns The computed threshold for showing unstable entries
- */
+/** Smart threshold for showing unstable entries based on entry count.
+ * Few entries (≤25): show all. Many entries (≥100): use static default. Between: interpolate. */
 export function compute_auto_hull_dist_threshold(
   n_entries: number,
   max_hull_dist_in_data: number,
   static_default: number,
 ): number {
-  if (n_entries <= AUTO_THRESHOLD_LOW_ENTRIES) {
-    // For very few entries, show all by using max in data
-    return max_hull_dist_in_data
-  } else if (n_entries >= AUTO_THRESHOLD_HIGH_ENTRIES) {
-    // For many entries, use the static default
-    return static_default
-  } else {
-    // Linear interpolation between showing all and static default
-    const interpolation_factor = (n_entries - AUTO_THRESHOLD_LOW_ENTRIES) /
-      (AUTO_THRESHOLD_HIGH_ENTRIES - AUTO_THRESHOLD_LOW_ENTRIES)
-    return max_hull_dist_in_data * (1 - interpolation_factor) +
-      static_default * interpolation_factor
-  }
+  const [LOW, HIGH] = [25, 100]
+  if (n_entries <= LOW) return max_hull_dist_in_data
+  if (n_entries >= HIGH) return static_default
+  const t = (n_entries - LOW) / (HIGH - LOW)
+  return max_hull_dist_in_data * (1 - t) + static_default * t
 }
 
 // Build a tooltip text for any phase entry (shared)

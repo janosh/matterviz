@@ -152,80 +152,74 @@
     }
   })
 
-  const plot_entries = $derived.by(() => {
+  // Enrich coords with e_above_hull (before filtering)
+  const all_enriched_entries = $derived.by(() => {
     if (elements.length !== 4) return []
-
     try {
       const coords = compute_4d_coords(pd_data.entries, elements)
+      if (energy_mode !== `on-the-fly` || hull_4d.length === 0) return coords
 
-      // Compute or use precomputed hull distances
-      const enriched = (() => {
-        if (energy_mode === `on-the-fly` && hull_4d.length > 0) {
-          // Build 4D points for distance calculation using barycentric coordinates
-          // Track indices to map hull distances back to original coords
-          const valid_entries: { entry: PhaseDiagramEntry; orig_idx: number }[] = []
-          coords.forEach((ent, idx) => {
-            if (
-              Number.isFinite(ent.e_form_per_atom) &&
-              [ent.x, ent.y, ent.z].every(Number.isFinite)
-            ) valid_entries.push({ entry: ent, orig_idx: idx })
-          })
+      // Build 4D points and track indices for mapping hull distances back
+      const valid: { entry: PhaseDiagramEntry; idx: number }[] = coords
+        .map((entry, idx) => ({ entry, idx }))
+        .filter(({ entry: e }) =>
+          Number.isFinite(e.e_form_per_atom) && [e.x, e.y, e.z].every(Number.isFinite)
+        )
 
-          const points_4d: Point4D[] = valid_entries
-            .map(({ entry }) => {
-              const amounts = elements.map((el) => entry.composition[el] || 0)
-              const total = amounts.reduce((sum, amt) => sum + amt, 0)
-              if (!(total > 0)) return { x: NaN, y: NaN, z: NaN, w: NaN }
-              const [x, y, z] = amounts.map((amt) => amt / total)
-              return { x, y, z, w: entry.e_form_per_atom! }
-            })
-            .filter((p) => [p.x, p.y, p.z, p.w].every(Number.isFinite))
+      const points_4d: Point4D[] = valid.map(({ entry }) => {
+        const amounts = elements.map((el) => entry.composition[el] || 0)
+        const total = amounts.reduce((s, a) => s + a, 0)
+        if (!(total > 0)) return { x: NaN, y: NaN, z: NaN, w: NaN }
+        const [x, y, z] = amounts.map((a) => a / total)
+        return { x, y, z, w: entry.e_form_per_atom! }
+      }).filter((p) => [p.x, p.y, p.z, p.w].every(Number.isFinite))
 
-          const e_hulls = thermo.compute_e_above_hull_4d(points_4d, hull_4d)
-
-          // Map hull distances back to all coords
-          return coords.map((entry, idx) => {
-            const valid_idx = valid_entries.findIndex((v) => v.orig_idx === idx)
-            return {
-              ...entry,
-              e_above_hull: valid_idx >= 0 ? e_hulls[valid_idx] : undefined,
-            }
-          })
-        }
-        return coords
-      })()
-
-      // Filter by energy threshold and update visibility based on toggles
-      const energy_filtered = enriched.filter((entry: PhaseDiagramEntry) => {
-        // Handle elemental entries specially
-        if (entry.is_element) {
-          // Always include reference elemental entries (corner points of tetrahedron)
-          if (entry.e_above_hull === 0 || entry.is_stable) return true
-          // Include other elemental polymorphs only if toggle is enabled AND e_above_hull is defined
-          return typeof entry.e_above_hull === `number` &&
-            entry.e_above_hull <= max_hull_dist_show_phases
-        }
-        // Include stable entries (treat near-zero as stable)
-        if (
-          entry.is_stable ||
-          (entry.e_above_hull !== undefined && entry.e_above_hull <= 1e-6)
-        ) return true
-        // Include unstable entries within threshold
-        return typeof entry.e_above_hull === `number` &&
-          entry.e_above_hull <= max_hull_dist_show_phases
+      const e_hulls = thermo.compute_e_above_hull_4d(points_4d, hull_4d)
+      return coords.map((entry, idx) => {
+        const vi = valid.findIndex((v) => v.idx === idx)
+        return { ...entry, e_above_hull: vi >= 0 ? e_hulls[vi] : undefined }
       })
-      return energy_filtered
-        .map((entry: PhaseDiagramEntry) => {
-          const is_stable = entry.is_stable || entry.e_above_hull === 0
-          // Update visibility based on current toggle states
-          entry.visible = (is_stable && show_stable) || (!is_stable && show_unstable)
-          return entry
-        })
-    } catch (error) {
-      console.error(`Error computing quaternary coordinates:`, error)
+    } catch (err) {
+      console.error(`Error computing quaternary coordinates:`, err)
       return []
     }
   })
+
+  // Auto threshold: show all for few entries, use default for many, interpolate between
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(all_enriched_entries),
+  )
+  const auto_default_threshold = $derived(helpers.compute_auto_hull_dist_threshold(
+    all_enriched_entries.length,
+    max_hull_dist_in_data,
+    PD_DEFAULTS.quaternary.max_hull_dist_show_phases,
+  ))
+
+  // Initialize threshold to auto value on first load
+  let initialized = false
+  $effect(() => {
+    if (!initialized && all_enriched_entries.length > 0) {
+      initialized = true
+      max_hull_dist_show_phases = auto_default_threshold
+    }
+  })
+
+  // Filter by threshold and compute visibility
+  const plot_entries = $derived(
+    all_enriched_entries.filter((entry) => {
+      // Always include stable entries and elemental reference points
+      if (entry.is_stable || (entry.e_above_hull ?? Infinity) <= 1e-6) return true
+      if (entry.is_element && entry.e_above_hull === 0) return true
+      return typeof entry.e_above_hull === `number` &&
+        entry.e_above_hull <= max_hull_dist_show_phases
+    }).map((entry) => {
+      const is_stable = entry.is_stable || entry.e_above_hull === 0
+      return {
+        ...entry,
+        visible: (is_stable && show_stable) || (!is_stable && show_unstable),
+      }
+    }),
+  )
 
   // Stable and unstable entries exposed as bindable props
   $effect(() => {
@@ -347,7 +341,8 @@
     show_unstable = PD_DEFAULTS.quaternary.show_unstable
     show_stable_labels = PD_DEFAULTS.quaternary.show_stable_labels
     show_unstable_labels = PD_DEFAULTS.quaternary.show_unstable_labels
-    max_hull_dist_show_phases = PD_DEFAULTS.quaternary.max_hull_dist_show_phases
+    // Use auto-computed threshold based on entry count instead of static default
+    max_hull_dist_show_phases = auto_default_threshold
     max_hull_dist_show_labels = PD_DEFAULTS.quaternary.max_hull_dist_show_labels
     show_hull_faces = PD_DEFAULTS.quaternary.show_hull_faces
     hull_face_color = PD_DEFAULTS.quaternary.hull_face_color
@@ -397,9 +392,6 @@
     helpers.get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
-  const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(plot_entries),
-  )
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
     phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 4)
