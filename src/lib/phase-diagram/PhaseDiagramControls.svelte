@@ -88,6 +88,10 @@
   pane_props={{
     ...pane_props,
     class: `phase-diagram-controls-pane ${pane_props?.class ?? ``}`,
+    style:
+      `--pane-min-height: 280px; --pane-max-height: max(350px, calc(100cqh - 40px)); ${
+        pane_props?.style ?? ``
+      }`,
   }}
   toggle_props={{
     title: controls_open ? `` : `Phase diagram controls`,
@@ -403,6 +407,10 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 12px;
+  }
+  /* Remove bottom margin from last element to prevent blank scrollable space */
+  :global(.phase-diagram-controls-pane > :last-child) {
+    margin-bottom: 0;
   }
   .control-label {
     font-weight: 500;

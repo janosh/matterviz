@@ -17,6 +17,7 @@ export interface TweenedOptions<T> {
 }
 
 export type XyObj = { x: number; y: number }
+export type XyShift = { x?: number; y?: number } // For optional shift/offset values
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 export type Point = {
@@ -65,6 +66,9 @@ export interface BarStyle {
   stroke_width?: number
   stroke_color?: string
   stroke_opacity?: number
+  border_radius?: number // Shorthand: sets both rx and ry to this value (lower priority than explicit rx/ry)
+  rx?: number // SVG rx attribute for horizontal corner radius (overrides border_radius)
+  ry?: number // SVG ry attribute for vertical corner radius (overrides border_radius)
   [key: string]: unknown
 }
 
@@ -285,17 +289,28 @@ export interface BarSeries {
   }
 }
 
+// Tick label configuration
+export interface TickLabelConfig {
+  inside?: boolean // Render tick labels inside the plot area (default: false/outside)
+  shift?: XyShift
+  rotation?: number // Rotation angle in degrees
+}
+
+// Tick configuration
+export interface TickConfig {
+  label?: TickLabelConfig
+}
+
 // Axis configuration type for grouping related axis properties
 export interface AxisConfig {
   label?: string
   format?: string
   ticks?: TicksOption
+  tick?: TickConfig
   scale_type?: ScaleType
   range?: [number | null, number | null]
   unit?: string
-  label_shift?: { x?: number; y?: number }
-  tick_label_shift?: { x?: number; y?: number }
-  tick_rotation?: number // Rotation angle in degrees for tick labels
+  label_shift?: XyShift
   grid_style?: HTMLAttributes<SVGLineElement>
   color?: string | null // Color for axis label, tick labels, and axis line
 }
@@ -379,13 +394,19 @@ export interface BasePlotProps {
   y_range?: [number | null, number | null]
   y2_range?: [number | null, number | null]
   range_padding?: number // Factor to pad auto-detected ranges before nicing (e.g. 0.05 = 5%)
-  // Layout (non-bindable)
   padding?: Sides
-  // Callbacks (non-bindable)
-  change?: (...args: unknown[]) => void // Callback when hovered item changes
-  // Control pane component props (non-bindable)
+  // State
+  hovered?: boolean
+  // Controls
+  show_controls?: boolean
+  controls_open?: boolean
   controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  // Fullscreen
+  fullscreen?: boolean
+  fullscreen_toggle?: boolean // default: true
+  // Callbacks
+  change?: (data: Record<string, unknown> | null) => void
   // Children
   children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]>
 }
