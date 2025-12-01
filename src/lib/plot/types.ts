@@ -17,6 +17,7 @@ export interface TweenedOptions<T> {
 }
 
 export type XyObj = { x: number; y: number }
+export type XyShift = { x?: number; y?: number } // For optional shift/offset values
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 export type Point = {
@@ -291,7 +292,7 @@ export interface BarSeries {
 // Tick label configuration
 export interface TickLabelConfig {
   inside?: boolean // Render tick labels inside the plot area (default: false/outside)
-  shift?: { x?: number; y?: number }
+  shift?: XyShift
   rotation?: number // Rotation angle in degrees
 }
 
@@ -309,7 +310,7 @@ export interface AxisConfig {
   scale_type?: ScaleType
   range?: [number | null, number | null]
   unit?: string
-  label_shift?: { x?: number; y?: number }
+  label_shift?: XyShift
   grid_style?: HTMLAttributes<SVGLineElement>
   color?: string | null // Color for axis label, tick labels, and axis line
 }

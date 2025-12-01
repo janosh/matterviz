@@ -237,7 +237,9 @@
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local var in derived
     const by_x = new Map<number, PhaseDiagramEntry[]>()
     for (const entry of coords_entries) {
-      ;(by_x.get(entry.x) ?? by_x.set(entry.x, []).get(entry.x))!.push(entry)
+      const group = by_x.get(entry.x)
+      if (group) group.push(entry)
+      else by_x.set(entry.x, [entry])
     }
 
     const hull_input: HullVertex[] = [...by_x].map(([x_coord, entries]) => ({

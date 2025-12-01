@@ -174,9 +174,11 @@
         return { x, y, z, w: entry.e_form_per_atom! }
       }).filter((p) => [p.x, p.y, p.z, p.w].every(Number.isFinite))
 
+      // Build index map for O(1) lookup instead of O(n²) findIndex
+      const idx_to_vi = new Map(valid.map((v, vi) => [v.idx, vi]))
       const e_hulls = thermo.compute_e_above_hull_4d(points_4d, hull_4d)
       return coords.map((entry, idx) => {
-        const vi = valid.findIndex((v) => v.idx === idx)
+        const vi = idx_to_vi.get(idx) ?? -1
         return { ...entry, e_above_hull: vi >= 0 ? e_hulls[vi] : undefined }
       })
     } catch (err) {
@@ -196,7 +198,7 @@
   ))
 
   // Initialize threshold to auto value on first load
-  let initialized = false
+  let initialized = $state(false)
   $effect(() => {
     if (!initialized && all_enriched_entries.length > 0) {
       initialized = true
@@ -209,7 +211,6 @@
     all_enriched_entries.filter((entry) => {
       // Always include stable entries and elemental reference points
       if (entry.is_stable || (entry.e_above_hull ?? Infinity) <= 1e-6) return true
-      if (entry.is_element && entry.e_above_hull === 0) return true
       return typeof entry.e_above_hull === `number` &&
         entry.e_above_hull <= max_hull_dist_show_phases
     }).map((entry) => {
