@@ -1,12 +1,21 @@
 <script lang="ts">
   import { type BarHandlerProps, type BarSeries, format_num } from '$lib'
   import { format_value } from '$lib/labels'
-  import { BarPlot } from '$lib/plot'
+  import { BarPlot, type TickConfig } from '$lib/plot'
   import type { CrystalSystem } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import * as spg from '$lib/symmetry/spacegroups'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+
+  /** Merge tick config with default rotation, preserving user overrides */
+  const with_rotation = (
+    tick: TickConfig | undefined,
+    default_rot: number,
+  ): TickConfig => ({
+    ...tick,
+    label: { ...tick?.label, rotation: tick?.label?.rotation ?? default_rot },
+  })
 
   const MAX_SPACEGROUP = 230
   let {
@@ -139,7 +148,7 @@
       label: x_axis.label ?? `International Spacegroup Number`,
       range: x_range,
       ticks: x_axis_ticks,
-      tick_rotation: x_axis.tick_rotation ?? 90, // Rotate ticks 90° to avoid overlap
+      tick: with_rotation(x_axis.tick, 90), // Rotate ticks 90° to avoid overlap
       label_shift: { x: 0, y: 20, ...x_axis.label_shift }, // Move label down for rotated ticks
     },
   )
@@ -151,7 +160,7 @@
         label: y_axis.label ?? `International Spacegroup Number`,
         range: x_range,
         ticks: x_axis_ticks,
-        tick_rotation: y_axis.tick_rotation ?? 0,
+        tick: with_rotation(y_axis.tick, 0),
       }
       : { ...y_axis, label: y_axis.label ?? `Counts` },
   )

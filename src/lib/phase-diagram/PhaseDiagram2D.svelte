@@ -227,46 +227,70 @@
     }
   })
 
-  // Compute hull points and enriched entries together to avoid redundant hull computation
-  const { plot_entries, hull_points } = $derived.by(() => {
-    if (coords_entries.length === 0) return { plot_entries: [], hull_points: [] }
+  // Compute hull and enrich entries with e_above_hull (before filtering)
+  const { all_enriched_entries, hull_points } = $derived.by(() => {
+    if (coords_entries.length === 0) {
+      return { all_enriched_entries: [], hull_points: [] }
+    }
 
-    // Build lower hull in (x, y=e_form)
-    // Group by composition fraction (x) and track all entries at each x to
-    // robustly handle polymorphs. For the hull input, use the lowest energy per x.
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local var in derived, not reactive state
-    const entries_by_x = new Map<number, PhaseDiagramEntry[]>()
+    // Build lower hull: group by x, use lowest energy per x
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local var in derived
+    const by_x = new Map<number, PhaseDiagramEntry[]>()
     for (const entry of coords_entries) {
-      const existing = entries_by_x.get(entry.x)
-      if (existing) existing.push(entry)
-      else entries_by_x.set(entry.x, [entry])
+      const group = by_x.get(entry.x)
+      if (group) group.push(entry)
+      else by_x.set(entry.x, [entry])
     }
-    const hull_input: HullVertex[] = []
-    for (const [x_coord, grouped_entries] of entries_by_x) {
-      let min_y = Infinity
-      for (const entry of grouped_entries) {
-        if (entry.y < min_y) min_y = entry.y
-      }
-      hull_input.push({ x: x_coord, y: min_y })
-    }
+
+    const hull_input: HullVertex[] = [...by_x].map(([x_coord, entries]) => ({
+      x: x_coord,
+      y: Math.min(...entries.map((e) => e.y)),
+    }))
     const hull_points = compute_lower_hull(hull_input)
 
-    // Annotate entries with e_above_hull and visibility
-    const enriched = coords_entries.map((entry) => {
+    const all_enriched_entries = coords_entries.map((entry) => {
       const y_hull = interpolate_on_hull(hull_points, entry.x)
-      const above = y_hull == null ? 0 : Math.max(0, entry.y - y_hull)
-      const is_stable = above <= 1e-9
-      const visible = (is_stable && show_stable) ||
-        (!is_stable && show_unstable && above <= max_hull_dist_show_phases)
-      return { ...entry, e_above_hull: above, is_stable, visible }
+      const e_above_hull = y_hull == null ? 0 : Math.max(0, entry.y - y_hull)
+      return {
+        ...entry,
+        e_above_hull,
+        is_stable: e_above_hull <= 1e-9,
+        visible: true,
+      }
     })
-
-    const plot_entries = enriched.filter((
-      entry,
-    ) => (entry.is_stable || (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases))
-
-    return { plot_entries, hull_points }
+    return { all_enriched_entries, hull_points }
   })
+
+  // Auto threshold: show all for few entries, use default for many, interpolate between
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(all_enriched_entries),
+  )
+  const auto_default_threshold = $derived(helpers.compute_auto_hull_dist_threshold(
+    all_enriched_entries.length,
+    max_hull_dist_in_data,
+    PD_DEFAULTS.binary.max_hull_dist_show_phases,
+  ))
+
+  // Initialize threshold to auto value on first load
+  let initialized = $state(false)
+  $effect(() => {
+    if (!initialized && all_enriched_entries.length > 0) {
+      initialized = true
+      max_hull_dist_show_phases = auto_default_threshold
+    }
+  })
+
+  // Filter by threshold and compute visibility
+  const plot_entries = $derived(
+    all_enriched_entries
+      .filter((e) =>
+        e.is_stable || (e.e_above_hull ?? 0) <= max_hull_dist_show_phases
+      )
+      .map((e) => ({
+        ...e,
+        visible: (e.is_stable && show_stable) || (!e.is_stable && show_unstable),
+      })),
+  )
 
   // Update bindable entries arrays when plot_entries change (single pass)
   $effect(() => {
@@ -407,9 +431,6 @@
     return idx >= 0 ? { series_idx: 0, point_idx: idx } : null
   })
 
-  const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(plot_entries),
-  )
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
     phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 3)
@@ -433,13 +454,15 @@
     show_unstable = PD_DEFAULTS.binary.show_unstable
     show_stable_labels = PD_DEFAULTS.binary.show_stable_labels
     show_unstable_labels = PD_DEFAULTS.binary.show_unstable_labels
-    max_hull_dist_show_phases = PD_DEFAULTS.binary.max_hull_dist_show_phases
+    // Use auto-computed threshold based on entry count instead of static default
+    max_hull_dist_show_phases = auto_default_threshold
     max_hull_dist_show_labels = PD_DEFAULTS.binary.max_hull_dist_show_labels
     reset_counter += 1
   }
 
   // Track whether any settings differ from defaults (to show/hide reset button)
   // Must match all properties that reset_all() resets
+  // Use auto_default_threshold for comparison since that's the effective default
   const has_changes_to_reset = $derived(
     fullscreen !== PD_DEFAULTS.binary.fullscreen ||
       info_pane_open !== PD_DEFAULTS.binary.info_pane_open ||
@@ -450,7 +473,8 @@
       show_unstable !== PD_DEFAULTS.binary.show_unstable ||
       show_stable_labels !== PD_DEFAULTS.binary.show_stable_labels ||
       show_unstable_labels !== PD_DEFAULTS.binary.show_unstable_labels ||
-      max_hull_dist_show_phases !== PD_DEFAULTS.binary.max_hull_dist_show_phases ||
+      // Compare with auto-computed threshold, with small tolerance for floating point
+      Math.abs(max_hull_dist_show_phases - auto_default_threshold) > 0.001 ||
       max_hull_dist_show_labels !== PD_DEFAULTS.binary.max_hull_dist_show_labels,
   )
 

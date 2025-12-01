@@ -137,32 +137,44 @@
     }
   })
 
-  // 2) Final plot entries: enrich coords with e_above_hull from cached hull model, then filter/map
-  const plot_entries = $derived.by(() => {
+  // Enrich coords with e_above_hull from cached hull model (before filtering)
+  const all_enriched_entries = $derived.by(() => {
     if (coords_entries.length === 0) return []
-
-    // Compute or use precomputed hull distances
-    const enriched = (() => {
-      if (energy_mode === `on-the-fly`) {
-        const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
-        const e_hulls = thermo.compute_e_above_hull_for_points(pts, hull_model)
-        return coords_entries.map((e, idx) => ({ ...e, e_above_hull: e_hulls[idx] }))
-      }
-      return coords_entries
-    })()
-
-    const energy_filtered = enriched.filter((entry: PhaseDiagramEntry) =>
-      (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
-    )
-
-    return energy_filtered.map((entry: PhaseDiagramEntry) => {
-      const is_stable = entry.is_stable || entry.e_above_hull === 0
-      return {
-        ...entry,
-        visible: (is_stable && show_stable) || (!is_stable && show_unstable),
-      }
-    })
+    if (energy_mode !== `on-the-fly`) return coords_entries
+    const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    const e_hulls = thermo.compute_e_above_hull_for_points(pts, hull_model)
+    return coords_entries.map((e, idx) => ({ ...e, e_above_hull: e_hulls[idx] }))
   })
+
+  // Auto threshold: show all for few entries, use default for many, interpolate between
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(all_enriched_entries),
+  )
+  const auto_default_threshold = $derived(helpers.compute_auto_hull_dist_threshold(
+    all_enriched_entries.length,
+    max_hull_dist_in_data,
+    PD_DEFAULTS.ternary.max_hull_dist_show_phases,
+  ))
+
+  // Initialize threshold to auto value on first load
+  let initialized = $state(false)
+  $effect(() => {
+    if (!initialized && all_enriched_entries.length > 0) {
+      initialized = true
+      max_hull_dist_show_phases = auto_default_threshold
+    }
+  })
+
+  // Filter by threshold and compute visibility
+  const plot_entries = $derived(
+    all_enriched_entries
+      .filter((e) => (e.e_above_hull ?? 0) <= max_hull_dist_show_phases)
+      .map((e) => ({
+        ...e,
+        visible: ((e.is_stable || e.e_above_hull === 0) && show_stable) ||
+          (!(e.is_stable || e.e_above_hull === 0) && show_unstable),
+      })),
+  )
 
   $effect(() => {
     stable_entries = plot_entries.filter((entry: PhaseDiagramEntry) =>
@@ -298,7 +310,8 @@
     show_stable_labels = PD_DEFAULTS.ternary.show_stable_labels
     show_unstable_labels = PD_DEFAULTS.ternary.show_unstable_labels
     max_hull_dist_show_labels = PD_DEFAULTS.ternary.max_hull_dist_show_labels
-    max_hull_dist_show_phases = PD_DEFAULTS.ternary.max_hull_dist_show_phases
+    // Use auto-computed threshold based on entry count instead of static default
+    max_hull_dist_show_phases = auto_default_threshold
     show_hull_faces = PD_DEFAULTS.ternary.show_hull_faces
     hull_face_color = PD_DEFAULTS.ternary.hull_face_color
     hull_face_opacity = PD_DEFAULTS.ternary.hull_face_opacity
@@ -347,9 +360,6 @@
     helpers.get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
-  const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(plot_entries),
-  )
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
     phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 3)
