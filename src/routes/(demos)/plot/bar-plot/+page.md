@@ -2,7 +2,7 @@
 
 ## Crystal Structure Analysis
 
-A simple bar plot showing lattice parameters across different crystal systems. Use the controls (gear icon) to toggle orientation, modes, and grid display:
+A simple bar plot showing lattice parameters across different crystal systems. Use the controls (gear icon) to toggle orientation, modes, and grid display. This example also demonstrates rounded corners (`border_radius`) and bar borders (`stroke_color`, `stroke_width`):
 
 ```svelte example
 <script>
@@ -21,6 +21,7 @@ A simple bar plot showing lattice parameters across different crystal systems. U
 
 <BarPlot
   series={lattice_params}
+  bar={{ border_radius: 4, stroke_color: `#364fc7`, stroke_width: 1.5 }}
   x_axis={{ label: `Crystal System` }}
   y_axis={{ label: `Lattice Parameter (Å)` }}
   style="height: 400px"
@@ -181,7 +182,7 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
 
 ## Element Abundance in Earth's Crust
 
-Horizontal bar charts work well for categorical data with long labels:
+Horizontal bar charts work well for categorical data with long labels. This example demonstrates `tick_labels_inside` which positions tick labels inside the plot area for a more compact design:
 
 ```svelte example
 <script>
@@ -207,9 +208,10 @@ Horizontal bar charts work well for categorical data with long labels:
   ]
 
   let orientation = $state(`horizontal`)
+  let tick_labels_inside = $state(false)
 </script>
 
-<label style="margin-bottom: 1em; display: block">
+<label style="margin-bottom: 1em; display: inline-block">
   <input
     type="checkbox"
     checked={orientation === `horizontal`}
@@ -217,12 +219,16 @@ Horizontal bar charts work well for categorical data with long labels:
   />
   Horizontal Orientation
 </label>
+<label style="margin-bottom: 1em; display: inline-block; margin-left: 2em">
+  <input type="checkbox" bind:checked={tick_labels_inside} />
+  Tick Labels Inside
+</label>
 
 <BarPlot
   series={abundances}
   {orientation}
-  x_axis={{ label: `Abundance (ppm)`, format: `~s` }}
-  y_axis={{ label: `Element`, format: `~s` }}
+  x_axis={{ label: `Abundance (ppm)`, format: `~s`, tick_labels_inside }}
+  y_axis={{ label: `Element`, format: `~s`, tick_labels_inside }}
   style="height: 400px"
 />
 ```

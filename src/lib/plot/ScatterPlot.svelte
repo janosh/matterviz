@@ -5,6 +5,7 @@
   import { format_value, symbol_names } from '$lib/labels'
   import * as math from '$lib/math'
   import type {
+    BasePlotProps,
     ControlsConfig,
     DataSeries,
     HoverConfig,
@@ -97,19 +98,15 @@
     header_controls,
     controls_extra,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & PlotConfig & {
+  }: HTMLAttributes<HTMLDivElement> & Omit<BasePlotProps, `change`> & PlotConfig & {
     series?: DataSeries[]
     styles?: StyleOverrides
     controls?: ControlsConfig
-    padding?: Sides
-    range_padding?: number
     current_x_value?: number | null
     tooltip_point?: InternalPoint | null
     selected_point?: { series_idx: number; point_idx: number } | null
-    hovered?: boolean
     tooltip?: Snippet<[ScatterHandlerProps]>
     user_content?: Snippet<[UserContentProps]>
-    children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     header_controls?: Snippet<
       [{ height: number; width: number; fullscreen: boolean }]
     >
@@ -146,8 +143,6 @@
     on_point_hover?: (data: ScatterHandlerEvent | null) => void
     selected_series_idx?: number
     wrapper?: HTMLDivElement
-    fullscreen?: boolean
-    fullscreen_toggle?: boolean
   } = $props()
 
   // Initialize style overrides with defaults (runs once to avoid infinite loop)
@@ -159,7 +154,7 @@
     format: ``,
     scale_type: `linear`,
     label_shift: { x: 0, y: -40 },
-    tick_label_shift: { x: 0, y: 20 },
+    tick_label_shift: { x: 0, y: 0 }, // base offset handled in rendering
     range: [null, null],
     ...x_axis,
   }
@@ -167,7 +162,7 @@
     format: ``,
     scale_type: `linear`,
     label_shift: { x: 0, y: 0 },
-    tick_label_shift: { x: -8, y: 0 },
+    tick_label_shift: { x: 0, y: 0 }, // base offset handled in rendering
     range: [null, null],
     ...y_axis,
   }
@@ -176,7 +171,7 @@
     scale_type: `linear`,
     ticks: 5,
     label_shift: { x: 0, y: 0 },
-    tick_label_shift: { x: 8, y: 0 },
+    tick_label_shift: { x: 0, y: 0 }, // base offset handled in rendering
     range: [null, null],
     ...y2_axis,
   }
@@ -1216,6 +1211,7 @@
               // Check if tick position is finite
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
+                {@const inside = x_axis.tick_labels_inside ?? false}
                 <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
                   {#if display.x_grid}
                     <line
@@ -1225,11 +1221,16 @@
                       {...(x_axis.grid_style ?? {})}
                     />
                   {/if}
+                  <line y1="0" y2={inside ? -5 : 5} stroke="var(--border-color, gray)" />
 
                   {#if tick >= x_min && tick <= x_max}
-                    {@const { x, y } = x_axis.tick_label_shift ?? { x: 0, y: 20 }}
+                    {@const base_y = inside ? -8 : 20}
+                    {@const shift = x_axis.tick_label_shift ?? { x: 0, y: 0 }}
+                    {@const x = shift.x ?? 0}
+                    {@const y = base_y + (shift.y ?? 0)}
                     {@const custom_label = get_tick_label(tick, x_axis.ticks)}
-                    <text {x} {y}>
+                    {@const dominant_baseline = inside ? `auto` : `hanging`}
+                    <text {x} {y} dominant-baseline={dominant_baseline}>
                       {custom_label ?? format_value(tick, x_axis.format ?? ``)}
                     </text>
                   {/if}
@@ -1284,6 +1285,7 @@
               // Check if tick position is finite
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
+                {@const inside = y_axis.tick_labels_inside ?? false}
                 <g class="tick" transform="translate({pad.l}, {tick_pos})">
                   {#if display.y_grid}
                     <line
@@ -1293,11 +1295,20 @@
                       {...(y_axis.grid_style ?? {})}
                     />
                   {/if}
+                  <line
+                    x1={inside ? 0 : -5}
+                    x2={inside ? 5 : 0}
+                    stroke="var(--border-color, gray)"
+                  />
 
                   {#if tick >= y_min && tick <= y_max}
-                    {@const { x, y } = y_axis.tick_label_shift ?? { x: -8, y: 0 }}
+                    {@const base_x = inside ? 8 : -8}
+                    {@const shift = y_axis.tick_label_shift ?? { x: 0, y: 0 }}
+                    {@const x = base_x + (shift.x ?? 0)}
+                    {@const y = shift.y ?? 0}
                     {@const custom_label = get_tick_label(tick, y_axis.ticks)}
-                    <text {x} {y} text-anchor="end" fill={y_axis.color}>
+                    {@const text_anchor = inside ? `start` : `end`}
+                    <text {x} {y} text-anchor={text_anchor} fill={y_axis.color}>
                       {custom_label ?? format_value(tick, y_axis.format ?? ``)}
                       {#if y_axis.unit && idx === 0}
                         &zwnj;&ensp;{y_axis.unit}
@@ -1339,6 +1350,7 @@
                 // Check if tick position is finite
                 {@const tick_pos = tick_pos_raw}
                 {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
+                  {@const inside = y2_axis.tick_labels_inside ?? false}
                   <g class="tick" transform="translate({width - pad.r}, {tick_pos})">
                     {#if display.y2_grid}
                       <line
@@ -1348,11 +1360,20 @@
                         {...(y2_axis.grid_style ?? {})}
                       />
                     {/if}
+                    <line
+                      x1={inside ? -5 : 0}
+                      x2={inside ? 0 : 5}
+                      stroke="var(--border-color, gray)"
+                    />
 
                     {#if tick >= y2_min && tick <= y2_max}
-                      {@const { x, y } = y2_axis.tick_label_shift ?? { x: 8, y: 0 }}
+                      {@const base_x = inside ? -8 : 8}
+                      {@const shift = y2_axis.tick_label_shift ?? { x: 0, y: 0 }}
+                      {@const x = base_x + (shift.x ?? 0)}
+                      {@const y = shift.y ?? 0}
                       {@const custom_label = get_tick_label(tick, y2_axis.ticks)}
-                      <text {x} {y} text-anchor="start" fill={y2_axis.color}>
+                      {@const text_anchor = inside ? `end` : `start`}
+                      <text {x} {y} text-anchor={text_anchor} fill={y2_axis.color}>
                         {custom_label ?? format_value(tick, y2_axis.format ?? ``)}
                         {#if y2_axis.unit && idx === 0}
                           &zwnj;&ensp;{y2_axis.unit}

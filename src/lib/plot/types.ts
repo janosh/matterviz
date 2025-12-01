@@ -65,6 +65,9 @@ export interface BarStyle {
   stroke_width?: number
   stroke_color?: string
   stroke_opacity?: number
+  border_radius?: number // SVG rx/ry for rounded corners (applied to both x and y)
+  rx?: number // SVG rx attribute for horizontal corner radius
+  ry?: number // SVG ry attribute for vertical corner radius
   [key: string]: unknown
 }
 
@@ -296,6 +299,7 @@ export interface AxisConfig {
   label_shift?: { x?: number; y?: number }
   tick_label_shift?: { x?: number; y?: number }
   tick_rotation?: number // Rotation angle in degrees for tick labels
+  tick_labels_inside?: boolean // Render tick labels inside the plot area (default: false/outside)
   grid_style?: HTMLAttributes<SVGLineElement>
   color?: string | null // Color for axis label, tick labels, and axis line
 }
@@ -379,13 +383,19 @@ export interface BasePlotProps {
   y_range?: [number | null, number | null]
   y2_range?: [number | null, number | null]
   range_padding?: number // Factor to pad auto-detected ranges before nicing (e.g. 0.05 = 5%)
-  // Layout (non-bindable)
   padding?: Sides
-  // Callbacks (non-bindable)
-  change?: (...args: unknown[]) => void // Callback when hovered item changes
-  // Control pane component props (non-bindable)
+  // State
+  hovered?: boolean
+  // Controls
+  show_controls?: boolean
+  controls_open?: boolean
   controls_toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   controls_pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+  // Fullscreen
+  fullscreen?: boolean
+  fullscreen_toggle?: boolean // default: true
+  // Callbacks
+  change?: (...args: unknown[]) => void
   // Children
   children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]>
 }

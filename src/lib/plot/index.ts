@@ -7,6 +7,7 @@ export interface TweenedOptions<T> {
   interpolate?: (a: T, b: T) => (t: number) => T
 }
 
+export * from './svg'
 export { default as BarPlot } from './BarPlot.svelte'
 export { default as BarPlotControls } from './BarPlotControls.svelte'
 export { default as ColorBar } from './ColorBar.svelte'
