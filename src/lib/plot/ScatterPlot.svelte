@@ -154,7 +154,7 @@
     format: ``,
     scale_type: `linear`,
     label_shift: { x: 0, y: -40 },
-    tick_label_shift: { x: 0, y: 0 }, // base offset handled in rendering
+    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
     range: [null, null],
     ...x_axis,
   }
@@ -162,7 +162,7 @@
     format: ``,
     scale_type: `linear`,
     label_shift: { x: 0, y: 0 },
-    tick_label_shift: { x: 0, y: 0 }, // base offset handled in rendering
+    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
     range: [null, null],
     ...y_axis,
   }
@@ -171,7 +171,7 @@
     scale_type: `linear`,
     ticks: 5,
     label_shift: { x: 0, y: 0 },
-    tick_label_shift: { x: 0, y: 0 }, // base offset handled in rendering
+    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
     range: [null, null],
     ...y2_axis,
   }
@@ -1211,7 +1211,7 @@
               // Check if tick position is finite
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
-                {@const inside = x_axis.tick_labels_inside ?? false}
+                {@const inside = x_axis.tick?.label?.inside ?? false}
                 <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
                   {#if display.x_grid}
                     <line
@@ -1225,7 +1225,7 @@
 
                   {#if tick >= x_min && tick <= x_max}
                     {@const base_y = inside ? -8 : 20}
-                    {@const shift = x_axis.tick_label_shift ?? { x: 0, y: 0 }}
+                    {@const shift = x_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                     {@const x = shift.x ?? 0}
                     {@const y = base_y + (shift.y ?? 0)}
                     {@const custom_label = get_tick_label(tick, x_axis.ticks)}
@@ -1285,7 +1285,7 @@
               // Check if tick position is finite
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
-                {@const inside = y_axis.tick_labels_inside ?? false}
+                {@const inside = y_axis.tick?.label?.inside ?? false}
                 <g class="tick" transform="translate({pad.l}, {tick_pos})">
                   {#if display.y_grid}
                     <line
@@ -1303,7 +1303,7 @@
 
                   {#if tick >= y_min && tick <= y_max}
                     {@const base_x = inside ? 8 : -8}
-                    {@const shift = y_axis.tick_label_shift ?? { x: 0, y: 0 }}
+                    {@const shift = y_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                     {@const x = base_x + (shift.x ?? 0)}
                     {@const y = shift.y ?? 0}
                     {@const custom_label = get_tick_label(tick, y_axis.ticks)}
@@ -1350,7 +1350,7 @@
                 // Check if tick position is finite
                 {@const tick_pos = tick_pos_raw}
                 {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
-                  {@const inside = y2_axis.tick_labels_inside ?? false}
+                  {@const inside = y2_axis.tick?.label?.inside ?? false}
                   <g class="tick" transform="translate({width - pad.r}, {tick_pos})">
                     {#if display.y2_grid}
                       <line
@@ -1368,7 +1368,7 @@
 
                     {#if tick >= y2_min && tick <= y2_max}
                       {@const base_x = inside ? -8 : 8}
-                      {@const shift = y2_axis.tick_label_shift ?? { x: 0, y: 0 }}
+                      {@const shift = y2_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                       {@const x = base_x + (shift.x ?? 0)}
                       {@const y = shift.y ?? 0}
                       {@const custom_label = get_tick_label(tick, y2_axis.ticks)}

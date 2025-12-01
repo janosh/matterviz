@@ -139,7 +139,7 @@
       label: x_axis.label ?? `International Spacegroup Number`,
       range: x_range,
       ticks: x_axis_ticks,
-      tick_rotation: x_axis.tick_rotation ?? 90, // Rotate ticks 90° to avoid overlap
+      tick: { label: { rotation: x_axis.tick?.label?.rotation ?? 90 } }, // Rotate ticks 90° to avoid overlap
       label_shift: { x: 0, y: 20, ...x_axis.label_shift }, // Move label down for rotated ticks
     },
   )
@@ -151,7 +151,7 @@
         label: y_axis.label ?? `International Spacegroup Number`,
         range: x_range,
         ticks: x_axis_ticks,
-        tick_rotation: y_axis.tick_rotation ?? 0,
+        tick: { label: { rotation: y_axis.tick?.label?.rotation ?? 0 } },
       }
       : { ...y_axis, label: y_axis.label ?? `Counts` },
   )

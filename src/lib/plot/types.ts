@@ -288,18 +288,28 @@ export interface BarSeries {
   }
 }
 
+// Tick label configuration
+export interface TickLabelConfig {
+  inside?: boolean // Render tick labels inside the plot area (default: false/outside)
+  shift?: { x?: number; y?: number }
+  rotation?: number // Rotation angle in degrees
+}
+
+// Tick configuration
+export interface TickConfig {
+  label?: TickLabelConfig
+}
+
 // Axis configuration type for grouping related axis properties
 export interface AxisConfig {
   label?: string
   format?: string
   ticks?: TicksOption
+  tick?: TickConfig
   scale_type?: ScaleType
   range?: [number | null, number | null]
   unit?: string
   label_shift?: { x?: number; y?: number }
-  tick_label_shift?: { x?: number; y?: number }
-  tick_rotation?: number // Rotation angle in degrees for tick labels
-  tick_labels_inside?: boolean // Render tick labels inside the plot area (default: false/outside)
   grid_style?: HTMLAttributes<SVGLineElement>
   color?: string | null // Color for axis label, tick labels, and axis line
 }

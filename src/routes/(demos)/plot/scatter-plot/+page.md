@@ -475,7 +475,7 @@ This example shows categorized data with color coding, custom tick intervals, an
 
 ## Time-Based Data with Custom Formatting
 
-Using time data on the x-axis with custom formatting. This example also demonstrates `tick_labels_inside` which positions tick labels inside the plot area for a more compact design:
+Using time data on the x-axis with custom formatting. This example also demonstrates `tick.label.inside` which positions tick labels inside the plot area for a more compact design:
 
 ```svelte example
 <script>
@@ -512,7 +512,7 @@ Using time data on the x-axis with custom formatting. This example also demonstr
   // Format options
   let date_format = $state('%b %d')
   let y_format = $state('.1f')
-  let tick_labels_inside = $state(false)
+  let inside = $state(false)
 </script>
 
 <div>
@@ -542,14 +542,14 @@ Using time data on the x-axis with custom formatting. This example also demonstr
     </select>
   </label>
   <label style="margin-left: 1em">
-    <input type="checkbox" bind:checked={tick_labels_inside} />
+    <input type="checkbox" bind:checked={inside} />
     Tick Labels Inside
   </label>
 
   <ScatterPlot
     series={time_series.map((srs) => ({ ...srs, markers: 'line+points' }))}
-    x_axis={{ format: date_format, ticks: -7, label: 'Date', tick_labels_inside }}
-    y_axis={{ format: y_format, ticks: 5, label: 'Value', tick_labels_inside }}
+    x_axis={{ format: date_format, ticks: -7, label: 'Date', tick: { label: { inside } } }}
+    y_axis={{ format: y_format, ticks: 5, label: 'Value', tick: { label: { inside } } }}
     style="height: 350px"
     legend={{
       layout: `horizontal`,

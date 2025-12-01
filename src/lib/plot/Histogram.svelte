@@ -111,7 +111,7 @@
     scale_type: `linear` as const,
     ticks: 5,
     label_shift: { y: 60 },
-    tick_label_shift: { x: 0, y: 0 }, // base offset handled in rendering
+    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
     range: [null, null] as [number | null, number | null],
     ...y2_axis,
   })
@@ -277,9 +277,9 @@
           )
         ),
       )
-      const inside = final_y2_axis.tick_labels_inside ?? false
+      const inside = final_y2_axis.tick?.label?.inside ?? false
       // When ticks are inside, they don't contribute to padding
-      const tick_shift = inside ? 0 : (final_y2_axis.tick_label_shift?.x ?? 0) + 8
+      const tick_shift = inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8
       const tick_width_contribution = inside ? 0 : y2_tick_width
       const label_thickness = Math.round(12 * 1.2)
       new_pad.r = Math.max(
@@ -587,9 +587,9 @@
       {#each ticks.x as tick (tick)}
         {@const tick_x = scales.x(tick as number)}
         {@const custom_label = get_tick_label(tick as number, final_x_axis.ticks)}
-        {@const inside = final_x_axis.tick_labels_inside ?? false}
-        {@const shift_x = final_x_axis.tick_label_shift?.x ?? 0}
-        {@const shift_y = final_x_axis.tick_label_shift?.y ?? 0}
+        {@const inside = final_x_axis.tick?.label?.inside ?? false}
+        {@const shift_x = final_x_axis.tick?.label?.shift?.x ?? 0}
+        {@const shift_y = final_x_axis.tick?.label?.shift?.y ?? 0}
         {@const base_y = inside ? -8 : 18}
         {@const text_y = base_y + shift_y}
         {@const dominant_baseline = inside ? `auto` : `hanging`}
@@ -644,9 +644,9 @@
       {#each ticks.y as tick (tick)}
         {@const tick_y = scales.y(tick as number)}
         {@const custom_label = get_tick_label(tick as number, final_y_axis.ticks)}
-        {@const inside = final_y_axis.tick_labels_inside ?? false}
-        {@const shift_x = final_y_axis.tick_label_shift?.x ?? 0}
-        {@const shift_y = final_y_axis.tick_label_shift?.y ?? 0}
+        {@const inside = final_y_axis.tick?.label?.inside ?? false}
+        {@const shift_x = final_y_axis.tick?.label?.shift?.x ?? 0}
+        {@const shift_y = final_y_axis.tick?.label?.shift?.y ?? 0}
         {@const base_x = inside ? 8 : -10}
         {@const text_x = base_x + shift_x}
         {@const text_anchor = inside ? `start` : `end`}
@@ -719,10 +719,10 @@
         {#each ticks.y2 as tick (tick)}
           {@const tick_y = scales.y2(tick as number)}
           {@const custom_label = get_tick_label(tick as number, final_y2_axis.ticks)}
-          {@const inside = final_y2_axis.tick_labels_inside ?? false}
+          {@const inside = final_y2_axis.tick?.label?.inside ?? false}
           {@const base_x = inside ? -8 : 8}
-          {@const shift_x = (final_y2_axis.tick_label_shift?.x ?? 0) + base_x}
-          {@const shift_y = final_y2_axis.tick_label_shift?.y ?? 0}
+          {@const shift_x = (final_y2_axis.tick?.label?.shift?.x ?? 0) + base_x}
+          {@const shift_y = final_y2_axis.tick?.label?.shift?.y ?? 0}
           {@const text_anchor = inside ? `end` : `start`}
           <g class="tick" transform="translate({width - pad.r}, {tick_y})">
             {#if display.y2_grid}
@@ -764,8 +764,8 @@
         )}
           {@const shift_x = final_y2_axis.label_shift?.x ?? 0}
           {@const shift_y = final_y2_axis.label_shift?.y ?? 0}
-          {@const inside = final_y2_axis.tick_labels_inside ?? false}
-          {@const tick_shift = inside ? 0 : (final_y2_axis.tick_label_shift?.x ?? 0) + 8}
+          {@const inside = final_y2_axis.tick?.label?.inside ?? false}
+          {@const tick_shift = inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8}
           {@const tick_width_contribution = inside ? 0 : max_y2_tick_width}
           {@const y2_label_x = width - pad.r + tick_shift + tick_width_contribution +
           LABEL_GAP_DEFAULT +

@@ -228,8 +228,11 @@
   })
 
   // Compute hull points and enriched entries together to avoid redundant hull computation
-  const { plot_entries, hull_points } = $derived.by(() => {
-    if (coords_entries.length === 0) return { plot_entries: [], hull_points: [] }
+  // Split into two stages: (1) enrichment with e_above_hull, (2) filtering with threshold
+  const { all_enriched_entries, hull_points } = $derived.by(() => {
+    if (coords_entries.length === 0) {
+      return { all_enriched_entries: [], hull_points: [] }
+    }
 
     // Build lower hull in (x, y=e_form)
     // Group by composition fraction (x) and track all entries at each x to
@@ -251,21 +254,52 @@
     }
     const hull_points = compute_lower_hull(hull_input)
 
-    // Annotate entries with e_above_hull and visibility
-    const enriched = coords_entries.map((entry) => {
+    // Annotate entries with e_above_hull (visibility computed later after filtering)
+    const all_enriched_entries = coords_entries.map((entry) => {
       const y_hull = interpolate_on_hull(hull_points, entry.x)
       const above = y_hull == null ? 0 : Math.max(0, entry.y - y_hull)
       const is_stable = above <= 1e-9
-      const visible = (is_stable && show_stable) ||
-        (!is_stable && show_unstable && above <= max_hull_dist_show_phases)
-      return { ...entry, e_above_hull: above, is_stable, visible }
+      return { ...entry, e_above_hull: above, is_stable, visible: true }
     })
 
-    const plot_entries = enriched.filter((
-      entry,
-    ) => (entry.is_stable || (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases))
+    return { all_enriched_entries, hull_points }
+  })
 
-    return { plot_entries, hull_points }
+  // Compute max e_above_hull from ALL enriched entries (before filtering) for slider max and auto-threshold
+  const max_hull_dist_in_data = $derived(
+    helpers.calc_max_hull_dist_in_data(all_enriched_entries),
+  )
+
+  // Auto-computed threshold: for few entries show all, for many use static default
+  const auto_default_threshold = $derived(
+    helpers.compute_auto_hull_dist_threshold(
+      all_enriched_entries.length,
+      max_hull_dist_in_data,
+      PD_DEFAULTS.binary.max_hull_dist_show_phases,
+    ),
+  )
+
+  // Set initial threshold to auto-computed value on mount
+  let threshold_initialized = false
+  $effect(() => {
+    if (!threshold_initialized && all_enriched_entries.length > 0) {
+      max_hull_dist_show_phases = auto_default_threshold
+      threshold_initialized = true
+    }
+  })
+
+  // Filter and compute visibility based on current threshold
+  const plot_entries = $derived.by(() => {
+    return all_enriched_entries
+      .filter((entry) =>
+        entry.is_stable || (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
+      )
+      .map((entry) => ({
+        ...entry,
+        visible: (entry.is_stable && show_stable) ||
+          (!entry.is_stable && show_unstable &&
+            (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases),
+      }))
   })
 
   // Update bindable entries arrays when plot_entries change (single pass)
@@ -407,9 +441,6 @@
     return idx >= 0 ? { series_idx: 0, point_idx: idx } : null
   })
 
-  const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(plot_entries),
-  )
   // Phase diagram statistics - compute internally and expose via bindable prop
   $effect(() => {
     phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 3)
@@ -433,13 +464,15 @@
     show_unstable = PD_DEFAULTS.binary.show_unstable
     show_stable_labels = PD_DEFAULTS.binary.show_stable_labels
     show_unstable_labels = PD_DEFAULTS.binary.show_unstable_labels
-    max_hull_dist_show_phases = PD_DEFAULTS.binary.max_hull_dist_show_phases
+    // Use auto-computed threshold based on entry count instead of static default
+    max_hull_dist_show_phases = auto_default_threshold
     max_hull_dist_show_labels = PD_DEFAULTS.binary.max_hull_dist_show_labels
     reset_counter += 1
   }
 
   // Track whether any settings differ from defaults (to show/hide reset button)
   // Must match all properties that reset_all() resets
+  // Use auto_default_threshold for comparison since that's the effective default
   const has_changes_to_reset = $derived(
     fullscreen !== PD_DEFAULTS.binary.fullscreen ||
       info_pane_open !== PD_DEFAULTS.binary.info_pane_open ||
@@ -450,7 +483,8 @@
       show_unstable !== PD_DEFAULTS.binary.show_unstable ||
       show_stable_labels !== PD_DEFAULTS.binary.show_stable_labels ||
       show_unstable_labels !== PD_DEFAULTS.binary.show_unstable_labels ||
-      max_hull_dist_show_phases !== PD_DEFAULTS.binary.max_hull_dist_show_phases ||
+      // Compare with auto-computed threshold, with small tolerance for floating point
+      Math.abs(max_hull_dist_show_phases - auto_default_threshold) > 0.001 ||
       max_hull_dist_show_labels !== PD_DEFAULTS.binary.max_hull_dist_show_labels,
   )
 

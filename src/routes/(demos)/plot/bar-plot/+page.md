@@ -182,7 +182,7 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
 
 ## Element Abundance in Earth's Crust
 
-Horizontal bar charts work well for categorical data with long labels. This example demonstrates `tick_labels_inside` which positions tick labels inside the plot area for a more compact design:
+Horizontal bar charts work well for categorical data with long labels. This example demonstrates `tick.label.inside` which positions tick labels inside the plot area for a more compact design:
 
 ```svelte example
 <script>
@@ -208,7 +208,7 @@ Horizontal bar charts work well for categorical data with long labels. This exam
   ]
 
   let orientation = $state(`horizontal`)
-  let tick_labels_inside = $state(false)
+  let inside = $state(false)
 </script>
 
 <label style="margin-bottom: 1em; display: inline-block">
@@ -220,15 +220,15 @@ Horizontal bar charts work well for categorical data with long labels. This exam
   Horizontal Orientation
 </label>
 <label style="margin-bottom: 1em; display: inline-block; margin-left: 2em">
-  <input type="checkbox" bind:checked={tick_labels_inside} />
+  <input type="checkbox" bind:checked={inside} />
   Tick Labels Inside
 </label>
 
 <BarPlot
   series={abundances}
   {orientation}
-  x_axis={{ label: `Abundance (ppm)`, format: `~s`, tick_labels_inside }}
-  y_axis={{ label: `Element`, format: `~s`, tick_labels_inside }}
+  x_axis={{ label: `Abundance (ppm)`, format: `~s`, tick: { label: { inside } } }}
+  y_axis={{ label: `Element`, format: `~s`, tick: { label: { inside } } }}
   style="height: 400px"
 />
 ```
