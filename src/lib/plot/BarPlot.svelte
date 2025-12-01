@@ -22,6 +22,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
+  import { bar_path } from './svg'
   import { calc_auto_padding, LABEL_GAP_DEFAULT, measure_text_width } from './layout'
   import PlotTooltip from './PlotTooltip.svelte'
 
@@ -60,11 +61,6 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
     series?: BarSeries[]
-    hovered?: boolean
-    show_controls?: boolean
-    controls_open?: boolean
-    fullscreen?: boolean
-    fullscreen_toggle?: boolean
     // Component-specific props
     orientation?: Orientation
     mode?: BarMode
@@ -95,7 +91,7 @@
     scale_type: `linear`,
     ticks: 5,
     label_shift: { y: 60 },
-    tick_label_shift: { x: 8, y: 0 },
+    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
     range: [null, null],
     ...y2_axis,
   }
@@ -280,10 +276,16 @@
           measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
         ),
       )
-      // Need space for: tick shift (8px) + tick width + gap (30px) + label space (20px if present)
-      const tick_shift = y2_axis.tick_label_shift?.x ?? 8
+      // Need space for: tick shift + tick width + gap (30px) + label space (20px if present)
+      // When ticks are inside, they don't contribute to padding
+      const inside = y2_axis.tick?.label?.inside ?? false
+      const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
+      const tick_width_contribution = inside ? 0 : y2_tick_width
       const label_space = y2_axis.label ? 20 : 0
-      new_pad.r = Math.max(new_pad.r, tick_shift + y2_tick_width + 30 + label_space)
+      new_pad.r = Math.max(
+        new_pad.r,
+        tick_shift + tick_width_contribution + 30 + label_space,
+      )
     }
 
     // Only update if padding actually changed (prevents infinite loop)
@@ -619,11 +621,14 @@
         {#each ticks.x as tick (tick)}
           {@const tick_x = scales.x(tick as number)}
           {#if isFinite(tick_x)}
-            {@const rotation = x_axis.tick_rotation ?? 0}
-            {@const shift_x = x_axis.tick_label_shift?.x ?? 0}
-            {@const shift_y = x_axis.tick_label_shift?.y ?? 0}
-            {@const text_y = rotation !== 0 ? 8 + shift_y : 18 + shift_y}
-            {@const text_anchor = rotation !== 0 ? `start` : `middle`}
+            {@const rotation = x_axis.tick?.label?.rotation ?? 0}
+            {@const shift_x = x_axis.tick?.label?.shift?.x ?? 0}
+            {@const shift_y = x_axis.tick?.label?.shift?.y ?? 0}
+            {@const inside = x_axis.tick?.label?.inside ?? false}
+            {@const base_y = inside ? -8 : (rotation !== 0 ? 8 : 18)}
+            {@const text_y = base_y + shift_y}
+            {@const text_anchor = rotation !== 0 ? (inside ? `end` : `start`) : `middle`}
+            {@const dominant_baseline = inside ? `auto` : `hanging`}
             <g class="tick" transform="translate({tick_x}, {height - pad.b})">
               {#if display.x_grid}
                 <line
@@ -635,7 +640,7 @@
               {/if}
               <line
                 y1="0"
-                y2="5"
+                y2={inside ? -5 : 5}
                 stroke={x_axis.color || `var(--border-color, gray)`}
                 stroke-width="1"
               />
@@ -643,6 +648,7 @@
                 x={shift_x}
                 y={text_y}
                 text-anchor={text_anchor}
+                dominant-baseline={dominant_baseline}
                 fill={x_axis.color || `var(--text-color)`}
                 transform={rotation !== 0
                 ? `rotate(${rotation}, ${shift_x}, ${text_y})`
@@ -680,10 +686,13 @@
         {#each ticks.y as tick (tick)}
           {@const tick_y = scales.y(tick as number)}
           {#if isFinite(tick_y)}
-            {@const rotation = y_axis.tick_rotation ?? 0}
-            {@const shift_x = y_axis.tick_label_shift?.x ?? 0}
-            {@const shift_y = y_axis.tick_label_shift?.y ?? 0}
-            {@const text_x = -10 + shift_x}
+            {@const rotation = y_axis.tick?.label?.rotation ?? 0}
+            {@const shift_x = y_axis.tick?.label?.shift?.x ?? 0}
+            {@const shift_y = y_axis.tick?.label?.shift?.y ?? 0}
+            {@const inside = y_axis.tick?.label?.inside ?? false}
+            {@const base_x = inside ? 8 : -10}
+            {@const text_x = base_x + shift_x}
+            {@const text_anchor = inside ? `start` : `end`}
             <g class="tick" transform="translate({pad.l}, {tick_y})">
               {#if display.y_grid}
                 <line
@@ -694,15 +703,15 @@
                 />
               {/if}
               <line
-                x1="-5"
-                x2="0"
+                x1={inside ? 0 : -5}
+                x2={inside ? 5 : 0}
                 stroke={y_axis.color || `var(--border-color, gray)`}
                 stroke-width="1"
               />
               <text
                 x={text_x}
                 y={shift_y}
-                text-anchor="end"
+                text-anchor={text_anchor}
                 dominant-baseline="central"
                 fill={y_axis.color || `var(--text-color)`}
                 transform={rotation !== 0
@@ -756,9 +765,12 @@
           {#each ticks.y2 as tick (tick)}
             {@const tick_y = scales.y2(tick as number)}
             {#if isFinite(tick_y)}
-              {@const rotation = y2_axis.tick_rotation ?? 0}
-              {@const shift_x = y2_axis.tick_label_shift?.x ?? 8}
-              {@const shift_y = y2_axis.tick_label_shift?.y ?? 0}
+              {@const rotation = y2_axis.tick?.label?.rotation ?? 0}
+              {@const inside = y2_axis.tick?.label?.inside ?? false}
+              {@const base_x = inside ? -8 : 8}
+              {@const shift_x = (y2_axis.tick?.label?.shift?.x ?? 0) + base_x}
+              {@const shift_y = y2_axis.tick?.label?.shift?.y ?? 0}
+              {@const text_anchor = inside ? `end` : `start`}
               <g class="tick" transform="translate({width - pad.r}, {tick_y})">
                 {#if display.y2_grid}
                   <line
@@ -769,15 +781,15 @@
                   />
                 {/if}
                 <line
-                  x1="0"
-                  x2="5"
+                  x1={inside ? -5 : 0}
+                  x2={inside ? 0 : 5}
                   stroke={y2_axis.color || `var(--border-color, gray)`}
                   stroke-width="1"
                 />
                 <text
                   x={shift_x}
                   y={shift_y}
-                  text-anchor="start"
+                  text-anchor={text_anchor}
                   dominant-baseline="central"
                   fill={y2_axis.color || `var(--text-color)`}
                   transform={rotation !== 0
@@ -801,8 +813,10 @@
         )}
             {@const shift_x = y2_axis.label_shift?.x ?? 0}
             {@const shift_y = y2_axis.label_shift?.y ?? 0}
-            {@const tick_shift = y2_axis.tick_label_shift?.x ?? 8}
-            {@const y2_label_x = width - pad.r + tick_shift + max_y2_tick_width +
+            {@const inside = y2_axis.tick?.label?.inside ?? false}
+            {@const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8}
+            {@const tick_width_contribution = inside ? 0 : max_y2_tick_width}
+            {@const y2_label_x = width - pad.r + tick_shift + tick_width_contribution +
           LABEL_GAP_DEFAULT +
           shift_x}
             {@const y2_label_y = pad.t + chart_height / 2 + shift_y}
@@ -990,13 +1004,20 @@
             ? [Math.max(1, Math.abs(c1 - c0)), Math.max(0, Math.abs(v1 - v0))]
             : [Math.max(1, Math.abs(v1 - v0)), Math.max(0, Math.abs(c1 - c0))]}
                   {#if (is_vertical ? rect_h : rect_w) > 0}
-                    <rect
-                      x={rect_x}
-                      y={rect_y}
-                      width={rect_w}
-                      height={rect_h}
+                    <path
+                      d={bar_path(
+                        rect_x,
+                        rect_y,
+                        rect_w,
+                        rect_h,
+                        Math.min(bar.border_radius ?? 0, rect_w / 2, rect_h / 2),
+                        is_vertical,
+                      )}
                       fill={color}
                       opacity={mode === `overlay` ? bar.opacity : 1}
+                      stroke={bar.stroke_color}
+                      stroke-opacity={bar.stroke_opacity}
+                      stroke-width={bar.stroke_width}
                       role="button"
                       tabindex="0"
                       aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}

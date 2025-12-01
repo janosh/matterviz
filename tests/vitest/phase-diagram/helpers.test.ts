@@ -57,12 +57,78 @@ describe(`helpers: energy color scale + point color`, () => {
 describe(`helpers: thresholds and tooltips`, () => {
   test(`calc_max_hull_dist_in_data returns robust default and range`, () => {
     expect(helpers.calc_max_hull_dist_in_data([])).toBeCloseTo(0.5)
-    const v = helpers.calc_max_hull_dist_in_data([
+    const val = helpers.calc_max_hull_dist_in_data([
       { e_above_hull: 0 } as PhaseData,
       { e_above_hull: 0.2 } as PhaseData,
     ])
-    expect(v).toBeGreaterThan(0.2)
+    expect(val).toBeGreaterThan(0.2)
   })
+
+  test.each([
+    {
+      name: `very few entries (≤25) → show all (use max_hull_dist)`,
+      n_entries: 10,
+      max_hull_dist: 0.5,
+      static_default: 0.1,
+      expected: 0.5,
+    },
+    {
+      name: `at threshold (25 entries) → show all`,
+      n_entries: 25,
+      max_hull_dist: 0.5,
+      static_default: 0.1,
+      expected: 0.5,
+    },
+    {
+      name: `many entries (≥100) → use static default`,
+      n_entries: 100,
+      max_hull_dist: 0.5,
+      static_default: 0.1,
+      expected: 0.1,
+    },
+    {
+      name: `very many entries → use static default`,
+      n_entries: 500,
+      max_hull_dist: 0.5,
+      static_default: 0.1,
+      expected: 0.1,
+    },
+    {
+      name: `mid-range entries (62) → interpolates based on position`,
+      n_entries: 62,
+      max_hull_dist: 0.5,
+      static_default: 0.1,
+      // t = (62 - 25) / (100 - 25) = 37/75 ≈ 0.4933
+      // result = 0.5 * (1 - t) + 0.1 * t ≈ 0.3027
+      expected: 0.5 * (1 - 37 / 75) + 0.1 * (37 / 75),
+    },
+    {
+      name: `linear interpolation at 50 entries`,
+      n_entries: 50,
+      max_hull_dist: 0.6,
+      static_default: 0.2,
+      // t = (50 - 25) / (100 - 25) = 25/75 = 1/3
+      // result = 0.6 * (1 - 1/3) + 0.2 * 1/3 = 0.6 * 2/3 + 0.2/3 = 0.4 + 0.0667 = 0.4667
+      expected: 0.6 * (2 / 3) + 0.2 * (1 / 3),
+    },
+    {
+      name: `handles edge case where max_hull_dist equals static_default`,
+      n_entries: 50,
+      max_hull_dist: 0.1,
+      static_default: 0.1,
+      expected: 0.1,
+    },
+  ])(
+    `compute_auto_hull_dist_threshold: $name`,
+    ({ n_entries, max_hull_dist, static_default, expected }) => {
+      const result = helpers.compute_auto_hull_dist_threshold(
+        n_entries,
+        max_hull_dist,
+        static_default,
+      )
+      expect(result).toBeCloseTo(expected, 4)
+    },
+  )
 
   test(`build_entry_tooltip_text contains key fields`, () => {
     const t1 = helpers.build_entry_tooltip_text(

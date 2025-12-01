@@ -75,6 +75,20 @@ export function calc_max_hull_dist_in_data(
   return Math.max(0.1, max_val)
 }
 
+/** Smart threshold for showing unstable entries based on entry count.
+ * Few entries (≤25): show all. Many entries (≥100): use static default. Between: interpolate. */
+export function compute_auto_hull_dist_threshold(
+  n_entries: number,
+  max_hull_dist_in_data: number,
+  static_default: number,
+): number {
+  const [LOW, HIGH] = [25, 100]
+  if (n_entries <= LOW) return max_hull_dist_in_data
+  if (n_entries >= HIGH) return static_default
+  const t = (n_entries - LOW) / (HIGH - LOW)
+  return max_hull_dist_in_data * (1 - t) + static_default * t
+}
+
 // Build a tooltip text for any phase entry (shared)
 export function build_entry_tooltip_text(entry: PhaseData): string {
   const is_element = is_unary_entry(entry)

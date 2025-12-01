@@ -2,6 +2,8 @@
 
 ## Basic Histogram
 
+This example demonstrates bar styling options including `border_radius` for rounded corners and `stroke_color`/`stroke_width` for bar borders:
+
 ```svelte example
 <script>
   import { format_num, Histogram } from 'matterviz'
@@ -10,6 +12,7 @@
   let bins = $state(50)
   let sample_size = $state(1000)
   let show_controls = $state(true)
+  let border_radius = $state(2)
   let hover_info = $state('Hover over a bar to see details')
   let click_info = $state('Click on a bar to select it')
 
@@ -45,6 +48,12 @@
   <input type="range" bind:value={sample_size} min="100" max="10000" step="100" />
 </label>
 <label><input type="checkbox" bind:checked={show_controls} />Controls</label>
+<label>Radius: {border_radius}<input
+    type="range"
+    bind:value={border_radius}
+    min="0"
+    max="8"
+  /></label>
 
 {#snippet tooltip({ value, count })}
   Value: {value.toFixed(1)}<br>Count: {count}<br>
@@ -55,6 +64,7 @@
   series={[data]}
   {bins}
   {show_controls}
+  bar={{ border_radius, stroke_color: `#364fc7`, stroke_width: 0.5 }}
   on_bar_hover={handle_bar_hover}
   on_bar_click={handle_bar_click}
   {tooltip}
