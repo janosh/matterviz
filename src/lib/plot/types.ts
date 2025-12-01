@@ -66,9 +66,9 @@ export interface BarStyle {
   stroke_width?: number
   stroke_color?: string
   stroke_opacity?: number
-  border_radius?: number // SVG rx/ry for rounded corners (applied to both x and y)
-  rx?: number // SVG rx attribute for horizontal corner radius
-  ry?: number // SVG ry attribute for vertical corner radius
+  border_radius?: number // Shorthand: sets both rx and ry to this value (lower priority than explicit rx/ry)
+  rx?: number // SVG rx attribute for horizontal corner radius (overrides border_radius)
+  ry?: number // SVG ry attribute for vertical corner radius (overrides border_radius)
   [key: string]: unknown
 }
 

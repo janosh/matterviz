@@ -81,7 +81,7 @@
       phase_items.push({
         label: `Unary phases`,
         value: `${format_num(phase_stats.unary)} (${
-          format_num(phase_stats.unary / phase_stats.total, `.2~%`)
+          format_num(phase_stats.unary / phase_stats.total, `.1~%`)
         })`,
         key: `unary-phases`,
       })
@@ -90,7 +90,7 @@
       phase_items.push({
         label: `Binary phases`,
         value: `${format_num(phase_stats.binary)} (${
-          format_num(phase_stats.binary / phase_stats.total, `.2~%`)
+          format_num(phase_stats.binary / phase_stats.total, `.1~%`)
         })`,
         key: `binary-phases`,
       })
@@ -99,7 +99,7 @@
       phase_items.push({
         label: `Ternary phases`,
         value: `${format_num(phase_stats.ternary)} (${
-          format_num(phase_stats.ternary / phase_stats.total, `.2~%`)
+          format_num(phase_stats.ternary / phase_stats.total, `.1~%`)
         })`,
         key: `ternary-phases`,
       })
@@ -108,7 +108,7 @@
       phase_items.push({
         label: `Quaternary phases`,
         value: `${format_num(phase_stats.quaternary)} (${
-          format_num(phase_stats.quaternary / phase_stats.total, `.2~%`)
+          format_num(phase_stats.quaternary / phase_stats.total, `.1~%`)
         })`,
         key: `quaternary-phases`,
       })
@@ -126,14 +126,14 @@
         {
           label: `Stable phases`,
           value: `${format_num(phase_stats.stable)} (${
-            format_num(phase_stats.stable / phase_stats.total, `.2~%`)
+            format_num(phase_stats.stable / phase_stats.total, `.1~%`)
           })`,
           key: `stable-phases`,
         },
         {
           label: `Unstable phases`,
           value: `${format_num(phase_stats.unstable)} (${
-            format_num(phase_stats.unstable / phase_stats.total, `.2~%`)
+            format_num(phase_stats.unstable / phase_stats.total, `.1~%`)
           })`,
           key: `unstable-phases`,
         },
