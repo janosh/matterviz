@@ -1,3 +1,4 @@
+import type { PymatgenCompleteDos } from '$lib/bands/helpers'
 import {
   apply_gaussian_smearing,
   convert_frequencies,
@@ -9,6 +10,7 @@ import {
   normalize_densities,
   normalize_dos,
   pretty_sym_point,
+  shift_to_fermi,
 } from '$lib/bands/helpers'
 import type { BaseBandStructure } from '$lib/bands/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -651,10 +653,193 @@ describe(`normalize_band_structure`, () => {
       (input) => expect(normalize_band_structure(input)).toBeNull(),
     )
   })
+
+  describe(`electronic band structures (pymatgen BandStructureSymmLine)`, () => {
+    it(`converts BandStructureSymmLine with kpoints`, () => {
+      const result = normalize_band_structure({
+        '@class': `BandStructureSymmLine`,
+        '@module': `pymatgen.electronic_structure.bandstructure`,
+        kpoints: [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]],
+        bands: { '1': [[0, 1.5, 3.0], [-2, -1, 0]] }, // 2 bands, spin-keyed
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
+        lattice_rec: { matrix: ident },
+        efermi: 0,
+      })
+      expect(result?.qpoints).toHaveLength(3)
+      expect(result?.bands).toHaveLength(2)
+      expect(result?.qpoints[0].label).toBe(`GAMMA`)
+      expect(result?.qpoints[2].label).toBe(`K`)
+    })
+
+    it(`extracts first spin channel from spin-keyed bands`, () => {
+      const result = normalize_band_structure({
+        '@class': `BandStructureSymmLine`,
+        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        bands: {
+          '1': [[0, 1], [2, 3]], // spin-up: 2 bands
+          '-1': [[0.1, 1.1], [2.1, 3.1]], // spin-down
+        },
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      })
+      expect(result?.bands).toEqual([[0, 1], [2, 3]]) // First spin channel
+    })
+
+    it(`handles BandStructure base class (not just SymmLine)`, () => {
+      const result = normalize_band_structure({
+        '@class': `BandStructure`,
+        '@module': `pymatgen.electronic_structure.bandstructure`,
+        kpoints: [[0, 0, 0], [0.25, 0, 0], [0.5, 0, 0]],
+        bands: { '1': [[0, 0.5, 1.0]] },
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      })
+      expect(result?.qpoints).toHaveLength(3)
+    })
+
+    it(`handles pymatgen electronic with branches field`, () => {
+      // Pymatgen BandStructureSymmLine can include branches
+      const result = normalize_band_structure({
+        '@class': `BandStructureSymmLine`,
+        kpoints: [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]],
+        bands: { '1': [[0, 1, 2]] },
+        branches: [
+          { name: `\\Gamma-X`, start_index: 0, end_index: 1 },
+          { name: `X-K`, start_index: 1, end_index: 2 },
+        ],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
+      })
+      // Should still normalize correctly despite having branches
+      expect(result?.qpoints).toHaveLength(3)
+      expect(result?.branches).toHaveLength(2)
+    })
+
+    it(`handles electronic bands with array format (already extracted)`, () => {
+      const result = normalize_band_structure({
+        '@class': `BandStructureSymmLine`,
+        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        bands: [[0, 1], [2, 3]], // Already an array, not spin-keyed
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      })
+      expect(result?.bands).toEqual([[0, 1], [2, 3]])
+    })
+
+    it(`detects electronic format by @module containing electronic_structure`, () => {
+      const result = normalize_band_structure({
+        '@module': `pymatgen.electronic_structure.bandstructure`,
+        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        bands: { '1': [[0, 1]] },
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      })
+      expect(result?.qpoints).toHaveLength(2)
+    })
+
+    it(`returns null for electronic structure with empty kpoints`, () => {
+      const result = normalize_band_structure({
+        '@class': `BandStructureSymmLine`,
+        kpoints: [],
+        bands: { '1': [] },
+        labels_dict: {},
+      })
+      expect(result).toBeNull()
+    })
+
+    it(`returns null for electronic structure with null bands`, () => {
+      const result = normalize_band_structure({
+        '@class': `BandStructureSymmLine`,
+        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        bands: null,
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      })
+      expect(result).toBeNull()
+    })
+
+    it(`detects pymatgen format via kpoints without @class/@module markers`, () => {
+      // This tests the fallback detection in is_pymatgen_format
+      const result = normalize_band_structure({
+        // No @class or @module - relies on kpoints detection
+        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        bands: [[0, 1], [2, 3]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      })
+      expect(result?.qpoints).toHaveLength(2)
+      expect(result?.bands).toHaveLength(2)
+    })
+  })
 })
 
 describe(`normalize_dos`, () => {
   const spy_info = () => vi.spyOn(console, `info`).mockImplementation(() => {})
+
+  describe(`spin-keyed densities (pymatgen format)`, () => {
+    it(`extracts first spin channel from {1: [...], -1: [...]} format`, () => {
+      const result = normalize_dos({
+        energies: [-5, 0, 5],
+        densities: { '1': [0.5, 1.0, 0.5], '-1': [0.4, 0.9, 0.4] },
+      })
+      expect(result?.type).toBe(`electronic`)
+      if (result?.type === `electronic`) {
+        expect(result.densities).toEqual([0.5, 1.0, 0.5]) // First spin channel
+      }
+    })
+
+    it(`extracts first spin channel from {"Spin.up": [...], "Spin.down": [...]} format`, () => {
+      const result = normalize_dos({
+        energies: [-2, 0, 2],
+        densities: { 'Spin.up': [0.3, 0.8, 0.3], 'Spin.down': [0.2, 0.7, 0.2] },
+      })
+      expect(result?.type).toBe(`electronic`)
+      if (result?.type === `electronic`) {
+        expect(result.densities).toEqual([0.3, 0.8, 0.3])
+      }
+    })
+
+    it(`handles already-array densities (non-spin-polarized)`, () => {
+      const result = normalize_dos({
+        energies: [-1, 0, 1],
+        densities: [0.2, 0.6, 0.2],
+      })
+      expect(result?.type).toBe(`electronic`)
+      if (result?.type === `electronic`) {
+        expect(result.densities).toEqual([0.2, 0.6, 0.2])
+      }
+    })
+
+    it(`handles pymatgen CompleteDos with spin-keyed densities`, () => {
+      const result = normalize_dos({
+        '@class': `CompleteDos`,
+        '@module': `pymatgen.electronic_structure.dos`,
+        energies: [-5, -2.5, 0, 2.5, 5],
+        densities: { '1': [0.1, 0.4, 1.0, 0.4, 0.1], '-1': [0.1, 0.3, 0.9, 0.3, 0.1] },
+        efermi: 0,
+      })
+      expect(result?.type).toBe(`electronic`)
+      if (result?.type === `electronic`) {
+        expect(result.densities).toEqual([0.1, 0.4, 1.0, 0.4, 0.1])
+      }
+    })
+
+    it(`handles LobsterCompleteDos with spin-keyed densities`, () => {
+      const result = normalize_dos({
+        '@class': `LobsterCompleteDos`,
+        '@module': `Lobster`,
+        energies: [-10, -5, 0, 5, 10],
+        densities: { '-1': [0.0, 0.5, 1.0, 0.5, 0.0], '1': [0.0, 0.6, 1.1, 0.6, 0.0] },
+        efermi: 0,
+      })
+      expect(result?.type).toBe(`electronic`)
+      if (result?.type === `electronic`) {
+        // First key in object iteration order
+        expect(result.densities).toHaveLength(5)
+      }
+    })
+
+    it(`returns null for empty spin-keyed densities object`, () => {
+      const result = normalize_dos({
+        energies: [-1, 0, 1],
+        densities: {},
+      })
+      expect(result).toBeNull()
+    })
+  })
 
   describe(`phonon DOS`, () => {
     it(`validates with frequencies array`, () => {
@@ -762,5 +947,88 @@ describe(`normalize_dos`, () => {
       undefined,
       `string`, // non-object
     ])(`returns null for %p`, (input) => expect(normalize_dos(input)).toBeNull())
+  })
+})
+
+describe(`shift_to_fermi`, () => {
+  const make_dos = (efermi: number, energies: number[]): PymatgenCompleteDos => ({
+    '@class': `CompleteDos`,
+    '@module': `pymatgen.electronic_structure.dos`,
+    energies,
+    densities: energies.map(() => 1.0), // Dummy densities
+    efermi,
+  })
+
+  it(`shifts energies so E_F = 0`, () => {
+    const dos = make_dos(5.0, [-10, -5, 0, 5, 10])
+    const shifted = shift_to_fermi(dos)
+
+    expect(shifted.efermi).toBe(0)
+    expect(shifted.energies).toEqual([-15, -10, -5, 0, 5])
+  })
+
+  it(`preserves other DOS properties`, () => {
+    const dos: PymatgenCompleteDos = {
+      '@class': `LobsterCompleteDos`,
+      '@module': `Lobster`,
+      energies: [0, 5, 10],
+      densities: { '1': [0.5, 1.0, 0.5], '-1': [0.4, 0.9, 0.4] },
+      efermi: 5.0,
+      structure: { lattice: {} },
+      atom_dos: {
+        Fe: {
+          '@class': `Dos`,
+          '@module': `pymatgen`,
+          energies: [],
+          densities: [],
+          efermi: 0,
+        },
+      },
+    }
+    const shifted = shift_to_fermi(dos)
+
+    expect(shifted[`@class`]).toBe(`LobsterCompleteDos`)
+    expect(shifted[`@module`]).toBe(`Lobster`)
+    expect(shifted.densities).toEqual(dos.densities) // Unchanged
+    expect(shifted.structure).toEqual(dos.structure) // Preserved
+    expect(shifted.atom_dos).toEqual(dos.atom_dos) // Preserved
+  })
+
+  it(`handles zero Fermi energy (no-op)`, () => {
+    const dos = make_dos(0, [-5, 0, 5])
+    const shifted = shift_to_fermi(dos)
+
+    expect(shifted.efermi).toBe(0)
+    expect(shifted.energies).toEqual([-5, 0, 5]) // Unchanged
+  })
+
+  it(`handles negative Fermi energy`, () => {
+    const dos = make_dos(-2.5, [-10, -5, 0, 5])
+    const shifted = shift_to_fermi(dos)
+
+    expect(shifted.efermi).toBe(0)
+    expect(shifted.energies).toEqual([-7.5, -2.5, 2.5, 7.5])
+  })
+
+  it(`handles typical pymatgen efermi values`, () => {
+    // Real-world example: mp-865805 has efermi ≈ 5.36 eV
+    const dos = make_dos(5.36, [0, 2.68, 5.36, 8.04, 10.72])
+    const shifted = shift_to_fermi(dos)
+
+    expect(shifted.efermi).toBe(0)
+    expect(shifted.energies[0]).toBeCloseTo(-5.36, 10)
+    expect(shifted.energies[2]).toBeCloseTo(0, 10) // E_F now at 0
+    expect(shifted.energies[4]).toBeCloseTo(5.36, 10)
+  })
+
+  it(`returns new object (immutable)`, () => {
+    const dos = make_dos(5.0, [0, 5, 10])
+    const shifted = shift_to_fermi(dos)
+
+    expect(shifted).not.toBe(dos)
+    expect(shifted.energies).not.toBe(dos.energies)
+    // Original unchanged
+    expect(dos.efermi).toBe(5.0)
+    expect(dos.energies).toEqual([0, 5, 10])
   })
 })

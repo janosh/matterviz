@@ -1,8 +1,8 @@
 # Band Structures
 
-Interactive phonon and electronic band structure visualization.
+Interactive phonon and electronic band structure visualization. The `Bands` component natively renders pymatgen band structure objects without manual data transformation.
 
-## Basic Phonon Bands with Custom Styling
+## Phonon Bands with Custom Styling
 
 A phonon band structure plot with custom line styling for acoustic and optical modes:
 
@@ -22,7 +22,37 @@ A phonon band structure plot with custom line styling for acoustic and optical m
 <Bands {band_structs} {line_kwargs} />
 ```
 
-## Multiple Band Structures with Controls
+## Electronic Band Structures
+
+Pymatgen's `BandStructureSymmLine` objects render directly, handling spin-keyed bands (`"1"` for spin-up, `"-1"` for spin-down):
+
+```svelte example
+<script>
+  import { Bands } from 'matterviz'
+  import { electronic_bands } from '$site/electronic/bands'
+
+  const band_struct = electronic_bands['CaO (mp-2605)']
+</script>
+
+<Bands band_structs={band_struct} y_axis={{ label: 'Energy (eV)' }} />
+```
+
+### Spin-Polarized Electronic Bands
+
+This example shows a spin-polarized electronic band structure (VBr₂). The component automatically extracts the first spin channel:
+
+```svelte example
+<script>
+  import { Bands } from 'matterviz'
+  import { electronic_bands } from '$site/electronic/bands'
+
+  const band_struct = electronic_bands['VBr₂ (mp-971787, spin-polarized)']
+</script>
+
+<Bands band_structs={band_struct} y_axis={{ label: 'Energy (eV)' }} />
+```
+
+## Comparing Multiple Band Structures
 
 Compare multiple band structures on the same plot with interactive controls:
 
@@ -58,3 +88,13 @@ Compare multiple band structures on the same plot with interactive controls:
 - **Path modes**: When plotting multiple bands, choose from different path resolutions (union/intersection/strict = error on mismatch)
 - **Interactive**: Zoom, pan, hover tooltips
 - **Responsive**: Adapts to container size
+
+## Supported Formats
+
+The `Bands` component automatically detects and handles:
+
+| Format              | Key Fields                                                          | Description                                 |
+| ------------------- | ------------------------------------------------------------------- | ------------------------------------------- |
+| Pymatgen Electronic | `@class: "BandStructureSymmLine"`, `kpoints`, `bands` (dict)        | Standard pymatgen electronic band structure |
+| Pymatgen Phonon     | `@class: "PhononBandStructureSymmLine"`, `qpoints`, `bands` (array) | Pymatgen phonon band structure              |
+| Native matterviz    | `qpoints`, `bands` (array), `branches`                              | Internal matterviz format                   |

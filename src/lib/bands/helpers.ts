@@ -1,6 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import { euclidean_dist, type Matrix3x3, type Vec3 } from '$lib/math'
 import type * as types from './types'
 
 // Physical constants for unit conversions (SI units)
@@ -11,7 +11,7 @@ const THz_TO_HZ = 1e12
 const THz_TO_EV = (PLANCK * THz_TO_HZ) / EV_TO_J
 const THz_TO_MEV = THz_TO_EV * 1000
 const THz_TO_HA = THz_TO_EV / 27.211386245988 // Hartree
-const THz_TO_CM = (THz_TO_HZ / C_LIGHT) * 100 // cm^-1
+const THz_TO_CM = THz_TO_HZ / (C_LIGHT * 100) // cm^-1 (c in cm/s)
 
 // Band structure constants
 export const N_ACOUSTIC_MODES = 3 // Number of acoustic modes in typical 3D crystals
@@ -205,12 +205,18 @@ const is_kpoint = (val: unknown): val is PymatgenKpoint =>
   !!val && typeof val === `object` && `frac_coords` in val &&
   is_vec3((val as PymatgenKpoint).frac_coords)
 
-const is_pymatgen_format = (obj: Record<string, unknown>): boolean =>
-  typeof obj[`@class`] === `string` || typeof obj[`@module`] === `string` ||
-  (Array.isArray(obj.qpoints) && obj.qpoints.length > 0 && !Array.isArray(obj.branches) &&
-    (is_vec3(obj.qpoints[0]) || is_kpoint(obj.qpoints[0])))
-
-const vec3_dist = (a: Vec3, b: Vec3) => Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
+const is_pymatgen_format = (obj: Record<string, unknown>): boolean => {
+  // Check for explicit pymatgen markers
+  if (typeof obj[`@class`] === `string` || typeof obj[`@module`] === `string`) {
+    return true
+  }
+  // Check for pymatgen-style qpoints (phonon) or kpoints (electronic) without branches
+  const points = obj.qpoints ?? obj.kpoints
+  if (Array.isArray(points) && points.length > 0 && !Array.isArray(obj.branches)) {
+    return is_vec3(points[0]) || is_kpoint(points[0])
+  }
+  return false
+}
 
 // Extract frac_coords/label from pymatgen qpoint, matching label from labels_dict if needed
 const parse_qpoint = (
@@ -225,25 +231,63 @@ const parse_qpoint = (
   if (!frac_coords) return null
 
   const label = (is_kpoint(qpt) && typeof qpt.label === `string` && qpt.label) ||
-    Object.entries(labels_dict ?? {}).find(([, c]) => vec3_dist(frac_coords, c) < 1e-4)
+    Object.entries(labels_dict ?? {}).find(([, c]) =>
+      euclidean_dist(frac_coords, c) < 1e-4
+    )
       ?.[0] ||
     null
   return { label, frac_coords }
 }
 
-const EV_TO_THZ = 241.7989 // 1 eV = 241.8 THz
-const CM_TO_THZ = 1 / 33.35641 // cm⁻¹ to THz conversion factor
+// Inverse conversion factors (derived from THz_TO_* for consistency)
+const EV_TO_THZ = 1 / THz_TO_EV
+const CM_TO_THZ = 1 / THz_TO_CM
 
-// Convert pymatgen PhononBandStructureSymmLine to matterviz format
+/**
+ * Extract first spin channel from pymatgen spin-keyed data.
+ * Pymatgen stores spin-polarized data as {1: [...], -1: [...]} or {"Spin.up": [...], ...}
+ */
+function extract_first_spin_channel<T>(data: unknown): T | null {
+  if (Array.isArray(data)) return data as T
+  if (data && typeof data === `object`) {
+    const keys = Object.keys(data as Record<string, unknown>)
+    if (keys.length > 0) {
+      return (data as Record<string, T>)[keys[0]]
+    }
+  }
+  return null
+}
+
+// Convert pymatgen PhononBandStructureSymmLine or BandStructure to matterviz format
 function convert_pymatgen_band_structure(
   pmg: Record<string, unknown>,
 ): types.BaseBandStructure | null {
-  const raw_qpts = pmg.qpoints as unknown[] | undefined
-  const raw_bands = pmg.bands as number[][] | undefined
+  // Support both qpoints (phonon) and kpoints (electronic)
+  const raw_qpts = (pmg.qpoints ?? pmg.kpoints) as unknown[] | undefined
+
+  // Handle bands in multiple formats:
+  // 1. Standard pymatgen: bands as dict with spin keys {1: [[...], ...]}
+  // 2. Custom phonon format: frequencies_cm as 2D array [[...], ...]
+  // 3. Already normalized: bands as 2D array [[...], ...]
+  let raw_bands = extract_first_spin_channel<number[][]>(pmg.bands)
+  const has_frequencies_cm = Array.isArray(pmg.frequencies_cm)
+  if (!raw_bands && has_frequencies_cm) {
+    // Phonon format: frequencies_cm is [n_qpoints x n_branches] - needs transpose
+    const freqs = pmg.frequencies_cm as number[][]
+    if (freqs.length > 0 && Array.isArray(freqs[0])) {
+      // Transpose: [n_qpoints x n_branches] -> [n_branches x n_qpoints]
+      raw_bands = Array.from(
+        { length: freqs[0].length },
+        (_, band_idx) => freqs.map((qpt_freqs) => qpt_freqs[band_idx]),
+      )
+    }
+  }
+
   const labels_dict = pmg.labels_dict as Record<string, Vec3> | undefined
   const lattice_rec = pmg.lattice_rec as { matrix?: Matrix3x3 } | undefined
-  // pymatgen defaults to THz, but may specify 'ev' or 'cm-1'
-  const unit = (pmg.unit as string | undefined)?.toLowerCase() ?? `thz`
+  // Determine unit: cm-1 if frequencies_cm present, else check explicit unit or default to THz
+  const unit = (pmg.unit as string | undefined)?.toLowerCase() ??
+    (has_frequencies_cm ? `cm-1` : `thz`)
 
   if (
     !Array.isArray(raw_qpts) || !Array.isArray(raw_bands) ||
@@ -257,7 +301,7 @@ function convert_pymatgen_band_structure(
 
   // Step distances and discontinuity detection (5x median threshold)
   const steps = qpoints.slice(1).map((q, idx) =>
-    vec3_dist(qpoints[idx].frac_coords, q.frac_coords)
+    euclidean_dist(qpoints[idx].frac_coords, q.frac_coords)
   )
   const sorted = steps.slice().sort((a, b) => a - b)
   const threshold = (sorted[Math.floor(sorted.length / 2)] ?? 0) * 5
@@ -361,7 +405,11 @@ export function normalize_dos(
   const is_pymatgen = typeof dos_obj[`@class`] === `string` ||
     typeof dos_obj[`@module`] === `string`
 
-  const { densities, frequencies, energies, spin_polarized } = dos_obj
+  const { frequencies, energies, spin_polarized } = dos_obj
+
+  // Handle densities as either array or dict with spin keys (pymatgen format)
+  // Pymatgen stores densities as {1: [...], -1: [...]} or {"Spin.up": [...], ...}
+  const densities = extract_first_spin_channel<number[]>(dos_obj.densities)
 
   if (!Array.isArray(densities)) return null
 
@@ -547,4 +595,36 @@ export function find_qpoint_at_rescaled_x(
   }
 
   return closest_idx
+}
+
+// Type definitions for pymatgen DOS formats
+// Densities can be spin-keyed: {1: number[], -1: number[]} or {"Spin.up": number[], ...}
+type SpinDensities = Record<string, number[]>
+
+/** Pymatgen Dos base class format */
+export interface PymatgenDos {
+  '@class': string
+  '@module': string
+  energies: number[]
+  densities: SpinDensities | number[]
+  efermi: number
+}
+
+/** Pymatgen CompleteDos format (includes projected DOS) */
+export interface PymatgenCompleteDos extends PymatgenDos {
+  '@class': `CompleteDos` | `LobsterCompleteDos`
+  structure?: Record<string, unknown>
+  pdos?: Record<string, SpinDensities>[]
+  atom_dos?: Record<string, PymatgenDos>
+  spd_dos?: Record<string, PymatgenDos>
+}
+
+/** Shift DOS energies relative to Fermi energy so E_F = 0 */
+export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
+  const { efermi, energies, ...rest } = dos
+  return {
+    ...rest,
+    efermi: 0,
+    energies: energies.map((energy) => energy - efermi),
+  }
 }
