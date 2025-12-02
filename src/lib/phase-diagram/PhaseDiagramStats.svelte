@@ -114,70 +114,44 @@
       })
     }
 
-    sections.push({
-      title: ``,
-      items: phase_items,
-    })
+    sections.push({ title: ``, items: phase_items })
 
     // Stability
-    sections.push({
-      title: `Stability`,
-      items: [
-        {
-          label: `Stable phases`,
-          value: `${format_num(phase_stats.stable)} (${
-            format_num(phase_stats.stable / phase_stats.total, `.1~%`)
-          })`,
-          key: `stable-phases`,
-        },
-        {
-          label: `Unstable phases`,
-          value: `${format_num(phase_stats.unstable)} (${
-            format_num(phase_stats.unstable / phase_stats.total, `.1~%`)
-          })`,
-          key: `unstable-phases`,
-        },
-      ],
-    })
+    const stable_item = {
+      label: `Stable phases`,
+      value: `${format_num(phase_stats.stable)} (${
+        format_num(phase_stats.stable / phase_stats.total, `.1~%`)
+      })`,
+      key: `stable-phases`,
+    }
+    const unstable_item = {
+      label: `Unstable phases`,
+      value: `${format_num(phase_stats.unstable)} (${
+        format_num(phase_stats.unstable / phase_stats.total, `.1~%`)
+      })`,
+      key: `unstable-phases`,
+    }
+    sections.push({ title: `Stability`, items: [stable_item, unstable_item] })
 
     // Energy Statistics
-    sections.push({
-      title: `Energy Statistics (eV/atom)`,
-      items: [
-        {
-          label: `Min formation energy`,
-          value: format_num(phase_stats.energy_range.min, `.3f`),
-          key: `min-formation-energy`,
-        },
-        {
-          label: `Max formation energy`,
-          value: format_num(phase_stats.energy_range.max, `.3f`),
-          key: `max-formation-energy`,
-        },
-        {
-          label: `Avg formation energy`,
-          value: format_num(phase_stats.energy_range.avg, `.3f`),
-          key: `avg-formation-energy`,
-        },
-      ],
-    })
+    const energy_item = {
+      label: `Min / avg / max formation energy`,
+      value: `${format_num(phase_stats.energy_range.min, `.3f`)} / ${
+        format_num(phase_stats.energy_range.avg, `.3f`)
+      } / ${format_num(phase_stats.energy_range.max, `.3f`)}`,
+      key: `formation-energy`,
+    }
+    sections.push({ title: `Energy Statistics (eV/atom)`, items: [energy_item] })
 
     // Hull Distance
-    sections.push({
-      title: `Hull Distance (eV/atom)`,
-      items: [
-        {
-          label: `Max above hull`,
-          value: format_num(phase_stats.hull_distance.max, `.3f`),
-          key: `max-hull-distance`,
-        },
-        {
-          label: `Avg above hull`,
-          value: format_num(phase_stats.hull_distance.avg, `.3f`),
-          key: `avg-hull-distance`,
-        },
-      ],
-    })
+    const hull_distance_item = {
+      label: `Max / avg above hull`,
+      value: `${format_num(phase_stats.hull_distance.max, `.3f`)} / ${
+        format_num(phase_stats.hull_distance.avg, `.3f`)
+      }`,
+      key: `hull-distance`,
+    }
+    sections.push({ title: `Hull Distance (eV/atom)`, items: [hull_distance_item] })
 
     return sections
   })
