@@ -1,2 +1,10 @@
-// Re-export DOS file for use in demos
-export { default as dos_spin_polarization } from './dos-spin-polarization-mp-865805.json' with { type: 'json' }
+// Export pymatgen electronic DOS file for demos
+// Glob handles both .json (dev) and .json.gz (production)
+import type { PymatgenCompleteDos } from '$lib/bands/helpers'
+
+const imports = import.meta.glob([`./*.json`, `./*.json.gz`], {
+  eager: true,
+  import: `default`,
+}) as Record<string, PymatgenCompleteDos>
+
+export const dos_spin_polarization = Object.values(imports)[0]

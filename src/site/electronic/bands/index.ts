@@ -1,12 +1,16 @@
 // Export pymatgen electronic band structure files for demos
+// Glob handles both .json (dev) and .json.gz (production)
 import type { BaseBandStructure } from '$lib/bands'
 
-import cao_2605 from './cao-2605-bands.json'
-import vbr2_971787 from './vbr2-971787-bands.json'
+const imports = import.meta.glob([`./*.json`, `./*.json.gz`], {
+  eager: true,
+  import: `default`,
+}) as Record<string, BaseBandStructure>
 
-// Electronic band structures (pymatgen BandStructureSymmLine)
-// These are raw pymatgen JSON exports that will be normalized by the Bands component
-export const electronic_bands: Record<string, BaseBandStructure> = {
-  'CaO (mp-2605)': cao_2605 as unknown as BaseBandStructure,
-  'VBr₂ (mp-971787, spin-polarized)': vbr2_971787 as unknown as BaseBandStructure,
-}
+// Export with IDs extracted from filenames (e.g., ./cao-2605-bands.json -> cao_2605)
+export const electronic_bands = Object.fromEntries(
+  Object.entries(imports).map(([path, data]) => [
+    path.match(/\/([^/]+)-bands\.json/)?.[1]?.replace(/-/g, `_`) ?? path,
+    data,
+  ]),
+) as Record<string, BaseBandStructure>

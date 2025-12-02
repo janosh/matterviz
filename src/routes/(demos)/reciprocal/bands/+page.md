@@ -30,11 +30,9 @@ Pymatgen's `BandStructureSymmLine` objects render directly, handling spin-keyed 
 <script>
   import { Bands } from 'matterviz'
   import { electronic_bands } from '$site/electronic/bands'
-
-  const band_struct = electronic_bands['CaO (mp-2605)']
 </script>
 
-<Bands band_structs={band_struct} y_axis={{ label: 'Energy (eV)' }} />
+<Bands band_structs={electronic_bands.cao_2605} y_axis={{ label: 'Energy (eV)' }} />
 ```
 
 ### Spin-Polarized Electronic Bands
@@ -45,11 +43,9 @@ This example shows a spin-polarized electronic band structure (VBr₂). The comp
 <script>
   import { Bands } from 'matterviz'
   import { electronic_bands } from '$site/electronic/bands'
-
-  const band_struct = electronic_bands['VBr₂ (mp-971787, spin-polarized)']
 </script>
 
-<Bands band_structs={band_struct} y_axis={{ label: 'Energy (eV)' }} />
+<Bands band_structs={electronic_bands.vbr2_971787} y_axis={{ label: 'Energy (eV)' }} />
 ```
 
 ## Comparing Multiple Band Structures

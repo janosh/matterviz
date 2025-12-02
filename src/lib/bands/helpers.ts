@@ -619,12 +619,45 @@ export interface PymatgenCompleteDos extends PymatgenDos {
   spd_dos?: Record<string, PymatgenDos>
 }
 
-/** Shift DOS energies relative to Fermi energy so E_F = 0 */
-export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
-  const { efermi, energies, ...rest } = dos
+/** Shift a single DOS object's energies by the given amount */
+function shift_dos_energies<T extends PymatgenDos>(dos: T, shift: number): T {
   return {
-    ...rest,
+    ...dos,
+    efermi: dos.efermi - shift,
+    energies: dos.energies.map((energy) => energy - shift),
+  }
+}
+
+/** Shift DOS energies relative to Fermi energy so E_F = 0
+ * Recursively shifts nested DOS in atom_dos and spd_dos for consistency */
+export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
+  const shift = dos.efermi
+
+  // Shift nested atom_dos if present
+  const atom_dos = dos.atom_dos
+    ? Object.fromEntries(
+      Object.entries(dos.atom_dos).map(([key, nested_dos]) => [
+        key,
+        shift_dos_energies(nested_dos, shift),
+      ]),
+    )
+    : undefined
+
+  // Shift nested spd_dos if present
+  const spd_dos = dos.spd_dos
+    ? Object.fromEntries(
+      Object.entries(dos.spd_dos).map(([key, nested_dos]) => [
+        key,
+        shift_dos_energies(nested_dos, shift),
+      ]),
+    )
+    : undefined
+
+  return {
+    ...dos,
     efermi: 0,
-    energies: energies.map((energy) => energy - efermi),
+    energies: dos.energies.map((energy) => energy - shift),
+    ...(atom_dos && { atom_dos }),
+    ...(spd_dos && { spd_dos }),
   }
 }

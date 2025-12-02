@@ -967,7 +967,7 @@ describe(`shift_to_fermi`, () => {
     expect(shifted.energies).toEqual([-15, -10, -5, 0, 5])
   })
 
-  it(`preserves other DOS properties`, () => {
+  it(`preserves non-energy DOS properties`, () => {
     const dos: PymatgenCompleteDos = {
       '@class': `LobsterCompleteDos`,
       '@module': `Lobster`,
@@ -975,15 +975,6 @@ describe(`shift_to_fermi`, () => {
       densities: { '1': [0.5, 1.0, 0.5], '-1': [0.4, 0.9, 0.4] },
       efermi: 5.0,
       structure: { lattice: {} },
-      atom_dos: {
-        Fe: {
-          '@class': `Dos`,
-          '@module': `pymatgen`,
-          energies: [],
-          densities: [],
-          efermi: 0,
-        },
-      },
     }
     const shifted = shift_to_fermi(dos)
 
@@ -991,7 +982,58 @@ describe(`shift_to_fermi`, () => {
     expect(shifted[`@module`]).toBe(`Lobster`)
     expect(shifted.densities).toEqual(dos.densities) // Unchanged
     expect(shifted.structure).toEqual(dos.structure) // Preserved
-    expect(shifted.atom_dos).toEqual(dos.atom_dos) // Preserved
+  })
+
+  it(`shifts nested atom_dos and spd_dos energies`, () => {
+    const dos: PymatgenCompleteDos = {
+      '@class': `CompleteDos`,
+      '@module': `pymatgen.electronic_structure.dos`,
+      energies: [0, 5, 10],
+      densities: [0.5, 1.0, 0.5],
+      efermi: 5.0,
+      atom_dos: {
+        Fe: {
+          '@class': `Dos`,
+          '@module': `pymatgen.electronic_structure.dos`,
+          energies: [0, 5, 10],
+          densities: [0.3, 0.6, 0.3],
+          efermi: 5.0,
+        },
+        O: {
+          '@class': `Dos`,
+          '@module': `pymatgen.electronic_structure.dos`,
+          energies: [0, 5, 10],
+          densities: [0.2, 0.4, 0.2],
+          efermi: 5.0,
+        },
+      },
+      spd_dos: {
+        s: {
+          '@class': `Dos`,
+          '@module': `pymatgen.electronic_structure.dos`,
+          energies: [0, 5, 10],
+          densities: [0.1, 0.2, 0.1],
+          efermi: 5.0,
+        },
+      },
+    }
+    const shifted = shift_to_fermi(dos)
+
+    // Main DOS shifted
+    expect(shifted.efermi).toBe(0)
+    expect(shifted.energies).toEqual([-5, 0, 5])
+
+    // Nested atom_dos shifted
+    expect(shifted.atom_dos?.Fe.efermi).toBe(0)
+    expect(shifted.atom_dos?.Fe.energies).toEqual([-5, 0, 5])
+    expect(shifted.atom_dos?.Fe.densities).toEqual([0.3, 0.6, 0.3]) // Unchanged
+    expect(shifted.atom_dos?.O.efermi).toBe(0)
+    expect(shifted.atom_dos?.O.energies).toEqual([-5, 0, 5])
+
+    // Nested spd_dos shifted
+    expect(shifted.spd_dos?.s.efermi).toBe(0)
+    expect(shifted.spd_dos?.s.energies).toEqual([-5, 0, 5])
+    expect(shifted.spd_dos?.s.densities).toEqual([0.1, 0.2, 0.1]) // Unchanged
   })
 
   it(`handles zero Fermi energy (no-op)`, () => {
