@@ -2,7 +2,7 @@
 // Glob handles both .json (dev) and .json.gz (production)
 import type { BaseBandStructure } from '$lib/bands'
 
-const imports = import.meta.glob([`./*.json`, `./*.json.gz`], {
+const imports = import.meta.glob([`./*-bands.json`, `./*-bands.json.gz`], {
   eager: true,
   import: `default`,
 }) as Record<string, BaseBandStructure>
