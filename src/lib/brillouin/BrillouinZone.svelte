@@ -303,7 +303,6 @@
             title="{fullscreen ? `Exit` : `Enter`} fullscreen"
             aria-pressed={fullscreen}
             class="fullscreen-toggle"
-            style="padding: 0"
             {@attach tooltip()}
           >
             {#if typeof fullscreen_toggle === `function`}
@@ -422,11 +421,12 @@
   section.control-buttons > :global(button) {
     background-color: transparent;
     display: flex;
-    padding: 0;
+    padding: 4px;
+    border-radius: var(--border-radius, 3pt);
     font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
   section.control-buttons :global(button:hover) {
-    background-color: var(--pane-btn-bg-hover);
+    background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
   .filename {
     font-family: monospace;

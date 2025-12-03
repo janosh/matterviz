@@ -764,6 +764,6 @@
     font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
   :global(.phase-diagram-2d .control-btn:hover) {
-    background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.2));
+    background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
 </style>

@@ -35,7 +35,7 @@ function get_orig_idx(site: Site, fallback: number): number {
 
 // Compute 4x4 transformation matrix for bond cylinder between two positions.
 // Uses Y-up, right-handed coordinate system convention for Three.js compatibility.
-function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
+export function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
   const [dx, dy, dz] = math.subtract(pos_2, pos_1)
   const height = Math.hypot(dx, dy, dz)
 

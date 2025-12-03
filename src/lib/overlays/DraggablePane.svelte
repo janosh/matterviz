@@ -185,7 +185,7 @@
     bind:this={toggle_pane_btn}
     aria-expanded={show}
     {...toggle_props}
-    style={`font-size: clamp(0.85em, 2.2cqw, 1.2em); ${toggle_props.style ?? ``}`}
+    style={toggle_props.style ?? ``}
     onclick={toggle_pane}
     class="pane-toggle {toggle_props.class ?? ``}"
     {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
@@ -251,7 +251,7 @@
     border-radius: var(--pane-toggle-border-radius, var(--border-radius, 3pt));
     background-color: transparent;
     transition: var(--pane-toggle-transition, background-color 0.2s);
-    font-size: var(--pane-toggle-font-size, clamp(0.7em, 2cqmin, 1.4em));
+    font-size: var(--pane-toggle-font-size, clamp(0.85em, 2cqmin, 1.4em));
   }
   button.pane-toggle:hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);

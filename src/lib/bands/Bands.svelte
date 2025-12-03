@@ -68,18 +68,35 @@
   }
 
   // Normalize input to dict format
-  // Supports both matterviz format (qpoints + branches) and pymatgen format (qpoints + bands arrays)
+  // Supports multiple formats:
+  // - matterviz format: qpoints + branches arrays
+  // - pymatgen phonon: qpoints + bands (or frequencies_cm) arrays
+  // - pymatgen electronic: kpoints + bands arrays
   let band_structs_dict = $derived.by(() => {
     if (!band_structs) return {}
 
-    // Detect single band structure
-    // - matterviz format: has qpoints + branches arrays
-    // - pymatgen format: has qpoints + bands arrays (no branches)
-    const is_matterviz_single = `qpoints` in band_structs &&
-      `branches` in band_structs
-    const is_pymatgen_single = `qpoints` in band_structs && `bands` in band_structs &&
-      Array.isArray(band_structs.qpoints) && Array.isArray(band_structs.bands) &&
-      band_structs.qpoints.length > 0 && !(`branches` in band_structs)
+    // Detect single band structure by checking for characteristic fields
+    // - pymatgen format: has @class or @module markers (may also have branches)
+    // - matterviz format: has qpoints + branches (no pymatgen markers)
+    const has_qpoints = `qpoints` in band_structs &&
+      Array.isArray(band_structs.qpoints) &&
+      band_structs.qpoints.length > 0
+    const has_kpoints = `kpoints` in band_structs &&
+      Array.isArray(band_structs.kpoints) &&
+      band_structs.kpoints.length > 0
+    const has_bands = `bands` in band_structs
+    const has_frequencies_cm = `frequencies_cm` in band_structs &&
+      Array.isArray(band_structs.frequencies_cm)
+    const has_branches = `branches` in band_structs
+    // Pymatgen structures have explicit class/module markers
+    const is_pymatgen = `@class` in band_structs || `@module` in band_structs
+
+    // Pymatgen single: has markers and point/band data (may have branches too)
+    const is_pymatgen_single = is_pymatgen &&
+      (has_qpoints || has_kpoints) &&
+      (has_bands || has_frequencies_cm)
+    // Matterviz single: has qpoints + branches but NO pymatgen markers
+    const is_matterviz_single = !is_pymatgen && has_qpoints && has_branches
     const is_single = is_matterviz_single || is_pymatgen_single
 
     const result: Record<string, BaseBandStructure> = {}
@@ -96,7 +113,30 @@
     return result
   })
 
-  let detected_band_type = $derived(band_type ?? `phonon`)
+  // Auto-detect band type if not explicitly set
+  let detected_band_type = $derived.by((): BandStructureType => {
+    if (band_type) return band_type
+    if (!band_structs) return `phonon`
+
+    // Single structure has marker fields; dict of structures has label keys
+    const is_single = `@class` in band_structs || `@module` in band_structs ||
+      `kpoints` in band_structs || `qpoints` in band_structs
+    const source = (is_single ? band_structs : Object.values(band_structs)[0]) as
+      | Record<string, unknown>
+      | undefined
+    if (!source) return `phonon`
+
+    // Electronic: has kpoints, BandStructure* class (not Phonon*), or electronic_structure module
+    const class_name = String(source[`@class`] ?? ``)
+    if (
+      (`kpoints` in source && Array.isArray(source.kpoints) &&
+        source.kpoints.length > 0) ||
+      (class_name.startsWith(`BandStructure`) && !class_name.startsWith(`Phonon`)) ||
+      String(source[`@module`] ?? ``).includes(`electronic_structure`)
+    ) return `electronic`
+
+    return `phonon`
+  })
 
   // Determine which segments to plot based on path_mode
   let segments_to_plot = $derived.by(() => {
