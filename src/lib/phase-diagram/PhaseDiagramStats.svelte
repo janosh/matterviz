@@ -159,7 +159,7 @@
 
 <div {...rest} class="phase-diagram-stats {rest.class ?? ``}">
   <h4 style="margin-top: 0">Phase Diagram Stats</h4>
-  {#each pane_data as section, sec_idx (section.title)}
+  {#each pane_data as section, sec_idx (sec_idx)}
     {#if sec_idx > 0}<hr />{/if}
     <section>
       {#if section.title}
