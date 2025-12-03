@@ -85,9 +85,12 @@ describe(`PhaseDiagramStats`, () => {
     expect(text).toContain(`150`)
     expect(text).toContain(`Stable phases`)
     expect(text).toContain(`25`)
-    for (const val of [`−2.567`, `0.123`, `−1.234`, `0.456`, `0.089`]) {
-      expect(text).toContain(val)
-    }
+    // Check combined formation energy line: min / avg / max
+    expect(text).toContain(`Min / avg / max formation energy`)
+    expect(text).toContain(`−2.567 / −1.234 / 0.123`)
+    // Check combined hull distance line: max / avg
+    expect(text).toContain(`Max / avg above hull`)
+    expect(text).toContain(`0.456 / 0.089`)
   })
 
   test.each([

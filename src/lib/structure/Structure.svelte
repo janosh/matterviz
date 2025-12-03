@@ -332,9 +332,13 @@
   })
 
   // Measurement mode and selection state
-  let measure_mode: `distance` | `angle` = $state(`distance`)
+  let measure_mode: `distance` | `angle` | `edit-bonds` = $state(`distance`)
   let measure_menu_open = $state(false)
   let export_pane_open = $state(false)
+
+  // Bond customization state
+  let added_bonds = $state<[number, number][]>([])
+  let removed_bonds = $state<[number, number][]>([])
 
   let visible_buttons = $derived(
     show_controls === true ||
@@ -713,8 +717,11 @@
                 </span>
               {:else}
                 <Icon
-                  icon={({ distance: `Ruler`, angle: `Angle` } as const)[measure_mode]}
-                  style="transform: scale({{ distance: 0.9, angle: 1.1 }[measure_mode]})"
+                  icon={({
+                    distance: `Ruler`,
+                    angle: `Angle`,
+                    'edit-bonds': `Link`,
+                  } as const)[measure_mode]}
                 />
               {/if}
               <Icon
@@ -722,11 +729,16 @@
                 style="margin-left: -2px"
               />
             </button>
-            {#if (measured_sites?.length ?? 0) > 0}
+            {#if (measured_sites?.length ?? 0) > 0 || added_bonds.length > 0 ||
+          removed_bonds.length > 0}
               <button
                 type="button"
-                aria-label="Reset selection"
-                onclick={() => [measured_sites, selected_sites] = [[], []]}
+                aria-label="Reset selection and bond edits"
+                onclick={() => {
+                  ;[measured_sites, selected_sites] = [[], []]
+                  added_bonds = []
+                  removed_bonds = []
+                }}
               >
                 <Icon icon="Reset" style="margin-left: -4px" />
               </button>
@@ -736,6 +748,12 @@
                 {#each [
             { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
             { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
+            {
+              mode: `edit-bonds`,
+              icon: `Link`,
+              label: `Edit Bonds`,
+              scale: 1.0,
+            },
           ] as const as
                   { mode, icon, label, scale }
                   (mode)
@@ -833,6 +851,8 @@
             bind:initial_computed_zoom
             bind:hidden_elements
             bind:hidden_prop_vals
+            bind:added_bonds
+            bind:removed_bonds
             {measure_mode}
             {width}
             {height}
@@ -846,6 +866,18 @@
     <div class="bottom-left">
       {@render bottom_left?.({ structure: displayed_structure })}
     </div>
+
+    {#if measure_mode === `edit-bonds` &&
+      (added_bonds.length > 0 || removed_bonds.length > 0)}
+      <div class="bond-edit-status">
+        {#if added_bonds.length > 0}
+          <span class="added">+{added_bonds.length} added</span>
+        {/if}
+        {#if removed_bonds.length > 0}
+          <span class="removed">-{removed_bonds.length} removed</span>
+        {/if}
+      </div>
+    {/if}
 
     {#if symmetry_error}
       <div class="symmetry-error">
@@ -907,7 +939,7 @@
     display: flex;
     top: var(--struct-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--struct-buttons-right, var(--ctrl-btn-right, 1ex));
-    gap: clamp(6pt, 1cqmin, 9pt);
+    gap: 4pt;
     /* buttons need higher z-index than AtomLegend to make info/controls panes occlude legend */
     /* we also need crazy high z-index to make info/control pane occlude threlte/extras' <HTML> elements for site labels */
     z-index: var(--struct-buttons-z-index, 100000000);
@@ -922,11 +954,12 @@
   section.control-buttons > :global(button) {
     background-color: transparent;
     display: flex;
-    padding: 0;
+    padding: 4px;
+    border-radius: var(--border-radius, 3pt);
     font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
   section.control-buttons :global(button:hover) {
-    background-color: var(--pane-btn-bg-hover);
+    background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
   /* Match Trajectory dropdown UI */
   .view-mode-dropdown {
@@ -968,12 +1001,13 @@
   .measure-mode-dropdown {
     display: flex;
     position: relative;
-    gap: 8pt;
-    margin-inline: 3pt;
+    height: fit-content;
+    place-self: center;
   }
   .measure-mode-dropdown > button {
     background: transparent;
-    padding: 0;
+    padding: 0 0 0 4px;
+    font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
   .selection-limit-text {
     font-weight: bold;
@@ -1040,6 +1074,27 @@
   }
   .symmetry-error button:hover {
     opacity: 1;
+  }
+  .bond-edit-status {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius, 3pt);
+    font-size: 0.85rem;
+    display: flex;
+    gap: 0.75rem;
+    z-index: 100;
+    pointer-events: none;
+  }
+  .bond-edit-status .added {
+    color: #4caf50;
+  }
+  .bond-edit-status .removed {
+    color: #f44336;
   }
   /* SupercellSelector: position at left of legend, show on hover */
   .structure :global(.supercell-selector) {

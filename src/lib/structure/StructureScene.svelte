@@ -21,7 +21,8 @@
   import { SvelteMap } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three'
   import Bond from './Bond.svelte'
-  import { BONDING_STRATEGIES, type BondingStrategy } from './bonding'
+  import type { BondingStrategy } from './bonding'
+  import { BONDING_STRATEGIES, compute_bond_transform } from './bonding'
   import { CanvasTooltip } from './index'
 
   type InstancedAtomGroup = {
@@ -95,6 +96,8 @@
     measure_mode = `distance`,
     selected_sites = $bindable([]),
     measured_sites = $bindable([]),
+    added_bonds = $bindable([]),
+    removed_bonds = $bindable([]),
     selection_highlight_color = `#6cf0ff`,
     // Active highlight group with different color
     active_sites = $bindable([]),
@@ -161,9 +164,11 @@
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
-    measure_mode?: `distance` | `angle`
+    measure_mode?: `distance` | `angle` | `edit-bonds`
     selected_sites?: number[]
     measured_sites?: number[]
+    added_bonds?: [number, number][]
+    removed_bonds?: [number, number][]
     selection_highlight_color?: string
     // Support for active highlight group with different color
     active_sites?: number[]
@@ -209,8 +214,62 @@
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
 
+  function get_bond_key(idx1: number, idx2: number): string {
+    return idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`
+  }
+
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
+
+    if (measure_mode === `edit-bonds`) {
+      // In edit-bonds mode, select atoms to add/remove bonds between them
+      const new_sites = measured_sites.includes(site_index)
+        ? measured_sites.filter((idx) => idx !== site_index)
+        : [...measured_sites, site_index]
+
+      measured_sites = new_sites
+      selected_sites = new_sites
+
+      // When two atoms are selected, toggle the bond between them
+      if (measured_sites.length === 2) {
+        const [idx_i, idx_j] = measured_sites.sort((a, b) => a - b)
+        const key = get_bond_key(idx_i, idx_j)
+
+        // Check if bond exists in calculated bonds (and not removed)
+        const calculated_exists = bond_pairs.some((bond) =>
+          get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
+        )
+        const is_removed = removed_bonds.some((pair) =>
+          get_bond_key(pair[0], pair[1]) === key
+        )
+        const is_added = added_bonds.some((pair) =>
+          get_bond_key(pair[0], pair[1]) === key
+        )
+
+        if (is_added) {
+          // Toggle off added bond
+          added_bonds = added_bonds.filter((pair) =>
+            get_bond_key(pair[0], pair[1]) !== key
+          )
+        } else if (calculated_exists && !is_removed) {
+          // Remove calculated bond
+          removed_bonds = [...removed_bonds, [idx_i, idx_j]]
+        } else if (is_removed) {
+          // Restore calculated bond
+          removed_bonds = removed_bonds.filter((pair) =>
+            get_bond_key(pair[0], pair[1]) !== key
+          )
+        } else {
+          // Add new bond
+          added_bonds = [...added_bonds, [idx_i, idx_j]]
+        }
+
+        // Reset selection after toggling bond
+        measured_sites = []
+        selected_sites = []
+      }
+      return
+    }
 
     if (
       !measured_sites.includes(site_index) &&
@@ -347,12 +406,7 @@
   })
 
   let filtered_bond_pairs = $derived.by(() => {
-    if (
-      !structure?.sites ||
-      (hidden_elements.size === 0 && hidden_prop_vals.size === 0)
-    ) {
-      return bond_pairs
-    }
+    if (!structure?.sites) return bond_pairs
 
     const is_site_visible = (site_idx: number) => {
       const site = structure.sites[site_idx]
@@ -366,9 +420,42 @@
       return has_visible_element && prop_visible
     }
 
-    return bond_pairs.filter(({ site_idx_1, site_idx_2 }) =>
-      is_site_visible(site_idx_1) && is_site_visible(site_idx_2)
+    // Build set of removed bond keys for efficient lookup
+    const removed_keys = new Set(
+      removed_bonds.map(([idx_i, idx_j]) => get_bond_key(idx_i, idx_j)),
     )
+
+    // Filter calculated bonds: exclude removed and hidden
+    const calculated = bond_pairs.filter(({ site_idx_1, site_idx_2 }) => {
+      if (removed_keys.has(get_bond_key(site_idx_1, site_idx_2))) return false
+      return is_site_visible(site_idx_1) && is_site_visible(site_idx_2)
+    })
+
+    // Create BondPair objects for manually added bonds
+    const added: BondPair[] = added_bonds
+      .map(([idx_i, idx_j]) => {
+        if (!is_site_visible(idx_i) || !is_site_visible(idx_j)) return null
+        const site1 = structure.sites[idx_i]
+        const site2 = structure.sites[idx_j]
+        if (!site1 || !site2) return null
+
+        const pos_1 = site1.xyz
+        const pos_2 = site2.xyz
+        const dist = math.euclidean_dist(pos_1, pos_2)
+
+        return {
+          pos_1,
+          pos_2,
+          site_idx_1: idx_i,
+          site_idx_2: idx_j,
+          bond_length: dist,
+          strength: 1.0,
+          transform_matrix: compute_bond_transform(pos_1, pos_2),
+        }
+      })
+      .filter((bond): bond is BondPair => bond !== null)
+
+    return [...calculated, ...added]
   })
 
   let instanced_bond_groups = $derived.by(() => {
