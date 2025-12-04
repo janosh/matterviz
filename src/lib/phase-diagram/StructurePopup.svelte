@@ -33,7 +33,10 @@
 
 <svelte:window
   onkeydown={(event) => event.key === `Escape` && onclose?.()}
-  onmousedown={(event) => popup_div && !popup_div.contains(event.target as Node) && onclose?.()}
+  onmousedown={(event) => {
+    if (!popup_div || !(event.target instanceof Node)) return
+    if (!popup_div.contains(event.target)) onclose?.()
+  }}
 />
 
 <div

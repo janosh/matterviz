@@ -245,13 +245,19 @@ const CM_TO_THZ = 1 / THz_TO_CM
 
 // Extract first spin channel from pymatgen spin-keyed data.
 // Pymatgen stores spin-polarized data as {1: [...], -1: [...]} or {"Spin.up": [...], ...}
+// Explicitly prefer spin-up keys to ensure consistent ordering across environments.
+const SPIN_UP_KEYS = [`1`, `Spin.up`]
 function extract_first_spin_channel<T>(data: unknown): T | null {
   if (Array.isArray(data)) return data as T
   if (data && typeof data === `object`) {
-    const keys = Object.keys(data as Record<string, unknown>)
-    if (keys.length > 0) {
-      return (data as Record<string, T>)[keys[0]]
+    const record = data as Record<string, T>
+    // Prefer known spin-up keys for consistent ordering
+    for (const key of SPIN_UP_KEYS) {
+      if (key in record) return record[key]
     }
+    // Fall back to first available key if no spin-up key found
+    const keys = Object.keys(record)
+    if (keys.length > 0) return record[keys[0]]
   }
   return null
 }
@@ -618,18 +624,19 @@ export interface PymatgenCompleteDos extends PymatgenDos {
 }
 
 // Shift a single DOS object's energies by the given amount
-function shift_dos_energies<T extends PymatgenDos>(dos: T, shift: number): T {
-  return {
-    ...dos,
-    efermi: dos.efermi - shift,
-    energies: dos.energies.map((energy) => energy - shift),
-  }
-}
+const shift_dos_energies = <T extends PymatgenDos>(dos: T, shift: number): T => ({
+  ...dos,
+  efermi: dos.efermi - shift,
+  energies: dos.energies.map((energy) => energy - shift),
+})
 
 // Shift DOS energies relative to Fermi energy so E_F = 0
 // Recursively shifts nested DOS in atom_dos and spd_dos for consistency
 export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
   const shift = dos.efermi
+
+  // Shift root DOS energies using the shared helper
+  const shifted_root = shift_dos_energies(dos, shift)
 
   // Shift nested atom_dos if present
   const atom_dos = dos.atom_dos
@@ -652,9 +659,8 @@ export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
     : undefined
 
   return {
-    ...dos,
-    efermi: 0,
-    energies: dos.energies.map((energy) => energy - shift),
+    ...shifted_root,
+    efermi: 0, // Explicitly set to 0 (shift_dos_energies would give efermi - shift)
     ...(atom_dos && { atom_dos }),
     ...(spd_dos && { spd_dos }),
   }

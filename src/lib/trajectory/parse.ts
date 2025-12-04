@@ -579,7 +579,9 @@ const parse_lammps_trajectory = (content: string, filename?: string): Trajectory
       ? [`xs`, `ys`, `zs`]
       : [`x`, `y`, `z`]
     const pos_cols = pos_keys.map((key) => col[key])
-    const type_col = col.type ?? col.element ?? 1
+    // Track whether type column exists; if missing, all atoms default to type 1 (Hydrogen)
+    const has_type_col = `type` in col || `element` in col
+    const type_col = col.type ?? col.element ?? 0 // fallback value unused when has_type_col=false
     const use_scaled = pos_keys[0] === `xs`
 
     if (pos_cols.some((col_idx) => col_idx === undefined)) continue
@@ -592,7 +594,10 @@ const parse_lammps_trajectory = (content: string, filename?: string): Trajectory
       const parts = read_line().split(/\s+/)
       const coords = pos_cols.map((col_idx) => parseFloat(parts[col_idx]))
 
-      if (coords.some(isNaN) || parts.length <= Math.max(...pos_cols, type_col)) continue
+      const min_cols = has_type_col
+        ? Math.max(...pos_cols, type_col)
+        : Math.max(...pos_cols)
+      if (coords.some(isNaN) || parts.length <= min_cols) continue
 
       // Convert scaled coordinates to Cartesian if needed
       const xyz = use_scaled
@@ -604,9 +609,18 @@ const parse_lammps_trajectory = (content: string, filename?: string): Trajectory
       positions.push(xyz)
 
       // Map atom type to element (type 1 → H, type 2 → He, etc.)
-      const atom_type = parseInt(parts[type_col], 10) || 1
+      // If no type column exists, default all atoms to type 1 (Hydrogen)
+      const atom_type = has_type_col ? (parseInt(parts[type_col], 10) || 1) : 1
       atom_types_found.add(atom_type)
-      elements.push(ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length])
+      const elem_idx = Math.max(0, atom_type - 1)
+      if (elem_idx >= ELEM_SYMBOLS.length) {
+        console.warn(
+          `Atom type ${atom_type} exceeds element list, wrapping to ${
+            ELEM_SYMBOLS[elem_idx % ELEM_SYMBOLS.length]
+          }`,
+        )
+      }
+      elements.push(ELEM_SYMBOLS[elem_idx % ELEM_SYMBOLS.length])
     }
 
     if (positions.length === num_atoms) {
@@ -1456,8 +1470,10 @@ export function get_unsupported_format_message(
     }
   }
 
+  // .dump files are LAMMPS binary dumps which require external tools to parse.
+  // .lammpstrj files are LAMMPS text-based trajectory files supported by parse_lammps_trajectory().
   const formats = [
-    { extensions: [`.dump`], name: `LAMMPS dump`, tool: `pymatgen` },
+    { extensions: [`.dump`], name: `LAMMPS binary dump`, tool: `pymatgen` },
     { extensions: [`.nc`, `.netcdf`], name: `NetCDF`, tool: `MDAnalysis` },
     { extensions: [`.dcd`], name: `DCD`, tool: `MDAnalysis` },
   ]

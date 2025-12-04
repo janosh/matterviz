@@ -42,9 +42,7 @@ describe(`StructurePopup`, () => {
       props: { structure: mock_structure, onclose },
     })
     flushSync()
-    const event = new MouseEvent(`mousedown`, { bubbles: true })
-    Object.defineProperty(event, `target`, { value: document.body })
-    globalThis.dispatchEvent(event)
+    document.body.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
     expect(onclose).toHaveBeenCalledOnce()
   })
 

@@ -544,6 +544,17 @@ ITEM: ATOMS id type x y z
       .toThrow()
   })
 
+  it(`should default to Hydrogen when no type column exists`, async () => {
+    const content =
+      `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp
+0.0 10.0\n0.0 10.0\n0.0 10.0\nITEM: ATOMS id x y z q\n1 2.84 8.17 -5.0 0.1\n2 7.1 8.17 -5.0 0.2`
+
+    const traj = await parse_trajectory_data(content, `test.lammpstrj`)
+    const elems = traj.frames[0].structure.sites.map((s) => s.species[0].element)
+    expect(elems).toEqual([`H`, `H`]) // all default to H when no type column
+    expect(traj.metadata?.atom_types).toEqual([1])
+  })
+
   it(`should handle PBC flags from BOX BOUNDS`, async () => {
     const content = `ITEM: TIMESTEP
 0
@@ -1140,7 +1151,7 @@ describe(`Format Detection`, () => {
 
 describe(`Unsupported Formats`, () => {
   it.each([
-    [`test.dump`, `LAMMPS dump`],
+    [`test.dump`, `LAMMPS binary dump`],
     [`test.nc`, `NetCDF`],
     [`test.dcd`, `DCD`],
   ])(`should detect %s as %s format`, (filename, expected_format) => {
