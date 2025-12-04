@@ -80,7 +80,11 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
 export const TRAJ_KEYWORDS_SIMPLE_REGEX = new RegExp(`(${TRAJ_KEYWORDS.join(`|`)})`, `i`)
 
 // File extensions for different file types
-export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.xtc`]) as readonly string[]
+export const TRAJ_EXTENSIONS = Object.freeze([
+  `.traj`,
+  `.xtc`,
+  `.lammpstrj`,
+]) as readonly string[]
 export const TRAJ_EXTENSIONS_REGEX = new RegExp(
   `\\.(${TRAJ_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
   `i`,

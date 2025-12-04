@@ -1,3 +1,4 @@
+import { STRUCTURE_EXTENSIONS, TRAJ_EXTENSIONS, TRAJ_KEYWORDS } from '$lib/constants'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
@@ -111,6 +112,66 @@ describe(`MatterViz Extension`, () => {
   test(`extensionKind should be configured as ["workspace"] to work locally and in remote SSH sessions`, () => {
     // https://github.com/janosh/matterviz/issues/129#issuecomment-3193473225
     expect(pkg_json.extensionKind).toEqual([`workspace`])
+  })
+
+  describe(`Custom Editor File Patterns`, () => {
+    const custom_editors = pkg_json.contributes.customEditors
+    const matterviz_editor = custom_editors.find(
+      (editor) => editor.viewType === `matterviz.viewer`,
+    )
+    const patterns = matterviz_editor?.selector.map((sel) => sel.filenamePattern) ?? []
+
+    // Tests if a filename matches any pattern (simplified glob matching).
+    const matches_any_pattern = (filename: string): boolean => {
+      for (const pattern of patterns) {
+        // Convert glob pattern to regex
+        const regex_str = pattern
+          .replace(/\./g, `\\.`) // escape dots
+          .replace(/\*/g, `.*`) // * → .*
+          .replace(/\{([^}]+)\}/g, (_, group) => `(${group.split(`,`).join(`|`)})`) // {a,b} → (a|b)
+        const regex = new RegExp(`^${regex_str}$`, `i`)
+        if (regex.test(filename)) return true
+      }
+      return false
+    }
+
+    test(`should have matterviz.viewer custom editor defined`, () => {
+      expect(matterviz_editor).toBeDefined()
+      expect(matterviz_editor?.displayName).toBe(`MatterViz Viewer`)
+    })
+
+    // Tests auto-synced with library constants to prevent regressions
+    test.each<[string, string]>([
+      // All trajectory extensions from library
+      ...TRAJ_EXTENSIONS.map((ext) =>
+        [`test${ext}`, `TRAJ_EXT ${ext}`] as [string, string]
+      ),
+      // All structure extensions from library (uncompressed, .gz, .bz2)
+      ...STRUCTURE_EXTENSIONS.flatMap((ext) =>
+        [
+          [`test${ext}`, `STRUCT_EXT ${ext}`],
+          [`test${ext}.gz`, `${ext}.gz`],
+          [`test${ext}.bz2`, `${ext}.bz2`],
+        ] as [string, string][]
+      ),
+      // All trajectory keywords in filenames
+      ...TRAJ_KEYWORDS.map((kw) =>
+        [`${kw}_output.dat`, `TRAJ_KW ${kw}`] as [string, string]
+      ),
+      // VASP special filenames + additional VS Code-only formats
+      [`POSCAR`, `VASP`],
+      [`CONTCAR`, `VASP`],
+      [`XDATCAR`, `VASP`],
+      [`OUTCAR`, `VASP`],
+      [`simulation.h5`, `HDF5`],
+      [`data.hdf5`, `HDF5`],
+      [`dynamics.dcd`, `DCD`],
+      [`run.trr`, `TRR`],
+      [`molecule.xyz`, `XYZ`],
+      [`atoms.extxyz`, `extXYZ`],
+    ])(`pattern matches "%s" (%s)`, (filename) => {
+      expect(matches_any_pattern(filename)).toBe(true)
+    })
   })
 
   beforeEach(async () => {

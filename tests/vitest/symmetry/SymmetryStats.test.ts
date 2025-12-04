@@ -4,9 +4,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
-/**
- * Helper function to create mock MoyoDataset for testing
- */
+// Helper function to create mock MoyoDataset for testing
 function create_mock_sym_data(overrides: Partial<MoyoDataset> = {}): MoyoDataset {
   const default_data = {
     number: 225,

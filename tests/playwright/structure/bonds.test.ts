@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-/** Get non-white pixel count to detect if content is rendered. */
+// Get non-white pixel count to detect if content is rendered.
 function count_non_white_pixels(buffer: Uint8Array): number {
   let non_white = 0
   for (let idx = 0; idx < buffer.length; idx += 4) {

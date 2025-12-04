@@ -11,6 +11,7 @@ import {
   TRAJ_KEYWORDS_SIMPLE_REGEX,
   XDATCAR_REGEX,
 } from '$lib/constants'
+import { ELEM_SYMBOLS } from '$lib/labels'
 import * as math from '$lib/math'
 import { parse_xyz } from '$lib/structure/parse'
 import type { Dataset, Entity, Group } from 'h5wasm'
@@ -34,6 +35,9 @@ export const MAX_TEXT_FILE_SIZE = 50 * 1024 * 1024 // 50MB default for string fi
 
 // Common interfaces
 
+// Mapping from LAMMPS atom type numbers to element symbols (e.g., {1: 'Na', 2: 'Cl'})
+export type AtomTypeMapping = Record<number, ElementSymbol>
+
 export interface LoadingOptions {
   use_indexing?: boolean
   buffer_size?: number
@@ -41,6 +45,7 @@ export interface LoadingOptions {
   extract_plot_metadata?: boolean
   bin_file_threshold?: number // Threshold in bytes for ArrayBuffer files (default: MAX_BIN_FILE_SIZE)
   text_file_threshold?: number // Threshold in bytes for string files (default: MAX_TEXT_FILE_SIZE)
+  atom_type_mapping?: AtomTypeMapping // Map LAMMPS atom types to element symbols (e.g., {1: 'Na', 2: 'Cl'})
 }
 
 // Unified format detection
@@ -79,6 +84,14 @@ const FORMAT_PATTERNS = {
     const base = lower.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
     if (!/\.(xyz|extxyz)$/.test(base)) return false
     return count_xyz_frames(data) >= 2
+  },
+
+  lammpstrj: (data: string, filename?: string) => {
+    const lower = filename?.toLowerCase() ?? ``
+    const base = lower.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    if (!/\.lammpstrj$/.test(base)) return false
+    // Check for LAMMPS trajectory header pattern
+    return data.includes(`ITEM: TIMESTEP`) && data.includes(`ITEM: ATOMS`)
   },
 } as const
 
@@ -482,6 +495,173 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
       total_atoms: elements.length,
       periodic_boundary_conditions: [true, true, true],
       elements: element_names,
+      element_counts,
+    },
+  }
+}
+
+// Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
+// Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
+// Lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
+const parse_lammps_box = (
+  box_lines: string[],
+  is_triclinic: boolean,
+): math.Matrix3x3 | null => {
+  if (box_lines.length !== 3) return null
+  const bounds = box_lines.map((line) => line.split(/\s+/).map(Number))
+  const min_cols = is_triclinic ? 3 : 2
+  if (bounds.some((row) => row.length < min_cols || row.slice(0, min_cols).some(isNaN))) {
+    return null
+  }
+
+  if (!is_triclinic) {
+    // Orthogonal: bounds = [lo, hi] per dimension
+    const [[lo_x, hi_x], [lo_y, hi_y], [lo_z, hi_z]] = bounds
+    return [[hi_x - lo_x, 0, 0], [0, hi_y - lo_y, 0], [0, 0, hi_z - lo_z]]
+  }
+  // Triclinic: bounds = [lo_bound, hi_bound, tilt] with tilts xy, xz, yz
+  const [[xlo_b, xhi_b, xy], [ylo_b, yhi_b, xz], [zlo_b, zhi_b, yz]] = bounds
+  const lx = (xhi_b - Math.max(0, xy, xz, xy + xz)) -
+    (xlo_b - Math.min(0, xy, xz, xy + xz))
+  const ly = (yhi_b - Math.max(0, yz)) - (ylo_b - Math.min(0, yz))
+  const lz = zhi_b - zlo_b
+  return [[lx, 0, 0], [xy, ly, 0], [xz, yz, lz]]
+}
+
+// Parse LAMMPS trajectory (.lammpstrj). Atom types mapped to elements via atom_type_mapping
+// or by default: 1→H, 2→He, etc. Supports orthogonal and triclinic simulation boxes.
+const parse_lammps_trajectory = (
+  content: string,
+  filename?: string,
+  atom_type_mapping?: AtomTypeMapping,
+): TrajectoryType => {
+  const lines = content.trim().split(/\r?\n/)
+  const frames: TrajectoryFrame[] = []
+  const atom_types_found = new Set<number>()
+  let idx = 0
+
+  const read_line = (): string => lines[idx++]?.trim() ?? ``
+  const peek_line = (): string => lines[idx]?.trim() ?? ``
+  const skip_to = (prefix: string): boolean => {
+    while (idx < lines.length && !peek_line().startsWith(prefix)) idx++
+    return idx < lines.length
+  }
+
+  // Helper to map atom type to element symbol
+  const get_element = (atom_type: number): ElementSymbol => {
+    if (atom_type_mapping?.[atom_type]) return atom_type_mapping[atom_type]
+    return ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length]
+  }
+
+  while (idx < lines.length) {
+    if (!skip_to(`ITEM: TIMESTEP`)) break
+    idx++
+    const timestep = parseInt(read_line(), 10) || 0
+
+    if (!skip_to(`ITEM: NUMBER OF ATOMS`)) break
+    idx++
+    const num_atoms = parseInt(read_line(), 10)
+    if (!num_atoms || num_atoms <= 0) continue
+
+    // BOX BOUNDS: orthogonal="pp pp pp", triclinic="xy xz yz pp pp pp"
+    if (!skip_to(`ITEM: BOX BOUNDS`)) break
+    const box_header = read_line()
+    const is_triclinic = /BOX BOUNDS\s+xy\s+xz\s+yz/i.test(box_header)
+    const tokens = box_header.replace(`ITEM: BOX BOUNDS`, ``).trim().split(/\s+/).slice(
+      -3,
+    )
+    const is_periodic = (tok: string): boolean => tok.toLowerCase().startsWith(`p`)
+    const pbc: Pbc = tokens.length === 3
+      ? [is_periodic(tokens[0]), is_periodic(tokens[1]), is_periodic(tokens[2])]
+      : [true, true, true]
+
+    const lattice_matrix = parse_lammps_box(
+      [read_line(), read_line(), read_line()],
+      is_triclinic,
+    )
+    if (!lattice_matrix) continue
+
+    // Find ITEM: ATOMS and parse column headers
+    if (!skip_to(`ITEM: ATOMS`)) break
+    const cols = read_line().replace(`ITEM: ATOMS`, ``).trim().toLowerCase().split(/\s+/)
+    const col = Object.fromEntries(cols.map((name, col_idx) => [name, col_idx]))
+
+    // Determine position columns: prefer unwrapped (xu/yu/zu) > scaled (xs/ys/zs) > regular (x/y/z)
+    const pos_keys = [`xu`, `yu`, `zu`].every((key) => key in col)
+      ? [`xu`, `yu`, `zu`]
+      : [`xs`, `ys`, `zs`].every((key) => key in col)
+      ? [`xs`, `ys`, `zs`]
+      : [`x`, `y`, `z`]
+    const pos_cols = pos_keys.map((key) => col[key])
+    // Atom type column: prefer type > element > id (fallback treats id as atomic number)
+    const type_col = col.type ?? col.element ?? col.id ?? 0
+    const use_scaled = pos_keys[0] === `xs`
+
+    if (pos_cols.some((col_idx) => col_idx === undefined)) continue
+
+    // Parse atom data
+    const positions: number[][] = []
+    const elements: ElementSymbol[] = []
+
+    for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
+      const parts = read_line().split(/\s+/)
+      const coords = pos_cols.map((col_idx) => parseFloat(parts[col_idx]))
+
+      if (coords.some(isNaN) || parts.length <= Math.max(...pos_cols, type_col)) continue
+
+      // Convert scaled coordinates to Cartesian if needed
+      const xyz = use_scaled
+        ? math.mat3x3_vec3_multiply(
+          math.transpose_3x3_matrix(lattice_matrix),
+          coords as Vec3,
+        )
+        : coords
+      positions.push(xyz)
+
+      // Map atom type to element using custom mapping or default (type 1 → H, etc.)
+      const atom_type = parseInt(parts[type_col], 10) || 1
+      atom_types_found.add(atom_type)
+      elements.push(get_element(atom_type))
+    }
+
+    if (positions.length === num_atoms) {
+      const { volume } = math.calc_lattice_params(lattice_matrix)
+      frames.push(create_trajectory_frame(
+        positions,
+        elements,
+        lattice_matrix,
+        pbc,
+        timestep,
+        { volume, timestep },
+      ))
+    }
+  }
+
+  if (frames.length === 0) {
+    throw new Error(`No valid frames found in LAMMPS trajectory`)
+  }
+
+  const first_frame = frames[0]
+  const element_counts = first_frame.structure.sites.reduce<Record<string, number>>(
+    (counts, site) => {
+      const elem = site.species[0].element
+      counts[elem] = (counts[elem] || 0) + 1
+      return counts
+    },
+    {},
+  )
+
+  return {
+    frames,
+    metadata: {
+      filename,
+      source_format: `lammps_trajectory`,
+      frame_count: frames.length,
+      total_atoms: first_frame.structure.sites.length,
+      periodic_boundary_conditions: (`lattice` in first_frame.structure)
+        ? (first_frame.structure as { lattice: { pbc: Pbc } }).lattice.pbc
+        : [true, true, true],
+      atom_types: Array.from(atom_types_found).sort((a, b) => a - b),
       element_counts,
     },
   }
@@ -1114,6 +1294,7 @@ export class TrajFrameReader implements FrameLoader {
 export async function parse_trajectory_data(
   data: unknown,
   filename?: string,
+  atom_type_mapping?: AtomTypeMapping,
 ): Promise<TrajectoryType> {
   if (data instanceof ArrayBuffer) {
     if (FORMAT_PATTERNS.ase(data, filename)) return parse_ase_trajectory(data, filename)
@@ -1128,6 +1309,9 @@ export async function parse_trajectory_data(
     if (FORMAT_PATTERNS.xyz_multi(content, filename)) return parse_xyz_trajectory(content)
     if (FORMAT_PATTERNS.vasp(content, filename)) {
       return parse_vasp_xdatcar(content, filename)
+    }
+    if (FORMAT_PATTERNS.lammpstrj(content, filename)) {
+      return parse_lammps_trajectory(content, filename, atom_type_mapping)
     }
 
     // Single XYZ fallback
@@ -1275,8 +1459,23 @@ export function get_unsupported_format_message(
   content: string,
 ): string | null {
   const lower = filename.toLowerCase()
+
+  // Check for unsupported compression formats first
+  const unsupported_compression = [
+    { ext: `.bz2`, name: `BZ2` },
+    { ext: `.xz`, name: `XZ` },
+    { ext: `.zip`, name: `ZIP` },
+  ]
+  for (const { ext, name } of unsupported_compression) {
+    if (lower.endsWith(ext)) {
+      return `🚫 ${name} compression not supported in browser\nPlease decompress the file first`
+    }
+  }
+
+  // .dump files are LAMMPS binary dumps which require external tools to parse.
+  // .lammpstrj files are LAMMPS text-based trajectory files supported by parse_lammps_trajectory().
   const formats = [
-    { extensions: [`.dump`, `.lammpstrj`], name: `LAMMPS`, tool: `pymatgen` },
+    { extensions: [`.dump`], name: `LAMMPS binary dump`, tool: `pymatgen` },
     { extensions: [`.nc`, `.netcdf`], name: `NetCDF`, tool: `MDAnalysis` },
     { extensions: [`.dcd`], name: `DCD`, tool: `MDAnalysis` },
   ]
@@ -1303,6 +1502,7 @@ export async function parse_trajectory_async(
     use_indexing,
     index_sample_rate = INDEX_SAMPLE_RATE,
     extract_plot_metadata = true,
+    atom_type_mapping,
   } = options
 
   const update_progress = (current: number, stage: string) =>
@@ -1329,7 +1529,7 @@ export async function parse_trajectory_async(
 
     // Fallback to direct parsing
     update_progress(10, `Parsing trajectory...`)
-    const result = await parse_trajectory_data(data, filename)
+    const result = await parse_trajectory_data(data, filename, atom_type_mapping)
 
     update_progress(100, `Complete`)
     return result

@@ -37,6 +37,13 @@ describe(`Trajectory File Detection`, () => {
     [`molecular_dynamics.h5`, true],
     [`relaxation.hdf5`, true],
 
+    // LAMMPS trajectory files
+    [`test.lammpstrj`, true],
+    [`simulation.lammpstrj`, true],
+    [`md_output.lammpstrj`, true],
+    [`trajectory.lammpstrj.gz`, true],
+    [`npt_simulation.lammpstrj`, true],
+
     // VASP trajectory files
     [`XDATCAR`, true],
     [`xdatcar`, true],
@@ -433,6 +440,529 @@ describe(`VASP XDATCAR Parser`, () => {
   })
 })
 
+describe(`LAMMPS Trajectory Format`, () => {
+  it(`should parse LAMMPS trajectory file correctly`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
+    expect(trajectory.frames.length).toBeGreaterThan(0)
+    expect(trajectory.frames[0].structure.sites.length).toBe(864)
+    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
+  })
+
+  it(`should parse multiple frames correctly`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    expect(trajectory.frames.length).toBe(5)
+    // First frame should have timestep 0
+    expect(trajectory.frames[0].step).toBe(0)
+    // Each frame should have consistent atom count
+    trajectory.frames.forEach((frame) => {
+      expect(frame.structure.sites.length).toBe(864)
+    })
+  })
+
+  it(`should extract box bounds and create lattice correctly`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    const structure = trajectory.frames[0].structure
+    expect(`lattice` in structure).toBe(true)
+    if (`lattice` in structure) {
+      // Box is approximately 21.12 x 21.12 x 21.12
+      expect(structure.lattice.a).toBeCloseTo(21.12, 1)
+      expect(structure.lattice.b).toBeCloseTo(21.12, 1)
+      expect(structure.lattice.c).toBeCloseTo(21.12, 1)
+    }
+  })
+
+  it(`should map atom types to elements`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    // File has atom types 1 and 2, mapped to H and He
+    const elements = trajectory.frames[0].structure.sites.map(
+      (site) => site.species[0].element,
+    )
+    expect(elements).toContain(`H`)
+    expect(elements).toContain(`He`)
+    expect(trajectory.metadata?.atom_types).toEqual([1, 2])
+  })
+
+  it(`should calculate volumes correctly`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    trajectory.frames.forEach((frame) => {
+      if (frame.metadata?.volume !== undefined) {
+        expect(frame.metadata.volume).toBeGreaterThan(0)
+        expect(typeof frame.metadata.volume).toBe(`number`)
+      }
+    })
+  })
+
+  it(`should parse gzip-compressed lammpstrj file`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
+    const traj = await parse_trajectory_data(content, `lammps-sample.lammpstrj.gz`)
+
+    expect(traj.metadata?.source_format).toBe(`lammps_trajectory`)
+    expect(traj.frames).toHaveLength(5)
+    expect(traj.frames[0].structure.sites).toHaveLength(864)
+  })
+
+  it(`should parse file without type column using id as fallback`, async () => {
+    // mdanalysis-additional-columns.lammpstrj has columns: id x y z q p (no type)
+    const content = read_test_file(`mdanalysis-additional-columns.lammpstrj`)
+    const traj = await parse_trajectory_data(
+      content,
+      `mdanalysis-additional-columns.lammpstrj`,
+    )
+
+    expect(traj.metadata?.source_format).toBe(`lammps_trajectory`)
+    expect(traj.frames).toHaveLength(1)
+    expect(traj.frames[0].structure.sites).toHaveLength(10)
+
+    // id column used as atom type: 1→H, 2→He, 3→Li, etc.
+    const elements = traj.frames[0].structure.sites.map((site) => site.species[0].element)
+    expect(elements).toEqual([`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`])
+    expect(traj.metadata?.atom_types).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  })
+
+  it(`should parse inline LAMMPS content`, async () => {
+    const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+3
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.0 0.0 0.0
+3 2 2.5 5.0 0.0
+ITEM: TIMESTEP
+100
+ITEM: NUMBER OF ATOMS
+3
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.1 0.0 0.0
+2 1 5.1 0.0 0.0
+3 2 2.6 5.0 0.0`
+
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
+    expect(trajectory.frames).toHaveLength(2)
+    expect(trajectory.frames[0].step).toBe(0)
+    expect(trajectory.frames[1].step).toBe(100)
+    expect(trajectory.frames[0].structure.sites).toHaveLength(3)
+  })
+
+  it(`should reject invalid LAMMPS content`, async () => {
+    const invalid_content = `This is not a LAMMPS file`
+    await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects
+      .toThrow()
+  })
+
+  it(`should use id column as type fallback when no type column exists`, async () => {
+    const content =
+      `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp
+0.0 10.0\n0.0 10.0\n0.0 10.0\nITEM: ATOMS id x y z q\n1 2.84 8.17 -5.0 0.1\n2 7.1 8.17 -5.0 0.2`
+
+    const traj = await parse_trajectory_data(content, `test.lammpstrj`)
+    const elems = traj.frames[0].structure.sites.map((s) => s.species[0].element)
+    // id column used as type fallback: 1→H, 2→He
+    expect(elems).toEqual([`H`, `He`])
+    expect(traj.metadata?.atom_types).toEqual([1, 2])
+  })
+
+  it(`should handle PBC flags from BOX BOUNDS`, async () => {
+    const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS ff pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.0 0.0 0.0`
+
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    // First dimension is non-periodic (ff), others are periodic (pp)
+    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([false, true, true])
+  })
+
+  describe(`triclinic box support`, () => {
+    it(`should parse triclinic box with tilt factors`, async () => {
+      // Triclinic box with xy=2.0, xz=1.0, yz=0.5
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 10.0 2.0
+0.0 10.0 1.0
+0.0 10.0 0.5
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.0 5.0 5.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+      expect(trajectory.frames).toHaveLength(1)
+      const structure = trajectory.frames[0].structure
+      expect(`lattice` in structure).toBe(true)
+
+      if (`lattice` in structure) {
+        // For this simple case (lo=0, hi=10, small tilts), the lattice should be close to:
+        // a = (lx, 0, 0), b = (xy, ly, 0), c = (xz, yz, lz)
+        const matrix = structure.lattice.matrix
+
+        // Check that off-diagonal elements are present (triclinic signature)
+        expect(matrix[1][0]).toBeCloseTo(2.0, 5) // xy tilt
+        expect(matrix[2][0]).toBeCloseTo(1.0, 5) // xz tilt
+        expect(matrix[2][1]).toBeCloseTo(0.5, 5) // yz tilt
+
+        // Diagonal elements should be the box lengths
+        expect(matrix[0][0]).toBeGreaterThan(0) // lx
+        expect(matrix[1][1]).toBeGreaterThan(0) // ly
+        expect(matrix[2][2]).toBeCloseTo(10.0, 5) // lz (unchanged for z)
+      }
+    })
+
+    it(`should correctly convert bounding box to actual box dimensions`, async () => {
+      // Test case with significant tilt that affects bounding box conversion
+      // xy=3, xz=2, yz=1 with bounds that include the tilt offset
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+-3.0 13.0 3.0
+-1.0 11.0 2.0
+0.0 10.0 1.0
+ITEM: ATOMS id type x y z
+1 1 5.0 5.0 5.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+      const structure = trajectory.frames[0].structure
+
+      if (`lattice` in structure) {
+        const matrix = structure.lattice.matrix
+
+        // Verify tilt factors are preserved
+        expect(matrix[1][0]).toBeCloseTo(3.0, 5) // xy
+        expect(matrix[2][0]).toBeCloseTo(2.0, 5) // xz
+        expect(matrix[2][1]).toBeCloseTo(1.0, 5) // yz
+      }
+    })
+
+    it(`should handle negative tilt factors`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+-2.5 12.5 -2.5
+-1.5 11.5 -1.5
+0.0 10.0 -0.5
+ITEM: ATOMS id type x y z
+1 1 5.0 5.0 5.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+      const structure = trajectory.frames[0].structure
+
+      if (`lattice` in structure) {
+        const matrix = structure.lattice.matrix
+
+        // Negative tilts should be preserved
+        expect(matrix[1][0]).toBeCloseTo(-2.5, 5) // xy
+        expect(matrix[2][0]).toBeCloseTo(-1.5, 5) // xz
+        expect(matrix[2][1]).toBeCloseTo(-0.5, 5) // yz
+      }
+    })
+
+    it(`should parse multiple triclinic frames with varying cell shapes`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 10.0 1.0
+0.0 10.0 0.5
+0.0 10.0 0.25
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.0 5.0 5.0
+ITEM: TIMESTEP
+100
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 11.0 2.0
+0.0 11.0 1.0
+0.0 11.0 0.5
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.5 5.5 5.5`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+      expect(trajectory.frames).toHaveLength(2)
+
+      // First frame
+      if (`lattice` in trajectory.frames[0].structure) {
+        const m1 = trajectory.frames[0].structure.lattice.matrix
+        expect(m1[1][0]).toBeCloseTo(1.0, 5) // xy
+        expect(m1[2][0]).toBeCloseTo(0.5, 5) // xz
+        expect(m1[2][1]).toBeCloseTo(0.25, 5) // yz
+      }
+
+      // Second frame - cell has changed
+      if (`lattice` in trajectory.frames[1].structure) {
+        const m2 = trajectory.frames[1].structure.lattice.matrix
+        expect(m2[1][0]).toBeCloseTo(2.0, 5) // xy
+        expect(m2[2][0]).toBeCloseTo(1.0, 5) // xz
+        expect(m2[2][1]).toBeCloseTo(0.5, 5) // yz
+      }
+    })
+
+    it(`should handle triclinic box with mixed PBC flags`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp ff
+0.0 10.0 1.0
+0.0 10.0 0.5
+0.0 20.0 0.0
+ITEM: ATOMS id type x y z
+1 1 5.0 5.0 10.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+      // z-direction is non-periodic (ff)
+      expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([
+        true,
+        true,
+        false,
+      ])
+
+      // Still should parse the triclinic cell correctly
+      if (`lattice` in trajectory.frames[0].structure) {
+        const matrix = trajectory.frames[0].structure.lattice.matrix
+        expect(matrix[1][0]).toBeCloseTo(1.0, 5) // xy
+        expect(matrix[2][0]).toBeCloseTo(0.5, 5) // xz
+      }
+    })
+
+    it(`should handle zero tilt factors (degenerate triclinic = orthogonal)`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 10.0 0.0
+0.0 8.0 0.0
+0.0 6.0 0.0
+ITEM: ATOMS id type x y z
+1 1 5.0 4.0 3.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+      const structure = trajectory.frames[0].structure
+
+      if (`lattice` in structure) {
+        const matrix = structure.lattice.matrix
+
+        // Zero tilts should give orthogonal box
+        expect(matrix[0][0]).toBeCloseTo(10.0, 5)
+        expect(matrix[1][1]).toBeCloseTo(8.0, 5)
+        expect(matrix[2][2]).toBeCloseTo(6.0, 5)
+
+        // Off-diagonal should be zero
+        expect(matrix[1][0]).toBeCloseTo(0.0, 5)
+        expect(matrix[2][0]).toBeCloseTo(0.0, 5)
+        expect(matrix[2][1]).toBeCloseTo(0.0, 5)
+      }
+    })
+
+    it(`should calculate correct volume for triclinic cell`, async () => {
+      // Triclinic box with known dimensions after bounding box conversion
+      // Given bounds and tilts:
+      //   xlo_bound=0, xhi_bound=10, xy=2.0 → lx = 10 - max(0,2,1,3) = 7
+      //   ylo_bound=0, yhi_bound=10, xz=1.0 → ly = 10 - max(0,0.5) = 9.5
+      //   zlo_bound=0, zhi_bound=10, yz=0.5 → lz = 10
+      // Volume = lx * ly * lz = 7 * 9.5 * 10 = 665
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 10.0 2.0
+0.0 10.0 1.0
+0.0 10.0 0.5
+ITEM: ATOMS id type x y z
+1 1 5.0 5.0 5.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+      // Volume is det(lattice_matrix) = lx * ly * lz (parallelepiped)
+      expect(trajectory.frames[0].metadata?.volume).toBeGreaterThan(0)
+      expect(trajectory.frames[0].metadata?.volume).toBeCloseTo(665, 0)
+    })
+  })
+
+  describe(`atom_type_mapping support`, () => {
+    it(`should map atom types to custom elements`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+3
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 2 5.0 0.0 0.0
+3 1 0.0 5.0 0.0`
+
+      const trajectory = await parse_trajectory_data(
+        content,
+        `test.lammpstrj`,
+        { 1: `Na`, 2: `Cl` }, // Map type 1→Na, type 2→Cl
+      )
+
+      const elements = trajectory.frames[0].structure.sites.map(
+        (site) => site.species[0].element,
+      )
+      expect(elements).toEqual([`Na`, `Cl`, `Na`])
+    })
+
+    it(`should fall back to default mapping for unmapped types`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+3
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 2 5.0 0.0 0.0
+3 3 0.0 5.0 0.0`
+
+      const trajectory = await parse_trajectory_data(
+        content,
+        `test.lammpstrj`,
+        { 1: `Na` }, // Only map type 1, others use default (2→He, 3→Li)
+      )
+
+      const elements = trajectory.frames[0].structure.sites.map(
+        (site) => site.species[0].element,
+      )
+      expect(elements).toEqual([`Na`, `He`, `Li`])
+    })
+
+    it(`should work without atom_type_mapping (default behavior)`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 2 5.0 0.0 0.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+      const elements = trajectory.frames[0].structure.sites.map(
+        (site) => site.species[0].element,
+      )
+      expect(elements).toEqual([`H`, `He`]) // Default: 1→H, 2→He
+    })
+
+    it(`should apply mapping consistently across multiple frames`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 2 5.0 0.0 0.0
+ITEM: TIMESTEP
+100
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.1 0.0 0.0
+2 2 5.1 0.0 0.0`
+
+      const trajectory = await parse_trajectory_data(
+        content,
+        `test.lammpstrj`,
+        { 1: `Fe`, 2: `O` },
+      )
+
+      expect(trajectory.frames).toHaveLength(2)
+
+      // Both frames should have same element mapping
+      for (const frame of trajectory.frames) {
+        const elements = frame.structure.sites.map((site) => site.species[0].element)
+        expect(elements).toEqual([`Fe`, `O`])
+      }
+    })
+
+    it(`should handle all 118 elements in mapping`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 79 0.0 0.0 0.0
+2 118 5.0 0.0 0.0`
+
+      // Map to specific elements by type number
+      const trajectory = await parse_trajectory_data(
+        content,
+        `test.lammpstrj`,
+        { 79: `Au`, 118: `Og` },
+      )
+
+      const elements = trajectory.frames[0].structure.sites.map(
+        (site) => site.species[0].element,
+      )
+      expect(elements).toEqual([`Au`, `Og`])
+    })
+  })
+})
+
 describe(`XYZ Trajectory Format`, () => {
   it.each([
     [
@@ -789,7 +1319,7 @@ describe(`Format Detection`, () => {
 
 describe(`Unsupported Formats`, () => {
   it.each([
-    [`test.dump`, `LAMMPS`],
+    [`test.dump`, `LAMMPS binary dump`],
     [`test.nc`, `NetCDF`],
     [`test.dcd`, `DCD`],
   ])(`should detect %s as %s format`, (filename, expected_format) => {
@@ -797,12 +1327,22 @@ describe(`Unsupported Formats`, () => {
     expect(message).toContain(expected_format)
   })
 
+  it.each([
+    [`test.lammpstrj.bz2`, `BZ2`],
+    [`trajectory.xyz.xz`, `XZ`],
+    [`data.json.zip`, `ZIP`],
+  ])(`should detect %s as unsupported %s compression`, (filename, expected_format) => {
+    const message = get_unsupported_format_message(filename, ``)
+    expect(message).toContain(expected_format)
+    expect(message).toContain(`compression not supported`)
+  })
+
   it(`should detect binary content as unsupported`, () => {
     const message = get_unsupported_format_message(`unknown.bin`, `\x00\x01\x02\x03`)
     expect(message).toContain(`Binary format not supported`)
   })
 
-  it.each([`test.xyz`, `test.json`, `XDATCAR`, `test.h5`, `test.traj`])(
+  it.each([`test.xyz`, `test.json`, `XDATCAR`, `test.h5`, `test.traj`, `test.lammpstrj`])(
     `should return null for supported format: %s`,
     (filename) => {
       expect(get_unsupported_format_message(filename, ``)).toBeNull()
@@ -897,6 +1437,8 @@ describe(`Metadata Preservation`, () => {
 describe(`Comprehensive File Coverage`, () => {
   // Dynamically get all trajectory files from the sample directory
   const trajectory_dir = join(process.cwd(), `src/site/trajectories`)
+  // Unsupported compression formats (not available in browser DecompressionStream)
+  const unsupported_compression = [`.bz2`, `.xz`, `.zip`]
   const all_trajectory_files = existsSync(trajectory_dir)
     ? readdirSync(trajectory_dir)
       .filter((name: string) => {
@@ -905,7 +1447,8 @@ describe(`Comprehensive File Coverage`, () => {
           !name.startsWith(`.`) &&
           !name.includes(`bad-file`) && // Exclude intentionally broken test files
           !name.endsWith(`.ts`) && // Exclude TypeScript files
-          !name.endsWith(`.js`)
+          !name.endsWith(`.js`) &&
+          !unsupported_compression.some((ext) => name.endsWith(ext)) // Exclude unsupported compression
       })
     : []
 

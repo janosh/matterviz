@@ -1,11 +1,8 @@
-/**
- * SVG path and rendering utilities for plot components.
- */
+// SVG path and rendering utilities for plot components.
 
-/**
- * Generate SVG path for a bar with rounded corners on the "free" end (away from axis).
- * For vertical bars, rounds top corners. For horizontal bars, rounds right corners.
- */
+//
+// Generate SVG path for a bar with rounded corners on the "free" end (away from axis).
+// For vertical bars, rounds top corners. For horizontal bars, rounds right corners.
 export function bar_path(
   x: number,
   y: number,

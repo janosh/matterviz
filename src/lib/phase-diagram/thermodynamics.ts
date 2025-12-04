@@ -137,7 +137,7 @@ export function find_lowest_energy_unary_refs(
   return refs
 }
 
-/** Calculate energy above hull (eV/atom). Missing pure element refs default to E_form = 0. */
+// Calculate energy above hull (eV/atom). Missing pure element refs default to E_form = 0.
 export function calculate_e_above_hull(
   entry: PhaseData,
   reference_entries: PhaseData[],

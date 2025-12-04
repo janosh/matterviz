@@ -332,7 +332,7 @@
             }
           }}
         >
-          <span>{label}</span>
+          <span>{@html label}</span>
           <span title={tooltip} {@attach create_tooltip()}>{@html value}</span>
           {#if copied_items.has(key ?? label)}
             <Icon

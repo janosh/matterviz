@@ -135,23 +135,29 @@
 
     // Energy Statistics
     const energy_item = {
-      label: `Min / avg / max formation energy`,
+      label: `Min / avg / max (eV/atom)`,
       value: `${format_num(phase_stats.energy_range.min, `.3f`)} / ${
         format_num(phase_stats.energy_range.avg, `.3f`)
       } / ${format_num(phase_stats.energy_range.max, `.3f`)}`,
       key: `formation-energy`,
     }
-    sections.push({ title: `Energy Statistics (eV/atom)`, items: [energy_item] })
+    sections.push({
+      title: `E<sub>form</sub> distribution`,
+      items: [energy_item],
+    })
 
     // Hull Distance
     const hull_distance_item = {
-      label: `Max / avg above hull`,
+      label: `Max / avg (eV/atom)`,
       value: `${format_num(phase_stats.hull_distance.max, `.3f`)} / ${
         format_num(phase_stats.hull_distance.avg, `.3f`)
       }`,
       key: `hull-distance`,
     }
-    sections.push({ title: `Hull Distance (eV/atom)`, items: [hull_distance_item] })
+    sections.push({
+      title: `E<sub>above hull</sub> distribution`,
+      items: [hull_distance_item],
+    })
 
     return sections
   })
@@ -163,7 +169,7 @@
     {#if sec_idx > 0}<hr />{/if}
     <section>
       {#if section.title}
-        <h5>{section.title}</h5>
+        <h5>{@html section.title}</h5>
       {/if}
       {#each section.items as item (item.key ?? item.label)}
         {@const { key, label, value } = item}
@@ -181,7 +187,7 @@
             }
           }}
         >
-          <span>{label}:</span>
+          <span>{@html label}:</span>
           <span>{@html value}</span>
           {#if key && copied_items.has(key)}
             <Icon
@@ -193,7 +199,7 @@
         </div>
       {/each}
 
-      {#if section.title === `Energy Statistics (eV/atom)` &&
+      {#if section.title === `E<sub>form</sub> distribution` &&
         e_form_data[0].y.length > 0}
         <Histogram
           series={e_form_data}
@@ -208,7 +214,7 @@
         />
       {/if}
 
-      {#if section.title === `Hull Distance (eV/atom)` &&
+      {#if section.title === `E<sub>above hull</sub> distribution` &&
         hull_distance_data[0].y.length > 0}
         <Histogram
           series={hull_distance_data}

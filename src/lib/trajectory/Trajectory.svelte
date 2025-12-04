@@ -26,7 +26,7 @@
     TrajHandlerData,
   } from './index'
   import { TrajectoryError, TrajectoryExportPane, TrajectoryInfoPane } from './index'
-  import type { LoadingOptions } from './parse'
+  import type { AtomTypeMapping, LoadingOptions } from './parse'
   import {
     create_frame_loader,
     get_unsupported_format_message,
@@ -93,6 +93,7 @@
     fps_range = DEFAULTS.trajectory.fps_range,
     fps = $bindable(5),
     loading_options = {},
+    atom_type_mapping,
     plot_skimming = true,
     ...rest
   }: EventHandlers & HTMLAttributes<HTMLDivElement> & {
@@ -170,6 +171,8 @@
     fps?: number // frame rate for playback
     // Loading options for large files
     loading_options?: LoadingOptions
+    // Map LAMMPS atom types to element symbols (e.g., {1: 'Na', 2: 'Cl'})
+    atom_type_mapping?: AtomTypeMapping
     // Disable plot skimming (mouse over plot doesn't update structure/step slider)
     plot_skimming?: boolean
   } = $props()
@@ -456,7 +459,7 @@
       reader.onerror = () => reject(new Error(`Failed to read file`))
 
       // Read as text for text-based formats, binary for others
-      if (file.name.toLowerCase().match(/\.(xyz|json|extxyz)$/)) {
+      if (file.name.toLowerCase().match(/\.(xyz|json|extxyz|lammpstrj)$/)) {
         reader.readAsText(file)
       } else reader.readAsArrayBuffer(file)
     })
@@ -672,9 +675,10 @@
         await load_with_indexing(data, filename)
       } else {
         // Small files: Use regular loading
+        const merged_options = { ...loading_options, atom_type_mapping }
         trajectory = await parse_trajectory_async(data, filename, (progress) => {
           parsing_progress = progress
-        })
+        }, merged_options)
       }
 
       current_step_idx = 0
@@ -713,9 +717,14 @@
   // Load using indexed parsing for large files
   async function load_with_indexing(data: string | ArrayBuffer, filename: string) {
     try { // Use indexed parsing for efficient large file handling
+      const merged_options = {
+        use_indexing: true,
+        ...loading_options,
+        atom_type_mapping,
+      }
       trajectory = await parse_trajectory_async(data, filename, (progress) => {
         parsing_progress = progress
-      }, { use_indexing: true, ...loading_options })
+      }, merged_options)
 
       // Attach frame loader and original data directly to trajectory for unified access
       orig_data = data
@@ -854,7 +863,8 @@
     {@const text = parsing_progress
       ? `${parsing_progress.stage} (${parsing_progress.current}%)`
       : `Loading trajectory...`}
-    <Spinner {text} {...spinner_props} />
+    {@const style = `flex: 1; display: grid; place-content: center`}
+    <Spinner {text} {style} {...spinner_props} />
   {:else if error_msg}
     <TrajectoryError
       {error_msg}
@@ -1218,6 +1228,9 @@
     z-index: var(--traj-z-index, 1);
     container-type: size; /* enable cqh for panes if explicit height is set */
   }
+  .trajectory.vertical:has(.content-area.show-both:not(.hide-plot)) {
+    min-height: calc(var(--min-height) * 2);
+  }
   .trajectory :global(.plot) {
     background: var(--surface-bg);
   }
@@ -1424,6 +1437,9 @@
   }
   /* Responsive design */
   @media (orientation: portrait) {
+    .trajectory:has(.content-area.show-both:not(.hide-plot):not(.hide-structure)) {
+      min-height: calc(var(--min-height) * 2);
+    }
     .trajectory .content-area.show-both:not(.hide-plot):not(.hide-structure) {
       grid-template-columns: 1fr !important;
       grid-template-rows: 1fr 1fr !important;

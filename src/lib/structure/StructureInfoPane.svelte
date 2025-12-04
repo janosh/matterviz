@@ -284,7 +284,8 @@
         },
         {
           label: `Colors`,
-          value: `Click legend labels to change colors, double-click to reset`,
+          value:
+            `Click legend labels to change colors, double-click to reset, right-click to remap elements`,
         },
         {
           label: `Keyboard`,
@@ -324,7 +325,7 @@
         {@const { key, label, value, tooltip } = item}
         {#if section.title === `Usage Tips`}
           <div class="tips-item">
-            <span>{label}</span>
+            <span>{@html label}</span>
             <span>{@html value}</span>
           </div>
         {:else}
@@ -343,7 +344,7 @@
               }
             }}
           >
-            <span>{label}</span>
+            <span>{@html label}</span>
             <span title={tooltip}>{@html value}</span>
             {#if key !== `sites-toggle` && key && copied_items.has(key)}
               <Icon

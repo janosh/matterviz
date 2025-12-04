@@ -75,8 +75,8 @@ export function calc_max_hull_dist_in_data(
   return Math.max(0.1, max_val)
 }
 
-/** Smart threshold for showing unstable entries based on entry count.
- * Few entries (≤25): show all. Many entries (≥100): use static default. Between: interpolate. */
+// Smart threshold for showing unstable entries based on entry count.
+// Few entries (≤25): show all. Many entries (≥100): use static default. Between: interpolate.
 export function compute_auto_hull_dist_threshold(
   n_entries: number,
   max_hull_dist_in_data: number,
