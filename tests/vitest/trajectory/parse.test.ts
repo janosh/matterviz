@@ -442,7 +442,7 @@ describe(`VASP XDATCAR Parser`, () => {
 
 describe(`LAMMPS Trajectory Format`, () => {
   it(`should parse LAMMPS trajectory file correctly`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
     expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
@@ -452,7 +452,7 @@ describe(`LAMMPS Trajectory Format`, () => {
   })
 
   it(`should parse multiple frames correctly`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
     expect(trajectory.frames.length).toBe(5)
@@ -465,7 +465,7 @@ describe(`LAMMPS Trajectory Format`, () => {
   })
 
   it(`should extract box bounds and create lattice correctly`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
     const structure = trajectory.frames[0].structure
@@ -479,7 +479,7 @@ describe(`LAMMPS Trajectory Format`, () => {
   })
 
   it(`should map atom types to elements`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
     // File has atom types 1 and 2, mapped to H and He
@@ -492,7 +492,7 @@ describe(`LAMMPS Trajectory Format`, () => {
   })
 
   it(`should calculate volumes correctly`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
     trajectory.frames.forEach((frame) => {
@@ -501,6 +501,15 @@ describe(`LAMMPS Trajectory Format`, () => {
         expect(typeof frame.metadata.volume).toBe(`number`)
       }
     })
+  })
+
+  it(`should parse gzip-compressed lammpstrj file`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
+    const traj = await parse_trajectory_data(content, `lammps-sample.lammpstrj.gz`)
+
+    expect(traj.metadata?.source_format).toBe(`lammps_trajectory`)
+    expect(traj.frames).toHaveLength(5)
+    expect(traj.frames[0].structure.sites).toHaveLength(864)
   })
 
   it(`should parse inline LAMMPS content`, async () => {
