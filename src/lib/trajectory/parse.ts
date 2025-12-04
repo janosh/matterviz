@@ -11,6 +11,7 @@ import {
   TRAJ_KEYWORDS_SIMPLE_REGEX,
   XDATCAR_REGEX,
 } from '$lib/constants'
+import { ELEM_SYMBOLS } from '$lib/labels'
 import * as math from '$lib/math'
 import { parse_xyz } from '$lib/structure/parse'
 import type { Dataset, Entity, Group } from 'h5wasm'
@@ -79,6 +80,14 @@ const FORMAT_PATTERNS = {
     const base = lower.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
     if (!/\.(xyz|extxyz)$/.test(base)) return false
     return count_xyz_frames(data) >= 2
+  },
+
+  lammpstrj: (data: string, filename?: string) => {
+    const lower = filename?.toLowerCase() ?? ``
+    const base = lower.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    if (!/\.lammpstrj$/.test(base)) return false
+    // Check for LAMMPS trajectory header pattern
+    return data.includes(`ITEM: TIMESTEP`) && data.includes(`ITEM: ATOMS`)
   },
 } as const
 
@@ -482,6 +491,148 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
       total_atoms: elements.length,
       periodic_boundary_conditions: [true, true, true],
       elements: element_names,
+      element_counts,
+    },
+  }
+}
+
+/** Check if LAMMPS boundary flag indicates periodic ('p' or 'pp') */
+const is_lammps_periodic = (flag: string): boolean => flag.toLowerCase().startsWith(`p`)
+
+/**
+ * Parse LAMMPS trajectory (.lammpstrj) format.
+ * Note: LAMMPS uses numeric atom types without element information.
+ * Types are mapped to elements by atomic number (1 → H, 2 → He, etc.).
+ */
+const parse_lammps_trajectory = (content: string, filename?: string): TrajectoryType => {
+  const lines = content.trim().split(/\r?\n/)
+  const frames: TrajectoryFrame[] = []
+  const atom_types_found = new Set<number>()
+  let idx = 0
+
+  const read_line = (): string => lines[idx++]?.trim() ?? ``
+  const peek_line = (): string => lines[idx]?.trim() ?? ``
+  const skip_to = (prefix: string): boolean => {
+    while (idx < lines.length && !peek_line().startsWith(prefix)) idx++
+    return idx < lines.length
+  }
+
+  while (idx < lines.length) {
+    // Find ITEM: TIMESTEP header
+    if (!skip_to(`ITEM: TIMESTEP`)) break
+    idx++ // skip header
+    const timestep = parseInt(read_line(), 10) || 0
+
+    // Find and parse NUMBER OF ATOMS
+    if (!skip_to(`ITEM: NUMBER OF ATOMS`)) break
+    idx++
+    const num_atoms = parseInt(read_line(), 10)
+    if (!num_atoms || num_atoms <= 0) continue
+
+    // Find and parse BOX BOUNDS with PBC flags (e.g., "pp pp pp" or "p p p")
+    if (!skip_to(`ITEM: BOX BOUNDS`)) break
+    const pbc_match = read_line().match(/BOX BOUNDS\s+(\w+)\s+(\w+)\s+(\w+)/)
+    const pbc: Pbc = pbc_match
+      ? [
+        is_lammps_periodic(pbc_match[1]),
+        is_lammps_periodic(pbc_match[2]),
+        is_lammps_periodic(pbc_match[3]),
+      ]
+      : [true, true, true]
+
+    // Parse box bounds (3 lines: lo hi [tilt])
+    const box_bounds = Array.from(
+      { length: 3 },
+      () => read_line().split(/\s+/).slice(0, 2).map(Number),
+    )
+    if (box_bounds.some((bounds) => bounds.length < 2 || bounds.some(isNaN))) continue
+
+    const lattice_matrix: math.Matrix3x3 = [
+      [box_bounds[0][1] - box_bounds[0][0], 0, 0],
+      [0, box_bounds[1][1] - box_bounds[1][0], 0],
+      [0, 0, box_bounds[2][1] - box_bounds[2][0]],
+    ]
+
+    // Find ITEM: ATOMS and parse column headers
+    if (!skip_to(`ITEM: ATOMS`)) break
+    const cols = read_line().replace(`ITEM: ATOMS`, ``).trim().toLowerCase().split(/\s+/)
+    const col = Object.fromEntries(cols.map((name, col_idx) => [name, col_idx]))
+
+    // Determine position columns: prefer unwrapped (xu/yu/zu) > scaled (xs/ys/zs) > regular (x/y/z)
+    const pos_keys = [`xu`, `yu`, `zu`].every((key) => key in col)
+      ? [`xu`, `yu`, `zu`]
+      : [`xs`, `ys`, `zs`].every((key) => key in col)
+      ? [`xs`, `ys`, `zs`]
+      : [`x`, `y`, `z`]
+    const pos_cols = pos_keys.map((key) => col[key])
+    const type_col = col.type ?? col.element ?? 1
+    const use_scaled = pos_keys[0] === `xs`
+
+    if (pos_cols.some((col_idx) => col_idx === undefined)) continue
+
+    // Parse atom data
+    const positions: number[][] = []
+    const elements: ElementSymbol[] = []
+
+    for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
+      const parts = read_line().split(/\s+/)
+      const coords = pos_cols.map((col_idx) => parseFloat(parts[col_idx]))
+
+      if (coords.some(isNaN) || parts.length <= Math.max(...pos_cols, type_col)) continue
+
+      // Convert scaled coordinates to Cartesian if needed
+      const xyz = use_scaled
+        ? math.mat3x3_vec3_multiply(
+          math.transpose_3x3_matrix(lattice_matrix),
+          coords as Vec3,
+        )
+        : coords
+      positions.push(xyz)
+
+      // Map atom type to element (type 1 → H, type 2 → He, etc.)
+      const atom_type = parseInt(parts[type_col], 10) || 1
+      atom_types_found.add(atom_type)
+      elements.push(ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length])
+    }
+
+    if (positions.length === num_atoms) {
+      const { volume } = math.calc_lattice_params(lattice_matrix)
+      frames.push(create_trajectory_frame(
+        positions,
+        elements,
+        lattice_matrix,
+        pbc,
+        timestep,
+        { volume, timestep },
+      ))
+    }
+  }
+
+  if (frames.length === 0) {
+    throw new Error(`No valid frames found in LAMMPS trajectory`)
+  }
+
+  const first_frame = frames[0]
+  const element_counts = first_frame.structure.sites.reduce<Record<string, number>>(
+    (counts, site) => {
+      const elem = site.species[0].element
+      counts[elem] = (counts[elem] || 0) + 1
+      return counts
+    },
+    {},
+  )
+
+  return {
+    frames,
+    metadata: {
+      filename,
+      source_format: `lammps_trajectory`,
+      frame_count: frames.length,
+      total_atoms: first_frame.structure.sites.length,
+      periodic_boundary_conditions: (`lattice` in first_frame.structure)
+        ? (first_frame.structure as { lattice: { pbc: Pbc } }).lattice.pbc
+        : [true, true, true],
+      atom_types: Array.from(atom_types_found).sort((a, b) => a - b),
       element_counts,
     },
   }
@@ -1129,6 +1280,9 @@ export async function parse_trajectory_data(
     if (FORMAT_PATTERNS.vasp(content, filename)) {
       return parse_vasp_xdatcar(content, filename)
     }
+    if (FORMAT_PATTERNS.lammpstrj(content, filename)) {
+      return parse_lammps_trajectory(content, filename)
+    }
 
     // Single XYZ fallback
     if (filename?.toLowerCase().match(/\.(?:xyz|extxyz)$/)) {
@@ -1275,8 +1429,21 @@ export function get_unsupported_format_message(
   content: string,
 ): string | null {
   const lower = filename.toLowerCase()
+
+  // Check for unsupported compression formats first
+  const unsupported_compression = [
+    { ext: `.bz2`, name: `BZ2` },
+    { ext: `.xz`, name: `XZ` },
+    { ext: `.zip`, name: `ZIP` },
+  ]
+  for (const { ext, name } of unsupported_compression) {
+    if (lower.endsWith(ext)) {
+      return `🚫 ${name} compression not supported in browser\nPlease decompress the file first`
+    }
+  }
+
   const formats = [
-    { extensions: [`.dump`, `.lammpstrj`], name: `LAMMPS`, tool: `pymatgen` },
+    { extensions: [`.dump`], name: `LAMMPS dump`, tool: `pymatgen` },
     { extensions: [`.nc`, `.netcdf`], name: `NetCDF`, tool: `MDAnalysis` },
     { extensions: [`.dcd`], name: `DCD`, tool: `MDAnalysis` },
   ]

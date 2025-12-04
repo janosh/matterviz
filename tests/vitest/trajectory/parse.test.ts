@@ -37,6 +37,13 @@ describe(`Trajectory File Detection`, () => {
     [`molecular_dynamics.h5`, true],
     [`relaxation.hdf5`, true],
 
+    // LAMMPS trajectory files
+    [`test.lammpstrj`, true],
+    [`simulation.lammpstrj`, true],
+    [`md_output.lammpstrj`, true],
+    [`trajectory.lammpstrj.gz`, true],
+    [`npt_simulation.lammpstrj`, true],
+
     // VASP trajectory files
     [`XDATCAR`, true],
     [`xdatcar`, true],
@@ -433,6 +440,130 @@ describe(`VASP XDATCAR Parser`, () => {
   })
 })
 
+describe(`LAMMPS Trajectory Format`, () => {
+  it(`should parse LAMMPS trajectory file correctly`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
+    expect(trajectory.frames.length).toBeGreaterThan(0)
+    expect(trajectory.frames[0].structure.sites.length).toBe(864)
+    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
+  })
+
+  it(`should parse multiple frames correctly`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    expect(trajectory.frames.length).toBe(5)
+    // First frame should have timestep 0
+    expect(trajectory.frames[0].step).toBe(0)
+    // Each frame should have consistent atom count
+    trajectory.frames.forEach((frame) => {
+      expect(frame.structure.sites.length).toBe(864)
+    })
+  })
+
+  it(`should extract box bounds and create lattice correctly`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    const structure = trajectory.frames[0].structure
+    expect(`lattice` in structure).toBe(true)
+    if (`lattice` in structure) {
+      // Box is approximately 21.12 x 21.12 x 21.12
+      expect(structure.lattice.a).toBeCloseTo(21.12, 1)
+      expect(structure.lattice.b).toBeCloseTo(21.12, 1)
+      expect(structure.lattice.c).toBeCloseTo(21.12, 1)
+    }
+  })
+
+  it(`should map atom types to elements`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    // File has atom types 1 and 2, mapped to H and He
+    const elements = trajectory.frames[0].structure.sites.map(
+      (site) => site.species[0].element,
+    )
+    expect(elements).toContain(`H`)
+    expect(elements).toContain(`He`)
+    expect(trajectory.metadata?.atom_types).toEqual([1, 2])
+  })
+
+  it(`should calculate volumes correctly`, async () => {
+    const content = read_test_file(`lammps-sample.lammpstrj`)
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    trajectory.frames.forEach((frame) => {
+      if (frame.metadata?.volume !== undefined) {
+        expect(frame.metadata.volume).toBeGreaterThan(0)
+        expect(typeof frame.metadata.volume).toBe(`number`)
+      }
+    })
+  })
+
+  it(`should parse inline LAMMPS content`, async () => {
+    const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+3
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.0 0.0 0.0
+3 2 2.5 5.0 0.0
+ITEM: TIMESTEP
+100
+ITEM: NUMBER OF ATOMS
+3
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.1 0.0 0.0
+2 1 5.1 0.0 0.0
+3 2 2.6 5.0 0.0`
+
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
+    expect(trajectory.frames).toHaveLength(2)
+    expect(trajectory.frames[0].step).toBe(0)
+    expect(trajectory.frames[1].step).toBe(100)
+    expect(trajectory.frames[0].structure.sites).toHaveLength(3)
+  })
+
+  it(`should reject invalid LAMMPS content`, async () => {
+    const invalid_content = `This is not a LAMMPS file`
+    await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects
+      .toThrow()
+  })
+
+  it(`should handle PBC flags from BOX BOUNDS`, async () => {
+    const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS ff pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.0 0.0 0.0`
+
+    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+    // First dimension is non-periodic (ff), others are periodic (pp)
+    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([false, true, true])
+  })
+})
+
 describe(`XYZ Trajectory Format`, () => {
   it.each([
     [
@@ -789,7 +920,7 @@ describe(`Format Detection`, () => {
 
 describe(`Unsupported Formats`, () => {
   it.each([
-    [`test.dump`, `LAMMPS`],
+    [`test.dump`, `LAMMPS dump`],
     [`test.nc`, `NetCDF`],
     [`test.dcd`, `DCD`],
   ])(`should detect %s as %s format`, (filename, expected_format) => {
@@ -797,12 +928,22 @@ describe(`Unsupported Formats`, () => {
     expect(message).toContain(expected_format)
   })
 
+  it.each([
+    [`test.lammpstrj.bz2`, `BZ2`],
+    [`trajectory.xyz.xz`, `XZ`],
+    [`data.json.zip`, `ZIP`],
+  ])(`should detect %s as unsupported %s compression`, (filename, expected_format) => {
+    const message = get_unsupported_format_message(filename, ``)
+    expect(message).toContain(expected_format)
+    expect(message).toContain(`compression not supported`)
+  })
+
   it(`should detect binary content as unsupported`, () => {
     const message = get_unsupported_format_message(`unknown.bin`, `\x00\x01\x02\x03`)
     expect(message).toContain(`Binary format not supported`)
   })
 
-  it.each([`test.xyz`, `test.json`, `XDATCAR`, `test.h5`, `test.traj`])(
+  it.each([`test.xyz`, `test.json`, `XDATCAR`, `test.h5`, `test.traj`, `test.lammpstrj`])(
     `should return null for supported format: %s`,
     (filename) => {
       expect(get_unsupported_format_message(filename, ``)).toBeNull()
@@ -897,6 +1038,8 @@ describe(`Metadata Preservation`, () => {
 describe(`Comprehensive File Coverage`, () => {
   // Dynamically get all trajectory files from the sample directory
   const trajectory_dir = join(process.cwd(), `src/site/trajectories`)
+  // Unsupported compression formats (not available in browser DecompressionStream)
+  const unsupported_compression = [`.bz2`, `.xz`, `.zip`]
   const all_trajectory_files = existsSync(trajectory_dir)
     ? readdirSync(trajectory_dir)
       .filter((name: string) => {
@@ -905,7 +1048,8 @@ describe(`Comprehensive File Coverage`, () => {
           !name.startsWith(`.`) &&
           !name.includes(`bad-file`) && // Exclude intentionally broken test files
           !name.endsWith(`.ts`) && // Exclude TypeScript files
-          !name.endsWith(`.js`)
+          !name.endsWith(`.js`) &&
+          !unsupported_compression.some((ext) => name.endsWith(ext)) // Exclude unsupported compression
       })
     : []
 
