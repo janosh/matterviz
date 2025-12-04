@@ -58,19 +58,22 @@
         "displayName": "MatterViz Viewer",
         "selector": [
           {
-            "filenamePattern": "*.{traj,h5,hdf5,dcd,xtc,trr}"
+            "filenamePattern": "*.{traj,h5,hdf5,dcd,xtc,trr,lammpstrj}"
           },
           {
-            "filenamePattern": "*.{cif,xyz,extxyz,poscar}.gz"
+            "filenamePattern": "*.{cif,mcif,mmcif,xyz,extxyz,poscar,vasp,pdb,mol,mol2,sdf,lmp,data,dump}"
+          },
+          {
+            "filenamePattern": "*.{cif,mcif,mmcif,xyz,extxyz,poscar,vasp,pdb,mol,mol2,sdf,lmp,data,dump}.{gz,bz2}"
           },
           {
             "filenamePattern": "*{structure,material,crystal,lattice,geometry}.{json,yaml,yml}.gz"
           },
           {
-            "filenamePattern": "*{xdatcar,contcar,outcar}"
+            "filenamePattern": "*{poscar,xdatcar,contcar,outcar}"
           },
           {
-            "filenamePattern": "*{trajectory,relax,npt,nvt,nve}*"
+            "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,md,dynamics,simulation}*"
           }
         ],
         "priority": "option"

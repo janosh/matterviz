@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
-  import { element_data, format_num, Icon } from '$lib'
+  import { ELEM_SYMBOLS, element_data, format_num, Icon } from '$lib'
   import { contrast_color, default_element_colors } from '$lib/colors'
   import { ColorBar } from '$lib/plot'
   import { SETTINGS_CONFIG } from '$lib/settings'
@@ -30,6 +30,10 @@
     get_element_label,
     hidden_elements = $bindable(new Set()),
     hidden_prop_vals = $bindable(new Set<number | string>()),
+    // Element remapping: maps original element symbols to new ones
+    element_mapping = $bindable<
+      Partial<Record<ElementSymbol, ElementSymbol>> | undefined
+    >(),
     title = ``,
     sym_data = null,
     structure = undefined,
@@ -46,6 +50,8 @@
     get_element_label?: (element: string, amount: number) => string // Custom label function
     hidden_elements?: Set<ElementSymbol>
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
+    // Element remapping: maps original element symbols to new ones (e.g., {'H': 'Na', 'He': 'Cl'})
+    element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
     title?: string
     sym_data?: MoyoDataset | null
     structure?: AnyStructure | null
@@ -115,6 +121,33 @@
     else new_set.add(value)
     return new_set
   }
+
+  // Element remapping state
+  let remap_menu_open = $state<ElementSymbol | null>(null)
+  let remap_search = $state(``)
+
+  // Filtered elements based on search
+  let filtered_elements = $derived.by(() => {
+    if (!remap_search) return ELEM_SYMBOLS
+    const query = remap_search.toLowerCase()
+    return ELEM_SYMBOLS.filter((elem) => {
+      const data = element_data.find((el) => el.symbol === elem)
+      return elem.toLowerCase().includes(query) ||
+        data?.name?.toLowerCase().includes(query)
+    })
+  })
+
+  function remap_element(from: ElementSymbol, to: ElementSymbol) {
+    if (from === to && element_mapping?.[from]) {
+      // Remove mapping if mapping back to original element
+      const { [from]: _, ...rest } = element_mapping
+      element_mapping = Object.keys(rest).length > 0 ? rest : undefined
+    } else if (from !== to) {
+      element_mapping = { ...element_mapping, [from]: to }
+    }
+    remap_menu_open = null
+    remap_search = ``
+  }
 </script>
 
 {#snippet mode_selector_snippet()}
@@ -164,23 +197,30 @@
   <div {...rest} class="atom-legend element-legend {rest.class ?? ``}">
     {#each Object.entries(elements!) as [elem, amt], idx (elem + amt)}
       {@const is_hidden = hidden_elements.has(elem as ElementSymbol)}
+      {@const displayed_elem = element_mapping?.[elem as ElementSymbol] || elem}
       <div class="legend-item">
         <label
           bind:this={labels[idx]}
-          title={element_data.find((el) => el.symbol == elem)?.name}
+          title="{element_data.find((el) => el.symbol == displayed_elem)?.name}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
-          style:background-color={colors.element[elem]}
+          style:background-color={colors.element[displayed_elem]}
           class:hidden={is_hidden}
+          class:remapped={displayed_elem !== elem}
           ondblclick={(event) => {
             event.preventDefault()
-            colors.element[elem] = default_element_colors[elem]
+            colors.element[displayed_elem] = default_element_colors[displayed_elem]
+          }}
+          oncontextmenu={(event) => {
+            event.preventDefault()
+            remap_menu_open = remap_menu_open === elem ? null : (elem as ElementSymbol)
+            remap_search = ``
           }}
           {@attach contrast_color()}
         >
           {#if get_element_label}
-            {get_element_label(elem, amt)}
+            {get_element_label(displayed_elem, amt)}
           {:else}
-            {elem}
+            {displayed_elem}
             {#if show_amounts}
               <sub>{format_num(amt, amount_format)}</sub>
             {/if}
@@ -207,6 +247,56 @@
         >
           ×
         </button>
+        {#if remap_menu_open === elem}
+          <div
+            class="remap-dropdown"
+            {@attach click_outside({
+              callback: () => {
+                remap_menu_open = null
+                remap_search = ``
+              },
+            })}
+          >
+            <input
+              type="text"
+              class="remap-search"
+              placeholder="Search elements..."
+              bind:value={remap_search}
+              onkeydown={(event) => {
+                if (event.key === `Escape`) {
+                  remap_menu_open = null
+                  remap_search = ``
+                } else if (event.key === `Enter` && filtered_elements.length > 0) {
+                  remap_element(elem as ElementSymbol, filtered_elements[0])
+                }
+              }}
+            />
+            <div class="remap-options">
+              {#if displayed_elem !== elem}
+                <button
+                  class="remap-option reset"
+                  onclick={() => remap_element(elem as ElementSymbol, elem as ElementSymbol)}
+                >
+                  <span>Reset to {elem}</span>
+                </button>
+              {/if}
+              {#each filtered_elements as target_elem (target_elem)}
+                {@const elem_info = element_data.find((el) => el.symbol === target_elem)}
+                <button
+                  class="remap-option"
+                  class:selected={displayed_elem === target_elem}
+                  onclick={() => remap_element(elem as ElementSymbol, target_elem)}
+                  style:background-color={colors.element[target_elem]}
+                  {@attach contrast_color()}
+                >
+                  <small style="opacity: 0.6">{elem_info?.number}</small>
+                  <b>{target_elem}</b>
+                  {elem_info?.name}
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
       </div>
     {/each}
     {@render mode_selector_snippet()}
@@ -288,16 +378,15 @@
     pointer-events: auto;
     visibility: visible;
     filter: var(--legend-filter, grayscale(10%) brightness(0.95) saturate(0.8));
-  }
-  /* Element Legend Styles */
-  .element-legend {
     display: flex;
     bottom: var(--struct-legend-bottom, clamp(4pt, 3cqmin, 8pt));
     right: var(--struct-legend-right, clamp(4pt, 3cqmin, 8pt));
     gap: var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt));
-    font-size: var(--struct-legend-font, clamp(8pt, 3cqmin, 14pt));
   }
-  .element-legend .legend-item {
+  .element-legend {
+    font-size: var(--struct-legend-font, clamp(7pt, 2.5cqmin, 12pt));
+  }
+  .atom-legend .legend-item {
     position: relative;
     display: inline-block;
   }
@@ -322,7 +411,8 @@
     top: 7pt;
     left: 0;
   }
-  .element-legend button.toggle-visibility {
+  /* Toggle visibility button - shared between element and property legends */
+  .atom-legend button.toggle-visibility {
     position: absolute;
     top: -3px;
     right: -7px;
@@ -345,11 +435,11 @@
     z-index: 2;
     pointer-events: auto;
   }
-  .element-legend button.toggle-visibility.visible,
-  .element-legend .legend-item:hover button.toggle-visibility {
+  .atom-legend button.toggle-visibility.visible,
+  .atom-legend .legend-item:hover button.toggle-visibility {
     opacity: 1;
   }
-  .element-legend button.toggle-visibility:hover {
+  .atom-legend button.toggle-visibility:hover {
     background: rgba(0, 0, 0, 0.8);
     transform: scale(1.15);
   }
@@ -357,13 +447,54 @@
     font-size: 0.85em;
     margin: 0 0 0 -4px;
   }
+  .element-legend label.remapped {
+    outline: 2px dashed var(--accent-color, #4a90d9);
+    outline-offset: 1px;
+  }
+  .remap-dropdown {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 0.4rem;
+    background: var(--surface-bg);
+    border-radius: var(--border-radius, 3pt);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  }
+  .remap-search {
+    width: 100%;
+    padding: 0.25rem 0.4rem;
+    border: none;
+    box-sizing: border-box;
+  }
+  .remap-search:focus {
+    outline: none;
+  }
+  .remap-options {
+    max-height: 250px;
+    overflow-y: auto;
+  }
+  .remap-option {
+    display: flex;
+    gap: 3pt;
+    place-items: center;
+    width: 100%;
+    border-radius: 0;
+  }
+  .remap-option:hover {
+    filter: brightness(1.1);
+  }
+  .remap-option.selected {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
+  }
+  .remap-option.reset {
+    background: var(--surface-bg-hover, rgba(128, 128, 128, 0.1));
+    font-style: italic;
+  }
 
   /* Property Legend Styles */
   .property-legend {
-    display: flex;
-    bottom: var(--struct-legend-bottom, clamp(4pt, 3cqmin, 8pt));
-    right: var(--struct-legend-right, clamp(4pt, 3cqmin, 8pt));
-    gap: var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt));
     font-size: var(--struct-legend-font, clamp(8pt, 3cqmin, 14pt));
     align-items: center;
   }
@@ -435,10 +566,6 @@
   .mode-option span {
     white-space: nowrap;
   }
-  .property-legend .legend-item {
-    position: relative;
-    display: inline-block;
-  }
   .category-label {
     padding: var(--struct-legend-padding, 0 4pt);
     border-radius: var(--struct-legend-radius, var(--border-radius, 3pt));
@@ -449,37 +576,6 @@
   }
   .category-label.hidden {
     opacity: 0.4;
-  }
-  .property-legend button.toggle-visibility {
-    position: absolute;
-    top: -3px;
-    right: -7px;
-    width: 1em;
-    height: 1em;
-    padding: 0;
-    margin: 0;
-    border: none;
-    background: rgba(0, 0, 0, 0.5);
-    color: white;
-    border-radius: 50%;
-    font-size: 0.9em;
-    line-height: 0.9;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.2s ease, background 0.2s ease, transform 0.1s ease;
-    z-index: 2;
-    pointer-events: auto;
-  }
-  .property-legend button.toggle-visibility.visible,
-  .property-legend .legend-item:hover button.toggle-visibility {
-    opacity: 1;
-  }
-  .property-legend button.toggle-visibility:hover {
-    background: rgba(0, 0, 0, 0.8);
-    transform: scale(1.15);
   }
   .legend-header h4 {
     margin: 0;

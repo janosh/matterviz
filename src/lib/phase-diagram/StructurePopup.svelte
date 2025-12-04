@@ -23,10 +23,6 @@
     stats?: { id?: string; e_above_hull?: number; e_form?: number }
     popup_div?: HTMLDivElement
   } = $props()
-
-  const handle_keydown = (event: KeyboardEvent) => {
-    if (event.key === `Escape`) onclose?.()
-  }
 </script>
 
 {#snippet close_button()}
@@ -35,7 +31,13 @@
   </button>
 {/snippet}
 
-<svelte:window onkeydown={handle_keydown} />
+<svelte:window
+  onkeydown={(event) => event.key === `Escape` && onclose?.()}
+  onmousedown={(event) => {
+    if (!popup_div || !(event.target instanceof Node)) return
+    if (!popup_div.contains(event.target)) onclose?.()
+  }}
+/>
 
 <div
   {...rest}

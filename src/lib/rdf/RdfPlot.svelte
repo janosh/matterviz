@@ -159,7 +159,7 @@
       x: ent.pattern.r,
       y: ent.pattern.g_r,
       label: ent.label,
-      visible: true,
+      visible: mode === `element_pairs` ? idx < 3 : true,
       markers: `line` as const,
       line_style: {
         stroke: ent.color ?? PLOT_COLORS[idx % PLOT_COLORS.length],

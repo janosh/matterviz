@@ -8,7 +8,7 @@
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
-  /** Merge tick config with default rotation, preserving user overrides */
+  // Merge tick config with default rotation, preserving user overrides
   const with_rotation = (
     tick: TickConfig | undefined,
     default_rot: number,
