@@ -1,10 +1,9 @@
-// @vitest-environment happy-dom
 import { PlotTooltip } from '$lib/plot'
 import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
-/** Helper to create a simple children snippet for testing. */
+// Helper to create a simple children snippet for testing.
 function make_children(text: string = `Test`) {
   return createRawSnippet(() => ({
     render: () => `<span>${text}</span>`,

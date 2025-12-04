@@ -97,6 +97,11 @@
     sym_data = $bindable<MoyoDataset | null>(null),
     // Symmetry analysis settings (bindable for external control)
     symmetry_settings = $bindable(symmetry.default_sym_settings),
+    // Map element symbols to different elements (e.g., {'H': 'Na', 'He': 'Cl'})
+    // Useful for LAMMPS files where atom types are mapped to H, He, Li by default
+    element_mapping = $bindable<
+      Partial<Record<ElementSymbol, ElementSymbol>> | undefined
+    >(),
     children,
     top_right_controls,
     on_file_load,
@@ -155,6 +160,8 @@
       sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
       symmetry_settings?: Partial<SymmetrySettings>
+      // Map element symbols to different elements (e.g., {'H': 'Na', 'He': 'Cl'})
+      element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
       // Atom coloring configuration
@@ -417,14 +424,27 @@
     })
   })
 
-  // Apply image atoms to the supercell structure
+  // Apply element mapping then image atoms to the supercell structure
   $effect(() => {
-    if (
-      show_image_atoms && supercell_structure && `lattice` in supercell_structure &&
-      supercell_structure.lattice
-    ) {
-      displayed_structure = get_pbc_image_sites(supercell_structure)
-    } else displayed_structure = supercell_structure
+    let struct = supercell_structure
+    if (struct && element_mapping && Object.keys(element_mapping).length > 0) {
+      const mapping = element_mapping // capture for TypeScript narrowing
+      struct = {
+        ...struct,
+        sites: struct.sites.map((site) => ({
+          ...site,
+          species: site.species.map((sp) => ({
+            ...sp,
+            element: mapping[sp.element as ElementSymbol] ?? sp.element,
+          })),
+          label: mapping[site.label as ElementSymbol] ?? site.label,
+        })),
+      }
+    }
+    displayed_structure =
+      show_image_atoms && struct && `lattice` in struct && struct.lattice
+        ? get_pbc_image_sites(struct)
+        : struct
   })
 
   // Track if camera has ever been moved from initial position
@@ -761,13 +781,10 @@
                   <button
                     class="view-mode-option"
                     class:selected={measure_mode === mode}
-                    onclick={() => {
-                      measure_mode = mode
-                      measure_menu_open = false
-                    }}
+                    onclick={() => [measure_mode, measure_menu_open] = [mode, false]}
                   >
                     <Icon {icon} style="transform: scale({scale})" />
-                    <span>{label}</span>
+                    <span>{@html label}</span>
                   </button>
                 {/each}
               </div>
@@ -820,6 +837,7 @@
       elements={get_elem_amounts(supercell_structure ?? structure!)}
       bind:hidden_elements
       bind:hidden_prop_vals
+      bind:element_mapping
       {sym_data}
     >
       {#if structure && `lattice` in structure}

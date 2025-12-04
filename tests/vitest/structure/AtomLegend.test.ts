@@ -716,6 +716,210 @@ describe(`AtomLegend Component`, () => {
     })
   })
 
+  describe(`Element Remapping`, () => {
+    test.each([
+      [{ H: `Na` } as const, `Sodium (remapped from H)`, `remapped`],
+      [undefined, `Hydrogen`, `not remapped`],
+    ])(`tooltip shows %s element name when %s`, (element_mapping, expected_title, _) => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { H: 1 }, element_mapping },
+      })
+      expect(doc_query<HTMLLabelElement>(`label`).title).toBe(expected_title)
+    })
+
+    test(`displays remapped element symbol in label`, () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { H: 2, He: 3 }, element_mapping: { H: `Na`, He: `Cl` } },
+      })
+      const labels = Array.from(document.querySelectorAll(`label`)).map((l) =>
+        l.textContent?.trim()
+      )
+      expect(labels).toEqual([`Na 2`, `Cl 3`])
+    })
+
+    test(`uses remapped element color`, () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { H: 1 }, element_mapping: { H: `Fe` } },
+      })
+      expect(doc_query<HTMLLabelElement>(`label`).style.backgroundColor).toBe(
+        colors.element.Fe,
+      )
+    })
+
+    test.each([
+      [{ H: `Na` } as const, true, `remapped`],
+      [undefined, false, `not remapped`],
+    ])(`label has remapped class=%s when %s`, (element_mapping, has_class, _) => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { H: 1 }, element_mapping },
+      })
+      expect(doc_query<HTMLLabelElement>(`label`).classList.contains(`remapped`)).toBe(
+        has_class,
+      )
+    })
+
+    test(`opens remap dropdown on right-click`, async () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { Fe: 2 } },
+      })
+
+      const label = doc_query<HTMLLabelElement>(`label`)
+      expect(document.querySelector(`.remap-dropdown`)).toBeNull()
+
+      // Right-click to open dropdown
+      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+      await tick()
+
+      expect(document.querySelector(`.remap-dropdown`)).toBeTruthy()
+      expect(document.querySelector(`.remap-search`)).toBeTruthy()
+    })
+
+    test(`remap dropdown has search input and element options`, async () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { Fe: 2 } },
+      })
+
+      const label = doc_query<HTMLLabelElement>(`label`)
+      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+      await tick()
+
+      const search_input = doc_query<HTMLInputElement>(`.remap-search`)
+      expect(search_input.placeholder).toBe(`Search elements...`)
+
+      const options = document.querySelectorAll(`.remap-option`)
+      expect(options.length).toBeGreaterThan(0)
+    })
+
+    test(`clicking remap option updates element_mapping`, async () => {
+      let element_mapping: Record<string, string> | undefined
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          elements: { H: 1 },
+          get element_mapping() {
+            return element_mapping
+          },
+          set element_mapping(val) {
+            element_mapping = val
+          },
+        },
+      })
+
+      const label = doc_query<HTMLLabelElement>(`label`)
+      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+      await tick()
+
+      // Find and click Na option
+      const options = Array.from(document.querySelectorAll(`.remap-option`))
+      const na_option = options.find((opt) =>
+        opt.querySelector(`b`)?.textContent === `Na`
+      ) as HTMLButtonElement
+
+      expect(na_option).toBeTruthy()
+      na_option.click()
+      await tick()
+
+      expect(element_mapping).toEqual({ H: `Na` })
+      expect(document.querySelector(`.remap-dropdown`)).toBeNull() // Dropdown closes
+    })
+
+    test(`search filters element options`, async () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { H: 1 } },
+      })
+
+      const label = doc_query<HTMLLabelElement>(`label`)
+      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+      await tick()
+
+      const search_input = doc_query<HTMLInputElement>(`.remap-search`)
+      const initial_options_count = document.querySelectorAll(`.remap-option`).length
+
+      // Type 'sodium' to filter
+      search_input.value = `sodium`
+      search_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+
+      const filtered_options = document.querySelectorAll(`.remap-option`)
+      expect(filtered_options.length).toBeLessThan(initial_options_count)
+      expect(filtered_options.length).toBeGreaterThan(0)
+    })
+
+    test(`Escape closes remap dropdown`, async () => {
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { Fe: 2 } },
+      })
+
+      const label = doc_query<HTMLLabelElement>(`label`)
+      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+      await tick()
+
+      expect(document.querySelector(`.remap-dropdown`)).toBeTruthy()
+
+      const search_input = doc_query<HTMLInputElement>(`.remap-search`)
+      search_input.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
+      )
+      await tick()
+
+      expect(document.querySelector(`.remap-dropdown`)).toBeNull()
+    })
+
+    test(`reset option removes mapping`, async () => {
+      let element_mapping: Record<string, string> | undefined = { H: `Na` }
+      mount(AtomLegend, {
+        target: document.body,
+        props: {
+          elements: { H: 1 },
+          get element_mapping() {
+            return element_mapping
+          },
+          set element_mapping(val) {
+            element_mapping = val
+          },
+        },
+      })
+
+      const label = doc_query<HTMLLabelElement>(`label`)
+      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+      await tick()
+
+      // Should have reset option since H is remapped
+      const reset_option = doc_query<HTMLButtonElement>(`.remap-option.reset`)
+      expect(reset_option).toBeTruthy()
+      expect(reset_option.textContent).toContain(`Reset to H`)
+
+      reset_option.click()
+      await tick()
+
+      expect(element_mapping).toBeUndefined() // Empty mapping becomes undefined
+    })
+
+    test(`multiple elements can be remapped independently`, () => {
+      const element_mapping: Record<string, string> = { H: `Na`, He: `Cl` }
+      mount(AtomLegend, {
+        target: document.body,
+        props: { elements: { H: 1, He: 2, Li: 3 }, element_mapping },
+      })
+
+      const labels = document.querySelectorAll(`label`)
+      expect(labels[0].textContent?.trim()).toBe(`Na 1`)
+      expect(labels[0].classList.contains(`remapped`)).toBe(true)
+      expect(labels[1].textContent?.trim()).toBe(`Cl 2`)
+      expect(labels[1].classList.contains(`remapped`)).toBe(true)
+      expect(labels[2].textContent?.trim()).toBe(`Li 3`)
+      expect(labels[2].classList.contains(`remapped`)).toBe(false)
+    })
+  })
+
   describe(`Accessibility`, () => {
     test(`mode toggle has correct aria attributes`, async () => {
       mount(AtomLegend, {
