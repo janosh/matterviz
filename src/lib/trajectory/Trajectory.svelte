@@ -854,7 +854,8 @@
     {@const text = parsing_progress
       ? `${parsing_progress.stage} (${parsing_progress.current}%)`
       : `Loading trajectory...`}
-    <Spinner {text} {...spinner_props} />
+    {@const style = `flex: 1; display: grid; place-content: center`}
+    <Spinner {text} {style} {...spinner_props} />
   {:else if error_msg}
     <TrajectoryError
       {error_msg}
@@ -1218,6 +1219,9 @@
     z-index: var(--traj-z-index, 1);
     container-type: size; /* enable cqh for panes if explicit height is set */
   }
+  .trajectory.vertical:has(.content-area.show-both:not(.hide-plot)) {
+    min-height: calc(var(--min-height) * 2);
+  }
   .trajectory :global(.plot) {
     background: var(--surface-bg);
   }
@@ -1424,6 +1428,9 @@
   }
   /* Responsive design */
   @media (orientation: portrait) {
+    .trajectory:has(.content-area.show-both:not(.hide-plot):not(.hide-structure)) {
+      min-height: calc(var(--min-height) * 2);
+    }
     .trajectory .content-area.show-both:not(.hide-plot):not(.hide-structure) {
       grid-template-columns: 1fr !important;
       grid-template-rows: 1fr 1fr !important;

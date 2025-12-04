@@ -243,10 +243,8 @@ const parse_qpoint = (
 const EV_TO_THZ = 1 / THz_TO_EV
 const CM_TO_THZ = 1 / THz_TO_CM
 
-/**
- * Extract first spin channel from pymatgen spin-keyed data.
- * Pymatgen stores spin-polarized data as {1: [...], -1: [...]} or {"Spin.up": [...], ...}
- */
+// Extract first spin channel from pymatgen spin-keyed data.
+// Pymatgen stores spin-polarized data as {1: [...], -1: [...]} or {"Spin.up": [...], ...}
 function extract_first_spin_channel<T>(data: unknown): T | null {
   if (Array.isArray(data)) return data as T
   if (data && typeof data === `object`) {
@@ -601,7 +599,7 @@ export function find_qpoint_at_rescaled_x(
 // Densities can be spin-keyed: {1: number[], -1: number[]} or {"Spin.up": number[], ...}
 type SpinDensities = Record<string, number[]>
 
-/** Pymatgen Dos base class format */
+// Pymatgen Dos base class format
 export interface PymatgenDos {
   '@class': string
   '@module': string
@@ -610,7 +608,7 @@ export interface PymatgenDos {
   efermi: number
 }
 
-/** Pymatgen CompleteDos format (includes projected DOS) */
+// Pymatgen CompleteDos format (includes projected DOS)
 export interface PymatgenCompleteDos extends PymatgenDos {
   '@class': `CompleteDos` | `LobsterCompleteDos`
   structure?: Record<string, unknown>
@@ -619,7 +617,7 @@ export interface PymatgenCompleteDos extends PymatgenDos {
   spd_dos?: Record<string, PymatgenDos>
 }
 
-/** Shift a single DOS object's energies by the given amount */
+// Shift a single DOS object's energies by the given amount
 function shift_dos_energies<T extends PymatgenDos>(dos: T, shift: number): T {
   return {
     ...dos,
@@ -628,8 +626,8 @@ function shift_dos_energies<T extends PymatgenDos>(dos: T, shift: number): T {
   }
 }
 
-/** Shift DOS energies relative to Fermi energy so E_F = 0
- * Recursively shifts nested DOS in atom_dos and spd_dos for consistency */
+// Shift DOS energies relative to Fermi energy so E_F = 0
+// Recursively shifts nested DOS in atom_dos and spd_dos for consistency
 export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
   const shift = dos.efermi
 

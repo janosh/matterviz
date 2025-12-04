@@ -562,6 +562,226 @@ ITEM: ATOMS id type x y z
     // First dimension is non-periodic (ff), others are periodic (pp)
     expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([false, true, true])
   })
+
+  describe(`triclinic box support`, () => {
+    it(`should parse triclinic box with tilt factors`, async () => {
+      // Triclinic box with xy=2.0, xz=1.0, yz=0.5
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 10.0 2.0
+0.0 10.0 1.0
+0.0 10.0 0.5
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.0 5.0 5.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+      expect(trajectory.frames).toHaveLength(1)
+      const structure = trajectory.frames[0].structure
+      expect(`lattice` in structure).toBe(true)
+
+      if (`lattice` in structure) {
+        // For this simple case (lo=0, hi=10, small tilts), the lattice should be close to:
+        // a = (lx, 0, 0), b = (xy, ly, 0), c = (xz, yz, lz)
+        const matrix = structure.lattice.matrix
+
+        // Check that off-diagonal elements are present (triclinic signature)
+        expect(matrix[1][0]).toBeCloseTo(2.0, 5) // xy tilt
+        expect(matrix[2][0]).toBeCloseTo(1.0, 5) // xz tilt
+        expect(matrix[2][1]).toBeCloseTo(0.5, 5) // yz tilt
+
+        // Diagonal elements should be the box lengths
+        expect(matrix[0][0]).toBeGreaterThan(0) // lx
+        expect(matrix[1][1]).toBeGreaterThan(0) // ly
+        expect(matrix[2][2]).toBeCloseTo(10.0, 5) // lz (unchanged for z)
+      }
+    })
+
+    it(`should correctly convert bounding box to actual box dimensions`, async () => {
+      // Test case with significant tilt that affects bounding box conversion
+      // xy=3, xz=2, yz=1 with bounds that include the tilt offset
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+-3.0 13.0 3.0
+-1.0 11.0 2.0
+0.0 10.0 1.0
+ITEM: ATOMS id type x y z
+1 1 5.0 5.0 5.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+      const structure = trajectory.frames[0].structure
+
+      if (`lattice` in structure) {
+        const matrix = structure.lattice.matrix
+
+        // Verify tilt factors are preserved
+        expect(matrix[1][0]).toBeCloseTo(3.0, 5) // xy
+        expect(matrix[2][0]).toBeCloseTo(2.0, 5) // xz
+        expect(matrix[2][1]).toBeCloseTo(1.0, 5) // yz
+      }
+    })
+
+    it(`should handle negative tilt factors`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+-2.5 12.5 -2.5
+-1.5 11.5 -1.5
+0.0 10.0 -0.5
+ITEM: ATOMS id type x y z
+1 1 5.0 5.0 5.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+      const structure = trajectory.frames[0].structure
+
+      if (`lattice` in structure) {
+        const matrix = structure.lattice.matrix
+
+        // Negative tilts should be preserved
+        expect(matrix[1][0]).toBeCloseTo(-2.5, 5) // xy
+        expect(matrix[2][0]).toBeCloseTo(-1.5, 5) // xz
+        expect(matrix[2][1]).toBeCloseTo(-0.5, 5) // yz
+      }
+    })
+
+    it(`should parse multiple triclinic frames with varying cell shapes`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 10.0 1.0
+0.0 10.0 0.5
+0.0 10.0 0.25
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.0 5.0 5.0
+ITEM: TIMESTEP
+100
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 11.0 2.0
+0.0 11.0 1.0
+0.0 11.0 0.5
+ITEM: ATOMS id type x y z
+1 1 0.0 0.0 0.0
+2 1 5.5 5.5 5.5`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+      expect(trajectory.frames).toHaveLength(2)
+
+      // First frame
+      if (`lattice` in trajectory.frames[0].structure) {
+        const m1 = trajectory.frames[0].structure.lattice.matrix
+        expect(m1[1][0]).toBeCloseTo(1.0, 5) // xy
+        expect(m1[2][0]).toBeCloseTo(0.5, 5) // xz
+        expect(m1[2][1]).toBeCloseTo(0.25, 5) // yz
+      }
+
+      // Second frame - cell has changed
+      if (`lattice` in trajectory.frames[1].structure) {
+        const m2 = trajectory.frames[1].structure.lattice.matrix
+        expect(m2[1][0]).toBeCloseTo(2.0, 5) // xy
+        expect(m2[2][0]).toBeCloseTo(1.0, 5) // xz
+        expect(m2[2][1]).toBeCloseTo(0.5, 5) // yz
+      }
+    })
+
+    it(`should handle triclinic box with mixed PBC flags`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp ff
+0.0 10.0 1.0
+0.0 10.0 0.5
+0.0 20.0 0.0
+ITEM: ATOMS id type x y z
+1 1 5.0 5.0 10.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+      // z-direction is non-periodic (ff)
+      expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([
+        true,
+        true,
+        false,
+      ])
+
+      // Still should parse the triclinic cell correctly
+      if (`lattice` in trajectory.frames[0].structure) {
+        const matrix = trajectory.frames[0].structure.lattice.matrix
+        expect(matrix[1][0]).toBeCloseTo(1.0, 5) // xy
+        expect(matrix[2][0]).toBeCloseTo(0.5, 5) // xz
+      }
+    })
+
+    it(`should handle zero tilt factors (degenerate triclinic = orthogonal)`, async () => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 10.0 0.0
+0.0 8.0 0.0
+0.0 6.0 0.0
+ITEM: ATOMS id type x y z
+1 1 5.0 4.0 3.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+      const structure = trajectory.frames[0].structure
+
+      if (`lattice` in structure) {
+        const matrix = structure.lattice.matrix
+
+        // Zero tilts should give orthogonal box
+        expect(matrix[0][0]).toBeCloseTo(10.0, 5)
+        expect(matrix[1][1]).toBeCloseTo(8.0, 5)
+        expect(matrix[2][2]).toBeCloseTo(6.0, 5)
+
+        // Off-diagonal should be zero
+        expect(matrix[1][0]).toBeCloseTo(0.0, 5)
+        expect(matrix[2][0]).toBeCloseTo(0.0, 5)
+        expect(matrix[2][1]).toBeCloseTo(0.0, 5)
+      }
+    })
+
+    it(`should calculate correct volume for triclinic cell`, async () => {
+      // Triclinic box with known dimensions after bounding box conversion
+      // Given bounds and tilts:
+      //   xlo_bound=0, xhi_bound=10, xy=2.0 → lx = 10 - max(0,2,1,3) = 7
+      //   ylo_bound=0, yhi_bound=10, xz=1.0 → ly = 10 - max(0,0.5) = 9.5
+      //   zlo_bound=0, zhi_bound=10, yz=0.5 → lz = 10
+      // Volume = lx * ly * lz = 7 * 9.5 * 10 = 665
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+0.0 10.0 2.0
+0.0 10.0 1.0
+0.0 10.0 0.5
+ITEM: ATOMS id type x y z
+1 1 5.0 5.0 5.0`
+
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
+
+      // Volume is det(lattice_matrix) = lx * ly * lz (parallelepiped)
+      expect(trajectory.frames[0].metadata?.volume).toBeGreaterThan(0)
+      expect(trajectory.frames[0].metadata?.volume).toBeCloseTo(665, 0)
+    })
+  })
 })
 
 describe(`XYZ Trajectory Format`, () => {

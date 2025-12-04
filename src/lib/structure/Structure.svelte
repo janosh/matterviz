@@ -761,13 +761,10 @@
                   <button
                     class="view-mode-option"
                     class:selected={measure_mode === mode}
-                    onclick={() => {
-                      measure_mode = mode
-                      measure_menu_open = false
-                    }}
+                    onclick={() => [measure_mode, measure_menu_open] = [mode, false]}
                   >
                     <Icon {icon} style="transform: scale({scale})" />
-                    <span>{label}</span>
+                    <span>{@html label}</span>
                   </button>
                 {/each}
               </div>

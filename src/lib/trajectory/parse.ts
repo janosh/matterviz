@@ -496,14 +496,36 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
   }
 }
 
-/** Check if LAMMPS boundary flag indicates periodic ('p' or 'pp') */
-const is_lammps_periodic = (flag: string): boolean => flag.toLowerCase().startsWith(`p`)
+// Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
+// Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
+// Lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
+const parse_lammps_box = (
+  box_lines: string[],
+  is_triclinic: boolean,
+): math.Matrix3x3 | null => {
+  if (box_lines.length !== 3) return null
+  const bounds = box_lines.map((line) => line.split(/\s+/).map(Number))
+  const min_cols = is_triclinic ? 3 : 2
+  if (bounds.some((row) => row.length < min_cols || row.slice(0, min_cols).some(isNaN))) {
+    return null
+  }
 
-/**
- * Parse LAMMPS trajectory (.lammpstrj) format.
- * Note: LAMMPS uses numeric atom types without element information.
- * Types are mapped to elements by atomic number (1 → H, 2 → He, etc.).
- */
+  if (!is_triclinic) {
+    // Orthogonal: bounds = [lo, hi] per dimension
+    const [[lo_x, hi_x], [lo_y, hi_y], [lo_z, hi_z]] = bounds
+    return [[hi_x - lo_x, 0, 0], [0, hi_y - lo_y, 0], [0, 0, hi_z - lo_z]]
+  }
+  // Triclinic: bounds = [lo_bound, hi_bound, tilt] with tilts xy, xz, yz
+  const [[xlo_b, xhi_b, xy], [ylo_b, yhi_b, xz], [zlo_b, zhi_b, yz]] = bounds
+  const lx = (xhi_b - Math.max(0, xy, xz, xy + xz)) -
+    (xlo_b - Math.min(0, xy, xz, xy + xz))
+  const ly = (yhi_b - Math.max(0, yz)) - (ylo_b - Math.min(0, yz))
+  const lz = zhi_b - zlo_b
+  return [[lx, 0, 0], [xy, ly, 0], [xz, yz, lz]]
+}
+
+// Parse LAMMPS trajectory (.lammpstrj). Atom types mapped to elements (1→H, 2→He, etc.).
+// Supports orthogonal and triclinic simulation boxes.
 const parse_lammps_trajectory = (content: string, filename?: string): TrajectoryType => {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
@@ -518,40 +540,32 @@ const parse_lammps_trajectory = (content: string, filename?: string): Trajectory
   }
 
   while (idx < lines.length) {
-    // Find ITEM: TIMESTEP header
     if (!skip_to(`ITEM: TIMESTEP`)) break
-    idx++ // skip header
+    idx++
     const timestep = parseInt(read_line(), 10) || 0
 
-    // Find and parse NUMBER OF ATOMS
     if (!skip_to(`ITEM: NUMBER OF ATOMS`)) break
     idx++
     const num_atoms = parseInt(read_line(), 10)
     if (!num_atoms || num_atoms <= 0) continue
 
-    // Find and parse BOX BOUNDS with PBC flags (e.g., "pp pp pp" or "p p p")
+    // BOX BOUNDS: orthogonal="pp pp pp", triclinic="xy xz yz pp pp pp"
     if (!skip_to(`ITEM: BOX BOUNDS`)) break
-    const pbc_match = read_line().match(/BOX BOUNDS\s+(\w+)\s+(\w+)\s+(\w+)/)
-    const pbc: Pbc = pbc_match
-      ? [
-        is_lammps_periodic(pbc_match[1]),
-        is_lammps_periodic(pbc_match[2]),
-        is_lammps_periodic(pbc_match[3]),
-      ]
+    const box_header = read_line()
+    const is_triclinic = /BOX BOUNDS\s+xy\s+xz\s+yz/i.test(box_header)
+    const tokens = box_header.replace(`ITEM: BOX BOUNDS`, ``).trim().split(/\s+/).slice(
+      -3,
+    )
+    const is_periodic = (tok: string): boolean => tok.toLowerCase().startsWith(`p`)
+    const pbc: Pbc = tokens.length === 3
+      ? [is_periodic(tokens[0]), is_periodic(tokens[1]), is_periodic(tokens[2])]
       : [true, true, true]
 
-    // Parse box bounds (3 lines: lo hi [tilt])
-    const box_bounds = Array.from(
-      { length: 3 },
-      () => read_line().split(/\s+/).slice(0, 2).map(Number),
+    const lattice_matrix = parse_lammps_box(
+      [read_line(), read_line(), read_line()],
+      is_triclinic,
     )
-    if (box_bounds.some((bounds) => bounds.length < 2 || bounds.some(isNaN))) continue
-
-    const lattice_matrix: math.Matrix3x3 = [
-      [box_bounds[0][1] - box_bounds[0][0], 0, 0],
-      [0, box_bounds[1][1] - box_bounds[1][0], 0],
-      [0, 0, box_bounds[2][1] - box_bounds[2][0]],
-    ]
+    if (!lattice_matrix) continue
 
     // Find ITEM: ATOMS and parse column headers
     if (!skip_to(`ITEM: ATOMS`)) break
