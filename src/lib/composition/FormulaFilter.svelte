@@ -75,7 +75,14 @@
     if (!wrapper) return
     const target = event.target
     if (!(target instanceof Node)) return
-    if (!wrapper.contains(target)) examples_open = false
+    if (!wrapper.contains(target)) close_examples()
+  }
+
+  // Close dropdown and restore focus to input for keyboard/screen-reader users
+  function close_examples(): void {
+    examples_open = false
+    focused_item_idx = -1
+    input_element?.focus()
   }
 
   $effect(() => {
@@ -115,7 +122,7 @@
   ): void {
     search_mode = ex.mode as FormulaSearchMode
     set_value(ex.value)
-    examples_open = false
+    close_examples()
   }
 
   function toggle_examples(): void {
@@ -136,7 +143,7 @@
       ArrowUp: () => (focused_item_idx = (focused_item_idx - 1 + len) % len),
       Home: () => (focused_item_idx = 0),
       End: () => (focused_item_idx = len - 1),
-      Escape: () => (examples_open = false),
+      Escape: close_examples,
     }
 
     if (event.key in key_actions) {
@@ -260,7 +267,6 @@
     background: rgba(77, 182, 255, 0.08);
   }
   .filter-group span {
-    opacity: 0.7;
     white-space: nowrap;
   }
   .filter-group input {

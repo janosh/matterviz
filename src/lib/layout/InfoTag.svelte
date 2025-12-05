@@ -54,9 +54,7 @@
     ;(event.currentTarget as HTMLElement)?.click()
   }
 
-  function handle_remove(event: MouseEvent | KeyboardEvent): void {
-    if (`key` in event && event.key !== `Enter` && event.key !== ` `) return
-    event.preventDefault()
+  function handle_remove(event: MouseEvent): void {
     event.stopPropagation()
     onremove?.()
   }
@@ -84,12 +82,7 @@
     />
   {/if}
   {#if removable && !disabled}
-    <button
-      type="button"
-      onclick={handle_remove}
-      onkeydown={handle_remove}
-      aria-label="Remove"
-    >
+    <button type="button" onclick={handle_remove} aria-label="Remove">
       <Icon icon="Close" style="width: 10px; height: 10px" />
     </button>
   {/if}
@@ -106,7 +99,6 @@
     transition: all 0.12s;
     border: 1px solid;
     white-space: nowrap;
-    background: color-mix(in srgb, var(--tag-color) 10%, transparent);
     border-color: color-mix(in srgb, var(--tag-color) 25%, transparent);
   }
   .info-tag em {

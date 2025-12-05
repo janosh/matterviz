@@ -183,10 +183,6 @@
     align-items: center;
     gap: 8pt;
   }
-  .filter-label {
-    flex-shrink: 0;
-    opacity: 0.7;
-  }
   .log-label {
     position: absolute;
     top: 2pt;
@@ -212,7 +208,7 @@
     border: 1px solid rgba(128, 128, 128, 0.2);
     border-radius: 4px;
     padding: 3pt 6pt;
-    background: color-mix(in srgb, currentColor 5%, transparent);
+    background: color-mix(in srgb, currentColor 2%, transparent);
     color: inherit;
     font-family: var(--mono-font, monospace);
   }
