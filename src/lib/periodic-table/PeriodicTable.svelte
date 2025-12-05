@@ -420,14 +420,22 @@
   .tooltip {
     position: absolute;
     transform: translate(-50%, -10%);
-    background: var(--tooltip-bg, rgba(0, 0, 0, 0.8));
-    color: var(--tooltip-color, light-dark(black, white));
+    background: var(
+      --tooltip-bg,
+      light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85))
+    );
+    color: var(--tooltip-color, light-dark(#222, #eee));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
     font-size: var(--tooltip-font-size, 14px);
     text-align: var(--tooltip-text-align, center);
     line-height: var(--tooltip-line-height, 1.2);
     z-index: var(--tooltip-z-index, 2);
+    pointer-events: none;
+    box-shadow: var(
+      --tooltip-shadow,
+      light-dark(0 2px 8px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4))
+    );
   }
   .tooltip::before {
     content: '';
@@ -437,7 +445,8 @@
     transform: translateX(-50%);
     border-left: 8px solid transparent;
     border-right: 8px solid transparent;
-    border-bottom: 8px solid var(--tooltip-bg, rgba(0, 0, 0, 0.8));
+    border-bottom: 8px solid
+      var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
     box-sizing: border-box;
     margin: 0 auto;
   }

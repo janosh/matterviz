@@ -149,6 +149,15 @@
     ]
   })
 
+  // Highlight demo for 2D binary: highlight stable phases
+  const highlighted_fe_o = $derived(
+    pick_entries(
+      binary_examples[1]?.entries ?? [],
+      (e) => e.is_stable || (e.e_above_hull ?? 1) < 0.02,
+      8,
+    ),
+  )
+
   // Binary marker demo
   let selected_binary_entry = $state<PhaseDiagramEntry | null>(null)
   const binary_marker_entries = $derived(
@@ -242,77 +251,28 @@
 
     <h2>Highlighted Entries</h2>
     <p class="section-description">
-      Highlight specific entries with customizable visual effects. Left: pulsating
-      highlight on high-energy entries (ternary). Right: subtle glow on stable phases
-      (quaternary). Double-click entries to toggle highlighting.
+      Highlight specific entries with customizable visual effects. Hover over highlighted
+      entries to see the "★ Highlighted" badge in the tooltip.
     </p>
-    <div class="ternary-grid">
-      <div>
-        <details style="margin-bottom: 1em; font-size: 0.9em">
-          <summary style="cursor: pointer">
-            Highlighted: {highlighted_na_fe_o.length} entries
-          </summary>
-          <div style="margin: 0.5em 0">
-            <strong>IDs:</strong> {highlighted_na_fe_o.join(`, `) || `none`}
-          </div>
-          <pre
-            style="overflow: auto; max-height: 200px"
-          >
-{JSON.stringify(
-              na_fe_o_entries
-                .filter((e) => e.entry_id && highlighted_na_fe_o.includes(e.entry_id))
-                .map((e) => ({
-                  id: e.entry_id,
-                  formula: e.reduced_formula,
-                  e_hull: e.e_above_hull,
-                })),
-              null,
-              2,
-            )}</pre>
-        </details>
-        <PhaseDiagram3D
-          entries={na_fe_o_entries}
-          controls={{ title: `High Energy Phases (Pulse)` }}
-          highlighted_entries={highlighted_na_fe_o}
-          highlight_style={{
-            effect: `pulse`,
-            color: `#ff3333`,
-            size_multiplier: 2,
-            opacity: 0.9,
-            pulse_speed: 3,
-          }}
-        />
-      </div>
-      <div>
-        <details style="margin-bottom: 1em; font-size: 0.9em">
-          <summary style="cursor: pointer">
-            Highlighted: {highlighted_li_co_ni_o.length} entries
-          </summary>
-          <div style="margin: 0.5em 0">
-            <strong>IDs:</strong> {highlighted_li_co_ni_o.join(`, `) || `none`}
-          </div>
-          <pre
-            style="overflow: auto; max-height: 200px"
-          >
-{JSON.stringify(
-              li_co_ni_o_quaternary
-                .filter((e) => e.entry_id && highlighted_li_co_ni_o.includes(e.entry_id))
-                .map((e) => ({
-                  id: e.entry_id,
-                  formula: e.reduced_formula,
-                  e_hull: e.e_above_hull,
-                })),
-              null,
-              2,
-            )}</pre>
-        </details>
-        <PhaseDiagram4D
-          entries={li_co_ni_o_quaternary}
-          controls={{ title: `Stable Phases (Glow)` }}
-          highlighted_entries={highlighted_li_co_ni_o}
-          highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2, opacity: 0.85 }}
-        />
-      </div>
+    <div class="highlight-grid">
+      <PhaseDiagram2D
+        entries={binary_examples[1]?.entries ?? []}
+        controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
+        highlighted_entries={highlighted_fe_o}
+        highlight_style={{ effect: `pulse`, color: `#22cc88`, size_multiplier: 2.5, pulse_speed: 4 }}
+      />
+      <PhaseDiagram3D
+        entries={na_fe_o_entries}
+        controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
+        highlighted_entries={highlighted_na_fe_o}
+        highlight_style={{ effect: `pulse`, color: `#ff3333`, size_multiplier: 2, pulse_speed: 3 }}
+      />
+      <PhaseDiagram4D
+        entries={li_co_ni_o_quaternary}
+        controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
+        highlighted_entries={highlighted_li_co_ni_o}
+        highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2 }}
+      />
     </div>
 
     <h2>Marker Symbols</h2>
@@ -377,6 +337,13 @@
     width: 100%;
     margin: 0 auto 3rem auto;
   }
+  .highlight-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    width: 100%;
+    margin: 0 auto 3rem auto;
+  }
   .quaternary-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -419,10 +386,13 @@
     align-items: center;
     gap: 0.25rem;
   }
+  @media (max-width: 1400px) {
+    .highlight-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
   @media (max-width: 1100px) {
-    .ternary-grid,
-    .quaternary-grid,
-    .binary-grid {
+    .ternary-grid, .quaternary-grid, .binary-grid, .highlight-grid {
       grid-template-columns: 1fr;
     }
     .stats-example-grid {

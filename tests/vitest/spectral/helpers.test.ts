@@ -1,18 +1,21 @@
-import type { PymatgenCompleteDos } from '$lib/bands/helpers'
+import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   apply_gaussian_smearing,
   convert_frequencies,
   extract_k_path_points,
   find_qpoint_at_distance,
   find_qpoint_at_rescaled_x,
+  generate_ribbon_path,
   get_band_xaxis_ticks,
+  get_ribbon_config,
   normalize_band_structure,
   normalize_densities,
   normalize_dos,
   pretty_sym_point,
+  scale_segment_distances,
   shift_to_fermi,
-} from '$lib/bands/helpers'
-import type { BaseBandStructure } from '$lib/bands/types'
+} from '$lib/spectral/helpers'
+import type { BaseBandStructure } from '$lib/spectral/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -1072,5 +1075,136 @@ describe(`shift_to_fermi`, () => {
     // Original unchanged
     expect(dos.efermi).toBe(5.0)
     expect(dos.energies).toEqual([0, 5, 10])
+  })
+})
+
+describe(`scale_segment_distances`, () => {
+  it(`scales distances to target range`, () => {
+    // Input: [0, 1, 2, 3] → range [10, 20] with dist_range = 3
+    // d=0: 10 + (0/3)*10 = 10
+    // d=1: 10 + (1/3)*10 = 13.333...
+    // d=2: 10 + (2/3)*10 = 16.666...
+    // d=3: 10 + (3/3)*10 = 20
+    const result = scale_segment_distances([0, 1, 2, 3], 10, 20)
+    expect(result[0]).toBe(10)
+    expect(result[1]).toBeCloseTo(10 + 10 / 3, 10)
+    expect(result[2]).toBeCloseTo(10 + 20 / 3, 10)
+    expect(result[3]).toBe(20)
+  })
+
+  it(`handles zero-range segment by placing at midpoint`, () => {
+    const result = scale_segment_distances([5, 5, 5], 10, 20)
+    expect(result).toEqual([15, 15, 15])
+  })
+
+  it(`returns empty array for empty input`, () => {
+    expect(scale_segment_distances([], 0, 10)).toEqual([])
+  })
+
+  it(`handles single point by placing at midpoint`, () => {
+    const result = scale_segment_distances([42], 0, 10)
+    expect(result).toEqual([5])
+  })
+
+  it.each([
+    { distances: [0, 0.5, 1], x_start: 0, x_end: 100, expected: [0, 50, 100] },
+    { distances: [10, 15, 20], x_start: 0, x_end: 1, expected: [0, 0.5, 1] },
+    { distances: [0, 2, 4, 8], x_start: 0, x_end: 8, expected: [0, 2, 4, 8] },
+  ])(
+    `maps $distances to [$x_start, $x_end] → $expected`,
+    ({ distances, x_start, x_end, expected }) => {
+      const result = scale_segment_distances(distances, x_start, x_end)
+      expect(result).toEqual(expected)
+    },
+  )
+})
+
+describe(`get_ribbon_config`, () => {
+  it.each([
+    { cfg: {}, label: `any`, expected: { opacity: 0.3, max_width: 6, scale: 1 } },
+    {
+      cfg: { opacity: 0.5 },
+      label: `any`,
+      expected: { opacity: 0.5, max_width: 6, scale: 1 },
+    },
+    {
+      cfg: { A: { opacity: 0.4 } },
+      label: `A`,
+      expected: { opacity: 0.4, max_width: 6, scale: 1 },
+    },
+    {
+      cfg: { A: { opacity: 0.4 } },
+      label: `B`,
+      expected: { opacity: 0.3, max_width: 6, scale: 1 },
+    },
+  ])(`$cfg for label "$label" → $expected`, ({ cfg, label, expected }) => {
+    expect(get_ribbon_config(cfg, label)).toEqual(expected)
+  })
+
+  it(`distinguishes structure named "opacity" from opacity config value`, () => {
+    // Bug case: { opacity: {...} } should be per-structure, not single config
+    const per_struct = { opacity: { color: `red` }, scale: { color: `blue` } }
+    expect(get_ribbon_config(per_struct, `opacity`).color).toBe(`red`)
+    expect(get_ribbon_config(per_struct, `scale`).color).toBe(`blue`)
+    // Single config has primitive value
+    expect(get_ribbon_config({ opacity: 0.5 }, `any`).opacity).toBe(0.5)
+  })
+})
+
+describe(`generate_ribbon_path`, () => {
+  const id = (v: number) => v
+
+  it(`generates valid SVG path with lower edge reversed`, () => {
+    const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], id, id, 5)
+    expect(path).toMatch(/^M[\d.,-]+( L[\d.,-]+)+ Z$/)
+    // Verify polygon structure: upper edge 0→1→2, lower edge 2→1→0
+    const points = path.match(/[\d.-]+,[\d.-]+/g) ?? []
+    expect(points).toHaveLength(6)
+    expect(points.slice(0, 3).map((p) => p.split(`,`)[0])).toEqual([
+      `0.00`,
+      `1.00`,
+      `2.00`,
+    ])
+    expect(points.slice(3).map((p) => p.split(`,`)[0])).toEqual([`2.00`, `1.00`, `0.00`])
+  })
+
+  it.each([
+    [`too few points`, [0], [0, 1], [1, 1]],
+    [`mismatched y`, [0, 1, 2], [0, 1], [1, 1, 1]],
+    [`mismatched width`, [0, 1, 2], [0, 1, 2], [1, 1]],
+    [`zero widths`, [0, 1, 2], [0, 1, 0], [0, 0, 0]],
+    [`negative widths`, [0, 1], [0, 1], [-1, -2]],
+  ])(`returns "" for %s`, (_, x, y, w) => {
+    expect(generate_ribbon_path(x, y, w, id, id, 10)).toBe(``)
+  })
+
+  it(`normalizes widths and applies scale`, () => {
+    // width=2 is max, so at x=1: half_width=10, upper=5-10=-5, lower=5+10=15
+    expect(generate_ribbon_path([0, 1, 2], [5, 5, 5], [1, 2, 1], id, id, 10)).toContain(
+      `1.00,-5.00`,
+    )
+    // scale=2 doubles the width offset
+    expect(generate_ribbon_path([0, 1], [5, 5], [1, 1], id, id, 10, 2)).toContain(
+      `,-15.00`,
+    )
+  })
+
+  it(`applies custom scale functions`, () => {
+    const path = generate_ribbon_path(
+      [0, 1, 2],
+      [0, 0, 0],
+      [1, 1, 1],
+      (v) => v * 2,
+      id,
+      5,
+    )
+    expect(path).toContain(`0.00,`)
+    expect(path).toContain(`2.00,`)
+    expect(path).toContain(`4.00,`) // x doubled: 0→0, 1→2, 2→4
+  })
+
+  it(`handles Infinity in widths`, () => {
+    expect(generate_ribbon_path([0, 1, 2], [0, 1, 0], [1, Infinity, 1], id, id, 10)).not
+      .toBe(``)
   })
 })

@@ -263,6 +263,13 @@
     border-radius: var(--pane-border-radius, var(--border-radius, 3pt));
     padding: var(--pane-padding, 1ex);
     box-sizing: border-box;
+    box-shadow: var(
+      --pane-box-shadow,
+      light-dark(
+        0 4px 20px -4px rgba(0, 0, 0, 0.15),
+        0 8px 16px -4px rgba(0, 0, 0, 0.3)
+      )
+    );
     z-index: var(--pane-z-index, 10);
     display: grid;
     gap: var(--pane-gap, 4pt);

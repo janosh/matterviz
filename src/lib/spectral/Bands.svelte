@@ -1,14 +1,15 @@
 <script lang="ts">
-  import * as helpers from '$lib/bands/helpers'
+  import { PLOT_COLORS } from '$lib/colors'
+  import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
+  import type { AxisConfig, DataSeries } from '$lib/plot/types'
+  import * as helpers from '$lib/spectral/helpers'
   import type {
     BandStructureType,
     BaseBandStructure,
     LineKwargs,
     PathMode,
-  } from '$lib/bands/types'
-  import { PLOT_COLORS } from '$lib/colors'
-  import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
-  import type { AxisConfig, DataSeries } from '$lib/plot/types'
+    RibbonConfig,
+  } from '$lib/spectral/types'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
@@ -22,6 +23,7 @@
     y_axis = {},
     x_positions = $bindable(),
     reference_frequency = null,
+    ribbon_config = {},
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
@@ -33,6 +35,7 @@
     show_legend?: boolean
     x_positions?: Record<string, [number, number]>
     reference_frequency?: number | null
+    ribbon_config?: RibbonConfig | Record<string, RibbonConfig>
   } = $props()
 
   // Helper function to get line styling for a band
@@ -65,6 +68,20 @@
     }
 
     return defaults
+  }
+
+  // Ribbon data structure for rendering
+  interface RibbonData {
+    x_values: number[]
+    y_values: number[]
+    width_values: number[]
+    color: string
+    opacity: number
+    max_width: number
+    scale: number
+    band_idx: number
+    structure_label: string
+    segment_key: string
   }
 
   // Normalize input to dict format
@@ -254,13 +271,11 @@
 
         // Scale distances for this segment
         const segment_distances = bs.distance.slice(start_idx, end_idx)
-        const dist_min = segment_distances[0]
-        const dist_range = segment_distances[segment_distances.length - 1] - dist_min
-        const scaled_distances = dist_range === 0
-          ? segment_distances.map(() => (x_start + x_end) / 2)
-          : segment_distances.map(
-            (dist) => x_start + ((dist - dist_min) / dist_range) * (x_end - x_start),
-          )
+        const scaled_distances = helpers.scale_segment_distances(
+          segment_distances,
+          x_start,
+          x_end,
+        )
 
         // Create series for each band
         for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
@@ -290,6 +305,75 @@
     }
 
     return all_series
+  })
+
+  // Compute ribbon data for bands with width information
+  let ribbon_data = $derived.by((): RibbonData[] => {
+    if (Object.keys(band_structs_dict).length === 0 || segments_to_plot.size === 0) {
+      return []
+    }
+
+    const all_ribbons: RibbonData[] = []
+
+    for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
+      // Skip if this band structure has no width data
+      if (!bs.band_widths || bs.band_widths.length === 0) continue
+
+      const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
+      const structure_label = label || `Structure ${bs_idx + 1}`
+      const config = helpers.get_ribbon_config(ribbon_config, label)
+
+      for (const branch of bs.branches) {
+        const start_idx = branch.start_index
+        const end_idx = branch.end_index + 1
+        const start_label = bs.qpoints[start_idx]?.label ?? undefined
+        const end_label = bs.qpoints[end_idx - 1]?.label ?? undefined
+        const segment_key = helpers.get_segment_key(start_label, end_label)
+
+        if (!segments_to_plot.has(segment_key)) continue
+
+        // Skip discontinuous segments
+        const is_discontinuity = branch.end_index - branch.start_index === 1
+        if (is_discontinuity) continue
+
+        const [x_start, x_end] = x_positions?.[segment_key] || [0, 1]
+
+        // Scale distances for this segment
+        const segment_distances = bs.distance.slice(start_idx, end_idx)
+        const scaled_distances = helpers.scale_segment_distances(
+          segment_distances,
+          x_start,
+          x_end,
+        )
+
+        // Create ribbon data for each band that has width data
+        for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
+          const band_widths = bs.band_widths[band_idx]
+          if (!band_widths) continue
+
+          const width_values = band_widths.slice(start_idx, end_idx)
+          // Skip if all widths are zero or missing
+          if (width_values.every((wv) => !wv || wv <= 0)) continue
+
+          const y_values = bs.bands[band_idx].slice(start_idx, end_idx)
+
+          all_ribbons.push({
+            x_values: scaled_distances,
+            y_values,
+            width_values,
+            color: config.color ?? color,
+            opacity: config.opacity ?? 0.3,
+            max_width: config.max_width ?? 6,
+            scale: config.scale ?? 1,
+            band_idx,
+            structure_label,
+            segment_key,
+          })
+        }
+      }
+    }
+
+    return all_ribbons
   })
 
   // Get x-axis tick positions with custom labels for symmetry points
@@ -385,6 +469,32 @@
   {/snippet}
 
   {#snippet user_content({ height, x_scale_fn, y_scale_fn, pad })}
+    <!-- Fat band ribbons (rendered behind band lines) -->
+    {#each ribbon_data as
+      ribbon
+      (`${ribbon.structure_label}-${ribbon.segment_key}-${ribbon.band_idx}`)
+    }
+      {@const path_d = helpers.generate_ribbon_path(
+      ribbon.x_values,
+      ribbon.y_values,
+      ribbon.width_values,
+      x_scale_fn,
+      y_scale_fn,
+      ribbon.max_width,
+      ribbon.scale,
+    )}
+      {#if path_d}
+        <path
+          d={path_d}
+          fill={ribbon.color}
+          opacity={ribbon.opacity}
+          stroke="none"
+          class="fat-band-ribbon"
+        />
+      {/if}
+    {/each}
+
+    <!-- Symmetry point vertical lines -->
     {#each Object.keys(x_axis_ticks).map(Number) as x_pos (x_pos)}
       <line
         x1={x_scale_fn(x_pos)}
@@ -396,6 +506,8 @@
         opacity="var(--bands-symmetry-line-opacity, 0.5)"
       />
     {/each}
+
+    <!-- Reference frequency horizontal line -->
     {#if reference_frequency !== null}
       {@const y_pos = y_scale_fn(reference_frequency)}
       {@const x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}

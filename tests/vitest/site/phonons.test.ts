@@ -1,4 +1,4 @@
-import type { PhononBandStructure } from '$lib/bands'
+import type { PhononBandStructure } from '$lib/spectral'
 import { describe, expect, it } from 'vitest'
 
 describe(`Phonon Module Tests`, () => {

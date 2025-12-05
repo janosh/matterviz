@@ -1113,6 +1113,7 @@
   <!-- Hover tooltip -->
   {#if hover_data}
     {@const { entry, position } = hover_data}
+    {@const entry_highlight = is_highlighted(entry) ? merged_highlight_style : undefined}
     {@const tooltip_style =
       `z-index: ${PD_STYLE.z_index.tooltip}; backdrop-filter: blur(4px);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);`}
@@ -1124,7 +1125,11 @@
       fixed
       style={tooltip_style}
     >
-      <PhaseEntryTooltip {entry} {polymorph_stats_map} />
+      <PhaseEntryTooltip
+        {entry}
+        {polymorph_stats_map}
+        highlight_style={entry_highlight}
+      />
     </PlotTooltip>
   {/if}
 

@@ -1,6 +1,6 @@
 import type { ELEM_SYMBOLS, ELEMENT_CATEGORIES } from './labels'
 
-export * from './bands'
+export * from './spectral'
 export * from './brillouin'
 export * from './colors'
 export * from './composition'

@@ -35,7 +35,7 @@ Pymatgen DOS data includes `efermi` - use `shift_to_fermi()` to shift energies s
 ```svelte example
 <script>
   import { Dos } from 'matterviz'
-  import { shift_to_fermi } from '$lib/bands/helpers'
+  import { shift_to_fermi } from '$lib/spectral/helpers'
   import { dos_spin_polarization } from '$site/electronic/dos'
 
   // Shift energies so Fermi level (efermi=5.36 eV) is at E=0

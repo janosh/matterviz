@@ -580,9 +580,12 @@
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
 {#snippet tooltip(point: ScatterHandlerProps)}
-  {@const entry = point.metadata as unknown as PhaseData}
+  {@const entry = point.metadata as unknown as PhaseDiagramEntry}
+  {@const entry_highlight = entry && is_highlighted(entry)
+    ? merged_highlight_style
+    : undefined}
   {#if entry}
-    <PhaseEntryTooltip {entry} {polymorph_stats_map} />
+    <PhaseEntryTooltip {entry} {polymorph_stats_map} highlight_style={entry_highlight} />
   {/if}
 {/snippet}
 

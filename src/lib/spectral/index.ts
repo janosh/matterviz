@@ -1,4 +1,4 @@
-// Band structure and density of states visualization components
+// Spectral visualization components (band structure, density of states, etc.)
 
 export { default as Bands } from './Bands.svelte'
 export { default as BandsAndDos } from './BandsAndDos.svelte'
