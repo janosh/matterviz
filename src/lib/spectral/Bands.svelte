@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { PLOT_COLORS } from '$lib/colors'
+  import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
+  import type { AxisConfig, DataSeries } from '$lib/plot/types'
   import * as helpers from '$lib/spectral/helpers'
   import type {
     BandStructureType,
@@ -7,9 +10,6 @@
     PathMode,
     RibbonConfig,
   } from '$lib/spectral/types'
-  import { PLOT_COLORS } from '$lib/colors'
-  import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
-  import type { AxisConfig, DataSeries } from '$lib/plot/types'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
@@ -68,22 +68,6 @@
     }
 
     return defaults
-  }
-
-  // Helper function to get ribbon config for a specific band structure
-  function get_ribbon_config(label: string): RibbonConfig {
-    const defaults: RibbonConfig = { opacity: 0.3, max_width: 6, scale: 1 }
-
-    // Check for primitive config values (not objects) to distinguish single vs per-structure config
-    const cfg = ribbon_config as Record<string, unknown>
-    const has_primitive = [`opacity`, `max_width`, `scale`, `color`].some(
-      (key) => cfg[key] !== undefined && typeof cfg[key] !== `object`,
-    )
-    if (has_primitive) return { ...defaults, ...ribbon_config }
-
-    // Otherwise, treat as Record<string, RibbonConfig> and look up by label
-    const per_struct = ribbon_config as Record<string, RibbonConfig>
-    return { ...defaults, ...(per_struct[label] ?? {}) }
   }
 
   // Ribbon data structure for rendering
@@ -287,13 +271,11 @@
 
         // Scale distances for this segment
         const segment_distances = bs.distance.slice(start_idx, end_idx)
-        const dist_min = segment_distances[0]
-        const dist_range = segment_distances[segment_distances.length - 1] - dist_min
-        const scaled_distances = dist_range === 0
-          ? segment_distances.map(() => (x_start + x_end) / 2)
-          : segment_distances.map(
-            (dist) => x_start + ((dist - dist_min) / dist_range) * (x_end - x_start),
-          )
+        const scaled_distances = helpers.scale_segment_distances(
+          segment_distances,
+          x_start,
+          x_end,
+        )
 
         // Create series for each band
         for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
@@ -339,7 +321,7 @@
 
       const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
       const structure_label = label || `Structure ${bs_idx + 1}`
-      const config = get_ribbon_config(label)
+      const config = helpers.get_ribbon_config(ribbon_config, label)
 
       for (const branch of bs.branches) {
         const start_idx = branch.start_index
@@ -358,13 +340,11 @@
 
         // Scale distances for this segment
         const segment_distances = bs.distance.slice(start_idx, end_idx)
-        const dist_min = segment_distances[0]
-        const dist_range = segment_distances[segment_distances.length - 1] - dist_min
-        const scaled_distances = dist_range === 0
-          ? segment_distances.map(() => (x_start + x_end) / 2)
-          : segment_distances.map(
-            (dist) => x_start + ((dist - dist_min) / dist_range) * (x_end - x_start),
-          )
+        const scaled_distances = helpers.scale_segment_distances(
+          segment_distances,
+          x_start,
+          x_end,
+        )
 
         // Create ribbon data for each band that has width data
         for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {

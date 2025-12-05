@@ -7,10 +7,12 @@ import {
   find_qpoint_at_rescaled_x,
   generate_ribbon_path,
   get_band_xaxis_ticks,
+  get_ribbon_config,
   normalize_band_structure,
   normalize_densities,
   normalize_dos,
   pretty_sym_point,
+  scale_segment_distances,
   shift_to_fermi,
 } from '$lib/spectral/helpers'
 import type { BaseBandStructure } from '$lib/spectral/types'
@@ -1073,6 +1075,79 @@ describe(`shift_to_fermi`, () => {
     // Original unchanged
     expect(dos.efermi).toBe(5.0)
     expect(dos.energies).toEqual([0, 5, 10])
+  })
+})
+
+describe(`scale_segment_distances`, () => {
+  it(`scales distances to target range`, () => {
+    // Input: [0, 1, 2, 3] → range [10, 20] with dist_range = 3
+    // d=0: 10 + (0/3)*10 = 10
+    // d=1: 10 + (1/3)*10 = 13.333...
+    // d=2: 10 + (2/3)*10 = 16.666...
+    // d=3: 10 + (3/3)*10 = 20
+    const result = scale_segment_distances([0, 1, 2, 3], 10, 20)
+    expect(result[0]).toBe(10)
+    expect(result[1]).toBeCloseTo(10 + 10 / 3, 10)
+    expect(result[2]).toBeCloseTo(10 + 20 / 3, 10)
+    expect(result[3]).toBe(20)
+  })
+
+  it(`handles zero-range segment by placing at midpoint`, () => {
+    const result = scale_segment_distances([5, 5, 5], 10, 20)
+    expect(result).toEqual([15, 15, 15])
+  })
+
+  it(`returns empty array for empty input`, () => {
+    expect(scale_segment_distances([], 0, 10)).toEqual([])
+  })
+
+  it(`handles single point by placing at midpoint`, () => {
+    const result = scale_segment_distances([42], 0, 10)
+    expect(result).toEqual([5])
+  })
+
+  it.each([
+    { distances: [0, 0.5, 1], x_start: 0, x_end: 100, expected: [0, 50, 100] },
+    { distances: [10, 15, 20], x_start: 0, x_end: 1, expected: [0, 0.5, 1] },
+    { distances: [0, 2, 4, 8], x_start: 0, x_end: 8, expected: [0, 2, 4, 8] },
+  ])(
+    `maps $distances to [$x_start, $x_end] → $expected`,
+    ({ distances, x_start, x_end, expected }) => {
+      const result = scale_segment_distances(distances, x_start, x_end)
+      expect(result).toEqual(expected)
+    },
+  )
+})
+
+describe(`get_ribbon_config`, () => {
+  it.each([
+    { cfg: {}, label: `any`, expected: { opacity: 0.3, max_width: 6, scale: 1 } },
+    {
+      cfg: { opacity: 0.5 },
+      label: `any`,
+      expected: { opacity: 0.5, max_width: 6, scale: 1 },
+    },
+    {
+      cfg: { A: { opacity: 0.4 } },
+      label: `A`,
+      expected: { opacity: 0.4, max_width: 6, scale: 1 },
+    },
+    {
+      cfg: { A: { opacity: 0.4 } },
+      label: `B`,
+      expected: { opacity: 0.3, max_width: 6, scale: 1 },
+    },
+  ])(`$cfg for label "$label" → $expected`, ({ cfg, label, expected }) => {
+    expect(get_ribbon_config(cfg, label)).toEqual(expected)
+  })
+
+  it(`distinguishes structure named "opacity" from opacity config value`, () => {
+    // Bug case: { opacity: {...} } should be per-structure, not single config
+    const per_struct = { opacity: { color: `red` }, scale: { color: `blue` } }
+    expect(get_ribbon_config(per_struct, `opacity`).color).toBe(`red`)
+    expect(get_ribbon_config(per_struct, `scale`).color).toBe(`blue`)
+    // Single config has primitive value
+    expect(get_ribbon_config({ opacity: 0.5 }, `any`).opacity).toBe(0.5)
   })
 })
 

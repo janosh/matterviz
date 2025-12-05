@@ -2,6 +2,7 @@
 import { SUBSCRIPT_MAP } from '$lib/labels'
 import { euclidean_dist, type Matrix3x3, type Vec3 } from '$lib/math'
 import type * as types from './types'
+import type { RibbonConfig } from './types'
 
 // Physical constants for unit conversions (SI units)
 const PLANCK = 6.62607015e-34 // J⋅s
@@ -60,6 +61,55 @@ export const get_ordered_segments = (
   )
   const remaining = Array.from(segments).filter((seg) => !ordered.includes(seg))
   return [...ordered, ...remaining]
+}
+
+// Scale segment distances to a target x-axis range [x_start, x_end].
+// Used by both band line series and fat band ribbons for consistent x-axis positioning.
+export function scale_segment_distances(
+  segment_distances: number[],
+  x_start: number,
+  x_end: number,
+): number[] {
+  if (segment_distances.length === 0) return []
+
+  const dist_min = segment_distances[0]
+  const dist_range = segment_distances[segment_distances.length - 1] - dist_min
+
+  if (dist_range === 0) {
+    // All points at same distance - place at midpoint
+    return segment_distances.map(() => (x_start + x_end) / 2)
+  }
+
+  return segment_distances.map(
+    (dist) => x_start + ((dist - dist_min) / dist_range) * (x_end - x_start),
+  )
+}
+
+// Get ribbon config for a specific band structure label.
+// Supports both single global config (with primitive keys like opacity, max_width, scale, color)
+// and per-structure config (keyed by structure label).
+// Distinguishes between a global config and a per-structure config by checking if any
+// primitive-typed keys (opacity, max_width, scale, color) exist at the top level.
+export function get_ribbon_config(
+  ribbon_config: RibbonConfig | Record<string, RibbonConfig>,
+  label: string,
+): RibbonConfig {
+  const defaults: RibbonConfig = { opacity: 0.3, max_width: 6, scale: 1 }
+
+  // Check for primitive config values (not objects) to distinguish single vs per-structure config
+  const cfg = ribbon_config as Record<string, unknown>
+  const has_primitive = [`opacity`, `max_width`, `scale`, `color`].some(
+    (key) => cfg[key] !== undefined && typeof cfg[key] !== `object`,
+  )
+
+  if (has_primitive) {
+    // Single global config with primitive values - apply to all structures
+    return { ...defaults, ...ribbon_config }
+  }
+
+  // Otherwise, treat as Record<string, RibbonConfig> and look up by label
+  const per_struct = ribbon_config as Record<string, RibbonConfig>
+  return { ...defaults, ...(per_struct[label] ?? {}) }
 }
 
 // Extract tick positions and labels for a band structure plot.
@@ -667,8 +717,9 @@ export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
 }
 
 // Generate an SVG path for a fat band ribbon.
-// Creates a closed polygon by tracing the upper edge (y + width) forward,
-// then tracing the lower edge (y - width) backward.
+// Creates a closed polygon by tracing the upper edge (y - width) forward,
+// then tracing the lower edge (y + width) backward.
+// Non-finite or non-positive widths are clamped to 0.
 export function generate_ribbon_path(
   x_values: number[],
   y_values: number[],
@@ -681,9 +732,12 @@ export function generate_ribbon_path(
   const len = x_values.length
   if (len < 2 || len !== y_values.length || len !== width_values.length) return ``
 
-  // Normalize width values to [0, 1] range based on max value in this band
-  const max_width_val = Math.max(...width_values.filter(Number.isFinite))
-  if (max_width_val <= 0) return ``
+  // Normalize width values to [0, 1] range based on the max positive finite value
+  const finite_positive_widths = width_values.filter(
+    (width) => Number.isFinite(width) && width > 0,
+  )
+  if (finite_positive_widths.length === 0) return ``
+  const max_width_val = Math.max(...finite_positive_widths)
 
   // Build upper edge path (forward direction)
   const upper_points: string[] = []
@@ -692,7 +746,10 @@ export function generate_ribbon_path(
   for (let idx = 0; idx < x_values.length; idx++) {
     const x_px = x_scale_fn(x_values[idx])
     const y_data = y_values[idx]
-    const width_normalized = (width_values[idx] ?? 0) / max_width_val
+    const raw_width = width_values[idx] ?? 0
+    const width_normalized = Number.isFinite(raw_width) && raw_width > 0
+      ? raw_width / max_width_val
+      : 0
     const half_width_px = width_normalized * max_width_px * scale
 
     // In SVG, y increases downward, so upper edge has smaller y value
