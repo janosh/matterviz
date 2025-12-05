@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Bands from '$lib/bands/Bands.svelte'
-  import type { BaseBandStructure, RibbonConfig } from '$lib/bands/types'
+  import Bands from '$lib/spectral/Bands.svelte'
+  import type { BaseBandStructure, RibbonConfig } from '$lib/spectral/types'
 
   const mock_band_structure: BaseBandStructure = {
     recip_lattice: {

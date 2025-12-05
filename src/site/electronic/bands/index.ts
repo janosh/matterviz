@@ -1,6 +1,6 @@
 // Export pymatgen electronic band structure files for demos
 // Glob handles both .json (dev) and .json.gz (production)
-import type { BaseBandStructure } from '$lib/bands'
+import type { BaseBandStructure } from '$lib/spectral'
 
 const imports = import.meta.glob<BaseBandStructure>(
   [`./*-bands.json`, `./*-bands.json.gz`],

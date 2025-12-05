@@ -231,4 +231,17 @@ describe(`PropertyFilter`, () => {
     expect(get_max_input().type).toBe(`number`)
     expect(get_max_input().step).toBe(`any`)
   })
+
+  test(`calls onchange on input blur`, () => {
+    const onchange = vi.fn()
+    mount(PropertyFilter, {
+      target: document.body,
+      props: { label: `Test`, min_value: 5, max_value: 10, onchange },
+    })
+
+    get_min_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
+    flushSync()
+
+    expect(onchange).toHaveBeenCalledWith(5, 10)
+  })
 })

@@ -1,4 +1,4 @@
-import type { RibbonConfig } from '$lib/bands/types'
+import type { RibbonConfig } from '$lib/spectral/types'
 import { describe, expect, it } from 'vitest'
 
 // Mirrors get_ribbon_config logic in Bands.svelte

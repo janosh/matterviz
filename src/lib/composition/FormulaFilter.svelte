@@ -198,7 +198,8 @@
 <style>
   .formula-filter-wrapper {
     position: relative;
-    display: contents;
+    display: flex;
+    flex-direction: column;
   }
   .formula-filter-wrapper.disabled {
     opacity: 0.6;

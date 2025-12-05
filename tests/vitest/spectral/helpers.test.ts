@@ -1,4 +1,4 @@
-import type { PymatgenCompleteDos } from '$lib/bands/helpers'
+import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   apply_gaussian_smearing,
   convert_frequencies,
@@ -12,8 +12,8 @@ import {
   normalize_dos,
   pretty_sym_point,
   shift_to_fermi,
-} from '$lib/bands/helpers'
-import type { BaseBandStructure } from '$lib/bands/types'
+} from '$lib/spectral/helpers'
+import type { BaseBandStructure } from '$lib/spectral/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, it, vi } from 'vitest'
 

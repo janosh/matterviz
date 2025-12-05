@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Dos from '$lib/bands/Dos.svelte'
-  import type { PhononDos } from '$lib/bands/types'
+  import Dos from '$lib/spectral/Dos.svelte'
+  import type { PhononDos } from '$lib/spectral/types'
 
   const mock_dos: PhononDos = {
     type: `phonon`,

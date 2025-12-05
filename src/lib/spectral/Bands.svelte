@@ -1,12 +1,12 @@
 <script lang="ts">
-  import * as helpers from '$lib/bands/helpers'
+  import * as helpers from '$lib/spectral/helpers'
   import type {
     BandStructureType,
     BaseBandStructure,
     LineKwargs,
     PathMode,
     RibbonConfig,
-  } from '$lib/bands/types'
+  } from '$lib/spectral/types'
   import { PLOT_COLORS } from '$lib/colors'
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/types'

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { BrillouinBandsDos } from '$lib/bands'
-  import type { BaseBandStructure, PhononDos } from '$lib/bands/types'
+  import { BrillouinBandsDos } from '$lib/spectral'
+  import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
   import type { PymatgenStructure } from '$lib/structure'
 
   const mock_structure: PymatgenStructure = {

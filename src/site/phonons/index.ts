@@ -1,6 +1,6 @@
 // Extract phonon band structures and DOS from full phonon objects
 
-import type { Branch, PhononBandStructure, PhononDos, QPoint } from '$lib/bands'
+import type { Branch, PhononBandStructure, PhononDos, QPoint } from '$lib/spectral'
 import * as math from '$lib/math'
 
 interface RawPhononBandStructure {
