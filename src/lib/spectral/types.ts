@@ -33,6 +33,15 @@ export interface BaseBandStructure {
   distance: number[]
   nb_bands: number
   bands: number[][] // [nb_bands][nb_qpoints]
+  band_widths?: number[][] // [nb_bands][nb_qpoints] - width values for fat bands visualization
+}
+
+// Configuration for fat band ribbon rendering
+export interface RibbonConfig {
+  color?: string // defaults to band line color
+  opacity?: number // default 0.3
+  max_width?: number // max ribbon half-width in pixels (default 6)
+  scale?: number // multiplier for width values (default 1)
 }
 
 // Phonon-specific band structure
@@ -46,7 +55,7 @@ export interface ElectronicBandStructure extends BaseBandStructure {
   is_spin_polarized: boolean
   efermi?: number
   is_metal?: boolean
-  band_gap?: { energy: number; direct: boolean }
+  band_gap?: { energy: number; direct: boolean; transition?: string }
 }
 
 // Phonon DOS: frequencies as independent variable
@@ -61,6 +70,8 @@ export interface ElectronicDos {
   energies: number[]
   densities: number[]
   spin_polarized?: boolean
+  efermi?: number
+  dos_at_e_fermi?: number // DOS value at Fermi level
 }
 // Discriminated union for type-safe DOS handling
 export type DosData = PhononDos | ElectronicDos

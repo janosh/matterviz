@@ -62,7 +62,13 @@
 <ThemeControl />
 
 <Nav
-  routes={[[`/`, `Home`], ...demo_routes]}
+  routes={[
+    [`/`, `Home`],
+    ...demo_routes.filter((route) => {
+      const path = typeof route === `string` ? route : route[0]
+      return !path.startsWith(`/layout`)
+    }),
+  ]}
   labels={{
     '/how-to/hook-up-to-external-api': `Hook up to external API`,
     '/how-to/use-without-svelte': `Use without Svelte`,

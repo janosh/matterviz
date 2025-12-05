@@ -1304,7 +1304,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         description: `Color for hull faces in 4D PD`,
       },
       hull_face_opacity: {
-        value: 0.06,
+        value: 0.03,
         description: `Opacity for hull faces in 4D PD (0-1)`,
         minimum: 0,
         maximum: 1,

@@ -4,11 +4,12 @@
   import { ELEM_SYMBOL_TO_NAME, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import type { PolymorphStats } from './helpers'
-  import type { PhaseData } from './types'
+  import type { HighlightStyle, PhaseData } from './types'
 
-  let { entry, polymorph_stats_map }: {
+  let { entry, polymorph_stats_map, highlight_style }: {
     entry: PhaseData
     polymorph_stats_map?: Map<string, PolymorphStats>
+    highlight_style?: HighlightStyle // Applied when entry is highlighted
   } = $props()
 
   const is_element = $derived(is_unary_entry(entry))
@@ -26,54 +27,62 @@
   )
 </script>
 
-<div class="tooltip-title">
-  {#if entry.entry_id}
-    <strong style="display: block">ID: {entry.entry_id}</strong>
+<div class="tooltip-content" style:--highlight-color={highlight_style?.color}>
+  {#if highlight_style}
+    <span class="highlight-badge">★ Highlighted</span>
   {/if}
-  <strong style="display: block">
-    {@html get_electro_neg_formula(entry.composition)}{
-      is_element && elem_name ? ` (${elem_name})` : ``
-    }
-  </strong>
+
+  <div class="tooltip-title">
+    {#if entry.entry_id}
+      <strong style="display: block">ID: {entry.entry_id}</strong>
+    {/if}
+    <strong style="display: block">
+      {@html get_electro_neg_formula(entry.composition)}{
+        is_element && elem_name ? ` (${elem_name})` : ``
+      }
+    </strong>
+  </div>
+
+  <div>E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom</div>
+  <div>E<sub>form</sub>: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom</div>
+
+  {#if !is_element}
+    {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
+    {@const fractions = Object.entries(entry.composition)
+      .filter(([, amt]) => amt > 0)
+      .map(([el, amt]) => `${el}${format_fractional(amt / total)}`)}
+    {#if fractions.length > 1}
+      <div>Fractional: {fractions.join(` `)}</div>
+    {/if}
+  {/if}
+
+  {#if polymorph_stats}
+    {@const { total, higher, lower, equal } = polymorph_stats}
+    <div
+      class="polymorphs"
+      title="Total structures with same fractional composition. ↑ = higher energy (less stable), ↓ = lower energy (more stable), = equal energy"
+    >
+      Polymorphs:
+      {total}
+      {#if total > 0}
+        <span title="{higher} higher in energy">↑{higher}</span>
+        <span title="{lower} lower in energy">↓{lower}</span>
+        {#if equal > 0}
+          <span title="{equal} equal in energy">={equal}</span>
+        {/if}
+      {/if}
+    </div>
+  {/if}
 </div>
 
-<div>E<sub>above hull</sub>: {format_num(entry.e_above_hull ?? 0, `.3~`)} eV/atom</div>
-<div>E<sub>form</sub>: {format_num(entry.e_form_per_atom ?? 0, `.3~`)} eV/atom</div>
-
-{#if !is_element}
-  {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
-  {@const fractions = Object.entries(entry.composition)
-    .filter(([, amt]) => amt > 0)
-    .map(([el, amt]) => `${el}${format_fractional(amt / total)}`)}
-  {#if fractions.length > 1}
-    Fractional: {fractions.join(` `)}
-  {/if}
-{/if}
-
-{#if polymorph_stats}
-  <div
-    class="polymorphs"
-    title="Total structures with same fractional composition. ↑ = higher energy (less stable), ↓ = lower energy (more stable), = equal energy"
-  >
-    Polymorphs:
-    {polymorph_stats.total}
-    {#if polymorph_stats.total > 0}
-      <span title="{polymorph_stats.higher} higher in energy">↑{
-          polymorph_stats.higher
-        }</span>
-      <span title="{polymorph_stats.lower} lower in energy">↓{
-          polymorph_stats.lower
-        }</span>
-      {#if polymorph_stats.equal > 0}
-        <span title="{polymorph_stats.equal} equal in energy">
-          ={polymorph_stats.equal}
-        </span>
-      {/if}
-    {/if}
-  </div>
-{/if}
-
 <style>
+  .highlight-badge {
+    display: block;
+    font-size: 0.75em;
+    font-weight: 600;
+    color: var(--highlight-color, #ff2222);
+    margin-bottom: 4px;
+  }
   .tooltip-title {
     margin-bottom: 2px;
   }
