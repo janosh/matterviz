@@ -10,23 +10,26 @@
       description: `Materials containing at least these elements (may have others)`,
       examples: [
         { value: `Li,Fe`, mode: `elements` },
-        { value: `Si,O,K`, mode: `elements` },
+        { value: `Si,O`, mode: `elements` },
+        { value: `Mn,Co,Ni`, mode: `elements` },
       ],
     },
     {
       label: `Chemical system`,
       description: `Materials with only these elements (no others)`,
       examples: [
-        { value: `Li-Fe`, mode: `chemsys` },
-        { value: `Si-O-K`, mode: `chemsys` },
+        { value: `Li-Fe-O`, mode: `chemsys` },
+        { value: `Si-O`, mode: `chemsys` },
+        { value: `Na-Cl`, mode: `chemsys` },
       ],
     },
     {
       label: `Exact formula`,
       description: `Materials with this exact stoichiometry`,
       examples: [
-        { value: `Li3Fe`, mode: `exact` },
-        { value: `Eu2SiCl2O3`, mode: `exact` },
+        { value: `LiFePO4`, mode: `exact` },
+        { value: `SiO2`, mode: `exact` },
+        { value: `NaCl`, mode: `exact` },
       ],
     },
   ] as const
@@ -62,6 +65,11 @@
   let input_value = $state(value)
   let examples_open = $state(false)
   let wrapper: HTMLDivElement | null = $state(null)
+  let focused_item_idx = $state(-1)
+
+  // Flatten examples for keyboard navigation
+  type Example = (typeof SEARCH_EXAMPLES)[number][`examples`][number]
+  const all_examples: Example[] = SEARCH_EXAMPLES.flatMap((cat) => [...cat.examples])
 
   function handle_document_click(event: MouseEvent): void {
     if (!wrapper) return
@@ -110,6 +118,40 @@
     examples_open = false
   }
 
+  function toggle_examples(): void {
+    examples_open = !examples_open
+    focused_item_idx = examples_open ? 0 : -1
+  }
+
+  function handle_menu_keydown(event: KeyboardEvent): void {
+    const len = all_examples.length
+    if (!len) return
+
+    const key_actions: Record<string, () => void> = {
+      ArrowDown: () => (focused_item_idx = (focused_item_idx + 1) % len),
+      ArrowUp: () => (focused_item_idx = (focused_item_idx - 1 + len) % len),
+      Home: () => (focused_item_idx = 0),
+      End: () => (focused_item_idx = len - 1),
+      Enter: () =>
+        focused_item_idx >= 0 && apply_example(all_examples[focused_item_idx]),
+      ' ': () =>
+        focused_item_idx >= 0 && apply_example(all_examples[focused_item_idx]),
+      Escape: () => (examples_open = false),
+    }
+
+    if (event.key in key_actions) {
+      event.preventDefault()
+      key_actions[event.key]()
+    }
+  }
+
+  // Focus the active menu item when index changes
+  $effect(() => {
+    if (!examples_open || focused_item_idx < 0) return
+    const items = wrapper?.querySelectorAll<HTMLButtonElement>(`.example-tag`)
+    items?.[focused_item_idx]?.focus()
+  })
+
   let placeholder = $derived(
     { exact: `NbZr2`, chemsys: `Nb-Zr`, elements: `Nb,Zr` }[search_mode],
   )
@@ -142,17 +184,48 @@
       </button>
     {/if}
     {#if show_examples && !disabled}
-      <button
-        type="button"
-        class="icon-btn help-btn"
-        class:active={examples_open}
-        onclick={() => (examples_open = !examples_open)}
-        title="Show search examples"
-        aria-label="Show search examples"
-        aria-expanded={examples_open}
-      >
-        <Icon icon="Info" style="width: 16px; height: 16px" />
-      </button>
+      <div class="examples-wrapper">
+        <button
+          type="button"
+          class="icon-btn help-btn"
+          class:active={examples_open}
+          onclick={toggle_examples}
+          title="Show search examples"
+          aria-label="Show search examples"
+          aria-expanded={examples_open}
+          aria-haspopup="menu"
+        >
+          <Icon icon="Info" style="width: 20px; height: 20px" />
+        </button>
+        {#if examples_open}
+          <div
+            class="examples-dropdown"
+            role="menu"
+            tabindex="-1"
+            onkeydown={handle_menu_keydown}
+          >
+            {#each SEARCH_EXAMPLES as category (category.label)}
+              <div class="example-category">
+                <div class="category-label">{category.label}:</div>
+                <div class="example-tags">
+                  {#each category.examples as example (example.value)}
+                    <button
+                      type="button"
+                      class="example-tag"
+                      onclick={() => apply_example(example)}
+                      title={category.description}
+                      role="menuitem"
+                      tabindex="-1"
+                    >
+                      {example.value}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
     {/if}
     {#if show_mode_selector}
       <select bind:value={search_mode} {disabled} aria-label="Search mode">
@@ -162,182 +235,133 @@
       </select>
     {/if}
   </label>
-
-  {#if examples_open}
-    <div class="examples-dropdown" role="menu">
-      <header>
-        <strong>Search Examples</strong>
-        <button
-          type="button"
-          class="icon-btn close-btn"
-          onclick={() => (examples_open = false)}
-          aria-label="Close examples"
-        >
-          <Icon icon="Close" style="width: 12px; height: 12px" />
-        </button>
-      </header>
-
-      {#each SEARCH_EXAMPLES as category (category.label)}
-        <div class="example-category">
-          <div class="category-label">{category.label}:</div>
-          <div class="example-pills">
-            {#each category.examples as example (example.value)}
-              <button
-                type="button"
-                class="example-pill"
-                onclick={() => apply_example(example)}
-                title={category.description}
-                role="menuitem"
-              >
-                {example.value}
-              </button>
-            {/each}
-          </div>
-        </div>
-      {/each}
-
-      <footer><small>Click an example to apply it</small></footer>
-    </div>
-  {/if}
 </div>
 
 <style>
   .formula-filter-wrapper {
     position: relative;
-    display: flex;
-    flex-direction: column;
   }
   .formula-filter-wrapper.disabled {
-    opacity: 0.6;
+    opacity: 0.5;
     pointer-events: none;
   }
   .filter-group {
     display: flex;
-    gap: 8pt;
-    border-radius: 4px;
-    transition: all 0.2s;
-    padding: 1pt 3pt;
-    border: 1px solid transparent;
-    place-items: center;
+    gap: 5pt;
+    align-items: center;
     min-width: 0;
+    padding: 4pt 8pt;
+    border-radius: 6px;
+    transition: all 0.15s;
+    border: 1px solid var(--filter-border, rgba(128, 128, 128, 0.2));
+    background: var(--filter-bg, rgba(128, 128, 128, 0.05));
+  }
+  .filter-group:focus-within {
+    border-color: var(--highlight, #4db6ff);
   }
   .filter-group.active {
-    background-color: var(--active-filter-bg, rgba(77, 182, 255, 0.1));
-    border-color: var(--active-filter-border, rgba(77, 182, 255, 0.4));
+    background: rgba(77, 182, 255, 0.08);
+    border-color: rgba(77, 182, 255, 0.3);
   }
-  .filter-group input,
-  .filter-group select {
+  .filter-group span {
+    font-size: 0.85em;
+    opacity: 0.7;
+    white-space: nowrap;
+  }
+  .filter-group input {
+    flex: 1;
     min-width: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 2pt 0;
+    outline: none;
+    font-family: var(--mono-font, monospace);
+  }
+  .filter-group input::placeholder {
+    opacity: 0.4;
+  }
+  .filter-group select {
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    background: rgba(0, 0, 0, 0.15);
+    color: inherit;
+    font-size: 0.8em;
+    padding: 3pt 5pt;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .filter-group select:focus {
+    outline: none;
+    border-color: var(--highlight, #4db6ff);
   }
   .icon-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
+    background: none;
     border: none;
     cursor: pointer;
-    padding: 2pt;
-    border-radius: 3px;
+    padding: 4pt;
+    border-radius: 50%;
     color: inherit;
-    opacity: 0.6;
-    transition: opacity 0.15s, background-color 0.15s;
+    opacity: 0.5;
   }
   .icon-btn:hover {
     opacity: 1;
-    background-color: rgba(128, 128, 128, 0.2);
-  }
-  .icon-btn:focus-visible {
-    outline: 2px solid var(--highlight, #4db6ff);
-    outline-offset: 1px;
+    background: rgba(128, 128, 128, 0.15);
   }
   .icon-btn.active {
     opacity: 1;
     color: var(--highlight, #4db6ff);
   }
+  .examples-wrapper {
+    position: relative;
+  }
   .examples-dropdown {
     position: absolute;
-    top: 100%;
-    left: 0;
+    top: calc(100% + 4pt);
     right: 0;
-    margin-top: 4pt;
-    background: var(--dropdown-bg, var(--surface-bg, #1a1a2e));
-    border: 1px solid var(--dropdown-border, rgba(128, 128, 128, 0.3));
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     z-index: 100;
-    padding: 10pt;
+    width: max-content;
+    background: var(--dropdown-bg, var(--surface-bg, #fff));
+    border: 1px solid var(--dropdown-border, rgba(128, 128, 128, 0.2));
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 8pt;
     display: flex;
     flex-direction: column;
-    gap: 10pt;
-    min-width: 280px;
-    animation: dropdown-fade-in 0.15s ease-out;
-  }
-  @keyframes dropdown-fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(-4px);
-    }
-  }
-  .examples-dropdown header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 6pt;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.2);
-  }
-  .examples-dropdown header strong {
-    font-size: 0.9em;
-    color: var(--text-primary, #fff);
-  }
-  .close-btn {
-    opacity: 0.5;
-    padding: 3pt;
-  }
-  .close-btn:hover {
-    opacity: 1;
+    gap: 6pt;
   }
   .example-category {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 6pt;
+    flex-wrap: wrap;
   }
   .category-label {
-    font-size: 0.8em;
-    font-weight: 500;
-    color: var(--text-secondary, rgba(255, 255, 255, 0.7));
-    min-width: 130px;
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    opacity: 0.6;
+    min-width: 115px;
   }
-  .example-pills {
+  .example-tags {
     display: flex;
+    gap: 4pt;
     flex-wrap: wrap;
-    gap: 6pt;
   }
-  .example-pill {
-    background: var(--pill-bg, rgba(77, 182, 255, 0.1));
-    border: 1px solid var(--pill-border, rgba(77, 182, 255, 0.3));
+  .example-tag {
+    background: rgba(77, 182, 255, 0.1);
+    border: 1px solid rgba(77, 182, 255, 0.3);
     border-radius: 4px;
-    padding: 3pt 8pt;
-    font-size: 0.85em;
-    font-family: var(--mono-font, ui-monospace, monospace);
+    padding: 3pt 7pt;
+    font-size: 0.82em;
+    font-family: var(--mono-font, monospace);
     color: var(--highlight, #4db6ff);
     cursor: pointer;
-    transition: all 0.15s;
   }
-  .example-pill:hover {
-    background: var(--pill-hover-bg, rgba(77, 182, 255, 0.2));
-    border-color: var(--pill-hover-border, rgba(77, 182, 255, 0.5));
-    transform: translateY(-1px);
-  }
-  .example-pill:active {
-    transform: translateY(0);
-  }
-  .examples-dropdown footer {
-    padding-top: 6pt;
-    border-top: 1px solid rgba(128, 128, 128, 0.2);
-  }
-  .examples-dropdown footer small {
-    font-size: 0.75em;
-    color: var(--text-tertiary, rgba(255, 255, 255, 0.5));
+  .example-tag:hover {
+    background: rgba(77, 182, 255, 0.2);
+    border-color: rgba(77, 182, 255, 0.5);
   }
 </style>
