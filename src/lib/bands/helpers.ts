@@ -665,3 +665,51 @@ export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
     ...(spd_dos && { spd_dos }),
   }
 }
+
+// Generate an SVG path for a fat band ribbon.
+// Creates a closed polygon by tracing the upper edge (y + width) forward,
+// then tracing the lower edge (y - width) backward.
+export function generate_ribbon_path(
+  x_values: number[],
+  y_values: number[],
+  width_values: number[],
+  x_scale_fn: (x: number) => number,
+  y_scale_fn: (y: number) => number,
+  max_width_px: number,
+  scale: number = 1,
+): string {
+  const len = x_values.length
+  if (len < 2 || len !== y_values.length || len !== width_values.length) return ``
+
+  // Normalize width values to [0, 1] range based on max value in this band
+  const max_width_val = Math.max(...width_values.filter(Number.isFinite))
+  if (max_width_val <= 0) return ``
+
+  // Build upper edge path (forward direction)
+  const upper_points: string[] = []
+  const lower_points: string[] = []
+
+  for (let idx = 0; idx < x_values.length; idx++) {
+    const x_px = x_scale_fn(x_values[idx])
+    const y_data = y_values[idx]
+    const width_normalized = (width_values[idx] ?? 0) / max_width_val
+    const half_width_px = width_normalized * max_width_px * scale
+
+    // In SVG, y increases downward, so upper edge has smaller y value
+    const y_upper_px = y_scale_fn(y_data) - half_width_px
+    const y_lower_px = y_scale_fn(y_data) + half_width_px
+
+    upper_points.push(`${x_px.toFixed(2)},${y_upper_px.toFixed(2)}`)
+    lower_points.push(`${x_px.toFixed(2)},${y_lower_px.toFixed(2)}`)
+  }
+
+  // Combine: upper edge forward, lower edge backward, close path
+  const path_parts = [
+    `M${upper_points[0]}`,
+    ...upper_points.slice(1).map((pt) => `L${pt}`),
+    ...lower_points.reverse().map((pt) => `L${pt}`),
+    `Z`,
+  ]
+
+  return path_parts.join(` `)
+}

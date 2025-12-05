@@ -5,6 +5,7 @@ import {
   extract_k_path_points,
   find_qpoint_at_distance,
   find_qpoint_at_rescaled_x,
+  generate_ribbon_path,
   get_band_xaxis_ticks,
   normalize_band_structure,
   normalize_densities,
@@ -1072,5 +1073,63 @@ describe(`shift_to_fermi`, () => {
     // Original unchanged
     expect(dos.efermi).toBe(5.0)
     expect(dos.energies).toEqual([0, 5, 10])
+  })
+})
+
+describe(`generate_ribbon_path`, () => {
+  const id = (v: number) => v
+
+  it(`generates valid SVG path with lower edge reversed`, () => {
+    const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], id, id, 5)
+    expect(path).toMatch(/^M[\d.,-]+( L[\d.,-]+)+ Z$/)
+    // Verify polygon structure: upper edge 0→1→2, lower edge 2→1→0
+    const points = path.match(/[\d.-]+,[\d.-]+/g) ?? []
+    expect(points).toHaveLength(6)
+    expect(points.slice(0, 3).map((p) => p.split(`,`)[0])).toEqual([
+      `0.00`,
+      `1.00`,
+      `2.00`,
+    ])
+    expect(points.slice(3).map((p) => p.split(`,`)[0])).toEqual([`2.00`, `1.00`, `0.00`])
+  })
+
+  it.each([
+    [`too few points`, [0], [0, 1], [1, 1]],
+    [`mismatched y`, [0, 1, 2], [0, 1], [1, 1, 1]],
+    [`mismatched width`, [0, 1, 2], [0, 1, 2], [1, 1]],
+    [`zero widths`, [0, 1, 2], [0, 1, 0], [0, 0, 0]],
+    [`negative widths`, [0, 1], [0, 1], [-1, -2]],
+  ])(`returns "" for %s`, (_, x, y, w) => {
+    expect(generate_ribbon_path(x, y, w, id, id, 10)).toBe(``)
+  })
+
+  it(`normalizes widths and applies scale`, () => {
+    // width=2 is max, so at x=1: half_width=10, upper=5-10=-5, lower=5+10=15
+    expect(generate_ribbon_path([0, 1, 2], [5, 5, 5], [1, 2, 1], id, id, 10)).toContain(
+      `1.00,-5.00`,
+    )
+    // scale=2 doubles the width offset
+    expect(generate_ribbon_path([0, 1], [5, 5], [1, 1], id, id, 10, 2)).toContain(
+      `,-15.00`,
+    )
+  })
+
+  it(`applies custom scale functions`, () => {
+    const path = generate_ribbon_path(
+      [0, 1, 2],
+      [0, 0, 0],
+      [1, 1, 1],
+      (v) => v * 2,
+      id,
+      5,
+    )
+    expect(path).toContain(`0.00,`)
+    expect(path).toContain(`2.00,`)
+    expect(path).toContain(`4.00,`) // x doubled: 0→0, 1→2, 2→4
+  })
+
+  it(`handles Infinity in widths`, () => {
+    expect(generate_ribbon_path([0, 1, 2], [0, 1, 0], [1, Infinity, 1], id, id, 10)).not
+      .toBe(``)
   })
 })

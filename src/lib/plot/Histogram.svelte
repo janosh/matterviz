@@ -996,6 +996,7 @@
   svg {
     width: var(--histogram-svg-width, 100%);
     height: var(--histogram-svg-height, 100%);
+    max-height: var(--histogram-svg-max-height, 100%);
     flex: var(--histogram-svg-flex, 1);
     overflow: var(--histogram-svg-overflow, visible);
     fill: var(--text-color);
