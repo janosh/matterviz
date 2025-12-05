@@ -174,7 +174,7 @@ describe(`FormulaFilter`, () => {
 
   test(`renders select options correctly`, () => {
     mount(FormulaFilter, { target: document.body, props: { value: `` } })
-    const options = document.querySelectorAll(`option`)
+    const options = Array.from(document.querySelectorAll(`option`))
     expect(options.length).toBe(3)
     expect([...options].map((opt) => opt.value)).toEqual([`elements`, `chemsys`, `exact`])
   })

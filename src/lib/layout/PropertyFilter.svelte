@@ -46,7 +46,10 @@
     histogram_position !== `none` && histogram_data?.length,
   )
 
-  let active = $derived(Boolean(min_value || max_value))
+  // Check for numeric values to avoid treating string "0" as active
+  let active = $derived(
+    typeof min_value === `number` || typeof max_value === `number`,
+  )
   let plain_label = $derived(label.replace(/<[^>]*>/g, ``))
 
   let filtered_data = $derived.by(() => {
@@ -80,6 +83,7 @@
     color: `var(--text-secondary)`,
   }
 
+  // x: [] satisfies DataSeries type requirement; Histogram bins on y values only
   const series: DataSeries[] = $derived([
     { y: histogram_data ?? [], color: histogram_color, label: `All`, x: [] },
     {
@@ -205,7 +209,7 @@
     font-size: inherit;
     flex: 1;
     min-width: 0;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
     border-radius: 2px;
     padding: 0.2em;
     background: var(--bg-color, transparent);

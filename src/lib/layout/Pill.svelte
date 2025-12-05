@@ -84,11 +84,9 @@
   {#if removable && !disabled}
     <button
       type="button"
-      class="remove-btn"
       onclick={handle_remove}
       onkeydown={handle_remove}
       aria-label="Remove"
-      tabindex={0}
     >
       <Icon icon="Close" style="width: 10px; height: 10px" />
     </button>
@@ -215,7 +213,7 @@
     justify-content: center;
     animation: fade-in 0.1s ease-out;
   }
-  .remove-btn {
+  [aria-label='Remove'] {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -229,11 +227,11 @@
     opacity: 0.6;
     transition: opacity 0.15s, background-color 0.15s;
   }
-  .remove-btn:hover {
+  [aria-label='Remove']:hover {
     opacity: 1;
     background-color: rgba(128, 128, 128, 0.3);
   }
-  .remove-btn:focus-visible {
+  [aria-label='Remove']:focus-visible {
     outline: 2px solid var(--highlight, #4db6ff);
     outline-offset: 1px;
   }

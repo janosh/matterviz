@@ -162,7 +162,7 @@ describe(`Pill`, () => {
         target: document.body,
         props: { label: `Test`, value: 1, ...params },
       })
-      expect(!!document.querySelector(`.remove-btn`)).toBe(params.expected)
+      expect(!!document.querySelector(`[aria-label="Remove"]`)).toBe(params.expected)
     },
   )
 
@@ -174,7 +174,7 @@ describe(`Pill`, () => {
       props: { label: `Test`, value: 1, removable: true, onclick, onremove },
     })
 
-    doc_query<HTMLButtonElement>(`.remove-btn`).click()
+    doc_query<HTMLButtonElement>(`[aria-label="Remove"]`).click()
     flushSync()
 
     expect(onremove).toHaveBeenCalled()
@@ -186,7 +186,8 @@ describe(`Pill`, () => {
       target: document.body,
       props: { label: `Test`, value: 1, removable: true },
     })
-    expect(doc_query(`.remove-btn`).getAttribute(`aria-label`)).toBe(`Remove`)
+    // Button is selected by aria-label, so this verifies it exists with correct label
+    expect(doc_query(`[aria-label="Remove"]`)).toBeTruthy()
   })
 
   test.each([
