@@ -61,6 +61,14 @@
   // eslint-disable-next-line svelte/prefer-writable-derived -- need both external sync and local edits
   let input_value = $state(value)
   let examples_open = $state(false)
+  let wrapper: HTMLDivElement | null = $state(null)
+
+  function handle_document_click(event: MouseEvent): void {
+    if (!wrapper) return
+    const target = event.target
+    if (!(target instanceof Node)) return
+    if (!wrapper.contains(target)) examples_open = false
+  }
 
   $effect(() => {
     input_value = value
@@ -73,6 +81,7 @@
 
   function sync_value(): void {
     const trimmed = input_value.trim()
+    if (!trimmed) return set_value(``)
     if (search_mode === `exact`) return set_value(trimmed)
     const separator = search_mode === `chemsys` ? `-` : `,`
     set_value(normalize_element_symbols(trimmed.replace(/-/g, `,`)).join(separator))
@@ -84,7 +93,7 @@
       sync_value()
     } else if (event.key === `Escape`) {
       if (examples_open) examples_open = false
-      else if (value) clear_filter()
+      else if (input_value) clear_filter()
     }
   }
 
@@ -106,13 +115,9 @@
   )
 </script>
 
-<svelte:document
-  onclick={(ev) =>
-  !(ev.target as HTMLElement).closest(`.formula-filter-wrapper`) &&
-  (examples_open = false)}
-/>
+<svelte:document onclick={handle_document_click} />
 
-<div class="formula-filter-wrapper" class:disabled {...rest}>
+<div class="formula-filter-wrapper" bind:this={wrapper} class:disabled {...rest}>
   <label class="filter-group" class:active={Boolean(value)}>
     <span {title}>{label}</span>
     <input
@@ -182,6 +187,7 @@
                 class="example-pill"
                 onclick={() => apply_example(example)}
                 title={category.description}
+                role="menuitem"
               >
                 {example.value}
               </button>

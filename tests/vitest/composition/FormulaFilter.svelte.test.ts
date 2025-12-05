@@ -1,5 +1,5 @@
 import { FormulaFilter } from '$lib/composition'
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -131,23 +131,9 @@ describe(`FormulaFilter`, () => {
     expect(doc_query(`label span`).getAttribute(`title`)).toBe(`Filter by elements`)
   })
 
-  test(`syncs external value changes to input`, () => {
-    let value = ``
-    const component = mount(FormulaFilter, {
-      target: document.body,
-      props: {
-        get value() {
-          return value
-        },
-        set value(val: string) {
-          value = val
-        },
-      },
-    })
-
-    unmount(component)
-    value = `Fe,O`
-
+  test(`syncs external value changes to input`, async () => {
+    // Use $state rune for reactive external value (requires .svelte.test.ts file)
+    let value = $state(``)
     mount(FormulaFilter, {
       target: document.body,
       props: {
@@ -160,7 +146,13 @@ describe(`FormulaFilter`, () => {
       },
     })
 
-    flushSync()
+    await tick()
+    expect(get_input().value).toBe(``)
+
+    // Update external value while component is mounted
+    value = `Fe,O`
+    await tick()
+
     expect(get_input().value).toBe(`Fe,O`)
   })
 
@@ -290,6 +282,7 @@ describe(`FormulaFilter`, () => {
       doc_query<HTMLButtonElement>(`.help-btn`).click()
       flushSync()
 
+      // SEARCH_EXAMPLES has 3 categories (elements, chemsys, exact) with 2 examples each
       expect(document.querySelectorAll(`.example-category`).length).toBe(3)
       expect(document.querySelectorAll(`.example-pill`).length).toBe(6)
 
