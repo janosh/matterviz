@@ -1006,10 +1006,10 @@
   g:is(.x-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
   }
-  .histogram-series rect {
+  .histogram-series path {
     transition: opacity 0.2s ease;
   }
-  .histogram-series rect:hover {
+  .histogram-series path:hover {
     opacity: 1 !important;
   }
   .zoom-rect {

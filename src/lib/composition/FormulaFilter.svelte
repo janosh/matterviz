@@ -58,7 +58,7 @@
     title?: string // Tooltip title for the label
     disabled?: boolean // Disable all inputs
     onchange?: (value: string, search_mode: FormulaSearchMode) => void // Callback when value changes (after normalization)
-    onclear?: () => void // Callback when clear button is clicked
+    onclear?: () => void // Callback when clear button is clicked (fires before onchange)
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   // eslint-disable-next-line svelte/prefer-writable-derived -- need both external sync and local edits
@@ -106,8 +106,8 @@
   }
 
   function clear_filter(): void {
-    set_value(``)
     onclear?.()
+    set_value(``)
   }
 
   function apply_example(
@@ -126,26 +126,20 @@
   function handle_menu_keydown(event: KeyboardEvent): void {
     const len = all_examples.length
     if (!len) return
-
-    // For Enter/Space on a button, let the button's native click handle it
-    // to avoid calling apply_example twice (once here, once from onclick)
+    // Let button's native click handle Enter/Space to avoid double apply_example
     const is_button_activation = (event.key === `Enter` || event.key === ` `) &&
       event.target instanceof HTMLButtonElement
+    if (is_button_activation) return
 
     const key_actions: Record<string, () => void> = {
       ArrowDown: () => (focused_item_idx = (focused_item_idx + 1) % len),
       ArrowUp: () => (focused_item_idx = (focused_item_idx - 1 + len) % len),
       Home: () => (focused_item_idx = 0),
       End: () => (focused_item_idx = len - 1),
-      Enter: () =>
-        focused_item_idx >= 0 && apply_example(all_examples[focused_item_idx]),
-      ' ': () =>
-        focused_item_idx >= 0 && apply_example(all_examples[focused_item_idx]),
       Escape: () => (examples_open = false),
     }
 
     if (event.key in key_actions) {
-      if (is_button_activation) return // let button's onclick handle it
       event.preventDefault()
       key_actions[event.key]()
     }
@@ -154,7 +148,7 @@
   // Focus the active menu item when index changes
   $effect(() => {
     if (!examples_open || focused_item_idx < 0) return
-    const items = wrapper?.querySelectorAll<HTMLButtonElement>(`.example-tag`)
+    const items = wrapper?.querySelectorAll<HTMLButtonElement>(`[data-example-item]`)
     items?.[focused_item_idx]?.focus()
   })
 
@@ -218,6 +212,7 @@
                     <button
                       type="button"
                       class="example-tag"
+                      data-example-item
                       onclick={() => apply_example(example)}
                       title={category.description}
                       role="menuitem"
@@ -259,18 +254,12 @@
     padding: 4pt 8pt;
     border-radius: 6px;
     transition: all 0.15s;
-    border: 1px solid var(--filter-border, rgba(128, 128, 128, 0.2));
     background: var(--filter-bg, rgba(128, 128, 128, 0.05));
-  }
-  .filter-group:focus-within {
-    border-color: var(--highlight, #4db6ff);
   }
   .filter-group.active {
     background: rgba(77, 182, 255, 0.08);
-    border-color: rgba(77, 182, 255, 0.3);
   }
   .filter-group span {
-    font-size: 0.85em;
     opacity: 0.7;
     white-space: nowrap;
   }

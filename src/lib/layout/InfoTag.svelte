@@ -106,10 +106,17 @@
     transition: all 0.12s;
     border: 1px solid;
     white-space: nowrap;
+    background: color-mix(in srgb, var(--tag-color) 10%, transparent);
+    border-color: color-mix(in srgb, var(--tag-color) 25%, transparent);
   }
   .info-tag em {
     font-style: normal;
     font-weight: 600;
+    color: var(--tag-color);
+  }
+  .info-tag:hover:not(.disabled) {
+    background: color-mix(in srgb, var(--tag-color) 18%, transparent);
+    border-color: color-mix(in srgb, var(--tag-color) 40%, transparent);
   }
   .info-tag.sm {
     font-size: 0.72em;
@@ -127,59 +134,19 @@
     border-radius: 6px;
   }
   .info-tag.default {
-    background: rgba(128, 128, 128, 0.08);
-    border-color: rgba(128, 128, 128, 0.18);
-  }
-  .info-tag.default em {
-    color: var(--highlight, #4db6ff);
-  }
-  .info-tag.default:hover:not(.disabled) {
-    background: rgba(77, 182, 255, 0.12);
-    border-color: rgba(77, 182, 255, 0.3);
+    --tag-color: var(--highlight, #4db6ff);
   }
   .info-tag.success {
-    background: rgba(16, 185, 129, 0.1);
-    border-color: rgba(16, 185, 129, 0.25);
-  }
-  .info-tag.success em {
-    color: var(--success-color, #10b981);
-  }
-  .info-tag.success:hover:not(.disabled) {
-    background: rgba(16, 185, 129, 0.18);
-    border-color: rgba(16, 185, 129, 0.4);
+    --tag-color: var(--success-color, #10b981);
   }
   .info-tag.warning {
-    background: rgba(245, 158, 11, 0.1);
-    border-color: rgba(245, 158, 11, 0.25);
-  }
-  .info-tag.warning em {
-    color: var(--warning-color, #f59e0b);
-  }
-  .info-tag.warning:hover:not(.disabled) {
-    background: rgba(245, 158, 11, 0.18);
-    border-color: rgba(245, 158, 11, 0.4);
+    --tag-color: var(--warning-color, #f59e0b);
   }
   .info-tag.error {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.25);
-  }
-  .info-tag.error em {
-    color: var(--error-color, #ef4444);
-  }
-  .info-tag.error:hover:not(.disabled) {
-    background: rgba(239, 68, 68, 0.18);
-    border-color: rgba(239, 68, 68, 0.4);
+    --tag-color: var(--error-color, #ef4444);
   }
   .info-tag.info {
-    background: rgba(59, 130, 246, 0.1);
-    border-color: rgba(59, 130, 246, 0.25);
-  }
-  .info-tag.info em {
-    color: var(--info-color, #3b82f6);
-  }
-  .info-tag.info:hover:not(.disabled) {
-    background: rgba(59, 130, 246, 0.18);
-    border-color: rgba(59, 130, 246, 0.4);
+    --tag-color: var(--info-color, #3b82f6);
   }
   .info-tag.disabled {
     opacity: 0.5;

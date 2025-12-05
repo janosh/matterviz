@@ -110,7 +110,7 @@ export function get_ribbon_config(
   // Otherwise, treat as Record<string, RibbonConfig> and look up by label
   // Empty label skips lookup and uses defaults only
   const per_struct = ribbon_config as Record<string, RibbonConfig>
-  return { ...defaults, ...((label ? per_struct[label] : {}) ?? {}) }
+  return { ...defaults, ...(label ? per_struct[label] : {}) }
 }
 
 // Extract tick positions and labels for a band structure plot.
@@ -718,8 +718,8 @@ export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
 }
 
 // Generate an SVG path for a fat band ribbon.
-// Creates a closed polygon by tracing the upper edge (y - width) forward,
-// then tracing the lower edge (y + width) backward.
+// Creates a closed polygon by tracing the upper edge (y - half_width) forward,
+// then tracing the lower edge (y + half_width) backward.
 // Non-finite or non-positive widths are clamped to 0.
 export function generate_ribbon_path(
   x_values: number[],

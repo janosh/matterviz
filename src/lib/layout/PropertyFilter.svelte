@@ -36,7 +36,7 @@
     unit?: string // Unit label to display after inputs
     show_clear_button?: boolean // Show clear button when filters are active
     onchange?: (min: number | undefined, max: number | undefined) => void // Callback when filter values change
-    onclear?: () => void // Callback when clear button is clicked
+    onclear?: () => void // Callback when clear button is clicked (fires before onchange)
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   let show_histogram = $derived(
@@ -169,15 +169,10 @@
     padding: 4pt 8pt;
     border-radius: 6px;
     transition: all 0.15s;
-    border: 1px solid var(--filter-border, rgba(128, 128, 128, 0.2));
     background: var(--filter-bg, rgba(128, 128, 128, 0.05));
-  }
-  .filter-container:focus-within {
-    border-color: var(--highlight, #4db6ff);
   }
   .filter-container.active {
     background: rgba(77, 182, 255, 0.08);
-    border-color: rgba(77, 182, 255, 0.3);
   }
   .filter-container.disabled {
     opacity: 0.5;
@@ -190,7 +185,6 @@
   }
   .filter-label {
     flex-shrink: 0;
-    font-size: 0.85em;
     opacity: 0.7;
   }
   .log-label {
