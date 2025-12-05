@@ -23,8 +23,8 @@
     ...rest
   }: {
     label: string // Label text (supports HTML)
-    min_value?: string | number // Minimum value for filtering
-    max_value?: string | number // Maximum value for filtering
+    min_value?: number // Minimum value for filtering (undefined = unbounded)
+    max_value?: number // Maximum value for filtering (undefined = unbounded)
     placeholders?: { min?: string; max?: string } // Placeholder text for min/max inputs
     title?: string // Tooltip title for the label
     histogram_data?: number[] // Data array for histogram visualization
@@ -35,10 +35,7 @@
     disabled?: boolean // Disable all inputs
     unit?: string // Unit label to display after inputs
     show_clear_button?: boolean // Show clear button when filters are active
-    onchange?: (
-      min: string | number | undefined,
-      max: string | number | undefined,
-    ) => void // Callback when filter values change
+    onchange?: (min: number | undefined, max: number | undefined) => void // Callback when filter values change
     onclear?: () => void // Callback when clear button is clicked
   } & HTMLAttributes<HTMLDivElement> = $props()
 
@@ -46,16 +43,15 @@
     histogram_position !== `none` && histogram_data?.length,
   )
 
-  // Check for numeric values to avoid treating string "0" as active
-  let active = $derived(
-    typeof min_value === `number` || typeof max_value === `number`,
-  )
+  // Active when either bound is set (undefined = unbounded)
+  let active = $derived(min_value !== undefined || max_value !== undefined)
   let plain_label = $derived(label.replace(/<[^>]*>/g, ``))
 
   let filtered_data = $derived.by(() => {
     if (!histogram_data) return []
-    const min = typeof min_value === `number` ? min_value : -Infinity
-    const max = typeof max_value === `number` ? max_value : Infinity
+    // undefined means unbounded (-Infinity for min, +Infinity for max)
+    const min = min_value ?? -Infinity
+    const max = max_value ?? Infinity
     return histogram_data.filter((val) => val >= min && val <= max)
   })
 
@@ -80,7 +76,7 @@
     label: ``,
     grid_style: { style: `opacity: 0` },
     tick: { label: { inside: true } },
-    color: `var(--text-secondary)`,
+    color: `color-mix(in srgb, currentColor 60%, transparent)`,
   }
 
   // x: [] satisfies DataSeries type requirement; Histogram bins on y values only
@@ -169,17 +165,22 @@
   .filter-container {
     display: flex;
     flex-direction: column;
-    border-radius: 4px;
-    padding: 2pt 3pt;
-    border: 1px solid transparent;
     position: relative;
+    padding: 4pt 8pt;
+    border-radius: 6px;
+    transition: all 0.15s;
+    border: 1px solid var(--filter-border, rgba(128, 128, 128, 0.2));
+    background: var(--filter-bg, rgba(128, 128, 128, 0.05));
+  }
+  .filter-container:focus-within {
+    border-color: var(--highlight, #4db6ff);
   }
   .filter-container.active {
-    background-color: var(--active-filter-bg, rgba(77, 182, 255, 0.1));
-    border-color: var(--active-filter-border, rgba(77, 182, 255, 0.4));
+    background: rgba(77, 182, 255, 0.08);
+    border-color: rgba(77, 182, 255, 0.3);
   }
   .filter-container.disabled {
-    opacity: 0.6;
+    opacity: 0.5;
     pointer-events: none;
   }
   .filter-row {
@@ -189,57 +190,64 @@
   }
   .filter-label {
     flex-shrink: 0;
+    font-size: 0.85em;
+    opacity: 0.7;
   }
   .log-label {
     position: absolute;
-    top: 0;
-    right: 0;
+    top: 2pt;
+    right: 4pt;
     font-size: 0.6em;
-    opacity: 0.5;
-    padding: 2px 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    opacity: 0.4;
+    padding: 1pt 3pt;
+    background: rgba(128, 128, 128, 0.1);
+    border-radius: 2px;
   }
   .filter-inputs {
     display: flex;
     align-items: center;
-    gap: 8pt;
+    gap: 4pt;
     flex: 1;
     min-width: 0;
   }
   .filter-inputs input {
-    font-size: inherit;
     flex: 1;
     min-width: 0;
-    border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-    border-radius: 2px;
-    padding: 0.2em;
-    background: var(--bg-color, transparent);
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    border-radius: 4px;
+    padding: 3pt 6pt;
+    background: color-mix(in srgb, currentColor 5%, transparent);
     color: inherit;
+    font-family: var(--mono-font, monospace);
+  }
+  .filter-inputs input::placeholder {
+    opacity: 0.4;
+  }
+  .filter-inputs input:focus {
+    outline: none;
+    border-color: var(--highlight, #4db6ff);
   }
   .unit-label {
-    font-size: 0.85em;
-    opacity: 0.7;
+    font-size: 0.8em;
+    opacity: 0.5;
     white-space: nowrap;
   }
   .clear-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
+    background: none;
     border: none;
     cursor: pointer;
-    padding: 2pt;
-    border-radius: 3px;
+    padding: 3pt;
+    border-radius: 4px;
     color: inherit;
-    opacity: 0.6;
-    transition: opacity 0.15s, background-color 0.15s;
-    flex-shrink: 0;
+    opacity: 0.5;
   }
   .clear-btn:hover {
     opacity: 1;
-    background-color: rgba(128, 128, 128, 0.2);
-  }
-  .clear-btn:focus-visible {
-    outline: 2px solid var(--highlight, #4db6ff);
-    outline-offset: 1px;
+    background: rgba(128, 128, 128, 0.15);
   }
 </style>

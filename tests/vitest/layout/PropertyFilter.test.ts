@@ -91,8 +91,8 @@ describe(`PropertyFilter`, () => {
   test(`clears values and calls callbacks when clear button is clicked`, () => {
     const onchange = vi.fn()
     const onclear = vi.fn()
-    let min_val: string | number | undefined = 10
-    let max_val: string | number | undefined = 100
+    let min_val: number | undefined = 10
+    let max_val: number | undefined = 100
 
     mount(PropertyFilter, {
       target: document.body,
@@ -101,13 +101,13 @@ describe(`PropertyFilter`, () => {
         get min_value() {
           return min_val
         },
-        set min_value(val) {
+        set min_value(val: number | undefined) {
           min_val = val
         },
         get max_value() {
           return max_val
         },
-        set max_value(val) {
+        set max_value(val: number | undefined) {
           max_val = val
         },
         onchange,
