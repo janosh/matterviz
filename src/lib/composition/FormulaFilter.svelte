@@ -127,6 +127,11 @@
     const len = all_examples.length
     if (!len) return
 
+    // For Enter/Space on a button, let the button's native click handle it
+    // to avoid calling apply_example twice (once here, once from onclick)
+    const is_button_activation = (event.key === `Enter` || event.key === ` `) &&
+      event.target instanceof HTMLButtonElement
+
     const key_actions: Record<string, () => void> = {
       ArrowDown: () => (focused_item_idx = (focused_item_idx + 1) % len),
       ArrowUp: () => (focused_item_idx = (focused_item_idx - 1 + len) % len),
@@ -140,6 +145,7 @@
     }
 
     if (event.key in key_actions) {
+      if (is_button_activation) return // let button's onclick handle it
       event.preventDefault()
       key_actions[event.key]()
     }

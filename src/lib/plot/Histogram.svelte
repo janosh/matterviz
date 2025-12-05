@@ -574,6 +574,64 @@
       <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
     {/if}
 
+    <!-- Histogram bars (rendered before axes so tick labels appear on top) -->
+    {#each histogram_data as
+      { id, bins, color, label, y_scale, y_axis },
+      series_idx
+      (id ?? series_idx)
+    }
+      <g class="histogram-series" data-series-idx={series_idx}>
+        {#each bins as bin, bin_idx (bin_idx)}
+          {@const bar_x = scales.x(bin.x0!)}
+          {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
+          {@const bar_height = Math.max(0, (height - pad.b) - y_scale(bin.length))}
+          {@const bar_y = y_scale(bin.length)}
+          {@const value = (bin.x0! + bin.x1!) / 2}
+          {#if bar_height > 0}
+            <path
+              d={bar_path(
+                bar_x,
+                bar_y,
+                bar_width,
+                bar_height,
+                Math.min(final_bar.border_radius ?? 0, bar_width / 2, bar_height / 2),
+              )}
+              fill={color}
+              opacity={final_bar.opacity}
+              stroke={final_bar.stroke_color}
+              stroke-opacity={final_bar.stroke_opacity}
+              stroke-width={final_bar.stroke_width}
+              role="button"
+              tabindex="0"
+              onmousemove={(evt) =>
+              handle_mouse_move(
+                evt,
+                value,
+                bin.length,
+                label,
+                (y_axis ?? `y1`) as `y1` | `y2`,
+                series_idx,
+              )}
+              onmouseleave={() => {
+                hover_info = null
+                change(null)
+                on_bar_hover?.(null)
+              }}
+              onclick={(event) =>
+              on_bar_click?.({ value, count: bin.length, property: label, event })}
+              onkeydown={(event: KeyboardEvent) => {
+                if ([`Enter`, ` `].includes(event.key)) {
+                  event.preventDefault()
+                  on_bar_click?.({ value, count: bin.length, property: label, event })
+                }
+              }}
+              style:cursor={on_bar_click ? `pointer` : undefined}
+            />
+          {/if}
+        {/each}
+      </g>
+    {/each}
+
     <!-- X-axis -->
     <g class="x-axis">
       <line
@@ -812,64 +870,6 @@
         />
       {/if}
     {/if}
-
-    <!-- Histogram bars -->
-    {#each histogram_data as
-      { id, bins, color, label, y_scale, y_axis },
-      series_idx
-      (id ?? series_idx)
-    }
-      <g class="histogram-series" data-series-idx={series_idx}>
-        {#each bins as bin, bin_idx (bin_idx)}
-          {@const bar_x = scales.x(bin.x0!)}
-          {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
-          {@const bar_height = Math.max(0, (height - pad.b) - y_scale(bin.length))}
-          {@const bar_y = y_scale(bin.length)}
-          {@const value = (bin.x0! + bin.x1!) / 2}
-          {#if bar_height > 0}
-            <path
-              d={bar_path(
-                bar_x,
-                bar_y,
-                bar_width,
-                bar_height,
-                Math.min(final_bar.border_radius ?? 0, bar_width / 2, bar_height / 2),
-              )}
-              fill={color}
-              opacity={final_bar.opacity}
-              stroke={final_bar.stroke_color}
-              stroke-opacity={final_bar.stroke_opacity}
-              stroke-width={final_bar.stroke_width}
-              role="button"
-              tabindex="0"
-              onmousemove={(evt) =>
-              handle_mouse_move(
-                evt,
-                value,
-                bin.length,
-                label,
-                (y_axis ?? `y1`) as `y1` | `y2`,
-                series_idx,
-              )}
-              onmouseleave={() => {
-                hover_info = null
-                change(null)
-                on_bar_hover?.(null)
-              }}
-              onclick={(event) =>
-              on_bar_click?.({ value, count: bin.length, property: label, event })}
-              onkeydown={(event: KeyboardEvent) => {
-                if ([`Enter`, ` `].includes(event.key)) {
-                  event.preventDefault()
-                  on_bar_click?.({ value, count: bin.length, property: label, event })
-                }
-              }}
-              style:cursor={on_bar_click ? `pointer` : undefined}
-            />
-          {/if}
-        {/each}
-      </g>
-    {/each}
   </svg>
 
   <!-- Tooltip (outside SVG for proper HTML rendering) -->

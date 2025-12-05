@@ -95,10 +95,6 @@
       "types": "./dist/app.css.d.ts",
       "default": "./dist/app.css"
     },
-    "./bands": {
-      "types": "./dist/bands/index.d.ts",
-      "default": "./dist/bands/index.js"
-    },
     "./brillouin": {
       "types": "./dist/brillouin/index.d.ts",
       "default": "./dist/brillouin/index.js"
@@ -154,6 +150,10 @@
     "./rdf": {
       "types": "./dist/rdf/index.d.ts",
       "default": "./dist/rdf/index.js"
+    },
+    "./spectral": {
+      "types": "./dist/spectral/index.d.ts",
+      "default": "./dist/spectral/index.js"
     },
     "./structure": {
       "types": "./dist/structure/index.d.ts",

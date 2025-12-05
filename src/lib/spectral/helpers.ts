@@ -108,8 +108,9 @@ export function get_ribbon_config(
   }
 
   // Otherwise, treat as Record<string, RibbonConfig> and look up by label
+  // Empty label skips lookup and uses defaults only
   const per_struct = ribbon_config as Record<string, RibbonConfig>
-  return { ...defaults, ...(per_struct[label] ?? {}) }
+  return { ...defaults, ...((label ? per_struct[label] : {}) ?? {}) }
 }
 
 // Extract tick positions and labels for a band structure plot.
