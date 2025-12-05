@@ -459,11 +459,22 @@
   let initial_computed_zoom = $state<number | undefined>(undefined)
   let camera_move_timeout: ReturnType<typeof setTimeout> | null = $state(null)
 
-  // Custom toggle handlers for mutual exclusion
-  function toggle_info() {
-    if (info_pane_open) info_pane_open = false
-    else [info_pane_open, controls_open] = [true, false]
-  }
+  // Mutual exclusion: opening one pane closes others
+  $effect(() => {
+    if (info_pane_open) {
+      untrack(() => [controls_open, export_pane_open] = [false, false])
+    }
+  })
+  $effect(() => {
+    if (controls_open) {
+      untrack(() => [info_pane_open, export_pane_open] = [false, false])
+    }
+  })
+  $effect(() => {
+    if (export_pane_open) {
+      untrack(() => [info_pane_open, controls_open] = [false, false])
+    }
+  })
 
   // Reset tracking when structure changes
   $effect(() => {
@@ -598,11 +609,12 @@
 
     // Interface shortcuts
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
-    else if (event.key === `i` && enable_info_pane) toggle_info()
+    else if (event.key === `i` && enable_info_pane) info_pane_open = !info_pane_open
     else if (event.key === `Escape`) {
       // Prioritize closing panes over exiting fullscreen
       if (info_pane_open) info_pane_open = false
       else if (controls_open) controls_open = false
+      else if (export_pane_open) export_pane_open = false
     }
   }
 

@@ -191,9 +191,16 @@
     align-items: center;
     gap: var(--formula-tooltip-gap, 5pt);
     padding: var(--formula-tooltip-padding, 3pt 4pt);
-    background: var(--formula-tooltip-bg, rgba(0, 0, 0, 0.9));
+    background: var(
+      --formula-tooltip-bg,
+      light-dark(rgba(255, 255, 255, 0.95), rgba(30, 30, 30, 0.95))
+    );
+    color: var(--formula-tooltip-color, light-dark(#222, #eee));
     border-radius: var(--formula-tooltip-border-radius, var(--border-radius, 3pt));
-    box-shadow: var(--formula-tooltip-box-shadow, 0 4px 12px rgba(0, 0, 0, 0.3));
+    box-shadow: var(
+      --formula-tooltip-box-shadow,
+      0 4px 12px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.4))
+    );
     z-index: var(--tooltip-z-index, 2);
   }
   .script-wrapper {

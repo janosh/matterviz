@@ -114,7 +114,7 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
 
   if (entry.e_above_hull !== undefined) {
     const e_hull_str = format_num(entry.e_above_hull, `.3~`)
-    text += `E above hull: ${e_hull_str} eV/atom\n`
+    text += `E<sub>above hull</sub>: ${e_hull_str} eV/atom\n`
   }
   // Fallback to energy_per_atom if e_form_per_atom is absent
   const e_form_display = entry.e_form_per_atom !== undefined
@@ -122,7 +122,7 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
     : entry.energy_per_atom
   if (e_form_display !== undefined) {
     const e_form_str = format_num(e_form_display, `.3~`)
-    text += `Formation Energy: ${e_form_str} eV/atom`
+    text += `E<sub>form</sub>: ${e_form_str} eV/atom`
   }
   if (entry.entry_id) text += `\nID: ${entry.entry_id}`
   return text

@@ -3,12 +3,14 @@ import type { ElementSymbol } from '$lib'
 export { default as BarChart } from './BarChart.svelte'
 export { default as BubbleChart } from './BubbleChart.svelte'
 export { default as Composition } from './Composition.svelte'
-export { default as Formula } from './Formula.svelte'
 export * from './format'
+export { default as Formula } from './Formula.svelte'
+export { default as FormulaFilter } from './FormulaFilter.svelte'
 export * from './parse'
 export { default as PieChart } from './PieChart.svelte'
 
 export type CompositionType = Partial<Record<ElementSymbol, number>>
+export type FormulaSearchMode = `elements` | `chemsys` | `exact`
 
 // Base data type for args of all (bar, bubble, pie) chart segment snippets
 export type ChartSegmentData = {
@@ -30,6 +32,9 @@ export function get_chart_font_scale(
   const text_width = label_text.length * 0.6 * base_font_size * base_scale
 
   return available_space > 0 && text_width > available_space
-    ? Math.max(base_scale * (available_space / text_width), base_scale * min_scale_factor)
+    ? Math.max(
+      base_scale * (available_space / text_width),
+      base_scale * min_scale_factor,
+    )
     : base_scale
 }

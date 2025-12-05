@@ -358,6 +358,14 @@ describe(`PeriodicTable`, () => {
     },
   )
 
+  test(`tooltip has pointer-events:none for stability`, async () => {
+    // Regression test: pointer-events:none prevents tooltip flashing on mouse move
+    mount(PeriodicTable, { target: document.body, props: { tooltip: true } })
+    doc_query(`.element-tile`).dispatchEvent(mouseenter)
+    await tick()
+    expect(getComputedStyle(doc_query(`.tooltip`)).pointerEvents).toBe(`none`)
+  })
+
   describe(`multi-value heatmaps`, () => {
     test.each([
       {

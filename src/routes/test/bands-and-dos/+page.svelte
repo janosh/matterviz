@@ -1,6 +1,6 @@
 <script lang="ts">
-  import BandsAndDos from '$lib/bands/BandsAndDos.svelte'
-  import type { BaseBandStructure, PhononDos } from '$lib/bands/types'
+  import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
+  import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
 
   const mock_band_structure: BaseBandStructure = {
     recip_lattice: {

@@ -144,8 +144,8 @@ describe(`helpers: thresholds and tooltips`, () => {
         entry_id: `mp-1`,
       } as PhaseData,
     )
-    expect(t2).toMatch(/E above hull/)
-    expect(t2).toMatch(/Formation Energy/)
+    expect(t2).toMatch(/E<sub>above hull<\/sub>/)
+    expect(t2).toMatch(/E<sub>form<\/sub>/)
     expect(t2).toMatch(/ID/)
   })
 
