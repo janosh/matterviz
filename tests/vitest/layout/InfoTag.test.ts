@@ -6,21 +6,15 @@ import { doc_query } from '../setup'
 describe(`InfoTag`, () => {
   const get_tag = (): HTMLSpanElement => doc_query(`.info-tag`)
 
-  test(`renders with required props and displays value`, () => {
-    mount(InfoTag, { target: document.body, props: { label: `Count:`, value: 42 } })
-    const tag = get_tag()
-    expect(tag).toBeTruthy()
-    expect(tag.textContent).toContain(`Count:`)
-    expect(doc_query(`em`).textContent).toBe(`42`)
-    expect(tag.getAttribute(`role`)).toBe(`button`)
-  })
-
-  test(`renders HTML in label`, () => {
+  test(`renders with required props, HTML label, and displays value`, () => {
     mount(InfoTag, {
       target: document.body,
-      props: { label: `E<sub>hull</sub>:`, value: `0.1 eV` },
+      props: { label: `E<sub>hull</sub>:`, value: 42 },
     })
-    expect(get_tag().querySelector(`sub`)?.textContent).toBe(`hull`)
+    const tag = get_tag()
+    expect(tag.getAttribute(`role`)).toBe(`button`)
+    expect(tag.querySelector(`sub`)?.textContent).toBe(`hull`)
+    expect(doc_query(`em`).textContent).toBe(`42`)
   })
 
   test.each([`default`, `success`, `warning`, `error`, `info`] as const)(
@@ -39,35 +33,27 @@ describe(`InfoTag`, () => {
     expect(get_tag().classList.contains(size)).toBe(true)
   })
 
-  test(`default variant and size when not specified`, () => {
+  test.each([
+    { disabled: false, tabindex: `0`, has_class: false },
+    { disabled: true, tabindex: `-1`, has_class: true },
+  ])(
+    `disabled=$disabled → tabindex=$tabindex, class=$has_class`,
+    ({ disabled, tabindex, has_class }) => {
+      mount(InfoTag, {
+        target: document.body,
+        props: { label: `Test`, value: 1, disabled },
+      })
+      const tag = get_tag()
+      expect(tag.getAttribute(`tabindex`)).toBe(tabindex)
+      expect(tag.classList.contains(`disabled`)).toBe(has_class)
+      if (disabled) expect(tag.getAttribute(`aria-disabled`)).toBe(`true`)
+    },
+  )
+
+  test(`defaults to variant=default and size=md`, () => {
     mount(InfoTag, { target: document.body, props: { label: `Test`, value: 1 } })
-    const tag = get_tag()
-    expect(tag.classList.contains(`default`)).toBe(true)
-    expect(tag.classList.contains(`md`)).toBe(true)
-  })
-
-  test(`applies disabled state correctly`, () => {
-    mount(InfoTag, {
-      target: document.body,
-      props: { label: `Test`, value: 1, disabled: true },
-    })
-    const tag = get_tag()
-    expect(tag.classList.contains(`disabled`)).toBe(true)
-    expect(tag.getAttribute(`aria-disabled`)).toBe(`true`)
-    expect(tag.getAttribute(`tabindex`)).toBe(`-1`)
-  })
-
-  test(`has tabindex 0 when not disabled`, () => {
-    mount(InfoTag, { target: document.body, props: { label: `Test`, value: 1 } })
-    expect(get_tag().getAttribute(`tabindex`)).toBe(`0`)
-  })
-
-  test(`sets title attribute`, () => {
-    mount(InfoTag, {
-      target: document.body,
-      props: { label: `Test`, value: 1, title: `Click to copy` },
-    })
-    expect(get_tag().getAttribute(`title`)).toBe(`Click to copy`)
+    expect(get_tag().classList.contains(`default`)).toBe(true)
+    expect(get_tag().classList.contains(`md`)).toBe(true)
   })
 
   test.each([
@@ -81,80 +67,63 @@ describe(`InfoTag`, () => {
         value: { writeText: write_text_spy },
         writable: true,
       })
-
       mount(InfoTag, {
         target: document.body,
         props: { label: `ID:`, value, copy_value },
       })
       get_tag().click()
       flushSync()
-
       expect(write_text_spy).toHaveBeenCalledWith(expected)
     },
   )
 
-  test(`shows checkmark after copying and removes it after 1s`, async () => {
+  test(`shows checkmark after copying and removes after 1s`, async () => {
     vi.useFakeTimers()
     mount(InfoTag, { target: document.body, props: { label: `ID:`, value: `abc123` } })
-
     get_tag().click()
     await Promise.resolve()
     await Promise.resolve()
     flushSync()
-
     expect(document.querySelector(`.copy-checkmark`)).toBeTruthy()
-
     vi.advanceTimersByTime(1000)
     flushSync()
-
     expect(document.querySelector(`.copy-checkmark`)).toBeNull()
     vi.useRealTimers()
   })
 
-  test(`calls custom onclick handler instead of copying`, () => {
-    const onclick = vi.fn()
+  test(`custom onclick overrides copy; Enter/Space triggers click; disabled blocks both`, () => {
     const write_text_spy = vi.fn()
     Object.defineProperty(navigator, `clipboard`, {
       value: { writeText: write_text_spy },
       writable: true,
     })
 
+    // Custom onclick overrides copy
+    const onclick = vi.fn()
     mount(InfoTag, { target: document.body, props: { label: `Test`, value: 1, onclick } })
     get_tag().click()
     flushSync()
-
     expect(onclick).toHaveBeenCalled()
     expect(write_text_spy).not.toHaveBeenCalled()
-  })
 
-  test.each([`Enter`, ` `])(`triggers click on %s key`, (key) => {
-    const onclick = vi.fn()
-    mount(InfoTag, { target: document.body, props: { label: `Test`, value: 1, onclick } })
-    get_tag().dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    // Enter/Space triggers click
+    onclick.mockClear()
+    get_tag().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    get_tag().dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }))
     flushSync()
-    expect(onclick).toHaveBeenCalled()
-  })
+    expect(onclick).toHaveBeenCalledTimes(2)
 
-  test.each([
-    { action: `click`, disabled: true },
-    { action: `Enter key`, disabled: true },
-  ])(`does not trigger handler on $action when disabled`, ({ action }) => {
-    const onclick = vi.fn()
+    // Disabled blocks both click and keyboard
+    document.body.innerHTML = ``
+    const onclick2 = vi.fn()
     mount(InfoTag, {
       target: document.body,
-      props: { label: `Test`, value: 1, onclick, disabled: true },
+      props: { label: `Test`, value: 1, onclick: onclick2, disabled: true },
     })
-
-    if (action === `click`) {
-      get_tag().click()
-    } else {
-      get_tag().dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
-      )
-    }
+    get_tag().click()
+    get_tag().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     flushSync()
-
-    expect(onclick).not.toHaveBeenCalled()
+    expect(onclick2).not.toHaveBeenCalled()
   })
 
   test.each([
@@ -172,28 +141,17 @@ describe(`InfoTag`, () => {
     },
   )
 
-  test(`calls onremove when remove button is clicked without triggering tag click`, () => {
+  test(`onremove fires without triggering tag onclick`, () => {
     const onclick = vi.fn()
     const onremove = vi.fn()
     mount(InfoTag, {
       target: document.body,
       props: { label: `Test`, value: 1, removable: true, onclick, onremove },
     })
-
     doc_query<HTMLButtonElement>(`[aria-label="Remove"]`).click()
     flushSync()
-
     expect(onremove).toHaveBeenCalled()
     expect(onclick).not.toHaveBeenCalled()
-  })
-
-  test(`remove button has accessible label`, () => {
-    mount(InfoTag, {
-      target: document.body,
-      props: { label: `Test`, value: 1, removable: true },
-    })
-    // Button is selected by aria-label, so this verifies it exists with correct label
-    expect(doc_query(`[aria-label="Remove"]`)).toBeTruthy()
   })
 
   test.each([

@@ -140,18 +140,18 @@ Filter materials by multiple properties simultaneously:
   let v_min = $state()
   let v_max = $state()
 
-  function count_in_range(data, min, max) {
-    return data.filter((v) =>
-      (min === undefined || v >= min) && (max === undefined || v <= max)
-    ).length
+  function in_range(val, min, max) {
+    return (min === undefined || val >= min) && (max === undefined || val <= max)
   }
 
   const total = $derived(
-    Math.min(
-      count_in_range(bandgaps, bg_min, bg_max),
-      count_in_range(energies, e_min, e_max),
-      count_in_range(volumes, v_min, v_max),
-    ),
+    Array.from(
+      { length: n_mats },
+      (_, idx) =>
+        in_range(bandgaps[idx], bg_min, bg_max) &&
+        in_range(energies[idx], e_min, e_max) &&
+        in_range(volumes[idx], v_min, v_max),
+    ).filter(Boolean).length,
   )
 
   function clear_all() {

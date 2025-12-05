@@ -50,26 +50,14 @@ Removable tags, custom click handlers, and custom copy values:
 <script>
   import { InfoTag } from 'matterviz'
 
-  let filters = $state([
+  const init_filters = [
     { id: 1, label: `Element:`, value: `Li`, variant: `info` },
     { id: 2, label: `E<sub>g</sub> >`, value: `1 eV`, variant: `success` },
     { id: 3, label: `Stable:`, value: `Yes`, variant: `success` },
-  ])
-
+  ]
+  let filters = $state([...init_filters])
   let clicked = $state(null)
   let disabled = $state(false)
-
-  function remove(id) {
-    filters = filters.filter((f) => f.id !== id)
-  }
-
-  function reset() {
-    filters = [
-      { id: 1, label: `Element:`, value: `Li`, variant: `info` },
-      { id: 2, label: `E<sub>g</sub> >`, value: `1 eV`, variant: `success` },
-      { id: 3, label: `Stable:`, value: `Yes`, variant: `success` },
-    ]
-  }
 </script>
 
 <label style="display: flex; gap: 0.5em; margin-bottom: 1em; font-size: 0.9em">
@@ -78,20 +66,23 @@ Removable tags, custom click handlers, and custom copy values:
 
 <div style="display: flex; flex-wrap: wrap; gap: 8pt; margin-bottom: 1em">
   <strong style="font-size: 0.85em; opacity: 0.7; align-self: center">Filters:</strong>
-  {#each filters as f (f.id)}
+  {#each filters as filter (filter.id)}
     <InfoTag
-      label={f.label}
-      value={f.value}
-      variant={f.variant}
+      {...filter}
       removable
-      onremove={() => remove(f.id)}
+      onremove={() => (filters = filters.filter((x) => x.id !== filter.id))}
       {disabled}
     />
   {:else}
     <span style="opacity: 0.5; font-size: 0.9em">No filters</span>
   {/each}
   {#if filters.length < 3}
-    <button onclick={reset} style="font-size: 0.8em; padding: 4pt 8pt">Reset</button>
+    <button
+      onclick={() => (filters = [...init_filters])}
+      style="font-size: 0.8em; padding: 4pt 8pt"
+    >
+      Reset
+    </button>
   {/if}
 </div>
 
@@ -107,11 +98,8 @@ Removable tags, custom click handlers, and custom copy values:
       variant={clicked === mat ? `success` : `default`}
     />
   {/each}
-  {#if clicked}
-    <span style="font-size: 0.85em; opacity: 0.7; align-self: center">→ Selected: {
-        clicked
-      }</span>
-  {/if}
+  {#if clicked}<span style="font-size: 0.85em; opacity: 0.7; align-self: center">→
+      Selected: {clicked}</span>{/if}
 </div>
 
 <div

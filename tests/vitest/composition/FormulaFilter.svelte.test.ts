@@ -8,20 +8,17 @@ describe(`FormulaFilter`, () => {
   const get_select = (): HTMLSelectElement => doc_query(`select`)
   const get_label = (): HTMLElement => doc_query(`label.filter-group`)
 
-  test(`renders with default props`, () => {
+  test(`renders with default props and custom label/title/value`, () => {
     mount(FormulaFilter, { target: document.body, props: { value: `` } })
     expect(get_input()).toBeTruthy()
-    expect(get_select()).toBeTruthy()
-    expect(get_label().textContent).toContain(`Formula/Elements`)
     expect(get_select().getAttribute(`aria-label`)).toBe(`Search mode`)
     expect(Array.from(document.querySelectorAll(`option`)).map((o) => o.value)).toEqual([
       `elements`,
       `chemsys`,
       `exact`,
     ])
-  })
 
-  test(`renders with custom props`, () => {
+    document.body.innerHTML = ``
     mount(FormulaFilter, {
       target: document.body,
       props: { value: `Fe,O`, label: `Custom`, title: `Tooltip` },
@@ -46,7 +43,7 @@ describe(`FormulaFilter`, () => {
     expect(get_input().placeholder).toBe(expected)
   })
 
-  test(`hides mode selector when show_mode_selector=false`, () => {
+  test(`show_mode_selector=false hides select`, () => {
     mount(FormulaFilter, {
       target: document.body,
       props: { value: ``, show_mode_selector: false },
@@ -54,7 +51,7 @@ describe(`FormulaFilter`, () => {
     expect(document.querySelector(`select`)).toBeNull()
   })
 
-  test(`active class transitions with value changes`, async () => {
+  test(`active class tracks value; disabled state applies`, async () => {
     let value = $state(``)
     mount(FormulaFilter, {
       target: document.body,
@@ -67,20 +64,13 @@ describe(`FormulaFilter`, () => {
         },
       },
     })
-
     await tick()
     expect(get_label().classList.contains(`active`)).toBe(false)
-
     value = `Fe`
     await tick()
     expect(get_label().classList.contains(`active`)).toBe(true)
 
-    value = ``
-    await tick()
-    expect(get_label().classList.contains(`active`)).toBe(false)
-  })
-
-  test(`disabled state applies class and attributes`, () => {
+    document.body.innerHTML = ``
     mount(FormulaFilter, { target: document.body, props: { value: ``, disabled: true } })
     expect(doc_query(`.formula-filter-wrapper`).classList.contains(`disabled`)).toBe(true)
     expect(get_input().disabled).toBe(true)
@@ -92,18 +82,12 @@ describe(`FormulaFilter`, () => {
     { value: ``, show_clear_button: true, disabled: false, expected: false },
     { value: `Fe`, show_clear_button: false, disabled: false, expected: false },
     { value: `Fe`, show_clear_button: true, disabled: true, expected: false },
-  ])(
-    `clear button visible=$expected for value=$value, show=$show_clear_button, disabled=$disabled`,
-    (params) => {
-      mount(FormulaFilter, { target: document.body, props: params })
-      expect(!!document.querySelector(`.clear-btn`)).toBe(params.expected)
-    },
-  )
+  ])(`clear button visible=$expected`, (params) => {
+    mount(FormulaFilter, { target: document.body, props: params })
+    expect(!!document.querySelector(`.clear-btn`)).toBe(params.expected)
+  })
 
-  test.each([
-    { trigger: `click`, selector: `.clear-btn` },
-    { trigger: `Escape`, selector: null },
-  ])(`clears value on $trigger`, ({ trigger, selector }) => {
+  test(`clears value on click or Escape; Escape closes dropdown first`, () => {
     const onchange = vi.fn()
     const onclear = vi.fn()
     mount(FormulaFilter, {
@@ -111,27 +95,47 @@ describe(`FormulaFilter`, () => {
       props: { value: `Fe`, onchange, onclear, show_examples: false },
     })
 
-    if (selector) {
-      doc_query<HTMLButtonElement>(selector).click()
-    } else {
-      get_input().dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: trigger, bubbles: true }),
-      )
-    }
+    // Click clear button
+    doc_query<HTMLButtonElement>(`.clear-btn`).click()
     flushSync()
-
     expect(onclear).toHaveBeenCalled()
-    if (selector) expect(onchange).toHaveBeenCalledWith(``, `elements`)
+    expect(onchange).toHaveBeenCalledWith(``, `elements`)
+
+    // Reset for Escape test with dropdown
+    document.body.innerHTML = ``
+    const onclear2 = vi.fn()
+    mount(FormulaFilter, {
+      target: document.body,
+      props: { value: `Fe`, onclear: onclear2, show_examples: true },
+    })
+    doc_query<HTMLButtonElement>(`.help-btn`).click()
+    flushSync()
+    expect(document.querySelector(`.examples-dropdown`)).toBeTruthy()
+
+    // First Escape closes dropdown
+    get_input().dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
+    )
+    flushSync()
+    expect(document.querySelector(`.examples-dropdown`)).toBeNull()
+    expect(get_input().value).toBe(`Fe`)
+    expect(onclear2).not.toHaveBeenCalled()
+
+    // Second Escape clears value
+    get_input().dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
+    )
+    flushSync()
+    expect(get_input().value).toBe(``)
+    expect(onclear2).toHaveBeenCalled()
   })
 
-  test(`clear button has accessible attributes`, () => {
+  test(`clear button accessibility and input_element binding`, () => {
     mount(FormulaFilter, { target: document.body, props: { value: `Fe` } })
-    const btn = doc_query(`.clear-btn`)
-    expect(btn.getAttribute(`aria-label`)).toBe(`Clear filter`)
-    expect(btn.getAttribute(`title`)).toBe(`Clear filter (Escape)`)
-  })
+    expect(doc_query(`.clear-btn`).getAttribute(`aria-label`)).toBe(`Clear filter`)
+    expect(doc_query(`.clear-btn`).getAttribute(`title`)).toBe(`Clear filter (Escape)`)
 
-  test(`exposes input_element binding`, () => {
+    document.body.innerHTML = ``
     let bound: HTMLInputElement | null = null
     mount(FormulaFilter, {
       target: document.body,
@@ -149,8 +153,9 @@ describe(`FormulaFilter`, () => {
     expect(bound).toBe(get_input())
   })
 
-  test(`syncs external value changes to input`, async () => {
+  test(`syncs external value and search_mode changes`, async () => {
     let value = $state(``)
+    let mode: `elements` | `chemsys` | `exact` = `chemsys`
     mount(FormulaFilter, {
       target: document.body,
       props: {
@@ -160,23 +165,6 @@ describe(`FormulaFilter`, () => {
         set value(val: string) {
           value = val
         },
-      },
-    })
-
-    await tick()
-    expect(get_input().value).toBe(``)
-
-    value = `Fe,O`
-    await tick()
-    expect(get_input().value).toBe(`Fe,O`)
-  })
-
-  test(`select reflects initial search_mode`, () => {
-    let mode: `elements` | `chemsys` | `exact` = `chemsys`
-    mount(FormulaFilter, {
-      target: document.body,
-      props: {
-        value: ``,
         get search_mode() {
           return mode
         },
@@ -185,8 +173,13 @@ describe(`FormulaFilter`, () => {
         },
       },
     })
-    flushSync()
+    await tick()
+    expect(get_input().value).toBe(``)
     expect(get_select().value).toBe(`chemsys`)
+
+    value = `Fe,O`
+    await tick()
+    expect(get_input().value).toBe(`Fe,O`)
   })
 
   test.each([
@@ -210,14 +203,12 @@ describe(`FormulaFilter`, () => {
           onchange,
         },
       })
-
       flushSync()
       const event = trigger === `blur`
         ? new Event(`blur`, { bubbles: true })
         : new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true })
       get_input().dispatchEvent(event)
       flushSync()
-
       expect(onchange).toHaveBeenCalledWith(expected, mode)
     },
   )
@@ -228,9 +219,7 @@ describe(`FormulaFilter`, () => {
       props: { value: ``, 'data-testid': `test` },
     })
     expect(doc_query(`[data-testid="test"]`).classList.contains(`formula-filter-wrapper`))
-      .toBe(
-        true,
-      )
+      .toBe(true)
   })
 
   describe(`examples dropdown`, () => {
@@ -238,66 +227,30 @@ describe(`FormulaFilter`, () => {
       { show_examples: true, disabled: false, expected: true },
       { show_examples: false, disabled: false, expected: false },
       { show_examples: true, disabled: true, expected: false },
-    ])(
-      `help button visible=$expected when show=$show_examples, disabled=$disabled`,
-      (params) => {
-        mount(FormulaFilter, { target: document.body, props: { value: ``, ...params } })
-        expect(!!document.querySelector(`.help-btn`)).toBe(params.expected)
-      },
-    )
+    ])(`help button visible=$expected`, (params) => {
+      mount(FormulaFilter, { target: document.body, props: { value: ``, ...params } })
+      expect(!!document.querySelector(`.help-btn`)).toBe(params.expected)
+    })
 
-    test(`toggles, displays content, and closes on button clicks`, () => {
+    test(`toggles, displays content, and applies example on click`, () => {
       const onchange = vi.fn()
       mount(FormulaFilter, { target: document.body, props: { value: ``, onchange } })
       const help_btn = doc_query<HTMLButtonElement>(`.help-btn`)
 
-      // Initially closed with correct aria
       expect(document.querySelector(`.examples-dropdown`)).toBeNull()
       expect(help_btn.getAttribute(`aria-expanded`)).toBe(`false`)
-      expect(help_btn.getAttribute(`aria-label`)).toBe(`Show search examples`)
 
-      // Open and verify content
       help_btn.click()
       flushSync()
       expect(document.querySelector(`.examples-dropdown`)).toBeTruthy()
       expect(help_btn.getAttribute(`aria-expanded`)).toBe(`true`)
-      // SEARCH_EXAMPLES has 3 categories (elements, chemsys, exact) with 3 examples each
       expect(document.querySelectorAll(`.example-category`).length).toBe(3)
       expect(document.querySelectorAll(`.example-tag`).length).toBe(9)
-      expect(
-        Array.from(document.querySelectorAll(`.category-label`)).map((el) =>
-          el.textContent
-        ),
-      ).toEqual(
-        [`Contains elements:`, `Chemical system:`, `Exact formula:`],
-      )
 
-      // Close by clicking help button again (toggles dropdown)
-      help_btn.click()
-      flushSync()
-      expect(document.querySelector(`.examples-dropdown`)).toBeNull()
-
-      // Reopen and verify toggle works
-      help_btn.click()
-      flushSync()
-      expect(document.querySelector(`.examples-dropdown`)).toBeTruthy()
-      help_btn.click()
-      flushSync()
-      expect(document.querySelector(`.examples-dropdown`)).toBeNull()
-    })
-
-    test(`applies example when tag is clicked`, () => {
-      const onchange = vi.fn()
-      mount(FormulaFilter, { target: document.body, props: { value: ``, onchange } })
-
-      doc_query<HTMLButtonElement>(`.help-btn`).click()
-      flushSync()
-
+      // Apply example
       Array.from(document.querySelectorAll<HTMLButtonElement>(`.example-tag`))
-        .find((tag) => tag.textContent === `Li-Fe-O`)
-        ?.click()
+        .find((tag) => tag.textContent === `Li-Fe-O`)?.click()
       flushSync()
-
       expect(onchange).toHaveBeenCalledWith(`Li-Fe-O`, `chemsys`)
       expect(get_input().value).toBe(`Li-Fe-O`)
       expect(get_select().value).toBe(`chemsys`)

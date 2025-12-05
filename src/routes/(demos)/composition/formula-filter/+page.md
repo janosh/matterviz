@@ -83,9 +83,7 @@ Customize label, hide optional elements, or disable the filter:
 <script>
   import { FormulaFilter } from 'matterviz'
 
-  let v1 = $state(`Si,O`)
-  let v2 = $state(`LiFePO4`)
-  let v3 = $state(`Na-Fe-P-O`)
+  let values = $state({ v1: `Si,O`, v2: `LiFePO4`, v3: `Na-Fe-P-O` })
   let disabled = $state(false)
 </script>
 
@@ -95,23 +93,21 @@ Customize label, hide optional elements, or disable the filter:
 
 <div style="display: flex; flex-direction: column; gap: 1em">
   <FormulaFilter
-    bind:value={v1}
+    bind:value={values.v1}
     label="Custom Label"
     title="With custom tooltip"
     {disabled}
   />
-
   <FormulaFilter
-    bind:value={v2}
+    bind:value={values.v2}
     label="Exact Only"
     search_mode="exact"
     show_mode_selector={false}
     show_examples={false}
     {disabled}
   />
-
   <FormulaFilter
-    bind:value={v3}
+    bind:value={values.v3}
     label="Minimal"
     search_mode="chemsys"
     show_mode_selector={false}
