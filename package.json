@@ -127,6 +127,10 @@
       "types": "./dist/labels.d.ts",
       "default": "./dist/labels.js"
     },
+    "./layout": {
+      "types": "./dist/layout/index.d.ts",
+      "default": "./dist/layout/index.js"
+    },
     "./math": {
       "types": "./dist/math.d.ts",
       "default": "./dist/math.js"
