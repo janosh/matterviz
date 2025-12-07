@@ -1996,11 +1996,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Wait for reset button to become visible - fail loudly if it doesn't appear
     // so regressions in has_changes or reset UI are caught
-    const reset_visible = await reset_button.isVisible({ timeout: 1000 }).catch(() =>
-      false
-    )
-    expect(reset_visible).toBe(true)
-    if (!reset_visible) return // Defensive early-exit after failure
+    await expect(reset_button).toBeVisible({ timeout: 1000 })
 
     await reset_button.click()
     // Wait for stroke-width to reset to default
@@ -2027,7 +2023,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.setViewportSize({ width: 1280, height: 720 })
   })
 
-  test(`on_point_hover and on_point_click handlers`, async ({ page }) => {
+  test(`on_point_hover handler updates display on marker hover`, async ({ page }) => {
     await page.goto(`/plot/scatter-plot`)
     const example = page.locator(`.code-example`).first()
     // The hover status div contains "No point hovered yet." or "Hovering: Point..."

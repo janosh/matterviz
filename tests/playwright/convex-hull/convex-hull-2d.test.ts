@@ -106,7 +106,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     // Open info pane and controls
     await dom_click(pd2d.locator(`.info-btn`))
     const info = pd2d.locator(`.draggable-pane.convex-hull-info-pane`)
-    await expect(info.getByText(`Phase Diagram Stats`, { exact: false }))
+    await expect(info.getByText(`Convex Hull Stats`, { exact: false }))
       .toBeVisible()
     await dom_click(pd2d.locator(`.legend-controls-btn`))
     const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)

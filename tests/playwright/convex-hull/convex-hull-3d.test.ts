@@ -39,7 +39,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await dom_click(diagram.locator(`.info-btn`))
     const info = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
     // Ensure content inside the pane is visible (not just attached)
-    await expect(info.getByText(`Phase Diagram Stats`, { exact: false }))
+    await expect(info.getByText(`Convex Hull Stats`, { exact: false }))
       .toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
     await expect(info.getByText(`Stability`)).toBeVisible()

@@ -21,6 +21,9 @@ describe(`get_ffmpeg_conversion_command`, () => {
     [`my-video.webm`, `"my-video.mp4"`],
     [`path/to/file.webm`, `"path/to/file.mp4"`],
     [`video.WEBM`, `"video.mp4"`],
+    // Non-.webm input keeps original extension (no replacement)
+    [`video.mp4`, `"video.mp4"`],
+    [`recording.avi`, `"recording.avi"`],
   ])(`%s → contains %s`, (input, expected) => {
     expect(get_ffmpeg_conversion_command(input)).toContain(expected)
   })
@@ -102,15 +105,14 @@ describe(`export_canvas_as_png`, () => {
   })
 
   test.each([
-    [`blob null`, (cb: BlobCallback) => cb(null), `Failed to generate PNG`],
+    [`blob null`, (cb: BlobCallback) => cb(null)],
     [
       `error thrown`,
       () => {
         throw new Error(`Canvas tainted`)
       },
-      undefined,
     ],
-  ])(`handles failure: %s`, (_desc, toBlob_impl, _expected_msg) => {
+  ])(`handles failure: %s`, (_desc, toBlob_impl) => {
     const fail_canvas = { toBlob: vi.fn(toBlob_impl) } as unknown as HTMLCanvasElement
     export_canvas_as_png(fail_canvas, `test.png`, 72)
     expect(console_warn_spy.mock.calls.length + console_error_spy.mock.calls.length)

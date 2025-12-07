@@ -61,7 +61,7 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     await number_input.fill(`0.5`)
     // Ensure info pane is in front and visible before asserting
     await ensure_pane_visible(info, diagram.locator(`.info-btn`))
-    await expect(info.getByText(`Phase Diagram Stats`, { exact: false }))
+    await expect(info.getByText(`Convex Hull Stats`, { exact: false }))
       .toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false }))
       .toBeVisible()
@@ -203,9 +203,11 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
 
     // Verify hull faces are visible by default (semi-transparent pixels)
     const initial_semi_transparent = await canvas.evaluate((el) => {
-      const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+      const canvas_el = el as HTMLCanvasElement
+      const ctx = canvas_el.getContext(`2d`)
       if (!ctx) return 0
-      const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+      const { width, height } = canvas_el
+      const { data } = ctx.getImageData(0, 0, width, height)
       let count = 0
       for (let idx = 3; idx < data.length; idx += 4) {
         if (data[idx] > 0 && data[idx] < 255) count++
@@ -224,9 +226,11 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     // Wait for semi-transparent pixels to decrease after toggle
     await expect(async () => {
       const after_toggle_semi_transparent = await canvas.evaluate((el) => {
-        const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+        const canvas_el = el as HTMLCanvasElement
+        const ctx = canvas_el.getContext(`2d`)
         if (!ctx) return 0
-        const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+        const { width, height } = canvas_el
+        const { data } = ctx.getImageData(0, 0, width, height)
         let count = 0
         for (let idx = 3; idx < data.length; idx += 4) {
           if (data[idx] > 0 && data[idx] < 255) count++

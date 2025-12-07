@@ -1403,14 +1403,15 @@ test.describe(`Histogram Component Tests`, () => {
       const input_el = pane.locator(input)
       await input_el.evaluate(
         (el, v) => {
-          ;(el as HTMLInputElement).value = v
-          el.dispatchEvent(new Event(`input`, { bubbles: true }))
-          el.blur()
+          const input = el as HTMLInputElement
+          input.value = v
+          input.dispatchEvent(new Event(`input`, { bubbles: true }))
+          input.dispatchEvent(new Event(`change`, { bubbles: true }))
+          input.blur()
         },
         val,
       )
-      // Wait for the input value to be set
-      if (val) await expect(input_el).toHaveValue(val)
+      await expect(input_el).toHaveValue(val)
     }
 
     // Test: pin x_min, pin x_max, pin y_min, pin y_max

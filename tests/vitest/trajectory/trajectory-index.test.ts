@@ -73,18 +73,18 @@ describe(`validate_trajectory`, () => {
   })
 
   test.each([
-    [{ frames: [] }, `Trajectory must have at least one frame`, `empty frames`],
+    [`empty frames`, { frames: [] }, `Trajectory must have at least one frame`],
     [
+      `no structure`,
       { frames: [{ step: 0 } as TrajectoryFrame] },
       `Frame 0 missing structure or sites`,
-      `no structure`,
     ],
     [
+      `empty sites`,
       { frames: [{ structure: { sites: [] }, step: 0 }] },
       `Frame 0 missing structure or sites`,
-      `empty sites`,
     ],
-  ])(`returns error for %s`, (trajectory, expected_error) => {
+  ])(`returns error for %s`, (_desc, trajectory, expected_error) => {
     expect(validate_trajectory(trajectory as TrajectoryType)).toContain(expected_error)
   })
 
@@ -232,13 +232,13 @@ describe(`get_trajectory_stats`, () => {
   })
 
   test.each([
-    [5, { atoms_per_frame: 10 }, true, 10, undefined, `constant`],
-    [5, { atoms_per_frame: [3, 5, 4, 6, 3] }, false, undefined, [3, 6], `variable`],
-    [1, { atoms_per_frame: 5 }, true, 5, undefined, `single frame`],
+    [`constant`, 5, { atoms_per_frame: 10 }, true, 10, undefined],
+    [`variable`, 5, { atoms_per_frame: [3, 5, 4, 6, 3] }, false, undefined, [3, 6]],
+    [`single frame`, 1, { atoms_per_frame: 5 }, true, 5, undefined],
   ])(
     `atom count: %s`,
-    (_frame_count, options, const_count, total_atoms, range, _desc) => {
-      const stats = get_trajectory_stats(make_trajectory(_frame_count, options))
+    (_desc, frame_count, options, const_count, total_atoms, range) => {
+      const stats = get_trajectory_stats(make_trajectory(frame_count, options))
       expect(stats.constant_atom_count).toBe(const_count)
       if (total_atoms !== undefined) expect(stats.total_atoms).toBe(total_atoms)
       if (range !== undefined) expect(stats.atom_count_range).toEqual(range)

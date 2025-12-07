@@ -57,7 +57,7 @@ describe(`ConvexHullStats`, () => {
       phase_stats: mock_stats({ unary: 4, binary: 20, ternary: 50, quaternary: 26 }),
     })
     const text = document.body.textContent ?? ``
-    expect(doc_query(`h4`).textContent).toContain(`Phase Diagram Stats`)
+    expect(doc_query(`h4`).textContent).toContain(`Convex Hull Stats`)
     for (
       const [type, count] of [[`Unary`, 4], [`Binary`, 20], [`Ternary`, 50], [
         `Quaternary`,

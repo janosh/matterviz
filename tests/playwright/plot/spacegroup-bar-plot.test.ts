@@ -108,11 +108,6 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
       )
       expect(has_percentage_after).toBe(false)
     }).toPass({ timeout: 1000 })
-
-    const has_percentage_after = await annotations.evaluateAll((texts) =>
-      texts.some((text) => text.textContent?.includes(`%`))
-    )
-    expect(has_percentage_after).toBe(false)
   })
 
   test(`orientation switch flips bar orientation`, async ({ page }) => {
