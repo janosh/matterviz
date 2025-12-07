@@ -2,8 +2,8 @@
   import { DraggablePane } from '$lib'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import PhaseDiagramStats from './PhaseDiagramStats.svelte'
-  import type { PhaseDiagramEntry, PhaseStats } from './types'
+  import ConvexHullStats from './ConvexHullStats.svelte'
+  import type { ConvexHullEntry, PhaseStats } from './types'
 
   let {
     phase_stats,
@@ -18,8 +18,8 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     phase_stats: PhaseStats | null
-    stable_entries: PhaseDiagramEntry[]
-    unstable_entries: PhaseDiagramEntry[]
+    stable_entries: ConvexHullEntry[]
+    unstable_entries: ConvexHullEntry[]
     max_hull_dist_show_phases: number
     max_hull_dist_show_labels: number
     label_threshold: number
@@ -33,19 +33,19 @@
   bind:show={pane_open}
   max_width="24em"
   toggle_props={{
-    title: pane_open ? `` : `Phase diagram info`,
-    class: `phase-diagram-info-toggle`,
+    title: pane_open ? `` : `Convex hull info`,
+    class: `convex-hull-info-toggle`,
     ...toggle_props,
   }}
   open_icon="Cross"
   closed_icon="Info"
   pane_props={{
     ...pane_props,
-    class: `phase-diagram-info-pane ${pane_props?.class ?? ``}`,
+    class: `convex-hull-info-pane ${pane_props?.class ?? ``}`,
   }}
   {...rest}
 >
-  <PhaseDiagramStats
+  <ConvexHullStats
     {phase_stats}
     {stable_entries}
     {unstable_entries}
@@ -54,27 +54,27 @@
 
   <section class="vis-settings">
     <h5>Visualization Settings</h5>
-    <div class="setting-item" data-testid="pd-visible-stable">
+    <div class="setting-item" data-testid="hull-visible-stable">
       <span>Visible stable:</span>
       <span>{stable_entries.filter((entry) => entry.visible).length} / {
           stable_entries.length
         }</span>
     </div>
-    <div class="setting-item" data-testid="pd-visible-unstable">
+    <div class="setting-item" data-testid="hull-visible-unstable">
       <span>Visible unstable:</span>
       <span>{unstable_entries.filter((entry) => entry.visible).length} / {
           unstable_entries.length
         }</span>
     </div>
-    <div class="setting-item" data-testid="pd-show-threshold">
+    <div class="setting-item" data-testid="hull-show-threshold">
       <span>Points threshold:</span>
       <span>{max_hull_dist_show_phases.toFixed(3)} eV/atom</span>
     </div>
-    <div class="setting-item" data-testid="pd-label-threshold">
+    <div class="setting-item" data-testid="hull-label-threshold">
       <span>Label threshold:</span>
       <span>{max_hull_dist_show_labels.toFixed(3)} eV/atom</span>
     </div>
-    <div class="setting-item" data-testid="pd-entry-limit-labels">
+    <div class="setting-item" data-testid="hull-entry-limit-labels">
       <span>Entry limit for labels:</span>
       <span>{label_threshold} entries</span>
     </div>

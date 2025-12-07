@@ -2531,8 +2531,6 @@ test.describe(`Structure Event Handler Tests`, () => {
           event_calls.length = 0
         }
       })
-      // Wait a bit for the reactive update to propagate
-      await page.waitForTimeout(100)
     }
 
     // Helper function to check event was triggered
@@ -2587,19 +2585,19 @@ test.describe(`Structure Event Handler Tests`, () => {
       await page.waitForSelector(`#test-structure canvas`, { timeout: 10000 })
 
       // Wait for the file load event to be processed
-      await page.waitForTimeout(2000)
-
-      await check_event_triggered(page, `on_file_load`, [`structure`, `filename`])
+      await expect(async () => {
+        await check_event_triggered(page, `on_file_load`, [`structure`, `filename`])
+      }).toPass({ timeout: 5000 })
     })
 
     test(`should trigger on_error event when file loading fails`, async ({ page }) => {
       await clear_events_and_wait(page)
       await page.goto(`/test/structure?data_url=non-existent.json`)
 
-      // Wait for the error to be processed
-      await page.waitForTimeout(3000)
-
-      await check_event_triggered(page, `on_error`, [`error_msg`, `filename`])
+      // Wait for the error event to be processed
+      await expect(async () => {
+        await check_event_triggered(page, `on_error`, [`error_msg`, `filename`])
+      }).toPass({ timeout: 5000 })
     })
 
     // Skip this test for now as camera movement/reset is hard to trigger reliably in headless mode
@@ -2679,8 +2677,12 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       screenshots[`${projection}_initial`] = await canvas.screenshot()
       await canvas.hover({ force: true })
       await page.mouse.wheel(0, -200)
-      await page.waitForTimeout(100)
-      screenshots[`${projection}_zoomed`] = await canvas.screenshot()
+      // Wait for zoom to be applied (screenshot should differ from initial)
+      await expect(async () => {
+        const zoomed = await canvas.screenshot()
+        expect(screenshots[`${projection}_initial`].equals(zoomed)).toBe(false)
+        screenshots[`${projection}_zoomed`] = zoomed
+      }).toPass({ timeout: 1000 })
     }
 
     // Verify zoom responsiveness and visual differences
@@ -3326,10 +3328,7 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     await number_inputs.nth(1).fill(`90`)
     await number_inputs.nth(2).fill(`135`)
 
-    // Wait for values to be processed
-    await page.waitForTimeout(100)
-
-    // Verify values are set
+    // Verify values are set (assertions include built-in retry)
     await expect(number_inputs.nth(0)).toHaveValue(`45`)
     await expect(number_inputs.nth(1)).toHaveValue(`90`)
     await expect(number_inputs.nth(2)).toHaveValue(`135`)
@@ -3340,10 +3339,7 @@ test.describe(`Structure Rotation Controls Tests`, () => {
       .locator(`button.reset-button`)
     await reset_button.click()
 
-    // Wait for reset to process
-    await page.waitForTimeout(100)
-
-    // Verify all rotation values reset to 0
+    // Verify all rotation values reset to 0 (assertions include built-in retry)
     await expect(number_inputs.nth(0)).toHaveValue(`0`)
     await expect(number_inputs.nth(1)).toHaveValue(`0`)
     await expect(number_inputs.nth(2)).toHaveValue(`0`)
@@ -3448,9 +3444,8 @@ test.describe(`Element Visibility Toggle`, () => {
     // Hide element
     await first_item.hover()
     await toggle_button.click()
-    await page.waitForTimeout(150)
 
-    // Verify hidden state
+    // Verify hidden state (assertion includes built-in retry)
     await expect(label).toHaveClass(/hidden/)
     const hidden_screenshot = await canvas.screenshot()
     expect(initial_screenshot.equals(hidden_screenshot)).toBe(false)
@@ -3482,12 +3477,12 @@ test.describe(`Element Visibility Toggle`, () => {
       input.value = `#ff0000`
       input.dispatchEvent(new Event(`input`, { bubbles: true }))
     })
-    await page.waitForTimeout(50)
-    expect(await color_input.inputValue()).toBe(`#ff0000`)
+    await expect(color_input).toHaveValue(`#ff0000`)
 
     // Double-click to reset color
     await label.dblclick({ position: { x: 10, y: 10 } })
-    await page.waitForTimeout(50)
+    // Wait for color to change from #ff0000
+    await expect(color_input).not.toHaveValue(`#ff0000`)
     const reset_color = await color_input.inputValue()
     expect(reset_color).not.toBe(`#ff0000`)
     // Should be close to original (may not be exact due to rounding)
@@ -3506,7 +3501,6 @@ test.describe(`Element Visibility Toggle`, () => {
     // Hide
     await first_item.hover()
     await toggle_button.click()
-    await page.waitForTimeout(150)
     await expect(label).toHaveClass(/hidden/)
     // After toggle, Svelte updates title
     await expect(toggle_button).toHaveAttribute(`title`, /Show .+ atoms/)
@@ -3515,7 +3509,6 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // Show
     await toggle_button.click()
-    await page.waitForTimeout(150)
     await expect(label).not.toHaveClass(/hidden/)
     // Title updates again
     await expect(toggle_button).toHaveAttribute(`title`, /Hide .+ atoms/)
@@ -3544,7 +3537,6 @@ test.describe(`Element Visibility Toggle`, () => {
     // Hide first element
     await first_item.hover()
     await first_item.locator(`button.toggle-visibility`).click()
-    await page.waitForTimeout(150)
     await expect(first_label).toHaveClass(/hidden/)
     await expect(second_label).not.toHaveClass(/hidden/)
     const after_first = await canvas.screenshot()
@@ -3553,7 +3545,6 @@ test.describe(`Element Visibility Toggle`, () => {
     // Hide second element
     await second_item.hover()
     await second_item.locator(`button.toggle-visibility`).click()
-    await page.waitForTimeout(150)
     await expect(first_label).toHaveClass(/hidden/)
     await expect(second_label).toHaveClass(/hidden/)
     const after_second = await canvas.screenshot()
@@ -3561,7 +3552,6 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // Show first element only
     await first_item.locator(`button.toggle-visibility`).click()
-    await page.waitForTimeout(150)
     await expect(first_label).not.toHaveClass(/hidden/)
     await expect(second_label).toHaveClass(/hidden/)
   })
@@ -3578,22 +3568,21 @@ test.describe(`Element Visibility Toggle`, () => {
     )
     expect(initial_opacity).toBe(0)
 
-    // Button visible on hover
+    // Button visible on hover - wait for opacity to change
     await first_item.hover()
-    await page.waitForTimeout(50)
-    const hover_opacity = await toggle_button.evaluate((el) =>
-      parseFloat(globalThis.getComputedStyle(el).opacity)
-    )
-    expect(hover_opacity).toBeGreaterThan(0)
+    await expect(async () => {
+      const hover_opacity = await toggle_button.evaluate((el) =>
+        parseFloat(globalThis.getComputedStyle(el).opacity)
+      )
+      expect(hover_opacity).toBeGreaterThan(0)
+    }).toPass({ timeout: 1000 })
 
     // Hide element
     await toggle_button.click()
-    await page.waitForTimeout(50)
     await expect(label).toHaveClass(/hidden/)
 
     // Button stays visible when element hidden
     await page.mouse.move(0, 0)
-    await page.waitForTimeout(100)
     await expect(toggle_button).toHaveClass(/visible/)
     const hidden_opacity = await toggle_button.evaluate((el) =>
       parseFloat(globalThis.getComputedStyle(el).opacity)
@@ -3605,9 +3594,7 @@ test.describe(`Element Visibility Toggle`, () => {
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
     await controls_checkbox.check()
-    await page.waitForTimeout(50)
     await controls_checkbox.uncheck()
-    await page.waitForTimeout(50)
     await expect(label).toHaveClass(/hidden/)
   })
 })

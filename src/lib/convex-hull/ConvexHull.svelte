@@ -3,14 +3,14 @@
   import type { AxisConfig } from '$lib/plot'
   import type { Component } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
-  import type { BasePhaseDiagramProps, Hull3DProps } from './index'
-  import PhaseDiagram2D from './PhaseDiagram2D.svelte'
-  import PhaseDiagram3D from './PhaseDiagram3D.svelte'
-  import PhaseDiagram4D from './PhaseDiagram4D.svelte'
+  import ConvexHull2D from './ConvexHull2D.svelte'
+  import ConvexHull3D from './ConvexHull3D.svelte'
+  import ConvexHull4D from './ConvexHull4D.svelte'
+  import type { BaseConvexHullProps, Hull3DProps } from './index'
 
   // Union type combining all possible props from 2D, 3D, and 4D components
   // each specific component will only use its relevant props from this super set
-  type PhaseDiagramProps = BasePhaseDiagramProps & Hull3DProps & {
+  type ConvexHullProps = BaseConvexHullProps & Hull3DProps & {
     x_axis?: AxisConfig
     y_axis?: AxisConfig
   }
@@ -39,8 +39,8 @@
     unstable_entries = $bindable([]),
     highlighted_entries = $bindable([]),
     selected_entry = $bindable(null),
-    ...rest // All other PD props (both common and dimension-specific) go to rest
-  }: PhaseDiagramProps = $props()
+    ...rest
+  }: ConvexHullProps = $props()
 
   // Lightweight element extraction - count unique elements, stripping oxidation states
   // (e.g. "V4+" -> "V") to avoid counting the same element multiple times
@@ -65,15 +65,15 @@
 
   // Map element count to corresponding component
   // Note: Type assertion needed because TypeScript can't infer that all components
-  // accept a compatible superset of props (BasePhaseDiagramProps + dimension-specific)
-  const PhaseDiagramComponent = $derived(
-    { 2: PhaseDiagram2D, 3: PhaseDiagram3D, 4: PhaseDiagram4D }[element_count] ??
+  // accept a compatible superset of props (BaseConvexHullProps + dimension-specific)
+  const ConvexHullComponent = $derived(
+    { 2: ConvexHull2D, 3: ConvexHull3D, 4: ConvexHull4D }[element_count] ??
       null,
-  ) as Component<PhaseDiagramProps> | null
+  ) as Component<ConvexHullProps> | null
 </script>
 
-{#if PhaseDiagramComponent}
-  <PhaseDiagramComponent
+{#if ConvexHullComponent}
+  <ConvexHullComponent
     {entries}
     {...rest}
     bind:fullscreen
@@ -100,11 +100,13 @@
   />
 {:else}
   <!-- Error state for unsupported dimensionalities -->
-  <div class="phase-diagram-error">
-    <div style="text-align: center; padding: 2em; color: var(--text-color, #666)">
+  <div class="convex-hull-error">
+    <div
+      style="text-align: center; padding: 2em; color: var(--convex-hull-text-color, #666)"
+    >
       <h3 style="margin: 0 0 1em 0">Unsupported Chemical System</h3>
       <p style="margin: 0">
-        Phase diagrams require 2, 3, or 4 elements. Found {element_count} element{
+        Convex hulls require 2, 3, or 4 elements. Found {element_count} element{
           element_count === 1 ? `` : `s`
         }:
       </p>
@@ -116,14 +118,14 @@
 {/if}
 
 <style>
-  .phase-diagram-error {
+  .convex-hull-error {
     display: flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    height: var(--pd-height, 500px);
-    border: 1px solid var(--text-color, #ccc);
+    height: var(--convex-hull-height, 500px);
+    border: 1px solid var(--convex-hull-border-color, #ccc);
     border-radius: var(--border-radius, 3pt);
-    background: var(--pd-bg, transparent);
+    background: var(--convex-hull-bg, transparent);
   }
 </style>

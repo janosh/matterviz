@@ -139,9 +139,9 @@
       "types": "./dist/periodic-table.d.ts",
       "default": "./dist/periodic-table.js"
     },
-    "./phase-diagram": {
-      "types": "./dist/phase-diagram/index.d.ts",
-      "default": "./dist/phase-diagram/index.js"
+    "./convex-hull": {
+      "types": "./dist/convex-hull/index.d.ts",
+      "default": "./dist/convex-hull/index.js"
     },
     "./plot": {
       "types": "./dist/plot/index.d.ts",

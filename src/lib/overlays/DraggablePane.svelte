@@ -259,7 +259,10 @@
   div.draggable-pane {
     position: absolute; /* Use absolute so pane scrolls with page content */
     background: var(--pane-bg, var(--page-bg, light-dark(white, black)));
-    border: var(--pane-border, 1px solid rgba(255, 255, 255, 0.15));
+    border: var(
+      --pane-border,
+      1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15))
+    );
     border-radius: var(--pane-border-radius, var(--border-radius, 3pt));
     padding: var(--pane-padding, 1ex);
     box-sizing: border-box;
@@ -300,7 +303,10 @@
   }
   .draggable-pane :global(hr) {
     border: none;
-    background: var(--pane-hr-bg, rgba(255, 255, 255, 0.1));
+    background: var(
+      --pane-hr-bg,
+      light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1))
+    );
     margin: var(--pane-hr-margin, 4pt 0);
     height: 1px;
   }
@@ -349,12 +355,15 @@
   }
   .draggable-pane :global(button) {
     width: max-content;
-    background-color: var(--pane-btn-bg, var(--btn-bg, rgba(255, 255, 255, 0.1)));
+    background-color: var(
+      --pane-btn-bg,
+      var(--btn-bg, light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1)))
+    );
   }
   .draggable-pane :global(button:hover) {
     background-color: var(
       --pane-btn-bg-hover,
-      var(--btn-bg-hover, rgba(255, 255, 255, 0.2))
+      var(--btn-bg-hover, light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2)))
     );
   }
   .draggable-pane :global(select) {

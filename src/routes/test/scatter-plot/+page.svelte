@@ -481,6 +481,40 @@
   const point_event_data: DataSeries[] = [
     { x: [1, 2, 3], y: [2, 4, 1], point_style: { fill: `teal`, radius: 8 } },
   ]
+
+  // === Control Precedence Test Data ===
+  // Tests that explicit styling wins on page load, but controls can override when touched
+  const control_precedence_series: DataSeries[] = [
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [5, 5, 5, 5, 5],
+      label: `Explicit Crimson r=12`,
+      // Explicit styling that should NOT be overridden by control defaults on page load
+      point_style: {
+        fill: `crimson`,
+        radius: 12, // Explicitly large - should not become default size (4)
+        stroke: `darkred`,
+        stroke_width: 3, // Explicitly thick stroke
+      },
+      markers: `points`,
+    },
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [3, 3, 3, 3, 3],
+      label: `Explicit Green r=8`,
+      point_style: {
+        fill: `forestgreen`,
+        radius: 8, // Different explicit size
+        stroke: `darkgreen`,
+        stroke_width: 2,
+      },
+      markers: `line+points`,
+      line_style: {
+        stroke: `limegreen`,
+        stroke_width: 4, // Explicitly thick line
+      },
+    },
+  ]
 </script>
 
 <h1>ScatterPlot Component E2E Test Page</h1>
@@ -725,55 +759,57 @@
 </section>
 
 <!-- Added Point Sizing Example -->
-<h2>Point Sizing Test with Spiral Data</h2>
-<label>
-  Min Size (px):
-  <input
-    type="number"
-    bind:value={size_scale.radius_range[0]}
-    min="0.5"
-    max="10"
-    step="0.5"
-    style="width: 50px"
-    aria-label="Min Size (px)"
-  />
-</label>
-<label>
-  Max Size (px):
-  <input
-    type="number"
-    bind:value={size_scale.radius_range[1]}
-    min="5"
-    max="30"
-    step="1"
-    style="width: 50px"
-    aria-label="Max Size (px)"
-  />
-</label>
-<label>
-  Size Scale:
-  <select bind:value={size_scale.type} aria-label="Size Scale">
-    <option value="linear">Linear</option>
-    <option value="log">Log</option>
-  </select>
-</label>
+<section id="point-sizing-spiral-test">
+  <h2>Point Sizing Test with Spiral Data</h2>
+  <label>
+    Min Size (px):
+    <input
+      type="number"
+      bind:value={size_scale.radius_range[0]}
+      min="0.5"
+      max="10"
+      step="0.5"
+      style="width: 50px"
+      aria-label="Min Size (px)"
+    />
+  </label>
+  <label>
+    Max Size (px):
+    <input
+      type="number"
+      bind:value={size_scale.radius_range[1]}
+      min="5"
+      max="30"
+      step="1"
+      style="width: 50px"
+      aria-label="Max Size (px)"
+    />
+  </label>
+  <label>
+    Size Scale:
+    <select bind:value={size_scale.type} aria-label="Size Scale">
+      <option value="linear">Linear</option>
+      <option value="log">Log</option>
+    </select>
+  </label>
 
-<ScatterPlot
-  series={[{ ...spiral_data, markers: `points` }]}
-  x_axis={{ label: `X Axis`, range: [-15, 15] }}
-  y_axis={{ label: `Y Axis`, range: [-15, 15] }}
-  {size_scale}
-  style="height: 500px; width: 100%"
->
-  {#snippet tooltip({ x, y, metadata })}
-    <strong>Spiral Point</strong><br />
-    Position: ({format_num(x, `.2~`)}, {format_num(y, `.2~`)})<br />
-    {#if metadata}
-      Angle: {format_num(metadata.angle as number, `.2~`)} rad<br />
-      Value (Radius): {format_num(metadata.radius as number, `.2~`)}
-    {/if}
-  {/snippet}
-</ScatterPlot>
+  <ScatterPlot
+    series={[{ ...spiral_data, markers: `points` }]}
+    x_axis={{ label: `X Axis`, range: [-15, 15] }}
+    y_axis={{ label: `Y Axis`, range: [-15, 15] }}
+    {size_scale}
+    style="height: 500px; width: 100%"
+  >
+    {#snippet tooltip({ x, y, metadata })}
+      <strong>Spiral Point</strong><br />
+      Position: ({format_num(x, `.2~`)}, {format_num(y, `.2~`)})<br />
+      {#if metadata}
+        Angle: {format_num(metadata.angle as number, `.2~`)} rad<br />
+        Value (Radius): {format_num(metadata.radius as number, `.2~`)}
+      {/if}
+    {/snippet}
+  </ScatterPlot>
+</section>
 
 <section>
   <h2>Line Styling Test</h2>
@@ -978,6 +1014,28 @@
     y_axis={{ label: `Y` }}
     color_scale={{ scheme: `Viridis` }}
     color_bar={{ title: `Color Value` }}
+    legend={{ draggable: true }}
+  />
+</section>
+
+<!-- Control Precedence Test: explicit styling should win on page load -->
+<section id="control-precedence-test">
+  <h2>Control Precedence Test</h2>
+  <p>
+    Tests that explicit per-series styling (point_style, line_style) is preserved on page
+    load. Control defaults should NOT override explicit props until user actually modifies
+    a specific control.
+  </p>
+  <p>
+    Expected on page load: Crimson points with radius=12 and stroke_width=3, Green points
+    with radius=8 and stroke_width=2, limegreen line with width=4.
+  </p>
+  <ScatterPlot
+    id="control-precedence-plot"
+    series={control_precedence_series}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y`, range: [0, 8] }}
+    controls={{ show: true }}
     legend={{ draggable: true }}
   />
 </section>

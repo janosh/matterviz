@@ -1,7 +1,7 @@
 import type { CompositionType, ElementSymbol, Sides } from '$lib'
 import type { Vec3 } from '$lib/math'
 
-// Unified phase diagram entry interface supporting both pymatgen and Materials Project formats
+// Unified convex hull entry interface supporting both pymatgen and Materials Project formats
 export interface PhaseData {
   // Core required fields
   composition: CompositionType
@@ -29,12 +29,8 @@ export interface PhaseData {
   attributes?: Record<string, unknown>
 }
 
-// Legacy type aliases for backward compatibility
-export type PDEntry = PhaseData
-export type PymatgenEntry = PhaseData
-
-// Processed phase diagram data
-export interface PhaseDiagramData {
+// Processed phase data for convex hull calculations
+export interface ProcessedPhaseData {
   entries: PhaseData[]
   stable_entries: PhaseData[]
   unstable_entries: PhaseData[]
@@ -52,7 +48,7 @@ export interface Point3D extends Point2D {
   z: number
 }
 
-export type MarkerSymbol = // Marker symbol types for phase diagram entries
+export type MarkerSymbol = // Marker symbol types for convex hull entries
   | `circle`
   | `star`
   | `triangle`
@@ -62,15 +58,15 @@ export type MarkerSymbol = // Marker symbol types for phase diagram entries
   | `wye`
 
 // Plot entry with 3D coordinates for quaternary diagrams
-export interface PhaseDiagramEntry extends PhaseData, Point3D {
+export interface ConvexHullEntry extends PhaseData, Point3D {
   is_element: boolean
   size?: number
   visible: boolean
   marker?: MarkerSymbol // Optional marker symbol override (default: circle)
 }
 
-// Configuration for phase diagram display
-export interface PhaseDiagramConfig {
+// Configuration for convex hull display
+export interface ConvexHullConfig {
   width?: number
   height?: number
   margin?: Sides
@@ -94,7 +90,7 @@ export interface PhaseDiagramConfig {
 }
 
 // Legend configuration
-export interface PDControlsType {
+export interface ConvexHullControlsType {
   title?: string
   show?: boolean
   position?: `top-left` | `top-right` | `bottom-left` | `bottom-right`
@@ -126,12 +122,12 @@ export interface ConvexHullTriangle {
 }
 
 // Hover data for tooltips
-export interface HoverData3D<T = PhaseDiagramEntry> {
+export interface HoverData3D<T = ConvexHullEntry> {
   entry: T
   position: { x: number; y: number }
 }
 
-// Phase diagram statistics
+// Phase statistics
 export interface PhaseStats {
   total: number
   unary: number
@@ -162,7 +158,7 @@ export const is_octonary_entry = (entry: PhaseData) => get_arity(entry) === 8
 export const is_nonary_entry = (entry: PhaseData) => get_arity(entry) === 9
 export const is_denary_entry = (entry: PhaseData) => get_arity(entry) === 10
 
-// Highlight styles for phase diagram entries
+// Highlight styles for convex hull entries
 export interface HighlightStyle {
   effect?: `pulse` | `glow` | `size` | `color` | `both`
   color?: string

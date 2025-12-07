@@ -11,8 +11,8 @@ import {
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
 import { ELEM_SYMBOLS } from '$lib/labels'
-import * as math from '$lib/math'
 import type { Vec3 } from '$lib/math'
+import * as math from '$lib/math'
 import type { AnyStructure, PymatgenStructure, Site } from '$lib/structure'
 import { load as yaml_load } from 'js-yaml'
 
@@ -396,7 +396,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
     if (frames.length === 0) frames.push(normalized_content)
 
     // Parse the last frame (or only frame)
-    const frame_content = frames[frames.length - 1]
+    const frame_content = frames.at(-1) ?? ``
     const lines = frame_content.trim().split(/\r?\n/)
 
     if (lines.length < 2) {
@@ -618,7 +618,7 @@ const extract_cif_cell_parameters = (
         if (strict) throw new Error(`Invalid CIF cell parameter line format: ${line}`)
         return null
       }
-      const value = parseFloat(tokens[tokens.length - 1].split(`(`)[0])
+      const value = parseFloat((tokens.at(-1) ?? ``).split(`(`)[0])
       if (isNaN(value)) {
         if (strict) throw new Error(`Invalid CIF cell parameter in line: ${line}`)
         return null // Return null for invalid values in non-strict mode

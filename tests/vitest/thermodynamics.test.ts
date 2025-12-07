@@ -1,5 +1,5 @@
-import { calculate_e_above_hull } from '$lib/phase-diagram/thermodynamics'
-import type { PhaseData } from '$lib/phase-diagram/types'
+import { calculate_e_above_hull } from '$lib/convex-hull/thermodynamics'
+import type { PhaseData } from '$lib/convex-hull/types'
 import { describe, expect, it } from 'vitest'
 
 describe(`calculate_e_above_hull`, () => {

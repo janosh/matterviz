@@ -542,9 +542,9 @@ function downsample_metadata(
   const sampled: TrajectoryMetadata[] = []
   for (let idx = 0; idx < points; idx++) {
     const source_idx = Math.floor((idx * (total_count - 1)) / (points - 1))
-    if (
-      sampled.length === 0 || sampled[sampled.length - 1] !== metadata_list[source_idx]
-    ) sampled.push(metadata_list[source_idx])
+    if (sampled.length === 0 || sampled.at(-1) !== metadata_list[source_idx]) {
+      sampled.push(metadata_list[source_idx])
+    }
   }
   return sampled
 }

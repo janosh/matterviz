@@ -67,7 +67,7 @@ const build_prop_colors = (
   const uniq = unique_values ?? [...new Set(vals)].sort((a, b) => a - b)
   // Use sorted uniq array to avoid spreading large arrays into Math.min/max
   const min_value = uniq.length > 0 ? uniq[0] : undefined
-  const max_value = uniq.length > 0 ? uniq[uniq.length - 1] : undefined
+  const max_value = uniq.at(-1)
   return { colors, values: vals, min_value, max_value, unique_values: uniq }
 }
 

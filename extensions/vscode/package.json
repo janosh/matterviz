@@ -1030,307 +1030,307 @@
           "minimum": 2,
           "maximum": 20
         },
-        "matterviz.phase_diagram.binary.camera_zoom": {
+        "matterviz.convex_hull.binary.camera_zoom": {
           "type": "number",
           "default": 1,
-          "description": "Initial zoom for binary (2D) phase diagram",
+          "description": "Initial zoom for binary (2D) convex hull",
           "minimum": 0.1,
           "maximum": 10
         },
-        "matterviz.phase_diagram.binary.camera_center_x": {
+        "matterviz.convex_hull.binary.camera_center_x": {
           "type": "number",
           "default": 0,
-          "description": "Initial X center for binary (2D) phase diagram"
+          "description": "Initial X center for binary (2D) convex hull"
         },
-        "matterviz.phase_diagram.binary.camera_center_y": {
+        "matterviz.convex_hull.binary.camera_center_y": {
           "type": "number",
           "default": 0,
-          "description": "Initial Y center for binary (2D) phase diagram"
+          "description": "Initial Y center for binary (2D) convex hull"
         },
-        "matterviz.phase_diagram.binary.color_mode": {
+        "matterviz.convex_hull.binary.color_mode": {
           "type": "string",
           "default": "energy",
-          "description": "Color mode for 2D PD points",
+          "description": "Color mode for 2D convex hull points",
           "enum": [
             "stability",
             "energy"
           ]
         },
-        "matterviz.phase_diagram.binary.color_scale": {
+        "matterviz.convex_hull.binary.color_scale": {
           "type": "string",
           "default": "interpolateViridis",
-          "description": "D3 interpolate color scale for 2D PD energy mode"
+          "description": "D3 interpolate color scale for 2D convex hull energy mode"
         },
-        "matterviz.phase_diagram.binary.show_stable": {
+        "matterviz.convex_hull.binary.show_stable": {
           "type": "boolean",
           "default": true,
-          "description": "Show stable phases in 2D PD"
+          "description": "Show stable phases in 2D convex hull"
         },
-        "matterviz.phase_diagram.binary.show_unstable": {
+        "matterviz.convex_hull.binary.show_unstable": {
           "type": "boolean",
           "default": true,
-          "description": "Show unstable phases in 2D PD"
+          "description": "Show unstable phases in 2D convex hull"
         },
-        "matterviz.phase_diagram.binary.show_stable_labels": {
+        "matterviz.convex_hull.binary.show_stable_labels": {
           "type": "boolean",
           "default": true,
-          "description": "Show labels for stable phases in 2D PD"
+          "description": "Show labels for stable phases in 2D convex hull"
         },
-        "matterviz.phase_diagram.binary.show_unstable_labels": {
+        "matterviz.convex_hull.binary.show_unstable_labels": {
           "type": "boolean",
           "default": false,
-          "description": "Show labels for unstable phases in 2D PD"
+          "description": "Show labels for unstable phases in 2D convex hull"
         },
-        "matterviz.phase_diagram.binary.max_hull_dist_show_phases": {
+        "matterviz.convex_hull.binary.max_hull_dist_show_phases": {
           "type": "number",
           "default": 0.1,
-          "description": "Max eV/atom above hull for showing unstable entries in 2D PD",
+          "description": "Max eV/atom above hull for showing unstable entries in 2D convex hull",
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.binary.max_hull_dist_show_labels": {
+        "matterviz.convex_hull.binary.max_hull_dist_show_labels": {
           "type": "number",
           "default": 0.1,
-          "description": "Max eV/atom above hull for labeling unstable entries in 2D PD",
+          "description": "Max eV/atom above hull for labeling unstable entries in 2D convex hull",
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.binary.fullscreen": {
+        "matterviz.convex_hull.binary.fullscreen": {
           "type": "boolean",
           "default": false,
-          "description": "Start in fullscreen for 2D PD"
+          "description": "Start in fullscreen for 2D convex hull"
         },
-        "matterviz.phase_diagram.binary.info_pane_open": {
+        "matterviz.convex_hull.binary.info_pane_open": {
           "type": "boolean",
           "default": false,
-          "description": "Info pane open by default for 2D PD"
+          "description": "Info pane open by default for 2D convex hull"
         },
-        "matterviz.phase_diagram.binary.legend_pane_open": {
+        "matterviz.convex_hull.binary.legend_pane_open": {
           "type": "boolean",
           "default": false,
-          "description": "Legend pane open by default for 2D PD"
+          "description": "Legend pane open by default for 2D convex hull"
         },
-        "matterviz.phase_diagram.ternary.camera_elevation": {
+        "matterviz.convex_hull.ternary.camera_elevation": {
           "type": "number",
           "default": 45,
-          "description": "Initial camera elevation (deg) for ternary (3D) PD",
+          "description": "Initial camera elevation (deg) for ternary (3D) convex hull",
           "minimum": -180,
           "maximum": 180
         },
-        "matterviz.phase_diagram.ternary.camera_azimuth": {
+        "matterviz.convex_hull.ternary.camera_azimuth": {
           "type": "number",
           "default": 60,
-          "description": "Initial camera azimuth (deg) for ternary (3D) PD",
+          "description": "Initial camera azimuth (deg) for ternary (3D) convex hull",
           "minimum": -360,
           "maximum": 360
         },
-        "matterviz.phase_diagram.ternary.camera_zoom": {
+        "matterviz.convex_hull.ternary.camera_zoom": {
           "type": "number",
           "default": 1.5,
-          "description": "Initial camera zoom for ternary (3D) PD",
+          "description": "Initial camera zoom for ternary (3D) convex hull",
           "minimum": 0.1,
           "maximum": 10
         },
-        "matterviz.phase_diagram.ternary.camera_center_x": {
+        "matterviz.convex_hull.ternary.camera_center_x": {
           "type": "number",
           "default": 0,
-          "description": "Initial X center for ternary (3D) PD"
+          "description": "Initial X center for ternary (3D) convex hull"
         },
-        "matterviz.phase_diagram.ternary.camera_center_y": {
+        "matterviz.convex_hull.ternary.camera_center_y": {
           "type": "number",
           "default": -50,
-          "description": "Initial Y center for ternary (3D) PD"
+          "description": "Initial Y center for ternary (3D) convex hull"
         },
-        "matterviz.phase_diagram.ternary.color_mode": {
+        "matterviz.convex_hull.ternary.color_mode": {
           "type": "string",
           "default": "energy",
-          "description": "Color mode for 3D PD points",
+          "description": "Color mode for 3D convex hull points",
           "enum": [
             "stability",
             "energy"
           ]
         },
-        "matterviz.phase_diagram.ternary.color_scale": {
+        "matterviz.convex_hull.ternary.color_scale": {
           "type": "string",
           "default": "interpolateViridis",
-          "description": "D3 interpolate color scale for 3D PD energy mode"
+          "description": "D3 interpolate color scale for 3D convex hull energy mode"
         },
-        "matterviz.phase_diagram.ternary.show_stable": {
+        "matterviz.convex_hull.ternary.show_stable": {
           "type": "boolean",
           "default": true,
-          "description": "Show stable phases in 3D PD"
+          "description": "Show stable phases in 3D convex hull"
         },
-        "matterviz.phase_diagram.ternary.show_unstable": {
+        "matterviz.convex_hull.ternary.show_unstable": {
           "type": "boolean",
           "default": true,
-          "description": "Show unstable phases in 3D PD"
+          "description": "Show unstable phases in 3D convex hull"
         },
-        "matterviz.phase_diagram.ternary.show_stable_labels": {
+        "matterviz.convex_hull.ternary.show_stable_labels": {
           "type": "boolean",
           "default": true,
-          "description": "Show labels for stable phases in 3D PD"
+          "description": "Show labels for stable phases in 3D convex hull"
         },
-        "matterviz.phase_diagram.ternary.show_unstable_labels": {
+        "matterviz.convex_hull.ternary.show_unstable_labels": {
           "type": "boolean",
           "default": false,
-          "description": "Show labels for unstable phases in 3D PD"
+          "description": "Show labels for unstable phases in 3D convex hull"
         },
-        "matterviz.phase_diagram.ternary.max_hull_dist_show_phases": {
+        "matterviz.convex_hull.ternary.max_hull_dist_show_phases": {
           "type": "number",
           "default": 0.5,
-          "description": "Max eV/atom above hull for showing unstable entries in 3D PD",
+          "description": "Max eV/atom above hull for showing unstable entries in 3D convex hull",
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.ternary.max_hull_dist_show_labels": {
+        "matterviz.convex_hull.ternary.max_hull_dist_show_labels": {
           "type": "number",
           "default": 0.1,
-          "description": "Max eV/atom above hull for labeling unstable entries in 3D PD",
+          "description": "Max eV/atom above hull for labeling unstable entries in 3D convex hull",
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.ternary.show_hull_faces": {
+        "matterviz.convex_hull.ternary.show_hull_faces": {
           "type": "boolean",
           "default": true,
-          "description": "Render lower hull faces in 3D PD"
+          "description": "Render lower hull faces in 3D convex hull"
         },
-        "matterviz.phase_diagram.ternary.hull_face_color": {
+        "matterviz.convex_hull.ternary.hull_face_color": {
           "type": "string",
           "default": "#4caf50",
-          "description": "Color for lower hull faces in 3D PD"
+          "description": "Color for lower hull faces in 3D convex hull"
         },
-        "matterviz.phase_diagram.ternary.hull_face_opacity": {
+        "matterviz.convex_hull.ternary.hull_face_opacity": {
           "type": "number",
           "default": 0.3,
-          "description": "Opacity for hull faces in 3D PD (0-1)",
+          "description": "Opacity for hull faces in 3D convex hull (0-1)",
           "minimum": 0,
           "maximum": 1
         },
-        "matterviz.phase_diagram.ternary.fullscreen": {
+        "matterviz.convex_hull.ternary.fullscreen": {
           "type": "boolean",
           "default": false,
-          "description": "Start in fullscreen for 3D PD"
+          "description": "Start in fullscreen for 3D convex hull"
         },
-        "matterviz.phase_diagram.ternary.info_pane_open": {
+        "matterviz.convex_hull.ternary.info_pane_open": {
           "type": "boolean",
           "default": false,
-          "description": "Info pane open by default for 3D PD"
+          "description": "Info pane open by default for 3D convex hull"
         },
-        "matterviz.phase_diagram.ternary.legend_pane_open": {
+        "matterviz.convex_hull.ternary.legend_pane_open": {
           "type": "boolean",
           "default": false,
-          "description": "Legend pane open by default for 3D PD"
+          "description": "Legend pane open by default for 3D convex hull"
         },
-        "matterviz.phase_diagram.quaternary.camera_rotation_x": {
+        "matterviz.convex_hull.quaternary.camera_rotation_x": {
           "type": "number",
           "default": -0.6,
-          "description": "Initial camera X rotation (rad) for quaternary (4D) PD",
+          "description": "Initial camera X rotation (rad) for quaternary (4D) convex hull",
           "minimum": -6.283,
           "maximum": 6.283
         },
-        "matterviz.phase_diagram.quaternary.camera_rotation_y": {
+        "matterviz.convex_hull.quaternary.camera_rotation_y": {
           "type": "number",
           "default": 0.8,
-          "description": "Initial camera Y rotation (rad) for quaternary (4D) PD",
+          "description": "Initial camera Y rotation (rad) for quaternary (4D) convex hull",
           "minimum": -6.283,
           "maximum": 6.283
         },
-        "matterviz.phase_diagram.quaternary.camera_zoom": {
+        "matterviz.convex_hull.quaternary.camera_zoom": {
           "type": "number",
           "default": 1.4,
-          "description": "Initial camera zoom for quaternary (4D) PD",
+          "description": "Initial camera zoom for quaternary (4D) convex hull",
           "minimum": 0.1,
           "maximum": 20
         },
-        "matterviz.phase_diagram.quaternary.camera_center_x": {
+        "matterviz.convex_hull.quaternary.camera_center_x": {
           "type": "number",
           "default": 0,
-          "description": "Initial X center for quaternary (4D) PD"
+          "description": "Initial X center for quaternary (4D) convex hull"
         },
-        "matterviz.phase_diagram.quaternary.camera_center_y": {
+        "matterviz.convex_hull.quaternary.camera_center_y": {
           "type": "number",
           "default": 20,
-          "description": "Initial Y center for quaternary (4D) PD"
+          "description": "Initial Y center for quaternary (4D) convex hull"
         },
-        "matterviz.phase_diagram.quaternary.color_mode": {
+        "matterviz.convex_hull.quaternary.color_mode": {
           "type": "string",
           "default": "energy",
-          "description": "Color mode for 4D PD points",
+          "description": "Color mode for 4D convex hull points",
           "enum": [
             "stability",
             "energy"
           ]
         },
-        "matterviz.phase_diagram.quaternary.color_scale": {
+        "matterviz.convex_hull.quaternary.color_scale": {
           "type": "string",
           "default": "interpolateViridis",
-          "description": "D3 interpolate color scale for 4D PD energy mode"
+          "description": "D3 interpolate color scale for 4D convex hull energy mode"
         },
-        "matterviz.phase_diagram.quaternary.show_stable": {
+        "matterviz.convex_hull.quaternary.show_stable": {
           "type": "boolean",
           "default": true,
-          "description": "Show stable phases in 4D PD"
+          "description": "Show stable phases in 4D convex hull"
         },
-        "matterviz.phase_diagram.quaternary.show_unstable": {
+        "matterviz.convex_hull.quaternary.show_unstable": {
           "type": "boolean",
           "default": true,
-          "description": "Show unstable phases in 4D PD"
+          "description": "Show unstable phases in 4D convex hull"
         },
-        "matterviz.phase_diagram.quaternary.show_stable_labels": {
+        "matterviz.convex_hull.quaternary.show_stable_labels": {
           "type": "boolean",
           "default": true,
-          "description": "Show labels for stable phases in 4D PD"
+          "description": "Show labels for stable phases in 4D convex hull"
         },
-        "matterviz.phase_diagram.quaternary.show_unstable_labels": {
+        "matterviz.convex_hull.quaternary.show_unstable_labels": {
           "type": "boolean",
           "default": false,
-          "description": "Show labels for unstable phases in 4D PD"
+          "description": "Show labels for unstable phases in 4D convex hull"
         },
-        "matterviz.phase_diagram.quaternary.show_hull_faces": {
+        "matterviz.convex_hull.quaternary.show_hull_faces": {
           "type": "boolean",
           "default": true,
-          "description": "Show convex hull faces in 4D PD"
+          "description": "Show convex hull faces in 4D convex hull"
         },
-        "matterviz.phase_diagram.quaternary.hull_face_color": {
+        "matterviz.convex_hull.quaternary.hull_face_color": {
           "type": "string",
           "default": "#4caf50",
-          "description": "Color for hull faces in 4D PD"
+          "description": "Color for hull faces in 4D convex hull"
         },
-        "matterviz.phase_diagram.quaternary.hull_face_opacity": {
+        "matterviz.convex_hull.quaternary.hull_face_opacity": {
           "type": "number",
-          "default": 0.06,
-          "description": "Opacity for hull faces in 4D PD (0-1)",
+          "default": 0.03,
+          "description": "Opacity for hull faces in 4D convex hull (0-1)",
           "minimum": 0,
           "maximum": 1
         },
-        "matterviz.phase_diagram.quaternary.max_hull_dist_show_phases": {
+        "matterviz.convex_hull.quaternary.max_hull_dist_show_phases": {
           "type": "number",
           "default": 0.1,
-          "description": "Max eV/atom above hull for showing unstable entries in 4D PD",
+          "description": "Max eV/atom above hull for showing unstable entries in 4D convex hull",
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.quaternary.max_hull_dist_show_labels": {
+        "matterviz.convex_hull.quaternary.max_hull_dist_show_labels": {
           "type": "number",
           "default": 0.1,
-          "description": "Max eV/atom above hull for labeling unstable entries in 4D PD",
+          "description": "Max eV/atom above hull for labeling unstable entries in 4D convex hull",
           "minimum": 0,
           "maximum": 2
         },
-        "matterviz.phase_diagram.quaternary.fullscreen": {
+        "matterviz.convex_hull.quaternary.fullscreen": {
           "type": "boolean",
           "default": false,
-          "description": "Start in fullscreen for 4D PD"
+          "description": "Start in fullscreen for 4D convex hull"
         },
-        "matterviz.phase_diagram.quaternary.info_pane_open": {
+        "matterviz.convex_hull.quaternary.info_pane_open": {
           "type": "boolean",
           "default": false,
-          "description": "Info pane open by default for 4D PD"
+          "description": "Info pane open by default for 4D convex hull"
         },
-        "matterviz.phase_diagram.quaternary.legend_pane_open": {
+        "matterviz.convex_hull.quaternary.legend_pane_open": {
           "type": "boolean",
           "default": false,
-          "description": "Legend pane open by default for 4D PD"
+          "description": "Legend pane open by default for 4D convex hull"
         }
       }
     }

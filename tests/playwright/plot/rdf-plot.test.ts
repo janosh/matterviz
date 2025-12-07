@@ -27,19 +27,25 @@ test.describe(`RdfPlot Component Tests`, () => {
     const plot = page.locator(`#multi-pattern`)
     const items = plot.locator(`.legend-item`)
 
-    const initial_lines = await plot.locator(`svg path.series-line`).count()
+    const initial_lines = await plot.locator(`svg path.series-line:visible`).count()
     expect(initial_lines).toBe(2)
 
     await items.first().click()
-    await page.waitForTimeout(100)
 
-    const after_toggle = await plot.locator(`svg path.series-line:visible`).count()
-    expect(after_toggle).toBeLessThan(initial_lines)
+    // Wait for line count to decrease (2 → 1)
+    await expect(async () => {
+      const after_toggle = await plot.locator(`svg path.series-line:visible`).count()
+      expect(after_toggle).toBe(1)
+    }).toPass({ timeout: 1000 })
 
     await items.first().click()
-    await page.waitForTimeout(100)
 
-    expect(await plot.locator(`svg path.series-line:visible`).count()).toBe(initial_lines)
+    // Wait for line count to restore (1 → 2)
+    await expect(async () => {
+      expect(await plot.locator(`svg path.series-line:visible`).count()).toBe(
+        initial_lines,
+      )
+    }).toPass({ timeout: 1000 })
   })
 
   // Test tooltip
