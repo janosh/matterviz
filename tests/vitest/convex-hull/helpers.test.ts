@@ -1,8 +1,8 @@
 import type { ElementSymbol } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
-import * as helpers from '$lib/phase-diagram/helpers'
-import { get_phase_diagram_stats } from '$lib/phase-diagram/thermodynamics'
-import type { PhaseData } from '$lib/phase-diagram/types'
+import * as helpers from '$lib/convex-hull/helpers'
+import { get_convex_hull_stats } from '$lib/convex-hull/thermodynamics'
+import type { PhaseData } from '$lib/convex-hull/types'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`helpers: energy color scale + point color`, () => {
@@ -209,8 +209,8 @@ describe(`helpers: thresholds and tooltips`, () => {
         system: `He-Li-Be-H`,
       },
     } as const,
-  ])(`get_phase_diagram_stats: $name`, ({ elements, max_arity, entries, expected }) => {
-    const stats = get_phase_diagram_stats(entries, [...elements], max_arity)
+  ])(`get_convex_hull_stats: $name`, ({ elements, max_arity, entries, expected }) => {
+    const stats = get_convex_hull_stats(entries, [...elements], max_arity)
     expect(stats).not.toBeNull()
     if (!stats) return
     expect(stats.total).toBe(expected.total)
@@ -243,7 +243,7 @@ describe(`helpers: energy range preserves zero formation energy`, () => {
         e_above_hull: 0,
       },
     ]
-    const stats = get_phase_diagram_stats(entries, [`H`, `He`], 3)
+    const stats = get_convex_hull_stats(entries, [`H`, `He`], 3)
     // min should be -2, max should be 0, proving 0 was retained (not replaced by -1)
     expect(stats?.energy_range.min).toBeCloseTo(-2)
     expect(stats?.energy_range.max).toBeCloseTo(0)
@@ -251,8 +251,8 @@ describe(`helpers: energy range preserves zero formation energy`, () => {
 })
 
 describe(`helpers: mouse hit testing`, () => {
-  test(`find_pd_entry_at_mouse returns null when no canvas`, () => {
-    const hit = helpers.find_pd_entry_at_mouse(
+  test(`find_hull_entry_at_mouse returns null when no canvas`, () => {
+    const hit = helpers.find_hull_entry_at_mouse(
       undefined as unknown as HTMLCanvasElement,
       { clientX: 0, clientY: 0 } as unknown as MouseEvent,
       [],
@@ -261,7 +261,7 @@ describe(`helpers: mouse hit testing`, () => {
     expect(hit).toBeNull()
   })
 
-  test(`find_pd_entry_at_mouse detects nearby entry`, () => {
+  test(`find_hull_entry_at_mouse detects nearby entry`, () => {
     // Fake canvas with size and client rect
     const canvas = {
       getBoundingClientRect: () => ({ left: 0, top: 0 }),
@@ -275,7 +275,7 @@ describe(`helpers: mouse hit testing`, () => {
       visible: true,
     }]
     const project = (x: number, y: number) => ({ x, y })
-    const hit = helpers.find_pd_entry_at_mouse(
+    const hit = helpers.find_hull_entry_at_mouse(
       canvas,
       { clientX: 102, clientY: 102 } as unknown as MouseEvent,
       plot_entries,

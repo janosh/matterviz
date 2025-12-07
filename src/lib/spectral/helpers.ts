@@ -73,7 +73,7 @@ export function scale_segment_distances(
   if (segment_distances.length === 0) return []
 
   const dist_min = segment_distances[0]
-  const dist_range = segment_distances[segment_distances.length - 1] - dist_min
+  const dist_range = (segment_distances.at(-1) ?? dist_min) - dist_min
 
   if (dist_range === 0) {
     // All points at same distance - place at midpoint
@@ -590,7 +590,7 @@ export function find_qpoint_at_rescaled_x(
       // Map from rescaled x back to original distance
       const segment_distances = band_struct.distance.slice(start_idx, end_idx + 1)
       const dist_min = segment_distances[0]
-      const dist_max = segment_distances[segment_distances.length - 1]
+      const dist_max = segment_distances.at(-1) ?? dist_min
       const dist_range = dist_max - dist_min
 
       // Handle zero-length segments

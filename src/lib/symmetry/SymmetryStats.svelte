@@ -17,7 +17,7 @@
     settings = $bindable(default_sym_settings),
     show_tooltips = true,
     children,
-    label = `Symmetry Stats`,
+    label = `Symmetry`,
     header,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -94,7 +94,7 @@
     {/if}
 
     <label>
-      <span {@attach tooltip()} title={tooltips?.symprec}>Symprec</span>
+      <span {@attach tooltip()} title={tooltips?.symprec}>Precision</span>
       <input
         type="number"
         step="1e-5"
@@ -109,7 +109,7 @@
       />
     </label>
     <label>
-      <span {@attach tooltip()} title={tooltips?.algo}>Setting</span>
+      <span {@attach tooltip()} title={tooltips?.algo}>Algorithm</span>
 
       <select
         value={settings.algo}

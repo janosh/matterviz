@@ -47,17 +47,19 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     let tooltip_text = ``
 
     // Try several bars in sequence
+    const tooltip = plot.locator(`.tooltip`)
     for (let idx = 0; idx < Math.min(bar_count, 10); idx++) {
       const bar = bars.nth(idx)
-      const hover_promise = bar.hover({ force: true })
-      await hover_promise
-      await page.waitForTimeout(150)
+      await bar.hover({ force: true })
 
-      const tooltip = plot.locator(`.tooltip`)
-      if (await tooltip.isVisible()) {
+      // Wait briefly for tooltip, checking each iteration
+      try {
+        await tooltip.waitFor({ state: `visible`, timeout: 500 })
         tooltip_visible = true
         tooltip_text = (await tooltip.textContent()) ?? ``
         break
+      } catch {
+        // Tooltip not visible yet, try next bar
       }
     }
 
@@ -78,7 +80,6 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // Double-click should not cause errors
     await svg.dblclick()
-    await page.waitForTimeout(300)
 
     // Plot should still be visible and functional
     await expect(svg).toBeVisible()
@@ -102,13 +103,14 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // Uncheck to hide counts
     await checkbox.uncheck()
-    await page.waitForTimeout(300)
 
-    // Percentage text should disappear
-    const has_percentage_after = await annotations.evaluateAll((texts) =>
-      texts.some((text) => text.textContent?.includes(`%`))
-    )
-    expect(has_percentage_after).toBe(false)
+    // Wait for percentage text to disappear
+    await expect(async () => {
+      const has_percentage_after = await annotations.evaluateAll((texts) =>
+        texts.some((text) => text.textContent?.includes(`%`))
+      )
+      expect(has_percentage_after).toBe(false)
+    }).toPass({ timeout: 1000 })
   })
 
   test(`orientation switch flips bar orientation`, async ({ page }) => {
@@ -137,16 +139,19 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // Switch to horizontal
     await horizontal_radio.check()
-    await page.waitForTimeout(500)
 
-    // Measure after orientation change
-    const after_bars = await bars.all()
-    const after_boxes = (
-      await Promise.all(after_bars.slice(0, 5).map(async (h) => await h.boundingBox()))
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    // Wait for orientation to change (bars should become wider than tall)
+    await expect(async () => {
+      const after_bars = await bars.all()
+      const after_boxes = (
+        await Promise.all(after_bars.slice(0, 5).map(async (h) => await h.boundingBox()))
+      ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
 
-    const horizontal_count_after = after_boxes.filter((bb) => bb.width > bb.height).length
-    expect(horizontal_count_after).toBeGreaterThan(2)
+      const horizontal_count_after = after_boxes.filter((bb) =>
+        bb.width > bb.height
+      ).length
+      expect(horizontal_count_after).toBeGreaterThan(2)
+    }).toPass({ timeout: 2000 })
   })
 
   test(`handles space group symbols as input`, async ({ page }) => {
@@ -164,10 +169,9 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     // Hover on a bar and check tooltip shows symbol
     const bar_buttons = plot.locator(`svg rect[role="button"]`)
     await bar_buttons.first().hover({ force: true })
-    await page.waitForTimeout(200)
 
     const tooltip = plot.locator(`.tooltip`)
-    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toBeVisible({ timeout: 1000 })
 
     const tooltip_text = await tooltip.textContent()
     // Should show Hermann-Mauguin symbol
@@ -296,18 +300,18 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     if (bar_count > 3) {
       // Hover on first bar
       await bar_buttons.nth(0).hover({ force: true })
-      await page.waitForTimeout(150)
       const tooltip = plot.locator(`.tooltip`)
-      await expect(tooltip).toBeVisible()
+      await expect(tooltip).toBeVisible({ timeout: 1000 })
       const first_text = await tooltip.textContent()
 
-      // Hover on a different bar
+      // Hover on a different bar and wait for tooltip content to change
       await bar_buttons.nth(2).hover({ force: true })
-      await page.waitForTimeout(150)
-      const second_text = await tooltip.textContent()
-
-      // Tooltip content should be different
-      expect(first_text).not.toBe(second_text)
+      await expect(async () => {
+        const second_text = await tooltip.textContent()
+        expect(second_text).not.toBe(first_text)
+        // Verify tooltip still has expected content shape (not empty/placeholder)
+        expect(second_text).toMatch(/Space Group:/i)
+      }).toPass({ timeout: 1000 })
     }
   })
 

@@ -2,14 +2,14 @@
   import { format_num, Histogram, Icon, type InfoItem } from '$lib'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import type { PhaseDiagramEntry, PhaseStats } from './types'
+  import type { ConvexHullEntry, PhaseStats } from './types'
 
   let { phase_stats, stable_entries, unstable_entries, ...rest }:
     & HTMLAttributes<HTMLDivElement>
     & {
       phase_stats: PhaseStats | null
-      stable_entries: PhaseDiagramEntry[]
-      unstable_entries: PhaseDiagramEntry[]
+      stable_entries: ConvexHullEntry[]
+      unstable_entries: ConvexHullEntry[]
     } = $props()
 
   let copied_items = new SvelteSet<string>()
@@ -163,8 +163,8 @@
   })
 </script>
 
-<div {...rest} class="phase-diagram-stats {rest.class ?? ``}">
-  <h4 style="margin-top: 0">Phase Diagram Stats</h4>
+<div {...rest} class="convex-hull-stats {rest.class ?? ``}">
+  <h4 style="margin-top: 0">Convex Hull Stats</h4>
   {#each pane_data as section, sec_idx (sec_idx)}
     {#if sec_idx > 0}<hr />{/if}
     <section>
@@ -233,9 +233,9 @@
 </div>
 
 <style>
-  .phase-diagram-stats {
-    background: var(--pd-stats-bg, var(--pd-bg));
-    border-radius: var(--pd-border-radius, var(--border-radius, 3pt));
+  .convex-hull-stats {
+    background: var(--hull-stats-bg, var(--hull-bg));
+    border-radius: var(--hull-border-radius, var(--border-radius, 3pt));
     padding: 0 1em 1em;
   }
   section div {

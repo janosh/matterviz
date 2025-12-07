@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FullscreenToggle } from '$lib/feedback'
+  import { FullscreenToggle } from '$lib/layout'
   import { format_value } from '$lib/labels'
   import type { BarStyle, HistogramHandlerProps } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'

@@ -14,8 +14,8 @@ import {
   get_triangle_vertical_edges,
   TETRAHEDRON_VERTICES,
   TRIANGLE_VERTICES,
-} from '$lib/phase-diagram/barycentric-coords'
-import type { PhaseData } from '$lib/phase-diagram/types'
+} from '$lib/convex-hull/barycentric-coords'
+import type { PhaseData } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`ternary: constants and projections`, () => {

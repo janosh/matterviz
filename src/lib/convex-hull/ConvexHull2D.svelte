@@ -6,32 +6,33 @@
     ElementSymbol,
     UserContentProps,
   } from '$lib'
-  import { Icon, is_unary_entry, PD_DEFAULTS } from '$lib'
+  import { DEFAULTS, Icon, is_unary_entry } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { symbol_map } from '$lib/labels'
+  import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import type {
     AxisConfig,
     ScatterHandlerEvent,
     ScatterHandlerProps,
   } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
+  import ConvexHullControls from './ConvexHullControls.svelte'
+  import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import * as helpers from './helpers'
-  import type { BasePhaseDiagramProps } from './index'
-  import { default_controls, default_pd_config, PD_STYLE } from './index'
-  import PhaseDiagramControls from './PhaseDiagramControls.svelte'
-  import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
+  import type { BaseConvexHullProps } from './index'
+  import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
   import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import * as thermo from './thermodynamics'
   import type {
+    ConvexHullEntry,
     HighlightStyle,
     HoverData3D,
     PhaseData,
-    PhaseDiagramEntry,
   } from './types'
 
-  // Binary phase diagram rendered as energy vs composition (x in [0, 1])
+  // Binary convex hull rendered as energy vs composition (x in [0, 1])
   let {
     entries,
     controls = {},
@@ -53,6 +54,7 @@
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
     on_file_drop,
+    enable_click_selection = true,
     enable_structure_preview = true,
     energy_source_mode = $bindable(`precomputed`),
     phase_stats = $bindable(null),
@@ -66,7 +68,7 @@
     selected_entry = $bindable(null),
     children,
     ...rest
-  }: BasePhaseDiagramProps<PhaseDiagramEntry> & {
+  }: BaseConvexHullProps<ConvexHullEntry> & {
     highlight_style?: HighlightStyle
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -74,10 +76,10 @@
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const merged_config = $derived({
-    ...default_pd_config,
+    ...default_hull_config,
     point_size: 6, // Binary diagrams use slightly smaller points
     ...config,
-    colors: { ...default_pd_config.colors, ...(config.colors || {}) },
+    colors: { ...default_hull_config.colors, ...(config.colors || {}) },
     margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
   })
 
@@ -87,7 +89,7 @@
   )
 
   // Helper to check if entry is highlighted
-  const is_highlighted = (entry: PhaseDiagramEntry): boolean =>
+  const is_highlighted = (entry: ConvexHullEntry): boolean =>
     helpers.is_entry_highlighted(entry, highlighted_entries)
 
   let { // Compute energy mode information
@@ -115,7 +117,7 @@
   )
 
   // Process data and element set
-  const pd_data = $derived(thermo.process_pd_entries(effective_entries))
+  const pd_data = $derived(thermo.process_hull_entries(effective_entries))
 
   const polymorph_stats_map = $derived(
     helpers.compute_all_polymorph_stats(effective_entries),
@@ -124,7 +126,7 @@
   const elements = $derived.by(() => {
     if (pd_data.elements.length > 2) {
       console.error(
-        `PhaseDiagram2D: Dataset contains ${pd_data.elements.length} elements, but binary diagrams require exactly 2. Found: [${
+        `ConvexHull2D: Dataset contains ${pd_data.elements.length} elements, but binary diagrams require exactly 2. Found: [${
           pd_data.elements.join(`, `)
         }]`,
       )
@@ -137,10 +139,10 @@
   function compute_binary_coordinates(
     raw_entries: PhaseData[],
     elems: ElementSymbol[],
-  ): PhaseDiagramEntry[] {
+  ): ConvexHullEntry[] {
     if (elems.length !== 2) return []
     const [el1, el2] = elems
-    const coords: PhaseDiagramEntry[] = []
+    const coords: ConvexHullEntry[] = []
     for (const entry of raw_entries) {
       // Require formation energy per atom to place along y
       const e_form = entry.e_form_per_atom
@@ -152,10 +154,10 @@
       coords.push({ ...entry, x: frac_b, y: e_form, z: 0, is_element, visible: true })
     }
     // Ensure elemental references at x=0 and x=1 with y=0 to close the hull
-    const el_a: PhaseDiagramEntry | undefined = coords.find((e) =>
+    const el_a: ConvexHullEntry | undefined = coords.find((e) =>
       e.is_element && e.x === 0
     )
-    const el_b: PhaseDiagramEntry | undefined = coords.find((e) =>
+    const el_b: ConvexHullEntry | undefined = coords.find((e) =>
       e.is_element && e.x === 1
     )
     if (!el_a) {
@@ -235,7 +237,7 @@
 
     // Build lower hull: group by x, use lowest energy per x
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local var in derived
-    const by_x = new Map<number, PhaseDiagramEntry[]>()
+    const by_x = new Map<number, ConvexHullEntry[]>()
     for (const entry of coords_entries) {
       const group = by_x.get(entry.x)
       if (group) group.push(entry)
@@ -268,7 +270,7 @@
   const auto_default_threshold = $derived(helpers.compute_auto_hull_dist_threshold(
     all_enriched_entries.length,
     max_hull_dist_in_data,
-    PD_DEFAULTS.binary.max_hull_dist_show_phases,
+    DEFAULTS.convex_hull.binary.max_hull_dist_show_phases,
   ))
 
   // Initialize threshold to auto value on first load
@@ -294,8 +296,8 @@
 
   // Update bindable entries arrays when plot_entries change (single pass)
   $effect(() => {
-    const stable: PhaseDiagramEntry[] = []
-    const unstable: PhaseDiagramEntry[] = []
+    const stable: ConvexHullEntry[] = []
+    const unstable: ConvexHullEntry[] = []
     for (const entry of plot_entries) {
       if (entry.is_stable) stable.push(entry)
       else unstable.push(entry)
@@ -316,7 +318,7 @@
   let structure_popup = $state<{
     open: boolean
     structure: AnyStructure | null
-    entry: PhaseDiagramEntry | null
+    entry: ConvexHullEntry | null
     place_right: boolean
   }>({
     open: false,
@@ -407,10 +409,10 @@
         y: [p1.y, p2.y] as const,
         markers: `line` as const,
         line_style: {
-          stroke: PD_STYLE.structure_line.color,
-          stroke_width: PD_STYLE.structure_line.line_width,
-          line_dash: `${PD_STYLE.structure_line.dash[0]},${
-            PD_STYLE.structure_line.dash[1]
+          stroke: CONVEX_HULL_STYLE.structure_line.color,
+          stroke_width: CONVEX_HULL_STYLE.structure_line.line_width,
+          line_dash: `${CONVEX_HULL_STYLE.structure_line.dash[0]},${
+            CONVEX_HULL_STYLE.structure_line.dash[1]
           }`,
         },
       })
@@ -431,13 +433,13 @@
     return idx >= 0 ? { series_idx: 0, point_idx: idx } : null
   })
 
-  // Phase diagram statistics - compute internally and expose via bindable prop
+  // Convex hull statistics - compute internally and expose via bindable prop
   $effect(() => {
-    phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 3)
+    phase_stats = thermo.get_convex_hull_stats(plot_entries, elements, 3)
   })
 
   function extract_structure_from_entry(
-    entry: PhaseDiagramEntry,
+    entry: ConvexHullEntry,
   ): AnyStructure | null {
     if (!entry.entry_id) return null
     const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
@@ -445,18 +447,18 @@
   }
 
   function reset_all() {
-    fullscreen = PD_DEFAULTS.binary.fullscreen
-    info_pane_open = PD_DEFAULTS.binary.info_pane_open
-    legend_pane_open = PD_DEFAULTS.binary.legend_pane_open
-    color_mode = PD_DEFAULTS.binary.color_mode
-    color_scale = PD_DEFAULTS.binary.color_scale as D3InterpolateName
-    show_stable = PD_DEFAULTS.binary.show_stable
-    show_unstable = PD_DEFAULTS.binary.show_unstable
-    show_stable_labels = PD_DEFAULTS.binary.show_stable_labels
-    show_unstable_labels = PD_DEFAULTS.binary.show_unstable_labels
+    fullscreen = DEFAULTS.convex_hull.binary.fullscreen
+    info_pane_open = DEFAULTS.convex_hull.binary.info_pane_open
+    legend_pane_open = DEFAULTS.convex_hull.binary.legend_pane_open
+    color_mode = DEFAULTS.convex_hull.binary.color_mode
+    color_scale = DEFAULTS.convex_hull.binary.color_scale as D3InterpolateName
+    show_stable = DEFAULTS.convex_hull.binary.show_stable
+    show_unstable = DEFAULTS.convex_hull.binary.show_unstable
+    show_stable_labels = DEFAULTS.convex_hull.binary.show_stable_labels
+    show_unstable_labels = DEFAULTS.convex_hull.binary.show_unstable_labels
     // Use auto-computed threshold based on entry count instead of static default
     max_hull_dist_show_phases = auto_default_threshold
-    max_hull_dist_show_labels = PD_DEFAULTS.binary.max_hull_dist_show_labels
+    max_hull_dist_show_labels = DEFAULTS.convex_hull.binary.max_hull_dist_show_labels
     reset_counter += 1
   }
 
@@ -464,22 +466,23 @@
   // Must match all properties that reset_all() resets
   // Use auto_default_threshold for comparison since that's the effective default
   const has_changes_to_reset = $derived(
-    fullscreen !== PD_DEFAULTS.binary.fullscreen ||
-      info_pane_open !== PD_DEFAULTS.binary.info_pane_open ||
-      legend_pane_open !== PD_DEFAULTS.binary.legend_pane_open ||
-      color_mode !== PD_DEFAULTS.binary.color_mode ||
-      color_scale !== PD_DEFAULTS.binary.color_scale ||
-      show_stable !== PD_DEFAULTS.binary.show_stable ||
-      show_unstable !== PD_DEFAULTS.binary.show_unstable ||
-      show_stable_labels !== PD_DEFAULTS.binary.show_stable_labels ||
-      show_unstable_labels !== PD_DEFAULTS.binary.show_unstable_labels ||
+    fullscreen !== DEFAULTS.convex_hull.binary.fullscreen ||
+      info_pane_open !== DEFAULTS.convex_hull.binary.info_pane_open ||
+      legend_pane_open !== DEFAULTS.convex_hull.binary.legend_pane_open ||
+      color_mode !== DEFAULTS.convex_hull.binary.color_mode ||
+      color_scale !== DEFAULTS.convex_hull.binary.color_scale ||
+      show_stable !== DEFAULTS.convex_hull.binary.show_stable ||
+      show_unstable !== DEFAULTS.convex_hull.binary.show_unstable ||
+      show_stable_labels !== DEFAULTS.convex_hull.binary.show_stable_labels ||
+      show_unstable_labels !== DEFAULTS.convex_hull.binary.show_unstable_labels ||
       // Compare with auto-computed threshold, with small tolerance for floating point
       Math.abs(max_hull_dist_show_phases - auto_default_threshold) > 0.001 ||
-      max_hull_dist_show_labels !== PD_DEFAULTS.binary.max_hull_dist_show_labels,
+      max_hull_dist_show_labels !==
+        DEFAULTS.convex_hull.binary.max_hull_dist_show_labels,
   )
 
   // Custom hover tooltip state used with ScatterPlot events
-  let hover_data = $state<HoverData3D<PhaseDiagramEntry> | null>(null)
+  let hover_data = $state<HoverData3D<ConvexHullEntry> | null>(null)
 
   const handle_keydown = (event: KeyboardEvent) => {
     if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
@@ -494,12 +497,12 @@
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     drag_over = false
-    const data = await helpers.parse_pd_entries_from_drop(event)
+    const data = await helpers.parse_hull_entries_from_drop(event)
     if (data) on_file_drop?.(data)
   }
 
   async function copy_entry_data(
-    entry: PhaseDiagramEntry,
+    entry: ConvexHullEntry,
     position: { x: number; y: number },
   ) {
     await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
@@ -514,11 +517,11 @@
   }
 
   // Track last clicked entry for double-click detection
-  let last_clicked_entry: PhaseDiagramEntry | null = null
+  let last_clicked_entry: ConvexHullEntry | null = null
   let last_click_time = 0
 
   function handle_point_click_internal(data: ScatterHandlerEvent) {
-    const entry = data.metadata as unknown as PhaseDiagramEntry
+    const entry = data.metadata as unknown as ConvexHullEntry
     if (!entry) return
 
     const now = Date.now()
@@ -534,23 +537,25 @@
       last_clicked_entry = null
       last_click_time = 0
     } else {
-      // Single click: show structure preview
+      // Single click: select entry and optionally show structure preview
       last_clicked_entry = entry
       last_click_time = now
 
       on_point_click?.(entry)
-      selected_entry = entry
-      if (enable_structure_preview) {
-        const structure = extract_structure_from_entry(entry)
-        if (structure) {
-          const viewport_width = globalThis.innerWidth
-          const click_x = data.event.clientX
-          const space_on_right = viewport_width - click_x
-          const space_on_left = click_x
-          const place_right = space_on_right >= space_on_left
+      if (enable_click_selection) {
+        selected_entry = entry
+        if (enable_structure_preview) {
+          const structure = extract_structure_from_entry(entry)
+          if (structure) {
+            const viewport_width = globalThis.innerWidth
+            const click_x = data.event.clientX
+            const space_on_right = viewport_width - click_x
+            const space_on_left = click_x
+            const place_right = space_on_right >= space_on_left
 
-          structure_popup = { open: true, structure, entry, place_right }
-          data.event.stopPropagation()
+            structure_popup = { open: true, structure, entry, place_right }
+            data.event.stopPropagation()
+          }
         }
       }
     }
@@ -558,15 +563,15 @@
 
   // Fullscreen handling
   $effect(() => {
-    helpers.setup_fullscreen_effect(fullscreen, wrapper)
-    helpers.set_fullscreen_bg(wrapper, fullscreen, `--pd-2d-bg-fullscreen`)
+    setup_fullscreen_effect(fullscreen, wrapper)
+    set_fullscreen_bg(wrapper, fullscreen, `--hull-2d-bg-fullscreen`)
   })
 
   let style = $derived(
-    `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
-    --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
-    --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --pd-text-color:${
+    `--hull-stable-color:${merged_config.colors?.stable || `#0072B2`};
+    --hull-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
+    --hull-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
+     --hull-text-color:${
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     };`,
   )
@@ -580,7 +585,7 @@
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
 {#snippet tooltip(point: ScatterHandlerProps)}
-  {@const entry = point.metadata as unknown as PhaseDiagramEntry}
+  {@const entry = point.metadata as unknown as ConvexHullEntry}
   {@const entry_highlight = entry && is_highlighted(entry)
     ? merged_highlight_style
     : undefined}
@@ -603,7 +608,7 @@
     {/if}
 
     {#if enable_info_pane && phase_stats}
-      <PhaseDiagramInfoPane
+      <ConvexHullInfoPane
         bind:pane_open={info_pane_open}
         {phase_stats}
         {stable_entries}
@@ -615,7 +620,7 @@
       />
     {/if}
 
-    <PhaseDiagramControls
+    <ConvexHullControls
       bind:controls_open={legend_pane_open}
       bind:color_mode
       bind:color_scale
@@ -655,8 +660,9 @@
 {#key reset_counter}
   <ScatterPlot
     {...rest}
-    class="phase-diagram-2d {rest.class ?? ``} {drag_over ? `dragover` : ``}"
+    class="convex-hull-2d {rest.class ?? ``} {drag_over ? `dragover` : ``}"
     style={`${style}; ${rest.style ?? ``}`}
+    data-has-selection={selected_entry !== null}
     bind:wrapper
     bind:fullscreen
     role="application"
@@ -671,7 +677,7 @@
       event.preventDefault()
       drag_over = false
     }}
-    aria-label="Binary phase diagram visualization"
+    aria-label="Binary convex hull visualization"
     series={scatter_series}
     bind:display
     controls={{ show: false }}
@@ -704,7 +710,7 @@
         on_point_hover?.(null)
         return
       }
-      const entry = data.metadata as unknown as PhaseDiagramEntry
+      const entry = data.metadata as unknown as ConvexHullEntry
       hover_data = entry
         ? {
           entry,
@@ -747,15 +753,16 @@
 {/key}
 
 <style>
-  :global(.phase-diagram-2d:fullscreen) {
-    background: var(--pd-2d-bg-fullscreen, var(--pd-2d-bg, var(--pd-bg))) !important;
+  :global(.convex-hull-2d:fullscreen) {
+    background: var(--hull-2d-bg-fullscreen, var(--hull-2d-bg, var(--hull-bg)))
+      !important;
     overflow: hidden;
   }
-  :global(.phase-diagram-2d.dragover) {
+  :global(.convex-hull-2d.dragover) {
     border: 2px dashed var(--accent-color, #1976d2) !important;
   }
   /* Styles for control buttons rendered via header_controls snippet */
-  :global(.phase-diagram-2d .control-btn) {
+  :global(.convex-hull-2d .control-btn) {
     background: transparent;
     border: none;
     padding: 4px;
@@ -766,7 +773,7 @@
     display: flex;
     font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
-  :global(.phase-diagram-2d .control-btn:hover) {
+  :global(.convex-hull-2d .control-btn:hover) {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
 </style>

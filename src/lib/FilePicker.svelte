@@ -206,13 +206,13 @@
   }
   .legend-item:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.3);
+    background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
+    border-color: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.3));
   }
   .legend-item.active {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.5);
+    background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.2));
+    border-color: light-dark(rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.5));
     font-weight: bold;
   }
   .clear-filter {
@@ -239,24 +239,24 @@
     display: flex;
     align-items: center;
     padding: 4pt 8pt;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
     border-radius: 20px;
     cursor: grab;
-    background: rgba(255, 255, 255, 0.1);
+    background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
     transition: all 0.2s ease;
     gap: 0.5em;
   }
   .file-item.active {
     border-color: var(--success-color, #00ff00);
-    background: rgba(0, 255, 0, 0.15);
-    box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
+    background: light-dark(rgba(0, 255, 0, 0.12), rgba(0, 255, 0, 0.2));
+    box-shadow: 0 0 8px light-dark(rgba(0, 255, 0, 0.25), rgba(0, 255, 0, 0.35));
   }
   .file-item:active {
     cursor: grabbing;
   }
   .file-item:hover {
     border-color: var(--accent-color, #007acc);
-    background: rgba(0, 122, 204, 0.2);
+    background: light-dark(rgba(0, 122, 204, 0.15), rgba(0, 122, 204, 0.25));
     filter: brightness(1.1);
   }
   .file-name {

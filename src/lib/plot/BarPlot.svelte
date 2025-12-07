@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FullscreenToggle } from '$lib/feedback'
+  import { FullscreenToggle } from '$lib/layout'
   import { format_value } from '$lib/labels'
   import type {
     BarHandlerProps,

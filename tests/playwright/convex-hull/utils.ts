@@ -18,12 +18,12 @@ export async function open_info_and_controls(
 ): Promise<{ info: Locator; controls: Locator }> {
   const info_btn = diagram.locator(`.info-btn`)
   await dom_click(info_btn)
-  const info = diagram.locator(`.draggable-pane.phase-diagram-info-pane`)
+  const info = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
   await ensure_pane_visible(info, info_btn)
 
   const controls_btn = diagram.locator(`.legend-controls-btn`)
   await dom_click(controls_btn)
-  const controls = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
+  const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
   await ensure_pane_visible(controls, controls_btn)
 
   return { info, controls }

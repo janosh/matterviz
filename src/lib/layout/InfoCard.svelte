@@ -76,14 +76,21 @@
     padding: var(--ic-padding, 10pt 12pt);
     margin: var(--ic-margin, 1em 0);
     gap: var(--ic-gap, 10pt 5%);
-    background-color: var(--ic-bg, rgba(255, 255, 255, 0.1));
+    background-color: var(
+      --ic-bg,
+      light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1))
+    );
     font-size: var(--ic-font-size);
     width: var(--ic-width);
   }
   h2 {
     grid-column: 1 / -1;
     margin: 0;
-    border-bottom: 1px solid var(--ic-title-border-color, rgba(255, 255, 255, 0.3));
+    border-bottom: 1px solid
+      var(
+        --ic-title-border-color,
+        light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.3))
+      );
   }
   div {
     display: flex;
@@ -99,7 +106,10 @@
   strong {
     font-weight: 600;
     margin: var(--ic-value-margin);
-    background-color: var(--ic-value-bg, rgba(255, 255, 255, 0.1));
+    background-color: var(
+      --ic-value-bg,
+      light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1))
+    );
     padding: var(--ic-value-padding, 0 4pt);
     border-radius: var(--ic-value-radius, 3pt);
   }

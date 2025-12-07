@@ -222,14 +222,14 @@ describe(`supercell performance profiling`, () => {
 
     // Check that it scales reasonably (should be roughly linear)
     const first_rate = results[0].time / results[0].sites
-    const last_rate = results[results.length - 1].time / results[results.length - 1].sites
+    const last_result = results[results.length - 1]
+    const last_rate = last_result.time / last_result.sites
 
     // With linear scaling optimizations, the rate per atom should be very consistent
     // Allowing small variance (1.5x instead of previous 2x loose bound)
     expect(last_rate / first_rate).toBeLessThan(1.5)
 
     // Absolute performance check: 500 atoms (13500 total sites) should take < 10ms
-    const last_result = results[results.length - 1]
     expect(last_result.time).toBeLessThan(10 * CI_MULTIPLIER)
   })
 })

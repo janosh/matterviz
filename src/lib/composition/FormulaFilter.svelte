@@ -1,8 +1,9 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
+  import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { FormulaSearchMode } from './index'
-  import { normalize_element_symbols } from './parse'
+  import { extract_formula_elements, normalize_element_symbols } from './parse'
 
   const SEARCH_EXAMPLES = [
     {
@@ -43,7 +44,6 @@
     onclear?: () => void // Callback when clear button is clicked
   } & HTMLAttributes<HTMLDivElement> = $props()
 
-  // eslint-disable-next-line svelte/prefer-writable-derived -- need both external sync and local edits
   let input_value = $state(value)
   let examples_open = $state(false)
   let wrapper: HTMLDivElement | null = $state(null)
@@ -67,8 +67,18 @@
     if (restore_focus) input_element?.focus({ preventScroll: true })
   }
 
+  // Track last synced value to detect external changes (e.g. from URL params)
+  // and re-infer mode accordingly. Without this, mode would only be set on first render.
+  let last_synced = $state<string | null>(null)
   $effect(() => {
     input_value = value
+    if (value !== last_synced) {
+      last_synced = value
+      if (value) {
+        const inferred = infer_mode(value)
+        if (inferred !== search_mode) search_mode = inferred
+      }
+    }
   })
 
   // Detect if dropdown would exit viewport on the right and adjust anchor
@@ -93,9 +103,54 @@
     return `exact` // LiFePO4 → exact formula
   }
 
+  // Cycle through modes: elements → chemsys → exact → elements
+  const MODE_CYCLE: FormulaSearchMode[] = [`elements`, `chemsys`, `exact`]
+
+  // Extract elements from any input format (formula, comma-separated, dash-separated)
+  // Always returns elements in alphabetical order for consistency
+  function extract_elements(input: string): string[] {
+    const trimmed = input.trim()
+    if (!trimmed) return []
+    // If contains commas or dashes, split by those and sort alphabetically
+    if (trimmed.includes(`,`) || trimmed.includes(`-`)) {
+      const parts = trimmed.split(/[-,]/).map((str) => str.trim()).filter(Boolean)
+      // Filter valid elements and sort alphabetically
+      return normalize_element_symbols(parts.join(`,`)).sort()
+    }
+    // Otherwise parse as formula (already returns sorted by default)
+    try {
+      return extract_formula_elements(trimmed, { sorted: true })
+    } catch {
+      return []
+    }
+  }
+
+  // Format elements for the given mode
+  function format_for_mode(elements: string[], mode: FormulaSearchMode): string {
+    if (elements.length === 0) return ``
+    if (mode === `elements`) return elements.join(`,`)
+    if (mode === `chemsys`) return elements.join(`-`)
+    // For exact mode, just join without separator (user will need to add counts)
+    return elements.join(``)
+  }
+
+  function cycle_mode(): void {
+    const current_idx = MODE_CYCLE.indexOf(search_mode)
+    const next_idx = (current_idx + 1) % MODE_CYCLE.length
+    const next_mode = MODE_CYCLE[next_idx]
+
+    // Extract elements from current value and reformat for new mode
+    const elements = extract_elements(value)
+    const reformatted = format_for_mode(elements, next_mode)
+
+    search_mode = next_mode
+    last_synced = value = input_value = reformatted // update last_synced to prevent effect re-inference
+    onchange?.(reformatted, next_mode)
+  }
+
   function set_value(new_value: string): void {
     const mode = infer_mode(new_value)
-    value = input_value = new_value
+    last_synced = value = input_value = new_value // update last_synced to prevent effect re-inference
     search_mode = mode
     onchange?.(value, mode)
   }
@@ -168,24 +223,28 @@
     items?.[focused_item_idx]?.focus({ preventScroll: true })
   })
 
-  // Cache inferred mode to avoid redundant computations
-  let inferred_mode = $derived(infer_mode(input_value))
-
   let placeholder = $derived(
-    inferred_mode === `chemsys`
+    search_mode === `chemsys`
       ? `Li-Fe-O`
-      : inferred_mode === `exact`
+      : search_mode === `exact`
       ? `LiFePO4`
       : `Li,Fe,O`,
   )
 
-  let mode_hint = $derived(
-    {
-      elements: `contains elements`,
-      chemsys: `chemical system`,
-      exact: `exact formula`,
-    }[inferred_mode],
-  )
+  const MODE_LABELS: Record<FormulaSearchMode, string> = {
+    elements: `contains elements`,
+    chemsys: `chemical system`,
+    exact: `exact formula`,
+  }
+
+  let mode_hint = $derived(MODE_LABELS[search_mode])
+  // Preview of next mode cycle step for tooltip
+  let next_mode = $derived.by(() => {
+    const next = MODE_CYCLE[(MODE_CYCLE.indexOf(search_mode) + 1) % MODE_CYCLE.length]
+    const mode = MODE_LABELS[next]
+    const next_value = format_for_mode(extract_elements(value), next)
+    return { mode, value: next_value }
+  })
 </script>
 
 <svelte:document onclick={handle_document_click} />
@@ -201,7 +260,16 @@
     aria-label="Formula filter"
   />
   {#if input_value}
-    <span class="mode-hint">{mode_hint}</span>
+    <button
+      type="button"
+      class="mode-hint clickable"
+      onclick={cycle_mode}
+      title="Click to switch to '{next_mode.mode}' → {next_mode.value}"
+      {@attach tooltip({ style: `font-size: 0.6em; padding: 1pt 5pt;` })}
+      aria-label="Change search mode"
+    >
+      {mode_hint}
+    </button>
   {/if}
   {#if show_clear_button && value && !disabled}
     <button
@@ -294,9 +362,26 @@
     opacity: 0.4;
   }
   .mode-hint {
-    font-size: 0.7em;
     opacity: 0.5;
     white-space: nowrap;
+  }
+  .mode-hint.clickable {
+    display: inline-flex;
+    align-items: center;
+    gap: 2pt;
+    background: rgba(77, 182, 255, 0.1);
+    border: 1px solid rgba(77, 182, 255, 0.25);
+    border-radius: 4px;
+    padding: 1pt 5pt;
+    cursor: pointer;
+    color: var(--highlight, #4db6ff);
+    opacity: 0.8;
+    transition: opacity 0.15s, background 0.15s;
+  }
+  .mode-hint.clickable:hover {
+    opacity: 1;
+    background: rgba(77, 182, 255, 0.2);
+    border-color: rgba(77, 182, 255, 0.4);
   }
   .icon-btn {
     display: flex;

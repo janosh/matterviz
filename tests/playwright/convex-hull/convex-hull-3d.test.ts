@@ -1,17 +1,40 @@
 import { expect, test } from '@playwright/test'
 import { dom_click } from './utils'
 
-test.describe(`PhaseDiagram3D (Ternary)`, () => {
+test.describe(`ConvexHull3D (Ternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/phase-diagram`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/convex-hull`, { waitUntil: `domcontentloaded` })
+  })
+
+  test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
+    await page.goto(
+      `/test/convex-hull-performance?dim=3d&count=100&click_selection=false`,
+      { waitUntil: `networkidle` },
+    )
+    const diagram = page.locator(`.convex-hull-3d`)
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+    const canvas = diagram.locator(`canvas`)
+    const box = await canvas.boundingBox()
+    if (box) {
+      // Click multiple positions to ensure we hit an entry
+      const positions = [0, 0.3, -0.3].map((off) => ({
+        x: box.width * (0.5 + off),
+        y: box.height * (0.5 + off),
+      }))
+      await positions.reduce(
+        (chain, pos) => chain.then(() => canvas.click({ position: pos })),
+        Promise.resolve(),
+      )
+      await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+    }
   })
 
   test(`renders ternary diagram canvas and toggles hull faces`, async ({ page }) => {
-    await expect(page.getByRole(`heading`, { name: `Phase Diagrams` })).toBeVisible()
+    await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
     const ternary_grid = page.locator(`.ternary-grid`).first()
     await expect(ternary_grid).toBeVisible()
 
-    const diagram = ternary_grid.locator(`.phase-diagram-3d`).first()
+    const diagram = ternary_grid.locator(`.convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
     const canvas = diagram.locator(`canvas`)
@@ -22,7 +45,7 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
     await dom_click(legend_btn)
 
     // Toggle hull faces via control pane switch if present
-    const pane = page.locator(`.draggable-pane.phase-diagram-controls-pane`).last()
+    const pane = page.locator(`.draggable-pane.convex-hull-controls-pane`).last()
     const hull_toggle = pane.getByText(`Hull Faces`, { exact: false })
     if (await hull_toggle.isVisible({ timeout: 2000 })) {
       await hull_toggle.click()
@@ -33,29 +56,29 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
   })
 
   test(`info pane stats show chemical system and counts`, async ({ page }) => {
-    const diagram = page.locator(`.ternary-grid .phase-diagram-3d`).first()
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
     // Open info via DOM click to avoid overlay intercepts
     await dom_click(diagram.locator(`.info-btn`))
-    const info = diagram.locator(`.draggable-pane.phase-diagram-info-pane`)
+    const info = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
     // Ensure content inside the pane is visible (not just attached)
-    await expect(info.getByText(`Phase Diagram Stats`, { exact: false }))
+    await expect(info.getByText(`Convex Hull Stats`, { exact: false }))
       .toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
     await expect(info.getByText(`Stability`)).toBeVisible()
 
     // Regression: verify unstable phases > 0 (catches possible e_above_hull placeholder bugs)
-    const unstable_text = await info.getByTestId(`pd-unstable-phases`).textContent()
+    const unstable_text = await info.getByTestId(`hull-visible-unstable`).textContent()
     const unstable_match = unstable_text?.match(/(\d+)/)
     const unstable_count = unstable_match ? parseInt(unstable_match[1], 10) : 0
     expect(unstable_count).toBeGreaterThan(0)
   })
 
   test(`camera elevation/azimuth controls accept numeric changes`, async ({ page }) => {
-    const diagram = page.locator(`.ternary-grid .phase-diagram-3d`).first()
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
     await diagram.locator(`.legend-controls-btn`).click()
-    const controls = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
     const elev = controls.getByText(`Elev`).locator(`..`).locator(`input[type="number"]`)
       .first()
@@ -67,7 +90,7 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
   })
 
   test(`tooltip shows fractional compositions with unicode glyphs`, async ({ page }) => {
-    const diagram = page.locator(`.ternary-grid .phase-diagram-3d`).first()
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
     const canvas = diagram.locator(`canvas`)
@@ -77,11 +100,10 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
     const box = await canvas.boundingBox()
     if (box) {
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-      // Wait a bit for tooltip to appear
-      await page.waitForTimeout(200)
 
       // Check if tooltip appears with fractional compositions
       const tooltip = page.locator(`.tooltip`)
+      // Wait for tooltip to potentially appear (may not appear if not hovering over a point)
       if (await tooltip.isVisible({ timeout: 1000 })) {
         const tooltip_text = await tooltip.textContent()
         // Check that tooltip doesn't contain large decimal numbers like "666.67" or "333.33"
