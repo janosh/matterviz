@@ -9,8 +9,13 @@ export function setup_fullscreen_effect(
   if (typeof window === `undefined`) return
 
   if (fullscreen && !document.fullscreenElement && wrapper?.isConnected) {
-    wrapper.requestFullscreen().catch(console.error)
-    on_fullscreen_change?.(true)
+    wrapper
+      .requestFullscreen()
+      .then(() => on_fullscreen_change?.(true))
+      .catch((error) => {
+        console.error(`Fullscreen request failed:`, error)
+        on_fullscreen_change?.(false)
+      })
   } else if (!fullscreen && document.fullscreenElement) {
     document.exitFullscreen()
     on_fullscreen_change?.(false)

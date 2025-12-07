@@ -102,7 +102,7 @@
   open_icon="Cross"
   {...rest}
 >
-  <h4 style="margin: 0">{merged_controls.title || `Phase Diagram Controls`}</h4>
+  <h4 style="margin: 0">{merged_controls.title || `Convex Hull Controls`}</h4>
 
   <!-- Energy source selection (only if both options are available) -->
   {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form &&
@@ -438,7 +438,7 @@
   .legend-item {
     display: flex;
     align-items: center;
-    border-radius: var(--pd-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--hull-border-radius, var(--border-radius, 3pt));
     cursor: pointer;
     white-space: nowrap;
   }

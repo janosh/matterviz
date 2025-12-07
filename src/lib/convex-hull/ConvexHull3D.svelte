@@ -456,7 +456,7 @@
 
     // Reset stroke style to default for other elements
     const styles = getComputedStyle(canvas)
-    ctx.strokeStyle = styles.getPropertyValue(`--pd-edge-color`) || `#212121`
+    ctx.strokeStyle = styles.getPropertyValue(`--hull-edge-color`) || `#212121`
     ctx.setLineDash([]) // Reset line dash for other drawing operations
   }
 
@@ -928,7 +928,7 @@
         was_fullscreen = entering_fullscreen
       }
     })
-    set_fullscreen_bg(wrapper, fullscreen, `--pd-3d-bg-fullscreen`)
+    set_fullscreen_bg(wrapper, fullscreen, `--hull-3d-bg-fullscreen`)
   })
 
   // Performance: Cache canvas dimensions and formation energy range
@@ -953,10 +953,10 @@
   })
 
   let style = $derived(
-    `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
-    --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
-    --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --pd-text-color:${
+    `--hull-stable-color:${merged_config.colors?.stable || `#0072B2`};
+    --hull-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
+    --hull-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
+     --hull-text-color:${
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     }`,
   )
@@ -1151,13 +1151,13 @@
     position: relative;
     container-type: size; /* enable cqh/cqw for responsive sizing */
     width: 100%;
-    height: var(--pd-height, 500px);
-    background: var(--pd-3d-bg, var(--pd-bg));
-    border-radius: var(--pd-border-radius, var(--border-radius, 3pt));
+    height: var(--hull-height, 500px);
+    background: var(--hull-3d-bg, var(--hull-bg));
+    border-radius: var(--hull-border-radius, var(--border-radius, 3pt));
   }
   .convex-hull-3d:fullscreen {
     border-radius: 0;
-    background: var(--pd-3d-bg-fullscreen, var(--pd-3d-bg, var(--pd-bg)));
+    background: var(--hull-3d-bg-fullscreen, var(--hull-3d-bg, var(--hull-bg)));
     overflow: hidden;
   }
   .convex-hull-3d.dragover {

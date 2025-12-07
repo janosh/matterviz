@@ -164,7 +164,7 @@
 </script>
 
 <div {...rest} class="convex-hull-stats {rest.class ?? ``}">
-  <h4 style="margin-top: 0">Phase Diagram Stats</h4>
+  <h4 style="margin-top: 0">Convex Hull Stats</h4>
   {#each pane_data as section, sec_idx (sec_idx)}
     {#if sec_idx > 0}<hr />{/if}
     <section>
@@ -234,8 +234,8 @@
 
 <style>
   .convex-hull-stats {
-    background: var(--pd-stats-bg, var(--pd-bg));
-    border-radius: var(--pd-border-radius, var(--border-radius, 3pt));
+    background: var(--hull-stats-bg, var(--hull-bg));
+    border-radius: var(--hull-border-radius, var(--border-radius, 3pt));
     padding: 0 1em 1em;
   }
   section div {

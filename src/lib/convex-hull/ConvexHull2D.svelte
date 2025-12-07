@@ -561,14 +561,14 @@
   // Fullscreen handling
   $effect(() => {
     setup_fullscreen_effect(fullscreen, wrapper)
-    set_fullscreen_bg(wrapper, fullscreen, `--pd-2d-bg-fullscreen`)
+    set_fullscreen_bg(wrapper, fullscreen, `--hull-2d-bg-fullscreen`)
   })
 
   let style = $derived(
-    `--pd-stable-color:${merged_config.colors?.stable || `#0072B2`};
-    --pd-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
-    --pd-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
-     --pd-text-color:${
+    `--hull-stable-color:${merged_config.colors?.stable || `#0072B2`};
+    --hull-unstable-color:${merged_config.colors?.unstable || `#E69F00`};
+    --hull-edge-color:${merged_config.colors?.edge || `var(--text-color, #212121)`};
+     --hull-text-color:${
       merged_config.colors?.annotation || `var(--text-color, #212121)`
     };`,
   )
@@ -750,7 +750,8 @@
 
 <style>
   :global(.convex-hull-2d:fullscreen) {
-    background: var(--pd-2d-bg-fullscreen, var(--pd-2d-bg, var(--pd-bg))) !important;
+    background: var(--hull-2d-bg-fullscreen, var(--hull-2d-bg, var(--hull-bg)))
+      !important;
     overflow: hidden;
   }
   :global(.convex-hull-2d.dragover) {
