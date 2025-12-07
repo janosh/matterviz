@@ -7,7 +7,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
   })
 
   test(`renders binary convex hull with scatter plot and colorbar`, async ({ page }) => {
-    await expect(page.getByRole(`heading`, { name: `Phase Diagrams` })).toBeVisible()
+    await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
     const binary_grid = page.locator(`.binary-grid`).first()
     await expect(binary_grid).toBeVisible()
 

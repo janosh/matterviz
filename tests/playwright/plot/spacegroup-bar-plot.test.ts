@@ -53,10 +53,13 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
       await bar.hover({ force: true })
 
       // Wait briefly for tooltip, checking each iteration
-      if (await tooltip.isVisible({ timeout: 500 }).catch(() => false)) {
+      try {
+        await tooltip.waitFor({ state: `visible`, timeout: 500 })
         tooltip_visible = true
         tooltip_text = (await tooltip.textContent()) ?? ``
         break
+      } catch {
+        // Tooltip not visible yet, try next bar
       }
     }
 
@@ -306,6 +309,8 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
       await expect(async () => {
         const second_text = await tooltip.textContent()
         expect(second_text).not.toBe(first_text)
+        // Verify tooltip still has expected content shape (not empty/placeholder)
+        expect(second_text).toMatch(/Space Group:/i)
       }).toPass({ timeout: 1000 })
     }
   })

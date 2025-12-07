@@ -25,7 +25,10 @@ describe(`get_ffmpeg_conversion_command`, () => {
     [`video.mp4`, `"video.mp4"`],
     [`recording.avi`, `"recording.avi"`],
   ])(`%s → contains %s`, (input, expected) => {
-    expect(get_ffmpeg_conversion_command(input)).toContain(expected)
+    const result = get_ffmpeg_conversion_command(input)
+    // Verify always returns a proper ffmpeg command, not just the filename
+    expect(result).toMatch(/^ffmpeg\s+-i\s+/)
+    expect(result).toContain(expected)
   })
 })
 

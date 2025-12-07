@@ -1932,6 +1932,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Also capture another series' line to verify it stays unaffected
     const other_line = plot.locator(`g[data-series-id="0"] path[fill="none"]`)
+    // Guard: ensure reference series has inline attributes (test would need updating if CSS-only)
+    await expect(other_line).toHaveAttribute(`stroke-width`, /\d/)
+    await expect(other_line).toHaveAttribute(`stroke`, /.+/)
     const other_initial_width = await other_line.getAttribute(`stroke-width`)
     const other_initial_stroke = await other_line.getAttribute(`stroke`)
 

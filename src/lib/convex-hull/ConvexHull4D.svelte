@@ -248,7 +248,7 @@
   let is_dragging = $state(false)
   let drag_started = $state(false)
   let last_mouse = $state({ x: 0, y: 0 })
-  let hover_data = $state<HoverData3D | null>(null)
+  let hover_data = $state<HoverData3D<ConvexHullEntry> | null>(null)
   let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
 
   // Drag and drop state

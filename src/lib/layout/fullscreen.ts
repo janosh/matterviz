@@ -16,9 +16,15 @@ export function setup_fullscreen_effect(
         console.error(`Fullscreen request failed:`, error)
         on_fullscreen_change?.(false)
       })
-  } else if (!fullscreen && document.fullscreenElement) {
-    document.exitFullscreen()
-    on_fullscreen_change?.(false)
+  } else if (!fullscreen && document.fullscreenElement === wrapper) {
+    // Only exit if this wrapper is the fullscreen element (avoids exiting another component's session)
+    document
+      .exitFullscreen()
+      .then(() => on_fullscreen_change?.(false))
+      .catch((error) => {
+        console.error(`Exit fullscreen failed:`, error)
+        on_fullscreen_change?.(false)
+      })
   }
 }
 
