@@ -77,11 +77,10 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
     const box = await canvas.boundingBox()
     if (box) {
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-      // Wait a bit for tooltip to appear
-      await page.waitForTimeout(200)
 
       // Check if tooltip appears with fractional compositions
       const tooltip = page.locator(`.tooltip`)
+      // Wait for tooltip to potentially appear (may not appear if not hovering over a point)
       if (await tooltip.isVisible({ timeout: 1000 })) {
         const tooltip_text = await tooltip.textContent()
         // Check that tooltip doesn't contain large decimal numbers like "666.67" or "333.33"

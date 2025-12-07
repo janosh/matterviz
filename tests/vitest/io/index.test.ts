@@ -314,4 +314,136 @@ describe(`load_from_url`, () => {
 
     expect(received_filename).toBe(`server-name.xyz`)
   })
+
+  describe(`Content-Disposition edge cases`, () => {
+    const create_mock_response = (content: string, headers: Record<string, string>) => {
+      return new Response(content, { headers })
+    }
+
+    test.each([
+      // filename* with UTF-8 encoding
+      [
+        `filename*=UTF-8''structure%20data.xyz`,
+        `structure data.xyz`,
+        `RFC 5987 filename* with UTF-8 encoding`,
+      ],
+      // filename* without explicit encoding
+      [
+        `filename*=structure%20file.cif`,
+        `structure file.cif`,
+        `filename* without explicit encoding`,
+      ],
+      // Plain filename without quotes
+      [`filename=simple.xyz`, `simple.xyz`, `filename without quotes`],
+      // filename* takes precedence over filename
+      [
+        `filename="fallback.xyz"; filename*=UTF-8''preferred.xyz`,
+        `preferred.xyz`,
+        `filename* takes precedence`,
+      ],
+    ])(`%s -> %s (%s)`, async (disposition, expected, _desc) => {
+      const mock_response = create_mock_response(`content`, {
+        'content-type': `text/plain`,
+        'content-disposition': `attachment; ${disposition}`,
+      })
+      globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
+
+      let received_filename: string | null = null
+      await load_from_url(`https://example.com/url-name.xyz`, (_, filename) => {
+        received_filename = filename
+      })
+
+      expect(received_filename).toBe(expected)
+    })
+
+    test(`falls back to URL basename when Content-Disposition has no filename`, async () => {
+      const mock_response = create_mock_response(`content`, {
+        'content-type': `text/plain`,
+        'content-disposition': `attachment`,
+      })
+      globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
+
+      let received_filename: string | null = null
+      await load_from_url(`https://example.com/fallback.xyz`, (_, filename) => {
+        received_filename = filename
+      })
+
+      expect(received_filename).toBe(`fallback.xyz`)
+    })
+  })
+
+  describe(`VASP file detection`, () => {
+    const create_mock_response = (content: string) => {
+      return new Response(content, { headers: { 'content-type': `text/plain` } })
+    }
+
+    test.each([
+      [`POSCAR`, `POSCAR`],
+      [`poscar`, `poscar`],
+      [`XDATCAR`, `XDATCAR`],
+      [`xdatcar`, `xdatcar`],
+      [`CONTCAR`, `CONTCAR`],
+      [`contcar`, `contcar`],
+    ])(`recognizes VASP file %s as text`, async (basename, expected_filename) => {
+      const mock_response = create_mock_response(`Si\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43`)
+      globalThis.fetch = vi.fn().mockResolvedValueOnce(mock_response)
+
+      let received_content: string | ArrayBuffer | null = null
+      let received_filename: string | null = null
+
+      await load_from_url(`https://example.com/${basename}`, (content, filename) => {
+        received_content = content
+        received_filename = filename
+      })
+
+      expect(typeof received_content).toBe(`string`)
+      expect(received_filename).toBe(expected_filename)
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1) // No Range request for VASP files
+    })
+  })
+
+  describe(`async callback support`, () => {
+    const create_mock_response = (content: string) => {
+      return new Response(content, { headers: { 'content-type': `text/plain` } })
+    }
+
+    test(`awaits async callback`, async () => {
+      const mock_response = create_mock_response(`content`)
+      globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
+
+      const processed_files: string[] = []
+      await load_from_url(
+        `https://example.com/test.xyz`,
+        async (_content, filename) => {
+          // Simulate async processing
+          await new Promise((resolve) => setTimeout(resolve, 10))
+          processed_files.push(filename)
+        },
+      )
+
+      expect(processed_files).toContain(`test.xyz`)
+    })
+  })
+
+  describe(`non-gzip binary files with content-encoding`, () => {
+    test(`gzip content-encoding on non-.gz URL returns text`, async () => {
+      const mock_response = new Response(`decompressed content`, {
+        headers: {
+          'content-encoding': `gzip`,
+          'content-type': `text/plain`,
+        },
+      })
+      globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
+
+      let received_content: string | ArrayBuffer | null = null
+      await load_from_url(
+        `https://example.com/data.npz`, // binary extension but with gzip content-encoding
+        (content) => {
+          received_content = content
+        },
+      )
+
+      expect(typeof received_content).toBe(`string`)
+    })
+  })
 })

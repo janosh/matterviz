@@ -206,13 +206,13 @@
   }
   .legend-item:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.3);
+    background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
+    border-color: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.3));
   }
   .legend-item.active {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.5);
+    background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.2));
+    border-color: light-dark(rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.5));
     font-weight: bold;
   }
   .clear-filter {
@@ -239,10 +239,10 @@
     display: flex;
     align-items: center;
     padding: 4pt 8pt;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
     border-radius: 20px;
     cursor: grab;
-    background: rgba(255, 255, 255, 0.1);
+    background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
     transition: all 0.2s ease;
     gap: 0.5em;
   }

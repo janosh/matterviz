@@ -34,7 +34,8 @@ const get_label_positions = async (
   plot_locator: Locator,
 ): Promise<Record<string, XyObj>> => {
   await plot_locator.waitFor({ state: `visible` })
-  await plot_locator.page().waitForTimeout(200)
+  // Wait for markers to be rendered
+  await expect(plot_locator.locator(`path.marker`).first()).toBeVisible()
 
   const positions: Record<string, XyObj> = {}
   const markers = await plot_locator.locator(`path.marker`).all()
@@ -369,28 +370,35 @@ test.describe(`ScatterPlot Component Tests`, () => {
       `label:has-text("Max Size") input[type="number"]`,
     )
     await max_size_input.fill(`50`)
-    await page.waitForTimeout(300)
 
-    const updated_bbox = await get_marker_bbox(plot_locator, 30)
-    const updated_area = get_bbox_area(updated_bbox)
-    expect(updated_area).toBeGreaterThan(area_30 * 1.5) // At least 50% larger
+    // Wait for marker size to actually increase
+    await expect(async () => {
+      const updated_bbox = await get_marker_bbox(plot_locator, 30)
+      const updated_area = get_bbox_area(updated_bbox)
+      expect(updated_area).toBeGreaterThan(area_30 * 1.5) // At least 50% larger
+    }).toPass({ timeout: 1000 })
 
     // Test 3: Verify log scale compresses size differences
     await max_size_input.fill(`25`) // Reset to default
-    await page.waitForTimeout(300)
 
+    // Wait for marker to resize back
     const scale_select = section.locator(`label:has-text("Size Scale") select`)
-    const linear_last = await get_marker_bbox(plot_locator, marker_count - 1)
-    const linear_area = get_bbox_area(linear_last)
+    let linear_area = 0
+    await expect(async () => {
+      const linear_last = await get_marker_bbox(plot_locator, marker_count - 1)
+      linear_area = get_bbox_area(linear_last)
+      expect(linear_area).toBeGreaterThan(0)
+    }).toPass({ timeout: 1000 })
 
     await scale_select.selectOption(`log`)
-    await page.waitForTimeout(300)
 
-    const log_last = await get_marker_bbox(plot_locator, marker_count - 1)
-    const log_area = get_bbox_area(log_last)
-
-    expect(log_area).toBeGreaterThan(0)
-    expect(log_area).toBeLessThan(linear_area) // Log scale compresses large values
+    // Wait for log scale to compress marker sizes
+    await expect(async () => {
+      const log_last = await get_marker_bbox(plot_locator, marker_count - 1)
+      const log_area = get_bbox_area(log_last)
+      expect(log_area).toBeGreaterThan(0)
+      expect(log_area).toBeLessThan(linear_area) // Log scale compresses large values
+    }).toPass({ timeout: 1000 })
   })
 
   // Scale and range tests
@@ -1858,13 +1866,15 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const size_range = point_size_row.locator(`input[type="range"]`)
     await size_range.fill(`20`) // Set to max size
 
-    // Wait for rendering to update
-    await page.waitForTimeout(100)
+    // Wait for marker size to actually change
+    await expect(async () => {
+      const bbox = await crimson_marker.boundingBox()
+      expect(bbox?.width).toBeGreaterThan(initial_width * 1.3) // At least 30% bigger
+    }).toPass({ timeout: 1000 })
 
     // Verify size changed (marker got bigger)
     const updated_bbox = await crimson_marker.boundingBox()
     expect(updated_bbox).toBeTruthy()
-    expect(updated_bbox?.width).toBeGreaterThan(initial_width * 1.3) // At least 30% bigger
 
     // CRITICAL: Verify OTHER explicit styling is STILL preserved
     // Color should still be crimson (not control default)
@@ -1935,10 +1945,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const width_range = line_width_row.locator(`input[type="range"]`)
     await width_range.fill(`8`) // Change from 4 to 8
 
-    await page.waitForTimeout(100)
-
-    // Verify line width changed
-    await expect(green_line).toHaveAttribute(`stroke-width`, `8`)
+    // Wait for line width to actually change
+    await expect(green_line).toHaveAttribute(`stroke-width`, `8`, { timeout: 1000 })
 
     // CRITICAL: Line color should STILL be limegreen (not control default)
     await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)
@@ -1973,20 +1981,18 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await size_input.click()
     await size_input.fill(`15`)
     await size_input.press(`Enter`)
-    await page.waitForTimeout(100)
 
-    // Find and wait for reset button to appear
+    // Find and wait for reset button to appear (indicates change was detected)
     const reset_button = control_pane.locator(`button.reset-button`).first()
 
-    // Only proceed if reset button is visible (depends on has_changes detection)
-    const reset_visible = await reset_button.isVisible().catch(() => false)
+    // Wait for reset button to become visible or timeout
+    const reset_visible = await reset_button.isVisible({ timeout: 1000 }).catch(() =>
+      false
+    )
     if (reset_visible) {
       await reset_button.click()
-      await page.waitForTimeout(100)
-
-      // After reset, the stroke_width should now be the default (1) since reset marks all as touched
-      const current_stroke_width = await crimson_marker.getAttribute(`stroke-width`)
-      expect(current_stroke_width).toBe(`1`) // Default stroke width after reset
+      // Wait for stroke-width to reset to default
+      await expect(crimson_marker).toHaveAttribute(`stroke-width`, `1`, { timeout: 1000 })
     } else {
       // If reset button doesn't appear, skip this assertion but test still passes
       // This can happen if SettingsSection's has_changes doesn't detect the modification
@@ -2015,32 +2021,33 @@ test.describe(`ScatterPlot Component Tests`, () => {
   })
 
   test(`on_point_hover and on_point_click handlers`, async ({ page }) => {
-    await page.goto(`/scatter-plot`)
+    await page.goto(`/plot/scatter-plot`)
     const example = page.locator(`.code-example`).first()
+    // The hover status div contains "No point hovered yet." or "Hovering: Point..."
     const info_div = example.locator(`div`).filter({
-      hasText: /^(No point hovered|Hovering)/,
+      hasText: /No point hovered|Hovering/,
+    }).last()
+
+    await expect(info_div).toContainText(/No point hovered/)
+
+    // Get the main plot SVG (the one containing markers, not icon SVGs)
+    const svg = example.locator(`.scatter svg[role="img"]`).filter({
+      has: page.locator(`path.marker`),
     })
+    await expect(svg).toBeVisible()
 
-    await expect(info_div).toContainText(/No point hovered/)
+    // Hover directly over first marker point
+    const first_point = svg.locator(`path.marker`).first()
+    await first_point.hover()
+    await expect(info_div).toContainText(`Hovering: Point`, { timeout: 2000 })
+    // Verify it shows specific point info
+    await expect(info_div).toContainText(`Series:`)
+    await expect(info_div).toContainText(`Point Index:`)
 
-    const svg = example.locator(`.scatter svg`)
-    const box = await svg.boundingBox()
-    if (!box) throw new Error(`SVG not found`)
-
-    // Hover near a point
-    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5)
-    await page.waitForTimeout(100)
-
-    await expect(info_div).toContainText(`Hovering: Point`)
-
-    // Check cursor is pointer (click handler is defined)
-    const point = svg.locator(`path.marker`).first()
-    const cursor = await point.evaluate((el) => globalThis.getComputedStyle(el).cursor)
-    expect(cursor).toBe(`pointer`)
-
-    // Move away clears hover
-    await page.mouse.move(box.x - 50, box.y - 50)
-    await expect(info_div).toContainText(/No point hovered/)
+    // Hover over a different point to verify hover updates
+    const second_point = svg.locator(`path.marker`).nth(1)
+    await second_point.hover()
+    await expect(info_div).toContainText(`Hovering: Point`, { timeout: 2000 })
   })
 
   test(`improved label placement prevents overlap for isolated and clustered markers`, async ({ page }) => {

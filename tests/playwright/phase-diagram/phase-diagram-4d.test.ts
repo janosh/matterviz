@@ -192,10 +192,9 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     await page.mouse.move(center.x + 30, center.y + 30)
     await page.mouse.up()
     await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } })
-    await page.waitForTimeout(100)
 
     // Click after drag should be suppressed (no structure popup)
-    await expect(diagram.locator(`.structure-popup`)).toBeHidden()
+    await expect(diagram.locator(`.structure-popup`)).toBeHidden({ timeout: 1000 })
   })
 
   test(`hull facets render and are toggleable`, async ({ page }) => {
@@ -221,21 +220,21 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     const controls = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
     await controls.getByText(`Hull Faces`).locator(`..`).locator(`input[type="checkbox"]`)
       .click()
-    await page.waitForTimeout(100)
 
-    // Verify fewer semi-transparent pixels after toggle
-    const after_toggle_semi_transparent = await canvas.evaluate((el) => {
-      const ctx = (el as HTMLCanvasElement).getContext(`2d`)
-      if (!ctx) return 0
-      const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
-      let count = 0
-      for (let idx = 3; idx < data.length; idx += 4) {
-        if (data[idx] > 0 && data[idx] < 255) count++
-      }
-      return count
-    })
-
-    expect(after_toggle_semi_transparent).toBeLessThan(initial_semi_transparent / 2)
+    // Wait for semi-transparent pixels to decrease after toggle
+    await expect(async () => {
+      const after_toggle_semi_transparent = await canvas.evaluate((el) => {
+        const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+        if (!ctx) return 0
+        const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+        let count = 0
+        for (let idx = 3; idx < data.length; idx += 4) {
+          if (data[idx] > 0 && data[idx] < 255) count++
+        }
+        return count
+      })
+      expect(after_toggle_semi_transparent).toBeLessThan(initial_semi_transparent / 2)
+    }).toPass({ timeout: 1000 })
   })
 
   test(`hull content stays centered`, async ({ page }) => {
@@ -353,9 +352,11 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
       `input[type="range"][aria-label*="opacity"]`,
     )
     await slider.fill(`0.2`)
-    await page.waitForTimeout(100)
 
-    const updated_alpha = await get_avg_alpha()
-    expect(updated_alpha).toBeGreaterThan(initial_alpha)
+    // Wait for alpha to actually increase
+    await expect(async () => {
+      const updated_alpha = await get_avg_alpha()
+      expect(updated_alpha).toBeGreaterThan(initial_alpha)
+    }).toPass({ timeout: 1000 })
   })
 })
