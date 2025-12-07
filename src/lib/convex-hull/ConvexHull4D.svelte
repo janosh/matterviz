@@ -1,25 +1,26 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { Icon, PD_DEFAULTS, toggle_fullscreen } from '$lib'
+  import { DEFAULTS, Icon, toggle_fullscreen } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { is_dark_mode, watch_dark_mode } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
+  import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import { ColorBar, PlotTooltip } from '$lib/plot'
   import {
     barycentric_to_tetrahedral,
     compute_4d_coords,
     TETRAHEDRON_VERTICES,
   } from './barycentric-coords'
+  import ConvexHullControls from './ConvexHullControls.svelte'
+  import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import * as helpers from './helpers'
-  import type { BasePhaseDiagramProps, Hull3DProps } from './index'
-  import { default_controls, default_pd_config, PD_STYLE } from './index'
-  import PhaseDiagramControls from './PhaseDiagramControls.svelte'
-  import PhaseDiagramInfoPane from './PhaseDiagramInfoPane.svelte'
+  import type { BaseConvexHullProps, Hull3DProps } from './index'
+  import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
   import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import type { Point4D } from './thermodynamics'
   import * as thermo from './thermodynamics'
-  import type { HighlightStyle, HoverData3D, PhaseDiagramEntry } from './types'
+  import type { ConvexHullEntry, HighlightStyle, HoverData3D } from './types'
 
   let {
     entries,
@@ -55,15 +56,15 @@
     selected_entry = $bindable(null),
     children,
     ...rest
-  }: BasePhaseDiagramProps<PhaseDiagramEntry> & Hull3DProps & {
+  }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps & {
     highlight_style?: HighlightStyle
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const merged_config = $derived({
-    ...default_pd_config,
+    ...default_hull_config,
     ...config,
-    colors: { ...default_pd_config.colors, ...(config.colors || {}) },
+    colors: { ...default_hull_config.colors, ...(config.colors || {}) },
     margin: { t: 60, r: 60, b: 60, l: 60, ...(config.margin || {}) },
   })
 
@@ -96,10 +97,10 @@
     ),
   )
 
-  // Process phase diagram data with unified PhaseData interface using effective entries
+  // Process convex hull data with unified PhaseData interface using effective entries
   const processed_entries = $derived(effective_entries)
 
-  const pd_data = $derived(thermo.process_pd_entries(processed_entries))
+  const pd_data = $derived(thermo.process_hull_entries(processed_entries))
 
   const polymorph_stats_map = $derived(
     helpers.compute_all_polymorph_stats(processed_entries),
@@ -108,7 +109,7 @@
   const elements = $derived.by(() => {
     if (pd_data.elements.length > 4) {
       console.error(
-        `PhaseDiagram4D: Dataset contains ${pd_data.elements.length} elements, but quaternary diagrams require exactly 4. Found: [${
+        `ConvexHull4D: Dataset contains ${pd_data.elements.length} elements, but quaternary diagrams require exactly 4. Found: [${
           pd_data.elements.join(`, `)
         }]`,
       )
@@ -192,7 +193,7 @@
   const auto_default_threshold = $derived(helpers.compute_auto_hull_dist_threshold(
     all_enriched_entries.length,
     max_hull_dist_in_data,
-    PD_DEFAULTS.quaternary.max_hull_dist_show_phases,
+    DEFAULTS.convex_hull.quaternary.max_hull_dist_show_phases,
   ))
 
   // Initialize threshold to auto value on first load
@@ -222,10 +223,10 @@
 
   // Stable and unstable entries exposed as bindable props
   $effect(() => {
-    stable_entries = plot_entries.filter((entry: PhaseDiagramEntry) =>
+    stable_entries = plot_entries.filter((entry: ConvexHullEntry) =>
       entry.is_stable || entry.e_above_hull === 0
     )
-    unstable_entries = plot_entries.filter((entry: PhaseDiagramEntry) =>
+    unstable_entries = plot_entries.filter((entry: ConvexHullEntry) =>
       (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
     )
   })
@@ -236,9 +237,9 @@
 
   // Camera state - following Materials Project's 3D camera setup
   let camera = $state({
-    rotation_x: PD_DEFAULTS.quaternary.camera_rotation_x,
-    rotation_y: PD_DEFAULTS.quaternary.camera_rotation_y,
-    zoom: PD_DEFAULTS.quaternary.camera_zoom,
+    rotation_x: DEFAULTS.convex_hull.quaternary.camera_rotation_x,
+    rotation_y: DEFAULTS.convex_hull.quaternary.camera_rotation_y,
+    zoom: DEFAULTS.convex_hull.quaternary.camera_zoom,
     center_x: 0,
     center_y: 20, // Slight offset to avoid legend overlap
   })
@@ -272,7 +273,7 @@
   )
 
   // Helper to check if entry is highlighted
-  const is_highlighted = (entry: PhaseDiagramEntry): boolean =>
+  const is_highlighted = (entry: ConvexHullEntry): boolean =>
     helpers.is_entry_highlighted(entry, highlighted_entries)
 
   $effect(() => {
@@ -314,38 +315,39 @@
     }
   })
 
-  // Function to extract structure data from a phase diagram entry
+  // Function to extract structure data from a convex hull entry
   function extract_structure_from_entry(
-    entry: PhaseDiagramEntry,
+    entry: ConvexHullEntry,
   ): AnyStructure | null {
     const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
     return orig_entry?.structure as AnyStructure || null
   }
 
   const reset_camera = () => {
-    camera.rotation_x = PD_DEFAULTS.quaternary.camera_rotation_x
-    camera.rotation_y = PD_DEFAULTS.quaternary.camera_rotation_y
-    camera.zoom = PD_DEFAULTS.quaternary.camera_zoom
+    camera.rotation_x = DEFAULTS.convex_hull.quaternary.camera_rotation_x
+    camera.rotation_y = DEFAULTS.convex_hull.quaternary.camera_rotation_y
+    camera.zoom = DEFAULTS.convex_hull.quaternary.camera_zoom
     camera.center_x = 0
     camera.center_y = 20 // Slight offset to avoid legend overlap
   }
   function reset_all() {
     reset_camera()
-    fullscreen = PD_DEFAULTS.quaternary.fullscreen
-    info_pane_open = PD_DEFAULTS.quaternary.info_pane_open
-    legend_pane_open = PD_DEFAULTS.quaternary.legend_pane_open
-    color_mode = PD_DEFAULTS.quaternary.color_mode
-    color_scale = PD_DEFAULTS.quaternary.color_scale as D3InterpolateName
-    show_stable = PD_DEFAULTS.quaternary.show_stable
-    show_unstable = PD_DEFAULTS.quaternary.show_unstable
-    show_stable_labels = PD_DEFAULTS.quaternary.show_stable_labels
-    show_unstable_labels = PD_DEFAULTS.quaternary.show_unstable_labels
+    fullscreen = DEFAULTS.convex_hull.quaternary.fullscreen
+    info_pane_open = DEFAULTS.convex_hull.quaternary.info_pane_open
+    legend_pane_open = DEFAULTS.convex_hull.quaternary.legend_pane_open
+    color_mode = DEFAULTS.convex_hull.quaternary.color_mode
+    color_scale = DEFAULTS.convex_hull.quaternary.color_scale as D3InterpolateName
+    show_stable = DEFAULTS.convex_hull.quaternary.show_stable
+    show_unstable = DEFAULTS.convex_hull.quaternary.show_unstable
+    show_stable_labels = DEFAULTS.convex_hull.quaternary.show_stable_labels
+    show_unstable_labels = DEFAULTS.convex_hull.quaternary.show_unstable_labels
     // Use auto-computed threshold based on entry count instead of static default
     max_hull_dist_show_phases = auto_default_threshold
-    max_hull_dist_show_labels = PD_DEFAULTS.quaternary.max_hull_dist_show_labels
-    show_hull_faces = PD_DEFAULTS.quaternary.show_hull_faces
-    hull_face_color = PD_DEFAULTS.quaternary.hull_face_color
-    hull_face_opacity = PD_DEFAULTS.quaternary.hull_face_opacity
+    max_hull_dist_show_labels =
+      DEFAULTS.convex_hull.quaternary.max_hull_dist_show_labels
+    show_hull_faces = DEFAULTS.convex_hull.quaternary.show_hull_faces
+    hull_face_color = DEFAULTS.convex_hull.quaternary.hull_face_color
+    hull_face_opacity = DEFAULTS.convex_hull.quaternary.hull_face_opacity
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
@@ -364,12 +366,12 @@
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     drag_over = false
-    const data = await helpers.parse_pd_entries_from_drop(event)
+    const data = await helpers.parse_hull_entries_from_drop(event)
     if (data) on_file_drop?.(data)
   }
 
   async function copy_entry_data(
-    entry: PhaseDiagramEntry,
+    entry: ConvexHullEntry,
     position: { x: number; y: number },
   ) {
     await helpers.copy_entry_to_clipboard(entry, position, (visible, pos) => {
@@ -378,7 +380,7 @@
     })
   }
 
-  const get_point_color = (entry: PhaseDiagramEntry): string =>
+  const get_point_color = (entry: ConvexHullEntry): string =>
     helpers.get_point_color_for_entry(
       entry,
       color_mode,
@@ -391,9 +393,9 @@
     helpers.get_energy_color_scale(color_mode, color_scale, plot_entries)
   )
 
-  // Phase diagram statistics - compute internally and expose via bindable prop
+  // Convex hull statistics - compute internally and expose via bindable prop
   $effect(() => {
-    phase_stats = thermo.get_phase_diagram_stats(plot_entries, elements, 4)
+    phase_stats = thermo.get_convex_hull_stats(plot_entries, elements, 4)
   })
 
   // Utility: convert hex color to rgba string with alpha
@@ -459,9 +461,9 @@
 
     const styles = getComputedStyle(canvas)
     // Match gray dashed structure lines used in 3D
-    ctx.strokeStyle = PD_STYLE.structure_line.color
-    ctx.lineWidth = PD_STYLE.structure_line.line_width
-    ctx.setLineDash(PD_STYLE.structure_line.dash)
+    ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
+    ctx.lineWidth = CONVEX_HULL_STYLE.structure_line.line_width
+    ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash)
 
     // Draw tetrahedron edges
     draw_tetrahedron()
@@ -750,7 +752,7 @@
       ctx.textBaseline = `middle`
 
       ctx.fillText(
-        `Quaternary phase diagram requires exactly 4 elements (got ${pd_data.elements.length})`,
+        `Quaternary convex hull requires exactly 4 elements (got ${pd_data.elements.length})`,
         display_width / 2,
         display_height / 2,
       )
@@ -807,8 +809,8 @@
     on_point_hover?.(hover_data)
   }
 
-  const find_entry_at_mouse = (event: MouseEvent): PhaseDiagramEntry | null =>
-    helpers.find_pd_entry_at_mouse(
+  const find_entry_at_mouse = (event: MouseEvent): ConvexHullEntry | null =>
+    helpers.find_hull_entry_at_mouse(
       canvas,
       event,
       plot_entries,
@@ -907,14 +909,14 @@
   // Fullscreen handling with camera reset
   let was_fullscreen = $state(fullscreen)
   $effect(() => {
-    helpers.setup_fullscreen_effect(fullscreen, wrapper, (entering_fullscreen) => {
+    setup_fullscreen_effect(fullscreen, wrapper, (entering_fullscreen) => {
       if (entering_fullscreen !== was_fullscreen) {
         camera.center_x = 0
         camera.center_y = 20
         was_fullscreen = entering_fullscreen
       }
     })
-    helpers.set_fullscreen_bg(wrapper, fullscreen, `--pd-4d-bg-fullscreen`)
+    set_fullscreen_bg(wrapper, fullscreen, `--pd-4d-bg-fullscreen`)
   })
 
   // Performance: Cache canvas dimensions and pre-compute sorted point projections
@@ -950,7 +952,7 @@
 
 <div
   {...rest}
-  class="phase-diagram-4d {rest.class ?? ``}"
+  class="convex-hull-4d {rest.class ?? ``}"
   class:dragover={drag_over}
   style={`${style}; ${rest.style ?? ``}`}
   bind:this={wrapper}
@@ -966,7 +968,7 @@
     event.preventDefault()
     drag_over = false
   }}
-  aria-label="Phase diagram visualization"
+  aria-label="Convex hull visualization"
 >
   {@render children?.({
       stable_entries,
@@ -1017,7 +1019,7 @@
       </button>
 
       {#if enable_info_pane && phase_stats}
-        <PhaseDiagramInfoPane
+        <ConvexHullInfoPane
           bind:pane_open={info_pane_open}
           {phase_stats}
           {stable_entries}
@@ -1041,7 +1043,7 @@
       {/if}
 
       <!-- Legend controls pane -->
-      <PhaseDiagramControls
+      <ConvexHullControls
         bind:controls_open={legend_pane_open}
         bind:color_mode
         bind:color_scale
@@ -1077,7 +1079,7 @@
     {@const { entry, position } = hover_data}
     {@const entry_highlight = is_highlighted(entry) ? merged_highlight_style : undefined}
     {@const tooltip_style =
-      `z-index: ${PD_STYLE.z_index.tooltip}; backdrop-filter: blur(4px);
+      `z-index: ${CONVEX_HULL_STYLE.z_index.tooltip}; backdrop-filter: blur(4px);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);`}
     <PlotTooltip
       x={position.x}
@@ -1116,7 +1118,7 @@
 </div>
 
 <style>
-  .phase-diagram-4d {
+  .convex-hull-4d {
     position: relative;
     container-type: size; /* enable cqh/cqw for responsive sizing */
     width: 100%;
@@ -1124,12 +1126,12 @@
     background: var(--pd-4d-bg, var(--pd-bg));
     border-radius: var(--pd-border-radius, var(--border-radius, 3pt));
   }
-  .phase-diagram-4d:fullscreen {
+  .convex-hull-4d:fullscreen {
     border-radius: 0;
     background: var(--pd-4d-bg-fullscreen, var(--pd-4d-bg, var(--pd-bg)));
     overflow: hidden;
   }
-  .phase-diagram-4d.dragover {
+  .convex-hull-4d.dragover {
     border: 2px dashed var(--accent-color, #1976d2);
   }
   canvas {

@@ -2,8 +2,8 @@
   import { DraggablePane } from '$lib'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import PhaseDiagramStats from './PhaseDiagramStats.svelte'
-  import type { PhaseDiagramEntry, PhaseStats } from './types'
+  import ConvexHullStats from './ConvexHullStats.svelte'
+  import type { ConvexHullEntry, PhaseStats } from './types'
 
   let {
     phase_stats,
@@ -18,8 +18,8 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     phase_stats: PhaseStats | null
-    stable_entries: PhaseDiagramEntry[]
-    unstable_entries: PhaseDiagramEntry[]
+    stable_entries: ConvexHullEntry[]
+    unstable_entries: ConvexHullEntry[]
     max_hull_dist_show_phases: number
     max_hull_dist_show_labels: number
     label_threshold: number
@@ -33,19 +33,19 @@
   bind:show={pane_open}
   max_width="24em"
   toggle_props={{
-    title: pane_open ? `` : `Phase diagram info`,
-    class: `phase-diagram-info-toggle`,
+    title: pane_open ? `` : `Convex hull info`,
+    class: `convex-hull-info-toggle`,
     ...toggle_props,
   }}
   open_icon="Cross"
   closed_icon="Info"
   pane_props={{
     ...pane_props,
-    class: `phase-diagram-info-pane ${pane_props?.class ?? ``}`,
+    class: `convex-hull-info-pane ${pane_props?.class ?? ``}`,
   }}
   {...rest}
 >
-  <PhaseDiagramStats
+  <ConvexHullStats
     {phase_stats}
     {stable_entries}
     {unstable_entries}

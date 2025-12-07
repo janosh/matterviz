@@ -1400,7 +1400,8 @@ test.describe(`Histogram Component Tests`, () => {
     ]
 
     const set_input = async (input: string, val: string) => {
-      await pane.locator(input).evaluate(
+      const input_el = pane.locator(input)
+      await input_el.evaluate(
         (el, v) => {
           ;(el as HTMLInputElement).value = v
           el.dispatchEvent(new Event(`input`, { bubbles: true }))
@@ -1408,7 +1409,8 @@ test.describe(`Histogram Component Tests`, () => {
         },
         val,
       )
-      await page.waitForTimeout(100)
+      // Wait for the input value to be set
+      if (val) await expect(input_el).toHaveValue(val)
     }
 
     // Test: pin x_min, pin x_max, pin y_min, pin y_max
@@ -1490,8 +1492,7 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test hover
     await first_bar.hover()
-    await page.waitForTimeout(100)
-    await expect(hover_div).toContainText(`Hovering:`)
+    await expect(hover_div).toContainText(`Hovering:`, { timeout: 1000 })
     await expect(hover_div).toContainText(`Normal Distribution`)
 
     // Test click

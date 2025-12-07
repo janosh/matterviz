@@ -1,17 +1,17 @@
 import { expect, test } from '@playwright/test'
 import { dom_click, open_info_and_controls } from './utils'
 
-test.describe(`PhaseDiagram2D (Binary)`, () => {
+test.describe(`ConvexHull2D (Binary)`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/phase-diagram`, { waitUntil: `networkidle` })
+    await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
   })
 
-  test(`renders binary phase diagram with scatter plot and colorbar`, async ({ page }) => {
+  test(`renders binary convex hull with scatter plot and colorbar`, async ({ page }) => {
     await expect(page.getByRole(`heading`, { name: `Phase Diagrams` })).toBeVisible()
     const binary_grid = page.locator(`.binary-grid`).first()
     await expect(binary_grid).toBeVisible()
 
-    const pd2d = binary_grid.locator(`.phase-diagram-2d`).first()
+    const pd2d = binary_grid.locator(`.convex-hull-2d`).first()
     await expect(pd2d).toBeVisible()
 
     // ScatterPlot should be present inside 2D diagram
@@ -27,7 +27,7 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
   })
 
   test(`opens legend controls and info pane`, async ({ page }) => {
-    const pd2d = page.locator(`.binary-grid .phase-diagram-2d`).first()
+    const pd2d = page.locator(`.binary-grid .convex-hull-2d`).first()
     await expect(pd2d).toBeVisible()
 
     const info_btn = pd2d.locator(`.info-btn`)
@@ -40,12 +40,12 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
   })
 
   test(`color mode toggles switch visible controls and do not error`, async ({ page }) => {
-    const pd2d = page.locator(`.binary-grid .phase-diagram-2d`).first()
+    const pd2d = page.locator(`.binary-grid .convex-hull-2d`).first()
     await expect(pd2d).toBeVisible()
 
     // Open controls
     await dom_click(pd2d.locator(`.legend-controls-btn`))
-    const controls = pd2d.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls.getByText(`Color mode`)).toBeVisible()
 
     // Energy mode should show Color scale selector
@@ -59,7 +59,7 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
   })
 
   test(`threshold slider filters entries and info pane reflects changes`, async ({ page }) => {
-    const pd2d = page.locator(`.binary-grid .phase-diagram-2d`).first()
+    const pd2d = page.locator(`.binary-grid .convex-hull-2d`).first()
     await expect(pd2d).toBeVisible()
 
     const { info, controls } = await open_info_and_controls(pd2d)
@@ -100,16 +100,16 @@ test.describe(`PhaseDiagram2D (Binary)`, () => {
   })
 
   test(`stability mode 'Above hull' toggle hides unstable points (info pane)`, async ({ page }) => {
-    const pd2d = page.locator(`.binary-grid .phase-diagram-2d`).first()
+    const pd2d = page.locator(`.binary-grid .convex-hull-2d`).first()
     await expect(pd2d).toBeVisible()
 
     // Open info pane and controls
     await dom_click(pd2d.locator(`.info-btn`))
-    const info = pd2d.locator(`.draggable-pane.phase-diagram-info-pane`)
+    const info = pd2d.locator(`.draggable-pane.convex-hull-info-pane`)
     await expect(info.getByText(`Phase Diagram Stats`, { exact: false }))
       .toBeVisible()
     await dom_click(pd2d.locator(`.legend-controls-btn`))
-    const controls = pd2d.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
 
     // Switch to Stability mode to reveal Points toggles

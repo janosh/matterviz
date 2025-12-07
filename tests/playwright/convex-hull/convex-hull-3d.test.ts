@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { dom_click } from './utils'
 
-test.describe(`PhaseDiagram3D (Ternary)`, () => {
+test.describe(`ConvexHull3D (Ternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/phase-diagram`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/convex-hull`, { waitUntil: `domcontentloaded` })
   })
 
   test(`renders ternary diagram canvas and toggles hull faces`, async ({ page }) => {
@@ -11,7 +11,7 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
     const ternary_grid = page.locator(`.ternary-grid`).first()
     await expect(ternary_grid).toBeVisible()
 
-    const diagram = ternary_grid.locator(`.phase-diagram-3d`).first()
+    const diagram = ternary_grid.locator(`.convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
     const canvas = diagram.locator(`canvas`)
@@ -22,7 +22,7 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
     await dom_click(legend_btn)
 
     // Toggle hull faces via control pane switch if present
-    const pane = page.locator(`.draggable-pane.phase-diagram-controls-pane`).last()
+    const pane = page.locator(`.draggable-pane.convex-hull-controls-pane`).last()
     const hull_toggle = pane.getByText(`Hull Faces`, { exact: false })
     if (await hull_toggle.isVisible({ timeout: 2000 })) {
       await hull_toggle.click()
@@ -33,11 +33,11 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
   })
 
   test(`info pane stats show chemical system and counts`, async ({ page }) => {
-    const diagram = page.locator(`.ternary-grid .phase-diagram-3d`).first()
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
     // Open info via DOM click to avoid overlay intercepts
     await dom_click(diagram.locator(`.info-btn`))
-    const info = diagram.locator(`.draggable-pane.phase-diagram-info-pane`)
+    const info = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
     // Ensure content inside the pane is visible (not just attached)
     await expect(info.getByText(`Phase Diagram Stats`, { exact: false }))
       .toBeVisible()
@@ -52,10 +52,10 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
   })
 
   test(`camera elevation/azimuth controls accept numeric changes`, async ({ page }) => {
-    const diagram = page.locator(`.ternary-grid .phase-diagram-3d`).first()
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
     await diagram.locator(`.legend-controls-btn`).click()
-    const controls = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
     const elev = controls.getByText(`Elev`).locator(`..`).locator(`input[type="number"]`)
       .first()
@@ -67,7 +67,7 @@ test.describe(`PhaseDiagram3D (Ternary)`, () => {
   })
 
   test(`tooltip shows fractional compositions with unicode glyphs`, async ({ page }) => {
-    const diagram = page.locator(`.ternary-grid .phase-diagram-3d`).first()
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
     const canvas = diagram.locator(`canvas`)

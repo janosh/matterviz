@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
-  import { FullscreenToggle } from '$lib/feedback'
   import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
+  import { FullscreenToggle } from '$lib/layout'
   import * as math from '$lib/math'
   import type {
     BasePlotProps,

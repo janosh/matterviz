@@ -2,38 +2,38 @@ import type { D3InterpolateName } from '$lib/colors'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type {
+  ConvexHullConfig,
+  ConvexHullControlsType,
   HighlightStyle,
   HoverData3D,
-  PDControlsType,
   PhaseData,
-  PhaseDiagramConfig,
   PhaseStats,
 } from './types'
 
 export * from './barycentric-coords'
-export { default as PhaseDiagram } from './PhaseDiagram.svelte'
-export { default as PhaseDiagram2D } from './PhaseDiagram2D.svelte'
-export { default as PhaseDiagram3D } from './PhaseDiagram3D.svelte'
-export { default as PhaseDiagram4D } from './PhaseDiagram4D.svelte'
-export { default as PhaseDiagramControls } from './PhaseDiagramControls.svelte'
-export { default as PhaseDiagramInfoPane } from './PhaseDiagramInfoPane.svelte'
-export { default as PhaseDiagramStats } from './PhaseDiagramStats.svelte'
+export { default as ConvexHull } from './ConvexHull.svelte'
+export { default as ConvexHull2D } from './ConvexHull2D.svelte'
+export { default as ConvexHull3D } from './ConvexHull3D.svelte'
+export { default as ConvexHull4D } from './ConvexHull4D.svelte'
+export { default as ConvexHullControls } from './ConvexHullControls.svelte'
+export { default as ConvexHullInfoPane } from './ConvexHullInfoPane.svelte'
+export { default as ConvexHullStats } from './ConvexHullStats.svelte'
 export * from './thermodynamics'
 export * from './types'
 
-export interface BasePhaseDiagramChildrenProps<AnyDimEntry = PhaseData> {
+export interface BaseConvexHullChildrenProps<AnyDimEntry = PhaseData> {
   stable_entries: AnyDimEntry[]
   unstable_entries: AnyDimEntry[]
   highlighted_entries: (string | AnyDimEntry)[]
   selected_entry: AnyDimEntry | null
 }
 
-// Base props shared across all phase diagram components (2D, 3D, 4D)
-export interface BasePhaseDiagramProps<AnyDimEntry = PhaseData>
+// Base props shared across all convex hull components (2D, 3D, 4D)
+export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   extends Omit<HTMLAttributes<HTMLDivElement>, `entries` | `children`> {
   entries: PhaseData[]
-  controls?: Partial<PDControlsType>
-  config?: Partial<PhaseDiagramConfig>
+  controls?: Partial<ConvexHullControlsType>
+  config?: Partial<ConvexHullConfig>
   on_point_click?: (entry: AnyDimEntry) => void
   on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
   fullscreen?: boolean
@@ -60,7 +60,7 @@ export interface BasePhaseDiagramProps<AnyDimEntry = PhaseData>
   // Enable structure preview overlay when hovering over entries with structure data
   enable_structure_preview?: boolean
   energy_source_mode?: `precomputed` | `on-the-fly`
-  // Bindable phase diagram statistics - computed internally but exposed for external use
+  // Bindable convex hull statistics - computed internally but exposed for external use
   phase_stats?: PhaseStats | null
   // Display configuration for grid lines and other visual elements
   display?: { x_grid?: boolean; y_grid?: boolean }
@@ -71,19 +71,19 @@ export interface BasePhaseDiagramProps<AnyDimEntry = PhaseData>
   highlighted_entries?: (string | AnyDimEntry)[]
   highlight_style?: HighlightStyle
   selected_entry?: AnyDimEntry | null
-  children?: Snippet<[BasePhaseDiagramChildrenProps<AnyDimEntry>]>
+  children?: Snippet<[BaseConvexHullChildrenProps<AnyDimEntry>]>
 }
 
-// Additional props specific to 3D and 4D phase diagrams
+// Additional props specific to 3D and 4D convex hulls
 export interface Hull3DProps {
   show_hull_faces?: boolean
   hull_face_opacity?: number
 }
 
 // Configuration result from merging user controls with defaults
-export interface MergedPDConfig {
-  controls: PDControlsType
-  config: PhaseDiagramConfig
+export interface MergedCHConfig {
+  controls: ConvexHullControlsType
+  config: ConvexHullConfig
 }
 
 // Energy source mode determination result
@@ -97,7 +97,7 @@ export interface EnergyModeInfo {
 }
 
 // Default legend configuration shared by 3D and 4D diagrams
-export const default_controls: PDControlsType = {
+export const default_controls: ConvexHullControlsType = {
   title: ``,
   show: true,
   position: `top-right`,
@@ -107,8 +107,8 @@ export const default_controls: PDControlsType = {
   show_label_controls: true,
 }
 
-// Phase diagram defaults shared by 2D, 3D, and 4D
-export const default_pd_config: PhaseDiagramConfig = {
+// Convex hull defaults shared by 2D, 3D, and 4D
+export const default_hull_config: ConvexHullConfig = {
   width: 600,
   height: 600,
   unstable_threshold: 0.2,
@@ -130,8 +130,8 @@ export const default_pd_config: PhaseDiagramConfig = {
   },
 }
 
-// Shared PD styles (single source of truth shared by 2D, 3D, and 4D)
-export const PD_STYLE = Object.freeze({
+// Shared convex hull styles (single source of truth shared by 2D, 3D, and 4D)
+export const CONVEX_HULL_STYLE = Object.freeze({
   structure_line: Object.freeze({
     color: `rgba(128, 128, 128, 0.6)`,
     dash: [3, 3] as [number, number],

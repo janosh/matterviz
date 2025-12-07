@@ -5,7 +5,7 @@
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { PDControlsType, PhaseDiagramEntry } from './types'
+  import type { ConvexHullControlsType, ConvexHullEntry } from './types'
 
   interface CameraState {
     elevation?: number // Elevation angle in degrees (for ternary)
@@ -70,12 +70,12 @@
     max_hull_dist_show_labels?: number
     max_hull_dist_in_data?: number
     // Data for visualization
-    stable_entries: PhaseDiagramEntry[]
-    unstable_entries: PhaseDiagramEntry[]
+    stable_entries: ConvexHullEntry[]
+    unstable_entries: ConvexHullEntry[]
     // Camera state (optional - only used for 3D/4D diagrams)
     camera?: CameraState
     // Legend configuration
-    merged_controls: PDControlsType
+    merged_controls: ConvexHullControlsType
     // Pane state
     controls_open?: boolean
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
@@ -87,15 +87,15 @@
   bind:show={controls_open}
   pane_props={{
     ...pane_props,
-    class: `phase-diagram-controls-pane ${pane_props?.class ?? ``}`,
+    class: `convex-hull-controls-pane ${pane_props?.class ?? ``}`,
     style:
       `--pane-min-height: 280px; --pane-max-height: max(350px, calc(100cqh - 40px)); ${
         pane_props?.style ?? ``
       }`,
   }}
   toggle_props={{
-    title: controls_open ? `` : `Phase diagram controls`,
-    class: `phase-diagram-controls-toggle`,
+    title: controls_open ? `` : `Convex hull controls`,
+    class: `convex-hull-controls-toggle`,
     ...toggle_props,
   }}
   closed_icon="Settings"
@@ -409,7 +409,7 @@
     margin-bottom: 12px;
   }
   /* Remove bottom margin from last element to prevent blank scrollable space */
-  :global(.phase-diagram-controls-pane > :last-child) {
+  :global(.convex-hull-controls-pane > :last-child) {
     margin-bottom: 0;
   }
   .control-label {

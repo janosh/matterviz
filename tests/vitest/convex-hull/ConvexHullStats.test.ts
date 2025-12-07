@@ -1,5 +1,5 @@
-import { PhaseDiagramStats } from '$lib/phase-diagram'
-import type { PhaseDiagramEntry, PhaseStats } from '$lib/phase-diagram/types'
+import { ConvexHullStats } from '$lib/convex-hull'
+import type { ConvexHullEntry, PhaseStats } from '$lib/convex-hull/types'
 import { flushSync, mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -19,7 +19,7 @@ const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   ...overrides,
 })
 
-const mock_entry = (overrides: Partial<PhaseDiagramEntry> = {}): PhaseDiagramEntry => ({
+const mock_entry = (overrides: Partial<ConvexHullEntry> = {}): ConvexHullEntry => ({
   composition: { Li: 1, Fe: 1, P: 1, O: 4 },
   energy: -50,
   e_form_per_atom: -0.5,
@@ -35,11 +35,11 @@ const mock_entry = (overrides: Partial<PhaseDiagramEntry> = {}): PhaseDiagramEnt
 
 type Props = {
   phase_stats: PhaseStats | null
-  stable_entries: PhaseDiagramEntry[]
-  unstable_entries: PhaseDiagramEntry[]
+  stable_entries: ConvexHullEntry[]
+  unstable_entries: ConvexHullEntry[]
 }
 const mount_stats = (props: Partial<Props> = {}) =>
-  mount(PhaseDiagramStats, {
+  mount(ConvexHullStats, {
     target: document.body,
     props: {
       phase_stats: mock_stats(),
@@ -49,7 +49,7 @@ const mount_stats = (props: Partial<Props> = {}) =>
     },
   })
 
-describe(`PhaseDiagramStats`, () => {
+describe(`ConvexHullStats`, () => {
   beforeEach(() => vi.clearAllMocks())
 
   test(`renders header and all phase type counts`, () => {
@@ -144,7 +144,7 @@ describe(`PhaseDiagramStats`, () => {
 
   test(`renders empty stat items when phase_stats is null`, () => {
     mount_stats({ phase_stats: null })
-    expect(doc_query(`.phase-diagram-stats`).querySelectorAll(`.stat-item`).length).toBe(
+    expect(doc_query(`.convex-hull-stats`).querySelectorAll(`.stat-item`).length).toBe(
       0,
     )
   })
@@ -179,7 +179,7 @@ describe(`PhaseDiagramStats`, () => {
     },
   ])(`handles edge case: $desc`, ({ stats, entries }) => {
     mount_stats({ phase_stats: mock_stats(stats), stable_entries: entries })
-    expect(doc_query(`.phase-diagram-stats`)).toBeTruthy()
+    expect(doc_query(`.convex-hull-stats`)).toBeTruthy()
   })
 
   test(`stat items have accessibility attributes and copy hint`, () => {
@@ -195,7 +195,7 @@ describe(`PhaseDiagramStats`, () => {
   })
 
   test(`passes through HTML attributes`, () => {
-    mount(PhaseDiagramStats, {
+    mount(ConvexHullStats, {
       target: document.body,
       props: {
         phase_stats: mock_stats(),
@@ -205,7 +205,7 @@ describe(`PhaseDiagramStats`, () => {
         style: `background: red;`,
       },
     })
-    const container = doc_query(`.phase-diagram-stats`)
+    const container = doc_query(`.convex-hull-stats`)
     expect(container.classList.contains(`custom-class`)).toBe(true)
     expect(container.getAttribute(`style`)).toContain(`background: red`)
   })

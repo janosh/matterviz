@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { ensure_pane_visible, open_info_and_controls } from './utils'
 
-test.describe(`PhaseDiagram4D (Quaternary)`, () => {
+test.describe(`ConvexHull4D (Quaternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/phase-diagram`, { waitUntil: `networkidle` })
+    await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
   })
 
   test(`renders quaternary diagram canvas and opens panes`, async ({ page }) => {
@@ -11,7 +11,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     const quaternary_grid = page.locator(`.quaternary-grid`)
     await expect(quaternary_grid).toBeVisible()
 
-    const diagram = quaternary_grid.locator(`.phase-diagram-4d`).first()
+    const diagram = quaternary_grid.locator(`.convex-hull-4d`).first()
     await expect(diagram).toBeVisible()
 
     const canvas = diagram.locator(`canvas`)
@@ -21,22 +21,22 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     const info_btn = diagram.locator(`.info-btn`)
     await info_btn.click()
     // Scoped pane inside this diagram
-    const info_pane = diagram.locator(`.draggable-pane.phase-diagram-info-pane`)
+    const info_pane = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
     await expect(info_pane).toBeVisible()
 
     // Open legend controls pane
     const legend_btn = diagram.locator(`.legend-controls-btn`)
     await legend_btn.click()
-    const controls_pane = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    const controls_pane = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls_pane).toBeVisible()
   })
 
   test(`camera rotation controls accept updates`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     await expect(diagram).toBeVisible()
 
     await diagram.locator(`.legend-controls-btn`).click()
-    const controls = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
 
     const phi = controls.getByText(`φ`).locator(`..`).locator(`input[type="number"]`)
@@ -49,7 +49,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
   })
 
   test(`color mode + threshold impacts visible entries`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     await expect(diagram).toBeVisible()
 
     const { info, controls } = await open_info_and_controls(diagram)
@@ -68,7 +68,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
   })
 
   test(`computes hull distances on-the-fly when data is incomplete`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     await expect(diagram).toBeVisible()
 
     // Craft a minimal quaternary dataset with missing e_above_hull
@@ -108,7 +108,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
     // Open info pane to read visible counts
     const info_btn = diagram.locator(`.info-btn`)
     await info_btn.click()
-    const info = diagram.locator(`.draggable-pane.phase-diagram-info-pane`)
+    const info = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
     await expect(info).toBeVisible()
 
     // With on-the-fly computation enabled, entries without precomputed e_above_hull
@@ -135,12 +135,12 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
   })
 
   test(`displays energy above hull color bar in energy mode`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     await expect(diagram).toBeVisible()
 
     // Open legend controls and switch to energy mode
     await diagram.locator(`.legend-controls-btn`).click()
-    const controls = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
 
     // Switch to energy color mode
@@ -156,7 +156,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
   })
 
   test(`resets drag state on mouseup outside canvas`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     const canvas_box = await diagram.locator(`canvas`).boundingBox()
     if (!canvas_box) return
 
@@ -175,11 +175,11 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
 
     // Verify subsequent click works (would be blocked if drag_started wasn't reset)
     await diagram.locator(`.info-btn`).click()
-    await expect(diagram.locator(`.draggable-pane.phase-diagram-info-pane`)).toBeVisible()
+    await expect(diagram.locator(`.draggable-pane.convex-hull-info-pane`)).toBeVisible()
   })
 
   test(`suppresses clicks immediately after drag to prevent accidental selections`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     const canvas = diagram.locator(`canvas`)
     const box = await canvas.boundingBox()
     if (!box) return
@@ -198,7 +198,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
   })
 
   test(`hull facets render and are toggleable`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     const canvas = diagram.locator(`canvas`)
 
     // Verify hull faces are visible by default (semi-transparent pixels)
@@ -217,7 +217,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
 
     // Toggle hull faces off via checkbox (find by "Hull Faces" section)
     await diagram.locator(`.legend-controls-btn`).click()
-    const controls = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`)
+    const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await controls.getByText(`Hull Faces`).locator(`..`).locator(`input[type="checkbox"]`)
       .click()
 
@@ -238,7 +238,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
   })
 
   test(`hull content stays centered`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     const canvas = diagram.locator(`canvas`)
 
     // Verify content is centered by checking bounding box of visible pixels
@@ -284,7 +284,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
   })
 
   test(`hull faces stay within boundaries`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     const canvas = diagram.locator(`canvas`)
 
     // Verify content stays mostly within canvas (not escaping tetrahedron)
@@ -325,7 +325,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
   })
 
   test(`hull opacity slider works`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .phase-diagram-4d`).first()
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     const canvas = diagram.locator(`canvas`)
 
     const get_avg_alpha = () =>
@@ -348,7 +348,7 @@ test.describe(`PhaseDiagram4D (Quaternary)`, () => {
 
     // Increase opacity via slider
     await diagram.locator(`.legend-controls-btn`).click()
-    const slider = diagram.locator(`.draggable-pane.phase-diagram-controls-pane`).locator(
+    const slider = diagram.locator(`.draggable-pane.convex-hull-controls-pane`).locator(
       `input[type="range"][aria-label*="opacity"]`,
     )
     await slider.fill(`0.2`)

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
+  import { set_fullscreen_bg } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
-  import { set_fullscreen_bg } from '$lib/phase-diagram/helpers'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { PymatgenStructure } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'

@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib'
-import type { Point4D } from '$lib/phase-diagram/thermodynamics'
+import type { Point4D } from '$lib/convex-hull/thermodynamics'
 import {
   build_lower_hull_model,
   calculate_e_above_hull,
@@ -13,17 +13,17 @@ import {
   compute_quickhull_triangles,
   e_hull_at_xy,
   find_lowest_energy_unary_refs,
-  get_phase_diagram_stats,
+  get_convex_hull_stats,
   interpolate_hull_2d,
-  normalize_pd_composition_keys,
-  process_pd_entries,
-} from '$lib/phase-diagram/thermodynamics'
+  normalize_hull_composition_keys,
+  process_hull_entries,
+} from '$lib/convex-hull/thermodynamics'
 import type {
   ConvexHullTriangle,
   PhaseData,
   Point2D,
   Point3D,
-} from '$lib/phase-diagram/types'
+} from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 // Test fixture factory
@@ -33,7 +33,7 @@ const make_phase = (
   overrides: Partial<PhaseData> = {},
 ): PhaseData => ({ composition, energy_per_atom, energy: 0, ...overrides })
 
-describe(`normalize_pd_composition_keys`, () => {
+describe(`normalize_hull_composition_keys`, () => {
   test.each([
     [{ 'Fe2+': 1, 'O2-': 2 }, { Fe: 1, O: 2 }, `strips oxidation states`],
     [{ 'V4+': 1, V: 2, 'V3+': 0.5 }, { V: 3.5 }, `merges duplicate elements`],
@@ -41,11 +41,11 @@ describe(`normalize_pd_composition_keys`, () => {
     [{ Fe2O3: 1 }, { Fe: 1 }, `extracts first element from compound-like keys`],
     [{ '12345': 1, '67890': 2 }, {}, `returns empty for invalid keys`],
   ])(`%s → %o (%s)`, (input, expected, _desc) => {
-    expect(normalize_pd_composition_keys(input)).toEqual(expected)
+    expect(normalize_hull_composition_keys(input)).toEqual(expected)
   })
 })
 
-describe(`process_pd_entries`, () => {
+describe(`process_hull_entries`, () => {
   test(`separates stable/unstable and extracts elements`, () => {
     const entries: PhaseData[] = [
       make_phase({ Fe: 1 }, -4.0, { is_stable: true }),
@@ -53,7 +53,7 @@ describe(`process_pd_entries`, () => {
       make_phase({ Fe: 1, O: 2 }, -6.0, { e_above_hull: 0 }),
       make_phase({ Fe: 2, O: 3 }, -5.0, { e_above_hull: 0.1 }),
     ]
-    const result = process_pd_entries(entries)
+    const result = process_hull_entries(entries)
     expect(result.stable_entries).toHaveLength(2)
     expect(result.unstable_entries).toHaveLength(2)
     expect(result.elements).toEqual([`Fe`, `O`])
@@ -65,7 +65,7 @@ describe(`process_pd_entries`, () => {
       make_phase({ O: 1 }, -2.0, { is_stable: true }),
       make_phase({ Fe: 1, O: 1 }, -6.0, { is_stable: true }),
     ]
-    expect(Object.keys(process_pd_entries(entries).el_refs)).toEqual([`Fe`, `O`])
+    expect(Object.keys(process_hull_entries(entries).el_refs)).toEqual([`Fe`, `O`])
   })
 
   test(`filters entries with empty normalized compositions`, () => {
@@ -73,7 +73,7 @@ describe(`process_pd_entries`, () => {
       make_phase({ '123': 1 } as Partial<Record<ElementSymbol, number>>, -4.0),
       make_phase({ Fe: 1 }, -3.0),
     ]
-    const result = process_pd_entries(entries)
+    const result = process_hull_entries(entries)
     expect(result.entries).toHaveLength(1)
     expect(result.entries[0].composition).toEqual({ Fe: 1 })
   })
@@ -352,9 +352,9 @@ describe(`calculate_e_above_hull`, () => {
   })
 })
 
-describe(`get_phase_diagram_stats`, () => {
+describe(`get_convex_hull_stats`, () => {
   test(`returns null for empty entries`, () => {
-    expect(get_phase_diagram_stats([], [`Fe`], 3)).toBeNull()
+    expect(get_convex_hull_stats([], [`Fe`], 3)).toBeNull()
   })
 
   test(`calculates arity counts`, () => {
@@ -366,7 +366,7 @@ describe(`get_phase_diagram_stats`, () => {
       make_phase({ Li: 1, Fe: 1, O: 2 }, -8.0),
     ]
     const { unary, binary, ternary, total } =
-      get_phase_diagram_stats(entries, [`Li`, `Fe`, `O`], 3) ?? {}
+      get_convex_hull_stats(entries, [`Li`, `Fe`, `O`], 3) ?? {}
     expect([unary, binary, ternary, total]).toEqual([2, 2, 1, 5])
   })
 
@@ -380,7 +380,7 @@ describe(`get_phase_diagram_stats`, () => {
       make_phase({ O: 1 }, -2.0, { e_above_hull: 0, e_form_per_atom: -0.5 }),
       make_phase({ Fe: 1, O: 1 }, -6.0, { e_above_hull: 0.2, e_form_per_atom: -2.0 }),
     ]
-    const stats = get_phase_diagram_stats(entries, [`Fe`, `O`], 3)
+    const stats = get_convex_hull_stats(entries, [`Fe`, `O`], 3)
     expect(stats).not.toBeNull()
     expect(stats?.stable).toBe(2)
     expect(stats?.unstable).toBe(1)
@@ -391,14 +391,14 @@ describe(`get_phase_diagram_stats`, () => {
 
   test(`includes quaternary when max_arity=4`, () => {
     const entries = [make_phase({ Li: 1, Fe: 1, P: 1, O: 4 }, -10.0)]
-    expect(get_phase_diagram_stats(entries, [`Li`, `Fe`, `P`, `O`], 4)?.quaternary).toBe(
+    expect(get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], 4)?.quaternary).toBe(
       1,
     )
   })
 
   test(`sorts chemical system by electronegativity`, () => {
     const entries = [make_phase({ Fe: 1 }, -4.0)]
-    expect(get_phase_diagram_stats(entries, [`O`, `Fe`, `Li`], 3)?.chemical_system).toBe(
+    expect(get_convex_hull_stats(entries, [`O`, `Fe`, `Li`], 3)?.chemical_system).toBe(
       `Li-Fe-O`,
     )
   })

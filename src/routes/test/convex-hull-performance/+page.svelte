@@ -2,8 +2,8 @@
   import { replaceState } from '$app/navigation'
   import type { ElementSymbol } from '$lib'
   import { Spinner } from '$lib'
-  import type { PhaseData } from '$lib/phase-diagram'
-  import { PhaseDiagram2D, PhaseDiagram3D, PhaseDiagram4D } from '$lib/phase-diagram'
+  import type { PhaseData } from '$lib/convex-hull'
+  import { ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
 
   type Dimension = `2d` | `3d` | `4d`
 
@@ -111,7 +111,7 @@
   const PRESETS = [100, 500, 1000, 2500, 5000, 10000]
 </script>
 
-<h1>Phase Diagram Performance Test</h1>
+<h1>Convex Hull Performance Test</h1>
 
 <div style="display: flex; flex-wrap: wrap; gap: 2em; margin-bottom: 1em">
   <label>
@@ -197,7 +197,7 @@
   {#key `${dimension}-${generated_entries.length}-${generation_time_ms}`}
     <div style="height: min(70vh, 800px)" use:track_render>
       {#if dimension === `2d`}
-        <PhaseDiagram2D
+        <ConvexHull2D
           entries={generated_entries}
           controls={{ title: `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})` }}
           {show_stable}
@@ -206,7 +206,7 @@
           {color_mode}
         />
       {:else if dimension === `3d`}
-        <PhaseDiagram3D
+        <ConvexHull3D
           entries={generated_entries}
           controls={{ title: `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})` }}
           {show_stable}
@@ -215,7 +215,7 @@
           {color_mode}
         />
       {:else}
-        <PhaseDiagram4D
+        <ConvexHull4D
           entries={generated_entries}
           controls={{ title: `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})` }}
           {show_stable}
