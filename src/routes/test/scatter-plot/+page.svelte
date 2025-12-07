@@ -481,6 +481,40 @@
   const point_event_data: DataSeries[] = [
     { x: [1, 2, 3], y: [2, 4, 1], point_style: { fill: `teal`, radius: 8 } },
   ]
+
+  // === Control Precedence Test Data ===
+  // Tests that explicit styling wins on page load, but controls can override when touched
+  const control_precedence_series: DataSeries[] = [
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [5, 5, 5, 5, 5],
+      label: `Explicit Crimson r=12`,
+      // Explicit styling that should NOT be overridden by control defaults on page load
+      point_style: {
+        fill: `crimson`,
+        radius: 12, // Explicitly large - should not become default size (4)
+        stroke: `darkred`,
+        stroke_width: 3, // Explicitly thick stroke
+      },
+      markers: `points`,
+    },
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [3, 3, 3, 3, 3],
+      label: `Explicit Green r=8`,
+      point_style: {
+        fill: `forestgreen`,
+        radius: 8, // Different explicit size
+        stroke: `darkgreen`,
+        stroke_width: 2,
+      },
+      markers: `line+points`,
+      line_style: {
+        stroke: `limegreen`,
+        stroke_width: 4, // Explicitly thick line
+      },
+    },
+  ]
 </script>
 
 <h1>ScatterPlot Component E2E Test Page</h1>
@@ -978,6 +1012,28 @@
     y_axis={{ label: `Y` }}
     color_scale={{ scheme: `Viridis` }}
     color_bar={{ title: `Color Value` }}
+    legend={{ draggable: true }}
+  />
+</section>
+
+<!-- Control Precedence Test: explicit styling should win on page load -->
+<section id="control-precedence-test">
+  <h2>Control Precedence Test</h2>
+  <p>
+    Tests that explicit per-series styling (point_style, line_style) is preserved on page
+    load. Control defaults should NOT override explicit props until user actually modifies
+    a specific control.
+  </p>
+  <p>
+    Expected on page load: Crimson points with radius=12 and stroke_width=3, Green points
+    with radius=8 and stroke_width=2, limegreen line with width=4.
+  </p>
+  <ScatterPlot
+    id="control-precedence-plot"
+    series={control_precedence_series}
+    x_axis={{ label: `X` }}
+    y_axis={{ label: `Y`, range: [0, 8] }}
+    controls={{ show: true }}
     legend={{ draggable: true }}
   />
 </section>

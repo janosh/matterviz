@@ -187,6 +187,9 @@
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
   let svg_bounding_box: DOMRect | null = $state(null) // Store SVG bounds during drag
 
+  // Track which specific control properties user has modified
+  let touched = new SvelteSet<string>()
+
   // Unique component ID to avoid clipPath conflicts between multiple instances
   let component_id = $state(`scatter-${crypto.randomUUID()}`)
   let clip_path_id = $derived(`plot-area-clip-${component_id}`)
@@ -1489,6 +1492,15 @@
               {@const apply_line_controls = using_controls &&
           (!has_multiple_series ||
             series_data._id === series_with_ids[selected_series_idx]?._id)}
+              {@const ls = series_data.line_style}
+              {@const tc = (key: string) => apply_line_controls && touched.has(key)}
+              {@const color_fallback = ls?.stroke ??
+          (Array.isArray(series_data.point_style)
+            ? series_data.point_style[0]?.fill
+            : series_data.point_style?.fill) ??
+          (series_data.color_values?.[0] != null
+            ? color_scale_fn(series_data.color_values[0])
+            : `cornflowerblue`)}
               <Line
                 points={finite_screen_points}
                 origin={[
@@ -1497,21 +1509,9 @@
                     : x_scale_fn(x_min),
                   series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
                 ]}
-                line_color={apply_line_controls
-                ? styles.line?.color ?? `cornflowerblue`
-                : series_data.line_style?.stroke ??
-                  (Array.isArray(series_data.point_style)
-                    ? series_data.point_style[0]?.fill
-                    : series_data.point_style?.fill) ??
-                  (series_data.color_values?.[0] != null
-                    ? color_scale_fn(series_data.color_values[0])
-                    : `cornflowerblue`)}
-                line_width={apply_line_controls
-                ? styles.line?.width ?? 2
-                : series_data.line_style?.stroke_width ?? 2}
-                line_dash={apply_line_controls
-                ? styles.line?.dash
-                : series_data.line_style?.line_dash}
+                line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
+                line_width={(tc(`line.width`) ? styles.line?.width : null) ?? ls?.stroke_width ?? 2}
+                line_dash={(tc(`line.dash`) ? styles.line?.dash : null) ?? ls?.line_dash}
                 area_color="transparent"
                 {line_tween}
               />
@@ -1555,40 +1555,32 @@
                 {@const apply_controls = using_controls &&
           (!has_multiple_series ||
             series_data._id === series_with_ids[selected_series_idx]?._id)}
-                {@const computed_radius_value = point.size_value != null
+                {@const pt = point.point_style}
+                {@const tc = (key: string) => apply_controls && touched.has(key)}
+                {@const computed_radius = point.size_value != null
           ? size_scale_fn(point.size_value)
-          : apply_controls
-          ? styles.point?.size ?? point.point_style?.radius ?? 4
-          : point.point_style?.radius ?? 4}
+          : (tc(`point.size`) ? styles.point?.size : null) ?? pt?.radius ?? 4}
                 <ScatterPoint
                   x={screen_x}
                   y={screen_y}
-                  is_hovered={tooltip_point !== null &&
-                  point.series_idx === tooltip_point.series_idx &&
-                  point.point_idx === tooltip_point.point_idx}
-                  is_selected={selected_point !== null &&
-                  point.series_idx === selected_point.series_idx &&
-                  point.point_idx === selected_point.point_idx}
+                  is_hovered={tooltip_point?.series_idx === point.series_idx &&
+                  tooltip_point?.point_idx === point.point_idx}
+                  is_selected={selected_point?.series_idx === point.series_idx &&
+                  selected_point?.point_idx === point.point_idx}
                   style={{
-                    ...point.point_style,
-                    // When size_value is present, it should always determine the radius
-                    radius: computed_radius_value,
-                    stroke_width: apply_controls
-                      ? styles.point?.stroke_width ??
-                        point.point_style?.stroke_width ?? 1
-                      : point.point_style?.stroke_width ?? 1,
-                    stroke: apply_controls
-                      ? styles.point?.stroke_color ??
-                        point.point_style?.stroke ?? `#000`
-                      : point.point_style?.stroke ?? `#000`,
-                    stroke_opacity: apply_controls
-                      ? styles.point?.stroke_opacity ??
-                        point.point_style?.stroke_opacity ?? 1
-                      : point.point_style?.stroke_opacity ?? 1,
-                    fill_opacity: apply_controls
-                      ? styles.point?.opacity ??
-                        point.point_style?.fill_opacity ?? 1
-                      : point.point_style?.fill_opacity ?? 1,
+                    ...pt,
+                    radius: computed_radius,
+                    stroke_width:
+                      (tc(`point.stroke_width`) ? styles.point?.stroke_width : null) ??
+                        pt?.stroke_width ?? 1,
+                    stroke:
+                      (tc(`point.stroke_color`) ? styles.point?.stroke_color : null) ??
+                        pt?.stroke ?? `#000`,
+                    stroke_opacity:
+                      (tc(`point.stroke_opacity`) ? styles.point?.stroke_opacity : null) ??
+                        pt?.stroke_opacity ?? 1,
+                    fill_opacity: (tc(`point.opacity`) ? styles.point?.opacity : null) ??
+                      pt?.fill_opacity ?? 1,
                     cursor: on_point_click ? `pointer` : undefined,
                   }}
                   hover={point.point_hover ?? {}}
@@ -1598,10 +1590,8 @@
                   origin={{ x: plot_center_x, y: plot_center_y }}
                   --point-fill-color={point.color_value != null
                   ? color_scale_fn(point.color_value)
-                  : apply_controls
-                  ? styles.point?.color ?? point.point_style?.fill ??
-                    `cornflowerblue`
-                  : point.point_style?.fill ?? `cornflowerblue`}
+                  : (tc(`point.color`) ? styles.point?.color : null) ?? pt?.fill ??
+                    `cornflowerblue`}
                   {...point_events &&
                   Object.fromEntries(
                     Object.entries(point_events)
@@ -1699,6 +1689,7 @@
         series={series_with_ids}
         has_y2_points={y2_points.length > 0}
         children={controls_extra}
+        on_touch={(key) => touched.add(key)}
       />
     {/if}
 
