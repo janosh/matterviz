@@ -65,7 +65,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     const { info, controls } = await open_info_and_controls(pd2d)
 
     const get_visible_unstable = async () => {
-      const text = await info.getByTestId(`pd-visible-unstable`).textContent()
+      const text = await info.getByTestId(`hull-visible-unstable`).textContent()
       // Format: Visible unstable: X / Y
       const match = text?.match(/(\d+)\s*\/\s*(\d+)/)
       return match ? { x: parseInt(match[1]), y: parseInt(match[2]) } : { x: 0, y: 0 }
@@ -117,7 +117,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     await expect(controls.getByText(`Points`, { exact: true })).toBeVisible()
 
     const get_visible_unstable = async () => {
-      const text = await info.getByTestId(`pd-visible-unstable`).textContent()
+      const text = await info.getByTestId(`hull-visible-unstable`).textContent()
       const match = text?.match(/(\d+)\s*\/\s*(\d+)/)
       return match ? parseInt(match[1]) : 0
     }

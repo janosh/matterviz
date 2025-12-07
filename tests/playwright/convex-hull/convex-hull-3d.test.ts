@@ -7,7 +7,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
   })
 
   test(`renders ternary diagram canvas and toggles hull faces`, async ({ page }) => {
-    await expect(page.getByRole(`heading`, { name: `Phase Diagrams` })).toBeVisible()
+    await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
     const ternary_grid = page.locator(`.ternary-grid`).first()
     await expect(ternary_grid).toBeVisible()
 
@@ -45,7 +45,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await expect(info.getByText(`Stability`)).toBeVisible()
 
     // Regression: verify unstable phases > 0 (catches possible e_above_hull placeholder bugs)
-    const unstable_text = await info.getByTestId(`pd-unstable-phases`).textContent()
+    const unstable_text = await info.getByTestId(`hull-visible-unstable`).textContent()
     const unstable_match = unstable_text?.match(/(\d+)/)
     const unstable_count = unstable_match ? parseInt(unstable_match[1], 10) : 0
     expect(unstable_count).toBeGreaterThan(0)

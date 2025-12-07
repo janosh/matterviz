@@ -54,27 +54,27 @@
 
   <section class="vis-settings">
     <h5>Visualization Settings</h5>
-    <div class="setting-item" data-testid="pd-visible-stable">
+    <div class="setting-item" data-testid="hull-visible-stable">
       <span>Visible stable:</span>
       <span>{stable_entries.filter((entry) => entry.visible).length} / {
           stable_entries.length
         }</span>
     </div>
-    <div class="setting-item" data-testid="pd-visible-unstable">
+    <div class="setting-item" data-testid="hull-visible-unstable">
       <span>Visible unstable:</span>
       <span>{unstable_entries.filter((entry) => entry.visible).length} / {
           unstable_entries.length
         }</span>
     </div>
-    <div class="setting-item" data-testid="pd-show-threshold">
+    <div class="setting-item" data-testid="hull-show-threshold">
       <span>Points threshold:</span>
       <span>{max_hull_dist_show_phases.toFixed(3)} eV/atom</span>
     </div>
-    <div class="setting-item" data-testid="pd-label-threshold">
+    <div class="setting-item" data-testid="hull-label-threshold">
       <span>Label threshold:</span>
       <span>{max_hull_dist_show_labels.toFixed(3)} eV/atom</span>
     </div>
-    <div class="setting-item" data-testid="pd-entry-limit-labels">
+    <div class="setting-item" data-testid="hull-entry-limit-labels">
       <span>Entry limit for labels:</span>
       <span>{label_threshold} entries</span>
     </div>

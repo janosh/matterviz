@@ -344,60 +344,63 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // This test verifies the fix for size_values not working with per-point styling arrays
     await page.goto(`/scatter-plot`, { waitUntil: `networkidle` })
 
-    // Find the spiral plot (has per-point styling with symbol_type and size_values)
-    const section = page.locator(`section:has(label:has-text("Label Size"))`).last()
+    // Find the spiral plot section (has per-point styling with symbol_type and size_values)
+    const section = page.locator(`#point-sizing-spiral-test`)
     const plot_locator = section.locator(`.scatter`)
     await expect(plot_locator).toBeVisible()
 
     const marker_count = await plot_locator.locator(`.marker`).count()
-    expect(marker_count).toBeGreaterThanOrEqual(30)
+    expect(marker_count).toBeGreaterThanOrEqual(3)
+
+    // Use dynamic indices to avoid out-of-bounds access
+    const mid_idx = Math.floor(marker_count / 2)
+    const last_idx = marker_count - 1
 
     // Test 1: Verify size progression with per-point styling arrays
     const bbox_0 = await get_marker_bbox(plot_locator, 0)
-    const bbox_15 = await get_marker_bbox(plot_locator, 15)
-    const bbox_30 = await get_marker_bbox(plot_locator, 30)
+    const bbox_mid = await get_marker_bbox(plot_locator, mid_idx)
+    const bbox_last = await get_marker_bbox(plot_locator, last_idx)
     const area_0 = get_bbox_area(bbox_0)
-    const area_15 = get_bbox_area(bbox_15)
-    const area_30 = get_bbox_area(bbox_30)
+    const area_mid = get_bbox_area(bbox_mid)
+    const area_last = get_bbox_area(bbox_last)
 
     expect(area_0).toBeGreaterThan(0)
-    expect(area_15).toBeGreaterThan(area_0)
-    expect(area_30).toBeGreaterThan(area_15)
-    expect(area_30 / area_0).toBeGreaterThan(4) // Expect at least 4x growth
+    expect(area_mid).toBeGreaterThan(area_0)
+    expect(area_last).toBeGreaterThan(area_mid)
+    expect(area_last / area_0).toBeGreaterThan(4) // Expect at least 4x growth
 
     // Test 2: Verify size_scale.radius_range changes affect marker sizes
-    const max_size_input = section.locator(
-      `label:has-text("Max Size") input[type="number"]`,
-    )
+    const max_size_input = section.locator(`input[aria-label="Max Size (px)"]`)
     await max_size_input.fill(`50`)
 
     // Wait for marker size to actually increase
     await expect(async () => {
-      const updated_bbox = await get_marker_bbox(plot_locator, 30)
+      const updated_bbox = await get_marker_bbox(plot_locator, last_idx)
       const updated_area = get_bbox_area(updated_bbox)
-      expect(updated_area).toBeGreaterThan(area_30 * 1.5) // At least 50% larger
+      expect(updated_area).toBeGreaterThan(area_last * 1.5) // At least 50% larger
     }).toPass({ timeout: 1000 })
 
     // Test 3: Verify log scale compresses size differences
-    await max_size_input.fill(`25`) // Reset to default
+    // Reset max size to baseline before comparing linear vs log scale
+    await max_size_input.fill(`25`)
 
-    // Wait for marker to resize back
-    const scale_select = section.locator(`label:has-text("Size Scale") select`)
+    // Capture linear scale area for last marker
+    const scale_select = section.locator(`select[aria-label="Size Scale"]`)
     let linear_area = 0
     await expect(async () => {
-      const linear_last = await get_marker_bbox(plot_locator, marker_count - 1)
+      const linear_last = await get_marker_bbox(plot_locator, last_idx)
       linear_area = get_bbox_area(linear_last)
       expect(linear_area).toBeGreaterThan(0)
     }).toPass({ timeout: 1000 })
 
     await scale_select.selectOption(`log`)
 
-    // Wait for log scale to compress marker sizes
+    // Log scale should compress the size range, making large values relatively smaller
     await expect(async () => {
-      const log_last = await get_marker_bbox(plot_locator, marker_count - 1)
+      const log_last = await get_marker_bbox(plot_locator, last_idx)
       const log_area = get_bbox_area(log_last)
       expect(log_area).toBeGreaterThan(0)
-      expect(log_area).toBeLessThan(linear_area) // Log scale compresses large values
+      expect(log_area).toBeLessThan(linear_area)
     }).toPass({ timeout: 1000 })
   })
 
@@ -2043,8 +2046,13 @@ test.describe(`ScatterPlot Component Tests`, () => {
     })
     await expect(svg).toBeVisible()
 
+    // Guard: ensure at least 2 markers exist before testing hover on multiple points
+    const markers = svg.locator(`path.marker`)
+    const marker_count = await markers.count()
+    expect(marker_count).toBeGreaterThan(1)
+
     // Hover directly over first marker point
-    const first_point = svg.locator(`path.marker`).first()
+    const first_point = markers.first()
     await first_point.hover()
     await expect(info_div).toContainText(`Hovering: Point`, { timeout: 2000 })
     // Verify it shows specific point info
@@ -2052,7 +2060,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(info_div).toContainText(`Point Index:`)
 
     // Hover over a different point to verify hover updates
-    const second_point = svg.locator(`path.marker`).nth(1)
+    const second_point = markers.nth(1)
     await second_point.hover()
     await expect(info_div).toContainText(`Hovering: Point`, { timeout: 2000 })
   })

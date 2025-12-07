@@ -7,7 +7,7 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
   })
 
   test(`renders quaternary diagram canvas and opens panes`, async ({ page }) => {
-    await expect(page.getByRole(`heading`, { name: `Phase Diagrams` })).toBeVisible()
+    await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
     const quaternary_grid = page.locator(`.quaternary-grid`)
     await expect(quaternary_grid).toBeVisible()
 
@@ -115,7 +115,7 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     // will have it computed automatically. The quaternary entry with energy=-3
     // will be evaluated against the hull and may be stable or slightly unstable
     // Invalid entries (NaN, Infinity, missing energy) should be filtered out gracefully
-    const unstable_text = await info.getByTestId(`pd-visible-unstable`).textContent()
+    const unstable_text = await info.getByTestId(`hull-visible-unstable`).textContent()
     expect(unstable_text).toBeTruthy()
     const unstable_match = unstable_text?.match(/([0-9]+)\s*\/\s*([0-9]+)/)
     expect(unstable_match).toBeTruthy()
@@ -125,7 +125,7 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
 
     // Expect stable entries to include at minimum the 4 elemental refs + 1 marked stable
     // The 3 invalid entries (NaN, Infinity, missing) should be filtered out
-    const stable_text = await info.getByTestId(`pd-visible-stable`).textContent()
+    const stable_text = await info.getByTestId(`hull-visible-stable`).textContent()
     const stable_match = stable_text?.match(/([0-9]+)\s*\/\s*([0-9]+)/)
     expect(stable_match).toBeTruthy()
     const s_visible = Number(stable_match?.[1])

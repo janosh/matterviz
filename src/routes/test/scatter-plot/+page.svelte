@@ -759,55 +759,57 @@
 </section>
 
 <!-- Added Point Sizing Example -->
-<h2>Point Sizing Test with Spiral Data</h2>
-<label>
-  Min Size (px):
-  <input
-    type="number"
-    bind:value={size_scale.radius_range[0]}
-    min="0.5"
-    max="10"
-    step="0.5"
-    style="width: 50px"
-    aria-label="Min Size (px)"
-  />
-</label>
-<label>
-  Max Size (px):
-  <input
-    type="number"
-    bind:value={size_scale.radius_range[1]}
-    min="5"
-    max="30"
-    step="1"
-    style="width: 50px"
-    aria-label="Max Size (px)"
-  />
-</label>
-<label>
-  Size Scale:
-  <select bind:value={size_scale.type} aria-label="Size Scale">
-    <option value="linear">Linear</option>
-    <option value="log">Log</option>
-  </select>
-</label>
+<section id="point-sizing-spiral-test">
+  <h2>Point Sizing Test with Spiral Data</h2>
+  <label>
+    Min Size (px):
+    <input
+      type="number"
+      bind:value={size_scale.radius_range[0]}
+      min="0.5"
+      max="10"
+      step="0.5"
+      style="width: 50px"
+      aria-label="Min Size (px)"
+    />
+  </label>
+  <label>
+    Max Size (px):
+    <input
+      type="number"
+      bind:value={size_scale.radius_range[1]}
+      min="5"
+      max="30"
+      step="1"
+      style="width: 50px"
+      aria-label="Max Size (px)"
+    />
+  </label>
+  <label>
+    Size Scale:
+    <select bind:value={size_scale.type} aria-label="Size Scale">
+      <option value="linear">Linear</option>
+      <option value="log">Log</option>
+    </select>
+  </label>
 
-<ScatterPlot
-  series={[{ ...spiral_data, markers: `points` }]}
-  x_axis={{ label: `X Axis`, range: [-15, 15] }}
-  y_axis={{ label: `Y Axis`, range: [-15, 15] }}
-  {size_scale}
-  style="height: 500px; width: 100%"
->
-  {#snippet tooltip({ x, y, metadata })}
-    <strong>Spiral Point</strong><br />
-    Position: ({format_num(x, `.2~`)}, {format_num(y, `.2~`)})<br />
-    {#if metadata}
-      Angle: {format_num(metadata.angle as number, `.2~`)} rad<br />
-      Value (Radius): {format_num(metadata.radius as number, `.2~`)}
-    {/if}
-  {/snippet}
-</ScatterPlot>
+  <ScatterPlot
+    series={[{ ...spiral_data, markers: `points` }]}
+    x_axis={{ label: `X Axis`, range: [-15, 15] }}
+    y_axis={{ label: `Y Axis`, range: [-15, 15] }}
+    {size_scale}
+    style="height: 500px; width: 100%"
+  >
+    {#snippet tooltip({ x, y, metadata })}
+      <strong>Spiral Point</strong><br />
+      Position: ({format_num(x, `.2~`)}, {format_num(y, `.2~`)})<br />
+      {#if metadata}
+        Angle: {format_num(metadata.angle as number, `.2~`)} rad<br />
+        Value (Radius): {format_num(metadata.radius as number, `.2~`)}
+      {/if}
+    {/snippet}
+  </ScatterPlot>
+</section>
 
 <section>
   <h2>Line Styling Test</h2>

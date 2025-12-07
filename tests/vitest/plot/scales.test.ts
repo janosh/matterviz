@@ -297,7 +297,7 @@ describe(`scales`, () => {
       expect(result.length).toBeGreaterThan(0)
       expect(result.length).toBeLessThanOrEqual(8) // Should respect the tick count
       expect(result[0]).toBeLessThanOrEqual(0)
-      expect(result[result.length - 1]).toBeGreaterThanOrEqual(100)
+      expect(result.at(-1)).toBeGreaterThanOrEqual(100)
     })
 
     test(`default linear ticks without options`, () => {
