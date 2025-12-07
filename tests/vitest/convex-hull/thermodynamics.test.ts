@@ -26,12 +26,15 @@ import type {
 } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
-// Test fixture factory
+// Test fixture factory - derives total energy from energy_per_atom and composition
 const make_phase = (
   composition: Partial<Record<ElementSymbol, number>>,
   energy_per_atom: number,
   overrides: Partial<PhaseData> = {},
-): PhaseData => ({ composition, energy_per_atom, energy: 0, ...overrides })
+): PhaseData => {
+  const atoms = Object.values(composition).reduce((sum, count) => sum + count, 0)
+  return { composition, energy_per_atom, energy: energy_per_atom * atoms, ...overrides }
+}
 
 describe(`normalize_hull_composition_keys`, () => {
   test.each([
@@ -265,10 +268,9 @@ describe(`4D Convex Hull`, () => {
       { x: 0.25, y: 0.25, z: 0.25, w: -1 },
     ]
     const hull = compute_lower_hull_4d(points)
-    if (hull.length > 0) {
-      expect(compute_e_above_hull_4d([{ x: 0.25, y: 0.25, z: 0.25, w: 0 }], hull)[0])
-        .toBeGreaterThanOrEqual(0)
-    }
+    expect(hull.length).toBeGreaterThan(0)
+    expect(compute_e_above_hull_4d([{ x: 0.25, y: 0.25, z: 0.25, w: 0 }], hull)[0])
+      .toBeGreaterThanOrEqual(0)
   })
 })
 
@@ -417,25 +419,17 @@ describe(`Edge cases`, () => {
       make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe` }),
       make_phase({ O: 1 }, -2.0, { entry_id: `O` }),
     ]
+    // Set e_form_per_atom to a positive value that differs from what would be
+    // computed from energy_per_atom (-6.0 - (-3.0) = -3.0), so we can verify
+    // the function uses the pre-computed value instead of recomputing
+    const e_form_per_atom = 0.5
     const entry = make_phase({ Fe: 1, O: 1 }, -6.0, {
       entry_id: `FeO`,
-      e_form_per_atom: -1.5,
+      e_form_per_atom,
     })
-    expect(typeof calculate_e_above_hull(entry, refs)).toBe(`number`)
-  })
-
-  test(`pure elements default to e_form=0`, () => {
-    const refs = [
-      make_phase({ Fe: 1, O: 1 }, -7.0, { entry_id: `FeO`, e_form_per_atom: -1.0 }),
-    ]
-    expect(
-      typeof calculate_e_above_hull(
-        make_phase({ Fe: 1, O: 1 }, -6.5, {
-          entry_id: `FeO-test`,
-          e_form_per_atom: -0.5,
-        }),
-        refs,
-      ),
-    ).toBe(`number`)
+    // For Fe1O1, the hull is built from unary refs: Fe (x=0, e_form=0) and O (x=1, e_form=0)
+    // At x=0.5, the tie-line formation energy = 0
+    // e_above_hull = max(0, e_form_per_atom - 0) = e_form_per_atom
+    expect(calculate_e_above_hull(entry, refs)).toBeCloseTo(e_form_per_atom)
   })
 })

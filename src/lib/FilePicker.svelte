@@ -248,15 +248,15 @@
   }
   .file-item.active {
     border-color: var(--success-color, #00ff00);
-    background: rgba(0, 255, 0, 0.15);
-    box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
+    background: light-dark(rgba(0, 255, 0, 0.12), rgba(0, 255, 0, 0.2));
+    box-shadow: 0 0 8px light-dark(rgba(0, 255, 0, 0.25), rgba(0, 255, 0, 0.35));
   }
   .file-item:active {
     cursor: grabbing;
   }
   .file-item:hover {
     border-color: var(--accent-color, #007acc);
-    background: rgba(0, 122, 204, 0.2);
+    background: light-dark(rgba(0, 122, 204, 0.15), rgba(0, 122, 204, 0.25));
     filter: brightness(1.1);
   }
   .file-name {

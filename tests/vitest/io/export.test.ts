@@ -102,15 +102,15 @@ describe(`export_canvas_as_png`, () => {
   })
 
   test.each([
-    [(cb: BlobCallback) => cb(null), `Failed to generate PNG`, `blob null`],
+    [`blob null`, (cb: BlobCallback) => cb(null), `Failed to generate PNG`],
     [
+      `error thrown`,
       () => {
         throw new Error(`Canvas tainted`)
       },
       undefined,
-      `error thrown`,
     ],
-  ])(`handles failure: %s`, (toBlob_impl, _expected_msg, _desc) => {
+  ])(`handles failure: %s`, (_desc, toBlob_impl, _expected_msg) => {
     const fail_canvas = { toBlob: vi.fn(toBlob_impl) } as unknown as HTMLCanvasElement
     export_canvas_as_png(fail_canvas, `test.png`, 72)
     expect(console_warn_spy.mock.calls.length + console_error_spy.mock.calls.length)

@@ -1930,6 +1930,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)
     await expect(green_line).toHaveAttribute(`stroke-width`, `4`)
 
+    // Also capture another series' line to verify it stays unaffected
+    const other_line = plot.locator(`g[data-series-id="0"] path[fill="none"]`)
+    const other_initial_width = await other_line.getAttribute(`stroke-width`)
+    const other_initial_stroke = await other_line.getAttribute(`stroke`)
+
     // Open controls and select second series
     const controls_toggle = plot.locator(`button.pane-toggle`)
     await controls_toggle.click({ force: true })
@@ -1956,6 +1961,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const green_fill = await green_marker.getAttribute(`fill`)
     expect(green_fill).toContain(`forestgreen`)
     await expect(green_marker).toHaveAttribute(`stroke`, `darkgreen`)
+
+    // Verify other series' line is completely unaffected by the change
+    await expect(other_line).toHaveAttribute(`stroke-width`, other_initial_width ?? ``)
+    await expect(other_line).toHaveAttribute(`stroke`, other_initial_stroke ?? ``)
   })
 
   test(`reset button triggers on_touch for all properties in section`, async ({ page }) => {
@@ -1985,19 +1994,17 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Find and wait for reset button to appear (indicates change was detected)
     const reset_button = control_pane.locator(`button.reset-button`).first()
 
-    // Wait for reset button to become visible or timeout
+    // Wait for reset button to become visible - fail loudly if it doesn't appear
+    // so regressions in has_changes or reset UI are caught
     const reset_visible = await reset_button.isVisible({ timeout: 1000 }).catch(() =>
       false
     )
-    if (reset_visible) {
-      await reset_button.click()
-      // Wait for stroke-width to reset to default
-      await expect(crimson_marker).toHaveAttribute(`stroke-width`, `1`, { timeout: 1000 })
-    } else {
-      // If reset button doesn't appear, skip this assertion but test still passes
-      // This can happen if SettingsSection's has_changes doesn't detect the modification
-      expect(true).toBe(true)
-    }
+    expect(reset_visible).toBe(true)
+    if (!reset_visible) return // Defensive early-exit after failure
+
+    await reset_button.click()
+    // Wait for stroke-width to reset to default
+    await expect(crimson_marker).toHaveAttribute(`stroke-width`, `1`, { timeout: 1000 })
   })
 
   test(`responsive layout behavior`, async ({ page }) => {
@@ -2031,8 +2038,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(info_div).toContainText(/No point hovered/)
 
     // Get the main plot SVG (the one containing markers, not icon SVGs)
+    // Scope filter to example to avoid matching markers from other sections
     const svg = example.locator(`.scatter svg[role="img"]`).filter({
-      has: page.locator(`path.marker`),
+      has: example.locator(`path.marker`),
     })
     await expect(svg).toBeVisible()
 

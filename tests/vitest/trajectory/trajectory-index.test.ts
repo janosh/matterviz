@@ -1,6 +1,7 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import type {
   FrameIndex,
+  TrajectoryFormat,
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryType,
@@ -98,24 +99,39 @@ describe(`validate_trajectory`, () => {
 
   describe(`streaming properties`, () => {
     test.each([
-      [(traj: TrajectoryType) => {
-        traj.total_frames = -1
-      }, `total_frames must be a positive`],
-      [(traj: TrajectoryType) => {
-        traj.total_frames = 5
-        traj.indexed_frames =
-          make_trajectory(3, { with_indexed_frames: true }).indexed_frames
-      }, `inconsistent with indexed_frames`],
-      [(traj: TrajectoryType) => {
-        traj.is_indexed = true
-      }, `is_indexed is true but indexed_frames is missing`],
-    ])(`validates streaming property errors`, (mutate, expected_substr) => {
-      const traj = make_trajectory(3)
-      mutate(traj)
-      expect(validate_trajectory(traj).some((err) => err.includes(expected_substr))).toBe(
-        true,
-      )
-    })
+      [
+        (traj: TrajectoryType) => {
+          traj.total_frames = -1
+        },
+        `total_frames must be a positive`,
+        1,
+      ],
+      [
+        (traj: TrajectoryType) => {
+          traj.total_frames = 5
+          traj.indexed_frames =
+            make_trajectory(3, { with_indexed_frames: true }).indexed_frames
+        },
+        `inconsistent with indexed_frames`,
+        1,
+      ],
+      [
+        (traj: TrajectoryType) => {
+          traj.is_indexed = true
+        },
+        `is_indexed is true but indexed_frames is missing`,
+        1,
+      ],
+    ])(
+      `validates streaming property errors`,
+      (mutate, expected_substr, expected_count) => {
+        const traj = make_trajectory(3)
+        mutate(traj)
+        const errors = validate_trajectory(traj)
+        expect(errors.some((err) => err.includes(expected_substr))).toBe(true)
+        expect(errors).toHaveLength(expected_count)
+      },
+    )
   })
 
   describe(`indexed_frames validation`, () => {
@@ -127,18 +143,18 @@ describe(`validate_trajectory`, () => {
     })
 
     test.each([
-      [`frame_number`, 0, `missing or invalid frame_number`],
-      [`byte_offset`, 0, `missing or invalid byte_offset`],
-      [`estimated_size`, 0, `missing or invalid estimated_size`],
-    ])(`validates %s field`, (field, idx, expected_substr) => {
+      [`frame_number`, 0, `missing or invalid frame_number`, 1],
+      [`byte_offset`, 0, `missing or invalid byte_offset`, 1],
+      [`estimated_size`, 0, `missing or invalid estimated_size`, 1],
+    ])(`validates %s field`, (field, idx, expected_substr, expected_count) => {
       const traj = make_trajectory(3, { with_indexed_frames: true })
       const indexed = traj.indexed_frames
       if (!indexed) throw new Error(`indexed_frames should exist`)
       // @ts-expect-error intentionally removing field
       delete indexed[idx][field]
-      expect(validate_trajectory(traj).some((err) => err.includes(expected_substr))).toBe(
-        true,
-      )
+      const errors = validate_trajectory(traj)
+      expect(errors.some((err) => err.includes(expected_substr))).toBe(true)
+      expect(errors).toHaveLength(expected_count)
     })
 
     test(`validates frame_number equals index`, () => {
@@ -163,10 +179,10 @@ describe(`validate_trajectory`, () => {
     })
 
     test.each([
-      [`frame_number`, `plot_metadata[0] missing or invalid frame`],
-      [`step`, `plot_metadata[0] missing or invalid step`],
-      [`properties`, `plot_metadata[0] missing or invalid properties`],
-    ])(`validates %s field`, (field, expected_substr) => {
+      [`frame_number`, `plot_metadata[0] missing or invalid frame`, 1],
+      [`step`, `plot_metadata[0] missing or invalid step`, 1],
+      [`properties`, `plot_metadata[0] missing or invalid properties`, 1],
+    ])(`validates %s field`, (field, expected_substr, expected_count) => {
       const traj = make_trajectory(3, { with_plot_metadata: true })
       const metadata = traj.plot_metadata
       if (!metadata) throw new Error(`plot_metadata should exist`)
@@ -177,23 +193,32 @@ describe(`validate_trajectory`, () => {
         // @ts-expect-error intentionally removing field
         delete metadata[0][field]
       }
-      expect(validate_trajectory(traj).some((err) => err.includes(expected_substr))).toBe(
-        true,
-      )
+      const errors = validate_trajectory(traj)
+      expect(errors.some((err) => err.includes(expected_substr))).toBe(true)
+      expect(errors).toHaveLength(expected_count)
     })
   })
 
   test(`returns all errors found`, () => {
     const traj: TrajectoryType = {
       frames: [
-        { structure: { sites: [] }, step: 0 },
+        { structure: { sites: [] }, step: 0 }, // Frame 0: missing sites error
         make_frame(10),
-        { step: 20 } as TrajectoryFrame,
+        { step: 20 } as TrajectoryFrame, // Frame 2: missing structure error
       ],
-      is_indexed: true,
-      plot_metadata: `invalid` as unknown as TrajectoryMetadata[],
+      is_indexed: true, // is_indexed without indexed_frames error
+      plot_metadata: `invalid` as unknown as TrajectoryMetadata[], // invalid plot_metadata error
     }
-    expect(validate_trajectory(traj).length).toBeGreaterThanOrEqual(4)
+    const errors = validate_trajectory(traj)
+
+    // Assert each specific expected error is present
+    expect(errors.some((err) => err.includes(`Frame 0`))).toBe(true)
+    expect(errors.some((err) => err.includes(`Frame 2`))).toBe(true)
+    expect(errors.some((err) => err.includes(`is_indexed`))).toBe(true)
+    expect(errors.some((err) => err.includes(`plot_metadata`))).toBe(true)
+
+    // Assert exact error count to catch regressions
+    expect(errors).toHaveLength(4)
   })
 })
 
@@ -257,13 +282,14 @@ describe(`get_trajectory_stats`, () => {
 })
 
 test(`TrajectoryFormat type values`, () => {
-  const formats: Array<`hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`> = [
+  // Use satisfies to ensure this test fails if TrajectoryFormat type changes
+  const formats = [
     `hdf5`,
     `json`,
     `xyz`,
     `xdatcar`,
     `traj`,
     `unknown`,
-  ]
+  ] as const satisfies readonly TrajectoryFormat[]
   expect(formats).toHaveLength(6)
 })

@@ -341,6 +341,12 @@ describe(`load_from_url`, () => {
         `preferred.xyz`,
         `filename* takes precedence`,
       ],
+      // Invalid percent-encoding falls back to raw value
+      [
+        `filename*=UTF-8''invalid%ZZencoding.xyz`,
+        `invalid%ZZencoding.xyz`,
+        `invalid percent-encoding returns raw value`,
+      ],
     ])(`%s -> %s (%s)`, async (disposition, expected, _desc) => {
       const mock_response = create_mock_response(`content`, {
         'content-type': `text/plain`,
@@ -415,8 +421,8 @@ describe(`load_from_url`, () => {
       await load_from_url(
         `https://example.com/test.xyz`,
         async (_content, filename) => {
-          // Simulate async processing
-          await new Promise((resolve) => setTimeout(resolve, 10))
+          // Async callback with zero delay - still tests await behavior
+          await Promise.resolve()
           processed_files.push(filename)
         },
       )
@@ -436,14 +442,17 @@ describe(`load_from_url`, () => {
       globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
       let received_content: string | ArrayBuffer | null = null
+      let received_filename: string | null = null
       await load_from_url(
         `https://example.com/data.npz`, // binary extension but with gzip content-encoding
-        (content) => {
+        (content, filename) => {
           received_content = content
+          received_filename = filename
         },
       )
 
       expect(typeof received_content).toBe(`string`)
+      expect(received_filename).toBe(`data.npz`)
     })
   })
 })
