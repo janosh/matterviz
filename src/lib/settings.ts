@@ -72,7 +72,7 @@ type SimpleBarStyleType = { color: SettingType<string>; opacity: SettingType<num
 
 type SimpleLineStyleType = { width: SettingType<number>; color: SettingType<string> }
 
-type PhaseDiagramCommonType = {
+type ConvexHullCommonType = {
   camera_zoom: SettingType<number>
   camera_center_x: SettingType<number>
   camera_center_y: SettingType<number>
@@ -89,7 +89,7 @@ type PhaseDiagramCommonType = {
   legend_pane_open: SettingType<boolean>
 }
 
-type PhaseDiagramWith3DType = PhaseDiagramCommonType & {
+type ConvexHullWith3DType = ConvexHullCommonType & {
   show_hull_faces: SettingType<boolean>
   hull_face_color: SettingType<string>
   hull_face_opacity: SettingType<number>
@@ -267,13 +267,13 @@ export interface SettingsConfig {
     color_scheme: SettingType<string>
   }
 
-  phase_diagram: { // Phase diagram defaults (binary/ternary/quaternary)
-    binary: PhaseDiagramCommonType
-    ternary: PhaseDiagramWith3DType & {
+  convex_hull: { // Convex hull defaults (binary/ternary/quaternary)
+    binary: ConvexHullCommonType
+    ternary: ConvexHullWith3DType & {
       camera_elevation: SettingType<number>
       camera_azimuth: SettingType<number>
     }
-    quaternary: PhaseDiagramWith3DType & {
+    quaternary: ConvexHullWith3DType & {
       camera_rotation_x: SettingType<number>
       camera_rotation_y: SettingType<number>
     }
@@ -1077,25 +1077,25 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
   },
 
-  phase_diagram: { // Phase diagram defaults (binary/ternary/quaternary)
+  convex_hull: { // Convex hull defaults (binary/ternary/quaternary)
     binary: {
       camera_zoom: {
         value: 1.0,
-        description: `Initial zoom for binary (2D) phase diagram`,
+        description: `Initial zoom for binary (2D) convex hull`,
         minimum: 0.1,
         maximum: 10,
       },
       camera_center_x: {
         value: 0,
-        description: `Initial X center for binary (2D) phase diagram`,
+        description: `Initial X center for binary (2D) convex hull`,
       },
       camera_center_y: {
         value: 0,
-        description: `Initial Y center for binary (2D) phase diagram`,
+        description: `Initial Y center for binary (2D) convex hull`,
       },
       color_mode: {
         value: `energy`,
-        description: `Color mode for 2D PD points`,
+        description: `Color mode for 2D convex hull points`,
         enum: {
           stability: `Stability`,
           energy: `Energy`,
@@ -1103,47 +1103,49 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       color_scale: {
         value: `interpolateViridis`,
-        description: `D3 interpolate color scale for 2D PD energy mode`,
+        description: `D3 interpolate color scale for 2D convex hull energy mode`,
       },
       show_stable: {
         value: true,
-        description: `Show stable phases in 2D PD`,
+        description: `Show stable phases in 2D convex hull`,
       },
       show_unstable: {
         value: true,
-        description: `Show unstable phases in 2D PD`,
+        description: `Show unstable phases in 2D convex hull`,
       },
       show_stable_labels: {
         value: true,
-        description: `Show labels for stable phases in 2D PD`,
+        description: `Show labels for stable phases in 2D convex hull`,
       },
       show_unstable_labels: {
         value: false,
-        description: `Show labels for unstable phases in 2D PD`,
+        description: `Show labels for unstable phases in 2D convex hull`,
       },
       max_hull_dist_show_phases: {
         value: 0.1,
-        description: `Max eV/atom above hull for showing unstable entries in 2D PD`,
+        description:
+          `Max eV/atom above hull for showing unstable entries in 2D convex hull`,
         minimum: 0,
         maximum: 2,
       },
       max_hull_dist_show_labels: {
         value: 0.1,
-        description: `Max eV/atom above hull for labeling unstable entries in 2D PD`,
+        description:
+          `Max eV/atom above hull for labeling unstable entries in 2D convex hull`,
         minimum: 0,
         maximum: 2,
       },
       fullscreen: {
         value: false,
-        description: `Start in fullscreen for 2D PD`,
+        description: `Start in fullscreen for 2D convex hull`,
       },
       info_pane_open: {
         value: false,
-        description: `Info pane open by default for 2D PD`,
+        description: `Info pane open by default for 2D convex hull`,
       },
       legend_pane_open: {
         value: false,
-        description: `Legend pane open by default for 2D PD`,
+        description: `Legend pane open by default for 2D convex hull`,
       },
     },
     ternary: {
@@ -1175,7 +1177,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       color_mode: {
         value: `energy`,
-        description: `Color mode for 3D PD points`,
+        description: `Color mode for 3D convex hull points`,
         enum: {
           stability: `Stability`,
           energy: `Energy`,
@@ -1183,61 +1185,63 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       color_scale: {
         value: `interpolateViridis`,
-        description: `D3 interpolate color scale for 3D PD energy mode`,
+        description: `D3 interpolate color scale for 3D convex hull energy mode`,
       },
       show_stable: {
         value: true,
-        description: `Show stable phases in 3D PD`,
+        description: `Show stable phases in 3D convex hull`,
       },
       show_unstable: {
         value: true,
-        description: `Show unstable phases in 3D PD`,
+        description: `Show unstable phases in 3D convex hull`,
       },
       show_stable_labels: {
         value: true,
-        description: `Show labels for stable phases in 3D PD`,
+        description: `Show labels for stable phases in 3D convex hull`,
       },
       show_unstable_labels: {
         value: false,
-        description: `Show labels for unstable phases in 3D PD`,
+        description: `Show labels for unstable phases in 3D convex hull`,
       },
       max_hull_dist_show_phases: {
         value: 0.5,
-        description: `Max eV/atom above hull for showing unstable entries in 3D PD`,
+        description:
+          `Max eV/atom above hull for showing unstable entries in 3D convex hull`,
         minimum: 0,
         maximum: 2,
       },
       max_hull_dist_show_labels: {
         value: 0.1,
-        description: `Max eV/atom above hull for labeling unstable entries in 3D PD`,
+        description:
+          `Max eV/atom above hull for labeling unstable entries in 3D convex hull`,
         minimum: 0,
         maximum: 2,
       },
       show_hull_faces: {
         value: true,
-        description: `Render lower hull faces in 3D PD`,
+        description: `Render lower hull faces in 3D convex hull`,
       },
       hull_face_color: {
         value: `#4caf50`,
-        description: `Color for lower hull faces in 3D PD`,
+        description: `Color for lower hull faces in 3D convex hull`,
       },
       hull_face_opacity: {
         value: 0.3,
-        description: `Opacity for hull faces in 3D PD (0-1)`,
+        description: `Opacity for hull faces in 3D convex hull (0-1)`,
         minimum: 0,
         maximum: 1,
       },
       fullscreen: {
         value: false,
-        description: `Start in fullscreen for 3D PD`,
+        description: `Start in fullscreen for 3D convex hull`,
       },
       info_pane_open: {
         value: false,
-        description: `Info pane open by default for 3D PD`,
+        description: `Info pane open by default for 3D convex hull`,
       },
       legend_pane_open: {
         value: false,
-        description: `Legend pane open by default for 3D PD`,
+        description: `Legend pane open by default for 3D convex hull`,
       },
     },
     quaternary: {
@@ -1269,7 +1273,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       color_mode: {
         value: `energy`,
-        description: `Color mode for 4D PD points`,
+        description: `Color mode for 4D convex hull points`,
         enum: {
           stability: `Stability`,
           energy: `Energy`,
@@ -1277,61 +1281,63 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       color_scale: {
         value: `interpolateViridis`,
-        description: `D3 interpolate color scale for 4D PD energy mode`,
+        description: `D3 interpolate color scale for 4D convex hull energy mode`,
       },
       show_stable: {
         value: true,
-        description: `Show stable phases in 4D PD`,
+        description: `Show stable phases in 4D convex hull`,
       },
       show_unstable: {
         value: true,
-        description: `Show unstable phases in 4D PD`,
+        description: `Show unstable phases in 4D convex hull`,
       },
       show_stable_labels: {
         value: true,
-        description: `Show labels for stable phases in 4D PD`,
+        description: `Show labels for stable phases in 4D convex hull`,
       },
       show_unstable_labels: {
         value: false,
-        description: `Show labels for unstable phases in 4D PD`,
+        description: `Show labels for unstable phases in 4D convex hull`,
       },
       show_hull_faces: {
         value: true,
-        description: `Show convex hull faces in 4D PD`,
+        description: `Show convex hull faces in 4D convex hull`,
       },
       hull_face_color: {
         value: `#4caf50`,
-        description: `Color for hull faces in 4D PD`,
+        description: `Color for hull faces in 4D convex hull`,
       },
       hull_face_opacity: {
         value: 0.03,
-        description: `Opacity for hull faces in 4D PD (0-1)`,
+        description: `Opacity for hull faces in 4D convex hull (0-1)`,
         minimum: 0,
         maximum: 1,
       },
       max_hull_dist_show_phases: {
         value: 0.1,
-        description: `Max eV/atom above hull for showing unstable entries in 4D PD`,
+        description:
+          `Max eV/atom above hull for showing unstable entries in 4D convex hull`,
         minimum: 0,
         maximum: 2,
       },
       max_hull_dist_show_labels: {
         value: 0.1,
-        description: `Max eV/atom above hull for labeling unstable entries in 4D PD`,
+        description:
+          `Max eV/atom above hull for labeling unstable entries in 4D convex hull`,
         minimum: 0,
         maximum: 2,
       },
       fullscreen: {
         value: false,
-        description: `Start in fullscreen for 4D PD`,
+        description: `Start in fullscreen for 4D convex hull`,
       },
       info_pane_open: {
         value: false,
-        description: `Info pane open by default for 4D PD`,
+        description: `Info pane open by default for 4D convex hull`,
       },
       legend_pane_open: {
         value: false,
-        description: `Legend pane open by default for 4D PD`,
+        description: `Legend pane open by default for 4D convex hull`,
       },
     },
   },
@@ -1382,10 +1388,5 @@ export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
   scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
   histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
   bar: merge_nested(DEFAULTS.bar, user?.bar),
-  phase_diagram: merge_nested(DEFAULTS.phase_diagram, user?.phase_diagram),
+  convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
 } as DefaultSettings)
-
-// Narrowed accessor for phase diagram defaults to ensure strong typing at call sites
-export type PhaseDiagramDefaults = DefaultSettings[`phase_diagram`]
-export const PD_DEFAULTS: PhaseDiagramDefaults = DEFAULTS
-  .phase_diagram as PhaseDiagramDefaults

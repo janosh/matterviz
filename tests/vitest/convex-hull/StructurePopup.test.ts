@@ -1,5 +1,5 @@
 import type { AnyStructure } from '$lib'
-import StructurePopup from '$lib/phase-diagram/StructurePopup.svelte'
+import StructurePopup from '$lib/convex-hull/StructurePopup.svelte'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 

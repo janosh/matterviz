@@ -177,7 +177,7 @@ export function get_trajectory_stats(
       for (let idx = interval; idx < frames.length - 1; idx += interval) {
         result.push(frames[idx])
       }
-      if (result[result.length - 1] !== last_frame) result.push(last_frame)
+      if (result.at(-1) !== last_frame) result.push(last_frame)
       return result
     })()
 

@@ -293,7 +293,7 @@
           { length: Math.ceil(total_frames / spacing) },
           (_, idx) => idx * spacing,
         )
-        return positions[positions.length - 1] === total_frames - 1
+        return positions.at(-1) === total_frames - 1
           ? positions
           : [...positions, total_frames - 1]
       }

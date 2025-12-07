@@ -35,8 +35,92 @@ describe(`FormulaFilter`, () => {
       },
     })
     await tick()
-    expect(document.querySelector(`.mode-hint`)?.textContent).toBe(expected_hint)
+    // Use includes() since clickable mode hints have an icon child
+    expect(document.querySelector(`.mode-hint`)?.textContent).toContain(expected_hint)
   })
+
+  test(`clicking mode hint cycles through modes and reformats input`, async () => {
+    // Mode hint is always clickable and clicking it reformats the input
+    const onchange = vi.fn()
+    let val = $state(`LiFePO4`)
+    mount(FormulaFilter, {
+      target: document.body,
+      props: {
+        get value() {
+          return val
+        },
+        set value(v: string) {
+          val = v
+        },
+        onchange,
+      },
+    })
+    await tick()
+
+    const get_mode_btn = () =>
+      document.querySelector<HTMLButtonElement>(`.mode-hint.clickable`)
+    expect(get_mode_btn()).toBeTruthy()
+    expect(get_mode_btn()?.textContent).toContain(`exact formula`)
+
+    // Click to cycle: exact → elements (reformats to comma-separated)
+    get_mode_btn()?.click()
+    flushSync()
+    expect(onchange).toHaveBeenLastCalledWith(`Fe,Li,O,P`, `elements`)
+    expect(get_mode_btn()?.textContent).toContain(`contains elements`)
+
+    // Click again: elements → chemsys (reformats to dash-separated)
+    get_mode_btn()?.click()
+    flushSync()
+    expect(onchange).toHaveBeenLastCalledWith(`Fe-Li-O-P`, `chemsys`)
+    expect(get_mode_btn()?.textContent).toContain(`chemical system`)
+
+    // Click again: chemsys → exact (reformats to concatenated)
+    get_mode_btn()?.click()
+    flushSync()
+    expect(onchange).toHaveBeenLastCalledWith(`FeLiOP`, `exact`)
+    expect(get_mode_btn()?.textContent).toContain(`exact formula`)
+  })
+
+  test.each([
+    { from: `Li-Fe-O`, to_mode: `elements`, expected: `Fe,Li,O` },
+    { from: `Li,Fe,O`, to_mode: `chemsys`, expected: `Fe-Li-O` },
+    { from: `LiFePO4`, to_mode: `elements`, expected: `Fe,Li,O,P` },
+    { from: `LiFePO4`, to_mode: `chemsys`, expected: `Fe-Li-O-P` },
+    { from: `Fe,Li,O`, to_mode: `exact`, expected: `FeLiO` },
+  ])(
+    `reformats "$from" to "$expected" when cycling to $to_mode mode`,
+    async ({ from, to_mode, expected }) => {
+      const onchange = vi.fn()
+      let val = $state(from)
+      mount(FormulaFilter, {
+        target: document.body,
+        props: {
+          get value() {
+            return val
+          },
+          set value(v: string) {
+            val = v
+          },
+          onchange,
+        },
+      })
+      await tick()
+
+      // Click until we reach the target mode
+      const get_mode_btn = () =>
+        document.querySelector<HTMLButtonElement>(`.mode-hint.clickable`)
+      let attempts = 0
+      while (attempts < 3) {
+        get_mode_btn()?.click()
+        flushSync()
+        const last_call = onchange.mock.calls[onchange.mock.calls.length - 1]
+        if (last_call[1] === to_mode) break
+        attempts++
+      }
+
+      expect(onchange).toHaveBeenLastCalledWith(expected, to_mode)
+    },
+  )
 
   test.each([
     [`Li,Fe`, `elements`],
@@ -152,9 +236,36 @@ describe(`FormulaFilter`, () => {
     expect(get_input().value).toBe(`Fe,O`)
   })
 
-  test(`search_mode binding updates when value changes`, () => {
-    /** Verifies that the search_mode bindable prop is synchronized when user enters input */
-    let value = $state(``)
+  test.each([
+    { initial_value: `Li-Fe-O`, expected_mode: `chemsys` },
+    { initial_value: `LiFePO4`, expected_mode: `exact` },
+    { initial_value: `Li,Fe`, expected_mode: `elements` },
+  ])(
+    `infers mode=$expected_mode on first render from value="$initial_value" (e.g. URL params)`,
+    async ({ initial_value, expected_mode }) => {
+      // Regression test: when value is set from URL params without search_mode,
+      // the component should infer the correct mode from the value format
+      let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
+      mount(FormulaFilter, {
+        target: document.body,
+        props: {
+          value: initial_value,
+          get search_mode() {
+            return mode
+          },
+          set search_mode(val) {
+            mode = val
+          },
+        },
+      })
+      await tick()
+      expect(mode).toBe(expected_mode)
+    },
+  )
+
+  test(`re-infers mode when value prop changes externally`, async () => {
+    // When parent updates value prop without search_mode, mode should be re-inferred
+    let value = $state(`LiFePO4`)
     let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
     mount(FormulaFilter, {
       target: document.body,
@@ -173,27 +284,26 @@ describe(`FormulaFilter`, () => {
         },
       },
     })
+    await tick()
+    expect(mode).toBe(`exact`) // Initial inference
 
-    // Type chemsys input and blur
-    get_input().value = `Li-Fe-O`
-    get_input().dispatchEvent(new Event(`input`, { bubbles: true }))
-    get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
-    flushSync()
-    expect(mode).toBe(`chemsys`)
+    // Simulate parent updating value prop (e.g., from URL change)
+    value = `Fe,Li,O`
+    await tick()
+    expect(mode).toBe(`elements`) // Should re-infer from new value format
+  })
 
-    // Type exact formula and blur
-    document.body.innerHTML = ``
-    value = ``
-    mode = `elements`
+  test.each([
+    [`Li-Fe-O`, `chemsys`],
+    [`LiFePO4`, `exact`],
+    [`Li,Fe`, `elements`],
+  ])(`search_mode binding updates to %s for input "%s"`, (input, expected_mode) => {
+    // Verifies that the search_mode bindable prop is synchronized when user enters input
+    let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
     mount(FormulaFilter, {
       target: document.body,
       props: {
-        get value() {
-          return value
-        },
-        set value(val: string) {
-          value = val
-        },
+        value: ``,
         get search_mode() {
           return mode
         },
@@ -202,11 +312,11 @@ describe(`FormulaFilter`, () => {
         },
       },
     })
-    get_input().value = `LiFePO4`
+    get_input().value = input
     get_input().dispatchEvent(new Event(`input`, { bubbles: true }))
     get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
     flushSync()
-    expect(mode).toBe(`exact`)
+    expect(mode).toBe(expected_mode)
   })
 
   test.each([

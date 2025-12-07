@@ -1,7 +1,7 @@
 import type { ElementSymbol } from '$lib'
 import type { Vec3 } from '$lib/math'
 import { compute_e_form_per_atom, find_lowest_energy_unary_refs } from './thermodynamics'
-import type { PhaseData, PhaseDiagramEntry, Point3D } from './types'
+import type { ConvexHullEntry, PhaseData, Point3D } from './types'
 import { is_unary_entry } from './types'
 
 // --- Ternary coordinates ---
@@ -78,10 +78,10 @@ export function get_ternary_3d_coordinates(
   entries: PhaseData[],
   elements: ElementSymbol[],
   el_refs?: Record<string, PhaseData>, // Optional: pass precomputed refs to avoid recomputing
-): PhaseDiagramEntry[] {
+): ConvexHullEntry[] {
   if (elements.length !== 3) {
     throw new Error(
-      `Ternary phase diagram requires exactly 3 elements, got ${elements.length}`,
+      `Ternary convex hull requires exactly 3 elements, got ${elements.length}`,
     )
   }
 
@@ -109,7 +109,7 @@ export function get_ternary_3d_coordinates(
     if (missing_refs.length > 0) {
       throw new Error(
         [
-          `Ternary phase diagram requires formation energies (e_form_per_atom) for z-axis positioning, but none of the ${within_system.length} entries in the ${
+          `Ternary convex hull requires formation energies (e_form_per_atom) for z-axis positioning, but none of the ${within_system.length} entries in the ${
             elements.join(`-`)
           } system have this field.`,
           `\nCannot compute formation energies because elemental references are missing for: ${
@@ -193,9 +193,9 @@ export function barycentric_to_tetrahedral(barycentric: number[]): Point3D {
 export function compute_4d_coords(
   entries: PhaseData[],
   elements: ElementSymbol[],
-): PhaseDiagramEntry[] {
+): ConvexHullEntry[] {
   if (elements.length !== 4) {
-    throw new Error(`Quaternary phase diagram requires exactly ${4} elements`)
+    throw new Error(`Quaternary convex hull requires exactly ${4} elements`)
   }
   // Use Set for O(1) lookups instead of O(n) includes
   const element_set = new Set(elements)

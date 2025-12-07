@@ -15,20 +15,20 @@ import type {
   ConvexHullFace,
   ConvexHullTriangle,
   PhaseData,
-  PhaseDiagramData,
   Plane,
   Point2D,
   Point3D,
+  ProcessedPhaseData,
 } from './types'
 import { is_unary_entry } from './types'
 
 // Track warned keys to avoid log spam on large datasets with repeated invalid keys
 const warned_keys = new Set<string>()
 
-// Normalize phase diagram composition keys by stripping oxidation states (e.g. "V4+" -> "V")
+// Normalize convex hull composition keys by stripping oxidation states (e.g. "V4+" -> "V")
 // and merging amounts for keys that map to the same element. Filters non-positive amounts.
 // Only extracts FIRST valid element from each key (e.g. "Fe2O3" -> "Fe", not both Fe and O).
-export function normalize_pd_composition_keys(
+export function normalize_hull_composition_keys(
   composition: Record<string, number>,
 ): Partial<Record<ElementSymbol, number>> {
   const normalized: Partial<Record<ElementSymbol, number>> = {}
@@ -49,13 +49,13 @@ export function normalize_pd_composition_keys(
   return normalized
 }
 
-export function process_pd_entries(entries: PhaseData[]): PhaseDiagramData {
+export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
   // Normalize composition keys to strip oxidation states (e.g. "Fe3+" -> "Fe")
   // Filter out entries whose composition normalizes to {} (all keys invalid or non-positive)
   const normalized_entries = entries
     .map((entry) => ({
       ...entry,
-      composition: normalize_pd_composition_keys(entry.composition),
+      composition: normalize_hull_composition_keys(entry.composition),
     }))
     .filter((entry) => Object.keys(entry.composition).length > 0)
 
@@ -364,7 +364,7 @@ export function calculate_e_above_hull(
   return results
 }
 
-export function get_phase_diagram_stats(
+export function get_convex_hull_stats(
   processed_entries: PhaseData[],
   elements: ElementSymbol[],
   max_arity: 3 | 4,

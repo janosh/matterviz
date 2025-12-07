@@ -329,19 +329,18 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
         dos_box.y + dos_box.height / 2,
       )
 
-      // Wait for hover state to update
-      await page.waitForTimeout(100)
+      // Wait for hover state to update - reference lines should appear
+      await expect(async () => {
+        const hovered_bands_lines = await bands_svg
+          .locator(`line[stroke-dasharray]`)
+          .count()
+        const hovered_dos_lines = await dos_svg
+          .locator(`line[stroke-dasharray]`)
+          .count()
 
-      // Both plots should now have reference lines
-      const hovered_bands_lines = await bands_svg
-        .locator(`line[stroke-dasharray]`)
-        .count()
-      const hovered_dos_lines = await dos_svg
-        .locator(`line[stroke-dasharray]`)
-        .count()
-
-      expect(hovered_bands_lines).toBeGreaterThan(initial_bands_lines)
-      expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
+        expect(hovered_bands_lines).toBeGreaterThan(initial_bands_lines)
+        expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
+      }).toPass({ timeout: 2000 })
     }
   })
 

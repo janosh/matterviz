@@ -82,7 +82,10 @@ test.describe(`BarPlot Component Tests`, () => {
     await page.mouse.up()
 
     // Wait for zoom to take effect and ticks to update
-    await page.waitForTimeout(100)
+    await expect(async () => {
+      const zoomed_x = await get_range(`x`)
+      expect(zoomed_x).not.toBe(initial_x)
+    }).toPass({ timeout: 1000 })
 
     // After zoom ticks differ
     const zoomed_x = await get_range(`x`)
@@ -145,8 +148,7 @@ test.describe(`BarPlot Component Tests`, () => {
 
     // Test hover
     await first_bar.hover()
-    await page.waitForTimeout(100)
-    await expect(hover_p).toContainText(`Hovering:`)
+    await expect(hover_p).toContainText(`Hovering:`, { timeout: 1000 })
 
     // Test click
     await first_bar.click()

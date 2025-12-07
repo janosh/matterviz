@@ -43,7 +43,6 @@ test.describe(`Bands Component Tests`, () => {
     await expect(svg.locator(`path[fill="none"]`)).toHaveCount(8)
     await legend_items.first().click()
     await expect(svg.locator(`path[fill="none"]`)).toHaveCount(4, { timeout: 2000 })
-    await page.waitForTimeout(100) // Small delay to ensure state is stable
     await legend_items.first().click()
     await expect(svg.locator(`path[fill="none"]`)).toHaveCount(8, { timeout: 2000 })
   })

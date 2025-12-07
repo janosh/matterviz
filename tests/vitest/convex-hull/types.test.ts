@@ -1,4 +1,4 @@
-import type { PhaseData } from '$lib/phase-diagram/types'
+import type { PhaseData } from '$lib/convex-hull/types'
 import {
   get_arity,
   is_binary_entry,
@@ -11,7 +11,7 @@ import {
   is_septenary_entry,
   is_ternary_entry,
   is_unary_entry,
-} from '$lib/phase-diagram/types'
+} from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`arity helpers`, () => {

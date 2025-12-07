@@ -89,7 +89,7 @@ describe(`compute_broadened_pattern`, () => {
       // Verify no tails from 10 or 90 (though hard to distinguish from 0 if they were really far)
       // But we can check that the grid is only 40-60.
       expect(result.x[0]).toBe(40)
-      expect(result.x[result.x.length - 1]).toBeCloseTo(60 - 0.1)
+      expect(result.x.at(-1)).toBeCloseTo(60 - 0.1)
     })
 
     test(`ignores negligible peaks (< 1e-5 intensity)`, () => {

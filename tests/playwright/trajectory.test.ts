@@ -368,10 +368,10 @@ test.describe(`Trajectory Component`, () => {
       if (points_count > 1) {
         const before = await step_input.inputValue()
         await plot_points.nth(1).hover()
-        await page.waitForTimeout(100)
 
         await expect(step_input).toBeVisible()
         await expect(scatter_plot).toBeVisible()
+        // Wait for step input to update after hover
         await expect(step_input).not.toHaveValue(before)
       }
     })
@@ -1688,10 +1688,10 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
       const export_toggle = trajectory.locator(`.trajectory-export-toggle`)
       await export_toggle.dispatchEvent(`click`)
-      await page.waitForTimeout(500)
 
       const export_pane = trajectory.locator(`.export-pane`)
-      const is_visible = await export_pane.isVisible({ timeout: 1000 })
+      // Wait for pane to become visible
+      const is_visible = await export_pane.isVisible({ timeout: 2000 })
 
       return is_visible ? { trajectory, export_pane, export_toggle } : null
     }
@@ -1744,8 +1744,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
       // Test closing
       await export_toggle.dispatchEvent(`click`)
-      await page.waitForTimeout(500)
-      await expect(export_pane).toBeHidden()
+      await expect(export_pane).toBeHidden({ timeout: 2000 })
     })
 
     test(`video export settings can be configured`, async ({ page }) => {
@@ -2162,14 +2161,13 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       // Hide element
       await first_item.hover()
       await first_item.locator(`button.toggle-visibility`).click()
-      await page.waitForTimeout(150)
+      await expect(label).toHaveClass(/hidden/)
       const frame_0_hidden = await canvas.screenshot()
       expect(frame_0_screenshot.equals(frame_0_hidden)).toBe(false)
 
       // Navigate to frame 1 - hidden state persists
       await step_input.fill(`1`)
       await step_input.press(`Enter`)
-      await page.waitForTimeout(150)
       await expect(label).toHaveClass(/hidden/)
       const frame_1_hidden = await canvas.screenshot()
       expect(frame_0_screenshot.equals(frame_1_hidden)).toBe(false)
@@ -2177,11 +2175,14 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       // Reset to frame 0 and test playback persistence
       await step_input.fill(`0`)
       await step_input.press(`Enter`)
-      await page.waitForTimeout(100)
 
       const play_button = trajectory.locator(`.play-button`)
       await play_button.click()
-      await page.waitForTimeout(400)
+      // Wait for a few frames to play
+      await expect(async () => {
+        const current_step = await step_input.inputValue()
+        expect(parseInt(current_step)).toBeGreaterThan(0)
+      }).toPass({ timeout: 1000 })
       await expect(label).toHaveClass(/hidden/)
       await play_button.click() // Stop playback
     })
@@ -2196,13 +2197,11 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       // Hide element in default mode
       await first_item.hover()
       await first_item.locator(`button.toggle-visibility`).click()
-      await page.waitForTimeout(100)
       await expect(label).toHaveClass(/hidden/)
 
       // Structure-only mode - still hidden with visual change
       const content_area = await select_display_mode(trajectory, `Structure-only`)
       await expect(content_area).toHaveClass(/show-structure-only/)
-      await page.waitForTimeout(100)
       const structure_screenshot = await canvas.screenshot()
       await expect(legend.locator(`.legend-item`).first().locator(`label`))
         .toHaveClass(/hidden/)
@@ -2210,13 +2209,11 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       // Split mode - still hidden, can toggle
       await select_display_mode(trajectory, `Structure + Scatter`)
       await expect(content_area).toHaveClass(/show-both/)
-      await page.waitForTimeout(100)
       const split_label = legend.locator(`.legend-item`).first().locator(`label`)
       await expect(split_label).toHaveClass(/hidden/)
 
       // Show element
       await first_item.locator(`button.toggle-visibility`).click()
-      await page.waitForTimeout(100)
       await expect(split_label).not.toHaveClass(/hidden/)
       const shown_screenshot = await canvas.screenshot()
       expect(structure_screenshot.equals(shown_screenshot)).toBe(false)
@@ -2236,12 +2233,9 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       // Hide multiple elements
       await legend_items.nth(0).hover()
       await legend_items.nth(0).locator(`button.toggle-visibility`).click()
-      await page.waitForTimeout(50)
+      await expect(legend_items.nth(0).locator(`label`)).toHaveClass(/hidden/)
       await legend_items.nth(1).hover()
       await legend_items.nth(1).locator(`button.toggle-visibility`).click()
-      await page.waitForTimeout(50)
-
-      await expect(legend_items.nth(0).locator(`label`)).toHaveClass(/hidden/)
       await expect(legend_items.nth(1).locator(`label`)).toHaveClass(/hidden/)
 
       // Color picker still works
@@ -2267,35 +2261,47 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       expect(initial_opacity).toBe(0)
 
       await first_item.hover()
-      await page.waitForTimeout(50)
-      const hover_opacity = await toggle_button.evaluate((el) =>
-        parseFloat(globalThis.getComputedStyle(el).opacity)
-      )
-      expect(hover_opacity).toBeGreaterThan(0)
+      // Wait for opacity to increase on hover
+      await expect(async () => {
+        const hover_opacity = await toggle_button.evaluate((el) =>
+          parseFloat(globalThis.getComputedStyle(el).opacity)
+        )
+        expect(hover_opacity).toBeGreaterThan(0)
+      }).toPass({ timeout: 1000 })
 
       // Performance test: playback with/without hidden elements
+      // These timeouts are intentional for measuring playback performance
       const start_1 = Date.now()
       await play_button.click()
-      await page.waitForTimeout(800)
+      // Wait for playback to advance several frames
+      await expect(async () => {
+        const step = parseInt(await step_input.inputValue())
+        expect(step).toBeGreaterThan(2)
+      }).toPass({ timeout: 2000 })
       await play_button.click()
       const duration_1 = Date.now() - start_1
 
       // Hide element and reset
       await step_input.fill(`0`)
       await step_input.press(`Enter`)
-      await page.waitForTimeout(50)
+      await expect(step_input).toHaveValue(`0`)
       await first_item.hover()
       await toggle_button.click()
-      await page.waitForTimeout(50)
+      await expect(legend.locator(`.legend-item`).first().locator(`label`)).toHaveClass(
+        /hidden/,
+      )
 
       // Button stays visible when element hidden
       await page.mouse.move(0, 0)
-      await page.waitForTimeout(100)
       await expect(toggle_button).toHaveClass(/visible/)
 
       const start_2 = Date.now()
       await play_button.click()
-      await page.waitForTimeout(800)
+      // Wait for playback to advance several frames
+      await expect(async () => {
+        const step = parseInt(await step_input.inputValue())
+        expect(step).toBeGreaterThan(2)
+      }).toPass({ timeout: 2000 })
       await play_button.click()
       const duration_2 = Date.now() - start_2
 

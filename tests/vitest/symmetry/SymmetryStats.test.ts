@@ -222,6 +222,32 @@ describe(`SymmetryStats`, () => {
       expect(stats_grid.textContent).toContain(`Hermann-Mauguin`)
       expect(stats_grid.textContent).toContain(`N/A`)
     })
+
+    test.each(
+      [
+        [1, `triclinic`],
+        [15, `monoclinic`],
+        [74, `orthorhombic`],
+        [142, `tetragonal`],
+        [167, `trigonal`],
+        [194, `hexagonal`],
+        [225, `cubic`],
+      ] as const,
+    )(
+      `displays correct crystal system for space group %d`,
+      (space_group, expected_crystal_system) => {
+        // Verify crystal system is derived from space group number, not hardcoded.
+        const sym_data = create_mock_sym_data({ number: space_group })
+        mount(SymmetryStats, {
+          target: document.body,
+          props: { sym_data },
+        })
+
+        const stats_grid = doc_query(`.stats-grid`)
+        expect(stats_grid.textContent).toContain(`Crystal System`)
+        expect(stats_grid.textContent).toContain(expected_crystal_system)
+      },
+    )
   })
 
   describe(`Operations summary section`, () => {

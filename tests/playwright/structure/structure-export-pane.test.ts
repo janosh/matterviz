@@ -149,7 +149,8 @@ test.describe(`StructureExportPane Tests`, () => {
     const json_copy = pane_div.locator(`button[title="Copy JSON to clipboard"]`)
     await json_copy.click()
     await expect(json_copy).toHaveText(`✅`, { timeout: 1000 })
-    await page.waitForTimeout(1100)
+    // Wait for checkmark to reset before next copy
+    await expect(json_copy).not.toHaveText(`✅`, { timeout: 2000 })
 
     // Copy XYZ
     const xyz_copy = pane_div.locator(`button[title="Copy XYZ to clipboard"]`)

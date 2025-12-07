@@ -74,7 +74,7 @@ describe(`Color Scales`, () => {
     const { colors } = ap.apply_color_scale([...vals], `interpolateViridis`, scale_type)
     expect(colors).toHaveLength(vals.length)
     expect(colors.every((color) => /^#[0-9a-f]{6}$/i.test(color))).toBe(true)
-    if (diff) expect(colors[0]).not.toBe(colors[colors.length - 1])
+    if (diff) expect(colors[0]).not.toBe(colors.at(-1))
     if (scale_type === `categorical`) expect(colors[0]).toBe(colors[3])
   })
 

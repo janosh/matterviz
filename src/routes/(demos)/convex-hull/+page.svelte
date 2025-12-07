@@ -1,18 +1,18 @@
 <script lang="ts">
   import type { ElementSymbol } from '$lib'
-  import { decompress_data } from '$lib/io/decompress'
   import type {
+    ConvexHullEntry,
     MarkerSymbol,
-    PhaseDiagramEntry,
+    PhaseData,
     PhaseStats,
-    PymatgenEntry,
-  } from '$lib/phase-diagram'
+  } from '$lib/convex-hull'
   import {
-    PhaseDiagram2D,
-    PhaseDiagram3D,
-    PhaseDiagram4D,
-    PhaseDiagramStats,
-  } from '$lib/phase-diagram'
+    ConvexHull2D,
+    ConvexHull3D,
+    ConvexHull4D,
+    ConvexHullStats,
+  } from '$lib/convex-hull'
+  import { decompress_data } from '$lib/io/decompress'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
@@ -31,8 +31,8 @@
 
   // State for the 3D example with stats display
   let phase_stats = $state<PhaseStats | null>(null)
-  let stable_entries = $state<PhaseDiagramEntry[]>([])
-  let unstable_entries = $state<PhaseDiagramEntry[]>([])
+  let stable_entries = $state<ConvexHullEntry[]>([])
+  let unstable_entries = $state<ConvexHullEntry[]>([])
   let max_hull_dist_show_phases = $state(0.5)
 
   onMount(async () => {
@@ -51,13 +51,13 @@
     )
   })
 
-  const handle_file_drop = (path: string) => (entries: PymatgenEntry[]) => {
+  const handle_file_drop = (path: string) => (entries: PhaseData[]) => {
     entries_map.set(path, entries)
     entries_map = new SvelteMap(entries_map)
   }
 
   // Filter entries to only include those with compositions from target elements
-  const filter_by_elements = (entries: PymatgenEntry[], elements: string[]) => {
+  const filter_by_elements = (entries: PhaseData[], elements: string[]) => {
     const element_set = new Set(elements)
     return entries.filter((entry) =>
       (Object.keys(entry.composition) as ElementSymbol[])
@@ -69,26 +69,26 @@
   // Create ternary subsets from quaternary data
   const na_fe_o_entries = $derived(filter_by_elements(
     (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`) ??
-      []) as PymatgenEntry[],
+      []) as PhaseData[],
     [`Na`, `Fe`, `O`],
   ))
 
   const li_co_ni_o_data = $derived(filter_by_elements(
     (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`) ??
-      []) as PymatgenEntry[],
+      []) as PhaseData[],
     [`Li`, `Co`, `O`],
   ))
 
   // Full quaternary data for Li-Co-Ni-O
   const li_co_ni_o_quaternary = $derived(
     (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`) ??
-      []) as PymatgenEntry[],
+      []) as PhaseData[],
   )
 
   // Helper to pick entries for highlighting demos
   const pick_entries = (
-    entries: PymatgenEntry[],
-    filter: (e: PymatgenEntry) => boolean,
+    entries: PhaseData[],
+    filter: (e: PhaseData) => boolean,
     count = 5,
   ) =>
     entries.filter((e) => e.entry_id && filter(e)).slice(0, count).map((e) =>
@@ -111,7 +111,7 @@
 
   // Helper to assign marker based on entry properties
   const get_marker = (
-    entry: PymatgenEntry,
+    entry: PhaseData,
     selected_id?: string,
     stable_marker: MarkerSymbol = `diamond`,
   ): MarkerSymbol => {
@@ -123,7 +123,7 @@
   }
 
   // Marker symbol demo state
-  let selected_marker_entry = $state<PhaseDiagramEntry | null>(null)
+  let selected_marker_entry = $state<ConvexHullEntry | null>(null)
   const marker_demo_entries = $derived(
     na_fe_o_entries.map((e) => ({
       ...e,
@@ -135,10 +135,10 @@
   const binary_examples = $derived.by(() => {
     const na_fe_p_o = loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
-    ) as PymatgenEntry[] | undefined
+    ) as PhaseData[] | undefined
     const li_co_ni_o = loaded_data.get(
       `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
-    ) as PymatgenEntry[] | undefined
+    ) as PhaseData[] | undefined
     if (!na_fe_p_o || !li_co_ni_o) return []
 
     return [
@@ -159,7 +159,7 @@
   )
 
   // Binary marker demo
-  let selected_binary_entry = $state<PhaseDiagramEntry | null>(null)
+  let selected_binary_entry = $state<ConvexHullEntry | null>(null)
   const binary_marker_entries = $derived(
     (binary_examples[0]?.entries ?? []).map((e) => ({
       ...e,
@@ -169,20 +169,20 @@
 </script>
 
 <svelte:head>
-  <title>MatterViz Phase Diagram Demo</title>
+  <title>MatterViz Convex Hull Demo</title>
   <meta
     name="description"
-    content="Interactive phase diagram visualizations: quaternary, ternary, and binary systems"
+    content="Interactive convex hull visualizations: quaternary, ternary, and binary systems"
   />
 </svelte:head>
 
 <main class="demo-container full-bleed">
-  <h1>Phase Diagrams</h1>
+  <h1>Convex Hulls</h1>
 
   {#if loaded_data.size > 0}
     <h2>Ternary Chemical Systems</h2>
     <p class="section-description">
-      3D ternary phase diagrams show composition on an equilateral triangle base with
+      3D ternary convex hulls show composition on an equilateral triangle base with
       formation energy as the z-axis. Convex hull faces are rendered between stable
       points.
     </p>
@@ -194,13 +194,13 @@
         { title, entries }
         (title)
       }
-        <PhaseDiagram3D {entries} controls={{ title }} />
+        <ConvexHull3D {entries} controls={{ title }} />
       {/each}
     </div>
 
     <h2>Quaternary Chemical Systems</h2>
     <p class="section-description">
-      4D quaternary phase diagrams project tetrahedral composition coordinates into 3D
+      4D quaternary convex hulls project tetrahedral composition coordinates into 3D
       space. Each point represents a compound with its stability indicated by color.
     </p>
     <div class="quaternary-grid">
@@ -209,9 +209,9 @@
         `.json`,
         ``,
       )}
-        <PhaseDiagram4D
-          entries={(entries_map.get(path as string) as PymatgenEntry[] | undefined) ||
-          (data as PymatgenEntry[])}
+        <ConvexHull4D
+          entries={(entries_map.get(path as string) as PhaseData[] | undefined) ||
+          (data as PhaseData[])}
           controls={{ title }}
           on_file_drop={handle_file_drop(path as string)}
         />
@@ -220,22 +220,22 @@
 
     <h2>Binary Chemical Systems</h2>
     <p class="section-description">
-      2D binary phase diagrams show formation energy versus composition. Stable phases lie
+      2D binary convex hulls show formation energy versus composition. Stable phases lie
       on the convex hull.
     </p>
     <div class="binary-grid">
       {#each binary_examples as { title, entries } (title)}
-        <PhaseDiagram2D {entries} controls={{ title }} style="height: 500px" />
+        <ConvexHull2D {entries} controls={{ title }} style="height: 500px" />
       {/each}
     </div>
 
-    <h2>3D Phase Diagram with Statistics</h2>
+    <h2>3D Convex Hull with Statistics</h2>
     <p class="section-description">
-      Example of a 3D ternary phase diagram displayed alongside its computed statistics.
-      The stats are bound to the diagram and update automatically when the data changes.
+      Example of a 3D ternary convex hull displayed alongside its computed statistics. The
+      stats are bound to the diagram and update automatically when the data changes.
     </p>
     <div class="stats-example-grid">
-      <PhaseDiagram3D
+      <ConvexHull3D
         entries={na_fe_o_entries}
         controls={{ title: `Na-Fe-O with Stats` }}
         bind:phase_stats
@@ -245,7 +245,7 @@
         style="height: 100%"
       />
       {#if phase_stats}
-        <PhaseDiagramStats {phase_stats} {stable_entries} {unstable_entries} />
+        <ConvexHullStats {phase_stats} {stable_entries} {unstable_entries} />
       {/if}
     </div>
 
@@ -255,19 +255,19 @@
       entries to see the "★ Highlighted" badge in the tooltip.
     </p>
     <div class="highlight-grid">
-      <PhaseDiagram2D
+      <ConvexHull2D
         entries={binary_examples[1]?.entries ?? []}
         controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
         highlighted_entries={highlighted_fe_o}
         highlight_style={{ effect: `pulse`, color: `#22cc88`, size_multiplier: 2.5, pulse_speed: 4 }}
       />
-      <PhaseDiagram3D
+      <ConvexHull3D
         entries={na_fe_o_entries}
         controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
         highlighted_entries={highlighted_na_fe_o}
         highlight_style={{ effect: `pulse`, color: `#ff3333`, size_multiplier: 2, pulse_speed: 3 }}
       />
-      <PhaseDiagram4D
+      <ConvexHull4D
         entries={li_co_ni_o_quaternary}
         controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
         highlighted_entries={highlighted_li_co_ni_o}
@@ -290,7 +290,7 @@
           <span>+ Medium E<sub>hull</sub></span>
           <span>● Default</span>
         </div>
-        <PhaseDiagram3D
+        <ConvexHull3D
           entries={marker_demo_entries}
           controls={{ title: `Na-Fe-O with Markers` }}
           bind:selected_entry={selected_marker_entry}
@@ -302,7 +302,7 @@
           <span>■ Stable</span>
           <span>● Default</span>
         </div>
-        <PhaseDiagram2D
+        <ConvexHull2D
           entries={binary_marker_entries}
           controls={{ title: `Na-O with Markers` }}
           bind:selected_entry={selected_binary_entry}
@@ -312,7 +312,7 @@
     </div>
   {:else}
     <div class="loading-state">
-      <p>Loading phase diagrams...</p>
+      <p>Loading convex hulls...</p>
     </div>
   {/if}
 

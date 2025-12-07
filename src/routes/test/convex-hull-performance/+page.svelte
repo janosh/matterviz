@@ -2,8 +2,8 @@
   import { replaceState } from '$app/navigation'
   import type { ElementSymbol } from '$lib'
   import { Spinner } from '$lib'
-  import type { PhaseData } from '$lib/phase-diagram'
-  import { PhaseDiagram2D, PhaseDiagram3D, PhaseDiagram4D } from '$lib/phase-diagram'
+  import type { PhaseData } from '$lib/convex-hull'
+  import { ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
 
   type Dimension = `2d` | `3d` | `4d`
 
@@ -16,6 +16,7 @@
   let show_unstable = $state(true)
   let max_hull_dist = $state(0.5)
   let color_mode = $state<`stability` | `energy`>(`energy`)
+  let enable_click_selection = $state(true)
   let render_start = $state(0)
   let render_time_ms = $state(0)
 
@@ -54,12 +55,24 @@
         : -1 + Math.random() * 1.5
       const atoms = Object.values(composition).reduce((s, v) => s + v, 0)
 
+      // Add dummy structure data to first 5 entries for testing click selection
+      const structure = idx < 5
+        ? {
+          sites: elements.map((el, site_idx) => ({
+            species: [{ element: el, occu: 1 }],
+            xyz: [site_idx * 2, 0, 0],
+          })),
+          lattice: { matrix: [[10, 0, 0], [0, 10, 0], [0, 0, 10]] },
+        }
+        : undefined
+
       entries.push({
         composition,
         energy: e_form * atoms,
         entry_id: `test-${idx}`,
         e_form_per_atom: e_form,
         reduced_formula: formula.join(``),
+        structure,
       })
     }
     return entries
@@ -96,6 +109,8 @@
     if (!isNaN(cnt) && cnt >= 10 && cnt <= 50000) entry_count = cnt
     const hull = parseFloat(params.get(`hull_dist`) ?? ``)
     if (!isNaN(hull) && hull >= 0) max_hull_dist = hull
+    const click_sel = params.get(`click_selection`)
+    if (click_sel !== null) enable_click_selection = click_sel !== `false`
     // Initial generation after URL params are loaded
     regenerate()
   })
@@ -111,7 +126,7 @@
   const PRESETS = [100, 500, 1000, 2500, 5000, 10000]
 </script>
 
-<h1>Phase Diagram Performance Test</h1>
+<h1>Convex Hull Performance Test</h1>
 
 <div style="display: flex; flex-wrap: wrap; gap: 2em; margin-bottom: 1em">
   <label>
@@ -162,6 +177,8 @@
 <div style="display: flex; flex-wrap: wrap; gap: 2em; margin-bottom: 1em">
   <label><input type="checkbox" bind:checked={show_stable} /> Stable</label>
   <label><input type="checkbox" bind:checked={show_unstable} /> Unstable</label>
+  <label><input type="checkbox" bind:checked={enable_click_selection} /> Click
+    selection</label>
   <label>
     Color:
     <select bind:value={color_mode}>
@@ -197,31 +214,34 @@
   {#key `${dimension}-${generated_entries.length}-${generation_time_ms}`}
     <div style="height: min(70vh, 800px)" use:track_render>
       {#if dimension === `2d`}
-        <PhaseDiagram2D
+        <ConvexHull2D
           entries={generated_entries}
           controls={{ title: `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})` }}
           {show_stable}
           {show_unstable}
           max_hull_dist_show_phases={max_hull_dist}
           {color_mode}
+          {enable_click_selection}
         />
       {:else if dimension === `3d`}
-        <PhaseDiagram3D
+        <ConvexHull3D
           entries={generated_entries}
           controls={{ title: `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})` }}
           {show_stable}
           {show_unstable}
           max_hull_dist_show_phases={max_hull_dist}
           {color_mode}
+          {enable_click_selection}
         />
       {:else}
-        <PhaseDiagram4D
+        <ConvexHull4D
           entries={generated_entries}
           controls={{ title: `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})` }}
           {show_stable}
           {show_unstable}
           max_hull_dist_show_phases={max_hull_dist}
           {color_mode}
+          {enable_click_selection}
         />
       {/if}
     </div>

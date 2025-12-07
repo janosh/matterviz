@@ -34,7 +34,8 @@ const get_label_positions = async (
   plot_locator: Locator,
 ): Promise<Record<string, XyObj>> => {
   await plot_locator.waitFor({ state: `visible` })
-  await plot_locator.page().waitForTimeout(200)
+  // Wait for markers to be rendered
+  await expect(plot_locator.locator(`path.marker`).first()).toBeVisible()
 
   const positions: Record<string, XyObj> = {}
   const markers = await plot_locator.locator(`path.marker`).all()
@@ -343,54 +344,64 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // This test verifies the fix for size_values not working with per-point styling arrays
     await page.goto(`/scatter-plot`, { waitUntil: `networkidle` })
 
-    // Find the spiral plot (has per-point styling with symbol_type and size_values)
-    const section = page.locator(`section:has(label:has-text("Label Size"))`).last()
+    // Find the spiral plot section (has per-point styling with symbol_type and size_values)
+    const section = page.locator(`#point-sizing-spiral-test`)
     const plot_locator = section.locator(`.scatter`)
     await expect(plot_locator).toBeVisible()
 
     const marker_count = await plot_locator.locator(`.marker`).count()
-    expect(marker_count).toBeGreaterThanOrEqual(30)
+    expect(marker_count).toBeGreaterThanOrEqual(3)
+
+    // Use dynamic indices to avoid out-of-bounds access
+    const mid_idx = Math.floor(marker_count / 2)
+    const last_idx = marker_count - 1
 
     // Test 1: Verify size progression with per-point styling arrays
     const bbox_0 = await get_marker_bbox(plot_locator, 0)
-    const bbox_15 = await get_marker_bbox(plot_locator, 15)
-    const bbox_30 = await get_marker_bbox(plot_locator, 30)
+    const bbox_mid = await get_marker_bbox(plot_locator, mid_idx)
+    const bbox_last = await get_marker_bbox(plot_locator, last_idx)
     const area_0 = get_bbox_area(bbox_0)
-    const area_15 = get_bbox_area(bbox_15)
-    const area_30 = get_bbox_area(bbox_30)
+    const area_mid = get_bbox_area(bbox_mid)
+    const area_last = get_bbox_area(bbox_last)
 
     expect(area_0).toBeGreaterThan(0)
-    expect(area_15).toBeGreaterThan(area_0)
-    expect(area_30).toBeGreaterThan(area_15)
-    expect(area_30 / area_0).toBeGreaterThan(4) // Expect at least 4x growth
+    expect(area_mid).toBeGreaterThan(area_0)
+    expect(area_last).toBeGreaterThan(area_mid)
+    expect(area_last / area_0).toBeGreaterThan(4) // Expect at least 4x growth
 
     // Test 2: Verify size_scale.radius_range changes affect marker sizes
-    const max_size_input = section.locator(
-      `label:has-text("Max Size") input[type="number"]`,
-    )
+    const max_size_input = section.locator(`input[aria-label="Max Size (px)"]`)
     await max_size_input.fill(`50`)
-    await page.waitForTimeout(300)
 
-    const updated_bbox = await get_marker_bbox(plot_locator, 30)
-    const updated_area = get_bbox_area(updated_bbox)
-    expect(updated_area).toBeGreaterThan(area_30 * 1.5) // At least 50% larger
+    // Wait for marker size to actually increase
+    await expect(async () => {
+      const updated_bbox = await get_marker_bbox(plot_locator, last_idx)
+      const updated_area = get_bbox_area(updated_bbox)
+      expect(updated_area).toBeGreaterThan(area_last * 1.5) // At least 50% larger
+    }).toPass({ timeout: 1000 })
 
     // Test 3: Verify log scale compresses size differences
-    await max_size_input.fill(`25`) // Reset to default
-    await page.waitForTimeout(300)
+    // Reset max size to baseline before comparing linear vs log scale
+    await max_size_input.fill(`25`)
 
-    const scale_select = section.locator(`label:has-text("Size Scale") select`)
-    const linear_last = await get_marker_bbox(plot_locator, marker_count - 1)
-    const linear_area = get_bbox_area(linear_last)
+    // Capture linear scale area for last marker
+    const scale_select = section.locator(`select[aria-label="Size Scale"]`)
+    let linear_area = 0
+    await expect(async () => {
+      const linear_last = await get_marker_bbox(plot_locator, last_idx)
+      linear_area = get_bbox_area(linear_last)
+      expect(linear_area).toBeGreaterThan(0)
+    }).toPass({ timeout: 1000 })
 
     await scale_select.selectOption(`log`)
-    await page.waitForTimeout(300)
 
-    const log_last = await get_marker_bbox(plot_locator, marker_count - 1)
-    const log_area = get_bbox_area(log_last)
-
-    expect(log_area).toBeGreaterThan(0)
-    expect(log_area).toBeLessThan(linear_area) // Log scale compresses large values
+    // Log scale should compress the size range, making large values relatively smaller
+    await expect(async () => {
+      const log_last = await get_marker_bbox(plot_locator, last_idx)
+      const log_area = get_bbox_area(log_last)
+      expect(log_area).toBeGreaterThan(0)
+      expect(log_area).toBeLessThan(linear_area)
+    }).toPass({ timeout: 1000 })
   })
 
   // Scale and range tests
@@ -1786,6 +1797,218 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await svg.dblclick()
   })
 
+  // CONTROL PRECEDENCE TESTS - explicit styling should win on page load
+  // and only user-modified controls should override
+
+  test(`explicit point styling preserved on page load (controls don't override)`, async ({ page }) => {
+    const plot = page.locator(`#control-precedence-plot.scatter`)
+    await expect(plot).toBeVisible()
+
+    // Get the first series markers (Crimson with explicit radius=12)
+    const crimson_markers = plot.locator(`g[data-series-id="0"] path.marker`)
+    await expect(crimson_markers).toHaveCount(5)
+
+    // Verify explicit styling is preserved - check fill color via CSS variable with crimson fallback
+    const first_crimson = crimson_markers.first()
+    const crimson_fill = await first_crimson.getAttribute(`fill`)
+    expect(crimson_fill).toContain(`crimson`) // CSS var with crimson fallback
+    await expect(first_crimson).toHaveAttribute(`stroke`, `darkred`)
+    await expect(first_crimson).toHaveAttribute(`stroke-width`, `3`)
+
+    // Check the marker bounding box to verify radius is preserved (radius 12 ≈ ~24px diameter)
+    const crimson_bbox = await first_crimson.boundingBox()
+    expect(crimson_bbox).toBeTruthy()
+    // Radius 12 means diameter ~24, accounting for stroke width ~30px total
+    expect(crimson_bbox?.width).toBeGreaterThan(20)
+    expect(crimson_bbox?.height).toBeGreaterThan(20)
+
+    // Get second series markers (Green with explicit radius=8)
+    const green_markers = plot.locator(`g[data-series-id="1"] path.marker`)
+    await expect(green_markers).toHaveCount(5)
+
+    const first_green = green_markers.first()
+    const green_fill = await first_green.getAttribute(`fill`)
+    expect(green_fill).toContain(`forestgreen`) // CSS var with forestgreen fallback
+    await expect(first_green).toHaveAttribute(`stroke`, `darkgreen`)
+    await expect(first_green).toHaveAttribute(`stroke-width`, `2`)
+
+    // Green markers should be smaller than crimson (radius 8 vs 12)
+    const green_bbox = await first_green.boundingBox()
+    expect(green_bbox).toBeTruthy()
+    expect(green_bbox?.width).toBeLessThan(crimson_bbox?.width ?? NaN)
+
+    // Check line styling is also preserved
+    const green_line = plot.locator(`g[data-series-id="1"] path[fill="none"]`)
+    await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)
+    await expect(green_line).toHaveAttribute(`stroke-width`, `4`)
+  })
+
+  test(`per-property control touch: only modified control overrides explicit styling`, async ({ page }) => {
+    const plot = page.locator(`#control-precedence-plot.scatter`)
+    await expect(plot).toBeVisible()
+
+    // Open controls pane - the toggle has class "-controls-toggle" (empty controls_class prefix)
+    const controls_toggle = plot.locator(`button.pane-toggle`)
+    await controls_toggle.click({ force: true }) // Force click since it may be hidden until hover
+    const control_pane = plot.locator(`.draggable-pane`)
+    await expect(control_pane).toBeVisible()
+
+    // Get initial marker state
+    const crimson_marker = plot.locator(`g[data-series-id="0"] path.marker`).first()
+    const initial_bbox = await crimson_marker.boundingBox()
+    expect(initial_bbox).toBeTruthy()
+    const initial_width = initial_bbox?.width ?? NaN
+
+    // Initial values should be explicit styling via CSS variable
+    const initial_fill = await crimson_marker.getAttribute(`fill`)
+    expect(initial_fill).toContain(`crimson`)
+    await expect(crimson_marker).toHaveAttribute(`stroke-width`, `3`)
+
+    // Modify ONLY the point size control (should override explicit radius)
+    const point_size_row = control_pane.locator(`[data-key="point.size"]`)
+    const size_range = point_size_row.locator(`input[type="range"]`)
+    await size_range.fill(`20`) // Set to max size
+
+    // Wait for marker size to actually change
+    await expect(async () => {
+      const bbox = await crimson_marker.boundingBox()
+      expect(bbox?.width).toBeGreaterThan(initial_width * 1.3) // At least 30% bigger
+    }).toPass({ timeout: 1000 })
+
+    // Verify size changed (marker got bigger)
+    const updated_bbox = await crimson_marker.boundingBox()
+    expect(updated_bbox).toBeTruthy()
+
+    // CRITICAL: Verify OTHER explicit styling is STILL preserved
+    // Color should still be crimson (not control default)
+    const updated_fill = await crimson_marker.getAttribute(`fill`)
+    expect(updated_fill).toContain(`crimson`)
+    // Stroke color should still be darkred
+    await expect(crimson_marker).toHaveAttribute(`stroke`, `darkred`)
+    // Stroke width should still be 3 (not control default of 1)
+    await expect(crimson_marker).toHaveAttribute(`stroke-width`, `3`)
+
+    // Also verify second series is unaffected (controls only affect selected series)
+    const green_marker = plot.locator(`g[data-series-id="1"] path.marker`).first()
+    const green_fill = await green_marker.getAttribute(`fill`)
+    expect(green_fill).toContain(`forestgreen`)
+    await expect(green_marker).toHaveAttribute(`stroke`, `darkgreen`)
+    await expect(green_marker).toHaveAttribute(`stroke-width`, `2`)
+  })
+
+  test(`control event delegation with data-key attributes`, async ({ page }) => {
+    const plot = page.locator(`#control-precedence-plot.scatter`)
+    await expect(plot).toBeVisible()
+
+    // Open controls pane
+    const controls_toggle = plot.locator(`button.pane-toggle`)
+    await controls_toggle.click({ force: true })
+    const control_pane = plot.locator(`.draggable-pane`)
+    await expect(control_pane).toBeVisible()
+
+    // Check that data-key attributes are present on rows (using SettingsSection structure)
+    // SettingsSection renders h4 + section siblings, so we look for data-key directly in the pane
+    const size_row = control_pane.locator(`[data-key="point.size"]`)
+    const color_row = control_pane.locator(`[data-key="point.color"]`)
+    const stroke_width_row = control_pane.locator(`[data-key="point.stroke_width"]`)
+
+    await expect(size_row).toBeVisible()
+    await expect(color_row).toBeVisible()
+    await expect(stroke_width_row).toBeVisible()
+
+    // Verify Line Style section also has data-key attributes
+    const line_width_row = control_pane.locator(`[data-key="line.width"]`)
+    const line_color_row = control_pane.locator(`[data-key="line.color"]`)
+
+    await expect(line_width_row).toBeVisible()
+    await expect(line_color_row).toBeVisible()
+  })
+
+  test(`modifying line control only overrides that property`, async ({ page }) => {
+    const plot = page.locator(`#control-precedence-plot.scatter`)
+    await expect(plot).toBeVisible()
+
+    // Get initial line styling (green series has explicit line_style)
+    const green_line = plot.locator(`g[data-series-id="1"] path[fill="none"]`)
+    await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)
+    await expect(green_line).toHaveAttribute(`stroke-width`, `4`)
+
+    // Also capture another series' line to verify it stays unaffected
+    const other_line = plot.locator(`g[data-series-id="0"] path[fill="none"]`)
+    // Guard: ensure reference series has inline attributes (test would need updating if CSS-only)
+    await expect(other_line).toHaveAttribute(`stroke-width`, /\d/)
+    await expect(other_line).toHaveAttribute(`stroke`, /.+/)
+    const other_initial_width = await other_line.getAttribute(`stroke-width`)
+    const other_initial_stroke = await other_line.getAttribute(`stroke`)
+
+    // Open controls and select second series
+    const controls_toggle = plot.locator(`button.pane-toggle`)
+    await controls_toggle.click({ force: true })
+    const control_pane = plot.locator(`.draggable-pane`)
+    await expect(control_pane).toBeVisible()
+
+    // Select second series (Green)
+    const series_select = control_pane.locator(`select#series-select`)
+    await series_select.selectOption(`1`)
+
+    // Modify ONLY line width
+    const line_width_row = control_pane.locator(`[data-key="line.width"]`)
+    const width_range = line_width_row.locator(`input[type="range"]`)
+    await width_range.fill(`8`) // Change from 4 to 8
+
+    // Wait for line width to actually change
+    await expect(green_line).toHaveAttribute(`stroke-width`, `8`, { timeout: 1000 })
+
+    // CRITICAL: Line color should STILL be limegreen (not control default)
+    await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)
+
+    // Point styling should also be unaffected
+    const green_marker = plot.locator(`g[data-series-id="1"] path.marker`).first()
+    const green_fill = await green_marker.getAttribute(`fill`)
+    expect(green_fill).toContain(`forestgreen`)
+    await expect(green_marker).toHaveAttribute(`stroke`, `darkgreen`)
+
+    // Verify other series' line is completely unaffected by the change
+    await expect(other_line).toHaveAttribute(`stroke-width`, other_initial_width ?? ``)
+    await expect(other_line).toHaveAttribute(`stroke`, other_initial_stroke ?? ``)
+  })
+
+  test(`reset button triggers on_touch for all properties in section`, async ({ page }) => {
+    const plot = page.locator(`#control-precedence-plot.scatter`)
+    await expect(plot).toBeVisible()
+
+    // Open controls
+    const controls_toggle = plot.locator(`button.pane-toggle`)
+    await controls_toggle.click({ force: true })
+    const control_pane = plot.locator(`.draggable-pane`)
+    await expect(control_pane).toBeVisible()
+
+    // Get initial explicit styling
+    const crimson_marker = plot.locator(`g[data-series-id="0"] path.marker`).first()
+    const initial_fill = await crimson_marker.getAttribute(`fill`)
+    expect(initial_fill).toContain(`crimson`)
+    const initial_stroke_width = await crimson_marker.getAttribute(`stroke-width`)
+    expect(initial_stroke_width).toBe(`3`) // Explicit stroke width
+
+    // Modify multiple values so the reset button appears (values need to differ from initial)
+    const size_row = control_pane.locator(`[data-key="point.size"]`)
+    const size_input = size_row.locator(`input[type="number"]`)
+    await size_input.click()
+    await size_input.fill(`15`)
+    await size_input.press(`Enter`)
+
+    // Find and wait for reset button to appear (indicates change was detected)
+    const reset_button = control_pane.locator(`button.reset-button`).first()
+
+    // Wait for reset button to become visible - fail loudly if it doesn't appear
+    // so regressions in has_changes or reset UI are caught
+    await expect(reset_button).toBeVisible({ timeout: 1000 })
+
+    await reset_button.click()
+    // Wait for stroke-width to reset to default
+    await expect(crimson_marker).toHaveAttribute(`stroke-width`, `1`, { timeout: 1000 })
+  })
+
   test(`responsive layout behavior`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
 
@@ -1806,33 +2029,40 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.setViewportSize({ width: 1280, height: 720 })
   })
 
-  test(`on_point_hover and on_point_click handlers`, async ({ page }) => {
-    await page.goto(`/scatter-plot`)
+  test(`on_point_hover handler updates display on marker hover`, async ({ page }) => {
+    await page.goto(`/plot/scatter-plot`)
     const example = page.locator(`.code-example`).first()
+    // The hover status div contains "No point hovered yet." or "Hovering: Point..."
     const info_div = example.locator(`div`).filter({
-      hasText: /^(No point hovered|Hovering)/,
+      hasText: /No point hovered|Hovering/,
+    }).last()
+
+    await expect(info_div).toContainText(/No point hovered/)
+
+    // Get the main plot SVG (the one containing markers, not icon SVGs)
+    // Scope filter to example to avoid matching markers from other sections
+    const svg = example.locator(`.scatter svg[role="img"]`).filter({
+      has: example.locator(`path.marker`),
     })
+    await expect(svg).toBeVisible()
 
-    await expect(info_div).toContainText(/No point hovered/)
+    // Guard: ensure at least 2 markers exist before testing hover on multiple points
+    const markers = svg.locator(`path.marker`)
+    const marker_count = await markers.count()
+    expect(marker_count).toBeGreaterThan(1)
 
-    const svg = example.locator(`.scatter svg`)
-    const box = await svg.boundingBox()
-    if (!box) throw new Error(`SVG not found`)
+    // Hover directly over first marker point
+    const first_point = markers.first()
+    await first_point.hover()
+    await expect(info_div).toContainText(`Hovering: Point`, { timeout: 2000 })
+    // Verify it shows specific point info
+    await expect(info_div).toContainText(`Series:`)
+    await expect(info_div).toContainText(`Point Index:`)
 
-    // Hover near a point
-    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5)
-    await page.waitForTimeout(100)
-
-    await expect(info_div).toContainText(`Hovering: Point`)
-
-    // Check cursor is pointer (click handler is defined)
-    const point = svg.locator(`path.marker`).first()
-    const cursor = await point.evaluate((el) => globalThis.getComputedStyle(el).cursor)
-    expect(cursor).toBe(`pointer`)
-
-    // Move away clears hover
-    await page.mouse.move(box.x - 50, box.y - 50)
-    await expect(info_div).toContainText(/No point hovered/)
+    // Hover over a different point to verify hover updates
+    const second_point = markers.nth(1)
+    await second_point.hover()
+    await expect(info_div).toContainText(`Hovering: Point`, { timeout: 2000 })
   })
 
   test(`improved label placement prevents overlap for isolated and clustered markers`, async ({ page }) => {

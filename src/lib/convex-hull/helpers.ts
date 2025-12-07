@@ -1,12 +1,11 @@
 import type { ElementSymbol, EnergyModeInfo } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
-import { get_page_background } from '$lib/colors'
 import { ELEM_SYMBOL_TO_NAME } from '$lib/composition'
 import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
 import { symbol } from 'd3-shape'
-import type { HighlightStyle, MarkerSymbol, PhaseData, PhaseDiagramConfig } from './types'
+import type { ConvexHullConfig, HighlightStyle, MarkerSymbol, PhaseData } from './types'
 import { is_unary_entry } from './types'
 
 // Energy color scale factory (shared)
@@ -33,7 +32,7 @@ export function get_energy_color_scale(
 export function get_point_color_for_entry(
   entry: { is_stable?: boolean; e_above_hull?: number },
   color_mode: `stability` | `energy`,
-  colors: PhaseDiagramConfig[`colors`] | undefined,
+  colors: ConvexHullConfig[`colors`] | undefined,
   energy_scale: ((value: number) => string) | null,
 ): string {
   const is_stable = Boolean(entry.is_stable) || entry.e_above_hull === 0
@@ -45,8 +44,8 @@ export function get_point_color_for_entry(
     : `#666`
 }
 
-// Robust drag-and-drop JSON parsing for phase diagram entries
-export async function parse_pd_entries_from_drop(
+// Robust drag-and-drop JSON parsing for convex hull entries
+export async function parse_hull_entries_from_drop(
   event: DragEvent,
 ): Promise<PhaseData[] | null> {
   event.preventDefault()
@@ -129,7 +128,7 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
 }
 
 // Generic mouse hit-testing for projected 3D points (shared)
-export function find_pd_entry_at_mouse<
+export function find_hull_entry_at_mouse<
   T extends {
     x: number
     y: number
@@ -171,34 +170,7 @@ export function calculate_modal_side(wrapper: HTMLDivElement | undefined): boole
   return space_on_right >= space_on_left
 }
 
-// Setup fullscreen effect for phase diagrams with optional camera reset callback
-export function setup_fullscreen_effect(
-  fullscreen: boolean,
-  wrapper: HTMLDivElement | undefined,
-  on_fullscreen_change?: (entering_fullscreen: boolean) => void,
-): void {
-  if (typeof window === `undefined`) return
-
-  if (fullscreen && !document.fullscreenElement && wrapper?.isConnected) {
-    wrapper.requestFullscreen().catch(console.error)
-    on_fullscreen_change?.(true)
-  } else if (!fullscreen && document.fullscreenElement) {
-    document.exitFullscreen()
-    on_fullscreen_change?.(false)
-  }
-}
-
-export function set_fullscreen_bg(
-  wrapper: HTMLDivElement | undefined,
-  fullscreen: boolean,
-  css_var_name: string,
-): void {
-  if (!wrapper || !fullscreen) return
-  const bg = get_page_background()
-  if (bg) wrapper.style.setProperty(css_var_name, bg)
-}
-
-// Compute energy source mode information for phase diagram entries. Returns energy mode information including capability flags and resolved mode.
+// Compute energy source mode information for convex hull entries. Returns energy mode information including capability flags and resolved mode.
 // This determines whether we can use precomputed energies or need to compute on-the-fly.
 export function compute_energy_mode_info(
   entries: PhaseData[], // Array of phase entries to analyze

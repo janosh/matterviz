@@ -4,7 +4,7 @@
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
-  import { set_fullscreen_bg } from '$lib/phase-diagram/helpers'
+  import { set_fullscreen_bg } from '$lib/layout'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { PymatgenStructure } from '$lib/structure'

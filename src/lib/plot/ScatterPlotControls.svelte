@@ -19,12 +19,14 @@
     display = $bindable({}),
     styles = {},
     selected_series_idx = $bindable(0),
+    on_touch,
     children,
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     series?: readonly DataSeries[]
     styles?: StyleOverrides
     selected_series_idx?: number
+    on_touch?: (key: string) => void
     children?: Snippet<
       [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
     >
@@ -35,13 +37,15 @@
     styles.show_points ??= DEFAULTS.scatter.show_points
     styles.show_lines ??= DEFAULTS.scatter.show_lines
   })
+
+  const touch = ({ target }: Event) => {
+    const key = (target as Element)?.closest(`[data-key]`)?.getAttribute(`data-key`)
+    if (key) on_touch?.(key)
+  }
 </script>
 
-<PlotControls {x_axis} {y_axis} {y2_axis} bind:display {...rest}>
+<PlotControls {x_axis} {y_axis} {y2_axis} bind:display show_controls {...rest}>
   {@render children?.({ x_axis, y_axis, y2_axis, display, styles, selected_series_idx })}
-  <!-- Add show_points and show_lines checkboxes to Display section by extending it -->
-  <!-- This is done via the Display section in PlotControls, but we need custom controls -->
-  <!-- For now, we'll add a separate section for markers -->
   <SettingsSection
     title="Markers"
     current_values={{ show_points: styles.show_points, show_lines: styles.show_lines }}
@@ -89,10 +93,12 @@
         current_values={styles.point ?? {}}
         on_reset={() => {
           styles.point = { ...DEFAULTS.scatter.point }
+          Object.keys(DEFAULTS.scatter.point).forEach((key) => on_touch?.(`point.${key}`))
         }}
+        oninput={touch}
       >
         {#if styles.point}
-          <div class="pane-row">
+          <div class="pane-row" data-key="point.size">
             <label for="point-size-range">Size:</label>
             <input
               id="point-size-range"
@@ -110,16 +116,18 @@
               bind:value={styles.point.size}
             />
           </div>
-          <div class="pane-row">
+          <div class="pane-row" data-key="point.color">
             <label for="point-color">Color:</label>
             <input id="point-color" type="color" bind:value={styles.point.color} />
+          </div>
+          <div class="pane-row" data-key="point.opacity">
+            <label for="point-opacity">Opacity:</label>
             <input
               type="range"
               min="0"
               max="1"
               step="0.05"
               bind:value={styles.point.opacity}
-              title="Color opacity"
             />
             <input
               type="number"
@@ -129,7 +137,7 @@
               bind:value={styles.point.opacity}
             />
           </div>
-          <div class="pane-row">
+          <div class="pane-row" data-key="point.stroke_width">
             <label for="point-stroke-width-range">Stroke Width:</label>
             <input
               id="point-stroke-width-range"
@@ -147,20 +155,22 @@
               bind:value={styles.point.stroke_width}
             />
           </div>
-          <div class="pane-row">
+          <div class="pane-row" data-key="point.stroke_color">
             <label for="point-stroke-color">Stroke Color:</label>
             <input
               id="point-stroke-color"
               type="color"
               bind:value={styles.point.stroke_color}
             />
+          </div>
+          <div class="pane-row" data-key="point.stroke_opacity">
+            <label for="point-stroke-opacity">Stroke Opacity:</label>
             <input
               type="range"
               min="0"
               max="1"
               step="0.05"
               bind:value={styles.point.stroke_opacity}
-              title="Stroke opacity"
             />
             <input
               type="number"
@@ -181,11 +191,13 @@
         current_values={styles.line ?? {}}
         on_reset={() => {
           styles.line = { ...DEFAULTS.scatter.line }
+          Object.keys(DEFAULTS.scatter.line).forEach((key) => on_touch?.(`line.${key}`))
         }}
+        oninput={touch}
       >
         {#if styles.line}
-          <div class="pane-row">
-            <label for="line-width-range">Line Width:</label>
+          <div class="pane-row" data-key="line.width">
+            <label for="line-width-range">Width:</label>
             <input
               id="line-width-range"
               type="range"
@@ -202,16 +214,18 @@
               bind:value={styles.line.width}
             />
           </div>
-          <div class="pane-row">
-            <label for="line-color">Line Color:</label>
+          <div class="pane-row" data-key="line.color">
+            <label for="line-color">Color:</label>
             <input id="line-color" type="color" bind:value={styles.line.color} />
+          </div>
+          <div class="pane-row" data-key="line.opacity">
+            <label for="line-opacity">Opacity:</label>
             <input
               type="range"
               min="0"
               max="1"
               step="0.05"
               bind:value={styles.line.opacity}
-              title="Line opacity"
             />
             <input
               type="number"
@@ -221,8 +235,8 @@
               bind:value={styles.line.opacity}
             />
           </div>
-          <div class="pane-row">
-            <label for="line-style-select">Line Style:</label>
+          <div class="pane-row" data-key="line.dash">
+            <label for="line-style-select">Style:</label>
             <select id="line-style-select" bind:value={styles.line.dash}>
               <option value="solid">Solid</option>
               <option value="4,4">Dashed</option>

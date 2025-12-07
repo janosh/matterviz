@@ -421,8 +421,8 @@
     padding: 0;
     margin: 0;
     border: none;
-    background: rgba(0, 0, 0, 0.5);
-    color: white;
+    background: light-dark(rgba(0, 0, 0, 0.5), rgba(255, 255, 255, 0.5));
+    color: light-dark(white, black);
     border-radius: 50%;
     font-size: 0.9em;
     line-height: 0.9;
@@ -440,7 +440,7 @@
     opacity: 1;
   }
   .atom-legend button.toggle-visibility:hover {
-    background: rgba(0, 0, 0, 0.8);
+    background: light-dark(rgba(0, 0, 0, 0.8), rgba(255, 255, 255, 0.8));
     transform: scale(1.15);
   }
   .element-legend sub {
