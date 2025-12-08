@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.2.0](https://github.com/janosh/matterviz/compare/v0.1.15...v0.2.0)
+
+> 8 December 2025
+
+### 🛠 Enhancements
+
+- Support tick labels inside + rounded bars on all plots, smarter default filtering of unstable PD entries by @janosh in https://github.com/janosh/matterviz/pull/214
+- Native `pymatgen` band structure and DOS support by @janosh in https://github.com/janosh/matterviz/pull/215
+- Support LAMMPS trajectory format `.lammpstrj` by @janosh in https://github.com/janosh/matterviz/pull/216
+- Fat bands visualization by @janosh in https://github.com/janosh/matterviz/pull/217
+
+### 💥 Breaking Changes
+
+- Rename `PhaseDiagramND` to `ConvexHullND` by @janosh in https://github.com/janosh/matterviz/pull/218
+
+### 🚧 CI
+
+- Fix all legacy type errors and run `svelte-check` as pre-commit hook by @janosh in https://github.com/janosh/matterviz/pull/212
+
 ## [v0.1.15](https://github.com/janosh/matterviz/compare/v0.1.14...v0.1.15)
 
 > 29 November 2025

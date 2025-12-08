@@ -1151,29 +1151,29 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     ternary: {
       camera_elevation: {
         value: 45,
-        description: `Initial camera elevation (deg) for ternary (3D) PD`,
+        description: `Initial camera elevation (deg) for ternary (3D) convex hull`,
         minimum: -180,
         maximum: 180,
       },
       camera_azimuth: {
         value: 60,
-        description: `Initial camera azimuth (deg) for ternary (3D) PD`,
+        description: `Initial camera azimuth (deg) for ternary (3D) convex hull`,
         minimum: -360,
         maximum: 360,
       },
       camera_zoom: {
         value: 1.5,
-        description: `Initial camera zoom for ternary (3D) PD`,
+        description: `Initial camera zoom for ternary (3D) convex hull`,
         minimum: 0.1,
         maximum: 10,
       },
       camera_center_x: {
         value: 0,
-        description: `Initial X center for ternary (3D) PD`,
+        description: `Initial X center for ternary (3D) convex hull`,
       },
       camera_center_y: {
         value: -50,
-        description: `Initial Y center for ternary (3D) PD`,
+        description: `Initial Y center for ternary (3D) convex hull`,
       },
       color_mode: {
         value: `energy`,
@@ -1247,29 +1247,29 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     quaternary: {
       camera_rotation_x: {
         value: -0.6,
-        description: `Initial camera X rotation (rad) for quaternary (4D) PD`,
+        description: `Initial camera X rotation (rad) for quaternary (4D) convex hull`,
         minimum: -6.283,
         maximum: 6.283,
       },
       camera_rotation_y: {
         value: 0.8,
-        description: `Initial camera Y rotation (rad) for quaternary (4D) PD`,
+        description: `Initial camera Y rotation (rad) for quaternary (4D) convex hull`,
         minimum: -6.283,
         maximum: 6.283,
       },
       camera_zoom: {
         value: 1.4,
-        description: `Initial camera zoom for quaternary (4D) PD`,
+        description: `Initial camera zoom for quaternary (4D) convex hull`,
         minimum: 0.1,
         maximum: 20,
       },
       camera_center_x: {
         value: 0,
-        description: `Initial X center for quaternary (4D) PD`,
+        description: `Initial X center for quaternary (4D) convex hull`,
       },
       camera_center_y: {
         value: 20,
-        description: `Initial Y center for quaternary (4D) PD`,
+        description: `Initial Y center for quaternary (4D) convex hull`,
       },
       color_mode: {
         value: `energy`,
