@@ -70,9 +70,7 @@ export default {
     },
   },
 
-  compilerOptions: {
-    experimental: {
-      async: true,
-    },
+  compilerOptions: { // TODO maybe remove in future
+    warningFilter: (warning) => warning.code !== `state_referenced_locally`,
   },
 }
