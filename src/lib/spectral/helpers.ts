@@ -892,8 +892,9 @@ export function compute_frequency_range(
   }
 
   if (!Number.isFinite(min_val) || !Number.isFinite(max_val)) return undefined
-  // Clamp phonon min to 0 if negative contribution < 0.5% (noise threshold)
-  if (is_phonon && min_val < 0 && negative_fraction(all_freqs) < 0.005) min_val = 0
+  // Calculate padding from original range before any clamping
   const padding = (max_val - min_val) * padding_factor
-  return [is_phonon && min_val === 0 ? 0 : min_val - padding, max_val + padding]
+  // Clamp phonon min to 0 if negative contribution < 0.5% (noise threshold)
+  const clamp_min = is_phonon && min_val < 0 && negative_fraction(all_freqs) < 0.005
+  return [clamp_min ? 0 : min_val - padding, max_val + padding]
 }

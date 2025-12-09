@@ -145,21 +145,19 @@
   let x_range = $derived.by((): [number, number] | undefined => {
     if (!series_data.length) return undefined
     const all_x = series_data.flatMap((srs) => srs.x)
-    let min_x = Math.min(...all_x), max_x = Math.max(...all_x)
-    if (is_horizontal) min_x = 0
-    else if (clamp_to_zero) min_x = 0
-    else if (min_x < 0) min_x -= (max_x - min_x) * 0.02
-    return [min_x, max_x + (max_x - min_x) * 0.02]
+    const min_x = Math.min(...all_x), max_x = Math.max(...all_x)
+    const padding = (max_x - min_x) * 0.02 // Calculate padding from original range
+    if (is_horizontal || clamp_to_zero) return [0, max_x + padding]
+    return [min_x < 0 ? min_x - padding : min_x, max_x + padding]
   })
 
   let y_range = $derived.by((): [number, number] | undefined => {
     if (!series_data.length) return undefined
     const all_y = series_data.flatMap((srs) => srs.y)
-    let min_y = Math.min(...all_y), max_y = Math.max(...all_y)
-    if (!is_horizontal) min_y = 0
-    else if (clamp_to_zero) min_y = 0
-    else if (min_y < 0) min_y -= (max_y - min_y) * 0.02
-    return [min_y, max_y + (max_y - min_y) * 0.02]
+    const min_y = Math.min(...all_y), max_y = Math.max(...all_y)
+    const padding = (max_y - min_y) * 0.02 // Calculate padding from original range
+    if (!is_horizontal || clamp_to_zero) return [0, max_y + padding]
+    return [min_y < 0 ? min_y - padding : min_y, max_y + padding]
   })
 
   // Get axis labels based on orientation
