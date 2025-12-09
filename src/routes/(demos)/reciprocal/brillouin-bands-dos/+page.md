@@ -2,6 +2,33 @@
 
 Integrated visualization of band structures, density of states, and Brillouin zone with k-path synchronization.
 
+## Electronic Bands with Fermi Level
+
+Electronic band structures display the Fermi level (E<sub>F</sub>) as a dashed red line when `efermi` is present. Note: this example uses bands and DOS from different materials for demonstration.
+
+```svelte example
+<script>
+  import { BrillouinBandsDos } from 'matterviz'
+  import { electronic_bands } from '$site/electronic/bands'
+  import { dos_spin_polarization } from '$site/electronic/dos'
+  import { structure_map } from '$site/structures'
+</script>
+
+<BrillouinBandsDos
+  band_structs={electronic_bands.cao_2605}
+  doses={dos_spin_polarization}
+  structure={structure_map.get('mp-1')}
+  bands_props={{ y_axis: { label: 'Energy (eV)' } }}
+  dos_props={{ y_axis: { label: '' } }}
+  class="full-bleed"
+  style="margin-block: 1em 2em"
+/>
+```
+
+## Phonon Bands with Custom Styling
+
+Phonon band structure with acoustic/optical mode styling:
+
 ```svelte example
 <script>
   import { BrillouinBandsDos } from 'matterviz'

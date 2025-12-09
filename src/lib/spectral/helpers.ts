@@ -18,20 +18,21 @@ const THz_TO_CM = THz_TO_HZ / (C_LIGHT * 100) // cm^-1 (c in cm/s)
 export const N_ACOUSTIC_MODES = 3 // Number of acoustic modes in typical 3D crystals
 
 // Convert symmetry point symbols to pretty-printed versions.
-// Handles Greek letters and subscripts.
+// Handles Greek letters (both plain and LaTeX backslash-prefixed) and subscripts.
 export function pretty_sym_point(symbol: string): string {
   if (!symbol) return ``
 
   // Remove underscores (htmlify maps S0 → S<sub>0</sub> but leaves S_0 as is)
   // Replace common symmetry point names with Greek letters
+  // Handle both plain names (GAMMA) and LaTeX notation (\Gamma) from pymatgen
   // Handle subscripts: convert S0 to S₀, K1 to K₁, Γ1 to Γ₁, etc.
   // Use \p{L} to match any Unicode letter (not just ASCII A-Z)
   return symbol
     .replace(/_/g, ``)
-    .replace(/GAMMA/gi, `Γ`)
-    .replace(/DELTA/gi, `Δ`)
-    .replace(/SIGMA/gi, `Σ`)
-    .replace(/LAMBDA/gi, `Λ`)
+    .replace(/\\?GAMMA/gi, `Γ`)
+    .replace(/\\?DELTA/gi, `Δ`)
+    .replace(/\\?SIGMA/gi, `Σ`)
+    .replace(/\\?LAMBDA/gi, `Λ`)
     .replace(
       /(\p{L})(\d+)/gu,
       (_, letter, num) =>
@@ -770,4 +771,65 @@ export function generate_ribbon_path(
   ]
 
   return path_parts.join(` `)
+}
+
+/** Calculate fraction of |values| that are negative. Used to detect imaginary phonon modes. */
+export function negative_fraction(values: number[]): number {
+  let [neg, total] = [0, 0]
+  for (const val of values) {
+    if (!Number.isFinite(val)) continue
+    total += Math.abs(val)
+    if (val < 0) neg += Math.abs(val)
+  }
+  return total > 0 ? neg / total : 0
+}
+
+/** Compute frequency/energy range from bands and DOS. Clamps phonon min to 0 if noise < 0.5%. */
+export function compute_frequency_range(
+  band_structs: unknown,
+  doses: unknown,
+  padding_factor = 0.02,
+): [number, number] | undefined {
+  let [min_val, max_val, is_phonon] = [Infinity, -Infinity, false]
+  const all_freqs: number[] = []
+
+  const bs_list = band_structs
+    ? `qpoints` in (band_structs as object)
+      ? [normalize_band_structure(band_structs)]
+      : Object.values(band_structs as object).map(normalize_band_structure)
+    : []
+  for (const bs of bs_list) {
+    if (!bs) continue
+    if (`qpoints` in bs) is_phonon = true
+    for (const band of bs.bands) {
+      for (const val of band) {
+        if (!Number.isFinite(val)) continue
+        all_freqs.push(val)
+        min_val = Math.min(min_val, val)
+        max_val = Math.max(max_val, val)
+      }
+    }
+  }
+
+  const dos_list = doses
+    ? `densities` in (doses as object)
+      ? [normalize_dos(doses)]
+      : Object.values(doses as object).map((dos) => normalize_dos(dos))
+    : []
+  for (const dos of dos_list) {
+    if (!dos) continue
+    if (dos.type === `phonon`) is_phonon = true
+    for (const val of dos.type === `phonon` ? dos.frequencies : dos.energies) {
+      if (!Number.isFinite(val)) continue
+      all_freqs.push(val)
+      min_val = Math.min(min_val, val)
+      max_val = Math.max(max_val, val)
+    }
+  }
+
+  if (!Number.isFinite(min_val) || !Number.isFinite(max_val)) return undefined
+  // Clamp phonon min to 0 if negative contribution < 0.5% (noise threshold)
+  if (is_phonon && min_val < 0 && negative_fraction(all_freqs) < 0.005) min_val = 0
+  const padding = (max_val - min_val) * padding_factor
+  return [is_phonon && min_val === 0 ? 0 : min_val - padding, max_val + padding]
 }

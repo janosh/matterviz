@@ -3,6 +3,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
+  import { compute_frequency_range } from './helpers'
   import type { BaseBandStructure, DosData, HoveredData } from './types'
 
   let {
@@ -23,10 +24,35 @@
     children?: Snippet<[HoveredData]>
   } = $props()
 
-  // Shared y-axis configuration - use single object when shared_y_axis is true
-  let shared_y_axis_obj = $state<{ range?: [number, number] }>({})
-  let bands_y_axis = $derived(shared_y_axis ? shared_y_axis_obj : {})
-  let dos_y_axis = $derived(shared_y_axis ? shared_y_axis_obj : {})
+  // Compute shared frequency/energy range from both bands and DOS data
+  let shared_frequency_range = $derived(
+    shared_y_axis ? compute_frequency_range(band_structs, doses) : undefined,
+  )
+
+  // Extract Fermi level from electronic band structure or DOS data
+  let fermi_level = $derived.by((): number | undefined => {
+    // Check band structures for efermi
+    const bs_source = `efermi` in (band_structs as object)
+      ? band_structs
+      : Object.values(band_structs)[0]
+    const bs_efermi = (bs_source as Record<string, unknown>)?.efermi
+    if (typeof bs_efermi === `number`) return bs_efermi
+
+    // Check DOS for efermi
+    const dos_source = `efermi` in (doses as object) ? doses : Object.values(doses)[0]
+    const dos_efermi = (dos_source as Record<string, unknown>)?.efermi
+    return typeof dos_efermi === `number` ? dos_efermi : undefined
+  })
+
+  // Shared y-axis configuration
+  let bands_y_axis = $derived(
+    shared_y_axis ? { range: shared_frequency_range, ...bands_props.y_axis } : {},
+  )
+  let dos_y_axis = $derived(
+    shared_y_axis
+      ? { label: ``, range: shared_frequency_range, ...dos_props.y_axis }
+      : { label: `` },
+  )
 
   // Track hovered frequency from DOS to show reference line in Bands
   let hovered_frequency = $state<number | null>(null)
@@ -40,19 +66,21 @@
   {@render children?.({ hovered_frequency })}
   <Bands
     {band_structs}
+    {fermi_level}
+    {...bands_props}
     y_axis={bands_y_axis}
     reference_frequency={hovered_frequency}
-    {...bands_props}
-    padding={{ r: 15 }}
+    padding={{ r: 15, ...bands_props.padding }}
   />
 
   <Dos
     {doses}
+    {fermi_level}
     orientation="horizontal"
-    y_axis={{ ...dos_y_axis, label: `` }}
+    {...dos_props}
+    y_axis={dos_y_axis}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
-    padding={{ l: 15 }}
-    {...dos_props}
+    padding={{ l: 15, ...dos_props.padding }}
   />
 </div>
