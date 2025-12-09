@@ -35,6 +35,7 @@ export function moyo_cell_to_structure(
 
   // Calculate lattice parameters from matrix
   const lattice_params = math.calc_lattice_params(lattice_matrix)
+  const lattice_T = math.transpose_3x3_matrix(lattice_matrix)
 
   // Build sites from positions and atomic numbers
   const sites: Site[] = cell.positions.map((abc, idx) => {
@@ -44,12 +45,11 @@ export function moyo_cell_to_structure(
       throw new Error(`Unknown atomic number: ${atomic_number}`)
     }
 
-    // Wrap fractional coordinates to [0, 1) range
-    // moyo-wasm may return coordinates outside this range
+    // Wrap fractional coordinates to [0, 1) range (moyo-wasm may return outside)
     const wrapped_abc = wrap_to_unit_cell(abc as Vec3)
 
-    // Convert fractional to Cartesian coordinates: xyz = abc · lattice_matrix
-    const xyz = frac_to_cart(wrapped_abc, lattice_matrix)
+    // Convert fractional to Cartesian: xyz = lattice_T · abc
+    const xyz = math.mat3x3_vec3_multiply(lattice_T, wrapped_abc)
 
     // Oxidation state is set to 0 (unknown) because moyo-wasm only provides atomic numbers.
     // transformed cell may have different/reordered sites, making it non-trivial to
@@ -64,18 +64,6 @@ export function moyo_cell_to_structure(
     ...lattice_params,
   }
   return { lattice, sites, charge: original_structure.charge, id: original_structure.id }
-}
-
-// Convert fractional coordinates to Cartesian coordinates.
-// xyz = [a, b, c] · [[ax, ay, az], [bx, by, bz], [cx, cy, cz]]
-function frac_to_cart(frac: Vec3, lattice_matrix: math.Matrix3x3): Vec3 { // Cartesian coordinates [x, y, z]
-  const [fa, fb, fc] = frac
-  const [avec, bvec, cvec] = lattice_matrix
-  return [
-    fa * avec[0] + fb * bvec[0] + fc * cvec[0],
-    fa * avec[1] + fb * bvec[1] + fc * cvec[1],
-    fa * avec[2] + fb * bvec[2] + fc * cvec[2],
-  ]
 }
 
 // Get the conventional (standardized) cell from symmetry analysis data.

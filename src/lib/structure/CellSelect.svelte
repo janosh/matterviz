@@ -70,10 +70,6 @@
   onmouseenter={() => (menu_open = true)}
   onmouseleave={() => (menu_open = false)}
   onfocusin={() => (menu_open = true)}
-  ontouchstart={(event) => {
-    // Open on touch, but don't prevent default to allow normal tap behavior
-    if (!menu_open && event.target instanceof HTMLButtonElement) menu_open = true
-  }}
 >
   <button
     type="button"
@@ -258,22 +254,21 @@
   /* Custom input row */
   .custom-input-row {
     display: flex;
-    gap: 2px;
+    align-items: center;
+    gap: 4px;
   }
   .custom-input-row input {
-    flex: 1;
-    width: 100%;
+    max-width: 50px;
     padding: 2px 4px;
-    box-sizing: border-box;
+    margin-inline: 6px 0;
     font-size: 0.9em;
   }
   .custom-input-row input.invalid {
     border-color: rgba(255, 100, 100, 0.6);
   }
   .apply-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
+    place-items: center;
     padding: 2px 4px;
   }
   .apply-btn:disabled {
