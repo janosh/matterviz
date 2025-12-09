@@ -2,14 +2,14 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { euclidean_dist, mat3x3_vec3_multiply } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
-import { find_image_atoms, get_pbc_image_sites } from '$lib/structure'
+import { find_image_atoms, get_pbc_image_sites, wrap_to_unit_cell } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
 import { structure_map } from '$site/structures'
 import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '$site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
-import { expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 const mp_1_struct = structure_map.get(`mp-1`) as PymatgenStructure
 const mp_2_struct = structure_map.get(`mp-2`) as PymatgenStructure
@@ -1099,4 +1099,132 @@ test(`find_image_atoms uses physical tolerance for large cells`, () => {
   const images_explicit = find_image_atoms(structure, { tolerance: 0.05 })
   const c_images_explicit = images_explicit.filter(([idx]) => idx === 0)
   expect(c_images_explicit.length).toBeGreaterThan(0)
+})
+
+// Tests for wrap_to_unit_cell function
+describe(`wrap_to_unit_cell`, () => {
+  test.each([
+    { input: [0.0, 0.0, 0.0], expected: [0.0, 0.0, 0.0], desc: `origin stays at origin` },
+    { input: [0.5, 0.5, 0.5], expected: [0.5, 0.5, 0.5], desc: `center stays at center` },
+    {
+      input: [0.25, 0.75, 0.1],
+      expected: [0.25, 0.75, 0.1],
+      desc: `values in range unchanged`,
+    },
+  ] as { input: Vec3; expected: Vec3; desc: string }[])(
+    `values already in [0, 1): $desc`,
+    ({ input, expected }) => {
+      const result = wrap_to_unit_cell(input)
+      for (let dim = 0; dim < 3; dim++) {
+        expect(result[dim]).toBeCloseTo(expected[dim], 10)
+      }
+    },
+  )
+
+  test.each([
+    { input: [1.3, 0.5, 0.5], expected: [0.3, 0.5, 0.5], desc: `x > 1 wraps` },
+    { input: [0.5, 2.7, 0.5], expected: [0.5, 0.7, 0.5], desc: `y > 1 wraps` },
+    { input: [0.5, 0.5, 3.1], expected: [0.5, 0.5, 0.1], desc: `z > 1 wraps` },
+    {
+      input: [1.0, 2.0, 3.0],
+      expected: [0.0, 0.0, 0.0],
+      desc: `exact integers wrap to 0`,
+    },
+    {
+      input: [5.8, 10.2, 100.9],
+      expected: [0.8, 0.2, 0.9],
+      desc: `large values wrap correctly`,
+    },
+  ] as { input: Vec3; expected: Vec3; desc: string }[])(
+    `values > 1 wrap correctly: $desc`,
+    ({ input, expected }) => {
+      const result = wrap_to_unit_cell(input)
+      for (let dim = 0; dim < 3; dim++) {
+        expect(result[dim]).toBeCloseTo(expected[dim], 10)
+      }
+    },
+  )
+
+  test.each([
+    { input: [-0.3, 0.5, 0.5], expected: [0.7, 0.5, 0.5], desc: `x < 0 wraps` },
+    { input: [0.5, -0.8, 0.5], expected: [0.5, 0.2, 0.5], desc: `y < 0 wraps` },
+    { input: [0.5, 0.5, -0.1], expected: [0.5, 0.5, 0.9], desc: `z < 0 wraps` },
+    {
+      input: [-1.0, -2.0, -3.0],
+      expected: [0.0, 0.0, 0.0],
+      desc: `negative integers wrap to 0`,
+    },
+    {
+      input: [-5.2, -10.7, -100.4],
+      expected: [0.8, 0.3, 0.6],
+      desc: `large negative values wrap`,
+    },
+  ] as { input: Vec3; expected: Vec3; desc: string }[])(
+    `negative values wrap correctly: $desc`,
+    ({ input, expected }) => {
+      const result = wrap_to_unit_cell(input)
+      for (let dim = 0; dim < 3; dim++) {
+        expect(result[dim]).toBeCloseTo(expected[dim], 10)
+      }
+    },
+  )
+
+  test.each([
+    {
+      input: [0.9999999999, 0.5, 0.5],
+      expected: [0.0, 0.5, 0.5],
+      desc: `x very close to 1`,
+    },
+    {
+      input: [0.5, 0.99999999999, 0.5],
+      expected: [0.5, 0.0, 0.5],
+      desc: `y very close to 1`,
+    },
+    {
+      input: [0.5, 0.5, 0.999999999999],
+      expected: [0.5, 0.5, 0.0],
+      desc: `z very close to 1`,
+    },
+    {
+      input: [1.0 - 1e-12, 1.0 - 1e-11, 1.0 - 1e-10],
+      expected: [0.0, 0.0, 0.0],
+      desc: `all dims very close to 1`,
+    },
+  ] as { input: Vec3; expected: Vec3; desc: string }[])(
+    `floating point precision near 1 handled: $desc`,
+    ({ input, expected }) => {
+      const result = wrap_to_unit_cell(input)
+      // Values very close to 1 should become 0 to avoid floating point issues
+      for (let dim = 0; dim < 3; dim++) {
+        expect(result[dim]).toBeCloseTo(expected[dim], 8)
+      }
+    },
+  )
+
+  test(`result is always a Vec3 tuple`, () => {
+    const result = wrap_to_unit_cell([1.5, -0.5, 2.3])
+    expect(Array.isArray(result)).toBe(true)
+    expect(result).toHaveLength(3)
+    expect(result.every((coord) => typeof coord === `number`)).toBe(true)
+  })
+
+  test(`result values are always in [0, 1) range`, () => {
+    // Test a variety of edge cases
+    const test_inputs: Vec3[] = [
+      [0.0, 0.0, 0.0],
+      [1.0, 1.0, 1.0],
+      [-1.0, -1.0, -1.0],
+      [0.5, 0.5, 0.5],
+      [100.123, -50.456, 0.789],
+      [1e-15, 1 - 1e-15, 0.5],
+    ]
+
+    for (const input of test_inputs) {
+      const result = wrap_to_unit_cell(input)
+      for (let dim = 0; dim < 3; dim++) {
+        expect(result[dim]).toBeGreaterThanOrEqual(0.0)
+        expect(result[dim]).toBeLessThan(1.0)
+      }
+    }
+  })
 })

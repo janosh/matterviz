@@ -23,6 +23,7 @@
   import type { AtomColorConfig } from './atom-properties'
   import { get_property_colors } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
+  import CellSelect from './CellSelect.svelte'
   import type { StructureHandlerData } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import { parse_any_structure } from './parse'
@@ -30,7 +31,6 @@
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
   import StructureScene from './StructureScene.svelte'
-  import SupercellSelector from './SupercellSelector.svelte'
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
@@ -721,7 +721,11 @@
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}
-    <Spinner text="Loading structure..." {...spinner_props} />
+    <Spinner
+      text="Loading structure..."
+      {...spinner_props}
+      style="flex: 1; display: grid; place-content: center"
+    />
   {:else if error_msg}
     <div class="error-state">
       <p class="error">{error_msg}</p>
@@ -878,7 +882,7 @@
       {sym_data}
     >
       {#if structure && `lattice` in structure}
-        <SupercellSelector
+        <CellSelect
           bind:supercell_scaling
           bind:cell_type
           {sym_data}
@@ -962,6 +966,7 @@
     border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
     background: var(--struct-bg-override, var(--struct-bg));
     color: var(--struct-text-color);
+    display: flex;
   }
   .structure.active {
     z-index: var(--struct-active-z-index, 2);
@@ -1074,7 +1079,10 @@
     text-align: center;
   }
   p.warn {
-    text-align: center;
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
   }
   .error-state {
     display: flex;
@@ -1153,14 +1161,14 @@
   .bond-edit-status .removed {
     color: #f44336;
   }
-  /* SupercellSelector: position at left of legend, show on hover */
-  .structure :global(.supercell-selector) {
+  /* CellSelect: position at left of legend, show on hover */
+  .structure :global(.cell-select) {
     order: -1; /* Move to left side of AtomLegend flex container */
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
   }
-  .structure:hover :global(.supercell-selector) {
+  .structure:hover :global(.cell-select) {
     opacity: 1;
     pointer-events: auto;
   }

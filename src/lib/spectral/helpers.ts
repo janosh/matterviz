@@ -637,10 +637,7 @@ export function find_qpoint_at_rescaled_x(
     const [x_start, x_end] = segment_range
 
     for (
-      const [x_pos, idx] of [
-        [x_start, start_idx],
-        [x_end, end_idx],
-      ] as const
+      const [x_pos, idx] of [[x_start, start_idx], [x_end, end_idx]] as const
     ) {
       const dist = Math.abs(rescaled_x - x_pos)
       if (dist < min_dist) {
@@ -773,6 +770,30 @@ export function generate_ribbon_path(
   return path_parts.join(` `)
 }
 
+// Extract efermi from a data source (band structure or DOS).
+// Handles both single objects with an efermi field and dicts of objects.
+// Returns undefined if no valid efermi is found or if the source is empty.
+export function extract_efermi(data: unknown): number | undefined {
+  if (!data || typeof data !== `object`) return undefined
+
+  const obj = data as Record<string, unknown>
+
+  // Direct efermi field on the object
+  if (`efermi` in obj && typeof obj.efermi === `number`) return obj.efermi
+
+  // Dict of objects - try to get efermi from first value
+  const values = Object.values(obj)
+  if (values.length === 0) return undefined
+
+  const first_val = values[0]
+  if (first_val && typeof first_val === `object`) {
+    const efermi = (first_val as Record<string, unknown>).efermi
+    if (typeof efermi === `number`) return efermi
+  }
+
+  return undefined
+}
+
 /** Calculate fraction of |values| that are negative. Used to detect imaginary phonon modes. */
 export function negative_fraction(values: number[]): number {
   let [neg, total] = [0, 0]
@@ -784,6 +805,25 @@ export function negative_fraction(values: number[]): number {
   return total > 0 ? neg / total : 0
 }
 
+/** Check if raw band structure input has electronic markers (efermi, kpoints, or electronic @class).
+ * Must be called on raw input before normalization since these fields aren't preserved. */
+function is_electronic_band_struct(bs: unknown): boolean {
+  if (!bs || typeof bs !== `object`) return false
+  const obj = bs as Record<string, unknown>
+  // Electronic band structures have efermi field
+  if (`efermi` in obj && typeof obj.efermi === `number`) return true
+  // Pymatgen electronic format uses kpoints (not qpoints)
+  if (`kpoints` in obj && Array.isArray(obj.kpoints) && obj.kpoints.length > 0) {
+    return true
+  }
+  // Pymatgen @class: BandStructure* but not Phonon*
+  const class_name = String(obj[`@class`] ?? ``)
+  if (class_name.startsWith(`BandStructure`) && !class_name.includes(`Phonon`)) {
+    return true
+  }
+  return false
+}
+
 /** Compute frequency/energy range from bands and DOS. Clamps phonon min to 0 if noise < 0.5%. */
 export function compute_frequency_range(
   band_structs: unknown,
@@ -793,14 +833,36 @@ export function compute_frequency_range(
   let [min_val, max_val, is_phonon] = [Infinity, -Infinity, false]
   const all_freqs: number[] = []
 
+  // Check raw band_structs for electronic markers before normalization
+  // (normalized structures always have qpoints, so we can't detect from them)
+  let has_electronic_bs = false
+  if (band_structs && typeof band_structs === `object`) {
+    // Single structure check
+    if (is_electronic_band_struct(band_structs)) {
+      has_electronic_bs = true
+    } else if (!(`qpoints` in band_structs)) {
+      // Dict of band structures - check each value
+      for (const bs_val of Object.values(band_structs)) {
+        if (is_electronic_band_struct(bs_val)) {
+          has_electronic_bs = true
+          break
+        }
+      }
+    }
+  }
+
   const bs_list = band_structs
     ? `qpoints` in (band_structs as object)
       ? [normalize_band_structure(band_structs)]
       : Object.values(band_structs as object).map(normalize_band_structure)
     : []
+
+  // If band structures exist and aren't electronic, mark as phonon
+  const has_band_structs = bs_list.some(Boolean)
+  if (has_band_structs && !has_electronic_bs) is_phonon = true
+
   for (const bs of bs_list) {
     if (!bs) continue
-    if (`qpoints` in bs) is_phonon = true
     for (const band of bs.bands) {
       for (const val of band) {
         if (!Number.isFinite(val)) continue
@@ -818,7 +880,9 @@ export function compute_frequency_range(
     : []
   for (const dos of dos_list) {
     if (!dos) continue
+    // DOS type detection: explicit type field is authoritative
     if (dos.type === `phonon`) is_phonon = true
+    if (dos.type === `electronic`) is_phonon = false
     for (const val of dos.type === `phonon` ? dos.frequencies : dos.energies) {
       if (!Number.isFinite(val)) continue
       all_freqs.push(val)

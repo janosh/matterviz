@@ -1,11 +1,11 @@
 <script lang="ts">
   import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
-  import type { BaseBandStructure, DosData, PhononDos } from '$lib/spectral/types'
+  import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
   import { electronic_bands } from '$site/electronic/bands'
   import { dos_spin_polarization } from '$site/electronic/dos'
 
   // Testing: CaO bands + mp-865805 DOS (mismatched materials, no shifts applied)
-  const electronic_dos = dos_spin_polarization as unknown as DosData
+  const electronic_dos = dos_spin_polarization
 
   const mock_band_structure: BaseBandStructure = {
     recip_lattice: {

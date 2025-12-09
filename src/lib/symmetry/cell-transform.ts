@@ -3,6 +3,7 @@ import type { ElementSymbol, Vec3 } from '$lib'
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import * as math from '$lib/math'
 import type { PymatgenStructure, Site } from '$lib/structure'
+import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 
 export type CellType = `original` | `conventional` | `primitive`
@@ -50,52 +51,24 @@ export function moyo_cell_to_structure(
     // Convert fractional to Cartesian coordinates: xyz = abc · lattice_matrix
     const xyz = frac_to_cart(wrapped_abc, lattice_matrix)
 
-    return {
-      species: [{ element, occu: 1, oxidation_state: 0 }],
-      abc: wrapped_abc,
-      xyz,
-      label: element,
-      properties: {},
-    }
+    // Oxidation state is set to 0 (unknown) because moyo-wasm only provides atomic numbers.
+    // transformed cell may have different/reordered sites, making it non-trivial to
+    // map oxidation states from original structure.
+    const species = [{ element, occu: 1, oxidation_state: 0 }]
+    return { species, abc: wrapped_abc, xyz, label: element, properties: {} }
   })
 
-  return {
-    lattice: {
-      matrix: lattice_matrix,
-      pbc: original_structure.lattice.pbc,
-      ...lattice_params,
-    },
-    sites,
-    charge: original_structure.charge,
-    id: original_structure.id,
+  const lattice = {
+    matrix: lattice_matrix,
+    pbc: original_structure.lattice.pbc,
+    ...lattice_params,
   }
+  return { lattice, sites, charge: original_structure.charge, id: original_structure.id }
 }
 
-/**
- * Wrap fractional coordinates to [0, 1) range.
- * Handles periodicity by taking the fractional part of each coordinate.
- *
- * @param frac - Fractional coordinates that may be outside [0, 1)
- * @returns Wrapped fractional coordinates in [0, 1)
- */
-function wrap_to_unit_cell(frac: Vec3): Vec3 {
-  return frac.map((coord) => {
-    // Use modulo to wrap to [0, 1), handling negative values correctly
-    const wrapped = ((coord % 1) + 1) % 1
-    // Handle floating point precision: values very close to 1 should become 0
-    return wrapped >= 0.9999999999 ? 0 : wrapped
-  }) as Vec3
-}
-
-/**
- * Convert fractional coordinates to Cartesian coordinates.
- * xyz = [a, b, c] · [[ax, ay, az], [bx, by, bz], [cx, cy, cz]]
- *
- * @param frac - Fractional coordinates [a, b, c]
- * @param lattice_matrix - 3x3 lattice matrix where each row is a lattice vector
- * @returns Cartesian coordinates [x, y, z]
- */
-function frac_to_cart(frac: Vec3, lattice_matrix: math.Matrix3x3): Vec3 {
+// Convert fractional coordinates to Cartesian coordinates.
+// xyz = [a, b, c] · [[ax, ay, az], [bx, by, bz], [cx, cy, cz]]
+function frac_to_cart(frac: Vec3, lattice_matrix: math.Matrix3x3): Vec3 { // Cartesian coordinates [x, y, z]
   const [fa, fb, fc] = frac
   const [avec, bvec, cvec] = lattice_matrix
   return [
@@ -105,50 +78,31 @@ function frac_to_cart(frac: Vec3, lattice_matrix: math.Matrix3x3): Vec3 {
   ]
 }
 
-/**
- * Get the conventional (standardized) cell from symmetry analysis data.
- * The conventional cell is the standard crystallographic setting for the space group.
- *
- * @param original_structure - The original input structure
- * @param sym_data - MoyoDataset from symmetry analysis containing std_cell
- * @returns The conventional cell as a PymatgenStructure
- */
+// Get the conventional (standardized) cell from symmetry analysis data.
+// The conventional cell is the standard crystallographic setting for the space group.
 export function get_conventional_cell(
-  original_structure: PymatgenStructure,
-  sym_data: MoyoDataset,
-): PymatgenStructure {
+  original_structure: PymatgenStructure, // The original input structure
+  sym_data: MoyoDataset, // MoyoDataset from symmetry analysis containing std_cell
+): PymatgenStructure { // The conventional cell as a PymatgenStructure
   return moyo_cell_to_structure(sym_data.std_cell, original_structure)
 }
 
-/**
- * Get the primitive cell from symmetry analysis data.
- * The primitive cell is the smallest unit cell with one lattice point.
- *
- * @param original_structure - The original input structure
- * @param sym_data - MoyoDataset from symmetry analysis containing prim_std_cell
- * @returns The primitive cell as a PymatgenStructure
- */
+// Get the primitive cell from symmetry analysis data.
+// The primitive cell is the smallest unit cell with one lattice point.
 export function get_primitive_cell(
-  original_structure: PymatgenStructure,
-  sym_data: MoyoDataset,
-): PymatgenStructure {
+  original_structure: PymatgenStructure, // The original input structure
+  sym_data: MoyoDataset, // MoyoDataset from symmetry analysis containing prim_std_cell
+): PymatgenStructure { // The primitive cell as a PymatgenStructure
   return moyo_cell_to_structure(sym_data.prim_std_cell, original_structure)
 }
 
-/**
- * Transform a structure based on the selected cell type.
- * Returns the original structure if cell_type is 'original' or if sym_data is not available.
- *
- * @param structure - The original structure
- * @param cell_type - The desired cell type ('original', 'conventional', or 'primitive')
- * @param sym_data - Optional MoyoDataset from symmetry analysis
- * @returns The transformed structure (or original if no transformation needed)
- */
+// Transform a structure based on the selected cell type.
+// Returns the original structure if cell_type is 'original' or if sym_data is not available.
 export function transform_cell(
-  structure: PymatgenStructure,
-  cell_type: CellType,
-  sym_data: MoyoDataset | null,
-): PymatgenStructure {
+  structure: PymatgenStructure, // The original structure
+  cell_type: CellType, // The desired cell type ('original', 'conventional', or 'primitive')
+  sym_data: MoyoDataset | null, // Optional MoyoDataset from symmetry analysis
+): PymatgenStructure { //transformed structure (or original if no transformation needed)
   if (cell_type === `original` || !sym_data) {
     return structure
   }

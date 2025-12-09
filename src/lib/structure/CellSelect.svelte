@@ -36,6 +36,11 @@
     primitive: `Prim`,
     conventional: `Conv`,
   }
+  const cell_tooltips: Record<CellType, string> = {
+    original: `Original unit cell (as provided)`,
+    primitive: `Primitive cell (smallest repeating unit)`,
+    conventional: `Conventional cell (standardized representation)`,
+  }
 
   function apply_preset(preset: string) {
     supercell_scaling = preset
@@ -59,11 +64,16 @@
 </script>
 
 <div
-  class="supercell-selector"
+  class="cell-select"
   role="group"
   {@attach click_outside({ callback: () => (menu_open = false) })}
   onmouseenter={() => (menu_open = true)}
   onmouseleave={() => (menu_open = false)}
+  onfocusin={() => (menu_open = true)}
+  ontouchstart={(event) => {
+    // Open on touch, but don't prevent default to allow normal tap behavior
+    if (!menu_open && event.target instanceof HTMLButtonElement) menu_open = true
+  }}
 >
   <button
     type="button"
@@ -95,14 +105,17 @@
         {#each cell_types as type (type)}
           {@const disabled = type !== `original` && !sym_data}
           {@const label = cell_labels[type]}
+          {@const tooltip_text = disabled
+          ? `${cell_tooltips[type]} - requires symmetry data`
+          : cell_tooltips[type]}
           <button
             class="cell-type-btn"
             class:selected={cell_type === type}
             class:disabled
             {disabled}
             onclick={() => (cell_type = type)}
-            title={disabled ? `${label} (requires symmetry)` : label}
-            {@attach tooltip()}
+            title={tooltip_text}
+            {@attach tooltip({ content: tooltip_text })}
           >
             {label}
           </button>
@@ -145,7 +158,7 @@
 </div>
 
 <style>
-  .supercell-selector {
+  .cell-select {
     position: relative;
   }
   .toggle-btn {
@@ -207,8 +220,10 @@
     transition: background 0.15s ease;
     white-space: nowrap;
   }
-  .cell-type-btn:hover:not(.disabled) {
-    background: rgba(255, 255, 255, 0.15);
+  @media (hover: hover) {
+    .cell-type-btn:hover:not(.disabled) {
+      background: rgba(255, 255, 255, 0.15);
+    }
   }
   .cell-type-btn.selected {
     background: rgba(0, 255, 255, 0.4);
@@ -230,8 +245,10 @@
     font-size: 0.9em;
     border-radius: var(--border-radius, 3pt);
   }
-  .preset-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
+  @media (hover: hover) {
+    .preset-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
   }
   .preset-btn.selected {
     border-color: rgba(0, 255, 255, 0.5);

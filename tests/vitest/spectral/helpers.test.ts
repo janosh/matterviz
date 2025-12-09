@@ -1340,6 +1340,51 @@ describe(`compute_frequency_range`, () => {
     // Should preserve negative range since imaginary modes are significant
     expect(range?.[0]).toBeLessThan(0)
   })
+
+  // Tests electronic detection via different markers (efermi, kpoints, @class)
+  // Uses small negative values (< 0.5% of total) that would be clamped for phonon but preserved for electronic
+  it.each([
+    { marker: { efermi: 5 }, is_electronic: true, desc: `efermi field` },
+    {
+      marker: { kpoints: [{ frac_coords: [0, 0, 0], label: `Γ` }] },
+      is_electronic: true,
+      desc: `kpoints array`,
+    },
+    {
+      marker: { '@class': `BandStructureSymmLine` },
+      is_electronic: true,
+      desc: `electronic @class`,
+    },
+    {
+      marker: { '@class': `PhononBandStructureSymmLine` },
+      is_electronic: false,
+      desc: `phonon @class`,
+    },
+  ])(`detects band structure type via $desc`, ({ marker, is_electronic }) => {
+    const bs = { ...make_bs([[-0.01, 5, 10]]), ...marker }
+    const range = compute_frequency_range(bs, undefined)
+    expect(range).toBeDefined()
+    // Electronic preserves small negatives, phonon clamps to 0
+    if (is_electronic) {
+      expect(range?.[0]).toBeLessThan(0)
+    } else {
+      expect(range?.[0]).toBe(0)
+    }
+  })
+
+  it(`handles electronic DOS overriding phonon band structure detection`, () => {
+    // Mixed: phonon-like band structure with electronic DOS - DOS type is authoritative
+    const bs = make_bs([[0, 5, 10]])
+    const dos = {
+      type: `electronic` as const,
+      energies: [-5, 0, 5],
+      densities: [0, 1, 0],
+    }
+    const range = compute_frequency_range(bs, dos)
+    expect(range).toBeDefined()
+    // Electronic DOS should override phonon band structure assumption
+    expect(range?.[0]).toBeCloseTo(-5.3, 1)
+  })
 })
 
 describe(`negative_fraction`, () => {

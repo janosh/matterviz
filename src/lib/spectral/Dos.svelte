@@ -6,11 +6,12 @@
   import {
     apply_gaussian_smearing,
     convert_frequencies,
+    extract_efermi,
     negative_fraction,
     normalize_densities,
     normalize_dos,
   } from './helpers'
-  import type { DosData, FrequencyUnit, NormalizationMode } from './types'
+  import type { DosData, DosInput, FrequencyUnit, NormalizationMode } from './types'
 
   let {
     doses,
@@ -27,7 +28,7 @@
     fermi_level = undefined,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
-    doses: DosData | Record<string, DosData>
+    doses: DosInput | Record<string, DosInput>
     x_axis?: AxisConfig
     y_axis?: AxisConfig
     stack?: boolean
@@ -43,8 +44,8 @@
 
   const is_horizontal = $derived(orientation === `horizontal`)
 
-  // Normalize input to dict format
-  let doses_dict = $derived.by(() => {
+  // Normalize input to dict format - converts any DosInput format to DosData
+  let doses_dict = $derived.by((): Record<string, DosData> => {
     if (!doses) return {}
 
     if (`densities` in doses && (`frequencies` in doses || `energies` in doses)) {
@@ -55,7 +56,7 @@
 
     // Already a dict - normalize each DOS
     const result: Record<string, DosData> = {}
-    for (const [key, dos] of Object.entries(doses as Record<string, DosData>)) {
+    for (const [key, dos] of Object.entries(doses as Record<string, DosInput>)) {
       const normalized = normalize_dos(dos)
       if (normalized) result[key] = normalized
     }
@@ -69,11 +70,7 @@
   let effective_fermi_level = $derived.by((): number | undefined => {
     if (fermi_level !== undefined) return fermi_level
     if (is_phonon) return undefined
-
-    // Check raw input for efermi field
-    const source = `efermi` in (doses as object) ? doses : Object.values(doses)[0]
-    const efermi = (source as Record<string, unknown>)?.efermi
-    return typeof efermi === `number` ? efermi : undefined
+    return extract_efermi(doses)
   })
 
   // Convert DOS data to scatter plot series
@@ -139,7 +136,10 @@
     ),
   )
   let clamp_to_zero = $derived(
-    is_phonon && Math.min(...all_freqs) < 0 && negative_fraction(all_freqs) < 0.005,
+    is_phonon &&
+      all_freqs.length > 0 &&
+      Math.min(...all_freqs) < 0 &&
+      negative_fraction(all_freqs) < 0.005,
   )
 
   let x_range = $derived.by((): [number, number] | undefined => {

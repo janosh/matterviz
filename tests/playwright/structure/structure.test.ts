@@ -45,9 +45,9 @@ test.describe(`Structure Component Tests`, () => {
     await expect(page.locator(`#test-structure .measure-mode-dropdown`)).toHaveCount(0)
   })
 
-  test(`SupercellSelector appears on hover and hides on mouse leave`, async ({ page }) => {
+  test(`CellSelect appears on hover and hides on mouse leave`, async ({ page }) => {
     const structure = page.locator(`#test-structure`)
-    const supercell = structure.locator(`.supercell-selector`)
+    const supercell = structure.locator(`.cell-select`)
 
     // Initially hidden
     await expect(supercell).toHaveCSS(`opacity`, `0`)

@@ -1,4 +1,5 @@
-import type { Matrix3x3 } from '$lib/math'
+import type { ElementSymbol } from '$lib'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import {
   get_conventional_cell,
@@ -8,8 +9,6 @@ import {
 } from '$lib/symmetry'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-
-type Vec3 = [number, number, number]
 
 // Helper to create a MoyoCell
 const make_moyo_cell = (
@@ -25,7 +24,7 @@ const make_moyo_cell = (
 // Helper to create a PymatgenStructure
 const make_structure = (
   lattice_matrix: Matrix3x3,
-  sites: { elem: string; abc: Vec3; xyz: Vec3 }[],
+  sites: { elem: ElementSymbol; abc: Vec3; xyz: Vec3 }[],
   lattice_params = { a: 5, b: 5, c: 5, alpha: 90, beta: 90, gamma: 90, volume: 125 },
 ): PymatgenStructure => ({
   lattice: {
@@ -34,7 +33,7 @@ const make_structure = (
     ...lattice_params,
   },
   sites: sites.map(({ elem, abc, xyz }) => ({
-    species: [{ element: elem as never, occu: 1, oxidation_state: 0 }],
+    species: [{ element: elem, occu: 1, oxidation_state: 0 }],
     abc,
     xyz,
     label: elem,
