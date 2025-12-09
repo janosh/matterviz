@@ -10,8 +10,9 @@
   import type { PymatgenStructure } from '$lib/structure'
   import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
-  import type { SymmetrySettings } from '$lib/symmetry'
+  import type { CellType, SymmetrySettings } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
+  import { transform_cell } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -22,6 +23,7 @@
   import type { AtomColorConfig } from './atom-properties'
   import { get_property_colors } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
+  import CellSelect from './CellSelect.svelte'
   import type { StructureHandlerData } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import { parse_any_structure } from './parse'
@@ -29,7 +31,6 @@
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
   import StructureScene from './StructureScene.svelte'
-  import SupercellSelector from './SupercellSelector.svelte'
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
@@ -102,6 +103,8 @@
     element_mapping = $bindable<
       Partial<Record<ElementSymbol, ElementSymbol>> | undefined
     >(),
+    // Cell type: original, conventional, or primitive (requires symmetry analysis)
+    cell_type = $bindable<CellType>(`original`),
     children,
     top_right_controls,
     on_file_load,
@@ -162,6 +165,8 @@
       symmetry_settings?: Partial<SymmetrySettings>
       // Map element symbols to different elements (e.g., {'H': 'Na', 'He': 'Cl'})
       element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
+      // Cell type: original, conventional, or primitive (requires symmetry analysis)
+      cell_type?: CellType
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
       // Atom coloring configuration
@@ -352,23 +357,42 @@
       (typeof show_controls === `number` && width > show_controls),
   )
 
-  // Create supercell if needed
+  // Apply cell type transformation (original, conventional, or primitive)
+  // This must happen BEFORE supercell transformation
+  let cell_transformed_structure = $derived.by(() => {
+    if (!structure || !(`lattice` in structure) || cell_type === `original`) {
+      return structure
+    }
+    // Cell type transformation requires symmetry data
+    if (!sym_data) {
+      return structure
+    }
+    try {
+      return transform_cell(structure as PymatgenStructure, cell_type, sym_data)
+    } catch (error) {
+      console.error(`Failed to transform cell to ${cell_type}:`, error)
+      return structure
+    }
+  })
+
+  // Create supercell if needed (uses cell_transformed_structure as base)
   let supercell_structure = $state(structure)
   let supercell_loading = $state(false)
 
   $effect(() => {
-    if (!structure || !(`lattice` in structure)) {
-      supercell_structure = structure
+    const base_structure = cell_transformed_structure
+    if (!base_structure || !(`lattice` in base_structure)) {
+      supercell_structure = base_structure
       supercell_loading = false
     } else if ([``, `1x1x1`, `1`].includes(supercell_scaling)) {
-      supercell_structure = structure
+      supercell_structure = base_structure
       supercell_loading = false
     } else if (!is_valid_supercell_input(supercell_scaling)) {
-      supercell_structure = structure
+      supercell_structure = base_structure
       supercell_loading = false
     } else {
       // For large supercells, show loading state and use async generation
-      const sites_count = structure.sites?.length || 0
+      const sites_count = base_structure.sites?.length || 0
       const [nx_str, ny_str, nz_str] = supercell_scaling.split(/[x×]/)
       const scaling_mult = (parseInt(nx_str) || 1) * (parseInt(ny_str) || 1) *
         (parseInt(nz_str) || 1)
@@ -382,23 +406,23 @@
         // Use setTimeout to allow UI to update before heavy computation
         setTimeout(() => {
           try {
-            if (structure && `lattice` in structure) {
+            if (base_structure && `lattice` in base_structure) {
               supercell_structure = make_supercell(
-                structure as PymatgenStructure,
+                base_structure as PymatgenStructure,
                 supercell_scaling,
               )
             }
           } catch (error) {
             console.error(`Failed to create supercell:`, error)
-            supercell_structure = structure
+            supercell_structure = base_structure
           } finally {
             supercell_loading = false
           }
         }, 10)
       } else {
-        if (structure && `lattice` in structure) {
+        if (base_structure && `lattice` in base_structure) {
           supercell_structure = make_supercell(
-            structure as PymatgenStructure,
+            base_structure as PymatgenStructure,
             supercell_scaling,
           )
         }
@@ -411,7 +435,7 @@
   let first_run = true
   $effect(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    ;[supercell_scaling, show_image_atoms, structure]
+    ;[supercell_scaling, show_image_atoms, structure, cell_type]
     if (first_run) {
       first_run = false
       return
@@ -697,7 +721,11 @@
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}
-    <Spinner text="Loading structure..." {...spinner_props} />
+    <Spinner
+      text="Loading structure..."
+      {...spinner_props}
+      style="flex: 1; display: grid; place-content: center"
+    />
   {:else if error_msg}
     <div class="error-state">
       <p class="error">{error_msg}</p>
@@ -719,7 +747,7 @@
             title="{fullscreen ? `Exit` : `Enter`} fullscreen"
             aria-pressed={fullscreen}
             class="fullscreen-toggle"
-            style="padding: 0"
+            style="padding: 0 3px"
             {@attach tooltip()}
           >
             {#if typeof fullscreen_toggle === `function`}
@@ -834,6 +862,7 @@
           bind:background_opacity
           bind:color_scheme
           bind:atom_color_config
+          bind:cell_type
           {structure}
           {supercell_loading}
           {sym_data}
@@ -853,8 +882,10 @@
       {sym_data}
     >
       {#if structure && `lattice` in structure}
-        <SupercellSelector
+        <CellSelect
           bind:supercell_scaling
+          bind:cell_type
+          {sym_data}
           loading={supercell_loading}
           direction="up"
         />
@@ -868,7 +899,7 @@
         <Canvas>
           <StructureScene
             structure={displayed_structure}
-            base_structure={structure}
+            base_structure={cell_transformed_structure}
             {...scene_props}
             {lattice_props}
             bind:camera_is_moving
@@ -935,6 +966,7 @@
     border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
     background: var(--struct-bg-override, var(--struct-bg));
     color: var(--struct-text-color);
+    display: flex;
   }
   .structure.active {
     z-index: var(--struct-active-z-index, 2);
@@ -1047,7 +1079,10 @@
     text-align: center;
   }
   p.warn {
-    text-align: center;
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
   }
   .error-state {
     display: flex;
@@ -1126,14 +1161,14 @@
   .bond-edit-status .removed {
     color: #f44336;
   }
-  /* SupercellSelector: position at left of legend, show on hover */
-  .structure :global(.supercell-selector) {
+  /* CellSelect: position at left of legend, show on hover */
+  .structure :global(.cell-select) {
     order: -1; /* Move to left side of AtomLegend flex container */
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
   }
-  .structure:hover :global(.supercell-selector) {
+  .structure:hover :global(.cell-select) {
     opacity: 1;
     pointer-events: auto;
   }

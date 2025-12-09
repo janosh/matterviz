@@ -16,22 +16,24 @@ const THz_TO_CM = THz_TO_HZ / (C_LIGHT * 100) // cm^-1 (c in cm/s)
 
 // Band structure constants
 export const N_ACOUSTIC_MODES = 3 // Number of acoustic modes in typical 3D crystals
+export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
 
 // Convert symmetry point symbols to pretty-printed versions.
-// Handles Greek letters and subscripts.
+// Handles Greek letters (both plain and LaTeX backslash-prefixed) and subscripts.
 export function pretty_sym_point(symbol: string): string {
   if (!symbol) return ``
 
   // Remove underscores (htmlify maps S0 → S<sub>0</sub> but leaves S_0 as is)
   // Replace common symmetry point names with Greek letters
+  // Handle both plain names (GAMMA) and LaTeX notation (\Gamma) from pymatgen
   // Handle subscripts: convert S0 to S₀, K1 to K₁, Γ1 to Γ₁, etc.
   // Use \p{L} to match any Unicode letter (not just ASCII A-Z)
   return symbol
     .replace(/_/g, ``)
-    .replace(/GAMMA/gi, `Γ`)
-    .replace(/DELTA/gi, `Δ`)
-    .replace(/SIGMA/gi, `Σ`)
-    .replace(/LAMBDA/gi, `Λ`)
+    .replace(/\\?GAMMA/gi, `Γ`)
+    .replace(/\\?DELTA/gi, `Δ`)
+    .replace(/\\?SIGMA/gi, `Σ`)
+    .replace(/\\?LAMBDA/gi, `Λ`)
     .replace(
       /(\p{L})(\d+)/gu,
       (_, letter, num) =>
@@ -636,10 +638,7 @@ export function find_qpoint_at_rescaled_x(
     const [x_start, x_end] = segment_range
 
     for (
-      const [x_pos, idx] of [
-        [x_start, start_idx],
-        [x_end, end_idx],
-      ] as const
+      const [x_pos, idx] of [[x_start, start_idx], [x_end, end_idx]] as const
     ) {
       const dist = Math.abs(rescaled_x - x_pos)
       if (dist < min_dist) {
@@ -770,4 +769,134 @@ export function generate_ribbon_path(
   ]
 
   return path_parts.join(` `)
+}
+
+// Extract efermi from a data source (band structure or DOS).
+// Handles both single objects with an efermi field and dicts of objects.
+// Returns undefined if no valid efermi is found or if the source is empty.
+export function extract_efermi(data: unknown): number | undefined {
+  if (!data || typeof data !== `object`) return undefined
+
+  const obj = data as Record<string, unknown>
+
+  // Direct efermi field on the object
+  if (`efermi` in obj && typeof obj.efermi === `number`) return obj.efermi
+
+  // Dict of objects - try to get efermi from first value
+  const values = Object.values(obj)
+  if (values.length === 0) return undefined
+
+  const first_val = values[0]
+  if (first_val && typeof first_val === `object`) {
+    const efermi = (first_val as Record<string, unknown>).efermi
+    if (typeof efermi === `number`) return efermi
+  }
+
+  return undefined
+}
+
+/** Calculate fraction of |values| that are negative. Used to detect imaginary phonon modes. */
+export function negative_fraction(values: number[]): number {
+  let [neg, total] = [0, 0]
+  for (const val of values) {
+    if (!Number.isFinite(val)) continue
+    total += Math.abs(val)
+    if (val < 0) neg += Math.abs(val)
+  }
+  return total > 0 ? neg / total : 0
+}
+
+/** Check if raw band structure input has electronic markers (efermi, kpoints, or electronic @class).
+ * Must be called on raw input before normalization since these fields aren't preserved. */
+function is_electronic_band_struct(bs: unknown): boolean {
+  if (!bs || typeof bs !== `object`) return false
+  const obj = bs as Record<string, unknown>
+  // Electronic band structures have efermi field
+  if (`efermi` in obj && typeof obj.efermi === `number`) return true
+  // Pymatgen electronic format uses kpoints (not qpoints)
+  if (`kpoints` in obj && Array.isArray(obj.kpoints) && obj.kpoints.length > 0) {
+    return true
+  }
+  // Pymatgen @class: BandStructure* but not Phonon*
+  const class_name = String(obj[`@class`] ?? ``)
+  if (class_name.startsWith(`BandStructure`) && !class_name.includes(`Phonon`)) {
+    return true
+  }
+  return false
+}
+
+/** Compute frequency/energy range from bands and DOS. Clamps phonon min to 0 if noise < 0.5%. */
+export function compute_frequency_range(
+  band_structs: unknown,
+  doses: unknown,
+  padding_factor = 0.02,
+): [number, number] | undefined {
+  let [min_val, max_val, is_phonon] = [Infinity, -Infinity, false]
+  const all_freqs: number[] = []
+
+  // Check raw band_structs for electronic markers before normalization
+  // (normalized structures always have qpoints, so we can't detect from them)
+  let has_electronic_bs = false
+  if (band_structs && typeof band_structs === `object`) {
+    // Single structure check
+    if (is_electronic_band_struct(band_structs)) {
+      has_electronic_bs = true
+    } else if (!(`qpoints` in band_structs)) {
+      // Dict of band structures - check each value
+      for (const bs_val of Object.values(band_structs)) {
+        if (is_electronic_band_struct(bs_val)) {
+          has_electronic_bs = true
+          break
+        }
+      }
+    }
+  }
+
+  const bs_list = band_structs
+    ? `qpoints` in (band_structs as object)
+      ? [normalize_band_structure(band_structs)]
+      : Object.values(band_structs as object).map(normalize_band_structure)
+    : []
+
+  // If band structures exist and aren't electronic, mark as phonon
+  const has_band_structs = bs_list.some(Boolean)
+  if (has_band_structs && !has_electronic_bs) is_phonon = true
+
+  for (const bs of bs_list) {
+    if (!bs) continue
+    for (const band of bs.bands) {
+      for (const val of band) {
+        if (!Number.isFinite(val)) continue
+        all_freqs.push(val)
+        min_val = Math.min(min_val, val)
+        max_val = Math.max(max_val, val)
+      }
+    }
+  }
+
+  const dos_list = doses
+    ? `densities` in (doses as object)
+      ? [normalize_dos(doses)]
+      : Object.values(doses as object).map((dos) => normalize_dos(dos))
+    : []
+  for (const dos of dos_list) {
+    if (!dos) continue
+    // DOS type detection: explicit type field is authoritative
+    if (dos.type === `phonon`) is_phonon = true
+    if (dos.type === `electronic`) is_phonon = false
+    for (const val of dos.type === `phonon` ? dos.frequencies : dos.energies) {
+      if (!Number.isFinite(val)) continue
+      all_freqs.push(val)
+      min_val = Math.min(min_val, val)
+      max_val = Math.max(max_val, val)
+    }
+  }
+
+  if (!Number.isFinite(min_val) || !Number.isFinite(max_val)) return undefined
+  const clamp_min = is_phonon && min_val < 0 && // clamp phonon noise to 0
+    negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD
+  if (clamp_min) min_val = 0
+  // Calculate padding from (possibly clamped) range for consistency with Bands.svelte
+  const padding = (max_val - min_val) * padding_factor
+  return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
 }

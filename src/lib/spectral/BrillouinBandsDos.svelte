@@ -29,17 +29,34 @@
     children?: Snippet<[HoveredData]>
   } = $props()
 
-  // Get the first band structure (raw input)
-  let raw_first_band_struct = $derived(
-    `qpoints` in band_structs
-      ? band_structs
-      : band_structs[Object.keys(band_structs)[0]],
+  // Get the first normalized band structure for path calculations
+  let first_band_struct = $derived(
+    helpers.normalize_band_structure(
+      `qpoints` in (band_structs as object)
+        ? band_structs
+        : Object.values(band_structs)[0],
+    ),
+  ) as BaseBandStructure | null
+
+  // Compute shared frequency/energy range from both bands and DOS data
+  let shared_frequency_range = $derived(
+    helpers.compute_frequency_range(band_structs, doses),
   )
 
-  // Normalize the first band structure (handles both matterviz and pymatgen formats)
-  let first_band_struct = $derived(
-    helpers.normalize_band_structure(raw_first_band_struct),
-  ) as BaseBandStructure | null
+  // Extract Fermi level from electronic band structure or DOS data
+  let fermi_level = $derived.by((): number | undefined => {
+    // Check band structures for efermi
+    const bs_source = `efermi` in (band_structs as object)
+      ? band_structs
+      : Object.values(band_structs)[0]
+    const bs_efermi = (bs_source as Record<string, unknown>)?.efermi
+    if (typeof bs_efermi === `number`) return bs_efermi
+
+    // Check DOS for efermi
+    const dos_source = `efermi` in (doses as object) ? doses : Object.values(doses)[0]
+    const dos_efermi = (dos_source as Record<string, unknown>)?.efermi
+    return typeof dos_efermi === `number` ? dos_efermi : undefined
+  })
 
   // Convert fractional k-point coordinates to Cartesian reciprocal space
   // using the structure's reciprocal lattice (consistent with BZ computation)
@@ -78,8 +95,10 @@
       ? `tablet`
       : `phone`,
   )
+  // For DOS in horizontal orientation, frequency/energy is on y-axis
+  // Share the same range with bands for consistency
   let y_axis_dos = $derived({
-    ...(is_desktop ? { label: `` } : {}),
+    ...(is_desktop ? { label: ``, range: shared_frequency_range } : {}),
     ...dos_props.y_axis,
   })
   // Track hovered frequency from DOS to show reference line in Bands
@@ -95,14 +114,16 @@
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
     {band_structs}
+    {fermi_level}
+    {...bands_props}
     padding={{ r: is_desktop ? 10 : 5, ...bands_props.padding }}
+    y_axis={{ range: shared_frequency_range, ...bands_props.y_axis }}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
     on_point_hover={(event) => {
       hovered_band_point = event?.point ?? null
       bands_props.on_point_hover?.(event)
     }}
-    {...bands_props}
   />
 
   <BrillouinZone
@@ -125,8 +146,14 @@
   <Dos
     style="grid-area: dos; min-width: 0; min-height: 0; overflow: hidden"
     {doses}
+    {fermi_level}
+    {...dos_props}
     orientation={is_desktop ? `horizontal` : `vertical`}
-    x_axis={{ ticks: 4 }}
+    x_axis={{
+      ticks: is_desktop ? 4 : undefined,
+      range: is_desktop ? undefined : shared_frequency_range,
+      ...dos_props.x_axis,
+    }}
     y_axis={y_axis_dos}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
@@ -135,7 +162,6 @@
       r: is_mobile ? 0 : undefined,
       ...dos_props.padding,
     }}
-    {...dos_props}
   />
 </div>
 

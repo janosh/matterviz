@@ -6,10 +6,13 @@
   import {
     apply_gaussian_smearing,
     convert_frequencies,
+    extract_efermi,
+    IMAGINARY_MODE_NOISE_THRESHOLD,
+    negative_fraction,
     normalize_densities,
     normalize_dos,
   } from './helpers'
-  import type { DosData, FrequencyUnit, NormalizationMode } from './types'
+  import type { DosData, DosInput, FrequencyUnit, NormalizationMode } from './types'
 
   let {
     doses,
@@ -23,9 +26,10 @@
     y_axis = {},
     hovered_frequency = $bindable(null),
     reference_frequency = null,
+    fermi_level = undefined,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
-    doses: DosData | Record<string, DosData>
+    doses: DosInput | Record<string, DosInput>
     x_axis?: AxisConfig
     y_axis?: AxisConfig
     stack?: boolean
@@ -36,12 +40,13 @@
     show_legend?: boolean
     hovered_frequency?: number | null
     reference_frequency?: number | null
+    fermi_level?: number // Fermi level for electronic DOS (auto-detected if not provided)
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
 
-  // Normalize input to dict format
-  let doses_dict = $derived.by(() => {
+  // Normalize input to dict format - converts any DosInput format to DosData
+  let doses_dict = $derived.by((): Record<string, DosData> => {
     if (!doses) return {}
 
     if (`densities` in doses && (`frequencies` in doses || `energies` in doses)) {
@@ -52,7 +57,7 @@
 
     // Already a dict - normalize each DOS
     const result: Record<string, DosData> = {}
-    for (const [key, dos] of Object.entries(doses as Record<string, DosData>)) {
+    for (const [key, dos] of Object.entries(doses as Record<string, DosInput>)) {
       const normalized = normalize_dos(dos)
       if (normalized) result[key] = normalized
     }
@@ -61,6 +66,13 @@
 
   // Determine if this is phonon or electronic DOS using discriminated union
   let is_phonon = $derived(Object.values(doses_dict)[0]?.type === `phonon`)
+
+  // Auto-detect Fermi level from electronic DOS data if not explicitly provided
+  let effective_fermi_level = $derived.by((): number | undefined => {
+    if (fermi_level !== undefined) return fermi_level
+    if (is_phonon) return undefined
+    return extract_efermi(doses)
+  })
 
   // Convert DOS data to scatter plot series
   // Performance: Only recalculates when doses_dict, units, sigma, or normalize changes
@@ -118,16 +130,34 @@
     return all_series
   })
 
-  // Calculate axis ranges
-  let x_range = $derived.by(() => {
+  let all_freqs = $derived( // for clamping phonon noise
+    Object.values(doses_dict).flatMap((dos) =>
+      dos.type === `phonon` ? dos.frequencies : dos.energies
+    ),
+  )
+  let clamp_to_zero = $derived(
+    is_phonon &&
+      all_freqs.length > 0 &&
+      Math.min(...all_freqs) < 0 &&
+      negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD,
+  )
+
+  let x_range = $derived.by((): [number, number] | undefined => {
     if (!series_data.length) return undefined
     const all_x = series_data.flatMap((srs) => srs.x)
-    return [Math.min(...all_x), Math.max(...all_x)] as [number, number]
+    const min_x = Math.min(...all_x), max_x = Math.max(...all_x)
+    const padding = (max_x - min_x) * 0.02 // Calculate padding from original range
+    if (is_horizontal || clamp_to_zero) return [0, max_x + padding]
+    return [min_x < 0 ? min_x - padding : min_x, max_x + padding]
   })
-  let y_range = $derived.by(() => {
+
+  let y_range = $derived.by((): [number, number] | undefined => {
     if (!series_data.length) return undefined
     const all_y = series_data.flatMap((srs) => srs.y)
-    return [0, Math.max(...all_y)] as [number, number]
+    const min_y = Math.min(...all_y), max_y = Math.max(...all_y)
+    const padding = (max_y - min_y) * 0.02 // Calculate padding from original range
+    if (!is_horizontal || clamp_to_zero) return [0, max_y + padding]
+    return [min_y < 0 ? min_y - padding : min_y, max_y + padding]
   })
 
   // Get axis labels based on orientation
@@ -185,23 +215,69 @@
     {@const y_label_full = final_y_axis.label ?? ``}
     {@const x_match = x_label_full.match(/^(.+?)\s*\(([^)]+)\)$/)}
     {@const y_match = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/)}
-    {@const x_label_text = x_match?.[1] ||
-      (x_label_full.includes(`Energy`) ? `Energy` : `Frequency`)}
-    {@const x_unit = x_match?.[2] || ``}
-    {@const y_label_text = y_match?.[1] || `Density`}
-    {@const y_unit = y_match?.[2] || ``}
+    {@const freq_label = is_phonon ? `Frequency` : `Energy`}
+    {@const freq_unit = is_phonon ? units : `eV`}
     {@const num_doses = Object.keys(doses_dict).length}
     {#if num_doses > 1 && label}<strong>{label}</strong><br />{/if}
     {#if is_horizontal}
-      {y_label_text}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
-      {x_label_text}: {x_formatted}
+      {y_match?.[1] || freq_label}: {y_formatted}{
+        y_match?.[2] || freq_unit ? ` ${y_match?.[2] || freq_unit}` : ``
+      }<br />
+      {x_match?.[1] || `Density`}: {x_formatted}
     {:else}
-      {y_label_text}: {y_formatted}<br />
-      {x_label_text}: {x_formatted}{x_unit ? ` ${x_unit}` : ``}
+      {y_match?.[1] || `Density`}: {y_formatted}<br />
+      {x_match?.[1] || freq_label}: {x_formatted}{
+        x_match?.[2] || freq_unit ? ` ${x_match?.[2] || freq_unit}` : ``
+      }
     {/if}
   {/snippet}
 
   {#snippet user_content({ width, height, y_scale_fn, x_scale_fn, pad })}
+    <!-- Fermi level line for electronic DOS -->
+    {#if effective_fermi_level !== undefined}
+      {@const pos = is_horizontal
+      ? y_scale_fn(effective_fermi_level)
+      : x_scale_fn(effective_fermi_level)}
+      {@const [x1, x2, y1, y2] = is_horizontal
+      ? [pad.l, width - pad.r, pos, pos]
+      : [pos, pos, pad.t, height - pad.b]}
+      <line
+        {x1}
+        {x2}
+        {y1}
+        {y2}
+        stroke="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+        stroke-width="var(--dos-fermi-line-width, 1.5)"
+        stroke-dasharray="var(--dos-fermi-line-dash, 6,3)"
+        opacity="var(--dos-fermi-line-opacity, 0.8)"
+      />
+      <!-- Fermi level label -->
+      {#if is_horizontal}
+        <text
+          x={width - pad.r + 4}
+          y={pos}
+          dy="0.35em"
+          font-size="10"
+          fill="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+          opacity="0.9"
+        >
+          E<tspan dy="2" font-size="8">F</tspan>
+        </text>
+      {:else}
+        <text
+          x={pos}
+          y={pad.t - 4}
+          text-anchor="middle"
+          font-size="10"
+          fill="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+          opacity="0.9"
+        >
+          E<tspan dy="2" font-size="8">F</tspan>
+        </text>
+      {/if}
+    {/if}
+
+    <!-- Reference frequency line -->
     {#if reference_frequency !== null}
       {@const pos = is_horizontal
       ? y_scale_fn(reference_frequency)
@@ -209,13 +285,16 @@
       {@const [x1, x2, y1, y2] = is_horizontal
       ? [pad.l, width - pad.r, pos, pos]
       : [pos, pos, pad.t, height - pad.b]}
-      {@const styles = {
-      stroke: `var(--dos-reference-line-color, light-dark(#d48860, #c47850))`,
-      'stroke-width': `var(--dos-reference-line-width, 1)`,
-      'stroke-dasharray': `var(--dos-reference-line-dash, 4,3)`,
-      opacity: `var(--dos-reference-line-opacity, 0.5)`,
-    }}
-      <line {x1} {x2} {y1} {y2} {...styles} />
+      <line
+        {x1}
+        {x2}
+        {y1}
+        {y2}
+        stroke="var(--dos-reference-line-color, light-dark(#d48860, #c47850))"
+        stroke-width="var(--dos-reference-line-width, 1)"
+        stroke-dasharray="var(--dos-reference-line-dash, 4,3)"
+        opacity="var(--dos-reference-line-opacity, 0.5)"
+      />
     {/if}
   {/snippet}
 </ScatterPlot>
