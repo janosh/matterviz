@@ -2,16 +2,22 @@
   import { Icon } from '$lib'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
+  import type { CellType } from '$lib/symmetry'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import { fade } from 'svelte/transition'
 
   let {
     supercell_scaling = $bindable(`1x1x1`),
+    cell_type = $bindable<CellType>(`original`),
+    sym_data = null,
     loading = false,
     direction = `down`,
     align = `right`,
   }: {
     supercell_scaling: string
+    cell_type?: CellType
+    sym_data?: MoyoDataset | null
     loading?: boolean
     direction?: `up` | `down`
     align?: `left` | `right`
@@ -21,7 +27,15 @@
   let input_value = $state(supercell_scaling)
   let input_valid = $derived(is_valid_supercell_input(input_value))
 
-  const presets = [`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`]
+  const supercell_presets = [`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`]
+
+  // Always show all 3 cell types - Prim/Conv disabled without sym_data
+  const cell_types: CellType[] = [`original`, `primitive`, `conventional`]
+  const cell_labels: Record<CellType, string> = {
+    original: `Orig`,
+    primitive: `Prim`,
+    conventional: `Conv`,
+  }
 
   function apply_preset(preset: string) {
     supercell_scaling = preset
@@ -36,13 +50,7 @@
     }
   }
 
-  function onkeydown(event: KeyboardEvent) {
-    if (event.key === `Enter`) {
-      handle_input_submit()
-    }
-  }
-
-  // Sync input value when external prop changes (but not when menu is open and user is editing)
+  // Sync input value when external prop changes
   $effect(() => {
     if (!menu_open && supercell_scaling && supercell_scaling !== input_value) {
       input_value = supercell_scaling
@@ -52,23 +60,26 @@
 
 <div
   class="supercell-selector"
+  role="group"
   {@attach click_outside({ callback: () => (menu_open = false) })}
+  onmouseenter={() => (menu_open = true)}
+  onmouseleave={() => (menu_open = false)}
 >
   <button
     type="button"
     onclick={() => (menu_open = !menu_open)}
-    title="Supercell scaling"
+    title="Cell type & supercell scaling"
     class="toggle-btn"
     class:active={menu_open}
     aria-expanded={menu_open}
-    {@attach tooltip({ content: `Supercell scaling` })}
+    {@attach tooltip({ content: `Cell type & supercell` })}
   >
     {#if loading}
       <Spinner
         style="--spinner-border-width: 2px; --spinner-size: 1em; --spinner-margin: 0; display: inline-block; vertical-align: middle"
       />
     {:else}
-      {supercell_scaling}
+      {cell_type !== `original` ? `${cell_labels[cell_type]} ` : ``}{supercell_scaling}
     {/if}
   </button>
 
@@ -79,31 +90,56 @@
       class:align-left={align === `left`}
       transition:fade={{ duration: 100 }}
     >
-      {#each presets as preset (preset)}
-        <button
-          class="preset-btn"
-          class:selected={supercell_scaling === preset}
-          onclick={() => apply_preset(preset)}
-        >
-          {preset}
-        </button>
-      {/each}
+      <!-- Cell type selector -->
+      <div class="cell-type-row">
+        {#each cell_types as type (type)}
+          {@const disabled = type !== `original` && !sym_data}
+          {@const label = cell_labels[type]}
+          <button
+            class="cell-type-btn"
+            class:selected={cell_type === type}
+            class:disabled
+            {disabled}
+            onclick={() => (cell_type = type)}
+            title={disabled ? `${label} (requires symmetry)` : label}
+            {@attach tooltip()}
+          >
+            {label}
+          </button>
+        {/each}
+      </div>
 
-      <input
-        type="text"
-        bind:value={input_value}
-        placeholder="e.g. 2x2x2"
-        class:invalid={!input_valid}
-        {onkeydown}
-      />
-      <button
-        class="apply-btn"
-        disabled={!input_valid || input_value === supercell_scaling}
-        onclick={handle_input_submit}
-        title="Apply"
-      >
-        <Icon icon="Check" />
-      </button>
+      <!-- Supercell presets -->
+      <div class="supercell-grid">
+        {#each supercell_presets as preset (preset)}
+          <button
+            class="preset-btn"
+            class:selected={supercell_scaling === preset}
+            onclick={() => apply_preset(preset)}
+          >
+            {preset}
+          </button>
+        {/each}
+      </div>
+
+      <!-- Custom input -->
+      <div class="custom-input-row">
+        <input
+          type="text"
+          bind:value={input_value}
+          placeholder="e.g. 2x2x2"
+          class:invalid={!input_valid}
+          onkeydown={(event) => event.key === `Enter` && handle_input_submit()}
+        />
+        <button
+          class="apply-btn"
+          disabled={!input_valid || input_value === supercell_scaling}
+          onclick={handle_input_submit}
+          title="Apply"
+        >
+          <Icon icon="Check" />
+        </button>
+      </div>
     </div>
   {/if}
 </div>
@@ -119,45 +155,112 @@
   }
   .dropdown {
     position: absolute;
-    top: 115%;
+    top: 100%;
     right: 0;
+    margin-top: 2px;
     background: var(--surface-bg, #222);
-    padding: 4px 2px;
+    padding: 5px;
     border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 4px;
     z-index: 100;
+    min-width: 95px;
+  }
+  /* Invisible bridge to prevent menu closing when moving mouse from toggle to dropdown */
+  .dropdown::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 0;
+    right: 0;
+    height: 10px;
   }
   .dropdown.open-up {
     top: auto;
-    bottom: 115%;
+    bottom: 100%;
+    margin-top: 0;
+    margin-bottom: 2px;
+  }
+  .dropdown.open-up::before {
+    top: auto;
+    bottom: -10px;
   }
   .dropdown.align-left {
     right: auto;
     left: 0;
   }
+
+  /* Cell type row - compact buttons with minimal padding */
+  .cell-type-row {
+    display: flex;
+    gap: 1px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  }
+  .cell-type-btn {
+    flex: 1;
+    padding: 1px 0;
+    font-size: 0.9em;
+    border-radius: var(--border-radius, 3pt);
+    transition: background 0.15s ease;
+    white-space: nowrap;
+  }
+  .cell-type-btn:hover:not(.disabled) {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .cell-type-btn.selected {
+    background: rgba(0, 255, 255, 0.4);
+    border-color: rgba(0, 255, 255, 0.5);
+  }
+  .cell-type-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Supercell grid */
+  .supercell-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+  }
+  .preset-btn {
+    padding: 2px 4px;
+    font-size: 0.9em;
+    border-radius: var(--border-radius, 3pt);
+  }
   .preset-btn:hover {
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.15);
   }
   .preset-btn.selected {
     border-color: rgba(0, 255, 255, 0.5);
-    background: rgba(0, 255, 255, 0.5);
+    background: rgba(0, 255, 255, 0.4);
   }
-  input {
-    grid-column: 1;
+
+  /* Custom input row */
+  .custom-input-row {
+    display: flex;
+    gap: 2px;
+  }
+  .custom-input-row input {
+    flex: 1;
     width: 100%;
-    padding: 0 6px;
+    padding: 2px 4px;
     box-sizing: border-box;
+    font-size: 0.9em;
+  }
+  .custom-input-row input.invalid {
+    border-color: rgba(255, 100, 100, 0.6);
   }
   .apply-btn {
-    grid-column: 2;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 2px 4px;
   }
   .apply-btn:disabled {
+    opacity: 0.4;
     cursor: not-allowed;
   }
 </style>
