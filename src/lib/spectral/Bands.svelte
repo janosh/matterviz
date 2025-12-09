@@ -450,10 +450,10 @@
     const finite = all_freqs.filter(Number.isFinite)
     if (!finite.length) return undefined
     let min_val = Math.min(...finite), max_val = Math.max(...finite)
-    // Clamp phonon min to 0 if negative contribution < 0.5% (noise)
     if (
+      // clamp phonon min to 0 if negatives are noise
       detected_band_type === `phonon` && min_val < 0 &&
-      helpers.negative_fraction(finite) < 0.005
+      helpers.negative_fraction(finite) < helpers.IMAGINARY_MODE_NOISE_THRESHOLD
     ) {
       min_val = 0
     }

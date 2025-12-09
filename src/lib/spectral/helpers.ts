@@ -16,6 +16,7 @@ const THz_TO_CM = THz_TO_HZ / (C_LIGHT * 100) // cm^-1 (c in cm/s)
 
 // Band structure constants
 export const N_ACOUSTIC_MODES = 3 // Number of acoustic modes in typical 3D crystals
+export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
 
 // Convert symmetry point symbols to pretty-printed versions.
 // Handles Greek letters (both plain and LaTeX backslash-prefixed) and subscripts.
@@ -892,9 +893,10 @@ export function compute_frequency_range(
   }
 
   if (!Number.isFinite(min_val) || !Number.isFinite(max_val)) return undefined
-  // Calculate padding from original range before any clamping
+  const clamp_min = is_phonon && min_val < 0 && // clamp phonon noise to 0
+    negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD
+  if (clamp_min) min_val = 0
+  // Calculate padding from (possibly clamped) range for consistency with Bands.svelte
   const padding = (max_val - min_val) * padding_factor
-  // Clamp phonon min to 0 if negative contribution < 0.5% (noise threshold)
-  const clamp_min = is_phonon && min_val < 0 && negative_fraction(all_freqs) < 0.005
-  return [clamp_min ? 0 : min_val - padding, max_val + padding]
+  return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
 }

@@ -7,6 +7,7 @@
     apply_gaussian_smearing,
     convert_frequencies,
     extract_efermi,
+    IMAGINARY_MODE_NOISE_THRESHOLD,
     negative_fraction,
     normalize_densities,
     normalize_dos,
@@ -129,8 +130,7 @@
     return all_series
   })
 
-  // Clamp phonon freq axis to 0 if negative contribution < 0.5% (noise threshold)
-  let all_freqs = $derived(
+  let all_freqs = $derived( // for clamping phonon noise
     Object.values(doses_dict).flatMap((dos) =>
       dos.type === `phonon` ? dos.frequencies : dos.energies
     ),
@@ -139,7 +139,7 @@
     is_phonon &&
       all_freqs.length > 0 &&
       Math.min(...all_freqs) < 0 &&
-      negative_fraction(all_freqs) < 0.005,
+      negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD,
   )
 
   let x_range = $derived.by((): [number, number] | undefined => {

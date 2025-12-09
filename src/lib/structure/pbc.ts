@@ -5,14 +5,11 @@ import type { ParsedStructure } from './parse'
 
 export type Pbc = readonly [boolean, boolean, boolean]
 
-// Wrap fractional coordinates to [0, 1) range.
-// Handles periodicity by taking the fractional part of each coordinate.
+// Wrap fractional coordinates to [0, 1) range for periodicity.
 export function wrap_to_unit_cell(frac: Vec3): Vec3 {
   return frac.map((coord) => {
-    // Use modulo to wrap to [0, 1), handling negative values correctly
     const wrapped = ((coord % 1) + 1) % 1
-    // Handle floating point precision: values very close to 1 should become 0
-    return wrapped >= 0.9999999999 ? 0 : wrapped
+    return wrapped >= 1 - 1e-10 ? 0 : wrapped // clamp near-1 to 0 for float precision
   }) as Vec3
 }
 
