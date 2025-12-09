@@ -2,6 +2,7 @@
 
 import type { Matrix3x3 } from '$lib/math'
 import type { InternalPoint } from '$lib/plot'
+import type { PymatgenCompleteDos } from './helpers'
 
 export type BandStructureType = `phonon` | `electronic`
 export type PathMode = `union` | `intersection` | `strict`
@@ -75,6 +76,9 @@ export interface ElectronicDos {
 }
 // Discriminated union for type-safe DOS handling
 export type DosData = PhononDos | ElectronicDos
+
+// Union type for component props that accept both normalized and pymatgen DOS formats
+export type DosInput = DosData | PymatgenCompleteDos
 
 // Line styling configuration
 export type LineKwargs =

@@ -126,6 +126,27 @@ globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
 }
 
+// Mock Web Animations API for Svelte transitions (not available in jsdom)
+// The mock immediately triggers onfinish to complete transitions synchronously
+Element.prototype.animate = vi.fn().mockImplementation(() => {
+  const animation = {
+    onfinish: null as (() => void) | null,
+    cancel: vi.fn(),
+    finish: vi.fn(),
+    play: vi.fn(),
+    pause: vi.fn(),
+    reverse: vi.fn(),
+    commitStyles: vi.fn(),
+    persist: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }
+  // Call onfinish in next microtask to simulate animation completion
+  queueMicrotask(() => animation.onfinish?.())
+  return animation
+})
+
 globalThis.matchMedia = vi.fn().mockImplementation((query) => ({
   matches: false,
   media: query,

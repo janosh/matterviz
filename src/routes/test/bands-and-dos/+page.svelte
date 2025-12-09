@@ -1,6 +1,11 @@
 <script lang="ts">
   import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
   import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
+  import { electronic_bands } from '$site/electronic/bands'
+  import { dos_spin_polarization } from '$site/electronic/dos'
+
+  // Testing: CaO bands + mp-865805 DOS (mismatched materials, no shifts applied)
+  const electronic_dos = dos_spin_polarization
 
   const mock_band_structure: BaseBandStructure = {
     recip_lattice: {
@@ -74,6 +79,66 @@
     Custom Overlay
   </div>
 </BandsAndDos>
+
+<h2 id="electronic-bands">Electronic Bands (CaO)</h2>
+<p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
+  Shows electronic band structure. The Fermi level (E<sub>F</sub>) is automatically
+  detected and displayed as a dashed red line.
+</p>
+<div data-testid="bands-and-dos-electronic">
+  <BandsAndDos
+    band_structs={electronic_bands.cao_2605}
+    doses={electronic_dos}
+    bands_props={{ y_axis: { label: `Energy (eV)` } }}
+    dos_props={{ y_axis: { label: `` } }}
+  />
+</div>
+
+<h2 id="electronic-spin-polarized">Electronic Bands (VBr₂ Spin-Polarized)</h2>
+<p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
+  Spin-polarized electronic band structure showing both spin channels. Note the Fermi
+  level marker.
+</p>
+<div data-testid="bands-and-dos-spin-polarized">
+  <BandsAndDos
+    band_structs={electronic_bands.vbr2_971787}
+    doses={electronic_dos}
+    bands_props={{
+      y_axis: { label: `Energy (eV)` },
+      line_kwargs: { stroke_width: 1.5 },
+    }}
+    dos_props={{ y_axis: { label: `` } }}
+  />
+</div>
+
+<h2 id="electronic-comparison">Electronic vs Phonon Comparison</h2>
+<p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
+  Side-by-side comparison showing how electronic bands display the Fermi level while
+  phonon bands do not (phonons have no Fermi energy concept).
+</p>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem">
+  <div>
+    <h3 style="text-align: center">Electronic (CaO)</h3>
+    <div data-testid="bands-and-dos-electronic-comparison">
+      <BandsAndDos
+        band_structs={electronic_bands.cao_2605}
+        doses={electronic_dos}
+        bands_props={{ y_axis: { label: `Energy (eV)` } }}
+        dos_props={{ y_axis: { label: `` } }}
+      />
+    </div>
+  </div>
+  <div>
+    <h3 style="text-align: center">Phonon (Mock)</h3>
+    <div data-testid="bands-and-dos-phonon-comparison">
+      <BandsAndDos
+        band_structs={mock_band_structure}
+        doses={mock_dos}
+        bands_props={{ y_axis: { label: `Frequency (THz)` } }}
+      />
+    </div>
+  </div>
+</div>
 
 <style>
   h1 {

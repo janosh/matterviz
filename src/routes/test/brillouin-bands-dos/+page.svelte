@@ -1,7 +1,12 @@
 <script lang="ts">
   import { BrillouinBandsDos } from '$lib/spectral'
-  import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
+  import type { BaseBandStructure, DosData, PhononDos } from '$lib/spectral/types'
   import type { PymatgenStructure } from '$lib/structure'
+  import { electronic_bands } from '$site/electronic/bands'
+  import { dos_spin_polarization } from '$site/electronic/dos'
+
+  // Testing: CaO bands + mp-865805 DOS (mismatched materials, no shifts applied)
+  const electronic_dos = dos_spin_polarization as unknown as DosData
 
   const mock_structure: PymatgenStructure = {
     lattice: {
@@ -198,6 +203,72 @@
       Custom Overlay
     </div>
   </BrillouinBandsDos>
+</div>
+
+<h2 id="electronic-bands">Electronic Bands (CaO)</h2>
+<p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
+  Electronic band structure with 3D Brillouin zone visualization. The Fermi level (E<sub
+  >F</sub>) is automatically detected and displayed as a dashed red line in both the bands
+  and DOS plots. Note: Using mock Si structure for BZ (actual CaO structure unavailable).
+</p>
+<div data-testid="bz-bands-dos-electronic">
+  <BrillouinBandsDos
+    structure={mock_structure}
+    band_structs={electronic_bands.cao_2605}
+    doses={electronic_dos}
+    bands_props={{ y_axis: { label: `Energy (eV)` } }}
+    dos_props={{ y_axis: { label: `` } }}
+  />
+</div>
+
+<h2 id="electronic-with-controls">Electronic Bands with BZ Controls</h2>
+<p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
+  Same electronic data but with Brillouin zone controls enabled for interactive
+  exploration.
+</p>
+<div data-testid="bz-bands-dos-electronic-controls">
+  <BrillouinBandsDos
+    structure={mock_structure}
+    band_structs={electronic_bands.cao_2605}
+    doses={electronic_dos}
+    bz_props={{ show_controls: true }}
+    bands_props={{
+      y_axis: { label: `Energy (eV)` },
+      line_kwargs: { stroke_width: 1.5 },
+    }}
+    dos_props={{ y_axis: { label: `` } }}
+  />
+</div>
+
+<h2 id="comparison">Electronic vs Phonon Comparison</h2>
+<p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
+  Side-by-side comparison: Electronic bands show Fermi level marker (E<sub>F</sub>),
+  phonon bands do not (no Fermi energy concept for phonons).
+</p>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
+  <div>
+    <h3 style="text-align: center; margin-bottom: 0.5rem">Electronic (CaO)</h3>
+    <div data-testid="bz-bands-dos-electronic-compare" style="min-height: 500px">
+      <BrillouinBandsDos
+        structure={mock_structure}
+        band_structs={electronic_bands.cao_2605}
+        doses={electronic_dos}
+        bands_props={{ y_axis: { label: `E (eV)` } }}
+        dos_props={{ y_axis: { label: `` } }}
+      />
+    </div>
+  </div>
+  <div>
+    <h3 style="text-align: center; margin-bottom: 0.5rem">Phonon (Mock Si)</h3>
+    <div data-testid="bz-bands-dos-phonon-compare" style="min-height: 500px">
+      <BrillouinBandsDos
+        structure={mock_structure}
+        band_structs={mock_band_structure}
+        doses={mock_dos}
+        bands_props={{ y_axis: { label: `ν (THz)` } }}
+      />
+    </div>
+  </div>
 </div>
 
 <style>

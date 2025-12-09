@@ -6,6 +6,7 @@ import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import init, { analyze_cell } from '@spglib/moyo-wasm'
 import moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
 
+export * from './cell-transform'
 export * from './spacegroups'
 export { default as SymmetryStats } from './SymmetryStats.svelte'
 export { default as WyckoffTable } from './WyckoffTable.svelte'
