@@ -425,11 +425,10 @@
     color: light-dark(white, black);
     border-radius: 50%;
     font-size: 0.9em;
-    line-height: 0.9;
+    line-height: 1;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
+    place-items: center;
     opacity: 0;
     transition: opacity 0.2s ease, background 0.2s ease, transform 0.1s ease;
     z-index: 2;

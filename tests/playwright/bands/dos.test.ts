@@ -7,7 +7,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`renders single DOS with axes`, async ({ page }) => {
-    const plot = page.locator(`#single-dos + .scatter`)
+    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
     await expect(plot).toBeVisible()
 
     // Check SVG and DOS curve (use stroke to identify line paths)
@@ -20,7 +20,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`renders multiple DOS with toggleable legend`, async ({ page }) => {
-    const plot = page.locator(`#multiple-dos + .scatter`)
+    const plot = page.locator(`[data-testid="dos-multiple"] .scatter`)
     const svg = plot.locator(`svg`)
 
     // Check legend with correct labels
@@ -40,7 +40,7 @@ test.describe(`DOS Component Tests`, () => {
 
   test(`applies normalization correctly`, async ({ page }) => {
     // Max normalization should have y-values <= 1
-    const max_plot = page.locator(`#max-normalization + .scatter`)
+    const max_plot = page.locator(`[data-testid="dos-max-norm"] .scatter`)
     await expect(max_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
       .toBeVisible()
     const y_ticks = await max_plot.locator(`g.y-axis text`).allTextContents()
@@ -51,14 +51,14 @@ test.describe(`DOS Component Tests`, () => {
     expect(max_val).toBeLessThanOrEqual(1.01) // Small margin for tick rounding
 
     // Sum normalization should render correctly
-    const sum_plot = page.locator(`#sum-normalization + .scatter`)
+    const sum_plot = page.locator(`[data-testid="dos-sum-norm"] .scatter`)
     await expect(sum_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
       .toBeVisible()
   })
 
   test(`renders stacked DOS and applies Gaussian smearing`, async ({ page }) => {
     // Stacked DOS should have 2 curves, second higher than first
-    const stacked_plot = page.locator(`#stacked-dos + .scatter`)
+    const stacked_plot = page.locator(`[data-testid="dos-stacked"] .scatter`)
     // Use stroke presence to identify line paths (robust against fill="none" vs "transparent")
     const paths = stacked_plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
     expect(await paths.count()).toBe(2)
@@ -72,7 +72,7 @@ test.describe(`DOS Component Tests`, () => {
     }
 
     // Check Gaussian smearing produces smooth curves
-    const smeared_plot = page.locator(`#gaussian-smearing + .scatter`)
+    const smeared_plot = page.locator(`[data-testid="dos-smeared"] .scatter`)
     const path = smeared_plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
       .first()
     await expect(path).toBeVisible()
@@ -86,7 +86,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`renders with horizontal orientation`, async ({ page }) => {
-    const plot = page.locator(`#horizontal-dos + .scatter`)
+    const plot = page.locator(`[data-testid="dos-horizontal"] .scatter`)
     await expect(plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
       .toBeVisible()
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
@@ -106,10 +106,10 @@ test.describe(`DOS Component Tests`, () => {
   test(`converts frequencies to different units`, async ({ page }) => {
     await Promise.all(
       [
-        [`eV`, `#ev-units`],
-        [`meV`, `#mev-units`],
+        [`eV`, `[data-testid="dos-ev"]`],
+        [`meV`, `[data-testid="dos-mev"]`],
       ].map(async ([unit, selector]) => {
-        const plot = page.locator(`${selector} + .scatter`)
+        const plot = page.locator(`${selector} .scatter`)
         await expect(plot).toBeVisible()
         const x_label = plot.locator(`.x-label`)
         if ((await x_label.count()) > 0) {
@@ -121,18 +121,18 @@ test.describe(`DOS Component Tests`, () => {
 
   test(`hides legend when configured and maintains responsive layout`, async ({ page }) => {
     // Check legend hidden
-    const no_legend_plot = page.locator(`#no-legend + .scatter`)
+    const no_legend_plot = page.locator(`[data-testid="dos-no-legend"] .scatter`)
     await expect(no_legend_plot.locator(`.legend`)).toBeHidden()
 
     // Check responsive layout
-    const plot = page.locator(`#single-dos + .scatter`)
+    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
     expect(await plot.boundingBox()).toBeTruthy()
     await page.setViewportSize({ width: 800, height: 600 })
     await expect(plot).toBeVisible()
   })
 
   test(`shows tooltip with density and frequency on hover`, async ({ page }) => {
-    const plot = page.locator(`#single-dos + .scatter`)
+    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
     await expect(plot).toBeVisible()
 
     const svg = plot.locator(`svg[role="img"]`)
@@ -172,7 +172,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`tooltip shows series label with multiple DOS`, async ({ page }) => {
-    const plot = page.locator(`#multiple-dos + .scatter`)
+    const plot = page.locator(`[data-testid="dos-multiple"] .scatter`)
     await expect(plot).toBeVisible()
 
     const svg = plot.locator(`svg[role="img"]`)
@@ -239,7 +239,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`tooltip shows correct labels for horizontal orientation`, async ({ page }) => {
-    const plot = page.locator(`#horizontal-dos + .scatter`)
+    const plot = page.locator(`[data-testid="dos-horizontal"] .scatter`)
     await expect(plot).toBeVisible()
 
     const svg = plot.locator(`svg[role="img"]`)
@@ -268,9 +268,25 @@ test.describe(`DOS Component Tests`, () => {
         tooltip_found = true
         const tooltip_text = await tooltip.textContent()
         expect(tooltip_text).toBeTruthy()
+        if (!tooltip_text) break
 
-        // In horizontal orientation, y-axis is frequency/energy, x-axis is density
-        expect(tooltip_text).toMatch(/(Frequency|Energy|Density)/)
+        // In horizontal orientation:
+        // - y-axis is frequency/energy (should appear FIRST in tooltip)
+        // - x-axis is density (should appear SECOND in tooltip)
+        // The fix ensures Frequency/Energy comes before Density
+        const freq_idx = Math.max(
+          tooltip_text.indexOf(`Frequency`),
+          tooltip_text.indexOf(`Energy`),
+        )
+        const density_idx = tooltip_text.indexOf(`Density`)
+
+        // Both should be present
+        expect(freq_idx).toBeGreaterThan(-1)
+        expect(density_idx).toBeGreaterThan(-1)
+
+        // Frequency/Energy should come BEFORE Density in horizontal mode
+        // This is the key regression test for the tooltip bug fix
+        expect(freq_idx).toBeLessThan(density_idx)
         break
       }
     }
@@ -286,8 +302,69 @@ test.describe(`DOS Component Tests`, () => {
     }
   })
 
+  test(`tooltip shows correct labels for vertical orientation`, async ({ page }) => {
+    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
+    await expect(plot).toBeVisible()
+
+    const svg = plot.locator(`svg[role="img"]`)
+    const box = await svg.boundingBox()
+    expect(box).toBeTruthy()
+    if (!box) return
+
+    const tooltip = plot.locator(`.tooltip`)
+    let tooltip_found = false
+
+    // Try various positions
+    for (
+      const [x_frac, y_frac] of [
+        [0.2, 0.3],
+        [0.3, 0.5],
+        [0.4, 0.6],
+        [0.5, 0.5],
+        [0.6, 0.4],
+        [0.7, 0.5],
+      ]
+    ) {
+      await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
+
+      if (await tooltip.isVisible()) {
+        tooltip_found = true
+        const tooltip_text = await tooltip.textContent()
+        expect(tooltip_text).toBeTruthy()
+        if (!tooltip_text) break
+
+        // In vertical orientation:
+        // - y-axis is density (should appear FIRST in tooltip)
+        // - x-axis is frequency/energy (should appear SECOND in tooltip)
+        const freq_idx = Math.max(
+          tooltip_text.indexOf(`Frequency`),
+          tooltip_text.indexOf(`Energy`),
+        )
+        const density_idx = tooltip_text.indexOf(`Density`)
+
+        // Both should be present
+        expect(freq_idx).toBeGreaterThan(-1)
+        expect(density_idx).toBeGreaterThan(-1)
+
+        // Density should come BEFORE Frequency/Energy in vertical mode
+        expect(density_idx).toBeLessThan(freq_idx)
+        break
+      }
+    }
+
+    // Fallback: verify plot renders if tooltip is hard to hit
+    if (!tooltip_found) {
+      console.log(`Tooltip not found for vertical DOS, but plot rendered successfully`)
+      await expect(
+        plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
+      ).toBeVisible()
+    } else {
+      expect(tooltip_found).toBe(true)
+    }
+  })
+
   test(`tooltip disappears when mouse leaves plot area`, async ({ page }) => {
-    const plot = page.locator(`#single-dos + .scatter`)
+    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
     const svg = plot.locator(`svg[role="img"]`)
     const box = await svg.boundingBox()
     expect(box).toBeTruthy()

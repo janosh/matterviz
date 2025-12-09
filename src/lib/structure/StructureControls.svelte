@@ -14,6 +14,7 @@
   import { StructureScene } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
+  import type { CellType } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
@@ -43,6 +44,7 @@
     structure = undefined,
     supercell_loading = false,
     sym_data = null,
+    cell_type = $bindable<CellType>(`original`),
     pane_props = {},
     toggle_props = {},
     ...rest
@@ -59,6 +61,7 @@
     structure?: AnyStructure
     supercell_loading?: boolean
     sym_data?: MoyoDataset | null
+    cell_type?: CellType // Cell type: original, conventional, or primitive
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
@@ -696,6 +699,7 @@
         cell_surface_color: lattice_props.cell_surface_color,
         cell_surface_opacity: lattice_props.cell_surface_opacity,
         supercell_scaling,
+        cell_type,
       }}
       on_reset={() => {
         lattice_props.cell_edge_color = DEFAULTS.structure.cell_edge_color
@@ -703,8 +707,23 @@
         lattice_props.cell_surface_color = DEFAULTS.structure.cell_surface_color
         lattice_props.cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity
         supercell_scaling = `1x1x1`
+        cell_type = `original`
       }}
     >
+      <label
+        {@attach tooltip({
+          content: sym_data
+            ? `Transform to conventional or primitive cell using crystallographic symmetry`
+            : `Symmetry analysis required. Wait for analysis to complete.`,
+        })}
+      >
+        <span>Cell Type</span>
+        <select bind:value={cell_type} disabled={!sym_data}>
+          <option value="original">Original</option>
+          <option value="conventional">Conventional</option>
+          <option value="primitive">Primitive</option>
+        </select>
+      </label>
       <label>
         <span
           {@attach tooltip({

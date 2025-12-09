@@ -1,6 +1,8 @@
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   apply_gaussian_smearing,
+  compute_frequency_range,
   convert_frequencies,
   extract_k_path_points,
   find_qpoint_at_distance,
@@ -8,6 +10,7 @@ import {
   generate_ribbon_path,
   get_band_xaxis_ticks,
   get_ribbon_config,
+  negative_fraction,
   normalize_band_structure,
   normalize_densities,
   normalize_dos,
@@ -16,7 +19,6 @@ import {
   shift_to_fermi,
 } from '$lib/spectral/helpers'
 import type { BaseBandStructure } from '$lib/spectral/types'
-import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, it, vi } from 'vitest'
 
 describe(`pretty_sym_point`, () => {
@@ -1206,5 +1208,200 @@ describe(`generate_ribbon_path`, () => {
   it(`handles Infinity in widths`, () => {
     expect(generate_ribbon_path([0, 1, 2], [0, 1, 0], [1, Infinity, 1], id, id, 10)).not
       .toBe(``)
+  })
+})
+
+describe(`compute_frequency_range`, () => {
+  // Create valid band structure with matching array lengths
+  const make_bs = (bands: number[][]) => {
+    const num_kpoints = bands[0]?.length ?? 0
+    return {
+      qpoints: Array.from({ length: num_kpoints }, (_, idx) => ({
+        label: idx === 0 ? `Γ` : idx === num_kpoints - 1 ? `X` : null,
+        frac_coords: [idx / (num_kpoints - 1 || 1), 0, 0] as Vec3,
+      })),
+      branches: [{ start_index: 0, end_index: num_kpoints - 1, name: `Γ-X` }],
+      bands,
+      distance: Array.from({ length: num_kpoints }, (_, idx) => idx),
+      nb_bands: bands.length,
+      labels_dict: { Γ: [0, 0, 0] as Vec3, X: [1, 0, 0] as Vec3 },
+      recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3 },
+    }
+  }
+
+  it(`computes range from band structure`, () => {
+    const bs = make_bs([[0, 5, 10], [2, 8, 15]])
+    const range = compute_frequency_range(bs, undefined)
+    expect(range).toBeDefined()
+    // Phonon with min>=0 clamps to 0, plus 2% padding on max
+    expect(range?.[0]).toBe(0)
+    expect(range?.[1]).toBeCloseTo(15.3, 1)
+  })
+
+  it(`computes range from DOS`, () => {
+    const dos = { frequencies: [0, 5, 10, 15], densities: [0, 1, 1, 0] }
+    const range = compute_frequency_range(undefined, dos)
+    expect(range).toBeDefined()
+    expect(range?.[0]).toBe(0)
+    expect(range?.[1]).toBeCloseTo(15.3, 1)
+  })
+
+  it(`combines bands and DOS ranges`, () => {
+    const bs = make_bs([[0, 5], [1, 3]])
+    const dos = { frequencies: [0, 10, 20], densities: [0, 1, 0] }
+    const range = compute_frequency_range(bs, dos)
+    expect(range?.[0]).toBe(0)
+    expect(range?.[1]).toBeCloseTo(20.4, 1)
+  })
+
+  it(`handles electronic DOS with negative energies`, () => {
+    const dos = { energies: [-10, -5, 0, 5, 10], densities: [0, 0.5, 1, 0.5, 0] }
+    const range = compute_frequency_range(undefined, dos)
+    expect(range).toBeDefined()
+    // Electronic: no clamping, 2% padding both sides
+    expect(range?.[0]).toBeCloseTo(-10.4, 1)
+    expect(range?.[1]).toBeCloseTo(10.4, 1)
+  })
+
+  it(`handles multiple band structures`, () => {
+    const bs1 = make_bs([[0, 5], [1, 4]])
+    const bs2 = make_bs([[2, 12], [3, 10]])
+    const range = compute_frequency_range({ bs1, bs2 }, undefined)
+    expect(range?.[0]).toBe(0)
+    expect(range?.[1]).toBeCloseTo(12.24, 1)
+  })
+
+  it(`handles multiple DOS`, () => {
+    const dos1 = { frequencies: [0, 8], densities: [0, 1] }
+    const dos2 = { frequencies: [0, 15], densities: [0, 1] }
+    const range = compute_frequency_range(undefined, { dos1, dos2 })
+    expect(range?.[0]).toBe(0)
+    expect(range?.[1]).toBeCloseTo(15.3, 1)
+  })
+
+  it(`returns undefined for empty/invalid input`, () => {
+    expect(compute_frequency_range(undefined, undefined)).toBeUndefined()
+    expect(compute_frequency_range({}, {})).toBeUndefined()
+  })
+
+  it(`respects custom padding factor`, () => {
+    const dos = { frequencies: [0, 10], densities: [0, 1] }
+    const range = compute_frequency_range(undefined, dos, 0.1)
+    expect(range?.[1]).toBeCloseTo(11, 1)
+  })
+
+  it(`ignores non-finite values`, () => {
+    const bs = make_bs([[0, NaN, 5, Infinity, 10]])
+    const range = compute_frequency_range(bs, undefined)
+    expect(range?.[0]).toBe(0)
+    expect(range?.[1]).toBeCloseTo(10.2, 1)
+  })
+
+  it(`clamps small negative numerical noise to 0 for phonon DOS`, () => {
+    // Small negative values (< 0.5% of total area) should be treated as noise
+    // 100 points from -0.1 to 10, with most density at positive frequencies
+    const frequencies = Array.from({ length: 101 }, (_, idx) => -0.1 + idx * 0.101)
+    const densities = frequencies.map((freq) =>
+      freq < 0 ? 0.001 : Math.exp(-Math.pow(freq - 5, 2))
+    )
+    const dos = { frequencies, densities }
+    const range = compute_frequency_range(undefined, dos)
+    expect(range).toBeDefined()
+    // Should clamp to 0 since negative area is negligible
+    expect(range?.[0]).toBe(0)
+  })
+
+  it(`preserves significant imaginary modes in phonon DOS`, () => {
+    // Significant negative area (> 0.5% of total) should be preserved
+    // DOS with substantial density at negative frequencies (imaginary modes)
+    const frequencies = [-3, -2, -1, 0, 1, 2, 3, 4, 5]
+    const densities = [0.5, 1, 0.5, 0.1, 0.5, 1, 1, 0.5, 0.1] // significant at negative
+    const dos = { frequencies, densities }
+    const range = compute_frequency_range(undefined, dos)
+    expect(range).toBeDefined()
+    // Should preserve negative range since imaginary modes are significant
+    expect(range?.[0]).toBeLessThan(0)
+  })
+
+  it(`clamps small negative noise in phonon bands`, () => {
+    // Bands with tiny negative values (< 0.5% of total |freq|)
+    const bs = make_bs([[-0.01, 5, 10], [0, 8, 15]])
+    const range = compute_frequency_range(bs, undefined)
+    expect(range).toBeDefined()
+    // Should clamp to 0 since negative contribution is negligible
+    expect(range?.[0]).toBe(0)
+  })
+
+  it(`preserves significant imaginary modes in phonon bands`, () => {
+    // Bands with substantial negative frequencies (imaginary modes)
+    const bs = make_bs([[-2, -1, 0, 5, 10], [-3, 0, 2, 8, 15]])
+    const range = compute_frequency_range(bs, undefined)
+    expect(range).toBeDefined()
+    // Should preserve negative range since imaginary modes are significant
+    expect(range?.[0]).toBeLessThan(0)
+  })
+
+  // Tests electronic detection via different markers (efermi, kpoints, @class)
+  // Uses small negative values (< 0.5% of total) that would be clamped for phonon but preserved for electronic
+  it.each([
+    { marker: { efermi: 5 }, is_electronic: true, desc: `efermi field` },
+    {
+      marker: { kpoints: [{ frac_coords: [0, 0, 0], label: `Γ` }] },
+      is_electronic: true,
+      desc: `kpoints array`,
+    },
+    {
+      marker: { '@class': `BandStructureSymmLine` },
+      is_electronic: true,
+      desc: `electronic @class`,
+    },
+    {
+      marker: { '@class': `PhononBandStructureSymmLine` },
+      is_electronic: false,
+      desc: `phonon @class`,
+    },
+  ])(`detects band structure type via $desc`, ({ marker, is_electronic }) => {
+    const bs = { ...make_bs([[-0.01, 5, 10]]), ...marker }
+    const range = compute_frequency_range(bs, undefined)
+    expect(range).toBeDefined()
+    // Electronic preserves small negatives, phonon clamps to 0
+    if (is_electronic) {
+      expect(range?.[0]).toBeLessThan(0)
+    } else {
+      expect(range?.[0]).toBe(0)
+    }
+  })
+
+  it(`handles electronic DOS overriding phonon band structure detection`, () => {
+    // Mixed: phonon-like band structure with electronic DOS - DOS type is authoritative
+    const bs = make_bs([[0, 5, 10]])
+    const dos = {
+      type: `electronic` as const,
+      energies: [-5, 0, 5],
+      densities: [0, 1, 0],
+    }
+    const range = compute_frequency_range(bs, dos)
+    expect(range).toBeDefined()
+    // Electronic DOS should override phonon band structure assumption
+    expect(range?.[0]).toBeCloseTo(-5.3, 1)
+  })
+})
+
+describe(`negative_fraction`, () => {
+  it.each([
+    { values: [], expected: 0, desc: `empty array` },
+    { values: [1, 2, 3], expected: 0, desc: `all positive` },
+    { values: [-1, -2, -3], expected: 1, desc: `all negative` },
+    { values: [0, 0, 0], expected: 0, desc: `all zeros` },
+    { values: [-1, 1], expected: 0.5, desc: `equal positive and negative` },
+    { values: [-1, 3], expected: 0.25, desc: `-1 and 3 → 1/4` },
+    { values: [-2, -1, 7], expected: 0.3, desc: `-2, -1, 7 → 3/10` },
+  ])(`returns $expected for $desc`, ({ values, expected }) => {
+    expect(negative_fraction(values)).toBeCloseTo(expected, 5)
+  })
+
+  it(`ignores NaN and Infinity`, () => {
+    expect(negative_fraction([NaN, -1, 1, Infinity])).toBeCloseTo(0.5, 5)
+    expect(negative_fraction([NaN, Infinity, -Infinity])).toBe(0)
   })
 })

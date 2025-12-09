@@ -24,6 +24,7 @@
     x_positions = $bindable(),
     reference_frequency = null,
     ribbon_config = {},
+    fermi_level = undefined,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
@@ -36,6 +37,7 @@
     x_positions?: Record<string, [number, number]>
     reference_frequency?: number | null
     ribbon_config?: RibbonConfig | Record<string, RibbonConfig>
+    fermi_level?: number // Fermi level for electronic bands (auto-detected if not provided)
   } = $props()
 
   // Helper function to get line styling for a band
@@ -153,6 +155,19 @@
     ) return `electronic`
 
     return `phonon`
+  })
+
+  // Auto-detect Fermi level from electronic band structure data if not explicitly provided
+  let effective_fermi_level = $derived.by((): number | undefined => {
+    if (fermi_level !== undefined) return fermi_level
+    if (detected_band_type !== `electronic`) return undefined
+
+    // Check raw input for efermi field
+    const source = `efermi` in (band_structs as object)
+      ? band_structs
+      : Object.values(band_structs)[0]
+    const efermi = (source as Record<string, unknown>)?.efermi
+    return typeof efermi === `number` ? efermi : undefined
   })
 
   // Determine which segments to plot based on path_mode
@@ -426,10 +441,31 @@
     const flat = Object.values(x_positions ?? {}).flat()
     return [flat[0] ?? 0, flat.at(-1) ?? 1] as [number, number]
   })
+
+  // Calculate y-range, enforcing 0 minimum for phonon bands without imaginary modes
+  let y_range = $derived.by((): [number, number] | undefined => {
+    const all_freqs = Object.values(band_structs_dict).flatMap((bs) =>
+      bs.bands.flat()
+    )
+    const finite = all_freqs.filter(Number.isFinite)
+    if (!finite.length) return undefined
+    let min_val = Math.min(...finite), max_val = Math.max(...finite)
+    if (
+      // clamp phonon min to 0 if negatives are noise
+      detected_band_type === `phonon` && min_val < 0 &&
+      helpers.negative_fraction(finite) < helpers.IMAGINARY_MODE_NOISE_THRESHOLD
+    ) {
+      min_val = 0
+    }
+    const padding = (max_val - min_val) * 0.02
+    return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
+  })
+
   let final_y_axis = $derived({
     label: detected_band_type === `phonon` ? `Frequency (THz)` : `Energy (eV)`,
     format: `.2f`,
     label_shift: { y: 15 },
+    range: y_range,
     ...y_axis,
   })
   let display = $state({ x_grid: false, y_grid: true, y_zero_line: true })
@@ -506,6 +542,32 @@
         opacity="var(--bands-symmetry-line-opacity, 0.5)"
       />
     {/each}
+
+    <!-- Fermi level line for electronic bands -->
+    {#if effective_fermi_level !== undefined}
+      {@const y_pos = y_scale_fn(effective_fermi_level)}
+      {@const x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
+      <line
+        x1={pad.l}
+        x2={x_end}
+        y1={y_pos}
+        y2={y_pos}
+        stroke="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+        stroke-width="var(--bands-fermi-line-width, 1.5)"
+        stroke-dasharray="var(--bands-fermi-line-dash, 6,3)"
+        opacity="var(--bands-fermi-line-opacity, 0.8)"
+      />
+      <text
+        x={x_end + 4}
+        y={y_pos}
+        dy="0.35em"
+        font-size="10"
+        fill="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+        opacity="0.9"
+      >
+        E<tspan dy="2" font-size="8">F</tspan>
+      </text>
+    {/if}
 
     <!-- Reference frequency horizontal line -->
     {#if reference_frequency !== null}

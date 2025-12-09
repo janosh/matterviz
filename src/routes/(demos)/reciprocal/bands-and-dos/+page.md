@@ -2,7 +2,29 @@
 
 Combined visualization of band structures with density of states.
 
-## Basic Combined Plot with Shared Y-Axis
+## Electronic Bands with Fermi Level
+
+Electronic band structures display the Fermi level (E<sub>F</sub>) as a dashed red line when `efermi` is present. Note: this example uses bands and DOS from different materials for demonstration purposes.
+
+```svelte example
+<script>
+  import { BandsAndDos } from 'matterviz'
+  import { electronic_bands } from '$site/electronic/bands'
+  import { dos_spin_polarization } from '$site/electronic/dos'
+</script>
+
+<BandsAndDos
+  band_structs={electronic_bands.cao_2605}
+  doses={dos_spin_polarization}
+  bands_props={{ y_axis: { label: 'Energy (eV)' } }}
+  dos_props={{ y_axis: { label: '' } }}
+  shared_y_axis
+  class="full-bleed"
+  style="aspect-ratio: 3"
+/>
+```
+
+## Phonon Bands with Custom Styling
 
 Phonon band structure with DOS side-by-side, synchronized axes and custom styling:
 
