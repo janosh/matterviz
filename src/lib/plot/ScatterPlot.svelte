@@ -613,6 +613,7 @@
           visible: is_visible,
           display_style,
           has_explicit_label,
+          legend_group: data_series?.legend_group,
         }
       },
     )

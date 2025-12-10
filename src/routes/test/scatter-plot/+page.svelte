@@ -379,65 +379,6 @@
   ]
   const legend_zero_series: DataSeries[] = []
 
-  // Legend grouping test data - demonstrates the new legend_group feature
-  const legend_grouped_series: DataSeries[] = [
-    // DFT group
-    {
-      x: [1, 2, 3, 4, 5],
-      y: [2.1, 4.2, 3.1, 5.3, 4.0],
-      label: `PBE`,
-      legend_group: `DFT`,
-      point_style: { fill: `#3498db`, radius: 5 },
-      line_style: { stroke: `#3498db`, stroke_width: 2 },
-      markers: `line+points`,
-    },
-    {
-      x: [1, 2, 3, 4, 5],
-      y: [2.3, 4.5, 3.4, 5.6, 4.2],
-      label: `LDA`,
-      legend_group: `DFT`,
-      point_style: { fill: `#2980b9`, radius: 5 },
-      line_style: { stroke: `#2980b9`, stroke_width: 2, line_dash: `5 3` },
-      markers: `line+points`,
-    },
-    // ML Potentials group
-    {
-      x: [1, 2, 3, 4, 5],
-      y: [2.0, 4.0, 3.0, 5.1, 3.9],
-      label: `MACE`,
-      legend_group: `ML Potentials`,
-      point_style: { fill: `#e74c3c`, radius: 5 },
-      line_style: { stroke: `#e74c3c`, stroke_width: 2 },
-      markers: `line+points`,
-    },
-    {
-      x: [1, 2, 3, 4, 5],
-      y: [2.2, 4.3, 3.2, 5.4, 4.1],
-      label: `CHGNet`,
-      legend_group: `ML Potentials`,
-      point_style: { fill: `#c0392b`, radius: 5 },
-      line_style: { stroke: `#c0392b`, stroke_width: 2, line_dash: `5 3` },
-      markers: `line+points`,
-    },
-    {
-      x: [1, 2, 3, 4, 5],
-      y: [1.9, 3.8, 2.9, 4.9, 3.7],
-      label: `M3GNet`,
-      legend_group: `ML Potentials`,
-      point_style: { fill: `#a93226`, radius: 5 },
-      line_style: { stroke: `#a93226`, stroke_width: 2, line_dash: `2 2` },
-      markers: `line+points`,
-    },
-    // Experiment (ungrouped)
-    {
-      x: [1, 2, 3, 4, 5],
-      y: [2.0, 4.1, 3.0, 5.2, 4.0],
-      label: `Experiment`,
-      point_style: { fill: `#2ecc71`, radius: 7, symbol_type: `Star` },
-      markers: `points`,
-    },
-  ]
-
   // === Linear-to-Log Transition Test Data ===
   let lin_log_y_scale_type = $state<`linear` | `log`>(`linear`)
   const lin_log_transition_data = {
@@ -785,20 +726,6 @@
   />
   <h3>Zero Series - No Legend Expected</h3>
   <ScatterPlot series={legend_zero_series} id="legend-zero" />
-
-  <h3>Grouped Legend - Collapsible Groups</h3>
-  <p>
-    Series can be organized into collapsible groups using the <code>legend_group</code>
-    property. Click group headers to toggle visibility of all series in the group. Click
-    the chevron to collapse/expand the group.
-  </p>
-  <ScatterPlot
-    series={legend_grouped_series}
-    id="legend-grouped"
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis` }}
-    legend={{ draggable: true }}
-  />
 </section>
 
 <section id="lin-log-transition">

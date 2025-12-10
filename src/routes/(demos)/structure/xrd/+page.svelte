@@ -221,9 +221,9 @@
 
   <h2>XRD File Drop Demo</h2>
   <p>
-    Drag and drop <code>.xy</code> (two-column text) or <code>.brml</code> (Bruker) files
-    directly onto the XRD plot. Drop a local file from your computer or drag one of these
-    sample files:
+    Drag and drop <code>.xy</code>, <code>.xye</code>, <code>.xrdml</code> (PANalytical),
+    or <code>.brml</code> (Bruker) files directly onto the XRD plot. Drop a local file
+    from your computer or drag one of these sample files:
   </p>
   <section>
     <FilePicker

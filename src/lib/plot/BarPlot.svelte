@@ -551,6 +551,7 @@
           series_idx: idx,
           label: srs.label ?? `Series ${idx + 1}`,
           visible: srs.visible ?? true,
+          legend_group: srs.legend_group,
           display_style: {
             ...(has_line
               ? {
@@ -573,6 +574,7 @@
         series_idx: idx,
         label: srs.label ?? `Series ${idx + 1}`,
         visible: srs.visible ?? true,
+        legend_group: srs.legend_group,
         display_style: {
           symbol_type: `Square` as const,
           symbol_color: series_color,

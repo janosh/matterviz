@@ -201,7 +201,6 @@
     gap: 2em;
     margin-block: 2em;
   }
-  .loading-placeholder,
   .loading-placeholder {
     display: flex;
     flex-direction: column;

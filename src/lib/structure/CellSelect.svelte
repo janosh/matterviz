@@ -155,6 +155,7 @@
 <style>
   .cell-select {
     position: relative;
+    font-size: var(--struct-legend-font, clamp(7pt, 2.5cqmin, 12pt));
   }
   .toggle-btn {
     padding: var(--struct-legend-padding, 0 4pt);

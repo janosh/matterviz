@@ -1405,23 +1405,12 @@
     border-radius: var(--border-radius, 3pt);
     background: var(--dropzone-bg);
   }
-  :global(.trajectory-empty-state) :where(ul) {
+  :global(.trajectory-empty-state) :where(p, ul) {
     color: var(--text-color-muted);
   }
   :global(.trajectory-empty-state) :where(ul, li, strong) {
     max-width: var(--trajectory-empty-state-max-width, 500px);
     margin-inline: auto;
-  }
-  .supported-formats {
-    margin-top: 1.5rem;
-    text-align: left;
-  }
-  .supported-formats ul {
-    margin: 0.5rem 0;
-    padding-left: 1.5rem;
-  }
-  .supported-formats li {
-    color: var(--text-color-muted);
   }
   button:hover:not(:disabled) {
     background: var(--border-color);

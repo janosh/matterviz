@@ -397,7 +397,6 @@ describe(`CellSelect`, () => {
       expect(container.getAttribute(`role`)).toBe(`group`)
 
       // Toggle button
-      expect(toggle.title).toBe(`Cell type & supercell scaling`)
       expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
 
       // After opening

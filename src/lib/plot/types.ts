@@ -277,6 +277,7 @@ export interface BarSeries {
   x: readonly number[]
   y: readonly number[]
   label?: string
+  legend_group?: string // Optional group name for legend grouping (like Plotly's legendgroup)
   color?: string
   bar_width?: number | readonly number[]
   visible?: boolean

@@ -1,5 +1,5 @@
 import { EmptyState } from '$lib'
-import { mount } from 'svelte'
+import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from './setup'
 
@@ -52,5 +52,24 @@ describe(`EmptyState`, () => {
     expect(container.getAttribute(`data-testid`)).toBe(`empty-state-test`)
     expect(container.style.minHeight).toBe(`200px`)
     expect(container.style.background).toBe(`red`)
+  })
+
+  test(`children snippet takes precedence over message prop`, () => {
+    const custom_content = `<p class="custom-content">Custom snippet content</p>`
+    mount(EmptyState, {
+      target: document.body,
+      props: {
+        message: `This should not render`,
+        children: createRawSnippet(() => ({ render: () => custom_content })),
+      },
+    })
+
+    const container = doc_query(`.empty-state`)
+    // Children snippet content should render
+    expect(container.querySelector(`.custom-content`)?.textContent).toBe(
+      `Custom snippet content`,
+    )
+    // Message span should NOT render when children is provided
+    expect(container.querySelector(`span.message`)).toBeNull()
   })
 })
