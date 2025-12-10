@@ -74,7 +74,6 @@
   <button
     type="button"
     onclick={() => (menu_open = !menu_open)}
-    title="Cell type & supercell scaling"
     class="toggle-btn"
     class:active={menu_open}
     aria-expanded={menu_open}

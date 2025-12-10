@@ -136,16 +136,12 @@
       if (mode === `element_pairs`) {
         const pairs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
         result.push(...pairs.map((p) => ({
-          label: p.element_pair
-            ? `${label} ${p.element_pair[0]}-${p.element_pair[1]}`
-            : label,
+          label: p.element_pair ? `${p.element_pair[0]}-${p.element_pair[1]}` : label,
           pattern: p,
         })))
       } else {
-        result.push({
-          label,
-          pattern: calculate_rdf(struct, { cutoff, n_bins, pbc }),
-        })
+        const pattern = calculate_rdf(struct, { cutoff, n_bins, pbc })
+        result.push({ label, pattern })
       }
     }
     return result
