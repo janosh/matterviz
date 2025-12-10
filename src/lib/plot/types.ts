@@ -111,6 +111,7 @@ export interface DataSeries {
   point_tween?: TweenedOptions<XyObj>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
+  legend_group?: string // Optional group name for legend grouping (like Plotly's legendgroup)
   unit?: string // Optional unit for the series (e.g., "eV", "eV/Å", "GPa")
   line_style?: {
     stroke?: string
@@ -246,6 +247,7 @@ export interface LegendItem {
   label: string
   visible: boolean
   series_idx: number
+  legend_group?: string // Optional group name for grouped legend rendering
   display_style: {
     symbol_type?: D3SymbolName
     symbol_color?: string

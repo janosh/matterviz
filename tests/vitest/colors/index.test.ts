@@ -1,4 +1,5 @@
 import {
+  add_alpha,
   DEFAULT_CATEGORY_COLORS,
   ELEMENT_COLOR_SCHEMES,
   get_bg_color,
@@ -165,6 +166,20 @@ describe(`colors module`, () => {
       ).toBe(`red`)
       expect(pick_contrast_color({ bg_color: `#ffffff` })).toBe(`black`) // defaults
       expect(pick_contrast_color()).toBe(`black`) // no options -> bg defaults to 'white' -> black text
+    })
+  })
+
+  describe(`add_alpha`, () => {
+    it.each([
+      [`#ff0000`, 0.5, `rgba(255, 0, 0, 0.5)`],
+      [`#abc`, 0.3, `rgba(170, 187, 204, 0.3)`],
+      [`rgb(100, 150, 200)`, 0.8, `rgba(100, 150, 200, 0.8)`],
+      [`rgba(100, 150, 200, 0.2)`, 0.9, `rgba(100, 150, 200, 0.9)`],
+      [`rgba(100, 100, 100, 1e-5)`, 0.6, `rgba(100, 100, 100, 0.6)`], // scientific notation
+      [`rgba(50, 50, 50, 1.5E+2)`, 0.1, `rgba(50, 50, 50, 0.1)`], // uppercase E with +
+      [`unknown-format`, 0.5, `unknown-format`], // passthrough unknown
+    ])(`add_alpha(%s, %s) = %s`, (color, alpha, expected) => {
+      expect(add_alpha(color, alpha)).toBe(expected)
     })
   })
 })

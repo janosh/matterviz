@@ -1,6 +1,6 @@
 <script lang="ts">
   import { EmptyState, SettingsSection, StatusMessage } from '$lib'
-  import { PLOT_COLORS } from '$lib/colors'
+  import { add_alpha, PLOT_COLORS } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
   import type {
@@ -152,29 +152,6 @@
 
   // Scaled intensities are normalized to 0..100, add 10% top padding for peak labels
   const intensity_range: [number, number] = [0, 110]
-
-  // Helper to add transparency to colors when multiple series are shown
-  function add_alpha(color: string, alpha: number): string {
-    // Handle hex colors (#rgb, #rgba, #rrggbb, #rrggbbaa)
-    if (color.startsWith(`#`)) {
-      const hex = color.slice(1)
-      // Extract RGB, ignoring any existing alpha channel
-      const is_short = hex.length === 3 || hex.length === 4
-      const r = parseInt(is_short ? hex[0] + hex[0] : hex.slice(0, 2), 16)
-      const g = parseInt(is_short ? hex[1] + hex[1] : hex.slice(2, 4), 16)
-      const b = parseInt(is_short ? hex[2] + hex[2] : hex.slice(4, 6), 16)
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`
-    }
-    // Handle rgb() colors
-    if (color.startsWith(`rgb(`)) {
-      return color.replace(`rgb(`, `rgba(`).replace(`)`, `, ${alpha})`)
-    }
-    // Handle rgba() - replace existing alpha
-    if (color.startsWith(`rgba(`)) {
-      return color.replace(/,\s*[\d.]+\)$/, `, ${alpha})`)
-    }
-    return color
-  }
 
   // Build BarPlot series from entries (for Discrete/Stick view)
   const bar_series = $derived.by<BarSeries[]>(() => {
