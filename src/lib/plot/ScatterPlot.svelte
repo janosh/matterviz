@@ -295,7 +295,7 @@
   // Compute data color values for color scaling
   let all_color_values = $derived(
     series_with_ids.filter(Boolean).flatMap((srs: DataSeries) =>
-      srs.color_values?.filter(Boolean) || []
+      srs.color_values?.filter((val) => val != null) || []
     ),
   )
 
@@ -415,7 +415,7 @@
     series_with_ids
       .filter(Boolean)
       .flatMap(({ size_values }: DataSeries) =>
-        size_values?.filter(Boolean) || []
+        size_values?.filter((val) => val != null) || []
       ) as (number | null)[],
   )
 

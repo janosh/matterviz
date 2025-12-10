@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
-  import { FullscreenToggle } from '$lib/layout'
   import { format_value } from '$lib/labels'
+  import { FullscreenToggle } from '$lib/layout'
   import type {
     BarHandlerProps,
     BarMode,
@@ -42,9 +42,9 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
-  import { bar_path } from './svg'
   import { calc_auto_padding, LABEL_GAP_DEFAULT, measure_text_width } from './layout'
   import PlotTooltip from './PlotTooltip.svelte'
+  import { bar_path } from './svg'
 
   // Handler props for line marker events (extends BarHandlerProps with point-specific data)
   interface LineMarkerHandlerProps extends BarHandlerProps {
@@ -374,7 +374,9 @@
   let all_color_values = $derived(
     visible_series
       .filter((srs: BarSeries) => srs.render_mode === `line`)
-      .flatMap((srs: BarSeries) => srs.color_values?.filter(Boolean) || []),
+      .flatMap((srs: BarSeries) =>
+        srs.color_values?.filter((val) => val != null) || []
+      ),
   )
 
   // Create auto color range
@@ -393,7 +395,7 @@
     visible_series
       .filter((srs: BarSeries) => srs.render_mode === `line`)
       .flatMap((srs: BarSeries) =>
-        srs.size_values?.filter(Boolean) || []
+        srs.size_values?.filter((val) => val != null) || []
       ) as (number | null)[],
   )
 

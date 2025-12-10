@@ -110,13 +110,23 @@ describe(`BarPlot`, () => {
   test.each([
     { render_mode: `line` as const, color: `red`, label: `Line` },
     { render_mode: `line` as const, line_style: { stroke_width: 4, line_dash: `10,5` } },
-  ])(`line series`, (series_props) => {
+    // Regression: .filter(Boolean) incorrectly removed 0 from auto-range calculation
+    // Zero is a valid value for color/size scales (e.g., minimum on a gradient)
+    {
+      render_mode: `line` as const,
+      markers: `line+points` as const,
+      color_values: [0, 0.25, 0.5, 0.75, 1],
+      size_values: [0, 5, 10, 15, 20],
+    },
+  ])(`line series %#`, (series_props) => {
     mount(BarPlot, {
       target: document.body,
       props: {
         series: [{ x: [1, 2, 3, 4, 5], y: [10, 20, 15, 25, 18], ...series_props }],
       },
     })
+    const plot = document.querySelector(`.bar-plot`)
+    expect(plot).toBeTruthy()
   })
 
   test(`mixed bar and line series`, () => {

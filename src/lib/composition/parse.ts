@@ -449,9 +449,11 @@ export function parse_chemsys_with_wildcards(input: string): ChemsysWithWildcard
 
 // Placeholder for wildcards during parentheses expansion (Zz is not a real element symbol).
 // Use static regex literals to avoid escaping issues if placeholder ever changes.
-const WILDCARD_PLACEHOLDER = `Zz`
-const WILDCARD_TO_PLACEHOLDER = /\*/g
-const PLACEHOLDER_TO_WILDCARD = /Zz/g
+export const ELEM_WILDCARD = {
+  placeholder: `Zz`,
+  to_placeholder: /\*/g,
+  from_placeholder: /Zz/g,
+} as const
 
 // Parse exact formula with wildcards: "LiFe*2*" -> [{ element: "Li", count: 1 }, { element: "Fe", count: 1 }, { element: null, count: 2 }, { element: null, count: 1 }]
 // The * character represents any element, optionally followed by a count.
@@ -467,10 +469,10 @@ export function parse_formula_with_wildcards(formula: string): WildcardFormulaTo
   let cleaned = formula.replace(/\s/g, ``)
 
   // Protect wildcards from parentheses expansion by replacing * with placeholder
-  cleaned = cleaned.replace(WILDCARD_TO_PLACEHOLDER, WILDCARD_PLACEHOLDER)
+  cleaned = cleaned.replace(ELEM_WILDCARD.to_placeholder, ELEM_WILDCARD.placeholder)
   cleaned = expand_parentheses(cleaned)
   // Restore wildcards
-  cleaned = cleaned.replace(PLACEHOLDER_TO_WILDCARD, `*`)
+  cleaned = cleaned.replace(ELEM_WILDCARD.from_placeholder, `*`)
 
   // Regex to match either:
   // 1. Standard element symbol with optional count: ([A-Z][a-z]?)(\d*)

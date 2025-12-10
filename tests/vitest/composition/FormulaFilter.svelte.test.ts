@@ -320,8 +320,9 @@ describe(`FormulaFilter`, () => {
   })
 
   test.each([
-    { input: `Fe,O`, expected: `O,Fe`, mode: `elements` },
-    { input: `Fe-Li`, expected: `Li-Fe`, mode: `chemsys` },
+    // Alphabetical order: Fe before O, Fe before Li
+    { input: `Fe,O`, expected: `Fe,O`, mode: `elements` },
+    { input: `Fe-Li`, expected: `Fe-Li`, mode: `chemsys` },
     { input: `NaCl`, expected: `NaCl`, mode: `exact` },
   ])(
     `normalizes "$input" to "$expected" (mode=$mode)`,
@@ -367,7 +368,8 @@ describe(`FormulaFilter`, () => {
       new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
     )
     flushSync()
-    expect(onchange).toHaveBeenCalledWith(`Li-Fe`, `chemsys`)
+    // Alphabetical order: Fe before Li
+    expect(onchange).toHaveBeenCalledWith(`Fe-Li`, `chemsys`)
   })
 
   test(`spreads additional attributes to wrapper`, () => {
@@ -492,8 +494,9 @@ describe(`FormulaFilter`, () => {
 
     test.each([
       { input: `Li,*,*`, expected: `Li,*,*`, mode: `elements` },
-      { input: `Li-Fe-*`, expected: `Li-Fe-*`, mode: `chemsys` },
-      { input: `*,O,Fe`, expected: `O,Fe,*`, mode: `elements` },
+      { input: `Li-Fe-*`, expected: `Fe-Li-*`, mode: `chemsys` },
+      // Alphabetical order: Fe before O, Li before O
+      { input: `*,O,Fe`, expected: `Fe,O,*`, mode: `elements` },
       { input: `*-*-Li-O`, expected: `Li-O-*-*`, mode: `chemsys` },
     ])(
       `normalizes wildcard input "$input" to "$expected" (mode=$mode)`,
@@ -692,8 +695,8 @@ describe(`FormulaFilter`, () => {
         new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
       )
       flushSync()
-      // Elements are returned in periodic table order, not alphabetical
-      expect(onchange).toHaveBeenCalledWith(`Li,Fe,*,*`, `elements`)
+      // Elements are sorted alphabetically, wildcards appended
+      expect(onchange).toHaveBeenCalledWith(`Fe,Li,*,*`, `elements`)
     })
   })
 })
