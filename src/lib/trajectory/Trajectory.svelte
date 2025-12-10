@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     type ElementSymbol,
+    EmptyState,
     Icon,
     Spinner,
     Structure,
@@ -1191,7 +1192,7 @@
       {/if}
     </div>
   {:else}
-    <div class="empty-state">
+    <EmptyState class="trajectory-empty-state">
       <h3>Load Trajectory</h3>
       <p>
         Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, .traj, .h5)
@@ -1210,7 +1211,7 @@
       <p>
         💡 Force vectors will be automatically displayed when present in trajectory data
       </p>
-    </div>
+    </EmptyState>
   {/if}
 </div>
 
@@ -1399,15 +1400,15 @@
   .play-button.playing:hover:not(:disabled) {
     background: var(--traj-pause-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.1)));
   }
-  .empty-state {
+  :global(.trajectory-empty-state) {
     padding: 2rem;
     border-radius: var(--border-radius, 3pt);
     background: var(--dropzone-bg);
   }
-  .empty-state :where(p, ul) {
+  :global(.trajectory-empty-state) :where(ul) {
     color: var(--text-color-muted);
   }
-  .empty-state :where(h3, p, ul, li, strong) {
+  :global(.trajectory-empty-state) :where(ul, li, strong) {
     max-width: var(--trajectory-empty-state-max-width, 500px);
     margin-inline: auto;
   }
