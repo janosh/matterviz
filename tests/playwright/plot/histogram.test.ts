@@ -758,7 +758,7 @@ test.describe(`Histogram Component Tests`, () => {
     const format_inputs = control_pane.locator(`input.format-input`)
     if (await format_inputs.count() > 0) {
       const x_format_input = format_inputs.first()
-      await x_format_input.fill(`.3f`)
+      await x_format_input.fill(`.3r`)
 
       // Test invalid format handling
       await x_format_input.fill(`invalid`)
@@ -768,7 +768,7 @@ test.describe(`Histogram Component Tests`, () => {
       expect(has_invalid_class).toBe(true)
 
       // Restore valid format
-      await x_format_input.fill(`.2f`)
+      await x_format_input.fill(`.2r`)
     }
 
     // Close controls pane
@@ -945,7 +945,7 @@ test.describe(`Histogram Component Tests`, () => {
       const y_format_input = format_inputs.nth(1)
 
       // Test valid formats
-      const valid_formats = [`.2f`, `.1e`, `.0%`, `,.2f`, `d`]
+      const valid_formats = [`.2r`, `.1e`, `.0%`, `,.2r`, `d`]
       for (const format of valid_formats) {
         await x_format_input.fill(format)
 

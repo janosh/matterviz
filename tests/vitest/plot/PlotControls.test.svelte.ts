@@ -87,7 +87,7 @@ describe(`PlotControls`, () => {
 
   describe(`format input validation`, () => {
     test.each([
-      { format: `.2f`, valid: true },
+      { format: `.2r`, valid: true },
       { format: `.0%`, valid: true },
       { format: `~s`, valid: true },
       { format: `d`, valid: true },
@@ -112,7 +112,7 @@ describe(`PlotControls`, () => {
       )
 
       inputs.forEach((input, idx) => {
-        input.value = [`.2f`, `.0%`, `.1e`][idx]
+        input.value = [`.2r`, `.0%`, `.1e`][idx]
         input.dispatchEvent(new Event(`input`, { bubbles: true }))
         expect(input.classList.contains(`invalid`)).toBe(false)
       })

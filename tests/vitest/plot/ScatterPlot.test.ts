@@ -45,8 +45,8 @@ describe(`ScatterPlot`, () => {
   test.each([
     {
       x: [0, 10, 20, 30, 40, 50],
-      x_axis: { ticks: -10, format: `.0f` },
-      y_axis: { ticks: -5, format: `.0f` },
+      x_axis: { ticks: -10, format: `.0r` },
+      y_axis: { ticks: -5, format: `.0r` },
     },
     {
       x: Array.from(
@@ -132,7 +132,7 @@ describe(`ScatterPlot`, () => {
         point_idx: 0,
       },
       x_axis: { format: `%b %d, %Y` },
-      y_axis: { format: `.2f` },
+      y_axis: { format: `.2r` },
     },
     { tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 } },
   ])(`tooltip format`, (props) => {
