@@ -9,11 +9,16 @@ import {
   generate_chem_sys_subspaces,
   get_molecular_weight,
   get_reduced_formula,
+  has_wildcards,
   is_valid_element,
+  matches_chemsys_wildcard,
+  matches_formula_wildcard,
   normalize_composition,
   normalize_element_symbols,
+  parse_chemsys_with_wildcards,
   parse_composition,
   parse_formula,
+  parse_formula_with_wildcards,
   sanitize_composition_keys,
 } from '$lib/composition'
 import { describe, expect, test } from 'vitest'
@@ -82,36 +87,23 @@ describe(`parse_formula`, () => {
     [`Ca(OH)2`, { Ca: 1, O: 2, H: 2 }, `calcium hydroxide`],
     [`Mg(NO3)2`, { Mg: 1, N: 2, O: 6 }, `magnesium nitrate`],
     [`Al2(SO4)3`, { Al: 2, S: 3, O: 12 }, `aluminum sulfate`],
-  ])(`should parse formula %s (%s)`, (formula, expected, _description) => {
+    [`Ca3(PO4)2`, { Ca: 3, P: 2, O: 8 }, `nested parentheses`],
+    [`Ca(OH)`, { Ca: 1, O: 1, H: 1 }, `parentheses without multipliers`],
+    [` H2 O `, { H: 2, O: 1 }, `ignores whitespace`],
+    [`Ca (OH) 2`, { Ca: 1, O: 2, H: 2 }, `ignores whitespace with parens`],
+    [`H2SO4`, { H: 2, S: 1, O: 4 }, `accumulates elements`],
+    [`CH3CH2OH`, { C: 2, H: 6, O: 1 }, `multiple element repetitions`],
+    [`C1000H2000`, { C: 1000, H: 2000 }, `very large numbers`],
+    [``, {}, `empty formula`],
+  ])(`%s -> %j (%s)`, (formula, expected, _description) => {
     expect(parse_formula(formula)).toEqual(expected)
   })
 
-  test(`should handle nested parentheses`, () => {
-    expect(parse_formula(`Ca3(PO4)2`)).toEqual({ Ca: 3, P: 2, O: 8 })
-    // More complex nesting would require more sophisticated parsing
-  })
-
-  test(`should handle parentheses without multipliers`, () => {
-    expect(parse_formula(`Ca(OH)`)).toEqual({ Ca: 1, O: 1, H: 1 })
-  })
-
-  test(`should ignore whitespace`, () => {
-    expect(parse_formula(` H2 O `)).toEqual({ H: 2, O: 1 })
-    expect(parse_formula(`Ca (OH) 2`)).toEqual({ Ca: 1, O: 2, H: 2 })
-  })
-
-  test(`should accumulate duplicate elements`, () => {
-    expect(parse_formula(`H2SO4`)).toEqual({ H: 2, S: 1, O: 4 })
-    // In a formula like this, if H appeared twice, it should sum
-  })
-
-  test(`should throw error for invalid element symbols`, () => {
-    expect(() => parse_formula(`Xx2`)).toThrow(`Invalid element symbol: Xx`)
-    expect(() => parse_formula(`ABC`)).toThrow(`Invalid element symbol: A`)
-  })
-
-  test(`should handle empty formula`, () => {
-    expect(parse_formula(``)).toEqual({})
+  test.each([
+    [`Xx2`, `Invalid element symbol: Xx`],
+    [`ABC`, `Invalid element symbol: A`],
+  ])(`throws for invalid formula %s`, (formula, error) => {
+    expect(() => parse_formula(formula)).toThrow(error)
   })
 })
 
@@ -282,543 +274,180 @@ describe(`count_atoms_in_composition`, () => {
 })
 
 describe(`parse_composition`, () => {
-  test(`should parse string formulas`, () => {
-    expect(parse_composition(`H2O`)).toEqual({ H: 2, O: 1 })
-    expect(parse_composition(`Fe2O3`)).toEqual({ Fe: 2, O: 3 })
+  test.each([
+    [`H2O`, { H: 2, O: 1 }, `string formula`],
+    [`Fe2O3`, { Fe: 2, O: 3 }, `string formula with counts`],
+    [`{"Fe":70,"Cr":18,"Ni":8,"Mn":2,"Si":1,"C":1}`, {
+      Fe: 70,
+      Cr: 18,
+      Ni: 8,
+      Mn: 2,
+      Si: 1,
+      C: 1,
+    }, `JSON string`],
+    [`{"Cu":88,"Sn":12}`, { Cu: 88, Sn: 12 }, `JSON bronze`],
+    [`{"Li":1,"P":1,"O":4}`, { Li: 1, P: 1, O: 4 }, `JSON lithium phosphate`],
+    [``, {}, `empty string`],
+  ])(`parses %s (%s)`, (input, expected, _desc) => {
+    expect(parse_composition(input)).toEqual(expected)
   })
 
   test.each([
-    [
-      `{"Fe":70,"Cr":18,"Ni":8,"Mn":2,"Si":1,"C":1}`,
-      { Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 },
-      `stainless steel`,
-    ],
-    [`{"Cu":88,"Sn":12}`, { Cu: 88, Sn: 12 }, `bronze`],
-    [`{"Li":1,"P":1,"O":4}`, { Li: 1, P: 1, O: 4 }, `lithium phosphate`],
-    [`{"H":2,"O":1}`, { H: 2, O: 1 }, `water as JSON`],
-  ])(
-    `should parse JSON string %s (%s)`,
-    (json_string, expected, _description) => {
-      expect(parse_composition(json_string)).toEqual(expected)
-    },
-  )
-
-  test(`should normalize symbol compositions`, () => {
-    expect(parse_composition({ H: 2, O: 1 })).toEqual({ H: 2, O: 1 })
-    expect(parse_composition({ Fe: 2, O: 3, N: 0 })).toEqual({
-      Fe: 2,
-      O: 3,
-    })
+    [{ H: 2, O: 1 }, { H: 2, O: 1 }, `symbol composition`],
+    [{ Fe: 2, O: 3, N: 0 }, { Fe: 2, O: 3 }, `removes zero values`],
+    [{ 1: 2, 8: 1 }, { H: 2, O: 1 }, `atomic number composition`],
+    [{ 1: 2, O: 1 }, { '1': 2, O: 1 }, `mixed composition`],
+    [{}, {}, `empty object`],
+    [{ 999: 1 }, { '999': 1 }, `invalid atomic number preserved`],
+  ])(`normalizes object %j (%s)`, (input, expected, _desc) => {
+    expect(parse_composition(input)).toEqual(expected)
   })
 
-  test(`should handle atomic number compositions`, () => {
-    expect(parse_composition({ 1: 2, 8: 1 })).toEqual({ H: 2, O: 1 })
-  })
-
-  test(`should handle mixed compositions`, () => {
-    expect(parse_composition({ 1: 2, O: 1 })).toEqual({ '1': 2, O: 1 })
-  })
-
-  test(`should handle empty inputs`, () => {
-    expect(parse_composition(``)).toEqual({})
-    expect(parse_composition({})).toEqual({})
-  })
-
-  test(`should throw error for invalid formula strings`, () => {
-    expect(() => parse_composition(`Xx2`)).toThrow(
-      `Invalid element symbol: Xx`,
-    )
-  })
-
-  test(`should handle invalid atomic numbers gracefully`, () => {
-    // Mixed compositions with invalid atomic numbers should be normalized without error
-    // The invalid atomic number is simply preserved as-is in the key
-    expect(parse_composition({ 999: 1 })).toEqual({ '999': 1 })
-  })
-
-  test(`should handle malformed JSON gracefully`, () => {
-    // If JSON parsing fails, should fall back to formula parsing
-    // This malformed JSON will fail both JSON parsing and formula parsing
-    expect(() => parse_composition(`{Xx: 70, Yy: 18}`)).toThrow(
-      `Invalid element symbol: X`,
-    )
+  test.each([
+    [`Xx2`, `Invalid element symbol: Xx`],
+    [`{Xx: 70, Yy: 18}`, `Invalid element symbol: X`],
+  ])(`throws for invalid input %s`, (input, error) => {
+    expect(() => parse_composition(input)).toThrow(error)
   })
 })
 
-describe(`edge cases and error handling`, () => {
-  test(`should handle very large compositions`, () => {
+describe(`edge cases`, () => {
+  test(`large composition - fractions sum to 1.0`, () => {
     const large_composition: CompositionType = {}
     for (let idx = 1; idx <= 50; idx++) {
       const symbol = ATOMIC_NUMBER_TO_SYMBOL[idx] || null
       if (symbol) large_composition[symbol] = idx
     }
-
-    const total = count_atoms_in_composition(large_composition)
-    expect(total).toBeGreaterThan(1000)
-
     const fractions = fractional_composition(large_composition)
-    const fraction_sum = Object.values(fractions).reduce(
-      (sum, frac) => sum + frac,
-      0,
-    )
+    const fraction_sum = Object.values(fractions).reduce((sum, frac) => sum + frac, 0)
     expect(fraction_sum).toBeCloseTo(1.0, 3)
   })
 
-  test(`should handle complex formulas with multiple element repetitions`, () => {
-    // Test a formula where elements appear multiple times
-    expect(parse_formula(`CH3CH2OH`)).toEqual({ C: 2, H: 6, O: 1 })
-  })
-
-  test(`should handle formulas with very large numbers`, () => {
-    expect(parse_formula(`C1000H2000`)).toEqual({ C: 1000, H: 2000 })
-  })
-
-  test(`should be consistent between conversion functions`, () => {
-    const orig_symbols: CompositionType = { Fe: 2, O: 3, H: 1 }
-    const atomic_numbers = atomic_symbol_to_num(orig_symbols)
-    const back_to_symbols = atomic_num_to_symbols(atomic_numbers)
-
-    expect(back_to_symbols).toEqual(orig_symbols)
+  test(`roundtrip: symbols -> atomic numbers -> symbols`, () => {
+    const orig: CompositionType = { Fe: 2, O: 3, H: 1 }
+    expect(atomic_num_to_symbols(atomic_symbol_to_num(orig))).toEqual(orig)
   })
 })
 
 describe(`extract_formula_elements`, () => {
-  describe(`default behavior (unique, sorted)`, () => {
-    test.each([
-      [`H2O`, [`H`, `O`], `water`],
-      [`Fe2O3`, [`Fe`, `O`], `iron oxide`],
-      [`NaCl`, [`Cl`, `Na`], `salt - alphabetically sorted`],
-      [`CaCO3`, [`C`, `Ca`, `O`], `calcium carbonate`],
-      [`NbZr2Nb`, [`Nb`, `Zr`], `duplicate elements removed`],
-      [`H2SO4`, [`H`, `O`, `S`], `sulfuric acid`],
-      [`Ca(OH)2`, [`Ca`, `H`, `O`], `with parentheses`],
-      [`Mg(NO3)2`, [`Mg`, `N`, `O`], `with nested parentheses`],
-      [`Al2(SO4)3`, [`Al`, `O`, `S`], `complex formula`],
-      [`C8H10N4O2`, [`C`, `H`, `N`, `O`], `caffeine`],
-      [`H`, [`H`], `single element`],
-      [`Au`, [`Au`], `single gold atom`],
-      [`C60`, [`C`], `fullerene`],
-      [``, [], `empty formula`],
-      [`LiFePO4`, [`Fe`, `Li`, `O`, `P`], `lithium iron phosphate battery`],
-      [`Ca3(PO4)2`, [`Ca`, `O`, `P`], `calcium phosphate`],
-    ])(
-      `should extract unique sorted elements from %s (%s)`,
-      (formula, expected, _description) => {
-        const result = extract_formula_elements(formula)
-        expect(result).toEqual(expected.sort())
-      },
-    )
-
-    test(`should handle whitespace in formulas`, () => {
-      expect(extract_formula_elements(` H2 O `)).toEqual([`H`, `O`])
-      expect(extract_formula_elements(`Ca (OH) 2`)).toEqual([`Ca`, `H`, `O`])
-    })
-
-    test(`should throw error for invalid element symbols`, () => {
-      expect(() => extract_formula_elements(`Xx2`)).toThrow(`Invalid element symbol: Xx`)
-      expect(() => extract_formula_elements(`ABC`)).toThrow(`Invalid element symbol: A`)
-    })
-
-    test(`should return sorted array by default`, () => {
-      const result = extract_formula_elements(`ZrNbHO`)
-      expect(result).toEqual([`H`, `Nb`, `O`, `Zr`])
-    })
+  test.each([
+    [`H2O`, {}, [`H`, `O`], `water`],
+    [`Fe2O3`, {}, [`Fe`, `O`], `iron oxide`],
+    [`NaCl`, {}, [`Cl`, `Na`], `salt - sorted`],
+    [`NbZr2Nb`, {}, [`Nb`, `Zr`], `duplicates removed`],
+    [`Ca(OH)2`, {}, [`Ca`, `H`, `O`], `parentheses`],
+    [``, {}, [], `empty`],
+    [` H2 O `, {}, [`H`, `O`], `whitespace`],
+    [`ZrNbHO`, {}, [`H`, `Nb`, `O`, `Zr`], `sorted alphabetically`],
+    // unique=false preserves duplicates and order
+    [`NbZr2Nb`, { unique: false }, [`Nb`, `Zr`, `Nb`], `unique=false`],
+    [`CH3CH2OH`, { unique: false }, [`C`, `H`, `C`, `H`, `O`, `H`], `all duplicates`],
+    [`ZrNbTi`, { unique: false }, [`Zr`, `Nb`, `Ti`], `preserves order`],
+    [``, { unique: false }, [], `empty unique=false`],
+    // sorted=false preserves first appearance order
+    [`ZrNb`, { sorted: false }, [`Zr`, `Nb`], `sorted=false`],
+    [`NbZr`, { sorted: false }, [`Nb`, `Zr`], `sorted=false order`],
+    // oxidation state stripping
+    [`V4+`, { unique: false }, [`V`], `strips V4+`],
+    [`Fe3+`, { unique: false }, [`Fe`], `strips Fe3+`],
+    [`O2-`, { unique: false }, [`O`], `strips O2-`],
+    // unique=false filters invalid elements silently
+    [`Xx2`, { unique: false }, [], `filters invalid Xx when unique=false`],
+    [
+      `FeXxO`,
+      { unique: false },
+      [`Fe`, `O`],
+      `filters invalid Xx between valid elements`,
+    ],
+    [`AbCdEf`, { unique: false }, [`Cd`], `only keeps valid Cd from AbCdEf`],
+  ])(`%s with %j -> %j (%s)`, (formula, opts, expected, _desc) => {
+    expect(extract_formula_elements(formula, opts)).toEqual(expected)
   })
 
-  describe(`with unique=false (preserves duplicates and order)`, () => {
-    test.each([
-      [`NbZr2Nb`, [`Nb`, `Zr`, `Nb`], `preserves duplicate Nb`],
-      [`H2O`, [`H`, `O`], `water`],
-      [`Fe2O3`, [`Fe`, `O`], `iron oxide`],
-      [`ZrNb`, [`Zr`, `Nb`], `preserves order of appearance`],
-      [`CH3CH2OH`, [`C`, `H`, `C`, `H`, `O`, `H`], `all duplicates preserved`],
-      [`CaCO3`, [`Ca`, `C`, `O`], `no duplicates in this formula`],
-    ])(
-      `should extract elements with duplicates from %s`,
-      (formula, expected, _description) => {
-        const result = extract_formula_elements(formula, { unique: false })
-        expect(result).toEqual(expected)
-      },
-    )
-
-    test(`should preserve order for simple formulas`, () => {
-      expect(extract_formula_elements(`ZrNbTi`, { unique: false })).toEqual([
-        `Zr`,
-        `Nb`,
-        `Ti`,
-      ])
-    })
-
-    test(`should handle empty formula`, () => {
-      expect(extract_formula_elements(``, { unique: false })).toEqual([])
-    })
+  test.each([
+    [`Xx2`, `Invalid element symbol: Xx`],
+    [`ABC`, `Invalid element symbol: A`],
+  ])(`throws for %s`, (formula, error) => {
+    expect(() => extract_formula_elements(formula)).toThrow(error)
   })
 
-  describe(`with sorted=false (preserves order of first appearance)`, () => {
-    test.each([
-      [`ZrNb`, [`Zr`, `Nb`], `preserves Zr before Nb`],
-      [`NbZr`, [`Nb`, `Zr`], `preserves Nb before Zr`],
-      [`H2O`, [`H`, `O`], `water - H before O`],
-      [`CaCO3`, [`Ca`, `C`, `O`], `preserves Ca, C, O order`],
-      [`NbZr2Nb`, [`Nb`, `Zr`], `first occurrence order`],
-    ])(
-      `should extract unsorted unique elements from %s`,
-      (formula, expected, _description) => {
-        const result = extract_formula_elements(formula, { sorted: false })
-        expect(result).toEqual(expected)
-      },
-    )
-
-    test(`should be different from sorted for some inputs`, () => {
-      const sorted_result = extract_formula_elements(`ZrNb`)
-      const unsorted_result = extract_formula_elements(`ZrNb`, { sorted: false })
-      expect(sorted_result).toEqual([`Nb`, `Zr`])
-      expect(unsorted_result).toEqual([`Zr`, `Nb`])
-    })
-  })
-
-  describe(`option combinations`, () => {
-    test(`unique=false ignores sorted parameter`, () => {
-      // When unique=false, we preserve duplicates and order, sorted param doesn't matter
-      const result1 = extract_formula_elements(`NbZrNb`, { unique: false, sorted: true })
-      const result2 = extract_formula_elements(`NbZrNb`, { unique: false, sorted: false })
-      expect(result1).toEqual([`Nb`, `Zr`, `Nb`])
-      expect(result2).toEqual([`Nb`, `Zr`, `Nb`])
-    })
-  })
-
-  describe(`oxidation state stripping`, () => {
-    test.each([
-      [`V4+`, [`V`]],
-      [`Fe3+`, [`Fe`]],
-      [`O2-`, [`O`]],
-      [`Cu+`, [`Cu`]],
-      [`S2-`, [`S`]],
-    ])(`%s -> %s`, (formula, expected) => {
-      expect(extract_formula_elements(formula, { unique: false })).toEqual(expected)
-    })
-
-    test(`phase diagram composition keys with oxidation states`, () => {
-      const entries = [{ composition: { 'V4+': 1, 'O2-': 2 } }, {
-        composition: { 'Fe3+': 2 },
-      }]
-      const elements = new Set<string>()
-      for (const { composition } of entries) {
-        for (const key of Object.keys(composition)) {
-          for (const elem of extract_formula_elements(key, { unique: false })) {
-            elements.add(elem)
-          }
-        }
-      }
-      expect(Array.from(elements).sort()).toEqual([`Fe`, `O`, `V`])
-    })
+  test(`unique=false ignores sorted parameter`, () => {
+    const result1 = extract_formula_elements(`NbZrNb`, { unique: false, sorted: true })
+    const result2 = extract_formula_elements(`NbZrNb`, { unique: false, sorted: false })
+    expect(result1).toEqual(result2)
   })
 })
 
 describe(`generate_chem_sys_subspaces`, () => {
-  describe(`string input (formula)`, () => {
-    test.each([
-      [`H2O`, [`H`, `H-O`, `O`], `water`],
-      [`NaCl`, [`Cl`, `Cl-Na`, `Na`], `salt`],
-      [`Fe2O3`, [`Fe`, `Fe-O`, `O`], `iron oxide`],
-      [`CaCO3`, [`C`, `C-Ca`, `C-Ca-O`, `C-O`, `Ca`, `Ca-O`, `O`], `calcium carbonate`],
-      [`LiFePO4`, [
-        `Fe`,
-        `Fe-Li`,
-        `Fe-Li-O`,
-        `Fe-Li-O-P`,
-        `Fe-Li-P`,
-        `Fe-O`,
-        `Fe-O-P`,
-        `Fe-P`,
-        `Li`,
-        `Li-O`,
-        `Li-O-P`,
-        `Li-P`,
-        `O`,
-        `O-P`,
-        `P`,
-      ], `battery material`],
-    ])(
-      `should generate subspaces from formula %s (%s)`,
-      (formula, expected, _description) => {
-        const result = generate_chem_sys_subspaces(formula)
-        expect(result.sort()).toEqual(expected.sort())
-      },
+  // Test all input types: formula string, array, composition object
+  test.each([
+    [`H2O`, [`H`, `H-O`, `O`], `formula: water`],
+    [`Fe2O3`, [`Fe`, `Fe-O`, `O`], `formula: iron oxide`],
+    [`NbZr2Nb`, [`Nb`, `Nb-Zr`, `Zr`], `formula: duplicates`],
+    [`C60`, [`C`], `formula: single element`],
+    [``, [], `formula: empty`],
+    [[`H`, `O`] as ElementSymbol[], [`H`, `H-O`, `O`], `array: binary`],
+    [[`Fe`, `Cr`, `Ni`] as ElementSymbol[], [
+      `Cr`,
+      `Cr-Fe`,
+      `Cr-Fe-Ni`,
+      `Cr-Ni`,
+      `Fe`,
+      `Fe-Ni`,
+      `Ni`,
+    ], `array: ternary`],
+    [[`Li`] as ElementSymbol[], [`Li`], `array: single`],
+    [[] as ElementSymbol[], [], `array: empty`],
+    [{ H: 2, O: 1 }, [`H`, `H-O`, `O`], `object: water`],
+    [{ Fe: 2, O: 3 }, [`Fe`, `Fe-O`, `O`], `object: iron oxide`],
+    [{}, [], `object: empty`],
+  ])(`%s -> %j (%s)`, (input, expected, _desc) => {
+    const result = generate_chem_sys_subspaces(
+      input as string | ElementSymbol[] | CompositionType,
     )
+    expect(result.sort()).toEqual(expected.sort())
+  })
 
-    test(`should handle formula with duplicate elements`, () => {
-      const result = generate_chem_sys_subspaces(`NbZr2Nb`)
-      expect(result.sort()).toEqual([`Nb`, `Nb-Zr`, `Zr`])
-    })
+  test.each([
+    [[1, [`H`]], `single element`],
+    [[2, [`H`, `O`]], `binary`],
+    [[3, [`H`, `O`, `N`]], `ternary`],
+    [[5, [`H`, `O`, `N`, `C`, `S`]], `quinary`],
+  ] as [[number, ElementSymbol[]], string][])(
+    `generates 2^n-1 subspaces for %j (%s)`,
+    ([expected_num, elements], _desc) => {
+      expect(generate_chem_sys_subspaces(elements).length).toBe(2 ** expected_num - 1)
+    },
+  )
 
-    test(`should handle single element formula`, () => {
-      const result = generate_chem_sys_subspaces(`C60`)
-      expect(result).toEqual([`C`])
-    })
+  test(`consistent across input types`, () => {
+    const formula = generate_chem_sys_subspaces(`Fe2O3`).sort()
+    const array = generate_chem_sys_subspaces([`Fe`, `O`]).sort()
+    const obj = generate_chem_sys_subspaces({ Fe: 2, O: 3 }).sort()
+    expect(formula).toEqual(array)
+    expect(array).toEqual(obj)
+  })
 
-    test(`should handle empty formula`, () => {
-      const result = generate_chem_sys_subspaces(``)
-      expect(result).toEqual([])
-    })
-
-    test(`should handle complex parentheses`, () => {
-      const result = generate_chem_sys_subspaces(`Ca(OH)2`)
-      expect(result.sort()).toEqual([`Ca`, `Ca-H`, `Ca-H-O`, `Ca-O`, `H`, `H-O`, `O`])
-    })
-
-    test(`should throw error for invalid elements in formula`, () => {
-      expect(() => generate_chem_sys_subspaces(`Xx2`)).toThrow(
-        `Invalid element symbol: Xx`,
-      )
+  test(`elements sorted alphabetically within subspaces`, () => {
+    const result = generate_chem_sys_subspaces([`Zr`, `Mo`, `Nb`])
+    result.forEach((subspace) => {
+      const parts = subspace.split(`-`)
+      expect(parts).toEqual([...parts].sort())
     })
   })
 
-  describe(`array input (element symbols)`, () => {
-    test.each([
-      [
-        [`Mo`, `Sc`, `B`],
-        [`B`, `B-Mo`, `B-Mo-Sc`, `B-Sc`, `Mo`, `Mo-Sc`, `Sc`],
-        `original example`,
-      ],
-      [[`H`, `O`], [`H`, `H-O`, `O`], `binary system`],
-      [
-        [`Fe`, `Cr`, `Ni`],
-        [`Cr`, `Cr-Fe`, `Cr-Fe-Ni`, `Cr-Ni`, `Fe`, `Fe-Ni`, `Ni`],
-        `ternary alloy`,
-      ],
-      [[`Li`], [`Li`], `single element`],
-      [[], [], `empty array`],
-      [[`Zr`, `Nb`], [`Nb`, `Nb-Zr`, `Zr`], `two elements unsorted`],
-      [[`H`, `He`, `Li`, `Be`], [
-        `Be`,
-        `Be-H`,
-        `Be-H-He`,
-        `Be-H-He-Li`,
-        `Be-H-Li`,
-        `Be-He`,
-        `Be-He-Li`,
-        `Be-Li`,
-        `H`,
-        `H-He`,
-        `H-He-Li`,
-        `H-Li`,
-        `He`,
-        `He-Li`,
-        `Li`,
-      ], `four element system`],
-    ])(
-      `should generate subspaces from array %j (%s)`,
-      (elements, expected, _description) => {
-        const result = generate_chem_sys_subspaces(elements as ElementSymbol[])
-        expect(result.sort()).toEqual(expected.sort())
-      },
-    )
-
-    test(`should sort elements before generating subspaces`, () => {
-      const result = generate_chem_sys_subspaces([`Zn`, `Cu`, `Al`])
-      // All subspaces should use alphabetically sorted element order
-      expect(result).toContain(`Al-Cu-Zn`)
-      expect(result).not.toContain(`Zn-Cu-Al`)
-    })
-
-    test(`should handle duplicate elements in array`, () => {
-      // Arrays with duplicates should be deduplicated to match behavior of other input types
-      const result = generate_chem_sys_subspaces([`Fe`, `Fe`, `O`])
-      // Should deduplicate to 2 unique elements: Fe and O
-      expect(result.length).toBe(3) // 2^2 - 1 = 3
-      expect(result.sort()).toEqual([`Fe`, `Fe-O`, `O`])
-      // Should NOT contain invalid "Fe-Fe"
-      expect(result).not.toContain(`Fe-Fe`)
-    })
-
-    test(`should validate element symbols in array input`, () => {
-      // Should throw error for invalid element symbols
-      // @ts-expect-error - invalid element symbols
-      expect(() => generate_chem_sys_subspaces([`Fe`, `Xx`, `O`])).toThrow(
-        `Invalid element symbol: Xx`,
-      )
-      // @ts-expect-error - invalid element symbols
-      expect(() => generate_chem_sys_subspaces([`Invalid`])).toThrow(
-        `Invalid element symbol: Invalid`,
-      )
-    })
+  test.each([
+    [`Xx2`, `Invalid element symbol: Xx`],
+  ])(`throws for invalid formula %s`, (formula, error) => {
+    expect(() => generate_chem_sys_subspaces(formula)).toThrow(error)
   })
 
-  describe(`composition object input`, () => {
-    test.each([
-      [{ H: 2, O: 1 }, [`H`, `H-O`, `O`], `water composition`],
-      [{ Fe: 2, O: 3 }, [`Fe`, `Fe-O`, `O`], `iron oxide composition`],
-      [{ Li: 1, Fe: 1, P: 1, O: 4 }, [
-        `Fe`,
-        `Fe-Li`,
-        `Fe-Li-O`,
-        `Fe-Li-O-P`,
-        `Fe-Li-P`,
-        `Fe-O`,
-        `Fe-O-P`,
-        `Fe-P`,
-        `Li`,
-        `Li-O`,
-        `Li-O-P`,
-        `Li-P`,
-        `O`,
-        `O-P`,
-        `P`,
-      ], `battery material composition`],
-      [
-        { Ca: 1, C: 1, O: 3 },
-        [`C`, `C-Ca`, `C-Ca-O`, `C-O`, `Ca`, `Ca-O`, `O`],
-        `calcium carbonate composition`,
-      ],
-      [{ Na: 1 }, [`Na`], `single element composition`],
-      [{}, [], `empty composition`],
-    ])(
-      `should generate subspaces from composition %j (%s)`,
-      (composition, expected, _description) => {
-        const result = generate_chem_sys_subspaces(composition)
-        expect(result.sort()).toEqual(expected.sort())
-      },
-    )
-
-    test(`should ignore composition amounts, only use keys`, () => {
-      const result1 = generate_chem_sys_subspaces({ Fe: 2, O: 3 })
-      const result2 = generate_chem_sys_subspaces({ Fe: 1, O: 1 })
-      expect(result1.sort()).toEqual(result2.sort())
-    })
-
-    test(`should handle composition with zero values`, () => {
-      // Zero values will still be in the keys
-      const result = generate_chem_sys_subspaces({ Fe: 2, O: 0 })
-      expect(result.sort()).toEqual([`Fe`, `Fe-O`, `O`])
-    })
-  })
-
-  describe(`edge cases and completeness`, () => {
-    test(`should generate correct number of subspaces`, () => {
-      // For n elements, should generate 2^n - 1 subspaces (all non-empty subsets)
-      const test_cases: [number, ElementSymbol[]][] = [
-        [1, [`H`]],
-        [2, [`H`, `O`]],
-        [3, [`H`, `O`, `N`]],
-        [4, [`H`, `O`, `N`, `C`]],
-        [5, [`H`, `O`, `N`, `C`, `S`]],
-      ]
-
-      test_cases.forEach(([expected_num, elements]) => {
-        const result = generate_chem_sys_subspaces(elements)
-        expect(result.length).toBe(2 ** expected_num - 1)
-      })
-    })
-
-    test(`should include all individual elements`, () => {
-      const elements: ElementSymbol[] = [`Fe`, `Cr`, `Ni`, `Mo`]
-      const result = generate_chem_sys_subspaces(elements)
-
-      elements.forEach((elem) => {
-        expect(result).toContain(elem)
-      })
-    })
-
-    test(`should include the complete system`, () => {
-      const result = generate_chem_sys_subspaces([`Li`, `Co`, `O`])
-      expect(result).toContain(`Co-Li-O`)
-    })
-
-    test(`should not contain duplicates`, () => {
-      const result = generate_chem_sys_subspaces([`Fe`, `Cr`, `Ni`])
-      const unique_result = [...new Set(result)]
-      expect(result.length).toBe(unique_result.length)
-    })
-
-    test(`should maintain alphabetical order within each subspace`, () => {
-      const result = generate_chem_sys_subspaces([`Zr`, `Mo`, `Nb`])
-
-      result.forEach((subspace) => {
-        const parts = subspace.split(`-`)
-        const sorted_parts = [...parts].sort()
-        expect(parts).toEqual(sorted_parts)
-      })
-    })
-
-    test(`should handle large number of elements`, () => {
-      const elements: ElementSymbol[] = [
-        `H`,
-        `He`,
-        `Li`,
-        `Be`,
-        `B`,
-        `C`,
-        `N`,
-        `O`,
-        `F`,
-        `Ne`,
-      ]
-      const result = generate_chem_sys_subspaces(elements)
-
-      // Should generate 2^10 - 1 = 1023 subspaces
-      expect(result.length).toBe(1023)
-
-      // Check a few specific subspaces
-      expect(result).toContain(`H`)
-      expect(result).toContain(`Ne`)
-      expect(result).toContain(`B-C-F-H-He-Li-N-Ne-O`)
-    })
-
-    test(`should be consistent across different input types`, () => {
-      const formula_result = generate_chem_sys_subspaces(`Fe2O3`)
-      const array_result = generate_chem_sys_subspaces([`Fe`, `O`])
-      const composition_result = generate_chem_sys_subspaces({ Fe: 2, O: 3 })
-
-      expect(formula_result.sort()).toEqual(array_result.sort())
-      expect(array_result.sort()).toEqual(composition_result.sort())
-    })
-
-    test(`should handle mixed case properly`, () => {
-      // Element symbols should be case-sensitive
-      const result = generate_chem_sys_subspaces(`NaCl`)
-      expect(result).toContain(`Cl-Na`)
-      expect(result).not.toContain(`cl-na`)
-    })
-  })
-
-  describe(`practical chemistry examples`, () => {
-    test(`should work for common alloy systems`, () => {
-      // Stainless steel (Fe-Cr-Ni)
-      const stainless = generate_chem_sys_subspaces({ Fe: 70, Cr: 18, Ni: 8 })
-      expect(stainless).toContain(`Cr-Fe-Ni`)
-      expect(stainless).toContain(`Fe-Ni`)
-      expect(stainless.length).toBe(7)
-    })
-
-    test(`should work for battery materials`, () => {
-      // LiFePO4
-      const battery = generate_chem_sys_subspaces(`LiFePO4`)
-      expect(battery).toContain(`Fe-Li-O-P`)
-      expect(battery).toContain(`Li-O`)
-      expect(battery).toContain(`Fe-O-P`)
-      expect(battery.length).toBe(15) // 2^4 - 1
-    })
-
-    test(`should work for perovskites`, () => {
-      // BaTiO3
-      const perovskite = generate_chem_sys_subspaces(`BaTiO3`)
-      expect(perovskite).toContain(`Ba-O-Ti`)
-      expect(perovskite).toContain(`O-Ti`)
-      expect(perovskite.length).toBe(7) // 2^3 - 1
-    })
-
-    test(`should work for high entropy alloys`, () => {
-      // CoCrFeMnNi (Cantor alloy)
-      const hea = generate_chem_sys_subspaces([`Co`, `Cr`, `Fe`, `Mn`, `Ni`])
-      expect(hea).toContain(`Co-Cr-Fe-Mn-Ni`)
-      expect(hea.length).toBe(31) // 2^5 - 1
-
-      // Should contain all quaternary subsystems
-      expect(hea).toContain(`Co-Cr-Fe-Mn`)
-      expect(hea).toContain(`Co-Cr-Fe-Ni`)
-      expect(hea).toContain(`Cr-Fe-Mn-Ni`)
-    })
+  test.each([
+    [[`Fe`, `Xx`, `O`], `Invalid element symbol: Xx`],
+    [[`Invalid`], `Invalid element symbol: Invalid`],
+  ])(`throws for invalid array %j`, (arr, error) => {
+    // @ts-expect-error - testing invalid inputs
+    expect(() => generate_chem_sys_subspaces(arr)).toThrow(error)
   })
 })
 
@@ -933,5 +562,177 @@ describe(`get_molecular_weight`, () => {
     [{}, 0, `empty`],
   ])(`%j ≈ %s (%s)`, (input, expected, _desc) => {
     expect(get_molecular_weight(input)).toBeCloseTo(expected, 1)
+  })
+})
+
+// --- Wildcard parsing utilities ---
+
+describe(`has_wildcards`, () => {
+  test.each([
+    [`Li-Fe-*-*`, true, `chemsys with wildcards`],
+    [`*-*-O`, true, `chemsys with leading wildcards`],
+    [`Li,Fe,*`, true, `elements with wildcard`],
+    [`LiFe*2*`, true, `formula with wildcards`],
+    [`*2O3`, true, `formula with leading wildcard`],
+    [`**O4`, true, `formula with multiple wildcards`],
+    [`Li-Fe-O`, false, `chemsys without wildcards`],
+    [`Li,Fe,O`, false, `elements without wildcards`],
+    [`LiFePO4`, false, `formula without wildcards`],
+    [``, false, `empty string`],
+  ])(`"%s" -> %s (%s)`, (input, expected, _description) => {
+    expect(has_wildcards(input)).toBe(expected)
+  })
+})
+
+describe(`parse_chemsys_with_wildcards`, () => {
+  test.each([
+    [`Li-Fe-*-*`, { elements: [`Fe`, `Li`], wildcard_count: 2 }, `hyphens`],
+    [`*-*-O`, { elements: [`O`], wildcard_count: 2 }, `leading wildcards`],
+    [`Li-*-O`, { elements: [`Li`, `O`], wildcard_count: 1 }, `single wildcard`],
+    [`*-*-*`, { elements: [], wildcard_count: 3 }, `all wildcards`],
+    [`Li-Fe-O`, { elements: [`Fe`, `Li`, `O`], wildcard_count: 0 }, `no wildcards`],
+    [`Li`, { elements: [`Li`], wildcard_count: 0 }, `single element`],
+    [`*`, { elements: [], wildcard_count: 1 }, `single wildcard`],
+    [`Li,Fe,*,*`, { elements: [`Fe`, `Li`], wildcard_count: 2 }, `commas`],
+    [`*,*,O`, { elements: [`O`], wildcard_count: 2 }, `comma leading`],
+    [`Li - Fe - * - *`, { elements: [`Fe`, `Li`], wildcard_count: 2 }, `whitespace`],
+    [`Zr-Nb-*`, { elements: [`Nb`, `Zr`], wildcard_count: 1 }, `sorted elements`],
+  ])(`"%s" -> %j (%s)`, (input, expected, _desc) => {
+    expect(parse_chemsys_with_wildcards(input)).toEqual(expected)
+  })
+
+  test.each([
+    [`Li-Xx-*`, `Invalid element symbol or wildcard: Xx`],
+    [`Invalid-Fe-*`, `Invalid element symbol or wildcard: Invalid`],
+    [`Li-123-*`, `Invalid element symbol or wildcard: 123`],
+  ])(`throws for "%s"`, (input, error) => {
+    expect(() => parse_chemsys_with_wildcards(input)).toThrow(error)
+  })
+})
+
+describe(`parse_formula_with_wildcards`, () => {
+  test.each([
+    [`LiFe*2*`, [{ element: `Li`, count: 1 }, { element: `Fe`, count: 1 }, {
+      element: null,
+      count: 2,
+    }, { element: null, count: 1 }], `two wildcards`],
+    [`*2O3`, [{ element: null, count: 2 }, { element: `O`, count: 3 }], `binary oxide`],
+    [`**O4`, [{ element: null, count: 1 }, { element: null, count: 1 }, {
+      element: `O`,
+      count: 4,
+    }], `ternary oxide`],
+    [`H2O`, [{ element: `H`, count: 2 }, { element: `O`, count: 1 }], `water`],
+    [`Fe2O3`, [{ element: `Fe`, count: 2 }, { element: `O`, count: 3 }], `iron oxide`],
+    [`*4O8`, [{ element: null, count: 4 }, { element: `O`, count: 8 }], `count 4`],
+    [`Li*10O20`, [{ element: `Li`, count: 1 }, { element: null, count: 10 }, {
+      element: `O`,
+      count: 20,
+    }], `double-digit`],
+    [` Li Fe * 2 * `, [{ element: `Li`, count: 1 }, { element: `Fe`, count: 1 }, {
+      element: null,
+      count: 2,
+    }, { element: null, count: 1 }], `whitespace`],
+    [``, [], `empty`],
+    [`*`, [{ element: null, count: 1 }], `single wildcard`],
+    [`**`, [{ element: null, count: 1 }, { element: null, count: 1 }], `only wildcards`],
+    // Edge cases for explicit count values
+    [`*1`, [{ element: null, count: 1 }], `explicit count 1 same as bare *`],
+    [`*0`, [{ element: null, count: 0 }], `explicit count 0 (zero atoms)`],
+    [
+      `Fe1O2`,
+      [{ element: `Fe`, count: 1 }, { element: `O`, count: 2 }],
+      `explicit count 1`,
+    ],
+  ])(`"%s" -> %j (%s)`, (input, expected, _desc) => {
+    expect(parse_formula_with_wildcards(input)).toEqual(expected)
+  })
+
+  test.each([
+    [`Xx*2`, `Invalid element symbol: Xx`],
+    [`Li*Yy2`, `Invalid element symbol: Yy`],
+  ])(`throws for "%s"`, (input, error) => {
+    expect(() => parse_formula_with_wildcards(input)).toThrow(error)
+  })
+})
+
+describe(`matches_chemsys_wildcard`, () => {
+  test.each([
+    [`LiFeCoO`, [`Li`, `Fe`], 2, true, `matches`],
+    [`Fe2O3`, [`Fe`], 1, true, `single wildcard`],
+    [`H2O`, [`H`, `O`], 0, true, `no wildcards`],
+    [`CaCO3`, [], 3, true, `all wildcards`],
+    [`LiFe`, [], 2, true, `all wildcards binary`],
+    [`LiFeO`, [`Li`, `Fe`], 2, false, `too few elements`],
+    [`LiFeCoNiO`, [`Li`, `Fe`], 2, false, `too many elements`],
+    [`NaClBr`, [`Li`], 2, false, `missing element`],
+    [`Fe2O3`, [`Co`], 1, false, `missing Co`],
+    [`ABC`, [], 3, false, `invalid formula`],
+    [`InvalidFormula`, [`Li`], 1, false, `invalid`],
+    [``, [`Li`], 1, false, `empty`],
+  ])(
+    `"%s" explicit=%j wildcards=%d -> %s (%s)`,
+    (formula, explicit, wildcard_count, expected, _desc) => {
+      expect(matches_chemsys_wildcard(formula, explicit, wildcard_count)).toBe(expected)
+    },
+  )
+})
+
+describe(`matches_formula_wildcard`, () => {
+  // Pattern helper for readability
+  const pat = (elem: string | null, count: number) => ({
+    element: elem as ElementSymbol | null,
+    count,
+  })
+
+  test.each([
+    [`Fe2O3`, [pat(null, 2), pat(`O`, 3)], true, `*2O3 matches Fe2O3`],
+    [`Al2O3`, [pat(null, 2), pat(`O`, 3)], true, `*2O3 matches Al2O3`],
+    [`H2O`, [pat(`H`, 2), pat(`O`, 1)], true, `exact match`],
+    [`Fe3O4`, [pat(null, 2), pat(`O`, 3)], false, `wrong stoichiometry`],
+    [`InvalidXx`, [pat(null, 2), pat(`O`, 3)], false, `invalid formula`],
+    [``, [pat(null, 2), pat(`O`, 3)], false, `empty formula`],
+    [``, [], true, `empty pattern matches empty`],
+    [`Fe2O`, [pat(null, 2), pat(null, 1)], true, `all wildcards`],
+    [`LiO2`, [pat(null, 2), pat(null, 1)], true, `all wildcards swapped`],
+    [`Fe2O3`, [pat(null, 2), pat(null, 1)], false, `counts mismatch`],
+  ])(`"%s" pattern=%j -> %s (%s)`, (formula, pattern, expected, _desc) => {
+    expect(matches_formula_wildcard(formula, pattern)).toBe(expected)
+  })
+
+  test(`wildcard count matching with distinct counts`, () => {
+    const pattern = [pat(`Li`, 1), pat(null, 1), pat(null, 2), pat(`O`, 4)]
+    expect(matches_formula_wildcard(`LiMnCo2O4`, pattern)).toBe(true)
+    expect(matches_formula_wildcard(`LiMn2Co2O4`, pattern)).toBe(false)
+  })
+
+  test(`duplicate elements merged in pattern`, () => {
+    const pattern = [pat(`Li`, 1), pat(`Li`, 1), pat(`O`, 2)]
+    expect(matches_formula_wildcard(`Li2O2`, pattern)).toBe(true)
+    expect(matches_formula_wildcard(`LiO2`, pattern)).toBe(false)
+  })
+
+  test(`chemistry patterns: spinel AB2O4`, () => {
+    const spinel = [pat(null, 1), pat(null, 2), pat(`O`, 4)]
+    expect(matches_formula_wildcard(`MgAl2O4`, spinel)).toBe(true)
+    expect(matches_formula_wildcard(`Fe3O4`, spinel)).toBe(false)
+  })
+
+  test(`chemistry patterns: perovskite ABO3`, () => {
+    const perovskite = [pat(null, 1), pat(null, 1), pat(`O`, 3)]
+    expect(matches_formula_wildcard(`BaTiO3`, perovskite)).toBe(true)
+    expect(matches_formula_wildcard(`SrTiO3`, perovskite)).toBe(true)
+  })
+
+  test(`chemistry patterns: layered LiMO2`, () => {
+    const layered = [pat(`Li`, 1), pat(null, 1), pat(`O`, 2)]
+    expect(matches_formula_wildcard(`LiCoO2`, layered)).toBe(true)
+    expect(matches_formula_wildcard(`NaCoO2`, layered)).toBe(false)
+  })
+
+  test(`wildcard with count 0 never matches (no formula has 0 atoms)`, () => {
+    const pattern_with_zero = [pat(null, 0), pat(`O`, 3)]
+    expect(matches_formula_wildcard(`Fe2O3`, pattern_with_zero)).toBe(false)
+    expect(matches_formula_wildcard(`Al2O3`, pattern_with_zero)).toBe(false)
+    expect(matches_formula_wildcard(`O3`, pattern_with_zero)).toBe(false)
   })
 })

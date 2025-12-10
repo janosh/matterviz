@@ -402,3 +402,172 @@ export const normalize_element_symbols = <T extends string>(
     input_set.has(sym)
   )
 }
+
+// --- Wildcard formula parsing utilities ---
+
+// Type for a parsed formula token (element or wildcard with count)
+export type WildcardFormulaToken = {
+  element: ElementSymbol | null // null indicates wildcard (*)
+  count: number
+}
+
+// Type for parsed chemsys with wildcards
+export type ChemsysWithWildcards = {
+  elements: ElementSymbol[]
+  wildcard_count: number
+}
+
+// Check if input contains wildcard elements (*).
+// Works for both chemsys format (Li-Fe-*-*) and exact formula format (LiFe*2*).
+export function has_wildcards(input: string): boolean {
+  return input.includes(`*`)
+}
+
+// Parse chemsys format with wildcards: "Li-Fe-*-*" -> { elements: ["Li", "Fe"], wildcard_count: 2 }
+// Accepts both hyphen and comma separators.
+// Throws if any non-wildcard token is not a valid element symbol.
+export function parse_chemsys_with_wildcards(input: string): ChemsysWithWildcards {
+  const tokens = input.replace(/-/g, `,`).split(`,`).map((tok) => tok.trim()).filter(
+    Boolean,
+  )
+
+  const elements: ElementSymbol[] = []
+  let wildcard_count = 0
+
+  for (const token of tokens) {
+    if (token === `*`) {
+      wildcard_count++
+    } else if (is_valid_element(token)) {
+      elements.push(token)
+    } else {
+      throw new Error(`Invalid element symbol or wildcard: ${token}`)
+    }
+  }
+
+  return { elements: elements.sort(), wildcard_count }
+}
+
+// Parse exact formula with wildcards: "LiFe*2*" -> [{ element: "Li", count: 1 }, { element: "Fe", count: 1 }, { element: null, count: 2 }, { element: null, count: 1 }]
+// The * character represents any element, optionally followed by a count.
+// Each * in the pattern represents a distinct element position (wildcards cannot share elements).
+// Examples:
+//   "LiFe*2*" -> Li(1), Fe(1), *(2), *(1) - matches formulas with 4 distinct elements
+//   "*2O3" -> *(2), O(3) - matches any binary oxide with 2:3 ratio
+//   "**O4" -> *(1), *(1), O(4) - matches ternary oxides with 1:1:4 ratio
+export function parse_formula_with_wildcards(formula: string): WildcardFormulaToken[] {
+  const tokens: WildcardFormulaToken[] = []
+  const cleaned = formula.replace(/\s/g, ``)
+
+  // Regex to match either:
+  // 1. Standard element symbol with optional count: ([A-Z][a-z]?)(\d*)
+  // 2. Wildcard with optional count: \*(\d*)
+  const regex = /([A-Z][a-z]?)(\d*)|(\*)(\d*)/g
+
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(cleaned)) !== null) {
+    if (match[3] === `*`) {
+      // Wildcard match
+      const count = match[4] ? parseInt(match[4], 10) : 1
+      tokens.push({ element: null, count })
+    } else if (match[1]) {
+      // Element symbol match
+      const element = match[1]
+      const count = match[2] ? parseInt(match[2], 10) : 1
+
+      if (!is_valid_element(element)) {
+        throw new Error(`Invalid element symbol: ${element}`)
+      }
+      tokens.push({ element, count })
+    }
+  }
+
+  return tokens
+}
+
+// Check if a formula matches a chemsys pattern with wildcards.
+// The formula must contain exactly the specified elements plus wildcard_count additional distinct elements.
+// Example: matches_chemsys_wildcard("LiFeCoO", ["Li", "Fe"], 2) -> true (Co and O fill the wildcards)
+export function matches_chemsys_wildcard(
+  formula: string,
+  explicit_elements: string[],
+  wildcard_count: number,
+): boolean {
+  try {
+    const formula_elements = extract_formula_elements(formula, { unique: true })
+    const required_count = explicit_elements.length + wildcard_count
+
+    // Must have exactly the right number of elements
+    if (formula_elements.length !== required_count) return false
+
+    // Must contain all explicit elements
+    const formula_set = new Set(formula_elements)
+    for (const elem of explicit_elements) {
+      if (!formula_set.has(elem as ElementSymbol)) return false
+    }
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Check if a formula matches an exact formula pattern with wildcards.
+// Each wildcard (*) must be satisfied by a distinct element not used by explicit elements or other wildcards.
+// Example: matches_formula_wildcard("LiFeCoNiO4", [{element: "Li", count: 1}, {element: null, count: 1}, ...])
+export function matches_formula_wildcard(
+  formula: string,
+  pattern: WildcardFormulaToken[],
+): boolean {
+  try {
+    const composition = parse_formula(formula)
+
+    // Separate explicit elements and wildcards from pattern
+    const explicit_requirements: Array<{ element: ElementSymbol; count: number }> = []
+    const wildcard_counts: number[] = []
+
+    for (const token of pattern) {
+      if (token.element === null) {
+        wildcard_counts.push(token.count)
+      } else {
+        // Merge counts for same element (e.g., "LiLi" -> Li with count 2)
+        const existing = explicit_requirements.find((req) =>
+          req.element === token.element
+        )
+        if (existing) {
+          existing.count += token.count
+        } else {
+          explicit_requirements.push({ element: token.element, count: token.count })
+        }
+      }
+    }
+
+    // Check explicit element requirements
+    const used_elements = new Set<string>()
+    for (const req of explicit_requirements) {
+      if (composition[req.element] !== req.count) return false
+      used_elements.add(req.element)
+    }
+
+    // Get remaining elements (candidates for wildcards)
+    const remaining_elements = Object.entries(composition)
+      .filter(([elem]) => !used_elements.has(elem))
+      .map(([elem, count]) => ({ elem, count }))
+
+    // Must have exactly as many remaining elements as wildcards
+    if (remaining_elements.length !== wildcard_counts.length) return false
+
+    // Try to match remaining elements to wildcards (each wildcard needs a distinct element)
+    // Sort both by count to enable greedy matching
+    const sorted_remaining = [...remaining_elements].sort((a, b) => a.count - b.count)
+    const sorted_wildcards = [...wildcard_counts].sort((a, b) => a - b)
+
+    // Check if counts match (simple comparison works because we need exact matches)
+    for (let idx = 0; idx < sorted_wildcards.length; idx++) {
+      if (sorted_remaining[idx].count !== sorted_wildcards[idx]) return false
+    }
+
+    return true
+  } catch {
+    return false
+  }
+}

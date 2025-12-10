@@ -11,6 +11,8 @@
   --sms-options-bg: var(--page-bg);
   --sms-active-color: light-dark(var(--accent-color), cornflowerblue);
   --border-radius: 3pt;
+  /* Nav dropdown must be above Structure.svelte's --struct-buttons-z-index (100000000) */
+  --nav-dropdown-z-index: 100000001;
 }
 
 /* Targeted theme transitions for performance */

@@ -78,7 +78,7 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
 
 ## Reaction Kinetics with Dual Y-Axes
 
-Combine bars and lines with **dual y-axes** to show product formation alongside temperature. Temperature uses the right y2-axis with independent scaling:
+Combine bars and lines with **dual y-axes** to show product formation alongside temperature. Temperature uses the right y2-axis with independent scaling. Line series support **marker symbols** using the `markers` prop (`line`, `points`, or `line+points`):
 
 ```svelte example
 <script>
@@ -104,10 +104,9 @@ Combine bars and lines with **dual y-axes** to show product formation alongside 
       color: `#ff6b6b`,
       render_mode: `line`,
       y_axis: `y2`,
-      line_style: {
-        stroke_width: 3,
-        line_dash: `5,5`,
-      },
+      markers: `line+points`, // Show both line and marker points
+      line_style: { stroke_width: 2, line_dash: `5,5` },
+      point_style: { radius: 5, stroke: `white`, stroke_width: 2 },
     },
     {
       x: [0, 10, 20, 30, 40, 50, 60],
@@ -115,9 +114,9 @@ Combine bars and lines with **dual y-axes** to show product formation alongside 
       label: `Total Yield (mol)`,
       color: `#ffd43b`,
       render_mode: `line`,
-      line_style: {
-        stroke_width: 3,
-      },
+      markers: `line+points`, // Show both line and marker points
+      line_style: { stroke_width: 2 },
+      point_style: { radius: 6, symbol_type: `Diamond` },
     },
   ]
 </script>
@@ -134,7 +133,7 @@ Combine bars and lines with **dual y-axes** to show product formation alongside 
 
 ## Sales vs Profit Margin (Dual Y-Axes)
 
-A classic business use case: comparing raw sales (bars, left axis) with profit margins (line, right axis) that have different scales and units:
+A classic business use case: comparing raw sales (bars, left axis) with profit margins (line, right axis) that have different scales and units. The line uses `markers: 'line+points'` with custom `point_style` for triangle markers:
 
 ```svelte example
 <script>
@@ -164,9 +163,15 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
       color: `#51cf66`,
       render_mode: `line`,
       y_axis: `y2`,
-      line_style: {
-        stroke_width: 3,
+      markers: `line+points`,
+      line_style: { stroke_width: 2 },
+      point_style: {
+        radius: 6,
+        symbol_type: `Triangle`,
+        stroke: `#2f9e44`,
+        stroke_width: 2,
       },
+      point_hover: { scale: 1.8, brightness: 1.3 },
     },
   ]
 </script>
@@ -317,7 +322,7 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 
 ## Formation Energy Diagram
 
-Bar plots handle negative values automatically and display zero lines for reference:
+Bar plots handle negative values automatically and display zero lines for reference. The threshold line uses `markers: 'line'` to show only the line without marker points:
 
 ```svelte example
 <script>
@@ -346,6 +351,7 @@ Bar plots handle negative values automatically and display zero lines for refere
       label: `Stability Threshold`,
       color: `#51cf66`,
       render_mode: `line`,
+      markers: `line`, // Line only, no marker points
       line_style: {
         stroke_width: 2,
         line_dash: `8,4`,
@@ -437,28 +443,35 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
 
 ## Spectroscopy Data with Zoom
 
-Interactive zoom and pan for exploring large datasets. Click and drag to zoom, double-click to reset:
+Interactive zoom and pan for exploring large datasets. Click and drag to zoom, double-click to reset. This example demonstrates **color scaling** on line markers using `color_values` and `color_scale`:
 
 ```svelte example
 <script>
   import { BarPlot } from 'matterviz'
 
+  // deno-fmt-ignore
+  const absorption_data = [0.05, 0.12, 0.28, 0.65, 1.45, 2.8, 4.2, 3.5, 2.1, 0.95, 0.38, 0.15, 0.06]
+  // deno-fmt-ignore
+  const theoretical_data = [0.02, 0.08, 0.22, 0.58, 1.35, 2.65, 4.0, 3.3, 1.95, 0.85, 0.32, 0.12, 0.05]
+
   const spectroscopy = [
     {
       x: [200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800],
-      y: [0.05, 0.12, 0.28, 0.65, 1.45, 2.8, 4.2, 3.5, 2.1, 0.95, 0.38, 0.15, 0.06],
+      y: absorption_data,
       label: `Absorption Spectrum`,
       color: `#4c6ef5`,
     },
     {
       x: [200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800],
-      y: [0.02, 0.08, 0.22, 0.58, 1.35, 2.65, 4.0, 3.3, 1.95, 0.85, 0.32, 0.12, 0.05],
+      y: theoretical_data,
       label: `Theoretical Fit`,
       color: `#ff6b6b`,
       render_mode: `line`,
-      line_style: {
-        stroke_width: 2,
-      },
+      markers: `line+points`,
+      // Color each point by its y-value using color_values
+      color_values: theoretical_data,
+      line_style: { stroke_width: 2 },
+      point_style: { radius: 5, stroke: `white`, stroke_width: 1 },
     },
   ]
 </script>
@@ -467,14 +480,113 @@ Interactive zoom and pan for exploring large datasets. Click and drag to zoom, d
   style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: 4px"
 >
   <strong>Instructions:</strong> Click and drag to zoom into a wavelength region.
-  Double-click to reset the view. Use the controls to adjust display.
+  Double-click to reset the view. Marker colors show intensity via color scale.
 </div>
 
 <BarPlot
   series={spectroscopy}
   x_axis={{ label: `Wavelength (nm)` }}
   y_axis={{ label: `Absorption Coefficient` }}
+  color_scale={{ scheme: `interpolatePlasma` }}
   style="height: 450px"
+/>
+```
+
+## Line Marker Customization
+
+Line series support full marker customization including symbol types, sizes, colors, and hover effects. Use the `markers` prop to control visibility (`line`, `points`, `line+points`, or `none`), and `point_style` / `point_hover` for styling:
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  let markers = $state(`line+points`)
+  let symbol_type = $state(`Circle`)
+  let radius = $state(6)
+
+  const symbol_types = [
+    `Circle`,
+    `Square`,
+    `Triangle`,
+    `Diamond`,
+    `Star`,
+    `Cross`,
+    `Wye`,
+  ]
+
+  // Efficiency measurements with size scaled by sample count
+  const efficiency_data = [
+    {
+      x: [1, 2, 3, 4, 5, 6],
+      y: [82, 85, 91, 88, 94, 97],
+      label: `Device Efficiency (%)`,
+      color: `#4c6ef5`,
+    },
+    {
+      x: [1, 2, 3, 4, 5, 6],
+      y: [78, 83, 87, 92, 95, 98],
+      label: `Model Prediction`,
+      color: `#f783ac`,
+      render_mode: `line`,
+      markers, // Bind to toggle
+      line_style: { stroke_width: 2 },
+      // Size each point by sample count (more samples = larger marker)
+      size_values: [10, 25, 50, 75, 100, 150],
+      point_style: {
+        symbol_type,
+        radius, // Base radius, modified by size_values
+        stroke: `white`,
+        stroke_width: 2,
+      },
+      point_hover: { scale: 1.5, brightness: 1.2 },
+    },
+  ]
+
+  let series = $derived(
+    efficiency_data.map((srs) =>
+      srs.render_mode === `line`
+        ? {
+          ...srs,
+          markers,
+          point_style: { ...srs.point_style, symbol_type, radius },
+        }
+        : srs
+    ),
+  )
+</script>
+
+<div
+  style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
+>
+  <label>
+    Markers:
+    <select bind:value={markers}>
+      <option value="line+points">Line + Points</option>
+      <option value="line">Line Only</option>
+      <option value="points">Points Only</option>
+      <option value="none">None</option>
+    </select>
+  </label>
+  <label>
+    Symbol:
+    <select bind:value={symbol_type}>
+      {#each symbol_types as sym}
+        <option value={sym}>{sym}</option>
+      {/each}
+    </select>
+  </label>
+  <label>
+    Size: {radius}
+    <input type="range" bind:value={radius} min="3" max="12" style="width: 80px">
+  </label>
+</div>
+
+<BarPlot
+  {series}
+  x_axis={{ label: `Sample Batch` }}
+  y_axis={{ label: `Efficiency (%)` }}
+  size_scale={{ radius_range: [4, 12] }}
+  style="height: 400px"
 />
 ```
 
