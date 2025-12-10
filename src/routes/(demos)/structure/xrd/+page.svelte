@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { PymatgenStructure } from '$lib'
+  import type { FileInfo, PymatgenStructure } from '$lib'
+  import { FilePicker } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { Structure } from '$lib/structure'
@@ -7,6 +8,34 @@
   import { compute_xrd_pattern, XrdPlot } from '$lib/xrd'
   import { structures } from '$site/structures'
   import { SvelteMap } from 'svelte/reactivity'
+
+  // Auto-discover XRD data files from static/xrd/ using Vite's import.meta.glob
+  // Files are picked up at build time; restart dev server to see new files
+  const xrd_file_modules = import.meta.glob(`/static/xrd/*.{xy,xye,xrdml,brml}`, {
+    query: `?url`,
+    eager: true,
+    import: `default`,
+  }) as Record<string, string>
+
+  // Convert glob results to FileInfo array
+  const xrd_data_files: FileInfo[] = Object.entries(xrd_file_modules).map(
+    ([path, url]) => {
+      const name = path.split(`/`).pop() || path
+      const ext = name.split(`.`).pop()?.toLowerCase() || ``
+      // Categorize by format type
+      const category = ext === `brml` ? `HRXRD` : `Powder XRD`
+      const category_icon = ext === `brml` ? `🔬` : `📊`
+      return { name, url, type: ext, category, category_icon }
+    },
+  )
+
+  // Custom colors for XRD data file types
+  const xrd_file_colors: Record<string, string> = {
+    xy: `rgba(50, 205, 50, 0.8)`,
+    xye: `rgba(34, 139, 34, 0.8)`, // Darker green for XYE (with errors)
+    xrdml: `rgba(70, 130, 180, 0.8)`, // Steel blue for PANalytical
+    brml: `rgba(255, 140, 0, 0.8)`,
+  }
 
   // Cache computed XRD patterns to avoid recomputation when navigating structures
   const xrd_cache = new SvelteMap<string, XrdPattern>()
@@ -140,6 +169,7 @@
   </section>
 
   <h2>Overlay multiple structures</h2>
+  <p>Click on a structure to add it to the overlay.</p>
   <nav>
     {#each structures as struct (get_struct_id(struct))}
       {@const struct_id = get_struct_id(struct)}
@@ -187,6 +217,26 @@
         {/if}
       {/each}
     </div>
+  </section>
+
+  <h2>XRD File Drop Demo</h2>
+  <p>
+    Drag and drop <code>.xy</code> (two-column text) or <code>.brml</code> (Bruker) files
+    directly onto the XRD plot. Drop a local file from your computer or drag one of these
+    sample files:
+  </p>
+  <section>
+    <FilePicker
+      files={xrd_data_files}
+      file_type_colors={xrd_file_colors}
+      show_category_filters
+    />
+    <XrdPlot
+      patterns={[]}
+      annotate_peaks={5}
+      hkl_format="compact"
+      style="height: 500px; flex: 1"
+    />
   </section>
 </div>
 
