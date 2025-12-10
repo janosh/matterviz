@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SettingsSection, StatusMessage } from '$lib'
+  import { EmptyState, SettingsSection, StatusMessage } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import { format_value } from '$lib/labels'
@@ -136,22 +136,53 @@
 
   // Compute overall 2θ domain (degrees)
   const angle_range = $derived.by(() => {
+    if (pattern_entries.length === 0) return [0, 90] as [number, number] // Default range
+    let min_x = Infinity
     let max_x = 0
     for (const entry of pattern_entries) {
+      const entry_min = Math.min(...entry.pattern.x)
       const entry_max = Math.max(...entry.pattern.x)
+      if (entry_min < min_x) min_x = entry_min
       if (entry_max > max_x) max_x = entry_max
     }
-    return [0, Math.ceil(max_x)] as [number, number]
+    // Use data min if it's significantly above 0, otherwise start at 0
+    const x_min = min_x > 10 ? Math.floor(min_x) : 0
+    return [x_min, Math.ceil(max_x)] as [number, number]
   })
 
-  // Scaled intensities are normalized to 0..100 downstream
-  const intensity_range: [number, number] = [0, 100]
+  // Scaled intensities are normalized to 0..100, add 10% top padding for peak labels
+  const intensity_range: [number, number] = [0, 110]
+
+  // Helper to add transparency to colors when multiple series are shown
+  function add_alpha(color: string, alpha: number): string {
+    // Handle hex colors (#rgb, #rgba, #rrggbb, #rrggbbaa)
+    if (color.startsWith(`#`)) {
+      const hex = color.slice(1)
+      // Extract RGB, ignoring any existing alpha channel
+      const is_short = hex.length === 3 || hex.length === 4
+      const r = parseInt(is_short ? hex[0] + hex[0] : hex.slice(0, 2), 16)
+      const g = parseInt(is_short ? hex[1] + hex[1] : hex.slice(2, 4), 16)
+      const b = parseInt(is_short ? hex[2] + hex[2] : hex.slice(4, 6), 16)
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`
+    }
+    // Handle rgb() colors
+    if (color.startsWith(`rgb(`)) {
+      return color.replace(`rgb(`, `rgba(`).replace(`)`, `, ${alpha})`)
+    }
+    // Handle rgba() - replace existing alpha
+    if (color.startsWith(`rgba(`)) {
+      return color.replace(/,\s*[\d.]+\)$/, `, ${alpha})`)
+    }
+    return color
+  }
 
   // Build BarPlot series from entries (for Discrete/Stick view)
   const bar_series = $derived.by<BarSeries[]>(() => {
     if (broadening_enabled) return [] // Optimization: skip if not used
 
     const include_name = pattern_entries.length > 1
+    // Add transparency when multiple series overlap
+    const alpha = pattern_entries.length > 1 ? 0.6 : 1
     const scale = (y: number) => (y / global_max_intensity) * 100
     return pattern_entries.map((entry, entry_idx) => {
       const xs = entry.pattern.x
@@ -163,20 +194,36 @@
       const intens = ys
       let selected_indices: number[] = []
       if (annotate_peaks && annotate_peaks > 0) {
+        let candidates: { idx: number; y_val: number }[] = []
         if (annotate_peaks > 0 && annotate_peaks < 1) {
           const thresh = annotate_peaks * 100
-          selected_indices = intens
-            .map((y_val, idx) => [y_val, idx] as const)
-            .filter(([y_val]) => y_val > thresh)
-            .map(([, idx]) => idx)
+          candidates = intens
+            .map((y_val, idx) => ({ y_val, idx }))
+            .filter(({ y_val }) => y_val > thresh)
         } else {
           const k = Math.min(intens.length, Math.floor(annotate_peaks))
-          selected_indices = intens
-            .map((y_val, idx) => [y_val, idx] as const)
-            .sort((a, b) => a[0] - b[0])
-            .slice(-k)
-            .map(([, idx]) => idx)
+          candidates = intens
+            .map((y_val, idx) => ({ y_val, idx }))
+            .sort((a, b) => b.y_val - a.y_val)
+            .slice(0, k)
         }
+
+        // Filter out overlapping labels: keep higher intensity peaks when x values are close
+        // Min spacing as fraction of x-range to avoid overlaps (roughly 3% of range)
+        const x_range = Math.max(...xs) - Math.min(...xs)
+        const min_spacing = x_range * 0.03
+        // Sort by intensity descending so we keep highest peaks first
+        candidates.sort((a, b) => b.y_val - a.y_val)
+        const kept: { idx: number; y_val: number }[] = []
+        for (const cand of candidates) {
+          const cand_x = xs[cand.idx]
+          // Check if any already-kept peak is too close
+          const too_close = kept.some(
+            (kept_peak) => Math.abs(xs[kept_peak.idx] - cand_x) < min_spacing,
+          )
+          if (!too_close) kept.push(cand)
+        }
+        selected_indices = kept.map((kept_peak) => kept_peak.idx)
       }
 
       for (let idx = 0; idx < xs.length; idx++) {
@@ -201,11 +248,12 @@
         } else labels.push(null)
       }
 
+      const base_color = entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length]
       return {
         x: xs,
         y: ys,
         label: include_name ? entry.label : ``,
-        color: entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length],
+        color: add_alpha(base_color, alpha),
         bar_width: Math.max(peak_width, 0.8),
         visible: true,
         metadata,
@@ -248,12 +296,15 @@
         const max_y = Math.max(...all_ys, 1) // Avoid div by zero
 
         const scale = (y: number) => (y / max_y) * 100
+        const base_color = entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length]
+        // Add transparency when multiple series overlap
+        const alpha = all_processed.length > 1 ? 0.6 : 1
 
         return {
           x: broadened.x,
           y: broadened.y.map(scale),
           label: include_name ? entry.label : ``,
-          color: entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length],
+          color: add_alpha(base_color, alpha),
           markers: `line`, // Only line for profile
           line_style: { stroke_width: 2 },
           visible: true,
@@ -288,8 +339,15 @@
       const file = event.dataTransfer?.files?.[0]
       if (file) {
         try {
-          const { content, filename } = await decompress_file(file)
-          if (content) (on_file_drop || compute_and_add)(content, filename)
+          const ext = file.name.toLowerCase().split(`.`).pop()
+          // Read .brml files as ArrayBuffer (they are ZIP archives)
+          if (ext === `brml`) {
+            const buffer = await file.arrayBuffer()
+            ;(on_file_drop || compute_and_add)(buffer, file.name)
+          } else {
+            const { content, filename } = await decompress_file(file)
+            if (content) (on_file_drop || compute_and_add)(content, filename)
+          }
         } catch (exc) {
           error_msg = `Failed to load file ${file.name}: ${
             exc instanceof Error ? exc.message : String(exc)
@@ -362,16 +420,32 @@
   </SettingsSection>
 {/snippet}
 
-<StatusMessage bind:message={error_msg} type="error" dismissible />
-
 {#if pattern_entries.length === 0}
-  <StatusMessage
-    message={allow_file_drop
-    ? `Drag and drop structure files here to compute XRD patterns`
-    : `No XRD data to display`}
-  />
+  <EmptyState
+    class="xrd-empty-state"
+    style={rest.style}
+    ondrop={allow_file_drop ? handle_file_drop : undefined}
+    ondragover={allow_file_drop ? (evt) => evt.preventDefault() : undefined}
+    role="region"
+    aria-label="XRD drop zone"
+  >
+    {#if error_msg}
+      <StatusMessage bind:message={error_msg} type="error" dismissible />
+    {:else}
+      <StatusMessage
+        message={allow_file_drop
+        ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .brml) here`
+        : `No XRD data to display`}
+      />
+    {/if}
+  </EmptyState>
 {:else}
   <div class="xrd-plot-container" style={`position: relative; ${rest.style ?? ``}`}>
+    {#if error_msg}
+      <div class="error-overlay">
+        <StatusMessage bind:message={error_msg} type="error" dismissible />
+      </div>
+    {/if}
     {#if broadening_enabled}
       <!-- Broadened Profile View -->
       {#snippet tooltip(info: ScatterHandlerProps)}
@@ -513,5 +587,25 @@
     outline: 2px dashed var(--primary-color, cornflowerblue);
     outline-offset: -2px;
     background: rgba(100, 149, 237, 0.1);
+  }
+  :global(.xrd-empty-state) {
+    min-height: 200px;
+    border: 2px dashed var(--border-color, #ccc);
+    border-radius: 8px;
+    background: light-dark(rgba(0, 0, 0, 0.02), rgba(255, 255, 255, 0.02));
+  }
+  :global(.xrd-empty-state .message) {
+    max-width: 80%;
+  }
+  .error-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    max-width: 80%;
+  }
+  .error-overlay :global(.message) {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 </style>

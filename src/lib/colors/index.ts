@@ -197,3 +197,26 @@ export function watch_dark_mode(on_change: (dark: boolean) => void): () => void 
     media_query?.removeEventListener(`change`, notify)
   }
 }
+
+// Add or modify the alpha channel of a color.
+// Supports hex (#rgb, #rgba, #rrggbb, #rrggbbaa), rgb(), and rgba() formats.
+// Returns the color in rgba() format.
+export function add_alpha(color: string, alpha: number): string {
+  // Handle hex colors (#rgb, #rgba, #rrggbb, #rrggbbaa)
+  if (color.startsWith(`#`)) {
+    const hex = color.slice(1)
+    // Extract RGB, ignoring any existing alpha channel
+    const is_short = hex.length === 3 || hex.length === 4
+    const r = parseInt(is_short ? hex[0] + hex[0] : hex.slice(0, 2), 16)
+    const g = parseInt(is_short ? hex[1] + hex[1] : hex.slice(2, 4), 16)
+    const b = parseInt(is_short ? hex[2] + hex[2] : hex.slice(4, 6), 16)
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  }
+  // Handle rgb() colors
+  if (color.startsWith(`rgb(`)) {
+    return color.replace(`rgb(`, `rgba(`).replace(`)`, `, ${alpha})`)
+  }
+  // Handle rgba() - replace existing alpha
+  if (color.startsWith(`rgba(`)) return color.replace(/,\s*[\d.]+\)$/, `, ${alpha})`)
+  return color
+}
