@@ -1,30 +1,64 @@
 <script lang="ts">
-  import { FullscreenToggle } from '$lib/layout'
+  import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { format_value } from '$lib/labels'
+  import { FullscreenToggle } from '$lib/layout'
   import type {
     BarHandlerProps,
     BarMode,
     BarSeries,
     BarStyle,
     BasePlotProps,
+    HoverStyle,
+    InternalPoint,
     LegendConfig,
     LegendItem,
     LineStyle,
     Orientation,
     PlotConfig,
+    PointStyle,
+    ScaleType,
+    TweenedOptions,
     UserContentProps,
+    XyObj,
   } from '$lib/plot'
-  import { BarPlotControls, find_best_plot_area, PlotLegend } from '$lib/plot'
+  import {
+    BarPlotControls,
+    find_best_plot_area,
+    PlotLegend,
+    ScatterPoint,
+  } from '$lib/plot'
+  import { process_prop } from '$lib/plot/data-transform'
   import { get_relative_coords } from '$lib/plot/interactions'
-  import { create_scale, generate_ticks, get_nice_data_range } from '$lib/plot/scales'
-  import { DEFAULT_GRID_STYLE } from '$lib/plot/types'
+  import {
+    create_color_scale,
+    create_scale,
+    create_size_scale,
+    generate_ticks,
+    get_nice_data_range,
+  } from '$lib/plot/scales'
+  import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
+  import { extent } from 'd3-array'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
-  import { bar_path } from './svg'
   import { calc_auto_padding, LABEL_GAP_DEFAULT, measure_text_width } from './layout'
   import PlotTooltip from './PlotTooltip.svelte'
+  import { bar_path } from './svg'
+
+  // Handler props for line marker events (extends BarHandlerProps with point-specific data)
+  interface LineMarkerHandlerProps extends BarHandlerProps {
+    point: InternalPoint
+  }
+
+  // Extended point type with computed screen coordinates (used internally for rendering)
+  type LineSeriesPoint = InternalPoint & {
+    x: number // Screen x coordinate
+    y: number // Screen y coordinate
+    data_x: number // Original data x value
+    data_y: number // Original data y value
+    idx: number // Index in series
+  }
 
   let {
     series = $bindable([]),
@@ -49,6 +83,16 @@
     change = () => {},
     on_bar_click,
     on_bar_hover,
+    // Line marker props (matching ScatterPlot)
+    color_scale = {
+      type: `linear`,
+      scheme: `interpolateViridis`,
+      value_range: undefined,
+    },
+    size_scale = { type: `linear`, radius_range: [2, 10], value_range: undefined },
+    point_tween,
+    on_point_click,
+    on_point_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     controls_toggle_props,
@@ -80,7 +124,36 @@
     on_bar_click?: (
       data: BarHandlerProps & { event: MouseEvent | KeyboardEvent },
     ) => void
-    on_bar_hover?: (data: (BarHandlerProps & { event: MouseEvent }) | null) => void
+    on_bar_hover?: (
+      data:
+        | (BarHandlerProps & { event: MouseEvent | FocusEvent | KeyboardEvent })
+        | null,
+    ) => void
+    // Line marker props (matching ScatterPlot)
+    // Note: For line series with markers, BOTH on_bar_* AND on_point_* events fire.
+    // Use on_point_* for marker-specific data (includes `point` with InternalPoint details)
+    // or on_bar_* for backward compatibility with bar-style event handling.
+    color_scale?: {
+      type?: ScaleType
+      scheme?: D3ColorSchemeName | D3InterpolateName
+      value_range?: [number, number]
+    } | D3InterpolateName
+    size_scale?: {
+      type?: ScaleType
+      radius_range?: [number, number]
+      value_range?: [number, number]
+    }
+    point_tween?: TweenedOptions<XyObj>
+    on_point_click?: (
+      data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
+    ) => void
+    on_point_hover?: (
+      data:
+        | (LineMarkerHandlerProps & {
+          event: MouseEvent | FocusEvent | KeyboardEvent
+        })
+        | null,
+    ) => void
   } = $props()
 
   // Initialize bar, line, y2_axis with defaults (runs once)
@@ -161,7 +234,7 @@
 
       let y_range = get_nice_data_range(
         points,
-        (p) => p.y,
+        (pt) => pt.y,
         y_limit,
         scale_type as `linear` | `log`,
         range_padding,
@@ -171,8 +244,8 @@
       // For bar plots, ensure the value axis starts at 0 unless there are negative values
       // Only apply zero-clamping for linear scales
       if (scale_type === `linear`) {
-        const has_negative = points.some((p) => p.y < 0)
-        const has_positive = points.some((p) => p.y > 0)
+        const has_negative = points.some((pt) => pt.y < 0)
+        const has_positive = points.some((pt) => pt.y > 0)
 
         // Only adjust if no explicit y_range is set
         if (y_limit?.[0] == null && y_limit?.[1] == null) {
@@ -193,7 +266,7 @@
     const x_auto_range = all_x_points.length
       ? get_nice_data_range(
         all_x_points,
-        (p) => p.x,
+        (pt) => pt.x,
         x_range,
         x_scale_type,
         range_padding,
@@ -313,6 +386,45 @@
     ]),
   })
 
+  // Compute plot center for point tweening origin
+  let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
+  let plot_center_y = $derived(pad.t + (height - pad.b - pad.t) / 2)
+
+  // Compute color values from line series for color scaling (filter to numbers only)
+  let all_color_values = $derived(
+    visible_series
+      .filter((srs: BarSeries) => srs.render_mode === `line`)
+      .flatMap((srs: BarSeries) =>
+        (srs.color_values ?? []).filter(
+          (val): val is number => typeof val === `number`,
+        )
+      ),
+  )
+
+  // Create auto color range (safely handle empty arrays or undefined extent results)
+  let auto_color_range: [number, number] = $derived.by(() => {
+    if (all_color_values.length === 0) return [0, 1]
+    const [min_val, max_val] = extent(all_color_values)
+    return [min_val ?? 0, max_val ?? 1]
+  })
+
+  // All size values from line series (for size scale, filter to numbers only)
+  let all_size_values = $derived(
+    visible_series
+      .filter((srs: BarSeries) => srs.render_mode === `line`)
+      .flatMap((srs: BarSeries) =>
+        [...(srs.size_values ?? [])].filter(
+          (val): val is number => typeof val === `number`,
+        )
+      ),
+  )
+
+  // Color scale function (using shared utility)
+  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
+
+  // Size scale function (using shared utility)
+  let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
+
   // Ticks
   let ticks = $derived({
     x: width && height
@@ -416,20 +528,57 @@
 
   // Legend data and handlers
   let legend_data = $derived.by<LegendItem[]>(() =>
-    series.map((srs: BarSeries, idx: number) => ({
-      series_idx: idx,
-      label: srs.label ?? `Series ${idx + 1}`,
-      visible: srs.visible ?? true,
-      display_style: srs.render_mode === `line`
-        ? {
-          line_color: srs.color ?? line.color,
-          line_dash: srs.line_style?.line_dash,
+    series.map((srs: BarSeries, idx: number) => {
+      const is_line = srs.render_mode === `line`
+      const series_markers = srs.markers ?? DEFAULT_MARKERS
+      const has_line = series_markers === `line` || series_markers === `line+points`
+      const has_points = series_markers === `points` ||
+        series_markers === `line+points`
+      const series_color = srs.color ?? (is_line ? line.color : bar.color)
+
+      // Get point style for symbol color (handle array or single object)
+      const first_point_style = Array.isArray(srs.point_style)
+        ? srs.point_style[0]
+        : srs.point_style
+      const first_color_value = srs.color_values?.[0]
+      const point_color = first_color_value != null
+        ? color_scale_fn(first_color_value)
+        : first_point_style?.fill ?? series_color
+
+      if (is_line) {
+        // Line series: show line and/or symbol based on markers
+        return {
+          series_idx: idx,
+          label: srs.label ?? `Series ${idx + 1}`,
+          visible: srs.visible ?? true,
+          display_style: {
+            ...(has_line
+              ? {
+                line_color: series_color,
+                line_dash: srs.line_style?.line_dash,
+              }
+              : {}),
+            ...(has_points
+              ? {
+                symbol_type: first_point_style?.symbol_type ??
+                  DEFAULTS.scatter.symbol_type,
+                symbol_color: point_color,
+              }
+              : {}),
+          },
         }
-        : {
+      }
+      // Bar series: show square symbol
+      return {
+        series_idx: idx,
+        label: srs.label ?? `Series ${idx + 1}`,
+        visible: srs.visible ?? true,
+        display_style: {
           symbol_type: `Square` as const,
-          symbol_color: srs.color ?? bar.color,
+          symbol_color: series_color,
         },
-    }))
+      }
+    })
   )
 
   function toggle_series_visibility(series_idx: number) {
@@ -546,9 +695,9 @@
 </script>
 
 <svelte:window
-  onkeydown={(e) => {
-    if (e.key === `Escape` && fullscreen) {
-      e.preventDefault()
+  onkeydown={(evt) => {
+    if (evt.key === `Escape` && fullscreen) {
+      evt.preventDefault()
       fullscreen = false
     }
   }}
@@ -887,6 +1036,11 @@
                 {@const line_dash = srs.line_style?.line_dash ?? `none`}
                 {@const use_y2 = srs.y_axis === `y2`}
                 {@const y_scale = use_y2 ? scales.y2 : scales.y}
+                {@const series_markers = srs.markers ?? DEFAULT_MARKERS}
+                {@const show_line = series_markers === `line` ||
+            series_markers === `line+points`}
+                {@const show_points = series_markers === `points` ||
+            series_markers === `line+points`}
                 {@const points = srs.x.map((x_val, idx) => {
             const y_val = srs.y[idx]
             // Lines don't stack - they show absolute values (useful for totals/trends)
@@ -896,11 +1050,36 @@
             const plot_y = orientation === `vertical`
               ? y_scale(y_val)
               : scales.y(x_val)
-            return { x: plot_x, y: plot_y, idx }
-          }).filter((p) => isFinite(p.x) && isFinite(p.y))}
-                {#if points.length > 1}
+            // Create internal point with all needed data
+            const color_value = srs.color_values?.[idx] ?? null
+            const size_value = srs.size_values?.[idx] ?? null
+            const point_style = process_prop(srs.point_style, idx)
+            const point_hover = process_prop(srs.point_hover, idx)
+            const point_label = process_prop(srs.point_label, idx)
+            const point_offset = process_prop(srs.point_offset, idx)
+            const metadata = Array.isArray(srs.metadata)
+              ? srs.metadata[idx]
+              : srs.metadata
+            return {
+              x: plot_x,
+              y: plot_y,
+              data_x: x_val,
+              data_y: y_val,
+              idx,
+              color_value,
+              size_value,
+              point_style,
+              point_hover,
+              point_label,
+              point_offset,
+              metadata,
+              series_idx,
+              point_idx: idx,
+            } as LineSeriesPoint
+          }).filter((pt) => isFinite(pt.x) && isFinite(pt.y))}
+                {#if show_line && points.length > 1}
                   <polyline
-                    points={points.map((p) => `${p.x},${p.y}`).join(` `)}
+                    points={points.map((pt) => `${pt.x},${pt.y}`).join(` `)}
                     fill="none"
                     stroke={color}
                     stroke-width={stroke_width}
@@ -909,10 +1088,11 @@
                     stroke-linecap="round"
                   />
                 {/if}
-                <!-- Add invisible wider line for easier hovering -->
-                {#if points.length > 1 && (on_bar_hover || on_bar_click)}
+                <!-- Add invisible wider line for easier hovering (only if no points shown) -->
+                {#if show_line && !show_points && points.length > 1 &&
+            (on_bar_hover || on_bar_click)}
                   <polyline
-                    points={points.map((p) => `${p.x},${p.y}`).join(` `)}
+                    points={points.map((pt) => `${pt.x},${pt.y}`).join(` `)}
                     fill="none"
                     stroke="transparent"
                     stroke-width={Math.max(10, stroke_width * 3)}
@@ -921,48 +1101,115 @@
                     style:cursor={on_bar_click ? `pointer` : undefined}
                   />
                 {/if}
-                <!-- Render hover circles at each data point -->
-                {#each points as point (point.idx)}
-                  {@const bar_idx = point.idx}
-                  <circle
-                    cx={point.x}
-                    cy={point.y}
-                    r="4"
-                    fill={color}
-                    opacity="0"
-                    role="button"
-                    tabindex="0"
-                    aria-label={`point ${bar_idx + 1} of ${srs.label ?? `series`}`}
-                    style:cursor={on_bar_click ? `pointer` : undefined}
-                    onmouseenter={(evt) => {
-                      // Show the circle on hover
-                      const circle_el = evt.currentTarget as SVGCircleElement
-                      if (circle_el) circle_el.setAttribute(`opacity`, `1`)
+                {#if show_points}
+                  {@const clickable = on_bar_click || on_point_click}
+                  {@const get_pt = (evt: Event) =>
+            points.find((pt) =>
+              pt.idx ===
+                parseInt(
+                  (evt.target as Element)?.closest(`[data-bar-idx]`)
+                    ?.getAttribute(`data-bar-idx`) ?? ``,
+                  10,
+                )
+            )}
+                  {@const fill = (pt: LineSeriesPoint) =>
+            pt.color_value != null
+              ? color_scale_fn(pt.color_value)
+              : (pt.point_style as PointStyle)?.fill ?? color}
+                  {@const set_hover = (
+            pt: LineSeriesPoint | null,
+            evt: MouseEvent | FocusEvent,
+          ) => {
+            if (pt) {
+              hovered = true
+              hover_info = get_bar_data(series_idx, pt.idx, fill(pt))
+              change(hover_info)
+            } else {
+              change(null)
+              hover_info = null
+            }
+            on_bar_hover?.(pt ? { ...hover_info!, event: evt } : null)
+            on_point_hover?.(
+              pt
+                ? { ...hover_info!, event: evt, point: pt as InternalPoint }
+                : null,
+            )
+          }}
+                  {@const do_click = (
+            pt: LineSeriesPoint,
+            evt: MouseEvent | KeyboardEvent,
+          ) => {
+            const d = get_bar_data(series_idx, pt.idx, fill(pt))
+            on_bar_click?.({ ...d, event: evt })
+            on_point_click?.({ ...d, event: evt, point: pt as InternalPoint })
+          }}
+                  {@const leaving = (evt: MouseEvent | FocusEvent) =>
+            (evt.relatedTarget as Element)?.closest(`.line-points`) !==
+              evt.currentTarget}
+                  <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_mouse_events_have_key_events -->
+                  <g
+                    class="line-points"
+                    role="group"
+                    onmouseover={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt) set_hover(pt, evt)
                     }}
-                    onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
-                    onmouseleave={(evt) => {
-                      const circle_el = evt.currentTarget as SVGCircleElement
-                      if (circle_el) circle_el.setAttribute(`opacity`, `0`)
-                      hover_info = null
-                      change(null)
-                      on_bar_hover?.(null)
+                    onfocusin={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt) set_hover(pt, evt)
                     }}
-                    onclick={(evt) =>
-                    on_bar_click?.({
-                      ...get_bar_data(series_idx, bar_idx, color),
-                      event: evt,
-                    })}
+                    onmouseout={(evt) => {
+                      if (leaving(evt)) set_hover(null, evt)
+                    }}
+                    onfocusout={(evt) => {
+                      if (leaving(evt)) set_hover(null, evt)
+                    }}
+                    onclick={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt && clickable) do_click(pt, evt)
+                    }}
                     onkeydown={(evt) => {
-                      if (evt.key === `Enter` || evt.key === ` `) {
+                      const pt = get_pt(evt)
+                      if (pt && clickable && (evt.key === `Enter` || evt.key === ` `)) {
                         evt.preventDefault()
-                        on_bar_click?.({
-                          ...get_bar_data(series_idx, bar_idx, color),
-                          event: evt,
-                        })
+                        do_click(pt, evt)
                       }
                     }}
-                  />
-                {/each}
+                  >
+                    {#each points as pt (pt.idx)}
+                      {@const sty = pt.point_style as PointStyle}
+                      {@const fl = fill(pt)}
+                      {@const rad = pt.size_value != null
+              ? size_scale_fn(pt.size_value)
+              : sty?.radius ?? 4}
+                      {@const hov = hover_info?.series_idx === series_idx &&
+              hover_info?.bar_idx === pt.idx}
+                      <ScatterPoint
+                        x={pt.x}
+                        y={pt.y}
+                        is_hovered={hov}
+                        {point_tween}
+                        style={{
+                          ...sty,
+                          radius: rad,
+                          fill: fl,
+                          stroke: sty?.stroke ?? `transparent`,
+                          stroke_width: sty?.stroke_width ?? 1,
+                          fill_opacity: sty?.fill_opacity ?? 1,
+                          stroke_opacity: sty?.stroke_opacity ?? 1,
+                          cursor: clickable ? `pointer` : undefined,
+                        }}
+                        hover={pt.point_hover as HoverStyle ?? {}}
+                        label={pt.point_label ?? {}}
+                        offset={pt.point_offset ?? { x: 0, y: 0 }}
+                        origin={{ x: plot_center_x, y: plot_center_y }}
+                        --point-fill-color={fl}
+                        data-bar-idx={pt.idx}
+                        tabindex={clickable ? (hov ? 0 : -1) : undefined}
+                      />
+                    {/each}
+                  </g>
+                {/if}
               {:else}
                 <!-- Render as bars -->
                 {#each srs.x as x_val, bar_idx (bar_idx)}

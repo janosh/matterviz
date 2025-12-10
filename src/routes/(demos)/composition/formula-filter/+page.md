@@ -10,7 +10,11 @@ An interactive search filter for chemical formulas. The search mode is automatic
 
 ```svelte example
 <script>
-  import { Formula, FormulaFilter } from 'matterviz/composition'
+  import {
+    Formula,
+    FormulaFilter,
+    get_alphabetical_formula,
+  } from 'matterviz/composition'
 
   let value = $state(`Li,Fe`)
   let mode = $state(`elements`)
@@ -18,18 +22,23 @@ An interactive search filter for chemical formulas. The search mode is automatic
   // Generate compounds programmatically
   const els = `Li Na K Mg Ca Fe Co Ni Cu Zn Mn Ti Al`.split(` `)
   const materials = []
+  // Unaries (elemental forms)
+  for (const el of els) materials.push({ [el]: 1 }, { [el]: 2 })
+  // Binaries (oxides and sulfides)
   for (const el of els) {
     for (const amt of [1, 2]) {
       materials.push({ [el]: amt, O: 2 }, { [el]: amt, O: 3 }, { [el]: amt, S: 2 })
     }
   }
+  // Ternaries (mixed metal oxides)
   for (let idx = 0; idx < els.length - 1; idx++) {
     for (let jdx = idx + 1; jdx < els.length; jdx++) {
       materials.push({ [els[idx]]: 1, [els[jdx]]: 1, O: 3 })
     }
   }
 
-  const to_str = (comp) => Object.entries(comp).map(([el, n]) => `${el}${n}`).join(``)
+  // Use library function for proper formula formatting (handles count=1 correctly)
+  const to_str = (comp) => get_alphabetical_formula(comp, true, ``)
 
   const filtered = $derived.by(() => {
     if (!value) return materials.slice(0, 60)
@@ -78,13 +87,18 @@ Try these examples:
 
 - `Li,Fe` → materials containing Li and Fe
 - `Li-Fe-O` → materials with only Li, Fe, O (chemical system)
-- `Li1Fe1O3` → exact formula match
+- `LiFeO3` → exact formula match
+- `Li` → unary element match
 
 ## Include/Exclude Filters
 
 ```svelte example
 <script>
-  import { Formula, FormulaFilter } from 'matterviz/composition'
+  import {
+    Formula,
+    FormulaFilter,
+    get_alphabetical_formula,
+  } from 'matterviz/composition'
 
   let include = $state(`Li`), exclude = $state(``)
 
@@ -99,7 +113,7 @@ Try these examples:
     }
   }
 
-  const to_str = (comp) => Object.entries(comp).map(([el, n]) => `${el}${n}`).join(``)
+  const to_str = (comp) => get_alphabetical_formula(comp, true, ``)
   const results = $derived.by(() => {
     let mats = materials
     if (include) {

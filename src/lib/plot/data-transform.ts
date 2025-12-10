@@ -32,11 +32,11 @@ export const prepare_legend_data = (series: DataSeries[]): {
   }))
 
 // Create data points from series for analysis
-export function create_data_points(
+export const create_data_points = (
   series: DataSeries[],
   filter_fn?: (series: DataSeries) => boolean,
-): Point[] {
-  return series
+): Point[] =>
+  series
     .filter(filter_fn || ((srs) => srs.visible ?? true))
     .flatMap(({ x: xs, y: ys }, series_idx) => {
       const length = Math.min(xs.length, ys.length)
@@ -47,4 +47,15 @@ export function create_data_points(
       }
       return xs.slice(0, length).map((x, idx) => ({ x, y: ys[idx] }))
     })
+
+// Process array or scalar properties for indexed access.
+// If prop is an array, returns the element at the given index.
+// If prop is a scalar, returns the scalar (applied to all indices).
+// Returns undefined if prop is null/undefined.
+export function process_prop<T>(
+  prop: T[] | T | undefined | null,
+  idx: number,
+): T | undefined {
+  if (prop === null || prop === undefined) return undefined
+  return Array.isArray(prop) ? prop[idx] : prop
 }

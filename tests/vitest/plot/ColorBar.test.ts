@@ -332,7 +332,7 @@ describe(`ColorBar Numeric Formatting`, () => {
       target: document.body,
       props: {
         range: [0, 10],
-        tick_format: `.1f`, // Format to one decimal place
+        tick_format: `.1r`, // Format to one decimal place
         tick_labels: 6, // Request 6 ticks (0, 2, 4, 6, 8, 10)
         snap_ticks: true, // Use nice range
       },
@@ -342,12 +342,12 @@ describe(`ColorBar Numeric Formatting`, () => {
       `.colorbar > div.bar > span.tick-label`,
     )
     expect(tick_label_spans.length).toBe(6)
-    expect(tick_label_spans[0].textContent).toBe(`0.0`)
-    expect(tick_label_spans[1].textContent).toBe(`2.0`)
-    expect(tick_label_spans[2].textContent).toBe(`4.0`)
-    expect(tick_label_spans[3].textContent).toBe(`6.0`)
-    expect(tick_label_spans[4].textContent).toBe(`8.0`)
-    expect(tick_label_spans[5].textContent).toBe(`10.0`)
+    expect(tick_label_spans[0].textContent).toBe(`0`)
+    expect(tick_label_spans[1].textContent).toBe(`2`)
+    expect(tick_label_spans[2].textContent).toBe(`4`)
+    expect(tick_label_spans[3].textContent).toBe(`6`)
+    expect(tick_label_spans[4].textContent).toBe(`8`)
+    expect(tick_label_spans[5].textContent).toBe(`10`)
   })
 
   test(`formats ticks with percentage format ('p')`, () => {

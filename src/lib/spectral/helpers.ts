@@ -372,17 +372,48 @@ function convert_pymatgen_band_structure(
     [0],
   )
 
-  // Branches between labeled points (skip those with discontinuities)
-  const labeled = qpoints.map((q, idx) => q.label ? idx : -1).filter((i) => i >= 0)
-  const branches: types.Branch[] = labeled.slice(0, -1).flatMap((start, idx) => {
-    const end = labeled[idx + 1]
-    if ([...disc_set].some((d) => d > start && d <= end)) return []
-    return [{
-      start_index: start,
-      end_index: end,
-      name: `${qpoints[start].label ?? `?`}-${qpoints[end].label ?? `?`}`,
-    }]
-  })
+  // Use pymatgen's branches if available - they correctly handle discontinuities
+  // Otherwise, infer branches from discontinuities (robust fallback covering all qpoints)
+  const pmg_branches = pmg.branches as types.Branch[] | undefined
+  let branches: types.Branch[] = []
+
+  if (Array.isArray(pmg_branches) && pmg_branches.length > 0) {
+    // Validate and use pymatgen branches directly
+    branches = pmg_branches.filter((br) =>
+      typeof br.start_index === `number` &&
+      typeof br.end_index === `number` &&
+      br.start_index >= 0 &&
+      br.end_index < qpoints.length &&
+      br.start_index <= br.end_index
+    )
+  }
+
+  // Fallback: infer branches from discontinuities when none provided or all invalid
+  if (branches.length === 0) {
+    console.info(
+      `Band structure missing 'branches' field - inferring from path discontinuities`,
+    )
+    // Discontinuity indices mark points where the path jumps (disc before that index)
+    // Create continuous segments between discontinuities
+    const disc_indices = [...disc_set].sort((a, b) => a - b)
+    // Segment boundaries: [0, first_disc), [first_disc, second_disc), ..., [last_disc, end]
+    const segment_starts = [0, ...disc_indices]
+    const segment_ends = [...disc_indices.map((idx) => idx - 1), qpoints.length - 1]
+
+    branches = segment_starts
+      .map((start, idx) => {
+        const end = segment_ends[idx]
+        const start_label = qpoints[start]?.label ?? `?`
+        const end_label = qpoints[end]?.label ?? `?`
+        return {
+          start_index: start,
+          end_index: end,
+          name: `${start_label}-${end_label}`,
+        }
+      })
+      .filter((br) => br.start_index <= br.end_index)
+  }
+
   if (!branches.length) {
     branches.push({ start_index: 0, end_index: qpoints.length - 1, name: `path` })
   }

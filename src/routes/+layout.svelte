@@ -83,7 +83,9 @@
   }}
   aria-label="Main navigation"
   {page}
+  --nav-dropdown-z-index="100000001"
 >
+  <!-- Nav dropdown must be above Structure.svelte's --struct-buttons-z-index (100000000) -->
   <button
     onclick={() => cmd_palette_open = true}
     aria-label="Open search"

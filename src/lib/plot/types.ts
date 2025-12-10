@@ -287,6 +287,14 @@ export interface BarSeries {
     stroke_width?: number
     line_dash?: string
   }
+  // Marker-related fields for line series (matching DataSeries)
+  markers?: Markers // 'line' | 'points' | 'line+points' | 'none'
+  color_values?: (number | null)[] | null
+  size_values?: readonly (number | null)[] | null
+  point_style?: PointStyle[] | PointStyle
+  point_hover?: HoverStyle[] | HoverStyle
+  point_label?: LabelStyle[] | LabelStyle
+  point_offset?: XyObj[] | XyObj
 }
 
 // Tick label configuration

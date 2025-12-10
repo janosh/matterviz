@@ -648,6 +648,103 @@ describe(`normalize_band_structure`, () => {
     })
   })
 
+  describe(`branch inference fallback (no pmg.branches)`, () => {
+    const spy_info = () => vi.spyOn(console, `info`).mockImplementation(() => {})
+
+    it.each([
+      {
+        desc: `logs info and covers unlabeled qpoints`,
+        qpoints: [[0.1, 0, 0], [0.25, 0, 0], [0.4, 0, 0]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+        expected: [{ start_index: 0, end_index: 2, name: `?-?` }],
+      },
+      {
+        desc: `creates branches at single discontinuity`,
+        qpoints: [[0, 0, 0], [0.1, 0, 0], [0.9, 0.9, 0.9], [1, 1, 1]],
+        labels_dict: { GAMMA: [0, 0, 0], L: [1, 1, 1] },
+        expected: [
+          { start_index: 0, end_index: 1, name: `GAMMA-?` },
+          { start_index: 2, end_index: 3, name: `?-L` },
+        ],
+      },
+      {
+        desc: `creates branches at multiple discontinuities`,
+        qpoints: [[0, 0, 0], [0.1, 0, 0], [0.5, 0.5, 0], [0.6, 0.5, 0], [1, 1, 1], [
+          1.1,
+          1,
+          1,
+        ]],
+        labels_dict: { GAMMA: [0, 0, 0], K: [0.5, 0.5, 0], L: [1, 1, 1] },
+        expected: [
+          { start_index: 0, end_index: 1, name: `GAMMA-?` },
+          { start_index: 2, end_index: 3, name: `K-?` },
+          { start_index: 4, end_index: 5, name: `L-?` },
+        ],
+      },
+      {
+        desc: `creates single branch with no discontinuities or labels`,
+        qpoints: [[0, 0, 0], [0.1, 0, 0], [0.2, 0, 0], [0.3, 0, 0]],
+        labels_dict: {},
+        expected: [{ start_index: 0, end_index: 3, name: `?-?` }],
+      },
+      {
+        desc: `uses labels for branch names`,
+        qpoints: [[0, 0, 0], [0.25, 0, 0], [0.5, 0, 0]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+        expected: [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
+      },
+    ])(`$desc`, ({ qpoints, labels_dict, expected }) => {
+      const spy = spy_info()
+      const bands = [qpoints.map((_, idx) => idx)]
+      const result = normalize_band_structure(make_pmg({ qpoints, bands, labels_dict }))
+      expect(result?.branches).toEqual(expected)
+      expect(spy).toHaveBeenCalledWith(
+        `Band structure missing 'branches' field - inferring from path discontinuities`,
+      )
+      spy.mockRestore()
+    })
+
+    it(`prefers explicit branches over fallback`, () => {
+      const spy = spy_info()
+      const result = normalize_band_structure({
+        '@class': `PhononBandStructureSymmLine`,
+        qpoints: [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]],
+        bands: [[0, 1, 2]],
+        branches: [
+          { start_index: 0, end_index: 1, name: `custom-1` },
+          { start_index: 1, end_index: 2, name: `custom-2` },
+        ],
+        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+      })
+      expect(result?.branches?.map((br) => br.name)).toEqual([`custom-1`, `custom-2`])
+      expect(spy).not.toHaveBeenCalled()
+      spy.mockRestore()
+    })
+
+    it.each([
+      { desc: `empty branches array`, branches: [] },
+      {
+        desc: `all invalid branches`,
+        branches: [
+          { start_index: -1, end_index: 0, name: `invalid` },
+          { start_index: 0, end_index: 99, name: `out-of-bounds` },
+        ],
+      },
+    ])(`triggers fallback with $desc`, ({ branches }) => {
+      const spy = spy_info()
+      const result = normalize_band_structure({
+        '@class': `PhononBandStructureSymmLine`,
+        qpoints: [[0, 0, 0], [0.5, 0, 0]],
+        bands: [[0, 1]],
+        branches,
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      })
+      expect(result?.branches).toHaveLength(1)
+      expect(spy).toHaveBeenCalled()
+      spy.mockRestore()
+    })
+  })
+
   describe(`edge cases`, () => {
     it.each([null, undefined, `string`, 123, [], {
       '@class': `X`,

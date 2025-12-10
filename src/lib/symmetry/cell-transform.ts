@@ -8,18 +8,12 @@ import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 
 export type CellType = `original` | `conventional` | `primitive`
 
-/**
- * Convert a MoyoCell (from moyo-wasm symmetry analysis) to PymatgenStructure format.
- * MoyoCell has a flat 9-element basis array and atomic numbers; this converts to
- * the full PymatgenStructure with lattice parameters and element symbols.
- *
- * @param cell - The MoyoCell from symmetry analysis (std_cell or prim_std_cell)
- * @param original_structure - The original structure (used to preserve pbc and other metadata)
- * @returns A PymatgenStructure with the transformed cell
- */
+// Convert a MoyoCell (from moyo-wasm symmetry analysis) to PymatgenStructure format.
+// MoyoCell has a flat 9-element basis array and atomic numbers; this converts to
+// the full PymatgenStructure with lattice parameters and element symbols.
 export function moyo_cell_to_structure(
-  cell: MoyoCell,
-  original_structure: PymatgenStructure,
+  cell: MoyoCell, // The MoyoCell from symmetry analysis (std_cell or prim_std_cell)
+  original_structure: PymatgenStructure, // The original structure (used to preserve pbc and other metadata)
 ): PymatgenStructure {
   // Convert flat 9-element basis to 3x3 matrix
   // moyo-wasm uses the same row-major serialization for both input and output
