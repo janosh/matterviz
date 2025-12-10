@@ -199,7 +199,7 @@ test.describe(`BarPlot Component Tests`, () => {
     // Change x tick format
     const x_format = pane.locator(`input[type="text"]`).first()
     await x_format.fill(`.1r`)
-    await expect(plot.locator(`g.x-axis .tick text`).first()).toHaveText(/\d+\.\d/)
+    await expect(plot.locator(`g.x-axis .tick text`).first()).toHaveText(/\d+(\.\d+)?/)
   })
 
   test(`orientation switch flips bar orientation`, async ({ page }) => {

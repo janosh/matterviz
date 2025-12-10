@@ -28,30 +28,21 @@ describe(`atomic number utilities`, () => {
     [{ 26: 2, 8: 3 }, { Fe: 2, O: 3 }, `Fe2O3`],
     [{ 1: 2, 8: 1 }, { H: 2, O: 1 }, `H2O`],
     [{ 20: 1, 6: 1, 8: 3 }, { Ca: 1, C: 1, O: 3 }, `CaCO3`],
+    [{ 1: 1, 8: 1 }, { H: 1, O: 1 }, `handles object key dedup`],
   ])(
-    `should convert atomic numbers to symbols for %s (%s)`,
+    `atomic_num_to_symbols: %j -> %j (%s)`,
     (input, expected, _description) => {
       expect(atomic_num_to_symbols(input)).toEqual(expected)
     },
   )
 
-  test(`should handle duplicate atomic numbers in conversion`, () => {
-    // This would be represented as an object with the same key, so it should sum
-    expect(atomic_num_to_symbols({ 1: 1, 8: 1 })).toEqual({
-      H: 1,
-      O: 1,
-    })
-  })
-
   test.each([
     [{ 999: 1 }, `Invalid atomic number: 999`],
     [{ 0: 1 }, `Invalid atomic number: 0`],
   ])(
-    `should throw error for invalid atomic numbers %o`,
+    `atomic_num_to_symbols throws for %j`,
     (input, expected_error) => {
-      expect(() => atomic_num_to_symbols(input)).toThrow(
-        expected_error,
-      )
+      expect(() => atomic_num_to_symbols(input)).toThrow(expected_error)
     },
   )
 
@@ -60,13 +51,13 @@ describe(`atomic number utilities`, () => {
     [{ H: 2, O: 1 }, { 1: 2, 8: 1 }, `H2O`],
     [{ Ca: 1, C: 1, O: 3 }, { 20: 1, 6: 1, 8: 3 }, `CaCO3`],
   ])(
-    `should convert symbols to atomic numbers for %s (%s)`,
+    `atomic_symbol_to_num: %j -> %j (%s)`,
     (input, expected, _description) => {
       expect(atomic_symbol_to_num(input)).toEqual(expected)
     },
   )
 
-  test(`should throw error for invalid element symbols in conversion`, () => {
+  test(`atomic_symbol_to_num throws for invalid symbol`, () => {
     expect(() => atomic_symbol_to_num({ Xx: 1 } as CompositionType)).toThrow(
       `Invalid element symbol: Xx`,
     )
@@ -230,27 +221,25 @@ describe(`fractional_composition`, () => {
       },
     )
 
-    test(`should handle empty composition`, () => {
+    test(`handles empty composition`, () => {
       expect(fractional_composition({}, true)).toEqual({})
     })
 
-    test(`should throw error for unknown elements`, () => {
+    test(`throws for unknown elements`, () => {
       expect(() => fractional_composition({ Xx: 1 } as CompositionType, true))
         .toThrow(`Unknown element: Xx`)
     })
 
-    test(`should always sum to 1.0`, () => {
-      ;[
-        { H: 2, O: 1 },
-        { Fe: 2, O: 3 },
-        { C: 6, H: 12, O: 6 },
-        { Ca: 1, C: 1, O: 3 },
-        { Na: 2, S: 1, O: 4 },
-      ].forEach((comp) => {
-        const result = fractional_composition(comp, true)
-        const total = Object.values(result).reduce((sum, frac) => sum + frac, 0)
-        expect(total).toBeCloseTo(1.0, 3)
-      })
+    test.each([
+      [{ H: 2, O: 1 }, `water`],
+      [{ Fe: 2, O: 3 }, `iron oxide`],
+      [{ C: 6, H: 12, O: 6 }, `glucose`],
+      [{ Ca: 1, C: 1, O: 3 }, `calcium carbonate`],
+      [{ Na: 2, S: 1, O: 4 }, `sodium sulfate`],
+    ])(`weight fractions sum to 1.0 for %j (%s)`, (comp, _desc) => {
+      const result = fractional_composition(comp, true)
+      const total = Object.values(result).reduce((sum, frac) => sum + frac, 0)
+      expect(total).toBeCloseTo(1.0, 3)
     })
   })
 })
@@ -513,16 +502,21 @@ describe(`normalize_element_symbols`, () => {
     expect(result).toEqual(expected)
   })
 
-  test(`works with custom symbol list`, () => {
-    const custom_symbols: ElementSymbol[] = [`Fe`, `Co`, `Ni`]
-    const result = normalize_element_symbols(`Ni, Fe, Cu`, custom_symbols)
-    expect(result).toEqual([`Fe`, `Ni`]) // Cu not in custom list
-  })
-
-  test(`accepts non-ElementSymbol strings in custom list`, () => {
-    const custom_symbols = [`A`, `B`, `C`]
-    const result = normalize_element_symbols(`B, C`, custom_symbols as ElementSymbol[])
-    expect(result).toEqual([`B`, `C`])
+  test.each([
+    {
+      input: `Ni, Fe, Cu`,
+      symbols: [`Fe`, `Co`, `Ni`] as ElementSymbol[],
+      expected: [`Fe`, `Ni`],
+      desc: `filters by custom list`,
+    },
+    {
+      input: `B, C`,
+      symbols: [`A`, `B`, `C`] as ElementSymbol[],
+      expected: [`B`, `C`],
+      desc: `works with non-element strings`,
+    },
+  ])(`custom symbol list: $desc`, ({ input, symbols, expected }) => {
+    expect(normalize_element_symbols(input, symbols)).toEqual(expected)
   })
 })
 
@@ -643,6 +637,48 @@ describe(`parse_formula_with_wildcards`, () => {
       [{ element: `Fe`, count: 1 }, { element: `O`, count: 2 }],
       `explicit count 1`,
     ],
+    // Parentheses expansion with wildcards
+    [
+      `(*O2)2`,
+      [{ element: null, count: 2 }, { element: `O`, count: 4 }],
+      `parens expand wildcard count`,
+    ],
+    [
+      `Li(*O)2`,
+      [{ element: `Li`, count: 1 }, { element: null, count: 2 }, {
+        element: `O`,
+        count: 2,
+      }],
+      `parens with wildcard inside`,
+    ],
+    [
+      `(Li*2)3O9`,
+      [{ element: `Li`, count: 3 }, { element: null, count: 6 }, {
+        element: `O`,
+        count: 9,
+      }],
+      `nested wildcard count multiplication`,
+    ],
+    [
+      `(*2O3)2`,
+      [{ element: null, count: 4 }, { element: `O`, count: 6 }],
+      `wildcard with count in parens`,
+    ],
+    [
+      `Ca(*)2`,
+      [{ element: `Ca`, count: 1 }, { element: null, count: 2 }],
+      `bare wildcard in parens`,
+    ],
+    [
+      `(*)3`,
+      [{ element: null, count: 3 }],
+      `only wildcard in parens`,
+    ],
+    [
+      `((*O)2)3`,
+      [{ element: null, count: 6 }, { element: `O`, count: 6 }],
+      `nested parens with wildcard`,
+    ],
   ])(`"%s" -> %j (%s)`, (input, expected, _desc) => {
     expect(parse_formula_with_wildcards(input)).toEqual(expected)
   })
@@ -695,44 +731,51 @@ describe(`matches_formula_wildcard`, () => {
     [`Fe2O`, [pat(null, 2), pat(null, 1)], true, `all wildcards`],
     [`LiO2`, [pat(null, 2), pat(null, 1)], true, `all wildcards swapped`],
     [`Fe2O3`, [pat(null, 2), pat(null, 1)], false, `counts mismatch`],
+    // Wildcard count matching with distinct counts
+    [
+      `LiMnCo2O4`,
+      [pat(`Li`, 1), pat(null, 1), pat(null, 2), pat(`O`, 4)],
+      true,
+      `distinct wildcard counts match`,
+    ],
+    [
+      `LiMn2Co2O4`,
+      [pat(`Li`, 1), pat(null, 1), pat(null, 2), pat(`O`, 4)],
+      false,
+      `distinct wildcard counts mismatch`,
+    ],
+    // Duplicate elements merged in pattern
+    [
+      `Li2O2`,
+      [pat(`Li`, 1), pat(`Li`, 1), pat(`O`, 2)],
+      true,
+      `duplicate elements merged`,
+    ],
+    [
+      `LiO2`,
+      [pat(`Li`, 1), pat(`Li`, 1), pat(`O`, 2)],
+      false,
+      `duplicate elements not matching`,
+    ],
+    // Chemistry patterns: spinel AB2O4
+    [`MgAl2O4`, [pat(null, 1), pat(null, 2), pat(`O`, 4)], true, `spinel pattern match`],
+    [
+      `Fe3O4`,
+      [pat(null, 1), pat(null, 2), pat(`O`, 4)],
+      false,
+      `spinel pattern mismatch`,
+    ],
+    // Chemistry patterns: perovskite ABO3
+    [`BaTiO3`, [pat(null, 1), pat(null, 1), pat(`O`, 3)], true, `perovskite BaTiO3`],
+    [`SrTiO3`, [pat(null, 1), pat(null, 1), pat(`O`, 3)], true, `perovskite SrTiO3`],
+    // Chemistry patterns: layered LiMO2
+    [`LiCoO2`, [pat(`Li`, 1), pat(null, 1), pat(`O`, 2)], true, `layered LiCoO2`],
+    [`NaCoO2`, [pat(`Li`, 1), pat(null, 1), pat(`O`, 2)], false, `layered requires Li`],
+    // Wildcard with count 0 never matches
+    [`Fe2O3`, [pat(null, 0), pat(`O`, 3)], false, `count 0 never matches`],
+    [`Al2O3`, [pat(null, 0), pat(`O`, 3)], false, `count 0 never matches Al2O3`],
+    [`O3`, [pat(null, 0), pat(`O`, 3)], false, `count 0 never matches O3`],
   ])(`"%s" pattern=%j -> %s (%s)`, (formula, pattern, expected, _desc) => {
     expect(matches_formula_wildcard(formula, pattern)).toBe(expected)
-  })
-
-  test(`wildcard count matching with distinct counts`, () => {
-    const pattern = [pat(`Li`, 1), pat(null, 1), pat(null, 2), pat(`O`, 4)]
-    expect(matches_formula_wildcard(`LiMnCo2O4`, pattern)).toBe(true)
-    expect(matches_formula_wildcard(`LiMn2Co2O4`, pattern)).toBe(false)
-  })
-
-  test(`duplicate elements merged in pattern`, () => {
-    const pattern = [pat(`Li`, 1), pat(`Li`, 1), pat(`O`, 2)]
-    expect(matches_formula_wildcard(`Li2O2`, pattern)).toBe(true)
-    expect(matches_formula_wildcard(`LiO2`, pattern)).toBe(false)
-  })
-
-  test(`chemistry patterns: spinel AB2O4`, () => {
-    const spinel = [pat(null, 1), pat(null, 2), pat(`O`, 4)]
-    expect(matches_formula_wildcard(`MgAl2O4`, spinel)).toBe(true)
-    expect(matches_formula_wildcard(`Fe3O4`, spinel)).toBe(false)
-  })
-
-  test(`chemistry patterns: perovskite ABO3`, () => {
-    const perovskite = [pat(null, 1), pat(null, 1), pat(`O`, 3)]
-    expect(matches_formula_wildcard(`BaTiO3`, perovskite)).toBe(true)
-    expect(matches_formula_wildcard(`SrTiO3`, perovskite)).toBe(true)
-  })
-
-  test(`chemistry patterns: layered LiMO2`, () => {
-    const layered = [pat(`Li`, 1), pat(null, 1), pat(`O`, 2)]
-    expect(matches_formula_wildcard(`LiCoO2`, layered)).toBe(true)
-    expect(matches_formula_wildcard(`NaCoO2`, layered)).toBe(false)
-  })
-
-  test(`wildcard with count 0 never matches (no formula has 0 atoms)`, () => {
-    const pattern_with_zero = [pat(null, 0), pat(`O`, 3)]
-    expect(matches_formula_wildcard(`Fe2O3`, pattern_with_zero)).toBe(false)
-    expect(matches_formula_wildcard(`Al2O3`, pattern_with_zero)).toBe(false)
-    expect(matches_formula_wildcard(`O3`, pattern_with_zero)).toBe(false)
   })
 })

@@ -456,7 +456,17 @@ export function parse_chemsys_with_wildcards(input: string): ChemsysWithWildcard
 //   "**O4" -> *(1), *(1), O(4) - matches ternary oxides with 1:1:4 ratio
 export function parse_formula_with_wildcards(formula: string): WildcardFormulaToken[] {
   const tokens: WildcardFormulaToken[] = []
-  const cleaned = formula.replace(/\s/g, ``)
+
+  // Expand parentheses, treating * as a pseudo-element (temporarily replace to protect it)
+  let cleaned = formula.replace(/\s/g, ``)
+
+  // Protect wildcards from parentheses expansion by replacing * with a placeholder
+  // Use Zz as placeholder (not a real element symbol)
+  const wildcard_placeholder = `Zz`
+  cleaned = cleaned.replace(/\*/g, wildcard_placeholder)
+  cleaned = expand_parentheses(cleaned)
+  // Restore wildcards
+  cleaned = cleaned.replace(new RegExp(wildcard_placeholder, `g`), `*`)
 
   // Regex to match either:
   // 1. Standard element symbol with optional count: ([A-Z][a-z]?)(\d*)
