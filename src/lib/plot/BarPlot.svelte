@@ -51,6 +51,15 @@
     point: InternalPoint
   }
 
+  // Extended point type with computed screen coordinates (used internally for rendering)
+  type LineSeriesPoint = InternalPoint & {
+    x: number // Screen x coordinate
+    y: number // Screen y coordinate
+    data_x: number // Original data x value
+    data_y: number // Original data y value
+    idx: number // Index in series
+  }
+
   let {
     series = $bindable([]),
     orientation = $bindable(`vertical`),
@@ -115,8 +124,15 @@
     on_bar_click?: (
       data: BarHandlerProps & { event: MouseEvent | KeyboardEvent },
     ) => void
-    on_bar_hover?: (data: (BarHandlerProps & { event: MouseEvent }) | null) => void
+    on_bar_hover?: (
+      data:
+        | (BarHandlerProps & { event: MouseEvent | FocusEvent | KeyboardEvent })
+        | null,
+    ) => void
     // Line marker props (matching ScatterPlot)
+    // Note: For line series with markers, BOTH on_bar_* AND on_point_* events fire.
+    // Use on_point_* for marker-specific data (includes `point` with InternalPoint details)
+    // or on_bar_* for backward compatibility with bar-style event handling.
     color_scale?: {
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
@@ -132,7 +148,11 @@
       data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
     ) => void
     on_point_hover?: (
-      data: (LineMarkerHandlerProps & { event: MouseEvent }) | null,
+      data:
+        | (LineMarkerHandlerProps & {
+          event: MouseEvent | FocusEvent | KeyboardEvent
+        })
+        | null,
     ) => void
   } = $props()
 
@@ -214,7 +234,7 @@
 
       let y_range = get_nice_data_range(
         points,
-        (p) => p.y,
+        (pt) => pt.y,
         y_limit,
         scale_type as `linear` | `log`,
         range_padding,
@@ -224,8 +244,8 @@
       // For bar plots, ensure the value axis starts at 0 unless there are negative values
       // Only apply zero-clamping for linear scales
       if (scale_type === `linear`) {
-        const has_negative = points.some((p) => p.y < 0)
-        const has_positive = points.some((p) => p.y > 0)
+        const has_negative = points.some((pt) => pt.y < 0)
+        const has_positive = points.some((pt) => pt.y > 0)
 
         // Only adjust if no explicit y_range is set
         if (y_limit?.[0] == null && y_limit?.[1] == null) {
@@ -246,7 +266,7 @@
     const x_auto_range = all_x_points.length
       ? get_nice_data_range(
         all_x_points,
-        (p) => p.x,
+        (pt) => pt.x,
         x_range,
         x_scale_type,
         range_padding,
@@ -370,33 +390,33 @@
   let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
   let plot_center_y = $derived(pad.t + (height - pad.b - pad.t) / 2)
 
-  // Compute color values from line series for color scaling
+  // Compute color values from line series for color scaling (filter to numbers only)
   let all_color_values = $derived(
     visible_series
       .filter((srs: BarSeries) => srs.render_mode === `line`)
       .flatMap((srs: BarSeries) =>
-        srs.color_values?.filter((val) => val != null) || []
+        (srs.color_values ?? []).filter(
+          (val): val is number => typeof val === `number`,
+        )
       ),
   )
 
-  // Create auto color range
-  let auto_color_range = $derived(
-    all_color_values.length > 0
-      ? extent(
-        all_color_values.filter((color_val: number | null): color_val is number =>
-          typeof color_val === `number`
-        ),
-      )
-      : [0, 1],
-  ) as [number, number]
+  // Create auto color range (safely handle empty arrays or undefined extent results)
+  let auto_color_range: [number, number] = $derived.by(() => {
+    if (all_color_values.length === 0) return [0, 1]
+    const [min_val, max_val] = extent(all_color_values)
+    return [min_val ?? 0, max_val ?? 1]
+  })
 
-  // All size values from line series (for size scale)
+  // All size values from line series (for size scale, filter to numbers only)
   let all_size_values = $derived(
     visible_series
       .filter((srs: BarSeries) => srs.render_mode === `line`)
       .flatMap((srs: BarSeries) =>
-        srs.size_values?.filter((val) => val != null) || []
-      ) as (number | null)[],
+        [...(srs.size_values ?? [])].filter(
+          (val): val is number => typeof val === `number`,
+        )
+      ),
   )
 
   // Color scale function (using shared utility)
@@ -675,9 +695,9 @@
 </script>
 
 <svelte:window
-  onkeydown={(e) => {
-    if (e.key === `Escape` && fullscreen) {
-      e.preventDefault()
+  onkeydown={(evt) => {
+    if (evt.key === `Escape` && fullscreen) {
+      evt.preventDefault()
       fullscreen = false
     }
   }}
@@ -1055,17 +1075,11 @@
               metadata,
               series_idx,
               point_idx: idx,
-            } as InternalPoint & {
-              x: number
-              y: number
-              data_x: number
-              data_y: number
-              idx: number
-            }
-          }).filter((p) => isFinite(p.x) && isFinite(p.y))}
+            } as LineSeriesPoint
+          }).filter((pt) => isFinite(pt.x) && isFinite(pt.y))}
                 {#if show_line && points.length > 1}
                   <polyline
-                    points={points.map((p) => `${p.x},${p.y}`).join(` `)}
+                    points={points.map((pt) => `${pt.x},${pt.y}`).join(` `)}
                     fill="none"
                     stroke={color}
                     stroke-width={stroke_width}
@@ -1078,7 +1092,7 @@
                 {#if show_line && !show_points && points.length > 1 &&
             (on_bar_hover || on_bar_click)}
                   <polyline
-                    points={points.map((p) => `${p.x},${p.y}`).join(` `)}
+                    points={points.map((pt) => `${pt.x},${pt.y}`).join(` `)}
                     fill="none"
                     stroke="transparent"
                     stroke-width={Math.max(10, stroke_width * 3)}
@@ -1087,85 +1101,114 @@
                     style:cursor={on_bar_click ? `pointer` : undefined}
                   />
                 {/if}
-                <!-- Render marker points using ScatterPoint -->
                 {#if show_points}
-                  {#each points as point (point.idx)}
-                    {@const bar_idx = point.idx}
-                    {@const pt_style = point.point_style as PointStyle | undefined}
-                    {@const pt_hover = point.point_hover as HoverStyle | undefined}
-                    {@const pt_label = point.point_label}
-                    {@const pt_offset = point.point_offset ?? { x: 0, y: 0 }}
-                    {@const computed_radius = point.size_value != null
-            ? size_scale_fn(point.size_value)
-            : pt_style?.radius ?? 4}
-                    {@const computed_fill = point.color_value != null
-            ? color_scale_fn(point.color_value)
-            : pt_style?.fill ?? color}
-                    {@const is_hovered = hover_info?.series_idx === series_idx &&
-            hover_info?.bar_idx === bar_idx}
-                    <ScatterPoint
-                      x={point.x}
-                      y={point.y}
-                      {is_hovered}
-                      style={{
-                        ...pt_style,
-                        radius: computed_radius,
-                        fill: computed_fill,
-                        stroke: pt_style?.stroke ?? `transparent`,
-                        stroke_width: pt_style?.stroke_width ?? 1,
-                        fill_opacity: pt_style?.fill_opacity ?? 1,
-                        stroke_opacity: pt_style?.stroke_opacity ?? 1,
-                        cursor: on_point_click || on_bar_click ? `pointer` : undefined,
-                      }}
-                      hover={pt_hover ?? {}}
-                      label={pt_label ?? {}}
-                      offset={pt_offset}
-                      {point_tween}
-                      origin={{ x: plot_center_x, y: plot_center_y }}
-                      --point-fill-color={computed_fill}
-                      role="button"
-                      tabindex={0}
-                      aria-label={`point ${bar_idx + 1} of ${srs.label ?? `series`}`}
-                      onmousemove={(evt: MouseEvent) => {
-                        hovered = true
-                        hover_info = get_bar_data(series_idx, bar_idx, computed_fill)
-                        change(hover_info)
-                        on_bar_hover?.({ ...hover_info, event: evt })
-                        on_point_hover?.({
-                          ...hover_info,
-                          event: evt,
-                          point: point as InternalPoint,
-                        })
-                      }}
-                      onmouseleave={() => {
-                        hover_info = null
-                        change(null)
-                        on_bar_hover?.(null)
-                        on_point_hover?.(null)
-                      }}
-                      onclick={(evt: MouseEvent) => {
-                        const bar_data = get_bar_data(series_idx, bar_idx, computed_fill)
-                        on_bar_click?.({ ...bar_data, event: evt })
-                        on_point_click?.({
-                          ...bar_data,
-                          event: evt,
-                          point: point as InternalPoint,
-                        })
-                      }}
-                      onkeydown={(evt: KeyboardEvent) => {
-                        if (evt.key === `Enter` || evt.key === ` `) {
-                          evt.preventDefault()
-                          const bar_data = get_bar_data(series_idx, bar_idx, computed_fill)
-                          on_bar_click?.({ ...bar_data, event: evt })
-                          on_point_click?.({
-                            ...bar_data,
-                            event: evt,
-                            point: point as InternalPoint,
-                          })
-                        }
-                      }}
-                    />
-                  {/each}
+                  {@const clickable = on_bar_click || on_point_click}
+                  {@const get_pt = (evt: Event) =>
+            points.find((pt) =>
+              pt.idx ===
+                parseInt(
+                  (evt.target as Element)?.closest(`[data-bar-idx]`)
+                    ?.getAttribute(`data-bar-idx`) ?? ``,
+                  10,
+                )
+            )}
+                  {@const fill = (pt: LineSeriesPoint) =>
+            pt.color_value != null
+              ? color_scale_fn(pt.color_value)
+              : (pt.point_style as PointStyle)?.fill ?? color}
+                  {@const set_hover = (
+            pt: LineSeriesPoint | null,
+            evt: MouseEvent | FocusEvent,
+          ) => {
+            if (pt) {
+              hovered = true
+              hover_info = get_bar_data(series_idx, pt.idx, fill(pt))
+              change(hover_info)
+            } else {
+              change(null)
+              hover_info = null
+            }
+            on_bar_hover?.(pt ? { ...hover_info!, event: evt } : null)
+            on_point_hover?.(
+              pt
+                ? { ...hover_info!, event: evt, point: pt as InternalPoint }
+                : null,
+            )
+          }}
+                  {@const do_click = (
+            pt: LineSeriesPoint,
+            evt: MouseEvent | KeyboardEvent,
+          ) => {
+            const d = get_bar_data(series_idx, pt.idx, fill(pt))
+            on_bar_click?.({ ...d, event: evt })
+            on_point_click?.({ ...d, event: evt, point: pt as InternalPoint })
+          }}
+                  {@const leaving = (evt: MouseEvent | FocusEvent) =>
+            (evt.relatedTarget as Element)?.closest(`.line-points`) !==
+              evt.currentTarget}
+                  <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_mouse_events_have_key_events -->
+                  <g
+                    class="line-points"
+                    role="group"
+                    onmouseover={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt) set_hover(pt, evt)
+                    }}
+                    onfocusin={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt) set_hover(pt, evt)
+                    }}
+                    onmouseout={(evt) => {
+                      if (leaving(evt)) set_hover(null, evt)
+                    }}
+                    onfocusout={(evt) => {
+                      if (leaving(evt)) set_hover(null, evt)
+                    }}
+                    onclick={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt && clickable) do_click(pt, evt)
+                    }}
+                    onkeydown={(evt) => {
+                      const pt = get_pt(evt)
+                      if (pt && clickable && (evt.key === `Enter` || evt.key === ` `)) {
+                        evt.preventDefault()
+                        do_click(pt, evt)
+                      }
+                    }}
+                  >
+                    {#each points as pt (pt.idx)}
+                      {@const sty = pt.point_style as PointStyle}
+                      {@const fl = fill(pt)}
+                      {@const rad = pt.size_value != null
+              ? size_scale_fn(pt.size_value)
+              : sty?.radius ?? 4}
+                      {@const hov = hover_info?.series_idx === series_idx &&
+              hover_info?.bar_idx === pt.idx}
+                      <ScatterPoint
+                        x={pt.x}
+                        y={pt.y}
+                        is_hovered={hov}
+                        {point_tween}
+                        style={{
+                          ...sty,
+                          radius: rad,
+                          fill: fl,
+                          stroke: sty?.stroke ?? `transparent`,
+                          stroke_width: sty?.stroke_width ?? 1,
+                          fill_opacity: sty?.fill_opacity ?? 1,
+                          stroke_opacity: sty?.stroke_opacity ?? 1,
+                          cursor: clickable ? `pointer` : undefined,
+                        }}
+                        hover={pt.point_hover as HoverStyle ?? {}}
+                        label={pt.point_label ?? {}}
+                        offset={pt.point_offset ?? { x: 0, y: 0 }}
+                        origin={{ x: plot_center_x, y: plot_center_y }}
+                        --point-fill-color={fl}
+                        data-bar-idx={pt.idx}
+                        tabindex={clickable ? (hov ? 0 : -1) : undefined}
+                      />
+                    {/each}
+                  </g>
                 {/if}
               {:else}
                 <!-- Render as bars -->
