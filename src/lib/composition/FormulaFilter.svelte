@@ -7,6 +7,7 @@
     extract_formula_elements,
     has_wildcards,
     normalize_element_symbols,
+    parse_formula_with_wildcards,
   } from './parse'
 
   const SEARCH_EXAMPLES = [
@@ -129,17 +130,19 @@
     }
     // Otherwise parse as formula (already returns sorted by default)
     // For formulas with wildcards, we can't parse them normally
-    if (has_wildcards(trimmed)) {
-      // Extract element symbols and wildcards from formula-style input
-      const matches = trimmed.match(/([A-Z][a-z]?|\*)\d*/g) || []
-      const elements: string[] = []
-      const wildcards: string[] = []
-      for (const match of matches) {
-        const symbol = match.replace(/\d+/g, ``)
-        if (symbol === `*`) wildcards.push(`*`)
-        else if (!elements.includes(symbol)) elements.push(symbol)
-      }
-      return [...elements.sort(), ...wildcards]
+    if (has_wildcards(trimmed)) { // Use shared utility and extract unique elements
+      const tokens = parse_formula_with_wildcards(trimmed)
+      const elements = [
+        ...new Set(
+          tokens.filter((token) => token.element !== null).map((token) =>
+            token.element as string
+          ),
+        ),
+      ].sort()
+      const wildcards = tokens.filter((token) => token.element === null).map(() =>
+        `*`
+      )
+      return [...elements, ...wildcards]
     }
     try {
       return extract_formula_elements(trimmed, { sorted: true })

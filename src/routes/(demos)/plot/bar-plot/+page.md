@@ -126,7 +126,7 @@ Combine bars and lines with **dual y-axes** to show product formation alongside 
   mode="stacked"
   x_axis={{ label: `Time (minutes)` }}
   y_axis={{ label: `Product Amount (mol)` }}
-  y2_axis={{ label: `Temperature (°C)`, format: `.0f` }}
+  y2_axis={{ label: `Temperature (°C)`, format: `.0r` }}
   style="height: 450px"
 />
 ```
@@ -180,7 +180,7 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
   series={quarterly_data}
   x_axis={{ label: `Quarter` }}
   y_axis={{ label: `Revenue ($)`, format: `$,.0f` }}
-  y2_axis={{ label: `Margin (%)`, format: `.1f` }}
+  y2_axis={{ label: `Margin (%)`, format: `.1r` }}
   style="height: 400px"
 />
 ```
@@ -399,7 +399,7 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
 
   let x_axis = $state({ label: `Year`, format: `d`, ticks: 7 })
   let y_axis = $state({ label: `Number of Materials`, format: `.2s`, ticks: 6 })
-  let y2_axis = $state({ label: `Compute Power (TFLOPS)`, format: `.0f`, ticks: 6 })
+  let y2_axis = $state({ label: `Compute Power (TFLOPS)`, format: `.0r`, ticks: 6 })
 </script>
 
 <div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap">
