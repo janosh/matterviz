@@ -195,9 +195,9 @@
     // Separate wildcards from regular elements
     const wildcards = parts.filter((part) => part === `*`)
     const regular_parts = parts.filter((part) => part !== `*`)
-    // Normalize regular elements and append wildcards
+    // Normalize regular elements, sort alphabetically, and append wildcards
     const normalized = [
-      ...normalize_element_symbols(regular_parts.join(`,`)),
+      ...normalize_element_symbols(regular_parts.join(`,`)).sort(),
       ...wildcards,
     ]
     set_value(normalized.join(separator))
