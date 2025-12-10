@@ -131,7 +131,7 @@ describe(`Histogram`, () => {
     mount_histogram({
       series: [{ x: [], y: [1, 1, 1, 1, 1] }],
       bins: 5,
-      y_axis: { scale_type: `log`, format: `.2f` },
+      y_axis: { scale_type: `log`, format: `.2r` },
       y_lim: [1, null],
     })
     await Promise.resolve()

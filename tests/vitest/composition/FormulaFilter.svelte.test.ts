@@ -320,8 +320,9 @@ describe(`FormulaFilter`, () => {
   })
 
   test.each([
-    { input: `Fe,O`, expected: `O,Fe`, mode: `elements` },
-    { input: `Fe-Li`, expected: `Li-Fe`, mode: `chemsys` },
+    // Alphabetical order: Fe before O, Fe before Li
+    { input: `Fe,O`, expected: `Fe,O`, mode: `elements` },
+    { input: `Fe-Li`, expected: `Fe-Li`, mode: `chemsys` },
     { input: `NaCl`, expected: `NaCl`, mode: `exact` },
   ])(
     `normalizes "$input" to "$expected" (mode=$mode)`,
@@ -367,7 +368,8 @@ describe(`FormulaFilter`, () => {
       new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
     )
     flushSync()
-    expect(onchange).toHaveBeenCalledWith(`Li-Fe`, `chemsys`)
+    // Alphabetical order: Fe before Li
+    expect(onchange).toHaveBeenCalledWith(`Fe-Li`, `chemsys`)
   })
 
   test(`spreads additional attributes to wrapper`, () => {
@@ -438,6 +440,263 @@ describe(`FormulaFilter`, () => {
       flushSync()
       expect(get_input().value).toBe(``)
       expect(onclear).toHaveBeenCalled()
+    })
+
+    test(`examples include wildcard patterns and apply correctly`, () => {
+      const onchange = vi.fn()
+      mount(FormulaFilter, { target: document.body, props: { value: ``, onchange } })
+      doc_query<HTMLButtonElement>(`.help-btn`).click()
+      flushSync()
+
+      const examples_text = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(`.example-tag`),
+      ).map((tag) => tag.textContent)
+
+      // Verify wildcard examples are present
+      for (const example of [`Li,*,*`, `Li-Fe-*-*`, `*-*-O`, `LiFe*2*`, `*2O3`]) {
+        expect(examples_text).toContain(example)
+      }
+
+      // Apply a wildcard example
+      Array.from(document.querySelectorAll<HTMLButtonElement>(`.example-tag`))
+        .find((tag) => tag.textContent === `Li-Fe-*-*`)
+        ?.click()
+      flushSync()
+
+      expect(onchange).toHaveBeenCalledWith(`Li-Fe-*-*`, `chemsys`)
+      expect(get_input().value).toBe(`Li-Fe-*-*`)
+    })
+  })
+
+  describe(`wildcard handling`, () => {
+    test.each([
+      [`Li,*,*`, `contains elements`],
+      [`Li-Fe-*-*`, `chemical system`],
+      [`LiFe*2*`, `exact formula`],
+      [`*-*-O`, `chemical system`],
+      [`*2O3`, `exact formula`],
+    ])(`mode hint for wildcard input "%s" shows "%s"`, async (input, expected_hint) => {
+      let val = $state(input)
+      mount(FormulaFilter, {
+        target: document.body,
+        props: {
+          get value() {
+            return val
+          },
+          set value(v: string) {
+            val = v
+          },
+        },
+      })
+      await tick()
+      expect(document.querySelector(`.mode-hint`)?.textContent).toContain(expected_hint)
+    })
+
+    test.each([
+      { input: `Li,*,*`, expected: `Li,*,*`, mode: `elements` },
+      { input: `Li-Fe-*`, expected: `Fe-Li-*`, mode: `chemsys` },
+      // Alphabetical order: Fe before O, Li before O
+      { input: `*,O,Fe`, expected: `Fe,O,*`, mode: `elements` },
+      { input: `*-*-Li-O`, expected: `Li-O-*-*`, mode: `chemsys` },
+    ])(
+      `normalizes wildcard input "$input" to "$expected" (mode=$mode)`,
+      async ({ input, expected, mode }) => {
+        const onchange = vi.fn()
+        let val = $state(input)
+        mount(FormulaFilter, {
+          target: document.body,
+          props: {
+            get value() {
+              return val
+            },
+            set value(v: string) {
+              val = v
+            },
+            onchange,
+          },
+        })
+        await tick()
+        get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
+        flushSync()
+        expect(onchange).toHaveBeenCalledWith(expected, mode)
+      },
+    )
+
+    test(`preserves wildcards when cycling through modes`, async () => {
+      const onchange = vi.fn()
+      let val = $state(`Li-Fe-*-*`)
+      mount(FormulaFilter, {
+        target: document.body,
+        props: {
+          get value() {
+            return val
+          },
+          set value(v: string) {
+            val = v
+          },
+          onchange,
+        },
+      })
+      await tick()
+
+      const get_mode_btn = () =>
+        document.querySelector<HTMLButtonElement>(`.mode-hint.clickable`)
+
+      // Initial mode is chemsys
+      expect(get_mode_btn()?.textContent).toContain(`chemical system`)
+
+      // Cycle to exact - wildcards should be preserved
+      get_mode_btn()?.click()
+      flushSync()
+      expect(onchange).toHaveBeenLastCalledWith(`FeLi**`, `exact`)
+
+      // Cycle to elements - wildcards should be preserved
+      get_mode_btn()?.click()
+      flushSync()
+      expect(onchange).toHaveBeenLastCalledWith(`Fe,Li,*,*`, `elements`)
+
+      // Cycle back to chemsys - wildcards should be preserved
+      get_mode_btn()?.click()
+      flushSync()
+      expect(onchange).toHaveBeenLastCalledWith(`Fe-Li-*-*`, `chemsys`)
+    })
+
+    test.each([
+      { from: `Li,Fe,*,*`, to_mode: `chemsys`, expected: `Fe-Li-*-*` },
+      { from: `Li,Fe,*,*`, to_mode: `exact`, expected: `FeLi**` },
+      { from: `Li-Fe-*-*`, to_mode: `elements`, expected: `Fe,Li,*,*` },
+      { from: `Li-Fe-*-*`, to_mode: `exact`, expected: `FeLi**` },
+      { from: `LiFe*2*`, to_mode: `elements`, expected: `Fe,Li,*,*` },
+      { from: `LiFe*2*`, to_mode: `chemsys`, expected: `Fe-Li-*-*` },
+    ])(
+      `reformats wildcard "$from" to "$expected" when cycling to $to_mode mode`,
+      async ({ from, to_mode, expected }) => {
+        const onchange = vi.fn()
+        let val = $state(from)
+        mount(FormulaFilter, {
+          target: document.body,
+          props: {
+            get value() {
+              return val
+            },
+            set value(v: string) {
+              val = v
+            },
+            onchange,
+          },
+        })
+        await tick()
+
+        // Click until we reach the target mode
+        const get_mode_btn = () =>
+          document.querySelector<HTMLButtonElement>(`.mode-hint.clickable`)
+        let attempts = 0
+        while (attempts < 3) {
+          get_mode_btn()?.click()
+          flushSync()
+          const last_call = onchange.mock.calls[onchange.mock.calls.length - 1]
+          if (last_call[1] === to_mode) break
+          attempts++
+        }
+
+        expect(onchange).toHaveBeenLastCalledWith(expected, to_mode)
+      },
+    )
+
+    test(`placeholders show wildcard examples`, async () => {
+      let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
+      mount(FormulaFilter, {
+        target: document.body,
+        props: {
+          value: ``,
+          get search_mode() {
+            return mode
+          },
+          set search_mode(val) {
+            mode = val
+          },
+        },
+      })
+      await tick()
+
+      expect(get_input().placeholder).toBe(`Li,Fe,O or Li,*,*`)
+
+      mode = `chemsys`
+      await tick()
+      expect(get_input().placeholder).toBe(`Li-Fe-O or Li-*-*`)
+
+      mode = `exact`
+      await tick()
+      expect(get_input().placeholder).toBe(`LiFePO4 or LiFe*2*`)
+    })
+
+    test.each([
+      [`Li-*-*`, `chemsys`],
+      [`Li,*,*`, `elements`],
+      [`*2O3`, `exact`],
+    ])(`infers mode=%s from wildcard URL param "%s"`, async (value, expected_mode) => {
+      let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
+      mount(FormulaFilter, {
+        target: document.body,
+        props: {
+          value,
+          get search_mode() {
+            return mode
+          },
+          set search_mode(val) {
+            mode = val
+          },
+        },
+      })
+      await tick()
+      expect(mode).toBe(expected_mode)
+    })
+
+    test(`handles multiple wildcards with varied positions`, async () => {
+      const onchange = vi.fn()
+      let val = $state(`*-Li-*-O-*`)
+      mount(FormulaFilter, {
+        target: document.body,
+        props: {
+          get value() {
+            return val
+          },
+          set value(v: string) {
+            val = v
+          },
+          onchange,
+        },
+      })
+      await tick()
+      get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
+      flushSync()
+
+      // Elements should be sorted, wildcards appended
+      expect(onchange).toHaveBeenCalledWith(`Li-O-*-*-*`, `chemsys`)
+    })
+
+    test(`Enter key normalizes wildcard input`, async () => {
+      const onchange = vi.fn()
+      let val = $state(`*,Fe,Li,*`)
+      mount(FormulaFilter, {
+        target: document.body,
+        props: {
+          get value() {
+            return val
+          },
+          set value(v: string) {
+            val = v
+          },
+          onchange,
+        },
+      })
+      await tick()
+      get_input().dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+      )
+      flushSync()
+      // Elements are sorted alphabetically, wildcards appended
+      expect(onchange).toHaveBeenCalledWith(`Fe,Li,*,*`, `elements`)
     })
   })
 })

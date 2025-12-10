@@ -19,8 +19,8 @@ describe(`AtomLegend Component`, () => {
     },
     {
       desc: `custom amount formatting`,
-      props: { elements: { Fe: 2.123456, O: 3.0 }, amount_format: `.2f` },
-      expected_labels: [`Fe 2.12`, `O 3.00`],
+      props: { elements: { Fe: 2.123456, O: 3.0 }, amount_format: `.2r` },
+      expected_labels: [`Fe 2.1`, `O 3.0`],
       expected_count: 2,
     },
     {
@@ -37,8 +37,8 @@ describe(`AtomLegend Component`, () => {
     },
     {
       desc: `show amounts explicitly`,
-      props: { elements: { Fe: 2.123456 }, show_amounts: true, amount_format: `.2f` },
-      expected_labels: [`Fe 2.12`],
+      props: { elements: { Fe: 2.123456 }, show_amounts: true, amount_format: `.2r` },
+      expected_labels: [`Fe 2.1`],
       expected_count: 1,
     },
   ])(`$desc`, ({ props, expected_labels, expected_count, check_styling }) => {

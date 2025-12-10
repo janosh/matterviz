@@ -1223,7 +1223,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(y_format_input).toHaveClass(/invalid/)
 
     // Test recovery
-    await y_format_input.fill(`.2f`)
+    await y_format_input.fill(`.2r`)
     await expect(y_format_input).not.toHaveClass(/invalid/)
 
     // Test empty strings
@@ -1233,8 +1233,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(y_format_input).not.toHaveClass(/invalid/)
 
     // Test placeholders
-    await expect(x_format_input).toHaveAttribute(`placeholder`, `.2f / .0% / %Y-%m-%d`)
-    await expect(y_format_input).toHaveAttribute(`placeholder`, `.2f / .1e / .0%`)
+    await expect(x_format_input).toHaveAttribute(`placeholder`, `.2r / .0% / %Y-%m-%d`)
+    await expect(y_format_input).toHaveAttribute(`placeholder`, `.2r / .1e / .0%`)
 
     expect(console_errors).toHaveLength(0)
   })
@@ -1764,7 +1764,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
 
     // Test recovery with valid format
-    await x_format_input.fill(`.2f`)
+    await x_format_input.fill(`.2r`)
 
     // Verify input still works and plot is functional
     await expect(x_format_input).toBeVisible()

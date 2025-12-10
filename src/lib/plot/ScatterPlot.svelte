@@ -3,7 +3,6 @@
   import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
   import { FullscreenToggle } from '$lib/layout'
-  import * as math from '$lib/math'
   import type {
     BasePlotProps,
     ControlsConfig,
@@ -34,6 +33,7 @@
     ScatterPlotControls,
     ScatterPoint,
   } from '$lib/plot'
+  import { process_prop } from '$lib/plot/data-transform'
   import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import {
@@ -42,21 +42,19 @@
   } from '$lib/plot/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
-  import {
-    scaleLinear,
-    scaleLog,
-    scaleSequential,
-    scaleSequentialLog,
-    scaleTime,
-  } from 'd3-scale'
-  import * as d3_sc from 'd3-scale-chromatic'
+  import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
   import { get_relative_coords } from './interactions'
   import { calc_auto_padding } from './layout'
-  import { generate_ticks, get_nice_data_range } from './scales'
+  import {
+    create_color_scale,
+    create_size_scale,
+    generate_ticks,
+    get_nice_data_range,
+  } from './scales'
 
   let {
     series = [],
@@ -297,7 +295,7 @@
   // Compute data color values for color scaling
   let all_color_values = $derived(
     series_with_ids.filter(Boolean).flatMap((srs: DataSeries) =>
-      srs.color_values?.filter(Boolean) || []
+      srs.color_values?.filter((val) => val != null) || []
     ),
   )
 
@@ -412,66 +410,20 @@
         .range([height - pad.b, pad.t]),
   )
 
-  // Size scale function
-  let size_scale_fn = $derived.by(() => {
-    const [min_radius, max_radius] = size_scale.radius_range ?? [2, 10]
-    // Calculate all size values directly here
-    const current_all_size_values = series_with_ids
+  // All size values from series (for size scale)
+  let all_size_values = $derived(
+    series_with_ids
       .filter(Boolean)
-      .flatMap(({ size_values }: DataSeries) => size_values?.filter(Boolean) || [])
+      .flatMap(({ size_values }: DataSeries) =>
+        size_values?.filter((val) => val != null) || []
+      ) as (number | null)[],
+  )
 
-    // Calculate auto size range directly here
-    const current_auto_size_range = current_all_size_values.length > 0
-      ? extent(
-        current_all_size_values.filter((
-          size_val: number | null,
-        ): size_val is number => size_val != null),
-      )
-      : [0, 1]
+  // Size scale function (using shared utility)
+  let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
 
-    const [min_val, max_val] = size_scale.value_range ??
-      (current_auto_size_range as [number, number])
-
-    // Ensure domain is valid, especially for log scale
-    const safe_min_val = min_val ?? 0
-    const safe_max_val = max_val ?? (safe_min_val > 0 ? safe_min_val * 1.1 : 1) // Handle zero/single value case
-
-    return size_scale.type === `log`
-      ? scaleLog()
-        .domain([
-          Math.max(safe_min_val, math.LOG_EPS),
-          Math.max(safe_max_val, safe_min_val * 1.1),
-        ])
-        .range([min_radius, max_radius])
-        .clamp(true) // Prevent sizes outside the specified pixel range
-      : scaleLinear()
-        .domain([safe_min_val, safe_max_val])
-        .range([min_radius, max_radius])
-        .clamp(true) // Prevent sizes outside the specified pixel range
-  })
-
-  // Color scale function
-  let color_scale_fn = $derived.by(() => {
-    const color_func_name = (typeof color_scale === `string`
-      ? color_scale
-      : color_scale.scheme) as keyof typeof d3_sc
-    const interpolator = typeof d3_sc[color_func_name] === `function`
-      ? d3_sc[color_func_name]
-      : d3_sc.interpolateViridis
-
-    const [min_val, max_val] =
-      (typeof color_scale === `string` ? undefined : color_scale.value_range) ??
-        (auto_color_range as [number, number])
-
-    const scale_type = typeof color_scale === `string` ? undefined : color_scale.type
-
-    return scale_type === `log`
-      ? scaleSequentialLog(interpolator).domain([
-        Math.max(min_val, math.LOG_EPS),
-        Math.max(max_val, min_val * 1.1),
-      ])
-      : scaleSequential(interpolator).domain([min_val, max_val])
-  })
+  // Color scale function (using shared utility)
+  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
 
   // Filter series data to only include points within bounds and augment with internal data
   let filtered_series = $derived(
@@ -489,36 +441,19 @@
 
         // Process points internally, adding properties beyond the base Point type
         const processed_points: InternalPoint[] = xs.map(
-          (x_val: number, point_idx: number) => {
-            const y_val = ys[point_idx]
-            const color_value = color_values?.[point_idx]
-            const size_value = size_values?.[point_idx] // Get size value for the point
-
-            // Helper to process array or scalar properties
-            const process_prop = <T>(
-              prop: T[] | T | undefined,
-              point_idx: number,
-            ): T | undefined => {
-              if (!prop) return undefined
-              // If prop is an array, return the element at the point_idx, otherwise return the prop itself (scalar apply-to-all)
-              // prop[point_idx] can be undefined if point_idx out of bounds
-              return Array.isArray(prop) ? prop[point_idx] : prop
-            }
-
-            return {
-              x: x_val,
-              y: y_val,
-              color_value,
-              metadata: process_prop(rest.metadata, point_idx),
-              point_style: process_prop(rest.point_style, point_idx),
-              point_hover: process_prop(rest.point_hover, point_idx),
-              point_label: process_prop(rest.point_label, point_idx),
-              point_offset: process_prop(rest.point_offset, point_idx),
-              series_idx,
-              point_idx,
-              size_value,
-            }
-          },
+          (x_val: number, point_idx: number) => ({
+            x: x_val,
+            y: ys[point_idx],
+            color_value: color_values?.[point_idx],
+            metadata: process_prop(rest.metadata, point_idx),
+            point_style: process_prop(rest.point_style, point_idx),
+            point_hover: process_prop(rest.point_hover, point_idx),
+            point_label: process_prop(rest.point_label, point_idx),
+            point_offset: process_prop(rest.point_offset, point_idx),
+            series_idx,
+            point_idx,
+            size_value: size_values?.[point_idx],
+          }),
         )
 
         // Filter to points within the plot bounds

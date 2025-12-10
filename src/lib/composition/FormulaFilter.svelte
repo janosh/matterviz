@@ -3,23 +3,30 @@
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { FormulaSearchMode } from './index'
-  import { extract_formula_elements, normalize_element_symbols } from './parse'
+  import {
+    extract_formula_elements,
+    has_wildcards,
+    normalize_element_symbols,
+    parse_formula_with_wildcards,
+  } from './parse'
 
   const SEARCH_EXAMPLES = [
     {
       label: `Contains elements`,
-      description: `Materials containing at least these elements (may have others)`,
-      examples: [`Li,Fe`, `Si,O`, `Mn,Co,Ni`],
+      description:
+        `Materials containing at least these elements (may have others). Use * for any element.`,
+      examples: [`Li,Fe`, `Si,O`, `Li,*,*`],
     },
     {
       label: `Chemical system`,
-      description: `Materials with only these elements (no others)`,
-      examples: [`Li-Fe-O`, `Si-O`, `Na-Cl`],
+      description:
+        `Materials with only these elements (no others). Use * for any element.`,
+      examples: [`Li-Fe-O`, `Li-Fe-*-*`, `*-*-O`],
     },
     {
       label: `Exact formula`,
-      description: `Materials with this exact stoichiometry`,
-      examples: [`LiFePO4`, `SiO2`, `NaCl`],
+      description: `Materials with this exact stoichiometry. Use * for any element.`,
+      examples: [`LiFePO4`, `LiFe*2*`, `*2O3`],
     },
   ] as const
 
@@ -107,17 +114,36 @@
   const MODE_CYCLE: FormulaSearchMode[] = [`elements`, `chemsys`, `exact`]
 
   // Extract elements from any input format (formula, comma-separated, dash-separated)
-  // Always returns elements in alphabetical order for consistency
+  // Always returns elements in alphabetical order for consistency, preserving wildcards (*)
   function extract_elements(input: string): string[] {
     const trimmed = input.trim()
     if (!trimmed) return []
     // If contains commas or dashes, split by those and sort alphabetically
     if (trimmed.includes(`,`) || trimmed.includes(`-`)) {
       const parts = trimmed.split(/[-,]/).map((str) => str.trim()).filter(Boolean)
-      // Filter valid elements and sort alphabetically
-      return normalize_element_symbols(parts.join(`,`)).sort()
+      // Separate wildcards from regular elements
+      const wildcards = parts.filter((part) => part === `*`)
+      const regular_parts = parts.filter((part) => part !== `*`)
+      // Filter valid elements and sort alphabetically, then append wildcards
+      const valid_elements = normalize_element_symbols(regular_parts.join(`,`)).sort()
+      return [...valid_elements, ...wildcards]
     }
     // Otherwise parse as formula (already returns sorted by default)
+    // For formulas with wildcards, we can't parse them normally
+    if (has_wildcards(trimmed)) { // Use shared utility and extract unique elements
+      const tokens = parse_formula_with_wildcards(trimmed)
+      const elements = [
+        ...new Set(
+          tokens.filter((token) => token.element !== null).map((token) =>
+            token.element as string
+          ),
+        ),
+      ].sort()
+      const wildcards = tokens.filter((token) => token.element === null).map(() =>
+        `*`
+      )
+      return [...elements, ...wildcards]
+    }
     try {
       return extract_formula_elements(trimmed, { sorted: true })
     } catch {
@@ -162,9 +188,18 @@
     const mode = infer_mode(trimmed)
     if (mode === `exact`) return set_value(trimmed)
 
-    // Normalize element symbols for elements/chemsys modes
+    // Normalize element symbols for elements/chemsys modes, preserving wildcards
     const separator = mode === `chemsys` ? `-` : `,`
-    const normalized = normalize_element_symbols(trimmed.replace(/[-,]/g, `,`))
+    const parts = trimmed.replace(/[-,]/g, `,`).split(`,`).map((str) => str.trim())
+      .filter(Boolean)
+    // Separate wildcards from regular elements
+    const wildcards = parts.filter((part) => part === `*`)
+    const regular_parts = parts.filter((part) => part !== `*`)
+    // Normalize regular elements, sort alphabetically, and append wildcards
+    const normalized = [
+      ...normalize_element_symbols(regular_parts.join(`,`)).sort(),
+      ...wildcards,
+    ]
     set_value(normalized.join(separator))
   }
 
@@ -225,10 +260,10 @@
 
   let placeholder = $derived(
     search_mode === `chemsys`
-      ? `Li-Fe-O`
+      ? `Li-Fe-O or Li-*-*`
       : search_mode === `exact`
-      ? `LiFePO4`
-      : `Li,Fe,O`,
+      ? `LiFePO4 or LiFe*2*`
+      : `Li,Fe,O or Li,*,*`,
   )
 
   const MODE_LABELS: Record<FormulaSearchMode, string> = {
