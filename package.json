@@ -27,6 +27,7 @@
     "d3-scale": "^4.0.2",
     "d3-scale-chromatic": "^3.1.0",
     "d3-shape": "^3.2.0",
+    "fflate": "^0.8.2",
     "h5wasm": "^0.8.8",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.1.1",

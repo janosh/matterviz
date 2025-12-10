@@ -2,6 +2,7 @@ import type { CompositionType } from '$lib'
 import type { RadiationKey } from './calc-xrd'
 export * from './broadening'
 export * from './calc-xrd'
+export * from './parse'
 export { default as XrdPlot } from './XrdPlot.svelte'
 
 export type Hkl = [number, number, number]
