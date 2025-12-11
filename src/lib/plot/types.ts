@@ -111,7 +111,10 @@ export interface DataSeries {
   point_tween?: TweenedOptions<XyObj>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
-  legend_group?: string // Optional group name for legend grouping (like Plotly's legendgroup)
+  // Group name for organizing legend items. Series with the same legend_group
+  // are displayed together under a collapsible header. Click the header to toggle
+  // visibility of all series in the group, or the chevron to collapse/expand.
+  legend_group?: string
   unit?: string // Optional unit for the series (e.g., "eV", "eV/Å", "GPa")
   line_style?: {
     stroke?: string
@@ -278,7 +281,10 @@ export interface BarSeries {
   x: readonly number[]
   y: readonly number[]
   label?: string
-  legend_group?: string // Optional group name for legend grouping (like Plotly's legendgroup)
+  // Group name for organizing legend items. Series with the same legend_group
+  // are displayed together under a collapsible header. Click the header to toggle
+  // visibility of all series in the group, or the chevron to collapse/expand.
+  legend_group?: string
   color?: string
   bar_width?: number | readonly number[]
   visible?: boolean

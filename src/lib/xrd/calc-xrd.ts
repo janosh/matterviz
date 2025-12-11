@@ -358,7 +358,15 @@ export function add_xrd_pattern(
         return { pattern: { label: filename || `XRD data`, pattern } }
       }
       const ext = filename.toLowerCase().split(`.`).pop()?.toUpperCase() || `XRD`
-      return { error: `Failed to parse ${ext} file: no valid data found` }
+      const format_hints: Record<string, string> = {
+        XY: `Expected 2-column format: "2theta intensity" (space/tab/comma separated)`,
+        XYE:
+          `Expected 3-column format: "2theta intensity error" (space/tab/comma separated)`,
+        BRML: `Expected Bruker RAW/BRML ZIP archive with RawData XML`,
+        XRDML: `Expected PANalytical XRDML format with dataPoints section`,
+      }
+      const hint = format_hints[ext] || `Check file format and encoding`
+      return { error: `Failed to parse ${ext} file: no valid data found. ${hint}` }
     }
 
     // Otherwise, try to parse as a structure file and compute XRD pattern
@@ -373,7 +381,8 @@ export function add_xrd_pattern(
       return { pattern: { label: filename || `Dropped structure`, pattern } }
     }
     return {
-      error: `Structure has no lattice or sites; cannot compute XRD pattern`,
+      error: `Cannot compute XRD: structure must have a lattice and atomic sites. ` +
+        `Supported formats: CIF, POSCAR, JSON, XYZ`,
     }
   } catch (exc) {
     return {

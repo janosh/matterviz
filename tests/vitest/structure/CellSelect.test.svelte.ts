@@ -22,7 +22,7 @@ type CellSelectProps = {
   align?: `left` | `right`
 }
 
-/** Helper to mount component and open dropdown. */
+// Helper to mount component and open dropdown.
 async function mount_and_open(props: CellSelectProps): Promise<void> {
   mount(CellSelect, { target: document.body, props })
   doc_query<HTMLButtonElement>(`.toggle-btn`).click()

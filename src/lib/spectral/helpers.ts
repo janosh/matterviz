@@ -837,8 +837,8 @@ export function negative_fraction(values: number[]): number {
   return total > 0 ? neg / total : 0
 }
 
-/** Check if raw band structure input has electronic markers (efermi, kpoints, or electronic @class).
- * Must be called on raw input before normalization since these fields aren't preserved. */
+// Check if raw band structure input has electronic markers (efermi, kpoints, or electronic @class).
+// Must be called on raw input before normalization since these fields aren't preserved.
 function is_electronic_band_struct(bs: unknown): boolean {
   if (!bs || typeof bs !== `object`) return false
   const obj = bs as Record<string, unknown>
@@ -856,7 +856,7 @@ function is_electronic_band_struct(bs: unknown): boolean {
   return false
 }
 
-/** Compute frequency/energy range from bands and DOS. Clamps phonon min to 0 if noise < 0.5%. */
+// Compute frequency/energy range from bands and DOS. Clamps phonon min to 0 if noise < 0.5%.
 export function compute_frequency_range(
   band_structs: unknown,
   doses: unknown,

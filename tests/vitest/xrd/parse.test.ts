@@ -124,7 +124,7 @@ describe(`parse_xye_file`, () => {
 })
 
 describe(`parse_xrdml_file`, () => {
-  /** Create a mock XRDML content for testing. */
+  // Create a mock XRDML content for testing.
   function create_mock_xrdml(
     intensities: number[],
     start: number = 10,
@@ -183,13 +183,39 @@ describe(`parse_xrdml_file`, () => {
       <dataPoints><intensities>100 200</intensities></dataPoints>
     </scan></xrdMeasurement></xrdMeasurements>`,
     ],
+    [
+      `missing startPosition`,
+      `<?xml version="1.0"?><xrdMeasurements><xrdMeasurement><scan><dataPoints>
+      <positions axis="2Theta"><endPosition>70</endPosition></positions>
+      <intensities>100 200</intensities>
+    </dataPoints></scan></xrdMeasurement></xrdMeasurements>`,
+    ],
+    [
+      `non-numeric positions`,
+      `<?xml version="1.0"?><xrdMeasurements><xrdMeasurement><scan><dataPoints>
+      <positions axis="2Theta"><startPosition>abc</startPosition><endPosition>70</endPosition></positions>
+      <intensities>100 200</intensities>
+    </dataPoints></scan></xrdMeasurement></xrdMeasurements>`,
+    ],
   ])(`returns null for %s`, (_desc, content) => {
     expect(parse_xrdml_file(content)).toBeNull()
+  })
+
+  test(`filters non-numeric intensity values`, () => {
+    const content =
+      `<?xml version="1.0"?><xrdMeasurements><xrdMeasurement><scan><dataPoints>
+      <positions axis="2Theta"><startPosition>10</startPosition><endPosition>30</endPosition></positions>
+      <intensities>100 NaN 300</intensities>
+    </dataPoints></scan></xrdMeasurement></xrdMeasurements>`
+    const result = parse_xrdml_file(content)
+    // NaN is filtered out, leaving 2 valid points
+    expect(result).not.toBeNull()
+    expect(result?.x.length).toBe(2)
   })
 })
 
 describe(`parse_brml_file`, () => {
-  /** Create a mock BRML file (ZIP with XML) for testing. */
+  // Create a mock BRML file (ZIP with XML) for testing.
   function create_mock_brml(
     intensities: number[],
     start: number = 10,

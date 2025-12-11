@@ -592,10 +592,15 @@
   }
 
   function toggle_group_visibility(_group_name: string, series_indices: number[]) {
-    if (series_indices.length === 0) return
-    const idx_set = new Set(series_indices)
+    // Filter to valid indices upfront (consistent with shared toggle_group_visibility)
+    const valid_indices = series_indices.filter((idx) =>
+      idx >= 0 && idx < series.length
+    )
+    if (valid_indices.length === 0) return
+
+    const idx_set = new Set(valid_indices)
     // Check if all series in the group are currently visible
-    const all_visible = series_indices.every((idx) => series[idx]?.visible ?? true)
+    const all_visible = valid_indices.every((idx) => series[idx].visible ?? true)
     // Toggle: if all visible, hide all; otherwise show all
     const new_visibility = !all_visible
     series = series.map((srs: BarSeries, idx: number) =>

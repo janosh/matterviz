@@ -1,10 +1,10 @@
 import { unzipSync } from 'fflate'
 import type { XrdPattern } from './index'
 
-/** Maximum number of data points to keep after subsampling for performance */
+// Maximum number of data points to keep after subsampling for performance
 const MAX_POINTS = 1000
 
-/** Default step size in degrees for XRD scans when not specified in file */
+// Default step size in degrees for XRD scans when not specified in file
 const DEFAULT_STEP_SIZE = 0.02
 
 // Normalize y values to 0-100 range and subsample if too many points.
@@ -430,7 +430,7 @@ export function parse_xrd_file(
   return null
 }
 
-/** Supported XRD data file extensions */
+// Supported XRD data file extensions
 export const XRD_FILE_EXTENSIONS = [`xy`, `xye`, `xrdml`, `brml`] as const
 
 // Check if a filename represents a supported XRD data file format.

@@ -7,9 +7,9 @@
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    /** Simple text message to display. Ignored if children snippet is provided. */
+    // Simple text message to display. Ignored if children snippet is provided.
     message?: string
-    /** Custom content to render. Takes precedence over message prop. */
+    // Custom content to render. Takes precedence over message prop.
     children?: Snippet
   } = $props()
 </script>
