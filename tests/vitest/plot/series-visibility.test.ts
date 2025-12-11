@@ -2,6 +2,7 @@ import type { DataSeries } from '$lib/plot'
 import {
   handle_legend_double_click,
   have_compatible_units,
+  toggle_group_visibility,
   toggle_series_visibility,
 } from '$lib/plot/utils/series-visibility'
 import { describe, expect, test } from 'vitest'
@@ -77,6 +78,70 @@ describe(`toggle_series_visibility`, () => {
     // Series 0 (eV, y1) becomes visible, series 1 (eV, y2) stays visible (different axis),
     // series 2 (GPa, y1) becomes hidden (same axis, incompatible unit)
     expect(result.map((srs) => srs.visible)).toEqual([true, true, false])
+  })
+})
+
+describe(`toggle_group_visibility`, () => {
+  test.each([
+    {
+      desc: `hides all when all visible`,
+      visibilities: [true, true, true],
+      indices: [0, 1],
+      expected: [false, false, true],
+    },
+    {
+      desc: `shows all when some hidden`,
+      visibilities: [false, true, true],
+      indices: [0, 1],
+      expected: [true, true, true],
+    },
+    {
+      desc: `shows all when all in group hidden`,
+      visibilities: [false, false, true],
+      indices: [0, 1],
+      expected: [true, true, true],
+    },
+    {
+      desc: `handles single index`,
+      visibilities: [true, true],
+      indices: [0],
+      expected: [false, true],
+    },
+    {
+      desc: `handles non-contiguous indices`,
+      visibilities: [true, true, true, true],
+      indices: [0, 2],
+      expected: [false, true, false, true],
+    },
+    {
+      desc: `handles undefined visibility (defaults to true)`,
+      visibilities: [undefined, undefined, undefined],
+      indices: [0, 1],
+      expected: [false, false, undefined],
+    },
+  ])(`$desc`, ({ visibilities, indices, expected }) => {
+    const series: DataSeries[] = visibilities.map((vis, idx) => ({
+      x: [idx],
+      y: [idx],
+      visible: vis,
+    }))
+    const result = toggle_group_visibility(series, indices)
+    expect(result.map((srs) => srs.visible)).toEqual(expected)
+  })
+
+  test(`returns original series for empty indices array`, () => {
+    const series: DataSeries[] = [{ x: [1], y: [2], visible: true }]
+    expect(toggle_group_visibility(series, [])).toBe(series)
+  })
+
+  test(`preserves other series properties and handles out-of-bounds indices`, () => {
+    const series: DataSeries[] = [
+      { x: [1], y: [2], label: `A`, visible: true, unit: `eV` },
+      { x: [3], y: [4], label: `B`, visible: true, unit: `GPa` },
+    ]
+    const result = toggle_group_visibility(series, [0, 5]) // 5 is out of bounds
+    expect(result[0]).toMatchObject({ visible: false, unit: `eV`, label: `A` })
+    expect(result[1]).toMatchObject({ visible: true, unit: `GPa`, label: `B` })
   })
 })
 

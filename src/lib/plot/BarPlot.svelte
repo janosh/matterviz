@@ -591,6 +591,18 @@
     }
   }
 
+  function toggle_group_visibility(_group_name: string, series_indices: number[]) {
+    if (series_indices.length === 0) return
+    const idx_set = new Set(series_indices)
+    // Check if all series in the group are currently visible
+    const all_visible = series_indices.every((idx) => series[idx]?.visible ?? true)
+    // Toggle: if all visible, hide all; otherwise show all
+    const new_visibility = !all_visible
+    series = series.map((srs: BarSeries, idx: number) =>
+      idx_set.has(idx) ? { ...srs, visible: new_visibility } : srs
+    )
+  }
+
   // Collect bar and line positions for legend placement
   let bar_points_for_placement = $derived.by(() => {
     if (!width || !height || !visible_series.length) return []
@@ -1318,6 +1330,7 @@
         {...legend}
         series_data={legend_data}
         on_toggle={legend?.on_toggle || toggle_series_visibility}
+        on_group_toggle={legend?.on_group_toggle || toggle_group_visibility}
         wrapper_style="position: absolute; left: {legend_placement.x}px; top: {legend_placement.y}px; transform: {legend_placement.transform}; {legend?.wrapper_style || ``}"
       />
     {/if}

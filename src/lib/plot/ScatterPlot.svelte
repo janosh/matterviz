@@ -33,11 +33,16 @@
     ScatterPlotControls,
     ScatterPoint,
   } from '$lib/plot'
-  import { process_prop } from '$lib/plot/data-transform'
+  import {
+    get_series_color,
+    get_series_symbol,
+    process_prop,
+  } from '$lib/plot/data-transform'
   import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import {
     handle_legend_double_click,
+    toggle_group_visibility,
     toggle_series_visibility,
   } from '$lib/plot/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
@@ -109,7 +114,10 @@
       [{ height: number; width: number; fullscreen: boolean }]
     >
     controls_extra?: Snippet<
-      [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
+      [
+        & { styles: StyleOverrides; selected_series_idx: number }
+        & Required<PlotConfig>,
+      ]
     >
     change?: (data: (Point & { series: DataSeries }) | null) => void
     color_scale?: {
@@ -429,12 +437,26 @@
   let filtered_series = $derived(
     series_with_ids
       .map((data_series: DataSeries, series_idx: number): DataSeries => {
-        if (!(data_series?.visible ?? true)) {
-          return { ...data_series, visible: false, filtered_data: [] }
+        // Handle null/undefined series first
+        if (!data_series) {
+          return {
+            x: [],
+            y: [],
+            visible: true,
+            filtered_data: [],
+            _id: series_idx,
+            orig_series_idx: series_idx,
+          }
         }
 
-        if (!data_series) { // Return empty data consistent with DataSeries structure
-          return { x: [], y: [], visible: true, filtered_data: [], _id: series_idx }
+        // Handle explicitly hidden series
+        if (!(data_series.visible ?? true)) {
+          return {
+            ...data_series,
+            visible: false,
+            filtered_data: [],
+            orig_series_idx: series_idx,
+          }
         }
 
         const { x: xs, y: ys, color_values, size_values, ...rest } = data_series
@@ -480,6 +502,7 @@
           ...data_series,
           visible: true, // Mark series as visible here
           filtered_data: filtered_data_with_extras as InternalPoint[],
+          orig_series_idx: series_idx, // Store original index for auto-cycling colors/symbols
         }
       })
       // Filter series end up completely empty after point filtering
@@ -540,10 +563,14 @@
         const label = explicit_label ?? `Series ${series_idx + 1}`
         const has_explicit_label = explicit_label != null
 
+        // Use series-specific defaults for auto-differentiation
+        const series_default_color = get_series_color(series_idx)
+        const series_default_symbol = get_series_symbol(series_idx)
+
         const display_style: LegendDisplayStyle = {
-          symbol_type: DEFAULTS.scatter.symbol_type,
-          symbol_color: `black`, // Default marker color
-          line_color: `black`, // Default line color
+          symbol_type: series_default_symbol,
+          symbol_color: series_default_color,
+          line_color: series_default_color,
         }
         const series_markers = data_series?.markers ?? DEFAULT_MARKERS
 
@@ -554,17 +581,19 @@
 
         if (series_markers?.includes(`points`)) {
           if (first_point_style) {
-            // Assign shape only if it's one of the allowed types, else default to DEFAULTS.scatter.symbol_type
-            let final_shape: D3SymbolName = DEFAULTS.scatter.symbol_type
+            // Use explicit symbol_type if provided and valid, otherwise keep series default
             if (
-              Array.isArray(symbol_names) &&
               typeof first_point_style.symbol_type === `string` &&
               symbol_names.includes(first_point_style.symbol_type as D3SymbolName)
-            ) final_shape = first_point_style.symbol_type as D3SymbolName
-            display_style.symbol_type = final_shape
+            ) {
+              display_style.symbol_type = first_point_style
+                .symbol_type as D3SymbolName
+            }
 
-            display_style.symbol_color = first_point_style.fill ??
-              display_style.symbol_color // Use default if nullish
+            // Use explicit fill color if provided
+            if (first_point_style.fill) {
+              display_style.symbol_color = first_point_style.fill
+            }
             if (first_point_style.stroke) {
               // Use stroke color if fill is none or transparent
               if (
@@ -574,7 +603,7 @@
               ) display_style.symbol_color = first_point_style.stroke
             }
           }
-          // else: keep default display_style.symbol_type/color if no point_style
+          // else: keep series-specific defaults for symbol_type and symbol_color
         } else {
           // If no points marker, explicitly remove marker style for legend
           display_style.symbol_type = undefined
@@ -583,7 +612,7 @@
 
         // Check line_style
         if (series_markers?.includes(`line`)) {
-          // Prefer explicit line stroke
+          // Prefer explicit line stroke, then other explicit colors, then series default
           let legend_line_color = data_series?.line_style?.stroke
           if (!legend_line_color) {
             // Try color scale if available
@@ -596,8 +625,7 @@
               (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
               first_point_style?.fill ||
               first_point_style?.stroke ||
-              display_style.symbol_color ||
-              `black`
+              series_default_color
           }
           display_style.line_color = legend_line_color
           display_style.line_dash = data_series?.line_style?.line_dash
@@ -1416,6 +1444,7 @@
       {#if styles.show_lines}
         {#each filtered_series ?? [] as series_data (series_data._id)}
           {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
+          {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
           <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
             {#if series_markers?.includes(`line`)}
               {@const all_line_points = series_data.x.map((x, idx) => ({
@@ -1436,7 +1465,7 @@
             : series_data.point_style?.fill) ??
           (series_data.color_values?.[0] != null
             ? color_scale_fn(series_data.color_values[0])
-            : `cornflowerblue`)}
+            : series_default_color)}
               <Line
                 points={finite_screen_points}
                 origin={[
@@ -1460,6 +1489,8 @@
       {#if styles.show_points}
         {#each filtered_series ?? [] as series_data (series_data._id)}
           {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
+          {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
+          {@const series_default_symbol = get_series_symbol(series_data.orig_series_idx ?? 0)}
           <g data-series-id={series_data._id}>
             {#if series_markers?.includes(`points`)}
               {#each series_data.filtered_data as
@@ -1504,6 +1535,7 @@
                   is_selected={selected_point?.series_idx === point.series_idx &&
                   selected_point?.point_idx === point.point_idx}
                   style={{
+                    symbol_type: pt?.symbol_type ?? series_default_symbol,
                     ...pt,
                     radius: computed_radius,
                     stroke_width:
@@ -1527,7 +1559,7 @@
                   --point-fill-color={point.color_value != null
                   ? color_scale_fn(point.color_value)
                   : (tc(`point.color`) ? styles.point?.color : null) ?? pt?.fill ??
-                    `cornflowerblue`}
+                    series_default_color}
                   {...point_events &&
                   Object.fromEntries(
                     Object.entries(point_events)
@@ -1679,6 +1711,12 @@
           )
           series = result.series
           previous_series_visibility = result.previous_visibility
+        })}
+        on_group_toggle={(legend?.on_group_toggle as
+        | ((group_name: string, series_indices: number[]) => void)
+        | undefined) ??
+        ((_group_name: string, series_indices: number[]) => {
+          series = toggle_group_visibility(series, series_indices)
         })}
         wrapper_style={`
           position: absolute;

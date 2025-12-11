@@ -121,6 +121,7 @@ export interface DataSeries {
   // Internal fields used after processing (not provided by users)
   filtered_data?: InternalPoint[]
   _id?: string | number
+  orig_series_idx?: number // Original series index for consistent auto-cycling colors/symbols
 }
 
 // Represents the internal structure used within ScatterPlot, merging series-level and point-level data
@@ -455,3 +456,28 @@ export const DEFAULT_GRID_STYLE = {
 } as const
 
 export const DEFAULT_MARKERS = `line+points` as const
+
+// Default series colors for auto-differentiation (similar to d3 schemeTableau10)
+export const DEFAULT_SERIES_COLORS = [
+  `#4e79a7`, // blue
+  `#f28e2c`, // orange
+  `#e15759`, // red
+  `#76b7b2`, // teal
+  `#59a14f`, // green
+  `#edc949`, // yellow
+  `#af7aa1`, // purple
+  `#ff9da7`, // pink
+  `#9c755f`, // brown
+  `#bab0ab`, // gray
+] as const
+
+// Default series symbols for auto-differentiation (cycling through distinct shapes)
+export const DEFAULT_SERIES_SYMBOLS = [
+  `Circle`,
+  `Square`,
+  `Triangle`,
+  `Cross`,
+  `Diamond`,
+  `Star`,
+  `Wye`,
+] as const
