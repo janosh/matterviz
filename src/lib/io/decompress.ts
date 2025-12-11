@@ -17,15 +17,26 @@ export function detect_compression_format(
   return null
 }
 
+// Decompress data and return as text string
 export async function decompress_data(
   data: ArrayBuffer | ReadableStream<Uint8Array> | null,
   format: CompressionFormat,
 ): Promise<string> {
+  const buffer = await decompress_data_binary(data, format)
+  return new TextDecoder().decode(buffer)
+}
+
+// Decompress data and return as ArrayBuffer (for binary files like .brml.gz)
+export async function decompress_data_binary(
+  data: ArrayBuffer | ReadableStream<Uint8Array> | null,
+  format: CompressionFormat,
+): Promise<ArrayBuffer> {
   try {
     // Handle unsupported formats
     if (format === `zip` || format === `xz` || format === `bz2`) {
       throw new Error(
-        `${format.toUpperCase()} decompression is not supported in the browser. Please extract the ${format.toUpperCase()} file first.`,
+        `${format.toUpperCase()} decompression is not supported in the browser. ` +
+          `Please extract the ${format.toUpperCase()} file first.`,
       )
     }
 
@@ -39,7 +50,7 @@ export async function decompress_data(
       : data
     if (!stream) throw new Error(`Invalid data stream`)
     const unzip = new DecompressionStream(format as `gzip` | `deflate` | `deflate-raw`)
-    return await new Response(stream.pipeThrough(unzip)).text()
+    return await new Response(stream.pipeThrough(unzip)).arrayBuffer()
   } catch (error) {
     throw new Error(`Failed to decompress ${format} file: ${error}`)
   }

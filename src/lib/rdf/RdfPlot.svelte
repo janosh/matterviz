@@ -136,16 +136,13 @@
       if (mode === `element_pairs`) {
         const pairs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
         result.push(...pairs.map((p) => ({
-          label: p.element_pair
-            ? `${label} ${p.element_pair[0]}-${p.element_pair[1]}`
-            : label,
+          label: p.element_pair ? `${p.element_pair[0]}-${p.element_pair[1]}` : label,
+          legend_group: label, // Group by structure name for multi-structure plots
           pattern: p,
         })))
       } else {
-        result.push({
-          label,
-          pattern: calculate_rdf(struct, { cutoff, n_bins, pbc }),
-        })
+        const pattern = calculate_rdf(struct, { cutoff, n_bins, pbc })
+        result.push({ label, pattern })
       }
     }
     return result
@@ -159,6 +156,7 @@
       x: ent.pattern.r,
       y: ent.pattern.g_r,
       label: ent.label,
+      legend_group: ent.legend_group,
       visible: mode === `element_pairs` ? idx < 3 : true,
       markers: `line` as const,
       line_style: {

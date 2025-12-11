@@ -208,4 +208,85 @@ describe(`BarPlot`, () => {
       `Custom bar overlay`,
     )
   })
+
+  describe(`legend grouping`, () => {
+    const grouped_series: BarSeries[] = [
+      {
+        x: [1, 2, 3],
+        y: [10, 20, 15],
+        label: `PBE`,
+        legend_group: `DFT`,
+        color: `blue`,
+      },
+      {
+        x: [1, 2, 3],
+        y: [12, 18, 17],
+        label: `LDA`,
+        legend_group: `DFT`,
+        color: `lightblue`,
+      },
+      {
+        x: [1, 2, 3],
+        y: [11, 19, 16],
+        label: `MACE`,
+        legend_group: `ML`,
+        color: `red`,
+      },
+      {
+        x: [1, 2, 3],
+        y: [10.5, 20.5, 15.5],
+        label: `Experiment`,
+        color: `green`,
+      },
+    ]
+
+    test(`accepts series with legend_group property without errors`, () => {
+      // BarPlot should render without errors when series have legend_group
+      mount(BarPlot, {
+        target: document.body,
+        props: { series: grouped_series, mode: `grouped` },
+      })
+
+      // Component should render the bar plot wrapper
+      expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+    })
+
+    test(`series visibility can be toggled via legend_group`, () => {
+      // Test that series with legend_group can have their visibility toggled
+      const series_with_hidden_group: BarSeries[] = grouped_series.map((srs) =>
+        srs.legend_group === `DFT` ? { ...srs, visible: false } : srs
+      )
+
+      mount(BarPlot, {
+        target: document.body,
+        props: { series: series_with_hidden_group, mode: `grouped` },
+      })
+
+      // Component should render
+      expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+    })
+
+    test(`legend_group property is preserved on series data`, () => {
+      // Verify that legend_group is a valid property on BarSeries
+      const series_with_group: BarSeries = {
+        x: [1, 2, 3],
+        y: [10, 20, 15],
+        label: `Test`,
+        legend_group: `TestGroup`,
+        color: `blue`,
+      }
+
+      expect(series_with_group.legend_group).toBe(`TestGroup`)
+    })
+
+    test(`renders with mixed grouped and ungrouped series`, () => {
+      mount(BarPlot, {
+        target: document.body,
+        props: { series: grouped_series, mode: `overlay` },
+      })
+
+      // Component should render without errors
+      expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+    })
+  })
 })

@@ -99,7 +99,7 @@
         type="number"
         step="1e-5"
         value={settings.symprec}
-        oninput={(evt) => {
+        onchange={(evt) => {
           const { value } = evt.currentTarget
           const parsed = parseFloat(value)
           if (Number.isFinite(parsed)) {

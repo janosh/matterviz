@@ -551,6 +551,7 @@
           series_idx: idx,
           label: srs.label ?? `Series ${idx + 1}`,
           visible: srs.visible ?? true,
+          legend_group: srs.legend_group,
           display_style: {
             ...(has_line
               ? {
@@ -573,6 +574,7 @@
         series_idx: idx,
         label: srs.label ?? `Series ${idx + 1}`,
         visible: srs.visible ?? true,
+        legend_group: srs.legend_group,
         display_style: {
           symbol_type: `Square` as const,
           symbol_color: series_color,
@@ -587,6 +589,23 @@
         idx === series_idx ? { ...srs, visible: !(srs.visible ?? true) } : srs
       )
     }
+  }
+
+  function toggle_group_visibility(_group_name: string, series_indices: number[]) {
+    // Filter to valid indices upfront (consistent with shared toggle_group_visibility)
+    const valid_indices = series_indices.filter((idx) =>
+      idx >= 0 && idx < series.length
+    )
+    if (valid_indices.length === 0) return
+
+    const idx_set = new Set(valid_indices)
+    // Check if all series in the group are currently visible
+    const all_visible = valid_indices.every((idx) => series[idx].visible ?? true)
+    // Toggle: if all visible, hide all; otherwise show all
+    const new_visibility = !all_visible
+    series = series.map((srs: BarSeries, idx: number) =>
+      idx_set.has(idx) ? { ...srs, visible: new_visibility } : srs
+    )
   }
 
   // Collect bar and line positions for legend placement
@@ -1316,6 +1335,7 @@
         {...legend}
         series_data={legend_data}
         on_toggle={legend?.on_toggle || toggle_series_visibility}
+        on_group_toggle={legend?.on_group_toggle || toggle_group_visibility}
         wrapper_style="position: absolute; left: {legend_placement.x}px; top: {legend_placement.y}px; transform: {legend_placement.transform}; {legend?.wrapper_style || ``}"
       />
     {/if}

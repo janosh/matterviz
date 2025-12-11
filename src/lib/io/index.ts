@@ -46,7 +46,9 @@ export async function load_from_url(
   }
 
   // Check for known binary file extensions
-  const known_bin_extensions = `h5 hdf5 traj npz pkl dat gz gzip zip bz2 xz`.split(` `)
+  const known_bin_extensions = `h5 hdf5 traj npz pkl dat gz gzip zip bz2 xz brml`.split(
+    ` `,
+  )
   if (known_bin_extensions.includes(ext)) {
     // Force binary mode for known binary files to handle GitHub Pages content-type issues
     const resp = await fetch(url)

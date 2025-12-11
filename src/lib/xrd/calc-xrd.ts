@@ -14,6 +14,7 @@ import type {
   XrdOptions,
   XrdPattern,
 } from './index'
+import { is_xrd_data_file, parse_xrd_file } from './parse'
 
 // XRD wavelengths in Angstrom (Å)
 export const WAVELENGTHS = {
@@ -253,10 +254,9 @@ export function compute_xrd_pattern(
       (acc, fs, idx) => {
         const phase = 2 * Math.PI * g_dot_r_all[idx]
         const weight = fs * occus[idx] * dw_corr[idx]
-        return {
-          real: acc.real + weight * Math.cos(phase),
-          imag: acc.imag + weight * Math.sin(phase),
-        }
+        const real = acc.real + weight * Math.cos(phase)
+        const imag = acc.imag + weight * Math.sin(phase)
+        return { real, imag }
       },
       { real: 0, imag: 0 },
     )
@@ -335,13 +335,43 @@ export function compute_xrd_pattern(
   return { x: xs, y: ys, hkls: hkls_out, d_hkls: d_out }
 }
 
-// Helper function to compute XRD pattern from dropped file content
+// Process dropped file content and return an XRD pattern.
+// Supports both direct XRD data files (.xy, .brml) and structure files
+// (which are used to compute theoretical XRD patterns).
 export function add_xrd_pattern(
-  content: string | ArrayBufferLike,
-  filename: string,
-  wavelength: number | null,
-): { pattern?: PatternEntry; error?: string } {
+  content: string | ArrayBufferLike, // File content as string or ArrayBuffer
+  filename: string, // Name of the file (used to detect format)
+  wavelength: number | null, // X-ray wavelength for structure-based XRD calculation
+): { pattern?: PatternEntry; error?: string } { // Object with pattern entry or error message
   try {
+    // Check if file is a direct XRD data file (.xy, .brml)
+    if (is_xrd_data_file(filename)) {
+      // Convert ArrayBufferLike to ArrayBuffer if needed (handles SharedArrayBuffer)
+      let buffer_content: string | ArrayBuffer
+      if (typeof content === `string`) {
+        buffer_content = content
+      } else {
+        buffer_content = new Uint8Array(content).buffer as ArrayBuffer
+      }
+      const pattern = parse_xrd_file(buffer_content, filename)
+      if (pattern && pattern.x.length > 0) {
+        return { pattern: { label: filename || `XRD data`, pattern } }
+      }
+      // Get base extension (strip .gz if present) for error message
+      const base_name = filename.toLowerCase().replace(/\.gz$/, ``)
+      const ext = base_name.split(`.`).pop()?.toUpperCase() || `XRD`
+      const format_hints: Record<string, string> = {
+        XY: `Expected 2-column format: "2theta intensity" (space/tab/comma separated)`,
+        XYE:
+          `Expected 3-column format: "2theta intensity error" (space/tab/comma separated)`,
+        BRML: `Expected Bruker RAW/BRML ZIP archive with RawData XML`,
+        XRDML: `Expected PANalytical XRDML format with dataPoints section`,
+      }
+      const hint = format_hints[ext] || `Check file format and encoding`
+      return { error: `Failed to parse ${ext} file: no valid data found. ${hint}` }
+    }
+
+    // Otherwise, try to parse as a structure file and compute XRD pattern
     const text_content = typeof content === `string`
       ? content
       : new TextDecoder().decode(content as BufferSource)
@@ -353,7 +383,8 @@ export function add_xrd_pattern(
       return { pattern: { label: filename || `Dropped structure`, pattern } }
     }
     return {
-      error: `Structure has no lattice or sites; cannot compute XRD pattern`,
+      error: `Cannot compute XRD: structure must have a lattice and atomic sites. ` +
+        `Supported formats: CIF, POSCAR, JSON, XYZ`,
     }
   } catch (exc) {
     return {

@@ -74,7 +74,6 @@
   <button
     type="button"
     onclick={() => (menu_open = !menu_open)}
-    title="Cell type & supercell scaling"
     class="toggle-btn"
     class:active={menu_open}
     aria-expanded={menu_open}
@@ -156,6 +155,7 @@
 <style>
   .cell-select {
     position: relative;
+    font-size: var(--struct-legend-font, clamp(9pt, 3.5cqmin, 12pt));
   }
   .toggle-btn {
     padding: var(--struct-legend-padding, 0 4pt);
