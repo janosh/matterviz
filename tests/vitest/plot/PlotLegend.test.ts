@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { type LegendItem, PlotLegend } from '$lib/plot'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -439,5 +439,265 @@ describe(`PlotLegend`, () => {
     expect(items[0].getAttribute(`role`)).toBe(`button`)
     expect(items[0].getAttribute(`tabindex`)).toBe(`0`)
     expect(items[0].getAttribute(`aria-pressed`)).toBe(`true`)
+  })
+
+  describe(`legend groups`, () => {
+    // Helper to create grouped test data
+    const make_grouped_data = (): LegendItem[] => [
+      {
+        label: `Li-Li`,
+        visible: true,
+        series_idx: 0,
+        legend_group: `Li₂O`,
+        display_style: { line_color: `red` },
+      },
+      {
+        label: `Li-O`,
+        visible: true,
+        series_idx: 1,
+        legend_group: `Li₂O`,
+        display_style: { line_color: `blue` },
+      },
+      {
+        label: `O-O`,
+        visible: false,
+        series_idx: 2,
+        legend_group: `Li₂O`,
+        display_style: { line_color: `green` },
+      },
+      {
+        label: `Na-Na`,
+        visible: true,
+        series_idx: 3,
+        legend_group: `NaCl`,
+        display_style: { line_color: `orange` },
+      },
+      {
+        label: `Na-Cl`,
+        visible: true,
+        series_idx: 4,
+        legend_group: `NaCl`,
+        display_style: { line_color: `purple` },
+      },
+      {
+        label: `Ungrouped`,
+        visible: true,
+        series_idx: 5,
+        display_style: { line_color: `gray` },
+      },
+    ]
+
+    test.each([
+      {
+        desc: `renders group headers and items`,
+        expects: { headers: 2, items: 6, indented: 5, grouped_class: true },
+      },
+    ])(`$desc`, ({ expects }) => {
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: make_grouped_data() },
+      })
+
+      expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(
+        expects.grouped_class,
+      )
+      expect(document.querySelectorAll(`.legend-group-header`).length).toBe(
+        expects.headers,
+      )
+      expect(document.querySelectorAll(`.legend-item`).length).toBe(expects.items)
+      expect(document.querySelectorAll(`.legend-item.indented`).length).toBe(
+        expects.indented,
+      )
+
+      const group_labels = Array.from(document.querySelectorAll(`.legend-group-header`))
+        .map((h) => h.querySelector(`.group-label`)?.textContent)
+      expect(group_labels).toEqual([`Li₂O`, `NaCl`])
+    })
+
+    test(`group header hidden class reflects item visibility`, () => {
+      const all_hidden: LegendItem[] = [
+        {
+          label: `A`,
+          visible: false,
+          series_idx: 0,
+          legend_group: `Hidden`,
+          display_style: {},
+        },
+        {
+          label: `B`,
+          visible: false,
+          series_idx: 1,
+          legend_group: `Hidden`,
+          display_style: {},
+        },
+      ]
+      mount(PlotLegend, { target: document.body, props: { series_data: all_hidden } })
+      expect(doc_query(`.legend-group-header`).classList.contains(`hidden`)).toBe(true)
+    })
+
+    test.each([
+      {
+        event_type: `click`,
+        handler: `on_group_toggle`,
+        group_idx: 0,
+        expected_group: `Li₂O`,
+        expected_indices: [0, 1, 2],
+      },
+      {
+        event_type: `dblclick`,
+        handler: `on_group_double_click`,
+        group_idx: 1,
+        expected_group: `NaCl`,
+        expected_indices: [3, 4],
+      },
+    ])(
+      `$handler called on $event_type`,
+      ({ event_type, handler, group_idx, expected_group, expected_indices }) => {
+        const mock_handler = vi.fn()
+        mount(PlotLegend, {
+          target: document.body,
+          props: { series_data: make_grouped_data(), [handler]: mock_handler },
+        })
+
+        const headers = document.querySelectorAll<HTMLElement>(`.legend-group-header`)
+        headers[group_idx].dispatchEvent(new MouseEvent(event_type, { bubbles: true }))
+
+        expect(mock_handler).toHaveBeenCalledWith(expected_group, expected_indices)
+      },
+    )
+
+    test(`chevron toggles group collapse on click and keyboard`, async () => {
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: make_grouped_data() },
+      })
+
+      const chevron = doc_query(`.group-chevron`)
+      expect(chevron.classList.contains(`collapsed`)).toBe(false)
+      expect(document.querySelectorAll(`.legend-item`).length).toBe(6)
+
+      // Click to collapse
+      chevron.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+      expect(chevron.classList.contains(`collapsed`)).toBe(true)
+      expect(document.querySelectorAll(`.legend-item`).length).toBe(3) // 6 - 3 Li₂O items
+
+      // Keyboard (Enter) to expand
+      chevron.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+      await tick()
+      expect(chevron.classList.contains(`collapsed`)).toBe(false)
+      expect(document.querySelectorAll(`.legend-item`).length).toBe(6)
+    })
+
+    test(`no grouping when legend_group not set`, () => {
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: default_series_data },
+      })
+
+      expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(false)
+      expect(document.querySelectorAll(`.legend-group-header`).length).toBe(0)
+      expect(document.querySelectorAll(`.legend-item.indented`).length).toBe(0)
+    })
+
+    test.each([
+      { key: `Enter`, group_idx: 0, expected_group: `Li₂O`, expected_indices: [0, 1, 2] },
+      { key: ` `, group_idx: 1, expected_group: `NaCl`, expected_indices: [3, 4] },
+    ])(
+      `on_group_toggle called on keyboard $key`,
+      ({ key, group_idx, expected_group, expected_indices }) => {
+        const mock_handler = vi.fn()
+        mount(PlotLegend, {
+          target: document.body,
+          props: { series_data: make_grouped_data(), on_group_toggle: mock_handler },
+        })
+
+        const headers = document.querySelectorAll<HTMLElement>(`.legend-group-header`)
+        headers[group_idx].dispatchEvent(
+          new KeyboardEvent(`keydown`, { key, bubbles: true }),
+        )
+
+        expect(mock_handler).toHaveBeenCalledWith(expected_group, expected_indices)
+      },
+    )
+
+    test(`group header and chevron aria attributes`, async () => {
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: make_grouped_data() },
+      })
+
+      // Header aria attributes
+      const header = doc_query(`.legend-group-header`)
+      expect(header.getAttribute(`role`)).toBe(`button`)
+      expect(header.getAttribute(`tabindex`)).toBe(`0`)
+      expect(header.getAttribute(`aria-expanded`)).toBe(`true`)
+      expect(header.getAttribute(`aria-label`)).toBe(`Toggle group Li₂O`)
+
+      // Chevron aria updates on collapse
+      const chevron = doc_query(`.group-chevron`)
+      expect(chevron.getAttribute(`aria-label`)).toBe(`Collapse group Li₂O`)
+      chevron.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+      expect(chevron.getAttribute(`aria-label`)).toBe(`Expand group Li₂O`)
+    })
+
+    test(`collapsing one group does not affect other groups`, async () => {
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: make_grouped_data() },
+      })
+
+      expect(document.querySelectorAll(`.legend-item`).length).toBe(6)
+
+      // Collapse first group (Li₂O)
+      const chevrons = document.querySelectorAll(`.group-chevron`)
+      chevrons[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+
+      expect(document.querySelectorAll(`.legend-item`).length).toBe(3) // 6 - 3 Li₂O
+      expect(chevrons[1].classList.contains(`collapsed`)).toBe(false)
+    })
+
+    test.each([
+      {
+        desc: `all hidden shows hidden class`,
+        visibilities: [false, false],
+        expected_hidden: true,
+      },
+      {
+        desc: `mixed visibility shows no hidden class`,
+        visibilities: [false, true],
+        expected_hidden: false,
+      },
+    ])(`group header $desc`, ({ visibilities, expected_hidden }) => {
+      const data: LegendItem[] = visibilities.map((vis, idx) => ({
+        label: `Item${idx}`,
+        visible: vis,
+        series_idx: idx,
+        legend_group: `Group`,
+        display_style: {},
+      }))
+      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+      expect(doc_query(`.legend-group-header`).classList.contains(`hidden`)).toBe(
+        expected_hidden,
+      )
+    })
+
+    test(`clicking group header toggles visibility without collapsing`, () => {
+      const mock_toggle = vi.fn()
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: make_grouped_data(), on_group_toggle: mock_toggle },
+      })
+
+      const header = doc_query(`.legend-group-header`)
+      const chevron = doc_query(`.group-chevron`)
+
+      header.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+
+      expect(mock_toggle).toHaveBeenCalled()
+      expect(chevron.classList.contains(`collapsed`)).toBe(false)
+    })
   })
 })

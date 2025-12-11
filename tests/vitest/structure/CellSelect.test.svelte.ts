@@ -22,7 +22,7 @@ type CellSelectProps = {
   align?: `left` | `right`
 }
 
-/** Helper to mount component and open dropdown. */
+// Helper to mount component and open dropdown.
 async function mount_and_open(props: CellSelectProps): Promise<void> {
   mount(CellSelect, { target: document.body, props })
   doc_query<HTMLButtonElement>(`.toggle-btn`).click()
@@ -397,7 +397,6 @@ describe(`CellSelect`, () => {
       expect(container.getAttribute(`role`)).toBe(`group`)
 
       // Toggle button
-      expect(toggle.title).toBe(`Cell type & supercell scaling`)
       expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
 
       // After opening

@@ -309,20 +309,24 @@
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
 
-  // Trigger symmetry analysis when structure is loaded
+  // Trigger symmetry analysis when structure is loaded or settings change
   $effect(() => {
     if (!structure || !(`lattice` in structure)) {
-      sym_data = null
-      symmetry_error = undefined
+      untrack(() => {
+        sym_data = null
+        symmetry_error = undefined
+      })
       return
     }
 
     const current_structure = structure
     const run_id = ++symmetry_run_id
-    // Explicitly reference symmetry_settings to track it for reactivity
-    const current_settings = symmetry_settings
-    sym_data = null
-    symmetry_error = undefined
+    // Destructure symmetry_settings to ensure Svelte tracks changes to symprec and algo
+    // (reading just the object reference isn't sufficient for fine-grained reactivity)
+    const { symprec, algo } = symmetry_settings ?? symmetry.default_sym_settings
+    const current_settings = { symprec, algo }
+    // Use untrack to prevent cascading reactivity when resetting state
+    untrack(() => [sym_data, symmetry_error] = [null, undefined])
 
     symmetry.ensure_moyo_wasm_ready()
       .then(() =>
@@ -724,7 +728,7 @@
     <Spinner
       text="Loading structure..."
       {...spinner_props}
-      style="flex: 1; display: grid; place-content: center"
+      style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%)"
     />
   {:else if error_msg}
     <div class="error-state">

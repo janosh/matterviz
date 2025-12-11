@@ -111,6 +111,10 @@ export interface DataSeries {
   point_tween?: TweenedOptions<XyObj>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
+  // Group name for organizing legend items. Series with the same legend_group
+  // are displayed together under a collapsible header. Click the header to toggle
+  // visibility of all series in the group, or the chevron to collapse/expand.
+  legend_group?: string
   unit?: string // Optional unit for the series (e.g., "eV", "eV/Å", "GPa")
   line_style?: {
     stroke?: string
@@ -120,6 +124,7 @@ export interface DataSeries {
   // Internal fields used after processing (not provided by users)
   filtered_data?: InternalPoint[]
   _id?: string | number
+  orig_series_idx?: number // Original series index for consistent auto-cycling colors/symbols
 }
 
 // Represents the internal structure used within ScatterPlot, merging series-level and point-level data
@@ -246,6 +251,7 @@ export interface LegendItem {
   label: string
   visible: boolean
   series_idx: number
+  legend_group?: string // Optional group name for grouped legend rendering
   display_style: {
     symbol_type?: D3SymbolName
     symbol_color?: string
@@ -275,6 +281,10 @@ export interface BarSeries {
   x: readonly number[]
   y: readonly number[]
   label?: string
+  // Group name for organizing legend items. Series with the same legend_group
+  // are displayed together under a collapsible header. Click the header to toggle
+  // visibility of all series in the group, or the chevron to collapse/expand.
+  legend_group?: string
   color?: string
   bar_width?: number | readonly number[]
   visible?: boolean
@@ -452,3 +462,28 @@ export const DEFAULT_GRID_STYLE = {
 } as const
 
 export const DEFAULT_MARKERS = `line+points` as const
+
+// Default series colors for auto-differentiation (similar to d3 schemeTableau10)
+export const DEFAULT_SERIES_COLORS = [
+  `#4e79a7`, // blue
+  `#f28e2c`, // orange
+  `#e15759`, // red
+  `#76b7b2`, // teal
+  `#59a14f`, // green
+  `#edc949`, // yellow
+  `#af7aa1`, // purple
+  `#ff9da7`, // pink
+  `#9c755f`, // brown
+  `#bab0ab`, // gray
+] as const
+
+// Default series symbols for auto-differentiation (cycling through distinct shapes)
+export const DEFAULT_SERIES_SYMBOLS = [
+  `Circle`,
+  `Square`,
+  `Triangle`,
+  `Cross`,
+  `Diamond`,
+  `Star`,
+  `Wye`,
+] as const satisfies readonly D3SymbolName[]
