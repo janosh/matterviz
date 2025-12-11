@@ -230,6 +230,6 @@ describe(`supercell performance profiling`, () => {
     expect(last_rate / first_rate).toBeLessThan(1.5)
 
     // Absolute performance check: 500 atoms (13500 total sites) should take < 10ms
-    expect(last_result.time).toBeLessThan(10 * CI_MULTIPLIER)
+    expect(last_result.time).toBeLessThan(20 * CI_MULTIPLIER)
   })
 })

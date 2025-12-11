@@ -379,6 +379,7 @@
     visibility: visible;
     filter: var(--legend-filter, grayscale(10%) brightness(0.95) saturate(0.8));
     display: flex;
+    align-items: center;
     bottom: var(--struct-legend-bottom, clamp(4pt, 3cqmin, 8pt));
     right: var(--struct-legend-right, clamp(4pt, 3cqmin, 8pt));
     gap: var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt));
@@ -495,7 +496,6 @@
   /* Property Legend Styles */
   .property-legend {
     font-size: var(--struct-legend-font, clamp(8pt, 3cqmin, 14pt));
-    align-items: center;
   }
   .mode-selector {
     position: relative;

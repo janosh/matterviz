@@ -86,14 +86,13 @@ export interface FileInfo {
 }
 
 // Helper function to escape HTML special characters to prevent XSS
-export function escape_html(unsafe_string: string): string {
-  return unsafe_string
+export const escape_html = (unsafe_string: string): string =>
+  unsafe_string
     .replaceAll(`&`, `&amp;`)
     .replaceAll(`<`, `&lt;`)
     .replaceAll(`>`, `&gt;`)
     .replaceAll(`"`, `&quot;`)
     .replaceAll(`'`, `&#39;`)
-}
 
 // Simplified binary detection
 export function is_binary(content: string): boolean {

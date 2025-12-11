@@ -27,9 +27,9 @@ describe(`Plot Fullscreen Toggle`, () => {
     // With defined properties, the binding might pick it up.
     await tick()
 
-    const plotDiv = document.querySelector(`.bar-plot`)
-    expect(plotDiv).toBeTruthy()
-    expect(plotDiv?.classList.contains(`fullscreen`)).toBe(false)
+    const plot_div = document.querySelector(`.bar-plot`)
+    expect(plot_div).toBeTruthy()
+    expect(plot_div?.classList.contains(`fullscreen`)).toBe(false)
 
     const toggle_btn = document.querySelector(
       `button.fullscreen-toggle`,
@@ -40,14 +40,14 @@ describe(`Plot Fullscreen Toggle`, () => {
     toggle_btn.click()
     await tick()
 
-    expect(plotDiv?.classList.contains(`fullscreen`)).toBe(true)
+    expect(plot_div?.classList.contains(`fullscreen`)).toBe(true)
     expect(toggle_btn.getAttribute(`aria-label`)).toBe(`Exit fullscreen`)
 
     // Click again to exit
     toggle_btn.click()
     await tick()
 
-    expect(plotDiv?.classList.contains(`fullscreen`)).toBe(false)
+    expect(plot_div?.classList.contains(`fullscreen`)).toBe(false)
     expect(toggle_btn.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
 
     // cleanup happens in afterEach but we should ensure mocks are reset
@@ -63,14 +63,8 @@ describe(`Plot Fullscreen Toggle`, () => {
 
   test(`fullscreen state is bound`, async () => {
     // Mock dimensions
-    Object.defineProperty(HTMLElement.prototype, `clientWidth`, {
-      configurable: true,
-      value: 500,
-    })
-    Object.defineProperty(HTMLElement.prototype, `clientHeight`, {
-      configurable: true,
-      value: 300,
-    })
+    Object.defineProperty(HTMLElement.prototype, `clientWidth`, { value: 500 })
+    Object.defineProperty(HTMLElement.prototype, `clientHeight`, { value: 300 })
 
     const fullscreen = false
     mount(BarPlot, {
@@ -78,11 +72,9 @@ describe(`Plot Fullscreen Toggle`, () => {
       props: { series: [{ x: [1], y: [1] }], fullscreen },
     })
 
-    // Wait for mount and size update
-    await new Promise((r) => setTimeout(r, 10))
-
-    const plotDiv = document.querySelector(`.bar-plot`)
-    expect(plotDiv?.classList.contains(`fullscreen`)).toBe(false)
+    await tick()
+    const plot_div = document.querySelector(`.bar-plot`)
+    expect(plot_div?.classList.contains(`fullscreen`)).toBe(false)
 
     const toggle_btn = document.querySelector(
       `button.fullscreen-toggle`,
@@ -90,6 +82,6 @@ describe(`Plot Fullscreen Toggle`, () => {
     expect(toggle_btn).toBeTruthy()
     toggle_btn.click()
     await tick()
-    expect(plotDiv?.classList.contains(`fullscreen`)).toBe(true)
+    expect(plot_div?.classList.contains(`fullscreen`)).toBe(true)
   })
 })
