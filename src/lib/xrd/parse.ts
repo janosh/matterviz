@@ -398,11 +398,14 @@ export function parse_xrdml_file(content: string): XrdPattern | null {
 
 // Main entry point for parsing XRD data files.
 // Detects file type by extension and delegates to appropriate parser.
+// Handles both plain and gzipped filenames (content should already be decompressed)
 export function parse_xrd_file(
   content: string | ArrayBuffer,
   filename: string,
 ): XrdPattern | null {
-  const ext = filename.toLowerCase().split(`.`).pop()
+  // Strip .gz suffix if present to get base extension
+  const base_name = filename.toLowerCase().replace(/\.gz$/, ``)
+  const ext = base_name.split(`.`).pop()
 
   // Text-based formats
   if (ext === `xy` || ext === `xye`) {

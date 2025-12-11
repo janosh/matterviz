@@ -728,7 +728,7 @@
     <Spinner
       text="Loading structure..."
       {...spinner_props}
-      style="flex: 1; display: grid; place-content: center"
+      style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%)"
     />
   {:else if error_msg}
     <div class="error-state">

@@ -357,7 +357,9 @@ export function add_xrd_pattern(
       if (pattern && pattern.x.length > 0) {
         return { pattern: { label: filename || `XRD data`, pattern } }
       }
-      const ext = filename.toLowerCase().split(`.`).pop()?.toUpperCase() || `XRD`
+      // Get base extension (strip .gz if present) for error message
+      const base_name = filename.toLowerCase().replace(/\.gz$/, ``)
+      const ext = base_name.split(`.`).pop()?.toUpperCase() || `XRD`
       const format_hints: Record<string, string> = {
         XY: `Expected 2-column format: "2theta intensity" (space/tab/comma separated)`,
         XYE:
