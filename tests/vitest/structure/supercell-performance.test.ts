@@ -202,7 +202,7 @@ describe(`supercell performance profiling`, () => {
     )
     console.log(`  Total: ${total.toFixed(2)}ms`)
 
-    // More stringent check: should be significantly faster than 100ms (usually < 5ms now)
+    // Should complete well under 15ms on typical hardware (15 × CI_MULTIPLIER in CI)
     expect(total).toBeLessThan(15 * CI_MULTIPLIER)
   })
 
@@ -229,7 +229,7 @@ describe(`supercell performance profiling`, () => {
     // Allowing small variance (1.5x instead of previous 2x loose bound)
     expect(last_rate / first_rate).toBeLessThan(1.5)
 
-    // Absolute performance check: 500 atoms (13500 total sites) should take < 10ms
+    // 500 atoms → 13500 sites should complete well under 20ms (20 × CI_MULTIPLIER in CI)
     expect(last_result.time).toBeLessThan(20 * CI_MULTIPLIER)
   })
 })

@@ -4,6 +4,7 @@
   import { Spinner } from '$lib'
   import type { PhaseData } from '$lib/convex-hull'
   import { ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
+  import { tick } from 'svelte'
 
   type Dimension = `2d` | `3d` | `4d`
 
@@ -81,7 +82,7 @@
   async function regenerate(): Promise<void> {
     is_generating = true
     render_start = performance.now()
-    await new Promise((r) => setTimeout(r, 0))
+    await tick()
     const start = performance.now()
     generated_entries = generate_entries(entry_count, dimension)
     generation_time_ms = performance.now() - start

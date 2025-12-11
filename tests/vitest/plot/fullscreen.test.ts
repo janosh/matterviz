@@ -63,8 +63,14 @@ describe(`Plot Fullscreen Toggle`, () => {
 
   test(`fullscreen state is bound`, async () => {
     // Mock dimensions
-    Object.defineProperty(HTMLElement.prototype, `clientWidth`, { value: 500 })
-    Object.defineProperty(HTMLElement.prototype, `clientHeight`, { value: 300 })
+    Object.defineProperty(HTMLElement.prototype, `clientWidth`, {
+      configurable: true,
+      value: 500,
+    })
+    Object.defineProperty(HTMLElement.prototype, `clientHeight`, {
+      configurable: true,
+      value: 300,
+    })
 
     const fullscreen = false
     mount(BarPlot, {
@@ -83,5 +89,15 @@ describe(`Plot Fullscreen Toggle`, () => {
     toggle_btn.click()
     await tick()
     expect(plot_div?.classList.contains(`fullscreen`)).toBe(true)
+
+    // Cleanup
+    Object.defineProperty(HTMLElement.prototype, `clientWidth`, {
+      configurable: true,
+      value: 0,
+    })
+    Object.defineProperty(HTMLElement.prototype, `clientHeight`, {
+      configurable: true,
+      value: 0,
+    })
   })
 })

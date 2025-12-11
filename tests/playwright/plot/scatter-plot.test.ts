@@ -226,6 +226,20 @@ const get_tooltip_colors = async (
   return colors
 }
 
+// Extract properties from legend items using a custom extractor function
+const extract_legend_properties = async <T>(
+  legend: Locator,
+  extractor: (item: Locator, idx: number) => Promise<T>,
+): Promise<T[]> => {
+  const items = legend.locator(`.legend-item`)
+  const count = await items.count()
+  const results: T[] = []
+  for (let idx = 0; idx < count; idx++) {
+    results.push(await extractor(items.nth(idx), idx))
+  }
+  return results
+}
+
 // Scatter plot tests
 test.describe(`ScatterPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -2018,37 +2032,22 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const plot_locator = section.locator(`#auto-cycle-plot.scatter`)
     await expect(plot_locator).toBeVisible()
 
-    // Check legend exists with 3 items
     const legend = plot_locator.locator(`.legend`)
     await expect(legend).toBeVisible()
+    await expect(legend.locator(`.legend-item`)).toHaveCount(3)
 
-    const legend_items = legend.locator(`.legend-item`)
-    await expect(legend_items).toHaveCount(3)
-
-    // Get line stroke colors from each legend item
-    const line_colors: string[] = []
-    for (let idx = 0; idx < 3; idx++) {
-      const item = legend_items.nth(idx)
+    // Extract line stroke colors from each legend item
+    const line_colors = await extract_legend_properties(legend, async (item) => {
       const line_svg = item.locator(`.legend-marker > svg`).first()
-      const line_element = line_svg.locator(`line`)
-      const stroke = await line_element.getAttribute(`stroke`)
-      line_colors.push(stroke ?? ``)
-    }
+      return (await line_svg.locator(`line`).getAttribute(`stroke`)) ?? ``
+    })
 
-    // All colors should be non-empty
-    expect(line_colors[0]).not.toBe(``)
-    expect(line_colors[1]).not.toBe(``)
-    expect(line_colors[2]).not.toBe(``)
-
-    // Each series should have a DIFFERENT color
-    expect(line_colors[0]).not.toBe(line_colors[1])
-    expect(line_colors[1]).not.toBe(line_colors[2])
-    expect(line_colors[0]).not.toBe(line_colors[2])
+    // All colors should be non-empty and distinct
+    expect(line_colors.every((color) => color !== ``)).toBe(true)
+    expect(new Set(line_colors).size).toBe(3)
 
     // Verify expected colors from DEFAULT_SERIES_COLORS
-    expect(line_colors[0]).toBe(`#4e79a7`) // First series: blue
-    expect(line_colors[1]).toBe(`#f28e2c`) // Second series: orange
-    expect(line_colors[2]).toBe(`#e15759`) // Third series: red
+    expect(line_colors).toEqual([`#4e79a7`, `#f28e2c`, `#e15759`])
   })
 
   test(`auto-cycling assigns different symbols to each series legend item`, async ({ page }) => {
@@ -2057,34 +2056,18 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     const plot_locator = section.locator(`#auto-cycle-plot.scatter`)
     const legend = plot_locator.locator(`.legend`)
-    const legend_items = legend.locator(`.legend-item`)
 
-    // Get the symbol type from each legend item (circle, rect, polygon, path)
-    const symbol_elements: string[] = []
-    for (let idx = 0; idx < 3; idx++) {
-      const item = legend_items.nth(idx)
-      // The symbol is in the second SVG (first is line, second is marker)
+    // Extract symbol types from each legend item (circle, rect, polygon, path)
+    const symbol_elements = await extract_legend_properties(legend, async (item) => {
       const symbol_svg = item.locator(`.legend-marker > svg`).last()
-
-      // Check what type of element is present
-      if ((await symbol_svg.locator(`circle`).count()) > 0) {
-        symbol_elements.push(`circle`)
-      } else if ((await symbol_svg.locator(`rect`).count()) > 0) {
-        symbol_elements.push(`rect`)
-      } else if ((await symbol_svg.locator(`polygon`).count()) > 0) {
-        symbol_elements.push(`polygon`)
-      } else if ((await symbol_svg.locator(`path`).count()) > 0) {
-        symbol_elements.push(`path`)
-      } else {
-        symbol_elements.push(`unknown`)
+      for (const shape of [`circle`, `rect`, `polygon`, `path`]) {
+        if ((await symbol_svg.locator(shape).count()) > 0) return shape
       }
-    }
+      return `unknown`
+    })
 
-    // Each series should have a DIFFERENT symbol type
-    // From DEFAULT_SERIES_SYMBOLS: Circle, Square, Triangle
-    expect(symbol_elements[0]).toBe(`circle`) // Circle
-    expect(symbol_elements[1]).toBe(`rect`) // Square
-    expect(symbol_elements[2]).toBe(`polygon`) // Triangle
+    // Each series should have a DIFFERENT symbol type (Circle, Square, Triangle)
+    expect(symbol_elements).toEqual([`circle`, `rect`, `polygon`])
   })
 
   test(`responsive layout behavior`, async ({ page }) => {

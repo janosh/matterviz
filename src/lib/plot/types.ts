@@ -480,4 +480,4 @@ export const DEFAULT_SERIES_SYMBOLS = [
   `Diamond`,
   `Star`,
   `Wye`,
-] as const
+] as const satisfies readonly D3SymbolName[]
