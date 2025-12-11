@@ -7,8 +7,10 @@ import {
   parse_xye_file,
 } from '$lib/xrd/parse'
 import { zipSync } from 'fflate'
+import { Buffer } from 'node:buffer'
 import fs from 'node:fs'
 import path from 'node:path'
+import zlib from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 
 describe(`parse_xy_file`, () => {
@@ -470,10 +472,18 @@ describe(`is_xrd_data_file`, () => {
     [`DATA.XYE`, true],
     [`SCAN.XRDML`, true],
     [`SCAN.BRML`, true],
+    // Gzipped variants
+    [`sample.xy.gz`, true],
+    [`data.xye.gz`, true],
+    [`scan.xrdml.gz`, true],
+    [`scan.brml.gz`, true],
+    [`SAMPLE.XY.GZ`, true],
+    // Non-XRD files
     [`data.cif`, false],
     [`structure.json`, false],
     [`file.xyz`, false],
     [`noextension`, false],
+    [`data.gz`, false], // Just .gz without valid base extension
   ])(`is_xrd_data_file("%s") returns %s`, (filename, expected) => {
     expect(is_xrd_data_file(filename)).toBe(expected)
   })
@@ -483,20 +493,34 @@ describe(`real example files`, () => {
   // These tests load actual example files from static/xrd/ to catch corrupted downloads
   const static_xrd_dir = path.resolve(`static/xrd`)
 
-  // Get all XRD files in static/xrd/
-  const xrd_files: string[] = fs.readdirSync(static_xrd_dir).filter((file: string) =>
-    [`.xy`, `.xye`, `.xrdml`, `.brml`].some((ext) => file.endsWith(ext))
-  )
+  // Get all XRD files in static/xrd/ (including gzipped variants)
+  const xrd_extensions = [`.xy`, `.xye`, `.xrdml`, `.brml`]
+  const xrd_files: string[] = fs.readdirSync(static_xrd_dir).filter((file: string) => {
+    const lower = file.toLowerCase()
+    // Match .xy, .xy.gz, .xye, .xye.gz, etc.
+    return xrd_extensions.some(
+      (ext) => lower.endsWith(ext) || lower.endsWith(`${ext}.gz`),
+    )
+  })
 
   for (const filename of xrd_files) {
     test(`parses ${filename} successfully`, () => {
       const filepath = path.join(static_xrd_dir, filename)
-      const content = fs.readFileSync(filepath)
-      const ext = filename.split(`.`).pop()?.toLowerCase()
+      let content: Buffer = fs.readFileSync(filepath)
+
+      // Decompress gzipped files
+      const is_gzipped = filename.toLowerCase().endsWith(`.gz`)
+      if (is_gzipped) {
+        content = zlib.gunzipSync(content)
+      }
+
+      // Get base filename (without .gz) for format detection
+      const base_filename = is_gzipped ? filename.slice(0, -3) : filename
+      const base_ext = base_filename.split(`.`).pop()?.toLowerCase()
 
       // Use ArrayBuffer for binary formats, string for text
-      const input = ext === `brml` ? content.buffer : content.toString()
-      const result = parse_xrd_file(input as string | ArrayBuffer, filename)
+      const input = base_ext === `brml` ? content.buffer : content.toString()
+      const result = parse_xrd_file(input as string | ArrayBuffer, base_filename)
 
       expect(result).not.toBeNull()
       if (!result) return // Type guard for TypeScript

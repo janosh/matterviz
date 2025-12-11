@@ -1,7 +1,12 @@
 <script lang="ts">
   import { EmptyState, SettingsSection, StatusMessage } from '$lib'
   import { add_alpha, PLOT_COLORS } from '$lib/colors'
-  import { decompress_file, handle_url_drop } from '$lib/io'
+  import {
+    decompress_data_binary,
+    decompress_file,
+    detect_compression_format,
+    handle_url_drop,
+  } from '$lib/io'
   import { format_value } from '$lib/labels'
   import type {
     AxisConfig,
@@ -316,12 +321,27 @@
       const file = event.dataTransfer?.files?.[0]
       if (file) {
         try {
-          const ext = file.name.toLowerCase().split(`.`).pop()
-          // Read .brml files as ArrayBuffer (they are ZIP archives)
-          if (ext === `brml`) {
-            const buffer = await file.arrayBuffer()
-            ;(on_file_drop || compute_and_add)(buffer, file.name)
+          const lower_name = file.name.toLowerCase()
+          const compression_format = detect_compression_format(lower_name)
+          // Get base filename without compression extension
+          const base_name = compression_format
+            ? lower_name.replace(/\.(gz|gzip)$/i, ``)
+            : lower_name
+          const base_ext = base_name.split(`.`).pop()
+
+          // Handle .brml files (ZIP archives) - both plain and gzipped
+          if (base_ext === `brml`) {
+            let buffer = await file.arrayBuffer()
+            // Decompress if gzipped
+            if (compression_format === `gzip`) {
+              buffer = await decompress_data_binary(buffer, `gzip`)
+            }
+            const output_name = base_name.endsWith(`.brml`)
+              ? base_name
+              : file.name.replace(/\.gz$/i, ``)
+            ;(on_file_drop || compute_and_add)(buffer, output_name)
           } else {
+            // Text-based formats (.xy, .xye, .xrdml) - decompress_file handles .gz
             const { content, filename } = await decompress_file(file)
             if (content) (on_file_drop || compute_and_add)(content, filename)
           }
@@ -411,7 +431,7 @@
     {:else}
       <StatusMessage
         message={allow_file_drop
-        ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .brml) here`
+        ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .xye, .xrdml, .brml, + .gz) here`
         : `No XRD data to display`}
       />
     {/if}

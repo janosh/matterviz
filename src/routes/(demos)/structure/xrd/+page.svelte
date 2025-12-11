@@ -11,17 +11,19 @@
 
   // Auto-discover XRD data files from static/xrd/ using Vite's import.meta.glob
   // Files are picked up at build time; restart dev server to see new files
-  const xrd_file_modules = import.meta.glob(`/static/xrd/*.{xy,xye,xrdml,brml}`, {
-    query: `?url`,
-    eager: true,
-    import: `default`,
-  }) as Record<string, string>
+  // Supports both uncompressed and gzipped (.gz) versions of XRD formats
+  const xrd_file_modules = import.meta.glob(
+    `/static/xrd/*.{xy,xye,xrdml,brml,xy.gz,xye.gz,xrdml.gz}`,
+    { query: `?url`, eager: true, import: `default` },
+  ) as Record<string, string>
 
   // Convert glob results to FileInfo array
   const xrd_data_files: FileInfo[] = Object.entries(xrd_file_modules).map(
     ([path, url]) => {
       const name = path.split(`/`).pop() || path
-      const ext = name.split(`.`).pop()?.toLowerCase() || ``
+      // Get base extension, stripping .gz if present
+      const base_name = name.replace(/\.gz$/i, ``)
+      const ext = base_name.split(`.`).pop()?.toLowerCase() || ``
       // Categorize by format type
       const category = ext === `brml` ? `HRXRD` : `Powder XRD`
       const category_icon = ext === `brml` ? `🔬` : `📊`
@@ -222,8 +224,9 @@
   <h2>XRD File Drop Demo</h2>
   <p>
     Drag and drop <code>.xy</code>, <code>.xye</code>, <code>.xrdml</code> (PANalytical),
-    or <code>.brml</code> (Bruker) files directly onto the XRD plot. Drop a local file
-    from your computer or drag one of these sample files:
+    or <code>.brml</code> (Bruker) files directly onto the XRD plot. Gzipped versions
+    (<code>.xy.gz</code>, etc.) are also supported. Drop a local file from your computer
+    or drag one of these sample files:
   </p>
   <section>
     <FilePicker
