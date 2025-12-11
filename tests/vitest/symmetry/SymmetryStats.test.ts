@@ -136,7 +136,7 @@ describe(`SymmetryStats`, () => {
       expect(setting_select.value).toBe(`Spglib`)
     })
 
-    test(`symprec input is bindable`, () => {
+    test(`symprec input updates on change event`, () => {
       const sym_data = create_mock_sym_data()
       mount(SymmetryStats, {
         target: document.body,
@@ -146,12 +146,58 @@ describe(`SymmetryStats`, () => {
       const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
       expect(symprec_input.value).toBe(`0.0001`)
 
-      // User changes the input value
+      // User changes the input value (fires on blur/Enter, not on every keystroke)
+      symprec_input.value = `0.001`
+      symprec_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+      flushSync()
+
+      expect(symprec_input.value).toBe(`0.001`)
+    })
+
+    test(`symprec uses onchange not oninput to prevent excessive updates`, () => {
+      // This test verifies that symprec input uses onchange (not oninput)
+      // to prevent triggering expensive symmetry analysis on every keystroke.
+      // The input event should NOT trigger settings updates.
+      let update_count = 0
+      const sym_data = create_mock_sym_data()
+      const current_settings = { symprec: 1e-4, algo: `Moyo` as const }
+
+      mount(SymmetryStats, {
+        target: document.body,
+        props: {
+          sym_data,
+          get settings() {
+            return current_settings
+          },
+          set settings(val) {
+            update_count++
+            Object.assign(current_settings, val)
+          },
+        },
+      })
+
+      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+
+      // Simulate typing by firing multiple input events (like typing "0.001" char by char)
+      symprec_input.value = `0.0`
+      symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+      symprec_input.value = `0.00`
+      symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
       symprec_input.value = `0.001`
       symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       flushSync()
 
-      expect(symprec_input.value).toBe(`0.001`)
+      // With oninput, update_count would be 3; with onchange, it should be 0
+      expect(update_count).toBe(0)
+
+      // Now dispatch change event (simulating blur/Enter)
+      symprec_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+      flushSync()
+
+      // After change event, settings should be updated exactly once
+      expect(update_count).toBe(1)
     })
   })
 
