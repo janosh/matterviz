@@ -379,6 +379,14 @@
   ]
   const legend_zero_series: DataSeries[] = []
 
+  // === Auto-Cycling Colors/Symbols Test Data ===
+  // Series WITHOUT explicit colors/symbols to test auto-differentiation
+  const auto_cycle_series: DataSeries[] = [
+    { x: [1, 2, 3], y: [1, 2, 3], label: `Auto Series 1` },
+    { x: [1, 2, 3], y: [2, 3, 4], label: `Auto Series 2` },
+    { x: [1, 2, 3], y: [3, 4, 5], label: `Auto Series 3` },
+  ]
+
   // === Linear-to-Log Transition Test Data ===
   let lin_log_y_scale_type = $state<`linear` | `log`>(`linear`)
   const lin_log_transition_data = {
@@ -726,6 +734,19 @@
   />
   <h3>Zero Series - No Legend Expected</h3>
   <ScatterPlot series={legend_zero_series} id="legend-zero" />
+</section>
+
+<section id="auto-cycling-test">
+  <h2>Auto-Cycling Colors and Symbols Test</h2>
+  <p>
+    Series without explicit colors or symbols should automatically get different colors
+    and marker shapes to distinguish them.
+  </p>
+  <ScatterPlot
+    series={auto_cycle_series}
+    legend={{ draggable: false }}
+    id="auto-cycle-plot"
+  />
 </section>
 
 <section id="lin-log-transition">

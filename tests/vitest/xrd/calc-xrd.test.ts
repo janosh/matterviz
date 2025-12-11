@@ -227,7 +227,7 @@ describe(`add_xrd_pattern`, () => {
     const structure = { sites: [] } // no lattice
     const json = JSON.stringify(structure)
     const result = add_xrd_pattern(json, `test.json`, null)
-    expect(result.error).toMatch(/no lattice/)
+    expect(result.error).toMatch(/must have a lattice/)
   })
 
   test(`respects wavelength parameter`, () => {

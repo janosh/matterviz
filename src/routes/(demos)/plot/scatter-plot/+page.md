@@ -1512,6 +1512,88 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
 />
 ```
 
+## Legend Grouping
+
+When comparing results from multiple methods or categories, you can organize legend items into collapsible groups using the `legend_group` property. This is particularly useful for comparing DFT methods, ML potentials, or experimental data. Click the group header to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Grouped series data - comparing DFT methods vs ML potentials vs experiment
+  const grouped_series = [
+    // DFT group
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [2.1, 4.2, 3.1, 5.3, 4.0],
+      label: 'PBE',
+      legend_group: 'DFT',
+      point_style: { fill: '#3498db', radius: 5 },
+      line_style: { stroke: '#3498db', stroke_width: 2 },
+      markers: 'line+points',
+    },
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [2.3, 4.5, 3.4, 5.6, 4.2],
+      label: 'LDA',
+      legend_group: 'DFT',
+      point_style: { fill: '#2980b9', radius: 5 },
+      line_style: { stroke: '#2980b9', stroke_width: 2, line_dash: '5 3' },
+      markers: 'line+points',
+    },
+    // ML Potentials group
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [2.0, 4.0, 3.0, 5.1, 3.9],
+      label: 'MACE',
+      legend_group: 'ML Potentials',
+      point_style: { fill: '#e74c3c', radius: 5 },
+      line_style: { stroke: '#e74c3c', stroke_width: 2 },
+      markers: 'line+points',
+    },
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [2.2, 4.3, 3.2, 5.4, 4.1],
+      label: 'CHGNet',
+      legend_group: 'ML Potentials',
+      point_style: { fill: '#c0392b', radius: 5 },
+      line_style: { stroke: '#c0392b', stroke_width: 2, line_dash: '5 3' },
+      markers: 'line+points',
+    },
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [1.9, 3.8, 2.9, 4.9, 3.7],
+      label: 'M3GNet',
+      legend_group: 'ML Potentials',
+      point_style: { fill: '#a93226', radius: 5 },
+      line_style: { stroke: '#a93226', stroke_width: 2, line_dash: '2 2' },
+      markers: 'line+points',
+    },
+    // Experiment (ungrouped)
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [2.0, 4.1, 3.0, 5.2, 4.0],
+      label: 'Experiment',
+      point_style: { fill: '#2ecc71', radius: 7, symbol_type: 'Star' },
+      markers: 'points',
+    },
+  ]
+</script>
+
+<ScatterPlot
+  series={grouped_series}
+  x_axis={{ label: 'Sample Index' }}
+  y_axis={{ label: 'Energy (eV)' }}
+  legend={{ draggable: true }}
+  style="height: 400px"
+>
+  {#snippet tooltip({ x, y, label })}
+    <strong>{label}</strong><br>
+    Sample {x}: {y.toFixed(2)} eV
+  {/snippet}
+</ScatterPlot>
+```
+
 ## Multiple Plots in 2×2 Grid Layout
 
 Display multiple scatter plots in a responsive 2×2 grid:

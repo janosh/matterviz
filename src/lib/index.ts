@@ -1,12 +1,13 @@
 import type { ELEM_SYMBOLS, ELEMENT_CATEGORIES } from './labels'
 
-export * from './spectral'
 export * from './brillouin'
 export * from './colors'
 export * from './composition'
 export * from './constants'
+export * from './convex-hull'
 export * from './coordination'
 export * from './element'
+export { default as EmptyState } from './EmptyState.svelte'
 export * from './feedback'
 export { default as FilePicker } from './FilePicker.svelte'
 export { default as Icon } from './Icon.svelte'
@@ -17,10 +18,10 @@ export * from './layout'
 export * from './math'
 export * from './overlays'
 export * from './periodic-table'
-export * from './convex-hull'
 export * from './plot'
 export * from './rdf'
 export * from './settings'
+export * from './spectral'
 export * from './structure'
 export * from './symmetry'
 export * from './theme'
@@ -85,14 +86,13 @@ export interface FileInfo {
 }
 
 // Helper function to escape HTML special characters to prevent XSS
-export function escape_html(unsafe_string: string): string {
-  return unsafe_string
+export const escape_html = (unsafe_string: string): string =>
+  unsafe_string
     .replaceAll(`&`, `&amp;`)
     .replaceAll(`<`, `&lt;`)
     .replaceAll(`>`, `&gt;`)
     .replaceAll(`"`, `&quot;`)
     .replaceAll(`'`, `&#39;`)
-}
 
 // Simplified binary detection
 export function is_binary(content: string): boolean {

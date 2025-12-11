@@ -2,7 +2,7 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { FilePicker } from '$lib'
+  import { EmptyState, FilePicker } from '$lib'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import {
@@ -98,9 +98,10 @@
         on_click={(site_indices) => active_wyckoff_sites = site_indices ?? []}
       />
     {:else}
-      <div class="empty-state">
-        <p>Load a structure to analyze its symmetry</p>
-      </div>
+      <EmptyState
+        message="Load a structure to analyze its symmetry"
+        style="min-height: 300px; padding: 2em; background: var(--surface-bg, #f5f5f5); border-radius: 8pt; color: var(--text-muted, #666)"
+      />
     {/if}
   </div>
 
@@ -200,20 +201,13 @@
     gap: 2em;
     margin-block: 2em;
   }
-  .loading-placeholder,
-  .empty-state {
+  .loading-placeholder {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 300px;
-    padding: 2em;
-    background: var(--surface-bg, #f5f5f5);
-    border-radius: 8pt;
-    color: var(--text-muted, #666);
   }
-  .loading-placeholder p,
-  .empty-state p {
+  .loading-placeholder p {
     margin: 1em 0 0;
     font-size: 0.95em;
   }

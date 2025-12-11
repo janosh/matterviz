@@ -1,16 +1,11 @@
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let {
-    message = $bindable(),
-    type = `info`,
-    dismissible = false,
-    ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  let { message = $bindable(), type = `info`, dismissible = false, ...rest }: {
     message?: string
     type?: `info` | `error` | `warning`
     dismissible?: boolean
-  } = $props()
+  } & HTMLAttributes<HTMLDivElement> = $props()
 
   const styles = {
     info: {
@@ -24,8 +19,8 @@
       background: `#ffebee`,
       color: `#c62828`,
       border: `1px solid #ef5350`,
-      padding: `0.5em`,
-      textAlign: `left` as const,
+      padding: `0.5em 1em`,
+      textAlign: `center` as const,
     },
     warning: {
       background: `#fff3e0`,

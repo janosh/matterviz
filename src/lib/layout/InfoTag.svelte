@@ -109,12 +109,12 @@
   }
   .info-tag.sm {
     font-size: 0.72em;
-    padding: 1pt 5pt;
+    padding: 0 5pt;
     border-radius: 4px;
   }
   .info-tag.md {
     font-size: 0.8em;
-    padding: 2pt 6pt;
+    padding: 1pt 6pt;
     border-radius: 5px;
   }
   .info-tag.lg {

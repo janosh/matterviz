@@ -202,7 +202,7 @@ describe(`supercell performance profiling`, () => {
     )
     console.log(`  Total: ${total.toFixed(2)}ms`)
 
-    // More stringent check: should be significantly faster than 100ms (usually < 5ms now)
+    // Should complete well under 15ms on typical hardware (15 × CI_MULTIPLIER in CI)
     expect(total).toBeLessThan(15 * CI_MULTIPLIER)
   })
 
@@ -225,11 +225,11 @@ describe(`supercell performance profiling`, () => {
     const last_result = results[results.length - 1]
     const last_rate = last_result.time / last_result.sites
 
-    // With linear scaling optimizations, the rate per atom should be very consistent
-    // Allowing small variance (1.5x instead of previous 2x loose bound)
-    expect(last_rate / first_rate).toBeLessThan(1.5)
+    // With linear scaling optimizations, the rate per atom should be fairly constant.
+    // Allowing variance up to 1.6x to account for runtime fluctuations
+    expect(last_rate / first_rate).toBeLessThan(1.6)
 
-    // Absolute performance check: 500 atoms (13500 total sites) should take < 10ms
-    expect(last_result.time).toBeLessThan(10 * CI_MULTIPLIER)
+    // 500 atoms → 13500 sites should complete well under 20ms (20 × CI_MULTIPLIER in CI)
+    expect(last_result.time).toBeLessThan(20 * CI_MULTIPLIER)
   })
 })

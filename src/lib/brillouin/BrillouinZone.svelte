@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon, Spinner, toggle_fullscreen } from '$lib'
+  import { EmptyState, Icon, Spinner, toggle_fullscreen } from '$lib'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import { set_fullscreen_bg } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
@@ -363,12 +363,10 @@
   {:else if structure}
     <p class="warn">Structure must have a lattice to compute Brillouin zone</p>
   {:else}
-    <div class="empty-state">
+    <EmptyState>
       <h3>Drop Structure File</h3>
-      <p>
-        Supports CIF, POSCAR, JSON, (ext)XYZ, (+ .gz)
-      </p>
-    </div>
+      <p>Supports CIF, POSCAR, JSON, (ext)XYZ, (+ .gz)</p>
+    </EmptyState>
   {/if}
 </div>
 
@@ -467,21 +465,5 @@
   }
   .error-state button:hover {
     background: var(--error-color-hover, #ff5252);
-  }
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    text-align: center;
-  }
-  .empty-state h3 {
-    margin: 0 0 0.5em;
-    font-size: 1.5em;
-  }
-  .empty-state p {
-    color: var(--text-color-muted);
-    margin: 0;
   }
 </style>

@@ -178,18 +178,25 @@ describe(`XrdPlot`, () => {
 
   test.each([
     {
-      desc: `intensity normalized to 0-100`,
+      desc: `intensity range has 10% top padding for labels`,
       pattern: { x: [10, 20, 30], y: [50, 100, 75] },
       axis: `.y-axis` as const,
-      expects: [`0`, `100`],
+      expects: [`0`], // y-axis should go beyond 100 but we just check it exists
     },
     {
-      desc: `angle range from 0 to max`,
-      pattern: { x: [10, 20, 42.7], y: [100, 200, 150] },
+      desc: `angle range from 0 to max when data starts below 10°`,
+      pattern: { x: [5, 20, 42.7], y: [100, 200, 150] },
       axis: `.x-axis` as const,
-      expects: [`0`, /4[0-9]/], // 0 and 40-49 range
+      expects: [`0`, /4[0-9]/], // starts at 0, ends at 40-49
     },
-  ])(`axis ranges: $desc`, async ({ pattern, axis, expects }) => {
+    {
+      desc: `angle range starts at data min when data starts above 10°`,
+      pattern: { x: [44, 45, 48], y: [10, 100, 20] },
+      axis: `.x-axis` as const,
+      expects: [`44`, `48`], // should start at floor(44)=44, end at ceil(48)=48
+      not_expects: [`0`, `10`, `20`, `30`], // should NOT show low values
+    },
+  ])(`axis ranges: $desc`, async ({ pattern, axis, expects, not_expects }) => {
     const target = create_sized_container()
     mount(XrdPlot, { target, props: { patterns: pattern } })
     await wait_for_plot_render(target)
@@ -201,6 +208,49 @@ describe(`XrdPlot`, () => {
       } else {
         expect(axis_el?.textContent).toMatch(expect_val)
       }
+    }
+    // Check values that should NOT be present
+    if (not_expects) {
+      for (const not_val of not_expects) {
+        expect(axis_el?.textContent).not.toContain(not_val)
+      }
+    }
+  })
+
+  test(`peak label overlap filtering keeps only highest intensity`, async () => {
+    // Pattern with multiple peaks very close together - only highest should be labeled
+    const overlapping_pattern: XrdPattern = {
+      x: [10, 45.80, 45.81, 45.82, 45.83, 45.84, 60],
+      y: [10, 80, 85, 100, 90, 75, 20], // 45.82 has highest intensity
+      hkls: [],
+      d_hkls: [],
+    }
+
+    const target = create_sized_container()
+    mount(XrdPlot, {
+      target,
+      props: {
+        patterns: overlapping_pattern,
+        annotate_peaks: 5, // Request 5 annotations
+        show_angles: true,
+        hkl_format: null,
+      },
+    })
+    await wait_for_plot_render(target)
+
+    const bar_labels = target.querySelectorAll(`.bar-label`)
+    const label_texts = Array.from(bar_labels)
+      .map((el) => el.textContent?.trim())
+      .filter(Boolean)
+
+    // Should have filtered out nearby peaks, keeping only highest
+    // The 45.8x cluster should only show ONE label (45.82° - the highest)
+    const labels_in_45_range = label_texts.filter((t) => t?.includes(`45.8`))
+    expect(labels_in_45_range.length).toBeLessThanOrEqual(1)
+
+    // But the 45.82° peak (highest in cluster) should be labeled
+    if (labels_in_45_range.length > 0) {
+      expect(labels_in_45_range[0]).toContain(`45.82`)
     }
   })
 
@@ -242,6 +292,53 @@ describe(`XrdPlot`, () => {
     if (expects.text_match) {
       expect(text_content).toMatch(expects.text_match)
     }
+  })
+
+  test(`multiple patterns create multiple bar series`, async () => {
+    // When plotting multiple patterns, should render multiple bar series with transparency
+    const pattern1: XrdPattern = {
+      x: [10, 20, 30],
+      y: [100, 50, 75],
+      hkls: [],
+      d_hkls: [],
+    }
+    const pattern2: XrdPattern = {
+      x: [15, 25, 35],
+      y: [80, 60, 90],
+      hkls: [],
+      d_hkls: [],
+    }
+
+    const target = create_sized_container()
+    mount(XrdPlot, {
+      target,
+      props: {
+        patterns: { 'Pattern 1': pattern1, 'Pattern 2': pattern2 },
+      },
+    })
+    await wait_for_plot_render(target)
+
+    // Should have 2 bar series for 2 patterns
+    const bar_series = target.querySelectorAll(`.bar-series`)
+    expect(bar_series.length).toBe(2)
+
+    // Verify both pattern labels appear in legend
+    const text_content = target.textContent || ``
+    expect(text_content).toContain(`Pattern 1`)
+    expect(text_content).toContain(`Pattern 2`)
+  })
+
+  test(`single pattern renders single bar series`, async () => {
+    // Single pattern should render without transparency
+    const target = create_sized_container()
+    mount(XrdPlot, {
+      target,
+      props: { patterns: pattern },
+    })
+    await wait_for_plot_render(target)
+
+    const bar_series = target.querySelectorAll(`.bar-series`)
+    expect(bar_series.length).toBe(1)
   })
 
   test(`dragover class toggles correctly`, async () => {

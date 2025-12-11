@@ -1,5 +1,7 @@
 import { ScatterPlot } from '$lib'
 import type { DataSeries } from '$lib/plot'
+import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
+import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
 import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
@@ -176,5 +178,124 @@ describe(`ScatterPlot`, () => {
     })
     // Component should render without throwing
     expect(document.querySelector(`.scatter`)).toBeTruthy()
+  })
+
+  test.each([
+    {
+      desc: `with legend_group and legend config`,
+      series: [
+        {
+          x: [1, 2],
+          y: [2, 4],
+          label: `PBE`,
+          legend_group: `DFT`,
+          point_style: { fill: `blue` },
+        },
+        {
+          x: [1, 2],
+          y: [2.1, 4.1],
+          label: `MACE`,
+          legend_group: `ML`,
+          point_style: { fill: `red` },
+        },
+        { x: [1, 2], y: [2.2, 4.2], label: `Experiment`, point_style: { fill: `green` } },
+      ],
+      props: { legend: { draggable: false } },
+    },
+    {
+      desc: `with hidden legend_group`,
+      series: [
+        { x: [1, 2], y: [2, 4], legend_group: `DFT`, visible: false },
+        { x: [1, 2], y: [3, 5], legend_group: `ML`, visible: true },
+      ],
+      props: {},
+    },
+  ])(`legend grouping: renders $desc`, ({ series, props }) => {
+    mount(ScatterPlot, { target: document.body, props: { series, ...props } })
+    expect(document.querySelector(`.scatter`)).toBeTruthy()
+  })
+
+  describe(`auto-cycling series colors and symbols`, () => {
+    test(`DEFAULT_SERIES_COLORS and DEFAULT_SERIES_SYMBOLS are valid`, () => {
+      // Colors: 10 distinct valid hex
+      expect(DEFAULT_SERIES_COLORS).toHaveLength(10)
+      expect(new Set(DEFAULT_SERIES_COLORS).size).toBe(10)
+      for (const color of DEFAULT_SERIES_COLORS) expect(color).toMatch(/^#[0-9a-f]{6}$/i)
+      // Symbols: 7 distinct valid D3 names
+      expect(DEFAULT_SERIES_SYMBOLS).toHaveLength(7)
+      expect(new Set(DEFAULT_SERIES_SYMBOLS).size).toBe(7)
+      const valid = [`Circle`, `Square`, `Triangle`, `Cross`, `Diamond`, `Star`, `Wye`]
+      for (const sym of DEFAULT_SERIES_SYMBOLS) expect(valid).toContain(sym)
+    })
+
+    test.each([
+      { desc: `single series`, count: 1 },
+      { desc: `multiple series (3)`, count: 3 },
+      { desc: `cycling past colors (15)`, count: 15 },
+      { desc: `mixed markers`, count: 3, markers: [`line+points`, `points`, `line`] },
+    ])(`renders $desc without explicit styles`, ({ count, markers }) => {
+      const series: DataSeries[] = Array.from({ length: count }, (_, idx) => ({
+        x: [1, 2, 3],
+        y: [idx + 1, idx + 2, idx + 3],
+        ...(markers
+          ? {
+            markers: markers[idx % markers.length] as `line` | `points` | `line+points`,
+          }
+          : {}),
+      }))
+      mount(ScatterPlot, { target: document.body, props: { series } })
+      expect(document.querySelector(`.scatter`)).toBeTruthy()
+    })
+
+    test.each([
+      { desc: `explicit fill`, props: { point_style: { fill: `purple` } } },
+      {
+        desc: `explicit symbol_type`,
+        props: { point_style: { symbol_type: `Star` as const } },
+      },
+      {
+        desc: `explicit line stroke`,
+        props: { markers: `line` as const, line_style: { stroke: `red` } },
+      },
+    ])(`$desc overrides auto styling`, ({ props }) => {
+      const series: DataSeries[] = [
+        { x: [1, 2, 3], y: [1, 2, 3] },
+        { x: [1, 2, 3], y: [3, 2, 1], ...props } as DataSeries,
+      ]
+      mount(ScatterPlot, { target: document.body, props: { series } })
+      expect(document.querySelector(`.scatter`)).toBeTruthy()
+    })
+
+    test(`cycling logic: modulo wrapping and unique combinations`, () => {
+      // Modulo wrapping for colors (length 10) and symbols (length 7)
+      expect(get_series_color(0)).toBe(get_series_color(10))
+      expect(get_series_color(1)).toBe(get_series_color(11))
+      expect(get_series_symbol(0)).toBe(get_series_symbol(7))
+      expect(get_series_symbol(1)).toBe(get_series_symbol(8))
+      // LCM(10,7) = 70 unique color+symbol combinations
+      const combos = new Set(
+        Array.from(
+          { length: 70 },
+          (_, idx) => `${get_series_color(idx)}-${get_series_symbol(idx)}`,
+        ),
+      )
+      expect(combos.size).toBe(70)
+    })
+
+    test.each([
+      { idx: 0, color: `#4e79a7`, symbol: `Circle` },
+      { idx: 1, color: `#f28e2c`, symbol: `Square` },
+      { idx: 2, color: `#e15759`, symbol: `Triangle` },
+      { idx: 3, color: `#76b7b2`, symbol: `Cross` },
+      { idx: 4, color: `#59a14f`, symbol: `Diamond` },
+    ])(`index $idx maps to $color and $symbol`, ({ idx, color, symbol }) => {
+      expect(get_series_color(idx)).toBe(color)
+      expect(get_series_symbol(idx)).toBe(symbol)
+    })
+
+    test(`adjacent indices return different values (catches off-by-one)`, () => {
+      expect(get_series_color(0)).not.toBe(get_series_color(1))
+      expect(get_series_symbol(0)).not.toBe(get_series_symbol(1))
+    })
   })
 })

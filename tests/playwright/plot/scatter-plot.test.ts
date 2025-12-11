@@ -226,6 +226,20 @@ const get_tooltip_colors = async (
   return colors
 }
 
+// Extract properties from legend items using a custom extractor function
+const extract_legend_properties = async <T>(
+  legend: Locator,
+  extractor: (item: Locator, idx: number) => Promise<T>,
+): Promise<T[]> => {
+  const items = legend.locator(`.legend-item`)
+  const count = await items.count()
+  const results: T[] = []
+  for (let idx = 0; idx < count; idx++) {
+    results.push(await extractor(items.nth(idx), idx))
+  }
+  return results
+}
+
 // Scatter plot tests
 test.describe(`ScatterPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -2007,6 +2021,53 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await reset_button.click()
     // Wait for stroke-width to reset to default
     await expect(crimson_marker).toHaveAttribute(`stroke-width`, `1`, { timeout: 1000 })
+  })
+
+  // AUTO-CYCLING COLORS AND SYMBOLS TESTS
+
+  test(`auto-cycling assigns different colors to each series legend item`, async ({ page }) => {
+    const section = page.locator(`#auto-cycling-test`)
+    await expect(section).toBeVisible()
+
+    const plot_locator = section.locator(`#auto-cycle-plot.scatter`)
+    await expect(plot_locator).toBeVisible()
+
+    const legend = plot_locator.locator(`.legend`)
+    await expect(legend).toBeVisible()
+    await expect(legend.locator(`.legend-item`)).toHaveCount(3)
+
+    // Extract line stroke colors from each legend item
+    const line_colors = await extract_legend_properties(legend, async (item) => {
+      const line_svg = item.locator(`.legend-marker > svg`).first()
+      return (await line_svg.locator(`line`).getAttribute(`stroke`)) ?? ``
+    })
+
+    // All colors should be non-empty and distinct
+    expect(line_colors.every((color) => color !== ``)).toBe(true)
+    expect(new Set(line_colors).size).toBe(3)
+
+    // Verify expected colors from DEFAULT_SERIES_COLORS
+    expect(line_colors).toEqual([`#4e79a7`, `#f28e2c`, `#e15759`])
+  })
+
+  test(`auto-cycling assigns different symbols to each series legend item`, async ({ page }) => {
+    const section = page.locator(`#auto-cycling-test`)
+    await expect(section).toBeVisible()
+
+    const plot_locator = section.locator(`#auto-cycle-plot.scatter`)
+    const legend = plot_locator.locator(`.legend`)
+
+    // Extract symbol types from each legend item (circle, rect, polygon, path)
+    const symbol_elements = await extract_legend_properties(legend, async (item) => {
+      const symbol_svg = item.locator(`.legend-marker > svg`).last()
+      for (const shape of [`circle`, `rect`, `polygon`, `path`]) {
+        if ((await symbol_svg.locator(shape).count()) > 0) return shape
+      }
+      return `unknown`
+    })
+
+    // Each series should have a DIFFERENT symbol type (Circle, Square, Triangle)
+    expect(symbol_elements).toEqual([`circle`, `rect`, `polygon`])
   })
 
   test(`responsive layout behavior`, async ({ page }) => {

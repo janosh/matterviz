@@ -590,6 +590,66 @@ Line series support full marker customization including symbol types, sizes, col
 />
 ```
 
+## Legend Grouping
+
+When comparing results from different computational methods or experimental techniques, you can organize legend items into collapsible groups using the `legend_group` property. Click the group header to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group:
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  // Comparing formation energies from different methods
+  const grouped_series = [
+    // DFT Methods group
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [-1.2, -0.8, -2.1, -1.5, -0.9],
+      label: 'PBE',
+      legend_group: 'DFT',
+      color: '#3498db',
+    },
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [-1.4, -0.9, -2.3, -1.7, -1.1],
+      label: 'r2SCAN',
+      legend_group: 'DFT',
+      color: '#2980b9',
+    },
+    // ML Potentials group
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [-1.1, -0.7, -2.0, -1.4, -0.8],
+      label: 'MACE',
+      legend_group: 'ML Potentials',
+      color: '#e74c3c',
+    },
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [-1.3, -0.85, -2.15, -1.55, -0.95],
+      label: 'CHGNet',
+      legend_group: 'ML Potentials',
+      color: '#c0392b',
+    },
+    // Experiment (ungrouped reference)
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [-1.25, -0.82, -2.05, -1.52, -0.88],
+      label: 'Experiment',
+      color: '#2ecc71',
+    },
+  ]
+</script>
+
+<BarPlot
+  series={grouped_series}
+  mode="grouped"
+  x_axis={{ label: 'Compound (1=LiCoO₂, 2=LiFePO₄, 3=Li₂MnO₃, 4=LiNiO₂, 5=LiMn₂O₄)' }}
+  y_axis={{ label: 'Formation Energy (eV/atom)' }}
+  legend={{ draggable: true }}
+  style="height: 400px"
+/>
+```
+
 ## Multiple Plots in 2×2 Grid Layout
 
 Display multiple bar plots in a responsive 2×2 grid:

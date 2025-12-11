@@ -31,6 +31,27 @@ export function toggle_series_visibility(
   })
 }
 
+export function toggle_group_visibility(
+  series: DataSeries[],
+  series_indices: number[],
+): DataSeries[] {
+  // Filter to valid indices upfront
+  const valid_indices = series_indices.filter((idx) => idx >= 0 && idx < series.length)
+  if (valid_indices.length === 0) return series
+
+  const idx_set = new Set(valid_indices)
+
+  // Check if all series in the group are currently visible
+  const all_visible = valid_indices.every((idx) => series[idx].visible ?? true)
+
+  // Toggle: if all visible, hide all; otherwise show all
+  const new_visibility = !all_visible
+
+  return series.map((srs, idx) =>
+    idx_set.has(idx) ? { ...srs, visible: new_visibility } : srs
+  )
+}
+
 export function handle_legend_double_click(
   series: DataSeries[],
   idx: number,

@@ -1,16 +1,24 @@
 import type { D3SymbolName } from '$lib/labels'
 import type { DataSeries, Point } from '$lib/plot'
+import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
 import { DEFAULTS } from '$lib/settings'
+
+// Get auto-cycling color for series at given index (wraps every 10)
+export const get_series_color = (series_idx: number): string =>
+  DEFAULT_SERIES_COLORS[series_idx % DEFAULT_SERIES_COLORS.length]
+
+// Get auto-cycling symbol for series at given index (wraps every 7)
+export const get_series_symbol = (series_idx: number): D3SymbolName =>
+  DEFAULT_SERIES_SYMBOLS[series_idx % DEFAULT_SERIES_SYMBOLS.length]
 
 // Extract the primary color from a series data object.
 // Checks line stroke, then point fill (handling arrays), with fallback to default blue.
-export function extract_series_color(series_data: DataSeries): string {
-  return series_data.line_style?.stroke ||
-    (Array.isArray(series_data.point_style)
-      ? series_data.point_style[0]?.fill
-      : series_data.point_style?.fill) ||
-    `#4A9EFF`
-}
+export const extract_series_color = (series_data: DataSeries): string =>
+  series_data.line_style?.stroke ||
+  (Array.isArray(series_data.point_style)
+    ? series_data.point_style[0]?.fill
+    : series_data.point_style?.fill) ||
+  `#4A9EFF`
 
 // Prepare legend data from series array
 export const prepare_legend_data = (series: DataSeries[]): {
