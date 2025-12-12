@@ -1,4 +1,5 @@
 import type { D3SymbolName } from '$lib/labels'
+import type { Vec3 } from '$lib/math'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
@@ -488,10 +489,6 @@ export const DEFAULT_SERIES_SYMBOLS = [
   `Wye`,
 ] as const satisfies readonly D3SymbolName[]
 
-// ============================================================================
-// 3D Scatter Plot Types
-// ============================================================================
-
 export type XyzObj = { x: number; y: number; z: number }
 
 // 3D point extending base Point with z coordinate (prefixed to avoid conflict with convex-hull)
@@ -537,7 +534,7 @@ export interface Surface3DConfig {
   parametric_fn?: (u: number, v: number) => XyzObj
   // For triangulated surfaces: explicit geometry
   points?: ScatterPoint3D[]
-  triangles?: [number, number, number][] // indices into points array
+  triangles?: Vec3[] // indices into points array
   // Appearance
   color?: string
   color_fn?: (x: number, y: number, z: number) => string
