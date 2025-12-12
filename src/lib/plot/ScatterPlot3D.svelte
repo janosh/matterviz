@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { FullscreenToggle } from '$lib/layout'
+  import type { Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
   import { get_series_color } from '$lib/plot/data-transform'
   import type {
@@ -19,7 +20,7 @@
   } from '$lib/plot/types'
   import { Canvas } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import { type ComponentProps, onMount, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three'
   import { create_color_scale } from './scales'
@@ -56,7 +57,7 @@
     // Legend
     legend = {},
     // Camera settings
-    camera_position = $bindable([10, 10, 10] as [number, number, number]),
+    camera_position = $bindable([8, 8, 8]),
     camera_projection: camera_projection_init = `perspective` as CameraProjection3D,
     auto_rotate: auto_rotate_init = 0,
     rotation_damping = 0,
@@ -74,7 +75,7 @@
     // Gizmo
     gizmo = true,
     // Controls
-    controls = {},
+    controls: controls_init = {},
     // State
     hovered = $bindable(false),
     tooltip_point = $bindable(null),
@@ -116,7 +117,7 @@
       value_range?: [number, number]
     }
     legend?: LegendConfig | null
-    camera_position?: [number, number, number]
+    camera_position?: Vec3
     camera_projection?: CameraProjection3D
     auto_rotate?: number
     rotation_damping?: number
@@ -152,6 +153,10 @@
 
   let [width, height] = $state([0, 0])
 
+  // Track mounted state to avoid SSR/hydration mismatch with Canvas
+  let mounted = $state(false)
+  onMount(() => mounted = true)
+
   // User overrides merged with series.visible defaults
   let visibility_overrides: Record<number, boolean> = $state({})
   let series_visibility = $derived(
@@ -159,24 +164,10 @@
   )
 
   // Local state for controls (initialized from props, owned by this component)
-  let x_axis = $state({
-    label: `X`,
-    format: `.3~g`,
-    scale_type: `linear` as const,
-    ...x_axis_init,
-  })
-  let y_axis = $state({
-    label: `Y`,
-    format: `.3~g`,
-    scale_type: `linear` as const,
-    ...y_axis_init,
-  })
-  let z_axis = $state({
-    label: `Z`,
-    format: `.3~g`,
-    scale_type: `linear` as const,
-    ...z_axis_init,
-  })
+  const axis_defaults = { format: `.3~g`, scale_type: `linear` as const }
+  let x_axis = $state({ label: `X`, ...axis_defaults, ...x_axis_init })
+  let y_axis = $state({ label: `Y`, ...axis_defaults, ...y_axis_init })
+  let z_axis = $state({ label: `Z`, ...axis_defaults, ...z_axis_init })
   let display = $state({
     show_axes: true,
     show_grid: true,
@@ -185,7 +176,7 @@
   })
   let camera_projection = $state(camera_projection_init)
   let auto_rotate = $state(auto_rotate_init)
-  controls = { show: true, open: false, ...controls }
+  let controls = $state({ show: true, open: false, ...controls_init })
 
   // Normalize color_scale to always be an object
   let normalized_color_scale = $derived(
@@ -292,43 +283,46 @@
       {/if}
     </div>
 
-    <Canvas>
-      <ScatterPlot3DScene
-        {series}
-        {series_visibility}
-        {surfaces}
-        {x_axis}
-        {y_axis}
-        {z_axis}
-        {display}
-        {styles}
-        color_scale={normalized_color_scale}
-        {size_scale}
-        {camera_position}
-        {camera_projection}
-        {auto_rotate}
-        {rotation_damping}
-        {fov}
-        {min_zoom}
-        {max_zoom}
-        {rotate_speed}
-        {zoom_speed}
-        {pan_speed}
-        {ambient_light}
-        {directional_light}
-        {sphere_segments}
-        gizmo={computed_gizmo}
-        bind:hovered_point={tooltip_point}
-        {on_point_click}
-        on_point_hover={handle_point_hover}
-        bind:scene
-        bind:camera
-        bind:orbit_controls
-        {tooltip}
-        {width}
-        {height}
-      />
-    </Canvas>
+    <!-- Prevent Canvas from rendering during SSR to avoid hydration mismatch -->
+    {#if mounted && typeof WebGLRenderingContext !== `undefined`}
+      <Canvas>
+        <ScatterPlot3DScene
+          {series}
+          {series_visibility}
+          {surfaces}
+          {x_axis}
+          {y_axis}
+          {z_axis}
+          {display}
+          {styles}
+          color_scale={normalized_color_scale}
+          {size_scale}
+          {camera_position}
+          {camera_projection}
+          {auto_rotate}
+          {rotation_damping}
+          {fov}
+          {min_zoom}
+          {max_zoom}
+          {rotate_speed}
+          {zoom_speed}
+          {pan_speed}
+          {ambient_light}
+          {directional_light}
+          {sphere_segments}
+          gizmo={computed_gizmo}
+          bind:hovered_point={tooltip_point}
+          {on_point_click}
+          on_point_hover={handle_point_hover}
+          bind:scene
+          bind:camera
+          bind:orbit_controls
+          {tooltip}
+          {width}
+          {height}
+        />
+      </Canvas>
+    {/if}
 
     <!-- Control pane -->
     {#if controls.show}
@@ -371,14 +365,14 @@
       />
     {/if}
 
-    <!-- Legend -->
+    <!-- Legend - positioned below controls to avoid overlap -->
     {#if legend != null && legend_data.length > 1}
       <PlotLegend
         series_data={legend_data}
         on_toggle={toggle_series_visibility}
         draggable={legend?.draggable ?? true}
         {...legend}
-        wrapper_style="position: absolute; top: 1em; right: 1em; {legend?.wrapper_style ?? ``}"
+        wrapper_style="position: absolute; top: 2.5em; right: 1em; {legend?.wrapper_style ?? ``}"
       />
     {/if}
 
@@ -414,6 +408,9 @@
     border-radius: 0;
     max-height: none !important;
     overflow: hidden;
+    /* Add padding to prevent titles from being cropped at top */
+    padding-top: var(--scatter3d-fullscreen-padding-top, 2em);
+    box-sizing: border-box;
   }
   div.scatter-3d :global(canvas) {
     width: 100% !important;
@@ -433,6 +430,13 @@
   .header-controls :global(.fullscreen-toggle) {
     position: static;
     opacity: 1;
+  }
+  /* Position the pane toggle in top right, next to fullscreen button */
+  div.scatter-3d :global(.pane-toggle) {
+    position: absolute;
+    top: var(--ctrl-btn-top, 5pt);
+    right: var(--ctrl-btn-right, 36px);
+    z-index: var(--pane-toggle-z-index, 10);
   }
   /* Hide controls on default, show on hover */
   div.scatter-3d :global(.pane-toggle),

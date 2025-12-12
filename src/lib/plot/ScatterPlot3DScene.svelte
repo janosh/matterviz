@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
+  import type { Vec3 } from '$lib/math'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -12,20 +13,18 @@
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/types'
-  import { T, useThrelte } from '@threlte/core'
+  import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import { scaleLinear } from 'd3-scale'
+  import { type ComponentProps, onDestroy, type Snippet, untrack } from 'svelte'
   import type { Camera, Scene } from 'three'
   import * as THREE from 'three'
+  import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+  import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
+  import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
   import { get_series_color } from './data-transform'
   import { create_color_scale, create_size_scale } from './scales'
   import Surface3D from './Surface3D.svelte'
-
-  type InstancedPointGroup = {
-    color: string
-    radius: number
-    points: InternalPoint3D[]
-  }
 
   let {
     series = [],
@@ -38,7 +37,7 @@
     surfaces = [],
     color_scale = { type: `linear`, scheme: `interpolateViridis` },
     size_scale = { type: `linear`, radius_range: [0.05, 0.2] },
-    camera_position = [10, 10, 10] as [number, number, number],
+    camera_position = [10, 10, 10] as Vec3,
     camera_projection = `perspective` as CameraProjection3D,
     auto_rotate = 0,
     rotation_damping = 0,
@@ -80,7 +79,7 @@
       radius_range?: [number, number]
       value_range?: [number, number]
     }
-    camera_position?: [number, number, number]
+    camera_position?: Vec3
     camera_projection?: CameraProjection3D
     auto_rotate?: number
     rotation_damping?: number
@@ -113,8 +112,36 @@
 
   extras.interactivity()
 
-  const scene_size = 10
-  const half = scene_size / 2
+  // Scene dimensions: x/y are horizontal (2:2), z is vertical (1)
+  // Note: In Three.js, Y is vertical. We map user's Z → Three.js Y (vertical)
+  // and user's Y → Three.js Z (depth). So scene_z here refers to Three.js Y.
+  const scene_x = 10 // user X → Three.js X (horizontal)
+  const scene_y = 10 // user Y → Three.js Z (depth/horizontal)
+  const scene_z = 5 // user Z → Three.js Y (vertical)
+  const half_x = scene_x / 2
+  const half_y = scene_y / 2
+  const half_z = scene_z / 2
+
+  // Dynamic backside positions - axes/grids/planes always face away from camera
+  // pos.x/y/z are the Three.js positions where axes attach (backside of cube)
+  let pos = $state({ x: -half_x, y: -half_z, z: -half_y })
+
+  // Update backside positions when camera crosses axis planes
+  useTask(() => {
+    if (!camera) return
+    const cam = camera.position
+    // Only update when sign changes to avoid triggering geometry recreation every frame
+    const new_x = cam.x > 0 ? -half_x : half_x
+    const new_y = cam.y > 0 ? -half_z : half_z
+    const new_z = cam.z > 0 ? -half_y : half_y
+    if (pos.x !== new_x) pos.x = new_x
+    if (pos.y !== new_y) pos.y = new_y
+    if (pos.z !== new_z) pos.z = new_z
+  })
+
+  // Sign helpers for tick/label offsets (point outward from cube center)
+  const sign_x = $derived(pos.x < 0 ? -1 : 1)
+  const sign_y = $derived(pos.y < 0 ? -1 : 1)
 
   // Flatten all points from series
   let all_points = $derived(
@@ -139,47 +166,100 @@
       ),
   )
 
-  // Compute axis ranges with padding
+  // Sample surface points for range calculation (10x10 grid)
+  function sample_surface(
+    surface: Surface3DConfig,
+  ): { x: number; y: number; z: number }[] {
+    const n = 10
+    const pts: { x: number; y: number; z: number }[] = []
+    if (surface.type === `grid` && surface.z_fn) {
+      const [x0, x1] = surface.x_range ?? [-1, 1]
+      const [y0, y1] = surface.y_range ?? [-1, 1]
+      for (let i = 0; i <= n; i++) {
+        for (let j = 0; j <= n; j++) {
+          const x = x0 + (i / n) * (x1 - x0), y = y0 + (j / n) * (y1 - y0)
+          pts.push({ x, y, z: surface.z_fn(x, y) })
+        }
+      }
+    } else if (surface.type === `parametric` && surface.parametric_fn) {
+      const [u0, u1] = surface.u_range ?? [0, 1]
+      const [v0, v1] = surface.v_range ?? [0, 1]
+      for (let i = 0; i <= n; i++) {
+        for (let j = 0; j <= n; j++) {
+          pts.push(
+            surface.parametric_fn(u0 + (i / n) * (u1 - u0), v0 + (j / n) * (v1 - v0)),
+          )
+        }
+      }
+    } else if (surface.type === `triangulated` && surface.points) {
+      pts.push(...surface.points)
+    }
+    return pts.filter((pt) => isFinite(pt.x) && isFinite(pt.y) && isFinite(pt.z))
+  }
+
+  // Compute axis range with D3's nice() for clean boundaries
   function compute_range(
     values: number[],
-    axis_range?: [number | null, number | null],
+    range?: [number | null, number | null],
   ): [number, number] {
-    if (axis_range?.[0] != null && axis_range?.[1] != null) {
-      return axis_range as [number, number]
-    }
+    if (range?.[0] != null && range?.[1] != null) return range as [number, number]
     const valid = values.filter(isFinite)
-    if (valid.length === 0) return [0, 1]
-    const min_val = Math.min(...valid)
-    const max_val = Math.max(...valid)
-    const pad = (max_val - min_val) * 0.05 || 0.5
-    return [axis_range?.[0] ?? min_val - pad, axis_range?.[1] ?? max_val + pad]
+    if (!valid.length) return [0, 1]
+    let [min, max] = [Math.min(...valid), Math.max(...valid)]
+    const pad = min === max
+      ? (min === 0 ? 1 : Math.abs(min * 0.1))
+      : (max - min) * 0.05
+    if (range?.[0] == null) min -= pad
+    if (range?.[1] == null) max += pad
+    return scaleLinear().domain([range?.[0] ?? min, range?.[1] ?? max]).nice()
+      .domain() as [number, number]
   }
 
-  let x_range = $derived(compute_range(all_points.map((pt) => pt.x), x_axis.range))
-  let y_range = $derived(compute_range(all_points.map((pt) => pt.y), y_axis.range))
-  let z_range = $derived(compute_range(all_points.map((pt) => pt.z), z_axis.range))
+  // Collect xyz values from points and surfaces
+  let surface_samples = $derived(surfaces.flatMap(sample_surface))
+  let x_range = $derived(
+    compute_range([
+      ...all_points.map((p) => p.x),
+      ...surface_samples.map((p) => p.x),
+    ], x_axis.range),
+  )
+  let y_range = $derived(
+    compute_range([
+      ...all_points.map((p) => p.y),
+      ...surface_samples.map((p) => p.y),
+    ], y_axis.range),
+  )
+  let z_range = $derived(
+    compute_range([
+      ...all_points.map((p) => p.z),
+      ...surface_samples.map((p) => p.z),
+    ], z_axis.range),
+  )
 
-  // Normalize value to [-half, half] scene coordinates
-  function normalize(value: number, range: [number, number]): number {
-    const [min_val, max_val] = range
+  // Normalize value to scene coordinates (centered around 0)
+  function normalize(
+    value: number,
+    [min_val, max_val]: [number, number],
+    scene_size: number,
+  ): number {
     return ((value - min_val) / (max_val - min_val || 1) - 0.5) * scene_size
   }
+  const normalize_x = (v: number) => normalize(v, x_range, scene_x)
+  const normalize_y = (v: number) => normalize(v, y_range, scene_y)
+  const normalize_z = (v: number) => normalize(v, z_range, scene_z)
 
   // Color/size scales
   let all_color_values = $derived(
-    all_points.map((pt) => pt.color_value).filter((val): val is number =>
-      val != null
-    ),
+    all_points.map((pt) => pt.color_value).filter((v): v is number => v != null),
   )
-  let auto_color_range = $derived.by((): [number, number] => {
-    if (all_color_values.length === 0) return [0, 1]
-    let [min, max] = [Infinity, -Infinity]
-    for (const val of all_color_values) {
-      if (val < min) min = val
-      if (val > max) max = val
-    }
-    return [min, max]
-  })
+  let auto_color_range = $derived(
+    all_color_values.length
+      ? [Math.min(...all_color_values), Math.max(...all_color_values)] as [
+        number,
+        number,
+      ]
+      : [0, 1] as [number, number],
+  )
   let all_size_values = $derived(
     all_points.map((pt) => pt.size_value).filter((val): val is number => val != null),
   )
@@ -187,96 +267,173 @@
   let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
 
   // Process points with normalized positions
+  // Swap Y/Z for Three.js: user Z → Three.js Y (vertical), user Y → Three.js Z (depth)
   let processed_points = $derived(
     all_points.map((pt): InternalPoint3D => ({
       ...pt,
-      x: normalize(pt.x, x_range),
-      y: normalize(pt.y, y_range),
-      z: normalize(pt.z, z_range),
+      x: normalize_x(pt.x), // user X → Three.js X
+      y: normalize_z(pt.z), // user Z → Three.js Y (vertical)
+      z: normalize_y(pt.y), // user Y → Three.js Z (depth)
     })),
   )
 
-  // Group points by color+size for instanced rendering
-  let instanced_point_groups = $derived.by((): InstancedPointGroup[] => {
-    const groups: Record<string, InstancedPointGroup> = {}
-    for (const point of processed_points) {
-      const srs = series[point.series_idx]
-      if (!(series_visibility[point.series_idx] ?? srs?.visible ?? true)) continue
-      const color = point.color_value != null
-        ? color_scale_fn(point.color_value)
-        : point.point_style?.fill ?? get_series_color(point.series_idx)
-      const radius = point.size_value != null
-        ? size_scale_fn(point.size_value)
-        : (point.point_style?.radius ?? styles.point?.size ?? 2) * 0.05
-      const key = `${color}-${radius.toFixed(3)}`
-      groups[key] ??= { color, radius, points: [] }
-      groups[key].points.push(point)
+  // Group points by radius, with per-instance colors
+  type RadiusGroup = { radius: number; points: InternalPoint3D[]; colors: string[] }
+
+  let radius_groups = $derived.by((): RadiusGroup[] => {
+    const groups: Record<string, RadiusGroup> = {}
+    for (const pt of processed_points) {
+      const srs = series[pt.series_idx]
+      if (!(series_visibility[pt.series_idx] ?? srs?.visible ?? true)) continue
+      const color = pt.color_value != null
+        ? color_scale_fn(pt.color_value)
+        : pt.point_style?.fill ?? get_series_color(pt.series_idx)
+      const radius = pt.size_value != null
+        ? size_scale_fn(pt.size_value)
+        : (pt.point_style?.radius ?? styles.point?.size ?? 2) * 0.05
+      const key = radius.toFixed(4)
+      ;(groups[key] ??= { radius, points: [], colors: [] }).points.push(pt)
+      groups[key].colors.push(color)
     }
     return Object.values(groups)
   })
 
-  // Generate axis ticks
-  function generate_ticks(range: [number, number], count: number = 5): number[] {
-    const [min_val, max_val] = range
-    const step = (max_val - min_val) / (count - 1)
-    return Array.from({ length: count }, (_, idx) => min_val + idx * step)
+  // Series line data for connecting points
+  type SeriesLineData = {
+    series_idx: number
+    color: string
+    width: number
+    dashed: boolean
+    line2: Line2
+    geometry: LineGeometry
+    material: LineMaterial
   }
 
-  let x_ticks = $derived(generate_ticks(x_range))
-  let y_ticks = $derived(generate_ticks(y_range))
-  let z_ticks = $derived(generate_ticks(z_range))
+  // Track previous lines for cleanup
+  let series_lines: SeriesLineData[] = $state([])
+
+  $effect(() => {
+    // Dispose old lines before creating new ones
+    for (const line_data of untrack(() => series_lines)) {
+      line_data.geometry.dispose()
+      line_data.material.dispose()
+    }
+
+    const lines: SeriesLineData[] = []
+    for (let series_idx = 0; series_idx < series.length; series_idx++) {
+      const srs = series[series_idx]
+      if (!srs?.line_style) continue
+      if (!(series_visibility[series_idx] ?? srs.visible ?? true)) continue
+
+      // Get points for this series in order
+      const series_points = processed_points
+        .filter((pt) => pt.series_idx === series_idx)
+        .sort((a, b) => a.point_idx - b.point_idx)
+
+      if (series_points.length < 2) continue
+
+      // Create fat line geometry (LineGeometry for Line2)
+      const positions: number[] = []
+      for (const pt of series_points) {
+        positions.push(pt.x, pt.y, pt.z)
+      }
+      const geometry = new LineGeometry()
+      geometry.setPositions(positions)
+
+      // Determine line style
+      const line_style = srs.line_style
+      const color = line_style.stroke ??
+        (Array.isArray(srs.point_style)
+          ? srs.point_style[0]?.fill
+          : srs.point_style?.fill) ??
+        get_series_color(series_idx)
+      const line_width = line_style.stroke_width ?? 2
+      const dashed = Boolean(line_style.line_dash)
+
+      // Create LineMaterial for fat lines (linewidth is in pixels when resolution is set)
+      // Use placeholder resolution; the separate resolution effect updates it
+      const material = new LineMaterial({
+        color: new THREE.Color(color).getHex(),
+        linewidth: line_width, // Width in pixels
+        dashed,
+        dashScale: dashed ? 2 : 1,
+        dashSize: 0.1,
+        gapSize: 0.05,
+        resolution: new THREE.Vector2(1, 1),
+      })
+
+      const line2 = new Line2(geometry, material)
+      line2.computeLineDistances()
+
+      lines.push({
+        series_idx,
+        color,
+        width: line_width,
+        dashed,
+        line2,
+        geometry,
+        material,
+      })
+    }
+    series_lines = lines
+  })
+
+  // Update LineMaterial resolution when canvas size changes
+  $effect(() => {
+    const canvas_width = width || 1
+    const canvas_height = height || 1
+    for (const line_data of series_lines) {
+      line_data.material.resolution.set(canvas_width, canvas_height)
+    }
+  })
+
+  // Cleanup on component destroy
+  onDestroy(() => {
+    for (const { geometry, material } of series_lines) {
+      geometry.dispose()
+      material.dispose()
+    }
+    Object.values(axis_geometries).forEach((g) => g.dispose())
+    for (const data of Object.values(axis_geom_data)) {
+      data.tick_geoms.forEach((g) => g.dispose())
+      data.grid_geoms.flat().forEach((g) => g.dispose())
+    }
+  })
+
+  // Generate axis ticks using D3's smart tick generation
+  function gen_ticks(
+    range: [number, number],
+    ticks?: AxisConfig3D[`ticks`],
+  ): number[] {
+    if (Array.isArray(ticks)) return ticks
+    const [min, max] = range
+    if (!isFinite(min) || !isFinite(max) || min === max) return [min]
+    const count = typeof ticks === `number` ? ticks : 5
+    return scaleLinear().domain([min, max]).ticks(count)
+  }
+
+  let x_ticks = $derived(gen_ticks(x_range, x_axis.ticks))
+  let y_ticks = $derived(gen_ticks(y_range, y_axis.ticks))
+  let z_ticks = $derived(gen_ticks(z_range, z_axis.ticks))
 
   // Create axis line geometry - reuses a shared Float32Array for efficiency
-  function create_line_geometry(
-    start: [number, number, number],
-    end: [number, number, number],
-  ): THREE.BufferGeometry {
+  function create_line_geometry(start: Vec3, end: Vec3): THREE.BufferGeometry {
     const geometry = new THREE.BufferGeometry()
     const positions = new Float32Array([...start, ...end])
     geometry.setAttribute(`position`, new THREE.BufferAttribute(positions, 3))
     return geometry
   }
 
-  // Handle point interactions
-  function handle_point_enter(point: InternalPoint3D) {
-    hovered_point = point
-    if (!on_point_hover) return
-    const orig = all_points.find((pt) =>
-      pt.series_idx === point.series_idx && pt.point_idx === point.point_idx
+  // Build event data for point interactions
+  function make_event_data(
+    point: InternalPoint3D,
+    event: MouseEvent,
+  ): Scatter3DHandlerEvent | null {
+    const orig = all_points.find(
+      (pt) => pt.series_idx === point.series_idx && pt.point_idx === point.point_idx,
     )
-    if (!orig) return
-    on_point_hover({
-      x: orig.x,
-      y: orig.y,
-      z: orig.z,
-      metadata: point.metadata ?? null,
-      label: series[point.series_idx]?.label ?? null,
-      series_idx: point.series_idx,
-      x_axis,
-      y_axis,
-      z_axis,
-      x_formatted: format_num(orig.x, x_axis.format || `.3~g`),
-      y_formatted: format_num(orig.y, y_axis.format || `.3~g`),
-      z_formatted: format_num(orig.z, z_axis.format || `.3~g`),
-      color_value: point.color_value,
-      fullscreen: false,
-      event: new MouseEvent(`pointerenter`),
-      point,
-    })
-  }
-
-  function handle_point_leave() {
-    hovered_point = null
-    on_point_hover?.(null)
-  }
-
-  function handle_point_click(point: InternalPoint3D, event: MouseEvent) {
-    if (!on_point_click) return
-    const orig = all_points.find((pt) =>
-      pt.series_idx === point.series_idx && pt.point_idx === point.point_idx
-    )
-    if (!orig) return
-    on_point_click({
+    if (!orig) return null
+    return {
       x: orig.x,
       y: orig.y,
       z: orig.z,
@@ -293,7 +450,23 @@
       fullscreen: false,
       event,
       point,
-    })
+    }
+  }
+
+  function handle_point_enter(point: InternalPoint3D) {
+    hovered_point = point
+    const data = make_event_data(point, new MouseEvent(`pointerenter`))
+    if (data) on_point_hover?.(data)
+  }
+
+  function handle_point_leave() {
+    hovered_point = null
+    on_point_hover?.(null)
+  }
+
+  function handle_point_click(point: InternalPoint3D, event: MouseEvent) {
+    const data = make_event_data(point, event)
+    if (data) on_point_click?.(data)
   }
 
   // Gizmo props
@@ -313,7 +486,7 @@
     zoomSpeed: zoom_speed,
     enablePan: pan_speed > 0,
     panSpeed: pan_speed,
-    target: [0, 0, 0] as [number, number, number],
+    target: [0, 0, 0] as Vec3,
     maxZoom: max_zoom,
     minZoom: min_zoom,
     autoRotate: Boolean(auto_rotate),
@@ -325,16 +498,29 @@
   // Axis configuration for rendering
   const tick_length = 0.15
   type AxisKey = `x` | `y` | `z`
-  type Vec3 = [number, number, number]
 
-  // Main axis line geometries - managed with proper disposal
+  // Main axis line geometries - updated when backside positions change
   let axis_geometries: Record<AxisKey, THREE.BufferGeometry> = $state({
-    x: create_line_geometry([-half, -half, -half], [half, -half, -half]),
-    y: create_line_geometry([-half, -half, -half], [-half, half, -half]),
-    z: create_line_geometry([-half, -half, -half], [-half, -half, half]),
+    x: create_line_geometry([-half_x, -half_z, -half_y], [half_x, -half_z, -half_y]),
+    y: create_line_geometry([-half_x, -half_z, -half_y], [-half_x, -half_z, half_y]),
+    z: create_line_geometry([-half_x, -half_z, -half_y], [-half_x, half_z, -half_y]),
   })
 
-  // Axis rendering configuration
+  $effect(() => {
+    // Capture pos values for dependency tracking
+    const { x: px, y: py, z: pz } = pos
+    untrack(() => {
+      for (const key of [`x`, `y`, `z`] as AxisKey[]) axis_geometries[key].dispose()
+    })
+    // X-axis: spans full X, positioned at backside Y and Z
+    axis_geometries.x = create_line_geometry([-half_x, py, pz], [half_x, py, pz])
+    // Y-axis (user Y → Three.js Z): spans full Z, positioned at backside X and Y
+    axis_geometries.y = create_line_geometry([px, py, -half_y], [px, py, half_y])
+    // Z-axis (user Z → Three.js Y): spans full Y, positioned at backside X and Z
+    axis_geometries.z = create_line_geometry([px, -half_z, pz], [px, half_z, pz])
+  })
+
+  // Axis rendering config - all positions use backside `pos` values
   let axes_config = $derived([
     {
       key: `x` as AxisKey,
@@ -342,21 +528,21 @@
       axis: x_axis,
       ticks: x_ticks,
       range: x_range,
-      get_tick_pos: (val: number): Vec3 => [normalize(val, x_range), -half, -half],
+      get_tick_pos: (val: number): Vec3 => [normalize_x(val), pos.y, pos.z],
       get_tick_end: (
         val: number,
-      ): Vec3 => [normalize(val, x_range), -half - tick_length, -half],
+      ): Vec3 => [normalize_x(val), pos.y + sign_y * tick_length, pos.z],
       get_grid_lines: (val: number): [Vec3, Vec3][] => {
-        const pos = normalize(val, x_range)
+        const px = normalize_x(val)
         return [
-          [[pos, -half, -half], [pos, half, -half]],
-          [[pos, -half, -half], [pos, -half, half]],
+          [[px, -half_z, pos.z], [px, half_z, pos.z]],
+          [[px, pos.y, -half_y], [px, pos.y, half_y]],
         ]
       },
       tick_label_pos: (
         val: number,
-      ): Vec3 => [normalize(val, x_range), -half - 0.4, -half],
-      axis_label_pos: [0, -half - 0.9, -half] as Vec3,
+      ): Vec3 => [normalize_x(val), pos.y + sign_y * 0.4, pos.z],
+      axis_label_pos: [0, pos.y + sign_y * 0.9, pos.z] as Vec3,
     },
     {
       key: `y` as AxisKey,
@@ -364,21 +550,25 @@
       axis: y_axis,
       ticks: y_ticks,
       range: y_range,
-      get_tick_pos: (val: number): Vec3 => [-half, normalize(val, y_range), -half],
+      get_tick_pos: (val: number): Vec3 => [pos.x, pos.y, normalize_y(val)],
       get_tick_end: (
         val: number,
-      ): Vec3 => [-half - tick_length, normalize(val, y_range), -half],
+      ): Vec3 => [pos.x, pos.y + sign_y * tick_length, normalize_y(val)],
       get_grid_lines: (val: number): [Vec3, Vec3][] => {
-        const pos = normalize(val, y_range)
+        const py = normalize_y(val)
         return [
-          [[-half, pos, -half], [half, pos, -half]],
-          [[-half, pos, -half], [-half, pos, half]],
+          [[-half_x, pos.y, py], [half_x, pos.y, py]],
+          [[pos.x, -half_z, py], [pos.x, half_z, py]],
         ]
       },
       tick_label_pos: (
         val: number,
-      ): Vec3 => [-half - 0.5, normalize(val, y_range), -half],
-      axis_label_pos: [-half - 1, 0, -half] as Vec3,
+      ): Vec3 => [pos.x + sign_x * 0.5, pos.y + sign_y * 0.4, normalize_y(val)],
+      axis_label_pos: [
+        pos.x,
+        pos.y + sign_y * 0.9,
+        pos.z < 0 ? half_y + 0.5 : -half_y - 0.5,
+      ] as Vec3,
     },
     {
       key: `z` as AxisKey,
@@ -386,21 +576,21 @@
       axis: z_axis,
       ticks: z_ticks,
       range: z_range,
-      get_tick_pos: (val: number): Vec3 => [-half, -half, normalize(val, z_range)],
+      get_tick_pos: (val: number): Vec3 => [pos.x, normalize_z(val), pos.z],
       get_tick_end: (
         val: number,
-      ): Vec3 => [-half, -half - tick_length, normalize(val, z_range)],
+      ): Vec3 => [pos.x + sign_x * tick_length, normalize_z(val), pos.z],
       get_grid_lines: (val: number): [Vec3, Vec3][] => {
-        const pos = normalize(val, z_range)
+        const pz = normalize_z(val)
         return [
-          [[-half, -half, pos], [half, -half, pos]],
-          [[-half, -half, pos], [-half, half, pos]],
+          [[-half_x, pz, pos.z], [half_x, pz, pos.z]],
+          [[pos.x, pz, -half_y], [pos.x, pz, half_y]],
         ]
       },
       tick_label_pos: (
         val: number,
-      ): Vec3 => [-half, -half - 0.4, normalize(val, z_range)],
-      axis_label_pos: [-half, -half, 0] as Vec3,
+      ): Vec3 => [pos.x + sign_x * 0.5, normalize_z(val), pos.z],
+      axis_label_pos: [pos.x + sign_x, 0, pos.z] as Vec3,
     },
   ])
 
@@ -416,17 +606,23 @@
     z: empty_geom_data(),
   })
 
-  // recreate all tick/grid geometries when axes change
-  $effect(() => { // Create new geometries aligned with tick arrays
-    for (
-      const { key, ticks, get_tick_pos, get_tick_end, get_grid_lines } of axes_config
-    ) {
+  // Recreate tick/grid geometries when axes config changes
+  $effect(() => {
+    const config = axes_config
+    // Dispose old geometries (untracked to avoid dependency cycle)
+    untrack(() => {
+      for (const key of [`x`, `y`, `z`] as AxisKey[]) {
+        axis_geom_data[key].tick_geoms.forEach((g) => g.dispose())
+        axis_geom_data[key].grid_geoms.flat().forEach((g) => g.dispose())
+      }
+    })
+    for (const { key, ticks, get_tick_pos, get_tick_end, get_grid_lines } of config) {
       axis_geom_data[key] = {
-        tick_geoms: ticks.map((val) =>
-          create_line_geometry(get_tick_pos(val), get_tick_end(val))
+        tick_geoms: ticks.map((v) =>
+          create_line_geometry(get_tick_pos(v), get_tick_end(v))
         ),
-        grid_geoms: ticks.map((val) =>
-          get_grid_lines(val).map(([start, end]) => create_line_geometry(start, end))
+        grid_geoms: ticks.map((v) =>
+          get_grid_lines(v).map(([s, e]) => create_line_geometry(s, e))
         ),
       }
     }
@@ -443,7 +639,7 @@
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={Math.min(width, height) / scene_size / 2 || 50}
+    zoom={Math.min(width, height) / Math.max(scene_x, scene_y) / 2 || 50}
     near={-100}
     far={1000}
   >
@@ -457,6 +653,29 @@
 <T.DirectionalLight position={[10, 20, 10]} intensity={directional_light} />
 <T.DirectionalLight position={[-10, -10, -10]} intensity={directional_light * 0.3} />
 <T.AmbientLight intensity={ambient_light} />
+
+<!-- Background planes with subtle shading - always on backside relative to camera -->
+{#if display.show_grid !== false}
+  {@const plane_mat = {
+    color: `#888`,
+    opacity: 0.04,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  }}
+  <T.Mesh position={[0, pos.y, 0]} rotation.x={-Math.PI / 2} renderOrder={-1}>
+    <T.PlaneGeometry args={[scene_x, scene_y]} />
+    <T.MeshBasicMaterial {...plane_mat} />
+  </T.Mesh>
+  <T.Mesh position={[0, 0, pos.z]} renderOrder={-1}>
+    <T.PlaneGeometry args={[scene_x, scene_z]} />
+    <T.MeshBasicMaterial {...plane_mat} />
+  </T.Mesh>
+  <T.Mesh position={[pos.x, 0, 0]} rotation.y={Math.PI / 2} renderOrder={-1}>
+    <T.PlaneGeometry args={[scene_y, scene_z]} />
+    <T.MeshBasicMaterial {...plane_mat} />
+  </T.Mesh>
+{/if}
 
 <!-- Axes with ticks and grid -->
 {#if display.show_axes !== false}
@@ -502,22 +721,32 @@
   surface
   (surface.id ?? surfaces.indexOf(surface))
 }
-  <Surface3D config={surface} {x_range} {y_range} {z_range} {scene_size} />
+  <Surface3D
+    config={surface}
+    {x_range}
+    {y_range}
+    {z_range}
+    {scene_x}
+    {scene_y}
+    {scene_z}
+  />
 {/each}
 
-<!-- Instanced scatter points -->
-{#each instanced_point_groups as group (`${group.color}-${group.radius}`)}
-  <extras.InstancedMesh
-    key="{group.color}-{group.radius}"
-    range={group.points.length}
-    frustumCulled={false}
-  >
+<!-- Series lines connecting points (fat lines using Line2) -->
+{#each series_lines as line_data (line_data.series_idx)}
+  <T is={line_data.line2} />
+{/each}
+
+<!-- Instanced scatter points with per-instance colors and event handling -->
+{#each radius_groups as group (group.radius)}
+  <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
     <T.SphereGeometry args={[1, sphere_segments, sphere_segments]} />
-    <T.MeshStandardMaterial color={group.color} />
-    {#each group.points as point (`${point.series_idx}-${point.point_idx}`)}
+    <T.MeshStandardMaterial vertexColors={false} />
+    {#each group.points as point, idx (`${point.series_idx}-${point.point_idx}`)}
       <extras.Instance
         position={[point.x, point.y, point.z]}
         scale={group.radius}
+        color={group.colors[idx]}
         onpointerenter={() => handle_point_enter(point)}
         onpointerleave={handle_point_leave}
         onclick={(evt: MouseEvent) => handle_point_click(point, evt)}
@@ -529,7 +758,7 @@
 <!-- Hover highlight -->
 {#if hovered_point}
   {@const hp = hovered_point}
-  {@const group = instanced_point_groups.find((grp) =>
+  {@const group = radius_groups.find((grp) =>
     grp.points.some((pt) =>
       pt.series_idx === hp.series_idx && pt.point_idx === hp.point_idx
     )
@@ -551,38 +780,18 @@
 <!-- Tooltip -->
 {#if hovered_point}
   {@const hp = hovered_point}
-  {@const orig = all_points.find((pt) =>
-    pt.series_idx === hp.series_idx && pt.point_idx === hp.point_idx
-  )}
-  {#if orig}
-    {@const tooltip_data = {
-    x: orig.x,
-    y: orig.y,
-    z: orig.z,
-    metadata: hp.metadata ?? null,
-    label: series[hp.series_idx]?.label ?? null,
-    series_idx: hp.series_idx,
-    x_axis,
-    y_axis,
-    z_axis,
-    x_formatted: format_num(orig.x, x_axis.format || `.3~g`),
-    y_formatted: format_num(orig.y, y_axis.format || `.3~g`),
-    z_formatted: format_num(orig.z, z_axis.format || `.3~g`),
-    color_value: orig.color_value,
-    fullscreen: false,
-    event: new MouseEvent(`pointerenter`),
-    point: hp,
-  }}
+  {@const data = make_event_data(hp, new MouseEvent(`pointerenter`))}
+  {#if data}
     <extras.HTML position={[hp.x, hp.y + 0.3, hp.z]} center>
       {#if tooltip}
-        {@render tooltip(tooltip_data)}
+        {@render tooltip(data)}
       {:else}
         <div class="tooltip">
-          <div>x: {tooltip_data.x_formatted}</div>
-          <div>y: {tooltip_data.y_formatted}</div>
-          <div>z: {tooltip_data.z_formatted}</div>
-          {#if orig.color_value != null}
-            <div>value: {format_num(orig.color_value, `.3~g`)}</div>
+          <div>x: {data.x_formatted}</div>
+          <div>y: {data.y_formatted}</div>
+          <div>z: {data.z_formatted}</div>
+          {#if data.color_value != null}
+            <div>value: {format_num(data.color_value, `.3~g`)}</div>
           {/if}
         </div>
       {/if}
