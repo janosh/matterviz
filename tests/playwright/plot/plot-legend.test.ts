@@ -191,23 +191,15 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
   test(`should apply custom styles`, async ({ page }) => {
     // Target the custom style legend instance
-    const legend_wrapper = page
-      .locator(custom_style_legend_wrapper)
-      .locator(`.legend`)
-    const legend_item = page
-      .locator(custom_style_legend_wrapper)
-      .locator(`.legend-item`)
-      .first()
+    const legend_wrapper = page.locator(custom_style_legend_wrapper)
+    const legend_item = legend_wrapper.locator(`.legend-item`).first()
 
     await expect(legend_wrapper).toHaveCSS(
       `background-color`,
       `rgba(255, 255, 255, 0.95)`,
     )
-    // Check padding on the parent div directly, not the legend itself
-    await expect(page.locator(custom_style_legend_wrapper)).toHaveCSS(
-      `padding`,
-      `0px`,
-    )
+    // Check padding on the wrapper div directly
+    await expect(legend_wrapper).toHaveCSS(`padding`, `0px`)
     // Check item color (inherited or set by --plot-legend-item-color)
     await expect(legend_item).toHaveCSS(`color`, `rgb(55, 65, 81)`) // Check color applied to item text
     // Check item padding set by --plot-legend-item-padding

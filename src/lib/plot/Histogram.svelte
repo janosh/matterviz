@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { FullscreenToggle } from '$lib/layout'
   import { format_value } from '$lib/labels'
+  import { FullscreenToggle } from '$lib/layout'
   import type { BarStyle, HistogramHandlerProps } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
+  import { AXIS_DEFAULTS } from '$lib/plot/defaults'
   import { get_relative_coords } from '$lib/plot/interactions'
   import {
     calc_auto_padding,
@@ -30,10 +31,10 @@
 
   let {
     series = $bindable([]),
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
-    y2_axis = $bindable({}),
-    display = $bindable(DEFAULTS.histogram.display),
+    x_axis: x_axis_init = {},
+    y_axis: y_axis_init = {},
+    y2_axis: y2_axis_init = {},
+    display: display_init = DEFAULTS.histogram.display,
     x_range = [null, null],
     y_range = [null, null],
     y2_range = [null, null],
@@ -42,7 +43,7 @@
     bins = $bindable(100),
     show_legend = $bindable(true),
     legend = { series_data: [] },
-    bar = {},
+    bar: bar_init = {},
     selected_property = $bindable(``),
     mode = $bindable(`single`),
     tooltip,
@@ -92,29 +93,25 @@
     on_series_toggle?: (series_idx: number) => void
   } = $props()
 
-  const final_x_axis = $derived({
-    label: `Value`,
-    format: `.2~s`,
-    scale_type: `linear` as const,
-    ...x_axis,
+  // Local state for controls (initialized from props, owned by this component)
+  // Include key AXIS_DEFAULTS props (range, ticks, scale_type) that PlotControls needs
+  const { format: _, ...axis_state_defaults } = AXIS_DEFAULTS // Exclude format (has component-specific default)
+  let bar = $state({ ...DEFAULTS.histogram.bar, ...bar_init })
+  let x_axis = $state({ ...axis_state_defaults, ...x_axis_init })
+  let y_axis = $state({ ...axis_state_defaults, ...y_axis_init })
+  // y2-axis needs different default label_shift for right-side positioning
+  let y2_axis = $state({
+    ...axis_state_defaults,
+    label_shift: { x: 0, y: 60 },
+    ...y2_axis_init,
   })
-  const final_y_axis = $derived({
-    label: `Count`,
-    format: `d`,
-    scale_type: `linear` as const,
-    ...y_axis,
-  })
+  let display = $state({ ...DEFAULTS.histogram.display, ...display_init })
+
+  // Merge component-specific defaults with local state (format comes from here, not AXIS_DEFAULTS)
+  const final_x_axis = $derived({ label: `Value`, format: `.2~s`, ...x_axis })
+  const final_y_axis = $derived({ label: `Count`, format: `d`, ...y_axis })
   const final_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
-  const final_y2_axis = $derived({
-    label: `Count`,
-    format: `d`,
-    scale_type: `linear` as const,
-    ticks: 5,
-    label_shift: { y: 60 },
-    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
-    range: [null, null] as [number | null, number | null],
-    ...y2_axis,
-  })
+  const final_y2_axis = $derived({ label: `Count`, format: `d`, ...y2_axis })
 
   // Core state
   let [width, height] = $state([0, 0])
@@ -468,10 +465,10 @@
   }
 
   function handle_double_click() {
-    // Clear axis ranges to reset to auto ranges
-    x_axis = { ...final_x_axis, range: undefined }
-    y_axis = { ...final_y_axis, range: undefined }
-    y2_axis = { ...y2_axis, range: undefined }
+    // Clear axis ranges to reset to auto ranges (preserve other axis settings)
+    x_axis = { ...x_axis, range: [null, null] }
+    y_axis = { ...y_axis, range: [null, null] }
+    y2_axis = { ...y2_axis, range: [null, null] }
   }
 
   function handle_mouse_move(
@@ -914,10 +911,10 @@
       bind:show_legend
       bind:selected_property
       bind:display
-      {bar}
-      {x_axis}
-      {y_axis}
-      {y2_axis}
+      bind:bar
+      bind:x_axis
+      bind:y_axis
+      bind:y2_axis
       auto_x_range={auto_ranges.x}
       auto_y_range={auto_ranges.y}
       auto_y2_range={auto_ranges.y2}
@@ -966,6 +963,9 @@
     background: var(--plot-bg, white);
     max-height: none !important;
     overflow: hidden;
+    /* Add padding to prevent titles from being cropped at top */
+    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    box-sizing: border-box;
   }
   .header-controls {
     position: absolute;

@@ -10,12 +10,8 @@
     sort_by_electronegativity,
     sort_by_hill_notation,
   } from './format'
-  import {
-    type ElementWithOxidation,
-    oxi_composition_to_elements,
-    type OxiComposition,
-    parse_formula_with_oxidation,
-  } from './parse'
+  import type { ElementWithOxidation, OxiComposition } from './parse'
+  import { oxi_composition_to_elements, parse_formula_with_oxidation } from './parse'
 
   type FormulaOrdering = `electronegativity` | `alphabetical` | `original` | `hill`
   type TooltipSide = `top` | `bottom` | `left` | `right`

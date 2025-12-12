@@ -174,7 +174,7 @@ export function compute_xrd_pattern(
   // Flatten species with occupancies; gather coeffs, frac coords, occu, DW factors.
   type ScatteringCoeffs = { a: number[]; b: number[]; c?: number }
   const coeffs: ScatteringCoeffs[] = []
-  const frac_coords: [number, number, number][] = []
+  const frac_coords: math.Vec3[] = []
   const occus: number[] = []
   const dw_factors: number[] = []
 
@@ -338,11 +338,11 @@ export function compute_xrd_pattern(
 // Process dropped file content and return an XRD pattern.
 // Supports both direct XRD data files (.xy, .brml) and structure files
 // (which are used to compute theoretical XRD patterns).
-export function add_xrd_pattern(
+export async function add_xrd_pattern(
   content: string | ArrayBufferLike, // File content as string or ArrayBuffer
   filename: string, // Name of the file (used to detect format)
   wavelength: number | null, // X-ray wavelength for structure-based XRD calculation
-): { pattern?: PatternEntry; error?: string } { // Object with pattern entry or error message
+): Promise<{ pattern?: PatternEntry; error?: string }> { // Object with pattern entry or error message
   try {
     // Check if file is a direct XRD data file (.xy, .brml)
     if (is_xrd_data_file(filename)) {
@@ -353,7 +353,7 @@ export function add_xrd_pattern(
       } else {
         buffer_content = new Uint8Array(content).buffer as ArrayBuffer
       }
-      const pattern = parse_xrd_file(buffer_content, filename)
+      const pattern = await parse_xrd_file(buffer_content, filename)
       if (pattern && pattern.x.length > 0) {
         return { pattern: { label: filename || `XRD data`, pattern } }
       }

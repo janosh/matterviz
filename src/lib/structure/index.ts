@@ -1,7 +1,9 @@
-import type { CompositionType, ElementSymbol, Lattice, StructureScene, Vec3 } from '$lib'
+import type { CompositionType, ElementSymbol } from '$lib'
 import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import { element_data } from '$lib/element'
+import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { Lattice, StructureScene } from '$lib/structure'
 import type { ComponentProps } from 'svelte'
 import type { Pbc } from './pbc'
 

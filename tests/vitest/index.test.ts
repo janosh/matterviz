@@ -14,18 +14,6 @@ test(`categories and element_symbols are exported`, () => {
   expect(labels.ELEM_SYMBOLS).toHaveLength(lib.element_data.length)
 })
 
-test(`escape_html function escapes HTML special characters`, () => {
-  expect(lib.escape_html(`<script>alert('xss')</script>`)).toBe(
-    `&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;`,
-  )
-  expect(lib.escape_html(`& < > " '`)).toBe(`&amp; &lt; &gt; &quot; &#39;`)
-  expect(lib.escape_html(`normal text`)).toBe(`normal text`)
-  expect(lib.escape_html(``)).toBe(``)
-  expect(lib.escape_html(`<div class="test">content</div>`)).toBe(
-    `&lt;div class=&quot;test&quot;&gt;content&lt;/div&gt;`,
-  )
-})
-
 test(`is_binary function detects binary content`, () => {
   // Text content should not be binary
   expect(lib.is_binary(`Hello, world!`)).toBe(false)

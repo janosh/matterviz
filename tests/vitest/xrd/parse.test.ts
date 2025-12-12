@@ -245,11 +245,11 @@ describe(`parse_brml_file`, () => {
     return zipped.buffer as ArrayBuffer
   }
 
-  test(`parses mock BRML file with intensities`, () => {
+  test(`parses mock BRML file with intensities`, async () => {
     const intensities = [100, 150, 200, 180, 120]
     const brml_buffer = create_mock_brml(intensities, 20, 0.05)
 
-    const result = parse_brml_file(brml_buffer)
+    const result = await parse_brml_file(brml_buffer)
     expect(result).not.toBeNull()
     // y values are normalized to 0-100 (max=200, so 100->50, 150->75, 200->100, etc.)
     expect(result?.y[0]).toBeCloseTo(50, 1)
@@ -271,11 +271,11 @@ describe(`parse_brml_file`, () => {
       const files = { 'readme.txt': new TextEncoder().encode(`not XRD`) }
       return zipSync(files).buffer as ArrayBuffer
     }],
-  ])(`returns null for %s`, (_desc, make_buffer) => {
-    expect(parse_brml_file(make_buffer())).toBeNull()
+  ])(`returns null for %s`, async (_desc, make_buffer) => {
+    expect(await parse_brml_file(make_buffer())).toBeNull()
   })
 
-  test(`handles XML with Counts tag instead of Intensities`, () => {
+  test(`handles XML with Counts tag instead of Intensities`, async () => {
     const xml_content = `<?xml version="1.0"?>
 <RawData>
   <Start>15</Start>
@@ -285,7 +285,7 @@ describe(`parse_brml_file`, () => {
     const files = { 'data.xml': new TextEncoder().encode(xml_content) }
     const zipped = zipSync(files)
 
-    const result = parse_brml_file(zipped.buffer as ArrayBuffer)
+    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
     expect(result).not.toBeNull()
     expect(result?.x[0]).toBeCloseTo(15, 5) // Start angle
     expect(result?.x[4]).toBeCloseTo(15.04, 5) // 15 + 4*0.01
@@ -293,7 +293,7 @@ describe(`parse_brml_file`, () => {
     expect(result?.y).toEqual([50, 75, 100, 90, 60])
   })
 
-  test(`handles Bruker HRXRD 8-column Datum format`, () => {
+  test(`handles Bruker HRXRD 8-column Datum format`, async () => {
     // Format: flags, flags, 2Theta, Omega, ..., intensity (8 columns)
     const xml_content = `<?xml version="1.0"?>
 <RawData>
@@ -309,7 +309,7 @@ describe(`parse_brml_file`, () => {
     const files = { 'RawData0.xml': new TextEncoder().encode(xml_content) }
     const zipped = zipSync(files)
 
-    const result = parse_brml_file(zipped.buffer as ArrayBuffer)
+    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
     expect(result).not.toBeNull()
     // Check all 2θ values from column 2
     expect(result?.x[0]).toBeCloseTo(44, 5)
@@ -323,7 +323,7 @@ describe(`parse_brml_file`, () => {
     expect(result?.y[3]).toBeCloseTo(40, 1)
   })
 
-  test(`handles Bruker powder 5-column Datum format`, () => {
+  test(`handles Bruker powder 5-column Datum format`, async () => {
     // Format: time, flag, 2Theta, Theta, intensity (5 columns)
     const xml_content = `<?xml version="1.0"?>
 <RawData>
@@ -338,7 +338,7 @@ describe(`parse_brml_file`, () => {
     const files = { 'RawData0.xml': new TextEncoder().encode(xml_content) }
     const zipped = zipSync(files)
 
-    const result = parse_brml_file(zipped.buffer as ArrayBuffer)
+    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
     expect(result).not.toBeNull()
     // Check all 2θ values from column 2
     expect(result?.x[0]).toBeCloseTo(4.9979, 4)
@@ -350,7 +350,7 @@ describe(`parse_brml_file`, () => {
     expect(result?.y[2]).toBeCloseTo(97.55, 1)
   })
 
-  test(`handles Bruker HRXRD format with Experiment0/ path prefix`, () => {
+  test(`handles Bruker HRXRD format with Experiment0/ path prefix`, async () => {
     // Real BRML files have nested directory structure like Experiment0/RawData0.xml
     const xml_content = `<?xml version="1.0"?>
 <RawData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -369,7 +369,7 @@ describe(`parse_brml_file`, () => {
     }
     const zipped = zipSync(files)
 
-    const result = parse_brml_file(zipped.buffer as ArrayBuffer)
+    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
     expect(result).not.toBeNull()
     expect(result?.x[0]).toBeCloseTo(44, 5)
     expect(result?.x[1]).toBeCloseTo(44.002, 5)
@@ -380,7 +380,7 @@ describe(`parse_brml_file`, () => {
     expect(result?.y[2]).toBeCloseTo(100, 1)
   })
 
-  test(`finds Datum data in fallback XML search`, () => {
+  test(`finds Datum data in fallback XML search`, async () => {
     // When RawData file is not named 'rawdata', fall back to searching all XMLs
     const xml_content = `<?xml version="1.0"?>
 <RawData>
@@ -396,7 +396,7 @@ describe(`parse_brml_file`, () => {
     }
     const zipped = zipSync(files)
 
-    const result = parse_brml_file(zipped.buffer as ArrayBuffer)
+    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
     expect(result).not.toBeNull()
     expect(result?.x[0]).toBeCloseTo(30, 5)
     expect(result?.x[1]).toBeCloseTo(30.01, 5)
@@ -404,7 +404,7 @@ describe(`parse_brml_file`, () => {
     expect(result?.y[1]).toBeCloseTo(100, 1)
   })
 
-  test(`handles single-element Datum array without divide-by-zero`, () => {
+  test(`handles single-element Datum array without divide-by-zero`, async () => {
     // Edge case: single data point should not cause NaN/Infinity from step calculation
     const xml_content = `<?xml version="1.0"?>
 <RawData>
@@ -417,7 +417,7 @@ describe(`parse_brml_file`, () => {
     const files = { 'RawData0.xml': new TextEncoder().encode(xml_content) }
     const zipped = zipSync(files)
 
-    const result = parse_brml_file(zipped.buffer as ArrayBuffer)
+    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
     expect(result).not.toBeNull()
     expect(result?.x).toEqual([45.5])
     expect(result?.y).toEqual([100]) // Single element normalized to 100
@@ -441,24 +441,24 @@ describe(`parse_xrd_file`, () => {
       </dataPoints></scan></xrdMeasurement></xrdMeasurements>`,
       `scan.xrdml`,
     ],
-  ])(`routes %s files correctly`, (_desc, content, filename) => {
-    const result = parse_xrd_file(content as string | ArrayBuffer, filename)
+  ])(`routes %s files correctly`, async (_desc, content, filename) => {
+    const result = await parse_xrd_file(content as string | ArrayBuffer, filename)
     expect(result).not.toBeNull()
     expect(result?.x).toEqual([10, 20])
     expect(result?.y[1]).toBeCloseTo(100, 1) // max normalized to 100
   })
 
-  test(`routes .brml files correctly`, () => {
+  test(`routes .brml files correctly`, async () => {
     const files = { 'RawData0.xml': new TextEncoder().encode(brml_xml) }
-    const result = parse_xrd_file(zipSync(files).buffer as ArrayBuffer, `scan.brml`)
+    const result = await parse_xrd_file(zipSync(files).buffer as ArrayBuffer, `scan.brml`)
     expect(result).not.toBeNull()
     expect(result?.x).toEqual([10, 11]) // Start=10, Step=1
     expect(result?.y[0]).toBeCloseTo(50, 1) // 100/200*100
     expect(result?.y[1]).toBeCloseTo(100, 1) // 200/200*100
   })
 
-  test(`returns null for unsupported extension`, () => {
-    expect(parse_xrd_file(`content`, `data.txt`)).toBeNull()
+  test(`returns null for unsupported extension`, async () => {
+    expect(await parse_xrd_file(`content`, `data.txt`)).toBeNull()
   })
 })
 
@@ -504,7 +504,7 @@ describe(`real example files`, () => {
   })
 
   for (const filename of xrd_files) {
-    test(`parses ${filename} successfully`, () => {
+    test(`parses ${filename} successfully`, async () => {
       const filepath = path.join(static_xrd_dir, filename)
       let content: Buffer = fs.readFileSync(filepath)
 
@@ -520,7 +520,7 @@ describe(`real example files`, () => {
 
       // Use ArrayBuffer for binary formats, string for text
       const input = base_ext === `brml` ? content.buffer : content.toString()
-      const result = parse_xrd_file(input as string | ArrayBuffer, base_filename)
+      const result = await parse_xrd_file(input as string | ArrayBuffer, base_filename)
 
       expect(result).not.toBeNull()
       if (!result) return // Type guard for TypeScript

@@ -1,4 +1,5 @@
 import type { D3SymbolName } from '$lib/labels'
+import type { Vec3 } from '$lib/math'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
@@ -487,3 +488,124 @@ export const DEFAULT_SERIES_SYMBOLS = [
   `Star`,
   `Wye`,
 ] as const satisfies readonly D3SymbolName[]
+
+export type XyzObj = { x: number; y: number; z: number }
+
+// 3D point extending base Point with z coordinate (prefixed to avoid conflict with convex-hull)
+export interface ScatterPoint3D extends Point {
+  z: number
+}
+
+// 3D data series extending DataSeries with z array
+// Omit filtered_data since it uses 2D InternalPoint type, redeclare with 3D type
+export interface DataSeries3D
+  extends Omit<DataSeries, `x` | `y` | `y_axis` | `filtered_data`> {
+  x: readonly number[]
+  y: readonly number[]
+  z: readonly number[]
+  filtered_data?: InternalPoint3D[]
+}
+
+// Internal 3D point for processing within ScatterPlot3D
+export interface InternalPoint3D extends ScatterPoint3D {
+  series_idx: number
+  point_idx: number
+  color_value?: number | null
+  size_value?: number | null
+  metadata?: Record<string, unknown>
+  point_style?: PointStyle
+}
+
+// Surface types for 3D visualization
+export type SurfaceType = `grid` | `parametric` | `triangulated`
+
+// Configuration for 3D surfaces
+export interface Surface3DConfig {
+  id?: string | number
+  type: SurfaceType
+  // For grid surfaces: regular grid with z values
+  x_range?: [number, number]
+  y_range?: [number, number]
+  resolution?: number | [number, number] // grid resolution (x, y)
+  z_fn?: (x: number, y: number) => number
+  // For parametric surfaces: u,v parameterization
+  u_range?: [number, number]
+  v_range?: [number, number]
+  parametric_fn?: (u: number, v: number) => XyzObj
+  // For triangulated surfaces: explicit geometry (only x,y,z needed, not scatter-specific fields)
+  points?: XyzObj[]
+  triangles?: Vec3[] // indices into points array
+  // Appearance
+  color?: string
+  color_fn?: (x: number, y: number, z: number) => string
+  opacity?: number
+  wireframe?: boolean
+  wireframe_color?: string
+  wireframe_width?: number
+  visible?: boolean
+  // Double-sided rendering
+  double_sided?: boolean
+}
+
+// Extended axis config for 3D (same as 2D but can add 3D-specific options)
+export interface AxisConfig3D extends AxisConfig {
+  // 3D-specific axis options can be added here
+  show_plane?: boolean // Show grid plane for this axis
+  plane_opacity?: number
+}
+
+// Display config extended for 3D
+export interface DisplayConfig3D extends DisplayConfig {
+  z_grid?: boolean
+  z_zero_line?: boolean
+  show_axes?: boolean
+  show_axis_labels?: boolean
+  show_bounding_box?: boolean
+  show_grid?: boolean
+}
+
+// 3D scatter handler props
+export interface Scatter3DHandlerProps<Metadata = Record<string, unknown>> {
+  x: number
+  y: number
+  z: number
+  metadata?: Metadata | null
+  label?: string | null
+  series_idx: number
+  x_axis: AxisConfig3D
+  y_axis: AxisConfig3D
+  z_axis: AxisConfig3D
+  x_formatted: string
+  y_formatted: string
+  z_formatted: string
+  color_value?: number | null
+  fullscreen?: boolean
+}
+
+export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
+  & Scatter3DHandlerProps<Metadata>
+  & { event: MouseEvent; point: InternalPoint3D }
+
+// Camera projection types for 3D
+export type CameraProjection3D = `perspective` | `orthographic`
+
+// 3D plot config extending base
+export interface PlotConfig3D {
+  x_axis?: AxisConfig3D
+  y_axis?: AxisConfig3D
+  z_axis?: AxisConfig3D
+  display?: DisplayConfig3D
+}
+
+// 3D style overrides
+export interface StyleOverrides3D extends StyleOverrides {
+  point?: StyleOverrides[`point`] & {
+    sphere_segments?: number // Level of detail for sphere geometry
+  }
+}
+
+// Controls config for 3D
+export interface ControlsConfig3D extends ControlsConfig {
+  show_camera_controls?: boolean
+  show_surface_controls?: boolean
+}

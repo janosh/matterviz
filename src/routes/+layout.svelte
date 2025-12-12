@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { Icon } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import '$lib/app.css'
   import { element_data } from '$lib/element'
   import { theme_state } from '$lib/state.svelte'

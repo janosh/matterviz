@@ -10,12 +10,12 @@
     series = [],
     bins = $bindable(DEFAULTS.histogram.bin_count),
     mode = $bindable(DEFAULTS.histogram.mode),
-    bar = {},
+    bar = $bindable({}),
     show_legend = $bindable(DEFAULTS.histogram.show_legend),
     selected_property = $bindable(``),
-    x_axis = {},
-    y_axis = {},
-    y2_axis = {},
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    y2_axis = $bindable({}),
     display = $bindable({}),
     show_controls = $bindable(false),
     controls_open = $bindable(false),
@@ -48,9 +48,9 @@
   bind:show_controls
   bind:controls_open
   bind:display
-  {x_axis}
-  {y_axis}
-  {y2_axis}
+  bind:x_axis
+  bind:y_axis
+  bind:y2_axis
   {auto_y2_range}
   {...rest}
 >
