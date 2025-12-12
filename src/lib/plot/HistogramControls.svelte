@@ -48,9 +48,9 @@
   bind:show_controls
   bind:controls_open
   bind:display
-  {x_axis}
-  {y_axis}
-  {y2_axis}
+  bind:x_axis
+  bind:y_axis
+  bind:y2_axis
   {auto_y2_range}
   {...rest}
 >

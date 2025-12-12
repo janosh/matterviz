@@ -44,7 +44,7 @@
   }
 </script>
 
-<PlotControls {x_axis} {y_axis} {y2_axis} bind:display show_controls {...rest}>
+<PlotControls bind:x_axis bind:y_axis bind:y2_axis bind:display show_controls {...rest}>
   {@render children?.({ x_axis, y_axis, y2_axis, display, styles, selected_series_idx })}
   <SettingsSection
     title="Markers"

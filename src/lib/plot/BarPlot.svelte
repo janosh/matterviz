@@ -1377,9 +1377,9 @@
         bind:controls_open
         bind:orientation
         bind:mode
-        {x_axis}
-        {y_axis}
-        {y2_axis}
+        bind:x_axis
+        bind:y_axis
+        bind:y2_axis
         bind:display
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
