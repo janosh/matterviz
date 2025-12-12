@@ -1,5 +1,4 @@
-import type { Vec3 } from '$lib'
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import {
   angle_between_vectors,
   displacement_pbc,

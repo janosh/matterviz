@@ -1176,21 +1176,16 @@ function farthest_point_for_face_4d(
 function build_horizon_4d(
   faces: ConvexHullFace4D[],
   visible_face_indices: Set<number>,
-): [number, number, number][] {
+): math.Vec3[] {
   // In 4D, horizon "ridges" are triangles (3 vertices)
-  const ridge_count = new Map<string, [number, number, number]>()
+  const ridge_count = new Map<string, math.Vec3>()
 
   for (const face_idx of visible_face_indices) {
     const face = faces[face_idx]
     const [a, b, c, d] = face.vertices
 
     // Each tetrahedron face has 4 triangular ridges
-    const ridges: [number, number, number][] = [
-      [a, b, c],
-      [a, b, d],
-      [a, c, d],
-      [b, c, d],
-    ]
+    const ridges: math.Vec3[] = [[a, b, c], [a, b, d], [a, c, d], [b, c, d]]
 
     for (const ridge of ridges) {
       const sorted = ridge.slice().sort((x, y) => x - y)
@@ -1205,7 +1200,7 @@ function build_horizon_4d(
     }
   }
 
-  const horizon: [number, number, number][] = []
+  const horizon: math.Vec3[] = []
   for (const ridge of ridge_count.values()) {
     if (!Number.isNaN(ridge[0])) {
       horizon.push(ridge)

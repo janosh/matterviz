@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { get_chart_svg } from '../helpers'
 
 test.describe(`BandsAndDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -132,7 +133,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
     const initial_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
 
     // Hover over DOS plot
-    const dos_svg = dos_plot.locator(`svg`)
+    const dos_svg = get_chart_svg(dos_plot)
     const dos_box = await dos_svg.boundingBox()
     if (dos_box) {
       await page.mouse.move(

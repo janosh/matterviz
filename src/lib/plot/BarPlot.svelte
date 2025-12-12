@@ -1377,9 +1377,9 @@
         bind:controls_open
         bind:orientation
         bind:mode
-        {x_axis}
-        {y_axis}
-        {y2_axis}
+        bind:x_axis
+        bind:y_axis
+        bind:y2_axis
         bind:display
         auto_x_range={auto_ranges.x as [number, number]}
         auto_y_range={auto_ranges.y as [number, number]}
@@ -1420,6 +1420,9 @@
     background: var(--plot-bg, white);
     max-height: none !important;
     overflow: hidden;
+    /* Add padding to prevent titles from being cropped at top */
+    padding-top: var(--plot-fullscreen-padding-top, 2em);
+    box-sizing: border-box;
   }
   .header-controls {
     position: absolute;

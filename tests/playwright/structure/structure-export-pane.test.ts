@@ -17,7 +17,7 @@ test.describe(`StructureExportPane Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     // Wait for the export toggle to appear instead of canvas
-    await page.waitForSelector(`.structure-export-toggle`, { timeout: 15000 })
+    await page.waitForSelector(`.structure-export-toggle`, { timeout: 5000 })
   })
 
   test(`toggle button visibility and tooltip`, async ({ page }) => {

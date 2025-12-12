@@ -1,4 +1,5 @@
-import type { Matrix3x3, PymatgenStructure, Vec3 } from '$lib'
+import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { PymatgenStructure } from '$lib/structure'
 
 export type BrillouinZoneData = {
   order: number // 1st, 2nd, 3rd BZ

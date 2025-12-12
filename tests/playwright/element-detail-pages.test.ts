@@ -16,12 +16,12 @@ test.describe(`Element detail page`, () => {
         try {
           await page.goto(`/${random_element.name.toLowerCase()}`, {
             waitUntil: `networkidle`,
-            timeout: 15000,
+            timeout: 5000,
           })
 
           // Wait for and check the h2 element content
           const h2_locator = page.locator(`h2`)
-          await expect(h2_locator).toBeVisible({ timeout: 15000 })
+          await expect(h2_locator).toBeVisible({ timeout: 5000 })
           await expect(h2_locator).toContainText(
             `${random_element.number} - ${random_element.name}`,
           )
