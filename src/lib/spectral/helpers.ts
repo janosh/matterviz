@@ -826,7 +826,7 @@ export function extract_efermi(data: unknown): number | undefined {
   return undefined
 }
 
-/** Calculate fraction of |values| that are negative. Used to detect imaginary phonon modes. */
+// Calculate fraction of |values| that are negative. Used to detect imaginary phonon modes.
 export function negative_fraction(values: number[]): number {
   let [neg, total] = [0, 0]
   for (const val of values) {

@@ -1,11 +1,12 @@
-import type { CompositionType } from '$lib'
+import type { CompositionType } from '$lib/composition'
+import type { Vec3 } from '$lib/math'
 import type { RadiationKey } from './calc-xrd'
 export * from './broadening'
 export * from './calc-xrd'
 export * from './parse'
 export { default as XrdPlot } from './XrdPlot.svelte'
 
-export type Hkl = [number, number, number]
+export type Hkl = Vec3
 export type HklObj = { hkl: Hkl; multiplicity?: number }
 export type RecipPoint = { hkl: Hkl; g_norm: number }
 export type HklFormat = `compact` | `full` | null

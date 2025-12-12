@@ -174,7 +174,7 @@ export function compute_xrd_pattern(
   // Flatten species with occupancies; gather coeffs, frac coords, occu, DW factors.
   type ScatteringCoeffs = { a: number[]; b: number[]; c?: number }
   const coeffs: ScatteringCoeffs[] = []
-  const frac_coords: [number, number, number][] = []
+  const frac_coords: math.Vec3[] = []
   const occus: number[] = []
   const dw_factors: number[] = []
 

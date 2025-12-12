@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure, ElementSymbol } from '$lib'
+  import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
   import { Icon, Spinner, toggle_fullscreen } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
@@ -483,7 +483,7 @@
   let orbit_controls = $state<
     ComponentProps<typeof StructureScene>[`orbit_controls`]
   >(undefined)
-  let rotation_target_ref = $state<[number, number, number] | undefined>(undefined)
+  let rotation_target_ref = $state<Vec3 | undefined>(undefined)
   let initial_computed_zoom = $state<number | undefined>(undefined)
   let camera_move_timeout: ReturnType<typeof setTimeout> | null = $state(null)
 
