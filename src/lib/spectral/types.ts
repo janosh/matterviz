@@ -1,6 +1,6 @@
 // TypeScript type definitions for band structures and density of states
 
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { InternalPoint } from '$lib/plot'
 import type { PymatgenCompleteDos } from './helpers'
 
@@ -12,7 +12,7 @@ export type NormalizationMode = `max` | `sum` | `integral` | null
 // Q-point representation
 export interface QPoint {
   label: string | null
-  frac_coords: [number, number, number]
+  frac_coords: Vec3
   distance?: number
 }
 
@@ -30,7 +30,7 @@ export interface BaseBandStructure {
   }
   qpoints: QPoint[]
   branches: Branch[]
-  labels_dict: Record<string, [number, number, number]>
+  labels_dict: Record<string, Vec3>
   distance: number[]
   nb_bands: number
   bands: number[][] // [nb_bands][nb_qpoints]

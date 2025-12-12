@@ -7,7 +7,6 @@ export interface TweenedOptions<T> {
   interpolate?: (a: T, b: T) => (t: number) => T
 }
 
-export * from './svg'
 export { default as BarPlot } from './BarPlot.svelte'
 export { default as BarPlotControls } from './BarPlotControls.svelte'
 export { default as ColorBar } from './ColorBar.svelte'
@@ -22,7 +21,12 @@ export { default as PlotLegend } from './PlotLegend.svelte'
 export { default as PlotTooltip } from './PlotTooltip.svelte'
 export * from './scales'
 export { default as ScatterPlot } from './ScatterPlot.svelte'
+export { default as ScatterPlot3D } from './ScatterPlot3D.svelte'
+export { default as ScatterPlot3DControls } from './ScatterPlot3DControls.svelte'
+export { default as ScatterPlot3DScene } from './ScatterPlot3DScene.svelte'
 export { default as ScatterPlotControls } from './ScatterPlotControls.svelte'
 export { default as ScatterPoint } from './ScatterPoint.svelte'
 export { default as SpacegroupBarPlot } from './SpacegroupBarPlot.svelte'
+export { default as Surface3D } from './Surface3D.svelte'
+export * from './svg'
 export * from './types'

@@ -10,9 +10,9 @@
     controls_open = $bindable(false),
     children,
     post_children,
-    x_axis = {},
-    y_axis = {},
-    y2_axis = {},
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    y2_axis = $bindable({}),
     display = $bindable({}),
     auto_x_range = [0, 1],
     auto_y_range = [0, 1],
@@ -171,9 +171,9 @@
       title="Axis Range"
       current_values={{ x_range: x_axis.range, y_range: y_axis.range, y2_range: y2_axis.range }}
       on_reset={() => {
-        x_axis.range = undefined
-        y_axis.range = undefined
-        y2_axis.range = undefined
+        x_axis.range = [null, null]
+        y_axis.range = [null, null]
+        y2_axis.range = [null, null]
         Object.values(range_els).forEach((el) => el.classList.remove(`invalid`))
       }}
       class="pane-grid"

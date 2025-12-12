@@ -1,10 +1,10 @@
-import type { Matrix3x3, Vec3 } from '$lib'
 import {
   compute_brillouin_zone,
   compute_convex_hull,
   generate_bz_vertices,
   reciprocal_lattice,
 } from '$lib/brillouin/compute'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import reference_data from './bz_reference_data.json' with { type: 'json' }
 

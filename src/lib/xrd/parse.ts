@@ -1,4 +1,3 @@
-import { unzipSync } from 'fflate'
 import type { XrdPattern } from './index'
 
 // Maximum number of data points to keep after subsampling for performance
@@ -120,8 +119,10 @@ export function parse_xy_file(content: string): XrdPattern | null {
 
 // Parse a Bruker .brml file (ZIP archive containing XML data).
 // Extracts 2θ and intensity data from the RawData XML within the archive.
-export function parse_brml_file(data: ArrayBuffer): XrdPattern | null {
+export async function parse_brml_file(data: ArrayBuffer): Promise<XrdPattern | null> {
   try {
+    // Lazy import fflate to avoid bundling in SSR (Deno compatibility)
+    const { unzipSync } = await import(`fflate`)
     const files = unzipSync(new Uint8Array(data))
 
     // Find the RawData XML file (usually named RawData0.xml or similar)
@@ -399,10 +400,10 @@ export function parse_xrdml_file(content: string): XrdPattern | null {
 // Main entry point for parsing XRD data files.
 // Detects file type by extension and delegates to appropriate parser.
 // Handles both plain and gzipped filenames (content should already be decompressed)
-export function parse_xrd_file(
+export async function parse_xrd_file(
   content: string | ArrayBuffer,
   filename: string,
-): XrdPattern | null {
+): Promise<XrdPattern | null> {
   // Strip .gz suffix if present to get base extension
   const base_name = filename.toLowerCase().replace(/\.gz$/, ``)
   const ext = base_name.split(`.`).pop()
@@ -422,12 +423,12 @@ export function parse_xrd_file(
     return parse_xrdml_file(text)
   }
 
-  // Binary formats
+  // Binary formats (async due to lazy fflate import for SSR/Deno compatibility)
   if (ext === `brml`) {
     const buffer = typeof content === `string`
       ? new TextEncoder().encode(content).buffer
       : content
-    return parse_brml_file(buffer as ArrayBuffer)
+    return await parse_brml_file(buffer as ArrayBuffer)
   }
 
   return null

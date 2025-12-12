@@ -1,5 +1,5 @@
 // Periodic boundary conditions utilities
-import type { Vec3 } from '$lib'
+import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { ParsedStructure } from './parse'
 

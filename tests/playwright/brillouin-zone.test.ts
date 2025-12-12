@@ -81,14 +81,16 @@ test.describe(`BrillouinZone Component Tests`, () => {
       sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
       targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
     })
+    await page.waitForTimeout(100)
     const rotated = await canvas.screenshot()
-    // Compare lengths instead of pixel-perfect equality to avoid anti-aliasing issues
-    expect(Math.abs(initial.length - rotated.length)).toBeGreaterThan(100)
+    // Avoid pixel-perfect assertions; just ensure the canvas changed.
+    expect(rotated.equals(initial)).toBe(false)
 
     await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 } })
     await page.mouse.wheel(0, -200)
+    await page.waitForTimeout(100)
     const zoomed = await canvas.screenshot()
-    expect(Math.abs(rotated.length - zoomed.length)).toBeGreaterThan(100)
+    expect(zoomed.equals(rotated)).toBe(false)
   })
 
   test(`maintains quality across BZ order changes`, async ({ page }) => {
@@ -266,7 +268,7 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
     await page.goto(`/test/brillouin-zone?data_url=/structures/mp-1.json`, {
       waitUntil: `networkidle`,
     })
-    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 15000 })
+    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 5000 })
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_file_load`, {
       timeout: 5000,
     })

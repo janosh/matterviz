@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib'
+  import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { T } from '@threlte/core'

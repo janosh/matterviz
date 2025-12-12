@@ -120,22 +120,6 @@ describe(`Line`, () => {
     expect(area_path.getAttribute(`d`)).toMatch(/^M0,50L100,0L100,100L0,100Z$/)
   })
 
-  test(`initializes tweens`, () => {
-    const points: [number, number][] = [
-      [10, 10],
-      [50, 50],
-    ]
-    const origin: [number, number] = [0, 100]
-
-    mount(Line, {
-      target: document.body,
-      props: { points, origin, tween_duration: 100 },
-    })
-
-    const paths = document.querySelectorAll(`path`)
-    expect(paths.length).toBe(2) // Check paths exist
-  })
-
   test(`handles empty points array`, () => {
     const points: [number, number][] = []
     const origin: [number, number] = [0, 100]

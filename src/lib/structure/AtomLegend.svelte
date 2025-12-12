@@ -445,7 +445,7 @@
   }
   .element-legend sub {
     font-size: 0.85em;
-    margin: 0 0 0 -1pt;
+    margin: 0 0 0 -2pt;
   }
   .element-legend label.remapped {
     outline: 2px dashed var(--accent-color, #4a90d9);

@@ -19,11 +19,8 @@
   import { BarPlot, ScatterPlot } from '$lib/plot'
   import { add_xrd_pattern } from '$lib/xrd/calc-xrd'
   import type { ComponentProps } from 'svelte'
-  import {
-    type BroadeningParams,
-    compute_broadened_pattern,
-    DEFAULT_BROADENING,
-  } from './broadening'
+  import type { BroadeningParams } from './broadening'
+  import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
@@ -301,8 +298,11 @@
     loading = true
     error_msg = undefined
 
-    const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
-      const result = add_xrd_pattern(content, filename, wavelength)
+    const compute_and_add = async (
+      content: string | ArrayBuffer,
+      filename: string,
+    ) => {
+      const result = await add_xrd_pattern(content, filename, wavelength)
       if (result.error) {
         error_msg = result.error
       } else if (result.pattern) {
@@ -339,11 +339,11 @@
             const output_name = base_name.endsWith(`.brml`)
               ? base_name
               : file.name.replace(/\.gz$/i, ``)
-            ;(on_file_drop || compute_and_add)(buffer, output_name)
+            await (on_file_drop || compute_and_add)(buffer, output_name)
           } else {
             // Text-based formats (.xy, .xye, .xrdml) - decompress_file handles .gz
             const { content, filename } = await decompress_file(file)
-            if (content) (on_file_drop || compute_and_add)(content, filename)
+            if (content) await (on_file_drop || compute_and_add)(content, filename)
           }
         } catch (exc) {
           error_msg = `Failed to load file ${file.name}: ${

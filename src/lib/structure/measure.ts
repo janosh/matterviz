@@ -1,7 +1,6 @@
 // functions for measuring distances and angles between structure sites
 
-import type { Vec3 } from '$lib'
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import { mat3x3_vec3_multiply, matrix_inverse_3x3, subtract } from '$lib/math'
 
 export type AngleMode = `degrees` | `radians`

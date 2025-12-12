@@ -142,6 +142,8 @@
   series_data={series_data.slice(0, 2)}
   layout="horizontal"
   layout_tracks={2}
+  wrapper_style="background-color: rgba(255, 255, 255, 0.95); padding: 0px;"
+  item_style="color: rgb(55, 65, 81); padding: 1px 3px;"
   on_toggle={() => {}}
   on_double_click={() => {}}
 />

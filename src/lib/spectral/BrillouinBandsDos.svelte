@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib'
   import { BrillouinZone, reciprocal_lattice } from '$lib/brillouin'
+  import type { Vec3 } from '$lib/math'
   import type { InternalPoint } from '$lib/plot'
   import type { PymatgenStructure } from '$lib/structure'
   import type { ComponentProps, Snippet } from 'svelte'

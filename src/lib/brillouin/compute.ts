@@ -1,6 +1,6 @@
 // Brillouin zone generation via convex hull
 
-import type { Matrix3x3, Vec3 } from '$lib'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { Vector3 } from 'three'
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'

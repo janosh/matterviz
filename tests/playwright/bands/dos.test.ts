@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-await-in-loop
 import { expect, test } from '@playwright/test'
+import { get_chart_svg } from '../helpers'
 
 test.describe(`DOS Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -61,7 +62,9 @@ test.describe(`DOS Component Tests`, () => {
     const stacked_plot = page.locator(`[data-testid="dos-stacked"] .scatter`)
     // Use stroke presence to identify line paths (robust against fill="none" vs "transparent")
     const paths = stacked_plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
-    expect(await paths.count()).toBe(2)
+    await expect(paths).toHaveCount(2)
+    await expect(paths.nth(0)).toBeVisible()
+    await expect(paths.nth(1)).toBeVisible()
 
     // Verify second curve spans greater vertical extent (stacked higher)
     const bbox_1 = await paths.nth(0).boundingBox()
@@ -135,28 +138,32 @@ test.describe(`DOS Component Tests`, () => {
     const plot = page.locator(`[data-testid="dos-single"] .scatter`)
     await expect(plot).toBeVisible()
 
-    const svg = plot.locator(`svg[role="img"]`)
+    const svg = get_chart_svg(plot)
     const box = await svg.boundingBox()
     expect(box).toBeTruthy()
     if (!box) return
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
     const curve = plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first()
 
     // Try hovering the curve directly first
-    await curve.hover({ trial: true }).catch(() => {})
+    await curve.hover({ force: true }).catch(() => {})
 
     let tooltip_found = await tooltip.isVisible()
 
     // Fall back to grid probing if curve hover didn't work
     if (!tooltip_found) {
-      for (const [x_frac, y_frac] of [[0.3, 0.5], [0.5, 0.5], [0.7, 0.5]]) {
-        await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
-
-        if (await tooltip.isVisible()) {
-          tooltip_found = true
-          break
+      for (const x_frac of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+        for (const y_frac of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+          await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
+          // Wait for tooltip with assertion-based wait (avoids CI timing issues)
+          await expect(tooltip).toBeVisible({ timeout: 250 }).catch(() => {})
+          if (await tooltip.isVisible()) {
+            tooltip_found = true
+            break
+          }
         }
+        if (tooltip_found) break
       }
     }
 
@@ -175,12 +182,12 @@ test.describe(`DOS Component Tests`, () => {
     const plot = page.locator(`[data-testid="dos-multiple"] .scatter`)
     await expect(plot).toBeVisible()
 
-    const svg = plot.locator(`svg[role="img"]`)
+    const svg = get_chart_svg(plot)
     const box = await svg.boundingBox()
     expect(box).toBeTruthy()
     if (!box) return
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
     let tooltip_found = false
 
     // Try more positions since multiple DOS might be harder to hit
@@ -242,12 +249,12 @@ test.describe(`DOS Component Tests`, () => {
     const plot = page.locator(`[data-testid="dos-horizontal"] .scatter`)
     await expect(plot).toBeVisible()
 
-    const svg = plot.locator(`svg[role="img"]`)
+    const svg = get_chart_svg(plot)
     const box = await svg.boundingBox()
     expect(box).toBeTruthy()
     if (!box) return
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
     let tooltip_found = false
 
     // Try more positions
@@ -274,10 +281,11 @@ test.describe(`DOS Component Tests`, () => {
         // - y-axis is frequency/energy (should appear FIRST in tooltip)
         // - x-axis is density (should appear SECOND in tooltip)
         // The fix ensures Frequency/Energy comes before Density
-        const freq_idx = Math.max(
+        const freq_candidates = [
           tooltip_text.indexOf(`Frequency`),
           tooltip_text.indexOf(`Energy`),
-        )
+        ].filter((idx) => idx >= 0)
+        const freq_idx = freq_candidates.length ? Math.min(...freq_candidates) : -1
         const density_idx = tooltip_text.indexOf(`Density`)
 
         // Both should be present
@@ -306,12 +314,12 @@ test.describe(`DOS Component Tests`, () => {
     const plot = page.locator(`[data-testid="dos-single"] .scatter`)
     await expect(plot).toBeVisible()
 
-    const svg = plot.locator(`svg[role="img"]`)
+    const svg = get_chart_svg(plot)
     const box = await svg.boundingBox()
     expect(box).toBeTruthy()
     if (!box) return
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
     let tooltip_found = false
 
     // Try various positions
@@ -336,10 +344,11 @@ test.describe(`DOS Component Tests`, () => {
         // In vertical orientation:
         // - y-axis is density (should appear FIRST in tooltip)
         // - x-axis is frequency/energy (should appear SECOND in tooltip)
-        const freq_idx = Math.max(
+        const freq_candidates = [
           tooltip_text.indexOf(`Frequency`),
           tooltip_text.indexOf(`Energy`),
-        )
+        ].filter((idx) => idx >= 0)
+        const freq_idx = freq_candidates.length ? Math.min(...freq_candidates) : -1
         const density_idx = tooltip_text.indexOf(`Density`)
 
         // Both should be present
@@ -365,12 +374,12 @@ test.describe(`DOS Component Tests`, () => {
 
   test(`tooltip disappears when mouse leaves plot area`, async ({ page }) => {
     const plot = page.locator(`[data-testid="dos-single"] .scatter`)
-    const svg = plot.locator(`svg[role="img"]`)
+    const svg = get_chart_svg(plot)
     const box = await svg.boundingBox()
     expect(box).toBeTruthy()
     if (!box) return
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
 
     // Hover to show tooltip
     let tooltip_shown = false

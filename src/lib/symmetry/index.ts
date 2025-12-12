@@ -1,5 +1,5 @@
-import type { Vec3 } from '$lib'
 import { ATOMIC_NUMBER_TO_SYMBOL, SYMBOL_TO_ATOMIC_NUMBER } from '$lib/composition/parse'
+import type { Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, PymatgenStructure } from '$lib/structure'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'

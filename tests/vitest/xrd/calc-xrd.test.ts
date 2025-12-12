@@ -198,44 +198,44 @@ describe(`precomputed XRD fixtures are consistent`, () => {
 })
 
 describe(`add_xrd_pattern`, () => {
-  test(`computes pattern from valid JSON string`, () => {
+  test(`computes pattern from valid JSON string`, async () => {
     const structure = make_simple_cubic_structure(3)
     const json = JSON.stringify(structure)
-    const result = add_xrd_pattern(json, `test.json`, null)
+    const result = await add_xrd_pattern(json, `test.json`, null)
     expect(result.error).toBeUndefined()
     expect(result.pattern).toBeDefined()
     expect(result.pattern?.label).toBe(`test.json`)
     expect(result.pattern?.pattern.x.length).toBeGreaterThan(0)
   })
 
-  test(`computes pattern from ArrayBuffer`, () => {
+  test(`computes pattern from ArrayBuffer`, async () => {
     const structure = make_simple_cubic_structure(3)
     const json = JSON.stringify(structure)
     const buffer = new TextEncoder().encode(json).buffer
-    const result = add_xrd_pattern(buffer, `test.json`, null)
+    const result = await add_xrd_pattern(buffer, `test.json`, null)
     expect(result.error).toBeUndefined()
     expect(result.pattern).toBeDefined()
   })
 
-  test(`returns error for invalid structure`, () => {
-    const result = add_xrd_pattern(`invalid json`, `test.json`, null)
+  test(`returns error for invalid structure`, async () => {
+    const result = await add_xrd_pattern(`invalid json`, `test.json`, null)
     expect(result.error).toBeDefined()
     expect(result.pattern).toBeUndefined()
   })
 
-  test(`returns error for structure without lattice`, () => {
+  test(`returns error for structure without lattice`, async () => {
     const structure = { sites: [] } // no lattice
     const json = JSON.stringify(structure)
-    const result = add_xrd_pattern(json, `test.json`, null)
+    const result = await add_xrd_pattern(json, `test.json`, null)
     expect(result.error).toMatch(/must have a lattice/)
   })
 
-  test(`respects wavelength parameter`, () => {
+  test(`respects wavelength parameter`, async () => {
     const structure = make_simple_cubic_structure(3)
     const json = JSON.stringify(structure)
 
-    const res_cu = add_xrd_pattern(json, `cu.json`, 1.54184) // Compute with CuKa (default approx 1.54)
-    const res_mo = add_xrd_pattern(json, `mo.json`, 0.71073) // Compute with MoKa (approx 0.71)
+    const res_cu = await add_xrd_pattern(json, `cu.json`, 1.54184) // Compute with CuKa (default approx 1.54)
+    const res_mo = await add_xrd_pattern(json, `mo.json`, 0.71073) // Compute with MoKa (approx 0.71)
 
     expect(res_cu.pattern).toBeDefined()
     expect(res_mo.pattern).toBeDefined()

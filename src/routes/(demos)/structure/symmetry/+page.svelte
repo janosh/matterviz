@@ -5,11 +5,11 @@
   import { EmptyState, FilePicker } from '$lib'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
+  import type { SymmetrySettings } from '$lib/symmetry'
   import {
     default_sym_settings,
     ensure_moyo_wasm_ready,
     map_wyckoff_to_all_atoms,
-    type SymmetrySettings,
     SymmetryStats,
     wyckoff_positions_from_moyo,
     WyckoffTable,

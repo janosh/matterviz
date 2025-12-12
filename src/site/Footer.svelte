@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import pkg from '$root/package.json'
 </script>
 

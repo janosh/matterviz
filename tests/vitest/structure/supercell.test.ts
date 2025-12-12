@@ -1,5 +1,6 @@
-import type { Matrix3x3, PymatgenStructure, Vec3 } from '$lib'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { PymatgenStructure } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites } from '$lib/structure/pbc'
 import {
   format_supercell_scaling,

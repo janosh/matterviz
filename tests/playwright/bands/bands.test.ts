@@ -108,7 +108,7 @@ test.describe(`Bands Component Tests`, () => {
     // Hover directly over the path element with force to bypass intercept
     await first_path.hover({ force: true })
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
 
     // Check tooltip content by text
@@ -125,7 +125,7 @@ test.describe(`Bands Component Tests`, () => {
     const first_path = plot.locator(`svg path[fill="none"]`).first()
     await first_path.hover({ force: true })
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
 
     // Check tooltip content contains series label, frequency, and path
@@ -141,7 +141,7 @@ test.describe(`Bands Component Tests`, () => {
 
     // Hover to show tooltip
     await first_path.hover({ force: true })
-    await expect(plot.locator(`.tooltip`)).toBeVisible({ timeout: 2000 })
+    await expect(plot.locator(`.plot-tooltip`)).toBeVisible({ timeout: 2000 })
 
     // Move mouse outside plot
     const box = await plot.boundingBox()
@@ -151,7 +151,7 @@ test.describe(`Bands Component Tests`, () => {
     await page.mouse.move(box.x - 50, box.y - 50)
 
     // Tooltip should be hidden
-    await expect(plot.locator(`.tooltip`)).toBeHidden()
+    await expect(plot.locator(`.plot-tooltip`)).toBeHidden()
   })
 
   test(`tooltip updates when hovering different segments`, async ({ page }) => {
@@ -161,7 +161,7 @@ test.describe(`Bands Component Tests`, () => {
     // Hover over first path
     await paths.nth(0).hover({ force: true })
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
     const first_text = await tooltip.textContent()
     expect(first_text).toBeTruthy()
@@ -184,7 +184,7 @@ test.describe(`Bands Component Tests`, () => {
     const first_path = plot.locator(`svg path[fill="none"]`).first()
     await first_path.hover({ force: true })
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
 
     // Check tooltip contains band index
@@ -199,7 +199,7 @@ test.describe(`Bands Component Tests`, () => {
     // Hover over first path (Band 1)
     await paths.nth(0).hover({ force: true })
 
-    const tooltip = plot.locator(`.tooltip`)
+    const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
     const first_text = await tooltip.textContent()
     expect(first_text).toMatch(/Band:\s*1/)
