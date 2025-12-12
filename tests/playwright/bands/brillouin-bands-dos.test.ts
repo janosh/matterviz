@@ -3,12 +3,14 @@ import { Buffer } from 'node:buffer'
 
 test.describe(`BrillouinBandsDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `networkidle` })
     // Wait for the default container and basic structure to be present
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     await expect(container).toBeVisible()
-    // Wait for canvas (BZ) to be present
-    await expect(container.locator(`canvas`).first()).toBeVisible({ timeout: 10000 })
+    // Wait for canvas (BZ) to be present - WebGL may take time to initialize
+    await page.waitForSelector(`[data-testid="bz-bands-dos-default"] canvas`, {
+      timeout: 15000,
+    })
   })
 
   test(`renders all three panels with content`, async ({ page }) => {
@@ -16,18 +18,20 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Check all three panels render
     await expect(container.locator(`canvas`).first()).toBeVisible()
-    await expect(container.locator(`svg`).nth(0).locator(`path[fill="none"]`).first())
-      .toBeVisible()
-    // DOS may take longer to render, give it more time
-    const dos_svg = container.locator(`svg`).nth(1)
-    await expect(dos_svg).toBeVisible()
-    await expect(dos_svg.locator(`g.y-axis`)).toBeVisible()
+    const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
+    await expect(bands_svg).toBeVisible({ timeout: 10000 })
+    await expect(bands_svg.locator(`path[fill="none"]`).first())
+      .toBeVisible({ timeout: 10000 })
+
+    // DOS SVG - find by looking for the second SVG with axes
+    const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
+    await expect(dos_svg).toBeVisible({ timeout: 10000 })
+    await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 10000 })
     await expect(dos_svg.locator(`path[fill="none"]`).first())
-      .toBeVisible({ timeout: 15000 })
+      .toBeVisible({ timeout: 5000 })
 
     // Check for high-symmetry labels in bands
-    const x_labels = await container.locator(`svg`).nth(0).locator(`g.x-axis text`)
-      .allTextContents()
+    const x_labels = await bands_svg.locator(`g.x-axis text`).allTextContents()
     expect(x_labels.join()).toMatch(/Γ|GAMMA/)
   })
 
@@ -41,7 +45,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Custom bands styling (red, thick lines)
     const styling_container = page.locator(`[data-testid="bz-bands-dos-bands-styling"]`)
-    const first_path = styling_container.locator(`svg`).nth(0).locator(
+    const first_path = styling_container.locator(`svg:has(g.x-axis)`).first().locator(
       `path[fill="none"]`,
     ).first()
     const stroke = await first_path.evaluate((el) => getComputedStyle(el).stroke)
@@ -51,9 +55,13 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
   test(`handles independent y-axes and custom BZ appearance`, async ({ page }) => {
     // Independent axes with mismatched ranges
     const indep_container = page.locator(`[data-testid="bz-bands-dos-independent-axes"]`)
-    const bands_y = await indep_container.locator(`svg`).nth(0).locator(`g.y-axis text`)
+    const bands_y = await indep_container.locator(`svg:has(g.x-axis)`).first().locator(
+      `g.y-axis text`,
+    )
       .allTextContents()
-    const dos_y = await indep_container.locator(`svg`).nth(1).locator(`g.y-axis text`)
+    const dos_y = await indep_container.locator(`svg:has(g.y-axis)`).nth(1).locator(
+      `g.y-axis text`,
+    )
       .allTextContents()
     expect(bands_y).not.toEqual(dos_y)
 
@@ -89,9 +97,11 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const initial = await bz_canvas.screenshot()
 
     // Hover over band path
-    await container.locator(`svg`).nth(0).locator(`path[fill="none"]`).first().hover({
-      position: { x: 100, y: 100 },
-    })
+    await container.locator(`svg:has(g.x-axis)`).first().locator(`path[fill="none"]`)
+      .first().hover({
+        position: { x: 100, y: 100 },
+        force: true, // Bypass pointer interception from overlapping SVG
+      })
 
     // Wait for canvas to repaint by checking for any change
     await page.waitForFunction(() =>
@@ -125,9 +135,13 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
   test(`shared y-axis synchronizes bands and DOS ticks`, async ({ page }) => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    const bands_y = await container.locator(`svg`).nth(0).locator(`g.y-axis text`)
+    const bands_y = await container.locator(`svg:has(g.x-axis)`).first().locator(
+      `g.y-axis text`,
+    )
       .allTextContents()
-    const dos_y = await container.locator(`svg`).nth(1).locator(`g.y-axis text`)
+    const dos_y = await container.locator(`svg:has(g.y-axis)`).nth(1).locator(
+      `g.y-axis text`,
+    )
       .allTextContents()
 
     expect(bands_y.some((tick) => dos_y.includes(tick))).toBe(true)
@@ -149,8 +163,8 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // All three components should be visible
     await expect(container.locator(`canvas`).first()).toBeVisible()
-    await expect(container.locator(`svg`).nth(0)).toBeVisible()
-    await expect(container.locator(`svg`).nth(1)).toBeVisible()
+    await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
+    await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
   })
 
   test(`tablet layout: bands on top, BZ and DOS below`, async ({ page }) => {
@@ -202,8 +216,8 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // All components still visible
     await expect(container.locator(`canvas`).first()).toBeVisible()
-    await expect(container.locator(`svg`).nth(0)).toBeVisible()
-    await expect(container.locator(`svg`).nth(1)).toBeVisible()
+    await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
+    await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
   })
 
   test(`DOS orientation changes with viewport`, async ({ page }) => {
@@ -211,7 +225,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Desktop: horizontal DOS
     await page.setViewportSize({ width: 1400, height: 800 })
-    const dos_svg_wide = container.locator(`svg`).nth(1)
+    const dos_svg_wide = container.locator(`svg:has(g.y-axis)`).nth(1)
     await expect(dos_svg_wide).toBeVisible()
     const dos_box_wide = await dos_svg_wide.boundingBox()
     expect(dos_box_wide).toBeTruthy()
@@ -221,7 +235,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Tablet/Phone: vertical DOS (wider than tall)
     await page.setViewportSize({ width: 800, height: 700 })
-    const dos_svg_narrow = container.locator(`svg`).nth(1)
+    const dos_svg_narrow = container.locator(`svg:has(g.y-axis)`).nth(1)
     await expect(dos_svg_narrow).toBeVisible()
     const dos_box_narrow = await dos_svg_narrow.boundingBox()
     expect(dos_box_narrow).toBeTruthy()
@@ -284,7 +298,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     // Test at tablet size
     await page.setViewportSize({ width: 800, height: 700 })
     const bz_canvas = container.locator(`canvas`).first()
-    const bands_svg = container.locator(`svg`).nth(0)
+    const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
     await expect(bz_canvas).toBeVisible()
 
     // BZ should still rotate
@@ -306,6 +320,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     // Bands should still be hoverable
     await bands_svg.locator(`path[fill="none"]`).first().hover({
       position: { x: 50, y: 50 },
+      force: true,
     })
     await expect(bands_svg).toBeVisible()
   })
@@ -359,7 +374,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Verify all three panels are still working
     await expect(container.locator(`canvas`).first()).toBeVisible()
-    await expect(container.locator(`svg`).nth(0)).toBeVisible()
-    await expect(container.locator(`svg`).nth(1)).toBeVisible()
+    await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
+    await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
   })
 })

@@ -148,8 +148,9 @@
         step="any"
         value={x_axis.range?.[0] ?? auto_x_range[0]}
         oninput={(event) => {
-          const value = parseFloat((event.target as HTMLInputElement).value)
-          x_axis.range = [value, x_axis.range?.[1] ?? auto_x_range[1]]
+          const val = parseFloat((event.target as HTMLInputElement).value)
+          if (Number.isNaN(val)) return
+          x_axis.range = [val, x_axis.range?.[1] ?? auto_x_range[1]]
         }}
       />
       <span>to</span>
@@ -159,8 +160,9 @@
         step="any"
         value={x_axis.range?.[1] ?? auto_x_range[1]}
         oninput={(event) => {
-          const value = parseFloat((event.target as HTMLInputElement).value)
-          x_axis.range = [x_axis.range?.[0] ?? auto_x_range[0], value]
+          const val = parseFloat((event.target as HTMLInputElement).value)
+          if (Number.isNaN(val)) return
+          x_axis.range = [x_axis.range?.[0] ?? auto_x_range[0], val]
         }}
       />
     </div>
@@ -184,8 +186,9 @@
         step="any"
         value={y_axis.range?.[0] ?? auto_y_range[0]}
         oninput={(event) => {
-          const value = parseFloat((event.target as HTMLInputElement).value)
-          y_axis.range = [value, y_axis.range?.[1] ?? auto_y_range[1]]
+          const val = parseFloat((event.target as HTMLInputElement).value)
+          if (Number.isNaN(val)) return
+          y_axis.range = [val, y_axis.range?.[1] ?? auto_y_range[1]]
         }}
       />
       <span>to</span>
@@ -195,8 +198,9 @@
         step="any"
         value={y_axis.range?.[1] ?? auto_y_range[1]}
         oninput={(event) => {
-          const value = parseFloat((event.target as HTMLInputElement).value)
-          y_axis.range = [y_axis.range?.[0] ?? auto_y_range[0], value]
+          const val = parseFloat((event.target as HTMLInputElement).value)
+          if (Number.isNaN(val)) return
+          y_axis.range = [y_axis.range?.[0] ?? auto_y_range[0], val]
         }}
       />
     </div>
@@ -220,8 +224,9 @@
         step="any"
         value={z_axis.range?.[0] ?? auto_z_range[0]}
         oninput={(event) => {
-          const value = parseFloat((event.target as HTMLInputElement).value)
-          z_axis.range = [value, z_axis.range?.[1] ?? auto_z_range[1]]
+          const val = parseFloat((event.target as HTMLInputElement).value)
+          if (Number.isNaN(val)) return
+          z_axis.range = [val, z_axis.range?.[1] ?? auto_z_range[1]]
         }}
       />
       <span>to</span>
@@ -231,8 +236,9 @@
         step="any"
         value={z_axis.range?.[1] ?? auto_z_range[1]}
         oninput={(event) => {
-          const value = parseFloat((event.target as HTMLInputElement).value)
-          z_axis.range = [z_axis.range?.[0] ?? auto_z_range[0], value]
+          const val = parseFloat((event.target as HTMLInputElement).value)
+          if (Number.isNaN(val)) return
+          z_axis.range = [z_axis.range?.[0] ?? auto_z_range[0], val]
         }}
       />
     </div>

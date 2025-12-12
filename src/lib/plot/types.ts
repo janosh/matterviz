@@ -500,10 +500,13 @@ export interface ScatterPoint3D extends Point {
 }
 
 // 3D data series extending DataSeries with z array
-export interface DataSeries3D extends Omit<DataSeries, `x` | `y` | `y_axis`> {
+// Omit filtered_data since it uses 2D InternalPoint type, redeclare with 3D type
+export interface DataSeries3D
+  extends Omit<DataSeries, `x` | `y` | `y_axis` | `filtered_data`> {
   x: readonly number[]
   y: readonly number[]
   z: readonly number[]
+  filtered_data?: InternalPoint3D[]
 }
 
 // Internal 3D point for processing within ScatterPlot3D

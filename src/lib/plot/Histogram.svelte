@@ -476,8 +476,8 @@
 
   function handle_double_click() {
     // Clear axis ranges to reset to auto ranges
-    x_axis = { ...final_x_axis, range: undefined }
-    y_axis = { ...final_y_axis, range: undefined }
+    x_axis = { ...x_axis, range: undefined }
+    y_axis = { ...y_axis, range: undefined }
     y2_axis = { ...y2_axis, range: undefined }
   }
 

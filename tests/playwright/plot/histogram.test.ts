@@ -713,7 +713,7 @@ test.describe(`Histogram Component Tests`, () => {
     // Wait for histogram to be fully rendered
 
     // Wait for the toggle button to be visible and clickable
-    const toggle_button = page.locator(`#basic-single-series .histogram-controls-toggle`)
+    const toggle_button = page.locator(`#basic-single-series .pane-toggle`)
     await expect(toggle_button).toBeVisible({ timeout: 10000 })
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
 
@@ -721,7 +721,7 @@ test.describe(`Histogram Component Tests`, () => {
     await toggle_button.click()
 
     // Check controls pane is open
-    const control_pane = page.locator(`#basic-single-series .histogram-controls-pane`)
+    const control_pane = page.locator(`#basic-single-series .draggable-pane`)
     await expect(control_pane).toBeVisible({ timeout: 10000 })
 
     // Test bins control (use ID to be specific)
@@ -796,14 +796,14 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Click the toggle button to open the controls pane
     const toggle_button = page.locator(
-      `#multiple-series-overlay .histogram-controls-toggle`,
+      `#multiple-series-overlay .pane-toggle`,
     )
     await expect(toggle_button).toBeVisible({ timeout: 10000 })
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
     await toggle_button.click()
 
     const control_pane = page.locator(
-      `#multiple-series-overlay .histogram-controls-pane`,
+      `#multiple-series-overlay .draggable-pane`,
     )
     await expect(control_pane).toBeVisible({ timeout: 10000 })
 
@@ -874,12 +874,12 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test controls with logarithmic scales
     // Click the toggle button to open the controls pane
-    const toggle_button = page.locator(`#logarithmic-scales .histogram-controls-toggle`)
+    const toggle_button = page.locator(`#logarithmic-scales .pane-toggle`)
     await expect(toggle_button).toBeVisible({ timeout: 10000 })
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
     await toggle_button.click()
 
-    const control_pane = page.locator(`#logarithmic-scales .histogram-controls-pane`)
+    const control_pane = page.locator(`#logarithmic-scales .draggable-pane`)
     await expect(control_pane).toBeVisible({ timeout: 10000 })
 
     // Test scale type changes (use specific IDs to avoid confusion with mode select)
@@ -934,12 +934,12 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test format validation in controls
     // Click the toggle button to open the controls pane
-    const toggle_button = page.locator(`#tick-configuration .histogram-controls-toggle`)
+    const toggle_button = page.locator(`#tick-configuration .pane-toggle`)
     await expect(toggle_button).toBeVisible({ timeout: 10000 })
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
     await toggle_button.click()
 
-    const control_pane = page.locator(`#tick-configuration .histogram-controls-pane`)
+    const control_pane = page.locator(`#tick-configuration .draggable-pane`)
     await expect(control_pane).toBeVisible({ timeout: 10000 })
 
     // Test format inputs
@@ -1000,14 +1000,14 @@ test.describe(`Histogram Component Tests`, () => {
     })
 
     // Test keyboard navigation in controls
-    const control_toggle = page.locator(`#basic-single-series .histogram-controls-toggle`)
+    const control_toggle = page.locator(`#basic-single-series .pane-toggle`)
     await expect(control_toggle).toBeVisible()
 
     // Open controls with keyboard
     await control_toggle.focus()
     await page.keyboard.press(`Enter`)
 
-    const control_pane = page.locator(`#basic-single-series .histogram-controls-pane`)
+    const control_pane = page.locator(`#basic-single-series .draggable-pane`)
     await expect(control_pane).toBeVisible({ timeout: 5000 })
 
     // Test tab navigation through controls
@@ -1041,12 +1041,12 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test controls at different viewport sizes
     // Click the toggle button to open the controls pane
-    const toggle_button = page.locator(`#basic-single-series .histogram-controls-toggle`)
+    const toggle_button = page.locator(`#basic-single-series .pane-toggle`)
     await expect(toggle_button).toBeVisible({ timeout: 10000 })
     await expect(toggle_button).toBeEnabled({ timeout: 5000 })
     await toggle_button.click()
 
-    const control_pane = page.locator(`#basic-single-series .histogram-controls-pane`)
+    const control_pane = page.locator(`#basic-single-series .draggable-pane`)
     await expect(control_pane).toBeVisible({ timeout: 10000 })
 
     // Test at different viewport sizes
@@ -1382,9 +1382,9 @@ test.describe(`Histogram Component Tests`, () => {
     const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
     await expect(histogram).toBeVisible()
 
-    const toggle = page.locator(`#basic-single-series .histogram-controls-toggle`)
+    const toggle = page.locator(`#basic-single-series .pane-toggle`)
     await toggle.click()
-    const pane = page.locator(`#basic-single-series .histogram-controls-pane`)
+    const pane = page.locator(`#basic-single-series .draggable-pane`)
     await expect(pane.getByText(`Axis Range`)).toBeVisible({ timeout: 10000 })
 
     const [x_axis, y_axis] = [

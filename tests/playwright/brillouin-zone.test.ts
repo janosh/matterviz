@@ -268,7 +268,7 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
     await page.goto(`/test/brillouin-zone?data_url=/structures/mp-1.json`, {
       waitUntil: `networkidle`,
     })
-    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 15000 })
+    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 5000 })
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_file_load`, {
       timeout: 5000,
     })

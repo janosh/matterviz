@@ -81,6 +81,7 @@
     // Callbacks
     on_point_click,
     on_point_hover,
+    on_series_visibility_change,
     // Fullscreen
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
@@ -134,6 +135,7 @@
     tooltip_point?: InternalPoint3D | null
     on_point_click?: (data: Scatter3DHandlerEvent) => void
     on_point_hover?: (data: Scatter3DHandlerEvent | null) => void
+    on_series_visibility_change?: (series_idx: number, visible: boolean) => void
     fullscreen?: boolean
     fullscreen_toggle?: boolean
     wrapper?: HTMLDivElement
@@ -149,6 +151,12 @@
   } = $props()
 
   let [width, height] = $state([0, 0])
+
+  // User overrides merged with series.visible defaults
+  let visibility_overrides: Record<number, boolean> = $state({})
+  let series_visibility = $derived(
+    series.map((srs, idx) => visibility_overrides[idx] ?? srs?.visible ?? true),
+  )
 
   // Local state for controls (initialized from props, owned by this component)
   let x_axis = $state({
@@ -195,15 +203,23 @@
 
   let auto_color_range = $derived.by((): [number, number] => {
     if (all_color_values.length === 0) return [0, 1]
-    return [Math.min(...all_color_values), Math.max(...all_color_values)]
+    let min = Infinity
+    let max = -Infinity
+    for (const val of all_color_values) {
+      if (val < min) min = val
+      if (val > max) max = val
+    }
+    return [min, max]
   })
 
-  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
+  let color_scale_fn = $derived(
+    create_color_scale(normalized_color_scale, auto_color_range),
+  )
 
   // Legend data
   let legend_data = $derived(
     series.map((srs, series_idx) => {
-      const is_visible = srs?.visible ?? true
+      const is_visible = series_visibility[series_idx] ?? true
       const label = srs?.label ?? `Series ${series_idx + 1}`
       const series_color = get_series_color(series_idx)
 
@@ -238,11 +254,9 @@
     return { ...gizmo, offset: { ...base_offset, ...gizmo.offset } }
   })
 
-  // Toggle series visibility
-  function toggle_series_visibility(series_idx: number) {
-    series = series.map((srs, idx) =>
-      idx === series_idx ? { ...srs, visible: !(srs.visible ?? true) } : srs
-    )
+  function toggle_series_visibility(idx: number) {
+    const visible = (visibility_overrides[idx] = !series_visibility[idx])
+    on_series_visibility_change?.(idx, visible)
   }
 
   // Handle point hover
@@ -281,6 +295,7 @@
     <Canvas>
       <ScatterPlot3DScene
         {series}
+        {series_visibility}
         {surfaces}
         {x_axis}
         {y_axis}
@@ -340,17 +355,15 @@
     <!-- Color Bar -->
     {#if color_bar && all_color_values.length > 0}
       {@const color_domain = [
-      (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[0] ??
-        auto_color_range[0],
-      (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[1] ??
-        auto_color_range[1],
+      normalized_color_scale.value_range?.[0] ?? auto_color_range[0],
+      normalized_color_scale.value_range?.[1] ?? auto_color_range[1],
     ] as [number, number]}
       <ColorBar
         tick_labels={4}
         tick_side="primary"
         {color_scale_fn}
         color_scale_domain={color_domain}
-        scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
+        scale_type={normalized_color_scale.type}
         range={color_domain?.every((val) => val != null) ? color_domain : undefined}
         wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar?.wrapper_style ?? ``}"
         bar_style="width: 200px; height: 16px; {color_bar?.style ?? ``}"

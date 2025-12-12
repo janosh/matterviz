@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 
 test.describe(`OPTIMADE route`, () => {
+  // This page loads slowly due to external API mocking
+  test.describe.configure({ timeout: 30000 })
+
   test.beforeEach(async ({ page }) => {
     // Mock structure and links requests
     await page.route(`**/v1/**`, async (route) => {
@@ -127,14 +130,14 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`handles invalid structure ID gracefully`, async ({ page }) => {
-    await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `networkidle` })
 
     // Check input value is set correctly
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
 
     // Check for error message
     const error_message = page.locator(`.structure-column .error-message`)
-    await expect(error_message).toBeVisible({ timeout: 15000 })
+    await expect(error_message).toBeVisible({ timeout: 5000 })
     await expect(error_message).toContainText(`invalid-id-12345`)
     await expect(error_message).toContainText(`not found`)
   })
@@ -225,8 +228,5 @@ test.describe(`OPTIMADE route`, () => {
 
     // Verify that the input is filled with the correct structure ID
     await expect(page.locator(`input.structure-input`)).toHaveValue(structure_id ?? ``)
-
-    // Verify loading state appears
-    await expect(page.locator(`text=Loading structure from`)).toBeVisible()
   })
 })

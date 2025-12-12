@@ -29,6 +29,7 @@
 
   let {
     series = [],
+    series_visibility = [],
     x_axis = {},
     y_axis = {},
     z_axis = {},
@@ -62,6 +63,7 @@
     height = 0,
   }: {
     series?: DataSeries3D[]
+    series_visibility?: boolean[]
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
     z_axis?: AxisConfig3D
@@ -171,7 +173,12 @@
   )
   let auto_color_range = $derived.by((): [number, number] => {
     if (all_color_values.length === 0) return [0, 1]
-    return [Math.min(...all_color_values), Math.max(...all_color_values)]
+    let [min, max] = [Infinity, -Infinity]
+    for (const val of all_color_values) {
+      if (val < min) min = val
+      if (val > max) max = val
+    }
+    return [min, max]
   })
   let all_size_values = $derived(
     all_points.map((pt) => pt.size_value).filter((val): val is number => val != null),
@@ -194,7 +201,7 @@
     const groups: Record<string, InstancedPointGroup> = {}
     for (const point of processed_points) {
       const srs = series[point.series_idx]
-      if (!(srs?.visible ?? true)) continue
+      if (!(series_visibility[point.series_idx] ?? srs?.visible ?? true)) continue
       const color = point.color_value != null
         ? color_scale_fn(point.color_value)
         : point.point_style?.fill ?? get_series_color(point.series_idx)
@@ -219,16 +226,14 @@
   let y_ticks = $derived(generate_ticks(y_range))
   let z_ticks = $derived(generate_ticks(z_range))
 
-  // Create axis line geometry
-  function create_axis_geometry(
+  // Create axis line geometry - reuses a shared Float32Array for efficiency
+  function create_line_geometry(
     start: [number, number, number],
     end: [number, number, number],
   ): THREE.BufferGeometry {
     const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute(
-      `position`,
-      new THREE.Float32BufferAttribute([...start, ...end], 3),
-    )
+    const positions = new Float32Array([...start, ...end])
+    geometry.setAttribute(`position`, new THREE.BufferAttribute(positions, 3))
     return geometry
   }
 
@@ -322,11 +327,11 @@
   type AxisKey = `x` | `y` | `z`
   type Vec3 = [number, number, number]
 
-  // Memoized axis geometries (main axis lines)
-  let axis_geometries = $derived({
-    x: create_axis_geometry([-half, -half, -half], [half, -half, -half]),
-    y: create_axis_geometry([-half, -half, -half], [-half, half, -half]),
-    z: create_axis_geometry([-half, -half, -half], [-half, -half, half]),
+  // Main axis line geometries - managed with proper disposal
+  let axis_geometries: Record<AxisKey, THREE.BufferGeometry> = $state({
+    x: create_line_geometry([-half, -half, -half], [half, -half, -half]),
+    y: create_line_geometry([-half, -half, -half], [-half, half, -half]),
+    z: create_line_geometry([-half, -half, -half], [-half, -half, half]),
   })
 
   // Axis rendering configuration
@@ -398,6 +403,34 @@
       axis_label_pos: [-half, -half, 0] as Vec3,
     },
   ])
+
+  // Pre-computed geometries for tick marks and grid lines, indexed by axis and tick position
+  type AxisGeomData = {
+    tick_geoms: THREE.BufferGeometry[]
+    grid_geoms: THREE.BufferGeometry[][]
+  }
+  const empty_geom_data = (): AxisGeomData => ({ tick_geoms: [], grid_geoms: [] })
+  let axis_geom_data: Record<AxisKey, AxisGeomData> = $state({
+    x: empty_geom_data(),
+    y: empty_geom_data(),
+    z: empty_geom_data(),
+  })
+
+  // recreate all tick/grid geometries when axes change
+  $effect(() => { // Create new geometries aligned with tick arrays
+    for (
+      const { key, ticks, get_tick_pos, get_tick_end, get_grid_lines } of axes_config
+    ) {
+      axis_geom_data[key] = {
+        tick_geoms: ticks.map((val) =>
+          create_line_geometry(get_tick_pos(val), get_tick_end(val))
+        ),
+        grid_geoms: ticks.map((val) =>
+          get_grid_lines(val).map(([start, end]) => create_line_geometry(start, end))
+        ),
+      }
+    }
+  })
 </script>
 
 {#if camera_projection === `perspective`}
@@ -427,35 +460,28 @@
 
 <!-- Axes with ticks and grid -->
 {#if display.show_axes !== false}
-  {#each axes_config as
-    {
-  key,
-  color,
-  axis,
-  ticks,
-  get_tick_pos,
-  get_tick_end,
-  get_grid_lines,
-  tick_label_pos,
-  axis_label_pos,
-}
-    (key)
-  }
+  {#each axes_config as { key, color, axis, ticks, tick_label_pos, axis_label_pos } (key)}
     <!-- Main axis line -->
     <T.Line>
       <T is={axis_geometries[key]} />
       <T.LineBasicMaterial {color} linewidth={2} />
     </T.Line>
     <!-- Ticks and grid -->
-    {#each ticks as tick_val (tick_val)}
-      <T.Line>
-        <T is={create_axis_geometry(get_tick_pos(tick_val), get_tick_end(tick_val))} />
-        <T.LineBasicMaterial {color} />
-      </T.Line>
+    {#each ticks as tick_val, tick_idx (tick_val)}
+      {#if axis_geom_data[key].tick_geoms[tick_idx]}
+        <T.Line>
+          <T is={axis_geom_data[key].tick_geoms[tick_idx]} />
+          <T.LineBasicMaterial {color} />
+        </T.Line>
+      {/if}
       {#if display.show_grid !== false}
-        {#each get_grid_lines(tick_val) as [start, end], grid_idx (grid_idx)}
+        {#each axis_geom_data[key].grid_geoms[tick_idx] ?? [] as
+          grid_geom,
+          grid_idx
+          (grid_idx)
+        }
           <T.Line>
-            <T is={create_axis_geometry(start, end)} />
+            <T is={grid_geom} />
             <T.LineBasicMaterial color="#888" opacity={0.4} transparent />
           </T.Line>
         {/each}

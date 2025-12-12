@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 interface OpenPaneOptions {
   pane_selector: string
@@ -63,7 +63,7 @@ export const open_trajectory_info_pane = (page: Page) =>
 
 // Get the chart SVG locator from a plot container.
 // The `.scatter` class contains control-button SVG icons, so we target only the direct child chart SVG.
-export const get_chart_svg = (plot: ReturnType<Page[`locator`]>) =>
+export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="img"]`)
 
 export const random_sample = <T>(input_list: T[], n_samples: number): T[] => {
@@ -71,8 +71,8 @@ export const random_sample = <T>(input_list: T[], n_samples: number): T[] => {
   if (n_samples >= input_list.length) return input_list
 
   // Generate a random subset
-  const rand_sample = []
-  const used_indices = new Set()
+  const rand_sample: T[] = []
+  const used_indices = new Set<number>()
 
   while (rand_sample.length < n_samples) {
     const rand_idx = Math.floor(Math.random() * input_list.length)

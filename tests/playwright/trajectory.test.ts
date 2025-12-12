@@ -1683,7 +1683,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     async function open_export_pane(page: Page, trajectory_id = `#with-export-pane`) {
       const trajectory = page.locator(trajectory_id)
       await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
-        timeout: 15000,
+        timeout: 5000,
       })
 
       const export_toggle = trajectory.locator(`.trajectory-export-toggle`)
@@ -1699,7 +1699,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     test(`export toggle button exists and is accessible`, async ({ page }) => {
       const trajectory = page.locator(`#with-export-pane`)
       await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
-        timeout: 15000,
+        timeout: 5000,
       })
 
       const export_toggle = trajectory.locator(`.trajectory-export-toggle`)
@@ -1861,7 +1861,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       }
 
       // Wait for export to complete (button text should change back)
-      await expect(webm_button).toContainText(/⬇/, { timeout: 15000 })
+      await expect(webm_button).toContainText(/⬇/, { timeout: 5000 })
 
       // Verify download was triggered
       const downloads = await page.evaluate(() => {
@@ -1929,7 +1929,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       await mp4_button.click()
 
       // Wait for export to complete
-      await expect(mp4_button).toContainText(/⬇/, { timeout: 15000 })
+      await expect(mp4_button).toContainText(/⬇/, { timeout: 5000 })
 
       // Verify ffmpeg command was copied to clipboard
       const clipboard_text = await page.evaluate(

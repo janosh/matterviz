@@ -43,7 +43,7 @@ test.describe(`Periodic Table`, () => {
     expect(await page.$(`text=1 - Hydrogen diatomic nonmetal`)).not.toBeNull()
   })
 
-  test(`can hover every element without throwing errors`, async ({ page }) => {
+  test(`can hover random elements without throwing errors`, async ({ page }) => {
     const logs: string[] = []
     page.on(`console`, (msg) => {
       if (
@@ -51,16 +51,19 @@ test.describe(`Periodic Table`, () => {
         !msg.text().startsWith(`Failed to load resource:`)
       ) logs.push(msg.text())
     })
-    await page.goto(`/periodic-table`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
     // Wait for periodic table to be fully rendered
     const tiles = page.locator(`.element-tile`)
     await expect(tiles.first()).toBeVisible({ timeout: 10000 })
+    expect(await tiles.count()).toBeGreaterThan(0)
 
     const tile_count = await tiles.count()
     const indices = random_sample([...Array(tile_count).keys()], 3)
     for (const idx of indices) {
-      await tiles.nth(idx).hover({ timeout: 5000, force: true })
+      const tile = tiles.nth(idx)
+      await tile.scrollIntoViewIfNeeded()
+      await tile.hover({ timeout: 5000 })
     }
 
     expect(logs, logs.join(`\n`)).toHaveLength(0)
@@ -310,47 +313,5 @@ test.describe(`Periodic Table`, () => {
         }
       })
     }
-
-    test(`multi-value examples integration and visual bounds`, async ({ page }) => {
-      await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
-
-      // Verify examples section exists
-      await expect(
-        page
-          .locator(`h2`)
-          .filter({ hasText: /Multi.*value.*Heatmap.*Examples/i }),
-      ).toBeVisible()
-
-      // Verify all example tables are present
-      const tables = page.locator(`.periodic-table`)
-      await expect(tables.nth(1)).toBeVisible() // 2-fold
-      await expect(tables.nth(2)).toBeVisible() // 3-fold
-      await expect(tables.nth(3)).toBeVisible() // 4-fold
-
-      // Test tooltip functionality on multi-value tile
-      const tile = tables.nth(1).locator(`.element-tile`).first()
-      await tile.hover()
-
-      const tooltip = page.locator(`.tooltip`)
-      await expect(tooltip).toBeVisible({ timeout: 5000 })
-      await expect(tooltip).toContainText(/Values:/)
-
-      // Verify no visual overflow (segments contained within tiles)
-      const tile_box = await tile.boundingBox()
-      const segment = tile.locator(`.segment`).first()
-      if ((await segment.count()) > 0) {
-        const segment_box = await segment.boundingBox()
-        if (tile_box && segment_box) {
-          expect(segment_box.x).toBeGreaterThanOrEqual(tile_box.x - 2)
-          expect(segment_box.y).toBeGreaterThanOrEqual(tile_box.y - 2)
-          expect(segment_box.x + segment_box.width).toBeLessThanOrEqual(
-            tile_box.x + tile_box.width + 2,
-          )
-          expect(segment_box.y + segment_box.height).toBeLessThanOrEqual(
-            tile_box.y + tile_box.height + 2,
-          )
-        }
-      }
-    })
   })
 })

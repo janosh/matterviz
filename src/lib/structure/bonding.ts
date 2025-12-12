@@ -1,8 +1,9 @@
 // Bonding algorithms for structure visualization
 
-import type { AnyStructure, BondPair, Site, Vec3 } from '$lib'
 import { element_data } from '$lib/element'
+import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { AnyStructure, BondPair, Site } from '$lib/structure'
 
 type SpatialGrid = Map<string, number[]>
 
