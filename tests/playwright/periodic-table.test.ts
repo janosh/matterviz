@@ -51,14 +51,16 @@ test.describe(`Periodic Table`, () => {
         !msg.text().startsWith(`Failed to load resource:`)
       ) logs.push(msg.text())
     })
-    await page.goto(`/`, { waitUntil: `networkidle` })
+    await page.goto(`/periodic-table`, { waitUntil: `domcontentloaded` })
 
     // Wait for periodic table to be fully rendered
-    await expect(page.locator(`.element-tile`).first()).toBeVisible({ timeout: 10000 })
-    await page.waitForLoadState(`domcontentloaded`)
+    const tiles = page.locator(`.element-tile`)
+    await expect(tiles.first()).toBeVisible({ timeout: 10000 })
 
-    for (const tile of random_sample(await page.$$(`.element-tile`), 3)) {
-      await tile.hover({ timeout: 5000, force: true })
+    const tile_count = await tiles.count()
+    const indices = random_sample([...Array(tile_count).keys()], 3)
+    for (const idx of indices) {
+      await tiles.nth(idx).hover({ timeout: 5000, force: true })
     }
 
     expect(logs, logs.join(`\n`)).toHaveLength(0)

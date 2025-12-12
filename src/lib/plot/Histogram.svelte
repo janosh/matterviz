@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { FullscreenToggle } from '$lib/layout'
   import { format_value } from '$lib/labels'
+  import { FullscreenToggle } from '$lib/layout'
   import type { BarStyle, HistogramHandlerProps } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
@@ -30,10 +30,10 @@
 
   let {
     series = $bindable([]),
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
-    y2_axis = $bindable({}),
-    display = $bindable(DEFAULTS.histogram.display),
+    x_axis: x_axis_init = {},
+    y_axis: y_axis_init = {},
+    y2_axis: y2_axis_init = {},
+    display: display_init = DEFAULTS.histogram.display,
     x_range = [null, null],
     y_range = [null, null],
     y2_range = [null, null],
@@ -42,7 +42,7 @@
     bins = $bindable(100),
     show_legend = $bindable(true),
     legend = { series_data: [] },
-    bar = {},
+    bar: bar_init = {},
     selected_property = $bindable(``),
     mode = $bindable(`single`),
     tooltip,
@@ -91,6 +91,13 @@
     ) => void
     on_series_toggle?: (series_idx: number) => void
   } = $props()
+
+  // Local state for controls (initialized from props, owned by this component)
+  let bar = $state({ ...DEFAULTS.histogram.bar, ...bar_init })
+  let x_axis = $state({ ...x_axis_init })
+  let y_axis = $state({ ...y_axis_init })
+  let y2_axis = $state({ ...y2_axis_init })
+  let display = $state({ ...DEFAULTS.histogram.display, ...display_init })
 
   const final_x_axis = $derived({
     label: `Value`,
@@ -914,10 +921,10 @@
       bind:show_legend
       bind:selected_property
       bind:display
-      {bar}
-      {x_axis}
-      {y_axis}
-      {y2_axis}
+      bind:bar
+      bind:x_axis
+      bind:y_axis
+      bind:y2_axis
       auto_x_range={auto_ranges.x}
       auto_y_range={auto_ranges.y}
       auto_y2_range={auto_ranges.y2}

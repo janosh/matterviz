@@ -191,9 +191,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
   test(`should apply custom styles`, async ({ page }) => {
     // Target the custom style legend instance
-    const legend_wrapper = page
-      .locator(custom_style_legend_wrapper)
-      .locator(`.legend`)
+    const legend_wrapper = page.locator(custom_style_legend_wrapper)
     const legend_item = page
       .locator(custom_style_legend_wrapper)
       .locator(`.legend-item`)

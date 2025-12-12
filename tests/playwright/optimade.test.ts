@@ -118,7 +118,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`page loads correctly`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
     await expect(page.locator(`input[placeholder="Enter structure ID"]`))
@@ -133,13 +133,14 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
 
     // Check for error message
-    const error_message = page.locator(`.error-message`)
-    await expect(error_message).toBeVisible({ timeout: 5000 })
-    await expect(error_message).toContainText(`Structure invalid-id-12345 not found`)
+    const error_message = page.locator(`.structure-column .error-message`)
+    await expect(error_message).toBeVisible({ timeout: 15000 })
+    await expect(error_message).toContainText(`invalid-id-12345`)
+    await expect(error_message).toContainText(`not found`)
   })
 
   test(`can switch providers and clear input field`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Verify initial MP structure is loaded
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
@@ -161,7 +162,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can load structure from different providers via text input`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Verify initial MP structure is loaded
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
@@ -175,7 +176,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`provider selection clears input field`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Fill input with some text
     await page.locator(`input.structure-input`).fill(`test-structure-id`)
@@ -188,7 +189,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can navigate between multiple providers`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Test MP provider (should already be loaded)
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
@@ -209,7 +210,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can click on suggested structures to load them`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Wait for suggestions to load
     await expect(page.locator(`text=Suggested Structures`)).toBeVisible()

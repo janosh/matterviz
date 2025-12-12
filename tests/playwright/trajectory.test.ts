@@ -39,7 +39,7 @@ test.describe(`Trajectory Component`, () => {
   test.beforeEach(async ({ page }) => {
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
-    await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
     // Wait for the trajectory to be loaded
     await expect(trajectory_viewer).toBeVisible({ timeout: 10000 })
   })
@@ -989,7 +989,7 @@ test.describe(`Trajectory Component`, () => {
 
 test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/trajectory`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/trajectory`, { waitUntil: `networkidle` })
     // Wait for trajectories to load
   })
 
@@ -1427,7 +1427,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
   test.describe(`Progress Reporting`, () => {
     test(`should display loading indicators and accessibility features`, async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
 
       const viewers = page.locator(`.trajectory`)
 
@@ -1475,7 +1475,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`should handle file upload and error states correctly`, async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
 
       // Test file upload UI
       const empty_viewer = page.locator(`#empty-state`)
@@ -1505,7 +1505,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
     })
 
     test(`should show proper states during URL loading`, async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
 
       const url_section = page.locator(`#trajectory-url`)
       await expect(url_section).toBeVisible()
@@ -1676,7 +1676,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
   test.describe(`WebM Video Export`, () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
     })
 
     // Helper to open export pane (returns null if pane won't open in test environment)
@@ -1785,7 +1785,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
       await page.addInitScript(() => {
         delete (globalThis as unknown as Record<string, unknown>).MediaRecorder
       })
-      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
 
       const result = await open_export_pane(page)
       if (!result) {
@@ -1944,7 +1944,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
   test.describe(`Event Handlers`, () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
     })
 
     test(`should trigger step change events on navigation`, async ({ page }) => {
@@ -2129,7 +2129,7 @@ test.describe(`Trajectory Demo Page - Unit-Aware Plotting`, () => {
 
   test.describe(`Element Visibility Toggle in Trajectory`, () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+      await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
       const trajectory = page.locator(`#loaded-trajectory`)
       await expect(trajectory).toBeVisible({ timeout: 10000 })
     })

@@ -3,7 +3,7 @@ import { dom_click } from './utils'
 
 test.describe(`ConvexHull3D (Ternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/convex-hull`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {

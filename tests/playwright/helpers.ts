@@ -61,7 +61,12 @@ export const open_trajectory_info_pane = (page: Page) =>
     toggle_selector: `.trajectory-info-toggle`,
   })
 
-export function random_sample<T>(input_list: T[], n_samples: number): T[] {
+// Get the chart SVG locator from a plot container.
+// The `.scatter` class contains control-button SVG icons, so we target only the direct child chart SVG.
+export const get_chart_svg = (plot: ReturnType<Page[`locator`]>) =>
+  plot.locator(`:scope > svg[role="img"]`)
+
+export const random_sample = <T>(input_list: T[], n_samples: number): T[] => {
   // If the subset size is greater than the list size, return the original list
   if (n_samples >= input_list.length) return input_list
 

@@ -17,7 +17,7 @@
     y_axis = {},
     y2_axis = {},
     display = $bindable({}),
-    styles = {},
+    styles = $bindable({}),
     selected_series_idx = $bindable(0),
     on_touch,
     children,

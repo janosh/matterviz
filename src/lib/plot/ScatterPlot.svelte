@@ -67,7 +67,7 @@
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable(DEFAULTS.scatter.display),
-    styles = {},
+    styles: styles_init = {},
     controls = {},
     padding = {},
     range_padding = 0.05,
@@ -151,10 +151,6 @@
     wrapper?: HTMLDivElement
   } = $props()
 
-  // Initialize style overrides with defaults (runs once to avoid infinite loop)
-  styles.point = { ...DEFAULTS.scatter.point, ...styles.point }
-  styles.line = { ...DEFAULTS.scatter.line, ...styles.line }
-
   // Initialize default values
   x_axis = {
     format: ``,
@@ -182,11 +178,14 @@
     ...y2_axis,
   }
   display = { ...DEFAULTS.scatter.display, ...display }
-  styles = {
+  // Local state for styles (initialized from prop, owned by this component for controls)
+  let styles = $state({
     show_points: DEFAULTS.scatter.show_points,
     show_lines: DEFAULTS.scatter.show_lines,
-    ...styles,
-  }
+    point: { ...DEFAULTS.scatter.point, ...styles_init.point },
+    line: { ...DEFAULTS.scatter.line, ...styles_init.line },
+    ...styles_init,
+  })
   controls = { show: true, open: false, ...controls }
 
   let [width, height] = $state([0, 0])
@@ -1649,7 +1648,7 @@
         {y_axis}
         {y2_axis}
         bind:display
-        {styles}
+        bind:styles
         {auto_x_range}
         {auto_y_range}
         {auto_y2_range}
