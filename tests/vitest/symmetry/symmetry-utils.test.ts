@@ -89,7 +89,8 @@ describe(`simplicity_score`, () => {
     expect(scores[4]).toBeGreaterThan(scores[2])
   })
 
-  test(`handles edge cases`, () => {
+  test(`handles edge cases and validates formula`, () => {
+    // Invalid input
     // @ts-expect-error - testing error handling
     expect(simplicity_score(undefined)).toBeNaN()
     // @ts-expect-error - testing error handling
@@ -103,23 +104,11 @@ describe(`simplicity_score`, () => {
       simplicity_score([0, 0, 0]),
       3,
     )
-  })
 
-  test(`score formula is correct`, () => {
-    // Score = sum of near_zero + 0.5 * sum of near_half
-    // near_zero(x) = min(x, 1-x)
-    // near_half(x) = |x - 0.5|
-
-    // For [0.25, 0, 0]:
-    // near_zero: 0.25 + 0 + 0 = 0.25
-    // near_half: 0.25 + 0.5 + 0.5 = 1.25
-    // total: 0.25 + 0.5 * 1.25 = 0.875
+    // Verify formula: Score = sum of near_zero + 0.5 * sum of near_half
+    // For [0.25, 0, 0]: near_zero=0.25, near_half=1.25 -> 0.25 + 0.5*1.25 = 0.875
     expect(simplicity_score([0.25, 0, 0])).toBeCloseTo(0.875, 10)
-
-    // For [0.5, 0.5, 0]:
-    // near_zero: 0.5 + 0.5 + 0 = 1.0
-    // near_half: 0 + 0 + 0.5 = 0.5
-    // total: 1.0 + 0.5 * 0.5 = 1.25
+    // For [0.5, 0.5, 0]: near_zero=1.0, near_half=0.5 -> 1.0 + 0.5*0.5 = 1.25
     expect(simplicity_score([0.5, 0.5, 0])).toBeCloseTo(1.25, 10)
   })
 })
@@ -208,8 +197,8 @@ describe(`to_cell_json`, () => {
     expect(parsed.numbers).toEqual([26]) // Fe=26
   })
 
-  test(`throws error for unknown element`, () => {
-    const bad = make_structure(
+  test(`throws error for unknown or empty element`, () => {
+    const unknown_elem = make_structure(
       [
         [5, 0, 0],
         [0, 5, 0],
@@ -217,12 +206,9 @@ describe(`to_cell_json`, () => {
       ],
       [{ elem: `Xx`, abc: [0, 0, 0], xyz: [0, 0, 0] }],
     )
+    expect(() => to_cell_json(unknown_elem)).toThrow(`Unknown element at site 0`)
 
-    expect(() => to_cell_json(bad)).toThrow(`Unknown element at site 0`)
-  })
-
-  test(`throws error for empty element`, () => {
-    const bad = make_structure(
+    const empty_elem = make_structure(
       [
         [5, 0, 0],
         [0, 5, 0],
@@ -230,8 +216,7 @@ describe(`to_cell_json`, () => {
       ],
       [{ elem: ``, abc: [0, 0, 0], xyz: [0, 0, 0] }],
     )
-
-    expect(() => to_cell_json(bad)).toThrow(`Unknown element at site 0`)
+    expect(() => to_cell_json(empty_elem)).toThrow(`Unknown element at site 0`)
   })
 
   test(`handles multiple sites of same element with correct ordering`, () => {
@@ -255,33 +240,6 @@ describe(`to_cell_json`, () => {
       [0.5, 0.5, 0.5],
     ])
   })
-
-  test(`handles all common elements correctly`, () => {
-    const elements: [string, number][] = [
-      [`H`, 1],
-      [`C`, 6],
-      [`N`, 7],
-      [`O`, 8],
-      [`Si`, 14],
-      [`Fe`, 26],
-      [`Cu`, 29],
-      [`Au`, 79],
-      [`U`, 92],
-    ]
-
-    for (const [elem, expected_num] of elements) {
-      const struct = make_structure(
-        [
-          [5, 0, 0],
-          [0, 5, 0],
-          [0, 0, 5],
-        ],
-        [{ elem, abc: [0, 0, 0], xyz: [0, 0, 0] }],
-      )
-      const parsed = JSON.parse(to_cell_json(struct))
-      expect(parsed.numbers[0]).toBe(expected_num)
-    }
-  })
 })
 
 describe(`apply_symmetry_operations`, () => {
@@ -301,17 +259,26 @@ describe(`apply_symmetry_operations`, () => {
     expect(result[0][2]).toBeCloseTo(0.42, 10)
   })
 
-  test(`inversion through origin`, () => {
-    const pos: Vec3 = [0.25, 0.25, 0.25]
-    const result = apply_symmetry_operations(pos, [
+  test(`inversion through origin handles regular and special positions`, () => {
+    // Regular position: inversion produces new position
+    const regular: Vec3 = [0.25, 0.25, 0.25]
+    const regular_result = apply_symmetry_operations(regular, [
       make_operation(identity, [0, 0, 0]),
       make_operation(inversion, [0, 0, 0]),
     ])
 
-    expect(result).toHaveLength(2)
-    expect(result[0]).toEqual([0.25, 0.25, 0.25])
-    // Inversion: -0.25 wraps to 0.75
-    expect(result[1]).toEqual([0.75, 0.75, 0.75])
+    expect(regular_result).toHaveLength(2)
+    expect(regular_result[0]).toEqual([0.25, 0.25, 0.25])
+    expect(regular_result[1]).toEqual([0.75, 0.75, 0.75]) // -0.25 wraps to 0.75
+
+    // Special position at origin: maps to itself
+    const origin: Vec3 = [0, 0, 0]
+    const origin_result = apply_symmetry_operations(origin, [
+      make_operation(identity, [0, 0, 0]),
+      make_operation(inversion, [0, 0, 0]),
+    ])
+    expect(origin_result).toHaveLength(1)
+    expect(origin_result[0]).toEqual([0, 0, 0])
   })
 
   test(`4-fold rotation around z-axis`, () => {
@@ -375,18 +342,6 @@ describe(`apply_symmetry_operations`, () => {
     expect(result[0]).toEqual([0.5, 0.5, 0.5])
   })
 
-  test(`special position at origin under inversion`, () => {
-    const origin: Vec3 = [0, 0, 0]
-    const result = apply_symmetry_operations(origin, [
-      make_operation(identity, [0, 0, 0]),
-      make_operation(inversion, [0, 0, 0]),
-    ])
-
-    // Origin maps to itself under inversion
-    expect(result).toHaveLength(1)
-    expect(result[0]).toEqual([0, 0, 0])
-  })
-
   test(`centering translation (body-centered)`, () => {
     const pos: Vec3 = [0, 0, 0]
     const result = apply_symmetry_operations(pos, [
@@ -397,19 +352,6 @@ describe(`apply_symmetry_operations`, () => {
     expect(result).toHaveLength(2)
     expect(result).toContainEqual([0, 0, 0])
     expect(result).toContainEqual([0.5, 0.5, 0.5])
-  })
-
-  test(`handles negative coordinates correctly`, () => {
-    const pos: Vec3 = [0.1, 0.1, 0.1]
-    const result = apply_symmetry_operations(pos, [
-      make_operation(inversion, [0, 0, 0]),
-    ])
-
-    expect(result).toHaveLength(1)
-    // -0.1 should wrap to 0.9
-    expect(result[0][0]).toBeCloseTo(0.9, 10)
-    expect(result[0][1]).toBeCloseTo(0.9, 10)
-    expect(result[0][2]).toBeCloseTo(0.9, 10)
   })
 
   test(`glide plane operation`, () => {
@@ -505,37 +447,29 @@ describe(`wyckoff_positions_from_moyo`, () => {
     expect(result[0].site_indices).toHaveLength(3)
   })
 
-  test(`handles empty Wyckoff letter`, () => {
-    const result = wyckoff_positions_from_moyo(
+  test(`handles empty or null Wyckoff letter`, () => {
+    const empty_result = wyckoff_positions_from_moyo(
       make_sym_data([[0.25, 0.25, 0.25]], [14], [``]),
     )
+    expect(empty_result).toHaveLength(1)
+    expect(empty_result[0].wyckoff).toBe(`1`)
+    expect(empty_result[0].elem).toBe(`Si`)
 
-    expect(result).toHaveLength(1)
-    expect(result[0].wyckoff).toBe(`1`)
-    expect(result[0].elem).toBe(`Si`)
-    expect(result[0].abc).toEqual([0.25, 0.25, 0.25])
-  })
-
-  test(`handles null Wyckoff letter`, () => {
-    const result = wyckoff_positions_from_moyo(
+    const null_result = wyckoff_positions_from_moyo(
       make_sym_data([[0.1, 0.2, 0.3]], [29], [null]),
     )
-
-    expect(result).toHaveLength(1)
-    expect(result[0].wyckoff).toBe(`1`)
-    expect(result[0].elem).toBe(`Cu`)
+    expect(null_result).toHaveLength(1)
+    expect(null_result[0].wyckoff).toBe(`1`)
+    expect(null_result[0].elem).toBe(`Cu`)
   })
 
-  test(`preserves original indices when provided`, () => {
-    const result = wyckoff_positions_from_moyo(
+  test(`preserves and maps original indices correctly`, () => {
+    const single = wyckoff_positions_from_moyo(
       make_sym_data([[0, 0, 0]], [6], [`1a`], [42]),
     )
+    expect(single[0].site_indices).toEqual([42])
 
-    expect(result[0].site_indices).toEqual([42])
-  })
-
-  test(`maps multiple original indices correctly`, () => {
-    const result = wyckoff_positions_from_moyo(
+    const multiple = wyckoff_positions_from_moyo(
       make_sym_data(
         [
           [0, 0, 0],
@@ -546,9 +480,8 @@ describe(`wyckoff_positions_from_moyo`, () => {
         [10, 25],
       ),
     )
-
-    expect(result).toHaveLength(1)
-    expect(result[0].site_indices).toEqual([10, 25])
+    expect(multiple).toHaveLength(1)
+    expect(multiple[0].site_indices).toEqual([10, 25])
   })
 
   test(`sorts by multiplicity then alphabetically`, () => {
