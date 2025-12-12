@@ -144,11 +144,9 @@ Create surfaces using parametric equations. This example shows a torus:
 <script>
   import { ScatterPlot3D } from 'matterviz'
 
-  const major_radius = 2
-  const minor_radius = 0.7
+  const [major_radius, minor_radius] = [0.4, 0.15]
 
-  // Parametric torus surface
-  const torus_surface = {
+  const torus_surface = { // Parametric torus surface
     type: `parametric`,
     u_range: [0, Math.PI * 2],
     v_range: [0, Math.PI * 2],
@@ -158,8 +156,7 @@ Create surfaces using parametric equations. This example shows a torus:
       y: (major_radius + minor_radius * Math.cos(v)) * Math.sin(u),
       z: minor_radius * Math.sin(v),
     }),
-    color_fn: (x, y, z) => {
-      // Color by angle around the tube
+    color_fn: (x, y, z) => { // Color by angle around the tube
       const hue = (Math.atan2(z, Math.sqrt(x * x + y * y) - major_radius) + Math.PI) /
         (2 * Math.PI)
       return `hsl(${hue * 360}, 70%, 50%)`
@@ -173,9 +170,83 @@ Create surfaces using parametric equations. This example shows a torus:
   x_axis={{ label: `X` }}
   y_axis={{ label: `Y` }}
   z_axis={{ label: `Z` }}
-  camera_position={[6, 4, 4]}
   style="height: 500px"
   legend={null}
+/>
+```
+
+## Lines with Markers
+
+Display 3D trajectories as connected lines with markers at each data point. Each series can have its own color and style:
+
+```svelte example
+<script>
+  import { ScatterPlot3D } from 'matterviz'
+
+  // Generate Lissajous curves - parametric 3D curves
+  const n_points = 60
+
+  const curve_1 = {
+    x: Array.from({ length: n_points }, (_, idx) => {
+      const t = (idx / n_points) * Math.PI * 2
+      return Math.sin(3 * t)
+    }),
+    y: Array.from({ length: n_points }, (_, idx) => {
+      const t = (idx / n_points) * Math.PI * 2
+      return Math.sin(4 * t)
+    }),
+    z: Array.from({ length: n_points }, (_, idx) => {
+      const t = (idx / n_points) * Math.PI * 2
+      return Math.sin(5 * t)
+    }),
+    point_style: { fill: `#e74c3c`, radius: 4 },
+    line_style: { stroke: `#e74c3c`, stroke_width: 3 },
+    label: `Lissajous (3:4:5)`,
+  }
+
+  const curve_2 = {
+    x: Array.from({ length: n_points }, (_, idx) => {
+      const t = (idx / n_points) * Math.PI * 2
+      return Math.sin(2 * t + Math.PI / 4)
+    }),
+    y: Array.from({ length: n_points }, (_, idx) => {
+      const t = (idx / n_points) * Math.PI * 2
+      return Math.sin(3 * t)
+    }),
+    z: Array.from({ length: n_points }, (_, idx) => {
+      const t = (idx / n_points) * Math.PI * 2
+      return Math.cos(2 * t)
+    }),
+    point_style: { fill: `#3498db`, radius: 4 },
+    line_style: { stroke: `#3498db`, stroke_width: 3 },
+    label: `Lissajous (2:3:2)`,
+  }
+
+  // Spring/helix trajectory
+  const curve_3 = {
+    x: Array.from({ length: n_points }, (_, idx) => {
+      const t = (idx / n_points) * Math.PI * 4
+      return 0.7 * Math.cos(t)
+    }),
+    y: Array.from({ length: n_points }, (_, idx) => {
+      const t = (idx / n_points) * Math.PI * 4
+      return 0.7 * Math.sin(t)
+    }),
+    z: Array.from({ length: n_points }, (_, idx) => {
+      return (idx / n_points) * 2 - 1
+    }),
+    point_style: { fill: `#2ecc71`, radius: 3 },
+    line_style: { stroke: `#2ecc71`, stroke_width: 3, line_dash: `3 2` },
+    label: `Helix`,
+  }
+</script>
+
+<ScatterPlot3D
+  series={[curve_1, curve_2, curve_3]}
+  x_axis={{ label: `X` }}
+  y_axis={{ label: `Y` }}
+  z_axis={{ label: `Z` }}
+  style="height: 500px"
 />
 ```
 
@@ -273,51 +344,6 @@ Enable automatic rotation with the `auto_rotate` prop. Use the controls pane (ge
 />
 ```
 
-## Orthographic Projection
-
-Switch between perspective and orthographic camera projection. Orthographic is useful for technical/CAD-style visualization:
-
-```svelte example
-<script>
-  import { ScatterPlot3D } from 'matterviz'
-
-  // Create a simple cubic lattice
-  const lattice_data = { x: [], y: [], z: [], color_values: [] }
-  const size = 3
-
-  for (let ix = 0; ix < size; ix++) {
-    for (let iy = 0; iy < size; iy++) {
-      for (let iz = 0; iz < size; iz++) {
-        lattice_data.x.push(ix - (size - 1) / 2)
-        lattice_data.y.push(iy - (size - 1) / 2)
-        lattice_data.z.push(iz - (size - 1) / 2)
-        lattice_data.color_values.push(ix + iy + iz)
-      }
-    }
-  }
-
-  let camera_projection = $state(`orthographic`)
-</script>
-
-<label style="display: block; margin-bottom: 1em">
-  Camera Projection:
-  <select bind:value={camera_projection}>
-    <option value="perspective">Perspective</option>
-    <option value="orthographic">Orthographic</option>
-  </select>
-</label>
-
-<ScatterPlot3D
-  series={[{ ...lattice_data, label: `Cubic Lattice`, point_style: { radius: 8 } }]}
-  x_axis={{ label: `X` }}
-  y_axis={{ label: `Y` }}
-  z_axis={{ label: `Z` }}
-  color_scale={{ scheme: `interpolateBlues` }}
-  {camera_projection}
-  style="height: 450px"
-/>
-```
-
 ## Multiple Surfaces
 
 Combine multiple surfaces in the same plot:
@@ -329,10 +355,10 @@ Combine multiple surfaces in the same plot:
   // Paraboloid surface
   const paraboloid = {
     type: `grid`,
-    x_range: [-2, 2],
-    y_range: [-2, 2],
+    x_range: [-1, 1],
+    y_range: [-1, 1],
     resolution: 25,
-    z_fn: (x, y) => (x * x + y * y) / 2 - 1,
+    z_fn: (x, y) => (x * x + y * y) - 0.5,
     color: `#3498db`,
     opacity: 0.6,
   }
@@ -340,10 +366,10 @@ Combine multiple surfaces in the same plot:
   // Plane cutting through
   const plane = {
     type: `grid`,
-    x_range: [-2, 2],
-    y_range: [-2, 2],
+    x_range: [-1, 1],
+    y_range: [-1, 1],
     resolution: 5,
-    z_fn: () => 0.5,
+    z_fn: () => 0.25,
     color: `#e74c3c`,
     opacity: 0.5,
     wireframe: true,
@@ -356,7 +382,7 @@ Combine multiple surfaces in the same plot:
   x_axis={{ label: `X` }}
   y_axis={{ label: `Y` }}
   z_axis={{ label: `Z` }}
-  camera_position={[5, 5, 5]}
+  camera_position={[4, 3, 3]}
   style="height: 500px"
   legend={null}
 />
@@ -364,26 +390,26 @@ Combine multiple surfaces in the same plot:
 
 ## Performance with Many Points
 
-The component uses instanced rendering for efficient handling of large datasets. This example renders 5,000 points:
+The component uses instanced rendering with per-instance colors for efficient handling of large datasets:
 
 ```svelte example
 <script>
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate many random points
-  const n_points = 5000
+  const n_points = 3_000
   const large_dataset = {
     x: Array.from({ length: n_points }, () => (Math.random() - 0.5) * 10),
     y: Array.from({ length: n_points }, () => (Math.random() - 0.5) * 10),
     z: Array.from({ length: n_points }, () => (Math.random() - 0.5) * 10),
     color_values: Array.from({ length: n_points }, () => Math.random()),
     point_style: { radius: 3 },
-    label: `5K Points`,
+    label: `${n_points.toLocaleString()} Points`,
   }
 </script>
 
 <p style="margin-bottom: 0.5em">
-  Rendering {n_points.toLocaleString()} points with instanced meshes
+  Rendering {n_points.toLocaleString()} points with per-instance colors
 </p>
 
 <ScatterPlot3D
@@ -392,7 +418,7 @@ The component uses instanced rendering for efficient handling of large datasets.
   y_axis={{ label: `Y` }}
   z_axis={{ label: `Z` }}
   color_scale={{ scheme: `interpolateRainbow` }}
-  sphere_segments={8}
+  sphere_segments={12}
   style="height: 500px"
 />
 ```
@@ -408,20 +434,20 @@ Surfaces can be colored using a custom color function that receives x, y, z coor
   // Ripple surface with custom coloring
   const ripple_surface = {
     type: `grid`,
-    x_range: [-5, 5],
-    y_range: [-5, 5],
-    resolution: 50,
+    x_range: [-1, 1],
+    y_range: [-1, 1],
+    resolution: 40,
     z_fn: (x, y) => {
       const r = Math.sqrt(x * x + y * y)
-      return Math.sin(r * 2) * Math.exp(-r * 0.3)
+      return Math.sin(r * 4) * Math.exp(-r * 0.8) * 0.5
     },
     color_fn: (x, y, z) => {
       // Color based on angle and height
       const angle = (Math.atan2(y, x) + Math.PI) / (2 * Math.PI)
-      const height = (z + 1) / 2
+      const height = (z + 0.5) / 1
       return `hsl(${angle * 360}, ${50 + height * 50}%, ${40 + height * 30}%)`
     },
-    opacity: 0.9,
+    opacity: 0.7,
     double_sided: true,
   }
 </script>
@@ -431,7 +457,7 @@ Surfaces can be colored using a custom color function that receives x, y, z coor
   x_axis={{ label: `X` }}
   y_axis={{ label: `Y` }}
   z_axis={{ label: `Z` }}
-  camera_position={[8, 6, 5]}
+  camera_position={[4, 3, 3]}
   style="height: 500px"
   legend={null}
 />
