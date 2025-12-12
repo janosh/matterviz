@@ -110,7 +110,7 @@
     const colors: number[] = []
 
     if (config.type === `grid` && config.z_fn) {
-      if (res_a < 2 || res_b < 2) return null
+      if (res_a < 2 || res_b < 2) return new THREE.BufferGeometry()
       const [x0, x1] = config.x_range ?? x_range
       const [y0, y1] = config.y_range ?? y_range
       const x_step = (x1 - x0) / (res_a - 1)
@@ -126,7 +126,7 @@
     }
 
     if (config.type === `parametric` && config.parametric_fn) {
-      if (res_a < 2 || res_b < 2) return null
+      if (res_a < 2 || res_b < 2) return new THREE.BufferGeometry()
       const [u0, u1] = config.u_range ?? [0, 1]
       const [v0, v1] = config.v_range ?? [0, 1]
       const u_step = (u1 - u0) / (res_a - 1)

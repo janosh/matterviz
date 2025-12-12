@@ -532,8 +532,8 @@ export interface Surface3DConfig {
   u_range?: [number, number]
   v_range?: [number, number]
   parametric_fn?: (u: number, v: number) => XyzObj
-  // For triangulated surfaces: explicit geometry
-  points?: ScatterPoint3D[]
+  // For triangulated surfaces: explicit geometry (only x,y,z needed, not scatter-specific fields)
+  points?: XyzObj[]
   triangles?: Vec3[] // indices into points array
   // Appearance
   color?: string

@@ -160,3 +160,109 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(container.querySelector(`.scatter-3d`)).toBeTruthy()
   })
 })
+
+// Test data processing logic that mirrors ScatterPlot3DScene's all_points derivation
+describe(`ScatterPlot3D data processing`, () => {
+  // Simulate the point extraction logic from ScatterPlot3DScene
+  function extract_points(series_list: DataSeries3D[]) {
+    return series_list.filter(Boolean).flatMap((srs, series_idx) =>
+      srs.x.map((x_val, point_idx) => ({
+        x: x_val,
+        y: srs.y[point_idx],
+        z: srs.z[point_idx],
+        series_idx,
+        point_idx,
+      }))
+    )
+  }
+
+  // Filter to only valid points (no undefined coordinates)
+  function get_valid_points(series_list: DataSeries3D[]) {
+    return extract_points(series_list).filter(
+      (pt) => pt.x !== undefined && pt.y !== undefined && pt.z !== undefined,
+    )
+  }
+
+  test(`mismatched array lengths produces correct valid point count`, () => {
+    const mismatched_series: DataSeries3D = {
+      x: [1, 2, 3],
+      y: [1, 2], // shorter - length 2
+      z: [1, 2, 3, 4], // longer - length 4
+    }
+
+    const expected_count = Math.min(
+      mismatched_series.x.length,
+      mismatched_series.y.length,
+      mismatched_series.z.length,
+    )
+    expect(expected_count).toBe(2)
+
+    // Component iterates over x, so raw extraction produces x.length points
+    const all_points = extract_points([mismatched_series])
+    expect(all_points).toHaveLength(mismatched_series.x.length)
+
+    // But only min(x,y,z) points have valid coordinates
+    const valid_points = get_valid_points([mismatched_series])
+    expect(valid_points).toHaveLength(expected_count)
+
+    // Verify no valid point has undefined coordinates
+    for (const pt of valid_points) {
+      expect(pt.x).not.toBeUndefined()
+      expect(pt.y).not.toBeUndefined()
+      expect(pt.z).not.toBeUndefined()
+      expect(Number.isNaN(pt.x)).toBe(false)
+      expect(Number.isNaN(pt.y)).toBe(false)
+      expect(Number.isNaN(pt.z)).toBe(false)
+    }
+
+    // Verify extracted points beyond y.length have undefined y
+    const points_with_undefined = all_points.filter(
+      (pt) => pt.y === undefined || pt.z === undefined,
+    )
+    expect(points_with_undefined).toHaveLength(
+      mismatched_series.x.length - expected_count,
+    )
+  })
+
+  test(`equal length arrays produces all valid points`, () => {
+    const balanced_series: DataSeries3D = {
+      x: [1, 2, 3, 4, 5],
+      y: [2, 4, 6, 8, 10],
+      z: [1, 1, 2, 2, 3],
+    }
+
+    const all_points = extract_points([balanced_series])
+    const valid_points = get_valid_points([balanced_series])
+
+    expect(all_points).toHaveLength(5)
+    expect(valid_points).toHaveLength(5)
+    expect(all_points).toEqual(valid_points)
+  })
+
+  test(`empty series produces no points`, () => {
+    const empty_series: DataSeries3D = { x: [], y: [], z: [] }
+
+    expect(extract_points([empty_series])).toHaveLength(0)
+    expect(get_valid_points([empty_series])).toHaveLength(0)
+  })
+
+  test(`multiple series with varying lengths`, () => {
+    const series_a: DataSeries3D = { x: [1, 2], y: [1, 2], z: [1, 2] }
+    const series_b: DataSeries3D = { x: [1, 2, 3], y: [1], z: [1, 2, 3] } // y is short
+
+    const all_points = extract_points([series_a, series_b])
+    const valid_points = get_valid_points([series_a, series_b])
+
+    // Total raw points: 2 from series_a + 3 from series_b = 5
+    expect(all_points).toHaveLength(5)
+
+    // Valid points: 2 from series_a + min(3,1,3)=1 from series_b = 3
+    expect(valid_points).toHaveLength(3)
+
+    // Verify series indices are preserved
+    const series_a_valid = valid_points.filter((pt) => pt.series_idx === 0)
+    const series_b_valid = valid_points.filter((pt) => pt.series_idx === 1)
+    expect(series_a_valid).toHaveLength(2)
+    expect(series_b_valid).toHaveLength(1)
+  })
+})

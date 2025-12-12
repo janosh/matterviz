@@ -831,8 +831,9 @@ export function negative_fraction(values: number[]): number {
   let [neg, total] = [0, 0]
   for (const val of values) {
     if (!Number.isFinite(val)) continue
-    total += Math.abs(val)
-    if (val < 0) neg += Math.abs(val)
+    const abs_val = Math.abs(val)
+    total += abs_val
+    if (val < 0) neg += abs_val
   }
   return total > 0 ? neg / total : 0
 }

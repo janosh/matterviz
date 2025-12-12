@@ -13,9 +13,9 @@
 
   let {
     series = [],
-    x_axis = {},
-    y_axis = {},
-    y2_axis = {},
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    y2_axis = $bindable({}),
     display = $bindable({}),
     styles = $bindable({}),
     selected_series_idx = $bindable(0),

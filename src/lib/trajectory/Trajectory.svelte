@@ -1,12 +1,6 @@
 <script lang="ts">
-  import {
-    type ElementSymbol,
-    EmptyState,
-    Icon,
-    Spinner,
-    Structure,
-    toggle_fullscreen,
-  } from '$lib'
+  import type { ElementSymbol } from '$lib'
+  import { EmptyState, Icon, Spinner, Structure, toggle_fullscreen } from '$lib'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'

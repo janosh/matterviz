@@ -1421,7 +1421,7 @@
     max-height: none !important;
     overflow: hidden;
     /* Add padding to prevent titles from being cropped at top */
-    padding-top: var(--barplot-fullscreen-padding-top, 2em);
+    padding-top: var(--plot-fullscreen-padding-top, 2em);
     box-sizing: border-box;
   }
   .header-controls {

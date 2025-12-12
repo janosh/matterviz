@@ -252,14 +252,16 @@
   let all_color_values = $derived(
     all_points.map((pt) => pt.color_value).filter((v): v is number => v != null),
   )
-  let auto_color_range = $derived(
-    all_color_values.length
-      ? [Math.min(...all_color_values), Math.max(...all_color_values)] as [
-        number,
-        number,
-      ]
-      : [0, 1] as [number, number],
-  )
+  let auto_color_range: [number, number] = $derived.by(() => {
+    if (!all_color_values.length) return [0, 1]
+    let min = all_color_values[0]
+    let max = all_color_values[0]
+    for (const val of all_color_values) {
+      if (val < min) min = val
+      else if (val > max) max = val
+    }
+    return [min, max]
+  })
   let all_size_values = $derived(
     all_points.map((pt) => pt.size_value).filter((val): val is number => val != null),
   )

@@ -63,7 +63,7 @@
   } from './scales'
 
   let {
-    series = [],
+    series = $bindable([]),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
@@ -259,8 +259,8 @@
       ? calc_auto_padding({
         padding,
         default_padding,
-        y_axis: { ...y_axis, tick_values: y_tick_values },
-        y2_axis: { ...y2_axis, tick_values: y2_tick_values },
+        y_axis: { ...final_y_axis, tick_values: y_tick_values },
+        y2_axis: { ...final_y2_axis, tick_values: y2_tick_values },
       })
       : { ...default_padding, ...padding }
 
@@ -889,9 +889,9 @@
 
   function handle_double_click() {
     // Reset zoom to auto ranges (preserve other axis settings)
-    x_axis = { ...x_axis, range: undefined }
-    y_axis = { ...y_axis, range: undefined }
-    y2_axis = { ...y2_axis, range: undefined }
+    x_axis = { ...x_axis, range: [null, null] }
+    y_axis = { ...y_axis, range: [null, null] }
+    y2_axis = { ...y2_axis, range: [null, null] }
   }
 
   // tooltip logic: find closest point and update tooltip state
@@ -1766,7 +1766,7 @@
     max-height: none !important;
     overflow: hidden;
     /* Add padding to prevent titles from being cropped at top */
-    padding-top: var(--scatter-fullscreen-padding-top, 2em);
+    padding-top: var(--plot-fullscreen-padding-top, 2em);
     box-sizing: border-box;
   }
   .header-controls {

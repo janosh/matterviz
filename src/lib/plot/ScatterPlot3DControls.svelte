@@ -54,13 +54,13 @@
   let auto_z_range = $derived(calc_auto_range(all_z_values))
 
   function reset_x_range() {
-    x_axis = { ...x_axis, range: undefined }
+    x_axis = { ...x_axis, range: [null, null] }
   }
   function reset_y_range() {
-    y_axis = { ...y_axis, range: undefined }
+    y_axis = { ...y_axis, range: [null, null] }
   }
   function reset_z_range() {
-    z_axis = { ...z_axis, range: undefined }
+    z_axis = { ...z_axis, range: [null, null] }
   }
 </script>
 

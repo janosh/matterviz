@@ -409,7 +409,7 @@
     max-height: none !important;
     overflow: hidden;
     /* Add padding to prevent titles from being cropped at top */
-    padding-top: var(--scatter3d-fullscreen-padding-top, 2em);
+    padding-top: var(--plot-fullscreen-padding-top, 2em);
     box-sizing: border-box;
   }
   div.scatter-3d :global(canvas) {

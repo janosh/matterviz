@@ -19,11 +19,8 @@
   import { BarPlot, ScatterPlot } from '$lib/plot'
   import { add_xrd_pattern } from '$lib/xrd/calc-xrd'
   import type { ComponentProps } from 'svelte'
-  import {
-    type BroadeningParams,
-    compute_broadened_pattern,
-    DEFAULT_BROADENING,
-  } from './broadening'
+  import type { BroadeningParams } from './broadening'
+  import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
