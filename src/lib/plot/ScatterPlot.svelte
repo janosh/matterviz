@@ -156,18 +156,18 @@
   const final_x_axis = $derived({
     ...AXIS_DEFAULTS,
     label_shift: { x: 0, y: -40 }, // x-axis needs different label position
-    ...x_axis,
+    ...(x_axis ?? {}),
   })
-  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...y_axis })
-  const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...y2_axis })
-  const final_display = $derived({ ...DEFAULTS.scatter.display, ...display })
+  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...(y_axis ?? {}) })
+  const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...(y2_axis ?? {}) })
+  const final_display = $derived({ ...DEFAULTS.scatter.display, ...(display ?? {}) })
   // Local state for styles (initialized from prop, owned by this component for controls)
   let styles = $state({
     show_points: DEFAULTS.scatter.show_points,
     show_lines: DEFAULTS.scatter.show_lines,
-    point: { ...DEFAULTS.scatter.point, ...styles_init.point },
-    line: { ...DEFAULTS.scatter.line, ...styles_init.line },
-    ...styles_init,
+    point: { ...DEFAULTS.scatter.point, ...(styles_init?.point ?? {}) },
+    line: { ...DEFAULTS.scatter.line, ...(styles_init?.line ?? {}) },
+    ...(styles_init ?? {}),
   })
   let controls = $state({ show: true, open: false, ...controls_init })
 
@@ -217,7 +217,7 @@
     if (typeof margin === `number`) {
       return { t: margin, l: margin, b: margin, r: margin }
     }
-    return { ...DEFAULT_MARGIN, ...margin }
+    return { ...DEFAULT_MARGIN, ...(margin ?? {}) }
   }
 
   // Create raw data points from all series
