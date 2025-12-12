@@ -38,6 +38,7 @@
     get_series_symbol,
     process_prop,
   } from '$lib/plot/data-transform'
+  import { AXIS_DEFAULTS } from '$lib/plot/defaults'
   import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import {
@@ -68,7 +69,7 @@
     y2_axis = $bindable({}),
     display = $bindable(DEFAULTS.scatter.display),
     styles: styles_init = {},
-    controls = {},
+    controls: controls_init = {},
     padding = {},
     range_padding = 0.05,
     current_x_value = null,
@@ -151,33 +152,15 @@
     wrapper?: HTMLDivElement
   } = $props()
 
-  // Initialize default values
-  x_axis = {
-    format: ``,
-    scale_type: `linear`,
-    label_shift: { x: 0, y: -40 },
-    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
-    range: [null, null],
+  // Merged axis/display values with defaults (use $derived to avoid breaking $bindable)
+  const final_x_axis = $derived({
+    ...AXIS_DEFAULTS,
+    label_shift: { x: 0, y: -40 }, // x-axis needs different label position
     ...x_axis,
-  }
-  y_axis = {
-    format: ``,
-    scale_type: `linear`,
-    label_shift: { x: 0, y: 0 },
-    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
-    range: [null, null],
-    ...y_axis,
-  }
-  y2_axis = {
-    format: ``,
-    scale_type: `linear`,
-    ticks: 5,
-    label_shift: { x: 0, y: 0 },
-    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
-    range: [null, null],
-    ...y2_axis,
-  }
-  display = { ...DEFAULTS.scatter.display, ...display }
+  })
+  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...y_axis })
+  const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...y2_axis })
+  const final_display = $derived({ ...DEFAULTS.scatter.display, ...display })
   // Local state for styles (initialized from prop, owned by this component for controls)
   let styles = $state({
     show_points: DEFAULTS.scatter.show_points,
@@ -186,7 +169,7 @@
     line: { ...DEFAULTS.scatter.line, ...styles_init.line },
     ...styles_init,
   })
-  controls = { show: true, open: false, ...controls }
+  let controls = $state({ show: true, open: false, ...controls_init })
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
@@ -311,10 +294,10 @@
     get_nice_data_range(
       all_points,
       ({ x }) => x,
-      (x_axis.range ?? [null, null]) as [number | null, number | null],
-      x_axis.scale_type!,
+      (final_x_axis.range ?? [null, null]) as [number | null, number | null],
+      final_x_axis.scale_type!,
       range_padding,
-      x_axis.format?.startsWith(`%`) || false,
+      final_x_axis.format?.startsWith(`%`) || false,
     ),
   )
 
@@ -322,8 +305,8 @@
     get_nice_data_range(
       y1_points,
       ({ y }) => y,
-      (y_axis.range ?? [null, null]) as [number | null, number | null],
-      y_axis.scale_type!,
+      (final_y_axis.range ?? [null, null]) as [number | null, number | null],
+      final_y_axis.scale_type!,
       range_padding,
       false,
     ),
@@ -333,8 +316,8 @@
     get_nice_data_range(
       y2_points,
       ({ y }) => y,
-      (y2_axis.range ?? [null, null]) as [number | null, number | null],
-      y2_axis.scale_type!,
+      (final_y2_axis.range ?? [null, null]) as [number | null, number | null],
+      final_y2_axis.scale_type!,
       range_padding,
       false,
     ),
@@ -343,16 +326,16 @@
   // Update zoom ranges when auto ranges or explicit ranges change
   $effect(() => {
     const new_x = [
-      x_axis.range?.[0] ?? auto_x_range[0],
-      x_axis.range?.[1] ?? auto_x_range[1],
+      final_x_axis.range?.[0] ?? auto_x_range[0],
+      final_x_axis.range?.[1] ?? auto_x_range[1],
     ] as [number, number]
     const new_y = [
-      y_axis.range?.[0] ?? auto_y_range[0],
-      y_axis.range?.[1] ?? auto_y_range[1],
+      final_y_axis.range?.[0] ?? auto_y_range[0],
+      final_y_axis.range?.[1] ?? auto_y_range[1],
     ] as [number, number]
     const new_y2 = [
-      y2_axis.range?.[0] ?? auto_y2_range[0],
-      y2_axis.range?.[1] ?? auto_y2_range[1],
+      final_y2_axis.range?.[0] ?? auto_y2_range[0],
+      final_y2_axis.range?.[1] ?? auto_y2_range[1],
     ] as [number, number]
 
     if (new_x[0] !== zoom_x_range[0] || new_x[1] !== zoom_x_range[1]) {
@@ -384,11 +367,11 @@
 
   // Create scale functions
   let x_scale_fn = $derived(
-    x_axis.format?.startsWith(`%`)
+    final_x_axis.format?.startsWith(`%`)
       ? scaleTime()
         .domain([new Date(x_min), new Date(x_max)])
         .range([pad.l, width - pad.r])
-      : x_axis.scale_type === `log`
+      : final_x_axis.scale_type === `log`
       ? scaleLog()
         .domain([x_min, x_max])
         .range([pad.l, width - pad.r])
@@ -398,7 +381,7 @@
   )
 
   let y_scale_fn = $derived(
-    y_axis.scale_type === `log`
+    final_y_axis.scale_type === `log`
       ? scaleLog()
         .domain([y_min, y_max])
         .range([height - pad.b, pad.t])
@@ -408,7 +391,7 @@
   )
 
   let y2_scale_fn = $derived(
-    y2_axis.scale_type === `log`
+    final_y2_axis.scale_type === `log`
       ? scaleLog()
         .domain([y2_min, y2_max])
         .range([height - pad.b, pad.t])
@@ -521,7 +504,7 @@
     for (const series_data of filtered_series) {
       if (!series_data?.filtered_data) continue
       for (const point of series_data.filtered_data) {
-        const point_x_coord = x_axis.format?.startsWith(`%`)
+        const point_x_coord = final_x_axis.format?.startsWith(`%`)
           ? x_scale_fn(new Date(point.x))
           : x_scale_fn(point.x)
         const point_y_coord =
@@ -757,32 +740,32 @@
 
     // X-axis ticks: choose appropriate scale for tick generation
     // Time scales (format starts with %) use scaleTime for better tick placement
-    const x_scale_for_ticks = x_axis.format?.startsWith(`%`)
+    const x_scale_for_ticks = final_x_axis.format?.startsWith(`%`)
       ? scaleTime().domain([new Date(x_min), new Date(x_max)])
-      : x_axis.scale_type === `log`
+      : final_x_axis.scale_type === `log`
       ? scaleLog().domain([x_min, x_max])
       : scaleLinear().domain([x_min, x_max])
 
     return {
       x: generate_ticks(
         [x_min, x_max],
-        x_axis.scale_type!,
-        x_axis.ticks,
+        final_x_axis.scale_type ?? `linear`,
+        final_x_axis.ticks,
         x_scale_for_ticks,
-        { format: x_axis.format },
+        { format: final_x_axis.format },
       ),
       y: generate_ticks(
         [y_min, y_max],
-        y_axis.scale_type!,
-        y_axis.ticks!,
+        final_y_axis.scale_type ?? `linear`,
+        final_y_axis.ticks,
         y_scale_fn,
         { default_count: 5 },
       ),
       y2: y2_points.length > 0
         ? generate_ticks(
           [y2_min, y2_max],
-          y2_axis.scale_type!,
-          y2_axis.ticks!,
+          final_y2_axis.scale_type ?? `linear`,
+          final_y2_axis.ticks,
           y2_scale_fn,
           { default_count: 5 },
         )
@@ -905,7 +888,7 @@
   }
 
   function handle_double_click() {
-    // Reset zoom to auto ranges (clear axis range to use auto-calculated ranges)
+    // Reset zoom to auto ranges (preserve other axis settings)
     x_axis = { ...x_axis, range: undefined }
     y_axis = { ...y_axis, range: undefined }
     y2_axis = { ...y2_axis, range: undefined }
@@ -927,7 +910,7 @@
 
       for (const point of series_data.filtered_data) {
         // Calculate screen coordinates of the point
-        const point_cx = x_axis.format?.startsWith(`%`)
+        const point_cx = final_x_axis.format?.startsWith(`%`)
           ? x_scale_fn(new Date(point.x))
           : x_scale_fn(point.x)
         const point_cy = (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(
@@ -1002,7 +985,7 @@
     label_positions = compute_label_positions(
       filtered_series,
       actual_label_config,
-      { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis },
+      { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis: final_x_axis },
       { width, height, pad },
     )
   })
@@ -1051,7 +1034,7 @@
 
   function get_screen_coords(point: Point, series?: DataSeries): [number, number] {
     // convert data coordinates to potentially non-finite screen coordinates
-    const screen_x = x_axis.format?.startsWith(`%`)
+    const screen_x = final_x_axis.format?.startsWith(`%`)
       ? x_scale_fn(new Date(point.x))
       : x_scale_fn(point.x)
 
@@ -1060,13 +1043,13 @@
     const use_y2 = series?.y_axis === `y2`
     const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
     const min_domain_y = use_y2
-      ? y2_axis.scale_type === `log` ? y_scale.domain()[0] : -Infinity
-      : y_axis.scale_type === `log`
+      ? final_y2_axis.scale_type === `log` ? y_scale.domain()[0] : -Infinity
+      : final_y_axis.scale_type === `log`
       ? y_scale.domain()[0]
       : -Infinity
     const safe_y_val = use_y2
-      ? y2_axis.scale_type === `log` ? Math.max(y_val, min_domain_y) : y_val
-      : y_axis.scale_type === `log`
+      ? final_y2_axis.scale_type === `log` ? Math.max(y_val, min_domain_y) : y_val
+      : final_y_axis.scale_type === `log`
       ? Math.max(y_val, min_domain_y)
       : y_val
     const screen_y = y_scale(safe_y_val) // This might be non-finite
@@ -1081,21 +1064,31 @@
     const hovered_series = series_with_ids[point.series_idx]
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
-    const cx = x_axis.format?.startsWith(`%`)
+    const cx = final_x_axis.format?.startsWith(`%`)
       ? x_scale_fn(new Date(x))
       : x_scale_fn(x)
     const cy = (hovered_series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)
-    const coords = { x, y, cx, cy, x_axis, y_axis, y2_axis }
+    const coords = {
+      x,
+      y,
+      cx,
+      cy,
+      x_axis: final_x_axis,
+      y_axis: final_y_axis,
+      y2_axis: final_y2_axis,
+    }
     return {
       ...coords,
       fullscreen,
       metadata: metadata ?? null,
       label: hovered_series.label ?? null,
       series_idx,
-      x_formatted: format_value(x, x_axis.format || `.3~s`),
+      x_formatted: format_value(x, final_x_axis.format || `.3~s`),
       y_formatted: format_value(
         y,
-        (hovered_series.y_axis === `y2` ? y2_axis.format : y_axis.format) || `.3~s`,
+        (hovered_series.y_axis === `y2`
+          ? final_y2_axis.format
+          : final_y_axis.format) || `.3~s`,
       ),
       color_value: color_value ?? null,
       colorbar: {
@@ -1170,34 +1163,34 @@
       <g class="x-axis">
         {#if width > 0 && height > 0}
           {#each x_tick_values as tick (tick)}
-            {@const tick_pos_raw = x_axis.format?.startsWith(`%`)
+            {@const tick_pos_raw = final_x_axis.format?.startsWith(`%`)
           ? x_scale_fn(new Date(tick))
           : x_scale_fn(tick)}
             {#if isFinite(tick_pos_raw)}
               // Check if tick position is finite
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
-                {@const inside = x_axis.tick?.label?.inside ?? false}
+                {@const inside = final_x_axis.tick?.label?.inside ?? false}
                 <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
-                  {#if display.x_grid}
+                  {#if final_display.x_grid}
                     <line
                       y1={-(height - pad.b - pad.t)}
                       y2="0"
                       {...DEFAULT_GRID_STYLE}
-                      {...(x_axis.grid_style ?? {})}
+                      {...(final_x_axis.grid_style ?? {})}
                     />
                   {/if}
                   <line y1="0" y2={inside ? -5 : 5} stroke="var(--border-color, gray)" />
 
                   {#if tick >= x_min && tick <= x_max}
                     {@const base_y = inside ? -8 : 20}
-                    {@const shift = x_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
+                    {@const shift = final_x_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                     {@const x = shift.x ?? 0}
                     {@const y = base_y + (shift.y ?? 0)}
-                    {@const custom_label = get_tick_label(tick, x_axis.ticks)}
+                    {@const custom_label = get_tick_label(tick, final_x_axis.ticks)}
                     {@const dominant_baseline = inside ? `auto` : `hanging`}
                     <text {x} {y} dominant-baseline={dominant_baseline}>
-                      {custom_label ?? format_value(tick, x_axis.format ?? ``)}
+                      {custom_label ?? format_value(tick, final_x_axis.format ?? ``)}
                     </text>
                   {/if}
                 </g>
@@ -1208,7 +1201,7 @@
 
         <!-- Current frame indicator -->
         {#if current_x_value !== null && current_x_value !== undefined}
-          {@const current_pos_raw = x_axis.format?.startsWith(`%`)
+          {@const current_pos_raw = final_x_axis.format?.startsWith(`%`)
           ? x_scale_fn(new Date(current_x_value))
           : x_scale_fn(current_x_value)}
           {#if isFinite(current_pos_raw)}
@@ -1229,15 +1222,15 @@
           {/if}
         {/if}
 
-        {#if x_axis.label}
+        {#if final_x_axis.label}
           <foreignObject
-            x={width / 2 + (x_axis.label_shift?.x ?? 0) - 100}
-            y={height - pad.b - (x_axis.label_shift?.y ?? -40) - 10}
+            x={width / 2 + (final_x_axis.label_shift?.x ?? 0) - 100}
+            y={height - pad.b - (final_x_axis.label_shift?.y ?? -40) - 10}
             width="200"
             height="20"
           >
             <div class="axis-label x-label">
-              {@html x_axis.label ?? ``}
+              {@html final_x_axis.label ?? ``}
             </div>
           </foreignObject>
         {/if}
@@ -1251,14 +1244,14 @@
               // Check if tick position is finite
               {@const tick_pos = tick_pos_raw}
               {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
-                {@const inside = y_axis.tick?.label?.inside ?? false}
+                {@const inside = final_y_axis.tick?.label?.inside ?? false}
                 <g class="tick" transform="translate({pad.l}, {tick_pos})">
-                  {#if display.y_grid}
+                  {#if final_display.y_grid}
                     <line
                       x1="0"
                       x2={width - pad.l - pad.r}
                       {...DEFAULT_GRID_STYLE}
-                      {...(y_axis.grid_style ?? {})}
+                      {...(final_y_axis.grid_style ?? {})}
                     />
                   {/if}
                   <line
@@ -1269,15 +1262,15 @@
 
                   {#if tick >= y_min && tick <= y_max}
                     {@const base_x = inside ? 8 : -8}
-                    {@const shift = y_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
+                    {@const shift = final_y_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                     {@const x = base_x + (shift.x ?? 0)}
                     {@const y = shift.y ?? 0}
-                    {@const custom_label = get_tick_label(tick, y_axis.ticks)}
+                    {@const custom_label = get_tick_label(tick, final_y_axis.ticks)}
                     {@const text_anchor = inside ? `start` : `end`}
-                    <text {x} {y} text-anchor={text_anchor} fill={y_axis.color}>
-                      {custom_label ?? format_value(tick, y_axis.format ?? ``)}
-                      {#if y_axis.unit && idx === 0}
-                        &zwnj;&ensp;{y_axis.unit}
+                    <text {x} {y} text-anchor={text_anchor} fill={final_y_axis.color}>
+                      {custom_label ?? format_value(tick, final_y_axis.format ?? ``)}
+                      {#if final_y_axis.unit && idx === 0}
+                        &zwnj;&ensp;{final_y_axis.unit}
                       {/if}
                     </text>
                   {/if}
@@ -1287,20 +1280,20 @@
           {/each}
         {/if}
 
-        {#if height > 0 && y_axis.label}
+        {#if height > 0 && final_y_axis.label}
           <foreignObject
             x={-100}
             y={-10}
             width="200"
             height="20"
-            transform="rotate(-90, {(y_axis.label_shift?.y ?? 12)}, {pad.t +
+            transform="rotate(-90, {(final_y_axis.label_shift?.y ?? 12)}, {pad.t +
               (height - pad.t - pad.b) / 2 +
-              ((y_axis.label_shift?.x ?? 0))}) translate({(y_axis.label_shift?.y ?? 12)}, {pad.t +
+              ((final_y_axis.label_shift?.x ?? 0))}) translate({(final_y_axis.label_shift?.y ?? 12)}, {pad.t +
               (height - pad.t - pad.b) / 2 +
-              ((y_axis.label_shift?.x ?? 0))})"
+              ((final_y_axis.label_shift?.x ?? 0))})"
           >
-            <div class="axis-label y-label" style:color={y_axis.color}>
-              {@html y_axis.label ?? ``}
+            <div class="axis-label y-label" style:color={final_y_axis.color}>
+              {@html final_y_axis.label ?? ``}
             </div>
           </foreignObject>
         {/if}
@@ -1316,14 +1309,14 @@
                 // Check if tick position is finite
                 {@const tick_pos = tick_pos_raw}
                 {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
-                  {@const inside = y2_axis.tick?.label?.inside ?? false}
+                  {@const inside = final_y2_axis.tick?.label?.inside ?? false}
                   <g class="tick" transform="translate({width - pad.r}, {tick_pos})">
-                    {#if display.y2_grid}
+                    {#if final_display.y2_grid}
                       <line
                         x1={-(width - pad.l - pad.r)}
                         x2="0"
                         {...DEFAULT_GRID_STYLE}
-                        {...(y2_axis.grid_style ?? {})}
+                        {...(final_y2_axis.grid_style ?? {})}
                       />
                     {/if}
                     <line
@@ -1334,15 +1327,15 @@
 
                     {#if tick >= y2_min && tick <= y2_max}
                       {@const base_x = inside ? -8 : 8}
-                      {@const shift = y2_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
+                      {@const shift = final_y2_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                       {@const x = base_x + (shift.x ?? 0)}
                       {@const y = shift.y ?? 0}
-                      {@const custom_label = get_tick_label(tick, y2_axis.ticks)}
+                      {@const custom_label = get_tick_label(tick, final_y2_axis.ticks)}
                       {@const text_anchor = inside ? `end` : `start`}
-                      <text {x} {y} text-anchor={text_anchor} fill={y2_axis.color}>
-                        {custom_label ?? format_value(tick, y2_axis.format ?? ``)}
-                        {#if y2_axis.unit && idx === 0}
-                          &zwnj;&ensp;{y2_axis.unit}
+                      <text {x} {y} text-anchor={text_anchor} fill={final_y2_axis.color}>
+                        {custom_label ?? format_value(tick, final_y2_axis.format ?? ``)}
+                        {#if final_y2_axis.unit && idx === 0}
+                          &zwnj;&ensp;{final_y2_axis.unit}
                         {/if}
                       </text>
                     {/if}
@@ -1352,22 +1345,22 @@
             {/each}
           {/if}
 
-          {#if height > 0 && y2_axis.label}
+          {#if height > 0 && final_y2_axis.label}
             <foreignObject
               x={-100}
               y={-10}
               width="200"
               height="20"
-              transform="rotate(-90, {width - pad.r + ((y2_axis.label_shift?.y ?? 0))}, {pad.t +
+              transform="rotate(-90, {width - pad.r + ((final_y2_axis.label_shift?.y ?? 0))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
-                ((y2_axis.label_shift?.x ?? 0))}) translate({width -
+                ((final_y2_axis.label_shift?.x ?? 0))}) translate({width -
                 pad.r +
-                ((y2_axis.label_shift?.y ?? 0))}, {pad.t +
+                ((final_y2_axis.label_shift?.y ?? 0))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
-                ((y2_axis.label_shift?.x ?? 0))})"
+                ((final_y2_axis.label_shift?.x ?? 0))})"
             >
-              <div class="axis-label y2-label" style:color={y2_axis.color}>
-                {@html y2_axis.label ?? ``}
+              <div class="axis-label y2-label" style:color={final_y2_axis.color}>
+                {@html final_y2_axis.label ?? ``}
               </div>
             </foreignObject>
           {/if}
@@ -1388,8 +1381,8 @@
       {/if}
 
       <!-- Zero lines -->
-      {#if display.x_zero_line && x_axis.scale_type === `linear` &&
-        !x_axis.format?.startsWith(`%`) && x_min <= 0 && x_max >= 0}
+      {#if final_display.x_zero_line && final_x_axis.scale_type === `linear` &&
+        !final_x_axis.format?.startsWith(`%`) && x_min <= 0 && x_max >= 0}
         {@const zero_x_pos = x_scale_fn(0)}
         {#if isFinite(zero_x_pos)}
           <line
@@ -1401,7 +1394,8 @@
           />
         {/if}
       {/if}
-      {#if display.y_zero_line && y_axis.scale_type === `linear` && y_min <= 0 &&
+      {#if final_display.y_zero_line && final_y_axis.scale_type === `linear` &&
+        y_min <= 0 &&
         y_max >= 0}
         {@const zero_y_pos = y_scale_fn(0)}
         {#if isFinite(zero_y_pos)}
@@ -1414,8 +1408,8 @@
           />
         {/if}
       {/if}
-      {#if display.y_zero_line && y2_points.length > 0 &&
-        y2_axis.scale_type === `linear` && y2_min <= 0 && y2_max >= 0}
+      {#if final_display.y_zero_line && y2_points.length > 0 &&
+        final_y2_axis.scale_type === `linear` && y2_min <= 0 && y2_max >= 0}
         {@const zero_y2_pos = y2_scale_fn(0)}
         {#if isFinite(zero_y2_pos)}
           <line
@@ -1468,7 +1462,7 @@
               <Line
                 points={finite_screen_points}
                 origin={[
-                  x_axis.format?.startsWith(`%`)
+                  final_x_axis.format?.startsWith(`%`)
                     ? x_scale_fn(new Date(x_min))
                     : x_scale_fn(x_min),
                   series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
@@ -1504,7 +1498,7 @@
             ...label_style,
             offset: {
               x: calculated_label_pos.x -
-                (x_axis.format?.startsWith(`%`)
+                (final_x_axis.format?.startsWith(`%`)
                   ? x_scale_fn(new Date(point.x))
                   : x_scale_fn(point.x)),
               y: calculated_label_pos.y - (series_data.y_axis === `y2`
@@ -1771,6 +1765,9 @@
     background: var(--plot-bg, white);
     max-height: none !important;
     overflow: hidden;
+    /* Add padding to prevent titles from being cropped at top */
+    padding-top: var(--scatter-fullscreen-padding-top, 2em);
+    box-sizing: border-box;
   }
   .header-controls {
     position: absolute;

@@ -4,6 +4,7 @@
   import type { BarStyle, HistogramHandlerProps } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
+  import { AXIS_DEFAULTS } from '$lib/plot/defaults'
   import { get_relative_coords } from '$lib/plot/interactions'
   import {
     calc_auto_padding,
@@ -96,30 +97,27 @@
   let bar = $state({ ...DEFAULTS.histogram.bar, ...bar_init })
   let x_axis = $state({ ...x_axis_init })
   let y_axis = $state({ ...y_axis_init })
-  let y2_axis = $state({ ...y2_axis_init })
+  // y2-axis needs different default label_shift for right-side positioning
+  let y2_axis = $state({ label_shift: { x: 0, y: 60 }, ...y2_axis_init })
   let display = $state({ ...DEFAULTS.histogram.display, ...display_init })
 
   const final_x_axis = $derived({
+    ...AXIS_DEFAULTS,
     label: `Value`,
     format: `.2~s`,
-    scale_type: `linear` as const,
     ...x_axis,
   })
   const final_y_axis = $derived({
+    ...AXIS_DEFAULTS,
     label: `Count`,
     format: `d`,
-    scale_type: `linear` as const,
     ...y_axis,
   })
   const final_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
   const final_y2_axis = $derived({
+    ...AXIS_DEFAULTS,
     label: `Count`,
     format: `d`,
-    scale_type: `linear` as const,
-    ticks: 5,
-    label_shift: { y: 60 },
-    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
-    range: [null, null] as [number | null, number | null],
     ...y2_axis,
   })
 
@@ -475,7 +473,7 @@
   }
 
   function handle_double_click() {
-    // Clear axis ranges to reset to auto ranges
+    // Clear axis ranges to reset to auto ranges (preserve other axis settings)
     x_axis = { ...x_axis, range: undefined }
     y_axis = { ...y_axis, range: undefined }
     y2_axis = { ...y2_axis, range: undefined }
@@ -973,6 +971,9 @@
     background: var(--plot-bg, white);
     max-height: none !important;
     overflow: hidden;
+    /* Add padding to prevent titles from being cropped at top */
+    padding-top: var(--histogram-fullscreen-padding-top, 2em);
+    box-sizing: border-box;
   }
   .header-controls {
     position: absolute;
