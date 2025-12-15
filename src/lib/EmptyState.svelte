@@ -32,7 +32,7 @@
     box-sizing: border-box;
   }
   .empty-state :global(.status-message) {
-    border: none !important; /* Remove inner border from StatusMessage */
+    --status-message-border: none; /* Remove inner border from StatusMessage */
   }
   .empty-state > :global(:is(p, h3, ul, strong)), .empty-state > .message {
     max-width: var(--empty-state-max-width, 500px);

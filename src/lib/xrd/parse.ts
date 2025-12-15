@@ -475,7 +475,9 @@ function parse_rigaku_raw_file(data: ArrayBuffer): XrdPattern | null {
   }
 }
 
-// Read array of 32-bit floats from DataView starting at offset
+// Read array of 32-bit floats from DataView starting at offset.
+// Note: Negative values are allowed since background-subtracted XRD data can
+// legitimately have negative intensities.
 function read_float32_array(
   view: DataView,
   offset: number,
@@ -487,8 +489,8 @@ function read_float32_array(
 
   for (let idx = 0; idx < max_count && offset + idx * 4 <= max_offset; idx++) {
     const val = view.getFloat32(offset + idx * 4, true) // little-endian
-    // Filter out invalid values (NaN, Infinity, negative counts)
-    if (isNaN(val) || !isFinite(val) || val < 0) {
+    // Filter out invalid values (NaN, Infinity)
+    if (isNaN(val) || !isFinite(val)) {
       // If we hit invalid data early, we may have wrong offset
       if (idx < 10) break
       values.push(0) // Replace isolated bad values

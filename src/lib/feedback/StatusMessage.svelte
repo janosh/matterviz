@@ -12,7 +12,9 @@
   <div class="status-message {type}" role="status" {...rest}>
     {message}
     {#if dismissible}
-      <button onclick={() => (message = undefined)}>✕</button>
+      <button onclick={() => (message = undefined)} aria-label="Dismiss message">
+        ✕
+      </button>
     {/if}
   </div>
 {/if}
@@ -20,22 +22,23 @@
 <style>
   .status-message {
     border-radius: var(--border-radius, 3pt);
+    border: var(--status-message-border);
     &.info {
+      --status-message-border: 2px dashed #ccc;
       background: transparent;
       color: #666;
-      border: 2px dashed #ccc;
       padding: 2em;
     }
     &.error {
+      --status-message-border: 1px solid #e55;
       background: #fee;
       color: #c22;
-      border: 1px solid #e55;
       padding: 0.5em 1em;
     }
     &.warning {
+      --status-message-border: 1px solid #f80;
       background: #fed;
       color: #e60;
-      border: 1px solid #f80;
       padding: 0.5em;
     }
   }

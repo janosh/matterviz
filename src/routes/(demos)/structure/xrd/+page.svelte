@@ -49,6 +49,9 @@
     ras: `rgba(138, 43, 226, 0.8)`, // BlueViolet for Rigaku
     uxd: `rgba(220, 20, 60, 0.8)`, // Crimson for Siemens
     gsas: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
+    gsa: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
+    gda: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
+    fxye: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
     raw: `rgba(255, 99, 71, 0.8)`, // Tomato for Bruker binary
     dat: `rgba(100, 149, 237, 0.8)`, // Cornflower blue for generic DAT
     csv: `rgba(46, 139, 87, 0.8)`, // SeaGreen for CSV
