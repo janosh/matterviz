@@ -3,7 +3,7 @@ import { download } from '$lib/io/fetch'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
-import type { BufferGeometry, InstancedMesh, Material, Scene } from 'three'
+import type { BufferGeometry, InstancedMesh, Material, Object3D, Scene } from 'three'
 import { Color, Group, Matrix4, Mesh, MeshStandardMaterial, ShaderMaterial } from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js'
@@ -177,6 +177,10 @@ function extract_material_color(
 // Helper function to convert InstancedMesh to regular Mesh objects for export
 // This is necessary because GLB/OBJ exporters don't handle InstancedMesh properly
 // Note: Threlte's InstancedMesh sets isInstancedMesh=true but type remains "Mesh"
+// Type guard for InstancedMesh (Three.js uses isInstancedMesh property, not exposed in Object3D type)
+const is_instanced_mesh = (obj: Object3D): obj is InstancedMesh =>
+  (obj as InstancedMesh).isInstancedMesh === true || obj.type === `InstancedMesh`
+
 function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   // STEP 1: Collect material colors from ORIGINAL scene BEFORE cloning
   // This is crucial because scene.clone() may not properly preserve Threlte's material colors
@@ -184,9 +188,7 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   const bond_colors_map = new Map<string, Map<number, Color>>()
 
   scene.traverse((object) => {
-    // @ts-expect-error - checking for isInstancedMesh property
-    const is_instanced = object.isInstancedMesh === true ||
-      object.type === `InstancedMesh`
+    const is_instanced = is_instanced_mesh(object)
     if (!is_instanced) return
 
     const instanced_mesh = object as InstancedMesh
@@ -226,17 +228,11 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   const cloned_meshes: InstancedMesh[] = []
 
   scene.traverse((object) => {
-    // @ts-expect-error - checking for isInstancedMesh property
-    if (object.isInstancedMesh === true || object.type === `InstancedMesh`) {
-      original_meshes.push(object as InstancedMesh)
-    }
+    if (is_instanced_mesh(object)) original_meshes.push(object)
   })
 
   cloned_scene.traverse((object) => {
-    // @ts-expect-error - checking for isInstancedMesh property
-    if (object.isInstancedMesh === true || object.type === `InstancedMesh`) {
-      cloned_meshes.push(object as InstancedMesh)
-    }
+    if (is_instanced_mesh(object)) cloned_meshes.push(object)
   })
 
   // STEP 4: Convert each InstancedMesh to individual Mesh objects
@@ -439,6 +435,11 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
     : `Generated from structure`
   lines.push(comment)
 
+  // Cache converter for fractional→Cartesian (if lattice available)
+  const frac_to_cart = `lattice` in structure && structure.lattice?.matrix?.length === 3
+    ? math.create_frac_to_cart(structure.lattice.matrix)
+    : null
+
   // Atom lines: element symbol followed by x, y, z coordinates
   for (const site of structure.sites) {
     // Extract element symbol from species
@@ -459,15 +460,8 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
     let coords: number[]
     if (site.xyz && Array.isArray(site.xyz) && site.xyz.length >= 3) {
       coords = site.xyz.slice(0, 3)
-    } else if (
-      site.abc &&
-      Array.isArray(site.abc) &&
-      site.abc.length >= 3 &&
-      `lattice` in structure &&
-      structure.lattice?.matrix?.length === 3
-    ) {
-      // Convert fractional coordinates to cartesian
-      coords = math.frac_to_cart(site.abc as math.Vec3, structure.lattice.matrix)
+    } else if (site.abc?.length >= 3 && frac_to_cart) {
+      coords = frac_to_cart(site.abc as math.Vec3)
     } else coords = [0, 0, 0] // fallback
 
     // Format coordinates to reasonable precision
@@ -530,6 +524,11 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   lines.push(`_atom_site_fract_z`)
   lines.push(`_atom_site_occupancy`)
 
+  // Cache inverse transpose for Cartesian→fractional conversion (avoids recomputing per site)
+  const cart_to_frac = lattice.matrix?.length === 3
+    ? math.create_cart_to_frac(lattice.matrix)
+    : null
+
   // Atom sites
   for (let idx = 0; idx < structure.sites.length; idx++) {
     const site = structure.sites[idx]
@@ -556,12 +555,8 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     let frac_coords: number[]
     if (site.abc && Array.isArray(site.abc) && site.abc.length >= 3) {
       frac_coords = site.abc.slice(0, 3)
-    } else if (
-      site.xyz?.length === 3 &&
-      lattice.matrix?.length === 3
-    ) {
-      // Convert cartesian to fractional coordinates
-      frac_coords = math.cart_to_frac(site.xyz as math.Vec3, lattice.matrix)
+    } else if (site.xyz?.length >= 3 && cart_to_frac) {
+      frac_coords = cart_to_frac(site.xyz as math.Vec3)
     } else throw new Error(`No valid coordinates found for site ${idx}`)
 
     // Format: label element_symbol x y z
@@ -652,6 +647,11 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   // Coordinate mode (Direct = fractional coordinates)
   lines.push(`Direct`)
 
+  // Cache inverse transpose for Cartesian→fractional conversion (avoids recomputing per site)
+  const cart_to_frac = lattice.matrix?.length === 3
+    ? math.create_cart_to_frac(lattice.matrix)
+    : null
+
   // Atom coordinates grouped by element
   for (const element_symbol of element_symbols) {
     for (const site of structure.sites) {
@@ -674,12 +674,8 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
         let frac_coords: number[]
         if (site.abc && Array.isArray(site.abc) && site.abc.length >= 3) {
           frac_coords = site.abc.slice(0, 3)
-        } else if (
-          site.xyz?.length >= 3 &&
-          lattice.matrix?.length === 3
-        ) {
-          // Convert cartesian to fractional coordinates
-          frac_coords = math.cart_to_frac(site.xyz.slice(0, 3) as Vec3, lattice.matrix)
+        } else if (site.xyz?.length >= 3 && cart_to_frac) {
+          frac_coords = cart_to_frac(site.xyz.slice(0, 3) as Vec3)
         } else {
           throw new Error(`No valid coordinates found for site`)
         }

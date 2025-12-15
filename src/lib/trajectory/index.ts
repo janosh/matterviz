@@ -43,6 +43,8 @@ export interface TrajectoryType {
   indexed_frames?: FrameIndex[]
   plot_metadata?: TrajectoryMetadata[]
   is_indexed?: boolean
+  // On-demand frame loading for large/indexed trajectories
+  frame_loader?: FrameLoader
 }
 
 // Unified handler data interface

@@ -1,4 +1,7 @@
-<script lang="ts">
+<script
+  lang="ts"
+  generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
+>
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
@@ -103,13 +106,13 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & Omit<BasePlotProps, `change`> & PlotConfig & {
-    series?: DataSeries[]
+    series?: DataSeries<Metadata>[]
     styles?: StyleOverrides
     controls?: ControlsConfig
     current_x_value?: number | null
-    tooltip_point?: InternalPoint | null
+    tooltip_point?: InternalPoint<Metadata> | null
     selected_point?: { series_idx: number; point_idx: number } | null
-    tooltip?: Snippet<[ScatterHandlerProps]>
+    tooltip?: Snippet<[ScatterHandlerProps<Metadata>]>
     user_content?: Snippet<[UserContentProps]>
     header_controls?: Snippet<
       [{ height: number; width: number; fullscreen: boolean }]
@@ -120,7 +123,9 @@
         & Required<PlotConfig>,
       ]
     >
-    change?: (data: (Point & { series: DataSeries }) | null) => void
+    change?: (
+      data: (Point<Metadata> & { series: DataSeries<Metadata> }) | null,
+    ) => void
     color_scale?: {
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
@@ -144,10 +149,10 @@
     line_tween?: TweenedOptions<string>
     point_events?: Record<
       string,
-      (payload: { point: InternalPoint; event: Event }) => void
+      (payload: { point: InternalPoint<Metadata>; event: Event }) => void
     >
-    on_point_click?: (data: ScatterHandlerEvent) => void
-    on_point_hover?: (data: ScatterHandlerEvent | null) => void
+    on_point_click?: (data: ScatterHandlerEvent<Metadata>) => void
+    on_point_hover?: (data: ScatterHandlerEvent<Metadata> | null) => void
     selected_series_idx?: number
     wrapper?: HTMLDivElement
   } = $props()
@@ -184,7 +189,7 @@
 
   // Assign stable IDs to series for keying
   let series_with_ids = $derived(
-    series.map((srs: DataSeries, idx: number) => {
+    series.map((srs: DataSeries<Metadata>, idx: number) => {
       if (!srs || typeof srs !== `object`) return srs
       // Use series.id if provided, otherwise fall back to index
       // prevents re-mounts when series are reordered if stable IDs are provided
@@ -418,7 +423,7 @@
   // Filter series data to only include points within bounds and augment with internal data
   let filtered_series = $derived(
     series_with_ids
-      .map((data_series: DataSeries, series_idx: number): DataSeries => {
+      .map((data_series: DataSeries<Metadata>, series_idx): DataSeries<Metadata> => {
         // Handle null/undefined series first
         if (!data_series) {
           return {
@@ -444,12 +449,12 @@
         const { x: xs, y: ys, color_values, size_values, ...rest } = data_series
 
         // Process points internally, adding properties beyond the base Point type
-        const processed_points: InternalPoint[] = xs.map(
+        const processed_points: InternalPoint<Metadata>[] = xs.map(
           (x_val: number, point_idx: number) => ({
             x: x_val,
             y: ys[point_idx],
             color_value: color_values?.[point_idx],
-            metadata: process_prop(rest.metadata, point_idx),
+            metadata: process_prop(rest.metadata, point_idx) as Metadata | undefined,
             point_style: process_prop(rest.point_style, point_idx),
             point_hover: process_prop(rest.point_hover, point_idx),
             point_label: process_prop(rest.point_label, point_idx),
@@ -483,15 +488,15 @@
         return {
           ...data_series,
           visible: true, // Mark series as visible here
-          filtered_data: filtered_data_with_extras as InternalPoint[],
+          filtered_data: filtered_data_with_extras,
           orig_series_idx: series_idx, // Store original index for auto-cycling colors/symbols
         }
       })
       // Filter series end up completely empty after point filtering
       .filter((
-        series_data: DataSeries,
-      ): series_data is DataSeries & { filtered_data: InternalPoint[] } =>
-        !!series_data.filtered_data && series_data.filtered_data.length > 0
+        srs,
+      ): srs is DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] } =>
+        !!srs.filtered_data && srs.filtered_data.length > 0
       ),
   )
 
@@ -898,8 +903,8 @@
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
-    let closest_point: InternalPoint | null = null
-    let closest_series: DataSeries | null = null
+    let closest_point: InternalPoint<Metadata> | null = null
+    let closest_series: DataSeries<Metadata> | null = null
     let min_screen_dist_sq = Infinity
     const { threshold_px = 20 } = hover_config // Use configured threshold
     const hover_threshold_px_sq = threshold_px * threshold_px
@@ -942,7 +947,12 @@
       tooltip_point = closest_point
       // Construct object matching change signature
       const { x, y, metadata } = closest_point
-      change({ x, y, metadata, series: closest_series })
+      change({
+        x,
+        y,
+        metadata: metadata as Metadata | undefined,
+        series: closest_series,
+      })
       // Call hover handler with synchronously constructed props
       if (evt && props) {
         on_point_hover?.({ ...props, event: evt, point: closest_point })
@@ -1059,8 +1069,8 @@
 
   // Helper function to construct ScatterHandlerProps synchronously from InternalPoint
   function construct_handler_props(
-    point: InternalPoint,
-  ): ScatterHandlerProps | null {
+    point: InternalPoint<Metadata>,
+  ): ScatterHandlerProps<Metadata> | null {
     const hovered_series = series_with_ids[point.series_idx]
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
@@ -1080,7 +1090,7 @@
     return {
       ...coords,
       fullscreen,
-      metadata: metadata ?? null,
+      metadata: (metadata ?? null) as Metadata | null,
       label: hovered_series.label ?? null,
       series_idx,
       x_formatted: format_value(x, final_x_axis.format || `.3~s`),
@@ -1101,7 +1111,7 @@
   }
 
   // Derive handler props from hovered point for both tooltip and event handlers
-  let handler_props = $derived.by((): ScatterHandlerProps | null => {
+  let handler_props = $derived.by((): ScatterHandlerProps<Metadata> | null => {
     if (!tooltip_point) return null
     return construct_handler_props(tooltip_point)
   })
@@ -1693,7 +1703,9 @@
         {...legend}
         on_toggle={(legend?.on_toggle as ((series_idx: number) => void) | undefined) ??
         ((series_idx: number) => {
-          series = toggle_series_visibility(series, series_idx)
+          series = toggle_series_visibility(series, series_idx) as DataSeries<
+            Metadata
+          >[]
         })}
         on_double_click={(legend?.on_double_click as ((series_idx: number) => void) | undefined) ??
         ((double_clicked_idx: number) => {
@@ -1702,14 +1714,16 @@
             double_clicked_idx,
             previous_series_visibility,
           )
-          series = result.series
+          series = result.series as DataSeries<Metadata>[]
           previous_series_visibility = result.previous_visibility
         })}
         on_group_toggle={(legend?.on_group_toggle as
         | ((group_name: string, series_indices: number[]) => void)
         | undefined) ??
         ((_group_name: string, series_indices: number[]) => {
-          series = toggle_group_visibility(series, series_indices)
+          series = toggle_group_visibility(series, series_indices) as DataSeries<
+            Metadata
+          >[]
         })}
         wrapper_style={`
           position: absolute;

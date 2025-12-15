@@ -1,5 +1,5 @@
 import { download } from '$lib/io/fetch'
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, PymatgenLattice, Site } from '$lib/structure'
 import {
@@ -397,64 +397,32 @@ describe(`Export functionality`, () => {
       expect(lines[2]).toBe(`H 1.000000 2.000000 0.000000`) // Should use provided coordinates
     })
 
-    it(`converts cartesian to fractional for CIF export`, () => {
-      const lattice_matrix: Matrix3x3 = [
-        [2.0, 0.0, 0.0],
-        [0.0, 2.0, 0.0],
-        [0.0, 0.0, 2.0],
-      ]
-      const lattice_params = math.calc_lattice_params(lattice_matrix)
-      const structure_xyz_only: AnyStructure = {
-        id: `xyz_only`,
+    // Test cartesian→fractional conversion with various xyz array formats
+    it.each([
+      { format: `CIF`, xyz: [1, 1, 1], desc: `standard xyz` },
+      { format: `CIF`, xyz: [1, 1, 1, 0.5], desc: `xyz with extra dimension` }, // regression: xyz.length >= 3
+      { format: `POSCAR`, xyz: [1, 1, 1], desc: `standard xyz` },
+      { format: `POSCAR`, xyz: [1, 1, 1, 0.5], desc: `xyz with extra dimension` },
+    ])(`$format export converts $desc to fractional coords`, ({ format, xyz }) => {
+      const lattice_matrix: Matrix3x3 = [[2, 0, 0], [0, 2, 0], [0, 0, 2]]
+      const structure: AnyStructure = {
         sites: [{
           species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          xyz: [1.0, 1.0, 1.0], // Should convert to [0.5, 0.5, 0.5]
-          // @ts-expect-error - test missing abc
-          abc: undefined,
+          xyz: xyz as unknown as Vec3,
+          abc: undefined as unknown as Vec3,
           label: `H`,
           properties: {},
         }],
         lattice: {
           matrix: lattice_matrix,
           pbc: [true, true, true],
-          ...lattice_params,
+          ...math.calc_lattice_params(lattice_matrix),
         },
       }
-
-      const cif_content = structure_to_cif_str(structure_xyz_only)
-      const lines = cif_content.split(`\n`)
-      const coord_line = lines.find((line) => line.includes(`H`))
-      expect(coord_line).toContain(`0.50000000 0.50000000 0.50000000`)
-    })
-
-    it(`converts cartesian to fractional for POSCAR export`, () => {
-      const lattice_matrix: Matrix3x3 = [
-        [2.0, 0.0, 0.0],
-        [0.0, 2.0, 0.0],
-        [0.0, 0.0, 2.0],
-      ]
-      const lattice_params = math.calc_lattice_params(lattice_matrix)
-      const structure_xyz_only: AnyStructure = {
-        id: `xyz_only`,
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          xyz: [1.0, 1.0, 1.0], // Should convert to [0.5, 0.5, 0.5]
-          // @ts-expect-error - test missing abc
-          abc: undefined,
-          label: `H`,
-          properties: {},
-        }],
-        lattice: {
-          matrix: lattice_matrix,
-          pbc: [true, true, true],
-          ...lattice_params,
-        },
-      }
-
-      const poscar_content = structure_to_poscar_str(structure_xyz_only)
-      const lines = poscar_content.split(`\n`)
-      const coord_line = lines.find((line) => line.match(/^0\.\d+ 0\.\d+ 0\.\d+$/))
-      expect(coord_line).toContain(`0.50000000 0.50000000 0.50000000`)
+      const content = format === `CIF`
+        ? structure_to_cif_str(structure)
+        : structure_to_poscar_str(structure)
+      expect(content).toContain(`0.50000000 0.50000000 0.50000000`)
     })
   })
 

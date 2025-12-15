@@ -1574,7 +1574,7 @@ describe(`compute_bounding_box`, () => {
   })
 })
 
-describe(`frac_to_cart and cart_to_frac`, () => {
+describe(`create_frac_to_cart and create_cart_to_frac`, () => {
   const cubic: math.Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
   const triclinic: math.Matrix3x3 = [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]]
   const hexagonal: math.Matrix3x3 = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
@@ -1600,8 +1600,9 @@ describe(`frac_to_cart and cart_to_frac`, () => {
       expected: [8.5, 5.33, 4],
       desc: `triclinic corner`,
     },
-  ])(`frac_to_cart: $desc`, ({ frac, lattice, expected }) => {
-    const result = math.frac_to_cart(frac as Vec3, lattice)
+  ])(`create_frac_to_cart: $desc`, ({ frac, lattice, expected }) => {
+    const frac_to_cart = math.create_frac_to_cart(lattice)
+    const result = frac_to_cart(frac as Vec3)
     result.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 2))
   })
 
@@ -1610,9 +1611,11 @@ describe(`frac_to_cart and cart_to_frac`, () => {
     { lattice: triclinic, name: `triclinic` },
     { lattice: hexagonal, name: `hexagonal` },
   ])(`round-trip frac→cart→frac for $name`, ({ lattice }) => {
+    const frac_to_cart = math.create_frac_to_cart(lattice)
+    const cart_to_frac = math.create_cart_to_frac(lattice)
     const frac: Vec3 = [0.25, 0.5, 0.75]
-    const cart = math.frac_to_cart(frac, lattice)
-    const recovered = math.cart_to_frac(cart, lattice)
+    const cart = frac_to_cart(frac)
+    const recovered = cart_to_frac(cart)
     recovered.forEach((val, idx) => expect(val).toBeCloseTo(frac[idx], 10))
   })
 
@@ -1621,9 +1624,11 @@ describe(`frac_to_cart and cart_to_frac`, () => {
     { lattice: triclinic, name: `triclinic` },
     { lattice: hexagonal, name: `hexagonal` },
   ])(`round-trip cart→frac→cart for $name`, ({ lattice }) => {
+    const frac_to_cart = math.create_frac_to_cart(lattice)
+    const cart_to_frac = math.create_cart_to_frac(lattice)
     const cart: Vec3 = [2.5, 3.5, 1.5]
-    const frac = math.cart_to_frac(cart, lattice)
-    const recovered = math.frac_to_cart(frac, lattice)
+    const frac = cart_to_frac(cart)
+    const recovered = frac_to_cart(frac)
     recovered.forEach((val, idx) => expect(val).toBeCloseTo(cart[idx], 10))
   })
 })

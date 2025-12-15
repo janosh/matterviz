@@ -224,7 +224,6 @@
   // Update current frame when step changes
   $effect(() => {
     if (trajectory && current_step_idx >= 0 && current_step_idx < total_frames) {
-      // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
       if (trajectory.frame_loader) {
         // Load frame on demand (works for both indexed files and external streaming)
         load_frame_on_demand(current_step_idx)
@@ -239,11 +238,9 @@
 
   // Load frame on demand - works for both indexed files and external streaming
   async function load_frame_on_demand(frame_idx: number) {
-    // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
     if (!trajectory?.frame_loader) return
 
     try {
-      // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
       const frame = await trajectory.frame_loader.load_frame(
         orig_data || ``, // Use original_data for indexed files, empty string for external streaming
         frame_idx,
@@ -723,7 +720,6 @@
 
       // Attach frame loader and original data directly to trajectory for unified access
       orig_data = data
-      // @ts-expect-error - dynamically adding frame_loader for indexed trajectories
       trajectory.frame_loader = create_frame_loader(filename)
     } catch (error) {
       console.error(`Indexed loading failed:`, error)

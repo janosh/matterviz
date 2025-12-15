@@ -9,8 +9,7 @@ export const SYMBOL_TO_ATOMIC_NUMBER: Partial<CompositionType> = {}
 export const ATOMIC_WEIGHTS = new Map<ElementSymbol, number>()
 export const ELEMENT_ELECTRONEGATIVITY_MAP = new Map<ElementSymbol, number>()
 export const ELEM_NAME_TO_SYMBOL: Record<string, ElementSymbol> = {}
-// @ts-expect-error - record gets built in for loop
-export const ELEM_SYMBOL_TO_NAME: Record<ElementSymbol, string> = {}
+export const ELEM_SYMBOL_TO_NAME: Partial<Record<ElementSymbol, string>> = {}
 
 // Populate maps at module load time
 for (const element of element_data) {
@@ -398,6 +397,7 @@ export const normalize_element_symbols = <T extends string>(
   all_symbols?: T[],
 ): T[] => {
   const input_set = new Set(csv.split(`,`).map((sym) => sym.trim()).filter(Boolean))
+  // Cast needed: ELEM_SYMBOLS is readonly const tuple, T is generic string subtype
   return (all_symbols ?? (ELEM_SYMBOLS as unknown as T[])).filter((sym) =>
     input_set.has(sym)
   )

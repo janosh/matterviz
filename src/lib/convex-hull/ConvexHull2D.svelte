@@ -526,8 +526,8 @@
   let last_clicked_entry: ConvexHullEntry | null = null
   let last_click_time = 0
 
-  function handle_point_click_internal(data: ScatterHandlerEvent) {
-    const entry = data.metadata as unknown as ConvexHullEntry
+  function handle_point_click_internal(data: ScatterHandlerEvent<ConvexHullEntry>) {
+    const { metadata: entry, event } = data
     if (!entry) return
 
     const now = Date.now()
@@ -536,10 +536,7 @@
 
     if (is_double_click) {
       // Double-click: copy to clipboard
-      copy_entry_data(entry, {
-        x: data.event.clientX,
-        y: data.event.clientY,
-      })
+      copy_entry_data(entry, { x: event.clientX, y: event.clientY })
       last_clicked_entry = null
       last_click_time = 0
     } else {
@@ -554,13 +551,13 @@
           const structure = extract_structure_from_entry(entry)
           if (structure) {
             const viewport_width = globalThis.innerWidth
-            const click_x = data.event.clientX
+            const click_x = event.clientX
             const space_on_right = viewport_width - click_x
             const space_on_left = click_x
             const place_right = space_on_right >= space_on_left
 
             structure_popup = { open: true, structure, entry, place_right }
-            data.event.stopPropagation()
+            event.stopPropagation()
           }
         }
       }
@@ -590,8 +587,8 @@
 />
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
-{#snippet tooltip(point: ScatterHandlerProps)}
-  {@const entry = point.metadata as unknown as ConvexHullEntry}
+{#snippet tooltip(point: ScatterHandlerProps<ConvexHullEntry>)}
+  {@const entry = point.metadata}
   {@const entry_highlight = entry && is_highlighted(entry)
     ? merged_highlight_style
     : undefined}
@@ -710,18 +707,15 @@
     header_controls={pd_header_controls}
     selected_point={selected_scatter_point}
     on_point_click={handle_point_click_internal}
-    on_point_hover={(data: ScatterHandlerEvent | null) => {
+    on_point_hover={(data: ScatterHandlerEvent<ConvexHullEntry> | null) => {
       if (!data) {
         hover_data = null
         on_point_hover?.(null)
         return
       }
-      const entry = data.metadata as unknown as ConvexHullEntry
+      const { metadata: entry, event } = data
       hover_data = entry
-        ? {
-          entry,
-          position: { x: data.event.clientX, y: data.event.clientY },
-        }
+        ? { entry, position: { x: event.clientX, y: event.clientY } }
         : null
       on_point_hover?.(hover_data)
     }}

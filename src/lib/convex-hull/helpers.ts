@@ -22,6 +22,7 @@ export function get_energy_color_scale(
   const lo = Math.min(...hull_distances)
   const hi_raw = Math.max(...hull_distances, 0.1)
   const hi = Math.max(hi_raw, lo + 1e-6)
+  // Cast needed: d3-scale-chromatic module has non-interpolator exports (e.g. `default`)
   const interpolator =
     (d3_sc as unknown as Record<string, (t: number) => string>)[color_scale] ||
     d3_sc.interpolateViridis

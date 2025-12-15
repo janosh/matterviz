@@ -450,6 +450,7 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
 
   const frames: TrajectoryFrame[] = []
   let line_idx = 7
+  const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
   while (line_idx < lines.length) {
     const config_line = lines.find((line, idx) =>
@@ -465,7 +466,7 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
     for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {
       const coords = lines[line_idx].trim().split(/\s+/).slice(0, 3).map(Number)
       if (coords.length === 3 && !coords.some(isNaN)) {
-        positions.push(math.frac_to_cart(coords as Vec3, lattice_matrix))
+        positions.push(frac_to_cart(coords as Vec3))
       }
       line_idx++
     }
@@ -597,6 +598,7 @@ const parse_lammps_trajectory = (
     // Parse atom data
     const positions: number[][] = []
     const elements: ElementSymbol[] = []
+    const frac_to_cart = use_scaled ? math.create_frac_to_cart(lattice_matrix) : null
 
     for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
       const parts = read_line().split(/\s+/)
@@ -605,7 +607,7 @@ const parse_lammps_trajectory = (
       if (coords.some(isNaN) || parts.length <= Math.max(...pos_cols, type_col)) continue
 
       // Convert scaled coordinates to Cartesian if needed
-      const xyz = use_scaled ? math.frac_to_cart(coords as Vec3, lattice_matrix) : coords
+      const xyz = frac_to_cart ? frac_to_cart(coords as Vec3) : coords
       positions.push(xyz)
 
       // Map atom type to element using custom mapping or default (type 1 → H, etc.)
@@ -1347,9 +1349,10 @@ export async function parse_trajectory_data(
     const coords = obj.coords as number[][][]
     const matrix = validate_3x3_matrix(obj.lattice)
     const frame_properties = obj.frame_properties as Record<string, unknown>[] || []
+    const frac_to_cart = math.create_frac_to_cart(matrix)
 
     const frames = coords.map((frame_coords, idx) => {
-      const positions = frame_coords.map((abc) => math.frac_to_cart(abc as Vec3, matrix))
+      const positions = frame_coords.map((abc) => frac_to_cart(abc as Vec3))
 
       // Process frame properties to extract numpy arrays
       const raw_properties = frame_properties[idx] || {}
