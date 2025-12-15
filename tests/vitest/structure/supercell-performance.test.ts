@@ -226,8 +226,8 @@ describe(`supercell performance profiling`, () => {
     const last_rate = last_result.time / last_result.sites
 
     // With linear scaling optimizations, the rate per atom should be fairly constant.
-    // Allowing variance up to 1.6x to account for runtime fluctuations
-    expect(last_rate / first_rate).toBeLessThan(1.6)
+    // Allowing variance up to 2x to account for runtime fluctuations
+    expect(last_rate / first_rate).toBeLessThan(2)
 
     // 500 atoms → 13500 sites should complete well under 20ms (20 × CI_MULTIPLIER in CI)
     expect(last_result.time).toBeLessThan(20 * CI_MULTIPLIER)

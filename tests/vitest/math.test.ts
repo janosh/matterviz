@@ -1473,3 +1473,103 @@ describe(`is_square_matrix`, () => {
     expect(math.is_square_matrix(matrix, dim)).toBe(expected)
   })
 })
+
+describe(`lerp`, () => {
+  test.each([
+    [0, 10, 0, 0, `t=0 returns start`],
+    [0, 10, 1, 10, `t=1 returns end`],
+    [0, 10, 0.5, 5, `t=0.5 returns midpoint`],
+    [0, 10, 0.25, 2.5, `t=0.25 returns quarter`],
+    [-5, 5, 0.5, 0, `negative to positive midpoint`],
+    [10, 0, 0.5, 5, `reversed order midpoint`],
+    [0, 10, 2, 20, `extrapolation t>1`],
+    [0, 10, -0.5, -5, `extrapolation t<0`],
+  ])(`lerp(%f, %f, %f) = %f - %s`, (a, b, t, expected) => {
+    expect(math.lerp(a, b, t)).toBeCloseTo(expected)
+  })
+})
+
+describe(`lerp_vec3`, () => {
+  it(`interpolates Vec3 at t=0`, () => {
+    const result = math.lerp_vec3([0, 0, 0], [10, 20, 30], 0)
+    expect(result).toEqual([0, 0, 0])
+  })
+
+  it(`interpolates Vec3 at t=1`, () => {
+    const result = math.lerp_vec3([0, 0, 0], [10, 20, 30], 1)
+    expect(result).toEqual([10, 20, 30])
+  })
+
+  it(`interpolates Vec3 at t=0.5`, () => {
+    const result = math.lerp_vec3([0, 0, 0], [10, 20, 30], 0.5)
+    expect(result).toEqual([5, 10, 15])
+  })
+
+  it(`handles negative values`, () => {
+    const result = math.lerp_vec3([-10, -20, -30], [10, 20, 30], 0.5)
+    expect(result).toEqual([0, 0, 0])
+  })
+})
+
+describe(`normalize_vec3`, () => {
+  it(`normalizes unit vector along x-axis`, () => {
+    const result = math.normalize_vec3([5, 0, 0])
+    expect(result).toEqual([1, 0, 0])
+  })
+
+  it(`normalizes diagonal vector`, () => {
+    const result = math.normalize_vec3([1, 1, 1])
+    const expected_component = 1 / Math.sqrt(3)
+    expect(result[0]).toBeCloseTo(expected_component)
+    expect(result[1]).toBeCloseTo(expected_component)
+    expect(result[2]).toBeCloseTo(expected_component)
+  })
+
+  it(`returns zero vector for zero input`, () => {
+    const result = math.normalize_vec3([0, 0, 0])
+    expect(result).toEqual([0, 0, 0])
+  })
+
+  it(`uses fallback for zero input when provided`, () => {
+    const fallback: Vec3 = [0, 1, 0]
+    const result = math.normalize_vec3([0, 0, 0], fallback)
+    expect(result).toEqual([0, 1, 0])
+  })
+
+  it(`preserves unit vectors`, () => {
+    const result = math.normalize_vec3([0, 1, 0])
+    expect(result).toEqual([0, 1, 0])
+  })
+})
+
+describe(`compute_bounding_box`, () => {
+  it(`returns zero box for empty array`, () => {
+    const result = math.compute_bounding_box([])
+    expect(result).toEqual({ min: [0, 0, 0], max: [0, 0, 0] })
+  })
+
+  it(`returns point for single vertex`, () => {
+    const result = math.compute_bounding_box([[5, 10, 15]])
+    expect(result).toEqual({ min: [5, 10, 15], max: [5, 10, 15] })
+  })
+
+  it(`computes correct bounding box for multiple vertices`, () => {
+    const vertices: Vec3[] = [
+      [0, 0, 0],
+      [10, 5, 3],
+      [-5, 20, -10],
+      [3, -3, 15],
+    ]
+    const result = math.compute_bounding_box(vertices)
+    expect(result).toEqual({ min: [-5, -3, -10], max: [10, 20, 15] })
+  })
+
+  it(`handles all negative coordinates`, () => {
+    const vertices: Vec3[] = [
+      [-10, -20, -30],
+      [-5, -10, -15],
+    ]
+    const result = math.compute_bounding_box(vertices)
+    expect(result).toEqual({ min: [-10, -20, -30], max: [-5, -10, -15] })
+  })
+})
