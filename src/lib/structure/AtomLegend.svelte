@@ -49,8 +49,8 @@
     show_amounts?: boolean // Whether to show element amounts
     get_element_label?: (element: string, amount: number) => string // Custom label function
     hidden_elements?: Set<ElementSymbol>
-    hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
-    // Element remapping: maps original element symbols to new ones (e.g., {'H': 'Na', 'He': 'Cl'})
+    hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
+    // Element remapping: maps original element symbols to new ones (e.g. {'H': 'Na', 'He': 'Cl'})
     element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
     title?: string
     sym_data?: MoyoDataset | null

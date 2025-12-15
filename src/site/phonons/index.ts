@@ -1,7 +1,7 @@
 // Extract phonon band structures and DOS from full phonon objects
 
-import type { Branch, PhononBandStructure, PhononDos, QPoint } from '$lib/spectral'
 import * as math from '$lib/math'
+import type { Branch, PhononBandStructure, PhononDos, QPoint } from '$lib/spectral'
 
 interface RawPhononBandStructure {
   recip_lattice: { matrix: math.Matrix3x3 }
@@ -58,7 +58,7 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
   })
 
   // Find labeled points by matching coordinates with labels_dict
-  // Note: A label like GAMMA can appear multiple times in the path (e.g., Γ→X→Γ→L)
+  // Note: A label like GAMMA can appear multiple times in the path (e.g. Γ→X→Γ→L)
   const LABEL_MATCH_EPS = 1e-5
   const labeled_indices = new Map<number, string>()
   for (const [label, coords] of Object.entries(labels_dict)) {

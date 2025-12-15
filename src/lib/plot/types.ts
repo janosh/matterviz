@@ -21,10 +21,10 @@ export type XyObj = { x: number; y: number }
 export type XyShift = { x?: number; y?: number } // For optional shift/offset values
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
-export type Point = {
+export type Point<Metadata = Record<string, unknown>> = {
   x: number
   y: number
-  metadata?: { [key: string]: unknown }
+  metadata?: Metadata
   offset?: XyObj
 }
 
@@ -81,9 +81,8 @@ export interface LineStyle {
 }
 
 // Extend the base Point type to include optional styling and metadata
-export interface PlotPoint extends Point {
+export interface PlotPoint<Metadata = Record<string, unknown>> extends Point<Metadata> {
   color_value?: number | null
-  metadata?: Record<string, unknown>
   point_style?: PointStyle
   point_hover?: HoverStyle
   point_label?: LabelStyle
@@ -94,7 +93,7 @@ export interface PlotPoint extends Point {
 export type Markers = `line` | `points` | `line+points` | `none`
 
 // Define the structure for a data series in the plot
-export interface DataSeries {
+export interface DataSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier for the series (used for keying)
   x: readonly number[]
   y: readonly number[]
@@ -104,7 +103,7 @@ export interface DataSeries {
   y_axis?: `y1` | `y2`
   color_values?: (number | null)[] | null
   size_values?: readonly (number | null)[] | null
-  metadata?: Record<string, unknown>[] | Record<string, unknown> // Can be array or single object
+  metadata?: Metadata[] | Metadata // Can be array or single object
   point_style?: PointStyle[] | PointStyle // Can be array or single object
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
   point_label?: LabelStyle[] | LabelStyle // Can be array or single object
@@ -116,20 +115,21 @@ export interface DataSeries {
   // are displayed together under a collapsible header. Click the header to toggle
   // visibility of all series in the group, or the chevron to collapse/expand.
   legend_group?: string
-  unit?: string // Optional unit for the series (e.g., "eV", "eV/Å", "GPa")
+  unit?: string // Optional unit for the series (e.g. "eV", "eV/Å", "GPa")
   line_style?: {
     stroke?: string
     stroke_width?: number
     line_dash?: string
   }
   // Internal fields used after processing (not provided by users)
-  filtered_data?: InternalPoint[]
+  filtered_data?: InternalPoint<Metadata>[]
   _id?: string | number
   orig_series_idx?: number // Original series index for consistent auto-cycling colors/symbols
 }
 
 // Represents the internal structure used within ScatterPlot, merging series-level and point-level data
-export interface InternalPoint extends PlotPoint {
+export interface InternalPoint<Metadata = Record<string, unknown>>
+  extends PlotPoint<Metadata> {
   series_idx: number // Index of the series this point belongs to
   point_idx: number // Index of the point within its series
   size_value?: number | null // Size value for the point
@@ -171,7 +171,7 @@ export interface ScatterHandlerProps<Metadata = Record<string, unknown>>
 }
 export type ScatterHandlerEvent<Metadata = Record<string, unknown>> =
   & ScatterHandlerProps<Metadata>
-  & { event: MouseEvent; point: InternalPoint }
+  & { event: MouseEvent; point: InternalPoint<Metadata> }
 
 export interface BarHandlerProps<Metadata = Record<string, unknown>>
   extends HandlerProps<Metadata> {
@@ -200,11 +200,12 @@ export type QuadrantCounts = {
 }
 
 // Type for nodes used in the d3-force simulation for label placement
-export interface LabelNode extends SimulationNodeDatum {
-  id: string // unique identifier, e.g., series_idx-point_idx
+export interface LabelNode<Metadata = Record<string, unknown>>
+  extends SimulationNodeDatum {
+  id: string // unique identifier, e.g. series_idx-point_idx
   anchor_x: number // Original x coordinate of the point (scaled)
   anchor_y: number // Original y coordinate of the point (scaled)
-  point_node: InternalPoint // Reference to the original data point
+  point_node: InternalPoint<Metadata> // Reference to the original data point
   label_width: number // Estimated width for collision
   label_height: number // Estimated height for collision
   // x, y, vx, vy are added by d3-force
@@ -277,7 +278,7 @@ export type UserContentProps = {
 export type Orientation = `vertical` | `horizontal`
 export type BarMode = `overlay` | `stacked` | `grouped`
 
-export interface BarSeries {
+export interface BarSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier for the series (used for keying)
   x: readonly number[]
   y: readonly number[]
@@ -289,7 +290,7 @@ export interface BarSeries {
   color?: string
   bar_width?: number | readonly number[]
   visible?: boolean
-  metadata?: Record<string, unknown>[] | Record<string, unknown>
+  metadata?: Metadata[] | Metadata
   labels?: readonly (string | null | undefined)[]
   render_mode?: `bar` | `line` // Render as bars (default) or as a line
   // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
@@ -363,6 +364,7 @@ export interface StyleOverrides {
   show_lines?: boolean
 }
 
+export type AxisKey = `x` | `y` | `y2`
 export interface PlotConfig { // Grouped configuration for plot axes and display settings
   x_axis?: AxisConfig
   y_axis?: AxisConfig
@@ -492,27 +494,28 @@ export const DEFAULT_SERIES_SYMBOLS = [
 export type XyzObj = { x: number; y: number; z: number }
 
 // 3D point extending base Point with z coordinate (prefixed to avoid conflict with convex-hull)
-export interface ScatterPoint3D extends Point {
+export interface ScatterPoint3D<Metadata = Record<string, unknown>>
+  extends Point<Metadata> {
   z: number
 }
 
 // 3D data series extending DataSeries with z array
 // Omit filtered_data since it uses 2D InternalPoint type, redeclare with 3D type
-export interface DataSeries3D
-  extends Omit<DataSeries, `x` | `y` | `y_axis` | `filtered_data`> {
+export interface DataSeries3D<Metadata = Record<string, unknown>>
+  extends Omit<DataSeries<Metadata>, `x` | `y` | `y_axis` | `filtered_data`> {
   x: readonly number[]
   y: readonly number[]
   z: readonly number[]
-  filtered_data?: InternalPoint3D[]
+  filtered_data?: InternalPoint3D<Metadata>[]
 }
 
 // Internal 3D point for processing within ScatterPlot3D
-export interface InternalPoint3D extends ScatterPoint3D {
+export interface InternalPoint3D<Metadata = Record<string, unknown>>
+  extends ScatterPoint3D<Metadata> {
   series_idx: number
   point_idx: number
   color_value?: number | null
   size_value?: number | null
-  metadata?: Record<string, unknown>
   point_style?: PointStyle
 }
 
@@ -584,7 +587,7 @@ export interface Scatter3DHandlerProps<Metadata = Record<string, unknown>> {
 
 export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
   & Scatter3DHandlerProps<Metadata>
-  & { event: MouseEvent; point: InternalPoint3D }
+  & { event: MouseEvent; point: InternalPoint3D<Metadata> }
 
 // Camera projection types for 3D
 export type CameraProjection3D = `perspective` | `orthographic`

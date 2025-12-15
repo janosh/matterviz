@@ -181,7 +181,7 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
 - **High-symmetry points**: Automatic labeling with Greek letters (Γ, Δ, Σ)
 - **Acoustic vs optical**: Different styling for phonon mode types
 - **Fat bands**: Visualize band-resolved quantities like electron-phonon coupling λ<sub>nk</sub>
-- **Shaded regions**: Highlight specific frequency ranges (e.g., imaginary modes)
+- **Shaded regions**: Highlight specific frequency ranges (e.g. imaginary modes)
 - **Path modes**: When plotting multiple bands, choose from different path resolutions (union/intersection/strict = error on mismatch)
 - **Interactive**: Zoom, pan, hover tooltips
 - **Responsive**: Adapts to container size

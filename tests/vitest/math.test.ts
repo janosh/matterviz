@@ -1573,3 +1573,62 @@ describe(`compute_bounding_box`, () => {
     expect(result).toEqual({ min: [-10, -20, -30], max: [-5, -10, -15] })
   })
 })
+
+describe(`create_frac_to_cart and create_cart_to_frac`, () => {
+  const cubic: math.Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
+  const triclinic: math.Matrix3x3 = [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]]
+  const hexagonal: math.Matrix3x3 = [[4, 0, 0], [2, 3.464, 0], [0, 0, 8]]
+
+  test.each([
+    { frac: [0, 0, 0], lattice: cubic, expected: [0, 0, 0], desc: `origin` },
+    { frac: [1, 0, 0], lattice: cubic, expected: [5, 0, 0], desc: `a-vector` },
+    {
+      frac: [0.5, 0.5, 0.5],
+      lattice: cubic,
+      expected: [2.5, 2.5, 2.5],
+      desc: `body center`,
+    },
+    {
+      frac: [0.5, 0.5, 0],
+      lattice: hexagonal,
+      expected: [3, 1.732, 0],
+      desc: `hexagonal face`,
+    },
+    {
+      frac: [1, 1, 1],
+      lattice: triclinic,
+      expected: [8.5, 5.33, 4],
+      desc: `triclinic corner`,
+    },
+  ])(`create_frac_to_cart: $desc`, ({ frac, lattice, expected }) => {
+    const frac_to_cart = math.create_frac_to_cart(lattice)
+    const result = frac_to_cart(frac as Vec3)
+    result.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 2))
+  })
+
+  test.each([
+    { lattice: cubic, name: `cubic` },
+    { lattice: triclinic, name: `triclinic` },
+    { lattice: hexagonal, name: `hexagonal` },
+  ])(`round-trip frac→cart→frac for $name`, ({ lattice }) => {
+    const frac_to_cart = math.create_frac_to_cart(lattice)
+    const cart_to_frac = math.create_cart_to_frac(lattice)
+    const frac: Vec3 = [0.25, 0.5, 0.75]
+    const cart = frac_to_cart(frac)
+    const recovered = cart_to_frac(cart)
+    recovered.forEach((val, idx) => expect(val).toBeCloseTo(frac[idx], 10))
+  })
+
+  test.each([
+    { lattice: cubic, name: `cubic` },
+    { lattice: triclinic, name: `triclinic` },
+    { lattice: hexagonal, name: `hexagonal` },
+  ])(`round-trip cart→frac→cart for $name`, ({ lattice }) => {
+    const frac_to_cart = math.create_frac_to_cart(lattice)
+    const cart_to_frac = math.create_cart_to_frac(lattice)
+    const cart: Vec3 = [2.5, 3.5, 1.5]
+    const frac = cart_to_frac(cart)
+    const recovered = frac_to_cart(frac)
+    recovered.forEach((val, idx) => expect(val).toBeCloseTo(cart[idx], 10))
+  })
+})

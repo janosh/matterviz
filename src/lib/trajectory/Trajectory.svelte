@@ -131,18 +131,18 @@
       | `structure+histogram`
     // step labels configuration for slider
     // - positive number: number of evenly spaced ticks
-    // - negative number: spacing between ticks (e.g., -10 = every 10th step)
+    // - negative number: spacing between ticks (e.g. -10 = every 10th step)
     // - array: exact step indices to label
     // - undefined: no labels
     step_labels?: number | number[]
     // visible properties - bindable array of property keys currently shown in the plot
-    // - controls which trajectory properties are plotted (e.g., ['energy', 'volume', 'force_max'])
+    // - controls which trajectory properties are plotted (e.g. ['energy', 'volume', 'force_max'])
     // - bindable: reflects current visibility state and can be used for external control
     // - if not provided, uses default visible properties (energy, force_max, stress_frobenius)
     // - if specified properties don't exist in data, falls back to automatic selection
     visible_properties?: string[]
     // custom labels for trajectory properties - maps property keys to display labels
-    // - e.g., {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
+    // - e.g. {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
     // - merged with built-in trajectory_property_config
     ELEM_PROPERTY_LABELS?: Record<string, string>
     // units configuration - developers can override these (deprecated - use ELEM_PROPERTY_LABELS instead)
@@ -166,7 +166,7 @@
     fps?: number // frame rate for playback
     // Loading options for large files
     loading_options?: LoadingOptions
-    // Map LAMMPS atom types to element symbols (e.g., {1: 'Na', 2: 'Cl'})
+    // Map LAMMPS atom types to element symbols (e.g. {1: 'Na', 2: 'Cl'})
     atom_type_mapping?: AtomTypeMapping
     // Disable plot skimming (mouse over plot doesn't update structure/step slider)
     plot_skimming?: boolean
@@ -224,7 +224,6 @@
   // Update current frame when step changes
   $effect(() => {
     if (trajectory && current_step_idx >= 0 && current_step_idx < total_frames) {
-      // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
       if (trajectory.frame_loader) {
         // Load frame on demand (works for both indexed files and external streaming)
         load_frame_on_demand(current_step_idx)
@@ -239,11 +238,9 @@
 
   // Load frame on demand - works for both indexed files and external streaming
   async function load_frame_on_demand(frame_idx: number) {
-    // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
     if (!trajectory?.frame_loader) return
 
     try {
-      // @ts-expect-error - frame_loader is added dynamically for indexed/streaming trajectories
       const frame = await trajectory.frame_loader.load_frame(
         orig_data || ``, // Use original_data for indexed files, empty string for external streaming
         frame_idx,
@@ -723,7 +720,6 @@
 
       // Attach frame loader and original data directly to trajectory for unified access
       orig_data = data
-      // @ts-expect-error - dynamically adding frame_loader for indexed trajectories
       trajectory.frame_loader = create_frame_loader(filename)
     } catch (error) {
       console.error(`Indexed loading failed:`, error)

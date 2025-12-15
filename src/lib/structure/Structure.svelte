@@ -92,13 +92,13 @@
     displayed_structure = $bindable<AnyStructure | undefined>(undefined),
     // Track hidden elements across component lifecycle
     hidden_elements = $bindable(new Set<ElementSymbol>()),
-    // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
+    // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     hidden_prop_vals = $bindable(new Set<number | string>()),
     // Symmetry analysis data (bindable for external access)
     sym_data = $bindable<MoyoDataset | null>(null),
     // Symmetry analysis settings (bindable for external control)
     symmetry_settings = $bindable(symmetry.default_sym_settings),
-    // Map element symbols to different elements (e.g., {'H': 'Na', 'He': 'Cl'})
+    // Map element symbols to different elements (e.g. {'H': 'Na', 'He': 'Cl'})
     // Useful for LAMMPS files where atom types are mapped to H, He, Li by default
     element_mapping = $bindable<
       Partial<Record<ElementSymbol, ElementSymbol>> | undefined
@@ -157,13 +157,13 @@
       displayed_structure?: AnyStructure
       // Track which elements are hidden (bindable across frames in trajectories)
       hidden_elements?: Set<ElementSymbol>
-      // Track which property values are hidden (e.g., Wyckoff positions, coordination numbers)
+      // Track which property values are hidden (e.g. Wyckoff positions, coordination numbers)
       hidden_prop_vals?: Set<number | string>
       // Symmetry analysis data (bindable for external access)
       sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
       symmetry_settings?: Partial<SymmetrySettings>
-      // Map element symbols to different elements (e.g., {'H': 'Na', 'He': 'Cl'})
+      // Map element symbols to different elements (e.g. {'H': 'Na', 'He': 'Cl'})
       element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
       // Cell type: original, conventional, or primitive (requires symmetry analysis)
       cell_type?: CellType

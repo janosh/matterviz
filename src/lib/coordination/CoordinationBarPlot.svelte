@@ -19,6 +19,11 @@
   import { calc_coordination_nums, type CoordinationData } from './calc-coordination'
   import type { SplitMode } from './index'
 
+  type CoordinationMetadata = {
+    element?: string
+    structure_label?: string
+  } & Record<string, unknown>
+
   interface StructureEntry {
     label: string
     structure: AnyStructure
@@ -38,7 +43,7 @@
     loading = $bindable(false),
     error_msg = $bindable(),
     ...rest
-  }: ComponentProps<typeof BarPlot> & {
+  }: Omit<ComponentProps<typeof BarPlot>, `series`> & {
     structures:
       | AnyStructure
       | Record<string, AnyStructure | { structure: AnyStructure; color?: string }>
@@ -111,7 +116,7 @@
   })
 
   // Build BarPlot series based on split_mode
-  const bar_series = $derived.by<BarSeries[]>(() => {
+  const bar_series = $derived.by<BarSeries<CoordinationMetadata>[]>(() => {
     if (split_mode === `by_element`) {
       // One series per element across all structures
       const element_series_map = new SvelteMap<string, Map<number, number>>()
@@ -270,11 +275,11 @@
     : `No coordination data to display`}
   />
 {:else}
-  {#snippet tooltip(info: BarHandlerProps)}
+  {#snippet tooltip(info: BarHandlerProps<CoordinationMetadata>)}
     {@const cn = info.x}
     {@const count = info.y}
-    {@const element = info.metadata?.element as string | undefined}
-    {@const structure_label = info.metadata?.structure_label as string | undefined}
+    {@const element = info.metadata?.element}
+    {@const structure_label = info.metadata?.structure_label}
     {#if element}
       {element} —
     {/if}

@@ -327,7 +327,7 @@ describe(`ColorBar Date/Time Formatting`, () => {
 })
 
 describe(`ColorBar Numeric Formatting`, () => {
-  test(`formats ticks correctly using numeric d3-format (e.g., '.1f')`, () => {
+  test(`formats ticks correctly using numeric d3-format (e.g. '.1f')`, () => {
     mount(ColorBar, {
       target: document.body,
       props: {

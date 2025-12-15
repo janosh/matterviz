@@ -186,6 +186,7 @@ export function compute_xrd_pattern(
       if (ELEMENT_Z[element_symbol] === undefined) {
         throw new Error(`Unknown atomic number for element ${element_symbol}`)
       }
+      // Cast needed: imported JSON has different type structure than our union type
       const raw_coeff = (
         ATOMIC_SCATTERING_PARAMS as unknown as Partial<
           Record<

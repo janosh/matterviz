@@ -268,7 +268,7 @@
       if (face.length < 3) continue
 
       // Fan triangulation: for polygon with N vertices, create N-2 triangles
-      // E.g., quad [0,1,2,3] becomes triangles [0,1,2] and [0,2,3]
+      // e.g. quad [0,1,2,3] becomes triangles [0,1,2] and [0,2,3]
       for (let fan_idx = 1; fan_idx < face.length - 1; fan_idx++) {
         const idx0 = face[0]
         const idx1 = face[fan_idx]

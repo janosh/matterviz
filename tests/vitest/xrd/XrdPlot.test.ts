@@ -82,7 +82,7 @@ describe(`XrdPlot`, () => {
 
   test(`overbar notation on multi-digit negative indices`, async () => {
     // Regression test for overbar notation bug: multi-digit negative indices
-    // should have overbar on all digits (e.g., -10 → 1̄0̄, not 10̄)
+    // should have overbar on all digits (e.g. -10 → 1̄0̄, not 10̄)
     const pattern_with_negatives: XrdPattern = {
       x: [15, 25, 35],
       y: [100, 200, 150],

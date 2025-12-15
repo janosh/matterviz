@@ -174,14 +174,14 @@
     active_sites?: number[]
     active_highlight_color?: string
     rotation?: Vec3 // rotation control prop
-    // Expose scene and camera for external use (e.g., export pane)
+    // Expose scene and camera for external use (e.g. export pane)
     scene?: Scene
     camera?: Camera
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`] // OrbitControls instance
     rotation_target_ref?: Vec3 // Expose rotation target for reset
     initial_computed_zoom?: number // Expose initial zoom for reset
     hidden_elements?: Set<ElementSymbol>
-    hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g., Wyckoff positions, coordination numbers)
+    hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
   } = $props()
@@ -384,7 +384,7 @@
         0,
       ) * atom_radius
 
-      // Use property color if available (e.g., coordination number, Wyckoff position)
+      // Use property color if available (e.g. coordination number, Wyckoff position)
       // Otherwise, each species gets its own element color (important for disordered sites)
       const site_property_color = property_colors?.colors[orig_idx]
 

@@ -92,9 +92,10 @@
   $effect(() => {
     const bands_changed = available_bands.length !== prev_available_bands.length ||
       available_bands.some((band, idx) => band !== prev_available_bands[idx])
-    if (bands_changed && available_bands.length > 0) {
-      selected_bands = [...available_bands]
+    if (bands_changed) { // Always update tracking variable to avoid stale comparisons
       prev_available_bands = [...available_bands]
+      // Only reset selected_bands when there are bands to select
+      if (available_bands.length > 0) selected_bands = [...available_bands]
     }
   })
 

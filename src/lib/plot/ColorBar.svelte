@@ -161,7 +161,7 @@
           !power_of_10_ticks.includes(nice_max)
         ) power_of_10_ticks.push(nice_max)
 
-        // If no powers of 10 are within range (e.g., [0.1, 0.9]), fall back to D3 ticks?
+        // If no powers of 10 are within range (e.g. [0.1, 0.9]), fall back to D3 ticks?
         // Or just return filtered list which might be empty?
         // For now, let's stick with only powers of 10.
         // If list is empty maybe return domain ends?

@@ -1,4 +1,7 @@
-<script lang="ts">
+<script
+  lang="ts"
+  generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
+>
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
@@ -61,7 +64,7 @@
     width = 0,
     height = 0,
   }: {
-    series?: DataSeries3D[]
+    series?: DataSeries3D<Metadata>[]
     series_visibility?: boolean[]
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
@@ -93,10 +96,10 @@
     directional_light?: number
     sphere_segments?: number
     gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
-    hovered_point?: InternalPoint3D | null
-    on_point_click?: (data: Scatter3DHandlerEvent) => void
-    on_point_hover?: (data: Scatter3DHandlerEvent | null) => void
-    tooltip?: Snippet<[Scatter3DHandlerEvent]>
+    hovered_point?: InternalPoint3D<Metadata> | null
+    on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
+    on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
+    tooltip?: Snippet<[Scatter3DHandlerEvent<Metadata>]>
     scene?: Scene
     camera?: Camera
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
@@ -271,7 +274,7 @@
   // Process points with normalized positions
   // Swap Y/Z for Three.js: user Z → Three.js Y (vertical), user Y → Three.js Z (depth)
   let processed_points = $derived(
-    all_points.map((pt): InternalPoint3D => ({
+    all_points.map((pt): InternalPoint3D<Metadata> => ({
       ...pt,
       x: normalize_x(pt.x), // user X → Three.js X
       y: normalize_z(pt.z), // user Z → Three.js Y (vertical)
@@ -280,7 +283,11 @@
   )
 
   // Group points by radius, with per-instance colors
-  type RadiusGroup = { radius: number; points: InternalPoint3D[]; colors: string[] }
+  type RadiusGroup = {
+    radius: number
+    points: InternalPoint3D<Metadata>[]
+    colors: string[]
+  }
 
   let radius_groups = $derived.by((): RadiusGroup[] => {
     const groups: Record<string, RadiusGroup> = {}
@@ -428,9 +435,9 @@
 
   // Build event data for point interactions
   function make_event_data(
-    point: InternalPoint3D,
+    point: InternalPoint3D<Metadata>,
     event: MouseEvent,
-  ): Scatter3DHandlerEvent | null {
+  ): Scatter3DHandlerEvent<Metadata> | null {
     const orig = all_points.find(
       (pt) => pt.series_idx === point.series_idx && pt.point_idx === point.point_idx,
     )
@@ -455,7 +462,7 @@
     }
   }
 
-  function handle_point_enter(point: InternalPoint3D) {
+  function handle_point_enter(point: InternalPoint3D<Metadata>) {
     hovered_point = point
     const data = make_event_data(point, new MouseEvent(`pointerenter`))
     if (data) on_point_hover?.(data)
@@ -466,7 +473,7 @@
     on_point_hover?.(null)
   }
 
-  function handle_point_click(point: InternalPoint3D, event: MouseEvent) {
+  function handle_point_click(point: InternalPoint3D<Metadata>, event: MouseEvent) {
     const data = make_event_data(point, event)
     if (data) on_point_click?.(data)
   }
@@ -500,6 +507,7 @@
   // Axis configuration for rendering
   const tick_length = 0.15
   type AxisKey = `x` | `y` | `z`
+  const AXIS_KEYS: readonly AxisKey[] = [`x`, `y`, `z`]
 
   // Main axis line geometries - updated when backside positions change
   let axis_geometries: Record<AxisKey, THREE.BufferGeometry> = $state({
@@ -512,7 +520,7 @@
     // Capture pos values for dependency tracking
     const { x: px, y: py, z: pz } = pos
     untrack(() => {
-      for (const key of [`x`, `y`, `z`] as AxisKey[]) axis_geometries[key].dispose()
+      for (const key of AXIS_KEYS) axis_geometries[key].dispose()
     })
     // X-axis: spans full X, positioned at backside Y and Z
     axis_geometries.x = create_line_geometry([-half_x, py, pz], [half_x, py, pz])
@@ -613,9 +621,9 @@
     const config = axes_config
     // Dispose old geometries (untracked to avoid dependency cycle)
     untrack(() => {
-      for (const key of [`x`, `y`, `z`] as AxisKey[]) {
-        axis_geom_data[key].tick_geoms.forEach((g) => g.dispose())
-        axis_geom_data[key].grid_geoms.flat().forEach((g) => g.dispose())
+      for (const key of AXIS_KEYS) {
+        axis_geom_data[key].tick_geoms.forEach((geom) => geom.dispose())
+        axis_geom_data[key].grid_geoms.flat().forEach((geom) => geom.dispose())
       }
     })
     for (const { key, ticks, get_tick_pos, get_tick_end, get_grid_lines } of config) {

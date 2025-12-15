@@ -13,7 +13,7 @@ export interface RdfEntry {
   label: string
   pattern: RdfPattern
   color?: string
-  legend_group?: string // Group name for legend grouping (e.g., structure name)
+  legend_group?: string // Group name for legend grouping (e.g. structure name)
 }
 
 export interface RdfOptions {

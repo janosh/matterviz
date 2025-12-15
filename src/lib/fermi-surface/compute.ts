@@ -26,12 +26,11 @@ import type {
 function catmull_rom_coeffs(t: number): [number, number, number, number] {
   const t2 = t * t
   const t3 = t2 * t
-  return [
-    0.5 * (-t + 2 * t2 - t3),
-    0.5 * (2 - 5 * t2 + 3 * t3),
-    0.5 * (t + 4 * t2 - 3 * t3),
-    0.5 * (-t2 + t3),
-  ]
+  const c1 = 0.5 * (-t + 2 * t2 - t3)
+  const c2 = 0.5 * (2 - 5 * t2 + 3 * t3)
+  const c3 = 0.5 * (t + 4 * t2 - 3 * t3)
+  const c4 = 0.5 * (-t2 + t3)
+  return [c1, c2, c3, c4]
 }
 
 // Tricubic interpolation with cached wrap indices and precomputed coefficients

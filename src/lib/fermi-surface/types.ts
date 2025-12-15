@@ -21,8 +21,8 @@ export interface Isosurface {
   vertices: Vec3[]
   faces: number[][] // triangle indices (each array has 3 indices)
   normals: Vec3[] // per-vertex normals
-  properties?: number[] // per-vertex scalar values (e.g., Fermi velocity magnitude)
-  vector_properties?: Vec3[] // per-vertex vector values (e.g., spin texture)
+  properties?: number[] // per-vertex scalar values (e.g. Fermi velocity magnitude)
+  vector_properties?: Vec3[] // per-vertex vector values (e.g. spin texture)
   band_index: number
   spin: SpinChannel
   // Analysis results (computed on demand)
@@ -46,7 +46,7 @@ export interface FermiSurfaceMetadata {
   n_bands: number
   n_surfaces: number
   total_area: number // total surface area in Å⁻²
-  source_format?: string // e.g., 'bxsf', 'frmsf', 'json'
+  source_format?: string // e.g. 'bxsf', 'frmsf', 'json'
   source_file?: string
   has_spin?: boolean
   has_velocities?: boolean

@@ -889,7 +889,7 @@ export function parse_cif(
 
     // Rely on symmetry operations list for all centering/translations to avoid double-counting
     // TODO: Support conventional cells with centering by discovering centering from space group metadata
-    // when present (e.g., P, I, F, C, R centering types)
+    // when present (e.g. P, I, F, C, R centering types)
     const centering_vectors: Vec3[] = [[0, 0, 0]]
 
     // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
@@ -920,7 +920,7 @@ export function parse_cif(
               t.replace(/['"]/g, ``)
             )
             if (toks.length > Math.max(sym_idx, num_idx)) {
-              // Normalize type symbol to bare element (e.g., 'Sn2+' -> 'Sn')
+              // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
               const match = toks[sym_idx]?.match(/^([A-Z][a-z]*)/)
               const sym = match ? match[1] : toks[sym_idx]
               const num = parseInt(toks[num_idx])
@@ -1128,17 +1128,11 @@ function find_structure_in_json(
   visited = new WeakSet(),
 ): ParsedStructure | null {
   // Check if current object is null or undefined
-  if (obj === null || obj === undefined) {
-    return null
-  }
+  if (obj === null || obj === undefined) return null
 
-  // If it's not an object, skip it
-  if (typeof obj !== `object`) {
-    return null
-  }
+  if (typeof obj !== `object`) return null // If it's not an object, skip it
 
-  // Check for circular references
-  if (visited.has(obj)) return null
+  if (visited.has(obj)) return null // Check for circular references
   visited.add(obj)
 
   // If it's an array, search through each element
@@ -1152,9 +1146,7 @@ function find_structure_in_json(
 
   // Check if this object looks like a valid structure
   const potential_structure = obj as Record<string, unknown>
-  if (is_valid_structure_object(potential_structure)) {
-    return potential_structure as unknown as ParsedStructure
-  }
+  if (is_valid_structure_object(potential_structure)) return potential_structure
 
   // Otherwise, recursively search through all properties
   for (const value of Object.values(potential_structure)) {
@@ -1165,29 +1157,21 @@ function find_structure_in_json(
   return null
 }
 
-// Check if an object looks like a valid structure
-function is_valid_structure_object(obj: Record<string, unknown>): boolean {
-  // Must have sites array
-  if (!obj.sites || !Array.isArray(obj.sites)) {
-    return false
-  }
-
-  // Sites array must not be empty and contain valid site objects
-  if (obj.sites.length === 0) {
-    return false
-  }
+// Type guard to validate structure-like objects
+function is_valid_structure_object(obj: unknown): obj is ParsedStructure {
+  if (!obj || typeof obj !== `object`) return false
+  const record = obj as Record<string, unknown>
+  // Must have non-empty sites array
+  if (!Array.isArray(record.sites) || record.sites.length === 0) return false
 
   // Check if first site looks valid (has species and coordinates)
-  const first_site = obj.sites[0] as Record<string, unknown>
-  if (!first_site || typeof first_site !== `object`) {
-    return false
-  }
+  const first_site = record.sites[0] as Record<string, unknown> | undefined
+  if (!first_site || typeof first_site !== `object`) return false
 
   // Must have species (array) and either abc or xyz coordinates
   const has_species = Array.isArray(first_site.species) && first_site.species.length > 0
-  const has_coordinates = Array.isArray(first_site.abc) || Array.isArray(first_site.xyz)
-
-  return has_species && has_coordinates
+  const has_coords = Array.isArray(first_site.abc) || Array.isArray(first_site.xyz)
+  return has_species && has_coords
 }
 
 // Auto-detect file format and parse accordingly

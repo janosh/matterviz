@@ -82,8 +82,7 @@ describe(`ScatterPlot`, () => {
           point_style: { fill: `steelblue`, radius: 5 },
         }],
         x_axis: { label: `Time (s)` },
-        y_labels: { label: `Speed` },
-        y_unit: `m/s`,
+        y_axis: { label: `Speed`, unit: `m/s` },
         tooltip_point: { x: 3, y: 30, series_idx: 0, point_idx: 2 },
         hovered: true,
       },
@@ -103,25 +102,25 @@ describe(`ScatterPlot`, () => {
     ] as DataSeries[]
     mount(ScatterPlot, {
       target: document.body,
-      props: { series: invalid, markers: `line+points` },
+      props: { series: invalid },
     })
     mount(ScatterPlot, {
       target: document.body,
       props: {
         series: [{ x: [1, 2, 3], y: [4, 5, 6] }],
-        x_lim: [100, 200],
-        y_lim: [100, 200],
+        x_axis: { range: [100, 200] },
+        y_axis: { range: [100, 200] },
       },
     })
   })
 
   test.each([
-    { y: [-10, -5, 0, 5, 10], y_lim: [-15, 15] as const },
-    { y: [5, 10, 15, 20, 25], y_lim: [0, 30] as const },
-  ])(`zero lines`, ({ y, y_lim }) => {
+    { y: [-10, -5, 0, 5, 10], y_range: [-15, 15] as [number, number] },
+    { y: [5, 10, 15, 20, 25], y_range: [0, 30] as [number, number] },
+  ])(`zero lines`, ({ y, y_range }) => {
     mount(ScatterPlot, {
       target: document.body,
-      props: { series: [{ x: [1, 2, 3, 4, 5], y }], y_lim },
+      props: { series: [{ x: [1, 2, 3, 4, 5], y }], y_axis: { range: y_range } },
     })
   })
 
