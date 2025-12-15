@@ -225,46 +225,31 @@
 
   // Compute BZ when structure or fermi_data changes
   $effect(() => {
-    // Priority 1: use fermi_data's k_lattice
-    if (fermi_data?.k_lattice) {
-      try {
-        bz_data = compute_brillouin_zone(fermi_data.k_lattice, 1)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        console.warn(`BZ computation failed:`, msg)
-        bz_data = undefined
-      }
+    // Get k_lattice from available sources (priority order)
+    const k_lattice = fermi_data?.k_lattice ??
+      band_data?.k_lattice ??
+      (structure?.lattice?.matrix
+        ? reciprocal_lattice(structure.lattice.matrix)
+        : null)
+
+    if (!k_lattice) {
+      bz_data = undefined
       return
     }
 
-    // Priority 2: use band_data's k_lattice
-    if (band_data?.k_lattice) {
-      try {
-        bz_data = compute_brillouin_zone(band_data.k_lattice, 1)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        console.warn(`BZ computation failed:`, msg)
-        bz_data = undefined
-      }
-      return
-    }
-
-    // Priority 3: use structure's lattice
-    if (structure?.lattice?.matrix) {
-      try {
-        const k_lattice = reciprocal_lattice(structure.lattice.matrix)
-        bz_data = compute_brillouin_zone(k_lattice, 1)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+    try {
+      bz_data = compute_brillouin_zone(k_lattice, 1)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(`BZ computation failed:`, msg)
+      bz_data = undefined
+      // Only report error for structure-derived lattice (user-provided data)
+      if (structure?.lattice?.matrix) {
         const err_msg = `BZ computation failed: ${msg}`
         error_msg = err_msg
-        bz_data = undefined
         untrack(() => on_error?.({ error_msg: err_msg }))
       }
-      return
     }
-
-    bz_data = undefined
   })
 
   // Auto-enable BZ tiling when irreducible data is detected
@@ -299,16 +284,14 @@
     try {
       // Check for URL drop first
       const url = event.dataTransfer?.getData(`text/uri-list`)
-      if (url) {
-        const filename = url.split(`/`).pop()?.split(`?`)[0] || url
-        on_file_drop?.(filename)
-      }
+      const url_filename = url?.split(`/`).pop()?.split(`?`)[0]
+      if (url_filename) on_file_drop?.(url_filename)
       const handled = await handle_url_drop(event, safe_parse).catch(() => false)
       if (handled) return
 
       const file = event.dataTransfer?.files[0]
       if (file) {
-        on_file_drop?.(file.name) // notify immediately before parsing
+        if (!url_filename) on_file_drop?.(file.name) // notify if not already
         const { content, filename } = await decompress_file(file)
         if (content) await safe_parse(content, filename)
       }
@@ -475,6 +458,12 @@
     border-radius: var(--fermi-border-radius, var(--border-radius, 3pt));
     background: var(--fermi-bg, var(--surface-bg));
     color: var(--fermi-text-color, var(--text-color));
+  }
+  /* Clip threlte HTML overlays (b₁/b₂/b₃ labels) when they fall outside canvas bounds.
+  Targets threlte-generated container (parent of canvas), not main wrapper
+  so control pane can still be dragged outside component bounds. */
+  .fermi-surface :global(> div:has(> canvas)) {
+    overflow: hidden;
   }
   .fermi-surface.active {
     z-index: var(--fermi-active-z-index, 2);

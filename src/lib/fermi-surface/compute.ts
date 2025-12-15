@@ -5,7 +5,6 @@ import {
   CLOSED_CONTOUR_TOLERANCE,
   IRREDUCIBLE_BZ_MIN_VERTICES,
   IRREDUCIBLE_BZ_TOLERANCE,
-  MAX_GRID_POINTS,
   SPANNING_THRESHOLD,
 } from './constants'
 import { marching_cubes } from './marching-cubes'
@@ -130,37 +129,6 @@ function upsample_grid(
   return new_grid
 }
 
-// Downsample a 3D energy grid by taking every nth point (optimized with pre-allocation)
-function downsample_grid(
-  grid: number[][][],
-  factor: number,
-): number[][][] {
-  const nx = grid.length
-  const ny = grid[0]?.length ?? 0
-  const nz = grid[0]?.[0]?.length ?? 0
-
-  const new_nx = Math.ceil(nx / factor)
-  const new_ny = Math.ceil(ny / factor)
-  const new_nz = Math.ceil(nz / factor)
-
-  // Pre-allocate arrays for better performance
-  const result: number[][][] = new Array(new_nx)
-  for (let ix = 0; ix < new_nx; ix++) {
-    const src_ix = Math.min(ix * factor, nx - 1)
-    const row: number[][] = new Array(new_ny)
-    for (let iy = 0; iy < new_ny; iy++) {
-      const src_iy = Math.min(iy * factor, ny - 1)
-      const col: number[] = new Array(new_nz)
-      for (let iz = 0; iz < new_nz; iz++) {
-        col[iz] = grid[src_ix][src_iy][Math.min(iz * factor, nz - 1)]
-      }
-      row[iy] = col
-    }
-    result[ix] = row
-  }
-  return result
-}
-
 // Extract Fermi surface from band grid data
 export function extract_fermi_surface(
   band_data: BandGridData,
@@ -180,20 +148,6 @@ export function extract_fermi_surface(
   const isosurfaces: Isosurface[] = []
   let total_area = 0
 
-  // Check if grid is too large and needs downsampling
-  const [nx, ny, nz] = band_data.k_grid
-  const total_points = nx * ny * nz
-  const downsample_factor = total_points > MAX_GRID_POINTS
-    ? Math.ceil(Math.cbrt(total_points / MAX_GRID_POINTS))
-    : 1
-
-  if (downsample_factor > 1) {
-    console.warn(
-      `Grid size ${nx}×${ny}×${nz} = ${total_points} points exceeds limit. ` +
-        `Downsampling by factor ${downsample_factor} for performance.`,
-    )
-  }
-
   // Process each spin channel and band
   for (let spin_idx = 0; spin_idx < band_data.n_spins; spin_idx++) {
     const spin: SpinChannel = band_data.n_spins === 2
@@ -207,12 +161,7 @@ export function extract_fermi_surface(
       // Skip if band not selected
       if (selected_bands && !selected_bands.includes(band_idx)) continue
 
-      let raw_energies = band_data.energies[spin_idx][band_idx]
-
-      // Downsample large grids for performance
-      if (downsample_factor > 1) {
-        raw_energies = downsample_grid(raw_energies, downsample_factor)
-      }
+      const raw_energies = band_data.energies[spin_idx][band_idx]
 
       // Check if Fermi level intersects this band
       if (!band_intersects_fermi(raw_energies, iso_value)) continue
@@ -307,7 +256,7 @@ function band_intersects_fermi(energies: number[][][], iso_value: number): boole
   return false
 }
 
-// Compute surface area of an isosurface (optimized with inlined math)
+// Compute surface area of an isosurface (assumes triangular faces from marching cubes)
 export function compute_surface_area(surface: Isosurface): number {
   let total_area = 0
   const verts = surface.vertices
@@ -370,6 +319,7 @@ function compute_fermi_velocities(
 }
 
 // Trilinear interpolation for Vec3 grid
+// Note: Assumes x, y, z are non-negative (e.g. from wrapped fractional coordinates)
 function trilinear_interpolate_vec3(
   grid: Vec3[][][],
   x: number,
@@ -482,15 +432,12 @@ export function compute_fermi_slice(
   }
 
   // Compute plane normal in Cartesian coordinates
-  const plane_normal = math.scale(
+  const plane_normal = math.add(
     math.add(
-      math.add(
-        math.scale(fermi_data.k_lattice[0], miller_indices[0]),
-        math.scale(fermi_data.k_lattice[1], miller_indices[1]),
-      ),
-      math.scale(fermi_data.k_lattice[2], miller_indices[2]),
+      math.scale(fermi_data.k_lattice[0], miller_indices[0]),
+      math.scale(fermi_data.k_lattice[1], miller_indices[1]),
     ),
-    1,
+    math.scale(fermi_data.k_lattice[2], miller_indices[2]),
   ) as Vec3
 
   const normal_len = Math.hypot(...plane_normal)

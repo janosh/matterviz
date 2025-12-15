@@ -1,10 +1,5 @@
 // Constants and thresholds for Fermi surface computation
 
-// Grid processing limits
-// Maximum grid points before automatic downsampling kicks in
-// 20^3 = 8,000 points keeps UI snappy while maintaining reasonable detail
-export const MAX_GRID_POINTS = 8_000
-
 // Maximum triangles for BZ symmetry tiling (48x for Oh symmetry)
 // Above this, tiling is auto-disabled for performance
 export const MAX_TRIANGLES_FOR_TILING = 50_000

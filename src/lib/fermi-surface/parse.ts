@@ -152,9 +152,10 @@ function parse_bxsf(content: string): BandGridData {
   for (const line of lines) {
     const lower = line.toLowerCase()
     if (lower.includes(`fermi`) && lower.includes(`energy`)) {
-      const match = line.match(/[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/)
+      // Match patterns like "Fermi Energy = 5.123" or "fermi_energy: -0.5"
+      const match = line.match(/(?:=|:)\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i)
       if (match) {
-        fermi_energy = parseFloat(match[0])
+        fermi_energy = parseFloat(match[1])
         break
       }
     }
@@ -203,16 +204,11 @@ function parse_frmsf(content: string): BandGridData {
   const n_spins = 1
 
   // Lines 4-6: reciprocal lattice vectors (in Bohr^-1, convert to Å^-1)
+  const inv_bohr = 1 / constants.BOHR_TO_ANGSTROM
   const k_lattice: Matrix3x3 = [
-    parse_floats(lines[line_idx++]).slice(0, 3).map((val) =>
-      val / constants.BOHR_TO_ANGSTROM
-    ) as Vec3,
-    parse_floats(lines[line_idx++]).slice(0, 3).map((val) =>
-      val / constants.BOHR_TO_ANGSTROM
-    ) as Vec3,
-    parse_floats(lines[line_idx++]).slice(0, 3).map((val) =>
-      val / constants.BOHR_TO_ANGSTROM
-    ) as Vec3,
+    parse_floats(lines[line_idx++]).slice(0, 3).map((val) => val * inv_bohr) as Vec3,
+    parse_floats(lines[line_idx++]).slice(0, 3).map((val) => val * inv_bohr) as Vec3,
+    parse_floats(lines[line_idx++]).slice(0, 3).map((val) => val * inv_bohr) as Vec3,
   ]
 
   const [nx, ny, nz] = k_grid

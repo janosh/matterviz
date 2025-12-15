@@ -1,6 +1,7 @@
 <script lang="ts">
   import { DraggablePane, SettingsSection } from '$lib'
   import type { CameraProjection } from '$lib/settings'
+  import { type Snippet } from 'svelte'
   import type {
     BandGridData,
     ColorProperty,
@@ -34,11 +35,12 @@
     on_mu_change,
     on_interpolation_change,
     on_export,
+    children,
   }: {
     controls_open?: boolean
     fermi_data?: FermiSurfaceData
     band_data?: BandGridData
-    mu?: number
+    mu?: number | undefined
     color_property?: ColorProperty
     color_scale?: string
     representation?: RepresentationMode
@@ -57,6 +59,7 @@
     on_mu_change?: (mu: number) => void
     on_interpolation_change?: (factor: number) => void
     on_export?: (format: `stl` | `obj` | `gltf`) => void
+    children?: Snippet<[{ fermi_data?: FermiSurfaceData; band_data?: BandGridData }]>
   } = $props()
 
   // Color scale options
@@ -81,11 +84,17 @@
       )
       : [],
   )
+  // Track previous available bands to detect when fermi_data changes
+  let prev_available_bands = $state<number[]>([])
 
-  // Initialize selected bands if not set
+  // Reset selected_bands when available_bands changes (new file loaded)
+  // This ensures band selection doesn't persist across different files
   $effect(() => {
-    if (selected_bands === undefined && available_bands.length > 0) {
+    const bands_changed = available_bands.length !== prev_available_bands.length ||
+      available_bands.some((band, idx) => band !== prev_available_bands[idx])
+    if (bands_changed && available_bands.length > 0) {
       selected_bands = [...available_bands]
+      prev_available_bands = [...available_bands]
     }
   })
 
@@ -104,8 +113,15 @@
 
   function handle_mu_change(event: Event) {
     const target = event.target as HTMLInputElement
-    mu = parseFloat(target.value)
-    on_mu_change?.(mu)
+    const trimmed = target.value.trim()
+    const parsed = parseFloat(trimmed)
+    if (Number.isFinite(parsed)) {
+      mu = parsed
+      on_mu_change?.(parsed)
+    } else { // Invalid input (empty, non-numeric, NaN, Infinity) - reset to default
+      mu = 0
+      on_mu_change?.(0)
+    }
   }
 </script>
 
@@ -364,6 +380,8 @@
       </select>
     </label>
   </SettingsSection>
+
+  {@render children?.({ fermi_data, band_data })}
 </DraggablePane>
 
 <style>

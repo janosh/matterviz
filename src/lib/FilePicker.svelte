@@ -171,6 +171,12 @@
       ondragstart={handle_drag_start(file)}
       ondragend={() => on_drag_end?.()}
       onclick={() => on_click?.(file)}
+      onkeydown={(event) => {
+        if ([`Enter`, ` `].includes(event.key)) {
+          event.preventDefault()
+          on_click?.(file)
+        }
+      }}
       role="button"
       tabindex="0"
       title={on_click

@@ -13,7 +13,6 @@
     line_width = 2,
     show_axes = true,
     axis_color = `#888`,
-    background = `transparent`,
     children,
     ...rest
   }: {
@@ -23,7 +22,6 @@
     line_width?: number
     show_axes?: boolean
     axis_color?: string
-    background?: string
     children?: Snippet<
       [{ fermi_data?: FermiSurfaceData; slice_data?: FermiSliceData | null }]
     >
@@ -78,14 +76,7 @@
   let y_axis = $derived([to_svg([0, bounds.min[1]]), to_svg([0, bounds.max[1]])])
 </script>
 
-<svg
-  viewBox="0 0 {SIZE} {SIZE}"
-  preserveAspectRatio="xMidYMid meet"
-  xmlns="http://www.w3.org/2000/svg"
-  {...rest}
-  class="fermi-slice {rest.class ?? ``}"
-  style:background
->
+<svg viewBox="0 0 {SIZE} {SIZE}" preserveAspectRatio="xMidYMid meet" {...rest}>
   {#if show_axes}
     <line
       x1={x_axis[0][0]}
@@ -123,11 +114,3 @@
   {/if}
 </svg>
 {@render children?.({ fermi_data, slice_data })}
-
-<style>
-  .fermi-slice {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
-</style>

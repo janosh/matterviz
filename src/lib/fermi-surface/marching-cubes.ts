@@ -360,6 +360,9 @@ export function marching_cubes(
   const ny_nz = ny * nz
   const max_flat = nx * ny_nz // for computing cache keys
   // Use numeric cache key - safe for grids up to ~300³ (2^53 / 2 / max_flat)
+  if (max_flat > 30_000_000) {
+    console.warn(`Grid size ${nx}×${ny}×${nz} may cause cache key overflow`)
+  }
   const vertex_cache = new Map<number, number>()
 
   // Safe modulo wrapping helper (handles negative values correctly)
