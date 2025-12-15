@@ -17,6 +17,15 @@ export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 export type NdVector = number[]
 
+// Column-major 4x4 matrix as flat 16-element tuple (for Three.js/WebGL)
+// deno-fmt-ignore
+export type Matrix4Tuple = [
+  number, number, number, number,
+  number, number, number, number,
+  number, number, number, number,
+  number, number, number, number,
+]
+
 export const LOG_EPS = 1e-9
 export const EPS = 1e-10
 export const RAD_TO_DEG = 180 / Math.PI
@@ -360,6 +369,44 @@ export function det_4x4(matrix: Matrix4x4): number {
 // 3D cross product
 export function cross_3d(a: Vec3, b: Vec3): Vec3 {
   return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+}
+
+// Scalar linear interpolation
+export function lerp(a: number, b: number, t: number): number {
+  return a + t * (b - a)
+}
+
+// Vec3 linear interpolation
+export function lerp_vec3(a: Vec3, b: Vec3, t: number): Vec3 {
+  return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])]
+}
+
+// Normalize a Vec3 to unit length, returns zero vector if input is zero
+export function normalize_vec3(vec: Vec3, fallback?: Vec3): Vec3 {
+  const len = Math.hypot(vec[0], vec[1], vec[2])
+  if (len < EPS) return fallback ?? [0, 0, 0]
+  return [vec[0] / len, vec[1] / len, vec[2] / len]
+}
+
+// Compute axis-aligned bounding box of Vec3 vertices
+export function compute_bounding_box(vertices: Vec3[]): { min: Vec3; max: Vec3 } {
+  if (vertices.length === 0) {
+    return { min: [0, 0, 0], max: [0, 0, 0] }
+  }
+
+  const min: Vec3 = [...vertices[0]]
+  const max: Vec3 = [...vertices[0]]
+
+  for (const vert of vertices) {
+    if (vert[0] < min[0]) min[0] = vert[0]
+    if (vert[1] < min[1]) min[1] = vert[1]
+    if (vert[2] < min[2]) min[2] = vert[2]
+    if (vert[0] > max[0]) max[0] = vert[0]
+    if (vert[1] > max[1]) max[1] = vert[1]
+    if (vert[2] > max[2]) max[2] = vert[2]
+  }
+
+  return { min, max }
 }
 
 // Check if a matrix is square with dimension NxN
