@@ -35,7 +35,7 @@
 
   function format_hkl(hkl: Hkl, format: HklFormat): string {
     if (format === `compact`) {
-      // Use crystallographic overbar notation for negative indices (e.g., 1̄ instead of -1)
+      // Use crystallographic overbar notation for negative indices (e.g. 1̄ instead of -1)
       // Note: Requires font support for Unicode combining characters (U+0305)
       return hkl
         .map((val) => {
@@ -484,13 +484,15 @@
       />
     {:else}
       <!-- Discrete Stick View -->
-      {#snippet tooltip(info: BarHandlerProps)}
+      {#snippet tooltip(
+    info: BarHandlerProps<{ label?: string; hkls?: Hkl[]; d?: number }>,
+  )}
         {@const angle_text = `${format_value(info.x, `.2f`)}°`}
         {@const intensity_text = `${format_value(info.y, `.1f`)}`}
-        {@const hkls = info.metadata?.hkls as Hkl[] | undefined}
-        {@const d = info.metadata?.d as number | undefined}
+        {@const hkls = info.metadata?.hkls}
+        {@const d = info.metadata?.d}
         {@const hkl_text = hkls && hkl_format
-      ? hkls.map((h) => format_hkl(h, hkl_format)).join(`, `)
+      ? hkls.map((hkl: Hkl) => format_hkl(hkl, hkl_format)).join(`, `)
       : ``}
         {@const d_text = d != null ? `${format_value(d, `.3f`)} Å` : ``}
         {@html info.metadata?.label ?? ``}<br />

@@ -45,7 +45,7 @@ let initialized = false
 export async function ensure_moyo_wasm_ready(wasm_url?: string) {
   if (initialized) return
 
-  // Use provided URL (e.g., from VSCode webview data), otherwise use Vite-bundled URL
+  // Use provided URL (e.g. from VSCode webview data), otherwise use Vite-bundled URL
   const url = wasm_url ?? moyo_wasm_url
 
   await init({ module_or_path: url })

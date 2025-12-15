@@ -111,7 +111,7 @@ describe(`BarPlot`, () => {
     { render_mode: `line` as const, color: `red`, label: `Line` },
     { render_mode: `line` as const, line_style: { stroke_width: 4, line_dash: `10,5` } },
     // Regression: .filter(Boolean) incorrectly removed 0 from auto-range calculation
-    // Zero is a valid value for color/size scales (e.g., minimum on a gradient)
+    // Zero is a valid value for color/size scales (e.g. minimum on a gradient)
     {
       render_mode: `line` as const,
       markers: `line+points` as const,

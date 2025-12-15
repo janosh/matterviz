@@ -567,7 +567,7 @@ describe(`AtomLegend Component`, () => {
       const labels = document.querySelectorAll(`.category-label`)
       const label_texts = Array.from(labels).map((l) => l.textContent?.trim())
 
-      // Format: Element:count+wyckoff (e.g., Fe:24e, O:12a)
+      // Format: Element:count+wyckoff (e.g. Fe:24e, O:12a)
       expect(label_texts).toContain(`Fe:24e`)
       expect(label_texts).toContain(`O:12a`)
     })

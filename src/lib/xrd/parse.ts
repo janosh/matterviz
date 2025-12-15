@@ -438,7 +438,7 @@ export async function parse_xrd_file(
 export const XRD_FILE_EXTENSIONS = [`xy`, `xye`, `xrdml`, `brml`] as const
 
 // Check if a filename represents a supported XRD data file format.
-// Recognizes both plain and gzipped versions (e.g., .xy and .xy.gz)
+// Recognizes both plain and gzipped versions (e.g. .xy and .xy.gz)
 export function is_xrd_data_file(filename: string): boolean {
   // Strip .gz suffix if present to get base extension
   const base_name = filename.toLowerCase().replace(/\.gz$/, ``)

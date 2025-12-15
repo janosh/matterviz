@@ -301,7 +301,7 @@
     for (let idx = 0; idx < count; idx++) {
       const x_val = x_range[0] + Math.random() * (x_range[1] - x_range[0])
       const y_val = y_range[0] + Math.random() * (y_range[1] - y_range[0])
-      // Assign a color value (e.g., based on distance from origin)
+      // Assign a color value (e.g. based on distance from origin)
       const center_x = x_range[0] + (x_range[1] - x_range[0]) / 2
       const center_y = y_range[0] + (y_range[1] - y_range[0]) / 2
       const color_val = Math.hypot(center_x, center_y) * Math.random() * 2 // Add some variation
