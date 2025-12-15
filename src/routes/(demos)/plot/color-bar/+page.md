@@ -191,7 +191,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 <script>
   import { ColorBar } from 'matterviz'
 
-  // Example date range (e.g., start and end of 2024)
+  // Example date range (e.g. start and end of 2024)
   const date_range = [
     new Date(2024, 0, 1).getTime(), // Jan 1, 2024
     new Date(2024, 11, 31).getTime(), // Dec 31, 2024

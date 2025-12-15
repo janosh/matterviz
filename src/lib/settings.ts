@@ -409,7 +409,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     atom_color_scale: {
       value: `interpolateViridis`,
       description:
-        `D3 color scale for property-based coloring (e.g., interpolateViridis, interpolatePlasma)`,
+        `D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)`,
     },
     atom_color_scale_type: {
       value: `continuous`,
@@ -980,7 +980,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       dash: {
         value: `solid`,
-        description: `Line dash pattern for scatter plots (e.g., "4,4" for dashed)`,
+        description: `Line dash pattern for scatter plots (e.g. "4,4" for dashed)`,
       },
     },
   },

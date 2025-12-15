@@ -3,7 +3,7 @@
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
-  import type { PlotControlsProps } from './index'
+  import type { AxisKey, PlotControlsProps } from './index'
 
   let {
     show_controls = $bindable(false),
@@ -26,11 +26,8 @@
   }: PlotControlsProps = $props()
 
   // Range input state
-  let range_inputs = $state(
-    { x: [null, null], y: [null, null], y2: [null, null] } as Record<
-      `x` | `y` | `y2`,
-      [number | null, number | null]
-    >,
+  let range_inputs: Record<AxisKey, [number | null, number | null]> = $state(
+    { x: [null, null], y: [null, null], y2: [null, null] },
   )
   let range_els = $state<Record<string, HTMLInputElement>>({})
 
@@ -60,7 +57,7 @@
   }
 
   // Handle format input changes
-  const format_input_handler = (format_type: `x` | `y` | `y2`) => (event: Event) => {
+  const format_input_handler = (format_type: AxisKey) => (event: Event) => {
     const input = event.target as HTMLInputElement
     const axes = { x: x_axis, y: y_axis, y2: y2_axis }
     const axis = axes[format_type]
@@ -72,7 +69,7 @@
   }
 
   // Handle range input changes
-  const update_range = (axis: `x` | `y` | `y2`, bound: 0 | 1, value: string) => {
+  const update_range = (axis: AxisKey, bound: 0 | 1, value: string) => {
     const parsed = value === `` ? null : Number(value)
     range_inputs[axis][bound] = Number.isFinite(parsed) ? parsed : null
     const [min, max] = range_inputs[axis]
@@ -186,7 +183,7 @@
         [axis_key, label]
         (axis_key)
       }
-        {@const axis = axis_key as `x` | `y` | `y2`}
+        {@const axis = axis_key as AxisKey}
         <label>{label}:
           <input
             type="number"

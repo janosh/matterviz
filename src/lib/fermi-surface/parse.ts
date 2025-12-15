@@ -58,7 +58,7 @@ function parse_bxsf(content: string): BandGridData {
     throw new Error(`BXSF file missing BEGIN_BLOCK_BANDGRID_3D`)
   }
 
-  // Skip block identifier line (e.g., "band_energies")
+  // Skip block identifier line (e.g. "band_energies")
   next_line()
 
   // Parse BEGIN_BANDGRID_3D or BANDGRID_3D_BANDS (both variants exist)
@@ -217,7 +217,7 @@ function parse_frmsf(content: string): BandGridData {
 
   // Parse band energies for each spin and band
   // FRMSF format: one energy value per line per grid point. Any additional columns
-  // (e.g., auxiliary color/velocity data) are ignored to prevent grid corruption.
+  // (e.g. auxiliary color/velocity data) are ignored to prevent grid corruption.
   const energies: EnergyGrid5D = []
   for (let spin_idx = 0; spin_idx < n_spins; spin_idx++) {
     energies[spin_idx] = []
@@ -348,7 +348,7 @@ function parse_fermi_json(
     return data as BandGridData
   }
 
-  // Try to extract from nested structure (e.g., IFermi output)
+  // Try to extract from nested structure (e.g. IFermi output)
   if (data.fermi_surface) {
     return data.fermi_surface as FermiSurfaceData
   }

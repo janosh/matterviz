@@ -27,9 +27,8 @@ export const symbol_names = (
     .map(name_for_symbol).filter((n): n is D3SymbolName => n !== null)
 ) as D3SymbolName[]
 
-const symbols_index = d3_symbols as unknown as Record<string, SymbolType>
-export const symbol_map = Object.fromEntries(
-  symbol_names.map((name) => [name, symbols_index[`symbol${name}`]]),
+export const symbol_map = Object.fromEntries( // Symbol lookup from d3-shape
+  symbol_names.map((name) => [name, d3_symbols[`symbol${name}`]]),
 ) as Record<D3SymbolName, SymbolType>
 
 // Format a value for display with optional time formatting
@@ -145,18 +144,15 @@ const BYTE_UNITS = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`] as const
 export const format_bytes = (bytes?: number): string => {
   if (bytes === undefined || !Number.isFinite(bytes)) return `Unknown`
 
-  let val = bytes
-  let idx = 0
-
+  let [val, idx] = [bytes, 0]
   while (Math.abs(val) >= 1024 && idx < BYTE_UNITS.length - 1) {
     val /= 1024
     idx++
   }
-
   return idx === 0 ? `${val} B` : `${val.toFixed(2)} ${BYTE_UNITS[idx]}`
 }
 
-// Replace common fractional values with unicode glyphs (e.g., 1/2 → ½)
+// Replace common fractional values with unicode glyphs (e.g. 1/2 → ½)
 export function format_fractional(value: number): string {
   if (!Number.isFinite(value)) return String(value)
   const x = ((value % 1) + 1) % 1 // wrap into [0,1)
@@ -179,7 +175,7 @@ export function parse_si_float<T extends string | number | null | undefined>(
   // Remove whitespace and commas
   const cleaned = value.trim().replace(/(\d),(\d)/g, `$1$2`)
 
-  // Check if the value is a SI-formatted number (e.g., "1.23k", "4.56M", "789µ", "12n")
+  // Check if the value is a SI-formatted number (e.g. "1.23k", "4.56M", "789µ", "12n")
   const match = cleaned.match(/^([-+]?\d*\.?\d+)\s*([yzafpnµmkMGTPEZY])?$/i)
   if (match) {
     const [, num_part, suffix] = match
