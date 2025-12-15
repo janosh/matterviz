@@ -115,12 +115,11 @@
     const target = event.target as HTMLInputElement
     const trimmed = target.value.trim()
     const parsed = parseFloat(trimmed)
+    // Only update mu when input is valid; keep last valid value during transient
+    // invalid states (e.g. empty string while user is typing a new value)
     if (Number.isFinite(parsed)) {
       mu = parsed
       on_mu_change?.(parsed)
-    } else { // Invalid input (empty, non-numeric, NaN, Infinity) - reset to default
-      mu = 0
-      on_mu_change?.(0)
     }
   }
 </script>
@@ -338,7 +337,7 @@
     </SettingsSection>
   {/if}
 
-  <SettingsSection title="Export" current_values={{}} on_reset={() => {}}>
+  <SettingsSection title="Export" current_values={{}}>
     <div class="export-buttons">
       <button
         type="button"

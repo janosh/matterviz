@@ -54,15 +54,19 @@ export interface FermiSurfaceMetadata {
   is_irreducible?: boolean // true if data covers only irreducible BZ wedge (needs tiling)
 }
 
+// 5D grid type aliases for band data indexed as [spin][band][kx][ky][kz]
+export type EnergyGrid5D = number[][][][][] // scalar energies
+export type VectorGrid5D = Vec3[][][][][] // vector quantities (velocities, spin texture)
+
 // Input band energies on a 3D k-point grid (from BXSF/FRMSF files)
 export interface BandGridData {
-  energies: number[][][][][] // [spin_channel][band_index][kx][ky][kz]
+  energies: EnergyGrid5D // [spin][band][kx][ky][kz]
   k_grid: Vec3 // grid dimensions
   k_lattice: Matrix3x3 // reciprocal lattice vectors
   fermi_energy: number
   // Optional property grids (same shape as energies)
-  velocities?: Vec3[][][][][] // Fermi velocity vectors [spin][band][kx][ky][kz]
-  spin_texture?: Vec3[][][][][] // spin expectation values [spin][band][kx][ky][kz]
+  velocities?: VectorGrid5D // Fermi velocity vectors [spin][band][kx][ky][kz]
+  spin_texture?: VectorGrid5D // spin expectation values [spin][band][kx][ky][kz]
   // Metadata
   n_bands: number
   n_spins: number // 1 or 2
@@ -106,7 +110,6 @@ export interface FermiSurfaceOptions {
 export interface FermiSliceOptions {
   miller_indices?: Vec3 // plane orientation (default [0,0,1])
   distance?: number // distance from origin along normal (default 0)
-  resolution?: number // number of points along each in-plane axis
 }
 
 // Event data for file load

@@ -278,13 +278,13 @@ const CUBE_VERTS_Z = new Int8Array([0, 0, 0, 0, 1, 1, 1, 1])
 const EDGE_V1 = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3])
 const EDGE_V2 = new Uint8Array([1, 2, 3, 0, 5, 6, 7, 4, 4, 5, 6, 7])
 
-interface MarchingCubesResult {
+export interface MarchingCubesResult {
   vertices: Vec3[]
   faces: number[][] // triangles as arrays of 3 vertex indices
   normals: Vec3[]
 }
 
-interface MarchingCubesOptions {
+export interface MarchingCubesOptions {
   // Whether to apply periodic boundary conditions (wrap around grid edges)
   periodic?: boolean
   // Interpolation for smoother surfaces (linear interpolation on edges)
@@ -360,6 +360,9 @@ export function marching_cubes(
   const ny_nz = ny * nz
   const max_flat = nx * ny_nz // for computing cache keys
   // Use numeric cache key - safe for grids up to ~300³ (2^53 / 2 / max_flat)
+  // For much larger grids (>30M cells), consider switching to Map<string, number>
+  // with keys like `${flat1},${flat2}` or Map<bigint, number> to avoid
+  // Number.MAX_SAFE_INTEGER limits. The current approach is faster for typical grids.
   if (max_flat > 30_000_000) {
     console.warn(`Grid size ${nx}×${ny}×${nz} may cause cache key overflow`)
   }

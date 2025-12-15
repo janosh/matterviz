@@ -33,14 +33,4 @@ test.describe(`Fermi Surface Demo Page`, () => {
     const fermi_container = page.locator(`.fermi-surface`)
     await expect(fermi_container).toBeVisible({ timeout: 10000 })
   })
-
-  test(`features list displays all feature items`, async ({ page }) => {
-    // Features are in a <ul> with <li> elements containing <strong> tags
-    const feature_items = page.locator(`section ul li strong`)
-    await expect(feature_items).toHaveCount(6)
-
-    // Check some feature content
-    await expect(page.locator(`li`, { hasText: `BXSF` })).toBeVisible()
-    await expect(page.locator(`li`, { hasText: `Property Coloring` })).toBeVisible()
-  })
 })

@@ -117,7 +117,7 @@
   >Quantum ESPRESSO</a>), <code>FRMSF</code>
   (<a href="https://mitsuaki1987.github.io/fermisurfer/" target="_blank" rel="noopener"
   >FermiSurfer</a>), and <a href="https://github.com/fermisurfaces/IFermi">IFermi</a>'s
-  JSON formats. Drag and drop files onto the viewer to load them.
+  JSON format. Drag and drop files onto the viewer to load them.
 </p>
 
 <FilePicker

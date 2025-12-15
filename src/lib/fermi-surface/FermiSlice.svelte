@@ -13,6 +13,7 @@
     line_width = 2,
     show_axes = true,
     axis_color = `#888`,
+    on_error,
     children,
     ...rest
   }: {
@@ -22,6 +23,7 @@
     line_width?: number
     show_axes?: boolean
     axis_color?: string
+    on_error?: (error: Error) => void
     children?: Snippet<
       [{ fermi_data?: FermiSurfaceData; slice_data?: FermiSliceData | null }]
     >
@@ -33,7 +35,8 @@
     if (!fermi_data) return null
     try {
       return compute_fermi_slice(fermi_data, { miller_indices, distance })
-    } catch {
+    } catch (err) {
+      on_error?.(err instanceof Error ? err : new Error(String(err)))
       return null
     }
   })

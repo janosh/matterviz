@@ -128,6 +128,7 @@
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
   let current_filename = $state<string | undefined>(undefined)
+  let recompute_job_id = 0 // monotonic counter to track latest recompute call
 
   let visible_buttons = $derived(
     show_controls === true ||
@@ -182,30 +183,43 @@
   // Re-extract Fermi surface from band data with current settings
   async function recompute_fermi_surface() {
     if (!band_data) return
+    const job_id = ++recompute_job_id // capture this job's ID
     loading = true
     await tick() // let spinner render before heavy computation
+    // Check if this job is still the latest before proceeding
+    if (job_id !== recompute_job_id) return
     try {
-      fermi_data = extract_fermi_surface(band_data, {
+      const result = extract_fermi_surface(band_data, {
         mu,
         wigner_seitz: true,
         interpolation_factor,
       })
+      // Only update state if this is still the latest job
+      if (job_id === recompute_job_id) {
+        fermi_data = result
+      }
     } catch (err) {
       console.error(`Failed to re-extract Fermi surface:`, err)
     } finally {
-      loading = false
+      // Only clear loading if this is still the latest job
+      if (job_id === recompute_job_id) loading = false
     }
   }
 
+  // Debounce recompute to avoid excessive re-computation during rapid slider drags
+  let recompute_timeout: ReturnType<typeof setTimeout>
+
   function handle_mu_change(new_mu: number) {
     mu = new_mu
-    void recompute_fermi_surface()
+    clearTimeout(recompute_timeout)
+    recompute_timeout = setTimeout(() => void recompute_fermi_surface(), 150)
     on_mu_change?.(new_mu)
   }
 
   function handle_interpolation_change(new_factor: number) {
     interpolation_factor = new_factor
-    void recompute_fermi_surface()
+    clearTimeout(recompute_timeout)
+    recompute_timeout = setTimeout(() => void recompute_fermi_surface(), 150)
   }
 
   // Export Fermi surface to various formats
@@ -303,9 +317,11 @@
     }
   }
 
-  function onkeydown(event: KeyboardEvent) {
+  function handle_keydown(event: KeyboardEvent) {
     const target = event.target as HTMLElement
-    if (target.tagName === `INPUT` || target.tagName === `TEXTAREA`) return
+    if ([`INPUT`, `TEXTAREA`].includes(target.tagName)) return
+    // Only handle shortcuts when component is focused/hovered or contains focus
+    if (!wrapper?.contains(document.activeElement) && !hovered) return
 
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     else if (event.key === `Escape`) controls_open = false
@@ -320,6 +336,8 @@
     set_fullscreen_bg(wrapper, fullscreen, `--fermi-bg-fullscreen`)
   })
 </script>
+
+<svelte:window onkeydown={handle_keydown} />
 
 <svelte:document
   onfullscreenchange={() => {
@@ -348,7 +366,6 @@
     event.preventDefault()
     dragover = false
   }}
-  {onkeydown}
   {...rest}
   class="fermi-surface {rest.class ?? ``}"
 >

@@ -31,7 +31,7 @@
     show_category_filters?: boolean
     on_drag_start?: (file: FileInfo, event: DragEvent) => void
     on_drag_end?: () => void
-    on_click?: (file: FileInfo) => void
+    on_click?: (file: FileInfo, event: MouseEvent | KeyboardEvent) => void
     type_mapper?: (file: FileInfo) => string
     file_type_colors?: Record<string, string>
   } = $props()
@@ -170,11 +170,11 @@
       draggable="true"
       ondragstart={handle_drag_start(file)}
       ondragend={() => on_drag_end?.()}
-      onclick={() => on_click?.(file)}
+      onclick={(event) => on_click?.(file, event)}
       onkeydown={(event) => {
         if ([`Enter`, ` `].includes(event.key)) {
           event.preventDefault()
-          on_click?.(file)
+          on_click?.(file, event)
         }
       }}
       role="button"

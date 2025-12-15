@@ -43,7 +43,7 @@ export const fermi_surface_files: FileInfo[] = Object.entries(fermi_file_modules
         category_icon = `🔶`
       }
     } else if (ext === `json`) {
-      // IFermi JSON Fermi surface files (fs_* prefix)
+      // All JSON files in this directory are assumed to be IFermi format
       category = `IFermi`
       category_icon = `🌐`
     }

@@ -4,6 +4,7 @@ import * as constants from './constants'
 import { compute_vertex_normals } from './marching-cubes'
 import type {
   BandGridData,
+  EnergyGrid5D,
   FermiSurfaceData,
   Isosurface,
   SpinChannel,
@@ -102,7 +103,7 @@ function parse_bxsf(content: string): BandGridData {
 
   // Parse band data
   // Format: BAND: band_number followed by energy values on grid
-  const energies: number[][][][][] = [[]] // [spin=1][band][kx][ky][kz]
+  const energies: EnergyGrid5D = [[]] // [spin=1][band][kx][ky][kz]
   const [nx, ny, nz] = k_grid
   const total_points = nx * ny * nz
 
@@ -215,26 +216,21 @@ function parse_frmsf(content: string): BandGridData {
   const total_points = nx * ny * nz
 
   // Parse band energies for each spin and band
-  const energies: number[][][][][] = []
+  // FRMSF format: one energy value per line per grid point. Any additional columns
+  // (e.g., auxiliary color/velocity data) are ignored to prevent grid corruption.
+  const energies: EnergyGrid5D = []
   for (let spin_idx = 0; spin_idx < n_spins; spin_idx++) {
     energies[spin_idx] = []
     for (let band_idx = 0; band_idx < n_bands; band_idx++) {
       const energy_values: number[] = []
 
-      // Read energy values (one per line in FRMSF format)
+      // Read energy values (first value per line only, ignore auxiliary columns)
       while (energy_values.length < total_points && line_idx < lines.length) {
         const line = lines[line_idx]
-        // Check if this line starts color data section
-        if (line && !isNaN(parseFloat(line.split(/\s+/)[0]))) {
-          const vals = parse_floats(line)
-          if (vals.length === 1) {
-            energy_values.push(vals[0])
-            line_idx++
-          } else {
-            // Multiple values per line
-            energy_values.push(...vals)
-            line_idx++
-          }
+        const first_token = line?.split(/\s+/)[0]
+        if (first_token && !isNaN(parseFloat(first_token))) {
+          energy_values.push(parseFloat(first_token))
+          line_idx++
         } else {
           break
         }
@@ -273,6 +269,47 @@ function parse_frmsf(content: string): BandGridData {
   }
 }
 
+// Validate that an object has the required Isosurface shape
+function is_valid_isosurface(obj: unknown): obj is Isosurface {
+  if (!obj || typeof obj !== `object`) return false
+  const iso = obj as Record<string, unknown>
+
+  // Required array fields
+  if (!Array.isArray(iso.vertices) || iso.vertices.length === 0) return false
+  if (!Array.isArray(iso.faces)) return false
+  if (!Array.isArray(iso.normals)) return false
+
+  // Required scalar fields
+  if (typeof iso.band_index !== `number`) return false
+  if (iso.spin !== null && iso.spin !== `up` && iso.spin !== `down`) return false
+
+  return true
+}
+
+// Validate FermiSurfaceData shape
+function is_valid_fermi_surface_data(obj: unknown): obj is FermiSurfaceData {
+  if (!obj || typeof obj !== `object`) return false
+  const data = obj as Record<string, unknown>
+
+  // Check required fields
+  if (!Array.isArray(data.isosurfaces)) return false
+  if (!Array.isArray(data.k_lattice) || data.k_lattice.length !== 3) return false
+  if (typeof data.fermi_energy !== `number`) return false
+  if (
+    data.reciprocal_cell !== `wigner_seitz` && data.reciprocal_cell !== `parallelepiped`
+  ) {
+    return false
+  }
+  if (!data.metadata || typeof data.metadata !== `object`) return false
+
+  // Validate each isosurface
+  for (const iso of data.isosurfaces) {
+    if (!is_valid_isosurface(iso)) return false
+  }
+
+  return true
+}
+
 // Parse Matterviz/IFermi JSON format for Fermi surface data
 // Throws on invalid input; returns parsed data on success
 function parse_fermi_json(
@@ -280,9 +317,14 @@ function parse_fermi_json(
 ): FermiSurfaceData | BandGridData {
   const data = JSON.parse(content)
 
-  // Check if it's already in our FermiSurfaceData format
+  // Check if it's already in our FermiSurfaceData format with full validation
   if (data.isosurfaces && Array.isArray(data.isosurfaces)) {
-    return data as FermiSurfaceData
+    if (is_valid_fermi_surface_data(data)) {
+      return data
+    }
+    throw new Error(
+      `Invalid FermiSurfaceData JSON: isosurfaces array present but missing required fields`,
+    )
   }
 
   // Check if it's IFermi format (isosurfaces is an object keyed by band index)
