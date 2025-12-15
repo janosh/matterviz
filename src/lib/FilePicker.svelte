@@ -9,6 +9,7 @@
     show_category_filters = false,
     on_drag_start,
     on_drag_end,
+    on_click,
     type_mapper,
     file_type_colors = {
       cif: `rgba(100, 149, 237, 0.8)`,
@@ -30,6 +31,7 @@
     show_category_filters?: boolean
     on_drag_start?: (file: FileInfo, event: DragEvent) => void
     on_drag_end?: () => void
+    on_click?: (file: FileInfo, event: MouseEvent | KeyboardEvent) => void
     type_mapper?: (file: FileInfo) => string
     file_type_colors?: Record<string, string>
   } = $props()
@@ -168,9 +170,18 @@
       draggable="true"
       ondragstart={handle_drag_start(file)}
       ondragend={() => on_drag_end?.()}
+      onclick={(event) => on_click?.(file, event)}
+      onkeydown={(event) => {
+        if ([`Enter`, ` `].includes(event.key)) {
+          event.preventDefault()
+          on_click?.(file, event)
+        }
+      }}
       role="button"
       tabindex="0"
-      title="Drag this {base_type.toUpperCase()} file"
+      title={on_click
+      ? `Click to load or drag this ${base_type.toUpperCase()} file`
+      : `Drag this ${base_type.toUpperCase()} file`}
     >
       <div class="file-name">
         {file.category ? `${file.category_icon} ` : ``}{file.name}
