@@ -191,7 +191,7 @@
   // Collect all color values for color bar
   let all_color_values = $derived(
     series.filter(Boolean).flatMap((srs) =>
-      srs.color_values?.filter((val): val is number => val != null) || []
+      srs.color_values?.filter((val): val is number => val != null) ?? []
     ),
   )
 

@@ -507,6 +507,7 @@
   // Axis configuration for rendering
   const tick_length = 0.15
   type AxisKey = `x` | `y` | `z`
+  const AXIS_KEYS: readonly AxisKey[] = [`x`, `y`, `z`]
 
   // Main axis line geometries - updated when backside positions change
   let axis_geometries: Record<AxisKey, THREE.BufferGeometry> = $state({
@@ -519,7 +520,7 @@
     // Capture pos values for dependency tracking
     const { x: px, y: py, z: pz } = pos
     untrack(() => {
-      for (const key of [`x`, `y`, `z`] as AxisKey[]) axis_geometries[key].dispose()
+      for (const key of AXIS_KEYS) axis_geometries[key].dispose()
     })
     // X-axis: spans full X, positioned at backside Y and Z
     axis_geometries.x = create_line_geometry([-half_x, py, pz], [half_x, py, pz])
@@ -620,9 +621,9 @@
     const config = axes_config
     // Dispose old geometries (untracked to avoid dependency cycle)
     untrack(() => {
-      for (const key of [`x`, `y`, `z`] as AxisKey[]) {
-        axis_geom_data[key].tick_geoms.forEach((g) => g.dispose())
-        axis_geom_data[key].grid_geoms.flat().forEach((g) => g.dispose())
+      for (const key of AXIS_KEYS) {
+        axis_geom_data[key].tick_geoms.forEach((geom) => geom.dispose())
+        axis_geom_data[key].grid_geoms.flat().forEach((geom) => geom.dispose())
       }
     })
     for (const { key, ticks, get_tick_pos, get_tick_end, get_grid_lines } of config) {

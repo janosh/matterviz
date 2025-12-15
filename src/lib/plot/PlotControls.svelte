@@ -26,11 +26,8 @@
   }: PlotControlsProps = $props()
 
   // Range input state
-  let range_inputs = $state(
-    { x: [null, null], y: [null, null], y2: [null, null] } as Record<
-      `x` | `y` | `y2`,
-      [number | null, number | null]
-    >,
+  let range_inputs: Record<`x` | `y` | `y2`, [number | null, number | null]> = $state(
+    { x: [null, null], y: [null, null], y2: [null, null] },
   )
   let range_els = $state<Record<string, HTMLInputElement>>({})
 

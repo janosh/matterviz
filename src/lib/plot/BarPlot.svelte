@@ -11,14 +11,12 @@
     BarSeries,
     BarStyle,
     BasePlotProps,
-    HoverStyle,
     InternalPoint,
     LegendConfig,
     LegendItem,
     LineStyle,
     Orientation,
     PlotConfig,
-    PointStyle,
     ScaleType,
     TweenedOptions,
     UserContentProps,
@@ -535,7 +533,7 @@
 
   // Legend data and handlers
   let legend_data = $derived.by<LegendItem[]>(() =>
-    series.map((srs: BarSeries, idx: number) => {
+    series.map((srs: BarSeries<Metadata>, idx: number) => {
       const is_line = srs.render_mode === `line`
       const series_markers = srs.markers ?? DEFAULT_MARKERS
       const has_line = series_markers === `line` || series_markers === `line+points`
@@ -698,7 +696,7 @@
     const y2_pos_acc = Array.from({ length: max_len }, () => 0)
     const y2_neg_acc = Array.from({ length: max_len }, () => 0)
 
-    series.forEach((srs: BarSeries, series_idx: number) => {
+    series.forEach((srs: BarSeries<Metadata>, series_idx: number) => {
       if (!(srs?.visible ?? true) || srs.render_mode === `line`) return
 
       const use_y2 = srs.y_axis === `y2`
@@ -719,7 +717,7 @@
   let group_info = $derived.by(() => {
     if (mode !== `grouped`) return { bar_series_count: 0, bar_series_indices: [] }
     const bar_series_indices = series
-      .map((srs: BarSeries, idx: number) =>
+      .map((srs: BarSeries<Metadata>, idx: number) =>
         (srs?.visible ?? true) && srs.render_mode !== `line` ? idx : -1
       )
       .filter((idx) => idx >= 0)
@@ -1148,7 +1146,7 @@
                   {@const fill = (pt: LineSeriesPoint) =>
             pt.color_value != null
               ? color_scale_fn(pt.color_value)
-              : (pt.point_style as PointStyle)?.fill ?? color}
+              : pt.point_style?.fill ?? color}
                   {@const set_hover = (
             pt: LineSeriesPoint | null,
             evt: MouseEvent | FocusEvent,
@@ -1208,7 +1206,7 @@
                     }}
                   >
                     {#each points as pt (pt.idx)}
-                      {@const sty = pt.point_style as PointStyle}
+                      {@const sty = pt.point_style}
                       {@const fl = fill(pt)}
                       {@const rad = pt.size_value != null
               ? size_scale_fn(pt.size_value)
@@ -1230,7 +1228,7 @@
                           stroke_opacity: sty?.stroke_opacity ?? 1,
                           cursor: clickable ? `pointer` : undefined,
                         }}
-                        hover={pt.point_hover as HoverStyle ?? {}}
+                        hover={pt.point_hover ?? {}}
                         label={pt.point_label ?? {}}
                         offset={pt.point_offset ?? { x: 0, y: 0 }}
                         origin={{ x: plot_center_x, y: plot_center_y }}

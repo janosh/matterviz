@@ -16,7 +16,6 @@
     LegendConfig,
     PlotConfig,
     Point,
-    PointStyle,
     ScaleType,
     ScatterHandlerEvent,
     ScatterHandlerProps,
@@ -290,7 +289,7 @@
   // Compute data color values for color scaling
   let all_color_values = $derived(
     series_with_ids.filter(Boolean).flatMap((srs: DataSeries) =>
-      srs.color_values?.filter((val) => val != null) || []
+      srs.color_values?.filter((val): val is number => val != null) ?? []
     ),
   )
 
@@ -410,8 +409,8 @@
     series_with_ids
       .filter(Boolean)
       .flatMap(({ size_values }: DataSeries) =>
-        size_values?.filter((val) => val != null) || []
-      ) as (number | null)[],
+        size_values?.filter((val): val is number => val != null) ?? []
+      ),
   )
 
   // Size scale function (using shared utility)
@@ -563,8 +562,8 @@
 
         // Check point_style (could be object or array)
         const first_point_style = Array.isArray(data_series?.point_style)
-          ? (data_series.point_style[0] as PointStyle | undefined) // Handle potential undefined
-          : (data_series?.point_style as PointStyle | undefined) // Handle potential undefined
+          ? data_series.point_style[0]
+          : data_series?.point_style
 
         if (series_markers?.includes(`points`)) {
           if (first_point_style) {
@@ -1696,12 +1695,12 @@
         on_drag_end={handle_legend_drag_end}
         draggable={legend?.draggable ?? true}
         {...legend}
-        on_toggle={(legend?.on_toggle as ((series_idx: number) => void) | undefined) ??
-        ((series_idx: number) => {
+        on_toggle={legend?.on_toggle ??
+        ((series_idx) => {
           series = toggle_series_visibility(series, series_idx)
         })}
-        on_double_click={(legend?.on_double_click as ((series_idx: number) => void) | undefined) ??
-        ((double_clicked_idx: number) => {
+        on_double_click={legend?.on_double_click ??
+        ((double_clicked_idx) => {
           const result = handle_legend_double_click(
             series,
             double_clicked_idx,
@@ -1710,10 +1709,8 @@
           series = result.series
           previous_series_visibility = result.previous_visibility
         })}
-        on_group_toggle={(legend?.on_group_toggle as
-        | ((group_name: string, series_indices: number[]) => void)
-        | undefined) ??
-        ((_group_name: string, series_indices: number[]) => {
+        on_group_toggle={legend?.on_group_toggle ??
+        ((_group_name, series_indices) => {
           series = toggle_group_visibility(series, series_indices)
         })}
         wrapper_style={`
