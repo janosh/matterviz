@@ -337,6 +337,14 @@ function parse_fermi_json(
 
   // Check if it's BandGridData (raw grid data)
   if (data.energies && data.k_grid && data.k_lattice) {
+    // Minimal validation of required fields
+    if (
+      !Array.isArray(data.energies) ||
+      !Array.isArray(data.k_grid) ||
+      data.k_grid.length !== 3 ||
+      !Array.isArray(data.k_lattice) ||
+      data.k_lattice.length !== 3
+    ) throw new Error(`Invalid BandGridData JSON: malformed required fields`)
     return data as BandGridData
   }
 

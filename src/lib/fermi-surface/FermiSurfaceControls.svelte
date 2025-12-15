@@ -322,6 +322,7 @@
           value={interpolation_factor}
           onchange={(event) => {
             const val = parseFloat((event.target as HTMLSelectElement).value)
+            if (!Number.isFinite(val)) return
             interpolation_factor = val
             on_interpolation_change?.(val)
           }}

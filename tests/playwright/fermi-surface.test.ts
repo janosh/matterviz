@@ -14,9 +14,9 @@ test.describe(`Fermi Surface Demo Page`, () => {
     await expect(page.locator(`h1`)).toContainText(`Fermi Surface`)
     // Intro paragraph with .intro class
     await expect(page.locator(`p.intro`)).toBeVisible()
-    // Features section contains a heading and list
-    const features_heading = page.locator(`h2`, { hasText: `Features` })
-    await expect(features_heading).toBeVisible()
+    // Features section: more specific selector to avoid matching multiple h2 elements
+    const features_section = page.locator(`section:has(h2:has-text("Features"))`)
+    await expect(features_section).toBeVisible()
   })
 
   test(`FilePicker shows sample files`, async ({ page }) => {

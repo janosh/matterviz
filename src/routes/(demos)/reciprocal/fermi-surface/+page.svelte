@@ -9,7 +9,12 @@
     FermiFileLoadData,
     FermiSurfaceData,
   } from '$lib/fermi-surface'
-  import { FermiSlice, FermiSurface } from '$lib/fermi-surface'
+  import {
+    FermiSlice,
+    FermiSurface,
+    is_band_grid_data,
+    is_fermi_surface_data,
+  } from '$lib/fermi-surface'
   import type { Vec3 } from '$lib/math'
   import { fermi_file_colors, fermi_surface_files } from '$site/fermi-surfaces'
   import { onMount } from 'svelte'
@@ -52,11 +57,11 @@
           : content
 
         const parsed = parse_fermi_file(text, filename)
-        if (parsed && `isosurfaces` in parsed) {
-          fermi_data = parsed as FermiSurfaceData
+        if (is_fermi_surface_data(parsed)) {
+          fermi_data = parsed
           band_data = undefined
-        } else if (parsed) {
-          band_data = parsed as BandGridData
+        } else if (is_band_grid_data(parsed)) {
+          band_data = parsed
           fermi_data = extract_fermi_surface(band_data, { mu: 0, wigner_seitz: true })
         } else {
           error_msg = `Unable to parse ${filename}`
@@ -107,7 +112,7 @@
 
 <h1>Fermi Surface</h1>
 
-<p>
+<p class="intro">
   Interactive 3D visualization of Fermi surfaces extracted from electronic band structure
   data. Supports <code>BXSF</code>
   (<a href="http://www.xcrysden.org/" target="_blank" rel="noopener">XCrySDen</a>/<a

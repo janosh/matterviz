@@ -54,7 +54,10 @@ export interface FermiSurfaceMetadata {
   is_irreducible?: boolean // true if data covers only irreducible BZ wedge (needs tiling)
 }
 
-// 5D grid type aliases for band data indexed as [spin][band][kx][ky][kz]
+// 5D grid types for band data. Indexing: `[spin][band][kx][ky][kz]`
+// - spin: 0=up, 1=down (non-spin-polarized has only spin=0)
+// - band: 0-based index
+// - kx/ky/kz: k-point indices (0 to k_grid[i]-1)
 export type EnergyGrid5D = number[][][][][] // scalar energies
 export type VectorGrid5D = Vec3[][][][][] // vector quantities (velocities, spin texture)
 
@@ -125,3 +128,13 @@ export interface FermiErrorData {
   error_msg: string
   filename?: string
 }
+
+// Type guard: checks if parsed result is FermiSurfaceData (has pre-computed isosurfaces)
+export const is_fermi_surface_data = (
+  data: BandGridData | FermiSurfaceData | null,
+): data is FermiSurfaceData => data !== null && `isosurfaces` in data
+
+// Type guard: checks if parsed result is BandGridData (raw band grid, needs extraction)
+export const is_band_grid_data = (
+  data: BandGridData | FermiSurfaceData | null,
+): data is BandGridData => data !== null && `energies` in data

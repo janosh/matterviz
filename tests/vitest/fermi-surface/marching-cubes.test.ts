@@ -32,7 +32,8 @@ function create_gradient_grid(
       Array.from({ length: ny }, (_, y_idx) =>
         Array.from({ length: nz }, (_, z_idx) => {
           const t_val = axis === `x` ? x_idx : axis === `y` ? y_idx : z_idx
-          const normalized = t_val / (n_axis - 1)
+          const denom = n_axis > 1 ? n_axis - 1 : 1
+          const normalized = t_val / denom
           return min_val + normalized * (max_val - min_val)
         })),
   )

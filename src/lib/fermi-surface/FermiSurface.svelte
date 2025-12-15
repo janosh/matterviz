@@ -184,10 +184,12 @@
   async function recompute_fermi_surface() {
     if (!band_data) return
     const job_id = ++recompute_job_id // capture this job's ID
-    loading = true
-    await tick() // let spinner render before heavy computation
+    await tick() // yield to check for newer jobs before committing to work
     // Check if this job is still the latest before proceeding
+    // If stale, return without setting loading - the superseding job handles it
     if (job_id !== recompute_job_id) return
+    // Only set loading after stale check to avoid orphaned loading states
+    loading = true
     try {
       const result = extract_fermi_surface(band_data, {
         mu,
@@ -273,17 +275,22 @@
     }
   })
 
-  // Load from URL
+  // Load from URL (with race condition protection for rapid URL changes)
+  let load_id = 0
   $effect(() => {
     if (data_url && !fermi_data && !band_data) {
+      const current_load_id = ++load_id
       loading = true
       error_msg = undefined
       load_from_url(data_url, safe_parse)
         .catch((err) => {
+          if (current_load_id !== load_id) return // stale request
           error_msg = err instanceof Error ? err.message : String(err)
           on_error?.({ error_msg, filename: data_url })
         })
-        .finally(() => (loading = false))
+        .finally(() => {
+          if (current_load_id === load_id) loading = false
+        })
     }
   })
 
@@ -331,7 +338,10 @@
     if (typeof window === `undefined`) return
     const fs_el = document.fullscreenElement
     if (fullscreen && fs_el !== wrapper && wrapper) {
-      wrapper.requestFullscreen().catch(console.error)
+      wrapper.requestFullscreen().catch((err) => {
+        console.error(err)
+        fullscreen = false
+      })
     } else if (!fullscreen && fs_el === wrapper) document.exitFullscreen()
     set_fullscreen_bg(wrapper, fullscreen, `--fermi-bg-fullscreen`)
   })
