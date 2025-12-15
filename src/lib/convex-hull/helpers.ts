@@ -419,7 +419,7 @@ function apply_alpha_to_color(color: string, alpha: number): string {
   const hex_match = color.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/) // Convert hex to rgba
   if (hex_match) {
     let hex = hex_match[1]
-    // Expand short form (e.g., "03F") to full form (e.g., "0033FF")
+    // Expand short form (e.g. "03F") to full form (e.g. "0033FF")
     if (hex.length === 3) hex = [...hex].map((char) => char + char).join(``)
 
     const red = parseInt(hex.slice(0, 2), 16)
@@ -523,7 +523,7 @@ export function create_marker_path(
   size: number,
   marker: MarkerSymbol = `circle`,
 ): Path2D {
-  // Capitalize first letter to get D3 symbol name (e.g., 'circle' -> 'Circle')
+  // Capitalize first letter to get D3 symbol name (e.g. 'circle' -> 'Circle')
   const d3_name = marker.charAt(0).toUpperCase() + marker.slice(1)
   const symbol_type = symbol_map[d3_name as keyof typeof symbol_map]
 

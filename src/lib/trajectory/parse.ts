@@ -35,7 +35,7 @@ export const MAX_TEXT_FILE_SIZE = 50 * 1024 * 1024 // 50MB default for string fi
 
 // Common interfaces
 
-// Mapping from LAMMPS atom type numbers to element symbols (e.g., {1: 'Na', 2: 'Cl'})
+// Mapping from LAMMPS atom type numbers to element symbols (e.g. {1: 'Na', 2: 'Cl'})
 export type AtomTypeMapping = Record<number, ElementSymbol>
 
 export interface LoadingOptions {
@@ -45,7 +45,7 @@ export interface LoadingOptions {
   extract_plot_metadata?: boolean
   bin_file_threshold?: number // Threshold in bytes for ArrayBuffer files (default: MAX_BIN_FILE_SIZE)
   text_file_threshold?: number // Threshold in bytes for string files (default: MAX_TEXT_FILE_SIZE)
-  atom_type_mapping?: AtomTypeMapping // Map LAMMPS atom types to element symbols (e.g., {1: 'Na', 2: 'Cl'})
+  atom_type_mapping?: AtomTypeMapping // Map LAMMPS atom types to element symbols (e.g. {1: 'Na', 2: 'Cl'})
 }
 
 // Unified format detection
@@ -425,7 +425,7 @@ const parse_torch_sim_hdf5 = async (
     h5_file.close()
     try {
       FS.unlink(temp_filename)
-    } catch { /* ignore */ }
+    } catch { /* temp file cleanup is best-effort */ }
   }
 }
 
@@ -465,12 +465,7 @@ const parse_vasp_xdatcar = (content: string, filename?: string): TrajectoryType 
     for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {
       const coords = lines[line_idx].trim().split(/\s+/).slice(0, 3).map(Number)
       if (coords.length === 3 && !coords.some(isNaN)) {
-        positions.push(
-          math.mat3x3_vec3_multiply(
-            math.transpose_3x3_matrix(lattice_matrix),
-            coords as Vec3,
-          ),
-        )
+        positions.push(math.frac_to_cart(coords as Vec3, lattice_matrix))
       }
       line_idx++
     }
@@ -610,12 +605,7 @@ const parse_lammps_trajectory = (
       if (coords.some(isNaN) || parts.length <= Math.max(...pos_cols, type_col)) continue
 
       // Convert scaled coordinates to Cartesian if needed
-      const xyz = use_scaled
-        ? math.mat3x3_vec3_multiply(
-          math.transpose_3x3_matrix(lattice_matrix),
-          coords as Vec3,
-        )
-        : coords
+      const xyz = use_scaled ? math.frac_to_cart(coords as Vec3, lattice_matrix) : coords
       positions.push(xyz)
 
       // Map atom type to element using custom mapping or default (type 1 → H, etc.)
@@ -1324,7 +1314,7 @@ export async function parse_trajectory_data(
             metadata: { source_format: `single_xyz`, frame_count: 1 },
           }
         }
-      } catch { /* ignore */ }
+      } catch { /* single-frame XYZ parsing failed, continue to JSON parsing */ }
     }
 
     try {
@@ -1359,9 +1349,7 @@ export async function parse_trajectory_data(
     const frame_properties = obj.frame_properties as Record<string, unknown>[] || []
 
     const frames = coords.map((frame_coords, idx) => {
-      const positions = frame_coords.map((abc) =>
-        math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(matrix), abc as Vec3)
-      )
+      const positions = frame_coords.map((abc) => math.frac_to_cart(abc as Vec3, matrix))
 
       // Process frame properties to extract numpy arrays
       const raw_properties = frame_properties[idx] || {}

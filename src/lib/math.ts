@@ -294,6 +294,14 @@ export const transpose_3x3_matrix = (matrix: Matrix3x3): Matrix3x3 => [
   [matrix[0][2], matrix[1][2], matrix[2][2]],
 ]
 
+// Convert fractional (abc) coordinates to Cartesian (xyz) using lattice matrix
+export const frac_to_cart = (frac: Vec3, lattice: Matrix3x3): Vec3 =>
+  mat3x3_vec3_multiply(transpose_3x3_matrix(lattice), frac)
+
+// Convert Cartesian (xyz) coordinates to fractional (abc) using lattice matrix
+export const cart_to_frac = (cart: Vec3, lattice: Matrix3x3): Vec3 =>
+  mat3x3_vec3_multiply(matrix_inverse_3x3(transpose_3x3_matrix(lattice)), cart)
+
 // Convert unit cell parameters to lattice matrix (crystallographic convention)
 export function cell_to_lattice_matrix(
   a: number,

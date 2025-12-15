@@ -35,7 +35,7 @@
 
   function format_hkl(hkl: Hkl, format: HklFormat): string {
     if (format === `compact`) {
-      // Use crystallographic overbar notation for negative indices (e.g., 1̄ instead of -1)
+      // Use crystallographic overbar notation for negative indices (e.g. 1̄ instead of -1)
       // Note: Requires font support for Unicode combining characters (U+0305)
       return hkl
         .map((val) => {

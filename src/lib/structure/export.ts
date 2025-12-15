@@ -324,7 +324,7 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   // Update all world matrices in the modified scene
   cloned_scene.updateMatrixWorld(true)
 
-  // Convert any remaining ShaderMaterials to standard materials (e.g., non-instanced bonds)
+  // Convert any remaining ShaderMaterials to standard materials (e.g. non-instanced bonds)
   // Also clean up custom geometry attributes that cause export validation errors
   cloned_scene.traverse((object) => {
     if (object instanceof Mesh) {
@@ -464,19 +464,10 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
       Array.isArray(site.abc) &&
       site.abc.length >= 3 &&
       `lattice` in structure &&
-      structure.lattice
+      structure.lattice?.matrix?.length === 3
     ) {
       // Convert fractional coordinates to cartesian
-      const [a, b, c] = site.abc
-      const lattice = structure.lattice
-      if (
-        lattice.matrix &&
-        Array.isArray(lattice.matrix) &&
-        lattice.matrix.length >= 3
-      ) {
-        const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
-        coords = math.mat3x3_vec3_multiply(lattice_transposed, [a, b, c])
-      } else coords = [0, 0, 0] // fallback
+      coords = math.frac_to_cart(site.abc as math.Vec3, structure.lattice.matrix)
     } else coords = [0, 0, 0] // fallback
 
     // Format coordinates to reasonable precision
@@ -566,16 +557,11 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     if (site.abc && Array.isArray(site.abc) && site.abc.length >= 3) {
       frac_coords = site.abc.slice(0, 3)
     } else if (
-      site.xyz &&
-      Array.isArray(site.xyz) &&
-      site.xyz.length >= 3 &&
-      lattice.matrix &&
-      Array.isArray(lattice.matrix)
+      site.xyz?.length === 3 &&
+      lattice.matrix?.length === 3
     ) {
       // Convert cartesian to fractional coordinates
-      const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
-      const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-      frac_coords = math.mat3x3_vec3_multiply(lattice_inv, site.xyz)
+      frac_coords = math.cart_to_frac(site.xyz as math.Vec3, lattice.matrix)
     } else throw new Error(`No valid coordinates found for site ${idx}`)
 
     // Format: label element_symbol x y z
@@ -689,19 +675,11 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
         if (site.abc && Array.isArray(site.abc) && site.abc.length >= 3) {
           frac_coords = site.abc.slice(0, 3)
         } else if (
-          site.xyz &&
-          Array.isArray(site.xyz) &&
-          site.xyz.length >= 3 &&
-          lattice.matrix &&
-          Array.isArray(lattice.matrix)
+          site.xyz?.length >= 3 &&
+          lattice.matrix?.length === 3
         ) {
           // Convert cartesian to fractional coordinates
-          const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
-          const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-          frac_coords = math.mat3x3_vec3_multiply(
-            lattice_inv,
-            site.xyz.slice(0, 3) as Vec3,
-          )
+          frac_coords = math.cart_to_frac(site.xyz.slice(0, 3) as Vec3, lattice.matrix)
         } else {
           throw new Error(`No valid coordinates found for site`)
         }

@@ -315,10 +315,8 @@
   })
 
   let reset_counter = $state(0)
-
   // Drag and drop state (to match 3D/4D components)
   let drag_over = $state(false)
-
   // Copy feedback state
   let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
 

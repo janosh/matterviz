@@ -109,7 +109,7 @@ export function compute_broadened_pattern(
 
     const fwhm = caglioti_fwhm(x0, U, V, W)
 
-    // Define window for calculation (e.g., +/- 10 * FWHM or fixed reasonable range)
+    // Define window for calculation (e.g. +/- 10 * FWHM or fixed reasonable range)
     // Lorentzian tails are long, so we need a decent window.
     // 20 * FWHM is usually sufficient for visual purposes.
     const window = 20 * fwhm

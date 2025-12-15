@@ -287,7 +287,7 @@ describe(`FormulaFilter`, () => {
     await tick()
     expect(mode).toBe(`exact`) // Initial inference
 
-    // Simulate parent updating value prop (e.g., from URL change)
+    // Simulate parent updating value prop (e.g. from URL change)
     value = `Fe,Li,O`
     await tick()
     expect(mode).toBe(`elements`) // Should re-infer from new value format

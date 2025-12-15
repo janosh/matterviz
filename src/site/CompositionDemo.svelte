@@ -71,7 +71,7 @@
     }):
     <input
       bind:value={formula}
-      placeholder={`e.g., Fe2O3, H2O, or {Fe: 2, O: 3}`}
+      placeholder={`e.g. Fe2O3, H2O, or {Fe: 2, O: 3}`}
       style="display: block; margin: 1em auto; padding: 2pt 6pt; font-size: 1.2em"
     />
   </label>

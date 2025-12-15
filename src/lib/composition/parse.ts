@@ -545,7 +545,7 @@ export function matches_formula_wildcard(
       if (token.element === null) {
         wildcard_counts.push(token.count)
       } else {
-        // Merge counts for same element (e.g., "LiLi" -> Li with count 2)
+        // Merge counts for same element (e.g. "LiLi" -> Li with count 2)
         const existing = explicit_requirements.find((req) =>
           req.element === token.element
         )

@@ -168,7 +168,7 @@ export function is_dark_mode(): boolean {
   try {
     const stored = localStorage.getItem(`theme`)
     if (stored === `dark` || stored === `light`) return stored === `dark`
-  } catch { /* localStorage may throw in private browsing */ }
+  } catch { /* localStorage throws in private browsing mode */ }
   return globalThis.matchMedia?.(`(prefers-color-scheme: dark)`).matches ?? false
 }
 

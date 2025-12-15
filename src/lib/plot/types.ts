@@ -116,7 +116,7 @@ export interface DataSeries {
   // are displayed together under a collapsible header. Click the header to toggle
   // visibility of all series in the group, or the chevron to collapse/expand.
   legend_group?: string
-  unit?: string // Optional unit for the series (e.g., "eV", "eV/Å", "GPa")
+  unit?: string // Optional unit for the series (e.g. "eV", "eV/Å", "GPa")
   line_style?: {
     stroke?: string
     stroke_width?: number
@@ -201,7 +201,7 @@ export type QuadrantCounts = {
 
 // Type for nodes used in the d3-force simulation for label placement
 export interface LabelNode extends SimulationNodeDatum {
-  id: string // unique identifier, e.g., series_idx-point_idx
+  id: string // unique identifier, e.g. series_idx-point_idx
   anchor_x: number // Original x coordinate of the point (scaled)
   anchor_y: number // Original y coordinate of the point (scaled)
   point_node: InternalPoint // Reference to the original data point

@@ -359,7 +359,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     const percentages = annotation_texts.filter((text) => text.includes(`%`))
     expect(percentages.length).toBeGreaterThan(0)
 
-    // Percentages should be formatted properly (e.g., "10.5%", "23%")
+    // Percentages should be formatted properly (e.g. "10.5%", "23%")
     for (const pct_text of percentages) {
       expect(pct_text).toMatch(/\d+\.?\d*\s*%/)
     }

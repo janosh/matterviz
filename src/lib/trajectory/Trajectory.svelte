@@ -131,18 +131,18 @@
       | `structure+histogram`
     // step labels configuration for slider
     // - positive number: number of evenly spaced ticks
-    // - negative number: spacing between ticks (e.g., -10 = every 10th step)
+    // - negative number: spacing between ticks (e.g. -10 = every 10th step)
     // - array: exact step indices to label
     // - undefined: no labels
     step_labels?: number | number[]
     // visible properties - bindable array of property keys currently shown in the plot
-    // - controls which trajectory properties are plotted (e.g., ['energy', 'volume', 'force_max'])
+    // - controls which trajectory properties are plotted (e.g. ['energy', 'volume', 'force_max'])
     // - bindable: reflects current visibility state and can be used for external control
     // - if not provided, uses default visible properties (energy, force_max, stress_frobenius)
     // - if specified properties don't exist in data, falls back to automatic selection
     visible_properties?: string[]
     // custom labels for trajectory properties - maps property keys to display labels
-    // - e.g., {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
+    // - e.g. {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
     // - merged with built-in trajectory_property_config
     ELEM_PROPERTY_LABELS?: Record<string, string>
     // units configuration - developers can override these (deprecated - use ELEM_PROPERTY_LABELS instead)
@@ -166,7 +166,7 @@
     fps?: number // frame rate for playback
     // Loading options for large files
     loading_options?: LoadingOptions
-    // Map LAMMPS atom types to element symbols (e.g., {1: 'Na', 2: 'Cl'})
+    // Map LAMMPS atom types to element symbols (e.g. {1: 'Na', 2: 'Cl'})
     atom_type_mapping?: AtomTypeMapping
     // Disable plot skimming (mouse over plot doesn't update structure/step slider)
     plot_skimming?: boolean
