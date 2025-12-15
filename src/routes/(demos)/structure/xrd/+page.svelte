@@ -17,35 +17,25 @@
     { query: `?url`, eager: true, import: `default` },
   ) as Record<string, string>
 
+  // Extension to [category, icon] lookup - default is Powder XRD 📊
+  const ext_categories: Record<string, [string, string]> = {
+    brml: [`Bruker HRXRD`, `🔬`],
+    raw: [`Bruker Binary`, `📦`],
+    ras: [`Rigaku`, `🇯🇵`],
+    uxd: [`Siemens`, `🇩🇪`],
+    gsas: [`GSAS/Rietveld`, `🔬`],
+    gsa: [`GSAS/Rietveld`, `🔬`],
+    gda: [`GSAS/Rietveld`, `🔬`],
+    fxye: [`GSAS/Rietveld`, `🔬`],
+    xrdml: [`PANalytical`, `🇳🇱`],
+  }
+
   // Convert glob results to FileInfo array
   const xrd_data_files: FileInfo[] = Object.entries(xrd_file_modules).map(
     ([path, url]) => {
       const name = path.split(`/`).pop() || path
-      // Get base extension, stripping .gz if present
-      const base_name = name.replace(/\.gz$/i, ``)
-      const ext = base_name.split(`.`).pop()?.toLowerCase() || ``
-      // Categorize by format type and vendor
-      let category = `Powder XRD`
-      let category_icon = `📊`
-      if (ext === `brml`) {
-        category = `Bruker HRXRD`
-        category_icon = `🔬`
-      } else if (ext === `raw`) {
-        category = `Bruker Binary`
-        category_icon = `📦`
-      } else if (ext === `ras`) {
-        category = `Rigaku`
-        category_icon = `🇯🇵`
-      } else if (ext === `uxd`) {
-        category = `Siemens`
-        category_icon = `🇩🇪`
-      } else if ([`gsas`, `gsa`, `gda`, `fxye`].includes(ext)) {
-        category = `GSAS/Rietveld`
-        category_icon = `🔬`
-      } else if (ext === `xrdml`) {
-        category = `PANalytical`
-        category_icon = `🇳🇱`
-      }
+      const ext = name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() || ``
+      const [category, category_icon] = ext_categories[ext] ?? [`Powder XRD`, `📊`]
       return { name, url, type: ext, category, category_icon }
     },
   )
