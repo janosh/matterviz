@@ -278,7 +278,7 @@ export type UserContentProps = {
 export type Orientation = `vertical` | `horizontal`
 export type BarMode = `overlay` | `stacked` | `grouped`
 
-export interface BarSeries {
+export interface BarSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier for the series (used for keying)
   x: readonly number[]
   y: readonly number[]
@@ -290,7 +290,7 @@ export interface BarSeries {
   color?: string
   bar_width?: number | readonly number[]
   visible?: boolean
-  metadata?: Record<string, unknown>[] | Record<string, unknown>
+  metadata?: Metadata[] | Metadata
   labels?: readonly (string | null | undefined)[]
   render_mode?: `bar` | `line` // Render as bars (default) or as a line
   // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)

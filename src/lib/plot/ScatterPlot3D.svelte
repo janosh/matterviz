@@ -1,4 +1,7 @@
-<script lang="ts">
+<script
+  lang="ts"
+  generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
+>
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { FullscreenToggle } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
@@ -98,7 +101,7 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    series?: DataSeries3D[]
+    series?: DataSeries3D<Metadata>[]
     surfaces?: Surface3DConfig[]
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
@@ -133,9 +136,9 @@
     gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
     controls?: ControlsConfig3D
     hovered?: boolean
-    tooltip_point?: InternalPoint3D | null
-    on_point_click?: (data: Scatter3DHandlerEvent) => void
-    on_point_hover?: (data: Scatter3DHandlerEvent | null) => void
+    tooltip_point?: InternalPoint3D<Metadata> | null
+    on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
+    on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
     on_series_visibility_change?: (series_idx: number, visible: boolean) => void
     fullscreen?: boolean
     fullscreen_toggle?: boolean
@@ -143,7 +146,7 @@
     scene?: Scene
     camera?: Camera
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
-    tooltip?: Snippet<[Scatter3DHandlerEvent]>
+    tooltip?: Snippet<[Scatter3DHandlerEvent<Metadata>]>
     children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     header_controls?: Snippet<
       [{ height: number; width: number; fullscreen: boolean }]
@@ -251,7 +254,7 @@
   }
 
   // Handle point hover
-  function handle_point_hover(data: Scatter3DHandlerEvent | null) {
+  function handle_point_hover(data: Scatter3DHandlerEvent<Metadata> | null) {
     hovered = data !== null
     tooltip_point = data?.point ?? null
     on_point_hover?.(data)

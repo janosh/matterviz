@@ -947,12 +947,7 @@
       tooltip_point = closest_point
       // Construct object matching change signature
       const { x, y, metadata } = closest_point
-      change({
-        x,
-        y,
-        metadata: metadata as Metadata | undefined,
-        series: closest_series,
-      })
+      change({ x, y, metadata, series: closest_series })
       // Call hover handler with synchronously constructed props
       if (evt && props) {
         on_point_hover?.({ ...props, event: evt, point: closest_point })
@@ -1090,7 +1085,7 @@
     return {
       ...coords,
       fullscreen,
-      metadata: (metadata ?? null) as Metadata | null,
+      metadata,
       label: hovered_series.label ?? null,
       series_idx,
       x_formatted: format_value(x, final_x_axis.format || `.3~s`),
@@ -1703,9 +1698,7 @@
         {...legend}
         on_toggle={(legend?.on_toggle as ((series_idx: number) => void) | undefined) ??
         ((series_idx: number) => {
-          series = toggle_series_visibility(series, series_idx) as DataSeries<
-            Metadata
-          >[]
+          series = toggle_series_visibility(series, series_idx)
         })}
         on_double_click={(legend?.on_double_click as ((series_idx: number) => void) | undefined) ??
         ((double_clicked_idx: number) => {
@@ -1714,16 +1707,14 @@
             double_clicked_idx,
             previous_series_visibility,
           )
-          series = result.series as DataSeries<Metadata>[]
+          series = result.series
           previous_series_visibility = result.previous_visibility
         })}
         on_group_toggle={(legend?.on_group_toggle as
         | ((group_name: string, series_indices: number[]) => void)
         | undefined) ??
         ((_group_name: string, series_indices: number[]) => {
-          series = toggle_group_visibility(series, series_indices) as DataSeries<
-            Metadata
-          >[]
+          series = toggle_group_visibility(series, series_indices)
         })}
         wrapper_style={`
           position: absolute;

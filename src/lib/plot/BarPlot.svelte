@@ -1,4 +1,7 @@
-<script lang="ts">
+<script
+  lang="ts"
+  generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
+>
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle } from '$lib/layout'
@@ -47,12 +50,12 @@
   import { bar_path } from './svg'
 
   // Handler props for line marker events (extends BarHandlerProps with point-specific data)
-  interface LineMarkerHandlerProps extends BarHandlerProps {
-    point: InternalPoint
+  interface LineMarkerHandlerProps extends BarHandlerProps<Metadata> {
+    point: InternalPoint<Metadata>
   }
 
   // Extended point type with computed screen coordinates (used internally for rendering)
-  type LineSeriesPoint = InternalPoint & {
+  type LineSeriesPoint = InternalPoint<Metadata> & {
     x: number // Screen x coordinate
     y: number // Screen y coordinate
     data_x: number // Original data x value
@@ -104,7 +107,7 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
-    series?: BarSeries[]
+    series?: BarSeries<Metadata>[]
     // Component-specific props
     orientation?: Orientation
     mode?: BarMode
@@ -112,7 +115,7 @@
     show_legend?: boolean
     bar?: BarStyle
     line?: LineStyle
-    tooltip?: Snippet<[BarHandlerProps]>
+    tooltip?: Snippet<[BarHandlerProps<Metadata>]>
     user_content?: Snippet<[UserContentProps]>
     header_controls?: Snippet<
       [{ height: number; width: number; fullscreen: boolean }]
@@ -120,13 +123,15 @@
     controls_extra?: Snippet<
       [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
     >
-    change?: (data: BarHandlerProps | null) => void
+    change?: (data: BarHandlerProps<Metadata> | null) => void
     on_bar_click?: (
-      data: BarHandlerProps & { event: MouseEvent | KeyboardEvent },
+      data: BarHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
     ) => void
     on_bar_hover?: (
       data:
-        | (BarHandlerProps & { event: MouseEvent | FocusEvent | KeyboardEvent })
+        | (BarHandlerProps<Metadata> & {
+          event: MouseEvent | FocusEvent | KeyboardEvent
+        })
         | null,
     ) => void
     // Line marker props (matching ScatterPlot)
@@ -175,15 +180,17 @@
 
   // Compute auto ranges from visible series
   let visible_series = $derived(
-    series.filter((srs: BarSeries) => srs?.visible ?? true),
+    series.filter((srs: BarSeries<Metadata>) => srs?.visible ?? true),
   )
 
   // Separate series by y-axis
   let y1_series = $derived(
-    visible_series.filter((srs: BarSeries) => (srs.y_axis ?? `y1`) === `y1`),
+    visible_series.filter((srs: BarSeries<Metadata>) =>
+      (srs.y_axis ?? `y1`) === `y1`
+    ),
   )
   let y2_series = $derived(
-    visible_series.filter((srs: BarSeries) => srs.y_axis === `y2`),
+    visible_series.filter((srs: BarSeries<Metadata>) => srs.y_axis === `y2`),
   )
 
   let auto_ranges = $derived.by(() => {
@@ -193,7 +200,7 @@
       y_limit: typeof y_range,
       scale_type: string,
     ) => {
-      let points = series_list.flatMap((srs: BarSeries) =>
+      let points = series_list.flatMap((srs: BarSeries<Metadata>) =>
         srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
       )
 
@@ -203,8 +210,8 @@
 
         // Only include visible bar series (not lines) in stacking
         series_list
-          .filter((srs: BarSeries) => srs.render_mode !== `line`)
-          .forEach((srs: BarSeries) =>
+          .filter((srs: BarSeries<Metadata>) => srs.render_mode !== `line`)
+          .forEach((srs: BarSeries<Metadata>) =>
             srs.x.forEach((x_val, idx) => {
               const y_val = srs.y[idx] ?? 0
               const totals = stacked_totals.get(x_val) ?? { pos: 0, neg: 0 }
@@ -221,8 +228,8 @@
             ...(neg < 0 ? [{ x: x_val, y: neg }] : []),
           ]),
           ...series_list
-            .filter((srs: BarSeries) => srs.render_mode === `line`)
-            .flatMap((srs: BarSeries) =>
+            .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
+            .flatMap((srs: BarSeries<Metadata>) =>
               srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
             ),
         ]
@@ -258,7 +265,7 @@
     }
 
     // Get all x values for x_range calculation
-    const all_x_points = visible_series.flatMap((srs: BarSeries) =>
+    const all_x_points = visible_series.flatMap((srs: BarSeries<Metadata>) =>
       srs.x.map((x_val) => ({ x: x_val, y: 0 }))
     )
 
@@ -393,8 +400,8 @@
   // Compute color values from line series for color scaling (filter to numbers only)
   let all_color_values = $derived(
     visible_series
-      .filter((srs: BarSeries) => srs.render_mode === `line`)
-      .flatMap((srs: BarSeries) =>
+      .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
+      .flatMap((srs: BarSeries<Metadata>) =>
         (srs.color_values ?? []).filter(
           (val): val is number => typeof val === `number`,
         )
@@ -411,8 +418,8 @@
   // All size values from line series (for size scale, filter to numbers only)
   let all_size_values = $derived(
     visible_series
-      .filter((srs: BarSeries) => srs.render_mode === `line`)
-      .flatMap((srs: BarSeries) =>
+      .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
+      .flatMap((srs: BarSeries<Metadata>) =>
         [...(srs.size_values ?? [])].filter(
           (val): val is number => typeof val === `number`,
         )
@@ -585,7 +592,7 @@
 
   function toggle_series_visibility(series_idx: number) {
     if (series_idx >= 0 && series_idx < series.length) {
-      series = series.map((srs: BarSeries, idx: number) =>
+      series = series.map((srs, idx) =>
         idx === series_idx ? { ...srs, visible: !(srs.visible ?? true) } : srs
       )
     }
@@ -603,7 +610,7 @@
     const all_visible = valid_indices.every((idx) => series[idx].visible ?? true)
     // Toggle: if all visible, hide all; otherwise show all
     const new_visibility = !all_visible
-    series = series.map((srs: BarSeries, idx: number) =>
+    series = series.map((srs, idx) =>
       idx_set.has(idx) ? { ...srs, visible: new_visibility } : srs
     )
   }
@@ -612,7 +619,7 @@
   let bar_points_for_placement = $derived.by(() => {
     if (!width || !height || !visible_series.length) return []
 
-    return visible_series.flatMap((srs: BarSeries) => {
+    return visible_series.flatMap((srs: BarSeries<Metadata>) => {
       const is_line = srs.render_mode === `line`
       // Use original series index to look up stacked_offsets
       const series_idx = series.indexOf(srs)
@@ -649,9 +656,13 @@
   })
 
   // Tooltip state
-  let hover_info = $state<BarHandlerProps | null>(null)
+  let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
 
-  function get_bar_data(series_idx: number, bar_idx: number, color: string) {
+  function get_bar_data(
+    series_idx: number,
+    bar_idx: number,
+    color: string,
+  ): BarHandlerProps<Metadata> {
     const srs = series[series_idx]
     const [x, y] = [srs.x[bar_idx], srs.y[bar_idx]]
     const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
@@ -675,7 +686,10 @@
   // Stack offsets (only for bar series in stacked mode, grouped by y-axis)
   let stacked_offsets = $derived.by(() => {
     if (mode !== `stacked`) return [] as number[][]
-    const max_len = Math.max(0, ...series.map((srs: BarSeries) => srs.y.length))
+    const max_len = Math.max(
+      0,
+      ...series.map((srs: BarSeries<Metadata>) => srs.y.length),
+    )
     const offsets = series.map(() => Array.from({ length: max_len }, () => 0))
 
     // Separate accumulators for y1 and y2 axes
@@ -1149,18 +1163,16 @@
             }
             on_bar_hover?.(pt ? { ...hover_info!, event: evt } : null)
             on_point_hover?.(
-              pt
-                ? { ...hover_info!, event: evt, point: pt as InternalPoint }
-                : null,
+              pt ? { ...hover_info!, event: evt, point: pt } : null,
             )
           }}
                   {@const do_click = (
             pt: LineSeriesPoint,
             evt: MouseEvent | KeyboardEvent,
           ) => {
-            const d = get_bar_data(series_idx, pt.idx, fill(pt))
-            on_bar_click?.({ ...d, event: evt })
-            on_point_click?.({ ...d, event: evt, point: pt as InternalPoint })
+            const bar_data = get_bar_data(series_idx, pt.idx, fill(pt))
+            on_bar_click?.({ ...bar_data, event: evt })
+            on_point_click?.({ ...bar_data, event: evt, point: pt })
           }}
                   {@const leaving = (evt: MouseEvent | FocusEvent) =>
             (evt.relatedTarget as Element)?.closest(`.line-points`) !==
