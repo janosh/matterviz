@@ -431,7 +431,7 @@
     {:else}
       <StatusMessage
         message={allow_file_drop
-        ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .xye, .xrdml, .brml, + .gz) here`
+        ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .csv, .ras, .uxd, .gsas, .xrdml, .brml, .raw, + .gz) here`
         : `No XRD data to display`}
       />
     {/if}

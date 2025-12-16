@@ -6,71 +6,56 @@
     type?: `info` | `error` | `warning`
     dismissible?: boolean
   } & HTMLAttributes<HTMLDivElement> = $props()
-
-  const styles = {
-    info: {
-      background: `transparent`,
-      color: `#666`,
-      border: `2px dashed #ccc`,
-      padding: `2em`,
-      textAlign: `center` as const,
-    },
-    error: {
-      background: `#ffebee`,
-      color: `#c62828`,
-      border: `1px solid #ef5350`,
-      padding: `0.5em 1em`,
-      textAlign: `center` as const,
-    },
-    warning: {
-      background: `#fff3e0`,
-      color: `#e65100`,
-      border: `1px solid #fb8c00`,
-      padding: `0.5em`,
-      textAlign: `left` as const,
-    },
-  }
 </script>
 
 {#if message}
   <div
-    class="message"
+    class="status-message {type}"
     role={type === `error` ? `alert` : `status`}
     aria-live={type === `error` ? `assertive` : `polite`}
-    style:background={styles[type].background}
-    style:color={styles[type].color}
-    style:border={styles[type].border}
-    style:padding={styles[type].padding}
-    style:text-align={styles[type].textAlign}
     {...rest}
   >
     {message}
     {#if dismissible}
-      <button
-        type="button"
-        aria-label="Dismiss message"
-        onclick={() => (message = undefined)}
-      >
-        Dismiss
+      <button onclick={() => (message = undefined)} aria-label="Dismiss message">
+        ✕
       </button>
     {/if}
   </div>
 {/if}
 
 <style>
-  .message {
-    margin-bottom: 0.5em;
-    border-radius: var(--status-message-border-radius, var(--border-radius, 3pt));
+  .status-message {
+    border-radius: var(--border-radius, 3pt);
+    border: var(--status-message-border);
+    &.info {
+      --status-message-border: 2px dashed #ccc;
+      background: transparent;
+      color: #666;
+      padding: 2em;
+    }
+    &.error {
+      --status-message-border: 1px solid #ef5350;
+      background: #ffebee;
+      color: #c62828;
+      padding: 0.5em 1em;
+    }
+    &.warning {
+      --status-message-border: 1px solid #fb8c00;
+      background: #fff3e0;
+      color: #e65100;
+      padding: 0.5em;
+    }
   }
   button {
     margin-left: 1em;
-    padding: 0.25em 0.75em;
-    background: #e0e0e0;
-    border: 1px solid #ccc;
-    border-radius: var(--status-message-button-border-radius, var(--border-radius, 3pt));
+    padding: 0.2em 0.5em;
+    background: #ddd;
+    border: 1px solid #bbb;
+    border-radius: var(--border-radius, 3pt);
     cursor: pointer;
-  }
-  button:hover {
-    background: #d0d0d0;
+    &:hover {
+      background: #ccc;
+    }
   }
 </style>
