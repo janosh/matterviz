@@ -283,6 +283,11 @@ export function parse_gsas_file(content: string): XrdPattern | null {
       if (bin_type === `CONST`) {
         start = parseFloat(bank_match[3]) / 100 // Convert centidegrees to degrees
         step = parseFloat(bank_match[4]) / 100
+      } else if (bin_type !== `FXYE`) {
+        // Other bin types like RALF (time-of-flight) are not fully supported
+        console.warn(
+          `GSAS bin type "${bin_type}" not fully supported, treating as constant-step`,
+        )
       }
       found_bank = true
       break
@@ -748,7 +753,8 @@ export function parse_xrdml_file(content: string): XrdPattern | null {
 const ASCII_XY_EXTENSIONS = [`xy`, `xye`, `csv`, `dat`, `asc`, `txt`] as const
 
 // Header-based ASCII format extensions
-const ASCII_HEADER_EXTENSIONS = [`ras`, `uxd`, `gsas`, `gsa`, `gda`, `fxye`] as const
+const GSAS_EXTENSIONS = [`gsas`, `gsa`, `gda`, `fxye`] as const
+const ASCII_HEADER_EXTENSIONS = [`ras`, `uxd`, ...GSAS_EXTENSIONS] as const
 
 // XML-based format extensions
 const XML_EXTENSIONS = [`xrdml`] as const
@@ -805,7 +811,9 @@ export async function parse_xrd_file(
   // Header-based ASCII formats
   if (ext === `ras`) return parse_ras_file(get_text())
   if (ext === `uxd`) return parse_uxd_file(get_text())
-  if ([`gsas`, `gsa`, `gda`, `fxye`].includes(ext)) return parse_gsas_file(get_text())
+  if ((GSAS_EXTENSIONS as readonly string[]).includes(ext)) {
+    return parse_gsas_file(get_text())
+  }
 
   // XML formats
   if (ext === `xrdml`) return parse_xrdml_file(get_text())

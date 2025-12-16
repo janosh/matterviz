@@ -9,7 +9,12 @@
 </script>
 
 {#if message}
-  <div class="status-message {type}" role="status" {...rest}>
+  <div
+    class="status-message {type}"
+    role={type === `error` ? `alert` : `status`}
+    aria-live={type === `error` ? `assertive` : `polite`}
+    {...rest}
+  >
     {message}
     {#if dismissible}
       <button onclick={() => (message = undefined)} aria-label="Dismiss message">

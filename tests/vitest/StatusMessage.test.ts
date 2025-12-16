@@ -12,9 +12,15 @@ describe(`StatusMessage`, () => {
     },
   )
 
-  test.each([`info`, `error`, `warning`] as const)(
-    `renders %s message with status role`,
-    (type) => {
+  test.each(
+    [
+      { type: `info`, role: `status`, aria_live: `polite` },
+      { type: `error`, role: `alert`, aria_live: `assertive` },
+      { type: `warning`, role: `status`, aria_live: `polite` },
+    ] as const,
+  )(
+    `renders $type message with correct ARIA attributes`,
+    ({ type, role, aria_live }) => {
       mount(StatusMessage, {
         target: document.body,
         props: { message: `Test message`, type },
@@ -22,7 +28,8 @@ describe(`StatusMessage`, () => {
 
       const message_div = doc_query(`.status-message`)
       expect(message_div.textContent?.trim()).toBe(`Test message`)
-      expect(message_div.getAttribute(`role`)).toBe(`status`)
+      expect(message_div.getAttribute(`role`)).toBe(role)
+      expect(message_div.getAttribute(`aria-live`)).toBe(aria_live)
       expect(message_div.classList.contains(type)).toBe(true)
     },
   )
