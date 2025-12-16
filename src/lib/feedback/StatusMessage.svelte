@@ -35,15 +35,15 @@
       padding: 2em;
     }
     &.error {
-      --status-message-border: 1px solid #e55;
-      background: #fee;
-      color: #c22;
+      --status-message-border: 1px solid #ef5350;
+      background: #ffebee;
+      color: #c62828;
       padding: 0.5em 1em;
     }
     &.warning {
-      --status-message-border: 1px solid #f80;
-      background: #fed;
-      color: #e60;
+      --status-message-border: 1px solid #fb8c00;
+      background: #fff3e0;
+      color: #e65100;
       padding: 0.5em;
     }
   }

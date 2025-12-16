@@ -13,7 +13,7 @@
   // Files are picked up at build time; restart dev server to see new files
   // Supports both uncompressed and gzipped (.gz) versions of XRD formats
   const xrd_file_modules = import.meta.glob(
-    `/static/xrd/*.{xy,xye,xrdml,brml,ras,uxd,UXD,gsas,gsa,gda,raw,dat,csv,asc,txt,fxye,xy.gz,xye.gz,xrdml.gz,brml.gz,ras.gz,uxd.gz,gsas.gz,gsa.gz,gda.gz,raw.gz,dat.gz,fxye.gz}`,
+    `/static/xrd/*.{xy,xye,xrdml,brml,ras,uxd,UXD,gsas,gsa,gda,raw,dat,csv,asc,txt,fxye,xy.gz,xye.gz,xrdml.gz,brml.gz,ras.gz,uxd.gz,UXD.gz,gsas.gz,gsa.gz,gda.gz,raw.gz,dat.gz,csv.gz,asc.gz,txt.gz,fxye.gz}`,
     { query: `?url`, eager: true, import: `default` },
   ) as Record<string, string>
 
