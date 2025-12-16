@@ -202,8 +202,9 @@
   .legend {
     width: 100%;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 0.8em;
+    gap: 2pt 5pt;
     font-size: 0.6em;
     opacity: 0.8;
     margin: 0 0 0.5em;

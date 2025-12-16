@@ -13,30 +13,50 @@
   // Files are picked up at build time; restart dev server to see new files
   // Supports both uncompressed and gzipped (.gz) versions of XRD formats
   const xrd_file_modules = import.meta.glob(
-    `/static/xrd/*.{xy,xye,xrdml,brml,xy.gz,xye.gz,xrdml.gz}`,
+    `/static/xrd/*.{xy,xye,xrdml,brml,ras,uxd,UXD,gsas,gsa,gda,raw,dat,csv,asc,txt,fxye,xy.gz,xye.gz,xrdml.gz,brml.gz,ras.gz,uxd.gz,UXD.gz,gsas.gz,gsa.gz,gda.gz,raw.gz,dat.gz,csv.gz,asc.gz,txt.gz,fxye.gz}`,
     { query: `?url`, eager: true, import: `default` },
   ) as Record<string, string>
+
+  // Extension to [category, icon] lookup - default is Powder XRD 📊
+  const ext_categories: Record<string, [string, string]> = {
+    brml: [`Bruker HRXRD`, `🔬`],
+    raw: [`Bruker Binary`, `📦`],
+    ras: [`Rigaku`, `🇯🇵`],
+    uxd: [`Siemens`, `🇩🇪`],
+    gsas: [`GSAS/Rietveld`, `🔬`],
+    gsa: [`GSAS/Rietveld`, `🔬`],
+    gda: [`GSAS/Rietveld`, `🔬`],
+    fxye: [`GSAS/Rietveld`, `🔬`],
+    xrdml: [`PANalytical`, `🇳🇱`],
+  }
 
   // Convert glob results to FileInfo array
   const xrd_data_files: FileInfo[] = Object.entries(xrd_file_modules).map(
     ([path, url]) => {
       const name = path.split(`/`).pop() || path
-      // Get base extension, stripping .gz if present
-      const base_name = name.replace(/\.gz$/i, ``)
-      const ext = base_name.split(`.`).pop()?.toLowerCase() || ``
-      // Categorize by format type
-      const category = ext === `brml` ? `HRXRD` : `Powder XRD`
-      const category_icon = ext === `brml` ? `🔬` : `📊`
+      const ext = name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() || ``
+      const [category, category_icon] = ext_categories[ext] ?? [`Powder XRD`, `📊`]
       return { name, url, type: ext, category, category_icon }
     },
   )
 
   // Custom colors for XRD data file types
   const xrd_file_colors: Record<string, string> = {
-    xy: `rgba(50, 205, 50, 0.8)`,
+    xy: `rgba(50, 205, 50, 0.8)`, // Green for basic XY
     xye: `rgba(34, 139, 34, 0.8)`, // Darker green for XYE (with errors)
     xrdml: `rgba(70, 130, 180, 0.8)`, // Steel blue for PANalytical
-    brml: `rgba(255, 140, 0, 0.8)`,
+    brml: `rgba(255, 140, 0, 0.8)`, // Orange for Bruker XML
+    ras: `rgba(138, 43, 226, 0.8)`, // BlueViolet for Rigaku
+    uxd: `rgba(220, 20, 60, 0.8)`, // Crimson for Siemens
+    gsas: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
+    gsa: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
+    gda: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
+    fxye: `rgba(255, 215, 0, 0.8)`, // Gold for GSAS Rietveld
+    raw: `rgba(255, 99, 71, 0.8)`, // Tomato for Bruker binary
+    dat: `rgba(100, 149, 237, 0.8)`, // Cornflower blue for generic DAT
+    csv: `rgba(46, 139, 87, 0.8)`, // SeaGreen for CSV
+    asc: `rgba(147, 112, 219, 0.8)`, // MediumPurple for ASC
+    txt: `rgba(128, 128, 128, 0.8)`, // Gray for TXT
   }
 
   // Cache computed XRD patterns to avoid recomputation when navigating structures
@@ -223,10 +243,13 @@
 
   <h2>XRD File Drop Demo</h2>
   <p>
-    Drag and drop <code>.xy</code>, <code>.xye</code>, <code>.xrdml</code> (PANalytical),
-    or <code>.brml</code> (Bruker) files directly onto the XRD plot. Gzipped versions
-    (<code>.xy.gz</code>, etc.) are also supported. Drop a local file from your computer
-    or drag one of these sample files:
+    Drag and drop XRD data files directly onto the plot. Supported formats include:
+    <code>.xy</code>, <code>.xye</code>, <code>.csv</code>, <code>.dat</code>, <code
+    >.asc</code>, <code>.txt</code> (ASCII),
+    <code>.ras</code> (Rigaku), <code>.uxd</code> (Siemens), <code>.gsas</code>/<code
+    >.gsa</code> (GSAS),
+    <code>.xrdml</code> (PANalytical), <code>.brml</code>/<code>.raw</code> (Bruker).
+    Gzipped versions (<code>.xy.gz</code>, etc.) are also supported.
   </p>
   <section>
     <FilePicker
@@ -238,16 +261,12 @@
       patterns={[]}
       annotate_peaks={5}
       hkl_format="compact"
-      style="height: 500px; flex: 1"
+      style="height: 500px; width: 100%; min-width: 0"
     />
   </section>
 </div>
 
 <style>
-  .bleed-1400 > section {
-    display: grid;
-    gap: 1em;
-  }
   nav {
     display: flex;
     flex-wrap: wrap;
@@ -274,7 +293,7 @@
   }
   .bleed-1400 > section {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
     gap: 1em;
   }
   .selected-structures-grid {
