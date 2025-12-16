@@ -215,11 +215,30 @@ export function parse_ras_file(content: string): XrdPattern | null {
   if (data_lines.length === 0) return null
 
   // Multi-column (2-theta, intensity, [error]): reuse parse_xy_file
-  // Detect by: 2-3 values per line, multiple rows, first value looks like an angle
+  // Detect by: 2-3 values per line, multiple rows, first column monotonically increasing
+  // (angles increase during a scan, intensities do not follow this pattern)
   const first_values = parse_number_list(data_lines[0])
-  const is_multi_column = first_values.length >= 2 && first_values.length <= 3 &&
-    data_lines.length > 1 && first_values[0] < 180
-  if (is_multi_column) return parse_xy_file(data_lines.join(`\n`))
+  const has_column_structure = first_values.length >= 2 && first_values.length <= 3 &&
+    data_lines.length > 1
+
+  if (has_column_structure) {
+    // Check if first column values are monotonically increasing (characteristic of angle data)
+    // Sample a few lines to verify the pattern
+    const sample_count = Math.min(5, data_lines.length)
+    let is_monotonic = true
+    let prev_angle = first_values[0]
+
+    for (let idx = 1; idx < sample_count; idx++) {
+      const values = parse_number_list(data_lines[idx])
+      if (values.length < 2 || values[0] <= prev_angle) {
+        is_monotonic = false
+        break
+      }
+      prev_angle = values[0]
+    }
+
+    if (is_monotonic) return parse_xy_file(data_lines.join(`\n`))
+  }
 
   // Single-column or many space-separated intensities: use header start/step
   const intensities = data_lines.flatMap(parse_number_list)
@@ -499,12 +518,22 @@ function read_float32_array(
   const max_offset = view.byteLength - 4
   const max_count = count ?? Math.floor((view.byteLength - offset) / 4)
 
+  // Track invalid values in the first N points to detect wrong offset.
+  // Trade-off: This heuristic may reject legitimate data with corrupted initial
+  // measurements, but such cases are rare. If >50% of the first 20 values are
+  // invalid (NaN/Infinity), we assume the offset is incorrect and return early.
+  const EARLY_CHECK_COUNT = 20
+  const INVALID_THRESHOLD = 0.5
+  let invalid_count = 0
+
   for (let idx = 0; idx < max_count && offset + idx * 4 <= max_offset; idx++) {
     const val = view.getFloat32(offset + idx * 4, true) // little-endian
     // Filter out invalid values (NaN, Infinity)
     if (isNaN(val) || !isFinite(val)) {
-      // If we hit invalid data early, we may have wrong offset
-      if (idx < 10) break
+      if (idx < EARLY_CHECK_COUNT) {
+        invalid_count++
+        if (invalid_count > EARLY_CHECK_COUNT * INVALID_THRESHOLD) break
+      }
       values.push(0) // Replace isolated bad values
     } else values.push(val)
   }
@@ -838,5 +867,5 @@ export function is_xrd_data_file(filename: string): boolean {
   // Strip .gz suffix if present to get base extension
   const base_name = filename.toLowerCase().replace(/\.gz$/, ``)
   const ext = base_name.split(`.`).pop()
-  return XRD_FILE_EXTENSIONS.includes(ext as XrdFileExtension)
+  return ext !== undefined && (XRD_FILE_EXTENSIONS as readonly string[]).includes(ext)
 }

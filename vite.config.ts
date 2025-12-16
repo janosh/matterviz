@@ -30,7 +30,6 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: `happy-dom`,
     css: true,
-    pool: `forks`, // Use forks instead of threads to avoid esbuild conflicts
     coverage: {
       reporter: [`text`, `json-summary`],
     },

@@ -215,14 +215,10 @@ describe(`parse_ras_file`, () => {
     expect(result?.y[2]).toBeCloseTo(100, 1) // max=300
   })
 
-  test(`returns null for empty content`, () => {
-    expect(parse_ras_file(``)).toBeNull()
-  })
-
-  test(`returns null for content without intensity data`, () => {
-    const content = `*RAS_HEADER_START
-*MEAS_SCAN_START=10.0
-*RAS_HEADER_END`
+  test.each([
+    [`empty content`, ``],
+    [`no intensity data`, `*RAS_HEADER_START\n*MEAS_SCAN_START=10.0\n*RAS_HEADER_END`],
+  ])(`returns null for %s`, (_desc, content) => {
     expect(parse_ras_file(content)).toBeNull()
   })
 })
@@ -276,10 +272,6 @@ _COUNTS
     expect(result).not.toBeNull()
     expect(result?.x).toEqual([10, 20, 30])
   })
-
-  test(`returns null for empty content`, () => {
-    expect(parse_uxd_file(``)).toBeNull()
-  })
 })
 
 describe(`parse_gsas_file`, () => {
@@ -317,10 +309,6 @@ BANK 1 5 5 CONST 1000.0 100.0 0 0 STD
     // Should extract y values (indices 1, 4, 7 from triplets)
     expect(result?.y.length).toBe(3)
     expect(result?.y[2]).toBeCloseTo(100, 1) // max=300
-  })
-
-  test(`returns null for empty content`, () => {
-    expect(parse_gsas_file(``)).toBeNull()
   })
 })
 
@@ -368,13 +356,10 @@ describe(`parse_bruker_raw_file`, () => {
     expect(result?.y[2]).toBeCloseTo(100, 1) // max normalized
   })
 
-  test(`returns null for invalid data`, () => {
-    const buffer = new ArrayBuffer(10)
-    expect(parse_bruker_raw_file(buffer)).toBeNull()
-  })
-
-  test(`returns null for empty buffer`, () => {
-    const buffer = new ArrayBuffer(0)
+  test.each([
+    [`invalid data`, new ArrayBuffer(10)],
+    [`empty buffer`, new ArrayBuffer(0)],
+  ])(`returns null for %s`, (_desc, buffer) => {
     expect(parse_bruker_raw_file(buffer)).toBeNull()
   })
 })
@@ -547,115 +532,61 @@ describe(`parse_brml_file`, () => {
     expect(result?.y).toEqual([50, 75, 100, 90, 60])
   })
 
-  test(`handles Bruker HRXRD 8-column Datum format`, async () => {
-    // Format: flags, flags, 2Theta, Omega, ..., intensity (8 columns)
-    const xml_content = `<?xml version="1.0"?>
-<RawData>
-  <DataRoutes>
-    <DataRoute>
-      <Datum>1,1,44,18.028,-0.12937,0,2.63482,3</Datum>
-      <Datum>1,1,44.002,18.029,-0.12937,0,2.63493,1</Datum>
-      <Datum>1,1,44.004,18.03,-0.12938,0,2.63505,5</Datum>
-      <Datum>1,1,44.006,18.031,-0.12938,0,2.63516,2</Datum>
-    </DataRoute>
-  </DataRoutes>
-</RawData>`
-    const files = { 'RawData0.xml': new TextEncoder().encode(xml_content) }
-    const zipped = zipSync(files)
-
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
+  // Test various Bruker Datum column formats (8-col HRXRD, 5-col powder, nested paths)
+  test.each([
+    {
+      desc: `HRXRD 8-column format`,
+      files: {
+        'RawData0.xml': `<RawData><DataRoutes><DataRoute>
+        <Datum>1,1,44,18.028,-0.12937,0,2.63482,3</Datum>
+        <Datum>1,1,44.002,18.029,-0.12937,0,2.63493,1</Datum>
+        <Datum>1,1,44.004,18.03,-0.12938,0,2.63505,5</Datum>
+      </DataRoute></DataRoutes></RawData>`,
+      },
+      expected_x: [44, 44.002, 44.004],
+      expected_y: [60, 20, 100], // 3,1,5 normalized
+    },
+    {
+      desc: `powder 5-column format`,
+      files: {
+        'RawData0.xml': `<RawData><DataRoutes><DataRoute>
+        <Datum>19.2,1,5.0,2.5,100</Datum>
+        <Datum>19.2,1,5.02,2.51,200</Datum>
+      </DataRoute></DataRoutes></RawData>`,
+      },
+      expected_x: [5.0, 5.02],
+      expected_y: [50, 100],
+    },
+    {
+      desc: `nested Experiment0/ path`,
+      files: {
+        'Experiment0/RawData0.xml': `<RawData><DataRoutes><DataRoute>
+          <Datum>1,1,44,18,-0.1,0,2.6,10</Datum>
+          <Datum>1,1,44.01,18,-0.1,0,2.6,20</Datum>
+        </DataRoute></DataRoutes></RawData>`,
+      },
+      expected_x: [44, 44.01],
+      expected_y: [50, 100],
+    },
+    {
+      desc: `fallback XML search`,
+      files: {
+        'Experiment0/DataFile.xml': `<RawData><DataRoutes><DataRoute>
+        <Datum>1,1,30,15,-0.1,0,2.5,100</Datum>
+        <Datum>1,1,30.01,15,-0.1,0,2.5,200</Datum>
+      </DataRoute></DataRoutes></RawData>`,
+      },
+      expected_x: [30, 30.01],
+      expected_y: [50, 100],
+    },
+  ])(`handles Bruker $desc`, async ({ files, expected_x, expected_y }) => {
+    const encoded_files = Object.fromEntries(
+      Object.entries(files).map(([k, v]) => [k, new TextEncoder().encode(v)]),
+    )
+    const result = await parse_brml_file(zipSync(encoded_files).buffer as ArrayBuffer)
     expect(result).not.toBeNull()
-    // Check all 2θ values from column 2
-    expect(result?.x[0]).toBeCloseTo(44, 5)
-    expect(result?.x[1]).toBeCloseTo(44.002, 5)
-    expect(result?.x[2]).toBeCloseTo(44.004, 5)
-    expect(result?.x[3]).toBeCloseTo(44.006, 5)
-    // Intensities 3,1,5,2 normalized: max=5 -> 60,20,100,40
-    expect(result?.y[0]).toBeCloseTo(60, 1)
-    expect(result?.y[1]).toBeCloseTo(20, 1)
-    expect(result?.y[2]).toBeCloseTo(100, 1)
-    expect(result?.y[3]).toBeCloseTo(40, 1)
-  })
-
-  test(`handles Bruker powder 5-column Datum format`, async () => {
-    // Format: time, flag, 2Theta, Theta, intensity (5 columns)
-    const xml_content = `<?xml version="1.0"?>
-<RawData>
-  <DataRoutes>
-    <DataRoute>
-      <Datum>19.2,1,4.9979,2.49895,5301</Datum>
-      <Datum>19.2,1,5.01847,2.50924,5307</Datum>
-      <Datum>19.2,1,5.03904,2.51952,5177</Datum>
-    </DataRoute>
-  </DataRoutes>
-</RawData>`
-    const files = { 'RawData0.xml': new TextEncoder().encode(xml_content) }
-    const zipped = zipSync(files)
-
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
-    expect(result).not.toBeNull()
-    // Check all 2θ values from column 2
-    expect(result?.x[0]).toBeCloseTo(4.9979, 4)
-    expect(result?.x[1]).toBeCloseTo(5.01847, 4)
-    expect(result?.x[2]).toBeCloseTo(5.03904, 4)
-    // Normalized: max=5307 -> 5301/5307*100≈99.89, 100, 5177/5307*100≈97.55
-    expect(result?.y[0]).toBeCloseTo(99.89, 1)
-    expect(result?.y[1]).toBeCloseTo(100, 1)
-    expect(result?.y[2]).toBeCloseTo(97.55, 1)
-  })
-
-  test(`handles Bruker HRXRD format with Experiment0/ path prefix`, async () => {
-    // Real BRML files have nested directory structure like Experiment0/RawData0.xml
-    const xml_content = `<?xml version="1.0"?>
-<RawData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <DataRoutes>
-    <DataRoute>
-      <Datum>1,1,44,18.028,-0.12937,0,2.63482,10</Datum>
-      <Datum>1,1,44.002,18.029,-0.12937,0,2.63493,20</Datum>
-      <Datum>1,1,44.004,18.03,-0.12938,0,2.63505,30</Datum>
-    </DataRoute>
-  </DataRoutes>
-</RawData>`
-    const files = {
-      'Experiment0/RawData0.xml': new TextEncoder().encode(xml_content),
-      'Experiment0/OtherFile.xml': new TextEncoder().encode(`<Other/>`),
-      'experimentCollection.xml': new TextEncoder().encode(`<Collection/>`),
-    }
-    const zipped = zipSync(files)
-
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
-    expect(result).not.toBeNull()
-    expect(result?.x[0]).toBeCloseTo(44, 5)
-    expect(result?.x[1]).toBeCloseTo(44.002, 5)
-    expect(result?.x[2]).toBeCloseTo(44.004, 5)
-    // Intensities 10,20,30 normalized: 33.33, 66.67, 100
-    expect(result?.y[0]).toBeCloseTo(33.33, 1)
-    expect(result?.y[1]).toBeCloseTo(66.67, 1)
-    expect(result?.y[2]).toBeCloseTo(100, 1)
-  })
-
-  test(`finds Datum data in fallback XML search`, async () => {
-    // When RawData file is not named 'rawdata', fall back to searching all XMLs
-    const xml_content = `<?xml version="1.0"?>
-<RawData>
-  <DataRoutes>
-    <DataRoute>
-      <Datum>1,1,30,15,-0.1,0,2.5,100</Datum>
-      <Datum>1,1,30.01,15.005,-0.1,0,2.501,200</Datum>
-    </DataRoute>
-  </DataRoutes>
-</RawData>`
-    const files = {
-      'Experiment0/DataFile.xml': new TextEncoder().encode(xml_content),
-    }
-    const zipped = zipSync(files)
-
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
-    expect(result).not.toBeNull()
-    expect(result?.x[0]).toBeCloseTo(30, 5)
-    expect(result?.x[1]).toBeCloseTo(30.01, 5)
-    expect(result?.y[0]).toBeCloseTo(50, 1)
-    expect(result?.y[1]).toBeCloseTo(100, 1)
+    expected_x.forEach((x, idx) => expect(result?.x[idx]).toBeCloseTo(x, 2))
+    expected_y.forEach((y, idx) => expect(result?.y[idx]).toBeCloseTo(y, 1))
   })
 
   test(`handles single-element Datum array without divide-by-zero`, async () => {
@@ -716,35 +647,17 @@ describe(`parse_xrd_file`, () => {
     expect(result?.y[1]).toBeCloseTo(100, 1) // 200/200*100
   })
 
-  test(`routes .ras files correctly`, async () => {
-    const ras_content = `*MEAS_SCAN_START=10.0
-*MEAS_SCAN_STEP=10.0
-*RAS_INT_START
-100 200
-*RAS_INT_END`
-    const result = await parse_xrd_file(ras_content, `scan.ras`)
+  test.each([
+    [
+      `ras`,
+      `*MEAS_SCAN_START=10.0\n*MEAS_SCAN_STEP=10.0\n*RAS_INT_START\n100 200\n*RAS_INT_END`,
+    ],
+    [`uxd`, `_2THETA_START=10.0\n_STEPSIZE=10.0\n_COUNTS\n100 200`],
+    [`gsas`, `BANK 1 2 2 CONST 1000.0 1000.0 0 0 STD\n100 200`],
+  ])(`routes .%s files correctly`, async (ext, content) => {
+    const result = await parse_xrd_file(content, `scan.${ext}`)
     expect(result).not.toBeNull()
     expect(result?.x).toEqual([10, 20])
-    expect(result?.y[1]).toBeCloseTo(100, 1)
-  })
-
-  test(`routes .uxd files correctly`, async () => {
-    const uxd_content = `_2THETA_START=10.0
-_STEPSIZE=10.0
-_COUNTS
-100 200`
-    const result = await parse_xrd_file(uxd_content, `scan.uxd`)
-    expect(result).not.toBeNull()
-    expect(result?.x).toEqual([10, 20])
-    expect(result?.y[1]).toBeCloseTo(100, 1)
-  })
-
-  test(`routes .gsas files correctly`, async () => {
-    const gsas_content = `BANK 1 2 2 CONST 1000.0 1000.0 0 0 STD
-100 200`
-    const result = await parse_xrd_file(gsas_content, `scan.gsas`)
-    expect(result).not.toBeNull()
-    expect(result?.x).toEqual([10, 20]) // 1000/100=10, step=1000/100=10
     expect(result?.y[1]).toBeCloseTo(100, 1)
   })
 
