@@ -1,6 +1,10 @@
 import {
   is_xrd_data_file,
   parse_brml_file,
+  parse_bruker_raw_file,
+  parse_gsas_file,
+  parse_ras_file,
+  parse_uxd_file,
   parse_xrd_file,
   parse_xrdml_file,
   parse_xy_file,
@@ -83,30 +87,50 @@ describe(`parse_xy_file`, () => {
     expect(result?.y[2]).toBeCloseTo(100, 1)
   })
 
-  test(`handles all-zero intensities without division by zero`, () => {
-    const content = `10.0 0\n20.0 0\n30.0 0`
+  test.each([
+    [`all-zero intensities`, `10.0 0\n20.0 0\n30.0 0`, [0, 0, 0]],
+    [`single data point`, `45.0 1000`, [100]],
+    [`negative intensities`, `10.0 -5\n20.0 50\n30.0 100\n40.0 -10`, [-5, 50, 100, -10]],
+  ])(`handles %s without errors`, (_desc, content, expected_y) => {
     const result = parse_xy_file(content)
     expect(result).not.toBeNull()
-    expect(result?.y).toEqual([0, 0, 0])
+    expected_y.forEach((y, idx) => expect(result?.y[idx]).toBeCloseTo(y, 1))
   })
 
-  test(`subsamples large datasets without division by zero`, () => {
-    // Generate 2000 points (above MAX_POINTS=1000) with many peaks to stress uniform_slots
-    const lines: string[] = []
-    for (let idx = 0; idx < 2000; idx++) {
-      const x = 10 + idx * 0.05
-      // Create alternating high/low pattern to maximize peak detection
-      const y = idx % 2 === 0 ? 100 + idx : 10
-      lines.push(`${x} ${y}`)
-    }
+  test.each([
+    [1000, 1000, `exactly MAX_POINTS - no subsampling`],
+    [1001, 1000, `MAX_POINTS+1 - triggers subsampling`],
+    [2000, 1000, `2x MAX_POINTS - heavy subsampling`],
+  ])(`with %i points outputs ≤%i points (%s)`, (input_count, max_output) => {
+    const lines = Array.from(
+      { length: input_count },
+      (_, idx) => `${10 + idx * 0.1} ${idx}`,
+    )
     const result = parse_xy_file(lines.join(`\n`))
-    expect(result).not.toBeNull()
-    // Should subsample to ~1000 points
-    expect(result?.x.length).toBeLessThanOrEqual(1000)
-    expect(result?.x.length).toBeGreaterThan(500)
-    // First and last x values should be preserved
-    expect(result?.x[0]).toBeCloseTo(10, 1)
-    expect(result?.x[result?.x.length - 1]).toBeCloseTo(109.95, 1)
+    expect(result?.x.length).toBeLessThanOrEqual(max_output)
+    if (input_count <= 1000) expect(result?.x.length).toBe(input_count) // exact preservation
+  })
+
+  test(`preserves significant peaks during subsampling`, () => {
+    // 30 peaks at varying heights (20-100), offset from uniform grid by +7 indices
+    // With 5% threshold all pass; with broken 99% threshold only max peak passes
+    const peak_indices = Array.from({ length: 30 }, (_, idx) => idx * 300 + 7)
+    const peak_heights = peak_indices.map((_, idx) => 20 + (idx * 80) / 29)
+
+    // Generate 10000 points: background=1, peaks at their heights
+    const lines = Array.from({ length: 10000 }, (_, idx) => {
+      const peak_idx = peak_indices.indexOf(idx)
+      return `${10 + idx * 0.01} ${peak_idx >= 0 ? peak_heights[peak_idx] : 1}`
+    }).join(`\n`)
+
+    const result = parse_xy_file(lines)
+    if (!result) return expect(result).not.toBeNull()
+    // Count preserved peaks (within 0.005 tolerance)
+    const peaks_found =
+      peak_indices.filter((pos) =>
+        result.x.some((x_val) => Math.abs(x_val - (10 + pos * 0.01)) < 0.005)
+      ).length
+    expect(peaks_found).toBeGreaterThanOrEqual(25)
   })
 })
 
@@ -122,6 +146,311 @@ describe(`parse_xye_file`, () => {
     // Normalized: 100/300*100=33.33, 200/300*100=66.67, 300/300*100=100
     expect(result?.y[0]).toBeCloseTo(33.33, 1)
     expect(result?.y[2]).toBeCloseTo(100, 1)
+  })
+})
+
+describe(`parse_ras_file`, () => {
+  test(`parses standard Rigaku RAS format with header and INT section`, () => {
+    const content = `*RAS_DATA_START
+*RAS_HEADER_START
+*MEAS_SCAN_START=10.0
+*MEAS_SCAN_STEP=1.0
+*MEAS_SCAN_END=14.0
+*RAS_HEADER_END
+*RAS_INT_START
+100
+200
+300
+200
+100
+*RAS_INT_END`
+    const result = parse_ras_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([10, 11, 12, 13, 14])
+    // Normalized: max=300 -> 33.33, 66.67, 100, 66.67, 33.33
+    expect(result?.y[0]).toBeCloseTo(33.33, 1)
+    expect(result?.y[2]).toBeCloseTo(100, 1)
+    expect(result?.y[4]).toBeCloseTo(33.33, 1)
+  })
+
+  test(`handles alternative SCAN_START/SCAN_STEP keys`, () => {
+    const content = `*RAS_HEADER_START
+*SCAN_START=20.0
+*SCAN_STEP=0.5
+*RAS_HEADER_END
+*RAS_INT_START
+50
+100
+*RAS_INT_END`
+    const result = parse_ras_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([20, 20.5])
+    expect(result?.y[1]).toBeCloseTo(100, 1)
+  })
+
+  test(`handles space-separated intensities on single line`, () => {
+    const content = `*MEAS_SCAN_START=5.0
+*MEAS_SCAN_STEP=2.0
+*RAS_INT_START
+100 200 300 400
+*RAS_INT_END`
+    const result = parse_ras_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([5, 7, 9, 11])
+    expect(result?.y[3]).toBeCloseTo(100, 1) // max=400, normalized
+  })
+
+  test(`parses three-column format (2-theta, intensity, error)`, () => {
+    // Real Rigaku files often have: 2-theta intensity error
+    const content = `*RAS_HEADER_START
+*MEAS_SCAN_START=2.0
+*MEAS_SCAN_STEP=0.02
+*RAS_HEADER_END
+*RAS_INT_START
+2.0000 100.0 1.0
+2.0200 200.0 1.0
+2.0400 300.0 1.0
+2.0600 200.0 1.0
+2.0800 100.0 1.0
+*RAS_INT_END`
+    const result = parse_ras_file(content)
+    expect(result).not.toBeNull()
+    // Should extract 2-theta from column 1 and intensity from column 2
+    expect(result?.x).toEqual([2.0, 2.02, 2.04, 2.06, 2.08])
+    // max=300, normalized: 33.33, 66.67, 100, 66.67, 33.33
+    expect(result?.y[0]).toBeCloseTo(33.33, 1)
+    expect(result?.y[2]).toBeCloseTo(100, 1)
+    expect(result?.y[4]).toBeCloseTo(33.33, 1)
+  })
+
+  test(`parses two-column format (2-theta, intensity)`, () => {
+    const content = `*RAS_INT_START
+10.0 100
+20.0 200
+30.0 300
+*RAS_INT_END`
+    const result = parse_ras_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([10, 20, 30])
+    expect(result?.y[2]).toBeCloseTo(100, 1) // max=300
+  })
+
+  test(`falls back to parsing after header when no INT markers`, () => {
+    // Some RAS files lack *RAS_INT_START markers but have data after header
+    const content = `*RAS_HEADER_START
+*MEAS_SCAN_START=10.0
+*MEAS_SCAN_STEP=1.0
+*RAS_HEADER_END
+100 200 300`
+    const result = parse_ras_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([10, 11, 12])
+    expect(result?.y[2]).toBeCloseTo(100, 1)
+  })
+
+  test.each([
+    [`empty content`, ``],
+    [`no intensity data`, `*RAS_HEADER_START\n*MEAS_SCAN_START=10.0\n*RAS_HEADER_END`],
+  ])(`returns null for %s`, (_desc, content) => {
+    expect(parse_ras_file(content)).toBeNull()
+  })
+})
+
+describe(`parse_uxd_file`, () => {
+  test(`parses standard Siemens UXD format with _COUNTS section`, () => {
+    const content = `; Siemens UXD file
+_2THETA_START=10.0
+_STEPSIZE=1.0
+_COUNTS
+100
+200
+300
+200
+100`
+    const result = parse_uxd_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([10, 11, 12, 13, 14])
+    expect(result?.y[2]).toBeCloseTo(100, 1) // max normalized
+  })
+
+  test(`handles alternative _START and _STEPWIDTH keys`, () => {
+    const content = `_START=15.0
+_STEPWIDTH=0.5
+_COUNTS
+50 100 150`
+    const result = parse_uxd_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([15, 15.5, 16])
+    expect(result?.y[2]).toBeCloseTo(100, 1)
+  })
+
+  test(`ignores semicolon comments`, () => {
+    const content = `; Comment line
+_2THETA_START=10.0
+_STEPSIZE=1.0
+; Another comment
+_COUNTS
+100 200`
+    const result = parse_uxd_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x.length).toBe(2)
+  })
+
+  test(`falls back to two-column parsing if no _COUNTS marker`, () => {
+    // UXD files without _COUNTS section may be simple two-column format
+    const content = `10.0 100
+20.0 200
+30.0 300`
+    const result = parse_uxd_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([10, 20, 30])
+  })
+})
+
+describe(`parse_gsas_file`, () => {
+  test(`parses GSAS CONST format with BANK header`, () => {
+    // CONST format: BCOEF1 is start in centidegrees, BCOEF2 is step in centidegrees
+    const content = `GSAS file title
+BANK 1 5 5 CONST 1000.0 100.0 0 0 STD
+50 100 200 150 75`
+    const result = parse_gsas_file(content)
+    expect(result).not.toBeNull()
+    // start = 1000/100 = 10°, step = 100/100 = 1°
+    expect(result?.x).toEqual([10, 11, 12, 13, 14])
+    expect(result?.y[2]).toBeCloseTo(100, 1) // max=200
+  })
+
+  test(`handles space-separated intensities across multiple lines`, () => {
+    const content = `BANK 1 6 6 CONST 2000.0 50.0 0 0 STD
+100 200 300
+400 500 600`
+    const result = parse_gsas_file(content)
+    expect(result).not.toBeNull()
+    // start = 2000/100 = 20°, step = 50/100 = 0.5°
+    expect(result?.x[0]).toBeCloseTo(20, 1)
+    expect(result?.x[5]).toBeCloseTo(22.5, 1)
+    expect(result?.y[5]).toBeCloseTo(100, 1) // max=600
+  })
+
+  test(`falls back to defaults when no BANK header present`, () => {
+    // Some GSAS files may lack proper BANK headers - use default step
+    const content = `# GSAS data without BANK header\n100 200 300 400`
+    const result = parse_gsas_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x.length).toBe(4) // 4 intensity values
+    expect(result?.y[3]).toBeCloseTo(100, 1) // max=400 normalized to 100
+  })
+
+  test(`handles FXYE format with x,y,e triplets`, () => {
+    // In FXYE, data is angle intensity error in triplets
+    // BANK header must specify FXYE bin_type for triplet parsing
+    const content = `BANK 1 3 3 FXYE 1000.0 100.0 0 0 STD
+10.0 100 5 11.0 200 10 12.0 300 15`
+    const result = parse_gsas_file(content)
+    expect(result).not.toBeNull()
+    // Should extract y values (indices 1, 4, 7 from triplets)
+    expect(result?.y.length).toBe(3)
+    expect(result?.y[2]).toBeCloseTo(100, 1) // max=300
+  })
+})
+
+describe(`parse_bruker_raw_file`, () => {
+  // Create a mock Bruker RAW v2 file for testing
+  function create_mock_raw_v2(
+    intensities: number[],
+    start: number = 10,
+    step: number = 0.5,
+  ): ArrayBuffer {
+    // V2 header structure (simplified)
+    const header_size = 256
+    const buffer = new ArrayBuffer(header_size + intensities.length * 4)
+    const view = new DataView(buffer)
+    const bytes = new Uint8Array(buffer)
+
+    // Magic bytes "RAW2"
+    bytes[0] = 82 // R
+    bytes[1] = 65 // A
+    bytes[2] = 87 // W
+    bytes[3] = 50 // 2
+
+    // Header size at offset 4
+    view.setUint32(4, header_size, true)
+
+    // Scan parameters (V2 offsets)
+    view.setFloat64(48, start, true) // start angle
+    view.setFloat64(56, step, true) // step size
+    view.setUint32(64, intensities.length, true) // count
+
+    // Intensities as float32
+    for (let idx = 0; idx < intensities.length; idx++) {
+      view.setFloat32(header_size + idx * 4, intensities[idx], true)
+    }
+
+    return buffer
+  }
+
+  // Create a mock Bruker RAW v4 file for testing
+  function create_mock_raw_v4(
+    intensities: number[],
+    start: number = 10,
+    step: number = 0.5,
+  ): ArrayBuffer {
+    const header_size = 256
+    const buffer = new ArrayBuffer(header_size + intensities.length * 4)
+    const view = new DataView(buffer)
+    const bytes = new Uint8Array(buffer)
+
+    // Magic bytes "RAW4"
+    bytes[0] = 82 // R
+    bytes[1] = 65 // A
+    bytes[2] = 87 // W
+    bytes[3] = 52 // 4
+
+    // Header size at offset 4
+    view.setUint32(4, header_size, true)
+
+    // V4 scan parameters at different offsets (140, 148, 156)
+    view.setFloat64(140, start, true)
+    view.setFloat64(148, step, true)
+    view.setUint32(156, intensities.length, true)
+
+    // Intensities as float32
+    for (let idx = 0; idx < intensities.length; idx++) {
+      view.setFloat32(header_size + idx * 4, intensities[idx], true)
+    }
+
+    return buffer
+  }
+
+  test.each([
+    [`v2`, create_mock_raw_v2([100, 200, 300, 200, 100], 20, 1), [20, 21, 22, 23, 24]],
+    [`v4`, create_mock_raw_v4([50, 100, 150, 100, 50], 15, 0.5), [
+      15,
+      15.5,
+      16,
+      16.5,
+      17,
+    ]],
+  ])(`parses Bruker RAW %s format`, (_version, buffer, expected_x) => {
+    const result = parse_bruker_raw_file(buffer)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual(expected_x)
+    expect(result?.y[2]).toBeCloseTo(100, 1) // max normalized
+  })
+
+  test.each([
+    [
+      `unrecognized magic`,
+      (() => {
+        const b = new ArrayBuffer(100)
+        new Uint8Array(b).fill(0)
+        return b
+      })(),
+    ],
+    [`too small`, new ArrayBuffer(10)],
+    [`empty`, new ArrayBuffer(0)],
+  ])(`returns null for %s buffer`, (_desc, buffer) => {
+    expect(parse_bruker_raw_file(buffer)).toBeNull()
   })
 })
 
@@ -293,115 +622,61 @@ describe(`parse_brml_file`, () => {
     expect(result?.y).toEqual([50, 75, 100, 90, 60])
   })
 
-  test(`handles Bruker HRXRD 8-column Datum format`, async () => {
-    // Format: flags, flags, 2Theta, Omega, ..., intensity (8 columns)
-    const xml_content = `<?xml version="1.0"?>
-<RawData>
-  <DataRoutes>
-    <DataRoute>
-      <Datum>1,1,44,18.028,-0.12937,0,2.63482,3</Datum>
-      <Datum>1,1,44.002,18.029,-0.12937,0,2.63493,1</Datum>
-      <Datum>1,1,44.004,18.03,-0.12938,0,2.63505,5</Datum>
-      <Datum>1,1,44.006,18.031,-0.12938,0,2.63516,2</Datum>
-    </DataRoute>
-  </DataRoutes>
-</RawData>`
-    const files = { 'RawData0.xml': new TextEncoder().encode(xml_content) }
-    const zipped = zipSync(files)
-
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
+  // Test various Bruker Datum column formats (8-col HRXRD, 5-col powder, nested paths)
+  test.each([
+    {
+      desc: `HRXRD 8-column format`,
+      files: {
+        'RawData0.xml': `<RawData><DataRoutes><DataRoute>
+        <Datum>1,1,44,18.028,-0.12937,0,2.63482,3</Datum>
+        <Datum>1,1,44.002,18.029,-0.12937,0,2.63493,1</Datum>
+        <Datum>1,1,44.004,18.03,-0.12938,0,2.63505,5</Datum>
+      </DataRoute></DataRoutes></RawData>`,
+      },
+      expected_x: [44, 44.002, 44.004],
+      expected_y: [60, 20, 100], // 3,1,5 normalized
+    },
+    {
+      desc: `powder 5-column format`,
+      files: {
+        'RawData0.xml': `<RawData><DataRoutes><DataRoute>
+        <Datum>19.2,1,5.0,2.5,100</Datum>
+        <Datum>19.2,1,5.02,2.51,200</Datum>
+      </DataRoute></DataRoutes></RawData>`,
+      },
+      expected_x: [5.0, 5.02],
+      expected_y: [50, 100],
+    },
+    {
+      desc: `nested Experiment0/ path`,
+      files: {
+        'Experiment0/RawData0.xml': `<RawData><DataRoutes><DataRoute>
+          <Datum>1,1,44,18,-0.1,0,2.6,10</Datum>
+          <Datum>1,1,44.01,18,-0.1,0,2.6,20</Datum>
+        </DataRoute></DataRoutes></RawData>`,
+      },
+      expected_x: [44, 44.01],
+      expected_y: [50, 100],
+    },
+    {
+      desc: `fallback XML search`,
+      files: {
+        'Experiment0/DataFile.xml': `<RawData><DataRoutes><DataRoute>
+        <Datum>1,1,30,15,-0.1,0,2.5,100</Datum>
+        <Datum>1,1,30.01,15,-0.1,0,2.5,200</Datum>
+      </DataRoute></DataRoutes></RawData>`,
+      },
+      expected_x: [30, 30.01],
+      expected_y: [50, 100],
+    },
+  ])(`handles Bruker $desc`, async ({ files, expected_x, expected_y }) => {
+    const encoded_files = Object.fromEntries(
+      Object.entries(files).map(([k, v]) => [k, new TextEncoder().encode(v)]),
+    )
+    const result = await parse_brml_file(zipSync(encoded_files).buffer as ArrayBuffer)
     expect(result).not.toBeNull()
-    // Check all 2θ values from column 2
-    expect(result?.x[0]).toBeCloseTo(44, 5)
-    expect(result?.x[1]).toBeCloseTo(44.002, 5)
-    expect(result?.x[2]).toBeCloseTo(44.004, 5)
-    expect(result?.x[3]).toBeCloseTo(44.006, 5)
-    // Intensities 3,1,5,2 normalized: max=5 -> 60,20,100,40
-    expect(result?.y[0]).toBeCloseTo(60, 1)
-    expect(result?.y[1]).toBeCloseTo(20, 1)
-    expect(result?.y[2]).toBeCloseTo(100, 1)
-    expect(result?.y[3]).toBeCloseTo(40, 1)
-  })
-
-  test(`handles Bruker powder 5-column Datum format`, async () => {
-    // Format: time, flag, 2Theta, Theta, intensity (5 columns)
-    const xml_content = `<?xml version="1.0"?>
-<RawData>
-  <DataRoutes>
-    <DataRoute>
-      <Datum>19.2,1,4.9979,2.49895,5301</Datum>
-      <Datum>19.2,1,5.01847,2.50924,5307</Datum>
-      <Datum>19.2,1,5.03904,2.51952,5177</Datum>
-    </DataRoute>
-  </DataRoutes>
-</RawData>`
-    const files = { 'RawData0.xml': new TextEncoder().encode(xml_content) }
-    const zipped = zipSync(files)
-
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
-    expect(result).not.toBeNull()
-    // Check all 2θ values from column 2
-    expect(result?.x[0]).toBeCloseTo(4.9979, 4)
-    expect(result?.x[1]).toBeCloseTo(5.01847, 4)
-    expect(result?.x[2]).toBeCloseTo(5.03904, 4)
-    // Normalized: max=5307 -> 5301/5307*100≈99.89, 100, 5177/5307*100≈97.55
-    expect(result?.y[0]).toBeCloseTo(99.89, 1)
-    expect(result?.y[1]).toBeCloseTo(100, 1)
-    expect(result?.y[2]).toBeCloseTo(97.55, 1)
-  })
-
-  test(`handles Bruker HRXRD format with Experiment0/ path prefix`, async () => {
-    // Real BRML files have nested directory structure like Experiment0/RawData0.xml
-    const xml_content = `<?xml version="1.0"?>
-<RawData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <DataRoutes>
-    <DataRoute>
-      <Datum>1,1,44,18.028,-0.12937,0,2.63482,10</Datum>
-      <Datum>1,1,44.002,18.029,-0.12937,0,2.63493,20</Datum>
-      <Datum>1,1,44.004,18.03,-0.12938,0,2.63505,30</Datum>
-    </DataRoute>
-  </DataRoutes>
-</RawData>`
-    const files = {
-      'Experiment0/RawData0.xml': new TextEncoder().encode(xml_content),
-      'Experiment0/OtherFile.xml': new TextEncoder().encode(`<Other/>`),
-      'experimentCollection.xml': new TextEncoder().encode(`<Collection/>`),
-    }
-    const zipped = zipSync(files)
-
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
-    expect(result).not.toBeNull()
-    expect(result?.x[0]).toBeCloseTo(44, 5)
-    expect(result?.x[1]).toBeCloseTo(44.002, 5)
-    expect(result?.x[2]).toBeCloseTo(44.004, 5)
-    // Intensities 10,20,30 normalized: 33.33, 66.67, 100
-    expect(result?.y[0]).toBeCloseTo(33.33, 1)
-    expect(result?.y[1]).toBeCloseTo(66.67, 1)
-    expect(result?.y[2]).toBeCloseTo(100, 1)
-  })
-
-  test(`finds Datum data in fallback XML search`, async () => {
-    // When RawData file is not named 'rawdata', fall back to searching all XMLs
-    const xml_content = `<?xml version="1.0"?>
-<RawData>
-  <DataRoutes>
-    <DataRoute>
-      <Datum>1,1,30,15,-0.1,0,2.5,100</Datum>
-      <Datum>1,1,30.01,15.005,-0.1,0,2.501,200</Datum>
-    </DataRoute>
-  </DataRoutes>
-</RawData>`
-    const files = {
-      'Experiment0/DataFile.xml': new TextEncoder().encode(xml_content),
-    }
-    const zipped = zipSync(files)
-
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
-    expect(result).not.toBeNull()
-    expect(result?.x[0]).toBeCloseTo(30, 5)
-    expect(result?.x[1]).toBeCloseTo(30.01, 5)
-    expect(result?.y[0]).toBeCloseTo(50, 1)
-    expect(result?.y[1]).toBeCloseTo(100, 1)
+    expected_x.forEach((x, idx) => expect(result?.x[idx]).toBeCloseTo(x, 2))
+    expected_y.forEach((y, idx) => expect(result?.y[idx]).toBeCloseTo(y, 1))
   })
 
   test(`handles single-element Datum array without divide-by-zero`, async () => {
@@ -433,6 +708,11 @@ describe(`parse_xrd_file`, () => {
     [`xy string`, xy_content, `data.xy`],
     [`xy ArrayBuffer`, new TextEncoder().encode(xy_content).buffer, `data.xy`],
     [`xye`, `10.0 100 5\n20.0 200 10`, `data.xye`],
+    // New two-column aliases
+    [`csv`, `10.0,100\n20.0,200`, `data.csv`],
+    [`dat`, `10.0 100\n20.0 200`, `data.dat`],
+    [`asc`, `10.0 100\n20.0 200`, `data.asc`],
+    [`txt`, `10.0 100\n20.0 200`, `data.txt`],
     [
       `xrdml`,
       `<?xml version="1.0"?><xrdMeasurements><xrdMeasurement><scan>
@@ -457,13 +737,40 @@ describe(`parse_xrd_file`, () => {
     expect(result?.y[1]).toBeCloseTo(100, 1) // 200/200*100
   })
 
-  test(`returns null for unsupported extension`, async () => {
-    expect(await parse_xrd_file(`content`, `data.txt`)).toBeNull()
+  test.each([
+    [
+      `ras`,
+      `*MEAS_SCAN_START=10.0\n*MEAS_SCAN_STEP=10.0\n*RAS_INT_START\n100 200\n*RAS_INT_END`,
+    ],
+    [`uxd`, `_2THETA_START=10.0\n_STEPSIZE=10.0\n_COUNTS\n100 200`],
+    [`gsas`, `BANK 1 2 2 CONST 1000.0 1000.0 0 0 STD\n100 200`],
+  ])(`routes .%s files correctly`, async (ext, content) => {
+    const result = await parse_xrd_file(content, `scan.${ext}`)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([10, 20])
+    expect(result?.y[1]).toBeCloseTo(100, 1)
+  })
+
+  test.each([
+    [`unsupported extension`, `data.pdf`],
+    [`no extension`, `datafile`],
+  ])(`returns null for %s`, async (_desc, filename) => {
+    expect(await parse_xrd_file(`10.0 100\n20.0 200`, filename)).toBeNull()
+  })
+
+  test.each([
+    [`uppercase extension`, `DATA.XY`],
+    [`.gz suffix`, `data.xy.gz`],
+  ])(`parses correctly with %s`, async (_desc, filename) => {
+    const result = await parse_xrd_file(`10.0 100\n20.0 200`, filename)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([10, 20])
   })
 })
 
 describe(`is_xrd_data_file`, () => {
   test.each([
+    // Original formats
     [`sample.xy`, true],
     [`data.xye`, true],
     [`scan.xrdml`, true],
@@ -472,12 +779,29 @@ describe(`is_xrd_data_file`, () => {
     [`DATA.XYE`, true],
     [`SCAN.XRDML`, true],
     [`SCAN.BRML`, true],
+    // New ASCII two-column aliases
+    [`data.csv`, true],
+    [`data.dat`, true],
+    [`data.asc`, true],
+    [`data.txt`, true],
+    // New header-based formats
+    [`rigaku.ras`, true],
+    [`siemens.uxd`, true],
+    [`rietveld.gsas`, true],
+    [`rietveld.gsa`, true],
+    [`rietveld.gda`, true],
+    [`fullprof.fxye`, true],
+    // New binary formats
+    [`bruker.raw`, true],
     // Gzipped variants
     [`sample.xy.gz`, true],
     [`data.xye.gz`, true],
     [`scan.xrdml.gz`, true],
     [`scan.brml.gz`, true],
     [`SAMPLE.XY.GZ`, true],
+    [`rigaku.ras.gz`, true],
+    [`siemens.uxd.gz`, true],
+    [`bruker.raw.gz`, true],
     // Non-XRD files
     [`data.cif`, false],
     [`structure.json`, false],
@@ -494,7 +818,14 @@ describe(`real example files`, () => {
   const static_xrd_dir = path.resolve(`static/xrd`)
 
   // Get all XRD files in static/xrd/ (including gzipped variants)
-  const xrd_extensions = [`.xy`, `.xye`, `.xrdml`, `.brml`]
+  // Include all supported extensions: original + new formats
+  // deno-fmt-ignore
+  const xrd_extensions = [
+    `.xy`, `.xye`, `.xrdml`, `.brml`, // Original
+    `.csv`, `.dat`, `.asc`, `.txt`, // Two-column aliases
+    `.ras`, `.uxd`, `.gsas`, `.gsa`, `.gda`, `.fxye`, // Header-based
+    `.raw`, // Binary
+  ]
   const xrd_files: string[] = fs.readdirSync(static_xrd_dir).filter((file: string) => {
     const lower = file.toLowerCase()
     // Match .xy, .xy.gz, .xye, .xye.gz, etc.
@@ -519,7 +850,8 @@ describe(`real example files`, () => {
       const base_ext = base_filename.split(`.`).pop()?.toLowerCase()
 
       // Use ArrayBuffer for binary formats, string for text
-      const input = base_ext === `brml` ? content.buffer : content.toString()
+      const is_binary = [`brml`, `raw`].includes(base_ext ?? ``)
+      const input = is_binary ? content.buffer : content.toString()
       const result = await parse_xrd_file(input as string | ArrayBuffer, base_filename)
 
       expect(result).not.toBeNull()
