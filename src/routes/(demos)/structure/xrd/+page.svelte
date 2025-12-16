@@ -261,16 +261,12 @@
       patterns={[]}
       annotate_peaks={5}
       hkl_format="compact"
-      style="height: 500px; flex: 1"
+      style="height: 500px; width: 100%; min-width: 0"
     />
   </section>
 </div>
 
 <style>
-  .bleed-1400 > section {
-    display: grid;
-    gap: 1em;
-  }
   nav {
     display: flex;
     flex-wrap: wrap;
@@ -297,7 +293,7 @@
   }
   .bleed-1400 > section {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
     gap: 1em;
   }
   .selected-structures-grid {

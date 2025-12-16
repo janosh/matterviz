@@ -180,6 +180,41 @@ describe(`parse_ras_file`, () => {
     expect(result?.y[3]).toBeCloseTo(100, 1) // max=400, normalized
   })
 
+  test(`parses three-column format (2-theta, intensity, error)`, () => {
+    // Real Rigaku files often have: 2-theta intensity error
+    const content = `*RAS_HEADER_START
+*MEAS_SCAN_START=2.0
+*MEAS_SCAN_STEP=0.02
+*RAS_HEADER_END
+*RAS_INT_START
+2.0000 100.0 1.0
+2.0200 200.0 1.0
+2.0400 300.0 1.0
+2.0600 200.0 1.0
+2.0800 100.0 1.0
+*RAS_INT_END`
+    const result = parse_ras_file(content)
+    expect(result).not.toBeNull()
+    // Should extract 2-theta from column 1 and intensity from column 2
+    expect(result?.x).toEqual([2.0, 2.02, 2.04, 2.06, 2.08])
+    // max=300, normalized: 33.33, 66.67, 100, 66.67, 33.33
+    expect(result?.y[0]).toBeCloseTo(33.33, 1)
+    expect(result?.y[2]).toBeCloseTo(100, 1)
+    expect(result?.y[4]).toBeCloseTo(33.33, 1)
+  })
+
+  test(`parses two-column format (2-theta, intensity)`, () => {
+    const content = `*RAS_INT_START
+10.0 100
+20.0 200
+30.0 300
+*RAS_INT_END`
+    const result = parse_ras_file(content)
+    expect(result).not.toBeNull()
+    expect(result?.x).toEqual([10, 20, 30])
+    expect(result?.y[2]).toBeCloseTo(100, 1) // max=300
+  })
+
   test(`returns null for empty content`, () => {
     expect(parse_ras_file(``)).toBeNull()
   })

@@ -168,21 +168,23 @@ export function parse_xye_file(content: string): XrdPattern | null {
 
 // Parse a Rigaku .ras file (ASCII format with structured header).
 // Format: *RAS_HEADER_START ... *RAS_HEADER_END followed by *RAS_INT_START ... *RAS_INT_END
+// Data can be single-column (intensity only) or multi-column (2-theta, intensity, [error])
 export function parse_ras_file(content: string): XrdPattern | null {
   const lines = content.split(/\r?\n/)
 
-  // Extract header values
-  const start = extract_header_value(lines, /\*MEAS_SCAN_START\s*=\s*([\d.+-]+)/i) ??
-    extract_header_value(lines, /\*SCAN_START\s*=\s*([\d.+-]+)/i) ??
-    0
-  const step = extract_header_value(lines, /\*MEAS_SCAN_STEP\s*=\s*([\d.+-]+)/i) ??
+  // Extract header values (used as fallback for single-column data)
+  const header_start =
+    extract_header_value(lines, /\*MEAS_SCAN_START\s*=\s*([\d.+-]+)/i) ??
+      extract_header_value(lines, /\*SCAN_START\s*=\s*([\d.+-]+)/i) ??
+      0
+  const header_step = extract_header_value(lines, /\*MEAS_SCAN_STEP\s*=\s*([\d.+-]+)/i) ??
     extract_header_value(lines, /\*SCAN_STEP\s*=\s*([\d.+-]+)/i) ??
     DEFAULT_STEP_SIZE
 
   // Find intensity data section between *RAS_INT_START and *RAS_INT_END
   // Also handle older format with *RAS_DATA_START
   let in_data_section = false
-  const intensities: number[] = []
+  const data_lines: string[] = []
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -190,18 +192,12 @@ export function parse_ras_file(content: string): XrdPattern | null {
       in_data_section = true
       continue
     }
-    if (/^\*RAS_INT_END/i.test(trimmed) || /^\*RAS_DATA_END/i.test(trimmed)) {
-      break
-    }
-    if (in_data_section) {
-      // Handle both single value per line and space-separated values
-      const values = parse_number_list(trimmed)
-      intensities.push(...values)
-    }
+    if (/^\*RAS_INT_END/i.test(trimmed) || /^\*RAS_DATA_END/i.test(trimmed)) break
+    if (in_data_section && trimmed) data_lines.push(trimmed)
   }
 
   // Fallback: if no section markers, try parsing all numeric lines after header
-  if (intensities.length === 0) {
+  if (data_lines.length === 0) {
     let past_header = false
     for (const line of lines) {
       const trimmed = line.trim()
@@ -211,12 +207,23 @@ export function parse_ras_file(content: string): XrdPattern | null {
       }
       if (past_header && trimmed && !trimmed.startsWith(`*`)) {
         const values = parse_number_list(trimmed)
-        if (values.length > 0) intensities.push(...values)
+        if (values.length > 0) data_lines.push(trimmed)
       }
     }
   }
 
-  return create_pattern(start, step, intensities)
+  if (data_lines.length === 0) return null
+
+  // Multi-column (2-theta, intensity, [error]): reuse parse_xy_file
+  // Detect by: 2-3 values per line, multiple rows, first value looks like an angle
+  const first_values = parse_number_list(data_lines[0])
+  const is_multi_column = first_values.length >= 2 && first_values.length <= 3 &&
+    data_lines.length > 1 && first_values[0] < 180
+  if (is_multi_column) return parse_xy_file(data_lines.join(`\n`))
+
+  // Single-column or many space-separated intensities: use header start/step
+  const intensities = data_lines.flatMap(parse_number_list)
+  return create_pattern(header_start, header_step, intensities)
 }
 
 // Parse a Siemens/Bruker .uxd file (ASCII format with underscore-prefixed header).
