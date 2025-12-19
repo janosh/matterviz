@@ -1,9 +1,19 @@
+import type { CellVal } from '$lib/table'
 import { calc_cell_color, strip_html } from '$lib/table'
+import type * as d3sc from 'd3-scale-chromatic'
 import { describe, expect, it } from 'vitest'
+
+type ColorScale = keyof typeof d3sc | null
 
 describe(`calc_cell_color`, () => {
   // Tests for cases that should return null colors
-  it.each([
+  it.each<{
+    name: string
+    val: number | null | undefined
+    all_values: CellVal[]
+    color_scale: ColorScale
+    scale_type?: `linear` | `log`
+  }>([
     {
       name: `null value`,
       val: null,
@@ -22,7 +32,12 @@ describe(`calc_cell_color`, () => {
       all_values: [1, 50, 100],
       color_scale: `interpolateViridis`,
     },
-    { name: `null color_scale`, val: 5, all_values: [1, 5, 10], color_scale: null },
+    {
+      name: `null color_scale`,
+      val: 5,
+      all_values: [1, 5, 10],
+      color_scale: null,
+    },
     {
       name: `empty all_values`,
       val: 5,
@@ -46,14 +61,14 @@ describe(`calc_cell_color`, () => {
       val: 0,
       all_values: [0, 50, 100],
       color_scale: `interpolateViridis`,
-      scale_type: `log` as const,
+      scale_type: `log`,
     },
     {
       name: `negative with log scale`,
       val: -5,
       all_values: [-5, 50, 100],
       color_scale: `interpolateViridis`,
-      scale_type: `log` as const,
+      scale_type: `log`,
     },
   ])(`returns null colors for $name`, ({ val, all_values, color_scale, scale_type }) => {
     const result = calc_cell_color(

@@ -52,7 +52,7 @@ export function calc_cell_color(
   val: number | null | undefined, // cell value
   all_values: CellVal[], // all values in the column
   better: `higher` | `lower` | undefined, // sort direction
-  color_scale: string | null = `interpolateViridis`, // color scale name
+  color_scale: keyof typeof d3sc | null = `interpolateViridis`, // color scale name
   scale_type: `linear` | `log` = `linear`, // scale type
 ): { bg: string | null; text: string | null } {
   // Skip color calculation for null/undefined/NaN values or if color_scale is null
@@ -79,11 +79,12 @@ export function calc_cell_color(
   // Reverse the range if lower values are better
   if (better === `lower`) range.reverse()
 
-  // custom color scale if specified, else default to viridis
-  const scale_name = color_scale || `interpolateViridis`
-  // Cast to ensure TypeScript recognizes it as a valid interpolator function
-  const interpolator = (d3sc[scale_name as keyof typeof d3sc] ||
-    d3sc.interpolateViridis) as (t: number) => string
+  // Get interpolator function, fallback to viridis if not a valid function
+  const scale_fn = d3sc[color_scale]
+  const interpolator =
+    (typeof scale_fn === `function` ? scale_fn : d3sc.interpolateViridis) as (
+      t: number,
+    ) => string
 
   // Use log scale for positive values, otherwise linear/sequential scale
   const bg = scale_type === `log` && range[0] > 0 && range[1] > 0
