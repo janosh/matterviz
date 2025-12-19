@@ -55,8 +55,8 @@ export function calc_cell_color(
   color_scale: string | null = `interpolateViridis`, // color scale name
   scale_type: `linear` | `log` = `linear`, // scale type
 ): { bg: string | null; text: string | null } {
-  // Skip color calculation for null values or if color_scale is null
-  if (val === null || val === undefined || color_scale === null) {
+  // Skip color calculation for null/undefined/NaN values or if color_scale is null
+  if (val === null || val === undefined || Number.isNaN(val) || color_scale === null) {
     return { bg: null, text: null }
   }
 
