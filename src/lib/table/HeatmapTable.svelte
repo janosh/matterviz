@@ -156,6 +156,20 @@
   let drag_col_id = $state<string | null>(null)
   let drag_over_col_id = $state<string | null>(null)
 
+  // WeakMap to assign stable unique IDs to row objects for efficient comparison and keying
+  // This avoids O(n) JSON.stringify calls and prevents unnecessary re-renders
+  const row_id_map = new WeakMap<RowData, string>()
+  let row_id_counter = 0
+
+  function get_row_id(row: RowData): string {
+    let id = row_id_map.get(row)
+    if (id === undefined) {
+      id = `row_${row_id_counter++}`
+      row_id_map.set(row, id)
+    }
+    return id
+  }
+
   // Returns 'left' or 'right' to indicate which side of target to insert dragged column
   function get_drag_side(target_col_id: string): `left` | `right` | null {
     if (!drag_col_id) return null
@@ -435,10 +449,10 @@
     return arrow ? `<span style="font-size: 0.8em;">${arrow}</span>` : ``
   }
 
-  // Row selection
+  // Row selection using WeakMap-based ID lookup instead of O(n) JSON.stringify comparison
   function toggle_row_select(row: RowData) {
-    const row_json = JSON.stringify(row)
-    const idx = selected_rows.findIndex((r) => JSON.stringify(r) === row_json)
+    const row_id = get_row_id(row)
+    const idx = selected_rows.findIndex((r) => get_row_id(r) === row_id)
     if (idx >= 0) {
       selected_rows = selected_rows.filter((_, i) => i !== idx)
     } else {
@@ -447,8 +461,8 @@
   }
 
   function is_row_selected(row: RowData): boolean {
-    const row_json = JSON.stringify(row)
-    return selected_rows.some((r) => JSON.stringify(r) === row_json)
+    const row_id = get_row_id(row)
+    return selected_rows.some((r) => get_row_id(r) === row_id)
   }
 
   // Export functions
@@ -757,7 +771,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each paginated_data as row (JSON.stringify(row))}
+        {#each paginated_data as row (get_row_id(row))}
           {@const row_selected = show_row_select && is_row_selected(row)}
           <tr
             animate:flip={{ duration: 500 }}

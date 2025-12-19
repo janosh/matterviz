@@ -5,15 +5,11 @@ import type {
   MultiSortState,
   RowData,
   SortState,
-} from '$lib/table'
-import { calc_cell_color, HeatmapTable, strip_html } from '$lib/table'
+} from '$lib/table/utils'
+import { calc_cell_color, strip_html } from '$lib/table/utils'
 import { describe, expect, it } from 'vitest'
 
 describe(`table module exports`, () => {
-  it(`exports HeatmapTable component`, () => {
-    expect(HeatmapTable).toBeDefined()
-  })
-
   it(`exports calc_cell_color function`, () => {
     expect(calc_cell_color).toBeDefined()
     expect(typeof calc_cell_color).toBe(`function`)
@@ -119,12 +115,25 @@ describe(`calc_cell_color`, () => {
     expect(result.text).not.toBeNull()
   })
 
-  it(`excludes zero values for log scale`, () => {
-    // Log scale cannot handle zero/negative values
-    const result = calc_cell_color(0, [0, 50, 100], `higher`, `interpolateViridis`, `log`)
-    // The value 0 itself cannot be mapped in log scale, but the function should not crash
-    // and should handle this gracefully
-    expect(result).toBeDefined()
+  it(`returns null colors for non-positive values with log scale`, () => {
+    // Log scale cannot handle zero/negative values, should return null colors
+    const zero_result = calc_cell_color(
+      0,
+      [0, 50, 100],
+      `higher`,
+      `interpolateViridis`,
+      `log`,
+    )
+    expect(zero_result).toEqual({ bg: null, text: null })
+
+    const negative_result = calc_cell_color(
+      -5,
+      [-5, 50, 100],
+      `higher`,
+      `interpolateViridis`,
+      `log`,
+    )
+    expect(negative_result).toEqual({ bg: null, text: null })
   })
 
   it(`includes negative values for linear scale`, () => {

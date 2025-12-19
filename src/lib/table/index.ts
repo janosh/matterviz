@@ -60,6 +60,11 @@ export function calc_cell_color(
     return { bg: null, text: null }
   }
 
+  // Log scale cannot handle non-positive values, return null colors
+  if (scale_type === `log` && val <= 0) {
+    return { bg: null, text: null }
+  }
+
   const numeric_vals = all_values.filter(
     (v): v is number =>
       typeof v === `number` &&
