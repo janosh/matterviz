@@ -5,8 +5,8 @@ import type {
   MultiSortState,
   RowData,
   SortState,
-} from '$lib/table/utils'
-import { calc_cell_color, strip_html } from '$lib/table/utils'
+} from '$lib/table'
+import { calc_cell_color, strip_html } from '$lib/table'
 import { describe, expect, it } from 'vitest'
 
 describe(`table module exports`, () => {

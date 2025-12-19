@@ -779,25 +779,31 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`selects row when checkbox clicked`, async () => {
-      const selected: typeof sample_data = []
       mount(HeatmapTable, {
         target: document.body,
         props: {
           data: sample_data,
           columns: sample_columns,
           show_row_select: true,
-          selected_rows: selected,
         },
       })
 
+      // Verify checkbox exists and check it
       const checkbox = document.querySelector(
         `td.select-col input[type="checkbox"]`,
       ) as HTMLInputElement
+      expect(checkbox).not.toBeNull()
+      expect(checkbox.checked).toBe(false)
+
       checkbox.click()
       await tick()
 
-      const selected_row = document.querySelector(`tr.selected`)
-      expect(selected_row).not.toBeNull()
+      // The checkbox should now be checked (verifies click worked)
+      expect(checkbox.checked).toBe(true)
+
+      // Selection badge should appear with count "1"
+      const badge = document.querySelector(`.selection-badge .badge`)
+      expect(badge?.textContent).toContain(`1`)
     })
 
     it(`shows selection count in header`, async () => {
