@@ -28,26 +28,22 @@ Direct
 0.5 0.0 0.5
 0.0 0.5 0.5`
 
-function create_mock_data_transfer(files: File[]): DataTransfer {
-  return {
-    files,
-    getData: () => ``,
-    dropEffect: `copy` as const,
-    effectAllowed: `copy` as const,
-    items: [] as unknown as DataTransferItemList,
-    types: [] as readonly string[],
-    clearData: () => {},
-    setData: () => {},
-    setDragImage: () => {},
-  } as unknown as DataTransfer
-}
+const create_mock_data_transfer = (files: File[]): DataTransfer => ({
+  files: Object.assign(files, { item: (idx: number) => files[idx] ?? null }) as FileList,
+  getData: () => ``,
+  dropEffect: `copy` as const,
+  effectAllowed: `copy` as const,
+  items: [] as unknown as DataTransferItemList,
+  types: [] as readonly string[],
+  clearData: () => {},
+  setData: () => {},
+  setDragImage: () => {},
+})
 
-function create_drop_event(files: File[]): DragEvent {
+const create_drop_event = (files: File[]): DragEvent => {
   const drag_event = new DragEvent(`drop`)
-  Object.defineProperty(drag_event, `dataTransfer`, {
-    value: create_mock_data_transfer(files),
-    writable: false,
-  })
+  const descriptor = { value: create_mock_data_transfer(files), writable: false }
+  Object.defineProperty(drag_event, `dataTransfer`, descriptor)
   return drag_event
 }
 

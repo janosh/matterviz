@@ -482,47 +482,56 @@ export function interpolate_hull_2d(hull: Point2D[], x: number): number | null {
 
 const EPS = 1e-9
 
-function subtract(a: Point3D, b: Point3D): Point3D {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }
-}
+const subtract = (pt1: Point3D, pt2: Point3D): Point3D => ({
+  x: pt1.x - pt2.x,
+  y: pt1.y - pt2.y,
+  z: pt1.z - pt2.z,
+})
 
-function cross(a: Point3D, b: Point3D): Point3D {
-  return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }
-}
+const cross = (vec1: Point3D, vec2: Point3D): Point3D => ({
+  x: vec1.y * vec2.z - vec1.z * vec2.y,
+  y: vec1.z * vec2.x - vec1.x * vec2.z,
+  z: vec1.x * vec2.y - vec1.y * vec2.x,
+})
 
-function norm(a: Point3D): number {
-  return Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
-}
+const norm = (point: Point3D): number =>
+  Math.sqrt(point.x * point.x + point.y * point.y + point.z * point.z)
 
-function normalize(v: Point3D): Point3D {
-  const length = norm(v)
+function normalize(point: Point3D): Point3D {
+  const length = norm(point)
   if (length < EPS) return { x: 0, y: 0, z: 0 }
-  return { x: v.x / length, y: v.y / length, z: v.z / length }
+  return { x: point.x / length, y: point.y / length, z: point.z / length }
 }
 
-function compute_plane(a: Point3D, b: Point3D, c: Point3D): Plane {
-  const ab = subtract(b, a)
-  const ac = subtract(c, a)
-  const n = normalize(cross(ab, ac))
-  const offset = -(n.x * a.x + n.y * a.y + n.z * a.z)
-  return { normal: n, offset }
+function compute_plane(p1: Point3D, p2: Point3D, p3: Point3D): Plane {
+  const edge_12 = subtract(p2, p1)
+  const edge_13 = subtract(p3, p1)
+  const normal = normalize(cross(edge_12, edge_13))
+  const offset = -(normal.x * p1.x + normal.y * p1.y + normal.z * p1.z)
+  return { normal, offset }
 }
 
-function point_plane_signed_distance(plane: Plane, p: Point3D): number {
-  return plane.normal.x * p.x + plane.normal.y * p.y + plane.normal.z * p.z + plane.offset
-}
+const point_plane_signed_distance = (plane: Plane, point: Point3D): number =>
+  plane.normal.x * point.x + plane.normal.y * point.y + plane.normal.z * point.z +
+  plane.offset
 
-function compute_centroid(a: Point3D, b: Point3D, c: Point3D): Point3D {
-  return { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3, z: (a.z + b.z + c.z) / 3 }
-}
+const compute_centroid = (p1: Point3D, p2: Point3D, p3: Point3D): Point3D => ({
+  x: (p1.x + p2.x + p3.x) / 3,
+  y: (p1.y + p2.y + p3.y) / 3,
+  z: (p1.z + p2.z + p3.z) / 3,
+})
 
-function distance_point_to_line(a: Point3D, b: Point3D, p: Point3D): number {
-  const ab = subtract(b, a)
-  const ap = subtract(p, a)
-  const cross_prod = cross(ab, ap)
-  const ab_len = norm(ab)
-  if (ab_len < EPS) return 0
-  return norm(cross_prod) / ab_len
+function distance_point_to_line(
+  line_start: Point3D,
+  line_end: Point3D,
+  point: Point3D,
+): number {
+  const line_vec = subtract(line_end, line_start)
+  const to_point = subtract(point, line_start)
+  const cross_prod = cross(line_vec, to_point)
+  const line_len = norm(line_vec)
+  if (line_len < EPS) return 0
+  return norm(cross_prod) / line_len
 }
 
 function choose_initial_tetrahedron(
@@ -745,10 +754,10 @@ export interface HullFaceModel {
   denom: number
 }
 
-export function build_lower_hull_model(
+export const build_lower_hull_model = (
   faces: ConvexHullTriangle[],
-): HullFaceModel[] {
-  return faces.map((tri) => {
+): HullFaceModel[] =>
+  faces.map((tri) => {
     const [p1, p2, p3] = tri.vertices
     const plane = (() => {
       const x1 = p1.x, y1 = p1.y, z1 = p1.z
@@ -786,7 +795,6 @@ export function build_lower_hull_model(
       denom,
     }
   })
-}
 
 function point_in_triangle_xy(model: HullFaceModel, x: number, y: number): boolean {
   const { x1, y1, x2, y2, x3, y3, denom } = model
@@ -849,22 +857,28 @@ interface Plane4D {
   offset: number
 }
 
-function subtract_4d(a: Point4D, b: Point4D): Point4D {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z, w: a.w - b.w }
-}
+const subtract_4d = (pt1: Point4D, pt2: Point4D): Point4D => ({
+  x: pt1.x - pt2.x,
+  y: pt1.y - pt2.y,
+  z: pt1.z - pt2.z,
+  w: pt1.w - pt2.w,
+})
 
-function dot_4d(a: Point4D, b: Point4D): number {
-  return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
-}
+const dot_4d = (vec_a: Point4D, vec_b: Point4D): number =>
+  vec_a.x * vec_b.x + vec_a.y * vec_b.y + vec_a.z * vec_b.z + vec_a.w * vec_b.w
 
-function norm_4d(v: Point4D): number {
-  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w)
-}
+const norm_4d = (point: Point4D): number =>
+  Math.sqrt(point.x * point.x + point.y * point.y + point.z * point.z + point.w * point.w)
 
-function normalize_4d(v: Point4D): Point4D {
-  const length = norm_4d(v)
+function normalize_4d(point: Point4D): Point4D {
+  const length = norm_4d(point)
   if (length < EPS) return { x: 0, y: 0, z: 0, w: 0 }
-  return { x: v.x / length, y: v.y / length, z: v.z / length, w: v.w / length }
+  return {
+    x: point.x / length,
+    y: point.y / length,
+    z: point.z / length,
+    w: point.w / length,
+  }
 }
 
 // Compute normal to a 3D hyperplane in 4D space defined by 4 points
@@ -934,23 +948,20 @@ function compute_plane_4d(p1: Point4D, p2: Point4D, p3: Point4D, p4: Point4D): P
   return { normal, offset }
 }
 
-function point_plane_signed_distance_4d(plane: Plane4D, p: Point4D): number {
-  return dot_4d(plane.normal, p) + plane.offset
-}
+const point_plane_signed_distance_4d = (plane: Plane4D, point: Point4D): number =>
+  dot_4d(plane.normal, point) + plane.offset
 
-function compute_centroid_4d(
+const compute_centroid_4d = (
   p1: Point4D,
   p2: Point4D,
   p3: Point4D,
   p4: Point4D,
-): Point4D {
-  return {
-    x: (p1.x + p2.x + p3.x + p4.x) / 4,
-    y: (p1.y + p2.y + p3.y + p4.y) / 4,
-    z: (p1.z + p2.z + p3.z + p4.z) / 4,
-    w: (p1.w + p2.w + p3.w + p4.w) / 4,
-  }
-}
+): Point4D => ({
+  x: (p1.x + p2.x + p3.x + p4.x) / 4,
+  y: (p1.y + p2.y + p3.y + p4.y) / 4,
+  z: (p1.z + p2.z + p3.z + p4.z) / 4,
+  w: (p1.w + p2.w + p3.w + p4.w) / 4,
+})
 
 function distance_point_to_hyperplane_4d(
   p1: Point4D,
@@ -1032,8 +1043,8 @@ function choose_initial_4_simplex(
     : Array.from({ length: sample_size }, (_, idx) =>
       Math.floor((idx * points.length) / sample_size))
 
-  let idx_min_x = 0
-  let idx_max_x = 0
+  let idx_far_a = 0
+  let idx_far_b = 0
   let max_dist_sq = -1
 
   for (const idx_a of sample_indices) {
@@ -1045,21 +1056,21 @@ function choose_initial_4_simplex(
         (pa.w - pb.w) ** 2
       if (dist_sq > max_dist_sq) {
         max_dist_sq = dist_sq
-        idx_min_x = idx_a
-        idx_max_x = idx_b
+        idx_far_a = idx_a
+        idx_far_b = idx_b
       }
     }
   }
-  if (idx_min_x === idx_max_x || max_dist_sq < EPS) return null
+  if (idx_far_a === idx_far_b || max_dist_sq < EPS) return null
 
-  // Find point farthest from line through idx_min_x and idx_max_x
+  // Find point farthest from line through idx_far_a and idx_far_b
   let idx_far_line = -1
   let best_dist_line = -1
   for (let idx = 0; idx < points.length; idx++) {
-    if (idx === idx_min_x || idx === idx_max_x) continue
+    if (idx === idx_far_a || idx === idx_far_b) continue
     const dist = distance_point_to_line_4d(
-      points[idx_min_x],
-      points[idx_max_x],
+      points[idx_far_a],
+      points[idx_far_b],
       points[idx],
     )
     if (dist > best_dist_line) {
@@ -1073,10 +1084,10 @@ function choose_initial_4_simplex(
   let idx_far_plane = -1
   let best_dist_plane = -1
   for (let idx = 0; idx < points.length; idx++) {
-    if (idx === idx_min_x || idx === idx_max_x || idx === idx_far_line) continue
+    if (idx === idx_far_a || idx === idx_far_b || idx === idx_far_line) continue
     const dist = distance_point_to_hyperplane_4d(
-      points[idx_min_x],
-      points[idx_max_x],
+      points[idx_far_a],
+      points[idx_far_b],
       points[idx_far_line],
       points[idx],
     )
@@ -1089,8 +1100,8 @@ function choose_initial_4_simplex(
 
   // Find point farthest from 3D hyperplane through first four points
   const plane0 = compute_plane_4d(
-    points[idx_min_x],
-    points[idx_max_x],
+    points[idx_far_a],
+    points[idx_far_b],
     points[idx_far_line],
     points[idx_far_plane],
   )
@@ -1098,7 +1109,7 @@ function choose_initial_4_simplex(
   let best_dist_hyperplane = -1
   for (let idx = 0; idx < points.length; idx++) {
     if (
-      idx === idx_min_x || idx === idx_max_x || idx === idx_far_line ||
+      idx === idx_far_a || idx === idx_far_b || idx === idx_far_line ||
       idx === idx_far_plane
     ) continue
     const dist = Math.abs(point_plane_signed_distance_4d(plane0, points[idx]))
@@ -1109,7 +1120,7 @@ function choose_initial_4_simplex(
   }
   if (idx_far_hyperplane === -1 || best_dist_hyperplane < EPS) return null
 
-  return [idx_min_x, idx_max_x, idx_far_line, idx_far_plane, idx_far_hyperplane]
+  return [idx_far_a, idx_far_b, idx_far_line, idx_far_plane, idx_far_hyperplane]
 }
 
 function make_face_4d(
@@ -1396,10 +1407,10 @@ interface TetrahedronModel {
   max_z: number
 }
 
-function build_tetrahedron_models(
+const build_tetrahedron_models = (
   hull_tetrahedra: ConvexHullTetrahedron[],
-): TetrahedronModel[] {
-  return hull_tetrahedra.map((tet) => {
+): TetrahedronModel[] =>
+  hull_tetrahedra.map((tet) => {
     const [p0, p1, p2, p3] = tet.vertices
     const vertices_3d: [Point3D, Point3D, Point3D, Point3D] = [
       { x: p0.x, y: p0.y, z: p0.z },
@@ -1421,7 +1432,6 @@ function build_tetrahedron_models(
       max_z: Math.max(...zs),
     }
   })
-}
 
 // Compute distance from point to lower hull in 4D
 export const compute_e_above_hull_4d = (

@@ -66,13 +66,15 @@ export function calculate_face_normal(p1: Point3D, p2: Point3D, p3: Point3D): Po
   return { x: nx / magnitude, y: ny / magnitude, z: nz / magnitude }
 }
 
-export function calculate_face_centroid(p1: Point3D, p2: Point3D, p3: Point3D): Point3D {
-  return {
-    x: (p1.x + p2.x + p3.x) / 3,
-    y: (p1.y + p2.y + p3.y) / 3,
-    z: (p1.z + p2.z + p3.z) / 3,
-  }
-}
+export const calculate_face_centroid = (
+  p1: Point3D,
+  p2: Point3D,
+  p3: Point3D,
+): Point3D => ({
+  x: (p1.x + p2.x + p3.x) / 3,
+  y: (p1.y + p2.y + p3.y) / 3,
+  z: (p1.z + p2.z + p3.z) / 3,
+})
 
 export function get_ternary_3d_coordinates(
   entries: PhaseData[],

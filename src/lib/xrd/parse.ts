@@ -8,9 +8,8 @@ const DEFAULT_STEP_SIZE = 0.02
 
 // Generate x values from scan parameters (start angle, step size, point count).
 // Used by formats that store metadata + intensity-only data.
-function generate_x_from_scan(start: number, step: number, count: number): number[] {
-  return Array.from({ length: count }, (_, idx) => start + idx * step)
-}
+const generate_x_from_scan = (start: number, step: number, count: number): number[] =>
+  Array.from({ length: count }, (_, idx) => start + idx * step)
 
 // Create normalized XrdPattern from scan metadata and intensities.
 // Returns null if no intensity data. Used by all parsers as final step.
@@ -26,9 +25,8 @@ function create_pattern(
 }
 
 // Parse whitespace-separated numbers from text. Used by multiple formats.
-function parse_number_list(text: string): number[] {
-  return text.trim().split(/\s+/).map(parseFloat).filter((val) => !isNaN(val))
-}
+const parse_number_list = (text: string): number[] =>
+  text.trim().split(/\s+/).map(parseFloat).filter((val) => !isNaN(val))
 
 // Extract numeric value from header line matching "KEY=VALUE" or "KEY VALUE" pattern.
 // Returns null if not found or not a valid number.

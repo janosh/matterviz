@@ -4,17 +4,16 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 
 // Helper: create uniform grid with constant value
-function create_uniform_grid(
+const create_uniform_grid = (
   nx: number,
   ny: number,
   nz: number,
   value: number,
-): number[][][] {
-  return Array.from(
+): number[][][] =>
+  Array.from(
     { length: nx },
     () => Array.from({ length: ny }, () => Array.from({ length: nz }, () => value)),
   )
-}
 
 // Helper: create gradient grid along specified axis
 function create_gradient_grid(
@@ -40,7 +39,7 @@ function create_gradient_grid(
 }
 
 // Helper: create spherical grid (distance² from center)
-function create_spherical_grid(size: number): number[][][] {
+const create_spherical_grid = (size: number): number[][][] => {
   const center = (size - 1) / 2
   return Array.from(
     { length: size },

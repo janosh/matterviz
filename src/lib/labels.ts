@@ -253,13 +253,12 @@ export const SUBSCRIPT_MAP = {
   '9': `₉`,
 } as const
 
-export function superscript_digits(input: string): string {
-  // use replace all signs and digits with their unicode superscript equivalent
-  return input.replace(
+// replaces all signs and digits with their unicode superscript equivalent
+export const superscript_digits = (input: string): string =>
+  input.replace(
     /[\d+-]/g,
     (match) => SUPERSCRIPT_MAP[match as keyof typeof SUPERSCRIPT_MAP] ?? match,
   )
-}
 
 // Trajectory property configuration: clean labels and units as structured data
 export const trajectory_property_config: Record<string, { label: string; unit: string }> =

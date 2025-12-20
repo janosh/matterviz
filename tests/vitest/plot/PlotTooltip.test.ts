@@ -4,11 +4,10 @@ import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
 // Helper to create a simple children snippet for testing.
-function make_children(text: string = `Test`) {
-  return createRawSnippet(() => ({
+const make_children = (text: string = `Test`) =>
+  createRawSnippet(() => ({
     render: () => `<span>${text}</span>`,
   }))
-}
 
 describe(`PlotTooltip`, () => {
   test(`renders with basic positioning, default offset, and absolute position`, () => {

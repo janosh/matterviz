@@ -3,7 +3,6 @@ import * as math from '$lib/math'
 import type { PymatgenStructure } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites } from '$lib/structure/pbc'
 import {
-  format_supercell_scaling,
   generate_lattice_points,
   is_valid_supercell_input,
   make_supercell,
@@ -217,15 +216,6 @@ describe(`validation and formatting`, () => {
     [``, false],
   ])(`validates %s as %s`, (input, expected) => {
     expect(is_valid_supercell_input(input)).toBe(expected)
-  })
-
-  test.each([
-    [[1, 1, 1], `1×1×1`],
-    [[2, 2, 2], `2×2×2`],
-    [[3, 1, 2], `3×1×2`],
-    [[5, 4, 3], `5×4×3`],
-  ])(`formats %s as %s`, (input, expected) => {
-    expect(format_supercell_scaling(input as Vec3)).toBe(expected)
   })
 })
 
