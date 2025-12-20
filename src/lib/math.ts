@@ -65,9 +65,8 @@ export function calc_lattice_params(
   return { a, b, c, alpha, beta, gamma, volume }
 }
 
-export function scale<T extends NdVector>(vec: T, factor: number): T {
-  return vec.map((component) => component * factor) as T
-}
+export const scale = <T extends NdVector>(vec: T, factor: number): T =>
+  vec.map((component) => component * factor) as T
 
 export const euclidean_dist = (vec1: NdVector, vec2: NdVector): number => {
   if (vec1.length !== vec2.length) {
