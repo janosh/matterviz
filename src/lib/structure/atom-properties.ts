@@ -28,8 +28,8 @@ export interface AtomPropertyColors {
 const GRAY = `#808080`
 const DEFAULT_COLOR_SCALE = `interpolateViridis`
 
-export const get_d3_color_scales = () =>
-  Object.keys(d3_sc).filter((k) => k.startsWith(`interpolate`))
+export const get_d3_color_scales = (): string[] =>
+  Object.keys(d3_sc).filter((key) => key.startsWith(`interpolate`))
 
 const get_interp = (scale: string) => {
   const fn = d3_sc[scale as keyof typeof d3_sc]
@@ -102,16 +102,15 @@ export const apply_categorical_color_scale = (
 
 // Get original site index for property color lookup.
 // Supercell atoms use orig_unit_cell_idx, image atoms use orig_site_idx, otherwise use site_idx.
-export function get_orig_site_idx(
+export const get_orig_site_idx = (
   site: Site | undefined,
   site_idx: number,
-): number {
-  return typeof site?.properties?.orig_unit_cell_idx === `number`
+): number =>
+  typeof site?.properties?.orig_unit_cell_idx === `number`
     ? site.properties.orig_unit_cell_idx
     : typeof site?.properties?.orig_site_idx === `number`
     ? site.properties.orig_site_idx
     : site_idx
-}
 
 // Expand structure with PBC images - use minimal expansion based on atom positions
 function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {

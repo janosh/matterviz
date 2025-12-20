@@ -15,12 +15,11 @@ const covalent_radii: Map<string, number> = new Map(
 )
 
 // Get the species with highest occupancy from a site.
-function get_majority_species(site: Site) {
-  return (site.species ?? []).reduce(
-    (max, spec) => (spec.occu > max.occu ? spec : max),
+const get_majority_species = (site: Site) =>
+  (site.species ?? []).reduce(
+    (max_species, species) => (species.occu > max_species.occu ? species : max_species),
     site.species?.[0] ?? { element: ``, occu: -1 },
   )
-}
 
 // Helper to extract numeric index from site properties
 function get_orig_idx(site: Site, fallback: number): number {
@@ -136,15 +135,14 @@ function setup_spatial_grid(sites: Site[], cutoff: number) {
 }
 
 // Get candidate neighbor indices using spatial grid or all sites.
-function get_candidates(
+const get_candidates = (
   pos: Vec3,
   sites: Site[],
   spatial: ReturnType<typeof setup_spatial_grid>,
-): number[] {
-  return spatial
+): number[] =>
+  spatial
     ? get_neighbors_from_grid(pos, spatial.grid, spatial.cell_size)
     : Array.from({ length: sites.length }, (_, idx) => idx)
-}
 
 export const BONDING_STRATEGIES = { electroneg_ratio, solid_angle } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES

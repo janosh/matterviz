@@ -251,11 +251,9 @@ export const DEFAULT_HIGHLIGHT_STYLE: Required<HighlightStyle> = {
   pulse_speed: 3, // Smooth pulsing
 }
 
-export function merge_highlight_style(
+export const merge_highlight_style = (
   custom_style: HighlightStyle | undefined,
-): Required<HighlightStyle> {
-  return { ...DEFAULT_HIGHLIGHT_STYLE, ...custom_style }
-}
+): Required<HighlightStyle> => ({ ...DEFAULT_HIGHLIGHT_STYLE, ...custom_style })
 
 export function is_entry_highlighted<T extends { entry_id?: string }>(
   entry: T,

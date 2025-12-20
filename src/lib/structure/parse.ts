@@ -64,14 +64,9 @@ export interface PhonopyData {
   [key: string]: unknown
 }
 
-// Normalize scientific notation in coordinate strings
-// Handles eEdD and *^ notation variants
-function normalize_scientific_notation(str: string): string {
-  return str
-    .toLowerCase()
-    .replace(/d/g, `e`) // Replace D/d with e
-    .replace(/\*\^/g, `e`) // Replace *^ with e
-}
+// Normalize scientific notation in coordinate strings (handles eEdD and *^ notation variants)
+const normalize_scientific_notation = (str: string): string =>
+  str.toLowerCase().replace(/d/g, `e`).replace(/\*\^/g, `e`)
 
 // Parse a coordinate value that might be in various scientific notation formats
 function parse_coordinate(str: string): number {
@@ -504,6 +499,82 @@ export function parse_xyz(content: string): ParsedStructure | null {
   }
 }
 
+// Parse a single symmetry expression dimension (e.g., "x-y+1/3" or "-x+y")
+// Returns the numeric coefficient for each variable and the translation constant
+const parse_symmetry_expression = (
+  expr_input: string,
+): { coefficients: [number, number, number]; translation: number } => {
+  const coefficients: [number, number, number] = [0, 0, 0]
+  let translation = 0
+
+  // Remove all whitespace
+  const expr = expr_input.replace(/\s+/g, ``)
+  if (!expr) return { coefficients, translation }
+
+  // Tokenize: split into terms while preserving signs
+  // E.g., "x-y+1/3" → ["x", "-y", "+1/3"] or "-x+y" → ["-x", "+y"]
+  const tokens: string[] = []
+  let current_token = ``
+
+  for (let idx = 0; idx < expr.length; idx++) {
+    const char = expr[idx]
+    if ((char === `+` || char === `-`) && current_token.length > 0) {
+      tokens.push(current_token)
+      current_token = char
+    } else {
+      current_token += char
+    }
+  }
+  if (current_token) tokens.push(current_token)
+
+  for (const token of tokens) {
+    // Check if this token is a variable term (x, y, or z with optional sign)
+    const var_match = token.match(/^([+-]?)([xyz])$/)
+    if (var_match) {
+      const sign = var_match[1] === `-` ? -1 : 1
+      const var_char = var_match[2]
+      const var_idx = var_char === `x` ? 0 : var_char === `y` ? 1 : 2
+      coefficients[var_idx] += sign
+      continue
+    }
+
+    // Check if this is a numeric term (integer, decimal, or fraction)
+    let sign = 1
+    let num_str = token
+
+    // Handle leading sign
+    if (num_str.startsWith(`+`)) {
+      num_str = num_str.slice(1)
+    } else if (num_str.startsWith(`-`)) {
+      sign = -1
+      num_str = num_str.slice(1)
+    }
+
+    // Skip empty tokens (from dangling operators like "x+")
+    if (!num_str || num_str === `+` || num_str === `-`) continue
+
+    if (num_str.includes(`/`)) {
+      // Fraction
+      const parts = num_str.split(`/`)
+      if (parts.length === 2) {
+        const numerator = parseFloat(parts[0])
+        const denominator = parseFloat(parts[1])
+        if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+          translation += sign * (numerator / denominator)
+        }
+      }
+    } else {
+      // Integer or decimal
+      const val = parseFloat(num_str)
+      if (!isNaN(val)) {
+        translation += sign * val
+      }
+    }
+  }
+
+  return { coefficients, translation }
+}
+
 // Apply symmetry operations to generate equivalent positions
 const apply_symmetry_ops = (
   atom: CifAtom,
@@ -515,10 +586,12 @@ const apply_symmetry_ops = (
   const equivalent_atoms: CifAtom[] = []
   const seen = new Set<string>()
   const wrap = (
-    v: Vec3,
-  ): Vec3 => (wrap_frac ? v.map((c) => c - Math.floor(c)) as Vec3 : v)
-  const key = (v: Vec3): string =>
-    `${v[0].toFixed(12)},${v[1].toFixed(12)},${v[2].toFixed(12)}`
+    coords: Vec3,
+  ): Vec3 => (wrap_frac ? coords.map((val) => val - Math.floor(val)) as Vec3 : coords)
+  // Use 6 decimal places for deduplication to handle floating point imprecision
+  // from compound symmetry operations like x-y, -x+y which can produce small errors
+  const key = (coords: Vec3): string =>
+    `${coords[0].toFixed(6)},${coords[1].toFixed(6)},${coords[2].toFixed(6)}`
 
   // Always include base atom (optionally wrapped)
   const base_coords = wrap(atom.coords as Vec3)
@@ -534,58 +607,12 @@ const apply_symmetry_ops = (
     const new_coords: Vec3 = [0, 0, 0]
 
     for (let dim = 0; dim < 3; dim++) {
-      const part = parts[dim]
-      let expr = part.replace(/\s+/g, ``)
-
-      let coord = 0
-      let translation = 0
-
-      // Support both var+number and number+var forms, with optional sign on var
-      const var_match = expr.match(/([+-]?)(x|y|z)/)
-      if (var_match) {
-        const sign_char = var_match[1]
-        const var_char = var_match[2]
-        const var_index = var_char === `x` ? 0 : var_char === `y` ? 1 : 2
-        const var_sign = sign_char === `-` ? -1 : 1
-        coord = var_sign * atom.coords[var_index]
-        // Remove the variable term (including its sign) to leave pure translation
-        expr = expr.replace(var_match[0], ``)
-
-        // Normalize the remaining expression: trim whitespace and remove trailing operators
-        expr = expr.trim()
-        if (expr.endsWith(`+`) || expr.endsWith(`-`)) expr = expr.slice(0, -1)
-
-        // Treat empty expression as "0"
-        if (expr.length === 0) expr = `0`
-      }
-
-      if (expr.length > 0) {
-        // Remaining is numeric translation, possibly with leading sign
-        let sign = 1
-        let number_str = expr
-        if (expr[0] === `+` || expr[0] === `-`) {
-          sign = expr[0] === `-` ? -1 : 1
-          number_str = expr.slice(1)
-        }
-        if (number_str.includes(`/`)) {
-          const [num, den] = number_str.split(`/`)
-          const numerator = parseFloat(num)
-          const denominator = parseFloat(den)
-          if (isNaN(numerator) || isNaN(denominator)) {
-            console.warn(`Malformed fraction in symmetry operation: ${num}/${den}`)
-          } else if (denominator === 0) {
-            console.warn(`Division by zero in symmetry operation: ${num}/${den}`)
-          } else translation = sign * (numerator / denominator)
-        } else {
-          const val = parseFloat(number_str)
-          // Log malformed numeric value for debugging
-          if (isNaN(val)) {
-            console.warn(`Malformed numeric value in symmetry operation: ${number_str}`)
-          } else translation = sign * val
-        }
-      }
-
-      new_coords[dim] = coord + translation
+      const { coefficients, translation } = parse_symmetry_expression(parts[dim])
+      // Apply: new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
+      new_coords[dim] = coefficients[0] * atom.coords[0] +
+        coefficients[1] * atom.coords[1] +
+        coefficients[2] * atom.coords[2] +
+        translation
     }
 
     // Wrap and deduplicate transformed coordinates
@@ -948,11 +975,10 @@ export function parse_cif(
     const ops_to_use = already_enumerated ? [] : normalized_ops
 
     // Global deduplication of final sites (per element + coordinates + label)
+    // Use 6 decimal places to handle floating point imprecision from compound symmetry ops
     const seen_site_keys = new Set<string>()
     const site_key = (element: string, abc: Vec3, label: string): string =>
-      `${element}|${label}|${abc[0].toFixed(12)},${abc[1].toFixed(12)},${
-        abc[2].toFixed(12)
-      }`
+      `${element}|${label}|${abc[0].toFixed(6)},${abc[1].toFixed(6)},${abc[2].toFixed(6)}`
 
     for (const atom of atoms) {
       const element = validate_element_symbol(atom.element, all_sites.length)
@@ -1468,9 +1494,8 @@ export function is_optimade_json(content: string): boolean {
 }
 
 // Check if already-parsed JSON is OPTIMADE-like
-export function is_optimade_raw(raw: unknown): boolean {
-  return Boolean(extract_optimade_structure_from_raw(raw))
-}
+export const is_optimade_raw = (raw: unknown): boolean =>
+  Boolean(extract_optimade_structure_from_raw(raw))
 
 // Shared helper to extract an OPTIMADE structure from raw JSON-like data
 function extract_optimade_structure_from_raw(raw: unknown): OptimadeStructure | null {
