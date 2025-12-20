@@ -15,12 +15,11 @@ const covalent_radii: Map<string, number> = new Map(
 )
 
 // Get the species with highest occupancy from a site.
-function get_majority_species(site: Site) {
-  return (site.species ?? []).reduce(
+const get_majority_species = (site: Site) =>
+  (site.species ?? []).reduce(
     (max, spec) => (spec.occu > max.occu ? spec : max),
     site.species?.[0] ?? { element: ``, occu: -1 },
   )
-}
 
 // Helper to extract numeric index from site properties
 function get_orig_idx(site: Site, fallback: number): number {

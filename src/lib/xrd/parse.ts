@@ -8,9 +8,8 @@ const DEFAULT_STEP_SIZE = 0.02
 
 // Generate x values from scan parameters (start angle, step size, point count).
 // Used by formats that store metadata + intensity-only data.
-function generate_x_from_scan(start: number, step: number, count: number): number[] {
-  return Array.from({ length: count }, (_, idx) => start + idx * step)
-}
+const generate_x_from_scan = (start: number, step: number, count: number): number[] =>
+  Array.from({ length: count }, (_, idx) => start + idx * step)
 
 // Create normalized XrdPattern from scan metadata and intensities.
 // Returns null if no intensity data. Used by all parsers as final step.
