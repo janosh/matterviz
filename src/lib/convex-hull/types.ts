@@ -143,9 +143,8 @@ export interface PhaseStats {
 }
 
 // Arity helpers (inlined from former arity.ts)
-export function get_arity(entry: PhaseData) {
-  return Object.values(entry.composition).filter((v) => v > 0).length
-}
+export const get_arity = (entry: PhaseData): number =>
+  Object.values(entry.composition).filter((v) => v > 0).length
 
 export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
 export const is_binary_entry = (entry: PhaseData) => get_arity(entry) === 2

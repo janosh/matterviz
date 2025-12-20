@@ -11,10 +11,8 @@ export function get_relative_coords(evt: MouseEvent): { x: number; y: number } |
 }
 
 // Check if a value is within a range
-export function is_valid_dimension(
+export const is_valid_dimension = (
   val: number | null | undefined,
   min: number,
   max: number,
-): boolean {
-  return val !== null && val !== undefined && !isNaN(val) && val >= min && val <= max
-}
+): boolean => val !== null && val !== undefined && !isNaN(val) && val >= min && val <= max

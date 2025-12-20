@@ -482,17 +482,19 @@ export function interpolate_hull_2d(hull: Point2D[], x: number): number | null {
 
 const EPS = 1e-9
 
-function subtract(a: Point3D, b: Point3D): Point3D {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }
-}
+const subtract = (a: Point3D, b: Point3D): Point3D => ({
+  x: a.x - b.x,
+  y: a.y - b.y,
+  z: a.z - b.z,
+})
 
-function cross(a: Point3D, b: Point3D): Point3D {
-  return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }
-}
+const cross = (a: Point3D, b: Point3D): Point3D => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+})
 
-function norm(a: Point3D): number {
-  return Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
-}
+const norm = (a: Point3D): number => Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
 
 function normalize(v: Point3D): Point3D {
   const length = norm(v)
@@ -508,13 +510,14 @@ function compute_plane(a: Point3D, b: Point3D, c: Point3D): Plane {
   return { normal: n, offset }
 }
 
-function point_plane_signed_distance(plane: Plane, p: Point3D): number {
-  return plane.normal.x * p.x + plane.normal.y * p.y + plane.normal.z * p.z + plane.offset
-}
+const point_plane_signed_distance = (plane: Plane, p: Point3D): number =>
+  plane.normal.x * p.x + plane.normal.y * p.y + plane.normal.z * p.z + plane.offset
 
-function compute_centroid(a: Point3D, b: Point3D, c: Point3D): Point3D {
-  return { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3, z: (a.z + b.z + c.z) / 3 }
-}
+const compute_centroid = (a: Point3D, b: Point3D, c: Point3D): Point3D => ({
+  x: (a.x + b.x + c.x) / 3,
+  y: (a.y + b.y + c.y) / 3,
+  z: (a.z + b.z + c.z) / 3,
+})
 
 function distance_point_to_line(a: Point3D, b: Point3D, p: Point3D): number {
   const ab = subtract(b, a)
@@ -849,17 +852,18 @@ interface Plane4D {
   offset: number
 }
 
-function subtract_4d(a: Point4D, b: Point4D): Point4D {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z, w: a.w - b.w }
-}
+const subtract_4d = (a: Point4D, b: Point4D): Point4D => ({
+  x: a.x - b.x,
+  y: a.y - b.y,
+  z: a.z - b.z,
+  w: a.w - b.w,
+})
 
-function dot_4d(a: Point4D, b: Point4D): number {
-  return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
-}
+const dot_4d = (a: Point4D, b: Point4D): number =>
+  a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
 
-function norm_4d(v: Point4D): number {
-  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w)
-}
+const norm_4d = (v: Point4D): number =>
+  Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w)
 
 function normalize_4d(v: Point4D): Point4D {
   const length = norm_4d(v)
@@ -934,9 +938,8 @@ function compute_plane_4d(p1: Point4D, p2: Point4D, p3: Point4D, p4: Point4D): P
   return { normal, offset }
 }
 
-function point_plane_signed_distance_4d(plane: Plane4D, p: Point4D): number {
-  return dot_4d(plane.normal, p) + plane.offset
-}
+const point_plane_signed_distance_4d = (plane: Plane4D, p: Point4D): number =>
+  dot_4d(plane.normal, p) + plane.offset
 
 function compute_centroid_4d(
   p1: Point4D,

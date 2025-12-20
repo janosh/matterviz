@@ -378,19 +378,24 @@ export function det_4x4(matrix: Matrix4x4): number {
 }
 
 // 3D cross product
-export function cross_3d(a: Vec3, b: Vec3): Vec3 {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
+export const cross_3d = (
+  a: Vec3,
+  b: Vec3,
+): Vec3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+]
 
 // Scalar linear interpolation
-export function lerp(a: number, b: number, t: number): number {
-  return a + t * (b - a)
-}
+export const lerp = (a: number, b: number, t: number): number => a + t * (b - a)
 
 // Vec3 linear interpolation
-export function lerp_vec3(a: Vec3, b: Vec3, t: number): Vec3 {
-  return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])]
-}
+export const lerp_vec3 = (
+  a: Vec3,
+  b: Vec3,
+  t: number,
+): Vec3 => [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])]
 
 // Normalize a Vec3 to unit length, returns zero vector if input is zero
 export function normalize_vec3(vec: Vec3, fallback?: Vec3): Vec3 {

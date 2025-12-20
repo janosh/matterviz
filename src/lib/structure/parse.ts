@@ -503,7 +503,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
 // Returns the numeric coefficient for each variable and the translation constant
 const parse_symmetry_expression = (
   expr_input: string,
-): { coefficients: [number, number, number]; translation: number } | null => {
+): { coefficients: [number, number, number]; translation: number } => {
   const coefficients: [number, number, number] = [0, 0, 0]
   let translation = 0
 
@@ -605,24 +605,15 @@ const apply_symmetry_ops = (
     if (parts.length !== 3) continue
 
     const new_coords: Vec3 = [0, 0, 0]
-    let valid = true
 
     for (let dim = 0; dim < 3; dim++) {
-      const parsed = parse_symmetry_expression(parts[dim])
-      if (!parsed) {
-        valid = false
-        break
-      }
-
-      const { coefficients, translation } = parsed
+      const { coefficients, translation } = parse_symmetry_expression(parts[dim])
       // Apply: new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
       new_coords[dim] = coefficients[0] * atom.coords[0] +
         coefficients[1] * atom.coords[1] +
         coefficients[2] * atom.coords[2] +
         translation
     }
-
-    if (!valid) continue
 
     // Wrap and deduplicate transformed coordinates
     const wrapped = wrap(new_coords)
@@ -1503,9 +1494,8 @@ export function is_optimade_json(content: string): boolean {
 }
 
 // Check if already-parsed JSON is OPTIMADE-like
-export function is_optimade_raw(raw: unknown): boolean {
-  return Boolean(extract_optimade_structure_from_raw(raw))
-}
+export const is_optimade_raw = (raw: unknown): boolean =>
+  Boolean(extract_optimade_structure_from_raw(raw))
 
 // Shared helper to extract an OPTIMADE structure from raw JSON-like data
 function extract_optimade_structure_from_raw(raw: unknown): OptimadeStructure | null {

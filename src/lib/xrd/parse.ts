@@ -26,9 +26,8 @@ function create_pattern(
 }
 
 // Parse whitespace-separated numbers from text. Used by multiple formats.
-function parse_number_list(text: string): number[] {
-  return text.trim().split(/\s+/).map(parseFloat).filter((val) => !isNaN(val))
-}
+const parse_number_list = (text: string): number[] =>
+  text.trim().split(/\s+/).map(parseFloat).filter((val) => !isNaN(val))
 
 // Extract numeric value from header line matching "KEY=VALUE" or "KEY VALUE" pattern.
 // Returns null if not found or not a valid number.

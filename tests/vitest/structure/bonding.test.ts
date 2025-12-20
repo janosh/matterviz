@@ -9,7 +9,7 @@ import process from 'node:process'
 import { describe, expect, test } from 'vitest'
 import { create_test_structure } from '../setup'
 
-function measure_performance(func: () => void): number {
+const measure_performance = (func: () => void): number => {
   const start = performance.now()
   func()
   return performance.now() - start

@@ -28,8 +28,8 @@ export interface AtomPropertyColors {
 const GRAY = `#808080`
 const DEFAULT_COLOR_SCALE = `interpolateViridis`
 
-export const get_d3_color_scales = () =>
-  Object.keys(d3_sc).filter((k) => k.startsWith(`interpolate`))
+export const get_d3_color_scales = (): string[] =>
+  Object.keys(d3_sc).filter((key) => key.startsWith(`interpolate`))
 
 const get_interp = (scale: string) => {
   const fn = d3_sc[scale as keyof typeof d3_sc]
