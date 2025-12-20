@@ -748,10 +748,10 @@ export interface HullFaceModel {
   denom: number
 }
 
-export function build_lower_hull_model(
+export const build_lower_hull_model = (
   faces: ConvexHullTriangle[],
-): HullFaceModel[] {
-  return faces.map((tri) => {
+): HullFaceModel[] =>
+  faces.map((tri) => {
     const [p1, p2, p3] = tri.vertices
     const plane = (() => {
       const x1 = p1.x, y1 = p1.y, z1 = p1.z
@@ -789,7 +789,6 @@ export function build_lower_hull_model(
       denom,
     }
   })
-}
 
 function point_in_triangle_xy(model: HullFaceModel, x: number, y: number): boolean {
   const { x1, y1, x2, y2, x3, y3, denom } = model
@@ -941,19 +940,17 @@ function compute_plane_4d(p1: Point4D, p2: Point4D, p3: Point4D, p4: Point4D): P
 const point_plane_signed_distance_4d = (plane: Plane4D, p: Point4D): number =>
   dot_4d(plane.normal, p) + plane.offset
 
-function compute_centroid_4d(
+const compute_centroid_4d = (
   p1: Point4D,
   p2: Point4D,
   p3: Point4D,
   p4: Point4D,
-): Point4D {
-  return {
-    x: (p1.x + p2.x + p3.x + p4.x) / 4,
-    y: (p1.y + p2.y + p3.y + p4.y) / 4,
-    z: (p1.z + p2.z + p3.z + p4.z) / 4,
-    w: (p1.w + p2.w + p3.w + p4.w) / 4,
-  }
-}
+): Point4D => ({
+  x: (p1.x + p2.x + p3.x + p4.x) / 4,
+  y: (p1.y + p2.y + p3.y + p4.y) / 4,
+  z: (p1.z + p2.z + p3.z + p4.z) / 4,
+  w: (p1.w + p2.w + p3.w + p4.w) / 4,
+})
 
 function distance_point_to_hyperplane_4d(
   p1: Point4D,
@@ -1399,10 +1396,10 @@ interface TetrahedronModel {
   max_z: number
 }
 
-function build_tetrahedron_models(
+const build_tetrahedron_models = (
   hull_tetrahedra: ConvexHullTetrahedron[],
-): TetrahedronModel[] {
-  return hull_tetrahedra.map((tet) => {
+): TetrahedronModel[] =>
+  hull_tetrahedra.map((tet) => {
     const [p0, p1, p2, p3] = tet.vertices
     const vertices_3d: [Point3D, Point3D, Point3D, Point3D] = [
       { x: p0.x, y: p0.y, z: p0.z },
@@ -1424,7 +1421,6 @@ function build_tetrahedron_models(
       max_z: Math.max(...zs),
     }
   })
-}
 
 // Compute distance from point to lower hull in 4D
 export const compute_e_above_hull_4d = (

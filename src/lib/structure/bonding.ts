@@ -135,15 +135,14 @@ function setup_spatial_grid(sites: Site[], cutoff: number) {
 }
 
 // Get candidate neighbor indices using spatial grid or all sites.
-function get_candidates(
+const get_candidates = (
   pos: Vec3,
   sites: Site[],
   spatial: ReturnType<typeof setup_spatial_grid>,
-): number[] {
-  return spatial
+): number[] =>
+  spatial
     ? get_neighbors_from_grid(pos, spatial.grid, spatial.cell_size)
     : Array.from({ length: sites.length }, (_, idx) => idx)
-}
 
 export const BONDING_STRATEGIES = { electroneg_ratio, solid_angle } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES

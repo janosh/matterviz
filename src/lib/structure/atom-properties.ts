@@ -102,16 +102,15 @@ export const apply_categorical_color_scale = (
 
 // Get original site index for property color lookup.
 // Supercell atoms use orig_unit_cell_idx, image atoms use orig_site_idx, otherwise use site_idx.
-export function get_orig_site_idx(
+export const get_orig_site_idx = (
   site: Site | undefined,
   site_idx: number,
-): number {
-  return typeof site?.properties?.orig_unit_cell_idx === `number`
+): number =>
+  typeof site?.properties?.orig_unit_cell_idx === `number`
     ? site.properties.orig_unit_cell_idx
     : typeof site?.properties?.orig_site_idx === `number`
     ? site.properties.orig_site_idx
     : site_idx
-}
 
 // Expand structure with PBC images - use minimal expansion based on atom positions
 function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
