@@ -92,21 +92,18 @@ export function make_supercell(
     throw new Error(`Cannot create supercell: structure has no lattice`)
   }
 
-  const scaling_factors = parse_supercell_scaling(scaling)
-  const [nx, ny, nz] = scaling_factors
+  const supercell_scaling = parse_supercell_scaling(scaling)
+  const [nx, ny, nz] = supercell_scaling
   const det = nx * ny * nz
 
   // Short circuit for 1x1x1 (no actual supercell needed)
   if (nx === 1 && ny === 1 && nz === 1) {
-    return {
-      ...structure,
-      supercell_scaling: scaling_factors,
-    } as SupercellType
+    return { ...structure, supercell_scaling } as SupercellType
   }
 
   const orig_matrix = structure.lattice.matrix
   // Create new scaled lattice
-  const new_lattice_matrix = scale_lattice_matrix(orig_matrix, scaling_factors)
+  const new_lattice_matrix = scale_lattice_matrix(orig_matrix, supercell_scaling)
   const lattice_params = math.calc_lattice_params(new_lattice_matrix)
 
   const new_lattice = {
@@ -182,7 +179,7 @@ export function make_supercell(
     lattice: new_lattice,
     sites: new_sites,
     charge: structure.charge ? structure.charge * det : structure.charge,
-    supercell_scaling: scaling_factors,
+    supercell_scaling,
   } as SupercellType
 }
 
@@ -195,10 +192,4 @@ export function is_valid_supercell_input(input: string): boolean {
   } catch {
     return false
   }
-}
-
-// Format supercell scaling factors for display
-// Takes scaling factors and returns formatted string like "2×2×2"
-export function format_supercell_scaling(scaling: Vec3): string {
-  return scaling.join(`×`)
 }

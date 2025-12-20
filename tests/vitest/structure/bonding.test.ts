@@ -9,39 +9,37 @@ import process from 'node:process'
 import { describe, expect, test } from 'vitest'
 import { create_test_structure } from '../setup'
 
-function measure_performance(func: () => void): number {
+const measure_performance = (func: () => void): number => {
   const start = performance.now()
   func()
   return performance.now() - start
 }
 
-function make_site(xyz: Vec3, element = `C`): Site {
-  return {
-    xyz,
-    abc: [0, 0, 0],
-    species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
-    label: element,
-    properties: {},
-  }
-}
+const make_site = (xyz: Vec3, element = `C`): Site => ({
+  xyz,
+  abc: [0, 0, 0],
+  species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
+  label: element,
+  properties: {},
+})
 
-function get_test_structure(sites: { xyz: Vec3; element?: string }[]): PymatgenStructure {
-  return {
-    sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
-    charge: 0,
-    lattice: {
-      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
-      pbc: [true, true, true],
-      a: 1,
-      b: 1,
-      c: 1,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 1,
-    },
-  }
-}
+const get_test_structure = (
+  sites: { xyz: Vec3; element?: string }[],
+): PymatgenStructure => ({
+  sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
+  charge: 0,
+  lattice: {
+    matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
+    pbc: [true, true, true],
+    a: 1,
+    b: 1,
+    c: 1,
+    alpha: 90,
+    beta: 90,
+    gamma: 90,
+    volume: 1,
+  },
+})
 
 function make_random_structure(n_atoms: number): PymatgenStructure {
   const elements = [`C`, `H`, `N`, `O`, `S`, `Fe`, `Na`, `Cl`]

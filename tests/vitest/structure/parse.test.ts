@@ -1236,6 +1236,54 @@ Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
     expect(has_translated_sites).toBe(true)
   })
 
+  // GitHub issue #226: compound symmetry operations like x-y, -x+y
+  test(`parses CIF with compound symmetry operations (x-y, -x+y) correctly`, () => {
+    // P-3 space group has compound expressions: '-y, x-y, z', 'y, -x+y, -z', etc.
+    const cif = `data_CsKB8
+_cell_length_a 6.6611
+_cell_length_b 6.6611
+_cell_length_c 8.184
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 120
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1 'x, y, z'
+  2 '-x, -y, -z'
+  3 '-y, x-y, z'
+  4 'y, -x+y, -z'
+  5 '-x+y, -x, z'
+  6 'x-y, x, -z'
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Cs Cs0 1 0.0 0.0 0.0 1.0
+  K K1 1 0.0 0.0 0.5 1.0
+  B B2 6 0.09755 0.50299 0.28944 1.0
+  B B3 2 0.33333333 0.66666667 0.76943 1.0
+  O O4 6 0.1244 0.66629 0.7146 1.0
+  O O5 6 0.17015 0.73729 0.29321 1.0
+  F F6 2 0.33333333 0.66666667 0.94541 1.0`
+
+    const result = parse_cif(cif)
+    if (!result) throw new Error(`Failed to parse CIF`)
+
+    // Formula: Cs1 K1 B8 O12 F2 = 24 sites
+    expect(result.sites.length).toBe(24)
+    const counts: Record<string, number> = {}
+    for (const site of result.sites) {
+      counts[site.species[0].element] = (counts[site.species[0].element] ?? 0) + 1
+    }
+    expect(counts).toEqual({ Cs: 1, K: 1, B: 8, O: 12, F: 2 })
+    expect(result.lattice?.gamma).toBeCloseTo(120, 1)
+  })
+
   test(`handles empty or atomless CIF files`, () => {
     const empty_cif = ``
     const atomless_cif = `data_dummy`

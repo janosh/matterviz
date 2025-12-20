@@ -503,9 +503,8 @@ function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
 }
 
 // Helper to create edge key (sorted vertex indices)
-function make_edge_key(v0_idx: number, v1_idx: number): string {
-  return `${Math.min(v0_idx, v1_idx)},${Math.max(v0_idx, v1_idx)}`
-}
+const make_edge_key = (v0_idx: number, v1_idx: number): string =>
+  `${Math.min(v0_idx, v1_idx)},${Math.max(v0_idx, v1_idx)}`
 
 // Compute intersection point on an edge
 function compute_edge_intersection(

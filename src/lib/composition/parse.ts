@@ -419,9 +419,7 @@ export type ChemsysWithWildcards = {
 
 // Check if input contains wildcard elements (*).
 // Works for both chemsys format (Li-Fe-*-*) and exact formula format (LiFe*2*).
-export function has_wildcards(input: string): boolean {
-  return input.includes(`*`)
-}
+export const has_wildcards = (input: string): boolean => input.includes(`*`)
 
 // Parse chemsys format with wildcards: "Li-Fe-*-*" -> { elements: ["Li", "Fe"], wildcard_count: 2 }
 // Accepts both hyphen and comma separators.

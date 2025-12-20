@@ -6,12 +6,11 @@ import type { ParsedStructure } from './parse'
 export type Pbc = readonly [boolean, boolean, boolean]
 
 // Wrap fractional coordinates to [0, 1) range for periodicity.
-export function wrap_to_unit_cell(frac: Vec3): Vec3 {
-  return frac.map((coord) => {
+export const wrap_to_unit_cell = (frac: Vec3): Vec3 =>
+  frac.map((coord) => {
     const wrapped = ((coord % 1) + 1) % 1
     return wrapped >= 1 - 1e-10 ? 0 : wrapped // clamp near-1 to 0 for float precision
   }) as Vec3
-}
 
 export function find_image_atoms(
   structure: ParsedStructure,
