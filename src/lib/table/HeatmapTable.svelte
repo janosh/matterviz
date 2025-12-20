@@ -7,6 +7,7 @@
     Label,
     MultiSortState,
     RowData,
+    SortHint,
     SortState,
   } from '$lib/table'
   import { calc_cell_color, strip_html } from '$lib/table'
@@ -19,7 +20,7 @@
   let {
     data,
     columns = [],
-    sort_hint = ``,
+    sort_hint = undefined,
     cell,
     special_cells,
     controls,
@@ -44,7 +45,7 @@
   }: HTMLAttributes<HTMLDivElement> & {
     data: RowData[]
     columns?: Label[]
-    sort_hint?: string
+    sort_hint?: SortHint
     cell?: Snippet<[CellSnippetArgs]>
     special_cells?: Record<string, Snippet<[CellSnippetArgs]>>
     controls?: Snippet
@@ -56,8 +57,8 @@
     heatmap_class?: string
     onrowdblclick?: (event: MouseEvent, row: RowData) => void
     // Array of column IDs to control display order. IDs are derived as:
-    // - Ungrouped columns: col.short ?? col.label
-    // - Grouped columns: `${col.short ?? col.label} (${col.group})`
+    // - Ungrouped columns: col.key ?? col.label
+    // - Grouped columns: `${col.key ?? col.label} (${col.group})`
     // This allows persisting/restoring column order across sessions.
     column_order?: string[]
     show_export?: boolean
@@ -110,7 +111,7 @@
 
   // Helper to make column IDs (needed since column labels in different groups can be repeated)
   const get_col_id = (col: Label) =>
-    col.group ? `${col.short ?? col.label} (${col.group})` : (col.short ?? col.label)
+    col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
 
   // Initialize and sanitize column_order
   $effect(() => {
@@ -548,16 +549,36 @@
     document.removeEventListener(`mousemove`, handle_resize)
     document.removeEventListener(`mouseup`, stop_resize)
   }
+
+  // Normalize sort_hint to a config object with defaults
+  let hint_config = $derived(
+    sort_hint
+      ? {
+        position: `bottom` as const,
+        permanent: false,
+        ...(typeof sort_hint === `string` ? { text: sort_hint } : sort_hint),
+      }
+      : null,
+  )
 </script>
+
+{#snippet sort_hint_element(pos: `top` | `bottom`)}
+  {#if hint_config?.position === pos}
+    <div
+      class="sort-hint {hint_config.class ?? ``}"
+      class:permanent={hint_config.permanent}
+      style={hint_config.style}
+    >
+      {hint_config.text}
+    </div>
+  {/if}
+{/snippet}
 
 <div
   {@attach tooltip()}
   {...rest}
   class="table-container {rest.class ?? ``}"
-  onmouseleave={() => {
-    show_column_dropdown = false
-    show_export_dropdown = false
-  }}
+  onmouseleave={() => [show_column_dropdown, show_export_dropdown] = [false, false]}
 >
   <!-- Floating control buttons -->
   <section class="control-buttons">
@@ -668,9 +689,7 @@
     {/if}
   </section>
 
-  {#if sort_hint}
-    <div class="sort-hint">{sort_hint}</div>
-  {/if}
+  {@render sort_hint_element(`top`)}
 
   <div
     class="table-scroll"
@@ -756,7 +775,7 @@
                 event.currentTarget.removeAttribute(`aria-grabbed`)
               }}
             >
-              {@html col.short ?? col.label}
+              {@html col.label}
               {@html sort_indicator(col, sort_state)}
               <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <!-- Column resize handle -->
@@ -825,6 +844,8 @@
       </tbody>
     </table>
   </div>
+
+  {@render sort_hint_element(`bottom`)}
 
   {#if show_pagination && total_pages > 1}
     <div class="pagination">
@@ -1068,11 +1089,16 @@
     color: light-dark(#999, #666);
   }
   .sort-hint {
-    position: absolute;
-    bottom: -20px;
-    left: 0;
+    text-align: center;
     font-size: 0.75em;
     color: var(--text-muted);
+    padding: 4px 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .table-container:hover .sort-hint,
+  .sort-hint.permanent {
+    opacity: 1;
   }
   .not-sortable {
     cursor: default;

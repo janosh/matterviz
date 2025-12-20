@@ -1080,8 +1080,7 @@ describe(`HeatmapTable`, () => {
       expect(rows[1].getAttribute(`class`)).not.toContain(`undefined`)
     })
 
-    it(`sort_hint renders without requiring sort_state check`, () => {
-      // Regression test: sort_state is always truthy, condition was redundant
+    it(`sort_hint renders as string with default position bottom`, () => {
       mount(HeatmapTable, {
         target: document.body,
         props: {
@@ -1094,20 +1093,146 @@ describe(`HeatmapTable`, () => {
       const hint = document.querySelector(`.sort-hint`)
       expect(hint).not.toBeNull()
       expect(hint?.textContent).toBe(`Click to sort`)
+      // Should not have permanent class by default
+      expect(hint?.classList.contains(`permanent`)).toBe(false)
     })
 
-    it(`sort_hint does not render when empty`, () => {
+    it(`sort_hint does not render when undefined`, () => {
       mount(HeatmapTable, {
         target: document.body,
         props: {
           data: sample_data,
           columns: sample_columns,
-          sort_hint: ``,
         },
       })
 
       const hint = document.querySelector(`.sort-hint`)
       expect(hint).toBeNull()
+    })
+
+    it(`sort_hint renders with object config and permanent class`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          sort_hint: { text: `Sort hint text`, position: `top`, permanent: true },
+        },
+      })
+
+      const hint = document.querySelector(`.sort-hint`)
+      expect(hint).not.toBeNull()
+      expect(hint?.textContent).toBe(`Sort hint text`)
+      expect(hint?.classList.contains(`permanent`)).toBe(true)
+    })
+
+    it.each([`top`, `bottom`] as const)(
+      `sort_hint position=%s renders hint in correct location`,
+      (position) => {
+        mount(HeatmapTable, {
+          target: document.body,
+          props: {
+            data: sample_data,
+            columns: sample_columns,
+            sort_hint: { text: `Positioned hint`, position },
+          },
+        })
+
+        const container = document.querySelector(`.table-container`)
+        const table_scroll = container?.querySelector(`.table-scroll`)
+        const hint = container?.querySelector(`.sort-hint`)
+
+        expect(hint).not.toBeNull()
+        expect(table_scroll).not.toBeNull()
+        expect(hint?.textContent).toBe(`Positioned hint`)
+
+        // Check relative order in the DOM
+        if (hint && table_scroll) {
+          if (position === `top`) {
+            // Hint should come before the table-scroll div
+            expect(hint.compareDocumentPosition(table_scroll)).toBe(
+              Node.DOCUMENT_POSITION_FOLLOWING,
+            )
+          } else {
+            // Hint should come after the table-scroll div
+            expect(hint.compareDocumentPosition(table_scroll)).toBe(
+              Node.DOCUMENT_POSITION_PRECEDING,
+            )
+          }
+        }
+      },
+    )
+
+    it(`sort_hint applies custom style attribute`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          sort_hint: {
+            text: `Styled hint`,
+            style: `color: red; font-size: 1.2em;`,
+          },
+        },
+      })
+
+      const hint = document.querySelector(`.sort-hint`)
+      expect(hint).not.toBeNull()
+      expect(hint?.getAttribute(`style`)).toContain(`color: red`)
+      expect(hint?.getAttribute(`style`)).toContain(`font-size: 1.2em`)
+    })
+
+    it(`sort_hint applies custom class attribute`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          sort_hint: {
+            text: `Classed hint`,
+            class: `custom-hint-class another-class`,
+          },
+        },
+      })
+
+      const hint = document.querySelector(`.sort-hint`)
+      expect(hint).not.toBeNull()
+      expect(hint?.classList.contains(`custom-hint-class`)).toBe(true)
+      expect(hint?.classList.contains(`another-class`)).toBe(true)
+    })
+
+    it(`sort_hint combines all config options`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          sort_hint: {
+            text: `Full config hint`,
+            position: `top`,
+            permanent: true,
+            style: `font-weight: bold;`,
+            class: `my-custom-class`,
+          },
+        },
+      })
+
+      const container = document.querySelector(`.table-container`)
+      const table_scroll = container?.querySelector(`.table-scroll`)
+      const hint = container?.querySelector(`.sort-hint`)
+
+      expect(hint).not.toBeNull()
+      expect(table_scroll).not.toBeNull()
+      expect(hint?.textContent).toBe(`Full config hint`)
+      expect(hint?.classList.contains(`permanent`)).toBe(true)
+      expect(hint?.classList.contains(`my-custom-class`)).toBe(true)
+      expect(hint?.getAttribute(`style`)).toContain(`font-weight: bold`)
+      // Hint should be above table
+      if (hint && table_scroll) {
+        expect(hint.compareDocumentPosition(table_scroll)).toBe(
+          Node.DOCUMENT_POSITION_FOLLOWING,
+        )
+      }
     })
 
     it(`correctly matches grouped columns for sorting`, async () => {

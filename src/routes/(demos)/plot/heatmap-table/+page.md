@@ -11,26 +11,36 @@ A simple table with sortable columns and automatic heatmap coloring based on cel
   import { HeatmapTable } from 'matterviz'
 
   const data = [
-    { Formula: `Fe₂O₃`, 'E above hull': 0.0, Bandgap: 2.2, 'Formation E': -8.5 },
-    { Formula: `TiO₂`, 'E above hull': 0.0, Bandgap: 3.2, 'Formation E': -9.8 },
-    { Formula: `ZnO`, 'E above hull': 0.02, Bandgap: 3.4, 'Formation E': -3.6 },
-    { Formula: `Cu₂O`, 'E above hull': 0.05, Bandgap: 2.1, 'Formation E': -1.7 },
-    { Formula: `SiO₂`, 'E above hull': 0.0, Bandgap: 8.9, 'Formation E': -9.1 },
-    { Formula: `Al₂O₃`, 'E above hull': 0.0, Bandgap: 8.8, 'Formation E': -17.4 },
-    { Formula: `MgO`, 'E above hull': 0.0, Bandgap: 7.8, 'Formation E': -6.2 },
-    { Formula: `CaTiO₃`, 'E above hull': 0.03, Bandgap: 3.5, 'Formation E': -16.1 },
-  ]
+    [`Fe₂O₃`, 0.0, 2.2, -8.5],
+    [`TiO₂`, 0.0, 3.2, -9.8],
+    [`ZnO`, 0.02, 3.4, -3.6],
+    [`Cu₂O`, 0.05, 2.1, -1.7],
+    [`SiO₂`, 0.0, 8.9, -9.1],
+    [`Al₂O₃`, 0.0, 8.8, -17.4],
+    [`MgO`, 0.0, 7.8, -6.2],
+    [`CaTiO₃`, 0.03, 3.5, -16.1],
+  ].map(([v1, v2, v3, v4]) => ({
+    Formula: v1,
+    'E<sub>above hull</sub>': v2,
+    'E<sub>gap</sub>': v3,
+    'E<sub>form</sub>': v4,
+  }))
 
   // deno-fmt-ignore
   const columns = [
     { label: `Formula` },
-    { label: `E above hull`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.2f` },
-    { label: `Bandgap`, better: `higher`, color_scale: `interpolateViridis`, format: `.1f` },
-    { label: `Formation E`, better: `lower`, color_scale: `interpolateBlues`, format: `.1f` },
+    { label: `E<sub>above hull</sub>`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.2f` },
+    { label: `E<sub>gap</sub>`, better: `higher`, color_scale: `interpolateViridis`, format: `.1f` },
+    { label: `E<sub>form</sub>`, better: `lower`, color_scale: `interpolateBlues`, format: `.1f` },
   ]
 </script>
 
-<HeatmapTable {data} {columns} sort_hint="Click column headers to sort" />
+<HeatmapTable
+  {data}
+  {columns}
+  sort_hint={{ text: `Click column headers to sort`, position: `top`, permanent: true }}
+  style="margin: 0 auto"
+/>
 ```
 
 ## Color Scales and Scale Types
@@ -42,23 +52,28 @@ Choose from various D3 color scales and switch between linear and logarithmic sc
   import { HeatmapTable } from 'matterviz'
 
   const data = [
-    { Material: `Silicon`, Bandgap: 1.12, Conductivity: 1.56e-3, 'Thermal κ': 150 },
-    { Material: `Copper`, Bandgap: 0, Conductivity: 5.96e7, 'Thermal κ': 401 },
-    { Material: `Diamond`, Bandgap: 5.47, Conductivity: 1e-13, 'Thermal κ': 2200 },
-    { Material: `Germanium`, Bandgap: 0.67, Conductivity: 2.2, 'Thermal κ': 60 },
-    { Material: `GaAs`, Bandgap: 1.42, Conductivity: 1e-8, 'Thermal κ': 55 },
-    { Material: `SiC`, Bandgap: 3.26, Conductivity: 1e-6, 'Thermal κ': 490 },
-    { Material: `GaN`, Bandgap: 3.4, Conductivity: 1e-10, 'Thermal κ': 130 },
-    { Material: `InP`, Bandgap: 1.35, Conductivity: 1e-7, 'Thermal κ': 68 },
-  ]
+    [`Silicon`, 1.12, 1.56e-3, 150],
+    [`Copper`, 0, 5.96e7, 401],
+    [`Diamond`, 5.47, 1e-13, 2200],
+    [`Germanium`, 0.67, 2.2, 60],
+    [`GaAs`, 1.42, 1e-8, 55],
+    [`SiC`, 3.26, 1e-6, 490],
+    [`GaN`, 3.4, 1e-10, 130],
+    [`InP`, 1.35, 1e-7, 68],
+  ].map(([v1, v2, v3, v4]) => ({
+    Material: v1,
+    'E<sub>gap</sub>': v2,
+    Conductivity: v3,
+    'κ<sub>lattice</sub>': v4,
+  }))
 
   let scale_type = $state(`log`)
   // deno-fmt-ignore
   const columns = [
     { label: `Material` },
-    { label: `Bandgap`, better: `higher`, color_scale: `interpolatePlasma`, format: `.2f`, description: `Band gap (eV)` },
-    { label: `Conductivity`, better: `higher`, color_scale: `interpolateYlOrRd`, scale_type, format: `.2~e`, description: `Electrical conductivity (S/m)` },
-    { label: `Thermal κ`, better: `higher`, color_scale: `interpolateBlues`, format: `,.0f`, description: `Thermal conductivity (W/m·K)` },
+    { label: `E<sub>gap</sub>`, better: `higher`, color_scale: `interpolatePlasma`, format: `.2f`, description: `Band gap (eV)` },
+    { label: `Conductivity`, better: `higher`, color_scale: `interpolateYlOrRd`, scale_type, format: `.3~`, description: `Electrical conductivity (S/m)` },
+    { label: `κ<sub>lattice</sub>`, better: `higher`, color_scale: `interpolateBlues`, format: `,.0f`, description: `Thermal conductivity (W/m·K)` },
   ]
 </script>
 
@@ -70,7 +85,7 @@ Choose from various D3 color scales and switch between linear and logarithmic sc
   </select>
 </label>
 
-<HeatmapTable {data} {columns} />
+<HeatmapTable {data} {columns} style="margin: 0 auto" />
 ```
 
 ## Drag-and-Drop Column Reordering
@@ -82,27 +97,21 @@ Columns can be reordered by dragging within the same group. Useful for comparing
   import { HeatmapTable } from 'matterviz'
 
   const data = [
-    {
-      Structure: `Perovskite`,
-      MAE: 0.042,
-      RMSE: 0.089,
-      'R²': 0.94,
-      'Max Error': 0.31,
-    },
-    { Structure: `Spinel`, MAE: 0.038, RMSE: 0.076, 'R²': 0.96, 'Max Error': 0.28 },
-    { Structure: `Rocksalt`, MAE: 0.051, RMSE: 0.102, 'R²': 0.91, 'Max Error': 0.45 },
-    { Structure: `Wurtzite`, MAE: 0.029, RMSE: 0.058, 'R²': 0.97, 'Max Error': 0.19 },
-    { Structure: `Fluorite`, MAE: 0.044, RMSE: 0.091, 'R²': 0.93, 'Max Error': 0.33 },
-    { Structure: `Pyrite`, MAE: 0.035, RMSE: 0.071, 'R²': 0.95, 'Max Error': 0.24 },
-    {
-      Structure: `Zincblende`,
-      MAE: 0.031,
-      RMSE: 0.063,
-      'R²': 0.96,
-      'Max Error': 0.21,
-    },
-    { Structure: `Rutile`, MAE: 0.047, RMSE: 0.095, 'R²': 0.92, 'Max Error': 0.38 },
-  ]
+    [`Perovskite`, 0.042, 0.089, 0.94, 0.31],
+    [`Spinel`, 0.038, 0.076, 0.96, 0.28],
+    [`Rocksalt`, 0.051, 0.102, 0.91, 0.45],
+    [`Wurtzite`, 0.029, 0.058, 0.97, 0.19],
+    [`Fluorite`, 0.044, 0.091, 0.93, 0.33],
+    [`Pyrite`, 0.035, 0.071, 0.95, 0.24],
+    [`Zincblende`, 0.031, 0.063, 0.96, 0.21],
+    [`Rutile`, 0.047, 0.095, 0.92, 0.38],
+  ].map(([v1, v2, v3, v4, v5]) => ({
+    Structure: v1,
+    MAE: v2,
+    RMSE: v3,
+    'R²': v4,
+    'Max Error': v5,
+  }))
 
   // deno-fmt-ignore
   const columns = [
@@ -120,7 +129,7 @@ Columns can be reordered by dragging within the same group. Useful for comparing
   Drag column headers to reorder. Current order: {column_order.join(`, `) || `(default)`}
 </p>
 
-<HeatmapTable {data} {columns} bind:column_order />
+<HeatmapTable {data} {columns} bind:column_order style="margin: 0 auto" />
 ```
 
 ## Large Table with Scrolling
@@ -190,7 +199,7 @@ A comprehensive ML model benchmark comparison with sticky first column. Scroll h
   models &nbsp;|&nbsp; Model column stays pinned
 </p>
 
-<HeatmapTable {data} {columns} scroll_style="max-height: 400px;" />
+<HeatmapTable {data} {columns} scroll_style="max-height: 400px;" style="margin: 0 auto" />
 ```
 
 ## Column Groups with Scrolling
@@ -244,7 +253,7 @@ Crystal structure prediction results grouped by property type. The sticky first 
   ]
 </script>
 
-<HeatmapTable {data} {columns} scroll_style="max-width: 750px;" />
+<HeatmapTable {data} {columns} scroll_style="max-width: 750px;" style="margin: 0 auto" />
 ```
 
 ## Interactive Features
@@ -258,47 +267,48 @@ Enable search, export, column visibility, row selection, and pagination for a fu
   // Comprehensive materials database with realistic properties
   // deno-fmt-ignore
   const data = [
-    { ID: `mp-1234`, Formula: `Fe₂O₃`, Spacegroup: `R-3c`, Crystal: `Trigonal`, 'E form': -2.51, 'E hull': 0.0, Bandgap: 2.2, 'DOS eff': 3.4, Density: 5.24, Volume: 302.7, 'Bulk mod': 231, Stability: `Stable` },
-    { ID: `mp-390`, Formula: `TiO₂`, Spacegroup: `P4₂/mnm`, Crystal: `Tetragonal`, 'E form': -3.42, 'E hull': 0.0, Bandgap: 3.2, 'DOS eff': 2.1, Density: 4.23, Volume: 62.4, 'Bulk mod': 211, Stability: `Stable` },
-    { ID: `mp-2133`, Formula: `ZnO`, Spacegroup: `P6₃mc`, Crystal: `Hexagonal`, 'E form': -1.52, 'E hull': 0.02, Bandgap: 3.4, 'DOS eff': 1.8, Density: 5.61, Volume: 23.8, 'Bulk mod': 142, Stability: `Stable` },
-    { ID: `mp-361`, Formula: `Cu₂O`, Spacegroup: `Pn-3m`, Crystal: `Cubic`, 'E form': -0.68, 'E hull': 0.05, Bandgap: 2.1, 'DOS eff': 4.2, Density: 6.10, Volume: 77.8, 'Bulk mod': 111, Stability: `Metastable` },
-    { ID: `mp-6930`, Formula: `SiO₂`, Spacegroup: `P3₁21`, Crystal: `Trigonal`, 'E form': -4.13, 'E hull': 0.0, Bandgap: 8.9, 'DOS eff': 0.9, Density: 2.65, Volume: 113.0, 'Bulk mod': 37, Stability: `Stable` },
-    { ID: `mp-1143`, Formula: `Al₂O₃`, Spacegroup: `R-3c`, Crystal: `Trigonal`, 'E form': -3.47, 'E hull': 0.0, Bandgap: 8.8, 'DOS eff': 1.2, Density: 3.99, Volume: 254.8, 'Bulk mod': 252, Stability: `Stable` },
-    { ID: `mp-1265`, Formula: `MgO`, Spacegroup: `Fm-3m`, Crystal: `Cubic`, 'E form': -3.01, 'E hull': 0.0, Bandgap: 7.8, 'DOS eff': 1.0, Density: 3.58, Volume: 18.7, 'Bulk mod': 163, Stability: `Stable` },
-    { ID: `mp-4019`, Formula: `CaTiO₃`, Spacegroup: `Pnma`, Crystal: `Orthorhombic`, 'E form': -3.89, 'E hull': 0.03, Bandgap: 3.5, 'DOS eff': 2.8, Density: 4.04, Volume: 228.2, 'Bulk mod': 175, Stability: `Stable` },
-    { ID: `mp-5986`, Formula: `BaTiO₃`, Spacegroup: `P4mm`, Crystal: `Tetragonal`, 'E form': -3.72, 'E hull': 0.0, Bandgap: 3.2, 'DOS eff': 3.1, Density: 6.02, Volume: 64.3, 'Bulk mod': 162, Stability: `Stable` },
-    { ID: `mp-5229`, Formula: `SrTiO₃`, Spacegroup: `Pm-3m`, Crystal: `Cubic`, 'E form': -3.65, 'E hull': 0.0, Bandgap: 3.3, 'DOS eff': 2.9, Density: 5.12, Volume: 59.6, 'Bulk mod': 183, Stability: `Stable` },
-    { ID: `mp-22526`, Formula: `LiCoO₂`, Spacegroup: `R-3m`, Crystal: `Trigonal`, 'E form': -2.18, 'E hull': 0.0, Bandgap: 2.7, 'DOS eff': 4.5, Density: 5.05, Volume: 32.9, 'Bulk mod': 145, Stability: `Stable` },
-    { ID: `mp-19017`, Formula: `LiFePO₄`, Spacegroup: `Pnma`, Crystal: `Orthorhombic`, 'E form': -3.21, 'E hull': 0.0, Bandgap: 3.8, 'DOS eff': 3.9, Density: 3.60, Volume: 291.4, 'Bulk mod': 98, Stability: `Stable` },
-    { ID: `mp-149`, Formula: `Si`, Spacegroup: `Fd-3m`, Crystal: `Cubic`, 'E form': 0.0, 'E hull': 0.0, Bandgap: 1.12, 'DOS eff': 1.1, Density: 2.33, Volume: 40.9, 'Bulk mod': 98, Stability: `Stable` },
-    { ID: `mp-32`, Formula: `GaAs`, Spacegroup: `F-43m`, Crystal: `Cubic`, 'E form': -0.31, 'E hull': 0.0, Bandgap: 1.42, 'DOS eff': 0.8, Density: 5.32, Volume: 45.2, 'Bulk mod': 75, Stability: `Stable` },
-    { ID: `mp-661`, Formula: `CdTe`, Spacegroup: `F-43m`, Crystal: `Cubic`, 'E form': -0.42, 'E hull': 0.0, Bandgap: 1.5, 'DOS eff': 0.9, Density: 5.86, Volume: 54.8, 'Bulk mod': 42, Stability: `Stable` },
-    { ID: `mp-2534`, Formula: `SnO₂`, Spacegroup: `P4₂/mnm`, Crystal: `Tetragonal`, 'E form': -2.54, 'E hull': 0.0, Bandgap: 3.6, 'DOS eff': 2.4, Density: 6.95, Volume: 71.5, 'Bulk mod': 205, Stability: `Stable` },
-    { ID: `mp-2657`, Formula: `WO₃`, Spacegroup: `P2₁/c`, Crystal: `Monoclinic`, 'E form': -2.89, 'E hull': 0.01, Bandgap: 2.6, 'DOS eff': 3.2, Density: 7.16, Volume: 52.1, 'Bulk mod': 194, Stability: `Stable` },
-    { ID: `mp-764`, Formula: `V₂O₅`, Spacegroup: `Pmmn`, Crystal: `Orthorhombic`, 'E form': -2.67, 'E hull': 0.0, Bandgap: 2.3, 'DOS eff': 2.7, Density: 3.36, Volume: 178.9, 'Bulk mod': 52, Stability: `Stable` },
-    { ID: `mp-540`, Formula: `NiO`, Spacegroup: `Fm-3m`, Crystal: `Cubic`, 'E form': -1.23, 'E hull': 0.0, Bandgap: 4.3, 'DOS eff': 5.1, Density: 6.67, Volume: 18.3, 'Bulk mod': 195, Stability: `Stable` },
-    { ID: `mp-48`, Formula: `CoO`, Spacegroup: `Fm-3m`, Crystal: `Cubic`, 'E form': -1.15, 'E hull': 0.04, Bandgap: 2.4, 'DOS eff': 4.8, Density: 6.44, Volume: 19.5, 'Bulk mod': 180, Stability: `Metastable` }, // codespell:ignore
-    { ID: `mp-1968`, Formula: `MnO₂`, Spacegroup: `P4₂/mnm`, Crystal: `Tetragonal`, 'E form': -2.13, 'E hull': 0.0, Bandgap: 0.3, 'DOS eff': 6.2, Density: 5.03, Volume: 56.2, 'Bulk mod': 267, Stability: `Stable` },
-    { ID: `mp-2691`, Formula: `Cr₂O₃`, Spacegroup: `R-3c`, Crystal: `Trigonal`, 'E form': -3.78, 'E hull': 0.0, Bandgap: 3.4, 'DOS eff': 3.6, Density: 5.22, Volume: 96.7, 'Bulk mod': 238, Stability: `Stable` },
-    { ID: `mp-1960`, Formula: `MoS₂`, Spacegroup: `P6₃/mmc`, Crystal: `Hexagonal`, 'E form': -1.24, 'E hull': 0.0, Bandgap: 1.8, 'DOS eff': 2.3, Density: 5.06, Volume: 106.4, 'Bulk mod': 45, Stability: `Stable` },
-    { ID: `mp-1821`, Formula: `WS₂`, Spacegroup: `P6₃/mmc`, Crystal: `Hexagonal`, 'E form': -1.18, 'E hull': 0.0, Bandgap: 1.9, 'DOS eff': 2.1, Density: 7.50, Volume: 107.2, 'Bulk mod': 56, Stability: `Stable` },
-    { ID: `mp-10695`, Formula: `Li₃PS₄`, Spacegroup: `Pnma`, Crystal: `Orthorhombic`, 'E form': -1.87, 'E hull': 0.08, Bandgap: 4.1, 'DOS eff': 1.5, Density: 1.88, Volume: 412.8, 'Bulk mod': 24, Stability: `Metastable` },
-    { ID: `mp-3163`, Formula: `Na₃AlF₆`, Spacegroup: `P2₁/c`, Crystal: `Monoclinic`, 'E form': -4.52, 'E hull': 0.0, Bandgap: 6.8, 'DOS eff': 0.8, Density: 2.97, Volume: 226.7, 'Bulk mod': 51, Stability: `Stable` },
-    { ID: `mp-7000`, Formula: `CuFeS₂`, Spacegroup: `I-42d`, Crystal: `Tetragonal`, 'E form': -0.89, 'E hull': 0.0, Bandgap: 0.5, 'DOS eff': 5.8, Density: 4.19, Volume: 145.2, 'Bulk mod': 75, Stability: `Stable` },
-    { ID: `mp-35`, Formula: `GaN`, Spacegroup: `P6₃mc`, Crystal: `Hexagonal`, 'E form': -0.82, 'E hull': 0.0, Bandgap: 3.4, 'DOS eff': 1.6, Density: 6.15, Volume: 22.9, 'Bulk mod': 210, Stability: `Stable` },
-    { ID: `mp-13`, Formula: `AlN`, Spacegroup: `P6₃mc`, Crystal: `Hexagonal`, 'E form': -1.47, 'E hull': 0.0, Bandgap: 6.2, 'DOS eff': 1.2, Density: 3.26, Volume: 20.9, 'Bulk mod': 201, Stability: `Stable` },
-    { ID: `mp-804`, Formula: `SiC`, Spacegroup: `F-43m`, Crystal: `Cubic`, 'E form': -0.35, 'E hull': 0.0, Bandgap: 2.4, 'DOS eff': 1.4, Density: 3.22, Volume: 20.7, 'Bulk mod': 225, Stability: `Stable` },
-  ]
-
+    [`mp-1234`, `Fe₂O₃`, `R-3c`, `Trigonal`, -2.51, 0.0, 2.2, 3.4, 5.24, 302.7, 231, `Stable`],
+    [`mp-390`, `TiO₂`, `P4₂/mnm`, `Tetragonal`, -3.42, 0.0, 3.2, 2.1, 4.23, 62.4, 211, `Stable`],
+    [`mp-2133`, `ZnO`, `P6₃mc`, `Hexagonal`, -1.52, 0.02, 3.4, 1.8, 5.61, 23.8, 142, `Stable`],
+    [`mp-361`, `Cu₂O`, `Pn-3m`, `Cubic`, -0.68, 0.05, 2.1, 4.2, 6.10, 77.8, 111, `Metastable`],
+    [`mp-6930`, `SiO₂`, `P3₁21`, `Trigonal`, -4.13, 0.0, 8.9, 0.9, 2.65, 113.0, 37, `Stable`],
+    [`mp-1143`, `Al₂O₃`, `R-3c`, `Trigonal`, -3.47, 0.0, 8.8, 1.2, 3.99, 254.8, 252, `Stable`],
+    [`mp-1265`, `MgO`, `Fm-3m`, `Cubic`, -3.01, 0.0, 7.8, 1.0, 3.58, 18.7, 163, `Stable`],
+    [`mp-4019`, `CaTiO₃`, `Pnma`, `Orthorhombic`, -3.89, 0.03, 3.5, 2.8, 4.04, 228.2, 175, `Stable`],
+    [`mp-5986`, `BaTiO₃`, `P4mm`, `Tetragonal`, -3.72, 0.0, 3.2, 3.1, 6.02, 64.3, 162, `Stable`],
+    [`mp-5229`, `SrTiO₃`, `Pm-3m`, `Cubic`, -3.65, 0.0, 3.3, 2.9, 5.12, 59.6, 183, `Stable`],
+    [`mp-22526`, `LiCoO₂`, `R-3m`, `Trigonal`, -2.18, 0.0, 2.7, 4.5, 5.05, 32.9, 145, `Stable`],
+    [`mp-19017`, `LiFePO₄`, `Pnma`, `Orthorhombic`, -3.21, 0.0, 3.8, 3.9, 3.60, 291.4, 98, `Stable`],
+    [`mp-149`, `Si`, `Fd-3m`, `Cubic`, 0.0, 0.0, 1.12, 1.1, 2.33, 40.9, 98, `Stable`],
+    [`mp-32`, `GaAs`, `F-43m`, `Cubic`, -0.31, 0.0, 1.42, 0.8, 5.32, 45.2, 75, `Stable`],
+    [`mp-661`, `CdTe`, `F-43m`, `Cubic`, -0.42, 0.0, 1.5, 0.9, 5.86, 54.8, 42, `Stable`],
+    [`mp-2534`, `SnO₂`, `P4₂/mnm`, `Tetragonal`, -2.54, 0.0, 3.6, 2.4, 6.95, 71.5, 205, `Stable`],
+    [`mp-2657`, `WO₃`, `P2₁/c`, `Monoclinic`, -2.89, 0.01, 2.6, 3.2, 7.16, 52.1, 194, `Stable`],
+    [`mp-764`, `V₂O₅`, `Pmmn`, `Orthorhombic`, -2.67, 0.0, 2.3, 2.7, 3.36, 178.9, 52, `Stable`],
+    [`mp-540`, `NiO`, `Fm-3m`, `Cubic`, -1.23, 0.0, 4.3, 5.1, 6.67, 18.3, 195, `Stable`],
+    [`mp-48`, `CoO`, `Fm-3m`, `Cubic`, -1.15, 0.04, 2.4, 4.8, 6.44, 19.5, 180, `Metastable`], // codespell:ignore
+    [`mp-1968`,`MnO₂`, `P4₂/mnm`, `Tetragonal`, -2.13, 0.0, 0.3, 6.2, 5.03, 56.2, 267, `Stable` ],
+    [`mp-2691`, `Cr₂O₃`, `R-3c`, `Trigonal`, -3.78, 0.0, 3.4, 3.6, 5.22, 96.7, 238, `Stable` ],
+    [`mp-1960`, `MoS₂`, `P6₃/mmc`, `Hexagonal`, -1.24, 0.0, 1.8, 2.3, 5.06, 106.4, 45, `Stable` ],
+    [`mp-1821`, `WS₂`, `P6₃/mmc`, `Hexagonal`, -1.18, 0.0, 1.9, 2.1, 7.50, 107.2, 56, `Stable` ],
+    [`mp-10695`, `Li₃PS₄`, `Pnma`, `Orthorhombic`, -1.87, 0.08, 4.1, 1.5, 1.88, 412.8, 24, `Metastable` ],
+    [`mp-3163`, `Na₃AlF₆`, `P2₁/c`, `Monoclinic`, -4.52, 0.0, 6.8, 0.8, 2.97, 226.7, 51, `Stable` ],
+    [`mp-7000`, `CuFeS₂`, `I-42d`, `Tetragonal`, -0.89, 0.0, 0.5, 5.8, 4.19, 145.2, 75, `Stable` ],
+    [`mp-35`, `GaN`, `P6₃mc`, `Hexagonal`, -0.82, 0.0, 3.4, 1.6, 6.15, 22.9, 210, `Stable` ],
+    [`mp-13`, `AlN`, `P6₃mc`, `Hexagonal`, -1.47, 0.0, 6.2, 1.2, 3.26, 20.9, 201, `Stable` ],
+    [`mp-804`, `SiC`, `F-43m`, `Cubic`, -0.35, 0.0, 2.4, 1.4, 3.22, 20.7, 225, `Stable`],
+  ].map(([v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12]) => (
+    { ID: v1, Formula: v2, Spacegroup: v3, Crystal: v4, 'E<sub>form</sub>': v5, 'E<sub>above hull</sub>': v6, 'E<sub>gap</sub>': v7, 'DOS eff': v8, Density: v9, Volume: v10, 'Bulk mod': v11, Stability: v12 })
+  )
   // deno-fmt-ignore
   const columns = [
     { label: `ID`, sticky: true, style: `min-width: 80px;` },
     { label: `Formula`, style: `min-width: 90px;` },
     { label: `Spacegroup`, style: `min-width: 95px;` },
     { label: `Crystal`, style: `min-width: 100px;` },
-    { label: `E form`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.2f`, description: `Formation energy (eV/atom)` },
-    { label: `E hull`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.2f`, description: `Energy above hull (eV/atom)` },
-    { label: `Bandgap`, better: `higher`, color_scale: `interpolateViridis`, format: `.1f`, description: `Electronic bandgap (eV)` },
+    { label: `E<sub>form</sub>`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.2f`, description: `Formation energy (eV/atom)` },
+    { label: `E<sub>above hull</sub>`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.2f`, description: `Energy above hull (eV/atom)` },
+    { label: `E<sub>gap</sub>`, better: `higher`, color_scale: `interpolateViridis`, format: `.1f`, description: `Electronic bandgap (eV)` },
     { label: `DOS eff`, color_scale: `interpolatePlasma`, format: `.1f`, description: `Effective DOS mass` },
     { label: `Density`, color_scale: `interpolateBlues`, format: `.2f`, description: `Density (g/cm³)` },
     { label: `Volume`, color_scale: `interpolatePurples`, format: `.1f`, description: `Cell volume (Å³)` },
@@ -319,6 +329,7 @@ Enable search, export, column visibility, row selection, and pagination for a fu
   show_row_select
   bind:selected_rows
   sort_hint="Shift+click for multi-sort"
+  style="margin: 0 auto"
 />
 
 {#if selected_rows.length > 0}
@@ -345,8 +356,8 @@ For large datasets, pagination keeps the table responsive while allowing navigat
     return {
       ID: `mp-${1000 + idx}`,
       Formula: `${cat}₂${an}`,
-      'E form': -(Math.random() * 5 + 1).toFixed(2),
-      Bandgap: (Math.random() * 8).toFixed(2),
+      'E<sub>form</sub>': -(Math.random() * 5 + 1).toFixed(2),
+      'E<sub>gap</sub>': (Math.random() * 8).toFixed(2),
       Density: (2 + Math.random() * 8).toFixed(2),
     }
   })
@@ -355,13 +366,13 @@ For large datasets, pagination keeps the table responsive while allowing navigat
     { label: `ID` },
     { label: `Formula` },
     {
-      label: `E form`,
+      label: `E<sub>form</sub>`,
       better: `lower`,
       color_scale: `interpolateRdYlGn`,
       format: `.2f`,
     },
     {
-      label: `Bandgap`,
+      label: `E<sub>gap</sub>`,
       better: `higher`,
       color_scale: `interpolateViridis`,
       format: `.2f`,
@@ -376,6 +387,7 @@ For large datasets, pagination keeps the table responsive while allowing navigat
   show_pagination
   show_search
   page_size={15}
+  style="margin: 0 auto"
 />
 ```
 
@@ -410,22 +422,26 @@ Explore different D3 color scales. The `better` prop controls whether high or lo
 
   // Formation energies and bandgaps for common materials
   const data = [
-    { Material: `Si`, 'Formation E': 0, Bandgap: 1.12 },
-    { Material: `Ge`, 'Formation E': 0, Bandgap: 0.67 },
-    { Material: `GaAs`, 'Formation E': -0.74, Bandgap: 1.42 },
-    { Material: `ZnO`, 'Formation E': -3.63, Bandgap: 3.44 },
-    { Material: `TiO₂`, 'Formation E': -9.73, Bandgap: 3.20 },
-    { Material: `SiO₂`, 'Formation E': -9.08, Bandgap: 8.90 },
-    { Material: `Al₂O₃`, 'Formation E': -17.37, Bandgap: 8.80 },
-    { Material: `MgO`, 'Formation E': -6.23, Bandgap: 7.80 },
-    { Material: `CaO`, 'Formation E': -6.35, Bandgap: 7.10 },
-    { Material: `BaTiO₃`, 'Formation E': -16.82, Bandgap: 3.20 },
-  ]
+    [`Si`, 0, 1.12],
+    [`Ge`, 0, 0.67],
+    [`GaAs`, -0.74, 1.42],
+    [`ZnO`, -3.63, 3.44],
+    [`TiO₂`, -9.73, 3.20],
+    [`SiO₂`, -9.08, 8.90],
+    [`Al₂O₃`, -17.37, 8.80],
+    [`MgO`, -6.23, 7.80],
+    [`CaO`, -6.35, 7.10],
+    [`BaTiO₃`, -16.82, 3.20],
+  ].map(([v1, v2, v3]) => ({
+    Material: v1,
+    'E<sub>form</sub>': v2,
+    'E<sub>gap</sub>': v3,
+  }))
 
   let columns = $derived([
     { label: `Material` },
-    { label: `Formation E`, better, color_scale: selected_scale, format: `.2f` },
-    { label: `Bandgap`, better, color_scale: selected_scale, format: `.2f` },
+    { label: `E<sub>form</sub>`, better, color_scale: selected_scale, format: `.2f` },
+    { label: `E<sub>gap</sub>`, better, color_scale: selected_scale, format: `.2f` },
   ])
 </script>
 
@@ -447,5 +463,5 @@ Explore different D3 color scales. The `better` prop controls whether high or lo
   </label>
 </div>
 
-<HeatmapTable {data} {columns} />
+<HeatmapTable {data} {columns} style="margin: 0 auto" />
 ```

@@ -21,7 +21,7 @@ export type RowData = { style?: string; class?: string; [key: string]: CellVal }
 // Column configuration for HeatmapTable
 export type Label = {
   label: string
-  short?: string
+  key?: string
   group?: string
   description?: string
   format?: string
@@ -43,6 +43,17 @@ export type SortState = { column: string; ascending: boolean }
 
 // Multi-column sort state (for Shift+click sorting)
 export type MultiSortState = SortState[]
+
+// Sort hint configuration (string for simple text, object for full control)
+export type SortHint =
+  | string
+  | {
+    text: string
+    position?: `top` | `bottom`
+    permanent?: boolean
+    style?: string
+    class?: string
+  }
 
 // Strip HTML tags from a string (for search, export, etc.)
 export const strip_html = (str: string): string => str.replace(/<[^>]*>/g, ``)
