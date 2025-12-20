@@ -55,6 +55,7 @@
     .map((name) => ({ label: name, action: () => goto(name) }))
 </script>
 
+<!-- z-index: 10000000001 needed to render above Structure control toggles -->
 <CmdPalette
   bind:open={cmd_palette_open}
   {actions}

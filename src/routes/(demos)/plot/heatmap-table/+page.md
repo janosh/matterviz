@@ -323,8 +323,8 @@ Enable search, export, column visibility, row selection, and pagination for a fu
   {data}
   {columns}
   scroll_style="max-height: 450px;"
-  show_search
-  show_export
+  search
+  export_data
   show_column_toggle
   show_row_select
   bind:selected_rows
@@ -384,9 +384,8 @@ For large datasets, pagination keeps the table responsive while allowing navigat
 <HeatmapTable
   {data}
   {columns}
-  show_pagination
-  show_search
-  page_size={15}
+  pagination={{ page_size: 15 }}
+  search
   style="margin: 0 auto"
 />
 ```

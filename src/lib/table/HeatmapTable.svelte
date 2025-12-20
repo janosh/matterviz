@@ -4,9 +4,13 @@
   import type {
     CellSnippetArgs,
     CellVal,
+    ExportData,
+    InitialSort,
     Label,
     MultiSortState,
+    Pagination,
     RowData,
+    Search,
     SortHint,
     SortState,
   } from '$lib/table'
@@ -24,20 +28,18 @@
     cell,
     special_cells,
     controls,
-    initial_sort_column,
-    initial_sort_direction,
+    initial_sort = undefined,
     fixed_header = false,
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
     heatmap_class = `heatmap`,
     onrowdblclick,
     column_order = $bindable([]),
-    show_export = false,
+    export_data = false,
     show_column_toggle = false,
-    show_search = false,
+    search = false,
     show_row_select = false,
-    show_pagination = false,
-    page_size = 25,
+    pagination = false,
     selected_rows = $bindable<RowData[]>([]),
     hidden_columns = $bindable<string[]>([]),
     scroll_style,
@@ -49,8 +51,7 @@
     cell?: Snippet<[CellSnippetArgs]>
     special_cells?: Record<string, Snippet<[CellSnippetArgs]>>
     controls?: Snippet
-    initial_sort_column?: string
-    initial_sort_direction?: `asc` | `desc`
+    initial_sort?: InitialSort
     fixed_header?: boolean
     default_num_format?: string
     show_heatmap?: boolean
@@ -61,12 +62,11 @@
     // - Grouped columns: `${col.key ?? col.label} (${col.group})`
     // This allows persisting/restoring column order across sessions.
     column_order?: string[]
-    show_export?: boolean
+    export_data?: ExportData
     show_column_toggle?: boolean
-    show_search?: boolean
+    search?: Search
     show_row_select?: boolean
-    show_pagination?: boolean
-    page_size?: number
+    pagination?: Pagination
     selected_rows?: RowData[]
     hidden_columns?: string[]
     scroll_style?: string
@@ -84,9 +84,47 @@
     )
   }
 
+  // Normalize initial_sort config
+  let initial_sort_config = $derived(
+    initial_sort
+      ? typeof initial_sort === `string`
+        ? { column: initial_sort, direction: `asc` as const }
+        : { direction: `asc` as const, ...initial_sort }
+      : null,
+  )
+
+  // Normalize pagination config
+  let pagination_config = $derived(
+    pagination
+      ? { page_size: 25, ...(typeof pagination === `object` ? pagination : {}) }
+      : null,
+  )
+
+  // Normalize search config
+  let search_config = $derived(
+    search
+      ? {
+        placeholder: `Filter...`,
+        expanded: false,
+        ...(typeof search === `object` ? search : {}),
+      }
+      : null,
+  )
+
+  // Normalize export_data config
+  let export_config = $derived(
+    export_data
+      ? {
+        formats: [`csv`, `json`] as (`csv` | `json`)[],
+        filename: `table-export`,
+        ...(typeof export_data === `object` ? export_data : {}),
+      }
+      : null,
+  )
+
   let sort_state = $state<SortState>({
-    column: initial_sort_column || ``,
-    ascending: initial_sort_direction !== `desc`,
+    column: initial_sort_config?.column || ``,
+    ascending: initial_sort_config?.direction !== `desc`,
   })
 
   // Multi-column sort state (for Shift+click)
@@ -94,7 +132,7 @@
 
   // Search/filter state
   let search_query = $state(``)
-  let search_expanded = $state(false)
+  let search_expanded = $state(search_config?.expanded ?? false)
 
   // Pagination state
   let current_page = $state(1)
@@ -113,28 +151,27 @@
   const get_col_id = (col: Label) =>
     col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
 
-  // Initialize and sanitize column_order
+  // Sync column_order with columns: initialize if empty, remove stale IDs, append new IDs
   $effect(() => {
     if (columns.length === 0) return
-    const ids = columns.map(get_col_id)
-    const id_set = new Set(ids)
+    const col_ids = columns.map(get_col_id)
 
-    // Initialize if empty, otherwise sync: keep valid IDs in order, append new ones
-    const filtered = column_order.filter((id) => id_set.has(id))
-    const needs_update = column_order.length === 0 ||
-      filtered.length !== column_order.length ||
-      filtered.length !== ids.length
-
-    // Guard against unnecessary churn: skip update if order is already identical
-    if (
-      needs_update &&
-      !(column_order.length && filtered.length === ids.length &&
-        column_order.every((val, idx) => val === ids[idx]))
-    ) {
-      column_order = column_order.length === 0
-        ? ids
-        : [...filtered, ...ids.filter((id) => !filtered.includes(id))]
+    // Case 1: First render - initialize with default order
+    if (column_order.length === 0) {
+      column_order = col_ids
+      return
     }
+
+    // Case 2: Already in sync - skip to avoid infinite effect loop
+    const arrays_equal = column_order.length === col_ids.length &&
+      column_order.every((id, idx) => id === col_ids[idx])
+    if (arrays_equal) return
+
+    // Case 3: Sync needed - keep valid IDs in their order, append any new ones
+    const valid_ids = new Set(col_ids)
+    const kept = column_order.filter((id) => valid_ids.has(id))
+    const new_ids = col_ids.filter((id) => !kept.includes(id))
+    column_order = [...kept, ...new_ids]
   })
 
   // Reorder columns based on column_order
@@ -333,12 +370,14 @@
 
   // Paginated data
   let paginated_data = $derived.by(() => {
-    if (!show_pagination) return sorted_data
-    const start = (current_page - 1) * page_size
-    return sorted_data.slice(start, start + page_size)
+    if (!pagination_config) return sorted_data
+    const start = (current_page - 1) * pagination_config.page_size
+    return sorted_data.slice(start, start + pagination_config.page_size)
   })
 
-  let total_pages = $derived(Math.ceil(sorted_data.length / page_size))
+  let total_pages = $derived(
+    Math.ceil(sorted_data.length / (pagination_config?.page_size ?? 25)),
+  )
 
   // Track previous values to detect actual changes
   let prev_search_query = $state(``)
@@ -467,7 +506,7 @@
   }
 
   // Export functions
-  function export_csv() {
+  function export_csv(filename = `table-export`) {
     const headers = visible_columns.map((col) => col.label)
     const rows = sorted_data.map((row) =>
       visible_columns.map((col) => {
@@ -485,11 +524,11 @@
     const csv_content = [headers.join(`,`), ...rows.map((r) => r.join(`,`))].join(
       `\n`,
     )
-    download_file(csv_content, `table-export.csv`, `text/csv`)
+    download_file(csv_content, `${filename}.csv`, `text/csv`)
   }
 
-  function export_json() {
-    const export_data = sorted_data.map((row) => {
+  function export_json(filename = `table-export`) {
+    const rows = sorted_data.map((row) => {
       const clean_row: Record<string, unknown> = {}
       for (const col of visible_columns) {
         const col_id = get_col_id(col)
@@ -499,8 +538,8 @@
       return clean_row
     })
 
-    const json_content = JSON.stringify(export_data, null, 2)
-    download_file(json_content, `table-export.json`, `application/json`)
+    const json_content = JSON.stringify(rows, null, 2)
+    download_file(json_content, `${filename}.json`, `application/json`)
   }
 
   function download_file(content: string, filename: string, mime_type: string) {
@@ -582,12 +621,12 @@
 >
   <!-- Floating control buttons -->
   <section class="control-buttons">
-    {#if show_search}
+    {#if search_config}
       {#if search_expanded || search_query}
         <input
           type="search"
           class="search-input"
-          placeholder="Filter..."
+          placeholder={search_config.placeholder}
           bind:value={search_query}
           onblur={() => {
             if (!search_query) search_expanded = false
@@ -638,7 +677,7 @@
       </div>
     {/if}
 
-    {#if show_export}
+    {#if export_config}
       <div class="dropdown-wrapper">
         <button
           class="icon-btn"
@@ -650,24 +689,28 @@
         </button>
         {#if show_export_dropdown}
           <div class="dropdown-pane">
-            <button
-              class="dropdown-option"
-              onclick={() => {
-                export_csv()
-                show_export_dropdown = false
-              }}
-            >
-              <Icon icon="Download" style="width: 12px" /> CSV
-            </button>
-            <button
-              class="dropdown-option"
-              onclick={() => {
-                export_json()
-                show_export_dropdown = false
-              }}
-            >
-              <Icon icon="Download" style="width: 12px" /> JSON
-            </button>
+            {#if export_config.formats.includes(`csv`)}
+              <button
+                class="dropdown-option"
+                onclick={() => {
+                  export_csv(export_config.filename)
+                  show_export_dropdown = false
+                }}
+              >
+                <Icon icon="Download" style="width: 12px" /> CSV
+              </button>
+            {/if}
+            {#if export_config.formats.includes(`json`)}
+              <button
+                class="dropdown-option"
+                onclick={() => {
+                  export_json(export_config.filename)
+                  show_export_dropdown = false
+                }}
+              >
+                <Icon icon="Download" style="width: 12px" /> JSON
+              </button>
+            {/if}
           </div>
         {/if}
       </div>
@@ -847,7 +890,7 @@
 
   {@render sort_hint_element(`bottom`)}
 
-  {#if show_pagination && total_pages > 1}
+  {#if pagination_config && total_pages > 1}
     <div class="pagination">
       <button
         class="page-btn"

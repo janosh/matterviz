@@ -55,6 +55,26 @@ export type SortHint =
     class?: string
   }
 
+// Initial sort configuration (string for column name, object for full control)
+export type InitialSort =
+  | string
+  | { column: string; direction?: `asc` | `desc` }
+
+// Pagination configuration (boolean to enable, object for full control)
+export type Pagination =
+  | boolean
+  | { page_size?: number }
+
+// Search configuration (boolean to enable, object for full control)
+export type Search =
+  | boolean
+  | { placeholder?: string; expanded?: boolean }
+
+// Export configuration (boolean to enable, object for full control)
+export type ExportData =
+  | boolean
+  | { formats?: (`csv` | `json`)[]; filename?: string }
+
 // Strip HTML tags from a string (for search, export, etc.)
 export const strip_html = (str: string): string => str.replace(/<[^>]*>/g, ``)
 

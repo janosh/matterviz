@@ -200,14 +200,13 @@ describe(`HeatmapTable`, () => {
       expect(post_sort_values).not.toEqual(initial_values)
     })
 
-    it(`sorts correctly with default initial sort settings`, () => {
+    it(`sorts correctly with initial_sort object (direction: desc)`, () => {
       mount(HeatmapTable, {
         target: document.body,
         props: {
           data: sample_data,
           columns: sample_columns,
-          initial_sort_column: `Score`,
-          initial_sort_direction: `desc`,
+          initial_sort: { column: `Score`, direction: `desc` },
         },
       })
 
@@ -217,6 +216,24 @@ describe(`HeatmapTable`, () => {
       ).map((cell) => cell.textContent?.trim())
 
       expect(scores).toEqual([`0.95`, `0.85`, `0.75`])
+    })
+
+    it(`initial_sort string shorthand defaults to ascending`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          initial_sort: `Score`,
+        },
+      })
+
+      // String shorthand should sort ascending by default
+      const scores = Array.from(
+        document.querySelectorAll(`td[data-col="Score"]`),
+      ).map((cell) => cell.textContent?.trim())
+
+      expect(scores).toEqual([`0.75`, `0.85`, `0.95`])
     })
   })
 
@@ -639,10 +656,10 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Search and Filter`, () => {
-    it(`renders search button when show_search is true`, () => {
+    it(`renders search button when search is enabled`, () => {
       mount(HeatmapTable, {
         target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_search: true },
+        props: { data: sample_data, columns: sample_columns, search: true },
       })
 
       const control_buttons = document.querySelector(`.control-buttons`)
@@ -653,7 +670,7 @@ describe(`HeatmapTable`, () => {
     it(`expands search input when toggle clicked`, async () => {
       mount(HeatmapTable, {
         target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_search: true },
+        props: { data: sample_data, columns: sample_columns, search: true },
       })
 
       const search_btn = document.querySelector(
@@ -662,6 +679,44 @@ describe(`HeatmapTable`, () => {
       search_btn.click()
       await tick()
 
+      const search_input = document.querySelector(`input[type="search"]`)
+      expect(search_input).not.toBeNull()
+    })
+
+    it(`respects search.placeholder configuration`, async () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          search: { placeholder: `Search materials...` },
+        },
+      })
+
+      // Click to expand search
+      const search_btn = document.querySelector(
+        `.control-buttons .icon-btn`,
+      ) as HTMLButtonElement
+      search_btn.click()
+      await tick()
+
+      const search_input = document.querySelector(
+        `input[type="search"]`,
+      ) as HTMLInputElement
+      expect(search_input?.placeholder).toBe(`Search materials...`)
+    })
+
+    it(`respects search.expanded configuration to auto-expand`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          search: { expanded: true },
+        },
+      })
+
+      // Search input should be visible immediately without clicking
       const search_input = document.querySelector(`input[type="search"]`)
       expect(search_input).not.toBeNull()
     })
@@ -676,10 +731,10 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Export Functionality`, () => {
-    it(`renders export dropdown when show_export is true`, async () => {
+    it(`renders export dropdown when export_data is enabled`, async () => {
       mount(HeatmapTable, {
         target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_export: true },
+        props: { data: sample_data, columns: sample_columns, export_data: true },
       })
 
       // Find export dropdown (second dropdown-wrapper when column toggle is not present)
@@ -699,14 +754,35 @@ describe(`HeatmapTable`, () => {
       expect(dropdown?.textContent).toContain(`JSON`)
     })
 
-    it(`does not render export button when show_export is false`, () => {
+    it(`does not render export button when export_data is false`, () => {
       mount(HeatmapTable, {
         target: document.body,
-        props: { data: sample_data, columns: sample_columns, show_export: false },
+        props: { data: sample_data, columns: sample_columns, export_data: false },
       })
 
       const dropdown_wrappers = document.querySelectorAll(`.dropdown-wrapper`)
       expect(dropdown_wrappers).toHaveLength(0)
+    })
+
+    it(`respects export_data.formats to show only specified formats`, async () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          export_data: { formats: [`csv`] },
+        },
+      })
+
+      const export_btn = document.querySelector(
+        `.dropdown-wrapper .icon-btn`,
+      ) as HTMLButtonElement
+      export_btn.click()
+      await tick()
+
+      const dropdown = document.querySelector(`.dropdown-pane`)
+      expect(dropdown?.textContent).toContain(`CSV`)
+      expect(dropdown?.textContent).not.toContain(`JSON`)
     })
   })
 
@@ -930,14 +1006,13 @@ describe(`HeatmapTable`, () => {
       Value: idx * 10,
     }))
 
-    it(`renders pagination controls when show_pagination is true`, () => {
+    it(`renders pagination controls when pagination is enabled`, () => {
       mount(HeatmapTable, {
         target: document.body,
         props: {
           data: large_data,
           columns: sample_columns,
-          show_pagination: true,
-          page_size: 10,
+          pagination: { page_size: 10 },
         },
       })
 
@@ -952,14 +1027,13 @@ describe(`HeatmapTable`, () => {
       expect(page_info?.textContent).toContain(`of 5`)
     })
 
-    it(`limits rows to page_size`, () => {
+    it(`limits rows to pagination.page_size`, () => {
       mount(HeatmapTable, {
         target: document.body,
         props: {
           data: large_data,
           columns: sample_columns,
-          show_pagination: true,
-          page_size: 10,
+          pagination: { page_size: 10 },
         },
       })
 
@@ -976,8 +1050,7 @@ describe(`HeatmapTable`, () => {
         props: {
           data: large_data,
           columns: sample_columns,
-          show_pagination: true,
-          page_size: 10,
+          pagination: { page_size: 10 },
         },
       })
 
@@ -994,8 +1067,7 @@ describe(`HeatmapTable`, () => {
         props: {
           data: large_data,
           columns: sample_columns,
-          show_pagination: true,
-          page_size: 10,
+          pagination: { page_size: 10 },
         },
       })
 
@@ -1009,8 +1081,7 @@ describe(`HeatmapTable`, () => {
         props: {
           data: sample_data, // Only 3 rows
           columns: sample_columns,
-          show_pagination: true,
-          page_size: 10,
+          pagination: { page_size: 10 },
         },
       })
 
