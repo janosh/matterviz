@@ -164,6 +164,10 @@
       "types": "./dist/symmetry/index.d.ts",
       "default": "./dist/symmetry/index.js"
     },
+    "./table": {
+      "types": "./dist/table/index.d.ts",
+      "default": "./dist/table/index.js"
+    },
     "./theme": {
       "types": "./dist/theme/index.d.ts",
       "default": "./dist/theme/index.js"
