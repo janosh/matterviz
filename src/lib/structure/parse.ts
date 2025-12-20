@@ -586,12 +586,12 @@ const apply_symmetry_ops = (
   const equivalent_atoms: CifAtom[] = []
   const seen = new Set<string>()
   const wrap = (
-    v: Vec3,
-  ): Vec3 => (wrap_frac ? v.map((coord) => coord - Math.floor(coord)) as Vec3 : v)
+    coords: Vec3,
+  ): Vec3 => (wrap_frac ? coords.map((val) => val - Math.floor(val)) as Vec3 : coords)
   // Use 6 decimal places for deduplication to handle floating point imprecision
   // from compound symmetry operations like x-y, -x+y which can produce small errors
-  const key = (v: Vec3): string =>
-    `${v[0].toFixed(6)},${v[1].toFixed(6)},${v[2].toFixed(6)}`
+  const key = (coords: Vec3): string =>
+    `${coords[0].toFixed(6)},${coords[1].toFixed(6)},${coords[2].toFixed(6)}`
 
   // Always include base atom (optionally wrapped)
   const base_coords = wrap(atom.coords as Vec3)

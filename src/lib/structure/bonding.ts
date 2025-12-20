@@ -17,7 +17,7 @@ const covalent_radii: Map<string, number> = new Map(
 // Get the species with highest occupancy from a site.
 const get_majority_species = (site: Site) =>
   (site.species ?? []).reduce(
-    (max, spec) => (spec.occu > max.occu ? spec : max),
+    (max_species, species) => (species.occu > max_species.occu ? species : max_species),
     site.species?.[0] ?? { element: ``, occu: -1 },
   )
 
