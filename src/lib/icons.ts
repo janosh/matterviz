@@ -476,6 +476,11 @@ export const ICON_DATA = {
     path:
       `M12 14L1 8l11-6l11 6zm0 4L1.575 12.325l2.1-1.15L12 15.725l8.325-4.55l2.1 1.15zm0 4L1.575 16.325l2.1-1.15L12 19.725l8.325-4.55l2.1 1.15z`,
   },
+  Checkbox: { // fluent:checkbox-checked-16-filled
+    viewBox: `0 0 14 14`,
+    path:
+      `M4.5 2A2.5 2.5 0 0 0 2 4.5v7A2.5 2.5 0 0 0 4.5 14h7a2.5 2.5 0 0 0 2.5-2.5v-7A2.5 2.5 0 0 0 11.5 2zm6.354 4.854l-3.5 3.5a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7 9.293l3.146-3.147a.5.5 0 0 1 .708.708`,
+  },
 } as const
 
 export type IconName = keyof typeof ICON_DATA

@@ -55,7 +55,13 @@
     .map((name) => ({ label: name, action: () => goto(name) }))
 </script>
 
-<CmdPalette bind:open={cmd_palette_open} {actions} placeholder="Go to..." />
+<!-- z-index: 10000000001 needed to render above Structure control toggles -->
+<CmdPalette
+  bind:open={cmd_palette_open}
+  {actions}
+  placeholder="Go to..."
+  dialog_style="z-index: 10000000001"
+/>
 <GitHubCorner href={pkg.repository} />
 <CopyButton global class="copy-btn" />
 
