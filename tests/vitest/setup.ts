@@ -132,19 +132,15 @@ export type SimpleSiteObject = {
 }
 
 // Tuple shorthand: [`Li`, [0, 0, 0]] or [`Li`, [0, 0, 0], 1] (with oxidation state)
-export type SimpleSiteTuple =
-  | readonly [ElementSymbol | string, Vec3]
-  | readonly [ElementSymbol | string, Vec3, number]
-
-export type SimpleSite = SimpleSiteObject | SimpleSiteTuple
+export type SimpleSite = SimpleSiteObject | [string, Vec3, number?]
 
 // Normalize tuple or object site input to object form
 const normalize_site_input = (input: SimpleSite): SimpleSiteObject => {
   if (Array.isArray(input)) {
-    const [element, abc, oxidation_state] = input as readonly [string, Vec3, number?]
+    const [element, abc, oxidation_state] = input
     return { element, abc, oxidation_state }
   }
-  return input as SimpleSiteObject
+  return input
 }
 
 // Flexible helper to create test structures with minimal boilerplate
