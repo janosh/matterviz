@@ -40,10 +40,10 @@
       padding: 0.5em 1em;
     }
     &.warning {
-      --status-message-border: 1px solid #fb8c00;
-      background: #fff3e0;
-      color: #e65100;
-      padding: 0.5em;
+      border: var(--warning-border, 1px solid #fb8c00);
+      background: color-mix(in srgb, var(--warning-color, #fb8c00) 10%, transparent);
+      color: var(--warning-color, #fb8c00);
+      padding: 0.5em 1em;
     }
   }
   button {
