@@ -17,7 +17,7 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
     return [scaling, scaling, scaling]
   }
   if (Array.isArray(scaling) && scaling.length === 3) {
-    if (scaling.some((v) => !Number.isInteger(v) || v <= 0)) {
+    if (scaling.some((val) => !Number.isInteger(val) || val <= 0)) {
       throw new Error(
         `All supercell scaling factors must be positive integers: ${scaling}`,
       )
@@ -26,15 +26,15 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
   }
   if (typeof scaling === `string`) {
     // Parse "2x2x2" format
-    const parts = scaling.trim().toLowerCase().split(/[x×,\s]+/).filter((p) =>
-      p.length > 0
+    const parts = scaling.trim().toLowerCase().split(/[x×,\s]+/).filter((part) =>
+      part.length > 0
     )
 
     if (parts.length === 1 || parts.length === 3) {
       // Check that all parts are strictly digits to avoid scientific notation/hex/etc per tests
-      if (parts.every((p) => /^\d+$/.test(p))) {
+      if (parts.every((part) => /^\d+$/.test(part))) {
         const values = parts.map(Number)
-        if (values.every((v) => v > 0)) {
+        if (values.every((val) => val > 0)) {
           return (parts.length === 1 ? [values[0], values[0], values[0]] : values) as Vec3
         }
       }

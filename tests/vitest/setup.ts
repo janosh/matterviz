@@ -154,7 +154,10 @@ export function make_crystal(
     ? [[lattice_input, 0, 0], [0, lattice_input, 0], [0, 0, lattice_input]]
     : lattice_input
 
-  const lattice_inverse = math.matrix_inverse_3x3(lattice_matrix)
+  // Use standard pymatgen convention for frac↔cart conversion:
+  // xyz = transpose(lattice) · abc, abc = inv(transpose(lattice)) · xyz
+  const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
+  const cart_to_frac = math.create_cart_to_frac(lattice_matrix)
   const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
   const pbc = options.pbc ?? [true, true, true]
 
@@ -166,10 +169,10 @@ export function make_crystal(
     let xyz: Vec3
     if (input.abc) {
       abc = input.abc
-      xyz = math.mat3x3_vec3_multiply(lattice_matrix, abc)
+      xyz = frac_to_cart(abc)
     } else if (input.xyz) {
       xyz = input.xyz
-      abc = math.mat3x3_vec3_multiply(lattice_inverse, xyz)
+      abc = cart_to_frac(xyz)
     } else {
       throw new Error(`Site ${idx} must have either abc or xyz coordinates`)
     }

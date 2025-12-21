@@ -652,7 +652,7 @@ const extract_cif_cell_parameters = (
       }
       return value
     })
-    .filter((v): v is number => v !== null)
+    .filter((val): val is number => val !== null)
 
 // build header index mapping for atom site data (supports fract and Cartn coordinates)
 const build_cif_atom_site_header_indices = (
@@ -766,9 +766,9 @@ export function parse_cif(
 
       // Check if this is a symmetry operations loop
       if (
-        headers.some((h) =>
-          h.includes(`_symmetry_equiv_pos_as_xyz`) ||
-          h.includes(`_space_group_symop_operation_xyz`)
+        headers.some((header) =>
+          header.includes(`_symmetry_equiv_pos_as_xyz`) ||
+          header.includes(`_space_group_symop_operation_xyz`)
         )
       ) {
         // Collect symmetry operations
@@ -784,7 +784,7 @@ export function parse_cif(
       }
 
       // Not an atom-site loop → continue search
-      if (!headers.some((h) => h.includes(`_atom_site_`))) continue
+      if (!headers.some((header) => header.includes(`_atom_site_`))) continue
 
       // Check if this loop contains coordinate headers
       const indices_preview = build_cif_atom_site_header_indices(headers)
@@ -933,8 +933,8 @@ export function parse_cif(
           hdrs.push(text_lines[lj].trim().toLowerCase())
           lj++
         }
-        const sym_idx = hdrs.findIndex((h) => h.endsWith(`_atom_type_symbol`))
-        const num_idx = hdrs.findIndex((h) => h.endsWith(`_atom_type_number_in_cell`))
+        const sym_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_symbol`))
+        const num_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
         if (sym_idx !== -1 && num_idx !== -1) {
           while (lj < text_lines.length) {
             const line = text_lines[lj].trim()
@@ -943,8 +943,8 @@ export function parse_cif(
               lj++
               continue
             }
-            const toks = (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).map((t) =>
-              t.replace(/['"]/g, ``)
+            const toks = (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).map((tok) =>
+              tok.replace(/['"]/g, ``)
             )
             if (toks.length > Math.max(sym_idx, num_idx)) {
               // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')

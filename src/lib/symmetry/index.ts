@@ -162,16 +162,16 @@ export function apply_symmetry_operations(
 ): Vec3[] {
   const seen = new Set<string>()
   const wrap = (coord: number) => coord - Math.floor(coord)
-  const key = (pos: Vec3) => pos.map((c) => wrap(c).toFixed(8)).join(`,`)
+  const key = (pos: Vec3) => pos.map((coord) => wrap(coord).toFixed(8)).join(`,`)
 
   return operations
     .map(({ rotation, translation }) => {
       // Apply 3x3 rotation matrix and translation: new_pos = R * position + t
-      const new_pos: Vec3 = [0, 1, 2].map((i) =>
-        rotation[i * 3] * position[0] +
-        rotation[i * 3 + 1] * position[1] +
-        rotation[i * 3 + 2] * position[2] +
-        translation[i]
+      const new_pos: Vec3 = [0, 1, 2].map((dim) =>
+        rotation[dim * 3] * position[0] +
+        rotation[dim * 3 + 1] * position[1] +
+        rotation[dim * 3 + 2] * position[2] +
+        translation[dim]
       ) as Vec3
       return new_pos.map(wrap) as Vec3
     })
