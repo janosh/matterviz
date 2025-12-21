@@ -32,7 +32,7 @@
     show_legend?: boolean
     on_error?: (error: Error) => void
     children?: Snippet<
-      [{ slice_data: FermiSliceData | null; export_svg: () => string }]
+      [{ slice_data: FermiSliceData | null; export_svg: () => string | null }]
     >
   } & HTMLAttributes<HTMLDivElement> = $props()
 
@@ -80,17 +80,22 @@
     })) ?? [],
   )
 
-  // Compute padded data bounds
+  // Compute padded data bounds (single-pass to avoid stack overflow on large arrays)
   let bounds = $derived.by(() => {
-    const pts = slice_data?.isolines.flatMap((iso) => iso.points_2d) ?? []
-    if (!pts.length) return { min: [-1, -1], max: [1, 1] }
-    const xs = pts.map((pt) => pt[0]), ys = pts.map((pt) => pt[1])
-    const [xmin, xmax, ymin, ymax] = [
-      Math.min(...xs),
-      Math.max(...xs),
-      Math.min(...ys),
-      Math.max(...ys),
-    ]
+    const isolines = slice_data?.isolines
+    if (!isolines?.length) return { min: [-1, -1], max: [1, 1] }
+
+    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity
+    for (const iso of isolines) {
+      for (const pt of iso.points_2d) {
+        if (pt[0] < xmin) xmin = pt[0]
+        if (pt[0] > xmax) xmax = pt[0]
+        if (pt[1] < ymin) ymin = pt[1]
+        if (pt[1] > ymax) ymax = pt[1]
+      }
+    }
+    if (!isFinite(xmin)) return { min: [-1, -1], max: [1, 1] }
+
     const pad = 0.1, rx = xmax - xmin || 1, ry = ymax - ymin || 1
     return {
       min: [xmin - rx * pad, ymin - ry * pad],
@@ -120,7 +125,9 @@
     }
   }
 
-  const export_svg = () => wrapper?.querySelector(`svg`)?.outerHTML ?? ``
+  // Returns null if SVG not found, making export failures explicit
+  const export_svg = (): string | null =>
+    wrapper?.querySelector(`svg`)?.outerHTML ?? null
 </script>
 
 <ScatterPlot

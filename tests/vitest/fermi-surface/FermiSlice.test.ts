@@ -136,13 +136,13 @@ describe(`FermiSlice`, () => {
 
   test(`children snippet receives export_svg and slice_data`, async () => {
     let snippet_called = false
-    let export_svg_fn: (() => string) | undefined
+    let export_svg_fn: (() => string | null) | undefined
     let received_slice_data: FermiSliceData | null = `not-set` as unknown as
       | FermiSliceData
       | null
 
     const children_snippet = createRawSnippet<
-      [{ slice_data: FermiSliceData | null; export_svg: () => string }]
+      [{ slice_data: FermiSliceData | null; export_svg: () => string | null }]
     >((data) => {
       snippet_called = true
       export_svg_fn = data().export_svg
@@ -160,8 +160,20 @@ describe(`FermiSlice`, () => {
 
     expect(snippet_called).toBe(true)
     expect(typeof export_svg_fn).toBe(`function`)
-    if (export_svg_fn) expect(typeof export_svg_fn()).toBe(`string`)
     expect(document.querySelector(`.children-rendered`)).toBeTruthy()
     expect(received_slice_data).toBeNull() // null when no fermi_data
+
+    // export_svg should be consistent with DOM state: returns SVG outerHTML if present, null otherwise
+    // Note: In happy-dom, ScatterPlot's SVG may not render due to ResizeObserver limitations
+    if (export_svg_fn) {
+      const result = export_svg_fn()
+      const svg_in_dom = document.querySelector(`.fermi-slice`)?.querySelector(`svg`)
+      if (svg_in_dom) {
+        expect(result).toBe(svg_in_dom.outerHTML)
+        expect(result).toContain(`<svg`)
+      } else {
+        expect(result).toBeNull()
+      }
+    }
   })
 })
