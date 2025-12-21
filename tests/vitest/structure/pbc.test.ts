@@ -10,6 +10,7 @@ import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '$site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import { describe, expect, test } from 'vitest'
+import { make_crystal } from '../setup'
 
 const mp_1_struct = structure_map.get(`mp-1`) as Crystal
 const mp_2_struct = structure_map.get(`mp-2`) as Crystal
@@ -285,29 +286,7 @@ test.each([
 })
 
 test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
-  const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
-  const structure: Crystal = {
-    sites: [
-      {
-        species: [{ element: `Cl` as const, occu: 1, oxidation_state: 0 }],
-        abc: [1.0, 0.5, 0.5],
-        xyz: [5.0, 2.5, 2.5],
-        label: `Cl1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: lattice,
-      pbc: [true, true, true],
-      a: 5,
-      b: 5,
-      c: 5,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125,
-    },
-  }
+  const structure = make_crystal(5, [{ element: `Cl`, abc: [1.0, 0.5, 0.5] }])
 
   const images = find_image_atoms(structure)
   expect(images.length).toBeGreaterThan(0)
@@ -322,7 +301,7 @@ test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
   expect(img_abc[2]).toBeCloseTo(0.5, 12)
 
   // xyz must be consistent with lattice * abc
-  const expected_xyz = mat3x3_vec3_multiply(lattice, img_abc)
+  const expected_xyz = mat3x3_vec3_multiply(structure.lattice.matrix, img_abc)
   for (let dim = 0; dim < 3; dim++) {
     expect(img_xyz[dim]).toBeCloseTo(expected_xyz[dim], 10)
   }
@@ -491,42 +470,11 @@ test(`image atoms should have fractional coordinates related by lattice translat
 // Test edge detection accuracy
 test(`edge detection should be precise for atoms at boundaries`, () => {
   // Create a test structure with atoms exactly at edges
-  const test_structure: Crystal = {
-    sites: [
-      {
-        species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.0, 0.0], // Exactly at corner
-        xyz: [0.0, 0.0, 0.0],
-        label: `Na1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Cl`, occu: 1, oxidation_state: 0 }],
-        abc: [1.0, 0.0, 0.0], // Exactly at edge
-        xyz: [5.0, 0.0, 0.0],
-        label: `Cl1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-        abc: [0.5, 0.5, 0.5], // In middle, no images expected
-        xyz: [2.5, 2.5, 2.5],
-        label: `Na2`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
-      pbc: [true, true, true],
-      a: 5.0,
-      b: 5.0,
-      c: 5.0,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125.0,
-    },
-  }
+  const test_structure = make_crystal(5, [
+    { element: `Na`, abc: [0.0, 0.0, 0.0] }, // Exactly at corner
+    { element: `Cl`, abc: [1.0, 0.0, 0.0] }, // Exactly at edge
+    { element: `Na`, abc: [0.5, 0.5, 0.5] }, // In middle, no images expected
+  ])
 
   const image_atoms = find_image_atoms(test_structure)
 
@@ -660,35 +608,10 @@ test(`all image atoms should be positioned at unit cell boundaries`, () => {
 // Test that image atoms have fractional coordinates inside expected cell boundaries
 test(`image atoms should have fractional coordinates at cell boundaries`, () => {
   // Create a simple cubic structure with atoms at exact boundaries
-  const test_structure: Crystal = {
-    sites: [
-      {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.0, 0.0], // Corner
-        xyz: [0.0, 0.0, 0.0],
-        label: `C1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-        abc: [1.0, 1.0, 1.0], // Opposite corner
-        xyz: [4.0, 4.0, 4.0],
-        label: `C2`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[4.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0]],
-      pbc: [true, true, true],
-      a: 4.0,
-      b: 4.0,
-      c: 4.0,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 64.0,
-    },
-  }
+  const test_structure = make_crystal(4, [
+    { element: `C`, abc: [0.0, 0.0, 0.0] }, // Corner
+    { element: `C`, abc: [1.0, 1.0, 1.0] }, // Opposite corner
+  ])
 
   const image_atoms = find_image_atoms(test_structure)
   expect(image_atoms.length).toBeGreaterThan(0)
@@ -824,35 +747,10 @@ test.each([
 // Test the new behavior: abc coordinates should be preserved and synchronized with xyz
 test(`image atoms preserve fractional coordinates correctly`, () => {
   // Create a simple test structure with atoms at known boundary positions
-  const test_structure: Crystal = {
-    sites: [
-      {
-        species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.0, 0.0], // Corner atom
-        xyz: [0.0, 0.0, 0.0],
-        label: `Na1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Cl`, occu: 1, oxidation_state: 0 }],
-        abc: [1.0, 0.5, 0.0], // Edge atom in x-direction
-        xyz: [5.0, 2.5, 0.0],
-        label: `Cl1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
-      pbc: [true, true, true],
-      a: 5.0,
-      b: 5.0,
-      c: 5.0,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125.0,
-    },
-  }
+  const test_structure = make_crystal(5, [
+    { element: `Na`, abc: [0.0, 0.0, 0.0] }, // Corner atom
+    { element: `Cl`, abc: [1.0, 0.5, 0.0] }, // Edge atom in x-direction
+  ])
 
   const image_atoms = find_image_atoms(test_structure)
   expect(image_atoms.length).toBeGreaterThan(0)
