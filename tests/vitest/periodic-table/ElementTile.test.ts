@@ -1,6 +1,6 @@
 import { element_data, ElementTile } from '$lib'
 import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -680,7 +680,7 @@ describe(`ElementTile`, () => {
       // Change the category color
       const new_color = `#abcdef`
       colors.category[rand_element.category] = new_color
-      await new Promise((resolve) => setTimeout(resolve, 0)) // Wait for reactivity
+      await tick()
 
       expect(node.style.backgroundColor).toBe(new_color)
 

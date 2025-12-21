@@ -67,6 +67,7 @@ class VSCodeFrameLoader implements FrameLoader {
   async load_frame(
     _data: string | ArrayBuffer,
     frame_index: number,
+    timeout: number = 10, // 10 seconds
   ): Promise<TrajectoryFrame | null> {
     return new Promise((resolve, reject) => {
       const request_id = crypto.randomUUID()
@@ -91,8 +92,8 @@ class VSCodeFrameLoader implements FrameLoader {
 
       timer = setTimeout(() => {
         globalThis.removeEventListener(`message`, handler)
-        reject(new Error(`Frame ${frame_index} timeout`))
-      }, 30000)
+        reject(new Error(`Frame ${frame_index} timeout after ${timeout}ms`))
+      }, timeout * 1000)
     })
   }
 

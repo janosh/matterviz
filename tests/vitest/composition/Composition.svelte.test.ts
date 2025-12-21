@@ -85,7 +85,7 @@ describe(`Composition component`, () => {
   test(`opens context menu on right click`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await new Promise((r) => setTimeout(r, 0))
     expect(doc_query(`.context-menu`)).toBeTruthy()
     expect(doc_query(`.header`).textContent).toBe(`Display Mode`)
   })
@@ -93,7 +93,7 @@ describe(`Composition component`, () => {
   test(`context menu has all expected options`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await new Promise((r) => setTimeout(r, 0))
 
     const menu_options = document.querySelectorAll(`.context-menu button`)
     expect(menu_options.length).toBeGreaterThanOrEqual(13) // 3 display modes + 6 color schemes + 4 export options
@@ -111,7 +111,7 @@ describe(`Composition component`, () => {
   test(`context menu changes propagate to chart components`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await new Promise((r) => setTimeout(r, 0))
 
     const bubble_option = Array.from(
       document.querySelectorAll<HTMLButtonElement>(`.context-menu button`),
@@ -128,7 +128,7 @@ describe(`Composition component`, () => {
   test(`export options are available in context menu`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await new Promise((r) => setTimeout(r, 0))
 
     const export_options = Array.from(document.querySelectorAll(`.context-menu button`))
       .filter((opt) =>

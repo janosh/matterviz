@@ -27,35 +27,34 @@
 <style>
   .status-message {
     border-radius: var(--border-radius, 3pt);
-    border: var(--status-message-border);
     &.info {
-      --status-message-border: 2px dashed #ccc;
+      border: 2px dashed var(--text-color-muted, #ccc);
       background: transparent;
-      color: #666;
+      color: var(--text-color-muted, #666);
       padding: 2em;
     }
     &.error {
-      --status-message-border: 1px solid #ef5350;
-      background: #ffebee;
-      color: #c62828;
+      border: var(--error-border, 1px solid #ef4444);
+      background: color-mix(in srgb, var(--error-color, #ef4444) 10%, transparent);
+      color: var(--error-color, #ef4444);
       padding: 0.5em 1em;
     }
     &.warning {
-      --status-message-border: 1px solid #fb8c00;
-      background: #fff3e0;
-      color: #e65100;
-      padding: 0.5em;
+      border: var(--warning-border, 1px solid #fb8c00);
+      background: color-mix(in srgb, var(--warning-color, #fb8c00) 10%, transparent);
+      color: var(--warning-color, #fb8c00);
+      padding: 0.5em 1em;
     }
   }
   button {
     margin-left: 1em;
     padding: 0.2em 0.5em;
-    background: #ddd;
-    border: 1px solid #bbb;
+    background: var(--btn-bg, #ddd);
+    border: 1px solid var(--border-color, #bbb);
     border-radius: var(--border-radius, 3pt);
     cursor: pointer;
     &:hover {
-      background: #ccc;
+      background: var(--btn-bg-hover, #ccc);
     }
   }
 </style>
