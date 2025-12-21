@@ -1,28 +1,11 @@
-import type { AnyStructure } from '$lib'
 import StructurePopup from '$lib/convex-hull/StructurePopup.svelte'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
+import { make_crystal } from '../setup'
 
-const mock_structure: AnyStructure = {
-  sites: [{
-    species: [{ element: `Li`, occu: 1, oxidation_state: 1 }],
-    xyz: [0, 0, 0],
-    abc: [0, 0, 0],
-    label: `Li`,
-    properties: {},
-  }],
-  lattice: {
-    matrix: [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
-    pbc: [true, true, true],
-    a: 3,
-    b: 3,
-    c: 3,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: 27,
-  },
-}
+const mock_structure = make_crystal(3, [
+  { element: `Li`, abc: [0, 0, 0], oxidation_state: 1 },
+])
 
 describe(`StructurePopup`, () => {
   test(`closes on Escape key`, () => {

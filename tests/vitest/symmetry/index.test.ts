@@ -11,6 +11,7 @@ import {
 import { structures } from '$site/structures'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
+import { make_crystal } from '../setup'
 
 describe(`wyckoff_positions_from_moyo`, () => {
   const mock_data = (
@@ -629,33 +630,12 @@ describe(`apply_symmetry_operations`, () => {
 })
 
 describe(`map_wyckoff_to_all_atoms`, () => {
-  // Helper factories
-  const mock_structure = (
-    sites: { abc: Vec3; element: string }[],
-  ): Crystal => ({
-    lattice: {
-      matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      pbc: [true, true, true],
-      volume: 1,
-      a: 1,
-      b: 1,
-      c: 1,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-    },
-    sites: sites.map((site, idx) => ({
-      abc: site.abc,
-      xyz: site.abc,
-      species: [{
-        element: site.element as ElementSymbol,
-        occu: 1.0,
-        oxidation_state: 0,
-      }],
-      label: `${site.element}${idx}`,
-      properties: {},
-    })),
-  })
+  // Helper factory using make_crystal
+  const mock_structure = (sites: { abc: Vec3; element: string }[]): Crystal =>
+    make_crystal(
+      1,
+      sites.map((site) => ({ element: site.element as ElementSymbol, abc: site.abc })),
+    )
 
   const mock_sym_data = (): MoyoDataset => ({
     operations: [
