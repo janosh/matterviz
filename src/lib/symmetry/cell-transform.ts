@@ -2,19 +2,19 @@
 import type { ElementSymbol, Vec3 } from '$lib'
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import * as math from '$lib/math'
-import type { PymatgenStructure, Site } from '$lib/structure'
+import type { Crystal, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 
 export type CellType = `original` | `conventional` | `primitive`
 
-// Convert a MoyoCell (from moyo-wasm symmetry analysis) to PymatgenStructure format.
+// Convert a MoyoCell (from moyo-wasm symmetry analysis) to Crystal format.
 // MoyoCell has a flat 9-element basis array and atomic numbers; this converts to
-// the full PymatgenStructure with lattice parameters and element symbols.
+// the full Crystal with lattice parameters and element symbols.
 export function moyo_cell_to_structure(
   cell: MoyoCell, // The MoyoCell from symmetry analysis (std_cell or prim_std_cell)
-  original_structure: PymatgenStructure, // The original structure (used to preserve pbc and other metadata)
-): PymatgenStructure {
+  original_structure: Crystal, // The original structure (used to preserve pbc and other metadata)
+): Crystal {
   // Convert flat 9-element basis to 3x3 matrix
   // moyo-wasm uses the same row-major serialization for both input and output
   // (see to_cell_json comment: column-major(B) == row-major(RB))
@@ -63,28 +63,28 @@ export function moyo_cell_to_structure(
 // Get the conventional (standardized) cell from symmetry analysis data.
 // The conventional cell is the standard crystallographic setting for the space group.
 export function get_conventional_cell(
-  original_structure: PymatgenStructure, // The original input structure
+  original_structure: Crystal, // The original input structure
   sym_data: MoyoDataset, // MoyoDataset from symmetry analysis containing std_cell
-): PymatgenStructure { // The conventional cell as a PymatgenStructure
+): Crystal { // The conventional cell as a Crystal
   return moyo_cell_to_structure(sym_data.std_cell, original_structure)
 }
 
 // Get the primitive cell from symmetry analysis data.
 // The primitive cell is the smallest unit cell with one lattice point.
 export function get_primitive_cell(
-  original_structure: PymatgenStructure, // The original input structure
+  original_structure: Crystal, // The original input structure
   sym_data: MoyoDataset, // MoyoDataset from symmetry analysis containing prim_std_cell
-): PymatgenStructure { // The primitive cell as a PymatgenStructure
+): Crystal { // The primitive cell as a Crystal
   return moyo_cell_to_structure(sym_data.prim_std_cell, original_structure)
 }
 
 // Transform a structure based on the selected cell type.
 // Returns the original structure if cell_type is 'original' or if sym_data is not available.
 export function transform_cell(
-  structure: PymatgenStructure, // The original structure
+  structure: Crystal, // The original structure
   cell_type: CellType, // The desired cell type ('original', 'conventional', or 'primitive')
   sym_data: MoyoDataset | null, // Optional MoyoDataset from symmetry analysis
-): PymatgenStructure { //transformed structure (or original if no transformation needed)
+): Crystal { //transformed structure (or original if no transformation needed)
   if (cell_type === `original` || !sym_data) {
     return structure
   }

@@ -1,6 +1,6 @@
 import type { BondPair, ElementSymbol, Pbc, Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
-import type { PymatgenStructure, Site } from '$lib/structure'
+import type { Crystal, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import * as bonding from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
@@ -25,7 +25,7 @@ const make_site = (xyz: Vec3, element = `C`): Site => ({
 
 const get_test_structure = (
   sites: { xyz: Vec3; element?: string }[],
-): PymatgenStructure => ({
+): Crystal => ({
   sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
   charge: 0,
   lattice: {
@@ -41,7 +41,7 @@ const get_test_structure = (
   },
 })
 
-function make_random_structure(n_atoms: number): PymatgenStructure {
+function make_random_structure(n_atoms: number): Crystal {
   const elements = [`C`, `H`, `N`, `O`, `S`, `Fe`, `Na`, `Cl`]
   const sites = Array.from({ length: n_atoms }, (_, idx) => ({
     xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
@@ -327,7 +327,7 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   const Na_props = { element: `Na` as const, occu: 1, oxidation_state: 0 }
   const Cl_props = { element: `Cl` as const, occu: 1, oxidation_state: 0 }
 
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       // 0: Original Na
       {
@@ -468,7 +468,7 @@ test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bon
   const C_props = { element: `C` as const, occu: 1, oxidation_state: 0 }
   const H_props = { element: `H` as const, occu: 1, oxidation_state: 0 }
 
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       // Central C
       {
@@ -526,7 +526,7 @@ test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bon
 
 test(`bonding logic treats original and image atoms consistently`, () => {
   const lattice_len = 10.0
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       {
         species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
@@ -607,7 +607,7 @@ test(`electroneg_ratio ignores weak bonds for closest neighbor penalty`, () => {
   const Na_props = { element: `Na` as const, occu: 1, oxidation_state: 0 }
   const Cl_props = { element: `Cl` as const, occu: 1, oxidation_state: 0 }
 
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       {
         species: [Na_props],

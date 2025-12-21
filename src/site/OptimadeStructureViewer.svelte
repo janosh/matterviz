@@ -11,7 +11,7 @@
     fetch_suggested_structures,
   } from '$lib/api/optimade'
   import { Composition, get_electro_neg_formula } from '$lib/composition'
-  import type { PymatgenStructure } from '$lib/structure'
+  import type { Crystal } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import { optimade_to_pymatgen } from '$lib/structure/parse'
   import { tooltip } from 'svelte-multiselect'
@@ -21,7 +21,7 @@
     & { structure_id?: string; selected_provider?: string }
     & HTMLAttributes<HTMLDivElement> = $props()
 
-  let structure = $state<PymatgenStructure | null>(null)
+  let structure = $state<Crystal | null>(null)
   let [loading_struct, loading_suggestions] = $state([false, false])
   let struct_error = $state<string | null>(null)
   let available_providers = $state<OptimadeProvider[]>([])

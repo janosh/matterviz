@@ -1,6 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites } from '$lib/structure/pbc'
 import {
   generate_lattice_points,
@@ -12,7 +12,7 @@ import {
 import { describe, expect, test } from 'vitest'
 
 // Sample structure for testing
-const sample_structure: PymatgenStructure = {
+const sample_structure: Crystal = {
   lattice: {
     matrix: [[4.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0]],
     pbc: [true, true, true],
@@ -187,7 +187,7 @@ describe(`make_supercell`, () => {
 
     // Structure without lattice
     const molecule = { sites: sample_structure.sites, charge: 0 }
-    expect(() => make_supercell(molecule as PymatgenStructure, [2, 2, 2])).toThrow()
+    expect(() => make_supercell(molecule as Crystal, [2, 2, 2])).toThrow()
   })
 
   test(`does not modify original structure`, () => {
@@ -221,7 +221,7 @@ describe(`validation and formatting`, () => {
 
 describe(`integration tests`, () => {
   test(`handles complex structures`, () => {
-    const complex_structure: PymatgenStructure = {
+    const complex_structure: Crystal = {
       ...sample_structure,
       sites: [
         ...sample_structure.sites,
@@ -244,7 +244,7 @@ describe(`integration tests`, () => {
   })
 
   test(`works with different lattice shapes`, () => {
-    const hexagonal_structure: PymatgenStructure = {
+    const hexagonal_structure: Crystal = {
       ...sample_structure,
       lattice: {
         matrix: [[3.0, 0.0, 0.0], [-1.5, 2.598, 0.0], [0.0, 0.0, 5.0]],
@@ -281,7 +281,7 @@ describe(`image atom behavior`, () => {
     expect(find_image_atoms(no_lattice)).toEqual([])
 
     // Trajectory-like data
-    const trajectory_structure: PymatgenStructure = {
+    const trajectory_structure: Crystal = {
       ...sample_structure,
       sites: [
         { ...sample_structure.sites[0] },
@@ -294,7 +294,7 @@ describe(`image atom behavior`, () => {
   })
 
   test(`supercell vs unit cell behavior`, () => {
-    const boundary_structure: PymatgenStructure = {
+    const boundary_structure: Crystal = {
       ...sample_structure,
       sites: [
         { ...sample_structure.sites[0], abc: [0.001, 0.5, 0.5], xyz: [0.004, 2.0, 2.0] },
@@ -320,7 +320,7 @@ describe(`image atom behavior`, () => {
 describe(`oblique cell bug tests`, () => {
   test(`handles oblique cells like MgNiF6 correctly`, () => {
     // MgNiF6.cif structure with oblique lattice (56.455° angles)
-    const mgf6_structure: PymatgenStructure = {
+    const mgf6_structure: Crystal = {
       lattice: {
         matrix: math.cell_to_lattice_matrix(
           5.2219,
@@ -422,7 +422,7 @@ describe(`oblique cell bug tests`, () => {
 
     for (const { a, b, c, alpha, beta, gamma } of test_cases) {
       const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
-      const structure: PymatgenStructure = {
+      const structure: Crystal = {
         lattice: {
           matrix: lattice_matrix,
           pbc: [true, true, true],

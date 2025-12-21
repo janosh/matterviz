@@ -1,6 +1,6 @@
 import { RdfPlot } from '$lib'
 import type { RdfPattern } from '$lib/rdf'
-import type { Pbc, PymatgenStructure } from '$lib/structure'
+import type { Crystal, Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { createRawSnippet, mount } from 'svelte'
 import { describe, test } from 'vitest'
@@ -133,7 +133,7 @@ describe(`RdfPlot`, () => {
   })
 
   test(`single atom structure`, () => {
-    const single_atom: PymatgenStructure = {
+    const single_atom: Crystal = {
       lattice: {
         matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
         pbc: [true, true, true],

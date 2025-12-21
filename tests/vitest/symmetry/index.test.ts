@@ -1,6 +1,6 @@
 import type { ElementSymbol, Species } from '$lib'
 import type { Vec3, Vec9 } from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import {
   apply_symmetry_operations,
   map_wyckoff_to_all_atoms,
@@ -632,7 +632,7 @@ describe(`map_wyckoff_to_all_atoms`, () => {
   // Helper factories
   const mock_structure = (
     sites: { abc: Vec3; element: string }[],
-  ): PymatgenStructure => ({
+  ): Crystal => ({
     lattice: {
       matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
       pbc: [true, true, true],

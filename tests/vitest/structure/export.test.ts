@@ -1,7 +1,7 @@
 import { download } from '$lib/io/fetch'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure, PymatgenLattice, Site } from '$lib/structure'
+import type { AnyStructure, LatticeType, Site } from '$lib/structure'
 import {
   clean_geometry_for_export,
   create_structure_filename,
@@ -245,7 +245,7 @@ describe(`Export functionality`, () => {
     const to_any = (
       ps: {
         sites: AnyStructure[`sites`]
-        lattice?: Omit<PymatgenLattice, `pbc`> & Partial<Pick<PymatgenLattice, `pbc`>>
+        lattice?: Omit<LatticeType, `pbc`> & Partial<Pick<LatticeType, `pbc`>>
       },
     ) =>
       ({
@@ -254,9 +254,9 @@ describe(`Export functionality`, () => {
         ...(ps.lattice &&
           {
             lattice: {
-              ...(ps.lattice as Omit<PymatgenLattice, `pbc`>),
+              ...(ps.lattice as Omit<LatticeType, `pbc`>),
               pbc: [true, true, true],
-            } as PymatgenLattice,
+            } as LatticeType,
           }),
       }) as AnyStructure
 
@@ -936,7 +936,7 @@ describe(`Export functionality`, () => {
       const structure: AnyStructure = {
         id: `test`,
         sites: sites as Site[],
-        lattice: lattice as unknown as PymatgenLattice,
+        lattice: lattice as unknown as LatticeType,
       }
 
       tests.forEach(({ format, expected }) => {

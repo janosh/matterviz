@@ -1,6 +1,6 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import * as math from '$lib/math'
-import type { Pbc, PymatgenStructure, Site } from '$lib/structure'
+import type { Crystal, Pbc, Site } from '$lib/structure'
 import { beforeEach, vi } from 'vitest'
 
 // Suppress Three.js multiple instances warning in tests
@@ -26,7 +26,7 @@ export const get_dummy_structure = (
   element: ElementSymbol = `H`,
   atoms = 3,
   with_lattice = false,
-): PymatgenStructure => {
+): Crystal => {
   const matrix: math.Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
   const pbc: Pbc = [false, false, false]
   const structure = {
@@ -66,7 +66,7 @@ export function create_test_structure(
       xyz: number[]
     }[],
   frac_coords?: Vec3[],
-): PymatgenStructure {
+): Crystal {
   const lattice_matrix: math.Matrix3x3 = typeof lattice === `number`
     ? [
       [lattice, 0.0, 0.0],

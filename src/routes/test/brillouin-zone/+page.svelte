@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BrillouinZone, type PymatgenStructure } from '$lib'
+  import { BrillouinZone, type Crystal } from '$lib'
   import mp1_struct from '$site/structures/mp-1.json'
 
   let controls_open = $state(false)
@@ -20,8 +20,8 @@
     { true: true, false: false }[show_controls_select] ?? +show_controls_select,
   )
 
-  let structure = $state<PymatgenStructure | undefined>(
-    mp1_struct as unknown as PymatgenStructure,
+  let structure = $state<Crystal | undefined>(
+    mp1_struct as unknown as Crystal,
   )
   let data_url = $state<string | undefined>(undefined)
   let event_calls = $state<{ event: string; data: unknown }[]>([])

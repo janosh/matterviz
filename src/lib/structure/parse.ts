@@ -13,7 +13,7 @@ import {
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure, PymatgenStructure, Site } from '$lib/structure'
+import type { AnyStructure, Crystal, Site } from '$lib/structure'
 import { load as yaml_load } from 'js-yaml'
 
 export interface ParsedStructure {
@@ -1520,7 +1520,7 @@ function is_optimade_structure_object(value: unknown): value is OptimadeStructur
 // Convert OPTIMADE structure to Pymatgen format
 export function optimade_to_pymatgen(
   optimade_structure: OptimadeStructure,
-): PymatgenStructure | null {
+): Crystal | null {
   const attrs = optimade_structure.attributes
 
   if (

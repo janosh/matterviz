@@ -1,4 +1,4 @@
-import type { FileInfo, PymatgenStructure } from '$lib'
+import type { Crystal, FileInfo } from '$lib'
 import {
   detect_structure_type,
   is_optimade_json,
@@ -17,15 +17,15 @@ export const structures = Object.entries( // JSON structure files (OPTIMADE/pyma
     // Convert OPTIMADE to pymatgen format
     if (is_optimade_json(data_str)) {
       const parsed = parse_optimade_json(data_str)
-      if (parsed) return { ...parsed, id } as PymatgenStructure
+      if (parsed) return { ...parsed, id } as Crystal
     }
 
     // Assume pymatgen format
-    const structure = data as PymatgenStructure
+    const structure = data as Crystal
     structure.id = id
     return structure
   })
-  .filter((structure): structure is PymatgenStructure =>
+  .filter((structure): structure is Crystal =>
     structure && `sites` in structure && Array.isArray(structure.sites)
   )
   .sort((struct_a, struct_b) =>

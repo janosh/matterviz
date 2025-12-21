@@ -1,7 +1,7 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { euclidean_dist, mat3x3_vec3_multiply } from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites, wrap_to_unit_cell } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
@@ -11,12 +11,12 @@ import quartz_cif from '$site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import { describe, expect, test } from 'vitest'
 
-const mp_1_struct = structure_map.get(`mp-1`) as PymatgenStructure
-const mp_2_struct = structure_map.get(`mp-2`) as PymatgenStructure
-const mp_1204603_struct = structure_map.get(`mp-1204603`) as PymatgenStructure
+const mp_1_struct = structure_map.get(`mp-1`) as Crystal
+const mp_2_struct = structure_map.get(`mp-2`) as Crystal
+const mp_1204603_struct = structure_map.get(`mp-1204603`) as Crystal
 const tl_bi_se2_struct = structure_map.get(
   `TlBiSe2-highly-oblique-cell`,
-) as PymatgenStructure
+) as Crystal
 
 // Helpers to reduce duplication while preserving coverage
 function assert_xyz_matches_lattice(
@@ -59,7 +59,7 @@ function assert_integer_translation(
 }
 
 function validate_image_tuples(
-  structure: PymatgenStructure,
+  structure: Crystal,
   image_atoms: [number, Vec3, Vec3][],
   opts?: { min_dist?: number; tol?: number },
 ): void {
@@ -96,7 +96,7 @@ Cl       2.5       2.5       2.5`
     normal_structure_extxyz,
     `test.xyz`,
   )
-  const normal_structure = normal_trajectory.frames[0].structure as PymatgenStructure
+  const normal_structure = normal_trajectory.frames[0].structure as Crystal
 
   // Test that the structure has lattice information
   expect(`lattice` in normal_structure).toBe(true)
@@ -130,7 +130,7 @@ Cl       2.5       2.5       2.5`
     frame_idx++
   ) {
     const frame_structure = normal_trajectory.frames[frame_idx]
-      .structure as PymatgenStructure
+      .structure as Crystal
     const frame_image_atoms = find_image_atoms(frame_structure)
     expect(frame_image_atoms.length).toBeGreaterThan(0) // Should consistently treat as normal crystal
   }
@@ -174,7 +174,7 @@ test.each([
       }
     })
 
-    const structure: PymatgenStructure = {
+    const structure: Crystal = {
       sites,
       lattice: {
         matrix: lattice,
@@ -213,7 +213,7 @@ test(`triclinic lattice image xyz must match lattice * abc`, () => {
   const matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
   const params = math.calc_lattice_params(matrix)
 
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       {
         species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
@@ -256,7 +256,7 @@ test.each([
   },
 ])(`tolerance boundary behavior: $description`, ({ tolerance, coord, expect_images }) => {
   const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       {
         species: [{ element: `Na` as const, occu: 1, oxidation_state: 0 }],
@@ -286,7 +286,7 @@ test.each([
 
 test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
   const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       {
         species: [{ element: `Cl` as const, occu: 1, oxidation_state: 0 }],
@@ -341,7 +341,7 @@ C         2.0      17.0      17.0
 C        -2.0      10.0      12.0`
 
   const trajectory_like = await parse_trajectory_data(trajectory_like_extxyz, `test.xyz`)
-  const trajectory_structure = trajectory_like.frames[0].structure as PymatgenStructure
+  const trajectory_structure = trajectory_like.frames[0].structure as Crystal
 
   // Test that the structure has lattice information
   expect(`lattice` in trajectory_structure).toBe(true)
@@ -375,7 +375,7 @@ C        -2.0      10.0      12.0`
     frame_idx++
   ) {
     const frame_structure = trajectory_like.frames[frame_idx]
-      .structure as PymatgenStructure
+      .structure as Crystal
     const frame_image_atoms = find_image_atoms(frame_structure)
     expect(frame_image_atoms.length).toBe(0) // Should consistently treat as trajectory data
   }
@@ -424,9 +424,9 @@ test.each([
   `find_image_atoms with real structures: $description`,
   ({ content, filename, expected_min_images, expected_max_images, min_dist, tol }) => {
     // Parse the structure
-    let structure: PymatgenStructure
+    let structure: Crystal
 
-    if (filename.endsWith(`.json`)) structure = content as PymatgenStructure
+    if (filename.endsWith(`.json`)) structure = content as Crystal
     else {
       const parsed = parse_structure_file(content as string, filename)
       if (!parsed || !parsed.lattice) {
@@ -435,7 +435,7 @@ test.each([
       structure = {
         sites: parsed.sites,
         lattice: { ...parsed.lattice, pbc: [true, true, true] },
-      } as PymatgenStructure
+      } as Crystal
     }
 
     // Test find_image_atoms
@@ -491,7 +491,7 @@ test(`image atoms should have fractional coordinates related by lattice translat
 // Test edge detection accuracy
 test(`edge detection should be precise for atoms at boundaries`, () => {
   // Create a test structure with atoms exactly at edges
-  const test_structure: PymatgenStructure = {
+  const test_structure: Crystal = {
     sites: [
       {
         species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
@@ -596,7 +596,7 @@ test.each([
   `tolerance parameter affects image atom detection: $description`,
   ({ tolerance, abc_coords, expected_count }) => {
     // Create structure with single atom at specified position
-    const test_structure: PymatgenStructure = {
+    const test_structure: Crystal = {
       sites: [
         {
           species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
@@ -660,7 +660,7 @@ test(`all image atoms should be positioned at unit cell boundaries`, () => {
 // Test that image atoms have fractional coordinates inside expected cell boundaries
 test(`image atoms should have fractional coordinates at cell boundaries`, () => {
   // Create a simple cubic structure with atoms at exact boundaries
-  const test_structure: PymatgenStructure = {
+  const test_structure: Crystal = {
     sites: [
       {
         species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
@@ -783,7 +783,7 @@ test.each([
 ])(
   `image atom generation for $name crystal system`,
   ({ lattice, sites, expected_min }) => {
-    const test_structure: PymatgenStructure = {
+    const test_structure: Crystal = {
       sites: sites.map((site, idx) => ({
         species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
         abc: site.abc as Vec3,
@@ -824,7 +824,7 @@ test.each([
 // Test the new behavior: abc coordinates should be preserved and synchronized with xyz
 test(`image atoms preserve fractional coordinates correctly`, () => {
   // Create a simple test structure with atoms at known boundary positions
-  const test_structure: PymatgenStructure = {
+  const test_structure: Crystal = {
     sites: [
       {
         species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
@@ -992,7 +992,7 @@ test.each([
   ({ coord, expected_int_shift }) => {
     const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
     const orig_abc: Vec3 = [coord, 0.5, 0.5]
-    const structure: PymatgenStructure = {
+    const structure: Crystal = {
       sites: [
         {
           species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
@@ -1053,7 +1053,7 @@ test.each([
 // Regression test for large unit cells (e.g. MOFs) using physical tolerance
 test(`find_image_atoms uses physical tolerance for large cells`, () => {
   const lattice_len = 100
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       {
         species: [{ element: `C`, occu: 1, oxidation_state: 0 }],

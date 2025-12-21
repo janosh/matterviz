@@ -1,9 +1,9 @@
-// Supercell generation utilities for PymatgenStructure
+// Supercell generation utilities for Crystal
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { PymatgenStructure, Site } from './index'
+import type { Crystal, Site } from './index'
 
-type SupercellType = PymatgenStructure & {
+type SupercellType = Crystal & {
   supercell_scaling?: Vec3
 }
 
@@ -80,14 +80,14 @@ export function scale_lattice_matrix(
   ]
 }
 
-// Create a supercell from a PymatgenStructure
+// Create a supercell from a Crystal
 // Takes original structure, scaling factors, and whether to fold coordinates back to unit cell (default: true)
 // Returns new supercell structure
 export function make_supercell(
-  structure: PymatgenStructure,
+  structure: Crystal,
   scaling: string | number | Vec3,
   to_unit_cell: boolean = true,
-): PymatgenStructure {
+): Crystal {
   if (!structure.lattice) {
     throw new Error(`Cannot create supercell: structure has no lattice`)
   }

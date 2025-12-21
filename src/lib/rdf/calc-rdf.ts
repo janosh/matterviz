@@ -5,7 +5,7 @@ import {
   matrix_inverse_3x3,
   pbc_dist,
 } from '$lib/math'
-import type { Pbc, PymatgenStructure as Structure } from '$lib/structure'
+import type { Crystal as Structure, Pbc } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
 import type { RdfOptions, RdfPattern } from './index'
 

@@ -1,10 +1,10 @@
-import type { PymatgenStructure } from '$lib'
 import { calc_coordination_nums } from '$lib/coordination'
+import type { Crystal } from '$lib/structure'
 import { describe, expect, test } from 'vitest'
 
 describe(`calc_coordination_nums`, () => {
   // Simple cubic structure (NaCl-like)
-  const simple_cubic: PymatgenStructure = {
+  const simple_cubic: Crystal = {
     lattice: {
       matrix: [
         [5.0, 0.0, 0.0],
@@ -77,16 +77,13 @@ describe(`calc_coordination_nums`, () => {
   })
 
   test(`should handle structure with distant atoms`, () => {
-    const isolated_atoms: PymatgenStructure = {
+    const len = 100.0
+    const isolated_atoms: Crystal = {
       lattice: {
-        matrix: [
-          [100.0, 0.0, 0.0],
-          [0.0, 100.0, 0.0],
-          [0.0, 0.0, 100.0],
-        ],
-        a: 100.0,
-        b: 100.0,
-        c: 100.0,
+        matrix: [[len, 0.0, 0.0], [0.0, len, 0.0], [0.0, 0.0, len]],
+        a: len,
+        b: len,
+        c: len,
         alpha: 90,
         beta: 90,
         gamma: 90,

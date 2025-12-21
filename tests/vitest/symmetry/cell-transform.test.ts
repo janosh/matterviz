@@ -1,6 +1,6 @@
 import type { ElementSymbol } from '$lib'
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import {
   get_conventional_cell,
   get_primitive_cell,
@@ -21,12 +21,12 @@ const make_moyo_cell = (
   numbers,
 })
 
-// Helper to create a PymatgenStructure
+// Helper to create a Crystal
 const make_structure = (
   lattice_matrix: Matrix3x3,
   sites: { elem: ElementSymbol; abc: Vec3; xyz: Vec3 }[],
   lattice_params = { a: 5, b: 5, c: 5, alpha: 90, beta: 90, gamma: 90, volume: 125 },
-): PymatgenStructure => ({
+): Crystal => ({
   lattice: {
     matrix: lattice_matrix,
     pbc: [true, true, true],
@@ -163,7 +163,7 @@ describe(`moyo_cell_to_structure`, () => {
 
   test(`preserves pbc from original structure`, () => {
     const moyo_cell = make_moyo_cell([5, 0, 0, 0, 5, 0, 0, 0, 5], [[0, 0, 0]], [14])
-    const original: PymatgenStructure = {
+    const original: Crystal = {
       lattice: {
         matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
         pbc: [true, true, false] as const, // 2D periodic

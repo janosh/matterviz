@@ -6,7 +6,7 @@
   import { set_fullscreen_bg } from '$lib/layout'
   import type { CameraProjection } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
-  import type { PymatgenStructure } from '$lib/structure'
+  import type { Crystal } from '$lib/structure'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -83,7 +83,7 @@
   }: {
     fermi_data?: FermiSurfaceData
     band_data?: BandGridData
-    structure?: PymatgenStructure
+    structure?: Crystal
     bz_data?: BrillouinZoneData
     mu?: number
     controls_open?: boolean

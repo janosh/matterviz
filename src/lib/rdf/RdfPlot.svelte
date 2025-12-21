@@ -5,7 +5,7 @@
   import { decompress_file, handle_url_drop } from '$lib/io'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
-  import type { Pbc, PymatgenStructure as Structure } from '$lib/structure'
+  import type { Crystal as Structure, Pbc } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
   import { is_valid_structure } from '$lib/structure/validation'
   import type { ComponentProps, Snippet } from 'svelte'
