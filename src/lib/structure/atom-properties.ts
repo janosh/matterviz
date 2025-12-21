@@ -52,9 +52,9 @@ const make_categorical = <T>(
   const colors = uniq.map((_, i) =>
     to_hex(fn, uniq.length === 1 ? 0.5 : i / (uniq.length - 1))
   )
-  const map = new Map(uniq.map((v, i) => [v, colors[i]]))
+  const map = new Map(uniq.map((val, idx) => [val, colors[idx]]))
   return {
-    colors: vals.map((v) => map.get(v) ?? GRAY),
+    colors: vals.map((val) => map.get(val) ?? GRAY),
     unique_values: uniq,
   }
 }
@@ -64,7 +64,7 @@ const build_prop_colors = (
   colors: string[],
   unique_values?: number[],
 ): AtomPropertyColors => {
-  const uniq = unique_values ?? [...new Set(vals)].sort((a, b) => a - b)
+  const uniq = unique_values ?? [...new Set(vals)].sort((val_a, val_b) => val_a - val_b)
   // Use sorted uniq array to avoid spreading large arrays into Math.min/max
   const min_value = uniq.length > 0 ? uniq[0] : undefined
   const max_value = uniq.at(-1)
@@ -78,7 +78,7 @@ export function apply_color_scale(
 ): { colors: string[]; unique_values?: number[] } {
   if (!vals.length) return { colors: [] }
   if (type === `categorical`) {
-    const result = make_categorical(vals, scale, (a, b) => a - b)
+    const result = make_categorical(vals, scale, (val_a, val_b) => val_a - val_b)
     return { colors: result.colors, unique_values: result.unique_values }
   }
 
@@ -90,7 +90,7 @@ export function apply_color_scale(
     if (val > max) max = val
   }
   return {
-    colors: vals.map((v) => to_hex(fn, max === min ? 0.5 : (v - min) / (max - min))),
+    colors: vals.map((val) => to_hex(fn, max === min ? 0.5 : (val - min) / (max - min))),
   }
 }
 
@@ -136,7 +136,7 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
     )
 
   // Small structures: expand all atoms
-  if (sites.length < 20 || !pbc.some((p) => p)) {
+  if (sites.length < 20 || !pbc.some((periodic) => periodic)) {
     const image_sites = sites.flatMap((site, orig_idx) =>
       all_offsets.map(([dx, dy, dz]) => {
         const img_abc: math.Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
@@ -248,8 +248,8 @@ export function get_custom_colors(
   scale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
-  const vals = structure.sites.map((s, i) => fn(s, i))
-  const is_num = vals.every((v) => typeof v === `number`)
+  const vals = structure.sites.map((site, idx) => fn(site, idx))
+  const is_num = vals.every((val) => typeof val === `number`)
 
   if (is_num) {
     const nums = vals as number[]

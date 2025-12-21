@@ -1,7 +1,7 @@
 <script lang="ts">
   import { DraggablePane, type InfoItem } from '$lib'
   import { format_num } from '$lib/labels'
-  import type { PymatgenStructure } from '$lib/structure'
+  import type { Crystal } from '$lib/structure'
   import { analyze_structure_symmetry } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
@@ -14,7 +14,7 @@
     pane_props = {},
   }: {
     pane_open?: boolean
-    structure?: PymatgenStructure
+    structure?: Crystal
     bz_data?: BrillouinZoneData
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   } = $props()

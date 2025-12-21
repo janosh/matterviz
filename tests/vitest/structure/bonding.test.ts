@@ -1,13 +1,12 @@
-import type { BondPair, ElementSymbol, Pbc, Vec3 } from '$lib'
-import type { Matrix3x3 } from '$lib/math'
-import type { PymatgenStructure, Site } from '$lib/structure'
+import type { BondPair, Vec3 } from '$lib'
+import type { Crystal } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import * as bonding from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { test_molecules } from '$site/molecules'
 import process from 'node:process'
 import { describe, expect, test } from 'vitest'
-import { create_test_structure } from '../setup'
+import { create_test_structure, make_crystal } from '../setup'
 
 const measure_performance = (func: () => void): number => {
   const start = performance.now()
@@ -15,52 +14,22 @@ const measure_performance = (func: () => void): number => {
   return performance.now() - start
 }
 
-const make_site = (xyz: Vec3, element = `C`): Site => ({
-  xyz,
-  abc: [0, 0, 0],
-  species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
-  label: element,
-  properties: {},
-})
+// Simple helper for tests that only need xyz coordinates
+const get_test_structure = (sites: { xyz: Vec3; element?: string }[]): Crystal =>
+  make_crystal(
+    1, // 1x1x1 cubic lattice
+    sites.map(({ xyz, element = `C` }) => ({ element, xyz })),
+  )
 
-const get_test_structure = (
-  sites: { xyz: Vec3; element?: string }[],
-): PymatgenStructure => ({
-  sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
-  charge: 0,
-  lattice: {
-    matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
-    pbc: [true, true, true],
-    a: 1,
-    b: 1,
-    c: 1,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: 1,
-  },
-})
-
-function make_random_structure(n_atoms: number): PymatgenStructure {
+const make_random_structure = (n_atoms: number): Crystal => {
   const elements = [`C`, `H`, `N`, `O`, `S`, `Fe`, `Na`, `Cl`]
-  const sites = Array.from({ length: n_atoms }, (_, idx) => ({
-    xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
-    element: elements[idx % elements.length],
-  }))
-  const matrix: Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
-  const pbc: Pbc = [true, true, true]
-  const lattice = {
-    matrix,
-    pbc,
-    a: 10,
-    b: 10,
-    c: 10,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: 1000,
-  }
-  return { ...get_test_structure(sites), lattice }
+  return make_crystal(
+    10,
+    Array.from({ length: n_atoms }, (_, idx) => ({
+      element: elements[idx % elements.length],
+      xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
+    })),
+  )
 }
 
 describe(`Bonding Algorithms`, () => {
@@ -327,7 +296,7 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   const Na_props = { element: `Na` as const, occu: 1, oxidation_state: 0 }
   const Cl_props = { element: `Cl` as const, occu: 1, oxidation_state: 0 }
 
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       // 0: Original Na
       {
@@ -468,7 +437,7 @@ test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bon
   const C_props = { element: `C` as const, occu: 1, oxidation_state: 0 }
   const H_props = { element: `H` as const, occu: 1, oxidation_state: 0 }
 
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       // Central C
       {
@@ -525,43 +494,11 @@ test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bon
 })
 
 test(`bonding logic treats original and image atoms consistently`, () => {
-  const lattice_len = 10.0
-  const structure: PymatgenStructure = {
-    sites: [
-      {
-        species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
-        abc: [0.1, 0.5, 0.5], // x=1.0
-        xyz: [1.0, 5.0, 5.0],
-        label: `C1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
-        abc: [0.25, 0.5, 0.5], // x=2.5
-        xyz: [2.5, 5.0, 5.0],
-        label: `C2`,
-        properties: {},
-      },
-      {
-        species: [{ element: `H` as const, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.5, 0.5], // x=0.0
-        xyz: [0.0, 5.0, 5.0],
-        label: `H_distractor`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[lattice_len, 0, 0], [0, lattice_len, 0], [0, 0, lattice_len]],
-      pbc: [true, true, true],
-      a: lattice_len,
-      b: lattice_len,
-      c: lattice_len,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: lattice_len ** 3,
-    },
-  }
+  const structure = make_crystal(10, [
+    [`C`, [0.1, 0.5, 0.5]], // x=1.0
+    [`C`, [0.25, 0.5, 0.5]], // x=2.5
+    [`H`, [0.0, 0.5, 0.5]], // H_distractor, x=0.0
+  ])
 
   // Explicit tolerance 0.3 => 30% of 10A = 3.0A.
   // C1 at 1.0A from edge (0.1 frac) < 3.0A => should image.
@@ -607,7 +544,7 @@ test(`electroneg_ratio ignores weak bonds for closest neighbor penalty`, () => {
   const Na_props = { element: `Na` as const, occu: 1, oxidation_state: 0 }
   const Cl_props = { element: `Cl` as const, occu: 1, oxidation_state: 0 }
 
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       {
         species: [Na_props],

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FileInfo, PymatgenStructure } from '$lib'
+  import type { Crystal, FileInfo } from '$lib'
   import { FilePicker } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
@@ -61,11 +61,11 @@
 
   // Cache computed XRD patterns to avoid recomputation when navigating structures
   const xrd_cache = new SvelteMap<string, XrdPattern>()
-  const get_struct_id = (struct: PymatgenStructure): string =>
+  const get_struct_id = (struct: Crystal): string =>
     struct.id || JSON.stringify(struct)
 
   // Map structures by id for O(1) lookup
-  const structures_by_id = $derived<Record<string, PymatgenStructure>>(
+  const structures_by_id = $derived<Record<string, Crystal>>(
     Object.fromEntries(structures.map((struct) => [get_struct_id(struct), struct])),
   )
 
@@ -80,7 +80,7 @@
   // On-the-fly computed patterns
   const compute_ids = structures.map(get_struct_id)
   let compute_id = $state<string>(compute_ids[0] || ``)
-  const computed_struct = $derived<PymatgenStructure | null>(
+  const computed_struct = $derived<Crystal | null>(
     structures_by_id[compute_id] ?? null,
   )
   let compute_error = $state<string | null>(null)

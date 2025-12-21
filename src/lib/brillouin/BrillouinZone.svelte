@@ -4,7 +4,7 @@
   import { set_fullscreen_bg } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
-  import type { PymatgenStructure } from '$lib/structure'
+  import type { Crystal } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -19,7 +19,7 @@
   import type { BrillouinZoneData } from './types'
 
   type BZHandlerData = {
-    structure?: PymatgenStructure
+    structure?: Crystal
     bz_data?: BrillouinZoneData
     bz_order?: number
     filename?: string
@@ -67,7 +67,7 @@
     ...rest
   }:
     & {
-      structure?: PymatgenStructure
+      structure?: Crystal
       bz_order?: number
       bz_data?: BrillouinZoneData
       controls_open?: boolean
@@ -106,7 +106,7 @@
       // Index of the currently hovered q-point in the band structure
       hovered_qpoint_index?: number | null
       children?: Snippet<
-        [{ structure?: PymatgenStructure; bz_data?: BrillouinZoneData }]
+        [{ structure?: Crystal; bz_data?: BrillouinZoneData }]
       >
       on_file_load?: (data: BZHandlerData) => void
       on_error?: (data: BZHandlerData) => void
@@ -132,7 +132,7 @@
     const parsed = parse_any_structure(text, filename)
     if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
 
-    structure = parsed as PymatgenStructure
+    structure = parsed as Crystal
     current_filename = filename
     const file_size = new Blob([content]).size
     on_file_load?.({ structure, bz_data, bz_order, filename, file_size })

@@ -1,14 +1,14 @@
 <script lang="ts">
   import { BrillouinBandsDos } from '$lib/spectral'
   import type { BaseBandStructure, DosData, PhononDos } from '$lib/spectral/types'
-  import type { PymatgenStructure } from '$lib/structure'
+  import type { Crystal } from '$lib/structure'
   import { electronic_bands } from '$site/electronic/bands'
   import { dos_spin_polarization } from '$site/electronic/dos'
 
   // Testing: CaO bands + mp-865805 DOS (mismatched materials, no shifts applied)
   const electronic_dos = dos_spin_polarization as unknown as DosData
 
-  const mock_structure: PymatgenStructure = {
+  const mock_structure: Crystal = {
     lattice: {
       matrix: [
         [4.0, 0.0, 0.0],

@@ -7,7 +7,7 @@
   import { set_fullscreen_bg } from '$lib/layout'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import type { PymatgenStructure } from '$lib/structure'
+  import type { Crystal } from '$lib/structure'
   import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
@@ -372,7 +372,7 @@
       return structure
     }
     try {
-      return transform_cell(structure as PymatgenStructure, cell_type, sym_data)
+      return transform_cell(structure as Crystal, cell_type, sym_data)
     } catch (error) {
       console.error(`Failed to transform cell to ${cell_type}:`, error)
       return structure
@@ -412,7 +412,7 @@
           try {
             if (base_structure && `lattice` in base_structure) {
               supercell_structure = make_supercell(
-                base_structure as PymatgenStructure,
+                base_structure as Crystal,
                 supercell_scaling,
               )
             }
@@ -426,7 +426,7 @@
       } else {
         if (base_structure && `lattice` in base_structure) {
           supercell_structure = make_supercell(
-            base_structure as PymatgenStructure,
+            base_structure as Crystal,
             supercell_scaling,
           )
         }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DEFAULTS, type PymatgenStructure, Structure, StructureScene } from '$lib'
+  import { type Crystal, DEFAULTS, Structure, StructureScene } from '$lib'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
   import type { ComponentProps } from 'svelte'
 
@@ -23,8 +23,8 @@
   let event_calls = $state<{ event: string; data: unknown }[]>([])
 
   // Structure state - can be overridden by data_url
-  let structure = $state<PymatgenStructure | undefined>(
-    mp1_struct as unknown as PymatgenStructure,
+  let structure = $state<Crystal | undefined>(
+    mp1_struct as unknown as Crystal,
   )
 
   // Lattice properties for testing - using new dual opacity controls

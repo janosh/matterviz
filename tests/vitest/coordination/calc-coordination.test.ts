@@ -1,56 +1,15 @@
-import type { PymatgenStructure } from '$lib'
 import { calc_coordination_nums } from '$lib/coordination'
 import { describe, expect, test } from 'vitest'
+import { make_crystal } from '../setup'
 
 describe(`calc_coordination_nums`, () => {
   // Simple cubic structure (NaCl-like)
-  const simple_cubic: PymatgenStructure = {
-    lattice: {
-      matrix: [
-        [5.0, 0.0, 0.0],
-        [0.0, 5.0, 0.0],
-        [0.0, 0.0, 5.0],
-      ],
-      a: 5.0,
-      b: 5.0,
-      c: 5.0,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125.0,
-      pbc: [true, true, true],
-    },
-    sites: [
-      {
-        species: [{ element: `Na`, occu: 1, oxidation_state: 1 }],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `Na`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Cl`, occu: 1, oxidation_state: -1 }],
-        abc: [0.5, 0.5, 0.5],
-        xyz: [2.5, 2.5, 2.5],
-        label: `Cl`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Na`, occu: 1, oxidation_state: 1 }],
-        abc: [0.5, 0, 0],
-        xyz: [2.5, 0, 0],
-        label: `Na`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Cl`, occu: 1, oxidation_state: -1 }],
-        abc: [0, 0.5, 0.5],
-        xyz: [0, 2.5, 2.5],
-        label: `Cl`,
-        properties: {},
-      },
-    ],
-  }
+  const simple_cubic = make_crystal(5, [
+    [`Na`, [0, 0, 0], 1],
+    [`Cl`, [0.5, 0.5, 0.5], -1],
+    [`Na`, [0.5, 0, 0], 1],
+    { element: `Cl`, abc: [0, 0.5, 0.5], oxidation_state: -1 },
+  ])
 
   test(`should calculate coordination numbers`, () => {
     const result = calc_coordination_nums(simple_cubic, `electroneg_ratio`)
@@ -77,39 +36,11 @@ describe(`calc_coordination_nums`, () => {
   })
 
   test(`should handle structure with distant atoms`, () => {
-    const isolated_atoms: PymatgenStructure = {
-      lattice: {
-        matrix: [
-          [100.0, 0.0, 0.0],
-          [0.0, 100.0, 0.0],
-          [0.0, 0.0, 100.0],
-        ],
-        a: 100.0,
-        b: 100.0,
-        c: 100.0,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 1000000.0,
-        pbc: [false, false, false],
-      },
-      sites: [
-        {
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H`,
-          properties: {},
-        },
-        {
-          species: [{ element: `He`, occu: 1, oxidation_state: 0 }],
-          abc: [0.5, 0.5, 0.5],
-          xyz: [50, 50, 50],
-          label: `He`,
-          properties: {},
-        },
-      ],
-    }
+    const isolated_atoms = make_crystal(
+      100,
+      [[`H`, [0, 0, 0]], [`He`, [0.5, 0.5, 0.5]]],
+      { pbc: [false, false, false] },
+    )
 
     // With atoms 50 Å apart, no bonds should form with default electroneg_ratio strategy
     const result = calc_coordination_nums(isolated_atoms, `electroneg_ratio`)

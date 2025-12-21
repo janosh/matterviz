@@ -1,5 +1,5 @@
 // Data extraction functions for trajectory analysis and plotting
-import { get_density, type PymatgenStructure } from '$lib/structure'
+import { type Crystal, get_density } from '$lib/structure'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryType } from './index'
 
 // Common data extractor that extracts energy and structural properties
@@ -135,7 +135,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
       data.density = frame.metadata.density
     } else if (`lattice` in frame.structure) {
       try {
-        data.density = get_density(frame.structure as PymatgenStructure)
+        data.density = get_density(frame.structure as Crystal)
       } catch (error) {
         console.warn(`Failed to calculate density for frame ${frame.step}:`, error)
       }
@@ -154,7 +154,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
   } else if (`lattice` in frame.structure) {
     // Calculate density even when no metadata is available
     try {
-      data.density = get_density(frame.structure as PymatgenStructure)
+      data.density = get_density(frame.structure as Crystal)
     } catch (error) {
       console.warn(`Failed to calculate density for frame ${frame.step}:`, error)
     }
