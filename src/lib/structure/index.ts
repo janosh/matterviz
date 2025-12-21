@@ -74,7 +74,7 @@ export function format_chemical_formula(
   structure: AnyStructure,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
 ): string {
-  // concatenate elements in a pymatgen Structure followed by their amount
+  // concatenate elements in a structure followed by their amount
   const elements = get_elem_amounts(structure)
   const formula = []
   for (const el of sort_fn(Object.keys(elements) as ElementSymbol[])) {
@@ -86,7 +86,7 @@ export function format_chemical_formula(
 }
 
 export function electro_neg_formula(structure: AnyStructure): string {
-  // concatenate elements in a pymatgen Structure followed by their amount sorted by electronegativity
+  // concatenate elements in a structure followed by their amount sorted by electronegativity
   return format_chemical_formula(structure, (symbols) => (symbols.sort((el1, el2) => {
     const elec_neg1 = element_data.find((el) => el.symbol === el1)?.electronegativity ??
       0
@@ -107,7 +107,7 @@ export const atomic_radii: CompositionType = Object.fromEntries(
 const uA3_to_gcm3 = 1.66053907
 
 export function get_density(structure: Crystal): number {
-  // calculate the density of a pymatgen Structure in g/cm³
+  // calculate the density of a Crystal in g/cm³
   const elements = get_elem_amounts(structure)
   let mass = 0
   for (const [el, amt] of Object.entries(elements)) {

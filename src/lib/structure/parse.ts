@@ -1517,8 +1517,8 @@ function is_optimade_structure_object(value: unknown): value is OptimadeStructur
     typeof obj.attributes === `object` && obj.attributes !== null
 }
 
-// Convert OPTIMADE structure to Pymatgen format
-export function optimade_to_pymatgen(
+// Convert OPTIMADE structure to Crystal format
+export function optimade_to_crystal(
   optimade_structure: OptimadeStructure,
 ): Crystal | null {
   const attrs = optimade_structure.attributes
@@ -1580,7 +1580,7 @@ export function optimade_to_pymatgen(
       id: optimade_structure.id,
     }
   } catch (err) {
-    console.error(`Error converting OPTIMADE to Pymatgen format:`, err)
+    console.error(`Error converting OPTIMADE to Crystal format:`, err)
     return null
   }
 }

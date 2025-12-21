@@ -1,5 +1,4 @@
-import type { BondPair, Pbc, Vec3 } from '$lib'
-import type { Matrix3x3 } from '$lib/math'
+import type { BondPair, Vec3 } from '$lib'
 import type { Crystal } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import * as bonding from '$lib/structure/bonding'
@@ -22,26 +21,15 @@ const get_test_structure = (sites: { xyz: Vec3; element?: string }[]): Crystal =
     sites.map(({ xyz, element = `C` }) => ({ element, xyz })),
   )
 
-function make_random_structure(n_atoms: number): Crystal {
+const make_random_structure = (n_atoms: number): Crystal => {
   const elements = [`C`, `H`, `N`, `O`, `S`, `Fe`, `Na`, `Cl`]
-  const sites = Array.from({ length: n_atoms }, (_, idx) => ({
-    xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
-    element: elements[idx % elements.length],
-  }))
-  const matrix: Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
-  const pbc: Pbc = [true, true, true]
-  const lattice = {
-    matrix,
-    pbc,
-    a: 10,
-    b: 10,
-    c: 10,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: 1000,
-  }
-  return { ...get_test_structure(sites), lattice }
+  return make_crystal(
+    10,
+    Array.from({ length: n_atoms }, (_, idx) => ({
+      element: elements[idx % elements.length],
+      xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
+    })),
+  )
 }
 
 describe(`Bonding Algorithms`, () => {

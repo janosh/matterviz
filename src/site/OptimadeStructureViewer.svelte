@@ -13,7 +13,7 @@
   import { Composition, get_electro_neg_formula } from '$lib/composition'
   import type { Crystal } from '$lib/structure'
   import { Structure } from '$lib/structure'
-  import { optimade_to_pymatgen } from '$lib/structure/parse'
+  import { optimade_to_crystal } from '$lib/structure/parse'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -91,7 +91,7 @@
     )
 
     if (data) {
-      structure = optimade_to_pymatgen(data)
+      structure = optimade_to_crystal(data)
       if (!structure) struct_error = `Failed to convert structure data`
     } else if (!struct_error) {
       struct_error = `Structure ${structure_id} not found`
