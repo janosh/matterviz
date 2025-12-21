@@ -1,13 +1,13 @@
-import type { BondPair, ElementSymbol, Pbc, Vec3 } from '$lib'
+import type { BondPair, Pbc, Vec3 } from '$lib'
 import type { Matrix3x3 } from '$lib/math'
-import type { Crystal, Site } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import * as bonding from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { test_molecules } from '$site/molecules'
 import process from 'node:process'
 import { describe, expect, test } from 'vitest'
-import { create_test_structure } from '../setup'
+import { create_test_structure, make_crystal } from '../setup'
 
 const measure_performance = (func: () => void): number => {
   const start = performance.now()
@@ -15,31 +15,12 @@ const measure_performance = (func: () => void): number => {
   return performance.now() - start
 }
 
-const make_site = (xyz: Vec3, element = `C`): Site => ({
-  xyz,
-  abc: [0, 0, 0],
-  species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
-  label: element,
-  properties: {},
-})
-
-const get_test_structure = (
-  sites: { xyz: Vec3; element?: string }[],
-): Crystal => ({
-  sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
-  charge: 0,
-  lattice: {
-    matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
-    pbc: [true, true, true],
-    a: 1,
-    b: 1,
-    c: 1,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: 1,
-  },
-})
+// Simple helper for tests that only need xyz coordinates
+const get_test_structure = (sites: { xyz: Vec3; element?: string }[]): Crystal =>
+  make_crystal(
+    1, // 1x1x1 cubic lattice
+    sites.map(({ xyz, element = `C` }) => ({ element, xyz })),
+  )
 
 function make_random_structure(n_atoms: number): Crystal {
   const elements = [`C`, `H`, `N`, `O`, `S`, `Fe`, `Na`, `Cl`]

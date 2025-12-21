@@ -119,6 +119,70 @@ export function create_test_structure(
   }
 }
 
+// Simplified site input for make_crystal helper
+export type SimpleSite = {
+  element: ElementSymbol | string
+  abc?: Vec3
+  xyz?: Vec3
+  occu?: number
+  oxidation_state?: number
+  label?: string
+  properties?: Record<string, unknown>
+}
+
+// Flexible helper to create test structures with minimal boilerplate
+// Handles auto-calculation of abc↔xyz, lattice params, and site defaults
+export function make_crystal(
+  lattice_input: number | math.Matrix3x3,
+  site_inputs: SimpleSite[],
+  options: { pbc?: Pbc; charge?: number } = {},
+): Crystal {
+  const lattice_matrix: math.Matrix3x3 = typeof lattice_input === `number`
+    ? [[lattice_input, 0, 0], [0, lattice_input, 0], [0, 0, lattice_input]]
+    : lattice_input
+
+  const lattice_inverse = math.matrix_inverse_3x3(lattice_matrix)
+  const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
+  const pbc = options.pbc ?? [true, true, true]
+
+  const sites: Site[] = site_inputs.map((input, idx) => {
+    const element = input.element as ElementSymbol
+    // Calculate missing coordinates
+    let abc: Vec3
+    let xyz: Vec3
+    if (input.abc && input.xyz) {
+      abc = input.abc
+      xyz = input.xyz
+    } else if (input.abc) {
+      abc = input.abc
+      xyz = math.mat3x3_vec3_multiply(lattice_matrix, abc)
+    } else if (input.xyz) {
+      xyz = input.xyz
+      abc = math.mat3x3_vec3_multiply(lattice_inverse, xyz)
+    } else {
+      throw new Error(`Site ${idx} must have either abc or xyz coordinates`)
+    }
+
+    return {
+      species: [{
+        element,
+        occu: input.occu ?? 1,
+        oxidation_state: input.oxidation_state ?? 0,
+      }],
+      abc,
+      xyz,
+      label: input.label ?? `${element}${idx}`,
+      properties: input.properties ?? {},
+    }
+  })
+
+  return {
+    lattice: { matrix: lattice_matrix, pbc, a, b, c, alpha, beta, gamma, volume },
+    sites,
+    ...(options.charge !== undefined && { charge: options.charge }),
+  }
+}
+
 // ResizeObserver mock
 globalThis.ResizeObserver = class ResizeObserver {
   observe() {}

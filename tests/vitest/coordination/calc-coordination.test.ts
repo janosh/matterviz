@@ -6,11 +6,7 @@ describe(`calc_coordination_nums`, () => {
   // Simple cubic structure (NaCl-like)
   const simple_cubic: Crystal = {
     lattice: {
-      matrix: [
-        [5.0, 0.0, 0.0],
-        [0.0, 5.0, 0.0],
-        [0.0, 0.0, 5.0],
-      ],
+      matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
       a: 5.0,
       b: 5.0,
       c: 5.0,
