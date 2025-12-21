@@ -13,6 +13,15 @@ console.warn = (...args: unknown[]) => {
 
 beforeEach(() => {
   document.body.innerHTML = ``
+  // Mock clientWidth/clientHeight (happy-dom has no layout engine, returns 0 by default)
+  Object.defineProperty(HTMLElement.prototype, `clientWidth`, {
+    get: () => 800,
+    configurable: true,
+  })
+  Object.defineProperty(HTMLElement.prototype, `clientHeight`, {
+    get: () => 600,
+    configurable: true,
+  })
 })
 
 export function doc_query<T extends HTMLElement>(selector: string): T {
@@ -197,9 +206,17 @@ export function make_crystal(
   }
 }
 
-// ResizeObserver mock
+// ResizeObserver mock - triggers callback with dimensions on observe
 globalThis.ResizeObserver = class ResizeObserver {
-  observe() {}
+  constructor(private callback: ResizeObserverCallback) {}
+  observe(el: Element) {
+    queueMicrotask(() =>
+      this.callback(
+        [{ target: el, contentRect: { width: 800, height: 600 } } as ResizeObserverEntry],
+        this,
+      )
+    )
+  }
   unobserve() {}
   disconnect() {}
 }

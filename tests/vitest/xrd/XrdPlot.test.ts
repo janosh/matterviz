@@ -1,6 +1,6 @@
 import { XrdPlot } from '$lib'
 import type { XrdPattern } from '$lib/xrd'
-import { type ComponentProps, createRawSnippet, mount } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 const pattern: XrdPattern = {
@@ -29,7 +29,7 @@ async function wait_for_plot_render(target: HTMLElement): Promise<void> {
     Object.defineProperty(bar_plot, `clientHeight`, { value: 600, configurable: true })
     bar_plot.dispatchEvent(new Event(`resize`))
   }
-  await new Promise((resolve) => setTimeout(resolve, 10)) // Wait for reactive updates
+  await tick()
 }
 
 describe(`XrdPlot`, () => {
@@ -365,7 +365,7 @@ describe(`XrdPlot`, () => {
     })
     bar_plot?.dispatchEvent(drag_event)
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await tick()
     expect(bar_plot?.classList.contains(`dragover`)).toBe(true)
 
     // Simulate dragleave
@@ -375,7 +375,7 @@ describe(`XrdPlot`, () => {
     })
     bar_plot?.dispatchEvent(leave_event)
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await tick()
     expect(bar_plot?.classList.contains(`dragover`)).toBe(false)
   })
 })

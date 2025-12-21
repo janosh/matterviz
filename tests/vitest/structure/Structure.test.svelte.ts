@@ -946,7 +946,6 @@ describe(`Structure string parsing`, () => {
       },
     })
     await tick()
-    await new Promise((resolve) => setTimeout(resolve, 10))
     expect(filename).toBe(`test.poscar`)
   })
 })
