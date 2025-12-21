@@ -169,20 +169,7 @@ describe(`moyo_cell_to_structure`, () => {
 
   test(`preserves pbc from original structure`, () => {
     const moyo_cell = make_moyo_cell([5, 0, 0, 0, 5, 0, 0, 0, 5], [[0, 0, 0]], [14])
-    const original: Crystal = {
-      lattice: {
-        matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
-        pbc: [true, true, false] as const, // 2D periodic
-        a: 5,
-        b: 5,
-        c: 5,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 125,
-      },
-      sites: [],
-    }
+    const original = make_crystal(5, [], { pbc: [true, true, false] }) // 2D periodic
 
     const result = moyo_cell_to_structure(moyo_cell, original)
 

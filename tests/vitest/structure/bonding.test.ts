@@ -506,43 +506,11 @@ test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bon
 })
 
 test(`bonding logic treats original and image atoms consistently`, () => {
-  const lattice_len = 10.0
-  const structure: Crystal = {
-    sites: [
-      {
-        species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
-        abc: [0.1, 0.5, 0.5], // x=1.0
-        xyz: [1.0, 5.0, 5.0],
-        label: `C1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
-        abc: [0.25, 0.5, 0.5], // x=2.5
-        xyz: [2.5, 5.0, 5.0],
-        label: `C2`,
-        properties: {},
-      },
-      {
-        species: [{ element: `H` as const, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.5, 0.5], // x=0.0
-        xyz: [0.0, 5.0, 5.0],
-        label: `H_distractor`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[lattice_len, 0, 0], [0, lattice_len, 0], [0, 0, lattice_len]],
-      pbc: [true, true, true],
-      a: lattice_len,
-      b: lattice_len,
-      c: lattice_len,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: lattice_len ** 3,
-    },
-  }
+  const structure = make_crystal(10, [
+    { element: `C`, abc: [0.1, 0.5, 0.5], label: `C1` }, // x=1.0
+    { element: `C`, abc: [0.25, 0.5, 0.5], label: `C2` }, // x=2.5
+    { element: `H`, abc: [0.0, 0.5, 0.5], label: `H_distractor` }, // x=0.0
+  ])
 
   // Explicit tolerance 0.3 => 30% of 10A = 3.0A.
   // C1 at 1.0A from edge (0.1 frac) < 3.0A => should image.

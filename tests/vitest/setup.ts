@@ -147,13 +147,10 @@ export function make_crystal(
 
   const sites: Site[] = site_inputs.map((input, idx) => {
     const element = input.element as ElementSymbol
-    // Calculate missing coordinates
+    // Calculate coordinates - abc takes precedence to ensure consistency
     let abc: Vec3
     let xyz: Vec3
-    if (input.abc && input.xyz) {
-      abc = input.abc
-      xyz = input.xyz
-    } else if (input.abc) {
+    if (input.abc) {
       abc = input.abc
       xyz = math.mat3x3_vec3_multiply(lattice_matrix, abc)
     } else if (input.xyz) {
