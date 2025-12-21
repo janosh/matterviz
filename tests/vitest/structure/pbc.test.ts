@@ -1,7 +1,7 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { euclidean_dist, mat3x3_vec3_multiply } from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites, wrap_to_unit_cell } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
@@ -10,13 +10,14 @@ import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '$site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import { describe, expect, test } from 'vitest'
+import { make_crystal } from '../setup'
 
-const mp_1_struct = structure_map.get(`mp-1`) as PymatgenStructure
-const mp_2_struct = structure_map.get(`mp-2`) as PymatgenStructure
-const mp_1204603_struct = structure_map.get(`mp-1204603`) as PymatgenStructure
+const mp_1_struct = structure_map.get(`mp-1`) as Crystal
+const mp_2_struct = structure_map.get(`mp-2`) as Crystal
+const mp_1204603_struct = structure_map.get(`mp-1204603`) as Crystal
 const tl_bi_se2_struct = structure_map.get(
   `TlBiSe2-highly-oblique-cell`,
-) as PymatgenStructure
+) as Crystal
 
 // Helpers to reduce duplication while preserving coverage
 function assert_xyz_matches_lattice(
@@ -59,7 +60,7 @@ function assert_integer_translation(
 }
 
 function validate_image_tuples(
-  structure: PymatgenStructure,
+  structure: Crystal,
   image_atoms: [number, Vec3, Vec3][],
   opts?: { min_dist?: number; tol?: number },
 ): void {
@@ -96,7 +97,7 @@ Cl       2.5       2.5       2.5`
     normal_structure_extxyz,
     `test.xyz`,
   )
-  const normal_structure = normal_trajectory.frames[0].structure as PymatgenStructure
+  const normal_structure = normal_trajectory.frames[0].structure as Crystal
 
   // Test that the structure has lattice information
   expect(`lattice` in normal_structure).toBe(true)
@@ -130,7 +131,7 @@ Cl       2.5       2.5       2.5`
     frame_idx++
   ) {
     const frame_structure = normal_trajectory.frames[frame_idx]
-      .structure as PymatgenStructure
+      .structure as Crystal
     const frame_image_atoms = find_image_atoms(frame_structure)
     expect(frame_image_atoms.length).toBeGreaterThan(0) // Should consistently treat as normal crystal
   }
@@ -174,7 +175,7 @@ test.each([
       }
     })
 
-    const structure: PymatgenStructure = {
+    const structure: Crystal = {
       sites,
       lattice: {
         matrix: lattice,
@@ -213,7 +214,7 @@ test(`triclinic lattice image xyz must match lattice * abc`, () => {
   const matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
   const params = math.calc_lattice_params(matrix)
 
-  const structure: PymatgenStructure = {
+  const structure: Crystal = {
     sites: [
       {
         species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
@@ -255,59 +256,14 @@ test.each([
     description: `|coord| > tol`,
   },
 ])(`tolerance boundary behavior: $description`, ({ tolerance, coord, expect_images }) => {
-  const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
-  const structure: PymatgenStructure = {
-    sites: [
-      {
-        species: [{ element: `Na` as const, occu: 1, oxidation_state: 0 }],
-        abc: [coord, 0.5, 0.5],
-        xyz: [coord * 5, 2.5, 2.5],
-        label: `Na1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: lattice,
-      pbc: [true, true, true],
-      a: 5,
-      b: 5,
-      c: 5,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125,
-    },
-  }
-
+  const structure = make_crystal(5, [[`Na`, [coord, 0.5, 0.5]]])
   const images = find_image_atoms(structure, { tolerance })
   if (expect_images) expect(images.length).toBeGreaterThan(0)
   else expect(images.length).toBe(0)
 })
 
 test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
-  const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
-  const structure: PymatgenStructure = {
-    sites: [
-      {
-        species: [{ element: `Cl` as const, occu: 1, oxidation_state: 0 }],
-        abc: [1.0, 0.5, 0.5],
-        xyz: [5.0, 2.5, 2.5],
-        label: `Cl1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: lattice,
-      pbc: [true, true, true],
-      a: 5,
-      b: 5,
-      c: 5,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125,
-    },
-  }
+  const structure = make_crystal(5, [[`Cl`, [1.0, 0.5, 0.5]]])
 
   const images = find_image_atoms(structure)
   expect(images.length).toBeGreaterThan(0)
@@ -322,7 +278,7 @@ test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
   expect(img_abc[2]).toBeCloseTo(0.5, 12)
 
   // xyz must be consistent with lattice * abc
-  const expected_xyz = mat3x3_vec3_multiply(lattice, img_abc)
+  const expected_xyz = mat3x3_vec3_multiply(structure.lattice.matrix, img_abc)
   for (let dim = 0; dim < 3; dim++) {
     expect(img_xyz[dim]).toBeCloseTo(expected_xyz[dim], 10)
   }
@@ -341,7 +297,7 @@ C         2.0      17.0      17.0
 C        -2.0      10.0      12.0`
 
   const trajectory_like = await parse_trajectory_data(trajectory_like_extxyz, `test.xyz`)
-  const trajectory_structure = trajectory_like.frames[0].structure as PymatgenStructure
+  const trajectory_structure = trajectory_like.frames[0].structure as Crystal
 
   // Test that the structure has lattice information
   expect(`lattice` in trajectory_structure).toBe(true)
@@ -375,7 +331,7 @@ C        -2.0      10.0      12.0`
     frame_idx++
   ) {
     const frame_structure = trajectory_like.frames[frame_idx]
-      .structure as PymatgenStructure
+      .structure as Crystal
     const frame_image_atoms = find_image_atoms(frame_structure)
     expect(frame_image_atoms.length).toBe(0) // Should consistently treat as trajectory data
   }
@@ -424,9 +380,9 @@ test.each([
   `find_image_atoms with real structures: $description`,
   ({ content, filename, expected_min_images, expected_max_images, min_dist, tol }) => {
     // Parse the structure
-    let structure: PymatgenStructure
+    let structure: Crystal
 
-    if (filename.endsWith(`.json`)) structure = content as PymatgenStructure
+    if (filename.endsWith(`.json`)) structure = content as Crystal
     else {
       const parsed = parse_structure_file(content as string, filename)
       if (!parsed || !parsed.lattice) {
@@ -435,7 +391,7 @@ test.each([
       structure = {
         sites: parsed.sites,
         lattice: { ...parsed.lattice, pbc: [true, true, true] },
-      } as PymatgenStructure
+      } as Crystal
     }
 
     // Test find_image_atoms
@@ -491,42 +447,11 @@ test(`image atoms should have fractional coordinates related by lattice translat
 // Test edge detection accuracy
 test(`edge detection should be precise for atoms at boundaries`, () => {
   // Create a test structure with atoms exactly at edges
-  const test_structure: PymatgenStructure = {
-    sites: [
-      {
-        species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.0, 0.0], // Exactly at corner
-        xyz: [0.0, 0.0, 0.0],
-        label: `Na1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Cl`, occu: 1, oxidation_state: 0 }],
-        abc: [1.0, 0.0, 0.0], // Exactly at edge
-        xyz: [5.0, 0.0, 0.0],
-        label: `Cl1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-        abc: [0.5, 0.5, 0.5], // In middle, no images expected
-        xyz: [2.5, 2.5, 2.5],
-        label: `Na2`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
-      pbc: [true, true, true],
-      a: 5.0,
-      b: 5.0,
-      c: 5.0,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125.0,
-    },
-  }
+  const test_structure = make_crystal(5, [
+    [`Na`, [0.0, 0.0, 0.0]], // Exactly at corner
+    [`Cl`, [1.0, 0.0, 0.0]], // Exactly at edge
+    [`Na`, [0.5, 0.5, 0.5]], // In middle, no images expected
+  ])
 
   const image_atoms = find_image_atoms(test_structure)
 
@@ -595,30 +520,7 @@ test.each([
 ])(
   `tolerance parameter affects image atom detection: $description`,
   ({ tolerance, abc_coords, expected_count }) => {
-    // Create structure with single atom at specified position
-    const test_structure: PymatgenStructure = {
-      sites: [
-        {
-          species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-          abc: abc_coords as Vec3,
-          xyz: [abc_coords[0] * 5.0, abc_coords[1] * 5.0, abc_coords[2] * 5.0] as Vec3,
-          label: `Na1`,
-          properties: {},
-        },
-      ],
-      lattice: {
-        matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
-        pbc: [true, true, true],
-        a: 5.0,
-        b: 5.0,
-        c: 5.0,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 125.0,
-      },
-    }
-
+    const test_structure = make_crystal(5, [[`Na`, abc_coords as Vec3]])
     const image_atoms = find_image_atoms(test_structure, { tolerance })
 
     // For atoms at edges, the algorithm creates multiple images due to corner/edge combinations
@@ -660,35 +562,10 @@ test(`all image atoms should be positioned at unit cell boundaries`, () => {
 // Test that image atoms have fractional coordinates inside expected cell boundaries
 test(`image atoms should have fractional coordinates at cell boundaries`, () => {
   // Create a simple cubic structure with atoms at exact boundaries
-  const test_structure: PymatgenStructure = {
-    sites: [
-      {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.0, 0.0], // Corner
-        xyz: [0.0, 0.0, 0.0],
-        label: `C1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-        abc: [1.0, 1.0, 1.0], // Opposite corner
-        xyz: [4.0, 4.0, 4.0],
-        label: `C2`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[4.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0]],
-      pbc: [true, true, true],
-      a: 4.0,
-      b: 4.0,
-      c: 4.0,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 64.0,
-    },
-  }
+  const test_structure = make_crystal(4, [
+    [`C`, [0.0, 0.0, 0.0]], // Corner
+    [`C`, [1.0, 1.0, 1.0]], // Opposite corner
+  ])
 
   const image_atoms = find_image_atoms(test_structure)
   expect(image_atoms.length).toBeGreaterThan(0)
@@ -783,7 +660,7 @@ test.each([
 ])(
   `image atom generation for $name crystal system`,
   ({ lattice, sites, expected_min }) => {
-    const test_structure: PymatgenStructure = {
+    const test_structure: Crystal = {
       sites: sites.map((site, idx) => ({
         species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
         abc: site.abc as Vec3,
@@ -824,35 +701,10 @@ test.each([
 // Test the new behavior: abc coordinates should be preserved and synchronized with xyz
 test(`image atoms preserve fractional coordinates correctly`, () => {
   // Create a simple test structure with atoms at known boundary positions
-  const test_structure: PymatgenStructure = {
-    sites: [
-      {
-        species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.0, 0.0], // Corner atom
-        xyz: [0.0, 0.0, 0.0],
-        label: `Na1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Cl`, occu: 1, oxidation_state: 0 }],
-        abc: [1.0, 0.5, 0.0], // Edge atom in x-direction
-        xyz: [5.0, 2.5, 0.0],
-        label: `Cl1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
-      pbc: [true, true, true],
-      a: 5.0,
-      b: 5.0,
-      c: 5.0,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125.0,
-    },
-  }
+  const test_structure = make_crystal(5, [
+    [`Na`, [0.0, 0.0, 0.0]], // Corner atom
+    [`Cl`, [1.0, 0.5, 0.0]], // Edge atom in x-direction
+  ])
 
   const image_atoms = find_image_atoms(test_structure)
   expect(image_atoms.length).toBeGreaterThan(0)
@@ -990,31 +842,9 @@ test.each([
 ])(
   `image atoms preserve fractional offset across x-boundary: $description`,
   ({ coord, expected_int_shift }) => {
-    const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
     const orig_abc: Vec3 = [coord, 0.5, 0.5]
-    const structure: PymatgenStructure = {
-      sites: [
-        {
-          species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-          abc: orig_abc,
-          xyz: [coord * 5, 2.5, 2.5],
-          label: `Na1`,
-          properties: {},
-        },
-      ],
-      lattice: {
-        matrix: lattice,
-        pbc: [true, true, true],
-        a: 5,
-        b: 5,
-        c: 5,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 125,
-      },
-    }
-
+    const structure = make_crystal(5, [[`Na`, orig_abc]])
+    const lattice_matrix = structure.lattice.matrix
     const image_atoms = find_image_atoms(structure)
     const images_for_first = image_atoms.filter(([site_index]) => site_index === 0)
     expect(images_for_first.length).toBeGreaterThan(0)
@@ -1026,7 +856,7 @@ test.each([
       // and geometry consistent
       const xyz_ok = (() => {
         try {
-          assert_xyz_matches_lattice(lattice, image_abc, image_xyz, 10)
+          assert_xyz_matches_lattice(lattice_matrix, image_abc, image_xyz, 10)
           return true
         } catch {
           return false
@@ -1046,42 +876,16 @@ test.each([
     expect(int_shift_x).toBe(expected_int_shift)
 
     // xyz consistency check
-    assert_xyz_matches_lattice(lattice, img_abc, img_xyz, 10)
+    assert_xyz_matches_lattice(lattice_matrix, img_abc, img_xyz, 10)
   },
 )
 
 // Regression test for large unit cells (e.g. MOFs) using physical tolerance
 test(`find_image_atoms uses physical tolerance for large cells`, () => {
-  const lattice_len = 100
-  const structure: PymatgenStructure = {
-    sites: [
-      {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-        abc: [0.04, 0.5, 0.5], // 4 Angstroms from edge (0.04 * 100)
-        xyz: [4.0, 50.0, 50.0],
-        label: `C1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        abc: [0.001, 0.5, 0.5], // 0.1 Angstroms from edge (0.001 * 100)
-        xyz: [0.1, 50.0, 50.0],
-        label: `H1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[lattice_len, 0, 0], [0, lattice_len, 0], [0, 0, lattice_len]],
-      pbc: [true, true, true],
-      a: lattice_len,
-      b: lattice_len,
-      c: lattice_len,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: lattice_len ** 3,
-    },
-  }
+  const structure = make_crystal(100, [
+    [`C`, [0.04, 0.5, 0.5]], // 4 Angstroms from edge (0.04 * 100)
+    [`H`, [0.001, 0.5, 0.5]], // 0.1 Angstroms from edge (0.001 * 100)
+  ])
 
   // Default behavior: physical tolerance (~0.5 Angstroms)
   // C1 at 4A should NOT image (too far)

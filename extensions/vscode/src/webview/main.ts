@@ -10,9 +10,9 @@ import '$lib/theme/themes'
 import type { LoadingOptions } from '$lib/trajectory/parse'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 // Add frame loader import
-import type { PymatgenStructure } from '$lib'
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { type DefaultSettings, merge } from '$lib/settings'
+import type { Crystal } from '$lib/structure'
 import type {
   FrameIndex,
   FrameLoader,
@@ -479,7 +479,7 @@ const create_display = (
       final_trajectory.frames?.length ?? 0
     } initial frames, ${final_trajectory.total_frames ?? `unknown`} total)`
     : `Structure rendered: ${filename} (${
-      (result.data as PymatgenStructure).sites?.length ?? 0
+      (result.data as Crystal).sites?.length ?? 0
     } sites)`
 
   vscode_api?.postMessage({ command: `log`, text: message })

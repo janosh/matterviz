@@ -1,7 +1,7 @@
 import { ATOMIC_NUMBER_TO_SYMBOL, SYMBOL_TO_ATOMIC_NUMBER } from '$lib/composition/parse'
 import type { Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
-import type { AnyStructure, PymatgenStructure } from '$lib/structure'
+import type { AnyStructure, Crystal } from '$lib/structure'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import init, { analyze_cell } from '@spglib/moyo-wasm'
 import moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
@@ -52,7 +52,7 @@ export async function ensure_moyo_wasm_ready(wasm_url?: string) {
   initialized = true
 }
 
-export function to_cell_json(structure: PymatgenStructure): string {
+export function to_cell_json(structure: Crystal): string {
   // nalgebra Matrix3 deserializes as a flat list in COLUMN-MAJOR of the internal basis B
   // Internal B = transpose(row-basis RB). column-major(B) == row-major(RB).
   // So supply row-major of the pymatgen lattice.matrix (RB).
@@ -162,16 +162,16 @@ export function apply_symmetry_operations(
 ): Vec3[] {
   const seen = new Set<string>()
   const wrap = (coord: number) => coord - Math.floor(coord)
-  const key = (pos: Vec3) => pos.map((c) => wrap(c).toFixed(8)).join(`,`)
+  const key = (pos: Vec3) => pos.map((coord) => wrap(coord).toFixed(8)).join(`,`)
 
   return operations
     .map(({ rotation, translation }) => {
       // Apply 3x3 rotation matrix and translation: new_pos = R * position + t
-      const new_pos: Vec3 = [0, 1, 2].map((i) =>
-        rotation[i * 3] * position[0] +
-        rotation[i * 3 + 1] * position[1] +
-        rotation[i * 3 + 2] * position[2] +
-        translation[i]
+      const new_pos: Vec3 = [0, 1, 2].map((dim) =>
+        rotation[dim * 3] * position[0] +
+        rotation[dim * 3 + 1] * position[1] +
+        rotation[dim * 3 + 2] * position[2] +
+        translation[dim]
       ) as Vec3
       return new_pos.map(wrap) as Vec3
     })
@@ -186,8 +186,8 @@ export function apply_symmetry_operations(
 // Map Wyckoff positions to all equivalent atoms in the displayed structure (including image atoms)
 export function map_wyckoff_to_all_atoms(
   wyckoff_positions: WyckoffPos[],
-  displayed_structure: PymatgenStructure,
-  orig_structure: PymatgenStructure,
+  displayed_structure: Crystal,
+  orig_structure: Crystal,
   sym_data: MoyoDataset | null,
   tolerance = 1e-5,
 ): WyckoffPos[] {

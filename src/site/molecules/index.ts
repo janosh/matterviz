@@ -1,11 +1,11 @@
-import type { FileInfo, PymatgenMolecule } from '$lib'
+import type { FileInfo, Molecule } from '$lib'
 
 // Array of molecules
 export const molecules = Object.entries(
   import.meta.glob(`./*.json`, {
     eager: true,
     import: `default`,
-  }) as Record<string, PymatgenMolecule>,
+  }) as Record<string, Molecule>,
 ).map(([path, mol]) => {
   const id = path.split(`/`).at(-1)?.split(`.`)[0]
   mol.id = id

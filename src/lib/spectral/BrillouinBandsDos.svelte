@@ -2,7 +2,7 @@
   import { BrillouinZone, reciprocal_lattice } from '$lib/brillouin'
   import type { Vec3 } from '$lib/math'
   import type { InternalPoint } from '$lib/plot'
-  import type { PymatgenStructure } from '$lib/structure'
+  import type { Crystal } from '$lib/structure'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
@@ -20,7 +20,7 @@
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    structure: PymatgenStructure
+    structure: Crystal
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
     doses: DosData | Record<string, DosData>
     bands_props?: Partial<ComponentProps<typeof Bands>>

@@ -1,5 +1,5 @@
 import type { Matrix3x3 } from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import { compute_xrd_pattern, type XrdPattern } from '$lib/xrd'
 import { describe, expect, test } from 'vitest'
 import { create_test_structure } from '../setup'
@@ -7,7 +7,7 @@ import { create_test_structure } from '../setup'
 function make_simple_cubic(
   a_len: number,
   element_symbol: string = `H`,
-): PymatgenStructure {
+): Crystal {
   const a = a_len
   const lattice: Matrix3x3 = [[a, 0, 0], [0, a, 0], [0, 0, a]]
   return create_test_structure(lattice, [element_symbol as never], [[0, 0, 0]])

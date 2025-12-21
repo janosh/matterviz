@@ -1,9 +1,10 @@
 import { RdfPlot } from '$lib'
 import type { RdfPattern } from '$lib/rdf'
-import type { Pbc, PymatgenStructure } from '$lib/structure'
+import type { Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { createRawSnippet, mount } from 'svelte'
 import { describe, test } from 'vitest'
+import { make_crystal } from '../setup'
 
 const nacl_structure = structure_map.get(`mp-1234`)
 const pd_structure = structure_map.get(`mp-2`)
@@ -133,26 +134,7 @@ describe(`RdfPlot`, () => {
   })
 
   test(`single atom structure`, () => {
-    const single_atom: PymatgenStructure = {
-      lattice: {
-        matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
-        pbc: [true, true, true],
-        volume: 125.0,
-        a: 5.0,
-        b: 5.0,
-        c: 5.0,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-      },
-      sites: [{
-        species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-        xyz: [0.0, 0.0, 0.0],
-        abc: [0.0, 0.0, 0.0],
-        label: `Si1`,
-        properties: {},
-      }],
-    }
+    const single_atom = make_crystal(5, [[`Si`, [0, 0, 0]]])
     mount(RdfPlot, {
       target: document.body,
       props: { structures: single_atom, mode: `full` },

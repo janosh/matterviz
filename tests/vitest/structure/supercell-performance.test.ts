@@ -1,12 +1,12 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import { make_supercell, parse_supercell_scaling } from '$lib/structure/supercell'
 import process from 'node:process'
 import { describe, expect, test } from 'vitest'
 
 // Create a large test structure
-function create_test_structure(num_sites: number): PymatgenStructure {
+function create_test_structure(num_sites: number): Crystal {
   const lattice_matrix: Matrix3x3 = [
     [10, 0, 0],
     [0, 10, 0],
@@ -35,7 +35,7 @@ function create_test_structure(num_sites: number): PymatgenStructure {
     },
     sites,
     charge: 0,
-  } as unknown as PymatgenStructure
+  } as unknown as Crystal
 }
 
 // Increase thresholds in CI environment

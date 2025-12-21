@@ -4,7 +4,7 @@ import {
   detect_structure_type,
   is_optimade_json,
   is_structure_file,
-  optimade_to_pymatgen,
+  optimade_to_crystal,
   parse_any_structure,
   parse_cif,
   parse_optimade_json,
@@ -2405,7 +2405,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
       },
     },
   ])(`should convert $name`, ({ optimade_structure, expected }) => {
-    const result = optimade_to_pymatgen(optimade_structure)
+    const result = optimade_to_crystal(optimade_structure)
     if (!result) throw `Failed to convert OPTIMADE structure`
 
     expect(result.sites).toHaveLength(expected.sites)
@@ -2468,10 +2468,10 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
           species_at_sites: [`Fe`], // Only one species for two positions
         },
       },
-      expected_error: `Error converting OPTIMADE to Pymatgen format`,
+      expected_error: `Error converting OPTIMADE to Crystal format`,
     },
   ])(`should handle $name gracefully`, ({ optimade_structure, expected_error }) => {
-    const result = optimade_to_pymatgen(optimade_structure)
+    const result = optimade_to_crystal(optimade_structure)
     expect(result).toBeNull()
 
     // Verify the expected error was logged
@@ -2521,7 +2521,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
       expected_abc: [[0.0, 0.0, 0.0], [0.2077367205542725, 0.38452655889145493, 0.5]],
     },
   ])(`should handle $name`, ({ optimade_structure, expected_abc }) => {
-    const result = optimade_to_pymatgen(optimade_structure)
+    const result = optimade_to_crystal(optimade_structure)
     if (!result) throw `Failed to convert OPTIMADE structure`
 
     expect(result.sites).toHaveLength(expected_abc.length)

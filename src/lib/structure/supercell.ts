@@ -1,9 +1,9 @@
-// Supercell generation utilities for PymatgenStructure
+// Supercell generation utilities for Crystal
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { PymatgenStructure, Site } from './index'
+import type { Crystal, Site } from './index'
 
-type SupercellType = PymatgenStructure & {
+type SupercellType = Crystal & {
   supercell_scaling?: Vec3
 }
 
@@ -17,7 +17,7 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
     return [scaling, scaling, scaling]
   }
   if (Array.isArray(scaling) && scaling.length === 3) {
-    if (scaling.some((v) => !Number.isInteger(v) || v <= 0)) {
+    if (scaling.some((val) => !Number.isInteger(val) || val <= 0)) {
       throw new Error(
         `All supercell scaling factors must be positive integers: ${scaling}`,
       )
@@ -26,15 +26,15 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
   }
   if (typeof scaling === `string`) {
     // Parse "2x2x2" format
-    const parts = scaling.trim().toLowerCase().split(/[x×,\s]+/).filter((p) =>
-      p.length > 0
+    const parts = scaling.trim().toLowerCase().split(/[x×,\s]+/).filter((part) =>
+      part.length > 0
     )
 
     if (parts.length === 1 || parts.length === 3) {
       // Check that all parts are strictly digits to avoid scientific notation/hex/etc per tests
-      if (parts.every((p) => /^\d+$/.test(p))) {
+      if (parts.every((part) => /^\d+$/.test(part))) {
         const values = parts.map(Number)
-        if (values.every((v) => v > 0)) {
+        if (values.every((val) => val > 0)) {
           return (parts.length === 1 ? [values[0], values[0], values[0]] : values) as Vec3
         }
       }
@@ -80,14 +80,14 @@ export function scale_lattice_matrix(
   ]
 }
 
-// Create a supercell from a PymatgenStructure
+// Create a supercell from a Crystal
 // Takes original structure, scaling factors, and whether to fold coordinates back to unit cell (default: true)
 // Returns new supercell structure
 export function make_supercell(
-  structure: PymatgenStructure,
+  structure: Crystal,
   scaling: string | number | Vec3,
   to_unit_cell: boolean = true,
-): PymatgenStructure {
+): Crystal {
   if (!structure.lattice) {
     throw new Error(`Cannot create supercell: structure has no lattice`)
   }

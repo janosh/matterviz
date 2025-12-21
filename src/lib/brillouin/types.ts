@@ -1,5 +1,5 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 
 export type BrillouinZoneData = {
   order: number // 1st, 2nd, 3rd BZ
@@ -11,7 +11,7 @@ export type BrillouinZoneData = {
 }
 
 export type BrillouinZoneProps = {
-  structure: PymatgenStructure
+  structure: Crystal
   bz_order?: number // default 1
   // Styling
   surface_color?: string

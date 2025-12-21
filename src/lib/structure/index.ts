@@ -7,12 +7,11 @@ import type { Lattice, StructureScene } from '$lib/structure'
 import type { ComponentProps } from 'svelte'
 import type { Pbc } from './pbc'
 
-export { default as Bond } from './Bond.svelte'
-export * as bonding_strategies from './bonding'
-
 export { default as Arrow } from './Arrow.svelte'
 export * from './atom-properties'
 export { default as AtomLegend } from './AtomLegend.svelte'
+export { default as Bond } from './Bond.svelte'
+export * as bonding_strategies from './bonding'
 export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export { default as Cylinder } from './Cylinder.svelte'
 export { default as Lattice } from './Lattice.svelte'
@@ -40,12 +39,13 @@ export type Site = {
 export const LATTICE_PARAM_KEYS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
 export type LatticeParams = { [key in (typeof LATTICE_PARAM_KEYS)[number]]: number }
 
-export type PymatgenLattice =
+export type LatticeType =
   & { matrix: math.Matrix3x3; pbc: Pbc; volume: number }
   & LatticeParams
 
-export type PymatgenMolecule = { sites: Site[]; charge?: number; id?: string }
-export type PymatgenStructure = PymatgenMolecule & { lattice: PymatgenLattice }
+export type Molecule = { sites: Site[]; charge?: number; id?: string }
+export type Crystal = Molecule & { lattice: LatticeType }
+export type AnyStructure = Crystal | Molecule
 
 // Bond pair with position vectors, site indices, bond length, strength score, and transformation matrix
 export type BondPair = {
@@ -57,9 +57,6 @@ export type BondPair = {
   strength: number
   transform_matrix: Float32Array
 }
-
-export type IdStructure = PymatgenStructure & { id: string }
-export type AnyStructure = PymatgenStructure | PymatgenMolecule
 
 export function get_elem_amounts(structure: AnyStructure) {
   const elements: CompositionType = {}
@@ -76,7 +73,7 @@ export function format_chemical_formula(
   structure: AnyStructure,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
 ): string {
-  // concatenate elements in a pymatgen Structure followed by their amount
+  // concatenate elements in a structure followed by their amount
   const elements = get_elem_amounts(structure)
   const formula = []
   for (const el of sort_fn(Object.keys(elements) as ElementSymbol[])) {
@@ -88,7 +85,7 @@ export function format_chemical_formula(
 }
 
 export function electro_neg_formula(structure: AnyStructure): string {
-  // concatenate elements in a pymatgen Structure followed by their amount sorted by electronegativity
+  // concatenate elements in a structure followed by their amount sorted by electronegativity
   return format_chemical_formula(structure, (symbols) => (symbols.sort((el1, el2) => {
     const elec_neg1 = element_data.find((el) => el.symbol === el1)?.electronegativity ??
       0
@@ -108,8 +105,8 @@ export const atomic_radii: CompositionType = Object.fromEntries(
 // to grams per cubic centimeter (g/cm^3)
 const uA3_to_gcm3 = 1.66053907
 
-export function get_density(structure: PymatgenStructure): number {
-  // calculate the density of a pymatgen Structure in g/cm³
+export function get_density(structure: Crystal): number {
+  // calculate the density of a Crystal in g/cm³
   const elements = get_elem_amounts(structure)
   let mass = 0
   for (const [el, amt] of Object.entries(elements)) {
