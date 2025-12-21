@@ -256,30 +256,7 @@ test.each([
     description: `|coord| > tol`,
   },
 ])(`tolerance boundary behavior: $description`, ({ tolerance, coord, expect_images }) => {
-  const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
-  const structure: Crystal = {
-    sites: [
-      {
-        species: [{ element: `Na` as const, occu: 1, oxidation_state: 0 }],
-        abc: [coord, 0.5, 0.5],
-        xyz: [coord * 5, 2.5, 2.5],
-        label: `Na1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: lattice,
-      pbc: [true, true, true],
-      a: 5,
-      b: 5,
-      c: 5,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 125,
-    },
-  }
-
+  const structure = make_crystal(5, [{ element: `Na`, abc: [coord, 0.5, 0.5] }])
   const images = find_image_atoms(structure, { tolerance })
   if (expect_images) expect(images.length).toBeGreaterThan(0)
   else expect(images.length).toBe(0)
@@ -543,30 +520,7 @@ test.each([
 ])(
   `tolerance parameter affects image atom detection: $description`,
   ({ tolerance, abc_coords, expected_count }) => {
-    // Create structure with single atom at specified position
-    const test_structure: Crystal = {
-      sites: [
-        {
-          species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-          abc: abc_coords as Vec3,
-          xyz: [abc_coords[0] * 5.0, abc_coords[1] * 5.0, abc_coords[2] * 5.0] as Vec3,
-          label: `Na1`,
-          properties: {},
-        },
-      ],
-      lattice: {
-        matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
-        pbc: [true, true, true],
-        a: 5.0,
-        b: 5.0,
-        c: 5.0,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 125.0,
-      },
-    }
-
+    const test_structure = make_crystal(5, [{ element: `Na`, abc: abc_coords as Vec3 }])
     const image_atoms = find_image_atoms(test_structure, { tolerance })
 
     // For atoms at edges, the algorithm creates multiple images due to corner/edge combinations
@@ -888,31 +842,9 @@ test.each([
 ])(
   `image atoms preserve fractional offset across x-boundary: $description`,
   ({ coord, expected_int_shift }) => {
-    const lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
     const orig_abc: Vec3 = [coord, 0.5, 0.5]
-    const structure: Crystal = {
-      sites: [
-        {
-          species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
-          abc: orig_abc,
-          xyz: [coord * 5, 2.5, 2.5],
-          label: `Na1`,
-          properties: {},
-        },
-      ],
-      lattice: {
-        matrix: lattice,
-        pbc: [true, true, true],
-        a: 5,
-        b: 5,
-        c: 5,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 125,
-      },
-    }
-
+    const structure = make_crystal(5, [{ element: `Na`, abc: orig_abc }])
+    const lattice_matrix = structure.lattice.matrix
     const image_atoms = find_image_atoms(structure)
     const images_for_first = image_atoms.filter(([site_index]) => site_index === 0)
     expect(images_for_first.length).toBeGreaterThan(0)
@@ -924,7 +856,7 @@ test.each([
       // and geometry consistent
       const xyz_ok = (() => {
         try {
-          assert_xyz_matches_lattice(lattice, image_abc, image_xyz, 10)
+          assert_xyz_matches_lattice(lattice_matrix, image_abc, image_xyz, 10)
           return true
         } catch {
           return false
@@ -944,42 +876,16 @@ test.each([
     expect(int_shift_x).toBe(expected_int_shift)
 
     // xyz consistency check
-    assert_xyz_matches_lattice(lattice, img_abc, img_xyz, 10)
+    assert_xyz_matches_lattice(lattice_matrix, img_abc, img_xyz, 10)
   },
 )
 
 // Regression test for large unit cells (e.g. MOFs) using physical tolerance
 test(`find_image_atoms uses physical tolerance for large cells`, () => {
-  const lattice_len = 100
-  const structure: Crystal = {
-    sites: [
-      {
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-        abc: [0.04, 0.5, 0.5], // 4 Angstroms from edge (0.04 * 100)
-        xyz: [4.0, 50.0, 50.0],
-        label: `C1`,
-        properties: {},
-      },
-      {
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        abc: [0.001, 0.5, 0.5], // 0.1 Angstroms from edge (0.001 * 100)
-        xyz: [0.1, 50.0, 50.0],
-        label: `H1`,
-        properties: {},
-      },
-    ],
-    lattice: {
-      matrix: [[lattice_len, 0, 0], [0, lattice_len, 0], [0, 0, lattice_len]],
-      pbc: [true, true, true],
-      a: lattice_len,
-      b: lattice_len,
-      c: lattice_len,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: lattice_len ** 3,
-    },
-  }
+  const structure = make_crystal(100, [
+    { element: `C`, abc: [0.04, 0.5, 0.5] }, // 4 Angstroms from edge (0.04 * 100)
+    { element: `H`, abc: [0.001, 0.5, 0.5] }, // 0.1 Angstroms from edge (0.001 * 100)
+  ])
 
   // Default behavior: physical tolerance (~0.5 Angstroms)
   // C1 at 4A should NOT image (too far)
