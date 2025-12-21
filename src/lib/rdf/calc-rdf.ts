@@ -5,13 +5,13 @@ import {
   matrix_inverse_3x3,
   pbc_dist,
 } from '$lib/math'
-import type { Crystal as Structure, Pbc } from '$lib/structure'
+import type { Crystal, Pbc } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
 import type { RdfOptions, RdfPattern } from './index'
 
 // Calculate radial distribution function
 export function calculate_rdf(
-  structure: Structure,
+  structure: Crystal,
   options: RdfOptions = {},
 ): RdfPattern {
   const {
@@ -29,7 +29,7 @@ export function calculate_rdf(
 
   // Validate structure has lattice
   if (!structure.lattice?.matrix) {
-    throw new Error(`Structure must have a lattice for RDF calculation`)
+    throw new Error(`Crystal must have a lattice for RDF calculation`)
   }
 
   let lattice: Matrix3x3 = structure.lattice.matrix
@@ -117,7 +117,7 @@ export function calculate_rdf(
 
 // Calculate RDF for all element pairs
 export function calculate_all_pair_rdfs(
-  structure: Structure,
+  structure: Crystal,
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> = {},
 ): RdfPattern[] {
   const elems = [...new Set(structure.sites.map((site) => site.species[0].element))]

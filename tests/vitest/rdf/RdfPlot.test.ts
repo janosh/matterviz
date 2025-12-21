@@ -134,7 +134,7 @@ describe(`RdfPlot`, () => {
   })
 
   test(`single atom structure`, () => {
-    const single_atom = make_crystal(5, [{ element: `Si`, abc: [0, 0, 0] }])
+    const single_atom = make_crystal(5, [[`Si`, [0, 0, 0]]])
     mount(RdfPlot, {
       target: document.body,
       props: { structures: single_atom, mode: `full` },

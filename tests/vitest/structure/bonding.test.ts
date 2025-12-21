@@ -507,9 +507,9 @@ test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bon
 
 test(`bonding logic treats original and image atoms consistently`, () => {
   const structure = make_crystal(10, [
-    { element: `C`, abc: [0.1, 0.5, 0.5], label: `C1` }, // x=1.0
-    { element: `C`, abc: [0.25, 0.5, 0.5], label: `C2` }, // x=2.5
-    { element: `H`, abc: [0.0, 0.5, 0.5], label: `H_distractor` }, // x=0.0
+    [`C`, [0.1, 0.5, 0.5]], // x=1.0
+    [`C`, [0.25, 0.5, 0.5]], // x=2.5
+    [`H`, [0.0, 0.5, 0.5]], // H_distractor, x=0.0
   ])
 
   // Explicit tolerance 0.3 => 30% of 10A = 3.0A.

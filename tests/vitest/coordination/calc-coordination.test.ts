@@ -5,9 +5,9 @@ import { make_crystal } from '../setup'
 describe(`calc_coordination_nums`, () => {
   // Simple cubic structure (NaCl-like)
   const simple_cubic = make_crystal(5, [
-    { element: `Na`, abc: [0, 0, 0], oxidation_state: 1 },
-    { element: `Cl`, abc: [0.5, 0.5, 0.5], oxidation_state: -1 },
-    { element: `Na`, abc: [0.5, 0, 0], oxidation_state: 1 },
+    [`Na`, [0, 0, 0], 1],
+    [`Cl`, [0.5, 0.5, 0.5], -1],
+    [`Na`, [0.5, 0, 0], 1],
     { element: `Cl`, abc: [0, 0.5, 0.5], oxidation_state: -1 },
   ])
 
@@ -38,10 +38,7 @@ describe(`calc_coordination_nums`, () => {
   test(`should handle structure with distant atoms`, () => {
     const isolated_atoms = make_crystal(
       100,
-      [
-        { element: `H`, abc: [0, 0, 0] },
-        { element: `He`, abc: [0.5, 0.5, 0.5] },
-      ],
+      [[`H`, [0, 0, 0]], [`He`, [0.5, 0.5, 0.5]]],
       { pbc: [false, false, false] },
     )
 

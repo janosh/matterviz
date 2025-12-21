@@ -120,7 +120,8 @@ export function create_test_structure(
 }
 
 // Simplified site input for make_crystal helper
-export type SimpleSite = {
+// Object notation: { element: `Li`, abc: [0, 0, 0], oxidation_state: 1 }
+export type SimpleSiteObject = {
   element: ElementSymbol | string
   abc?: Vec3
   xyz?: Vec3
@@ -128,6 +129,20 @@ export type SimpleSite = {
   oxidation_state?: number
   label?: string
   properties?: Record<string, unknown>
+}
+
+// Tuple shorthand: [`Li`, [0, 0, 0]] or [`Li`, [0, 0, 0], 1] (with oxidation state)
+export type SimpleSiteTuple = [ElementSymbol | string, Vec3, number?]
+
+export type SimpleSite = SimpleSiteObject | SimpleSiteTuple
+
+// Normalize tuple or object site input to object form
+const normalize_site_input = (input: SimpleSite): SimpleSiteObject => {
+  if (Array.isArray(input)) {
+    const [element, abc, oxidation_state] = input
+    return { element, abc, oxidation_state }
+  }
+  return input
 }
 
 // Flexible helper to create test structures with minimal boilerplate
@@ -145,7 +160,8 @@ export function make_crystal(
   const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
   const pbc = options.pbc ?? [true, true, true]
 
-  const sites: Site[] = site_inputs.map((input, idx) => {
+  const sites: Site[] = site_inputs.map((raw_input, idx) => {
+    const input = normalize_site_input(raw_input)
     const element = input.element as ElementSymbol
     // Calculate coordinates - abc takes precedence to ensure consistency
     let abc: Vec3

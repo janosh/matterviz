@@ -256,14 +256,14 @@ test.each([
     description: `|coord| > tol`,
   },
 ])(`tolerance boundary behavior: $description`, ({ tolerance, coord, expect_images }) => {
-  const structure = make_crystal(5, [{ element: `Na`, abc: [coord, 0.5, 0.5] }])
+  const structure = make_crystal(5, [[`Na`, [coord, 0.5, 0.5]]])
   const images = find_image_atoms(structure, { tolerance })
   if (expect_images) expect(images.length).toBeGreaterThan(0)
   else expect(images.length).toBe(0)
 })
 
 test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
-  const structure = make_crystal(5, [{ element: `Cl`, abc: [1.0, 0.5, 0.5] }])
+  const structure = make_crystal(5, [[`Cl`, [1.0, 0.5, 0.5]]])
 
   const images = find_image_atoms(structure)
   expect(images.length).toBeGreaterThan(0)
@@ -448,9 +448,9 @@ test(`image atoms should have fractional coordinates related by lattice translat
 test(`edge detection should be precise for atoms at boundaries`, () => {
   // Create a test structure with atoms exactly at edges
   const test_structure = make_crystal(5, [
-    { element: `Na`, abc: [0.0, 0.0, 0.0] }, // Exactly at corner
-    { element: `Cl`, abc: [1.0, 0.0, 0.0] }, // Exactly at edge
-    { element: `Na`, abc: [0.5, 0.5, 0.5] }, // In middle, no images expected
+    [`Na`, [0.0, 0.0, 0.0]], // Exactly at corner
+    [`Cl`, [1.0, 0.0, 0.0]], // Exactly at edge
+    [`Na`, [0.5, 0.5, 0.5]], // In middle, no images expected
   ])
 
   const image_atoms = find_image_atoms(test_structure)
@@ -520,7 +520,7 @@ test.each([
 ])(
   `tolerance parameter affects image atom detection: $description`,
   ({ tolerance, abc_coords, expected_count }) => {
-    const test_structure = make_crystal(5, [{ element: `Na`, abc: abc_coords as Vec3 }])
+    const test_structure = make_crystal(5, [[`Na`, abc_coords as Vec3]])
     const image_atoms = find_image_atoms(test_structure, { tolerance })
 
     // For atoms at edges, the algorithm creates multiple images due to corner/edge combinations
@@ -563,8 +563,8 @@ test(`all image atoms should be positioned at unit cell boundaries`, () => {
 test(`image atoms should have fractional coordinates at cell boundaries`, () => {
   // Create a simple cubic structure with atoms at exact boundaries
   const test_structure = make_crystal(4, [
-    { element: `C`, abc: [0.0, 0.0, 0.0] }, // Corner
-    { element: `C`, abc: [1.0, 1.0, 1.0] }, // Opposite corner
+    [`C`, [0.0, 0.0, 0.0]], // Corner
+    [`C`, [1.0, 1.0, 1.0]], // Opposite corner
   ])
 
   const image_atoms = find_image_atoms(test_structure)
@@ -702,8 +702,8 @@ test.each([
 test(`image atoms preserve fractional coordinates correctly`, () => {
   // Create a simple test structure with atoms at known boundary positions
   const test_structure = make_crystal(5, [
-    { element: `Na`, abc: [0.0, 0.0, 0.0] }, // Corner atom
-    { element: `Cl`, abc: [1.0, 0.5, 0.0] }, // Edge atom in x-direction
+    [`Na`, [0.0, 0.0, 0.0]], // Corner atom
+    [`Cl`, [1.0, 0.5, 0.0]], // Edge atom in x-direction
   ])
 
   const image_atoms = find_image_atoms(test_structure)
@@ -843,7 +843,7 @@ test.each([
   `image atoms preserve fractional offset across x-boundary: $description`,
   ({ coord, expected_int_shift }) => {
     const orig_abc: Vec3 = [coord, 0.5, 0.5]
-    const structure = make_crystal(5, [{ element: `Na`, abc: orig_abc }])
+    const structure = make_crystal(5, [[`Na`, orig_abc]])
     const lattice_matrix = structure.lattice.matrix
     const image_atoms = find_image_atoms(structure)
     const images_for_first = image_atoms.filter(([site_index]) => site_index === 0)
@@ -883,8 +883,8 @@ test.each([
 // Regression test for large unit cells (e.g. MOFs) using physical tolerance
 test(`find_image_atoms uses physical tolerance for large cells`, () => {
   const structure = make_crystal(100, [
-    { element: `C`, abc: [0.04, 0.5, 0.5] }, // 4 Angstroms from edge (0.04 * 100)
-    { element: `H`, abc: [0.001, 0.5, 0.5] }, // 0.1 Angstroms from edge (0.001 * 100)
+    [`C`, [0.04, 0.5, 0.5]], // 4 Angstroms from edge (0.04 * 100)
+    [`H`, [0.001, 0.5, 0.5]], // 0.1 Angstroms from edge (0.001 * 100)
   ])
 
   // Default behavior: physical tolerance (~0.5 Angstroms)

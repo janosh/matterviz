@@ -5,7 +5,7 @@
   import { decompress_file, handle_url_drop } from '$lib/io'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
-  import type { Crystal as Structure, Pbc } from '$lib/structure'
+  import type { Crystal, Pbc } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
   import { is_valid_structure } from '$lib/structure/validation'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -31,7 +31,7 @@
     ...rest
   }: {
     patterns?: RdfEntry | RdfEntry[]
-    structures?: Structure | Structure[] | Record<string, Structure>
+    structures?: Crystal | Crystal[] | Record<string, Crystal>
     mode?: `element_pairs` | `full`
     show_reference_line?: boolean
     x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
@@ -43,12 +43,12 @@
     on_file_drop?: (content: string | ArrayBuffer, filename: string) => void
     loading?: boolean
     error_msg?: string
-    children?: Snippet<[{ drag_dropped: Structure[] }]>
-    drag_dropped?: Structure[]
+    children?: Snippet<[{ drag_dropped: Crystal[] }]>
+    drag_dropped?: Crystal[]
     dragging?: boolean
   } & ComponentProps<typeof ScatterPlot> = $props()
 
-  function format_structure_label(struct: Structure, label_base: string): string {
+  function format_structure_label(struct: Crystal, label_base: string): string {
     const formula = get_electro_neg_formula(struct)
     return formula && label_base ? `${formula}: ${label_base}` : formula || label_base
   }
@@ -68,7 +68,7 @@
         const parsed_struct = parse_any_structure(text, filename)
         if (is_valid_structure(parsed_struct)) {
           drag_dropped = [...drag_dropped, parsed_struct]
-        } else error_msg = `Structure has no lattice or sites; cannot compute RDF`
+        } else error_msg = `Crystal has no lattice or sites; cannot compute RDF`
       } catch (exc) {
         error_msg = `Failed to process structure: ${
           exc instanceof Error ? exc.message : String(exc)
@@ -105,13 +105,13 @@
     }
 
     // Add structures
-    const struct_list: { struct: Structure; label: string }[] = []
+    const struct_list: { struct: Crystal; label: string }[] = []
     if (structures) {
       if (Array.isArray(structures)) {
         structures.forEach((struct, idx) =>
           struct_list.push({
             struct,
-            label: format_structure_label(struct, `Structure ${idx + 1}`),
+            label: format_structure_label(struct, `Crystal ${idx + 1}`),
           })
         )
       } else if (is_valid_structure(structures)) {

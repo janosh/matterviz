@@ -15,10 +15,7 @@ import { make_crystal } from '../setup'
 // Sample structure for testing
 const sample_structure = make_crystal(
   4,
-  [
-    { element: `Ba`, abc: [0, 0, 0], oxidation_state: 2, label: `Ba` },
-    { element: `Ti`, abc: [0.5, 0.5, 0.5], oxidation_state: 4, label: `Ti` },
-  ],
+  [[`Ba`, [0, 0, 0], 2], [`Ti`, [0.5, 0.5, 0.5], 4]],
   { charge: 0 },
 )
 
@@ -138,8 +135,8 @@ describe(`make_supercell`, () => {
 
     expect(ba_sites).toHaveLength(2)
     expect(ti_sites).toHaveLength(2)
-    expect(supercell.sites.map((site) => site.label)).toContain(`Ba_000`)
-    expect(supercell.sites.map((site) => site.label)).toContain(`Ti_100`)
+    expect(supercell.sites.map((site) => site.label)).toContain(`Ba0_000`)
+    expect(supercell.sites.map((site) => site.label)).toContain(`Ti1_100`)
   })
 
   test(`folds coordinates to unit cell by default`, () => {
