@@ -10,38 +10,17 @@ import {
   scale_lattice_matrix,
 } from '$lib/structure/supercell'
 import { describe, expect, test } from 'vitest'
+import { make_crystal } from '../setup'
 
 // Sample structure for testing
-const sample_structure: Crystal = {
-  lattice: {
-    matrix: [[4.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0]],
-    pbc: [true, true, true],
-    volume: 64.0,
-    a: 4.0,
-    b: 4.0,
-    c: 4.0,
-    alpha: 90.0,
-    beta: 90.0,
-    gamma: 90.0,
-  },
-  sites: [
-    {
-      species: [{ element: `Ba`, occu: 1.0, oxidation_state: 2 }],
-      abc: [0.0, 0.0, 0.0],
-      xyz: [0.0, 0.0, 0.0],
-      label: `Ba`,
-      properties: {},
-    },
-    {
-      species: [{ element: `Ti`, occu: 1.0, oxidation_state: 4 }],
-      abc: [0.5, 0.5, 0.5],
-      xyz: [2.0, 2.0, 2.0],
-      label: `Ti`,
-      properties: {},
-    },
+const sample_structure = make_crystal(
+  4,
+  [
+    { element: `Ba`, abc: [0, 0, 0], oxidation_state: 2, label: `Ba` },
+    { element: `Ti`, abc: [0.5, 0.5, 0.5], oxidation_state: 4, label: `Ti` },
   ],
-  charge: 0,
-}
+  { charge: 0 },
+)
 
 describe(`parse_supercell_scaling`, () => {
   test.each([
