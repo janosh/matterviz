@@ -1,7 +1,7 @@
 /// <reference types="@sveltejs/kit" />
 
 declare module 'mp-*.json' {
-  const content: import('$lib/structure').PymatgenStructure
+  const content: import('$lib/structure').Crystal
   export default content
 }
 

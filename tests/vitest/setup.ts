@@ -1,6 +1,6 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import * as math from '$lib/math'
-import type { Pbc, PymatgenStructure, Site } from '$lib/structure'
+import type { Crystal, Pbc, Site } from '$lib/structure'
 import { beforeEach, vi } from 'vitest'
 
 // Suppress Three.js multiple instances warning in tests
@@ -26,7 +26,7 @@ export const get_dummy_structure = (
   element: ElementSymbol = `H`,
   atoms = 3,
   with_lattice = false,
-): PymatgenStructure => {
+): Crystal => {
   const matrix: math.Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
   const pbc: Pbc = [false, false, false]
   const structure = {
@@ -66,7 +66,7 @@ export function create_test_structure(
       xyz: number[]
     }[],
   frac_coords?: Vec3[],
-): PymatgenStructure {
+): Crystal {
   const lattice_matrix: math.Matrix3x3 = typeof lattice === `number`
     ? [
       [lattice, 0.0, 0.0],
@@ -116,6 +116,84 @@ export function create_test_structure(
   return {
     lattice: { matrix: lattice_matrix, ...lattice_params, volume },
     sites,
+  }
+}
+
+// Simplified site input for make_crystal helper
+// Object notation: { element: `Li`, abc: [0, 0, 0], oxidation_state: 1 }
+export type SimpleSiteObject = {
+  element: ElementSymbol | string
+  abc?: Vec3
+  xyz?: Vec3
+  occu?: number
+  oxidation_state?: number
+  label?: string
+  properties?: Record<string, unknown>
+}
+
+// Tuple shorthand: [`Li`, [0, 0, 0]] or [`Li`, [0, 0, 0], 1] (with oxidation state)
+export type SimpleSite = SimpleSiteObject | [string, Vec3, number?]
+
+// Normalize tuple or object site input to object form
+const normalize_site_input = (input: SimpleSite): SimpleSiteObject => {
+  if (Array.isArray(input)) {
+    const [element, abc, oxidation_state] = input
+    return { element, abc, oxidation_state }
+  }
+  return input
+}
+
+// Flexible helper to create test structures with minimal boilerplate
+// Handles auto-calculation of abc↔xyz, lattice params, and site defaults
+export function make_crystal(
+  lattice_input: number | math.Matrix3x3,
+  site_inputs: SimpleSite[],
+  options: { pbc?: Pbc; charge?: number } = {},
+): Crystal {
+  const lattice_matrix: math.Matrix3x3 = typeof lattice_input === `number`
+    ? [[lattice_input, 0, 0], [0, lattice_input, 0], [0, 0, lattice_input]]
+    : lattice_input
+
+  // Use standard pymatgen convention for frac↔cart conversion:
+  // xyz = transpose(lattice) · abc, abc = inv(transpose(lattice)) · xyz
+  const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
+  const cart_to_frac = math.create_cart_to_frac(lattice_matrix)
+  const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
+  const pbc = options.pbc ?? [true, true, true]
+
+  const sites: Site[] = site_inputs.map((raw_input, idx) => {
+    const input = normalize_site_input(raw_input)
+    const element = input.element as ElementSymbol
+    // Calculate coordinates - abc takes precedence to ensure consistency
+    let abc: Vec3
+    let xyz: Vec3
+    if (input.abc) {
+      abc = input.abc
+      xyz = frac_to_cart(abc)
+    } else if (input.xyz) {
+      xyz = input.xyz
+      abc = cart_to_frac(xyz)
+    } else {
+      throw new Error(`Site ${idx} must have either abc or xyz coordinates`)
+    }
+
+    return {
+      species: [{
+        element,
+        occu: input.occu ?? 1,
+        oxidation_state: input.oxidation_state ?? 0,
+      }],
+      abc,
+      xyz,
+      label: input.label ?? `${element}${idx}`,
+      properties: input.properties ?? {},
+    }
+  })
+
+  return {
+    lattice: { matrix: lattice_matrix, pbc, a, b, c, alpha, beta, gamma, volume },
+    sites,
+    ...(options.charge !== undefined && { charge: options.charge }),
   }
 }
 

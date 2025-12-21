@@ -1,6 +1,6 @@
-import type { PymatgenStructure } from './index'
+import type { Crystal } from './index'
 
-export function is_valid_structure(obj: unknown): obj is PymatgenStructure {
+export function is_valid_structure(obj: unknown): obj is Crystal {
   if (obj === null || typeof obj !== `object`) return false
   const input = obj as Record<string, unknown>
   const has_sites = Array.isArray(input.sites) && input.sites.length > 0

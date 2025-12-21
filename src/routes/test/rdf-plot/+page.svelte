@@ -2,7 +2,7 @@
   import { PLOT_COLORS } from '$lib/colors'
   import type { RdfEntry } from '$lib/rdf'
   import { RdfPlot } from '$lib/rdf'
-  import type { PymatgenStructure } from '$lib/structure'
+  import type { Crystal } from '$lib/structure'
   import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
   import nacl from '$site/structures/mp-1234.json'
   import pd from '$site/structures/mp-2.json'
@@ -45,7 +45,7 @@
     NaCl: nacl,
     Pd: pd,
     'Bi₂Zr₂O₈': bi2zr2o8,
-  } as unknown as Record<string, PymatgenStructure>
+  } as unknown as Record<string, Crystal>
 </script>
 
 <svelte:head>

@@ -2,7 +2,7 @@
   import type { ElementSymbol, Matrix3x3 } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
   import { RdfPlot } from '$lib/rdf'
-  import type { Pbc, PymatgenStructure } from '$lib/structure'
+  import type { Crystal, Pbc } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
   import nacl from '$site/structures/mp-1234.json'
@@ -12,7 +12,7 @@
     NaCl: nacl,
     Pd: pd,
     'Bi₂Zr₂O₈': bi2zr2o8,
-  } as unknown as Record<string, PymatgenStructure>
+  } as unknown as Record<string, Crystal>
 
   let selected = $state([`NaCl`, `Pd`])
   let mode = $state<`element_pairs` | `full`>(`full`)
@@ -33,7 +33,7 @@
 
     const comp = { Si: 1, O: 2, Al: 0.5, Fe: 0.3 }
     const total = Object.values(comp).reduce((s, v) => s + v, 0)
-    const sites: PymatgenStructure[`sites`] = []
+    const sites: Crystal[`sites`] = []
 
     for (const [el, frac] of Object.entries(comp)) {
       for (let _ = 0; _ < Math.round((frac / total) * n_atoms); _++) {

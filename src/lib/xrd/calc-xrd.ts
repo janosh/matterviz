@@ -1,7 +1,7 @@
 import type { CompositionType, ElementSymbol } from '$lib'
 import { element_data } from '$lib/element'
 import * as math from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure/index'
+import type { Crystal } from '$lib/structure/index'
 import { parse_any_structure } from '$lib/structure/parse'
 import { is_valid_structure } from '$lib/structure/validation'
 // copied from pymatgen/analysis/diffraction/atomic_scattering_params.json
@@ -80,7 +80,7 @@ function get_unique_families(hkls: Hkl[]): Map<string, number> {
   return family_map
 }
 
-function compute_reciprocal_lattice_rows(structure: PymatgenStructure): number[][] {
+function compute_reciprocal_lattice_rows(structure: Crystal): number[][] {
   // For row-wise lattice matrix A (rows are a, b, c), reciprocal rows are inv(A)^T
   const direct = structure.lattice.matrix
   const inv = math.matrix_inverse_3x3(direct)
@@ -139,7 +139,7 @@ function enumerate_reciprocal_points(
 }
 
 export function compute_xrd_pattern(
-  structure: PymatgenStructure,
+  structure: Crystal,
   options: XrdOptions = {},
 ): XrdPattern {
   const wavelength = (() => {

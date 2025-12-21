@@ -1,7 +1,7 @@
 <script lang="ts">
   import { replaceState } from '$app/navigation'
   import type { ElementSymbol, Vec3 } from '$lib'
-  import { type PymatgenStructure, Spinner, Structure } from '$lib'
+  import { type Crystal, Spinner, Structure } from '$lib'
   import { SETTINGS_CONFIG, SHOW_BONDS_OPTIONS } from '$lib/settings'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import type { ComponentProps } from 'svelte'
@@ -18,7 +18,7 @@
   let bonding_strategy = $state<BondingStrategy>(`electroneg_ratio`)
   let force_large_structure = $state(false)
   let is_generating = $state(false)
-  let test_structure = $state<PymatgenStructure | undefined>(undefined)
+  let test_structure = $state<Crystal | undefined>(undefined)
 
   let scene_props = $derived<ComponentProps<typeof Structure>[`scene_props`]>({
     show_atoms,
@@ -31,7 +31,7 @@
   })
 
   // Generate a test structure with the specified number of atoms
-  function generate_structure(count: number): PymatgenStructure {
+  function generate_structure(count: number): Crystal {
     const lattice_size = Math.ceil(Math.cbrt(count)) * 3
     const lattice = {
       matrix: [
@@ -49,7 +49,7 @@
       volume: lattice_size ** 3,
     }
 
-    const sites: PymatgenStructure[`sites`] = new Array(count)
+    const sites: Crystal[`sites`] = new Array(count)
     const sites_per_edge = Math.ceil(Math.cbrt(count))
     const spacing = 1 / (sites_per_edge + 1)
     const random_offset = 0.1 / lattice_size
@@ -94,7 +94,7 @@
       }
     }
 
-    return { lattice, sites, charge: 0 } as PymatgenStructure
+    return { lattice, sites, charge: 0 } as Crystal
   }
 
   async function generate_structure_async(count: number): Promise<void> {

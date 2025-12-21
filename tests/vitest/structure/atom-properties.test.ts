@@ -1,6 +1,6 @@
 import type { ElementSymbol, Site } from '$lib'
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { PymatgenStructure } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
 import * as ap from '$lib/structure/atom-properties'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
@@ -13,7 +13,7 @@ const make_site = (xyz: Vec3, element = `C`): Site => ({
   properties: {},
 })
 
-const make_struct = (sites: { xyz: Vec3; element?: string }[]): PymatgenStructure => ({
+const make_struct = (sites: { xyz: Vec3; element?: string }[]): Crystal => ({
   sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
   charge: 0,
   lattice: {
@@ -34,7 +34,7 @@ const make_cubic_structure = (
   sites: { abc: Vec3; element?: string; label?: string }[],
   lattice_size: number,
   pbc: [boolean, boolean, boolean] = [true, true, true],
-): PymatgenStructure => ({
+): Crystal => ({
   sites: sites.map(({ abc, element = `C`, label }) => ({
     species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
     abc,

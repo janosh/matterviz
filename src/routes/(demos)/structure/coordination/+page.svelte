@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { type PymatgenStructure, SETTINGS_CONFIG } from '$lib'
+  import { type Crystal, SETTINGS_CONFIG } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import type { SplitMode } from '$lib/coordination'
@@ -9,7 +9,7 @@
   import { structures } from '$site/structures'
 
   // Map structures by id for O(1) lookup
-  const structures_by_id = $derived<Record<string, PymatgenStructure>>(
+  const structures_by_id = $derived<Record<string, Crystal>>(
     Object.fromEntries(structures.map((struct) => [struct.id, struct])),
   )
 
@@ -30,7 +30,7 @@
   )
   let single_split_mode = $state<SplitMode>(`by_element`)
 
-  const single_struct = $derived<PymatgenStructure | null>(
+  const single_struct = $derived<Crystal | null>(
     structures_by_id[single_id] ?? null,
   )
 
@@ -47,11 +47,11 @@
       : [...selected_ids, id]
   }
 
-  const selected_structures = $derived<Record<string, PymatgenStructure>>(
+  const selected_structures = $derived<Record<string, Crystal>>(
     Object.fromEntries(
       selected_ids
         .map((id) => structures_by_id[id])
-        .filter((struct): struct is PymatgenStructure => !!struct)
+        .filter((struct): struct is Crystal => !!struct)
         .map((struct) => [
           `${struct.id} ${formula_for(struct.id ?? ``)}`,
           struct,
