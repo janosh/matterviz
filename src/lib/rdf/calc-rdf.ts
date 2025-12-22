@@ -61,15 +61,16 @@ export function calculate_rdf(
 
   if (sites.length === 0) return { r, g_r }
 
-  // Note: Sites with mixed occupancy are treated as the first species only.
-  // TODO For proper occupancy support, contributions should be weighted by species occupancy.
-  const elements = sites.map((site) => site.species[0].element)
-  const centers = center_species
-    ? sites.filter((_, idx) => elements[idx] === center_species)
-    : sites
-  const neighbors = neighbor_species
-    ? sites.filter((_, idx) => elements[idx] === neighbor_species)
-    : sites
+  // Get occupancy weight for a site-species pair (supports mixed occupancy)
+  const get_occu = (site: typeof sites[0], elem: string | undefined) =>
+    elem ? (site.species.find((spec) => spec.element === elem)?.occu ?? 0) : 1
+
+  // Filter sites that contain the target species (with any occupancy > 0)
+  const has_species = (site: typeof sites[0], elem: string | undefined) =>
+    !elem || site.species.some((spec) => spec.element === elem)
+
+  const centers = sites.filter((site) => has_species(site, center_species))
+  const neighbors = sites.filter((site) => has_species(site, neighbor_species))
 
   if (centers.length === 0 || neighbors.length === 0) {
     const element_pair = center_species && neighbor_species
@@ -78,9 +79,8 @@ export function calculate_rdf(
     return { r, g_r, element_pair }
   }
 
-  // Calculate distances and bin them
+  // Calculate distances and bin them with occupancy weighting
   const use_pbc = pbc.some((flag) => flag)
-  // Pre-compute lattice inverse once to avoid O(P) inversions in inner loop
   const lattice_inv = use_pbc ? matrix_inverse_3x3(lattice) : undefined
 
   for (const center of centers) {
@@ -92,15 +92,28 @@ export function calculate_rdf(
         : euclidean_dist(center.xyz, neighbor.xyz)
 
       if (dist > 0 && dist < cutoff) {
-        g_r[Math.min(Math.floor(dist / bin_size), n_bins - 1)]++
+        // Weight by product of occupancies for the species pair
+        const weight = get_occu(center, center_species) *
+          get_occu(neighbor, neighbor_species)
+        g_r[Math.min(Math.floor(dist / bin_size), n_bins - 1)] += weight
       }
     }
   }
 
-  // Normalize
-  const n_pairs = center_species === neighbor_species
-    ? centers.length * (neighbors.length - 1)
-    : centers.length * neighbors.length
+  // Normalize using occupancy-weighted pair count
+  const center_weight = centers.reduce(
+    (sum, site) => sum + get_occu(site, center_species),
+    0,
+  )
+  const neighbor_weight = neighbors.reduce(
+    (sum, site) => sum + get_occu(site, neighbor_species),
+    0,
+  )
+  // For same-species pairs, exclude self-interactions: W² - Σ(occu²)
+  const self_weight = center_species === neighbor_species
+    ? centers.reduce((sum, site) => sum + get_occu(site, center_species) ** 2, 0)
+    : 0
+  const n_pairs = center_weight * neighbor_weight - self_weight
 
   if (n_pairs > 0) {
     const volume = calc_lattice_params(lattice).volume
@@ -120,8 +133,12 @@ export function calculate_all_pair_rdfs(
   structure: Crystal,
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> = {},
 ): RdfPattern[] {
-  const elems = [...new Set(structure.sites.map((site) => site.species[0].element))]
-    .sort()
+  // Collect all unique elements across all species at all sites (supports mixed occupancy)
+  const elems = [
+    ...new Set(
+      structure.sites.flatMap((site) => site.species.map((spec) => spec.element)),
+    ),
+  ].sort()
 
   // If auto_expand is true, expand the structure once and reuse it for all pairs
   // to avoid repeated supercell computations

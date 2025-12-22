@@ -7,7 +7,7 @@
     name?: string // usually Hydrogen, Helium, etc. but can be anything
     shells: number[]
     adapt_size?: boolean
-    shell_width?: number // TODO SVG is fixed so increasing this will make large atoms overflow
+    shell_width?: number
     size?: number
     base_fill?: string
     orbital_period?: number // time for inner-most electron orbit in seconds, 0 for no motion
@@ -29,9 +29,9 @@
     symbol = ``,
     name = ``,
     shells,
-    adapt_size = false,
+    adapt_size = true,
     shell_width = 20,
-    size = adapt_size ? (shells.length + 1) * 2 * shell_width + 50 : 270,
+    size = adapt_size ? (shells.length + 1) * 2 * shell_width + 30 : 270,
     base_fill = `var(--text-color)`,
     orbital_period = 3,
     nucleus_props = {},
