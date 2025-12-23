@@ -43,7 +43,12 @@ export type LatticeType =
   & { matrix: math.Matrix3x3; pbc: Pbc; volume: number }
   & LatticeParams
 
-export type Molecule = { sites: Site[]; charge?: number; id?: string }
+export type Molecule = {
+  sites: Site[]
+  charge?: number
+  id?: string
+  properties?: Record<string, unknown>
+}
 export type Crystal = Molecule & { lattice: LatticeType }
 export type AnyStructure = Crystal | Molecule
 

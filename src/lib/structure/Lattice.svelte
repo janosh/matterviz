@@ -80,10 +80,10 @@
     if (length === 0) { // Zero-length: no rotation; render a degenerate cylinder
       return { position: center.toArray(), rotation: [0, 0, 0], length }
     }
-    // Calculate rotation to align cylinder with the line
+    // Calculate rotation to align cylinder with the line (zero-length guarded above)
     const quaternion = new Quaternion().setFromUnitVectors(
-      new Vector3(0, 1, 0), // cylinder default orientation
-      direction.normalize(), // TODO guard against zero-length direction vector
+      new Vector3(0, 1, 0),
+      direction.normalize(),
     )
     const euler = new Euler().setFromQuaternion(quaternion)
 

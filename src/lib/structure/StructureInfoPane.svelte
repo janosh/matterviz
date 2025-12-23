@@ -71,16 +71,17 @@
     ]
 
     if (`properties` in structure) {
-      for (
-        const [key, value] of Object.entries(structure.properties ?? {})
-      ) {
-        if (value != null) {
-          structure_items.push({
-            label: key.replace(/_/g, ` `).replace(/\b\w/g, (l) => l.toUpperCase()),
-            value: String(value),
-            key: `structure-prop-${key}`,
-          })
-        }
+      for (const [key, value] of Object.entries(structure.properties ?? {})) {
+        // Only display scalar values (skip arrays and objects)
+        if (value == null || typeof value === `object`) continue
+        structure_items.push({
+          label: key.replace(/_/g, ` `).replace(
+            /\b\w/g,
+            (char) => char.toUpperCase(),
+          ),
+          value: String(value),
+          key: `structure-prop-${key}`,
+        })
       }
     }
     sections.push({ title: `Structure`, items: structure_items })

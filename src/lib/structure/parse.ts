@@ -1521,63 +1521,66 @@ function is_optimade_structure_object(value: unknown): value is OptimadeStructur
 export function optimade_to_crystal(
   optimade_structure: OptimadeStructure,
 ): Crystal | null {
-  const attrs = optimade_structure.attributes
+  const {
+    lattice_vectors,
+    cartesian_site_positions,
+    species_at_sites,
+    species,
+    ...properties
+  } = optimade_structure.attributes
 
-  if (
-    !attrs.lattice_vectors || !attrs.cartesian_site_positions || !attrs.species_at_sites
-  ) {
+  if (!lattice_vectors || !cartesian_site_positions || !species_at_sites) {
     console.error(`Missing required OPTIMADE structure data`)
     return null
   }
 
   try {
-    // Convert lattice vectors to matrix format
     const lattice_matrix: math.Matrix3x3 = [
-      attrs.lattice_vectors[0] as Vec3,
-      attrs.lattice_vectors[1] as Vec3,
-      attrs.lattice_vectors[2] as Vec3,
+      lattice_vectors[0] as Vec3,
+      lattice_vectors[1] as Vec3,
+      lattice_vectors[2] as Vec3,
     ]
-
-    // Use math utilities to calculate lattice parameters
     const lattice_params = math.calc_lattice_params(lattice_matrix)
 
-    // Create sites with proper fractional coordinate conversion
-    const sites = attrs.cartesian_site_positions.map((pos, idx) => {
-      const element_symbol = attrs.species_at_sites?.[idx]
-      if (!element_symbol) {
-        throw new Error(`Missing species for site ${idx}`)
-      }
+    // Build species lookup for site properties (mass, concentration, etc.)
+    const species_map = new Map(species?.map((spec) => [spec.name, spec]))
+
+    const sites = cartesian_site_positions.map((pos, idx) => {
+      const element_symbol = species_at_sites[idx]
+      if (!element_symbol) throw new Error(`Missing species for site ${idx}`)
       const element = validate_element_symbol(element_symbol, idx)
 
-      // Convert to fractional coordinates using matrix inversion
       const xyz: Vec3 = [pos[0], pos[1], pos[2]]
       let abc: Vec3
       try {
         const lattice_transposed = math.transpose_3x3_matrix(lattice_matrix)
         const inv_matrix = math.matrix_inverse_3x3(lattice_transposed)
         abc = math.mat3x3_vec3_multiply(inv_matrix, xyz)
-      } catch (err) {
-        console.warn(`Failed to convert to fractional coordinates for site ${idx}:`, err)
-        abc = [0, 0, 0] // Fallback to origin
+      } catch {
+        abc = [0, 0, 0]
       }
 
+      // Extract mass/concentration from species data
+      const spec = species_map.get(element_symbol)
+      const site_props: Record<string, unknown> = {}
+      if (spec?.mass?.[0] !== undefined) site_props.mass = spec.mass[0]
+      if (spec?.concentration?.[0] !== undefined && spec.concentration[0] !== 1) {
+        site_props.concentration = spec.concentration[0]
+      }
       return {
         species: [{ element, occu: 1, oxidation_state: 0 }],
         abc,
         xyz,
         label: `${element}${idx + 1}`,
-        properties: {},
+        properties: site_props,
       }
     })
 
     return {
       sites,
-      lattice: {
-        matrix: lattice_matrix,
-        ...lattice_params,
-        pbc: [true, true, true],
-      },
+      lattice: { matrix: lattice_matrix, ...lattice_params, pbc: [true, true, true] },
       id: optimade_structure.id,
+      properties,
     }
   } catch (err) {
     console.error(`Error converting OPTIMADE to Crystal format:`, err)
