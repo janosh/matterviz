@@ -60,6 +60,14 @@
     bg_color ?? colors.category[element.category] ?? `#cccccc`,
   )
 
+  // Compute contrast text color from background when in heatmap mode (single bg_color)
+  let computed_text_color = $derived(
+    text_color ??
+      (bg_color && !Array.isArray(value)
+        ? pick_contrast_color({ bg_color, luminance_threshold })
+        : undefined),
+  )
+
   // Determine if we should show the atomic number
   const should_show_number = $derived.by(() => {
     if (show_number !== undefined) return show_number
@@ -147,7 +155,6 @@
   })
 </script>
 
-<!-- TODO need a way for contrast_color() to override text_color in heatmap mode -->
 <svelte:element
   this={href ? `a` : `div`}
   bind:this={node}
@@ -158,8 +165,8 @@
   class:last-active={selected.last_element === element}
   class:clickable={Boolean(onclick)}
   style:background-color={Array.isArray(value) && bg_colors?.length > 1 ? `transparent` : fallback_bg_color}
-  style:color={text_color}
-  {@attach text_color ? null : contrast_color()}
+  style:color={computed_text_color}
+  {@attach computed_text_color ? null : contrast_color()}
   {...(href ? { role: `link`, tabindex: 0 } : {})}
   onclick={(event: MouseEvent) => onclick?.({ element, event })}
   {...rest}

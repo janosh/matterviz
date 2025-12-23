@@ -150,17 +150,22 @@
     event.preventDefault() // prevent scrolling the page
     event.stopPropagation()
 
-    // change the active element in the periodic table with arrow keys
-    // TODO doesn't allow navigating to lanthanides and actinides yet
-    const { column, row } = active_element
-    active_element = element_data.find((elem) => {
-      return {
-        ArrowUp: elem.column == column && elem.row == row - 1,
-        ArrowDown: elem.column == column && elem.row == row + 1,
-        ArrowLeft: elem.column == column - 1 && elem.row == row,
-        ArrowRight: elem.column == column + 1 && elem.row == row,
-      }[event.key]
-    }) ?? active_element
+    // Arrow key navigation including lanthanides (row 9) and actinides (row 10)
+    const { column: col, row } = active_element
+    const in_f_block = col >= 3 && col <= 17
+    const row_map: Record<string, number> = {
+      ArrowUp: row === 9 ? 6 : row === 10 ? 7 : row - 1,
+      ArrowDown: row === 6 && in_f_block ? 9 : row === 7 && in_f_block ? 10 : row + 1,
+    }
+    const target_row = row_map[event.key] ?? row
+    const target_col = event.key === `ArrowLeft`
+      ? col - 1
+      : event.key === `ArrowRight`
+      ? col + 1
+      : col
+    active_element =
+      element_data.find((el) => el.column === target_col && el.row === target_row) ??
+        active_element
   }
 
   function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent) {
