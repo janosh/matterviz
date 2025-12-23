@@ -1,6 +1,6 @@
 import { fetch_zipped } from '$lib/io/fetch'
 
-// TODO update to get MP details pages working again
+// Materials Project S3 bucket for pre-computed data (may be outdated)
 export const mp_bucket =
   `https://materialsproject-build.s3.amazonaws.com/collections/2022-10-28`
 

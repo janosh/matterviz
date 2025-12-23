@@ -2546,6 +2546,59 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
       })
     }
   })
+
+  it(`should extract metadata properties from attributes`, () => {
+    const optimade_structure = {
+      id: `mp-7000`,
+      type: `structures` as const,
+      attributes: {
+        lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+        cartesian_site_positions: [[0.0, 0.0, 0.0]],
+        species_at_sites: [`Si`],
+        species: [{ name: `Si`, mass: [28.085], concentration: [1.0] }],
+        // Metadata fields that should be preserved in properties
+        chemical_formula_descriptive: `SiO2`,
+        nelements: 2,
+        last_modified: `2023-03-11`,
+        _mp_stability: { energy_above_hull: 0.0 },
+      },
+    }
+    const result = optimade_to_crystal(optimade_structure)
+    if (!result) throw `Failed to convert OPTIMADE structure`
+
+    expect(result.properties).toBeDefined()
+    expect(result.properties?.chemical_formula_descriptive).toBe(`SiO2`)
+    expect(result.properties?.nelements).toBe(2)
+    expect(result.properties?.last_modified).toBe(`2023-03-11`)
+    expect(result.properties?._mp_stability).toEqual({ energy_above_hull: 0.0 })
+    // Verify structural fields are NOT in properties
+    expect(result.properties?.lattice_vectors).toBeUndefined()
+    expect(result.properties?.cartesian_site_positions).toBeUndefined()
+    expect(result.properties?.species_at_sites).toBeUndefined()
+  })
+
+  it(`should extract species properties (mass) to site.properties`, () => {
+    const optimade_structure = {
+      id: `test`,
+      type: `structures` as const,
+      attributes: {
+        lattice_vectors: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
+        cartesian_site_positions: [[0.0, 0.0, 0.0], [2.5, 2.5, 2.5]],
+        species_at_sites: [`Fe`, `O`],
+        species: [
+          { name: `Fe`, mass: [55.845], concentration: [1.0] },
+          { name: `O`, mass: [15.999], concentration: [0.5] },
+        ],
+      },
+    }
+    const result = optimade_to_crystal(optimade_structure)
+    if (!result) throw `Failed to convert OPTIMADE structure`
+
+    expect(result.sites[0].properties.mass).toBe(55.845)
+    expect(result.sites[0].properties.concentration).toBeUndefined() // 1.0 is default, not stored
+    expect(result.sites[1].properties.mass).toBe(15.999)
+    expect(result.sites[1].properties.concentration).toBe(0.5)
+  })
 })
 
 describe(`Structure File Detection`, () => {
