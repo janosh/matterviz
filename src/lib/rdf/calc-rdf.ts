@@ -64,11 +64,8 @@ export function calculate_rdf(
   // Get occupancy weight for a site-species pair (supports mixed occupancy)
   const get_occu = (site: typeof sites[0], elem: string | undefined) =>
     elem ? (site.species.find((spec) => spec.element === elem)?.occu ?? 0) : 1
-
-  // Filter sites that contain the target species (with any occupancy > 0)
   const has_species = (site: typeof sites[0], elem: string | undefined) =>
     !elem || site.species.some((spec) => spec.element === elem)
-
   const centers = sites.filter((site) => has_species(site, center_species))
   const neighbors = sites.filter((site) => has_species(site, neighbor_species))
 
@@ -100,16 +97,11 @@ export function calculate_rdf(
     }
   }
 
-  // Normalize using occupancy-weighted pair count
-  const center_weight = centers.reduce(
-    (sum, site) => sum + get_occu(site, center_species),
-    0,
-  )
-  const neighbor_weight = neighbors.reduce(
-    (sum, site) => sum + get_occu(site, neighbor_species),
-    0,
-  )
-  // For same-species pairs, exclude self-interactions: W² - Σ(occu²)
+  // Normalize using occupancy-weighted pair count (excludes self-interactions for same species)
+  const sum_occu = (arr: typeof sites, elem: string | undefined) =>
+    arr.reduce((sum, site) => sum + get_occu(site, elem), 0)
+  const center_weight = sum_occu(centers, center_species)
+  const neighbor_weight = sum_occu(neighbors, neighbor_species)
   const self_weight = center_species === neighbor_species
     ? centers.reduce((sum, site) => sum + get_occu(site, center_species) ** 2, 0)
     : 0
@@ -133,7 +125,7 @@ export function calculate_all_pair_rdfs(
   structure: Crystal,
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> = {},
 ): RdfPattern[] {
-  // Collect all unique elements across all species at all sites (supports mixed occupancy)
+  // Collect all unique elements across all species (supports mixed occupancy)
   const elems = [
     ...new Set(
       structure.sites.flatMap((site) => site.species.map((spec) => spec.element)),

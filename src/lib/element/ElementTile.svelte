@@ -60,15 +60,13 @@
     bg_color ?? colors.category[element.category] ?? `#cccccc`,
   )
 
-  // Compute contrast text color from background when in heatmap mode (single bg_color set)
-  let computed_text_color = $derived.by(() => {
-    if (text_color) return text_color
-    // For single-color backgrounds, compute contrast color
-    if (bg_color && !Array.isArray(value)) {
-      return pick_contrast_color({ bg_color, luminance_threshold })
-    }
-    return undefined // let contrast_color action handle it
-  })
+  // Compute contrast text color from background when in heatmap mode (single bg_color)
+  let computed_text_color = $derived(
+    text_color ??
+      (bg_color && !Array.isArray(value)
+        ? pick_contrast_color({ bg_color, luminance_threshold })
+        : undefined),
+  )
 
   // Determine if we should show the atomic number
   const should_show_number = $derived.by(() => {

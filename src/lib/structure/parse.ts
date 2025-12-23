@@ -1560,13 +1560,13 @@ export function optimade_to_crystal(
         abc = [0, 0, 0]
       }
 
-      // Extract site properties from species data
-      const spec_data = species_map.get(element_symbol)
+      // Extract mass/concentration from species data
+      const spec = species_map.get(element_symbol)
       const site_props: Record<string, unknown> = {}
-      if (spec_data?.mass?.[0]) site_props.mass = spec_data.mass[0]
-      const conc = spec_data?.concentration?.[0]
-      if (conc !== undefined && conc !== 1) site_props.concentration = conc
-
+      if (spec?.mass?.[0]) site_props.mass = spec.mass[0]
+      if (spec?.concentration?.[0] !== undefined && spec.concentration[0] !== 1) {
+        site_props.concentration = spec.concentration[0]
+      }
       return {
         species: [{ element, occu: 1, oxidation_state: 0 }],
         abc,

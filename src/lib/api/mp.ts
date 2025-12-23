@@ -1,7 +1,6 @@
 import { fetch_zipped } from '$lib/io/fetch'
 
-// Materials Project S3 bucket for pre-computed data (summary, similarity, robocrys)
-// Note: This bucket may be outdated. Check https://materialsproject.org for current API endpoints
+// Materials Project S3 bucket for pre-computed data (may be outdated)
 export const mp_bucket =
   `https://materialsproject-build.s3.amazonaws.com/collections/2022-10-28`
 
