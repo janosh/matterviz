@@ -31,26 +31,27 @@ const DEFAULT_COLOR_SCALE = `interpolateViridis`
 export const get_d3_color_scales = (): string[] =>
   Object.keys(d3_sc).filter((key) => key.startsWith(`interpolate`))
 
-const get_interp = (scale: string) => {
-  const fn = d3_sc[scale as keyof typeof d3_sc]
-  if (typeof fn !== `function`) {
+const get_interpolator = (scale: string) => {
+  const interp_fn = d3_sc[scale as keyof typeof d3_sc]
+  if (typeof interp_fn !== `function`) {
     console.warn(`Unknown D3 scale: ${scale}, using ${DEFAULT_COLOR_SCALE}`)
     return d3_sc.interpolateViridis
   }
-  return fn as (t: number) => string
+  return interp_fn as (t: number) => string
 }
 
-const to_hex = (fn: (t: number) => string, t: number) => rgb(fn(t)).formatHex()
+const to_hex = (interp_fn: (t: number) => string, t: number) =>
+  rgb(interp_fn(t)).formatHex()
 
 const make_categorical = <T>(
   vals: T[],
   scale: string,
   sort_fn?: (a: T, b: T) => number,
 ): { colors: string[]; unique_values: T[] } => {
-  const fn = get_interp(scale)
+  const interp_fn = get_interpolator(scale)
   const uniq = sort_fn ? [...new Set(vals)].sort(sort_fn) : [...new Set(vals)].sort()
-  const colors = uniq.map((_, i) =>
-    to_hex(fn, uniq.length === 1 ? 0.5 : i / (uniq.length - 1))
+  const colors = uniq.map((_, idx) =>
+    to_hex(interp_fn, uniq.length === 1 ? 0.5 : idx / (uniq.length - 1))
   )
   const map = new Map(uniq.map((val, idx) => [val, colors[idx]]))
   return {
@@ -82,7 +83,7 @@ export function apply_color_scale(
     return { colors: result.colors, unique_values: result.unique_values }
   }
 
-  const fn = get_interp(scale)
+  const interp_fn = get_interpolator(scale)
   // Compute min/max in single pass to avoid spreading large arrays
   let [min, max] = [vals[0], vals[0]]
   for (const val of vals) {
@@ -90,7 +91,9 @@ export function apply_color_scale(
     if (val > max) max = val
   }
   return {
-    colors: vals.map((val) => to_hex(fn, max === min ? 0.5 : (val - min) / (max - min))),
+    colors: vals.map((val) =>
+      to_hex(interp_fn, max === min ? 0.5 : (val - min) / (max - min))
+    ),
   }
 }
 

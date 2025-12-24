@@ -3,6 +3,12 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Crystal, Site } from './index'
 
+// Wrap fractional coordinates to [0, 1) range, clamping near-1 values to 0
+const wrap_frac = (coord: number): number => {
+  const wrapped = ((coord % 1) + 1) % 1
+  return wrapped >= 1 - 1e-10 ? 0 : wrapped
+}
+
 type SupercellType = Crystal & {
   supercell_scaling?: Vec3
 }
@@ -43,19 +49,19 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
   throw new Error(`Invalid supercell scaling: ${scaling}`)
 }
 
-// Generate all lattice points for a supercell. Takes [nx, ny, nz] scaling factors
+// Generate all lattice points for a supercell. Takes [scale_x, scale_y, scale_z] scaling factors
 // and returns array of fractional coordinates for lattice points
 export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
-  const [nx, ny, nz] = scaling_factors
-  const count = nx * ny * nz
+  const [scale_x, scale_y, scale_z] = scaling_factors
+  const count = scale_x * scale_y * scale_z
   const points: Vec3[] = new Array(count)
 
-  let ptr = 0
+  let write_idx = 0
   // Generate in x, y, z order to match expected test results
-  for (let kk = 0; kk < nz; kk++) {
-    for (let jj = 0; jj < ny; jj++) {
-      for (let ii = 0; ii < nx; ii++) {
-        points[ptr++] = [ii, jj, kk]
+  for (let kk = 0; kk < scale_z; kk++) {
+    for (let jj = 0; jj < scale_y; jj++) {
+      for (let ii = 0; ii < scale_x; ii++) {
+        points[write_idx++] = [ii, jj, kk]
       }
     }
   }
@@ -64,7 +70,7 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
 }
 
 // Scale a lattice matrix by supercell factors
-// Takes original 3x3 lattice matrix and [nx, ny, nz] scaling factors
+// Takes original 3x3 lattice matrix and [scale_x, scale_y, scale_z] scaling factors
 // Returns new scaled lattice matrix
 export function scale_lattice_matrix(
   orig_matrix: math.Matrix3x3,
@@ -116,14 +122,11 @@ export function make_supercell(
   const n_sites = structure.sites.length
   const new_sites: Site[] = new Array(n_sites * total_cells)
 
-  // Cache original lattice vectors for manual vector addition
-  const [ax, ay, az] = orig_matrix[0]
-  const [bx, by, bz] = orig_matrix[1]
-  const [cx, cy, cz] = orig_matrix[2]
+  // Destructure lattice vectors for fast inline arithmetic (avoid function calls in hot loop)
+  const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = orig_matrix
+  const [sx, sy, sz] = supercell_scaling
 
-  let ptr = 0
-
-  // Use local variables for speed
+  let write_idx = 0
   const sites = structure.sites
 
   // Loop order: k, j, i to match typical pymatgen/standard ordering
@@ -132,42 +135,31 @@ export function make_supercell(
       for (let ii = 0; ii < scale_x; ii++) {
         const label_suffix = total_cells > 1 ? `_${ii}${jj}${kk}` : ``
 
-        // Pre-calculate translation vector components
+        // Translation = ii * vec_a + jj * vec_b + kk * vec_c (inlined for performance)
         const tx = ii * ax + jj * bx + kk * cx
         const ty = ii * ay + jj * by + kk * cy
         const tz = ii * az + jj * bz + kk * cz
 
-        for (let s = 0; s < n_sites; s++) {
-          const site = sites[s]
-          const [x, y, z] = site.xyz
-          const [u, v, w] = site.abc
+        for (let site_idx = 0; site_idx < n_sites; site_idx++) {
+          const site = sites[site_idx]
 
-          // Direct fractional coordinate calculation
-          // new_abc = (old_abc + [i, j, k]) / [scale_x, scale_y, scale_z]
-          let nu = (u + ii) / scale_x
-          let nv = (v + jj) / scale_y
-          let nw = (w + kk) / scale_z
+          // new_abc = (old_abc + [ii, jj, kk]) / supercell_scaling
+          let new_a = (site.abc[0] + ii) / sx
+          let new_b = (site.abc[1] + jj) / sy
+          let new_c = (site.abc[2] + kk) / sz
 
           if (to_unit_cell) {
-            nu = ((nu % 1) + 1) % 1
-            nv = ((nv % 1) + 1) % 1
-            nw = ((nw % 1) + 1) % 1
-            // Handle edge case close to 1.0
-            if (nu >= 0.9999999999) nu = 0
-            if (nv >= 0.9999999999) nv = 0
-            if (nw >= 0.9999999999) nw = 0
+            new_a = wrap_frac(new_a)
+            new_b = wrap_frac(new_b)
+            new_c = wrap_frac(new_c)
           }
 
-          new_sites[ptr++] = {
+          new_sites[write_idx++] = {
             species: site.species,
-            // Direct Cartesian calculation: old_xyz + translation
-            xyz: [x + tx, y + ty, z + tz],
-            abc: [nu, nv, nw],
+            xyz: [site.xyz[0] + tx, site.xyz[1] + ty, site.xyz[2] + tz],
+            abc: [new_a, new_b, new_c],
             label: label_suffix ? `${site.label}${label_suffix}` : site.label,
-            properties: {
-              ...site.properties,
-              orig_unit_cell_idx: s,
-            },
+            properties: { ...site.properties, orig_unit_cell_idx: site_idx },
           }
         }
       }

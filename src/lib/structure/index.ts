@@ -81,10 +81,10 @@ export function format_chemical_formula(
   // concatenate elements in a structure followed by their amount
   const elements = get_element_counts(structure)
   const formula = []
-  for (const el of sort_fn(Object.keys(elements) as ElementSymbol[])) {
-    const amount = elements[el] ?? 0
-    if (amount === 1) formula.push(el)
-    else formula.push(`${el}<sub>${amount}</sub>`)
+  for (const element of sort_fn(Object.keys(elements) as ElementSymbol[])) {
+    const amount = elements[element] ?? 0
+    if (amount === 1) formula.push(element)
+    else formula.push(`${element}<sub>${amount}</sub>`)
   }
   return formula.join(` `)
 }
@@ -114,9 +114,9 @@ export function get_density(structure: Crystal): number {
   // calculate the density of a Crystal in g/cm³
   const elements = get_element_counts(structure)
   let mass = 0
-  for (const [el, amt] of Object.entries(elements)) {
-    const weight = ATOMIC_WEIGHTS.get(el as ElementSymbol)
-    if (weight !== undefined) mass += amt * weight
+  for (const [element, amount] of Object.entries(elements)) {
+    const weight = ATOMIC_WEIGHTS.get(element as ElementSymbol)
+    if (weight !== undefined) mass += amount * weight
   }
   return (AMU_PER_A3_TO_G_PER_CM3 * mass) / structure.lattice.volume
 }

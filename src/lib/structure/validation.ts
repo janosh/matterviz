@@ -1,6 +1,6 @@
 import type { Crystal } from './index'
 
-export function is_valid_structure(obj: unknown): obj is Crystal {
+export function is_crystal(obj: unknown): obj is Crystal {
   if (obj === null || typeof obj !== `object`) return false
   const input = obj as Record<string, unknown>
   const has_sites = Array.isArray(input.sites) && input.sites.length > 0

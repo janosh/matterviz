@@ -3,7 +3,7 @@ import { element_data } from '$lib/element'
 import * as math from '$lib/math'
 import type { Crystal } from '$lib/structure/index'
 import { parse_any_structure } from '$lib/structure/parse'
-import { is_valid_structure } from '$lib/structure/validation'
+import { is_crystal } from '$lib/structure/validation'
 // copied from pymatgen/analysis/diffraction/atomic_scattering_params.json
 import { ATOMIC_SCATTERING_PARAMS } from './atomic-scattering-params'
 import type {
@@ -377,7 +377,7 @@ export async function add_xrd_pattern(
       ? content
       : new TextDecoder().decode(content as BufferSource)
     const parsed_structure = parse_any_structure(text_content, filename)
-    if (is_valid_structure(parsed_structure)) {
+    if (is_crystal(parsed_structure)) {
       const pattern = compute_xrd_pattern(parsed_structure, {
         wavelength: typeof wavelength === `number` ? wavelength : undefined,
       })
