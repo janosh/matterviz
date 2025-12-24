@@ -2792,3 +2792,193 @@ describe(`detect_structure_type`, () => {
     expect(detect_structure_type(filename, content)).toBe(expected)
   })
 })
+
+describe(`Coordinate Normalization`, () => {
+  // Helper to create raw structure JSON with given abc coords for testing normalization
+  // xyz is set to placeholder [0,0,0] since it will be recomputed from wrapped abc
+  const make_raw_structure = (
+    abc: number[],
+    lattice_matrix: number[][] = [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+  ) => ({
+    sites: [{
+      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+      abc,
+      xyz: [0, 0, 0],
+      label: `H1`,
+      properties: {},
+    }],
+    lattice: {
+      matrix: lattice_matrix,
+      a: 5,
+      b: 5,
+      c: 5,
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+      volume: 125,
+    },
+  })
+
+  // Parametrized tests for coordinate wrapping edge cases
+  test.each([
+    { abc: [-0.3, -0.7, -0.1], expected: [0.7, 0.3, 0.9], name: `negative coords` },
+    { abc: [1.2, 1.5, 1.0], expected: [0.2, 0.5, 0.0], name: `coords >= 1` },
+    { abc: [-0.5, 1.25, 0.75], expected: [0.5, 0.25, 0.75], name: `mixed out-of-range` },
+    { abc: [-2.3, -1.7, -0.9], expected: [0.7, 0.3, 0.1], name: `large negative` },
+    { abc: [2.3, 3.7, 1.1], expected: [0.3, 0.7, 0.1], name: `large positive` },
+    { abc: [0.25, 0.5, 0.75], expected: [0.25, 0.5, 0.75], name: `already in range` },
+    { abc: [1.0, 0.0, 0.5], expected: [0.0, 0.0, 0.5], name: `exactly 1.0 → 0` },
+    { abc: [-1.0, 0.5, 0.25], expected: [0.0, 0.5, 0.25], name: `exactly -1.0 → 0` },
+  ])(`wraps $name: $abc → $expected`, ({ abc, expected }) => {
+    const result = parse_any_structure(
+      JSON.stringify(make_raw_structure(abc)),
+      `test.json`,
+    )
+    expect(result).not.toBeNull()
+    expected.forEach((val, idx) => expect(result?.sites[0].abc[idx]).toBeCloseTo(val, 10))
+    expect_abc_in_unit_cell(result?.sites[0] as { abc: number[] })
+  })
+
+  // Test nested pymatgen structures from Materials Project API format
+  test.each([
+    {
+      name: `output.structure format (MP API)`,
+      wrapper: (struct: object) => ({
+        _id: { $oid: `id` },
+        output: { structure: struct },
+      }),
+      abc: [-0.5, 0.5, -0.25],
+      expected_abc: [0.5, 0.5, 0.75],
+      // xyz = abc * lattice = [0.5, 0.5, 0.75] * [[5,0,0],[0,5,0],[0,0,5]] = [2.5, 2.5, 3.75]
+      expected_xyz: [2.5, 2.5, 3.75],
+      parser: parse_structure_file,
+    },
+    {
+      name: `data.materials[].structure format`,
+      wrapper: (struct: object) => ({ data: { materials: [{ structure: struct }] } }),
+      abc: [1.5, -0.3, 0.8],
+      expected_abc: [0.5, 0.7, 0.8],
+      // xyz = [0.5, 0.7, 0.8] * [[5,0,0],[0,5,0],[0,0,5]] = [2.5, 3.5, 4]
+      expected_xyz: [2.5, 3.5, 4],
+      parser: parse_structure_file,
+    },
+  ])(
+    `normalizes nested $name`,
+    ({ wrapper, abc, expected_abc, expected_xyz, parser }) => {
+      const inner = {
+        '@module': `pymatgen.core.structure`,
+        '@class': `Structure`,
+        charge: 0,
+        lattice: {
+          matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+          a: 5,
+          b: 5,
+          c: 5,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 125,
+        },
+        sites: [{
+          species: [{ element: `Li`, occu: 1 }],
+          abc,
+          xyz: [0, 0, 0],
+          label: `Li`,
+          properties: {},
+        }],
+      }
+      const result = parser(JSON.stringify(wrapper(inner)), `test.json`)
+      expect(result).not.toBeNull()
+      expected_abc.forEach((val, idx) =>
+        expect(result?.sites[0].abc[idx]).toBeCloseTo(val, 10)
+      )
+      expected_xyz.forEach((val, idx) =>
+        expect(result?.sites[0].xyz[idx]).toBeCloseTo(val, 10)
+      )
+    },
+  )
+
+  test(`normalizes hexagonal lattice with negative coords and recomputes xyz`, () => {
+    const hexagonal = {
+      sites: [{
+        species: [{ element: `C`, occu: 1 }],
+        abc: [-0.333333, -0.666667, 0.5],
+        xyz: [0, 0, 0],
+        label: `C`,
+        properties: {},
+      }],
+      lattice: {
+        matrix: [[2.46, 0, 0], [-1.23, 2.13, 0], [0, 0, 6.7]],
+        a: 2.46,
+        b: 2.46,
+        c: 6.7,
+        alpha: 90,
+        beta: 90,
+        gamma: 120,
+        volume: 35.13,
+      },
+    }
+    const result = parse_any_structure(JSON.stringify(hexagonal), `hex.json`)
+    expect(result).not.toBeNull()
+    expect_abc_in_unit_cell(result?.sites[0] as { abc: number[] })
+    if (result && `lattice` in result && result.lattice) {
+      expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
+    }
+  })
+
+  test(`wraps and reconstructs xyz for pymatgen structure with multiple negative-coord sites`, () => {
+    const pymatgen_struct = {
+      output: {
+        structure: {
+          '@module': `pymatgen.core.structure`,
+          lattice: {
+            matrix: [[6.22, 0, 0], [-3.11, 5.39, 0], [0, 0, 6.7]],
+            a: 6.22,
+            b: 6.22,
+            c: 6.7,
+            alpha: 90,
+            beta: 90,
+            gamma: 120,
+            volume: 224,
+          },
+          sites: [
+            {
+              species: [{ element: `Y`, occu: 1 }],
+              abc: [0, -1, 0],
+              xyz: [0, 0, 0],
+              label: `Y`,
+              properties: {},
+            },
+            {
+              species: [{ element: `Nb`, occu: 1 }],
+              abc: [0, -1, -0.5],
+              xyz: [0, 0, 0],
+              label: `Nb`,
+              properties: {},
+            },
+            {
+              species: [{ element: `B`, occu: 1 }],
+              abc: [0.5, -0.5, -0.25],
+              xyz: [0, 0, 0],
+              label: `B`,
+              properties: {},
+            },
+          ],
+        },
+      },
+    }
+    const result = parse_any_structure(JSON.stringify(pymatgen_struct), `test.json`)
+    expect(result?.sites).toHaveLength(3)
+    // Verify all coords wrapped and xyz reconstructed
+    for (const site of result?.sites ?? []) {
+      expect_abc_in_unit_cell(site)
+    }
+    if (result && `lattice` in result && result.lattice) {
+      for (const site of result.sites) expect_xyz_matches_abc(site, result.lattice.matrix)
+    }
+    // Check specific wrapping: [0, -1, 0] → [0, 0, 0], [0, -1, -0.5] → [0, 0, 0.5], [0.5, -0.5, -0.25] → [0.5, 0.5, 0.75]
+    expect(result?.sites[0].abc).toEqual([0, 0, 0])
+    expect(result?.sites[1].abc[2]).toBeCloseTo(0.5, 10)
+    expect(result?.sites[2].abc).toEqual([0.5, 0.5, 0.75])
+  })
+})

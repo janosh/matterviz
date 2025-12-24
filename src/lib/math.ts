@@ -301,8 +301,8 @@ export const create_frac_to_cart = (lattice: Matrix3x3) => {
 
 // Curried Cartesian→fractional converter (caches inverse transpose)
 export const create_cart_to_frac = (lattice: Matrix3x3) => {
-  const inv_t = matrix_inverse_3x3(transpose_3x3_matrix(lattice))
-  return (cart: Vec3) => mat3x3_vec3_multiply(inv_t, cart)
+  const inv_transposed = matrix_inverse_3x3(transpose_3x3_matrix(lattice))
+  return (cart: Vec3) => mat3x3_vec3_multiply(inv_transposed, cart)
 }
 
 // Convert unit cell parameters to lattice matrix (crystallographic convention)
@@ -334,13 +334,13 @@ export function cell_to_lattice_matrix(
   )
 
   // Standard crystallographic lattice vectors
-  const c1 = c * cos_beta
-  const c2 = (c * (cos_alpha - cos_beta * cos_gamma)) / sin_gamma
-  const c3 = (c * vol_factor) / sin_gamma
+  const c_x = c * cos_beta
+  const c_y = (c * (cos_alpha - cos_beta * cos_gamma)) / sin_gamma
+  const c_z = (c * vol_factor) / sin_gamma
   return [
     [a, 0, 0],
     [b * cos_gamma, b * sin_gamma, 0],
-    [c1, c2, c3],
+    [c_x, c_y, c_z],
   ]
 }
 

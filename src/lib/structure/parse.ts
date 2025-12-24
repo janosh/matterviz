@@ -14,6 +14,8 @@ import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Crystal, Site } from '$lib/structure'
+import type { Pbc } from '$lib/structure/pbc'
+import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { load as yaml_load } from 'js-yaml'
 
 export interface ParsedStructure {
@@ -27,6 +29,7 @@ export interface ParsedStructure {
     beta: number
     gamma: number
     volume: number
+    pbc?: Pbc
   }
 }
 
@@ -579,7 +582,7 @@ const parse_symmetry_expression = (
 const apply_symmetry_ops = (
   atom: CifAtom,
   symmetry_ops: string[],
-  wrap_frac: boolean,
+  wrap_fractional_coords: boolean,
 ): CifAtom[] => {
   if (symmetry_ops.length === 0) return [atom]
 
@@ -587,7 +590,9 @@ const apply_symmetry_ops = (
   const seen = new Set<string>()
   const wrap = (
     coords: Vec3,
-  ): Vec3 => (wrap_frac ? coords.map((val) => val - Math.floor(val)) as Vec3 : coords)
+  ): Vec3 => (wrap_fractional_coords
+    ? coords.map((val) => val - Math.floor(val)) as Vec3
+    : coords)
   // Use 6 decimal places for deduplication to handle floating point imprecision
   // from compound symmetry operations like x-y, -x+y which can produce small errors
   const key = (coords: Vec3): string =>
@@ -736,7 +741,7 @@ const parse_cif_atom_data = (
 // Parse CIF (Crystallographic Information File) format
 export function parse_cif(
   content: string,
-  wrap_frac: boolean = true,
+  wrap_fractional_coords: boolean = true,
   strict: boolean = true,
 ): ParsedStructure | null {
   try {
@@ -894,17 +899,17 @@ export function parse_cif(
     const [alpha, beta, gamma] = angles
     const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
     const lattice_params = math.calc_lattice_params(lattice_matrix)
-    const lattice_T = math.transpose_3x3_matrix(lattice_matrix)
-    let lattice_invT: math.Matrix3x3 | null = null
+    const lattice_transposed = math.transpose_3x3_matrix(lattice_matrix)
+    let lattice_inv_transposed: math.Matrix3x3 | null = null
     try {
-      lattice_invT = math.matrix_inverse_3x3(lattice_T)
+      lattice_inv_transposed = math.matrix_inverse_3x3(lattice_transposed)
     } catch {
-      lattice_invT = null
+      lattice_inv_transposed = null
     }
 
     // Create sites with coordinate conversion and symmetry operations
     const wrap_vec3 = (v: Vec3): Vec3 =>
-      wrap_frac ? v.map((coord) => coord - Math.floor(coord)) as Vec3 : v
+      wrap_fractional_coords ? v.map((coord) => coord - Math.floor(coord)) as Vec3 : v
 
     // Apply symmetry operations to generate all equivalent positions
     const all_sites: Site[] = []
@@ -984,9 +989,9 @@ export function parse_cif(
       const element = validate_element_symbol(atom.element, all_sites.length)
 
       // Convert to fractional coordinates if needed
-      let fract_atom: CifAtom
+      let fractional_atom: CifAtom
       if (atom.coords_type === `fract`) {
-        fract_atom = {
+        fractional_atom = {
           ...atom,
           coords: wrap_vec3(atom.coords as Vec3),
           coords_type: `fract`,
@@ -994,15 +999,19 @@ export function parse_cif(
       } else {
         const xyz_base: Vec3 = [atom.coords[0], atom.coords[1], atom.coords[2]]
         let atom_abc: Vec3
-        if (lattice_invT) {
-          const raw = math.mat3x3_vec3_multiply(lattice_invT, xyz_base)
+        if (lattice_inv_transposed) {
+          const raw = math.mat3x3_vec3_multiply(lattice_inv_transposed, xyz_base)
           atom_abc = wrap_vec3(raw as Vec3)
         } else atom_abc = wrap_vec3([xyz_base[0] / a, xyz_base[1] / b, xyz_base[2] / c])
-        fract_atom = { ...atom, coords: atom_abc, coords_type: `fract` }
+        fractional_atom = { ...atom, coords: atom_abc, coords_type: `fract` }
       }
 
       // First apply symmetry operations in fractional space
-      const equiv_atoms = apply_symmetry_ops(fract_atom, ops_to_use, wrap_frac)
+      const equiv_atoms = apply_symmetry_ops(
+        fractional_atom,
+        ops_to_use,
+        wrap_fractional_coords,
+      )
 
       // Then apply lattice centering shifts to each equivalent position
       for (const equiv_atom of equiv_atoms) {
@@ -1015,7 +1024,7 @@ export function parse_cif(
           const key = site_key(element, abc, equiv_atom.id)
           if (seen_site_keys.has(key)) continue
           seen_site_keys.add(key)
-          const xyz = math.mat3x3_vec3_multiply(lattice_T, abc)
+          const xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
           all_sites.push({
             species: [{ element, occu: equiv_atom.occupancy, oxidation_state: 0 }],
             abc,
@@ -1172,7 +1181,7 @@ function find_structure_in_json(
 
   // Check if this object looks like a valid structure
   const potential_structure = obj as Record<string, unknown>
-  if (is_valid_structure_object(potential_structure)) return potential_structure
+  if (is_parsed_structure(potential_structure)) return potential_structure
 
   // Otherwise, recursively search through all properties
   for (const value of Object.values(potential_structure)) {
@@ -1184,7 +1193,7 @@ function find_structure_in_json(
 }
 
 // Type guard to validate structure-like objects
-function is_valid_structure_object(obj: unknown): obj is ParsedStructure {
+function is_parsed_structure(obj: unknown): obj is ParsedStructure {
   if (!obj || typeof obj !== `object`) return false
   const record = obj as Record<string, unknown>
   // Must have non-empty sites array
@@ -1198,6 +1207,33 @@ function is_valid_structure_object(obj: unknown): obj is ParsedStructure {
   const has_species = Array.isArray(first_site.species) && first_site.species.length > 0
   const has_coords = Array.isArray(first_site.abc) || Array.isArray(first_site.xyz)
   return has_species && has_coords
+}
+
+// Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
+function normalize_fractional_coords(structure: ParsedStructure): ParsedStructure {
+  if (!structure.sites || structure.sites.length === 0) return structure
+
+  // Check if any sites have fractional coords outside [0, 1) range
+  const needs_wrapping = structure.sites.some(
+    (site) => site.abc?.some((coord) => coord < 0 || coord >= 1),
+  )
+  if (!needs_wrapping) return structure
+
+  // Create frac->cart converter if lattice is available
+  const frac_to_cart = structure.lattice?.matrix
+    ? math.create_frac_to_cart(structure.lattice.matrix)
+    : null
+
+  // Wrap fractional coordinates and recompute Cartesian
+  const normalized_sites = structure.sites.map((site) => {
+    if (!site.abc) return site
+    const wrapped_abc = wrap_to_unit_cell(site.abc)
+    // Recompute xyz from wrapped fractional coordinates
+    const new_xyz = frac_to_cart ? frac_to_cart(wrapped_abc) : site.xyz
+    return { ...site, abc: wrapped_abc, xyz: new_xyz }
+  })
+
+  return { ...structure, sites: normalized_sites }
 }
 
 // Auto-detect file format and parse accordingly
@@ -1232,7 +1268,7 @@ export function parse_structure_file(
         }
         // Otherwise, try to parse as pymatgen/nested structure JSON
         const structure = find_structure_in_json(parsed)
-        if (structure) return structure
+        if (structure) return normalize_fractional_coords(structure)
         console.error(`JSON file does not contain a valid structure format`)
         return null
       } catch (error) {
@@ -1268,7 +1304,7 @@ export function parse_structure_file(
     // Otherwise try parsing as regular JSON structure
     const structure = find_structure_in_json(parsed)
     if (structure) {
-      return structure
+      return normalize_fractional_coords(structure)
     }
   } catch {
     // Not JSON, continue with other format detection
@@ -1346,13 +1382,14 @@ export function parse_any_structure(
   try {
     const parsed = JSON.parse(content)
 
-    // Check if it's already a valid structure
-    if (parsed.sites && Array.isArray(parsed.sites)) {
+    // Check if it's already a valid structure using proper type guard
+    if (is_parsed_structure(parsed)) {
       // Ensure PBC is set for structures with lattice
       if (parsed.lattice && !parsed.lattice.pbc) {
         parsed.lattice.pbc = [true, true, true]
       }
-      return parsed
+      // Normalize coordinates (wrap fractional to [0,1) and recompute Cartesian)
+      return normalize_fractional_coords(parsed) as AnyStructure
     }
     // If not, use parse_structure_file to find nested structures
     const structure = parse_structure_file(content, filename)

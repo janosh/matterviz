@@ -13,7 +13,7 @@
   import { BarPlot } from '$lib/plot'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { parse_any_structure } from '$lib/structure/parse'
-  import { is_valid_structure } from '$lib/structure/validation'
+  import { is_crystal } from '$lib/structure/validation'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { calc_coordination_nums, type CoordinationData } from './calc-coordination'
@@ -68,7 +68,7 @@
 
     const base_entries = Array.isArray(structures)
       ? (structures as StructureEntry[])
-      : (is_valid_structure(structures)
+      : (is_crystal(structures)
         ? [{ label: `Structure`, structure: structures as AnyStructure }]
         : Object.entries(
           structures as Record<
@@ -217,7 +217,7 @@
           ? new TextDecoder().decode(content)
           : content
         const parsed_structure = parse_any_structure(text_content, filename)
-        if (is_valid_structure(parsed_structure)) {
+        if (is_crystal(parsed_structure)) {
           dropped_entries = [{
             label: filename || `Dropped structure`,
             structure: parsed_structure,

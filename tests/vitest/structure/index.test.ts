@@ -12,7 +12,7 @@ const ref_data: Record<
     density: number
     center_of_mass: Vec3
     elements: string[]
-    electro_neg_formula: string
+    formula_by_electronegativity: string
   }
 > = {
   'mp-1': {
@@ -20,49 +20,50 @@ const ref_data: Record<
     density: 1.8019302505603234,
     center_of_mass: [1.564, 1.564, 1.564],
     elements: [`Cs`],
-    electro_neg_formula: `Cs<sub>2</sub>`,
+    formula_by_electronegativity: `Cs<sub>2</sub>`,
   },
   'mp-2': {
     amounts: { Pd: 4 },
     density: 11.759135742447171,
     center_of_mass: [0.979, 0.979, 0.979],
     elements: [`Pd`],
-    electro_neg_formula: `Pd<sub>4</sub>`,
+    formula_by_electronegativity: `Pd<sub>4</sub>`,
   },
   'mp-1234': {
     amounts: { Lu: 8, Al: 16 },
     density: 6.63,
     center_of_mass: [3.119, 3.119, 3.119],
     elements: [`Al`, `Lu`],
-    electro_neg_formula: `Lu<sub>8</sub> Al<sub>16</sub>`,
+    formula_by_electronegativity: `Lu<sub>8</sub> Al<sub>16</sub>`,
   },
   'mp-30855': {
     amounts: { U: 2, Pt: 6 },
     density: 19.14,
     center_of_mass: [3.535, 3.535, 3.535],
     elements: [`Pt`, `U`],
-    electro_neg_formula: `U<sub>2</sub> Pt<sub>6</sub>`,
+    formula_by_electronegativity: `U<sub>2</sub> Pt<sub>6</sub>`,
   },
   'mp-756175': {
     amounts: { Zr: 16, Bi: 16, O: 56 },
     density: 7.457890165317997,
     center_of_mass: [5.261, 5.261, 5.261],
     elements: [`Bi`, `O`, `Zr`],
-    electro_neg_formula: `Zr<sub>16</sub> Bi<sub>16</sub> O<sub>56</sub>`,
+    formula_by_electronegativity: `Zr<sub>16</sub> Bi<sub>16</sub> O<sub>56</sub>`,
   },
   'mp-1229155': {
     amounts: { Ag: 4, Hg: 4, S: 4, Br: 1, Cl: 3 },
     density: 6.107930572082895,
     center_of_mass: [2.216, 3.594, 6.502],
     elements: [`Ag`, `Br`, `Cl`, `Hg`, `S`],
-    electro_neg_formula: `Ag<sub>4</sub> Hg<sub>4</sub> S<sub>4</sub> Br Cl<sub>3</sub>`,
+    formula_by_electronegativity:
+      `Ag<sub>4</sub> Hg<sub>4</sub> S<sub>4</sub> Br Cl<sub>3</sub>`,
   },
   'mp-1229168': {
     amounts: { Al: 54, Fe: 4, Ni: 8 },
     density: 3.6567149052096903,
     center_of_mass: [1.802, 2.991, 12.542],
     elements: [`Al`, `Fe`, `Ni`],
-    electro_neg_formula: `Al<sub>54</sub> Fe<sub>4</sub> Ni<sub>8</sub>`,
+    formula_by_electronegativity: `Al<sub>54</sub> Fe<sub>4</sub> Ni<sub>8</sub>`,
   },
 }
 
@@ -75,9 +76,9 @@ describe.each(structures)(`structure-utils`, (structure) => {
   const expected = id ? ref_data[id] : undefined
 
   test.runIf(id && id in ref_data)(
-    `get_elem_amount should return the correct element amounts for a given structure`,
+    `get_element_counts should return the correct element amounts for a given structure`,
     () => {
-      const result = struct_utils.get_elem_amounts(structure)
+      const result = struct_utils.get_element_counts(structure)
       expect(JSON.stringify(result), id).toBe(JSON.stringify(expected?.amounts))
     },
   )
@@ -105,9 +106,9 @@ test.each(structures.filter((struct) => struct.id && ref_data[struct.id]))(
     ).toEqual(expected_data.center_of_mass)
 
     // Electronegativity formula
-    const electro_formula = struct_utils.electro_neg_formula(struct)
-    expect(electro_formula, `${struct.id} electro_neg_formula`).toEqual(
-      expected_data.electro_neg_formula,
+    const electro_formula = struct_utils.format_formula_by_electronegativity(struct)
+    expect(electro_formula, `${struct.id} formula_by_electronegativity`).toEqual(
+      expected_data.formula_by_electronegativity,
     )
   },
 )
