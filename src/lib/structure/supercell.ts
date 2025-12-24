@@ -93,11 +93,11 @@ export function make_supercell(
   }
 
   const supercell_scaling = parse_supercell_scaling(scaling)
-  const [nx, ny, nz] = supercell_scaling
-  const det = nx * ny * nz
+  const [scale_x, scale_y, scale_z] = supercell_scaling
+  const total_cells = scale_x * scale_y * scale_z
 
   // Short circuit for 1x1x1 (no actual supercell needed)
-  if (nx === 1 && ny === 1 && nz === 1) {
+  if (scale_x === 1 && scale_y === 1 && scale_z === 1) {
     return { ...structure, supercell_scaling } as SupercellType
   }
 
@@ -114,7 +114,7 @@ export function make_supercell(
 
   // Pre-allocate sites array
   const n_sites = structure.sites.length
-  const new_sites: Site[] = new Array(n_sites * det)
+  const new_sites: Site[] = new Array(n_sites * total_cells)
 
   // Cache original lattice vectors for manual vector addition
   const [ax, ay, az] = orig_matrix[0]
@@ -127,10 +127,10 @@ export function make_supercell(
   const sites = structure.sites
 
   // Loop order: k, j, i to match typical pymatgen/standard ordering
-  for (let kk = 0; kk < nz; kk++) {
-    for (let jj = 0; jj < ny; jj++) {
-      for (let ii = 0; ii < nx; ii++) {
-        const label_suffix = det > 1 ? `_${ii}${jj}${kk}` : ``
+  for (let kk = 0; kk < scale_z; kk++) {
+    for (let jj = 0; jj < scale_y; jj++) {
+      for (let ii = 0; ii < scale_x; ii++) {
+        const label_suffix = total_cells > 1 ? `_${ii}${jj}${kk}` : ``
 
         // Pre-calculate translation vector components
         const tx = ii * ax + jj * bx + kk * cx
@@ -143,10 +143,10 @@ export function make_supercell(
           const [u, v, w] = site.abc
 
           // Direct fractional coordinate calculation
-          // new_abc = (old_abc + [i, j, k]) / [nx, ny, nz]
-          let nu = (u + ii) / nx
-          let nv = (v + jj) / ny
-          let nw = (w + kk) / nz
+          // new_abc = (old_abc + [i, j, k]) / [scale_x, scale_y, scale_z]
+          let nu = (u + ii) / scale_x
+          let nv = (v + jj) / scale_y
+          let nw = (w + kk) / scale_z
 
           if (to_unit_cell) {
             nu = ((nu % 1) + 1) % 1
@@ -178,7 +178,7 @@ export function make_supercell(
     ...structure,
     lattice: new_lattice,
     sites: new_sites,
-    charge: structure.charge ? structure.charge * det : structure.charge,
+    charge: structure.charge ? structure.charge * total_cells : structure.charge,
     supercell_scaling,
   } as SupercellType
 }
