@@ -230,8 +230,8 @@ export function compute_xrd_pattern(
     // asin domain can exceed 1 by FP error — clamp to avoid NaN
     const clamped_asin_arg = Math.min(1, Math.max(-1, asin_arg))
     const theta = Math.asin(clamped_asin_arg)
-    const s_val = g_norm / 2
-    const s_sq = s_val * s_val
+    const sin_theta_over_lambda = g_norm / 2
+    const sin_theta_over_lambda_sq = sin_theta_over_lambda * sin_theta_over_lambda
 
     // g.r for all fractional coords
     const g_dot_r_all = frac_coords.map((frac_coord) =>
@@ -244,11 +244,17 @@ export function compute_xrd_pattern(
       const num_terms = Math.min(a_arr.length, b_arr.length)
       const sum_terms = a_arr
         .slice(0, num_terms)
-        .reduce((sum, a_i, term_idx) => sum + a_i * Math.exp(-b_arr[term_idx] * s_sq), 0)
+        .reduce(
+          (sum, a_i, term_idx) =>
+            sum + a_i * Math.exp(-b_arr[term_idx] * sin_theta_over_lambda_sq),
+          0,
+        )
       return sum_terms + (coeff_entry.c ?? 0)
     })
 
-    const dw_corr: number[] = dw_factors.map((dw_b) => Math.exp(-dw_b * s_sq))
+    const dw_corr: number[] = dw_factors.map((dw_b) =>
+      Math.exp(-dw_b * sin_theta_over_lambda_sq)
+    )
 
     // Structure factor sum: sum(fs * occu * exp(2πi g·r) * DW)
     const { real: f_real, imag: f_imag } = f_scattering.reduce(
