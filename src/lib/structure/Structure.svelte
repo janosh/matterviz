@@ -8,7 +8,7 @@
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { Crystal } from '$lib/structure'
-  import { get_elem_amounts, get_pbc_image_sites } from '$lib/structure'
+  import { get_element_counts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
@@ -879,7 +879,7 @@
     <AtomLegend
       bind:atom_color_config
       {property_colors}
-      elements={get_elem_amounts(supercell_structure ?? structure!)}
+      elements={get_element_counts(supercell_structure ?? structure!)}
       bind:hidden_elements
       bind:hidden_prop_vals
       bind:element_mapping

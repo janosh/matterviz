@@ -63,7 +63,7 @@ export type BondPair = {
   transform_matrix: Float32Array
 }
 
-export function get_elem_amounts(structure: AnyStructure) {
+export function get_element_counts(structure: AnyStructure) {
   const elements: CompositionType = {}
   for (const site of structure.sites) {
     for (const species of site.species) {
@@ -79,17 +79,17 @@ export function format_chemical_formula(
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
 ): string {
   // concatenate elements in a structure followed by their amount
-  const elements = get_elem_amounts(structure)
+  const elements = get_element_counts(structure)
   const formula = []
-  for (const el of sort_fn(Object.keys(elements) as ElementSymbol[])) {
-    const amount = elements[el] ?? 0
-    if (amount === 1) formula.push(el)
-    else formula.push(`${el}<sub>${amount}</sub>`)
+  for (const element of sort_fn(Object.keys(elements) as ElementSymbol[])) {
+    const amount = elements[element] ?? 0
+    if (amount === 1) formula.push(element)
+    else formula.push(`${element}<sub>${amount}</sub>`)
   }
   return formula.join(` `)
 }
 
-export function electro_neg_formula(structure: AnyStructure): string {
+export function format_formula_by_electronegativity(structure: AnyStructure): string {
   // concatenate elements in a structure followed by their amount sorted by electronegativity
   return format_chemical_formula(structure, (symbols) => (symbols.sort((el1, el2) => {
     const elec_neg1 = element_data.find((el) => el.symbol === el1)?.electronegativity ??
@@ -108,24 +108,24 @@ export const atomic_radii: CompositionType = Object.fromEntries(
 
 // unified atomic mass units (u) per cubic angstrom (Å^3)
 // to grams per cubic centimeter (g/cm^3)
-const uA3_to_gcm3 = 1.66053907
+const AMU_PER_A3_TO_G_PER_CM3 = 1.66053907
 
 export function get_density(structure: Crystal): number {
   // calculate the density of a Crystal in g/cm³
-  const elements = get_elem_amounts(structure)
+  const elements = get_element_counts(structure)
   let mass = 0
-  for (const [el, amt] of Object.entries(elements)) {
-    const weight = ATOMIC_WEIGHTS.get(el as ElementSymbol)
-    if (weight !== undefined) mass += amt * weight
+  for (const [element, amount] of Object.entries(elements)) {
+    const weight = ATOMIC_WEIGHTS.get(element as ElementSymbol)
+    if (weight !== undefined) mass += amount * weight
   }
-  return (uA3_to_gcm3 * mass) / structure.lattice.volume
+  return (AMU_PER_A3_TO_G_PER_CM3 * mass) / structure.lattice.volume
 }
 
-export function get_center_of_mass(struct_or_mol: AnyStructure): Vec3 {
+export function get_center_of_mass(structure: AnyStructure): Vec3 {
   let center: Vec3 = [0, 0, 0]
   let total_weight = 0
 
-  for (const site of struct_or_mol.sites) {
+  for (const site of structure.sites) {
     // Handle disordered sites by summing contributions from all species
     for (const species of site.species) {
       const atomic_weight = ATOMIC_WEIGHTS.get(species.element) ?? 1

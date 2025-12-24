@@ -7,7 +7,7 @@
   import { ScatterPlot } from '$lib/plot'
   import type { Crystal, Pbc } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
-  import { is_valid_structure } from '$lib/structure/validation'
+  import { is_crystal } from '$lib/structure/validation'
   import type { ComponentProps, Snippet } from 'svelte'
   import { calculate_all_pair_rdfs, calculate_rdf, type RdfEntry } from './index'
 
@@ -66,7 +66,7 @@
           ? new TextDecoder().decode(content)
           : content
         const parsed_struct = parse_any_structure(text, filename)
-        if (is_valid_structure(parsed_struct)) {
+        if (is_crystal(parsed_struct)) {
           drag_dropped = [...drag_dropped, parsed_struct]
         } else error_msg = `Crystal has no lattice or sites; cannot compute RDF`
       } catch (exc) {
@@ -114,7 +114,7 @@
             label: format_structure_label(struct, `Crystal ${idx + 1}`),
           })
         )
-      } else if (is_valid_structure(structures)) {
+      } else if (is_crystal(structures)) {
         struct_list.push({
           struct: structures,
           label: format_structure_label(structures, ``),
