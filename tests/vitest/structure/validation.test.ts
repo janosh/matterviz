@@ -1,7 +1,7 @@
-import { is_valid_structure } from '$lib/structure/validation'
+import { is_crystal } from '$lib/structure/validation'
 import { describe, expect, test } from 'vitest'
 
-describe(`is_valid_structure`, () => {
+describe(`is_crystal`, () => {
   test.each([
     // Valid
     {
@@ -27,6 +27,6 @@ describe(`is_valid_structure`, () => {
       label: `lattice string`,
     },
   ])(`$label → $expected`, ({ input, expected }) => {
-    expect(is_valid_structure(input)).toBe(expected)
+    expect(is_crystal(input)).toBe(expected)
   })
 })

@@ -210,41 +210,44 @@ export function electroneg_ratio(
 
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
     const [x1, y1, z1] = sites[idx_a].xyz
-    const pa = props[idx_a]
+    const props_a = props[idx_a]
 
     for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
       if (idx_b <= idx_a) continue
 
       const [x2, y2, z2] = sites[idx_b].xyz
-      const pb = props[idx_b]
+      const props_b = props[idx_b]
 
       const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
       const dist_sq = dx * dx + dy * dy + dz * dz
       const dist = Math.sqrt(dist_sq)
 
-      if (dist_sq < min_dist_sq || !pa.radius || !pb.radius) continue
+      if (dist_sq < min_dist_sq || !props_a.radius || !props_b.radius) continue
 
-      const expected = pa.radius + pb.radius
+      const expected = props_a.radius + props_b.radius
       if (dist > expected * max_distance_ratio) continue
 
-      const en_diff = Math.abs(pa.electroneg - pb.electroneg)
-      const en_ratio = en_diff / (pa.electroneg + pb.electroneg)
+      const electroneg_diff = Math.abs(props_a.electroneg - props_b.electroneg)
+      const electroneg_ratio = electroneg_diff / (props_a.electroneg + props_b.electroneg)
 
       let bond_strength = 1.0
-      if (pa.is_metal && pb.is_metal) {
+      if (props_a.is_metal && props_b.is_metal) {
         bond_strength *= metal_metal_penalty
-      } else if ((pa.is_metal && pb.is_nonmetal) || (pa.is_nonmetal && pb.is_metal)) {
+      } else if (
+        (props_a.is_metal && props_b.is_nonmetal) ||
+        (props_a.is_nonmetal && props_b.is_metal)
+      ) {
         bond_strength *= metal_nonmetal_bonus
-        if (en_diff > electronegativity_threshold) bond_strength *= 1.3
-      } else if (en_diff < 0.5) {
+        if (electroneg_diff > electronegativity_threshold) bond_strength *= 1.3
+      } else if (electroneg_diff < 0.5) {
         bond_strength *= similar_electronegativity_bonus
       }
 
       const dist_weight = Math.exp(-((dist / expected - 1) ** 2) / 0.18)
-      const en_weight = 1.0 - 0.3 * en_ratio
-      let strength = bond_strength * dist_weight * en_weight
+      const electroneg_weight = 1.0 - 0.3 * electroneg_ratio
+      let strength = bond_strength * dist_weight * electroneg_weight
 
-      if (pa.element === pb.element) strength *= same_species_penalty
+      if (props_a.element === props_b.element) strength *= same_species_penalty
 
       // If raw strength is already too low, we can skip early
       // (penalty will only reduce it further)
@@ -258,11 +261,11 @@ export function electroneg_ratio(
       // Normalized distance handles atoms of different sizes better than raw distance
       // (e.g. C-H is short but C-C is longer; we don't want C-H to penalize C-C just because H is small)
       const norm_dist = dist / expected
-      const ca = closest.get(orig_idx_a) ?? Infinity
-      if (norm_dist < ca) closest.set(orig_idx_a, norm_dist)
+      const closest_dist_a = closest.get(orig_idx_a) ?? Infinity
+      if (norm_dist < closest_dist_a) closest.set(orig_idx_a, norm_dist)
 
-      const cb = closest.get(orig_idx_b) ?? Infinity
-      if (norm_dist < cb) closest.set(orig_idx_b, norm_dist)
+      const closest_dist_b = closest.get(orig_idx_b) ?? Infinity
+      if (norm_dist < closest_dist_b) closest.set(orig_idx_b, norm_dist)
 
       potential_bonds.push({
         site_idx_1: idx_a,
@@ -288,18 +291,18 @@ export function electroneg_ratio(
       orig_idx_b,
     } = bond
 
-    const ca = closest.get(orig_idx_a) ?? Infinity
-    const cb = closest.get(orig_idx_b) ?? Infinity
+    const closest_dist_a = closest.get(orig_idx_a) ?? Infinity
+    const closest_dist_b = closest.get(orig_idx_b) ?? Infinity
     const norm_dist = dist / expected_dist
 
     let strength = base_strength
 
     // Apply penalty if this bond is much longer (relative to radii) than the closest known bond
-    if (norm_dist > ca) {
-      strength *= Math.exp(-(norm_dist / ca - 1) / 0.5)
+    if (norm_dist > closest_dist_a) {
+      strength *= Math.exp(-(norm_dist / closest_dist_a - 1) / 0.5)
     }
-    if (orig_idx_b !== orig_idx_a && norm_dist > cb) {
-      strength *= Math.exp(-(norm_dist / cb - 1) / 0.5)
+    if (orig_idx_b !== orig_idx_a && norm_dist > closest_dist_b) {
+      strength *= Math.exp(-(norm_dist / closest_dist_b - 1) / 0.5)
     }
 
     if (strength > strength_threshold) {
@@ -347,28 +350,34 @@ export function solid_angle(
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
     const [x1, y1, z1] = sites[idx_a].xyz
     const majority_a = get_majority_species(sites[idx_a])
-    const ra = majority_a.element ? covalent_radii.get(majority_a.element) : undefined
+    const radius_a = majority_a.element
+      ? covalent_radii.get(majority_a.element)
+      : undefined
 
     for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
       if (idx_b <= idx_a) continue
 
       const [x2, y2, z2] = sites[idx_b].xyz
       const majority_b = get_majority_species(sites[idx_b])
-      const rb = majority_b.element ? covalent_radii.get(majority_b.element) : undefined
+      const radius_b = majority_b.element
+        ? covalent_radii.get(majority_b.element)
+        : undefined
 
       const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
       const dist_sq = dx * dx + dy * dy + dz * dz
       const dist = Math.sqrt(dist_sq)
 
-      if (dist_sq < min_dist_sq || dist_sq > max_dist_sq || !ra || !rb) continue
+      if (dist_sq < min_dist_sq || dist_sq > max_dist_sq || !radius_a || !radius_b) {
+        continue
+      }
 
-      const avg_r = (ra + rb) / 2.0
-      const face_area = Math.PI * avg_r * avg_r
+      const avg_radius = (radius_a + radius_b) / 2.0
+      const face_area = Math.PI * avg_radius * avg_radius
       const solid_angle = face_area / dist_sq
 
       if (solid_angle < min_solid_angle || face_area < min_face_area) continue
 
-      const dist_penalty = Math.exp(-((dist / (ra + rb) - 1) ** 2) / 0.4)
+      const dist_penalty = Math.exp(-((dist / (radius_a + radius_b) - 1) ** 2) / 0.4)
       const angle_strength = Math.min(solid_angle / (4.0 * Math.PI), 1.0)
       const strength = angle_strength * dist_penalty
 

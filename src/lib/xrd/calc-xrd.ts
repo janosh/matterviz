@@ -3,7 +3,7 @@ import { element_data } from '$lib/element'
 import * as math from '$lib/math'
 import type { Crystal } from '$lib/structure/index'
 import { parse_any_structure } from '$lib/structure/parse'
-import { is_valid_structure } from '$lib/structure/validation'
+import { is_crystal } from '$lib/structure/validation'
 // copied from pymatgen/analysis/diffraction/atomic_scattering_params.json
 import { ATOMIC_SCATTERING_PARAMS } from './atomic-scattering-params'
 import type {
@@ -230,8 +230,8 @@ export function compute_xrd_pattern(
     // asin domain can exceed 1 by FP error — clamp to avoid NaN
     const clamped_asin_arg = Math.min(1, Math.max(-1, asin_arg))
     const theta = Math.asin(clamped_asin_arg)
-    const s_val = g_norm / 2
-    const s_sq = s_val * s_val
+    const sin_theta_over_lambda = g_norm / 2
+    const sin_theta_over_lambda_sq = sin_theta_over_lambda * sin_theta_over_lambda
 
     // g.r for all fractional coords
     const g_dot_r_all = frac_coords.map((frac_coord) =>
@@ -244,11 +244,17 @@ export function compute_xrd_pattern(
       const num_terms = Math.min(a_arr.length, b_arr.length)
       const sum_terms = a_arr
         .slice(0, num_terms)
-        .reduce((sum, a_i, term_idx) => sum + a_i * Math.exp(-b_arr[term_idx] * s_sq), 0)
+        .reduce(
+          (sum, a_i, term_idx) =>
+            sum + a_i * Math.exp(-b_arr[term_idx] * sin_theta_over_lambda_sq),
+          0,
+        )
       return sum_terms + (coeff_entry.c ?? 0)
     })
 
-    const dw_corr: number[] = dw_factors.map((dw_b) => Math.exp(-dw_b * s_sq))
+    const dw_corr: number[] = dw_factors.map((dw_b) =>
+      Math.exp(-dw_b * sin_theta_over_lambda_sq)
+    )
 
     // Structure factor sum: sum(fs * occu * exp(2πi g·r) * DW)
     const { real: f_real, imag: f_imag } = f_scattering.reduce(
@@ -377,7 +383,7 @@ export async function add_xrd_pattern(
       ? content
       : new TextDecoder().decode(content as BufferSource)
     const parsed_structure = parse_any_structure(text_content, filename)
-    if (is_valid_structure(parsed_structure)) {
+    if (is_crystal(parsed_structure)) {
       const pattern = compute_xrd_pattern(parsed_structure, {
         wavelength: typeof wavelength === `number` ? wavelength : undefined,
       })
