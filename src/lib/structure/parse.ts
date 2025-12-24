@@ -14,6 +14,8 @@ import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Crystal, Site } from '$lib/structure'
+import type { Pbc } from '$lib/structure/pbc'
+import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { load as yaml_load } from 'js-yaml'
 
 export interface ParsedStructure {
@@ -27,6 +29,7 @@ export interface ParsedStructure {
     beta: number
     gamma: number
     volume: number
+    pbc?: Pbc
   }
 }
 
@@ -1172,7 +1175,7 @@ function find_structure_in_json(
 
   // Check if this object looks like a valid structure
   const potential_structure = obj as Record<string, unknown>
-  if (is_valid_structure_object(potential_structure)) return potential_structure
+  if (is_parsed_structure(potential_structure)) return potential_structure
 
   // Otherwise, recursively search through all properties
   for (const value of Object.values(potential_structure)) {
@@ -1184,7 +1187,7 @@ function find_structure_in_json(
 }
 
 // Type guard to validate structure-like objects
-function is_valid_structure_object(obj: unknown): obj is ParsedStructure {
+function is_parsed_structure(obj: unknown): obj is ParsedStructure {
   if (!obj || typeof obj !== `object`) return false
   const record = obj as Record<string, unknown>
   // Must have non-empty sites array
@@ -1198,6 +1201,33 @@ function is_valid_structure_object(obj: unknown): obj is ParsedStructure {
   const has_species = Array.isArray(first_site.species) && first_site.species.length > 0
   const has_coords = Array.isArray(first_site.abc) || Array.isArray(first_site.xyz)
   return has_species && has_coords
+}
+
+// Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
+function wrap_frac_coords(structure: ParsedStructure): ParsedStructure {
+  if (!structure.sites || structure.sites.length === 0) return structure
+
+  // Check if any sites have fractional coords outside [0, 1) range
+  const needs_wrapping = structure.sites.some(
+    (site) => site.abc?.some((coord) => coord < 0 || coord >= 1),
+  )
+  if (!needs_wrapping) return structure
+
+  // Create frac->cart converter if lattice is available
+  const frac_to_cart = structure.lattice?.matrix
+    ? math.create_frac_to_cart(structure.lattice.matrix)
+    : null
+
+  // Wrap fractional coordinates and recompute Cartesian
+  const normalized_sites = structure.sites.map((site) => {
+    if (!site.abc) return site
+    const wrapped_abc = wrap_to_unit_cell(site.abc)
+    // Recompute xyz from wrapped fractional coordinates
+    const new_xyz = frac_to_cart ? frac_to_cart(wrapped_abc) : site.xyz
+    return { ...site, abc: wrapped_abc, xyz: new_xyz }
+  })
+
+  return { ...structure, sites: normalized_sites }
 }
 
 // Auto-detect file format and parse accordingly
@@ -1232,7 +1262,7 @@ export function parse_structure_file(
         }
         // Otherwise, try to parse as pymatgen/nested structure JSON
         const structure = find_structure_in_json(parsed)
-        if (structure) return structure
+        if (structure) return wrap_frac_coords(structure)
         console.error(`JSON file does not contain a valid structure format`)
         return null
       } catch (error) {
@@ -1268,7 +1298,7 @@ export function parse_structure_file(
     // Otherwise try parsing as regular JSON structure
     const structure = find_structure_in_json(parsed)
     if (structure) {
-      return structure
+      return wrap_frac_coords(structure)
     }
   } catch {
     // Not JSON, continue with other format detection
@@ -1346,13 +1376,14 @@ export function parse_any_structure(
   try {
     const parsed = JSON.parse(content)
 
-    // Check if it's already a valid structure
-    if (parsed.sites && Array.isArray(parsed.sites)) {
+    // Check if it's already a valid structure using proper type guard
+    if (is_parsed_structure(parsed)) {
       // Ensure PBC is set for structures with lattice
       if (parsed.lattice && !parsed.lattice.pbc) {
         parsed.lattice.pbc = [true, true, true]
       }
-      return parsed
+      // Normalize coordinates (wrap fractional to [0,1) and recompute Cartesian)
+      return wrap_frac_coords(parsed) as AnyStructure
     }
     // If not, use parse_structure_file to find nested structures
     const structure = parse_structure_file(content, filename)
