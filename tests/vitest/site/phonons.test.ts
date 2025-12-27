@@ -1,9 +1,9 @@
 import type { PhononBandStructure } from '$lib/spectral'
+import { phonon_bands, phonon_dos } from '$site/phonons'
 import { describe, expect, it } from 'vitest'
 
 describe(`Phonon Module Tests`, () => {
-  it(`imports phonon module with phonon_bands and phonon_dos`, async () => {
-    const { phonon_bands, phonon_dos } = await import(`$site/phonons`)
+  it(`imports phonon module with phonon_bands and phonon_dos`, () => {
     expect(phonon_bands).toBeDefined()
     expect(phonon_dos).toBeDefined()
     expect(typeof phonon_bands).toBe(`object`)
@@ -11,8 +11,7 @@ describe(`Phonon Module Tests`, () => {
     expect(Object.keys(phonon_bands).length).toBeGreaterThan(0)
   })
 
-  it(`transforms band structures with all required fields and correct types`, async () => {
-    const { phonon_bands } = await import(`$site/phonons`)
+  it(`transforms band structures with all required fields and correct types`, () => {
     const keys = Object.keys(phonon_bands)
     expect(keys.length).toBeGreaterThan(0)
 
@@ -61,9 +60,7 @@ describe(`Phonon Module Tests`, () => {
     }
   })
 
-  it(`assigns labels to qpoints and matches labels_dict`, async () => {
-    const { phonon_bands } = await import(`$site/phonons`)
-
+  it(`assigns labels to qpoints and matches labels_dict`, () => {
     // Test all band structures
     for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
       const labeled_points = band_struct.qpoints.filter((qpt) => qpt.label !== null)
@@ -97,9 +94,7 @@ describe(`Phonon Module Tests`, () => {
     }
   })
 
-  it(`preserves valid fractional coordinates in qpoints`, async () => {
-    const { phonon_bands } = await import(`$site/phonons`)
-
+  it(`preserves valid fractional coordinates in qpoints`, () => {
     // Test all band structures
     for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
       band_struct.qpoints.forEach((q_point) => {
@@ -121,9 +116,7 @@ describe(`Phonon Module Tests`, () => {
     }
   })
 
-  it(`calculates cumulative distances correctly and monotonically`, async () => {
-    const { phonon_bands } = await import(`$site/phonons`)
-
+  it(`calculates cumulative distances correctly and monotonically`, () => {
     // Test all band structures
     for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
       expect(band_struct.qpoints[0].distance).toBe(0)
@@ -152,9 +145,7 @@ describe(`Phonon Module Tests`, () => {
     }
   })
 
-  it(`creates branches that properly cover and connect labeled points`, async () => {
-    const { phonon_bands } = await import(`$site/phonons`)
-
+  it(`creates branches that properly cover and connect labeled points`, () => {
     // Test all band structures
     for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
       expect(band_struct.branches.length).toBeGreaterThan(0)
@@ -199,8 +190,7 @@ describe(`Phonon Module Tests`, () => {
     }
   })
 
-  it(`exports DOS data with valid frequencies and densities`, async () => {
-    const { phonon_dos } = await import(`$site/phonons`)
+  it(`exports DOS data with valid frequencies and densities`, () => {
     const keys = Object.keys(phonon_dos)
     expect(keys.length).toBeGreaterThan(0)
 
@@ -226,9 +216,7 @@ describe(`Phonon Module Tests`, () => {
     }
   })
 
-  it(`validates cumulative distance consistency and reciprocal lattice presence`, async () => {
-    const { phonon_bands } = await import(`$site/phonons`)
-
+  it(`validates cumulative distance consistency and reciprocal lattice presence`, () => {
     // Verify reciprocal lattice exists and validate distance consistency
     for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
       // Verify lattice exists (used in distance calculations)
@@ -261,9 +249,7 @@ describe(`Phonon Module Tests`, () => {
     }
   })
 
-  it(`splits single-label paths into head and tail branches`, async () => {
-    const { phonon_bands } = await import(`$site/phonons`)
-
+  it(`splits single-label paths into head and tail branches`, () => {
     // Check if any band structure has exactly one labeled point
     for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
       const labeled_qpoints = band_struct.qpoints.filter((qpt) => qpt.label !== null)
