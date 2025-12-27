@@ -1,12 +1,12 @@
 import type { ElementSymbol, Species } from '$lib'
 import type { Vec3, Vec9 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
+import type { WyckoffPos } from '$lib/symmetry'
 import {
   apply_symmetry_operations,
   map_wyckoff_to_all_atoms,
   simplicity_score,
   wyckoff_positions_from_moyo,
-  type WyckoffPos,
 } from '$lib/symmetry'
 import { structures } from '$site/structures'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
