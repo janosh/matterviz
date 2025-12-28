@@ -26,6 +26,7 @@ describe(`PhaseDiagramExportPane`, () => {
     mock_svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
     mock_svg.setAttribute(`width`, `800`)
     mock_svg.setAttribute(`height`, `600`)
+    mock_svg.classList.add(`binary-phase-diagram`) // Required class for component query
     wrapper_div.appendChild(mock_svg)
     document.body.appendChild(wrapper_div)
     vi.clearAllMocks()
