@@ -1,4 +1,5 @@
-import type { PhaseDiagramData, PhaseRegion } from '$lib/phase-diagram/types'
+import { point_in_polygon } from '$lib/math'
+import type { PhaseDiagramData, PhaseRegion } from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
   calculate_polygon_bounds,
@@ -14,7 +15,6 @@ import {
   merge_phase_diagram_config,
   PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
-  point_in_polygon,
   transform_vertices,
 } from '$lib/phase-diagram/utils'
 import { describe, expect, test } from 'vitest'
@@ -143,7 +143,8 @@ describe(`generate_region_path`, () => {
       [100, 100],
       [0, 100],
     ]
-    expect(generate_region_path(vertices)).toBe(`M 0 0 L 100 0 L 100 100 L 0 100 Z`)
+    // d3-shape uses compact format: M0,0L100,0... instead of M 0 0 L 100 0...
+    expect(generate_region_path(vertices)).toBe(`M0,0L100,0L100,100L0,100 Z`)
   })
 
   test(`returns empty string for fewer than 3 vertices`, () => {
@@ -160,7 +161,8 @@ describe(`generate_boundary_path`, () => {
       [50, 50],
       [100, 100],
     ]
-    expect(generate_boundary_path(points)).toBe(`M 0 0 L 50 50 L 100 100`)
+    // d3-shape uses compact format
+    expect(generate_boundary_path(points)).toBe(`M0,0L50,50L100,100`)
   })
 
   test(`returns empty string for fewer than 2 points`, () => {

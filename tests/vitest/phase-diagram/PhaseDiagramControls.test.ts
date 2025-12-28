@@ -184,11 +184,11 @@ describe(`PhaseDiagramControls`, () => {
   })
 
   test.each([
-    [`show_boundaries`, `Boundaries`, true],
-    [`show_labels`, `Labels`, true],
-    [`show_grid`, `Grid`, true],
-    [`show_component_labels`, `Comp. Labels`, true],
-  ])(`default value for %s is %s`, (prop_name, label_text, expected_value) => {
+    [`Boundaries`, true],
+    [`Labels`, true],
+    [`Grid`, true],
+    [`Comp. Labels`, true],
+  ])(`checkbox "%s" defaults to %s`, (label_text, expected_value) => {
     const target = document.createElement(`div`)
     mount(PhaseDiagramControls, {
       target,
@@ -204,8 +204,7 @@ describe(`PhaseDiagramControls`, () => {
       return label?.textContent?.includes(label_text)
     }) as HTMLInputElement | undefined
 
-    expect(checkbox, `checkbox for ${prop_name} (label: "${label_text}") not found`)
-      .toBeDefined()
+    expect(checkbox, `checkbox "${label_text}" not found`).toBeDefined()
     expect(checkbox?.checked).toBe(expected_value)
   })
 

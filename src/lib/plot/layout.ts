@@ -62,23 +62,38 @@ export const calc_auto_padding = ({
   }
 }
 
-// Constrain tooltip position within chart bounds
+// Constrain tooltip position within bounds with optional flip logic
+// When flip=true, tooltip flips to opposite side if it would overflow
 export function constrain_tooltip_position(
-  base_x: number,
-  base_y: number,
+  cursor_x: number,
+  cursor_y: number,
   tooltip_width: number,
   tooltip_height: number,
-  chart_width: number,
-  chart_height: number,
-) {
-  // Calculate the maximum allowable position for the tooltip
-  const max_x = Math.max(10, chart_width - tooltip_width - 10)
-  const max_y = Math.max(10, chart_height - tooltip_height - 10)
+  viewport_width: number,
+  viewport_height: number,
+  options: { offset?: number; flip?: boolean } = {},
+): { x: number; y: number } {
+  const { offset = 10, flip = false } = options
 
-  return {
-    x: Math.min(max_x, Math.max(10, base_x + 5)),
-    y: Math.min(max_y, Math.max(10, base_y - 10)),
+  if (flip) { // Flip direction if too close to edge
+    const flip_x = cursor_x + offset + tooltip_width > viewport_width
+    const flip_y = cursor_y + offset + tooltip_height > viewport_height
+
+    const raw_x = flip_x ? cursor_x - offset - tooltip_width : cursor_x + offset
+    const raw_y = flip_y ? cursor_y - offset - tooltip_height : cursor_y + offset
+
+    const x = Math.max(0, Math.min(raw_x, viewport_width - tooltip_width))
+    const y = Math.max(0, Math.min(raw_y, viewport_height - tooltip_height))
+    return { x, y }
   }
+
+  // Simple clamping without flip (original behavior)
+  const max_x = Math.max(offset, viewport_width - tooltip_width - offset)
+  const max_y = Math.max(offset, viewport_height - tooltip_height - offset)
+
+  const x = Math.min(max_x, Math.max(offset, cursor_x + 5))
+  const y = Math.min(max_y, Math.max(offset, cursor_y - offset))
+  return { x, y }
 }
 
 // Legend auto-placement for plot components

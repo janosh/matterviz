@@ -94,11 +94,17 @@
     <button
       type="button"
       onclick={() => svg && export_svg_as_svg(svg, `${full_filename}.svg`)}
+      disabled={!svg}
       title="Download SVG"
     >
       ⬇
     </button>
-    <button type="button" onclick={copy_svg} title="Copy SVG to clipboard">
+    <button
+      type="button"
+      onclick={copy_svg}
+      disabled={!svg}
+      title="Copy SVG to clipboard"
+    >
       {copy_status.svg ? copy_confirm : `📋`}
     </button>
   </label>
@@ -107,6 +113,7 @@
     <button
       type="button"
       onclick={() => svg && export_svg_as_png(svg, `${full_filename}.png`, png_dpi)}
+      disabled={!svg}
       title={`Download PNG (${png_dpi} DPI)`}
     >
       ⬇

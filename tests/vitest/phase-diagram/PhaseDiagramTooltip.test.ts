@@ -1,5 +1,4 @@
-import { PhaseDiagramTooltip } from '$lib/phase-diagram'
-import type { LeverRuleResult } from '$lib/phase-diagram/types'
+import { type LeverRuleResult, PhaseDiagramTooltip } from '$lib/phase-diagram'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { create_hover_info } from './fixtures/test-data'

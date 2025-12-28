@@ -1,5 +1,6 @@
 import type { LatticeParams, Pbc } from '$lib/structure/index'
 
+export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]
 export type Vec4 = [number, number, number, number]
 export type Vec9 = [
@@ -435,4 +436,91 @@ export function is_square_matrix(matrix: unknown, dim: number): boolean {
   if (!Array.isArray(matrix)) return false
   if (matrix.length !== dim) return false
   return matrix.every((row) => Array.isArray(row) && row.length === dim)
+}
+
+// --- 2D Geometry Utilities ---
+
+// Point-in-polygon test using ray casting algorithm
+// Returns true if point (x, y) is inside the polygon defined by vertices
+export function point_in_polygon(
+  point_x: number,
+  point_y: number,
+  vertices: Vec2[],
+): boolean {
+  if (vertices.length < 3) return false
+  let [inside, prev_idx] = [false, vertices.length - 1]
+
+  for (let idx = 0; idx < vertices.length; idx++) {
+    const [x_i, y_i] = vertices[idx]
+    const [x_j, y_j] = vertices[prev_idx]
+
+    // Check if ray from point crosses this edge (skip horizontal edges)
+    if (y_i !== y_j && y_i > point_y !== y_j > point_y) {
+      const x_intersect = ((x_j - x_i) * (point_y - y_i)) / (y_j - y_i) + x_i
+      if (point_x < x_intersect) inside = !inside
+    }
+    prev_idx = idx
+  }
+
+  return inside
+}
+
+// Compute axis-aligned bounding box of 2D vertices
+export function compute_bounding_box_2d(vertices: Vec2[]): {
+  min: Vec2
+  max: Vec2
+  width: number
+  height: number
+} {
+  if (vertices.length === 0) {
+    return { min: [0, 0], max: [0, 0], width: 0, height: 0 }
+  }
+
+  let [min_x, min_y] = vertices[0]
+  let [max_x, max_y] = vertices[0]
+
+  for (const [x, y] of vertices) {
+    if (x < min_x) min_x = x
+    if (x > max_x) max_x = x
+    if (y < min_y) min_y = y
+    if (y > max_y) max_y = y
+  }
+
+  const width = max_x - min_x
+  const height = max_y - min_y
+  return { min: [min_x, min_y], max: [max_x, max_y], width, height }
+}
+
+// Calculate true geometric centroid of a polygon using shoelace formula
+// Falls back to vertex average for degenerate cases (< 3 vertices or zero area)
+export function polygon_centroid(vertices: Vec2[]): Vec2 {
+  if (vertices.length === 0) return [0, 0]
+  if (vertices.length < 3) {
+    const sum_x = vertices.reduce((acc, [x]) => acc + x, 0)
+    const sum_y = vertices.reduce((acc, [, y]) => acc + y, 0)
+    return [sum_x / vertices.length, sum_y / vertices.length]
+  }
+
+  let [signed_area, cx, cy] = [0, 0, 0]
+
+  for (let idx = 0; idx < vertices.length; idx++) {
+    const [x0, y0] = vertices[idx]
+    const [x1, y1] = vertices[(idx + 1) % vertices.length]
+    const cross = x0 * y1 - x1 * y0
+    signed_area += cross
+    cx += (x0 + x1) * cross
+    cy += (y0 + y1) * cross
+  }
+
+  signed_area *= 0.5
+
+  // Fall back to vertex average for degenerate polygons
+  if (Math.abs(signed_area) < EPS) {
+    const sum_x = vertices.reduce((acc, [x]) => acc + x, 0)
+    const sum_y = vertices.reduce((acc, [, y]) => acc + y, 0)
+    return [sum_x / vertices.length, sum_y / vertices.length]
+  }
+
+  const factor = 1 / (6 * signed_area)
+  return [cx * factor, cy * factor]
 }

@@ -1,5 +1,7 @@
 import { format_num } from '$lib'
+import * as math from '$lib/math'
 import type { Sides } from '$lib/plot'
+import { line } from 'd3-shape'
 import type {
   LeverRuleResult,
   PhaseDiagramConfig,
@@ -55,60 +57,32 @@ export function merge_phase_diagram_config(config: Partial<PhaseDiagramConfig>) 
   }
 }
 
-// Base RGB values for phase colors (without alpha) - single source of truth
-export const PHASE_COLOR_RGB = Object.freeze({
-  liquid: `135, 206, 250`,
-  alpha: `144, 238, 144`,
-  beta: `255, 182, 193`,
-  gamma: `255, 218, 185`,
-  two_phase: `200, 200, 200`,
-  default: `180, 180, 180`,
-  tie_line: `255, 107, 107`, // #ff6b6b - used for tie-line visualization
-})
+// Phase colors - single source of truth as [R, G, B, alpha] tuples
+const PHASE_COLOR_BASE = {
+  liquid: [135, 206, 250, 0.6],
+  alpha: [144, 238, 144, 0.6],
+  beta: [255, 182, 193, 0.6],
+  gamma: [255, 218, 185, 0.6],
+  two_phase: [200, 200, 200, 0.5],
+  default: [180, 180, 180, 0.5],
+  tie_line: [255, 107, 107, 1], // #ff6b6b
+} as const
 
-// Common phase colors for consistent styling (derived from RGB values)
-export const PHASE_COLORS = Object.freeze({
-  liquid: `rgba(${PHASE_COLOR_RGB.liquid}, 0.6)`,
-  alpha: `rgba(${PHASE_COLOR_RGB.alpha}, 0.6)`,
-  beta: `rgba(${PHASE_COLOR_RGB.beta}, 0.6)`,
-  gamma: `rgba(${PHASE_COLOR_RGB.gamma}, 0.6)`,
-  two_phase: `rgba(${PHASE_COLOR_RGB.two_phase}, 0.5)`,
-  default: `rgba(${PHASE_COLOR_RGB.default}, 0.5)`,
-})
+// Derive RGB string format for use with custom alpha
+export const PHASE_COLOR_RGB = Object.freeze(
+  Object.fromEntries(
+    Object.entries(PHASE_COLOR_BASE).map(([key, [r, g, b]]) => [key, `${r}, ${g}, ${b}`]),
+  ),
+) as Record<keyof typeof PHASE_COLOR_BASE, string>
 
-// Point-in-polygon test using ray casting algorithm
-// Returns true if point (x, y) is inside the polygon defined by vertices
-export function point_in_polygon(
-  point_x: number,
-  point_y: number,
-  vertices: [number, number][],
-): boolean {
-  if (vertices.length < 3) return false
-
-  let inside = false
-  const num_vertices = vertices.length
-
-  let prev_idx = num_vertices - 1
-  for (let idx = 0; idx < num_vertices; idx++) {
-    const [x_i, y_i] = vertices[idx]
-    const [x_j, y_j] = vertices[prev_idx]
-
-    // Skip horizontal edges to avoid division by zero
-    if (y_i === y_j) {
-      prev_idx = idx
-      continue
-    }
-
-    // Check if the ray from the point crosses this edge
-    const intersects = y_i > point_y !== y_j > point_y &&
-      point_x < ((x_j - x_i) * (point_y - y_i)) / (y_j - y_i) + x_i
-
-    if (intersects) inside = !inside
-    prev_idx = idx
-  }
-
-  return inside
-}
+// Derive rgba() format with default alpha
+export const PHASE_COLORS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(PHASE_COLOR_BASE).map((
+      [key, [r, g, b, a]],
+    ) => [key, `rgba(${r}, ${g}, ${b}, ${a})`]),
+  ),
+) as Record<keyof typeof PHASE_COLOR_BASE, string>
 
 // Find which phase region contains the given composition and temperature
 export function find_phase_at_point(
@@ -119,93 +93,29 @@ export function find_phase_at_point(
   // Search regions in reverse order so later-defined regions take precedence
   for (let idx = data.regions.length - 1; idx >= 0; idx--) {
     const region = data.regions[idx]
-    if (point_in_polygon(composition, temperature, region.vertices)) return region
+    if (math.point_in_polygon(composition, temperature, region.vertices)) return region
   }
   return null
 }
 
-// Generate SVG path string from vertices (closed polygon or open polyline)
-function generate_svg_path(
-  vertices: [number, number][],
-  min_points: number,
-  closed: boolean,
-): string {
-  const [first, ...rest] = vertices
-  if (!first || rest.length < min_points - 1) return ``
-  return `M ${first[0]} ${first[1]} ${rest.map(([x, y]) => `L ${x} ${y}`).join(` `)}${
-    closed ? ` Z` : ``
-  }`
-}
+// SVG path generator using d3-shape
+const path_line = line<[number, number]>().x((d) => d[0]).y((d) => d[1])
 
-// Generate closed SVG path for polygon regions
+// Generate closed SVG path for polygon regions (min 3 points)
 export const generate_region_path = (vertices: [number, number][]): string =>
-  generate_svg_path(vertices, 3, true)
+  vertices.length < 3 ? `` : `${path_line(vertices)} Z`
 
-// Generate open SVG path for boundary curves
+// Generate open SVG path for boundary curves (min 2 points)
 export const generate_boundary_path = (points: [number, number][]): string =>
-  generate_svg_path(points, 2, false)
+  points.length < 2 ? `` : path_line(points) ?? ``
 
-// Calculate the true geometric centroid of a polygon for label placement
-// Uses the shoelace formula to compute the centroid weighted by area, which
-// produces correct results for both convex and non-convex polygons.
-// Falls back to vertex average for degenerate cases (< 3 vertices or zero area).
-export function calculate_polygon_centroid(
-  vertices: [number, number][],
-): [number, number] {
-  if (vertices.length === 0) return [0, 0]
-  if (vertices.length < 3) {
-    // For fewer than 3 vertices, use simple average
-    const sum_x = vertices.reduce((acc, [x]) => acc + x, 0)
-    const sum_y = vertices.reduce((acc, [, y]) => acc + y, 0)
-    return [sum_x / vertices.length, sum_y / vertices.length]
-  }
+// Re-export from math.ts for backwards compatibility
+export const calculate_polygon_centroid = math.polygon_centroid
 
-  // Calculate signed area and centroid using shoelace formula
-  let signed_area = 0
-  let centroid_x = 0
-  let centroid_y = 0
-
-  for (let idx = 0; idx < vertices.length; idx++) {
-    const [x0, y0] = vertices[idx]
-    const [x1, y1] = vertices[(idx + 1) % vertices.length]
-    const cross = x0 * y1 - x1 * y0
-    signed_area += cross
-    centroid_x += (x0 + x1) * cross
-    centroid_y += (y0 + y1) * cross
-  }
-
-  signed_area *= 0.5
-
-  // Fall back to vertex average for degenerate polygons (near-zero area)
-  if (Math.abs(signed_area) < 1e-10) {
-    const sum_x = vertices.reduce((acc, [x]) => acc + x, 0)
-    const sum_y = vertices.reduce((acc, [, y]) => acc + y, 0)
-    return [sum_x / vertices.length, sum_y / vertices.length]
-  }
-
-  const factor = 1 / (6 * signed_area)
-  return [centroid_x * factor, centroid_y * factor]
-}
-
-// Calculate bounding box of a polygon
+// Calculate bounding box of a polygon (wrapper for math.compute_bounding_box_2d)
 export function calculate_polygon_bounds(vertices: [number, number][]) {
-  if (vertices.length === 0) {
-    return { min_x: 0, max_x: 0, min_y: 0, max_y: 0, width: 0, height: 0 }
-  }
-
-  let [min_x, max_x] = [Infinity, -Infinity]
-  let [min_y, max_y] = [Infinity, -Infinity]
-
-  for (const [x_coord, y_coord] of vertices) {
-    if (x_coord < min_x) min_x = x_coord
-    if (x_coord > max_x) max_x = x_coord
-    if (y_coord < min_y) min_y = y_coord
-    if (y_coord > max_y) max_y = y_coord
-  }
-
-  const width = max_x - min_x
-  const height = max_y - min_y
-  return { min_x, max_x, min_y, max_y, width, height }
+  const { min, max, width, height } = math.compute_bounding_box_2d(vertices)
+  return { min_x: min[0], max_x: max[0], min_y: min[1], max_y: max[1], width, height }
 }
 
 // Compute label properties (rotation, wrapping, scale) to fit within region bounds
@@ -313,14 +223,27 @@ export function get_default_phase_color(phase_name: string): string {
   return PHASE_COLORS.default
 }
 
+// Get RGB color string (without alpha) for a phase name - used for tie-line endpoints
+export function get_phase_color_rgb(phase_name: string): string {
+  const name_lower = phase_name.toLowerCase()
+
+  if (name_lower.includes(`liquid`) || name_lower === `l`) return PHASE_COLOR_RGB.liquid
+  if (name_lower.includes(`α`) || name_lower.includes(`alpha`)) {
+    return PHASE_COLOR_RGB.alpha
+  }
+  if (name_lower.includes(`β`) || name_lower.includes(`beta`)) return PHASE_COLOR_RGB.beta
+  if (name_lower.includes(`γ`) || name_lower.includes(`gamma`)) {
+    return PHASE_COLOR_RGB.gamma
+  }
+  return PHASE_COLOR_RGB.default
+}
+
 // Format composition value for display
 export function format_composition(
   value: number,
   unit: string = `at%`,
 ): string {
-  if (unit === `fraction`) {
-    return format_num(value, `.3f`)
-  }
+  if (unit === `fraction`) return format_num(value, `.3f`)
   return `${format_num(value * 100, `.1f`)} ${unit}`
 }
 
@@ -447,28 +370,4 @@ export function format_hover_info_text(
   }
 
   return lines.join(`\n`)
-}
-
-// Calculate tooltip position with viewport clamping and flip logic
-export function calculate_tooltip_position(
-  cursor: { x: number; y: number },
-  tooltip_size: { width: number; height: number },
-  viewport: { width: number; height: number },
-  offset: number = 15,
-): { x: number; y: number } {
-  const { width: tw, height: th } = tooltip_size
-  const { width: vw, height: vh } = viewport
-
-  // Flip direction if too close to edge
-  const flip_x = cursor.x + offset + tw > vw
-  const flip_y = cursor.y + offset + th > vh
-
-  const raw_x = flip_x ? cursor.x - offset - tw : cursor.x + offset
-  const raw_y = flip_y ? cursor.y - offset - th : cursor.y + offset
-
-  // Clamp to viewport bounds
-  return {
-    x: Math.max(0, Math.min(raw_x, vw - tw)),
-    y: Math.max(0, Math.min(raw_y, vh - th)),
-  }
 }

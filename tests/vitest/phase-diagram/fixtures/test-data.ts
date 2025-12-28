@@ -1,4 +1,4 @@
-import type { PhaseHoverInfo, PhaseRegion } from '$lib/phase-diagram/types'
+import type { PhaseHoverInfo, PhaseRegion } from '$lib/phase-diagram'
 
 // Helper to create hover info for testing
 export function create_hover_info(

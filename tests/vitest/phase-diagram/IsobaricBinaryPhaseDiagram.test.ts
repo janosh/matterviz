@@ -1,5 +1,4 @@
-import type { LeverRuleResult } from '$lib/phase-diagram/types'
-import { format_hover_info_text } from '$lib/phase-diagram/utils'
+import { format_hover_info_text, type LeverRuleResult } from '$lib/phase-diagram'
 import { describe, expect, test } from 'vitest'
 import { create_hover_info } from './fixtures/test-data'
 

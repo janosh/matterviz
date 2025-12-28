@@ -6,6 +6,7 @@
     setup_fullscreen_effect,
   } from '$lib/layout'
   import type { AxisConfig } from '$lib/plot'
+  import { constrain_tooltip_position } from '$lib/plot/layout'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -22,13 +23,13 @@
     calculate_lever_rule,
     calculate_polygon_bounds,
     calculate_polygon_centroid,
-    calculate_tooltip_position,
     compute_label_properties,
     find_phase_at_point,
     format_hover_info_text,
     generate_boundary_path,
     generate_region_path,
     get_default_phase_color,
+    get_phase_color_rgb,
     merge_phase_diagram_config,
     PHASE_COLOR_RGB,
     transform_vertices,
@@ -156,7 +157,7 @@
 
   // Transform boundaries to SVG coordinates
   const transformed_boundaries = $derived(
-    data.boundaries.map((boundary) => ({
+    (data.boundaries ?? []).map((boundary) => ({
       ...boundary,
       svg_path: generate_boundary_path(
         transform_vertices(boundary.points, x_scale, y_scale),
@@ -225,13 +226,14 @@
   // Tooltip positioning using shared utility
   const tooltip_pos = $derived.by(() => {
     if (!hover_info) return { x: 0, y: 0 }
-    return calculate_tooltip_position(
-      hover_info.position,
-      {
-        width: tooltip_el?.offsetWidth ?? 200,
-        height: tooltip_el?.offsetHeight ?? 150,
-      },
-      { width: globalThis.innerWidth ?? 1000, height: globalThis.innerHeight ?? 800 },
+    return constrain_tooltip_position(
+      hover_info.position.x,
+      hover_info.position.y,
+      tooltip_el?.offsetWidth ?? 200,
+      tooltip_el?.offsetHeight ?? 150,
+      globalThis.innerWidth ?? 1000,
+      globalThis.innerHeight ?? 800,
+      { offset: 15, flip: true },
     )
   })
 
@@ -497,8 +499,8 @@
         {@const x_right = x_scale(lr.right_composition)}
         {@const tie_line = merged_config.tie_line}
         {@const endpoints = [
-        { cx: x_left, color: PHASE_COLOR_RGB.alpha },
-        { cx: x_right, color: PHASE_COLOR_RGB.beta },
+        { cx: x_left, color: get_phase_color_rgb(lr.left_phase) },
+        { cx: x_right, color: get_phase_color_rgb(lr.right_phase) },
       ]}
         <g class="tie-line">
           <!-- Horizontal tie-line with white outline for contrast -->

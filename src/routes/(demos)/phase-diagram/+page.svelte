@@ -176,6 +176,9 @@
       current_file = filename
       update_url(filename)
       tdb = null
+    } catch (exc) {
+      console.error(`Failed to parse file "${filename}":`, exc)
+      error_message = format_error(`Failed to parse ${filename}`, exc)
     } finally {
       loading = false
     }
@@ -216,8 +219,10 @@
         const pseudo_file = new File([], file_info.name)
         handle_url_file_drop(url, pseudo_file)
         return
-      } catch {
-        // Fall through to file handling
+      } catch (exc) {
+        console.debug(
+          `Failed to parse internal drag data, falling through to file handling ${exc}`,
+        )
       }
     }
 

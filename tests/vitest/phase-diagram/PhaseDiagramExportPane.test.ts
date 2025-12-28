@@ -2,7 +2,7 @@ import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
 import type { PhaseDiagramData } from '$lib/phase-diagram'
 import { PhaseDiagramExportPane } from '$lib/phase-diagram'
 import { mount } from 'svelte'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 // Real Al-Cu phase diagram data from pycalphad computation (subset of 5 boundaries)
 import al_cu_data from './fixtures/al-cu-sample.json'
@@ -30,10 +30,6 @@ describe(`PhaseDiagramExportPane`, () => {
     wrapper_div.appendChild(mock_svg)
     document.body.appendChild(wrapper_div)
     vi.clearAllMocks()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
   })
 
   const get_button = (title_part: string): HTMLButtonElement => {
@@ -360,8 +356,8 @@ describe(`PhaseDiagramExportPane`, () => {
     const copy_btn = get_button(`Copy JSON`)
     copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
-    // Wait a bit and verify clipboard was not called
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    // Flush microtasks then verify clipboard was not called
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
 })
