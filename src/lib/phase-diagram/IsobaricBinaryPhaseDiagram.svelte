@@ -5,6 +5,7 @@
     set_fullscreen_bg,
     setup_fullscreen_effect,
   } from '$lib/layout'
+  import { compute_bounding_box_2d, polygon_centroid } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
   import { constrain_tooltip_position } from '$lib/plot/layout'
   import { scaleLinear } from 'd3-scale'
@@ -21,15 +22,13 @@
   } from './types'
   import {
     calculate_lever_rule,
-    calculate_polygon_bounds,
-    calculate_polygon_centroid,
     compute_label_properties,
     find_phase_at_point,
+    format_composition,
     format_hover_info_text,
     generate_boundary_path,
     generate_region_path,
-    get_default_phase_color,
-    get_phase_color_rgb,
+    get_phase_color,
     merge_phase_diagram_config,
     PHASE_COLOR_RGB,
     transform_vertices,
@@ -53,6 +52,8 @@
     fullscreen_toggle?: boolean
     enable_export?: boolean
     show_controls?: boolean
+    // Temperature display unit (can differ from data.temperature_unit)
+    display_temp_unit?: `K` | `°C` | `°F`
     // Controls pane
     controls_open?: boolean
     controls_props?: Partial<ComponentProps<typeof PhaseDiagramControls>>
@@ -85,6 +86,7 @@
     fullscreen_toggle = true,
     enable_export = true,
     show_controls = true,
+    display_temp_unit = $bindable(),
     controls_open = $bindable(false),
     controls_props = {},
     export_pane_open = $bindable(false),
@@ -118,8 +120,42 @@
   // Scales
   const x_scale = $derived(scaleLinear().domain([0, 1]).range([left, right]))
 
+  // Temperature conversion utilities (defined early for use in scales)
+  type TempUnit = `K` | `°C` | `°F`
+  const data_temp_unit = $derived<TempUnit>(
+    (data.temperature_unit ?? `K`) as TempUnit,
+  )
+  const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
+
+  // Convert temperature from one unit to another
+  function convert_temp(value: number, from: TempUnit, to: TempUnit): number {
+    if (from === to) return value
+    // First convert to Kelvin
+    let kelvin = value
+    if (from === `°C`) kelvin = value + 273.15
+    else if (from === `°F`) kelvin = (value - 32) * (5 / 9) + 273.15
+    // Then convert from Kelvin to target
+    if (to === `K`) return kelvin
+    if (to === `°C`) return kelvin - 273.15
+    return (kelvin - 273.15) * (9 / 5) + 32 // °F
+  }
+
+  // Convert temperature range for display
+  const display_temp_range = $derived<[number, number]>([
+    convert_temp(data.temperature_range[0], data_temp_unit, temp_unit),
+    convert_temp(data.temperature_range[1], data_temp_unit, temp_unit),
+  ])
+
+  // y_scale maps data temperatures to SVG coordinates
+  // We keep this in data units so region vertices render correctly
   const y_scale = $derived(
     scaleLinear().domain(data.temperature_range).range([bottom, top]),
+  )
+
+  // y_scale_display maps display temperatures (after unit conversion) to SVG
+  // Used for axis labels and ticks
+  const y_scale_display = $derived(
+    scaleLinear().domain(display_temp_range).range([bottom, top]),
   )
 
   // Generate tick values using d3 scale's built-in ticks method
@@ -130,16 +166,17 @@
     typeof y_axis.ticks === `number` ? y_axis.ticks : 6,
   )
   const x_ticks = $derived(x_scale.ticks(x_tick_count))
-  const y_ticks = $derived(y_scale.ticks(y_tick_count))
+  // Use display scale for y ticks so they show converted temperatures
+  const y_ticks = $derived(y_scale_display.ticks(y_tick_count))
 
   // Transform regions to SVG coordinates
   const transformed_regions = $derived(
-    (data?.regions ?? []).map((region) => {
+    (data.regions ?? []).map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
-      const bounds = calculate_polygon_bounds(svg_vertices)
+      const { width, height } = compute_bounding_box_2d(svg_vertices)
       const label_props = compute_label_properties(
         region.name,
-        bounds,
+        { width, height },
         merged_config.font_size,
       )
       return {
@@ -147,7 +184,7 @@
         svg_path: generate_region_path(svg_vertices),
         label_pos: region.label_position
           ? [x_scale(region.label_position[0]), y_scale(region.label_position[1])]
-          : calculate_polygon_centroid(svg_vertices),
+          : polygon_centroid(svg_vertices),
         label_rotation: label_props.rotation,
         label_lines: label_props.lines,
         label_scale: label_props.scale,
@@ -176,6 +213,29 @@
 
   // Hover state
   let hover_info = $state<PhaseHoverInfo | null>(null)
+  // Locked tooltip state (click to lock, click again to unlock)
+  let locked_hover_info = $state<PhaseHoverInfo | null>(null)
+
+  // Clear hover state helper (used in multiple places)
+  function clear_hover() {
+    hover_info = null
+    hovered_region = null
+    on_phase_hover?.(null)
+  }
+
+  // Handle click to lock/unlock tooltip
+  function handle_click() {
+    if (locked_hover_info) {
+      // Unlock if already locked
+      locked_hover_info = null
+    } else if (hover_info) {
+      // Lock current hover info
+      locked_hover_info = { ...hover_info }
+    }
+  }
+
+  // Effective hover info - locked takes precedence
+  const effective_hover_info = $derived(locked_hover_info ?? hover_info)
 
   // Copy feedback state
   let copy_feedback = $state<{ visible: boolean; x: number; y: number }>({
@@ -223,36 +283,46 @@
   // Tooltip element reference for measuring actual size
   let tooltip_el = $state<HTMLDivElement | null>(null)
 
-  // Tooltip positioning using shared utility
+  // Tooltip positioning using shared utility (uses effective_hover_info for locked state)
   const tooltip_pos = $derived.by(() => {
-    if (!hover_info) return { x: 0, y: 0 }
+    const info = effective_hover_info
+    if (!info) return { x: 0, y: 0 }
     return constrain_tooltip_position(
-      hover_info.position.x,
-      hover_info.position.y,
+      info.position.x,
+      info.position.y,
       tooltip_el?.offsetWidth ?? 200,
       tooltip_el?.offsetHeight ?? 150,
       globalThis.innerWidth ?? 1000,
       globalThis.innerHeight ?? 800,
-      { offset: 15, flip: true },
+      { offset: 15 },
     )
   })
 
-  function handle_mouse_move(event: MouseEvent) {
-    const svg = event.currentTarget as SVGElement
+  // Aria-live announcement text for screen readers
+  const aria_announcement = $derived.by(() => {
+    const info = effective_hover_info
+    if (!info) return ``
+    const phase_text = `${info.region.name} phase`
+    // Convert temperature from data unit to display unit for announcement
+    const display_temp = convert_temp(info.temperature, data_temp_unit, temp_unit)
+    const temp_text = `${Math.round(display_temp)} ${temp_unit}`
+    const comp_text = `${Math.round(info.composition * 100)}% ${component_b}`
+    return `${phase_text} at ${temp_text}, ${comp_text}`
+  })
+
+  // Unified pointer handler for both mouse and touch events
+  function handle_pointer_at(
+    client_x: number,
+    client_y: number,
+    svg: SVGElement,
+  ) {
     const rect = svg.getBoundingClientRect()
-    const svg_x = event.clientX - rect.left
-    const svg_y = event.clientY - rect.top
+    const svg_x = client_x - rect.left
+    const svg_y = client_y - rect.top
 
     // Check if within plot area
-    if (
-      svg_x < left ||
-      svg_x > right ||
-      svg_y < top ||
-      svg_y > bottom
-    ) {
-      hover_info = null
-      hovered_region = null
-      on_phase_hover?.(null)
+    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom) {
+      clear_hover()
       return
     }
 
@@ -271,21 +341,48 @@
         region,
         composition,
         temperature,
-        position: { x: event.clientX, y: event.clientY },
+        position: { x: client_x, y: client_y },
         lever_rule: lever_rule ?? undefined,
       }
       on_phase_hover?.(hover_info)
     } else {
-      hover_info = null
-      hovered_region = null
-      on_phase_hover?.(null)
+      clear_hover()
     }
   }
 
+  function handle_mouse_move(event: MouseEvent) {
+    handle_pointer_at(event.clientX, event.clientY, event.currentTarget as SVGElement)
+  }
+
+  // Touch support for mobile devices
+  function handle_touch_move(event: TouchEvent) {
+    if (event.touches.length !== 1) return
+    const touch = event.touches[0]
+    handle_pointer_at(touch.clientX, touch.clientY, event.currentTarget as SVGElement)
+    // Prevent scrolling while interacting with the diagram
+    event.preventDefault()
+  }
+
+  function handle_touch_end() {
+    // Don't clear hover on touch end to allow reading the tooltip
+    // User can tap elsewhere or tap the locked region to dismiss
+  }
+
   function handle_mouse_leave() {
-    hover_info = null
-    hovered_region = null
-    on_phase_hover?.(null)
+    // Don't clear if tooltip is locked
+    if (!locked_hover_info) clear_hover()
+  }
+
+  // Keyboard shortcut handler (Ctrl+Shift+E for export)
+  function handle_keyboard_shortcut(event: KeyboardEvent) {
+    if (event.ctrlKey && event.shiftKey && event.key === `E`) {
+      event.preventDefault()
+      export_pane_open = !export_pane_open
+    }
+    // Escape to unlock tooltip
+    if (event.key === `Escape` && locked_hover_info) {
+      locked_hover_info = null
+    }
   }
 
   // Fullscreen handling
@@ -294,25 +391,42 @@
     set_fullscreen_bg(wrapper, fullscreen, `--phase-diagram-bg-fullscreen`)
   })
 
+  // Cleanup timeout on unmount to prevent memory leaks
+  $effect(() => {
+    return () => {
+      if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
+    }
+  })
+
   // Component labels
   const component_a = $derived(data.components[0])
   const component_b = $derived(data.components[1])
-  const temp_unit = $derived(data.temperature_unit ?? `K`)
   const comp_unit = $derived(data.composition_unit ?? `at%`)
 
-  // Format x-axis tick label with same precision as format_composition in utils.ts
-  const format_x_tick = (value: number): string => {
-    if (comp_unit === `fraction`) {
-      return format_num(value, `.3f`)
-    }
-    return `${format_num(value * 100, `.1f`)}`
-  }
+  // Format x-axis tick label (uses shared format_composition without unit suffix)
+  const format_x_tick = (value: number): string =>
+    format_composition(value, comp_unit, false)
 </script>
+
+<!-- Grid lines snippet for DRY rendering -->
+{#snippet grid_lines(ticks: number[], vertical: boolean)}
+  {#each ticks as tick (tick)}
+    <line
+      x1={vertical ? x_scale(tick) : left}
+      y1={vertical ? top : y_scale_display(tick)}
+      x2={vertical ? x_scale(tick) : right}
+      y2={vertical ? bottom : y_scale_display(tick)}
+      stroke={merged_config.colors.grid}
+      stroke-dasharray="4"
+    />
+  {/each}
+{/snippet}
 
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = Boolean(document.fullscreenElement)
   }}
+  onkeydown={handle_keyboard_shortcut}
 />
 
 <div
@@ -359,16 +473,36 @@
       {/if}
     </div>
 
+    <!-- Aria-live region for screen reader announcements -->
+    <div class="sr-only" aria-live="polite" aria-atomic="true">
+      {aria_announcement}
+    </div>
+
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <svg
       class="binary-phase-diagram"
       {width}
       {height}
       onmousemove={handle_mouse_move}
       onmouseleave={handle_mouse_leave}
+      onclick={handle_click}
+      onkeydown={(event) => {
+        // Enter/Space to toggle lock when focused
+        if (event.key === `Enter` || event.key === ` `) {
+          event.preventDefault()
+          handle_click()
+        }
+      }}
       ondblclick={handle_double_click}
-      style={`display: block; cursor: ${hover_info ? `crosshair` : `default`};`}
-      role="img"
-      aria-label="Binary phase diagram"
+      ontouchmove={handle_touch_move}
+      ontouchend={handle_touch_end}
+      tabindex="0"
+      style={`display: block; cursor: ${
+        effective_hover_info ? `crosshair` : `default`
+      }; touch-action: none;`}
+      role="application"
+      aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press Ctrl+Shift+E to export."
     >
       <!-- Background -->
       <rect
@@ -382,28 +516,8 @@
       <!-- Grid lines -->
       {#if show_grid}
         <g class="grid">
-          <!-- Vertical grid lines -->
-          {#each x_ticks as tick (tick)}
-            <line
-              x1={x_scale(tick)}
-              y1={top}
-              x2={x_scale(tick)}
-              y2={bottom}
-              stroke={merged_config.colors.grid}
-              stroke-dasharray="4"
-            />
-          {/each}
-          <!-- Horizontal grid lines -->
-          {#each y_ticks as tick (tick)}
-            <line
-              x1={left}
-              y1={y_scale(tick)}
-              x2={right}
-              y2={y_scale(tick)}
-              stroke={merged_config.colors.grid}
-              stroke-dasharray="4"
-            />
-          {/each}
+          {@render grid_lines(x_ticks, true)}
+          {@render grid_lines(y_ticks, false)}
         </g>
       {/if}
 
@@ -412,7 +526,7 @@
         {#each transformed_regions as region (region.id)}
           <path
             d={region.svg_path}
-            fill={region.color || get_default_phase_color(region.name)}
+            fill={region.color || get_phase_color(region.name)}
             stroke="none"
             class:hovered={hovered_region?.id === region.id}
           />
@@ -492,17 +606,18 @@
       {/if}
 
       <!-- Tie-line visualization for two-phase regions -->
-      {#if hover_info?.lever_rule}
-        {@const lr = hover_info.lever_rule}
-        {@const y_pos = y_scale(hover_info.temperature)}
+      {#if effective_hover_info?.lever_rule}
+        {@const info = effective_hover_info}
+        {@const lr = effective_hover_info.lever_rule}
+        {@const y_pos = y_scale(info.temperature)}
         {@const x_left = x_scale(lr.left_composition)}
         {@const x_right = x_scale(lr.right_composition)}
         {@const tie_line = merged_config.tie_line}
         {@const endpoints = [
-        { cx: x_left, color: get_phase_color_rgb(lr.left_phase) },
-        { cx: x_right, color: get_phase_color_rgb(lr.right_phase) },
+        { cx: x_left, color: get_phase_color(lr.left_phase, `rgb`) },
+        { cx: x_right, color: get_phase_color(lr.right_phase, `rgb`) },
       ]}
-        <g class="tie-line">
+        <g class="tie-line" class:locked={locked_hover_info}>
           <!-- Horizontal tie-line with white outline for contrast -->
           {#each [`white`, `rgb(${PHASE_COLOR_RGB.tie_line})`] as stroke, idx (idx)}
             <line
@@ -528,7 +643,7 @@
           {/each}
           <!-- Cursor position marker -->
           <circle
-            cx={x_scale(hover_info.composition)}
+            cx={x_scale(info.composition)}
             cy={y_pos}
             r={tie_line.cursor_radius}
             fill="rgb({PHASE_COLOR_RGB.tie_line})"
@@ -589,7 +704,7 @@
           stroke-width={1}
         />
         {#each y_ticks as tick (tick)}
-          <g transform="translate({left}, {y_scale(tick)})">
+          <g transform="translate({left}, {y_scale_display(tick)})">
             <line x2={-6} stroke={merged_config.colors.axis} />
             <text
               x={-10}
@@ -606,7 +721,7 @@
         <text
           transform="rotate(-90)"
           x={-(top + plot_height / 2)}
-          y={20}
+          y={12}
           text-anchor="middle"
           fill={merged_config.colors.text}
           font-size={merged_config.font_size + 2}
@@ -636,19 +751,23 @@
       {/if}
     </svg>
 
-    <!-- Tooltip -->
-    {#if hover_info}
+    <!-- Tooltip (uses effective_hover_info which respects locked state) -->
+    {#if effective_hover_info}
       <div
         bind:this={tooltip_el}
         class="tooltip-container"
+        class:locked={locked_hover_info}
         style:left="{tooltip_pos.x}px"
         style:top="{tooltip_pos.y}px"
       >
+        {#if locked_hover_info}
+          <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
+        {/if}
         {#if tooltip}
-          {@render tooltip(hover_info)}
+          {@render tooltip(effective_hover_info)}
         {:else}
           <PhaseDiagramTooltip
-            {hover_info}
+            hover_info={effective_hover_info}
             temperature_unit={temp_unit}
             composition_unit={comp_unit}
             {component_a}
@@ -733,11 +852,57 @@
   }
   .tie-line {
     pointer-events: none;
+    animation: tie-line-fade-in 150ms ease-out;
+  }
+  .tie-line.locked {
+    /* Slightly different appearance when locked */
+    filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
+  }
+  @keyframes tie-line-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
   .tooltip-container {
     position: fixed;
     z-index: 1000;
     pointer-events: none;
+  }
+  .tooltip-container.locked {
+    /* Allow pointer events when locked so user can interact with tooltip */
+    pointer-events: auto;
+    /* Add subtle visual distinction for locked state */
+    filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
+  }
+  .tooltip-lock-indicator {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    font-size: 12px;
+    background: rgba(99, 102, 241, 0.9);
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  /* Screen reader only - visually hidden but accessible */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
   .copy-feedback {
     position: fixed;

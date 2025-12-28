@@ -882,6 +882,7 @@
       tooltip_size.height,
       width,
       height,
+      { offset_x: 5, offset_y: -10 },
     )}
     {@const active_y_config = active_y_axis === `y2` ? final_y2_axis : final_y_axis}
     <PlotTooltip x={tooltip_pos.x} y={tooltip_pos.y} offset={{ x: 0, y: 0 }}>

@@ -56,7 +56,7 @@
   import { Tween } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
   import { get_relative_coords } from './interactions'
-  import { calc_auto_padding } from './layout'
+  import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import {
     create_color_scale,
     create_size_scale,
@@ -1621,7 +1621,22 @@
       }
       return `rgba(0, 0, 0, 0.7)`
     })()}
-      <PlotTooltip x={handler_props.cx} y={handler_props.cy} bg_color={tooltip_bg_color}>
+      {@const tooltip_size = { width: 120, height: 50 }}
+      {@const tooltip_pos = constrain_tooltip_position(
+      handler_props.cx,
+      handler_props.cy,
+      tooltip_size.width,
+      tooltip_size.height,
+      width,
+      height,
+      { offset_x: 10, offset_y: 5 },
+    )}
+      <PlotTooltip
+        x={tooltip_pos.x}
+        y={tooltip_pos.y}
+        offset={{ x: 0, y: 0 }}
+        bg_color={tooltip_bg_color}
+      >
         {#if tooltip}
           {@render tooltip(handler_props)}
         {:else}

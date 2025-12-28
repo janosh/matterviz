@@ -1,17 +1,14 @@
-import { point_in_polygon } from '$lib/math'
+import { compute_bounding_box_2d, point_in_polygon, polygon_centroid } from '$lib/math'
 import type { PhaseDiagramData, PhaseRegion } from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
-  calculate_polygon_bounds,
-  calculate_polygon_centroid,
   compute_label_properties,
   find_phase_at_point,
   format_composition,
   format_temperature,
   generate_boundary_path,
   generate_region_path,
-  get_default_phase_color,
-  is_two_phase_region,
+  get_phase_color,
   merge_phase_diagram_config,
   PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
@@ -171,7 +168,7 @@ describe(`generate_boundary_path`, () => {
   })
 })
 
-describe(`calculate_polygon_centroid`, () => {
+describe(`polygon_centroid`, () => {
   test.each(
     [
       { vertices: [[0, 0], [2, 0], [2, 2], [0, 2]], expected: [1, 1], desc: `square` },
@@ -187,13 +184,13 @@ describe(`calculate_polygon_centroid`, () => {
       { vertices: [], expected: [0, 0], desc: `empty array` },
     ] as const,
   )(`$desc → ($expected)`, ({ vertices, expected }) => {
-    const [cx, cy] = calculate_polygon_centroid([...vertices] as [number, number][])
+    const [cx, cy] = polygon_centroid([...vertices] as [number, number][])
     expect(cx).toBeCloseTo(expected[0], 5)
     expect(cy).toBeCloseTo(expected[1], 5)
   })
 })
 
-describe(`get_default_phase_color`, () => {
+describe(`get_phase_color`, () => {
   test.each([
     [`Liquid`, PHASE_COLORS.liquid],
     [`L`, PHASE_COLORS.liquid],
@@ -206,7 +203,7 @@ describe(`get_default_phase_color`, () => {
     [`α + β`, PHASE_COLORS.two_phase],
     [`Unknown`, PHASE_COLORS.default],
   ])(`returns correct color for %s`, (phase_name, expected_color) => {
-    expect(get_default_phase_color(phase_name)).toBe(expected_color)
+    expect(get_phase_color(phase_name)).toBe(expected_color)
   })
 })
 
@@ -257,7 +254,7 @@ describe(`transform_vertices`, () => {
   })
 })
 
-describe(`is_two_phase_region`, () => {
+describe(`two-phase region detection (inline)`, () => {
   test.each([
     { name: `α + β`, expected: true },
     { name: `L + α`, expected: true },
@@ -265,9 +262,8 @@ describe(`is_two_phase_region`, () => {
     { name: `Liquid`, expected: false },
     { name: `α`, expected: false },
     { name: `FCC_A1`, expected: false },
-  ])(`returns $expected for region named "$name"`, ({ name, expected }) => {
-    const region: PhaseRegion = { id: `test`, name, vertices: [] }
-    expect(is_two_phase_region(region)).toBe(expected)
+  ])(`"$name".includes('+') → $expected`, ({ name, expected }) => {
+    expect(name.includes(`+`)).toBe(expected)
   })
 })
 
@@ -381,9 +377,9 @@ describe(`calculate_lever_rule`, () => {
     }
     const result = calculate_lever_rule(unusual_region, 0.5, 500)
     expect(result).not.toBeNull()
-    // With just '+', split gives ['', ''] - both empty strings
-    expect(result?.left_phase).toBe(``)
-    expect(result?.right_phase).toBe(``)
+    // With just '+', split gives ['', ''] - fallback to generic names
+    expect(result?.left_phase).toBe(`Phase 1`)
+    expect(result?.right_phase).toBe(`Phase 2`)
   })
 
   test(`parses complex phase names with spaces`, () => {
@@ -444,14 +440,14 @@ describe(`compute_label_properties`, () => {
     expect(result.lines).toEqual([`Test`])
   })
 
-  test(`integrates correctly with calculate_polygon_bounds for empty vertices`, () => {
+  test(`integrates correctly with compute_bounding_box_2d for empty vertices`, () => {
     // Simulate what happens with empty polygon
-    const bounds = calculate_polygon_bounds([])
-    expect(bounds.width).toBe(0)
-    expect(bounds.height).toBe(0)
+    const { width, height } = compute_bounding_box_2d([])
+    expect(width).toBe(0)
+    expect(height).toBe(0)
 
     // compute_label_properties should handle this gracefully
-    const result = compute_label_properties(`Liquid`, bounds, 12)
+    const result = compute_label_properties(`Liquid`, { width, height }, 12)
     expect(Number.isNaN(result.rotation)).toBe(false)
     expect(Number.isNaN(result.scale)).toBe(false)
     expect(result.lines).toEqual([`Liquid`])

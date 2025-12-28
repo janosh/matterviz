@@ -23,6 +23,7 @@
       md: `rgba(255, 215, 0, 0.8)`,
       yaml: `rgba(255, 0, 255, 0.8)`,
       xdatcar: `rgba(255, 215, 0, 0.8)`,
+      tdb: `rgba(0, 188, 212, 0.8)`, // Cyan for thermodynamic database files
     },
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {

@@ -91,16 +91,16 @@
   }
 
   // Derive component info from data
-  let component_a = $derived(data?.components?.[0])
-  let component_b = $derived(data?.components?.[1])
-  let title = $derived(
+  const component_a = $derived(data?.components?.[0])
+  const component_b = $derived(data?.components?.[1])
+  const title = $derived(
     component_a && component_b
       ? `${component_a}-${component_b} Phase Diagram`
       : `Phase Diagram Controls`,
   )
-  let temp_unit = $derived(data?.temperature_unit ?? `K`)
-  let comp_unit = $derived(data?.composition_unit ?? `at%`)
-  let has_special_points = $derived((data?.special_points?.length ?? 0) > 0)
+  const temp_unit = $derived(data?.temperature_unit ?? `K`)
+  const comp_unit = $derived(data?.composition_unit ?? `at%`)
+  const has_special_points = $derived((data?.special_points?.length ?? 0) > 0)
 </script>
 
 <!-- Reusable snippet for number + range input pairs -->

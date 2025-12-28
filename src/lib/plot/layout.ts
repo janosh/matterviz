@@ -62,8 +62,8 @@ export const calc_auto_padding = ({
   }
 }
 
-// Constrain tooltip position within bounds with optional flip logic
-// When flip=true, tooltip flips to opposite side if it would overflow
+// Constrain tooltip position within bounds, flipping to opposite side if overflow
+// offset_x/offset_y control initial positioning: positive = right/down, negative = left/up
 export function constrain_tooltip_position(
   cursor_x: number,
   cursor_y: number,
@@ -71,29 +71,40 @@ export function constrain_tooltip_position(
   tooltip_height: number,
   viewport_width: number,
   viewport_height: number,
-  options: { offset?: number; flip?: boolean } = {},
+  options: { offset?: number; offset_x?: number; offset_y?: number } = {},
 ): { x: number; y: number } {
-  const { offset = 10, flip = false } = options
+  const { offset = 10 } = options
+  const offset_x = options.offset_x ?? offset
+  const offset_y = options.offset_y ?? offset
 
-  if (flip) { // Flip direction if too close to edge
-    const flip_x = cursor_x + offset + tooltip_width > viewport_width
-    const flip_y = cursor_y + offset + tooltip_height > viewport_height
+  // Determine if we need to flip based on offset direction and overflow
+  // For positive offset: flip if tooltip would overflow on that side
+  // For negative offset: flip if tooltip would overflow on opposite side
+  const flip_x = offset_x >= 0
+    ? cursor_x + offset_x + tooltip_width > viewport_width
+    : cursor_x + offset_x - tooltip_width < 0
+  const flip_y = offset_y >= 0
+    ? cursor_y + offset_y + tooltip_height > viewport_height
+    : cursor_y + offset_y - tooltip_height < 0
 
-    const raw_x = flip_x ? cursor_x - offset - tooltip_width : cursor_x + offset
-    const raw_y = flip_y ? cursor_y - offset - tooltip_height : cursor_y + offset
+  // Calculate position: apply offset, flip if needed
+  const abs_offset_x = Math.abs(offset_x)
+  const abs_offset_y = Math.abs(offset_y)
+  const raw_x = offset_x >= 0
+    ? flip_x ? cursor_x - abs_offset_x - tooltip_width : cursor_x + abs_offset_x
+    : flip_x
+    ? cursor_x + abs_offset_x
+    : cursor_x - abs_offset_x - tooltip_width
+  const raw_y = offset_y >= 0
+    ? flip_y ? cursor_y - abs_offset_y - tooltip_height : cursor_y + abs_offset_y
+    : flip_y
+    ? cursor_y + abs_offset_y
+    : cursor_y - abs_offset_y - tooltip_height
 
-    const x = Math.max(0, Math.min(raw_x, viewport_width - tooltip_width))
-    const y = Math.max(0, Math.min(raw_y, viewport_height - tooltip_height))
-    return { x, y }
-  }
-
-  // Simple clamping without flip (original behavior)
-  const max_x = Math.max(offset, viewport_width - tooltip_width - offset)
-  const max_y = Math.max(offset, viewport_height - tooltip_height - offset)
-
-  const x = Math.min(max_x, Math.max(offset, cursor_x + 5))
-  const y = Math.min(max_y, Math.max(offset, cursor_y - offset))
-  return { x, y }
+  // Clamp to viewport bounds
+  const x_pos = Math.max(0, Math.min(raw_x, viewport_width - tooltip_width))
+  const y_pos = Math.max(0, Math.min(raw_y, viewport_height - tooltip_height))
+  return { x: x_pos, y: y_pos }
 }
 
 // Legend auto-placement for plot components
