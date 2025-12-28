@@ -145,21 +145,46 @@ export const generate_region_path = (vertices: [number, number][]): string =>
 export const generate_boundary_path = (points: [number, number][]): string =>
   generate_svg_path(points, 2, false)
 
-// Calculate the centroid of a polygon for label placement
+// Calculate the true geometric centroid of a polygon for label placement
+// Uses the shoelace formula to compute the centroid weighted by area, which
+// produces correct results for both convex and non-convex polygons.
+// Falls back to vertex average for degenerate cases (< 3 vertices or zero area).
 export function calculate_polygon_centroid(
   vertices: [number, number][],
 ): [number, number] {
   if (vertices.length === 0) return [0, 0]
-
-  let sum_x = 0
-  let sum_y = 0
-
-  for (const [x_coord, y_coord] of vertices) {
-    sum_x += x_coord
-    sum_y += y_coord
+  if (vertices.length < 3) {
+    // For fewer than 3 vertices, use simple average
+    const sum_x = vertices.reduce((acc, [x]) => acc + x, 0)
+    const sum_y = vertices.reduce((acc, [, y]) => acc + y, 0)
+    return [sum_x / vertices.length, sum_y / vertices.length]
   }
 
-  return [sum_x / vertices.length, sum_y / vertices.length]
+  // Calculate signed area and centroid using shoelace formula
+  let signed_area = 0
+  let centroid_x = 0
+  let centroid_y = 0
+
+  for (let idx = 0; idx < vertices.length; idx++) {
+    const [x0, y0] = vertices[idx]
+    const [x1, y1] = vertices[(idx + 1) % vertices.length]
+    const cross = x0 * y1 - x1 * y0
+    signed_area += cross
+    centroid_x += (x0 + x1) * cross
+    centroid_y += (y0 + y1) * cross
+  }
+
+  signed_area *= 0.5
+
+  // Fall back to vertex average for degenerate polygons (near-zero area)
+  if (Math.abs(signed_area) < 1e-10) {
+    const sum_x = vertices.reduce((acc, [x]) => acc + x, 0)
+    const sum_y = vertices.reduce((acc, [, y]) => acc + y, 0)
+    return [sum_x / vertices.length, sum_y / vertices.length]
+  }
+
+  const factor = 1 / (6 * signed_area)
+  return [centroid_x * factor, centroid_y * factor]
 }
 
 // Calculate bounding box of a polygon
@@ -183,108 +208,54 @@ export function calculate_polygon_bounds(vertices: [number, number][]) {
   return { min_x, max_x, min_y, max_y, width, height }
 }
 
-// Label positioning constants - tune these to adjust behavior
-const LABEL_CONFIG = {
-  CHAR_WIDTH_RATIO: 0.6, // Approximate ratio of character width to font size (monospace ~0.6, proportional ~0.5-0.7)
-  LINE_HEIGHT_RATIO: 1.2, // Line height as multiple of font size
-  PADDING_FACTOR: 0.8, // Padding factor (0.8 means 20% margin on each side)
-  VERTICAL_ROTATION_THRESHOLD: 0.5, // Aspect ratio threshold for vertical rotation (width/height < this triggers rotation)
-  WRAPPED_VERTICAL_THRESHOLD: 0.7, // Aspect ratio threshold for wrapped vertical text
-  MIN_SCALE_FACTOR: 1.0, // Minimum scale factor - labels never shrink
-  ACCEPTABLE_SCALE: 1.0, // Scale factor threshold for accepting scaled text
-  MIN_CHARS_PER_LINE: 3, // Minimum characters per line when wrapping
-} as const
-
-// Compute smart label properties (rotation, lines) based on region dimensions
+// Compute label properties (rotation, wrapping, scale) to fit within region bounds
 export function compute_label_properties(
   label: string,
   bounds: { width: number; height: number },
   font_size: number,
 ): { rotation: number; lines: string[]; scale: number } {
-  // Guard against degenerate bounds (zero width/height) to prevent NaN/Infinity
   if (bounds.width <= 0 || bounds.height <= 0 || !label || font_size <= 0) {
     return { rotation: 0, lines: label ? [label] : [], scale: 1 }
   }
 
-  const char_width = font_size * LABEL_CONFIG.CHAR_WIDTH_RATIO
-  const line_height = font_size * LABEL_CONFIG.LINE_HEIGHT_RATIO
+  const char_width = font_size * 0.6 // approximate character width
+  const line_height = font_size * 1.2
+  const padding = 0.8 // 20% margin
 
   const label_width = label.length * char_width
-  const label_height = line_height
+  const avail_w = bounds.width * padding
+  const avail_h = bounds.height * padding
 
-  const available_width = bounds.width * LABEL_CONFIG.PADDING_FACTOR
-  const available_height = bounds.height * LABEL_CONFIG.PADDING_FACTOR
-
-  // Case 1: Label fits horizontally
-  if (label_width <= available_width && label_height <= available_height) {
+  // Try horizontal fit
+  if (label_width <= avail_w && line_height <= avail_h) {
     return { rotation: 0, lines: [label], scale: 1 }
   }
 
-  // Case 2: Region is narrow but tall - try vertical rotation
-  const aspect_ratio = bounds.width / bounds.height
-  if (
-    aspect_ratio < LABEL_CONFIG.VERTICAL_ROTATION_THRESHOLD &&
-    label_width <= available_height &&
-    label_height <= available_width
-  ) {
+  // Try vertical for tall narrow regions
+  const is_tall = bounds.width < bounds.height
+  if (is_tall && label_width <= avail_h && line_height <= avail_w) {
     return { rotation: -90, lines: [label], scale: 1 }
   }
 
-  // Case 3: Try line breaking for multi-word labels
-  const has_delimiters = /[_\s-]/.test(label)
-  if (has_delimiters) {
-    const max_chars_per_line = Math.max(
-      LABEL_CONFIG.MIN_CHARS_PER_LINE,
-      Math.floor(available_width / char_width),
-    )
-    const wrapped_lines = wrap_text(label, max_chars_per_line)
-    const wrapped_height = wrapped_lines.length * line_height
-    const max_line_width = Math.max(...wrapped_lines.map((line) => line.length)) *
-      char_width
+  // Try wrapping multi-word labels
+  if (/[\s_-]/.test(label)) {
+    const chars_per_line = Math.max(3, Math.floor(avail_w / char_width))
+    const lines = wrap_text(label, chars_per_line)
+    const wrapped_w = Math.max(...lines.map((ln) => ln.length)) * char_width
+    const wrapped_h = lines.length * line_height
 
-    if (max_line_width <= available_width && wrapped_height <= available_height) {
-      return { rotation: 0, lines: wrapped_lines, scale: 1 }
+    if (wrapped_w <= avail_w && wrapped_h <= avail_h) {
+      return { rotation: 0, lines, scale: 1 }
     }
-
-    // Try vertical with wrapped lines
-    if (
-      aspect_ratio < LABEL_CONFIG.WRAPPED_VERTICAL_THRESHOLD &&
-      max_line_width <= available_height &&
-      wrapped_height <= available_width
-    ) {
-      return { rotation: -90, lines: wrapped_lines, scale: 1 }
+    if (is_tall && wrapped_w <= avail_h && wrapped_h <= avail_w) {
+      return { rotation: -90, lines, scale: 1 }
     }
   }
 
-  // Case 4: Scale down if nothing else works
-  const scale_factor = Math.min(
-    available_width / label_width,
-    available_height / label_height,
-    1,
-  )
-
-  if (scale_factor >= LABEL_CONFIG.ACCEPTABLE_SCALE) {
-    return { rotation: 0, lines: [label], scale: scale_factor }
-  }
-
-  // Case 5: Try vertical with scaling
-  if (aspect_ratio < 1) {
-    const vertical_scale = Math.min(
-      available_height / label_width,
-      available_width / label_height,
-      1,
-    )
-    if (vertical_scale >= LABEL_CONFIG.ACCEPTABLE_SCALE) {
-      return { rotation: -90, lines: [label], scale: vertical_scale }
-    }
-  }
-
-  // Fallback: use smallest reasonable scale
-  return {
-    rotation: 0,
-    lines: [label],
-    scale: Math.max(LABEL_CONFIG.MIN_SCALE_FACTOR, scale_factor),
-  }
+  // Scale down as last resort (min 70%)
+  const scale = Math.max(0.7, Math.min(avail_w / label_width, avail_h / line_height, 1))
+  const rotation = is_tall && avail_h / label_width > avail_w / label_width ? -90 : 0
+  return { rotation, lines: [label], scale }
 }
 
 // Wrap text into multiple lines at delimiter boundaries (underscore, hyphen, space)

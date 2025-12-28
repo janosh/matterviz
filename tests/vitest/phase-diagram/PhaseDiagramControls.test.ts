@@ -184,32 +184,29 @@ describe(`PhaseDiagramControls`, () => {
   })
 
   test.each([
-    [`show_boundaries`, true],
-    [`show_labels`, true],
-    [`show_grid`, true],
-    [`show_component_labels`, true],
-  ])(`default value for %s is %s`, (prop_name, expected_value) => {
+    [`show_boundaries`, `Boundaries`, true],
+    [`show_labels`, `Labels`, true],
+    [`show_grid`, `Grid`, true],
+    [`show_component_labels`, `Comp. Labels`, true],
+  ])(`default value for %s is %s`, (prop_name, label_text, expected_value) => {
     const target = document.createElement(`div`)
     mount(PhaseDiagramControls, {
       target,
       props: { controls_open: true },
     })
 
-    // Find the checkbox for this prop
+    // Find the checkbox by its label text
     const checkboxes = target.querySelectorAll(`input[type="checkbox"]`)
     expect(checkboxes.length).toBeGreaterThan(0)
 
-    // All visibility checkboxes should be checked by default
     const checkbox = Array.from(checkboxes).find((cb) => {
       const label = cb.closest(`label`)
-      return label?.textContent?.toLowerCase().includes(
-        prop_name.replace(`show_`, ``).replace(`_`, ` `),
-      )
+      return label?.textContent?.includes(label_text)
     }) as HTMLInputElement | undefined
 
-    if (checkbox) {
-      expect(checkbox.checked).toBe(expected_value)
-    }
+    expect(checkbox, `checkbox for ${prop_name} (label: "${label_text}") not found`)
+      .toBeDefined()
+    expect(checkbox?.checked).toBe(expected_value)
   })
 
   test(`renders with custom config values`, () => {

@@ -302,8 +302,8 @@ describe(`PhaseDiagramExportPane`, () => {
     const svg_btn = get_button(`Download SVG`)
     svg_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
-    // Wait a bit and verify export was not called
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    // Flush microtasks then verify export was not called
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
     expect(export_svg_as_svg).not.toHaveBeenCalled()
   })
 
@@ -319,8 +319,8 @@ describe(`PhaseDiagramExportPane`, () => {
     const copy_btn = get_button(`Copy SVG`)
     copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
-    // Wait a bit and verify clipboard was not called
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    // Flush microtasks then verify clipboard was not called
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
 

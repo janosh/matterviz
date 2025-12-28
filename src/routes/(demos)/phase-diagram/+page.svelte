@@ -36,38 +36,19 @@
   const format_error = (context: string, exc: unknown) =>
     `${context}: ${exc instanceof Error ? exc.message : String(exc)}`
 
-  // Version counter to prevent race conditions in async file loading
-  let load_version = $state(0)
+  // Token for race condition protection - each load gets a unique Symbol
+  let active_load: symbol | null = null
+
+  // Check if this load is still the active one (not superseded)
+  const is_stale = (token: symbol) => active_load !== token
 
   // Sync URL parameter to current file on load
   $effect(() => {
     if (!browser) return
     const file_param = page.url.searchParams.get(`file`)
     if (file_param && file_param !== current_file) {
-      // Find the file in our list
       const file_info = all_phase_diagram_files.find((f) => f.name === file_param)
-      if (file_info?.url) {
-        // Increment version to invalidate any in-flight requests
-        const this_version = ++load_version
-
-        // Don't update URL param since we're loading from it
-        if (is_tdb(file_param)) {
-          // Handle TDB files specially - fetch and parse
-          fetch(file_info.url)
-            .then((res) => res.text())
-            .then((content) => {
-              // Only process if this is still the latest request
-              if (load_version === this_version) handle_tdb_file(content, file_param)
-            })
-            .catch((exc) => {
-              if (load_version === this_version) {
-                error_message = format_error(`Failed to load TDB file`, exc)
-              }
-            })
-        } else {
-          load_diagram(file_info.url, file_param, false)
-        }
-      }
+      if (file_info?.url) load_file(file_info.url, file_param, false)
     }
   })
 
@@ -82,109 +63,122 @@
     })
   }
 
-  // Load a phase diagram from URL
-  // Returns true if diagram loaded successfully, false otherwise
-  // preserve_tdb: when true, keeps tdb state (used when loading pre-computed data for a TDB file)
-  async function load_diagram(
+  // Unified file loader with race condition protection
+  // Handles both TDB and JSON files, uses Symbol token for stale request detection
+  async function load_file(
     url: string,
     filename: string,
     update_url_param: boolean = true,
     preserve_tdb: boolean = false,
   ): Promise<boolean> {
+    const token = Symbol()
+    active_load = token
     loading = true
     error_message = null
     if (!preserve_tdb) tdb = null
+
     try {
-      const data = await load_binary_phase_diagram(url)
-      if (data) {
+      if (is_tdb(filename)) {
+        // TDB files: fetch content, parse, optionally load precomputed diagram
+        const res = await fetch(url)
+        if (is_stale(token)) return false
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+        const content = await res.text()
+        if (is_stale(token)) return false
+
+        const success = await parse_tdb_content(content, filename)
+        if (is_stale(token) || !success) return false
+
+        // Auto-load pre-computed diagram if available
+        if (tdb?.precomputed_url) {
+          const data = await load_binary_phase_diagram(tdb.precomputed_url)
+          if (!is_stale(token) && data) {
+            current_data = data
+            tdb.is_loaded = true
+          }
+        }
+        return true
+      } else {
+        // JSON files: load directly
+        const data = await load_binary_phase_diagram(url)
+        if (is_stale(token)) return false
+        if (!data) {
+          error_message = `Failed to parse phase diagram data`
+          return false
+        }
         current_data = data
         current_file = filename
         if (update_url_param) update_url(filename)
         return true
-      } else {
-        error_message = `Failed to parse phase diagram data`
-        return false
       }
     } catch (exc) {
-      error_message = format_error(`Failed to load diagram`, exc)
+      if (is_stale(token)) return false
+      error_message = format_error(`Failed to load`, exc)
       return false
     } finally {
-      loading = false
-    }
-  }
-
-  // Handle TDB file parsing and auto-load precomputed diagram if available
-  // Uses dynamic import to lazy-load the TDB parser (~370 lines) only when needed
-  async function handle_tdb_file(content: string, filename: string): Promise<void> {
-    const { parse_tdb, get_system_name } = await import(`$lib/phase-diagram/parse.js`)
-    const result = parse_tdb(content)
-    if (!result.success || !result.data) {
-      error_message = result.error || `Failed to parse TDB file`
-      return
-    }
-
-    const system_name = get_system_name(result.data.elements.map((el) => el.symbol))
-    const precomputed_url = find_precomputed_url(system_name) ?? null
-
-    tdb = { result, system_name, precomputed_url, is_loaded: false }
-    current_file = filename
-    update_url(filename)
-
-    // Auto-load pre-computed diagram if available (preserve tdb state to show info panel)
-    if (precomputed_url) {
-      const name = `${system_name}.json.gz`
-      const success = await load_diagram(precomputed_url, name, true, true)
-      if (tdb) tdb.is_loaded = success
+      if (!is_stale(token)) loading = false
     }
   }
 
   // Handle URL drop from FilePicker
   async function handle_url_file_drop(url: string, file: File): Promise<boolean> {
     if (!url.startsWith(`/`)) return false
-
-    if (is_tdb(file.name)) {
-      try {
-        const response = await fetch(url)
-        if (!response.ok) {
-          error_message =
-            `Failed to load TDB file: HTTP ${response.status} ${response.statusText}`
-          return true
-        }
-        const content = await response.text()
-        await handle_tdb_file(content, file.name)
-      } catch (exc) {
-        error_message = format_error(`Failed to load TDB file`, exc)
-      }
-      return true
-    }
-
-    load_diagram(url, file.name || url.split(`/`).pop() || `unknown`)
+    await load_file(url, file.name || url.split(`/`).pop() || `unknown`)
     return true
   }
 
-  // Parse file content as phase diagram data
+  // Parse TDB content and set up state (used by both load_file and parse_file_content)
+  async function parse_tdb_content(
+    content: string,
+    filename: string,
+  ): Promise<boolean> {
+    const { parse_tdb, get_system_name } = await import(`$lib/phase-diagram/parse.js`)
+    const result = parse_tdb(content)
+    if (!result.success || !result.data) {
+      error_message = result.error || `Failed to parse TDB file`
+      return false
+    }
+    const system_name = get_system_name(result.data.elements.map((el) => el.symbol))
+    const precomputed_url = find_precomputed_url(system_name) ?? null
+    tdb = { result, system_name, precomputed_url, is_loaded: false }
+    current_file = filename
+    update_url(filename)
+    return true
+  }
+
+  // Parse file content as phase diagram data (for local file drops)
   async function parse_file_content(
     content: string | ArrayBuffer,
     filename: string,
   ): Promise<void> {
-    if (is_tdb(filename)) {
-      if (typeof content === `string`) await handle_tdb_file(content, filename)
-      return
+    loading = true
+    error_message = null
+    try {
+      if (is_tdb(filename)) {
+        if (typeof content === `string`) {
+          const success = await parse_tdb_content(content, filename)
+          // Auto-load precomputed if available
+          if (success && tdb?.precomputed_url) {
+            const data = await load_binary_phase_diagram(tdb.precomputed_url)
+            if (data) {
+              current_data = data
+              tdb.is_loaded = true
+            }
+          }
+        }
+        return
+      }
+      // Handle JSON/gzipped JSON files
+      const json_string = typeof content === `string`
+        ? content
+        : await decompress_data(content, `gzip`)
+      current_data = JSON.parse(json_string) as PhaseDiagramData
+      current_file = filename
+      update_url(filename)
+      tdb = null
+    } finally {
+      loading = false
     }
-
-    // Handle JSON/gzipped JSON files
-    let json_string: string
-    if (typeof content === `string`) {
-      json_string = content
-    } else {
-      // Decompress gzipped content using shared utility
-      json_string = await decompress_data(content, `gzip`)
-    }
-
-    current_data = JSON.parse(json_string) as PhaseDiagramData
-    current_file = filename
-    update_url(filename)
-    tdb = null
   }
 
   // Handle direct file drop (local files)
@@ -240,9 +234,11 @@
 
   async function load_precomputed(): Promise<void> {
     if (tdb?.precomputed_url) {
-      const name = `${tdb.system_name}.json.gz`
-      const success = await load_diagram(tdb.precomputed_url, name, true, true)
-      if (tdb) tdb.is_loaded = success
+      const data = await load_binary_phase_diagram(tdb.precomputed_url)
+      if (data) {
+        current_data = data
+        tdb.is_loaded = true
+      }
     }
   }
 
@@ -250,13 +246,10 @@
   const example_file_name = `A-B.json.gz`
   $effect(() => {
     if (browser && !current_data && !loading) {
-      // Find A-B example in the file list
-      const example_file = all_phase_diagram_files.find(
-        (file) => file.name === example_file_name,
+      const example_file = all_phase_diagram_files.find((f) =>
+        f.name === example_file_name
       )
-      if (example_file?.url) {
-        load_diagram(example_file.url, example_file_name, false)
-      }
+      if (example_file?.url) load_file(example_file.url, example_file_name, false)
     }
   })
 </script>
@@ -275,20 +268,7 @@
   files={all_phase_diagram_files}
   active_files={current_file ? [current_file] : []}
   style="margin-bottom: 1em"
-  on_click={async (file) => {
-    if (!file.url) return
-    if (is_tdb(file.name)) {
-      try {
-        const res = await fetch(file.url)
-        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
-        await handle_tdb_file(await res.text(), file.name)
-      } catch (exc) {
-        error_message = format_error(`Failed to load TDB file`, exc)
-      }
-    } else {
-      load_diagram(file.url, file.name)
-    }
-  }}
+  on_click={(file) => file.url && load_file(file.url, file.name)}
 />
 
 <details class="tdb-info">
@@ -329,10 +309,6 @@
       <h3 class="diagram-title">{current_data.title}</h3>
     {/if}
     <IsobaricBinaryPhaseDiagram data={current_data} style="height: 600px" />
-  {:else}
-    <p style="text-align: center; color: #888; padding: 2em">
-      Loading phase diagram...
-    </p>
   {/if}
   {#if tdb}
     <TdbInfoPanel

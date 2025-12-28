@@ -1,27 +1,8 @@
 import { PhaseDiagramTooltip } from '$lib/phase-diagram'
-import type {
-  LeverRuleResult,
-  PhaseHoverInfo,
-  PhaseRegion,
-} from '$lib/phase-diagram/types'
+import type { LeverRuleResult } from '$lib/phase-diagram/types'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-
-// Helper to create hover info for testing
-function create_hover_info(overrides: Partial<PhaseHoverInfo> = {}): PhaseHoverInfo {
-  const default_region: PhaseRegion = {
-    id: `liquid`,
-    name: `Liquid`,
-    vertices: [[0, 800], [1, 800], [1, 1000], [0, 1000]],
-  }
-  return {
-    region: default_region,
-    composition: 0.5,
-    temperature: 850,
-    position: { x: 100, y: 100 },
-    ...overrides,
-  }
-}
+import { create_hover_info } from './fixtures/test-data'
 
 describe(`PhaseDiagramTooltip`, () => {
   test(`displays region name in header`, () => {

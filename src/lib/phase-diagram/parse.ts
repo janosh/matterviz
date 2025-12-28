@@ -284,34 +284,34 @@ const KNOWN_ELEMENTS = new Set(ELEM_SYMBOLS.map((sym) => sym.toUpperCase()))
 
 // Extract element symbols from a concatenated string (e.g., "CuMg" -> ["CU", "MG"])
 // Returns null if the string doesn't fully match as element symbols
+// Uses backtracking to handle ambiguous cases (e.g., "NBR" -> ["N", "BR"] not ["NB", ?])
 function extract_elements_from_string(input: string): string[] | null {
   const upper = input.toUpperCase()
-  const elements: string[] = []
-  let idx = 0
 
-  while (idx < upper.length) {
+  function parse(idx: number): string[] | null {
+    if (idx >= upper.length) return []
+
     // Try two-letter symbol first (prefer longer match)
     if (idx + 1 < upper.length) {
       const two_letter = upper.slice(idx, idx + 2)
       if (KNOWN_ELEMENTS.has(two_letter)) {
-        elements.push(two_letter)
-        idx += 2
-        continue
+        const rest = parse(idx + 2)
+        if (rest !== null) return [two_letter, ...rest]
       }
     }
-    // Try single-letter symbol
+
+    // Try single-letter symbol (backtrack if two-letter path failed)
     const one_letter = upper[idx]
     if (KNOWN_ELEMENTS.has(one_letter)) {
-      elements.push(one_letter)
-      idx += 1
-      continue
+      const rest = parse(idx + 1)
+      if (rest !== null) return [one_letter, ...rest]
     }
-    // Unknown character - string is not a valid element concatenation
+
     return null
   }
 
-  // Only return elements if we parsed at least 2 (for a binary+ system)
-  return elements.length >= 2 ? elements : null
+  const elements = parse(0)
+  return elements && elements.length >= 2 ? elements : null
 }
 
 // Normalize a system name string to canonical form (e.g., "cumg", "Cu-Mg", "CU_MG" -> "CU-MG")

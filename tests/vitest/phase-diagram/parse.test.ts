@@ -180,6 +180,10 @@ describe(`normalize_system_name`, () => {
     { input: ``, expected: `` },
     { input: `INVALID`, expected: `INVALID` },
     { input: `Al-Fe-Cu`, expected: `AL-CU-FE` },
+    // Backtracking cases: greedy two-letter match fails, single-letter works
+    { input: `NBr`, expected: `BR-N` }, // NB (niobium) + R fails, N + BR works
+    { input: `ScI`, expected: `I-SC` }, // SC (scandium) + I works (greedy succeeds)
+    { input: `SiC`, expected: `C-SI` }, // SI (silicon) + C works (greedy succeeds)
   ])(`normalizes "$input" to "$expected"`, ({ input, expected }) => {
     expect(normalize_system_name(input)).toBe(expected)
   })

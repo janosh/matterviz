@@ -9,6 +9,7 @@ describe(`Phonon Module Tests`, () => {
     expect(typeof phonon_bands).toBe(`object`)
     expect(typeof phonon_dos).toBe(`object`)
     expect(Object.keys(phonon_bands).length).toBeGreaterThan(0)
+    expect(Object.keys(phonon_dos).length).toBeGreaterThan(0)
   })
 
   it(`transforms band structures with all required fields and correct types`, () => {
@@ -249,12 +250,17 @@ describe(`Phonon Module Tests`, () => {
     }
   })
 
-  it(`splits single-label paths into head and tail branches`, () => {
-    // Check if any band structure has exactly one labeled point
-    for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
-      const labeled_qpoints = band_struct.qpoints.filter((qpt) => qpt.label !== null)
+  // Filter to structures with exactly one labeled point
+  const single_label_structures = (
+    Object.values(phonon_bands) as PhononBandStructure[]
+  ).filter(
+    (band_struct) => band_struct.qpoints.filter((qpt) => qpt.label !== null).length === 1,
+  )
 
-      if (labeled_qpoints.length === 1) {
+  it.skipIf(single_label_structures.length === 0)(
+    `splits single-label paths into head and tail branches`,
+    () => {
+      for (const band_struct of single_label_structures) {
         const label_idx = band_struct.qpoints.findIndex((qpt) => qpt.label !== null)
         const label = band_struct.qpoints[label_idx].label
 
@@ -283,6 +289,6 @@ describe(`Phonon Module Tests`, () => {
           expect(branch.end_index).toBeGreaterThanOrEqual(branch.start_index)
         })
       }
-    }
-  })
+    },
+  )
 })

@@ -34,32 +34,16 @@
       : filename,
   )
 
-  function get_svg(): SVGSVGElement | null {
-    return wrapper?.querySelector(`svg`) ?? null
-  }
-
-  async function download_svg() {
-    const svg = get_svg()
-    if (!svg) return
-    export_svg_as_svg(svg, `${full_filename}.svg`)
-  }
+  const svg = $derived(
+    wrapper?.querySelector(`svg.binary-phase-diagram`) as SVGSVGElement | null,
+  )
 
   async function copy_svg() {
-    const svg = get_svg()
     if (!svg) return
-
-    const serializer = new XMLSerializer()
-    const svg_string = serializer.serializeToString(svg)
+    const svg_string = new XMLSerializer().serializeToString(svg)
     await navigator.clipboard.writeText(svg_string)
-
     copy_status.svg = true
     setTimeout(() => (copy_status.svg = false), 1500)
-  }
-
-  async function download_png() {
-    const svg = get_svg()
-    if (!svg) return
-    export_svg_as_png(svg, `${full_filename}.png`, png_dpi)
   }
 
   function download_json() {
@@ -107,14 +91,24 @@
   </h4>
   <label>
     SVG
-    <button type="button" onclick={download_svg} title="Download SVG">⬇</button>
+    <button
+      type="button"
+      onclick={() => svg && export_svg_as_svg(svg, `${full_filename}.svg`)}
+      title="Download SVG"
+    >
+      ⬇
+    </button>
     <button type="button" onclick={copy_svg} title="Copy SVG to clipboard">
       {copy_status.svg ? copy_confirm : `📋`}
     </button>
   </label>
   <label>
     PNG
-    <button type="button" onclick={download_png} title={`Download PNG (${png_dpi} DPI)`}>
+    <button
+      type="button"
+      onclick={() => svg && export_svg_as_png(svg, `${full_filename}.png`, png_dpi)}
+      title={`Download PNG (${png_dpi} DPI)`}
+    >
       ⬇
     </button>
     &nbsp;(DPI: <input

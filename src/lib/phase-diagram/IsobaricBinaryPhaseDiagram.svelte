@@ -358,6 +358,7 @@
     </div>
 
     <svg
+      class="binary-phase-diagram"
       {width}
       {height}
       onmousemove={handle_mouse_move}

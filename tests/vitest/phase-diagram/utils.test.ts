@@ -170,20 +170,24 @@ describe(`generate_boundary_path`, () => {
 })
 
 describe(`calculate_polygon_centroid`, () => {
-  test(`calculates correct centroid for square`, () => {
-    const vertices: [number, number][] = [
-      [0, 0],
-      [2, 0],
-      [2, 2],
-      [0, 2],
-    ]
-    const [cx, cy] = calculate_polygon_centroid(vertices)
-    expect(cx).toBe(1)
-    expect(cy).toBe(1)
-  })
-
-  test(`returns [0, 0] for empty array`, () => {
-    expect(calculate_polygon_centroid([])).toEqual([0, 0])
+  test.each(
+    [
+      { vertices: [[0, 0], [2, 0], [2, 2], [0, 2]], expected: [1, 1], desc: `square` },
+      { vertices: [[0, 0], [3, 0], [0, 3]], expected: [1, 1], desc: `triangle` },
+      { vertices: [[0, 0], [4, 0], [4, 2], [0, 2]], expected: [2, 1], desc: `rectangle` },
+      { vertices: [[5, 10]], expected: [5, 10], desc: `single vertex` },
+      { vertices: [[0, 0], [10, 10]], expected: [5, 5], desc: `two vertices (midpoint)` },
+      {
+        vertices: [[0, 0], [1, 1], [2, 2]],
+        expected: [1, 1],
+        desc: `collinear (degenerate)`,
+      },
+      { vertices: [], expected: [0, 0], desc: `empty array` },
+    ] as const,
+  )(`$desc → ($expected)`, ({ vertices, expected }) => {
+    const [cx, cy] = calculate_polygon_centroid([...vertices] as [number, number][])
+    expect(cx).toBeCloseTo(expected[0], 5)
+    expect(cy).toBeCloseTo(expected[1], 5)
   })
 })
 
