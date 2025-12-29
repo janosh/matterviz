@@ -198,6 +198,19 @@ export function watch_dark_mode(on_change: (dark: boolean) => void): () => void 
   }
 }
 
+// Convert a CSS color string to hex format for use with <input type="color">.
+// Returns fallback for CSS variables, transparent, invalid colors, or undefined.
+// Uses d3-color for robust parsing of named colors, rgb(), hsl(), etc.
+export function css_color_to_hex(
+  color: string | undefined,
+  fallback: string,
+): string {
+  if (!color || color.startsWith(`var(`)) return fallback
+  if (color === `transparent`) return `#ffffff`
+  const parsed = rgb(color)
+  return Number.isNaN(parsed.r) ? fallback : parsed.formatHex()
+}
+
 // Add or modify the alpha channel of a color.
 // Supports hex (#rgb, #rgba, #rrggbb, #rrggbbaa), rgb(), and rgba() formats.
 // Returns the color in rgba() format, or the original color if format is unsupported.

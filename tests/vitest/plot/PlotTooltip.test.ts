@@ -147,4 +147,14 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.backgroundColor).toBe(`#2a4070`)
     expect(tooltip.style.color).toBe(`#ffffff`)
   })
+
+  test(`element is measurable via offsetWidth/offsetHeight`, () => {
+    mount(PlotTooltip, {
+      target: document.body,
+      props: { x: 0, y: 0, children: make_children() },
+    })
+    const el = doc_query(`.plot-tooltip`)
+    expect(el).toBeInstanceOf(HTMLDivElement)
+    expect(typeof el.offsetWidth).toBe(`number`)
+  })
 })
