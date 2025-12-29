@@ -9,7 +9,25 @@ import type {
   PhaseDiagramData,
   PhaseHoverInfo,
   PhaseRegion,
+  TempUnit,
 } from './types'
+
+// Convert temperature between units (K, °C, °F)
+export function convert_temp(value: number, from: TempUnit, to: TempUnit): number {
+  if (from === to) return value
+  // Convert to Kelvin first
+  const kelvin = from === `°C`
+    ? value + 273.15
+    : from === `°F`
+    ? (value - 32) * (5 / 9) + 273.15
+    : value
+  // Convert from Kelvin to target
+  return to === `K`
+    ? kelvin
+    : to === `°C`
+    ? kelvin - 273.15
+    : (kelvin - 273.15) * (9 / 5) + 32
+}
 
 // Centralized defaults for phase diagram configuration (single source of truth)
 export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
@@ -94,20 +112,20 @@ export const PHASE_COLORS = Object.freeze(
   ),
 ) as Record<PhaseColorKey, string>
 
-// Match phase name to color key
-function match_phase_key(name: string): PhaseColorKey {
-  const lower = name.toLowerCase()
-  if (lower.includes(`+`)) return `two_phase`
-  if (lower.includes(`liquid`) || lower === `l`) return `liquid`
-  if (lower.includes(`α`) || lower.includes(`alpha`)) return `alpha`
-  if (lower.includes(`β`) || lower.includes(`beta`)) return `beta`
-  if (lower.includes(`γ`) || lower.includes(`gamma`)) return `gamma`
-  return `default`
-}
-
 // Get phase color - returns rgba() by default, or RGB string if format='rgb'
 export function get_phase_color(name: string, format: `rgba` | `rgb` = `rgba`): string {
-  const key = match_phase_key(name)
+  const lower = name.toLowerCase()
+  const key: PhaseColorKey = lower.includes(`+`)
+    ? `two_phase`
+    : lower.includes(`liquid`) || lower === `l`
+    ? `liquid`
+    : lower.includes(`α`) || lower.includes(`alpha`)
+    ? `alpha`
+    : lower.includes(`β`) || lower.includes(`beta`)
+    ? `beta`
+    : lower.includes(`γ`) || lower.includes(`gamma`)
+    ? `gamma`
+    : `default`
   return format === `rgb` ? PHASE_COLOR_RGB[key] : PHASE_COLORS[key]
 }
 
@@ -145,6 +163,8 @@ export function compute_label_properties(
   if (bounds.width <= 0 || bounds.height <= 0 || !label || font_size <= 0) {
     return { rotation: 0, lines: label ? [label] : [], scale: 1 }
   }
+  // Handle whitespace-only labels that pass truthy check but have zero rendered width
+  if (label.trim().length === 0) return { rotation: 0, lines: [], scale: 1 }
 
   const char_width = font_size * 0.6 // approximate character width
   const line_height = font_size * 1.2

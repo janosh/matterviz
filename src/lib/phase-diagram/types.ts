@@ -1,5 +1,8 @@
 import type { Sides } from '$lib/plot'
 
+// Temperature unit type
+export type TempUnit = `K` | `°C` | `°F`
+
 // Phase region with polygon vertices and metadata
 export interface PhaseRegion {
   id: string

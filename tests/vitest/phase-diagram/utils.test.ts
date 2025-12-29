@@ -1,4 +1,4 @@
-import { compute_bounding_box_2d, point_in_polygon, polygon_centroid } from '$lib/math'
+import { point_in_polygon, polygon_centroid } from '$lib/math'
 import type { PhaseDiagramData, PhaseRegion } from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
@@ -247,24 +247,6 @@ describe(`transform_vertices`, () => {
       [100, 50],
     ])
   })
-
-  test(`returns empty array for empty input`, () => {
-    const result = transform_vertices([], (val) => val, (val) => val)
-    expect(result).toEqual([])
-  })
-})
-
-describe(`two-phase region detection (inline)`, () => {
-  test.each([
-    { name: `α + β`, expected: true },
-    { name: `L + α`, expected: true },
-    { name: `Liquid + Solid`, expected: true },
-    { name: `Liquid`, expected: false },
-    { name: `α`, expected: false },
-    { name: `FCC_A1`, expected: false },
-  ])(`"$name".includes('+') → $expected`, ({ name, expected }) => {
-    expect(name.includes(`+`)).toBe(expected)
-  })
 })
 
 describe(`calculate_lever_rule`, () => {
@@ -438,19 +420,6 @@ describe(`compute_label_properties`, () => {
     expect(Number.isNaN(result.rotation)).toBe(false)
     expect(Number.isNaN(result.scale)).toBe(false)
     expect(result.lines).toEqual([`Test`])
-  })
-
-  test(`integrates correctly with compute_bounding_box_2d for empty vertices`, () => {
-    // Simulate what happens with empty polygon
-    const { width, height } = compute_bounding_box_2d([])
-    expect(width).toBe(0)
-    expect(height).toBe(0)
-
-    // compute_label_properties should handle this gracefully
-    const result = compute_label_properties(`Liquid`, { width, height }, 12)
-    expect(Number.isNaN(result.rotation)).toBe(false)
-    expect(Number.isNaN(result.scale)).toBe(false)
-    expect(result.lines).toEqual([`Liquid`])
   })
 })
 

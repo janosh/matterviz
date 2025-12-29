@@ -77,12 +77,11 @@ export function constrain_tooltip_position(
   const offset_x = options.offset_x ?? offset
   const offset_y = options.offset_y ?? offset
 
-  // Determine if we need to flip based on offset direction and overflow
-  // For positive offset: flip if tooltip would overflow on that side
-  // For negative offset: flip if tooltip would overflow on opposite side
+  // Position to left of cursor if right-side placement overflows (and vice versa)
   const flip_x = offset_x >= 0
     ? cursor_x + offset_x + tooltip_width > viewport_width
     : cursor_x + offset_x - tooltip_width < 0
+  // Position above cursor if bottom placement overflows (and vice versa)
   const flip_y = offset_y >= 0
     ? cursor_y + offset_y + tooltip_height > viewport_height
     : cursor_y + offset_y - tooltip_height < 0
@@ -90,16 +89,22 @@ export function constrain_tooltip_position(
   // Calculate position: apply offset, flip if needed
   const abs_offset_x = Math.abs(offset_x)
   const abs_offset_y = Math.abs(offset_y)
-  const raw_x = offset_x >= 0
-    ? flip_x ? cursor_x - abs_offset_x - tooltip_width : cursor_x + abs_offset_x
-    : flip_x
-    ? cursor_x + abs_offset_x
-    : cursor_x - abs_offset_x - tooltip_width
-  const raw_y = offset_y >= 0
-    ? flip_y ? cursor_y - abs_offset_y - tooltip_height : cursor_y + abs_offset_y
-    : flip_y
-    ? cursor_y + abs_offset_y
-    : cursor_y - abs_offset_y - tooltip_height
+
+  // Determine X position based on preferred side and flip state
+  let raw_x: number
+  if (offset_x >= 0) { // Prefer right side: flip to left if overflows
+    raw_x = flip_x ? cursor_x - abs_offset_x - tooltip_width : cursor_x + abs_offset_x
+  } else { // Prefer left side: flip to right if overflows
+    raw_x = flip_x ? cursor_x + abs_offset_x : cursor_x - abs_offset_x - tooltip_width
+  }
+
+  // Determine Y position based on preferred side and flip state
+  let raw_y: number
+  if (offset_y >= 0) { // Prefer bottom: flip to top if overflows
+    raw_y = flip_y ? cursor_y - abs_offset_y - tooltip_height : cursor_y + abs_offset_y
+  } else { // Prefer top: flip to bottom if overflows
+    raw_y = flip_y ? cursor_y + abs_offset_y : cursor_y - abs_offset_y - tooltip_height
+  }
 
   // Clamp to viewport bounds
   const x_pos = Math.max(0, Math.min(raw_x, viewport_width - tooltip_width))

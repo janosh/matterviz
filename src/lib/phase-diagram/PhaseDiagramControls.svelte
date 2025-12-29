@@ -1,7 +1,7 @@
 <script lang="ts">
   import { DraggablePane, format_num, SettingsSection } from '$lib'
+  import { css_color_to_hex } from '$lib/colors'
   import type { AxisConfig } from '$lib/plot'
-  import { rgb } from 'd3-color'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { PhaseDiagramConfig, PhaseDiagramData } from './types'
@@ -80,14 +80,6 @@
     value: string | number,
   ) {
     config = { ...config, [key]: { ...config[key], [prop]: value } }
-  }
-
-  // Convert CSS color to hex for color input using d3-color
-  function to_hex(color: string | undefined, fallback: string): string {
-    if (!color || color.startsWith(`var(`)) return fallback
-    if (color === `transparent`) return `#ffffff`
-    const parsed = rgb(color)
-    return Number.isNaN(parsed.r) ? fallback : parsed.formatHex()
   }
 
   // Derive component info from data
@@ -249,7 +241,7 @@
           {label}
           <input
             type="color"
-            value={to_hex(merged_config.colors[key], fallback)}
+            value={css_color_to_hex(merged_config.colors[key], fallback)}
             oninput={(ev) => update_nested(`colors`, key, ev.currentTarget.value)}
           />
         </label>

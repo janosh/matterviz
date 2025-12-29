@@ -19,10 +19,12 @@
     PhaseDiagramData,
     PhaseHoverInfo,
     PhaseRegion,
+    TempUnit,
   } from './types'
   import {
     calculate_lever_rule,
     compute_label_properties,
+    convert_temp,
     find_phase_at_point,
     format_composition,
     format_hover_info_text,
@@ -120,25 +122,11 @@
   // Scales
   const x_scale = $derived(scaleLinear().domain([0, 1]).range([left, right]))
 
-  // Temperature conversion utilities (defined early for use in scales)
-  type TempUnit = `K` | `°C` | `°F`
+  // Temperature units
   const data_temp_unit = $derived<TempUnit>(
     (data.temperature_unit ?? `K`) as TempUnit,
   )
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
-
-  // Convert temperature from one unit to another
-  function convert_temp(value: number, from: TempUnit, to: TempUnit): number {
-    if (from === to) return value
-    // First convert to Kelvin
-    let kelvin = value
-    if (from === `°C`) kelvin = value + 273.15
-    else if (from === `°F`) kelvin = (value - 32) * (5 / 9) + 273.15
-    // Then convert from Kelvin to target
-    if (to === `K`) return kelvin
-    if (to === `°C`) return kelvin - 273.15
-    return (kelvin - 273.15) * (9 / 5) + 32 // °F
-  }
 
   // Convert temperature range for display
   const display_temp_range = $derived<[number, number]>([
@@ -238,41 +226,28 @@
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
 
   // Copy feedback state
-  let copy_feedback = $state<{ visible: boolean; x: number; y: number }>({
-    visible: false,
-    x: 0,
-    y: 0,
-  })
+  let copy_feedback_visible = $state(false)
+  let copy_feedback_pos = $state({ x: 0, y: 0 })
   let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
 
   // Handle double-click to copy tooltip data
   async function handle_double_click(event: MouseEvent) {
     if (!hover_info) return
-
-    const text = format_hover_info_text(
-      hover_info,
-      temp_unit,
-      comp_unit,
-      component_a,
-      component_b,
-    )
-
     try {
-      await navigator.clipboard.writeText(text)
-
-      // Clear any pending timeout from previous double-click
+      await navigator.clipboard.writeText(
+        format_hover_info_text(
+          hover_info,
+          temp_unit,
+          comp_unit,
+          component_a,
+          component_b,
+        ),
+      )
       if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
-
-      // Show copy feedback at click position
-      copy_feedback = {
-        visible: true,
-        x: event.clientX,
-        y: event.clientY,
-      }
-
-      // Hide feedback after animation completes (matches CSS animation duration)
+      copy_feedback_pos = { x: event.clientX, y: event.clientY }
+      copy_feedback_visible = true
       copy_feedback_timeout = setTimeout(() => {
-        copy_feedback = { ...copy_feedback, visible: false }
+        copy_feedback_visible = false
         copy_feedback_timeout = undefined
       }, 1500)
     } catch (err) {
@@ -298,27 +273,12 @@
     )
   })
 
-  // Aria-live announcement text for screen readers
-  const aria_announcement = $derived.by(() => {
-    const info = effective_hover_info
-    if (!info) return ``
-    const phase_text = `${info.region.name} phase`
-    // Convert temperature from data unit to display unit for announcement
-    const display_temp = convert_temp(info.temperature, data_temp_unit, temp_unit)
-    const temp_text = `${Math.round(display_temp)} ${temp_unit}`
-    const comp_text = `${Math.round(info.composition * 100)}% ${component_b}`
-    return `${phase_text} at ${temp_text}, ${comp_text}`
-  })
-
-  // Unified pointer handler for both mouse and touch events
-  function handle_pointer_at(
-    client_x: number,
-    client_y: number,
-    svg: SVGElement,
-  ) {
+  // Pointer move handler (unified mouse/touch via Pointer Events API)
+  function handle_pointer_move(event: PointerEvent) {
+    const svg = event.currentTarget as SVGElement
     const rect = svg.getBoundingClientRect()
-    const svg_x = client_x - rect.left
-    const svg_y = client_y - rect.top
+    const svg_x = event.clientX - rect.left
+    const svg_y = event.clientY - rect.top
 
     // Check if within plot area
     if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom) {
@@ -326,23 +286,20 @@
       return
     }
 
-    // Convert to data coordinates
+    // Convert to data coordinates and find phase
     const composition = x_scale.invert(svg_x)
     const temperature = y_scale.invert(svg_y)
-
-    // Find the phase at this point
     const region = find_phase_at_point(composition, temperature, data)
 
     if (region) {
       hovered_region = region
-      // Calculate lever rule (returns null for single-phase regions)
-      const lever_rule = calculate_lever_rule(region, composition, temperature)
       hover_info = {
         region,
         composition,
         temperature,
-        position: { x: client_x, y: client_y },
-        lever_rule: lever_rule ?? undefined,
+        position: { x: event.clientX, y: event.clientY },
+        lever_rule: calculate_lever_rule(region, composition, temperature) ??
+          undefined,
       }
       on_phase_hover?.(hover_info)
     } else {
@@ -350,38 +307,27 @@
     }
   }
 
-  function handle_mouse_move(event: MouseEvent) {
-    handle_pointer_at(event.clientX, event.clientY, event.currentTarget as SVGElement)
+  function handle_pointer_leave(event: PointerEvent) {
+    // Don't clear on touch lift (allows reading tooltip) or when locked
+    if (event.pointerType === `touch` || locked_hover_info) return
+    clear_hover()
   }
 
-  // Touch support for mobile devices
-  function handle_touch_move(event: TouchEvent) {
-    if (event.touches.length !== 1) return
-    const touch = event.touches[0]
-    handle_pointer_at(touch.clientX, touch.clientY, event.currentTarget as SVGElement)
-    // Prevent scrolling while interacting with the diagram
-    event.preventDefault()
-  }
-
-  function handle_touch_end() {
-    // Don't clear hover on touch end to allow reading the tooltip
-    // User can tap elsewhere or tap the locked region to dismiss
-  }
-
-  function handle_mouse_leave() {
-    // Don't clear if tooltip is locked
-    if (!locked_hover_info) clear_hover()
-  }
-
-  // Keyboard shortcut handler (Ctrl+Shift+E for export)
-  function handle_keyboard_shortcut(event: KeyboardEvent) {
+  // Document-level keyboard shortcuts
+  function handle_doc_keydown(event: KeyboardEvent) {
     if (event.ctrlKey && event.shiftKey && event.key === `E`) {
       event.preventDefault()
       export_pane_open = !export_pane_open
-    }
-    // Escape to unlock tooltip
-    if (event.key === `Escape` && locked_hover_info) {
+    } else if (event.key === `Escape` && locked_hover_info) {
       locked_hover_info = null
+    }
+  }
+
+  // SVG keyboard handler (Enter/Space to toggle lock)
+  function handle_svg_keydown(event: KeyboardEvent) {
+    if (event.key === `Enter` || event.key === ` `) {
+      event.preventDefault()
+      handle_click()
     }
   }
 
@@ -402,10 +348,6 @@
   const component_a = $derived(data.components[0])
   const component_b = $derived(data.components[1])
   const comp_unit = $derived(data.composition_unit ?? `at%`)
-
-  // Format x-axis tick label (uses shared format_composition without unit suffix)
-  const format_x_tick = (value: number): string =>
-    format_composition(value, comp_unit, false)
 </script>
 
 <!-- Grid lines snippet for DRY rendering -->
@@ -426,7 +368,7 @@
   onfullscreenchange={() => {
     fullscreen = Boolean(document.fullscreenElement)
   }}
-  onkeydown={handle_keyboard_shortcut}
+  onkeydown={handle_doc_keydown}
 />
 
 <div
@@ -473,34 +415,21 @@
       {/if}
     </div>
 
-    <!-- Aria-live region for screen reader announcements -->
-    <div class="sr-only" aria-live="polite" aria-atomic="true">
-      {aria_announcement}
-    </div>
-
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <svg
       class="binary-phase-diagram"
       {width}
       {height}
-      onmousemove={handle_mouse_move}
-      onmouseleave={handle_mouse_leave}
+      onpointermove={handle_pointer_move}
+      onpointerleave={handle_pointer_leave}
       onclick={handle_click}
-      onkeydown={(event) => {
-        // Enter/Space to toggle lock when focused
-        if (event.key === `Enter` || event.key === ` `) {
-          event.preventDefault()
-          handle_click()
-        }
-      }}
+      onkeydown={handle_svg_keydown}
       ondblclick={handle_double_click}
-      ontouchmove={handle_touch_move}
-      ontouchend={handle_touch_end}
       tabindex="0"
-      style={`display: block; cursor: ${
-        effective_hover_info ? `crosshair` : `default`
-      }; touch-action: none;`}
+      style:display="block"
+      style:cursor={effective_hover_info ? `crosshair` : `default`}
+      style:touch-action="none"
       role="application"
       aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press Ctrl+Shift+E to export."
     >
@@ -672,7 +601,7 @@
               fill={merged_config.colors.text}
               font-size={merged_config.font_size}
             >
-              {format_x_tick(tick)}
+              {format_composition(tick, comp_unit, false)}
             </text>
           </g>
         {/each}
@@ -778,11 +707,11 @@
     {/if}
 
     <!-- Copy feedback indicator -->
-    {#if copy_feedback.visible}
+    {#if copy_feedback_visible}
       <div
         class="copy-feedback"
-        style:left="{copy_feedback.x}px"
-        style:top="{copy_feedback.y}px"
+        style:left="{copy_feedback_pos.x}px"
+        style:top="{copy_feedback_pos.y}px"
       >
         ✓ Copied
       </div>
@@ -802,12 +731,13 @@
     aspect-ratio: 6 / 5; /* Default aspect ratio matching 600x500 */
     background: var(--pd-bg, transparent);
     container-type: inline-size;
-  }
-  .binary-phase-diagram.fullscreen {
-    background: var(
-      --phase-diagram-bg-fullscreen,
-      var(--page-bg, #1a1a2e)
-    ) !important;
+
+    &.fullscreen {
+      background: var(--phase-diagram-bg-fullscreen, var(--page-bg, #1a1a2e)) !important;
+    }
+    @container (max-width: 500px) {
+      min-height: 300px;
+    }
   }
   .header-controls {
     position: absolute;
@@ -818,64 +748,61 @@
     gap: 6px;
     z-index: 10;
   }
+  /* Override absolute positioning since container handles it */
+  .header-controls :global(:is(.fullscreen-toggle, .phase-diagram-controls-toggle)) {
+    position: static;
+  }
   .header-controls :global(.fullscreen-toggle) {
-    position: static; /* Override absolute positioning since container handles it */
     opacity: 1; /* Always visible when inside header-controls */
   }
-  /* Hide controls and fullscreen toggles by default, show on hover */
-  .binary-phase-diagram :global(.pane-toggle),
-  .binary-phase-diagram .header-controls {
+  /* Hide controls and fullscreen toggles by default, show on hover/focus */
+  .binary-phase-diagram :global(:is(.pane-toggle, .header-controls)) {
     opacity: 0;
     transition: opacity 0.2s ease;
   }
-  .binary-phase-diagram:hover :global(.pane-toggle),
-  .binary-phase-diagram:hover .header-controls,
-  .binary-phase-diagram :global(.pane-toggle:focus-visible),
-  .binary-phase-diagram :global(.pane-toggle[aria-expanded='true']),
-  .binary-phase-diagram .header-controls:focus-within {
+  .binary-phase-diagram:is(:hover, :focus-within)
+    :is(:global(.pane-toggle), .header-controls),
+  .binary-phase-diagram :global(.pane-toggle:is(:focus-visible, [aria-expanded='true'])) {
     opacity: 1;
-  }
-  /* Remove absolute positioning from controls toggle when inside header-controls */
-  .header-controls :global(.phase-diagram-controls-toggle) {
-    position: static;
   }
   .phase-regions path {
     transition: opacity 0.15s ease;
+
+    &.hovered {
+      opacity: 0.85;
+      filter: brightness(1.1);
+    }
   }
-  .phase-regions path.hovered {
-    opacity: 0.85;
-    filter: brightness(1.1);
+  /* Grouped pointer-events: none */
+  .region-label, .tie-line, .tooltip-container, .copy-feedback, .grid, .region-labels {
+    pointer-events: none;
   }
   .region-label {
-    pointer-events: none;
     user-select: none;
   }
   .tie-line {
-    pointer-events: none;
     animation: tie-line-fade-in 150ms ease-out;
-  }
-  .tie-line.locked {
-    /* Slightly different appearance when locked */
-    filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
+
+    &.locked {
+      filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
+    }
   }
   @keyframes tie-line-fade-in {
     from {
       opacity: 0;
     }
-    to {
-      opacity: 1;
-    }
+  }
+  .tooltip-container,
+  .copy-feedback {
+    position: fixed;
   }
   .tooltip-container {
-    position: fixed;
     z-index: 1000;
-    pointer-events: none;
-  }
-  .tooltip-container.locked {
-    /* Allow pointer events when locked so user can interact with tooltip */
-    pointer-events: auto;
-    /* Add subtle visual distinction for locked state */
-    filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
+
+    &.locked {
+      pointer-events: auto; /* Allow interaction when locked */
+      filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
+    }
   }
   .tooltip-lock-indicator {
     position: absolute;
@@ -892,54 +819,25 @@
     cursor: pointer;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   }
-  /* Screen reader only - visually hidden but accessible */
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
   .copy-feedback {
-    position: fixed;
     z-index: 1001;
-    pointer-events: none;
     background: rgba(76, 175, 80, 0.95);
     color: white;
     padding: 6px 12px;
     border-radius: 4px;
     font-size: 13px;
     font-weight: 500;
-    transform: translate(-50%, -100%) translateY(-10px);
+    transform: translate(-50%, calc(-100% - 10px));
     animation: copy-fade-up 1.5s ease-out forwards;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
   @keyframes copy-fade-up {
-    0% {
-      opacity: 1;
-      transform: translate(-50%, -100%) translateY(-10px);
-    }
-    70% {
+    0%, 70% {
       opacity: 1;
     }
     100% {
       opacity: 0;
-      transform: translate(-50%, -100%) translateY(-30px);
-    }
-  }
-  /* Ensure SVG elements don't capture pointer events where not needed */
-  .grid,
-  .region-labels {
-    pointer-events: none;
-  }
-  /* Responsive adjustments */
-  @container (max-width: 500px) {
-    .binary-phase-diagram {
-      min-height: 300px;
+      transform: translate(-50%, calc(-100% - 30px));
     }
   }
 </style>
