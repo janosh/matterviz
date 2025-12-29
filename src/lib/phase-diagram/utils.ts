@@ -1,6 +1,6 @@
 import { format_num } from '$lib'
 import { add_alpha } from '$lib/colors'
-import { point_in_polygon } from '$lib/math'
+import { point_in_polygon, type Vec2 } from '$lib/math'
 import type { Sides } from '$lib/plot'
 import { line } from 'd3-shape'
 import type {
@@ -77,17 +77,26 @@ export function merge_phase_diagram_config(config: Partial<PhaseDiagramConfig>) 
 }
 
 // Phase colors as hex - single source of truth
-const PHASE_COLOR_HEX = {
-  liquid: `#87cefc`,
-  alpha: `#90ee90`,
-  beta: `#ffb6c1`,
-  gamma: `#ffdab9`,
+// Extended palette supports 3+ phase regions (Greek letters α through λ)
+export const PHASE_COLOR_HEX = {
+  liquid: `#87cefc`, // light sky blue
+  alpha: `#90ee90`, // light green
+  beta: `#ffb6c1`, // light pink
+  gamma: `#ffdab9`, // peach puff
+  delta: `#dda0dd`, // plum
+  epsilon: `#f0e68c`, // khaki
+  zeta: `#fa8072`, // salmon (distinct from liquid's light blue)
+  eta: `#e6e6fa`, // lavender (distinct from alpha's light green)
+  theta: `#f5deb3`, // wheat
+  iota: `#20b2aa`, // light sea green
+  kappa: `#deb887`, // burlywood
+  lambda: `#bc8f8f`, // rosy brown
   two_phase: `#c8c8c8`,
   default: `#b4b4b4`,
   tie_line: `#ff6b6b`,
 } as const
 
-type PhaseColorKey = keyof typeof PHASE_COLOR_HEX
+export type PhaseColorKey = keyof typeof PHASE_COLOR_HEX
 
 // Derive RGB string format (e.g. "135, 206, 250") for custom alpha usage
 export const PHASE_COLOR_RGB = Object.freeze(
@@ -112,18 +121,30 @@ export const PHASE_COLORS = Object.freeze(
   ),
 ) as Record<PhaseColorKey, string>
 
-// Get color key for a single phase name
-function get_phase_color_key(name: string): PhaseColorKey {
+// Phase pattern matching rules: [substrings to match, color key, optional prefix check]
+// Order matters: theta before eta (since "theta" contains "eta" as substring)
+const PHASE_PATTERNS: [string[], PhaseColorKey, string?][] = [
+  [[`liquid`], `liquid`],
+  [[`α`, `alpha`], `alpha`, `fcc`],
+  [[`β`, `beta`], `beta`, `bcc`],
+  [[`γ`, `gamma`], `gamma`, `hcp`],
+  [[`δ`, `delta`], `delta`],
+  [[`ε`, `epsilon`], `epsilon`],
+  [[`ζ`, `zeta`], `zeta`],
+  [[`θ`, `theta`], `theta`], // must come before eta
+  [[`η`, `eta`], `eta`],
+  [[`ι`, `iota`], `iota`],
+  [[`κ`, `kappa`], `kappa`],
+  [[`λ`, `lambda`], `lambda`],
+]
+
+// Get color key for a single phase name (supports Greek letters and common phase notation)
+export function get_phase_color_key(name: string): PhaseColorKey {
   const lower = name.toLowerCase().trim()
-  if (lower.includes(`liquid`) || lower === `l`) return `liquid`
-  if (lower.includes(`α`) || lower.includes(`alpha`) || lower.startsWith(`fcc`)) {
-    return `alpha`
-  }
-  if (lower.includes(`β`) || lower.includes(`beta`) || lower.startsWith(`bcc`)) {
-    return `beta`
-  }
-  if (lower.includes(`γ`) || lower.includes(`gamma`) || lower.startsWith(`hcp`)) {
-    return `gamma`
+  if (lower === `l`) return `liquid` // exact match for shorthand "L"
+  for (const [patterns, key, prefix] of PHASE_PATTERNS) {
+    if (patterns.some((p) => lower.includes(p))) return key
+    if (prefix && lower.startsWith(prefix)) return key
   }
   return `default`
 }
@@ -135,15 +156,24 @@ export function get_phase_color(name: string, format: `rgba` | `rgb` = `rgba`): 
   return format === `rgb` ? PHASE_COLOR_RGB[key] : PHASE_COLORS[key]
 }
 
-// Get gradient colors for two-phase regions (returns [leftColor, rightColor] hex values)
-export function get_two_phase_gradient_colors(
-  name: string,
-): { left: string; right: string } | null {
+// Gradient stop for multi-phase region gradients
+export interface GradientStop {
+  offset: number // 0-1 range
+  color: string // hex color
+}
+
+// Get gradient colors for multi-phase regions (2+ phases separated by '+')
+// Returns array of evenly-spaced gradient stops, or null for single-phase regions
+export function get_multi_phase_gradient(name: string): GradientStop[] | null {
   if (!name.includes(`+`)) return null
-  const [left_name, right_name] = name.split(`+`).map((s) => s.trim())
-  const left_key = get_phase_color_key(left_name)
-  const right_key = get_phase_color_key(right_name)
-  return { left: PHASE_COLOR_HEX[left_key], right: PHASE_COLOR_HEX[right_key] }
+  const phases = name.split(`+`).map((s) => s.trim()).filter(Boolean)
+  if (phases.length < 2) return null
+
+  // Create evenly spaced gradient stops (phases.length >= 2 guaranteed by early return)
+  return phases.map((phase, idx) => ({
+    offset: idx / (phases.length - 1),
+    color: PHASE_COLOR_HEX[get_phase_color_key(phase)],
+  }))
 }
 
 // Find which phase region contains the given composition and temperature
@@ -161,14 +191,14 @@ export function find_phase_at_point(
 }
 
 // SVG path generator using d3-shape
-const path_line = line<[number, number]>().x((d) => d[0]).y((d) => d[1])
+const path_line = line<Vec2>().x((d) => d[0]).y((d) => d[1])
 
 // Generate closed SVG path for polygon regions (min 3 points)
-export const generate_region_path = (vertices: [number, number][]): string =>
+export const generate_region_path = (vertices: Vec2[]): string =>
   vertices.length < 3 ? `` : `${path_line(vertices)} Z`
 
 // Generate open SVG path for boundary curves (min 2 points)
-export const generate_boundary_path = (points: [number, number][]): string =>
+export const generate_boundary_path = (points: Vec2[]): string =>
   points.length < 2 ? `` : path_line(points) ?? ``
 
 // Compute label properties (rotation, wrapping, scale) to fit within region bounds
@@ -249,10 +279,10 @@ function wrap_text(text: string, max_chars: number): string[] {
 
 // Transform data coordinates to SVG coordinates using scale functions
 export function transform_vertices(
-  vertices: [number, number][],
+  vertices: Vec2[],
   x_scale: (val: number) => number,
   y_scale: (val: number) => number,
-): [number, number][] {
+): Vec2[] {
   return vertices.map(([comp, temp]) => [x_scale(comp), y_scale(temp)])
 }
 
@@ -273,14 +303,17 @@ export function format_temperature(value: number, unit: string = `K`): string {
 }
 
 // Calculate lever rule for a point in a two-phase region
-// Returns null if the region is not a two-phase region or calculation fails
+// Returns null if the region is not exactly a two-phase region or calculation fails
+// Note: Lever rule is thermodynamically defined only for two-phase equilibria
 export function calculate_lever_rule(
   region: PhaseRegion,
   composition: number,
   temperature: number,
 ): LeverRuleResult | null {
-  // Only works for two-phase regions (name contains '+')
+  // Only works for exactly two-phase regions (lever rule undefined for 3+ phases)
   if (!region.name.includes(`+`)) return null
+  const phase_count = region.name.split(`+`).filter((s) => s.trim()).length
+  if (phase_count !== 2) return null
 
   // Find horizontal intersections with polygon edges at this temperature
   const intersections: number[] = []

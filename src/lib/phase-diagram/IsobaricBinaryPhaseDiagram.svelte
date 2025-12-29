@@ -5,7 +5,7 @@
     set_fullscreen_bg,
     setup_fullscreen_effect,
   } from '$lib/layout'
-  import { compute_bounding_box_2d, polygon_centroid } from '$lib/math'
+  import { compute_bounding_box_2d, polygon_centroid, type Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
   import { constrain_tooltip_position } from '$lib/plot/layout'
   import { scaleLinear } from 'd3-scale'
@@ -30,8 +30,8 @@
     format_hover_info_text,
     generate_boundary_path,
     generate_region_path,
+    get_multi_phase_gradient,
     get_phase_color,
-    get_two_phase_gradient_colors,
     merge_phase_diagram_config,
     PHASE_COLOR_RGB,
     transform_vertices,
@@ -130,7 +130,7 @@
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
 
   // Convert temperature range for display
-  const display_temp_range = $derived<[number, number]>([
+  const display_temp_range = $derived<Vec2>([
     convert_temp(data.temperature_range[0], data_temp_unit, temp_unit),
     convert_temp(data.temperature_range[1], data_temp_unit, temp_unit),
   ])
@@ -168,8 +168,8 @@
         { width, height },
         merged_config.font_size,
       )
-      // Get gradient colors for two-phase regions
-      const gradient = get_two_phase_gradient_colors(region.name)
+      // Get gradient stops for multi-phase regions (2+, supports 3+ phases)
+      const gradient = get_multi_phase_gradient(region.name)
       const x_coords = svg_vertices.map(([vx]) => vx)
       return {
         ...region,
@@ -464,7 +464,7 @@
       role="application"
       aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press Ctrl/Cmd+Shift+E to export."
     >
-      <!-- Gradient definitions for two-phase regions -->
+      <!-- Gradient definitions for multi-phase regions (2+ phases) -->
       <defs>
         {#each transformed_regions as region (region.id)}
           {#if region.gradient}
@@ -476,8 +476,13 @@
               y2="0"
               gradientUnits="userSpaceOnUse"
             >
-              <stop offset="0%" stop-color={region.gradient.left} stop-opacity="0.6" />
-              <stop offset="100%" stop-color={region.gradient.right} stop-opacity="0.6" />
+              {#each region.gradient as stop, idx (idx)}
+                <stop
+                  offset="{stop.offset * 100}%"
+                  stop-color={stop.color}
+                  stop-opacity="0.6"
+                />
+              {/each}
             </linearGradient>
           {/if}
         {/each}

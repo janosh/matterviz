@@ -1,4 +1,5 @@
 import type { Sides } from '$lib/plot'
+import type { Vec2 } from '../math.ts'
 
 // Temperature unit type
 export type TempUnit = `K` | `°C` | `°F`
@@ -7,10 +8,10 @@ export type TempUnit = `K` | `°C` | `°F`
 export interface PhaseRegion {
   id: string
   name: string // e.g., "Liquid", "α + β", "α"
-  vertices: [number, number][] // [composition, temperature] pairs defining the polygon
+  vertices: Vec2[] // [composition, temperature] pairs defining the polygon
   color?: string
   // Optional text label position override (defaults to centroid)
-  label_position?: [number, number]
+  label_position?: Vec2
 }
 
 // Boundary curve types
@@ -27,7 +28,7 @@ export type BoundaryType =
 export interface PhaseBoundary {
   id: string
   type: BoundaryType
-  points: [number, number][] // [composition, temperature] pairs defining the curve
+  points: Vec2[] // [composition, temperature] pairs defining the curve
   style?: {
     color?: string
     width?: number
@@ -50,14 +51,14 @@ export type SpecialPointType =
 export interface SpecialPoint {
   id: string
   type: SpecialPointType
-  position: [number, number] // [composition, temperature]
+  position: Vec2 // [composition, temperature]
   label?: string
 }
 
 // Complete diagram data structure
 export interface PhaseDiagramData {
   components: [string, string] // e.g., ["A", "B"] or ["Cu", "Ni"]
-  temperature_range: [number, number] // [min, max] in Kelvin or Celsius
+  temperature_range: Vec2 // [min, max] in Kelvin or Celsius
   temperature_unit?: `K` | `°C` | `°F`
   composition_unit?: `at%` | `wt%` | `mol%` | `fraction`
   regions: PhaseRegion[]

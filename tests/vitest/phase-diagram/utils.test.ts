@@ -1,4 +1,4 @@
-import { point_in_polygon, polygon_centroid } from '$lib/math'
+import { point_in_polygon, polygon_centroid, type Vec2 } from '$lib/math'
 import type { PhaseDiagramData, PhaseRegion } from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
@@ -8,9 +8,11 @@ import {
   format_temperature,
   generate_boundary_path,
   generate_region_path,
+  get_multi_phase_gradient,
   get_phase_color,
-  get_two_phase_gradient_colors,
+  get_phase_color_key,
   merge_phase_diagram_config,
+  PHASE_COLOR_HEX,
   PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
   transform_vertices,
@@ -18,17 +20,8 @@ import {
 import { describe, expect, test } from 'vitest'
 
 describe(`point_in_polygon`, () => {
-  const square: [number, number][] = [
-    [0, 0],
-    [1, 0],
-    [1, 1],
-    [0, 1],
-  ]
-  const triangle: [number, number][] = [
-    [0, 0],
-    [1, 0],
-    [0.5, 1],
-  ]
+  const square: Vec2[] = [[0, 0], [1, 0], [1, 1], [0, 1]]
+  const triangle: Vec2[] = [[0, 0], [1, 0], [0.5, 1]]
 
   test.each([
     {
@@ -64,14 +57,14 @@ describe(`point_in_polygon`, () => {
     {
       point_x: 0.5,
       point_y: 0.5,
-      polygon: [[0, 0], [1, 1]] as [number, number][],
+      polygon: [[0, 0], [1, 1]] as Vec2[],
       expected: false,
       desc: `2 vertices`,
     },
     {
       point_x: 0.5,
       point_y: 0.5,
-      polygon: [] as [number, number][],
+      polygon: [] as Vec2[],
       expected: false,
       desc: `empty polygon`,
     },
@@ -132,7 +125,7 @@ describe(`generate_region_path`, () => {
     { vertices: [[0, 0], [1, 1]], expected: `` },
     { vertices: [[0, 0]], expected: `` },
     { vertices: [], expected: `` },
-  ] as { vertices: [number, number][]; expected: string }[])(
+  ] as { vertices: Vec2[]; expected: string }[])(
     `vertices.length=$vertices.length → "$expected"`,
     ({ vertices, expected }) => {
       expect(generate_region_path(vertices)).toBe(expected)
@@ -145,7 +138,7 @@ describe(`generate_boundary_path`, () => {
     { points: [[0, 0], [50, 50], [100, 100]], expected: `M0,0L50,50L100,100` },
     { points: [[0, 0]], expected: `` },
     { points: [], expected: `` },
-  ] as { points: [number, number][]; expected: string }[])(
+  ] as { points: Vec2[]; expected: string }[])(
     `points.length=$points.length → "$expected"`,
     ({ points, expected }) => {
       expect(generate_boundary_path(points)).toBe(expected)
@@ -164,7 +157,7 @@ describe(`polygon_centroid`, () => {
       { vertices: [], expected: [0, 0], desc: `empty array` },
     ] as const,
   )(`$desc → ($expected)`, ({ vertices, expected }) => {
-    const [cx, cy] = polygon_centroid([...vertices] as [number, number][])
+    const [cx, cy] = polygon_centroid([...vertices] as Vec2[])
     expect(cx).toBeCloseTo(expected[0], 5)
     expect(cy).toBeCloseTo(expected[1], 5)
   })
@@ -187,32 +180,127 @@ describe(`get_phase_color`, () => {
   })
 })
 
-describe(`get_two_phase_gradient_colors`, () => {
+describe(`get_phase_color_key`, () => {
   test.each([
-    [`α + β`, `#90ee90`, `#ffb6c1`], // alpha (green) + beta (pink)
-    [`FCC + L`, `#90ee90`, `#87cefc`], // alpha + liquid
-    [`Liquid + α`, `#87cefc`, `#90ee90`], // liquid + alpha
-    [`beta + gamma`, `#ffb6c1`, `#ffdab9`], // beta + gamma
-    [`HCP + BCC`, `#ffdab9`, `#ffb6c1`], // gamma (hcp) + beta (bcc)
-  ])(`%s → left=%s, right=%s`, (name, expected_left, expected_right) => {
-    const result = get_two_phase_gradient_colors(name)
-    expect(result).not.toBeNull()
-    expect(result?.left).toBe(expected_left)
-    expect(result?.right).toBe(expected_right)
+    // Greek letters
+    [`α`, `alpha`],
+    [`β`, `beta`],
+    [`γ`, `gamma`],
+    [`δ`, `delta`],
+    [`ε`, `epsilon`],
+    [`ζ`, `zeta`],
+    [`η`, `eta`],
+    [`θ`, `theta`],
+    [`ι`, `iota`],
+    [`κ`, `kappa`],
+    [`λ`, `lambda`],
+    // Latin names
+    [`alpha`, `alpha`],
+    [`beta`, `beta`],
+    [`gamma`, `gamma`],
+    [`delta`, `delta`],
+    [`epsilon`, `epsilon`],
+    [`zeta`, `zeta`],
+    [`eta`, `eta`],
+    [`theta`, `theta`],
+    [`iota`, `iota`],
+    [`kappa`, `kappa`],
+    [`lambda`, `lambda`],
+    // Special phases
+    [`Liquid`, `liquid`],
+    [`L`, `liquid`],
+    [`FCC`, `alpha`],
+    [`BCC`, `beta`],
+    [`HCP`, `gamma`],
+    // Lowercase prefixes (case insensitivity)
+    [`fcc`, `alpha`],
+    [`bcc`, `beta`],
+    [`hcp`, `gamma`],
+    // Prefix with suffix (common TDB notation)
+    [`FCC_A1`, `alpha`],
+    [`BCC_A2`, `beta`],
+    [`HCP_A3`, `gamma`],
+    // Case insensitivity for Greek names
+    [`THETA`, `theta`],
+    [`ETA`, `eta`],
+    // Unknown
+    [`Unknown`, `default`],
+    [``, `default`],
+  ])(`%s → %s`, (name, expected_key) => {
+    expect(get_phase_color_key(name)).toBe(expected_key)
   })
+})
 
+describe(`get_multi_phase_gradient`, () => {
   test.each([`Liquid`, `α`, `Unknown`, ``, `FCC`])(
     `returns null for single-phase: %s`,
     (name) => {
-      expect(get_two_phase_gradient_colors(name)).toBeNull()
+      expect(get_multi_phase_gradient(name)).toBeNull()
     },
   )
 
-  test(`handles whitespace around +`, () => {
-    const result = get_two_phase_gradient_colors(`  α   +   β  `)
-    expect(result).not.toBeNull()
-    expect(result?.left).toBe(`#90ee90`)
-    expect(result?.right).toBe(`#ffb6c1`)
+  test(`returns 2 stops for two-phase regions`, () => {
+    expect(get_multi_phase_gradient(`α + β`)).toEqual([
+      { offset: 0, color: PHASE_COLOR_HEX.alpha },
+      { offset: 1, color: PHASE_COLOR_HEX.beta },
+    ])
+  })
+
+  test(`returns 3 evenly-spaced stops for three-phase regions`, () => {
+    expect(get_multi_phase_gradient(`α + β + γ`)).toEqual([
+      { offset: 0, color: PHASE_COLOR_HEX.alpha },
+      { offset: 0.5, color: PHASE_COLOR_HEX.beta },
+      { offset: 1, color: PHASE_COLOR_HEX.gamma },
+    ])
+  })
+
+  test(`returns 4 evenly-spaced stops for four-phase regions`, () => {
+    const result = get_multi_phase_gradient(`α + β + γ + δ`)
+    expect(result).toHaveLength(4)
+    expect(result?.map((s) => s.offset)).toEqual([0, 1 / 3, 2 / 3, 1])
+  })
+
+  test(`handles all extended phase colors (δ through θ)`, () => {
+    expect(get_multi_phase_gradient(`δ + ε + ζ + η + θ`)).toEqual([
+      { offset: 0, color: PHASE_COLOR_HEX.delta },
+      { offset: 0.25, color: PHASE_COLOR_HEX.epsilon },
+      { offset: 0.5, color: PHASE_COLOR_HEX.zeta },
+      { offset: 0.75, color: PHASE_COLOR_HEX.eta },
+      { offset: 1, color: PHASE_COLOR_HEX.theta },
+    ])
+  })
+
+  test(`handles extended Greek letters (ι, κ, λ)`, () => {
+    expect(get_multi_phase_gradient(`ι + κ + λ`)).toEqual([
+      { offset: 0, color: PHASE_COLOR_HEX.iota },
+      { offset: 0.5, color: PHASE_COLOR_HEX.kappa },
+      { offset: 1, color: PHASE_COLOR_HEX.lambda },
+    ])
+  })
+
+  test(`handles whitespace around + separators`, () => {
+    expect(get_multi_phase_gradient(`  α   +   β   +   γ  `)?.map((s) => s.color))
+      .toEqual([PHASE_COLOR_HEX.alpha, PHASE_COLOR_HEX.beta, PHASE_COLOR_HEX.gamma])
+  })
+
+  test(`filters empty phase names from splitting`, () => {
+    expect(get_multi_phase_gradient(`α + + β`)).toEqual([
+      { offset: 0, color: PHASE_COLOR_HEX.alpha },
+      { offset: 1, color: PHASE_COLOR_HEX.beta },
+    ])
+  })
+
+  test(`uses default color for unknown phases`, () => {
+    expect(get_multi_phase_gradient(`Unknown1 + Unknown2 + α`)).toEqual([
+      { offset: 0, color: PHASE_COLOR_HEX.default },
+      { offset: 0.5, color: PHASE_COLOR_HEX.default },
+      { offset: 1, color: PHASE_COLOR_HEX.alpha },
+    ])
+  })
+
+  test(`Liquid + FCC + BCC → liquid + alpha + beta colors`, () => {
+    expect(get_multi_phase_gradient(`Liquid + FCC + BCC`)?.map((s) => s.color))
+      .toEqual([PHASE_COLOR_HEX.liquid, PHASE_COLOR_HEX.alpha, PHASE_COLOR_HEX.beta])
   })
 })
 
@@ -245,7 +333,7 @@ describe(`transform_vertices`, () => {
   test.each([
     { input: [[0, 0], [1, 100], [0.5, 50]], expected: [[0, 100], [200, 0], [100, 50]] },
     { input: [], expected: [] },
-  ] as { input: [number, number][]; expected: [number, number][] }[])(
+  ] as { input: Vec2[]; expected: Vec2[] }[])(
     `transforms $input.length vertices`,
     ({ input, expected }) => {
       expect(transform_vertices(input, x_scale, y_scale)).toEqual(expected)
@@ -265,10 +353,22 @@ describe(`calculate_lever_rule`, () => {
     vertices: [[0, 700], [1, 700], [1, 900], [0, 900]],
   }
 
+  const three_phase_region: PhaseRegion = {
+    id: `alpha-beta-gamma`,
+    name: `α + β + γ`,
+    vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+  }
+
   test.each([
     { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
     { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
     { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },
+    {
+      region: three_phase_region,
+      comp: 0.5,
+      temp: 500,
+      desc: `3+ phase region (lever rule undefined)`,
+    },
   ])(`returns null for $desc`, ({ region, comp, temp }) => {
     expect(calculate_lever_rule(region, comp, temp)).toBeNull()
   })
@@ -306,8 +406,16 @@ describe(`calculate_lever_rule`, () => {
     }
   })
 
+  test(`returns null for "+" (empty phase names)`, () => {
+    const region: PhaseRegion = {
+      id: `test`,
+      name: `+`,
+      vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+    }
+    expect(calculate_lever_rule(region, 0.5, 500)).toBeNull()
+  })
+
   test.each([
-    { name: `+`, left: `Phase 1`, right: `Phase 2`, desc: `just plus sign` },
     { name: `Liquid + FCC_A1`, left: `Liquid`, right: `FCC_A1`, desc: `complex names` },
   ])(`parses "$name" → $left, $right`, ({ name, left, right }) => {
     const region: PhaseRegion = {

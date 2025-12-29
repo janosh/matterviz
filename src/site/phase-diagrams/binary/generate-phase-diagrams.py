@@ -22,7 +22,13 @@ BoundaryType = Literal[
     "liquidus", "solidus", "solvus", "eutectic", "peritectic", "tie-line", "custom"
 ]
 SpecialPointType = Literal[
-    "eutectic", "peritectic", "eutectoid", "peritectoid", "congruent", "melting_point", "custom"
+    "eutectic",
+    "peritectic",
+    "eutectoid",
+    "peritectoid",
+    "congruent",
+    "melting_point",
+    "custom",
 ]
 
 # Dict type aliases for phase diagram structures
@@ -41,6 +47,9 @@ def dedupe_consecutive_vertices(vertices: VertexList) -> VertexList:
     for vertex in vertices[1:]:
         if vertex != result[-1]:
             result.append(vertex)
+    # Remove redundant closing vertex if polygon is explicitly closed
+    if len(result) > 1 and result[0] == result[-1]:
+        result.pop()
     return result
 
 
