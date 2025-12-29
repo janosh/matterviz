@@ -32,10 +32,10 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     // Boundaries
     expect(await svg.locator(`.boundaries path`).count()).toBeGreaterThanOrEqual(1)
 
-    // Special points (eutectic/peritectic)
-    const special_points = svg.locator(`.special-points circle`)
-    expect(await special_points.count()).toBeGreaterThanOrEqual(1)
-    await expect(special_points.first()).toHaveAttribute(`fill`, /#\w+/)
+    // Special points (eutectic/peritectic) - select marker circles, not hit-areas
+    const special_point_markers = svg.locator(`.special-points .special-point-marker`)
+    expect(await special_point_markers.count()).toBeGreaterThanOrEqual(1)
+    await expect(special_point_markers.first()).toHaveAttribute(`fill`, /#\w+/)
 
     // Grid lines
     expect(await svg.locator(`.grid line`).count()).toBeGreaterThanOrEqual(8)
@@ -367,13 +367,14 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     await expect(special_points).toBeVisible()
 
-    const circles = special_points.locator(`circle`)
-    expect(await circles.count()).toBeGreaterThanOrEqual(1)
+    // Select marker circles specifically (not hit-area circles which are transparent)
+    const markers = special_points.locator(`.special-point-marker`)
+    expect(await markers.count()).toBeGreaterThanOrEqual(1)
 
     // Check styling: fill color, white stroke
-    const first_circle = circles.first()
-    await expect(first_circle).toHaveAttribute(`fill`, /#\w+/)
-    await expect(first_circle).toHaveAttribute(`stroke`, `white`)
+    const first_marker = markers.first()
+    await expect(first_marker).toHaveAttribute(`fill`, /#\w+/)
+    await expect(first_marker).toHaveAttribute(`stroke`, `white`)
 
     // Check for label text if present
     const labels = special_points.locator(`text`)

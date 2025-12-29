@@ -1,8 +1,8 @@
 import type { Sides } from '$lib/plot'
 import type { Vec2 } from '../math.ts'
 
-// Temperature unit type
 export type TempUnit = `K` | `°C` | `°F`
+export type CompUnit = `at%` | `wt%` | `mol%` | `fraction`
 
 // Phase region with polygon vertices and metadata
 export interface PhaseRegion {
@@ -59,8 +59,8 @@ export interface SpecialPoint {
 export interface PhaseDiagramData {
   components: [string, string] // e.g., ["A", "B"] or ["Cu", "Ni"]
   temperature_range: Vec2 // [min, max] in Kelvin or Celsius
-  temperature_unit?: `K` | `°C` | `°F`
-  composition_unit?: `at%` | `wt%` | `mol%` | `fraction`
+  temperature_unit?: TempUnit
+  composition_unit?: CompUnit
   regions: PhaseRegion[]
   boundaries: PhaseBoundary[]
   special_points?: SpecialPoint[]

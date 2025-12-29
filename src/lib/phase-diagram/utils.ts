@@ -4,6 +4,7 @@ import { point_in_polygon, type Vec2 } from '$lib/math'
 import type { Sides } from '$lib/plot'
 import { line } from 'd3-shape'
 import type {
+  CompUnit,
   LeverRuleResult,
   PhaseDiagramConfig,
   PhaseDiagramData,
@@ -289,7 +290,7 @@ export function transform_vertices(
 // Format composition value for display
 export function format_composition(
   value: number,
-  unit: string = `at%`,
+  unit: CompUnit | string = `at%`,
   include_unit: boolean = true,
 ): string {
   if (unit === `fraction`) return format_num(value, `.3f`)
@@ -298,7 +299,10 @@ export function format_composition(
 }
 
 // Format temperature value for display
-export function format_temperature(value: number, unit: string = `K`): string {
+export function format_temperature(
+  value: number,
+  unit: TempUnit | string = `K`,
+): string {
   return `${format_num(value, `.0f`)} ${unit}`
 }
 

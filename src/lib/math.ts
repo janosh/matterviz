@@ -454,8 +454,8 @@ export function point_in_polygon(
     const [x_i, y_i] = vertices[idx]
     const [x_j, y_j] = vertices[prev_idx]
 
-    // Check if ray from point crosses this edge (skip horizontal edges)
-    if (y_i !== y_j && y_i > point_y !== y_j > point_y) {
+    // Check if horizontal ray from point crosses this edge
+    if (y_i !== y_j && (y_i > point_y) !== (y_j > point_y)) {
       const x_intersect = ((x_j - x_i) * (point_y - y_i)) / (y_j - y_i) + x_i
       if (point_x < x_intersect) inside = !inside
     }

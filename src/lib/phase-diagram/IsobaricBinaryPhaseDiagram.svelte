@@ -328,9 +328,9 @@
         composition,
         temperature,
         position: { x: event.clientX, y: event.clientY },
-        lever_rule: calculate_lever_rule(region, composition, temperature) ??
+        lever_rule: calculate_lever_rule(region, composition, temperature) ||
           undefined,
-        special_point: nearby_special ?? undefined,
+        special_point: nearby_special || undefined,
       }
       on_phase_hover?.(hover_info)
     } else {
