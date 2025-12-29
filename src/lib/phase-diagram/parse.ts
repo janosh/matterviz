@@ -114,9 +114,11 @@ export function parse_tdb(content: string): TdbParseResult {
       }
     }
 
-    // Use sensible defaults if no ranges found
+    // Use sensible defaults if no ranges found or if extracted range is invalid
     if (min_temp === Infinity) min_temp = TDB_TEMP_DEFAULTS.min
     if (max_temp === -Infinity) max_temp = TDB_TEMP_DEFAULTS.max_fallback
+    // Ensure min < max (swap if malformed data caused inversion)
+    if (min_temp > max_temp) [min_temp, max_temp] = [max_temp, min_temp]
 
     return {
       success: true,
@@ -244,7 +246,8 @@ function parse_temperature_ranges(
       ranges.push({ min: next_temp, max: TDB_TEMP_DEFAULTS.max_range, expr })
     }
   }
-  return ranges
+  // Filter out invalid ranges where max <= min (malformed data)
+  return ranges.filter((range) => range.max > range.min)
 }
 
 function parse_tdb_line(line: string, data: TdbData): void {

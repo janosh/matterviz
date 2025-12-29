@@ -211,10 +211,12 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     const initial_regions = await svg.locator(`.phase-regions path`).count()
     const initial_label = await svg.locator(`.region-labels text`).first().textContent()
 
-    await files.nth(1).click()
+    // Click a non-active file (find first file that's not currently active)
+    const inactive_file = files.filter({ hasNot: page.locator(`.active`) }).first()
+    await inactive_file.click()
 
-    // Wait for diagram to update by checking for phase regions
-    await expect(svg.locator(`.phase-regions path`).first()).toBeVisible()
+    // Wait for the clicked file to become active (diagram has loaded)
+    await expect(inactive_file).toHaveClass(/active/, { timeout: 5000 })
 
     // Verify something changed (region count or label text)
     const new_regions = await svg.locator(`.phase-regions path`).count()
