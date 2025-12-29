@@ -43,6 +43,7 @@ export type SpecialPointType =
   | `eutectoid` // solid → two different solids
   | `peritectoid` // two solids → different solid
   | `congruent` // phase change without composition change
+  | `melting_point` // pure element melting point at diagram edge
   | `custom`
 
 // Special points (eutectic, peritectic, etc.)
@@ -105,4 +106,5 @@ export interface PhaseHoverInfo {
   temperature: number
   position: { x: number; y: number } // screen coordinates
   lever_rule?: LeverRuleResult // Only populated for two-phase regions
+  special_point?: SpecialPoint // Populated when hovering near a special point
 }

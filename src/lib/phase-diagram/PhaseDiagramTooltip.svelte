@@ -36,6 +36,44 @@
 
   const stability = $derived(get_phase_stability_range(hover_info.region))
 
+  // Format special point type for display (e.g., "peritectic" → "Peritectic")
+  // For melting points and congruent points at composition edges, show element-specific info
+  const special_point_info = $derived.by(() => {
+    const point = hover_info.special_point
+    if (!point) return null
+
+    const type = point.type
+    const position = point.position
+    const temp = format_temperature(position[1], temperature_unit)
+
+    // Check if this is a melting point (at composition edge)
+    const is_at_edge = position[0] <= 0.01 || position[0] >= 0.99
+    const is_melting = type === `melting_point` || type === `congruent`
+
+    if (is_melting && is_at_edge) {
+      const element = position[0] <= 0.01 ? component_a : component_b
+      return {
+        badge: `Melting Point`,
+        description: `${element} melts at ${temp}`,
+      }
+    }
+
+    // Handle other special point types with descriptive info
+    const type_descriptions: Record<string, string> = {
+      eutectic: `Liquid → two solid phases at ${temp}`,
+      peritectic: `Liquid + solid → different solid at ${temp}`,
+      eutectoid: `Solid → two solid phases at ${temp}`,
+      peritectoid: `Two solids → different solid at ${temp}`,
+      congruent: `Congruent phase change at ${temp}`,
+    }
+
+    const badge = type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ` `)
+    return {
+      badge,
+      description: type_descriptions[type] ?? null,
+    }
+  })
+
   // Calculate distance to nearest phase boundary (liquidus/solidus)
   const boundary_distance = $derived.by(() => {
     if (!boundaries.length) return null
@@ -60,7 +98,16 @@
 </script>
 
 <div class="phase-diagram-tooltip">
-  <header><strong>{hover_info.region.name}</strong></header>
+  <header>
+    <strong>{hover_info.region.name}</strong>
+    {#if special_point_info}<span class="special-point-badge">{
+        special_point_info.badge
+      }</span>{/if}
+  </header>
+
+  {#if special_point_info?.description}
+    <div class="special-point-description">{special_point_info.description}</div>
+  {/if}
 
   <dl>
     <dt>Temperature</dt>
@@ -139,6 +186,25 @@
     padding-bottom: 4px;
     border-bottom: 1px solid var(--border);
     font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .special-point-badge {
+    font-size: 10px;
+    font-weight: 500;
+    background: light-dark(rgba(220, 38, 38, 0.15), rgba(239, 68, 68, 0.25));
+    color: light-dark(#b91c1c, #fca5a5);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .special-point-description {
+    font-size: 11px;
+    font-style: italic;
+    opacity: 0.9;
+    margin-bottom: 5px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
   }
   dl {
     display: grid;

@@ -31,6 +31,7 @@
     generate_boundary_path,
     generate_region_path,
     get_phase_color,
+    get_two_phase_gradient_colors,
     merge_phase_diagram_config,
     PHASE_COLOR_RGB,
     transform_vertices,
@@ -167,6 +168,9 @@
         { width, height },
         merged_config.font_size,
       )
+      // Get gradient colors for two-phase regions
+      const gradient = get_two_phase_gradient_colors(region.name)
+      const x_coords = svg_vertices.map(([vx]) => vx)
       return {
         ...region,
         svg_path: generate_region_path(svg_vertices),
@@ -176,6 +180,9 @@
         label_rotation: label_props.rotation,
         label_lines: label_props.lines,
         label_scale: label_props.scale,
+        gradient,
+        x_min: Math.min(...x_coords),
+        x_max: Math.max(...x_coords),
       }
     }),
   )
@@ -273,6 +280,24 @@
     )
   })
 
+  // Find nearest special point within threshold (in SVG pixels)
+  function find_nearby_special_point(
+    svg_x: number,
+    svg_y: number,
+    threshold: number = 20,
+  ) {
+    let nearest: (typeof transformed_special_points)[0] | null = null
+    let min_dist = threshold
+    for (const point of transformed_special_points) {
+      const dist = Math.hypot(point.svg_x - svg_x, point.svg_y - svg_y)
+      if (dist < min_dist) {
+        min_dist = dist
+        nearest = point
+      }
+    }
+    return nearest
+  }
+
   // Pointer move handler (unified mouse/touch via Pointer Events API)
   function handle_pointer_move(event: PointerEvent) {
     const svg = event.currentTarget as SVGElement
@@ -291,6 +316,11 @@
     const temperature = y_scale.invert(svg_y)
     const region = find_phase_at_point(composition, temperature, data)
 
+    // Check for nearby special point
+    const nearby_special = show_special_points
+      ? find_nearby_special_point(svg_x, svg_y)
+      : null
+
     if (region) {
       hovered_region = region
       hover_info = {
@@ -300,6 +330,7 @@
         position: { x: event.clientX, y: event.clientY },
         lever_rule: calculate_lever_rule(region, composition, temperature) ??
           undefined,
+        special_point: nearby_special ?? undefined,
       }
       on_phase_hover?.(hover_info)
     } else {
@@ -433,6 +464,25 @@
       role="application"
       aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press Ctrl/Cmd+Shift+E to export."
     >
+      <!-- Gradient definitions for two-phase regions -->
+      <defs>
+        {#each transformed_regions as region (region.id)}
+          {#if region.gradient}
+            <linearGradient
+              id="gradient-{region.id}"
+              x1={region.x_min}
+              x2={region.x_max}
+              y1="0"
+              y2="0"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop offset="0%" stop-color={region.gradient.left} stop-opacity="0.6" />
+              <stop offset="100%" stop-color={region.gradient.right} stop-opacity="0.6" />
+            </linearGradient>
+          {/if}
+        {/each}
+      </defs>
+
       <!-- Background -->
       <rect
         x={left}
@@ -455,7 +505,9 @@
         {#each transformed_regions as region (region.id)}
           <path
             d={region.svg_path}
-            fill={region.color || get_phase_color(region.name)}
+            fill={region.gradient
+            ? `url(#gradient-${region.id})`
+            : (region.color || get_phase_color(region.name))}
             stroke="none"
             class:hovered={hovered_region?.id === region.id}
           />
@@ -475,34 +527,6 @@
               stroke-linecap="round"
               stroke-linejoin="round"
             />
-          {/each}
-        </g>
-      {/if}
-
-      <!-- Special points -->
-      {#if show_special_points}
-        <g class="special-points">
-          {#each transformed_special_points as point (point.id)}
-            <circle
-              cx={point.svg_x}
-              cy={point.svg_y}
-              r={merged_config.special_point_radius}
-              fill={merged_config.colors.special_point}
-              stroke="white"
-              stroke-width={1.5}
-            />
-            {#if point.label}
-              <text
-                x={point.svg_x}
-                y={point.svg_y - merged_config.special_point_radius * 2}
-                text-anchor="middle"
-                fill={merged_config.colors.text}
-                font-size={merged_config.font_size}
-                font-weight="bold"
-              >
-                {point.label}
-              </text>
-            {/if}
           {/each}
         </g>
       {/if}
@@ -579,6 +603,47 @@
             stroke="white"
             stroke-width={2}
           />
+        </g>
+      {/if}
+
+      <!-- Special points (rendered last for highest z-index) -->
+      {#if show_special_points}
+        <g class="special-points">
+          {#each transformed_special_points as point (point.id)}
+            <!-- Larger hit area for easier hovering (2x radius) -->
+            <circle
+              cx={point.svg_x}
+              cy={point.svg_y}
+              r={merged_config.special_point_radius * 2}
+              fill="transparent"
+              class="special-point-hit-area"
+            />
+            <circle
+              cx={point.svg_x}
+              cy={point.svg_y}
+              r={merged_config.special_point_radius}
+              fill={merged_config.colors.special_point}
+              stroke="white"
+              stroke-width={1.5}
+              class="special-point-marker"
+            />
+            {#if point.label}
+              {@const is_near_left = point.position[0] <= 0.05}
+              {@const is_near_right = point.position[0] >= 0.95}
+              {@const anchor = is_near_left ? `start` : is_near_right ? `end` : `middle`}
+              {@const x_offset = is_near_left ? 4 : is_near_right ? -4 : 0}
+              <text
+                x={point.svg_x + x_offset}
+                y={point.svg_y - merged_config.special_point_radius * 2}
+                text-anchor={anchor}
+                fill={merged_config.colors.text}
+                font-size={merged_config.font_size}
+                font-weight="bold"
+              >
+                {point.label}
+              </text>
+            {/if}
+          {/each}
         </g>
       {/if}
 
@@ -772,6 +837,19 @@
       opacity: 0.85;
       filter: brightness(1.1);
     }
+  }
+  .special-points {
+    pointer-events: auto;
+  }
+  .special-point-hit-area {
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  .special-point-hit-area:hover + .special-point-marker {
+    filter: brightness(1.3) drop-shadow(0 0 4px currentColor);
+  }
+  .special-point-marker {
+    pointer-events: none; /* Let hit-area handle events */
   }
   /* Grouped pointer-events: none */
   .region-label, .tie-line, .tooltip-container, .copy-feedback, .grid, .region-labels {

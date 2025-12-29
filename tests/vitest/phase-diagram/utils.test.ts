@@ -9,6 +9,7 @@ import {
   generate_boundary_path,
   generate_region_path,
   get_phase_color,
+  get_two_phase_gradient_colors,
   merge_phase_diagram_config,
   PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
@@ -183,6 +184,35 @@ describe(`get_phase_color`, () => {
     [`Unknown`, PHASE_COLORS.default],
   ])(`%s → correct color`, (phase_name, expected_color) => {
     expect(get_phase_color(phase_name)).toBe(expected_color)
+  })
+})
+
+describe(`get_two_phase_gradient_colors`, () => {
+  test.each([
+    [`α + β`, `#90ee90`, `#ffb6c1`], // alpha (green) + beta (pink)
+    [`FCC + L`, `#90ee90`, `#87cefc`], // alpha + liquid
+    [`Liquid + α`, `#87cefc`, `#90ee90`], // liquid + alpha
+    [`beta + gamma`, `#ffb6c1`, `#ffdab9`], // beta + gamma
+    [`HCP + BCC`, `#ffdab9`, `#ffb6c1`], // gamma (hcp) + beta (bcc)
+  ])(`%s → left=%s, right=%s`, (name, expected_left, expected_right) => {
+    const result = get_two_phase_gradient_colors(name)
+    expect(result).not.toBeNull()
+    expect(result?.left).toBe(expected_left)
+    expect(result?.right).toBe(expected_right)
+  })
+
+  test.each([`Liquid`, `α`, `Unknown`, ``, `FCC`])(
+    `returns null for single-phase: %s`,
+    (name) => {
+      expect(get_two_phase_gradient_colors(name)).toBeNull()
+    },
+  )
+
+  test(`handles whitespace around +`, () => {
+    const result = get_two_phase_gradient_colors(`  α   +   β  `)
+    expect(result).not.toBeNull()
+    expect(result?.left).toBe(`#90ee90`)
+    expect(result?.right).toBe(`#ffb6c1`)
   })
 })
 

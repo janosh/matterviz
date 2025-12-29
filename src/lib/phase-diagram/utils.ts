@@ -112,21 +112,38 @@ export const PHASE_COLORS = Object.freeze(
   ),
 ) as Record<PhaseColorKey, string>
 
+// Get color key for a single phase name
+function get_phase_color_key(name: string): PhaseColorKey {
+  const lower = name.toLowerCase().trim()
+  if (lower.includes(`liquid`) || lower === `l`) return `liquid`
+  if (lower.includes(`α`) || lower.includes(`alpha`) || lower.startsWith(`fcc`)) {
+    return `alpha`
+  }
+  if (lower.includes(`β`) || lower.includes(`beta`) || lower.startsWith(`bcc`)) {
+    return `beta`
+  }
+  if (lower.includes(`γ`) || lower.includes(`gamma`) || lower.startsWith(`hcp`)) {
+    return `gamma`
+  }
+  return `default`
+}
+
 // Get phase color - returns rgba() by default, or RGB string if format='rgb'
 export function get_phase_color(name: string, format: `rgba` | `rgb` = `rgba`): string {
   const lower = name.toLowerCase()
-  const key: PhaseColorKey = lower.includes(`+`)
-    ? `two_phase`
-    : lower.includes(`liquid`) || lower === `l`
-    ? `liquid`
-    : lower.includes(`α`) || lower.includes(`alpha`)
-    ? `alpha`
-    : lower.includes(`β`) || lower.includes(`beta`)
-    ? `beta`
-    : lower.includes(`γ`) || lower.includes(`gamma`)
-    ? `gamma`
-    : `default`
+  const key: PhaseColorKey = lower.includes(`+`) ? `two_phase` : get_phase_color_key(name)
   return format === `rgb` ? PHASE_COLOR_RGB[key] : PHASE_COLORS[key]
+}
+
+// Get gradient colors for two-phase regions (returns [leftColor, rightColor] hex values)
+export function get_two_phase_gradient_colors(
+  name: string,
+): { left: string; right: string } | null {
+  if (!name.includes(`+`)) return null
+  const [left_name, right_name] = name.split(`+`).map((s) => s.trim())
+  const left_key = get_phase_color_key(left_name)
+  const right_key = get_phase_color_key(right_name)
+  return { left: PHASE_COLOR_HEX[left_key], right: PHASE_COLOR_HEX[right_key] }
 }
 
 // Find which phase region contains the given composition and temperature

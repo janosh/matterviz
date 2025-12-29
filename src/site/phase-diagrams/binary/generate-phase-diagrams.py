@@ -22,7 +22,7 @@ BoundaryType = Literal[
     "liquidus", "solidus", "solvus", "eutectic", "peritectic", "tie-line", "custom"
 ]
 SpecialPointType = Literal[
-    "eutectic", "peritectic", "eutectoid", "peritectoid", "congruent", "custom"
+    "eutectic", "peritectic", "eutectoid", "peritectoid", "congruent", "melting_point", "custom"
 ]
 
 # Dict type aliases for phase diagram structures
@@ -748,13 +748,13 @@ def create_al_mg_diagram() -> PhaseDiagramData:
         },
         {
             "id": "melt-al",
-            "type": "congruent",
+            "type": "melting_point",
             "position": [0.0, t_melt_al],
             "label": "Tₘ(Al)",
         },
         {
             "id": "melt-mg",
-            "type": "congruent",
+            "type": "melting_point",
             "position": [1.0, t_melt_mg],
             "label": "Tₘ(Mg)",
         },
