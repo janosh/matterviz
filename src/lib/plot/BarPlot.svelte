@@ -43,7 +43,12 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
-  import { calc_auto_padding, LABEL_GAP_DEFAULT, measure_text_width } from './layout'
+  import {
+    calc_auto_padding,
+    constrain_tooltip_position,
+    LABEL_GAP_DEFAULT,
+    measure_text_width,
+  } from './layout'
   import PlotTooltip from './PlotTooltip.svelte'
   import { bar_path } from './svg'
 
@@ -655,6 +660,7 @@
 
   // Tooltip state
   let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
+  let tooltip_el = $state<HTMLDivElement | undefined>()
 
   function get_bar_data(
     series_idx: number,
@@ -1355,8 +1361,23 @@
       {@const cy = (hover_info.active_y_axis === `y2` ? scales.y2 : scales.y)(
       hover_info.orient_y,
     )}
+      {@const tooltip_pos = constrain_tooltip_position(
+      cx,
+      cy,
+      tooltip_el?.offsetWidth ?? 140,
+      tooltip_el?.offsetHeight ?? 50,
+      width,
+      height,
+      { offset_x: 10, offset_y: 5 },
+    )}
       {@const active_y_config = hover_info.active_y_axis === `y2` ? y2_axis : y_axis}
-      <PlotTooltip x={cx} y={cy} bg_color={hover_info.color}>
+      <PlotTooltip
+        x={tooltip_pos.x}
+        y={tooltip_pos.y}
+        offset={{ x: 0, y: 0 }}
+        bg_color={hover_info.color}
+        bind:wrapper={tooltip_el}
+      >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
