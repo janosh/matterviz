@@ -214,6 +214,9 @@
   let legend_drag_offset = $state<{ x: number; y: number }>({ x: 0, y: 0 })
   let legend_manual_position = $state<{ x: number; y: number } | null>(null)
 
+  // Tooltip element reference for dynamic sizing
+  let tooltip_el = $state<HTMLDivElement | undefined>()
+
   // Module-level constants to avoid repeated allocations
   const DEFAULT_MARGIN = { t: 10, l: 10, b: 10, r: 10 } as const
 
@@ -1621,12 +1624,11 @@
       }
       return `rgba(0, 0, 0, 0.7)`
     })()}
-      {@const tooltip_size = { width: 120, height: 50 }}
       {@const tooltip_pos = constrain_tooltip_position(
       handler_props.cx,
       handler_props.cy,
-      tooltip_size.width,
-      tooltip_size.height,
+      tooltip_el?.offsetWidth ?? 120,
+      tooltip_el?.offsetHeight ?? 50,
       width,
       height,
       { offset_x: 10, offset_y: 5 },
@@ -1636,6 +1638,7 @@
         y={tooltip_pos.y}
         offset={{ x: 0, y: 0 }}
         bg_color={tooltip_bg_color}
+        bind:wrapper={tooltip_el}
       >
         {#if tooltip}
           {@render tooltip(handler_props)}

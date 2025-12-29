@@ -203,7 +203,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
   test(`file picker switches diagrams`, async ({ page }) => {
     const { svg } = get_diagram_elements(page)
-    const files = page.locator(`.file-picker button, .file-picker [role="option"]`)
+    const files = page.locator(`.file-picker .file-item`)
     const count = await files.count()
     if (count < 2) test.skip(true, `Requires at least 2 diagram files to test switching`)
 

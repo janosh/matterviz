@@ -660,6 +660,7 @@
 
   // Tooltip state
   let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
+  let tooltip_el = $state<HTMLDivElement | undefined>()
 
   function get_bar_data(
     series_idx: number,
@@ -1360,12 +1361,11 @@
       {@const cy = (hover_info.active_y_axis === `y2` ? scales.y2 : scales.y)(
       hover_info.orient_y,
     )}
-      {@const tooltip_size = { width: 140, height: 50 }}
       {@const tooltip_pos = constrain_tooltip_position(
       cx,
       cy,
-      tooltip_size.width,
-      tooltip_size.height,
+      tooltip_el?.offsetWidth ?? 140,
+      tooltip_el?.offsetHeight ?? 50,
       width,
       height,
       { offset_x: 10, offset_y: 5 },
@@ -1376,6 +1376,7 @@
         y={tooltip_pos.y}
         offset={{ x: 0, y: 0 }}
         bg_color={hover_info.color}
+        bind:wrapper={tooltip_el}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}

@@ -117,6 +117,7 @@
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null)
   let hover_info = $state<HistogramHandlerProps | null>(null)
+  let tooltip_el = $state<HTMLDivElement | undefined>()
   let drag_state = $state<{
     start: { x: number; y: number } | null
     current: { x: number; y: number } | null
@@ -874,18 +875,22 @@
     {@const { value, count, property, active_y_axis } = hover_info}
     {@const tooltip_x = scales.x(value)}
     {@const tooltip_y = (active_y_axis === `y2` ? scales.y2 : scales.y)(count)}
-    {@const tooltip_size = { width: 120, height: mode === `overlay` ? 60 : 40 }}
     {@const tooltip_pos = constrain_tooltip_position(
       tooltip_x,
       tooltip_y,
-      tooltip_size.width,
-      tooltip_size.height,
+      tooltip_el?.offsetWidth ?? 120,
+      tooltip_el?.offsetHeight ?? (mode === `overlay` ? 60 : 40),
       width,
       height,
       { offset_x: 5, offset_y: -10 },
     )}
     {@const active_y_config = active_y_axis === `y2` ? final_y2_axis : final_y_axis}
-    <PlotTooltip x={tooltip_pos.x} y={tooltip_pos.y} offset={{ x: 0, y: 0 }}>
+    <PlotTooltip
+      x={tooltip_pos.x}
+      y={tooltip_pos.y}
+      offset={{ x: 0, y: 0 }}
+      bind:wrapper={tooltip_el}
+    >
       {#if tooltip}
         {@render tooltip({ ...hover_info, fullscreen })}
       {:else}

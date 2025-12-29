@@ -3,6 +3,13 @@
 
 import { ELEM_SYMBOLS } from '$lib/labels'
 
+// Default temperature bounds for TDB parsing (in Kelvin)
+export const TDB_TEMP_DEFAULTS = {
+  min: 298.15, // Room temperature
+  max_fallback: 3000, // Fallback when no functions define ranges
+  max_range: 5000, // Default max for temperature ranges in FUNCTION bodies
+} as const
+
 export interface TdbElement {
   symbol: string
   reference_phase: string
@@ -108,8 +115,8 @@ export function parse_tdb(content: string): TdbParseResult {
     }
 
     // Use sensible defaults if no ranges found
-    if (min_temp === Infinity) min_temp = 298.15
-    if (max_temp === -Infinity) max_temp = 3000
+    if (min_temp === Infinity) min_temp = TDB_TEMP_DEFAULTS.min
+    if (max_temp === -Infinity) max_temp = TDB_TEMP_DEFAULTS.max_fallback
 
     return {
       success: true,
@@ -234,7 +241,7 @@ function parse_temperature_ranges(
       const next_temp = parseFloat(temp_match[1])
       const expr = temp_match[2].replace(/\s+[YN]\s*$/, ``).trim()
       if (ranges.length > 0) ranges[ranges.length - 1].max = next_temp
-      ranges.push({ min: next_temp, max: 6000, expr })
+      ranges.push({ min: next_temp, max: TDB_TEMP_DEFAULTS.max_range, expr })
     }
   }
   return ranges
