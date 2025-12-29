@@ -55,7 +55,7 @@ describe(`PhaseDiagramTooltip`, () => {
     })
 
     const tooltip = document.querySelector(`.phase-diagram-tooltip`)
-    expect(tooltip?.textContent).toContain(`35.0 at%`)
+    expect(tooltip?.textContent).toContain(`35 at%`)
     expect(tooltip?.textContent).toContain(`Cu`)
   })
 
@@ -74,7 +74,7 @@ describe(`PhaseDiagramTooltip`, () => {
 
     const tooltip = document.querySelector(`.phase-diagram-tooltip`)
     // 1 - 0.3 = 0.7 = 70%
-    expect(tooltip?.textContent).toContain(`70.0 at%`)
+    expect(tooltip?.textContent).toContain(`70 at%`)
     expect(tooltip?.textContent).toContain(`Al`)
   })
 

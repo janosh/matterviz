@@ -28,8 +28,8 @@ describe(`format_hover_info_text`, () => {
 
     const text = format_hover_info_text(hover_info, `K`, `at%`, `Al`, `Cu`)
 
-    expect(text).toContain(`35.0 at% Cu`)
-    expect(text).toContain(`65.0 at% Al`)
+    expect(text).toContain(`35 at% Cu`)
+    expect(text).toContain(`65 at% Al`)
   })
 
   test(`formats composition with mol% unit`, () => {
@@ -37,8 +37,8 @@ describe(`format_hover_info_text`, () => {
 
     const text = format_hover_info_text(hover_info, `K`, `mol%`, `Fe`, `Ni`)
 
-    expect(text).toContain(`25.0 mol% Ni`)
-    expect(text).toContain(`75.0 mol% Fe`)
+    expect(text).toContain(`25 mol% Ni`)
+    expect(text).toContain(`75 mol% Fe`)
   })
 
   test(`formats composition with fraction unit`, () => {
@@ -69,8 +69,8 @@ describe(`format_hover_info_text`, () => {
     expect(text).toContain(`Lever Rule:`)
     expect(text).toContain(`α: 60.0%`)
     expect(text).toContain(`β: 40.0%`)
-    expect(text).toContain(`at 20.0 at%`)
-    expect(text).toContain(`at 80.0 at%`)
+    expect(text).toContain(`at 20 at%`)
+    expect(text).toContain(`at 80 at%`)
   })
 
   test(`lever rule uses fraction unit correctly`, () => {
@@ -154,8 +154,8 @@ describe(`format_hover_info_text`, () => {
   })
 
   test.each([
-    { composition: 0, expected_b: `0.0`, expected_a: `100.0` },
-    { composition: 1, expected_b: `100.0`, expected_a: `0.0` },
+    { composition: 0, expected_b: `0`, expected_a: `100` },
+    { composition: 1, expected_b: `100`, expected_a: `0` },
     { composition: 0.333, expected_b: `33.3`, expected_a: `66.7` },
     { composition: 0.667, expected_b: `66.7`, expected_a: `33.3` },
   ])(

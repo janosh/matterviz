@@ -315,7 +315,7 @@
 
   // Document-level keyboard shortcuts
   function handle_doc_keydown(event: KeyboardEvent) {
-    if (event.ctrlKey && event.shiftKey && event.key === `E`) {
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === `E`) {
       event.preventDefault()
       export_pane_open = !export_pane_open
     } else if (event.key === `Escape` && locked_hover_info) {
@@ -431,7 +431,7 @@
       style:cursor={effective_hover_info ? `crosshair` : `default`}
       style:touch-action="none"
       role="application"
-      aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press Ctrl+Shift+E to export."
+      aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press Ctrl/Cmd+Shift+E to export."
     >
       <!-- Background -->
       <rect

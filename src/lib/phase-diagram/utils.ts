@@ -246,7 +246,7 @@ export function format_composition(
   include_unit: boolean = true,
 ): string {
   if (unit === `fraction`) return format_num(value, `.3f`)
-  const formatted = format_num(value * 100, `.1f`)
+  const formatted = format_num(value * 100, `.3`)
   return include_unit ? `${formatted} ${unit}` : formatted
 }
 

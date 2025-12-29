@@ -209,11 +209,11 @@ describe(`get_phase_color`, () => {
 
 describe(`format_composition`, () => {
   test.each([
-    [0.5, `at%`, `50.0 at%`],
-    [0.25, `wt%`, `25.0 wt%`],
+    [0.5, `at%`, `50 at%`],
+    [0.25, `wt%`, `25 wt%`],
     [0.333, `fraction`, `0.333`],
-    [0, `at%`, `0.0 at%`],
-    [1, `at%`, `100.0 at%`],
+    [0, `at%`, `0 at%`],
+    [1, `at%`, `100 at%`],
   ])(`formats %d with unit %s as %s`, (value, unit, expected) => {
     expect(format_composition(value, unit)).toBe(expected)
   })

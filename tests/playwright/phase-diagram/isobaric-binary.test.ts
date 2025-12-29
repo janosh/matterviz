@@ -205,7 +205,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     const { svg } = get_diagram_elements(page)
     const files = page.locator(`.file-picker button, .file-picker [role="option"]`)
     const count = await files.count()
-    if (count < 2) test.skip()
+    if (count < 2) test.skip(true, `Requires at least 2 diagram files to test switching`)
 
     // Capture initial state
     const initial_regions = await svg.locator(`.phase-regions path`).count()
