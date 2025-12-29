@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TdbParseResult } from './parse'
+  import { extract_tdb_reference, summarize_models } from './utils'
 
   interface Props {
     result: TdbParseResult
@@ -18,123 +19,72 @@
     on_load_precomputed,
     style = ``,
   }: Props = $props()
+
+  const reference = $derived(
+    result.data ? extract_tdb_reference(result.data.comments) : null,
+  )
+  const model_summary = $derived(
+    result.data ? summarize_models(result.data.phases) : null,
+  )
 </script>
 
 <div class="tdb-info-panel" {style}>
   <h3>TDB File Parsed</h3>
 
   {#if result.success && result.data}
-    <div class="info-grid">
-      <div class="info-item">
-        <span class="label">System:</span>
-        <span class="value">{
-          system_name || result.binary_system?.join(`-`) || `Unknown`
-        }</span>
-      </div>
-
-      <div class="info-item">
-        <span class="label">Elements:</span>
-        <span class="value">
-          {result.data.elements.map((el) => el.symbol).join(`, `)}
-        </span>
-      </div>
-
-      <div class="info-item">
-        <span class="label">Phases:</span>
-        <span class="value phases">
-          {#each result.data.phases as phase (phase.name)}
-            <span class="phase-tag">{phase.name}</span>
-          {/each}
-        </span>
-      </div>
-
-      <div class="info-item">
-        <span class="label">Functions:</span>
-        <span class="value">{result.data.functions.length}</span>
-      </div>
-
-      <div class="info-item">
-        <span class="label">Parameters:</span>
-        <span class="value">{result.data.parameters.length}</span>
-      </div>
-
+    {@const { phases, functions, parameters } = result.data}
+    {@const sys = system_name || result.binary_system?.join(`-`) || `Unknown`}
+    <dl class="info-grid">
+      <dt>System</dt>
+      <dd>{sys}</dd>
+      <dt>Phases</dt>
+      <dd class="phases">{#each phases as { name } (name)}<span>{name}</span>{/each}</dd>
+      {#if model_summary}<dt>Models</dt><dd>{model_summary}</dd>{/if}
+      <dt>Funcs / Params</dt>
+      <dd>{functions.length} / {parameters.length}</dd>
       {#if result.temperature_range}
-        <div class="info-item">
-          <span class="label">Temp Range:</span>
-          <span class="value">
-            {result.temperature_range[0]} - {result.temperature_range[1]} K
-          </span>
-        </div>
+        {@const [t_min, t_max] = result.temperature_range}
+        <dt>T Range</dt><dd>{t_min} – {t_max} K</dd>
       {/if}
-    </div>
+      {#if reference}<dt>Ref</dt><dd class="ref" title={reference}>{reference}</dd>{/if}
+    </dl>
 
     {#if has_precomputed}
-      <div class="precomputed-notice success">
-        <span class="icon">✓</span>
-        {#if is_precomputed_loaded}
-          <div class="message">
-            <span>
-              <strong>Phase diagram loaded from pre-computed data</strong>
-              ({system_name}.json.gz)
-            </span>
-            <p class="help-text" style="margin-top: 0.5em; margin-bottom: 0">
-              The TDB file above contains thermodynamic model parameters. The displayed
-              phase boundaries were computed offline using
-              <a href="https://pycalphad.org" target="_blank" rel="noopener noreferrer">
-                pycalphad</a> and stored separately.
-            </p>
-          </div>
+      <p class="notice success">
+        ✓ {#if is_precomputed_loaded}
+          <strong>Phase diagram loaded</strong> ({sys}.json.gz)
+          <small>TDB contains model parameters. Boundaries computed offline via
+            <a href="https://pycalphad.org" target="_blank">pycalphad</a>.</small>
         {:else}
-          <span>Pre-computed phase diagram available for this system!</span>
+          Pre-computed diagram available!
           {#if on_load_precomputed}
-            <button class="load-btn" onclick={on_load_precomputed}>
-              Load Phase Diagram
-            </button>
+            <button class="load-btn" onclick={on_load_precomputed}>Load</button>
           {/if}
         {/if}
-      </div>
+      </p>
     {:else}
-      {@const elements = result.data?.elements
-      ?.map((el) => el.symbol)
-      ?.filter((s) => s !== `VA` && s !== `/-`) ?? []}
-      {@const el_a = elements[0] ?? `EL1`}
-      {@const el_b = elements[1] ?? `EL2`}
-      {@const tdb_filename = system_name || `your_system`}
-      <div class="precomputed-notice warning">
-        <span class="icon">ℹ</span>
-        <div class="message">
-          <p>
-            No pre-computed phase diagram for this system. TDB files contain thermodynamic
-            model parameters that require computation to generate phase boundaries.
-          </p>
-          <p class="help-text">
-            To compute the phase diagram, use <a
-              href="https://pycalphad.org"
-              target="_blank"
-              rel="noopener noreferrer"
-            >pycalphad</a>:
-          </p>
-          <pre>
+      {@const elems = result.data.elements.map((e) => e.symbol).filter((s) =>
+      s !== `VA` && s !== `/-`
+    )}
+      {@const [el_a, el_b] = [elems[0] ?? `EL1`, elems[1] ?? `EL2`]}
+      {@const tdb = system_name || `your_system`}
+      <div class="notice warning">
+        <p>
+          ℹ No pre-computed diagram. Use <a href="https://pycalphad.org" target="_blank"
+          >pycalphad</a>:
+        </p>
+        <pre>
 <code>from pycalphad import Database, binplot
 import pycalphad.variables as v
 
-db = Database('{tdb_filename}.tdb')
-comps = ['{el_a}', '{el_b}', 'VA']
-phases = list(db.phases.keys())
-
-binplot(db, comps, phases, {`{`}
-    v.X('{el_b}'): (0, 1, 0.01),
-    v.T: (300, 2000, 10),
-    v.P: 101325, v.N: 1
+db = Database('{tdb}.tdb')
+binplot(db, ['{el_a}', '{el_b}', 'VA'], list(db.phases.keys()), {`{`}
+    v.X('{el_b}'): (0, 1, 0.01), v.T: (300, 2000, 10), v.P: 101325, v.N: 1
 })</code></pre>
-        </div>
       </div>
     {/if}
   {:else}
-    <div class="error">
-      <span class="icon">⚠</span>
-      <span>Failed to parse TDB file: {result.error}</span>
-    </div>
+    <p class="error">⚠ Failed to parse TDB file: {result.error}</p>
   {/if}
 </div>
 
@@ -144,93 +94,85 @@ binplot(db, comps, phases, {`{`}
     --success-hover: var(--tdb-success-hover, #16a34a);
     --warning-color: var(--tdb-warning-color, #eab308);
     --error-color: var(--tdb-error-color, #ef4444);
-
     background: var(--surface-bg, rgba(255, 255, 255, 0.05));
     border: 1px solid var(--border-color, #444);
     border-radius: var(--border-radius, 8px);
-    padding: 1em;
+    padding: 8pt 9pt;
+    font-size: 10pt;
   }
   h3 {
-    margin: 0 0 0.75em 0;
-    font-size: 1.1em;
+    margin: 0 0 5pt 0;
+    font-size: 11pt;
     color: var(--text-color, #fff);
     border-bottom: 1px solid var(--border-color, #444);
-    padding-bottom: 0.5em;
+    padding-bottom: 4pt;
   }
   .info-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0.5em 1em;
-    margin-bottom: 1em;
-  }
-  .info-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25em;
-  }
-  .label {
-    font-size: 0.85em;
-    color: var(--text-color-muted, #888);
-    font-weight: 500;
-  }
-  .value {
-    color: var(--text-color, #fff);
-  }
-  .value.phases {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25em;
-  }
-  .phase-tag {
-    background: var(--accent-color, #6366f1);
-    color: white;
-    padding: 0.1em 0.5em;
-    border-radius: 4px;
-    font-size: 0.85em;
-    font-family: monospace;
-  }
-  .precomputed-notice {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75em;
-    padding: 0.75em;
-    border-radius: 6px;
-    margin-top: 0.5em;
-  }
-  .precomputed-notice.success {
-    background: rgba(from var(--success-color) r g b / 0.15);
-    border: 1px solid rgba(from var(--success-color) r g b / 0.3);
+    gap: 4pt 12pt;
+    margin: 0 0 6pt;
     align-items: center;
   }
-  .precomputed-notice.success .icon {
-    color: var(--success-color);
-    font-size: 1.2em;
-  }
-  .precomputed-notice.warning {
-    background: rgba(from var(--warning-color) r g b / 0.1);
-    border: 1px solid rgba(from var(--warning-color) r g b / 0.3);
-  }
-  .precomputed-notice.warning .icon {
-    color: var(--warning-color);
-    font-size: 1.2em;
-  }
-  .message {
-    flex: 1;
-  }
-  .message p {
-    margin: 0 0 0.5em 0;
-  }
-  .help-text {
-    font-size: 0.9em;
+  dt {
     color: var(--text-color-muted, #888);
+    font-weight: 500;
+    &::after {
+      content: ':';
+    }
+  }
+  dd {
+    margin: 0 12pt 0 4pt;
+    color: var(--text-color, #fff);
+
+    &.ref {
+      max-width: 200pt;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+  dd.phases {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2pt;
+
+    & > span {
+      background: var(--accent-color, #6366f1);
+      color: white;
+      padding: 0 5pt;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+  }
+  .notice {
+    padding: 6pt;
+    border-radius: 6px;
+    margin: 12pt 0 0;
+
+    &.success {
+      background: rgba(from var(--success-color) r g b / 0.15);
+      border: 1px solid rgba(from var(--success-color) r g b / 0.3);
+    }
+    &.warning {
+      background: rgba(from var(--warning-color) r g b / 0.1);
+      border: 1px solid rgba(from var(--warning-color) r g b / 0.3);
+    }
+  }
+  .notice small {
+    display: block;
+    margin-top: 4pt;
+    font-size: 10pt;
+    color: var(--text-color-muted, #888);
+  }
+  .notice p {
+    margin: 0 0 6pt;
   }
   pre {
     background: rgba(0, 0, 0, 0.3);
-    padding: 0.5em;
+    padding: 6pt;
     border-radius: 4px;
     overflow-x: auto;
-    font-size: 0.85em;
-    margin: 0.5em 0 0 0;
+    margin: 6pt 0 0;
   }
   code {
     font-family: 'Fira Code', 'Monaco', monospace;
@@ -239,24 +181,21 @@ binplot(db, comps, phases, {`{`}
     background: var(--success-color);
     color: white;
     border: none;
-    padding: 0.5em 1em;
-    border-radius: 6px;
+    padding: 4pt 10pt;
+    border-radius: 4px;
     cursor: pointer;
     font-weight: 500;
-    margin-left: auto;
-    white-space: nowrap;
+    margin-left: 8pt;
   }
   .load-btn:hover {
     background: var(--success-hover);
   }
   .error {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
     color: var(--error-color);
     background: rgba(from var(--error-color) r g b / 0.1);
-    padding: 0.75em;
+    padding: 9pt;
     border-radius: 6px;
+    margin: 0;
   }
   a {
     color: var(--accent-color, #6366f1);

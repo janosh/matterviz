@@ -263,7 +263,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
           // Lever rule section should appear in tooltip
           const tooltip = diagram.locator(`.tooltip-container`)
           await expect(tooltip).toBeVisible()
-          await expect(tooltip.locator(`.lever-rule-section`)).toBeVisible()
+          await expect(tooltip.locator(`.lever`)).toBeVisible()
           await expect(tooltip).toContainText(`Lever Rule`)
           break outer
         }
@@ -346,18 +346,20 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(tooltip).not.toHaveClass(/locked/)
   })
 
-  test(`Ctrl+Shift+E toggles export pane`, async ({ page }) => {
-    const { diagram } = get_diagram_elements(page)
-    const pane = diagram.locator(`.export-pane`)
+  for (const modifier of [`Control`, `Meta`]) {
+    test(`${modifier}+Shift+E toggles export pane`, async ({ page }) => {
+      const { diagram } = get_diagram_elements(page)
+      const pane = diagram.locator(`.export-pane`)
 
-    await expect(pane).toBeHidden()
+      await expect(pane).toBeHidden()
 
-    await page.keyboard.press(`Control+Shift+E`)
-    await expect(pane).toBeVisible()
+      await page.keyboard.press(`${modifier}+Shift+E`)
+      await expect(pane).toBeVisible()
 
-    await page.keyboard.press(`Control+Shift+E`)
-    await expect(pane).toBeHidden()
-  })
+      await page.keyboard.press(`${modifier}+Shift+E`)
+      await expect(pane).toBeHidden()
+    })
+  }
 
   test(`special points have labels and correct styling`, async ({ page }) => {
     const { svg } = get_diagram_elements(page)

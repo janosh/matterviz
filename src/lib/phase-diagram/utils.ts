@@ -339,3 +339,40 @@ export function format_hover_info_text(
 
   return lines.join(`\n`)
 }
+
+// Calculate temperature stability range for a phase at given composition
+export function get_phase_stability_range(
+  region: PhaseRegion,
+): { t_min: number; t_max: number } | null {
+  if (!region.vertices?.length) return null
+  const temps = region.vertices.map(([, temp]) => temp)
+  return { t_min: Math.min(...temps), t_max: Math.max(...temps) }
+}
+
+// Extract reference/citation from TDB comments
+export function extract_tdb_reference(comments: string[]): string | null {
+  const ref_keywords = [`reference`, `citation`, `database`, `assessed by`]
+  for (const comment of comments) {
+    const lower = comment.toLowerCase()
+    if (ref_keywords.some((kw) => lower.includes(kw))) {
+      const ref = comment.replace(/^\$\s*/, ``).trim()
+      // Skip incomplete references (must have substantial content after keyword)
+      if (ref.length > 30 && !ref.endsWith(`from`)) return ref
+    }
+  }
+  return null
+}
+
+// Summarize sublattice models from TDB phases
+export function summarize_models(
+  phases: { sublattice_count: number; sublattice_sites: number[] }[],
+): string {
+  const counts = new Map<number, number>()
+  for (const phase of phases) {
+    counts.set(phase.sublattice_count, (counts.get(phase.sublattice_count) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([n, c]) => `${c}×${n}-SL`)
+    .join(`, `)
+}
