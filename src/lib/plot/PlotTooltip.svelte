@@ -3,16 +3,24 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  let { x, y, bg_color, offset = { x: 6, y: 0 }, fixed = false, children, ...rest }:
-    & HTMLAttributes<HTMLDivElement>
-    & {
-      x: number
-      y: number
-      bg_color?: string | null
-      offset?: { x: number; y: number }
-      fixed?: boolean // Use position: fixed (for viewport coords) vs absolute
-      children: Snippet
-    } = $props()
+  let {
+    x,
+    y,
+    bg_color,
+    offset = { x: 6, y: 0 },
+    fixed = false,
+    wrapper = $bindable(),
+    children,
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
+    x: number
+    y: number
+    bg_color?: string | null
+    offset?: { x: number; y: number }
+    fixed?: boolean // Use position: fixed (for viewport coords) vs absolute
+    wrapper?: HTMLDivElement // Bindable reference for measuring tooltip size
+    children: Snippet
+  } = $props()
 
   // Auto-compute contrasting text color based on background luminance only if bg_color is defined
   const text_color = $derived(
@@ -30,6 +38,7 @@
   style:background-color={bg_color}
   style:color={text_color}
   {style}
+  bind:this={wrapper}
 >
   {@render children()}
 </div>

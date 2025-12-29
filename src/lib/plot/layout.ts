@@ -62,23 +62,54 @@ export const calc_auto_padding = ({
   }
 }
 
-// Constrain tooltip position within chart bounds
+// Constrain tooltip position within bounds, flipping to opposite side if overflow
+// offset_x/offset_y control initial positioning: positive = right/down, negative = left/up
 export function constrain_tooltip_position(
-  base_x: number,
-  base_y: number,
+  cursor_x: number,
+  cursor_y: number,
   tooltip_width: number,
   tooltip_height: number,
-  chart_width: number,
-  chart_height: number,
-) {
-  // Calculate the maximum allowable position for the tooltip
-  const max_x = Math.max(10, chart_width - tooltip_width - 10)
-  const max_y = Math.max(10, chart_height - tooltip_height - 10)
+  viewport_width: number,
+  viewport_height: number,
+  options: { offset?: number; offset_x?: number; offset_y?: number } = {},
+): { x: number; y: number } {
+  const { offset = 10 } = options
+  const offset_x = options.offset_x ?? offset
+  const offset_y = options.offset_y ?? offset
 
-  return {
-    x: Math.min(max_x, Math.max(10, base_x + 5)),
-    y: Math.min(max_y, Math.max(10, base_y - 10)),
+  // Position to left of cursor if right-side placement overflows (and vice versa)
+  const flip_x = offset_x >= 0
+    ? cursor_x + offset_x + tooltip_width > viewport_width
+    : cursor_x + offset_x - tooltip_width < 0
+  // Position above cursor if bottom placement overflows (and vice versa)
+  const flip_y = offset_y >= 0
+    ? cursor_y + offset_y + tooltip_height > viewport_height
+    : cursor_y + offset_y - tooltip_height < 0
+
+  // Calculate position: apply offset, flip if needed
+  const abs_offset_x = Math.abs(offset_x)
+  const abs_offset_y = Math.abs(offset_y)
+
+  // Determine X position based on preferred side and flip state
+  let raw_x: number
+  if (offset_x >= 0) { // Prefer right side: flip to left if overflows
+    raw_x = flip_x ? cursor_x - abs_offset_x - tooltip_width : cursor_x + abs_offset_x
+  } else { // Prefer left side: flip to right if overflows
+    raw_x = flip_x ? cursor_x + abs_offset_x : cursor_x - abs_offset_x - tooltip_width
   }
+
+  // Determine Y position based on preferred side and flip state
+  let raw_y: number
+  if (offset_y >= 0) { // Prefer bottom: flip to top if overflows
+    raw_y = flip_y ? cursor_y - abs_offset_y - tooltip_height : cursor_y + abs_offset_y
+  } else { // Prefer top: flip to bottom if overflows
+    raw_y = flip_y ? cursor_y + abs_offset_y : cursor_y - abs_offset_y - tooltip_height
+  }
+
+  // Clamp to viewport bounds
+  const x_pos = Math.max(0, Math.min(raw_x, viewport_width - tooltip_width))
+  const y_pos = Math.max(0, Math.min(raw_y, viewport_height - tooltip_height))
+  return { x: x_pos, y: y_pos }
 }
 
 // Legend auto-placement for plot components

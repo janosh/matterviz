@@ -1,4 +1,5 @@
 import {
+  css_color_to_hex,
   ELEMENT_COLOR_SCHEMES,
   get_bg_color,
   get_page_background,
@@ -223,6 +224,59 @@ describe(`is_color function`, () => {
   test(`works with actual color scheme values`, () => {
     expect(is_color(ELEMENT_COLOR_SCHEMES.Jmol.H)).toBe(true)
     expect(is_color(ELEMENT_COLOR_SCHEMES.Vesta.He)).toBe(true)
+  })
+})
+
+describe(`css_color_to_hex`, () => {
+  const fallback = `#000000`
+
+  test.each(
+    [
+      // Valid hex colors pass through
+      [`#ff0000`, `#ff0000`],
+      [`#FF0000`, `#ff0000`], // lowercase output
+      [`#f00`, `#ff0000`], // short hex expanded
+      [`#00ff00`, `#00ff00`],
+      // CSS color functions are parsed
+      [`rgb(255, 0, 0)`, `#ff0000`],
+      [`rgb(0, 128, 255)`, `#0080ff`],
+      [`rgba(255, 0, 0, 0.5)`, `#ff0000`], // alpha ignored for hex
+      [`hsl(0, 100%, 50%)`, `#ff0000`],
+      [`hsl(120, 100%, 50%)`, `#00ff00`],
+      [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`],
+      // Named colors
+      [`red`, `#ff0000`],
+      [`blue`, `#0000ff`],
+      [`green`, `#008000`], // CSS green is #008000, not #00ff00
+      [`white`, `#ffffff`],
+      [`black`, `#000000`],
+      [`orange`, `#ffa500`],
+    ] as const,
+  )(`converts %s to %s`, (input, expected) => {
+    expect(css_color_to_hex(input, fallback)).toBe(expected)
+  })
+
+  test.each(
+    [
+      // Undefined and empty
+      [undefined, fallback, fallback, `returns fallback for undefined`],
+      [``, fallback, fallback, `returns fallback for empty string`],
+      // CSS variables
+      [`var(--primary-color)`, fallback, fallback, `returns fallback for CSS variable`],
+      [`var(--bg)`, fallback, fallback, `returns fallback for CSS variable shorthand`],
+      [`var(--color)`, `#abcdef`, `#abcdef`, `uses custom fallback for CSS variable`],
+      // Invalid colors
+      [`not-a-color`, fallback, fallback, `returns fallback for invalid color name`],
+      [`#gggggg`, fallback, fallback, `returns fallback for invalid hex`],
+      [`rgb(invalid)`, fallback, fallback, `returns fallback for malformed rgb`],
+      // Special cases
+      [`transparent`, fallback, `#ffffff`, `returns #ffffff for transparent`],
+      [undefined, `#abcdef`, `#abcdef`, `uses custom fallback for undefined`],
+      // Element color scheme values
+      [ELEMENT_COLOR_SCHEMES.Jmol.H, fallback, `#ffffff`, `parses Jmol H color`],
+    ] as const,
+  )(`%s: %s`, (input, fb, expected, _description) => {
+    expect(css_color_to_hex(input, fb)).toBe(expected)
   })
 })
 
