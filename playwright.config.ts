@@ -5,9 +5,10 @@ export default {
     command: `vite dev --port 3005`,
     port: 3005,
     reuseExistingServer: true,
+    timeout: 60_000, // Allow 1 min for dev server to start on CI
   },
   workers: 8,
-  timeout: 15_000, // Global timeout per test
+  timeout: 30_000, // Global timeout per test (increased for CI)
   testDir: `tests/playwright`,
   maxFailures: 1,
 } satisfies PlaywrightTestConfig
