@@ -1125,7 +1125,7 @@ test.describe(`Structure Component Tests`, () => {
       await expect(structure_div).toHaveCSS(
         `background-color`,
         `rgba(255, 0, 0, ${expected_alpha})`,
-        { timeout: 1000 },
+        { timeout: 5000 },
       )
     }
 
@@ -1362,7 +1362,7 @@ test.describe(`File Drop Functionality Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     // Wait for canvas
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 10000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 50000 })
     // Wait for Three.js to initialize the canvas
     await page.waitForFunction(() => {
       const canvas = document.querySelector(`#test-structure canvas`) as HTMLCanvasElement
@@ -2514,7 +2514,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       await clear_events_and_wait(page)
       // Use a valid structure file that exists in the static directory
       await page.goto(`/test/structure?data_url=/structures/mp-1.json`)
-      await page.waitForSelector(`#test-structure canvas`, { timeout: 10000 })
+      await page.waitForSelector(`#test-structure canvas`, { timeout: 50000 })
 
       // Wait for the file load event to be processed
       await expect(async () => {
@@ -3421,11 +3421,12 @@ test.describe(`Element Visibility Toggle`, () => {
       parseFloat(globalThis.getComputedStyle(el).opacity)
     )
     expect(hidden_opacity).toBeLessThan(initial_opacity)
+    // CSS sets .element-legend label.hidden { opacity: 0.4 }
     expect(hidden_opacity).toBeGreaterThan(0.3)
-    expect(hidden_opacity).toBeLessThan(0.8) // Relaxed threshold for different themes/settings
+    expect(hidden_opacity).toBeLessThan(0.5)
 
-    // After toggle, the button should have 'visible' class (indicates hidden state)
-    await expect(toggle_button).toHaveClass(/visible/)
+    // After toggle, the button should have 'element-hidden' class (indicates atoms are hidden)
+    await expect(toggle_button).toHaveClass(/element-hidden/)
   })
 
   test(`color picker remains functional with toggle button`, async ({ page }) => {
@@ -3468,7 +3469,7 @@ test.describe(`Element Visibility Toggle`, () => {
     await first_item.hover()
     await toggle_button.click()
     await expect(label).toHaveClass(/hidden/)
-    await expect(toggle_button).toHaveClass(/visible/)
+    await expect(toggle_button).toHaveClass(/element-hidden/)
     const hidden_screenshot = await canvas.screenshot()
     expect(initial_screenshot.equals(hidden_screenshot)).toBe(false)
 

@@ -235,7 +235,7 @@
         </label>
         <button
           class="toggle-visibility"
-          class:visible={is_hidden}
+          class:element-hidden={is_hidden}
           onclick={(
             event,
           ) => (hidden_elements = toggle_visibility(
@@ -351,7 +351,7 @@
           </span>
           <button
             class="toggle-visibility"
-            class:visible={is_hidden}
+            class:element-hidden={is_hidden}
             onclick={(
               event,
             ) => (hidden_prop_vals = toggle_visibility(
@@ -437,7 +437,7 @@
     z-index: 2;
     pointer-events: auto;
   }
-  .atom-legend button.toggle-visibility.visible,
+  .atom-legend button.toggle-visibility.element-hidden,
   .atom-legend .legend-item:hover button.toggle-visibility {
     opacity: 1;
   }

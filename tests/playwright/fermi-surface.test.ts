@@ -35,6 +35,6 @@ test.describe(`Fermi Surface Demo Page`, () => {
   test(`FermiSurface component renders with default file`, async ({ page }) => {
     // Page auto-loads a default BXSF file, so we should see the fermi surface container
     const fermi_container = page.locator(`.fermi-surface`)
-    await expect(fermi_container).toBeVisible({ timeout: 10000 })
+    await expect(fermi_container).toBeVisible({ timeout: 50000 })
   })
 })

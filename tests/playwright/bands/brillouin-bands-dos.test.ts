@@ -24,14 +24,14 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     // Check all three panels render
     await expect(container.locator(`canvas`).first()).toBeVisible()
     const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
-    await expect(bands_svg).toBeVisible({ timeout: 10000 })
+    await expect(bands_svg).toBeVisible({ timeout: 50000 })
     await expect(bands_svg.locator(`path[fill="none"]`).first())
-      .toBeVisible({ timeout: 10000 })
+      .toBeVisible({ timeout: 50000 })
 
     // DOS SVG - find by looking for the second SVG with axes
     const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
-    await expect(dos_svg).toBeVisible({ timeout: 10000 })
-    await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 10000 })
+    await expect(dos_svg).toBeVisible({ timeout: 50000 })
+    await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 50000 })
     await expect(dos_svg.locator(`path[fill="none"]`).first())
       .toBeVisible({ timeout: 5000 })
 

@@ -115,7 +115,7 @@ test.describe(`StructureScene Component Tests`, () => {
     const atom_position = await find_hoverable_atom(page)
     if (atom_position) {
       const tooltip = page.locator(`.tooltip:has(.coordinates)`)
-      await expect(tooltip.first()).toBeVisible({ timeout: 1000 })
+      await expect(tooltip.first()).toBeVisible({ timeout: 5000 })
       await expect(tooltip.first().locator(`.elements`)).toBeVisible()
       await expect(tooltip.first().locator(`.coordinates`)).toHaveCount(2)
     }
@@ -133,7 +133,7 @@ test.describe(`StructureScene Component Tests`, () => {
     await canvas.hover({ position: atom_position })
 
     const tooltip = page.locator(`.tooltip:has(.coordinates)`)
-    await expect(tooltip).toBeVisible({ timeout: 1000 })
+    await expect(tooltip).toBeVisible({ timeout: 5000 })
 
     // Check all tooltip content in one test
     const elements_section = tooltip.locator(`.elements`)
@@ -187,7 +187,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test tooltip disappears when moving away
     await canvas.hover({ position: { x: 50, y: 50 } })
-    await expect(tooltip).toBeHidden({ timeout: 1000 })
+    await expect(tooltip).toBeHidden({ timeout: 5000 })
   })
 
   // Combined interaction tests

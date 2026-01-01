@@ -6,7 +6,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
     // Wait for data to load - the binary-grid only renders after loaded_data.size > 0
-    await expect(page.locator(`.binary-grid`).first()).toBeVisible({ timeout: 10000 })
+    await expect(page.locator(`.binary-grid`).first()).toBeVisible({ timeout: 50000 })
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {

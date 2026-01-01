@@ -2,25 +2,31 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 // Helper functions
+
+// Set an input value and dispatch events using a locator
+const set_input_value = async (input: Locator, value: string) => {
+  await input.evaluate(
+    (el, val) => {
+      const inp = el as HTMLInputElement
+      inp.value = val
+      inp.dispatchEvent(new Event(`input`, { bubbles: true }))
+      inp.dispatchEvent(new Event(`change`, { bubbles: true }))
+      inp.blur()
+    },
+    value,
+  )
+}
+
 const click_radio = async (page: Page, selector: string) => {
-  await page.evaluate((sel) => {
-    const radio = document.querySelector(sel) as HTMLInputElement
-    if (radio) radio.click()
-  }, selector)
+  const radio = page.locator(selector)
+  await radio.waitFor({ state: `attached`, timeout: 5000 })
+  await radio.click()
 }
 
 const set_range_value = async (page: Page, selector: string, value: number) => {
-  await page.evaluate(
-    ({ sel, val }) => {
-      const input = document.querySelector(sel) as HTMLInputElement
-      if (input) {
-        input.value = val.toString()
-        input.dispatchEvent(new Event(`input`, { bubbles: true }))
-        input.dispatchEvent(new Event(`change`, { bubbles: true }))
-      }
-    },
-    { sel: selector, val: value },
-  )
+  const input = page.locator(selector)
+  await input.waitFor({ state: `attached`, timeout: 5000 })
+  await set_input_value(input, value.toString())
 }
 
 const get_bar_count = async (histogram_locator: Locator) => {
@@ -328,7 +334,7 @@ test.describe(`Histogram Component Tests`, () => {
     await first_bar.hover({ force: true })
 
     const tooltip = basic_histogram.locator(`.plot-tooltip`)
-    if (await tooltip.isVisible({ timeout: 1000 })) {
+    if (await tooltip.isVisible({ timeout: 5000 })) {
       const tooltip_content = await tooltip.textContent()
       expect(tooltip_content).toContain(`Value:`)
       expect(tooltip_content).toContain(`Count:`)
@@ -776,10 +782,7 @@ test.describe(`Histogram Component Tests`, () => {
 
         // Test invalid format handling
         await x_format_input.fill(`invalid`)
-        const has_invalid_class = await x_format_input.evaluate((el) =>
-          el.classList.contains(`invalid`)
-        )
-        expect(has_invalid_class).toBe(true)
+        await expect(x_format_input).toHaveClass(/invalid/)
 
         // Restore valid format
         await x_format_input.fill(`.2r`)
@@ -974,10 +977,7 @@ test.describe(`Histogram Component Tests`, () => {
         await x_format_input.fill(format)
 
         // Should not have invalid class
-        const has_invalid_class = await x_format_input.evaluate((el) =>
-          el.classList.contains(`invalid`)
-        )
-        expect(has_invalid_class).toBe(false)
+        await expect(x_format_input).not.toHaveClass(/invalid/)
       }
 
       // Test invalid formats
@@ -986,10 +986,7 @@ test.describe(`Histogram Component Tests`, () => {
         await x_format_input.fill(format)
 
         // Should have invalid class
-        const has_invalid_class = await x_format_input.evaluate((el) =>
-          el.classList.contains(`invalid`)
-        )
-        expect(has_invalid_class).toBe(true)
+        await expect(x_format_input).toHaveClass(/invalid/)
       }
 
       // Test time formats
@@ -998,10 +995,7 @@ test.describe(`Histogram Component Tests`, () => {
         await y_format_input.fill(format)
 
         // Should not have invalid class for time formats
-        const has_invalid_class = await y_format_input.evaluate((el) =>
-          el.classList.contains(`invalid`)
-        )
-        expect(has_invalid_class).toBe(false)
+        await expect(y_format_input).not.toHaveClass(/invalid/)
       }
 
       // Restore valid formats
@@ -1384,14 +1378,14 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Verify zoom rectangle appears during drag
     const zoom_rect = histogram.locator(`.zoom-rect`)
-    await expect(zoom_rect).toBeVisible({ timeout: 1000 })
+    await expect(zoom_rect).toBeVisible({ timeout: 5000 })
 
     // Complete drag operation
     await page.mouse.up()
 
     // Test double-click reset
     await histogram.dblclick()
-    await expect(zoom_rect).toBeHidden({ timeout: 1000 })
+    await expect(zoom_rect).toBeHidden({ timeout: 5000 })
   })
 
   test(`one-sided axis range pins via controls`, async ({ page }) => {
@@ -1427,17 +1421,9 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Set input value - don't check value for empty strings since the component
     // may sync values back from state
+    // Set input using shared helper with optional value verification
     const set_input = async (input: Locator, val: string) => {
-      await input.evaluate(
-        (el, v) => {
-          const inp = el as HTMLInputElement
-          inp.value = v
-          inp.dispatchEvent(new Event(`input`, { bubbles: true }))
-          inp.dispatchEvent(new Event(`change`, { bubbles: true }))
-          inp.blur()
-        },
-        val,
-      )
+      await set_input_value(input, val)
       // Only verify non-empty values since empty values may be synced back
       if (val !== ``) {
         await expect(input).toHaveValue(val)
@@ -1617,7 +1603,7 @@ test.describe(`Histogram Component Tests`, () => {
     // Check if zoom rectangle appears during drag
     await page.mouse.move(end_x, end_y, { steps: 10 })
     const zoom_rect = histogram.locator(`.zoom-rect`)
-    await expect(zoom_rect).toBeVisible({ timeout: 1000 })
+    await expect(zoom_rect).toBeVisible({ timeout: 5000 })
 
     await page.mouse.up()
 

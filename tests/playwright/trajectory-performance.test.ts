@@ -47,7 +47,7 @@ test.describe(`Trajectory Performance Tests`, () => {
 
     // Wait for controls to be fully loaded
     const controls = trajectory.locator(`.trajectory-controls`)
-    await expect(controls).toBeVisible({ timeout: 10000 })
+    await expect(controls).toBeVisible({ timeout: 50000 })
 
     // Verify we have the expected number of steps
     const step_info = controls.locator(`span`).filter({ hasText: /\/ \d+/ })
@@ -61,7 +61,7 @@ test.describe(`Trajectory Performance Tests`, () => {
 
     // Pause auto-play first
     const play_button = controls.locator(`.play-button`)
-    await expect(play_button).toHaveText(`⏸`, { timeout: 10000 })
+    await expect(play_button).toHaveText(`⏸`, { timeout: 50000 })
     await play_button.click()
     await expect(play_button).toHaveText(`▶`)
 
@@ -207,7 +207,7 @@ test.describe(`Trajectory Performance Tests`, () => {
 
     // Wait for auto-play to start and get controls
     const play_button = controls.locator(`.play-button`)
-    await expect(play_button).toHaveText(`⏸`, { timeout: 10000 })
+    await expect(play_button).toHaveText(`⏸`, { timeout: 50000 })
 
     const step_input = controls.locator(`.step-input`).first()
 

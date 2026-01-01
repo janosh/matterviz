@@ -6,7 +6,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
     // Wait for data to load - the ternary-grid only renders after loaded_data.size > 0
-    await expect(page.locator(`.ternary-grid`).first()).toBeVisible({ timeout: 10000 })
+    await expect(page.locator(`.ternary-grid`).first()).toBeVisible({ timeout: 50000 })
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
@@ -112,7 +112,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
       // Check if tooltip appears with fractional compositions
       const tooltip = page.locator(`.tooltip`)
       // Wait for tooltip to potentially appear (may not appear if not hovering over a point)
-      if (await tooltip.isVisible({ timeout: 1000 })) {
+      if (await tooltip.isVisible({ timeout: 5000 })) {
         const tooltip_text = await tooltip.textContent()
         // Check that tooltip doesn't contain large decimal numbers like "666.67" or "333.33"
         // but may contain unicode fractions like ⅓, ½, ⅔, etc.

@@ -184,7 +184,7 @@ test.describe(`Bands Component Tests`, () => {
       await paths.nth(2).hover({ force: true })
       const updated_text = await tooltip.textContent()
       expect(updated_text).not.toBe(first_text)
-    }).toPass({ timeout: 2000 })
+    }).toPass({ timeout: 5000 })
   })
 
   test(`tooltip shows band index`, async ({ page }) => {

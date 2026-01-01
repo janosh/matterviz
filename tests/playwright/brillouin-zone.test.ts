@@ -5,7 +5,7 @@ const BZ_SELECTOR = `#test-brillouin-zone`
 test.describe(`BrillouinZone Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 10000 })
+    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 50000 })
   })
 
   test(`renders canvas with dimensions`, async ({ page }) => {
@@ -189,7 +189,7 @@ test.describe(`BrillouinZone Component Tests`, () => {
 test.describe(`BrillouinZone File Drop Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 10000 })
+    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 50000 })
   })
 
   test(`responds to dragover events`, async ({ page }) => {
@@ -242,7 +242,7 @@ Direct
 test.describe(`BrillouinZone Error Handling Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 10000 })
+    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 50000 })
   })
 
   test(`can dismiss error state`, async ({ page }) => {

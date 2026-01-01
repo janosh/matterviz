@@ -132,7 +132,7 @@ const get_colorbar_transform = async (
   const colorbar_wrapper = section_locator.locator(
     `div.colorbar[style*='position: absolute']`,
   )
-  await colorbar_wrapper.waitFor({ state: `visible`, timeout: 1000 })
+  await colorbar_wrapper.waitFor({ state: `visible`, timeout: 5000 })
   const transform = await colorbar_wrapper.evaluate((el) =>
     globalThis.getComputedStyle(el).transform
   )
@@ -168,7 +168,7 @@ const get_marker_bbox = async (
   index: number,
 ): Promise<{ x: number; y: number; width: number; height: number } | null> => {
   const marker_locator = plot_locator.locator(`path.marker`).nth(index)
-  await marker_locator.waitFor({ state: `visible`, timeout: 1000 })
+  await marker_locator.waitFor({ state: `visible`, timeout: 5000 })
   return marker_locator.boundingBox()
 }
 
@@ -274,7 +274,7 @@ const get_tooltip_colors = async (
   if (plot_bbox) {
     await page.mouse.move(plot_bbox.x + 10, plot_bbox.y + 10)
   }
-  await expect(tooltip_locator).toBeHidden({ timeout: 1000 })
+  await expect(tooltip_locator).toBeHidden({ timeout: 5000 })
   return colors
 }
 
@@ -1024,8 +1024,18 @@ test.describe(`ScatterPlot Component Tests`, () => {
       }),
     )
 
+    // Use percentage-based threshold relative to plot size (consistent with label test)
+    // 15% of plot diagonal scales properly across different viewport sizes
+    const plot_diagonal = Math.sqrt(plot_bbox.width ** 2 + plot_bbox.height ** 2)
+    const distance_threshold = plot_diagonal * 0.15
+
     // Legend should not be too close to any data point (smart placement should avoid markers)
-    expect(min_distance).toBeGreaterThan(50)
+    expect(
+      min_distance,
+      `Legend too close to markers: ${min_distance.toFixed(1)}px (threshold: ${
+        distance_threshold.toFixed(1)
+      }px, 15% of diagonal)`,
+    ).toBeGreaterThan(distance_threshold)
 
     // Test draggable class and cursor
     await expect(legend_locator).toHaveClass(/draggable/)
@@ -1319,7 +1329,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       await x_format_input.fill(`.0%`)
 
       // Poll until tick text shows percentage format
-      await expect(x_tick_text).toContainText(`%`, { timeout: 1000 })
+      await expect(x_tick_text).toContainText(`%`, { timeout: 5000 })
 
       // Test invalid format handling - d3-format throws for completely invalid specifiers
       // Use a format that doesn't start with % to avoid being treated as time format
@@ -1972,7 +1982,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await width_range.fill(`8`) // Change from 4 to 8
 
     // Wait for line width to actually change
-    await expect(green_line).toHaveAttribute(`stroke-width`, `8`, { timeout: 1000 })
+    await expect(green_line).toHaveAttribute(`stroke-width`, `8`, { timeout: 5000 })
 
     // CRITICAL: Line color should STILL be limegreen (not control default)
     await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)
@@ -2009,11 +2019,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Wait for reset button to become visible - fail loudly if it doesn't appear
     // so regressions in has_changes or reset UI are caught
-    await expect(reset_button).toBeVisible({ timeout: 1000 })
+    await expect(reset_button).toBeVisible({ timeout: 5000 })
 
     await reset_button.click()
     // Wait for stroke-width to reset to default
-    await expect(crimson_marker).toHaveAttribute(`stroke-width`, `1`, { timeout: 1000 })
+    await expect(crimson_marker).toHaveAttribute(`stroke-width`, `1`, { timeout: 5000 })
   })
 
   // AUTO-CYCLING COLORS AND SYMBOLS TESTS

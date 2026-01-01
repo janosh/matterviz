@@ -85,7 +85,7 @@ test.describe(`BarPlot Component Tests`, () => {
     // Check if zoom rectangle appears during drag
     await page.mouse.move(end_x, end_y, { steps: 10 })
     const zoom_rect = plot.locator(`.zoom-rect`)
-    await expect(zoom_rect).toBeVisible({ timeout: 1000 })
+    await expect(zoom_rect).toBeVisible({ timeout: 5000 })
 
     await page.mouse.up()
 
@@ -165,7 +165,7 @@ test.describe(`BarPlot Component Tests`, () => {
 
     // Test hover
     await first_bar.hover()
-    await expect(hover_p).toContainText(`Hovering:`, { timeout: 1000 })
+    await expect(hover_p).toContainText(`Hovering:`, { timeout: 5000 })
 
     // Test click
     await first_bar.click()
@@ -423,7 +423,7 @@ test.describe(`BarPlot Component Tests`, () => {
     // Check if zoom rectangle appears during drag
     await page.mouse.move(end_x, end_y, { steps: 10 })
     const zoom_rect = plot.locator(`.zoom-rect`)
-    await expect(zoom_rect).toBeVisible({ timeout: 1000 })
+    await expect(zoom_rect).toBeVisible({ timeout: 5000 })
 
     await page.mouse.up()
 

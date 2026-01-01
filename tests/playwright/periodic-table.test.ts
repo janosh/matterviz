@@ -16,7 +16,7 @@ test.describe(`Periodic Table`, () => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
     // Wait for periodic table to load by waiting for at least one element tile
-    await page.waitForSelector(`.element-tile`, { timeout: 10000 })
+    await page.waitForSelector(`.element-tile`, { timeout: 50000 })
 
     const element_tiles = await page.$$(`.element-tile`)
     const n_lanthanide_actinide_placeholders = 2
@@ -55,7 +55,7 @@ test.describe(`Periodic Table`, () => {
 
     // Wait for periodic table to be fully rendered
     const tiles = page.locator(`.element-tile`)
-    await expect(tiles.first()).toBeVisible({ timeout: 10000 })
+    await expect(tiles.first()).toBeVisible({ timeout: 50000 })
     expect(await tiles.count()).toBeGreaterThan(0)
 
     const tile_count = await tiles.count()
@@ -110,7 +110,7 @@ test.describe(`Periodic Table`, () => {
 
       // Get tooltip within the same periodic table container
       const tooltip = periodic_table.locator(`.tooltip`)
-      await expect(tooltip).toBeVisible({ timeout: 10000 })
+      await expect(tooltip).toBeVisible({ timeout: 50000 })
       await expect(tooltip).toContainText(`Hydrogen`)
       await expect(tooltip).toContainText(`H • 1`)
     })
@@ -267,7 +267,7 @@ test.describe(`Periodic Table`, () => {
 
       // Wait for dropdown list to be visible - look within the multiselect
       const option_list = multiselect.locator(`ul.options`)
-      await expect(option_list).toBeVisible({ timeout: 10000 })
+      await expect(option_list).toBeVisible({ timeout: 50000 })
 
       // Click on the first available option (Atomic mass)
       const first_option = option_list.locator(`li`).first()

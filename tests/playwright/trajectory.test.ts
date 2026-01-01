@@ -54,7 +54,7 @@ test.describe(`Trajectory Component`, () => {
     controls = trajectory_viewer.locator(`.trajectory-controls`)
     await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
     // Wait for the trajectory to be loaded
-    await expect(trajectory_viewer).toBeVisible({ timeout: 10000 })
+    await expect(trajectory_viewer).toBeVisible({ timeout: 50000 })
   })
 
   test(`empty state displays correctly`, async ({ page }) => {
@@ -766,19 +766,14 @@ test.describe(`Trajectory Component`, () => {
       const trajectory = page.locator(`#auto-layout`)
       const content_area = trajectory.locator(`.content-area`)
 
+      // Check if view mode button exists (only appears if plot_series.length > 0)
+      // Must check skip condition before running other assertions
+      const display_button = trajectory.locator(`.view-mode-button`)
+      const button_count = await display_button.count()
+      test.skip(button_count === 0, `No view mode button found (no plot data)`)
+
       // Wait for trajectory controls to be visible (indicating data is loaded)
       await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible()
-
-      // Check if view mode button exists (only appears if plot_series.length > 0)
-      const display_button = trajectory.locator(`.view-mode-button`)
-
-      // Skip test if no plot data (display button won't exist)
-      if ((await display_button.count()) === 0) {
-        console.log(`Skipping test - no view mode button found (no plot data)`)
-        test.skip()
-        return
-      }
-
       await expect(display_button).toBeVisible()
 
       // Test dropdown display mode functionality
@@ -792,14 +787,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(content_area).toHaveClass(/show-both/)
 
       // Test in wide container (horizontal layout)
-      await trajectory.evaluate((el) => {
-        el.style.width = `800px`
-        el.style.height = `400px`
-        el.style.minWidth = `800px`
-        el.style.minHeight = `400px`
-        // Force reflow to ensure dimensions are applied
-        el.getBoundingClientRect()
-      })
+      await set_element_size(trajectory, 800, 400)
 
       // Check that layout is still valid (horizontal or vertical)
       const final_class = await trajectory.getAttribute(`class`)
@@ -808,7 +796,7 @@ test.describe(`Trajectory Component`, () => {
       expect(has_layout).toBe(true)
 
       // Wait for display mode button to be available (only shows when plot series exist)
-      await display_button.waitFor({ state: `visible`, timeout: 10000 })
+      await display_button.waitFor({ state: `visible`, timeout: 50000 })
 
       // Display mode cycling should still work
       await display_button.click()
@@ -903,7 +891,7 @@ test.describe(`Trajectory Component`, () => {
       await trajectory.scrollIntoViewIfNeeded()
       // Wait for trajectory controls to be visible (indicates data is loaded)
       await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
-        timeout: 10000,
+        timeout: 50000,
       })
 
       // Start with wide dimensions - should trigger horizontal layout

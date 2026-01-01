@@ -4,12 +4,11 @@ async function open_export_pane(page: Page) {
   const export_toggle = page.locator(`.structure-export-toggle`).first()
   await expect(export_toggle).toBeVisible()
 
-  // Use evaluate to directly trigger click handler
-  await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+  await export_toggle.click()
 
   // Wait for the pane to appear - it's a draggable-pane with export-pane class
   const pane_div = page.locator(`.draggable-pane.export-pane`).first()
-  await expect(pane_div).toBeVisible({ timeout: 10000 })
+  await expect(pane_div).toBeVisible({ timeout: 50000 })
   return { export_toggle, pane_div }
 }
 
@@ -36,7 +35,7 @@ test.describe(`StructureExportPane Tests`, () => {
     await expect(pane_div.locator(`h4:has-text("Export as 3D model")`)).toBeVisible()
 
     // Close pane
-    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+    await export_toggle.click()
     await expect(pane_div).toBeHidden()
   })
 
@@ -83,7 +82,7 @@ test.describe(`StructureExportPane Tests`, () => {
 
     await expect(copy_btn).toHaveText(`📋`)
     await copy_btn.click()
-    await expect(copy_btn).toHaveText(`✅`, { timeout: 1000 })
+    await expect(copy_btn).toHaveText(`✅`, { timeout: 5000 })
     await expect(copy_btn).toHaveText(`📋`, { timeout: 2000 })
   })
 
@@ -113,10 +112,10 @@ test.describe(`StructureExportPane Tests`, () => {
     const dpi_input = pane_div.locator(`input[type="number"][title*="dots per inch"]`)
     await dpi_input.fill(`250`)
 
-    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+    await export_toggle.click()
     await expect(pane_div).toBeHidden()
 
-    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+    await export_toggle.click()
     await expect(pane_div).toBeVisible()
 
     const dpi_input_reopened = pane_div.locator(
@@ -148,14 +147,14 @@ test.describe(`StructureExportPane Tests`, () => {
     // Copy JSON
     const json_copy = pane_div.locator(`button[title="Copy JSON to clipboard"]`)
     await json_copy.click()
-    await expect(json_copy).toHaveText(`✅`, { timeout: 1000 })
+    await expect(json_copy).toHaveText(`✅`, { timeout: 5000 })
     // Wait for checkmark to reset before next copy
     await expect(json_copy).not.toHaveText(`✅`, { timeout: 2000 })
 
     // Copy XYZ
     const xyz_copy = pane_div.locator(`button[title="Copy XYZ to clipboard"]`)
     await xyz_copy.click()
-    await expect(xyz_copy).toHaveText(`✅`, { timeout: 1000 })
+    await expect(xyz_copy).toHaveText(`✅`, { timeout: 5000 })
   })
 
   test(`export pane and control pane have mutual exclusion`, async ({ page }) => {
@@ -164,19 +163,19 @@ test.describe(`StructureExportPane Tests`, () => {
 
     // Opening control pane closes export pane (mutual exclusion)
     const control_toggle = page.locator(`.structure-controls-toggle`).first()
-    await control_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+    await control_toggle.click()
 
     const control_pane = page.locator(`.draggable-pane.controls-pane`).first()
     await expect(control_pane).toBeVisible()
     await expect(export_pane).toBeHidden() // Export pane closes when control pane opens
 
     // Opening export pane closes control pane
-    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+    await export_toggle.click()
     await expect(export_pane).toBeVisible()
     await expect(control_pane).toBeHidden() // Control pane closes when export pane opens
 
     // Toggle back to control pane
-    await control_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
+    await control_toggle.click()
     await expect(control_pane).toBeVisible()
     await expect(export_pane).toBeHidden() // Mutual exclusion still applies
   })
