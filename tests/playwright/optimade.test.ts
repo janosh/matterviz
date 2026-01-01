@@ -146,8 +146,8 @@ test.describe(`OPTIMADE route`, () => {
   test(`can switch providers and clear input field`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
-    // Verify initial MP structure is loaded
-    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
+    // Verify initial MP structure is loaded (needs longer timeout for API + 3D rendering)
+    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 15000 })
 
     // Click on OQMD provider button
     await page.locator(`button.db-select`, { hasText: `oqmd` }).click()
@@ -168,15 +168,15 @@ test.describe(`OPTIMADE route`, () => {
   test(`can load structure from different providers via text input`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
-    // Verify initial MP structure is loaded
-    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
+    // Verify initial MP structure is loaded (needs longer timeout for API + 3D rendering)
+    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 15000 })
 
     // Enter a different MP structure ID
     await page.locator(`input.structure-input`).fill(`mp-149`)
     await page.locator(`button.fetch-button`).click()
 
     // Wait for loading and verify new structure
-    await expect(page.locator(`h2:has-text("mp-149")`)).toBeVisible({ timeout: 5000 })
+    await expect(page.locator(`h2:has-text("mp-149")`)).toBeVisible({ timeout: 15000 })
   })
 
   test(`provider selection clears input field`, async ({ page }) => {
@@ -195,8 +195,8 @@ test.describe(`OPTIMADE route`, () => {
   test(`can navigate between multiple providers`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
-    // Test MP provider (should already be loaded)
-    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
+    // Test MP provider (should already be loaded, needs timeout for API + 3D rendering)
+    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 15000 })
 
     // Switch to COD provider
     await page.locator(`button.db-select`, { hasText: `cod` }).click()
