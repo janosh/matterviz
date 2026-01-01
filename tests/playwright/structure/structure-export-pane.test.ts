@@ -158,31 +158,27 @@ test.describe(`StructureExportPane Tests`, () => {
     await expect(xyz_copy).toHaveText(`✅`, { timeout: 1000 })
   })
 
-  test(`export pane and control pane can be toggled independently`, async ({ page }) => {
+  test(`export pane and control pane have mutual exclusion`, async ({ page }) => {
     const { pane_div: export_pane, export_toggle } = await open_export_pane(page)
     await expect(export_pane).toBeVisible()
 
-    // Both panes can be open simultaneously (toggle buttons use stopPropagation)
+    // Opening control pane closes export pane (mutual exclusion)
     const control_toggle = page.locator(`.structure-controls-toggle`).first()
     await control_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
 
     const control_pane = page.locator(`.draggable-pane.controls-pane`).first()
     await expect(control_pane).toBeVisible()
-    await expect(export_pane).toBeVisible() // Both stay open
+    await expect(export_pane).toBeHidden() // Export pane closes when control pane opens
 
-    // Each pane can be closed independently via its own toggle
-    await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
-    await expect(export_pane).toBeHidden()
-    await expect(control_pane).toBeVisible() // Control pane stays open
-
-    // Reopen export pane
+    // Opening export pane closes control pane
     await export_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
     await expect(export_pane).toBeVisible()
+    await expect(control_pane).toBeHidden() // Control pane closes when export pane opens
 
-    // Close control pane
+    // Toggle back to control pane
     await control_toggle.evaluate((btn: HTMLButtonElement) => btn.click())
-    await expect(control_pane).toBeHidden()
-    await expect(export_pane).toBeVisible() // Export pane stays open
+    await expect(control_pane).toBeVisible()
+    await expect(export_pane).toBeHidden() // Mutual exclusion still applies
   })
 
   test(`keyboard navigation and rapid toggle`, async ({ page }) => {

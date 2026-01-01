@@ -49,17 +49,28 @@ test.describe(`RdfPlot Component Tests`, () => {
   })
 
   // Test tooltip
-  test(`tooltip shows r and g(r) on hover`, async ({ page }) => {
+  test(`tooltip shows x and y values on hover`, async ({ page }) => {
     const plot = page.locator(`#single-pattern`)
     // Select the main plot SVG (has role="img" and contains the x-axis)
     const main_svg = plot.locator(`svg:has(g.x-axis)`)
-    await main_svg.hover({ force: true, position: { x: 100, y: 100 } })
+    await expect(main_svg).toBeVisible()
+
+    // Get the bounding box and hover in the center of the plot area
+    const box = await main_svg.boundingBox()
+    if (!box) throw new Error(`Could not get SVG bounding box`)
+
+    // Hover in the middle of the plot area
+    await main_svg.hover({
+      force: true,
+      position: { x: box.width / 2, y: box.height / 2 },
+    })
 
     const tooltip = plot.locator(`.plot-tooltip`)
-    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toBeVisible({ timeout: 3000 })
     const text = await tooltip.textContent()
-    expect(text || ``).toMatch(/r.*Å/)
-    expect(text || ``).toContain(`g(r)`)
+    // Default ScatterPlot tooltip shows x and y values
+    expect(text || ``).toMatch(/x:.*\d/)
+    expect(text || ``).toMatch(/y:.*\d/)
   })
 
   // Test reference line

@@ -3,7 +3,9 @@ import { expect, test } from '@playwright/test'
 
 test.describe(`Fermi Surface Demo Page`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/fermi-surface`)
+    await page.goto(`/reciprocal/fermi-surface`, { waitUntil: `networkidle` })
+    // Wait for page to render with the h1 visible
+    await expect(page.locator(`h1`)).toBeVisible()
   })
 
   test(`page loads with correct title`, async ({ page }) => {
@@ -14,8 +16,10 @@ test.describe(`Fermi Surface Demo Page`, () => {
     await expect(page.locator(`h1`)).toContainText(`Fermi Surface`)
     // Intro paragraph with .intro class
     await expect(page.locator(`p.intro`)).toBeVisible()
-    // Features section: more specific selector to avoid matching multiple h2 elements
-    const features_section = page.locator(`section:has(h2:has-text("Features"))`)
+    // Features section: look for a section containing a Features heading
+    const features_section = page.locator(`section`).filter({
+      has: page.locator(`h2`, { hasText: `Features` }),
+    })
     await expect(features_section).toBeVisible()
   })
 

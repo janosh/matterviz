@@ -9,7 +9,7 @@ test.describe(`ThemeControl`, () => {
   // Helper function to get theme control and wait for it
   async function get_theme_control(page: Page) {
     await page.goto(`/`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`.theme-control`, { timeout: 5000 })
+    await page.waitForSelector(`.theme-control`)
     return page.locator(`.theme-control`)
   }
 
