@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { EmptyState, Icon, Spinner, toggle_fullscreen } from '$lib'
+  import { EmptyState, Spinner, toggle_fullscreen } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import { set_fullscreen_bg } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
