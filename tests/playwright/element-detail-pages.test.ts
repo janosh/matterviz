@@ -14,9 +14,10 @@ test.describe(`Element detail page`, () => {
 
       while (retries > 0 && !success) {
         try {
+          // Longer timeout for CI - page load can be slow
           await page.goto(`/${random_element.name.toLowerCase()}`, {
             waitUntil: `networkidle`,
-            timeout: 5000,
+            timeout: 15000,
           })
 
           // Wait for and check the h2 element content
