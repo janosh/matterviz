@@ -253,7 +253,8 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     await diagram.locator(
       `.draggable-pane.convex-hull-controls-pane input[type="range"][aria-label*="opacity"]`,
     ).fill(`0.2`)
+    // Longer timeout for CI - canvas updates can be slow
     await expect(async () => expect(await get_avg_alpha()).toBeGreaterThan(initial))
-      .toPass({ timeout: 1000 })
+      .toPass({ timeout: 5000 })
   })
 })
