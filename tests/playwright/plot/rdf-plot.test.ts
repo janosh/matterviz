@@ -68,9 +68,9 @@ test.describe(`RdfPlot Component Tests`, () => {
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 3000 })
     const text = await tooltip.textContent()
-    // Default ScatterPlot tooltip shows x and y values
-    expect(text || ``).toMatch(/x:.*\d/)
-    expect(text || ``).toMatch(/y:.*\d/)
+    // Default ScatterPlot tooltip shows "x: <number>" and "y: <number>"
+    expect(text || ``).toMatch(/x:\s*-?\d+\.?\d*/)
+    expect(text || ``).toMatch(/y:\s*-?\d+\.?\d*/)
   })
 
   // Test reference line

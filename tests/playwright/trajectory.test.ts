@@ -905,20 +905,18 @@ test.describe(`Trajectory Component`, () => {
       })
 
       // Helper to set trajectory dimensions and trigger layout recalculation
-      // The component's layout is based on its clientWidth/clientHeight bindings
       // Uses !important to override the component's CSS constraints (min-height, etc.)
       const set_trajectory_size = async (width: number, height: number) => {
         await trajectory.evaluate(
           (el, { w, h }) => {
             el.style.cssText =
               `width: ${w}px !important; height: ${h}px !important; min-height: ${h}px !important;`
-            // Force a reflow to update clientWidth/clientHeight
+            // Force a reflow to update clientWidth/clientHeight bindings
             void (el as HTMLElement).offsetHeight
           },
           { w: width, h: height },
         )
-        // Wait for Svelte's reactive updates to process
-        await page.waitForTimeout(300)
+        // No explicit wait needed - toHaveClass assertions auto-retry
       }
 
       // Start with wide dimensions - should trigger horizontal layout

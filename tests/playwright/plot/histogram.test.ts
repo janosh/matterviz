@@ -1180,11 +1180,6 @@ test.describe(`Histogram Component Tests`, () => {
       tick_config_histogram.locator(`g.y-axis`),
     ])
 
-    const [_initial_x, _initial_y] = await Promise.all([
-      get_histogram_tick_range(x_axis),
-      get_histogram_tick_range(y_axis),
-    ])
-
     // Adjust tick counts and verify changes
     await Promise.all([
       set_range_value(page, `#tick-configuration input[type="range"]:first-of-type`, 15),

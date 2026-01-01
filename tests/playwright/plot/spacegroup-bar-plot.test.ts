@@ -178,7 +178,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     expect(tooltip_text).toMatch(/Space Group:.*\(/i)
   })
 
-  test(`empty dataset shows full range with no data bars`, async ({ page }) => {
+  test(`plots render with proper structure and data bars`, async ({ page }) => {
     // Check that all plots have proper rendering
     const all_plots = page.locator(`.bar-plot`)
     const plot_count = await all_plots.count()

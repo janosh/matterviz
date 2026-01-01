@@ -182,13 +182,13 @@ test.describe(`Bands Component Tests`, () => {
 
       // Hover over a different path (different band)
       await paths.nth(2).hover({ force: true })
-      await page.waitForTimeout(100) // Brief wait for tooltip to update
 
-      const second_text = await tooltip.textContent()
-      expect(second_text).toBeTruthy()
-
-      // Tooltip text should change (different band = different frequency)
-      expect(first_text).not.toBe(second_text)
+      // Poll until tooltip text changes (different band = different frequency)
+      await expect(async () => {
+        const second_text = await tooltip.textContent()
+        expect(second_text).toBeTruthy()
+        expect(second_text).not.toBe(first_text)
+      }).toPass({ timeout: 1000 })
     }).toPass({ timeout: 5000 })
   })
 
