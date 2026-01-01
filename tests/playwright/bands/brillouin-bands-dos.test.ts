@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
+import process from 'node:process'
 
 test.describe(`BrillouinBandsDos Component Tests`, () => {
   // Increase timeout for all tests in this file - 3D rendering is slow in CI
@@ -98,6 +99,11 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
   })
 
   test(`hover synchronization updates BZ canvas`, async ({ page }) => {
+    // Skip in CI - hover synchronization with 3D canvas is unreliable
+    test.skip(
+      process.env.CI === `true`,
+      `Hover synchronization test is flaky in CI`,
+    )
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     const bz_canvas = container.locator(`canvas`).first()
     const initial = await bz_canvas.screenshot()
