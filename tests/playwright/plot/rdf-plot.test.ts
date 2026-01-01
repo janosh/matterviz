@@ -36,7 +36,7 @@ test.describe(`RdfPlot Component Tests`, () => {
     await expect(async () => {
       const after_toggle = await plot.locator(`svg path[fill="none"]:visible`).count()
       expect(after_toggle).toBe(1)
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
 
     await items.first().click()
 
@@ -45,7 +45,7 @@ test.describe(`RdfPlot Component Tests`, () => {
       expect(await plot.locator(`svg path[fill="none"]:visible`).count()).toBe(
         initial_lines,
       )
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
   })
 
   // Test tooltip

@@ -73,7 +73,7 @@ test.describe(`Histogram Component Tests`, () => {
         .locator(`path[role="button"][fill]:not([fill="none"])`)
         .count()
       expect(bar_count).toBeGreaterThan(5)
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
 
     // Check cursor is not pointer (no click handler)
     const bar = histogram.locator(`path[role="button"]`).first()

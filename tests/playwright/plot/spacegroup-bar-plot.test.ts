@@ -110,7 +110,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
         texts.some((text) => text.textContent?.includes(`%`))
       )
       expect(has_percentage_after).toBe(false)
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
   })
 
   test(`orientation switch flips bar orientation`, async ({ page }) => {

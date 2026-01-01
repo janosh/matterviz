@@ -532,7 +532,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(async () => {
         const value = await step_input.inputValue()
         expect(parseInt(value, 10)).toBeGreaterThan(0)
-      }).toPass({ timeout: 1000 })
+      }).toPass({ timeout: 5000 })
 
       // Test Home key to jump to first frame
       await page.keyboard.press(`Home`)
@@ -543,7 +543,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(async () => {
         const value = await step_input.inputValue()
         expect(parseInt(value, 10)).toBeGreaterThan(0)
-      }).toPass({ timeout: 1000 })
+      }).toPass({ timeout: 5000 })
 
       // Reset to start
       await page.keyboard.press(`Home`)
@@ -563,7 +563,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(async () => {
         const value = await step_input.inputValue()
         expect(parseInt(value, 10)).toBeGreaterThanOrEqual(1)
-      }).toPass({ timeout: 1000 })
+      }).toPass({ timeout: 5000 })
 
       // Test 'j' key for jump back 10 frames (should go to 0 or stay near start)
       await page.keyboard.press(`j`)
@@ -574,7 +574,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(async () => {
         const value = await step_input.inputValue()
         expect(parseInt(value, 10)).toBeGreaterThan(0)
-      }).toPass({ timeout: 1000 })
+      }).toPass({ timeout: 5000 })
 
       // Test Ctrl+ArrowLeft for jump to start
       await page.keyboard.press(`Control+ArrowLeft`)

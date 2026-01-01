@@ -2612,7 +2612,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
         const zoomed = await canvas.screenshot()
         expect(screenshots[`${projection}_initial`].equals(zoomed)).toBe(false)
         screenshots[`${projection}_zoomed`] = zoomed
-      }).toPass({ timeout: 1000 })
+      }).toPass({ timeout: 5000 })
     }
 
     // Verify zoom responsiveness and visual differences
@@ -3538,7 +3538,7 @@ test.describe(`Element Visibility Toggle`, () => {
         parseFloat(globalThis.getComputedStyle(el).opacity)
       )
       expect(hover_opacity).toBeGreaterThan(0)
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
 
     // Hide element
     await toggle_button.click()

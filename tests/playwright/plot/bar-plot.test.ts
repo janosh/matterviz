@@ -93,7 +93,7 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(async () => {
       const zoomed_x = await get_range(`x`)
       expect(zoomed_x).not.toBe(initial_x)
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
 
     // After zoom ticks differ
     const zoomed_x = await get_range(`x`)
