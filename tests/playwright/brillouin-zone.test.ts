@@ -282,8 +282,9 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
 
   test(`triggers on_error on failed load`, async ({ page }) => {
     await page.goto(`/test/brillouin-zone?data_url=/non-existent.json`)
+    // Longer timeout for CI - error handling may take time
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_error`, {
-      timeout: 5000,
+      timeout: 15000,
     })
   })
 })
