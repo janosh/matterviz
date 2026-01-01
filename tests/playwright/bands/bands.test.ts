@@ -106,15 +106,14 @@ test.describe(`Bands Component Tests`, () => {
     await expect(first_path).toBeVisible()
 
     // Use toPass to retry the hover and tooltip check to handle flaky behavior
+    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await first_path.hover({ force: true })
       const tooltip = plot.locator(`.plot-tooltip`)
       await expect(tooltip).toBeVisible({ timeout: 500 })
-
-      // Check tooltip content by text
-      const tooltip_text = await tooltip.textContent()
-      expect(tooltip_text).toContain(`THz`)
-      expect(tooltip_text).toContain(`→`)
+      // Use toContainText for better auto-waiting behavior
+      await expect(tooltip).toContainText(`THz`)
+      await expect(tooltip).toContainText(`→`)
     }).toPass({ timeout: 5000 })
   })
 
@@ -127,16 +126,15 @@ test.describe(`Bands Component Tests`, () => {
     await expect(first_path).toBeVisible()
 
     // Use toPass to retry the hover and tooltip check to handle flaky behavior
+    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await first_path.hover({ force: true })
       const tooltip = plot.locator(`.plot-tooltip`)
       await expect(tooltip).toBeVisible({ timeout: 500 })
-
-      // Check tooltip content contains series label, frequency, and path
-      const tooltip_text = await tooltip.textContent()
-      expect(tooltip_text).toMatch(/BS[12]/)
-      expect(tooltip_text).toContain(`THz`)
-      expect(tooltip_text).toContain(`→`)
+      // Use toContainText for better auto-waiting behavior
+      await expect(tooltip).toContainText(/BS[12]/)
+      await expect(tooltip).toContainText(`THz`)
+      await expect(tooltip).toContainText(`→`)
     }).toPass({ timeout: 5000 })
   })
 
@@ -147,8 +145,8 @@ test.describe(`Bands Component Tests`, () => {
     await expect(first_path).toBeVisible()
 
     // Use toPass to retry the hover and tooltip check to handle flaky behavior
+    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
-      // Hover to show tooltip
       await first_path.hover({ force: true })
       await expect(plot.locator(`.plot-tooltip`)).toBeVisible({ timeout: 500 })
     }).toPass({ timeout: 5000 })
@@ -172,6 +170,7 @@ test.describe(`Bands Component Tests`, () => {
     const tooltip = plot.locator(`.plot-tooltip`)
 
     // Use toPass to retry the hover and tooltip visibility check
+    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await paths.nth(0).hover({ force: true })
       await expect(tooltip).toBeVisible({ timeout: 500 })
@@ -197,14 +196,11 @@ test.describe(`Bands Component Tests`, () => {
     await expect(first_path).toBeVisible()
 
     // Use toPass to retry the hover and tooltip check to handle flaky behavior
+    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await first_path.hover({ force: true })
       const tooltip = plot.locator(`.plot-tooltip`)
-      await expect(tooltip).toBeVisible({ timeout: 500 })
-
-      // Check tooltip contains band index
-      const tooltip_text = await tooltip.textContent()
-      expect(tooltip_text).toMatch(/Band:\s*\d+/)
+      await expect(tooltip).toContainText(/Band:\s*\d+/, { timeout: 500 })
     }).toPass({ timeout: 5000 })
   })
 
@@ -216,19 +212,16 @@ test.describe(`Bands Component Tests`, () => {
     const tooltip = plot.locator(`.plot-tooltip`)
 
     // Retry first hover until tooltip shows Band 1
+    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await paths.nth(0).hover({ force: true })
-      await expect(tooltip).toBeVisible({ timeout: 500 })
-      const first_text = await tooltip.textContent()
-      expect(first_text).toMatch(/Band:\s*1/)
+      await expect(tooltip).toContainText(/Band:\s*1/, { timeout: 500 })
     }).toPass({ timeout: 5000 })
 
     // Retry second hover until tooltip shows Band 3
     await expect(async () => {
       await paths.nth(2).hover({ force: true })
-      await expect(tooltip).toBeVisible({ timeout: 500 })
-      const second_text = await tooltip.textContent()
-      expect(second_text).toMatch(/Band:\s*3/)
+      await expect(tooltip).toContainText(/Band:\s*3/, { timeout: 500 })
     }).toPass({ timeout: 5000 })
   })
 

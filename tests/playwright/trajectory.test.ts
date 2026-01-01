@@ -27,6 +27,24 @@ async function select_display_mode(trajectory: Locator, mode_name: string) {
   return content_area
 }
 
+// Helper to set element dimensions with CSS overrides and trigger layout recalculation
+// Uses !important to override component CSS constraints (min-height, etc.)
+async function set_element_size(
+  element: Locator,
+  width: number,
+  height: number,
+): Promise<void> {
+  await element.evaluate(
+    (el, { w, h }) => {
+      el.style.cssText =
+        `width: ${w}px !important; height: ${h}px !important; min-height: ${h}px !important;`
+      // Force a reflow to update clientWidth/clientHeight bindings
+      void (el as HTMLElement).offsetHeight
+    },
+    { w: width, h: height },
+  )
+}
+
 test.describe(`Trajectory Component`, () => {
   let trajectory_viewer: Locator
   let controls: Locator
@@ -888,31 +906,16 @@ test.describe(`Trajectory Component`, () => {
         timeout: 10000,
       })
 
-      // Helper to set trajectory dimensions and trigger layout recalculation
-      // Uses !important to override the component's CSS constraints (min-height, etc.)
-      const set_trajectory_size = async (width: number, height: number) => {
-        await trajectory.evaluate(
-          (el, { w, h }) => {
-            el.style.cssText =
-              `width: ${w}px !important; height: ${h}px !important; min-height: ${h}px !important;`
-            // Force a reflow to update clientWidth/clientHeight bindings
-            void (el as HTMLElement).offsetHeight
-          },
-          { w: width, h: height },
-        )
-        // No explicit wait needed - toHaveClass assertions auto-retry
-      }
-
       // Start with wide dimensions - should trigger horizontal layout
-      await set_trajectory_size(800, 400)
+      await set_element_size(trajectory, 800, 400)
       await expect(trajectory).toHaveClass(/horizontal/)
 
       // Resize to tall dimensions - should trigger vertical layout
-      await set_trajectory_size(400, 800)
+      await set_element_size(trajectory, 400, 800)
       await expect(trajectory).toHaveClass(/vertical/)
 
       // Resize back to wide dimensions
-      await set_trajectory_size(800, 400)
+      await set_element_size(trajectory, 800, 400)
       await expect(trajectory).toHaveClass(/horizontal/)
     })
 

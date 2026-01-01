@@ -214,7 +214,8 @@ const check_marker_sizes = async (
 // Hover over a marker to show tooltip using two-phase approach.
 // The ScatterPlot component requires onmouseenter on the SVG to set hovered=true
 // before onmousemove can identify the closest point and show the tooltip.
-// This helper handles the two-phase hover pattern reliably.
+// This helper handles the two-phase hover pattern reliably using polling instead
+// of fixed delays for better CI stability.
 const hover_to_show_tooltip = async (
   page: Page,
   plot_locator: Locator,
@@ -225,19 +226,23 @@ const hover_to_show_tooltip = async (
   await expect(svg).toBeVisible()
   await expect(marker_locator).toBeVisible()
 
-  const svg_bbox = await svg.boundingBox()
-  const marker_bbox = await marker_locator.boundingBox()
-  if (svg_bbox && marker_bbox) {
+  const tooltip_locator = plot_locator.locator(`.plot-tooltip`)
+
+  // Use polling pattern instead of fixed delay for CI stability
+  await expect(async () => {
+    const svg_bbox = await svg.boundingBox()
+    const marker_bbox = await marker_locator.boundingBox()
+    if (!svg_bbox || !marker_bbox) throw new Error(`Bounding boxes not available`)
+
     // Phase 1: Enter SVG area first (triggers onmouseenter to set hovered=true)
     await page.mouse.move(svg_bbox.x + 10, svg_bbox.y + 10)
-    // Brief wait to ensure state update completes before Phase 2
-    await page.waitForTimeout(50)
     // Phase 2: Move to marker center (triggers onmousemove to find closest point)
     await page.mouse.move(
       marker_bbox.x + marker_bbox.width / 2,
       marker_bbox.y + marker_bbox.height / 2,
     )
-  }
+    await expect(tooltip_locator).toBeVisible()
+  }).toPass({ timeout: 2000 })
 }
 
 // Get tooltip background and text color after hover
