@@ -21,7 +21,8 @@ test.describe(`Bond component`, () => {
 
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     const canvas = page.locator(`#test-structure canvas`)
-    await canvas.waitFor({ state: `visible`, timeout: 5000 })
+    // WebGL/3D rendering takes longer in CI
+    await canvas.waitFor({ state: `visible`, timeout: 15000 })
 
     // Assert 1-2: Canvas visible and has content
     await expect(canvas).toBeVisible()
@@ -65,7 +66,8 @@ test.describe(`Bond component`, () => {
 
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     const canvas = page.locator(`#test-structure canvas`)
-    await canvas.waitFor({ state: `visible`, timeout: 5000 })
+    // WebGL/3D rendering takes longer in CI
+    await canvas.waitFor({ state: `visible`, timeout: 15000 })
 
     const box = await canvas.boundingBox()
     expect(box).toBeTruthy()
