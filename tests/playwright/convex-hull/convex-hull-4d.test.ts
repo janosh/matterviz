@@ -4,8 +4,12 @@ import { ensure_pane_visible, open_info_and_controls } from './utils'
 test.describe(`ConvexHull4D (Quaternary)`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
-    // Wait for data to load - the quaternary-grid only renders after loaded_data.size > 0
-    await expect(page.locator(`.quaternary-grid`).first()).toBeVisible({ timeout: 15000 })
+    // Wait for data to fully load - check for canvas inside diagram which only renders after data loads
+    const quaternary_grid = page.locator(`.quaternary-grid`).first()
+    await expect(quaternary_grid).toBeVisible({ timeout: 10000 })
+    // Wait for at least one diagram with a canvas to be rendered (indicates data is loaded and rendered)
+    const diagram_canvas = quaternary_grid.locator(`.convex-hull-4d canvas`).first()
+    await expect(diagram_canvas).toBeVisible({ timeout: 5000 })
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {

@@ -226,7 +226,9 @@ test.describe(`Bands Component Tests`, () => {
     // Retry second hover until tooltip shows Band 3
     await expect(async () => {
       await paths.nth(2).hover({ force: true })
-      await expect(tooltip).toContainText(/Band:\s*3/, { timeout: 500 })
+      await expect(tooltip).toBeVisible({ timeout: 500 })
+      const second_text = await tooltip.textContent()
+      expect(second_text).toMatch(/Band:\s*3/)
     }).toPass({ timeout: 5000 })
   })
 

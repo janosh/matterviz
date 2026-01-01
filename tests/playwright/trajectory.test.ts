@@ -2,9 +2,6 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 
-// Type alias for mock download entries (used in page.evaluate contexts)
-type _MockDownload = { filename: string; href: string }
-
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
   const display_button = trajectory.locator(
@@ -206,8 +203,8 @@ test.describe(`Trajectory Component`, () => {
     )
 
     // Click fullscreen button (note: actual fullscreen requires user gesture)
-    // Use force click and timeout since fullscreen API doesn't work in headless mode
-    await fullscreen_button.click({ force: true, timeout: 5000 })
+    // Fullscreen API doesn't work in headless mode, but we can still test the button
+    await fullscreen_button.click()
 
     // We can't test actual fullscreen in headless mode, but button should remain functional
     await expect(fullscreen_button).toBeEnabled()
