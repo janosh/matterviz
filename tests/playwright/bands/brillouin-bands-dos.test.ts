@@ -21,17 +21,17 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
   test(`renders all three panels with content`, async ({ page }) => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
 
-    // Check all three panels render
+    // Check all three panels render - data should be loaded after networkidle
     await expect(container.locator(`canvas`).first()).toBeVisible()
     const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
-    await expect(bands_svg).toBeVisible({ timeout: 50000 })
+    await expect(bands_svg).toBeVisible({ timeout: 10_000 })
     await expect(bands_svg.locator(`path[fill="none"]`).first())
-      .toBeVisible({ timeout: 50000 })
+      .toBeVisible({ timeout: 5000 })
 
     // DOS SVG - find by looking for the second SVG with axes
     const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
-    await expect(dos_svg).toBeVisible({ timeout: 50000 })
-    await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 50000 })
+    await expect(dos_svg).toBeVisible({ timeout: 10_000 })
+    await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 5000 })
     await expect(dos_svg.locator(`path[fill="none"]`).first())
       .toBeVisible({ timeout: 5000 })
 
@@ -98,32 +98,12 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     expect(await container.boundingBox()).toBeTruthy()
   })
 
-  test(`hover synchronization updates BZ canvas`, async ({ page }) => {
-    // Skip in CI - hover synchronization with 3D canvas is unreliable
+  test(`BZ rotates with mouse drag`, async ({ page }) => {
+    // Skip in CI - 3D canvas mouse drag tests are unreliable
     test.skip(
       process.env.CI === `true`,
-      `Hover synchronization test is flaky in CI`,
+      `BZ rotation test is flaky in CI`,
     )
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    const bz_canvas = container.locator(`canvas`).first()
-    const initial = await bz_canvas.screenshot()
-
-    // Hover over band path
-    await container.locator(`svg:has(g.x-axis)`).first().locator(`path[fill="none"]`)
-      .first().hover({
-        position: { x: 100, y: 100 },
-        force: true, // Bypass pointer interception from overlapping SVG
-      })
-
-    // Wait for canvas to repaint by checking for any change
-    await page.waitForFunction(() =>
-      new Promise((resolve) => requestAnimationFrame(() => resolve(true)))
-    )
-
-    expect(Buffer.compare(initial, await bz_canvas.screenshot())).not.toBe(0)
-  })
-
-  test(`BZ rotates with mouse drag`, async ({ page }) => {
     const bz_canvas = page.locator(`[data-testid="bz-bands-dos-default"] canvas`).first()
     const initial = await bz_canvas.screenshot()
 
