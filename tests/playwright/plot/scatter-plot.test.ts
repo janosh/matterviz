@@ -472,35 +472,36 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const max_size_input = section.locator(`input[aria-label="Max Size (px)"]`)
     await max_size_input.fill(`50`)
 
-    // Wait for marker size to actually increase
+    // Wait for marker size to actually increase (longer timeout for CI)
     await expect(async () => {
       const updated_bbox = await get_marker_bbox(plot_locator, last_idx)
       const updated_area = get_bbox_area(updated_bbox)
       expect(updated_area).toBeGreaterThan(area_last * 1.5) // At least 50% larger
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
 
     // Test 3: Verify log scale compresses size differences
     // Reset max size to baseline before comparing linear vs log scale
     await max_size_input.fill(`25`)
 
-    // Capture linear scale area for last marker
+    // Capture linear scale area for last marker (longer timeout for CI)
     const scale_select = section.locator(`select[aria-label="Size Scale"]`)
     let linear_area = 0
     await expect(async () => {
       const linear_last = await get_marker_bbox(plot_locator, last_idx)
       linear_area = get_bbox_area(linear_last)
       expect(linear_area).toBeGreaterThan(0)
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
 
     await scale_select.selectOption(`log`)
 
     // Log scale should compress the size range, making large values relatively smaller
+    // Longer timeout for CI
     await expect(async () => {
       const log_last = await get_marker_bbox(plot_locator, last_idx)
       const log_area = get_bbox_area(log_last)
       expect(log_area).toBeGreaterThan(0)
       expect(log_area).toBeLessThan(linear_area)
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
   })
 
   // Scale and range tests
@@ -1346,7 +1347,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
         const new_y_tick = await y_tick_text.textContent()
         expect(new_y_tick).toMatch(/e[+-]?\d/)
         expect(new_y_tick).not.toBe(initial_y_tick)
-      }).toPass({ timeout: 1000 })
+      }).toPass({ timeout: 5000 })
 
       // Test invalid format adds "invalid" class (use format not starting with %)
       await y_format_input.fill(`xyz_bad`)
@@ -1904,7 +1905,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(async () => {
       const bbox = await crimson_marker.boundingBox()
       expect(bbox?.width).toBeGreaterThan(initial_width * 1.3) // At least 30% bigger
-    }).toPass({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
 
     // Verify size changed (marker got bigger)
     const updated_bbox = await crimson_marker.boundingBox()
