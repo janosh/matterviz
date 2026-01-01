@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { DraggablePane, format_num } from '$lib'
+  import { format_num } from '$lib/labels'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { D3InterpolateName } from '$lib/colors'
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'

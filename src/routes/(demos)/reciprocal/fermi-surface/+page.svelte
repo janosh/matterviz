@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import type { FileInfo } from '$lib'
-  import { FilePicker } from '$lib'
+  import FilePicker from '$lib/FilePicker.svelte'
   import type {
     BandGridData,
     FermiFileLoadData,

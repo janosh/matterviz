@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { AnyStructure, Site } from '$lib'
-  import { DraggablePane, element_data, format_num, Icon, type InfoItem } from '$lib'
+  import { element_data, type InfoItem } from '$lib'
+  import Icon from '$lib/Icon.svelte'
+  import { format_num } from '$lib/labels'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { get_density } from '$lib/structure'
   import { wyckoff_positions_from_moyo, WyckoffTable } from '$lib/symmetry'

@@ -169,27 +169,23 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot).toBeVisible()
     const paths = plot.locator(`svg path[fill="none"]`)
     await expect(paths.first()).toBeVisible()
+    const tooltip = plot.locator(`.plot-tooltip`)
 
-    // Use toPass to retry the hover and tooltip check to handle flaky behavior
+    // Use toPass to retry the hover and tooltip visibility check
     await expect(async () => {
-      // Hover over first path
       await paths.nth(0).hover({ force: true })
-
-      const tooltip = plot.locator(`.plot-tooltip`)
       await expect(tooltip).toBeVisible({ timeout: 500 })
-      const first_text = await tooltip.textContent()
-      expect(first_text).toBeTruthy()
-
-      // Hover over a different path (different band)
-      await paths.nth(2).hover({ force: true })
-
-      // Poll until tooltip text changes (different band = different frequency)
-      await expect(async () => {
-        const second_text = await tooltip.textContent()
-        expect(second_text).toBeTruthy()
-        expect(second_text).not.toBe(first_text)
-      }).toPass({ timeout: 1000 })
     }).toPass({ timeout: 5000 })
+
+    const first_text = await tooltip.textContent()
+    expect(first_text).toBeTruthy()
+
+    // Hover over a different path and verify tooltip updates (retry both together)
+    await expect(async () => {
+      await paths.nth(2).hover({ force: true })
+      const updated_text = await tooltip.textContent()
+      expect(updated_text).not.toBe(first_text)
+    }).toPass({ timeout: 2000 })
   })
 
   test(`tooltip shows band index`, async ({ page }) => {
@@ -217,23 +213,20 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot).toBeVisible()
     const paths = plot.locator(`svg path[fill="none"]`)
     await expect(paths.first()).toBeVisible()
+    const tooltip = plot.locator(`.plot-tooltip`)
 
-    // Use toPass to retry the hover and tooltip check to handle flaky behavior
+    // Retry first hover until tooltip shows Band 1
     await expect(async () => {
-      // Hover over first path (Band 1)
       await paths.nth(0).hover({ force: true })
-
-      const tooltip = plot.locator(`.plot-tooltip`)
       await expect(tooltip).toBeVisible({ timeout: 500 })
       const first_text = await tooltip.textContent()
       expect(first_text).toMatch(/Band:\s*1/)
+    }).toPass({ timeout: 5000 })
 
-      // Hover over third path (Band 3)
+    // Retry second hover until tooltip shows Band 3
+    await expect(async () => {
       await paths.nth(2).hover({ force: true })
-      await page.waitForTimeout(100) // Brief wait for tooltip to update
-
-      const third_text = await tooltip.textContent()
-      expect(third_text).toMatch(/Band:\s*3/)
+      await expect(tooltip).toContainText(/Band:\s*3/, { timeout: 500 })
     }).toPass({ timeout: 5000 })
   })
 

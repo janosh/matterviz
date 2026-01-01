@@ -81,16 +81,22 @@ test.describe(`BrillouinZone Component Tests`, () => {
       sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
       targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
     })
-    await page.waitForTimeout(100)
-    const rotated = await canvas.screenshot()
-    // Avoid pixel-perfect assertions; just ensure the canvas changed.
-    expect(rotated.equals(initial)).toBe(false)
+
+    // Poll until canvas screenshot differs from initial (rotation applied)
+    let rotated = initial
+    await expect(async () => {
+      rotated = await canvas.screenshot()
+      expect(rotated.equals(initial)).toBe(false)
+    }).toPass({ timeout: 5000 })
 
     await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 } })
     await page.mouse.wheel(0, -200)
-    await page.waitForTimeout(100)
-    const zoomed = await canvas.screenshot()
-    expect(zoomed.equals(rotated)).toBe(false)
+
+    // Poll until canvas screenshot differs from rotated (zoom applied)
+    await expect(async () => {
+      const zoomed = await canvas.screenshot()
+      expect(zoomed.equals(rotated)).toBe(false)
+    }).toPass({ timeout: 5000 })
   })
 
   test(`maintains quality across BZ order changes`, async ({ page }) => {

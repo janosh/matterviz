@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import type { IconName } from '$lib/icons'
   import type { Snippet } from 'svelte'
   import { draggable, tooltip } from 'svelte-multiselect/attachments'

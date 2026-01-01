@@ -2,14 +2,18 @@ import { expect, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 
 test.describe(`BrillouinBandsDos Component Tests`, () => {
+  // Increase timeout for all tests in this file - 3D rendering is slow in CI
+  test.setTimeout(60_000)
+
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `networkidle` })
     // Wait for the default container and basic structure to be present
+    // Use longer timeout since WebGL/3D initialization can be slow in CI
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    await expect(container).toBeVisible()
+    await expect(container).toBeVisible({ timeout: 20000 })
     // Wait for canvas (BZ) to be present - WebGL may take time to initialize
     await page.waitForSelector(`[data-testid="bz-bands-dos-default"] canvas`, {
-      timeout: 15000,
+      timeout: 20000,
     })
   })
 

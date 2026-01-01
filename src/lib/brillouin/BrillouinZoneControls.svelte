@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { DraggablePane, SettingsSection } from '$lib'
+  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { CameraProjection } from '$lib/settings'
 
   let {

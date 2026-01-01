@@ -1,7 +1,9 @@
 <script lang="ts">
   import { replaceState } from '$app/navigation'
   import type { ElementSymbol, Vec3 } from '$lib'
-  import { type Crystal, Spinner, Structure } from '$lib'
+  import type { Crystal } from '$lib'
+  import Spinner from '$lib/feedback/Spinner.svelte'
+  import Structure from '$lib/structure/Structure.svelte'
   import { SETTINGS_CONFIG, SHOW_BONDS_OPTIONS } from '$lib/settings'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import type { ComponentProps } from 'svelte'

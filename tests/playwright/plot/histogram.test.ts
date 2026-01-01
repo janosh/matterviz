@@ -725,7 +725,9 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(control_pane).toBeVisible()
 
     // Test bins control - the number input is a sibling of the label in a pane-row
-    const bins_row = control_pane.locator(`.pane-row:has(label:has-text("Bins:"))`)
+    const bins_row = control_pane.locator(
+      `.pane-row:has(label:text-matches("Bins", "i"))`,
+    )
     await expect(bins_row).toBeVisible()
     const bins_number_input = bins_row.locator(`input[type="number"]`)
     await bins_number_input.fill(`15`)
@@ -756,8 +758,9 @@ test.describe(`Histogram Component Tests`, () => {
       await x_grid_checkbox.check()
     }
 
-    // Test scale type selects - use label-based selector
-    const x_scale_label = control_pane.locator(`label:has-text("X:")`)
+    // Test scale type selects - scope to Scale Type section to avoid matching other X: labels
+    const scale_type_section = control_pane.locator(`h4:has-text("Scale Type") + section`)
+    const x_scale_label = scale_type_section.locator(`label:has-text("X:")`)
     if (await x_scale_label.isVisible()) {
       const x_scale_select = x_scale_label.locator(`select`)
       await x_scale_select.selectOption(`log`)
@@ -858,11 +861,14 @@ test.describe(`Histogram Component Tests`, () => {
     const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
     await expect(histogram).toBeVisible()
 
-    // Wait for histogram to render and check for any SVG content
-    await expect(histogram.locator(`*`).first()).toBeVisible()
+    // Wait for histogram to render and check for meaningful SVG content (bars or axes)
+    await expect(histogram.locator(`g.x-axis, g.y-axis, path[role="button"]`).first())
+      .toBeVisible()
 
     // Check if histogram has any content (bars, axes, or any SVG elements)
-    const has_any_content = await histogram.locator(`*`).count()
+    const has_any_content = await histogram.locator(
+      `g.x-axis, g.y-axis, path[role="button"]`,
+    ).count()
 
     // Histogram should have some content
     expect(has_any_content).toBeGreaterThan(0)
@@ -1200,7 +1206,9 @@ test.describe(`Histogram Component Tests`, () => {
     // Verify tick configuration produces reasonable tick counts
     // D3 may not produce exactly the requested number of ticks, but should be in a reasonable range
     expect(adjusted_x.ticks.length).toBeGreaterThanOrEqual(4)
+    expect(adjusted_x.ticks.length).toBeLessThanOrEqual(20)
     expect(adjusted_y.ticks.length).toBeGreaterThanOrEqual(3)
+    expect(adjusted_y.ticks.length).toBeLessThanOrEqual(15)
 
     // Test custom tick arrays and data consistency
     await page.evaluate(() => {
@@ -1288,13 +1296,13 @@ test.describe(`Histogram Component Tests`, () => {
         expect(positive_ticks.length).toBeGreaterThan(0)
       }
 
-      // Verify tick ordering
+      // Verify tick ordering (compare original array against sorted copy)
       const [x_sorted, y_sorted] = [
         [...x_ticks.ticks].sort((a, b) => a - b),
         [...y_ticks.ticks].sort((a, b) => a - b),
       ]
-      expect(x_ticks.ticks.sort((a, b) => a - b)).toEqual(x_sorted)
-      expect(y_ticks.ticks.sort((a, b) => a - b)).toEqual(y_sorted)
+      expect([...x_ticks.ticks]).toEqual(x_sorted)
+      expect([...y_ticks.ticks]).toEqual(y_sorted)
     }
   })
 
@@ -1448,7 +1456,7 @@ test.describe(`Histogram Component Tests`, () => {
     await expect.poll(async () => {
       const { ticks } = await get_histogram_tick_range(x_axis_el)
       return Math.min(...ticks)
-    }, { timeout: 3000 }).toBeGreaterThanOrEqual(x_new_min - (x_max - x_min) * 0.15)
+    }, { timeout: 3000 }).toBeGreaterThanOrEqual(x_new_min - (x_max - x_min) * 0.05)
 
     // Y-axis: set a specific max value
     const y_new_max = y_max - (y_max - y_min) * 0.3
@@ -1458,12 +1466,14 @@ test.describe(`Histogram Component Tests`, () => {
     await expect.poll(async () => {
       const { ticks } = await get_histogram_tick_range(y_axis_el)
       return Math.max(...ticks)
-    }, { timeout: 3000 }).toBeLessThanOrEqual(y_new_max + (y_max - y_min) * 0.15)
+    }, { timeout: 3000 }).toBeLessThanOrEqual(y_new_max + (y_max - y_min) * 0.05)
 
     await toggle.click()
   })
 
   test(`on_bar_hover and on_bar_click handlers`, async ({ page }) => {
+    // Navigate to demo page instead of test page to access interactive handler UI elements
+    // The demo page includes status divs that display handler state for testing behavior
     await page.goto(`/plot/histogram`, { waitUntil: `networkidle` })
 
     // Find the first histogram with bar interaction handlers (first code example)

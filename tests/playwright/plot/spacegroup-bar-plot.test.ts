@@ -12,7 +12,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     await expect(plot).toBeVisible()
 
     // Check bars render
-    const bars = plot.locator(`svg rect[fill]:not([fill="none"])`)
+    const bars = plot.locator(`svg path[role="button"]`)
     await expect(bars.first()).toBeVisible()
     const bar_count = await bars.count()
     expect(bar_count).toBeGreaterThan(5)
@@ -125,7 +125,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     const plot = page.locator(`.bar-plot`).nth(2) // Third plot has orientation controls
     await expect(plot).toBeVisible()
 
-    const bars = plot.locator(`svg rect[fill]:not([fill="none"])`)
+    const bars = plot.locator(`svg path[role="button"]`)
     await expect(bars.first()).toBeVisible()
 
     // Measure initial orientation (should be vertical)
@@ -161,14 +161,13 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     await expect(plot).toBeVisible()
 
     // Check bars render from symbol input
-    const bars = plot.locator(`svg rect[fill]:not([fill="none"])`)
+    const bars = plot.locator(`svg path[role="button"]`)
     await expect(bars.first()).toBeVisible()
     const bar_count = await bars.count()
     expect(bar_count).toBeGreaterThan(5)
 
     // Hover on a bar and check tooltip shows symbol
-    const bar_buttons = plot.locator(`svg path[role="button"]`)
-    await bar_buttons.first().hover({ force: true })
+    await bars.first().hover({ force: true })
 
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 2000 })
@@ -260,7 +259,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     const plot = page.locator(`.bar-plot`).first()
     await expect(plot).toBeVisible()
 
-    const bars = plot.locator(`svg rect[fill]:not([fill="none"])`)
+    const bars = plot.locator(`svg path[role="button"]`)
     await expect(bars.first()).toBeVisible()
 
     // Get positions and widths of first several bars

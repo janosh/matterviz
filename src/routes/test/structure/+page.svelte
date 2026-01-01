@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { type Crystal, DEFAULTS, Structure, StructureScene } from '$lib'
+  import type { Crystal } from '$lib'
+  import { DEFAULTS } from '$lib/settings'
+  import Structure from '$lib/structure/Structure.svelte'
+  import StructureScene from '$lib/structure/StructureScene.svelte'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
   import type { ComponentProps } from 'svelte'
 

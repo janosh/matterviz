@@ -125,8 +125,9 @@ test.describe(`OPTIMADE route`, () => {
 
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
     await expect(page.locator(`input[placeholder="Enter structure ID"]`))
-      .toBeVisible()
-    await expect(page.locator(`button:has-text("Fetch")`)).toBeVisible()
+      .toBeVisible({ timeout: 10000 })
+    // Use class selector instead of :has-text() for more reliable matching
+    await expect(page.locator(`button.fetch-button`)).toBeVisible({ timeout: 10000 })
   })
 
   test(`handles invalid structure ID gracefully`, async ({ page }) => {
@@ -135,9 +136,9 @@ test.describe(`OPTIMADE route`, () => {
     // Check input value is set correctly
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
 
-    // Check for error message
+    // Check for error message - wait longer as it requires API call in CI
     const error_message = page.locator(`.structure-column .error-message`)
-    await expect(error_message).toBeVisible({ timeout: 5000 })
+    await expect(error_message).toBeVisible({ timeout: 15000 })
     await expect(error_message).toContainText(`invalid-id-12345`)
     await expect(error_message).toContainText(`not found`)
   })

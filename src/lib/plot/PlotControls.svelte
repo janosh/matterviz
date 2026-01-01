@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { DraggablePane, SettingsSection } from '$lib'
+  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'

@@ -2,10 +2,8 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 
-// Type alias for mock download entries
-
-type MockDownload = { filename: string; href: string }
-type _GlobalWithMock = typeof globalThis & { __mockDownload: MockDownload[] }
+// Type alias for mock download entries (used in page.evaluate contexts)
+type _MockDownload = { filename: string; href: string }
 
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
@@ -117,7 +115,7 @@ test.describe(`Trajectory Component`, () => {
     await expect(content_area).toHaveClass(/show-/)
 
     // Test that button can be clicked (may not change state in test environment)
-    await display_button.click({ force: true })
+    await display_button.click()
 
     // Verify button is still clickable after interaction
     await expect(display_button).toBeEnabled()
@@ -131,7 +129,7 @@ test.describe(`Trajectory Component`, () => {
     // Pane may not be visible initially since DraggablePane only renders when show=true
 
     // Test that button can be clicked
-    await info_button.click({ force: true })
+    await info_button.click()
 
     // Verify button is still functional
     await expect(info_button).toBeEnabled()
@@ -240,7 +238,7 @@ test.describe(`Trajectory Component`, () => {
     await expect(play_button).toBeEnabled()
 
     // Test that button can be clicked
-    await play_button.click({ force: true })
+    await play_button.click()
 
     // Verify button is still functional
     await expect(play_button).toBeEnabled()
@@ -492,8 +490,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(info_button).toBeEnabled()
     })
 
-    // TODO fix this test
-    test.skip(`keyboard shortcuts work`, async ({ page }) => {
+    test(`keyboard shortcuts work`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const step_input = trajectory.locator(`.step-input`)
       const play_button = trajectory.locator(`.play-button`)
@@ -501,82 +498,72 @@ test.describe(`Trajectory Component`, () => {
       // Wait for component to be fully loaded
       await expect(step_input).toBeVisible()
       await expect(play_button).toBeVisible()
-
-      // First verify that the basic navigation controls work (using same approach as working test)
       await expect(step_input).toHaveValue(`0`)
 
-      // Test navigation using step input directly (like the working basic test)
-      await step_input.fill(`1`)
-      await step_input.press(`Enter`)
+      // Focus the trajectory wrapper (it has tabindex="0" for keyboard events)
+      await trajectory.focus()
+
+      // Test ArrowRight for next step
+      await page.keyboard.press(`ArrowRight`)
       await expect(step_input).toHaveValue(`1`)
 
-      await step_input.fill(`0`)
-      await step_input.press(`Enter`)
+      // Test ArrowLeft for previous step
+      await page.keyboard.press(`ArrowLeft`)
       await expect(step_input).toHaveValue(`0`)
 
-      // Test direct input (like the working basic test)
-      await step_input.fill(`2`)
-      await step_input.press(`Enter`)
-      await expect(step_input).toHaveValue(`2`)
+      // Test End key to jump to last frame
+      await page.keyboard.press(`End`)
+      // Wait for value to change (trajectory has multiple frames)
+      await expect(async () => {
+        const value = await step_input.inputValue()
+        expect(parseInt(value, 10)).toBeGreaterThan(0)
+      }).toPass({ timeout: 1000 })
 
-      await step_input.fill(`0`)
-      await step_input.press(`Enter`)
+      // Test Home key to jump to first frame
+      await page.keyboard.press(`Home`)
       await expect(step_input).toHaveValue(`0`)
 
-      // Test keyboard shortcuts by directly calling the internal functions
-      // This tests the keyboard shortcut logic even if event handling isn't working in tests
+      // Test number key for percentage jump (5 = 50% through trajectory)
+      await page.keyboard.press(`5`)
+      await expect(async () => {
+        const value = await step_input.inputValue()
+        expect(parseInt(value, 10)).toBeGreaterThan(0)
+      }).toPass({ timeout: 1000 })
 
-      // Test next/prev step functionality
-      await page.evaluate(() => {
-        // Find the Svelte component instance and call next_step
-        const nextBtn = document.querySelector(
-          `#loaded-trajectory button[title="Next step"]`,
-        ) as HTMLButtonElement
-        if (nextBtn) {
-          nextBtn.click() // This should work since we tested it above
-        }
-      })
-      await expect(step_input).toHaveValue(`1`)
-
-      await page.evaluate(() => {
-        const prevBtn = document.querySelector(
-          `#loaded-trajectory button[title="Previous step"]`,
-        ) as HTMLButtonElement
-        if (prevBtn) {
-          prevBtn.click()
-        }
-      })
+      // Reset to start
+      await page.keyboard.press(`Home`)
       await expect(step_input).toHaveValue(`0`)
 
-      // Test jumping to specific steps via step input
-      await step_input.fill(`2`)
-      await step_input.press(`Enter`)
-      await expect(step_input).toHaveValue(`2`)
-
-      await step_input.fill(`0`)
-      await step_input.press(`Enter`)
-      await expect(step_input).toHaveValue(`0`)
-
-      // Test play/pause button functionality
+      // Test Space for play/pause toggle
       await expect(play_button).toHaveText(`▶`)
-      await play_button.click()
-      await expect(play_button).toBeEnabled() // Button remains functional
+      await page.keyboard.press(`Space`)
+      await expect(play_button).toHaveText(`⏸`)
 
-      // Stop playback if it started
-      if (await play_button.textContent() === `⏸`) {
-        await play_button.click()
-      }
+      // Pause playback
+      await page.keyboard.press(`Space`)
+      await expect(play_button).toHaveText(`▶`)
 
-      // Test info pane button
-      const info_button = trajectory.locator(`.trajectory-info-toggle`)
-      await expect(info_button).toBeVisible()
-      await info_button.click()
-      await expect(info_button).toBeEnabled()
+      // Test 'l' key for jump forward 10 frames
+      await page.keyboard.press(`l`)
+      await expect(async () => {
+        const value = await step_input.inputValue()
+        expect(parseInt(value, 10)).toBeGreaterThanOrEqual(1)
+      }).toPass({ timeout: 1000 })
 
-      // Test fullscreen button
-      const fullscreen_button = trajectory.locator(`.fullscreen-button`)
-      await fullscreen_button.click()
-      await expect(trajectory).toBeVisible()
+      // Test 'j' key for jump back 10 frames (should go to 0 or stay near start)
+      await page.keyboard.press(`j`)
+      await expect(step_input).toHaveValue(`0`)
+
+      // Test Ctrl+ArrowRight for jump to end
+      await page.keyboard.press(`Control+ArrowRight`)
+      await expect(async () => {
+        const value = await step_input.inputValue()
+        expect(parseInt(value, 10)).toBeGreaterThan(0)
+      }).toPass({ timeout: 1000 })
+
+      // Test Ctrl+ArrowLeft for jump to start
+      await page.keyboard.press(`Control+ArrowLeft`)
+      await expect(step_input).toHaveValue(`0`)
     })
 
     test(`keyboard shortcuts are disabled when typing in inputs`, async ({ page }) => {
@@ -759,9 +746,9 @@ test.describe(`Trajectory Component`, () => {
       await expect(vertical_trajectory).not.toHaveClass(/horizontal/)
     })
 
-    test.skip(`display mode cycling works correctly with responsive layout`, async ({ page }) => {
-      // Use a different trajectory that definitely has plot data - try custom-properties
-      const trajectory = page.locator(`#custom-properties`)
+    test(`display mode cycling works correctly with responsive layout`, async ({ page }) => {
+      // Use auto-layout trajectory which has responsive layout behavior
+      const trajectory = page.locator(`#auto-layout`)
       const content_area = trajectory.locator(`.content-area`)
 
       // Wait for trajectory controls to be visible (indicating data is loaded)
@@ -773,7 +760,7 @@ test.describe(`Trajectory Component`, () => {
       // Skip test if no plot data (display button won't exist)
       if ((await display_button.count()) === 0) {
         console.log(`Skipping test - no view mode button found (no plot data)`)
-        test.skip() // Skip this test if no plot data available
+        test.skip()
         return
       }
 
@@ -790,7 +777,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(content_area).toHaveClass(/show-both/)
 
       // Test in wide container (horizontal layout)
-      await page.locator(`#auto-layout div`).first().evaluate((el) => {
+      await trajectory.evaluate((el) => {
         el.style.width = `800px`
         el.style.height = `400px`
         el.style.minWidth = `800px`
