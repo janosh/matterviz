@@ -18,13 +18,15 @@ const set_input_value = async (input: Locator, value: string) => {
 }
 
 const click_radio = async (page: Page, selector: string) => {
-  const radio = page.locator(selector)
+  // Use .first() to avoid strict mode issues with selectors that match multiple elements
+  const radio = page.locator(selector).first()
   await radio.waitFor({ state: `attached`, timeout: 5000 })
   await radio.click()
 }
 
 const set_range_value = async (page: Page, selector: string, value: number) => {
-  const input = page.locator(selector)
+  // Use .first() to avoid strict mode issues with selectors that match multiple elements
+  const input = page.locator(selector).first()
   await input.waitFor({ state: `attached`, timeout: 5000 })
   await set_input_value(input, value.toString())
 }
