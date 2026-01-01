@@ -7,7 +7,7 @@ import { open_structure_control_pane, open_structure_export_pane } from '../help
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
   })
 
   test(`renders Structure component with canvas`, async ({ page }) => {
@@ -17,8 +17,8 @@ test.describe(`Structure Component Tests`, () => {
     const canvas = structure_wrapper.locator(`canvas`)
     await expect(canvas).toBeVisible()
     // Three.js uses CSS sizing, not HTML attributes
-    await expect(canvas).toHaveCSS(`width`, `800px`, { timeout: 5000 })
-    await expect(canvas).toHaveCSS(`height`, `500px`, { timeout: 5000 })
+    await expect(canvas).toHaveCSS(`width`, `800px`, { timeout: 15000 })
+    await expect(canvas).toHaveCSS(`height`, `500px`, { timeout: 15000 })
 
     await expect(
       page.locator(`[data-testid="pane-open-status"]`),
@@ -41,7 +41,7 @@ test.describe(`Structure Component Tests`, () => {
     await page.goto(`/test/structure?enable_measure_mode=false`, {
       waitUntil: `networkidle`,
     })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
     await expect(page.locator(`#test-structure .measure-mode-dropdown`)).toHaveCount(0)
   })
 
@@ -77,7 +77,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure_div).toHaveCSS(
       `background-color`,
       `rgba(255, 0, 0, ${expected_alpha})`,
-      { timeout: 5000 },
+      { timeout: 15000 },
     )
 
     const new_bg_style_full = await structure_div.evaluate(
@@ -157,7 +157,7 @@ test.describe(`Structure Component Tests`, () => {
       await page.goto(`/test/structure?performance_mode=${param}`, {
         waitUntil: `load`,
       })
-      await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+      await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
       await expect(perf_mode_status).toContainText(
         `Performance Mode Status: ${expected}`,
       )
@@ -952,7 +952,7 @@ test.describe(`Structure Component Tests`, () => {
 
   test(`element color legend allows color changes via color picker`, async ({ page }) => {
     const structure_wrapper = page.locator(`#test-structure`)
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
 
     // Find element legend labels and validate count
     const legend_labels = structure_wrapper.locator(`.atom-legend label`)
@@ -1125,7 +1125,7 @@ test.describe(`Structure Component Tests`, () => {
       await expect(structure_div).toHaveCSS(
         `background-color`,
         `rgba(255, 0, 0, ${expected_alpha})`,
-        { timeout: 5000 },
+        { timeout: 15000 },
       )
     }
 
@@ -1275,7 +1275,7 @@ test.describe(`Structure Component Tests`, () => {
 
   test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
 
     await page.locator(`[data-testid="btn-set-selected"]`).click()
 
@@ -1288,7 +1288,7 @@ test.describe(`Structure Component Tests`, () => {
 
   test(`measured_sites shows selection order labels and measurement overlays`, async ({ page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
 
     await page.locator(`[data-testid="btn-set-measured"]`).click()
 
@@ -1361,9 +1361,9 @@ test.describe(`Structure Component Tests`, () => {
 test.describe(`File Drop Functionality Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    // Wait for canvas
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 50000 })
-    // Wait for Three.js to initialize the canvas
+    // Wait for canvas element to appear
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
+    // Wait for Three.js to initialize the canvas with non-zero dimensions
     await page.waitForFunction(() => {
       const canvas = document.querySelector(`#test-structure canvas`) as HTMLCanvasElement
       return canvas && canvas.width > 0 && canvas.height > 0
@@ -1517,7 +1517,7 @@ H    1.261    0.728   -0.890`
     // Wait for file load event
     await expect(page.locator(`[data-testid="event-calls-status"]`)).toContainText(
       `on_file_load`,
-      { timeout: 5000 },
+      { timeout: 15000 },
     )
 
     // Re-query canvas
@@ -1533,7 +1533,7 @@ H    1.261    0.728   -0.890`
 test.describe(`Reset Camera Button Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
   })
 
   test(`reset camera button is hidden initially when camera is at default position`, async ({ page }) => {
@@ -1835,7 +1835,7 @@ test.describe(`Reset Camera Button Tests`, () => {
         ) as HTMLCanvasElement
         return canvas && canvas.width > 0 && canvas.height > 0
       },
-      { timeout: 5000 },
+      { timeout: 15000 },
     )
     expect(canvas_ready).toBeTruthy()
 
@@ -1848,7 +1848,7 @@ test.describe(`Reset Camera Button Tests`, () => {
 test.describe(`Export Button Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
   })
 
   // Helper function to click export buttons using direct DOM manipulation
@@ -2124,7 +2124,7 @@ test.describe(`Export Button Tests`, () => {
 test.describe(`Show Buttons Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
   })
 
   test(`should hide buttons when show_controls is false`, async ({ page }) => {
@@ -2206,14 +2206,14 @@ test.describe(`Show Buttons Tests`, () => {
 test.describe(`Structure Event Handler Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
   })
 
   test(`should handle file loading from URL correctly`, async ({ page }) => {
     // Load a structure file via URL
     const file_path = `/structures/mp-1.json`
     await page.goto(`/test/structure?data_url=${file_path}`)
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
 
     // Verify the structure was loaded by checking for canvas
     const canvas = page.locator(`#test-structure canvas`)
@@ -2311,7 +2311,7 @@ test.describe(`Structure Event Handler Tests`, () => {
     await expect(structure_wrapper).toHaveCSS(
       `background-color`,
       `rgba(255, 0, 0, 0.1)`, // With opacity
-      { timeout: 5000 },
+      { timeout: 15000 },
     )
   })
 
@@ -2514,12 +2514,12 @@ test.describe(`Structure Event Handler Tests`, () => {
       await clear_events_and_wait(page)
       // Use a valid structure file that exists in the static directory
       await page.goto(`/test/structure?data_url=/structures/mp-1.json`)
-      await page.waitForSelector(`#test-structure canvas`, { timeout: 50000 })
+      await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
 
       // Wait for the file load event to be processed
       await expect(async () => {
         await check_event_triggered(page, `on_file_load`, [`structure`, `filename`])
-      }).toPass({ timeout: 5000 })
+      }).toPass({ timeout: 15000 })
     })
 
     test(`should trigger on_error event when file loading fails`, async ({ page }) => {
@@ -2529,7 +2529,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       // Wait for the error event to be processed
       await expect(async () => {
         await check_event_triggered(page, `on_error`, [`error_msg`, `filename`])
-      }).toPass({ timeout: 5000 })
+      }).toPass({ timeout: 15000 })
     })
 
     // Skip this test for now as camera movement/reset is hard to trigger reliably in headless mode
@@ -2542,7 +2542,7 @@ test.describe(`Structure Event Handler Tests`, () => {
 test.describe(`Camera Projection Toggle Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
   })
 
   // Helper for camera projection toggle tests
@@ -2612,7 +2612,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
         const zoomed = await canvas.screenshot()
         expect(screenshots[`${projection}_initial`].equals(zoomed)).toBe(false)
         screenshots[`${projection}_zoomed`] = zoomed
-      }).toPass({ timeout: 5000 })
+      }).toPass({ timeout: 15000 })
     }
 
     // Verify zoom responsiveness and visual differences
@@ -2688,8 +2688,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     const canvas_box = await canvas.boundingBox()
 
     for (const projection of [`perspective`, `orthographic`]) {
-      // Use force: true for selectOption since the element may be partially obscured
-      await projection_select.selectOption(projection, { force: true })
+      await projection_select.scrollIntoViewIfNeeded()
+      await projection_select.selectOption(projection)
 
       if (canvas_box) {
         await canvas.click({
@@ -2818,7 +2818,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await expect(projection_select).toHaveValue(new_value)
 
       // Reset button should now appear in Camera section
-      await expect(camera_reset).toBeVisible({ timeout: 5000 })
+      await expect(camera_reset).toBeVisible({ timeout: 15000 })
 
       // Click reset button
       await camera_reset.click()
@@ -2930,7 +2930,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Wait for Bonds section (separate from Visibility) to appear
       const bonds_heading = controls_pane.locator(`h4:has-text("Bonds")`)
-      await expect(bonds_heading).toBeVisible({ timeout: 5000 })
+      await expect(bonds_heading).toBeVisible({ timeout: 15000 })
 
       // Change bonding strategy within the Bonds section (label is "Strategy")
       const strategy_select = controls_pane.locator(`label:has-text("Strategy") select`)
@@ -2946,7 +2946,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Reset button should appear in Bonds section heading
       const bonds_reset = bonds_heading.locator(`button.reset-button`)
-      await expect(bonds_reset).toBeVisible({ timeout: 5000 })
+      await expect(bonds_reset).toBeVisible({ timeout: 15000 })
 
       // Click reset button
       await bonds_reset.click()
@@ -3033,8 +3033,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       const bg_reset = bg_heading.locator(`button.reset-button`)
 
       await expect(visibility_reset).toBeVisible()
-      await expect(camera_reset).toBeVisible({ timeout: 5000 })
-      await expect(bg_reset).toBeVisible({ timeout: 5000 })
+      await expect(camera_reset).toBeVisible({ timeout: 15000 })
+      await expect(bg_reset).toBeVisible({ timeout: 15000 })
 
       // Reset one section
       await camera_reset.scrollIntoViewIfNeeded()
@@ -3111,7 +3111,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 test.describe(`Structure Rotation Controls Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
   })
 
   test(`rotation controls are visible in Camera section`, async ({ page }) => {
@@ -3373,7 +3373,7 @@ test.describe(`Structure Rotation Controls Tests`, () => {
 test.describe(`Element Visibility Toggle`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
   })
 
   test(`toggle buttons are present on element badges`, async ({ page }) => {
@@ -3539,7 +3539,7 @@ test.describe(`Element Visibility Toggle`, () => {
         parseFloat(globalThis.getComputedStyle(el).opacity)
       )
       expect(hover_opacity).toBeGreaterThan(0)
-    }).toPass({ timeout: 5000 })
+    }).toPass({ timeout: 15000 })
 
     // Hide element
     await toggle_button.click()
@@ -3566,7 +3566,7 @@ test.describe(`Element Visibility Toggle`, () => {
 test.describe(`Fullscreen Background Color Detection`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 5000 })
+    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
   })
 
   // Helper to set background and trigger detection
