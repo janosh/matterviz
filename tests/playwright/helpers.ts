@@ -47,11 +47,114 @@ export async function open_draggable_pane(page: Page, options: OpenPaneOptions) 
   return { container, pane_div }
 }
 
+// Wait for a 3D canvas (WebGL) to be ready
+// Useful for Structure, BrillouinZone, FermiSurface components
+export async function wait_for_3d_canvas(
+  page: Page,
+  container_selector: string,
+  timeout = 10000,
+): Promise<Locator> {
+  const container = page.locator(container_selector)
+  const canvas = container.locator(`canvas`)
+
+  // Wait for canvas to be visible
+  await expect(canvas).toBeVisible({ timeout })
+
+  // Wait for WebGL context to be ready (canvas has non-zero dimensions)
+  await page.waitForFunction(
+    (selector) => {
+      const canvas_el = document.querySelector(`${selector} canvas`) as
+        | HTMLCanvasElement
+        | null
+      if (!canvas_el) return false
+      const rect = canvas_el.getBoundingClientRect()
+      return rect.width > 0 && rect.height > 0
+    },
+    container_selector,
+    { timeout },
+  )
+
+  return canvas
+}
+
+// Open scatter plot controls pane via the toggle button
+export async function open_scatter_controls_pane(
+  plot: Locator,
+  timeout = 5000,
+): Promise<Locator> {
+  const toggle = plot.locator(`.scatter-controls-toggle`)
+
+  // Toggle may only appear on hover
+  await plot.hover()
+  await expect(toggle).toBeVisible({ timeout })
+  await toggle.click()
+
+  const pane = plot.locator(`.scatter-controls-pane`)
+  await expect(pane).toBeVisible({ timeout })
+
+  return pane
+}
+
+// Open histogram controls pane via the toggle button
+export async function open_histogram_controls_pane(
+  plot: Locator,
+  timeout = 5000,
+): Promise<Locator> {
+  const toggle = plot.locator(`.histogram-controls-toggle`)
+
+  // Toggle may only appear on hover
+  await plot.hover()
+  await expect(toggle).toBeVisible({ timeout })
+  await toggle.click()
+
+  const pane = plot.locator(`.histogram-controls-pane`)
+  await expect(pane).toBeVisible({ timeout })
+
+  return pane
+}
+
+// Wait for page and optional selector to be ready
+export async function goto_and_wait(
+  page: Page,
+  url: string,
+  selector?: string,
+  timeout = 10000,
+): Promise<void> {
+  await page.goto(url, { waitUntil: `networkidle` })
+
+  if (selector) {
+    await page.waitForSelector(selector, { timeout })
+  }
+}
+
+// Hover over a point in a plot and wait for tooltip
+export async function hover_for_tooltip(
+  plot: Locator,
+  point_selector: string,
+  tooltip_selector = `.tooltip`,
+  timeout = 5000,
+): Promise<Locator> {
+  const point = plot.locator(point_selector).first()
+  await point.hover()
+
+  const tooltip = plot.locator(tooltip_selector)
+  await expect(tooltip).toBeVisible({ timeout })
+
+  return tooltip
+}
+
 export const open_structure_control_pane = (page: Page) =>
   open_draggable_pane(page, {
     pane_selector: `.controls-pane`,
     parent_selector: `#test-structure`,
     checkbox_text: `Controls Open`,
+  })
+
+export const open_structure_export_pane = (page: Page) =>
+  open_draggable_pane(page, {
+    pane_selector: `.draggable-pane.export-pane`,
+    parent_selector: `#test-structure`,
+    toggle_selector: `.structure-export-toggle`,
   })
 
 export const open_trajectory_info_pane = (page: Page) =>

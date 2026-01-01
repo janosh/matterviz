@@ -17,4 +17,3 @@ jobs:
       e2e-install-cmd: npx playwright install chromium
       e2e-test-cmd: npx playwright test
       deno-version: 2.3.7
-      e2e-continue-on-error: true
