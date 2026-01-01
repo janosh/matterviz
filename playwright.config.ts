@@ -2,7 +2,7 @@ import type { PlaywrightTestConfig } from '@playwright/test'
 
 export default {
   webServer: {
-    command: `deno run -A --node-modules-dir npm:vite dev --port 3005`,
+    command: `vite dev --port 3005`,
     port: 3005,
     reuseExistingServer: true,
   },
