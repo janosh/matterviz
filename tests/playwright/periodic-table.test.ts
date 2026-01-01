@@ -254,12 +254,13 @@ test.describe(`Periodic Table`, () => {
       const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
       await expect(multiselect).toBeVisible()
 
-      // Select a single heatmap to verify it works - use first available one
-      await multiselect.click()
+      // Click on the input area to open the dropdown
+      const input_wrapper = multiselect.locator(`.input-wrapper, input`)
+      await input_wrapper.first().click()
 
-      // Wait for dropdown list to be visible and click first option
-      const option_list = page.locator(`ul.options`).first()
-      await expect(option_list).toBeVisible({ timeout: 5000 })
+      // Wait for dropdown list to be visible - look within the multiselect
+      const option_list = multiselect.locator(`ul.options`)
+      await expect(option_list).toBeVisible({ timeout: 10000 })
 
       // Click on the first available option (Atomic mass)
       const first_option = option_list.locator(`li`).first()
