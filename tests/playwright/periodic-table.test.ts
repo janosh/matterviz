@@ -254,9 +254,8 @@ test.describe(`Periodic Table`, () => {
       const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
       await expect(multiselect).toBeVisible()
 
-      // Click on the input area to open the dropdown
-      const input_wrapper = multiselect.locator(`.input-wrapper, input`)
-      await input_wrapper.first().click()
+      // Click on the multiselect to open dropdown (force: true to bypass SVG icon overlay)
+      await multiselect.click({ force: true })
 
       // Wait for dropdown list to be visible - look within the multiselect
       const option_list = multiselect.locator(`ul.options`)
@@ -264,6 +263,7 @@ test.describe(`Periodic Table`, () => {
 
       // Click on the first available option (Atomic mass)
       const first_option = option_list.locator(`li`).first()
+      await expect(first_option).toContainText(/atomic.*mass/i)
       await first_option.click()
 
       // Wait for heatmap to render - element tiles should have heatmap values
