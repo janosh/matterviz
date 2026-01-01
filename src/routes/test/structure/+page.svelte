@@ -255,8 +255,9 @@
 
 <div data-testid="pane-open-status" style="margin-top: 10px">
   Info Pane Open Status: {info_pane_open}
-  <!-- Optionally keep controls status for debugging -->
-  <!-- Controls Open Status: {controls_open} -->
+</div>
+<div data-testid="controls-open-status">
+  Controls Open Status: {controls_open}
 </div>
 <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
