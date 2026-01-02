@@ -1,4 +1,22 @@
 import { expect, type Locator, type Page } from '@playwright/test'
+import process from 'node:process'
+
+// Timeout constants for different environments
+// CI environments are slower due to shared resources, virtualization, and WebGL software rendering
+// Standard timeout for local development
+const LOCAL_CANVAS_TIMEOUT = 5_000
+// CI timeout is higher due to slower WebGL initialization in headless/software rendering
+const CI_CANVAS_TIMEOUT = 15_000
+// Determine if running in CI environment
+const is_ci = process.env.CI === `true`
+
+// Get appropriate canvas initialization timeout based on environment
+// Use this for WebGL/Three.js canvas waits where CI needs more time
+export const get_canvas_timeout = (): number =>
+  is_ci ? CI_CANVAS_TIMEOUT : LOCAL_CANVAS_TIMEOUT
+
+// Default assertion timeout - use for non-canvas assertions
+export const ASSERTION_TIMEOUT = 5_000
 
 // Set an input value and dispatch events using a locator
 export const set_input_value = async (input: Locator, value: string): Promise<void> => {
@@ -63,16 +81,18 @@ export async function open_draggable_pane(page: Page, options: OpenPaneOptions) 
 
 // Wait for a 3D canvas (WebGL) to be ready
 // Useful for Structure, BrillouinZone, FermiSurface components
+// Uses CI-aware timeout by default since WebGL initialization is slower in CI
 export async function wait_for_3d_canvas(
   page: Page,
   container_selector: string,
-  timeout = 10000,
+  timeout?: number,
 ): Promise<Locator> {
+  const effective_timeout = timeout ?? get_canvas_timeout()
   const container = page.locator(container_selector)
   const canvas = container.locator(`canvas`)
 
   // Wait for canvas to be visible
-  await expect(canvas).toBeVisible({ timeout })
+  await expect(canvas).toBeVisible({ timeout: effective_timeout })
 
   // Wait for WebGL context to be ready (canvas has non-zero dimensions)
   await page.waitForFunction(
@@ -85,7 +105,7 @@ export async function wait_for_3d_canvas(
       return rect.width > 0 && rect.height > 0
     },
     container_selector,
-    { timeout },
+    { timeout: effective_timeout },
   )
 
   return canvas
@@ -96,14 +116,14 @@ export async function open_scatter_controls_pane(
   plot: Locator,
   timeout = 5000,
 ): Promise<Locator> {
-  const toggle = plot.locator(`.scatter-controls-toggle`)
+  const toggle = plot.locator(`button.pane-toggle`)
 
   // Toggle may only appear on hover
   await plot.hover()
   await expect(toggle).toBeVisible({ timeout })
   await toggle.click()
 
-  const pane = plot.locator(`.scatter-controls-pane`)
+  const pane = plot.locator(`.draggable-pane`)
   await expect(pane).toBeVisible({ timeout })
 
   return pane
@@ -114,14 +134,14 @@ export async function open_histogram_controls_pane(
   plot: Locator,
   timeout = 5000,
 ): Promise<Locator> {
-  const toggle = plot.locator(`.histogram-controls-toggle`)
+  const toggle = plot.locator(`button.pane-toggle`)
 
   // Toggle may only appear on hover
   await plot.hover()
   await expect(toggle).toBeVisible({ timeout })
   await toggle.click()
 
-  const pane = plot.locator(`.histogram-controls-pane`)
+  const pane = plot.locator(`.draggable-pane`)
   await expect(pane).toBeVisible({ timeout })
 
   return pane
@@ -163,6 +183,17 @@ export const open_structure_control_pane = (page: Page) =>
     parent_selector: `#test-structure`,
     checkbox_text: `Controls Open`,
   })
+
+// Navigate to structure test page and wait for 3D canvas to be ready
+// This is a common setup pattern for structure tests
+export async function goto_structure_test(
+  page: Page,
+  url: string = `/test/structure`,
+  container_selector: string = `#test-structure`,
+): Promise<Locator> {
+  await page.goto(url, { waitUntil: `networkidle` })
+  return wait_for_3d_canvas(page, container_selector)
+}
 
 export const open_structure_export_pane = (page: Page) =>
   open_draggable_pane(page, {
