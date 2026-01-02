@@ -126,11 +126,12 @@ test.describe(`Trajectory Performance Tests`, () => {
     console.log(`- Duration: ${(playback_duration / 1000).toFixed(1)}s`)
     console.log(`- Actual FPS: ${actual_fps.toFixed(2)}`)
 
-    // Assert that playback is functional - at least 0.1 fps for large structures in headless mode
-    // This is a sanity check to ensure playback works, not a strict performance benchmark
-    expect(actual_fps).toBeGreaterThan(0.1)
-    // Playback of 10 frames should complete within 60 seconds (very lenient for slow headless rendering)
-    expect(playback_duration).toBeLessThan(60000)
+    // Performance thresholds for headless browser with 424 atoms/frame
+    // Based on observed ~1-2 FPS in headless mode, we set minimum at 0.5 FPS (2s/frame)
+    // to catch significant regressions while allowing headroom for slower machines
+    expect(actual_fps).toBeGreaterThan(0.5)
+    // 10 frames at 0.5 FPS = 20s max, using 30s to allow some variance
+    expect(playback_duration).toBeLessThan(30000)
   })
 
   test(`trajectory loading performance with large file`, async ({ page }) => {

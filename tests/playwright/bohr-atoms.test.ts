@@ -1,11 +1,18 @@
 import element_data from '$lib/element/data'
 import { expect, test } from '@playwright/test'
 
+// Long timeout needed because the page eagerly renders all 118 animated Bohr atom SVGs.
+// TODO: Consider lazy rendering or virtualization in the page component to improve performance.
+const BOHR_ATOMS_RENDER_TIMEOUT = 50_000
+
 test.describe(`Bohr Atoms page`, () => {
   test(`lists all elements`, async ({ page }) => {
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
 
-    await page.waitForSelector(`ol li svg`, { state: `visible`, timeout: 50000 })
+    await page.waitForSelector(`ol li svg`, {
+      state: `visible`,
+      timeout: BOHR_ATOMS_RENDER_TIMEOUT,
+    })
     const element_tiles = await page.$$(`ol li svg text`)
     expect(element_tiles).toHaveLength(element_data.length)
   })
@@ -14,7 +21,10 @@ test.describe(`Bohr Atoms page`, () => {
     // happened once that SVGs collapsed to 0 height
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
 
-    await page.waitForSelector(`ol li svg`, { state: `visible`, timeout: 50000 })
+    await page.waitForSelector(`ol li svg`, {
+      state: `visible`,
+      timeout: BOHR_ATOMS_RENDER_TIMEOUT,
+    })
     const first_svg = await page.$(`ol li svg`)
     const { height } = (await first_svg?.boundingBox()) ?? {}
 
@@ -30,7 +40,7 @@ test.describe(`Bohr Atoms page`, () => {
 
     // Wait for shells to be rendered
     const shell_svg_group = page.locator(`svg > g.shell`).nth(1)
-    await expect(shell_svg_group).toBeVisible({ timeout: 50000 })
+    await expect(shell_svg_group).toBeVisible({ timeout: BOHR_ATOMS_RENDER_TIMEOUT })
 
     // Check initial animation duration with retry-aware assertion
     await expect(async () => {

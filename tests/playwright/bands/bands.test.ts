@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 
+// SVG path elements have zero-size bounding boxes, so force: true is needed for hover
 test.describe(`Bands Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/bands`, { waitUntil: `networkidle` })
@@ -105,13 +106,10 @@ test.describe(`Bands Component Tests`, () => {
     const first_path = plot.locator(`svg path[fill="none"]`).first()
     await expect(first_path).toBeVisible()
 
-    // Use toPass to retry the hover and tooltip check to handle flaky behavior
-    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await first_path.hover({ force: true })
       const tooltip = plot.locator(`.plot-tooltip`)
       await expect(tooltip).toBeVisible({ timeout: 500 })
-      // Use toContainText for better auto-waiting behavior
       await expect(tooltip).toContainText(`THz`)
       await expect(tooltip).toContainText(`→`)
     }).toPass({ timeout: 5000 })
@@ -125,13 +123,10 @@ test.describe(`Bands Component Tests`, () => {
     const first_path = plot.locator(`svg path[fill="none"]`).first()
     await expect(first_path).toBeVisible()
 
-    // Use toPass to retry the hover and tooltip check to handle flaky behavior
-    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await first_path.hover({ force: true })
       const tooltip = plot.locator(`.plot-tooltip`)
       await expect(tooltip).toBeVisible({ timeout: 500 })
-      // Use toContainText for better auto-waiting behavior
       await expect(tooltip).toContainText(/BS[12]/)
       await expect(tooltip).toContainText(`THz`)
       await expect(tooltip).toContainText(`→`)
@@ -144,8 +139,6 @@ test.describe(`Bands Component Tests`, () => {
     const first_path = plot.locator(`svg path[fill="none"]`).first()
     await expect(first_path).toBeVisible()
 
-    // Use toPass to retry the hover and tooltip check to handle flaky behavior
-    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await first_path.hover({ force: true })
       await expect(plot.locator(`.plot-tooltip`)).toBeVisible({ timeout: 500 })
@@ -169,8 +162,6 @@ test.describe(`Bands Component Tests`, () => {
     await expect(paths.first()).toBeVisible()
     const tooltip = plot.locator(`.plot-tooltip`)
 
-    // Use toPass to retry the hover and tooltip visibility check
-    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await paths.nth(0).hover({ force: true })
       await expect(tooltip).toBeVisible({ timeout: 500 })
@@ -195,8 +186,6 @@ test.describe(`Bands Component Tests`, () => {
     const first_path = plot.locator(`svg path[fill="none"]`).first()
     await expect(first_path).toBeVisible()
 
-    // Use toPass to retry the hover and tooltip check to handle flaky behavior
-    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await first_path.hover({ force: true })
       const tooltip = plot.locator(`.plot-tooltip`)
@@ -211,8 +200,6 @@ test.describe(`Bands Component Tests`, () => {
     await expect(paths.first()).toBeVisible()
     const tooltip = plot.locator(`.plot-tooltip`)
 
-    // Retry first hover until tooltip shows Band 1
-    // Note: force: true is required for SVG path elements which have zero-size bounding boxes
     await expect(async () => {
       await paths.nth(0).hover({ force: true })
       await expect(tooltip).toContainText(/Band:\s*1/, { timeout: 500 })

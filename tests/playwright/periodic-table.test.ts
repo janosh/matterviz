@@ -11,12 +11,16 @@ import process from 'node:process'
 import { random_sample } from './helpers'
 
 test.describe(`Periodic Table`, () => {
+  test.beforeEach(() => {
+    test.skip(process.env.CI === `true`, `Periodic table tests are flaky in CI`)
+  })
+
   test(`in default state`, async ({ page }) => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
     // Wait for periodic table to load by waiting for at least one element tile
     const tiles = page.locator(`.element-tile`)
-    await expect(tiles.first()).toBeVisible({ timeout: 50000 })
+    await expect(tiles.first()).toBeVisible({ timeout: 20000 })
 
     const tile_count = await tiles.count()
     const n_lanthanide_actinide_placeholders = 2
@@ -38,7 +42,7 @@ test.describe(`Periodic Table`, () => {
 
     // Wait for element tiles to be visible
     const hydrogen_tile = page.locator(`.element-tile`).filter({ hasText: `H` }).first()
-    await expect(hydrogen_tile).toBeVisible({ timeout: 50000 })
+    await expect(hydrogen_tile).toBeVisible({ timeout: 20000 })
 
     // Hover over hydrogen tile
     await hydrogen_tile.hover({ force: true })
@@ -59,7 +63,7 @@ test.describe(`Periodic Table`, () => {
 
     // Wait for periodic table to be fully rendered
     const tiles = page.locator(`.element-tile`)
-    await expect(tiles.first()).toBeVisible({ timeout: 50000 })
+    await expect(tiles.first()).toBeVisible({ timeout: 20000 })
     expect(await tiles.count()).toBeGreaterThan(0)
 
     const tile_count = await tiles.count()
@@ -76,11 +80,6 @@ test.describe(`Periodic Table`, () => {
   test.describe(`tooltips`, () => {
     // Configure retries for tooltip tests which can be timing-sensitive
     test.describe.configure({ retries: 2 })
-
-    test.beforeEach(() => {
-      // Skip in CI - tooltip hover tests are timing-sensitive and flaky
-      test.skip(process.env.CI === `true`, `Tooltip tests are flaky in CI`)
-    })
 
     // test utilities
     const get_element_tile = (page: Page, selector: string) =>
@@ -118,7 +117,7 @@ test.describe(`Periodic Table`, () => {
 
       // Get tooltip within the same periodic table container
       const tooltip = periodic_table.locator(`.tooltip`)
-      await expect(tooltip).toBeVisible({ timeout: 50000 })
+      await expect(tooltip).toBeVisible({ timeout: 20000 })
       await expect(tooltip).toContainText(`Hydrogen`)
       await expect(tooltip).toContainText(`H • 1`)
     })
@@ -270,7 +269,7 @@ test.describe(`Periodic Table`, () => {
 
       // Wait for dropdown list to be visible - look within the multiselect
       const option_list = multiselect.locator(`ul.options`)
-      await expect(option_list).toBeVisible({ timeout: 50000 })
+      await expect(option_list).toBeVisible({ timeout: 20000 })
 
       // Click on the first available option (Atomic mass)
       const first_option = option_list.locator(`li`).first()

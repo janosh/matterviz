@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { wait_for_3d_canvas } from '../helpers'
 
 // Get non-white pixel count to detect if content is rendered.
 function count_non_white_pixels(buffer: Uint8Array): number {
@@ -20,12 +21,8 @@ test.describe(`Bond component`, () => {
     })
 
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    const canvas = page.locator(`#test-structure canvas`)
-    // WebGL/3D rendering takes longer in CI
-    await canvas.waitFor({ state: `visible`, timeout: 15000 })
-
-    // Assert 1-2: Canvas visible and has content
-    await expect(canvas).toBeVisible()
+    // wait_for_3d_canvas ensures canvas is visible with non-zero dimensions
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
     const initial = await canvas.screenshot()
     expect(initial.length).toBeGreaterThan(1000)
 
@@ -65,9 +62,7 @@ test.describe(`Bond component`, () => {
     })
 
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    const canvas = page.locator(`#test-structure canvas`)
-    // WebGL/3D rendering takes longer in CI
-    await canvas.waitFor({ state: `visible`, timeout: 15000 })
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
 
     const box = await canvas.boundingBox()
     expect(box).toBeTruthy()

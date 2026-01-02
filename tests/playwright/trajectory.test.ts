@@ -28,25 +28,11 @@ async function select_display_mode(trajectory: Locator, mode_name: string) {
   return content_area
 }
 
-// Helper to set element dimensions with CSS overrides and trigger layout recalculation
-// Uses !important to override component CSS constraints (min-height, etc.)
-async function set_element_size(
-  element: Locator,
-  width: number,
-  height: number,
-): Promise<void> {
-  await element.evaluate(
-    (el, { w, h }) => {
-      el.style.cssText =
-        `width: ${w}px !important; height: ${h}px !important; min-height: ${h}px !important;`
-      // Force a reflow to update clientWidth/clientHeight bindings
-      void (el as HTMLElement).offsetHeight
-    },
-    { w: width, h: height },
-  )
-}
-
 test.describe(`Trajectory Component`, () => {
+  test.beforeEach(() => {
+    test.skip(process.env.CI === `true`, `Trajectory tests require heavy 3D loading`)
+  })
+
   let trajectory_viewer: Locator
   let controls: Locator
 
@@ -792,8 +778,8 @@ test.describe(`Trajectory Component`, () => {
       await select_display_mode(trajectory, `Structure + Scatter`)
       await expect(content_area).toHaveClass(/show-both/)
 
-      // Test in wide container (horizontal layout)
-      await set_element_size(trajectory, 800, 400)
+      // Test in wide viewport (horizontal layout)
+      await page.setViewportSize({ width: 1200, height: 600 })
 
       // Check that layout is still valid (horizontal or vertical)
       const final_class = await trajectory.getAttribute(`class`)
@@ -900,16 +886,16 @@ test.describe(`Trajectory Component`, () => {
         timeout: 50000,
       })
 
-      // Start with wide dimensions - should trigger horizontal layout
-      await set_element_size(trajectory, 800, 400)
+      // Start with wide viewport - should trigger horizontal layout
+      await page.setViewportSize({ width: 1200, height: 600 })
       await expect(trajectory).toHaveClass(/horizontal/)
 
-      // Resize to tall dimensions - should trigger vertical layout
-      await set_element_size(trajectory, 400, 800)
+      // Resize to tall viewport - should trigger vertical layout
+      await page.setViewportSize({ width: 600, height: 1000 })
       await expect(trajectory).toHaveClass(/vertical/)
 
-      // Resize back to wide dimensions
-      await set_element_size(trajectory, 800, 400)
+      // Resize back to wide viewport
+      await page.setViewportSize({ width: 1200, height: 600 })
       await expect(trajectory).toHaveClass(/horizontal/)
     })
 

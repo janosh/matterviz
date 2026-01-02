@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { get_canvas_timeout, goto_structure_test } from '../helpers'
 
 async function open_export_pane(page: Page) {
   const export_toggle = page.locator(`.structure-export-toggle`).first()
@@ -14,9 +15,11 @@ async function open_export_pane(page: Page) {
 
 test.describe(`StructureExportPane Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await goto_structure_test(page)
     // Wait for the export toggle to appear (WebGL/3D rendering takes longer in CI)
-    await page.waitForSelector(`.structure-export-toggle`, { timeout: 15000 })
+    await page.waitForSelector(`.structure-export-toggle`, {
+      timeout: get_canvas_timeout(),
+    })
   })
 
   test(`toggle button visibility and tooltip`, async ({ page }) => {
@@ -82,7 +85,7 @@ test.describe(`StructureExportPane Tests`, () => {
 
     await expect(copy_btn).toHaveText(`📋`)
     await copy_btn.click()
-    await expect(copy_btn).toHaveText(`✅`, { timeout: 15000 })
+    await expect(copy_btn).toHaveText(`✅`, { timeout: get_canvas_timeout() })
     await expect(copy_btn).toHaveText(`📋`, { timeout: 2000 })
   })
 
@@ -147,14 +150,14 @@ test.describe(`StructureExportPane Tests`, () => {
     // Copy JSON
     const json_copy = pane_div.locator(`button[title="Copy JSON to clipboard"]`)
     await json_copy.click()
-    await expect(json_copy).toHaveText(`✅`, { timeout: 15000 })
+    await expect(json_copy).toHaveText(`✅`, { timeout: get_canvas_timeout() })
     // Wait for checkmark to reset before next copy
     await expect(json_copy).not.toHaveText(`✅`, { timeout: 2000 })
 
     // Copy XYZ
     const xyz_copy = pane_div.locator(`button[title="Copy XYZ to clipboard"]`)
     await xyz_copy.click()
-    await expect(xyz_copy).toHaveText(`✅`, { timeout: 15000 })
+    await expect(xyz_copy).toHaveText(`✅`, { timeout: get_canvas_timeout() })
   })
 
   test(`export pane and control pane have mutual exclusion`, async ({ page }) => {

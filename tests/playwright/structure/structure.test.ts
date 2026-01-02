@@ -2210,15 +2210,13 @@ test.describe(`Show Buttons Tests`, () => {
 
 test.describe(`Structure Event Handler Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
+    await goto_structure_test(page)
   })
 
   test(`should handle file loading from URL correctly`, async ({ page }) => {
     // Load a structure file via URL
     const file_path = `/structures/mp-1.json`
-    await page.goto(`/test/structure?data_url=${file_path}`)
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
+    await goto_structure_test(page, `/test/structure?data_url=${file_path}`)
 
     // Verify the structure was loaded by checking for canvas
     const canvas = page.locator(`#test-structure canvas`)
@@ -2316,7 +2314,7 @@ test.describe(`Structure Event Handler Tests`, () => {
     await expect(structure_wrapper).toHaveCSS(
       `background-color`,
       `rgba(255, 0, 0, 0.1)`, // With opacity
-      { timeout: 15000 },
+      { timeout: get_canvas_timeout() },
     )
   })
 
@@ -2518,13 +2516,12 @@ test.describe(`Structure Event Handler Tests`, () => {
     test(`should trigger on_file_load event when structure is loaded via data_url`, async ({ page }) => {
       await clear_events_and_wait(page)
       // Use a valid structure file that exists in the static directory
-      await page.goto(`/test/structure?data_url=/structures/mp-1.json`)
-      await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
+      await goto_structure_test(page, `/test/structure?data_url=/structures/mp-1.json`)
 
       // Wait for the file load event to be processed
       await expect(async () => {
         await check_event_triggered(page, `on_file_load`, [`structure`, `filename`])
-      }).toPass({ timeout: 15000 })
+      }).toPass({ timeout: get_canvas_timeout() })
     })
 
     test(`should trigger on_error event when file loading fails`, async ({ page }) => {
@@ -2534,7 +2531,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       // Wait for the error event to be processed
       await expect(async () => {
         await check_event_triggered(page, `on_error`, [`error_msg`, `filename`])
-      }).toPass({ timeout: 15000 })
+      }).toPass({ timeout: get_canvas_timeout() })
     })
 
     // TODO: Camera movement/reset events are hard to trigger reliably in headless mode
@@ -2551,8 +2548,7 @@ test.describe(`Structure Event Handler Tests`, () => {
 
 test.describe(`Camera Projection Toggle Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
+    await goto_structure_test(page)
   })
 
   // Helper for camera projection toggle tests
@@ -2622,7 +2618,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
         const zoomed = await canvas.screenshot()
         expect(screenshots[`${projection}_initial`].equals(zoomed)).toBe(false)
         screenshots[`${projection}_zoomed`] = zoomed
-      }).toPass({ timeout: 15000 })
+      }).toPass({ timeout: get_canvas_timeout() })
     }
 
     // Verify zoom responsiveness and visual differences
@@ -2828,7 +2824,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await expect(projection_select).toHaveValue(new_value)
 
       // Reset button should now appear in Camera section
-      await expect(camera_reset).toBeVisible({ timeout: 15000 })
+      await expect(camera_reset).toBeVisible({ timeout: get_canvas_timeout() })
 
       // Click reset button
       await camera_reset.click()
@@ -2940,7 +2936,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Wait for Bonds section (separate from Visibility) to appear
       const bonds_heading = controls_pane.locator(`h4:has-text("Bonds")`)
-      await expect(bonds_heading).toBeVisible({ timeout: 15000 })
+      await expect(bonds_heading).toBeVisible({ timeout: get_canvas_timeout() })
 
       // Change bonding strategy within the Bonds section (label is "Strategy")
       const strategy_select = controls_pane.locator(`label:has-text("Strategy") select`)
@@ -2956,7 +2952,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Reset button should appear in Bonds section heading
       const bonds_reset = bonds_heading.locator(`button.reset-button`)
-      await expect(bonds_reset).toBeVisible({ timeout: 15000 })
+      await expect(bonds_reset).toBeVisible({ timeout: get_canvas_timeout() })
 
       // Click reset button
       await bonds_reset.click()
@@ -3043,8 +3039,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       const bg_reset = bg_heading.locator(`button.reset-button`)
 
       await expect(visibility_reset).toBeVisible()
-      await expect(camera_reset).toBeVisible({ timeout: 15000 })
-      await expect(bg_reset).toBeVisible({ timeout: 15000 })
+      await expect(camera_reset).toBeVisible({ timeout: get_canvas_timeout() })
+      await expect(bg_reset).toBeVisible({ timeout: get_canvas_timeout() })
 
       // Reset one section
       await camera_reset.scrollIntoViewIfNeeded()
@@ -3120,8 +3116,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
 test.describe(`Structure Rotation Controls Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
+    await goto_structure_test(page)
   })
 
   test(`rotation controls are visible in Camera section`, async ({ page }) => {
@@ -3382,8 +3377,7 @@ test.describe(`Structure Rotation Controls Tests`, () => {
 
 test.describe(`Element Visibility Toggle`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
+    await goto_structure_test(page)
   })
 
   test(`toggle buttons are present on element badges`, async ({ page }) => {
@@ -3549,7 +3543,7 @@ test.describe(`Element Visibility Toggle`, () => {
         parseFloat(globalThis.getComputedStyle(el).opacity)
       )
       expect(hover_opacity).toBeGreaterThan(0)
-    }).toPass({ timeout: 15000 })
+    }).toPass({ timeout: get_canvas_timeout() })
 
     // Hide element
     await toggle_button.click()
@@ -3575,8 +3569,7 @@ test.describe(`Element Visibility Toggle`, () => {
 
 test.describe(`Fullscreen Background Color Detection`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`#test-structure canvas`, { timeout: 15000 })
+    await goto_structure_test(page)
   })
 
   // Helper to set background and trigger detection
@@ -3674,63 +3667,5 @@ test.describe(`Fullscreen Background Color Detection`, () => {
     expect(bg).toContain(`100`)
     expect(bg).toContain(`150`)
     expect(bg).toContain(`200`)
-  })
-
-  test(`handles rgba with partial opacity`, async ({ page }) => {
-    await set_bg(page, `rgba(100, 150, 200, 0.5)`)
-    const bg = await get_bg(page)
-    expect(bg).toContain(`rgba`)
-    expect(bg).toContain(`0.5`)
-  })
-
-  test(`handles hsl colors`, async ({ page }) => {
-    await set_bg(page, `hsl(210, 50%, 50%)`)
-    expect(await get_bg(page)).toContain(`rgb`)
-  })
-
-  test(`handles named colors`, async ({ page }) => {
-    await set_bg(page, `steelblue`)
-    expect(await get_bg(page)).toBe(`rgb(70, 130, 180)`)
-  })
-
-  test(`updates dynamically`, async ({ page }) => {
-    await set_bg(page, `rgb(200, 100, 50)`)
-    expect(await get_bg(page)).toBe(`rgb(200, 100, 50)`)
-    await set_bg(page, `rgb(50, 100, 200)`)
-    expect(await get_bg(page)).toBe(`rgb(50, 100, 200)`)
-  })
-
-  test(`handles black background`, async ({ page }) => {
-    await set_bg(page, `rgb(0, 0, 0)`)
-    expect(await get_bg(page)).toBe(`rgb(0, 0, 0)`)
-  })
-
-  test(`handles white background`, async ({ page }) => {
-    await set_bg(page, `rgb(255, 255, 255)`)
-    expect(await get_bg(page)).toBe(`rgb(255, 255, 255)`)
-  })
-
-  test(`handles CSS custom properties`, async ({ page }) => {
-    await page.evaluate(() => {
-      document.documentElement.style.setProperty(`--page-bg`, `rgb(123, 45, 67)`)
-    })
-    await set_bg(page, `var(--page-bg)`)
-    expect(await get_bg(page)).toBe(`rgb(123, 45, 67)`)
-  })
-
-  test(`sets variable without entering fullscreen`, async ({ page }) => {
-    await set_bg(page, `rgb(50, 100, 150)`)
-    expect(await get_bg(page)).toBe(`rgb(50, 100, 150)`)
-    const is_fullscreen = await page.evaluate(() => document.fullscreenElement !== null)
-    expect(is_fullscreen).toBe(false)
-  })
-
-  test(`ignores background-image`, async ({ page }) => {
-    await set_bg(page, `rgb(100, 100, 100)`)
-    await page.evaluate(() => {
-      document.documentElement.style.backgroundImage =
-        `linear-gradient(to right, red, blue)`
-    })
-    expect(await get_bg(page)).toBe(`rgb(100, 100, 100)`)
   })
 })

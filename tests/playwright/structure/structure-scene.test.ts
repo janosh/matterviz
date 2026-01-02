@@ -2,6 +2,7 @@
 import type { XyObj } from '$lib'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import process from 'node:process'
+import { get_canvas_timeout, wait_for_3d_canvas } from '../helpers'
 
 // Cached atom position to avoid repeated searches
 let cached_atom_position: XyObj | null = null
@@ -95,12 +96,8 @@ test.describe(`StructureScene Component Tests`, () => {
     // Skip in CI - 3D canvas and camera control tests are unreliable
     test.skip(process.env.CI === `true`, `3D scene tests are flaky in CI`)
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    const canvas = page.locator(`#test-structure canvas`)
-    // WebGL/3D rendering takes longer in CI
-    await canvas.waitFor({ state: `visible`, timeout: 15000 })
-    // Wait for canvas to be properly initialized by checking it has dimensions
-    await expect(canvas).toHaveAttribute(`width`)
-    await expect(canvas).toHaveAttribute(`height`)
+    // wait_for_3d_canvas ensures canvas is visible and has non-zero dimensions
+    await wait_for_3d_canvas(page, `#test-structure`)
   })
 
   // Combined basic functionality and rendering test
@@ -119,7 +116,7 @@ test.describe(`StructureScene Component Tests`, () => {
     const atom_position = await find_hoverable_atom(page)
     if (atom_position) {
       const tooltip = page.locator(`.tooltip:has(.coordinates)`)
-      await expect(tooltip.first()).toBeVisible({ timeout: 15000 })
+      await expect(tooltip.first()).toBeVisible({ timeout: get_canvas_timeout() })
       await expect(tooltip.first().locator(`.elements`)).toBeVisible()
       await expect(tooltip.first().locator(`.coordinates`)).toHaveCount(2)
     }
@@ -137,7 +134,7 @@ test.describe(`StructureScene Component Tests`, () => {
     await canvas.hover({ position: atom_position })
 
     const tooltip = page.locator(`.tooltip:has(.coordinates)`)
-    await expect(tooltip).toBeVisible({ timeout: 15000 })
+    await expect(tooltip).toBeVisible({ timeout: get_canvas_timeout() })
 
     // Check all tooltip content in one test
     const elements_section = tooltip.locator(`.elements`)
@@ -191,7 +188,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Test tooltip disappears when moving away
     await canvas.hover({ position: { x: 50, y: 50 } })
-    await expect(tooltip).toBeHidden({ timeout: 15000 })
+    await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
   })
 
   // Combined interaction tests
@@ -454,7 +451,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Enable site labels via URL parameter for easier testing
     await page.goto(`/test/structure?show_site_labels=true`, { waitUntil: `networkidle` })
-    await canvas.waitFor({ state: `visible`, timeout: 15000 })
+    await wait_for_3d_canvas(page, `#test-structure`)
 
     // Take screenshot to verify labels are rendered
     const labeled_screenshot = await canvas.screenshot()
@@ -476,7 +473,7 @@ test.describe(`StructureScene Component Tests`, () => {
     await page.goto(`/test/structure?show_site_indices=true`, {
       waitUntil: `networkidle`,
     })
-    await canvas.waitFor({ state: `visible`, timeout: 15000 })
+    await wait_for_3d_canvas(page, `#test-structure`)
 
     // Take screenshot to verify indices are rendered
     const indexed_screenshot = await canvas.screenshot()
@@ -499,7 +496,7 @@ test.describe(`StructureScene Component Tests`, () => {
     await page.goto(`/test/structure?show_site_labels=true&show_site_indices=true`, {
       waitUntil: `networkidle`,
     })
-    await canvas.waitFor({ state: `visible`, timeout: 15000 })
+    await wait_for_3d_canvas(page, `#test-structure`)
 
     // Take screenshot to verify combined labels are rendered
     const combined_screenshot = await canvas.screenshot()
@@ -519,7 +516,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Enable site labels to test disordered site formatting
     await page.goto(`/test/structure?show_site_labels=true`, { waitUntil: `networkidle` })
-    await canvas.waitFor({ state: `visible`, timeout: 15000 })
+    await wait_for_3d_canvas(page, `#test-structure`)
 
     // Look for sites with partial occupancy by searching positions
     const positions = [
