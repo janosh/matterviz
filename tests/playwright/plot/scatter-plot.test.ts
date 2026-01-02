@@ -744,14 +744,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
     })
     page.on(`pageerror`, (error) => page_errors.push(error))
 
-    // Get initial state
+    // Get initial state (longer timeout for CI)
     await x_axis.locator(`.tick text`).first().waitFor({
       state: `visible`,
-      timeout: 5000,
+      timeout: 15000,
     })
     await y_axis.locator(`.tick text`).first().waitFor({
       state: `visible`,
-      timeout: 5000,
+      timeout: 15000,
     })
 
     const initial_x = await get_tick_range(x_axis)
