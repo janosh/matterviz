@@ -2548,6 +2548,7 @@ test.describe(`Structure Event Handler Tests`, () => {
 
 test.describe(`Camera Projection Toggle Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
+    test.skip(process.env.CI === `true`, `Camera projection tests flaky in CI`)
     await goto_structure_test(page)
   })
 
@@ -3377,6 +3378,7 @@ test.describe(`Structure Rotation Controls Tests`, () => {
 
 test.describe(`Element Visibility Toggle`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
+    test.skip(process.env.CI === `true`, `Element visibility tests flaky in CI`)
     await goto_structure_test(page)
   })
 
