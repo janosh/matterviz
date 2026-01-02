@@ -1,6 +1,5 @@
 // deno-lint-ignore-file no-await-in-loop
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import process from 'node:process'
 
 // Helper functions
 
@@ -112,28 +111,29 @@ test.describe(`Histogram Component Tests`, () => {
       timeout: 5000,
     })
 
+    // Note: The range inputs are in <label> elements BEFORE the histogram, not inside it
     const controls = [
       {
         control: `bin count`,
-        selector: `input[type="range"]:first-of-type`,
+        selector: `label:has-text("Bin Count") input[type="range"]`,
         values: [5, 50],
       },
       {
         control: `sample size`,
-        selector: `input[type="range"]:nth-of-type(2)`,
+        selector: `label:has-text("Sample Size") input[type="range"]`,
         values: [100, 5000],
       },
     ]
 
-    for (const { selector, values } of controls) {
+    for (const { control, selector, values } of controls) {
       let previous_bar_count = await get_bar_count(histogram)
       for (const value of values) {
-        await set_range_value(page, `#basic-single-series ${selector}`, value)
+        await set_range_value(page, selector, value)
         const bar_count = await get_bar_count(histogram)
         expect(bar_count).toBeGreaterThan(0)
 
         // For bin count changes, verify it affects the histogram
-        if (selector.includes(`first-of-type`) && value !== values[0]) {
+        if (control === `bin count` && value !== values[0]) {
           expect(bar_count).not.toBe(previous_bar_count)
         }
         previous_bar_count = bar_count
@@ -221,11 +221,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`logarithmic scale combinations`, async ({ page }) => {
-    // Skip in CI - selector for scale radio inputs doesn't match DOM structure
-    test.skip(
-      process.env.CI === `true`,
-      `Logarithmic scale selector is flaky in CI`,
-    )
     const histogram = page.locator(`#logarithmic-scales > svg[role="img"]`)
 
     // Wait for initial histogram to render
@@ -241,8 +236,9 @@ test.describe(`Histogram Component Tests`, () => {
     ]
 
     for (const { x_scale, y_scale } of scale_combinations) {
-      await click_radio(page, `#logarithmic-scales input[value="${x_scale}"][name*="x"]`)
-      await click_radio(page, `#logarithmic-scales input[value="${y_scale}"][name*="y"]`)
+      // Radio inputs are in <label> elements before #logarithmic-scales, not inside it
+      await click_radio(page, `input[name="x-scale"][value="${x_scale}"]`)
+      await click_radio(page, `input[name="y-scale"][value="${y_scale}"]`)
 
       // Wait for histogram to re-render with new scale and for axes to be visible
 
@@ -672,11 +668,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`maintains minimum bar width for very narrow bins`, async ({ page }) => {
-    // Skip in CI - selector for range input doesn't match DOM structure
-    test.skip(
-      process.env.CI === `true`,
-      `Bar width selector is flaky in CI`,
-    )
     const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
 
     // Wait for histogram to be rendered first
@@ -687,7 +678,7 @@ test.describe(`Histogram Component Tests`, () => {
     // Set a high bin count to create narrow bins (but not too high to avoid empty bins)
     await set_range_value(
       page,
-      `#basic-single-series > div > input[type="range"]:first-of-type`,
+      `label:has-text("Bin Count") input[type="range"]`,
       50,
     )
 
@@ -708,7 +699,7 @@ test.describe(`Histogram Component Tests`, () => {
       // If no bars are rendered, test with a lower bin count
       await set_range_value(
         page,
-        `#basic-single-series > div > input[type="range"]:first-of-type`,
+        `label:has-text("Bin Count") input[type="range"]`,
         20,
       )
 
@@ -1134,23 +1125,18 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`handles rapid data updates without rendering errors`, async ({ page }) => {
-    // Skip in CI - selector for range input doesn't match DOM structure
-    test.skip(
-      process.env.CI === `true`,
-      `Rapid data update selector is flaky in CI`,
-    )
     const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
 
     // Rapidly change bin count and sample size (use more reasonable values)
     for (let idx = 0; idx < 5; idx++) {
       await set_range_value(
         page,
-        `#basic-single-series > div > input[type="range"]:first-of-type`,
+        `label:has-text("Bin Count") input[type="range"]`,
         10 + idx * 5,
       )
       await set_range_value(
         page,
-        `#basic-single-series > div > input[type="range"]:nth-of-type(2)`,
+        `label:has-text("Sample Size") input[type="range"]`,
         500 + idx * 200,
       )
       // Wait for histogram to update after each change
@@ -1182,11 +1168,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`tick configuration and dynamic updates`, async ({ page }) => {
-    // Skip in CI - selector for range input doesn't match DOM structure
-    test.skip(
-      process.env.CI === `true`,
-      `Tick configuration selector is flaky in CI`,
-    )
     // Helper to wait for and validate histogram render
     const wait_for_histogram = async (selector: string) => {
       const histogram = page.locator(`${selector} > svg[role="img"]`)
@@ -1254,7 +1235,7 @@ test.describe(`Histogram Component Tests`, () => {
     expect(basic_y.ticks.length).toBeGreaterThan(0)
 
     // Test tick consistency during data updates
-    const selector = `#basic-single-series > div > input[type="range"]:nth-of-type(2)`
+    const selector = `label:has-text("Sample Size") input[type="range"]`
     await set_range_value(page, selector, 2000)
 
     const [updated_x, updated_y] = await Promise.all([
@@ -1280,9 +1261,10 @@ test.describe(`Histogram Component Tests`, () => {
     ]
 
     for (const { x_scale, y_scale } of scale_tests) {
+      // Radio inputs are in <label> elements before #logarithmic-scales, not inside it
       await Promise.all([
-        click_radio(page, `#logarithmic-scales input[value="${x_scale}"][name*="x"]`),
-        click_radio(page, `#logarithmic-scales input[value="${y_scale}"][name*="y"]`),
+        click_radio(page, `input[name="x-scale"][value="${x_scale}"]`),
+        click_radio(page, `input[name="y-scale"][value="${y_scale}"]`),
       ])
 
       const [x_axis, y_axis] = await Promise.all([
