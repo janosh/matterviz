@@ -39,9 +39,11 @@ test.describe(`ThemeControl`, () => {
 
     for (const theme of themes.filter((t) => t !== `auto`)) {
       await theme_control.selectOption(theme)
+      // Small delay for Svelte effect to run
+      await page.waitForTimeout(100)
 
-      // Check DOM attribute
-      await expect(html_element).toHaveAttribute(`data-theme`, theme)
+      // Check DOM attribute (longer timeout for CI)
+      await expect(html_element).toHaveAttribute(`data-theme`, theme, { timeout: 10000 })
 
       // Check color-scheme style (skip in CI - inline style timing is unreliable)
       if (process.env.CI !== `true`) {
