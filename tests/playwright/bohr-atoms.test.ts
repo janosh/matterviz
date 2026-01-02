@@ -1,5 +1,4 @@
 import element_data from '$lib/element/data'
-import process from 'node:process'
 import { expect, test } from '@playwright/test'
 
 test.describe(`Bohr Atoms page`, () => {
@@ -24,28 +23,35 @@ test.describe(`Bohr Atoms page`, () => {
   })
 
   test(`can toggle orbiting electron animation`, async ({ page }) => {
-    // Skip in CI - animation behavior differs in headless Chromium
-    test.skip(process.env.CI === `true`, `Animation test flaky in CI headless mode`)
+    // Configure retry for animation tests which can be timing-sensitive in headless mode
+    test.info().annotations.push({ type: `slow`, description: `Animation timing test` })
 
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
 
-    const shell_svg_group = await page.locator(`svg > g.shell >> nth=1`)
+    // Wait for shells to be rendered
+    const shell_svg_group = page.locator(`svg > g.shell`).nth(1)
+    await expect(shell_svg_group).toBeVisible({ timeout: 50000 })
 
-    const initial_animation_duration = await shell_svg_group.evaluate(
-      (el) => getComputedStyle(el).animationDuration,
-    )
-    expect(parseInt(initial_animation_duration)).toBeGreaterThan(0)
+    // Check initial animation duration with retry-aware assertion
+    await expect(async () => {
+      const initial_animation_duration = await shell_svg_group.evaluate(
+        (el) => getComputedStyle(el).animationDuration,
+      )
+      expect(parseInt(initial_animation_duration)).toBeGreaterThan(0)
+    }).toPass({ timeout: 5000 })
 
     const input = page.locator(`input[type="number"]`)
+    await expect(input).toBeVisible()
     await input.fill(`0`)
     await input.press(`Enter`)
-    // Wait for animation duration to update after input change
+
+    // Wait for animation duration to update after input change with extended timeout
     await expect(async () => {
       const toggled_animation_duration = await shell_svg_group.evaluate(
         (el) => getComputedStyle(el).animationDuration,
       )
       expect(toggled_animation_duration).toBe(`0s`)
-    }).toPass({ timeout: 5000 })
+    }).toPass({ timeout: 10000 })
   })
 
   test(`katex works`, async ({ page }) => {

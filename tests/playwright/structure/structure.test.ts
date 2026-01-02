@@ -985,8 +985,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(color_input).toBeAttached()
   })
 
-  // SKIPPED: Controls dialog fails to open reliably in test environment
-  test.skip(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
+  test(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const control_pane = structure_div.locator(`.controls-pane`)
     const controls_open_status = page.locator(
@@ -996,14 +995,19 @@ test.describe(`Structure Component Tests`, () => {
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
 
-    // Verify initial state
-    await expect(controls_open_status).toContainText(`false`)
+    // Wait for test page controls to be visible
+    await expect(test_page_controls_checkbox).toBeVisible({ timeout: 10000 })
+
+    // Verify initial state with retry
+    await expect(controls_open_status).toContainText(`false`, { timeout: 5000 })
     await expect(control_pane).not.toHaveClass(/pane-open/)
 
+    // Open controls pane via test page checkbox
     await test_page_controls_checkbox.check()
-    // Wait for the controls to open
-    await expect(controls_open_status).toContainText(`true`)
-    await expect(control_pane).toHaveClass(/pane-open/)
+
+    // Wait for the controls to open with explicit timeout
+    await expect(controls_open_status).toContainText(`true`, { timeout: 5000 })
+    await expect(control_pane).toHaveClass(/pane-open/, { timeout: 5000 })
 
     // Test that controls are accessible and pane stays open when interacting
     // Use corrected label text (with leading spaces as shown in debug output)
@@ -1370,10 +1374,12 @@ test.describe(`File Drop Functionality Tests`, () => {
     }, { timeout: 10_000 })
   })
 
-  // SKIPPED: File drop simulation not triggering properly
-  test.skip(`drops POSCAR file onto structure viewer and updates structure`, async ({ page }) => {
+  test(`drops POSCAR file onto structure viewer and updates structure`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const canvas = structure_div.locator(`canvas`)
+
+    // Wait for canvas to be fully rendered
+    await expect(canvas).toBeVisible({ timeout: 10000 })
 
     const initial_screenshot = await canvas.screenshot()
 
@@ -1398,13 +1404,17 @@ Direct
       return dt
     }, poscar_content)
 
-    // Drop on structure wrapper
+    // Drop on structure wrapper with proper drag events
+    await structure_div.dispatchEvent(`dragenter`, { dataTransfer: data_transfer })
     await structure_div.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
     await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
     await data_transfer.dispose()
 
-    const after_drop_screenshot = await canvas.screenshot()
-    expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
+    // Wait for structure to update with polling assertion
+    await expect(async () => {
+      const after_drop_screenshot = await canvas.screenshot()
+      expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
+    }).toPass({ timeout: 10000 })
   })
 
   test(`drops XYZ file onto structure viewer and updates structure`, async ({ page }) => {
@@ -2532,10 +2542,15 @@ test.describe(`Structure Event Handler Tests`, () => {
       }).toPass({ timeout: 15000 })
     })
 
-    // Skip this test for now as camera movement/reset is hard to trigger reliably in headless mode
+    // TODO: Camera movement/reset events are hard to trigger reliably in headless mode
     // The camera move event is triggered by Three.js OrbitControls which requires proper mouse interaction
-    test.skip(`should trigger on_camera_move event when camera is moved`, () => {})
-    test.skip(`should trigger on_camera_reset event when camera is reset`, () => {})
+    // Tracking: These tests require real browser window for proper mouse events
+    test.fixme(`should trigger on_camera_move event when camera is moved`, async () => {
+      // Implement with proper mouse drag simulation once Playwright supports it better
+    })
+    test.fixme(`should trigger on_camera_reset event when camera is reset`, async () => {
+      // Implement with proper double-click reset once camera events are testable
+    })
   })
 })
 

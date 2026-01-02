@@ -295,20 +295,21 @@
   })
 </script>
 
-<label>Bin Count: <input type="range" min="5" max="50" bind:value={bin_count} /> {
-    bin_count
-  }</label>
-<label>Sample Size: <input type="range" min="100" max="5000" bind:value={sample_size} /> {
-    sample_size
-  }</label>
-<Histogram
-  id="basic-single-series"
-  series={basic_data}
-  bins={bin_count}
-  mode="single"
-  x_axis={{ label: `Value` }}
-  y_axis={{ label: `Frequency` }}
-/>
+<section data-testid="basic-single-series-section">
+  <label>Bin Count: <input type="range" min="5" max="50" bind:value={bin_count} /> {
+      bin_count
+    }</label>
+  <label>Sample Size: <input type="range" min="100" max="5000" bind:value={sample_size} />
+    {sample_size}</label>
+  <Histogram
+    id="basic-single-series"
+    series={basic_data}
+    bins={bin_count}
+    mode="single"
+    x_axis={{ label: `Value` }}
+    y_axis={{ label: `Frequency` }}
+  />
+</section>
 
 <label>Opacity: <input
     type="range"
@@ -335,20 +336,22 @@
   show_legend
 />
 
-<label>X-axis: <input type="radio" name="x-scale" value="linear" bind:group={x_scale} />
-  Linear <input type="radio" name="x-scale" value="log" bind:group={x_scale} />
-  Log</label>
-<label>Y-axis: <input type="radio" name="y-scale" value="linear" bind:group={y_scale} />
-  Linear <input type="radio" name="y-scale" value="log" bind:group={y_scale} />
-  Log</label>
-<Histogram
-  id="logarithmic-scales"
-  series={log_data}
-  bins={50}
-  mode="overlay"
-  x_axis={{ scale_type: x_scale }}
-  y_axis={{ scale_type: y_scale }}
-/>
+<section data-testid="logarithmic-scales-section">
+  <label>X-axis: <input type="radio" name="x-scale" value="linear" bind:group={x_scale} />
+    Linear <input type="radio" name="x-scale" value="log" bind:group={x_scale} />
+    Log</label>
+  <label>Y-axis: <input type="radio" name="y-scale" value="linear" bind:group={y_scale} />
+    Linear <input type="radio" name="y-scale" value="log" bind:group={y_scale} />
+    Log</label>
+  <Histogram
+    id="logarithmic-scales"
+    series={log_data}
+    bins={50}
+    mode="overlay"
+    x_axis={{ scale_type: x_scale }}
+    y_axis={{ scale_type: y_scale }}
+  />
+</section>
 
 <label>Distribution Type: <select bind:value={distribution_type}>
     <option value="bimodal">Bimodal</option>
@@ -386,20 +389,22 @@
   show_legend={show_overlay}
 />
 
-<label>X-axis Ticks: <input type="range" min="3" max="15" bind:value={x_tick_count} /> {
-    x_tick_count
-  }</label>
-<label>Y-axis Ticks: <input type="range" min="3" max="12" bind:value={y_tick_count} /> {
-    y_tick_count
-  }</label>
-<Histogram
-  id="tick-configuration"
-  series={tick_test_data}
-  bins={30}
-  mode="single"
-  x_axis={{ ticks: x_tick_count, label: `Value (Custom X Ticks)` }}
-  y_axis={{ ticks: y_tick_count, label: `Count (Custom Y Ticks)` }}
-/>
+<section data-testid="tick-configuration-section">
+  <label>X-axis Ticks: <input type="range" min="3" max="15" bind:value={x_tick_count} /> {
+      x_tick_count
+    }</label>
+  <label>Y-axis Ticks: <input type="range" min="3" max="12" bind:value={y_tick_count} /> {
+      y_tick_count
+    }</label>
+  <Histogram
+    id="tick-configuration"
+    series={tick_test_data}
+    bins={30}
+    mode="single"
+    x_axis={{ ticks: x_tick_count, label: `Value (Custom X Ticks)` }}
+    y_axis={{ ticks: y_tick_count, label: `Count (Custom Y Ticks)` }}
+  />
+</section>
 
 <Histogram
   id="range-controls"

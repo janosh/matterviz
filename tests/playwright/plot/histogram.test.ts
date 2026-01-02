@@ -1,32 +1,47 @@
 // deno-lint-ignore-file no-await-in-loop
 import { expect, type Locator, type Page, test } from '@playwright/test'
+import { get_axis_range_inputs, set_input_value, set_range_input } from '../helpers'
 
-// Helper functions
-
-// Set an input value and dispatch events using a locator
-const set_input_value = async (input: Locator, value: string) => {
-  await input.evaluate(
-    (el, val) => {
-      const inp = el as HTMLInputElement
-      inp.value = val
-      inp.dispatchEvent(new Event(`input`, { bubbles: true }))
-      inp.dispatchEvent(new Event(`change`, { bubbles: true }))
-      inp.blur()
-    },
-    value,
-  )
-}
-
-const click_radio = async (page: Page, selector: string) => {
-  // Use .first() to avoid strict mode issues with selectors that match multiple elements
-  const radio = page.locator(selector).first()
+// Click a radio button within a scoped container (more specific than page-wide selectors)
+const click_radio_in_section = async (
+  page: Page,
+  section_testid: string,
+  input_selector: string,
+) => {
+  const section = page.locator(`[data-testid="${section_testid}"]`)
+  const radio = section.locator(input_selector)
   await radio.waitFor({ state: `attached`, timeout: 5000 })
   await radio.click()
 }
 
-const set_range_value = async (page: Page, selector: string, value: number) => {
-  // Use .first() to avoid strict mode issues with selectors that match multiple elements
-  const input = page.locator(selector).first()
+// Set a range value within a scoped container (preferred for test maintainability)
+const set_range_value_in_section = async (
+  page: Page,
+  section_testid: string,
+  label_text: string,
+  value: number,
+) => {
+  const section = page.locator(`[data-testid="${section_testid}"]`)
+  const input = section.locator(`label:has-text("${label_text}") input[type="range"]`)
+  await input.waitFor({ state: `attached`, timeout: 5000 })
+  await set_input_value(input, value.toString())
+}
+
+// Fallback for page-wide selectors when section scoping isn't available
+// Note: Uses .first() intentionally when multiple elements may match (e.g., multiple histogram instances)
+// For tests requiring specific element targeting, use set_range_value_in_section instead
+const set_range_value = async (
+  page: Page,
+  selector: string,
+  value: number,
+  expected_count?: number,
+) => {
+  const inputs = page.locator(selector)
+  // When expected_count is provided, assert selector specificity
+  if (expected_count !== undefined) {
+    expect(await inputs.count()).toBe(expected_count)
+  }
+  const input = inputs.first()
   await input.waitFor({ state: `attached`, timeout: 5000 })
   await set_input_value(input, value.toString())
 }
@@ -111,24 +126,21 @@ test.describe(`Histogram Component Tests`, () => {
       timeout: 5000,
     })
 
-    // Note: The range inputs are in <label> elements BEFORE the histogram, not inside it
+    // Controls are in a section with data-testid for scoped selection
     const controls = [
-      {
-        control: `bin count`,
-        selector: `label:has-text("Bin Count") input[type="range"]`,
-        values: [5, 50],
-      },
-      {
-        control: `sample size`,
-        selector: `label:has-text("Sample Size") input[type="range"]`,
-        values: [100, 5000],
-      },
+      { control: `bin count`, label: `Bin Count`, values: [5, 50] },
+      { control: `sample size`, label: `Sample Size`, values: [100, 5000] },
     ]
 
-    for (const { control, selector, values } of controls) {
+    for (const { control, label, values } of controls) {
       let previous_bar_count = await get_bar_count(histogram)
       for (const value of values) {
-        await set_range_value(page, selector, value)
+        await set_range_value_in_section(
+          page,
+          `basic-single-series-section`,
+          label,
+          value,
+        )
         const bar_count = await get_bar_count(histogram)
         expect(bar_count).toBeGreaterThan(0)
 
@@ -236,11 +248,17 @@ test.describe(`Histogram Component Tests`, () => {
     ]
 
     for (const { x_scale, y_scale } of scale_combinations) {
-      // Radio inputs are in <label> elements before #logarithmic-scales, not inside it
-      await click_radio(page, `input[name="x-scale"][value="${x_scale}"]`)
-      await click_radio(page, `input[name="y-scale"][value="${y_scale}"]`)
-
-      // Wait for histogram to re-render with new scale and for axes to be visible
+      // Use scoped selectors within the logarithmic-scales section
+      await click_radio_in_section(
+        page,
+        `logarithmic-scales-section`,
+        `input[name="x-scale"][value="${x_scale}"]`,
+      )
+      await click_radio_in_section(
+        page,
+        `logarithmic-scales-section`,
+        `input[name="y-scale"][value="${y_scale}"]`,
+      )
 
       // Wait for axes to be rendered with ticks
       await expect(histogram.locator(`g.x-axis .tick`).first()).toBeVisible({
@@ -332,42 +350,50 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`tooltips and legend functionality`, async ({ page }) => {
-    // Test tooltips
+    // Test tooltips - wait for histogram to render first
     const basic_histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    await expect(basic_histogram.locator(`path[role="button"]`).first()).toBeVisible({
+      timeout: 5000,
+    })
+
     const first_bar = basic_histogram.locator(`path[role="button"]`).first()
     await first_bar.hover({ force: true })
 
+    // Tooltip visibility is optional - histograms may not have tooltips configured,
+    // or tooltip positioning may fail silently. If visible, verify content is correct.
     const tooltip = basic_histogram.locator(`.plot-tooltip`)
-    if (await tooltip.isVisible({ timeout: 5000 })) {
+    if (await tooltip.isVisible({ timeout: 3000 })) {
       const tooltip_content = await tooltip.textContent()
       expect(tooltip_content).toContain(`Value:`)
       expect(tooltip_content).toContain(`Count:`)
     }
 
-    // Test legend visibility and basic functionality
+    // Test legend visibility - multiple-series-overlay has show_legend enabled
     const multiple_legend = page.locator(`#multiple-series-overlay .legend`)
     const single_legend = page.locator(`#basic-single-series .legend`)
 
-    if (await multiple_legend.isVisible()) {
-      const legend_items = await multiple_legend.locator(`.legend-item`).count()
-      expect(legend_items).toBeGreaterThan(1)
+    // Legend should be visible for the multi-series overlay histogram
+    await expect(multiple_legend).toBeVisible()
+    const legend_items = await multiple_legend.locator(`.legend-item`).count()
+    expect(legend_items).toBeGreaterThan(1)
 
-      // Test that legend items are clickable and have proper styling
-      const first_legend_item = multiple_legend.locator(`.legend-item`).first()
-      await expect(first_legend_item).toBeVisible()
+    // Test that legend items are clickable and have proper styling
+    const first_legend_item = multiple_legend.locator(`.legend-item`).first()
+    await expect(first_legend_item).toBeVisible()
 
-      // Verify legend item has clickable appearance (cursor pointer or similar)
-      const cursor_style = await first_legend_item.evaluate((el) =>
-        getComputedStyle(el).cursor
-      )
-      expect(cursor_style).toBe(`pointer`)
+    // Verify legend item has clickable appearance (cursor pointer or similar)
+    const cursor_style = await first_legend_item.evaluate((el) =>
+      getComputedStyle(el).cursor
+    )
+    expect(cursor_style).toBe(`pointer`)
 
-      // Test that clicking a legend item doesn't break the legend
-      await first_legend_item.click()
-      await expect(multiple_legend).toBeVisible()
-      const after_click_count = await multiple_legend.locator(`.legend-item`).count()
-      expect(after_click_count).toBe(legend_items)
-    }
+    // Test that clicking a legend item doesn't break the legend
+    await first_legend_item.click()
+    await expect(multiple_legend).toBeVisible()
+    const after_click_count = await multiple_legend.locator(`.legend-item`).count()
+    expect(after_click_count).toBe(legend_items)
+
+    // Single-series histogram should not show legend
     await expect(single_legend).toBeHidden()
   })
 
@@ -676,9 +702,10 @@ test.describe(`Histogram Component Tests`, () => {
     })
 
     // Set a high bin count to create narrow bins (but not too high to avoid empty bins)
-    await set_range_value(
+    await set_range_value_in_section(
       page,
-      `label:has-text("Bin Count") input[type="range"]`,
+      `basic-single-series-section`,
+      `Bin Count`,
       50,
     )
 
@@ -697,9 +724,10 @@ test.describe(`Histogram Component Tests`, () => {
       }
     } else {
       // If no bars are rendered, test with a lower bin count
-      await set_range_value(
+      await set_range_value_in_section(
         page,
-        `label:has-text("Bin Count") input[type="range"]`,
+        `basic-single-series-section`,
+        `Bin Count`,
         20,
       )
 
@@ -747,51 +775,55 @@ test.describe(`Histogram Component Tests`, () => {
     const bar_count = await get_bar_count(histogram)
     expect(bar_count).toBeGreaterThan(0)
 
-    // Test bar opacity control
+    // Test bar opacity control - opacity is available in overlay mode histograms
+    // For single-series mode, this control may not be visible, so conditional check is appropriate
     const opacity_label = control_pane.locator(`label:has-text("Opacity:")`)
     if (await opacity_label.isVisible()) {
       const opacity_number = opacity_label.locator(`input[type="number"]`)
       await opacity_number.fill(`0.3`)
     }
 
-    // Test bar stroke width control
+    // Test bar stroke width control - stroke width is available in overlay mode
+    // For single-series mode, this control may not be visible
     const stroke_label = control_pane.locator(`label:has-text("Stroke Width:")`)
     if (await stroke_label.isVisible()) {
       const stroke_number = stroke_label.locator(`input[type="number"]`)
       await stroke_number.fill(`2`)
     }
 
-    // Test grid toggles
+    // Test grid toggles - should be visible in all histogram panes
     const x_grid_checkbox = control_pane.getByLabel(`X-axis grid`)
-    if (await x_grid_checkbox.isVisible()) {
-      await x_grid_checkbox.uncheck()
-      await x_grid_checkbox.check()
-    }
+    await expect(x_grid_checkbox).toBeVisible()
+    await x_grid_checkbox.uncheck()
+    await x_grid_checkbox.check()
 
     // Test scale type selects - scope to Scale Type section to avoid matching other X: labels
     const scale_type_section = control_pane.locator(`h4:has-text("Scale Type") + section`)
     const x_scale_label = scale_type_section.locator(`label:has-text("X:")`)
-    if (await x_scale_label.isVisible()) {
-      const x_scale_select = x_scale_label.locator(`select`)
-      await x_scale_select.selectOption(`log`)
-      await x_scale_select.selectOption(`linear`)
-    }
+    await expect(x_scale_label).toBeVisible()
+    const x_scale_select = x_scale_label.locator(`select`)
+    await x_scale_select.selectOption(`log`)
+    await x_scale_select.selectOption(`linear`)
 
-    // Test format inputs (under "Tick Format" section, within X-axis label)
-    const x_axis_format_label = control_pane.locator(`label:has-text("X-axis:")`).first()
-    if (await x_axis_format_label.isVisible()) {
-      const x_format_input = x_axis_format_label.locator(`input[type="text"]`)
-      if (await x_format_input.isVisible()) {
-        await x_format_input.fill(`.3r`)
+    // Test format inputs - scope to Tick Format section to avoid matching other X-axis labels
+    const tick_format_section = control_pane.locator(
+      `h4:has-text("Tick Format") + section`,
+    )
+    const x_axis_format_label = tick_format_section.locator(`label:has-text("X-axis:")`)
+    await expect(x_axis_format_label).toBeVisible()
+    // Verify selector specificity - should match exactly one label within Tick Format section
+    expect(await x_axis_format_label.count()).toBe(1)
 
-        // Test invalid format handling
-        await x_format_input.fill(`invalid`)
-        await expect(x_format_input).toHaveClass(/invalid/)
+    const x_format_input = x_axis_format_label.locator(`input[type="text"]`)
+    await expect(x_format_input).toBeVisible()
+    await x_format_input.fill(`.3r`)
 
-        // Restore valid format
-        await x_format_input.fill(`.2r`)
-      }
-    }
+    // Test invalid format handling
+    await x_format_input.fill(`invalid`)
+    await expect(x_format_input).toHaveClass(/invalid/)
+
+    // Restore valid format
+    await x_format_input.fill(`.2r`)
 
     // Close controls pane
     await toggle_button.click()
@@ -1129,14 +1161,16 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Rapidly change bin count and sample size (use more reasonable values)
     for (let idx = 0; idx < 5; idx++) {
-      await set_range_value(
+      await set_range_value_in_section(
         page,
-        `label:has-text("Bin Count") input[type="range"]`,
+        `basic-single-series-section`,
+        `Bin Count`,
         10 + idx * 5,
       )
-      await set_range_value(
+      await set_range_value_in_section(
         page,
-        `label:has-text("Sample Size") input[type="range"]`,
+        `basic-single-series-section`,
+        `Sample Size`,
         500 + idx * 200,
       )
       // Wait for histogram to update after each change
@@ -1184,11 +1218,19 @@ test.describe(`Histogram Component Tests`, () => {
       tick_config_histogram.locator(`g.y-axis`),
     ])
 
-    // Adjust tick counts and verify changes
-    await Promise.all([
-      set_range_value(page, `#tick-configuration input[type="range"]:first-of-type`, 15),
-      set_range_value(page, `#tick-configuration input[type="range"]:nth-of-type(2)`, 10),
-    ])
+    // Adjust tick counts and verify changes using scoped selectors
+    await set_range_value_in_section(
+      page,
+      `tick-configuration-section`,
+      `X-axis Ticks`,
+      15,
+    )
+    await set_range_value_in_section(
+      page,
+      `tick-configuration-section`,
+      `Y-axis Ticks`,
+      10,
+    )
 
     const [adjusted_x, adjusted_y] = await Promise.all([
       get_histogram_tick_range(x_axis),
@@ -1235,8 +1277,12 @@ test.describe(`Histogram Component Tests`, () => {
     expect(basic_y.ticks.length).toBeGreaterThan(0)
 
     // Test tick consistency during data updates
-    const selector = `label:has-text("Sample Size") input[type="range"]`
-    await set_range_value(page, selector, 2000)
+    await set_range_value_in_section(
+      page,
+      `basic-single-series-section`,
+      `Sample Size`,
+      2000,
+    )
 
     const [updated_x, updated_y] = await Promise.all([
       get_histogram_tick_range(basic_histogram.locator(`g.x-axis`)),
@@ -1261,11 +1307,17 @@ test.describe(`Histogram Component Tests`, () => {
     ]
 
     for (const { x_scale, y_scale } of scale_tests) {
-      // Radio inputs are in <label> elements before #logarithmic-scales, not inside it
-      await Promise.all([
-        click_radio(page, `input[name="x-scale"][value="${x_scale}"]`),
-        click_radio(page, `input[name="y-scale"][value="${y_scale}"]`),
-      ])
+      // Use scoped selectors within the logarithmic-scales section
+      await click_radio_in_section(
+        page,
+        `logarithmic-scales-section`,
+        `input[name="x-scale"][value="${x_scale}"]`,
+      )
+      await click_radio_in_section(
+        page,
+        `logarithmic-scales-section`,
+        `input[name="y-scale"][value="${y_scale}"]`,
+      )
 
       const [x_axis, y_axis] = await Promise.all([
         histogram.locator(`g.x-axis`),
@@ -1419,31 +1471,14 @@ test.describe(`Histogram Component Tests`, () => {
       Math.max(...baseline_y.ticks),
     ]
 
-    // Get range inputs by label - each axis label has two inputs (min "to" max)
-    const get_range_inputs = (axis_name: string) => {
-      const label = pane.locator(`label:has-text("${axis_name}:")`)
-      const inputs = label.locator(`input.range-input`)
-      return { min: inputs.first(), max: inputs.last() }
-    }
-
-    // Set input value - don't check value for empty strings since the component
-    // may sync values back from state
-    // Set input using shared helper with optional value verification
-    const set_input = async (input: Locator, val: string) => {
-      await set_input_value(input, val)
-      // Only verify non-empty values since empty values may be synced back
-      if (val !== ``) {
-        await expect(input).toHaveValue(val)
-      }
-    }
-
-    const x_inputs = get_range_inputs(`X-axis`)
-    const y_inputs = get_range_inputs(`Y-axis`)
+    // Use shared helpers for range inputs
+    const x_inputs = get_axis_range_inputs(pane, `X-axis`)
+    const y_inputs = get_axis_range_inputs(pane, `Y-axis`)
 
     // Test: set specific min/max values and verify axis updates
     // X-axis: set a specific min value
     const x_new_min = x_min + (x_max - x_min) * 0.3
-    await set_input(x_inputs.min, String(x_new_min))
+    await set_range_input(x_inputs.min, String(x_new_min))
 
     // Wait for axis to update and verify
     await expect.poll(async () => {
@@ -1453,7 +1488,7 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Y-axis: set a specific max value
     const y_new_max = y_max - (y_max - y_min) * 0.3
-    await set_input(y_inputs.max, String(y_new_max))
+    await set_range_input(y_inputs.max, String(y_new_max))
 
     // Wait for axis to update and verify
     await expect.poll(async () => {

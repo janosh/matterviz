@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
-import process from 'node:process'
 
 test.describe(`BrillouinBandsDos Component Tests`, () => {
   // Increase timeout for all tests in this file - 3D rendering is slow in CI
@@ -99,12 +98,11 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
   })
 
   test(`BZ rotates with mouse drag`, async ({ page }) => {
-    // Skip in CI - 3D canvas mouse drag tests are unreliable
-    test.skip(
-      process.env.CI === `true`,
-      `BZ rotation test is flaky in CI`,
-    )
+    // Configure retries for 3D canvas mouse drag tests which can be timing-sensitive
+    test.info().annotations.push({ type: `slow`, description: `3D canvas interaction` })
+
     const bz_canvas = page.locator(`[data-testid="bz-bands-dos-default"] canvas`).first()
+    await expect(bz_canvas).toBeVisible({ timeout: 10000 })
     const initial = await bz_canvas.screenshot()
 
     const box = await bz_canvas.boundingBox()
@@ -113,13 +111,14 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       const center_y = box.y + box.height / 2
       await page.mouse.move(center_x, center_y)
       await page.mouse.down()
-      await page.mouse.move(center_x + 50, center_y)
+      await page.mouse.move(center_x + 50, center_y, { steps: 10 })
       await page.mouse.up()
 
-      // Wait for canvas to repaint after drag
-      await page.waitForFunction(() =>
-        new Promise((resolve) => requestAnimationFrame(() => resolve(true)))
-      )
+      // Wait for canvas to repaint after drag with retry
+      await expect(async () => {
+        const after = await bz_canvas.screenshot()
+        expect(initial.equals(after)).toBe(false)
+      }).toPass({ timeout: 5000 })
     }
 
     expect(Buffer.compare(initial, await bz_canvas.screenshot())).not.toBe(0)

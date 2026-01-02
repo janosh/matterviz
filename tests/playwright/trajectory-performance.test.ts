@@ -8,7 +8,12 @@ const TEST_FRAME_RATE_FPS = 30
 const is_ci = process.env.CI === `true` || process.env.CI === `1`
 
 test.describe(`Trajectory Performance Tests`, () => {
-  test.skip(is_ci, `Skipped in CI: large trajectory test files not available`)
+  // TODO: Add CI fixtures for trajectory performance testing
+  // Tracking: Large trajectory test files (>100MB) need to be hosted separately for CI
+  test.skip(
+    is_ci,
+    `Large trajectory test files not available in CI - run locally to test`,
+  )
   test(`large MOF5 trajectory playback performance`, async ({ page }) => {
     test.setTimeout(120000) // 2 minutes timeout for performance test
 

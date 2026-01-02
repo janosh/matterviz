@@ -1,5 +1,19 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
+// Set an input value and dispatch events using a locator
+export const set_input_value = async (input: Locator, value: string): Promise<void> => {
+  await input.evaluate(
+    (el, val) => {
+      const inp = el as HTMLInputElement
+      inp.value = val
+      inp.dispatchEvent(new Event(`input`, { bubbles: true }))
+      inp.dispatchEvent(new Event(`change`, { bubbles: true }))
+      inp.blur()
+    },
+    value,
+  )
+}
+
 interface OpenPaneOptions {
   pane_selector: string
   parent_selector?: string
@@ -186,4 +200,23 @@ export const random_sample = <T>(input_list: T[], n_samples: number): T[] => {
   }
 
   return rand_sample
+}
+
+// Get min/max range inputs from a label containing axis range controls
+export function get_axis_range_inputs(
+  pane: Locator,
+  axis_label: string,
+): { min: Locator; max: Locator } {
+  const label = pane.locator(`label:has-text("${axis_label}:")`)
+  const inputs = label.locator(`input.range-input`)
+  return { min: inputs.first(), max: inputs.last() }
+}
+
+// Set range input value with optional verification (skips verification for empty strings)
+export async function set_range_input(input: Locator, value: string): Promise<void> {
+  await set_input_value(input, value)
+  // Only verify non-empty values since empty values may be synced back by the component
+  if (value !== ``) {
+    await expect(input).toHaveValue(value)
+  }
 }

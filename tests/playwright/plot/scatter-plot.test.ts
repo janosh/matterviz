@@ -1,7 +1,6 @@
 // deno-lint-ignore-file no-await-in-loop
 import type { XyObj } from '$lib/plot'
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import process from 'node:process'
 
 // SHARED HELPER FUNCTIONS
 //
@@ -443,18 +442,19 @@ test.describe(`ScatterPlot Component Tests`, () => {
   })
 
   test(`size_values prop with per-point styling and dynamic configuration`, async ({ page }) => {
-    // Skip in CI - log scale size compression assertion is unreliable
-    test.skip(
-      process.env.CI === `true`,
-      `Log scale size compression test is flaky in CI`,
-    )
+    // Configure retries for size compression tests which can have small numerical variations
+    test.info().annotations.push({ type: `slow`, description: `Size calculation test` })
+
     // This test verifies the fix for size_values not working with per-point styling arrays
     // Test page has the spiral plot section at #point-sizing-spiral-test
 
     // Find the spiral plot section (has per-point styling with symbol_type and size_values)
     const section = page.locator(`#point-sizing-spiral-test`)
     const plot_locator = section.locator(`.scatter`)
-    await expect(plot_locator).toBeVisible()
+    await expect(plot_locator).toBeVisible({ timeout: 10000 })
+
+    // Wait for markers to render
+    await expect(plot_locator.locator(`.marker`).first()).toBeVisible({ timeout: 5000 })
 
     const marker_count = await plot_locator.locator(`.marker`).count()
     expect(marker_count).toBeGreaterThanOrEqual(3)

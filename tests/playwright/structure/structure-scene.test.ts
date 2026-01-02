@@ -345,8 +345,9 @@ test.describe(`StructureScene Component Tests`, () => {
   })
 
   // Test disordered site tooltip formatting
-  // SKIPPED: Three.js context destruction during test execution
-  test.skip(`formats disordered site tooltips without trailing zeros and proper separators`, async ({ page }) => {
+  // TODO: Investigate Three.js context destruction during test execution
+  // Tracking: This test fails intermittently due to WebGL context issues in headless mode
+  test.fixme(`formats disordered site tooltips without trailing zeros and proper separators`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 

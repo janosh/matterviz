@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
 import { dom_click, open_info_and_controls } from './utils'
 
 test.describe(`ConvexHull2D (Binary)`, () => {
@@ -10,14 +9,12 @@ test.describe(`ConvexHull2D (Binary)`, () => {
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    // Skip in CI - this performance test page takes too long to render in CI
-    test.skip(
-      process.env.CI === `true` || process.env.CI === `1`,
-      `Performance test page too slow in CI`,
-    )
+    // Configure longer timeout for performance test page
+    test.setTimeout(60000)
+
     await page.goto(
       `/test/convex-hull-performance?dim=2d&count=100&click_selection=false`,
-      { waitUntil: `networkidle` },
+      { waitUntil: `networkidle`, timeout: 45000 },
     )
     const diagram = page.locator(`.scatter.convex-hull-2d`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)

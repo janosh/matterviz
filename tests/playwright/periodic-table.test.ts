@@ -7,22 +7,19 @@ import {
   format_num,
 } from '$lib/labels'
 import { expect, type Page, test } from '@playwright/test'
-import process from 'node:process'
 import { random_sample } from './helpers'
 
 test.describe(`Periodic Table`, () => {
-  // SKIPPED: Server-side rendering error prevents page load
-  test.skip(`in default state`, async ({ page }) => {
+  test(`in default state`, async ({ page }) => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
     // Wait for periodic table to load by waiting for at least one element tile
-    await page.waitForSelector(`.element-tile`, { timeout: 50000 })
+    const tiles = page.locator(`.element-tile`)
+    await expect(tiles.first()).toBeVisible({ timeout: 50000 })
 
-    const element_tiles = await page.$$(`.element-tile`)
+    const tile_count = await tiles.count()
     const n_lanthanide_actinide_placeholders = 2
-    expect(element_tiles).toHaveLength(
-      element_data.length + n_lanthanide_actinide_placeholders,
-    )
+    expect(tile_count).toBe(element_data.length + n_lanthanide_actinide_placeholders)
 
     for (const category of ELEMENT_CATEGORIES) {
       let count = CATEGORY_COUNTS[category] as number
@@ -30,17 +27,23 @@ test.describe(`Periodic Table`, () => {
       // add 1 to expected count since lanthanides and actinides have placeholder
       // tiles showing where in the periodic table their rows insert
       if ([`lanthanide`, `actinide`].includes(category)) count += 1
-      expect(await page.$$(selector), category).toHaveLength(count as number)
+      const category_tiles = await page.locator(selector).count()
+      expect(category_tiles, category).toBe(count)
     }
   })
 
-  // SKIPPED: Same server-side rendering issue
-  test.skip(`shows stats on hover element`, async ({ page }) => {
+  test(`shows stats on hover element`, async ({ page }) => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
-    await page.hover(`text=Hydrogen`)
+    // Wait for element tiles to be visible
+    const hydrogen_tile = page.locator(`.element-tile`).filter({ hasText: `H` }).first()
+    await expect(hydrogen_tile).toBeVisible({ timeout: 50000 })
 
-    expect(await page.$(`text=1 - Hydrogen diatomic nonmetal`)).not.toBeNull()
+    // Hover over hydrogen tile
+    await hydrogen_tile.hover({ force: true })
+
+    // Check for stats display - use flexible assertion with retry
+    await expect(page.locator(`text=1 - Hydrogen`)).toBeVisible({ timeout: 5000 })
   })
 
   test(`can hover random elements without throwing errors`, async ({ page }) => {
@@ -70,13 +73,8 @@ test.describe(`Periodic Table`, () => {
   })
 
   test.describe(`tooltips`, () => {
-    // Skip all tooltip tests in CI - hover timing is unreliable
-    test.beforeEach(() => {
-      test.skip(
-        process.env.CI === `true`,
-        `Tooltip hover tests are flaky in CI due to timing differences`,
-      )
-    })
+    // Configure retries for tooltip tests which can be timing-sensitive
+    test.describe.configure({ retries: 2 })
 
     // test utilities
     const get_element_tile = (page: Page, selector: string) =>
@@ -86,11 +84,15 @@ test.describe(`Periodic Table`, () => {
 
     const clear_tooltip = async (page: Page) => {
       await page.mouse.move(0, 0)
-      // Wait for tooltip to disappear
-      await page.waitForFunction(() => {
-        const tooltip = document.querySelector(`.tooltip`) as HTMLElement
-        return !tooltip || tooltip.style.display === `none` || !tooltip.offsetParent
-      }, { timeout: 5000 })
+      // Wait for tooltip to disappear with retry
+      await expect(async () => {
+        const tooltip = page.locator(`.tooltip`)
+        const is_hidden = await tooltip.evaluate((el) => {
+          const html_el = el as HTMLElement
+          return !el || html_el.style.display === `none` || !html_el.offsetParent
+        }).catch(() => true)
+        expect(is_hidden).toBe(true)
+      }).toPass({ timeout: 5000 })
     }
 
     test(`shows default tooltip on element hover when no heatmap is selected`, async ({ page }) => {
@@ -247,13 +249,8 @@ test.describe(`Periodic Table`, () => {
   })
 
   test.describe(`in heatmap mode`, () => {
-    // Skip in CI - multiselect dropdown interaction is flaky
-    test.beforeEach(() => {
-      test.skip(
-        process.env.CI === `true`,
-        `Multiselect dropdown interaction is unreliable in CI`,
-      )
-    })
+    // Configure retries for heatmap mode tests which involve dropdown interactions
+    test.describe.configure({ retries: 2 })
 
     test(`displays elemental heat values`, async ({ page }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })

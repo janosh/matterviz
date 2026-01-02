@@ -10,5 +10,5 @@ export default {
   workers: 8,
   timeout: 30_000, // Global timeout per test (increased for CI)
   testDir: `tests/playwright`,
-  maxFailures: 1,
+  // maxFailures: 0 means run all tests even if some fail (useful for CI to see total failures)
 } satisfies PlaywrightTestConfig
