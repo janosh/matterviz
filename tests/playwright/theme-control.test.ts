@@ -39,12 +39,15 @@ test.describe(`ThemeControl`, () => {
     for (const theme of themes.filter((t) => t !== `auto`)) {
       await theme_control.selectOption(theme)
 
-      // Check DOM attribute and color scheme
+      // Check DOM attribute and color scheme (with retry for style propagation)
       await expect(html_element).toHaveAttribute(`data-theme`, theme)
-      const color_scheme = await page.evaluate(() =>
-        getComputedStyle(document.documentElement).colorScheme
-      )
-      expect(color_scheme).toBe(theme === `white` || theme === `light` ? `light` : `dark`)
+      const expected_scheme = theme === `white` || theme === `light` ? `light` : `dark`
+      await expect(async () => {
+        const color_scheme = await page.evaluate(() =>
+          getComputedStyle(document.documentElement).colorScheme
+        )
+        expect(color_scheme).toBe(expected_scheme)
+      }).toPass({ timeout: 5000 })
     }
   })
 
