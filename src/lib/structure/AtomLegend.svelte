@@ -133,7 +133,7 @@
     if (!remap_search) return ELEM_SYMBOLS
     const query = remap_search.toLowerCase()
     return ELEM_SYMBOLS.filter((elem) => {
-      const data = element_data.find((el) => el.symbol === elem)
+      const data = element_data?.find((el) => el.symbol === elem)
       return elem.toLowerCase().includes(query) ||
         data?.name?.toLowerCase().includes(query)
     })
@@ -203,7 +203,7 @@
       <div class="legend-item">
         <label
           bind:this={labels[idx]}
-          title="{element_data.find((el) => el.symbol == displayed_elem)?.name}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
+          title="{element_data?.find((el) => el.symbol == displayed_elem)?.name ?? ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
           style:background-color={colors.element[displayed_elem]}
           class:hidden={is_hidden}
@@ -283,7 +283,7 @@
                 </button>
               {/if}
               {#each filtered_elements as target_elem (target_elem)}
-                {@const elem_info = element_data.find((el) => el.symbol === target_elem)}
+                {@const elem_info = element_data?.find((el) => el.symbol === target_elem)}
                 <button
                   class="remap-option"
                   class:selected={displayed_elem === target_elem}
