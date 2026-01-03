@@ -1697,26 +1697,65 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const markers = plot_locator.locator(`path.marker`)
     const tooltip = plot_locator.locator(`.plot-tooltip`)
 
-    // Test tooltip near plot edges
     const marker_count = await markers.count()
-    if (marker_count > 0) {
-      // Use two-phase hover pattern for reliable tooltip display
-      await hover_to_show_tooltip(page, plot_locator, markers.first())
-      await expect(tooltip).toBeVisible({ timeout: 2000 })
+    if (marker_count < 2) return
 
-      const tooltip_box = await tooltip.boundingBox()
-      const plot_box = await plot_locator.boundingBox()
+    // Get all marker positions to find edge markers
+    const all_markers = await markers.all()
+    const marker_data = await Promise.all(
+      all_markers.map(async (marker) => ({
+        marker,
+        bbox: await marker.boundingBox(),
+      })),
+    )
 
-      if (tooltip_box && plot_box) {
-        // Tooltip should be positioned within reasonable bounds
-        expect(tooltip_box.x).toBeGreaterThanOrEqual(0)
-        expect(tooltip_box.y).toBeGreaterThanOrEqual(0)
-      }
+    // Filter to markers with valid bounding boxes
+    const valid_markers = marker_data.filter((m) => m.bbox !== null)
+    if (valid_markers.length < 2) return
 
-      // Move away to hide tooltip
-      await plot_locator.hover()
-      await expect(tooltip).toBeHidden()
+    const plot_box = await plot_locator.boundingBox()
+    if (!plot_box) return
+
+    // Find marker closest to right edge (most likely to cause overflow)
+    const rightmost = valid_markers.sort(
+      (a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0),
+    )[0]
+
+    // Test tooltip on rightmost marker - verify it doesn't overflow viewport
+    await hover_to_show_tooltip(page, plot_locator, rightmost.marker)
+    await expect(tooltip).toBeVisible({ timeout: 2000 })
+
+    let tooltip_box = await tooltip.boundingBox()
+    if (tooltip_box) {
+      // Tooltip should not overflow the right edge of the plot
+      expect(
+        tooltip_box.x + tooltip_box.width,
+        `Tooltip overflows right edge`,
+      ).toBeLessThanOrEqual(plot_box.x + plot_box.width + 50) // Allow 50px overflow for padding
+      expect(tooltip_box.y).toBeGreaterThanOrEqual(0)
     }
+
+    // Find marker closest to bottom edge
+    const bottommost = valid_markers.sort(
+      (a, b) => (b.bbox?.y ?? 0) - (a.bbox?.y ?? 0),
+    )[0]
+
+    // Test tooltip on bottommost marker - verify it doesn't overflow viewport
+    await hover_to_show_tooltip(page, plot_locator, bottommost.marker)
+    await expect(tooltip).toBeVisible({ timeout: 2000 })
+
+    tooltip_box = await tooltip.boundingBox()
+    if (tooltip_box) {
+      // Tooltip should not overflow the bottom edge of the plot
+      expect(
+        tooltip_box.y + tooltip_box.height,
+        `Tooltip overflows bottom edge`,
+      ).toBeLessThanOrEqual(plot_box.y + plot_box.height + 50) // Allow 50px overflow
+    }
+
+    // Move away to hide tooltip
+    await plot_locator.hover()
+    await expect(tooltip).toBeHidden()
   })
 
   test(`color scaling with null and undefined values`, async ({ page }) => {

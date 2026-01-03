@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
   import { ELEM_SYMBOLS, element_data } from '$lib'
+  import { contrast_color, default_element_colors } from '$lib/colors'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
-  import { contrast_color, default_element_colors } from '$lib/colors'
   import { ColorBar } from '$lib/plot'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
@@ -203,7 +203,7 @@
       <div class="legend-item">
         <label
           bind:this={labels[idx]}
-          title="{element_data?.find((el) => el.symbol == displayed_elem)?.name ?? ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
+          title="{element_data?.find((el) => el.symbol === displayed_elem)?.name ?? ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
           style:background-color={colors.element[displayed_elem]}
           class:hidden={is_hidden}
