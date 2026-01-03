@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DraggablePane } from '$lib'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import ConvexHullStats from './ConvexHullStats.svelte'

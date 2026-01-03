@@ -190,12 +190,12 @@ describe(`AtomLegend Component`, () => {
     const toggle_buttons = document.querySelectorAll(`button.toggle-visibility`)
 
     expect(labels[0].classList.contains(`hidden`)).toBe(false)
-    expect(toggle_buttons[0].classList.contains(`visible`)).toBe(false) // Click toggle button
+    expect(toggle_buttons[0].classList.contains(`element-hidden`)).toBe(false) // Click toggle button
     ;(toggle_buttons[0] as HTMLButtonElement).click()
     await tick()
 
     expect(labels[0].classList.contains(`hidden`)).toBe(true)
-    expect(toggle_buttons[0].classList.contains(`visible`)).toBe(true)
+    expect(toggle_buttons[0].classList.contains(`element-hidden`)).toBe(true)
   })
 
   describe(`Mode Selector`, () => {
@@ -593,12 +593,12 @@ describe(`AtomLegend Component`, () => {
       )
 
       expect(labels[0].classList.contains(`hidden`)).toBe(false)
-      expect(toggle_buttons[0].classList.contains(`visible`)).toBe(false) // Click toggle button
+      expect(toggle_buttons[0].classList.contains(`element-hidden`)).toBe(false) // Click toggle button
       ;(toggle_buttons[0] as HTMLButtonElement).click()
       await tick()
 
       expect(labels[0].classList.contains(`hidden`)).toBe(true)
-      expect(toggle_buttons[0].classList.contains(`visible`)).toBe(true)
+      expect(toggle_buttons[0].classList.contains(`element-hidden`)).toBe(true)
     })
 
     test(`maps colors correctly when sites > unique values`, () => {

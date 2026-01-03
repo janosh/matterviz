@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import { Icon } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
   import {
     decode_structure_id,

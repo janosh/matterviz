@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import { ElementHeading, format_num, Icon } from '$lib'
+  import Icon from '$lib/Icon.svelte'
+  import { format_num } from '$lib/labels'
+  import ElementHeading from './ElementHeading.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let { element, ...rest }: HTMLAttributes<HTMLDivElement> & {

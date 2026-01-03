@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Crystal, FileInfo } from '$lib'
-  import { FilePicker } from '$lib'
+  import FilePicker from '$lib/FilePicker.svelte'
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { Structure } from '$lib/structure'

@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { DraggablePane, format_num, SettingsSection } from '$lib'
+  import { format_num } from '$lib/labels'
+  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { css_color_to_hex } from '$lib/colors'
   import type { AxisConfig } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'

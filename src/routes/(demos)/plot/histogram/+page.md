@@ -71,8 +71,8 @@ This example demonstrates bar styling options including `border_radius` for roun
   style="height: 400px"
 />
 
-<div style={info_style}>{hover_info}</div>
-<div style={info_style}>{click_info}</div>
+<div style={info_style} data-testid="hover-status">{hover_info}</div>
+<div style={info_style} data-testid="click-status">{click_info}</div>
 ```
 
 ## Dual Y-Axes for Different Sample Sizes

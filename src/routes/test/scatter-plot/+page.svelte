@@ -533,6 +533,7 @@
     series={[basic_data]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
+    controls={{ show: true }}
   />
 </section>
 
@@ -540,18 +541,21 @@
   <h2>Marker Types</h2>
   <h3>Points Only</h3>
   <ScatterPlot
+    id="points-only"
     series={[{ ...points_data, markers: `points` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis (Points)` }}
   />
   <h3>Line Only</h3>
   <ScatterPlot
+    id="line-only"
     series={[{ ...line_data, markers: `line` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis (Line)` }}
   />
   <h3>Line + Points</h3>
   <ScatterPlot
+    id="line-points"
     series={[line_points_data]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis (Line+Points)` }}
@@ -561,71 +565,90 @@
 <section id="range-test">
   <h2>Data Range Examples</h2>
 
-  <h3>Wide Range (-1000 to 1000)</h3>
-  <ScatterPlot
-    series={[wide_range_data]}
-    x_axis={{ label: `X Axis`, range: [-1100, 1100] }}
-    y_axis={{ label: `Y Axis`, range: [-550, 550] }}
-  />
+  <div id="wide-range">
+    <h3>Wide Range (-1000 to 1000)</h3>
+    <ScatterPlot
+      series={[wide_range_data]}
+      x_axis={{ label: `X Axis`, range: [-1100, 1100] }}
+      y_axis={{ label: `Y Axis`, range: [-550, 550] }}
+    />
+  </div>
 
-  <h3>Very Small Range</h3>
-  <ScatterPlot
-    series={[small_range_data]}
-    x_axis={{ label: `X Axis`, range: [0, 0.0006] }}
-    y_axis={{ label: `Y Axis`, range: [0, 0.00006] }}
-  />
+  <div id="small-range">
+    <h3>Very Small Range</h3>
+    <ScatterPlot
+      series={[small_range_data]}
+      x_axis={{ label: `X Axis`, range: [0, 0.0006] }}
+      y_axis={{ label: `Y Axis`, range: [0, 0.00006] }}
+    />
+  </div>
 </section>
 
 <section id="log-scale">
   <h2>Logarithmic Scale Examples</h2>
-  <h3>Y-Axis Log Scale</h3>
-  <ScatterPlot
-    series={[log_scale_data]}
-    x_axis={{ label: `X Axis (Linear)`, range: [-1100, 1100] }}
-    y_axis={{ label: `Y Axis (Log)`, range: [1, 6000], scale_type: `log` }}
-  />
-  <h3>X-Axis Log Scale</h3>
-  <ScatterPlot
-    series={[log_scale_data2]}
-    x_axis={{ label: `X Axis (Log)`, format: `~s`, range: [0.01, 1100], scale_type: `log` }}
-    y_axis={{ label: `Y Axis (Linear)`, format: `~s` }}
-  />
+  <div id="log-y">
+    <h3>Y-Axis Log Scale</h3>
+    <ScatterPlot
+      series={[log_scale_data]}
+      x_axis={{ label: `X Axis (Linear)`, range: [-1100, 1100] }}
+      y_axis={{ label: `Y Axis (Log)`, range: [1, 6000], scale_type: `log` }}
+    />
+  </div>
+  <div id="log-x">
+    <h3>X-Axis Log Scale</h3>
+    <ScatterPlot
+      series={[log_scale_data2]}
+      x_axis={{
+        label: `X Axis (Log)`,
+        format: `~s`,
+        range: [0.01, 1100],
+        scale_type: `log`,
+      }}
+      y_axis={{ label: `Y Axis (Linear)`, format: `~s` }}
+    />
+  </div>
 </section>
 
 <section id="custom-style">
   <h2>Custom Styling Examples</h2>
-  <h3>Rainbow Points</h3>
-  <ScatterPlot
-    series={[{ ...rainbow_data, markers: `points` }]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis` }}
-  />
-  <h3>Multiple Series</h3>
-  <ScatterPlot
-    series={[multi_series_data1, multi_series_data2]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis` }}
-  />
+  <div id="rainbow-points">
+    <h3>Rainbow Points</h3>
+    <ScatterPlot
+      series={[{ ...rainbow_data, markers: `points` }]}
+      x_axis={{ label: `X Axis` }}
+      y_axis={{ label: `Y Axis` }}
+    />
+  </div>
+  <div id="multiple-series">
+    <h3>Multiple Series</h3>
+    <ScatterPlot
+      series={[multi_series_data1, multi_series_data2]}
+      x_axis={{ label: `X Axis` }}
+      y_axis={{ label: `Y Axis` }}
+    />
+  </div>
 </section>
 
 <section id="color-scale">
   <h2>Color Scale Examples</h2>
-  <h3>Color Scale with Toggle</h3>
-  <div style="display: flex; justify-content: center; gap: 1em">
-    {#each [`linear`, `log`] as scale_type (scale_type)}
-      <label>
-        <input type="radio" value={scale_type} bind:group={color_scale.type} />
-        {scale_type}
-      </label>
-    {/each}
+  <div id="color-scale-toggle">
+    <h3>Color Scale with Toggle</h3>
+    <div style="display: flex; justify-content: center; gap: 1em">
+      {#each [`linear`, `log`] as scale_type (scale_type)}
+        <label>
+          <input type="radio" value={scale_type} bind:group={color_scale.type} />
+          {scale_type}
+        </label>
+      {/each}
+    </div>
+    <ScatterPlot
+      series={[{ ...color_scale_data, markers: `points` }]}
+      x_axis={{ label: `X Axis` }}
+      y_axis={{ label: `Y Axis` }}
+      {color_scale}
+      color_bar={{}}
+    />
   </div>
-  <ScatterPlot
-    series={[{ ...color_scale_data, markers: `points` }]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis` }}
-    {color_scale}
-    color_bar={{}}
-  />
 </section>
 
 <section id="custom-tooltip">
@@ -731,6 +754,7 @@
     series={legend_multi_series.map((srs) => ({ ...srs, markers: `points` }))}
     legend={{ draggable: true }}
     id="legend-multi-default"
+    controls={{ show: true }}
   />
   <h3>Zero Series - No Legend Expected</h3>
   <ScatterPlot series={legend_zero_series} id="legend-zero" />
@@ -868,6 +892,7 @@
     id="fill-plot"
     series={[{ x: [1], y: [1], point_style: { fill: `purple`, radius: 8 } }]}
     hover_config={{ threshold_px: 100 }}
+    style="height: 200px; width: 300px"
   />
 
   <h3>Stroke Color Precedence (Orange)</h3>
@@ -886,6 +911,7 @@
       },
     ]}
     hover_config={{ threshold_px: 100 }}
+    style="height: 200px; width: 300px"
   />
 
   <h3>Line Color Precedence (Green)</h3>
@@ -905,6 +931,7 @@
       },
     ]}
     hover_config={{ threshold_px: 100 }}
+    style="height: 200px; width: 300px"
   />
 </section>
 
@@ -973,6 +1000,7 @@
 
   <h3>Disabled Axis Coloring</h3>
   <ScatterPlot
+    id="disabled-axis-colors-plot"
     series={[
       {
         ...multi_series_data1,

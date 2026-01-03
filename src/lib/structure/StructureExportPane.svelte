@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { DraggablePane } from '$lib'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { export_canvas_as_png } from '$lib/io/export'
   import * as exports from '$lib/structure/export'
   import type { ComponentProps } from 'svelte'

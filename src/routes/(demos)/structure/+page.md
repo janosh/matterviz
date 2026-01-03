@@ -9,7 +9,8 @@
   import Select from 'svelte-multiselect'
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
-  import { FilePicker, get_electro_neg_formula } from '$lib'
+  import FilePicker from '$lib/FilePicker.svelte'
+  import { get_electro_neg_formula } from '$lib'
 
   let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
 

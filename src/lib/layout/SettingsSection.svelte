@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

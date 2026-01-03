@@ -18,6 +18,10 @@ test-results*
 src/site/trajectories/large
 src/site/phonons/*.json
 
+# temp files
+tmp
+static/tmp
+
 # vscode extension
 *.vsix
 !extensions/vscode/.vscode/

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SettingsSection } from '$lib'
+  import { SettingsSection } from '$lib/layout'
   import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/types'
@@ -145,6 +145,7 @@
 
   <SettingsSection
     title="Scale Type"
+    data-testid="scale-type-section"
     current_values={{
       x_scale_type: x_axis.scale_type,
       y_scale_type: y_axis.scale_type,

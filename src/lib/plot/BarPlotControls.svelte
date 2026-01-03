@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SettingsSection } from '$lib'
+  import { SettingsSection } from '$lib/layout'
   import type { BarMode, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { Orientation, PlotControlsProps } from '$lib/plot/types'

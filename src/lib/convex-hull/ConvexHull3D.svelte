@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AnyStructure, ElementSymbol } from '$lib'
-  import { DEFAULTS, Icon, toggle_fullscreen } from '$lib'
+  import { DEFAULTS, toggle_fullscreen } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import type { D3InterpolateName } from '$lib/colors'
   import { is_dark_mode, watch_dark_mode } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'

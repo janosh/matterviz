@@ -10,7 +10,8 @@ test.describe(`XrdPlot Component Tests`, () => {
     await expect(plot).toBeVisible()
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
-    await expect(plot.locator(`svg rect`).first()).toBeVisible()
+    // Bars are rendered as path elements inside .bar-series
+    await expect(plot.locator(`svg .bar-series path`).first()).toBeVisible()
   })
 
   test(`shows labels for annotated peaks`, async ({ page }) => {
@@ -24,12 +25,14 @@ test.describe(`XrdPlot Component Tests`, () => {
 
   test(`tooltip includes hkl and d-spacing when available`, async ({ page }) => {
     const plot = page.locator(`#single-pattern .bar-plot`)
-    const first_bar = plot.locator(`svg rect`).first()
+    // Bars are rendered as path elements inside .bar-series
+    const first_bar = plot.locator(`svg .bar-series path`).first()
     await expect(first_bar).toBeVisible()
     await first_bar.hover({ force: true })
 
-    const tooltip = plot.locator(`.tooltip`)
-    await expect(tooltip).toBeVisible()
+    // Tooltip has class plot-tooltip
+    const tooltip = plot.locator(`.plot-tooltip`)
+    await expect(tooltip).toBeVisible({ timeout: 3000 })
     const text = await tooltip.textContent()
     expect(text || ``).toContain(`2θ:`)
     // hkl and d are conditional; ensure tooltip structure exists
@@ -43,15 +46,22 @@ test.describe(`XrdPlot Component Tests`, () => {
     const items = legend.locator(`.legend-item`)
     await expect(items).toHaveCount(2)
 
-    const pre_toggle = await plot.locator(`svg rect`).count()
+    // Bars are rendered as path elements inside .bar-series
+    const pre_toggle = await plot.locator(`svg .bar-series path`).count()
     expect(pre_toggle).toBeGreaterThan(0)
 
     await items.first().click()
-    const after_toggle = await plot.locator(`svg rect`).count()
-    expect(after_toggle).toBeLessThan(pre_toggle)
+    // Wait for series to be hidden (fewer paths visible)
+    await expect(async () => {
+      const after_toggle = await plot.locator(`svg .bar-series path`).count()
+      expect(after_toggle).toBeLessThan(pre_toggle)
+    }).toPass({ timeout: 3000 })
 
     await items.first().click()
-    const restored = await plot.locator(`svg rect`).count()
-    expect(restored).toBeGreaterThanOrEqual(pre_toggle)
+    // Wait for series to be restored
+    await expect(async () => {
+      const restored = await plot.locator(`svg .bar-series path`).count()
+      expect(restored).toBeGreaterThanOrEqual(pre_toggle)
+    }).toPass({ timeout: 3000 })
   })
 })

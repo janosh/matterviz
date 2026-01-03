@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { DraggablePane, SettingsSection } from '$lib'
+  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
@@ -254,6 +255,7 @@
     <!-- Base Tick Format controls -->
     <SettingsSection
       title="Tick Format"
+      data-testid="tick-format-section"
       current_values={{
         x_format: x_axis.format,
         y_format: y_axis.format,

@@ -1,4 +1,4 @@
-import type { ChemicalElement, ElementCategory } from '$lib'
+import type { ChemicalElement, ElementCategory } from '$lib/element/types'
 import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme/index'
 import { DEFAULT_CATEGORY_COLORS, default_element_colors } from './colors'
 import type { Tooltip } from './plot'

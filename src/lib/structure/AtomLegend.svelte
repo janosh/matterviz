@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
-  import { ELEM_SYMBOLS, element_data, format_num, Icon } from '$lib'
+  import { ELEM_SYMBOLS, element_data } from '$lib'
   import { contrast_color, default_element_colors } from '$lib/colors'
+  import Icon from '$lib/Icon.svelte'
+  import { format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
@@ -131,7 +133,7 @@
     if (!remap_search) return ELEM_SYMBOLS
     const query = remap_search.toLowerCase()
     return ELEM_SYMBOLS.filter((elem) => {
-      const data = element_data.find((el) => el.symbol === elem)
+      const data = element_data?.find((el) => el.symbol === elem)
       return elem.toLowerCase().includes(query) ||
         data?.name?.toLowerCase().includes(query)
     })
@@ -201,7 +203,7 @@
       <div class="legend-item">
         <label
           bind:this={labels[idx]}
-          title="{element_data.find((el) => el.symbol == displayed_elem)?.name}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
+          title="{element_data?.find((el) => el.symbol === displayed_elem)?.name ?? ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
           style:background-color={colors.element[displayed_elem]}
           class:hidden={is_hidden}
@@ -233,7 +235,7 @@
         </label>
         <button
           class="toggle-visibility"
-          class:visible={is_hidden}
+          class:element-hidden={is_hidden}
           onclick={(
             event,
           ) => (hidden_elements = toggle_visibility(
@@ -281,7 +283,7 @@
                 </button>
               {/if}
               {#each filtered_elements as target_elem (target_elem)}
-                {@const elem_info = element_data.find((el) => el.symbol === target_elem)}
+                {@const elem_info = element_data?.find((el) => el.symbol === target_elem)}
                 <button
                   class="remap-option"
                   class:selected={displayed_elem === target_elem}
@@ -349,7 +351,7 @@
           </span>
           <button
             class="toggle-visibility"
-            class:visible={is_hidden}
+            class:element-hidden={is_hidden}
             onclick={(
               event,
             ) => (hidden_prop_vals = toggle_visibility(
@@ -435,7 +437,7 @@
     z-index: 2;
     pointer-events: auto;
   }
-  .atom-legend button.toggle-visibility.visible,
+  .atom-legend button.toggle-visibility.element-hidden,
   .atom-legend .legend-item:hover button.toggle-visibility {
     opacity: 1;
   }

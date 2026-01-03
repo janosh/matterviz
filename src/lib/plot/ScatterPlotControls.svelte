@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SettingsSection } from '$lib'
+  import { SettingsSection } from '$lib/layout'
   import { PlotControls } from '$lib/plot'
   import type {
     DataSeries,

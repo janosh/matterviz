@@ -2,7 +2,7 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { FilePicker } from '$lib'
+  import FilePicker from '$lib/FilePicker.svelte'
   import { decompress_data } from '$lib/io/decompress'
   import type { PhaseDiagramData, TdbParseResult } from '$lib/phase-diagram'
   import { IsobaricBinaryPhaseDiagram, TdbInfoPanel } from '$lib/phase-diagram'

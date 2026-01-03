@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { format_num, Histogram, Icon, type InfoItem } from '$lib'
+  import type { InfoItem } from '$lib'
+  import Icon from '$lib/Icon.svelte'
+  import { format_num } from '$lib/labels'
+  import Histogram from '$lib/plot/Histogram.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { ConvexHullEntry, PhaseStats } from './types'

@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { FilePicker, Icon, Structure, Trajectory } from '$lib'
+  import FilePicker from '$lib/FilePicker.svelte'
+  import Icon from '$lib/Icon.svelte'
+  import Structure from '$lib/structure/Structure.svelte'
+  import Trajectory from '$lib/trajectory/Trajectory.svelte'
   import type { TrajHandlerData } from '$lib/trajectory'
   import { CompositionDemo, PeriodicTableDemo } from '$site'
   import { molecule_files } from '$site/molecules'

@@ -1,7 +1,10 @@
 <script lang="ts">
-  import type { AnyStructure, Site } from '$lib'
-  import { DraggablePane, element_data, format_num, Icon, type InfoItem } from '$lib'
+  import type { AnyStructure, InfoItem, Site } from '$lib'
   import { get_electro_neg_formula } from '$lib/composition'
+  import { element_data } from '$lib/element'
+  import Icon from '$lib/Icon.svelte'
+  import { format_num } from '$lib/labels'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { get_density } from '$lib/structure'
   import { wyckoff_positions_from_moyo, WyckoffTable } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -181,7 +184,7 @@
       if (atom_count < min_threshold || sites_expanded) {
         structure.sites.forEach((site: Site, idx: number) => {
           const element = site.species?.[0]?.element || `Unknown`
-          const element_name = element_data.find((el) =>
+          const element_name = element_data?.find((el) =>
             el.symbol === element
           )?.name || element
 

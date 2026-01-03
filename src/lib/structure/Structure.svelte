@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
-  import { Icon, Spinner, toggle_fullscreen } from '$lib'
+  import { toggle_fullscreen } from '$lib'
+  import Spinner from '$lib/feedback/Spinner.svelte'
+  import Icon from '$lib/Icon.svelte'
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'

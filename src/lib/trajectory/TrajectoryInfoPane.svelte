@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { DraggablePane, format_num, Icon, type InfoItem } from '$lib'
+  import type { InfoItem } from '$lib'
+  import Icon from '$lib/Icon.svelte'
+  import { format_num } from '$lib/labels'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { type AnyStructure } from '$lib/structure'

@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { EmptyState, SettingsSection, StatusMessage } from '$lib'
+  import EmptyState from '$lib/EmptyState.svelte'
+  import StatusMessage from '$lib/feedback/StatusMessage.svelte'
+  import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import { add_alpha, PLOT_COLORS } from '$lib/colors'
   import {
     decompress_data_binary,

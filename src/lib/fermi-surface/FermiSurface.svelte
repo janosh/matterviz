@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { EmptyState, Icon, Spinner, toggle_fullscreen } from '$lib'
+  import { toggle_fullscreen } from '$lib'
+  import EmptyState from '$lib/EmptyState.svelte'
+  import Spinner from '$lib/feedback/Spinner.svelte'
+  import Icon from '$lib/Icon.svelte'
   import type { BrillouinZoneData } from '$lib/brillouin'
   import { compute_brillouin_zone, reciprocal_lattice } from '$lib/brillouin'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
