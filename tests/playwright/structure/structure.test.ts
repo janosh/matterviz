@@ -994,7 +994,7 @@ test.describe(`Structure Component Tests`, () => {
     const structure_div = page.locator(`#test-structure`)
     const control_pane = structure_div.locator(`.controls-pane`)
     const controls_open_status = page.locator(
-      `[data-testid="pane-open-status"]`,
+      `[data-testid="controls-open-status"]`,
     )
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
@@ -1015,13 +1015,11 @@ test.describe(`Structure Component Tests`, () => {
     await expect(control_pane).toHaveClass(/pane-open/, { timeout: 5000 })
 
     // Test that controls are accessible and pane stays open when interacting
-    // Use corrected label text (with leading spaces as shown in debug output)
-    const show_atoms_label = control_pane
-      .locator(`label`)
-      .filter({ hasText: /^ atoms$/ })
-    const show_atoms_checkbox = show_atoms_label.locator(
-      `input[type="checkbox"]`,
-    )
+    // Use exact match to avoid matching "Image Atoms" or "Same size atoms"
+    const show_atoms_checkbox = control_pane.getByRole(`checkbox`, {
+      name: `Atoms`,
+      exact: true,
+    })
     await expect(show_atoms_checkbox).toBeVisible()
 
     // Test various control interactions to ensure pane stays open
@@ -1029,16 +1027,13 @@ test.describe(`Structure Component Tests`, () => {
     await expect(controls_open_status).toContainText(`true`)
     await expect(control_pane).toHaveClass(/pane-open/)
 
+    // Bonds uses a native select element with label "Bonds:"
     const show_bonds_label = control_pane
       .locator(`label`)
-      .filter({ hasText: /^ bonds$/ })
-    const show_bonds_select = show_bonds_label.locator(
-      `.multiselect`,
-    )
+      .filter({ hasText: `Bonds:` })
+    const show_bonds_select = show_bonds_label.locator(`select`)
     await expect(show_bonds_select).toBeVisible()
-    await show_bonds_select.click()
-    // Select "always" option
-    await page.locator(`.multiselect-option`).filter({ hasText: `Always` }).click()
+    await show_bonds_select.selectOption(`always`)
     await expect(controls_open_status).toContainText(`true`)
     await expect(control_pane).toHaveClass(/pane-open/)
 
@@ -1053,13 +1048,15 @@ test.describe(`Structure Component Tests`, () => {
     await expect(controls_open_status).toContainText(`true`)
     await expect(control_pane).toHaveClass(/pane-open/)
 
-    // Test color scheme select dropdown (this still exists)
-    const color_scheme_select = control_pane
+    // Test color scheme multiselect dropdown (uses svelte-multiselect with listbox)
+    const color_scheme_label = control_pane
       .locator(`label`)
       .filter({ hasText: /Color scheme/ })
-      .locator(`select`)
-    await expect(color_scheme_select).toBeVisible()
-    await color_scheme_select.selectOption(`Jmol`)
+    const color_scheme_multiselect = color_scheme_label.locator(`.multiselect`)
+    await expect(color_scheme_multiselect).toBeVisible()
+    // Click to open the multiselect, then select an option from the listbox
+    await color_scheme_multiselect.click()
+    await page.getByRole(`option`, { name: `Jmol`, exact: true }).click()
     await expect(controls_open_status).toContainText(`true`)
     await expect(control_pane).toHaveClass(/pane-open/)
 
@@ -2468,7 +2465,15 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     const canvas_box = await canvas.boundingBox()
 
     for (const projection of [`perspective`, `orthographic`]) {
-      await projection_select.scrollIntoViewIfNeeded()
+      // Re-open pane if it was closed by canvas interactions
+      const has_pane_open = await pane_div.evaluate((el) =>
+        el.classList.contains(`pane-open`)
+      )
+      if (!has_pane_open) {
+        await test_page_controls_checkbox.check()
+        await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
+      }
+      await expect(projection_select).toBeVisible({ timeout: 2000 })
       await projection_select.selectOption(projection)
 
       if (canvas_box) {

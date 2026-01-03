@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
+import type { OptimadeStructure } from '../../src/lib/api/optimade'
 
 // Mock structure data shared across tests
-const MOCK_STRUCTURES: Record<string, object> = {
+const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
   'mp-1': {
     id: `mp-1`,
     type: `structures`,
@@ -218,11 +219,12 @@ test.describe(`OPTIMADE route`, () => {
     // Capture the structure ID from first suggestion card
     const first_suggestion_card = page.locator(`.structure-suggestions button`).first()
     const structure_id = await first_suggestion_card.locator(`span`).first().textContent()
+    if (!structure_id) throw new Error(`Expected structure ID in suggestion card`)
 
     // Click on first suggestion card
     await first_suggestion_card.click()
 
     // Verify that the input is filled with the correct structure ID
-    await expect(page.locator(`input.structure-input`)).toHaveValue(structure_id ?? ``)
+    await expect(page.locator(`input.structure-input`)).toHaveValue(structure_id)
   })
 })

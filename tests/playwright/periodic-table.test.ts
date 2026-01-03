@@ -16,8 +16,12 @@ test.describe(`Periodic Table`, () => {
   test(`in default state`, async ({ page }) => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
+    // Get the first periodic table on the page (homepage has multiple periodic tables)
+    const periodic_table = page.locator(`.periodic-table`).first()
+    await expect(periodic_table).toBeVisible({ timeout: 20000 })
+
     // Wait for periodic table to load by waiting for at least one element tile
-    const tiles = page.locator(`.element-tile`)
+    const tiles = periodic_table.locator(`.element-tile`)
     await expect(tiles.first()).toBeVisible({ timeout: 20000 })
 
     const tile_count = await tiles.count()
@@ -26,11 +30,14 @@ test.describe(`Periodic Table`, () => {
 
     for (const category of ELEMENT_CATEGORIES) {
       let count = CATEGORY_COUNTS[category] as number
-      const selector = `[data-category="${category}"]`
+      // Scope selector to the first periodic table
+      const category_tiles_selector = periodic_table.locator(
+        `[data-category="${category}"]`,
+      )
       // add 1 to expected count since lanthanides and actinides have placeholder
       // tiles showing where in the periodic table their rows insert
       if ([`lanthanide`, `actinide`].includes(category)) count += 1
-      const category_tiles = await page.locator(selector).count()
+      const category_tiles = await category_tiles_selector.count()
       expect(category_tiles, category).toBe(count)
     }
   })
@@ -86,16 +93,12 @@ test.describe(`Periodic Table`, () => {
     const get_tooltip = (page: Page) => page.locator(`.tooltip`)
 
     const clear_tooltip = async (page: Page) => {
+      // Move mouse away from any element tile to trigger tooltip hide
       await page.mouse.move(0, 0)
-      // Wait for tooltip to disappear with retry
-      await expect(async () => {
-        const tooltip = page.locator(`.tooltip`)
-        const is_hidden = await tooltip.evaluate((el) => {
-          const html_el = el as HTMLElement
-          return !el || html_el.style.display === `none` || !html_el.offsetParent
-        }).catch(() => true)
-        expect(is_hidden).toBe(true)
-      }).toPass({ timeout: 5000 })
+      // The tooltip uses conditional rendering ({#if tooltip_visible}),
+      // so when hidden, it doesn't exist in the DOM at all
+      const tooltip = page.locator(`.tooltip`)
+      await expect(tooltip).toHaveCount(0, { timeout: 5000 })
     }
 
     test(`shows default tooltip on element hover when no heatmap is selected`, async ({ page }) => {

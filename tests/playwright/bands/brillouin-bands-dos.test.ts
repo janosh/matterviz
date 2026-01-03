@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import { IS_CI } from '../helpers'
 
+// Serialize tests to avoid race conditions when multiple workers load the same heavy 3D page
+test.describe.configure({ mode: `serial` })
+
 test.describe(`BrillouinBandsDos Component Tests`, () => {
   // Increase timeout for all tests in this file - 3D rendering is slow in CI
   test.setTimeout(60_000)

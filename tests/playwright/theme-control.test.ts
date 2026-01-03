@@ -74,8 +74,18 @@ test.describe(`ThemeControl`, () => {
     await expect(html_element).toHaveAttribute(`data-theme`, `light`, { timeout: 5000 })
   })
 
-  test(`persists preferences and handles page navigation`, async ({ page }) => {
-    let theme_control = await get_theme_control(page)
+  test(`persists preferences and handles page navigation`, async ({ browser }) => {
+    // Use a fresh context without addInitScript to properly test persistence
+    const context = await browser.newContext()
+    const page = await context.newPage()
+
+    // Clear any existing theme preference and navigate
+    await page.goto(`/`, { waitUntil: `networkidle` })
+    await page.evaluate(() => localStorage.removeItem(`matterviz-theme`))
+    await page.reload({ waitUntil: `networkidle` })
+
+    let theme_control = page.locator(`.theme-control`)
+    await expect(theme_control).toBeVisible({ timeout: 10000 })
 
     // Set theme and check localStorage
     await theme_control.selectOption(`dark`)
@@ -86,7 +96,7 @@ test.describe(`ThemeControl`, () => {
       { timeout: 5000 },
     ).toBe(`dark`)
 
-    // Test persistence across reload
+    // Test persistence across reload (no addInitScript to interfere)
     await page.reload({ waitUntil: `networkidle` })
     theme_control = page.locator(`.theme-control`)
     await expect(theme_control).toBeVisible({ timeout: 10000 })
@@ -104,5 +114,7 @@ test.describe(`ThemeControl`, () => {
     await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
       timeout: 5000,
     })
+
+    await context.close()
   })
 })

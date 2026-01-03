@@ -716,7 +716,10 @@ test.describe(`Trajectory Component`, () => {
 
       // Check if view mode button exists (only appears if plot_series.length > 0)
       // Must check skip condition before running other assertions
-      const display_button = trajectory.locator(`.view-mode-button`)
+      // Use specific selector to avoid matching other .view-mode-button elements (e.g., in Structure)
+      const display_button = trajectory.locator(
+        `.view-mode-dropdown-wrapper .view-mode-button`,
+      )
       const button_count = await display_button.count()
       test.skip(button_count === 0, `No view mode button found (no plot data)`)
 
@@ -835,6 +838,17 @@ test.describe(`Trajectory Component`, () => {
     test(`viewport resize updates layout dynamically`, async ({ page }) => {
       const trajectory = page.locator(`#auto-layout`)
 
+      // Helper to get dimensions
+      const get_dims = async () =>
+        await page.evaluate(() => {
+          const el = document.querySelector(`#auto-layout`) as HTMLElement
+          return {
+            clientWidth: el.clientWidth,
+            clientHeight: el.clientHeight,
+            className: el.className,
+          }
+        })
+
       // Scroll to the auto-layout trajectory to ensure it's in view
       await trajectory.scrollIntoViewIfNeeded()
       // Wait for trajectory controls to be visible (indicates data is loaded)
@@ -844,15 +858,23 @@ test.describe(`Trajectory Component`, () => {
 
       // Start with wide viewport - should trigger horizontal layout
       await page.setViewportSize({ width: 1200, height: 600 })
+      await trajectory.scrollIntoViewIfNeeded()
+      console.log(`Wide 1:`, await get_dims())
       await expect(trajectory).toHaveClass(/horizontal/)
 
       // Resize to tall viewport - should trigger vertical layout
       await page.setViewportSize({ width: 600, height: 1000 })
+      await trajectory.scrollIntoViewIfNeeded()
+      console.log(`Tall:`, await get_dims())
       await expect(trajectory).toHaveClass(/vertical/)
 
       // Resize back to wide viewport
       await page.setViewportSize({ width: 1200, height: 600 })
-      await expect(trajectory).toHaveClass(/horizontal/)
+      await trajectory.scrollIntoViewIfNeeded()
+      console.log(`Wide 2:`, await get_dims())
+      // The CSS media query for portrait orientation affects min-height,
+      // which needs time to propagate back to clientHeight measurements
+      await expect(trajectory).toHaveClass(/horizontal/, { timeout: 10000 })
     })
 
     test(`layout responsive behavior with tablet viewports`, async ({ page }) => {
