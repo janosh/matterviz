@@ -1455,8 +1455,12 @@ H    1.261    0.728   -0.890`
     await structure_div.dispatchEvent(`drop`, { dataTransfer: data_transfer })
     await data_transfer.dispose()
 
-    const after_drop_screenshot = await canvas.screenshot()
-    expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
+    // Wait for canvas to be visible and structure to update with polling assertion
+    await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
+    await expect(async () => {
+      const after_drop_screenshot = await canvas.screenshot()
+      expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
+    }).toPass({ timeout: get_canvas_timeout() })
   })
 
   test(`drops JSON structure file and updates structure`, async ({ page }) => {
