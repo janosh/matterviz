@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
+import { IS_CI } from '../helpers'
 
 test.describe(`Lattice Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Lattice tests timeout in CI`)
+    test.skip(IS_CI, `Lattice tests timeout in CI`)
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     await expect(page.locator(`#test-structure canvas`)).toBeVisible()
 

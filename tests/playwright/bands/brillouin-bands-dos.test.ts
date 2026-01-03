@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
-import process from 'node:process'
+import { IS_CI } from '../helpers'
 
 test.describe(`BrillouinBandsDos Component Tests`, () => {
   // Increase timeout for all tests in this file - 3D rendering is slow in CI
@@ -8,7 +8,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
   test.beforeEach(async ({ page }) => {
     // Skip in CI - 3D WebGL canvas interactions are unreliable
-    test.skip(process.env.CI === `true`, `3D canvas tests are flaky in CI`)
+    test.skip(IS_CI, `3D canvas tests are flaky in CI`)
     await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `networkidle` })
     // Wait for the default container and basic structure to be present
     // Use longer timeout since WebGL/3D initialization can be slow in CI

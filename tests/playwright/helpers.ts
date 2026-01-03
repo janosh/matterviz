@@ -5,12 +5,14 @@ import process from 'node:process'
 // CI environments are slower due to shared resources, virtualization, and WebGL software rendering
 const LOCAL_CANVAS_TIMEOUT = 5_000
 const CI_CANVAS_TIMEOUT = 15_000
-const is_ci = process.env.CI === `true`
+
+// Centralized CI detection - use this instead of inline process.env.CI checks
+export const IS_CI = process.env.CI === `true`
 
 // Get appropriate canvas initialization timeout based on environment
 // Use this for WebGL/Three.js canvas waits where CI needs more time
 export const get_canvas_timeout = (): number =>
-  is_ci ? CI_CANVAS_TIMEOUT : LOCAL_CANVAS_TIMEOUT
+  IS_CI ? CI_CANVAS_TIMEOUT : LOCAL_CANVAS_TIMEOUT
 
 // Wait for a 3D canvas (WebGL) to be ready with non-zero dimensions
 export async function wait_for_3d_canvas(

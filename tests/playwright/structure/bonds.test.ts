@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
-import { wait_for_3d_canvas } from '../helpers'
+import { IS_CI, wait_for_3d_canvas } from '../helpers'
 
 // Get non-white pixel count to detect if content is rendered.
 function count_non_white_pixels(buffer: Uint8Array): number {
@@ -16,7 +15,7 @@ function count_non_white_pixels(buffer: Uint8Array): number {
 
 test.describe(`Bond component`, () => {
   test.beforeEach(() => {
-    test.skip(process.env.CI === `true`, `Bonds tests timeout in CI`)
+    test.skip(IS_CI, `Bonds tests timeout in CI`)
   })
 
   test(`renders bonds and handles rotation/zoom without errors`, async ({ page }) => {

@@ -1,10 +1,10 @@
 import { expect, type Locator, test } from '@playwright/test'
-import process from 'node:process'
+import { IS_CI } from '../helpers'
 
 test.describe(`ColorBar Component Tests`, () => {
   // Navigate to the test page before each test
   test.beforeEach(async ({ page }) => {
-    test.skip(process.env.CI === `true`, `ColorBar tests timeout in CI`)
+    test.skip(IS_CI, `ColorBar tests timeout in CI`)
     await page.goto(`/test/colorbar`, { waitUntil: `networkidle` })
     await page.waitForSelector(`h1`) // Wait for page heading
   })

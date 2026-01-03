@@ -1,6 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-import process from 'node:process'
-import { get_canvas_timeout, goto_structure_test } from '../helpers'
+import { get_canvas_timeout, goto_structure_test, IS_CI } from '../helpers'
 
 async function open_export_pane(page: Page) {
   const export_toggle = page.locator(`.structure-export-toggle`).first()
@@ -16,7 +15,7 @@ async function open_export_pane(page: Page) {
 
 test.describe(`StructureExportPane Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(process.env.CI === `true`, `StructureExportPane tests timeout in CI`)
+    test.skip(IS_CI, `StructureExportPane tests timeout in CI`)
     await goto_structure_test(page)
     // Wait for the export toggle to appear (WebGL/3D rendering takes longer in CI)
     await page.waitForSelector(`.structure-export-toggle`, {

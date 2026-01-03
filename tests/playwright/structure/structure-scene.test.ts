@@ -1,8 +1,7 @@
 // deno-lint-ignore-file no-await-in-loop
 import type { XyObj } from '$lib'
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import process from 'node:process'
-import { get_canvas_timeout, wait_for_3d_canvas } from '../helpers'
+import { get_canvas_timeout, IS_CI, wait_for_3d_canvas } from '../helpers'
 
 // Cached atom position to avoid repeated searches
 let cached_atom_position: XyObj | null = null
@@ -94,7 +93,7 @@ function setup_console_monitoring(page: Page): string[] {
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     // Skip in CI - 3D canvas and camera control tests are unreliable
-    test.skip(process.env.CI === `true`, `3D scene tests are flaky in CI`)
+    test.skip(IS_CI, `3D scene tests are flaky in CI`)
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     // wait_for_3d_canvas ensures canvas is visible and has non-zero dimensions
     await wait_for_3d_canvas(page, `#test-structure`)

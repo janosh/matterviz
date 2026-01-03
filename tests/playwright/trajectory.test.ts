@@ -2,6 +2,7 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import process from 'node:process'
+import { IS_CI } from './helpers'
 
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
@@ -30,7 +31,7 @@ async function select_display_mode(trajectory: Locator, mode_name: string) {
 
 test.describe(`Trajectory Component`, () => {
   test.beforeEach(() => {
-    test.skip(process.env.CI === `true`, `Trajectory tests require heavy 3D loading`)
+    test.skip(IS_CI, `Trajectory tests require heavy 3D loading`)
   })
 
   let trajectory_viewer: Locator

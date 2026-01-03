@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
+import { IS_CI } from '../helpers'
 import { dom_click, open_info_and_controls } from './utils'
 
 test.describe(`ConvexHull2D (Binary)`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(process.env.CI === `true`, `ConvexHull2D tests timeout in CI`)
+    test.skip(IS_CI, `ConvexHull2D tests timeout in CI`)
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
     // Wait for data to load - the binary-grid only renders after loaded_data.size > 0
     // The 50s timeout accounts for downloading ~2MB of gzipped JSON files that decompress

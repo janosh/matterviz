@@ -255,6 +255,7 @@
     <!-- Base Tick Format controls -->
     <SettingsSection
       title="Tick Format"
+      data-testid="tick-format-section"
       current_values={{
         x_format: x_axis.format,
         y_format: y_axis.format,

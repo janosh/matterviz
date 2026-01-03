@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
+import { IS_CI } from '../helpers'
 
 // SVG path elements have zero-size bounding boxes, so force: true is needed for hover
 test.describe(`Bands Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Bands tests timeout in CI`)
+    test.skip(IS_CI, `Bands tests timeout in CI`)
     await page.goto(`/test/bands`, { waitUntil: `networkidle` })
   })
 

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
+import { IS_CI } from '../helpers'
 
 test.describe(`PlotLegend Component Integration Tests`, () => {
   // Define locators for the two legend instances
@@ -7,7 +7,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   const custom_style_legend_wrapper = `#custom-style-legend`
 
   test.beforeEach(async ({ page }) => {
-    test.skip(process.env.CI === `true`, `PlotLegend tests timeout in CI`)
+    test.skip(IS_CI, `PlotLegend tests timeout in CI`)
     await page.goto(`/test/plot-legend`, { waitUntil: `networkidle` })
   })
 
@@ -114,7 +114,6 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Click Alpha and wait for state update
     await legend_items.nth(0).click()
-    await page.waitForTimeout(100) // Small delay for state propagation
     await expect(legend_items.nth(0)).toHaveAttribute(`aria-pressed`, `false`, {
       timeout: 5000,
     })
@@ -124,7 +123,6 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Click Alpha again and wait for state update
     await legend_items.nth(0).click()
-    await page.waitForTimeout(100)
     await expect(legend_items.nth(0)).toHaveAttribute(`aria-pressed`, `true`, {
       timeout: 5000,
     })
@@ -138,7 +136,6 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Click Gamma and wait for state update
     await legend_items.nth(2).click()
-    await page.waitForTimeout(100)
     await expect(legend_items.nth(2)).toHaveAttribute(`aria-pressed`, `true`, {
       timeout: 5000,
     })
@@ -164,7 +161,6 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Double click Beta (index 1) to isolate
     await legend_items.nth(1).dblclick()
-    await page.waitForTimeout(150) // Allow state propagation
 
     // Wait for isolation - only Beta (index 1) should be visible
     await expect(legend_items.nth(1)).not.toHaveClass(/hidden/, { timeout: 5000 })
@@ -178,7 +174,6 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Double click Beta again to restore
     await legend_items.nth(1).dblclick()
-    await page.waitForTimeout(150)
 
     // Should restore original visibility - wait for state updates
     await expect(legend_items.nth(0)).not.toHaveClass(/hidden/, { timeout: 5000 })
@@ -192,7 +187,6 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Double click Gamma (index 2 - initially hidden) to isolate
     await legend_items.nth(2).dblclick()
-    await page.waitForTimeout(150)
 
     // Only Gamma should be visible - wait for state updates
     await expect(legend_items.nth(2)).not.toHaveClass(/hidden/, { timeout: 5000 })
@@ -206,7 +200,6 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Double click Gamma again to restore
     await legend_items.nth(2).dblclick()
-    await page.waitForTimeout(150)
 
     // Should restore previous state (0, 1, 3 visible; 2 hidden) - wait for state updates
     await expect(legend_items.nth(2)).toHaveClass(/hidden/, { timeout: 5000 })

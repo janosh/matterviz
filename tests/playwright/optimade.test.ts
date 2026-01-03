@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
+import { IS_CI } from './helpers'
 
 test.describe(`OPTIMADE route`, () => {
   // This page loads slowly due to external API mocking
@@ -7,7 +7,7 @@ test.describe(`OPTIMADE route`, () => {
 
   test.beforeEach(async ({ page }) => {
     // Skip in CI - external API mocking and 3D rendering timing is unreliable
-    test.skip(process.env.CI === `true`, `OPTIMADE tests have API timing issues in CI`)
+    test.skip(IS_CI, `OPTIMADE tests have API timing issues in CI`)
     // Set up route mocking before navigating
     // Mock structure and links requests
     await page.route(`**/v1/**`, async (route) => {

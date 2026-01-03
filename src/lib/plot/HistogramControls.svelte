@@ -145,6 +145,7 @@
 
   <SettingsSection
     title="Scale Type"
+    data-testid="scale-type-section"
     current_values={{
       x_scale_type: x_axis.scale_type,
       y_scale_type: y_axis.scale_type,

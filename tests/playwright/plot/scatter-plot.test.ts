@@ -1,7 +1,7 @@
 // deno-lint-ignore-file no-await-in-loop
 import type { XyObj } from '$lib/plot'
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import process from 'node:process'
+import { IS_CI } from '../helpers'
 
 // SHARED HELPER FUNCTIONS
 //
@@ -25,9 +25,9 @@ const click_radio = async (page: Page, selector: string): Promise<void> => {
   }, selector)
 }
 
-// Check if array values are in ascending order
+// Check if array values are in ascending order (returns false for empty arrays)
 const is_ascending = (arr: number[]): boolean =>
-  arr.every((val, idx) => idx === 0 || val >= arr[idx - 1])
+  arr.length > 0 && arr.every((val, idx) => idx === 0 || val >= arr[idx - 1])
 
 // Get tick values and calculate range
 const get_tick_range = async (
@@ -443,10 +443,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
   })
 
   test(`size_values prop with per-point styling and dynamic configuration`, async ({ page }) => {
-    test.skip(
-      process.env.CI === `true`,
-      `Size values test has numerical variations in CI`,
-    )
+    // TODO: Consider experimenting with more tolerant area-ratio thresholds
+    // so this test can eventually run in CI again
+    test.skip(IS_CI, `Size values test has numerical variations in CI`)
     // Configure retries for size compression tests which can have small numerical variations
     test.info().annotations.push({ type: `slow`, description: `Size calculation test` })
 
@@ -482,7 +481,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       expect(area_0).toBeGreaterThan(0)
       expect(area_mid).toBeGreaterThan(area_0 * 0.9) // Allow 10% tolerance
       expect(area_last).toBeGreaterThan(area_mid * 0.9) // Allow 10% tolerance
-      expect(area_last / area_0).toBeGreaterThan(2) // Expect at least 2x growth (relaxed from 4x)
+      expect(area_last / area_0).toBeGreaterThan(2.5) // Expect at least 2.5x growth
     }).toPass({ timeout: 10000 })
 
     // Test 2: Verify size_scale.radius_range changes affect marker sizes
@@ -863,7 +862,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   // LABEL AUTO-PLACEMENT TESTS
 
   test(`label auto-placement repositions dense labels but preserves sparse ones`, async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Label placement varies in CI`)
+    test.skip(IS_CI, `Label placement varies in CI`)
     const section = page.locator(`#label-auto-placement-test`)
     const plot_locator = section.locator(`.scatter`)
     const checkbox = section.getByRole(`checkbox`, { name: `Enable Auto Placement` })
@@ -2077,7 +2076,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   })
 
   test(`improved label placement prevents overlap for isolated and clustered markers`, async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Label placement varies in CI`)
+    test.skip(IS_CI, `Label placement varies in CI`)
     const section = page.locator(`#label-auto-placement-test`)
     const plot_locator = section.locator(`.scatter`)
     const checkbox = section.getByRole(`checkbox`, { name: `Enable Auto Placement` })

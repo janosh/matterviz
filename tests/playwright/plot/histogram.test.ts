@@ -1,7 +1,11 @@
 // deno-lint-ignore-file no-await-in-loop
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { get_axis_range_inputs, set_input_value, set_range_input } from '../helpers'
-import process from 'node:process'
+import {
+  get_axis_range_inputs,
+  IS_CI,
+  set_input_value,
+  set_range_input,
+} from '../helpers'
 
 // Click a radio button within a scoped container (more specific than page-wide selectors)
 const click_radio_in_section = async (
@@ -77,7 +81,7 @@ const get_histogram_tick_range = async (axis_locator: Locator) => {
 
 test.describe(`Histogram Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Histogram tests timeout in CI`)
+    test.skip(IS_CI, `Histogram tests timeout in CI`)
     await page.goto(`/test/histogram`, { waitUntil: `networkidle` })
   })
 
@@ -777,7 +781,7 @@ test.describe(`Histogram Component Tests`, () => {
     await x_grid_checkbox.check()
 
     // Test scale type selects - scope to Scale Type section to avoid matching other X: labels
-    const scale_type_section = control_pane.locator(`h4:has-text("Scale Type") + section`)
+    const scale_type_section = control_pane.locator(`[data-testid="scale-type-section"]`)
     const x_scale_label = scale_type_section.locator(`label:has-text("X:")`)
     await expect(x_scale_label).toBeVisible()
     const x_scale_select = x_scale_label.locator(`select`)
@@ -786,7 +790,7 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test format inputs - scope to Tick Format section to avoid matching other X-axis labels
     const tick_format_section = control_pane.locator(
-      `h4:has-text("Tick Format") + section`,
+      `[data-testid="tick-format-section"]`,
     )
     const x_axis_format_label = tick_format_section.locator(`label:has-text("X-axis:")`)
     await expect(x_axis_format_label).toBeVisible()
@@ -1416,14 +1420,14 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Verify zoom rectangle appears during drag
     const zoom_rect = histogram.locator(`.zoom-rect`)
-    await expect(zoom_rect).toBeVisible({ timeout: 5000 })
+    await expect(zoom_rect).toBeVisible({ timeout: 2000 })
 
     // Complete drag operation
     await page.mouse.up()
 
     // Test double-click reset
     await histogram.dblclick()
-    await expect(zoom_rect).toBeHidden({ timeout: 5000 })
+    await expect(zoom_rect).toBeHidden({ timeout: 2000 })
   })
 
   test(`one-sided axis range pins via controls`, async ({ page }) => {

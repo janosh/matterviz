@@ -1,10 +1,10 @@
 // E2E tests for Fermi surface visualization page
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
+import { IS_CI } from './helpers'
 
 test.describe(`Fermi Surface Demo Page`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Fermi surface tests timeout in CI`)
+    test.skip(IS_CI, `Fermi surface tests timeout in CI`)
     await page.goto(`/reciprocal/fermi-surface`, { waitUntil: `networkidle` })
     // Wait for page to render with the h1 visible
     await expect(page.locator(`h1`)).toBeVisible()
