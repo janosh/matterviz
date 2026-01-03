@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FilePicker } from '$lib'
+  import FilePicker from '$lib/FilePicker.svelte'
   import { get_trajectory_type, trajectory_files } from '$site/trajectories'
   import { Trajectory, type TrajHandlerData } from 'matterviz/trajectory'
 

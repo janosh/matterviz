@@ -6,7 +6,8 @@
     ElementSymbol,
     UserContentProps,
   } from '$lib'
-  import { DEFAULTS, Icon, is_unary_entry } from '$lib'
+  import { DEFAULTS, is_unary_entry } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import type { D3InterpolateName } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { symbol_map } from '$lib/labels'

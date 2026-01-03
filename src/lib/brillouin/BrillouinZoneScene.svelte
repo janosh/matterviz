@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib'
+  import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
-  import { Arrow, Cylinder } from '$lib/structure'
+  import Arrow from '$lib/structure/Arrow.svelte'
+  import Cylinder from '$lib/structure/Cylinder.svelte'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'

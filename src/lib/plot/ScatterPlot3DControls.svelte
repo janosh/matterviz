@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SettingsSection } from '$lib'
+  import { SettingsSection } from '$lib/layout'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type {
     AxisConfig3D,

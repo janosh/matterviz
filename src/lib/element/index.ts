@@ -1,3 +1,4 @@
+export type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element/types'
 export { default as BohrAtom } from './BohrAtom.svelte'
 export { default as element_data } from './data'
 export { default as ElementHeading } from './ElementHeading.svelte'

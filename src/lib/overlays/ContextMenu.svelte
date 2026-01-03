@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Icon, type IconName } from '$lib'
+  import Icon from '$lib/Icon.svelte'
+  import type { IconName } from '$lib/icons'
   import type { HTMLAttributes } from 'svelte/elements'
 
   interface MenuOption {

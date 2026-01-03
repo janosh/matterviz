@@ -1,4 +1,4 @@
-import type { ChemicalElement, ElementCategory } from '$lib'
+import type { ChemicalElement, ElementCategory } from '$lib/element/types'
 import { format } from 'd3-format'
 import type { SymbolType } from 'd3-shape'
 import * as d3_symbols from 'd3-shape'

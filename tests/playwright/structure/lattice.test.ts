@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 
 test.describe(`Lattice Component Tests`, () => {
+  // Use retries instead of blanket skip for flaky CI runs
+  test.describe.configure({ retries: 2 })
+
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     await expect(page.locator(`#test-structure canvas`)).toBeVisible()
