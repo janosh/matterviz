@@ -126,20 +126,16 @@ test.describe(`Periodic Table`, () => {
 
     test(`shows custom tooltip with heatmap data when heatmap is selected`, async ({ page }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
-      await page.waitForSelector(`div.multiselect`)
+      const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
+      await expect(multiselect).toBeVisible()
 
       // Select a heatmap property
-      await page.click(`div.multiselect`)
+      await multiselect.click({ force: true })
 
-      // Try to find the atomic mass option more robustly
-      const atomic_mass_option = page
-        .locator(`[role="option"]`)
-        .filter({ hasText: /atomic.*mass/i })
-      if ((await atomic_mass_option.count()) > 0) {
-        await atomic_mass_option.first().click()
-      } else {
-        await page.click(`text=Atomic mass`)
-      }
+      const option_list = multiselect.locator(`ul.options`)
+      await expect(option_list).toBeVisible({ timeout: 5000 })
+      const first_option = option_list.locator(`li`).first()
+      await first_option.click()
 
       await get_element_tile(page, `C`).hover()
 

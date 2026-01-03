@@ -2102,6 +2102,13 @@ test.describe(`ScatterPlot Component Tests`, () => {
       return !moved
     }, { timeout: 2000 })
 
+    // Calculate viewport-relative threshold (similar to legend positioning test)
+    const plot_bbox = await plot_locator.boundingBox()
+    const plot_diagonal = plot_bbox
+      ? Math.sqrt(plot_bbox.width ** 2 + plot_bbox.height ** 2)
+      : 500
+    const min_separation = plot_diagonal * 0.02 // 2% of diagonal
+
     // Get label elements and their positions
     const label_elements = await plot_locator.locator(`g[data-series-id] text`).all()
     const label_data = await Promise.all(
@@ -2150,8 +2157,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       }
 
       // Sparse labels should be at least some distance from any marker
-      // Using 5px threshold since bboxes include padding
-      expect(min_distance).toBeGreaterThan(5)
+      expect(min_distance).toBeGreaterThan(min_separation)
     }
 
     // For clustered labels (dense labels), verify they don't overlap each other significantly
@@ -2174,8 +2180,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
         const distance = Math.sqrt(dx * dx + dy * dy)
 
         // Labels should have some minimum separation
-        // Even with improved collision, some overlap may occur for dense clusters
-        expect(distance).toBeGreaterThan(5)
+        expect(distance).toBeGreaterThan(min_separation)
       }
     }
   })
