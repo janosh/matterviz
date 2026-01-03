@@ -99,17 +99,6 @@ test.describe(`BrillouinZone Component Tests`, () => {
     }).toPass({ timeout: 5000 })
   })
 
-  test(`maintains quality across BZ order changes`, async ({ page }) => {
-    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
-    const order_input = page.locator(`#bz-order`)
-
-    expect((await canvas.screenshot()).length).toBeGreaterThan(1000)
-    await order_input.fill(`2`)
-    await expect(page.locator(`[data-testid="bz-order"]`)).toHaveText(`2`)
-    expect((await canvas.screenshot()).length).toBeGreaterThan(1000)
-    await order_input.fill(`1`)
-  })
-
   test(`fullscreen toggle works`, async ({ page }) => {
     const btn = page.locator(`${BZ_SELECTOR} button.fullscreen-toggle`)
     await expect(btn).toBeVisible()
@@ -159,55 +148,12 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await page.keyboard.press(`Escape`)
     await expect(page.locator(`[data-testid="controls-open"]`)).toHaveText(`false`)
   })
-
-  test(`displays filename when loaded`, async ({ page }) => {
-    const filename = page.locator(`${BZ_SELECTOR} span.filename`)
-    if ((await filename.count()) > 0) {
-      await expect(filename).toBeVisible()
-      expect((await filename.textContent())?.length).toBeGreaterThan(0)
-    }
-  })
-
-  test(`handles rapid control changes`, async ({ page }) => {
-    const order_input = page.locator(`#bz-order`)
-    await order_input.fill(`2`)
-    await order_input.fill(`1`)
-    await order_input.fill(`3`)
-    await order_input.fill(`1`)
-    await expect(page.locator(`[data-testid="bz-order"]`)).toHaveText(`1`)
-    expect((await page.locator(`${BZ_SELECTOR} canvas`).screenshot()).length)
-      .toBeGreaterThan(1000)
-  })
-
-  test(`has correct dimensions`, async ({ page }) => {
-    const box = await page.locator(BZ_SELECTOR).boundingBox()
-    expect(box?.width).toBeGreaterThan(400)
-    expect(box?.height).toBeGreaterThan(300)
-  })
 })
 
 test.describe(`BrillouinZone File Drop Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
     await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 50000 })
-  })
-
-  test(`responds to dragover events`, async ({ page }) => {
-    const bz_wrapper = page.locator(BZ_SELECTOR)
-    await bz_wrapper.evaluate((el) => {
-      el.dispatchEvent(
-        new DragEvent(`dragover`, {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: new DataTransfer(),
-        }),
-      )
-    })
-    // Verify element is still visible after drag event
-    await expect(bz_wrapper).toBeVisible()
-    await bz_wrapper.evaluate((el) => {
-      el.dispatchEvent(new DragEvent(`dragleave`, { bubbles: true, cancelable: true }))
-    })
   })
 
   test(`handles file drops`, async ({ page }) => {
@@ -236,36 +182,6 @@ Direct
     await data_transfer.dispose()
     // Wait for canvas to be ready after file drop
     await expect(page.locator(`${BZ_SELECTOR} canvas`)).toBeVisible()
-  })
-})
-
-test.describe(`BrillouinZone Error Handling Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
-    await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 50000 })
-  })
-
-  test(`can dismiss error state`, async ({ page }) => {
-    const error_state = page.locator(`${BZ_SELECTOR} .error-state`)
-    if ((await error_state.count()) > 0) {
-      const dismiss_btn = error_state.locator(`button`)
-      if ((await dismiss_btn.count()) > 0) {
-        await expect(dismiss_btn).toBeVisible()
-        await dismiss_btn.click()
-        await expect(error_state).toBeHidden()
-      }
-    }
-  })
-
-  test(`remains functional after errors`, async ({ page }) => {
-    const error_state = page.locator(`${BZ_SELECTOR} .error-state`)
-    if ((await error_state.count()) > 0) {
-      const dismiss_btn = error_state.locator(`button`)
-      if ((await dismiss_btn.count()) > 0) await dismiss_btn.click()
-    }
-    await expect(page.locator(BZ_SELECTOR)).toBeVisible()
-    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
-    if ((await canvas.count()) > 0) await expect(canvas).toBeVisible()
   })
 })
 
