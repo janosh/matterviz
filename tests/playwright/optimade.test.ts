@@ -110,8 +110,13 @@ test.describe(`OPTIMADE route`, () => {
             },
           })
         }
-        // Invalid/unknown structure
-        return route.fulfill({ json: { data: null } })
+        // Invalid/unknown structure - return OPTIMADE-compliant error response
+        return route.fulfill({
+          status: 404,
+          json: {
+            errors: [{ detail: `Structure not found`, status: `404` }],
+          },
+        })
       }
 
       // Provider-specific links endpoints
