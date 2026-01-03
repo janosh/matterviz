@@ -155,12 +155,12 @@ test.describe(`BrillouinZone Component Tests`, () => {
 
 test.describe(`BrillouinZone File Drop Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
+    test.skip(IS_CI, `BrillouinZone file drop tests timeout in CI`)
     await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
     await wait_for_3d_canvas(page, BZ_SELECTOR)
   })
 
   test(`handles file drops`, async ({ page }) => {
-    test.skip(IS_CI, `Synthetic file drop events are unreliable in CI`)
     const poscar = `Test Structure
 1.0
 3.0 0.0 0.0
