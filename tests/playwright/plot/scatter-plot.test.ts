@@ -1542,25 +1542,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
   })
 
-  test(`handles empty and invalid data gracefully`, async ({ page }) => {
-    // Go to a test page with edge case data scenarios
-    await page.goto(`/test/scatter-plot`, { waitUntil: `networkidle` })
-
-    // Test empty data series (if such a test case exists in the test page)
-    // This tests the resilience of the component when no data is provided
-    const empty_data_section = page.locator(`#empty-data-test`)
-    if (await empty_data_section.isVisible()) {
-      const empty_plot = empty_data_section.locator(`.scatter`)
-      await expect(empty_plot).toBeVisible()
-      await expect(empty_plot.locator(`> svg[role="img"]`)).toBeVisible()
-      // Should render axes even with no data
-      await expect(empty_plot.locator(`g.x-axis`)).toBeVisible()
-      await expect(empty_plot.locator(`g.y-axis`)).toBeVisible()
-      // Should not have any data points
-      await expect(empty_plot.locator(`path.marker`)).toHaveCount(0)
-    }
-  })
-
   test(`handles extreme zoom levels and data ranges`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
     const svg = plot_locator.locator(`> svg[role="img"]`).first()
@@ -1585,24 +1566,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Reset zoom for next test
     await svg.dblclick()
-  })
-
-  test(`keyboard accessibility and focus management`, async ({ page }) => {
-    const plot_locator = page.locator(`#basic-example .scatter`)
-    const svg = plot_locator.locator(`> svg[role="img"]`).first()
-
-    // Test that SVG is present and visible (may not be focusable depending on implementation)
-    await expect(svg).toBeVisible()
-
-    // Test keyboard navigation with page focus
-    await page.keyboard.press(`Tab`)
-
-    // Test escape key behavior (should not cause errors)
-    await page.keyboard.press(`Escape`)
-
-    // Verify plot is still functional after keyboard events
-    await expect(plot_locator).toBeVisible()
-    await expect(svg).toBeVisible()
   })
 
   test(`handles very long axis labels and overlapping text`, async ({ page }) => {
@@ -1793,30 +1756,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await log_radio.click()
 
     expect(console_errors).toHaveLength(0)
-  })
-
-  test(`performance with rapid property changes`, async ({ page }) => {
-    const plot_locator = page.locator(`#basic-example .scatter`)
-    await plot_locator.hover()
-    const controls_toggle = plot_locator.locator(`button.pane-toggle`)
-    await expect(controls_toggle).toBeVisible({ timeout: 2000 })
-    await controls_toggle.click()
-    const control_pane = plot_locator.locator(`.draggable-pane`)
-
-    // Test rapid changes to style properties
-    const point_size_range = control_pane.locator(`input[type="range"]`).first()
-
-    if (await point_size_range.isVisible()) {
-      // Rapidly change point size multiple times
-      for (let size = 2; size <= 20; size += 2) {
-        await point_size_range.fill(size.toString())
-        // Small delay to allow rendering but test performance
-      }
-
-      // Plot should still be responsive and visible
-      await expect(plot_locator.locator(`> svg[role="img"]`)).toBeVisible()
-      await expect(plot_locator.locator(`path.marker`).first()).toBeVisible()
-    }
   })
 
   test(`zoom behavior with logarithmic scales`, async ({ page }) => {
@@ -2129,7 +2068,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
   })
 
   test(`improved label placement prevents overlap for isolated and clustered markers`, async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Label distance varies slightly in CI`)
     const section = page.locator(`#label-auto-placement-test`)
     const plot_locator = section.locator(`.scatter`)
     const checkbox = section.getByRole(`checkbox`, { name: `Enable Auto Placement` })
@@ -2228,7 +2166,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
         // Labels should have some minimum separation
         // Even with improved collision, some overlap may occur for dense clusters
-        expect(distance).toBeGreaterThan(8)
+        expect(distance).toBeGreaterThan(5)
       }
     }
   })

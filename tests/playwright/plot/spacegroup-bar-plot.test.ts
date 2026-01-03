@@ -1,6 +1,5 @@
 // deno-lint-ignore-file no-await-in-loop
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
 
 test.describe(`SpacegroupBarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -115,12 +114,11 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
   })
 
   test(`orientation switch flips bar orientation`, async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Bar rendering timing in CI`)
     // Find section with orientation controls
     const vertical_radio = page.locator(`input[value="vertical"]`).first()
     const horizontal_radio = page.locator(`input[value="horizontal"]`).first()
 
-    await expect(vertical_radio).toBeVisible()
+    await expect(vertical_radio).toBeVisible({ timeout: 10000 })
     await expect(horizontal_radio).toBeVisible()
 
     // Find the associated plot
@@ -128,7 +126,8 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     await expect(plot).toBeVisible()
 
     const bars = plot.locator(`svg path[role="button"]`)
-    await expect(bars.first()).toBeVisible()
+    // Wait for bars to render with extended timeout for CI
+    await expect(bars.first()).toBeVisible({ timeout: 10000 })
 
     // Measure initial orientation (should be vertical)
     const before_bars = await bars.all()

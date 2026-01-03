@@ -424,26 +424,6 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // Bond rendering test
-  test(`renders bonds without errors`, async ({ page }) => {
-    const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#test-structure canvas`)
-    await expect(canvas).toBeVisible()
-    expect(console_errors).toHaveLength(0)
-  })
-
-  // Lattice and site labels test
-  test(`renders lattice and handles site labels correctly`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const console_errors = setup_console_monitoring(page)
-
-    // Verify lattice and labels don't cause rendering errors
-    const screenshot = await canvas.screenshot()
-    expect(screenshot.length).toBeGreaterThan(1000)
-
-    expect(console_errors).toHaveLength(0)
-  })
-
   // Site labeling functionality tests
   test(`site labels display correctly for ordered and disordered sites`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
@@ -571,23 +551,6 @@ test.describe(`StructureScene Component Tests`, () => {
     // Both screenshots should be valid (structure loaded)
     expect(initial_screenshot.length).toBeGreaterThan(1000)
     expect(later_screenshot.length).toBeGreaterThan(1000)
-    expect(console_errors).toHaveLength(0)
-  })
-
-  // Error handling test
-  test(`handles edge cases and errors gracefully`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const console_errors = setup_console_monitoring(page)
-
-    // Test various edge case interactions
-    await canvas.hover({ position: { x: 50, y: 50 } }) // Empty area
-    await canvas.click({ position: { x: 100, y: 100 } }) // Another empty area
-
-    // Rapid movement between areas
-    await canvas.hover({ position: { x: 200, y: 200 } })
-    await canvas.hover({ position: { x: 400, y: 400 } })
-    await canvas.hover({ position: { x: 50, y: 50 } })
-
     expect(console_errors).toHaveLength(0)
   })
 

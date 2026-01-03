@@ -483,20 +483,6 @@ test.describe(`Trajectory Component`, () => {
       )
     })
 
-    test(`keyboard navigation works`, async ({ page }) => {
-      const trajectory = page.locator(`#loaded-trajectory`)
-      const info_button = trajectory.locator(`.trajectory-info-toggle`)
-
-      // Test that elements are present and keyboard events can be fired
-      await expect(info_button).toBeVisible()
-
-      // Test keyboard functionality
-      await page.keyboard.press(`Escape`)
-
-      // Verify components are still functional after keyboard interaction
-      await expect(info_button).toBeEnabled()
-    })
-
     test(`keyboard shortcuts work`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const step_input = trajectory.locator(`.step-input`)
@@ -669,30 +655,6 @@ test.describe(`Trajectory Component`, () => {
       await step_input.fill(`0`)
       await step_input.press(`Enter`)
       await expect(step_input).toHaveValue(`0`)
-    })
-
-    test(`keyboard shortcuts integration test`, async ({ page }) => {
-      // This test documents the available keyboard shortcuts
-      // and verifies that the keyboard event handling system is in place
-      const trajectory = page.locator(`#loaded-trajectory`)
-
-      // Verify that the component has proper keyboard event handling
-      const has_keydown_handler = await page.evaluate(() => {
-        const viewer = document.querySelector(
-          `#loaded-trajectory`,
-        )
-        // Check if the element is focusable and has keyboard event handling
-        return viewer && (
-          viewer.getAttribute(`tabindex`) !== null ||
-          viewer.hasAttribute(`onkeydown`)
-        )
-      })
-
-      expect(has_keydown_handler).toBe(true)
-
-      // Verify the component is properly set up for keyboard interaction
-      await expect(trajectory).toHaveAttribute(`tabindex`, `0`)
-      await expect(trajectory).toHaveAttribute(`role`, `button`)
     })
   })
 

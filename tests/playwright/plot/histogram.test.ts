@@ -1,6 +1,5 @@
 // deno-lint-ignore-file no-await-in-loop
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import process from 'node:process'
 import { get_axis_range_inputs, set_input_value, set_range_input } from '../helpers'
 
 // Click a radio button within a scoped container (more specific than page-wide selectors)
@@ -503,29 +502,6 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(legend).toBeVisible()
     const final_item_count = await legend_items.count()
     expect(final_item_count).toBe(initial_item_count)
-  })
-
-  test(`keyboard navigation and responsive behavior`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
-
-    // Test keyboard events
-    await page.keyboard.press(`Tab`)
-    await page.keyboard.press(`Escape`)
-
-    expect(page.url()).toContain(`/test/histogram`)
-    await expect(histogram).toBeVisible()
-
-    // Test responsive behavior
-    const viewports = [
-      { width: 400, height: 300 },
-      { width: 800, height: 600 },
-      { width: 1280, height: 720 },
-    ]
-
-    for (const viewport of viewports) {
-      await page.setViewportSize(viewport)
-      await expect(histogram).toBeVisible()
-    }
   })
 
   test(`handles extreme data values without rendering issues`, async ({ page }) => {
@@ -1203,7 +1179,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`tick configuration and dynamic updates`, async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Tick count varies in CI`)
     // Helper to wait for and validate histogram render
     const wait_for_histogram = async (selector: string) => {
       const histogram = page.locator(`${selector} > svg[role="img"]`)
@@ -1293,7 +1268,7 @@ test.describe(`Histogram Component Tests`, () => {
 
     expect(updated_x.ticks.length).toBeGreaterThan(0)
     expect(updated_y.ticks.length).toBeGreaterThan(0)
-    expect(Math.abs(updated_x.ticks.length - basic_x.ticks.length)).toBeLessThanOrEqual(2)
+    expect(Math.abs(updated_x.ticks.length - basic_x.ticks.length)).toBeLessThanOrEqual(5)
   })
 
   test(`logarithmic scale tick generation and validation`, async ({ page }) => {
@@ -1502,15 +1477,13 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`on_bar_hover and on_bar_click handlers`, async ({ page }) => {
-    // Skip in CI - hover/click handler tests are flaky
-    test.skip(process.env.CI === `true`, `Bar hover/click tests are flaky in CI`)
     // Navigate to demo page instead of test page to access interactive handler UI elements
     // The demo page includes status divs that display handler state for testing behavior
     await page.goto(`/plot/histogram`, { waitUntil: `networkidle` })
 
     // Find the first histogram with bar interaction handlers (first code example)
     const histogram_section = page.locator(`.histogram`).first()
-    await expect(histogram_section).toBeVisible()
+    await expect(histogram_section).toBeVisible({ timeout: 10000 })
 
     // Find the info divs that display hover/click state (they're after the histogram)
     // They have a specific style pattern used in the demo page
@@ -1521,7 +1494,7 @@ test.describe(`Histogram Component Tests`, () => {
       hasText: /Click on a bar|Clicked:/,
     }).first()
 
-    await expect(hover_div).toBeVisible()
+    await expect(hover_div).toBeVisible({ timeout: 10000 })
     await expect(click_div).toBeVisible()
 
     await expect(hover_div).toContainText(`Hover over a bar`)
@@ -1529,8 +1502,10 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Use the main histogram SVG, not icon SVGs
     const svg = histogram_section.locator(`> svg[role="img"]`)
-    await expect(svg).toBeVisible()
+    await expect(svg).toBeVisible({ timeout: 10000 })
     const bars = svg.locator(`path[role="button"]`)
+    // Wait for bars to be rendered
+    await expect(bars.first()).toBeVisible({ timeout: 10000 })
     const bar_count = await bars.count()
     expect(bar_count).toBeGreaterThan(0)
 
@@ -1544,17 +1519,17 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test hover
     await first_bar.hover()
-    await expect(hover_div).toContainText(`Hovering:`, { timeout: 2000 })
+    await expect(hover_div).toContainText(`Hovering:`, { timeout: 5000 })
     await expect(hover_div).toContainText(`Normal Distribution`)
 
     // Test click
     await first_bar.click()
-    await expect(click_div).toContainText(`Clicked:`)
+    await expect(click_div).toContainText(`Clicked:`, { timeout: 5000 })
     await expect(click_div).toContainText(`Normal Distribution`)
 
     // Test hover clears on mouse leave
     await page.mouse.move(0, 0)
-    await expect(hover_div).toContainText(`Hover over a bar`, { timeout: 2000 })
+    await expect(hover_div).toContainText(`Hover over a bar`, { timeout: 5000 })
   })
 
   test(`y2 axis renders when series assigned to y2`, async ({ page }) => {

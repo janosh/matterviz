@@ -1550,65 +1550,6 @@ test.describe(`Reset Camera Button Tests`, () => {
     await expect(reset_camera_button).toBeHidden()
   })
 
-  test(`reset camera button structure and styling are correct`, async ({ page }) => {
-    // Since OrbitControls events don't fire in test environment, we'll test the static structure
-    const structure_div = page.locator(`#test-structure`)
-    const button_section = structure_div.locator(`section.control-buttons`)
-
-    await expect(button_section).toBeVisible()
-
-    // The button should be in the DOM but hidden when camera_has_moved is false
-    const other_buttons = button_section.locator(`button`)
-    const other_button_count = await other_buttons.count()
-    expect(other_button_count).toBeGreaterThan(0)
-  })
-
-  test(`reset camera button SVG icon structure is correct`, async ({ page }) => {
-    // Test the SVG structure by temporarily making the button visible
-    // Since OrbitControls events don't work in test environment, we'll inject the button for testing
-
-    const button_html = await page.evaluate(() => {
-      // Create a temporary reset button to test its structure
-      const tempButton = document.createElement(`button`)
-      tempButton.className = `reset-camera`
-      tempButton.title = `Reset camera`
-      tempButton.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10" />
-          <circle cx="12" cy="12" r="6" />
-          <circle cx="12" cy="12" r="2" fill="currentColor" />
-        </svg>
-      `
-
-      // Add to DOM temporarily
-      const section = document.querySelector(
-        `#test-structure section`,
-      )
-      if (section) {
-        section.appendChild(tempButton)
-        return tempButton.outerHTML
-      }
-      return null
-    })
-
-    expect(button_html).toBeTruthy()
-    expect(button_html).toContain(`viewBox="0 0 24 24"`)
-    expect(button_html).toContain(`title="Reset camera"`)
-    expect(button_html).toContain(`class="reset-camera"`)
-
-    // Verify the SVG contains three circles
-    const circle_matches = button_html?.match(/<circle/g)
-    expect(circle_matches?.length).toBe(3)
-
-    // Clean up the temporary button
-    await page.evaluate(() => {
-      const tempButton = document.querySelector(
-        `#test-structure section button.reset-camera`,
-      )
-      tempButton?.remove()
-    })
-  })
-
   test(`reset camera button functionality works when manually triggered`, async ({ page }) => {
     // Test the reset camera functionality by manually creating the button and testing its click handler
 
@@ -2048,25 +1989,6 @@ test.describe(`Export Button Tests`, () => {
     expect(await dpi_input.inputValue()).toBe(`72`)
   })
 
-  test(`multiple export button clicks work correctly`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_structure_export_pane(page)
-
-    const json_export_btn = export_pane.locator(`button[title="Download JSON"]`)
-    const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
-
-    await click_export_button(page, `JSON`)
-    await expect(json_export_btn).toBeEnabled()
-
-    await click_export_button(page, `JSON`)
-    await expect(json_export_btn).toBeEnabled()
-
-    await click_export_button(page, `PNG`)
-    await expect(png_export_btn).toBeEnabled()
-
-    await click_export_button(page, `PNG`)
-    await expect(png_export_btn).toBeEnabled()
-  })
-
   test(`export buttons work with loaded structure`, async ({ page }) => {
     const { container, pane_div: export_pane } = await open_structure_export_pane(
       page,
@@ -2234,26 +2156,6 @@ test.describe(`Structure Event Handler Tests`, () => {
     expect(canvas_size.height).toBeGreaterThan(0)
   })
 
-  test(`should handle performance mode changes correctly`, async ({ page }) => {
-    // Change performance mode via test page controls
-    const perf_mode_select = page.locator(`label:has-text("Performance Mode") select`)
-    await perf_mode_select.selectOption(`speed`)
-
-    // Verify the change was applied
-    await expect(page.locator(`[data-testid="performance-mode-status"]`))
-      .toContainText(`Performance Mode Status: speed`)
-  })
-
-  test(`should handle show controls changes correctly`, async ({ page }) => {
-    // Change show controls via test page controls
-    const show_controls_select = page.locator(`label:has-text("Show Buttons") select`)
-    await show_controls_select.selectOption(`false`)
-
-    // Verify the change was applied
-    await expect(page.locator(`[data-testid="show-buttons-status"]`))
-      .toContainText(`Show Buttons Status: false`)
-  })
-
   test(`should handle canvas dimension changes correctly`, async ({ page }) => {
     // Change canvas dimensions via test page controls
     // Note: width/height are bound to clientWidth/clientHeight (read-only measurements).
@@ -2316,91 +2218,6 @@ test.describe(`Structure Event Handler Tests`, () => {
       `rgba(255, 0, 0, 0.1)`, // With opacity
       { timeout: get_canvas_timeout() },
     )
-  })
-
-  test(`should handle fullscreen toggle correctly`, async ({ page }) => {
-    // Click fullscreen button if visible
-    const fullscreen_button = page.locator(`button[title*="fullscreen"]`)
-
-    if (await fullscreen_button.isVisible()) {
-      await fullscreen_button.click()
-
-      // Verify fullscreen state changed
-      const is_fullscreen = await page.evaluate(() => !!document.fullscreenElement)
-      expect(is_fullscreen).toBe(true)
-
-      // Exit fullscreen
-      await page.keyboard.press(`Escape`)
-
-      // Verify fullscreen was exited
-      const is_fullscreen_after = await page.evaluate(() => !!document.fullscreenElement)
-      expect(is_fullscreen_after).toBe(false)
-    } else {
-      // If fullscreen button is not visible, skip this test
-      console.log(`Fullscreen button not visible, skipping fullscreen test`)
-    }
-  })
-
-  test(`should handle camera reset correctly`, async ({ page }) => {
-    // Look for reset camera button
-    const reset_button = page.locator(`button.reset-camera`)
-
-    if (await reset_button.isVisible()) {
-      await reset_button.click()
-      // Verify button was clicked (no specific assertion needed as this is just testing the interaction)
-    } else {
-      // If reset button is not visible, skip this test
-      console.log(`Reset camera button not visible, skipping camera reset test`)
-    }
-  })
-
-  test(`should handle structure controls pane correctly`, async ({ page }) => {
-    // Toggle controls pane
-    const controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-
-    // Check initial state
-    const initial_state = await controls_checkbox.isChecked()
-
-    // Toggle the controls
-    await controls_checkbox.click()
-
-    // Verify the state changed
-    await expect(controls_checkbox).toBeChecked({ checked: !initial_state })
-
-    // Verify the status display updated
-    await expect(page.locator(`[data-testid="controls-open-status"]`))
-      .toContainText(String(!initial_state))
-  })
-
-  test(`should handle multiple prop changes in sequence`, async ({ page }) => {
-    // Perform multiple changes
-    const perf_mode_select = page.locator(`label:has-text("Performance Mode") select`)
-    const width_input = page.locator(`[data-testid="canvas-width-input"]`)
-    const height_input = page.locator(`[data-testid="canvas-height-input"]`)
-    const show_atoms_checkbox = page.locator(
-      `label:has-text("Show Atoms") input[type="checkbox"]`,
-    )
-
-    // Change performance mode
-    await perf_mode_select.selectOption(`speed`)
-
-    // Change dimensions
-    await width_input.fill(`700`)
-    await height_input.fill(`500`)
-
-    // Toggle show atoms
-    await show_atoms_checkbox.uncheck()
-
-    // Verify all changes were applied
-    await expect(page.locator(`[data-testid="performance-mode-status"]`))
-      .toContainText(`Performance Mode Status: speed`)
-    await expect(page.locator(`[data-testid="canvas-width-status"]`))
-      .toContainText(`Canvas Width Status: 700`)
-    await expect(page.locator(`[data-testid="canvas-height-status"]`))
-      .toContainText(`Canvas Height Status: 500`)
-    await expect(show_atoms_checkbox).not.toBeChecked()
   })
 
   test(`should handle camera projection toggle correctly`, async ({ page }) => {

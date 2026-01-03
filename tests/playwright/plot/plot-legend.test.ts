@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
 
 test.describe(`PlotLegend Component Integration Tests`, () => {
   // Define locators for the two legend instances
@@ -7,9 +6,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   const custom_style_legend_wrapper = `#custom-style-legend`
 
   test.beforeEach(async ({ page }) => {
-    // Skip in CI - click/double-click interactions are flaky
-    test.skip(process.env.CI === `true`, `Legend click tests are flaky in CI`)
-    await page.goto(`/test/plot-legend`)
+    await page.goto(`/test/plot-legend`, { waitUntil: `networkidle` })
   })
 
   test(`should render legend items correctly based on initial data`, async ({ page }) => {
@@ -107,7 +104,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     const last_toggled_tracker = page.locator(`[data-testid="last-toggled"]`)
 
     // Wait for legend items to be fully rendered
-    await expect(legend_items.first()).toBeVisible({ timeout: 5000 })
+    await expect(legend_items.first()).toBeVisible({ timeout: 10000 })
 
     // Item 0 (Alpha) starts visible
     await expect(legend_items.nth(0)).not.toHaveClass(/hidden/)
@@ -115,20 +112,22 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Click Alpha and wait for state update
     await legend_items.nth(0).click()
+    await page.waitForTimeout(100) // Small delay for state propagation
     await expect(legend_items.nth(0)).toHaveAttribute(`aria-pressed`, `false`, {
-      timeout: 3000,
+      timeout: 5000,
     })
     await expect(last_toggled_tracker).toHaveText(`Last Toggled Index: 0`, {
-      timeout: 3000,
+      timeout: 5000,
     })
 
     // Click Alpha again and wait for state update
     await legend_items.nth(0).click()
+    await page.waitForTimeout(100)
     await expect(legend_items.nth(0)).toHaveAttribute(`aria-pressed`, `true`, {
-      timeout: 3000,
+      timeout: 5000,
     })
     await expect(last_toggled_tracker).toHaveText(`Last Toggled Index: 0`, {
-      timeout: 3000,
+      timeout: 5000,
     })
 
     // Item 2 (Gamma) starts hidden
@@ -137,11 +136,12 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Click Gamma and wait for state update
     await legend_items.nth(2).click()
+    await page.waitForTimeout(100)
     await expect(legend_items.nth(2)).toHaveAttribute(`aria-pressed`, `true`, {
-      timeout: 3000,
+      timeout: 5000,
     })
     await expect(last_toggled_tracker).toHaveText(`Last Toggled Index: 2`, {
-      timeout: 3000,
+      timeout: 5000,
     })
   })
 
@@ -152,7 +152,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     const last_isolated_tracker = page.locator(`[data-testid="last-isolated"]`)
 
     // Wait for legend items to be fully rendered
-    await expect(legend_items.first()).toBeVisible({ timeout: 5000 })
+    await expect(legend_items.first()).toBeVisible({ timeout: 10000 })
 
     // Initial state: 0, 1, 3, 4 visible; 2 hidden
     await expect(legend_items.nth(0)).not.toHaveClass(/hidden/)
@@ -162,54 +162,58 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
     // Double click Beta (index 1) to isolate
     await legend_items.nth(1).dblclick()
+    await page.waitForTimeout(150) // Allow state propagation
 
     // Wait for isolation - only Beta (index 1) should be visible
-    await expect(legend_items.nth(1)).not.toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(0)).toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(2)).toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(3)).toHaveClass(/hidden/, { timeout: 3000 })
+    await expect(legend_items.nth(1)).not.toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(0)).toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(2)).toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(3)).toHaveClass(/hidden/, { timeout: 5000 })
 
     await expect(last_isolated_tracker).toHaveText(`Last Isolated Index: 1`, {
-      timeout: 3000,
+      timeout: 5000,
     })
 
     // Double click Beta again to restore
     await legend_items.nth(1).dblclick()
+    await page.waitForTimeout(150)
 
     // Should restore original visibility - wait for state updates
-    await expect(legend_items.nth(0)).not.toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(1)).not.toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(2)).toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(3)).not.toHaveClass(/hidden/, { timeout: 3000 })
+    await expect(legend_items.nth(0)).not.toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(1)).not.toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(2)).toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(3)).not.toHaveClass(/hidden/, { timeout: 5000 })
 
     await expect(last_isolated_tracker).toHaveText(`Last Isolated Index: 1`, {
-      timeout: 3000,
+      timeout: 5000,
     })
 
     // Double click Gamma (index 2 - initially hidden) to isolate
     await legend_items.nth(2).dblclick()
+    await page.waitForTimeout(150)
 
     // Only Gamma should be visible - wait for state updates
-    await expect(legend_items.nth(2)).not.toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(0)).toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(1)).toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(3)).toHaveClass(/hidden/, { timeout: 3000 })
+    await expect(legend_items.nth(2)).not.toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(0)).toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(1)).toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(3)).toHaveClass(/hidden/, { timeout: 5000 })
 
     await expect(last_isolated_tracker).toHaveText(`Last Isolated Index: 2`, {
-      timeout: 3000,
+      timeout: 5000,
     })
 
     // Double click Gamma again to restore
     await legend_items.nth(2).dblclick()
+    await page.waitForTimeout(150)
 
     // Should restore previous state (0, 1, 3 visible; 2 hidden) - wait for state updates
-    await expect(legend_items.nth(2)).toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(0)).not.toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(1)).not.toHaveClass(/hidden/, { timeout: 3000 })
-    await expect(legend_items.nth(3)).not.toHaveClass(/hidden/, { timeout: 3000 })
+    await expect(legend_items.nth(2)).toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(0)).not.toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(1)).not.toHaveClass(/hidden/, { timeout: 5000 })
+    await expect(legend_items.nth(3)).not.toHaveClass(/hidden/, { timeout: 5000 })
 
     await expect(last_isolated_tracker).toHaveText(`Last Isolated Index: 2`, {
-      timeout: 3000,
+      timeout: 5000,
     })
   })
 
