@@ -227,8 +227,9 @@ test.describe(`OPTIMADE route`, () => {
 
     // Capture the structure ID from first suggestion card
     const first_suggestion_card = page.locator(`.structure-suggestions button`).first()
-    const structure_id = await first_suggestion_card.locator(`span`).first().textContent()
-    if (!structure_id) throw new Error(`Expected structure ID in suggestion card`)
+    const structure_id_span = first_suggestion_card.locator(`span`).first()
+    await expect(structure_id_span).toHaveText(/.+/) // Assert non-empty text content
+    const structure_id = (await structure_id_span.textContent()) as string
 
     // Click on first suggestion card
     await first_suggestion_card.click()

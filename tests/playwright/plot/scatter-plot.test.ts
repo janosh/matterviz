@@ -1036,16 +1036,16 @@ test.describe(`ScatterPlot Component Tests`, () => {
     )
 
     // Use percentage-based threshold relative to plot size (consistent with label test)
-    // 15% of plot diagonal scales properly across different viewport sizes
+    // 20% of plot diagonal scales properly across different viewport sizes
     const plot_diagonal = Math.sqrt(plot_bbox.width ** 2 + plot_bbox.height ** 2)
-    const distance_threshold = plot_diagonal * 0.15
+    const distance_threshold = plot_diagonal * 0.2
 
     // Legend should not be too close to any data point (smart placement should avoid markers)
     expect(
       min_distance,
       `Legend too close to markers: ${min_distance.toFixed(1)}px (threshold: ${
         distance_threshold.toFixed(1)
-      }px, 15% of diagonal)`,
+      }px, 20% of diagonal)`,
     ).toBeGreaterThan(distance_threshold)
 
     // Test draggable class and cursor
