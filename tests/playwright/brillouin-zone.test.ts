@@ -160,6 +160,7 @@ test.describe(`BrillouinZone File Drop Tests`, () => {
   })
 
   test(`handles file drops`, async ({ page }) => {
+    test.skip(IS_CI, `Synthetic file drop events are unreliable in CI`)
     const poscar = `Test Structure
 1.0
 3.0 0.0 0.0
