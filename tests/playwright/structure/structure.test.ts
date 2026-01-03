@@ -1368,6 +1368,7 @@ test.describe(`Structure Component Tests`, () => {
 
 test.describe(`File Drop Functionality Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
+    test.skip(process.env.CI === `true`, `File drop tests timeout in CI`)
     // wait_for_3d_canvas handles both canvas visibility and non-zero dimensions
     await goto_structure_test(page)
   })

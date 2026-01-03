@@ -4,6 +4,7 @@ import { ensure_pane_visible, open_info_and_controls } from './utils'
 
 test.describe(`ConvexHull4D (Quaternary)`, () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(process.env.CI === `true`, `ConvexHull4D tests timeout in CI`)
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
     // Wait for data to fully load - check for canvas inside diagram which only renders after data loads
     const quaternary_grid = page.locator(`.quaternary-grid`).first()

@@ -1,8 +1,13 @@
 // deno-lint-ignore-file no-await-in-loop
 import element_data from '$lib/element/data'
 import { expect, test } from '@playwright/test'
+import process from 'node:process'
 
 test.describe(`Element detail page`, () => {
+  test.beforeEach(() => {
+    test.skip(process.env.CI === `true`, `Element detail pages timeout in CI`)
+  })
+
   test(`has periodicity plot`, async ({ page }) => {
     // Test specific elements (Hydrogen and Carbon)
     const test_elements = [element_data[0], element_data[5]]

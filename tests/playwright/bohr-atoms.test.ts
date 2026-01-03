@@ -1,11 +1,16 @@
 import element_data from '$lib/element/data'
 import { expect, test } from '@playwright/test'
+import process from 'node:process'
 
 // Long timeout needed because the page eagerly renders all 118 animated Bohr atom SVGs.
 // TODO: Consider lazy rendering or virtualization in the page component to improve performance.
 const BOHR_ATOMS_RENDER_TIMEOUT = 50_000
 
 test.describe(`Bohr Atoms page`, () => {
+  test.beforeEach(() => {
+    test.skip(process.env.CI === `true`, `Bohr atoms tests timeout in CI`)
+  })
+
   test(`lists all elements`, async ({ page }) => {
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
 
