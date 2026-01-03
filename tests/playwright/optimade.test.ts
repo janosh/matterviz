@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test'
 import type { OptimadeStructure } from '../../src/lib/api/optimade'
-import { IS_CI } from './helpers'
 
 // Mock structure data shared across tests
 const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
@@ -72,6 +71,7 @@ test.describe(`OPTIMADE route`, () => {
 
   test.beforeEach(async ({ page }) => {
     // Mock all OPTIMADE API requests (all use /v1/ in their paths)
+    // Route handlers are registered before any navigation to ensure mocks intercept requests
     await page.route(`**/v1/**`, (route) => {
       const url = route.request().url()
 
@@ -130,7 +130,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`page loads correctly`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
     await expect(page.locator(`input[placeholder="Enter structure ID"]`)).toBeVisible()
@@ -138,8 +138,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`handles invalid structure ID gracefully`, async ({ page }) => {
-    test.skip(IS_CI, `OPTIMADE error handling test is flaky in CI due to mock timing`)
-    await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `networkidle` })
 
     // Check input value is set correctly
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
@@ -152,8 +151,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can switch providers and clear input field`, async ({ page }) => {
-    test.skip(IS_CI, `OPTIMADE provider switch test is flaky in CI due to mock timing`)
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Verify initial MP structure is loaded
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
@@ -174,8 +172,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can load structure from different providers via text input`, async ({ page }) => {
-    test.skip(IS_CI, `OPTIMADE text input test is flaky in CI due to mock timing`)
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Verify initial MP structure is loaded
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
@@ -189,7 +186,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`provider selection clears input field`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Fill input with some text
     await page.locator(`input.structure-input`).fill(`test-structure-id`)
@@ -202,8 +199,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can navigate between multiple providers`, async ({ page }) => {
-    test.skip(IS_CI, `OPTIMADE multi-provider test is flaky in CI due to mock timing`)
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Test MP provider (should already be loaded)
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
@@ -224,8 +220,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can click on suggested structures to load them`, async ({ page }) => {
-    test.skip(IS_CI, `OPTIMADE suggestions test is flaky in CI due to mock timing`)
-    await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/optimade-mp-1`, { waitUntil: `networkidle` })
 
     // Wait for suggestions to load
     await expect(page.locator(`text=Suggested Structures`)).toBeVisible()
