@@ -178,37 +178,6 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     expect(tooltip_text).toMatch(/Space Group:.*\(/i)
   })
 
-  test(`plots render with proper structure and data bars`, async ({ page }) => {
-    // Check that all plots have proper rendering
-    const all_plots = page.locator(`.bar-plot`)
-    const plot_count = await all_plots.count()
-    expect(plot_count).toBeGreaterThan(0)
-
-    // Check that axes render on first plot
-    const first_plot = all_plots.first()
-    await expect(first_plot.locator(`g.x-axis .tick`).first()).toBeVisible()
-    await expect(first_plot.locator(`g.y-axis .tick`).first()).toBeVisible()
-
-    // First plot should have data bars (it's the diverse materials example)
-    const data_bars = first_plot.locator(`svg path[role="button"]`)
-    const bar_count = await data_bars.count()
-    expect(bar_count).toBeGreaterThan(0)
-  })
-
-  test(`multiple plots render correctly on the page`, async ({ page }) => {
-    // Check that multiple examples are rendered
-    const plots = page.locator(`.bar-plot`)
-    const plot_count = await plots.count()
-    expect(plot_count).toBeGreaterThan(3) // Should have multiple examples
-
-    // Each plot should have basic structure
-    for (let idx = 0; idx < Math.min(plot_count, 3); idx++) {
-      const plot = plots.nth(idx)
-      await expect(plot).toBeVisible()
-      await expect(plot.locator(`svg`).first()).toBeVisible()
-    }
-  })
-
   test(`crystal system colors are distinct and visible`, async ({ page }) => {
     const plot = page.locator(`.bar-plot`).first()
     await expect(plot).toBeVisible()

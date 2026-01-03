@@ -7,14 +7,9 @@ import {
   format_num,
 } from '$lib/labels'
 import { expect, type Page, test } from '@playwright/test'
-import process from 'node:process'
 import { random_sample } from './helpers'
 
 test.describe(`Periodic Table`, () => {
-  test.beforeEach(() => {
-    test.skip(process.env.CI === `true`, `Periodic table tests are flaky in CI`)
-  })
-
   test(`in default state`, async ({ page }) => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
@@ -104,21 +99,24 @@ test.describe(`Periodic Table`, () => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       // Wait for element tiles to render before hovering
-      await page.waitForSelector(`.element-tile`)
+      await page.waitForSelector(`.element-tile`, { timeout: 10000 })
 
       // Get the first periodic table container (PeriodicTableDemo) which has tooltip enabled
       const periodic_table = page.locator(`.periodic-table`).first()
-      await expect(periodic_table).toBeVisible()
+      await expect(periodic_table).toBeVisible({ timeout: 10000 })
 
       // Hover on the H tile within the first periodic table
       const h_tile = periodic_table.locator(`.element-tile`).filter({ hasText: `H` })
         .first()
+      await expect(h_tile).toBeVisible({ timeout: 5000 })
       await h_tile.hover({ force: true })
 
-      // Get tooltip within the same periodic table container
+      // Get tooltip within the same periodic table container - use retry for visibility
       const tooltip = periodic_table.locator(`.tooltip`)
-      await expect(tooltip).toBeVisible({ timeout: 20000 })
-      await expect(tooltip).toContainText(`Hydrogen`)
+      await expect(async () => {
+        await expect(tooltip).toBeVisible()
+        await expect(tooltip).toContainText(`Hydrogen`)
+      }).toPass({ timeout: 10000 })
       await expect(tooltip).toContainText(`H • 1`)
     })
 

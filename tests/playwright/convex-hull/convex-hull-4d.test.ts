@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
 import { ensure_pane_visible, open_info_and_controls } from './utils'
 
 test.describe(`ConvexHull4D (Quaternary)`, () => {
@@ -14,14 +13,16 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    test.skip(process.env.CI === `true`, `Canvas click tests flaky in CI`)
     await page.goto(
       `/test/convex-hull-performance?dim=4d&count=100&click_selection=false`,
       { waitUntil: `networkidle` },
     )
     const diagram = page.locator(`.convex-hull-4d`)
+    await expect(diagram).toBeVisible({ timeout: 15000 })
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     const canvas = diagram.locator(`canvas`)
+    // Wait for canvas to be visible and have a bounding box
+    await expect(canvas).toBeVisible({ timeout: 10000 })
     const box = await canvas.boundingBox()
     if (box) {
       // Click grid of positions to ensure we hit an entry

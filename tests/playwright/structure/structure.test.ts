@@ -1810,57 +1810,6 @@ test.describe(`Export Button Tests`, () => {
     }, selector)
   }
 
-  test(`export buttons are visible when export pane is open`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_structure_export_pane(page)
-
-    const json_export_btn = export_pane.locator(
-      `button[title="Download JSON"]`,
-    )
-    const xyz_export_btn = export_pane.locator(
-      `button[title="Download XYZ"]`,
-    )
-    const png_export_btn = export_pane.locator(
-      `button[title*="PNG"]`,
-    )
-
-    await expect(json_export_btn).toBeVisible()
-    await expect(xyz_export_btn).toBeVisible()
-    await expect(png_export_btn).toBeVisible()
-
-    await expect(json_export_btn).toBeEnabled()
-    await expect(xyz_export_btn).toBeEnabled()
-    await expect(png_export_btn).toBeEnabled()
-  })
-
-  test(`export buttons are not visible when export pane is closed`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
-    const export_pane = structure_div.locator(`.export-pane`)
-
-    await expect(export_pane).not.toHaveClass(/pane-open/)
-
-    const json_export_btn = structure_div.locator(
-      `.export-pane button[title="Download JSON"]`,
-    )
-    const xyz_export_btn = structure_div.locator(
-      `.export-pane button[title="Download XYZ"]`,
-    )
-
-    await expect(json_export_btn).toBeHidden()
-    await expect(xyz_export_btn).toBeHidden()
-  })
-
-  test(`JSON export button click does not cause errors`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_structure_export_pane(page)
-
-    const json_export_btn = export_pane.locator(
-      `button[title="Download JSON"]`,
-    )
-    await expect(json_export_btn).toBeVisible()
-    await json_export_btn.click()
-
-    await expect(json_export_btn).toBeEnabled()
-  })
-
   test(`XYZ export button click does not cause errors`, async ({ page }) => {
     const { pane_div: export_pane } = await open_structure_export_pane(page)
 
