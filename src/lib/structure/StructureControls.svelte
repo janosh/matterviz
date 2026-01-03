@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { ColorScaleSelect, format_num, Lattice, SettingsSection } from '$lib'
+  import { ColorScaleSelect, format_num, Lattice } from '$lib'
   import type { ColorSchemeName, D3InterpolateName } from '$lib/colors'
+  import { SettingsSection } from '$lib/layout'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { to_degrees, to_radians } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
