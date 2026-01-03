@@ -73,7 +73,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const initial_y_max = Math.max(...initial_y_vals)
 
     const box = await svg.boundingBox()
-    if (!box) throw `SVG bbox not found`
+    if (!box) throw new Error(`SVG bbox not found`)
 
     // Ensure drag is large enough (needs > 5px in both dimensions)
     const start_x = box.x + box.width * 0.2
@@ -411,7 +411,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const initial_y2 = await get_range(`y2`)
 
     const box = await svg.boundingBox()
-    if (!box) throw `SVG bbox not found`
+    if (!box) throw new Error(`SVG bbox not found`)
 
     // Ensure drag is large enough (needs > 5px in both dimensions)
     const start_x = box.x + box.width * 0.2

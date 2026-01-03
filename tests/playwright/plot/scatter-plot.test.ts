@@ -776,7 +776,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Perform zoom drag INSIDE plot area
     let svg_box = await svg.boundingBox()
-    if (!svg_box) throw `SVG box not found`
+    if (!svg_box) throw new Error(`SVG box not found`)
 
     let start_x = svg_box.x + svg_box.width * 0.3
     let start_y = svg_box.y + svg_box.height * 0.7
@@ -794,7 +794,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     await expect(zoom_rect).toBeVisible()
     const rect_box = await zoom_rect.boundingBox()
-    if (!rect_box) throw `Rect box not found`
+    if (!rect_box) throw new Error(`Rect box not found`)
     expect(rect_box.width).toBeGreaterThan(0)
     expect(rect_box.height).toBeGreaterThan(0)
 
@@ -813,7 +813,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Perform zoom drag OUTSIDE plot area
     svg_box = await svg.boundingBox()
-    if (!svg_box) throw `SVG box not found`
+    if (!svg_box) throw new Error(`SVG box not found`)
     start_x = svg_box.x + svg_box.width * 0.8
     start_y = svg_box.y + svg_box.height * 0.8
     end_x = initial_x.ticks[0] - 50
@@ -824,13 +824,13 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.mouse.move(svg_box.x + 5, svg_box.y + 5, { steps: 5 })
     await expect(zoom_rect).toBeVisible()
     const rect_box_inside = await zoom_rect.boundingBox()
-    if (!rect_box_inside) throw `Rect box inside not found`
+    if (!rect_box_inside) throw new Error(`Rect box inside not found`)
     expect(rect_box_inside.width).toBeGreaterThan(0)
 
     await page.mouse.move(end_x, end_y, { steps: 5 })
     await expect(zoom_rect).toBeVisible()
     const rect_box_outside = await zoom_rect.boundingBox()
-    if (!rect_box_outside) throw `Rect box outside not found`
+    if (!rect_box_outside) throw new Error(`Rect box outside not found`)
     expect(rect_box_outside.width).toBeGreaterThan(rect_box_inside.width)
     expect(rect_box_outside.height).toBeGreaterThan(rect_box_inside.height)
 
@@ -1008,7 +1008,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const plot_bbox = await plot_locator.boundingBox()
     const legend_bbox = await legend_locator.boundingBox()
 
-    if (!plot_bbox || !legend_bbox) throw `Bounding boxes are null`
+    if (!plot_bbox || !legend_bbox) throw new Error(`Bounding boxes are null`)
 
     // Legend uses smart auto-placement based on data density, so verify
     // it's positioned within the plot area (not necessarily in a corner)
@@ -1537,7 +1537,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Test extreme zoom in (very small area)
     const svg_box = await svg.boundingBox()
-    if (!svg_box) throw `SVG box not found`
+    if (!svg_box) throw new Error(`SVG box not found`)
 
     // Create a very small zoom rectangle (1% of plot area)
     const center_x = svg_box.x + svg_box.width * 0.5
@@ -1750,7 +1750,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Test zoom on logarithmic scale
     const svg_box = await svg.boundingBox()
-    if (!svg_box) throw `SVG box not found`
+    if (!svg_box) throw new Error(`SVG box not found`)
 
     const start_x = svg_box.x + svg_box.width * 0.2
     const start_y = svg_box.y + svg_box.height * 0.8

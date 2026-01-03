@@ -1612,7 +1612,7 @@ test.describe(`Reset Camera Button Tests`, () => {
     await expect(canvas).toBeVisible()
 
     const box = await canvas.boundingBox()
-    if (!box) throw `Canvas box not found`
+    if (!box) throw new Error(`Canvas box not found`)
 
     expect(box.width).toBeGreaterThan(0)
     expect(box.height).toBeGreaterThan(0)

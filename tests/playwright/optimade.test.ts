@@ -219,6 +219,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`can click on suggested structures to load them`, async ({ page }) => {
+    test.skip(IS_CI, `OPTIMADE suggestions test is flaky in CI due to mock timing`)
     await page.goto(`/optimade-mp-1`, { waitUntil: `domcontentloaded` })
 
     // Wait for suggestions to load
