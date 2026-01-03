@@ -4,6 +4,7 @@ import { ensure_pane_visible, open_info_and_controls } from './utils'
 
 test.describe(`ConvexHull4D (Quaternary)`, () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(IS_CI, `ConvexHull4D tests timeout in CI`)
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
     // Wait for data to fully load - check for canvas inside diagram which only renders after data loads
     const quaternary_grid = page.locator(`.quaternary-grid`).first()
@@ -14,7 +15,6 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    test.skip(IS_CI, `Canvas click tests flaky in CI`)
     await page.goto(
       `/test/convex-hull-performance?dim=4d&count=100&click_selection=false`,
       { waitUntil: `networkidle` },

@@ -1,15 +1,10 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import {
-    ColorScaleSelect,
-    DraggablePane,
-    format_num,
-    Lattice,
-    SettingsSection,
-  } from '$lib'
+  import { ColorScaleSelect, format_num, Lattice, SettingsSection } from '$lib'
   import type { ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { to_degrees, to_radians } from '$lib/math'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { StructureScene } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'

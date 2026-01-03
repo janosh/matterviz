@@ -39,7 +39,8 @@ test.describe(`Trajectory Component`, () => {
     controls = trajectory_viewer.locator(`.trajectory-controls`)
     await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
     // Wait for the trajectory to be loaded
-    await expect(trajectory_viewer).toBeVisible({ timeout: 50000 })
+    // TODO: Consider using lighter test fixtures to reduce this timeout
+    await expect(trajectory_viewer).toBeVisible({ timeout: 30000 })
   })
 
   test(`empty state displays correctly`, async ({ page }) => {
@@ -743,7 +744,7 @@ test.describe(`Trajectory Component`, () => {
       expect(has_layout).toBe(true)
 
       // Wait for display mode button to be available (only shows when plot series exist)
-      await display_button.waitFor({ state: `visible`, timeout: 50000 })
+      await display_button.waitFor({ state: `visible`, timeout: 10000 })
 
       // Display mode cycling should still work
       await display_button.click()
