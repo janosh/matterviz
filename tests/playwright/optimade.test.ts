@@ -81,9 +81,12 @@ test.describe(`OPTIMADE route`, () => {
 
       // Structure requests - match by ID in URL
       if (url.includes(`structures`)) {
-        // Check for specific structure IDs
-        for (const [struct_id, struct_data] of Object.entries(MOCK_STRUCTURES)) {
-          if (url.includes(struct_id)) {
+        // Extract structure ID from URL path (e.g., /structures/mp-149?foo=bar -> mp-149)
+        const struct_match = url.match(/\/structures\/([^/?]+)/)
+        if (struct_match) {
+          const struct_id = struct_match[1]
+          const struct_data = MOCK_STRUCTURES[struct_id]
+          if (struct_data) {
             return route.fulfill({ json: { data: struct_data } })
           }
         }

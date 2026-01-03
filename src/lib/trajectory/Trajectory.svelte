@@ -4,13 +4,13 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import Structure from '$lib/structure/Structure.svelte'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
+  import Structure from '$lib/structure/Structure.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -201,9 +201,10 @@
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
 
-  // Reactive layout based on viewport aspect ratio
+  // Reactive layout based on element aspect ratio (for auto mode)
   let actual_layout = $derived.by(() => {
     if (layout === `horizontal` || layout === `vertical`) return layout
+    // For auto layout, use element dimensions to determine orientation
     if (viewport.width > 0 && viewport.height > 0) {
       return viewport.width > viewport.height ? `horizontal` : `vertical`
     }
@@ -1222,9 +1223,6 @@
     contain: layout;
     z-index: var(--traj-z-index, 1);
     container-type: size; /* enable cqh for panes if explicit height is set */
-  }
-  .trajectory.vertical:has(.content-area.show-both:not(.hide-plot)) {
-    min-height: calc(var(--min-height) * 2);
   }
   .trajectory :global(.plot) {
     background: var(--surface-bg);

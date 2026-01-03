@@ -1054,9 +1054,14 @@ test.describe(`Structure Component Tests`, () => {
       .filter({ hasText: /Color scheme/ })
     const color_scheme_multiselect = color_scheme_label.locator(`.multiselect`)
     await expect(color_scheme_multiselect).toBeVisible()
-    // Click to open the multiselect, then select an option from the listbox
-    await color_scheme_multiselect.click()
-    await page.getByRole(`option`, { name: `Jmol`, exact: true }).click()
+    // Open the multiselect dropdown by clicking the visible textbox input
+    await color_scheme_multiselect.getByRole(`textbox`).click()
+    // Select Jmol option from the listbox (options may be portaled)
+    const jmol_option = page.locator(`.multiselect ul.options li`).filter({
+      hasText: `Jmol`,
+    }).first()
+    await expect(jmol_option).toBeVisible({ timeout: 3000 })
+    await jmol_option.click()
     await expect(controls_open_status).toContainText(`true`)
     await expect(control_pane).toHaveClass(/pane-open/)
 
@@ -1077,12 +1082,9 @@ test.describe(`Structure Component Tests`, () => {
     await expect(controls_open_status).toContainText(`true`)
     await expect(control_pane).toHaveClass(/pane-open/)
 
-    // Test color input
-    const background_color_label = control_pane
-      .locator(`label`)
-      .filter({ hasText: /Color/ })
-      .first()
-    const background_color_input = background_color_label.locator(`input[type="color"]`)
+    // Test color input in the Background section (h4 title followed by section)
+    const background_section = control_pane.locator(`h4:has-text("Background") + section`)
+    const background_color_input = background_section.locator(`input[type="color"]`)
     await expect(background_color_input).toBeVisible()
     await background_color_input.fill(`#00ff00`)
     await expect(controls_open_status).toContainText(`true`)

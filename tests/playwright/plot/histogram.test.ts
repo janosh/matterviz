@@ -32,25 +32,6 @@ const set_range_value_in_section = async (
   await set_input_value(input, value.toString())
 }
 
-// Fallback for page-wide selectors when section scoping isn't available
-// Note: Uses .first() intentionally when multiple elements may match (e.g., multiple histogram instances)
-// For tests requiring specific element targeting, use set_range_value_in_section instead
-const set_range_value = async (
-  page: Page,
-  selector: string,
-  value: number,
-  expected_count?: number,
-) => {
-  const inputs = page.locator(selector)
-  // When expected_count is provided, assert selector specificity
-  if (expected_count !== undefined) {
-    expect(await inputs.count()).toBe(expected_count)
-  }
-  const input = inputs.first()
-  await input.waitFor({ state: `attached`, timeout: 5000 })
-  await set_input_value(input, value.toString())
-}
-
 const get_bar_count = async (histogram_locator: Locator) => {
   // Look for bars with fill or stroke (for overlay mode)
   const bars_with_fill = await histogram_locator
@@ -318,7 +299,8 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`bin size comparison modes`, async ({ page }) => {
-    const histogram = page.locator(`#bin-size-comparison > svg[role="img"]`)
+    const section = page.locator(`[data-testid="bin-size-comparison-section"]`)
+    const histogram = section.locator(`#bin-size-comparison > svg[role="img"]`)
 
     // Wait for histogram to render initially
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
@@ -329,12 +311,13 @@ test.describe(`Histogram Component Tests`, () => {
     const bar_count = await get_bar_count(histogram)
     expect(bar_count).toBeGreaterThan(0)
 
-    // Test that changing bin count works
-    const range_inputs = page.locator(`#bin-size-comparison input[type="range"]`)
-    const input_count = await range_inputs.count()
-
-    if (input_count > 0) {
-      await set_range_value(page, `#bin-size-comparison input[type="range"]`, 50, 1)
+    // Test that changing bin count works - use the specific "Bin Count" control
+    // (not the Histogram's internal controls pane which also has range inputs)
+    const bin_count_input = section.locator(
+      `label:has-text("Bin Count") input[type="range"]`,
+    )
+    if ((await bin_count_input.count()) > 0) {
+      await set_input_value(bin_count_input, `50`)
       const new_bar_count = await get_bar_count(histogram)
       expect(new_bar_count).toBeGreaterThan(0)
     }

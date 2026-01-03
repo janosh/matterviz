@@ -366,28 +366,34 @@
   mode="single"
 />
 
-<label><input type="checkbox" bind:checked={show_overlay} /> Show Overlay</label>
-{#if show_overlay}
-  <label>10 bins: <input type="range" min="5" max="20" bind:value={bin_count_10} /> {
-      bin_count_10
-    }</label>
-  <label>30 bins: <input type="range" min="20" max="50" bind:value={bin_count_30} /> {
-      bin_count_30
-    }</label>
-  <label>100 bins: <input type="range" min="50" max="150" bind:value={bin_count_100} /> {
-      bin_count_100
-    }</label>
-{:else}
-  <label>Bin Count: <input type="range" min="5" max="100" bind:value={single_bin_count} />
-    {single_bin_count}</label>
-{/if}
-<Histogram
-  id="bin-size-comparison"
-  series={bin_comparison_data}
-  bins={show_overlay ? bin_count_30 : single_bin_count}
-  mode={show_overlay ? `overlay` : `single`}
-  show_legend={show_overlay}
-/>
+<section data-testid="bin-size-comparison-section">
+  <label><input type="checkbox" bind:checked={show_overlay} /> Show Overlay</label>
+  {#if show_overlay}
+    <label>10 bins: <input type="range" min="5" max="20" bind:value={bin_count_10} /> {
+        bin_count_10
+      }</label>
+    <label>30 bins: <input type="range" min="20" max="50" bind:value={bin_count_30} /> {
+        bin_count_30
+      }</label>
+    <label>100 bins: <input type="range" min="50" max="150" bind:value={bin_count_100} />
+      {bin_count_100}</label>
+  {:else}
+    <label>Bin Count: <input
+        type="range"
+        min="5"
+        max="100"
+        bind:value={single_bin_count}
+      />
+      {single_bin_count}</label>
+  {/if}
+  <Histogram
+    id="bin-size-comparison"
+    series={bin_comparison_data}
+    bins={show_overlay ? bin_count_30 : single_bin_count}
+    mode={show_overlay ? `overlay` : `single`}
+    show_legend={show_overlay}
+  />
+</section>
 
 <section data-testid="tick-configuration-section">
   <label>X-axis Ticks: <input type="range" min="3" max="15" bind:value={x_tick_count} /> {
