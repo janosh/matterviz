@@ -1,17 +1,13 @@
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
+import { IS_CI } from './helpers'
 
 const TEST_FRAME_RATE_FPS = 30
-
-// Skip performance tests in CI - they require large trajectory files that are not committed
-// due to file size. Run locally with: pnpm exec playwright test trajectory-performance
-const is_ci = process.env.CI === `true` || process.env.CI === `1`
 
 test.describe(`Trajectory Performance Tests`, () => {
   // TODO: Add CI fixtures for trajectory performance testing
   // Tracking: Large trajectory test files (>100MB) need to be hosted separately for CI
   test.skip(
-    is_ci,
+    IS_CI,
     `Large trajectory test files not available in CI - run locally to test`,
   )
   test(`large MOF5 trajectory playback performance`, async ({ page }) => {

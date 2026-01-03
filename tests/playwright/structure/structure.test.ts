@@ -2,7 +2,6 @@
 import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
-import process from 'node:process'
 import {
   get_canvas_timeout,
   goto_structure_test,
@@ -14,10 +13,7 @@ import {
 
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(
-      process.env.CI === `true`,
-      `Structure tests timeout in CI (SSR error on /test/structure)`,
-    )
+    test.skip(IS_CI, `Structure tests timeout in CI (SSR error on /test/structure)`)
     await goto_structure_test(page)
   })
 
@@ -1416,7 +1412,7 @@ Direct
     await expect(async () => {
       const after_drop_screenshot = await canvas.screenshot()
       expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
-    }).toPass({ timeout: 10000 })
+    }).toPass({ timeout: get_canvas_timeout() })
   })
 
   test(`drops XYZ file onto structure viewer and updates structure`, async ({ page }) => {

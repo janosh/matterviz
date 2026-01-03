@@ -129,9 +129,9 @@ test.describe(`OPTIMADE route`, () => {
 
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
     await expect(page.locator(`input[placeholder="Enter structure ID"]`))
-      .toBeVisible({ timeout: 50000 })
+      .toBeVisible({ timeout: 15000 })
     // Use class selector instead of :has-text() for more reliable matching
-    await expect(page.locator(`button.fetch-button`)).toBeVisible({ timeout: 50000 })
+    await expect(page.locator(`button.fetch-button`)).toBeVisible({ timeout: 15000 })
   })
 
   test(`handles invalid structure ID gracefully`, async ({ page }) => {

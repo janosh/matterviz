@@ -1,7 +1,6 @@
 // deno-lint-ignore-file no-await-in-loop
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import process from 'node:process'
 import { IS_CI } from './helpers'
 
 // Helper function for display mode dropdown interactions
@@ -30,19 +29,12 @@ async function select_display_mode(trajectory: Locator, mode_name: string) {
 }
 
 test.describe(`Trajectory Component`, () => {
-  test.beforeEach(() => {
-    test.skip(IS_CI, `Trajectory tests require heavy 3D loading`)
-  })
-
   let trajectory_viewer: Locator
   let controls: Locator
 
   test.beforeEach(async ({ page }) => {
     // Skip in CI - trajectory loading involves heavy 3D assets that timeout
-    test.skip(
-      process.env.CI === `true`,
-      `Trajectory tests require heavy 3D loading, skip in CI`,
-    )
+    test.skip(IS_CI, `Trajectory tests require heavy 3D loading`)
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
     await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })

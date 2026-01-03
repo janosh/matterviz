@@ -105,10 +105,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
       .locator(`.legend-item`)
     const last_toggled_tracker = page.locator(`[data-testid="last-toggled"]`)
 
-    // Wait for legend items to be fully rendered
-    await expect(legend_items.first()).toBeVisible({ timeout: 10000 })
-
-    // Item 0 (Alpha) starts visible
+    // Item 0 (Alpha) starts visible (assertion auto-waits for element)
     await expect(legend_items.nth(0)).not.toHaveClass(/hidden/)
     await expect(legend_items.nth(0)).toHaveAttribute(`aria-pressed`, `true`)
 
@@ -150,10 +147,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
       .locator(`.legend-item`)
     const last_isolated_tracker = page.locator(`[data-testid="last-isolated"]`)
 
-    // Wait for legend items to be fully rendered
-    await expect(legend_items.first()).toBeVisible({ timeout: 10000 })
-
-    // Initial state: 0, 1, 3, 4 visible; 2 hidden
+    // Initial state: 0, 1, 3, 4 visible; 2 hidden (assertion auto-waits for element)
     await expect(legend_items.nth(0)).not.toHaveClass(/hidden/)
     await expect(legend_items.nth(1)).not.toHaveClass(/hidden/)
     await expect(legend_items.nth(2)).toHaveClass(/hidden/)
