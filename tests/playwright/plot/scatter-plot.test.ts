@@ -25,9 +25,9 @@ const click_radio = async (page: Page, selector: string): Promise<void> => {
   }, selector)
 }
 
-// Check if array values are in ascending order (returns false for empty arrays)
+// Check if array values are in ascending order (empty arrays are vacuously ascending)
 const is_ascending = (arr: number[]): boolean =>
-  arr.length > 0 && arr.every((val, idx) => idx === 0 || val >= arr[idx - 1])
+  arr.every((val, idx) => idx === 0 || val >= arr[idx - 1])
 
 // Get tick values and calculate range
 const get_tick_range = async (
