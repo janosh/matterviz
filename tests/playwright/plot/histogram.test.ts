@@ -330,7 +330,7 @@ test.describe(`Histogram Component Tests`, () => {
     const input_count = await range_inputs.count()
 
     if (input_count > 0) {
-      await set_range_value(page, `#bin-size-comparison input[type="range"]`, 50)
+      await set_range_value(page, `#bin-size-comparison input[type="range"]`, 50, 1)
       const new_bar_count = await get_bar_count(histogram)
       expect(new_bar_count).toBeGreaterThan(0)
     }

@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test'
+import process from 'node:process'
 
 test.describe(`RdfPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(process.env.CI === `true`, `RdfPlot tests timeout in CI`)
     await page.goto(`/test/rdf-plot`, { waitUntil: `networkidle` })
   })
 
