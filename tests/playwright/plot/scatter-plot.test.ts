@@ -512,13 +512,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await scale_select.selectOption(`log`)
 
     // Log scale should compress the size range, making large values relatively smaller
-    // Use relaxed comparison - just verify log area is different and reasonable
+    // Verify log area is smaller (compressed) compared to linear
     await expect(async () => {
       const log_last = await get_marker_bbox(plot_locator, last_idx)
       const log_area = get_bbox_area(log_last)
       expect(log_area).toBeGreaterThan(0)
-      // Relaxed: log area should be noticeably different (within 50% either way is fine)
-      expect(Math.abs(log_area - linear_area) / linear_area).toBeLessThan(1)
+      // Log scale should compress, so log area should be smaller (allow 10% tolerance)
+      expect(log_area).toBeLessThan(linear_area * 1.1)
+      expect(log_area).toBeGreaterThan(linear_area * 0.3) // But not too small
     }).toPass({ timeout: 10000 })
   })
 

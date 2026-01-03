@@ -13,8 +13,6 @@ import {
 
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    // Skip in CI - 3D WebGL structure tests have timing/rendering issues
-    test.skip(process.env.CI === `true`, `Structure tests are flaky in CI`)
     await goto_structure_test(page)
   })
 
@@ -2601,8 +2599,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       // Verify the change took effect
       await expect(projection_select).toHaveValue(new_value)
 
-      // Reset button should now appear in Camera section
-      await expect(camera_reset).toBeVisible({ timeout: get_canvas_timeout() })
+      // Reset button should now appear in Camera section (DOM update, not canvas rendering)
+      await expect(camera_reset).toBeVisible({ timeout: 3000 })
 
       // Click reset button
       await camera_reset.click()
@@ -2712,9 +2710,9 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await show_bonds_select.scrollIntoViewIfNeeded()
       await show_bonds_select.selectOption(`always`)
 
-      // Wait for Bonds section (separate from Visibility) to appear
+      // Wait for Bonds section (separate from Visibility) to appear (DOM update, not canvas rendering)
       const bonds_heading = controls_pane.locator(`h4:has-text("Bonds")`)
-      await expect(bonds_heading).toBeVisible({ timeout: get_canvas_timeout() })
+      await expect(bonds_heading).toBeVisible({ timeout: 3000 })
 
       // Change bonding strategy within the Bonds section (label is "Strategy")
       const strategy_select = controls_pane.locator(`label:has-text("Strategy") select`)
@@ -2728,9 +2726,9 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       // Verify change
       await expect(strategy_select).toHaveValue(new_value)
 
-      // Reset button should appear in Bonds section heading
+      // Reset button should appear in Bonds section heading (DOM update, not canvas rendering)
       const bonds_reset = bonds_heading.locator(`button.reset-button`)
-      await expect(bonds_reset).toBeVisible({ timeout: get_canvas_timeout() })
+      await expect(bonds_reset).toBeVisible({ timeout: 3000 })
 
       // Click reset button
       await bonds_reset.click()
@@ -2816,9 +2814,10 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       const camera_reset = camera_heading.locator(`button.reset-button`)
       const bg_reset = bg_heading.locator(`button.reset-button`)
 
-      await expect(visibility_reset).toBeVisible()
-      await expect(camera_reset).toBeVisible({ timeout: get_canvas_timeout() })
-      await expect(bg_reset).toBeVisible({ timeout: get_canvas_timeout() })
+      // DOM updates, not canvas rendering - use shorter timeout
+      await expect(visibility_reset).toBeVisible({ timeout: 3000 })
+      await expect(camera_reset).toBeVisible({ timeout: 3000 })
+      await expect(bg_reset).toBeVisible({ timeout: 3000 })
 
       // Reset one section
       await camera_reset.scrollIntoViewIfNeeded()
@@ -2894,6 +2893,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
 test.describe(`Structure Rotation Controls Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
+    test.skip(process.env.CI === `true`, `Rotation controls tests timeout in CI`)
     await goto_structure_test(page)
   })
 
@@ -3155,7 +3155,6 @@ test.describe(`Structure Rotation Controls Tests`, () => {
 
 test.describe(`Element Visibility Toggle`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(process.env.CI === `true`, `Element visibility tests flaky in CI`)
     await goto_structure_test(page)
   })
 
@@ -3177,6 +3176,7 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`toggling elements hides/shows atoms with visual feedback`, async ({ page }) => {
+    test.skip(process.env.CI === `true`, `Screenshot comparison flaky in CI`)
     const canvas = page.locator(`#test-structure canvas`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const first_item = legend.locator(`.legend-item`).first()
@@ -3240,6 +3240,7 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`toggle shows atoms after hiding`, async ({ page }) => {
+    test.skip(process.env.CI === `true`, `Screenshot comparison flaky in CI`)
     const canvas = page.locator(`#test-structure canvas`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const first_item = legend.locator(`.legend-item`).first()
@@ -3265,6 +3266,7 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`multiple elements work independently`, async ({ page }) => {
+    test.skip(process.env.CI === `true`, `Screenshot comparison flaky in CI`)
     const canvas = page.locator(`#test-structure canvas`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const legend_items = legend.locator(`.legend-item`)

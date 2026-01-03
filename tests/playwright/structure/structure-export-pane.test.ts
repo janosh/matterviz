@@ -87,7 +87,7 @@ test.describe(`StructureExportPane Tests`, () => {
 
     await expect(copy_btn).toHaveText(`📋`)
     await copy_btn.click()
-    await expect(copy_btn).toHaveText(`✅`, { timeout: get_canvas_timeout() })
+    await expect(copy_btn).toHaveText(`✅`, { timeout: 2000 })
     await expect(copy_btn).toHaveText(`📋`, { timeout: 2000 })
   })
 
@@ -136,14 +136,14 @@ test.describe(`StructureExportPane Tests`, () => {
     // Copy JSON
     const json_copy = pane_div.locator(`button[title="Copy JSON to clipboard"]`)
     await json_copy.click()
-    await expect(json_copy).toHaveText(`✅`, { timeout: get_canvas_timeout() })
+    await expect(json_copy).toHaveText(`✅`, { timeout: 2000 })
     // Wait for checkmark to reset before next copy
     await expect(json_copy).not.toHaveText(`✅`, { timeout: 2000 })
 
     // Copy XYZ
     const xyz_copy = pane_div.locator(`button[title="Copy XYZ to clipboard"]`)
     await xyz_copy.click()
-    await expect(xyz_copy).toHaveText(`✅`, { timeout: get_canvas_timeout() })
+    await expect(xyz_copy).toHaveText(`✅`, { timeout: 2000 })
   })
 
   test(`export pane and control pane have mutual exclusion`, async ({ page }) => {
