@@ -169,13 +169,23 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     const bar_count = await bars.count()
     expect(bar_count).toBeGreaterThan(5)
 
-    // Hover on a bar and check tooltip shows symbol
-    await bars.first().hover({ force: true })
-
+    // Hover on bars to find one that shows tooltip (multi-bar retry pattern for robustness)
     const tooltip = plot.locator(`.plot-tooltip`)
-    await expect(tooltip).toBeVisible({ timeout: 2000 })
+    let tooltip_text = ``
 
-    const tooltip_text = await tooltip.textContent()
+    for (let idx = 0; idx < Math.min(bar_count, 10); idx++) {
+      const bar = bars.nth(idx)
+      await bar.hover({ force: true })
+
+      try {
+        await tooltip.waitFor({ state: `visible`, timeout: 500 })
+        tooltip_text = (await tooltip.textContent()) ?? ``
+        break
+      } catch {
+        // Tooltip not visible yet, try next bar
+      }
+    }
+
     // Should show Hermann-Mauguin symbol
     expect(tooltip_text).toMatch(/Space Group:.*\(/i)
   })

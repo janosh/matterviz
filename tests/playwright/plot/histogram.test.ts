@@ -1487,14 +1487,9 @@ test.describe(`Histogram Component Tests`, () => {
     const histogram_section = page.locator(`.histogram`).first()
     await expect(histogram_section).toBeVisible({ timeout: 10000 })
 
-    // Find the info divs that display hover/click state (they're after the histogram)
-    // They have a specific style pattern used in the demo page
-    const hover_div = page.locator(`div`).filter({
-      hasText: /Hover over a bar|Hovering:/,
-    }).first()
-    const click_div = page.locator(`div`).filter({
-      hasText: /Click on a bar|Clicked:/,
-    }).first()
+    // Find the info divs that display hover/click state using stable data-testid selectors
+    const hover_div = page.locator(`[data-testid="hover-status"]`)
+    const click_div = page.locator(`[data-testid="click-status"]`)
 
     await expect(hover_div).toBeVisible({ timeout: 10000 })
     await expect(click_div).toBeVisible()

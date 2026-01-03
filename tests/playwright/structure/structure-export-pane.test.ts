@@ -10,7 +10,7 @@ async function open_export_pane(page: Page) {
 
   // Wait for the pane to appear - it's a draggable-pane with export-pane class
   const pane_div = page.locator(`.draggable-pane.export-pane`).first()
-  await expect(pane_div).toBeVisible({ timeout: 30000 })
+  await expect(pane_div).toBeVisible({ timeout: get_canvas_timeout() })
   return { export_toggle, pane_div }
 }
 

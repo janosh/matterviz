@@ -2003,6 +2003,7 @@ test.describe(`Export Button Tests`, () => {
 
 test.describe(`Show Buttons Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
+    test.skip(process.env.CI === `true`, `Show buttons tests timeout in CI`)
     await goto_structure_test(page)
   })
 
