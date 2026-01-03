@@ -107,7 +107,7 @@
 
     // file drop handlers
     allow_file_drop?: boolean
-    // layout configuration - 'auto' (default) adapts to viewport, 'horizontal'/'vertical' forces layout
+    // layout configuration - 'auto' (default) adapts to element size, 'horizontal'/'vertical' forces layout
     layout?: `auto` | Orientation
     // structure viewer props (passed to Structure component)
     structure_props?: ComponentProps<typeof Structure>
@@ -197,7 +197,7 @@
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
   let info_pane_open = $state(false)
   let parsing_progress = $state<ParseProgress | null>(null)
-  let viewport = $state({ width: 0, height: 0 })
+  let element_size = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
 
@@ -205,8 +205,8 @@
   let actual_layout = $derived.by(() => {
     if (layout === `horizontal` || layout === `vertical`) return layout
     // For auto layout, use element dimensions to determine orientation
-    if (viewport.width > 0 && viewport.height > 0) {
-      return viewport.width > viewport.height ? `horizontal` : `vertical`
+    if (element_size.width > 0 && element_size.height > 0) {
+      return element_size.width > element_size.height ? `horizontal` : `vertical`
     }
     return `horizontal` // Fallback to horizontal if dimensions not available yet
   })
@@ -835,8 +835,8 @@
   class:active={is_playing || structure_info_open || structure_controls_open ||
   scatter_controls.open || trajectory_export_open || info_pane_open}
   bind:this={wrapper}
-  bind:clientWidth={viewport.width}
-  bind:clientHeight={viewport.height}
+  bind:clientWidth={element_size.width}
+  bind:clientHeight={element_size.height}
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"
@@ -1005,7 +1005,7 @@
                 {file_size}
                 {file_object}
                 bind:pane_open={info_pane_open}
-                pane_props={{ style: `max-height: calc(${viewport.height}px - 50px)` }}
+                pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
               />
             {/if}
             <!-- Trajectory Export Pane -->
@@ -1015,7 +1015,7 @@
               {wrapper}
               filename={current_filename || `trajectory`}
               on_step_change={go_to_step}
-              pane_props={{ style: `max-height: calc(${viewport.height}px - 50px)` }}
+              pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
             />
             <!-- Display mode dropdown -->
             {#if plot_series.length > 0}

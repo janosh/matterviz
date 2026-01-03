@@ -38,7 +38,7 @@ const get_tick_range = async (
     tick_elements.map((tick) => tick.textContent()),
   )
   const ticks = tick_texts
-    .map((text) => (text ? parseFloat(text.replace(/[^\d.-]/g, ``)) : NaN))
+    .map((text) => (text ? parseFloat(text) : NaN))
     .filter((num) => !isNaN(num))
 
   if (ticks.length < 2) return { ticks, range: 0 }
@@ -344,8 +344,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(x_tick_texts.length).toBeGreaterThan(0)
     expect(y_tick_texts.length).toBeGreaterThan(0)
 
-    // Verify tick values are parseable numbers (accounting for SI suffixes like k, M)
-    const parse_tick = (text: string) => parseFloat(text.replace(/[^\d.-]/g, ``))
+    // Verify tick values are parseable numbers (handles plain numbers and scientific notation)
+    const parse_tick = (text: string) => parseFloat(text)
     const x_values = x_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
     const y_values = y_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
     expect(x_values.length).toBeGreaterThan(0)
@@ -549,7 +549,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       // Verify tick values span a reasonable range for the data
       const x_tick_texts = await plot.locator(`g.x-axis .tick text`).allTextContents()
       const y_tick_texts = await plot.locator(`g.y-axis .tick text`).allTextContents()
-      const parse_tick = (text: string) => parseFloat(text.replace(/[^\d.-]/g, ``))
+      const parse_tick = (text: string) => parseFloat(text)
       const x_values = x_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
       const y_values = y_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
 
@@ -594,7 +594,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       // Verify tick values follow logarithmic progression (roughly constant ratios)
       const tick_texts = await plot.locator(`g.${axis}-axis .tick text`).allTextContents()
       const tick_values = tick_texts
-        .map((text) => parseFloat(text.replace(/[^\d.-]/g, ``)))
+        .map((text) => parseFloat(text))
         .filter((val) => !isNaN(val) && val > 0)
         .sort((a, b) => a - b)
 
@@ -904,7 +904,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
           distance_moved,
           `Label "${label_text}" moved ${distance_moved.toFixed(1)}px (threshold: ${
             movement_threshold.toFixed(1)
-          }px, 15% of diagonal)`,
+          }px, 20% of diagonal)`,
         ).toBeLessThan(movement_threshold)
       }
     }
@@ -1245,18 +1245,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const scatter_plot = page.locator(`#legend-multi-default.scatter`)
     await expect(scatter_plot).toBeVisible()
 
-    // Control toggle is a button with pane-toggle class
-    const controls_toggle = scatter_plot.locator(`button.pane-toggle`)
-    // Toggle is hidden by default, shown on hover - force visibility check
-    await scatter_plot.hover()
-    await expect(controls_toggle).toBeVisible({ timeout: 2000 })
-
-    const control_pane = scatter_plot.locator(`.draggable-pane`)
-    await expect(control_pane).toBeHidden()
-
-    // Test toggle functionality
-    await controls_toggle.click()
-    await expect(control_pane).toBeVisible()
+    const { toggle: controls_toggle, pane: control_pane } = await open_control_pane(
+      scatter_plot,
+    )
 
     // Test display controls - only test points since legend-multi-default has points only
     const show_points_checkbox = control_pane.getByLabel(`Show points`)
@@ -1293,9 +1284,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
       await expect(size_input).toBeVisible()
     }
 
-    // Test close toggle
+    // Test close toggle - use toggle from open_control_pane
     await scatter_plot.hover()
-    await expect(controls_toggle).toBeVisible({ timeout: 2000 })
     await controls_toggle.click()
     await expect(control_pane).toBeHidden()
   })
@@ -1304,12 +1294,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // This test verifies that tick formatting in control pane works
     // The id prop is applied directly to the .scatter div
     const scatter_plot = page.locator(`#legend-multi-default.scatter`)
-    await scatter_plot.hover()
-    const controls_toggle = scatter_plot.locator(`button.pane-toggle`)
-    await expect(controls_toggle).toBeVisible({ timeout: 2000 })
-    await controls_toggle.click()
-    const control_pane = scatter_plot.locator(`.draggable-pane`)
-    await expect(control_pane).toBeVisible()
+    const { toggle: controls_toggle, pane: control_pane } = await open_control_pane(
+      scatter_plot,
+    )
 
     // Verify axis ticks are visible
     const x_tick_text = scatter_plot.locator(`g.x-axis .tick text`).first()
@@ -1381,9 +1368,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
       await y_format_input.fill(`~s`)
     }
 
-    // Close control pane
+    // Close control pane - use toggle from open_control_pane
     await scatter_plot.hover()
-    await expect(controls_toggle).toBeVisible({ timeout: 2000 })
     await controls_toggle.click()
     await expect(control_pane).toBeHidden()
   })
@@ -1393,12 +1379,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const plot = page.locator(`#basic-example .scatter`)
     await expect(plot).toBeVisible()
 
-    await plot.hover()
-    const toggle = plot.locator(`button.pane-toggle`)
-    await expect(toggle).toBeVisible({ timeout: 2000 })
-    await toggle.click()
-    const pane = plot.locator(`.draggable-pane`)
-    await expect(pane).toBeVisible()
+    const { toggle, pane } = await open_control_pane(plot)
 
     const x_axis = plot.locator(`g.x-axis`)
     const y_axis = plot.locator(`g.y-axis`)
@@ -1499,7 +1480,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       expect(tick_texts.length).toBeGreaterThan(0)
 
       // Verify tick values are parseable and in ascending order
-      const parse_tick = (text: string) => parseFloat(text.replace(/[^\d.-]/g, ``))
+      const parse_tick = (text: string) => parseFloat(text)
       const values = tick_texts.map(parse_tick).filter((val) => !isNaN(val))
       expect(values.length).toBeGreaterThan(0)
 
@@ -1524,7 +1505,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const y_tick_texts = await scatter_plot.locator(`g.y-axis .tick text`)
       .allTextContents()
 
-    const parse_tick = (text: string) => parseFloat(text.replace(/[^\d.-]/g, ``))
+    const parse_tick = (text: string) => parseFloat(text)
     const x_values = x_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
     const y_values = y_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
 
@@ -1614,12 +1595,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
   test(`series-specific controls work correctly in multi-series plots`, async ({ page }) => {
     // The id prop is applied directly to the .scatter div
     const multi_series_plot = page.locator(`#legend-multi-default.scatter`)
-    await multi_series_plot.hover()
-    const controls_toggle = multi_series_plot.locator(`button.pane-toggle`)
-    await expect(controls_toggle).toBeVisible({ timeout: 2000 })
-    await controls_toggle.click()
-    const control_pane = multi_series_plot.locator(`.draggable-pane`)
-    await expect(control_pane).toBeVisible()
+    const { toggle: controls_toggle, pane: control_pane } = await open_control_pane(
+      multi_series_plot,
+    )
 
     // Test series selector functionality
     const series_selector = control_pane.locator(`select#series-select`)
@@ -1633,9 +1611,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
       await expect(series_selector).toHaveValue(`1`)
     }
 
-    // Close control pane
+    // Close control pane - use toggle from open_control_pane
     await multi_series_plot.hover()
-    await expect(controls_toggle).toBeVisible({ timeout: 2000 })
     await controls_toggle.click()
     await expect(control_pane).toBeHidden()
   })
