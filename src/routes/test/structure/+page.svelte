@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { type Crystal, DEFAULTS, Structure, StructureScene } from '$lib'
+  import type { Crystal } from '$lib'
+  import { DEFAULTS } from '$lib/settings'
+  import Structure from '$lib/structure/Structure.svelte'
+  import StructureScene from '$lib/structure/StructureScene.svelte'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
   import type { ComponentProps } from 'svelte'
 
@@ -255,8 +258,9 @@
 
 <div data-testid="pane-open-status" style="margin-top: 10px">
   Info Pane Open Status: {info_pane_open}
-  <!-- Optionally keep controls status for debugging -->
-  <!-- Controls Open Status: {controls_open} -->
+</div>
+<div data-testid="controls-open-status">
+  Controls Open Status: {controls_open}
 </div>
 <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DraggablePane } from '$lib'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'

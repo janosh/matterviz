@@ -1,12 +1,16 @@
 <script lang="ts">
   import type { ElementSymbol } from '$lib'
-  import { EmptyState, Icon, Spinner, Structure, toggle_fullscreen } from '$lib'
+  import { toggle_fullscreen } from '$lib'
+  import EmptyState from '$lib/EmptyState.svelte'
+  import Spinner from '$lib/feedback/Spinner.svelte'
+  import Icon from '$lib/Icon.svelte'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
+  import Structure from '$lib/structure/Structure.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -103,7 +107,7 @@
 
     // file drop handlers
     allow_file_drop?: boolean
-    // layout configuration - 'auto' (default) adapts to viewport, 'horizontal'/'vertical' forces layout
+    // layout configuration - 'auto' (default) adapts to element size, 'horizontal'/'vertical' forces layout
     layout?: `auto` | Orientation
     // structure viewer props (passed to Structure component)
     structure_props?: ComponentProps<typeof Structure>
@@ -193,15 +197,16 @@
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
   let info_pane_open = $state(false)
   let parsing_progress = $state<ParseProgress | null>(null)
-  let viewport = $state({ width: 0, height: 0 })
+  let element_size = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
 
-  // Reactive layout based on viewport aspect ratio
+  // Reactive layout based on element aspect ratio (for auto mode)
   let actual_layout = $derived.by(() => {
     if (layout === `horizontal` || layout === `vertical`) return layout
-    if (viewport.width > 0 && viewport.height > 0) {
-      return viewport.width > viewport.height ? `horizontal` : `vertical`
+    // For auto layout, use element dimensions to determine orientation
+    if (element_size.width > 0 && element_size.height > 0) {
+      return element_size.width > element_size.height ? `horizontal` : `vertical`
     }
     return `horizontal` // Fallback to horizontal if dimensions not available yet
   })
@@ -830,8 +835,8 @@
   class:active={is_playing || structure_info_open || structure_controls_open ||
   scatter_controls.open || trajectory_export_open || info_pane_open}
   bind:this={wrapper}
-  bind:clientWidth={viewport.width}
-  bind:clientHeight={viewport.height}
+  bind:clientWidth={element_size.width}
+  bind:clientHeight={element_size.height}
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"
@@ -1000,7 +1005,7 @@
                 {file_size}
                 {file_object}
                 bind:pane_open={info_pane_open}
-                pane_props={{ style: `max-height: calc(${viewport.height}px - 50px)` }}
+                pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
               />
             {/if}
             <!-- Trajectory Export Pane -->
@@ -1010,7 +1015,7 @@
               {wrapper}
               filename={current_filename || `trajectory`}
               on_step_change={go_to_step}
-              pane_props={{ style: `max-height: calc(${viewport.height}px - 50px)` }}
+              pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
             />
             <!-- Display mode dropdown -->
             {#if plot_series.length > 0}
@@ -1218,9 +1223,6 @@
     contain: layout;
     z-index: var(--traj-z-index, 1);
     container-type: size; /* enable cqh for panes if explicit height is set */
-  }
-  .trajectory.vertical:has(.content-area.show-both:not(.hide-plot)) {
-    min-height: calc(var(--min-height) * 2);
   }
   .trajectory :global(.plot) {
     background: var(--surface-bg);

@@ -14,7 +14,7 @@ jobs:
     uses: janosh/workflows/.github/workflows/deno-test.yml@main
     with:
       test-cmd: npx vitest
-      e2e-install-cmd: npx playwright install chromium
+      e2e-install-cmd: npx svelte-kit sync && npx playwright install chromium
       e2e-test-cmd: npx playwright test
       deno-version: 2.3.7
-      e2e-continue-on-error: true
+      e2e-continue-on-error: false

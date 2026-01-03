@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib'
-  import { Icon } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let { element, missing_msg = `No image for `, ...rest }:

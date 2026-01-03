@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib'
-  import { Icon } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import { Structure } from '$lib/structure'
   import type { HTMLAttributes } from 'svelte/elements'

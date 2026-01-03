@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { DraggablePane, type InfoItem } from '$lib'
+  import type { InfoItem } from '$lib'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { format_num } from '$lib/labels'
   import type { Crystal } from '$lib/structure'
   import { analyze_structure_symmetry } from '$lib/symmetry'

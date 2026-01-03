@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from '$lib'
+  import Icon from '$lib/Icon.svelte'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { CellType } from '$lib/symmetry'

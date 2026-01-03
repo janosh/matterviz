@@ -1,7 +1,7 @@
 <script lang="ts">
   import { replaceState } from '$app/navigation'
   import type { ElementSymbol } from '$lib'
-  import { Spinner } from '$lib'
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import type { PhaseData } from '$lib/convex-hull'
   import { ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
   import { tick } from 'svelte'
