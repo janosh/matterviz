@@ -11,12 +11,13 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    // Configure longer timeout for performance test page
-    test.setTimeout(60000)
+    // Performance test page generates synthetic data client-side (no network requests)
+    // so shorter timeouts are appropriate for 100 entries
+    test.setTimeout(30000)
 
     await page.goto(
       `/test/convex-hull-performance?dim=3d&count=100&click_selection=false`,
-      { waitUntil: `networkidle`, timeout: 45000 },
+      { waitUntil: `networkidle`, timeout: 15000 },
     )
     const diagram = page.locator(`.convex-hull-3d`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
