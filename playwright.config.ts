@@ -7,8 +7,8 @@ export default {
     reuseExistingServer: true,
     timeout: 60_000, // Allow 1 min for dev server to start on CI
   },
-  workers: 12, // 3x vCPUs - testing if more parallelism helps I/O-bound browser tests
+  workers: 16, // 4x vCPUs - testing higher parallelism for I/O-bound browser tests
   timeout: 30_000, // Global timeout per test (increased for CI)
   testDir: `tests/playwright`,
-  // maxFailures: 0 means run all tests even if some fail (useful for CI to see total failures)
+  // Playwright runs all tests by default (maxFailures defaults to 0, useful for CI to see total failures)
 } satisfies PlaywrightTestConfig

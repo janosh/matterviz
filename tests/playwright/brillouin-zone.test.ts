@@ -74,7 +74,8 @@ test.describe(`BrillouinZone Component Tests`, () => {
   test(`handles camera rotation and zoom`, async ({ page }) => {
     const canvas = page.locator(`${BZ_SELECTOR} canvas`)
     const box = await canvas.boundingBox()
-    if (!box) return
+    expect(box, `Canvas bounding box should be available`).toBeTruthy()
+    if (!box) return // TypeScript narrowing
 
     const initial = await canvas.screenshot()
     await canvas.dragTo(canvas, {

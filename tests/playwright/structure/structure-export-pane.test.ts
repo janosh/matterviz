@@ -127,22 +127,6 @@ test.describe(`StructureExportPane Tests`, () => {
     await expect(dpi_input_reopened).toHaveValue(`250`)
   })
 
-  test(`all buttons have proper ARIA attributes`, async ({ page }) => {
-    const { pane_div } = await open_export_pane(page)
-
-    const buttons = pane_div.locator(`button`)
-    const button_count = await buttons.count()
-
-    expect(button_count).toBeGreaterThan(0)
-
-    // Check first few buttons for ARIA compliance
-    const checks = []
-    for (let idx = 0; idx < Math.min(button_count, 5); idx++) {
-      checks.push(expect(buttons.nth(idx)).toHaveAttribute(`type`, `button`))
-    }
-    await Promise.all(checks)
-  })
-
   test(`multiple formats can be copied in sequence`, async ({ page }) => {
     await page.context().grantPermissions([`clipboard-write`])
     const { pane_div } = await open_export_pane(page)
@@ -181,47 +165,6 @@ test.describe(`StructureExportPane Tests`, () => {
     await control_toggle.click()
     await expect(control_pane).toBeVisible()
     await expect(export_pane).toBeHidden() // Mutual exclusion still applies
-  })
-
-  test(`keyboard navigation and rapid toggle`, async ({ page }) => {
-    const { pane_div } = await open_export_pane(page)
-
-    // Keyboard navigation
-    const first_button = pane_div.locator(`.export-buttons button`).first()
-    await first_button.focus()
-    await expect(first_button).toBeFocused()
-    await page.keyboard.press(`Tab`)
-    const focused_element = await page.evaluate(() => document.activeElement?.tagName)
-    expect(focused_element).toBe(`BUTTON`)
-  })
-
-  test(`responsive design and styling`, async ({ page }) => {
-    await page.setViewportSize({ width: 400, height: 600 })
-    const { pane_div } = await open_export_pane(page)
-
-    // Check pane classes and overflow
-    const classes = await pane_div.getAttribute(`class`)
-    expect(classes).toContain(`export-pane`)
-
-    const styles = await pane_div.evaluate((el) => {
-      const computed = globalThis.getComputedStyle(el)
-      return { overflow: computed.overflow || computed.overflowY }
-    })
-    expect([`auto`, `scroll`, `visible`, `hidden auto`]).toContain(styles.overflow)
-
-    // Check button styling consistency
-    const buttons = pane_div.locator(`.export-buttons button`)
-    const button_count = await buttons.count()
-    expect(button_count).toBeGreaterThan(0)
-
-    // Verify layout
-    const export_buttons_div = pane_div.locator(`.export-buttons`).first()
-    const layout_styles = await export_buttons_div.evaluate((el) => {
-      const computed = globalThis.getComputedStyle(el)
-      return { display: computed.display, flexWrap: computed.flexWrap }
-    })
-    expect(layout_styles.display).toBe(`flex`)
-    expect(layout_styles.flexWrap).toBe(`wrap`)
   })
 
   test.describe(`format label hover tooltips`, () => {

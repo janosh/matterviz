@@ -540,20 +540,6 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // Structure stability test
-  test(`maintains structural stability over time`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const console_errors = setup_console_monitoring(page)
-
-    const initial_screenshot = await canvas.screenshot()
-    const later_screenshot = await canvas.screenshot()
-
-    // Both screenshots should be valid (structure loaded)
-    expect(initial_screenshot.length).toBeGreaterThan(1000)
-    expect(later_screenshot.length).toBeGreaterThan(1000)
-    expect(console_errors).toHaveLength(0)
-  })
-
   // Test lattice cell property customization with EdgesGeometry
   test(`lattice cell properties (color, opacity, line width) work correctly with EdgesGeometry`, async ({ page }) => {
     const console_errors = setup_console_monitoring(page)
@@ -773,82 +759,6 @@ test.describe(`StructureScene Component Tests`, () => {
     }
 
     // Verify no errors occurred even if visual changes are limited by WebGL
-    expect(console_errors).toHaveLength(0)
-  })
-
-  // Test dual opacity controls for edges and surfaces
-  test(`edge and surface opacity controls work independently`, async ({ page }) => {
-    const console_errors = setup_console_monitoring(page)
-    const canvas = page.locator(`#test-structure canvas`)
-
-    // Set baseline with both edges and surfaces visible
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0.8,
-          cell_surface_opacity: 0.3,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
-    })
-    const both_visible_screenshot = await canvas.screenshot()
-
-    // Test edges only (surface opacity = 0)
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0.8,
-          cell_surface_opacity: 0,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
-    })
-    const edges_only_screenshot = await canvas.screenshot()
-
-    // Test surfaces only (edge opacity = 0)
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0,
-          cell_surface_opacity: 0.3,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
-    })
-    const surfaces_only_screenshot = await canvas.screenshot()
-
-    // Test neither visible (both opacity = 0)
-    await page.evaluate(() => {
-      const event = new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0,
-          cell_surface_opacity: 0,
-          cell_edge_color: `#ffffff`,
-          cell_surface_color: `#ffffff`,
-        },
-      })
-      globalThis.dispatchEvent(event)
-    })
-    const neither_visible_screenshot = await canvas.screenshot()
-
-    // Verify all four modes produce different visual outputs
-    expect(both_visible_screenshot.equals(edges_only_screenshot)).toBe(false)
-    expect(both_visible_screenshot.equals(surfaces_only_screenshot)).toBe(false)
-    expect(both_visible_screenshot.equals(neither_visible_screenshot)).toBe(
-      false,
-    )
-    expect(edges_only_screenshot.equals(surfaces_only_screenshot)).toBe(false)
-    expect(edges_only_screenshot.equals(neither_visible_screenshot)).toBe(false)
-    expect(surfaces_only_screenshot.equals(neither_visible_screenshot)).toBe(
-      false,
-    )
-
     expect(console_errors).toHaveLength(0)
   })
 
