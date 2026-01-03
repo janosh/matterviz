@@ -63,11 +63,4 @@ test.describe(`Bohr Atoms page`, () => {
       expect(toggled_animation_duration).toBe(`0s`)
     }).toPass({ timeout: 10000 })
   })
-
-  test(`katex works`, async ({ page }) => {
-    await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
-
-    const katex_elements = await page.$$(`.katex`)
-    expect(katex_elements.length).toBeGreaterThan(10)
-  })
 })

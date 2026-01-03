@@ -7,7 +7,6 @@ export default {
     reuseExistingServer: true,
     timeout: 60_000, // Allow 1 min for dev server to start on CI
   },
-  workers: 8,
   timeout: 30_000, // Global timeout per test (increased for CI)
   testDir: `tests/playwright`,
   // maxFailures: 0 means run all tests even if some fail (useful for CI to see total failures)
