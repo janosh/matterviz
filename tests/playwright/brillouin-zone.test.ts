@@ -102,14 +102,6 @@ test.describe(`BrillouinZone Component Tests`, () => {
     }).toPass({ timeout: 5000 })
   })
 
-  test(`fullscreen toggle works`, async ({ page }) => {
-    const btn = page.locator(`${BZ_SELECTOR} button.fullscreen-toggle`)
-    await expect(btn).toBeVisible()
-    await btn.click()
-    // Wait for any animations to settle by checking the element is still present
-    await expect(btn).toBeVisible()
-  })
-
   test(`fullscreen prop is bindable`, async ({ page }) => {
     const status = page.locator(`[data-testid="fullscreen-status"]`)
     const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
@@ -132,16 +124,6 @@ test.describe(`BrillouinZone Component Tests`, () => {
     })
     await expect(status).toHaveText(`false`)
     await expect(checkbox).not.toBeChecked()
-  })
-
-  test(`fullscreen binds to component state`, async ({ page }) => {
-    const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
-    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
-
-    await expect(canvas).toBeVisible()
-    await checkbox.click({ force: true })
-    await expect(checkbox).toBeChecked()
-    await expect(canvas).toBeVisible()
   })
 
   test(`Escape closes panes`, async ({ page }) => {

@@ -1195,46 +1195,20 @@ test.describe(`ScatterPlot Component Tests`, () => {
     },
   )
 
-  test(`point hover visual effects work correctly`, async ({ page }) => {
-    const section_selector = `#basic-example`
-    const plot_locator = page.locator(`${section_selector} .scatter`)
+  test(`point hover shows tooltip`, async ({ page }) => {
+    const plot_locator = page.locator(`#basic-example .scatter`)
     const first_marker = plot_locator.locator(`path.marker`).first()
     const tooltip_locator = plot_locator.locator(`.plot-tooltip`)
 
     await plot_locator.waitFor({ state: `visible` })
     await first_marker.waitFor({ state: `visible` })
 
-    // Get initial transform state
-    const initial_transform = await first_marker.evaluate(
-      (el: SVGPathElement) => globalThis.getComputedStyle(el).transform,
-    )
-    expect(
-      initial_transform === `none` || initial_transform === `matrix(1, 0, 0, 1, 0, 0)`,
-    ).toBe(true)
+    // Tooltip should be hidden initially
     await expect(tooltip_locator).toBeHidden()
 
-    // Test hover coordinates calculation
-    const plot_bbox = await plot_locator.boundingBox()
-    expect(plot_bbox).toBeTruthy()
-
-    const pad = { t: 5, b: 50, l: 50, r: 20 }
-    const data_x_range = [0, 11]
-    const data_y_range = [10, 30]
-    const target_x_data = 0
-    const target_y_data = 10
-
-    const plot_inner_width = (plot_bbox?.width ?? 0) - pad.l - pad.r
-    const plot_inner_height = (plot_bbox?.height ?? 0) - pad.t - pad.b
-
-    const x_rel = (target_x_data - data_x_range[0]) / (data_x_range[1] - data_x_range[0])
-    const y_rel = (target_y_data - data_y_range[0]) / (data_y_range[1] - data_y_range[0])
-
-    const hover_x = pad.l + x_rel * plot_inner_width
-    const hover_y = (plot_bbox?.height ?? 0) - pad.b - y_rel * plot_inner_height
-
-    await page.mouse.move(hover_x, hover_y)
-    await page.mouse.down()
-    await page.mouse.up()
+    // Hover over marker - tooltip should appear
+    await first_marker.hover()
+    await expect(tooltip_locator).toBeVisible()
   })
 
   // Control Pane Tests

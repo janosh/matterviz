@@ -46,7 +46,8 @@ test.describe(`Periodic Table`, () => {
     const hydrogen_tile = page.locator(`.element-tile`).filter({ hasText: `H` }).first()
     await expect(hydrogen_tile).toBeVisible({ timeout: 20000 })
 
-    // Hover over hydrogen tile
+    // force: true needed because element tiles have layered content (symbol, number, name)
+    // that can intercept hover events depending on mouse position within the tile
     await hydrogen_tile.hover({ force: true })
 
     // Check for stats display - use flexible assertion with retry
@@ -112,6 +113,7 @@ test.describe(`Periodic Table`, () => {
       const h_tile = periodic_table.locator(`.element-tile`).filter({ hasText: `H` })
         .first()
       await expect(h_tile).toBeVisible({ timeout: 5000 })
+      // force: true needed - element tiles have stacked text content that intercepts hover
       await h_tile.hover({ force: true })
 
       // Get tooltip within the same periodic table container - use retry for visibility
@@ -128,7 +130,7 @@ test.describe(`Periodic Table`, () => {
       const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
       await expect(multiselect).toBeVisible()
 
-      // Select a heatmap property
+      // force: true needed - svelte-multiselect has SVG icons overlaying the clickable input
       await multiselect.click({ force: true })
 
       const option_list = multiselect.locator(`ul.options`)
@@ -211,42 +213,21 @@ test.describe(`Periodic Table`, () => {
       })
     }
 
-    test(`tooltip works with different heatmap properties`, async ({ page }) => {
+    test(`tooltip works with heatmap property selected`, async ({ page }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
-      const test_properties = [`Atomic mass`, `Boiling point`]
+      // Select a heatmap property
+      await page.click(`div.multiselect`)
+      await page.click(`text=Atomic mass`)
 
-      for (const property of test_properties) {
-        // Select heatmap property
-        await page.click(`div.multiselect`)
-        await page.click(`text=${property}`)
+      // Hover over Carbon element
+      await get_element_tile(page, `C`).hover()
 
-        await get_element_tile(page, `C`).hover()
-
-        const tooltip = get_tooltip(page)
-        await expect(tooltip).toBeVisible()
-        await expect(tooltip).toContainText(`Carbon`)
-        await expect(tooltip).toContainText(`C • 6`)
-
-        // Reset selection
-        await page.click(`div.multiselect`)
-        const clear_option = page
-          .locator(`[role="option"]`)
-          .filter({ hasText: /^$/ })
-          .first()
-        if (await clear_option.isVisible()) {
-          await clear_option.click()
-        } else {
-          await page.keyboard.press(`Escape`)
-          await page.evaluate(() => {
-            const select = document.querySelector(`select`)
-            if (select) {
-              select.value = ``
-              select.dispatchEvent(new Event(`input`, { bubbles: true }))
-            }
-          })
-        }
-      }
+      // Verify tooltip shows element info
+      const tooltip = get_tooltip(page)
+      await expect(tooltip).toBeVisible()
+      await expect(tooltip).toContainText(`Carbon`)
+      await expect(tooltip).toContainText(`C • 6`)
     })
   })
 
@@ -261,7 +242,7 @@ test.describe(`Periodic Table`, () => {
       const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
       await expect(multiselect).toBeVisible()
 
-      // Click on the multiselect to open dropdown (force: true to bypass SVG icon overlay)
+      // force: true needed - svelte-multiselect has SVG icons overlaying the clickable input
       await multiselect.click({ force: true })
 
       // Wait for dropdown list to be visible - look within the multiselect

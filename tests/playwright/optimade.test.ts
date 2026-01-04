@@ -89,12 +89,11 @@ test.describe(`OPTIMADE route`, () => {
     // Check input value is set correctly
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
 
-    // Check for error message - app shows parsing/network errors for invalid IDs
-    // since unknown providers trigger failed API requests
+    // Check for error message - mock returns OPTIMADE 404 with "Structure not found"
     const error_message = page.locator(`.structure-column .error-message`)
     await expect(error_message).toBeVisible()
-    // Accept any error message - the important thing is that the app handles it gracefully
-    await expect(error_message).toContainText(/Failed to load|not found|Error/i)
+    // Verify the app displays the OPTIMADE API error message
+    await expect(error_message).toContainText(/not found/i)
   })
 
   test(`can switch providers and clear input field`, async ({ page }) => {

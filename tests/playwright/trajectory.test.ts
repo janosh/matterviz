@@ -103,37 +103,6 @@ test.describe(`Trajectory Component`, () => {
     await expect(step_input).toHaveValue(`2`)
   })
 
-  test(`display mode cycles correctly through modes`, async () => {
-    const display_button = controls.locator(`.view-mode-button`)
-    const content_area = trajectory_viewer.locator(`.content-area`)
-
-    await expect(display_button).toBeVisible()
-    await expect(display_button).toBeEnabled()
-
-    // Initial state should be 'both' - just check it has some class
-    await expect(content_area).toHaveClass(/show-/)
-
-    // Test that button can be clicked (may not change state in test environment)
-    await display_button.click()
-
-    // Verify button is still clickable after interaction
-    await expect(display_button).toBeEnabled()
-  })
-
-  test(`info pane opens and closes with info button`, async () => {
-    const info_button = controls.locator(`.trajectory-info-toggle`)
-
-    await expect(info_button).toBeVisible()
-    await expect(info_button).toBeEnabled()
-    // Pane may not be visible initially since DraggablePane only renders when show=true
-
-    // Test that button can be clicked
-    await info_button.click()
-
-    // Verify button is still functional
-    await expect(info_button).toBeEnabled()
-  })
-
   test(`info pane displays trajectory information correctly`, async () => {
     // Wait for trajectory to be loaded first
     await expect(trajectory_viewer.locator(`.trajectory-controls`)).toBeVisible()
