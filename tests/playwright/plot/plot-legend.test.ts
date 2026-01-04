@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
 
 test.describe(`PlotLegend Component Integration Tests`, () => {
   // Define locators for the two legend instances
@@ -7,7 +6,6 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   const custom_style_legend_wrapper = `#custom-style-legend`
 
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `PlotLegend tests timeout in CI`)
     await page.goto(`/test/plot-legend`, { waitUntil: `networkidle` })
   })
 

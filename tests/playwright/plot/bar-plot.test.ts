@@ -1,9 +1,7 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
 
 test.describe(`BarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `BarPlot tests timeout in CI`)
     await page.goto(`/test/bar-plot`, { waitUntil: `networkidle` })
   })
 

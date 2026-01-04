@@ -1,9 +1,7 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
 
 test.describe(`RdfPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `RdfPlot tests timeout in CI`)
     await page.goto(`/test/rdf-plot`, { waitUntil: `networkidle` })
   })
 
