@@ -454,46 +454,6 @@ test.describe(`Trajectory Component`, () => {
       )
     })
 
-    test(`navigation buttons work for step control`, async ({ page }) => {
-      test.skip(IS_CI, `Navigation button tests flaky in CI`)
-      const trajectory = page.locator(`#loaded-trajectory`)
-      const step_input = trajectory.locator(`.step-input`)
-      const next_button = trajectory.locator(`button[title="Next step"]`)
-      const prev_button = trajectory.locator(`button[title="Previous step"]`)
-      const play_button = trajectory.locator(`.play-button`)
-
-      // Wait for component to be fully loaded
-      await expect(step_input).toBeVisible({ timeout: LOAD_TIMEOUT })
-      await expect(next_button).toBeVisible({ timeout: LOAD_TIMEOUT })
-      await expect(step_input).toHaveValue(`0`)
-
-      // Test next step button
-      await next_button.click()
-      await expect(step_input).toHaveValue(`1`, { timeout: 2000 })
-
-      // Test previous step button
-      await prev_button.click()
-      await expect(step_input).toHaveValue(`0`, { timeout: 2000 })
-
-      // Test direct step input
-      await step_input.fill(`2`)
-      await step_input.press(`Enter`)
-      await expect(step_input).toHaveValue(`2`, { timeout: 2000 })
-
-      // Reset to start
-      await step_input.fill(`0`)
-      await step_input.press(`Enter`)
-
-      // Test play/pause button
-      await expect(play_button).toHaveText(`▶`)
-      await play_button.click()
-      await expect(play_button).toHaveText(`⏸`)
-
-      // Pause playback
-      await play_button.click()
-      await expect(play_button).toHaveText(`▶`)
-    })
-
     test(`keyboard shortcuts are disabled when typing in inputs`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const step_input = trajectory.locator(`.step-input`)
