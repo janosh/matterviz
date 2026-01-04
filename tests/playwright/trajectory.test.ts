@@ -1,7 +1,6 @@
 // deno-lint-ignore-file no-await-in-loop
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { IS_CI } from './helpers'
 
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
@@ -29,18 +28,18 @@ async function select_display_mode(trajectory: Locator, mode_name: string) {
 }
 
 test.describe(`Trajectory Component`, () => {
+  // Retry flaky 3D rendering tests (WebGL timing varies, especially in CI)
+  test.describe.configure({ retries: 2 })
+
   let trajectory_viewer: Locator
   let controls: Locator
 
   test.beforeEach(async ({ page }) => {
-    // Skip in CI - trajectory loading involves heavy 3D assets that timeout
-    test.skip(IS_CI, `Trajectory tests require heavy 3D loading`)
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
     await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
-    // Wait for the trajectory to be loaded
-    // TODO: Consider using lighter test fixtures to reduce this timeout
-    await expect(trajectory_viewer).toBeVisible({ timeout: 30000 })
+    // Wait for the trajectory to be loaded - longer timeout for CI's slower rendering
+    await expect(trajectory_viewer).toBeVisible({ timeout: 45_000 })
   })
 
   test(`empty state displays correctly`, async ({ page }) => {

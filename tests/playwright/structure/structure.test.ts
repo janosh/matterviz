@@ -2316,6 +2316,9 @@ test.describe(`Structure Event Handler Tests`, () => {
 })
 
 test.describe(`Camera Projection Toggle Tests`, () => {
+  // Retry flaky screenshot comparison tests (WebGL rendering timing varies)
+  test.describe.configure({ retries: 2 })
+
   test.beforeEach(async ({ page }: { page: Page }) => {
     await goto_structure_test(page)
   })
@@ -2359,7 +2362,6 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection behavior and visual differences`, async ({ page }) => {
-    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
@@ -2495,7 +2497,6 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection controls integration and functionality`, async ({ page }) => {
-    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
@@ -3156,6 +3157,9 @@ test.describe(`Structure Rotation Controls Tests`, () => {
 })
 
 test.describe(`Element Visibility Toggle`, () => {
+  // Retry flaky screenshot comparison tests (WebGL rendering timing varies)
+  test.describe.configure({ retries: 2 })
+
   test.beforeEach(async ({ page }: { page: Page }) => {
     await goto_structure_test(page)
   })
@@ -3178,7 +3182,6 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`toggling elements hides/shows atoms with visual feedback`, async ({ page }) => {
-    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const canvas = page.locator(`#test-structure canvas`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const first_item = legend.locator(`.legend-item`).first()
@@ -3245,7 +3248,6 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`toggle shows atoms after hiding`, async ({ page }) => {
-    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const canvas = page.locator(`#test-structure canvas`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const first_item = legend.locator(`.legend-item`).first()
@@ -3271,7 +3273,6 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`multiple elements work independently`, async ({ page }) => {
-    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const canvas = page.locator(`#test-structure canvas`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const legend_items = legend.locator(`.legend-item`)

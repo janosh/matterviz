@@ -75,21 +75,38 @@ describe.each(structures)(`structure-utils`, (structure) => {
   const { id } = structure
   const expected = id ? ref_data[id] : undefined
 
-  test.runIf(id && id in ref_data)(
-    `get_element_counts should return the correct element amounts for a given structure`,
-    () => {
-      const result = struct_utils.get_element_counts(structure)
-      expect(JSON.stringify(result), id).toBe(JSON.stringify(expected?.amounts))
-    },
-  )
+  test(`get_element_counts should return valid element amounts`, () => {
+    const result = struct_utils.get_element_counts(structure)
 
-  test.runIf(id && id in ref_data)(
-    `density should return the correct density for a given structure`,
-    () => {
-      const density = struct_utils.get_density(structure)
-      expect(density, id).toBeCloseTo(expected?.density ?? 0, 3)
-    },
-  )
+    for (const [element, count] of Object.entries(result)) {
+      expect(element, `${id}`).toMatch(/^[A-Z][a-z]{0,2}$/) // Valid element symbol
+      expect(count, `${id}: ${element}`).toBeGreaterThan(0)
+      expect(Number.isInteger(count), `${id}: ${element}`).toBe(true)
+    }
+
+    // Sum must equal total sites
+    const total = Object.values(result).reduce((sum, n) => sum + n, 0)
+    expect(total, `${id}`).toBe(structure.sites.length)
+
+    if (expected?.amounts) {
+      expect(result, id).toEqual(expected.amounts)
+    }
+  })
+
+  test(`density should return a valid positive value`, () => {
+    const density = struct_utils.get_density(structure)
+
+    if (structure.lattice) {
+      // Physical sanity: 0.01 g/cm³ (aerogels) to 30 g/cm³ (beyond osmium)
+      expect(density, `${id}: density`).toBeGreaterThan(0.01)
+      expect(density, `${id}: density`).toBeLessThan(30)
+      expect(Number.isFinite(density), `${id}: density finite`).toBe(true)
+    }
+
+    if (expected?.density) {
+      expect(density, id).toBeCloseTo(expected.density, 3)
+    }
+  })
 })
 
 // Consolidated tests for center of mass, formulas, and elements

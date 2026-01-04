@@ -1,71 +1,10 @@
 import { expect, test } from '@playwright/test'
-import type { OptimadeStructure } from '../../src/lib/api/optimade'
+import {
+  MOCK_PROVIDERS,
+  MOCK_STRUCTURES,
+  MOCK_SUGGESTIONS,
+} from '../fixtures/optimade-mocks'
 import { IS_CI } from './helpers'
-
-// Mock structure data shared across tests
-const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
-  'mp-1': {
-    id: `mp-1`,
-    type: `structures`,
-    attributes: {
-      chemical_formula_descriptive: `H2O`,
-      lattice_vectors: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      species: [{ name: `H`, chemical_symbols: [`H`], concentration: [1] }],
-      species_at_sites: [`H`],
-      cartesian_site_positions: [[0, 0, 0]],
-      structure_features: [],
-    },
-  },
-  'mp-149': {
-    id: `mp-149`,
-    type: `structures`,
-    attributes: {
-      chemical_formula_descriptive: `Si`,
-      lattice_vectors: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      species: [{ name: `Si`, chemical_symbols: [`Si`], concentration: [1] }],
-      species_at_sites: [`Si`],
-      cartesian_site_positions: [[0, 0, 0]],
-      structure_features: [],
-    },
-  },
-}
-
-const MOCK_PROVIDERS = [
-  {
-    id: `mp`,
-    type: `links`,
-    attributes: {
-      name: `Materials Project`,
-      base_url: `https://optimade.materialsproject.org`,
-      description: `The Materials Project`,
-      homepage: `https://materialsproject.org`,
-      link_type: `child`,
-    },
-  },
-  {
-    id: `cod`,
-    type: `links`,
-    attributes: {
-      name: `Crystallography Open Database`,
-      description: `Crystallography Open Database`,
-      base_url: `https://www.crystallography.net/cod/optimade`,
-      homepage: `https://www.crystallography.net/cod`,
-      link_type: `child`,
-    },
-  },
-  {
-    id: `oqmd`,
-    type: `links`,
-    attributes: {
-      name: `OQMD`,
-      description:
-        `The OQMD is a database of DFT calculated thermodynamic and structural properties.`,
-      base_url: `https://oqmd.org/optimade`,
-      homepage: `https://oqmd.org`,
-      link_type: `child`,
-    },
-  },
-]
 
 test.describe(`OPTIMADE route`, () => {
   test.describe.configure({ timeout: 30000, retries: 2 })
@@ -94,22 +33,7 @@ test.describe(`OPTIMADE route`, () => {
         }
         // Suggestions query (page_limit or filter)
         if (url.includes(`page_limit`) || url.includes(`filter=`)) {
-          return route.fulfill({
-            json: {
-              data: [
-                {
-                  id: `mp-149`,
-                  type: `structures`,
-                  attributes: { chemical_formula_descriptive: `Si` },
-                },
-                {
-                  id: `oqmd-1234`,
-                  type: `structures`,
-                  attributes: { chemical_formula_descriptive: `Fe` },
-                },
-              ],
-            },
-          })
+          return route.fulfill({ json: { data: MOCK_SUGGESTIONS } })
         }
         // Invalid/unknown structure - return OPTIMADE-compliant error response
         return route.fulfill({
