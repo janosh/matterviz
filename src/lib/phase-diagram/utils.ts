@@ -1,4 +1,4 @@
-import { format_num } from '$lib'
+import { format_num } from '$lib/labels'
 import { add_alpha } from '$lib/colors'
 import { point_in_polygon, type Vec2 } from '$lib/math'
 import type { Sides } from '$lib/plot'

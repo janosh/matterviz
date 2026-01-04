@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { ColorSchemeName, ElementSymbol } from '$lib'
+  import type { ColorSchemeName } from '$lib/colors'
+  import type { ElementSymbol } from '$lib/element'
   import { ELEMENT_COLOR_SCHEMES, luminance } from '$lib/colors'
   import { element_data } from '$lib/element'
   import ElementTile from '$lib/element/ElementTile.svelte'

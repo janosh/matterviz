@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChemicalElement } from '$lib'
+  import type { ChemicalElement } from '$lib/element'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import ElementHeading from './ElementHeading.svelte'

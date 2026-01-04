@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChemicalElement } from '$lib'
+  import type { ChemicalElement } from '$lib/element'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let { element, ...rest }: HTMLAttributes<HTMLHeadingElement> & {

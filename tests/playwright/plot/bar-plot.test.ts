@@ -3,11 +3,11 @@ import { IS_CI } from '../helpers'
 
 test.describe(`BarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `BarPlot tests timeout in CI`)
     await page.goto(`/test/bar-plot`, { waitUntil: `networkidle` })
   })
 
   test(`renders basic bar plot with axes and bars`, async ({ page }) => {
+    test.skip(IS_CI, `Bar plot rendering flaky in CI`)
     const section = page.locator(`#basic-bar`)
     const plot = section.locator(`.bar-plot`)
     await expect(plot).toBeVisible()

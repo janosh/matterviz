@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-await-in-loop
-import type { AnyStructure } from '$lib'
+import type { AnyStructure } from '$lib/structure'
 import { download } from '$lib/io/fetch'
 import { create_structure_filename } from '$lib/structure/export'
 import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'

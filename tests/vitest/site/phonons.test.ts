@@ -1,5 +1,5 @@
 import type { PhononBandStructure } from '$lib/spectral'
-import { phonon_bands, phonon_dos } from '$site/phonons'
+import { phonon_bands, phonon_data, phonon_dos } from '$site/phonons'
 import { describe, expect, it } from 'vitest'
 
 describe(`Phonon Module Tests`, () => {
@@ -250,44 +250,136 @@ describe(`Phonon Module Tests`, () => {
     }
   })
 
-  // Filter to structures with exactly one labeled point
-  const single_label_structures = (
-    Object.values(phonon_bands) as PhononBandStructure[]
-  ).filter(
-    (band_struct) => band_struct.qpoints.filter((qpt) => qpt.label !== null).length === 1,
+  // Verify branch naming follows "start_label-end_label" convention
+  it.each(Object.entries(phonon_bands))(
+    `%s branch names match endpoint labels`,
+    (id, band_struct) => {
+      for (const branch of band_struct.branches) {
+        expect(branch.name.length, `${id}: branch name`).toBeGreaterThan(0)
+
+        const start_label = band_struct.qpoints[branch.start_index]?.label
+        const end_label = band_struct.qpoints[branch.end_index]?.label
+
+        if (start_label && end_label) {
+          expect(branch.name, `${id}`).toBe(`${start_label}-${end_label}`)
+        } else if (start_label) {
+          expect(branch.name, `${id}`).toContain(start_label)
+        } else if (end_label) {
+          expect(branch.name, `${id}`).toContain(end_label)
+        }
+      }
+    },
   )
 
-  it.skipIf(single_label_structures.length === 0)(
-    `splits single-label paths into head and tail branches`,
-    () => {
-      for (const band_struct of single_label_structures) {
-        const label_idx = band_struct.qpoints.findIndex((qpt) => qpt.label !== null)
-        const label = band_struct.qpoints[label_idx].label
+  // Verify each real phonon file has expected structure characteristics
+  // Minimum qpoints threshold: band structure calculations typically sample 100+ k-points
+  // along high-symmetry paths. This catches incomplete or corrupted data files.
+  const MIN_QPOINTS = 100
 
-        // Should have head segment if label is not at start
-        if (label_idx > 0) {
-          const head_branch = band_struct.branches.find(
-            (branch) => branch.start_index === 0 && branch.end_index === label_idx,
-          )
-          expect(head_branch).toBeDefined()
-          expect(head_branch?.name).toBe(`0-${label}`)
-        }
+  it.each(Object.entries(phonon_bands))(
+    `%s has valid band structure with correct dimensions`,
+    (id, band_struct) => {
+      // Verify minimum expected content
+      expect(band_struct.qpoints.length, `${id}: should have qpoints`).toBeGreaterThan(
+        MIN_QPOINTS,
+      )
+      expect(band_struct.nb_bands, `${id}: should have bands`).toBeGreaterThan(0)
+      expect(
+        Object.keys(band_struct.labels_dict).length,
+        `${id}: should have labeled points`,
+      ).toBeGreaterThan(0)
 
-        // Should have tail segment if label is not at end
-        if (label_idx < band_struct.qpoints.length - 1) {
-          const tail_branch = band_struct.branches.find(
-            (branch) =>
-              branch.start_index === label_idx &&
-              branch.end_index === band_struct.qpoints.length - 1,
-          )
-          expect(tail_branch).toBeDefined()
-          expect(tail_branch?.name).toBe(`${label}-end`)
-        }
+      // Verify labeled points count matches labels_dict entries
+      const labeled_count = band_struct.qpoints.filter((q) => q.label !== null).length
+      expect(
+        labeled_count,
+        `${id}: labeled qpoints should match labels_dict`,
+      ).toBeGreaterThanOrEqual(Object.keys(band_struct.labels_dict).length)
 
-        // Branch endpoints should be inclusive
-        band_struct.branches.forEach((branch) => {
-          expect(branch.end_index).toBeGreaterThanOrEqual(branch.start_index)
-        })
+      // Verify branch count is reasonable (at least 1 per pair of consecutive labels)
+      const num_labels = Object.keys(band_struct.labels_dict).length
+      expect(
+        band_struct.branches.length,
+        `${id}: should have at least ${num_labels - 1} branches`,
+      ).toBeGreaterThanOrEqual(num_labels - 1)
+
+      // Verify all bands have consistent length
+      for (const [band_idx, band] of band_struct.bands.entries()) {
+        expect(
+          band.length,
+          `${id}: band ${band_idx} should have ${band_struct.qpoints.length} points`,
+        ).toBe(band_struct.qpoints.length)
+      }
+    },
+  )
+
+  // Verify raw phonon data files are loaded and transformed correctly
+  it.each(Object.keys(phonon_data))(
+    `%s raw data is correctly transformed to PhononBandStructure`,
+    (id) => {
+      const raw = phonon_data[id]
+      const transformed = phonon_bands[id]
+
+      // Verify raw data exists
+      expect(raw, `${id}: raw data should exist`).toBeDefined()
+      expect(raw.phonon_bandstructure, `${id}: should have phonon_bandstructure`)
+        .toBeDefined()
+
+      // Verify transformation produces valid output - fail fast with clear message
+      expect(transformed, `${id}: transformed data should exist in phonon_bands`)
+        .toBeDefined()
+      if (!transformed) return // Guard for TypeScript and clearer stack traces
+
+      // Verify required raw fields exist (these are mandatory in valid phonon data)
+      const raw_qpoints = raw.phonon_bandstructure?.qpoints
+      const raw_bands = raw.phonon_bandstructure?.bands
+      const raw_labels = raw.phonon_bandstructure?.labels_dict
+      expect(raw_qpoints, `${id}: raw data should have qpoints`).toBeDefined()
+      expect(raw_bands, `${id}: raw data should have bands`).toBeDefined()
+      expect(raw_labels, `${id}: raw data should have labels_dict`).toBeDefined()
+      if (!raw_qpoints || !raw_bands || !raw_labels) return // Guard for TypeScript
+
+      // Verify transformation preserves data dimensions
+      expect(transformed.qpoints.length, `${id}: qpoint count should match`).toBe(
+        raw_qpoints.length,
+      )
+      expect(transformed.nb_bands, `${id}: band count should match`).toBe(
+        raw_bands.length,
+      )
+      expect(
+        Object.keys(transformed.labels_dict).sort(),
+        `${id}: labels should match`,
+      ).toEqual(Object.keys(raw_labels).sort())
+    },
+  )
+
+  // Verify frequency values are physically reasonable for phonons
+  it.each(Object.entries(phonon_bands))(
+    `%s has physically reasonable phonon frequencies`,
+    (id, band_struct) => {
+      // Phonon frequencies in THz: typically -5 to 50 THz for most materials
+      // Negative frequencies indicate imaginary modes (instabilities)
+      const all_freqs = band_struct.bands.flat()
+
+      // All frequencies should be finite
+      expect(
+        all_freqs.every(Number.isFinite),
+        `${id}: all frequencies should be finite`,
+      ).toBe(true)
+
+      // Max frequency should be reasonable (< 100 THz even for light elements like H)
+      const max_freq = Math.max(...all_freqs)
+      expect(max_freq, `${id}: max frequency should be < 100 THz`).toBeLessThan(100)
+
+      // If has_imaginary_modes is false, all frequencies should be non-negative
+      // Tolerance of -0.1 THz accommodates soft modes near zero (quasi-stable structures)
+      // True numerical noise is ~1e-10, but DFT accuracy limits make small soft modes common
+      if (band_struct.has_imaginary_modes === false) {
+        const min_freq = Math.min(...all_freqs)
+        expect(
+          min_freq,
+          `${id}: min frequency should be >= -0.1 THz when no imaginary modes`,
+        ).toBeGreaterThanOrEqual(-0.1)
       }
     },
   )

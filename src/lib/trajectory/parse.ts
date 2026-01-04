@@ -1,6 +1,4 @@
 // Parsing functions for trajectory data from various formats
-import type { AnyStructure, ElementSymbol, Pbc, Vec3 } from '$lib'
-import { is_binary } from '$lib'
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import {
   COMPRESSION_EXTENSIONS_REGEX,
@@ -11,8 +9,12 @@ import {
   TRAJ_KEYWORDS_SIMPLE_REGEX,
   XDATCAR_REGEX,
 } from '$lib/constants'
+import type { ElementSymbol } from '$lib/element'
+import { is_binary } from '$lib/io/is-binary'
 import { ELEM_SYMBOLS } from '$lib/labels'
+import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { AnyStructure, Pbc } from '$lib/structure'
 import { parse_xyz } from '$lib/structure/parse'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import * as h5wasm from 'h5wasm'
