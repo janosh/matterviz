@@ -5,10 +5,19 @@
   "homepage": "https://janosh.github.io/matterviz",
   "repository": "https://github.com/janosh/matterviz",
   "license": "MIT",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/matterviz/issues",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest --run && playwright test",
+    "check": "svelte-check",
+    "package": "svelte-package",
+    "prepublishOnly": "svelte-package"
+  },
   "dependencies": {
     "@spglib/moyo-wasm": "^0.7.3",
     "@sveltejs/kit": "^2.49.2",
