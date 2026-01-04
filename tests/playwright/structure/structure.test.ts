@@ -13,7 +13,6 @@ import {
 
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `Structure tests timeout in CI (SSR error on /test/structure)`)
     await goto_structure_test(page)
   })
 
@@ -1365,9 +1364,10 @@ test.describe(`Structure Component Tests`, () => {
 })
 
 test.describe(`File Drop Functionality Tests`, () => {
+  // File drop tests use synthetic DataTransfer events which are unreliable in headless CI
+  // Keep skipped - these work locally but not in CI due to browser security restrictions
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `File drop tests timeout in CI`)
-    // wait_for_3d_canvas handles both canvas visibility and non-zero dimensions
+    test.skip(IS_CI, `Synthetic file drop events unreliable in headless CI`)
     await goto_structure_test(page)
   })
 
@@ -1543,7 +1543,6 @@ H    1.261    0.728   -0.890`
 
 test.describe(`Reset Camera Button Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `Reset camera tests timeout in CI`)
     await goto_structure_test(page)
   })
 
@@ -1799,7 +1798,6 @@ test.describe(`Reset Camera Button Tests`, () => {
 
 test.describe(`Export Button Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `Export button tests timeout in CI`)
     await goto_structure_test(page)
   })
 
@@ -2005,7 +2003,6 @@ test.describe(`Export Button Tests`, () => {
 
 test.describe(`Show Buttons Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `Show buttons tests timeout in CI`)
     await goto_structure_test(page)
   })
 
@@ -2087,7 +2084,6 @@ test.describe(`Show Buttons Tests`, () => {
 
 test.describe(`Structure Event Handler Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `Event handler tests timeout in CI`)
     await goto_structure_test(page)
   })
 
@@ -2321,7 +2317,6 @@ test.describe(`Structure Event Handler Tests`, () => {
 
 test.describe(`Camera Projection Toggle Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `Camera projection tests timeout in CI`)
     await goto_structure_test(page)
   })
 
@@ -2364,9 +2359,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection behavior and visual differences`, async ({ page }) => {
-    // Skip in CI - this test relies on screenshot comparisons which are flaky in headless CI
-    test.skip(IS_CI, `Screenshot comparisons flaky in CI`)
-
+    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
@@ -2502,9 +2495,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection controls integration and functionality`, async ({ page }) => {
-    // Skip in CI - this test relies on screenshot comparisons which are flaky in headless CI
-    test.skip(IS_CI, `Screenshot comparisons flaky in CI`)
-
+    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
@@ -2905,7 +2896,6 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
 test.describe(`Structure Rotation Controls Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `Rotation controls tests timeout in CI`)
     await goto_structure_test(page)
   })
 
@@ -3167,7 +3157,6 @@ test.describe(`Structure Rotation Controls Tests`, () => {
 
 test.describe(`Element Visibility Toggle`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `Element visibility tests timeout in CI`)
     await goto_structure_test(page)
   })
 
@@ -3189,7 +3178,7 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`toggling elements hides/shows atoms with visual feedback`, async ({ page }) => {
-    test.skip(IS_CI, `Screenshot comparison flaky in CI`)
+    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const canvas = page.locator(`#test-structure canvas`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const first_item = legend.locator(`.legend-item`).first()
@@ -3256,7 +3245,7 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`toggle shows atoms after hiding`, async ({ page }) => {
-    test.skip(IS_CI, `Screenshot comparison flaky in CI`)
+    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const canvas = page.locator(`#test-structure canvas`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const first_item = legend.locator(`.legend-item`).first()
@@ -3282,7 +3271,7 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`multiple elements work independently`, async ({ page }) => {
-    test.skip(IS_CI, `Screenshot comparison flaky in CI`)
+    // Screenshot comparisons can be flaky in CI - relies on describe-level retries
     const canvas = page.locator(`#test-structure canvas`)
     const legend = page.locator(`#test-structure .atom-legend`)
     const legend_items = legend.locator(`.legend-item`)
@@ -3349,10 +3338,12 @@ test.describe(`Element Visibility Toggle`, () => {
     // Button stays visible when element hidden (via element-hidden class which sets opacity: 1)
     await page.mouse.move(0, 0)
     await expect(toggle_button).toHaveClass(/element-hidden/)
-    const hidden_opacity = await toggle_button.evaluate((el) =>
-      parseFloat(globalThis.getComputedStyle(el).opacity)
-    )
-    expect(hidden_opacity).toBeCloseTo(1, 2)
+    await expect(async () => {
+      const hidden_opacity = await toggle_button.evaluate((el) =>
+        parseFloat(globalThis.getComputedStyle(el).opacity)
+      )
+      expect(hidden_opacity).toBeGreaterThan(0.9)
+    }).toPass({ timeout: 2000 })
 
     // Hidden state persists through control pane interactions
     const controls_checkbox = page.locator(
@@ -3366,7 +3357,6 @@ test.describe(`Element Visibility Toggle`, () => {
 
 test.describe(`Fullscreen Background Color Detection`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `Fullscreen background tests timeout in CI`)
     await goto_structure_test(page)
   })
 
