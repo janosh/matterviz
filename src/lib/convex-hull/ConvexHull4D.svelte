@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib'
-  import { DEFAULTS, toggle_fullscreen } from '$lib'
+  import { toggle_fullscreen } from '$lib/layout'
+  import { DEFAULTS } from '$lib/settings'
+  import type { AnyStructure } from '$lib/structure'
   import Icon from '$lib/Icon.svelte'
   import type { D3InterpolateName } from '$lib/colors'
   import { is_dark_mode, watch_dark_mode } from '$lib/colors'

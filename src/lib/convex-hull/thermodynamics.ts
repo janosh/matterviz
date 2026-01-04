@@ -1,9 +1,9 @@
-import type { ElementSymbol } from '$lib/element'
 import {
   count_atoms_in_composition,
   extract_formula_elements,
   sort_by_electronegativity,
 } from '$lib/composition'
+import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
 import {
   barycentric_to_ternary_xyz,

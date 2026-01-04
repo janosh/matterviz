@@ -1,5 +1,29 @@
 import { get_page_background } from '$lib/colors'
 
+// Toggle fullscreen mode for a wrapper element
+export async function toggle_fullscreen(wrapper?: HTMLDivElement): Promise<void> {
+  if (!wrapper) return
+  try {
+    if (!document.fullscreenElement) {
+      await wrapper.requestFullscreen()
+    } else if (document.fullscreenElement === wrapper) {
+      await document.exitFullscreen()
+    } else {
+      await document.exitFullscreen()
+      await wrapper.requestFullscreen()
+    }
+  } catch (error) {
+    console.error(`Fullscreen operation failed:`, error)
+  }
+}
+
+export type InfoItem = Readonly<{
+  label: string
+  value: string | number
+  key?: string
+  tooltip?: string
+}>
+
 // Setup fullscreen effect with optional callback for when fullscreen state changes
 export function setup_fullscreen_effect(
   fullscreen: boolean,

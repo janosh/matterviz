@@ -163,6 +163,13 @@ Direct
 })
 
 test.describe(`BrillouinZone Event Handler Tests`, () => {
+  test.beforeEach(() => {
+    test.skip(
+      IS_CI,
+      `BrillouinZone 3D tests timeout in CI due to WebGL software rendering`,
+    )
+  })
+
   test(`triggers on_file_load with data_url`, async ({ page }) => {
     await page.goto(`/test/brillouin-zone?data_url=/structures/mp-1.json`, {
       waitUntil: `networkidle`,

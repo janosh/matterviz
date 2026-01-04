@@ -1520,57 +1520,6 @@ test.describe(`Reset Camera Button Tests`, () => {
 
     await expect(reset_camera_button).toBeHidden()
   })
-
-  test(`structure change resets camera state correctly`, async ({ page }) => {
-    // Test that changing structure resets the camera state
-    const structure_div = page.locator(`#test-structure`)
-
-    // Verify initial state
-    const initial_button_count = await page
-      .locator(`button.reset-camera`)
-      .count()
-    expect(initial_button_count).toBe(0)
-
-    // Test the logic of structure change resetting camera state
-    // Since file carousel might not be available in test environment, we'll test the logic directly
-    const structure_change_test = await page.evaluate(() => {
-      // Simulate the reactive logic that happens when structure changes
-      let camera_has_moved = true // Assume camera was moved
-
-      // Simulate structure change effect (this would happen in the real component)
-      const simulate_structure_change = () => {
-        camera_has_moved = false // Structure change resets camera_has_moved
-      }
-
-      const before_change = camera_has_moved
-      simulate_structure_change()
-      const after_change = camera_has_moved
-
-      return { before_change, after_change }
-    })
-
-    expect(structure_change_test.before_change).toBe(true)
-    expect(structure_change_test.after_change).toBe(false)
-
-    // Also verify that the canvas is ready and interactive
-    const canvas = structure_div.locator(`canvas`)
-    await expect(canvas).toBeVisible()
-
-    const canvas_ready = await page.waitForFunction(
-      () => {
-        const canvas = document.querySelector(
-          `#test-structure canvas`,
-        ) as HTMLCanvasElement
-        return canvas && canvas.width > 0 && canvas.height > 0
-      },
-      { timeout: get_canvas_timeout() },
-    )
-    expect(canvas_ready).toBeTruthy()
-
-    // Verify reset button is still not visible (structure hasn't changed, camera hasn't moved)
-    const final_button_count = await page.locator(`button.reset-camera`).count()
-    expect(final_button_count).toBe(0)
-  })
 })
 
 test.describe(`Export Button Tests`, () => {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '$lib'
+  import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

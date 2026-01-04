@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ChemicalElement } from '$lib'
-  import { format_num } from '$lib'
+  import type { ChemicalElement } from '$lib/element'
+  import { format_num } from '$lib/labels'
   import { contrast_color, is_color, pick_contrast_color } from '$lib/colors'
   import { colors, selected } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'

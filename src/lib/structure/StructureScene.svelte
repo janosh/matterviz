@@ -1,6 +1,10 @@
 <script lang="ts">
-  import type { AnyStructure, BondPair, ElementSymbol, Site, Vec3 } from '$lib'
-  import { atomic_radii, AXIS_COLORS, element_data, NEG_AXIS_COLORS } from '$lib'
+  import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
+  import type { ElementSymbol } from '$lib/element'
+  import { element_data } from '$lib/element'
+  import type { Vec3 } from '$lib/math'
+  import type { AnyStructure, BondPair, Site } from '$lib/structure'
+  import { atomic_radii } from '$lib/structure'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
