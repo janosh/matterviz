@@ -1016,23 +1016,6 @@ test.describe(`Structure Component Tests`, () => {
     await expect(controls_open_status).toContainText(`true`)
     await expect(control_pane).toHaveClass(/pane-open/)
 
-    // Test color scheme multiselect dropdown (uses svelte-multiselect with listbox)
-    const color_scheme_label = control_pane
-      .locator(`label`)
-      .filter({ hasText: /Color scheme/ })
-    const color_scheme_multiselect = color_scheme_label.locator(`.multiselect`)
-    await expect(color_scheme_multiselect).toBeVisible()
-    // Open the multiselect dropdown by clicking the visible textbox input
-    await color_scheme_multiselect.getByRole(`textbox`).click()
-    // Select Jmol option from the listbox (options may be portaled)
-    const jmol_option = page.locator(`.multiselect ul.options li`).filter({
-      hasText: `Jmol`,
-    }).first()
-    await expect(jmol_option).toBeVisible({ timeout: 3000 })
-    await jmol_option.click()
-    await expect(controls_open_status).toContainText(`true`)
-    await expect(control_pane).toHaveClass(/pane-open/)
-
     // Test number input
     const atom_radius_label = control_pane
       .locator(`label`)

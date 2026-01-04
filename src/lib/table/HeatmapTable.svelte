@@ -950,6 +950,7 @@
     font-size: var(--heatmap-font-size, 0.9em);
     width: fit-content;
     max-width: 100%;
+    margin: 0 auto;
     position: relative;
   }
   .table-scroll.has-scroll {
@@ -957,7 +958,8 @@
     border: 1px solid var(--border, #333);
   }
   table {
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     display: table; /* Override global display: block to enable sticky headers */
   }
   th, td {
@@ -998,16 +1000,14 @@
     top: 0;
     background: var(--heatmap-header-bg, var(--page-bg, Canvas));
     z-index: 4; /* Higher than regular th (2) to stay above when both scroll */
-    /* Shadow to cover any sub-pixel gaps when scrolling */
-    box-shadow: 1px 0 0 0 var(--heatmap-header-bg, var(--page-bg, Canvas));
+    border-right: 1px solid var(--border, #ddd);
   }
   td.sticky-col {
     position: sticky;
     left: 0;
     background: var(--page-bg, Canvas);
     z-index: 1;
-    /* Shadow to cover any sub-pixel gaps when scrolling */
-    box-shadow: 1px 0 0 0 var(--page-bg, Canvas);
+    border-right: 1px solid var(--border, #ddd);
   }
   tbody tr:hover {
     filter: var(--heatmap-row-hover-filter, brightness(1.1));

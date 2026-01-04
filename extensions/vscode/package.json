@@ -2,7 +2,7 @@
   "name": "matterviz",
   "displayName": "MatterViz",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
@@ -214,7 +214,7 @@
         "matterviz.structure.atom_color_scale": {
           "type": "string",
           "default": "interpolateViridis",
-          "description": "D3 color scale for property-based coloring (e.g., interpolateViridis, interpolatePlasma)"
+          "description": "D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)"
         },
         "matterviz.structure.atom_color_scale_type": {
           "type": "string",
@@ -922,7 +922,7 @@
         "matterviz.scatter.line.dash": {
           "type": "string",
           "default": "solid",
-          "description": "Line dash pattern for scatter plots (e.g., \"4,4\" for dashed)"
+          "description": "Line dash pattern for scatter plots (e.g. \"4,4\" for dashed)"
         },
         "matterviz.plot.animation_duration": {
           "type": "number",
