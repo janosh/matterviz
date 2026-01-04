@@ -1,6 +1,6 @@
 import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
 
-// Minimal mock structures for testing - only include fields actually needed
+// Complete mock structures for testing with full lattice, species, and positions
 export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
   'mp-1': {
     id: `mp-1`,

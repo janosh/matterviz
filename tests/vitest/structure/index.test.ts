@@ -101,6 +101,11 @@ describe.each(structures)(`structure-utils`, (structure) => {
       expect(density, `${id}: density`).toBeGreaterThan(0.01)
       expect(density, `${id}: density`).toBeLessThan(30)
       expect(Number.isFinite(density), `${id}: density finite`).toBe(true)
+    } else {
+      // Without lattice (molecules), density should return 0 or NaN
+      expect(density === 0 || Number.isNaN(density), `${id}: no-lattice density`).toBe(
+        true,
+      )
     }
 
     if (expected?.density) {
@@ -131,19 +136,27 @@ test.each(structures.filter((struct) => struct.id && ref_data[struct.id]))(
 )
 
 test.each(structures)(`find_image_atoms`, async (structure) => {
+  // Returns [atom_idx, img_xyz, img_abc][] tuples
   const image_atoms = struct_utils.find_image_atoms(structure)
-  // write reference data
-  // import fs from 'fs'
-  // fs.writeFileSync(
-  //   `${__dirname}/fixtures/find_image_atoms/${structure.id}.json`,
-  //   JSON.stringify(result)
-  // )
+
+  // Basic assertions that always run
+  expect(Array.isArray(image_atoms), `${structure.id}: should return array`).toBe(true)
+  for (const [atom_idx, img_xyz, img_abc] of image_atoms) {
+    expect(atom_idx, `${structure.id}: atom_idx`).toBeGreaterThanOrEqual(0)
+    expect(atom_idx, `${structure.id}: atom_idx`).toBeLessThan(structure.sites.length)
+    expect(img_xyz, `${structure.id}: img_xyz`).toHaveLength(3)
+    expect(img_abc, `${structure.id}: img_abc`).toHaveLength(3)
+    expect(img_xyz.every(Number.isFinite), `${structure.id}: img_xyz finite`).toBe(true)
+    expect(img_abc.every(Number.isFinite), `${structure.id}: img_abc finite`).toBe(true)
+  }
+
+  // Compare against fixture if it exists
   const path = `./fixtures/find_image_atoms/${structure.id}.json`
   try {
     const { default: expected } = await import(path)
     expect(image_atoms).toEqual(expected)
   } catch {
-    // Skip if fixture file doesn't exist
+    // No fixture for exact comparison - basic assertions above still provide coverage
   }
 })
 

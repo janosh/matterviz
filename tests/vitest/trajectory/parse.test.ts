@@ -1183,11 +1183,11 @@ describe(`ASE Trajectory Format`, () => {
   })
 
   it(`should reject truncated ASE trajectory`, async () => {
-    // Create a valid-looking header but truncated content
+    // Create a truncated buffer with HDF5 signature (\x89HDF) - this tests
+    // that the parser rejects incomplete files even with valid-looking headers
     const truncated = new ArrayBuffer(16)
     const view = new Uint8Array(truncated)
-    // ASE trajectory magic bytes (partial)
-    view.set([0x89, 0x48, 0x44, 0x46])
+    view.set([0x89, 0x48, 0x44, 0x46]) // HDF5 magic bytes, not ASE ULM format
 
     await expect(parse_trajectory_data(truncated, `truncated.traj`)).rejects.toThrow()
   })
