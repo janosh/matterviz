@@ -4,7 +4,7 @@ test.describe(`ColorBar Component Tests`, () => {
   // Navigate to the test page before each test
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/colorbar`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`h1`) // Wait for page heading
+    await page.waitForSelector(`h1`, { timeout: 15000 }) // Wait for page heading
   })
 
   // Helper to check computed style

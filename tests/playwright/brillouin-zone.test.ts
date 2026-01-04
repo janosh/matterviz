@@ -194,17 +194,19 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
     await page.goto(`/test/brillouin-zone?data_url=/structures/mp-1.json`, {
       waitUntil: `networkidle`,
     })
-    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 5000 })
+    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 20000 })
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_file_load`, {
-      timeout: 5000,
+      timeout: 10000,
     })
   })
 
   test(`triggers on_error on failed load`, async ({ page }) => {
-    await page.goto(`/test/brillouin-zone?data_url=/non-existent.json`)
-    // Longer timeout for CI - error handling may take time
+    await page.goto(`/test/brillouin-zone?data_url=/non-existent.json`, {
+      waitUntil: `networkidle`,
+    })
+    // Error handling may take time in CI
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_error`, {
-      timeout: 15000,
+      timeout: 20000,
     })
   })
 })

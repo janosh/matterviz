@@ -1,14 +1,12 @@
 // deno-lint-ignore-file no-await-in-loop
 import { THEME_OPTIONS } from '$lib/theme'
 import { expect, type Page, test } from '@playwright/test'
-import { IS_CI } from './helpers'
 
 test.describe(`ThemeControl`, () => {
   const themes = THEME_OPTIONS.map((option) => option.value)
   const theme_icons = THEME_OPTIONS.map((option) => option.icon)
 
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Theme tests have timing issues in CI`)
     // Ensure clean state for each test
     await page.addInitScript(() => localStorage.removeItem(`matterviz-theme`))
   })

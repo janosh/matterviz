@@ -7,12 +7,9 @@ import {
   format_num,
 } from '$lib/labels'
 import { expect, type Page, test } from '@playwright/test'
-import { IS_CI, random_sample } from './helpers'
+import { random_sample } from './helpers'
 
 test.describe(`Periodic Table`, () => {
-  test.beforeEach(() => {
-    test.skip(IS_CI, `Periodic table tooltip tests flaky in CI`)
-  })
   test(`in default state`, async ({ page }) => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 

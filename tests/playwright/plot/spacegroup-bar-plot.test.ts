@@ -2,8 +2,13 @@
 import { expect, test } from '@playwright/test'
 
 test.describe(`SpacegroupBarPlot Component Tests`, () => {
+  // Retry for intermittent SSR warm-up issues (mdsvex examples)
+  test.describe.configure({ retries: 1 })
+
   test.beforeEach(async ({ page }) => {
     await page.goto(`/plot/spacegroup-bar-plot`, { waitUntil: `networkidle` })
+    // Wait for first bar-plot to render (mdsvex examples may take time)
+    await page.waitForSelector(`.bar-plot`, { timeout: 15000 })
   })
 
   test(`renders basic spacegroup bar plot with crystal system regions`, async ({ page }) => {

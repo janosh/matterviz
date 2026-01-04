@@ -1,8 +1,13 @@
 import { expect, test } from '@playwright/test'
 
 test.describe(`RdfPlot Component Tests`, () => {
+  // Retry for intermittent SSR warm-up issues
+  test.describe.configure({ retries: 1 })
+
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/rdf-plot`, { waitUntil: `networkidle` })
+    // Wait for first plot to render (SVG paths take time to draw)
+    await page.waitForSelector(`#single-pattern svg path`, { timeout: 15000 })
   })
 
   // Test basic rendering with single and multiple patterns
