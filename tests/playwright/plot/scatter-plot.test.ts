@@ -1206,8 +1206,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Tooltip should be hidden initially
     await expect(tooltip_locator).toBeHidden()
 
-    // Hover over marker - tooltip should appear
-    await first_marker.hover()
+    // Use hover_to_show_tooltip helper for CI reliability (handles two-phase hover pattern)
+    await hover_to_show_tooltip(page, plot_locator, first_marker)
     await expect(tooltip_locator).toBeVisible()
   })
 

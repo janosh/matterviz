@@ -171,16 +171,15 @@ test.describe(`OPTIMADE route`, () => {
     // Wait for suggestions to load
     await expect(page.locator(`text=Suggested Structures`)).toBeVisible()
 
-    // Capture the structure ID from first suggestion card
-    const first_suggestion_card = page.locator(`.structure-suggestions button`).first()
-    const structure_id_span = first_suggestion_card.locator(`span`).first()
-    await expect(structure_id_span).toHaveText(/.+/) // Assert non-empty text content
-    const structure_id = (await structure_id_span.textContent()) as string
-
-    // Click on first suggestion card
-    await first_suggestion_card.click()
+    // Click on a specific known suggestion (mp-149) that exists in MOCK_STRUCTURES
+    // This avoids fragility if suggestion order changes
+    const mp149_card = page.locator(`.structure-suggestions button`, {
+      hasText: `mp-149`,
+    })
+    await expect(mp149_card).toBeVisible()
+    await mp149_card.click()
 
     // Verify that the input is filled with the correct structure ID
-    await expect(page.locator(`input.structure-input`)).toHaveValue(structure_id)
+    await expect(page.locator(`input.structure-input`)).toHaveValue(`mp-149`)
   })
 })

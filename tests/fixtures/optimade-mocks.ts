@@ -65,6 +65,17 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
       cartesian_site_positions: [[0, 0, 0]],
     },
   },
+  'oqmd-1234': {
+    id: `oqmd-1234`,
+    type: `structures`,
+    attributes: {
+      chemical_formula_descriptive: `Fe`,
+      lattice_vectors: [[2.87, 0, 0], [0, 2.87, 0], [0, 0, 2.87]],
+      species: [{ name: `Fe`, chemical_symbols: [`Fe`], concentration: [1] }],
+      species_at_sites: [`Fe`],
+      cartesian_site_positions: [[0, 0, 0]],
+    },
+  },
 }
 
 // Mock providers data shared across tests

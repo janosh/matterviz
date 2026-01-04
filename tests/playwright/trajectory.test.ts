@@ -33,7 +33,7 @@ test.describe(`Trajectory Component`, () => {
   let controls: Locator
 
   test.beforeEach(async ({ page }) => {
-    // Skip in CI - trajectory loading involves heavy 3D assets that timeout even with 45s wait
+    // Skip in CI - trajectory loading involves heavy 3D assets that timeout even with 30s wait
     test.skip(IS_CI, `Trajectory tests require heavy 3D loading that exceeds CI timeouts`)
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)

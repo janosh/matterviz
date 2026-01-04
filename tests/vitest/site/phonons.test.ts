@@ -325,8 +325,10 @@ describe(`Phonon Module Tests`, () => {
       expect(raw.phonon_bandstructure, `${id}: should have phonon_bandstructure`)
         .toBeDefined()
 
-      // Verify transformation produces valid output
-      expect(transformed, `${id}: transformed data should exist`).toBeDefined()
+      // Verify transformation produces valid output - fail fast with clear message
+      expect(transformed, `${id}: transformed data should exist in phonon_bands`)
+        .toBeDefined()
+      if (!transformed) return // Guard for TypeScript and clearer stack traces
 
       // Verify qpoint count matches raw data
       const raw_qpoints = raw.phonon_bandstructure?.qpoints

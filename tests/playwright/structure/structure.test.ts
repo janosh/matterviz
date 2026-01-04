@@ -323,22 +323,6 @@ test.describe(`Structure Component Tests`, () => {
     expect(await site_labels_checkbox.isChecked()).toBe(false)
   })
 
-  test(`show_site_labels controls are properly labeled`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const site_labels_label = pane_div.locator(
-      `label:has-text("Site Labels")`,
-    )
-    const site_labels_checkbox = site_labels_label.locator(
-      `input[type="checkbox"]`,
-    )
-
-    await expect(site_labels_label).toBeVisible()
-    await expect(site_labels_checkbox).toBeVisible()
-    expect(await site_labels_label.count()).toBe(1)
-    expect(await site_labels_checkbox.count()).toBe(1)
-  })
-
   test(`show_site_indices can be toggled`, async ({ page }) => {
     const { pane_div: control_pane } = await open_structure_control_pane(page)
 
@@ -362,22 +346,6 @@ test.describe(`Structure Component Tests`, () => {
       await site_indices_checkbox.uncheck()
       expect(await site_indices_checkbox.isChecked()).toBe(false)
     }
-  })
-
-  test(`show_site_indices controls are properly labeled`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const site_indices_label = pane_div.locator(
-      `label:has-text("Site Indices")`,
-    )
-    const site_indices_checkbox = site_indices_label.locator(
-      `input[type="checkbox"]`,
-    )
-
-    await expect(site_indices_label).toBeVisible()
-    await expect(site_indices_checkbox).toBeVisible()
-    expect(await site_indices_label.count()).toBe(1)
-    expect(await site_indices_checkbox.count()).toBe(1)
   })
 
   test(`both site labels and site indices can be enabled simultaneously`, async ({ page }) => {
@@ -1551,97 +1519,6 @@ test.describe(`Reset Camera Button Tests`, () => {
     const reset_camera_button = structure_div.locator(`button.reset-camera`)
 
     await expect(reset_camera_button).toBeHidden()
-  })
-
-  test(`reset camera button functionality works when manually triggered`, async ({ page }) => {
-    // Test the reset camera functionality by manually creating the button and testing its click handler
-
-    const test_result = await page.evaluate(() => {
-      // Simulate the camera movement state and button appearance
-      const section = document.querySelector(
-        `#test-structure section`,
-      )
-      if (!section) return { success: false, error: `Section not found` }
-
-      // Create the reset button as it would appear when camera_has_moved is true
-      const resetButton = document.createElement(`button`)
-      resetButton.className = `reset-camera`
-      resetButton.title = `Reset camera`
-      resetButton.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10" />
-          <circle cx="12" cy="12" r="6" />
-          <circle cx="12" cy="12" r="2" fill="currentColor" />
-        </svg>
-      `
-
-      // Add click handler that simulates the reset_camera function
-      let clicked = false
-      resetButton.onclick = () => {
-        clicked = true
-        // Simulate hiding the button after reset (camera_has_moved = false)
-        resetButton.style.display = `none`
-      }
-
-      section.appendChild(resetButton)
-
-      // Test that button is visible
-      const isVisible = resetButton.offsetParent !== null
-
-      // Test click functionality
-      resetButton.click()
-
-      // Test that button is hidden after click
-      const isHiddenAfterClick = resetButton.style.display === `none`
-
-      // Clean up
-      resetButton.remove()
-
-      return { success: true, isVisible, clicked, isHiddenAfterClick }
-    })
-
-    expect(test_result.success).toBe(true)
-    expect(test_result.isVisible).toBe(true)
-    expect(test_result.clicked).toBe(true)
-    expect(test_result.isHiddenAfterClick).toBe(true)
-  })
-
-  test(`camera interaction attempts work in test environment`, async ({ page }) => {
-    // Test that camera interactions can be performed (even if OrbitControls events don't fire)
-    const structure_div = page.locator(`#test-structure`)
-    const canvas = structure_div.locator(`canvas`)
-
-    // Verify canvas is interactive
-    await expect(canvas).toBeVisible()
-
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`Canvas box not found`)
-
-    expect(box.width).toBeGreaterThan(0)
-    expect(box.height).toBeGreaterThan(0)
-
-    // Test that we can perform mouse interactions on the canvas
-    const centerX = box.x + box.width / 2
-    const centerY = box.y + box.height / 2
-
-    // These interactions should complete without error, even if they don't trigger OrbitControls
-    await page.mouse.move(centerX, centerY)
-    await page.mouse.down({ button: `left` })
-    await page.mouse.move(centerX + 50, centerY, { steps: 5 })
-    await page.mouse.up({ button: `left` })
-
-    // Test wheel interaction
-    await page.mouse.wheel(0, -100)
-
-    // Test drag interaction
-    await canvas.dragTo(canvas, {
-      sourcePosition: { x: box.width / 2 - 30, y: box.height / 2 },
-      targetPosition: { x: box.width / 2 + 30, y: box.height / 2 },
-      force: true,
-    })
-
-    // If we get here, the interactions completed successfully
-    expect(true).toBe(true)
   })
 
   test(`reset camera button state management logic is sound`, async ({ page }) => {

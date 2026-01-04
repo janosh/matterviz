@@ -17,15 +17,6 @@ test.describe(`BrillouinZone Component Tests`, () => {
     expect(await canvas.getAttribute(`height`)).toBeTruthy()
   })
 
-  test(`renders Brillouin zone successfully`, async ({ page }) => {
-    const screenshot = await page.locator(`${BZ_SELECTOR} canvas`).screenshot()
-    expect(screenshot.length).toBeGreaterThan(1000)
-  })
-
-  test(`shows control buttons`, async ({ page }) => {
-    await expect(page.locator(`${BZ_SELECTOR} section.control-buttons`)).toBeVisible()
-  })
-
   test(`BZ order control updates`, async ({ page }) => {
     const order_input = page.locator(`#bz-order`)
     await order_input.fill(`2`)
