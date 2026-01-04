@@ -1,12 +1,11 @@
 <script lang="ts">
-  import type {
-    AnyStructure,
-    CompositionType,
-    D3SymbolName,
-    ElementSymbol,
-    UserContentProps,
-  } from '$lib'
-  import { DEFAULTS, is_unary_entry } from '$lib'
+  import type { CompositionType } from '$lib/composition'
+  import type { ElementSymbol } from '$lib/element'
+  import type { D3SymbolName } from '$lib/labels'
+  import type { UserContentProps } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
+  import type { AnyStructure } from '$lib/structure'
+  import { is_unary_entry } from './types'
   import Icon from '$lib/Icon.svelte'
   import type { D3InterpolateName } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'

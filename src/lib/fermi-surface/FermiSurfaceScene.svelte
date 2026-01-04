@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib'
+  import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
   import type { BrillouinZoneData } from '$lib/brillouin'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'

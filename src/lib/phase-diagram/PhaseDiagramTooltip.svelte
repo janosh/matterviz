@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { type ElementSymbol, format_num } from '$lib'
+  import type { ElementSymbol } from '$lib/element'
+  import { format_num } from '$lib/labels'
   import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
   import type { PhaseBoundary, PhaseHoverInfo } from './types'
   import {

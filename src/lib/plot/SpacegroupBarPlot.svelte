@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { type BarHandlerProps, type BarSeries, format_num } from '$lib'
-  import { format_value } from '$lib/labels'
-  import { BarPlot, type TickConfig } from '$lib/plot'
+  import { format_num, format_value } from '$lib/labels'
+  import type { BarHandlerProps, BarSeries, TickConfig } from '$lib/plot'
+  import { BarPlot } from '$lib/plot'
   import type { CrystalSystem } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import * as spg from '$lib/symmetry/spacegroups'

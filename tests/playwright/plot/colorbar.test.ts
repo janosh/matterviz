@@ -4,9 +4,10 @@ import { IS_CI } from '../helpers'
 test.describe(`ColorBar Component Tests`, () => {
   // Navigate to the test page before each test
   test.beforeEach(async ({ page }) => {
+    // ColorBar tests timeout in CI due to page navigation/hydration delays
     test.skip(IS_CI, `ColorBar tests timeout in CI`)
     await page.goto(`/test/colorbar`, { waitUntil: `networkidle` })
-    await page.waitForSelector(`h1`) // Wait for page heading
+    await page.waitForSelector(`h1`, { timeout: 15000 }) // Wait for page heading
   })
 
   // Helper to check computed style

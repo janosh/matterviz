@@ -1,4 +1,5 @@
-import type { CompositionType, ElementSymbol } from '$lib'
+import type { CompositionType } from '$lib/composition'
+import type { ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import * as math from '$lib/math'
 import type { Crystal } from '$lib/structure/index'

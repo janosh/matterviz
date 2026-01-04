@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { toggle_fullscreen } from '$lib'
+  import { toggle_fullscreen } from '$lib/layout'
   import EmptyState from '$lib/EmptyState.svelte'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'

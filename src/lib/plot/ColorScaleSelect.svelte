@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ColorBar } from '$lib'
+  import { ColorBar } from '$lib/plot'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'

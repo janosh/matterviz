@@ -1,4 +1,5 @@
-import type { CompositionType, ElementSymbol } from '$lib'
+import type { CompositionType } from '$lib/composition'
+import type { ElementSymbol } from '$lib/element'
 import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import { element_data } from '$lib/element'
 import type { Vec3 } from '$lib/math'

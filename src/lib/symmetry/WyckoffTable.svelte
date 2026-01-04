@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { contrast_color, format_fractional } from '$lib'
+  import { contrast_color } from '$lib/colors'
+  import { format_fractional } from '$lib/labels'
   import { colors } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { WyckoffPos } from '.'

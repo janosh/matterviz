@@ -15,3 +15,12 @@ export function merge_nested<T extends Record<string, unknown>>(
   }
   return result
 }
+
+// Escape HTML special characters to prevent XSS attacks
+export const escape_html = (unsafe_string: string): string =>
+  unsafe_string
+    .replaceAll(`&`, `&amp;`)
+    .replaceAll(`<`, `&lt;`)
+    .replaceAll(`>`, `&gt;`)
+    .replaceAll(`"`, `&quot;`)
+    .replaceAll(`'`, `&#39;`)

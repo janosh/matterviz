@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '$lib'
+  import { format_num } from '$lib/labels'
   import {
     FullscreenToggle,
     set_fullscreen_bg,

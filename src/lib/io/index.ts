@@ -1,9 +1,11 @@
-import type { FileInfo } from '$lib'
+import type { FileInfo } from './types'
 import { load_binary_traj } from '$lib/trajectory/parse'
 
 export * from './decompress'
 export * from './export'
 export * from './fetch'
+export * from './is-binary'
+export * from './types'
 
 // Handle URL-based file drop data by fetching content lazily
 export async function handle_url_drop(

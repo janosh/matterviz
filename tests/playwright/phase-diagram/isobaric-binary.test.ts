@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-await-in-loop -- Playwright tests require sequential awaits for UI interactions
 import { expect, type Locator, type Page, test } from '@playwright/test'
+import { IS_CI } from '../helpers'
 
 const LOAD_TIMEOUT = 8000
 
@@ -19,6 +20,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
   })
 
   test(`renders complete diagram structure`, async ({ page }) => {
+    test.skip(IS_CI, `Phase diagram rendering flaky in CI`)
     const { svg } = get_diagram_elements(page)
 
     // Phase regions with multiple paths

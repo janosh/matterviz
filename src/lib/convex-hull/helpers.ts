@@ -1,6 +1,7 @@
-import type { ElementSymbol, EnergyModeInfo } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
 import { ELEM_SYMBOL_TO_NAME } from '$lib/composition'
+import type { EnergyModeInfo } from '$lib/convex-hull'
+import type { ElementSymbol } from '$lib/element'
 import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'

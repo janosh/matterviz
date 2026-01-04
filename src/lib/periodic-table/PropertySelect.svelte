@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChemicalElement } from '$lib'
+  import type { ChemicalElement } from '$lib/element'
   import { ELEM_HEATMAP_LABELS } from '$lib/labels'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'

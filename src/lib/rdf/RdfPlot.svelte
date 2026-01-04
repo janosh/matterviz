@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { StatusMessage } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
+  import { StatusMessage } from '$lib/feedback'
   import { decompress_file, handle_url_drop } from '$lib/io'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'

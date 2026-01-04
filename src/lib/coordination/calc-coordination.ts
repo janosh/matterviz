@@ -1,4 +1,4 @@
-import type { AnyStructure } from '$lib'
+import type { AnyStructure } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import { BONDING_STRATEGIES } from '$lib/structure/bonding'
 

@@ -1,7 +1,8 @@
 <script lang="ts">
-  import type { CompositionType, ElementSymbol } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES, pick_contrast_color } from '$lib/colors'
+  import type { CompositionType } from '$lib/composition'
+  import type { ElementSymbol } from '$lib/element'
   import { hierarchy, pack } from 'd3-hierarchy'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'

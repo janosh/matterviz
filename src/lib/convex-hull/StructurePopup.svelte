@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib'
+  import type { AnyStructure } from '$lib/structure'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import { Structure } from '$lib/structure'

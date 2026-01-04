@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ElementSymbol } from '$lib'
-  import { toggle_fullscreen } from '$lib'
+  import type { ElementSymbol } from '$lib/element'
+  import { toggle_fullscreen } from '$lib/layout'
   import EmptyState from '$lib/EmptyState.svelte'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'

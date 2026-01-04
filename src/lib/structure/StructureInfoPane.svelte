@@ -1,10 +1,11 @@
 <script lang="ts">
-  import type { AnyStructure, InfoItem, Site } from '$lib'
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_data } from '$lib/element'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
+  import type { InfoItem } from '$lib/layout'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import type { AnyStructure, Site } from '$lib/structure'
   import { get_density } from '$lib/structure'
   import { wyckoff_positions_from_moyo, WyckoffTable } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'

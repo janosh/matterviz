@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { ColorSchemeName, CompositionType } from '$lib'
-  import { ContextMenu } from '$lib'
+  import type { ColorSchemeName } from '$lib/colors'
+  import type { CompositionType } from '$lib/composition'
+  import { ContextMenu } from '$lib/overlays'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import type { SVGAttributes } from 'svelte/elements'
   import { get_electro_neg_formula } from './format'

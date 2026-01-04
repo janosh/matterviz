@@ -68,12 +68,14 @@ describe(`Utility Functions`, () => {
 
     beforeEach(() => {
       mock_wrapper = document.createElement(`div`)
+      document.body.appendChild(mock_wrapper) // Must be connected to DOM
       orig_fullscreen_element = document.fullscreenElement
       mock_wrapper.requestFullscreen = vi.fn().mockResolvedValue(undefined)
       document.exitFullscreen = vi.fn().mockResolvedValue(undefined)
     })
 
     afterEach(() => {
+      mock_wrapper.remove()
       vi.restoreAllMocks()
       Object.defineProperty(document, `fullscreenElement`, {
         value: orig_fullscreen_element,
@@ -134,6 +136,13 @@ describe(`Utility Functions`, () => {
       await lib.toggle_fullscreen(undefined)
       expect(mock_wrapper.requestFullscreen).not.toHaveBeenCalled()
       expect(document.exitFullscreen).not.toHaveBeenCalled()
+    })
+
+    test(`returns early when wrapper not connected to DOM`, async () => {
+      const disconnected = document.createElement(`div`)
+      disconnected.requestFullscreen = vi.fn()
+      await lib.toggle_fullscreen(disconnected)
+      expect(disconnected.requestFullscreen).not.toHaveBeenCalled()
     })
   })
 })

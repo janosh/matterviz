@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { InfoItem } from '$lib'
+  import type { InfoItem } from '$lib/layout'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'

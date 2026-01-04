@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { ElementSymbol } from '$lib/element'
 import type { CompositionType } from '$lib/composition'
 import { element_data } from '$lib/element'
 import { ELEM_SYMBOLS } from '$lib/labels'

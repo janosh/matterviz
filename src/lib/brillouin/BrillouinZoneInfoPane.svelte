@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { InfoItem } from '$lib'
+  import type { InfoItem } from '$lib/layout'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { format_num } from '$lib/labels'
   import type { Crystal } from '$lib/structure'

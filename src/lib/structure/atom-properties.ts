@@ -1,6 +1,6 @@
 // Utility functions for computing atom properties and applying color scales
 
-import type { AnyStructure, Site } from '$lib'
+import type { AnyStructure, Site } from '$lib/structure'
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination'
 import * as math from '$lib/math'

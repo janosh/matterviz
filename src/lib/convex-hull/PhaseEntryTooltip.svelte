@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ElementSymbol } from '$lib'
-  import { is_unary_entry } from '$lib'
+  import type { ElementSymbol } from '$lib/element'
+  import { is_unary_entry } from './types'
   import { ELEM_SYMBOL_TO_NAME, get_electro_neg_formula } from '$lib/composition'
   import { format_fractional, format_num } from '$lib/labels'
   import type { PolymorphStats } from './helpers'

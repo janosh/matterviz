@@ -1,6 +1,8 @@
 <script lang="ts">
-  import type { ChemicalElement, ElementCategory, XyObj } from '$lib'
-  import { ELEM_SYMBOLS, ElementPhoto, type ElementSymbol, ElementTile } from '$lib'
+  import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element'
+  import { ElementPhoto, ElementTile } from '$lib/element'
+  import { ELEM_SYMBOLS } from '$lib/labels'
+  import type { XyObj } from '$lib/plot'
   import { is_color } from '$lib/colors'
   import { element_data } from '$lib/element'
   import { ColorBar } from '$lib/plot'
