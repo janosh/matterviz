@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { format_num, type Orientation } from '$lib'
   import { luminance } from '$lib/colors'
+  import { format_num } from '$lib/labels'
   import * as math from '$lib/math'
   import { format } from 'd3-format'
   import * as d3 from 'd3-scale'
@@ -8,6 +8,7 @@
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
+  import type { Orientation } from './types'
 
   let {
     title = undefined,

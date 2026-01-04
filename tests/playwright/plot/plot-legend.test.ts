@@ -7,11 +7,11 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   const custom_style_legend_wrapper = `#custom-style-legend`
 
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `PlotLegend tests timeout in CI`)
     await page.goto(`/test/plot-legend`, { waitUntil: `networkidle` })
   })
 
   test(`should render legend items correctly based on initial data`, async ({ page }) => {
+    test.skip(IS_CI, `Plot legend rendering flaky in CI`)
     // Target the first legend instance
     const legend_items = page.locator(`.legend`).first().locator(`.legend-item`)
     await expect(legend_items).toHaveCount(5)

@@ -1,16 +1,16 @@
 <script lang="ts">
+  import { PLOT_COLORS } from '$lib/colors'
+  import { StatusMessage } from '$lib/feedback'
+  import { decompress_file, handle_url_drop } from '$lib/io'
+  import { format_value } from '$lib/labels'
+  import { BarPlot } from '$lib/plot'
   import type {
-    AnyStructure,
     AxisConfig,
     BarHandlerProps,
     BarSeries,
     Orientation,
-  } from '$lib'
-  import { StatusMessage } from '$lib'
-  import { PLOT_COLORS } from '$lib/colors'
-  import { decompress_file, handle_url_drop } from '$lib/io'
-  import { format_value } from '$lib/labels'
-  import { BarPlot } from '$lib/plot'
+  } from '$lib/plot/types'
+  import type { AnyStructure } from '$lib/structure'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { parse_any_structure } from '$lib/structure/parse'
   import { is_crystal } from '$lib/structure/validation'

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ElementCategory } from '$lib'
+  import type { ElementCategory } from '$lib/element'
   import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
   import { colors, selected } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'

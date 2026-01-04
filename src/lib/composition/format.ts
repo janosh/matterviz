@@ -1,4 +1,5 @@
-import type { AnyStructure, ElementSymbol } from '$lib'
+import type { ElementSymbol } from '$lib/element'
+import type { AnyStructure } from '$lib/structure'
 import type { CompositionType } from '$lib/composition'
 import { format_num } from '$lib/labels'
 import { ELEMENT_ELECTRONEGATIVITY_MAP, parse_composition } from './parse'

@@ -1,42 +1,10 @@
-import type { OptimadeProvider } from '$lib/api/optimade'
 import {
   decode_structure_id,
   detect_provider_from_slug,
   encode_structure_id,
 } from '$lib/api/optimade'
-import process from 'node:process'
 import { describe, expect, test } from 'vitest'
-
-// Skip flaky CORS-involving Optimade tests in CI
-const is_ci = Boolean(process.env.CI)
-
-// Mock providers data for testing
-const mock_providers: OptimadeProvider[] = [
-  {
-    id: `odbx`,
-    type: `links`,
-    attributes: {
-      name: `Open Database of Xtals`,
-      base_url: `https://odbx.io`,
-    },
-  },
-  {
-    id: `mp`,
-    type: `links`,
-    attributes: {
-      name: `Materials Project`,
-      base_url: `https://materialsproject.org`,
-    },
-  },
-  {
-    id: `cod`,
-    type: `links`,
-    attributes: {
-      name: `Crystallography Open Database`,
-      base_url: `https://www.crystallography.net`,
-    },
-  },
-]
+import { MOCK_PROVIDERS } from '../../fixtures/optimade-mocks'
 
 describe(`OPTIMADE API utilities`, () => {
   test.each([
@@ -90,26 +58,26 @@ describe(`OPTIMADE API utilities`, () => {
     const cases = [`odbx-9.1`, `mp-1226325`]
     for (const slug of cases) {
       const decoded = decode_structure_id(slug)
-      const provider = detect_provider_from_slug(decoded, mock_providers)
+      const provider = detect_provider_from_slug(decoded, MOCK_PROVIDERS)
       expect(provider).toBe(slug.split(`-`)[0].toLowerCase())
     }
   })
 
-  test.skipIf(is_ci).each([
+  test.each([
     [`odbx-9.1`, `odbx`],
     [`mp-123`, `mp`],
     [`cod-456`, `cod`],
     [`odbx-9.1/2`, `odbx`], // Test encoded slug
   ])(`should detect provider from slug %s (expected: %s)`, (slug, expected_provider) => {
-    const provider = detect_provider_from_slug(slug, mock_providers)
+    const provider = detect_provider_from_slug(slug, MOCK_PROVIDERS)
     expect(provider).toBe(expected_provider)
   })
 
-  test.skipIf(is_ci).each([
+  test.each([
     [`unknown-123`, `unknown provider`],
     [`123`, `slug without provider prefix`],
   ])(`should return empty string for %s`, (slug) => {
-    const provider = detect_provider_from_slug(slug, mock_providers)
+    const provider = detect_provider_from_slug(slug, MOCK_PROVIDERS)
     expect(provider).toBe(``)
   })
 })

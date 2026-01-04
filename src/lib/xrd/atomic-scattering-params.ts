@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { ElementSymbol } from '$lib/element'
 
 export type ScatteringParams = Readonly<
   Partial<Record<ElementSymbol | `D`, readonly [number, number][]>>

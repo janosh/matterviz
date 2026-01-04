@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FileInfo } from '$lib'
+  import type { FileInfo } from '$lib/io'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
 

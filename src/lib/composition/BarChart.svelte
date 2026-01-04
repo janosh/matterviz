@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { type CompositionType, type ElementSymbol, format_num } from '$lib'
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES, pick_contrast_color } from '$lib/colors'
+  import type { CompositionType } from '$lib/composition'
+  import type { ElementSymbol } from '$lib/element'
+  import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'

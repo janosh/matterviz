@@ -3,7 +3,7 @@ import type { TdbParseResult } from '$lib/phase-diagram/parse'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, test } from 'vitest'
 
-/** Create a successful TDB parse result for testing. */
+// Create a successful TDB parse result for testing.
 function create_tdb_result(
   overrides: Partial<NonNullable<TdbParseResult[`data`]>> = {},
 ): TdbParseResult {

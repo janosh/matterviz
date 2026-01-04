@@ -1,6 +1,9 @@
 <script lang="ts">
-  import type { AnyStructure, CompositionType, ElementSymbol } from '$lib'
-  import { ELEM_SYMBOLS, element_data } from '$lib'
+  import type { CompositionType } from '$lib/composition'
+  import type { ElementSymbol } from '$lib/element'
+  import { element_data } from '$lib/element'
+  import { ELEM_SYMBOLS } from '$lib/labels'
+  import type { AnyStructure } from '$lib/structure'
   import { contrast_color, default_element_colors } from '$lib/colors'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
