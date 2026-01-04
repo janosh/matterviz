@@ -1,5 +1,30 @@
 # Changelog
 
+## [v0.2.1](https://github.com/janosh/matterviz/compare/v0.2.0...v0.2.1)
+
+> 4 January 2026
+
+### 🛠 Enhancements
+
+- `Structure` cell type switch (primitive/conventional) by @janosh in https://github.com/janosh/matterviz/pull/219
+- BarPlot: add line marker support by @janosh in https://github.com/janosh/matterviz/pull/220
+- Parse `.xy`, `.xye`, `.brml`, `.xrdml` XRD file formats by @janosh in https://github.com/janosh/matterviz/pull/221
+- `FermiSurface` visualization by @janosh in https://github.com/janosh/matterviz/pull/223
+- `HeatmapTable` by @janosh in https://github.com/janosh/matterviz/pull/227
+- Parse and display metadata from Optimade JSON files + codebase improvements by @janosh in https://github.com/janosh/matterviz/pull/231
+- `IsobaricBinaryPhaseDiagram` by @janosh in https://github.com/janosh/matterviz/pull/233
+
+### 🐛 Bug Fixes
+
+- Fix CIF parser for compound symmetry operations by @janosh in https://github.com/janosh/matterviz/pull/228
+- Wrap fractional coordinates to [0, 1) for nested `pymatgen` JSON structures by @janosh in https://github.com/janosh/matterviz/pull/232
+- Fix all failing E2E Playwright tests by @janosh in https://github.com/janosh/matterviz/pull/234
+- Fix cyclic barrel imports causing SSR failures + unskip some more E2E tests + delete low value ones by @janosh in https://github.com/janosh/matterviz/pull/235
+
+### 💡 Refactoring
+
+- Refactor: Improve variable names by @janosh in https://github.com/janosh/matterviz/pull/229
+
 ## [v0.2.0](https://github.com/janosh/matterviz/compare/v0.1.15...v0.2.0)
 
 > 8 December 2025
