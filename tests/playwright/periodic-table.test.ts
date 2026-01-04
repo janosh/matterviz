@@ -132,8 +132,6 @@ test.describe(`Periodic Table`, () => {
     })
 
     test(`shows custom tooltip with heatmap data when heatmap is selected`, async ({ page }) => {
-      // Skip in CI - multiselect dropdown interactions are unreliable in headless CI
-      test.skip(IS_CI, `Multiselect dropdown interactions flaky in CI`)
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
       const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
       await expect(multiselect).toBeVisible()
@@ -159,8 +157,6 @@ test.describe(`Periodic Table`, () => {
     })
 
     test(`tooltip follows mouse position`, async ({ page }) => {
-      // Skip in CI - precise mouse position tracking is unreliable in headless CI
-      test.skip(IS_CI, `Mouse position tracking flaky in CI`)
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       const hydrogen_tile = get_element_tile(page, `H`)
@@ -240,8 +236,6 @@ test.describe(`Periodic Table`, () => {
     }
 
     test(`tooltip works with different heatmap properties`, async ({ page }) => {
-      // Skip in CI - multiselect dropdown interactions are unreliable in headless CI
-      test.skip(IS_CI, `Multiselect dropdown interactions flaky in CI`)
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       // Test multiple heatmap properties to ensure tooltip behavior is consistent
