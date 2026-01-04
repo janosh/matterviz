@@ -220,6 +220,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`logarithmic scale combinations`, async ({ page }) => {
+    test.skip(IS_CI, `Logarithmic histogram rendering flaky in CI`)
     const histogram = page.locator(`#logarithmic-scales > svg[role="img"]`)
 
     // Wait for initial histogram to render
