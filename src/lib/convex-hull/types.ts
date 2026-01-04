@@ -1,4 +1,6 @@
-import type { CompositionType, ElementSymbol, Sides } from '$lib'
+import type { CompositionType } from '$lib/composition'
+import type { ElementSymbol } from '$lib/element'
+import type { Sides } from '$lib/plot'
 import type { Vec3 } from '$lib/math'
 
 // Unified convex hull entry interface supporting both pymatgen and Materials Project formats

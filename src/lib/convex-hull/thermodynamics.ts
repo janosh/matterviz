@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { ElementSymbol } from '$lib/element'
 import {
   count_atoms_in_composition,
   extract_formula_elements,

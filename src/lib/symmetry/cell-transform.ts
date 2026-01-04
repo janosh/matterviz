@@ -1,5 +1,6 @@
 // Cell transformation utilities for converting between original, conventional, and primitive cells
-import type { ElementSymbol, Vec3 } from '$lib'
+import type { ElementSymbol } from '$lib/element'
+import type { Vec3 } from '$lib/math'
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import * as math from '$lib/math'
 import type { Crystal, Site } from '$lib/structure'

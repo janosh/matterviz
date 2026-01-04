@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib'
+import type { ElementSymbol } from '$lib/element'
 import type { OptimadeStructure } from '$lib/api/optimade'
 import {
   COMPRESSION_EXTENSIONS_REGEX,
