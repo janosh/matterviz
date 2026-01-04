@@ -330,30 +330,26 @@ describe(`Phonon Module Tests`, () => {
         .toBeDefined()
       if (!transformed) return // Guard for TypeScript and clearer stack traces
 
-      // Verify qpoint count matches raw data
+      // Verify required raw fields exist (these are mandatory in valid phonon data)
       const raw_qpoints = raw.phonon_bandstructure?.qpoints
-      if (raw_qpoints) {
-        expect(transformed.qpoints.length, `${id}: qpoint count should match`).toBe(
-          raw_qpoints.length,
-        )
-      }
-
-      // Verify band count matches raw data
       const raw_bands = raw.phonon_bandstructure?.bands
-      if (raw_bands) {
-        expect(transformed.nb_bands, `${id}: band count should match`).toBe(
-          raw_bands.length,
-        )
-      }
-
-      // Verify labels_dict is preserved
       const raw_labels = raw.phonon_bandstructure?.labels_dict
-      if (raw_labels) {
-        expect(
-          Object.keys(transformed.labels_dict).sort(),
-          `${id}: labels should match`,
-        ).toEqual(Object.keys(raw_labels).sort())
-      }
+      expect(raw_qpoints, `${id}: raw data should have qpoints`).toBeDefined()
+      expect(raw_bands, `${id}: raw data should have bands`).toBeDefined()
+      expect(raw_labels, `${id}: raw data should have labels_dict`).toBeDefined()
+      if (!raw_qpoints || !raw_bands || !raw_labels) return // Guard for TypeScript
+
+      // Verify transformation preserves data dimensions
+      expect(transformed.qpoints.length, `${id}: qpoint count should match`).toBe(
+        raw_qpoints.length,
+      )
+      expect(transformed.nb_bands, `${id}: band count should match`).toBe(
+        raw_bands.length,
+      )
+      expect(
+        Object.keys(transformed.labels_dict).sort(),
+        `${id}: labels should match`,
+      ).toEqual(Object.keys(raw_labels).sort())
     },
   )
 
@@ -376,12 +372,14 @@ describe(`Phonon Module Tests`, () => {
       expect(max_freq, `${id}: max frequency should be < 100 THz`).toBeLessThan(100)
 
       // If has_imaginary_modes is false, all frequencies should be non-negative
+      // Tolerance of -0.1 THz accommodates soft modes near zero (quasi-stable structures)
+      // True numerical noise is ~1e-10, but DFT accuracy limits make small soft modes common
       if (band_struct.has_imaginary_modes === false) {
         const min_freq = Math.min(...all_freqs)
         expect(
           min_freq,
-          `${id}: min frequency should be >= 0 when no imaginary modes`,
-        ).toBeGreaterThanOrEqual(-0.1) // Small tolerance for numerical noise
+          `${id}: min frequency should be >= -0.1 THz when no imaginary modes`,
+        ).toBeGreaterThanOrEqual(-0.1)
       }
     },
   )

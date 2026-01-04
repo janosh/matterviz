@@ -136,22 +136,21 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="img"]`)
 
-// Seeded random number generator (LCG) for deterministic test sampling
-// Uses a fixed seed by default for reproducible CI runs
+// Seeded random number generator using Linear Congruential Generator (LCG).
+// Parameters match glibc for reproducibility.
 class SeededRandom {
   private state: number
   constructor(seed: number = 42) {
     this.state = seed
   }
   next(): number {
-    // Linear Congruential Generator parameters (same as glibc)
     this.state = (this.state * 1103515245 + 12345) & 0x7fffffff
     return this.state / 0x7fffffff
   }
 }
 
-// Random sample utility with optional seed for determinism
-// Default seed ensures reproducible test runs across CI environments
+// Deterministically sample n items from a list without replacement.
+// Uses a seeded RNG to ensure reproducible test runs across CI environments.
 export const random_sample = <T>(list: T[], n: number, seed: number = 42): T[] => {
   if (n >= list.length) return list
   const rng = new SeededRandom(seed)

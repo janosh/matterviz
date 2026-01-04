@@ -1,5 +1,13 @@
 import { get_page_background } from '$lib/colors'
 
+// A key-value pair for displaying structured info in cards and panes
+export type InfoItem = Readonly<{
+  label: string
+  value: string | number
+  key?: string
+  tooltip?: string
+}>
+
 // Toggle fullscreen mode for a wrapper element
 export async function toggle_fullscreen(wrapper?: HTMLDivElement): Promise<void> {
   if (!wrapper) return
@@ -16,13 +24,6 @@ export async function toggle_fullscreen(wrapper?: HTMLDivElement): Promise<void>
     console.error(`Fullscreen operation failed:`, error)
   }
 }
-
-export type InfoItem = Readonly<{
-  label: string
-  value: string | number
-  key?: string
-  tooltip?: string
-}>
 
 // Setup fullscreen effect with optional callback for when fullscreen state changes
 export function setup_fullscreen_effect(

@@ -30,12 +30,3 @@ export * from './time'
 export { default as Trajectory } from './trajectory/Trajectory.svelte'
 export * from './utils'
 export * from './xrd'
-
-// Helper function to escape HTML special characters to prevent XSS
-export const escape_html = (unsafe_string: string): string =>
-  unsafe_string
-    .replaceAll(`&`, `&amp;`)
-    .replaceAll(`<`, `&lt;`)
-    .replaceAll(`>`, `&gt;`)
-    .replaceAll(`"`, `&quot;`)
-    .replaceAll(`'`, `&#39;`)
