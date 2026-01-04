@@ -86,11 +86,6 @@ test.describe(`Periodic Table`, () => {
     // Configure retries for tooltip tests which can be timing-sensitive
     test.describe.configure({ retries: 2 })
 
-    test.beforeEach(() => {
-      // Tooltip tests are especially flaky in CI due to hover event timing
-      test.skip(IS_CI, `Tooltip hover tests flaky in CI`)
-    })
-
     // test utilities
     const get_element_tile = (page: Page, selector: string) =>
       page.locator(`.element-tile`).filter({ hasText: selector }).first()
@@ -133,6 +128,8 @@ test.describe(`Periodic Table`, () => {
     })
 
     test(`shows custom tooltip with heatmap data when heatmap is selected`, async ({ page }) => {
+      // Skip in CI - multiselect dropdown interactions are unreliable in headless CI
+      test.skip(IS_CI, `Multiselect dropdown interactions flaky in CI`)
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
       const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
       await expect(multiselect).toBeVisible()
@@ -158,6 +155,8 @@ test.describe(`Periodic Table`, () => {
     })
 
     test(`tooltip follows mouse position`, async ({ page }) => {
+      // Skip in CI - precise mouse position tracking is unreliable in headless CI
+      test.skip(IS_CI, `Mouse position tracking flaky in CI`)
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       const hydrogen_tile = get_element_tile(page, `H`)
@@ -181,9 +180,18 @@ test.describe(`Periodic Table`, () => {
     test(`tooltip disappears when mouse leaves element`, async ({ page }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
-      await get_element_tile(page, `H`).hover()
+      // Wait for element tiles to render
+      await page.waitForSelector(`.element-tile`, { timeout: 10000 })
+
+      const h_tile = get_element_tile(page, `H`)
+      await expect(h_tile).toBeVisible({ timeout: 5000 })
+      await h_tile.hover({ force: true })
+
       const tooltip = get_tooltip(page)
-      await expect(tooltip).toBeVisible()
+      // Use toPass for robust visibility check
+      await expect(async () => {
+        await expect(tooltip).toBeVisible()
+      }).toPass({ timeout: 5000 })
 
       await clear_tooltip(page)
       await expect(tooltip).toBeHidden()
@@ -200,6 +208,9 @@ test.describe(`Periodic Table`, () => {
       test(`tooltip shows correct content for ${element.name}`, async ({ page }) => {
         await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
+        // Wait for element tiles to render
+        await page.waitForSelector(`.element-tile`, { timeout: 10000 })
+
         await clear_tooltip(page)
 
         const element_tile = page
@@ -209,11 +220,15 @@ test.describe(`Periodic Table`, () => {
           })
           .first()
 
-        await element_tile.hover()
+        await expect(element_tile).toBeVisible({ timeout: 5000 })
+        await element_tile.hover({ force: true })
 
         const tooltip = get_tooltip(page)
-        await expect(tooltip).toBeVisible()
-        await expect(tooltip).toContainText(element.name)
+        // Use toPass for robust tooltip visibility
+        await expect(async () => {
+          await expect(tooltip).toBeVisible()
+          await expect(tooltip).toContainText(element.name)
+        }).toPass({ timeout: 5000 })
         await expect(tooltip).toContainText(
           `${element.symbol} • ${element.number}`,
         )
@@ -221,16 +236,33 @@ test.describe(`Periodic Table`, () => {
     }
 
     test(`tooltip works with heatmap property selected`, async ({ page }) => {
+      // Skip in CI - multiselect dropdown interactions are unreliable in headless CI
+      test.skip(IS_CI, `Multiselect dropdown interactions flaky in CI`)
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
-      // Select a heatmap property
-      await page.click(`div.multiselect`)
-      await page.click(`text=Atomic mass`)
+      // Use scoped selector for heatmap multiselect
+      const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
+      await expect(multiselect).toBeVisible()
+
+      // Open multiselect dropdown - force: true needed due to overlaying SVG icons
+      await multiselect.click({ force: true })
+
+      // Wait for dropdown to be visible
+      const option_list = multiselect.locator(`ul.options`)
+      await expect(option_list).toBeVisible({ timeout: 10000 })
+
+      // Select Atomic mass property
+      const option = option_list.locator(`li`, { hasText: `Atomic mass` })
+      await expect(option).toBeVisible()
+      await option.click()
+
+      // Wait for heatmap to update
+      await page.waitForTimeout(200)
 
       // Hover over Carbon element
       await get_element_tile(page, `C`).hover()
 
-      // Verify tooltip shows element info
+      // Verify tooltip shows element info with heatmap active
       const tooltip = get_tooltip(page)
       await expect(tooltip).toBeVisible()
       await expect(tooltip).toContainText(`Carbon`)

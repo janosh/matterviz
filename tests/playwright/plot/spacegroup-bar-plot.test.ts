@@ -3,9 +3,6 @@ import { expect, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
 
 test.describe(`SpacegroupBarPlot Component Tests`, () => {
-  // Retry for intermittent SSR warm-up issues (mdsvex examples)
-  test.describe.configure({ retries: 1 })
-
   test.beforeEach(async ({ page }) => {
     // Skip in CI due to mdsvex SSR module resolution issues
     // Error: "SpacegroupBarPlot is not a function" occurs intermittently in CI

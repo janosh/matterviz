@@ -10,7 +10,7 @@ export type InfoItem = Readonly<{
 
 // Toggle fullscreen mode for a wrapper element
 export async function toggle_fullscreen(wrapper?: HTMLDivElement): Promise<void> {
-  if (!wrapper) return
+  if (!wrapper || !wrapper.isConnected) return
   try {
     if (!document.fullscreenElement) {
       await wrapper.requestFullscreen()
