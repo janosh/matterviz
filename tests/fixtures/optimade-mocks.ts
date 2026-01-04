@@ -6,7 +6,7 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
     id: `mp-1`,
     type: `structures`,
     attributes: {
-      chemical_formula_descriptive: `H2O`,
+      chemical_formula_descriptive: `H`,
       lattice_vectors: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
       species: [{ name: `H`, chemical_symbols: [`H`], concentration: [1] }],
       species_at_sites: [`H`],
@@ -28,7 +28,7 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
     id: `mp-1226325`,
     type: `structures`,
     attributes: {
-      chemical_formula_descriptive: `LiFePO4`,
+      chemical_formula_descriptive: `LiFePO`,
       lattice_vectors: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
       species: [
         { name: `Li`, chemical_symbols: [`Li`], concentration: [1] },
@@ -44,7 +44,7 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
     id: `cod-456`,
     type: `structures`,
     attributes: {
-      chemical_formula_descriptive: `Fe2O3`,
+      chemical_formula_descriptive: `FeO`,
       lattice_vectors: [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
       species: [
         { name: `Fe`, chemical_symbols: [`Fe`], concentration: [1] },

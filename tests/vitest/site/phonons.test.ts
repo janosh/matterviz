@@ -272,12 +272,16 @@ describe(`Phonon Module Tests`, () => {
   )
 
   // Verify each real phonon file has expected structure characteristics
+  // Minimum qpoints threshold: band structure calculations typically sample 100+ k-points
+  // along high-symmetry paths. This catches incomplete or corrupted data files.
+  const MIN_QPOINTS = 100
+
   it.each(Object.entries(phonon_bands))(
     `%s has valid band structure with correct dimensions`,
     (id, band_struct) => {
       // Verify minimum expected content
       expect(band_struct.qpoints.length, `${id}: should have qpoints`).toBeGreaterThan(
-        100,
+        MIN_QPOINTS,
       )
       expect(band_struct.nb_bands, `${id}: should have bands`).toBeGreaterThan(0)
       expect(
