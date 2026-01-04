@@ -131,7 +131,7 @@ test.describe(`Trajectory Component`, () => {
     try {
       await info_pane.waitFor({ state: `visible`, timeout: 3000 })
     } catch {
-      // If keyboard shortcut didn't work, try button click
+      // Keyboard shortcuts can be flaky in headless mode - button click is reliable fallback
       await info_button.click()
       await info_pane.waitFor({ state: `visible`, timeout: 3000 })
     }
@@ -494,10 +494,11 @@ test.describe(`Trajectory Component`, () => {
         await expect(fps_input).toHaveValue(`1`)
       }
 
-      // Stop playing
+      // Stop playing - use toPass for robust state transition check
       await play_button.click()
-      // TODO debug play button doesn't always change, maybe timing issue
-      await expect(play_button).toHaveText(`▶`, { timeout: 3000 })
+      await expect(async () => {
+        await expect(play_button).toHaveText(`▶`)
+      }).toPass({ timeout: 3000 })
     })
 
     test(`FPS range slider covers full range and stays synchronized`, async ({ page }) => {
