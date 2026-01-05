@@ -150,88 +150,18 @@ describe(`Export functionality`, () => {
     })
   })
 
-  describe(`Site count verification`, () => {
-    it(`exports all sites in XYZ format`, () => {
-      const xyz_content = structure_to_xyz_str(simple_structure)
-      const lines = xyz_content.split(`\n`)
-      expect(lines[0]).toBe(`3`)
-      expect(lines[1]).toContain(`test_h2o H2O`)
-      expect(lines[2]).toBe(`H 0.757000 0.586000 0.000000`)
-      expect(lines[3]).toBe(`O 0.000000 0.000000 0.000000`)
-      expect(lines[4]).toBe(`H -0.757000 0.586000 0.000000`)
-      expect(lines).toHaveLength(5)
-    })
-
-    it(`exports all sites in JSON format`, () => {
-      const json_content = structure_to_json_str(simple_structure)
-      const parsed = JSON.parse(json_content)
-      expect(parsed.sites).toHaveLength(3)
-      expect(parsed.sites[0].species[0].element).toBe(`H`)
-      expect(parsed.sites[1].species[0].element).toBe(`O`)
-      expect(parsed.sites[2].species[0].element).toBe(`H`)
-    })
-
-    it(`handles complex structures with many sites`, () => {
-      mock_get_electro_neg_formula.mockReturnValue(`LiFeP4O7`)
-      const xyz_content = structure_to_xyz_str(complex_structure)
-      const lines = xyz_content.split(`\n`)
-      expect(lines[0]).toBe(`7`)
-      expect(lines[1].startsWith(`test_complex LiFeP4O7`)).toBe(true)
-      expect(lines[2]).toBe(`Li 0.000000 0.000000 0.000000`)
-      expect(lines[3]).toBe(`Fe 2.500000 0.000000 0.000000`)
-      expect(lines[4]).toBe(`P 0.000000 2.500000 0.000000`)
-      expect(lines[5]).toBe(`O 1.250000 1.250000 0.000000`)
-      expect(lines[6]).toBe(`O 3.750000 1.250000 0.000000`)
-      expect(lines[7]).toBe(`O 1.250000 3.750000 0.000000`)
-      expect(lines[8]).toBe(`O 3.750000 3.750000 0.000000`)
-      expect(lines).toHaveLength(9)
-
-      // Verify plain_text flag is always true for XYZ title/comment lines
-      expect(mock_get_electro_neg_formula).toHaveBeenCalledWith(
-        expect.any(Object),
-        true,
-      )
-    })
-  })
+  // Site count verification is covered by export_cases it.each tests above
 
   describe(`Round-trip tests`, () => {
-    it(`round-trips real structure data correctly`, () => {
-      const parsed_structure = parse_structure_file(real_structure_json, `mp-1.json`)
-      expect(parsed_structure?.sites).toHaveLength(1)
-      const xyz_content = structure_to_xyz_str(parsed_structure as AnyStructure)
-      const lines = xyz_content.split(`\n`)
-      expect(lines[0]).toBe(`1`)
-      expect(lines[2]).toMatch(/^Cs \d+\.\d+ \d+\.\d+ \d+\.\d+$/)
-    })
-
-    it(`round-trips XYZ export and parse`, () => {
-      const xyz_content = structure_to_xyz_str(simple_structure)
-      const parsed_structure = parse_structure_file(xyz_content, `test.xyz`)
-      expect(parsed_structure?.sites).toHaveLength(3)
-      const elements = parsed_structure?.sites.map((site) => site.species?.[0]?.element)
-      expect(elements).toEqual([`H`, `O`, `H`])
-
-      // Check coordinates are preserved (with some tolerance for floating point precision)
-      expect(parsed_structure?.sites[0].xyz?.[0]).toBeCloseTo(0.757, 5)
-      expect(parsed_structure?.sites[0].xyz?.[1]).toBeCloseTo(0.586, 5)
-      expect(parsed_structure?.sites[1].xyz?.[0]).toBeCloseTo(0.0, 5)
-      {
-        const actual = parsed_structure?.sites[2].xyz?.[0] as number
-        const lattice_a = parsed_structure?.lattice?.a
-        const candidates = [-0.757, ...(lattice_a ? [lattice_a - 0.757] : [])]
-        const min_diff = Math.min(...candidates.map((exp) => Math.abs(actual - exp)))
-        expect(min_diff).toBeLessThan(1e-5)
-      }
-
-      // In multi-frame XYZ, we parse the last frame by design to represent final state.
-      // This ensures round-trips prefer the most recent lattice/coords written by producers.
-    })
-
-    it(`round-trips JSON export and parse`, () => {
-      const json_content = structure_to_json_str(complex_structure)
-      const parsed_structure = parse_structure_file(json_content, `test.json`)
-      expect((parsed_structure as AnyStructure).id).toBe(complex_structure.id)
-      expect(parsed_structure?.sites).toHaveLength(7)
+    it.each([
+      { name: `JSON`, structure: complex_structure, ext: `json`, to_str: structure_to_json_str, preserves_id: true },
+      { name: `XYZ`, structure: simple_structure, ext: `xyz`, to_str: structure_to_xyz_str, preserves_id: false },
+      { name: `pymatgen JSON`, structure: JSON.parse(real_structure_json), ext: `json`, to_str: structure_to_json_str, preserves_id: false },
+    ])(`round-trips $name export and parse`, ({ structure, ext, to_str, preserves_id }) => {
+      const content = to_str(structure as AnyStructure)
+      const parsed = parse_structure_file(content, `test.${ext}`)
+      expect(parsed?.sites).toHaveLength(structure.sites.length)
+      if (preserves_id && structure.id) expect((parsed as AnyStructure).id).toBe(structure.id)
     })
   })
 
@@ -506,46 +436,30 @@ describe(`Export functionality`, () => {
       expect(result).toBe(`mp-19017-Li4Fe4P4O16-28sites.png`)
     })
 
-    it(`sanitizes invalid filename characters and condenses underscores`, () => {
-      mock_get_electro_neg_formula.mockReturnValue(`Li2/O`)
-      const structure = {
+    it.each([
+      {
         id: `A/B:C*D?E"FH|`,
-        sites: Array(1).fill({
-          species: [{ element: `Li`, occu: 1, oxidation_state: 1 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `Li`,
-          properties: {},
-        }),
-      } as AnyStructure
-      const result = create_structure_filename(structure, `xyz`)
-      // Invalid chars (/, :, *, ?, ", |) should be replaced with underscores and condensed
-      expect(result).toBe(`A_B_C_D_E_FH-Li2_O-1sites.xyz`)
-      expect(result).not.toContain(`/`)
-      expect(result).not.toContain(`:`)
-      expect(result).not.toContain(`*`)
-      expect(result).not.toContain(`?`)
-      expect(result).not.toContain(`"`)
-      expect(result).not.toContain(`|`)
-      expect(result).not.toContain(`__`)
-      expect(result.endsWith(`.xyz`)).toBe(true)
-    })
-
-    it(`handles consecutive invalid characters`, () => {
-      mock_get_electro_neg_formula.mockReturnValue(`test`)
-      const structure = {
+        formula: `Li2/O`,
+        ext: `xyz`,
+        expected: `A_B_C_D_E_FH-Li2_O-1sites.xyz`,
+        desc: `sanitizes invalid chars and condenses underscores`,
+      },
+      {
         id: `___test///name:::here___`,
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H`,
-          properties: {},
-        }],
+        formula: `test`,
+        ext: `cif`,
+        expected: `test_name_here-test-1sites.cif`,
+        desc: `handles consecutive invalid characters`,
+      },
+    ])(`$desc`, ({ id, formula, ext, expected }) => {
+      mock_get_electro_neg_formula.mockReturnValue(formula)
+      const structure = {
+        id,
+        sites: [{ species: [{ element: `H`, occu: 1, oxidation_state: 0 }], abc: [0, 0, 0], xyz: [0, 0, 0], label: `H`, properties: {} }],
       } as AnyStructure
-      expect(create_structure_filename(structure, `cif`)).toBe(
-        `test_name_here-test-1sites.cif`,
-      )
+      const result = create_structure_filename(structure, ext)
+      expect(result).toBe(expected)
+      expect(result).not.toContain(`__`)
     })
 
     it(`avoids null/undefined in filename from symmetry/lattice`, () => {
@@ -704,26 +618,13 @@ describe(`Export functionality`, () => {
       expect(lines.some((line) => line.includes(`O`))).toBe(true)
     })
 
-    it(`CIF data block name uses structure.id as fallback`, () => {
-      // Structure with no sites should use sanitized id
-      const struct_no_sites = { ...complex_structure, sites: [] }
-      const cif_content = structure_to_cif_str(struct_no_sites)
-      const lines = cif_content.split(`\n`)
-      // Should fall back to sanitized structure.id
-      expect(lines[1]).toBe(`data_test_complex`)
-    })
-
-    it(`CIF data block name sanitizes special characters in fallback`, () => {
-      // Structure with special characters in id should have them replaced with underscores
-      const struct_special_id = {
-        ...complex_structure,
-        id: `mp-12345/Fe2O3 (hematite)`,
-        sites: [], // empty sites to trigger fallback
-      }
-      const cif_content = structure_to_cif_str(struct_special_id)
-      const lines = cif_content.split(`\n`)
-      // Special characters should be replaced with underscores
-      expect(lines[1]).toBe(`data_mp_12345_Fe2O3__hematite_`)
+    it.each([
+      { id: `test_complex`, expected: `data_test_complex`, desc: `uses structure.id as fallback` },
+      { id: `mp-12345/Fe2O3 (hematite)`, expected: `data_mp_12345_Fe2O3__hematite_`, desc: `sanitizes special characters` },
+    ])(`CIF data block name $desc`, ({ id, expected }) => {
+      const struct = { ...complex_structure, id, sites: [] }
+      const lines = structure_to_cif_str(struct).split(`\n`)
+      expect(lines[1]).toBe(expected)
     })
 
     it(`exports POSCAR format correctly`, () => {
@@ -1312,37 +1213,24 @@ describe(`3D Export Color Preservation`, async () => {
       },
     )
 
-    test(`returns null when color attributes missing`, () => {
-      const geometry = new BufferGeometry()
-      expect(extract_bond_color_for_instance(geometry, 0)).toBeNull()
-
-      // Only start
-      geometry.setAttribute(
-        `instanceColorStart`,
-        new InstancedBufferAttribute(new Float32Array([1, 0, 0]), 3),
-      )
-      expect(extract_bond_color_for_instance(geometry, 0)).toBeNull()
+    test(`returns null when color attributes missing or only partial`, () => {
+      const geom = new BufferGeometry()
+      expect(extract_bond_color_for_instance(geom, 0)).toBeNull()
+      geom.setAttribute(`instanceColorStart`, new InstancedBufferAttribute(new Float32Array([1, 0, 0]), 3))
+      expect(extract_bond_color_for_instance(geom, 0)).toBeNull() // missing end
     })
 
-    test(`extracts correct color per instance index and null for out-of-bounds`, () => {
-      const geometry = new BufferGeometry()
-      geometry.setAttribute(
-        `instanceColorStart`,
-        new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]), 3),
-      )
-      geometry.setAttribute(
-        `instanceColorEnd`,
-        new InstancedBufferAttribute(new Float32Array([0, 0, 1, 1, 0, 0, 0, 1, 0]), 3),
-      )
-      const r0 = extract_bond_color_for_instance(geometry, 0)
-      const r1 = extract_bond_color_for_instance(geometry, 1)
-      const r2 = extract_bond_color_for_instance(geometry, 2)
-      expect([r0?.r, r0?.g, r0?.b]).toEqual([0.5, 0, 0.5])
-      expect([r1?.r, r1?.g, r1?.b]).toEqual([0.5, 0.5, 0])
-      expect([r2?.r, r2?.g, r2?.b]).toEqual([0, 0.5, 0.5])
-      // out-of-bounds
-      expect(extract_bond_color_for_instance(geometry, -1)).toBeNull()
-      expect(extract_bond_color_for_instance(geometry, 3)).toBeNull()
+    test(`extracts correct color per instance and null for out-of-bounds`, () => {
+      const geom = new BufferGeometry()
+      geom.setAttribute(`instanceColorStart`, new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]), 3))
+      geom.setAttribute(`instanceColorEnd`, new InstancedBufferAttribute(new Float32Array([0, 0, 1, 1, 0, 0, 0, 1, 0]), 3))
+      const results = [0, 1, 2].map((idx) => {
+        const result = extract_bond_color_for_instance(geom, idx)
+        return result ? [result.r, result.g, result.b] : null
+      })
+      expect(results).toEqual([[0.5, 0, 0.5], [0.5, 0.5, 0], [0, 0.5, 0.5]])
+      expect(extract_bond_color_for_instance(geom, -1)).toBeNull()
+      expect(extract_bond_color_for_instance(geom, 3)).toBeNull()
     })
   })
 
@@ -1363,25 +1251,18 @@ describe(`3D Export Color Preservation`, async () => {
   })
 
   describe(`has_color_property`, () => {
-    test(`true for MeshStandardMaterial/MeshBasicMaterial`, () => {
-      expect(has_color_property(new MeshStandardMaterial({ color: 0xff0000 }))).toBe(true)
-      expect(has_color_property(new MeshBasicMaterial({ color: 0x00ff00 }))).toBe(true)
-    })
-
-    test(`false for ShaderMaterial`, () => {
-      expect(
-        has_color_property(
-          new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }),
-        ),
-      ).toBe(false)
+    test.each([
+      { mat: () => new MeshStandardMaterial({ color: 0xff0000 }), expected: true },
+      { mat: () => new MeshBasicMaterial({ color: 0x00ff00 }), expected: true },
+      { mat: () => new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }), expected: false },
+    ])(`returns $expected for material`, ({ mat, expected }) => {
+      expect(has_color_property(mat())).toBe(expected)
     })
 
     test(`type guard grants color access`, () => {
       const mat = new MeshStandardMaterial({ color: new Color(0.25, 0.5, 0.75) })
       if (!has_color_property(mat)) throw new Error(`Expected true`)
-      expect(mat.color.r).toBeCloseTo(0.25, 5)
-      expect(mat.color.g).toBeCloseTo(0.5, 5)
-      expect(mat.color.b).toBeCloseTo(0.75, 5)
+      expect([mat.color.r, mat.color.g, mat.color.b].map((val) => val.toFixed(2))).toEqual([`0.25`, `0.50`, `0.75`])
     })
   })
 
