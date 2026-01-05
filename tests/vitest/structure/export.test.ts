@@ -154,15 +154,40 @@ describe(`Export functionality`, () => {
 
   describe(`Round-trip tests`, () => {
     it.each([
-      { name: `JSON`, structure: complex_structure, ext: `json`, to_str: structure_to_json_str, preserves_id: true },
-      { name: `XYZ`, structure: simple_structure, ext: `xyz`, to_str: structure_to_xyz_str, preserves_id: false },
-      { name: `pymatgen JSON`, structure: JSON.parse(real_structure_json), ext: `json`, to_str: structure_to_json_str, preserves_id: false },
-    ])(`round-trips $name export and parse`, ({ structure, ext, to_str, preserves_id }) => {
-      const content = to_str(structure as AnyStructure)
-      const parsed = parse_structure_file(content, `test.${ext}`)
-      expect(parsed?.sites).toHaveLength(structure.sites.length)
-      if (preserves_id && structure.id) expect((parsed as AnyStructure).id).toBe(structure.id)
-    })
+      {
+        name: `JSON`,
+        structure: complex_structure,
+        ext: `json`,
+        to_str: structure_to_json_str,
+        preserves_id: true,
+      },
+      {
+        name: `XYZ`,
+        structure: simple_structure,
+        ext: `xyz`,
+        to_str: structure_to_xyz_str,
+        preserves_id: false,
+      },
+      {
+        name: `pymatgen JSON`,
+        structure: JSON.parse(real_structure_json),
+        ext: `json`,
+        to_str: structure_to_json_str,
+        preserves_id: false,
+      },
+    ])(
+      `round-trips $name export and parse`,
+      ({ structure, ext, to_str, preserves_id }) => {
+        const content = to_str(structure as AnyStructure)
+        const parsed = parse_structure_file(content, `test.${ext}`)
+        expect(parsed?.sites).toHaveLength(structure.sites.length)
+        if (preserves_id && structure.id) {
+          expect((parsed as AnyStructure).id).toBe(
+            structure.id,
+          )
+        }
+      },
+    )
   })
 
   describe(`Round-trip exporters (fixtures)`, () => {
@@ -455,7 +480,13 @@ describe(`Export functionality`, () => {
       mock_get_electro_neg_formula.mockReturnValue(formula)
       const structure = {
         id,
-        sites: [{ species: [{ element: `H`, occu: 1, oxidation_state: 0 }], abc: [0, 0, 0], xyz: [0, 0, 0], label: `H`, properties: {} }],
+        sites: [{
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `H`,
+          properties: {},
+        }],
       } as AnyStructure
       const result = create_structure_filename(structure, ext)
       expect(result).toBe(expected)
@@ -619,9 +650,21 @@ describe(`Export functionality`, () => {
     })
 
     it.each([
-      { id: `test_complex`, expected: `data_test_complex`, desc: `uses structure.id as fallback for empty sites` },
-      { id: `mp-12345/Fe2O3 (hematite)`, expected: `data_mp_12345_Fe2O3_hematite_`, desc: `sanitizes special characters` },
-      { id: `test:::complex`, expected: `data_test_complex`, desc: `condenses consecutive underscores` },
+      {
+        id: `test_complex`,
+        expected: `data_test_complex`,
+        desc: `uses structure.id as fallback for empty sites`,
+      },
+      {
+        id: `mp-12345/Fe2O3 (hematite)`,
+        expected: `data_mp_12345_Fe2O3_hematite_`,
+        desc: `sanitizes special characters`,
+      },
+      {
+        id: `test:::complex`,
+        expected: `data_test_complex`,
+        desc: `condenses consecutive underscores`,
+      },
     ])(`CIF data block name $desc`, ({ id, expected }) => {
       const struct = { ...complex_structure, id, sites: [] }
       const lines = structure_to_cif_str(struct).split(`\n`)
@@ -634,8 +677,20 @@ describe(`Export functionality`, () => {
         ...complex_structure,
         id: `low_occ_test`,
         sites: [
-          { species: [{ element: `Fe`, occu: 0.3 }], abc: [0, 0, 0], xyz: [0, 0, 0], label: `Fe1`, properties: {} },
-          { species: [{ element: `O`, occu: 2.0 }], abc: [0.5, 0.5, 0.5], xyz: [1, 1, 1], label: `O1`, properties: {} },
+          {
+            species: [{ element: `Fe`, occu: 0.3, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [0, 0, 0],
+            label: `Fe1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `O`, occu: 2.0, oxidation_state: 0 }],
+            abc: [0.5, 0.5, 0.5],
+            xyz: [1, 1, 1],
+            label: `O1`,
+            properties: {},
+          },
         ],
       }
       const lines = structure_to_cif_str(struct).split(`\n`)
@@ -1232,14 +1287,23 @@ describe(`3D Export Color Preservation`, async () => {
     test(`returns null when color attributes missing or only partial`, () => {
       const geom = new BufferGeometry()
       expect(extract_bond_color_for_instance(geom, 0)).toBeNull()
-      geom.setAttribute(`instanceColorStart`, new InstancedBufferAttribute(new Float32Array([1, 0, 0]), 3))
+      geom.setAttribute(
+        `instanceColorStart`,
+        new InstancedBufferAttribute(new Float32Array([1, 0, 0]), 3),
+      )
       expect(extract_bond_color_for_instance(geom, 0)).toBeNull() // missing end
     })
 
     test(`extracts correct color per instance and null for out-of-bounds`, () => {
       const geom = new BufferGeometry()
-      geom.setAttribute(`instanceColorStart`, new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]), 3))
-      geom.setAttribute(`instanceColorEnd`, new InstancedBufferAttribute(new Float32Array([0, 0, 1, 1, 0, 0, 0, 1, 0]), 3))
+      geom.setAttribute(
+        `instanceColorStart`,
+        new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]), 3),
+      )
+      geom.setAttribute(
+        `instanceColorEnd`,
+        new InstancedBufferAttribute(new Float32Array([0, 0, 1, 1, 0, 0, 0, 1, 0]), 3),
+      )
       const results = [0, 1, 2].map((idx) => {
         const result = extract_bond_color_for_instance(geom, idx)
         return result ? [result.r, result.g, result.b] : null
@@ -1270,7 +1334,10 @@ describe(`3D Export Color Preservation`, async () => {
     test.each([
       { mat: () => new MeshStandardMaterial({ color: 0xff0000 }), expected: true },
       { mat: () => new MeshBasicMaterial({ color: 0x00ff00 }), expected: true },
-      { mat: () => new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }), expected: false },
+      {
+        mat: () => new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }),
+        expected: false,
+      },
     ])(`returns $expected for material`, ({ mat, expected }) => {
       expect(has_color_property(mat())).toBe(expected)
     })
@@ -1278,7 +1345,8 @@ describe(`3D Export Color Preservation`, async () => {
     test(`type guard grants color access`, () => {
       const mat = new MeshStandardMaterial({ color: new Color(0.25, 0.5, 0.75) })
       if (!has_color_property(mat)) throw new Error(`Expected true`)
-      expect([mat.color.r, mat.color.g, mat.color.b].map((val) => val.toFixed(2))).toEqual([`0.25`, `0.50`, `0.75`])
+      expect([mat.color.r, mat.color.g, mat.color.b].map((val) => val.toFixed(2)))
+        .toEqual([`0.25`, `0.50`, `0.75`])
     })
   })
 
