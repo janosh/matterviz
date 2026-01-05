@@ -619,13 +619,28 @@ describe(`Export functionality`, () => {
     })
 
     it.each([
-      { id: `test_complex`, expected: `data_test_complex`, desc: `uses structure.id as fallback` },
+      { id: `test_complex`, expected: `data_test_complex`, desc: `uses structure.id as fallback for empty sites` },
       { id: `mp-12345/Fe2O3 (hematite)`, expected: `data_mp_12345_Fe2O3_hematite_`, desc: `sanitizes special characters` },
       { id: `test:::complex`, expected: `data_test_complex`, desc: `condenses consecutive underscores` },
     ])(`CIF data block name $desc`, ({ id, expected }) => {
       const struct = { ...complex_structure, id, sites: [] }
       const lines = structure_to_cif_str(struct).split(`\n`)
       expect(lines[1]).toBe(expected)
+    })
+
+    it(`CIF data block filters out near-zero occupancies`, () => {
+      // Structure with very low occupancy that rounds to zero should still work
+      const struct = {
+        ...complex_structure,
+        id: `low_occ_test`,
+        sites: [
+          { species: [{ element: `Fe`, occu: 0.3 }], abc: [0, 0, 0], xyz: [0, 0, 0], label: `Fe1`, properties: {} },
+          { species: [{ element: `O`, occu: 2.0 }], abc: [0.5, 0.5, 0.5], xyz: [1, 1, 1], label: `O1`, properties: {} },
+        ],
+      }
+      const lines = structure_to_cif_str(struct).split(`\n`)
+      // Fe rounds to 0, O rounds to 2, so formula should be just "O2"
+      expect(lines[1]).toBe(`data_O2`)
     })
 
     it(`exports POSCAR format correctly`, () => {

@@ -494,10 +494,13 @@ function get_cif_block_name(structure: AnyStructure): string {
     const formula = elements
       .map((el) => {
         const count = Math.round(element_counts[el])
+        if (count === 0) return null // filter out near-zero occupancies
         return count === 1 ? el : `${el}${count}`
       })
+      .filter((part): part is string => part !== null)
       .join(``)
 
+    if (!formula) throw new Error(`All occupancies round to zero`)
     return formula
   } catch {
     // Fall back to structure.id (sanitized) or generic name
