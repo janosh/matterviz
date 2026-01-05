@@ -620,7 +620,8 @@ describe(`Export functionality`, () => {
 
     it.each([
       { id: `test_complex`, expected: `data_test_complex`, desc: `uses structure.id as fallback` },
-      { id: `mp-12345/Fe2O3 (hematite)`, expected: `data_mp_12345_Fe2O3__hematite_`, desc: `sanitizes special characters` },
+      { id: `mp-12345/Fe2O3 (hematite)`, expected: `data_mp_12345_Fe2O3_hematite_`, desc: `sanitizes special characters` },
+      { id: `test:::complex`, expected: `data_test_complex`, desc: `condenses consecutive underscores` },
     ])(`CIF data block name $desc`, ({ id, expected }) => {
       const struct = { ...complex_structure, id, sites: [] }
       const lines = structure_to_cif_str(struct).split(`\n`)

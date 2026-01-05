@@ -503,7 +503,8 @@ function get_cif_block_name(structure: AnyStructure): string {
     // Fall back to structure.id (sanitized) or generic name
     if (structure.id) {
       // Remove invalid CIF characters (keep alphanumerics and underscores)
-      return structure.id.replace(/[^a-zA-Z0-9_]/g, `_`)
+      // and condense consecutive underscores for cleaner block names
+      return structure.id.replace(/[^a-zA-Z0-9_]/g, `_`).replace(/_+/g, `_`)
     }
     return `structure`
   }
