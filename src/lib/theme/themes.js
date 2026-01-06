@@ -258,6 +258,12 @@ const themes = {
     white: txt_white,
     black: txt_black,
   },
+  'github-corner-bg-hover': {
+    light: `#1e40af`, // Darker, more modest blue for light mode
+    dark: `#60a5fa`, // Lighter blue for dark mode
+    white: `#1e3a8a`, // Deep navy blue for white mode
+    black: `#38bdf8`, // Cyan-blue for black mode
+  },
 }
 
 // Generate flattened themes and export

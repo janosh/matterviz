@@ -20,7 +20,8 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
   })
 
   test(`renders complete diagram structure`, async ({ page }) => {
-    test.skip(IS_CI, `Phase diagram rendering flaky in CI`)
+    // Skip in CI - SVG elements like grid lines report "hidden" even when rendered
+    test.skip(IS_CI, `Phase diagram SVG visibility checks unreliable in CI`)
     const { svg } = get_diagram_elements(page)
 
     // Phase regions with multiple paths
