@@ -665,6 +665,11 @@ describe(`Export functionality`, () => {
         expected: `data_test_complex`,
         desc: `condenses consecutive underscores`,
       },
+      {
+        id: undefined,
+        expected: `data_structure`,
+        desc: `falls back to generic name when id is missing`,
+      },
     ])(`CIF data block name $desc`, ({ id, expected }) => {
       const struct = { ...complex_structure, id, sites: [] }
       const lines = structure_to_cif_str(struct).split(`\n`)
