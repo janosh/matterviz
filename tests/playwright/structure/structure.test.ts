@@ -1508,7 +1508,8 @@ test.describe(`Reset Camera Button Tests`, () => {
 
 test.describe(`Export Button Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await goto_structure_test(page)
+    // Use show_controls=always so buttons are visible and clickable without hover
+    await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
   // Helper function to click export buttons using direct DOM manipulation
