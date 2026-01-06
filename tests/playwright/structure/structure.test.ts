@@ -1740,7 +1740,8 @@ test.describe(`Show Buttons Tests`, () => {
 
 test.describe(`Structure Event Handler Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await goto_structure_test(page)
+    // Use show_controls=always so buttons are visible and clickable without hover
+    await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
   test(`should handle file loading from URL correctly`, async ({ page }) => {
