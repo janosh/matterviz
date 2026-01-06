@@ -1,11 +1,13 @@
 <script lang="ts">
+  import type { ShowControlsProp } from '$lib/controls'
+  import { normalize_show_controls } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { toggle_fullscreen } from '$lib/layout'
   import EmptyState from '$lib/EmptyState.svelte'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
+  import { toggle_fullscreen } from '$lib/layout'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/utils/series-visibility'
@@ -72,7 +74,7 @@
     spinner_props = {},
     trajectory_controls,
     error_snippet,
-    show_controls = true,
+    show_controls,
     fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
     auto_play = false,
     display_mode = $bindable(`structure+scatter`),
@@ -121,7 +123,16 @@
     trajectory_controls?: Snippet<[ControlsProps]>
     // Custom error snippet for advanced error handling
     error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
-    show_controls?: boolean // show/hide the trajectory controls bar
+    /**
+     * Controls visibility configuration.
+     * - 'always': controls always visible
+     * - 'hover': controls visible on component hover (default)
+     * - 'never': controls never visible
+     * - object: { mode, hidden, style } for fine-grained control
+     *
+     * Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'view-mode', 'fullscreen'
+     */
+    show_controls?: ShowControlsProp
     // show/hide the fullscreen button
     fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
     // automatically start playing when trajectory data is loaded
@@ -200,6 +211,8 @@
   let element_size = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
+
+  let controls_config = $derived(normalize_show_controls(show_controls))
 
   // Reactive layout based on element aspect ratio (for auto mode)
   let actual_layout = $derived.by(() => {
@@ -869,8 +882,11 @@
     />
   {:else if trajectory}
     <!-- Trajectory Controls -->
-    {#if show_controls}
-      <div class="trajectory-controls">
+    {#if controls_config.mode !== `never`}
+      <div
+        class="trajectory-controls {controls_config.class}"
+        style={controls_config.style}
+      >
         {#if trajectory_controls}
           {@render trajectory_controls({
         trajectory,
@@ -879,7 +895,7 @@
         on_step_change: go_to_step,
       })}
         {:else}
-          {#if current_filename}
+          {#if current_filename && controls_config.visible(`filename`)}
             <button
               class="filename"
               title="Click to copy filename <code>{current_filename}</code>"
@@ -903,73 +919,77 @@
           {/if}
 
           <!-- Navigation controls -->
-          <div class="nav-section">
-            <button
-              onclick={prev_step}
-              disabled={current_step_idx === 0 || is_playing}
-              title="Previous step"
-            >
-              ⏮
-            </button>
-            <button
-              onclick={toggle_play}
-              disabled={total_frames <= 1}
-              title={is_playing ? `Pause playback` : `Play trajectory`}
-              class="play-button"
-              class:playing={is_playing}
-            >
-              {is_playing ? `⏸` : `▶`}
-            </button>
-            <button
-              onclick={next_step}
-              disabled={current_step_idx === total_frames - 1 || is_playing}
-              title="Next step"
-            >
-              ⏭
-            </button>
-          </div>
+          {#if controls_config.visible(`nav`)}
+            <div class="nav-section">
+              <button
+                onclick={prev_step}
+                disabled={current_step_idx === 0 || is_playing}
+                title="Previous step"
+              >
+                ⏮
+              </button>
+              <button
+                onclick={toggle_play}
+                disabled={total_frames <= 1}
+                title={is_playing ? `Pause playback` : `Play trajectory`}
+                class="play-button"
+                class:playing={is_playing}
+              >
+                {is_playing ? `⏸` : `▶`}
+              </button>
+              <button
+                onclick={next_step}
+                disabled={current_step_idx === total_frames - 1 || is_playing}
+                title="Next step"
+              >
+                ⏭
+              </button>
+            </div>
+          {/if}
 
           <!-- Frame slider and counter -->
-          <div class="step-section">
-            <input
-              type="number"
-              min="0"
-              max={total_frames - 1}
-              bind:value={current_step_idx}
-              class="step-input"
-              title="Enter step number to jump to"
-              aria-label="Step input"
-              {@attach tooltip()}
-            />
-            <span aria-label="total frames">/ {format_num(total_frames, `.3~s`)}</span>
-            <div class="slider-container">
+          {#if controls_config.visible(`step`)}
+            <div class="step-section">
               <input
-                type="range"
+                type="number"
                 min="0"
                 max={total_frames - 1}
                 bind:value={current_step_idx}
-                class="step-slider"
-                title="Drag to navigate steps"
+                class="step-input"
+                title="Enter step number to jump to"
+                aria-label="Step input"
+                {@attach tooltip()}
               />
-              {#if step_label_positions.length > 0}
-                <div class="step-labels">
-                  {#each step_label_positions as step_idx (step_idx)}
-                    {@const position_percent = total_frames > 1
+              <span aria-label="total frames">/ {format_num(total_frames, `.3~s`)}</span>
+              <div class="slider-container">
+                <input
+                  type="range"
+                  min="0"
+                  max={total_frames - 1}
+                  bind:value={current_step_idx}
+                  class="step-slider"
+                  title="Drag to navigate steps"
+                />
+                {#if step_label_positions.length > 0}
+                  <div class="step-labels">
+                    {#each step_label_positions as step_idx (step_idx)}
+                      {@const position_percent = total_frames > 1
               ? (step_idx / (total_frames - 1)) * 100
               : 0}
-                    {@const adjusted_position = 1.5 + (position_percent * (100 - 2)) / 100}
-                    <div class="step-tick" style:left="{adjusted_position}%"></div>
-                    <div class="step-label" style:left="{adjusted_position}%">
-                      {format_num(step_idx, `.3~s`)}
-                    </div>
-                  {/each}
-                </div>
-              {/if}
+                      {@const adjusted_position = 1.5 + (position_percent * (100 - 2)) / 100}
+                      <div class="step-tick" style:left="{adjusted_position}%"></div>
+                      <div class="step-label" style:left="{adjusted_position}%">
+                        {format_num(step_idx, `.3~s`)}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
             </div>
-          </div>
+          {/if}
 
           <!-- Frame rate control - only shown when playing -->
-          {#if is_playing}
+          {#if is_playing && controls_config.visible(`fps`)}
             <label
               class="fps-section"
               style="font-size: 0.9em; display: flex; align-items: center; gap: 5pt; margin-inline: 6pt"
@@ -996,7 +1016,7 @@
 
           <!-- Frame info section -->
           <div class="info-section">
-            {#if trajectory}
+            {#if trajectory && controls_config.visible(`info-pane`)}
               <TrajectoryInfoPane
                 {trajectory}
                 {current_step_idx}
@@ -1009,16 +1029,19 @@
               />
             {/if}
             <!-- Trajectory Export Pane -->
-            <TrajectoryExportPane
-              bind:export_pane_open={trajectory_export_open}
-              {trajectory}
-              {wrapper}
-              filename={current_filename || `trajectory`}
-              on_step_change={go_to_step}
-              pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
-            />
+            {#if controls_config.visible(`export-pane`)}
+              <TrajectoryExportPane
+                bind:export_pane_open={trajectory_export_open}
+                {trajectory}
+                {wrapper}
+                filename={current_filename || `trajectory`}
+                on_step_change={go_to_step}
+                pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
+              />
+            {/if}
             <!-- Display mode dropdown -->
-            {#if plot_series.length > 0}
+            {#if plot_series.length > 0 &&
+          controls_config.visible(`view-mode`)}
               <div class="view-mode-dropdown-wrapper">
                 <button
                   onclick={() => (view_mode_dropdown_open = !view_mode_dropdown_open)}
@@ -1080,7 +1103,8 @@
               </div>
             {/if}
             <!-- Fullscreen button - rightmost position -->
-            {#if fullscreen_toggle}
+            {#if fullscreen_toggle &&
+          controls_config.visible(`fullscreen`)}
               <button
                 type="button"
                 onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
@@ -1288,7 +1312,21 @@
     backdrop-filter: blur(4px);
     position: relative;
     border-radius: var(--border-radius, 3pt) var(--border-radius, 3pt) 0 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
   }
+  /* Mode: always - controls always visible */
+  .trajectory-controls.always-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* Mode: hover - controls visible on component hover */
+  .trajectory:hover .trajectory-controls.hover-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* Mode: never - stays hidden (default state, no additional CSS needed) */
   .trajectory-controls:focus-within {
     z-index: var(--traj-controls-z-index, 999999999);
   }

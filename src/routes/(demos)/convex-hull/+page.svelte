@@ -22,7 +22,7 @@
       options: { eager: false; query: string },
     ) => Record<string, () => Promise<{ default: string }>>
   }).glob(
-    `$site/phase-diagrams/quaternaries/*.json.gz`,
+    `$site/convex-hull/quaternaries/*.json.gz`,
     { eager: false, query: `?url` },
   )
 
@@ -68,20 +68,20 @@
 
   // Create ternary subsets from quaternary data
   const na_fe_o_entries = $derived(filter_by_elements(
-    (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`) ??
+    (loaded_data.get(`/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`) ??
       []) as PhaseData[],
     [`Na`, `Fe`, `O`],
   ))
 
   const li_co_ni_o_data = $derived(filter_by_elements(
-    (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`) ??
+    (loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ??
       []) as PhaseData[],
     [`Li`, `Co`, `O`],
   ))
 
   // Full quaternary data for Li-Co-Ni-O
   const li_co_ni_o_quaternary = $derived(
-    (loaded_data.get(`/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`) ??
+    (loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ??
       []) as PhaseData[],
   )
 
@@ -134,10 +134,10 @@
   // Create four binary examples from the two quaternary datasets
   const binary_examples = $derived.by(() => {
     const na_fe_p_o = loaded_data.get(
-      `/src/site/phase-diagrams/quaternaries/Na-Fe-P-O.json.gz`,
+      `/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`,
     ) as PhaseData[] | undefined
     const li_co_ni_o = loaded_data.get(
-      `/src/site/phase-diagrams/quaternaries/Li-Co-Ni-O.json.gz`,
+      `/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`,
     ) as PhaseData[] | undefined
     if (!na_fe_p_o || !li_co_ni_o) return []
 

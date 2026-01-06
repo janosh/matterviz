@@ -29,6 +29,7 @@
     special_cells,
     controls,
     initial_sort = undefined,
+    sort = $bindable({ column: ``, dir: `asc` }), // allows external control/sync of sorting
     fixed_header = false,
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
@@ -52,6 +53,7 @@
     special_cells?: Record<string, Snippet<[CellSnippetArgs]>>
     controls?: Snippet
     initial_sort?: InitialSort
+    sort?: { column: string; dir: `asc` | `desc` }
     fixed_header?: boolean
     default_num_format?: string
     show_heatmap?: boolean
@@ -122,9 +124,13 @@
       : null,
   )
 
-  let sort_state = $state<SortState>({
-    column: initial_sort_config?.column || ``,
-    ascending: initial_sort_config?.direction !== `desc`,
+  // Derive sort_state from bindable prop, falling back to initial_sort if sort not yet set
+  // This ensures immediate sorting on first render without waiting for effects
+  let sort_state = $derived<SortState>({
+    column: sort.column || initial_sort_config?.column || ``,
+    ascending: sort.column
+      ? sort.dir !== `desc`
+      : initial_sort_config?.direction !== `desc`,
   })
 
   // Multi-column sort state (for Shift+click)
@@ -429,15 +435,16 @@
         }]
       }
       // Clear single sort when using multi-sort
-      sort_state = { column: ``, ascending: true }
+      sort = { column: ``, dir: `asc` }
     } else {
       // Regular click - single column sort
       multi_sort = [] // Clear multi-sort
+      // Use sort_state.column for comparison since it includes initial_sort fallback
       if (sort_state.column !== col_id) {
-        sort_state.column = col_id
-        sort_state.ascending = col.better === `lower`
+        sort = { column: col_id, dir: col.better === `lower` ? `asc` : `desc` }
       } else {
-        sort_state.ascending = !sort_state.ascending
+        // Toggle direction - use sort_state.ascending since it reflects actual state
+        sort = { column: col_id, dir: sort_state.ascending ? `desc` : `asc` }
       }
     }
   }

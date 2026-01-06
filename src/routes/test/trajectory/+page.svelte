@@ -208,6 +208,7 @@
   bind:trajectory={empty_trajectory}
   bind:current_step_idx={current_step}
   allow_file_drop
+  show_controls="always"
 />
 
 <Trajectory
@@ -216,6 +217,7 @@
   bind:current_step_idx={current_step}
   allow_file_drop
   step_labels={3}
+  show_controls="always"
 />
 
 <Trajectory id="auto-layout" trajectory={test_trajectory} show_controls step_labels={3} />

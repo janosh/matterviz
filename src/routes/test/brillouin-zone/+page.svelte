@@ -12,13 +12,9 @@
   let show_vectors = $state(true)
   let vector_scale = $state(1.0)
   let camera_projection = $state<`perspective` | `orthographic`>(`perspective`)
-  let show_controls_select = $state<string>(`true`)
+  let show_controls = $state<`always` | `hover` | `never`>(`hover`)
   let png_dpi = $state(150)
   let fullscreen = $state(false)
-
-  const show_controls = $derived(
-    { true: true, false: false }[show_controls_select] ?? +show_controls_select,
-  )
 
   let structure = $state<Crystal | undefined>(
     mp1_struct as unknown as Crystal,
@@ -53,8 +49,8 @@
     }
 
     if (params.has(`show_controls`)) {
-      const param = params.get(`show_controls`)
-      if (param) show_controls_select = param
+      const param = params.get(`show_controls`) as `always` | `hover` | `never` | null
+      if (param && [`always`, `hover`, `never`].includes(param)) show_controls = param
     }
 
     ;(globalThis as Record<string, unknown>).event_calls = event_calls
@@ -84,11 +80,11 @@
     /></label><br />
   <label>Show Controls: <select
       id="show-controls"
-      bind:value={show_controls_select}
+      bind:value={show_controls}
     >
-      <option value="true">true</option>
-      <option value="false">false</option>
-      <option value="600">600</option>
+      <option value="always">always</option>
+      <option value="hover">hover</option>
+      <option value="never">never</option>
     </select></label><br />
   <label>Camera Projection: <select id="camera-projection" bind:value={camera_projection}>
       <option value="perspective">perspective</option>

@@ -141,7 +141,7 @@
   bind:error_msg
   bind:loading
   style="height: 500px"
-  show_controls={400}
+  show_controls="hover"
   on_file_drop={(filename: string) => {
     active_file = filename
     update_url(filename)

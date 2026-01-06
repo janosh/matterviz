@@ -10,7 +10,7 @@
   let info_pane_open = $state(false)
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
-  let show_controls = $state<boolean | number>(true)
+  let show_controls = $state<`always` | `hover` | `never`>(`hover`)
   let scene_props: ComponentProps<typeof StructureScene> & { show_gizmo: boolean } =
     $state(DEFAULTS.structure)
   let performance_mode = $state<`quality` | `speed`>(`quality`)
@@ -87,13 +87,12 @@
 
     // Component properties
     if (url_params.has(`show_controls`)) {
-      const param = url_params.get(`show_controls`)
-      if (param === `false`) show_controls = false
-      else if (param === `true`) show_controls = true
-      else {
-        const num = parseInt(param || ``)
-        if (!isNaN(num)) show_controls = num
-      }
+      const param = url_params.get(`show_controls`) as
+        | `always`
+        | `hover`
+        | `never`
+        | null
+      if (param && [`always`, `hover`, `never`].includes(param)) show_controls = param
     }
     if (url_params.has(`performance_mode`)) {
       const mode = url_params.get(`performance_mode`)
@@ -127,7 +126,12 @@
 
     const handle_show_controls = (event: Event) => {
       const { detail } = event as CustomEvent
-      if (detail.show_controls !== undefined) show_controls = detail.show_controls
+      if (
+        detail.show_controls !== undefined &&
+        [`always`, `hover`, `never`].includes(detail.show_controls)
+      ) {
+        show_controls = detail.show_controls as `always` | `hover` | `never`
+      }
     }
 
     window.addEventListener(`set-lattice-props`, handle_lattice_props)
@@ -174,11 +178,9 @@
   <label>
     Show Buttons:
     <select bind:value={show_controls}>
-      <option value={true}>Always (true)</option>
-      <option value={false}>Never (false)</option>
-      <option value={400}>When width > 400px</option>
-      <option value={600}>When width > 600px</option>
-      <option value={800}>When width > 800px</option>
+      <option value="always">always</option>
+      <option value="hover">hover</option>
+      <option value="never">never</option>
     </select>
   </label><br />
   <label>

@@ -1,12 +1,13 @@
 <script lang="ts">
-  import { toggle_fullscreen } from '$lib/layout'
+  import type { BrillouinZoneData } from '$lib/brillouin'
+  import { compute_brillouin_zone, reciprocal_lattice } from '$lib/brillouin'
+  import type { ShowControlsProp } from '$lib/controls'
+  import { normalize_show_controls } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import type { BrillouinZoneData } from '$lib/brillouin'
-  import { compute_brillouin_zone, reciprocal_lattice } from '$lib/brillouin'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
-  import { set_fullscreen_bg } from '$lib/layout'
+  import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
   import type { CameraProjection } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
@@ -63,7 +64,7 @@
     // Interpolation
     interpolation_factor = $bindable(1),
     camera_projection = $bindable(`perspective`),
-    show_controls = 0,
+    show_controls,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     width = $bindable(0),
@@ -105,7 +106,16 @@
     clip_flip?: boolean
     interpolation_factor?: number
     camera_projection?: CameraProjection
-    show_controls?: boolean | number
+    /**
+     * Controls visibility configuration.
+     * - 'always': controls always visible
+     * - 'hover': controls visible on component hover (default)
+     * - 'never': controls never visible
+     * - object: { mode, hidden, style } for fine-grained control
+     *
+     * Control names: 'filename', 'fullscreen', 'controls'
+     */
+    show_controls?: ShowControlsProp
     fullscreen?: boolean
     width?: number
     height?: number
@@ -133,10 +143,7 @@
   let current_filename = $state<string | undefined>(undefined)
   let recompute_job_id = 0 // monotonic counter to track latest recompute call
 
-  let visible_buttons = $derived(
-    show_controls === true ||
-      (typeof show_controls === `number` && width > show_controls),
-  )
+  let controls_config = $derived(normalize_show_controls(show_controls))
 
   // Yield to browser so spinner can render before heavy computation
   const tick = () =>
@@ -395,13 +402,16 @@
       <button onclick={() => (error_msg = undefined)}>Dismiss</button>
     </div>
   {:else if fermi_data || band_data}
-    <section class:visible={visible_buttons} class="control-buttons">
-      {#if visible_buttons}
-        {#if current_filename}
+    <section
+      class="control-buttons {controls_config.class}"
+      style={controls_config.style}
+    >
+      {#if controls_config.mode !== `never`}
+        {#if current_filename && controls_config.visible(`filename`)}
           <span class="filename">{current_filename}</span>
         {/if}
 
-        {#if fullscreen_toggle}
+        {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
           <button
             type="button"
             onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
@@ -418,30 +428,32 @@
           </button>
         {/if}
 
-        <FermiSurfaceControls
-          bind:controls_open
-          {fermi_data}
-          {band_data}
-          bind:mu
-          bind:color_property
-          bind:color_scale
-          bind:representation
-          bind:surface_opacity
-          bind:selected_bands
-          bind:show_bz
-          bind:bz_opacity
-          bind:show_vectors
-          bind:tile_bz
-          bind:clip_enabled
-          bind:clip_axis
-          bind:clip_position
-          bind:clip_flip
-          bind:interpolation_factor
-          bind:camera_projection
-          on_mu_change={handle_mu_change}
-          on_interpolation_change={handle_interpolation_change}
-          on_export={handle_export}
-        />
+        {#if controls_config.visible(`controls`)}
+          <FermiSurfaceControls
+            bind:controls_open
+            {fermi_data}
+            {band_data}
+            bind:mu
+            bind:color_property
+            bind:color_scale
+            bind:representation
+            bind:surface_opacity
+            bind:selected_bands
+            bind:show_bz
+            bind:bz_opacity
+            bind:show_vectors
+            bind:tile_bz
+            bind:clip_enabled
+            bind:clip_axis
+            bind:clip_position
+            bind:clip_flip
+            bind:interpolation_factor
+            bind:camera_projection
+            on_mu_change={handle_mu_change}
+            on_interpolation_change={handle_interpolation_change}
+            on_export={handle_export}
+          />
+        {/if}
       {/if}
     </section>
 
@@ -525,10 +537,17 @@
     transition: opacity 0.2s ease;
     align-items: center;
   }
-  section.control-buttons.visible {
+  /* Mode: always - controls always visible */
+  section.control-buttons.always-visible {
     opacity: 1;
     pointer-events: auto;
   }
+  /* Mode: hover - controls visible on component hover */
+  .fermi-surface:hover section.control-buttons.hover-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* Mode: never - stays hidden (default state, no additional CSS needed) */
   section.control-buttons > :global(button) {
     background-color: transparent;
     display: flex;
