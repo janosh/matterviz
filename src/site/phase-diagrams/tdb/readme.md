@@ -1,12 +1,12 @@
 # Thermodynamic Database (TDB) Files
 
-TDB files for binary alloy systems from **NIMS (National Institute for Materials Science), Japan** (abe.taichi@nims.go.jp).
+TDB files for binary alloy systems from **NIMS (National Institute for Materials Science), Japan**.
 
 | File        | System             | Reference                                                                        |
 | ----------- | ------------------ | -------------------------------------------------------------------------------- |
-| `Al-Fe.tdb` | Aluminum-Iron      | I. Ansara et al., *Thermochemical database for light metal alloys*, vol. 2, 1998 |
-| `Al-Mg.tdb` | Aluminum-Magnesium | Y. Zhong, M. Yang, Z.-K. Liu, *CALPHAD* 29 (2005) 303-311                        |
-| `Pb-Sn.tdb` | Lead-Tin           | T.L. Ngai, Y.A. Chang, *CALPHAD* 5 (1981) 267-276                                |
+| `Al-Fe.tdb` | Aluminum-Iron      | I. Ansara et al., _Thermochemical database for light metal alloys_, vol. 2, 1998 |
+| `Al-Mg.tdb` | Aluminum-Magnesium | Y. Zhong, M. Yang, Z.-K. Liu, _CALPHAD_ 29 (2005) 303-311                        |
+| `Pb-Sn.tdb` | Lead-Tin           | T.L. Ngai, Y.A. Chang, _CALPHAD_ 5 (1981) 267-276                                |
 
 ## Usage
 
