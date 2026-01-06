@@ -676,8 +676,8 @@ describe(`Export functionality`, () => {
       expect(lines[1]).toBe(expected)
     })
 
-    it(`CIF data block filters out near-zero occupancies`, () => {
-      // Structure with very low occupancy that rounds to zero should still work
+    it(`CIF data block excludes elements with zero rounded occupancy`, () => {
+      // Occupancies are rounded to integers for formula; 0.3 rounds to 0 and is excluded
       const struct = {
         ...complex_structure,
         id: `low_occ_test`,
@@ -1350,8 +1350,9 @@ describe(`3D Export Color Preservation`, async () => {
     test(`type guard grants color access`, () => {
       const mat = new MeshStandardMaterial({ color: new Color(0.25, 0.5, 0.75) })
       if (!has_color_property(mat)) throw new Error(`Expected true`)
-      expect([mat.color.r, mat.color.g, mat.color.b].map((val) => val.toFixed(2)))
-        .toEqual([`0.25`, `0.50`, `0.75`])
+      expect(mat.color.r).toBeCloseTo(0.25, 2)
+      expect(mat.color.g).toBeCloseTo(0.5, 2)
+      expect(mat.color.b).toBeCloseTo(0.75, 2)
     })
   })
 

@@ -130,31 +130,40 @@ def make_special_point(
 
 
 def create_al_cu_diagram() -> PhaseDiagramData:
-    """Create Al-Cu binary phase diagram (simplified eutectic system)."""
+    """Create Al-Cu binary phase diagram with eutectic and peritectic reactions.
+
+    The θ (Al₂Cu) phase forms via peritectic reaction: L + FCC(Cu) → θ
+    at about 863K. Below the eutectic (821K), we have FCC(Al) + θ and θ + FCC(Cu).
+    """
     t_min, t_max = 300, 1400
     t_melt_al = 933
     t_melt_cu = 1358
     t_eutectic = 821
+    t_peritectic = 863  # θ forms peritectically
 
-    # Simplified Al-Cu: eutectic at ~17% Cu, with θ phase around 33%
-    # Liquidus curve
-    liquidus = [
+    # Liquidus curve with peritectic point
+    liquidus_left = [
         [0.0, t_melt_al],
         [0.05, 900],
         [0.10, 860],
         [0.17, t_eutectic],  # Eutectic point
+    ]
+    liquidus_right = [
+        [0.17, t_eutectic],
         [0.25, 900],
-        [0.35, 1000],
-        [0.50, 1100],
-        [0.70, 1200],
-        [0.85, 1300],
+        [0.32, t_peritectic],  # Peritectic composition on liquidus
+        [0.50, 1000],
+        [0.70, 1150],
+        [0.85, 1280],
         [1.0, t_melt_cu],
     ]
 
     # Solidus/solvus for Al-rich side
     solvus_al = [[0.05, t_eutectic], [0.03, 600], [0.02, t_min]]
-    # Solidus/solvus for Cu-rich side
-    solvus_cu = [[0.90, t_eutectic], [0.93, 600], [0.95, t_min]]
+    # Solidus for Cu-rich side (from melting point to peritectic)
+    solidus_cu = [[0.88, t_peritectic], [0.92, 1000], [0.95, 1150], [1.0, t_melt_cu]]
+    # Solvus for Cu-rich side (from peritectic to low temp)
+    solvus_cu = [[0.88, t_peritectic], [0.90, 700], [0.92, 500], [0.95, t_min]]
 
     regions = [
         {
@@ -164,8 +173,8 @@ def create_al_cu_diagram() -> PhaseDiagramData:
                 [0.0, t_max],
                 [1.0, t_max],
                 [1.0, t_melt_cu],
-                *reversed(liquidus),
-                [0.0, t_melt_al],
+                *list(reversed(liquidus_right))[1:],
+                *list(reversed(liquidus_left))[1:],
             ],
             "color": PHASE_COLORS["liquid"],
         },
@@ -176,7 +185,6 @@ def create_al_cu_diagram() -> PhaseDiagramData:
                 [0.0, t_melt_al],
                 [0.05, t_eutectic],
                 *solvus_al[1:],
-                [0.02, t_min],
                 [0.0, t_min],
             ],
             "color": PHASE_COLORS["fcc_a1"],
@@ -186,10 +194,9 @@ def create_al_cu_diagram() -> PhaseDiagramData:
             "name": "FCC (Cu)",
             "vertices": [
                 [1.0, t_melt_cu],
+                *list(reversed(solidus_cu))[1:],
+                *solvus_cu[1:],
                 [1.0, t_min],
-                [0.95, t_min],
-                *reversed(solvus_cu[1:]),
-                [0.90, t_eutectic],
             ],
             "color": PHASE_COLORS["fcc_cu"],
         },
@@ -198,9 +205,7 @@ def create_al_cu_diagram() -> PhaseDiagramData:
             "name": "FCC + L",
             "vertices": [
                 [0.0, t_melt_al],
-                [0.05, 900],
-                [0.10, 860],
-                [0.17, t_eutectic],
+                *liquidus_left[1:],
                 [0.05, t_eutectic],
             ],
             "color": PHASE_COLORS["two_phase_fcc_liquid"],
@@ -209,9 +214,11 @@ def create_al_cu_diagram() -> PhaseDiagramData:
             "id": "cu_liquid",
             "name": "FCC + L",
             "vertices": [
-                [0.90, t_eutectic],
-                [0.85, 1300],
                 [1.0, t_melt_cu],
+                *list(reversed(solidus_cu))[1:],
+                [0.88, t_peritectic],
+                [0.32, t_peritectic],
+                *liquidus_right[2:],
             ],
             "color": PHASE_COLORS["two_phase_theta_cu"],
         },
@@ -234,7 +241,7 @@ def create_al_cu_diagram() -> PhaseDiagramData:
                 [0.30, t_eutectic],
                 [0.30, t_min],
                 [0.02, t_min],
-                *reversed(solvus_al[1:]),
+                *list(reversed(solvus_al))[1:],
             ],
             "color": PHASE_COLORS["two_phase"],
         },
@@ -243,7 +250,7 @@ def create_al_cu_diagram() -> PhaseDiagramData:
             "name": "θ + FCC",
             "vertices": [
                 [0.36, t_eutectic],
-                [0.90, t_eutectic],
+                [0.88, t_eutectic],
                 *solvus_cu[1:],
                 [0.95, t_min],
                 [0.36, t_min],
@@ -256,11 +263,9 @@ def create_al_cu_diagram() -> PhaseDiagramData:
             "vertices": [
                 [0.17, t_eutectic],
                 [0.25, 900],
-                [0.35, 1000],
-                [0.50, 1100],
-                [0.70, 1200],
-                [0.85, 1300],
-                [0.90, t_eutectic],
+                [0.32, t_peritectic],
+                [0.88, t_peritectic],
+                [0.88, t_eutectic],
                 [0.36, t_eutectic],
                 [0.30, t_eutectic],
             ],
@@ -269,13 +274,20 @@ def create_al_cu_diagram() -> PhaseDiagramData:
     ]
 
     boundaries = [
-        {"id": "liquidus", "type": "liquidus", "points": liquidus},
+        {"id": "liquidus-left", "type": "liquidus", "points": liquidus_left},
+        {"id": "liquidus-right", "type": "liquidus", "points": liquidus_right},
+        {"id": "solidus-cu", "type": "solidus", "points": solidus_cu},
         {"id": "solvus-al", "type": "solvus", "points": solvus_al},
         {"id": "solvus-cu", "type": "solvus", "points": solvus_cu},
         {
             "id": "eutectic",
             "type": "eutectic",
-            "points": [[0.05, t_eutectic], [0.90, t_eutectic]],
+            "points": [[0.05, t_eutectic], [0.36, t_eutectic]],
+        },
+        {
+            "id": "peritectic",
+            "type": "peritectic",
+            "points": [[0.32, t_peritectic], [0.88, t_peritectic]],
         },
     ]
 
@@ -285,6 +297,12 @@ def create_al_cu_diagram() -> PhaseDiagramData:
             "type": "eutectic",
             "position": [0.17, t_eutectic],
             "label": "E",
+        },
+        {
+            "id": "peritectic",
+            "type": "peritectic",
+            "position": [0.32, t_peritectic],
+            "label": "P",
         },
     ]
 
@@ -362,10 +380,11 @@ def create_al_fe_diagram() -> PhaseDiagramData:
             "name": "α (BCC Fe)",
             "vertices": [
                 [1.0, t_melt_fe],
+                # Down solidus from melting to transition (skip first=melting)
+                *list(reversed(solidus_fe))[1:],
+                # Down solvus to bottom (skip first=shared transition point)
+                *solvus_fe[1:],
                 [1.0, t_min],
-                [0.99, t_min],
-                *reversed(solvus_fe),
-                *reversed(solidus_fe),
             ],
             "color": PHASE_COLORS["bcc_a2"],
         },
@@ -513,46 +532,55 @@ def create_al_fe_diagram() -> PhaseDiagramData:
 
 
 def create_al_mg_diagram() -> PhaseDiagramData:
-    """Create Al-Mg binary phase diagram with proper regions."""
+    """Create simplified Al-Mg binary phase diagram (eutectic system).
+
+    This is a simplified diagram showing Al-Mg as a classic eutectic without
+    intermetallic compounds. The real Al-Mg system has intermetallic phases
+    (β = Al₃Mg₂, γ = Al₁₂Mg₁₇), but representing them properly requires
+    careful treatment of line compounds and would make the diagram visually complex.
+
+    For thermodynamic accuracy, compute the phase diagram from the Al-Mg.tdb file
+    using pycalphad.
+    """
     t_min, t_max = 300, 1100
     t_melt_al = 933
     t_melt_mg = 923
     t_eutectic = 710
-    t_peritectic = 725
+    x_eutectic = 0.35  # Eutectic composition (mol% Mg)
 
+    # Liquidus curves
     liquidus_left = [
         [0.0, t_melt_al],
-        [0.05, 900],
-        [0.15, 820],
-        [0.25, 750],
-        [0.35, t_eutectic],
+        [0.10, 870],
+        [0.20, 800],
+        [x_eutectic, t_eutectic],
     ]
     liquidus_right = [
-        [0.35, t_eutectic],
-        [0.45, 750],
-        [0.55, 780],
-        [0.65, t_peritectic],
-        [0.75, 800],
-        [0.85, 850],
-        [0.95, 900],
+        [x_eutectic, t_eutectic],
+        [0.50, 750],
+        [0.65, 800],
+        [0.80, 870],
         [1.0, t_melt_mg],
     ]
 
-    solidus_al = [[0.0, t_melt_al], [0.02, 850], [0.05, 750], [0.08, t_eutectic]]
-    solidus_mg = [[0.92, t_eutectic], [0.95, 800], [0.97, 870], [1.0, t_melt_mg]]
+    # Solidus curves (phase boundaries between solid solutions and liquid)
+    solidus_al = [[0.0, t_melt_al], [0.03, 850], [0.08, 780], [0.12, t_eutectic]]
+    solidus_mg = [[0.88, t_eutectic], [0.92, 780], [0.96, 850], [1.0, t_melt_mg]]
+
+    # Solvus curves (solid solubility limits below eutectic)
     solvus_al = [
-        [0.08, t_eutectic],
-        [0.06, 600],
-        [0.04, 500],
-        [0.02, 400],
-        [0.01, t_min],
+        [0.12, t_eutectic],
+        [0.10, 600],
+        [0.07, 500],
+        [0.04, 400],
+        [0.02, t_min],
     ]
     solvus_mg = [
-        [0.92, t_eutectic],
-        [0.94, 600],
-        [0.96, 500],
-        [0.98, 400],
-        [0.99, t_min],
+        [0.88, t_eutectic],
+        [0.90, 600],
+        [0.93, 500],
+        [0.96, 400],
+        [0.98, t_min],
     ]
 
     regions = [
@@ -563,33 +591,30 @@ def create_al_mg_diagram() -> PhaseDiagramData:
                 [0.0, t_max],
                 [1.0, t_max],
                 [1.0, t_melt_mg],
-                *reversed(liquidus_right),
-                *reversed(liquidus_left),
-                [0.0, t_melt_al],
+                *list(reversed(liquidus_right))[1:],
+                *list(reversed(liquidus_left))[1:],
             ],
             "color": PHASE_COLORS["liquid"],
         },
         {
-            "id": "fcc_a1",
-            "name": "α (FCC)",
+            "id": "fcc_al",
+            "name": "α (FCC Al)",
             "vertices": [
                 [0.0, t_melt_al],
-                *solidus_al,
-                *solvus_al,
-                [0.01, t_min],
+                *solidus_al[1:],
+                *solvus_al[1:],
                 [0.0, t_min],
             ],
             "color": PHASE_COLORS["fcc_a1"],
         },
         {
-            "id": "hcp_a3",
+            "id": "hcp_mg",
             "name": "β (HCP Mg)",
             "vertices": [
                 [1.0, t_melt_mg],
+                *list(reversed(solidus_mg))[1:],
+                *solvus_mg[1:],
                 [1.0, t_min],
-                [0.99, t_min],
-                *reversed(solvus_mg),
-                *reversed(solidus_mg),
             ],
             "color": PHASE_COLORS["hcp_a3"],
         },
@@ -598,10 +623,9 @@ def create_al_mg_diagram() -> PhaseDiagramData:
             "name": "FCC + L",
             "vertices": [
                 [0.0, t_melt_al],
-                *liquidus_left,
-                [0.35, t_eutectic],
-                [0.08, t_eutectic],
-                *reversed(solidus_al),
+                *liquidus_left[1:],
+                [0.12, t_eutectic],
+                *list(reversed(solidus_al))[1:-1],
             ],
             "color": PHASE_COLORS["two_phase_fcc_liquid"],
         },
@@ -609,97 +633,26 @@ def create_al_mg_diagram() -> PhaseDiagramData:
             "id": "hcp_liquid",
             "name": "HCP + L",
             "vertices": [
-                [0.65, t_eutectic],
-                [0.65, t_peritectic],
-                [0.75, 800],
-                [0.85, 850],
-                [0.95, 900],
                 [1.0, t_melt_mg],
-                *reversed(solidus_mg),
-                [0.92, t_eutectic],
+                *list(reversed(liquidus_right))[1:],
+                [0.88, t_eutectic],
+                *solidus_mg[1:-1],
             ],
             "color": PHASE_COLORS["two_phase_hcp_liquid"],
         },
         {
-            "id": "beta_fcc",
-            "name": "β + FCC",
+            "id": "fcc_hcp",
+            "name": "FCC + HCP",
             "vertices": [
-                [0.08, t_eutectic],
-                [0.35, t_eutectic],
-                [0.35, t_min],
-                [0.01, t_min],
-                *reversed(solvus_al),
+                [0.12, t_eutectic],
+                [0.88, t_eutectic],
+                *solvus_mg[1:],
+                [1.0, t_min],
+                [0.0, t_min],
+                [0.02, t_min],
+                *list(reversed(solvus_al))[1:-1],
             ],
-            "color": PHASE_COLORS["two_phase_fcc_alt"],
-        },
-        {
-            "id": "almg_beta",
-            "name": "β (Al₃Mg₂)",
-            "vertices": [
-                [0.35, t_eutectic],
-                [0.40, t_eutectic],
-                [0.40, t_min],
-                [0.35, t_min],
-            ],
-            "color": PHASE_COLORS["intermetallic"],
-        },
-        {
-            "id": "beta_gamma",
-            "name": "β + γ",
-            "vertices": [
-                [0.40, t_eutectic],
-                [0.48, t_eutectic],
-                [0.48, t_min],
-                [0.40, t_min],
-            ],
-            "color": PHASE_COLORS["two_phase_beta_gamma"],
-        },
-        {
-            "id": "almg_gamma",
-            "name": "γ (Al₁₂Mg₁₇)",
-            "vertices": [
-                [0.48, t_eutectic],
-                [0.58, t_eutectic],
-                [0.58, t_min],
-                [0.48, t_min],
-            ],
-            "color": PHASE_COLORS["intermetallic_blue"],
-        },
-        {
-            "id": "gamma_hcp",
-            "name": "γ + HCP",
-            "vertices": [
-                [0.58, t_eutectic],
-                [0.92, t_eutectic],
-                *solvus_mg,
-                [0.99, t_min],
-                [0.58, t_min],
-            ],
-            "color": PHASE_COLORS["two_phase_gamma_hcp"],
-        },
-        {
-            "id": "beta_liquid",
-            "name": "β + L",
-            "vertices": [
-                [0.35, t_eutectic],
-                [0.45, 750],
-                [0.48, 759],
-                [0.48, t_eutectic],
-            ],
-            "color": PHASE_COLORS["two_phase_intermetallic"],
-        },
-        {
-            "id": "gamma_liquid",
-            "name": "γ + L",
-            "vertices": [
-                [0.48, t_eutectic],
-                [0.48, 759],
-                [0.55, 780],
-                [0.65, t_peritectic],
-                [0.65, t_eutectic],
-                [0.58, t_eutectic],
-            ],
-            "color": PHASE_COLORS["two_phase_gamma"],
+            "color": PHASE_COLORS["two_phase"],
         },
     ]
 
@@ -709,6 +662,7 @@ def create_al_mg_diagram() -> PhaseDiagramData:
             "type": "liquidus",
             "points": liquidus_left,
             "style": {"color": "#1565c0", "width": 2.5},
+            "label": "Liquidus",
         },
         {
             "id": "liquidus-right",
@@ -720,30 +674,30 @@ def create_al_mg_diagram() -> PhaseDiagramData:
             "id": "solidus-al",
             "type": "solidus",
             "points": solidus_al,
-            "style": {"color": "#2e7d32", "width": 2},
+            "style": {"color": "#2e7d32", "width": 2, "dash": "4,2"},
         },
         {
             "id": "solidus-mg",
             "type": "solidus",
             "points": solidus_mg,
-            "style": {"color": "#2e7d32", "width": 2},
+            "style": {"color": "#2e7d32", "width": 2, "dash": "4,2"},
         },
         {
             "id": "solvus-al",
             "type": "solvus",
             "points": solvus_al,
-            "style": {"color": "#7b1fa2", "width": 1.5},
+            "style": {"color": "#7b1fa2", "width": 1.5, "dash": "2,2"},
         },
         {
             "id": "solvus-mg",
             "type": "solvus",
             "points": solvus_mg,
-            "style": {"color": "#7b1fa2", "width": 1.5},
+            "style": {"color": "#7b1fa2", "width": 1.5, "dash": "2,2"},
         },
         {
             "id": "eutectic",
             "type": "eutectic",
-            "points": [[0.08, t_eutectic], [0.92, t_eutectic]],
+            "points": [[0.12, t_eutectic], [0.88, t_eutectic]],
             "style": {"color": "#d32f2f", "width": 2},
         },
     ]
@@ -752,7 +706,7 @@ def create_al_mg_diagram() -> PhaseDiagramData:
         {
             "id": "eutectic",
             "type": "eutectic",
-            "position": [0.35, t_eutectic],
+            "position": [x_eutectic, t_eutectic],
             "label": "E",
         },
         {
@@ -976,8 +930,8 @@ def create_au_sn_diagram() -> PhaseDiagramData:
             "id": "au5sn",
             "name": "Au₅Sn",
             "vertices": [
-                [0.15, t_eutectic1],
-                [0.20, t_eutectic1],
+                [0.15, t_eutectic2],
+                [0.20, t_eutectic2],
                 [0.20, t_min],
                 [0.15, t_min],
             ],
@@ -985,17 +939,6 @@ def create_au_sn_diagram() -> PhaseDiagramData:
         },
         {
             "id": "ausn",
-            "name": "AuSn",
-            "vertices": [
-                [0.45, t_eutectic1],
-                [0.55, t_eutectic1],
-                [0.55, t_eutectic2],
-                [0.45, t_eutectic2],
-            ],
-            "color": PHASE_COLORS["intermetallic_alt"],
-        },
-        {
-            "id": "ausn_low",
             "name": "AuSn",
             "vertices": [
                 [0.45, t_eutectic2],
@@ -1032,11 +975,11 @@ def create_au_sn_diagram() -> PhaseDiagramData:
             "id": "au_au5sn",
             "name": "FCC + Au₅Sn",
             "vertices": [
-                [0.05, t_eutectic1],
-                [0.15, t_eutectic1],
+                [0.05, t_eutectic2],
+                [0.15, t_eutectic2],
                 [0.15, t_min],
                 [0.02, t_min],
-                *reversed(solvus_au[1:]),
+                *list(reversed(solvus_au))[1:],
             ],
             "color": PHASE_COLORS["two_phase_au_ausn"],
         },
@@ -1044,8 +987,8 @@ def create_au_sn_diagram() -> PhaseDiagramData:
             "id": "au5sn_ausn",
             "name": "Au₅Sn + AuSn",
             "vertices": [
-                [0.20, t_eutectic1],
-                [0.45, t_eutectic1],
+                [0.20, t_eutectic2],
+                [0.45, t_eutectic2],
                 [0.45, t_min],
                 [0.20, t_min],
             ],
@@ -1067,14 +1010,15 @@ def create_au_sn_diagram() -> PhaseDiagramData:
             "id": "ausn_liquid",
             "name": "AuSn + L",
             "vertices": [
+                [0.05, t_eutectic2],
+                [0.05, t_eutectic1],
                 [0.29, t_eutectic1],
                 [0.50, 600],
                 [0.70, 520],
                 [0.78, t_eutectic2],
                 [0.55, t_eutectic2],
-                [0.55, t_eutectic1],
-                [0.45, t_eutectic1],
-                [0.29, t_eutectic1],
+                [0.45, t_eutectic2],
+                [0.20, t_eutectic2],
             ],
             "color": PHASE_COLORS["two_phase_ausn"],
         },
@@ -1124,13 +1068,14 @@ def create_au_sn_diagram() -> PhaseDiagramData:
 
 
 def create_cu_zn_diagram() -> PhaseDiagramData:
-    """Create Cu-Zn binary phase diagram (brass system - simplified peritectic)."""
+    """Create Cu-Zn binary phase diagram (brass system - simplified peritectic).
+
+    This simplified diagram shows the key phases in the brass system with proper
+    two-phase regions between all single-phase regions to respect Gibbs phase rule.
+    """
     t_min, t_max = 300, 1400
     t_melt_cu = 1358
     t_melt_zn = 693
-
-    # Simplified Cu-Zn with α, β, γ phases and peritectic reaction
-    # Key temperatures
     t_perit = 903  # Peritectic temperature for α + L -> β
 
     # Liquidus curve
@@ -1145,9 +1090,16 @@ def create_cu_zn_diagram() -> PhaseDiagramData:
         [1.0, t_melt_zn],
     ]
 
-    # Solvus curves
-    solvus_alpha = [[0.35, t_perit], [0.32, 700], [0.30, t_min]]
-    solvus_zn = [[0.97, t_melt_zn], [0.98, 500], [0.99, t_min]]
+    # Solidus curve for α (right edge of α phase)
+    solidus_alpha = [[0.35, t_perit], [0.32, 700], [0.28, t_min]]
+    # Solvus curve for β (left edge of β phase) - must be to right of solidus_alpha
+    solvus_beta_left = [[0.40, t_perit], [0.38, 700], [0.35, t_min]]
+    # Solvus curve for β (right edge of β phase)
+    solvus_beta_right = [[0.65, t_perit], [0.63, 700], [0.60, t_min]]
+    # Solvus curve for η (left edge of η phase)
+    solvus_eta_left = [[0.70, t_perit], [0.72, 700], [0.75, t_min]]
+    # Solvus curve for η (right edge, approaching pure Zn)
+    solvus_eta_right = [[0.97, t_melt_zn], [0.98, 500], [0.99, t_min]]
 
     regions = [
         {
@@ -1157,8 +1109,7 @@ def create_cu_zn_diagram() -> PhaseDiagramData:
                 [0.0, t_max],
                 [1.0, t_max],
                 [1.0, t_melt_zn],
-                *reversed(liquidus),
-                [0.0, t_melt_cu],
+                *list(reversed(liquidus))[1:],
             ],
             "color": PHASE_COLORS["liquid"],
         },
@@ -1167,34 +1118,53 @@ def create_cu_zn_diagram() -> PhaseDiagramData:
             "name": "α brass (FCC)",
             "vertices": [
                 [0.0, t_melt_cu],
-                [0.35, t_perit],
-                *solvus_alpha[1:],
-                [0.30, t_min],
+                *solidus_alpha,
                 [0.0, t_min],
             ],
             "color": PHASE_COLORS["fcc_a1"],
         },
         {
+            "id": "alpha_beta",
+            "name": "α + β",
+            "vertices": [
+                *solidus_alpha,
+                [0.28, t_min],
+                [0.35, t_min],
+                *list(reversed(solvus_beta_left)),
+            ],
+            "color": PHASE_COLORS["two_phase"],
+        },
+        {
             "id": "beta",
             "name": "β/γ brass",
             "vertices": [
-                [0.35, t_perit],
-                [0.70, t_perit],
-                [0.70, t_min],
-                [0.30, t_min],
-                *reversed(solvus_alpha[1:]),
+                *solvus_beta_left,
+                [0.35, t_min],
+                [0.60, t_min],
+                *list(reversed(solvus_beta_right)),
             ],
             "color": PHASE_COLORS["bcc_a2"],
+        },
+        {
+            "id": "beta_eta",
+            "name": "β + η",
+            "vertices": [
+                *solvus_beta_right,
+                [0.60, t_min],
+                [0.75, t_min],
+                *list(reversed(solvus_eta_left)),
+            ],
+            "color": PHASE_COLORS["two_phase_alt"],
         },
         {
             "id": "eta",
             "name": "η (HCP Zn-rich)",
             "vertices": [
-                [0.70, t_perit],
-                [0.97, t_melt_zn],
-                *solvus_zn[1:],
+                *solvus_eta_left,
+                [0.75, t_min],
                 [0.99, t_min],
-                [0.70, t_min],
+                *list(reversed(solvus_eta_right)),
+                [0.97, t_melt_zn],
             ],
             "color": PHASE_COLORS["hcp_a3"],
         },
@@ -1203,10 +1173,10 @@ def create_cu_zn_diagram() -> PhaseDiagramData:
             "name": "η + Zn",
             "vertices": [
                 [0.97, t_melt_zn],
-                [1.0, t_melt_zn],
-                [1.0, t_min],
+                *solvus_eta_right[1:],
                 [0.99, t_min],
-                *reversed(solvus_zn[1:]),
+                [1.0, t_min],
+                [1.0, t_melt_zn],
             ],
             "color": PHASE_COLORS["two_phase_eta"],
         },
@@ -1230,6 +1200,7 @@ def create_cu_zn_diagram() -> PhaseDiagramData:
                 [0.50, 850],
                 [0.70, 750],
                 [0.70, t_perit],
+                [0.40, t_perit],
             ],
             "color": PHASE_COLORS["two_phase_bcc_liquid"],
         },
@@ -1249,8 +1220,11 @@ def create_cu_zn_diagram() -> PhaseDiagramData:
 
     boundaries = [
         {"id": "liquidus", "type": "liquidus", "points": liquidus},
-        {"id": "solvus-alpha", "type": "solvus", "points": solvus_alpha},
-        {"id": "solvus-zn", "type": "solvus", "points": solvus_zn},
+        {"id": "solidus-alpha", "type": "solidus", "points": solidus_alpha},
+        {"id": "solvus-beta-left", "type": "solvus", "points": solvus_beta_left},
+        {"id": "solvus-beta-right", "type": "solvus", "points": solvus_beta_right},
+        {"id": "solvus-eta-left", "type": "solvus", "points": solvus_eta_left},
+        {"id": "solvus-eta-right", "type": "solvus", "points": solvus_eta_right},
         {
             "id": "peritectic",
             "type": "peritectic",
@@ -1280,7 +1254,12 @@ def create_cu_zn_diagram() -> PhaseDiagramData:
 
 
 def create_fe_ni_diagram() -> PhaseDiagramData:
-    """Create Fe-Ni binary phase diagram (isomorphous with magnetic transitions)."""
+    """Create Fe-Ni binary phase diagram (isomorphous with α+γ two-phase region).
+
+    The Fe-Ni system has a γ-loop where BCC (α) is stable at low temperatures
+    on the Fe-rich side. Between α and γ there must be a two-phase α+γ region
+    to respect the Law of Adjoining Phase Regions.
+    """
     t_min, t_max = 300, 1900
     t_melt_fe = 1811
     t_melt_ni = 1728
@@ -1304,17 +1283,28 @@ def create_fe_ni_diagram() -> PhaseDiagramData:
         [1.0, t_melt_ni],
     ]
 
-    # FCC/BCC transition (simplified)
-    fcc_bcc = [
+    # α/α+γ boundary (left edge of two-phase region, right edge of α phase)
+    solvus_alpha = [
         [0.0, 1185],
-        [0.05, 1100],
-        [0.10, 1000],
-        [0.15, 900],
-        [0.20, 800],
-        [0.25, 700],
-        [0.30, 600],
-        [0.35, 500],
-        [0.40, t_min],
+        [0.03, 1100],
+        [0.06, 1000],
+        [0.09, 900],
+        [0.12, 800],
+        [0.15, 700],
+        [0.18, 600],
+        [0.21, 500],
+        [0.24, 400],
+        [0.27, t_min],
+    ]
+    # γ/α+γ boundary (right edge of two-phase region, left edge of γ phase)
+    solvus_gamma = [
+        [0.0, 1394],  # γ-loop top (A3 temperature)
+        [0.08, 1200],
+        [0.15, 1000],
+        [0.22, 800],
+        [0.29, 600],
+        [0.36, 400],
+        [0.43, t_min],
     ]
 
     regions = [
@@ -1325,8 +1315,7 @@ def create_fe_ni_diagram() -> PhaseDiagramData:
                 [0.0, t_max],
                 [1.0, t_max],
                 [1.0, t_melt_ni],
-                *reversed(liquidus),
-                [0.0, t_melt_fe],
+                *list(reversed(liquidus))[1:],
             ],
             "color": PHASE_COLORS["liquid"],
         },
@@ -1335,9 +1324,9 @@ def create_fe_ni_diagram() -> PhaseDiagramData:
             "name": "FCC + L",
             "vertices": [
                 [0.0, t_melt_fe],
-                *liquidus,
+                *liquidus[1:],
                 [1.0, t_melt_ni],
-                *reversed(solidus),
+                *list(reversed(solidus))[1:],
             ],
             "color": PHASE_COLORS["two_phase_fcc_alt"],
         },
@@ -1346,20 +1335,34 @@ def create_fe_ni_diagram() -> PhaseDiagramData:
             "name": "γ (FCC)",
             "vertices": [
                 [0.0, solidus[0][1]],
-                *solidus,
+                *solidus[1:],
                 [1.0, t_min],
-                [0.40, t_min],
-                *reversed(fcc_bcc),
+                [0.43, t_min],
+                *list(reversed(solvus_gamma))[1:],
+                [0.0, 1394],
             ],
             "color": PHASE_COLORS["fcc_a1"],
+        },
+        {
+            "id": "bcc_fcc",
+            "name": "α + γ",
+            "vertices": [
+                [0.0, 1394],
+                *solvus_gamma[1:],
+                [0.43, t_min],
+                [0.27, t_min],
+                *list(reversed(solvus_alpha))[1:],
+                [0.0, 1185],
+            ],
+            "color": PHASE_COLORS["two_phase"],
         },
         {
             "id": "bcc",
             "name": "α (BCC)",
             "vertices": [
                 [0.0, 1185],
-                *fcc_bcc,
-                [0.40, t_min],
+                *solvus_alpha[1:],
+                [0.27, t_min],
                 [0.0, t_min],
             ],
             "color": PHASE_COLORS["bcc_a2"],
@@ -1370,9 +1373,15 @@ def create_fe_ni_diagram() -> PhaseDiagramData:
         {"id": "liquidus", "type": "liquidus", "points": liquidus},
         {"id": "solidus", "type": "solidus", "points": solidus},
         {
-            "id": "fcc-bcc",
+            "id": "solvus-alpha",
             "type": "solvus",
-            "points": fcc_bcc,
+            "points": solvus_alpha,
+            "style": {"dash": "4,2"},
+        },
+        {
+            "id": "solvus-gamma",
+            "type": "solvus",
+            "points": solvus_gamma,
             "style": {"dash": "4,2"},
         },
     ]
@@ -1463,10 +1472,11 @@ def create_pb_sn_diagram() -> PhaseDiagramData:
             "name": "BCT (Sn)",
             "vertices": [
                 [1.0, t_melt_sn],
+                # Trace down solidus from melting point to eutectic (skip first=melting point)
+                *list(reversed(solidus_sn))[1:],
+                # Trace down solvus from eutectic to bottom (skip first=eutectic point)
+                *solvus_sn[1:],
                 [1.0, t_min],
-                [0.995, t_min],
-                *reversed(solvus_sn),
-                *reversed(solidus_sn),
             ],
             "color": PHASE_COLORS["hcp_a3"],
         },
@@ -1487,10 +1497,12 @@ def create_pb_sn_diagram() -> PhaseDiagramData:
             "name": "BCT + L",
             "vertices": [
                 [1.0, t_melt_sn],
-                *solidus_sn,
+                # Down liquidus from melting to eutectic (skip first=melting point)
+                *list(reversed(liquidus_right))[1:],
+                # Right along eutectic to BCT solidus
                 [0.97, t_eutectic],
-                [x_eutectic, t_eutectic],
-                *liquidus_right[1:],
+                # Up solidus back toward melting (skip first=eutectic, last=melting)
+                *solidus_sn[1:-1],
             ],
             "color": PHASE_COLORS["two_phase_hcp_liquid"],
         },
@@ -1545,7 +1557,14 @@ def create_pb_sn_diagram() -> PhaseDiagramData:
 
 
 def validate_region(region: PhaseRegion, diagram_name: str) -> list[str]:
-    """Validate a phase region and return list of warnings."""
+    """Validate a phase region and return list of warnings.
+
+    Checks for:
+    - Minimum vertex count (3 for valid polygon)
+    - Missing color
+    - Redundant closing vertex (first == last)
+    - Self-intersecting edges (non-consecutive duplicate vertices)
+    """
     warnings = []
     vertices = region.get("vertices", [])
     name = region.get("name", region.get("id", "unknown"))
@@ -1555,6 +1574,22 @@ def validate_region(region: PhaseRegion, diagram_name: str) -> list[str]:
 
     if not region.get("color"):
         warnings.append(f"  {diagram_name}/{name}: missing color")
+
+    # Check for redundant closing vertex
+    if len(vertices) > 1 and vertices[0] == vertices[-1]:
+        warnings.append(
+            f"  {diagram_name}/{name}: redundant closing vertex (first==last)"
+        )
+
+    # Check for non-consecutive duplicate vertices (potential self-intersection)
+    seen: dict[tuple[float, float], int] = {}
+    for idx, vtx in enumerate(vertices):
+        key = (vtx[0], vtx[1])
+        if key in seen and idx != seen[key] + 1:
+            warnings.append(
+                f"  {diagram_name}/{name}: duplicate vertex {vtx} at indices {seen[key]} and {idx}"
+            )
+        seen[key] = idx
 
     return warnings
 
@@ -1581,12 +1616,200 @@ def save_diagram(data: dict, filename: str) -> None:
     print(f"  {filename}: {n_regions} regions, {n_boundaries} boundaries")
 
 
+def create_ab_example_diagram() -> PhaseDiagramData:
+    """Create example A-B eutectic phase diagram for demonstration.
+
+    This is a simplified didactic example showing a classic eutectic system with:
+    - Two terminal solid solutions (α and β)
+    - A eutectic point where L → α + β
+    - Proper Gibbs phase rule compliance (3-phase equilibrium at single T)
+    """
+    t_min, t_max = 300, 900
+    t_melt_a = 800
+    t_melt_b = 750
+    t_eutectic = 500
+
+    # Liquidus curves
+    liquidus_left = [
+        [0, t_melt_a],
+        [0.1, 700],
+        [0.2, 600],
+        [0.3, 530],
+        [0.4, t_eutectic],
+    ]
+    liquidus_right = [
+        [0.4, t_eutectic],
+        [0.5, 530],
+        [0.6, 580],
+        [0.7, 630],
+        [0.8, 680],
+        [0.9, 720],
+        [1, t_melt_b],
+    ]
+
+    # Solidus curves (α and β phase boundaries with liquid)
+    solidus_alpha = [[0, t_melt_a], [0.05, 700], [0.1, 600], [0.15, t_eutectic]]
+    solidus_beta = [[0.7, t_eutectic], [0.8, 580], [0.9, 660], [1, t_melt_b]]
+
+    # Solvus curves (α and β phase boundaries below eutectic)
+    solvus_alpha = [[0.15, t_eutectic], [0.12, 450], [0.1, 400], [0.08, t_min]]
+    solvus_beta = [[0.7, t_eutectic], [0.75, 450], [0.8, 400], [0.85, t_min]]
+
+    regions = [
+        {
+            "id": "liquid",
+            "name": "Liquid",
+            "vertices": [
+                [0, t_max],
+                [1, t_max],
+                [1, t_melt_b],
+                *list(reversed(liquidus_right))[1:],
+                *list(reversed(liquidus_left))[1:],
+            ],
+            "color": rgba(100, 149, 237),
+        },
+        {
+            "id": "alpha",
+            "name": "α",
+            "vertices": [
+                [0, t_melt_a],
+                *solidus_alpha[1:],
+                *solvus_alpha[1:],
+                [0, t_min],
+            ],
+            "color": rgba(144, 238, 144, 0.7),
+        },
+        {
+            "id": "beta",
+            "name": "β",
+            "vertices": [
+                [1, t_melt_b],
+                # Down solidus from melting to eutectic (skip first=melting)
+                *list(reversed(solidus_beta))[1:],
+                # Down solvus to bottom (skip first=eutectic point)
+                *solvus_beta[1:],
+                [1, t_min],
+            ],
+            "color": rgba(255, 182, 193, 0.7),
+        },
+        {
+            "id": "alpha-liquid",
+            "name": "α + L",
+            "vertices": [
+                [0, t_melt_a],
+                *liquidus_left[1:],
+                [0.15, t_eutectic],
+                *list(reversed(solidus_alpha))[1:-1],
+            ],
+            "color": rgba(140, 200, 140, 0.5),
+            "label_position": [0.12, 650],
+        },
+        {
+            "id": "beta-liquid",
+            "name": "β + L",
+            "vertices": [
+                [1, t_melt_b],
+                *list(reversed(liquidus_right))[1:],
+                [0.7, t_eutectic],
+                *solidus_beta[1:-1],
+            ],
+            "color": rgba(200, 140, 160, 0.5),
+            "label_position": [0.75, 620],
+        },
+        {
+            "id": "alpha-beta",
+            "name": "α + β",
+            "vertices": [
+                [0.15, t_eutectic],
+                [0.7, t_eutectic],
+                *solvus_beta[1:],
+                [1, t_min],
+                [0, t_min],
+                [0.08, t_min],
+                *list(reversed(solvus_alpha))[1:-1],
+            ],
+            "color": rgba(200, 200, 200, 0.5),
+        },
+    ]
+
+    boundary_style_liquidus = {"color": "#1565c0", "width": 2.5}
+    boundary_style_solidus = {"color": "#2e7d32", "width": 2, "dash": "4,2"}
+    boundary_style_solvus = {"color": "#7b1fa2", "width": 1.5, "dash": "2,2"}
+    boundary_style_eutectic = {"color": "#d32f2f", "width": 2}
+
+    boundaries = [
+        {
+            "id": "liquidus-left",
+            "type": "liquidus",
+            "points": liquidus_left,
+            "style": boundary_style_liquidus,
+            "label": "Liquidus",
+        },
+        {
+            "id": "liquidus-right",
+            "type": "liquidus",
+            "points": liquidus_right,
+            "style": boundary_style_liquidus,
+        },
+        {
+            "id": "solidus-alpha",
+            "type": "solidus",
+            "points": solidus_alpha,
+            "style": boundary_style_solidus,
+            "label": "Solidus",
+        },
+        {
+            "id": "solidus-beta",
+            "type": "solidus",
+            "points": solidus_beta,
+            "style": boundary_style_solidus,
+        },
+        {
+            "id": "solvus-alpha",
+            "type": "solvus",
+            "points": solvus_alpha,
+            "style": boundary_style_solvus,
+            "label": "Solvus",
+        },
+        {
+            "id": "solvus-beta",
+            "type": "solvus",
+            "points": solvus_beta,
+            "style": boundary_style_solvus,
+        },
+        {
+            "id": "eutectic-line",
+            "type": "eutectic",
+            "points": [[0.15, t_eutectic], [0.7, t_eutectic]],
+            "style": boundary_style_eutectic,
+        },
+    ]
+
+    special_points = [
+        make_special_point("eutectic", "eutectic", [0.4, t_eutectic], "E"),
+        make_special_point("melting-a", "melting_point", [0, t_melt_a], "Tₘ(A)"),
+        make_special_point("melting-b", "melting_point", [1, t_melt_b], "Tₘ(B)"),
+    ]
+
+    return {
+        "components": ["A", "B"],
+        "temperature_range": [t_min, t_max],
+        "temperature_unit": "K",
+        "composition_unit": "at%",
+        "title": "Example A-B Eutectic Phase Diagram",
+        "regions": regions,
+        "boundaries": boundaries,
+        "special_points": special_points,
+    }
+
+
 def main() -> None:
     """Generate all binary phase diagrams."""
     output_dir = Path(__file__).parent
 
     # Define all diagrams to generate
     diagrams = [
+        ("A-B", create_ab_example_diagram),
         ("Al-Cu", create_al_cu_diagram),
         ("Al-Fe", create_al_fe_diagram),
         ("Al-Mg", create_al_mg_diagram),
