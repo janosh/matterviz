@@ -19,6 +19,8 @@ test.describe(`Lattice Component Tests`, () => {
 
   test(`renders lattice with default properties`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
+    // Wait for WebGL rendering to stabilize before taking screenshot
+    await page.waitForTimeout(500)
     const screenshot = await canvas.screenshot()
     expect(screenshot.length).toBeGreaterThan(1000)
   })
