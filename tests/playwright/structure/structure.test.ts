@@ -1508,7 +1508,8 @@ test.describe(`Reset Camera Button Tests`, () => {
 
 test.describe(`Export Button Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await goto_structure_test(page)
+    // Use show_controls=always so buttons are visible and clickable without hover
+    await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
   // Helper function to click export buttons using direct DOM manipulation
@@ -1677,85 +1678,70 @@ test.describe(`Show Buttons Tests`, () => {
     await goto_structure_test(page)
   })
 
-  test(`should hide buttons when show_controls is false`, async ({ page }) => {
-    await page.goto(`/test/structure?show_controls=false`)
+  test(`should hide buttons when show_controls is never`, async ({ page }) => {
+    await page.goto(`/test/structure?show_controls=never`)
     await page.waitForSelector(`canvas`)
 
-    await expect(page.locator(`#test-structure section.control-buttons`))
-      .not.toHaveClass(/visible/)
+    // Verify show_controls is set to never from URL
+    await expect(page.locator(`[data-testid="show-buttons-status"]`))
+      .toContainText(`Show Buttons Status: never`)
 
+    // Control buttons should have no visibility class (stays hidden)
+    const control_buttons = page.locator(`#test-structure section.control-buttons`)
+    await expect(control_buttons).not.toHaveClass(/always-visible/)
+    await expect(control_buttons).not.toHaveClass(/hover-visible/)
+
+    // Buttons should not be visible even on hover
+    await page.locator(`#test-structure`).hover()
     await expect(page.locator(`#test-structure button.structure-info-toggle`)).not
       .toBeVisible()
     await expect(page.locator(`.fullscreen-toggle`)).toBeHidden()
   })
 
-  test(`should hide buttons when structure width is narrower than show_controls number`, async ({ page }) => {
-    // Use URL parameter to set show_controls to 600
-    await page.goto(`/test/structure?show_controls=600`)
+  test(`should show buttons on hover when show_controls is hover (default)`, async ({ page }) => {
+    await page.goto(`/test/structure?show_controls=hover`)
     await page.waitForSelector(`canvas`)
 
-    // Verify show_controls is set to 600 from URL
+    // Verify show_controls is set to hover from URL
     await expect(page.locator(`[data-testid="show-buttons-status"]`))
-      .toContainText(`Show Buttons Status: 600`)
+      .toContainText(`Show Buttons Status: hover`)
 
-    // Set canvas width to 400px (less than show_controls threshold)
-    await page.locator(`[data-testid="canvas-width-input"]`).fill(`400`)
+    const control_buttons = page.locator(`#test-structure section.control-buttons`)
+    await expect(control_buttons).toHaveClass(/hover-visible/)
 
-    // Wait for the width change to take effect
+    // Buttons should be hidden initially (opacity: 0)
+    await expect(control_buttons).toHaveCSS(`opacity`, `0`)
 
-    // Control buttons should not be visible since width (400) < show_controls (600)
-    await expect(page.locator(`#test-structure section.control-buttons`))
-      .not.toHaveClass(/visible/)
-    await expect(page.locator(`#test-structure button.structure-info-toggle`)).not
-      .toBeVisible()
-  })
-
-  test(`should show buttons when structure width is wider than show_controls number`, async ({ page }) => {
-    // Use URL parameter to set show_controls to 600
-    await page.goto(`/test/structure?show_controls=600`)
-    await page.waitForSelector(`canvas`)
-
-    // Verify show_controls is set to 600 from URL
-    await expect(page.locator(`[data-testid="show-buttons-status"]`))
-      .toContainText(`Show Buttons Status: 600`)
-
-    // Set canvas width to 800px (greater than show_controls threshold)
-    await page.locator(`[data-testid="canvas-width-input"]`).fill(`800`)
-
-    // Wait for the width change to take effect
-
-    // Control buttons should be visible since width (800) > show_controls (600)
-    await expect(page.locator(`#test-structure section.control-buttons`))
-      .toHaveClass(/visible/)
+    // Buttons should become visible on hover
+    await page.locator(`#test-structure`).hover()
+    await expect(control_buttons).toHaveCSS(`opacity`, `1`)
     await expect(page.locator(`#test-structure button.structure-info-toggle`))
       .toBeVisible()
   })
 
-  test(`should show buttons when show_controls is true regardless of width`, async ({ page }) => {
-    // Use URL parameter to explicitly set show_controls to true
-    await page.goto(`/test/structure?show_controls=true`)
+  test(`should always show buttons when show_controls is always`, async ({ page }) => {
+    await page.goto(`/test/structure?show_controls=always`)
     await page.waitForSelector(`canvas`)
 
-    // Verify show_controls is set to true from URL
+    // Verify show_controls is set to always from URL
     await expect(page.locator(`[data-testid="show-buttons-status"]`))
-      .toContainText(`Show Buttons Status: true`)
+      .toContainText(`Show Buttons Status: always`)
 
-    // Set canvas width to 200px (very narrow)
-    await page.locator(`[data-testid="canvas-width-input"]`).fill(`200`)
+    const control_buttons = page.locator(`#test-structure section.control-buttons`)
+    await expect(control_buttons).toHaveClass(/always-visible/)
 
-    // Wait for the width change to take effect
-
-    // Control buttons should still be visible when show_controls is true (regardless of width)
-    await expect(page.locator(`#test-structure section.control-buttons`))
-      .toHaveClass(/visible/)
+    // Buttons should be visible immediately (no hover required)
+    await expect(control_buttons).toHaveCSS(`opacity`, `1`)
     await expect(page.locator(`#test-structure button.structure-info-toggle`))
       .toBeVisible()
+    await expect(page.locator(`.fullscreen-toggle`)).toBeVisible()
   })
 })
 
 test.describe(`Structure Event Handler Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await goto_structure_test(page)
+    // Use show_controls=always so buttons are visible and clickable without hover
+    await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
   test(`should handle file loading from URL correctly`, async ({ page }) => {

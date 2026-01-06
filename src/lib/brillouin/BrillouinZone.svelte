@@ -1,5 +1,7 @@
 <script lang="ts">
   import { toggle_fullscreen } from '$lib/layout'
+  import { normalize_show_controls } from '$lib/controls'
+  import type { ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
@@ -43,7 +45,7 @@
     show_vectors = $bindable(true),
     vector_scale = $bindable(1.0),
     camera_projection = $bindable(`perspective`),
-    show_controls = 0,
+    show_controls,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     width = $bindable(0),
@@ -82,7 +84,16 @@
       show_vectors?: boolean
       vector_scale?: number
       camera_projection?: CameraProjection
-      show_controls?: boolean | number
+      /**
+       * Controls visibility configuration.
+       * - 'always': controls always visible
+       * - 'hover': controls visible on component hover (default)
+       * - 'never': controls never visible
+       * - object: { mode, hidden, style } for fine-grained control
+       *
+       * Control names: 'filename', 'fullscreen', 'info-pane', 'export-pane', 'controls'
+       */
+      show_controls?: ShowControlsProp
       fullscreen?: boolean
       width?: number
       height?: number
@@ -122,10 +133,8 @@
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
 
-  let visible_buttons = $derived(
-    show_controls === true ||
-      (typeof show_controls === `number` && width > show_controls),
-  )
+  // Normalize show_controls prop into consistent config
+  let controls_config = $derived(normalize_show_controls(show_controls))
 
   // Parse and load structure from content
   function parse_structure(content: string | ArrayBuffer, filename: string) {
@@ -293,13 +302,16 @@
       <button onclick={() => (error_msg = undefined)}>Dismiss</button>
     </div>
   {:else if structure && `lattice` in structure}
-    <section class:visible={visible_buttons} class="control-buttons">
-      {#if visible_buttons}
-        {#if current_filename}
+    <section
+      class="control-buttons {controls_config.class}"
+      style={controls_config.style}
+    >
+      {#if controls_config.mode !== `never`}
+        {#if current_filename && controls_config.visible(`filename`)}
           <span class="filename">{current_filename}</span>
         {/if}
 
-        {#if fullscreen_toggle}
+        {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
           <button
             type="button"
             onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
@@ -316,28 +328,34 @@
           </button>
         {/if}
 
-        <BrillouinZoneInfoPane {structure} {bz_data} bind:pane_open={info_pane_open} />
+        {#if controls_config.visible(`info-pane`)}
+          <BrillouinZoneInfoPane {structure} {bz_data} bind:pane_open={info_pane_open} />
+        {/if}
 
-        <BrillouinZoneExportPane
-          bind:export_pane_open
-          {bz_data}
-          {wrapper}
-          {scene}
-          {camera}
-          bind:png_dpi
-          filename={current_filename || `brillouin-zone`}
-        />
+        {#if controls_config.visible(`export-pane`)}
+          <BrillouinZoneExportPane
+            bind:export_pane_open
+            {bz_data}
+            {wrapper}
+            {scene}
+            {camera}
+            bind:png_dpi
+            filename={current_filename || `brillouin-zone`}
+          />
+        {/if}
 
-        <BrillouinZoneControls
-          bind:controls_open
-          bind:bz_order
-          bind:surface_color
-          bind:surface_opacity
-          bind:edge_color
-          bind:edge_width
-          bind:show_vectors
-          bind:camera_projection
-        />
+        {#if controls_config.visible(`controls`)}
+          <BrillouinZoneControls
+            bind:controls_open
+            bind:bz_order
+            bind:surface_color
+            bind:surface_opacity
+            bind:edge_color
+            bind:edge_width
+            bind:show_vectors
+            bind:camera_projection
+          />
+        {/if}
       {/if}
     </section>
 
@@ -415,10 +433,17 @@
     transition: opacity 0.2s ease;
     align-items: center;
   }
-  section.control-buttons.visible {
+  /* Mode: always - controls always visible */
+  section.control-buttons.always-visible {
     opacity: 1;
     pointer-events: auto;
   }
+  /* Mode: hover - controls visible on component hover */
+  .brillouin-zone:hover section.control-buttons.hover-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* Mode: never - stays hidden (default state, no additional CSS needed) */
   section.control-buttons > :global(button) {
     background-color: transparent;
     display: flex;

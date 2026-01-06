@@ -7,6 +7,8 @@
   import Icon from '$lib/Icon.svelte'
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
+  import { normalize_show_controls } from '$lib/controls'
+  import type { ShowControlsProp } from '$lib/controls'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
   import { set_fullscreen_bg } from '$lib/layout'
   import { DEFAULTS } from '$lib/settings'
@@ -60,7 +62,7 @@
     enable_measure_mode = $bindable(true),
     background_color = $bindable(),
     background_opacity = $bindable(0.1),
-    show_controls = 0,
+    show_controls,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     width = $bindable(0),
@@ -121,10 +123,16 @@
     & {
       structure?: AnyStructure
       scene_props?: ComponentProps<typeof StructureScene>
-      // only show the buttons when hovering over the canvas on desktop screens
-      // mobile screens don't have hover, so by default the buttons are always
-      // shown on a canvas of width below 500px
-      show_controls?: boolean | number
+      /**
+       * Controls visibility configuration.
+       * - 'always': controls always visible
+       * - 'hover': controls visible on component hover (default)
+       * - 'never': controls never visible
+       * - object: { mode, hidden, style } for fine-grained control
+       *
+       * Control names: 'reset-camera', 'fullscreen', 'measure-mode', 'info-pane', 'export-pane', 'controls'
+       */
+      show_controls?: ShowControlsProp
       fullscreen?: boolean
       // bindable width of the canvas
       width?: number
@@ -360,10 +368,7 @@
   let added_bonds = $state<[number, number][]>([])
   let removed_bonds = $state<[number, number][]>([])
 
-  let visible_buttons = $derived(
-    show_controls === true ||
-      (typeof show_controls === `number` && width > show_controls),
-  )
+  let controls_config = $derived(normalize_show_controls(show_controls))
 
   // Apply cell type transformation (original, conventional, or primitive)
   // This must happen BEFORE supercell transformation
@@ -740,15 +745,18 @@
       <button onclick={() => (error_msg = undefined)}>Dismiss</button>
     </div>
   {:else if (structure?.sites?.length ?? 0) > 0}
-    <section class:visible={visible_buttons} class="control-buttons">
-      {#if visible_buttons}
-        {#if camera_has_moved}
+    <section
+      class="control-buttons {controls_config.class}"
+      style={controls_config.style}
+    >
+      {#if controls_config.mode !== `never`}
+        {#if camera_has_moved && controls_config.visible(`reset-camera`)}
           <button class="reset-camera" onclick={reset_camera} title={reset_text}>
             <!-- Target/Focus icon for reset camera -->
             <Icon icon="Reset" />
           </button>
         {/if}
-        {#if fullscreen_toggle}
+        {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
           <button
             type="button"
             onclick={() => fullscreen_toggle && toggle_fullscreen(wrapper)}
@@ -766,7 +774,7 @@
           </button>
         {/if}
 
-        {#if enable_measure_mode}
+        {#if enable_measure_mode && controls_config.visible(`measure-mode`)}
           <div
             class="measure-mode-dropdown"
             {@attach click_outside({ callback: () => measure_menu_open = false })}
@@ -840,7 +848,7 @@
           </div>
         {/if}
 
-        {#if enable_info_pane && structure}
+        {#if enable_info_pane && structure && controls_config.visible(`info-pane`)}
           <StructureInfoPane
             {structure}
             bind:pane_open={info_pane_open}
@@ -850,31 +858,35 @@
           />
         {/if}
 
-        <StructureExportPane
-          bind:export_pane_open
-          {structure}
-          {wrapper}
-          {scene}
-          {camera}
-          bind:png_dpi
-          pane_props={{ style: `max-height: calc(${height}px - 50px)` }}
-        />
+        {#if controls_config.visible(`export-pane`)}
+          <StructureExportPane
+            bind:export_pane_open
+            {structure}
+            {wrapper}
+            {scene}
+            {camera}
+            bind:png_dpi
+            pane_props={{ style: `max-height: calc(${height}px - 50px)` }}
+          />
+        {/if}
 
-        <StructureControls
-          bind:controls_open
-          bind:scene_props
-          bind:lattice_props
-          bind:show_image_atoms
-          bind:supercell_scaling
-          bind:background_color
-          bind:background_opacity
-          bind:color_scheme
-          bind:atom_color_config
-          bind:cell_type
-          {structure}
-          {supercell_loading}
-          {sym_data}
-        />
+        {#if controls_config.visible(`controls`)}
+          <StructureControls
+            bind:controls_open
+            bind:scene_props
+            bind:lattice_props
+            bind:show_image_atoms
+            bind:supercell_scaling
+            bind:background_color
+            bind:background_opacity
+            bind:color_scheme
+            bind:atom_color_config
+            bind:cell_type
+            {structure}
+            {supercell_loading}
+            {sym_data}
+          />
+        {/if}
 
         {@render top_right_controls?.()}
       {/if}
@@ -1017,10 +1029,17 @@
     pointer-events: none;
     transition: opacity 0.2s ease;
   }
-  section.control-buttons.visible {
+  /* Mode: always - controls always visible */
+  section.control-buttons.always-visible {
     opacity: 1;
     pointer-events: auto;
   }
+  /* Mode: hover - controls visible on component hover */
+  .structure:hover section.control-buttons.hover-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* Mode: never - stays hidden (default state, no additional CSS needed) */
   section.control-buttons > :global(button) {
     background-color: transparent;
     display: flex;
