@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { normalize_show_controls } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import { toggle_fullscreen } from '$lib/layout'
   import { DEFAULTS } from '$lib/settings'
@@ -76,6 +77,7 @@
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
+  const controls_config = $derived(normalize_show_controls(merged_controls.show))
   const merged_config = $derived({
     ...default_hull_config,
     ...config,
@@ -1054,18 +1056,20 @@
   {/if}
 
   <!-- Control buttons (top-right corner) -->
-  {#if merged_controls.show}
-    <section class="control-buttons">
-      <button
-        type="button"
-        onclick={reset_all}
-        title="Reset view and settings"
-        class="reset-camera-btn"
-      >
-        <Icon icon="Reset" />
-      </button>
+  {#if controls_config.mode !== `never`}
+    <section class="control-buttons {controls_config.class}">
+      {#if controls_config.visible(`reset`)}
+        <button
+          type="button"
+          onclick={reset_all}
+          title="Reset view and settings"
+          class="reset-camera-btn"
+        >
+          <Icon icon="Reset" />
+        </button>
+      {/if}
 
-      {#if enable_info_pane && phase_stats}
+      {#if enable_info_pane && phase_stats && controls_config.visible(`info-pane`)}
         <ConvexHullInfoPane
           bind:pane_open={info_pane_open}
           {phase_stats}
@@ -1078,7 +1082,7 @@
         />
       {/if}
 
-      {#if enable_fullscreen}
+      {#if enable_fullscreen && controls_config.visible(`fullscreen`)}
         <button
           type="button"
           onclick={() => toggle_fullscreen(wrapper)}
@@ -1090,34 +1094,36 @@
       {/if}
 
       <!-- Legend controls pane -->
-      <ConvexHullControls
-        bind:controls_open={legend_pane_open}
-        bind:color_mode
-        bind:color_scale
-        bind:show_stable
-        bind:show_unstable
-        bind:show_stable_labels
-        bind:show_unstable_labels
-        bind:max_hull_dist_show_phases
-        bind:max_hull_dist_show_labels
-        {max_hull_dist_in_data}
-        {stable_entries}
-        {unstable_entries}
-        {camera}
-        {merged_controls}
-        toggle_props={{ class: `legend-controls-btn` }}
-        {show_hull_faces}
-        on_hull_faces_change={(value) => show_hull_faces = value}
-        {hull_face_color}
-        on_hull_face_color_change={(value) => hull_face_color = value}
-        {hull_face_opacity}
-        on_hull_face_opacity_change={(value) => hull_face_opacity = value}
-        bind:energy_source_mode
-        {has_precomputed_e_form}
-        {can_compute_e_form}
-        {has_precomputed_hull}
-        {can_compute_hull}
-      />
+      {#if controls_config.visible(`controls`)}
+        <ConvexHullControls
+          bind:controls_open={legend_pane_open}
+          bind:color_mode
+          bind:color_scale
+          bind:show_stable
+          bind:show_unstable
+          bind:show_stable_labels
+          bind:show_unstable_labels
+          bind:max_hull_dist_show_phases
+          bind:max_hull_dist_show_labels
+          {max_hull_dist_in_data}
+          {stable_entries}
+          {unstable_entries}
+          {camera}
+          {merged_controls}
+          toggle_props={{ class: `legend-controls-btn` }}
+          {show_hull_faces}
+          on_hull_faces_change={(value) => show_hull_faces = value}
+          {hull_face_color}
+          on_hull_face_color_change={(value) => hull_face_color = value}
+          {hull_face_opacity}
+          on_hull_face_opacity_change={(value) => hull_face_opacity = value}
+          bind:energy_source_mode
+          {has_precomputed_e_form}
+          {can_compute_e_form}
+          {has_precomputed_hull}
+          {can_compute_hull}
+        />
+      {/if}
     </section>
   {/if}
 
@@ -1192,6 +1198,20 @@
     right: 1ex;
     display: flex;
     gap: 8px;
+    transition: opacity 0.2s ease-in-out;
+  }
+  .control-buttons.hover-visible {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .convex-hull-3d:hover .control-buttons.hover-visible,
+  .convex-hull-3d:focus-within .control-buttons.hover-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .control-buttons.always-visible {
+    opacity: 1;
+    pointer-events: auto;
   }
   .control-buttons button {
     background: transparent;
