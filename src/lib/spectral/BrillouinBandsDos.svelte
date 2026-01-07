@@ -30,9 +30,10 @@
   } = $props()
 
   // Get the first normalized band structure for path calculations
+  // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict
   let first_band_struct = $derived(
     helpers.normalize_band_structure(
-      `qpoints` in (band_structs as object)
+      `qpoints` in (band_structs as object) || `kpoints` in (band_structs as object)
         ? band_structs
         : Object.values(band_structs)[0],
     ),

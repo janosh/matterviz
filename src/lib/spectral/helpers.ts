@@ -869,11 +869,14 @@ export function compute_frequency_range(
   // Check raw band_structs for electronic markers before normalization
   // (normalized structures always have qpoints, so we can't detect from them)
   let has_electronic_bs = false
+  // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict
+  const is_single_bs = band_structs && typeof band_structs === `object` &&
+    (`qpoints` in band_structs || `kpoints` in band_structs)
   if (band_structs && typeof band_structs === `object`) {
     // Single structure check
     if (is_electronic_band_struct(band_structs)) {
       has_electronic_bs = true
-    } else if (!(`qpoints` in band_structs)) {
+    } else if (!is_single_bs) {
       // Dict of band structures - check each value
       for (const bs_val of Object.values(band_structs)) {
         if (is_electronic_band_struct(bs_val)) {
@@ -885,7 +888,7 @@ export function compute_frequency_range(
   }
 
   const bs_list = band_structs
-    ? `qpoints` in (band_structs as object)
+    ? is_single_bs
       ? [normalize_band_structure(band_structs)]
       : Object.values(band_structs as object).map(normalize_band_structure)
     : []
