@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_value } from '$lib/labels'
-  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
+  import { FullscreenToggle } from '$lib/layout'
   import type { BarStyle, HistogramHandlerProps } from '$lib/plot'
   import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
@@ -115,7 +115,6 @@
 
   // Core state
   let [width, height] = $state([0, 0])
-  let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGElement | null = $state(null)
   let hover_info = $state<HistogramHandlerProps | null>(null)
   let tooltip_el = $state<HTMLDivElement | undefined>()
@@ -510,11 +509,6 @@
       ;(legend?.on_toggle || on_series_toggle)(series_idx)
     }
   }
-
-  // Set theme-aware background when entering fullscreen
-  $effect(() => {
-    set_fullscreen_bg(wrapper, fullscreen, `--histogram-fullscreen-bg`)
-  })
 </script>
 
 <svelte:window
@@ -528,7 +522,6 @@
 
 <div
   class="histogram"
-  bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
@@ -953,7 +946,7 @@
   .histogram {
     position: relative;
     width: var(--histogram-width, 100%);
-    height: var(--histogram-height, auto);
+    height: var(--histogram-height, 100%);
     min-height: var(--histogram-min-height, 300px);
     container-type: size; /* enable cqh for panes if explicit height is set */
     z-index: var(--histogram-z-index, auto);
@@ -973,7 +966,7 @@
     z-index: var(--histogram-fullscreen-z-index, 100000001);
     margin: 0;
     border-radius: 0;
-    background: var(--histogram-fullscreen-bg, var(--histogram-bg, var(--plot-bg)));
+    background: var(--plot-bg, white);
     max-height: none !important;
     overflow: hidden;
     /* Add padding to prevent titles from being cropped at top */
