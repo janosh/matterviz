@@ -280,7 +280,7 @@
         >
           ▶
         </span>
-        <span class="group-label">{group_name}</span>
+        <span class="group-label">{@html group_name}</span>
       </div>
       <!-- Group items (collapsible) -->
       {#if !is_collapsed}
