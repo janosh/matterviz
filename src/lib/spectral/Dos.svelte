@@ -5,6 +5,7 @@
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/types'
   import type { ComponentProps } from 'svelte'
+  import { tooltip as attach_tooltip } from 'svelte-multiselect/attachments'
   import {
     apply_gaussian_smearing,
     calculate_sigma_step,
@@ -54,7 +55,6 @@
     show_normalize_control = false,
     show_units_control = false,
     sigma_range = undefined,
-    range_padding = 0, // DOS should only extend as far as data range (no padding)
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     doses: DosInput | Record<string, DosInput>
@@ -341,6 +341,7 @@
     label: x_label,
     format: `.2f`,
     range: x_range,
+    label_shift: { x: 0, y: -48 }, // Increase standoff from tick labels
     ...(is_horizontal && { ticks: 4 }),
     ...x_axis,
   })
@@ -405,7 +406,7 @@
     // Trace upper edge forward, lower edge backward, close path
     return `M${upper_coords[0]} ${
       upper_coords.slice(1).map((coord) => `L${coord}`).join(` `)
-    } ${lower_coords.reverse().map((coord) => `L${coord}`).join(` `)} Z`
+    } ${lower_coords.toReversed().map((coord) => `L${coord}`).join(` `)} Z`
   }
 </script>
 
@@ -418,13 +419,12 @@
     legend={show_legend ? {} : null}
     hover_config={{ threshold_px: 50 }}
     controls={{ show: show_controls }}
-    {range_padding}
     on_point_hover={(event) => {
       hovered_frequency = is_horizontal
         ? (event?.point?.y ?? null)
         : (event?.point?.x ?? null)
     }}
-    {...rest}
+    {...{ range_padding: 0, ...rest }}
   >
     {#snippet tooltip({ x_formatted, y_formatted, label })}
       {@const tooltip_data = format_dos_tooltip(
@@ -459,9 +459,9 @@
                 class="spin-mode-btn"
                 class:active={spin_mode === mode.value}
                 onclick={() => (spin_mode = mode.value)}
-                title={mode.title}
                 aria-label={mode.title}
                 aria-pressed={spin_mode === mode.value}
+                {@attach attach_tooltip({ content: mode.title })}
               >
                 {mode.label}
               </button>
@@ -646,25 +646,5 @@
     font-size: 0.9em;
     min-width: 3.5em;
     text-align: right;
-  }
-
-  /* Use .pane-row from PlotControls for consistency */
-  :global(.pane-row) {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  :global(.pane-row label) {
-    min-width: fit-content;
-  }
-
-  :global(.pane-row input[type='range']) {
-    flex: 1;
-  }
-
-  :global(.pane-row select) {
-    flex: 1;
-    max-width: 120px;
   }
 </style>

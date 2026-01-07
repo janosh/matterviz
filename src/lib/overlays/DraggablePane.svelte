@@ -381,6 +381,11 @@
     gap: 8pt;
     align-items: center;
   }
+  .draggable-pane :global(.control-group) {
+    display: inline-flex;
+    gap: 0.5em;
+    align-items: center;
+  }
   .draggable-pane :global(label:has(input[type='range'])) {
     flex: 1;
   }

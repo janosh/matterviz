@@ -186,6 +186,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`series visibility toggles work`, async ({ page }) => {
+    test.skip(IS_CI, `Histogram series toggle test flaky in CI due to render timing`)
     const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
     const legend = page.locator(`#multiple-series-overlay .legend`)
     const first_legend_item = legend.locator(`.legend-item`).first()

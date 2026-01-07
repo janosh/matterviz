@@ -215,24 +215,32 @@ export function normalize_densities(
 const SMEARING_CACHE_MAX_SIZE = 10
 const smearing_cache = new Map<string, number[]>()
 
-// Generate cache key from sampled values + checksums (O(n), low collision risk)
+// FNV-1a hash for number arrays (fast, good distribution, O(n))
+function fnv1a_hash(arr: number[]): number {
+  let hash = 2166136261 // FNV offset basis
+  for (const val of arr) {
+    // Convert float to int32 bits for consistent hashing
+    const bits = new Float64Array([val])
+    const int_view = new Uint32Array(bits.buffer)
+    hash ^= int_view[0]
+    hash = Math.imul(hash, 16777619) // FNV prime
+    hash ^= int_view[1]
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0 // Ensure unsigned
+}
+
+// Generate cache key using FNV-1a hash over full arrays (O(n), low collision risk)
 function generate_smearing_cache_key(
   freqs_or_energies: number[],
   densities: number[],
   sigma: number,
 ): string {
   const len = freqs_or_energies.length
-  if (len === 0) return `0:${sigma.toFixed(6)}::`
-  const mid = Math.floor(len / 2)
-  const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0)
-  return [
-    len,
-    sigma.toFixed(6),
-    [freqs_or_energies[0], freqs_or_energies[mid], freqs_or_energies[len - 1]].join(),
-    sum(freqs_or_energies).toFixed(4),
-    [densities[0], densities[mid], densities[len - 1]].join(),
-    sum(densities).toFixed(4),
-  ].join(`:`)
+  if (len === 0) return `0:${sigma.toFixed(6)}:0:0`
+  return `${len}:${sigma.toFixed(6)}:${fnv1a_hash(freqs_or_energies).toString(16)}:${
+    fnv1a_hash(densities).toString(16)
+  }`
 }
 
 // Core Gaussian smearing computation (unmemoized)

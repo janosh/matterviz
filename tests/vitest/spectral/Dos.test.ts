@@ -441,12 +441,12 @@ describe(`validate_sigma_range`, () => {
     expect(validate_sigma_range([-5, 5])).toEqual([-5, 5])
   })
 
-  it.each([
-    [[1, 0]], // min > max
-    [[0, 0]], // equal values
-    [[NaN, 1]], // NaN
-    [[0, Infinity]], // infinite
-  ] as [number, number][][])(`invalid range %j returns [0, 1]`, (input) => {
+  it.each<{ input: [number, number] }>([
+    { input: [1, 0] }, // min > max
+    { input: [0, 0] }, // equal values
+    { input: [NaN, 1] }, // NaN
+    { input: [0, Infinity] }, // infinite
+  ])(`invalid range $input returns [0, 1]`, ({ input }) => {
     expect(validate_sigma_range(input)).toEqual([0, 1])
   })
 })

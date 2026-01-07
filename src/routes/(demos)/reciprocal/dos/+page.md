@@ -76,9 +76,9 @@ Multiple DOS curves can be stacked as filled areas. Gaussian smearing (σ) smoot
 
   const dos = phonon_dos['mp-2758-Sr4Se4-pbe']
   const doses = {
-    'Total': dos,
-    'Partial A': { ...dos, densities: dos.densities.map((d) => d * 0.6) },
-    'Partial B': { ...dos, densities: dos.densities.map((d) => d * 0.4) },
+    'Mode A': { ...dos, densities: dos.densities.map((d) => d * 0.45) },
+    'Mode B': { ...dos, densities: dos.densities.map((d) => d * 0.35) },
+    'Mode C': { ...dos, densities: dos.densities.map((d) => d * 0.2) },
   }
 </script>
 
