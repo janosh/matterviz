@@ -90,23 +90,20 @@ test.describe(`OPTIMADE route`, () => {
       return route.fulfill({ json: { data: [] } })
     }
 
+    // Asset extensions to allow through (local resources)
+    const asset_extensions = [`.js`, `.css`, `.svg`, `.png`, `.webp`, `.woff`, `.woff2`]
+
     // Single route handler that intercepts all external requests
     // This ensures all OPTIMADE traffic is caught regardless of timing
     await page.route(`**/*`, (route) => {
       const url = route.request().url()
 
       // Let local/internal requests through
-      if (
-        url.startsWith(`http://localhost`) ||
-        url.startsWith(`http://127.0.0.1`) ||
-        url.includes(`/_app/`) ||
-        url.includes(`/__`) ||
-        url.endsWith(`.js`) ||
-        url.endsWith(`.css`) ||
-        url.endsWith(`.svg`) ||
-        url.endsWith(`.png`) || url.endsWith(`.webp`) || url.endsWith(`.woff`) ||
-        url.endsWith(`.woff2`)
-      ) return route.continue()
+      const is_local = url.startsWith(`http://localhost`) ||
+        url.startsWith(`http://127.0.0.1`)
+      const is_internal = url.includes(`/_app/`) || url.includes(`/__`)
+      const is_asset = asset_extensions.some((ext) => url.endsWith(ext))
+      if (is_local || is_internal || is_asset) return route.continue()
 
       // Handle OPTIMADE requests with mocks
       if (is_optimade_request(url)) return handle_optimade_request(url, route)
@@ -131,9 +128,8 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
 
     // Check for error message - mock returns OPTIMADE 404 with "Structure not found"
-    // Use extended timeout since async fetch + error handling takes time
     const error_message = page.locator(`.structure-column .error-message`)
-    await expect(error_message).toBeVisible({ timeout: 15000 })
+    await expect(error_message).toBeVisible({ timeout: 8000 })
     // Verify the app displays an error message (content varies based on mock vs real API)
     await expect(error_message).toContainText(/not found|failed|error/i)
   })

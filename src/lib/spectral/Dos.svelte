@@ -190,16 +190,11 @@
           // Store previous cumulative for area fill baseline
           const prev_cumulative = cumulative_spin_up ? [...cumulative_spin_up] : null
 
-          // For stacked plots, accumulate densities
-          if (stack && cumulative_spin_up) {
-            if (cumulative_spin_up.length !== densities_up.length) {
-              console.warn(
-                `DOS stacking: length mismatch (cumulative=${cumulative_spin_up.length}, current=${densities_up.length})`,
-              )
-            }
-            densities_up = densities_up.map((d, idx) =>
-              d + (cumulative_spin_up?.[idx] ?? 0)
-            )
+          // For stacked plots, accumulate densities (only if array lengths match)
+          if (stack && cumulative_spin_up?.length === densities_up.length) {
+            densities_up = densities_up.map((d, idx) => d + cumulative_spin_up![idx])
+          } else if (stack && cumulative_spin_up) {
+            console.warn(`DOS stacking: length mismatch for "${label}"`)
           }
 
           // Store stacked area data for rendering
@@ -250,11 +245,14 @@
             const prev_spin_down = cumulative_spin_down
               ? [...cumulative_spin_down]
               : null
-            if (cumulative_spin_down) {
+            if (cumulative_spin_down?.length === densities_down.length) {
               densities_down = densities_down.map((d, idx) =>
-                d + (cumulative_spin_down?.[idx] ?? 0)
+                d + cumulative_spin_down![idx]
               )
+            } else if (cumulative_spin_down) {
+              console.warn(`DOS stacking (spin-down): length mismatch for "${label}"`)
             }
+
             // Store stacked area for spin-down
             areas.push({
               x_values: [...x_values],
@@ -616,13 +614,32 @@
 {/if}
 
 <style>
+  /* Control row layout */
+  .pane-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin: 0.3em 0;
+    font-size: 0.9em;
+  }
+  .pane-row label {
+    min-width: 4em;
+    flex-shrink: 0;
+  }
+  .pane-row input[type='range'] {
+    flex: 1;
+    min-width: 4em;
+  }
+  .pane-row select {
+    flex: 1;
+    min-width: 0;
+  }
   /* Spin mode button group */
   .dos-spin-modes {
     display: flex;
     gap: 2px;
     flex-wrap: wrap;
   }
-
   .spin-mode-btn {
     padding: 4px 8px;
     border: 1px solid var(--border-color, light-dark(#d1d5db, #4b5563));
@@ -633,17 +650,14 @@
     transition: all 0.15s ease;
     min-width: 2em;
   }
-
   .spin-mode-btn:hover {
     background: var(--btn-bg-hover, light-dark(#e5e7eb, #4b5563));
   }
-
   .spin-mode-btn.active {
     background: var(--btn-bg-active, light-dark(#dbeafe, #1e40af));
     border-color: var(--btn-border-active, light-dark(#3b82f6, #60a5fa));
     color: var(--btn-color-active, light-dark(#1d4ed8, #93c5fd));
   }
-
   /* Sigma value display */
   .sigma-value {
     font-family: var(--font-mono, monospace);
