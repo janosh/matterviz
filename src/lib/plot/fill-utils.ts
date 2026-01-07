@@ -214,9 +214,7 @@ export function resolve_boundary(
       if (boundary.values.length === x_values.length) {
         return [...boundary.values]
       }
-      // Assume boundary.values are y-values at evenly spaced x positions
-      // or we need more context - for now, return as-is if same length
-      // or truncate/pad
+      // Lengths don't match: truncate if values is longer, or extend last value if shorter
       return x_values.map((_, idx) =>
         boundary.values[idx] ?? boundary.values[boundary.values.length - 1]
       )
@@ -358,10 +356,8 @@ export function apply_where_condition(
           if (prev_passes) {
             // End current segment at crossing
             current_segment.push({ x: crossing_x, y1: crossing_y1, y2: crossing_y2 })
-            if (current_segment.length > 0) {
-              segments.push(current_segment)
-              current_segment = []
-            }
+            segments.push(current_segment)
+            current_segment = []
           } else {
             // Start new segment at crossing
             current_segment.push({ x: crossing_x, y1: crossing_y1, y2: crossing_y2 })

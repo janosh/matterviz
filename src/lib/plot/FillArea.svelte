@@ -77,6 +77,43 @@
     is_hovered && on_hover?.(construct_event(event))
   const handle_click = (event: MouseEvent) => on_click?.(construct_event(event))
 
+  // Keyboard handler - creates event with default coordinates since no mouse position
+  function handle_keydown(event: KeyboardEvent) {
+    if (event.key === `Enter` || event.key === ` `) {
+      event.preventDefault()
+      if (!on_click) return
+
+      // For keyboard activation, use center of element or default coordinates
+      const target = event.currentTarget as SVGElement
+      const rect = target.ownerSVGElement?.getBoundingClientRect()
+      const element_rect = target.getBoundingClientRect()
+
+      // Use center of the fill region element
+      const px = element_rect
+        ? (element_rect.left + element_rect.right) / 2 - (rect?.left ?? 0)
+        : 0
+      const py = element_rect
+        ? (element_rect.top + element_rect.bottom) / 2 - (rect?.top ?? 0)
+        : 0
+
+      const raw_x = x_scale_fn.invert?.(px) ?? 0
+      const data_x = raw_x instanceof Date ? raw_x.getTime() : raw_x
+      const data_y = y_scale_fn.invert?.(py) ?? 0
+
+      on_click({
+        event: event as unknown as MouseEvent, // Cast for type compatibility
+        region_idx,
+        region_id: region.id,
+        x: data_x,
+        y: data_y,
+        px,
+        py,
+        label: region.label,
+        metadata: region.metadata,
+      })
+    }
+  }
+
   // Construct FillHandlerEvent from MouseEvent
   function construct_event(event: MouseEvent): FillHandlerEvent {
     const rect = (event.currentTarget as SVGElement).ownerSVGElement
@@ -119,12 +156,7 @@
   onmouseleave={handle_mouse_leave}
   onmousemove={handle_mouse_move}
   onclick={handle_click}
-  onkeydown={(event) => {
-    if (event.key === `Enter` || event.key === ` `) {
-      event.preventDefault()
-      handle_click(event as unknown as MouseEvent)
-    }
-  }}
+  onkeydown={handle_keydown}
   role="img"
   tabindex={on_click ? 0 : -1}
   aria-label={region.label ?? `Fill region ${region_idx}`}

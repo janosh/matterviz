@@ -700,4 +700,114 @@ describe(`PlotLegend`, () => {
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
     })
   })
+
+  describe(`fill region legend items`, () => {
+    const fill_series_data: LegendItem[] = [
+      {
+        label: `Data Series`,
+        visible: true,
+        series_idx: 0,
+        display_style: { symbol_type: `Circle`, symbol_color: `blue` },
+      },
+      {
+        label: `Fill Region`,
+        visible: true,
+        series_idx: -1, // Fill items use fill_idx instead
+        item_type: `fill`,
+        fill_idx: 0,
+        display_style: {
+          fill_color: `steelblue`,
+          fill_opacity: 0.3,
+          edge_color: `darkblue`,
+        },
+      },
+      {
+        label: `Hidden Fill`,
+        visible: false,
+        series_idx: -1,
+        item_type: `fill`,
+        fill_idx: 1,
+        display_style: { fill_color: `red`, fill_opacity: 0.5 },
+      },
+    ]
+
+    test(`renders fill swatch with correct styling and hidden state`, () => {
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: fill_series_data },
+      })
+      const items = document.querySelectorAll(`.legend-item`)
+
+      // Regular series: no fill swatch
+      expect(items[0].classList.contains(`fill-item`)).toBe(false)
+      expect(items[0].querySelector(`.fill-swatch`)).toBeNull()
+
+      // Fill region: has swatch with correct styling
+      expect(items[1].classList.contains(`fill-item`)).toBe(true)
+      const rect = items[1].querySelector(`.fill-swatch rect`)
+      expect(rect?.getAttribute(`fill`)).toBe(`steelblue`)
+      expect(rect?.getAttribute(`stroke`)).toBe(`darkblue`)
+
+      // Hidden state
+      expect(items[1].classList.contains(`hidden`)).toBe(false)
+      expect(items[2].classList.contains(`hidden`)).toBe(true)
+    })
+
+    test(`on_fill_toggle routes click/keyboard to correct handler`, () => {
+      document.body.innerHTML = ``
+      const on_toggle = vi.fn()
+      const on_fill_toggle = vi.fn()
+
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: fill_series_data, on_toggle, on_fill_toggle },
+      })
+      const items = document.querySelectorAll<HTMLElement>(`.legend-item`)
+
+      // Regular series click → on_toggle
+      items[0].click()
+      expect(on_toggle).toHaveBeenCalledWith(0)
+      expect(on_fill_toggle).not.toHaveBeenCalled()
+      on_toggle.mockClear()
+
+      // Fill item click → on_fill_toggle
+      items[1].click()
+      expect(on_fill_toggle).toHaveBeenCalledWith(0)
+      expect(on_toggle).not.toHaveBeenCalled()
+      on_fill_toggle.mockClear()
+
+      // Fill item keyboard → on_fill_toggle
+      items[1].dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+      )
+      expect(on_fill_toggle).toHaveBeenCalledWith(0)
+    })
+
+    test(`on_fill_double_click called for fill item dblclick`, () => {
+      const on_fill_double_click = vi.fn()
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: fill_series_data, on_fill_double_click },
+      })
+      document.querySelectorAll<HTMLElement>(`.legend-item`)[1].dispatchEvent(
+        new MouseEvent(`dblclick`, { bubbles: true }),
+      )
+      expect(on_fill_double_click).toHaveBeenCalledWith(0)
+    })
+
+    test(`fill swatch uses defaults for missing opacity and edge`, () => {
+      const data: LegendItem[] = [{
+        label: `Minimal`,
+        visible: true,
+        series_idx: -1,
+        item_type: `fill`,
+        fill_idx: 0,
+        display_style: { fill_color: `green` }, // No fill_opacity or edge_color
+      }]
+      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+      const rect = doc_query(`.fill-swatch rect`)
+      expect(rect.getAttribute(`fill-opacity`)).toBe(`0.3`)
+      expect(rect.getAttribute(`stroke`)).toBe(`none`)
+    })
+  })
 })

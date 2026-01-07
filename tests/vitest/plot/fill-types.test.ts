@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { FILL_CURVE_TYPES } from '$lib/plot/types'
 import type {
   FillBoundary,
-  FillCurveType,
   FillEdgeStyle,
   FillGradient,
   FillHandlerEvent,
@@ -14,27 +13,21 @@ import type {
 } from '$lib/plot/types'
 
 describe(`FILL_CURVE_TYPES`, () => {
-  it(`contains all expected curve types`, () => {
-    expect(FILL_CURVE_TYPES).toContain(`linear`)
-    expect(FILL_CURVE_TYPES).toContain(`monotoneX`)
-    expect(FILL_CURVE_TYPES).toContain(`monotoneY`)
-    expect(FILL_CURVE_TYPES).toContain(`step`)
-    expect(FILL_CURVE_TYPES).toContain(`stepBefore`)
-    expect(FILL_CURVE_TYPES).toContain(`stepAfter`)
-    expect(FILL_CURVE_TYPES).toContain(`basis`)
-    expect(FILL_CURVE_TYPES).toContain(`cardinal`)
-    expect(FILL_CURVE_TYPES).toContain(`catmullRom`)
-    expect(FILL_CURVE_TYPES).toContain(`natural`)
-  })
+  const expected_curves = [
+    `linear`,
+    `monotoneX`,
+    `monotoneY`,
+    `step`,
+    `stepBefore`,
+    `stepAfter`,
+    `basis`,
+    `cardinal`,
+    `catmullRom`,
+    `natural`,
+  ]
 
-  it(`has exactly 10 curve types`, () => {
-    expect(FILL_CURVE_TYPES.length).toBe(10)
-  })
-
-  it(`is readonly`, () => {
-    // TypeScript enforces this at compile time, but we can verify the array is frozen-like
-    const curve: FillCurveType = FILL_CURVE_TYPES[0]
-    expect(curve).toBe(`linear`)
+  it(`contains exactly 10 expected curve types`, () => {
+    expect(FILL_CURVE_TYPES).toEqual(expected_curves)
   })
 })
 
@@ -46,15 +39,13 @@ describe(`Fill type structures`, () => {
 
   it(`FillBoundary accepts series reference`, () => {
     const boundary: FillBoundary = { type: `series`, series_idx: 0 }
-    expect(boundary.type).toBe(`series`)
+    expect(boundary).toMatchObject({ type: `series` })
   })
 
-  it(`FillBoundary accepts function`, () => {
+  it(`FillBoundary accepts and executes function`, () => {
     const boundary: FillBoundary = { type: `function`, fn: (x) => x * 2 }
-    expect(boundary.type).toBe(`function`)
-    if (boundary.type === `function`) {
-      expect(boundary.fn(5)).toBe(10)
-    }
+    expect(boundary).toMatchObject({ type: `function` })
+    if (boundary.type === `function`) expect(boundary.fn(5)).toBe(10)
   })
 
   it(`FillGradient supports linear type`, () => {
@@ -74,29 +65,14 @@ describe(`Fill type structures`, () => {
       stops: [[0, `white`], [1, `black`]],
     }
     expect(gradient.type).toBe(`radial`)
-    expect(gradient.center?.x).toBe(0.5)
+    expect(gradient.stops.length).toBe(2)
   })
 
-  it(`FillEdgeStyle has all optional properties`, () => {
-    const edge: FillEdgeStyle = {}
-    expect(edge.color).toBeUndefined()
+  it(`FillEdgeStyle and FillHoverStyle work correctly`, () => {
+    const empty_edge: FillEdgeStyle = {}
+    expect(empty_edge.color).toBeUndefined()
 
-    const styled_edge: FillEdgeStyle = {
-      color: `red`,
-      width: 2,
-      dash: `4 2`,
-      opacity: 0.8,
-    }
-    expect(styled_edge.color).toBe(`red`)
-  })
-
-  it(`FillHoverStyle extends edge styling`, () => {
-    const hover: FillHoverStyle = {
-      fill: `orange`,
-      fill_opacity: 0.6,
-      cursor: `pointer`,
-      edge: { color: `red`, width: 2 },
-    }
+    const hover: FillHoverStyle = { fill: `orange`, edge: { color: `red`, width: 2 } }
     expect(hover.edge?.color).toBe(`red`)
   })
 
@@ -109,29 +85,24 @@ describe(`Fill type structures`, () => {
       px: 100,
       py: 200,
     }
-    expect(event.region_idx).toBe(0)
-    expect(event.x).toBe(10)
+    expect(event).toMatchObject({ region_idx: 0, x: 10, px: 100 })
   })
 
-  it(`FillZIndex accepts valid positions`, () => {
+  it(`FillZIndex accepts all valid positions`, () => {
     const positions: FillZIndex[] = [
       `below-grid`,
       `below-lines`,
       `below-points`,
       `above-all`,
     ]
-    expect(positions.length).toBe(4)
+    expect(positions).toHaveLength(4)
   })
 
-  it(`FillRegion has required and optional fields`, () => {
-    const region: FillRegion = {
-      upper: { type: `series`, series_idx: 0 },
-      lower: 0,
-    }
-    expect(typeof region.upper === `object` && region.upper.type).toBe(`series`)
-    expect(region.lower).toBe(0)
+  it(`FillRegion accepts minimal and full configurations`, () => {
+    const minimal: FillRegion = { upper: { type: `series`, series_idx: 0 }, lower: 0 }
+    expect(minimal.upper).toMatchObject({ type: `series` })
 
-    const full_region: FillRegion = {
+    const full: FillRegion = {
       id: `test`,
       label: `Test Region`,
       upper: { type: `data`, values: [1, 2, 3] },
@@ -148,33 +119,27 @@ describe(`Fill type structures`, () => {
       show_in_legend: true,
       metadata: { custom: `data` },
     }
-    expect(full_region.id).toBe(`test`)
-    expect(full_region.curve).toBe(`monotoneX`)
+    expect(full).toMatchObject({ id: `test`, curve: `monotoneX`, z_index: `below-lines` })
   })
 
-  it(`LegendItem supports fill items`, () => {
-    const series_item: LegendItem = {
-      label: `Series`,
+  it(`LegendItem supports series and fill item types`, () => {
+    const series: LegendItem = {
+      label: `S`,
       visible: true,
       series_idx: 0,
       display_style: { symbol_type: `Circle` },
     }
-    expect(series_item.item_type).toBeUndefined()
+    expect(series.item_type).toBeUndefined()
 
-    const fill_item: LegendItem = {
-      label: `Fill`,
+    const fill: LegendItem = {
+      label: `F`,
       visible: true,
       series_idx: -1,
       item_type: `fill`,
       fill_idx: 0,
-      display_style: {
-        fill_color: `steelblue`,
-        fill_opacity: 0.3,
-        edge_color: `navy`,
-      },
+      display_style: { fill_color: `steelblue`, fill_opacity: 0.3, edge_color: `navy` },
     }
-    expect(fill_item.item_type).toBe(`fill`)
-    expect(fill_item.fill_idx).toBe(0)
-    expect(fill_item.display_style.fill_color).toBe(`steelblue`)
+    expect(fill).toMatchObject({ item_type: `fill`, fill_idx: 0 })
+    expect(fill.display_style.fill_color).toBe(`steelblue`)
   })
 })

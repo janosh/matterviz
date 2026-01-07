@@ -776,9 +776,14 @@
       },
     )
 
-    // Add fill region items to legend
+    // Add fill region items to legend (also deduplicated by label)
     const fill_items = computed_fills
       .filter((fill) => fill.show_in_legend !== false && fill.label)
+      .filter((fill) => {
+        if (seen_labels.has(fill.label!)) return false
+        seen_labels.add(fill.label!)
+        return true
+      })
       .map((fill) => ({
         series_idx: -1, // Not a series
         fill_idx: fill.idx,

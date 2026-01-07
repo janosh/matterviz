@@ -12,7 +12,7 @@ import {
   resolve_boundary,
   resolve_series_ref,
 } from '$lib/plot/fill-utils'
-import type { DataSeries, ErrorBand, FillBoundary } from '$lib/plot/types'
+import type { DataSeries, FillBoundary } from '$lib/plot/types'
 
 // C13: Interpolation tests
 describe(`interpolate_series`, () => {
@@ -91,41 +91,24 @@ describe(`resolve_series_ref`, () => {
     { x: [1, 2, 3], y: [100, 200, 300] },
   ]
 
-  it(`resolves series by index`, () => {
-    const ref = { type: `series` as const, series_idx: 1 }
-    const result = resolve_series_ref(ref, mock_series)
-    expect(result?.id).toBe(`series-b`)
+  it.each([
+    [`by index`, { type: `series` as const, series_idx: 1 }, `series-b`],
+    [`by string id`, { type: `series` as const, series_id: `series-a` }, `series-a`],
+  ])(`resolves series %s`, (_, ref, expected_id) => {
+    expect(resolve_series_ref(ref, mock_series)?.id).toBe(expected_id)
   })
 
-  it(`resolves series by string id`, () => {
-    const ref = { type: `series` as const, series_id: `series-a` }
-    const result = resolve_series_ref(ref, mock_series)
-    expect(result?.id).toBe(`series-a`)
-  })
-
-  it(`returns null for invalid index`, () => {
-    const ref = { type: `series` as const, series_idx: 99 }
-    const result = resolve_series_ref(ref, mock_series)
-    expect(result).toBeNull()
-  })
-
-  it(`returns null for non-existent id`, () => {
-    const ref = { type: `series` as const, series_id: `non-existent` }
-    const result = resolve_series_ref(ref, mock_series)
-    expect(result).toBeNull()
-  })
-
-  it(`handles negative index`, () => {
-    const ref = { type: `series` as const, series_idx: -1 }
-    const result = resolve_series_ref(ref, mock_series)
-    expect(result).toBeNull()
+  it.each([
+    [`invalid index`, { type: `series` as const, series_idx: 99 }],
+    [`non-existent id`, { type: `series` as const, series_id: `non-existent` }],
+    [`negative index`, { type: `series` as const, series_idx: -1 }],
+  ])(`returns null for %s`, (_, ref) => {
+    expect(resolve_series_ref(ref, mock_series)).toBeNull()
   })
 })
 
 describe(`resolve_boundary`, () => {
-  const mock_series: DataSeries[] = [
-    { x: [1, 2, 3], y: [10, 20, 30], id: `test` },
-  ]
+  const mock_series: DataSeries[] = [{ x: [1, 2, 3], y: [10, 20, 30], id: `test` }]
   const x_values = [1, 2, 3]
   const scales = {
     x_scale: (val: number) => val * 10,
@@ -134,45 +117,25 @@ describe(`resolve_boundary`, () => {
     y_domain: [0, 100] as [number, number],
   }
 
-  it(`resolves number shorthand to constant`, () => {
-    const result = resolve_boundary(42, mock_series, x_values, scales)
-    expect(result).toEqual([42, 42, 42])
-  })
-
-  it(`resolves constant boundary`, () => {
-    const boundary: FillBoundary = { type: `constant`, value: 50 }
-    const result = resolve_boundary(boundary, mock_series, x_values, scales)
-    expect(result).toEqual([50, 50, 50])
-  })
-
-  it(`resolves series boundary`, () => {
-    const boundary: FillBoundary = { type: `series`, series_idx: 0 }
-    const result = resolve_boundary(boundary, mock_series, x_values, scales)
-    expect(result).toEqual([10, 20, 30])
-  })
-
-  it(`resolves function boundary`, () => {
-    const boundary: FillBoundary = { type: `function`, fn: (coord) => coord * 5 }
-    const result = resolve_boundary(boundary, mock_series, x_values, scales)
-    expect(result).toEqual([5, 10, 15])
-  })
-
-  it(`resolves data boundary`, () => {
-    const boundary: FillBoundary = { type: `data`, values: [100, 200, 300] }
-    const result = resolve_boundary(boundary, mock_series, x_values, scales)
-    expect(result).toEqual([100, 200, 300])
-  })
-
-  it(`resolves axis boundary`, () => {
-    const boundary: FillBoundary = { type: `axis`, axis: `y`, value: 0 }
-    const result = resolve_boundary(boundary, mock_series, x_values, scales)
-    expect(result).toEqual([0, 0, 0])
+  it.each([
+    [`number shorthand`, 42 as FillBoundary, [42, 42, 42]],
+    [`constant`, { type: `constant`, value: 50 } as FillBoundary, [50, 50, 50]],
+    [`series`, { type: `series`, series_idx: 0 } as FillBoundary, [10, 20, 30]],
+    [`function`, { type: `function`, fn: (c: number) => c * 5 } as FillBoundary, [
+      5,
+      10,
+      15,
+    ]],
+    [`data`, { type: `data`, values: [100, 200, 300] } as FillBoundary, [100, 200, 300]],
+    [`axis`, { type: `axis`, axis: `y`, value: 0 } as FillBoundary, [0, 0, 0]],
+  ])(`resolves %s boundary`, (_, boundary, expected) => {
+    expect(resolve_boundary(boundary, mock_series, x_values, scales)).toEqual(expected)
   })
 
   it(`returns null for unresolvable series reference`, () => {
-    const boundary: FillBoundary = { type: `series`, series_idx: 99 }
-    const result = resolve_boundary(boundary, mock_series, x_values, scales)
-    expect(result).toBeNull()
+    expect(
+      resolve_boundary({ type: `series`, series_idx: 99 }, mock_series, x_values, scales),
+    ).toBeNull()
   })
 })
 
@@ -298,52 +261,28 @@ describe(`apply_where_condition`, () => {
 })
 
 describe(`clamp_for_log_scale`, () => {
-  it(`clamps non-positive y values for log scale`, () => {
-    const x_values = [1, 2, 3]
-    const y1_values = [10, -5, 0]
-    const y2_values = [20, 0, 5]
+  it(`clamps non-positive y values for log scale and tracks indices`, () => {
+    const result = clamp_for_log_scale([1, 2, 3], [10, -5, 0], [20, 0, 5], `log`)
 
-    const result = clamp_for_log_scale(x_values, y1_values, y2_values, `log`)
-
-    expect(result.y1[0]).toBe(10) // unchanged
-    expect(result.y1[1]).toBe(LOG_EPSILON) // clamped
-    expect(result.y1[2]).toBe(LOG_EPSILON) // clamped
-    expect(result.y2[0]).toBe(20) // unchanged
-    expect(result.y2[1]).toBe(LOG_EPSILON) // clamped
-    expect(result.y2[2]).toBe(5) // unchanged
-  })
-
-  it(`clamps non-positive x values when x-axis is log`, () => {
-    const x_values = [-1, 0, 1]
-    const y1_values = [10, 20, 30]
-    const y2_values = [5, 15, 25]
-
-    const result = clamp_for_log_scale(x_values, y1_values, y2_values, `linear`, `log`)
-
-    expect(result.x[0]).toBe(LOG_EPSILON) // clamped
-    expect(result.x[1]).toBe(LOG_EPSILON) // clamped
-    expect(result.x[2]).toBe(1) // unchanged
-  })
-
-  it(`tracks clamped indices`, () => {
-    const x_values = [1, 2, 3]
-    const y1_values = [10, -5, 30]
-    const y2_values = [20, 15, 25]
-
-    const result = clamp_for_log_scale(x_values, y1_values, y2_values, `log`)
-
+    expect(result.y1).toEqual([10, LOG_EPSILON, LOG_EPSILON])
+    expect(result.y2).toEqual([20, LOG_EPSILON, 5])
     expect(result.clamped_indices).toContain(1)
   })
 
+  it(`clamps non-positive x values when x-axis is log`, () => {
+    const result = clamp_for_log_scale(
+      [-1, 0, 1],
+      [10, 20, 30],
+      [5, 15, 25],
+      `linear`,
+      `log`,
+    )
+    expect(result.x).toEqual([LOG_EPSILON, LOG_EPSILON, 1])
+  })
+
   it(`leaves values unchanged for linear scale`, () => {
-    const x_values = [1, 2, 3]
-    const y1_values = [10, -5, 0]
-    const y2_values = [20, 0, 5]
-
-    const result = clamp_for_log_scale(x_values, y1_values, y2_values, `linear`)
-
+    const result = clamp_for_log_scale([1, 2, 3], [10, -5, 0], [20, 0, 5], `linear`)
     expect(result.y1).toEqual([10, -5, 0])
-    expect(result.y2).toEqual([20, 0, 5])
     expect(result.clamped_indices).toEqual([])
   })
 })
@@ -420,96 +359,49 @@ describe(`generate_fill_path`, () => {
 })
 
 describe(`convert_error_band_to_fill_region`, () => {
-  const mock_series: DataSeries[] = [
-    { x: [1, 2, 3], y: [10, 20, 30], id: `test-series` },
-  ]
+  const mock_series: DataSeries[] = [{ x: [1, 2, 3], y: [10, 20, 30], id: `test-series` }]
+  const base_ref = { type: `series` as const, series_idx: 0 }
 
-  it(`converts symmetric constant error`, () => {
-    const error_band: ErrorBand = {
-      series: { type: `series`, series_idx: 0 },
-      error: 5,
-    }
-
-    const result = convert_error_band_to_fill_region(error_band, mock_series)
-
-    expect(result).not.toBeNull()
-    expect(result?.upper).toEqual({ type: `data`, values: [15, 25, 35] })
-    expect(result?.lower).toEqual({ type: `data`, values: [5, 15, 25] })
+  it.each([
+    [`symmetric constant`, { error: 5 }, [15, 25, 35], [5, 15, 25]],
+    [`symmetric per-point`, { error: [1, 2, 3] }, [11, 22, 33], [9, 18, 27]],
+    [`asymmetric`, { error: { upper: 10, lower: 5 } }, [20, 30, 40], [5, 15, 25]],
+  ])(`converts %s error`, (_, extra, upper, lower) => {
+    const result = convert_error_band_to_fill_region(
+      { series: base_ref, ...extra },
+      mock_series,
+    )
+    expect(result?.upper).toEqual({ type: `data`, values: upper })
+    expect(result?.lower).toEqual({ type: `data`, values: lower })
   })
 
-  it(`converts symmetric per-point error`, () => {
-    const error_band: ErrorBand = {
-      series: { type: `series`, series_idx: 0 },
-      error: [1, 2, 3],
-    }
-
-    const result = convert_error_band_to_fill_region(error_band, mock_series)
-
-    expect(result).not.toBeNull()
-    expect(result?.upper).toEqual({ type: `data`, values: [11, 22, 33] })
-    expect(result?.lower).toEqual({ type: `data`, values: [9, 18, 27] })
-  })
-
-  it(`converts asymmetric error`, () => {
-    const error_band: ErrorBand = {
-      series: { type: `series`, series_idx: 0 },
-      error: { upper: 10, lower: 5 },
-    }
-
-    const result = convert_error_band_to_fill_region(error_band, mock_series)
-
-    expect(result).not.toBeNull()
-    expect(result?.upper).toEqual({ type: `data`, values: [20, 30, 40] })
-    expect(result?.lower).toEqual({ type: `data`, values: [5, 15, 25] })
-  })
-
-  it(`uses provided fill color`, () => {
-    const error_band: ErrorBand = {
-      series: { type: `series`, series_idx: 0 },
-      error: 5,
-      fill: `#ff0000`,
-      fill_opacity: 0.5,
-    }
-
-    const result = convert_error_band_to_fill_region(error_band, mock_series)
-
-    expect(result?.fill).toBe(`#ff0000`)
-    expect(result?.fill_opacity).toBe(0.5)
+  it(`uses provided fill color and opacity`, () => {
+    const result = convert_error_band_to_fill_region(
+      { series: base_ref, error: 5, fill: `#ff0000`, fill_opacity: 0.5 },
+      mock_series,
+    )
+    expect(result).toMatchObject({ fill: `#ff0000`, fill_opacity: 0.5 })
   })
 
   it(`returns null for invalid series reference`, () => {
-    const error_band: ErrorBand = {
-      series: { type: `series`, series_idx: 99 },
-      error: 5,
-    }
-
-    const result = convert_error_band_to_fill_region(error_band, mock_series)
-
-    expect(result).toBeNull()
+    expect(
+      convert_error_band_to_fill_region({
+        series: { type: `series`, series_idx: 99 },
+        error: 5,
+      }, mock_series),
+    ).toBeNull()
   })
 
-  it(`resolves series by id`, () => {
-    const error_band: ErrorBand = {
-      series: { type: `series`, series_id: `test-series` },
-      error: 5,
-    }
-
-    const result = convert_error_band_to_fill_region(error_band, mock_series)
-
-    expect(result).not.toBeNull()
-  })
-
-  it(`includes label and id from error band`, () => {
-    const error_band: ErrorBand = {
-      series: { type: `series`, series_idx: 0 },
-      error: 5,
-      id: `error-band-1`,
-      label: `Error Range`,
-    }
-
-    const result = convert_error_band_to_fill_region(error_band, mock_series)
-
-    expect(result?.id).toBe(`error-band-1`)
-    expect(result?.label).toBe(`Error Range`)
+  it(`resolves series by id and includes label/id`, () => {
+    const result = convert_error_band_to_fill_region(
+      {
+        series: { type: `series`, series_id: `test-series` },
+        error: 5,
+        id: `eb-1`,
+        label: `Error`,
+      },
+      mock_series,
+    )
+    expect(result).toMatchObject({ id: `eb-1`, label: `Error` })
   })
 })
