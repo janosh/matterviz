@@ -3,7 +3,7 @@
 import { FillArea } from '$lib/plot'
 import type { FillGradient, FillRegion } from '$lib/plot/types'
 import { mount, tick } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 // Mock scale functions
@@ -37,10 +37,6 @@ const make_props = (overrides: Record<string, unknown> = {}) => ({
 })
 
 describe(`FillArea`, () => {
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
-
   test(`renders basic fill region with correct attributes`, () => {
     mount(FillArea, { target: document.body, props: make_props() })
 

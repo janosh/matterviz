@@ -1,4 +1,4 @@
-// Tests for fill-utils.ts - fill region utility functions
+// Tests for fill-between: utility functions and type structures
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -13,9 +13,20 @@ import {
   resolve_boundary,
   resolve_series_ref,
 } from '$lib/plot/fill-utils'
-import type { DataSeries, FillBoundary, FillGradient } from '$lib/plot/types'
+import type {
+  DataSeries,
+  FillBoundary,
+  FillEdgeStyle,
+  FillGradient,
+  FillHandlerEvent,
+  FillHoverStyle,
+  FillRegion,
+  FillZIndex,
+  LegendItem,
+} from '$lib/plot/types'
+import { FILL_CURVE_TYPES } from '$lib/plot/types'
 
-// C13: Interpolation tests
+// Interpolation tests
 describe(`interpolate_series`, () => {
   it(`handles identical x-values`, () => {
     const series_a = { x: [1, 2, 3], y: [10, 20, 30] }
@@ -84,7 +95,7 @@ describe(`interpolate_series`, () => {
   })
 })
 
-// C14: Boundary resolution tests
+// Boundary resolution tests
 describe(`resolve_series_ref`, () => {
   const mock_series: DataSeries[] = [
     { x: [1, 2, 3], y: [10, 20, 30], id: `series-a` },
@@ -191,7 +202,7 @@ describe(`apply_range_constraints`, () => {
   })
 })
 
-// C16: Where condition tests
+// Where condition tests
 describe(`apply_where_condition`, () => {
   it(`returns single segment when no condition`, () => {
     const x_values = [1, 2, 3]
@@ -288,7 +299,7 @@ describe(`clamp_for_log_scale`, () => {
   })
 })
 
-// C15: Path generation tests
+// Path generation tests
 describe(`generate_fill_path`, () => {
   it(`generates valid SVG path for linear curve`, () => {
     const data = [
@@ -386,10 +397,10 @@ describe(`convert_error_band_to_fill_region`, () => {
 
   it(`returns null for invalid series reference`, () => {
     expect(
-      convert_error_band_to_fill_region({
-        series: { type: `series`, series_idx: 99 },
-        error: 5,
-      }, mock_series),
+      convert_error_band_to_fill_region(
+        { series: { type: `series`, series_idx: 99 }, error: 5 },
+        mock_series,
+      ),
     ).toBeNull()
   })
 
@@ -418,5 +429,127 @@ describe(`is_fill_gradient`, () => {
     [`object without stops`, { type: `linear` }, false],
   ])(`%s → %s`, (_, value, expected) => {
     expect(is_fill_gradient(value as string | FillGradient | undefined)).toBe(expected)
+  })
+})
+
+// Type structure validation tests
+describe(`FILL_CURVE_TYPES`, () => {
+  it(`contains exactly 10 expected curve types`, () => {
+    expect(FILL_CURVE_TYPES).toEqual([
+      `linear`,
+      `monotoneX`,
+      `monotoneY`,
+      `step`,
+      `stepBefore`,
+      `stepAfter`,
+      `basis`,
+      `cardinal`,
+      `catmullRom`,
+      `natural`,
+    ])
+  })
+})
+
+describe(`Fill type structures`, () => {
+  it.each<[string, FillBoundary, Record<string, unknown>]>([
+    [`number shorthand`, 42, {}],
+    [`series reference`, { type: `series`, series_idx: 0 }, { type: `series` }],
+    [`constant`, { type: `constant`, value: 50 }, { type: `constant` }],
+    [`function`, { type: `function`, fn: (x: number) => x * 2 }, { type: `function` }],
+  ])(`FillBoundary accepts %s`, (_, boundary, expected_match) => {
+    if (Object.keys(expected_match).length > 0) {
+      expect(boundary).toMatchObject(expected_match)
+    }
+    // Function boundary executes correctly
+    if (typeof boundary === `object` && boundary.type === `function`) {
+      expect(boundary.fn(5)).toBe(10)
+    }
+  })
+
+  it.each<[string, FillGradient]>([
+    [`linear`, { type: `linear`, angle: 45, stops: [[0, `red`], [1, `blue`]] }],
+    [`radial`, {
+      type: `radial`,
+      center: { x: 0.5, y: 0.5 },
+      stops: [[0, `white`], [1, `black`]],
+    }],
+  ])(`FillGradient supports %s type`, (type, gradient) => {
+    expect(gradient.type).toBe(type)
+    expect(gradient.stops.length).toBe(2)
+  })
+
+  it(`FillEdgeStyle and FillHoverStyle work correctly`, () => {
+    const empty_edge: FillEdgeStyle = {}
+    expect(empty_edge.color).toBeUndefined()
+
+    const hover: FillHoverStyle = { fill: `orange`, edge: { color: `red`, width: 2 } }
+    expect(hover.edge?.color).toBe(`red`)
+  })
+
+  it(`FillHandlerEvent contains required fields`, () => {
+    const event: FillHandlerEvent = {
+      event: new MouseEvent(`click`),
+      region_idx: 0,
+      x: 10,
+      y: 20,
+      px: 100,
+      py: 200,
+    }
+    expect(event).toMatchObject({ region_idx: 0, x: 10, px: 100 })
+  })
+
+  it(`FillZIndex accepts all valid positions`, () => {
+    const positions: FillZIndex[] = [
+      `below-grid`,
+      `below-lines`,
+      `below-points`,
+      `above-all`,
+    ]
+    expect(positions).toHaveLength(4)
+  })
+
+  it(`FillRegion accepts minimal and full configurations`, () => {
+    const minimal: FillRegion = { upper: { type: `series`, series_idx: 0 }, lower: 0 }
+    expect(minimal.upper).toMatchObject({ type: `series` })
+
+    const full: FillRegion = {
+      id: `test`,
+      label: `Test Region`,
+      upper: { type: `data`, values: [1, 2, 3] },
+      lower: { type: `constant`, value: 0 },
+      x_range: [0, 10],
+      y_range: [null, 100],
+      where: (_x, y1, y2) => y1 > y2,
+      fill: { type: `linear`, stops: [[0, `red`], [1, `blue`]] },
+      fill_opacity: 0.5,
+      curve: `monotoneX`,
+      z_index: `below-lines`,
+      visible: true,
+      hover_style: { cursor: `pointer` },
+      show_in_legend: true,
+      metadata: { custom: `data` },
+    }
+    expect(full).toMatchObject({ id: `test`, curve: `monotoneX`, z_index: `below-lines` })
+  })
+
+  it(`LegendItem supports series and fill item types`, () => {
+    const series: LegendItem = {
+      label: `S`,
+      visible: true,
+      series_idx: 0,
+      display_style: { symbol_type: `Circle` },
+    }
+    expect(series.item_type).toBeUndefined()
+
+    const fill: LegendItem = {
+      label: `F`,
+      visible: true,
+      series_idx: -1,
+      item_type: `fill`,
+      fill_idx: 0,
+      display_style: { fill_color: `steelblue`, fill_opacity: 0.3, edge_color: `navy` },
+    }
+    expect(fill).toMatchObject({ item_type: `fill`, fill_idx: 0 })
+    expect(fill.display_style.fill_color).toBe(`steelblue`)
   })
 })
