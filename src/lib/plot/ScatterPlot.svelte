@@ -10,6 +10,9 @@
     BasePlotProps,
     ControlsConfig,
     DataSeries,
+    ErrorBand,
+    FillHandlerEvent,
+    FillRegion,
     HoverConfig,
     InternalPoint,
     LabelPlacementConfig,
@@ -27,6 +30,7 @@
   } from '$lib/plot'
   import {
     ColorBar,
+    FillArea,
     find_best_plot_area,
     get_tick_label,
     Line,
@@ -63,6 +67,15 @@
     generate_ticks,
     get_nice_data_range,
   } from './scales'
+  import {
+    apply_range_constraints,
+    apply_where_condition,
+    clamp_for_log_scale,
+    convert_error_band_to_fill_region,
+    generate_fill_path,
+    resolve_boundary,
+  } from './fill-utils'
+  import type { FillPathPoint } from './fill-utils'
 
   let {
     series = $bindable([]),
@@ -96,6 +109,10 @@
     point_events,
     on_point_click,
     on_point_hover,
+    fill_regions = [],
+    error_bands = [],
+    on_fill_click,
+    on_fill_hover,
     selected_series_idx = $bindable(0),
     wrapper = $bindable(),
     fullscreen = $bindable(false),
@@ -152,6 +169,10 @@
     >
     on_point_click?: (data: ScatterHandlerEvent<Metadata>) => void
     on_point_hover?: (data: ScatterHandlerEvent<Metadata> | null) => void
+    fill_regions?: FillRegion[]
+    error_bands?: ErrorBand[]
+    on_fill_click?: (event: FillHandlerEvent) => void
+    on_fill_hover?: (event: FillHandlerEvent | null) => void
     selected_series_idx?: number
     wrapper?: HTMLDivElement
   } = $props()
@@ -205,6 +226,9 @@
   let zoom_y_range = $state<[number, number]>([0, 1])
   let zoom_y2_range = $state<[number, number]>([0, 1])
   let previous_series_visibility: boolean[] | null = $state(null)
+
+  // Fill region hover state
+  let hovered_fill_idx = $state<number | null>(null)
 
   // State to hold the calculated label positions after simulation
   let label_positions = $state<Record<string, XyObj>>({})
@@ -535,6 +559,105 @@
     line_dash?: string
   }
 
+  // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
+  type ComputedFill = FillRegion & {
+    idx: number
+    path_segments: string[]
+  }
+  let computed_fills = $derived.by((): ComputedFill[] => {
+    // Merge fill_regions and converted error_bands
+    const all_regions: (FillRegion | null)[] = [
+      ...(fill_regions ?? []),
+      ...(error_bands ?? []).map((band) =>
+        convert_error_band_to_fill_region(band, series_with_ids)
+      ),
+    ]
+
+    return all_regions
+      .filter((region): region is FillRegion => region !== null)
+      .map((region, idx) => {
+        if (region.visible === false) return null
+
+        // Need x-values to resolve boundaries - use all x-values from all series
+        const all_x_values = series_with_ids
+          .filter(Boolean)
+          .flatMap((data_series: DataSeries) => data_series.x)
+          .filter((val) => typeof val === `number` && isFinite(val))
+          .sort((val_a, val_b) => val_a - val_b)
+
+        // Remove duplicates
+        const unique_x = [...new Set(all_x_values)]
+        if (unique_x.length === 0) return null
+
+        // Domain context for boundary resolution
+        const domains = {
+          y_domain: [y_min, y_max] as [number, number],
+          y2_domain: [y2_min, y2_max] as [number, number],
+        }
+
+        // Resolve upper and lower boundaries
+        const upper_values = resolve_boundary(
+          region.upper,
+          series_with_ids,
+          unique_x,
+          domains,
+        )
+        const lower_values = resolve_boundary(
+          region.lower,
+          series_with_ids,
+          unique_x,
+          domains,
+        )
+
+        if (!upper_values || !lower_values) return null
+
+        // Apply range constraints
+        const range_filtered = apply_range_constraints(
+          unique_x,
+          lower_values,
+          upper_values,
+          region,
+        )
+
+        // Clamp for log scale if needed
+        const y_scale_type = final_y_axis.scale_type ?? `linear`
+        const x_scale_type = final_x_axis.scale_type ?? `linear`
+        const clamped = clamp_for_log_scale(
+          range_filtered.x,
+          range_filtered.y1,
+          range_filtered.y2,
+          y_scale_type,
+          x_scale_type,
+        )
+
+        // Apply where condition (splits into segments)
+        const conditioned = apply_where_condition(
+          clamped.x,
+          clamped.y1,
+          clamped.y2,
+          region,
+        )
+
+        // Generate paths for each segment (convert to pixel coordinates)
+        const path_segments = conditioned.segments
+          .filter((segment) => segment.length > 1)
+          .map((segment) => {
+            const pixel_data: FillPathPoint[] = segment.map((point) => ({
+              x: x_scale_fn(point.x),
+              y1: y_scale_fn(point.y1),
+              y2: y_scale_fn(point.y2),
+            }))
+            return generate_fill_path(pixel_data, region.curve ?? `monotoneX`)
+          })
+          .filter((path) => path.length > 0)
+
+        if (path_segments.length === 0) return null
+
+        return { ...region, idx, path_segments }
+      })
+      .filter((fill): fill is ComputedFill => fill !== null)
+  })
+
   // Prepare data needed for the legend component
   let legend_data = $derived.by(() => {
     const items = series_with_ids.map(
@@ -637,7 +760,7 @@
 
     // Deduplicate by label - keep first occurrence of each unique label
     const seen_labels = new SvelteSet<string>()
-    return items.filter(
+    const series_items = items.filter(
       (
         legend_item: {
           label: string
@@ -652,6 +775,35 @@
         return true
       },
     )
+
+    // Add fill region items to legend
+    const fill_items = computed_fills
+      .filter((fill) => fill.show_in_legend !== false && fill.label)
+      .map((fill) => ({
+        series_idx: -1, // Not a series
+        fill_idx: fill.idx,
+        item_type: `fill` as const,
+        label: fill.label!,
+        visible: fill.visible !== false,
+        legend_group: fill.legend_group,
+        display_style: {
+          fill_color: typeof fill.fill === `string` ? fill.fill : `steelblue`,
+          fill_opacity: fill.fill_opacity ?? 0.3,
+          edge_color: fill.edge_upper?.color,
+        },
+      }))
+
+    return [...series_items, ...fill_items]
+  })
+
+  // Group fills by z-index for ordered rendering
+  let fills_by_z = $derived({
+    below_grid: computed_fills.filter((fill) => fill.z_index === `below-grid`),
+    below_lines: computed_fills.filter(
+      (fill) => !fill.z_index || fill.z_index === `below-lines`,
+    ),
+    below_points: computed_fills.filter((fill) => fill.z_index === `below-points`),
+    above_all: computed_fills.filter((fill) => fill.z_index === `above-all`),
   })
 
   // Calculate best legend placement using new simple system
@@ -1122,6 +1274,35 @@
   })
 </script>
 
+{#snippet fill_regions_layer(fills: typeof computed_fills)}
+  {#each fills as fill (fill.id ?? fill.idx)}
+    {#each fill.path_segments as
+      path_d,
+      segment_idx
+      (`${fill.id ?? fill.idx}-${segment_idx}`)
+    }
+      <FillArea
+        region={fill}
+        region_idx={fill.idx}
+        path={path_d}
+        {clip_path_id}
+        {x_scale_fn}
+        {y_scale_fn}
+        hovered_region={hovered_fill_idx}
+        on_click={(event) => {
+          fill.on_click?.(event)
+          on_fill_click?.(event)
+        }}
+        on_hover={(event) => {
+          hovered_fill_idx = event?.region_idx ?? null
+          fill.on_hover?.(event)
+          on_fill_hover?.(event)
+        }}
+      />
+    {/each}
+  {/each}
+{/snippet}
+
 <svelte:window
   onkeydown={(e) => {
     if (e.key === `Escape` && fullscreen) {
@@ -1172,6 +1353,10 @@
         y2_range: [y2_min, y2_max],
         fullscreen,
       })}
+
+      <!-- Fill regions: below grid -->
+      {@render fill_regions_layer(fills_by_z.below_grid)}
+
       <g class="x-axis">
         {#if width > 0 && height > 0}
           {#each x_tick_values as tick (tick)}
@@ -1445,6 +1630,9 @@
         </clipPath>
       </defs>
 
+      <!-- Fill regions: below lines (default z-index) -->
+      {@render fill_regions_layer(fills_by_z.below_lines)}
+
       <!-- Lines -->
       {#if styles.show_lines}
         {#each filtered_series ?? [] as series_data (series_data._id)}
@@ -1489,6 +1677,9 @@
           </g>
         {/each}
       {/if}
+
+      <!-- Fill regions: below points -->
+      {@render fill_regions_layer(fills_by_z.below_points)}
 
       <!-- Points -->
       {#if styles.show_points}
@@ -1586,6 +1777,9 @@
           </g>
         {/each}
       {/if}
+
+      <!-- Fill regions: above all -->
+      {@render fill_regions_layer(fills_by_z.above_all)}
     </svg>
 
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
