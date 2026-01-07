@@ -124,7 +124,10 @@ test.describe(`OPTIMADE route`, () => {
   test(`handles invalid structure ID gracefully`, async ({ page }) => {
     await page.goto(`/optimade-invalid-id-12345`)
 
-    // Check input value is set correctly
+    // Wait for providers to load first (triggers URL slug parsing)
+    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+
+    // Check input value is set correctly (after providers load)
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
 
     // Check for error message - mock returns OPTIMADE 404 with "Structure not found"
@@ -137,8 +140,10 @@ test.describe(`OPTIMADE route`, () => {
   test(`can switch providers and clear input field`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
 
-    // Verify initial MP structure is loaded
-    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
+    // Wait for providers to load and structure to be fetched
+    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    // Verify initial MP structure is loaded (h2 contains structure ID in span)
+    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 10000 })
 
     // Click on OQMD provider button
     await page.locator(`button.db-select`, { hasText: `oqmd` }).click()
@@ -158,8 +163,10 @@ test.describe(`OPTIMADE route`, () => {
   test(`can load structure from different providers via text input`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
 
+    // Wait for providers to load and structure to be fetched
+    await expect(page.locator(`button.db-select`).first()).toBeVisible()
     // Verify initial MP structure is loaded
-    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
+    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 10000 })
 
     // Enter a different MP structure ID
     await page.locator(`input.structure-input`).fill(`mp-149`)
@@ -185,8 +192,10 @@ test.describe(`OPTIMADE route`, () => {
   test(`can navigate between multiple providers`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
 
+    // Wait for providers to load and structure to be fetched
+    await expect(page.locator(`button.db-select`).first()).toBeVisible()
     // Test MP provider (should already be loaded)
-    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible()
+    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 10000 })
 
     // Switch to COD provider
     await page.locator(`button.db-select`, { hasText: `cod` }).click()
@@ -206,8 +215,12 @@ test.describe(`OPTIMADE route`, () => {
   test(`can click on suggested structures to load them`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
 
-    // Wait for suggestions to load
-    await expect(page.locator(`text=Suggested Structures`)).toBeVisible()
+    // Wait for providers to load first
+    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    // Wait for suggestions to load (shown after providers and suggestions fetch)
+    await expect(page.locator(`text=Suggested Structures`)).toBeVisible({
+      timeout: 10000,
+    })
 
     // Click on a specific known suggestion (mp-149) that exists in MOCK_STRUCTURES
     // This avoids fragility if suggestion order changes
