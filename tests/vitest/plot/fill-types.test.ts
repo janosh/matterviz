@@ -1,6 +1,4 @@
 // Tests for fill-between types - validates type structures compile correctly
-import { describe, expect, it } from 'vitest'
-import { FILL_CURVE_TYPES } from '$lib/plot/types'
 import type {
   FillBoundary,
   FillEdgeStyle,
@@ -11,6 +9,8 @@ import type {
   FillZIndex,
   LegendItem,
 } from '$lib/plot/types'
+import { FILL_CURVE_TYPES } from '$lib/plot/types'
+import { describe, expect, it } from 'vitest'
 
 describe(`FILL_CURVE_TYPES`, () => {
   it(`contains exactly 10 expected curve types`, () => {

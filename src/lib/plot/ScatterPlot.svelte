@@ -586,6 +586,16 @@
       })),
     ]
 
+    // Compute x-values once for all fills (not per-fill inside map)
+    const all_x_values = series_with_ids
+      .filter(Boolean)
+      .flatMap((data_series: DataSeries) => data_series.x)
+      .filter((val) => typeof val === `number` && isFinite(val))
+      .sort((val_a, val_b) => val_a - val_b)
+    const unique_x = [...new Set(all_x_values)]
+
+    if (unique_x.length === 0) return []
+
     return all_regions
       .filter((
         entry,
@@ -596,17 +606,6 @@
       } => entry.region !== null)
       .map(({ region, source_type, source_idx }, idx) => {
         if (region.visible === false) return null
-
-        // Need x-values to resolve boundaries - use all x-values from all series
-        const all_x_values = series_with_ids
-          .filter(Boolean)
-          .flatMap((data_series: DataSeries) => data_series.x)
-          .filter((val) => typeof val === `number` && isFinite(val))
-          .sort((val_a, val_b) => val_a - val_b)
-
-        // Remove duplicates
-        const unique_x = [...new Set(all_x_values)]
-        if (unique_x.length === 0) return null
 
         // Domain context for boundary resolution
         const domains = {
