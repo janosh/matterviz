@@ -1968,7 +1968,7 @@
           if (source_type === `fill_region`) {
             fill_regions = fill_regions.map((region, idx) =>
               idx === source_idx
-                ? { ...region, visible: region.visible === false }
+                ? { ...region, visible: !(region.visible !== false) }
                 : region
             )
           }
