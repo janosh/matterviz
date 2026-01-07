@@ -191,8 +191,9 @@ test.describe(`BarPlot Component Tests`, () => {
     const pane = section.locator(`.draggable-pane`)
     await expect(pane).toBeVisible()
 
-    // Toggle x grid
-    const x_grid_checkbox = pane.getByLabel(/x-axis\s*grid/i)
+    // Toggle x grid - checkbox is inside span[data-label="grid"]
+    const grid_group = pane.locator(`[data-label="grid"]`)
+    const x_grid_checkbox = grid_group.getByLabel(`X`)
     await expect(x_grid_checkbox).toBeVisible()
     await x_grid_checkbox.scrollIntoViewIfNeeded()
     const initial_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`)

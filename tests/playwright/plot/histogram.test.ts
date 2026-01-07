@@ -599,8 +599,9 @@ test.describe(`Histogram Component Tests`, () => {
       await stroke_number.fill(`2`)
     }
 
-    // Test grid toggles - should be visible in all histogram panes
-    const x_grid_checkbox = control_pane.getByLabel(`X-axis grid`)
+    // Test grid toggles - checkbox is inside span[data-label="grid"]
+    const grid_group = control_pane.locator(`[data-label="grid"]`)
+    const x_grid_checkbox = grid_group.getByLabel(`X`)
     await expect(x_grid_checkbox).toBeVisible()
     await x_grid_checkbox.uncheck()
     await x_grid_checkbox.check()
