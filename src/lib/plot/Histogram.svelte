@@ -953,7 +953,7 @@
   .histogram {
     position: relative;
     width: var(--histogram-width, 100%);
-    height: var(--histogram-height, 100%);
+    height: var(--histogram-height, auto);
     min-height: var(--histogram-min-height, 300px);
     container-type: size; /* enable cqh for panes if explicit height is set */
     z-index: var(--histogram-z-index, auto);
