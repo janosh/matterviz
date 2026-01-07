@@ -283,11 +283,9 @@
     max-width: var(--pane-max-width, 80cqw);
     overflow-x: var(--pane-overflow-x, hidden);
     overflow-y: var(--pane-overflow-y, auto);
-    min-height: min(
-      var(--pane-min-height),
-      calc(100cqh - var(--pane-bottom-margin, 40px))
-    ); /* Ensure pane never exceeds its query container, enabling internal scroll */
-    max-height: var(--pane-max-height, calc(100cqh - var(--pane-bottom-margin, 40px)));
+    /* Height constraints: use viewport-based max-height as primary constraint */
+    min-height: var(--pane-min-height, auto);
+    max-height: var(--pane-max-height, 80vh);
     overscroll-behavior: contain; /* Prevent scroll chaining to parent containers (e.g. Jupyter cells) */
   }
   :global(body.fullscreen) .draggable-pane {
@@ -381,6 +379,11 @@
   .draggable-pane :global(.pane-grid) {
     display: grid;
     gap: 8pt;
+    align-items: center;
+  }
+  .draggable-pane :global(.control-group) {
+    display: inline-flex;
+    gap: 0.5em;
     align-items: center;
   }
   .draggable-pane :global(label:has(input[type='range'])) {

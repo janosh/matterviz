@@ -69,11 +69,27 @@ export interface PhononDos {
 export interface ElectronicDos {
   type: `electronic`
   energies: number[]
-  densities: number[]
+  densities: number[] // Spin-up densities (or total if not spin-polarized)
+  spin_down_densities?: number[] // Spin-down densities (only for spin-polarized)
   spin_polarized?: boolean
   efermi?: number
   dos_at_e_fermi?: number // DOS value at Fermi level
 }
+
+// Spin display mode for electronic DOS visualization
+export type SpinMode = `mirror` | `overlay` | `up_only` | `down_only` | null
+
+// Projected DOS type for pymatgen CompleteDos extraction
+export type PdosType = `atom` | `orbital`
+
+// Type for stacked area fill data in DOS visualization
+export interface StackedAreaData {
+  x_values: number[] // frequencies or energies
+  upper_densities: number[] // current cumulative
+  lower_densities: number[] // previous cumulative (baseline)
+  color: string
+}
+
 // Discriminated union for type-safe DOS handling
 export type DosData = PhononDos | ElectronicDos
 

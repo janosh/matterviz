@@ -1238,11 +1238,12 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await show_points_checkbox.check()
     expect(await scatter_plot.locator(`path.marker`).count()).toBe(initial_marker_count)
 
-    // Test grid controls exist and can be toggled
-    const grid_controls = [`X-axis grid`, `Y-axis grid`]
+    // Test grid controls exist and can be toggled - checkboxes are inside span[data-label="grid"]
+    const grid_group = control_pane.locator(`[data-label="grid"]`)
+    const grid_labels = [`X`, `Y`]
 
-    for (const label of grid_controls) {
-      const checkbox = control_pane.getByLabel(label)
+    for (const label of grid_labels) {
+      const checkbox = grid_group.getByLabel(label)
       await expect(checkbox).toBeVisible()
       await expect(checkbox).toBeChecked()
 

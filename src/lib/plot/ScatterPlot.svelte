@@ -5,7 +5,7 @@
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
-  import { FullscreenToggle } from '$lib/layout'
+  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type {
     BasePlotProps,
     ControlsConfig,
@@ -1115,6 +1115,11 @@
 
   let using_controls = $derived(controls.show)
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
+
+  // Set theme-aware background when entering fullscreen
+  $effect(() => {
+    set_fullscreen_bg(wrapper, fullscreen, `--scatter-fullscreen-bg`)
+  })
 </script>
 
 <svelte:window
@@ -1655,9 +1660,10 @@
       <ScatterPlotControls
         toggle_props={{
           ...controls.toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
-            controls.toggle_props?.style ?? ``
-          }`,
+          style:
+            `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: var(--ctrl-btn-top, 5pt); ${
+              controls.toggle_props?.style ?? ``
+            }`,
         }}
         pane_props={controls.pane_props}
         bind:x_axis
@@ -1782,7 +1788,7 @@
     z-index: var(--scatter-fullscreen-z-index, 100000001);
     margin: 0;
     border-radius: 0;
-    background: var(--plot-bg, white);
+    background: var(--scatter-fullscreen-bg, var(--scatter-bg, var(--plot-bg)));
     max-height: none !important;
     overflow: hidden;
     /* Add padding to prevent titles from being cropped at top */

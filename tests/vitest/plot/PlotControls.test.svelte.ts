@@ -120,12 +120,17 @@ describe(`PlotControls`, () => {
   })
 
   describe(`display controls`, () => {
+    /** Helper to find checkboxes within a control group by data-label attribute. */
+    const get_checkboxes_in_group = (label: string) => {
+      const group = document.querySelector(`.control-group[data-label="${label}"]`)
+      return group
+        ? Array.from(group.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`))
+        : []
+    }
+
     test(`renders correct number of grid controls`, () => {
       mount_controls({ has_y2_points: true })
-      const grids = Array.from(
-        document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
-      )
-        .filter((cb) => cb.parentElement?.textContent?.includes(`grid`))
+      const grids = get_checkboxes_in_group(`grid`)
       expect(grids.length).toBe(3)
     })
 
@@ -139,10 +144,7 @@ describe(`PlotControls`, () => {
       `shows $expected zero line controls for ranges`,
       ({ x_range, y_range, expected }) => {
         mount_controls({ x_range, y_range, auto_x_range: x_range, auto_y_range: y_range })
-        const zero_lines = Array.from(
-          document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
-        )
-          .filter((cb) => cb.parentElement?.textContent?.includes(`zero line`))
+        const zero_lines = get_checkboxes_in_group(`zero line`)
         expect(zero_lines.length).toBe(expected)
       },
     )

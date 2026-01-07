@@ -102,7 +102,7 @@ export interface EnergyModeInfo {
 // Default legend configuration shared by 3D and 4D diagrams
 export const default_controls: ConvexHullControlsType = {
   title: ``,
-  show: true,
+  show: `hover`,
   position: `top-right`,
   width: 280,
   show_counts: true,

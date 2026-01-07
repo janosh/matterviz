@@ -4,7 +4,7 @@
 >
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { format_value } from '$lib/labels'
-  import { FullscreenToggle } from '$lib/layout'
+  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type {
     BarHandlerProps,
     BarMode,
@@ -178,6 +178,7 @@
   }
 
   let [width, height] = $state([0, 0])
+  let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGElement | null = $state(null)
   let clip_path_id = `chart-clip-${crypto?.randomUUID?.()}`
 
@@ -729,6 +730,11 @@
       .filter((idx) => idx >= 0)
     return { bar_series_count: bar_series_indices.length, bar_series_indices }
   })
+
+  // Set theme-aware background when entering fullscreen
+  $effect(() => {
+    set_fullscreen_bg(wrapper, fullscreen, `--barplot-fullscreen-bg`)
+  })
 </script>
 
 <svelte:window
@@ -741,6 +747,7 @@
 />
 
 <div
+  bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
@@ -1448,7 +1455,7 @@
     z-index: var(--barplot-fullscreen-z-index, 100000001);
     margin: 0;
     border-radius: 0;
-    background: var(--plot-bg, white);
+    background: var(--barplot-fullscreen-bg, var(--barplot-bg, var(--plot-bg)));
     max-height: none !important;
     overflow: hidden;
     /* Add padding to prevent titles from being cropped at top */

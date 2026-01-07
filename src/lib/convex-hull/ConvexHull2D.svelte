@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { CompositionType } from '$lib/composition'
+  import { normalize_show_controls } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import type { D3SymbolName } from '$lib/labels'
   import type { UserContentProps } from '$lib/plot'
@@ -83,6 +84,7 @@
   } = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
+  const controls_config = $derived(normalize_show_controls(merged_controls.show))
   const merged_config = $derived({
     ...default_hull_config,
     point_size: 6, // Binary diagrams use slightly smaller points
@@ -598,8 +600,8 @@
 {/snippet}
 
 {#snippet pd_header_controls()}
-  {#if merged_controls.show && !structure_popup.open}
-    {#if has_changes_to_reset}
+  {#if controls_config.mode !== `never` && !structure_popup.open}
+    {#if has_changes_to_reset && controls_config.visible(`reset`)}
       <button
         type="button"
         onclick={reset_all}
@@ -610,7 +612,7 @@
       </button>
     {/if}
 
-    {#if enable_info_pane && phase_stats}
+    {#if enable_info_pane && phase_stats && controls_config.visible(`info-pane`)}
       <ConvexHullInfoPane
         bind:pane_open={info_pane_open}
         {phase_stats}
@@ -623,27 +625,29 @@
       />
     {/if}
 
-    <ConvexHullControls
-      bind:controls_open={legend_pane_open}
-      bind:color_mode
-      bind:color_scale
-      bind:show_stable
-      bind:show_unstable
-      bind:show_stable_labels
-      bind:show_unstable_labels
-      bind:max_hull_dist_show_phases
-      bind:max_hull_dist_show_labels
-      {max_hull_dist_in_data}
-      {stable_entries}
-      {unstable_entries}
-      {merged_controls}
-      toggle_props={{ class: `control-btn legend-controls-btn` }}
-      bind:energy_source_mode
-      {has_precomputed_e_form}
-      {can_compute_e_form}
-      {has_precomputed_hull}
-      {can_compute_hull}
-    />
+    {#if controls_config.visible(`controls`)}
+      <ConvexHullControls
+        bind:controls_open={legend_pane_open}
+        bind:color_mode
+        bind:color_scale
+        bind:show_stable
+        bind:show_unstable
+        bind:show_stable_labels
+        bind:show_unstable_labels
+        bind:max_hull_dist_show_phases
+        bind:max_hull_dist_show_labels
+        {max_hull_dist_in_data}
+        {stable_entries}
+        {unstable_entries}
+        {merged_controls}
+        toggle_props={{ class: `control-btn legend-controls-btn` }}
+        bind:energy_source_mode
+        {has_precomputed_e_form}
+        {can_compute_e_form}
+        {has_precomputed_hull}
+        {can_compute_hull}
+      />
+    {/if}
   {/if}
 {/snippet}
 

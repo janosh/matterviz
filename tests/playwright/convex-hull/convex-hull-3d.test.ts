@@ -10,6 +10,32 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await expect(page.locator(`.ternary-grid`).first()).toBeVisible({ timeout: 15_000 })
   })
 
+  test(`control buttons have hover visibility by default`, async ({ page }) => {
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
+    await expect(diagram).toBeVisible()
+
+    const control_buttons = diagram.locator(`.control-buttons`)
+    await expect(control_buttons).toBeAttached()
+
+    // Control buttons should have hover-visible class (default mode)
+    await expect(control_buttons).toHaveClass(/hover-visible/)
+
+    // Before hover, opacity should be 0
+    const opacity_before = await control_buttons.evaluate(
+      (el) => getComputedStyle(el).opacity,
+    )
+    expect(Number(opacity_before)).toBe(0)
+
+    // After hover on the diagram, buttons should become visible
+    await diagram.hover()
+    await expect
+      .poll(async () => {
+        const op = await control_buttons.evaluate((el) => getComputedStyle(el).opacity)
+        return Number(op)
+      })
+      .toBe(1)
+  })
+
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
     // Performance test page generates synthetic data client-side (no network requests)
     // so shorter timeouts are appropriate for 100 entries

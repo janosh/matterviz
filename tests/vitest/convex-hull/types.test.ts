@@ -1,4 +1,6 @@
-import type { PhaseData } from '$lib/convex-hull/types'
+import { normalize_show_controls } from '$lib/controls'
+import { default_controls } from '$lib/convex-hull'
+import type { ConvexHullControlsType, PhaseData } from '$lib/convex-hull/types'
 import {
   get_arity,
   is_binary_entry,
@@ -41,5 +43,22 @@ describe(`arity helpers`, () => {
         make({ A: 1, B: 1, C: 1, D: 1, E: 1, F: 1, G: 1, H: 1, I: 1, J: 1 }),
       ),
     ).toBe(true)
+  })
+})
+
+describe(`ConvexHullControlsType.show`, () => {
+  test(`default_controls.show is hover and supports hidden array`, () => {
+    // Verify default is 'hover'
+    expect(default_controls.show).toBe(`hover`)
+
+    // Verify type accepts full ShowControlsProp with hidden controls
+    const controls: ConvexHullControlsType = {
+      show: { mode: `hover`, hidden: [`reset`, `fullscreen`] },
+    }
+    const config = normalize_show_controls(controls.show)
+    expect(config.mode).toBe(`hover`)
+    expect(config.class).toBe(`hover-visible`)
+    expect(config.visible(`reset`)).toBe(false)
+    expect(config.visible(`info-pane`)).toBe(true)
   })
 })

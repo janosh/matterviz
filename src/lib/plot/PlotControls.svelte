@@ -115,7 +115,7 @@
       ...toggle_props,
       class: `${controls_class}-controls-toggle ${toggle_props?.class ?? ``}`,
       style:
-        `position: absolute; top: var(--ctrl-btn-top, 1ex); right: var(--ctrl-btn-right, 1ex);` +
+        `position: absolute; top: var(--ctrl-btn-top, 5pt); right: var(--ctrl-btn-right, 1ex);` +
         (toggle_props?.style ?? ``),
     }}
     pane_props={{
@@ -143,25 +143,25 @@
         display.y_grid = DEFAULTS.plot.show_y_grid
         display.y2_grid = DEFAULTS.plot.show_y2_grid
       }}
-      style="display: flex; flex-wrap: wrap; gap: 1ex"
+      style="display: flex; flex-wrap: wrap; gap: 1ex; align-items: center"
     >
-      {#if x_includes_zero}
-        <label>
-          <input type="checkbox" bind:checked={display.x_zero_line} /> X zero line
-        </label>
+      {#if x_includes_zero || y_includes_zero}
+        <span class="control-group" data-label="zero line">Zero line:
+          {#if x_includes_zero}
+            <label><input type="checkbox" bind:checked={display.x_zero_line} /> X</label>
+          {/if}
+          {#if y_includes_zero}
+            <label><input type="checkbox" bind:checked={display.y_zero_line} /> Y</label>
+          {/if}
+        </span>
       {/if}
-      {#if y_includes_zero}
-        <label>
-          <input type="checkbox" bind:checked={display.y_zero_line} /> Y zero line
-        </label>
-      {/if}
-      <label><input type="checkbox" bind:checked={display.x_grid} /> X-axis grid</label>
-      <label><input type="checkbox" bind:checked={display.y_grid} /> Y-axis grid</label>
-      {#if has_y2_points}
-        <label>
-          <input type="checkbox" bind:checked={display.y2_grid} /> Y2-axis grid
-        </label>
-      {/if}
+      <span class="control-group" data-label="grid">Grid:
+        <label><input type="checkbox" bind:checked={display.x_grid} /> X</label>
+        <label><input type="checkbox" bind:checked={display.y_grid} /> Y</label>
+        {#if has_y2_points}
+          <label><input type="checkbox" bind:checked={display.y2_grid} /> Y2</label>
+        {/if}
+      </span>
     </SettingsSection>
 
     <!-- Base Axis Range controls -->
