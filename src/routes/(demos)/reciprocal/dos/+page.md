@@ -1,10 +1,10 @@
 # Density of States (DOS)
 
-Interactive phonon and electronic density of states visualization. The `Dos` component natively renders pymatgen DOS formats including `CompleteDos` and `LobsterCompleteDos`.
+The `Dos` component visualizes electronic and phonon density of states from pymatgen-compatible data.
 
-## Phonon DOS with Normalization and Smearing
+## Basic Usage
 
-A phonon DOS plot with normalization and Gaussian smearing:
+Pass DOS data to the `doses` prop. The component auto-detects phonon vs electronic data:
 
 ```svelte example
 <script>
@@ -12,25 +12,32 @@ A phonon DOS plot with normalization and Gaussian smearing:
   import { phonon_dos } from '$site/phonons'
 </script>
 
-<Dos doses={[phonon_dos['mp-2758-Sr4Se4-pbe']]} normalize="max" sigma={0.15} />
+<Dos doses={phonon_dos['mp-2758-Sr4Se4-pbe']} />
 ```
 
-## Electronic DOS (Pymatgen CompleteDos)
+## Electronic DOS with Spin Polarization
 
-Pymatgen's `CompleteDos` objects render directly, automatically extracting spin channels from `{1: [...], -1: [...]}` format:
+Electronic DOS from pymatgen `CompleteDos` objects render directly. Spin-polarized data (stored as `{1: [...], -1: [...]}`) is automatically extracted. Use `shift_to_fermi()` to center energies at E_F = 0:
 
 ```svelte example
 <script>
   import { Dos } from 'matterviz'
+  import { shift_to_fermi } from '$lib/spectral/helpers'
   import { dos_spin_polarization } from '$site/electronic/dos'
 </script>
 
-<Dos doses={dos_spin_polarization} />
+<Dos doses={shift_to_fermi(dos_spin_polarization)} />
 ```
 
-## Fermi Energy Shifting
+The built-in toolbar (hover to reveal) lets you toggle between spin modes:
 
-Pymatgen DOS data includes `efermi` - use `shift_to_fermi()` to shift energies so E_F = 0:
+- **↕ Mirror**: Spin-up above, spin-down below zero
+- **≡ Overlay**: Both spins on positive axis
+- **↑/↓**: Single spin channel
+
+## Projected DOS (pDOS)
+
+Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `pdos_type`:
 
 ```svelte example
 <script>
@@ -38,16 +45,28 @@ Pymatgen DOS data includes `efermi` - use `shift_to_fermi()` to shift energies s
   import { shift_to_fermi } from '$lib/spectral/helpers'
   import { dos_spin_polarization } from '$site/electronic/dos'
 
-  // Shift energies so Fermi level (efermi=5.36 eV) is at E=0
-  const dos_shifted = shift_to_fermi(dos_spin_polarization)
+  let pdos_type = $state('atom')
 </script>
 
-<Dos doses={dos_shifted} reference_frequency={0} />
+<label style="display: block; margin-bottom: 0.5em">
+  Projection:
+  <select bind:value={pdos_type}>
+    <option value="atom">Atom-resolved (Ta, Zn, Co)</option>
+    <option value="orbital">Orbital-resolved (s, p, d)</option>
+  </select>
+</label>
+
+<Dos
+  doses={shift_to_fermi(dos_spin_polarization)}
+  {pdos_type}
+  stack
+  spin_mode="up_only"
+/>
 ```
 
-## Multiple DOS with Interactive Controls
+## Stacking and Smearing
 
-Compare multiple DOS curves with interactive unit conversion, normalization, and smearing:
+Multiple DOS curves can be stacked as filled areas. Gaussian smearing (σ) smooths noisy data:
 
 ```svelte example
 <script>
@@ -56,66 +75,95 @@ Compare multiple DOS curves with interactive unit conversion, normalization, and
 
   const dos = phonon_dos['mp-2758-Sr4Se4-pbe']
   const doses = {
-    'Total': dos,
-    'Partial A': { ...dos, densities: dos.densities.map((dens) => dens * 0.6) },
-    'Partial B': { ...dos, densities: dos.densities.map((dens) => dens * 0.4) },
+    'Mode A': { ...dos, densities: dos.densities.map((d) => d * 0.45) },
+    'Mode B': { ...dos, densities: dos.densities.map((d) => d * 0.35) },
+    'Mode C': { ...dos, densities: dos.densities.map((d) => d * 0.2) },
   }
-
-  let selected_unit = $state('THz')
-  const units = ['THz', 'meV']
-
-  let normalize = $state('none')
-  const normalize_options = ['none', 'max', 'sum', 'integral']
-  let sigma = $state(0.15)
 </script>
 
-<div style="display: flex; gap: 1em; margin-block: 1em">
-  <label>
-    Unit:
-    <select bind:value={selected_unit}>
-      {#each units as unit (unit)}
-        <option value={unit}>{unit}</option>
-      {/each}
-    </select>
-  </label>
-
-  <label>
-    Normalize:
-    <select bind:value={normalize}>
-      {#each normalize_options as value (value)}
-        <option {value}>{value}</option>
-      {/each}
-    </select>
-  </label>
-
-  <label>
-    Smearing (σ):
-    <input type="number" bind:value={sigma} min={0} max={1} step={0.05} />
-  </label>
-</div>
-
-<Dos {doses} units={selected_unit} {normalize} {sigma} />
+<Dos {doses} normalize="max" sigma={0.1} stack />
 ```
 
-## Horizontal Orientation
+## Interactive Explorer
 
-For side-by-side layout with band structures:
+Browse all available DOS files. Click to load, use controls to adjust visualization:
 
 ```svelte example
 <script>
-  import { Dos } from 'matterviz'
+  import { Dos, FilePicker } from 'matterviz'
+  import { shift_to_fermi } from '$lib/spectral/helpers'
+  import { dos_spin_polarization, lobster_complete_dos } from '$site/electronic/dos'
   import { phonon_dos } from '$site/phonons'
+
+  const files = [
+    {
+      name: 'mp-865805 (Ta-Zn-Co)',
+      data: shift_to_fermi(dos_spin_polarization),
+      category: 'Electronic',
+      category_icon: '⚡',
+    },
+    {
+      name: 'KF Lobster',
+      data: lobster_complete_dos,
+      category: 'Electronic',
+      category_icon: '⚡',
+    },
+    ...Object.entries(phonon_dos).map(([key, data]) => ({
+      name: key.replace('mp-', '').replace(/-/g, ' '),
+      data,
+      category: 'Phonon',
+      category_icon: '🔊',
+    })),
+  ]
+
+  let active_file = $state(files[0].name)
+  let pdos_type = $state(null)
+
+  const current_dos = $derived(files.find((f) => f.name === active_file)?.data)
+  const is_electronic = $derived(
+    files.find((f) => f.name === active_file)?.category === 'Electronic',
+  )
 </script>
 
-<Dos doses={[phonon_dos['mp-2758-Sr4Se4-pbe']]} orientation="horizontal" sigma={0.15} />
+<div
+  style="display: flex; gap: 1em; margin-bottom: 0.5em; align-items: center; flex-wrap: wrap"
+>
+  <FilePicker
+    files={files.map((f) => ({
+      name: f.name,
+      category: f.category,
+      category_icon: f.category_icon,
+    }))}
+    active_files={[active_file]}
+    show_category_filters
+    on_click={(file) => [active_file, pdos_type] = [file.name, null]}
+  />
+  {#if is_electronic}
+    <select bind:value={pdos_type} style="padding: 4px">
+      <option value={null}>Total DOS</option>
+      <option value="atom">Atom pDOS</option>
+      <option value="orbital">Orbital pDOS</option>
+    </select>
+  {/if}
+</div>
+
+<Dos
+  doses={current_dos}
+  {pdos_type}
+  stack={pdos_type !== null}
+  show_normalize_control
+  show_units_control={!is_electronic}
+/>
 ```
 
 ## Features
 
-- **Normalization**: Max, sum, or integral normalization
-- **Stacking**: Area plots for multiple DOS
-- **Smearing**: Gaussian broadening with configurable σ
-- **Unit conversion**: THz, eV, meV, Ha, cm⁻¹
-- **Orientation**: Vertical or horizontal for layout flexibility
-- **Interactive**: Zoom, pan, hover tooltips
-- **Pymatgen support**: `CompleteDos`, `LobsterCompleteDos`, spin-polarized data
+| Feature           | Description                            |
+| ----------------- | -------------------------------------- |
+| **Spin modes**    | Mirror, overlay, up-only, down-only    |
+| **Projected DOS** | Atom and orbital (s, p, d) projections |
+| **Stacking**      | Filled area plots                      |
+| **Smearing**      | Gaussian broadening (σ slider)         |
+| **Normalization** | Max, sum, integral                     |
+| **Units**         | THz, eV, meV, Ha, cm⁻¹                 |
+| **Formats**       | `CompleteDos`, `LobsterCompleteDos`    |

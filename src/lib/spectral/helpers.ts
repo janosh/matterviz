@@ -210,9 +210,41 @@ export function normalize_densities(
   return normalized
 }
 
-// Apply Gaussian smearing to DOS densities.
-// Uses truncated Gaussian (±4σ) for O(n·w) complexity instead of O(n²).
-export function apply_gaussian_smearing(
+// Simple LRU cache for Gaussian smearing results
+// Key: hash of (frequencies, densities, sigma), Value: smeared densities
+const SMEARING_CACHE_MAX_SIZE = 10
+const smearing_cache = new Map<string, number[]>()
+
+// FNV-1a hash for number arrays (fast, good distribution, O(n))
+function fnv1a_hash(arr: number[]): number {
+  let hash = 2166136261 // FNV offset basis
+  for (const val of arr) {
+    // Convert float to int32 bits for consistent hashing
+    const bits = new Float64Array([val])
+    const int_view = new Uint32Array(bits.buffer)
+    hash ^= int_view[0]
+    hash = Math.imul(hash, 16777619) // FNV prime
+    hash ^= int_view[1]
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0 // Ensure unsigned
+}
+
+// Generate cache key using FNV-1a hash over full arrays (O(n), low collision risk)
+function generate_smearing_cache_key(
+  freqs_or_energies: number[],
+  densities: number[],
+  sigma: number,
+): string {
+  const len = freqs_or_energies.length
+  if (len === 0) return `0:${sigma.toFixed(6)}:0:0`
+  return `${len}:${sigma.toFixed(6)}:${fnv1a_hash(freqs_or_energies).toString(16)}:${
+    fnv1a_hash(densities).toString(16)
+  }`
+}
+
+// Core Gaussian smearing computation (unmemoized)
+function apply_gaussian_smearing_core(
   freqs_or_energies: number[],
   densities: number[],
   sigma: number,
@@ -244,6 +276,46 @@ export function apply_gaussian_smearing(
   if (smeared_sum === 0) return densities
   const normalization = orig_sum / smeared_sum
   return smeared.map((dens) => dens * normalization)
+}
+
+// Apply Gaussian smearing to DOS densities with memoization.
+// Uses truncated Gaussian (±4σ) for O(n·w) complexity instead of O(n²).
+// Results are cached using an LRU cache to avoid recomputation on reactive updates.
+export function apply_gaussian_smearing(
+  freqs_or_energies: number[],
+  densities: number[],
+  sigma: number,
+): number[] {
+  // Fast path: no smearing needed
+  if (sigma <= 0) return densities
+
+  const cache_key = generate_smearing_cache_key(freqs_or_energies, densities, sigma)
+
+  // Check cache
+  const cached = smearing_cache.get(cache_key)
+  if (cached) {
+    // Move to end (LRU behavior: most recently used last)
+    smearing_cache.delete(cache_key)
+    smearing_cache.set(cache_key, cached)
+    return cached
+  }
+
+  // Compute and cache
+  const result = apply_gaussian_smearing_core(freqs_or_energies, densities, sigma)
+
+  // Evict oldest entry if cache is full (LRU: first entry is oldest)
+  if (smearing_cache.size >= SMEARING_CACHE_MAX_SIZE) {
+    const oldest_key = smearing_cache.keys().next().value
+    if (oldest_key !== undefined) smearing_cache.delete(oldest_key)
+  }
+
+  smearing_cache.set(cache_key, result)
+  return result
+}
+
+// Clear the smearing cache (useful for testing or memory management)
+export function clear_smearing_cache(): void {
+  smearing_cache.clear()
 }
 
 // Type guards for pymatgen qpoint formats
@@ -296,21 +368,50 @@ const parse_qpoint = (
 const EV_TO_THZ = 1 / THz_TO_EV
 const CM_TO_THZ = 1 / THz_TO_CM
 
-// Extract first spin channel from pymatgen spin-keyed data.
-// Pymatgen stores spin-polarized data as {1: [...], -1: [...]} or {"Spin.up": [...], ...}
-// Explicitly prefer spin-up keys to ensure consistent ordering across environments.
+// Spin key constants for pymatgen spin-polarized data
 const SPIN_UP_KEYS = [`1`, `Spin.up`]
+const SPIN_DOWN_KEYS = [`-1`, `Spin.down`]
+
+// Extract first spin channel from pymatgen spin-keyed data.
+// Thin wrapper around extract_spin_channels for backwards compatibility.
 function extract_first_spin_channel<T>(data: unknown): T | null {
-  if (Array.isArray(data)) return data as T
+  return extract_spin_channels<T>(data)?.up ?? null
+}
+
+// Extract both spin channels from pymatgen spin-keyed data.
+// Returns { up: T, down: T | null } where down is null for non-spin-polarized data.
+export function extract_spin_channels<T>(
+  data: unknown,
+): { up: T; down: T | null } | null {
+  if (Array.isArray(data)) return { up: data as T, down: null }
   if (data && typeof data === `object`) {
     const record = data as Record<string, T>
-    // Prefer known spin-up keys for consistent ordering
+    let spin_up: T | null = null
+    let spin_down: T | null = null
+
+    // Extract spin-up channel
     for (const key of SPIN_UP_KEYS) {
-      if (key in record) return record[key]
+      if (key in record) {
+        spin_up = record[key]
+        break
+      }
     }
-    // Fall back to first available key if no spin-up key found
-    const keys = Object.keys(record)
-    if (keys.length > 0) return record[keys[0]]
+    // Extract spin-down channel
+    for (const key of SPIN_DOWN_KEYS) {
+      if (key in record) {
+        spin_down = record[key]
+        break
+      }
+    }
+
+    // Fall back to first key if no spin-up key found
+    if (spin_up === null) {
+      const keys = Object.keys(record)
+      if (keys.length > 0) spin_up = record[keys[0]]
+    }
+
+    if (spin_up === null) return null
+    return { up: spin_up, down: spin_down }
   }
   return null
 }
@@ -497,7 +598,13 @@ export function normalize_dos(
 
   // Handle densities as either array or dict with spin keys (pymatgen format)
   // Pymatgen stores densities as {1: [...], -1: [...]} or {"Spin.up": [...], ...}
-  const densities = extract_first_spin_channel<number[]>(dos_obj.densities)
+  const spin_channels = extract_spin_channels<number[]>(dos_obj.densities)
+  if (!spin_channels) return null
+
+  const densities = spin_channels.up
+  // Use extracted spin-down or fallback to explicit field (for already-normalized DosData)
+  const spin_down_densities = spin_channels.down ??
+    (dos_obj.spin_down_densities as number[] | undefined) ?? null
 
   if (!Array.isArray(densities)) return null
 
@@ -526,11 +633,17 @@ export function normalize_dos(
   // Electronic DOS: has energies
   if (Array.isArray(energies)) {
     if (energies.length !== densities.length) return null
+    // Detect spin-polarized from data if not explicitly set
+    const is_spin_polarized = (spin_polarized as boolean | undefined) ??
+      (spin_down_densities !== null && spin_down_densities.length === densities.length)
     return {
       type: `electronic`,
       energies,
       densities,
-      spin_polarized: spin_polarized as boolean | undefined,
+      spin_down_densities: is_spin_polarized
+        ? spin_down_densities ?? undefined
+        : undefined,
+      spin_polarized: is_spin_polarized,
     }
   }
 
@@ -704,6 +817,59 @@ export interface PymatgenCompleteDos extends PymatgenDos {
   spd_dos?: Record<string, PymatgenDos>
 }
 
+// Extract projected DOS from pymatgen CompleteDos format.
+// Returns a dict of label → DosData for each atom or orbital.
+// filter_keys: optional list of keys to include (e.g., ["Fe", "O"] for atoms or ["s", "p", "d"] for orbitals)
+export function extract_pdos(
+  dos: unknown,
+  pdos_type: types.PdosType,
+  filter_keys?: string[],
+): Record<string, types.ElectronicDos> | null {
+  if (!dos || typeof dos !== `object`) return null
+
+  const dos_obj = dos as Record<string, unknown>
+
+  // Get the appropriate projected DOS dict
+  const pdos_dict = pdos_type === `atom`
+    ? (dos_obj.atom_dos as Record<string, PymatgenDos> | undefined)
+    : (dos_obj.spd_dos as Record<string, PymatgenDos> | undefined)
+
+  if (!pdos_dict || typeof pdos_dict !== `object`) return null
+
+  const result: Record<string, types.ElectronicDos> = {}
+
+  for (const [key, nested_dos] of Object.entries(pdos_dict)) {
+    // Apply filter if provided
+    if (filter_keys && filter_keys.length > 0 && !filter_keys.includes(key)) continue
+
+    if (!nested_dos || typeof nested_dos !== `object`) continue
+
+    const energies = nested_dos.energies
+    const spin_channels = extract_spin_channels<number[]>(nested_dos.densities)
+
+    if (!Array.isArray(energies) || !spin_channels) continue
+
+    const densities = spin_channels.up
+    if (!Array.isArray(densities) || energies.length !== densities.length) continue
+
+    const is_spin_polarized = spin_channels.down !== null &&
+      spin_channels.down.length === densities.length
+
+    result[key] = {
+      type: `electronic`,
+      energies,
+      densities,
+      spin_down_densities: is_spin_polarized
+        ? spin_channels.down ?? undefined
+        : undefined,
+      spin_polarized: is_spin_polarized,
+      efermi: nested_dos.efermi,
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : null
+}
+
 // Shift a single DOS object's energies by the given amount
 const shift_dos_energies = <T extends PymatgenDos>(dos: T, shift: number): T => ({
   ...dos,
@@ -869,11 +1035,14 @@ export function compute_frequency_range(
   // Check raw band_structs for electronic markers before normalization
   // (normalized structures always have qpoints, so we can't detect from them)
   let has_electronic_bs = false
+  // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict
+  const is_single_bs = band_structs && typeof band_structs === `object` &&
+    (`qpoints` in band_structs || `kpoints` in band_structs)
   if (band_structs && typeof band_structs === `object`) {
     // Single structure check
     if (is_electronic_band_struct(band_structs)) {
       has_electronic_bs = true
-    } else if (!(`qpoints` in band_structs)) {
+    } else if (!is_single_bs) {
       // Dict of band structures - check each value
       for (const bs_val of Object.values(band_structs)) {
         if (is_electronic_band_struct(bs_val)) {
@@ -885,7 +1054,7 @@ export function compute_frequency_range(
   }
 
   const bs_list = band_structs
-    ? `qpoints` in (band_structs as object)
+    ? is_single_bs
       ? [normalize_band_structure(band_structs)]
       : Object.values(band_structs as object).map(normalize_band_structure)
     : []
@@ -931,4 +1100,96 @@ export function compute_frequency_range(
   // Calculate padding from (possibly clamped) range for consistency with Bands.svelte
   const padding = (max_val - min_val) * padding_factor
   return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
+}
+
+// Parse axis label: "Frequency (THz)" → { name: "Frequency", unit: "THz" }
+function parse_axis_label(label: string): { name: string; unit?: string } {
+  const match = label.match(/^(.+?)\s*\(([^)]+)\)$/)
+  return match ? { name: match[1], unit: match[2] } : { name: label }
+}
+
+// Format DOS tooltip content from axis labels and values
+export function format_dos_tooltip(
+  x_formatted: string,
+  y_formatted: string,
+  label: string | null,
+  is_horizontal: boolean,
+  is_phonon: boolean,
+  units: types.FrequencyUnit,
+  x_axis_label: string,
+  y_axis_label: string,
+  num_series: number,
+): { title?: string; lines: string[] } {
+  const x_parsed = parse_axis_label(x_axis_label)
+  const y_parsed = parse_axis_label(y_axis_label)
+  const freq_defaults = {
+    name: is_phonon ? `Frequency` : `Energy`,
+    unit: is_phonon ? units : `eV`,
+  }
+
+  const format_line = (name: string, value: string, unit?: string) =>
+    `${name}: ${value}${unit ? ` ${unit}` : ``}`
+
+  const lines = is_horizontal
+    ? [
+      format_line(
+        y_parsed.name || freq_defaults.name,
+        y_formatted,
+        y_parsed.unit || freq_defaults.unit,
+      ),
+      format_line(x_parsed.name || `Density`, x_formatted),
+    ]
+    : [
+      format_line(y_parsed.name || `Density`, y_formatted),
+      format_line(
+        x_parsed.name || freq_defaults.name,
+        x_formatted,
+        x_parsed.unit || freq_defaults.unit,
+      ),
+    ]
+
+  return { title: num_series > 1 && label ? label : undefined, lines }
+}
+
+// Spin mode options for DOS visualization
+export const SPIN_MODES = [
+  { value: `mirror`, label: `↕`, title: `Mirror: spin-up above, spin-down below zero` },
+  { value: `overlay`, label: `≡`, title: `Overlay: both spins on same axis` },
+  { value: `up_only`, label: `↑`, title: `Show spin-up only` },
+  { value: `down_only`, label: `↓`, title: `Show spin-down only` },
+] as const satisfies readonly { value: types.SpinMode; label: string; title: string }[]
+
+// Normalization mode options
+export const NORMALIZATION_MODES = [
+  { value: null, label: `None` },
+  { value: `max`, label: `Max=1` },
+  { value: `sum`, label: `Sum=1` },
+  { value: `integral`, label: `∫=1` },
+] as const satisfies readonly { value: types.NormalizationMode; label: string }[]
+
+// Available frequency units for phonon DOS
+export const FREQUENCY_UNITS: types.FrequencyUnit[] = [`THz`, `eV`, `meV`, `cm-1`, `Ha`]
+
+// Default values for DOS controls
+export const DEFAULT_SPIN_MODE: types.SpinMode = `mirror`
+export const DEFAULT_SIGMA = 0
+export const DEFAULT_NORMALIZE: types.NormalizationMode = null
+export const DEFAULT_UNITS: types.FrequencyUnit = `THz`
+
+// Format sigma with adaptive precision: 0→"0", <0.01→exp, <1→3dp, else→2dp
+export function format_sigma(val: number): string {
+  if (val === 0) return `0`
+  if (val < 0.01) return val.toExponential(1)
+  return val.toFixed(val < 1 ? 3 : 2)
+}
+
+// Validate sigma_range: ensures min < max, returns [0, 1] if invalid
+export function validate_sigma_range([min, max]: [number, number]): [number, number] {
+  return Number.isFinite(min) && Number.isFinite(max) && min < max ? [min, max] : [0, 1]
+}
+
+// Calculate slider step: 1/100th of range, or 0.01 fallback
+export function calculate_sigma_step(range: [number, number]): number {
+  const [min, max] = validate_sigma_range(range)
+  return (max - min) / 100 || 0.01
 }
