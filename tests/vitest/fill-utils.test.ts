@@ -8,11 +8,12 @@ import {
   convert_error_band_to_fill_region,
   generate_fill_path,
   interpolate_series,
+  is_fill_gradient,
   LOG_EPSILON,
   resolve_boundary,
   resolve_series_ref,
 } from '$lib/plot/fill-utils'
-import type { DataSeries, FillBoundary } from '$lib/plot/types'
+import type { DataSeries, FillBoundary, FillGradient } from '$lib/plot/types'
 
 // C13: Interpolation tests
 describe(`interpolate_series`, () => {
@@ -403,5 +404,19 @@ describe(`convert_error_band_to_fill_region`, () => {
       mock_series,
     )
     expect(result).toMatchObject({ id: `eb-1`, label: `Error` })
+  })
+})
+
+describe(`is_fill_gradient`, () => {
+  it.each<[string, unknown, boolean]>([
+    [`linear gradient`, { type: `linear`, stops: [[0, `red`], [1, `blue`]] }, true],
+    [`radial gradient`, { type: `radial`, stops: [[0, `white`], [1, `black`]] }, true],
+    [`string color`, `steelblue`, false],
+    [`undefined`, undefined, false],
+    [`null`, null, false],
+    [`object without type`, { stops: [[0, `red`]] }, false],
+    [`object without stops`, { type: `linear` }, false],
+  ])(`%s → %s`, (_, value, expected) => {
+    expect(is_fill_gradient(value as string | FillGradient | undefined)).toBe(expected)
   })
 })

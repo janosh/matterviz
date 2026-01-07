@@ -256,8 +256,11 @@ export interface LegendItem {
   legend_group?: string // Optional group name for grouped legend rendering
   // Type of item: 'series' for data series (default), 'fill' for fill regions
   item_type?: `series` | `fill`
-  // For fill regions, the index in the fill_regions array
+  // For fill regions, the index in the computed_fills array (for unique keying)
   fill_idx?: number
+  // For fill regions, the source type and index (for toggle handlers)
+  fill_source_type?: `fill_region` | `error_band`
+  fill_source_idx?: number
   display_style: {
     symbol_type?: D3SymbolName
     symbol_color?: string
@@ -267,6 +270,8 @@ export interface LegendItem {
     fill_color?: string
     fill_opacity?: number
     edge_color?: string
+    // Gradient fill for legend swatch (when fill is a gradient, not a solid color)
+    fill_gradient?: FillGradient
   }
 }
 

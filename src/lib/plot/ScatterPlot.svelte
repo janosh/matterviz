@@ -73,6 +73,7 @@
     clamp_for_log_scale,
     convert_error_band_to_fill_region,
     generate_fill_path,
+    is_fill_gradient,
     resolve_boundary,
   } from './fill-utils'
   import type { FillPathPoint } from './fill-utils'
@@ -562,20 +563,38 @@
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type ComputedFill = FillRegion & {
     idx: number
+    source_type: `fill_region` | `error_band`
+    source_idx: number
     path_segments: string[]
   }
   let computed_fills = $derived.by((): ComputedFill[] => {
-    // Merge fill_regions and converted error_bands
-    const all_regions: (FillRegion | null)[] = [
-      ...(fill_regions ?? []),
-      ...(error_bands ?? []).map((band) =>
-        convert_error_band_to_fill_region(band, series_with_ids)
-      ),
+    // Merge fill_regions and converted error_bands, tracking source
+    const all_regions: {
+      region: FillRegion | null
+      source_type: `fill_region` | `error_band`
+      source_idx: number
+    }[] = [
+      ...(fill_regions ?? []).map((region, source_idx) => ({
+        region,
+        source_type: `fill_region` as const,
+        source_idx,
+      })),
+      ...(error_bands ?? []).map((band, source_idx) => ({
+        region: convert_error_band_to_fill_region(band, series_with_ids),
+        source_type: `error_band` as const,
+        source_idx,
+      })),
     ]
 
     return all_regions
-      .filter((region): region is FillRegion => region !== null)
-      .map((region, idx) => {
+      .filter((
+        entry,
+      ): entry is {
+        region: FillRegion
+        source_type: `fill_region` | `error_band`
+        source_idx: number
+      } => entry.region !== null)
+      .map(({ region, source_type, source_idx }, idx) => {
         if (region.visible === false) return null
 
         // Need x-values to resolve boundaries - use all x-values from all series
@@ -653,7 +672,7 @@
 
         if (path_segments.length === 0) return null
 
-        return { ...region, idx, path_segments }
+        return { ...region, idx, source_type, source_idx, path_segments }
       })
       .filter((fill): fill is ComputedFill => fill !== null)
   })
@@ -784,19 +803,28 @@
         seen_labels.add(fill.label!)
         return true
       })
-      .map((fill) => ({
-        series_idx: -1, // Not a series
-        fill_idx: fill.idx,
-        item_type: `fill` as const,
-        label: fill.label!,
-        visible: fill.visible !== false,
-        legend_group: fill.legend_group,
-        display_style: {
-          fill_color: typeof fill.fill === `string` ? fill.fill : `steelblue`,
-          fill_opacity: fill.fill_opacity ?? 0.3,
-          edge_color: fill.edge_upper?.color,
-        },
-      }))
+      .map((fill) => {
+        // Pass gradient for swatch rendering, or solid color as fallback
+        const fill_gradient = is_fill_gradient(fill.fill) ? fill.fill : undefined
+        const fill_color = typeof fill.fill === `string` ? fill.fill : undefined
+
+        return {
+          series_idx: -1, // Not a series
+          fill_idx: fill.idx,
+          fill_source_type: fill.source_type,
+          fill_source_idx: fill.source_idx,
+          item_type: `fill` as const,
+          label: fill.label!,
+          visible: fill.visible !== false,
+          legend_group: fill.legend_group,
+          display_style: {
+            fill_color,
+            fill_opacity: fill.fill_opacity ?? 0.3,
+            edge_color: fill.edge_upper?.color,
+            fill_gradient,
+          },
+        }
+      })
 
     return [...series_items, ...fill_items]
   })
@@ -1936,15 +1964,22 @@
         ((_group_name, series_indices) => {
           series = toggle_group_visibility(series, series_indices)
         })}
-        on_fill_toggle={(fill_idx) => {
-          fill_regions = fill_regions.map((region, idx) =>
-            idx === fill_idx ? { ...region, visible: region.visible === false } : region
-          )
+        on_fill_toggle={(source_type, source_idx) => {
+          // Only fill_regions can be toggled (error_bands are not bindable)
+          if (source_type === `fill_region`) {
+            fill_regions = fill_regions.map((region, idx) =>
+              idx === source_idx
+                ? { ...region, visible: region.visible === false }
+                : region
+            )
+          }
         }}
-        on_fill_double_click={(fill_idx) => {
+        on_fill_double_click={(source_type, source_idx) => {
+          // Only fill_regions can be toggled (error_bands are not bindable)
+          if (source_type !== `fill_region`) return
           // Toggle: if only this fill is visible, show all; otherwise show only this one
           const visible_count = fill_regions.filter((r) => r.visible !== false).length
-          const this_visible = fill_regions[fill_idx]?.visible !== false
+          const this_visible = fill_regions[source_idx]?.visible !== false
           if (visible_count === 1 && this_visible) {
             // Show all fills
             fill_regions = fill_regions.map((region) => ({ ...region, visible: true }))
@@ -1952,7 +1987,7 @@
             // Show only this fill
             fill_regions = fill_regions.map((region, idx) => ({
               ...region,
-              visible: idx === fill_idx,
+              visible: idx === source_idx,
             }))
           }
         }}

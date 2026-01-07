@@ -4,6 +4,9 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
+  // Unique instance ID to prevent gradient ID collisions when multiple legends render on the same page
+  const instance_id = crypto.randomUUID().slice(0, 8)
+
   let {
     series_data = [],
     layout = `vertical`,
@@ -29,8 +32,14 @@
     item_style?: string
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
-    on_fill_toggle?: (fill_idx: number) => void
-    on_fill_double_click?: (fill_idx: number) => void
+    on_fill_toggle?: (
+      source_type: `fill_region` | `error_band`,
+      source_idx: number,
+    ) => void
+    on_fill_double_click?: (
+      source_type: `fill_region` | `error_band`,
+      source_idx: number,
+    ) => void
     on_group_toggle?: (group_name: string, series_indices: number[]) => void
     on_group_double_click?: (group_name: string, series_indices: number[]) => void
     on_drag_start?: (event: MouseEvent) => void
@@ -151,15 +160,20 @@
 
   // Extracted toggle handlers to reduce duplication
   function toggle_item(item: LegendItem) {
-    if (item.item_type === `fill` && on_fill_toggle && item.fill_idx !== undefined) {
-      on_fill_toggle(item.fill_idx)
+    if (
+      item.item_type === `fill` && on_fill_toggle && item.fill_source_type &&
+      item.fill_source_idx !== undefined
+    ) {
+      on_fill_toggle(item.fill_source_type, item.fill_source_idx)
     } else on_toggle(item.series_idx)
   }
   function double_click_item(item: LegendItem) {
     if (
-      item.item_type === `fill` && on_fill_double_click && item.fill_idx !== undefined
-    ) on_fill_double_click(item.fill_idx)
-    else on_double_click(item.series_idx)
+      item.item_type === `fill` && on_fill_double_click && item.fill_source_type &&
+      item.fill_source_idx !== undefined
+    ) {
+      on_fill_double_click(item.fill_source_type, item.fill_source_idx)
+    } else on_double_click(item.series_idx)
   }
 </script>
 
@@ -194,15 +208,45 @@
   >
     <span class="legend-marker">
       <!-- Fill region swatch -->
-      {#if is_fill_item && series.display_style.fill_color}
+      {#if is_fill_item &&
+        (series.display_style.fill_color || series.display_style.fill_gradient)}
+        {@const gradient = series.display_style.fill_gradient}
+        {@const gradient_id = `legend-grad-${instance_id}-${series.fill_idx}`}
         <svg width="16" height="12" viewBox="0 0 16 12" class="fill-swatch">
+          {#if gradient}
+            <defs>
+              {#if gradient.type === `linear`}
+                <linearGradient
+                  id={gradient_id}
+                  gradientTransform="rotate({gradient.angle ?? 0}, 0.5, 0.5)"
+                >
+                  {#each gradient.stops as [offset, color], stop_idx (stop_idx)}
+                    <stop offset="{offset * 100}%" stop-color={color} />
+                  {/each}
+                </linearGradient>
+              {:else if gradient.type === `radial`}
+                <radialGradient
+                  id={gradient_id}
+                  cx={gradient.center?.x ?? 0.5}
+                  cy={gradient.center?.y ?? 0.5}
+                  r="0.5"
+                >
+                  {#each gradient.stops as [offset, color], stop_idx (stop_idx)}
+                    <stop offset="{offset * 100}%" stop-color={color} />
+                  {/each}
+                </radialGradient>
+              {/if}
+            </defs>
+          {/if}
           <rect
             x="1"
             y="1"
             width="14"
             height="10"
             rx="2"
-            fill={series.display_style.fill_color}
+            fill={gradient
+            ? `url(#${gradient_id})`
+            : (series.display_style.fill_color ?? `steelblue`)}
             fill-opacity={series.display_style.fill_opacity ?? 0.3}
             stroke={series.display_style.edge_color ?? `none`}
             stroke-width="1"

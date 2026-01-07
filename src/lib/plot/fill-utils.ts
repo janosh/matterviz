@@ -20,6 +20,7 @@ import type {
   ErrorBand,
   FillBoundary,
   FillCurveType,
+  FillGradient,
   FillRegion,
   ScaleType,
 } from './types'
@@ -507,4 +508,11 @@ export function convert_error_band_to_fill_region(
     edge_lower: error_band.edge_style,
     show_in_legend: error_band.show_in_legend ?? true,
   }
+}
+
+// Type guard to check if fill is a gradient
+export function is_fill_gradient(
+  fill: string | FillGradient | undefined,
+): fill is FillGradient {
+  return typeof fill === `object` && fill !== null && `type` in fill && `stops` in fill
 }

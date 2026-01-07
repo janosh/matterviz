@@ -1,4 +1,4 @@
-// Tests for fill-between types
+// Tests for fill-between types - validates type structures compile correctly
 import { describe, expect, it } from 'vitest'
 import { FILL_CURVE_TYPES } from '$lib/plot/types'
 import type {
@@ -13,58 +13,47 @@ import type {
 } from '$lib/plot/types'
 
 describe(`FILL_CURVE_TYPES`, () => {
-  const expected_curves = [
-    `linear`,
-    `monotoneX`,
-    `monotoneY`,
-    `step`,
-    `stepBefore`,
-    `stepAfter`,
-    `basis`,
-    `cardinal`,
-    `catmullRom`,
-    `natural`,
-  ]
-
   it(`contains exactly 10 expected curve types`, () => {
-    expect(FILL_CURVE_TYPES).toEqual(expected_curves)
+    expect(FILL_CURVE_TYPES).toEqual([
+      `linear`,
+      `monotoneX`,
+      `monotoneY`,
+      `step`,
+      `stepBefore`,
+      `stepAfter`,
+      `basis`,
+      `cardinal`,
+      `catmullRom`,
+      `natural`,
+    ])
   })
 })
 
 describe(`Fill type structures`, () => {
-  it(`FillBoundary accepts number shorthand`, () => {
-    const boundary: FillBoundary = 42
-    expect(boundary).toBe(42)
-  })
-
-  it(`FillBoundary accepts series reference`, () => {
-    const boundary: FillBoundary = { type: `series`, series_idx: 0 }
-    expect(boundary).toMatchObject({ type: `series` })
-  })
-
-  it(`FillBoundary accepts and executes function`, () => {
-    const boundary: FillBoundary = { type: `function`, fn: (x) => x * 2 }
-    expect(boundary).toMatchObject({ type: `function` })
-    if (boundary.type === `function`) expect(boundary.fn(5)).toBe(10)
-  })
-
-  it(`FillGradient supports linear type`, () => {
-    const gradient: FillGradient = {
-      type: `linear`,
-      angle: 45,
-      stops: [[0, `red`], [1, `blue`]],
+  it.each<[string, FillBoundary, Record<string, unknown>]>([
+    [`number shorthand`, 42, {}],
+    [`series reference`, { type: `series`, series_idx: 0 }, { type: `series` }],
+    [`constant`, { type: `constant`, value: 50 }, { type: `constant` }],
+    [`function`, { type: `function`, fn: (x: number) => x * 2 }, { type: `function` }],
+  ])(`FillBoundary accepts %s`, (_, boundary, expected_match) => {
+    if (Object.keys(expected_match).length > 0) {
+      expect(boundary).toMatchObject(expected_match)
     }
-    expect(gradient.type).toBe(`linear`)
-    expect(gradient.stops.length).toBe(2)
+    // Function boundary executes correctly
+    if (typeof boundary === `object` && boundary.type === `function`) {
+      expect(boundary.fn(5)).toBe(10)
+    }
   })
 
-  it(`FillGradient supports radial type`, () => {
-    const gradient: FillGradient = {
+  it.each<[string, FillGradient]>([
+    [`linear`, { type: `linear`, angle: 45, stops: [[0, `red`], [1, `blue`]] }],
+    [`radial`, {
       type: `radial`,
       center: { x: 0.5, y: 0.5 },
       stops: [[0, `white`], [1, `black`]],
-    }
-    expect(gradient.type).toBe(`radial`)
+    }],
+  ])(`FillGradient supports %s type`, (type, gradient) => {
+    expect(gradient.type).toBe(type)
     expect(gradient.stops.length).toBe(2)
   })
 
