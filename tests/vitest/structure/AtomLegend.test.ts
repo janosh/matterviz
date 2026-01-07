@@ -3,7 +3,7 @@ import { default_element_colors, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
 import { mount, tick } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`AtomLegend Component`, () => {
@@ -986,10 +986,6 @@ describe(`Disordered Site Color Assignment`, () => {
     element: element as ElementSymbol,
     occu,
     oxidation_state: 0,
-  })
-
-  beforeEach(() => {
-    colors.element = { ...default_element_colors }
   })
 
   const get_color = (

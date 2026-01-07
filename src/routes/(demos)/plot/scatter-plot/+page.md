@@ -1657,3 +1657,427 @@ Display multiple scatter plots in a responsive 2×2 grid:
   }
 </style>
 ```
+
+## Fill Between Series and Error Bands
+
+The `fill_regions` prop enables filling areas between boundaries defined by series, constants, functions, or raw data arrays. The `error_bands` prop provides a convenient shorthand for showing uncertainty ranges around data series. Both support hover interactions and appear in the legend.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Generate two series to fill between
+  const x_values = Array.from({ length: 20 }, (_, idx) => idx)
+  const upper_series = {
+    x: x_values,
+    y: x_values.map((val) => 10 + 3 * Math.sin(val * 0.5) + Math.random()),
+    label: 'Upper Bound',
+    point_style: { fill: '#e74c3c', radius: 4 },
+    line_style: { stroke: '#e74c3c', stroke_width: 2 },
+    markers: 'line+points',
+  }
+  const lower_series = {
+    x: x_values,
+    y: x_values.map((val) => 5 + 2 * Math.sin(val * 0.5) + Math.random()),
+    label: 'Lower Bound',
+    point_style: { fill: '#3498db', radius: 4 },
+    line_style: { stroke: '#3498db', stroke_width: 2 },
+    markers: 'line+points',
+  }
+
+  // Series with error bands
+  const data_with_errors = {
+    x: x_values,
+    y: x_values.map((val) => 15 + 2 * Math.cos(val * 0.3)),
+    label: 'Measurement',
+    point_style: { fill: '#2ecc71', radius: 5 },
+    line_style: { stroke: '#2ecc71', stroke_width: 2 },
+    markers: 'line+points',
+  }
+
+  // Asymmetric errors (larger above than below)
+  const upper_errors = x_values.map(() => 1 + Math.random() * 1.5)
+  const lower_errors = x_values.map(() => 0.5 + Math.random() * 0.5)
+
+  // Fill between the two series
+  const fill_regions = [
+    {
+      upper: { type: 'series', series_idx: 0 },
+      lower: { type: 'series', series_idx: 1 },
+      fill: 'rgba(155, 89, 182, 0.3)',
+      label: 'Range Between',
+      edge_upper: { color: '#9b59b6', width: 1 },
+    },
+  ]
+
+  // Error band with asymmetric errors
+  const error_bands = [
+    {
+      series: { type: 'series', series_idx: 2 },
+      error: { upper: upper_errors, lower: lower_errors },
+      fill: '#2ecc71',
+      fill_opacity: 0.25,
+      label: '±Error',
+    },
+  ]
+
+  let hovered_fill = $state(null)
+</script>
+
+<ScatterPlot
+  series={[upper_series, lower_series, data_with_errors]}
+  {fill_regions}
+  {error_bands}
+  on_fill_hover={(event) => (hovered_fill = event)}
+  x_axis={{ label: 'X Value' }}
+  y_axis={{ label: 'Y Value', range: [0, 20] }}
+  style="height: 400px"
+/>
+
+<div style="margin-top: 0.5em; font-size: 0.9em">
+  {#if hovered_fill}
+    Hovering: {hovered_fill.label ?? `Fill region ${hovered_fill.region_idx}`}
+  {:else}
+    Hover over filled areas to see interaction
+  {/if}
+</div>
+```
+
+## Conditional Fills and Function Boundaries
+
+Use the `where` condition to fill only where a condition is true—for example, highlighting regions where one series exceeds another. Boundaries can also be defined as functions for dynamic fills like confidence intervals or thresholds.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Two crossing series
+  const x_values = Array.from({ length: 30 }, (_, idx) => idx * 0.5)
+  const series_a = {
+    x: x_values,
+    y: x_values.map((val) => 8 + 4 * Math.sin(val)),
+    label: 'Series A',
+    point_style: { fill: '#e74c3c', radius: 3 },
+    line_style: { stroke: '#e74c3c', stroke_width: 2 },
+    markers: 'line+points',
+  }
+  const series_b = {
+    x: x_values,
+    y: x_values.map((val) => 8 + 3 * Math.cos(val * 0.8)),
+    label: 'Series B',
+    point_style: { fill: '#3498db', radius: 3 },
+    line_style: { stroke: '#3498db', stroke_width: 2 },
+    markers: 'line+points',
+  }
+
+  // Fill only where A > B (green) and where B > A (orange)
+  const fill_regions = [
+    {
+      upper: { type: 'series', series_idx: 0 },
+      lower: { type: 'series', series_idx: 1 },
+      where: (_x, y_upper, y_lower) => y_upper > y_lower,
+      fill: 'rgba(46, 204, 113, 0.4)',
+      label: 'A > B',
+      curve: 'monotoneX',
+    },
+    {
+      upper: { type: 'series', series_idx: 1 },
+      lower: { type: 'series', series_idx: 0 },
+      where: (_x, y_upper, y_lower) => y_upper > y_lower,
+      fill: 'rgba(230, 126, 34, 0.4)',
+      label: 'B > A',
+      curve: 'monotoneX',
+    },
+    // Function boundary: fill below a threshold line
+    {
+      upper: { type: 'function', fn: () => 4 },
+      lower: 0,
+      fill: 'rgba(52, 152, 219, 0.15)',
+      label: 'Below Threshold',
+      z_index: 'below-grid',
+    },
+  ]
+
+  let clicked_region = $state(null)
+</script>
+
+<ScatterPlot
+  series={[series_a, series_b]}
+  {fill_regions}
+  on_fill_click={(event) => (clicked_region = event)}
+  x_axis={{ label: 'X Value' }}
+  y_axis={{ label: 'Y Value', range: [0, 14] }}
+  style="height: 400px"
+/>
+
+<div style="margin-top: 0.5em; font-size: 0.9em">
+  {#if clicked_region}
+    Clicked: <strong>{clicked_region.label}</strong> at x={clicked_region.px.toFixed(0)}px
+  {:else}
+    Click on a filled region to see the event
+  {/if}
+</div>
+```
+
+## Fill Between Series with Mismatched X-Values
+
+A key feature of the fill-between API is automatic interpolation when series have different x-values. This example demonstrates filling between two series with completely different sampling points—the fill utility automatically aligns them using linear interpolation.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Series A: sparse sampling (every 2 units)
+  const sparse_x = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+  const series_sparse = {
+    x: sparse_x,
+    y: sparse_x.map((val) => 8 + 3 * Math.sin(val * 0.4)),
+    label: 'Sparse (11 pts)',
+    point_style: { fill: '#e74c3c', radius: 6 },
+    line_style: { stroke: '#e74c3c', stroke_width: 2 },
+    markers: 'line+points',
+  }
+
+  // Series B: dense sampling (every 0.5 units) with offset x-values
+  const dense_x = Array.from({ length: 41 }, (_, idx) => idx * 0.5)
+  const series_dense = {
+    x: dense_x,
+    y: dense_x.map((val) => 5 + 2 * Math.cos(val * 0.6)),
+    label: 'Dense (41 pts)',
+    point_style: { fill: '#3498db', radius: 3 },
+    line_style: { stroke: '#3498db', stroke_width: 2 },
+    markers: 'line+points',
+  }
+
+  // Fill between mismatched series - interpolation happens automatically
+  const fill_regions = [
+    {
+      upper: { type: 'series', series_idx: 0 },
+      lower: { type: 'series', series_idx: 1 },
+      fill: 'rgba(155, 89, 182, 0.35)',
+      label: 'Interpolated Fill',
+      curve: 'monotoneX',
+    },
+  ]
+</script>
+
+The sparse series (red, 11 points) and dense series (blue, 41 points) have completely
+different x-coordinates. The fill region correctly interpolates between them:
+
+<ScatterPlot
+  series={[series_sparse, series_dense]}
+  {fill_regions}
+  x_axis={{ label: 'X Value', range: [0, 20] }}
+  y_axis={{ label: 'Y Value', range: [0, 14] }}
+  style="height: 350px"
+/>
+```
+
+## Non-Overlapping Series with Extrapolation
+
+When series have non-overlapping x-ranges, the fill utility extrapolates using the nearest available values. This example shows three scenarios: partial overlap, no overlap, and one series contained within another.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Series 1: x from 0 to 8
+  const series_left = {
+    x: [0, 2, 4, 6, 8],
+    y: [3, 5, 7, 6, 4],
+    label: 'Left (0-8)',
+    point_style: { fill: '#e74c3c', radius: 5 },
+    line_style: { stroke: '#e74c3c', stroke_width: 2 },
+    markers: 'line+points',
+  }
+
+  // Series 2: x from 6 to 14 (partial overlap with series 1)
+  const series_right = {
+    x: [6, 8, 10, 12, 14],
+    y: [2, 3, 5, 4, 3],
+    label: 'Right (6-14)',
+    point_style: { fill: '#3498db', radius: 5 },
+    line_style: { stroke: '#3498db', stroke_width: 2 },
+    markers: 'line+points',
+  }
+
+  // Series 3: x from 16 to 20 (no overlap)
+  const series_far = {
+    x: [16, 17, 18, 19, 20],
+    y: [6, 8, 7, 9, 8],
+    label: 'Far Right (16-20)',
+    point_style: { fill: '#2ecc71', radius: 5 },
+    line_style: { stroke: '#2ecc71', stroke_width: 2 },
+    markers: 'line+points',
+  }
+
+  // Multiple fills showing different overlap scenarios
+  const fill_regions = [
+    {
+      upper: { type: 'series', series_idx: 0 },
+      lower: { type: 'series', series_idx: 1 },
+      fill: 'rgba(155, 89, 182, 0.3)',
+      label: 'Partial Overlap',
+      curve: 'linear',
+    },
+    {
+      upper: { type: 'series', series_idx: 2 },
+      lower: 2, // Constant boundary
+      fill: 'rgba(46, 204, 113, 0.3)',
+      label: 'No Overlap (extrapolates)',
+      curve: 'linear',
+    },
+  ]
+</script>
+
+<ScatterPlot
+  series={[series_left, series_right, series_far]}
+  {fill_regions}
+  x_axis={{ label: 'X Value', range: [0, 22] }}
+  y_axis={{ label: 'Y Value', range: [0, 12] }}
+  style="height: 350px"
+/>
+```
+
+## Fill with Different Curve Types
+
+The `curve` property controls how the fill area is interpolated between data points. This example compares different curve types side-by-side, showing how each affects the fill shape.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Same data for all plots
+  const x_values = [0, 2, 4, 6, 8, 10, 12, 14]
+  const upper_y = [8, 10, 7, 11, 9, 12, 8, 10]
+  const lower_y = [3, 5, 2, 4, 3, 5, 2, 4]
+
+  const make_series = () => [
+    {
+      x: x_values,
+      y: upper_y,
+      label: 'Upper',
+      point_style: { fill: '#e74c3c', radius: 4 },
+      line_style: { stroke: '#e74c3c', stroke_width: 2 },
+      markers: 'line+points',
+    },
+    {
+      x: x_values,
+      y: lower_y,
+      label: 'Lower',
+      point_style: { fill: '#3498db', radius: 4 },
+      line_style: { stroke: '#3498db', stroke_width: 2 },
+      markers: 'line+points',
+    },
+  ]
+
+  const curve_types = ['linear', 'monotoneX', 'step', 'basis']
+  const colors = [
+    'rgba(155, 89, 182, 0.4)',
+    'rgba(46, 204, 113, 0.4)',
+    'rgba(230, 126, 34, 0.4)',
+    'rgba(52, 152, 219, 0.4)',
+  ]
+</script>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1em">
+  {#each curve_types as curve_type, idx (curve_type)}
+    <div>
+      <strong style="text-transform: capitalize">{curve_type}</strong>
+      <ScatterPlot
+        series={make_series()}
+        fill_regions={[{
+          upper: { type: 'series', series_idx: 0 },
+          lower: { type: 'series', series_idx: 1 },
+          fill: colors[idx],
+          label: `${curve_type} Fill`,
+          curve: curve_type,
+        }]}
+        x_axis={{ label: 'X', range: [0, 15] }}
+        y_axis={{ label: 'Y', range: [0, 14] }}
+        style="height: 250px"
+        legend={null}
+      />
+    </div>
+  {/each}
+</div>
+```
+
+## Stress Test: Many Interpolated Fills
+
+This example creates multiple fill regions between series with varying sample densities to stress test the interpolation algorithm:
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Generate series with different densities and offsets
+  const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6']
+
+  const make_series = (n_points, offset, amplitude, color, label) => {
+    const step = 20 / (n_points - 1)
+    const x_vals = Array.from({ length: n_points }, (_, idx) => idx * step)
+    return {
+      x: x_vals,
+      y: x_vals.map((val) => offset + amplitude * Math.sin(val * 0.5 + offset * 0.2)),
+      label,
+      point_style: { fill: color, radius: 3 },
+      line_style: { stroke: color, stroke_width: 1.5 },
+      markers: 'line+points',
+    }
+  }
+
+  // Create 5 series with different sampling rates
+  const all_series = [
+    make_series(8, 4, 2, colors[0], '8 pts'),
+    make_series(15, 7, 2, colors[1], '15 pts'),
+    make_series(25, 10, 2, colors[2], '25 pts'),
+    make_series(12, 13, 2, colors[3], '12 pts'),
+    make_series(40, 16, 2, colors[4], '40 pts'),
+  ]
+
+  // Create fills between each consecutive pair
+  const fill_regions = [
+    {
+      upper: { type: 'series', series_idx: 1 },
+      lower: { type: 'series', series_idx: 0 },
+      fill: 'rgba(231, 76, 60, 0.25)',
+      label: 'Fill 0-1',
+      curve: 'monotoneX',
+    },
+    {
+      upper: { type: 'series', series_idx: 2 },
+      lower: { type: 'series', series_idx: 1 },
+      fill: 'rgba(52, 152, 219, 0.25)',
+      label: 'Fill 1-2',
+      curve: 'monotoneX',
+    },
+    {
+      upper: { type: 'series', series_idx: 3 },
+      lower: { type: 'series', series_idx: 2 },
+      fill: 'rgba(46, 204, 113, 0.25)',
+      label: 'Fill 2-3',
+      curve: 'monotoneX',
+    },
+    {
+      upper: { type: 'series', series_idx: 4 },
+      lower: { type: 'series', series_idx: 3 },
+      fill: 'rgba(243, 156, 18, 0.25)',
+      label: 'Fill 3-4',
+      curve: 'monotoneX',
+    },
+  ]
+</script>
+
+Five series with 8, 15, 25, 12, and 40 points respectively. Each fill region interpolates
+between adjacent series with different densities:
+
+<ScatterPlot
+  series={all_series}
+  {fill_regions}
+  x_axis={{ label: 'X Value', range: [0, 20] }}
+  y_axis={{ label: 'Y Value', range: [0, 20] }}
+  style="height: 400px"
+  legend={{ layout: 'horizontal', wrapper_style: 'justify-content: center;' }}
+/>
+```

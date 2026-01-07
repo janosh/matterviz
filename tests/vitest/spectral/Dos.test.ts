@@ -14,7 +14,7 @@ import {
 } from '$lib/spectral/helpers'
 import type { DosData, ElectronicDos, PhononDos, SpinMode } from '$lib/spectral/types'
 import { mount, tick } from 'svelte'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 // Test fixtures
 const phonon_dos: PhononDos = {
@@ -90,11 +90,6 @@ const pymatgen_complete_dos: PymatgenCompleteDos = {
 }
 
 describe(`Dos component`, () => {
-  beforeEach(() => {
-    clear_smearing_cache()
-    document.body.innerHTML = ``
-  })
-
   // Combine all "renders successfully" tests into parameterized test
   it.each([
     [`phonon DOS`, { doses: phonon_dos }],
@@ -208,9 +203,6 @@ describe(`Dos component`, () => {
 
 describe(`DOS controls integration`, () => {
   // Tests for DOS-specific controls that are now part of ScatterPlot's controls_extra
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
 
   it(`renders with show_controls enabled`, () => {
     mount(Dos, {

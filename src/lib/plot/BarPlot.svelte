@@ -1435,7 +1435,7 @@
   .bar-plot {
     position: relative;
     width: 100%;
-    height: auto;
+    height: var(--barplot-height, auto);
     min-height: var(--barplot-min-height, 300px);
     container-type: size;
     z-index: var(--barplot-z-index, auto);

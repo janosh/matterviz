@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { type LegendItem, PlotLegend } from '$lib/plot'
+import { type FillGradient, type LegendItem, PlotLegend } from '$lib/plot'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -698,6 +698,185 @@ describe(`PlotLegend`, () => {
 
       expect(mock_toggle).toHaveBeenCalled()
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
+    })
+  })
+
+  describe(`fill region legend items`, () => {
+    const fill_series_data: LegendItem[] = [
+      {
+        label: `Data Series`,
+        visible: true,
+        series_idx: 0,
+        display_style: { symbol_type: `Circle`, symbol_color: `blue` },
+      },
+      {
+        label: `Fill Region`,
+        visible: true,
+        series_idx: -1, // Fill items use fill_idx instead
+        item_type: `fill`,
+        fill_idx: 0,
+        fill_source_type: `fill_region`,
+        fill_source_idx: 0,
+        display_style: {
+          fill_color: `steelblue`,
+          fill_opacity: 0.3,
+          edge_color: `darkblue`,
+        },
+      },
+      {
+        label: `Hidden Fill`,
+        visible: false,
+        series_idx: -1,
+        item_type: `fill`,
+        fill_idx: 1,
+        fill_source_type: `fill_region`,
+        fill_source_idx: 1,
+        display_style: { fill_color: `red`, fill_opacity: 0.5 },
+      },
+    ]
+
+    test(`renders fill swatch with correct styling and hidden state`, () => {
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: fill_series_data },
+      })
+      const items = document.querySelectorAll(`.legend-item`)
+
+      // Regular series: no fill swatch
+      expect(items[0].classList.contains(`fill-item`)).toBe(false)
+      expect(items[0].querySelector(`.fill-swatch`)).toBeNull()
+
+      // Fill region: has swatch with correct styling
+      expect(items[1].classList.contains(`fill-item`)).toBe(true)
+      const rect = items[1].querySelector(`.fill-swatch rect`)
+      expect(rect?.getAttribute(`fill`)).toBe(`steelblue`)
+      expect(rect?.getAttribute(`stroke`)).toBe(`darkblue`)
+
+      // Hidden state
+      expect(items[1].classList.contains(`hidden`)).toBe(false)
+      expect(items[2].classList.contains(`hidden`)).toBe(true)
+    })
+
+    test(`on_fill_toggle routes click/keyboard to correct handler`, () => {
+      document.body.innerHTML = ``
+      const on_toggle = vi.fn()
+      const on_fill_toggle = vi.fn()
+
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: fill_series_data, on_toggle, on_fill_toggle },
+      })
+      const items = document.querySelectorAll<HTMLElement>(`.legend-item`)
+
+      // Regular series click → on_toggle
+      items[0].click()
+      expect(on_toggle).toHaveBeenCalledWith(0)
+      expect(on_fill_toggle).not.toHaveBeenCalled()
+      on_toggle.mockClear()
+
+      // Fill item click → on_fill_toggle with source_type and source_idx
+      items[1].click()
+      expect(on_fill_toggle).toHaveBeenCalledWith(`fill_region`, 0)
+      expect(on_toggle).not.toHaveBeenCalled()
+      on_fill_toggle.mockClear()
+
+      // Fill item keyboard → on_fill_toggle
+      items[1].dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+      )
+      expect(on_fill_toggle).toHaveBeenCalledWith(`fill_region`, 0)
+    })
+
+    test(`on_fill_double_click called for fill item dblclick`, () => {
+      const on_fill_double_click = vi.fn()
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: fill_series_data, on_fill_double_click },
+      })
+      document.querySelectorAll<HTMLElement>(`.legend-item`)[1].dispatchEvent(
+        new MouseEvent(`dblclick`, { bubbles: true }),
+      )
+      expect(on_fill_double_click).toHaveBeenCalledWith(`fill_region`, 0)
+    })
+
+    test(`fill swatch uses defaults for missing opacity and edge`, () => {
+      const data: LegendItem[] = [{
+        label: `Minimal`,
+        visible: true,
+        series_idx: -1,
+        item_type: `fill`,
+        fill_idx: 0,
+        fill_source_type: `fill_region`,
+        fill_source_idx: 0,
+        display_style: { fill_color: `green` }, // No fill_opacity or edge_color
+      }]
+      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+      const rect = doc_query(`.fill-swatch rect`)
+      expect(rect.getAttribute(`fill-opacity`)).toBe(`0.3`)
+      expect(rect.getAttribute(`stroke`)).toBe(`none`)
+    })
+
+    test(`renders linear gradient swatch when fill_gradient provided`, () => {
+      const gradient: FillGradient = {
+        type: `linear`,
+        angle: 90,
+        stops: [[0, `red`], [0.5, `yellow`], [1, `green`]],
+      }
+      const data: LegendItem[] = [{
+        label: `Gradient Fill`,
+        visible: true,
+        series_idx: -1,
+        item_type: `fill`,
+        fill_idx: 3,
+        fill_source_type: `fill_region`,
+        fill_source_idx: 0,
+        display_style: { fill_color: `yellow`, fill_gradient: gradient },
+      }]
+      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+
+      // Check gradient def is rendered (ID includes instance_id for uniqueness)
+      const linear_grad = doc_query(`linearGradient`)
+      expect(linear_grad.id).toMatch(/^legend-grad-[a-f0-9]+-3$/)
+      expect(linear_grad.getAttribute(`gradientTransform`)).toBe(`rotate(90, 0.5, 0.5)`)
+
+      // Check stops
+      const stops = linear_grad.querySelectorAll(`stop`)
+      expect(stops).toHaveLength(3)
+      expect(stops[0].getAttribute(`offset`)).toBe(`0%`)
+      expect(stops[0].getAttribute(`stop-color`)).toBe(`red`)
+      expect(stops[1].getAttribute(`offset`)).toBe(`50%`)
+      expect(stops[1].getAttribute(`stop-color`)).toBe(`yellow`)
+
+      // Check rect uses gradient url (references the gradient by its ID)
+      const rect = doc_query(`.fill-swatch rect`)
+      expect(rect.getAttribute(`fill`)).toBe(`url(#${linear_grad.id})`)
+    })
+
+    test(`renders radial gradient swatch`, () => {
+      const gradient: FillGradient = {
+        type: `radial`,
+        center: { x: 0.3, y: 0.7 },
+        stops: [[0, `white`], [1, `black`]],
+      }
+      const data: LegendItem[] = [{
+        label: `Radial Fill`,
+        visible: true,
+        series_idx: -1,
+        item_type: `fill`,
+        fill_idx: 5,
+        fill_source_type: `fill_region`,
+        fill_source_idx: 0,
+        display_style: { fill_color: `gray`, fill_gradient: gradient },
+      }]
+      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+
+      const radial_grad = doc_query(`radialGradient`)
+      expect(radial_grad.id).toMatch(/^legend-grad-[a-f0-9]+-5$/)
+      expect(radial_grad.getAttribute(`cx`)).toBe(`0.3`)
+      expect(radial_grad.getAttribute(`cy`)).toBe(`0.7`)
+
+      const rect = doc_query(`.fill-swatch rect`)
+      expect(rect.getAttribute(`fill`)).toBe(`url(#${radial_grad.id})`)
     })
   })
 })

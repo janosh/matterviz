@@ -1,7 +1,7 @@
 import type { AnyStructure } from '$lib'
 import { StructureControls } from '$lib/structure'
 import { mount } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { doc_query, simple_structure } from '../setup'
 
 vi.mock(`$lib/io/export`, () => ({
@@ -9,16 +9,6 @@ vi.mock(`$lib/io/export`, () => ({
 }))
 
 describe(`StructureControls`, () => {
-  let wrapper_div: HTMLDivElement
-
-  beforeEach(() => {
-    wrapper_div = document.createElement(`div`)
-    const canvas = document.createElement(`canvas`)
-    wrapper_div.appendChild(canvas)
-  })
-
-  // PNG export functionality moved to StructureExportPane
-
   test(`supercell input accessibility attributes (valid)`, () => {
     mount(StructureControls, {
       target: document.body,
@@ -53,10 +43,6 @@ describe(`StructureControls`, () => {
     const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
     expect(input.getAttribute(`aria-invalid`)).toBe(aria)
   })
-
-  // Covered by the parameterized aria-invalid test
-
-  // Covered by the parameterized aria-invalid test
 
   test.each([
     { scaling: `invalid`, has_error: true },

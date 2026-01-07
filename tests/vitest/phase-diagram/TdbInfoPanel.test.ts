@@ -1,7 +1,7 @@
 import { TdbInfoPanel } from '$lib/phase-diagram'
 import type { TdbParseResult } from '$lib/phase-diagram/parse'
 import { mount } from 'svelte'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 // Create a successful TDB parse result for testing.
 function create_tdb_result(
@@ -52,10 +52,6 @@ function create_tdb_result(
 }
 
 describe(`TdbInfoPanel`, () => {
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
-
   test(`displays system name, phases, and temperature range`, () => {
     const result = create_tdb_result()
     mount(TdbInfoPanel, {
