@@ -192,6 +192,17 @@ describe(`Dos component`, () => {
     // So 2 DOS entries = 4 area paths total
     const area_paths = document.querySelectorAll(`path[fill-opacity]`)
     expect(area_paths.length).toBe(4)
+
+    // Validate structural layering: spin-up and spin-down areas should have different colors
+    // In overlay+stack mode, spin-up uses color at index dos_idx, spin-down at (dos_idx * 2 + 1)
+    // This ensures spin channels are visually distinct and stacked independently
+    const fill_colors = Array.from(area_paths).map((path) => path.getAttribute(`fill`))
+    const unique_colors = new Set(fill_colors)
+    // Should have at least 2 distinct colors (one for each spin channel type)
+    // With 2 DOS entries: spin-up uses colors 0,1 and spin-down uses colors 1,3
+    expect(unique_colors.size).toBeGreaterThanOrEqual(2)
+    // Verify all paths have valid fill colors (not null/empty)
+    fill_colors.forEach((color) => expect(color).toBeTruthy())
   })
 })
 

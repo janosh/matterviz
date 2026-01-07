@@ -61,7 +61,6 @@ Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `
   {pdos_type}
   stack
   spin_mode="up_only"
-  controls_visible="always"
 />
 ```
 
@@ -82,7 +81,7 @@ Multiple DOS curves can be stacked as filled areas. Gaussian smearing (σ) smoot
   }
 </script>
 
-<Dos {doses} normalize="max" sigma={0.1} stack controls_visible="always" />
+<Dos {doses} normalize="max" sigma={0.1} stack />
 ```
 
 ## Interactive Explorer
@@ -152,7 +151,6 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
   doses={current_dos}
   {pdos_type}
   stack={pdos_type !== null}
-  controls_visible="always"
   show_normalize_control
   show_units_control={!is_electronic}
 />

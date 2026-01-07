@@ -99,7 +99,11 @@
         const pdos_from_first = extract_pdos(first_dos, pdos_type, pdos_filter)
         if (pdos_from_first) return pdos_from_first
       }
-      // Fall through to normal processing if no pDOS found
+      // PDOS extraction was requested but failed - warn and revert to normal processing
+      console.warn(
+        `PDOS extraction requested (pdos_type="${pdos_type}") but no projected DOS data found. ` +
+          `Falling back to total DOS. Ensure input has atom_dos (for atom) or spd_dos (for orbital) data.`,
+      )
     }
 
     if (`densities` in doses && (`frequencies` in doses || `energies` in doses)) {
