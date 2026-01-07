@@ -109,7 +109,7 @@
     point_events,
     on_point_click,
     on_point_hover,
-    fill_regions = [],
+    fill_regions = $bindable([]),
     error_bands = [],
     on_fill_click,
     on_fill_hover,
@@ -169,7 +169,7 @@
     >
     on_point_click?: (data: ScatterHandlerEvent<Metadata>) => void
     on_point_hover?: (data: ScatterHandlerEvent<Metadata> | null) => void
-    fill_regions?: FillRegion[]
+    fill_regions?: FillRegion[] // Bindable for legend toggle support
     error_bands?: ErrorBand[]
     on_fill_click?: (event: FillHandlerEvent) => void
     on_fill_hover?: (event: FillHandlerEvent | null) => void
@@ -1936,6 +1936,26 @@
         ((_group_name, series_indices) => {
           series = toggle_group_visibility(series, series_indices)
         })}
+        on_fill_toggle={(fill_idx) => {
+          fill_regions = fill_regions.map((region, idx) =>
+            idx === fill_idx ? { ...region, visible: region.visible === false } : region
+          )
+        }}
+        on_fill_double_click={(fill_idx) => {
+          // Toggle: if only this fill is visible, show all; otherwise show only this one
+          const visible_count = fill_regions.filter((r) => r.visible !== false).length
+          const this_visible = fill_regions[fill_idx]?.visible !== false
+          if (visible_count === 1 && this_visible) {
+            // Show all fills
+            fill_regions = fill_regions.map((region) => ({ ...region, visible: true }))
+          } else {
+            // Show only this fill
+            fill_regions = fill_regions.map((region, idx) => ({
+              ...region,
+              visible: idx === fill_idx,
+            }))
+          }
+        }}
         wrapper_style={`
           position: absolute;
           left: ${
