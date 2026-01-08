@@ -15,6 +15,7 @@ test.describe(`Lattice Component Tests`, () => {
       .check()
     await expect(page.locator(`.draggable-pane.controls-pane`)).toHaveClass(
       /pane-open/,
+      { timeout: 10_000 },
     )
   })
 

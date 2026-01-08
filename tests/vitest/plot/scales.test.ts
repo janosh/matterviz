@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import {
   calculate_domain,
@@ -26,12 +27,7 @@ describe(`scales`, () => {
       [`log`, [1, 1000], [0, 300]],
       [`log`, [0.1, 100], [50, 350]],
     ])(`%s scale`, (scale_type, domain, range) => {
-      const scale = create_scale(
-        scale_type as ScaleType,
-        domain as [number, number],
-        range as [number, number],
-      )
-
+      const scale = create_scale(scale_type as ScaleType, domain as Vec2, range as Vec2)
       expect(scale).toBeDefined()
       expect(scale.domain()).toEqual(
         scale_type === `log` ? [Math.max(domain[0], math.LOG_EPS), domain[1]] : domain,
@@ -219,7 +215,7 @@ describe(`scales`, () => {
     test.each([
       {
         name: `filters out-of-domain, sorts`,
-        domain: [0, 100] as [number, number],
+        domain: [0, 100] as Vec2,
         ticks: { 50: `A`, 10: `B`, 150: `C`, 90: `D`, [-10]: `E`, 30: `F` } as Record<
           number,
           string
@@ -228,7 +224,7 @@ describe(`scales`, () => {
       },
       {
         name: `filters non-finite values`,
-        domain: [0, 100] as [number, number],
+        domain: [0, 100] as Vec2,
         ticks: { 25: `A`, 50: `B`, NaN: `C`, 75: `D`, [Infinity]: `E` } as Record<
           number,
           string
@@ -237,7 +233,7 @@ describe(`scales`, () => {
       },
       {
         name: `handles reversed domain`,
-        domain: [100, 0] as [number, number],
+        domain: [100, 0] as Vec2,
         ticks: { 80: `A`, 20: `B`, 150: `C`, 50: `D` } as Record<number, string>,
         expected: [20, 50, 80],
       },

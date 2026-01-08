@@ -36,6 +36,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { Vec2 } from '../math'
   import PlotTooltip from './PlotTooltip.svelte'
   import { bar_path } from './svg'
 
@@ -187,7 +188,7 @@
     ) => {
       if (!series_list.length) {
         const fallback = scale_type === `log` ? 1 : 0
-        return [fallback, 1] as [number, number]
+        return [fallback, 1] as Vec2
       }
       const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
       const max_count = Math.max(
@@ -205,7 +206,7 @@
         false,
       )
       const y_min = scale_type === `log` ? Math.max(1, y0) : Math.max(0, y0)
-      return [y_min, y1] as [number, number]
+      return [y_min, y1] as Vec2
     }
 
     const y1_range = calc_y_range(
@@ -225,14 +226,14 @@
   // Initialize ranges
   let ranges = $state({
     initial: {
-      x: [0, 1] as [number, number],
-      y: [0, 1] as [number, number],
-      y2: [0, 1] as [number, number],
+      x: [0, 1] as Vec2,
+      y: [0, 1] as Vec2,
+      y2: [0, 1] as Vec2,
     },
     current: {
-      x: [0, 1] as [number, number],
-      y: [0, 1] as [number, number],
-      y2: [0, 1] as [number, number],
+      x: [0, 1] as Vec2,
+      y: [0, 1] as Vec2,
+      y2: [0, 1] as Vec2,
     },
   })
 

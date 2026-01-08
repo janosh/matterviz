@@ -4,6 +4,7 @@
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
+  import type { Vec2 } from '../math'
   import type { AxisKey, PlotControlsProps } from './index'
 
   let {
@@ -84,7 +85,7 @@
     if (!auto && (min === null || max === null)) return
     axis_config.range = min === null && max === null
       ? undefined
-      : [min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as [number, number]
+      : [min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2
   }
 
   // Sync range inputs from props
