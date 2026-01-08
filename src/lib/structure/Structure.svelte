@@ -123,12 +123,15 @@
     & {
       structure?: AnyStructure
       scene_props?: ComponentProps<typeof StructureScene>
-      // Controls visibility configuration.
-      // - 'always': controls always visible
-      // - 'hover': controls visible on component hover (default)
-      // - 'never': controls never visible
-      // - object: { mode, hidden, style } for fine-grained control
-      // Control names: 'reset-camera', 'fullscreen', 'measure-mode', 'info-pane', 'export-pane', 'controls'
+      /**
+       * Controls visibility configuration.
+       * - 'always': controls always visible
+       * - 'hover': controls visible on component hover (default)
+       * - 'never': controls never visible
+       * - object: { mode, hidden, style } for fine-grained control
+       *
+       * Control names: 'reset-camera', 'fullscreen', 'measure-mode', 'info-pane', 'export-pane', 'controls'
+       */
       show_controls?: ShowControlsProp
       fullscreen?: boolean
       // bindable width of the canvas

@@ -58,8 +58,11 @@
     ),
   )
 
-  // Compute if this line is hovered
-  let is_hovered = $derived(hovered_line_idx === line_idx)
+  // Track focus state for keyboard accessibility
+  let is_focused = $state(false)
+
+  // Compute if this line is hovered (includes keyboard focus for consistent styling)
+  let is_hovered = $derived(hovered_line_idx === line_idx || is_focused)
 
   // Merge default, custom, and hover styles
   let style = $derived<Required<RefLineStyle>>({
@@ -119,6 +122,14 @@
     style:cursor
     onmouseenter={(evt) => on_hover?.(make_event(evt))}
     onmouseleave={() => on_hover?.(null)}
+    onfocus={(evt) => {
+      is_focused = true
+      on_hover?.(make_event(evt as unknown as MouseEvent))
+    }}
+    onblur={() => {
+      is_focused = false
+      on_hover?.(null)
+    }}
     onclick={(evt) => {
       const ref_evt = make_event(evt)
       ref_line.on_click?.(ref_evt)

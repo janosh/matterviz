@@ -852,6 +852,9 @@
         fullscreen,
       })}
 
+      <!-- Reference lines: below grid (rendered before axes which contain grid lines) -->
+      {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+
       <!-- X-axis -->
       <g class="x-axis">
         <line
@@ -1086,9 +1089,6 @@
 
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
-        <!-- Reference lines: below grid -->
-        {@render ref_lines_layer(ref_lines_by_z.below_grid)}
-
         <!-- Zero lines -->
         {#if display.x_zero_line && (x_axis.scale_type ?? `linear`) === `linear` &&
           ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}

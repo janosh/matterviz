@@ -5,7 +5,7 @@
   import { cross_3d, normalize_vec3 } from '$lib/math'
   import { T } from '@threlte/core'
   import * as THREE from 'three'
-  import { create_to_threejs } from './reference-line-utils'
+  import { create_to_threejs, span_or } from './reference-line-utils'
   import type { RefPlane } from './types'
 
   let { ref_plane, scene_size = [10, 10, 5], ranges }: {
@@ -28,11 +28,7 @@
     }
   })
 
-  // Apply span constraints or use full range (helper reduces repetition)
-  const span_or = (
-    span: [number | null, number | null] | undefined,
-    range: [number, number],
-  ) => [span?.[0] ?? range[0], span?.[1] ?? range[1]] as const
+  // Apply span constraints or use full range
   let [x_min, x_max] = $derived(span_or(ref_plane.x_span, x_range))
   let [y_min, y_max] = $derived(span_or(ref_plane.y_span, y_range))
   let [z_min, z_max] = $derived(span_or(ref_plane.z_span, z_range))
@@ -47,31 +43,48 @@
     if (ref_plane.visible === false) return null
 
     switch (ref_plane.type) {
-      case `xy`:
-        return quad([[x_min, y_min, ref_plane.z], [x_max, y_min, ref_plane.z], [
-          x_max,
-          y_max,
-          ref_plane.z,
-        ], [x_min, y_max, ref_plane.z]])
-      case `xz`:
-        return quad([[x_min, ref_plane.y, z_min], [x_max, ref_plane.y, z_min], [
-          x_max,
-          ref_plane.y,
-          z_max,
-        ], [x_min, ref_plane.y, z_max]])
-      case `yz`:
-        return quad([[ref_plane.x, y_min, z_min], [ref_plane.x, y_max, z_min], [
-          ref_plane.x,
-          y_max,
-          z_max,
-        ], [ref_plane.x, y_min, z_max]])
-      case `normal`:
+      case `xy`: {
+        const zval = ref_plane.z
+        return quad([
+          [x_min, y_min, zval],
+          [x_max, y_min, zval],
+          [x_max, y_max, zval],
+          [x_min, y_max, zval],
+        ])
+      }
+      case `xz`: {
+        const yval = ref_plane.y
+        return quad([
+          [x_min, yval, z_min],
+          [x_max, yval, z_min],
+          [x_max, yval, z_max],
+          [x_min, yval, z_max],
+        ])
+      }
+      case `yz`: {
+        const xval = ref_plane.x
+        return quad([
+          [xval, y_min, z_min],
+          [xval, y_max, z_min],
+          [xval, y_max, z_max],
+          [xval, y_min, z_max],
+        ])
+      }
+      case `normal`: {
+        // Check for degenerate normal (near-zero length)
+        const normal_len = Math.hypot(...ref_plane.normal)
+        if (normal_len < 1e-9) return null
         return create_plane_from_normal(ref_plane.normal, ref_plane.point)
+      }
       case `points`: {
         const { p1, p2, p3 } = ref_plane
         const v1: Vec3 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
         const v2: Vec3 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
-        return create_plane_from_normal(normalize_vec3(cross_3d(v1, v2)), p1)
+        const cross = cross_3d(v1, v2)
+        // Check for degenerate case (collinear points produce zero cross product)
+        const cross_len = Math.hypot(...cross)
+        if (cross_len < 1e-9) return null
+        return create_plane_from_normal(normalize_vec3(cross), p1)
       }
       default:
         return null
@@ -101,45 +114,60 @@
   }
 
   // Create plane from normal and point, clipped to bounding box
+  // Constructs corners in data space then transforms each to Three.js space
+  // to correctly handle non-uniform axis scaling
   function create_plane_from_normal(
     normal: [number, number, number],
     point: [number, number, number],
   ): THREE.BufferGeometry {
-    // For simplicity, create a large quad perpendicular to normal, then clip
-    // This is an approximation - for precise clipping we'd need proper 3D CSG
+    // Find two vectors perpendicular to normal (in data space)
+    const normalized = normalize_vec3(normal)
+    let u_dir: Vec3, v_dir: Vec3
 
-    // Find two vectors perpendicular to normal
-    const n = normalize_vec3(normal)
-    let u: Vec3, v: Vec3
-
-    // Choose a vector not parallel to n
-    if (Math.abs(n[0]) < 0.9) {
-      u = normalize_vec3(cross_3d(n, [1, 0, 0]))
+    // Choose a vector not parallel to normal
+    if (Math.abs(normalized[0]) < 0.9) {
+      u_dir = normalize_vec3(cross_3d(normalized, [1, 0, 0]))
     } else {
-      u = normalize_vec3(cross_3d(n, [0, 1, 0]))
+      u_dir = normalize_vec3(cross_3d(normalized, [0, 1, 0]))
     }
-    v = cross_3d(n, u)
+    v_dir = cross_3d(normalized, u_dir)
 
-    // Scale to roughly cover the bounding box
-    const scale = Math.max(
+    // Scale to roughly cover the bounding box in data space
+    const data_scale = Math.max(
       x_max - x_min,
       y_max - y_min,
       z_max - z_min,
     ) * 2
 
-    // Create 4 corners of the plane quad
-    const center = to_vec3(point[0], point[1], point[2])
-    const u_scaled = new THREE.Vector3(u[0], u[1], u[2]).multiplyScalar(scale)
-    const v_scaled = new THREE.Vector3(v[0], v[1], v[2]).multiplyScalar(scale)
-
-    const corners = [
-      center.clone().sub(u_scaled).sub(v_scaled),
-      center.clone().add(u_scaled).sub(v_scaled),
-      center.clone().add(u_scaled).add(v_scaled),
-      center.clone().sub(u_scaled).add(v_scaled),
+    // Create 4 corners in data space, then transform to Three.js space
+    const [px, py, pz] = point
+    const data_corners: [number, number, number][] = [
+      [
+        px - u_dir[0] * data_scale - v_dir[0] * data_scale,
+        py - u_dir[1] * data_scale - v_dir[1] * data_scale,
+        pz - u_dir[2] * data_scale - v_dir[2] * data_scale,
+      ],
+      [
+        px + u_dir[0] * data_scale - v_dir[0] * data_scale,
+        py + u_dir[1] * data_scale - v_dir[1] * data_scale,
+        pz + u_dir[2] * data_scale - v_dir[2] * data_scale,
+      ],
+      [
+        px + u_dir[0] * data_scale + v_dir[0] * data_scale,
+        py + u_dir[1] * data_scale + v_dir[1] * data_scale,
+        pz + u_dir[2] * data_scale + v_dir[2] * data_scale,
+      ],
+      [
+        px - u_dir[0] * data_scale + v_dir[0] * data_scale,
+        py - u_dir[1] * data_scale + v_dir[1] * data_scale,
+        pz - u_dir[2] * data_scale + v_dir[2] * data_scale,
+      ],
     ]
 
-    return create_quad_geometry(corners)
+    // Transform each corner from data space to Three.js space
+    return create_quad_geometry(
+      data_corners.map(([ux, uy, uz]) => to_vec3(ux, uy, uz)),
+    )
   }
 
   // Material properties (with defaults)

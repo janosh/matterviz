@@ -680,8 +680,8 @@ export interface FillHandlerEvent {
   metadata?: Record<string, unknown>
 }
 
-// Z-index positions for fill region rendering order
-export type FillZIndex = `below-grid` | `below-lines` | `below-points` | `above-all`
+// z-index positions for rendering order (used by fill regions and reference lines)
+export type LayerZIndex = `below-grid` | `below-lines` | `below-points` | `above-all`
 
 // Curve types supported for fill path generation (matching d3-shape curves)
 export const FILL_CURVE_TYPES = [
@@ -725,7 +725,7 @@ export interface FillRegion {
   step_position?: number // For step curves: 0 = step, 0.5 = stepMiddle, 1 = stepEnd
 
   // Rendering
-  z_index?: FillZIndex
+  z_index?: LayerZIndex
   visible?: boolean
 
   // Interactions
@@ -766,12 +766,6 @@ export interface ErrorBand {
   show_in_legend?: boolean
 }
 
-// Coordinate mode for reference lines
-export type RefLineCoordMode = `data` | `relative`
-
-// Z-index positions for reference line rendering order
-export type RefLineZIndex = `below-grid` | `below-lines` | `below-points` | `above-all`
-
 // Reference line styling
 export interface RefLineStyle {
   color?: string // default: 'currentColor'
@@ -809,11 +803,11 @@ export interface RefLineBase {
   id?: string | number
   x_span?: [number | null, number | null]
   y_span?: [number | null, number | null]
-  coord_mode?: RefLineCoordMode // default: 'data'
+  coord_mode?: `data` | `relative` // default: 'data'
   y_axis?: `y1` | `y2` // for horizontal lines with dual axes
   style?: RefLineStyle
   annotation?: RefLineAnnotation
-  z_index?: RefLineZIndex
+  z_index?: LayerZIndex
   visible?: boolean
   hover_style?: RefLineStyle
   on_click?: (event: RefLineEvent) => void
@@ -850,16 +844,13 @@ export const REF_LINE_STYLE_DEFAULTS: Required<RefLineStyle> = {
   opacity: 1,
 } as const
 
-// 3D reference line styling (extends 2D style)
-export type RefLine3DStyle = RefLineStyle
-
 // Base properties shared by all 3D reference line types
 export interface RefLine3DBase {
   id?: string | number
   x_span?: [number | null, number | null]
   y_span?: [number | null, number | null]
   z_span?: [number | null, number | null]
-  style?: RefLine3DStyle
+  style?: RefLineStyle
   visible?: boolean
   label?: string
   metadata?: Record<string, unknown>

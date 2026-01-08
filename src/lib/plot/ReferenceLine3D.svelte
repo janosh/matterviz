@@ -4,7 +4,7 @@
   import type { Vec3 } from '$lib/math'
   import { T } from '@threlte/core'
   import * as THREE from 'three'
-  import { create_to_threejs } from './reference-line-utils'
+  import { create_to_threejs, span_or } from './reference-line-utils'
   import type { RefLine3D } from './types'
 
   let { ref_line, scene_size = [10, 10, 5], ranges }: {
@@ -34,11 +34,7 @@
   let endpoints = $derived.by((): [THREE.Vector3, THREE.Vector3] | null => {
     if (ref_line.visible === false) return null
 
-    // Apply span constraints or use full range (helper to reduce repetition)
-    const span_or = (
-      span: [number | null, number | null] | undefined,
-      range: [number, number],
-    ) => [span?.[0] ?? range[0], span?.[1] ?? range[1]] as const
+    // Apply span constraints or use full range
     const [x_min, x_max] = span_or(ref_line.x_span, x_range)
     const [y_min, y_max] = span_or(ref_line.y_span, y_range)
     const [z_min, z_max] = span_or(ref_line.z_span, z_range)
@@ -84,8 +80,7 @@
       }
 
       // Find the valid t range where line is within all bounds
-      let t_min = -Infinity
-      let t_max = Infinity
+      let [t_min, t_max] = [-Infinity, Infinity]
       const eps = 1e-6
 
       for (const t of t_values) {

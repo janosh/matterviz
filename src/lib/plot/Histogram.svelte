@@ -639,6 +639,9 @@
       </clipPath>
     </defs>
 
+    <!-- Reference lines: below grid (must render first to appear behind grid) -->
+    {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+
     <!-- Zoom Selection Rectangle -->
     {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
         isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&
@@ -711,7 +714,7 @@
       </g>
     {/each}
 
-    <!-- Reference lines: below points -->
+    <!-- Reference lines: below points (after bars, before axes/labels) -->
     {@render ref_lines_layer(ref_lines_by_z.below_points)}
 
     <!-- X-axis -->
@@ -923,9 +926,6 @@
         {/if}
       </g>
     {/if}
-
-    <!-- Reference lines: below grid -->
-    {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
     <!-- Zero lines -->
     {#if display.x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}

@@ -511,6 +511,14 @@ export interface Scene3DParams {
   z_range: [number, number]
 }
 
+/** Apply span constraints or use full range as fallback */
+export function span_or(
+  span: [number | null, number | null] | undefined,
+  range: [number, number],
+): [number, number] {
+  return [span?.[0] ?? range[0], span?.[1] ?? range[1]]
+}
+
 // Normalize a data value to scene coordinates (centered around 0)
 export function normalize_to_scene(
   value: number,

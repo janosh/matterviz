@@ -421,6 +421,10 @@ pre[class*='language-'] {
   color: var(--prism-dark-function);
 }
 
+/* =============================================================================
+   LINE HIGHLIGHTING
+   ============================================================================= */
+
 pre[data-line], pre[class*='language-'] > code[class*='language-'] {
   position: relative;
 }

@@ -20,6 +20,7 @@ import {
   plane_xz,
   plane_yz,
   resolve_line_endpoints,
+  span_or,
   validate_ref_line,
   validate_ref_line_3d,
   validate_ref_plane,
@@ -71,6 +72,28 @@ describe(`normalize_point`, () => {
     const result = normalize_point([date, 100])
     expect(result[0]).toBe(date.getTime())
     expect(result[1]).toBe(100)
+  })
+})
+
+describe(`span_or`, () => {
+  test(`returns range when span is undefined`, () => {
+    expect(span_or(undefined, [0, 100])).toEqual([0, 100])
+  })
+
+  test(`applies span constraints when both values provided`, () => {
+    expect(span_or([20, 80], [0, 100])).toEqual([20, 80])
+  })
+
+  test(`uses range start when span[0] is null`, () => {
+    expect(span_or([null, 80], [0, 100])).toEqual([0, 80])
+  })
+
+  test(`uses range end when span[1] is null`, () => {
+    expect(span_or([20, null], [0, 100])).toEqual([20, 100])
+  })
+
+  test(`returns range when both span values are null`, () => {
+    expect(span_or([null, null], [10, 50])).toEqual([10, 50])
   })
 })
 
