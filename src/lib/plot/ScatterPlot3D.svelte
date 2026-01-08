@@ -15,6 +15,8 @@
     DisplayConfig3D,
     InternalPoint3D,
     LegendConfig,
+    RefLine3D,
+    RefPlane,
     ScaleType,
     Scatter3DHandlerEvent,
     Sides,
@@ -34,6 +36,8 @@
     // Data props
     series = [],
     surfaces = [],
+    ref_lines = [],
+    ref_planes = [],
     // Axis configuration (initial values)
     x_axis: x_axis_init = {},
     y_axis: y_axis_init = {},
@@ -103,6 +107,8 @@
   }: HTMLAttributes<HTMLDivElement> & {
     series?: DataSeries3D<Metadata>[]
     surfaces?: Surface3DConfig[]
+    ref_lines?: RefLine3D[]
+    ref_planes?: RefPlane[]
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
     z_axis?: AxisConfig3D
@@ -293,6 +299,8 @@
           {series}
           {series_visibility}
           {surfaces}
+          {ref_lines}
+          {ref_planes}
           {x_axis}
           {y_axis}
           {z_axis}

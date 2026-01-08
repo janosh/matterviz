@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element'
-  import { ElementPhoto, ElementTile } from '$lib/element'
-  import { ELEM_SYMBOLS } from '$lib/labels'
-  import type { XyObj } from '$lib/plot'
   import { is_color } from '$lib/colors'
-  import { element_data } from '$lib/element'
+  import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element'
+  import { element_data, ElementPhoto, ElementTile } from '$lib/element'
+  import { ELEM_SYMBOLS } from '$lib/labels'
+  import * as math from '$lib/math'
+  import type { XyObj } from '$lib/plot'
   import { ColorBar } from '$lib/plot'
   import { colors } from '$lib/state.svelte'
   import * as d3_sc from 'd3-scale-chromatic'
@@ -275,19 +275,19 @@
 
   // Calculate heat range for color bar
   let heat_range = $derived.by(() => {
-    if (!should_show_color_bar) return [0, 1] as [number, number]
+    if (!should_show_color_bar) return [0, 1] as math.Vec2
 
     const numeric_values = heat_values
       .flat()
       .filter((v): v is number => typeof v === `number`)
     const usable_values = log ? numeric_values.filter((v) => v > 0) : numeric_values
 
-    if (usable_values.length === 0) return [0, 1] as [number, number]
+    if (usable_values.length === 0) return [0, 1] as math.Vec2
 
     const min = color_scale_range[0] ?? Math.min(...usable_values)
     const max = color_scale_range[1] ?? Math.max(...usable_values)
 
-    return [min, max] as [number, number]
+    return [min, max] as math.Vec2
   })
 </script>
 
