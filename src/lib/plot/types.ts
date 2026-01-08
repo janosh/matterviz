@@ -765,3 +765,167 @@ export interface ErrorBand {
   label?: string
   show_in_legend?: boolean
 }
+
+// ============================================================================
+// Reference Lines (2D) - horizontal, vertical, diagonal, segment, line
+// ============================================================================
+
+// Coordinate mode for reference lines
+export type RefLineCoordMode = `data` | `relative`
+
+// Z-index positions for reference line rendering order
+export type RefLineZIndex = `below-grid` | `below-lines` | `below-points` | `above-all`
+
+// Reference line styling
+export interface RefLineStyle {
+  color?: string // default: 'currentColor'
+  width?: number // default: 1
+  dash?: string // SVG stroke-dasharray, default: none (solid)
+  opacity?: number // default: 1
+}
+
+// Annotation/label for reference lines
+export interface RefLineAnnotation {
+  text: string
+  position?: `start` | `center` | `end` // position along the line
+  side?: `above` | `below` | `left` | `right` // which side of line
+  offset?: { x?: number; y?: number }
+  font_size?: string
+  font_family?: string
+  color?: string
+  background?: string
+  padding?: number
+  rotate?: boolean // rotate text to follow line angle
+}
+
+// Event type for reference line interactions
+export interface RefLineEvent {
+  event: MouseEvent
+  line_idx: number
+  line_id?: string | number
+  type: RefLine[`type`]
+  label?: string
+  metadata?: Record<string, unknown>
+}
+
+// Base properties shared by all reference line types
+export interface RefLineBase {
+  id?: string | number
+  x_span?: [number | null, number | null]
+  y_span?: [number | null, number | null]
+  coord_mode?: RefLineCoordMode // default: 'data'
+  y_axis?: `y1` | `y2` // for horizontal lines with dual axes
+  style?: RefLineStyle
+  annotation?: RefLineAnnotation
+  z_index?: RefLineZIndex
+  visible?: boolean
+  hover_style?: RefLineStyle
+  on_click?: (event: RefLineEvent) => void
+  on_hover?: (event: RefLineEvent | null) => void
+  show_in_legend?: boolean
+  label?: string
+  legend_group?: string
+  metadata?: Record<string, unknown>
+}
+
+// Reference line value type - supports numbers, Dates, and ISO date strings
+export type RefLineValue = number | Date | string
+
+// Flat discriminated union - type determines required fields
+export type RefLine =
+  & RefLineBase
+  & (
+    | { type: `horizontal`; y: RefLineValue }
+    | { type: `vertical`; x: RefLineValue }
+    | { type: `diagonal`; slope: number; intercept: number }
+    | {
+      type: `segment`
+      p1: [RefLineValue, RefLineValue]
+      p2: [RefLineValue, RefLineValue]
+    }
+    | { type: `line`; p1: [RefLineValue, RefLineValue]; p2: [RefLineValue, RefLineValue] }
+  )
+
+// Default style values for reference lines
+export const REF_LINE_STYLE_DEFAULTS: Required<RefLineStyle> = {
+  color: `currentColor`,
+  width: 1,
+  dash: ``,
+  opacity: 1,
+} as const
+
+// ============================================================================
+// Reference Lines (3D) - axis-parallel, segment, line
+// ============================================================================
+
+// 3D reference line styling
+export interface RefLine3DStyle {
+  color?: string
+  width?: number
+  opacity?: number
+  dash?: string
+}
+
+// Base properties shared by all 3D reference line types
+export interface RefLine3DBase {
+  id?: string | number
+  x_span?: [number | null, number | null]
+  y_span?: [number | null, number | null]
+  z_span?: [number | null, number | null]
+  style?: RefLine3DStyle
+  visible?: boolean
+  label?: string
+  metadata?: Record<string, unknown>
+}
+
+// 3D reference line - discriminated union
+export type RefLine3D =
+  & RefLine3DBase
+  & (
+    | { type: `x-axis`; y: number; z: number } // line parallel to x-axis
+    | { type: `y-axis`; x: number; z: number } // line parallel to y-axis
+    | { type: `z-axis`; x: number; y: number } // line parallel to z-axis
+    | { type: `segment`; p1: [number, number, number]; p2: [number, number, number] }
+    | { type: `line`; p1: [number, number, number]; p2: [number, number, number] }
+  )
+
+// ============================================================================
+// Reference Planes (3D) - axis-aligned, normal-defined, point-defined
+// ============================================================================
+
+// 3D reference plane styling
+export interface RefPlaneStyle {
+  color?: string
+  opacity?: number
+  wireframe?: boolean
+  wireframe_color?: string
+  double_sided?: boolean
+}
+
+// Base properties shared by all 3D reference plane types
+export interface RefPlaneBase {
+  id?: string | number
+  x_span?: [number | null, number | null]
+  y_span?: [number | null, number | null]
+  z_span?: [number | null, number | null]
+  style?: RefPlaneStyle
+  visible?: boolean
+  label?: string
+  show_in_legend?: boolean
+  metadata?: Record<string, unknown>
+}
+
+// 3D reference plane - discriminated union
+export type RefPlane =
+  & RefPlaneBase
+  & (
+    | { type: `xy`; z: number } // horizontal plane at z
+    | { type: `xz`; y: number } // vertical plane at y
+    | { type: `yz`; x: number } // vertical plane at x
+    | {
+      type: `normal`
+      normal: [number, number, number]
+      point: [number, number, number]
+    }
+    | { type: `points`; p1: Vec3; p2: Vec3; p3: Vec3 } // plane through 3 points
+  )

@@ -17,6 +17,8 @@
     LineStyle,
     Orientation,
     PlotConfig,
+    RefLine,
+    RefLineEvent,
     ScaleType,
     TweenedOptions,
     UserContentProps,
@@ -26,10 +28,16 @@
     BarPlotControls,
     find_best_plot_area,
     PlotLegend,
+    ReferenceLine,
     ScatterPoint,
   } from '$lib/plot'
   import { process_prop } from '$lib/plot/data-transform'
   import { get_relative_coords } from '$lib/plot/interactions'
+  import type { IndexedRefLine } from '$lib/plot/reference-line-utils'
+  import {
+    group_ref_lines_by_z,
+    index_ref_lines,
+  } from '$lib/plot/reference-line-utils'
   import {
     create_color_scale,
     create_scale,
@@ -99,6 +107,9 @@
     point_tween,
     on_point_click,
     on_point_hover,
+    ref_lines = $bindable([]),
+    on_ref_line_click,
+    on_ref_line_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     controls_toggle_props,
@@ -162,6 +173,9 @@
         })
         | null,
     ) => void
+    ref_lines?: RefLine[]
+    on_ref_line_click?: (event: RefLineEvent) => void
+    on_ref_line_hover?: (event: RefLineEvent | null) => void
   } = $props()
 
   // Initialize bar, line, y2_axis with defaults (runs once)
@@ -181,6 +195,13 @@
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGElement | null = $state(null)
   let clip_path_id = `chart-clip-${crypto?.randomUUID?.()}`
+
+  // Reference line hover state
+  let hovered_ref_line_idx = $state<number | null>(null)
+
+  // Compute ref_lines with index and group by z-index (using shared utilities)
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
   // Compute auto ranges from visible series
   let visible_series = $derived(
@@ -737,6 +758,36 @@
   })
 </script>
 
+{#snippet ref_lines_layer(lines: IndexedRefLine[])}
+  {#each lines as line (line.id ?? line.idx)}
+    <ReferenceLine
+      ref_line={line}
+      line_idx={line.idx}
+      x_min={ranges.current.x[0]}
+      x_max={ranges.current.x[1]}
+      y_min={ranges.current.y[0]}
+      y_max={ranges.current.y[1]}
+      {pad}
+      {width}
+      {height}
+      x_scale={scales.x}
+      y_scale={scales.y}
+      y2_scale={scales.y2}
+      {clip_path_id}
+      hovered_line_idx={hovered_ref_line_idx}
+      on_click={(event: RefLineEvent) => {
+        line.on_click?.(event)
+        on_ref_line_click?.(event)
+      }}
+      on_hover={(event: RefLineEvent | null) => {
+        hovered_ref_line_idx = event?.line_idx ?? null
+        line.on_hover?.(event)
+        on_ref_line_hover?.(event)
+      }}
+    />
+  {/each}
+{/snippet}
+
 <svelte:window
   onkeydown={(evt) => {
     if (evt.key === `Escape` && fullscreen) {
@@ -1035,6 +1086,9 @@
 
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
+        <!-- Reference lines: below grid -->
+        {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+
         <!-- Zero lines -->
         {#if display.x_zero_line && (x_axis.scale_type ?? `linear`) === `linear` &&
           ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
@@ -1064,6 +1118,9 @@
             />
           {/if}
         {/if}
+
+        <!-- Reference lines: below lines -->
+        {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
         <!-- Bars and Lines -->
         {#each series as srs, series_idx (srs?.id ?? series_idx)}
@@ -1349,6 +1406,12 @@
             </g>
           {/if}
         {/each}
+
+        <!-- Reference lines: below points -->
+        {@render ref_lines_layer(ref_lines_by_z.below_points)}
+
+        <!-- Reference lines: above all -->
+        {@render ref_lines_layer(ref_lines_by_z.above_all)}
       </g>
     </svg>
 

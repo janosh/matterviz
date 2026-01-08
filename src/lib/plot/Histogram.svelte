@@ -1,8 +1,18 @@
 <script lang="ts">
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
-  import type { BarStyle, HistogramHandlerProps } from '$lib/plot'
-  import { find_best_plot_area, HistogramControls, PlotLegend } from '$lib/plot'
+  import type {
+    BarStyle,
+    HistogramHandlerProps,
+    RefLine,
+    RefLineEvent,
+  } from '$lib/plot'
+  import {
+    find_best_plot_area,
+    HistogramControls,
+    PlotLegend,
+    ReferenceLine,
+  } from '$lib/plot'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
   import { AXIS_DEFAULTS } from '$lib/plot/defaults'
   import { get_relative_coords } from '$lib/plot/interactions'
@@ -12,6 +22,11 @@
     LABEL_GAP_DEFAULT,
     measure_text_width,
   } from '$lib/plot/layout'
+  import type { IndexedRefLine } from '$lib/plot/reference-line-utils'
+  import {
+    group_ref_lines_by_z,
+    index_ref_lines,
+  } from '$lib/plot/reference-line-utils'
   import {
     create_scale,
     generate_ticks,
@@ -51,6 +66,9 @@
     change = () => {},
     on_bar_click,
     on_bar_hover,
+    ref_lines = $bindable([]),
+    on_ref_line_click,
+    on_ref_line_hover,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     on_series_toggle = () => {},
@@ -90,6 +108,9 @@
         | { value: number; count: number; property: string; event: MouseEvent }
         | null,
     ) => void
+    ref_lines?: RefLine[]
+    on_ref_line_click?: (event: RefLineEvent) => void
+    on_ref_line_hover?: (event: RefLineEvent | null) => void
     on_series_toggle?: (series_idx: number) => void
   } = $props()
 
@@ -118,6 +139,13 @@
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGElement | null = $state(null)
   let hover_info = $state<HistogramHandlerProps | null>(null)
+
+  // Reference line hover state
+  let hovered_ref_line_idx = $state<number | null>(null)
+
+  // Compute ref_lines with index and group by z-index (using shared utilities)
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
   let tooltip_el = $state<HTMLDivElement | undefined>()
   let drag_state = $state<{
     start: { x: number; y: number } | null
@@ -517,6 +545,36 @@
   })
 </script>
 
+{#snippet ref_lines_layer(lines: IndexedRefLine[])}
+  {#each lines as line (line.id ?? line.idx)}
+    <ReferenceLine
+      ref_line={line}
+      line_idx={line.idx}
+      x_min={ranges.current.x[0]}
+      x_max={ranges.current.x[1]}
+      y_min={ranges.current.y[0]}
+      y_max={ranges.current.y[1]}
+      {pad}
+      {width}
+      {height}
+      x_scale={scales.x}
+      y_scale={scales.y}
+      y2_scale={scales.y2}
+      clip_path_id="histogram-clip"
+      hovered_line_idx={hovered_ref_line_idx}
+      on_click={(event: RefLineEvent) => {
+        line.on_click?.(event)
+        on_ref_line_click?.(event)
+      }}
+      on_hover={(event: RefLineEvent | null) => {
+        hovered_ref_line_idx = event?.line_idx ?? null
+        line.on_hover?.(event)
+        on_ref_line_hover?.(event)
+      }}
+    />
+  {/each}
+{/snippet}
+
 <svelte:window
   onkeydown={(e) => {
     if (e.key === `Escape` && fullscreen) {
@@ -579,6 +637,9 @@
       <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
     {/if}
 
+    <!-- Reference lines: below lines -->
+    {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+
     <!-- Histogram bars (rendered before axes so tick labels appear on top) -->
     {#each histogram_data as
       { id, bins, color, label, y_scale, y_axis },
@@ -636,6 +697,9 @@
         {/each}
       </g>
     {/each}
+
+    <!-- Reference lines: below points -->
+    {@render ref_lines_layer(ref_lines_by_z.below_points)}
 
     <!-- X-axis -->
     <g class="x-axis">
@@ -847,6 +911,9 @@
       </g>
     {/if}
 
+    <!-- Reference lines: below grid -->
+    {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+
     <!-- Zero lines -->
     {#if display.x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
       {@const x0 = scales.x(0)}
@@ -875,6 +942,9 @@
         />
       {/if}
     {/if}
+
+    <!-- Reference lines: above all -->
+    {@render ref_lines_layer(ref_lines_by_z.above_all)}
   </svg>
 
   <!-- Tooltip (outside SVG for proper HTML rendering) -->

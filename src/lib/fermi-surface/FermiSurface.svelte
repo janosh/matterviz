@@ -106,15 +106,12 @@
     clip_flip?: boolean
     interpolation_factor?: number
     camera_projection?: CameraProjection
-    /**
-     * Controls visibility configuration.
-     * - 'always': controls always visible
-     * - 'hover': controls visible on component hover (default)
-     * - 'never': controls never visible
-     * - object: { mode, hidden, style } for fine-grained control
-     *
-     * Control names: 'filename', 'fullscreen', 'controls'
-     */
+    // Controls visibility configuration.
+    // - 'always': controls always visible
+    // - 'hover': controls visible on component hover (default)
+    // - 'never': controls never visible
+    // - object: { mode, hidden, style } for fine-grained control
+    // Control names: 'filename', 'fullscreen', 'controls'
     show_controls?: ShowControlsProp
     fullscreen?: boolean
     width?: number

@@ -11,11 +11,15 @@
     DataSeries3D,
     DisplayConfig3D,
     InternalPoint3D,
+    RefLine3D,
+    RefPlane,
     ScaleType,
     Scatter3DHandlerEvent,
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/types'
+  import ReferenceLine3D from './ReferenceLine3D.svelte'
+  import ReferencePlane from './ReferencePlane.svelte'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -38,6 +42,8 @@
     display = {},
     styles = {},
     surfaces = [],
+    ref_lines = [],
+    ref_planes = [],
     color_scale = { type: `linear`, scheme: `interpolateViridis` },
     size_scale = { type: `linear`, radius_range: [0.05, 0.2] },
     camera_position = [10, 10, 10] as Vec3,
@@ -72,6 +78,8 @@
     display?: DisplayConfig3D
     styles?: StyleOverrides3D
     surfaces?: Surface3DConfig[]
+    ref_lines?: RefLine3D[]
+    ref_planes?: RefPlane[]
     color_scale?: {
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
@@ -739,6 +747,32 @@
     {scene_x}
     {scene_y}
     {scene_z}
+  />
+{/each}
+
+<!-- Reference Planes -->
+{#each (ref_planes ?? []).filter((plane) => plane.visible !== false) as
+  ref_plane,
+  plane_idx
+  (ref_plane.id ?? plane_idx)
+}
+  <ReferencePlane
+    {ref_plane}
+    scene_size={[scene_x, scene_y, scene_z]}
+    ranges={{ x: x_range, y: y_range, z: z_range }}
+  />
+{/each}
+
+<!-- Reference Lines -->
+{#each (ref_lines ?? []).filter((line) => line.visible !== false) as
+  ref_line,
+  line_idx
+  (ref_line.id ?? line_idx)
+}
+  <ReferenceLine3D
+    {ref_line}
+    scene_size={[scene_x, scene_y, scene_z]}
+    ranges={{ x: x_range, y: y_range, z: z_range }}
   />
 {/each}
 

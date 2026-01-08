@@ -19,6 +19,8 @@
     LegendConfig,
     PlotConfig,
     Point,
+    RefLine,
+    RefLineEvent,
     ScaleType,
     ScatterHandlerEvent,
     ScatterHandlerProps,
@@ -36,6 +38,7 @@
     Line,
     PlotLegend,
     PlotTooltip,
+    ReferenceLine,
     ScatterPlotControls,
     ScatterPoint,
   } from '$lib/plot'
@@ -59,14 +62,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
-  import { get_relative_coords } from './interactions'
-  import { calc_auto_padding, constrain_tooltip_position } from './layout'
-  import {
-    create_color_scale,
-    create_size_scale,
-    generate_ticks,
-    get_nice_data_range,
-  } from './scales'
+  import type { FillPathPoint } from './fill-utils'
   import {
     apply_range_constraints,
     apply_where_condition,
@@ -76,7 +72,16 @@
     is_fill_gradient,
     resolve_boundary,
   } from './fill-utils'
-  import type { FillPathPoint } from './fill-utils'
+  import { get_relative_coords } from './interactions'
+  import { calc_auto_padding, constrain_tooltip_position } from './layout'
+  import type { IndexedRefLine } from './reference-line-utils'
+  import { group_ref_lines_by_z, index_ref_lines } from './reference-line-utils'
+  import {
+    create_color_scale,
+    create_size_scale,
+    generate_ticks,
+    get_nice_data_range,
+  } from './scales'
 
   let {
     series = $bindable([]),
@@ -114,6 +119,9 @@
     error_bands = [],
     on_fill_click,
     on_fill_hover,
+    ref_lines = $bindable([]),
+    on_ref_line_click,
+    on_ref_line_hover,
     selected_series_idx = $bindable(0),
     wrapper = $bindable(),
     fullscreen = $bindable(false),
@@ -174,6 +182,9 @@
     error_bands?: ErrorBand[]
     on_fill_click?: (event: FillHandlerEvent) => void
     on_fill_hover?: (event: FillHandlerEvent | null) => void
+    ref_lines?: RefLine[] // Bindable for legend toggle support
+    on_ref_line_click?: (event: RefLineEvent) => void
+    on_ref_line_hover?: (event: RefLineEvent | null) => void
     selected_series_idx?: number
     wrapper?: HTMLDivElement
   } = $props()
@@ -230,6 +241,9 @@
 
   // Fill region hover state
   let hovered_fill_idx = $state<number | null>(null)
+
+  // Reference line hover state
+  let hovered_ref_line_idx = $state<number | null>(null)
 
   // State to hold the calculated label positions after simulation
   let label_positions = $state<Record<string, XyObj>>({})
@@ -852,6 +866,10 @@
     return groups
   })
 
+  // Compute ref_lines with index and group by z-index (using shared utilities)
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
+
   // Calculate best legend placement using new simple system
   let legend_placement = $derived.by(() => {
     const should_place = legend != null &&
@@ -1349,6 +1367,36 @@
   {/each}
 {/snippet}
 
+{#snippet ref_lines_layer(lines: IndexedRefLine[])}
+  {#each lines as line (line.id ?? line.idx)}
+    <ReferenceLine
+      ref_line={line}
+      line_idx={line.idx}
+      {x_min}
+      {x_max}
+      {y_min}
+      {y_max}
+      {pad}
+      {width}
+      {height}
+      x_scale={x_scale_fn}
+      y_scale={y_scale_fn}
+      y2_scale={y2_scale_fn}
+      {clip_path_id}
+      hovered_line_idx={hovered_ref_line_idx}
+      on_click={(event: RefLineEvent) => {
+        line.on_click?.(event)
+        on_ref_line_click?.(event)
+      }}
+      on_hover={(event: RefLineEvent | null) => {
+        hovered_ref_line_idx = event?.line_idx ?? null
+        line.on_hover?.(event)
+        on_ref_line_hover?.(event)
+      }}
+    />
+  {/each}
+{/snippet}
+
 <svelte:window
   onkeydown={(e) => {
     if (e.key === `Escape` && fullscreen) {
@@ -1402,6 +1450,8 @@
 
       <!-- Fill regions: below grid -->
       {@render fill_regions_layer(fills_by_z.below_grid)}
+      <!-- Reference lines: below grid -->
+      {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
       <g class="x-axis">
         {#if width > 0 && height > 0}
@@ -1678,6 +1728,8 @@
 
       <!-- Fill regions: below lines (default z-index) -->
       {@render fill_regions_layer(fills_by_z.below_lines)}
+      <!-- Reference lines: below lines (default z-index) -->
+      {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
       <!-- Lines -->
       {#if styles.show_lines}
@@ -1726,6 +1778,8 @@
 
       <!-- Fill regions: below points -->
       {@render fill_regions_layer(fills_by_z.below_points)}
+      <!-- Reference lines: below points -->
+      {@render ref_lines_layer(ref_lines_by_z.below_points)}
 
       <!-- Points -->
       {#if styles.show_points}
@@ -1826,6 +1880,8 @@
 
       <!-- Fill regions: above all -->
       {@render fill_regions_layer(fills_by_z.above_all)}
+      <!-- Reference lines: above all -->
+      {@render ref_lines_layer(ref_lines_by_z.above_all)}
     </svg>
 
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->

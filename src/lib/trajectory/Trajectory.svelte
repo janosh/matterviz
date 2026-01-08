@@ -123,15 +123,12 @@
     trajectory_controls?: Snippet<[ControlsProps]>
     // Custom error snippet for advanced error handling
     error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
-    /**
-     * Controls visibility configuration.
-     * - 'always': controls always visible
-     * - 'hover': controls visible on component hover (default)
-     * - 'never': controls never visible
-     * - object: { mode, hidden, style } for fine-grained control
-     *
-     * Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'view-mode', 'fullscreen'
-     */
+    // Controls visibility configuration.
+    // - 'always': controls always visible
+    // - 'hover': controls visible on component hover (default)
+    // - 'never': controls never visible
+    // - object: { mode, hidden, style } for fine-grained control
+    // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'view-mode', 'fullscreen'
     show_controls?: ShowControlsProp
     // show/hide the fullscreen button
     fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
