@@ -22,11 +22,8 @@
     LABEL_GAP_DEFAULT,
     measure_text_width,
   } from '$lib/plot/layout'
-  import type { IndexedRefLine } from '$lib/plot/reference-line-utils'
-  import {
-    group_ref_lines_by_z,
-    index_ref_lines,
-  } from '$lib/plot/reference-line-utils'
+  import type { IndexedRefLine } from '$lib/plot/reference-line'
+  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/reference-line'
   import {
     create_scale,
     generate_ticks,

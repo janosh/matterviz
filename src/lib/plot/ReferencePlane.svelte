@@ -4,7 +4,7 @@
   import { cross_3d, normalize_vec3 } from '$lib/math'
   import { T } from '@threlte/core'
   import * as THREE from 'three'
-  import { create_to_threejs, span_or } from './reference-line-utils'
+  import { create_to_threejs, span_or } from './reference-line'
   import type { RefPlane } from './types'
 
   let { ref_plane, scene_size = [10, 10, 5], ranges }: {

@@ -33,11 +33,8 @@
   } from '$lib/plot'
   import { process_prop } from '$lib/plot/data-transform'
   import { get_relative_coords } from '$lib/plot/interactions'
-  import type { IndexedRefLine } from '$lib/plot/reference-line-utils'
-  import {
-    group_ref_lines_by_z,
-    index_ref_lines,
-  } from '$lib/plot/reference-line-utils'
+  import type { IndexedRefLine } from '$lib/plot/reference-line'
+  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/reference-line'
   import {
     create_color_scale,
     create_scale,

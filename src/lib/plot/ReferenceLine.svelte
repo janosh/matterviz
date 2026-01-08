@@ -3,7 +3,7 @@
   import {
     calculate_annotation_position,
     resolve_line_endpoints,
-  } from './reference-line-utils'
+  } from './reference-line'
   import type { RefLine, RefLineEvent, RefLineStyle } from './types'
   import { REF_LINE_STYLE_DEFAULTS } from './types'
 

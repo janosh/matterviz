@@ -315,6 +315,8 @@ export function resolve_line_endpoints(
           y < y_min || y > y_max ? [(bound - intercept) / slope, bound] : [x, y]
         ;[x1, y1] = clip_y(x1, y1, y1 < y_min ? y_min : y_max)
         ;[x2, y2] = clip_y(x2, y2, y2 < y_min ? y_min : y_max)
+        // If both endpoints clipped to same point, line is entirely outside bounds
+        if (x1 === x2 && y1 === y2) return null
       }
 
       ;[x1_data, x2_data] = apply_x_span(x1, x2)
@@ -418,7 +420,10 @@ export function calculate_annotation_position(
       perp_x = sign * nx * gap
       perp_y = sign * ny * gap
     } else {
-      perp_x = side === `left` ? -gap : gap
+      // left = perpendicular to the "left" of direction vector, right = opposite
+      const sign = side === `left` ? 1 : -1
+      perp_x = sign * nx * gap
+      perp_y = sign * ny * gap
     }
   }
 

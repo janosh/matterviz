@@ -74,8 +74,8 @@
   } from './fill-utils'
   import { get_relative_coords } from './interactions'
   import { calc_auto_padding, constrain_tooltip_position } from './layout'
-  import type { IndexedRefLine } from './reference-line-utils'
-  import { group_ref_lines_by_z, index_ref_lines } from './reference-line-utils'
+  import type { IndexedRefLine } from './reference-line'
+  import { group_ref_lines_by_z, index_ref_lines } from './reference-line'
   import {
     create_color_scale,
     create_size_scale,

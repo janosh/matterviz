@@ -7,7 +7,7 @@
   import { Line2 } from 'three/examples/jsm/lines/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
   import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
-  import { create_to_threejs, span_or } from './reference-line-utils'
+  import { create_to_threejs, span_or } from './reference-line'
   import type { RefLine3D } from './types'
 
   let { ref_line, scene_size = [10, 10, 5], ranges }: {
