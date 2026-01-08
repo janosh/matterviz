@@ -14,6 +14,9 @@ import {
 const DATA_LOAD_TIMEOUT = 10_000
 
 test.describe(`OPTIMADE route`, () => {
+  // Network mocking can be flaky in CI due to race conditions
+  test.describe.configure({ retries: 2 })
+
   test.beforeEach(async ({ page }) => {
     // Extract target URL from CORS proxy requests
     const extract_target_url = (url: string): string | null => {

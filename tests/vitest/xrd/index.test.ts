@@ -1,4 +1,4 @@
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Vec2 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { compute_xrd_pattern, type XrdPattern } from '$lib/xrd'
 import { describe, expect, test } from 'vitest'
@@ -27,8 +27,8 @@ describe(`@xrd/ api and compute_xrd_pattern options`, () => {
   })
 
   test.each([
-    { t_range: [0, 30] as [number, number] },
-    { t_range: [10, 60] as [number, number] },
+    { t_range: [0, 30] as Vec2 },
+    { t_range: [10, 60] as Vec2 },
   ])(`two_theta_range bounds respected and x sorted`, ({ t_range }) => {
     const structure = make_simple_cubic(2)
     const pattern = compute_xrd_pattern(structure, {

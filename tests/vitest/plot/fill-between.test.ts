@@ -1,4 +1,5 @@
 // Tests for fill-between: utility functions and type structures
+import type { Vec2 } from '$lib/math'
 import {
   apply_range_constraints,
   apply_where_condition,
@@ -123,8 +124,8 @@ describe(`resolve_boundary`, () => {
   const scales = {
     x_scale: (val: number) => val * 10,
     y_scale: (val: number) => val * 10,
-    x_domain: [1, 3] as [number, number],
-    y_domain: [0, 100] as [number, number],
+    x_domain: [1, 3] as Vec2,
+    y_domain: [0, 100] as Vec2,
   }
 
   it.each([
@@ -154,7 +155,7 @@ describe(`apply_range_constraints`, () => {
     const x_values = [1, 2, 3, 4, 5]
     const y1_values = [10, 20, 30, 40, 50]
     const y2_values = [5, 15, 25, 35, 45]
-    const region = { x_range: [2, 4] as [number, number] }
+    const region = { x_range: [2, 4] as Vec2 }
 
     const result = apply_range_constraints(x_values, y1_values, y2_values, region)
 
@@ -167,7 +168,7 @@ describe(`apply_range_constraints`, () => {
     const x_values = [1, 2, 3]
     const y1_values = [10, 50, 90]
     const y2_values = [5, 40, 80]
-    const region = { y_range: [20, 60] as [number, number] }
+    const region = { y_range: [20, 60] as Vec2 }
 
     const result = apply_range_constraints(x_values, y1_values, y2_values, region)
 
@@ -192,7 +193,7 @@ describe(`apply_range_constraints`, () => {
     const x_values = [1, 2, 3, 4, 5]
     const y1_values = [10, 20, 30, 40, 50]
     const y2_values = [5, 15, 25, 35, 45]
-    const region = { x_range: [2, 4] as [number, number] }
+    const region = { x_range: [2, 4] as Vec2 }
 
     const result = apply_range_constraints(x_values, y1_values, y2_values, region)
 

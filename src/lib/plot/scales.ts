@@ -1,4 +1,5 @@
 import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Point, ScaleType, TimeInterval } from '$lib/plot'
 import { extent, range } from 'd3-array'
@@ -189,7 +190,7 @@ export function get_nice_data_range(
     : scaleLinear().domain([data_min, data_max])
 
   scale.nice()
-  return scale.domain() as [number, number]
+  return scale.domain() as Vec2
 }
 
 // Generate logarithmic ticks (from ScatterPlot)
@@ -294,7 +295,7 @@ export function create_size_scale(
   const auto_range = all_size_values.length > 0
     ? extent(all_size_values.filter((v): v is number => v !== null))
     : [0, 1]
-  const [min_val, max_val] = config.value_range ?? (auto_range as [number, number])
+  const [min_val, max_val] = config.value_range ?? (auto_range as Vec2)
   const safe_min = min_val ?? 0
   const safe_max = max_val ?? (safe_min > 0 ? safe_min * 1.1 : 1)
 

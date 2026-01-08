@@ -1,4 +1,5 @@
 import { ScatterPlot } from '$lib'
+import type { Vec2 } from '$lib/math'
 import type { DataSeries } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
@@ -115,8 +116,8 @@ describe(`ScatterPlot`, () => {
   })
 
   test.each([
-    { y: [-10, -5, 0, 5, 10], y_range: [-15, 15] as [number, number] },
-    { y: [5, 10, 15, 20, 25], y_range: [0, 30] as [number, number] },
+    { y: [-10, -5, 0, 5, 10], y_range: [-15, 15] as Vec2 },
+    { y: [5, 10, 15, 20, 25], y_range: [0, 30] as Vec2 },
   ])(`zero lines`, ({ y, y_range }) => {
     mount(ScatterPlot, {
       target: document.body,

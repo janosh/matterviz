@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation'
   import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib'
   import { element_data, PeriodicTable } from '$lib'
+  import type { Vec2 } from '$lib/math'
   import { TableInset } from '$lib/periodic-table'
   import { ColorBar } from '$lib/plot'
   import { PeriodicTableDemo } from '$site'
@@ -23,7 +24,7 @@
   let atomic_radius_range = $derived([
     Math.min(...element_data.map((el) => el.atomic_radius || 0).filter((r) => r > 0)),
     Math.max(...element_data.map((el) => el.atomic_radius || 0)),
-  ] as [number, number])
+  ] as Vec2)
   let electronegativity_range = $derived([
     Math.min(
       ...element_data.map((el) => (el.electronegativity || 0) * 100).filter((
@@ -31,14 +32,14 @@
       ) => elec_neg > 0),
     ),
     Math.max(...element_data.map((el) => (el.electronegativity || 0) * 100)),
-  ] as [number, number])
+  ] as Vec2)
 
   let covalent_radius_range = $derived([
     Math.min(
       ...element_data.map((el) => el.covalent_radius || 0).filter((r) => r > 0),
     ),
     Math.max(...element_data.map((el) => el.covalent_radius || 0)),
-  ] as [number, number])
+  ] as Vec2)
 
   let electron_affinity_range = $derived([
     Math.min(
@@ -47,7 +48,7 @@
         .filter((elec_aff) => elec_aff > 0),
     ),
     Math.max(...element_data.map((el) => Math.abs(el.electron_affinity || 0))),
-  ] as [number, number])
+  ] as Vec2)
 
   let window_width: number = $state(0)
 
