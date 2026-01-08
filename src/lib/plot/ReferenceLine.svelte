@@ -67,8 +67,8 @@
       : null,
   )
 
-  const make_event = (mouse_event: MouseEvent): RefLineEvent => ({
-    event: mouse_event,
+  const make_event = (event: MouseEvent | FocusEvent): RefLineEvent => ({
+    event,
     line_idx,
     line_id: ref_line.id,
     type: ref_line.type,
@@ -102,7 +102,7 @@
     onmouseleave={() => on_hover?.(null)}
     onfocus={(evt) => {
       is_focused = true
-      on_hover?.({ ...make_event(new MouseEvent(`focus`)), event: evt })
+      on_hover?.(make_event(evt))
     }}
     onblur={() => {
       is_focused = false
