@@ -125,7 +125,7 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-invalid-id-12345`)
 
     // Wait for providers to load first (triggers URL slug parsing)
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({ timeout: 15000 })
 
     // Check input value is set correctly (after providers load)
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
@@ -141,7 +141,7 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-mp-1`)
 
     // Wait for providers to load and structure to be fetched
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({ timeout: 15000 })
     // Verify initial MP structure is loaded (h2 contains structure ID in span)
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 10000 })
 
@@ -164,7 +164,7 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-mp-1`)
 
     // Wait for providers to load and structure to be fetched
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({ timeout: 15000 })
     // Verify initial MP structure is loaded
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 10000 })
 
@@ -178,6 +178,9 @@ test.describe(`OPTIMADE route`, () => {
 
   test(`provider selection clears input field`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
+
+    // Wait for providers to load first
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({ timeout: 15000 })
 
     // Fill input with some text
     await page.locator(`input.structure-input`).fill(`test-structure-id`)
@@ -193,7 +196,7 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-mp-1`)
 
     // Wait for providers to load and structure to be fetched
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({ timeout: 15000 })
     // Test MP provider (should already be loaded)
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 10000 })
 
@@ -216,7 +219,7 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-mp-1`)
 
     // Wait for providers to load first
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({ timeout: 15000 })
     // Wait for suggestions to load (shown after providers and suggestions fetch)
     await expect(page.locator(`text=Suggested Structures`)).toBeVisible({
       timeout: 10000,
