@@ -781,6 +781,7 @@ export interface RefLineAnnotation {
   side?: `above` | `below` | `left` | `right` // which side of line
   offset?: { x?: number; y?: number }
   gap?: number // pixels between line and annotation text, default: 8
+  edge_padding?: number // pixels inward from plot edge at start/end, default: 4
   font_size?: string
   font_family?: string
   color?: string

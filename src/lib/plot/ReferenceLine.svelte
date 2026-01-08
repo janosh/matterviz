@@ -95,7 +95,6 @@
   <g
     class="reference-line"
     class:hovered={is_hovered}
-    clip-path="url(#{clip_path_id})"
     role={is_clickable ? `button` : `img`}
     aria-label={ref_line.label ?? ref_line.annotation?.text ?? `Reference line ${line_idx}`}
     tabindex={is_clickable ? 0 : -1}
@@ -117,36 +116,38 @@
     }}
     onkeydown={handle_keydown}
   >
-    <!-- Invisible hit area for easier interaction (8px wide) -->
-    <line
-      {x1}
-      {y1}
-      {x2}
-      {y2}
-      stroke="transparent"
-      stroke-width="8"
-      style:pointer-events="stroke"
-    />
+    <!-- Lines clipped to plot area -->
+    <g clip-path="url(#{clip_path_id})">
+      <!-- Invisible hit area for easier interaction (8px wide) -->
+      <line
+        {x1}
+        {y1}
+        {x2}
+        {y2}
+        stroke="transparent"
+        stroke-width="8"
+        style:pointer-events="stroke"
+      />
 
-    <!-- Visible line -->
-    <line
-      {x1}
-      {y1}
-      {x2}
-      {y2}
-      stroke={style.color}
-      stroke-width={style.width}
-      stroke-dasharray={style.dash || null}
-      stroke-opacity={style.opacity}
-      style:pointer-events="none"
-    />
+      <!-- Visible line -->
+      <line
+        {x1}
+        {y1}
+        {x2}
+        {y2}
+        stroke={style.color}
+        stroke-width={style.width}
+        stroke-dasharray={style.dash || null}
+        stroke-opacity={style.opacity}
+        style:pointer-events="none"
+      />
+    </g>
 
-    <!-- Annotation -->
+    <!-- Annotation (outside clip-path to remain visible) -->
     {#if annotation_pos && ref_line.annotation}
       {@const anno = ref_line.annotation}
       {@const anno_padding = anno.padding ?? 2}
       {@const font_size = parseFloat(String(anno.font_size ?? 12))}
-      <!-- 0.6 ratio works well for most sans-serif fonts; may need adjustment for others -->
       {@const text_width = anno.text.length * font_size * 0.6}
       {@const anchor_offset = {
       start: 0,
@@ -154,7 +155,6 @@
       end: text_width,
     }[annotation_pos.text_anchor] ?? 0}
       {#if anno.background}
-        <!-- Background rect for annotation text (width estimated from text length) -->
         <rect
           x={annotation_pos.x - anno_padding - anchor_offset}
           y={annotation_pos.y - font_size * 0.8 - anno_padding}

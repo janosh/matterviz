@@ -375,6 +375,7 @@ export function calculate_annotation_position(
     side?: `above` | `below` | `left` | `right`
     offset?: { x?: number; y?: number }
     gap?: number
+    edge_padding?: number
     rotate?: boolean
   },
 ): AnnotationPosition {
@@ -383,17 +384,28 @@ export function calculate_annotation_position(
   const offset_x = annotation.offset?.x ?? 0
   const offset_y = annotation.offset?.y ?? 0
   const gap = annotation.gap ?? 8 // pixels from line
+  const edge_padding = annotation.edge_padding ?? 4 // pixels from plot edge at start/end
 
   // Fraction along line: start=0, center=0.5, end=1
   const frac = position === `start` ? 0 : position === `center` ? 0.5 : 1
 
-  const base_x = x1 + frac * (x2 - x1)
-  const base_y = y1 + frac * (y2 - y1)
-
-  // Calculate perpendicular offset based on side
+  // Calculate base position with edge padding applied along line direction
   const dx = x2 - x1
   const dy = y2 - y1
   const len = Math.sqrt(dx * dx + dy * dy)
+
+  let base_x = x1 + frac * dx
+  let base_y = y1 + frac * dy
+
+  // Apply edge padding to pull text slightly inward from plot boundaries
+  if (len > 0 && position !== `center`) {
+    const dir_x = dx / len
+    const dir_y = dy / len
+    // At 'end', move back toward start; at 'start', move toward end
+    const inward = position === `end` ? -edge_padding : edge_padding
+    base_x += dir_x * inward
+    base_y += dir_y * inward
+  }
 
   let perp_x = 0
   let perp_y = 0
@@ -416,8 +428,17 @@ export function calculate_annotation_position(
   const final_y = base_y + perp_y + offset_y
 
   // Text anchor and baseline based on position/side
-  const text_anchor = ({ start: `start`, end: `end`, center: `middle` }[position] ??
-    `middle`) as `start` | `middle` | `end`
+  // For left/right sides, anchor is determined by side (text extends away from line)
+  // For above/below sides, anchor is determined by position along line
+  let text_anchor: `start` | `middle` | `end`
+  if (side === `left`) {
+    text_anchor = `end` // text ends at gap point, extends left
+  } else if (side === `right`) {
+    text_anchor = `start` // text starts at gap point, extends right
+  } else {
+    text_anchor = ({ start: `start`, end: `end`, center: `middle` }[position] ??
+      `middle`) as `start` | `middle` | `end`
+  }
   const dominant_baseline = ({
     above: `auto`,
     below: `hanging`,

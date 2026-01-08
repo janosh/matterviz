@@ -350,7 +350,8 @@ describe(`calculate_annotation_position`, () => {
       position: `end`,
       side: `above`,
     })
-    expect(pos.x).toBe(200) // at end of line
+    // At end, with default edge_padding=4, position is pulled 4px inward
+    expect(pos.x).toBe(196) // 200 - 4
     expect(pos.text_anchor).toBe(`end`)
   })
 
@@ -358,7 +359,7 @@ describe(`calculate_annotation_position`, () => {
     const pos = calculate_annotation_position(0, 100, 200, 100, {
       position: `center`,
     })
-    expect(pos.x).toBe(100) // middle of line
+    expect(pos.x).toBe(100) // middle of line (no edge_padding for center)
     expect(pos.text_anchor).toBe(`middle`)
   })
 
@@ -366,7 +367,8 @@ describe(`calculate_annotation_position`, () => {
     const pos = calculate_annotation_position(0, 100, 200, 100, {
       position: `start`,
     })
-    expect(pos.x).toBe(0) // start of line
+    // At start, with default edge_padding=4, position is pulled 4px inward
+    expect(pos.x).toBe(4) // 0 + 4
     expect(pos.text_anchor).toBe(`start`)
   })
 
