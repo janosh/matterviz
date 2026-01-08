@@ -45,7 +45,7 @@ export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex 
     above_all: [],
   }
   for (const line of lines) {
-    const key = Z_INDEX_KEY_MAP[line.z_index ?? `below-lines`] ?? `below_lines`
+    const key = Z_INDEX_KEY_MAP[line.z_index ?? `below-lines`]
     groups[key].push(line)
   }
   return groups
