@@ -1,6 +1,7 @@
 // Reference line utilities: helper functions and coordinate resolution
 import type { Vec3 } from '$lib/math'
 import type {
+  LayerZIndex,
   RefLine,
   RefLine3D,
   RefLine3DBase,
@@ -27,6 +28,14 @@ export interface RefLinesByZIndex {
   above_all: IndexedRefLine[]
 }
 
+// Map z-index type values to object keys
+const Z_INDEX_KEY_MAP: Record<LayerZIndex, keyof RefLinesByZIndex> = {
+  'below-grid': `below_grid`,
+  'below-lines': `below_lines`,
+  'below-points': `below_points`,
+  'above-all': `above_all`,
+}
+
 // Group indexed ref_lines by z-index for ordered rendering
 export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex {
   const groups: RefLinesByZIndex = {
@@ -36,10 +45,10 @@ export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex 
     above_all: [],
   }
   for (const line of lines) {
-    // Convert z_index like 'below-grid' to key 'below_grid', default to 'below_lines'
-    const key =
-      (line.z_index?.replace(`-`, `_`) ?? `below_lines`) as keyof RefLinesByZIndex
-    groups[key in groups ? key : `below_lines`].push(line)
+    const key = line.z_index
+      ? (Z_INDEX_KEY_MAP[line.z_index] ?? `below_lines`)
+      : `below_lines`
+    groups[key].push(line)
   }
   return groups
 }
@@ -365,6 +374,7 @@ export function calculate_annotation_position(
     position?: `start` | `center` | `end`
     side?: `above` | `below` | `left` | `right`
     offset?: { x?: number; y?: number }
+    gap?: number
     rotate?: boolean
   },
 ): AnnotationPosition {
@@ -372,6 +382,7 @@ export function calculate_annotation_position(
   const side = annotation.side ?? `above`
   const offset_x = annotation.offset?.x ?? 0
   const offset_y = annotation.offset?.y ?? 0
+  const gap = annotation.gap ?? 8 // pixels from line
 
   // Fraction along line: start=0, center=0.5, end=1
   const frac = position === `start` ? 0 : position === `center` ? 0.5 : 1
@@ -383,7 +394,6 @@ export function calculate_annotation_position(
   const dx = x2 - x1
   const dy = y2 - y1
   const len = Math.sqrt(dx * dx + dy * dy)
-  const gap = 8 // pixels from line
 
   let perp_x = 0
   let perp_y = 0

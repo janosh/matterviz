@@ -101,7 +101,7 @@
       const data_y = y_scale_fn.invert?.(py) ?? 0
 
       on_click({
-        event: event as unknown as MouseEvent, // Cast for type compatibility
+        event,
         region_idx,
         region_id: region.id,
         x: data_x,

@@ -67,7 +67,9 @@
       : null,
   )
 
-  const make_event = (event: MouseEvent | FocusEvent): RefLineEvent => ({
+  const make_event = (
+    event: MouseEvent | KeyboardEvent | FocusEvent,
+  ): RefLineEvent => ({
     event,
     line_idx,
     line_id: ref_line.id,
@@ -79,7 +81,7 @@
   function handle_keydown(event: KeyboardEvent) {
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
-      const evt = make_event(new MouseEvent(`click`))
+      const evt = make_event(event)
       ref_line.on_click?.(evt)
       on_click?.(evt)
     }

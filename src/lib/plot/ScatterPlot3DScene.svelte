@@ -18,8 +18,6 @@
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/types'
-  import ReferenceLine3D from './ReferenceLine3D.svelte'
-  import ReferencePlane from './ReferencePlane.svelte'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -30,6 +28,8 @@
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
   import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
   import { get_series_color } from './data-transform'
+  import ReferenceLine3D from './ReferenceLine3D.svelte'
+  import ReferencePlane from './ReferencePlane.svelte'
   import { create_color_scale, create_size_scale } from './scales'
   import Surface3D from './Surface3D.svelte'
 
@@ -444,7 +444,7 @@
   // Build event data for point interactions
   function make_event_data(
     point: InternalPoint3D<Metadata>,
-    event: MouseEvent,
+    event?: MouseEvent,
   ): Scatter3DHandlerEvent<Metadata> | null {
     const orig = all_points.find(
       (pt) => pt.series_idx === point.series_idx && pt.point_idx === point.point_idx,
@@ -472,7 +472,7 @@
 
   function handle_point_enter(point: InternalPoint3D<Metadata>) {
     hovered_point = point
-    const data = make_event_data(point, new MouseEvent(`pointerenter`))
+    const data = make_event_data(point)
     if (data) on_point_hover?.(data)
   }
 
@@ -824,7 +824,7 @@
 <!-- Tooltip -->
 {#if hovered_point}
   {@const hp = hovered_point}
-  {@const data = make_event_data(hp, new MouseEvent(`pointerenter`))}
+  {@const data = make_event_data(hp)}
   {#if data}
     <extras.HTML position={[hp.x, hp.y + 0.3, hp.z]} center>
       {#if tooltip}

@@ -600,7 +600,7 @@ export interface Scatter3DHandlerProps<Metadata = Record<string, unknown>> {
 
 export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
   & Scatter3DHandlerProps<Metadata>
-  & { event: MouseEvent; point: InternalPoint3D<Metadata> }
+  & { event?: MouseEvent; point: InternalPoint3D<Metadata> }
 
 // Camera projection types for 3D
 export type CameraProjection3D = `perspective` | `orthographic`
@@ -669,7 +669,7 @@ export interface FillHoverStyle {
 
 // Event type for fill region interactions
 export interface FillHandlerEvent {
-  event: MouseEvent
+  event: MouseEvent | KeyboardEvent | FocusEvent
   region_idx: number
   region_id?: string | number
   x: number // Data x-coordinate
@@ -780,6 +780,7 @@ export interface RefLineAnnotation {
   position?: `start` | `center` | `end` // position along the line
   side?: `above` | `below` | `left` | `right` // which side of line
   offset?: { x?: number; y?: number }
+  gap?: number // pixels between line and annotation text, default: 8
   font_size?: string
   font_family?: string
   color?: string
@@ -790,7 +791,7 @@ export interface RefLineAnnotation {
 
 // Event type for reference line interactions
 export interface RefLineEvent {
-  event: MouseEvent | FocusEvent // FocusEvent for keyboard accessibility
+  event: MouseEvent | KeyboardEvent | FocusEvent
   line_idx: number
   line_id?: string | number
   type: RefLine[`type`]
