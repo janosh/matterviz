@@ -575,174 +575,144 @@ points, {bins} bins, {mode} mode
 </Histogram>
 ```
 
-## Reference Lines: Mean, Median, and Statistical Markers
+## Reference Lines: Statistical Markers and Distribution Comparison
 
-Use `ref_lines` to show statistical reference values like mean, median, standard deviations, or percentiles on your histograms:
+Use `ref_lines` to show statistical reference values like mean, median, standard deviations, or to compare distributions against expected values. Toggle between single distribution (with full statistics) and comparison mode:
 
 ```svelte example
 <script>
   import { Histogram } from 'matterviz'
   import { generate_normal } from '$site/plot-utils'
 
-  const sample_size = 1000
-  const mean = 50
-  const std_dev = 12
-  const data = generate_normal(sample_size, mean, std_dev)
+  let comparison_mode = $state(false)
 
-  // Calculate actual statistics from data
+  // Single distribution data
+  const sample_size = 1000
+  const std_dev = 12
+  const data = generate_normal(sample_size, 50, std_dev)
   const sorted = [...data].sort((a, b) => a - b)
   const actual_mean = data.reduce((sum, val) => sum + val, 0) / data.length
   const actual_median = sorted[Math.floor(sorted.length / 2)]
-  const p25 = sorted[Math.floor(sorted.length * 0.25)]
-  const p75 = sorted[Math.floor(sorted.length * 0.75)]
 
-  const series = [{
-    y: data,
-    label: `Normal Distribution`,
-    line_style: { stroke: `#4c6ef5` },
-  }]
-
-  const ref_lines = [
-    {
-      type: `vertical`,
-      x: actual_mean,
-      label: `Mean`,
-      style: { color: `#e74c3c`, width: 2.5 },
-      annotation: {
-        text: `μ = ${actual_mean.toFixed(1)}`,
-        position: `end`,
-        side: `right`,
-      },
-    },
-    {
-      type: `vertical`,
-      x: actual_median,
-      label: `Median`,
-      style: { color: `#2ecc71`, width: 2, dash: `6 3` },
-      annotation: {
-        text: `Med = ${actual_median.toFixed(1)}`,
-        position: `end`,
-        side: `left`,
-      },
-    },
-    {
-      type: `vertical`,
-      x: actual_mean - std_dev,
-      label: `-1σ`,
-      style: { color: `#9b59b6`, width: 1.5, dash: `4 2` },
-      annotation: { text: `-1σ`, position: `center`, side: `left` },
-    },
-    {
-      type: `vertical`,
-      x: actual_mean + std_dev,
-      label: `+1σ`,
-      style: { color: `#9b59b6`, width: 1.5, dash: `4 2` },
-      annotation: { text: `+1σ`, position: `center`, side: `right` },
-    },
-    {
-      type: `vertical`,
-      x: p25,
-      label: `Q1`,
-      style: { color: `#f39c12`, width: 1, dash: `3 3`, opacity: 0.7 },
-    },
-    {
-      type: `vertical`,
-      x: p75,
-      label: `Q3`,
-      style: { color: `#f39c12`, width: 1, dash: `3 3`, opacity: 0.7 },
-    },
-  ]
-</script>
-
-<Histogram
-  {series}
-  {ref_lines}
-  bins={40}
-  x_axis={{ label: `Value` }}
-  y_axis={{ label: `Count` }}
-  style="height: 400px"
-/>
-
-<div
-  style="margin-top: 0.5em; font-size: 0.9em; display: flex; gap: 2em; justify-content: center"
->
-  <span><strong style="color: #e74c3c">━</strong> Mean: {actual_mean.toFixed(2)}</span>
-  <span><strong style="color: #2ecc71">╌</strong> Median: {
-      actual_median.toFixed(2)
-    }</span>
-  <span><strong style="color: #9b59b6">┄</strong> ±1σ: [{
-      (actual_mean - std_dev).toFixed(1)
-    }, {(actual_mean + std_dev).toFixed(1)}]</span>
-</div>
-```
-
-## Comparing Distributions with Reference Lines
-
-Show how distributions compare to expected values or benchmarks:
-
-```svelte example
-<script>
-  import { Histogram } from 'matterviz'
-  import { generate_bimodal, generate_normal } from '$site/plot-utils'
-
+  // Comparison data
   const sample_a = generate_normal(800, 45, 10)
   const sample_b = generate_normal(800, 55, 8)
-
   const mean_a = sample_a.reduce((s, v) => s + v, 0) / sample_a.length
   const mean_b = sample_b.reduce((s, v) => s + v, 0) / sample_b.length
 
-  const series = [
-    { y: sample_a, label: `Control Group`, line_style: { stroke: `#3498db` } },
-    { y: sample_b, label: `Treatment Group`, line_style: { stroke: `#e74c3c` } },
-  ]
+  let series = $derived(
+    comparison_mode
+      ? [
+        { y: sample_a, label: `Control`, line_style: { stroke: `#3498db` } },
+        { y: sample_b, label: `Treatment`, line_style: { stroke: `#e74c3c` } },
+      ]
+      : [{
+        y: data,
+        label: `Normal Distribution`,
+        line_style: { stroke: `#4c6ef5` },
+      }],
+  )
 
-  const ref_lines = [
-    {
-      type: `vertical`,
-      x: mean_a,
-      label: `Control Mean`,
-      style: { color: `#3498db`, width: 2.5 },
-      annotation: {
-        text: `μ₁ = ${mean_a.toFixed(1)}`,
-        position: `end`,
-        side: `left`,
-      },
-    },
-    {
-      type: `vertical`,
-      x: mean_b,
-      label: `Treatment Mean`,
-      style: { color: `#e74c3c`, width: 2.5 },
-      annotation: {
-        text: `μ₂ = ${mean_b.toFixed(1)}`,
-        position: `end`,
-        side: `right`,
-      },
-    },
-    {
-      type: `vertical`,
-      x: 50,
-      label: `Expected`,
-      style: { color: `#2ecc71`, width: 2, dash: `8 4` },
-      annotation: { text: `Expected = 50`, position: `center`, side: `right` },
-      z_index: `below-grid`,
-    },
-  ]
+  let ref_lines = $derived(
+    comparison_mode
+      ? [
+        {
+          type: `vertical`,
+          x: mean_a,
+          label: `Control Mean`,
+          style: { color: `#3498db`, width: 2.5 },
+          annotation: {
+            text: `μ₁ = ${mean_a.toFixed(1)}`,
+            position: `end`,
+            side: `left`,
+          },
+        },
+        {
+          type: `vertical`,
+          x: mean_b,
+          label: `Treatment Mean`,
+          style: { color: `#e74c3c`, width: 2.5 },
+          annotation: {
+            text: `μ₂ = ${mean_b.toFixed(1)}`,
+            position: `end`,
+            side: `right`,
+          },
+        },
+        {
+          type: `vertical`,
+          x: 50,
+          label: `Expected`,
+          style: { color: `#2ecc71`, width: 2, dash: `8 4` },
+          annotation: { text: `Expected = 50`, position: `center`, side: `right` },
+          z_index: `below-grid`,
+        },
+      ]
+      : [
+        {
+          type: `vertical`,
+          x: actual_mean,
+          label: `Mean`,
+          style: { color: `#e74c3c`, width: 2.5 },
+          annotation: {
+            text: `μ = ${actual_mean.toFixed(1)}`,
+            position: `end`,
+            side: `right`,
+          },
+        },
+        {
+          type: `vertical`,
+          x: actual_median,
+          label: `Median`,
+          style: { color: `#2ecc71`, width: 2, dash: `6 3` },
+          annotation: {
+            text: `Med = ${actual_median.toFixed(1)}`,
+            position: `end`,
+            side: `left`,
+          },
+        },
+        {
+          type: `vertical`,
+          x: actual_mean - std_dev,
+          label: `-1σ`,
+          style: { color: `#9b59b6`, width: 1.5, dash: `4 2` },
+          annotation: { text: `-1σ`, position: `center`, side: `left` },
+        },
+        {
+          type: `vertical`,
+          x: actual_mean + std_dev,
+          label: `+1σ`,
+          style: { color: `#9b59b6`, width: 1.5, dash: `4 2` },
+          annotation: { text: `+1σ`, position: `center`, side: `right` },
+        },
+      ],
+  )
 </script>
+
+<label style="margin-bottom: 1em; display: block">
+  <input type="checkbox" bind:checked={comparison_mode} /> Compare distributions
+</label>
 
 <Histogram
   {series}
   {ref_lines}
-  mode="overlay"
-  bins={35}
-  bar={{ opacity: 0.5 }}
-  x_axis={{ label: `Score` }}
-  y_axis={{ label: `Frequency` }}
+  mode={comparison_mode ? `overlay` : `single`}
+  bins={comparison_mode ? 35 : 40}
+  bar={{ opacity: comparison_mode ? 0.5 : 1 }}
+  x_axis={{ label: comparison_mode ? `Score` : `Value` }}
+  y_axis={{ label: comparison_mode ? `Frequency` : `Count` }}
   style="height: 400px"
 />
 
 <div style="margin-top: 0.5em; font-size: 0.9em; text-align: center">
-  Difference in means: Δμ = {(mean_b - mean_a).toFixed(2)} (Treatment - Control)
+  {#if comparison_mode}
+    Δμ = {(mean_b - mean_a).toFixed(2)} (Treatment − Control)
+  {:else}
+    <span><strong style="color: #e74c3c">━</strong> Mean: {actual_mean.toFixed(2)}</span>
+    <span style="margin-left: 2em"><strong style="color: #2ecc71">╌</strong> Median: {
+        actual_median.toFixed(2)
+      }</span>
+    <span style="margin-left: 2em"><strong style="color: #9b59b6">┄</strong> ±1σ</span>
+  {/if}
 </div>
 ```
 

@@ -590,14 +590,17 @@ Line series support full marker customization including symbol types, sizes, col
 />
 ```
 
-## Reference Lines: Thresholds and Annotations
+## Reference Lines: Thresholds, Means, and Comparisons
 
-Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar plots. These are ideal for showing thresholds, targets, averages, or other reference values:
+Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar plots. Toggle between threshold mode (performance tiers) and comparison mode (showing means for grouped bars):
 
 ```svelte example
 <script>
   import { BarPlot } from 'matterviz'
 
+  let comparison_mode = $state(false)
+
+  // Threshold mode: single series with performance tiers
   const efficiency_data = [
     {
       x: [1, 2, 3, 4, 5, 6],
@@ -608,50 +611,7 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar
     },
   ]
 
-  // Reference lines showing performance thresholds
-  const ref_lines = [
-    {
-      type: `horizontal`,
-      y: 90,
-      label: `Excellent`,
-      style: { color: `#2ecc71`, width: 2 },
-      annotation: { text: `Excellent (90%)`, position: `end`, side: `above` },
-    },
-    {
-      type: `horizontal`,
-      y: 80,
-      label: `Good`,
-      style: { color: `#f39c12`, width: 2, dash: `6 3` },
-      annotation: { text: `Good (80%)`, position: `end`, side: `above` },
-    },
-    {
-      type: `horizontal`,
-      y: 70,
-      label: `Minimum`,
-      style: { color: `#e74c3c`, width: 2, dash: `4 4` },
-      annotation: { text: `Minimum (70%)`, position: `end`, side: `below` },
-    },
-  ]
-</script>
-
-<BarPlot
-  series={efficiency_data}
-  {ref_lines}
-  x_axis={{ label: `Device` }}
-  y_axis={{ label: `Efficiency (%)`, range: [0, 100] }}
-  style="height: 400px"
-/>
-```
-
-## Reference Lines with Bar Comparison
-
-Combine reference lines with grouped bars to show how different methods compare to benchmarks:
-
-```svelte example
-<script>
-  import { BarPlot } from 'matterviz'
-
-  // Comparing measured vs predicted values
+  // Comparison mode: measured vs predicted
   const comparison_data = [
     {
       x: [1, 2, 3, 4, 5],
@@ -666,52 +626,85 @@ Combine reference lines with grouped bars to show how different methods compare 
       color: `#e74c3c`,
     },
   ]
-
-  // Reference lines for mean values
   const measured_mean = 4.96
   const predicted_mean = 4.92
 
-  const ref_lines = [
-    {
-      type: `horizontal`,
-      y: measured_mean,
-      label: `Measured Mean`,
-      style: { color: `#3498db`, width: 2, dash: `8 4` },
-      annotation: {
-        text: `μ = ${measured_mean.toFixed(2)}`,
-        position: `start`,
-        side: `above`,
-      },
-    },
-    {
-      type: `horizontal`,
-      y: predicted_mean,
-      label: `Predicted Mean`,
-      style: { color: `#e74c3c`, width: 2, dash: `8 4` },
-      annotation: {
-        text: `μ = ${predicted_mean.toFixed(2)}`,
-        position: `end`,
-        side: `below`,
-      },
-    },
-    // Parity line for reference
-    {
-      type: `diagonal`,
-      slope: 1,
-      intercept: 0,
-      label: `Parity`,
-      style: { color: `#7f8c8d`, width: 1, dash: `4 2` },
-      z_index: `below-grid`,
-    },
-  ]
+  let series = $derived(comparison_mode ? comparison_data : efficiency_data)
+
+  let ref_lines = $derived(
+    comparison_mode
+      ? [
+        {
+          type: `horizontal`,
+          y: measured_mean,
+          label: `Measured Mean`,
+          style: { color: `#3498db`, width: 2, dash: `8 4` },
+          annotation: {
+            text: `μ = ${measured_mean.toFixed(2)}`,
+            position: `start`,
+            side: `above`,
+          },
+        },
+        {
+          type: `horizontal`,
+          y: predicted_mean,
+          label: `Predicted Mean`,
+          style: { color: `#e74c3c`, width: 2, dash: `8 4` },
+          annotation: {
+            text: `μ = ${predicted_mean.toFixed(2)}`,
+            position: `end`,
+            side: `below`,
+          },
+        },
+        {
+          type: `diagonal`,
+          slope: 1,
+          intercept: 0,
+          label: `Parity`,
+          style: { color: `#7f8c8d`, width: 1, dash: `4 2` },
+          z_index: `below-grid`,
+        },
+      ]
+      : [
+        {
+          type: `horizontal`,
+          y: 90,
+          label: `Excellent`,
+          style: { color: `#2ecc71`, width: 2 },
+          annotation: { text: `Excellent (90%)`, position: `end`, side: `above` },
+        },
+        {
+          type: `horizontal`,
+          y: 80,
+          label: `Good`,
+          style: { color: `#f39c12`, width: 2, dash: `6 3` },
+          annotation: { text: `Good (80%)`, position: `end`, side: `above` },
+        },
+        {
+          type: `horizontal`,
+          y: 70,
+          label: `Minimum`,
+          style: { color: `#e74c3c`, width: 2, dash: `4 4` },
+          annotation: { text: `Minimum (70%)`, position: `end`, side: `below` },
+        },
+      ],
+  )
 </script>
 
+<label style="margin-bottom: 1em; display: block">
+  <input type="checkbox" bind:checked={comparison_mode} /> Comparison mode (grouped bars
+  with means)
+</label>
+
 <BarPlot
-  series={comparison_data}
+  {series}
   {ref_lines}
-  mode="grouped"
-  x_axis={{ label: `Sample` }}
-  y_axis={{ label: `Value` }}
+  mode={comparison_mode ? `grouped` : `single`}
+  x_axis={{ label: comparison_mode ? `Sample` : `Device` }}
+  y_axis={{
+    label: comparison_mode ? `Value` : `Efficiency (%)`,
+    range: comparison_mode ? undefined : [0, 100],
+  }}
   style="height: 400px"
 />
 ```
