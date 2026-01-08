@@ -45,9 +45,7 @@ export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex 
     above_all: [],
   }
   for (const line of lines) {
-    const key = line.z_index
-      ? (Z_INDEX_KEY_MAP[line.z_index] ?? `below_lines`)
-      : `below_lines`
+    const key = Z_INDEX_KEY_MAP[line.z_index ?? `below-lines`] ?? `below_lines`
     groups[key].push(line)
   }
   return groups
@@ -480,7 +478,10 @@ export function normalize_to_scene(
   [min_val, max_val]: [number, number],
   scene_size: number,
 ): number {
-  return ((value - min_val) / (max_val - min_val || 1) - 0.5) * scene_size
+  const range = max_val - min_val
+  // When range is zero (min === max), return center position
+  if (range === 0) return 0
+  return ((value - min_val) / range - 0.5) * scene_size
 }
 
 // Create a function to convert user data coordinates to Three.js coordinates

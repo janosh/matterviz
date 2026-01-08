@@ -669,7 +669,7 @@ export interface FillHoverStyle {
 
 // Event type for fill region interactions
 export interface FillHandlerEvent {
-  event: MouseEvent | KeyboardEvent | FocusEvent
+  event: MouseEvent | KeyboardEvent
   region_idx: number
   region_id?: string | number
   x: number // Data x-coordinate
