@@ -1,4 +1,5 @@
 // Reference line utilities: helper functions and coordinate resolution
+import type { Vec3 } from '$lib/math'
 import type {
   RefLine,
   RefLine3D,
@@ -8,11 +9,6 @@ import type {
   RefPlane,
   RefPlaneBase,
 } from './types'
-import type { Vec3 } from '$lib/math'
-
-// ============================================================================
-// Indexed RefLine type for component rendering (shared across 2D plots)
-// ============================================================================
 
 export type IndexedRefLine = RefLine & { idx: number }
 
@@ -39,33 +35,32 @@ export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex 
     below_points: [],
     above_all: [],
   }
-
   for (const line of lines) {
-    if (line.z_index === `below-grid`) groups.below_grid.push(line)
-    else if (line.z_index === `below-points`) groups.below_points.push(line)
-    else if (line.z_index === `above-all`) groups.above_all.push(line)
-    else groups.below_lines.push(line) // default: 'below-lines'
+    // Convert z_index like 'below-grid' to key 'below_grid', default to 'below_lines'
+    const key =
+      (line.z_index?.replace(`-`, `_`) ?? `below_lines`) as keyof RefLinesByZIndex
+    groups[key in groups ? key : `below_lines`].push(line)
   }
   return groups
 }
-
-// ============================================================================
-// Value normalization - convert Date/string values to numbers
-// ============================================================================
 
 // Convert RefLineValue (number | Date | string) to numeric value
 export function normalize_value(value: RefLineValue): number {
   if (typeof value === `number`) return value
   if (value instanceof Date) return value.getTime()
-  // Try to parse as number first (e.g. "42.5", "-100")
+  if (value === ``) {
+    console.warn(`Invalid RefLineValue: "" (empty string), defaulting to 0`)
+    return 0
+  }
+  // First try as pure numeric string (must match pattern to avoid "2024-06-15" -> 2024)
   const num = parseFloat(value)
   if (!isNaN(num) && /^-?\d+(\.\d+)?$/.test(value.trim())) return num
-  // Try to parse ISO date string
+  // Then try as ISO date string
   const parsed = Date.parse(value)
   if (!isNaN(parsed)) return parsed
-  // If not a date either, check if parseFloat succeeded
+  // Fall back to parseFloat for partial numeric strings like "42px"
   if (!isNaN(num)) return num
-  console.warn(`Invalid RefLineValue: ${value}, defaulting to 0`)
+  console.warn(`Invalid RefLineValue: "${value}", defaulting to 0`)
   return 0
 }
 
@@ -75,10 +70,6 @@ export function normalize_point(
 ): [number, number] {
   return [normalize_value(point[0]), normalize_value(point[1])]
 }
-
-// ============================================================================
-// 2D Helper Functions - create RefLine objects with common patterns
-// ============================================================================
 
 // Create a horizontal reference line at y = value
 export function horizontal_line(
@@ -139,10 +130,6 @@ export function vertical_lines(
   return values.map((x_value) => vertical_line(x_value, opts))
 }
 
-// ============================================================================
-// 3D Helper Functions - create RefPlane objects with common patterns
-// ============================================================================
-
 // Create an XY plane at z = value (horizontal plane)
 export function plane_xy(z_value: number, opts?: Partial<RefPlaneBase>): RefPlane {
   return { type: `xy`, z: z_value, ...opts }
@@ -176,10 +163,6 @@ export function plane_through_points(
 ): RefPlane {
   return { type: `points`, p1, p2, p3, ...opts }
 }
-
-// ============================================================================
-// 3D Line Helpers
-// ============================================================================
 
 // Create a 3D line parallel to x-axis at given y, z
 export function line_x_axis(
@@ -226,10 +209,6 @@ export function line_through_3d(
   return { type: `line`, p1, p2, ...opts }
 }
 
-// ============================================================================
-// Coordinate resolution - compute line endpoints from RefLine spec
-// ============================================================================
-
 interface PlotBounds {
   x_min: number
   x_max: number
@@ -263,26 +242,20 @@ export function resolve_line_endpoints(
   const is_x_visible = (x_val: number): boolean => x_val >= x_min && x_val <= x_max
   const is_y_visible = (y_val: number): boolean => y_val >= y_min && y_val <= y_max
 
-  // Apply span constraints
-  const apply_x_span = (x1: number, x2: number): [number, number] => {
-    const span = ref_line.x_span
-    if (!span) return [x1, x2]
-    const [min_x, max_x] = span
+  // Apply span constraints (works for both x and y)
+  const apply_span = (
+    v1: number,
+    v2: number,
+    span?: [number | null, number | null],
+  ): [number, number] => {
+    if (!span) return [v1, v2]
     return [
-      min_x !== null ? Math.max(x1, min_x) : x1,
-      max_x !== null ? Math.min(x2, max_x) : x2,
+      span[0] !== null ? Math.max(v1, span[0]) : v1,
+      span[1] !== null ? Math.min(v2, span[1]) : v2,
     ]
   }
-
-  const apply_y_span = (y1: number, y2: number): [number, number] => {
-    const span = ref_line.y_span
-    if (!span) return [y1, y2]
-    const [min_y, max_y] = span
-    return [
-      min_y !== null ? Math.max(y1, min_y) : y1,
-      max_y !== null ? Math.min(y2, max_y) : y2,
-    ]
-  }
+  const apply_x_span = (x1: number, x2: number) => apply_span(x1, x2, ref_line.x_span)
+  const apply_y_span = (y1: number, y2: number) => apply_span(y1, y2, ref_line.y_span)
 
   // Relative to data coordinate conversion
   const to_data_x = (rel: number): number => x_min + rel * (x_max - x_min)
@@ -314,37 +287,47 @@ export function resolve_line_endpoints(
       break
     }
 
-    case `diagonal`: {
-      const { slope, intercept } = ref_line
-      // Calculate y at x_min and x_max
-      const y_at_x_min = slope * x_min + intercept
-      const y_at_x_max = slope * x_max + intercept
-      // Start with full x range
+    case `diagonal`:
+    case `line`: {
+      // Get slope/intercept - either from props or computed from points
+      let slope: number
+      let intercept: number
+      if (ref_line.type === `diagonal`) {
+        slope = ref_line.slope
+        intercept = ref_line.intercept
+      } else {
+        const [p1x, p1y] = normalize_point(ref_line.p1)
+        const [p2x, p2y] = normalize_point(ref_line.p2)
+        const dx = p2x - p1x
+        if (Math.abs(dx) < 1e-10) {
+          // Nearly vertical line
+          x1_data = p1x
+          x2_data = p1x
+          ;[y1_data, y2_data] = apply_y_span(y_min, y_max)
+          break
+        }
+        slope = (p2y - p1y) / dx
+        intercept = p1y - slope * p1x
+      }
+
+      // Clip line to y bounds
       let x1 = x_min
       let x2 = x_max
-      let y1 = y_at_x_min
-      let y2 = y_at_x_max
+      let y1 = slope * x_min + intercept
+      let y2 = slope * x_max + intercept
 
-      // Clip to y bounds
-      if (y1 < y_min) {
-        x1 = (y_min - intercept) / slope
-        y1 = y_min
-      } else if (y1 > y_max) {
-        x1 = (y_max - intercept) / slope
-        y1 = y_max
+      if (slope === 0) {
+        if (y1 < y_min || y1 > y_max) return null
+      } else {
+        // Clip each endpoint to y bounds
+        const clip_y = (x: number, y: number, bound: number) =>
+          y < y_min || y > y_max ? [(bound - intercept) / slope, bound] : [x, y]
+        ;[x1, y1] = clip_y(x1, y1, y1 < y_min ? y_min : y_max)
+        ;[x2, y2] = clip_y(x2, y2, y2 < y_min ? y_min : y_max)
       }
-      if (y2 < y_min) {
-        x2 = (y_min - intercept) / slope
-        y2 = y_min
-      } else if (y2 > y_max) {
-        x2 = (y_max - intercept) / slope
-        y2 = y_max
-      } // Apply span constraints
 
       ;[x1_data, x2_data] = apply_x_span(x1, x2)
       ;[y1_data, y2_data] = apply_y_span(y1, y2)
-
-      // Ensure line is at least partially visible
       if (x1_data > x_max || x2_data < x_min) return null
       break
     }
@@ -352,66 +335,13 @@ export function resolve_line_endpoints(
     case `segment`: {
       const [p1x, p1y] = normalize_point(ref_line.p1)
       const [p2x, p2y] = normalize_point(ref_line.p2)
-      x1_data = p1x
-      y1_data = p1y
-      x2_data = p2x
-      y2_data = p2y // Apply span constraints (clip segment)
-      ;[x1_data, x2_data] = apply_x_span(
-        Math.min(x1_data, x2_data),
-        Math.max(x1_data, x2_data),
-      )
-      ;[y1_data, y2_data] = apply_y_span(
-        Math.min(y1_data, y2_data),
-        Math.max(y1_data, y2_data),
-      )
-      break
-    }
-
-    case `line`: {
-      // Line through two points, extended to plot edges
-      const [p1x, p1y] = normalize_point(ref_line.p1)
-      const [p2x, p2y] = normalize_point(ref_line.p2)
-
-      // Calculate slope and intercept
-      const dx = p2x - p1x
-      const dy = p2y - p1y
-
-      if (Math.abs(dx) < 1e-10) {
-        // Nearly vertical line
-        x1_data = p1x
-        x2_data = p1x
-        ;[y1_data, y2_data] = apply_y_span(y_min, y_max)
-      } else {
-        const slope = dy / dx
-        const intercept = p1y - slope * p1x
-
-        // Same logic as diagonal
-        let x1 = x_min
-        let x2 = x_max
-        let y1 = slope * x_min + intercept
-        let y2 = slope * x_max + intercept
-
-        // Clip to y bounds
-        if (slope !== 0) {
-          if (y1 < y_min) {
-            x1 = (y_min - intercept) / slope
-            y1 = y_min
-          } else if (y1 > y_max) {
-            x1 = (y_max - intercept) / slope
-            y1 = y_max
-          }
-          if (y2 < y_min) {
-            x2 = (y_min - intercept) / slope
-            y2 = y_min
-          } else if (y2 > y_max) {
-            x2 = (y_max - intercept) / slope
-            y2 = y_max
-          }
-        }
-
-        ;[x1_data, x2_data] = apply_x_span(x1, x2)
-        ;[y1_data, y2_data] = apply_y_span(y1, y2)
-      }
+      const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+      const xs = ref_line.x_span
+      const ys = ref_line.y_span
+      x1_data = clamp(p1x, xs?.[0] ?? x_min, xs?.[1] ?? x_max)
+      x2_data = clamp(p2x, xs?.[0] ?? x_min, xs?.[1] ?? x_max)
+      y1_data = clamp(p1y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
+      y2_data = clamp(p2y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
       break
     }
 
@@ -432,10 +362,6 @@ export function resolve_line_endpoints(
 
   return [x1_px, y1_px, x2_px, y2_px]
 }
-
-// ============================================================================
-// Annotation positioning helpers
-// ============================================================================
 
 interface AnnotationPosition {
   x: number
@@ -463,20 +389,8 @@ export function calculate_annotation_position(
   const offset_x = annotation.offset?.x ?? 0
   const offset_y = annotation.offset?.y ?? 0
 
-  // Calculate position along line
-  let frac: number
-  switch (position) {
-    case `start`:
-      frac = 0
-      break
-    case `center`:
-      frac = 0.5
-      break
-    case `end`:
-    default:
-      frac = 1
-      break
-  }
+  // Fraction along line: start=0, center=0.5, end=1
+  const frac = position === `start` ? 0 : position === `center` ? 0.5 : 1
 
   const base_x = x1 + frac * (x2 - x1)
   const base_y = y1 + frac * (y2 - y1)
@@ -485,62 +399,40 @@ export function calculate_annotation_position(
   const dx = x2 - x1
   const dy = y2 - y1
   const len = Math.sqrt(dx * dx + dy * dy)
-  const default_offset = 8 // pixels from line
+  const gap = 8 // pixels from line
 
   let perp_x = 0
   let perp_y = 0
   if (len > 0) {
-    // Perpendicular vector (normalized)
+    // Perpendicular vector (normalized), with sign flip for SVG y-axis
     const nx = -dy / len
     const ny = dx / len
-
-    switch (side) {
-      case `above`:
-        perp_x = nx * default_offset
-        perp_y = ny * default_offset
-        // In SVG, y increases downward, so "above" means negative y
-        if (perp_y > 0) {
-          perp_x = -perp_x
-          perp_y = -perp_y
-        }
-        break
-      case `below`:
-        perp_x = nx * default_offset
-        perp_y = ny * default_offset
-        if (perp_y < 0) {
-          perp_x = -perp_x
-          perp_y = -perp_y
-        }
-        break
-      case `left`:
-        perp_x = -default_offset
-        perp_y = 0
-        break
-      case `right`:
-        perp_x = default_offset
-        perp_y = 0
-        break
+    if (side === `above` || side === `below`) {
+      const sign = (side === `above`) === (ny > 0) ? -1 : 1
+      perp_x = sign * nx * gap
+      perp_y = sign * ny * gap
+    } else {
+      perp_x = side === `left` ? -gap : gap
     }
   }
 
   const final_x = base_x + perp_x + offset_x
   const final_y = base_y + perp_y + offset_y
 
-  // Text anchor based on position
-  let text_anchor: `start` | `middle` | `end` = `middle`
-  if (position === `start`) text_anchor = `start`
-  else if (position === `end`) text_anchor = `end`
+  // Text anchor and baseline based on position/side
+  const text_anchor = ({ start: `start`, end: `end`, center: `middle` }[position] ??
+    `middle`) as `start` | `middle` | `end`
+  const dominant_baseline = ({
+    above: `auto`,
+    below: `hanging`,
+    left: `middle`,
+    right: `middle`,
+  }[side] ?? `middle`) as `auto` | `middle` | `hanging`
 
-  // Dominant baseline based on side
-  let dominant_baseline: `auto` | `middle` | `hanging` = `middle`
-  if (side === `above`) dominant_baseline = `auto`
-  else if (side === `below`) dominant_baseline = `hanging`
-
-  // Calculate rotation if needed
+  // Calculate rotation if needed (keep text readable)
   let rotation: number | undefined
   if (annotation.rotate && len > 0) {
     rotation = Math.atan2(dy, dx) * (180 / Math.PI)
-    // Keep text readable (not upside down)
     if (rotation > 90) rotation -= 180
     else if (rotation < -90) rotation += 180
   }
@@ -548,30 +440,26 @@ export function calculate_annotation_position(
   return { x: final_x, y: final_y, text_anchor, dominant_baseline, rotation }
 }
 
-// ============================================================================
-// Validation helpers
-// ============================================================================
+// Helper: check if value is array of given length
+const is_tuple = (val: unknown, len: number): boolean =>
+  Array.isArray(val) && val.length === len
+
+// Helper: check if value is a number
+const is_num = (val: unknown): val is number => typeof val === `number`
 
 // Validate a RefLine object has required fields
 export function validate_ref_line(line: RefLine): boolean {
-  if (!line || typeof line !== `object`) return false
-  if (!line.type) return false
-
+  if (!line?.type) return false
   switch (line.type) {
     case `horizontal`:
       return line.y !== undefined
     case `vertical`:
       return line.x !== undefined
     case `diagonal`:
-      return typeof line.slope === `number` && typeof line.intercept === `number`
+      return is_num(line.slope) && is_num(line.intercept)
     case `segment`:
     case `line`:
-      return (
-        Array.isArray(line.p1) &&
-        line.p1.length === 2 &&
-        Array.isArray(line.p2) &&
-        line.p2.length === 2
-      )
+      return is_tuple(line.p1, 2) && is_tuple(line.p2, 2)
     default:
       return false
   }
@@ -579,24 +467,17 @@ export function validate_ref_line(line: RefLine): boolean {
 
 // Validate a RefLine3D object
 export function validate_ref_line_3d(line: RefLine3D): boolean {
-  if (!line || typeof line !== `object`) return false
-  if (!line.type) return false
-
+  if (!line?.type) return false
   switch (line.type) {
     case `x-axis`:
-      return typeof line.y === `number` && typeof line.z === `number`
+      return is_num(line.y) && is_num(line.z)
     case `y-axis`:
-      return typeof line.x === `number` && typeof line.z === `number`
+      return is_num(line.x) && is_num(line.z)
     case `z-axis`:
-      return typeof line.x === `number` && typeof line.y === `number`
+      return is_num(line.x) && is_num(line.y)
     case `segment`:
     case `line`:
-      return (
-        Array.isArray(line.p1) &&
-        line.p1.length === 3 &&
-        Array.isArray(line.p2) &&
-        line.p2.length === 3
-      )
+      return is_tuple(line.p1, 3) && is_tuple(line.p2, 3)
     default:
       return false
   }
@@ -604,40 +485,22 @@ export function validate_ref_line_3d(line: RefLine3D): boolean {
 
 // Validate a RefPlane object
 export function validate_ref_plane(plane: RefPlane): boolean {
-  if (!plane || typeof plane !== `object`) return false
-  if (!plane.type) return false
-
+  if (!plane?.type) return false
   switch (plane.type) {
     case `xy`:
-      return typeof plane.z === `number`
+      return is_num(plane.z)
     case `xz`:
-      return typeof plane.y === `number`
+      return is_num(plane.y)
     case `yz`:
-      return typeof plane.x === `number`
+      return is_num(plane.x)
     case `normal`:
-      return (
-        Array.isArray(plane.normal) &&
-        plane.normal.length === 3 &&
-        Array.isArray(plane.point) &&
-        plane.point.length === 3
-      )
+      return is_tuple(plane.normal, 3) && is_tuple(plane.point, 3)
     case `points`:
-      return (
-        Array.isArray(plane.p1) &&
-        plane.p1.length === 3 &&
-        Array.isArray(plane.p2) &&
-        plane.p2.length === 3 &&
-        Array.isArray(plane.p3) &&
-        plane.p3.length === 3
-      )
+      return is_tuple(plane.p1, 3) && is_tuple(plane.p2, 3) && is_tuple(plane.p3, 3)
     default:
       return false
   }
 }
-
-// ============================================================================
-// 3D Coordinate Transforms - shared between ReferenceLine3D and ReferencePlane
-// ============================================================================
 
 export interface Scene3DParams {
   scene_x: number

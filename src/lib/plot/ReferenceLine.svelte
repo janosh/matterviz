@@ -1,12 +1,12 @@
 <script lang="ts">
   // ReferenceLine component for rendering 2D reference lines with annotations
   // Supports horizontal, vertical, diagonal, segment, and line types
-  import type { RefLine, RefLineEvent, RefLineStyle } from './types'
-  import { REF_LINE_STYLE_DEFAULTS } from './types'
   import {
     calculate_annotation_position,
     resolve_line_endpoints,
   } from './reference-line-utils'
+  import type { RefLine, RefLineEvent, RefLineStyle } from './types'
+  import { REF_LINE_STYLE_DEFAULTS } from './types'
 
   let {
     ref_line,
@@ -61,18 +61,12 @@
   // Compute if this line is hovered
   let is_hovered = $derived(hovered_line_idx === line_idx)
 
-  // Merge default and custom styles
-  let base_style = $derived<Required<RefLineStyle>>({
+  // Merge default, custom, and hover styles
+  let style = $derived<Required<RefLineStyle>>({
     ...REF_LINE_STYLE_DEFAULTS,
     ...ref_line.style,
+    ...(is_hovered && ref_line.hover_style),
   })
-
-  // Apply hover style if hovered
-  let effective_style = $derived<Required<RefLineStyle>>(
-    is_hovered && ref_line.hover_style
-      ? { ...base_style, ...ref_line.hover_style }
-      : base_style,
-  )
 
   // Compute annotation position if annotation exists
   let annotation_pos = $derived(
@@ -87,61 +81,49 @@
       : null,
   )
 
-  // Event construction
-  function construct_event(mouse_event: MouseEvent): RefLineEvent {
-    return {
-      event: mouse_event,
-      line_idx,
-      line_id: ref_line.id,
-      type: ref_line.type,
-      label: ref_line.label ?? ref_line.annotation?.text,
-      metadata: ref_line.metadata,
-    }
-  }
-
-  // Event handlers
-  function handle_mouse_enter(event: MouseEvent) {
-    on_hover?.(construct_event(event))
-  }
-
-  function handle_mouse_leave() {
-    on_hover?.(null)
-  }
-
-  function handle_click(event: MouseEvent) {
-    ref_line.on_click?.(construct_event(event))
-    on_click?.(construct_event(event))
-  }
+  // Construct event object for handlers
+  const make_event = (mouse_event: MouseEvent): RefLineEvent => ({
+    event: mouse_event,
+    line_idx,
+    line_id: ref_line.id,
+    type: ref_line.type,
+    label: ref_line.label ?? ref_line.annotation?.text,
+    metadata: ref_line.metadata,
+  })
 
   function handle_keydown(event: KeyboardEvent) {
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
-      const mouse_event = new MouseEvent(`click`)
-      ref_line.on_click?.(construct_event(mouse_event))
-      on_click?.(construct_event(mouse_event))
+      const evt = make_event(new MouseEvent(`click`))
+      ref_line.on_click?.(evt)
+      on_click?.(evt)
     }
   }
 
-  // Cursor style
-  let cursor = $derived(on_click || ref_line.on_click ? `pointer` : `default`)
+  // Check if clickable (used for cursor, role, tabindex)
+  let is_clickable = $derived(Boolean(on_click || ref_line.on_click))
+  let cursor = $derived(is_clickable ? `pointer` : `default`)
 </script>
 
 {#if endpoints && ref_line.visible !== false}
   {@const [x1, y1, x2, y2] = endpoints}
 
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <g
     class="reference-line"
     class:hovered={is_hovered}
     clip-path="url(#{clip_path_id})"
-    role="img"
+    role={is_clickable ? `button` : `img`}
     aria-label={ref_line.label ?? ref_line.annotation?.text ?? `Reference line ${line_idx}`}
-    tabindex={on_click || ref_line.on_click ? 0 : -1}
+    tabindex={is_clickable ? 0 : -1}
     style:cursor
-    onmouseenter={handle_mouse_enter}
-    onmouseleave={handle_mouse_leave}
-    onclick={handle_click}
+    onmouseenter={(evt) => on_hover?.(make_event(evt))}
+    onmouseleave={() => on_hover?.(null)}
+    onclick={(evt) => {
+      const ref_evt = make_event(evt)
+      ref_line.on_click?.(ref_evt)
+      on_click?.(ref_evt)
+    }}
     onkeydown={handle_keydown}
   >
     <!-- Invisible hit area for easier interaction (8px wide) -->
@@ -161,10 +143,10 @@
       {y1}
       {x2}
       {y2}
-      stroke={effective_style.color}
-      stroke-width={effective_style.width}
-      stroke-dasharray={effective_style.dash || null}
-      stroke-opacity={effective_style.opacity}
+      stroke={style.color}
+      stroke-width={style.width}
+      stroke-dasharray={style.dash || null}
+      stroke-opacity={style.opacity}
       style:pointer-events="none"
     />
 
@@ -172,17 +154,21 @@
     {#if annotation_pos && ref_line.annotation}
       {@const anno = ref_line.annotation}
       {@const anno_padding = anno.padding ?? 2}
+      {@const font_size = parseFloat(String(anno.font_size ?? 12))}
+      <!-- 0.6 ratio works well for most sans-serif fonts; may need adjustment for others -->
+      {@const text_width = anno.text.length * font_size * 0.6}
+      {@const anchor_offset = {
+      start: 0,
+      middle: text_width / 2,
+      end: text_width,
+    }[annotation_pos.text_anchor] ?? 0}
       {#if anno.background}
-        <!-- Background rect for annotation text -->
+        <!-- Background rect for annotation text (width estimated from text length) -->
         <rect
-          x={annotation_pos.x - anno_padding - (annotation_pos.text_anchor === `end`
-          ? 50
-          : annotation_pos.text_anchor === `middle`
-          ? 25
-          : 0)}
-          y={annotation_pos.y - 10 - anno_padding}
-          width={50 + anno_padding * 2}
-          height={14 + anno_padding * 2}
+          x={annotation_pos.x - anno_padding - anchor_offset}
+          y={annotation_pos.y - font_size * 0.8 - anno_padding}
+          width={text_width + anno_padding * 2}
+          height={font_size * 1.2 + anno_padding * 2}
           fill={anno.background}
           rx="2"
           ry="2"
@@ -200,7 +186,7 @@
         transform={annotation_pos.rotation
         ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
         : undefined}
-        fill={anno.color ?? effective_style.color}
+        fill={anno.color ?? style.color}
         font-size={anno.font_size ?? `12px`}
         font-family={anno.font_family ?? `inherit`}
         style:pointer-events="none"

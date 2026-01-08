@@ -138,6 +138,7 @@
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGElement | null = $state(null)
+  let clip_path_id = `histogram-clip-${crypto?.randomUUID?.()}`
   let hover_info = $state<HistogramHandlerProps | null>(null)
 
   // Reference line hover state
@@ -552,15 +553,15 @@
       line_idx={line.idx}
       x_min={ranges.current.x[0]}
       x_max={ranges.current.x[1]}
-      y_min={ranges.current.y[0]}
-      y_max={ranges.current.y[1]}
+      y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
+      y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
       {pad}
       {width}
       {height}
       x_scale={scales.x}
       y_scale={scales.y}
       y2_scale={scales.y2}
-      clip_path_id="histogram-clip"
+      {clip_path_id}
       hovered_line_idx={hovered_ref_line_idx}
       on_click={(event: RefLineEvent) => {
         line.on_click?.(event)
@@ -626,6 +627,18 @@
       }
     }}
   >
+    <!-- Define clip path for chart area -->
+    <defs>
+      <clipPath id={clip_path_id}>
+        <rect
+          x={pad.l}
+          y={pad.t}
+          width={width - pad.l - pad.r}
+          height={height - pad.t - pad.b}
+        />
+      </clipPath>
+    </defs>
+
     <!-- Zoom Selection Rectangle -->
     {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
         isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&

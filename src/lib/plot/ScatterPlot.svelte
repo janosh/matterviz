@@ -1374,8 +1374,8 @@
       line_idx={line.idx}
       {x_min}
       {x_max}
-      {y_min}
-      {y_max}
+      y_min={line.y_axis === `y2` ? y2_min : y_min}
+      y_max={line.y_axis === `y2` ? y2_max : y_max}
       {pad}
       {width}
       {height}

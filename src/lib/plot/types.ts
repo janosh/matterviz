@@ -766,10 +766,6 @@ export interface ErrorBand {
   show_in_legend?: boolean
 }
 
-// ============================================================================
-// Reference Lines (2D) - horizontal, vertical, diagonal, segment, line
-// ============================================================================
-
 // Coordinate mode for reference lines
 export type RefLineCoordMode = `data` | `relative`
 
@@ -854,17 +850,8 @@ export const REF_LINE_STYLE_DEFAULTS: Required<RefLineStyle> = {
   opacity: 1,
 } as const
 
-// ============================================================================
-// Reference Lines (3D) - axis-parallel, segment, line
-// ============================================================================
-
-// 3D reference line styling
-export interface RefLine3DStyle {
-  color?: string
-  width?: number
-  opacity?: number
-  dash?: string
-}
+// 3D reference line styling (extends 2D style)
+export type RefLine3DStyle = RefLineStyle
 
 // Base properties shared by all 3D reference line types
 export interface RefLine3DBase {
@@ -888,10 +875,6 @@ export type RefLine3D =
     | { type: `segment`; p1: [number, number, number]; p2: [number, number, number] }
     | { type: `line`; p1: [number, number, number]; p2: [number, number, number] }
   )
-
-// ============================================================================
-// Reference Planes (3D) - axis-aligned, normal-defined, point-defined
-// ============================================================================
 
 // 3D reference plane styling
 export interface RefPlaneStyle {

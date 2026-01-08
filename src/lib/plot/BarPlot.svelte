@@ -765,8 +765,8 @@
       line_idx={line.idx}
       x_min={ranges.current.x[0]}
       x_max={ranges.current.x[1]}
-      y_min={ranges.current.y[0]}
-      y_max={ranges.current.y[1]}
+      y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
+      y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
       {pad}
       {width}
       {height}

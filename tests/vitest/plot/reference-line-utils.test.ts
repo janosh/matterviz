@@ -282,7 +282,9 @@ describe(`resolve_line_endpoints`, () => {
     const result = resolve_line_endpoints(line, bounds, scales)
     expect(result).not.toBeNull()
     if (result) {
-      // y is inverted in SVG
+      // In SVG, y-axis is inverted: y=0 is at top, increasing downward
+      // So y_scale(10) gives a larger pixel value (lower on screen) than y_scale(90)
+      // result[1] is y1 (start), result[3] is y2 (end)
       expect(result[1]).toBe(scales.y_scale(10))
       expect(result[3]).toBe(scales.y_scale(90))
     }
@@ -298,6 +300,27 @@ describe(`resolve_line_endpoints`, () => {
     const line: RefLine = { type: `diagonal`, slope: 1, intercept: 0 }
     const result = resolve_line_endpoints(line, bounds, scales)
     expect(result).not.toBeNull()
+  })
+
+  test(`diagonal line with slope 0 within bounds returns endpoints`, () => {
+    // Horizontal diagonal line (slope = 0) at y = 50
+    const line: RefLine = { type: `diagonal`, slope: 0, intercept: 50 }
+    const result = resolve_line_endpoints(line, bounds, scales)
+    expect(result).not.toBeNull()
+    if (result) {
+      // Should span the full x range at y = 50
+      expect(result[0]).toBe(scales.x_scale(0))
+      expect(result[2]).toBe(scales.x_scale(100))
+      expect(result[1]).toBe(scales.y_scale(50))
+      expect(result[3]).toBe(scales.y_scale(50))
+    }
+  })
+
+  test(`diagonal line with slope 0 outside bounds returns null`, () => {
+    // Horizontal diagonal line outside y bounds - should return null, not divide by zero
+    const line: RefLine = { type: `diagonal`, slope: 0, intercept: 150 }
+    const result = resolve_line_endpoints(line, bounds, scales)
+    expect(result).toBeNull()
   })
 })
 
@@ -328,11 +351,18 @@ describe(`calculate_annotation_position`, () => {
   })
 
   test(`offset is applied`, () => {
+    // For a horizontal line (y1 === y2), the perpendicular direction is vertical
+    // x offset moves along the line, y offset moves perpendicular to it
     const pos = calculate_annotation_position(0, 100, 200, 100, {
       position: `center`,
       offset: { x: 10, y: -5 },
     })
-    expect(pos.x).toBeGreaterThan(100 - 1) // approximate due to perpendicular offset
+    // Center of line is at x=100, with x offset of 10 applied
+    expect(pos.x).toBe(110)
+    // Default perpendicular offset is 8px (above), plus user offset of -5
+    // For horizontal line with side=above (default): base_y=100, perp_y=-8, offset_y=-5
+    // final_y = 100 + (-8) + (-5) = 87
+    expect(pos.y).toBe(87)
   })
 
   test(`rotation calculated for diagonal line`, () => {
