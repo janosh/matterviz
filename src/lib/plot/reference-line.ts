@@ -291,7 +291,8 @@ export function resolve_line_endpoints(
         const [p2x, p2y] = normalize_point(ref_line.p2)
         const dx = p2x - p1x
         if (Math.abs(dx) < 1e-10) {
-          // Nearly vertical line
+          // Nearly vertical line - check x-bounds like we do for vertical type
+          if (!is_x_visible(p1x)) return null
           x1_data = p1x
           x2_data = p1x
           ;[y1_data, y2_data] = apply_y_span(y_min, y_max)
@@ -335,6 +336,8 @@ export function resolve_line_endpoints(
       x2_data = clamp(p2x, xs?.[0] ?? x_min, xs?.[1] ?? x_max)
       y1_data = clamp(p1y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
       y2_data = clamp(p2y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
+      // If both endpoints clamp to the same point, segment is entirely outside bounds
+      if (x1_data === x2_data && y1_data === y2_data) return null
       break
     }
 

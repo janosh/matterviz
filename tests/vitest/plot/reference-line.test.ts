@@ -30,10 +30,12 @@ import { describe, expect, test, vi } from 'vitest'
 
 describe(`normalize_value`, () => {
   test.each([
-    [42, 42],
-    [-3.14, -3.14],
-    [0, 0],
-  ])(`returns number %s as-is`, (input, expected) => {
+    [42, 42, `number`],
+    [-3.14, -3.14, `negative number`],
+    [0, 0, `zero`],
+    [`42.5`, 42.5, `numeric string`],
+    [`-100`, -100, `negative numeric string`],
+  ])(`returns %s as %s`, (input, expected, _desc) => {
     expect(normalize_value(input)).toBe(expected)
   })
 
@@ -45,13 +47,6 @@ describe(`normalize_value`, () => {
   test(`parses ISO date string`, () => {
     const date_str = `2024-06-15`
     expect(normalize_value(date_str)).toBe(Date.parse(date_str))
-  })
-
-  test.each([
-    [`42.5`, 42.5],
-    [`-100`, -100],
-  ])(`parses numeric string %s`, (input, expected) => {
-    expect(normalize_value(input)).toBe(expected)
   })
 
   test(`returns 0 for invalid string with warning`, () => {
@@ -69,104 +64,115 @@ describe(`normalize_point`, () => {
 
   test(`normalizes tuple with Date`, () => {
     const date = new Date(`2024-01-01`)
-    const result = normalize_point([date, 100])
-    expect(result[0]).toBe(date.getTime())
-    expect(result[1]).toBe(100)
+    expect(normalize_point([date, 100])).toEqual([date.getTime(), 100])
   })
 })
 
 describe(`span_or`, () => {
   test.each<
-    [
-      [number | null, number | null] | undefined,
-      [number, number],
-      [number, number],
-      string,
-    ]
+    [[number | null, number | null] | undefined, [number, number], [number, number]]
   >([
-    [undefined, [0, 100], [0, 100], `undefined span returns range`],
-    [[20, 80], [0, 100], [20, 80], `both values provided`],
-    [[null, 80], [0, 100], [0, 80], `null start uses range start`],
-    [[20, null], [0, 100], [20, 100], `null end uses range end`],
-    [[null, null], [10, 50], [10, 50], `both null returns range`],
-  ])(`%s`, (span, range, expected) => {
+    [undefined, [0, 100], [0, 100]],
+    [[20, 80], [0, 100], [20, 80]],
+    [[null, 80], [0, 100], [0, 80]],
+    [[20, null], [0, 100], [20, 100]],
+    [[null, null], [10, 50], [10, 50]],
+  ])(`span_or(%j, %j) = %j`, (span, range, expected) => {
     expect(span_or(span, range)).toEqual(expected)
   })
 })
 
 describe(`2D helper functions`, () => {
-  test(`horizontal_line creates correct RefLine`, () => {
-    const line = horizontal_line(50)
-    expect(line).toMatchObject({ type: `horizontal`, y: 50 })
+  test.each(
+    [
+      [`horizontal_line`, horizontal_line(50), { type: `horizontal`, y: 50 }],
+      [`vertical_line`, vertical_line(100), { type: `vertical`, x: 100 }],
+      [`diagonal_line`, diagonal_line(2, 10), {
+        type: `diagonal`,
+        slope: 2,
+        intercept: 10,
+      }],
+      [`line_segment`, line_segment([0, 0], [100, 100]), {
+        type: `segment`,
+        p1: [0, 0],
+        p2: [100, 100],
+      }],
+      [`line_through`, line_through([0, 0], [50, 100]), {
+        type: `line`,
+        p1: [0, 0],
+        p2: [50, 100],
+      }],
+    ] as const,
+  )(`%s creates correct RefLine`, (_, line, expected) => {
+    expect(line).toMatchObject(expected)
   })
 
   test(`horizontal_line with options`, () => {
-    const line = horizontal_line(50, { style: { color: `red` }, label: `Test` })
-    expect(line).toMatchObject({
-      type: `horizontal`,
-      y: 50,
-      style: { color: `red` },
-      label: `Test`,
-    })
+    expect(horizontal_line(50, { style: { color: `red` }, label: `Test` })).toMatchObject(
+      {
+        type: `horizontal`,
+        y: 50,
+        style: { color: `red` },
+        label: `Test`,
+      },
+    )
   })
 
-  test(`vertical_line creates correct RefLine`, () => {
-    const line = vertical_line(100)
-    expect(line).toMatchObject({ type: `vertical`, x: 100 })
-  })
-
-  test(`diagonal_line creates correct RefLine`, () => {
-    const line = diagonal_line(2, 10)
-    expect(line).toMatchObject({ type: `diagonal`, slope: 2, intercept: 10 })
-  })
-
-  test(`line_segment creates correct RefLine`, () => {
-    const line = line_segment([0, 0], [100, 100])
-    expect(line).toMatchObject({ type: `segment`, p1: [0, 0], p2: [100, 100] })
-  })
-
-  test(`line_through creates correct RefLine`, () => {
-    const line = line_through([0, 0], [50, 100])
-    expect(line).toMatchObject({ type: `line`, p1: [0, 0], p2: [50, 100] })
-  })
-
-  test(`horizontal_lines creates array of RefLines`, () => {
+  test(`horizontal_lines creates array`, () => {
     const lines = horizontal_lines([10, 20, 30])
     expect(lines).toHaveLength(3)
     expect(lines.map((ln) => (ln as { y: number }).y)).toEqual([10, 20, 30])
   })
 
-  test(`vertical_lines creates array of RefLines`, () => {
+  test(`vertical_lines creates array with options`, () => {
     const lines = vertical_lines([5, 15], { style: { dash: `4 2` } })
     expect(lines).toHaveLength(2)
     expect(lines[0]).toMatchObject({ type: `vertical`, style: { dash: `4 2` } })
   })
 })
 
-describe(`3D plane helper functions`, () => {
+describe(`3D helper functions`, () => {
   test.each(
     [
-      [`plane_xy`, plane_xy, 5, { type: `xy`, z: 5 }],
-      [`plane_xz`, plane_xz, 10, { type: `xz`, y: 10 }],
-      [`plane_yz`, plane_yz, -5, { type: `yz`, x: -5 }],
+      [`plane_xy`, plane_xy(5), { type: `xy`, z: 5 }],
+      [`plane_xz`, plane_xz(10), { type: `xz`, y: 10 }],
+      [`plane_yz`, plane_yz(-5), { type: `yz`, x: -5 }],
+      [`line_x_axis`, line_x_axis(5, 10), { type: `x-axis`, y: 5, z: 10 }],
+      [`line_y_axis`, line_y_axis(5, 10), { type: `y-axis`, x: 5, z: 10 }],
+      [`line_z_axis`, line_z_axis(5, 10), { type: `z-axis`, x: 5, y: 10 }],
+      [`line_segment_3d`, line_segment_3d([0, 0, 0], [1, 1, 1]), {
+        type: `segment`,
+        p1: [0, 0, 0],
+        p2: [1, 1, 1],
+      }],
+      [`line_through_3d`, line_through_3d([0, 0, 0], [1, 2, 3]), {
+        type: `line`,
+        p1: [0, 0, 0],
+        p2: [1, 2, 3],
+      }],
     ] as const,
-  )(`%s creates correct plane`, (_, factory, value, expected) => {
-    expect(factory(value)).toMatchObject(expected)
+  )(`%s creates correct object`, (_, obj, expected) => {
+    expect(obj).toMatchObject(expected)
   })
 
   test(`plane_yz with options`, () => {
-    const plane = plane_yz(-5, { style: { opacity: 0.5 } })
-    expect(plane).toMatchObject({ type: `yz`, x: -5, style: { opacity: 0.5 } })
+    expect(plane_yz(-5, { style: { opacity: 0.5 } })).toMatchObject({
+      type: `yz`,
+      x: -5,
+      style: { opacity: 0.5 },
+    })
   })
 
   test(`plane_normal creates plane from normal and point`, () => {
-    const plane = plane_normal([0, 0, 1], [0, 0, 5])
-    expect(plane).toMatchObject({ type: `normal`, normal: [0, 0, 1], point: [0, 0, 5] })
+    expect(plane_normal([0, 0, 1], [0, 0, 5])).toMatchObject({
+      type: `normal`,
+      normal: [0, 0, 1],
+      point: [0, 0, 5],
+    })
   })
 
   test(`plane_through_points creates plane from 3 points`, () => {
-    const plane = plane_through_points([0, 0, 0], [1, 0, 0], [0, 1, 0])
-    expect(plane).toMatchObject({
+    expect(plane_through_points([0, 0, 0], [1, 0, 0], [0, 1, 0])).toMatchObject({
       type: `points`,
       p1: [0, 0, 0],
       p2: [1, 0, 0],
@@ -175,38 +181,8 @@ describe(`3D plane helper functions`, () => {
   })
 })
 
-describe(`3D line helper functions`, () => {
-  test.each(
-    [
-      [`line_x_axis`, line_x_axis, [5, 10], { type: `x-axis`, y: 5, z: 10 }],
-      [`line_y_axis`, line_y_axis, [5, 10], { type: `y-axis`, x: 5, z: 10 }],
-      [`line_z_axis`, line_z_axis, [5, 10], { type: `z-axis`, x: 5, y: 10 }],
-    ] as const,
-  )(`%s creates correct line`, (_, factory, args, expected) => {
-    expect(factory(args[0], args[1])).toMatchObject(expected)
-  })
-
-  test(`line_segment_3d creates 3D segment`, () => {
-    const line = line_segment_3d([0, 0, 0], [1, 1, 1])
-    expect(line).toMatchObject({ type: `segment`, p1: [0, 0, 0], p2: [1, 1, 1] })
-  })
-
-  test(`line_through_3d creates extended 3D line`, () => {
-    const line = line_through_3d([0, 0, 0], [1, 2, 3])
-    expect(line).toMatchObject({ type: `line`, p1: [0, 0, 0], p2: [1, 2, 3] })
-  })
-})
-
 describe(`resolve_line_endpoints`, () => {
-  const bounds = {
-    x_min: 0,
-    x_max: 100,
-    y_min: 0,
-    y_max: 100,
-    pad: { l: 10, r: 10, t: 10, b: 10 },
-    width: 200,
-    height: 200,
-  }
+  const bounds = { x_min: 0, x_max: 100, y_min: 0, y_max: 100 }
   const scales = {
     x_scale: (val: number) => 10 + val * 1.8,
     y_scale: (val: number) => 190 - val * 1.8,
@@ -215,29 +191,15 @@ describe(`resolve_line_endpoints`, () => {
   test(`horizontal line returns correct endpoints`, () => {
     const result = resolve_line_endpoints({ type: `horizontal`, y: 50 }, bounds, scales)
     expect(result).not.toBeNull()
-    if (result) {
-      expect(result[1]).toBe(result[3]) // y1 === y2
-      expect(result[0]).toBe(scales.x_scale(0))
-      expect(result[2]).toBe(scales.x_scale(100))
-    }
+    expect(result?.[1]).toBe(result?.[3]) // y1 === y2
+    expect(result?.[0]).toBe(scales.x_scale(0))
+    expect(result?.[2]).toBe(scales.x_scale(100))
   })
 
   test(`vertical line returns correct endpoints`, () => {
     const result = resolve_line_endpoints({ type: `vertical`, x: 50 }, bounds, scales)
     expect(result).not.toBeNull()
-    if (result) {
-      expect(result[0]).toBe(result[2]) // x1 === x2
-    }
-  })
-
-  test.each([
-    [{ type: `horizontal`, y: 150 } as RefLine, `horizontal outside y_max`],
-    [
-      { type: `diagonal`, slope: 0, intercept: 150 } as RefLine,
-      `diagonal slope=0 outside bounds`,
-    ],
-  ])(`%s returns null`, (line) => {
-    expect(resolve_line_endpoints(line, bounds, scales)).toBeNull()
+    expect(result?.[0]).toBe(result?.[2]) // x1 === x2
   })
 
   test(`x_span constrains horizontal line`, () => {
@@ -247,10 +209,8 @@ describe(`resolve_line_endpoints`, () => {
       scales,
     )
     expect(result).not.toBeNull()
-    if (result) {
-      expect(result[0]).toBe(scales.x_scale(20))
-      expect(result[2]).toBe(scales.x_scale(80))
-    }
+    expect(result?.[0]).toBe(scales.x_scale(20))
+    expect(result?.[2]).toBe(scales.x_scale(80))
   })
 
   test(`y_span constrains vertical line`, () => {
@@ -260,13 +220,11 @@ describe(`resolve_line_endpoints`, () => {
       scales,
     )
     expect(result).not.toBeNull()
-    if (result) {
-      expect(result[1]).toBe(scales.y_scale(10))
-      expect(result[3]).toBe(scales.y_scale(90))
-    }
+    expect(result?.[1]).toBe(scales.y_scale(10))
+    expect(result?.[3]).toBe(scales.y_scale(90))
   })
 
-  test(`segment returns correct endpoints`, () => {
+  test(`segment returns endpoints`, () => {
     expect(
       resolve_line_endpoints(
         { type: `segment`, p1: [10, 10], p2: [90, 90] },
@@ -286,56 +244,44 @@ describe(`resolve_line_endpoints`, () => {
     ).not.toBeNull()
   })
 
-  test(`diagonal line with slope 0 within bounds returns endpoints`, () => {
+  test(`diagonal slope=0 within bounds returns endpoints`, () => {
     const result = resolve_line_endpoints(
       { type: `diagonal`, slope: 0, intercept: 50 },
       bounds,
       scales,
     )
-    expect(result).not.toBeNull()
-    if (result) {
-      expect(result[0]).toBe(scales.x_scale(0))
-      expect(result[2]).toBe(scales.x_scale(100))
-      expect(result[1]).toBe(scales.y_scale(50))
-      expect(result[3]).toBe(scales.y_scale(50))
-    }
+    expect(result).toEqual([
+      scales.x_scale(0),
+      scales.y_scale(50),
+      scales.x_scale(100),
+      scales.y_scale(50),
+    ])
   })
 
-  // Edge case: diagonal line entirely outside y-bounds should return null
+  test(`segment crossing bounds returns clipped endpoints`, () => {
+    const result = resolve_line_endpoints(
+      { type: `segment`, p1: [-50, 50], p2: [150, 50] },
+      bounds,
+      scales,
+    )
+    expect(result).not.toBeNull()
+    expect(result?.[0]).toBe(scales.x_scale(0))
+    expect(result?.[2]).toBe(scales.x_scale(100))
+  })
+
+  // All cases that should return null (line outside bounds)
   test.each(
     [
+      [{ type: `horizontal`, y: 150 }, `horizontal outside y_max`],
+      [{ type: `diagonal`, slope: 0, intercept: 150 }, `diagonal slope=0 outside bounds`],
       [{ type: `diagonal`, slope: 1, intercept: 200 }, `diagonal entirely above y_max`],
       [{ type: `diagonal`, slope: 1, intercept: -200 }, `diagonal entirely below y_min`],
       [{ type: `diagonal`, slope: -1, intercept: 300 }, `negative slope above y_max`],
       [{ type: `diagonal`, slope: -1, intercept: -200 }, `negative slope below y_min`],
-    ] as const,
-  )(`%s returns null`, (line, _desc) => {
-    expect(resolve_line_endpoints(line as RefLine, bounds, scales)).toBeNull()
-  })
-
-  // Edge case: line type (through points) entirely outside bounds
-  test.each(
-    [
       [{ type: `line`, p1: [0, 200], p2: [100, 300] }, `line entirely above y_max`],
       [{ type: `line`, p1: [0, -200], p2: [100, -100] }, `line entirely below y_min`],
-    ] as const,
-  )(`%s returns null`, (line, _desc) => {
-    expect(resolve_line_endpoints(line as RefLine, bounds, scales)).toBeNull()
-  })
-
-  // Edge case: nearly vertical line (through points) outside x-bounds
-  test.each(
-    [
       [{ type: `line`, p1: [150, 0], p2: [150, 100] }, `nearly vertical outside x_max`],
       [{ type: `line`, p1: [-50, 0], p2: [-50, 100] }, `nearly vertical outside x_min`],
-    ] as const,
-  )(`%s returns null`, (line, _desc) => {
-    expect(resolve_line_endpoints(line as RefLine, bounds, scales)).toBeNull()
-  })
-
-  // Edge case: segment entirely outside bounds should return null
-  test.each(
-    [
       [{ type: `segment`, p1: [150, 150], p2: [200, 200] }, `segment outside top-right`],
       [
         { type: `segment`, p1: [-50, -50], p2: [-10, -10] },
@@ -346,21 +292,6 @@ describe(`resolve_line_endpoints`, () => {
     ] as const,
   )(`%s returns null`, (line, _desc) => {
     expect(resolve_line_endpoints(line as RefLine, bounds, scales)).toBeNull()
-  })
-
-  // Segment that crosses bounds should still work
-  test(`segment crossing bounds returns clipped endpoints`, () => {
-    const result = resolve_line_endpoints(
-      { type: `segment`, p1: [-50, 50], p2: [150, 50] },
-      bounds,
-      scales,
-    )
-    expect(result).not.toBeNull()
-    if (result) {
-      // p1 clamps to x=0, p2 clamps to x=100
-      expect(result[0]).toBe(scales.x_scale(0))
-      expect(result[2]).toBe(scales.x_scale(100))
-    }
   })
 })
 
@@ -405,7 +336,7 @@ describe(`calculate_annotation_position`, () => {
       [`right`, 110, 100, `start`],
     ] as const,
   )(
-    `%s side applies horizontal offset for vertical line`,
+    `%s side offset for vertical line`,
     (side, expected_x, expected_y, expected_anchor) => {
       const pos = calculate_annotation_position(100, 0, 100, 200, {
         position: `center`,
@@ -421,12 +352,12 @@ describe(`calculate_annotation_position`, () => {
   // Diagonal 45° line: (0, 0) -> (100, 100)
   test.each(
     [
-      [`left`, 1, 50 - 10 / Math.SQRT2, 50 + 10 / Math.SQRT2, `end`],
-      [`right`, -1, 50 + 10 / Math.SQRT2, 50 - 10 / Math.SQRT2, `start`],
+      [`left`, 50 - 10 / Math.SQRT2, 50 + 10 / Math.SQRT2, `end`],
+      [`right`, 50 + 10 / Math.SQRT2, 50 - 10 / Math.SQRT2, `start`],
     ] as const,
   )(
-    `%s side applies perpendicular offset for 45-degree diagonal`,
-    (side, _sign, expected_x, expected_y, expected_anchor) => {
+    `%s side perpendicular offset for diagonal`,
+    (side, expected_x, expected_y, expected_anchor) => {
       const pos = calculate_annotation_position(0, 0, 100, 100, {
         position: `center`,
         side,
@@ -456,20 +387,11 @@ describe(`calculate_annotation_position`, () => {
 })
 
 describe(`index_ref_lines`, () => {
-  test.each<[RefLine[] | undefined, string]>([
-    [undefined, `undefined`],
-    [[], `empty array`],
-  ])(`returns empty array for %s input`, (input) => {
-    expect(index_ref_lines(input)).toEqual([])
+  test.each([[undefined], [[]]])(`returns empty array for %j input`, (input) => {
+    expect(index_ref_lines(input as RefLine[] | undefined)).toEqual([])
   })
 
-  test(`adds index to each line`, () => {
-    const lines: RefLine[] = [{ type: `horizontal`, y: 10 }, { type: `vertical`, x: 20 }]
-    const result = index_ref_lines(lines)
-    expect(result.map((ln) => ln.idx)).toEqual([0, 1])
-  })
-
-  test(`filters out invisible lines`, () => {
+  test(`adds index and filters invisible lines`, () => {
     const lines: RefLine[] = [
       { type: `horizontal`, y: 10, visible: false },
       { type: `vertical`, x: 20 },
@@ -483,8 +405,7 @@ describe(`index_ref_lines`, () => {
 
 describe(`group_ref_lines_by_z`, () => {
   test(`returns empty groups for empty input`, () => {
-    const result = group_ref_lines_by_z([])
-    expect(result).toEqual({
+    expect(group_ref_lines_by_z([])).toEqual({
       below_grid: [],
       below_lines: [],
       below_points: [],
@@ -492,30 +413,18 @@ describe(`group_ref_lines_by_z`, () => {
     })
   })
 
-  test(`groups lines by z_index correctly`, () => {
+  test(`groups lines by z_index, defaults to below-lines`, () => {
     const lines: IndexedRefLine[] = [
       { type: `horizontal`, y: 1, z_index: `below-grid`, idx: 0 },
       { type: `horizontal`, y: 2, z_index: `below-lines`, idx: 1 },
       { type: `horizontal`, y: 3, z_index: `below-points`, idx: 2 },
       { type: `horizontal`, y: 4, z_index: `above-all`, idx: 3 },
+      { type: `horizontal`, y: 5, idx: 4 }, // no z_index → defaults to below-lines
     ]
     const result = group_ref_lines_by_z(lines)
     expect(result.below_grid).toHaveLength(1)
-    expect(result.below_lines).toHaveLength(1)
+    expect(result.below_lines).toHaveLength(2) // includes default
     expect(result.below_points).toHaveLength(1)
     expect(result.above_all).toHaveLength(1)
-  })
-
-  test(`defaults to below-lines when z_index is undefined`, () => {
-    const lines: IndexedRefLine[] = [{ type: `horizontal`, y: 1, idx: 0 }, {
-      type: `vertical`,
-      x: 2,
-      idx: 1,
-    }]
-    const result = group_ref_lines_by_z(lines)
-    expect(result.below_lines).toHaveLength(2)
-    expect(result.below_grid).toHaveLength(0)
-    expect(result.below_points).toHaveLength(0)
-    expect(result.above_all).toHaveLength(0)
   })
 })
