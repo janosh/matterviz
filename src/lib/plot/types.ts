@@ -845,6 +845,7 @@ export const REF_LINE_STYLE_DEFAULTS: Required<RefLineStyle> = {
 } as const
 
 // Base properties shared by all 3D reference line types
+// Aligned with RefLineBase for future feature parity (interactions, annotations, etc.)
 export interface RefLine3DBase {
   id?: string | number
   x_span?: [number | null, number | null]
@@ -854,6 +855,14 @@ export interface RefLine3DBase {
   visible?: boolean
   label?: string
   metadata?: Record<string, unknown>
+  // Future parity with RefLineBase (currently unused, reserved for future features)
+  hover_style?: RefLineStyle
+  on_click?: (event: { line_idx: number; line_id?: string | number }) => void
+  on_hover?: (event: { line_idx: number; line_id?: string | number } | null) => void
+  z_index?: LayerZIndex
+  show_in_legend?: boolean
+  legend_group?: string
+  annotation?: RefLineAnnotation
 }
 
 // 3D reference line - discriminated union
@@ -863,8 +872,8 @@ export type RefLine3D =
     | { type: `x-axis`; y: number; z: number } // line parallel to x-axis
     | { type: `y-axis`; x: number; z: number } // line parallel to y-axis
     | { type: `z-axis`; x: number; y: number } // line parallel to z-axis
-    | { type: `segment`; p1: [number, number, number]; p2: [number, number, number] }
-    | { type: `line`; p1: [number, number, number]; p2: [number, number, number] }
+    | { type: `segment`; p1: Vec3; p2: Vec3 }
+    | { type: `line`; p1: Vec3; p2: Vec3 }
   )
 
 // 3D reference plane styling
@@ -896,10 +905,6 @@ export type RefPlane =
     | { type: `xy`; z: number } // horizontal plane at z
     | { type: `xz`; y: number } // vertical plane at y
     | { type: `yz`; x: number } // vertical plane at x
-    | {
-      type: `normal`
-      normal: [number, number, number]
-      point: [number, number, number]
-    }
+    | { type: `normal`; normal: Vec3; point: Vec3 }
     | { type: `points`; p1: Vec3; p2: Vec3; p3: Vec3 } // plane through 3 points
   )

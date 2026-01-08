@@ -388,10 +388,12 @@ export function calculate_annotation_position(
   let perp_x = 0
   let perp_y = 0
   if (len > 0) {
-    // Perpendicular vector (normalized), with sign flip for SVG y-axis
+    // Perpendicular vector (normalized)
     const nx = -dy / len
     const ny = dx / len
     if (side === `above` || side === `below`) {
+      // In SVG, y increases downward. Flip sign if 'above' and perpendicular points down (ny > 0),
+      // or if 'below' and perpendicular points up (ny <= 0), to ensure offset is in correct direction
       const sign = (side === `above`) === (ny > 0) ? -1 : 1
       perp_x = sign * nx * gap
       perp_y = sign * ny * gap
