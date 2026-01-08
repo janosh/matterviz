@@ -55,6 +55,11 @@ export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex 
 export function normalize_value(value: RefLineValue): number {
   if (typeof value === `number`) return value
   if (value instanceof Date) return value.getTime()
+  // Empty/whitespace strings are invalid (Number("") returns 0 silently)
+  if (typeof value === `string` && value.trim() === ``) {
+    console.warn(`Invalid RefLineValue: empty string, defaulting to 0`)
+    return 0
+  }
   // Try numeric conversion first (handles "42", "3.14", "-5")
   const num = Number(value)
   if (!isNaN(num)) return num
@@ -148,8 +153,8 @@ export function plane_yz(x_value: number, opts?: Partial<RefPlaneBase>): RefPlan
 
 // Create a plane defined by normal vector and a point on the plane
 export function plane_normal(
-  normal: [number, number, number],
-  point: [number, number, number],
+  normal: Vec3,
+  point: Vec3,
   opts?: Partial<RefPlaneBase>,
 ): RefPlane {
   return { type: `normal`, normal, point, ...opts }

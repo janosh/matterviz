@@ -257,9 +257,7 @@
         ]
       }
 
-      if (!points.length) {
-        return [0, 1] as [number, number]
-      }
+      if (!points.length) return [0, 1]
 
       let y_range = get_nice_data_range(
         points,

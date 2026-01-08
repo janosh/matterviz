@@ -227,7 +227,7 @@ export function compute_convex_hull(
     const is_sharp = adj.length === 1 ||
       (adj.length === 2 &&
         (math.dot(face_normals[adj[0]], face_normals[adj[1]]) as number) < cos_threshold)
-    if (is_sharp) edges.push(key.split(`,`).map(Number) as [number, number])
+    if (is_sharp) edges.push(key.split(`,`).map(Number) as math.Vec2)
   }
 
   geometry.dispose()

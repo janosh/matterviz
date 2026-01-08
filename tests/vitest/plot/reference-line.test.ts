@@ -55,6 +55,16 @@ describe(`normalize_value`, () => {
     expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`Invalid RefLineValue`))
     warn_spy.mockRestore()
   })
+
+  test.each([[``], [` `], [`  \t  `]])(
+    `returns 0 for empty/whitespace string %j`,
+    (input) => {
+      const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      expect(normalize_value(input)).toBe(0)
+      expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`empty string`))
+      warn_spy.mockRestore()
+    },
+  )
 })
 
 describe(`normalize_point`, () => {
