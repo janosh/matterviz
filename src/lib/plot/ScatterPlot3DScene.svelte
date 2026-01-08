@@ -11,6 +11,8 @@
     DataSeries3D,
     DisplayConfig3D,
     InternalPoint3D,
+    RefLine3D,
+    RefPlane,
     ScaleType,
     Scatter3DHandlerEvent,
     StyleOverrides3D,
@@ -26,6 +28,8 @@
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
   import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
   import { get_series_color } from './data-transform'
+  import ReferenceLine3D from './ReferenceLine3D.svelte'
+  import ReferencePlane from './ReferencePlane.svelte'
   import { create_color_scale, create_size_scale } from './scales'
   import Surface3D from './Surface3D.svelte'
 
@@ -38,6 +42,8 @@
     display = {},
     styles = {},
     surfaces = [],
+    ref_lines = [],
+    ref_planes = [],
     color_scale = { type: `linear`, scheme: `interpolateViridis` },
     size_scale = { type: `linear`, radius_range: [0.05, 0.2] },
     camera_position = [10, 10, 10] as Vec3,
@@ -72,6 +78,8 @@
     display?: DisplayConfig3D
     styles?: StyleOverrides3D
     surfaces?: Surface3DConfig[]
+    ref_lines?: RefLine3D[]
+    ref_planes?: RefPlane[]
     color_scale?: {
       type?: ScaleType
       scheme?: D3ColorSchemeName | D3InterpolateName
@@ -436,7 +444,7 @@
   // Build event data for point interactions
   function make_event_data(
     point: InternalPoint3D<Metadata>,
-    event: MouseEvent,
+    event?: MouseEvent,
   ): Scatter3DHandlerEvent<Metadata> | null {
     const orig = all_points.find(
       (pt) => pt.series_idx === point.series_idx && pt.point_idx === point.point_idx,
@@ -464,7 +472,7 @@
 
   function handle_point_enter(point: InternalPoint3D<Metadata>) {
     hovered_point = point
-    const data = make_event_data(point, new MouseEvent(`pointerenter`))
+    const data = make_event_data(point)
     if (data) on_point_hover?.(data)
   }
 
@@ -742,6 +750,32 @@
   />
 {/each}
 
+<!-- Reference Planes -->
+{#each (ref_planes ?? []).filter((plane) => plane.visible !== false) as
+  ref_plane,
+  plane_idx
+  (ref_plane.id ?? plane_idx)
+}
+  <ReferencePlane
+    {ref_plane}
+    scene_size={[scene_x, scene_y, scene_z]}
+    ranges={{ x: x_range, y: y_range, z: z_range }}
+  />
+{/each}
+
+<!-- Reference Lines -->
+{#each (ref_lines ?? []).filter((line) => line.visible !== false) as
+  ref_line,
+  line_idx
+  (ref_line.id ?? line_idx)
+}
+  <ReferenceLine3D
+    {ref_line}
+    scene_size={[scene_x, scene_y, scene_z]}
+    ranges={{ x: x_range, y: y_range, z: z_range }}
+  />
+{/each}
+
 <!-- Series lines connecting points (fat lines using Line2) -->
 {#each series_lines as line_data (line_data.series_idx)}
   <T is={line_data.line2} />
@@ -790,7 +824,7 @@
 <!-- Tooltip -->
 {#if hovered_point}
   {@const hp = hovered_point}
-  {@const data = make_event_data(hp, new MouseEvent(`pointerenter`))}
+  {@const data = make_event_data(hp)}
   {#if data}
     <extras.HTML position={[hp.x, hp.y + 0.3, hp.z]} center>
       {#if tooltip}

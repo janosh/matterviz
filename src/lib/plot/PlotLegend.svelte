@@ -78,25 +78,13 @@
   )
 
   function toggle_group_collapse(group_name: string) {
-    if (collapsed_groups.has(group_name)) {
-      collapsed_groups.delete(group_name)
-    } else {
-      collapsed_groups.add(group_name)
-    }
+    // Set.delete returns true if element existed, so add if delete failed
+    if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
   }
 
-  const get_group_indices = (items: LegendItem[]) =>
-    items.map((item) => item.series_idx)
   const handle_group_click = (group_name: string, items: LegendItem[]) =>
-    on_group_toggle?.(group_name, get_group_indices(items))
-  const handle_group_dblclick = (group_name: string, items: LegendItem[]) =>
-    on_group_double_click?.(group_name, get_group_indices(items))
+    on_group_toggle?.(group_name, items.map((item) => item.series_idx))
 
-  function is_group_visible(items: LegendItem[]): boolean {
-    return items.some((item) => item.visible)
-  }
-
-  // Cleanup function prevents memory leaks on component destroy (remove event listeners and reset styles)
   function cleanup_drag_listeners() {
     if (is_dragging) {
       // Remove global event listeners
@@ -307,7 +295,7 @@
     {#if group_name !== null && has_groups}
       <!-- Group header -->
       {@const is_collapsed = collapsed_groups.has(group_name)}
-      {@const group_visible = is_group_visible(items)}
+      {@const group_visible = items.some((item) => item.visible)}
       <div
         class="legend-group-header"
         class:hidden={!group_visible}
@@ -319,7 +307,7 @@
         ondblclick={(event: MouseEvent) => {
           event.preventDefault()
           event.stopPropagation()
-          handle_group_dblclick(group_name, items)
+          on_group_double_click?.(group_name, items.map((item) => item.series_idx))
         }}
         onkeydown={(event) => {
           if ([`Enter`, ` `].includes(event.key)) {

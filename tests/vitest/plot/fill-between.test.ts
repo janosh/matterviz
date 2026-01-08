@@ -1,6 +1,4 @@
 // Tests for fill-between: utility functions and type structures
-import { describe, expect, it } from 'vitest'
-
 import {
   apply_range_constraints,
   apply_where_condition,
@@ -21,10 +19,10 @@ import type {
   FillHandlerEvent,
   FillHoverStyle,
   FillRegion,
-  FillZIndex,
   LegendItem,
 } from '$lib/plot/types'
 import { FILL_CURVE_TYPES } from '$lib/plot/types'
+import { describe, expect, it } from 'vitest'
 
 // Interpolation tests
 describe(`interpolate_series`, () => {
@@ -496,16 +494,6 @@ describe(`Fill type structures`, () => {
       py: 200,
     }
     expect(event).toMatchObject({ region_idx: 0, x: 10, px: 100 })
-  })
-
-  it(`FillZIndex accepts all valid positions`, () => {
-    const positions: FillZIndex[] = [
-      `below-grid`,
-      `below-lines`,
-      `below-points`,
-      `above-all`,
-    ]
-    expect(positions).toHaveLength(4)
   })
 
   it(`FillRegion accepts minimal and full configurations`, () => {

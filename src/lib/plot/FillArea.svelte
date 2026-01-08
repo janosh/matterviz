@@ -70,7 +70,7 @@
     tweened_path.target = path
   })
 
-  // Event handlers - use optional chaining for conciseness
+  // Event handlers - extracted to avoid recreating on every render
   const handle_mouse_enter = (event: MouseEvent) => on_hover?.(construct_event(event))
   const handle_mouse_leave = () => on_hover?.(null)
   const handle_mouse_move = (event: MouseEvent) =>
@@ -101,7 +101,7 @@
       const data_y = y_scale_fn.invert?.(py) ?? 0
 
       on_click({
-        event: event as unknown as MouseEvent, // Cast for type compatibility
+        event,
         region_idx,
         region_id: region.id,
         x: data_x,

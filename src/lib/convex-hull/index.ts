@@ -137,7 +137,7 @@ export const default_hull_config: ConvexHullConfig = {
 export const CONVEX_HULL_STYLE = Object.freeze({
   structure_line: Object.freeze({
     color: `rgba(128, 128, 128, 0.6)`,
-    dash: [3, 3] as [number, number],
+    dash: [3, 3],
     line_width: 2,
   }),
   z_index: Object.freeze({ tooltip: 6, copy_feedback: 10 }),

@@ -2003,6 +2003,371 @@ The `curve` property controls how the fill area is interpolated between data poi
 </div>
 ```
 
+## Reference Lines: Horizontal, Vertical, and Diagonal
+
+Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to your plots. These are useful for thresholds, targets, parity lines, and annotations. Lines support custom styling, annotations, z-index positioning, hover effects, and click handlers.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Sample data points
+  const data = {
+    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    y: [2.1, 3.8, 5.2, 4.5, 6.8, 7.2, 8.5, 9.1, 8.8, 10.2],
+    point_style: { fill: `steelblue`, radius: 6 },
+    markers: `points`,
+    label: `Measurements`,
+  }
+
+  // Reference lines with different types
+  let ref_lines = $state([
+    // Horizontal line - target value
+    {
+      type: `horizontal`,
+      y: 7,
+      label: `Target`,
+      style: { color: `#e74c3c`, width: 2, dash: `8 4` },
+      annotation: { text: `Target = 7`, position: `end`, side: `above` },
+    },
+    // Vertical line - threshold
+    {
+      type: `vertical`,
+      x: 5.5,
+      label: `Phase Boundary`,
+      style: { color: `#2ecc71`, width: 2 },
+      annotation: { text: `Phase I → II`, position: `center`, side: `right` },
+    },
+    // Diagonal line - parity/identity line
+    {
+      type: `diagonal`,
+      slope: 1,
+      intercept: 0,
+      label: `y = x`,
+      style: { color: `#9b59b6`, width: 1.5, dash: `4 2` },
+      annotation: { text: `Parity`, position: `end`, side: `below` },
+    },
+    // Another diagonal - trend line
+    {
+      type: `diagonal`,
+      slope: 0.8,
+      intercept: 1.5,
+      label: `Trend`,
+      style: { color: `#f39c12`, width: 2 },
+      annotation: { text: `Trend: y = 0.8x + 1.5`, position: `start`, side: `above` },
+      z_index: `below-grid`,
+    },
+  ])
+
+  let clicked_line = $state(null)
+  let hovered_line = $state(null)
+</script>
+
+<ScatterPlot
+  series={[data]}
+  {ref_lines}
+  x_axis={{ label: `X Value`, range: [0, 12] }}
+  y_axis={{ label: `Y Value`, range: [0, 12] }}
+  style="height: 400px"
+/>
+
+<div
+  style="margin-top: 0.5em; font-size: 0.9em; display: flex; gap: 1em; flex-wrap: wrap"
+>
+  {#each ref_lines as line}
+    <label>
+      <input
+        type="checkbox"
+        checked={line.visible !== false}
+        onchange={() => {
+          line.visible = line.visible === false
+          ref_lines = [...ref_lines]
+        }}
+      />
+      {line.label}
+    </label>
+  {/each}
+</div>
+```
+
+## Reference Line Segments and Through-Points
+
+Create line segments between specific points, or lines that extend through two points to the plot edges:
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Data with clusters
+  const cluster_a = {
+    x: [2, 2.5, 3, 2.8, 2.2],
+    y: [8, 8.5, 7.8, 9, 8.2],
+    point_style: { fill: `#e74c3c`, radius: 6 },
+    label: `Cluster A`,
+    markers: `points`,
+  }
+
+  const cluster_b = {
+    x: [7, 7.5, 8, 7.2, 8.2],
+    y: [3, 2.5, 3.5, 2.8, 3.2],
+    point_style: { fill: `#3498db`, radius: 6 },
+    label: `Cluster B`,
+    markers: `points`,
+  }
+
+  // Reference lines connecting clusters and showing decision boundaries
+  const ref_lines = [
+    // Segment connecting cluster centers
+    {
+      type: `segment`,
+      p1: [2.5, 8.3],
+      p2: [7.5, 3],
+      label: `Cluster Link`,
+      style: { color: `#2ecc71`, width: 2 },
+      annotation: { text: `d = 6.7`, position: `center`, side: `above` },
+    },
+    // Decision boundary (perpendicular bisector, extends to edges)
+    {
+      type: `line`,
+      p1: [3, 4],
+      p2: [7, 7],
+      label: `Decision Boundary`,
+      style: { color: `#9b59b6`, width: 2, dash: `6 3` },
+      annotation: { text: `Boundary`, position: `end`, side: `above` },
+    },
+    // Horizontal mean line for cluster A
+    {
+      type: `horizontal`,
+      y: 8.3,
+      x_span: [1.5, 3.5],
+      label: `A mean`,
+      style: { color: `#e74c3c`, width: 1, dash: `4 2`, opacity: 0.7 },
+    },
+    // Horizontal mean line for cluster B
+    {
+      type: `horizontal`,
+      y: 3,
+      x_span: [6.5, 8.5],
+      label: `B mean`,
+      style: { color: `#3498db`, width: 1, dash: `4 2`, opacity: 0.7 },
+    },
+  ]
+</script>
+
+<ScatterPlot
+  series={[cluster_a, cluster_b]}
+  {ref_lines}
+  x_axis={{ label: `Feature 1`, range: [0, 10] }}
+  y_axis={{ label: `Feature 2`, range: [0, 10] }}
+  style="height: 400px"
+/>
+```
+
+## Interactive Reference Lines with Hover and Click
+
+Reference lines support interactive features including hover styling, click handlers, and custom metadata:
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  const data = {
+    x: Array.from({ length: 20 }, () => Math.random() * 10),
+    y: Array.from({ length: 20 }, () => Math.random() * 10),
+    point_style: { fill: `steelblue`, radius: 5 },
+    markers: `points`,
+  }
+
+  let clicked_info = $state(`Click on a reference line`)
+  let hovered_info = $state(`Hover over a line`)
+
+  const ref_lines = [
+    {
+      type: `horizontal`,
+      y: 3,
+      id: `lower_threshold`,
+      label: `Lower Threshold`,
+      style: { color: `#e74c3c`, width: 2 },
+      hover_style: { color: `#c0392b`, width: 4 },
+      annotation: { text: `Min = 3`, position: `start`, side: `below` },
+      metadata: { description: `Minimum acceptable value`, severity: `warning` },
+      on_click: (event) => {
+        clicked_info = `Clicked: ${event.label} (id: ${event.line_id}), metadata: ${
+          JSON.stringify(event.metadata)
+        }`
+      },
+      on_hover: (event) => {
+        hovered_info = event ? `Hovering: ${event.label}` : `Hover over a line`
+      },
+    },
+    {
+      type: `horizontal`,
+      y: 7,
+      id: `upper_threshold`,
+      label: `Upper Threshold`,
+      style: { color: `#2ecc71`, width: 2 },
+      hover_style: { color: `#27ae60`, width: 4 },
+      annotation: { text: `Max = 7`, position: `start`, side: `above` },
+      metadata: { description: `Maximum acceptable value`, severity: `info` },
+      on_click: (event) => {
+        clicked_info = `Clicked: ${event.label} (id: ${event.line_id}), metadata: ${
+          JSON.stringify(event.metadata)
+        }`
+      },
+      on_hover: (event) => {
+        hovered_info = event ? `Hovering: ${event.label}` : `Hover over a line`
+      },
+    },
+    {
+      type: `vertical`,
+      x: 5,
+      id: `midpoint`,
+      label: `Midpoint`,
+      style: { color: `#f39c12`, width: 2, dash: `5 5` },
+      hover_style: { color: `#d35400`, width: 3 },
+      annotation: { text: `x = 5`, position: `end`, side: `right` },
+      on_click: (event) => {
+        clicked_info = `Clicked: ${event.label} at x=${
+          event.type === 'vertical' ? 5 : 'N/A'
+        }`
+      },
+      on_hover: (event) => {
+        hovered_info = event ? `Hovering: ${event.label}` : `Hover over a line`
+      },
+    },
+  ]
+</script>
+
+<ScatterPlot
+  series={[data]}
+  {ref_lines}
+  x_axis={{ label: `X`, range: [0, 10] }}
+  y_axis={{ label: `Y`, range: [0, 10] }}
+  style="height: 400px"
+/>
+
+<div
+  style="margin-top: 0.5em; padding: 0.5em; background: rgba(255, 255, 255, 0.05); border-radius: 4px; font-size: 0.9em"
+>
+  <div><strong>Clicked:</strong> {clicked_info}</div>
+  <div><strong>Hovered:</strong> {hovered_info}</div>
+</div>
+```
+
+## Reference Lines with Z-Index Layering
+
+Control where reference lines appear in the rendering stack using `z_index`. Options are `below-grid`, `below-lines`, `below-points` (default), and `above-all`:
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  const series = [{
+    x: [1, 2, 3, 4, 5, 6, 7, 8],
+    y: [2, 4, 3, 6, 5, 8, 7, 9],
+    point_style: { fill: `#3498db`, radius: 8 },
+    line_style: { stroke: `#3498db`, stroke_width: 2 },
+    markers: `line+points`,
+    label: `Data Series`,
+  }]
+
+  let z_index = $state(`below-points`)
+
+  const ref_line_config = $derived({
+    type: `horizontal`,
+    y: 5.5,
+    style: { color: `#e74c3c`, width: 3 },
+    z_index,
+    annotation: {
+      text: `z_index: ${z_index}`,
+      position: `end`,
+      side: `above`,
+    },
+  })
+</script>
+
+<div style="margin-bottom: 1em">
+  <strong>Z-Index:</strong>
+  {#each [`below-grid`, `below-lines`, `below-points`, `above-all`] as zi}
+    <label style="margin-left: 1em">
+      <input type="radio" bind:group={z_index} value={zi} />
+      {zi}
+    </label>
+  {/each}
+</div>
+
+<ScatterPlot
+  {series}
+  ref_lines={[ref_line_config]}
+  x_axis={{ label: `X`, range: [0, 10] }}
+  y_axis={{ label: `Y`, range: [0, 10] }}
+  style="height: 350px"
+/>
+```
+
+## Reference Lines with Time Axes
+
+Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO strings for time values:
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Generate time series data for the past 30 days
+  const now = Date.now()
+  const day_ms = 24 * 60 * 60 * 1000
+  const dates = Array.from({ length: 30 }, (_, idx) => now - (30 - idx) * day_ms)
+  const values = dates.map((_, idx) =>
+    50 + 20 * Math.sin(idx * 0.3) + Math.random() * 10
+  )
+
+  const series = [{
+    x: dates,
+    y: values,
+    point_style: { fill: `steelblue`, radius: 4 },
+    line_style: { stroke: `steelblue`, stroke_width: 2 },
+    markers: `line+points`,
+    label: `Daily Metric`,
+  }]
+
+  // Reference lines using Date objects
+  const ref_lines = [
+    {
+      type: `vertical`,
+      x: now - 15 * day_ms,
+      style: { color: `#e74c3c`, width: 2 },
+      annotation: { text: `Release Date`, position: `end`, side: `right` },
+    },
+    {
+      type: `vertical`,
+      x: now - 7 * day_ms,
+      style: { color: `#2ecc71`, width: 2, dash: `4 2` },
+      annotation: { text: `Week Ago`, position: `end`, side: `left` },
+    },
+    {
+      type: `horizontal`,
+      y: 65,
+      style: { color: `#f39c12`, width: 2, dash: `6 3` },
+      annotation: { text: `Target`, position: `end`, side: `above` },
+    },
+    {
+      type: `horizontal`,
+      y: 35,
+      style: { color: `#9b59b6`, width: 1.5, dash: `4 4` },
+      annotation: { text: `Minimum`, position: `end`, side: `below` },
+    },
+  ]
+</script>
+
+<ScatterPlot
+  {series}
+  {ref_lines}
+  x_axis={{ label: `Date`, format: `%b %d` }}
+  y_axis={{ label: `Value`, range: [20, 80] }}
+  style="height: 400px"
+/>
+```
+
 ## Stress Test: Many Interpolated Fills
 
 This example creates multiple fill regions between series with varying sample densities to stress test the interpolation algorithm:

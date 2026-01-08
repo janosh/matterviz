@@ -36,7 +36,7 @@ describe(`Histogram`, () => {
         configurable: true,
       })
     } catch {
-      /* ignore defineProperty errors in some environments */
+      // ignore defineProperty errors in some environments
     }
   }
 

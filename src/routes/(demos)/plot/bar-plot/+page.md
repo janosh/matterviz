@@ -590,6 +590,219 @@ Line series support full marker customization including symbol types, sizes, col
 />
 ```
 
+## Reference Lines: Thresholds, Means, and Comparisons
+
+Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar plots. Toggle between threshold mode (performance tiers) and comparison mode (showing means for grouped bars):
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  let comparison_mode = $state(false)
+
+  // Threshold mode: single series with performance tiers
+  const efficiency_data = [
+    {
+      x: [1, 2, 3, 4, 5, 6],
+      y: [78, 92, 85, 88, 71, 95],
+      label: `Device Efficiency (%)`,
+      color: `#4c6ef5`,
+      labels: [`Dev A`, `Dev B`, `Dev C`, `Dev D`, `Dev E`, `Dev F`],
+    },
+  ]
+
+  // Comparison mode: measured vs predicted
+  const comparison_data = [
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [3.2, 5.1, 4.8, 6.2, 5.5],
+      label: `Measured`,
+      color: `#3498db`,
+    },
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [3.0, 4.8, 4.5, 6.5, 5.8],
+      label: `Predicted`,
+      color: `#e74c3c`,
+    },
+  ]
+  const measured_mean = 4.96
+  const predicted_mean = 4.92
+
+  let series = $derived(comparison_mode ? comparison_data : efficiency_data)
+
+  let ref_lines = $derived(
+    comparison_mode
+      ? [
+        {
+          type: `horizontal`,
+          y: measured_mean,
+          label: `Measured Mean`,
+          style: { color: `#3498db`, width: 2, dash: `8 4` },
+          annotation: {
+            text: `μ = ${measured_mean.toFixed(2)}`,
+            position: `start`,
+            side: `above`,
+          },
+        },
+        {
+          type: `horizontal`,
+          y: predicted_mean,
+          label: `Predicted Mean`,
+          style: { color: `#e74c3c`, width: 2, dash: `8 4` },
+          annotation: {
+            text: `μ = ${predicted_mean.toFixed(2)}`,
+            position: `end`,
+            side: `below`,
+          },
+        },
+        {
+          type: `diagonal`,
+          slope: 1,
+          intercept: 0,
+          label: `Parity`,
+          style: { color: `#7f8c8d`, width: 1, dash: `4 2` },
+          z_index: `below-grid`,
+        },
+      ]
+      : [
+        {
+          type: `horizontal`,
+          y: 90,
+          label: `Excellent`,
+          style: { color: `#2ecc71`, width: 2 },
+          annotation: { text: `Excellent (90%)`, position: `end`, side: `above` },
+        },
+        {
+          type: `horizontal`,
+          y: 80,
+          label: `Good`,
+          style: { color: `#f39c12`, width: 2, dash: `6 3` },
+          annotation: { text: `Good (80%)`, position: `end`, side: `above` },
+        },
+        {
+          type: `horizontal`,
+          y: 70,
+          label: `Minimum`,
+          style: { color: `#e74c3c`, width: 2, dash: `4 4` },
+          annotation: { text: `Minimum (70%)`, position: `end`, side: `below` },
+        },
+      ],
+  )
+</script>
+
+<label style="margin-bottom: 1em; display: block">
+  <input type="checkbox" bind:checked={comparison_mode} /> Comparison mode (grouped bars
+  with means)
+</label>
+
+<BarPlot
+  {series}
+  {ref_lines}
+  mode={comparison_mode ? `grouped` : `single`}
+  x_axis={{ label: comparison_mode ? `Sample` : `Device` }}
+  y_axis={{
+    label: comparison_mode ? `Value` : `Efficiency (%)`,
+    range: comparison_mode ? undefined : [0, 100],
+  }}
+  style="height: 400px"
+/>
+```
+
+## Interactive Reference Lines on Bar Plot
+
+Reference lines support hover effects and click handlers for interactivity:
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  const production_data = [
+    {
+      x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      y: [42, 38, 45, 52, 48, 55, 61, 58, 63, 67, 71, 75],
+      label: `Monthly Production`,
+      color: `#4c6ef5`,
+      labels: [
+        `Jan`,
+        `Feb`,
+        `Mar`,
+        `Apr`,
+        `May`,
+        `Jun`,
+        `Jul`,
+        `Aug`,
+        `Sep`,
+        `Oct`,
+        `Nov`,
+        `Dec`,
+      ],
+    },
+  ]
+
+  let selected_target = $state(null)
+
+  const ref_lines = [
+    {
+      type: `horizontal`,
+      y: 50,
+      id: `q1_target`,
+      label: `Q1 Target`,
+      style: { color: `#e74c3c`, width: 2 },
+      hover_style: { color: `#c0392b`, width: 4 },
+      x_span: [0.5, 3.5],
+      annotation: { text: `Q1: 50`, position: `center`, side: `above` },
+      on_click: (e) => (selected_target = `Q1 Target: 50 units`),
+    },
+    {
+      type: `horizontal`,
+      y: 55,
+      id: `q2_target`,
+      label: `Q2 Target`,
+      style: { color: `#f39c12`, width: 2 },
+      hover_style: { color: `#d68910`, width: 4 },
+      x_span: [3.5, 6.5],
+      annotation: { text: `Q2: 55`, position: `center`, side: `above` },
+      on_click: (e) => (selected_target = `Q2 Target: 55 units`),
+    },
+    {
+      type: `horizontal`,
+      y: 65,
+      id: `q3_target`,
+      label: `Q3 Target`,
+      style: { color: `#2ecc71`, width: 2 },
+      hover_style: { color: `#27ae60`, width: 4 },
+      x_span: [6.5, 9.5],
+      annotation: { text: `Q3: 65`, position: `center`, side: `above` },
+      on_click: (e) => (selected_target = `Q3 Target: 65 units`),
+    },
+    {
+      type: `horizontal`,
+      y: 75,
+      id: `q4_target`,
+      label: `Q4 Target`,
+      style: { color: `#9b59b6`, width: 2 },
+      hover_style: { color: `#7d3c98`, width: 4 },
+      x_span: [9.5, 12.5],
+      annotation: { text: `Q4: 75`, position: `center`, side: `above` },
+      on_click: (e) => (selected_target = `Q4 Target: 75 units`),
+    },
+  ]
+</script>
+
+<BarPlot
+  series={production_data}
+  {ref_lines}
+  x_axis={{ label: `Month` }}
+  y_axis={{ label: `Production (units)`, range: [0, 85] }}
+  style="height: 400px"
+/>
+
+<div style="margin-top: 0.5em; font-size: 0.9em">
+  <strong>Selected:</strong> {selected_target ?? `Click a target line`}
+</div>
+```
+
 ## Legend Grouping
 
 When comparing results from different computational methods or experimental techniques, you can organize legend items into collapsible groups using the `legend_group` property. Click the group header to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group:

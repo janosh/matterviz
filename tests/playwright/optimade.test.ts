@@ -6,6 +6,13 @@ import {
   MOCK_SUGGESTIONS,
 } from '../fixtures/optimade-mocks'
 
+// Timeout for waiting on async data loading (providers, structures).
+// Despite mocking, we need extra time for:
+// - Svelte 5 $effect reactivity (runs after initial render)
+// - Component hydration after SSR
+// - CI environment variability
+const DATA_LOAD_TIMEOUT = 10_000
+
 test.describe(`OPTIMADE route`, () => {
   test.beforeEach(async ({ page }) => {
     // Extract target URL from CORS proxy requests
@@ -125,14 +132,16 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-invalid-id-12345`)
 
     // Wait for providers to load first (triggers URL slug parsing)
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
 
     // Check input value is set correctly (after providers load)
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
 
     // Check for error message - mock returns OPTIMADE 404 with "Structure not found"
     const error_message = page.locator(`.structure-column .error-message`)
-    await expect(error_message).toBeVisible({ timeout: 8000 })
+    await expect(error_message).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
     // Verify the app displays an error message (content varies based on mock vs real API)
     await expect(error_message).toContainText(/not found|failed|error/i)
   })
@@ -141,9 +150,13 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-mp-1`)
 
     // Wait for providers to load and structure to be fetched
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
     // Verify initial MP structure is loaded (h2 contains structure ID in span)
-    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 10000 })
+    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
 
     // Click on OQMD provider button
     await page.locator(`button.db-select`, { hasText: `oqmd` }).click()
@@ -164,9 +177,13 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-mp-1`)
 
     // Wait for providers to load and structure to be fetched
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
     // Verify initial MP structure is loaded
-    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 10000 })
+    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
 
     // Enter a different MP structure ID
     await page.locator(`input.structure-input`).fill(`mp-149`)
@@ -178,6 +195,11 @@ test.describe(`OPTIMADE route`, () => {
 
   test(`provider selection clears input field`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
+
+    // Wait for providers to load first
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
 
     // Fill input with some text
     await page.locator(`input.structure-input`).fill(`test-structure-id`)
@@ -193,9 +215,13 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-mp-1`)
 
     // Wait for providers to load and structure to be fetched
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
     // Test MP provider (should already be loaded)
-    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({ timeout: 10000 })
+    await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
 
     // Switch to COD provider
     await page.locator(`button.db-select`, { hasText: `cod` }).click()
@@ -216,10 +242,12 @@ test.describe(`OPTIMADE route`, () => {
     await page.goto(`/optimade-mp-1`)
 
     // Wait for providers to load first
-    await expect(page.locator(`button.db-select`).first()).toBeVisible()
+    await expect(page.locator(`button.db-select`).first()).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
     // Wait for suggestions to load (shown after providers and suggestions fetch)
     await expect(page.locator(`text=Suggested Structures`)).toBeVisible({
-      timeout: 10000,
+      timeout: DATA_LOAD_TIMEOUT,
     })
 
     // Click on a specific known suggestion (mp-149) that exists in MOCK_STRUCTURES

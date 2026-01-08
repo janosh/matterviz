@@ -124,11 +124,10 @@
     // Symmetry Info
     if (`lattice` in structure && sym_data) {
       const { operations } = sym_data
-      const is_identity3 = (mat: number[]) => String(mat) === `1,0,0,0,1,0,0,0,1`
       let translations = 0, rotations = 0, roto_translations = 0
       for (const op of operations) {
         const has_translation = op.translation.some((t) => t !== 0)
-        const is_identity = is_identity3(op.rotation)
+        const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
         if (is_identity && has_translation) translations++
         else if (!has_translation) rotations++
         else roto_translations++
