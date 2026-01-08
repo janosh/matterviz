@@ -252,56 +252,56 @@ export function resolve_line_endpoints(
   const to_data_x = (rel: number): number => x_min + rel * (x_max - x_min)
   const to_data_y = (rel: number): number => y_min + rel * (y_max - y_min)
 
-  let x1_data: number
-  let y1_data: number
-  let x2_data: number
-  let y2_data: number
+  let x1_data = 0
+  let y1_data = 0
+  let x2_data = 0
+  let y2_data = 0
 
-  switch (ref_line.type) {
-    case `horizontal`: {
-      const y_val = normalize_value(ref_line.y)
-      const y_coord = ref_line.coord_mode === `relative` ? to_data_y(y_val) : y_val
-      if (!is_y_visible(y_coord)) return null
-      ;[x1_data, x2_data] = apply_x_span(x_min, x_max)
-      y1_data = y_coord
-      y2_data = y_coord
-      break
-    }
+  const line_type = ref_line.type
 
-    case `vertical`: {
-      const x_val = normalize_value(ref_line.x)
-      const x_coord = ref_line.coord_mode === `relative` ? to_data_x(x_val) : x_val
-      if (!is_x_visible(x_coord)) return null
-      x1_data = x_coord
-      x2_data = x_coord
-      ;[y1_data, y2_data] = apply_y_span(y_min, y_max)
-      break
-    }
+  if (line_type === `horizontal`) {
+    const y_val = normalize_value(ref_line.y)
+    const y_coord = ref_line.coord_mode === `relative` ? to_data_y(y_val) : y_val
+    if (!is_y_visible(y_coord)) return null
+    ;[x1_data, x2_data] = apply_x_span(x_min, x_max)
+    y1_data = y_coord
+    y2_data = y_coord
+  } else if (line_type === `vertical`) {
+    const x_val = normalize_value(ref_line.x)
+    const x_coord = ref_line.coord_mode === `relative` ? to_data_x(x_val) : x_val
+    if (!is_x_visible(x_coord)) return null
+    x1_data = x_coord
+    x2_data = x_coord
+    ;[y1_data, y2_data] = apply_y_span(y_min, y_max)
+  } else if (line_type === `diagonal` || line_type === `line`) {
+    // Get slope/intercept - either from props or computed from points
+    let slope: number
+    let intercept: number
+    let handled_as_vertical = false
 
-    case `diagonal`:
-    case `line`: {
-      // Get slope/intercept - either from props or computed from points
-      let slope: number
-      let intercept: number
-      if (ref_line.type === `diagonal`) {
-        slope = ref_line.slope
-        intercept = ref_line.intercept
+    if (ref_line.type === `diagonal`) {
+      slope = ref_line.slope
+      intercept = ref_line.intercept
+    } else {
+      const [p1x, p1y] = normalize_point(ref_line.p1)
+      const [p2x, p2y] = normalize_point(ref_line.p2)
+      const dx = p2x - p1x
+      if (Math.abs(dx) < 1e-10) {
+        // Nearly vertical line - check x-bounds like we do for vertical type
+        if (!is_x_visible(p1x)) return null
+        x1_data = p1x
+        x2_data = p1x
+        ;[y1_data, y2_data] = apply_y_span(y_min, y_max)
+        handled_as_vertical = true
+        slope = 0 // Won't be used
+        intercept = 0
       } else {
-        const [p1x, p1y] = normalize_point(ref_line.p1)
-        const [p2x, p2y] = normalize_point(ref_line.p2)
-        const dx = p2x - p1x
-        if (Math.abs(dx) < 1e-10) {
-          // Nearly vertical line - check x-bounds like we do for vertical type
-          if (!is_x_visible(p1x)) return null
-          x1_data = p1x
-          x2_data = p1x
-          ;[y1_data, y2_data] = apply_y_span(y_min, y_max)
-          break
-        }
         slope = (p2y - p1y) / dx
         intercept = p1y - slope * p1x
       }
+    }
 
+    if (!handled_as_vertical) {
       // Clip line to y bounds
       let x1 = x_min
       let x2 = x_max
@@ -326,31 +326,26 @@ export function resolve_line_endpoints(
       ;[x1_data, x2_data] = apply_x_span(x_lo, x_hi)
       ;[y1_data, y2_data] = apply_y_span(y_lo, y_hi)
       if (x1_data > x_max || x2_data < x_min) return null
-      break
     }
-
-    case `segment`: {
-      // Note: Each endpoint is clamped independently rather than computing true
-      // line-rectangle intersection. This is simpler and ensures visibility, but
-      // may slightly distort the angle for segments crossing bounds (e.g., a segment
-      // from (-10, 0) to (50, 100) clamped at x=0 yields (0, 0) instead of (0, ~16.7)).
-      // This trade-off is intentional for performance and simplicity.
-      const [p1x, p1y] = normalize_point(ref_line.p1)
-      const [p2x, p2y] = normalize_point(ref_line.p2)
-      const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
-      const xs = ref_line.x_span
-      const ys = ref_line.y_span
-      x1_data = clamp(p1x, xs?.[0] ?? x_min, xs?.[1] ?? x_max)
-      x2_data = clamp(p2x, xs?.[0] ?? x_min, xs?.[1] ?? x_max)
-      y1_data = clamp(p1y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
-      y2_data = clamp(p2y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
-      // If both endpoints clamp to the same point, segment is entirely outside bounds
-      if (x1_data === x2_data && y1_data === y2_data) return null
-      break
-    }
-
-    default:
-      return null
+  } else if (line_type === `segment`) {
+    // Note: Each endpoint is clamped independently rather than computing true
+    // line-rectangle intersection. This is simpler and ensures visibility, but
+    // may slightly distort the angle for segments crossing bounds (e.g., a segment
+    // from (-10, 0) to (50, 100) clamped at x=0 yields (0, 0) instead of (0, ~16.7)).
+    // This trade-off is intentional for performance and simplicity.
+    const [p1x, p1y] = normalize_point(ref_line.p1)
+    const [p2x, p2y] = normalize_point(ref_line.p2)
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+    const xs = ref_line.x_span
+    const ys = ref_line.y_span
+    x1_data = clamp(p1x, xs?.[0] ?? x_min, xs?.[1] ?? x_max)
+    x2_data = clamp(p2x, xs?.[0] ?? x_min, xs?.[1] ?? x_max)
+    y1_data = clamp(p1y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
+    y2_data = clamp(p2y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
+    // If both endpoints clamp to the same point, segment is entirely outside bounds
+    if (x1_data === x2_data && y1_data === y2_data) return null
+  } else {
+    return null
   }
 
   // Convert data coordinates to screen pixels
