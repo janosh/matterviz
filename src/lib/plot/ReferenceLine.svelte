@@ -1,6 +1,5 @@
 <script lang="ts">
-  // ReferenceLine component for rendering 2D reference lines with annotations
-  // Supports horizontal, vertical, diagonal, segment, and line types
+  // ReferenceLine: 2D reference lines with annotations (horizontal, vertical, diagonal, segment, line)
   import {
     calculate_annotation_position,
     resolve_line_endpoints,
@@ -11,23 +10,15 @@
   let {
     ref_line,
     line_idx,
-    // Plot bounds for coordinate resolution
     x_min,
     x_max,
     y_min,
     y_max,
-    pad,
-    width,
-    height,
-    // Scale functions
     x_scale,
     y_scale,
     y2_scale,
-    // Clip path
     clip_path_id,
-    // Hover state
     hovered_line_idx = null,
-    // Event handlers
     on_click,
     on_hover,
   }: {
@@ -37,9 +28,6 @@
     x_max: number
     y_min: number
     y_max: number
-    pad: { l: number; r: number; t: number; b: number }
-    width: number
-    height: number
     x_scale: (val: number) => number
     y_scale: (val: number) => number
     y2_scale?: (val: number) => number
@@ -49,29 +37,24 @@
     on_hover?: (event: RefLineEvent | null) => void
   } = $props()
 
-  // Resolve line endpoints
   let endpoints = $derived(
-    resolve_line_endpoints(
-      ref_line,
-      { x_min, x_max, y_min, y_max, pad, width, height },
-      { x_scale, y_scale, y2_scale },
-    ),
+    resolve_line_endpoints(ref_line, { x_min, x_max, y_min, y_max }, {
+      x_scale,
+      y_scale,
+      y2_scale,
+    }),
   )
 
-  // Track focus state for keyboard accessibility
   let is_focused = $state(false)
-
-  // Compute if this line is hovered (includes keyboard focus for consistent styling)
   let is_hovered = $derived(hovered_line_idx === line_idx || is_focused)
+  let is_clickable = $derived(Boolean(on_click || ref_line.on_click))
 
-  // Merge default, custom, and hover styles
   let style = $derived<Required<RefLineStyle>>({
     ...REF_LINE_STYLE_DEFAULTS,
     ...ref_line.style,
     ...(is_hovered && ref_line.hover_style),
   })
 
-  // Compute annotation position if annotation exists
   let annotation_pos = $derived(
     endpoints && ref_line.annotation
       ? calculate_annotation_position(
@@ -84,7 +67,6 @@
       : null,
   )
 
-  // Construct event object for handlers
   const make_event = (mouse_event: MouseEvent): RefLineEvent => ({
     event: mouse_event,
     line_idx,
@@ -102,10 +84,6 @@
       on_click?.(evt)
     }
   }
-
-  // Check if clickable (used for cursor, role, tabindex)
-  let is_clickable = $derived(Boolean(on_click || ref_line.on_click))
-  let cursor = $derived(is_clickable ? `pointer` : `default`)
 </script>
 
 {#if endpoints && ref_line.visible !== false}
@@ -119,12 +97,12 @@
     role={is_clickable ? `button` : `img`}
     aria-label={ref_line.label ?? ref_line.annotation?.text ?? `Reference line ${line_idx}`}
     tabindex={is_clickable ? 0 : -1}
-    style:cursor
+    style:cursor={is_clickable ? `pointer` : `default`}
     onmouseenter={(evt) => on_hover?.(make_event(evt))}
     onmouseleave={() => on_hover?.(null)}
     onfocus={(evt) => {
       is_focused = true
-      on_hover?.(make_event(evt as unknown as MouseEvent))
+      on_hover?.({ ...make_event(new MouseEvent(`focus`)), event: evt })
     }}
     onblur={() => {
       is_focused = false

@@ -790,7 +790,7 @@ export interface RefLineAnnotation {
 
 // Event type for reference line interactions
 export interface RefLineEvent {
-  event: MouseEvent
+  event: MouseEvent | FocusEvent // FocusEvent for keyboard accessibility
   line_idx: number
   line_id?: string | number
   type: RefLine[`type`]

@@ -21,14 +21,11 @@ import {
   plane_yz,
   resolve_line_endpoints,
   span_or,
-  validate_ref_line,
-  validate_ref_line_3d,
-  validate_ref_plane,
   vertical_line,
   vertical_lines,
 } from '$lib/plot/reference-line-utils'
 import type { IndexedRefLine } from '$lib/plot/reference-line-utils'
-import type { RefLine, RefLine3D, RefPlane } from '$lib/plot/types'
+import type { RefLine } from '$lib/plot/types'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`normalize_value`, () => {
@@ -395,124 +392,6 @@ describe(`calculate_annotation_position`, () => {
     })
     expect(pos.rotation).toBeDefined()
     expect(pos.rotation).toBeCloseTo(45, 0)
-  })
-})
-
-describe(`validate_ref_line`, () => {
-  test(`valid horizontal line`, () => {
-    expect(validate_ref_line({ type: `horizontal`, y: 50 })).toBe(true)
-  })
-
-  test(`valid vertical line`, () => {
-    expect(validate_ref_line({ type: `vertical`, x: 50 })).toBe(true)
-  })
-
-  test(`valid diagonal line`, () => {
-    expect(validate_ref_line({ type: `diagonal`, slope: 1, intercept: 0 })).toBe(true)
-  })
-
-  test(`valid segment`, () => {
-    expect(validate_ref_line({ type: `segment`, p1: [0, 0], p2: [1, 1] })).toBe(true)
-  })
-
-  test(`valid line through points`, () => {
-    expect(validate_ref_line({ type: `line`, p1: [0, 0], p2: [1, 1] })).toBe(true)
-  })
-
-  test(`invalid: missing type`, () => {
-    expect(validate_ref_line({} as RefLine)).toBe(false)
-  })
-
-  test(`invalid: missing required field`, () => {
-    expect(validate_ref_line({ type: `horizontal` } as RefLine)).toBe(false)
-  })
-
-  test(`invalid: wrong point format`, () => {
-    expect(
-      validate_ref_line({ type: `segment`, p1: [0], p2: [1, 1] } as unknown as RefLine),
-    ).toBe(
-      false,
-    )
-  })
-})
-
-describe(`validate_ref_line_3d`, () => {
-  test(`valid x-axis line`, () => {
-    expect(validate_ref_line_3d({ type: `x-axis`, y: 0, z: 0 })).toBe(true)
-  })
-
-  test(`valid y-axis line`, () => {
-    expect(validate_ref_line_3d({ type: `y-axis`, x: 0, z: 0 })).toBe(true)
-  })
-
-  test(`valid z-axis line`, () => {
-    expect(validate_ref_line_3d({ type: `z-axis`, x: 0, y: 0 })).toBe(true)
-  })
-
-  test(`valid 3D segment`, () => {
-    expect(validate_ref_line_3d({ type: `segment`, p1: [0, 0, 0], p2: [1, 1, 1] })).toBe(
-      true,
-    )
-  })
-
-  test(`valid 3D line`, () => {
-    expect(validate_ref_line_3d({ type: `line`, p1: [0, 0, 0], p2: [1, 1, 1] })).toBe(
-      true,
-    )
-  })
-
-  test(`invalid: missing coordinates`, () => {
-    expect(validate_ref_line_3d({ type: `x-axis`, y: 0 } as RefLine3D)).toBe(false)
-  })
-
-  test(`invalid: wrong point length`, () => {
-    expect(
-      validate_ref_line_3d(
-        { type: `segment`, p1: [0, 0], p2: [1, 1, 1] } as unknown as RefLine3D,
-      ),
-    ).toBe(false)
-  })
-})
-
-describe(`validate_ref_plane`, () => {
-  test(`valid xy plane`, () => {
-    expect(validate_ref_plane({ type: `xy`, z: 0 })).toBe(true)
-  })
-
-  test(`valid xz plane`, () => {
-    expect(validate_ref_plane({ type: `xz`, y: 0 })).toBe(true)
-  })
-
-  test(`valid yz plane`, () => {
-    expect(validate_ref_plane({ type: `yz`, x: 0 })).toBe(true)
-  })
-
-  test(`valid normal plane`, () => {
-    expect(validate_ref_plane({ type: `normal`, normal: [0, 0, 1], point: [0, 0, 0] }))
-      .toBe(true)
-  })
-
-  test(`valid points plane`, () => {
-    expect(
-      validate_ref_plane({
-        type: `points`,
-        p1: [0, 0, 0],
-        p2: [1, 0, 0],
-        p3: [0, 1, 0],
-      }),
-    ).toBe(true)
-  })
-
-  test(`invalid: missing required value`, () => {
-    expect(validate_ref_plane({ type: `xy` } as RefPlane)).toBe(false)
-  })
-
-  test(`invalid: wrong normal length`, () => {
-    expect(
-      validate_ref_plane(
-        { type: `normal`, normal: [0, 0], point: [0, 0, 0] } as unknown as RefPlane,
-      ),
-    ).toBe(false)
   })
 })
 

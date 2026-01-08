@@ -1376,9 +1376,6 @@
       {x_max}
       y_min={line.y_axis === `y2` ? y2_min : y_min}
       y_max={line.y_axis === `y2` ? y2_max : y_max}
-      {pad}
-      {width}
-      {height}
       x_scale={x_scale_fn}
       y_scale={y_scale_fn}
       y2_scale={y2_scale_fn}

@@ -767,9 +767,6 @@
       x_max={ranges.current.x[1]}
       y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
       y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
-      {pad}
-      {width}
-      {height}
       x_scale={scales.x}
       y_scale={scales.y}
       y2_scale={scales.y2}

@@ -48,18 +48,12 @@ export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex 
 export function normalize_value(value: RefLineValue): number {
   if (typeof value === `number`) return value
   if (value instanceof Date) return value.getTime()
-  if (value === ``) {
-    console.warn(`Invalid RefLineValue: "" (empty string), defaulting to 0`)
-    return 0
-  }
-  // First try as pure numeric string (must match pattern to avoid "2024-06-15" -> 2024)
-  const num = parseFloat(value)
-  if (!isNaN(num) && /^-?\d+(\.\d+)?$/.test(value.trim())) return num
-  // Then try as ISO date string
+  // Try numeric conversion first (handles "42", "3.14", "-5")
+  const num = Number(value)
+  if (!isNaN(num)) return num
+  // Then try as ISO date string (handles "2024-06-15")
   const parsed = Date.parse(value)
   if (!isNaN(parsed)) return parsed
-  // Fall back to parseFloat for partial numeric strings like "42px"
-  if (!isNaN(num)) return num
   console.warn(`Invalid RefLineValue: "${value}", defaulting to 0`)
   return 0
 }
@@ -209,32 +203,22 @@ export function line_through_3d(
   return { type: `line`, p1, p2, ...opts }
 }
 
-interface PlotBounds {
-  x_min: number
-  x_max: number
-  y_min: number
-  y_max: number
-  pad: { l: number; r: number; t: number; b: number }
-  width: number
-  height: number
-}
-
-interface ScaleFunctions {
-  x_scale: (val: number) => number
-  y_scale: (val: number) => number
-  y2_scale?: (val: number) => number
-}
-
 // Compute the screen coordinates for a reference line
 // Returns [x1, y1, x2, y2] in pixel coordinates, or null if line is not visible
 export function resolve_line_endpoints(
   ref_line: RefLine,
-  bounds: PlotBounds,
-  scales: ScaleFunctions,
+  { x_min, x_max, y_min, y_max }: {
+    x_min: number
+    x_max: number
+    y_min: number
+    y_max: number
+  },
+  { x_scale, y_scale, y2_scale }: {
+    x_scale: (val: number) => number
+    y_scale: (val: number) => number
+    y2_scale?: (val: number) => number
+  },
 ): [number, number, number, number] | null {
-  const { x_min, x_max, y_min, y_max } = bounds
-  const { x_scale, y_scale, y2_scale } = scales
-
   // Determine which y-scale to use
   const active_y_scale = ref_line.y_axis === `y2` && y2_scale ? y2_scale : y_scale
 
@@ -438,68 +422,6 @@ export function calculate_annotation_position(
   }
 
   return { x: final_x, y: final_y, text_anchor, dominant_baseline, rotation }
-}
-
-// Helper: check if value is array of given length
-const is_tuple = (val: unknown, len: number): boolean =>
-  Array.isArray(val) && val.length === len
-
-// Helper: check if value is a number
-const is_num = (val: unknown): val is number => typeof val === `number`
-
-// Validate a RefLine object has required fields
-export function validate_ref_line(line: RefLine): boolean {
-  if (!line?.type) return false
-  switch (line.type) {
-    case `horizontal`:
-      return line.y !== undefined
-    case `vertical`:
-      return line.x !== undefined
-    case `diagonal`:
-      return is_num(line.slope) && is_num(line.intercept)
-    case `segment`:
-    case `line`:
-      return is_tuple(line.p1, 2) && is_tuple(line.p2, 2)
-    default:
-      return false
-  }
-}
-
-// Validate a RefLine3D object
-export function validate_ref_line_3d(line: RefLine3D): boolean {
-  if (!line?.type) return false
-  switch (line.type) {
-    case `x-axis`:
-      return is_num(line.y) && is_num(line.z)
-    case `y-axis`:
-      return is_num(line.x) && is_num(line.z)
-    case `z-axis`:
-      return is_num(line.x) && is_num(line.y)
-    case `segment`:
-    case `line`:
-      return is_tuple(line.p1, 3) && is_tuple(line.p2, 3)
-    default:
-      return false
-  }
-}
-
-// Validate a RefPlane object
-export function validate_ref_plane(plane: RefPlane): boolean {
-  if (!plane?.type) return false
-  switch (plane.type) {
-    case `xy`:
-      return is_num(plane.z)
-    case `xz`:
-      return is_num(plane.y)
-    case `yz`:
-      return is_num(plane.x)
-    case `normal`:
-      return is_tuple(plane.normal, 3) && is_tuple(plane.point, 3)
-    case `points`:
-      return is_tuple(plane.p1, 3) && is_tuple(plane.p2, 3) && is_tuple(plane.p3, 3)
-    default:
-      return false
-  }
 }
 
 export interface Scene3DParams {

@@ -12,15 +12,7 @@ function query_all<T extends Element>(selector: string): T[] {
 
 describe(`ReferenceLine`, () => {
   const container_style = `width: 800px; height: 600px;`
-  const default_bounds = {
-    x_min: 0,
-    x_max: 100,
-    y_min: 0,
-    y_max: 100,
-    pad: { l: 50, r: 50, t: 50, b: 50 },
-    width: 800,
-    height: 600,
-  }
+  const default_bounds = { x_min: 0, x_max: 100, y_min: 0, y_max: 100 }
   // Scale functions mapping data to pixels
   const x_scale = (val: number) => 50 + (val / 100) * 700 // 0-100 -> 50-750
   const y_scale = (val: number) => 550 - (val / 100) * 500 // 0-100 -> 550-50 (inverted)
