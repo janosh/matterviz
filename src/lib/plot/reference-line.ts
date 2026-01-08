@@ -320,8 +320,11 @@ export function resolve_line_endpoints(
         if (x1 === x2 && y1 === y2) return null
       }
 
-      ;[x1_data, x2_data] = apply_x_span(x1, x2)
-      ;[y1_data, y2_data] = apply_y_span(y1, y2)
+      // Ensure consistent ordering before applying span constraints
+      const [x_lo, x_hi] = x1 <= x2 ? [x1, x2] : [x2, x1]
+      const [y_lo, y_hi] = y1 <= y2 ? [y1, y2] : [y2, y1]
+      ;[x1_data, x2_data] = apply_x_span(x_lo, x_hi)
+      ;[y1_data, y2_data] = apply_y_span(y_lo, y_hi)
       if (x1_data > x_max || x2_data < x_min) return null
       break
     }

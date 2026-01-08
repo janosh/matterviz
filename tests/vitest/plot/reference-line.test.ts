@@ -244,6 +244,21 @@ describe(`resolve_line_endpoints`, () => {
     ).not.toBeNull()
   })
 
+  test(`negative slope diagonal with x_span normalizes endpoint order`, () => {
+    // Negative slope: y = -x + 100, so at x=0 y=100, at x=100 y=0
+    // After y-clipping, endpoints may reverse order (x1 > x2)
+    // x_span should still work correctly
+    const result = resolve_line_endpoints(
+      { type: `diagonal`, slope: -1, intercept: 100, x_span: [20, 80] },
+      bounds,
+      scales,
+    )
+    expect(result).not.toBeNull()
+    // After normalization and span constraint, x should be [20, 80]
+    expect(result?.[0]).toBe(scales.x_scale(20))
+    expect(result?.[2]).toBe(scales.x_scale(80))
+  })
+
   test(`diagonal slope=0 within bounds returns endpoints`, () => {
     const result = resolve_line_endpoints(
       { type: `diagonal`, slope: 0, intercept: 50 },
