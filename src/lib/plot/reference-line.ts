@@ -330,6 +330,11 @@ export function resolve_line_endpoints(
     }
 
     case `segment`: {
+      // Note: Each endpoint is clamped independently rather than computing true
+      // line-rectangle intersection. This is simpler and ensures visibility, but
+      // may slightly distort the angle for segments crossing bounds (e.g., a segment
+      // from (-10, 0) to (50, 100) clamped at x=0 yields (0, 0) instead of (0, ~16.7)).
+      // This trade-off is intentional for performance and simplicity.
       const [p1x, p1y] = normalize_point(ref_line.p1)
       const [p2x, p2y] = normalize_point(ref_line.p2)
       const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
