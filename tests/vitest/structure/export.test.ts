@@ -684,15 +684,15 @@ describe(`Export functionality`, () => {
         sites: [
           {
             species: [{ element: `Fe` as const, occu: 0.3, oxidation_state: 0 }],
-            abc: [0, 0, 0] as [number, number, number],
-            xyz: [0, 0, 0] as [number, number, number],
+            abc: [0, 0, 0] as math.Vec3,
+            xyz: [0, 0, 0] as math.Vec3,
             label: `Fe1`,
             properties: {},
           },
           {
             species: [{ element: `O` as const, occu: 2.0, oxidation_state: 0 }],
-            abc: [0.5, 0.5, 0.5] as [number, number, number],
-            xyz: [1, 1, 1] as [number, number, number],
+            abc: [0.5, 0.5, 0.5] as math.Vec3,
+            xyz: [1, 1, 1] as math.Vec3,
             label: `O1`,
             properties: {},
           },

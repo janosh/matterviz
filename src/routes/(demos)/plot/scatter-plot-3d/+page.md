@@ -423,6 +423,345 @@ The component uses instanced rendering with per-instance colors for efficient ha
 />
 ```
 
+## 3D Reference Lines
+
+Add reference lines in 3D space to highlight axes, thresholds, or specific values. Lines can be parallel to any axis or defined as segments between points:
+
+```svelte example
+<script>
+  import { ScatterPlot3D } from 'matterviz'
+
+  // Generate random 3D data
+  const n_points = 100
+  const scatter_data = {
+    x: Array.from({ length: n_points }, () => Math.random() * 4 - 2),
+    y: Array.from({ length: n_points }, () => Math.random() * 4 - 2),
+    z: Array.from({ length: n_points }, () => Math.random() * 4 - 2),
+    color_values: Array.from({ length: n_points }, (_, idx) => idx / n_points),
+    point_style: { radius: 4 },
+    label: `Data Points`,
+  }
+
+  // Reference lines parallel to axes
+  const ref_lines = [
+    // Line parallel to X-axis at y=0, z=0 (the X-axis itself)
+    {
+      type: `x-axis`,
+      y: 0,
+      z: 0,
+      label: `X-axis`,
+      style: { color: `#e74c3c`, width: 3 },
+    },
+    // Line parallel to Y-axis at x=0, z=0 (the Y-axis itself)
+    {
+      type: `y-axis`,
+      x: 0,
+      z: 0,
+      label: `Y-axis`,
+      style: { color: `#2ecc71`, width: 3 },
+    },
+    // Line parallel to Z-axis at x=0, y=0 (the Z-axis itself)
+    {
+      type: `z-axis`,
+      x: 0,
+      y: 0,
+      label: `Z-axis`,
+      style: { color: `#3498db`, width: 3 },
+    },
+    // Threshold line parallel to X-axis
+    {
+      type: `x-axis`,
+      y: 1.5,
+      z: 1.5,
+      label: `Threshold`,
+      style: { color: `#f39c12`, width: 2, dash: `4 2` },
+    },
+    // Segment between two points
+    {
+      type: `segment`,
+      p1: [-2, -2, -2],
+      p2: [2, 2, 2],
+      label: `Diagonal`,
+      style: { color: `#9b59b6`, width: 2 },
+    },
+  ]
+</script>
+
+<ScatterPlot3D
+  series={[scatter_data]}
+  {ref_lines}
+  x_axis={{ label: `X`, range: [-2.5, 2.5] }}
+  y_axis={{ label: `Y`, range: [-2.5, 2.5] }}
+  z_axis={{ label: `Z`, range: [-2.5, 2.5] }}
+  color_scale={{ scheme: `interpolateViridis` }}
+  style="height: 500px"
+/>
+```
+
+## 3D Reference Planes
+
+Add reference planes in 3D space. Planes can be aligned to axis pairs (XY, XZ, YZ), defined by a normal vector and point, or through three points:
+
+```svelte example
+<script>
+  import { ScatterPlot3D } from 'matterviz'
+
+  // Generate data clustered above and below a plane
+  const n_points = 80
+  const above_plane = {
+    x: Array.from({ length: n_points / 2 }, () => Math.random() * 3 - 1.5),
+    y: Array.from({ length: n_points / 2 }, () => Math.random() * 3 - 1.5),
+    z: Array.from({ length: n_points / 2 }, () => 0.3 + Math.random() * 1.5),
+    point_style: { fill: `#2ecc71`, radius: 5 },
+    label: `Class A (above)`,
+  }
+
+  const below_plane = {
+    x: Array.from({ length: n_points / 2 }, () => Math.random() * 3 - 1.5),
+    y: Array.from({ length: n_points / 2 }, () => Math.random() * 3 - 1.5),
+    z: Array.from({ length: n_points / 2 }, () => -0.3 - Math.random() * 1.5),
+    point_style: { fill: `#e74c3c`, radius: 5 },
+    label: `Class B (below)`,
+  }
+
+  // Reference planes
+  const ref_planes = [
+    // XY plane at z=0 (decision boundary)
+    {
+      type: `xy`,
+      z: 0,
+      label: `Decision Boundary`,
+      style: {
+        color: `#3498db`,
+        opacity: 0.3,
+        wireframe: true,
+        wireframe_color: `#2980b9`,
+      },
+    },
+    // YZ plane at x=0 (vertical slice)
+    {
+      type: `yz`,
+      x: 0,
+      label: `YZ Slice`,
+      style: {
+        color: `#f39c12`,
+        opacity: 0.2,
+      },
+    },
+  ]
+</script>
+
+<ScatterPlot3D
+  series={[above_plane, below_plane]}
+  {ref_planes}
+  x_axis={{ label: `Feature 1`, range: [-2, 2] }}
+  y_axis={{ label: `Feature 2`, range: [-2, 2] }}
+  z_axis={{ label: `Feature 3`, range: [-2, 2] }}
+  camera_position={[5, 4, 3]}
+  style="height: 500px"
+/>
+```
+
+## Combining Lines, Planes, and Surfaces
+
+Create complex 3D visualizations by combining reference lines, planes, and surfaces:
+
+```svelte example
+<script>
+  import { ScatterPlot3D } from 'matterviz'
+
+  // Generate points on a paraboloid z = x² + y²
+  const n_points = 60
+  const paraboloid_points = {
+    x: [],
+    y: [],
+    z: [],
+    color_values: [],
+    point_style: { radius: 4 },
+    label: `z = x² + y²`,
+  }
+
+  for (let idx = 0; idx < n_points; idx++) {
+    const theta = Math.random() * 2 * Math.PI
+    const r = Math.sqrt(Math.random()) * 1.5
+    const x = r * Math.cos(theta)
+    const y = r * Math.sin(theta)
+    const z = x * x + y * y
+    paraboloid_points.x.push(x)
+    paraboloid_points.y.push(y)
+    paraboloid_points.z.push(z)
+    paraboloid_points.color_values.push(z)
+  }
+
+  // Surface definition
+  const paraboloid_surface = {
+    type: `grid`,
+    x_range: [-1.5, 1.5],
+    y_range: [-1.5, 1.5],
+    resolution: 25,
+    z_fn: (x, y) => x * x + y * y,
+    opacity: 0.5,
+    wireframe: true,
+    wireframe_color: `#666`,
+  }
+
+  // Reference lines showing axis intercepts and key values
+  const ref_lines = [
+    // Vertical line at origin
+    {
+      type: `z-axis`,
+      x: 0,
+      y: 0,
+      label: `Z-axis`,
+      style: { color: `#e74c3c`, width: 3 },
+    },
+    // Circle at z = 1 (projected down)
+    {
+      type: `segment`,
+      p1: [1, 0, 1],
+      p2: [0, 1, 1],
+      style: { color: `#f39c12`, width: 2, dash: `4 2` },
+    },
+    {
+      type: `segment`,
+      p1: [0, 1, 1],
+      p2: [-1, 0, 1],
+      style: { color: `#f39c12`, width: 2, dash: `4 2` },
+    },
+    {
+      type: `segment`,
+      p1: [-1, 0, 1],
+      p2: [0, -1, 1],
+      style: { color: `#f39c12`, width: 2, dash: `4 2` },
+    },
+    {
+      type: `segment`,
+      p1: [0, -1, 1],
+      p2: [1, 0, 1],
+      style: { color: `#f39c12`, width: 2, dash: `4 2` },
+    },
+  ]
+
+  // Reference plane at z = 1
+  const ref_planes = [
+    {
+      type: `xy`,
+      z: 1,
+      label: `z = 1`,
+      style: { color: `#2ecc71`, opacity: 0.15 },
+    },
+  ]
+</script>
+
+<ScatterPlot3D
+  series={[paraboloid_points]}
+  surfaces={[paraboloid_surface]}
+  {ref_lines}
+  {ref_planes}
+  x_axis={{ label: `X` }}
+  y_axis={{ label: `Y` }}
+  z_axis={{ label: `Z = X² + Y²` }}
+  color_scale={{ scheme: `interpolatePlasma` }}
+  color_bar={{ title: `Height` }}
+  camera_position={[4, 4, 3]}
+  style="height: 550px"
+/>
+```
+
+## Plane Through Three Points
+
+Define a plane by specifying three non-collinear points:
+
+```svelte example
+<script>
+  import { ScatterPlot3D } from 'matterviz'
+
+  // Three points defining a plane
+  const p1 = [1, 0, 0]
+  const p2 = [0, 1, 0]
+  const p3 = [0, 0, 1]
+
+  // Generate random points near the plane
+  const n_points = 50
+  const plane_normal = { x: 1, y: 1, z: 1 }
+  const plane_points = {
+    x: [],
+    y: [],
+    z: [],
+    point_style: { fill: `#3498db`, radius: 5 },
+    label: `Near Plane`,
+  }
+
+  for (let idx = 0; idx < n_points; idx++) {
+    const t1 = Math.random()
+    const t2 = Math.random() * (1 - t1)
+    const t3 = 1 - t1 - t2
+    const noise = (Math.random() - 0.5) * 0.3
+    plane_points.x.push(p1[0] * t1 + p2[0] * t2 + p3[0] * t3 + noise)
+    plane_points.y.push(p1[1] * t1 + p2[1] * t2 + p3[1] * t3 + noise)
+    plane_points.z.push(p1[2] * t1 + p2[2] * t2 + p3[2] * t3 + noise)
+  }
+
+  // Reference plane through the three points
+  const ref_planes = [
+    {
+      type: `points`,
+      p1,
+      p2,
+      p3,
+      label: `Fitted Plane`,
+      style: {
+        color: `#9b59b6`,
+        opacity: 0.4,
+        wireframe: true,
+        wireframe_color: `#7d3c98`,
+        double_sided: true,
+      },
+    },
+  ]
+
+  // Reference lines from origin to corner points
+  const ref_lines = [
+    {
+      type: `segment`,
+      p1: [0, 0, 0],
+      p2: p1,
+      style: { color: `#e74c3c`, width: 2 },
+      label: `To P1`,
+    },
+    {
+      type: `segment`,
+      p1: [0, 0, 0],
+      p2: p2,
+      style: { color: `#2ecc71`, width: 2 },
+      label: `To P2`,
+    },
+    {
+      type: `segment`,
+      p1: [0, 0, 0],
+      p2: p3,
+      style: { color: `#f39c12`, width: 2 },
+      label: `To P3`,
+    },
+    // Triangle edges
+    { type: `segment`, p1, p2, style: { color: `#3498db`, width: 3 } },
+    { type: `segment`, p1: p2, p2: p3, style: { color: `#3498db`, width: 3 } },
+    { type: `segment`, p1: p3, p2: p1, style: { color: `#3498db`, width: 3 } },
+  ]
+</script>
+
+<ScatterPlot3D
+  series={[plane_points]}
+  {ref_planes}
+  {ref_lines}
+  x_axis={{ label: `X`, range: [-0.5, 1.5] }}
+  y_axis={{ label: `Y`, range: [-0.5, 1.5] }}
+  z_axis={{ label: `Z`, range: [-0.5, 1.5] }}
+  camera_position={[3, 3, 3]}
+  style="height: 500px"
+/>
+```
+
 ## Custom Surface Colors
 
 Surfaces can be colored using a custom color function that receives x, y, z coordinates:
