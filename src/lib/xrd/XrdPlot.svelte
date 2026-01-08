@@ -1,8 +1,7 @@
 <script lang="ts">
+  import { add_alpha, PLOT_COLORS } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import StatusMessage from '$lib/feedback/StatusMessage.svelte'
-  import SettingsSection from '$lib/layout/SettingsSection.svelte'
-  import { add_alpha, PLOT_COLORS } from '$lib/colors'
   import {
     decompress_data_binary,
     decompress_file,
@@ -10,6 +9,8 @@
     handle_url_drop,
   } from '$lib/io'
   import { format_value } from '$lib/labels'
+  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import type { Vec2 } from '$lib/math'
   import type {
     AxisConfig,
     BarHandlerProps,
@@ -140,7 +141,7 @@
 
   // Compute overall 2θ domain (degrees)
   const angle_range = $derived.by(() => {
-    if (pattern_entries.length === 0) return [0, 90] as [number, number] // Default range
+    if (pattern_entries.length === 0) return [0, 90] as Vec2 // Default range
     let min_x = Infinity
     let max_x = 0
     for (const entry of pattern_entries) {
@@ -151,7 +152,7 @@
     }
     // Use data min if it's significantly above 0, otherwise start at 0
     const x_min = min_x > 10 ? Math.floor(min_x) : 0
-    return [x_min, Math.ceil(max_x)] as [number, number]
+    return [x_min, Math.ceil(max_x)] as Vec2
   })
 
   // Scaled intensities are normalized to 0..100, add 10% top padding for peak labels

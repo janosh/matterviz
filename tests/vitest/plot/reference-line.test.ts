@@ -234,41 +234,6 @@ describe(`resolve_line_endpoints`, () => {
     expect(result?.[3]).toBe(scales.y_scale(90))
   })
 
-  test(`segment returns endpoints`, () => {
-    expect(
-      resolve_line_endpoints(
-        { type: `segment`, p1: [10, 10], p2: [90, 90] },
-        bounds,
-        scales,
-      ),
-    ).not.toBeNull()
-  })
-
-  test(`diagonal line clips to bounds`, () => {
-    expect(
-      resolve_line_endpoints(
-        { type: `diagonal`, slope: 1, intercept: 0 },
-        bounds,
-        scales,
-      ),
-    ).not.toBeNull()
-  })
-
-  test(`negative slope diagonal with x_span normalizes endpoint order`, () => {
-    // Negative slope: y = -x + 100, so at x=0 y=100, at x=100 y=0
-    // After y-clipping, endpoints may reverse order (x1 > x2)
-    // x_span should still work correctly
-    const result = resolve_line_endpoints(
-      { type: `diagonal`, slope: -1, intercept: 100, x_span: [20, 80] },
-      bounds,
-      scales,
-    )
-    expect(result).not.toBeNull()
-    // After normalization and span constraint, x should be [20, 80]
-    expect(result?.[0]).toBe(scales.x_scale(20))
-    expect(result?.[2]).toBe(scales.x_scale(80))
-  })
-
   test(`diagonal slope=0 within bounds returns endpoints`, () => {
     const result = resolve_line_endpoints(
       { type: `diagonal`, slope: 0, intercept: 50 },
@@ -283,18 +248,80 @@ describe(`resolve_line_endpoints`, () => {
     ])
   })
 
-  test(`segment crossing bounds returns clipped endpoints`, () => {
+  test(`negative slope diagonal with x_span normalizes endpoint order`, () => {
     const result = resolve_line_endpoints(
-      { type: `segment`, p1: [-50, 50], p2: [150, 50] },
+      { type: `diagonal`, slope: -1, intercept: 100, x_span: [20, 80] },
       bounds,
       scales,
     )
-    expect(result).not.toBeNull()
-    expect(result?.[0]).toBe(scales.x_scale(0))
-    expect(result?.[2]).toBe(scales.x_scale(100))
+    expect(result?.[0]).toBe(scales.x_scale(20))
+    expect(result?.[2]).toBe(scales.x_scale(80))
   })
 
-  // All cases that should return null (line outside bounds)
+  // Liang-Barsky segment clipping: preserves angle by computing true intersections
+  test.each([
+    {
+      desc: `horizontal crossing x bounds`,
+      p1: [-50, 50] as [number, number],
+      p2: [150, 50] as [number, number],
+      expected: [0, 50, 100, 50],
+    },
+    {
+      desc: `diagonal crossing x bound (angle preserved)`,
+      p1: [-10, 0] as [number, number],
+      p2: [50, 100] as [number, number],
+      expected: [0, 50 / 3, 50, 100],
+    },
+    {
+      desc: `diagonal crossing all 4 bounds`,
+      p1: [-50, -50] as [number, number],
+      p2: [150, 150] as [number, number],
+      expected: [0, 0, 100, 100],
+    },
+    {
+      desc: `crossing only y bounds`,
+      p1: [25, -25] as [number, number],
+      p2: [75, 125] as [number, number],
+      expected: [25 + 25 / 3, 0, 25 + 125 / 3, 100],
+    },
+  ])(`segment clipping: $desc`, ({ p1, p2, expected }) => {
+    const result = resolve_line_endpoints({ type: `segment`, p1, p2 }, bounds, scales)
+    expect(result?.[0]).toBeCloseTo(scales.x_scale(expected[0]))
+    expect(result?.[1]).toBeCloseTo(scales.y_scale(expected[1]))
+    expect(result?.[2]).toBeCloseTo(scales.x_scale(expected[2]))
+    expect(result?.[3]).toBeCloseTo(scales.y_scale(expected[3]))
+  })
+
+  test(`segment with x_span and y_span clips to span bounds`, () => {
+    // 45° line clipped to [20,80] x [30,70]; y_span is tighter so dominates
+    const result = resolve_line_endpoints(
+      {
+        type: `segment`,
+        p1: [-10, -10],
+        p2: [110, 110],
+        x_span: [20, 80],
+        y_span: [30, 70],
+      },
+      bounds,
+      scales,
+    )
+    expect(result?.[0]).toBeCloseTo(scales.x_scale(30))
+    expect(result?.[1]).toBeCloseTo(scales.y_scale(30))
+    expect(result?.[2]).toBeCloseTo(scales.x_scale(70))
+    expect(result?.[3]).toBeCloseTo(scales.y_scale(70))
+  })
+
+  // Lines inside bounds should return endpoints
+  test.each(
+    [
+      [{ type: `segment`, p1: [10, 10], p2: [90, 90] }, `segment inside bounds`],
+      [{ type: `diagonal`, slope: 1, intercept: 0 }, `diagonal clipped to bounds`],
+    ] as const,
+  )(`%s returns endpoints`, (line, _desc) => {
+    expect(resolve_line_endpoints(line as RefLine, bounds, scales)).not.toBeNull()
+  })
+
+  // Lines outside bounds should return null
   test.each(
     [
       [{ type: `horizontal`, y: 150 }, `horizontal outside y_max`],

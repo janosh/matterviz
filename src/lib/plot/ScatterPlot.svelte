@@ -6,6 +6,7 @@
   import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
+  import type { Vec2 } from '$lib/math'
   import type {
     BasePlotProps,
     ControlsConfig,
@@ -377,15 +378,15 @@
     const new_x = [
       final_x_axis.range?.[0] ?? auto_x_range[0],
       final_x_axis.range?.[1] ?? auto_x_range[1],
-    ] as [number, number]
+    ] as Vec2
     const new_y = [
       final_y_axis.range?.[0] ?? auto_y_range[0],
       final_y_axis.range?.[1] ?? auto_y_range[1],
-    ] as [number, number]
+    ] as Vec2
     const new_y2 = [
       final_y2_axis.range?.[0] ?? auto_y2_range[0],
       final_y2_axis.range?.[1] ?? auto_y2_range[1],
-    ] as [number, number]
+    ] as Vec2
 
     if (new_x[0] !== zoom_x_range[0] || new_x[1] !== zoom_x_range[1]) {
       zoom_x_range = new_x
@@ -412,7 +413,7 @@
         ),
       )
       : [0, 1],
-  ) as [number, number]
+  ) as Vec2
 
   // Create scale functions
   let x_scale_fn = $derived(
@@ -629,8 +630,8 @@
 
         // Domain context for boundary resolution
         const domains = {
-          y_domain: [y_min, y_max] as [number, number],
-          y2_domain: [y2_min, y2_max] as [number, number],
+          y_domain: [y_min, y_max] as Vec2,
+          y2_domain: [y2_min, y2_max] as Vec2,
         }
 
         // Resolve upper and lower boundaries
@@ -1192,7 +1193,7 @@
     link_strength: 0.8,
     link_distance: 10,
     placement_ticks: 200, // Increased from 120 for better settling
-    link_distance_range: [5, 20] as [number, number], // Default min and max distance (replacing max_link_distance)
+    link_distance_range: [5, 20] as Vec2, // Default min and max distance (replacing max_link_distance)
     max_labels: 300, // Maximum labels before falling back to simple offsets
     charge_strength: 50, // Repulsion strength for markers
     charge_distance_max: 30, // Limit range of repulsion
@@ -1982,7 +1983,7 @@
         auto_color_range[0],
       (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[1] ??
         auto_color_range[1],
-    ] as [number, number]}
+    ] as Vec2}
       <ColorBar
         tick_labels={4}
         tick_side="primary"

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { format_num, symbol_names } from '$lib/labels'
+  import type { Vec2 } from '$lib/math'
   import * as math from '$lib/math'
   import type {
     DataSeries,
@@ -397,7 +398,7 @@
 
   // === Point Sizing Data ===
   let size_scale = $state({
-    radius_range: [2, 15] as [number, number],
+    radius_range: [2, 15] as Vec2,
     type: `linear` as ScaleType,
   })
 

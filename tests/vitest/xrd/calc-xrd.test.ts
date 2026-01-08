@@ -1,4 +1,4 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { Crystal, Pbc } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { add_xrd_pattern, compute_xrd_pattern } from '$lib/xrd'
@@ -150,7 +150,7 @@ describe(`compute_xrd_pattern edge cases`, () => {
     const structure = make_simple_cubic_structure(3)
     const base_opts = {
       wavelength: `CuKa` as const,
-      two_theta_range: [0, 90] as [number, number],
+      two_theta_range: [0, 90] as Vec2,
     }
 
     const none_pass = compute_xrd_pattern(structure, {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { PLOT_COLORS } from '$lib/colors'
+  import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
   import type { AxisConfig, DataSeries } from '$lib/plot/types'
   import * as helpers from '$lib/spectral/helpers'
@@ -439,11 +440,11 @@
 
   let x_range = $derived.by(() => {
     const flat = Object.values(x_positions ?? {}).flat()
-    return [flat[0] ?? 0, flat.at(-1) ?? 1] as [number, number]
+    return [flat[0] ?? 0, flat.at(-1) ?? 1] as Vec2
   })
 
   // Calculate y-range, enforcing 0 minimum for phonon bands without imaginary modes
-  let y_range = $derived.by((): [number, number] | undefined => {
+  let y_range = $derived.by((): Vec2 | undefined => {
     const all_freqs = Object.values(band_structs_dict).flatMap((bs) =>
       bs.bands.flat()
     )

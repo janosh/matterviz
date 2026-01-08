@@ -1,6 +1,7 @@
 import type { ChemicalElement, ElementCategory } from '$lib'
 import { element_data, PeriodicTable, PropertySelect } from '$lib'
 import { CATEGORY_COUNTS, ELEM_HEATMAP_LABELS } from '$lib/labels'
+import type { Vec2 } from '$lib/math'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -314,7 +315,7 @@ describe(`PeriodicTable`, () => {
     // Test multiple props affecting appearance and behavior in one test
     const props = {
       heatmap_values: [1, 2, 3, 4],
-      color_scale_range: [0, 10] as [number, number],
+      color_scale_range: [0, 10] as Vec2,
       color_overrides: { H: `#ff0000`, He: `#00ff00` },
       tile_props: { show_name: false }, // Use show_name: false to test labels prop
       lanth_act_style: `background-color: red;`,
@@ -699,8 +700,8 @@ describe(`PeriodicTable`, () => {
     })
 
     test.each([
-      [[10, 20, 30, 40, 50], undefined, [10, 50] as [number, number]],
-      [[10, 20, 30, 40, 50], [0, 100] as [number, number], [0, 100] as [number, number]],
+      [[10, 20, 30, 40, 50], undefined, [10, 50] as Vec2],
+      [[10, 20, 30, 40, 50], [0, 100] as Vec2, [0, 100] as Vec2],
     ])(
       `calculates range correctly`,
       (heatmap_values, color_scale_range, [exp_min, exp_max]) => {

@@ -4,7 +4,7 @@
 >
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
-  import type { Vec3 } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -212,8 +212,8 @@
   function compute_range(
     values: number[],
     range?: [number | null, number | null],
-  ): [number, number] {
-    if (range?.[0] != null && range?.[1] != null) return range as [number, number]
+  ): Vec2 {
+    if (range?.[0] != null && range?.[1] != null) return range as Vec2
     const valid = values.filter(isFinite)
     if (!valid.length) return [0, 1]
     let [min, max] = [Math.min(...valid), Math.max(...valid)]
@@ -223,7 +223,7 @@
     if (range?.[0] == null) min -= pad
     if (range?.[1] == null) max += pad
     return scaleLinear().domain([range?.[0] ?? min, range?.[1] ?? max]).nice()
-      .domain() as [number, number]
+      .domain() as Vec2
   }
 
   // Collect xyz values from points and surfaces

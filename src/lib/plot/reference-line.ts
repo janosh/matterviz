@@ -215,6 +215,51 @@ export function line_through_3d(
   return { type: `line`, p1, p2, ...opts }
 }
 
+// Clip a line segment to a rectangle using Liang-Barsky algorithm
+// Returns clipped [x1, y1, x2, y2] or null if segment is entirely outside
+function clip_segment_to_rect(
+  p1x: number,
+  p1y: number,
+  p2x: number,
+  p2y: number,
+  x_min: number,
+  x_max: number,
+  y_min: number,
+  y_max: number,
+): [number, number, number, number] | null {
+  const dx = p2x - p1x
+  const dy = p2y - p1y
+
+  // p values represent the direction, q values the signed distance to boundary
+  // Boundaries: left (x_min), right (x_max), bottom (y_min), top (y_max)
+  const p_vals = [-dx, dx, -dy, dy]
+  const q_vals = [p1x - x_min, x_max - p1x, p1y - y_min, y_max - p1y]
+
+  let [t_enter, t_leave] = [0, 1]
+
+  for (let idx = 0; idx < 4; idx++) {
+    if (p_vals[idx] === 0) {
+      // Line parallel to boundary
+      if (q_vals[idx] < 0) return null // Outside and parallel - no intersection
+    } else {
+      const t_val = q_vals[idx] / p_vals[idx]
+      // Entering boundary
+      if (p_vals[idx] < 0) t_enter = Math.max(t_enter, t_val)
+      // Leaving boundary
+      else t_leave = Math.min(t_leave, t_val)
+    }
+  }
+
+  if (t_enter > t_leave) return null // Segment entirely outside
+
+  return [
+    p1x + t_enter * dx,
+    p1y + t_enter * dy,
+    p1x + t_leave * dx,
+    p1y + t_leave * dy,
+  ]
+}
+
 // Compute the screen coordinates for a reference line
 // Returns [x1, y1, x2, y2] in pixel coordinates, or null if line is not visible
 export function resolve_line_endpoints(
@@ -333,22 +378,27 @@ export function resolve_line_endpoints(
       if (x1_data > x_max || x2_data < x_min) return null
     }
   } else if (line_type === `segment`) {
-    // Note: Each endpoint is clamped independently rather than computing true
-    // line-rectangle intersection. This is simpler and ensures visibility, but
-    // may slightly distort the angle for segments crossing bounds (e.g., a segment
-    // from (-10, 0) to (50, 100) clamped at x=0 yields (0, 0) instead of (0, ~16.7)).
-    // This trade-off is intentional for performance and simplicity.
     const [p1x, p1y] = normalize_point(ref_line.p1)
     const [p2x, p2y] = normalize_point(ref_line.p2)
-    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
-    const xs = ref_line.x_span
-    const ys = ref_line.y_span
-    x1_data = clamp(p1x, xs?.[0] ?? x_min, xs?.[1] ?? x_max)
-    x2_data = clamp(p2x, xs?.[0] ?? x_min, xs?.[1] ?? x_max)
-    y1_data = clamp(p1y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
-    y2_data = clamp(p2y, ys?.[0] ?? y_min, ys?.[1] ?? y_max)
-    // If both endpoints clamp to the same point, segment is entirely outside bounds
-    if (x1_data === x2_data && y1_data === y2_data) return null
+
+    // Determine clipping bounds (span constraints override plot bounds)
+    const clip_x_min = ref_line.x_span?.[0] ?? x_min
+    const clip_x_max = ref_line.x_span?.[1] ?? x_max
+    const clip_y_min = ref_line.y_span?.[0] ?? y_min
+    const clip_y_max = ref_line.y_span?.[1] ?? y_max
+
+    const clipped = clip_segment_to_rect(
+      p1x,
+      p1y,
+      p2x,
+      p2y,
+      clip_x_min,
+      clip_x_max,
+      clip_y_min,
+      clip_y_max,
+    )
+    if (!clipped) return null
+    ;[x1_data, y1_data, x2_data, y2_data] = clipped
   } else {
     return null
   }

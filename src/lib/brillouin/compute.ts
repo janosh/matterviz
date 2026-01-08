@@ -1,6 +1,6 @@
 // Brillouin zone generation via convex hull
 
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { Vector3 } from 'three'
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
@@ -221,13 +221,13 @@ export function compute_convex_hull(
 
   // Extract edges: keep boundary edges or sharp angles
   const cos_threshold = Math.cos((edge_sharp_angle_deg * Math.PI) / 180)
-  const edges: [number, number][] = []
+  const edges: Vec2[] = []
 
   for (const [key, adj] of edge_to_faces) {
     const is_sharp = adj.length === 1 ||
       (adj.length === 2 &&
         (math.dot(face_normals[adj[0]], face_normals[adj[1]]) as number) < cos_threshold)
-    if (is_sharp) edges.push(key.split(`,`).map(Number) as math.Vec2)
+    if (is_sharp) edges.push(key.split(`,`).map(Number) as Vec2)
   }
 
   geometry.dispose()

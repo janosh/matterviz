@@ -4,6 +4,7 @@
   import { element_data, ElementStats, PeriodicTable, PropertySelect } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { ELEM_PROPERTY_LABELS } from '$lib/labels'
+  import type { Vec2 } from '$lib/math'
   import type { ScaleContext } from '$lib/periodic-table'
   import { PeriodicTableControls, TableInset } from '$lib/periodic-table'
   import { ColorBar, ColorScaleSelect, ElementScatter } from '$lib/plot'
@@ -48,12 +49,12 @@
   let atomic_mass_range = $derived([
     Math.min(...element_data.map((el) => el.atomic_mass)),
     Math.max(...element_data.map((el) => el.atomic_mass)),
-  ] as [number, number])
+  ] as Vec2)
 
   let density_range = $derived([
     Math.min(...element_data.map((el) => el.density || 0).filter((dens) => dens > 0)),
     Math.max(...element_data.map((el) => el.density || 0)),
-  ] as [number, number])
+  ] as Vec2)
 
   const onenter = (element: ChemicalElement) => {
     if (!element?.name) return

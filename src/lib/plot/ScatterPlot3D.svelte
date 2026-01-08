@@ -4,7 +4,7 @@
 >
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { FullscreenToggle } from '$lib/layout'
-  import type { Vec3 } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
   import { get_series_color } from '$lib/plot/data-transform'
   import type {
@@ -362,7 +362,7 @@
       {@const color_domain = [
       normalized_color_scale.value_range?.[0] ?? auto_color_range[0],
       normalized_color_scale.value_range?.[1] ?? auto_color_range[1],
-    ] as [number, number]}
+    ] as Vec2}
       <ColorBar
         tick_labels={4}
         tick_side="primary"

@@ -48,6 +48,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
+  import type { Vec2 } from '../math'
   import {
     calc_auto_padding,
     constrain_tooltip_position,
@@ -299,7 +300,7 @@
         range_padding,
         x_axis.format?.startsWith(`%`) || false,
       )
-      : ([0, 1] as [number, number])
+      : [0, 1]
 
     const y1_range = calc_y_range(y1_series, y_range, y_axis.scale_type ?? `linear`)
     const y2_auto_range = calc_y_range(
@@ -316,8 +317,8 @@
 
   // Initialize and current ranges
   let ranges = $state<{
-    initial: { x: [number, number]; y: [number, number]; y2: [number, number] }
-    current: { x: [number, number]; y: [number, number]; y2: [number, number] }
+    initial: { x: Vec2; y: Vec2; y2: Vec2 }
+    current: { x: Vec2; y: Vec2; y2: Vec2 }
   }>({
     initial: { x: [0, 1], y: [0, 1], y2: [0, 1] },
     current: { x: [0, 1], y: [0, 1], y2: [0, 1] },
@@ -327,15 +328,15 @@
     const new_x = [
       x_axis.range?.[0] ?? auto_ranges.x[0],
       x_axis.range?.[1] ?? auto_ranges.x[1],
-    ] as [number, number]
+    ] as Vec2
     const new_y = [
       y_axis.range?.[0] ?? auto_ranges.y[0],
       y_axis.range?.[1] ?? auto_ranges.y[1],
-    ] as [number, number]
+    ] as Vec2
     const new_y2 = [
       y2_axis.range?.[0] ?? auto_ranges.y2[0],
       y2_axis.range?.[1] ?? auto_ranges.y2[1],
-    ] as [number, number]
+    ] as Vec2
     // Only update if ranges actually changed
     if (
       ranges.current.x[0] !== new_x[0] ||
@@ -1474,9 +1475,9 @@
         bind:y_axis
         bind:y2_axis
         bind:display
-        auto_x_range={auto_ranges.x as [number, number]}
-        auto_y_range={auto_ranges.y as [number, number]}
-        auto_y2_range={auto_ranges.y2 as [number, number]}
+        auto_x_range={auto_ranges.x as Vec2}
+        auto_y_range={auto_ranges.y as Vec2}
+        auto_y2_range={auto_ranges.y2 as Vec2}
         children={controls_extra}
       />
     {/if}

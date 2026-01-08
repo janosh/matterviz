@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import { compute_broadened_pattern, DEFAULT_BROADENING } from '$lib/xrd/broadening'
 import { describe, expect, test } from 'vitest'
 
@@ -23,7 +24,7 @@ describe(`compute_broadened_pattern`, () => {
           compute_broadened_pattern(
             dummy_pattern,
             DEFAULT_BROADENING,
-            range as [number, number],
+            range as Vec2,
             step,
           )
         ).toThrow(err)

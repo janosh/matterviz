@@ -1,6 +1,7 @@
 <script lang="ts">
   import { luminance } from '$lib/colors'
   import { format_num } from '$lib/labels'
+  import type { Vec2 } from '$lib/math'
   import * as math from '$lib/math'
   import { format } from 'd3-format'
   import * as d3 from 'd3-scale'
@@ -202,7 +203,7 @@
       // Use derived scale to get niced domain
       const domain = scale_for_ticks.domain()
       // Ensure domain has two elements before assigning
-      if (domain.length === 2) nice_range = domain as [number, number]
+      if (domain.length === 2) nice_range = domain as Vec2
       else nice_range = range // Fallback
     } else nice_range = range // Use original range if not snapping or labels provided
   })
