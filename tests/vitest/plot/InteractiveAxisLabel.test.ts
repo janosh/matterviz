@@ -23,7 +23,7 @@ describe(`InteractiveAxisLabel`, () => {
     unmount(component)
   })
 
-  test(`renders select dropdown with options`, () => {
+  test(`renders select dropdown with formatted options`, () => {
     const component = mount(InteractiveAxisLabel, {
       target: document.body,
       props: { options, selected_key: `energy` },
@@ -31,9 +31,17 @@ describe(`InteractiveAxisLabel`, () => {
     const wrapper = document.body.querySelector(`.interactive-axis-label`)
     expect(wrapper).not.toBeNull()
     expect(wrapper?.classList.contains(`interactive`)).toBe(true)
-    // Should have native select element
-    const select = wrapper?.querySelector(`select.axis-select`)
+
+    // Should have native select with properly formatted options
+    const select = wrapper?.querySelector(`select.axis-select`) as HTMLSelectElement
     expect(select).not.toBeNull()
+    const option_elements = select.querySelectorAll(`option`)
+    expect(option_elements.length).toBe(3)
+    // Verify format_option renders "Label (unit)" format
+    expect(option_elements[0].textContent).toBe(`Energy (eV)`)
+    expect(option_elements[1].textContent).toBe(`Volume (Å³)`)
+    expect(option_elements[2].textContent).toBe(`Pressure (GPa)`)
+
     unmount(component)
   })
 
