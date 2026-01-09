@@ -29,6 +29,8 @@ test.describe(`Atom Radius Controls`, () => {
     page = p
     await goto_structure_test(page)
     legend = page.locator(`#test-structure .atom-legend`)
+    // Wait for legend items to be visible (CI can be slow to render atoms)
+    await expect(legend.locator(`.legend-item`).first()).toBeVisible({ timeout: 10_000 })
   })
 
   test(`element radius: dropdown opens with correct input attributes`, async () => {

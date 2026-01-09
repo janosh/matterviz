@@ -148,7 +148,9 @@ test.describe(`Structure Component Tests`, () => {
     await expect(page.locator(`#test-structure canvas`)).toBeVisible()
   })
 
+  // This test navigates 3 times sequentially - needs extra time in CI
   test(`performance_mode prop can be set via URL parameters`, async ({ page }) => {
+    test.setTimeout(IS_CI ? 90_000 : 30_000)
     const perf_mode_status = page.locator(`[data-testid="performance-mode-status"]`)
     const perf_mode_select = page.locator(`label:has-text("Performance Mode") select`)
 

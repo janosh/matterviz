@@ -2,7 +2,8 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
 
-const LOAD_TIMEOUT = 8000
+// CI environments are slower - use longer timeouts
+const LOAD_TIMEOUT = IS_CI ? 20_000 : 8_000
 
 // Fixture-like helper returning both diagram and svg
 function get_diagram_elements(page: Page): { diagram: Locator; svg: Locator } {

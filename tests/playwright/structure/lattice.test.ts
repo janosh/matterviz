@@ -7,12 +7,22 @@ test.describe(`Lattice Component Tests`, () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await expect(page.locator(`#test-structure canvas`)).toBeVisible()
+    const canvas = page.locator(`#test-structure canvas`)
+    await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
+
+    // Wait for canvas to be ready before interacting with controls
+    await expect
+      .poll(async () => (await canvas.screenshot()).length, {
+        timeout: get_canvas_timeout(),
+      })
+      .toBeGreaterThan(1000)
 
     // Use test page checkbox to open controls
-    await page
-      .locator(`label:has-text("Controls Open") input[type="checkbox"]`)
-      .check()
+    const checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await expect(checkbox).toBeVisible({ timeout: 5_000 })
+    await checkbox.check()
     await expect(page.locator(`.draggable-pane.controls-pane`)).toHaveClass(
       /pane-open/,
       { timeout: 10_000 },
