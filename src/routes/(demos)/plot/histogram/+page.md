@@ -862,20 +862,11 @@ This demo stress-tests histograms with interactive property switching:
   let bins = $state(property_configs.formation_energy.bins)
   let load_times = $state([])
   let switch_count = $state(0)
+  let load_start = $state(0)
 
-  // Closure variable to pass load time from loader to callback
-  let last_load_time = 0
-
-  // Data loader - returns data only, no state mutations
-  // State updates happen in on_axis_change callback after successful load
   async function data_loader(axis, property_key) {
-    const start = performance.now()
-    // Simulate variable network delay
+    load_start = performance.now()
     await new Promise((r) => setTimeout(r, 100 + Math.random() * 400))
-
-    // Capture timing for callback to access
-    last_load_time = Math.round(performance.now() - start)
-
     const config = property_configs[property_key]
     return {
       series: build_series(property_key),
@@ -883,12 +874,11 @@ This demo stress-tests histograms with interactive property switching:
     }
   }
 
-  // Called after successful axis change - safe to update tracking state
   function on_axis_change(axis, property_key) {
     switch_count++
     current_prop = property_key
     bins = property_configs[property_key].bins
-    load_times = [...load_times.slice(-9), last_load_time]
+    load_times = [...load_times.slice(-9), Math.round(performance.now() - load_start)]
   }
 
   // X-axis options
