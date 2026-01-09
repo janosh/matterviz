@@ -33,6 +33,7 @@
     UserContentProps,
     XyObj,
   } from '$lib/plot'
+  import { AXIS_LABEL_CONTAINER, merge_series_state } from '$lib/plot/axis-utils'
   import {
     ColorBar,
     FillArea,
@@ -1355,27 +1356,6 @@
     set_fullscreen_bg(wrapper, fullscreen, `--scatter-fullscreen-bg`)
   })
 
-  // Merge new series with preserved UI state from old series
-  function merge_series_state(
-    old_series: DataSeries<Metadata>[],
-    new_series: DataSeries<Metadata>[],
-  ): DataSeries<Metadata>[] {
-    return new_series.map((new_srs, idx) => {
-      // Find matching old series by id, then by index
-      const old_srs = old_series.find((srs) => srs.id === new_srs.id) ??
-        old_series[idx]
-      if (!old_srs) return new_srs
-
-      // Preserve visibility, colors, and other UI state
-      return {
-        ...new_srs,
-        visible: new_srs.visible ?? old_srs.visible,
-        point_style: new_srs.point_style ?? old_srs.point_style,
-        line_style: new_srs.line_style ?? old_srs.line_style,
-      }
-    })
-  }
-
   // Handle axis property change - loads new data via data_loader
   async function handle_axis_change(axis: `x` | `y` | `y2`, key: string) {
     if (!data_loader || axis_loading) return
@@ -1635,10 +1615,12 @@
 
         {#if final_x_axis.label || final_x_axis.options?.length}
           <foreignObject
-            x={width / 2 + (final_x_axis.label_shift?.x ?? 0) - 100}
-            y={height - pad.b - (final_x_axis.label_shift?.y ?? -40) - 10}
-            width="200"
-            height="200"
+            x={width / 2 + (final_x_axis.label_shift?.x ?? 0) -
+            AXIS_LABEL_CONTAINER.x_offset}
+            y={height - pad.b - (final_x_axis.label_shift?.y ?? -40) -
+            AXIS_LABEL_CONTAINER.y_offset}
+            width={AXIS_LABEL_CONTAINER.width}
+            height={AXIS_LABEL_CONTAINER.height}
             style="overflow: visible"
           >
             <div xmlns="http://www.w3.org/1999/xhtml">
@@ -1703,10 +1685,10 @@
 
         {#if height > 0 && (final_y_axis.label || final_y_axis.options?.length)}
           <foreignObject
-            x={-100}
-            y={-10}
-            width="200"
-            height="200"
+            x={-AXIS_LABEL_CONTAINER.x_offset}
+            y={-AXIS_LABEL_CONTAINER.y_offset}
+            width={AXIS_LABEL_CONTAINER.width}
+            height={AXIS_LABEL_CONTAINER.height}
             style="overflow: visible"
             transform="rotate(-90, {(final_y_axis.label_shift?.y ?? 12)}, {pad.t +
               (height - pad.t - pad.b) / 2 +
@@ -1778,10 +1760,10 @@
 
           {#if height > 0 && (final_y2_axis.label || final_y2_axis.options?.length)}
             <foreignObject
-              x={-100}
-              y={-10}
-              width="200"
-              height="200"
+              x={-AXIS_LABEL_CONTAINER.x_offset}
+              y={-AXIS_LABEL_CONTAINER.y_offset}
+              width={AXIS_LABEL_CONTAINER.width}
+              height={AXIS_LABEL_CONTAINER.height}
               style="overflow: visible"
               transform="rotate(-90, {width - pad.r + ((final_y2_axis.label_shift?.y ?? 0))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +

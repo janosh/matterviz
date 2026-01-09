@@ -9,6 +9,7 @@
     RefLine,
     RefLineEvent,
   } from '$lib/plot'
+  import { AXIS_LABEL_CONTAINER, merge_series_state } from '$lib/plot/axis-utils'
   import {
     find_best_plot_area,
     HistogramControls,
@@ -560,27 +561,6 @@
     set_fullscreen_bg(wrapper, fullscreen, `--histogram-fullscreen-bg`)
   })
 
-  // Merge new series with preserved UI state from old series
-  function merge_series_state(
-    old_series: DataSeries[],
-    new_series: DataSeries[],
-  ): DataSeries[] {
-    return new_series.map((new_srs, idx) => {
-      // Find matching old series by id, then by index
-      const old_srs = old_series.find((srs) => srs.id === new_srs.id) ??
-        old_series[idx]
-      if (!old_srs) return new_srs
-
-      // Preserve visibility, colors, and other UI state
-      return {
-        ...new_srs,
-        visible: new_srs.visible ?? old_srs.visible,
-        point_style: new_srs.point_style ?? old_srs.point_style,
-        line_style: new_srs.line_style ?? old_srs.line_style,
-      }
-    })
-  }
-
   // Handle axis property change - loads new data via data_loader
   async function handle_axis_change(axis: `x` | `y` | `y2`, key: string) {
     if (!data_loader || axis_loading) return
@@ -881,10 +861,12 @@
       {/each}
       {#if final_x_axis.label || x_axis.options?.length}
         <foreignObject
-          x={(pad.l + width - pad.r) / 2 + (final_x_axis.label_shift?.x ?? 0) - 100}
-          y={height - 10 + (final_x_axis.label_shift?.y ?? 0) - 10}
-          width="200"
-          height="200"
+          x={(pad.l + width - pad.r) / 2 + (final_x_axis.label_shift?.x ?? 0) -
+          AXIS_LABEL_CONTAINER.x_offset}
+          y={height - 10 + (final_x_axis.label_shift?.y ?? 0) -
+          AXIS_LABEL_CONTAINER.y_offset}
+          width={AXIS_LABEL_CONTAINER.width}
+          height={AXIS_LABEL_CONTAINER.height}
           style="overflow: visible"
         >
           <div xmlns="http://www.w3.org/1999/xhtml">
@@ -966,10 +948,10 @@
           shift_x}
         {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 + shift_y}
         <foreignObject
-          x={y_label_x - 100}
-          y={y_label_y - 10}
-          width="200"
-          height="200"
+          x={y_label_x - AXIS_LABEL_CONTAINER.x_offset}
+          y={y_label_y - AXIS_LABEL_CONTAINER.y_offset}
+          width={AXIS_LABEL_CONTAINER.width}
+          height={AXIS_LABEL_CONTAINER.height}
           style="overflow: visible"
           transform="rotate(-90, {y_label_x}, {y_label_y})"
         >
@@ -1056,10 +1038,10 @@
           shift_x}
           {@const y2_label_y = pad.t + (height - pad.t - pad.b) / 2 + shift_y}
           <foreignObject
-            x={y2_label_x - 100}
-            y={y2_label_y - 10}
-            width="200"
-            height="200"
+            x={y2_label_x - AXIS_LABEL_CONTAINER.x_offset}
+            y={y2_label_y - AXIS_LABEL_CONTAINER.y_offset}
+            width={AXIS_LABEL_CONTAINER.width}
+            height={AXIS_LABEL_CONTAINER.height}
             style="overflow: visible"
             transform="rotate(-90, {y2_label_x}, {y2_label_y})"
           >

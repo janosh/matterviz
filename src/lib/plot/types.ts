@@ -359,19 +359,27 @@ export interface AxisConfig {
 }
 
 // Result from data loader - returns complete series array
-export interface DataLoaderResult<Metadata = Record<string, unknown>> {
-  series: DataSeries<Metadata>[] // full replacement series
+// SeriesType defaults to DataSeries but can be BarSeries for bar plots
+export interface DataLoaderResult<
+  Metadata = Record<string, unknown>,
+  SeriesType = DataSeries<Metadata>,
+> {
+  series: SeriesType[] // full replacement series
   axis_label?: string // optional new axis label
   axis_unit?: string // optional axis unit
 }
 
 // Callback to fetch data for a property change
 // Called when user selects a new property from the axis dropdown
-export type DataLoaderFn<Metadata = Record<string, unknown>> = (
+// SeriesType defaults to DataSeries but can be BarSeries for bar plots
+export type DataLoaderFn<
+  Metadata = Record<string, unknown>,
+  SeriesType = DataSeries<Metadata>,
+> = (
   axis: `x` | `y` | `y2`,
   property_key: string,
-  current_series: DataSeries<Metadata>[], // passed for context
-) => Promise<DataLoaderResult<Metadata>>
+  current_series: SeriesType[], // passed for context
+) => Promise<DataLoaderResult<Metadata, SeriesType>>
 
 // Error event for axis data loading failures
 export interface AxisLoadError {
