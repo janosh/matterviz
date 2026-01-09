@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test'
+import { Buffer } from 'node:buffer'
 import process from 'node:process'
 
 // Timeout constants for different environments
@@ -136,6 +137,39 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="img"]`)
 
+// Poll until canvas has rendered non-trivial content (screenshot size > threshold)
+// Use this to wait for WebGL/Three.js canvas initialization before interacting.
+// Note: Screenshot size is a pragmatic heuristic that can vary by codec/compression.
+// Complex scenes or specific drivers may need a higher min_size threshold.
+// Alternative approaches: check canvas.boundingBox() > 0 (like wait_for_3d_canvas)
+// or use pixel-diff heuristics for more robust "rendered" detection.
+export async function wait_for_canvas_rendered(
+  canvas: Locator,
+  options?: { min_size?: number; timeout?: number },
+): Promise<void> {
+  const min_size = options?.min_size ?? 1000
+  const timeout = options?.timeout ?? get_canvas_timeout()
+  await expect
+    .poll(async () => (await canvas.screenshot()).length, { timeout })
+    .toBeGreaterThan(min_size)
+}
+
+// Poll until canvas screenshot differs from initial (handles GPU/driver timing variations)
+// Use this instead of raw Buffer.equals() for more reliable canvas change detection.
+// Note: Buffer comparison can be sensitive to minor rendering differences (anti-aliasing,
+// driver variations). For stricter checks, consider pixel-diff with a tolerance threshold.
+export async function expect_canvas_changed(
+  canvas: Locator,
+  initial: Buffer,
+  timeout?: number,
+): Promise<void> {
+  const effective_timeout = timeout ?? get_canvas_timeout()
+  await expect(async () => {
+    const current = await canvas.screenshot()
+    expect(initial.equals(current)).toBe(false)
+  }).toPass({ timeout: effective_timeout })
+}
+
 // Seeded random number generator using Linear Congruential Generator (LCG).
 // Parameters match glibc for reproducibility.
 class SeededRandom {
@@ -147,6 +181,19 @@ class SeededRandom {
     this.state = (this.state * 1103515245 + 12345) & 0x7fffffff
     return this.state / 0x7fffffff
   }
+}
+
+// Assert that test-page-only hooks exist (clearer failures when test page changes)
+// Use this when tests rely on data-testid elements that only exist in test pages
+export async function assert_test_hook_exists(
+  page: Page,
+  testid: string,
+  description?: string,
+): Promise<Locator> {
+  const locator = page.locator(`[data-testid="${testid}"]`)
+  await expect(locator, description ?? `Test hook [data-testid="${testid}"] not found`)
+    .toBeVisible()
+  return locator
 }
 
 // Deterministically sample n items from a list without replacement.

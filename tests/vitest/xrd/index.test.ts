@@ -20,6 +20,34 @@ describe(`@xrd/ api and compute_xrd_pattern options`, () => {
       .toThrow(/Unknown radiation key/i)
   })
 
+  test.each([
+    { wl: 0, desc: `zero` },
+    { wl: -1.5, desc: `negative` },
+    { wl: NaN, desc: `NaN` },
+    { wl: Infinity, desc: `Infinity` },
+    { wl: -Infinity, desc: `-Infinity` },
+  ])(`invalid numeric wavelength ($desc) throws`, ({ wl }) => {
+    const structure = make_simple_cubic(2)
+    try {
+      compute_xrd_pattern(structure, { wavelength: wl })
+      expect.fail(`Expected error for wavelength=${wl}`)
+    } catch (error) {
+      const message = (error as Error).message
+      // relaxed key fragments only, not full wording
+      expect(message).toMatch(/invalid wavelength/i)
+      expect(message).toMatch(/finite positive/i)
+      // ensure the invalid value is echoed for debugging
+      expect(message).toContain(String(wl))
+    }
+  })
+
+  test(`valid numeric wavelength works`, () => {
+    const structure = make_simple_cubic(2)
+    const pattern = compute_xrd_pattern(structure, { wavelength: 1.54184 })
+    expect(pattern.x.length).toBeGreaterThan(0)
+    expect(pattern.y.length).toBe(pattern.x.length)
+  })
+
   test(`unknown element symbol throws`, () => {
     const structure = make_simple_cubic(2, `Xx`)
     expect(() => compute_xrd_pattern(structure, { wavelength: `CuKa` }))

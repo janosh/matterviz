@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
+import {
+  expect_canvas_changed,
+  get_canvas_timeout,
+  wait_for_canvas_rendered,
+} from '../helpers'
 
 test.describe(`Lattice Component Tests`, () => {
   // Use retries instead of blanket skip for flaky CI runs
@@ -7,26 +11,28 @@ test.describe(`Lattice Component Tests`, () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await expect(page.locator(`#test-structure canvas`)).toBeVisible()
+    const canvas = page.locator(`#test-structure canvas`)
+    await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
+
+    // Wait for canvas to be ready before interacting with controls
+    await wait_for_canvas_rendered(canvas)
 
     // Use test page checkbox to open controls
-    await page
-      .locator(`label:has-text("Controls Open") input[type="checkbox"]`)
-      .check()
+    const checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
+    await expect(checkbox).toBeVisible({ timeout: get_canvas_timeout() })
+    await checkbox.check()
     await expect(page.locator(`.draggable-pane.controls-pane`)).toHaveClass(
       /pane-open/,
-      { timeout: 10_000 },
+      { timeout: get_canvas_timeout() },
     )
   })
 
   test(`renders lattice with default properties`, async ({ page }) => {
-    // Skip in CI - WebGL canvas screenshot timing is unreliable in CI
-    test.skip(IS_CI, `Lattice screenshot test flaky in CI due to WebGL timing`)
+    // Canvas readiness already guaranteed by beforeEach, just verify visibility
     const canvas = page.locator(`#test-structure canvas`)
-    // Wait for WebGL rendering to stabilize before taking screenshot
-    await page.waitForTimeout(500)
-    const screenshot = await canvas.screenshot()
-    expect(screenshot.length).toBeGreaterThan(1000)
+    await expect(canvas).toBeVisible()
   })
 
   test(`lattice vectors checkbox toggles visibility`, async ({ page }) => {
@@ -37,10 +43,7 @@ test.describe(`Lattice Component Tests`, () => {
 
     const before = await canvas.screenshot()
     await checkbox.click()
-    await page.waitForLoadState(`networkidle`)
-    const after = await canvas.screenshot()
-
-    expect(before.equals(after)).toBe(false)
+    await expect_canvas_changed(canvas, before)
   })
 
   test(`color controls work`, async ({ page }) => {
@@ -58,10 +61,7 @@ test.describe(`Lattice Component Tests`, () => {
     await surface_opacity.fill(`0.5`)
     const before = await canvas.screenshot()
     await edge_color.fill(`#ff0000`)
-    await page.waitForLoadState(`networkidle`)
-    const after = await canvas.screenshot()
-
-    expect(before.equals(after)).toBe(false)
+    await expect_canvas_changed(canvas, before)
   })
 
   test(`opacity controls work`, async ({ page }) => {
@@ -76,10 +76,7 @@ test.describe(`Lattice Component Tests`, () => {
     const before = await canvas.screenshot()
     await edge_opacity.fill(`1`)
     await surface_opacity.fill(`0.8`)
-    await page.waitForLoadState(`networkidle`)
-    const after = await canvas.screenshot()
-
-    expect(before.equals(after)).toBe(false)
+    await expect_canvas_changed(canvas, before)
   })
 
   test(`number and range inputs sync`, async ({ page }) => {
