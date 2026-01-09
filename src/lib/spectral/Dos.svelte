@@ -46,7 +46,7 @@
     hovered_frequency = $bindable(null),
     reference_frequency = null,
     fermi_level = undefined,
-    spin_mode = $bindable<SpinMode>(`mirror`),
+    spin_mode = $bindable(`mirror`),
     pdos_type = null,
     pdos_filter = undefined,
     // Controls configuration

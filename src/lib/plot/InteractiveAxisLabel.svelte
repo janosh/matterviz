@@ -24,33 +24,27 @@
     [key: string]: unknown
   } = $props()
 
-  // Check if interactive (has options)
   let is_interactive = $derived(options && options.length > 0)
 
-  // Handle selection change from native select
   function handle_change(event: Event) {
-    const target = event.target as HTMLSelectElement
-    const new_key = target.value
+    const new_key = (event.target as HTMLSelectElement).value
     if (new_key && new_key !== selected_key) {
       selected_key = new_key
       on_select?.(new_key)
     }
   }
 
-  // Format option for display
   function format_option(key: string): string {
-    const option = options?.find((opt) => opt.key === key)
-    if (!option) return key
-    return option.unit ? `${option.label} (${option.unit})` : option.label
+    const opt = options?.find((item) => item.key === key)
+    return opt ? (opt.unit ? `${opt.label} (${opt.unit})` : opt.label) : key
   }
 
-  // Stop event propagation to prevent plot drag handlers
+  // Prevent plot drag handlers from triggering
   function stop_propagation(event: MouseEvent) {
     event.stopPropagation()
   }
 </script>
 
-<!-- Stop all mouse events from bubbling to plot -->
 <div
   class="interactive-axis-label {axis_type} {class_name}"
   class:interactive={is_interactive}
@@ -78,7 +72,6 @@
       />
     {/if}
   {:else}
-    <!-- Static label (no options) -->
     <span class="static-label">{@html label}</span>
   {/if}
 </div>
@@ -102,7 +95,6 @@
     opacity: 0.7;
     pointer-events: none;
   }
-  /* Style the native select to look like an axis label */
   .axis-select {
     appearance: none;
     -webkit-appearance: none;

@@ -1,19 +1,17 @@
 <script lang="ts">
-  import type { ElementSymbol } from '$lib/element'
-  import { toggle_fullscreen } from '$lib/layout'
-  import type { Vec3 } from '$lib/math'
-  import type { AnyStructure } from '$lib/structure'
-  import Spinner from '$lib/feedback/Spinner.svelte'
-  import Icon from '$lib/Icon.svelte'
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
-  import { normalize_show_controls } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
+  import { normalize_show_controls } from '$lib/controls'
+  import type { ElementSymbol } from '$lib/element'
+  import Spinner from '$lib/feedback/Spinner.svelte'
+  import Icon from '$lib/Icon.svelte'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
-  import { set_fullscreen_bg } from '$lib/layout'
+  import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
+  import type { Vec3 } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import type { Crystal } from '$lib/structure'
+  import type { AnyStructure, Crystal } from '$lib/structure'
   import { get_element_counts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
@@ -69,7 +67,7 @@
     height = $bindable(0),
     reset_text = `Reset camera (or double-click)`,
     color_scheme = $bindable(`Vesta`),
-    atom_color_config = $bindable<Partial<AtomColorConfig>>({
+    atom_color_config = $bindable({
       mode: DEFAULTS.structure.atom_color_mode,
       scale: DEFAULTS.structure.atom_color_scale,
       scale_type: DEFAULTS.structure.atom_color_scale_type,
@@ -91,26 +89,24 @@
     error_msg = $bindable(),
     performance_mode = $bindable(`quality`),
     // expose selected site indices for external control/highlighting
-    selected_sites = $bindable<number[]>([]),
+    selected_sites = $bindable([]),
     // expose measured site indices for overlays/labels
-    measured_sites = $bindable<number[]>([]),
+    measured_sites = $bindable([]),
     // expose the displayed structure (with image atoms and supercell) for external use
-    displayed_structure = $bindable<AnyStructure | undefined>(undefined),
+    displayed_structure = $bindable(),
     // Track hidden elements across component lifecycle
     hidden_elements = $bindable(new Set<ElementSymbol>()),
     // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     hidden_prop_vals = $bindable(new Set<number | string>()),
     // Symmetry analysis data (bindable for external access)
-    sym_data = $bindable<MoyoDataset | null>(null),
+    sym_data = $bindable(null),
     // Symmetry analysis settings (bindable for external control)
     symmetry_settings = $bindable(symmetry.default_sym_settings),
     // Map element symbols to different elements (e.g. {'H': 'Na', 'He': 'Cl'})
     // Useful for LAMMPS files where atom types are mapped to H, He, Li by default
-    element_mapping = $bindable<
-      Partial<Record<ElementSymbol, ElementSymbol>> | undefined
-    >(),
+    element_mapping = $bindable(),
     // Cell type: original, conventional, or primitive (requires symmetry analysis)
-    cell_type = $bindable<CellType>(`original`),
+    cell_type = $bindable(`original`),
     children,
     top_right_controls,
     on_file_load,

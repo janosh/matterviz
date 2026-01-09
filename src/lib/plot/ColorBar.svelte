@@ -412,30 +412,23 @@
     }
   }
 
-  // Check if we have interactive selects
   let has_property_select = $derived(property_options && property_options.length > 0)
   let has_color_scale_select = $derived(
     color_scale_options && color_scale_options.length > 0,
   )
   let has_any_select = $derived(has_property_select || has_color_scale_select)
 
-  // Format property option for display
   function format_property_option(key: string): string {
-    const opt = property_options?.find((o) => o.key === key)
-    if (!opt) return key
-    return opt.unit ? `${opt.label} (${opt.unit})` : opt.label
+    const opt = property_options?.find((item) => item.key === key)
+    return opt ? (opt.unit ? `${opt.label} (${opt.unit})` : opt.label) : key
   }
 
-  // Format color scale option for display
   function format_color_scale_option(key: string): string {
-    const opt = color_scale_options?.find((o) => o.key === key)
-    return opt?.label ?? key
+    return color_scale_options?.find((item) => item.key === key)?.label ?? key
   }
 
-  // Handle property selection change
   async function handle_property_change(event: Event) {
-    const target = event.target as HTMLSelectElement
-    const new_key = target.value
+    const new_key = (event.target as HTMLSelectElement).value
     if (!new_key || new_key === selected_property_key || !data_loader) return
 
     const prev_key = selected_property_key
@@ -449,23 +442,19 @@
       on_property_change?.(new_key, result.range)
     } catch (err) {
       console.error(`ColorBar data loader failed for ${new_key}:`, err)
-      selected_property_key = prev_key // revert on error
+      selected_property_key = prev_key
     } finally {
       loading = false
     }
   }
 
-  // Handle color scale selection change
   function handle_color_scale_change(event: Event) {
-    const target = event.target as HTMLSelectElement
-    const new_key = target.value
+    const new_key = (event.target as HTMLSelectElement).value
     if (!new_key || new_key === selected_color_scale_key) return
 
     selected_color_scale_key = new_key
-    const opt = color_scale_options?.find((o) => o.key === new_key)
-    if (opt) {
-      color_scale = opt.scale
-    }
+    const opt = color_scale_options?.find((item) => item.key === new_key)
+    if (opt) color_scale = opt.scale
     on_color_scale_change?.(new_key)
   }
 
