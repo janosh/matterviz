@@ -2459,7 +2459,7 @@ This demo showcases **interactive axis labels** with lazy data loading. Features
         x: mat_data.map((d) => d[x_prop]),
         y: mat_data.map((d) => d[y_prop]),
         label: material.charAt(0).toUpperCase() + material.slice(1),
-        point_style: { fill: color, radius: 4, opacity: 0.7 },
+        point_style: { fill: color, radius: 4, fill_opacity: 0.7 },
         markers: `points`,
       })
     }
@@ -2510,7 +2510,11 @@ This demo showcases **interactive axis labels** with lazy data loading. Features
   }
 
   function handle_error(err) {
-    loading_log = [...loading_log, `❌ Error: ${err.message}`]
+    // err is AxisLoadError: { axis, key, message }
+    loading_log = [
+      ...loading_log,
+      `❌ ${err.axis}-axis error (${err.key}): ${err.message}`,
+    ]
   }
 
   // Axis options from properties
