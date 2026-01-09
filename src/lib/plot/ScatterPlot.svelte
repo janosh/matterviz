@@ -1583,9 +1583,9 @@
             AXIS_LABEL_CONTAINER.y_offset}
             width={AXIS_LABEL_CONTAINER.width}
             height={AXIS_LABEL_CONTAINER.height}
-            style="overflow: visible"
+            style="overflow: visible; pointer-events: none"
           >
-            <div xmlns="http://www.w3.org/1999/xhtml">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
               <InteractiveAxisLabel
                 label={final_x_axis.label ?? ``}
                 options={final_x_axis.options}
@@ -1651,14 +1651,14 @@
             y={-AXIS_LABEL_CONTAINER.y_offset}
             width={AXIS_LABEL_CONTAINER.width}
             height={AXIS_LABEL_CONTAINER.height}
-            style="overflow: visible"
+            style="overflow: visible; pointer-events: none"
             transform="rotate(-90, {(final_y_axis.label_shift?.y ?? 12)}, {pad.t +
               (height - pad.t - pad.b) / 2 +
               ((final_y_axis.label_shift?.x ?? 0))}) translate({(final_y_axis.label_shift?.y ?? 12)}, {pad.t +
               (height - pad.t - pad.b) / 2 +
               ((final_y_axis.label_shift?.x ?? 0))})"
           >
-            <div xmlns="http://www.w3.org/1999/xhtml">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
               <InteractiveAxisLabel
                 label={final_y_axis.label ?? ``}
                 options={final_y_axis.options}
@@ -1726,7 +1726,7 @@
               y={-AXIS_LABEL_CONTAINER.y_offset}
               width={AXIS_LABEL_CONTAINER.width}
               height={AXIS_LABEL_CONTAINER.height}
-              style="overflow: visible"
+              style="overflow: visible; pointer-events: none"
               transform="rotate(-90, {width - pad.r + ((final_y2_axis.label_shift?.y ?? 0))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
                 ((final_y2_axis.label_shift?.x ?? 0))}) translate({width -
@@ -1735,7 +1735,7 @@
                 (height - pad.t - pad.b) / 2 +
                 ((final_y2_axis.label_shift?.x ?? 0))})"
             >
-              <div xmlns="http://www.w3.org/1999/xhtml">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
                 <InteractiveAxisLabel
                   label={final_y2_axis.label ?? ``}
                   options={final_y2_axis.options}

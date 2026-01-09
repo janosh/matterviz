@@ -692,7 +692,7 @@ describe(`ColorBar Interactive Property Selection`, () => {
     await vi.waitFor(() => expect(data_loader).toHaveBeenCalled())
     await vi.waitFor(() =>
       expect(error_spy).toHaveBeenCalledWith(
-        expect.stringContaining(`ColorBar data loader failed`),
+        expect.stringContaining(`ColorBar property change failed`),
         expect.any(Error),
       )
     )

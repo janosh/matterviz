@@ -433,8 +433,9 @@
   async function handle_property_change(event: Event) {
     const new_key = (event.target as HTMLSelectElement).value
     if (!new_key || new_key === selected_property_key || !data_loader) return
+    // Capture all state for full rollback on any error
+    const prev = { title, range, selected_property_key } as const
 
-    const prev_key = selected_property_key
     selected_property_key = new_key
     loading = true
 
@@ -442,10 +443,14 @@
       const result = await data_loader(new_key)
       range = result.range
       if (result.title !== undefined) title = result.title
+      // Isolate callback errors - still rollback if callback throws
       on_property_change?.(new_key, result.range)
     } catch (err) {
-      console.error(`ColorBar data loader failed for ${new_key}:`, err)
-      selected_property_key = prev_key
+      console.error(`ColorBar property change failed for ${new_key}:`, err)
+      // Full rollback of all state
+      selected_property_key = prev.selected_property_key
+      range = prev.range
+      title = prev.title
     } finally {
       loading = false
     }

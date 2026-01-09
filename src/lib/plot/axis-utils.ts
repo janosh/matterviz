@@ -116,9 +116,10 @@ export function create_axis_change_handler<T extends DataSeries | BarSeries>(
 }
 
 // Constants for axis label foreignObject positioning (all values in px)
+// Use minimal dimensions - overflow: visible handles any dropdown expansion
 export const AXIS_LABEL_CONTAINER = {
-  width: 200, // container width for interactive label dropdown
-  height: 200, // container height (overflow: visible allows content to exceed)
+  width: 200, // container width for centering; dropdown can overflow
+  height: 24, // single line height; dropdown options overflow downward
   x_offset: 100, // half of width for horizontal centering
-  y_offset: 10, // vertical offset from axis line
+  y_offset: 12, // half of height for vertical centering
 } as const

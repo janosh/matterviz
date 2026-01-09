@@ -2750,7 +2750,10 @@ All changes trigger lazy data loading with simulated network delays.
     selected_key: y_key,
   }}
   data_loader={axis_data_loader}
-  color_scale={{ scheme: color_scale_options.find((o) => o.key === color_scale_key)?.scale }}
+  color_scale={{
+    scheme: color_scale_options.find((o) => o.key === color_scale_key)?.scale ??
+      `interpolateViridis`,
+  }}
   color_bar={{
     title: `${properties[color_key].label} (${properties[color_key].unit})`,
     property_options: color_property_options,

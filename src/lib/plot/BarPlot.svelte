@@ -969,9 +969,9 @@
             y={height - (pad.b / 3) + shift_y - AXIS_LABEL_CONTAINER.y_offset}
             width={AXIS_LABEL_CONTAINER.width}
             height={AXIS_LABEL_CONTAINER.height}
-            style="overflow: visible"
+            style="overflow: visible; pointer-events: none"
           >
-            <div xmlns="http://www.w3.org/1999/xhtml">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
               <InteractiveAxisLabel
                 label={x_axis.label ?? ``}
                 options={x_axis.options}
@@ -1057,10 +1057,10 @@
             y={y_label_y - AXIS_LABEL_CONTAINER.y_offset}
             width={AXIS_LABEL_CONTAINER.width}
             height={AXIS_LABEL_CONTAINER.height}
-            style="overflow: visible"
+            style="overflow: visible; pointer-events: none"
             transform="rotate(-90, {y_label_x}, {y_label_y})"
           >
-            <div xmlns="http://www.w3.org/1999/xhtml">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
               <InteractiveAxisLabel
                 label={y_axis.label ?? ``}
                 options={y_axis.options}
@@ -1151,10 +1151,10 @@
               y={y2_label_y - AXIS_LABEL_CONTAINER.y_offset}
               width={AXIS_LABEL_CONTAINER.width}
               height={AXIS_LABEL_CONTAINER.height}
-              style="overflow: visible"
+              style="overflow: visible; pointer-events: none"
               transform="rotate(-90, {y2_label_x}, {y2_label_y})"
             >
-              <div xmlns="http://www.w3.org/1999/xhtml">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
                 <InteractiveAxisLabel
                   label={y2_axis.label ?? ``}
                   options={y2_axis.options}
