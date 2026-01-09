@@ -2473,10 +2473,11 @@ This demo showcases **interactive axis labels** with lazy data loading. Features
   let loading_log = $state([])
   let error_count = $state(0)
   let load_count = $state(0)
+  let load_start = $state(0)
 
-  // Async data loader with variable delays and error simulation
+  // Async data loader - side-effect free, state updates in on_axis_change
   async function data_loader(axis, property_key, current_series) {
-    const start_time = performance.now()
+    load_start = performance.now()
     loading_log = [...loading_log, `⏳ Loading ${properties[property_key].label}...`]
 
     // Variable delay (200-800ms) to simulate real network conditions
@@ -2489,24 +2490,26 @@ This demo showcases **interactive axis labels** with lazy data loading. Features
       throw new Error(`Simulated network error for ${property_key}`)
     }
 
-    load_count++
-    const elapsed = (performance.now() - start_time).toFixed(0)
-    loading_log = [
-      ...loading_log,
-      `✓ Loaded ${properties[property_key].label} (${elapsed}ms)`,
-    ]
-
-    // Determine new keys
+    // Determine new keys for series build (don't mutate x_key/y_key here)
     const new_x_key = axis === `x` ? property_key : x_key
     const new_y_key = axis === `y` ? property_key : y_key
-    if (axis === `x`) x_key = property_key
-    if (axis === `y`) y_key = property_key
 
     const prop = properties[property_key]
     return {
       series: build_series(new_x_key, new_y_key),
       axis_label: `${prop.label} (${prop.unit})`,
     }
+  }
+
+  function on_axis_change(axis, property_key) {
+    load_count++
+    if (axis === `x`) x_key = property_key
+    if (axis === `y`) y_key = property_key
+    const elapsed = (performance.now() - load_start).toFixed(0)
+    loading_log = [
+      ...loading_log,
+      `✓ Loaded ${properties[property_key].label} (${elapsed}ms)`,
+    ]
   }
 
   function handle_error(err) {
@@ -2548,6 +2551,7 @@ This demo showcases **interactive axis labels** with lazy data loading. Features
     selected_key: y_key,
   }}
   {data_loader}
+  {on_axis_change}
   on_error={handle_error}
   legend={{ layout: `horizontal`, wrapper_style: `justify-content: center` }}
   style="height: 400px"
