@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { goto_structure_test, set_input_value } from '../helpers'
+import { expect_canvas_changed, goto_structure_test, set_input_value } from '../helpers'
 
 test.describe(`Atom Radius Controls`, () => {
   let page: Page
@@ -8,8 +8,11 @@ test.describe(`Atom Radius Controls`, () => {
   const get_first_legend_item = () => legend.locator(`.legend-item`).first()
 
   // Opens remap dropdown and returns fresh locator (always re-query to avoid stale refs)
+  // Uses dispatchEvent('contextmenu') instead of mouse right-click for better CI stability
+  // (avoids potential browser context menu interference in headless environments)
   const open_remap_dropdown = async (item: Locator) => {
-    await item.locator(`label`).click({ button: `right` })
+    const label = item.locator(`label`)
+    await label.dispatchEvent(`contextmenu`)
     const dropdown = item.locator(`.remap-dropdown`)
     await expect(dropdown).toBeVisible()
     return dropdown
@@ -128,6 +131,7 @@ test.describe(`Atom Radius Controls`, () => {
 
     // Capture canvas before supercell change to detect transformation completion
     const canvas = page.locator(`#test-structure canvas`)
+    await expect(canvas).toBeVisible()
     const canvas_before = await canvas.screenshot()
 
     // Change supercell scaling - this should clear site_radius_overrides
@@ -135,12 +139,8 @@ test.describe(`Atom Radius Controls`, () => {
     const supercell_input = page.locator(`[data-testid="supercell-input"]`)
     await set_input_value(supercell_input, `2x2x2`)
 
-    // Wait for supercell transformation to complete by polling until canvas changes
-    // (2x2x2 supercell renders 8x more atoms, causing visible canvas change)
-    await expect(async () => {
-      const canvas_after = await canvas.screenshot()
-      expect(canvas_before.equals(canvas_after)).toBe(false)
-    }).toPass({ timeout: 10_000 })
+    // Wait for supercell transformation to complete (2x2x2 renders 8x more atoms)
+    await expect_canvas_changed(canvas, canvas_before, 10_000)
 
     // Re-select a site programmatically after transformation
     await select_site_programmatically()

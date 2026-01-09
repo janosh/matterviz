@@ -528,8 +528,14 @@
   })
 
   // Get radius for a site (for highlight fallback when site is hidden/filtered)
-  const get_site_radius = (site: Site): number =>
-    (same_size_atoms ? 1 : calc_weighted_radius(site)) * atom_radius
+  // Checks site_radius_overrides first for consistency with visible atoms
+  const get_site_radius = (site: Site, site_idx: number | null): number => {
+    const override = site_idx !== null
+      ? site_radius_overrides?.get(site_idx)
+      : undefined
+    const base_radius = same_size_atoms ? 1 : override ?? calc_weighted_radius(site)
+    return base_radius * atom_radius
+  }
 
   let force_data = $derived.by(() =>
     show_force_vectors && structure?.sites
@@ -863,8 +869,8 @@
         {#if site}
           {@const xyz = site.xyz}
           {@const highlight_radius = site_idx !== null
-          ? radius_by_site_idx.get(site_idx) ?? get_site_radius(site)
-          : get_site_radius(site)}
+          ? radius_by_site_idx.get(site_idx) ?? get_site_radius(site, site_idx)
+          : get_site_radius(site, site_idx)}
           <T.Mesh
             position={xyz}
             scale={1.2 * highlight_radius}

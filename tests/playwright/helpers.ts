@@ -137,6 +137,19 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="img"]`)
 
+// Poll until canvas has rendered non-trivial content (screenshot size > threshold)
+// Use this to wait for WebGL/Three.js canvas initialization before interacting
+export async function wait_for_canvas_rendered(
+  canvas: Locator,
+  options?: { min_size?: number; timeout?: number },
+): Promise<void> {
+  const min_size = options?.min_size ?? 1000
+  const timeout = options?.timeout ?? get_canvas_timeout()
+  await expect
+    .poll(async () => (await canvas.screenshot()).length, { timeout })
+    .toBeGreaterThan(min_size)
+}
+
 // Poll until canvas screenshot differs from initial (handles GPU/driver timing variations)
 // Use this instead of raw Buffer.equals() for more reliable canvas change detection
 export async function expect_canvas_changed(

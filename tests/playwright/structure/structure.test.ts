@@ -914,11 +914,14 @@ test.describe(`Structure Component Tests`, () => {
       try {
         await expect_canvas_changed(canvas, initial_screenshot, 3000)
       } catch {
+        // Take fresh baseline before second drag to avoid false positives
+        // from delayed first drag rendering
+        const baseline_before_second_drag = await canvas.screenshot()
         await canvas.dragTo(canvas, {
           sourcePosition: { x: box.width / 2, y: box.height / 2 - 100 },
           targetPosition: { x: box.width / 2, y: box.height / 2 + 100 },
         })
-        await expect_canvas_changed(canvas, initial_screenshot)
+        await expect_canvas_changed(canvas, baseline_before_second_drag)
       }
     }
   })
@@ -1486,7 +1489,7 @@ H    1.261    0.728   -0.890`
 
     // Re-query canvas
     canvas = structure_div.locator(`canvas`)
-    await expect(canvas).toBeVisible()
+    await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
 
     // Poll for canvas change after structure load
     await expect_canvas_changed(canvas, initial_screenshot)

@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { expect_canvas_changed, get_canvas_timeout } from '../helpers'
+import {
+  expect_canvas_changed,
+  get_canvas_timeout,
+  wait_for_canvas_rendered,
+} from '../helpers'
 
 test.describe(`Lattice Component Tests`, () => {
   // Use retries instead of blanket skip for flaky CI runs
@@ -11,32 +15,24 @@ test.describe(`Lattice Component Tests`, () => {
     await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
 
     // Wait for canvas to be ready before interacting with controls
-    await expect
-      .poll(async () => (await canvas.screenshot()).length, {
-        timeout: get_canvas_timeout(),
-      })
-      .toBeGreaterThan(1000)
+    await wait_for_canvas_rendered(canvas)
 
     // Use test page checkbox to open controls
     const checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
-    await expect(checkbox).toBeVisible({ timeout: 5_000 })
+    await expect(checkbox).toBeVisible({ timeout: get_canvas_timeout() })
     await checkbox.check()
     await expect(page.locator(`.draggable-pane.controls-pane`)).toHaveClass(
       /pane-open/,
-      { timeout: 10_000 },
+      { timeout: get_canvas_timeout() },
     )
   })
 
   test(`renders lattice with default properties`, async ({ page }) => {
+    // Canvas readiness already guaranteed by beforeEach, just verify visibility
     const canvas = page.locator(`#test-structure canvas`)
-    // Poll until screenshot has non-trivial size (WebGL rendered something)
-    await expect
-      .poll(async () => (await canvas.screenshot()).length, {
-        timeout: get_canvas_timeout(),
-      })
-      .toBeGreaterThan(1000)
+    await expect(canvas).toBeVisible()
   })
 
   test(`lattice vectors checkbox toggles visibility`, async ({ page }) => {

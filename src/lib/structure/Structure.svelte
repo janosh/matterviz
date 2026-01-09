@@ -466,9 +466,11 @@
         measured_sites = []
       }
       // Clear site radius overrides since site indices are no longer valid
-      // Use .clear() to preserve map identity and avoid stale references in children
+      // Normalize to SvelteMap before mutation to ensure reactivity with plain Map inputs
       if (site_radius_overrides?.size > 0) {
-        site_radius_overrides.clear()
+        const cleared_map = new SvelteMap(site_radius_overrides)
+        cleared_map.clear()
+        site_radius_overrides = cleared_map
       }
     })
   })

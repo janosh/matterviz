@@ -96,6 +96,14 @@
       previous_mode = atom_color_config.mode
     }
   })
+
+  // Normalize incoming Map to SvelteMap at boundary for reactivity
+  // This preserves identity for bindings while ensuring SvelteMap methods work
+  $effect(() => {
+    if (site_radius_overrides && !(site_radius_overrides instanceof SvelteMap)) {
+      site_radius_overrides = new SvelteMap(site_radius_overrides)
+    }
+  })
   // Format display values based on mode
   let format_value = (val: number | string): string => {
     if (typeof val === `number`) return format_num(val, `.3~f`)
@@ -184,18 +192,15 @@
   const get_element_radius = (elem: ElementSymbol): number =>
     element_radius_overrides?.[elem] ?? atomic_radii[elem] ?? 1
 
+  // Mutate in-place to preserve map identity for bindings (aligns with Structure.svelte pattern)
   function update_site_radius(site_idx: number, value: string) {
     const radius = parse_radius(value)
     if (radius === null) return
-    const new_map = new SvelteMap(site_radius_overrides)
-    new_map.set(site_idx, radius)
-    site_radius_overrides = new_map
+    site_radius_overrides?.set(site_idx, radius)
   }
 
   function clear_site_radius(site_idx: number) {
-    const new_map = new SvelteMap(site_radius_overrides)
-    new_map.delete(site_idx)
-    site_radius_overrides = new_map
+    site_radius_overrides?.delete(site_idx)
   }
 
   const get_site_radius = (site_idx: number): number => {

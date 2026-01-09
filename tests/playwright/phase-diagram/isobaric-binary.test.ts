@@ -244,7 +244,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     // Wait for the diagram to reload by checking that phase regions are still visible
     // and then verify the clicked file has become active
     await expect(svg.locator(`.phase-regions path`).first()).toBeVisible({
-      timeout: 8000,
+      timeout: LOAD_TIMEOUT,
     })
 
     // Wait for the file to become active (async loading)
