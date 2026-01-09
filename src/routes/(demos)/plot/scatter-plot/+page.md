@@ -2680,23 +2680,24 @@ All changes trigger lazy data loading with simulated network delays.
   // Property options for ColorBar (same structure)
   const color_property_options = axis_options
 
-  // Axis data loader (for x/y axis changes)
+  // Axis data loader - side-effect free, returns data only
   async function axis_data_loader(axis, property_key, current_series) {
     await new Promise((r) => setTimeout(r, 200 + Math.random() * 400))
-    axis_switches++
-
     const new_x = axis === `x` ? property_key : x_key
     const new_y = axis === `y` ? property_key : y_key
-    if (axis === `x`) x_key = property_key
-    if (axis === `y`) y_key = property_key
-
     const prop = properties[property_key]
     return {
       series: build_series(new_x, new_y, color_key),
-      // Return label and unit separately - plot will format consistently
       axis_label: prop.label,
       axis_unit: prop.unit,
     }
+  }
+
+  // Called after successful axis change - safe to update state
+  function handle_axis_change(axis, property_key) {
+    axis_switches++
+    if (axis === `x`) x_key = property_key
+    if (axis === `y`) y_key = property_key
   }
 
   // Returns ColorBar-specific data. Series update handled in on_property_change.
@@ -2750,6 +2751,7 @@ All changes trigger lazy data loading with simulated network delays.
     selected_key: y_key,
   }}
   data_loader={axis_data_loader}
+  on_axis_change={handle_axis_change}
   color_scale={{
     scheme: color_scale_options.find((o) => o.key === color_scale_key)?.scale ??
       `interpolateViridis`,
