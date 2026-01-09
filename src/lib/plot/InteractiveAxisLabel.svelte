@@ -52,9 +52,10 @@
   {#if is_interactive && options}
     <select
       class="axis-select"
-      value={selected_key ?? ``}
+      value={selected_key ?? options[0]?.key ?? ``}
       onchange={handle_change}
       disabled={loading}
+      aria-label="Select {axis_type}-axis property"
     >
       {#each options as opt (opt.key)}
         <option value={opt.key}>{format_opt(opt)}</option>

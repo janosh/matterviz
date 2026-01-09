@@ -2263,7 +2263,7 @@
   foreignobject {
     overflow: visible;
   }
-  :global(.axis-label) {
+  .scatter :global(.axis-label) {
     text-align: center;
     width: 100%;
     height: 100%;
