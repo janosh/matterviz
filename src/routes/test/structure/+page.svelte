@@ -136,12 +136,17 @@
 
     window.addEventListener(`set-lattice-props`, handle_lattice_props)
     window.addEventListener(`set-show-buttons`, handle_show_controls)
-    ;(globalThis as Record<string, unknown>).event_calls = event_calls
 
     return () => {
       window.removeEventListener(`set-lattice-props`, handle_lattice_props)
       window.removeEventListener(`set-show-buttons`, handle_show_controls)
     }
+  })
+
+  // Keep test hook in sync with reactive event_calls
+  $effect(() => {
+    if (typeof window === `undefined`) return
+    ;(globalThis as Record<string, unknown>).event_calls = event_calls
   })
 </script>
 

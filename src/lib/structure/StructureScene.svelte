@@ -194,7 +194,7 @@
     hidden_elements?: Set<ElementSymbol>
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     element_radius_overrides?: Partial<Record<ElementSymbol, number>> // Per-element absolute radius in Angstroms
-    site_radius_overrides?: SvelteMap<number, number> // Per-site absolute radius in Angstroms
+    site_radius_overrides?: Map<number, number> | SvelteMap<number, number> // Per-site absolute radius in Angstroms
     atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
   } = $props()
@@ -526,6 +526,20 @@
     }
     return map
   })
+
+  // Compute radius for any site using same logic as atom_data (for highlight fallback)
+  // Used when site is hidden/filtered but still needs highlight sizing
+  const get_site_radius = (site: Site): number => {
+    const base_radius = same_size_atoms ? 1 : (() => {
+      const total_occu = site.species.reduce((sum, { occu }) => sum + occu, 0)
+      const weighted_sum = site.species.reduce((sum, { element, occu }) => {
+        const override = element_radius_overrides?.[element as ElementSymbol]
+        return sum + occu * (override ?? atomic_radii[element] ?? 1)
+      }, 0)
+      return total_occu > 0 ? weighted_sum / total_occu : 1
+    })()
+    return base_radius * atom_radius
+  }
 
   let force_data = $derived.by(() =>
     show_force_vectors && structure?.sites
@@ -859,8 +873,8 @@
         {#if site}
           {@const xyz = site.xyz}
           {@const highlight_radius = site_idx !== null
-          ? radius_by_site_idx.get(site_idx) ?? atom_radius
-          : atom_radius}
+          ? radius_by_site_idx.get(site_idx) ?? get_site_radius(site)
+          : get_site_radius(site)}
           <T.Mesh
             position={xyz}
             scale={1.2 * highlight_radius}

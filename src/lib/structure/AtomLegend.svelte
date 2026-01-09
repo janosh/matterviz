@@ -61,7 +61,7 @@
     element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
     // Per-element and per-site radius overrides (absolute values in Angstroms)
     element_radius_overrides?: Partial<Record<ElementSymbol, number>>
-    site_radius_overrides?: SvelteMap<number, number>
+    site_radius_overrides?: Map<number, number> | SvelteMap<number, number>
     selected_sites?: number[] // Currently selected site indices
     title?: string
     sym_data?: MoyoDataset | null
@@ -251,6 +251,42 @@
   </div>
 {/snippet}
 
+{#snippet site_radius_control_snippet()}
+  {#if selected_sites.length === 1}
+    {@const site_idx = selected_sites[0]}
+    {@const site = structure?.sites?.[site_idx]}
+    {@const main_elem = site?.species[0]?.element}
+    <div class="site-radius-control">
+      <label
+        title="Radius for selected site {site_idx}"
+        {@attach tooltip({ placement: `top` })}
+      >
+        <span class="site-label">{main_elem}{site_idx}</span>
+        <input
+          type="number"
+          min={MIN_RADIUS}
+          max={MAX_RADIUS}
+          step={0.05}
+          value={get_site_radius(site_idx)}
+          oninput={(event) =>
+          update_site_radius(site_idx, (event.target as HTMLInputElement).value)}
+        />
+        <span class="unit">Å</span>
+      </label>
+      {#if site_radius_overrides?.has(site_idx)}
+        <button
+          class="reset-btn"
+          onclick={() => clear_site_radius(site_idx)}
+          title="Reset to element default"
+          {@attach tooltip({ placement: `top` })}
+        >
+          ↺
+        </button>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
 {#if show_element_legend}
   <div {...rest} class="atom-legend element-legend {rest.class ?? ``}">
     {#each Object.entries(elements!) as [elem, amt], idx (elem + amt)}
@@ -385,39 +421,7 @@
         {/if}
       </div>
     {/each}
-    {#if selected_sites.length === 1}
-      {@const site_idx = selected_sites[0]}
-      {@const site = structure?.sites?.[site_idx]}
-      {@const main_elem = site?.species[0]?.element}
-      <div class="site-radius-control">
-        <label
-          title="Radius for selected site {site_idx}"
-          {@attach tooltip({ placement: `top` })}
-        >
-          <span class="site-label">{main_elem}{site_idx}</span>
-          <input
-            type="number"
-            min={MIN_RADIUS}
-            max={MAX_RADIUS}
-            step={0.05}
-            value={get_site_radius(site_idx)}
-            oninput={(event) =>
-            update_site_radius(site_idx, (event.target as HTMLInputElement).value)}
-          />
-          <span class="unit">Å</span>
-        </label>
-        {#if site_radius_overrides?.has(site_idx)}
-          <button
-            class="reset-btn"
-            onclick={() => clear_site_radius(site_idx)}
-            title="Reset to element default"
-            {@attach tooltip({ placement: `top` })}
-          >
-            ↺
-          </button>
-        {/if}
-      </div>
-    {/if}
+    {@render site_radius_control_snippet()}
     {@render mode_selector_snippet()}
     {@render children?.({ mode_menu_open, structure })}
   </div>
@@ -485,6 +489,7 @@
         </div>
       {/each}
     {/if}
+    {@render site_radius_control_snippet()}
     {@render mode_selector_snippet()}
     {@render children?.({ mode_menu_open, structure })}
   </div>

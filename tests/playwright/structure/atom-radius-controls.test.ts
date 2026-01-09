@@ -124,15 +124,21 @@ test.describe(`Atom Radius Controls`, () => {
     await clear_btn.click()
     await expect(legend.locator(`.site-radius-control`)).toHaveCount(0)
 
-    // Change supercell scaling - this should clear site_radius_overrides
-    const supercell_input = page.locator(`[data-testid="supercell-input"]`)
-    await supercell_input.fill(`2x2x2`)
+    // Capture canvas before supercell change to detect transformation completion
+    const canvas = page.locator(`#test-structure canvas`)
+    const canvas_before = await canvas.screenshot()
 
-    // Wait for supercell transformation to complete by polling for legend to have items
-    // (a 2x2x2 supercell should still have the same elements in the legend)
-    await expect
-      .poll(() => legend.locator(`.legend-item`).count(), { timeout: 10_000 })
-      .toBeGreaterThan(0)
+    // Change supercell scaling - this should clear site_radius_overrides
+    // Use set_input_value to properly trigger input/change/blur events
+    const supercell_input = page.locator(`[data-testid="supercell-input"]`)
+    await set_input_value(supercell_input, `2x2x2`)
+
+    // Wait for supercell transformation to complete by polling until canvas changes
+    // (2x2x2 supercell renders 8x more atoms, causing visible canvas change)
+    await expect(async () => {
+      const canvas_after = await canvas.screenshot()
+      expect(canvas_before.equals(canvas_after)).toBe(false)
+    }).toPass({ timeout: 10_000 })
 
     // Re-select a site programmatically after transformation
     await select_site_programmatically()

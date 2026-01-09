@@ -175,7 +175,8 @@
       // Per-element radius overrides (absolute values in Angstroms)
       element_radius_overrides?: Partial<Record<ElementSymbol, number>>
       // Per-site radius overrides (absolute values in Angstroms)
-      site_radius_overrides?: SvelteMap<number, number>
+      // Accepts Map or SvelteMap for flexibility with external callers
+      site_radius_overrides?: Map<number, number> | SvelteMap<number, number>
       // Symmetry analysis data (bindable for external access)
       sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
@@ -465,8 +466,9 @@
         measured_sites = []
       }
       // Clear site radius overrides since site indices are no longer valid
-      if (site_radius_overrides.size > 0) {
-        site_radius_overrides = new SvelteMap()
+      // Use .clear() to preserve map identity and avoid stale references in children
+      if (site_radius_overrides?.size > 0) {
+        site_radius_overrides.clear()
       }
     })
   })
