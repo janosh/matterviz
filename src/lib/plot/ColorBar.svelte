@@ -418,6 +418,19 @@
   )
   let has_any_select = $derived(has_property_select || has_color_scale_select)
 
+  // Initialize selected keys to first option when options provided but key undefined
+  // This ensures state matches UI (which shows first option by default)
+  $effect(() => {
+    if (has_property_select && selected_property_key === undefined) {
+      selected_property_key = property_options![0].key
+    }
+  })
+  $effect(() => {
+    if (has_color_scale_select && selected_color_scale_key === undefined) {
+      selected_color_scale_key = color_scale_options![0].key
+    }
+  })
+
   // Format option for display - takes the option object directly since we iterate over options
   const format_opt = (opt: { label: string; unit?: string }) =>
     opt.unit ? `${opt.label} (${opt.unit})` : opt.label
