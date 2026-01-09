@@ -962,3 +962,80 @@ export type RefPlane =
     | { type: `normal`; normal: Vec3; point: Vec3 }
     | { type: `points`; p1: Vec3; p2: Vec3; p3: Vec3 } // plane through 3 points
   )
+
+// --- Data Cleaning Types ---
+
+// Oscillation detection weights (all default to 1.0)
+export interface OscillationWeights {
+  derivative_variance?: number // Weight for derivative variance method
+  amplitude_growth?: number // Weight for exponential amplitude growth
+  sign_changes?: number // Weight for derivative sign change frequency
+}
+
+// How to handle invalid values (NaN, Infinity)
+export type InvalidValueMode = `remove` | `propagate` | `interpolate`
+
+// Truncation strategy when instability detected
+export type TruncationMode = `hard_cut` | `mark_unstable`
+
+// Physical bounds configuration
+export interface PhysicalBounds {
+  min?: number | ((x: number) => number) // Static or x-dependent minimum
+  max?: number | ((x: number) => number) // Static or x-dependent maximum
+  mode?: `clamp` | `filter` | `null` // How to handle violations
+}
+
+// Smoothing algorithm configuration (discriminated union for type safety)
+export type SmoothingConfig =
+  | { type: `moving_avg`; window: number }
+  | { type: `savgol`; window: number; polynomial_order?: number } // window must be odd
+  | { type: `gaussian`; sigma: number } // sigma controls Gaussian kernel width
+
+// Main cleaning configuration
+export interface CleaningConfig {
+  // Oscillation detection
+  oscillation_threshold?: number // Combined score threshold (default: 3.0)
+  oscillation_weights?: OscillationWeights // Method weights
+  window_size?: number // Rolling window for detection (default: 5)
+
+  // Data handling
+  invalid_values?: InvalidValueMode // NaN/Infinity handling (default: 'remove')
+  bounds?: PhysicalBounds // Physical constraints
+  smooth?: SmoothingConfig // Optional smoothing
+
+  // Truncation
+  truncation_mode?: TruncationMode // 'hard_cut' or 'mark_unstable' (default: 'mark_unstable')
+
+  // Performance
+  in_place?: boolean // Mutate input arrays (default: true)
+}
+
+// Quality report from cleaning operation
+export interface CleaningQuality {
+  points_removed: number
+  invalid_values_found: number // NaN/Infinity count
+  oscillation_detected: boolean
+  oscillation_score?: number // Combined weighted score
+  bounds_violations: number
+  stable_range?: [number, number] // [start_x, end_x] if mark_unstable mode
+  truncated_at_x?: number // x value if hard_cut mode
+}
+
+// Result of a cleaning operation
+export interface CleaningResult<T = DataSeries> {
+  series: T // Cleaned data (same ref if in_place)
+  quality: CleaningQuality
+}
+
+// Instability detection result
+export interface InstabilityResult {
+  detected: boolean
+  onset_index: number
+  onset_x: number
+  combined_score: number
+  method_scores: {
+    derivative_variance: number
+    amplitude_growth: number
+    sign_changes: number
+  }
+}

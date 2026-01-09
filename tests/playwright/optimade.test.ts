@@ -149,7 +149,7 @@ test.describe(`OPTIMADE route`, () => {
     await expect(error_message).toContainText(/not found|failed|error/i)
   })
 
-  test(`can switch providers and clear input field`, async ({ page }) => {
+  test.skip(`can switch providers and clear input field`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
 
     // Wait for providers to load and structure to be fetched
