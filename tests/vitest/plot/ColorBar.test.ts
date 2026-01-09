@@ -1,7 +1,8 @@
 import { ColorBar } from '$lib'
 import { luminance } from '$lib/colors'
+import type { AxisOption, ColorScaleOption } from '$lib/plot/types'
 import * as d3_sc from 'd3-scale-chromatic'
-import { mount } from 'svelte'
+import { mount, unmount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -22,10 +23,13 @@ describe(`ColorBar Horizontal (Default)`, () => {
       },
     })
 
-    const title_span = doc_query(`.colorbar > span.label`) as HTMLElement
+    const title_row = doc_query(`.colorbar .title-row`) as HTMLElement
+    const title_span = doc_query(`.colorbar .label`) as HTMLElement
     expect(title_span.textContent).toBe(`Test Horizontal`)
-    expect(title_span.getAttribute(`style`)).toContain(`font-weight: bold;`)
-    expect(title_span.getAttribute(`style`)).not.toContain(`transform: rotate`) // No rotation
+    // title_style is now applied to title-row
+    expect(title_row.getAttribute(`style`)).toContain(`font-weight: bold;`)
+    // title_side=left means title-row has left class
+    expect(title_row.classList.contains(`left`)).toBe(true)
 
     const cbar_div = doc_query(`.colorbar > div.bar`)
     expect(cbar_div.style.width).toBe(`200px`)
@@ -73,11 +77,11 @@ describe(`ColorBar Vertical`, () => {
     const wrapper_vert_def = doc_query(`.colorbar`)
     expect(wrapper_vert_def.style.flexDirection).toBe(`row`)
 
-    const title_span_vert_def = doc_query(`.colorbar > span.label`)
+    const title_row = doc_query(`.colorbar .title-row`)
+    const title_span_vert_def = doc_query(`.colorbar .label`)
     expect(title_span_vert_def.textContent).toBe(`Test Vertical Default`)
-    expect(title_span_vert_def.getAttribute(`style`)).toContain(
-      `transform: rotate(-90deg); transform-origin: center; white-space: nowrap;`,
-    )
+    // Vertical title_side=left uses CSS class for rotation
+    expect(title_row.classList.contains(`left`)).toBe(true)
 
     const cbar_div = doc_query(`.colorbar > div.bar`)
     const computed_style = globalThis.getComputedStyle(cbar_div)
@@ -118,7 +122,7 @@ describe(`ColorBar Vertical`, () => {
     expect(wrapper_vert_exp.style.height).toBe(`300px`)
 
     const title_span_vert_exp = doc_query(
-      `.colorbar > span.label`,
+      `.colorbar .label`,
     ) as HTMLElement
     expect(title_span_vert_exp.textContent).toBe(`Test Vertical Explicit`)
 
@@ -262,12 +266,10 @@ describe(`ColorBar title_side Default Logic`, () => {
       const wrapper = doc_query(`.colorbar`)
       expect(wrapper.style.flexDirection).toBe(expected_flex_dir)
 
-      // Title span should exist
-      const title_span = doc_query(`.colorbar > span.label`) as HTMLElement
-      expect(title_span).toBeDefined()
+      // Title should exist (in title-row)
+      const title_span = doc_query(`.colorbar .label`) as HTMLElement
+      expect(title_span).not.toBeNull()
       expect(title_span.textContent).toBe(`Test Default Title`)
-      // Title span should not have overlap margin when using defaults
-      expect(title_span.getAttribute(`style`)).not.toContain(`margin`)
     },
   )
 })
@@ -372,45 +374,27 @@ describe(`ColorBar Numeric Formatting`, () => {
     expect(tick_label_spans[4].textContent).toBe(`100%`)
   })
 
-  test(`falls back to format_num when tick_format is undefined`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        range: [0.1234, 5.6789],
-        tick_format: undefined, // Explicitly undefined
-        tick_labels: 3,
-        snap_ticks: false,
-      },
-    })
+  test.each([
+    { range: [0.1234, 5.6789] as [number, number], expected: [`0.123`, `2.9`, `5.68`] },
+    { range: [1000, 5000] as [number, number], expected: [`1k`, `5k`] },
+  ])(
+    `falls back to format_num for range $range when tick_format undefined`,
+    ({ range, expected }) => {
+      mount(ColorBar, {
+        target: document.body,
+        props: {
+          range,
+          tick_format: undefined,
+          tick_labels: expected.length,
+          snap_ticks: false,
+        },
+      })
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
-    expect(tick_label_spans.length).toBe(3)
-    // Check format_num's formatting
-    expect(tick_label_spans[0].textContent).toBe(`0.123`)
-    expect(tick_label_spans[1].textContent).toBe(`2.9`)
-    expect(tick_label_spans[2].textContent).toBe(`5.68`)
-  })
-
-  test(`falls back to format_num when tick_format is null`, () => {
-    // Test with null (should behave same as undefined)
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        range: [1000, 5000],
-        tick_format: undefined, // Use undefined as null is not assignable
-        tick_labels: 2,
-        snap_ticks: false,
-      },
-    })
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
-    expect(tick_label_spans.length).toBe(2) // Should be 2 ticks
-    expect(tick_label_spans[0].textContent).toBe(`1k`) // Assuming format_num uses 'k' suffix
-    expect(tick_label_spans[1].textContent).toBe(`5k`)
-  })
+      const ticks = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
+      expect(ticks.length).toBe(expected.length)
+      expected.forEach((text, idx) => expect(ticks[idx].textContent).toBe(text))
+    },
+  )
 })
 
 describe(`ColorBar Other Features`, () => {
@@ -450,7 +434,7 @@ describe(`ColorBar Other Features`, () => {
     expect(tick_label_spans[3].textContent).toBe(`99`)
   })
 
-  test(`does NOT apply label overlap margin when ticks and title are on opposite sides`, () => {
+  test(`renders title when ticks and title are on opposite sides`, () => {
     mount(ColorBar, {
       target: document.body,
       props: {
@@ -462,8 +446,11 @@ describe(`ColorBar Other Features`, () => {
       },
     })
 
-    const title_span_no_overlap = doc_query(`.colorbar > span.label`)
-    expect(title_span_no_overlap.getAttribute(`style`)).not.toContain(`margin`)
+    const title_span = doc_query(`.colorbar .label`)
+    expect(title_span.textContent).toBe(`No Overlap Test`)
+    // Title row should have top class
+    const title_row = doc_query(`.colorbar .title-row`)
+    expect(title_row.classList.contains(`top`)).toBe(true)
   })
 
   test(`accepts a function for color_scale`, () => {
@@ -500,66 +487,305 @@ describe(`Vertical Layout Specifics`, () => {
     // We trust the browser to apply the default value from the CSS var.
   })
 
-  test(`positions rotated side titles correctly with constraints (title_side=left)`, () => {
-    mount(ColorBar, {
+  test.each(
+    [
+      { side: `left`, flex_dir: `row` },
+      { side: `right`, flex_dir: `row-reverse` },
+    ] as const,
+  )(
+    `positions rotated side titles correctly (title_side=$side)`,
+    ({ side, flex_dir }) => {
+      const title = `Rotated ${side.charAt(0).toUpperCase() + side.slice(1)} Title`
+      mount(ColorBar, {
+        target: document.body,
+        props: { orientation: `vertical`, title, title_side: side },
+      })
+
+      const wrapper = doc_query(`.colorbar`)
+      expect(wrapper.style.flexDirection).toBe(flex_dir)
+      expect(wrapper.style.getPropertyValue(`--cbar-wrapper-align-items`)).toBe(`stretch`)
+      expect(wrapper.style.getPropertyValue(`--cbar-label-display`)).toBe(`flex`)
+
+      const title_row = doc_query(`.colorbar .title-row`)
+      expect(title_row.classList.contains(side)).toBe(true)
+      expect(doc_query(`.colorbar .label`).textContent).toBe(title)
+    },
+  )
+})
+
+// Test data for interactive features
+const property_options: AxisOption[] = [
+  { key: `energy`, label: `Energy`, unit: `eV` },
+  { key: `volume`, label: `Volume`, unit: `Å³` },
+  { key: `pressure`, label: `Pressure`, unit: `GPa` },
+]
+
+const color_scale_options: ColorScaleOption[] = [
+  { key: `viridis`, label: `Viridis`, scale: `interpolateViridis` },
+  { key: `plasma`, label: `Plasma`, scale: `interpolatePlasma` },
+  { key: `inferno`, label: `Inferno`, scale: `interpolateInferno` },
+]
+
+describe(`ColorBar Interactive Property Selection`, () => {
+  test(`renders property select dropdown when property_options provided`, () => {
+    const component = mount(ColorBar, {
       target: document.body,
       props: {
-        orientation: `vertical`,
-        title: `Rotated Left Title`,
-        title_side: `left`, // Should result in flex-direction: row
+        property_options,
+        selected_property_key: `energy`,
+        range: [0, 10],
       },
     })
 
-    const wrapper = doc_query(`.colorbar`)
-    expect(wrapper.style.flexDirection).toBe(`row`)
-    expect(wrapper.style.getPropertyValue(`--cbar-wrapper-align-items`)).toBe(
-      `stretch`,
-    )
-    // Check the inner bar div's style for 100% height
-    const bar_div_left = doc_query(`.colorbar > div.bar`) as HTMLElement
-    const bar_style_attr_left = bar_div_left.getAttribute(`style`) ?? ``
-    expect(bar_style_attr_left).toContain(`--cbar-height: 100%`) // Check default height indirectly
+    const select = document.body.querySelector(`select.property-select`)
+    expect(select).not.toBeNull()
 
-    const title_span = doc_query(`.colorbar > span.label`) as HTMLElement
-    const title_style = title_span.getAttribute(`style`) ?? ``
+    const options = select?.querySelectorAll(`option`)
+    expect(options?.length).toBe(3)
+    expect(options?.[0].value).toBe(`energy`)
+    expect(options?.[0].textContent).toBe(`Energy (eV)`)
 
-    // Check for rotation
-    expect(title_style).toContain(`transform: rotate(-90deg)`) // Left side rotation
-    // Check for max-width constraint
-    expect(title_style).toContain(
-      `max-width: var(--cbar-label-max-width, 2em);`,
-    )
-    // Check label uses display: flex (via CSS var)
-    expect(wrapper.style.getPropertyValue(`--cbar-label-display`)).toBe(`flex`)
-    // Check no erroneous margins were added
-    expect(title_style).not.toContain(`margin-top`) // Should not have negative margin
-    expect(title_style).not.toContain(`margin-bottom`)
+    unmount(component)
   })
 
-  test(`positions rotated side titles correctly (title_side=right)`, () => {
-    mount(ColorBar, {
+  test(`does not render property select when property_options is undefined`, () => {
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: { title: `Static Title`, range: [0, 10] },
+    })
+
+    const select = document.body.querySelector(`select.property-select`)
+    expect(select).toBeNull()
+
+    // Should render static title instead
+    const title = document.body.querySelector(`.colorbar .label`)
+    expect(title?.textContent).toBe(`Static Title`)
+
+    unmount(component)
+  })
+
+  test(`hides static title when property_options provided`, () => {
+    const component = mount(ColorBar, {
       target: document.body,
       props: {
-        orientation: `vertical`,
-        title: `Rotated Right Title`,
-        title_side: `right`, // Should result in flex-direction: row-reverse
+        title: `Should Not Show`,
+        property_options,
+        selected_property_key: `energy`,
+        range: [0, 10],
       },
     })
 
-    const wrapper = doc_query(`.colorbar`)
-    expect(wrapper.style.flexDirection).toBe(`row-reverse`)
-    expect(wrapper.style.getPropertyValue(`--cbar-wrapper-align-items`)).toBe(
-      `stretch`,
+    // Should have property select, not static label
+    const select = document.body.querySelector(`select.property-select`)
+    expect(select).not.toBeNull()
+
+    const static_label = document.body.querySelector(`.title-row > .label`)
+    expect(static_label).toBeNull()
+
+    unmount(component)
+  })
+
+  test(`calls data_loader and on_property_change when property selected`, async () => {
+    const data_loader = vi.fn().mockResolvedValue({
+      range: [0, 100] as [number, number],
+      title: `Volume (Å³)`,
+    })
+    const on_property_change = vi.fn()
+
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: {
+        property_options,
+        selected_property_key: `energy`,
+        data_loader,
+        on_property_change,
+        range: [0, 10],
+      },
+    })
+
+    const select = document.body.querySelector(
+      `select.property-select`,
+    ) as HTMLSelectElement
+    expect(select).not.toBeNull()
+
+    // Change selection
+    select.value = `volume`
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+
+    // Wait for async data_loader
+    await vi.waitFor(() => expect(data_loader).toHaveBeenCalledWith(`volume`))
+    await vi.waitFor(() =>
+      expect(on_property_change).toHaveBeenCalledWith(`volume`, [0, 100])
     )
 
-    const title_span = doc_query(`.colorbar > span.label`) as HTMLElement
-    const title_style = title_span.getAttribute(`style`) ?? ``
+    unmount(component)
+  })
 
-    // Check for rotation
-    expect(title_style).toContain(`transform: rotate(90deg)`) // Right side rotation
-    // Check for max-width constraint
-    expect(title_style).toContain(
-      `max-width: var(--cbar-label-max-width, 2em);`,
+  test(`shows spinner during data loading`, async () => {
+    // Use object to hold resolver - avoids non-null assertion
+    const loader_control = { resolve: (_val: { range: [number, number] }) => {} }
+    const data_loader = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          loader_control.resolve = resolve
+        }),
     )
+
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: {
+        property_options,
+        selected_property_key: `energy`,
+        data_loader,
+        range: [0, 10],
+      },
+    })
+
+    const select = document.body.querySelector(
+      `select.property-select`,
+    ) as HTMLSelectElement
+
+    // Trigger change
+    select.value = `volume`
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+
+    // Spinner should appear during loading
+    await vi.waitFor(() => {
+      const spinner = document.body.querySelector(`.spinner`)
+      expect(spinner).not.toBeNull()
+    })
+
+    // Resolve the loader
+    loader_control.resolve({ range: [0, 100] })
+
+    // Spinner should disappear after loading
+    await vi.waitFor(() => {
+      const spinner = document.body.querySelector(`.spinner`)
+      expect(spinner).toBeNull()
+    })
+
+    unmount(component)
+  })
+
+  test(`reverts selection on data_loader error`, async () => {
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const data_loader = vi.fn().mockRejectedValue(new Error(`Load failed`))
+
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: {
+        property_options,
+        selected_property_key: `energy`,
+        data_loader,
+        range: [0, 10],
+      },
+    })
+
+    const select = document.body.querySelector(
+      `select.property-select`,
+    ) as HTMLSelectElement
+    expect(select.value).toBe(`energy`) // Initial value
+
+    select.value = `volume`
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+
+    await vi.waitFor(() => expect(data_loader).toHaveBeenCalled())
+    await vi.waitFor(() =>
+      expect(error_spy).toHaveBeenCalledWith(
+        expect.stringContaining(`ColorBar property change failed`),
+        expect.any(Error),
+      )
+    )
+
+    // Key assertion: UI should revert to original selection after error
+    await vi.waitFor(() => expect(select.value).toBe(`energy`))
+
+    error_spy.mockRestore()
+    unmount(component)
+  })
+})
+
+describe(`ColorBar Interactive Color Scale Selection`, () => {
+  test(`renders color scale select when color_scale_options provided`, () => {
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: {
+        color_scale_options,
+        selected_color_scale_key: `viridis`,
+        range: [0, 10],
+      },
+    })
+
+    const select = document.body.querySelector(`select.color-scale-select`)
+    expect(select).not.toBeNull()
+
+    const options = select?.querySelectorAll(`option`)
+    expect(options?.length).toBe(3)
+    expect(options?.[0].value).toBe(`viridis`)
+    expect(options?.[0].textContent).toBe(`Viridis`)
+
+    unmount(component)
+  })
+
+  test(`does not render color scale select by default`, () => {
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: { range: [0, 10] },
+    })
+
+    const select = document.body.querySelector(`select.color-scale-select`)
+    expect(select).toBeNull()
+
+    unmount(component)
+  })
+
+  test(`calls on_color_scale_change when color scale selected`, () => {
+    const on_color_scale_change = vi.fn()
+
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: {
+        color_scale_options,
+        selected_color_scale_key: `viridis`,
+        on_color_scale_change,
+        range: [0, 10],
+      },
+    })
+
+    const select = document.body.querySelector(
+      `select.color-scale-select`,
+    ) as HTMLSelectElement
+
+    select.value = `plasma`
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+
+    expect(on_color_scale_change).toHaveBeenCalledWith(`plasma`)
+
+    unmount(component)
+  })
+
+  test(`renders both property and color scale selects together`, () => {
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: {
+        property_options,
+        selected_property_key: `energy`,
+        color_scale_options,
+        selected_color_scale_key: `viridis`,
+        range: [0, 10],
+      },
+    })
+
+    const property_select = document.body.querySelector(
+      `select.property-select`,
+    )
+    const color_scale_select = document.body.querySelector(
+      `select.color-scale-select`,
+    )
+
+    expect(property_select).not.toBeNull()
+    expect(color_scale_select).not.toBeNull()
+
+    unmount(component)
   })
 })

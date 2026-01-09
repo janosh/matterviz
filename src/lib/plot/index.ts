@@ -6,7 +6,6 @@ export interface TweenedOptions<T> {
   easing?: (t: number) => number
   interpolate?: (a: T, b: T) => (t: number) => T
 }
-
 export { default as BarPlot } from './BarPlot.svelte'
 export { default as BarPlotControls } from './BarPlotControls.svelte'
 export { default as ColorBar } from './ColorBar.svelte'
@@ -16,6 +15,7 @@ export * from './fill-utils'
 export { default as FillArea } from './FillArea.svelte'
 export { default as Histogram } from './Histogram.svelte'
 export { default as HistogramControls } from './HistogramControls.svelte'
+export { default as InteractiveAxisLabel } from './InteractiveAxisLabel.svelte'
 export * from './layout'
 export { default as Line } from './Line.svelte'
 export { default as PlotControls } from './PlotControls.svelte'

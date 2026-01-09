@@ -160,19 +160,12 @@ describe(`XrdPlot`, () => {
 
       await wait_for_plot_render(target)
 
-      // Get all text elements in each axis and find the one with the label
-      const x_axis_texts = Array.from(target.querySelectorAll(`.x-axis text`))
-      const y_axis_texts = Array.from(target.querySelectorAll(`.y-axis text`))
+      // Axis labels are now in .axis-label divs (inside foreignObject), not SVG text
+      const x_label = target.querySelector(`.x-axis .axis-label`)
+      const y_label = target.querySelector(`.y-axis .axis-label`)
 
-      const x_label_text = x_axis_texts.find((el) =>
-        el.textContent?.includes(expect_x_axis)
-      )
-      const y_label_text = y_axis_texts.find((el) =>
-        el.textContent?.includes(expect_y_axis)
-      )
-
-      expect(x_label_text?.textContent).toContain(expect_x_axis)
-      expect(y_label_text?.textContent).toContain(expect_y_axis)
+      expect(x_label?.textContent).toContain(expect_x_axis)
+      expect(y_label?.textContent).toContain(expect_y_axis)
     },
   )
 

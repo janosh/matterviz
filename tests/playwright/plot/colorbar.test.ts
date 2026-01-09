@@ -59,9 +59,9 @@ test.describe(`ColorBar Component Tests`, () => {
 
     // Check layout (title right, bar left -> row-reverse)
     await expect(colorbar).toHaveCSS(`flex-direction`, `row-reverse`)
-    // Check title rotation
-    const title_transform = await get_style(title, `transform`)
-    expect(title_transform).toContain(`matrix`) // Rotated elements use matrix
+    // Check title uses vertical writing mode (not transform) for right-side labels
+    const writing_mode = await get_style(title, `writing-mode`)
+    expect(writing_mode).toBe(`vertical-lr`)
 
     // Check ticks (secondary = left)
     // D3 nice ticks for [-10, 10] with 5 requested -> [-10, -5, 0, 5, 10]

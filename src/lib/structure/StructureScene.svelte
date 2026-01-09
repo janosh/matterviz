@@ -1,16 +1,21 @@
 <script lang="ts">
+  import type { D3InterpolateName } from '$lib/colors'
   import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_data } from '$lib/element'
-  import type { Vec3 } from '$lib/math'
-  import type { AnyStructure, BondPair, Site } from '$lib/structure'
-  import { atomic_radii } from '$lib/structure'
-  import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
+  import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import { Arrow, Cylinder, get_center_of_mass, Lattice } from '$lib/structure'
+  import type { AnyStructure, BondPair, Site } from '$lib/structure'
+  import {
+    Arrow,
+    atomic_radii,
+    Cylinder,
+    get_center_of_mass,
+    Lattice,
+  } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
   import {
     get_orig_site_idx,
@@ -110,8 +115,8 @@
     scene = $bindable(),
     camera = $bindable(),
     orbit_controls = $bindable(),
-    rotation_target_ref = $bindable<Vec3 | undefined>(undefined),
-    initial_computed_zoom = $bindable<number | undefined>(undefined),
+    rotation_target_ref = $bindable(),
+    initial_computed_zoom = $bindable(),
     hidden_elements = $bindable(new Set()),
     hidden_prop_vals = $bindable(new Set<number | string>()),
     atom_color_config = {

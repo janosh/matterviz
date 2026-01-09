@@ -41,8 +41,8 @@
     search = false,
     show_row_select = false,
     pagination = false,
-    selected_rows = $bindable<RowData[]>([]),
-    hidden_columns = $bindable<string[]>([]),
+    selected_rows = $bindable([]),
+    hidden_columns = $bindable([]),
     scroll_style,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {

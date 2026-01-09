@@ -8,8 +8,10 @@
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import type {
+    AxisLoadError,
     BasePlotProps,
     ControlsConfig,
+    DataLoaderFn,
     DataSeries,
     ErrorBand,
     FillHandlerEvent,
@@ -36,6 +38,7 @@
     FillArea,
     find_best_plot_area,
     get_tick_label,
+    InteractiveAxisLabel,
     Line,
     PlotLegend,
     PlotTooltip,
@@ -43,6 +46,11 @@
     ScatterPlotControls,
     ScatterPoint,
   } from '$lib/plot'
+  import type { AxisChangeState } from '$lib/plot/axis-utils'
+  import {
+    AXIS_LABEL_CONTAINER,
+    create_axis_change_handler,
+  } from '$lib/plot/axis-utils'
   import {
     get_series_color,
     get_series_symbol,
@@ -130,6 +138,9 @@
     children,
     header_controls,
     controls_extra,
+    data_loader,
+    on_axis_change,
+    on_error,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & Omit<BasePlotProps, `change`> & PlotConfig & {
     series?: DataSeries<Metadata>[]
@@ -188,6 +199,14 @@
     on_ref_line_hover?: (event: RefLineEvent | null) => void
     selected_series_idx?: number
     wrapper?: HTMLDivElement
+    // Interactive axis props
+    data_loader?: DataLoaderFn<Metadata>
+    on_axis_change?: (
+      axis: `x` | `y` | `y2`,
+      key: string,
+      new_series: DataSeries<Metadata>[],
+    ) => void
+    on_error?: (error: AxisLoadError) => void
   } = $props()
 
   // Merged axis/display values with defaults (use $derived to avoid breaking $bindable)
@@ -245,6 +264,9 @@
 
   // Reference line hover state
   let hovered_ref_line_idx = $state<number | null>(null)
+
+  // Interactive axis loading state
+  let axis_loading = $state<`x` | `y` | `y2` | null>(null)
 
   // State to hold the calculated label positions after simulation
   let label_positions = $state<Record<string, XyObj>>({})
@@ -1225,10 +1247,8 @@
     const legend_rect = legend_element.getBoundingClientRect()
 
     // Calculate offset from mouse to legend's actual rendered position relative to SVG
-    legend_drag_offset = {
-      x: event.clientX - legend_rect.left,
-      y: event.clientY - legend_rect.top,
-    }
+    const [x, y] = [event.clientX - legend_rect.left, event.clientY - legend_rect.top]
+    legend_drag_offset = { x, y }
   }
 
   function handle_legend_drag(event: MouseEvent) {
@@ -1250,10 +1270,6 @@
     const constrained_y = Math.max(0, Math.min(height - legend_height, new_y))
 
     legend_manual_position = { x: constrained_x, y: constrained_y }
-  }
-
-  function handle_legend_drag_end(_event: MouseEvent) {
-    legend_is_dragging = false
   }
 
   function get_screen_coords(point: Point, series?: DataSeries): [number, number] {
@@ -1336,6 +1352,47 @@
   // Set theme-aware background when entering fullscreen
   $effect(() => {
     set_fullscreen_bg(wrapper, fullscreen, `--scatter-fullscreen-bg`)
+  })
+
+  // State accessors for shared axis change handler
+  const axis_state: AxisChangeState<DataSeries<Metadata>> = {
+    get_axis: (axis) => (axis === `x` ? x_axis : axis === `y` ? y_axis : y2_axis),
+    set_axis: (axis, config) => {
+      // Spread into existing state to preserve merged type structure
+      if (axis === `x`) x_axis = { ...x_axis, ...config }
+      else if (axis === `y`) y_axis = { ...y_axis, ...config }
+      else y2_axis = { ...y2_axis, ...config }
+    },
+    get_series: () => series,
+    set_series: (new_series) => (series = new_series),
+    get_loading: () => axis_loading,
+    set_loading: (axis) => (axis_loading = axis),
+  }
+
+  // Create shared handler bound to this component's state
+  const handle_axis_change = create_axis_change_handler(
+    axis_state,
+    data_loader,
+    on_axis_change,
+    on_error,
+  )
+
+  let auto_load_attempted = false // prevent infinite retries on failure
+
+  // Auto-load data if series is empty but options exist (runs once)
+  $effect(() => {
+    if (series.length === 0 && data_loader && !auto_load_attempted) {
+      // Check x-axis first, then y-axis
+      if (x_axis.options?.length) {
+        auto_load_attempted = true
+        const first_key = x_axis.selected_key ?? x_axis.options[0].key
+        handle_axis_change(`x`, first_key).catch(() => {})
+      } else if (y_axis.options?.length) {
+        auto_load_attempted = true
+        const first_key = y_axis.selected_key ?? y_axis.options[0].key
+        handle_axis_change(`y`, first_key).catch(() => {})
+      }
+    }
   })
 </script>
 
@@ -1513,15 +1570,27 @@
           {/if}
         {/if}
 
-        {#if final_x_axis.label}
+        {#if final_x_axis.label || final_x_axis.options?.length}
           <foreignObject
-            x={width / 2 + (final_x_axis.label_shift?.x ?? 0) - 100}
-            y={height - pad.b - (final_x_axis.label_shift?.y ?? -40) - 10}
-            width="200"
-            height="20"
+            x={width / 2 + (final_x_axis.label_shift?.x ?? 0) -
+            AXIS_LABEL_CONTAINER.x_offset}
+            y={height - pad.b - (final_x_axis.label_shift?.y ?? -40) -
+            AXIS_LABEL_CONTAINER.y_offset}
+            width={AXIS_LABEL_CONTAINER.width}
+            height={AXIS_LABEL_CONTAINER.height}
+            style="overflow: visible; pointer-events: none"
           >
-            <div class="axis-label x-label">
-              {@html final_x_axis.label ?? ``}
+            <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
+              <InteractiveAxisLabel
+                label={final_x_axis.label ?? ``}
+                options={final_x_axis.options}
+                selected_key={final_x_axis.selected_key}
+                loading={axis_loading === `x`}
+                axis_type="x"
+                color={final_x_axis.color}
+                on_select={(key) => handle_axis_change(`x`, key)}
+                class="axis-label x-label"
+              />
             </div>
           </foreignObject>
         {/if}
@@ -1571,20 +1640,30 @@
           {/each}
         {/if}
 
-        {#if height > 0 && final_y_axis.label}
+        {#if height > 0 && (final_y_axis.label || final_y_axis.options?.length)}
           <foreignObject
-            x={-100}
-            y={-10}
-            width="200"
-            height="20"
+            x={-AXIS_LABEL_CONTAINER.x_offset}
+            y={-AXIS_LABEL_CONTAINER.y_offset}
+            width={AXIS_LABEL_CONTAINER.width}
+            height={AXIS_LABEL_CONTAINER.height}
+            style="overflow: visible; pointer-events: none"
             transform="rotate(-90, {(final_y_axis.label_shift?.y ?? 12)}, {pad.t +
               (height - pad.t - pad.b) / 2 +
               ((final_y_axis.label_shift?.x ?? 0))}) translate({(final_y_axis.label_shift?.y ?? 12)}, {pad.t +
               (height - pad.t - pad.b) / 2 +
               ((final_y_axis.label_shift?.x ?? 0))})"
           >
-            <div class="axis-label y-label" style:color={final_y_axis.color}>
-              {@html final_y_axis.label ?? ``}
+            <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
+              <InteractiveAxisLabel
+                label={final_y_axis.label ?? ``}
+                options={final_y_axis.options}
+                selected_key={final_y_axis.selected_key}
+                loading={axis_loading === `y`}
+                axis_type="y"
+                color={final_y_axis.color}
+                on_select={(key) => handle_axis_change(`y`, key)}
+                class="axis-label y-label"
+              />
             </div>
           </foreignObject>
         {/if}
@@ -1636,12 +1715,13 @@
             {/each}
           {/if}
 
-          {#if height > 0 && final_y2_axis.label}
+          {#if height > 0 && (final_y2_axis.label || final_y2_axis.options?.length)}
             <foreignObject
-              x={-100}
-              y={-10}
-              width="200"
-              height="20"
+              x={-AXIS_LABEL_CONTAINER.x_offset}
+              y={-AXIS_LABEL_CONTAINER.y_offset}
+              width={AXIS_LABEL_CONTAINER.width}
+              height={AXIS_LABEL_CONTAINER.height}
+              style="overflow: visible; pointer-events: none"
               transform="rotate(-90, {width - pad.r + ((final_y2_axis.label_shift?.y ?? 0))}, {pad.t +
                 (height - pad.t - pad.b) / 2 +
                 ((final_y2_axis.label_shift?.x ?? 0))}) translate({width -
@@ -1650,8 +1730,17 @@
                 (height - pad.t - pad.b) / 2 +
                 ((final_y2_axis.label_shift?.x ?? 0))})"
             >
-              <div class="axis-label y2-label" style:color={final_y2_axis.color}>
-                {@html final_y2_axis.label ?? ``}
+              <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
+                <InteractiveAxisLabel
+                  label={final_y2_axis.label ?? ``}
+                  options={final_y2_axis.options}
+                  selected_key={final_y2_axis.selected_key}
+                  loading={axis_loading === `y2`}
+                  axis_type="y2"
+                  color={final_y2_axis.color}
+                  on_select={(key) => handle_axis_change(`y2`, key)}
+                  class="axis-label y2-label"
+                />
               </div>
             </foreignObject>
           {/if}
@@ -2010,7 +2099,7 @@
         series_data={legend_data}
         on_drag_start={handle_legend_drag_start}
         on_drag={handle_legend_drag}
-        on_drag_end={handle_legend_drag_end}
+        on_drag_end={() => (legend_is_dragging = false)}
         draggable={legend?.draggable ?? true}
         {...legend}
         on_toggle={legend?.on_toggle ??
@@ -2169,7 +2258,7 @@
   foreignobject {
     overflow: visible;
   }
-  .axis-label {
+  .scatter :global(.axis-label) {
     text-align: center;
     width: 100%;
     height: 100%;

@@ -9,9 +9,9 @@
 
   let {
     supercell_scaling = $bindable(`1x1x1`),
-    cell_type = $bindable<CellType>(`original`),
+    cell_type = $bindable(`original`),
     sym_data = null,
-    loading = false,
+    loading = $bindable(false),
     direction = `down`,
     align = `right`,
   }: {
