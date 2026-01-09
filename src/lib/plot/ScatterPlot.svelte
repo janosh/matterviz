@@ -1441,13 +1441,19 @@
     }
   }
 
-  // Auto-load data if series is empty but options exist
+  // Track if auto-load has been attempted to prevent infinite retries on failure
+  let auto_load_attempted = false
+
+  // Auto-load data if series is empty but options exist (runs once)
   $effect(() => {
-    if (series.length === 0 && data_loader) {
+    if (series.length === 0 && data_loader && !auto_load_attempted) {
       // Check x-axis first
       if (x_axis.options?.length) {
+        auto_load_attempted = true
         const first_key = x_axis.selected_key ?? x_axis.options[0].key
-        handle_axis_change(`x`, first_key)
+        handle_axis_change(`x`, first_key).catch(() => {
+          // Error already handled in handle_axis_change
+        })
       }
     }
   })
