@@ -593,6 +593,25 @@ describe(`clean_xyz`, () => {
     const z_smooth_var = result.z.reduce((s, v) => s + (v - 5) ** 2, 0) / result.z.length
     expect(z_smooth_var).toBeLessThan(z_orig_var)
   })
+
+  // Regression: dynamic bounds must use x-axis value, not primary axis value
+  it(`uses x-axis for dynamic bounds computation with non-x primary_axis`, () => {
+    // Dynamic bound: max depends on x value (max: (x) => x * 2)
+    // With primary_axis: 'y', we check y values against bounds computed from x
+    const result = clean_xyz(
+      [1, 2, 3, 4, 5], // x values used for dynamic bounds
+      [1, 5, 4, 10, 8], // y values to check against bounds (primary_axis)
+      [0, 0, 0, 0, 0],
+      {
+        primary_axis: `y`,
+        bounds: { max: (x_val) => x_val * 2, mode: `filter` }, // max = 2, 4, 6, 8, 10
+      },
+    )
+    // y[0]=1 <= 2 (ok), y[1]=5 > 4 (filtered), y[2]=4 <= 6 (ok), y[3]=10 > 8 (filtered), y[4]=8 <= 10 (ok)
+    expect(result.x).toEqual([1, 3, 5])
+    expect(result.y).toEqual([1, 4, 8])
+    expect(result.quality.bounds_violations).toBe(2)
+  })
 })
 
 describe(`clean_trajectory_props`, () => {
@@ -672,6 +691,21 @@ describe(`clean_trajectory_props`, () => {
     expect(result.props.energy.length).toBe(4)
     expect(result.props.Step).toEqual([0, 2, 3, 4])
     expect(result.props.energy).toEqual([10, 30, 40, 50])
+  })
+
+  // Regression: invalid_values_found should only count within aligned length
+  it(`counts invalid_values_found only in aligned prefix, not beyond`, () => {
+    // Step has 3 elements, energy has 5 elements with NaN beyond aligned length
+    const result = clean_trajectory_props(
+      {
+        Step: [0, 1, 2],
+        energy: [10, NaN, 30, NaN, NaN], // NaN at indices 3,4 beyond aligned length
+      },
+      { invalid_values: `remove`, independent_axis: `Step` },
+    )
+    // Only index 1 is invalid within aligned length [0,1,2]
+    expect(result.quality.energy.invalid_values_found).toBe(1)
+    expect(result.quality.Step.invalid_values_found).toBe(0)
   })
 })
 

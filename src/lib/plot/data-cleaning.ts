@@ -732,9 +732,11 @@ export function clean_xyz(
     )
   }
 
-  let filtered_x = kept_indices.map((idx) => x_values[idx])
-  let filtered_y = kept_indices.map((idx) => y_values[idx])
-  let filtered_z = kept_indices.map((idx) => z_values[idx])
+  let filtered = {
+    x: kept_indices.map((idx) => x_values[idx]),
+    y: kept_indices.map((idx) => y_values[idx]),
+    z: kept_indices.map((idx) => z_values[idx]),
+  }
 
   const quality: CleaningQuality = {
     points_removed: length - kept_indices.length,
@@ -744,45 +746,40 @@ export function clean_xyz(
   }
 
   if (invalid_mode === `interpolate`) {
-    filtered_x = handle_invalid_values(filtered_x, `interpolate`).cleaned
-    filtered_y = handle_invalid_values(filtered_y, `interpolate`).cleaned
-    filtered_z = handle_invalid_values(filtered_z, `interpolate`).cleaned
+    filtered.x = handle_invalid_values(filtered.x, `interpolate`).cleaned
+    filtered.y = handle_invalid_values(filtered.y, `interpolate`).cleaned
+    filtered.z = handle_invalid_values(filtered.z, `interpolate`).cleaned
   }
 
   // Apply bounds filter on primary axis
   if (bounds?.mode === `filter`) {
     const primary = config.primary_axis ?? `x`
-    const get_primary = (idx: number) =>
-      primary === `x`
-        ? filtered_x[idx]
-        : primary === `y`
-        ? filtered_y[idx]
-        : filtered_z[idx]
-
     const bounds_kept: number[] = []
-    for (let idx = 0; idx < filtered_x.length; idx++) {
-      const primary_val = get_primary(idx)
-      // Use primary axis value for dynamic bounds computation
-      if (is_in_bounds(primary_val, primary_val, bounds)) {
+    for (let idx = 0; idx < filtered.x.length; idx++) {
+      const primary_val = filtered[primary][idx]
+      // Use x-axis value for dynamic bounds computation (e.g., max: (x) => x * 2)
+      if (is_in_bounds(primary_val, filtered.x[idx], bounds)) {
         bounds_kept.push(idx)
       } else {
         quality.bounds_violations++
       }
     }
-    filtered_x = bounds_kept.map((idx) => filtered_x[idx])
-    filtered_y = bounds_kept.map((idx) => filtered_y[idx])
-    filtered_z = bounds_kept.map((idx) => filtered_z[idx])
+    filtered = {
+      x: bounds_kept.map((idx) => filtered.x[idx]),
+      y: bounds_kept.map((idx) => filtered.y[idx]),
+      z: bounds_kept.map((idx) => filtered.z[idx]),
+    }
     quality.points_removed += kept_indices.length - bounds_kept.length
   }
 
   // Smooth dependent axes (y, z) using x as independent reference
   // x-axis is never smoothed as it's typically the independent variable (time, index, etc.)
   if (smooth) {
-    filtered_y = apply_smoothing(filtered_x, filtered_y, smooth)
-    filtered_z = apply_smoothing(filtered_x, filtered_z, smooth)
+    filtered.y = apply_smoothing(filtered.x, filtered.y, smooth)
+    filtered.z = apply_smoothing(filtered.x, filtered.z, smooth)
   }
 
-  return { x: filtered_x, y: filtered_y, z: filtered_z, quality }
+  return { ...filtered, quality }
 }
 
 // Clean trajectory properties, filtering to intersection of valid indices
@@ -803,9 +800,15 @@ export function clean_trajectory_props(
   // Use existing or generate independent axis
   const x_values = props[independent_axis] ?? Array.from({ length }, (_, idx) => idx)
 
-  // Count invalid values per property
+  // Count invalid values per property (only within aligned prefix)
   const invalid_counts: Record<string, number> = Object.fromEntries(
-    entries.map(([key, arr]) => [key, arr.filter((val) => !Number.isFinite(val)).length]),
+    entries.map(([key, arr]) => {
+      let count = 0
+      for (let idx = 0; idx < length; idx++) {
+        if (!Number.isFinite(arr[idx])) count++
+      }
+      return [key, count]
+    }),
   )
 
   // Find indices valid across ALL properties (remove mode filters)
