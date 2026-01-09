@@ -535,6 +535,31 @@ describe(`clean_xyz`, () => {
     expect(result.y).toEqual([10, 14])
     expect(result.z).toEqual([100, 104])
   })
+
+  // Regression: smoothing must not corrupt independent x-axis (monotonicity requirement)
+  it(`smoothing preserves x-axis monotonicity and only smooths y/z`, () => {
+    // Strictly monotonic x with oscillating y and z
+    const x_input = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    const y_input = [0, 10, 0, 10, 0, 10, 0, 10, 0, 10]
+    const z_input = [10, 0, 10, 0, 10, 0, 10, 0, 10, 0]
+
+    const result = clean_xyz([...x_input], [...y_input], [...z_input], {
+      smooth: { type: `moving_avg`, window: 3 },
+      in_place: false,
+    })
+
+    // x must be unchanged (independent variable never smoothed)
+    expect(result.x).toEqual(x_input)
+
+    // y and z should be smoothed (variance reduced)
+    const y_orig_var = y_input.reduce((s, v) => s + (v - 5) ** 2, 0) / y_input.length
+    const y_smooth_var = result.y.reduce((s, v) => s + (v - 5) ** 2, 0) / result.y.length
+    expect(y_smooth_var).toBeLessThan(y_orig_var)
+
+    const z_orig_var = z_input.reduce((s, v) => s + (v - 5) ** 2, 0) / z_input.length
+    const z_smooth_var = result.z.reduce((s, v) => s + (v - 5) ** 2, 0) / result.z.length
+    expect(z_smooth_var).toBeLessThan(z_orig_var)
+  })
 })
 
 describe(`clean_trajectory_props`, () => {
@@ -618,6 +643,8 @@ describe(`clean_trajectory_props`, () => {
 })
 
 describe(`Performance`, () => {
+  // Savitzky-Golay with 11-window + polynomial fit: O(n × w) with matrix operations
+  // justifies higher threshold (2000ms) vs moving_avg (500ms for 10x more points)
   it.each([
     { length: 100000, smooth: { type: `moving_avg` as const, window: 11 }, maxMs: 500 },
     {

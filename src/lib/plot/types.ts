@@ -985,13 +985,11 @@ export interface PhysicalBounds {
   mode?: `clamp` | `filter` | `null` // How to handle violations
 }
 
-// Smoothing algorithm configuration
-export interface SmoothingConfig {
-  type: `moving_avg` | `savgol` | `gaussian`
-  window: number // Window size (must be odd for savgol)
-  polynomial_order?: number // For savgol only (default: 2)
-  sigma?: number // For gaussian only
-}
+// Smoothing algorithm configuration (discriminated union for type safety)
+export type SmoothingConfig =
+  | { type: `moving_avg`; window: number }
+  | { type: `savgol`; window: number; polynomial_order?: number } // window must be odd
+  | { type: `gaussian`; window: number; sigma?: number } // sigma defaults to window/4
 
 // Main cleaning configuration
 export interface CleaningConfig {

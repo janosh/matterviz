@@ -208,6 +208,29 @@
     })
   })
 
+  // Shared helper: find interpolated value at an index by averaging nearest valid neighbors
+  // Used by removed_points, find_nan_positions, and find_trajectory_nan_positions
+  function interpolate_at_index(
+    values: number[],
+    idx: number,
+    fallback: number,
+  ): number {
+    let prev = fallback, next = fallback
+    for (let jdx = idx - 1; jdx >= 0; jdx--) {
+      if (Number.isFinite(values[jdx])) {
+        prev = values[jdx]
+        break
+      }
+    }
+    for (let jdx = idx + 1; jdx < values.length; jdx++) {
+      if (Number.isFinite(values[jdx])) {
+        next = values[jdx]
+        break
+      }
+    }
+    return (prev + next) / 2
+  }
+
   // Find removed/invalid points for visualization
   let removed_points = $derived.by(() => {
     const removed_x: number[] = []
@@ -223,21 +246,7 @@
         removed_x.push(x)
         // For NaN values, show at the interpolated position or plot bounds
         if (!Number.isFinite(y)) {
-          // Find nearest valid neighbors for display position
-          let prev_y = 0, next_y = 0
-          for (let j = idx - 1; j >= 0; j--) {
-            if (Number.isFinite(raw_data.y[j])) {
-              prev_y = raw_data.y[j]
-              break
-            }
-          }
-          for (let j = idx + 1; j < raw_data.y.length; j++) {
-            if (Number.isFinite(raw_data.y[j])) {
-              next_y = raw_data.y[j]
-              break
-            }
-          }
-          removed_y.push((prev_y + next_y) / 2 || 10) // midpoint or fallback
+          removed_y.push(interpolate_at_index(raw_data.y, idx, 10) || 10)
         } else {
           removed_y.push(y)
         }
@@ -315,20 +324,7 @@
     const result: { x: number; y: number }[] = []
     for (let idx = 0; idx < y_vals.length; idx++) {
       if (Number.isFinite(y_vals[idx])) continue
-      let prev = fallback, next = fallback
-      for (let jdx = idx - 1; jdx >= 0; jdx--) {
-        if (Number.isFinite(y_vals[jdx])) {
-          prev = y_vals[jdx]
-          break
-        }
-      }
-      for (let jdx = idx + 1; jdx < y_vals.length; jdx++) {
-        if (Number.isFinite(y_vals[jdx])) {
-          next = y_vals[jdx]
-          break
-        }
-      }
-      result.push({ x: x_vals[idx], y: (prev + next) / 2 })
+      result.push({ x: x_vals[idx], y: interpolate_at_index(y_vals, idx, fallback) })
     }
     return result
   }
@@ -377,20 +373,10 @@
     const result: { x: number; y: number }[] = []
     for (let idx = 0; idx < x_vals.length; idx++) {
       if (Number.isFinite(x_vals[idx]) && Number.isFinite(y_vals[idx])) continue
-      let prev = { x: fallback, y: fallback }, next = { x: fallback, y: fallback }
-      for (let jdx = idx - 1; jdx >= 0; jdx--) {
-        if (Number.isFinite(x_vals[jdx]) && Number.isFinite(y_vals[jdx])) {
-          prev = { x: x_vals[jdx], y: y_vals[jdx] }
-          break
-        }
-      }
-      for (let jdx = idx + 1; jdx < x_vals.length; jdx++) {
-        if (Number.isFinite(x_vals[jdx]) && Number.isFinite(y_vals[jdx])) {
-          next = { x: x_vals[jdx], y: y_vals[jdx] }
-          break
-        }
-      }
-      result.push({ x: (prev.x + next.x) / 2, y: (prev.y + next.y) / 2 })
+      result.push({
+        x: interpolate_at_index(x_vals, idx, fallback),
+        y: interpolate_at_index(y_vals, idx, fallback),
+      })
     }
     return result
   }

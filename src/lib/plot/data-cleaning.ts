@@ -33,18 +33,18 @@ export function compute_local_variance(
   const half_window = Math.floor(window_size / 2)
   const result = new Array<number>(len)
 
-  // Use sliding window with Welford's algorithm
+  // Single pass for each index, no slice allocation (avoids O(n × window) allocations)
   for (let idx = 0; idx < len; idx++) {
     const start = Math.max(0, idx - half_window)
     const end = Math.min(len, idx + half_window + 1)
-    const window_values = values.slice(start, end)
 
     // Welford's online variance calculation
     let mean = 0
     let m2 = 0
     let count = 0
 
-    for (const val of window_values) {
+    for (let jdx = start; jdx < end; jdx++) {
+      const val = values[jdx]
       if (!Number.isFinite(val)) continue
       count++
       const delta = val - mean
@@ -120,11 +120,21 @@ function detect_amplitude_growth(
   const half_window = Math.floor(window_size / 2)
 
   for (let idx = half_window; idx < values.length - half_window; idx++) {
-    const window_vals = values.slice(idx - half_window, idx + half_window + 1)
-    const local_mean = window_vals.reduce((sum, val) => sum + val, 0) / window_vals.length
-    const max_deviation = Math.max(
-      ...window_vals.map((val) => Math.abs(val - local_mean)),
-    )
+    const start = idx - half_window
+    const end = idx + half_window + 1
+    const window_len = end - start
+
+    // Compute local mean without slice allocation
+    let sum = 0
+    for (let jdx = start; jdx < end; jdx++) sum += values[jdx]
+    const local_mean = sum / window_len
+
+    // Find max deviation without slice allocation
+    let max_deviation = 0
+    for (let jdx = start; jdx < end; jdx++) {
+      const deviation = Math.abs(values[jdx] - local_mean)
+      if (deviation > max_deviation) max_deviation = deviation
+    }
     amplitudes.push(max_deviation)
   }
 
@@ -169,11 +179,13 @@ function detect_sign_change_frequency(
   let max_score = 0
 
   for (let idx = half_window; idx < derivs.length - half_window; idx++) {
-    const window_derivs = derivs.slice(idx - half_window, idx + half_window + 1)
+    const start = idx - half_window
+    const end = idx + half_window + 1
     let sign_changes = 0
 
-    for (let jdx = 1; jdx < window_derivs.length; jdx++) {
-      if (window_derivs[jdx] * window_derivs[jdx - 1] < 0) {
+    // Count sign changes without slice allocation
+    for (let jdx = start + 1; jdx < end; jdx++) {
+      if (derivs[jdx] * derivs[jdx - 1] < 0) {
         sign_changes++
       }
     }
@@ -359,6 +371,8 @@ export function smooth_savitzky_golay(
   const coeffs = compute_savgol_coefficients(actual_window, polynomial_order)
   const half = Math.floor(actual_window / 2)
   const result = new Array<number>(values.length)
+  // Cache coefficient sum to avoid O(n × window) redundant reductions in loop
+  const coeffs_sum = coeffs.reduce((a, b) => a + b, 0)
 
   for (let idx = 0; idx < values.length; idx++) {
     let sum = 0
@@ -374,9 +388,7 @@ export function smooth_savitzky_golay(
       }
     }
 
-    result[idx] = weight_sum !== 0
-      ? sum / weight_sum * coeffs.reduce((a, b) => a + b, 0)
-      : values[idx]
+    result[idx] = weight_sum !== 0 ? sum / weight_sum * coeffs_sum : values[idx]
   }
 
   return result
@@ -760,11 +772,11 @@ export function clean_xyz(
     quality.points_removed += kept_indices.length - bounds_kept.length
   }
 
+  // Smooth dependent axes (y, z) using x as independent reference
+  // x-axis is never smoothed as it's typically the independent variable (time, index, etc.)
   if (smooth) {
-    const primary = config.primary_axis ?? `x`
-    if (primary === `x`) filtered_x = apply_smoothing(filtered_x, filtered_x, smooth)
-    else if (primary === `y`) filtered_y = apply_smoothing(filtered_x, filtered_y, smooth)
-    else filtered_z = apply_smoothing(filtered_x, filtered_z, smooth)
+    filtered_y = apply_smoothing(filtered_x, filtered_y, smooth)
+    filtered_z = apply_smoothing(filtered_x, filtered_z, smooth)
   }
 
   return { x: filtered_x, y: filtered_y, z: filtered_z, quality }
