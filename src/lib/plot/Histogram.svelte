@@ -9,7 +9,6 @@
     RefLine,
     RefLineEvent,
   } from '$lib/plot'
-  import { AXIS_LABEL_CONTAINER, merge_series_state } from '$lib/plot/axis-utils'
   import {
     find_best_plot_area,
     HistogramControls,
@@ -17,6 +16,7 @@
     PlotLegend,
     ReferenceLine,
   } from '$lib/plot'
+  import { AXIS_LABEL_CONTAINER, merge_series_state } from '$lib/plot/axis-utils'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
   import { AXIS_DEFAULTS } from '$lib/plot/defaults'
   import { get_relative_coords } from '$lib/plot/interactions'

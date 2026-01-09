@@ -33,7 +33,6 @@
     UserContentProps,
     XyObj,
   } from '$lib/plot'
-  import { AXIS_LABEL_CONTAINER, merge_series_state } from '$lib/plot/axis-utils'
   import {
     ColorBar,
     FillArea,
@@ -47,6 +46,7 @@
     ScatterPlotControls,
     ScatterPoint,
   } from '$lib/plot'
+  import { AXIS_LABEL_CONTAINER, merge_series_state } from '$lib/plot/axis-utils'
   import {
     get_series_color,
     get_series_symbol,

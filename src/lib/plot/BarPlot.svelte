@@ -26,7 +26,6 @@
     UserContentProps,
     XyObj,
   } from '$lib/plot'
-  import { AXIS_LABEL_CONTAINER, merge_series_state } from '$lib/plot/axis-utils'
   import {
     BarPlotControls,
     find_best_plot_area,
@@ -35,6 +34,7 @@
     ReferenceLine,
     ScatterPoint,
   } from '$lib/plot'
+  import { AXIS_LABEL_CONTAINER, merge_series_state } from '$lib/plot/axis-utils'
   import { process_prop } from '$lib/plot/data-transform'
   import { get_relative_coords } from '$lib/plot/interactions'
   import type { IndexedRefLine } from '$lib/plot/reference-line'
