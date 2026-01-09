@@ -14,7 +14,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest --run && playwright test",
-    "check": "svelte-check",
+    "check": "svelte-check-rs",
     "package": "svelte-package",
     "prepublishOnly": "svelte-package"
   },

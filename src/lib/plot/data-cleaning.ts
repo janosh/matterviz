@@ -278,7 +278,7 @@ export function detect_instability(
     }
   }
 
-  const detected = combined_score >= 1.0 || onset_index >= 0
+  const detected = combined_score >= threshold || onset_index >= 0
   const onset_x = onset_index >= 0 && onset_index < x_values.length
     ? x_values[onset_index]
     : NaN
@@ -409,10 +409,8 @@ function apply_smoothing(
         config.window,
         config.polynomial_order ?? DEFAULT_POLYNOMIAL_ORDER,
       )
-    case `gaussian`: {
-      const sigma = config.sigma ?? config.window / 4
-      return apply_gaussian_smearing(x_values, y_values, sigma)
-    }
+    case `gaussian`:
+      return apply_gaussian_smearing(x_values, y_values, config.sigma)
     default:
       return y_values
   }
@@ -677,9 +675,14 @@ export function clean_multi_series(
 
   for (const y_arr of y_arrays) {
     let filtered_y = kept_indices.map((idx) => y_arr[idx])
+    // Count invalid values only in aligned prefix (not beyond length)
+    let invalid_count = 0
+    for (let idx = 0; idx < length; idx++) {
+      if (!Number.isFinite(y_arr[idx])) invalid_count++
+    }
     const quality: CleaningQuality = {
       points_removed: length - kept_indices.length,
-      invalid_values_found: y_arr.filter((val) => !Number.isFinite(val)).length,
+      invalid_values_found: invalid_count,
       oscillation_detected: false,
       bounds_violations: 0,
     }
@@ -760,7 +763,9 @@ export function clean_xyz(
 
     const bounds_kept: number[] = []
     for (let idx = 0; idx < filtered_x.length; idx++) {
-      if (is_in_bounds(get_primary(idx), filtered_x[idx], bounds)) {
+      const primary_val = get_primary(idx)
+      // Use primary axis value for dynamic bounds computation
+      if (is_in_bounds(primary_val, primary_val, bounds)) {
         bounds_kept.push(idx)
       } else {
         quality.bounds_violations++

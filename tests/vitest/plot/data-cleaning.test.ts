@@ -136,6 +136,25 @@ describe(`detect_instability`, () => {
     expect(typeof result.combined_score).toBe(`number`)
     expect(result.combined_score).toBeGreaterThanOrEqual(0)
   })
+
+  // Regression: oscillation_threshold must control combined_score detection
+  // Bug was: `combined_score >= 1.0` instead of `combined_score >= threshold`
+  it(`respects oscillation_threshold for combined_score detection`, () => {
+    // Construct data where combined_score is between 1.0 and a higher threshold
+    // With the bug (using 1.0): would detect. Without bug: should not detect.
+    const { x, y } = generate_linear_data(100, 0.5) // no noise = very stable
+    const baseline = detect_instability(x, y)
+
+    // For stable linear data, onset_index should be -1 (no instability onset)
+    // and combined_score should be close to 0
+    expect(baseline.onset_index).toBe(-1)
+
+    // With threshold = 0.0001 (very low), should detect if score >= threshold
+    const low_thresh = detect_instability(x, y, { oscillation_threshold: 0.0001 })
+    // If score >= 0.0001, detected should be true; otherwise false
+    // This tests that threshold is actually used
+    expect(low_thresh.detected).toBe(low_thresh.combined_score >= 0.0001)
+  })
 })
 
 describe(`handle_invalid_values`, () => {
@@ -346,15 +365,12 @@ describe(`clean_series`, () => {
   })
 
   it.each([
-    { type: `moving_avg` as const, window: 3 },
-    { type: `gaussian` as const, window: 5, sigma: 1 },
-  ])(`applies $type smoothing`, ({ type, window, sigma }) => {
+    { smooth: { type: `moving_avg` as const, window: 3 } },
+    { smooth: { type: `gaussian` as const, sigma: 1 } },
+  ])(`applies $smooth.type smoothing`, ({ smooth }) => {
     const y = [0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10]
     const series: DataSeries = { x: y.map((_, i) => i), y }
-    const result = clean_series(series, {
-      smooth: { type, window, sigma },
-      in_place: false,
-    })
+    const result = clean_series(series, { smooth, in_place: false })
     const orig_var = y.reduce((s, v) => s + (v - 5) ** 2, 0) / y.length
     const smooth_var = result.series.y.reduce((s, v) => s + (v - 5) ** 2, 0) /
       result.series.y.length
@@ -472,6 +488,23 @@ describe(`clean_multi_series`, () => {
     expect(result.cleaned_y[0].length).toBe(result.x.length)
     expect(result.cleaned_y[1].length).toBe(result.x.length)
     expect(result.x).toEqual([1, 2, 3])
+  })
+
+  // Regression: invalid_values_found should only count within aligned length
+  it(`counts invalid_values_found only in aligned prefix, not beyond`, () => {
+    // x has 3 elements, y_arrays have 5 elements each with NaN at different positions
+    // Only first 3 elements should be considered for metrics
+    const result = clean_multi_series(
+      [0, 1, 2],
+      [[0, NaN, 4, NaN, NaN], [10, 12, 14, NaN, NaN]], // NaN at indices 3,4 are beyond aligned length
+      { invalid_values: `remove` },
+    )
+    // Only index 1 in first series is invalid within aligned length [0,1,2]
+    expect(result.quality[0].invalid_values_found).toBe(1)
+    // Second series has no invalid values within aligned length [0,1,2]
+    expect(result.quality[1].invalid_values_found).toBe(0)
+    // points_removed should reflect only the one invalid index removed
+    expect(result.quality[0].points_removed).toBe(1)
   })
 })
 

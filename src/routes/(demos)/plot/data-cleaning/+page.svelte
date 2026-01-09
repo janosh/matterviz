@@ -16,47 +16,42 @@
   // --- Synthetic Data Generators ---
 
   // Generate smooth baseline data
-  function generate_smooth(
+  const generate_smooth = (
     length: number,
     amplitude = 10,
     frequency = 0.2,
-  ): number[] {
-    return Array.from(
+  ): number[] =>
+    Array.from(
       { length },
       (_, idx) => amplitude * Math.sin(idx * frequency) + amplitude,
     )
-  }
 
   // Add random noise
-  function add_noise(data: number[], noise_level: number): number[] {
-    return data.map((val) => val + (Math.random() - 0.5) * noise_level * 2)
-  }
+  const add_noise = (data: number[], noise_level: number): number[] =>
+    data.map((val) => val + (Math.random() - 0.5) * noise_level * 2)
 
   // Add NaN values at random positions
-  function add_nan_values(data: number[], probability: number): number[] {
-    return data.map((val) => (Math.random() < probability ? NaN : val))
-  }
+  const add_nan_values = (data: number[], probability: number): number[] =>
+    data.map((val) => (Math.random() < probability ? NaN : val))
 
   // Add outliers (spike values)
-  function add_outliers(
+  const add_outliers = (
     data: number[],
     probability: number,
     magnitude: number,
-  ): number[] {
-    return data.map((val) => {
-      if (Math.random() < probability) {
-        return val + (Math.random() > 0.5 ? 1 : -1) * magnitude
-      }
-      return val
-    })
-  }
+  ): number[] =>
+    data.map((val) =>
+      Math.random() < probability
+        ? val + (Math.random() > 0.5 ? 1 : -1) * magnitude
+        : val
+    )
 
   // Generate oscillating/unstable data
-  function generate_unstable(
+  const generate_unstable = (
     stable_length: number,
     unstable_length: number,
     growth_rate = 0.15,
-  ): { x: number[]; y: number[] } {
+  ): { x: number[]; y: number[] } => {
     const total = stable_length + unstable_length
     const x_vals = Array.from({ length: total }, (_, idx) => idx)
     const y_vals = x_vals.map((val, idx) => {
@@ -71,10 +66,10 @@
   }
 
   // Generate jumpy data (discontinuities)
-  function generate_jumpy(length: number, jump_count: number): number[] {
+  const generate_jumpy = (length: number, jump_count: number): number[] => {
     const result: number[] = []
     let baseline = 10
-    const segment_length = Math.floor(length / (jump_count + 1))
+    const segment_length = Math.max(1, Math.floor(length / (jump_count + 1)))
     for (let idx = 0; idx < length; idx++) {
       if (idx > 0 && idx % segment_length === 0) {
         baseline += (Math.random() - 0.5) * 20
@@ -129,19 +124,13 @@
     }
 
     if (apply_smoothing) {
-      config.smooth = {
-        type: smoothing_type,
-        window: smoothing_window,
-        polynomial_order: smoothing_type === `savgol` ? 2 : undefined,
-      }
+      config.smooth = smoothing_type === `savgol`
+        ? { type: `savgol`, window: smoothing_window, polynomial_order: 2 }
+        : { type: `moving_avg`, window: smoothing_window }
     }
 
     if (apply_bounds) {
-      config.bounds = {
-        min: bounds_min,
-        max: bounds_max,
-        mode: bounds_mode,
-      }
+      config.bounds = { min: bounds_min, max: bounds_max, mode: bounds_mode }
     }
 
     return config
@@ -154,40 +143,36 @@
     void regenerate_counter
     const x_vals = Array.from({ length: data_length }, (_, idx) => idx)
 
-    switch (data_type) {
-      case `unstable`:
-        return generate_unstable(
-          Math.floor(data_length * 0.5),
-          Math.ceil(data_length * 0.5),
-        )
-      case `noisy`: {
-        const smooth = generate_smooth(data_length)
-        return { x: x_vals, y: add_noise(smooth, noise_level) }
+    if (data_type === `unstable`) {
+      return generate_unstable(
+        Math.floor(data_length * 0.5),
+        Math.ceil(data_length * 0.5),
+      )
+    } else if (data_type === `noisy`) {
+      const smooth = generate_smooth(data_length)
+      return { x: x_vals, y: add_noise(smooth, noise_level) }
+    } else if (data_type === `outliers`) {
+      const base = generate_smooth(data_length)
+      return {
+        x: x_vals,
+        y: add_outliers(base, outlier_probability, outlier_magnitude),
       }
-      case `outliers`: {
-        const base = generate_smooth(data_length)
-        return {
-          x: x_vals,
-          y: add_outliers(base, outlier_probability, outlier_magnitude),
-        }
-      }
-      case `nan_values`: {
-        const base = generate_smooth(data_length)
-        return { x: x_vals, y: add_nan_values(base, nan_probability) }
-      }
-      case `jumpy`:
-        return { x: x_vals, y: generate_jumpy(data_length, 4) }
-      case `combined`: {
-        let y_vals = generate_smooth(data_length)
-        y_vals = add_noise(y_vals, noise_level * 0.5)
-        y_vals = add_outliers(
-          y_vals,
-          outlier_probability * 0.5,
-          outlier_magnitude * 0.7,
-        )
-        y_vals = add_nan_values(y_vals, nan_probability * 0.5)
-        return { x: x_vals, y: y_vals }
-      }
+    } else if (data_type === `nan_values`) {
+      const base = generate_smooth(data_length)
+      return { x: x_vals, y: add_nan_values(base, nan_probability) }
+    } else if (data_type === `jumpy`) {
+      return { x: x_vals, y: generate_jumpy(data_length, 4) }
+    } else {
+      // combined
+      let y_vals = generate_smooth(data_length)
+      y_vals = add_noise(y_vals, noise_level * 0.5)
+      y_vals = add_outliers(
+        y_vals,
+        outlier_probability * 0.5,
+        outlier_magnitude * 0.7,
+      )
+      y_vals = add_nan_values(y_vals, nan_probability * 0.5)
+      return { x: x_vals, y: y_vals }
     }
   })
 
@@ -231,25 +216,25 @@
     return (prev + next) / 2
   }
 
-  // Find removed/invalid points for visualization
+  // Find removed points via two-pointer comparison (cleaning preserves order)
   let removed_points = $derived.by(() => {
     const removed_x: number[] = []
     const removed_y: number[] = []
-    const cleaned_x_set = new Set(cleaned_result.series.x)
+    const cleaned_x = cleaned_result.series.x
 
-    for (let idx = 0; idx < raw_data.x.length; idx++) {
-      const x = raw_data.x[idx]
-      const y = raw_data.y[idx]
-
-      // Check if this point was removed
-      if (!cleaned_x_set.has(x)) {
-        removed_x.push(x)
-        // For NaN values, show at the interpolated position or plot bounds
-        if (!Number.isFinite(y)) {
-          removed_y.push(interpolate_at_index(raw_data.y, idx, 10) || 10)
-        } else {
-          removed_y.push(y)
-        }
+    for (let raw_idx = 0, cleaned_idx = 0; raw_idx < raw_data.x.length; raw_idx++) {
+      if (
+        cleaned_idx < cleaned_x.length &&
+        raw_data.x[raw_idx] === cleaned_x[cleaned_idx]
+      ) cleaned_idx++
+      else {
+        removed_x.push(raw_data.x[raw_idx])
+        const raw_y = raw_data.y[raw_idx]
+        removed_y.push(
+          Number.isFinite(raw_y)
+            ? raw_y
+            : interpolate_at_index(raw_data.y, raw_idx, 10),
+        )
       }
     }
     return { x: removed_x, y: removed_y }
@@ -978,13 +963,10 @@ const config: CleaningConfig = {
     mode: 'clamp',               // 'clamp' | 'filter' | 'null'
   },
 
-  // Smoothing
-  smooth: {
-    type: 'savgol',              // 'moving_avg' | 'savgol' | 'gaussian'
-    window: 5,                   // must be odd for savgol
-    polynomial_order: 2,         // savgol only
-    sigma: 1.0,                  // gaussian only
-  },
+  // Smoothing (discriminated union - each type has specific options)
+  // smooth: { type: 'moving_avg', window: 5 }
+  // smooth: { type: 'gaussian', sigma: 1.0 }
+  smooth: { type: 'savgol', window: 5, polynomial_order: 2 },
 
   // Performance
   in_place: true,                // mutate input (default: true)

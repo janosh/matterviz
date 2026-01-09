@@ -989,7 +989,7 @@ export interface PhysicalBounds {
 export type SmoothingConfig =
   | { type: `moving_avg`; window: number }
   | { type: `savgol`; window: number; polynomial_order?: number } // window must be odd
-  | { type: `gaussian`; window: number; sigma?: number } // sigma defaults to window/4
+  | { type: `gaussian`; sigma: number } // sigma controls Gaussian kernel width
 
 // Main cleaning configuration
 export interface CleaningConfig {
