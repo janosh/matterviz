@@ -2637,7 +2637,12 @@ All changes trigger lazy data loading with simulated network delays.
       x: all_data.map((d) => d[x_key]),
       y: all_data.map((d) => d[y_key]),
       color_values: color_vals,
-      point_style: { radius: 5, stroke: `white`, stroke_width: 0.5 },
+      point_style: {
+        radius: 5,
+        fill_opacity: 0.8,
+        stroke: `white`,
+        stroke_width: 0.5,
+      },
       markers: `points`,
       metadata: all_data.map((d, idx) => ({
         idx,
@@ -2684,7 +2689,9 @@ All changes trigger lazy data loading with simulated network delays.
     const prop = properties[property_key]
     return {
       series: build_series(new_x, new_y, color_key),
-      axis_label: `${prop.label} (${prop.unit})`,
+      // Return label and unit separately - plot will format consistently
+      axis_label: prop.label,
+      axis_unit: prop.unit,
     }
   }
 
