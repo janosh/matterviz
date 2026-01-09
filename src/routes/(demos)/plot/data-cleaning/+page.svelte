@@ -117,8 +117,41 @@
   let outlier_magnitude = $state(25)
   let regenerate_counter = $state(0)
 
-  // Generate raw data based on type
-  function generate_raw_data(): { x: number[]; y: number[] } {
+  // Derived: cleaning config from controls
+  // Using $derived ensures Svelte tracks all state dependencies properly
+  let cleaning_config = $derived.by((): CleaningConfig => {
+    const config: CleaningConfig = {
+      invalid_values: invalid_mode,
+      oscillation_threshold,
+      window_size,
+      truncation_mode,
+      in_place: false,
+    }
+
+    if (apply_smoothing) {
+      config.smooth = {
+        type: smoothing_type,
+        window: smoothing_window,
+        polynomial_order: smoothing_type === `savgol` ? 2 : undefined,
+      }
+    }
+
+    if (apply_bounds) {
+      config.bounds = {
+        min: bounds_min,
+        max: bounds_max,
+        mode: bounds_mode,
+      }
+    }
+
+    return config
+  })
+
+  // Derived: raw data - regenerates when counter, type, or generation params change
+  // All state reads happen directly in $derived.by to ensure proper dependency tracking
+  let raw_data = $derived.by((): { x: number[]; y: number[] } => {
+    // Touch regenerate_counter to allow manual regeneration with same params
+    void regenerate_counter
     const x_vals = Array.from({ length: data_length }, (_, idx) => idx)
 
     switch (data_type) {
@@ -156,64 +189,15 @@
         return { x: x_vals, y: y_vals }
       }
     }
-  }
-
-  // Build cleaning config from controls
-  function build_config(): CleaningConfig {
-    const config: CleaningConfig = {
-      invalid_values: invalid_mode,
-      oscillation_threshold,
-      window_size,
-      truncation_mode,
-      in_place: false,
-    }
-
-    if (apply_smoothing) {
-      config.smooth = {
-        type: smoothing_type,
-        window: smoothing_window,
-        polynomial_order: smoothing_type === `savgol` ? 2 : undefined,
-      }
-    }
-
-    if (apply_bounds) {
-      config.bounds = {
-        min: bounds_min,
-        max: bounds_max,
-        mode: bounds_mode,
-      }
-    }
-
-    return config
-  }
-
-  // Derived: raw data (regenerates when counter or type changes)
-  let raw_data = $derived.by(() => {
-    // Touch regenerate_counter to trigger regeneration
-    void regenerate_counter
-    return generate_raw_data()
   })
 
   // Derived: cleaned data
-  // Explicitly touch all control states to ensure Svelte tracks them as dependencies
   let cleaned_result = $derived.by(() => {
-    void invalid_mode
-    void truncation_mode
-    void oscillation_threshold
-    void window_size
-    void apply_smoothing
-    void smoothing_type
-    void smoothing_window
-    void apply_bounds
-    void bounds_min
-    void bounds_max
-    void bounds_mode
-    const config = build_config()
     const series: DataSeries = {
       x: [...raw_data.x],
       y: [...raw_data.y],
     }
-    return clean_series(series, config)
+    return clean_series(series, cleaning_config)
   })
 
   // Derived: instability detection result
@@ -850,6 +834,178 @@
   </ul>
 </section>
 
+<section class="code-examples">
+  <h2>Usage Examples</h2>
+
+  <details>
+    <summary>Basic Import & Single Series Cleaning</summary>
+    <pre>
+<code>{`import { clean_series } from '$lib/plot'
+import type { DataSeries, CleaningConfig } from '$lib/plot'
+
+const series: DataSeries = {
+  x: [0, 1, 2, 3, 4, 5],
+  y: [10, NaN, 25, 30, Infinity, 35],
+}
+
+const config: CleaningConfig = {
+  invalid_values: 'remove',  // or 'interpolate', 'propagate'
+  in_place: false,           // don't mutate original
+}
+
+const { series: cleaned, quality } = clean_series(series, config)
+// cleaned.x = [0, 2, 3, 5], cleaned.y = [10, 25, 30, 35]
+// quality.invalid_values_found = 2, quality.points_removed = 2`}</code></pre>
+  </details>
+
+  <details>
+    <summary>Physical Bounds & Smoothing</summary>
+    <pre>
+<code>{`import { clean_series } from '$lib/plot'
+
+const result = clean_series(
+  { x: [0, 1, 2, 3, 4], y: [-10, 5, 50, 15, 8] },
+  {
+    bounds: {
+      min: 0,                    // static min
+      max: (x) => 10 + x * 5,    // x-dependent max
+      mode: 'clamp',             // or 'filter', 'null'
+    },
+    smooth: {
+      type: 'savgol',            // or 'moving_avg', 'gaussian'
+      window: 5,
+      polynomial_order: 2,
+    },
+    in_place: false,
+  }
+)
+// result.quality.bounds_violations = number of clamped points`}</code></pre>
+  </details>
+
+  <details>
+    <summary>Oscillation Detection & Truncation</summary>
+    <pre>
+<code>{`import { clean_series, detect_instability } from '$lib/plot'
+
+// Detect only (without modifying data)
+const instability = detect_instability(x_values, y_values, {
+  oscillation_threshold: 2.5,
+  window_size: 5,
+  oscillation_weights: {
+    derivative_variance: 1.0,
+    amplitude_growth: 1.0,
+    sign_changes: 0.5,
+  },
+})
+// instability.detected, instability.onset_x, instability.combined_score
+
+// Or clean with truncation
+const result = clean_series({ x, y }, {
+  oscillation_threshold: 2.5,
+  truncation_mode: 'hard_cut',  // or 'mark_unstable'
+})
+// 'hard_cut': removes data after onset
+// 'mark_unstable': keeps data, reports stable_range in quality`}</code></pre>
+  </details>
+
+  <details>
+    <summary>Multi-Series (Correlated Data)</summary>
+    <pre>
+<code>{`import { clean_multi_series } from '$lib/plot'
+
+// When measurements are correlated (same timestamps),
+// a NaN in any series invalidates that row for all
+const result = clean_multi_series(
+  [0, 1, 2, 3, 4],                        // shared x (timestamps)
+  [[10, NaN, 30, 40, 50],                 // temperature
+   [100, 110, NaN, 130, 140]],            // pressure
+  { invalid_values: 'remove' }
+)
+// result.x = [0, 3, 4] (indices 1,2 removed from ALL)
+// result.cleaned_y[0] = [10, 40, 50]
+// result.cleaned_y[1] = [100, 130, 140]`}</code></pre>
+  </details>
+
+  <details>
+    <summary>3D Trajectory Alignment</summary>
+    <pre>
+<code>{`import { clean_xyz } from '$lib/plot'
+
+// For 3D scatter/trajectory data, keep x/y/z synchronized
+const result = clean_xyz(
+  [0, 1, NaN, 3, 4],   // x coordinates
+  [0, 1, 2, NaN, 4],   // y coordinates
+  [0, 1, 2, 3, 4],     // z coordinates
+  { invalid_values: 'remove' }
+)
+// Only indices 0, 1, 4 are valid across all three
+// result.x = [0, 1, 4], result.y = [0, 1, 4], result.z = [0, 1, 4]`}</code></pre>
+  </details>
+
+  <details>
+    <summary>Trajectory Properties (Named Columns)</summary>
+    <pre>
+<code>{`import { clean_trajectory_props } from '$lib/plot'
+
+// For MD trajectories with multiple properties
+const result = clean_trajectory_props(
+  {
+    Step: [0, 1, 2, 3, 4],
+    energy: [10, NaN, 30, 40, 50],
+    volume: [100, 110, NaN, 130, 140],
+    pressure: [1, 2, 3, 4, 5],
+  },
+  {
+    invalid_values: 'remove',
+    independent_axis: 'Step',  // default
+    smooth: { type: 'moving_avg', window: 3 },
+  }
+)
+// All properties filtered to same valid indices
+// result.props.Step, result.props.energy, etc.
+// result.quality.energy.invalid_values_found = 1`}</code></pre>
+  </details>
+
+  <details>
+    <summary>Full Configuration Reference</summary>
+    <pre>
+<code>{`import type { CleaningConfig } from '$lib/plot'
+
+const config: CleaningConfig = {
+  // Invalid value handling
+  invalid_values: 'remove',      // 'remove' | 'interpolate' | 'propagate'
+
+  // Oscillation detection
+  oscillation_threshold: 3.0,    // combined score threshold
+  window_size: 5,                // rolling window size
+  oscillation_weights: {
+    derivative_variance: 1.0,
+    amplitude_growth: 1.0,
+    sign_changes: 1.0,
+  },
+  truncation_mode: 'mark_unstable',  // 'hard_cut' | 'mark_unstable'
+
+  // Physical bounds
+  bounds: {
+    min: 0,                      // number | (x) => number
+    max: 100,                    // number | (x) => number
+    mode: 'clamp',               // 'clamp' | 'filter' | 'null'
+  },
+
+  // Smoothing
+  smooth: {
+    type: 'savgol',              // 'moving_avg' | 'savgol' | 'gaussian'
+    window: 5,                   // must be odd for savgol
+    polynomial_order: 2,         // savgol only
+    sigma: 1.0,                  // gaussian only
+  },
+
+  // Performance
+  in_place: true,                // mutate input (default: true)
+}`}</code></pre>
+  </details>
+</section>
+
 <style>
   .intro {
     font-size: 1.1em;
@@ -947,6 +1103,43 @@
     }
     li {
       margin-bottom: 0.3em;
+    }
+  }
+  .code-examples {
+    margin-top: 2em;
+    h2 {
+      margin-bottom: 1em;
+    }
+    details {
+      margin-bottom: 0.5em;
+      background: var(--surface-bg, rgba(0, 0, 0, 0.1));
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    summary {
+      padding: 0.6em 1em;
+      cursor: pointer;
+      font-weight: 500;
+      user-select: none;
+      &:hover {
+        background: var(--surface-bg-hover, rgba(255, 255, 255, 0.05));
+      }
+      &::marker {
+        color: var(--accent-color, #3498db);
+      }
+    }
+    pre {
+      margin: 0;
+      padding: 1em;
+      overflow-x: auto;
+      background: var(--code-bg, rgba(0, 0, 0, 0.2));
+      border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    }
+    code {
+      font-family: 'Fira Code', 'Consolas', monospace;
+      font-size: 0.85em;
+      line-height: 1.5;
+      color: var(--code-color, #e0e0e0);
     }
   }
   @media (max-width: 600px) {
