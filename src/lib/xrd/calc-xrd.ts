@@ -47,6 +47,11 @@ export const WAVELENGTHS = {
 
 export type RadiationKey = keyof typeof WAVELENGTHS
 
+// Type guard to safely check if a string is a valid RadiationKey
+function is_radiation_key(key: string): key is RadiationKey {
+  return key in WAVELENGTHS
+}
+
 // Tolerances from pymatgen.analysis.diffraction.core
 const TWO_THETA_TOL = 1e-5
 const SCALED_INTENSITY_TOL = 1e-3
@@ -146,13 +151,17 @@ export function compute_xrd_pattern(
   const wl_input = options.wavelength ?? `CuKa`
   let wavelength: number
   if (typeof wl_input === `number`) {
+    if (!Number.isFinite(wl_input) || wl_input <= 0) {
+      throw new Error(
+        `Invalid wavelength: ${wl_input}. Must be a finite positive number.`,
+      )
+    }
     wavelength = wl_input
   } else {
-    const looked_up = WAVELENGTHS[wl_input as RadiationKey]
-    if (looked_up === undefined) {
+    if (!is_radiation_key(wl_input)) {
       throw new Error(`Unknown radiation key: ${wl_input}`)
     }
-    wavelength = looked_up
+    wavelength = WAVELENGTHS[wl_input]
   }
 
   // Symmetry refinement (symprec > 0) is not implemented in TS version.

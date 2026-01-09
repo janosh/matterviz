@@ -394,20 +394,9 @@
 
       // Calculate radius: same_size > site override > element override > default
       // All radii scale uniformly with atom_radius for consistent slider behavior
-      // For mixed/partial occupancy, compute occupancy-weighted average radius
-      // Normalize by total occupancy so vacancy-containing sites render at full size
-      // (occupancy is already visually indicated via pie-chart slices)
       const base_radius = same_size_atoms
         ? 1
-        : site_radius_overrides?.get(site_idx) ??
-          (() => {
-            const total_occu = site.species.reduce((sum, { occu }) => sum + occu, 0)
-            const weighted_sum = site.species.reduce((sum, { element, occu }) => {
-              const override = element_radius_overrides?.[element as ElementSymbol]
-              return sum + occu * (override ?? atomic_radii[element] ?? 1)
-            }, 0)
-            return total_occu > 0 ? weighted_sum / total_occu : 1
-          })()
+        : site_radius_overrides?.get(site_idx) ?? calc_weighted_radius(site)
       const radius = base_radius * atom_radius
 
       // Use property color if available (e.g. coordination number, Wyckoff position)
@@ -527,19 +516,20 @@
     return map
   })
 
-  // Compute radius for any site using same logic as atom_data (for highlight fallback)
-  // Used when site is hidden/filtered but still needs highlight sizing
-  const get_site_radius = (site: Site): number => {
-    const base_radius = same_size_atoms ? 1 : (() => {
-      const total_occu = site.species.reduce((sum, { occu }) => sum + occu, 0)
-      const weighted_sum = site.species.reduce((sum, { element, occu }) => {
-        const override = element_radius_overrides?.[element as ElementSymbol]
-        return sum + occu * (override ?? atomic_radii[element] ?? 1)
-      }, 0)
-      return total_occu > 0 ? weighted_sum / total_occu : 1
-    })()
-    return base_radius * atom_radius
+  // Compute weighted average radius for a site based on species occupancies
+  // Normalizes by total occupancy so vacancy-containing sites render at full size
+  const calc_weighted_radius = (site: Site): number => {
+    const total_occu = site.species.reduce((sum, { occu }) => sum + occu, 0)
+    const weighted_sum = site.species.reduce((sum, { element, occu }) => {
+      const override = element_radius_overrides?.[element as ElementSymbol]
+      return sum + occu * (override ?? atomic_radii[element] ?? 1)
+    }, 0)
+    return total_occu > 0 ? weighted_sum / total_occu : 1
   }
+
+  // Get radius for a site (for highlight fallback when site is hidden/filtered)
+  const get_site_radius = (site: Site): number =>
+    (same_size_atoms ? 1 : calc_weighted_radius(site)) * atom_radius
 
   let force_data = $derived.by(() =>
     show_force_vectors && structure?.sites
