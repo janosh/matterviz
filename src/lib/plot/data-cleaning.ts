@@ -589,7 +589,6 @@ export function clean_series<T extends DataSeries>(
   if (invalid_mode === `remove` && invalid_result.removed_indices.length > 0) {
     const kept = kept_indices_excluding(x_arr.length, invalid_result.removed_indices)
     apply_filter(kept, invalid_result.removed_indices.length)
-    y_arr = invalid_result.cleaned
   } else {
     y_arr = invalid_result.cleaned
   }

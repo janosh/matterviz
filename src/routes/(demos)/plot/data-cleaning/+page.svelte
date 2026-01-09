@@ -980,14 +980,22 @@ const { series: cleaned, quality } = clean_series(series, config)
       margin: 0;
       padding: 1em;
       overflow-x: auto;
-      background: var(--code-bg, rgba(0, 0, 0, 0.2));
+      background: #1e1e2e;
       border-radius: 6px;
     }
     code {
-      font-family: 'Fira Code', 'Consolas', monospace;
+      font-family:
+        ui-monospace,
+        'Cascadia Code',
+        'Source Code Pro',
+        Menlo,
+        Consolas,
+        'DejaVu Sans Mono',
+        monospace;
       font-size: 0.85em;
       line-height: 1.5;
-      color: var(--code-color, #e0e0e0);
+      color: #cdd6f4;
+      white-space: pre-wrap;
     }
   }
   @media (max-width: 600px) {
