@@ -284,13 +284,12 @@ describe(`PlotLegend`, () => {
       item3_marker_svgs[1].querySelector(`polygon`)?.getAttribute(`fill`),
     ).toBe(`currentColor`)
 
-    // Cross (only marker)
+    // Cross (only marker) - rendered as filled polygon matching D3's symbolCross
     const item4_marker_svgs = items[3].querySelectorAll(`.legend-marker > svg`)
     expect(item4_marker_svgs.length).toBe(1)
-    const cross_path = item4_marker_svgs[0].querySelector(`path`)
-    expect(cross_path).toBeTruthy() // cross path
-    expect(cross_path?.getAttribute(`stroke`)).toBe(`orange`)
-    expect(cross_path?.getAttribute(`fill`)).toBe(`none`)
+    const cross_polygon = item4_marker_svgs[0].querySelector(`polygon`)
+    expect(cross_polygon).toBeTruthy() // cross as filled polygon (plus shape)
+    expect(cross_polygon?.getAttribute(`fill`)).toBe(`orange`)
 
     // Star (only marker)
     const item5_marker_svgs = items[4].querySelectorAll(`.legend-marker > svg`)
@@ -299,6 +298,42 @@ describe(`PlotLegend`, () => {
     expect(star_polygon).toBeTruthy() // star polygon
     expect(star_polygon?.getAttribute(`fill`)).toBe(`magenta`)
   })
+
+  // Regression tests for legend symbol SVG elements matching D3 symbol shapes
+  test.each(
+    [
+      [`Circle`, `circle`, { cx: `5`, cy: `5`, r: `4` }],
+      [`Square`, `rect`, { x: `1`, y: `1`, width: `8`, height: `8` }],
+      [`Triangle`, `polygon`, { points: `5,1 9,9 1,9` }],
+      [`Cross`, `polygon`, {
+        points: `4,0 6,0 6,4 10,4 10,6 6,6 6,10 4,10 4,6 0,6 0,4 4,4`,
+      }],
+      [`Star`, `polygon`, {}], // Star has complex points, just check element exists
+    ] as const,
+  )(
+    `renders %s symbol as correct SVG element`,
+    (symbol_type, element_tag, attrs) => {
+      const data: LegendItem[] = [
+        {
+          label: `Test ${symbol_type}`,
+          visible: true,
+          series_idx: 0,
+          display_style: { symbol_type, symbol_color: `#123456` },
+        },
+      ]
+      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+
+      const svg = doc_query(`.legend-marker > svg`)
+      const element = svg.querySelector(element_tag)
+      expect(element, `${symbol_type} should render as <${element_tag}>`).toBeTruthy()
+      expect(element?.getAttribute(`fill`)).toBe(`#123456`)
+
+      // Verify specific attributes for each symbol type
+      for (const [attr, value] of Object.entries(attrs)) {
+        expect(element?.getAttribute(attr), `${symbol_type} ${attr}`).toBe(value)
+      }
+    },
+  )
 
   test(`applies marker and line colors correctly`, () => {
     const test_data: LegendItem[] = [

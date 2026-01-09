@@ -919,7 +919,7 @@
             {#each hovered_site.species ?? [] as
               { element, occu, oxidation_state: oxi_state },
               idx
-              ([element, occu, oxi_state])
+              (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)
             }
               {@const oxi_str = (oxi_state != null && oxi_state !== 0)
               ? `<sup>${Math.abs(oxi_state)}${

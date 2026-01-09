@@ -267,7 +267,10 @@
             {:else if series.display_style.symbol_type === `Triangle`}
               <polygon points="5,1 9,9 1,9" fill={color} />
             {:else if series.display_style.symbol_type === `Cross`}
-              <path d="M2 2 L8 8 M2 8 L8 2" stroke={color} stroke-width="2" fill="none" />
+              <polygon
+                points="4,0 6,0 6,4 10,4 10,6 6,6 6,10 4,10 4,6 0,6 0,4 4,4"
+                fill={color}
+              />
             {:else if series.display_style.symbol_type === `Star`}
               <polygon
                 points="5,0 6.1,3.5 9.8,4.1 7.4,6.7 7.9,10 5,8.3 2.1,10 2.6,6.7 0.2,4.1 3.9,3.5"
