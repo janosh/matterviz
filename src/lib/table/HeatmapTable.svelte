@@ -253,10 +253,6 @@
     drag_over_col_id = get_col_id(col)
   }
 
-  function handle_drag_leave() {
-    drag_over_col_id = null
-  }
-
   function handle_drop(event: DragEvent, target_col: Label) {
     event.preventDefault()
 
@@ -818,7 +814,7 @@
                 event.currentTarget.setAttribute(`aria-grabbed`, `true`)
               }}
               ondragover={(event) => handle_drag_over(event, col)}
-              ondragleave={handle_drag_leave}
+              ondragleave={() => (drag_over_col_id = null)}
               ondrop={(event) => handle_drop(event, col)}
               ondragend={(event: DragEvent & { currentTarget: HTMLElement }) => {
                 reset_drag_state()

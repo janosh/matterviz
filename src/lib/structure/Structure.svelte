@@ -98,6 +98,10 @@
     hidden_elements = $bindable(new Set<ElementSymbol>()),
     // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     hidden_prop_vals = $bindable(new Set<number | string>()),
+    // Per-element radius overrides (absolute values in Angstroms)
+    element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
+    // Per-site radius overrides (absolute values in Angstroms)
+    site_radius_overrides = $bindable<Map<number, number>>(new Map()),
     // Symmetry analysis data (bindable for external access)
     sym_data = $bindable(null),
     // Symmetry analysis settings (bindable for external control)
@@ -167,6 +171,10 @@
       hidden_elements?: Set<ElementSymbol>
       // Track which property values are hidden (e.g. Wyckoff positions, coordination numbers)
       hidden_prop_vals?: Set<number | string>
+      // Per-element radius overrides (absolute values in Angstroms)
+      element_radius_overrides?: Partial<Record<ElementSymbol, number>>
+      // Per-site radius overrides (absolute values in Angstroms)
+      site_radius_overrides?: Map<number, number>
       // Symmetry analysis data (bindable for external access)
       sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
@@ -895,6 +903,10 @@
       bind:hidden_elements
       bind:hidden_prop_vals
       bind:element_mapping
+      bind:element_radius_overrides
+      bind:site_radius_overrides
+      {selected_sites}
+      structure={displayed_structure}
       {sym_data}
     >
       {#if structure && `lattice` in structure}
@@ -928,6 +940,8 @@
             bind:initial_computed_zoom
             bind:hidden_elements
             bind:hidden_prop_vals
+            bind:element_radius_overrides
+            bind:site_radius_overrides
             bind:added_bonds
             bind:removed_bonds
             {measure_mode}

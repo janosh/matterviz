@@ -119,6 +119,8 @@
     initial_computed_zoom = $bindable(),
     hidden_elements = $bindable(new Set()),
     hidden_prop_vals = $bindable(new Set<number | string>()),
+    element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
+    site_radius_overrides = $bindable<Map<number, number>>(new Map()),
     atom_color_config = {
       mode: DEFAULTS.structure.atom_color_mode,
       scale: DEFAULTS.structure.atom_color_scale as D3InterpolateName,
@@ -191,6 +193,8 @@
     initial_computed_zoom?: number // Expose initial zoom for reset
     hidden_elements?: Set<ElementSymbol>
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
+    element_radius_overrides?: Partial<Record<ElementSymbol, number>> // Per-element absolute radius in Angstroms
+    site_radius_overrides?: Map<number, number> // Per-site absolute radius in Angstroms
     atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
   } = $props()
@@ -388,10 +392,16 @@
       const prop_val = property_colors?.values[orig_idx]
       if (prop_val !== undefined && hidden_prop_vals.has(prop_val)) return []
 
-      const radius = same_size_atoms ? atom_radius : site.species.reduce(
-        (sum, { element, occu }) => sum + occu * (atomic_radii[element] ?? 1),
-        0,
-      ) * atom_radius
+      // Calculate radius: same_size > site override > element override > default
+      // All radii scale uniformly with atom_radius for consistent slider behavior
+      const base_radius = same_size_atoms
+        ? 1
+        : site_radius_overrides?.get(site_idx) ??
+          site.species.reduce((sum, { element, occu }) => {
+            const override = element_radius_overrides?.[element as ElementSymbol]
+            return sum + occu * (override ?? atomic_radii[element] ?? 1)
+          }, 0)
+      const radius = base_radius * atom_radius
 
       // Use property color if available (e.g. coordination number, Wyckoff position)
       // Otherwise, each species gets its own element color (important for disordered sites)

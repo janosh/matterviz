@@ -9,6 +9,7 @@
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
+  import { atomic_radii } from '$lib/structure'
   import type {
     AtomColorConfig,
     AtomPropertyColors,
@@ -17,7 +18,7 @@
   import type { Snippet } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   let {
     atom_color_config = $bindable({
@@ -36,6 +37,10 @@
     hidden_prop_vals = $bindable(new Set<number | string>()),
     // Element remapping: maps original element symbols to new ones
     element_mapping = $bindable(),
+    // Per-element and per-site radius overrides
+    element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
+    site_radius_overrides = $bindable<Map<number, number>>(new Map()),
+    selected_sites = [] as number[],
     title = ``,
     sym_data = null,
     structure = undefined,
@@ -54,6 +59,10 @@
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     // Element remapping: maps original element symbols to new ones (e.g. {'H': 'Na', 'He': 'Cl'})
     element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
+    // Per-element and per-site radius overrides (absolute values in Angstroms)
+    element_radius_overrides?: Partial<Record<ElementSymbol, number>>
+    site_radius_overrides?: Map<number, number>
+    selected_sites?: number[] // Currently selected site indices
     title?: string
     sym_data?: MoyoDataset | null
     structure?: AnyStructure | null
@@ -149,6 +158,53 @@
     }
     remap_menu_open = null
     remap_search = ``
+  }
+
+  // Radius bounds (Angstroms) - max accommodates largest atomic radii (~2.6Å for Cs)
+  const MIN_RADIUS = 0.1
+  const MAX_RADIUS = 5
+
+  const parse_radius = (value: string): number | null => {
+    const num = parseFloat(value)
+    return !isNaN(num) && num >= MIN_RADIUS && num <= MAX_RADIUS ? num : null
+  }
+
+  function update_element_radius(elem: ElementSymbol, value: string) {
+    const radius = parse_radius(value)
+    if (radius !== null) {
+      element_radius_overrides = { ...element_radius_overrides, [elem]: radius }
+    }
+  }
+
+  function clear_element_radius(elem: ElementSymbol) {
+    const { [elem]: _, ...rest } = element_radius_overrides ?? {}
+    element_radius_overrides = rest
+  }
+
+  const get_element_radius = (elem: ElementSymbol): number =>
+    element_radius_overrides?.[elem] ?? atomic_radii[elem] ?? 1
+
+  function update_site_radius(site_idx: number, value: string) {
+    const radius = parse_radius(value)
+    if (radius === null) return
+    const new_map = new SvelteMap(site_radius_overrides)
+    new_map.set(site_idx, radius)
+    site_radius_overrides = new_map
+  }
+
+  function clear_site_radius(site_idx: number) {
+    const new_map = new SvelteMap(site_radius_overrides)
+    new_map.delete(site_idx)
+    site_radius_overrides = new_map
+  }
+
+  const get_site_radius = (site_idx: number): number => {
+    const override = site_radius_overrides?.get(site_idx)
+    if (override !== undefined) return override
+    const element = structure?.sites?.[site_idx]?.species[0]?.element as
+      | ElementSymbol
+      | undefined
+    return element ? get_element_radius(element) : 1
   }
 </script>
 
@@ -259,6 +315,34 @@
               },
             })}
           >
+            <div class="radius-control">
+              <label>
+                <span>Radius</span>
+                <input
+                  type="number"
+                  min={MIN_RADIUS}
+                  max={MAX_RADIUS}
+                  step={0.05}
+                  value={get_element_radius(elem as ElementSymbol)}
+                  oninput={(event) =>
+                  update_element_radius(
+                    elem as ElementSymbol,
+                    (event.target as HTMLInputElement).value,
+                  )}
+                />
+                <span class="unit">Å</span>
+              </label>
+              {#if element_radius_overrides?.[elem as ElementSymbol] !== undefined}
+                <button
+                  class="reset-btn"
+                  onclick={() => clear_element_radius(elem as ElementSymbol)}
+                  title="Reset to default radius"
+                  {@attach tooltip({ placement: `top` })}
+                >
+                  ↺
+                </button>
+              {/if}
+            </div>
             <input
               type="text"
               class="remap-search"
@@ -301,6 +385,39 @@
         {/if}
       </div>
     {/each}
+    {#if selected_sites.length === 1}
+      {@const site_idx = selected_sites[0]}
+      {@const site = structure?.sites?.[site_idx]}
+      {@const main_elem = site?.species[0]?.element}
+      <div class="site-radius-control">
+        <label
+          title="Radius for selected site {site_idx}"
+          {@attach tooltip({ placement: `top` })}
+        >
+          <span class="site-label">{main_elem}{site_idx}</span>
+          <input
+            type="number"
+            min={MIN_RADIUS}
+            max={MAX_RADIUS}
+            step={0.05}
+            value={get_site_radius(site_idx)}
+            oninput={(event) =>
+            update_site_radius(site_idx, (event.target as HTMLInputElement).value)}
+          />
+          <span class="unit">Å</span>
+        </label>
+        {#if site_radius_overrides?.has(site_idx)}
+          <button
+            class="reset-btn"
+            onclick={() => clear_site_radius(site_idx)}
+            title="Reset to element default"
+            {@attach tooltip({ placement: `top` })}
+          >
+            ↺
+          </button>
+        {/if}
+      </div>
+    {/if}
     {@render mode_selector_snippet()}
     {@render children?.({ mode_menu_open, structure })}
   </div>
@@ -493,6 +610,61 @@
   .remap-option.reset {
     background: var(--surface-bg-hover, rgba(128, 128, 128, 0.1));
     font-style: italic;
+  }
+
+  /* Radius Control Styles */
+  :is(.radius-control, .site-radius-control) {
+    display: flex;
+    align-items: center;
+    gap: 4pt;
+    padding: 0.3rem 0.4rem;
+    border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1));
+
+    & label {
+      display: flex;
+      align-items: center;
+      gap: 4pt;
+      font-size: 0.85em;
+      white-space: nowrap;
+    }
+    & input[type='number'] {
+      width: 3.5em;
+      padding: 2pt 4pt;
+      border: 1px solid light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.2));
+      border-radius: var(--border-radius, 3pt);
+      font-size: 0.9em;
+      text-align: center;
+      box-sizing: border-box;
+      &:focus {
+        outline: 1px solid var(--accent-color, #4a90d9);
+      }
+    }
+    & .unit {
+      font-size: 0.8em;
+      opacity: 0.7;
+    }
+    & .reset-btn {
+      background: transparent;
+      border: none;
+      padding: 2pt 4pt;
+      cursor: pointer;
+      font-size: 0.9em;
+      opacity: 0.6;
+      transition: opacity 0.15s ease;
+      &:hover {
+        opacity: 1;
+      }
+    }
+  }
+  .site-radius-control {
+    border-bottom: none;
+    padding: 0.2rem 0.4rem;
+    background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.05));
+    border-radius: var(--border-radius, 3pt);
+    & .site-label {
+      font-weight: 500;
+      min-width: 2em;
+    }
   }
 
   /* Property Legend Styles */

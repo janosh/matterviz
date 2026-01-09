@@ -55,16 +55,6 @@
   let auto_x_range = $derived(calc_auto_range(all_x_values))
   let auto_y_range = $derived(calc_auto_range(all_y_values))
   let auto_z_range = $derived(calc_auto_range(all_z_values))
-
-  function reset_x_range() {
-    x_axis = { ...x_axis, range: [null, null] }
-  }
-  function reset_y_range() {
-    y_axis = { ...y_axis, range: [null, null] }
-  }
-  function reset_z_range() {
-    z_axis = { ...z_axis, range: [null, null] }
-  }
 </script>
 
 <DraggablePane
@@ -137,7 +127,7 @@
   <SettingsSection
     title="X Axis"
     current_values={{ range: x_axis.range }}
-    on_reset={reset_x_range}
+    on_reset={() => (x_axis = { ...x_axis, range: [null, null] })}
   >
     <div class="pane-row">
       <label for="x-label">Label:</label>
@@ -175,7 +165,7 @@
   <SettingsSection
     title="Y Axis"
     current_values={{ range: y_axis.range }}
-    on_reset={reset_y_range}
+    on_reset={() => (y_axis = { ...y_axis, range: [null, null] })}
   >
     <div class="pane-row">
       <label for="y-label">Label:</label>
@@ -213,7 +203,7 @@
   <SettingsSection
     title="Z Axis"
     current_values={{ range: z_axis.range }}
-    on_reset={reset_z_range}
+    on_reset={() => (z_axis = { ...z_axis, range: [null, null] })}
   >
     <div class="pane-row">
       <label for="z-label">Label:</label>
