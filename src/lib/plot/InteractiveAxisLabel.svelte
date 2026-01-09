@@ -24,7 +24,7 @@
     [key: string]: unknown
   } = $props()
 
-  let is_interactive = $derived(options && options.length > 0)
+  let is_interactive = $derived(Boolean(options?.length))
 
   function handle_change(event: Event) {
     const new_key = (event.target as HTMLSelectElement).value

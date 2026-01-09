@@ -71,6 +71,8 @@ export function create_axis_change_handler<T extends DataSeries | BarSeries>(
     const axis_config = state.get_axis(axis)
     const prev_key = axis_config.selected_key
 
+    if (prev_key === key) return // No-op guard: skip when key doesn't change
+
     // Update selected_key immediately for UI feedback
     state.set_axis(axis, { ...axis_config, selected_key: key })
     state.set_loading(axis)
@@ -103,21 +105,18 @@ export function create_axis_change_handler<T extends DataSeries | BarSeries>(
       // Revert selection
       state.set_axis(axis, { ...state.get_axis(axis), selected_key: prev_key })
 
-      on_error?.({
-        axis,
-        key,
-        message: err instanceof Error ? err.message : String(err),
-      })
+      const message = err instanceof Error ? err.message : String(err)
+      on_error?.({ axis, key, message })
     } finally {
       state.set_loading(null)
     }
   }
 }
 
-// Constants for axis label positioning
+// Constants for axis label foreignObject positioning (all values in px)
 export const AXIS_LABEL_CONTAINER = {
-  width: 200,
-  height: 200,
-  x_offset: 100, // half of width for centering
-  y_offset: 10,
+  width: 200, // container width for interactive label dropdown
+  height: 200, // container height (overflow: visible allows content to exceed)
+  x_offset: 100, // half of width for horizontal centering
+  y_offset: 10, // vertical offset from axis line
 } as const

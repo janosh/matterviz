@@ -376,14 +376,14 @@ export type DataLoaderFn<
   Metadata = Record<string, unknown>,
   SeriesType = DataSeries<Metadata>,
 > = (
-  axis: `x` | `y` | `y2`,
+  axis: AxisKey,
   property_key: string,
-  current_series: SeriesType[], // passed for context
+  current_series: readonly SeriesType[], // passed for context
 ) => Promise<DataLoaderResult<Metadata, SeriesType>>
 
 // Error event for axis data loading failures
 export interface AxisLoadError {
-  axis: `x` | `y` | `y2`
+  axis: AxisKey
   key: string
   message: string
 }

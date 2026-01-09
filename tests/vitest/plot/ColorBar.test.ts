@@ -684,6 +684,7 @@ describe(`ColorBar Interactive Property Selection`, () => {
     const select = document.body.querySelector(
       `select.property-select`,
     ) as HTMLSelectElement
+    expect(select.value).toBe(`energy`) // Initial value
 
     select.value = `volume`
     select.dispatchEvent(new Event(`change`, { bubbles: true }))
@@ -695,6 +696,9 @@ describe(`ColorBar Interactive Property Selection`, () => {
         expect.any(Error),
       )
     )
+
+    // Key assertion: UI should revert to original selection after error
+    await vi.waitFor(() => expect(select.value).toBe(`energy`))
 
     error_spy.mockRestore()
     unmount(component)
