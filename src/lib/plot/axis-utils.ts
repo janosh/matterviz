@@ -12,22 +12,34 @@ import type {
 type AxisType = `x` | `y` | `y2`
 
 // Merge new series with preserved UI state from old series
-// Matches by id first, then falls back to index
+// Matches by id first (non-empty string only), then falls back to index
 export function merge_series_state<T extends DataSeries | BarSeries>(
   old_series: T[],
   new_series: T[],
 ): T[] {
+  // Build id lookup map for O(1) matching (only non-empty string ids)
+  const by_id = new Map<string, T>()
+  for (const srs of old_series) {
+    if (typeof srs.id === `string` && srs.id.length) by_id.set(srs.id, srs)
+  }
+
   return new_series.map((new_srs, idx) => {
-    const old_srs = old_series.find((srs) => srs.id === new_srs.id) ?? old_series[idx]
-    if (!old_srs) return new_srs
+    // Match by id if available, otherwise fall back to index
+    const old_srs = (typeof new_srs.id === `string` && new_srs.id.length
+      ? by_id.get(new_srs.id)
+      : undefined) ?? old_series[idx]
+    if (!old_srs) {
+      return new_srs
+    }
 
     // Preserve UI state: visibility and styling from old series if not in new
     const result: Record<string, unknown> = { ...new_srs }
     result.visible ??= old_srs.visible
 
-    // Preserve style properties that exist in old but not new
+    // Preserve style properties only when key exists in BOTH series (guards against
+    // cross-type injection when T is a union like DataSeries | BarSeries)
     for (const key of [`point_style`, `line_style`, `color`]) {
-      if (key in old_srs && !(key in new_srs)) {
+      if (key in old_srs && key in new_srs && result[key] === undefined) {
         result[key] = old_srs[key as keyof typeof old_srs]
       }
     }

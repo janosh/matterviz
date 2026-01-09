@@ -670,7 +670,8 @@
     outline: 2px solid var(--cbar-select-focus-color, #4a90d9);
     outline-offset: 1px;
   }
-  .property-select:disabled {
+  .property-select:disabled,
+  .color-scale-select:disabled {
     opacity: 0.6;
     cursor: wait;
   }

@@ -751,35 +751,26 @@ This demo stress-tests histograms with interactive property switching:
     const rng = seeded_random(seed)
     const data = []
 
-    for (let i = 0; i < n; i++) {
+    for (let idx = 0; idx < n; idx++) {
       let val
-      switch (type) {
-        case `normal`:
-          val = box_muller(rng) * 1.5 - 2
-          break
-        case `exponential`:
-          val = -Math.log(rng()) * 2
-          break
-        case `bimodal`:
-          val = rng() < 0.4 ? box_muller(rng) * 0.8 - 3 : box_muller(rng) * 1.2 + 2
-          break
-        case `uniform`:
-          val = rng() * 10 - 2
-          break
-        case `log_normal`:
-          val = Math.exp(box_muller(rng) * 0.8)
-          break
-        case `heavy_tail`:
-          val = box_muller(rng) / (rng() + 0.1)
-          break
-        case `skewed`:
-          const u = rng()
-          val = Math.pow(u, 3) * 15 - 2
-          break
-        case `multimodal`:
-          const mode = Math.floor(rng() * 4)
-          val = box_muller(rng) * 0.5 + mode * 3 - 4
-          break
+      if (type === `normal`) {
+        val = box_muller(rng) * 1.5 - 2
+      } else if (type === `exponential`) {
+        val = -Math.log(rng()) * 2
+      } else if (type === `bimodal`) {
+        val = rng() < 0.4 ? box_muller(rng) * 0.8 - 3 : box_muller(rng) * 1.2 + 2
+      } else if (type === `uniform`) {
+        val = rng() * 10 - 2
+      } else if (type === `log_normal`) {
+        val = Math.exp(box_muller(rng) * 0.8)
+      } else if (type === `heavy_tail`) {
+        val = box_muller(rng) / (rng() + 0.1)
+      } else if (type === `skewed`) {
+        const u = rng()
+        val = Math.pow(u, 3) * 15 - 2
+      } else if (type === `multimodal`) {
+        const mode = Math.floor(rng() * 4)
+        val = box_muller(rng) * 0.5 + mode * 3 - 4
       }
       data.push(val)
     }
