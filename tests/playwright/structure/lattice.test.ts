@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
+import { expect_canvas_changed, get_canvas_timeout } from '../helpers'
 
 test.describe(`Lattice Component Tests`, () => {
   // Use retries instead of blanket skip for flaky CI runs
@@ -20,13 +20,13 @@ test.describe(`Lattice Component Tests`, () => {
   })
 
   test(`renders lattice with default properties`, async ({ page }) => {
-    // Skip in CI - WebGL canvas screenshot timing is unreliable in CI
-    test.skip(IS_CI, `Lattice screenshot test flaky in CI due to WebGL timing`)
     const canvas = page.locator(`#test-structure canvas`)
-    // Wait for WebGL rendering to stabilize before taking screenshot
-    await page.waitForTimeout(500)
-    const screenshot = await canvas.screenshot()
-    expect(screenshot.length).toBeGreaterThan(1000)
+    // Poll until screenshot has non-trivial size (WebGL rendered something)
+    await expect
+      .poll(async () => (await canvas.screenshot()).length, {
+        timeout: get_canvas_timeout(),
+      })
+      .toBeGreaterThan(1000)
   })
 
   test(`lattice vectors checkbox toggles visibility`, async ({ page }) => {
@@ -37,10 +37,7 @@ test.describe(`Lattice Component Tests`, () => {
 
     const before = await canvas.screenshot()
     await checkbox.click()
-    await page.waitForLoadState(`networkidle`)
-    const after = await canvas.screenshot()
-
-    expect(before.equals(after)).toBe(false)
+    await expect_canvas_changed(canvas, before)
   })
 
   test(`color controls work`, async ({ page }) => {
@@ -58,10 +55,7 @@ test.describe(`Lattice Component Tests`, () => {
     await surface_opacity.fill(`0.5`)
     const before = await canvas.screenshot()
     await edge_color.fill(`#ff0000`)
-    await page.waitForLoadState(`networkidle`)
-    const after = await canvas.screenshot()
-
-    expect(before.equals(after)).toBe(false)
+    await expect_canvas_changed(canvas, before)
   })
 
   test(`opacity controls work`, async ({ page }) => {
@@ -76,10 +70,7 @@ test.describe(`Lattice Component Tests`, () => {
     const before = await canvas.screenshot()
     await edge_opacity.fill(`1`)
     await surface_opacity.fill(`0.8`)
-    await page.waitForLoadState(`networkidle`)
-    const after = await canvas.screenshot()
-
-    expect(before.equals(after)).toBe(false)
+    await expect_canvas_changed(canvas, before)
   })
 
   test(`number and range inputs sync`, async ({ page }) => {

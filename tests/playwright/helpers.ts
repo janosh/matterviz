@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test'
+import { Buffer } from 'node:buffer'
 import process from 'node:process'
 
 // Timeout constants for different environments
@@ -135,6 +136,20 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 // Get the chart SVG from a plot container (avoids control button SVGs)
 export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="img"]`)
+
+// Poll until canvas screenshot differs from initial (handles GPU/driver timing variations)
+// Use this instead of raw Buffer.equals() for more reliable canvas change detection
+export async function expect_canvas_changed(
+  canvas: Locator,
+  initial: Buffer,
+  timeout?: number,
+): Promise<void> {
+  const effective_timeout = timeout ?? get_canvas_timeout()
+  await expect(async () => {
+    const current = await canvas.screenshot()
+    expect(initial.equals(current)).toBe(false)
+  }).toPass({ timeout: effective_timeout })
+}
 
 // Seeded random number generator using Linear Congruential Generator (LCG).
 // Parameters match glibc for reproducibility.

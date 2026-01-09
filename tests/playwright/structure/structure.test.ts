@@ -3,6 +3,7 @@ import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import {
+  expect_canvas_changed,
   get_canvas_timeout,
   goto_structure_test,
   IS_CI,
@@ -906,19 +907,16 @@ test.describe(`Structure Component Tests`, () => {
         targetPosition: { x: box.width / 2 + 100, y: box.height / 2 },
       })
 
-      const after_screenshot = await canvas.screenshot()
-
-      // If no change, try a different drag pattern
-      if (initial_screenshot.equals(after_screenshot)) {
+      // Poll for canvas change (GPU timing variations)
+      // If first drag doesn't work, try vertical drag
+      try {
+        await expect_canvas_changed(canvas, initial_screenshot, 3000)
+      } catch {
         await canvas.dragTo(canvas, {
           sourcePosition: { x: box.width / 2, y: box.height / 2 - 100 },
           targetPosition: { x: box.width / 2, y: box.height / 2 + 100 },
         })
-
-        const final_screenshot = await canvas.screenshot()
-        expect(initial_screenshot.equals(final_screenshot)).toBe(false)
-      } else {
-        expect(initial_screenshot.equals(after_screenshot)).toBe(false)
+        await expect_canvas_changed(canvas, initial_screenshot)
       }
     }
   })
@@ -1067,8 +1065,9 @@ test.describe(`Structure Component Tests`, () => {
     const initial_screenshot = await canvas.screenshot()
     await atom_radius_input.fill(`0.3`)
 
+    // Poll for canvas change after radius change (GPU timing variations)
+    await expect_canvas_changed(canvas, initial_screenshot)
     const after_radius_change = await canvas.screenshot()
-    expect(initial_screenshot.equals(after_radius_change)).toBe(false)
 
     // Test that background can be changed via test page controls (not in-pane controls)
     // The background color control is in the test page, not the component controls pane
@@ -1097,8 +1096,8 @@ test.describe(`Structure Component Tests`, () => {
       .first()
     await show_atoms_checkbox.uncheck()
 
-    const after_hide_atoms = await canvas.screenshot()
-    expect(after_radius_change.equals(after_hide_atoms)).toBe(false)
+    // Poll for canvas change after hiding atoms
+    await expect_canvas_changed(canvas, after_radius_change)
 
     // Re-enable atoms for next test
     await show_atoms_checkbox.check()
@@ -1227,9 +1226,9 @@ test.describe(`Structure Component Tests`, () => {
     const initial = await canvas.screenshot()
     await edge_opacity.fill(`0.8`)
     await surface_opacity.fill(`0.5`)
-    const changed = await canvas.screenshot()
 
-    expect(initial.equals(changed)).toBe(false)
+    // Poll for canvas change after opacity changes
+    await expect_canvas_changed(canvas, initial)
   })
 
   test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
@@ -1487,9 +1486,8 @@ H    1.261    0.728   -0.890`
     canvas = structure_div.locator(`canvas`)
     await expect(canvas).toBeVisible()
 
-    // Verify structure changed
-    const after_drop_screenshot = await canvas.screenshot()
-    expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
+    // Poll for canvas change after structure load
+    await expect_canvas_changed(canvas, initial_screenshot)
   })
 })
 
@@ -2192,12 +2190,12 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     // Test visual rendering differences
     await camera_projection_select.selectOption(`perspective`)
     const perspective_visual = await canvas.screenshot()
+    expect(perspective_visual.length).toBeGreaterThan(1000)
 
     await camera_projection_select.selectOption(`orthographic`)
+    // Poll for canvas change after projection switch
+    await expect_canvas_changed(canvas, perspective_visual)
     const orthographic_visual = await canvas.screenshot()
-
-    expect(perspective_visual.equals(orthographic_visual)).toBe(false)
-    expect(perspective_visual.length).toBeGreaterThan(1000)
     expect(orthographic_visual.length).toBeGreaterThan(1000)
 
     // Verify the select value was updated correctly
@@ -2859,8 +2857,8 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // Verify hidden state (assertion includes built-in retry)
     await expect(label).toHaveClass(/hidden/)
-    const hidden_screenshot = await canvas.screenshot()
-    expect(initial_screenshot.equals(hidden_screenshot)).toBe(false)
+    // Poll for canvas change after hiding element
+    await expect_canvas_changed(canvas, initial_screenshot)
 
     // Wait for CSS transition to complete (opacity 0.2s ease)
     await expect(async () => {
@@ -2918,15 +2916,15 @@ test.describe(`Element Visibility Toggle`, () => {
     await toggle_button.click()
     await expect(label).toHaveClass(/hidden/)
     await expect(toggle_button).toHaveClass(/element-hidden/)
+    // Poll for canvas change after hiding element
+    await expect_canvas_changed(canvas, initial_screenshot)
     const hidden_screenshot = await canvas.screenshot()
-    expect(initial_screenshot.equals(hidden_screenshot)).toBe(false)
 
     // Show
     await toggle_button.click()
     await expect(label).not.toHaveClass(/hidden/)
-    const shown_screenshot = await canvas.screenshot()
-    // Visual should change back (may not be pixel-perfect due to rendering variations)
-    expect(hidden_screenshot.equals(shown_screenshot)).toBe(false)
+    // Poll for canvas change after showing element
+    await expect_canvas_changed(canvas, hidden_screenshot)
   })
 
   test(`multiple elements work independently`, async ({ page }) => {
@@ -2951,16 +2949,15 @@ test.describe(`Element Visibility Toggle`, () => {
     await first_item.locator(`button.toggle-visibility`).click()
     await expect(first_label).toHaveClass(/hidden/)
     await expect(second_label).not.toHaveClass(/hidden/)
+    await expect_canvas_changed(canvas, initial_screenshot)
     const after_first = await canvas.screenshot()
-    expect(initial_screenshot.equals(after_first)).toBe(false)
 
     // Hide second element
     await second_item.hover()
     await second_item.locator(`button.toggle-visibility`).click()
     await expect(first_label).toHaveClass(/hidden/)
     await expect(second_label).toHaveClass(/hidden/)
-    const after_second = await canvas.screenshot()
-    expect(after_first.equals(after_second)).toBe(false)
+    await expect_canvas_changed(canvas, after_first)
 
     // Show first element only
     await first_item.locator(`button.toggle-visibility`).click()

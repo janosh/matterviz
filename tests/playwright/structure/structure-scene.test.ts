@@ -1,7 +1,12 @@
 // deno-lint-ignore-file no-await-in-loop
 import type { XyObj } from '$lib'
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { get_canvas_timeout, IS_CI, wait_for_3d_canvas } from '../helpers'
+import {
+  expect_canvas_changed,
+  get_canvas_timeout,
+  IS_CI,
+  wait_for_3d_canvas,
+} from '../helpers'
 
 // Cached atom position to avoid repeated searches
 let cached_atom_position: XyObj | null = null
@@ -256,13 +261,13 @@ test.describe(`StructureScene Component Tests`, () => {
 
     if (!box) return
 
-    // Test rotation
+    // Test rotation - use polling for GPU timing variations
     await canvas.dragTo(canvas, {
       sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
       targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
     })
-    let after_screenshot = await canvas.screenshot()
-    expect(initial_screenshot.equals(after_screenshot)).toBe(false)
+    await expect_canvas_changed(canvas, initial_screenshot)
+    const after_rotation = await canvas.screenshot()
 
     // Test zoom - use safe hover
     await safe_canvas_hover(page, canvas, {
@@ -270,8 +275,8 @@ test.describe(`StructureScene Component Tests`, () => {
       y: box.height / 2,
     })
     await page.mouse.wheel(0, -200) // Zoom in
-    after_screenshot = await canvas.screenshot()
-    expect(initial_screenshot.equals(after_screenshot)).toBe(false)
+    await expect_canvas_changed(canvas, after_rotation)
+    const after_zoom = await canvas.screenshot()
 
     // Test pan
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -281,8 +286,7 @@ test.describe(`StructureScene Component Tests`, () => {
       box.y + box.height / 2 + 30,
     )
     await page.mouse.up({ button: `right` })
-    after_screenshot = await canvas.screenshot()
-    expect(initial_screenshot.equals(after_screenshot)).toBe(false)
+    await expect_canvas_changed(canvas, after_zoom)
   })
 
   // Test disordered sites, occupancy, and partial sphere capping
@@ -721,11 +725,10 @@ test.describe(`StructureScene Component Tests`, () => {
         targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
       })
 
+      // Poll for canvas change after rotation (GPU timing variations)
+      await expect_canvas_changed(canvas, wireframe_screenshot)
       const rotated_screenshot = await canvas.screenshot()
       expect(rotated_screenshot.length).toBeGreaterThan(1000)
-
-      // Verify the wireframe is still visible after rotation
-      expect(wireframe_screenshot.equals(rotated_screenshot)).toBe(false)
     }
 
     expect(console_errors).toHaveLength(0)
@@ -928,10 +931,10 @@ test.describe(`StructureScene Component Tests`, () => {
         targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
       })
 
+      // Poll for canvas change after rotation (GPU timing variations)
+      await expect_canvas_changed(canvas, initial_screenshot)
+      // Verify structure remains visible (not moved off-canvas)
       const rotated_screenshot = await canvas.screenshot()
-
-      // Verify rotation occurred and structure remains visible (not moved off-canvas)
-      expect(initial_screenshot.equals(rotated_screenshot)).toBe(false)
       expect(rotated_screenshot.length).toBeGreaterThan(1000)
     }
 
