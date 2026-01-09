@@ -120,7 +120,7 @@
     hidden_elements = $bindable(new Set()),
     hidden_prop_vals = $bindable(new Set<number | string>()),
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
-    site_radius_overrides = $bindable<Map<number, number>>(new Map()),
+    site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     atom_color_config = {
       mode: DEFAULTS.structure.atom_color_mode,
       scale: DEFAULTS.structure.atom_color_scale as D3InterpolateName,
@@ -194,7 +194,7 @@
     hidden_elements?: Set<ElementSymbol>
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     element_radius_overrides?: Partial<Record<ElementSymbol, number>> // Per-element absolute radius in Angstroms
-    site_radius_overrides?: Map<number, number> // Per-site absolute radius in Angstroms
+    site_radius_overrides?: SvelteMap<number, number> // Per-site absolute radius in Angstroms
     atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
   } = $props()
@@ -394,13 +394,20 @@
 
       // Calculate radius: same_size > site override > element override > default
       // All radii scale uniformly with atom_radius for consistent slider behavior
+      // For mixed/partial occupancy, compute occupancy-weighted average radius
+      // Normalize by total occupancy so vacancy-containing sites render at full size
+      // (occupancy is already visually indicated via pie-chart slices)
       const base_radius = same_size_atoms
         ? 1
         : site_radius_overrides?.get(site_idx) ??
-          site.species.reduce((sum, { element, occu }) => {
-            const override = element_radius_overrides?.[element as ElementSymbol]
-            return sum + occu * (override ?? atomic_radii[element] ?? 1)
-          }, 0)
+          (() => {
+            const total_occu = site.species.reduce((sum, { occu }) => sum + occu, 0)
+            const weighted_sum = site.species.reduce((sum, { element, occu }) => {
+              const override = element_radius_overrides?.[element as ElementSymbol]
+              return sum + occu * (override ?? atomic_radii[element] ?? 1)
+            }, 0)
+            return total_occu > 0 ? weighted_sum / total_occu : 1
+          })()
       const radius = base_radius * atom_radius
 
       // Use property color if available (e.g. coordination number, Wyckoff position)

@@ -215,6 +215,7 @@
   </label>
   <div style="margin-top: 0.5em">
     {#each [
+        [`select-site-0`, () => selected_sites = [0]],
         [`set-selected`, () => selected_sites = [0, 1]],
         [`clear-selected`, () => selected_sites = []],
         [`set-measured`, () => measured_sites = [0, 1, 2]],

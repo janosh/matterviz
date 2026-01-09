@@ -39,7 +39,7 @@
     element_mapping = $bindable(),
     // Per-element and per-site radius overrides
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
-    site_radius_overrides = $bindable<Map<number, number>>(new Map()),
+    site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     selected_sites = [] as number[],
     title = ``,
     sym_data = null,
@@ -61,7 +61,7 @@
     element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
     // Per-element and per-site radius overrides (absolute values in Angstroms)
     element_radius_overrides?: Partial<Record<ElementSymbol, number>>
-    site_radius_overrides?: Map<number, number>
+    site_radius_overrides?: SvelteMap<number, number>
     selected_sites?: number[] // Currently selected site indices
     title?: string
     sym_data?: MoyoDataset | null

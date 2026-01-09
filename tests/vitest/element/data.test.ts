@@ -4,13 +4,15 @@
  * Would have caught the bug where H had larger atomic_radius than O.
  */
 
+import type { ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import { CATEGORY_COUNTS as expected_counts } from '$lib/labels'
 import { describe, expect, test } from 'vitest'
 
-// Helper to get element by symbol
-const get_element = (symbol: string) => {
-  const element = element_data.find((el) => el.symbol === symbol)
+// Precomputed lookup map for O(1) element access
+const elements_by_symbol = new Map(element_data.map((el) => [el.symbol, el]))
+const get_element = (symbol: ElementSymbol) => {
+  const element = elements_by_symbol.get(symbol)
   if (!element) throw new Error(`Element ${symbol} not found`)
   return element
 }
@@ -95,37 +97,45 @@ describe(`atomic_radius`, () => {
   })
 
   test(`period 2: Li > Be > B > C > N > O > F`, () => {
-    const order = [`Li`, `Be`, `B`, `C`, `N`, `O`, `F`]
+    const order = [`Li`, `Be`, `B`, `C`, `N`, `O`, `F`] as const
     for (let idx = 0; idx < order.length - 1; idx++) {
       const larger = get_element(order[idx])
       const smaller = get_element(order[idx + 1])
+      expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
+      expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
       expect(larger.atomic_radius).toBeGreaterThan(smaller.atomic_radius as number)
     }
   })
 
   test(`period 3: Na > Mg > Al > Si >= P >= S > Cl`, () => {
-    const order = [`Na`, `Mg`, `Al`, `Si`, `P`, `S`, `Cl`]
+    const order = [`Na`, `Mg`, `Al`, `Si`, `P`, `S`, `Cl`] as const
     for (let idx = 0; idx < order.length - 1; idx++) {
       const larger = get_element(order[idx])
       const smaller = get_element(order[idx + 1])
+      expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
+      expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
       expect(larger.atomic_radius).toBeGreaterThanOrEqual(smaller.atomic_radius as number)
     }
   })
 
   test(`group 1: Li < Na < K < Rb < Cs`, () => {
-    const order = [`Li`, `Na`, `K`, `Rb`, `Cs`]
+    const order = [`Li`, `Na`, `K`, `Rb`, `Cs`] as const
     for (let idx = 0; idx < order.length - 1; idx++) {
       const smaller = get_element(order[idx])
       const larger = get_element(order[idx + 1])
+      expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
+      expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
       expect(larger.atomic_radius).toBeGreaterThan(smaller.atomic_radius as number)
     }
   })
 
   test(`group 17: F < Cl < Br < I`, () => {
-    const order = [`F`, `Cl`, `Br`, `I`]
+    const order = [`F`, `Cl`, `Br`, `I`] as const
     for (let idx = 0; idx < order.length - 1; idx++) {
       const smaller = get_element(order[idx])
       const larger = get_element(order[idx + 1])
+      expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
+      expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
       expect(larger.atomic_radius).toBeGreaterThan(smaller.atomic_radius as number)
     }
   })
@@ -268,18 +278,22 @@ describe(`first_ionization`, () => {
 })
 
 describe(`atomic_mass`, () => {
-  const to_key = ([a, b]: readonly [string, string]) => `${a}-${b}`
-  const skip_pairs = new Set([...ATOMIC_MASS_INVERSIONS, ...EQUAL_MASS_PAIRS].map(to_key))
+  const to_key = (a: string, b: string) => `${a}-${b}`
+  const known_anomalies = new Set([
+    ...ATOMIC_MASS_INVERSIONS.map(([a, b]) => to_key(a, b)),
+    ...EQUAL_MASS_PAIRS.map(([a, b]) => to_key(a, b)),
+  ])
 
-  test(`generally increases with atomic number`, () => {
+  test(`anomalies match known set (detects data changes)`, () => {
+    const found_anomalies: string[] = []
     for (let idx = 0; idx < element_data.length - 1; idx++) {
       const current = element_data[idx]
       const next = element_data[idx + 1]
-      if (skip_pairs.has(`${current.symbol}-${next.symbol}`)) continue
-      expect(next.atomic_mass, `${next.symbol} > ${current.symbol}`).toBeGreaterThan(
-        current.atomic_mass,
-      )
+      if (next.atomic_mass <= current.atomic_mass) {
+        found_anomalies.push(to_key(current.symbol, next.symbol))
+      }
     }
+    expect(found_anomalies.sort()).toEqual([...known_anomalies].sort())
   })
 
   test.each(ATOMIC_MASS_INVERSIONS)(`known inversion: %s > %s`, (heavier, lighter) => {

@@ -23,6 +23,7 @@
   import { untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { SvelteMap } from 'svelte/reactivity'
   import type { Camera, OrthographicCamera, Scene } from 'three'
   import type { AtomColorConfig } from './atom-properties'
   import { get_property_colors } from './atom-properties'
@@ -101,7 +102,7 @@
     // Per-element radius overrides (absolute values in Angstroms)
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     // Per-site radius overrides (absolute values in Angstroms)
-    site_radius_overrides = $bindable<Map<number, number>>(new Map()),
+    site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     // Symmetry analysis data (bindable for external access)
     sym_data = $bindable(null),
     // Symmetry analysis settings (bindable for external control)
@@ -174,7 +175,7 @@
       // Per-element radius overrides (absolute values in Angstroms)
       element_radius_overrides?: Partial<Record<ElementSymbol, number>>
       // Per-site radius overrides (absolute values in Angstroms)
-      site_radius_overrides?: Map<number, number>
+      site_radius_overrides?: SvelteMap<number, number>
       // Symmetry analysis data (bindable for external access)
       sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
@@ -448,7 +449,8 @@
     }
   })
 
-  // Clear selections when transformations change site indices (skip first run to preserve parent-provided selections)
+  // Clear selections and site overrides when transformations change site indices
+  // (skip first run to preserve parent-provided selections)
   let first_run = true
   $effect(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -461,6 +463,10 @@
       if (selected_sites.length > 0 || measured_sites.length > 0) {
         selected_sites = []
         measured_sites = []
+      }
+      // Clear site radius overrides since site indices are no longer valid
+      if (site_radius_overrides.size > 0) {
+        site_radius_overrides = new SvelteMap()
       }
     })
   })

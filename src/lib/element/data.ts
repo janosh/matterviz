@@ -1,7 +1,11 @@
-// data here is a combination of 3 sources (in order of precedence, highest first):
-// 1. atomic_radius values from pymatgen (https://pymatgen.org)
+// Data sources (in order of precedence, highest first):
+// 1. atomic_radius values from pymatgen 2025.10.7 (https://pymatgen.org)
 // 2. https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952
 // 3. https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json
+//
+// To regenerate atomic_radius values from pymatgen:
+//   python tmp/extract_pymatgen_radii.py > radii.json
+//   python tmp/update_atomic_radii.py  # applies radii.json to this file
 
 import type { ChemicalElement } from '$lib/element/types'
 

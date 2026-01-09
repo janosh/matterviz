@@ -865,10 +865,10 @@
       bind:this={svg_element}
       onmousedown={handle_mouse_down}
       ondblclick={() => {
-        // Clear axis ranges to reset to auto ranges
-        x_axis = { ...x_axis, range: undefined }
-        y_axis = { ...y_axis, range: undefined }
-        y2_axis = { ...y2_axis, range: undefined }
+        // Reset zoom to auto ranges (preserve other axis settings)
+        x_axis = { ...x_axis, range: [null, null] }
+        y_axis = { ...y_axis, range: [null, null] }
+        y2_axis = { ...y2_axis, range: [null, null] }
       }}
       onmouseleave={() => {
         hovered = false

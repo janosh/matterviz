@@ -144,12 +144,16 @@ export function compute_xrd_pattern(
   options: XrdOptions = {},
 ): XrdPattern {
   const wl_input = options.wavelength ?? `CuKa`
-  const wavelength = typeof wl_input === `number`
-    ? wl_input
-    : WAVELENGTHS[wl_input as RadiationKey] ??
-      (() => {
-        throw new Error(`Unknown radiation key: ${wl_input}`)
-      })()
+  let wavelength: number
+  if (typeof wl_input === `number`) {
+    wavelength = wl_input
+  } else {
+    const looked_up = WAVELENGTHS[wl_input as RadiationKey]
+    if (looked_up === undefined) {
+      throw new Error(`Unknown radiation key: ${wl_input}`)
+    }
+    wavelength = looked_up
+  }
 
   // Symmetry refinement (symprec > 0) is not implemented in TS version.
   // Option retained for API parity.
