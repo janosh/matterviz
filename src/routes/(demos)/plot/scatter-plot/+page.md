@@ -2695,23 +2695,19 @@ All changes trigger lazy data loading with simulated network delays.
     }
   }
 
-  // ColorBar data loader - returns only ColorBar-specific data (range, title).
-  // Series update is handled in on_property_change callback for consistency
-  // with the axis loader pattern and to avoid state mutation before success.
+  // Returns ColorBar-specific data. Series update handled in on_property_change.
   async function colorbar_data_loader(property_key) {
     await new Promise((r) => setTimeout(r, 200 + Math.random() * 400))
     const prop = properties[property_key]
-    return {
-      range: get_range(property_key),
-      title: `${prop.label} (${prop.unit})`,
-    }
+    const range = get_range(property_key)
+    const title = `${prop.label} (${prop.unit})`
+    return { range, title }
   }
 
   // Called after ColorBar successfully loads new property data
   function handle_color_property_change(property_key) {
     color_switches++
     color_key = property_key
-    // Rebuild series with new color values after successful load
     series = build_series(x_key, y_key, property_key)
   }
 
