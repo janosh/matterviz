@@ -139,8 +139,7 @@
   // Derived: raw data - regenerates when counter, type, or generation params change
   // All state reads happen directly in $derived.by to ensure proper dependency tracking
   let raw_data = $derived.by((): { x: number[]; y: number[] } => {
-    // Touch regenerate_counter to allow manual regeneration with same params
-    void regenerate_counter
+    void regenerate_counter // touch to trigger reactivity on button click
     const x_vals = Array.from({ length: data_length }, (_, idx) => idx)
 
     if (data_type === `unstable`) {
@@ -404,58 +403,77 @@
     return parts.length > 0 ? parts.join(`, `) : `No issues found`
   }
 
-  // Live code example based on current UI state
-  let live_code_example = $derived.by(() => {
-    const imports = [`clean_series`]
-    const type_imports = [`DataSeries`, `CleaningConfig`]
+  // Syntax highlighting helpers
+  const kw = (s: string) => `<span class="kw">${s}</span>`
+  const str = (s: string) => `<span class="str">'${s}'</span>`
+  const num = (s: number | string) => `<span class="num">${s}</span>`
+  const typ = (s: string) => `<span class="typ">${s}</span>`
+  const fn = (s: string) => `<span class="fn">${s}</span>`
+  const cmt = (s: string) => `<span class="cmt">// ${s}</span>`
+  const prop = (s: string) => `<span class="prop">${s}</span>`
 
-    // Build config object representation
-    const config_parts: string[] = []
-    config_parts.push(`  invalid_values: '${invalid_mode}',`)
-    config_parts.push(`  oscillation_threshold: ${oscillation_threshold},`)
-    config_parts.push(`  window_size: ${window_size},`)
-    config_parts.push(`  truncation_mode: '${truncation_mode}',`)
+  // Live code example with syntax highlighting
+  let live_code_html = $derived.by(() => {
+    // Build config lines with highlighting
+    const config_lines: string[] = []
+    config_lines.push(`  ${prop(`invalid_values`)}: ${str(invalid_mode)},`)
+    config_lines.push(
+      `  ${prop(`oscillation_threshold`)}: ${num(oscillation_threshold)},`,
+    )
+    config_lines.push(`  ${prop(`window_size`)}: ${num(window_size)},`)
+    config_lines.push(`  ${prop(`truncation_mode`)}: ${str(truncation_mode)},`)
 
     if (apply_bounds) {
-      config_parts.push(
-        `  bounds: { min: ${bounds_min}, max: ${bounds_max}, mode: '${bounds_mode}' },`,
+      config_lines.push(
+        `  ${prop(`bounds`)}: { ${prop(`min`)}: ${num(bounds_min)}, ${prop(`max`)}: ${
+          num(bounds_max)
+        }, ${prop(`mode`)}: ${str(bounds_mode)} },`,
       )
     }
 
     if (apply_smoothing) {
       if (smoothing_type === `savgol`) {
-        config_parts.push(
-          `  smooth: { type: 'savgol', window: ${smoothing_window}, polynomial_order: 2 },`,
+        config_lines.push(
+          `  ${prop(`smooth`)}: { ${prop(`type`)}: ${str(`savgol`)}, ${
+            prop(`window`)
+          }: ${num(smoothing_window)}, ${prop(`polynomial_order`)}: ${num(2)} },`,
         )
       } else {
-        config_parts.push(
-          `  smooth: { type: 'moving_avg', window: ${smoothing_window} },`,
+        config_lines.push(
+          `  ${prop(`smooth`)}: { ${prop(`type`)}: ${str(`moving_avg`)}, ${
+            prop(`window`)
+          }: ${num(smoothing_window)} },`,
         )
       }
     }
 
-    config_parts.push(`  in_place: false,`)
+    config_lines.push(`  ${prop(`in_place`)}: ${kw(`false`)},`)
 
-    return `import { ${imports.join(`, `)} } from '$lib/plot'
-import type { ${type_imports.join(`, `)} } from '$lib/plot'
+    const x_preview = raw_data.x.slice(0, 5).map((v) => num(v)).join(`, `)
+    const y_preview = raw_data.y.slice(0, 5)
+      .map((v) => Number.isFinite(v) ? num(v.toFixed(1)) : kw(`NaN`))
+      .join(`, `)
 
-const series: DataSeries = {
-  x: [${raw_data.x.slice(0, 6).join(`, `)}${raw_data.x.length > 6 ? `, ...` : ``}],
-  y: [${
-      raw_data.y.slice(0, 6).map((v) => Number.isFinite(v) ? v.toFixed(1) : `NaN`)
-        .join(`, `)
-    }${raw_data.y.length > 6 ? `, ...` : ``}],
+    return `${kw(`import`)} { ${fn(`clean_series`)} } ${kw(`from`)} ${
+      str(`$lib/plot`)
+    }
+${kw(`import type`)} { ${typ(`DataSeries`)}, ${typ(`CleaningConfig`)} } ${
+      kw(`from`)
+    } ${str(`$lib/plot`)}
+
+${kw(`const`)} series: ${typ(`DataSeries`)} = {
+  ${prop(`x`)}: [${x_preview}, ...],
+  ${prop(`y`)}: [${y_preview}, ...],
 }
 
-const config: CleaningConfig = {
-${config_parts.join(`\n`)}
+${kw(`const`)} config: ${typ(`CleaningConfig`)} = {
+${config_lines.join(`\n`)}
 }
 
-const { series: cleaned, quality } = clean_series(series, config)
-// Result: ${cleaned_result.series.x.length} points (${cleaned_result.quality.points_removed} removed)
-// quality.invalid_values_found = ${cleaned_result.quality.invalid_values_found}
-// quality.bounds_violations = ${cleaned_result.quality.bounds_violations}
-// quality.oscillation_detected = ${cleaned_result.quality.oscillation_detected}`
+${kw(`const`)} { series: cleaned, quality } = ${fn(`clean_series`)}(series, config)
+${cmt(`Result: ${cleaned_result.series.x.length} points (${cleaned_result.quality.points_removed} removed)`)}
+${cmt(`quality.invalid_values_found = ${cleaned_result.quality.invalid_values_found}`)}
+${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detected}`)}`
   })
 </script>
 
@@ -488,7 +506,9 @@ const { series: cleaned, quality } = clean_series(series, config)
       <input type="range" bind:value={data_length} min="30" max="150" step="10" />
     </label>
 
-    <button onclick={() => regenerate_counter++}>🔄 Regenerate Data</button>
+    <button onclick={() => regenerate_counter++} aria-label="Regenerate data">
+      🔄 Regenerate Data
+    </button>
   </div>
 
   {#if data_type === `noisy` || data_type === `combined`}
@@ -651,6 +671,10 @@ const { series: cleaned, quality } = clean_series(series, config)
       x: {x.toFixed(1)}, y: {Number.isFinite(y) ? y.toFixed(2) : `NaN`}
     {/snippet}
   </ScatterPlot>
+
+  <div class="code-block">
+    <pre><code>{@html live_code_html}</code></pre>
+  </div>
 </section>
 
 <section class="plot-section">
@@ -859,14 +883,6 @@ const { series: cleaned, quality } = clean_series(series, config)
   </ul>
 </section>
 
-<section class="code-examples">
-  <h2>Live Code Example</h2>
-  <p class="code-hint">
-    This code updates based on the controls above. Copy to use in your project.
-  </p>
-  <pre><code>{live_code_example}</code></pre>
-</section>
-
 <style>
   .intro {
     font-size: 1.1em;
@@ -966,16 +982,8 @@ const { series: cleaned, quality } = clean_series(series, config)
       margin-bottom: 0.3em;
     }
   }
-  .code-examples {
-    margin-top: 2em;
-    h2 {
-      margin-bottom: 0.5em;
-    }
-    .code-hint {
-      opacity: 0.7;
-      font-size: 0.9em;
-      margin-bottom: 0.8em;
-    }
+  .code-block {
+    margin-top: 1.5em;
     pre {
       margin: 0;
       padding: 1em;
@@ -993,9 +1001,32 @@ const { series: cleaned, quality } = clean_series(series, config)
         'DejaVu Sans Mono',
         monospace;
       font-size: 0.85em;
-      line-height: 1.5;
+      line-height: 1.6;
       color: #cdd6f4;
-      white-space: pre-wrap;
+      white-space: pre;
+    }
+    /* Syntax highlighting (Catppuccin Mocha) */
+    :global(.kw) {
+      color: #cba6f7;
+    }
+    :global(.str) {
+      color: #a6e3a1;
+    }
+    :global(.num) {
+      color: #fab387;
+    }
+    :global(.typ) {
+      color: #89dceb;
+    }
+    :global(.fn) {
+      color: #89b4fa;
+    }
+    :global(.cmt) {
+      color: #6c7086;
+      font-style: italic;
+    }
+    :global(.prop) {
+      color: #f5c2e7;
     }
   }
   @media (max-width: 600px) {
