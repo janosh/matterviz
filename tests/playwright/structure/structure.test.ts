@@ -1364,10 +1364,7 @@ Direct
     await data_transfer.dispose()
 
     // Wait for structure to update with polling assertion
-    await expect(async () => {
-      const after_drop_screenshot = await canvas.screenshot()
-      expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
-    }).toPass({ timeout: get_canvas_timeout() })
+    await expect_canvas_changed(canvas, initial_screenshot)
   })
 
   test(`drops XYZ file onto structure viewer and updates structure`, async ({ page }) => {
@@ -1413,10 +1410,7 @@ H    1.261    0.728   -0.890`
 
     // Wait for canvas to be visible and structure to update with polling assertion
     await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
-    await expect(async () => {
-      const after_drop_screenshot = await canvas.screenshot()
-      expect(initial_screenshot.equals(after_drop_screenshot)).toBe(false)
-    }).toPass({ timeout: get_canvas_timeout() })
+    await expect_canvas_changed(canvas, initial_screenshot)
   })
 
   test(`drops JSON structure file and updates structure`, async ({ page }) => {
@@ -2046,11 +2040,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await canvas.hover({ force: true })
       await page.mouse.wheel(0, -200)
       // Wait for zoom to be applied (screenshot should differ from initial)
-      await expect(async () => {
-        const zoomed = await canvas.screenshot()
-        expect(screenshots[`${projection}_initial`].equals(zoomed)).toBe(false)
-        screenshots[`${projection}_zoomed`] = zoomed
-      }).toPass({ timeout: get_canvas_timeout() })
+      await expect_canvas_changed(canvas, screenshots[`${projection}_initial`])
+      screenshots[`${projection}_zoomed`] = await canvas.screenshot()
     }
 
     // Verify zoom responsiveness and visual differences

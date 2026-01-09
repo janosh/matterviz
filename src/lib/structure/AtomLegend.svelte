@@ -260,35 +260,37 @@
   {#if selected_sites.length === 1}
     {@const site_idx = selected_sites[0]}
     {@const site = structure?.sites?.[site_idx]}
-    {@const main_elem = site?.species[0]?.element}
-    <div class="site-radius-control">
-      <label
-        title="Radius for selected site {site_idx}"
-        {@attach tooltip({ placement: `top` })}
-      >
-        <span class="site-label">{main_elem}{site_idx}</span>
-        <input
-          type="number"
-          min={MIN_RADIUS}
-          max={MAX_RADIUS}
-          step={0.05}
-          value={get_site_radius(site_idx)}
-          oninput={(event) =>
-          update_site_radius(site_idx, (event.target as HTMLInputElement).value)}
-        />
-        <span class="unit">Å</span>
-      </label>
-      {#if site_radius_overrides?.has(site_idx)}
-        <button
-          class="reset-btn"
-          onclick={() => clear_site_radius(site_idx)}
-          title="Reset to element default"
+    {#if site}
+      {@const main_elem = site.species[0]?.element ?? `?`}
+      <div class="site-radius-control">
+        <label
+          title="Radius for selected site {site_idx}"
           {@attach tooltip({ placement: `top` })}
         >
-          ↺
-        </button>
-      {/if}
-    </div>
+          <span class="site-label">{main_elem}{site_idx}</span>
+          <input
+            type="number"
+            min={MIN_RADIUS}
+            max={MAX_RADIUS}
+            step={0.05}
+            value={get_site_radius(site_idx)}
+            oninput={(event) =>
+            update_site_radius(site_idx, (event.target as HTMLInputElement).value)}
+          />
+          <span class="unit">Å</span>
+        </label>
+        {#if site_radius_overrides?.has(site_idx)}
+          <button
+            class="reset-btn"
+            onclick={() => clear_site_radius(site_idx)}
+            title="Reset to element default"
+            {@attach tooltip({ placement: `top` })}
+          >
+            ↺
+          </button>
+        {/if}
+      </div>
+    {/if}
   {/if}
 {/snippet}
 
@@ -357,8 +359,13 @@
             })}
           >
             <div class="radius-control">
-              <label>
-                <span>Radius</span>
+              <label
+                title={displayed_elem !== elem
+                ? `Radius for ${elem} atoms (displayed as ${displayed_elem})`
+                : `Radius for ${elem} atoms`}
+                {@attach tooltip({ placement: `top` })}
+              >
+                <span>Radius ({elem})</span>
                 <input
                   type="number"
                   min={MIN_RADIUS}
