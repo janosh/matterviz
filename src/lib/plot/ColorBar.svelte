@@ -1,5 +1,6 @@
 <script lang="ts">
   import { luminance } from '$lib/colors'
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import * as math from '$lib/math'
@@ -9,17 +10,22 @@
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
-  import type { Orientation } from './types'
+  import type {
+    AxisOption,
+    ColorBarDataLoaderFn,
+    ColorScaleOption,
+    Orientation,
+  } from './types'
 
   let {
-    title = undefined,
+    title = $bindable(),
     color_scale = $bindable(`interpolateViridis`),
     bar_style = undefined,
     title_style = undefined,
     wrapper_style = undefined,
     tick_labels = $bindable(4),
     tick_format = undefined,
-    range = [0, 1],
+    range = $bindable([0, 1]),
     orientation = `horizontal`,
     snap_ticks = true,
     steps = 50,
@@ -29,6 +35,15 @@
     scale_type = `linear`,
     color_scale_fn = undefined,
     color_scale_domain = undefined,
+    // Property selection (interactive title)
+    property_options = undefined,
+    selected_property_key = $bindable(),
+    data_loader = undefined,
+    on_property_change = undefined,
+    // Color scale selection
+    color_scale_options = undefined,
+    selected_color_scale_key = $bindable(),
+    on_color_scale_change = undefined,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     title?: string
@@ -59,7 +74,19 @@
     color_scale_fn?: (value: number) => string
     // Optional domain for pre-configured color scale function
     color_scale_domain?: [number, number]
+    // Property selection options (makes title interactive)
+    property_options?: AxisOption[]
+    selected_property_key?: string
+    data_loader?: ColorBarDataLoaderFn
+    on_property_change?: (key: string, range: [number, number]) => void
+    // Color scale selection options
+    color_scale_options?: ColorScaleOption[]
+    selected_color_scale_key?: string
+    on_color_scale_change?: (key: string) => void
   } = $props()
+
+  // Loading state for property data fetching
+  let loading = $state(false)
 
   let actual_title_side = $derived.by(() => {
     if (title_side !== undefined) return title_side // Use user-provided value if available
@@ -349,26 +376,21 @@
     return `margin-${margin_side}: ${offset};`
   })
 
-  let actual_title_style = $derived.by(() => {
-    let rotate_style = ``
-    let size_constraint = `` // for width constraint
-    if (
-      orientation === `vertical` &&
-      (actual_title_side === `left` || actual_title_side === `right`)
-    ) {
-      if (actual_title_side === `right`) {
-        rotate_style =
-          `transform: rotate(90deg); transform-origin: center; white-space: nowrap;` // Apply title rotation
-      } else {
-        rotate_style =
-          `transform: rotate(-90deg); transform-origin: center; white-space: nowrap;`
-      }
-      size_constraint = `max-width: var(--cbar-label-max-width, 2em);` // max-width constraint for rotated labels
-    }
+  // Derive whether we're in vertical side-label mode (label on left/right of vertical bar)
+  let is_vertical_side = $derived(
+    orientation === `vertical` &&
+      (actual_title_side === `left` || actual_title_side === `right`),
+  )
 
-    return `${rotate_style} ${size_constraint} ${label_overlap_margin_style} ${
-      title_style ?? ``
-    }`.trim()
+  let actual_title_style = $derived.by(() => {
+    // No container-level transform - rotation is applied only to .label element via CSS
+    // This avoids breaking selects/dropdowns which need to remain horizontal
+    let size_constraint = is_vertical_side
+      ? `max-width: var(--cbar-label-max-width, 2em);`
+      : ``
+
+    return `${size_constraint} ${label_overlap_margin_style} ${title_style ?? ``}`
+      .trim()
   })
 
   function get_tick_text_color(tick_value: number): string | null {
@@ -383,6 +405,68 @@
       console.error(`Error calculating luminance for tick ${tick_value}:`, error)
       return `black`
     }
+  }
+
+  let has_property_select = $derived(property_options && property_options.length > 0)
+  let has_color_scale_select = $derived(
+    color_scale_options && color_scale_options.length > 0,
+  )
+  let has_any_select = $derived(has_property_select || has_color_scale_select)
+
+  // Initialize selected keys to first option when options provided but key undefined
+  // This ensures state matches UI (which shows first option by default)
+  $effect(() => {
+    if (has_property_select && selected_property_key === undefined) {
+      selected_property_key = property_options![0].key
+    }
+  })
+  $effect(() => {
+    if (has_color_scale_select && selected_color_scale_key === undefined) {
+      selected_color_scale_key = color_scale_options![0].key
+    }
+  })
+
+  // Format option for display - takes the option object directly since we iterate over options
+  const format_opt = (opt: { label: string; unit?: string }) =>
+    opt.unit ? `${opt.label} (${opt.unit})` : opt.label
+
+  async function handle_property_change(event: Event) {
+    const new_key = (event.target as HTMLSelectElement).value
+    if (!new_key || new_key === selected_property_key || !data_loader) return
+    // Capture all state for full rollback on any error
+    const prev = { title, range, selected_property_key } as const
+
+    selected_property_key = new_key
+    loading = true
+
+    try {
+      const result = await data_loader(new_key)
+      range = result.range
+      if (result.title !== undefined) title = result.title
+      // Isolate callback errors - still rollback if callback throws
+      on_property_change?.(new_key, result.range)
+    } catch (err) {
+      console.error(`ColorBar property change failed for ${new_key}:`, err)
+      // Full rollback of all state
+      selected_property_key = prev.selected_property_key
+      range = prev.range
+      title = prev.title
+    } finally {
+      loading = false
+    }
+  }
+
+  function handle_color_scale_change(event: Event) {
+    const new_key = (event.target as HTMLSelectElement).value
+    if (!new_key || new_key === selected_color_scale_key) return
+
+    // Find option first - only update state if option exists to avoid mismatch
+    const opt = color_scale_options?.find((item) => item.key === new_key)
+    if (!opt) return
+
+    selected_color_scale_key = new_key
+    color_scale = opt.scale
+    on_color_scale_change?.(new_key)
   }
 
   // Align items based on orientation and title position
@@ -418,7 +502,43 @@
   style={div_style + (rest.style ?? ``)}
   class="colorbar {rest.class ?? ``}"
 >
-  {#if title}<span style={actual_title_style} class="label">{@html title}</span>{/if}
+  {#if title || has_any_select}
+    <div class="title-row {actual_title_side}" style={actual_title_style}>
+      {#if has_property_select && property_options}
+        <select
+          class="property-select"
+          value={selected_property_key ?? property_options[0]?.key ?? ``}
+          onchange={handle_property_change}
+          disabled={loading}
+          aria-label="Select property"
+        >
+          {#each property_options as opt (opt.key)}
+            <option value={opt.key}>{format_opt(opt)}</option>
+          {/each}
+        </select>
+        {#if loading}
+          <Spinner
+            style="--spinner-size: 0.8em; --spinner-border-width: 2px; --spinner-margin: 0"
+          />
+        {/if}
+      {:else if title}
+        <!-- Only show static title if no property select -->
+        <span class="label">{@html title}</span>
+      {/if}
+      {#if has_color_scale_select && color_scale_options}
+        <select
+          class="color-scale-select"
+          value={selected_color_scale_key ?? color_scale_options[0]?.key ?? ``}
+          onchange={handle_color_scale_change}
+          aria-label="Select color scale"
+        >
+          {#each color_scale_options as opt (opt.key)}
+            <option value={opt.key}>{opt.label}</option>
+          {/each}
+        </select>
+      {/if}
+    </div>
+  {/if}
   <div style={final_bar_style} class="bar">
     {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as
       tick_label
@@ -522,5 +642,77 @@
     left: 50%; /* Center horizontally */
     transform: translate(-50%, -50%); /* Center horizontally and vertically */
     padding: 0; /* No extra padding for inside */
+  }
+  /* Title row with optional selects */
+  .title-row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cbar-select-gap, 0.3em);
+    white-space: nowrap;
+    width: auto;
+  }
+  .title-row.left,
+  .title-row.right {
+    flex-direction: column;
+  }
+  /* Rotate only the label element, not the entire row (keeps selects usable) */
+  .title-row.left .label,
+  .title-row.right .label {
+    writing-mode: vertical-lr;
+    white-space: nowrap;
+  }
+  .title-row.left .label {
+    transform: rotate(180deg);
+  }
+  /* Native select styling */
+  .property-select,
+  .color-scale-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    padding: 0 12px 0 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    text-align: center;
+    text-align-last: center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0 center;
+    background-size: 8px;
+  }
+  .property-select:hover,
+  .color-scale-select:hover {
+    background-color: var(--cbar-select-hover-bg, rgba(128, 128, 128, 0.15));
+  }
+  .property-select:focus,
+  .color-scale-select:focus {
+    outline: 2px solid var(--cbar-select-focus-color, currentColor);
+    outline-offset: 1px;
+  }
+  .property-select:disabled,
+  .color-scale-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .property-select option,
+  .color-scale-select option {
+    background: var(--cbar-select-option-bg, white);
+    color: var(--cbar-select-option-color, black);
+  }
+  /* Vertical orientation: selects stay horizontal (no transform needed on container) */
+  .title-row.left .property-select,
+  .title-row.left .color-scale-select,
+  .title-row.right .property-select,
+  .title-row.right .color-scale-select {
+    writing-mode: horizontal-tb; /* Ensure horizontal text in dropdowns */
+  }
+  /* Right-align property-select when color-scale-select is also visible */
+  .title-row:has(.color-scale-select) .property-select {
+    text-align: right;
+    text-align-last: right;
   }
 </style>
