@@ -334,6 +334,13 @@ export interface TickConfig {
   label?: TickLabelConfig
 }
 
+// Option for axis property dropdown (enables interactive axis switching)
+export interface AxisOption {
+  key: string // unique identifier (e.g., 'energy', 'volume')
+  label: string // display name (e.g., 'Total Energy')
+  unit?: string // optional unit (e.g., 'eV', 'Å³')
+}
+
 // Axis configuration type for grouping related axis properties
 export interface AxisConfig {
   label?: string
@@ -346,7 +353,44 @@ export interface AxisConfig {
   label_shift?: XyShift
   grid_style?: HTMLAttributes<SVGLineElement>
   color?: string | null // Color for axis label, tick labels, and axis line
+  // Interactive axis options (enables clickable axis labels)
+  options?: AxisOption[] // available properties for this axis
+  selected_key?: string // currently selected property key
 }
+
+// Result from data loader - returns complete series array
+export interface DataLoaderResult<Metadata = Record<string, unknown>> {
+  series: DataSeries<Metadata>[] // full replacement series
+  axis_label?: string // optional new axis label
+  axis_unit?: string // optional axis unit
+}
+
+// Callback to fetch data for a property change
+// Called when user selects a new property from the axis dropdown
+export type DataLoaderFn<Metadata = Record<string, unknown>> = (
+  axis: `x` | `y` | `y2`,
+  property_key: string,
+  current_series: DataSeries<Metadata>[], // passed for context
+) => Promise<DataLoaderResult<Metadata>>
+
+// Error event for axis data loading failures
+export interface AxisLoadError {
+  axis: `x` | `y` | `y2`
+  key: string
+  message: string
+}
+
+// Option for color scale dropdown in ColorBar
+export interface ColorScaleOption {
+  key: string // e.g., 'viridis', 'plasma'
+  label: string // e.g., 'Viridis', 'Plasma'
+  scale: string | ((t: number) => string) // d3 interpolator name or function
+}
+
+// Data loader for ColorBar property changes
+export type ColorBarDataLoaderFn = (
+  property_key: string,
+) => Promise<{ range: [number, number]; title?: string }>
 
 // Display configuration for grid lines and zero lines
 export interface DisplayConfig {
