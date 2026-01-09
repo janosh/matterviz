@@ -2368,6 +2368,396 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
 />
 ```
 
+## Interactive Axis Labels with Lazy Data Loading
+
+This demo showcases **interactive axis labels** with lazy data loading. Features:
+
+- **240 data points** (80 per material class) to test rendering performance
+- **6 switchable properties** on each axis with realistic correlations
+- **Multi-series support** with 3 material classes (Metals, Ceramics, Polymers)
+- **Variable loading delays** (200-800ms) simulating real API latency
+- **Error simulation** (5% chance) to test error handling
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Seeded random for reproducible data
+  function seeded_random(seed) {
+    let state = seed
+    return () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff
+      return state / 0x7fffffff
+    }
+  }
+
+  // Generate realistic materials data with correlations
+  function generate_property_data(n_points, base_seed) {
+    const rng = seeded_random(base_seed)
+    const data = { metals: [], ceramics: [], polymers: [] }
+
+    for (let idx = 0; idx < n_points; idx++) {
+      // Metals: high density, low bandgap, high conductivity
+      data.metals.push({
+        density: 5 + rng() * 15 + Math.sin(idx * 0.1) * 2,
+        bandgap: rng() * 0.5,
+        conductivity: 1e5 + rng() * 1e7,
+        formation_energy: -3 - rng() * 2 + Math.cos(idx * 0.05),
+        bulk_modulus: 50 + rng() * 200,
+        thermal_expansion: 5 + rng() * 20,
+      })
+
+      // Ceramics: medium density, wide bandgap, low conductivity
+      data.ceramics.push({
+        density: 2 + rng() * 6,
+        bandgap: 2 + rng() * 8,
+        conductivity: 1e-10 + rng() * 1e-5,
+        formation_energy: -5 - rng() * 3 - Math.sin(idx * 0.08),
+        bulk_modulus: 100 + rng() * 300,
+        thermal_expansion: 2 + rng() * 10,
+      })
+
+      // Polymers: low density, variable bandgap, insulating
+      data.polymers.push({
+        density: 0.8 + rng() * 1.5,
+        bandgap: 3 + rng() * 6,
+        conductivity: 1e-18 + rng() * 1e-12,
+        formation_energy: -1 - rng() * 2,
+        bulk_modulus: 1 + rng() * 10,
+        thermal_expansion: 50 + rng() * 200,
+      })
+    }
+    return data
+  }
+
+  const n_points = 80
+  const all_data = generate_property_data(n_points, 42)
+
+  // Property definitions with realistic units
+  const properties = {
+    density: { label: `Density`, unit: `g/cm³`, scale: `linear` },
+    bandgap: { label: `Band Gap`, unit: `eV`, scale: `linear` },
+    conductivity: { label: `Conductivity`, unit: `S/m`, scale: `log` },
+    formation_energy: { label: `Formation Energy`, unit: `eV/atom`, scale: `linear` },
+    bulk_modulus: { label: `Bulk Modulus`, unit: `GPa`, scale: `linear` },
+    thermal_expansion: { label: `Thermal Exp.`, unit: `ppm/K`, scale: `linear` },
+  }
+
+  // Series colors
+  const colors = {
+    metals: `#e74c3c`,
+    ceramics: `#3498db`,
+    polymers: `#2ecc71`,
+  }
+
+  // Build series from data
+  function build_series(x_prop, y_prop) {
+    const series_list = []
+    for (const [material, color] of Object.entries(colors)) {
+      const mat_data = all_data[material]
+      series_list.push({
+        x: mat_data.map((d) => d[x_prop]),
+        y: mat_data.map((d) => d[y_prop]),
+        label: material.charAt(0).toUpperCase() + material.slice(1),
+        point_style: { fill: color, radius: 4, opacity: 0.7 },
+        markers: `points`,
+      })
+    }
+    return series_list
+  }
+
+  // Initial state
+  let x_key = $state(`density`)
+  let y_key = $state(`formation_energy`)
+  let series = $state(build_series(x_key, y_key))
+  let loading_log = $state([])
+  let error_count = $state(0)
+  let load_count = $state(0)
+
+  // Async data loader with variable delays and error simulation
+  async function data_loader(axis, property_key, current_series) {
+    const start_time = performance.now()
+    loading_log = [...loading_log, `⏳ Loading ${properties[property_key].label}...`]
+
+    // Variable delay (200-800ms) to simulate real network conditions
+    const delay = 200 + Math.random() * 600
+    await new Promise((resolve) => setTimeout(resolve, delay))
+
+    // 5% chance of simulated error
+    if (Math.random() < 0.05) {
+      error_count++
+      throw new Error(`Simulated network error for ${property_key}`)
+    }
+
+    load_count++
+    const elapsed = (performance.now() - start_time).toFixed(0)
+    loading_log = [
+      ...loading_log,
+      `✓ Loaded ${properties[property_key].label} (${elapsed}ms)`,
+    ]
+
+    // Determine new keys
+    const new_x_key = axis === `x` ? property_key : x_key
+    const new_y_key = axis === `y` ? property_key : y_key
+    if (axis === `x`) x_key = property_key
+    if (axis === `y`) y_key = property_key
+
+    const prop = properties[property_key]
+    return {
+      series: build_series(new_x_key, new_y_key),
+      axis_label: `${prop.label} (${prop.unit})`,
+    }
+  }
+
+  function handle_error(err) {
+    loading_log = [...loading_log, `❌ Error: ${err.message}`]
+  }
+
+  // Axis options from properties
+  const axis_options = Object.entries(properties).map(([key, prop]) => ({
+    key,
+    label: prop.label,
+    unit: prop.unit,
+  }))
+</script>
+
+<p style="margin-bottom: 0.5em; font-size: 0.9em; opacity: 0.85">
+  <strong>Stress test:</strong> 240 points across 3 series. Click axis labels to switch
+  properties. ~5% of loads will fail to test error recovery.
+</p>
+
+<div style="display: flex; gap: 1em; margin-bottom: 0.5em; font-size: 0.8em">
+  <span>Loads: <strong>{load_count}</strong></span>
+  <span>Errors: <strong style="color: #e74c3c">{error_count}</strong></span>
+</div>
+
+<ScatterPlot
+  bind:series
+  x_axis={{
+    label: `${properties[x_key].label} (${properties[x_key].unit})`,
+    options: axis_options,
+    selected_key: x_key,
+  }}
+  y_axis={{
+    label: `${properties[y_key].label} (${properties[y_key].unit})`,
+    options: axis_options,
+    selected_key: y_key,
+  }}
+  {data_loader}
+  on_error={handle_error}
+  legend={{ layout: `horizontal`, wrapper_style: `justify-content: center` }}
+  style="height: 400px"
+/>
+
+<div
+  style="margin-top: 0.5em; padding: 0.5em; background: var(--surface-bg-hover, rgba(0, 0, 0, 0.05)); border-radius: 4px; font-size: 0.8em; max-height: 80px; overflow-y: auto; font-family: monospace"
+>
+  {#each loading_log.slice(-6) as msg}
+    <div>{msg}</div>
+  {/each}
+  {#if loading_log.length === 0}
+    <div style="opacity: 0.6">Click an axis label to see loading activity</div>
+  {/if}
+</div>
+```
+
+## Interactive Color Dimension with Dynamic ColorBar
+
+This example demonstrates combining **interactive axis labels** with an **interactive ColorBar** for full 3-axis exploration. The built-in ColorBar supports property and color scale selection via dropdowns. Users can switch:
+
+- **X-axis property** (click x-axis label)
+- **Y-axis property** (click y-axis label)
+- **Color property** (click ColorBar title/property dropdown)
+- **Color scheme** (click ColorBar color scale dropdown)
+
+All changes trigger lazy data loading with simulated network delays.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // Seeded random for reproducible data
+  function seeded_random(seed) {
+    let state = seed
+    return () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff
+      return state / 0x7fffffff
+    }
+  }
+
+  // Generate correlated materials data
+  function generate_data(n_points, base_seed) {
+    const rng = seeded_random(base_seed)
+    const data = []
+
+    for (let idx = 0; idx < n_points; idx++) {
+      const base_density = 2 + rng() * 18
+      data.push({
+        density: base_density,
+        volume: 8 + (20 - base_density) * 2 + rng() * 5,
+        formation_energy: -4 + rng() * 8 - base_density * 0.1,
+        bandgap: Math.max(0, 5 - base_density * 0.2 + rng() * 3),
+        bulk_modulus: 20 + base_density * 10 + rng() * 50,
+        thermal_cond: 5 + base_density * 3 + rng() * 30,
+      })
+    }
+    return data
+  }
+
+  const n_points = 150
+  const all_data = generate_data(n_points, 12345)
+
+  // Property definitions
+  const properties = {
+    density: { label: `Density`, unit: `g/cm³` },
+    volume: { label: `Volume`, unit: `Å³/atom` },
+    formation_energy: { label: `Formation Energy`, unit: `eV/atom` },
+    bandgap: { label: `Band Gap`, unit: `eV` },
+    bulk_modulus: { label: `Bulk Modulus`, unit: `GPa` },
+    thermal_cond: { label: `Thermal Cond.`, unit: `W/mK` },
+  }
+
+  // Color scale options for ColorBar dropdown
+  const color_scale_options = [
+    { key: `viridis`, label: `Viridis`, scale: `interpolateViridis` },
+    { key: `plasma`, label: `Plasma`, scale: `interpolatePlasma` },
+    { key: `inferno`, label: `Inferno`, scale: `interpolateInferno` },
+    { key: `turbo`, label: `Turbo`, scale: `interpolateTurbo` },
+    { key: `cool`, label: `Cool`, scale: `interpolateCool` },
+  ]
+
+  // Build series with color values
+  function build_series(x_key, y_key, color_key) {
+    const color_vals = all_data.map((d) => d[color_key])
+    return [{
+      x: all_data.map((d) => d[x_key]),
+      y: all_data.map((d) => d[y_key]),
+      color_values: color_vals,
+      point_style: { radius: 5, stroke: `white`, stroke_width: 0.5 },
+      markers: `points`,
+      metadata: all_data.map((d, idx) => ({
+        idx,
+        ...Object.fromEntries(Object.keys(properties).map((k) => [k, d[k]])),
+      })),
+    }]
+  }
+
+  // Get range for a property
+  function get_range(key) {
+    const vals = all_data.map((d) => d[key])
+    return [Math.min(...vals), Math.max(...vals)]
+  }
+
+  // State
+  let x_key = $state(`density`)
+  let y_key = $state(`formation_energy`)
+  let color_key = $state(`bandgap`)
+  let color_scale_key = $state(`viridis`)
+  let series = $state(build_series(x_key, y_key, color_key))
+  let axis_switches = $state(0)
+  let color_switches = $state(0)
+
+  // Axis options (for x/y axis dropdowns)
+  const axis_options = Object.entries(properties).map(([key, prop]) => ({
+    key,
+    label: prop.label,
+    unit: prop.unit,
+  }))
+
+  // Property options for ColorBar (same structure)
+  const color_property_options = axis_options
+
+  // Axis data loader (for x/y axis changes)
+  async function axis_data_loader(axis, property_key, current_series) {
+    await new Promise((r) => setTimeout(r, 200 + Math.random() * 400))
+    axis_switches++
+
+    const new_x = axis === `x` ? property_key : x_key
+    const new_y = axis === `y` ? property_key : y_key
+    if (axis === `x`) x_key = property_key
+    if (axis === `y`) y_key = property_key
+
+    const prop = properties[property_key]
+    return {
+      series: build_series(new_x, new_y, color_key),
+      axis_label: `${prop.label} (${prop.unit})`,
+    }
+  }
+
+  // ColorBar data loader (for color property changes)
+  async function colorbar_data_loader(property_key) {
+    await new Promise((r) => setTimeout(r, 200 + Math.random() * 400))
+    color_switches++
+    color_key = property_key
+
+    // Rebuild series with new color values
+    series = build_series(x_key, y_key, property_key)
+
+    const prop = properties[property_key]
+    return {
+      range: get_range(property_key),
+      title: `${prop.label} (${prop.unit})`,
+    }
+  }
+
+  // Handle color scale change (no data loading needed, just update scheme)
+  function handle_color_scale_change(key) {
+    color_scale_key = key
+  }
+
+  // Format tooltip value
+  function fmt(val) {
+    return typeof val === `number` ? val.toFixed(2) : val
+  }
+</script>
+
+<p style="font-size: 0.9em; opacity: 0.85; margin-bottom: 0.5em">
+  <strong>150 points</strong> with 3 interactive dimensions. Click axis labels to switch
+  X/Y properties. Click the ColorBar title to switch color property, or the color scale
+  dropdown to change the color scheme.
+</p>
+
+<div style="display: flex; gap: 1em; font-size: 0.8em; margin-bottom: 0.5em">
+  <span>Axis switches: <strong>{axis_switches}</strong></span>
+  <span>Color switches: <strong>{color_switches}</strong></span>
+</div>
+
+<ScatterPlot
+  bind:series
+  x_axis={{
+    label: `${properties[x_key].label} (${properties[x_key].unit})`,
+    options: axis_options,
+    selected_key: x_key,
+  }}
+  y_axis={{
+    label: `${properties[y_key].label} (${properties[y_key].unit})`,
+    options: axis_options,
+    selected_key: y_key,
+  }}
+  data_loader={axis_data_loader}
+  color_scale={{ scheme: color_scale_options.find((o) => o.key === color_scale_key)?.scale }}
+  color_bar={{
+    title: `${properties[color_key].label} (${properties[color_key].unit})`,
+    property_options: color_property_options,
+    selected_property_key: color_key,
+    data_loader: colorbar_data_loader,
+    on_property_change: () => {},
+    color_scale_options,
+    selected_color_scale_key: color_scale_key,
+    on_color_scale_change: handle_color_scale_change,
+  }}
+  style="height: 450px"
+  legend={null}
+>
+  {#snippet tooltip({ x, y, color_value, metadata })}
+    <strong>Point #{metadata.idx + 1}</strong><br>
+    {properties[x_key].label}: {fmt(x)}<br>
+    {properties[y_key].label}: {fmt(y)}<br>
+    {properties[color_key].label}: {fmt(color_value)}
+  {/snippet}
+</ScatterPlot>
+```
+
 ## Stress Test: Many Interpolated Fills
 
 This example creates multiple fill regions between series with varying sample densities to stress test the interpolation algorithm:

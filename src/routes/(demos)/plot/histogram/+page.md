@@ -716,6 +716,229 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 </div>
 ```
 
+## Interactive Axis Labels for Property Exploration
+
+This demo stress-tests histograms with interactive property switching:
+
+- **9,000 data points** (3,000 per series) for performance testing
+- **8 different distributions** with varied shapes (normal, exponential, bimodal, etc.)
+- **Multi-series comparison** showing 3 material classes simultaneously
+- **Dynamic bin adjustment** based on selected property
+- **Rapid property switching** to test state management
+
+```svelte example
+<script>
+  import { Histogram } from 'matterviz'
+
+  // Seeded random number generator
+  function seeded_random(seed) {
+    let state = seed
+    return () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff
+      return state / 0x7fffffff
+    }
+  }
+
+  // Box-Muller transform for normal distribution
+  function box_muller(rng) {
+    const u1 = rng()
+    const u2 = rng()
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+  }
+
+  // Generate various distributions
+  function generate_distribution(type, n, seed) {
+    const rng = seeded_random(seed)
+    const data = []
+
+    for (let i = 0; i < n; i++) {
+      let val
+      switch (type) {
+        case `normal`:
+          val = box_muller(rng) * 1.5 - 2
+          break
+        case `exponential`:
+          val = -Math.log(rng()) * 2
+          break
+        case `bimodal`:
+          val = rng() < 0.4 ? box_muller(rng) * 0.8 - 3 : box_muller(rng) * 1.2 + 2
+          break
+        case `uniform`:
+          val = rng() * 10 - 2
+          break
+        case `log_normal`:
+          val = Math.exp(box_muller(rng) * 0.8)
+          break
+        case `heavy_tail`:
+          val = box_muller(rng) / (rng() + 0.1)
+          break
+        case `skewed`:
+          const u = rng()
+          val = Math.pow(u, 3) * 15 - 2
+          break
+        case `multimodal`:
+          const mode = Math.floor(rng() * 4)
+          val = box_muller(rng) * 0.5 + mode * 3 - 4
+          break
+      }
+      data.push(val)
+    }
+    return data
+  }
+
+  const n_points = 3000 // Per series
+
+  // Pre-generate all distributions for 3 material classes
+  const material_classes = [`Oxides`, `Sulfides`, `Nitrides`]
+  const colors = [`#e74c3c`, `#3498db`, `#2ecc71`]
+
+  const property_configs = {
+    formation_energy: {
+      type: `normal`,
+      label: `Formation Energy`,
+      unit: `eV/atom`,
+      bins: 50,
+    },
+    band_gap: {
+      type: `exponential`,
+      label: `Band Gap`,
+      unit: `eV`,
+      bins: 40,
+    },
+    volume: {
+      type: `bimodal`,
+      label: `Volume`,
+      unit: `Å³/atom`,
+      bins: 45,
+    },
+    density: {
+      type: `log_normal`,
+      label: `Density`,
+      unit: `g/cm³`,
+      bins: 50,
+    },
+    bulk_modulus: {
+      type: `heavy_tail`,
+      label: `Bulk Modulus`,
+      unit: `GPa`,
+      bins: 60,
+    },
+    thermal_cond: {
+      type: `skewed`,
+      label: `Thermal Conductivity`,
+      unit: `W/m·K`,
+      bins: 45,
+    },
+    melting_point: {
+      type: `uniform`,
+      label: `Melting Point`,
+      unit: `K`,
+      bins: 40,
+    },
+    hardness: {
+      type: `multimodal`,
+      label: `Hardness`,
+      unit: `GPa`,
+      bins: 55,
+    },
+  }
+
+  // Generate data for all combinations
+  const all_data = {}
+  let seed = 100
+  for (const [prop_key, config] of Object.entries(property_configs)) {
+    all_data[prop_key] = material_classes.map((_, idx) => {
+      seed += 17
+      // Shift each class slightly for variety
+      return generate_distribution(config.type, n_points, seed + idx * 1000)
+        .map((v) => v + idx * 0.5)
+    })
+  }
+
+  // Build series for a property
+  function build_series(prop_key) {
+    return material_classes.map((name, idx) => ({
+      y: all_data[prop_key][idx],
+      label: name,
+      line_style: { stroke: colors[idx], stroke_width: 2 },
+      bar_style: { fill: colors[idx], opacity: 0.4 },
+    }))
+  }
+
+  // State
+  let current_prop = $state(`formation_energy`)
+  let series = $state(build_series(current_prop))
+  let bins = $state(property_configs.formation_energy.bins)
+  let load_times = $state([])
+  let switch_count = $state(0)
+
+  // Data loader
+  async function data_loader(axis, property_key) {
+    const start = performance.now()
+    switch_count++
+
+    // Simulate variable network delay
+    await new Promise((r) => setTimeout(r, 100 + Math.random() * 400))
+
+    current_prop = property_key
+    bins = property_configs[property_key].bins
+
+    const elapsed = Math.round(performance.now() - start)
+    load_times = [...load_times.slice(-9), elapsed]
+
+    const config = property_configs[property_key]
+    return {
+      series: build_series(property_key),
+      axis_label: `${config.label} (${config.unit})`,
+    }
+  }
+
+  // X-axis options
+  const x_options = Object.entries(property_configs).map(([key, config]) => ({
+    key,
+    label: config.label,
+    unit: config.unit,
+  }))
+
+  let avg_load = $derived(
+    load_times.length > 0
+      ? Math.round(load_times.reduce((a, b) => a + b, 0) / load_times.length)
+      : 0,
+  )
+
+  let total_points = $derived(n_points * material_classes.length)
+</script>
+
+<div style="margin-bottom: 0.5em; font-size: 0.85em; opacity: 0.7">
+  Points: <strong>{total_points.toLocaleString()}</strong> | Bins: <strong>{bins}</strong>
+  | Switches: <strong>{switch_count}</strong> | Avg load: <strong>{avg_load}ms</strong>
+</div>
+
+<Histogram
+  bind:series
+  {bins}
+  x_axis={{
+    label: `${property_configs[current_prop].label} (${
+      property_configs[current_prop].unit
+    })`,
+    options: x_options,
+    selected_key: current_prop,
+  }}
+  y_axis={{ label: `Count` }}
+  {data_loader}
+  bar={{ border_radius: 1 }}
+  legend={{ layout: `horizontal`, wrapper_style: `justify-content: center` }}
+  style="height: 400px"
+/>
+
+<p style="margin-top: 0.5em; font-size: 0.8em; opacity: 0.7">
+  {total_points.toLocaleString()} samples across 3 material classes. Try rapidly switching
+  properties. Current distribution type: <code>{
+    property_configs[current_prop].type
+  }</code>
+</p>
+```
+
 ## Multiple Plots in 2×2 Grid Layout
 
 Display multiple histograms in a responsive 2×2 grid:

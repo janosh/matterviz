@@ -863,6 +863,153 @@ When comparing results from different computational methods or experimental tech
 />
 ```
 
+## Interactive Axis Labels with Complex Data
+
+This demo stress-tests interactive axis labels with:
+
+- **50 materials** across multiple crystal systems
+- **7 switchable properties** with realistic value ranges
+- **Grouped bars** showing multiple series simultaneously
+- **Rapid switching test** - try clicking properties quickly!
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  // Seeded random for reproducible data
+  function seeded_random(seed) {
+    let state = seed
+    return () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff
+      return state / 0x7fffffff
+    }
+  }
+
+  // Generate 50 materials with 7 properties each
+  const n_materials = 50
+  const rng = seeded_random(123)
+
+  const crystal_systems = [
+    `Cubic`,
+    `Tetragonal`,
+    `Orthorhombic`,
+    `Hexagonal`,
+    `Monoclinic`,
+  ]
+  const system_colors = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`, `#9b59b6`]
+
+  // Generate material data
+  const materials = Array.from({ length: n_materials }, (_, idx) => {
+    const system_idx = idx % 5
+    return {
+      id: idx + 1,
+      name: `Mat-${String(idx + 1).padStart(3, `0`)}`,
+      system: crystal_systems[system_idx],
+      system_idx,
+      band_gap: rng() * 6,
+      formation_energy: -rng() * 4 - 0.5,
+      density: 2 + rng() * 10,
+      bulk_modulus: 20 + rng() * 400,
+      thermal_conductivity: rng() * 500,
+      melting_point: 500 + rng() * 3000,
+      hardness: rng() * 10,
+    }
+  })
+
+  // Property definitions
+  const properties = {
+    band_gap: { label: `Band Gap`, unit: `eV`, color: `#4c6ef5` },
+    formation_energy: {
+      label: `Formation Energy`,
+      unit: `eV/atom`,
+      color: `#ff6b6b`,
+    },
+    density: { label: `Density`, unit: `g/cm³`, color: `#51cf66` },
+    bulk_modulus: { label: `Bulk Modulus`, unit: `GPa`, color: `#ffd43b` },
+    thermal_conductivity: { label: `Thermal Cond.`, unit: `W/m·K`, color: `#20c997` },
+    melting_point: { label: `Melting Point`, unit: `K`, color: `#fa5252` },
+    hardness: { label: `Hardness`, unit: `Mohs`, color: `#7950f2` },
+  }
+
+  // Build series grouped by crystal system
+  function build_series(prop_key) {
+    return crystal_systems.map((system, sys_idx) => {
+      const system_materials = materials.filter((m) => m.system === system)
+      return {
+        x: system_materials.map((m) => m.id),
+        y: system_materials.map((m) => m[prop_key]),
+        label: system,
+        color: system_colors[sys_idx],
+        labels: system_materials.map((m) => m.name),
+      }
+    })
+  }
+
+  // State
+  let y_key = $state(`band_gap`)
+  let series = $state(build_series(y_key))
+  let load_times = $state([])
+  let switch_count = $state(0)
+
+  // Data loader with timing
+  async function data_loader(axis, property_key) {
+    const start = performance.now()
+    switch_count++
+
+    // Variable delay
+    await new Promise((r) => setTimeout(r, 150 + Math.random() * 350))
+
+    y_key = property_key
+    const elapsed = Math.round(performance.now() - start)
+    load_times = [...load_times.slice(-9), elapsed]
+
+    const prop = properties[property_key]
+    return {
+      series: build_series(property_key),
+      axis_label: `${prop.label} (${prop.unit})`,
+    }
+  }
+
+  // Y-axis options
+  const y_options = Object.entries(properties).map(([key, prop]) => ({
+    key,
+    label: prop.label,
+    unit: prop.unit,
+  }))
+
+  // Stats
+  let avg_load_time = $derived(
+    load_times.length > 0
+      ? Math.round(load_times.reduce((a, b) => a + b, 0) / load_times.length)
+      : 0,
+  )
+</script>
+
+<div style="margin-bottom: 0.5em; font-size: 0.8em; opacity: 0.7">
+  Switches: <strong>{switch_count}</strong> | Avg load: <strong>{avg_load_time}ms</strong>
+  | Materials: <strong>{n_materials}</strong>
+</div>
+
+<BarPlot
+  bind:series
+  x_axis={{ label: `Material ID`, tick: { label: { show: false } } }}
+  y_axis={{
+    label: `${properties[y_key].label} (${properties[y_key].unit})`,
+    options: y_options,
+    selected_key: y_key,
+  }}
+  {data_loader}
+  mode="grouped"
+  bar={{ border_radius: 1, gap: 0.1 }}
+  legend={{ layout: `horizontal`, wrapper_style: `justify-content: center; font-size: 0.8em` }}
+  style="height: 400px"
+/>
+
+<p style="margin-top: 0.5em; font-size: 0.8em; opacity: 0.7">
+  50 materials grouped by crystal system. Click Y-axis to switch properties.
+</p>
+```
+
 ## Multiple Plots in 2×2 Grid Layout
 
 Display multiple bar plots in a responsive 2×2 grid:
