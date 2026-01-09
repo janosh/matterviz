@@ -418,14 +418,9 @@
   )
   let has_any_select = $derived(has_property_select || has_color_scale_select)
 
-  function format_property_option(key: string): string {
-    const opt = property_options?.find((item) => item.key === key)
-    return opt ? (opt.unit ? `${opt.label} (${opt.unit})` : opt.label) : key
-  }
-
-  function format_color_scale_option(key: string): string {
-    return color_scale_options?.find((item) => item.key === key)?.label ?? key
-  }
+  // Format option for display - takes the option object directly since we iterate over options
+  const format_opt = (opt: { label: string; unit?: string }) =>
+    opt.unit ? `${opt.label} (${opt.unit})` : opt.label
 
   async function handle_property_change(event: Event) {
     const new_key = (event.target as HTMLSelectElement).value
@@ -501,7 +496,7 @@
           disabled={loading}
         >
           {#each property_options as opt (opt.key)}
-            <option value={opt.key}>{format_property_option(opt.key)}</option>
+            <option value={opt.key}>{format_opt(opt)}</option>
           {/each}
         </select>
         {#if loading}
@@ -520,7 +515,7 @@
           onchange={handle_color_scale_change}
         >
           {#each color_scale_options as opt (opt.key)}
-            <option value={opt.key}>{format_color_scale_option(opt.key)}</option>
+            <option value={opt.key}>{opt.label}</option>
           {/each}
         </select>
       {/if}
@@ -694,5 +689,10 @@
   .title-row.left .property-select,
   .title-row.left .color-scale-select {
     transform: rotate(180deg);
+  }
+  /* Right-align property-select when color-scale-select is also visible */
+  .title-row:has(.color-scale-select) .property-select {
+    text-align: right;
+    text-align-last: right;
   }
 </style>

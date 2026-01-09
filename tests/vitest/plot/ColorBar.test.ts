@@ -374,45 +374,27 @@ describe(`ColorBar Numeric Formatting`, () => {
     expect(tick_label_spans[4].textContent).toBe(`100%`)
   })
 
-  test(`falls back to format_num when tick_format is undefined`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        range: [0.1234, 5.6789],
-        tick_format: undefined, // Explicitly undefined
-        tick_labels: 3,
-        snap_ticks: false,
-      },
-    })
+  test.each([
+    { range: [0.1234, 5.6789] as [number, number], expected: [`0.123`, `2.9`, `5.68`] },
+    { range: [1000, 5000] as [number, number], expected: [`1k`, `5k`] },
+  ])(
+    `falls back to format_num for range $range when tick_format undefined`,
+    ({ range, expected }) => {
+      mount(ColorBar, {
+        target: document.body,
+        props: {
+          range,
+          tick_format: undefined,
+          tick_labels: expected.length,
+          snap_ticks: false,
+        },
+      })
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
-    expect(tick_label_spans.length).toBe(3)
-    // Check format_num's formatting
-    expect(tick_label_spans[0].textContent).toBe(`0.123`)
-    expect(tick_label_spans[1].textContent).toBe(`2.9`)
-    expect(tick_label_spans[2].textContent).toBe(`5.68`)
-  })
-
-  test(`falls back to format_num when tick_format is null`, () => {
-    // Test with null (should behave same as undefined)
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        range: [1000, 5000],
-        tick_format: undefined, // Use undefined as null is not assignable
-        tick_labels: 2,
-        snap_ticks: false,
-      },
-    })
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
-    expect(tick_label_spans.length).toBe(2) // Should be 2 ticks
-    expect(tick_label_spans[0].textContent).toBe(`1k`) // Assuming format_num uses 'k' suffix
-    expect(tick_label_spans[1].textContent).toBe(`5k`)
-  })
+      const ticks = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
+      expect(ticks.length).toBe(expected.length)
+      expected.forEach((text, idx) => expect(ticks[idx].textContent).toBe(text))
+    },
+  )
 })
 
 describe(`ColorBar Other Features`, () => {
@@ -505,56 +487,30 @@ describe(`Vertical Layout Specifics`, () => {
     // We trust the browser to apply the default value from the CSS var.
   })
 
-  test(`positions rotated side titles correctly with constraints (title_side=left)`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        orientation: `vertical`,
-        title: `Rotated Left Title`,
-        title_side: `left`,
-      },
-    })
+  test.each(
+    [
+      { side: `left`, flex_dir: `row` },
+      { side: `right`, flex_dir: `row-reverse` },
+    ] as const,
+  )(
+    `positions rotated side titles correctly (title_side=$side)`,
+    ({ side, flex_dir }) => {
+      const title = `Rotated ${side.charAt(0).toUpperCase() + side.slice(1)} Title`
+      mount(ColorBar, {
+        target: document.body,
+        props: { orientation: `vertical`, title, title_side: side },
+      })
 
-    const wrapper = doc_query(`.colorbar`)
-    expect(wrapper.style.flexDirection).toBe(`row`)
-    expect(wrapper.style.getPropertyValue(`--cbar-wrapper-align-items`)).toBe(
-      `stretch`,
-    )
+      const wrapper = doc_query(`.colorbar`)
+      expect(wrapper.style.flexDirection).toBe(flex_dir)
+      expect(wrapper.style.getPropertyValue(`--cbar-wrapper-align-items`)).toBe(`stretch`)
+      expect(wrapper.style.getPropertyValue(`--cbar-label-display`)).toBe(`flex`)
 
-    // Title row should have left class for rotation via CSS
-    const title_row = doc_query(`.colorbar .title-row`)
-    expect(title_row.classList.contains(`left`)).toBe(true)
-
-    const title_span = doc_query(`.colorbar .label`) as HTMLElement
-    expect(title_span.textContent).toBe(`Rotated Left Title`)
-
-    // Check label uses display: flex (via CSS var)
-    expect(wrapper.style.getPropertyValue(`--cbar-label-display`)).toBe(`flex`)
-  })
-
-  test(`positions rotated side titles correctly (title_side=right)`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        orientation: `vertical`,
-        title: `Rotated Right Title`,
-        title_side: `right`,
-      },
-    })
-
-    const wrapper = doc_query(`.colorbar`)
-    expect(wrapper.style.flexDirection).toBe(`row-reverse`)
-    expect(wrapper.style.getPropertyValue(`--cbar-wrapper-align-items`)).toBe(
-      `stretch`,
-    )
-
-    // Title row should have right class for rotation via CSS
-    const title_row = doc_query(`.colorbar .title-row`)
-    expect(title_row.classList.contains(`right`)).toBe(true)
-
-    const title_span = doc_query(`.colorbar .label`) as HTMLElement
-    expect(title_span.textContent).toBe(`Rotated Right Title`)
-  })
+      const title_row = doc_query(`.colorbar .title-row`)
+      expect(title_row.classList.contains(side)).toBe(true)
+      expect(doc_query(`.colorbar .label`).textContent).toBe(title)
+    },
+  )
 })
 
 // Test data for interactive features

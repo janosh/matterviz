@@ -34,7 +34,11 @@
     ReferenceLine,
     ScatterPoint,
   } from '$lib/plot'
-  import { AXIS_LABEL_CONTAINER, merge_series_state } from '$lib/plot/axis-utils'
+  import type { AxisChangeState } from '$lib/plot/axis-utils'
+  import {
+    AXIS_LABEL_CONTAINER,
+    create_axis_change_handler,
+  } from '$lib/plot/axis-utils'
   import { process_prop } from '$lib/plot/data-transform'
   import { get_relative_coords } from '$lib/plot/interactions'
   import type { IndexedRefLine } from '$lib/plot/reference-line'
@@ -771,70 +775,28 @@
     set_fullscreen_bg(wrapper, fullscreen, `--barplot-fullscreen-bg`)
   })
 
-  // Handle axis property change - loads new data via data_loader
-  async function handle_axis_change(axis: `x` | `y` | `y2`, key: string) {
-    if (!data_loader || axis_loading) return
-
-    const prev_key = axis === `x`
-      ? x_axis.selected_key
-      : axis === `y`
-      ? y_axis.selected_key
-      : y2_axis.selected_key
-
-    // Update selected_key immediately for UI feedback
-    if (axis === `x`) x_axis = { ...x_axis, selected_key: key }
-    else if (axis === `y`) y_axis = { ...y_axis, selected_key: key }
-    else y2_axis = { ...y2_axis, selected_key: key }
-
-    axis_loading = axis
-
-    try {
-      const result = await data_loader(axis, key, series)
-
-      // Merge new series with preserved state from old series
-      series = merge_series_state(series, result.series)
-
-      // Update axis label/unit if provided
-      if (result.axis_label || result.axis_unit) {
-        if (axis === `x`) {
-          x_axis = {
-            ...x_axis,
-            label: result.axis_label ?? x_axis.label,
-            unit: result.axis_unit ?? x_axis.unit,
-          }
-        } else if (axis === `y`) {
-          y_axis = {
-            ...y_axis,
-            label: result.axis_label ?? y_axis.label,
-            unit: result.axis_unit ?? y_axis.unit,
-          }
-        } else {
-          y2_axis = {
-            ...y2_axis,
-            label: result.axis_label ?? y2_axis.label,
-            unit: result.axis_unit ?? y2_axis.unit,
-          }
-        }
-      }
-
-      on_axis_change?.(axis, key, series)
-    } catch (err) {
-      console.error(`Failed to load data for ${axis}=${key}:`, err)
-
-      // Revert selection
-      if (axis === `x`) x_axis = { ...x_axis, selected_key: prev_key }
-      else if (axis === `y`) y_axis = { ...y_axis, selected_key: prev_key }
-      else y2_axis = { ...y2_axis, selected_key: prev_key }
-
-      on_error?.({
-        axis,
-        key,
-        message: err instanceof Error ? err.message : String(err),
-      })
-    } finally {
-      axis_loading = null
-    }
+  // State accessors for shared axis change handler
+  const axis_state: AxisChangeState<BarSeries<Metadata>> = {
+    get_axis: (axis) => (axis === `x` ? x_axis : axis === `y` ? y_axis : y2_axis),
+    set_axis: (axis, config) => {
+      // Spread into existing state to preserve merged type structure
+      if (axis === `x`) x_axis = { ...x_axis, ...config }
+      else if (axis === `y`) y_axis = { ...y_axis, ...config }
+      else y2_axis = { ...y2_axis, ...config }
+    },
+    get_series: () => series,
+    set_series: (new_series) => (series = new_series),
+    get_loading: () => axis_loading,
+    set_loading: (axis) => (axis_loading = axis),
   }
+
+  // Create shared handler bound to this component's state
+  const handle_axis_change = create_axis_change_handler(
+    axis_state,
+    data_loader,
+    on_axis_change,
+    on_error,
+  )
 
   // Track if auto-load has been attempted to prevent infinite retries on failure
   let auto_load_attempted = false

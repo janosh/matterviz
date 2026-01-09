@@ -34,15 +34,9 @@
     }
   }
 
-  function format_option(key: string): string {
-    const opt = options?.find((item) => item.key === key)
-    return opt ? (opt.unit ? `${opt.label} (${opt.unit})` : opt.label) : key
-  }
-
-  // Prevent plot drag handlers from triggering
-  function stop_propagation(event: MouseEvent) {
-    event.stopPropagation()
-  }
+  // Format option for display: "Label (unit)" or just "Label"
+  const format_opt = (opt: { label: string; unit?: string }) =>
+    opt.unit ? `${opt.label} (${opt.unit})` : opt.label
 </script>
 
 <div
@@ -50,20 +44,20 @@
   class:interactive={is_interactive}
   class:loading
   style:color
-  onmousedown={stop_propagation}
-  onmouseup={stop_propagation}
-  onclick={stop_propagation}
+  onmousedown={(evt) => evt.stopPropagation()}
+  onmouseup={(evt) => evt.stopPropagation()}
+  onclick={(evt) => evt.stopPropagation()}
   {...rest}
 >
   {#if is_interactive && options}
     <select
-      class="axis-select {axis_type}"
+      class="axis-select"
       value={selected_key ?? ``}
       onchange={handle_change}
       disabled={loading}
     >
       {#each options as opt (opt.key)}
-        <option value={opt.key}>{format_option(opt.key)}</option>
+        <option value={opt.key}>{format_opt(opt)}</option>
       {/each}
     </select>
     {#if loading}
