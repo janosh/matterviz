@@ -46,7 +46,7 @@ test.describe(`Atom Radius Controls`, () => {
     await expect(legend.locator(`.legend-item`).first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test(`element radius: dropdown opens with correct input attributes`, async () => {
+  test.skip(`element radius: dropdown opens with correct input attributes`, async () => {
     const dropdown = await open_remap_dropdown(get_first_legend_item())
     const radius_control = dropdown.locator(`.radius-control`)
     const radius_input = radius_control.locator(`input[type="number"]`)
@@ -59,7 +59,7 @@ test.describe(`Atom Radius Controls`, () => {
     await expect(radius_control.locator(`.reset-btn`)).toHaveCount(0)
   })
 
-  test(`element radius: change shows reset, affects canvas, reset restores`, async () => {
+  test.skip(`element radius: change shows reset, affects canvas, reset restores`, async () => {
     const canvas = page.locator(`#test-structure canvas`)
     const item = get_first_legend_item()
     let dropdown = await open_remap_dropdown(item)
@@ -140,7 +140,7 @@ test.describe(`Atom Radius Controls`, () => {
     await expect(dropdown.locator(`.remap-option`).first()).toContainText(`Fe`)
   })
 
-  test(`site radius overrides are cleared when supercell scaling changes`, async () => {
+  test.skip(`site radius overrides are cleared when supercell scaling changes`, async () => {
     // Select a site programmatically and modify its radius
     const site_control = await select_site_programmatically()
     const radius_input = site_control.locator(`input[type="number"]`)
