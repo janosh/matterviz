@@ -690,13 +690,13 @@
   }
   .property-select:focus,
   .color-scale-select:focus {
-    outline: 2px solid var(--cbar-select-focus-color, #4a90d9);
+    outline: 2px solid var(--cbar-select-focus-color, currentColor);
     outline-offset: 1px;
   }
   .property-select:disabled,
   .color-scale-select:disabled {
     opacity: 0.6;
-    cursor: wait;
+    cursor: not-allowed;
   }
   .property-select option,
   .color-scale-select option {

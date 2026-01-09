@@ -113,7 +113,7 @@
     background-color: var(--surface-bg-hover, rgba(128, 128, 128, 0.15));
   }
   .axis-select:focus {
-    outline: 2px solid var(--focus-color, #4a90d9);
+    outline: 2px solid var(--focus-color, currentColor);
     outline-offset: 1px;
   }
   .axis-select option {

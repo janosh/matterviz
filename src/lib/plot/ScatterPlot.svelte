@@ -1247,10 +1247,8 @@
     const legend_rect = legend_element.getBoundingClientRect()
 
     // Calculate offset from mouse to legend's actual rendered position relative to SVG
-    legend_drag_offset = {
-      x: event.clientX - legend_rect.left,
-      y: event.clientY - legend_rect.top,
-    }
+    const [x, y] = [event.clientX - legend_rect.left, event.clientY - legend_rect.top]
+    legend_drag_offset = { x, y }
   }
 
   function handle_legend_drag(event: MouseEvent) {
@@ -1272,10 +1270,6 @@
     const constrained_y = Math.max(0, Math.min(height - legend_height, new_y))
 
     legend_manual_position = { x: constrained_x, y: constrained_y }
-  }
-
-  function handle_legend_drag_end(_event: MouseEvent) {
-    legend_is_dragging = false
   }
 
   function get_screen_coords(point: Point, series?: DataSeries): [number, number] {
@@ -1383,19 +1377,20 @@
     on_error,
   )
 
-  // Track if auto-load has been attempted to prevent infinite retries on failure
-  let auto_load_attempted = false
+  let auto_load_attempted = false // prevent infinite retries on failure
 
   // Auto-load data if series is empty but options exist (runs once)
   $effect(() => {
     if (series.length === 0 && data_loader && !auto_load_attempted) {
-      // Check x-axis first
+      // Check x-axis first, then y-axis
       if (x_axis.options?.length) {
         auto_load_attempted = true
         const first_key = x_axis.selected_key ?? x_axis.options[0].key
-        handle_axis_change(`x`, first_key).catch(() => {
-          // Error already handled in handle_axis_change
-        })
+        handle_axis_change(`x`, first_key).catch(() => {})
+      } else if (y_axis.options?.length) {
+        auto_load_attempted = true
+        const first_key = y_axis.selected_key ?? y_axis.options[0].key
+        handle_axis_change(`y`, first_key).catch(() => {})
       }
     }
   })
@@ -2104,7 +2099,7 @@
         series_data={legend_data}
         on_drag_start={handle_legend_drag_start}
         on_drag={handle_legend_drag}
-        on_drag_end={handle_legend_drag_end}
+        on_drag_end={() => (legend_is_dragging = false)}
         draggable={legend?.draggable ?? true}
         {...legend}
         on_toggle={legend?.on_toggle ??
