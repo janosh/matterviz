@@ -58,7 +58,7 @@
     tile_bz = $bindable(false),
     // Clipping plane
     clip_enabled = $bindable(false),
-    clip_axis = $bindable<`x` | `y` | `z`>(`z`),
+    clip_axis = $bindable(`z`),
     clip_position = $bindable(0),
     clip_flip = $bindable(false),
     // Interpolation

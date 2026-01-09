@@ -33,15 +33,15 @@
     background_color = $bindable(),
     background_opacity = $bindable(DEFAULTS.background_opacity),
     color_scheme = $bindable(DEFAULTS.color_scheme),
-    atom_color_config = $bindable<Partial<AtomColorConfig>>({
+    atom_color_config = $bindable({
       mode: DEFAULTS.structure.atom_color_mode,
       scale: DEFAULTS.structure.atom_color_scale,
       scale_type: DEFAULTS.structure.atom_color_scale_type,
     }),
     structure = undefined,
-    supercell_loading = false,
+    supercell_loading = $bindable(false),
     sym_data = null,
-    cell_type = $bindable<CellType>(`original`),
+    cell_type = $bindable(`original`),
     pane_props = {},
     toggle_props = {},
     ...rest

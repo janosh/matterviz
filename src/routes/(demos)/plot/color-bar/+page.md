@@ -226,6 +226,155 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 </div>
 ```
 
+## Interactive Property and Color Scale Selection
+
+The `ColorBar` now supports interactive dropdowns for switching properties and color scales. Use `property_options` with a `data_loader` for lazy-loading property data, and `color_scale_options` for color scheme switching.
+
+```svelte example
+<script>
+  import { ColorBar } from 'matterviz'
+
+  // Property options with different data ranges
+  const property_options = [
+    { key: `formation_energy`, label: `Formation Energy`, unit: `eV/atom` },
+    { key: `band_gap`, label: `Band Gap`, unit: `eV` },
+    { key: `volume`, label: `Volume`, unit: `Å³/atom` },
+    { key: `density`, label: `Density`, unit: `g/cm³` },
+    { key: `bulk_modulus`, label: `Bulk Modulus`, unit: `GPa` },
+  ]
+
+  // Simulated data ranges for each property
+  const property_ranges = {
+    formation_energy: [-2.5, 1.5],
+    band_gap: [0, 8],
+    volume: [8, 45],
+    density: [1.5, 22],
+    bulk_modulus: [5, 450],
+  }
+
+  // Color scale options
+  const color_scale_options = [
+    { key: `viridis`, label: `Viridis`, scale: `interpolateViridis` },
+    { key: `plasma`, label: `Plasma`, scale: `interpolatePlasma` },
+    { key: `inferno`, label: `Inferno`, scale: `interpolateInferno` },
+    { key: `magma`, label: `Magma`, scale: `interpolateMagma` },
+    { key: `cividis`, label: `Cividis`, scale: `interpolateCividis` },
+    { key: `turbo`, label: `Turbo`, scale: `interpolateTurbo` },
+  ]
+
+  // State
+  let selected_property = $state(`formation_energy`)
+  let selected_color_scale = $state(`viridis`)
+  let current_range = $state(property_ranges.formation_energy)
+  let switch_count = $state(0)
+  let last_load_time = $state(0)
+
+  // Data loader with simulated delay
+  async function data_loader(property_key) {
+    const start = performance.now()
+    // Simulate network delay (200-800ms)
+    await new Promise((r) => setTimeout(r, 200 + Math.random() * 600))
+    last_load_time = Math.round(performance.now() - start)
+    switch_count++
+
+    const opt = property_options.find((o) => o.key === property_key)
+    return {
+      range: property_ranges[property_key],
+      title: opt ? `${opt.label} (${opt.unit})` : property_key,
+    }
+  }
+</script>
+
+<p>
+  Switches: {switch_count} | Last load: {last_load_time}ms
+</p>
+
+<ColorBar
+  title="Formation Energy (eV/atom)"
+  range={current_range}
+  tick_labels={5}
+  {property_options}
+  bind:selected_property_key={selected_property}
+  {data_loader}
+  on_property_change={(key, range) => (current_range = range)}
+  {color_scale_options}
+  bind:selected_color_scale_key={selected_color_scale}
+  --cbar-width="600px"
+  --cbar-padding="2em"
+/>
+```
+
+Here's an example with vertical orientation and title on different sides:
+
+```svelte example
+<script>
+  import { ColorBar } from 'matterviz'
+
+  const property_options = [
+    { key: `energy`, label: `Energy`, unit: `eV` },
+    { key: `force`, label: `Force`, unit: `eV/Å` },
+    { key: `stress`, label: `Stress`, unit: `GPa` },
+  ]
+
+  const color_scale_options = [
+    { key: `blues`, label: `Blues`, scale: `interpolateBlues` },
+    { key: `reds`, label: `Reds`, scale: `interpolateReds` },
+    { key: `greens`, label: `Greens`, scale: `interpolateGreens` },
+  ]
+
+  const ranges = {
+    energy: [-5, 2],
+    force: [0, 15],
+    stress: [-100, 100],
+  }
+
+  let prop_left = $state(`energy`)
+  let prop_right = $state(`force`)
+  let range_left = $state(ranges.energy)
+  let range_right = $state(ranges.force)
+
+  async function loader_left(key) {
+    await new Promise((r) => setTimeout(r, 300))
+    const opt = property_options.find((o) => o.key === key)
+    return { range: ranges[key], title: opt?.label }
+  }
+
+  async function loader_right(key) {
+    await new Promise((r) => setTimeout(r, 300))
+    const opt = property_options.find((o) => o.key === key)
+    return { range: ranges[key], title: opt?.label }
+  }
+</script>
+
+<div style="display: flex; gap: 4em; justify-content: center; align-items: center">
+  <ColorBar
+    title="Energy"
+    range={range_left}
+    orientation="vertical"
+    title_side="left"
+    {property_options}
+    bind:selected_property_key={prop_left}
+    data_loader={loader_left}
+    on_property_change={(_, range) => (range_left = range)}
+    {color_scale_options}
+    bar_style="height: 200px;"
+  />
+
+  <ColorBar
+    title="Force"
+    range={range_right}
+    orientation="vertical"
+    title_side="right"
+    {property_options}
+    bind:selected_property_key={prop_right}
+    data_loader={loader_right}
+    on_property_change={(_, range) => (range_right = range)}
+    {color_scale_options}
+    bar_style="height: 200px;"
+  />
+</div>
+```
+
 ## Large Value Ranges (Linear and Log)
 
 Demonstrating the color bar with large numeric ranges, using both linear and logarithmic scales (`scale_type='log'`). Log scales require a positive range (both min and max > 0). Scientific notation is used for tick labels via `tick_format='.0e'`.

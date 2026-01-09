@@ -1,15 +1,14 @@
 <script lang="ts">
+  import { contrast_color, default_element_colors } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import type { ElementSymbol } from '$lib/element'
   import { element_data } from '$lib/element'
-  import { ELEM_SYMBOLS } from '$lib/labels'
-  import type { AnyStructure } from '$lib/structure'
-  import { contrast_color, default_element_colors } from '$lib/colors'
   import Icon from '$lib/Icon.svelte'
-  import { format_num } from '$lib/labels'
+  import { ELEM_SYMBOLS, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
+  import type { AnyStructure } from '$lib/structure'
   import type {
     AtomColorConfig,
     AtomPropertyColors,
@@ -36,9 +35,7 @@
     hidden_elements = $bindable(new Set()),
     hidden_prop_vals = $bindable(new Set<number | string>()),
     // Element remapping: maps original element symbols to new ones
-    element_mapping = $bindable<
-      Partial<Record<ElementSymbol, ElementSymbol>> | undefined
-    >(),
+    element_mapping = $bindable(),
     title = ``,
     sym_data = null,
     structure = undefined,
