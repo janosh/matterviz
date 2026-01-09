@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI, wait_for_3d_canvas } from '../helpers'
+import { expect_canvas_changed, IS_CI, wait_for_3d_canvas } from '../helpers'
 
 // Get non-white pixel count to detect if content is rendered.
 function count_non_white_pixels(buffer: Uint8Array): number {
@@ -43,16 +43,17 @@ test.describe(`Bond component`, () => {
         targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
         force: true,
       })
+      // Poll for canvas change (handles GPU timing variations)
+      await expect_canvas_changed(canvas, initial)
       const rotated = await canvas.screenshot()
-      expect(initial.equals(rotated)).toBe(false)
       const rotated_pixels = count_non_white_pixels(rotated)
       expect(rotated_pixels).toBeGreaterThan(100)
 
       // Assert 6-7: Zoom works and changes view
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
       await page.mouse.wheel(0, -200)
+      await expect_canvas_changed(canvas, rotated)
       const zoomed = await canvas.screenshot()
-      expect(initial.equals(zoomed)).toBe(false)
       expect(count_non_white_pixels(zoomed)).toBeGreaterThan(100)
     }
     // Assert 8: No console errors
@@ -82,8 +83,8 @@ test.describe(`Bond component`, () => {
       targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
       force: true,
     })
+    await expect_canvas_changed(canvas, initial)
     const horizontal = await canvas.screenshot()
-    expect(initial.equals(horizontal)).toBe(false)
     expect(count_non_white_pixels(horizontal)).toBeGreaterThan(100)
 
     // Assert 4-5: Vertical rotation also changes view
@@ -92,12 +93,12 @@ test.describe(`Bond component`, () => {
       targetPosition: { x: box.width / 2, y: box.height / 2 + 50 },
       force: true,
     })
+    await expect_canvas_changed(canvas, horizontal)
     const vertical = await canvas.screenshot()
-    expect(horizontal.equals(vertical)).toBe(false)
     expect(count_non_white_pixels(vertical)).toBeGreaterThan(100)
 
     // Assert 6: All three views are distinct
-    expect(initial.equals(vertical)).toBe(false)
+    await expect_canvas_changed(canvas, initial)
     // Assert 7: No console errors
     expect(console_errors).toHaveLength(0)
   })

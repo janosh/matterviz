@@ -1,6 +1,6 @@
 import type { CompositionType } from '$lib/composition'
-import type { ElementSymbol } from '$lib/element'
 import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
+import type { ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
@@ -103,8 +103,9 @@ export function format_formula_by_electronegativity(structure: AnyStructure): st
   })))
 }
 
+// Atomic radii in Angstroms (used for relative sizing, not absolute rendering scale)
 export const atomic_radii: CompositionType = Object.fromEntries(
-  element_data.map((el) => [el.symbol, (el.atomic_radius ?? 1) / 2]),
+  element_data.map((el) => [el.symbol, el.atomic_radius ?? 1]),
 )
 
 // unified atomic mass units (u) per cubic angstrom (Å^3)

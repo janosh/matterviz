@@ -1127,19 +1127,6 @@
     evt.preventDefault()
   }
 
-  function handle_mouse_leave() {
-    hovered = false
-    tooltip_point = null
-    on_point_hover?.(null)
-  }
-
-  function handle_double_click() {
-    // Reset zoom to auto ranges (preserve other axis settings)
-    x_axis = { ...x_axis, range: [null, null] }
-    y_axis = { ...y_axis, range: [null, null] }
-    y2_axis = { ...y2_axis, range: [null, null] }
-  }
-
   // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
@@ -1485,8 +1472,17 @@
         // Only find closest point if not actively dragging
         if (!drag_start_coords) on_mouse_move(evt)
       }}
-      onmouseleave={handle_mouse_leave}
-      ondblclick={handle_double_click}
+      onmouseleave={() => {
+        hovered = false
+        tooltip_point = null
+        on_point_hover?.(null)
+      }}
+      ondblclick={() => {
+        // Reset zoom to auto ranges (preserve other axis settings)
+        x_axis = { ...x_axis, range: [null, null] }
+        y_axis = { ...y_axis, range: [null, null] }
+        y2_axis = { ...y2_axis, range: [null, null] }
+      }}
       style:cursor="crosshair"
       role="img"
     >

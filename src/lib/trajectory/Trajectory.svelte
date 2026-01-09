@@ -869,8 +869,11 @@
     {@const text = parsing_progress
       ? `${parsing_progress.stage} (${parsing_progress.current}%)`
       : `Loading trajectory...`}
-    {@const style = `flex: 1; display: grid; place-content: center`}
-    <Spinner {text} {style} {...spinner_props} />
+    <Spinner
+      {text}
+      style="flex: 1; display: flex; align-items: center; justify-content: center"
+      {...spinner_props}
+    />
   {:else if error_msg}
     <TrajectoryError
       {error_msg}

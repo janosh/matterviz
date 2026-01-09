@@ -119,6 +119,8 @@
     initial_computed_zoom = $bindable(),
     hidden_elements = $bindable(new Set()),
     hidden_prop_vals = $bindable(new Set<number | string>()),
+    element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
+    site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     atom_color_config = {
       mode: DEFAULTS.structure.atom_color_mode,
       scale: DEFAULTS.structure.atom_color_scale as D3InterpolateName,
@@ -191,6 +193,8 @@
     initial_computed_zoom?: number // Expose initial zoom for reset
     hidden_elements?: Set<ElementSymbol>
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
+    element_radius_overrides?: Partial<Record<ElementSymbol, number>> // Per-element absolute radius in Angstroms
+    site_radius_overrides?: Map<number, number> | SvelteMap<number, number> // Per-site absolute radius in Angstroms
     atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
   } = $props()
@@ -379,6 +383,17 @@
     ),
   )
 
+  // Compute weighted average radius for a site based on species occupancies
+  // Normalizes by total occupancy so vacancy-containing sites render at full size
+  const calc_weighted_radius = (site: Site): number => {
+    const total_occu = site.species.reduce((sum, { occu }) => sum + occu, 0)
+    const weighted_sum = site.species.reduce((sum, { element, occu }) => {
+      const override = element_radius_overrides?.[element as ElementSymbol]
+      return sum + occu * (override ?? atomic_radii[element] ?? 1)
+    }, 0)
+    return total_occu > 0 ? weighted_sum / total_occu : 1
+  }
+
   let atom_data = $derived.by(() => {
     if (!show_atoms || !structure?.sites) return []
     return structure.sites.flatMap((site, site_idx) => {
@@ -388,10 +403,12 @@
       const prop_val = property_colors?.values[orig_idx]
       if (prop_val !== undefined && hidden_prop_vals.has(prop_val)) return []
 
-      const radius = same_size_atoms ? atom_radius : site.species.reduce(
-        (sum, { element, occu }) => sum + occu * (atomic_radii[element] ?? 1),
-        0,
-      ) * atom_radius
+      // Calculate radius: same_size > site override > element override > default
+      // All radii scale uniformly with atom_radius for consistent slider behavior
+      const base_radius = same_size_atoms
+        ? 1
+        : site_radius_overrides?.get(site_idx) ?? calc_weighted_radius(site)
+      const radius = base_radius * atom_radius
 
       // Use property color if available (e.g. coordination number, Wyckoff position)
       // Otherwise, each species gets its own element color (important for disordered sites)
@@ -509,6 +526,16 @@
     }
     return map
   })
+
+  // Get radius for a site (for highlight fallback when site is hidden/filtered)
+  // Checks site_radius_overrides first for consistency with visible atoms
+  const get_site_radius = (site: Site, site_idx: number | null): number => {
+    const override = site_idx !== null
+      ? site_radius_overrides?.get(site_idx)
+      : undefined
+    const base_radius = same_size_atoms ? 1 : override ?? calc_weighted_radius(site)
+    return base_radius * atom_radius
+  }
 
   let force_data = $derived.by(() =>
     show_force_vectors && structure?.sites
@@ -842,8 +869,8 @@
         {#if site}
           {@const xyz = site.xyz}
           {@const highlight_radius = site_idx !== null
-          ? radius_by_site_idx.get(site_idx) ?? atom_radius
-          : atom_radius}
+          ? radius_by_site_idx.get(site_idx) ?? get_site_radius(site, site_idx)
+          : get_site_radius(site, site_idx)}
           <T.Mesh
             position={xyz}
             scale={1.2 * highlight_radius}

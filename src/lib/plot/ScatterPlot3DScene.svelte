@@ -476,11 +476,6 @@
     if (data) on_point_hover?.(data)
   }
 
-  function handle_point_leave() {
-    hovered_point = null
-    on_point_hover?.(null)
-  }
-
   function handle_point_click(point: InternalPoint3D<Metadata>, event: MouseEvent) {
     const data = make_event_data(point, event)
     if (data) on_point_click?.(data)
@@ -792,7 +787,10 @@
         scale={group.radius}
         color={group.colors[idx]}
         onpointerenter={() => handle_point_enter(point)}
-        onpointerleave={handle_point_leave}
+        onpointerleave={() => {
+          hovered_point = null
+          on_point_hover?.(null)
+        }}
         onclick={(evt: MouseEvent) => handle_point_click(point, evt)}
       />
     {/each}

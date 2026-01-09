@@ -23,6 +23,7 @@
   import { untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { SvelteMap } from 'svelte/reactivity'
   import type { Camera, OrthographicCamera, Scene } from 'three'
   import type { AtomColorConfig } from './atom-properties'
   import { get_property_colors } from './atom-properties'
@@ -98,6 +99,10 @@
     hidden_elements = $bindable(new Set<ElementSymbol>()),
     // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     hidden_prop_vals = $bindable(new Set<number | string>()),
+    // Per-element radius overrides (absolute values in Angstroms)
+    element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
+    // Per-site radius overrides (absolute values in Angstroms)
+    site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     // Symmetry analysis data (bindable for external access)
     sym_data = $bindable(null),
     // Symmetry analysis settings (bindable for external control)
@@ -167,6 +172,11 @@
       hidden_elements?: Set<ElementSymbol>
       // Track which property values are hidden (e.g. Wyckoff positions, coordination numbers)
       hidden_prop_vals?: Set<number | string>
+      // Per-element radius overrides (absolute values in Angstroms)
+      element_radius_overrides?: Partial<Record<ElementSymbol, number>>
+      // Per-site radius overrides (absolute values in Angstroms)
+      // Accepts Map or SvelteMap for flexibility with external callers
+      site_radius_overrides?: Map<number, number> | SvelteMap<number, number>
       // Symmetry analysis data (bindable for external access)
       sym_data?: MoyoDataset | null
       // Symmetry analysis settings (bindable for external control)
@@ -440,7 +450,8 @@
     }
   })
 
-  // Clear selections when transformations change site indices (skip first run to preserve parent-provided selections)
+  // Clear selections and site overrides when transformations change site indices
+  // (skip first run to preserve parent-provided selections)
   let first_run = true
   $effect(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -454,6 +465,8 @@
         selected_sites = []
         measured_sites = []
       }
+      // Clear site radius overrides since site indices are no longer valid
+      if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
     })
   })
 
@@ -895,6 +908,10 @@
       bind:hidden_elements
       bind:hidden_prop_vals
       bind:element_mapping
+      bind:element_radius_overrides
+      bind:site_radius_overrides
+      {selected_sites}
+      structure={displayed_structure}
       {sym_data}
     >
       {#if structure && `lattice` in structure}
@@ -928,6 +945,8 @@
             bind:initial_computed_zoom
             bind:hidden_elements
             bind:hidden_prop_vals
+            bind:element_radius_overrides
+            bind:site_radius_overrides
             bind:added_bonds
             bind:removed_bonds
             {measure_mode}
