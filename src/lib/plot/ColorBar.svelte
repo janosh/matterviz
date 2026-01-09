@@ -1,5 +1,6 @@
 <script lang="ts">
   import { luminance } from '$lib/colors'
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import * as math from '$lib/math'
@@ -9,17 +10,22 @@
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
-  import type { Orientation } from './types'
+  import type {
+    AxisOption,
+    ColorBarDataLoaderFn,
+    ColorScaleOption,
+    Orientation,
+  } from './types'
 
   let {
-    title = undefined,
+    title = $bindable(),
     color_scale = $bindable(`interpolateViridis`),
     bar_style = undefined,
     title_style = undefined,
     wrapper_style = undefined,
     tick_labels = $bindable(4),
     tick_format = undefined,
-    range = [0, 1],
+    range = $bindable([0, 1]),
     orientation = `horizontal`,
     snap_ticks = true,
     steps = 50,
@@ -29,6 +35,15 @@
     scale_type = `linear`,
     color_scale_fn = undefined,
     color_scale_domain = undefined,
+    // Property selection (interactive title)
+    property_options = undefined,
+    selected_property_key = $bindable(),
+    data_loader = undefined,
+    on_property_change = undefined,
+    // Color scale selection
+    color_scale_options = undefined,
+    selected_color_scale_key = $bindable(),
+    on_color_scale_change = undefined,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     title?: string
@@ -59,7 +74,19 @@
     color_scale_fn?: (value: number) => string
     // Optional domain for pre-configured color scale function
     color_scale_domain?: [number, number]
+    // Property selection options (makes title interactive)
+    property_options?: AxisOption[]
+    selected_property_key?: string
+    data_loader?: ColorBarDataLoaderFn
+    on_property_change?: (key: string, range: [number, number]) => void
+    // Color scale selection options
+    color_scale_options?: ColorScaleOption[]
+    selected_color_scale_key?: string
+    on_color_scale_change?: (key: string) => void
   } = $props()
+
+  // Loading state for property data fetching
+  let loading = $state(false)
 
   let actual_title_side = $derived.by(() => {
     if (title_side !== undefined) return title_side // Use user-provided value if available
@@ -385,6 +412,63 @@
     }
   }
 
+  // Check if we have interactive selects
+  let has_property_select = $derived(property_options && property_options.length > 0)
+  let has_color_scale_select = $derived(
+    color_scale_options && color_scale_options.length > 0,
+  )
+  let has_any_select = $derived(has_property_select || has_color_scale_select)
+
+  // Format property option for display
+  function format_property_option(key: string): string {
+    const opt = property_options?.find((o) => o.key === key)
+    if (!opt) return key
+    return opt.unit ? `${opt.label} (${opt.unit})` : opt.label
+  }
+
+  // Format color scale option for display
+  function format_color_scale_option(key: string): string {
+    const opt = color_scale_options?.find((o) => o.key === key)
+    return opt?.label ?? key
+  }
+
+  // Handle property selection change
+  async function handle_property_change(event: Event) {
+    const target = event.target as HTMLSelectElement
+    const new_key = target.value
+    if (!new_key || new_key === selected_property_key || !data_loader) return
+
+    const prev_key = selected_property_key
+    selected_property_key = new_key
+    loading = true
+
+    try {
+      const result = await data_loader(new_key)
+      range = result.range
+      if (result.title !== undefined) title = result.title
+      on_property_change?.(new_key, result.range)
+    } catch (err) {
+      console.error(`ColorBar data loader failed for ${new_key}:`, err)
+      selected_property_key = prev_key // revert on error
+    } finally {
+      loading = false
+    }
+  }
+
+  // Handle color scale selection change
+  function handle_color_scale_change(event: Event) {
+    const target = event.target as HTMLSelectElement
+    const new_key = target.value
+    if (!new_key || new_key === selected_color_scale_key) return
+
+    selected_color_scale_key = new_key
+    const opt = color_scale_options?.find((o) => o.key === new_key)
+    if (opt) {
+      color_scale = opt.scale
+    }
+    on_color_scale_change?.(new_key)
+  }
+
   // Align items based on orientation and title position
   let div_style = $derived(`
     --cbar-wrapper-align-items: ${
@@ -418,7 +502,41 @@
   style={div_style + (rest.style ?? ``)}
   class="colorbar {rest.class ?? ``}"
 >
-  {#if title}<span style={actual_title_style} class="label">{@html title}</span>{/if}
+  {#if title || has_any_select}
+    <div class="title-row {actual_title_side}" style={actual_title_style}>
+      {#if has_property_select && property_options}
+        <select
+          class="property-select"
+          value={selected_property_key ?? ``}
+          onchange={handle_property_change}
+          disabled={loading}
+        >
+          {#each property_options as opt (opt.key)}
+            <option value={opt.key}>{format_property_option(opt.key)}</option>
+          {/each}
+        </select>
+        {#if loading}
+          <Spinner
+            style="--spinner-size: 0.8em; --spinner-border-width: 2px; --spinner-margin: 0"
+          />
+        {/if}
+      {:else if title}
+        <!-- Only show static title if no property select -->
+        <span class="label">{@html title}</span>
+      {/if}
+      {#if has_color_scale_select && color_scale_options}
+        <select
+          class="color-scale-select"
+          value={selected_color_scale_key ?? ``}
+          onchange={handle_color_scale_change}
+        >
+          {#each color_scale_options as opt (opt.key)}
+            <option value={opt.key}>{format_color_scale_option(opt.key)}</option>
+          {/each}
+        </select>
+      {/if}
+    </div>
+  {/if}
   <div style={final_bar_style} class="bar">
     {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as
       tick_label
@@ -522,5 +640,70 @@
     left: 50%; /* Center horizontally */
     transform: translate(-50%, -50%); /* Center horizontally and vertically */
     padding: 0; /* No extra padding for inside */
+  }
+  /* Title row with optional selects */
+  .title-row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cbar-select-gap, 0.3em);
+    white-space: nowrap;
+    width: auto;
+  }
+  .title-row.left,
+  .title-row.right {
+    flex-direction: column;
+    writing-mode: vertical-lr;
+  }
+  .title-row.left {
+    transform: rotate(180deg);
+  }
+  /* Native select styling */
+  .property-select,
+  .color-scale-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    padding: 0 12px 0 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    text-align: center;
+    text-align-last: center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0 center;
+    background-size: 8px;
+  }
+  .property-select:hover,
+  .color-scale-select:hover {
+    background-color: var(--cbar-select-hover-bg, rgba(128, 128, 128, 0.15));
+  }
+  .property-select:focus,
+  .color-scale-select:focus {
+    outline: 2px solid var(--cbar-select-focus-color, #4a90d9);
+    outline-offset: 1px;
+  }
+  .property-select:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+  .property-select option,
+  .color-scale-select option {
+    background: var(--cbar-select-option-bg, white);
+    color: var(--cbar-select-option-color, black);
+  }
+  /* Vertical orientation: rotate selects back to horizontal for dropdown */
+  .title-row.left .property-select,
+  .title-row.left .color-scale-select,
+  .title-row.right .property-select,
+  .title-row.right .color-scale-select {
+    writing-mode: horizontal-tb;
+  }
+  .title-row.left .property-select,
+  .title-row.left .color-scale-select {
+    transform: rotate(180deg);
   }
 </style>
