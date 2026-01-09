@@ -447,9 +447,12 @@
     const new_key = (event.target as HTMLSelectElement).value
     if (!new_key || new_key === selected_color_scale_key) return
 
-    selected_color_scale_key = new_key
+    // Find option first - only update state if option exists to avoid mismatch
     const opt = color_scale_options?.find((item) => item.key === new_key)
-    if (opt) color_scale = opt.scale
+    if (!opt) return
+
+    selected_color_scale_key = new_key
+    color_scale = opt.scale
     on_color_scale_change?.(new_key)
   }
 
@@ -491,9 +494,10 @@
       {#if has_property_select && property_options}
         <select
           class="property-select"
-          value={selected_property_key ?? ``}
+          value={selected_property_key ?? property_options[0]?.key ?? ``}
           onchange={handle_property_change}
           disabled={loading}
+          aria-label="Select property"
         >
           {#each property_options as opt (opt.key)}
             <option value={opt.key}>{format_opt(opt)}</option>
@@ -511,8 +515,9 @@
       {#if has_color_scale_select && color_scale_options}
         <select
           class="color-scale-select"
-          value={selected_color_scale_key ?? ``}
+          value={selected_color_scale_key ?? color_scale_options[0]?.key ?? ``}
           onchange={handle_color_scale_change}
+          aria-label="Select color scale"
         >
           {#each color_scale_options as opt (opt.key)}
             <option value={opt.key}>{opt.label}</option>
