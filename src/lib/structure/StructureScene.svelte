@@ -383,6 +383,17 @@
     ),
   )
 
+  // Compute weighted average radius for a site based on species occupancies
+  // Normalizes by total occupancy so vacancy-containing sites render at full size
+  const calc_weighted_radius = (site: Site): number => {
+    const total_occu = site.species.reduce((sum, { occu }) => sum + occu, 0)
+    const weighted_sum = site.species.reduce((sum, { element, occu }) => {
+      const override = element_radius_overrides?.[element as ElementSymbol]
+      return sum + occu * (override ?? atomic_radii[element] ?? 1)
+    }, 0)
+    return total_occu > 0 ? weighted_sum / total_occu : 1
+  }
+
   let atom_data = $derived.by(() => {
     if (!show_atoms || !structure?.sites) return []
     return structure.sites.flatMap((site, site_idx) => {
@@ -515,17 +526,6 @@
     }
     return map
   })
-
-  // Compute weighted average radius for a site based on species occupancies
-  // Normalizes by total occupancy so vacancy-containing sites render at full size
-  const calc_weighted_radius = (site: Site): number => {
-    const total_occu = site.species.reduce((sum, { occu }) => sum + occu, 0)
-    const weighted_sum = site.species.reduce((sum, { element, occu }) => {
-      const override = element_radius_overrides?.[element as ElementSymbol]
-      return sum + occu * (override ?? atomic_radii[element] ?? 1)
-    }, 0)
-    return total_occu > 0 ? weighted_sum / total_occu : 1
-  }
 
   // Get radius for a site (for highlight fallback when site is hidden/filtered)
   const get_site_radius = (site: Site): number =>
