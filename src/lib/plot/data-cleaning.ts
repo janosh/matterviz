@@ -400,20 +400,18 @@ function apply_smoothing(
   y_values: number[],
   config: SmoothingConfig,
 ): number[] {
-  switch (config.type) {
-    case `moving_avg`:
-      return smooth_moving_average(y_values, config.window)
-    case `savgol`:
-      return smooth_savitzky_golay(
-        y_values,
-        config.window,
-        config.polynomial_order ?? DEFAULT_POLYNOMIAL_ORDER,
-      )
-    case `gaussian`:
-      return apply_gaussian_smearing(x_values, y_values, config.sigma)
-    default:
-      return y_values
+  if (config.type === `moving_avg`) {
+    return smooth_moving_average(y_values, config.window)
+  } else if (config.type === `savgol`) {
+    return smooth_savitzky_golay(
+      y_values,
+      config.window,
+      config.polynomial_order ?? DEFAULT_POLYNOMIAL_ORDER,
+    )
+  } else if (config.type === `gaussian`) {
+    return apply_gaussian_smearing(x_values, y_values, config.sigma)
   }
+  return y_values
 }
 
 // --- Helper Functions ---
