@@ -376,26 +376,21 @@
     return `margin-${margin_side}: ${offset};`
   })
 
-  let actual_title_style = $derived.by(() => {
-    let rotate_style = ``
-    let size_constraint = `` // for width constraint
-    if (
-      orientation === `vertical` &&
-      (actual_title_side === `left` || actual_title_side === `right`)
-    ) {
-      if (actual_title_side === `right`) {
-        rotate_style =
-          `transform: rotate(90deg); transform-origin: center; white-space: nowrap;` // Apply title rotation
-      } else {
-        rotate_style =
-          `transform: rotate(-90deg); transform-origin: center; white-space: nowrap;`
-      }
-      size_constraint = `max-width: var(--cbar-label-max-width, 2em);` // max-width constraint for rotated labels
-    }
+  // Derive whether we're in vertical side-label mode (label on left/right of vertical bar)
+  let is_vertical_side = $derived(
+    orientation === `vertical` &&
+      (actual_title_side === `left` || actual_title_side === `right`),
+  )
 
-    return `${rotate_style} ${size_constraint} ${label_overlap_margin_style} ${
-      title_style ?? ``
-    }`.trim()
+  let actual_title_style = $derived.by(() => {
+    // No container-level transform - rotation is applied only to .label element via CSS
+    // This avoids breaking selects/dropdowns which need to remain horizontal
+    let size_constraint = is_vertical_side
+      ? `max-width: var(--cbar-label-max-width, 2em);`
+      : ``
+
+    return `${size_constraint} ${label_overlap_margin_style} ${title_style ?? ``}`
+      .trim()
   })
 
   function get_tick_text_color(tick_value: number): string | null {
@@ -654,9 +649,14 @@
   .title-row.left,
   .title-row.right {
     flex-direction: column;
-    writing-mode: vertical-lr;
   }
-  .title-row.left {
+  /* Rotate only the label element, not the entire row (keeps selects usable) */
+  .title-row.left .label,
+  .title-row.right .label {
+    writing-mode: vertical-lr;
+    white-space: nowrap;
+  }
+  .title-row.left .label {
     transform: rotate(180deg);
   }
   /* Native select styling */
@@ -698,16 +698,12 @@
     background: var(--cbar-select-option-bg, white);
     color: var(--cbar-select-option-color, black);
   }
-  /* Vertical orientation: rotate selects back to horizontal for dropdown */
+  /* Vertical orientation: selects stay horizontal (no transform needed on container) */
   .title-row.left .property-select,
   .title-row.left .color-scale-select,
   .title-row.right .property-select,
   .title-row.right .color-scale-select {
-    writing-mode: horizontal-tb;
-  }
-  .title-row.left .property-select,
-  .title-row.left .color-scale-select {
-    transform: rotate(180deg);
+    writing-mode: horizontal-tb; /* Ensure horizontal text in dropdowns */
   }
   /* Right-align property-select when color-scale-select is also visible */
   .title-row:has(.color-scale-select) .property-select {

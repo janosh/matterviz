@@ -17,17 +17,35 @@ describe(`merge_series_state`, () => {
     expect(merged[1].visible).toBe(true)
   })
 
-  test(`matches by id when available`, () => {
-    const old_series: DataSeries[] = [
-      { id: `a`, x: [1], y: [1], visible: false },
-      { id: `b`, x: [2], y: [2], visible: true },
-    ]
-    const new_series: DataSeries[] = [
-      { id: `b`, x: [20], y: [20] },
-      { id: `a`, x: [10], y: [10] },
-    ]
-    const merged = merge_series_state(old_series, new_series)
-    // b should get visibility from old b (true), a from old a (false)
+  test.each([
+    {
+      name: `string ids`,
+      old_series: [
+        { id: `a`, x: [1], y: [1], visible: false },
+        { id: `b`, x: [2], y: [2], visible: true },
+      ],
+      new_series: [
+        { id: `b`, x: [20], y: [20] },
+        { id: `a`, x: [10], y: [10] },
+      ],
+    },
+    {
+      name: `numeric ids`,
+      old_series: [
+        { id: 1, x: [1], y: [1], visible: false },
+        { id: 2, x: [2], y: [2], visible: true },
+      ],
+      new_series: [
+        { id: 2, x: [20], y: [20] },
+        { id: 1, x: [10], y: [10] },
+      ],
+    },
+  ])(`matches by id when available ($name)`, ({ old_series, new_series }) => {
+    const merged = merge_series_state(
+      old_series as DataSeries[],
+      new_series as DataSeries[],
+    )
+    // Second id should get visibility from old second (true), first from old first (false)
     expect(merged[0].visible).toBe(true)
     expect(merged[1].visible).toBe(false)
   })
@@ -66,8 +84,10 @@ describe(`create_axis_change_handler`, () => {
     }
   }
 
-  test(`does not call data_loader when key unchanged (no-op guard)`, async () => {
+  test(`does not call data_loader when key unchanged and series loaded (no-op guard)`, async () => {
     const state = create_mock_state(`energy`)
+    // Initialize with existing series so no-op guard is active
+    state.get_series = vi.fn(() => [{ x: [1], y: [1] }] as DataSeries[])
     const data_loader = vi.fn().mockResolvedValue({ series: [] })
     const on_axis_change = vi.fn()
 
@@ -76,7 +96,7 @@ describe(`create_axis_change_handler`, () => {
     // Call with the same key as currently selected
     await handler(`x`, `energy`)
 
-    // data_loader should NOT be called because key didn't change
+    // data_loader should NOT be called because key didn't change and series exists
     expect(data_loader).not.toHaveBeenCalled()
     expect(on_axis_change).not.toHaveBeenCalled()
     expect(state.set_loading).not.toHaveBeenCalled()
@@ -157,10 +177,28 @@ describe(`create_axis_change_handler`, () => {
 
     await handler(`x`, `volume`)
 
-    // set_axis called 3 times: initial update, loading=x, then label/unit update
+    // set_axis called twice: selected_key update + label/unit update
+    expect(state.set_axis).toHaveBeenCalledTimes(2)
     expect(state.set_axis).toHaveBeenCalledWith(
       `x`,
       expect.objectContaining({ label: `Volume`, unit: `Å³` }),
     )
+  })
+
+  test(`calls data_loader when key unchanged but series empty (initial lazy load)`, async () => {
+    const state = create_mock_state(`energy`)
+    // Series is empty (default), simulating initial state before any data loaded
+    const new_series: DataSeries[] = [{ x: [1], y: [2], label: `loaded` }]
+    const data_loader = vi.fn().mockResolvedValue({ series: new_series })
+    const on_axis_change = vi.fn()
+
+    const handler = create_axis_change_handler(state, data_loader, on_axis_change)
+
+    // Call with the SAME key as selected_key - should still load since series empty
+    await handler(`x`, `energy`)
+
+    expect(data_loader).toHaveBeenCalledWith(`x`, `energy`, [])
+    expect(on_axis_change).toHaveBeenCalledWith(`x`, `energy`, new_series)
+    expect(state.set_series).toHaveBeenCalledWith(new_series)
   })
 })

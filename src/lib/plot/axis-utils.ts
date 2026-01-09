@@ -12,22 +12,23 @@ import type {
 type AxisType = `x` | `y` | `y2`
 
 // Merge new series with preserved UI state from old series
-// Matches by id first (non-empty string only), then falls back to index
+// Matches by id first (string or number), then falls back to index
 export function merge_series_state<T extends DataSeries | BarSeries>(
   old_series: T[],
   new_series: T[],
 ): T[] {
-  // Build id lookup map for O(1) matching (only non-empty string ids)
-  const by_id = new Map<string, T>()
+  // Build id lookup map for O(1) matching (string or number ids)
+  const by_id = new Map<string | number, T>()
   for (const srs of old_series) {
-    if (typeof srs.id === `string` && srs.id.length) by_id.set(srs.id, srs)
+    if (srs.id !== undefined && srs.id !== ``) by_id.set(srs.id, srs)
   }
 
   return new_series.map((new_srs, idx) => {
-    // Match by id if available, otherwise fall back to index
-    const old_srs = (typeof new_srs.id === `string` && new_srs.id.length
+    // Match by id if available (string or number), otherwise fall back to index
+    const old_srs = (new_srs.id !== undefined && new_srs.id !== ``
       ? by_id.get(new_srs.id)
-      : undefined) ?? old_series[idx]
+      : undefined) ??
+      old_series[idx]
     if (!old_srs) {
       return new_srs
     }
@@ -71,7 +72,8 @@ export function create_axis_change_handler<T extends DataSeries | BarSeries>(
     const axis_config = state.get_axis(axis)
     const prev_key = axis_config.selected_key
 
-    if (prev_key === key) return // No-op guard: skip when key doesn't change
+    // Skip if key unchanged AND series already loaded (allows initial load when series empty)
+    if (prev_key === key && state.get_series().length > 0) return
 
     // Update selected_key immediately for UI feedback
     state.set_axis(axis, { ...axis_config, selected_key: key })
