@@ -320,6 +320,76 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 </div>
 ```
 
+## Arcsinh Scale: Large Range with Positive and Negative Values
+
+The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges including negative values—ideal for formation energies, binding energies, or financial data. Unlike log scale, it smoothly transitions through zero.
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  const scale_types = [`linear`, `log`, `arcsinh`]
+  let y_scale_type = $state(`arcsinh`)
+  let arcsinh_threshold = $state(1)
+
+  // Data with wide range: negative to positive, varying magnitudes
+  const energy_data = [
+    {
+      x: [1, 2, 3, 4, 5, 6, 7, 8],
+      y: [-500, -50, -5, -0.5, 0.5, 5, 50, 500],
+      label: `Energy (eV)`,
+      color: `#4c6ef5`,
+      labels: [`Mg`, `Ca`, `Li`, `Na`, `K`, `Rb`, `Cs`, `Fr`],
+    },
+  ]
+
+  let y_axis = $derived({
+    label: `Energy (${y_scale_type})`,
+    scale_type: y_scale_type === `arcsinh`
+      ? { type: `arcsinh`, threshold: arcsinh_threshold }
+      : y_scale_type,
+  })
+</script>
+
+<div
+  style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
+>
+  <fieldset>
+    <legend>Y-axis Scale</legend>
+    {#each scale_types as scale (scale)}
+      <label style="margin-right: 0.5em">
+        <input type="radio" bind:group={y_scale_type} value={scale} />
+        {scale}
+      </label>
+    {/each}
+  </fieldset>
+
+  {#if y_scale_type === `arcsinh`}
+    <label>
+      Threshold: {arcsinh_threshold}
+      <input type="range" bind:value={arcsinh_threshold} min="0.1" max="10" step="0.1" />
+    </label>
+  {/if}
+</div>
+
+<p style="font-size: 0.9em; opacity: 0.8">
+  Energy values span -500 to +500 eV. Log scale can't display negatives. Try switching
+  scales!
+</p>
+
+<BarPlot
+  series={energy_data}
+  x_axis={{ label: `Element` }}
+  {y_axis}
+  style="height: 400px"
+>
+  {#snippet tooltip({ y, labels, x })}
+    <strong>{labels?.[x - 1] ?? `Element ${x}`}</strong><br />
+    Energy: {y.toLocaleString()} eV
+  {/snippet}
+</BarPlot>
+```
+
 ## Formation Energy Diagram
 
 Bar plots handle negative values automatically and display zero lines for reference. The threshold line uses `markers: 'line'` to show only the line without marker points:

@@ -6,6 +6,8 @@
   import { timeFormat } from 'd3-time-format'
   import type { Vec2 } from '../math'
   import type { AxisKey, PlotControlsProps } from './index'
+  import type { ScaleTypeName } from './types'
+  import { get_scale_type_name } from './types'
 
   let {
     show_controls = $bindable(false),
@@ -252,6 +254,61 @@
         </label>
       </SettingsSection>
     {/if}
+
+    <!-- Scale Type controls -->
+    <SettingsSection
+      title="Scale Type"
+      current_values={{
+        x_scale: get_scale_type_name(x_axis.scale_type),
+        y_scale: get_scale_type_name(y_axis.scale_type),
+        y2_scale: get_scale_type_name(y2_axis.scale_type),
+      }}
+      on_reset={() => {
+        x_axis.scale_type = `linear`
+        y_axis.scale_type = `linear`
+        y2_axis.scale_type = `linear`
+      }}
+      style="display: flex; flex-wrap: wrap; gap: 1ex"
+    >
+      <label>X:
+        <select
+          value={get_scale_type_name(x_axis.scale_type)}
+          onchange={(e) => {
+            x_axis.scale_type = e.currentTarget.value as ScaleTypeName
+          }}
+        >
+          <option value="linear">Linear</option>
+          <option value="log">Log</option>
+          <option value="arcsinh">Arcsinh</option>
+        </select>
+      </label>
+      <label>Y:
+        <select
+          value={get_scale_type_name(y_axis.scale_type)}
+          onchange={(e) => {
+            y_axis.scale_type = e.currentTarget.value as ScaleTypeName
+          }}
+        >
+          <option value="linear">Linear</option>
+          <option value="log">Log</option>
+          <option value="arcsinh">Arcsinh</option>
+        </select>
+      </label>
+      {#if has_y2_points}
+        <label>Y2:
+          <select
+            value={get_scale_type_name(y2_axis.scale_type)}
+            onchange={(e) => {
+              y2_axis.scale_type = e.currentTarget.value as ScaleTypeName
+            }}
+          >
+            <option value="linear">Linear</option>
+            <option value="log">Log</option>
+            <option value="arcsinh">Arcsinh</option>
+          </select>
+        </label>
+      {/if}
+    </SettingsSection>
 
     <!-- Base Tick Format controls -->
     <SettingsSection
