@@ -2,7 +2,11 @@ import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Point, ScaleType, TimeInterval } from '$lib/plot'
-import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/types'
+import {
+  get_arcsinh_threshold,
+  get_scale_type_name,
+  is_time_scale,
+} from '$lib/plot/types'
 import { extent, range } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import {
@@ -252,6 +256,9 @@ function generate_positive_arcsinh_ticks(
 }
 
 // Create a scale function based on type, domain, and range
+// Note: Time scales are handled separately via create_time_scale() since ScaleTime
+// has incompatible types (invert returns Date, not number). Use is_time_scale()
+// to detect time mode and call create_time_scale() directly when needed.
 export function create_scale(
   scale_type: ScaleType,
   domain: [number, number],
@@ -267,6 +274,7 @@ export function create_scale(
     const threshold = get_arcsinh_threshold(scale_type)
     return scale_arcsinh(threshold).domain(domain).range(range)
   }
+  // For 'time' or 'linear', return linear scale (time scales need create_time_scale())
   return scaleLinear().domain(domain).range(range)
 }
 
@@ -307,8 +315,8 @@ export function generate_ticks(
   // If ticks_option is already an array, use it directly
   if (Array.isArray(ticks_option)) return ticks_option
 
-  // Time-based ticks (ScatterPlot specific logic)
-  if (format?.startsWith(`%`)) {
+  // Time-based ticks (explicit scale_type: 'time' or format heuristic for backwards compatibility)
+  if (is_time_scale(scale_type, format)) {
     const time_scale = scaleTime().domain([new Date(min_val), new Date(max_val)])
 
     let count = 10 // default
@@ -413,7 +421,7 @@ export function get_nice_data_range(
         data_max = Math.pow(10, log_max + log_span * padding_factor)
       } else if (type_name === `arcsinh`) {
         // Arcsinh: apply padding in arcsinh-transformed space
-        // Guard against invalid/non-positive threshold to prevent Infinity/NaN
+        // Guard against extremely small thresholds that could cause precision issues
         const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
         const asinh_min = Math.asinh(data_min / threshold)
         const asinh_max = Math.asinh(data_max / threshold)
@@ -437,10 +445,10 @@ export function get_nice_data_range(
         data_max = data_max * 1.1
       } else if (type_name === `arcsinh`) {
         // Arcsinh: 10% padding in transformed space
-        // Guard against invalid/non-positive threshold to prevent Infinity/NaN
+        // Guard against extremely small thresholds that could cause precision issues
         const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
         const asinh_val = Math.asinh(data_min / threshold)
-        const padding = Math.abs(asinh_val) * 0.1 || 0.1 // Use 0.1 if value is 0
+        const padding = Math.abs(asinh_val) * 0.1 || 0.1 // Use 0.1 if transformed value is 0 (i.e. data_min = 0)
         data_min = Math.sinh(asinh_val - padding) * threshold
         data_max = Math.sinh(asinh_val + padding) * threshold
       } else {
@@ -571,12 +579,13 @@ export function create_color_scale(
 
 // Create an arcsinh-based color scale (custom sequential scale)
 // Returns a D3-compatible scale with both getter and setter for domain
+// Scale function reads from _domain closure on each call for stable identity
 function create_arcsinh_color_scale(
   interpolator: (t: number) => string,
   initial_domain: [number, number],
   threshold: number,
 ) {
-  // Guard against invalid/non-positive threshold to prevent Infinity/NaN from asinh(x/0)
+  // Guard against extremely small thresholds that could cause precision issues
   const safe_threshold = Math.max(threshold, Number.EPSILON)
   let _domain = initial_domain
 
@@ -587,45 +596,28 @@ function create_arcsinh_color_scale(
     }
   }
 
-  // Create the scale function that uses current domain
-  const create_scale_fn = (): ArcsinhColorScale => {
+  // Single scale function that reads current _domain on each call
+  const scale = ((value: number): string => {
     const [d_min, d_max] = _domain
-
     // Handle identical domain endpoints - return middle of color range
-    if (d_max === d_min) {
-      const scale = ((value: number): string => {
-        void value // unused when domain is degenerate
-        return interpolator(0.5)
-      }) as ArcsinhColorScale
-      scale.domain = function (new_domain?: [number, number]) {
-        if (new_domain === undefined) return _domain
-        _domain = new_domain
-        return create_scale_fn()
-      } as ArcsinhColorScale[`domain`]
-      return scale
-    }
+    if (d_max === d_min) return interpolator(0.5)
 
     const t_min = Math.asinh(d_min / safe_threshold)
     const t_max = Math.asinh(d_max / safe_threshold)
+    const t_val = Math.asinh(value / safe_threshold)
+    // Normalize to [0, 1]
+    const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
+    return interpolator(Math.max(0, Math.min(1, normalized)))
+  }) as ArcsinhColorScale
 
-    const scale = ((value: number): string => {
-      const t_val = Math.asinh(value / safe_threshold)
-      // Normalize to [0, 1]
-      const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
-      return interpolator(Math.max(0, Math.min(1, normalized)))
-    }) as ArcsinhColorScale
-
-    // Domain getter/setter for D3 compatibility
-    scale.domain = function (new_domain?: [number, number]) {
-      if (new_domain === undefined) return _domain
-      _domain = new_domain
-      return create_scale_fn()
-    } as ArcsinhColorScale[`domain`]
-
+  // Domain getter/setter for D3 compatibility - returns same scale instance
+  scale.domain = function (new_domain?: [number, number]) {
+    if (new_domain === undefined) return _domain
+    _domain = new_domain
     return scale
-  }
+  } as ArcsinhColorScale[`domain`]
 
-  return create_scale_fn()
+  return scale
 }
 
 // Create a size scale function from configuration

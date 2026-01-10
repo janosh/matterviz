@@ -140,7 +140,7 @@
 
     // For arcsinh, use our custom scale
     if (type_name === `arcsinh`) {
-      // Guard against invalid/non-positive threshold to prevent Infinity/NaN from asinh(x/0)
+      // Guard against very small thresholds that could cause precision issues
       const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
       const scale = scale_arcsinh(threshold)
         .domain([scale_min, scale_max])
@@ -179,7 +179,7 @@
 
     // Arcsinh tick generation
     if (type_name === `arcsinh`) {
-      // Guard against invalid/non-positive threshold to prevent Infinity/NaN
+      // Guard against very small thresholds that could cause precision issues
       const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
       return generate_arcsinh_ticks(scale_min, scale_max, threshold, n_ticks)
     }
@@ -306,7 +306,7 @@
 
     // For arcsinh, create a custom color scale
     if (type_name === `arcsinh`) {
-      // Guard against invalid/non-positive threshold to prevent Infinity/NaN from asinh(x/0)
+      // Guard against very small thresholds that could cause precision issues
       const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
       const t_min = Math.asinh(lo / threshold)
       const t_max = Math.asinh(hi / threshold)
@@ -364,7 +364,7 @@
       log_max = Math.log10(adjusted_max_ramp)
       log_span = log_max - log_min
     } else if (type_name === `arcsinh`) {
-      // Guard against invalid/non-positive threshold to prevent Infinity/NaN from asinh(x/0)
+      // Guard against very small thresholds that could cause precision issues
       asinh_threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
       asinh_min = Math.asinh(min_ramp_domain / asinh_threshold)
       asinh_max = Math.asinh(max_ramp_domain / asinh_threshold)

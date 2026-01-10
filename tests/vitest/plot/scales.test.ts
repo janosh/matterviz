@@ -355,8 +355,7 @@ describe(`scales`, () => {
       const domain: [number, number] = [-1000, 1000]
       const scale = scale_arcsinh(1).domain(domain).range([0, 500])
 
-      // generate_ticks handles arcsinh internally, scale param just needs ticks() method
-      const result = generate_ticks(domain, `arcsinh`, 10, scale as never)
+      const result = generate_ticks(domain, `arcsinh`, 10, scale)
       expect(result.length).toBeGreaterThan(0)
       expect(result).toContain(0)
       expect(result.filter((t) => t > 0).length).toBeGreaterThan(0)
@@ -406,12 +405,12 @@ describe(`scales`, () => {
       const scale_thresh_1 = scale_arcsinh(1).domain([0, 1000]).range([0, 100])
       const scale_thresh_100 = scale_arcsinh(100).domain([0, 1000]).range([0, 100])
 
-      // With larger threshold, more of the range behaves linearly
-      // At x=10, threshold=1 should be more compressed than threshold=100
+      // At x=10 with threshold=1, we're in the log region (10 >> 1) → higher relative position
+      // At x=10 with threshold=100, we're in the linear region (10 << 100) → lower relative position
       const pos_1 = scale_thresh_1(10)
       const pos_100 = scale_thresh_100(10)
 
-      // Smaller threshold -> more compression of large values -> lower screen position for small values
+      // Smaller threshold puts x=10 deeper into log territory → higher screen position
       expect(pos_1).toBeGreaterThan(pos_100)
     })
 
@@ -581,6 +580,19 @@ describe(`scales`, () => {
       const config: ArcsinhScaleConfig = { type: `arcsinh`, threshold: 5 }
       const scale = create_color_scale(config, [-50, 150])
       expect(scale.domain()).toEqual([-50, 150])
+    })
+
+    test(`domain setter returns same scale instance (D3-style mutation)`, () => {
+      const scale = create_color_scale({ type: `arcsinh` }, [0, 1])
+      const color_before = scale(0.5)
+      const returned_scale = scale.domain([0, 100])
+      // Should return the same scale instance for chaining
+      expect(returned_scale).toBe(scale)
+      // Domain should be updated in place
+      expect(scale.domain()).toEqual([0, 100])
+      // Behavior should change after domain mutation
+      const color_after = scale(50)
+      expect(color_before).not.toBe(color_after)
     })
 
     test(`arcsinh color scale produces smooth gradient`, () => {

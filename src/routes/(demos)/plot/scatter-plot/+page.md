@@ -1017,7 +1017,8 @@ The configurable `threshold` parameter controls the transition point: smaller va
       style="width: 200px"
     />
     <span style="font-size: 0.85em; opacity: 0.7">
-      (smaller = sharper transition at zero)
+      (smaller = sharper transition; default is 1, demo uses 10 for clearer visual
+      separation)
     </span>
   </label>
 {/if}
