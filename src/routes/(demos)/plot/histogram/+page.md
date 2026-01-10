@@ -273,6 +273,107 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 </Histogram>
 ```
 
+## Arcsinh Scale: Handling Data with Negative Values
+
+The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both positive and negative values with large dynamic range. Unlike log scale, arcsinh handles zero and negative values smoothly, transitioning from linear behavior near zero to logarithmic behavior for large absolute values.
+
+```svelte example
+<script>
+  import { Histogram } from 'matterviz'
+
+  // Generate data with both positive and negative values
+  function generate_mixed_data(n, seed = 42) {
+    const data = []
+    let state = seed
+    const rng = () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff
+      return state / 0x7fffffff
+    }
+    for (let idx = 0; idx < n; idx++) {
+      // Mix of positive, negative, and near-zero values
+      const u = rng()
+      if (u < 0.4) {
+        data.push((rng() - 0.5) * 20) // Near zero: -10 to +10
+      } else if (u < 0.7) {
+        data.push(rng() * 1000) // Positive: 0 to 1000
+      } else {
+        data.push(-rng() * 1000) // Negative: -1000 to 0
+      }
+    }
+    return data
+  }
+
+  const scale_types = [`linear`, `log`, `arcsinh`]
+  let x_scale_type = $state(`arcsinh`)
+  let y_scale_type = $state(`linear`)
+  let arcsinh_threshold = $state(10)
+
+  const mixed_data = generate_mixed_data(2000)
+
+  let x_axis = $derived({
+    label: `Value (${x_scale_type})`,
+    scale_type: x_scale_type === `arcsinh`
+      ? { type: `arcsinh`, threshold: arcsinh_threshold }
+      : x_scale_type,
+  })
+
+  let y_axis = $derived({
+    label: `Count (${y_scale_type})`,
+    scale_type: y_scale_type,
+  })
+</script>
+
+<div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap">
+  <fieldset>
+    <legend>X-axis Scale</legend>
+    {#each scale_types as scale (scale)}
+      <label>
+        <input type="radio" bind:group={x_scale_type} value={scale} />
+        {scale}
+      </label>
+    {/each}
+  </fieldset>
+
+  <fieldset>
+    <legend>Y-axis Scale</legend>
+    {#each scale_types as scale (scale)}
+      <label>
+        <input type="radio" bind:group={y_scale_type} value={scale} />
+        {scale}
+      </label>
+    {/each}
+  </fieldset>
+
+  {#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh`}
+    <label>
+      Arcsinh Threshold: {arcsinh_threshold}
+      <input type="range" bind:value={arcsinh_threshold} min="0.1" max="100" step="0.1" />
+    </label>
+  {/if}
+</div>
+
+<p style="font-size: 0.9em; opacity: 0.8">
+  Data spans -1000 to +1000 with concentration near zero. Try "log" to see it fail on
+  negatives.
+</p>
+
+<Histogram
+  series={[{
+    y: mixed_data,
+    label: `Mixed Range Data`,
+    line_style: { stroke: `#4c6ef5` },
+  }]}
+  bins={60}
+  {x_axis}
+  {y_axis}
+  style="height: 400px"
+>
+  {#snippet tooltip({ value, count })}
+    Value: {value.toFixed(1)}<br />Count: {count}
+  {/snippet}
+</Histogram>
+```
+
 ## Real-World Distributions
 
 ```svelte example

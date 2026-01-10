@@ -873,6 +873,165 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 </div>
 ```
 
+## Arcsinh Scale: Handling Negative Values and Wide Ranges
+
+The **arcsinh scale** (`scale_type='arcsinh'`) is ideal for data spanning positive, negative, and zero values with wide dynamic range. Unlike log scale which can't handle non-positive values, arcsinh behaves linearly near zero and logarithmically for large absolute values—perfect for data like formation energies, charge densities, or financial metrics.
+
+The configurable `threshold` parameter controls the transition point: smaller values make the transition sharper, larger values extend the linear region.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  const scale_types = [`linear`, `log`, `arcsinh`]
+  let x_scale_type = $state(`arcsinh`)
+  let y_scale_type = $state(`arcsinh`)
+  let color_scale_type = $state(`arcsinh`)
+  let arcsinh_threshold = $state(10)
+
+  // Seeded random for reproducibility
+  function seeded_random(seed: number): () => number {
+    let state = seed
+    return (): number => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff
+      return state / 0x7fffffff
+    }
+  }
+
+  // Generate formation energy-like data: clusters at different magnitudes
+  const rng = seeded_random(42)
+  const n_points = 80
+
+  // Generate data with interesting structure across wide range
+  const x_vals = []
+  const y_vals = []
+  const color_vals = []
+  const metadata = []
+
+  for (let idx = 0; idx < n_points; idx++) {
+    // Create clusters at different orders of magnitude
+    const magnitude = Math.pow(10, Math.floor(rng() * 4)) // 1, 10, 100, 1000
+    const sign_x = rng() > 0.5 ? 1 : -1
+    const sign_y = rng() > 0.5 ? 1 : -1
+
+    // Add some points near zero for linear region demo
+    const near_zero = rng() < 0.2
+    const x = near_zero ? (rng() - 0.5) * 20 : sign_x * magnitude * (0.5 + rng() * 0.5)
+    const y = near_zero ? (rng() - 0.5) * 20 : sign_y * magnitude * (0.3 + rng() * 0.7)
+    const color = x * y / 1000 // Correlation between x, y creates gradient
+
+    x_vals.push(x)
+    y_vals.push(y)
+    color_vals.push(color)
+    metadata.push({
+      idx,
+      quadrant: `${sign_x > 0 ? `+` : `-`}X, ${sign_y > 0 ? `+` : `-`}Y`,
+      magnitude: near_zero ? `near zero` : magnitude.toLocaleString(),
+    })
+  }
+
+  const series_data = {
+    x: x_vals,
+    y: y_vals,
+    color_values: color_vals,
+    point_style: { radius: 6, stroke: `white`, stroke_width: 0.5, fill_opacity: 0.85 },
+    metadata,
+  }
+
+  // Build scale configs with threshold
+  let x_scale = $derived(
+    x_scale_type === `arcsinh`
+      ? { type: `arcsinh`, threshold: arcsinh_threshold }
+      : x_scale_type,
+  )
+  let y_scale = $derived(
+    y_scale_type === `arcsinh`
+      ? { type: `arcsinh`, threshold: arcsinh_threshold }
+      : y_scale_type,
+  )
+  let color_scale = $derived({
+    type: color_scale_type === `arcsinh`
+      ? { type: `arcsinh`, threshold: arcsinh_threshold }
+      : color_scale_type,
+    scheme: `interpolateRdBu`,
+  })
+</script>
+
+<div
+  style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1em; margin-bottom: 1em"
+>
+  <fieldset>
+    <legend>X Axis Scale</legend>
+    {#each scale_types as scale (scale)}
+      <label style="margin-right: 0.5em">
+        <input type="radio" bind:group={x_scale_type} value={scale} />
+        {scale}
+      </label>
+    {/each}
+  </fieldset>
+
+  <fieldset>
+    <legend>Y Axis Scale</legend>
+    {#each scale_types as scale (scale)}
+      <label style="margin-right: 0.5em">
+        <input type="radio" bind:group={y_scale_type} value={scale} />
+        {scale}
+      </label>
+    {/each}
+  </fieldset>
+
+  <fieldset>
+    <legend>Color Scale</legend>
+    {#each scale_types as scale (scale)}
+      <label style="margin-right: 0.5em">
+        <input type="radio" bind:group={color_scale_type} value={scale} />
+        {scale}
+      </label>
+    {/each}
+  </fieldset>
+</div>
+
+{#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh` || color_scale_type === `arcsinh`}
+  <label style="display: block; margin-bottom: 1em">
+    Arcsinh Threshold: {arcsinh_threshold}
+    <input
+      type="range"
+      bind:value={arcsinh_threshold}
+      min="0.1"
+      max="100"
+      step="0.1"
+      style="width: 200px"
+    />
+    <span style="font-size: 0.85em; opacity: 0.7">
+      (smaller = sharper transition at zero)
+    </span>
+  </label>
+{/if}
+
+<p style="font-size: 0.9em; opacity: 0.8; margin-bottom: 0.5em">
+  <strong>80 points</strong> spanning ±1000 with clusters at different magnitudes.
+  Switch to "log" to see points with negative values disappear.
+</p>
+
+<ScatterPlot
+  series={[{ ...series_data, markers: `points` }]}
+  x_axis={{ label: `X Axis (${x_scale_type})`, scale_type: x_scale }}
+  y_axis={{ label: `Y Axis (${y_scale_type})`, scale_type: y_scale }}
+  {color_scale}
+  color_bar={{ title: `X × Y / 1000` }}
+  style="height: 450px"
+>
+  {#snippet tooltip({ x, y, color_value, metadata })}
+    <strong>Point #{metadata.idx + 1}</strong><br />
+    X: {x.toFixed(1)}<br />
+    Y: {y.toFixed(1)}<br />
+    Color: {color_value?.toFixed(2)}<br />
+    Quadrant: {metadata.quadrant}<br />
+    Magnitude: {metadata.magnitude}
+  {/snippet}
+</ScatterPlot>
+```
+
 ## Combined Interactive Scatter Plot with Custom Controls
 
 This example combines multiple features including different display modes, custom styling, various marker types, interactive controls for axis customization, and hover styling. It demonstrates the new grid customization options with independent X and Y grid controls and custom grid styling. Click the gear icon in the top-right corner to open a control pane with point size, line width, colors, and styling options:
