@@ -1051,7 +1051,7 @@
         <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
       {/if}
     {/if}
-    {#if (display.y_zero_line) && y2_series.length > 0 &&
+    {#if display.y_zero_line && y2_series.length > 0 &&
         get_scale_type_name(final_y2_axis.scale_type) !== `log` &&
         ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
       {@const zero_y2 = scales.y2(0)}

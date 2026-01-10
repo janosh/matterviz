@@ -26,7 +26,6 @@
     UserContentProps,
     XyObj,
   } from '$lib/plot'
-  import { get_scale_type_name } from '$lib/plot/types'
   import {
     BarPlotControls,
     find_best_plot_area,
@@ -51,7 +50,11 @@
     generate_ticks,
     get_nice_data_range,
   } from '$lib/plot/scales'
-  import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
+  import {
+    DEFAULT_GRID_STYLE,
+    DEFAULT_MARKERS,
+    get_scale_type_name,
+  } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import type { Snippet } from 'svelte'

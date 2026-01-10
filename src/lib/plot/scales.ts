@@ -17,6 +17,9 @@ import * as d3_sc from 'd3-scale-chromatic'
 // Type for ticks parameter - can be count, array of values, time interval, or object mapping values to labels
 export type TicksOption = number | number[] | TimeInterval | Record<number, string>
 
+// Dedupe and sort numeric array (used in tick generation)
+const dedupe_sort = (arr: number[]): number[] => [...new Set(arr)].sort((a, b) => a - b)
+
 // --- Arcsinh Scale Implementation ---
 // The arcsinh scale provides smooth transition between linear (near zero) and
 // logarithmic (for large |x|) behavior. Unlike log, it handles negative values.
@@ -154,8 +157,7 @@ export function generate_arcsinh_ticks(
   const neg_ticks = generate_positive_arcsinh_ticks(0, -min, threshold, half_count)
   ticks.push(...neg_ticks.filter((t) => t > 0).map((t) => -t))
 
-  // Sort and dedupe
-  return [...new Set(ticks)].sort((a, b) => a - b)
+  return dedupe_sort(ticks)
 }
 
 // Generate positive arcsinh ticks (helper)
@@ -206,8 +208,7 @@ function generate_positive_arcsinh_ticks(
     }
   }
 
-  // Sort and dedupe
-  return [...new Set(ticks)].sort((a, b) => a - b)
+  return dedupe_sort(ticks)
 }
 
 // Create a scale function based on type, domain, and range

@@ -890,7 +890,7 @@ The configurable `threshold` parameter controls the transition point: smaller va
   let arcsinh_threshold = $state(10)
 
   // Seeded random for reproducibility
-  function seeded_random(seed: number): () => number {
+  function seeded_random(seed) {
     let state = seed
     return (): number => {
       state = (state * 1103515245 + 12345) & 0x7fffffff

@@ -1761,8 +1761,7 @@
       {/if}
       {#if final_display.y_zero_line &&
         get_scale_type_name(final_y_axis.scale_type) !== `log` &&
-        y_min <= 0 &&
-        y_max >= 0}
+        y_min <= 0 && y_max >= 0}
         {@const zero_y_pos = y_scale_fn(0)}
         {#if isFinite(zero_y_pos)}
           <line
