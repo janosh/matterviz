@@ -1,0 +1,22 @@
+# Local/dev only
+node_modules/
+.venv/
+.cache/
+.tmp/
+npm-debug.log*
+*.log
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+*.tsbuildinfo
+.env
+.env.*
+
+# Coverage / reports
+coverage/
+
+# Keep built assets tracked:
+# - matterviz_dash_components/*.js, *.css, *.wasm, *.map, LICENSE
+# These are required for pip distributions.
+
