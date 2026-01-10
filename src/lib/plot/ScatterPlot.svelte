@@ -64,9 +64,10 @@
     toggle_group_visibility,
     toggle_series_visibility,
   } from '$lib/plot/utils/series-visibility'
+  import { get_scale_type_name } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
-  import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
+  import { scaleTime } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
@@ -87,6 +88,7 @@
   import { group_ref_lines_by_z, index_ref_lines } from './reference-line'
   import {
     create_color_scale,
+    create_scale,
     create_size_scale,
     generate_ticks,
     get_nice_data_range,
@@ -438,38 +440,30 @@
   ) as Vec2
 
   // Create scale functions
+  // For time scales, use scaleTime directly; otherwise use create_scale (supports linear/log/arcsinh)
   let x_scale_fn = $derived(
     final_x_axis.format?.startsWith(`%`)
       ? scaleTime()
         .domain([new Date(x_min), new Date(x_max)])
         .range([pad.l, width - pad.r])
-      : final_x_axis.scale_type === `log`
-      ? scaleLog()
-        .domain([x_min, x_max])
-        .range([pad.l, width - pad.r])
-      : scaleLinear()
-        .domain([x_min, x_max])
-        .range([pad.l, width - pad.r]),
+      : create_scale(final_x_axis.scale_type ?? `linear`, [x_min, x_max], [
+        pad.l,
+        width - pad.r,
+      ]),
   )
 
   let y_scale_fn = $derived(
-    final_y_axis.scale_type === `log`
-      ? scaleLog()
-        .domain([y_min, y_max])
-        .range([height - pad.b, pad.t])
-      : scaleLinear()
-        .domain([y_min, y_max])
-        .range([height - pad.b, pad.t]),
+    create_scale(final_y_axis.scale_type ?? `linear`, [y_min, y_max], [
+      height - pad.b,
+      pad.t,
+    ]),
   )
 
   let y2_scale_fn = $derived(
-    final_y2_axis.scale_type === `log`
-      ? scaleLog()
-        .domain([y2_min, y2_max])
-        .range([height - pad.b, pad.t])
-      : scaleLinear()
-        .domain([y2_min, y2_max])
-        .range([height - pad.b, pad.t]),
+    create_scale(final_y2_axis.scale_type ?? `linear`, [y2_min, y2_max], [
+      height - pad.b,
+      pad.t,
+    ]),
   )
 
   // All size values from series (for size scale) - extracted in series_value_arrays
@@ -988,9 +982,7 @@
     // Time scales (format starts with %) use scaleTime for better tick placement
     const x_scale_for_ticks = final_x_axis.format?.startsWith(`%`)
       ? scaleTime().domain([new Date(x_min), new Date(x_max)])
-      : final_x_axis.scale_type === `log`
-      ? scaleLog().domain([x_min, x_max])
-      : scaleLinear().domain([x_min, x_max])
+      : create_scale(final_x_axis.scale_type ?? `linear`, [x_min, x_max], [0, 1])
 
     return {
       x: generate_ticks(
@@ -1269,16 +1261,12 @@
     // Determine which y-scale to use based on series y_axis property
     const use_y2 = series?.y_axis === `y2`
     const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
-    const min_domain_y = use_y2
-      ? final_y2_axis.scale_type === `log` ? y_scale.domain()[0] : -Infinity
-      : final_y_axis.scale_type === `log`
-      ? y_scale.domain()[0]
-      : -Infinity
-    const safe_y_val = use_y2
-      ? final_y2_axis.scale_type === `log` ? Math.max(y_val, min_domain_y) : y_val
-      : final_y_axis.scale_type === `log`
-      ? Math.max(y_val, min_domain_y)
-      : y_val
+    const y_scale_type = use_y2
+      ? get_scale_type_name(final_y2_axis.scale_type)
+      : get_scale_type_name(final_y_axis.scale_type)
+    // Only log scale needs domain clamping; linear and arcsinh can handle any value
+    const min_domain_y = y_scale_type === `log` ? y_scale.domain()[0] : -Infinity
+    const safe_y_val = y_scale_type === `log` ? Math.max(y_val, min_domain_y) : y_val
     const screen_y = y_scale(safe_y_val) // This might be non-finite
 
     return [screen_x, screen_y]
@@ -1756,8 +1744,9 @@
         <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
       {/if}
 
-      <!-- Zero lines -->
-      {#if final_display.x_zero_line && final_x_axis.scale_type === `linear` &&
+      <!-- Zero lines (shown for linear and arcsinh scales, not log) -->
+      {#if final_display.x_zero_line &&
+        get_scale_type_name(final_x_axis.scale_type) !== `log` &&
         !final_x_axis.format?.startsWith(`%`) && x_min <= 0 && x_max >= 0}
         {@const zero_x_pos = x_scale_fn(0)}
         {#if isFinite(zero_x_pos)}
@@ -1770,7 +1759,8 @@
           />
         {/if}
       {/if}
-      {#if final_display.y_zero_line && final_y_axis.scale_type === `linear` &&
+      {#if final_display.y_zero_line &&
+        get_scale_type_name(final_y_axis.scale_type) !== `log` &&
         y_min <= 0 &&
         y_max >= 0}
         {@const zero_y_pos = y_scale_fn(0)}
@@ -1785,7 +1775,8 @@
         {/if}
       {/if}
       {#if final_display.y_zero_line && y2_points.length > 0 &&
-        final_y2_axis.scale_type === `linear` && y2_min <= 0 && y2_max >= 0}
+        get_scale_type_name(final_y2_axis.scale_type) !== `log` && y2_min <= 0 &&
+        y2_max >= 0}
         {@const zero_y2_pos = y2_scale_fn(0)}
         {#if isFinite(zero_y2_pos)}
           <line

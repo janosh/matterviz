@@ -191,7 +191,38 @@ export interface HistogramHandlerProps<Metadata = Record<string, unknown>>
 }
 
 export type TimeInterval = `day` | `month` | `year`
-export type ScaleType = `linear` | `log`
+
+// Base scale type names
+export type ScaleTypeName = `linear` | `log` | `arcsinh`
+
+// Arcsinh scale configuration with optional threshold parameter
+// threshold controls where linear→log transition occurs (default: 1)
+// For |x| << threshold: behaves linearly
+// For |x| >> threshold: behaves logarithmically
+export interface ArcsinhScaleConfig {
+  type: `arcsinh`
+  threshold?: number // default: 1
+}
+
+// Scale type can be a simple string or arcsinh config object
+export type ScaleType = `linear` | `log` | `arcsinh` | ArcsinhScaleConfig
+
+// Helper to normalize ScaleType to base type name
+export function get_scale_type_name(scale_type: ScaleType | undefined): ScaleTypeName {
+  if (!scale_type) return `linear`
+  if (typeof scale_type === `string`) return scale_type
+  return scale_type.type
+}
+
+// Helper to get arcsinh threshold (returns undefined for non-arcsinh scales)
+export function get_arcsinh_threshold(scale_type: ScaleType | undefined): number {
+  if (!scale_type) return 1
+  if (typeof scale_type === `object` && scale_type.type === `arcsinh`) {
+    return scale_type.threshold ?? 1
+  }
+  return 1 // default threshold
+}
+
 export type QuadrantCounts = {
   top_left: number
   top_right: number

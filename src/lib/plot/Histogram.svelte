@@ -38,7 +38,13 @@
     get_nice_data_range,
     get_tick_label,
   } from '$lib/plot/scales'
-  import type { BasePlotProps, DataSeries, PlotConfig } from '$lib/plot/types'
+  import type {
+    BasePlotProps,
+    DataSeries,
+    PlotConfig,
+    ScaleType,
+  } from '$lib/plot/types'
+  import { get_scale_type_name } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -206,10 +212,11 @@
     const calc_y_range = (
       series_list: typeof selected_series,
       y_limit: typeof y_range,
-      scale_type: `linear` | `log`,
+      scale_type: ScaleType,
     ) => {
+      const type_name = get_scale_type_name(scale_type)
       if (!series_list.length) {
-        const fallback = scale_type === `log` ? 1 : 0
+        const fallback = type_name === `log` ? 1 : 0
         return [fallback, 1] as Vec2
       }
       const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
@@ -227,7 +234,9 @@
         range_padding,
         false,
       )
-      const y_min = scale_type === `log` ? Math.max(1, y0) : Math.max(0, y0)
+      // For log scale, minimum must be >= 1 (count can't be 0 on log)
+      // For linear/arcsinh, start from 0
+      const y_min = type_name === `log` ? Math.max(1, y0) : Math.max(0, y0)
       return [y_min, y1] as Vec2
     }
 
@@ -1025,14 +1034,17 @@
       </g>
     {/if}
 
-    <!-- Zero lines -->
-    {#if display.x_zero_line && ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
+    <!-- Zero lines (shown for linear and arcsinh scales, not log) -->
+    {#if display.x_zero_line &&
+        get_scale_type_name(final_x_axis.scale_type) !== `log` &&
+        ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
       {@const x0 = scales.x(0)}
       {#if isFinite(x0)}
         <line class="zero-line" x1={x0} x2={x0} y1={pad.t} y2={height - pad.b} />
       {/if}
     {/if}
-    {#if display.y_zero_line && (final_y_axis.scale_type ?? `linear`) === `linear` &&
+    {#if display.y_zero_line &&
+        get_scale_type_name(final_y_axis.scale_type) !== `log` &&
         ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
       {@const zero_y = scales.y(0)}
       {#if isFinite(zero_y)}
@@ -1040,7 +1052,7 @@
       {/if}
     {/if}
     {#if (display.y_zero_line) && y2_series.length > 0 &&
-        (final_y2_axis.scale_type ?? `linear`) === `linear` &&
+        get_scale_type_name(final_y2_axis.scale_type) !== `log` &&
         ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
       {@const zero_y2 = scales.y2(0)}
       {#if isFinite(zero_y2)}

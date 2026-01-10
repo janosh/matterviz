@@ -1,9 +1,9 @@
 import type { AxisConfig, DataSeries, XyObj } from '$lib/plot'
+import type { PlotScaleFn } from '$lib/plot/scales'
 import type { LabelNode, LabelPlacementConfig } from '$lib/plot/types'
 import { forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
-import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 
-type ScaleFn = ScaleContinuousNumeric<number, number> | ScaleTime<number, number>
+type ScaleFn = PlotScaleFn
 
 export interface AnchorNode {
   id: string
