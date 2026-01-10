@@ -1,0 +1,37 @@
+{
+  "name": "matterviz-dash-components",
+  "version": "0.0.2",
+  "description": "Plotly Dash wrapper for MatterViz (Svelte) components",
+  "license": "MIT",
+  "private": true,
+  "main": "matterviz_dash_components/matterviz_dash_components.min.js",
+  "scripts": {
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development",
+    "clean": "rm -f matterviz_dash_components/matterviz_dash_components*.js matterviz_dash_components/matterviz_dash_components*.css matterviz_dash_components/*.wasm matterviz_dash_components/*.map"
+  },
+  "peerDependencies": {
+    "react": ">=16.14.0",
+    "react-dom": ">=16.14.0"
+  },
+  "dependencies": {
+    "matterviz": "^0.2.1",
+    "prop-types": "^15.8.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/preset-react": "^7.24.7",
+    "@babel/preset-typescript": "^7.24.7",
+    "babel-loader": "^9.2.1",
+    "css-loader": "^7.1.2",
+    "mini-css-extract-plugin": "^2.9.1",
+    "svelte": "^5.1.0",
+    "svelte-loader": "^3.2.4",
+    "svelte-preprocess": "^6.0.2",
+    "terser-webpack-plugin": "^5.3.10",
+    "typescript": "^5.6.3",
+    "webpack": "^5.94.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

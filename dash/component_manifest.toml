@@ -1,0 +1,55 @@
+[meta]
+schema_version = 1
+matterviz_npm_package = "matterviz"
+matterviz_version = "0.2.1"
+
+# Curated typed wrappers.
+# Add/remove entries freely; run scripts/sync_typed_wrappers.py to regenerate Python wrappers.
+
+[components.Structure]
+key = "structure/Structure"
+doc = "3D crystal structure / molecule viewer."
+
+# Structure expects a few props as JS Set / Float32Array; Dash must pass JSON arrays.
+# This wrapper defaults set_props/float32_props accordingly.
+set_props = ["hidden_elements", "hidden_prop_vals"]
+
+[components.PeriodicTable]
+key = "periodic-table/PeriodicTable"
+doc = "Interactive periodic table with heatmaps and tooltips."
+
+[components.Composition]
+key = "composition/Composition"
+doc = "Composition chart (pie/bubble/bar) for a chemical formula or composition dict."
+
+[components.Trajectory]
+key = "trajectory/Trajectory"
+doc = "Molecular dynamics trajectory viewer with structure + plots."
+
+# Trajectory has an ALL_CAPS prop in TS (ELEM_PROPERTY_LABELS); map to pythonic name.
+[components.Trajectory.aliases]
+elem_property_labels = "ELEM_PROPERTY_LABELS"
+
+[components.BrillouinZone]
+key = "brillouin/BrillouinZone"
+doc = "3D Brillouin zone visualization."
+
+[components.ConvexHull2D]
+key = "convex-hull/ConvexHull2D"
+doc = "2D convex hull phase diagram plot."
+
+[components.ConvexHull3D]
+key = "convex-hull/ConvexHull3D"
+doc = "3D convex hull phase diagram plot."
+
+[components.IsobaricBinaryPhaseDiagram]
+key = "phase-diagram/IsobaricBinaryPhaseDiagram"
+doc = "Binary isobaric phase diagram."
+
+[components.IsobaricTernaryPhaseDiagram]
+key = "phase-diagram/IsobaricTernaryPhaseDiagram"
+doc = "Ternary isobaric phase diagram."
+
+[components.XrdPlot]
+key = "xrd/XrdPlot"
+doc = "X-ray diffraction pattern plot."
