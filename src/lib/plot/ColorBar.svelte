@@ -10,12 +10,15 @@
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
+  import { generate_arcsinh_ticks, scale_arcsinh } from './scales'
   import type {
     AxisOption,
     ColorBarDataLoaderFn,
     ColorScaleOption,
     Orientation,
+    ScaleType,
   } from './types'
+  import { get_arcsinh_threshold, get_scale_type_name } from './types'
 
   let {
     title = $bindable(),
@@ -69,7 +72,7 @@
     // https://github.com/d3/d3-scale/issues/86
     nice_range?: [number, number]
     // type of scale to use for ticks and potentially color (if color_scale_fn not provided)
-    scale_type?: `linear` | `log`
+    scale_type?: ScaleType
     // Optional pre-configured d3 color scale function
     color_scale_fn?: (value: number) => string
     // Optional domain for pre-configured color scale function
@@ -116,7 +119,8 @@
 
   // Scale for ticks - based *only* on 'range' prop and 'scale_type' for ticks
   let scale_for_ticks = $derived.by(() => {
-    let use_log_for_ticks = scale_type === `log`
+    const type_name = get_scale_type_name(scale_type)
+    let use_log_for_ticks = type_name === `log`
     let [scale_min, scale_max] = range
 
     // Validate range for log scale ticks and apply epsilon if needed
@@ -132,6 +136,16 @@
         )
         scale_min = math.LOG_EPS // Substitute with epsilon
       }
+    }
+
+    // For arcsinh, use our custom scale
+    if (type_name === `arcsinh`) {
+      // Guard against very small thresholds that could cause precision issues
+      const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
+      const scale = scale_arcsinh(threshold)
+        .domain([scale_min, scale_max])
+        .range(orientation === `vertical` ? [100, 0] : [0, 100])
+      return scale
     }
 
     const scale = use_log_for_ticks ? d3.scaleLog() : d3.scaleLinear()
@@ -161,9 +175,17 @@
 
     const scale = scale_for_ticks // Use derived scale (which handles log validation for ticks)
     const [scale_min, scale_max] = scale.domain()
+    const type_name = get_scale_type_name(scale_type)
+
+    // Arcsinh tick generation
+    if (type_name === `arcsinh`) {
+      // Guard against very small thresholds that could cause precision issues
+      const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
+      return generate_arcsinh_ticks(scale_min, scale_max, threshold, n_ticks)
+    }
 
     // check scale_type prop for log tick generation
-    const use_log_ticks = scale_type === `log` && scale_min > 0 && scale_max > 0
+    const use_log_ticks = type_name === `log` && scale_min > 0 && scale_max > 0
 
     if (use_log_ticks) {
       // Use D3's ticks for log scale if snapping is enabled
@@ -259,8 +281,10 @@
 
     // Need a domain for this fallback scale! Use 'range' prop.
     let [min_val, max_val] = range
+    const type_name = get_scale_type_name(scale_type)
+
     // Use scale_type for fallback scale creation too. Validate domain for log.
-    let use_log_fallback = scale_type === `log`
+    let use_log_fallback = type_name === `log`
     if (use_log_fallback) {
       if (max_val <= 0) {
         console.warn(
@@ -280,6 +304,19 @@
     const hi = Math.max(min_val, max_val)
     const domain_for_scale: [number, number] = [lo, hi]
 
+    // For arcsinh, create a custom color scale
+    if (type_name === `arcsinh`) {
+      // Guard against very small thresholds that could cause precision issues
+      const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
+      const t_min = Math.asinh(lo / threshold)
+      const t_max = Math.asinh(hi / threshold)
+      return (value: number): string => {
+        const t_val = Math.asinh(value / threshold)
+        const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
+        return interpolator(Math.max(0, Math.min(1, normalized)))
+      }
+    }
+
     return use_log_fallback
       ? d3.scaleSequentialLog(interpolator).domain(domain_for_scale)
       : d3.scaleSequential(interpolator).domain(domain_for_scale)
@@ -294,9 +331,10 @@
   // Generate color stops for gradient background using effective scale and domain
   let ramped = $derived.by(() => {
     const [min_ramp_domain, max_ramp_domain] = color_interp_domain
+    const type_name = get_scale_type_name(scale_type)
 
     // Validate domain for log interpolation and apply epsilon if needed
-    let use_log_interp = scale_type === `log`
+    let use_log_interp = type_name === `log`
     let adjusted_min_ramp = min_ramp_domain
     let adjusted_max_ramp = max_ramp_domain
 
@@ -315,22 +353,39 @@
     }
 
     const n_steps = Math.max(2, Math.floor(steps)) // guard against steps <= 1 to avoid NaN/degenerate gradients
+
+    // Pre-compute loop-invariant values for each scale type
+    let log_min = 0, log_max = 0, log_span = 0
+    let asinh_threshold = 1, asinh_min = 0, asinh_max = 0, asinh_span = 0
+    const linear_span = max_ramp_domain - min_ramp_domain
+
+    if (use_log_interp) {
+      log_min = Math.log10(adjusted_min_ramp)
+      log_max = Math.log10(adjusted_max_ramp)
+      log_span = log_max - log_min
+    } else if (type_name === `arcsinh`) {
+      // Guard against very small thresholds that could cause precision issues
+      asinh_threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
+      asinh_min = Math.asinh(min_ramp_domain / asinh_threshold)
+      asinh_max = Math.asinh(max_ramp_domain / asinh_threshold)
+      asinh_span = asinh_max - asinh_min
+    }
+
     return [...Array(n_steps).keys()].map((_, idx) => {
       const t = idx / (n_steps - 1) // Normalized position 0 to 1
       let data_value: number
 
       if (use_log_interp) {
-        // Interpolate logarithmically within (potentially adjusted) ramp domain
-        const log_min = Math.log10(adjusted_min_ramp)
-        const log_max = Math.log10(adjusted_max_ramp) // Already checked max > 0
-        if (log_min === log_max) {
-          data_value = adjusted_min_ramp // Avoid division by zero / NaN
-        } else data_value = Math.pow(10, log_min + t * (log_max - log_min))
+        data_value = log_span === 0
+          ? adjusted_min_ramp
+          : Math.pow(10, log_min + t * log_span)
+      } else if (type_name === `arcsinh`) {
+        data_value = asinh_span === 0
+          ? min_ramp_domain
+          : Math.sinh(asinh_min + t * asinh_span) * asinh_threshold
       } else {
-        // Interpolate linearly within original ramp domain
-        data_value = min_ramp_domain + t * (max_ramp_domain - min_ramp_domain)
+        data_value = min_ramp_domain + t * linear_span
       }
-      // Apply effective color scale function
       return actual_color_scale_fn(data_value) ?? `transparent`
     })
   })
