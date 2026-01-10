@@ -193,7 +193,7 @@ export interface HistogramHandlerProps<Metadata = Record<string, unknown>>
 export type TimeInterval = `day` | `month` | `year`
 
 // Base scale type names
-export type ScaleTypeName = `linear` | `log` | `arcsinh`
+export type ScaleTypeName = `linear` | `log` | `arcsinh` | `time`
 
 // Arcsinh scale configuration with optional threshold parameter
 // threshold controls where linear→log transition occurs (default: 1)
@@ -205,7 +205,7 @@ export interface ArcsinhScaleConfig {
 }
 
 // Scale type can be a simple string or arcsinh config object
-export type ScaleType = `linear` | `log` | `arcsinh` | ArcsinhScaleConfig
+export type ScaleType = `linear` | `log` | `arcsinh` | `time` | ArcsinhScaleConfig
 
 // Helper to normalize ScaleType to base type name
 export function get_scale_type_name(scale_type: ScaleType | undefined): ScaleTypeName {
@@ -214,13 +214,30 @@ export function get_scale_type_name(scale_type: ScaleType | undefined): ScaleTyp
   return scale_type.type
 }
 
-// Helper to get arcsinh threshold (returns undefined for non-arcsinh scales)
+// Helper to get arcsinh threshold (returns 1 as default for non-arcsinh scales)
 export function get_arcsinh_threshold(scale_type: ScaleType | undefined): number {
   if (!scale_type) return 1
   if (typeof scale_type === `object` && scale_type.type === `arcsinh`) {
-    return scale_type.threshold ?? 1
+    const threshold = scale_type.threshold ?? 1
+    if (!Number.isFinite(threshold) || threshold <= 0) {
+      throw new Error(
+        `arcsinh threshold must be a positive finite number, got ${threshold}`,
+      )
+    }
+    return threshold
   }
   return 1 // default threshold
+}
+
+// Helper to detect time scale - checks explicit scale_type or falls back to format heuristic
+// Prefer explicit scale_type: 'time' for new code; format heuristic kept for backwards compatibility
+export function is_time_scale(
+  scale_type: ScaleType | undefined,
+  format: string | undefined,
+): boolean {
+  if (get_scale_type_name(scale_type) === `time`) return true
+  // Fallback: d3 time format strings start with '%'
+  return format?.startsWith(`%`) ?? false
 }
 
 export type QuadrantCounts = {

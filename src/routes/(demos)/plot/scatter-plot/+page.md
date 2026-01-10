@@ -880,7 +880,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is ideal for data spanning positi
 The configurable `threshold` parameter controls the transition point: smaller values make the transition sharper, larger values extend the linear region.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   const scale_types = [`linear`, `log`, `arcsinh`]
@@ -892,7 +892,7 @@ The configurable `threshold` parameter controls the transition point: smaller va
   // Seeded random for reproducibility
   function seeded_random(seed) {
     let state = seed
-    return (): number => {
+    return () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
       return state / 0x7fffffff
     }
@@ -916,8 +916,12 @@ The configurable `threshold` parameter controls the transition point: smaller va
 
     // Add some points near zero for linear region demo
     const near_zero = rng() < 0.2
-    const x = near_zero ? (rng() - 0.5) * 20 : sign_x * magnitude * (0.5 + rng() * 0.5)
-    const y = near_zero ? (rng() - 0.5) * 20 : sign_y * magnitude * (0.3 + rng() * 0.7)
+    const x = near_zero
+      ? (rng() - 0.5) * 20
+      : sign_x * magnitude * (0.5 + rng() * 0.5)
+    const y = near_zero
+      ? (rng() - 0.5) * 20
+      : sign_y * magnitude * (0.3 + rng() * 0.7)
     const color = x * y / 1000 // Correlation between x, y creates gradient
 
     x_vals.push(x)
@@ -934,9 +938,19 @@ The configurable `threshold` parameter controls the transition point: smaller va
     x: x_vals,
     y: y_vals,
     color_values: color_vals,
-    point_style: { radius: 6, stroke: `white`, stroke_width: 0.5, fill_opacity: 0.85 },
+    point_style: {
+      radius: 6,
+      stroke: `white`,
+      stroke_width: 0.5,
+      fill_opacity: 0.85,
+    },
     metadata,
   }
+
+  // Data compatibility checks for log scale warnings
+  const x_has_non_positive = x_vals.some((v) => v <= 0)
+  const y_has_non_positive = y_vals.some((v) => v <= 0)
+  const color_has_non_positive = color_vals.some((v) => v <= 0)
 
   // Build scale configs with threshold
   let x_scale = $derived(
@@ -949,12 +963,11 @@ The configurable `threshold` parameter controls the transition point: smaller va
       ? { type: `arcsinh`, threshold: arcsinh_threshold }
       : y_scale_type,
   )
-  let color_scale = $derived({
-    type: color_scale_type === `arcsinh`
-      ? { type: `arcsinh`, threshold: arcsinh_threshold }
-      : color_scale_type,
-    scheme: `interpolateRdBu`,
-  })
+  let color_scale = $derived(
+    color_scale_type === `arcsinh`
+      ? { type: `arcsinh`, threshold: arcsinh_threshold, scheme: `interpolateRdBu` }
+      : { type: color_scale_type, scheme: `interpolateRdBu` },
+  )
 </script>
 
 <div
@@ -991,7 +1004,8 @@ The configurable `threshold` parameter controls the transition point: smaller va
   </fieldset>
 </div>
 
-{#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh` || color_scale_type === `arcsinh`}
+{#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh` ||
+    color_scale_type === `arcsinh`}
   <label style="display: block; margin-bottom: 1em">
     Arcsinh Threshold: {arcsinh_threshold}
     <input
@@ -1008,9 +1022,36 @@ The configurable `threshold` parameter controls the transition point: smaller va
   </label>
 {/if}
 
+{#if x_scale_type === `log` && x_has_non_positive}
+  <p
+    style="color: #e74c3c; font-size: 0.9em; margin: 0.5em 0; padding: 0.5em; background: rgba(231, 76, 60, 0.1); border-radius: 4px"
+  >
+    ⚠️ <strong>X-axis log scale invalid:</strong> Data contains negative/zero values.
+    Points with x ≤ 0 will not render.
+  </p>
+{/if}
+
+{#if y_scale_type === `log` && y_has_non_positive}
+  <p
+    style="color: #e74c3c; font-size: 0.9em; margin: 0.5em 0; padding: 0.5em; background: rgba(231, 76, 60, 0.1); border-radius: 4px"
+  >
+    ⚠️ <strong>Y-axis log scale invalid:</strong> Data contains negative/zero values.
+    Points with y ≤ 0 will not render.
+  </p>
+{/if}
+
+{#if color_scale_type === `log` && color_has_non_positive}
+  <p
+    style="color: #e74c3c; font-size: 0.9em; margin: 0.5em 0; padding: 0.5em; background: rgba(231, 76, 60, 0.1); border-radius: 4px"
+  >
+    ⚠️ <strong>Color log scale invalid:</strong> Data contains negative/zero values. Color
+    mapping may fail for those points.
+  </p>
+{/if}
+
 <p style="font-size: 0.9em; opacity: 0.8; margin-bottom: 0.5em">
-  <strong>80 points</strong> spanning ±1000 with clusters at different magnitudes.
-  Switch to "log" to see points with negative values disappear.
+  <strong>80 points</strong> spanning ±1000 with clusters at different magnitudes. Switch
+  to "log" to see points with negative values disappear.
 </p>
 
 <ScatterPlot

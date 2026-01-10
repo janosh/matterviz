@@ -47,6 +47,12 @@ export type PlotScaleFn =
 
 // Create an arcsinh scale with configurable threshold
 export function scale_arcsinh(threshold = 1): ArcsinhScale {
+  if (!Number.isFinite(threshold) || threshold <= 0) {
+    throw new Error(
+      `arcsinh threshold must be a positive finite number, got ${threshold}`,
+    )
+  }
+
   let _domain: [number, number] = [0, 1]
   let _range: [number, number] = [0, 1]
 
@@ -62,6 +68,9 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
     const num_value = value instanceof Date ? value.getTime() : value
     const [d_min, d_max] = _domain
     const [r_min, r_max] = _range
+
+    // Handle identical domain endpoints (degenerate case)
+    if (d_max === d_min) return (r_min + r_max) / 2
 
     // Transform domain endpoints
     const t_min = arcsinh_transform(d_min)
@@ -94,6 +103,9 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   scale.invert = (value: number): number => {
     const [d_min, d_max] = _domain
     const [r_min, r_max] = _range
+
+    // Handle identical domain endpoints (degenerate case)
+    if (d_max === d_min) return (d_min + d_max) / 2
 
     // Transform domain endpoints
     const t_min = arcsinh_transform(d_min)
@@ -128,39 +140,62 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
 
 // Generate nice tick values for arcsinh scale
 // Strategy: symmetric around zero when possible, with powers of 10 for large values
+// Note: For small count values (1 or 2) on mixed ranges, zero takes priority as the
+// most important tick. E.g., count=1 yields [0], count=2 yields [0] plus one boundary.
 export function generate_arcsinh_ticks(
   min: number,
   max: number,
   threshold = 1,
   count = 10,
 ): number[] {
+  // Guard against invalid/non-positive threshold to prevent division issues
+  const safe_threshold = Math.max(threshold, Number.EPSILON)
+  // Normalize reversed domains (min > max)
+  const [lo, hi] = min <= max ? [min, max] : [max, min]
+
   // For purely positive or purely negative ranges, use log-like spacing
-  if (min >= 0) {
-    return generate_positive_arcsinh_ticks(min, max, threshold, count)
+  if (lo >= 0) {
+    return generate_positive_arcsinh_ticks(lo, hi, safe_threshold, count)
   }
-  if (max <= 0) {
+  if (hi <= 0) {
     // Negative range: mirror the positive logic
-    return generate_positive_arcsinh_ticks(-max, -min, threshold, count)
+    return generate_positive_arcsinh_ticks(-hi, -lo, safe_threshold, count)
       .map((t) => -t)
       .reverse()
   }
 
   // Mixed range: symmetric ticks around zero (includes_zero is always true here)
+  // For very small counts, we prioritize zero as the most meaningful tick
   const half_count = Math.floor((count - 1) / 2)
   const ticks: number[] = [0]
 
   // Add positive ticks
-  const pos_ticks = generate_positive_arcsinh_ticks(0, max, threshold, half_count)
+  const pos_ticks = generate_positive_arcsinh_ticks(0, hi, safe_threshold, half_count)
   ticks.push(...pos_ticks.filter((t) => t > 0))
 
   // Add negative ticks (mirror of positive)
-  const neg_ticks = generate_positive_arcsinh_ticks(0, -min, threshold, half_count)
+  const neg_ticks = generate_positive_arcsinh_ticks(0, -lo, safe_threshold, half_count)
   ticks.push(...neg_ticks.filter((t) => t > 0).map((t) => -t))
+
+  // For small counts where half_count is 0 or 1, ensure at least some boundary coverage
+  if (half_count <= 1 && count >= 2) {
+    // Add boundaries if not already present and we have room
+    const sorted = dedupe_sort(ticks)
+    if (sorted.length < count) {
+      // Prefer the boundary with larger absolute value (more visually distinct)
+      const abs_lo = Math.abs(lo)
+      const abs_hi = Math.abs(hi)
+      if (abs_hi >= abs_lo && !sorted.includes(hi)) ticks.push(hi)
+      else if (!sorted.includes(lo)) ticks.push(lo)
+    }
+  }
 
   return dedupe_sort(ticks)
 }
 
 // Generate positive arcsinh ticks (helper)
+// Ensures domain boundaries (min, max) are included when they provide meaningful
+// visual anchors that powers-of-10 alone might miss.
 function generate_positive_arcsinh_ticks(
   min: number,
   max: number,
@@ -183,6 +218,11 @@ function generate_positive_arcsinh_ticks(
     }
   } else {
     // Large range: combine linear near zero with powers of 10
+
+    // Add domain boundaries to ensure endpoints are represented
+    // This prevents cases like min=50, max=500 only showing powers of 10 (100)
+    if (min > 0) ticks.push(min)
+    ticks.push(max)
 
     // Add threshold as a tick if in range
     if (threshold >= min && threshold <= max) ticks.push(threshold)
@@ -373,7 +413,8 @@ export function get_nice_data_range(
         data_max = Math.pow(10, log_max + log_span * padding_factor)
       } else if (type_name === `arcsinh`) {
         // Arcsinh: apply padding in arcsinh-transformed space
-        const threshold = get_arcsinh_threshold(scale_type)
+        // Guard against invalid/non-positive threshold to prevent Infinity/NaN
+        const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
         const asinh_min = Math.asinh(data_min / threshold)
         const asinh_max = Math.asinh(data_max / threshold)
         const asinh_span = asinh_max - asinh_min
@@ -396,7 +437,8 @@ export function get_nice_data_range(
         data_max = data_max * 1.1
       } else if (type_name === `arcsinh`) {
         // Arcsinh: 10% padding in transformed space
-        const threshold = get_arcsinh_threshold(scale_type)
+        // Guard against invalid/non-positive threshold to prevent Infinity/NaN
+        const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
         const asinh_val = Math.asinh(data_min / threshold)
         const padding = Math.abs(asinh_val) * 0.1 || 0.1 // Use 0.1 if value is 0
         data_min = Math.sinh(asinh_val - padding) * threshold
@@ -528,28 +570,62 @@ export function create_color_scale(
 }
 
 // Create an arcsinh-based color scale (custom sequential scale)
+// Returns a D3-compatible scale with both getter and setter for domain
 function create_arcsinh_color_scale(
   interpolator: (t: number) => string,
-  domain: [number, number],
+  initial_domain: [number, number],
   threshold: number,
 ) {
-  const [d_min, d_max] = domain
-  const t_min = Math.asinh(d_min / threshold)
-  const t_max = Math.asinh(d_max / threshold)
+  // Guard against invalid/non-positive threshold to prevent Infinity/NaN from asinh(x/0)
+  const safe_threshold = Math.max(threshold, Number.EPSILON)
+  let _domain = initial_domain
 
   type ArcsinhColorScale = ((value: number) => string) & {
-    domain: () => [number, number]
+    domain: {
+      (): [number, number]
+      (new_domain: [number, number]): ArcsinhColorScale
+    }
   }
 
-  const scale = ((value: number): string => {
-    const t_val = Math.asinh(value / threshold)
-    // Normalize to [0, 1]
-    const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
-    return interpolator(Math.max(0, Math.min(1, normalized)))
-  }) as ArcsinhColorScale
+  // Create the scale function that uses current domain
+  const create_scale_fn = (): ArcsinhColorScale => {
+    const [d_min, d_max] = _domain
 
-  scale.domain = () => domain
-  return scale
+    // Handle identical domain endpoints - return middle of color range
+    if (d_max === d_min) {
+      const scale = ((value: number): string => {
+        void value // unused when domain is degenerate
+        return interpolator(0.5)
+      }) as ArcsinhColorScale
+      scale.domain = function (new_domain?: [number, number]) {
+        if (new_domain === undefined) return _domain
+        _domain = new_domain
+        return create_scale_fn()
+      } as ArcsinhColorScale[`domain`]
+      return scale
+    }
+
+    const t_min = Math.asinh(d_min / safe_threshold)
+    const t_max = Math.asinh(d_max / safe_threshold)
+
+    const scale = ((value: number): string => {
+      const t_val = Math.asinh(value / safe_threshold)
+      // Normalize to [0, 1]
+      const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
+      return interpolator(Math.max(0, Math.min(1, normalized)))
+    }) as ArcsinhColorScale
+
+    // Domain getter/setter for D3 compatibility
+    scale.domain = function (new_domain?: [number, number]) {
+      if (new_domain === undefined) return _domain
+      _domain = new_domain
+      return create_scale_fn()
+    } as ArcsinhColorScale[`domain`]
+
+    return scale
+  }
+
+  return create_scale_fn()
 }
 
 // Create a size scale function from configuration

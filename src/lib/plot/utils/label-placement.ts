@@ -1,6 +1,7 @@
 import type { AxisConfig, DataSeries, XyObj } from '$lib/plot'
 import type { PlotScaleFn } from '$lib/plot/scales'
 import type { LabelNode, LabelPlacementConfig } from '$lib/plot/types'
+import { is_time_scale } from '$lib/plot/types'
 import { forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
 
 type ScaleFn = PlotScaleFn
@@ -50,7 +51,7 @@ export function compute_label_positions(
     for (const pt of series.filtered_data ?? []) {
       if (!pt.point_label?.auto_placement || !pt.point_label.text) continue
 
-      const ax = x_axis.format?.startsWith(`%`)
+      const ax = is_time_scale(x_axis.scale_type, x_axis.format)
         ? x_scale_fn(new Date(pt.x))
         : x_scale_fn(pt.x)
       const ay = (series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(pt.y)

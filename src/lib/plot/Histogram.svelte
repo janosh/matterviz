@@ -226,6 +226,13 @@
           max(hist(srs.y), (data) => data.length) || 0
         ),
       )
+
+      // If there's effectively no data, avoid log-range issues (counts can't be <= 0 on log)
+      if (max_count <= 0) {
+        const fallback = type_name === `log` ? 1 : 0
+        return [fallback, 1] as Vec2
+      }
+
       const [y0, y1] = get_nice_data_range(
         [{ x: 0, y: 0 }, { x: max_count, y: 0 }],
         ({ x }) => x,

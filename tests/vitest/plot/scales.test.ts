@@ -2,6 +2,7 @@ import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import {
   calculate_domain,
+  create_color_scale,
   create_scale,
   create_time_scale,
   generate_arcsinh_ticks,
@@ -200,20 +201,17 @@ describe(`scales`, () => {
       expect(result.some((t) => t >= min && t <= max)).toBe(true)
     })
 
-    test.each([
-      [100],
-      [1],
-      [0.001],
-    ])(`single value domain: %s`, (value) => {
-      const result = generate_log_ticks(value, value, 5)
-      expect(result).toContain(value)
-      expect(result.length).toBeGreaterThan(0)
-    })
+    test.each([[100], [1], [0.001]])(
+      `single value domain %s includes that value`,
+      (value) => {
+        const result = generate_log_ticks(value, value, 5)
+        expect(result).toContain(value)
+      },
+    )
 
-    test(`negative values clamped`, () => {
+    test(`negative min clamped to LOG_EPS`, () => {
       const result = generate_log_ticks(-10, 100, 5)
-      expect(result.some((t) => t >= math.LOG_EPS)).toBe(true)
-      expect(result).toContain(100)
+      expect(result.every((t) => t >= math.LOG_EPS)).toBe(true)
     })
   })
 
@@ -437,6 +435,17 @@ describe(`scales`, () => {
       expect(ticks).toContain(0)
       expect(ticks.every((t) => t >= -100 && t <= 100)).toBe(true)
     })
+
+    test.each([
+      [0, `arcsinh threshold must be a positive finite number, got 0`],
+      [-1, `arcsinh threshold must be a positive finite number, got -1`],
+      [-0.001, `arcsinh threshold must be a positive finite number, got -0.001`],
+      [NaN, `arcsinh threshold must be a positive finite number, got NaN`],
+      [Infinity, `arcsinh threshold must be a positive finite number, got Infinity`],
+      [-Infinity, `arcsinh threshold must be a positive finite number, got -Infinity`],
+    ])(`throws for invalid threshold %s`, (threshold, error_msg) => {
+      expect(() => scale_arcsinh(threshold)).toThrow(error_msg)
+    })
   })
 
   describe(`generate_arcsinh_ticks`, () => {
@@ -473,6 +482,20 @@ describe(`scales`, () => {
       expect(ticks.filter((t) => t > 0).length).toBeGreaterThan(0)
       expect(ticks.filter((t) => t < 0).length).toBeGreaterThan(0)
     })
+
+    test.each([
+      { min: 1000, max: -100, name: `mixed` }, // reversed mixed (tests equality with normal)
+      { min: 100, max: 0, name: `positive` }, // reversed positive
+      { min: 0, max: -100, name: `negative` }, // reversed negative
+      { min: 500, max: -500, name: `symmetric` }, // reversed symmetric
+    ])(`reversed domain ($name) [$min, $max] normalizes correctly`, ({ min, max }) => {
+      const ticks = generate_arcsinh_ticks(min, max, 1, 8)
+      const [lo, hi] = [Math.min(min, max), Math.max(min, max)]
+      // All ticks within normalized range
+      expect(ticks.every((t) => t >= lo && t <= hi)).toBe(true)
+      // Reversed should equal normal order
+      expect(ticks).toEqual(generate_arcsinh_ticks(lo, hi, 1, 8))
+    })
   })
 
   describe(`type helpers`, () => {
@@ -494,6 +517,80 @@ describe(`scales`, () => {
       [undefined, 1],
     ])(`get_arcsinh_threshold(%s) = %s`, (input, expected) => {
       expect(get_arcsinh_threshold(input as ScaleType | undefined)).toBe(expected)
+    })
+
+    test.each([
+      [0, `arcsinh threshold must be a positive finite number, got 0`],
+      [-1, `arcsinh threshold must be a positive finite number, got -1`],
+      [-0.5, `arcsinh threshold must be a positive finite number, got -0.5`],
+      [NaN, `arcsinh threshold must be a positive finite number, got NaN`],
+      [Infinity, `arcsinh threshold must be a positive finite number, got Infinity`],
+      [-Infinity, `arcsinh threshold must be a positive finite number, got -Infinity`],
+    ])(
+      `get_arcsinh_threshold throws for invalid threshold %s`,
+      (threshold, error_msg) => {
+        expect(() =>
+          get_arcsinh_threshold({ type: `arcsinh`, threshold } as ArcsinhScaleConfig)
+        ).toThrow(error_msg)
+      },
+    )
+  })
+
+  describe(`scale_arcsinh identical domain edge cases`, () => {
+    test(`degenerate domain (d_min === d_max) returns midpoints`, () => {
+      const scale = scale_arcsinh(1).domain([50, 50]).range([0, 100])
+      // Forward: any input → midpoint of range
+      for (const val of [0, 50, 100, -100]) expect(scale(val)).toBe(50)
+      // Invert: any input → midpoint of domain
+      const scale2 = scale_arcsinh(1).domain([42, 42]).range([0, 100])
+      for (const val of [0, 50, 100]) expect(scale2.invert(val)).toBe(42)
+    })
+  })
+
+  describe(`create_color_scale with arcsinh`, () => {
+    test(`returns middle color when domain min equals max`, () => {
+      const scale = create_color_scale(
+        { type: `arcsinh`, scheme: `interpolateViridis`, value_range: [50, 50] },
+        [0, 100], // auto_color_range is ignored when value_range is provided
+      )
+      // All values should map to middle of color scale (0.5)
+      const color_at_min = scale(0)
+      const color_at_mid = scale(50)
+      const color_at_max = scale(100)
+      expect(color_at_min).toBe(color_at_mid)
+      expect(color_at_mid).toBe(color_at_max)
+    })
+
+    test.each([1e10, -1e10, 1e-10])(`handles extreme value %s`, (value) => {
+      const scale = create_color_scale(
+        { type: { type: `arcsinh`, threshold: 1 } },
+        [-1e12, 1e12],
+      )
+      expect(typeof scale(value)).toBe(`string`)
+    })
+
+    test.each([1e-10, 1e10, 0.001, 1000])(`handles threshold=%s`, (threshold) => {
+      const scale = create_color_scale(
+        { type: { type: `arcsinh`, threshold } },
+        [-100, 100],
+      )
+      expect(scale(-100)).not.toBe(scale(100)) // boundaries differ
+    })
+
+    test(`color scale domain method returns correct values`, () => {
+      const config: ArcsinhScaleConfig = { type: `arcsinh`, threshold: 5 }
+      const scale = create_color_scale(config, [-50, 150])
+      expect(scale.domain()).toEqual([-50, 150])
+    })
+
+    test(`arcsinh color scale produces smooth gradient`, () => {
+      const config: ArcsinhScaleConfig = { type: `arcsinh`, threshold: 1 }
+      const scale = create_color_scale(config, [0, 1000])
+      // Values near threshold should be distinguishable
+      const colors = [0, 1, 10, 100, 1000].map((val) => scale(val))
+      // All colors should be unique for these spread-out values
+      const unique_colors = new Set(colors)
+      expect(unique_colors.size).toBe(colors.length)
     })
   })
 })
