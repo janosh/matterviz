@@ -454,7 +454,6 @@ def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) 
         "",
         "from __future__ import annotations",
         "",
-        "from dash.development.base_component import _explicitize_args",
         "from typing import Any, Optional",
         "",
         "from .MatterViz import MatterViz",
@@ -537,7 +536,8 @@ def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) 
             lines.append(f"    - {py} -> {js}: {p.ts_type}{req}")
         lines.append('    """')
         lines.append("")
-        lines.append("    @_explicitize_args")
+        # Note: We don't use @_explicitize_args here because MatterViz.__init__
+        # already has it, and the decorator doesn't work well when chained.
 
         # Signature
         sig_parts: List[str] = ["self", "id=None"]

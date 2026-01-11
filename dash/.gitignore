@@ -13,10 +13,17 @@ __pycache__/
 .env
 .env.*
 
+# Lock files (per project convention)
+package-lock.json
+
 # Coverage / reports
 coverage/
+
+# Build artifacts (eggs, dist)
+*.egg-info/
+dist/
+build/
 
 # Keep built assets tracked:
 # - matterviz_dash_components/*.js, *.css, *.wasm, *.map, LICENSE
 # These are required for pip distributions.
-

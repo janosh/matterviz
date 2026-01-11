@@ -12,30 +12,16 @@ Public API
 _namespace = "matterviz_dash_components"
 
 # Asset definitions (served via Dash component suites)
+# Vite bundles everything into a single UMD file plus assets.
 _js_dist = [
     {
         "relative_package_path": "matterviz_dash_components.min.js",
         "namespace": _namespace,
     },
-    {
-        "relative_package_path": "155.matterviz_dash_components.min.js",
-        "namespace": _namespace,
-    },
-    {
-        "relative_package_path": "210.matterviz_dash_components.min.js",
-        "namespace": _namespace,
-    },
-    {
-        "relative_package_path": "861.matterviz_dash_components.min.js",
-        "namespace": _namespace,
-    },
-    {
-        # WebAssembly asset emitted by webpack (required for symmetry, etc.)
-        # Stable filename is configured in webpack.config.js (generator.filename).
-        "relative_package_path": "matterviz_wasm.wasm",
-        "namespace": _namespace,
-    },
 ]
+
+# Note: WASM files are loaded dynamically by the JS bundle when needed,
+# not as script tags. They should still be included in the package data.
 
 _css_dist = [
     {
@@ -62,13 +48,44 @@ except Exception:
     pass
 
 
-def component(name: str, **mv_props):
+def component(
+    name: str,
+    id: str | None = None,
+    className: str | None = None,
+    style: dict | None = None,
+    set_props: list[str] | None = None,
+    float32_props: list[str] | None = None,
+    event_props: list[str] | None = None,
+    last_event: dict | None = None,
+    **mv_props,
+) -> MatterViz:
     """Create a MatterViz component by name/path (generic API).
 
     Equivalent to:
-        MatterViz(component=name, mv_props=mv_props)
+        MatterViz(component=name, mv_props=mv_props, ...)
+
+    Args:
+        name: Component identifier (e.g. "Structure" or "structure/Structure").
+        id: Dash component id.
+        className: CSS class name.
+        style: Inline styles dict.
+        set_props: Props to convert from list to Set on JS side.
+        float32_props: Props to convert from list to Float32Array on JS side.
+        event_props: Callback prop names to inject.
+        last_event: Updated whenever any injected callback fires.
+        **mv_props: Props forwarded to the MatterViz component.
     """
-    return MatterViz(component=name, mv_props=mv_props)
+    return MatterViz(
+        id=id,
+        component=name,
+        mv_props=mv_props,
+        className=className,
+        style=style,
+        set_props=set_props,
+        float32_props=float32_props,
+        event_props=event_props,
+        last_event=last_event,
+    )
 
 
 def __getattr__(name: str):
@@ -83,14 +100,35 @@ def __getattr__(name: str):
         custom = mvc.MyNewComponent(foo=123)  # becomes MatterViz(component="MyNewComponent", mv_props={...})
     """
     if name and name[0].isupper():
-        def _factory(**mv_props):
-            return MatterViz(component=name, mv_props=mv_props)
+
+        def _factory(
+            id: str | None = None,
+            className: str | None = None,
+            style: dict | None = None,
+            set_props: list[str] | None = None,
+            float32_props: list[str] | None = None,
+            event_props: list[str] | None = None,
+            last_event: dict | None = None,
+            **mv_props,
+        ) -> MatterViz:
+            return MatterViz(
+                id=id,
+                component=name,
+                mv_props=mv_props,
+                className=className,
+                style=style,
+                set_props=set_props,
+                float32_props=float32_props,
+                event_props=event_props,
+                last_event=last_event,
+            )
 
         _factory.__name__ = name
         _factory.__doc__ = (
             f"Factory for MatterViz component '{name}'.\n\n"
             "This is syntactic sugar for:\n"
-            "    MatterViz(component=..., mv_props={...})"
+            "    MatterViz(component=..., mv_props={...})\n\n"
+            "Supports id, className, style, set_props, float32_props, and event_props."
         )
         return _factory
 

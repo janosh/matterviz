@@ -6,6 +6,8 @@
 
 from dash.development.base_component import Component, _explicitize_args
 
+# Import shared asset definitions from package __init__ to avoid duplication
+
 
 class MatterViz(Component):
     """Render MatterViz (Svelte) components in Dash.
@@ -27,13 +29,13 @@ class MatterViz(Component):
         Updated whenever any injected callback fires.
     """
 
-    _children_props = []
-    _base_nodes = []
+    _children_props: list[str] = []
+    _base_nodes: list[str] = []
 
     _namespace = "matterviz_dash_components"
     _type = "MatterViz"
 
-    _valid_wildcard_attributes = []
+    _valid_wildcard_attributes: list[str] = []
 
     _prop_names = [
         "id",
@@ -48,27 +50,7 @@ class MatterViz(Component):
     ]
 
     available_properties = _prop_names
-    available_wildcard_properties = []
-
-    # Dash asset definitions (served from package data)
-    _js_dist = [
-        {
-            "relative_package_path": [
-                "matterviz_dash_components.min.js",
-                "155.matterviz_dash_components.min.js",
-                "210.matterviz_dash_components.min.js",
-                "861.matterviz_dash_components.min.js",
-            ],
-            "namespace": "matterviz_dash_components",
-        }
-    ]
-
-    _css_dist = [
-        {
-            "relative_package_path": "matterviz_dash_components.css",
-            "namespace": "matterviz_dash_components",
-        }
-    ]
+    available_wildcard_properties: list[str] = []
 
     @_explicitize_args
     def __init__(
@@ -85,8 +67,7 @@ class MatterViz(Component):
         _explicit_args=None,
         **kwargs,
     ):
-        # Dash 2.8+ passes _explicit_args for validation; drop it before calling the base class.
-        kwargs.pop("_explicit_args", None)
+        # _explicit_args is injected by @_explicitize_args decorator and captured above.
         super().__init__(
             id=id,
             component=component,

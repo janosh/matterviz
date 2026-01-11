@@ -1,9 +1,10 @@
-// IMPORTANT: set Webpack public path before anything else so that emitted assets
-// (e.g. .wasm) are fetched from the correct Dash component-suites URL.
-import './publicPath';
-import './threeGlobals';
+// Three.js globals must be set up before importing MatterViz components
+import './threeGlobals'
+
+// Import public path utilities (for Dash asset resolution)
+import './publicPath'
 
 // Register the Svelte custom element and global MatterViz CSS.
-import './registerCustomElements';
+import './registerCustomElements'
 
-export { default as MatterViz } from './components/MatterViz.react';
+export { default as MatterViz } from './components/MatterViz.react'

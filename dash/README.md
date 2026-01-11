@@ -6,16 +6,16 @@ A Dash component library that renders **MatterViz** (Svelte) components inside *
 
 - **Simple**: one Dash component (`MatterViz`) + one browser custom element (`<mv-matterviz>`)
 - **Maintainable**: no per-component React wrappers required
-- **Broad coverage**: render *any* MatterViz `.svelte` component that is present in the installed `matterviz` npm package
+- **Broad coverage**: render _any_ MatterViz `.svelte` component that is present in the installed `matterviz` npm package
 - **Sync-friendly**: to update for a new MatterViz release you typically only bump the npm dependency and rebuild
 
 ## How it works
 
-1. Webpack bundles this library.
-2. During bundling, we include all `matterviz/dist/**/*.svelte` files via `require.context`.
+1. Vite bundles this library in UMD format for Dash compatibility.
+2. During bundling, we include all `matterviz/dist/**/*.svelte` files via `import.meta.glob`.
 3. A small Svelte **custom element** (`<mv-matterviz>`) dynamically picks a MatterViz component by name/path and renders it.
 4. A small React wrapper (`MatterViz`) is the Dash-facing component:
-   - sets the custom element’s `component` and `props` **properties** (not HTML attributes)
+   - sets the custom element's `component` and `props` **properties** (not HTML attributes)
    - optionally injects JS callbacks into `props` to surface MatterViz events back into Dash
 
 This avoids having to re-create every MatterViz component as a separate Dash component.
@@ -26,14 +26,11 @@ This avoids having to re-create every MatterViz component as a separate Dash com
 
 ```bash
 cd matterviz-dash-components
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 This emits the JS bundle (and any emitted assets like `.wasm`) into `matterviz_dash_components/`.
-The webpack `svelte-preprocess` is pointed at `tsconfig.svelte.json` to avoid
-TS5083 errors when compiling MatterViz’ distributed `.svelte` files (they expect
-a project tsconfig). Keep that file with the repo so `npm run build` works.
 
 ### Sample app
 
@@ -91,7 +88,7 @@ if __name__ == "__main__":
 
 ### Convenience factories (optional)
 
-This package also provides a dynamic factory for any *capitalized* attribute via `__getattr__`.
+This package also provides a dynamic factory for any _capitalized_ attribute via `__getattr__`.
 So you can write:
 
 ```python
@@ -112,7 +109,6 @@ If a component name is ambiguous, use a path key:
 ```python
 mvc.MatterViz(component="structure/Structure", mv_props={...})
 ```
-
 
 ## Typed wrappers
 
@@ -164,7 +160,7 @@ Wrappers are generated from a curated manifest file:
 
 To regenerate wrappers after bumping the `matterviz` npm dependency:
 
-1. `npm install`
+1. `pnpm install`
 2. `python scripts/sync_typed_wrappers.py --manifest component_manifest.toml --matterviz-dist node_modules/matterviz/dist --out matterviz_dash_components/typed.py`
 
 If a component is not in the manifest, it remains accessible through the generic `MatterViz` API
@@ -212,7 +208,6 @@ If a component is not in the manifest, it remains accessible through the generic
 
 - To update MatterViz:
   1. bump the `matterviz` version in `package.json`
-  2. run `npm install`
-  3. run `npm run build`
+  2. run `pnpm install`
+  3. run `pnpm run build`
   4. bump Python package version and publish
-

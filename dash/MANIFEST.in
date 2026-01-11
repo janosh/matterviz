@@ -1,9 +1,0 @@
-include README.md
-include LICENSE
-include package.json
-include webpack.config.js
-recursive-include src *
-recursive-include matterviz_dash_components *.js *.css *.map *.wasm *.json *.png *.jpg *.jpeg *.gif *.svg *.woff *.woff2 *.ttf *.otf *.eot
-
-include component_manifest.toml
-recursive-include scripts *.py *.toml
