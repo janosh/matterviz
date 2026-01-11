@@ -596,6 +596,7 @@ def _ts_type_to_docstring(ts_type: str) -> str:
 
 
 def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) -> None:
+    """Generate typed Python wrapper classes from manifest and write to out_path."""
     components: Dict[str, Any] = manifest.get("components", {})
     if not components:
         raise SystemExit("Manifest has no [components.*] sections")
@@ -758,6 +759,7 @@ def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) 
 
 
 def main() -> None:
+    """CLI entry point for generating typed wrappers."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--manifest", default="component_manifest.toml")
     ap.add_argument("--matterviz-dist", default="node_modules/matterviz/dist")

@@ -19,7 +19,7 @@ class TestPageLoad:
         expect(nav).to_be_visible()
         # Check at least some nav links exist
         links = nav.locator("a")
-        expect(links).to_have_count_greater_than(3)
+        assert links.count() > 3
 
 
 class TestPeriodicTable:
@@ -77,7 +77,7 @@ class TestComposition:
 
         matterviz_components = section.locator("mv-matterviz")
         # Should have multiple composition components
-        expect(matterviz_components).to_have_count_greater_than(1)
+        assert matterviz_components.count() > 1
 
     def test_composition_has_svg(self, dash_page: Page) -> None:
         """Composition component should render SVG charts."""
@@ -86,7 +86,7 @@ class TestComposition:
 
         # Pie/bar charts render as SVG
         svg_elements = section.locator("svg")
-        expect(svg_elements).to_have_count_greater_than(0)
+        assert svg_elements.count() > 0
 
 
 class TestBrillouinZone:
@@ -246,5 +246,4 @@ class TestErrorHandling:
             )
         ]
 
-        # Assert no critical errors (but allow some warnings)
-        assert len(critical_errors) < 5, f"Too many console errors: {critical_errors}"
+        assert len(critical_errors) == 0, f"Console errors: {critical_errors}"
