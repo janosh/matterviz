@@ -1,6 +1,3 @@
-// Three.js globals must be set up before importing MatterViz components
-import './threeGlobals'
-
 // Import public path utilities (for Dash asset resolution)
 import './publicPath'
 

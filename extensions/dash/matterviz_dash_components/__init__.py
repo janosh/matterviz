@@ -9,6 +9,23 @@ Public API
 - component(name, **mv_props): small factory helper
 """
 
+import mimetypes
+
+from .MatterViz import MatterViz
+from .typed import (  # noqa: F401
+    BrillouinZone,
+    Composition,
+    ConvexHull2D,
+    ConvexHull3D,
+    ConvexHull4D,
+    IsobaricBinaryPhaseDiagram,
+    IsobaricTernaryPhaseDiagram,
+    PeriodicTable,
+    Structure,
+    Trajectory,
+    XrdPlot,
+)
+
 _namespace = "matterviz_dash_components"
 
 # Asset definitions (served via Dash component suites)
@@ -30,16 +47,7 @@ _css_dist = [
     }
 ]
 
-from .MatterViz import MatterViz  # noqa: F401,E402
-from .typed import *  # noqa: F403,E402
-from .typed import __all__ as _typed_all  # noqa: E402
-
 __version__ = "0.0.2"
-
-__all__ = ["MatterViz", "component", "_js_dist", "_css_dist", *_typed_all]
-
-# Ensure wasm is served with correct MIME type via Dash Flask
-import mimetypes
 
 if mimetypes.guess_type("x.wasm")[0] != "application/wasm":
     mimetypes.add_type("application/wasm", ".wasm")
@@ -95,6 +103,7 @@ def __getattr__(name: str):
         mvc.MyNewComponent(foo=123)  # -> MatterViz(component="MyNewComponent", ...)
     """
     if name and name[0].isupper():
+
         def _factory(**kwargs) -> MatterViz:
             return component(name, **kwargs)
 

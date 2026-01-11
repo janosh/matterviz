@@ -319,8 +319,12 @@ def _parse_object_literal(obj: str) -> Dict[str, Tuple[str, bool]]:
     return props
 
 
-def _collect_props(expr: str, aliases: Dict[str, str]) -> Dict[str, Tuple[str, bool]]:
+def _collect_props(
+    expr: str, aliases: Dict[str, str], _visited: set[str] | None = None
+) -> Dict[str, Tuple[str, bool]]:
     """Collect props from an intersection type expression."""
+    if _visited is None:
+        _visited = set()
     out: Dict[str, Tuple[str, bool]] = {}
 
     for term in _split_top_level(expr, "&"):
@@ -358,7 +362,9 @@ def _collect_props(expr: str, aliases: Dict[str, str]) -> Dict[str, Tuple[str, b
 
         # Follow simple aliases used in the expression (e.g. EventHandlers).
         if re.fullmatch(r"[A-Za-z0-9_]+", term) and term in aliases:
-            out.update(_collect_props(aliases[term], aliases))
+            if term not in _visited:
+                _visited.add(term)
+                out.update(_collect_props(aliases[term], aliases, _visited))
 
     return out
 

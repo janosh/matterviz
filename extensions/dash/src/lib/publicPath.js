@@ -13,16 +13,13 @@
 //   - requests_pathname_prefix: The URL prefix for all Dash requests
 
 // Get the base URL for loading assets in a Dash context.
-// Returns the base URL path for component assets.
+// Call this function where needed rather than caching the result,
+// since __dash_config__ may not be available at module load time.
 export function getDashAssetBasePath() {
   if (typeof window !== `undefined` && globalThis.__dash_config__) {
     const prefix = globalThis.__dash_config__.requests_pathname_prefix || `/`
     const normalized = prefix.endsWith(`/`) ? prefix : `${prefix}/`
     return `${normalized}_dash-component-suites/matterviz_dash_components/`
   }
-  // Fallback for non-Dash environments
   return `/`
 }
-
-// Export the base path for use in dynamic imports if needed
-export const DASH_ASSET_BASE = getDashAssetBasePath()

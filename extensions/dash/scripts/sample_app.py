@@ -13,8 +13,9 @@ import dash
 import matterviz_dash_components as mvc
 from dash import Input, Output, dcc, html
 
-# Path to the matterviz root directory (relative to this script)
-MATTERVIZ_ROOT = Path(__file__).parent.parent.parent
+# Path to the matterviz root directory (scripts/ -> dash/ -> extensions/ -> root)
+# Override with MATTERVIZ_ROOT env var if script is run from a different location
+MATTERVIZ_ROOT = Path(os.environ.get("MATTERVIZ_ROOT") or __file__).parent.parent.parent.parent
 
 
 def load_json_file(file_path: Path) -> Any:
@@ -147,7 +148,7 @@ AVAILABLE_XRD = [
     "synthetic-quartz-xrd",
 ]
 
-# Caches for loaded data
+# Caches for loaded data (not thread-safe; fine for demo app)
 _cache: dict[str, Any] = {}
 
 

@@ -1,10 +1,11 @@
+<!-- eslint-disable @stylistic/quotes -- svelte parser requires non-backtick tag -->
 <svelte:options
   customElement={{
-    tag: `mv-matterviz`,
-    shadow: `none`,
+    tag: 'mv-matterviz',
+    shadow: 'none',
     props: {
-      component: { type: `String`, reflect: false },
-      props: { type: `Object`, reflect: false },
+      component: { type: 'String', reflect: false },
+      props: { type: 'Object', reflect: false },
     },
   }}
 />
@@ -42,27 +43,19 @@
     white-space: pre-wrap;
     padding: 0.5rem;
   }
-  .mv-loading {
-    font-size: 12px;
-    color: #888;
-    padding: 0.5rem;
-  }
 </style>
 
-{#if resolved.component && Object.keys(mv_props).length > 0}
+{#if resolved.component}
   {@const Component = resolved.component}
   <Component {...mv_props} />
-{:else if !resolved.component}
+{:else}
   <div class="mv-error">
     {resolved.error}
     {#if resolved.matches}
       Possible matches:
-      {#each resolved.matches as m}
-        \n- {m}
+      {#each resolved.matches as match (match)}
+        \n- {match}
       {/each}
     {/if}
   </div>
-{:else}
-  <!-- Waiting for props to be set -->
-  <div class="mv-loading">Loading {component}...</div>
 {/if}
