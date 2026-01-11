@@ -9,9 +9,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-import matterviz_dash_components as mvc
-
 import dash
+import matterviz_dash_components as mvc
 from dash import Input, Output, dcc, html
 
 # Path to the matterviz root directory (relative to this script)
@@ -29,6 +28,32 @@ def load_json_file(file_path: Path) -> Any:
             return json.load(fh)
     with open(file_path, encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def load_xye_file(file_path: Path) -> dict | None:
+    """Load XRD pattern from .xye or .xy file (2-column: 2theta, intensity)."""
+    if not file_path.exists():
+        return None
+
+    x_vals: list[float] = []
+    y_vals: list[float] = []
+
+    with open(file_path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                try:
+                    x_vals.append(float(parts[0]))
+                    y_vals.append(float(parts[1]))
+                except ValueError:
+                    continue
+
+    if not x_vals:
+        return None
+    return {"x": x_vals, "y": y_vals}
 
 
 def load_phase_diagram(system: str) -> dict | None:
@@ -53,6 +78,30 @@ def load_convex_hull_entries(system: str) -> list[dict] | None:
     hull_dir = MATTERVIZ_ROOT / "src" / "site" / "convex-hull" / "quaternaries"
     file_path = hull_dir / f"{system}.json.gz"
     return load_json_file(file_path)
+
+
+def load_phonon_bands(name: str) -> dict | None:
+    """Load phonon band structure from the site/phonons directory."""
+    phonon_dir = MATTERVIZ_ROOT / "src" / "site" / "phonons"
+    return load_json_file(phonon_dir / f"{name}.json.gz")
+
+
+def load_electronic_dos(name: str) -> dict | None:
+    """Load electronic DOS from the site/electronic/dos directory."""
+    dos_dir = MATTERVIZ_ROOT / "src" / "site" / "electronic" / "dos"
+    return load_json_file(dos_dir / f"{name}.json.gz")
+
+
+def load_electronic_bands(name: str) -> dict | None:
+    """Load electronic band structure from the site/electronic/bands directory."""
+    bands_dir = MATTERVIZ_ROOT / "src" / "site" / "electronic" / "bands"
+    return load_json_file(bands_dir / f"{name}.json.gz")
+
+
+def load_xrd_pattern(name: str) -> dict | None:
+    """Load XRD pattern from the static/xrd directory."""
+    xrd_dir = MATTERVIZ_ROOT / "static" / "xrd"
+    return load_xye_file(xrd_dir / f"{name}.xye")
 
 
 # Available demo files
@@ -81,10 +130,38 @@ AVAILABLE_CONVEX_HULLS = [
     "Na-Fe-P-O",
 ]
 
+AVAILABLE_PHONONS = [
+    "mp-2667-Cs1Au1-pbe",
+    "mp-2691-Cd4Se4-pbe",
+    "mp-2758-Sr4Se4-pbe",
+]
+
+AVAILABLE_DOS = [
+    "dos-spin-polarization-mp-865805",
+    "lobster-complete-dos-spin",
+]
+
+AVAILABLE_BANDS = [
+    "cao-2605-bands",
+    "vbr2-971787-bands",
+]
+
+AVAILABLE_XRD = [
+    "synthetic-quartz-xrd",
+]
+
 # Caches for loaded data
-_phase_diagram_cache: dict[str, dict] = {}
-_structure_cache: dict[str, dict] = {}
-_convex_hull_cache: dict[str, list] = {}
+_cache: dict[str, Any] = {}
+
+
+def get_cached(key: str, loader: callable, *args: Any) -> Any:
+    """Generic cache wrapper for data loading."""
+    if key not in _cache:
+        data = loader(*args)
+        if data:
+            _cache[key] = data
+    return _cache.get(key)
+
 
 # Note: WASM MIME type is set in matterviz_dash_components/__init__.py
 
@@ -176,40 +253,6 @@ TRAJECTORY_FRAMES = [
 ]
 
 
-def get_phase_diagram(system: str) -> dict | None:
-    """Get a phase diagram, using cache if available."""
-    if system not in _phase_diagram_cache:
-        data = load_phase_diagram(system)
-        if data:
-            _phase_diagram_cache[system] = data
-    return _phase_diagram_cache.get(system)
-
-
-def get_structure(name: str) -> dict | None:
-    """Get a structure, using cache if available."""
-    if name not in _structure_cache:
-        data = load_structure(name)
-        if data:
-            _structure_cache[name] = data
-    return _structure_cache.get(name)
-
-
-def get_convex_hull_entries(system: str) -> list | None:
-    """Get convex hull entries, using cache if available."""
-    if system not in _convex_hull_cache:
-        data = load_convex_hull_entries(system)
-        if data:
-            _convex_hull_cache[system] = data
-    return _convex_hull_cache.get(system)
-
-
-# XRD pattern data - x is 2θ angles, y is intensities
-XRD_PATTERN = {
-    "x": [20.5, 24.2, 28.8, 32.1, 36.5, 42.3, 48.7, 54.2, 60.1, 65.8, 72.4],
-    "y": [15, 35, 100, 45, 20, 55, 30, 25, 40, 18, 12],
-}
-
-
 def layout() -> html.Div:
     """Build the main layout with demo sections for each MatterViz component."""
     sections: list[tuple[str, str]] = [
@@ -220,34 +263,78 @@ def layout() -> html.Div:
         ("brillouin-section", "Brillouin Zone"),
         ("convex-3d-section", "Convex Hull"),
         ("phase-binary-section", "Phase Diagram"),
+        ("phonon-section", "Phonon Bands"),
+        ("dos-section", "Electronic DOS"),
+        ("bands-section", "Electronic Bands"),
         ("xrd-section", "XRD Plot"),
+        ("callback-section", "Callback Demo"),
     ]
 
+    # Initial data loading
+    initial_structure = (
+        get_cached("mp-1234", load_structure, "mp-1234") or SILICON_STRUCTURE
+    )
+    initial_hull = (
+        get_cached("Li-Co-Ni-O", load_convex_hull_entries, "Li-Co-Ni-O") or []
+    )
+    initial_phase = get_cached("Al-Cu", load_phase_diagram, "Al-Cu") or {}
+    initial_phonon = get_cached(
+        AVAILABLE_PHONONS[0], load_phonon_bands, AVAILABLE_PHONONS[0]
+    )
+    initial_dos = get_cached(AVAILABLE_DOS[0], load_electronic_dos, AVAILABLE_DOS[0])
+    initial_bands = get_cached(
+        AVAILABLE_BANDS[0], load_electronic_bands, AVAILABLE_BANDS[0]
+    )
+    initial_xrd = get_cached(AVAILABLE_XRD[0], load_xrd_pattern, AVAILABLE_XRD[0])
+
+    # Get dark mode preference from localStorage via clientside callback
     return html.Div(
+        id="main-container",
         style={
             "display": "grid",
             "gap": "16px",
             "padding": "12px",
-            "background": "#fff",
-            "color": "#222",
             "minHeight": "100vh",
             "maxWidth": "100%",
             "overflowX": "hidden",
             "boxSizing": "border-box",
-            # CSS variables for MatterViz components (light theme)
-            "--text-color": "#333",
-            "--border-color": "#ccc",
-            "--surface-bg": "#f8f9fa",
+            "transition": "background 0.3s, color 0.3s",
         },
         children=[
-            html.H1(
-                "MatterViz Dash demo",
+            # Theme toggle
+            html.Div(
+                [
+                    html.H1(
+                        "MatterViz Dash demo",
+                        style={
+                            "textAlign": "center",
+                            "fontSize": "2.5rem",
+                            "margin": "0",
+                            "flex": "1",
+                        },
+                    ),
+                    html.Button(
+                        "🌙 Dark",
+                        id="theme-toggle",
+                        n_clicks=0,
+                        style={
+                            "padding": "8px 16px",
+                            "borderRadius": "6px",
+                            "border": "1px solid #ccc",
+                            "cursor": "pointer",
+                            "fontSize": "14px",
+                        },
+                    ),
+                ],
                 style={
-                    "textAlign": "center",
-                    "fontSize": "2.5rem",
-                    "margin": "0 0 16px",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "gap": "20px",
+                    "marginBottom": "16px",
                 },
             ),
+            # Navigation
             html.Nav(
                 html.Ul(
                     [
@@ -258,12 +345,11 @@ def layout() -> html.Div:
                                 style={
                                     "display": "inline-block",
                                     "padding": "4px 10px",
-                                    "background": "#f5f5f5",
-                                    "color": "#1a56db",
                                     "textDecoration": "none",
                                     "borderRadius": "4px",
                                     "fontSize": "13px",
                                 },
+                                className="nav-link",
                             ),
                         )
                         for sid, title in sections
@@ -278,6 +364,13 @@ def layout() -> html.Div:
                     },
                 ),
             ),
+            # Loading indicator (hidden by default)
+            dcc.Loading(
+                id="loading-indicator",
+                type="circle",
+                children=html.Div(id="loading-output", style={"display": "none"}),
+            ),
+            # Periodic Table
             html.Div(
                 [
                     html.H4("Periodic Table"),
@@ -289,11 +382,15 @@ def layout() -> html.Div:
                             "show_color_bar": True,
                             "heatmap_values": {"Si": 1.0, "C": 0.7, "O": 0.5},
                         },
-                        style={"minHeight": "340px", "border": "1px solid #ddd"},
+                        style={
+                            "minHeight": "340px",
+                            "border": "1px solid var(--border-color, #ddd)",
+                        },
                     ),
                 ],
                 id="periodic-table-section",
             ),
+            # Structure
             html.Div(
                 [
                     html.H4("Structure"),
@@ -324,15 +421,19 @@ def layout() -> html.Div:
                         id="structure",
                         component="structure/Structure",
                         mv_props={
-                            "structure": get_structure("mp-1234") or SILICON_STRUCTURE,
+                            "structure": initial_structure,
                             "show_controls": True,
                             "height": 400,
                         },
-                        style={"minHeight": "420px", "border": "1px solid #ddd"},
+                        style={
+                            "minHeight": "420px",
+                            "border": "1px solid var(--border-color, #ddd)",
+                        },
                     ),
                 ],
                 id="structure-section",
             ),
+            # Composition
             html.Div(
                 [
                     html.H4("Composition"),
@@ -347,7 +448,10 @@ def layout() -> html.Div:
                                     "size": 180,
                                     "color_scheme": "vesta",
                                 },
-                                style={"border": "1px solid #ddd", "padding": "8px"},
+                                style={
+                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "padding": "8px",
+                                },
                             ),
                             mvc.MatterViz(
                                 id="composition-2",
@@ -358,7 +462,10 @@ def layout() -> html.Div:
                                     "size": 180,
                                     "color_scheme": "jmol",
                                 },
-                                style={"border": "1px solid #ddd", "padding": "8px"},
+                                style={
+                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "padding": "8px",
+                                },
                             ),
                             mvc.MatterViz(
                                 id="composition-3",
@@ -369,7 +476,10 @@ def layout() -> html.Div:
                                     "size": 180,
                                     "color_scheme": "vesta",
                                 },
-                                style={"border": "1px solid #ddd", "padding": "8px"},
+                                style={
+                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "padding": "8px",
+                                },
                             ),
                             mvc.MatterViz(
                                 id="composition-4",
@@ -380,7 +490,10 @@ def layout() -> html.Div:
                                     "size": 180,
                                     "color_scheme": "jmol",
                                 },
-                                style={"border": "1px solid #ddd", "padding": "8px"},
+                                style={
+                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "padding": "8px",
+                                },
                             ),
                         ],
                         style={
@@ -392,6 +505,7 @@ def layout() -> html.Div:
                 ],
                 id="composition-section",
             ),
+            # Trajectory
             html.Div(
                 [
                     html.H4("Trajectory (2-frame toy)"),
@@ -404,11 +518,15 @@ def layout() -> html.Div:
                             "fps": 1,
                             "height": 360,
                         },
-                        style={"minHeight": "380px", "border": "1px solid #ddd"},
+                        style={
+                            "minHeight": "380px",
+                            "border": "1px solid var(--border-color, #ddd)",
+                        },
                     ),
                 ],
                 id="trajectory-section",
             ),
+            # Brillouin Zone
             html.Div(
                 [
                     html.H4("Brillouin Zone"),
@@ -421,11 +539,15 @@ def layout() -> html.Div:
                             "k_path_points": KPATH_POINTS,
                             "k_path_labels": KPATH_LABELS,
                         },
-                        style={"minHeight": "380px", "border": "1px solid #ddd"},
+                        style={
+                            "minHeight": "380px",
+                            "border": "1px solid var(--border-color, #ddd)",
+                        },
                     ),
                 ],
                 id="brillouin-section",
             ),
+            # Convex Hull
             html.Div(
                 [
                     html.H4("Convex Hull (Quaternary)"),
@@ -456,14 +578,18 @@ def layout() -> html.Div:
                         id="convex-4d",
                         component="convex-hull/ConvexHull4D",
                         mv_props={
-                            "entries": get_convex_hull_entries("Li-Co-Ni-O") or [],
+                            "entries": initial_hull,
                             "height": 450,
                         },
-                        style={"minHeight": "470px", "border": "1px solid #ddd"},
+                        style={
+                            "minHeight": "470px",
+                            "border": "1px solid var(--border-color, #ddd)",
+                        },
                     ),
                 ],
                 id="convex-3d-section",
             ),
+            # Phase Diagram
             html.Div(
                 [
                     html.H4("Binary Phase Diagram"),
@@ -494,35 +620,225 @@ def layout() -> html.Div:
                         id="phase-binary",
                         component="phase-diagram/IsobaricBinaryPhaseDiagram",
                         mv_props={
-                            "data": get_phase_diagram("Al-Cu") or {},
+                            "data": initial_phase,
                             "height": 500,
                         },
-                        style={"minHeight": "520px", "border": "1px solid #ddd"},
+                        style={
+                            "minHeight": "520px",
+                            "border": "1px solid var(--border-color, #ddd)",
+                        },
                     ),
                 ],
                 id="phase-binary-section",
             ),
+            # Phonon Band Structure
             html.Div(
                 [
-                    html.H4("XRD Plot"),
+                    html.H4("Phonon Band Structure"),
+                    html.Div(
+                        [
+                            html.Label(
+                                "Select material: ",
+                                style={"fontWeight": "500", "marginRight": "8px"},
+                            ),
+                            dcc.Dropdown(
+                                id="phonon-selector",
+                                options=[
+                                    {"label": s.replace("-pbe", ""), "value": s}
+                                    for s in AVAILABLE_PHONONS
+                                ],
+                                value=AVAILABLE_PHONONS[0],
+                                clearable=False,
+                                style={"width": "250px", "display": "inline-block"},
+                            ),
+                        ],
+                        style={
+                            "display": "flex",
+                            "alignItems": "center",
+                            "marginBottom": "12px",
+                        },
+                    ),
+                    mvc.MatterViz(
+                        id="phonon-bands",
+                        component="spectral/Bands",
+                        mv_props={
+                            "bands": initial_phonon,
+                            "height": 400,
+                        },
+                        style={
+                            "minHeight": "420px",
+                            "border": "1px solid var(--border-color, #ddd)",
+                        },
+                    )
+                    if initial_phonon
+                    else html.P("Phonon data not found"),
+                ],
+                id="phonon-section",
+            ),
+            # Electronic DOS
+            html.Div(
+                [
+                    html.H4("Electronic Density of States"),
+                    html.Div(
+                        [
+                            html.Label(
+                                "Select DOS: ",
+                                style={"fontWeight": "500", "marginRight": "8px"},
+                            ),
+                            dcc.Dropdown(
+                                id="dos-selector",
+                                options=[
+                                    {"label": s, "value": s} for s in AVAILABLE_DOS
+                                ],
+                                value=AVAILABLE_DOS[0],
+                                clearable=False,
+                                style={"width": "300px", "display": "inline-block"},
+                            ),
+                        ],
+                        style={
+                            "display": "flex",
+                            "alignItems": "center",
+                            "marginBottom": "12px",
+                        },
+                    ),
+                    mvc.MatterViz(
+                        id="electronic-dos",
+                        component="spectral/Dos",
+                        mv_props={
+                            "dos": initial_dos,
+                            "height": 350,
+                        },
+                        style={
+                            "minHeight": "370px",
+                            "border": "1px solid var(--border-color, #ddd)",
+                        },
+                    )
+                    if initial_dos
+                    else html.P("DOS data not found"),
+                ],
+                id="dos-section",
+            ),
+            # Electronic Band Structure
+            html.Div(
+                [
+                    html.H4("Electronic Band Structure"),
+                    html.Div(
+                        [
+                            html.Label(
+                                "Select bands: ",
+                                style={"fontWeight": "500", "marginRight": "8px"},
+                            ),
+                            dcc.Dropdown(
+                                id="bands-selector",
+                                options=[
+                                    {"label": s, "value": s} for s in AVAILABLE_BANDS
+                                ],
+                                value=AVAILABLE_BANDS[0],
+                                clearable=False,
+                                style={"width": "250px", "display": "inline-block"},
+                            ),
+                        ],
+                        style={
+                            "display": "flex",
+                            "alignItems": "center",
+                            "marginBottom": "12px",
+                        },
+                    ),
+                    mvc.MatterViz(
+                        id="electronic-bands",
+                        component="spectral/Bands",
+                        mv_props={
+                            "bands": initial_bands,
+                            "height": 400,
+                        },
+                        style={
+                            "minHeight": "420px",
+                            "border": "1px solid var(--border-color, #ddd)",
+                        },
+                    )
+                    if initial_bands
+                    else html.P("Band structure data not found"),
+                ],
+                id="bands-section",
+            ),
+            # XRD Plot
+            html.Div(
+                [
+                    html.H4("XRD Plot (Quartz)"),
                     mvc.MatterViz(
                         id="xrd",
                         component="xrd/XrdPlot",
                         mv_props={
-                            "patterns": XRD_PATTERN,
-                            "peak_width": 1.5,
+                            "patterns": initial_xrd
+                            or {"x": [20, 30, 40], "y": [100, 50, 25]},
+                            "peak_width": 0.5,
                             "annotate_peaks": 5,
                             "height": 320,
                         },
                         style={
                             "minHeight": "340px",
-                            "border": "1px solid #ddd",
-                            "--text-color": "#333",
-                            "--border-color": "#ccc",
+                            "border": "1px solid var(--border-color, #ddd)",
                         },
                     ),
                 ],
                 id="xrd-section",
+            ),
+            # Callback Demo (bidirectional)
+            html.Div(
+                [
+                    html.H4("Callback Demo (Click Detection)"),
+                    html.P(
+                        "Click on elements in the periodic table to see callbacks in action.",
+                        style={
+                            "marginBottom": "12px",
+                            "color": "var(--text-muted, #666)",
+                        },
+                    ),
+                    html.Div(
+                        [
+                            mvc.MatterViz(
+                                id="callback-periodic-table",
+                                component="periodic-table/PeriodicTable",
+                                mv_props={
+                                    "height": 400,
+                                    "show_color_bar": False,
+                                },
+                                event_props=["on_element_click"],
+                                style={
+                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "flex": "1",
+                                },
+                            ),
+                            html.Div(
+                                [
+                                    html.H5(
+                                        "Last Clicked Element", style={"marginTop": "0"}
+                                    ),
+                                    html.Pre(
+                                        id="callback-output",
+                                        children="Click an element...",
+                                        style={
+                                            "padding": "12px",
+                                            "borderRadius": "6px",
+                                            "background": "var(--surface-bg, #f5f5f5)",
+                                            "border": "1px solid var(--border-color, #ddd)",
+                                            "overflow": "auto",
+                                            "maxHeight": "300px",
+                                            "fontSize": "13px",
+                                        },
+                                    ),
+                                ],
+                                style={"width": "300px", "flexShrink": "0"},
+                            ),
+                        ],
+                        style={
+                            "display": "flex",
+                            "gap": "16px",
+                            "alignItems": "flex-start",
+                        },
+                    ),
+                ],
+                id="callback-section",
             ),
         ],
     )
@@ -532,25 +848,64 @@ def create_app() -> dash.Dash:
     """Create and configure the Dash application."""
     app = dash.Dash(__name__, suppress_callback_exceptions=True)
     app.layout = layout
-    # Override MatterViz's dark theme on html/body
+    # Theme styles with CSS variables
     app.index_string = """<!DOCTYPE html>
-<html style="background: #fff; overflow-x: hidden;">
+<html>
     <head>
         {%metas%}
         <title>{%title%}</title>
         {%favicon%}
         {%css%}
         <style>
-            /* Allow horizontal scroll within component containers if needed */
+            :root {
+                --bg-color: #fff;
+                --text-color: #222;
+                --text-muted: #666;
+                --border-color: #ddd;
+                --surface-bg: #f8f9fa;
+                --nav-bg: #f5f5f5;
+                --nav-link: #1a56db;
+            }
+            [data-theme="dark"] {
+                --bg-color: #1a1a2e;
+                --text-color: #e8e8e8;
+                --text-muted: #a0a0a0;
+                --border-color: #444;
+                --surface-bg: #252540;
+                --nav-bg: #2d2d44;
+                --nav-link: #6ea8fe;
+            }
+            html, body {
+                background: var(--bg-color);
+                color: var(--text-color);
+                margin: 0;
+                overflow-x: hidden;
+                transition: background 0.3s, color 0.3s;
+            }
+            #main-container {
+                background: var(--bg-color);
+                color: var(--text-color);
+            }
+            .nav-link {
+                background: var(--nav-bg) !important;
+                color: var(--nav-link) !important;
+            }
             mv-matterviz {
                 display: block;
                 max-width: 100%;
                 overflow-x: auto;
                 box-sizing: border-box;
             }
+            /* Dropdown styling for dark mode */
+            [data-theme="dark"] .Select-control,
+            [data-theme="dark"] .Select-menu-outer {
+                background: var(--surface-bg);
+                border-color: var(--border-color);
+                color: var(--text-color);
+            }
         </style>
     </head>
-    <body style="background: #fff; margin: 0; overflow-x: hidden;">
+    <body>
         {%app_entry%}
         <footer>
             {%config%}
@@ -560,39 +915,117 @@ def create_app() -> dash.Dash:
     </body>
 </html>"""
 
+    # Theme toggle callback
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme') || 'light';
+            const next = current === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', next);
+            return next === 'dark' ? '☀️ Light' : '🌙 Dark';
+        }
+        """,
+        Output("theme-toggle", "children"),
+        Input("theme-toggle", "n_clicks"),
+        prevent_initial_call=True,
+    )
+
+    # Phase diagram callback
     @app.callback(
         Output("phase-binary", "mv_props"),
         Input("phase-diagram-selector", "value"),
     )
     def update_phase_diagram(selected_system: str) -> dict:
         """Update phase diagram when dropdown selection changes."""
-        data = get_phase_diagram(selected_system)
+        data = get_cached(selected_system, load_phase_diagram, selected_system)
         if not data:
-            # Fallback to first available if loading fails
-            data = get_phase_diagram(AVAILABLE_PHASE_DIAGRAMS[0]) or {}
+            data = (
+                get_cached(
+                    AVAILABLE_PHASE_DIAGRAMS[0],
+                    load_phase_diagram,
+                    AVAILABLE_PHASE_DIAGRAMS[0],
+                )
+                or {}
+            )
         return {"data": data, "height": 500}
 
+    # Structure callback
     @app.callback(
         Output("structure", "mv_props"),
         Input("structure-selector", "value"),
     )
     def update_structure(selected_structure: str) -> dict:
         """Update structure when dropdown selection changes."""
-        data = get_structure(selected_structure)
+        data = get_cached(selected_structure, load_structure, selected_structure)
         if not data:
-            data = get_structure(AVAILABLE_STRUCTURES[0]) or SILICON_STRUCTURE
+            data = (
+                get_cached(
+                    AVAILABLE_STRUCTURES[0], load_structure, AVAILABLE_STRUCTURES[0]
+                )
+                or SILICON_STRUCTURE
+            )
         return {"structure": data, "show_controls": True, "height": 400}
 
+    # Convex hull callback
     @app.callback(
         Output("convex-4d", "mv_props"),
         Input("convex-hull-selector", "value"),
     )
     def update_convex_hull(selected_system: str) -> dict:
         """Update convex hull when dropdown selection changes."""
-        entries = get_convex_hull_entries(selected_system)
+        entries = get_cached(selected_system, load_convex_hull_entries, selected_system)
         if not entries:
-            entries = get_convex_hull_entries(AVAILABLE_CONVEX_HULLS[0]) or []
+            entries = (
+                get_cached(
+                    AVAILABLE_CONVEX_HULLS[0],
+                    load_convex_hull_entries,
+                    AVAILABLE_CONVEX_HULLS[0],
+                )
+                or []
+            )
         return {"entries": entries, "height": 450}
+
+    # Phonon bands callback
+    @app.callback(
+        Output("phonon-bands", "mv_props"),
+        Input("phonon-selector", "value"),
+    )
+    def update_phonon_bands(selected: str) -> dict:
+        """Update phonon bands when dropdown selection changes."""
+        data = get_cached(selected, load_phonon_bands, selected)
+        return {"bands": data, "height": 400}
+
+    # DOS callback
+    @app.callback(
+        Output("electronic-dos", "mv_props"),
+        Input("dos-selector", "value"),
+    )
+    def update_dos(selected: str) -> dict:
+        """Update DOS when dropdown selection changes."""
+        data = get_cached(selected, load_electronic_dos, selected)
+        return {"dos": data, "height": 350}
+
+    # Electronic bands callback
+    @app.callback(
+        Output("electronic-bands", "mv_props"),
+        Input("bands-selector", "value"),
+    )
+    def update_bands(selected: str) -> dict:
+        """Update electronic bands when dropdown selection changes."""
+        data = get_cached(selected, load_electronic_bands, selected)
+        return {"bands": data, "height": 400}
+
+    # Callback demo - display clicked element
+    @app.callback(
+        Output("callback-output", "children"),
+        Input("callback-periodic-table", "last_event"),
+    )
+    def display_clicked_element(last_event: dict | None) -> str:
+        """Display the last clicked element from the periodic table."""
+        if not last_event:
+            return "Click an element..."
+        return json.dumps(last_event, indent=2)
 
     return app
 
