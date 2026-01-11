@@ -62,7 +62,7 @@ class Structure(MatterViz):
     - width -> width: number
     """
 
-    def __init__(self, id: Optional[str] = None, allow_file_drop: Optional[bool] = None, atom_color_config: Optional[dict] = None, cell_type: Optional[Any] = None, data_url: Optional[str] = None, displayed_structure: Optional[Any] = None, dragover: Optional[bool] = None, element_mapping: Optional[dict] = None, enable_info_pane: Optional[bool] = None, enable_measure_mode: Optional[bool] = None, error_msg: Optional[str] = None, fullscreen: Optional[bool] = None, height: Optional[float] = None, hidden_elements: Optional[list] = None, hidden_prop_vals: Optional[list] = None, hovered: Optional[bool] = None, info_pane_open: Optional[bool] = None, loading: Optional[bool] = None, measured_sites: Optional[list] = None, on_camera_move: Optional[Any] = None, on_camera_reset: Optional[Any] = None, on_error: Optional[Any] = None, on_file_load: Optional[Any] = None, on_fullscreen_change: Optional[Any] = None, performance_mode: Optional[Any] = None, png_dpi: Optional[float] = None, reset_text: Optional[str] = None, scene_props: Optional[dict] = None, selected_sites: Optional[list] = None, show_controls: Optional[Any] = None, spinner_props: Optional[dict] = None, structure: Optional[Any] = None, structure_string: Optional[str] = None, sym_data: Optional[Any] = None, symmetry_settings: Optional[dict] = None, width: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, allow_file_drop: Optional[bool] = None, atom_color_config: Optional[dict] = None, cell_type: Optional[Any] = None, data_url: Optional[str] = None, displayed_structure: Optional[Any] = None, dragover: Optional[bool] = None, element_mapping: Optional[dict] = None, enable_info_pane: Optional[bool] = None, enable_measure_mode: Optional[bool] = None, error_msg: Optional[str] = None, fullscreen: Optional[bool] = None, height: Optional[float] = None, hidden_elements: Optional[list] = None, hidden_prop_vals: Optional[list] = None, hovered: Optional[bool] = None, info_pane_open: Optional[bool] = None, loading: Optional[bool] = None, measured_sites: Optional[list] = None, on_camera_move: Optional[Any] = None, on_camera_reset: Optional[Any] = None, on_error: Optional[Any] = None, on_file_load: Optional[Any] = None, on_fullscreen_change: Optional[Any] = None, performance_mode: Optional[Any] = None, png_dpi: Optional[float] = None, reset_text: Optional[str] = None, scene_props: Optional[dict] = None, selected_sites: Optional[list] = None, show_controls: Optional[Any] = None, spinner_props: Optional[dict] = None, structure: Optional[Any] = None, structure_string: Optional[str] = None, sym_data: Optional[Any] = None, symmetry_settings: Optional[dict] = None, width: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if allow_file_drop is not None:
             _mv['allow_file_drop'] = allow_file_drop
@@ -192,7 +192,7 @@ class PeriodicTable(MatterViz):
     - tile_props -> tile_props: Partial<ComponentProps<typeof ElementTile>>
     """
 
-    def __init__(self, id: Optional[str] = None, active_category: Optional[Any] = None, active_element: Optional[Any] = None, active_elements: Optional[list] = None, color_bar_props: Optional[dict] = None, color_overrides: Optional[dict] = None, color_scale_range: Optional[list] = None, disabled: Optional[bool] = None, gap: Optional[str] = None, heatmap_values: Optional[list] = None, inner_transition_metal_offset: Optional[float] = None, labels: Optional[dict] = None, lanth_act_style: Optional[str] = None, links: Optional[dict] = None, log: Optional[bool] = None, missing_color: Optional[str] = None, show_color_bar: Optional[bool] = None, show_photo: Optional[bool] = None, split_layout: Optional[Any] = None, tile_props: Optional[dict] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, active_category: Optional[Any] = None, active_element: Optional[Any] = None, active_elements: Optional[list] = None, color_bar_props: Optional[dict] = None, color_overrides: Optional[dict] = None, color_scale_range: Optional[list] = None, disabled: Optional[bool] = None, gap: Optional[str] = None, heatmap_values: Optional[list] = None, inner_transition_metal_offset: Optional[float] = None, labels: Optional[dict] = None, lanth_act_style: Optional[str] = None, links: Optional[dict] = None, log: Optional[bool] = None, missing_color: Optional[str] = None, show_color_bar: Optional[bool] = None, show_photo: Optional[bool] = None, split_layout: Optional[Any] = None, tile_props: Optional[dict] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if active_category is not None:
             _mv['active_category'] = active_category
@@ -269,7 +269,7 @@ class Composition(MatterViz):
     - size -> size: number
     """
 
-    def __init__(self, id: Optional[str] = None, color_scheme: Optional[Any] = None, composition: Optional[Any] = None, interactive: Optional[bool] = None, mode: Optional[Any] = None, size: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, color_scheme: Optional[Any] = None, composition: Optional[Any] = None, interactive: Optional[bool] = None, mode: Optional[Any] = None, size: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if color_scheme is not None:
             _mv['color_scheme'] = color_scheme
@@ -339,7 +339,7 @@ class Trajectory(MatterViz):
     - visible_properties -> visible_properties: string[]
     """
 
-    def __init__(self, id: Optional[str] = None, elem_property_labels: Optional[dict] = None, allow_file_drop: Optional[bool] = None, atom_type_mapping: Optional[Any] = None, auto_play: Optional[bool] = None, current_step_idx: Optional[float] = None, data_extractor: Optional[Any] = None, data_url: Optional[str] = None, display_mode: Optional[Any] = None, fps: Optional[float] = None, fps_range: Optional[list] = None, histogram_props: Optional[dict] = None, layout: Optional[Any] = None, loading_options: Optional[Any] = None, plot_skimming: Optional[bool] = None, scatter_props: Optional[dict] = None, show_controls: Optional[bool] = None, spinner_props: Optional[dict] = None, step_labels: Optional[list] = None, structure_props: Optional[dict] = None, trajectory: Optional[Any] = None, visible_properties: Optional[list] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, elem_property_labels: Optional[dict] = None, allow_file_drop: Optional[bool] = None, atom_type_mapping: Optional[Any] = None, auto_play: Optional[bool] = None, current_step_idx: Optional[float] = None, data_extractor: Optional[Any] = None, data_url: Optional[str] = None, display_mode: Optional[Any] = None, fps: Optional[float] = None, fps_range: Optional[list] = None, histogram_props: Optional[dict] = None, layout: Optional[Any] = None, loading_options: Optional[Any] = None, plot_skimming: Optional[bool] = None, scatter_props: Optional[dict] = None, show_controls: Optional[bool] = None, spinner_props: Optional[dict] = None, step_labels: Optional[list] = None, structure_props: Optional[dict] = None, trajectory: Optional[Any] = None, visible_properties: Optional[list] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if elem_property_labels is not None:
             _mv['ELEM_PROPERTY_LABELS'] = elem_property_labels
@@ -443,7 +443,7 @@ class BrillouinZone(MatterViz):
     - width -> width: number
     """
 
-    def __init__(self, id: Optional[str] = None, allow_file_drop: Optional[bool] = None, bz_data: Optional[Any] = None, bz_order: Optional[float] = None, camera_projection: Optional[Any] = None, controls_open: Optional[bool] = None, data_url: Optional[str] = None, dragover: Optional[bool] = None, edge_color: Optional[str] = None, edge_width: Optional[float] = None, error_msg: Optional[str] = None, fullscreen: Optional[bool] = None, height: Optional[float] = None, hovered: Optional[bool] = None, hovered_k_point: Optional[Any] = None, hovered_qpoint_index: Optional[Any] = None, info_pane_open: Optional[bool] = None, k_path_points: Optional[list] = None, loading: Optional[bool] = None, png_dpi: Optional[float] = None, show_controls: Optional[Any] = None, show_vectors: Optional[bool] = None, spinner_props: Optional[dict] = None, structure: Optional[Any] = None, structure_string: Optional[str] = None, surface_color: Optional[str] = None, surface_opacity: Optional[float] = None, vector_scale: Optional[float] = None, width: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, allow_file_drop: Optional[bool] = None, bz_data: Optional[Any] = None, bz_order: Optional[float] = None, camera_projection: Optional[Any] = None, controls_open: Optional[bool] = None, data_url: Optional[str] = None, dragover: Optional[bool] = None, edge_color: Optional[str] = None, edge_width: Optional[float] = None, error_msg: Optional[str] = None, fullscreen: Optional[bool] = None, height: Optional[float] = None, hovered: Optional[bool] = None, hovered_k_point: Optional[Any] = None, hovered_qpoint_index: Optional[Any] = None, info_pane_open: Optional[bool] = None, k_path_points: Optional[list] = None, loading: Optional[bool] = None, png_dpi: Optional[float] = None, show_controls: Optional[Any] = None, show_vectors: Optional[bool] = None, spinner_props: Optional[dict] = None, structure: Optional[Any] = None, structure_string: Optional[str] = None, surface_color: Optional[str] = None, surface_opacity: Optional[float] = None, vector_scale: Optional[float] = None, width: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if allow_file_drop is not None:
             _mv['allow_file_drop'] = allow_file_drop
@@ -523,14 +523,50 @@ class ConvexHull2D(MatterViz):
 
     Underlying MatterViz component key: ``convex-hull/ConvexHull2D``.
 
+    Events
+    ------
+    MatterViz exposes callback props (functions) as events via ``event_props``.
+    For this component, available callback props include:
+        on_point_click, on_point_hover, on_file_drop
+
+    Not supported in Dash
+    --------------------
+    Snippet/slot props are omitted from this wrapper:
+        children
+
     Prop reference (TypeScript)
     ---------------------------
     - highlight_style -> highlight_style: HighlightStyle
     - x_axis -> x_axis: AxisConfig
     - y_axis -> y_axis: AxisConfig
+    - entries -> entries: PhaseData[] (required in TS)
+    - controls -> controls: Partial<ConvexHullControlsType>
+    - config -> config: Partial<ConvexHullConfig>
+    - fullscreen -> fullscreen: boolean
+    - enable_fullscreen -> enable_fullscreen: boolean
+    - enable_info_pane -> enable_info_pane: boolean
+    - label_threshold -> label_threshold: number
+    - show_stable -> show_stable: boolean
+    - show_unstable -> show_unstable: boolean
+    - color_mode -> color_mode: `stability` | `energy`
+    - color_scale -> color_scale: D3InterpolateName
+    - info_pane_open -> info_pane_open: boolean
+    - legend_pane_open -> legend_pane_open: boolean
+    - max_hull_dist_show_phases -> max_hull_dist_show_phases: number
+    - max_hull_dist_show_labels -> max_hull_dist_show_labels: number
+    - show_stable_labels -> show_stable_labels: boolean
+    - show_unstable_labels -> show_unstable_labels: boolean
+    - enable_click_selection -> enable_click_selection: boolean
+    - enable_structure_preview -> enable_structure_preview: boolean
+    - energy_source_mode -> energy_source_mode: `precomputed` | `on-the-fly`
+    - phase_stats -> phase_stats: PhaseStats | null
+    - stable_entries -> stable_entries: AnyDimEntry[]
+    - unstable_entries -> unstable_entries: AnyDimEntry[]
+    - highlighted_entries -> highlighted_entries: (string | AnyDimEntry)[]
+    - selected_entry -> selected_entry: AnyDimEntry | null
     """
 
-    def __init__(self, id: Optional[str] = None, highlight_style: Optional[Any] = None, x_axis: Optional[Any] = None, y_axis: Optional[Any] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, highlight_style: Optional[Any] = None, x_axis: Optional[Any] = None, y_axis: Optional[Any] = None, entries: Optional[list] = None, controls: Optional[dict] = None, config: Optional[dict] = None, fullscreen: Optional[bool] = None, enable_fullscreen: Optional[bool] = None, enable_info_pane: Optional[bool] = None, label_threshold: Optional[float] = None, show_stable: Optional[bool] = None, show_unstable: Optional[bool] = None, color_mode: Optional[Any] = None, color_scale: Optional[Any] = None, info_pane_open: Optional[bool] = None, legend_pane_open: Optional[bool] = None, max_hull_dist_show_phases: Optional[float] = None, max_hull_dist_show_labels: Optional[float] = None, show_stable_labels: Optional[bool] = None, show_unstable_labels: Optional[bool] = None, enable_click_selection: Optional[bool] = None, enable_structure_preview: Optional[bool] = None, energy_source_mode: Optional[Any] = None, phase_stats: Optional[Any] = None, stable_entries: Optional[list] = None, unstable_entries: Optional[list] = None, highlighted_entries: Optional[list] = None, selected_entry: Optional[Any] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if highlight_style is not None:
             _mv['highlight_style'] = highlight_style
@@ -538,6 +574,56 @@ class ConvexHull2D(MatterViz):
             _mv['x_axis'] = x_axis
         if y_axis is not None:
             _mv['y_axis'] = y_axis
+        if entries is not None:
+            _mv['entries'] = entries
+        if controls is not None:
+            _mv['controls'] = controls
+        if config is not None:
+            _mv['config'] = config
+        if fullscreen is not None:
+            _mv['fullscreen'] = fullscreen
+        if enable_fullscreen is not None:
+            _mv['enable_fullscreen'] = enable_fullscreen
+        if enable_info_pane is not None:
+            _mv['enable_info_pane'] = enable_info_pane
+        if label_threshold is not None:
+            _mv['label_threshold'] = label_threshold
+        if show_stable is not None:
+            _mv['show_stable'] = show_stable
+        if show_unstable is not None:
+            _mv['show_unstable'] = show_unstable
+        if color_mode is not None:
+            _mv['color_mode'] = color_mode
+        if color_scale is not None:
+            _mv['color_scale'] = color_scale
+        if info_pane_open is not None:
+            _mv['info_pane_open'] = info_pane_open
+        if legend_pane_open is not None:
+            _mv['legend_pane_open'] = legend_pane_open
+        if max_hull_dist_show_phases is not None:
+            _mv['max_hull_dist_show_phases'] = max_hull_dist_show_phases
+        if max_hull_dist_show_labels is not None:
+            _mv['max_hull_dist_show_labels'] = max_hull_dist_show_labels
+        if show_stable_labels is not None:
+            _mv['show_stable_labels'] = show_stable_labels
+        if show_unstable_labels is not None:
+            _mv['show_unstable_labels'] = show_unstable_labels
+        if enable_click_selection is not None:
+            _mv['enable_click_selection'] = enable_click_selection
+        if enable_structure_preview is not None:
+            _mv['enable_structure_preview'] = enable_structure_preview
+        if energy_source_mode is not None:
+            _mv['energy_source_mode'] = energy_source_mode
+        if phase_stats is not None:
+            _mv['phase_stats'] = phase_stats
+        if stable_entries is not None:
+            _mv['stable_entries'] = stable_entries
+        if unstable_entries is not None:
+            _mv['unstable_entries'] = unstable_entries
+        if highlighted_entries is not None:
+            _mv['highlighted_entries'] = highlighted_entries
+        if selected_entry is not None:
+            _mv['selected_entry'] = selected_entry
         if mv_props:
             _mv.update(mv_props)
 
@@ -560,15 +646,107 @@ class ConvexHull3D(MatterViz):
 
     Underlying MatterViz component key: ``convex-hull/ConvexHull3D``.
 
+    Events
+    ------
+    MatterViz exposes callback props (functions) as events via ``event_props``.
+    For this component, available callback props include:
+        on_point_click, on_point_hover, on_file_drop
+
+    Not supported in Dash
+    --------------------
+    Snippet/slot props are omitted from this wrapper:
+        children
+
     Prop reference (TypeScript)
     ---------------------------
     - highlight_style -> highlight_style: HighlightStyle
+    - entries -> entries: PhaseData[] (required in TS)
+    - controls -> controls: Partial<ConvexHullControlsType>
+    - config -> config: Partial<ConvexHullConfig>
+    - fullscreen -> fullscreen: boolean
+    - enable_fullscreen -> enable_fullscreen: boolean
+    - enable_info_pane -> enable_info_pane: boolean
+    - label_threshold -> label_threshold: number
+    - show_stable -> show_stable: boolean
+    - show_unstable -> show_unstable: boolean
+    - color_mode -> color_mode: `stability` | `energy`
+    - color_scale -> color_scale: D3InterpolateName
+    - info_pane_open -> info_pane_open: boolean
+    - legend_pane_open -> legend_pane_open: boolean
+    - max_hull_dist_show_phases -> max_hull_dist_show_phases: number
+    - max_hull_dist_show_labels -> max_hull_dist_show_labels: number
+    - show_stable_labels -> show_stable_labels: boolean
+    - show_unstable_labels -> show_unstable_labels: boolean
+    - enable_click_selection -> enable_click_selection: boolean
+    - enable_structure_preview -> enable_structure_preview: boolean
+    - energy_source_mode -> energy_source_mode: `precomputed` | `on-the-fly`
+    - phase_stats -> phase_stats: PhaseStats | null
+    - stable_entries -> stable_entries: AnyDimEntry[]
+    - unstable_entries -> unstable_entries: AnyDimEntry[]
+    - highlighted_entries -> highlighted_entries: (string | AnyDimEntry)[]
+    - selected_entry -> selected_entry: AnyDimEntry | null
+    - show_hull_faces -> show_hull_faces: boolean
+    - hull_face_opacity -> hull_face_opacity: number
     """
 
-    def __init__(self, id: Optional[str] = None, highlight_style: Optional[Any] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, highlight_style: Optional[Any] = None, entries: Optional[list] = None, controls: Optional[dict] = None, config: Optional[dict] = None, fullscreen: Optional[bool] = None, enable_fullscreen: Optional[bool] = None, enable_info_pane: Optional[bool] = None, label_threshold: Optional[float] = None, show_stable: Optional[bool] = None, show_unstable: Optional[bool] = None, color_mode: Optional[Any] = None, color_scale: Optional[Any] = None, info_pane_open: Optional[bool] = None, legend_pane_open: Optional[bool] = None, max_hull_dist_show_phases: Optional[float] = None, max_hull_dist_show_labels: Optional[float] = None, show_stable_labels: Optional[bool] = None, show_unstable_labels: Optional[bool] = None, enable_click_selection: Optional[bool] = None, enable_structure_preview: Optional[bool] = None, energy_source_mode: Optional[Any] = None, phase_stats: Optional[Any] = None, stable_entries: Optional[list] = None, unstable_entries: Optional[list] = None, highlighted_entries: Optional[list] = None, selected_entry: Optional[Any] = None, show_hull_faces: Optional[bool] = None, hull_face_opacity: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if highlight_style is not None:
             _mv['highlight_style'] = highlight_style
+        if entries is not None:
+            _mv['entries'] = entries
+        if controls is not None:
+            _mv['controls'] = controls
+        if config is not None:
+            _mv['config'] = config
+        if fullscreen is not None:
+            _mv['fullscreen'] = fullscreen
+        if enable_fullscreen is not None:
+            _mv['enable_fullscreen'] = enable_fullscreen
+        if enable_info_pane is not None:
+            _mv['enable_info_pane'] = enable_info_pane
+        if label_threshold is not None:
+            _mv['label_threshold'] = label_threshold
+        if show_stable is not None:
+            _mv['show_stable'] = show_stable
+        if show_unstable is not None:
+            _mv['show_unstable'] = show_unstable
+        if color_mode is not None:
+            _mv['color_mode'] = color_mode
+        if color_scale is not None:
+            _mv['color_scale'] = color_scale
+        if info_pane_open is not None:
+            _mv['info_pane_open'] = info_pane_open
+        if legend_pane_open is not None:
+            _mv['legend_pane_open'] = legend_pane_open
+        if max_hull_dist_show_phases is not None:
+            _mv['max_hull_dist_show_phases'] = max_hull_dist_show_phases
+        if max_hull_dist_show_labels is not None:
+            _mv['max_hull_dist_show_labels'] = max_hull_dist_show_labels
+        if show_stable_labels is not None:
+            _mv['show_stable_labels'] = show_stable_labels
+        if show_unstable_labels is not None:
+            _mv['show_unstable_labels'] = show_unstable_labels
+        if enable_click_selection is not None:
+            _mv['enable_click_selection'] = enable_click_selection
+        if enable_structure_preview is not None:
+            _mv['enable_structure_preview'] = enable_structure_preview
+        if energy_source_mode is not None:
+            _mv['energy_source_mode'] = energy_source_mode
+        if phase_stats is not None:
+            _mv['phase_stats'] = phase_stats
+        if stable_entries is not None:
+            _mv['stable_entries'] = stable_entries
+        if unstable_entries is not None:
+            _mv['unstable_entries'] = unstable_entries
+        if highlighted_entries is not None:
+            _mv['highlighted_entries'] = highlighted_entries
+        if selected_entry is not None:
+            _mv['selected_entry'] = selected_entry
+        if show_hull_faces is not None:
+            _mv['show_hull_faces'] = show_hull_faces
+        if hull_face_opacity is not None:
+            _mv['hull_face_opacity'] = hull_face_opacity
         if mv_props:
             _mv.update(mv_props)
 
@@ -576,6 +754,129 @@ class ConvexHull3D(MatterViz):
         super().__init__(
             id=id,
             component='convex-hull/ConvexHull3D',
+            mv_props=_mv,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
+        )
+
+class ConvexHull4D(MatterViz):
+    """4D convex hull phase diagram plot (for quaternary systems).
+
+    Underlying MatterViz component key: ``convex-hull/ConvexHull4D``.
+
+    Events
+    ------
+    MatterViz exposes callback props (functions) as events via ``event_props``.
+    For this component, available callback props include:
+        on_point_click, on_point_hover, on_file_drop
+
+    Not supported in Dash
+    --------------------
+    Snippet/slot props are omitted from this wrapper:
+        children
+
+    Prop reference (TypeScript)
+    ---------------------------
+    - highlight_style -> highlight_style: HighlightStyle
+    - entries -> entries: PhaseData[] (required in TS)
+    - controls -> controls: Partial<ConvexHullControlsType>
+    - config -> config: Partial<ConvexHullConfig>
+    - fullscreen -> fullscreen: boolean
+    - enable_fullscreen -> enable_fullscreen: boolean
+    - enable_info_pane -> enable_info_pane: boolean
+    - label_threshold -> label_threshold: number
+    - show_stable -> show_stable: boolean
+    - show_unstable -> show_unstable: boolean
+    - color_mode -> color_mode: `stability` | `energy`
+    - color_scale -> color_scale: D3InterpolateName
+    - info_pane_open -> info_pane_open: boolean
+    - legend_pane_open -> legend_pane_open: boolean
+    - max_hull_dist_show_phases -> max_hull_dist_show_phases: number
+    - max_hull_dist_show_labels -> max_hull_dist_show_labels: number
+    - show_stable_labels -> show_stable_labels: boolean
+    - show_unstable_labels -> show_unstable_labels: boolean
+    - enable_click_selection -> enable_click_selection: boolean
+    - enable_structure_preview -> enable_structure_preview: boolean
+    - energy_source_mode -> energy_source_mode: `precomputed` | `on-the-fly`
+    - phase_stats -> phase_stats: PhaseStats | null
+    - stable_entries -> stable_entries: AnyDimEntry[]
+    - unstable_entries -> unstable_entries: AnyDimEntry[]
+    - highlighted_entries -> highlighted_entries: (string | AnyDimEntry)[]
+    - selected_entry -> selected_entry: AnyDimEntry | null
+    - show_hull_faces -> show_hull_faces: boolean
+    - hull_face_opacity -> hull_face_opacity: number
+    """
+
+    def __init__(self, id=None, highlight_style: Optional[Any] = None, entries: Optional[list] = None, controls: Optional[dict] = None, config: Optional[dict] = None, fullscreen: Optional[bool] = None, enable_fullscreen: Optional[bool] = None, enable_info_pane: Optional[bool] = None, label_threshold: Optional[float] = None, show_stable: Optional[bool] = None, show_unstable: Optional[bool] = None, color_mode: Optional[Any] = None, color_scale: Optional[Any] = None, info_pane_open: Optional[bool] = None, legend_pane_open: Optional[bool] = None, max_hull_dist_show_phases: Optional[float] = None, max_hull_dist_show_labels: Optional[float] = None, show_stable_labels: Optional[bool] = None, show_unstable_labels: Optional[bool] = None, enable_click_selection: Optional[bool] = None, enable_structure_preview: Optional[bool] = None, energy_source_mode: Optional[Any] = None, phase_stats: Optional[Any] = None, stable_entries: Optional[list] = None, unstable_entries: Optional[list] = None, highlighted_entries: Optional[list] = None, selected_entry: Optional[Any] = None, show_hull_faces: Optional[bool] = None, hull_face_opacity: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
+        _mv: dict = {}
+        if highlight_style is not None:
+            _mv['highlight_style'] = highlight_style
+        if entries is not None:
+            _mv['entries'] = entries
+        if controls is not None:
+            _mv['controls'] = controls
+        if config is not None:
+            _mv['config'] = config
+        if fullscreen is not None:
+            _mv['fullscreen'] = fullscreen
+        if enable_fullscreen is not None:
+            _mv['enable_fullscreen'] = enable_fullscreen
+        if enable_info_pane is not None:
+            _mv['enable_info_pane'] = enable_info_pane
+        if label_threshold is not None:
+            _mv['label_threshold'] = label_threshold
+        if show_stable is not None:
+            _mv['show_stable'] = show_stable
+        if show_unstable is not None:
+            _mv['show_unstable'] = show_unstable
+        if color_mode is not None:
+            _mv['color_mode'] = color_mode
+        if color_scale is not None:
+            _mv['color_scale'] = color_scale
+        if info_pane_open is not None:
+            _mv['info_pane_open'] = info_pane_open
+        if legend_pane_open is not None:
+            _mv['legend_pane_open'] = legend_pane_open
+        if max_hull_dist_show_phases is not None:
+            _mv['max_hull_dist_show_phases'] = max_hull_dist_show_phases
+        if max_hull_dist_show_labels is not None:
+            _mv['max_hull_dist_show_labels'] = max_hull_dist_show_labels
+        if show_stable_labels is not None:
+            _mv['show_stable_labels'] = show_stable_labels
+        if show_unstable_labels is not None:
+            _mv['show_unstable_labels'] = show_unstable_labels
+        if enable_click_selection is not None:
+            _mv['enable_click_selection'] = enable_click_selection
+        if enable_structure_preview is not None:
+            _mv['enable_structure_preview'] = enable_structure_preview
+        if energy_source_mode is not None:
+            _mv['energy_source_mode'] = energy_source_mode
+        if phase_stats is not None:
+            _mv['phase_stats'] = phase_stats
+        if stable_entries is not None:
+            _mv['stable_entries'] = stable_entries
+        if unstable_entries is not None:
+            _mv['unstable_entries'] = unstable_entries
+        if highlighted_entries is not None:
+            _mv['highlighted_entries'] = highlighted_entries
+        if selected_entry is not None:
+            _mv['selected_entry'] = selected_entry
+        if show_hull_faces is not None:
+            _mv['show_hull_faces'] = show_hull_faces
+        if hull_face_opacity is not None:
+            _mv['hull_face_opacity'] = hull_face_opacity
+        if mv_props:
+            _mv.update(mv_props)
+
+
+        super().__init__(
+            id=id,
+            component='convex-hull/ConvexHull4D',
             mv_props=_mv,
             set_props=set_props,
             float32_props=float32_props,
@@ -626,7 +927,7 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
     - y_axis -> y_axis: AxisConfig
     """
 
-    def __init__(self, id: Optional[str] = None, config: Optional[dict] = None, controls_open: Optional[bool] = None, controls_props: Optional[dict] = None, data: Optional[Any] = None, display_temp_unit: Optional[Any] = None, enable_export: Optional[bool] = None, export_filename: Optional[str] = None, export_pane_open: Optional[bool] = None, fullscreen: Optional[bool] = None, fullscreen_toggle: Optional[bool] = None, hovered_region: Optional[Any] = None, png_dpi: Optional[float] = None, show_boundaries: Optional[bool] = None, show_component_labels: Optional[bool] = None, show_controls: Optional[bool] = None, show_grid: Optional[bool] = None, show_labels: Optional[bool] = None, show_special_points: Optional[bool] = None, x_axis: Optional[Any] = None, y_axis: Optional[Any] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, config: Optional[dict] = None, controls_open: Optional[bool] = None, controls_props: Optional[dict] = None, data: Optional[Any] = None, display_temp_unit: Optional[Any] = None, enable_export: Optional[bool] = None, export_filename: Optional[str] = None, export_pane_open: Optional[bool] = None, fullscreen: Optional[bool] = None, fullscreen_toggle: Optional[bool] = None, hovered_region: Optional[Any] = None, png_dpi: Optional[float] = None, show_boundaries: Optional[bool] = None, show_component_labels: Optional[bool] = None, show_controls: Optional[bool] = None, show_grid: Optional[bool] = None, show_labels: Optional[bool] = None, show_special_points: Optional[bool] = None, x_axis: Optional[Any] = None, y_axis: Optional[Any] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if config is not None:
             _mv['config'] = config
@@ -731,7 +1032,7 @@ class IsobaricTernaryPhaseDiagram(MatterViz):
     - slice_temperature -> slice_temperature: number
     """
 
-    def __init__(self, id: Optional[str] = None, auto_rotate: Optional[float] = None, camera: Optional[Any] = None, camera_position: Optional[Any] = None, config: Optional[dict] = None, controls_open: Optional[bool] = None, data: Optional[Any] = None, enable_export: Optional[bool] = None, export_filename: Optional[str] = None, export_pane_open: Optional[bool] = None, fullscreen: Optional[bool] = None, fullscreen_toggle: Optional[bool] = None, hovered_region: Optional[Any] = None, orbit_controls: Optional[dict] = None, png_dpi: Optional[float] = None, region_opacity: Optional[float] = None, render_mode: Optional[Any] = None, scene: Optional[Any] = None, show_boundaries: Optional[bool] = None, show_controls: Optional[bool] = None, show_grid: Optional[bool] = None, show_isothermal_panel: Optional[bool] = None, show_labels: Optional[bool] = None, show_special_points: Optional[bool] = None, show_vertical_panel: Optional[bool] = None, slice_ratio: Optional[float] = None, slice_temperature: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, auto_rotate: Optional[float] = None, camera: Optional[Any] = None, camera_position: Optional[Any] = None, config: Optional[dict] = None, controls_open: Optional[bool] = None, data: Optional[Any] = None, enable_export: Optional[bool] = None, export_filename: Optional[str] = None, export_pane_open: Optional[bool] = None, fullscreen: Optional[bool] = None, fullscreen_toggle: Optional[bool] = None, hovered_region: Optional[Any] = None, orbit_controls: Optional[dict] = None, png_dpi: Optional[float] = None, region_opacity: Optional[float] = None, render_mode: Optional[Any] = None, scene: Optional[Any] = None, show_boundaries: Optional[bool] = None, show_controls: Optional[bool] = None, show_grid: Optional[bool] = None, show_isothermal_panel: Optional[bool] = None, show_labels: Optional[bool] = None, show_special_points: Optional[bool] = None, show_vertical_panel: Optional[bool] = None, slice_ratio: Optional[float] = None, slice_temperature: Optional[float] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if auto_rotate is not None:
             _mv['auto_rotate'] = auto_rotate
@@ -830,7 +1131,7 @@ class XrdPlot(MatterViz):
     - y_axis -> y_axis: AxisConfig
     """
 
-    def __init__(self, id: Optional[str] = None, allow_file_drop: Optional[bool] = None, annotate_peaks: Optional[float] = None, broadening_enabled: Optional[bool] = None, broadening_params: Optional[Any] = None, controls: Optional[Any] = None, error_msg: Optional[str] = None, hkl_format: Optional[Any] = None, loading: Optional[bool] = None, peak_width: Optional[float] = None, show_angles: Optional[Any] = None, wavelength: Optional[Any] = None, x_axis: Optional[Any] = None, y_axis: Optional[Any] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, id=None, allow_file_drop: Optional[bool] = None, annotate_peaks: Optional[float] = None, broadening_enabled: Optional[bool] = None, broadening_params: Optional[Any] = None, controls: Optional[Any] = None, error_msg: Optional[str] = None, hkl_format: Optional[Any] = None, loading: Optional[bool] = None, peak_width: Optional[float] = None, show_angles: Optional[Any] = None, wavelength: Optional[Any] = None, x_axis: Optional[Any] = None, y_axis: Optional[Any] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if allow_file_drop is not None:
             _mv['allow_file_drop'] = allow_file_drop
@@ -875,4 +1176,4 @@ class XrdPlot(MatterViz):
             **kwargs,
         )
 
-__all__ = ['Structure', 'PeriodicTable', 'Composition', 'Trajectory', 'BrillouinZone', 'ConvexHull2D', 'ConvexHull3D', 'IsobaricBinaryPhaseDiagram', 'IsobaricTernaryPhaseDiagram', 'XrdPlot']
+__all__ = ['Structure', 'PeriodicTable', 'Composition', 'Trajectory', 'BrillouinZone', 'ConvexHull2D', 'ConvexHull3D', 'ConvexHull4D', 'IsobaricBinaryPhaseDiagram', 'IsobaricTernaryPhaseDiagram', 'XrdPlot']

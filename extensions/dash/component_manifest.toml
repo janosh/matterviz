@@ -37,10 +37,18 @@ doc = "3D Brillouin zone visualization."
 [components.ConvexHull2D]
 key = "convex-hull/ConvexHull2D"
 doc = "2D convex hull phase diagram plot."
+# BaseConvexHullProps are imported from index.d.ts; include core props here
+include_from = ["convex-hull/index.d.ts:BaseConvexHullProps"]
 
 [components.ConvexHull3D]
 key = "convex-hull/ConvexHull3D"
 doc = "3D convex hull phase diagram plot."
+include_from = ["convex-hull/index.d.ts:BaseConvexHullProps", "convex-hull/index.d.ts:Hull3DProps"]
+
+[components.ConvexHull4D]
+key = "convex-hull/ConvexHull4D"
+doc = "4D convex hull phase diagram plot (for quaternary systems)."
+include_from = ["convex-hull/index.d.ts:BaseConvexHullProps", "convex-hull/index.d.ts:Hull3DProps"]
 
 [components.IsobaricBinaryPhaseDiagram]
 key = "phase-diagram/IsobaricBinaryPhaseDiagram"

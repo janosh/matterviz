@@ -364,6 +364,58 @@ def _collect_props(expr: str, aliases: Dict[str, str]) -> Dict[str, Tuple[str, b
     return out
 
 
+def _parse_interface_props(src: str, interface_name: str) -> Dict[str, Tuple[str, bool]]:
+    """Extract props from an interface definition in a .d.ts file."""
+    # Match interface Name<...> extends ... { ... }
+    pattern = rf"\binterface\s+{re.escape(interface_name)}(?:<[^>]*>)?(?:\s+extends\s+[^{{]+)?\s*\{{"
+    match = re.search(pattern, src)
+    if not match:
+        return {}
+
+    # Find the matching closing brace
+    brace_start = match.end() - 1
+    depth = 1
+    idx = brace_start + 1
+    while idx < len(src) and depth > 0:
+        if src[idx] == "{":
+            depth += 1
+        elif src[idx] == "}":
+            depth -= 1
+        idx += 1
+
+    body = src[brace_start : idx]
+    return _parse_object_literal(body)
+
+
+def parse_external_type(dist_dir: Path, include_spec: str) -> Dict[str, Tuple[str, bool]]:
+    """Parse a type/interface from an external .d.ts file.
+
+    include_spec format: "path/to/file.d.ts:TypeName"
+    """
+    if ":" not in include_spec:
+        return {}
+
+    file_path, type_name = include_spec.rsplit(":", 1)
+    dts_path = dist_dir / file_path
+    if not dts_path.exists():
+        print(f"Warning: External type file not found: {dts_path}")
+        return {}
+
+    src = dts_path.read_text(encoding="utf-8")
+
+    # Try interface first
+    props = _parse_interface_props(src, type_name)
+    if props:
+        return props
+
+    # Try type alias
+    aliases = _extract_type_aliases(src)
+    if type_name in aliases:
+        return _collect_props(aliases[type_name], aliases)
+
+    return {}
+
+
 def parse_svelte_dts(dts_path: Path) -> Tuple[List[Prop], List[str], List[str], List[str]]:
     """Parse a *.svelte.d.ts file into prop metadata."""
     src = dts_path.read_text(encoding="utf-8")
@@ -400,6 +452,76 @@ def parse_svelte_dts(dts_path: Path) -> Tuple[List[Prop], List[str], List[str], 
         )
 
     return props, callback_props, snippet_props, dom_props
+
+
+def parse_svelte_dts_with_includes(
+    dts_path: Path, dist_dir: Path, include_from: List[str]
+) -> Tuple[List[Prop], List[str], List[str], List[str]]:
+    """Parse a *.svelte.d.ts file with additional external type includes."""
+    # Start with base props from the .svelte.d.ts file
+    props, callback_props, snippet_props, dom_props = parse_svelte_dts(dts_path)
+    existing_names = {p.js_name for p in props}
+
+    # Parse additional props from external type definitions
+    for include_spec in include_from:
+        external_props = parse_external_type(dist_dir, include_spec)
+        for js_name, (ts_type, required) in external_props.items():
+            if js_name in existing_names:
+                continue  # Don't override existing props
+
+            kind = "value"
+            if "=>" in ts_type:
+                kind = "callback"
+                callback_props.append(js_name)
+            elif "Snippet" in ts_type:
+                kind = "snippet"
+                snippet_props.append(js_name)
+            elif "HTMLElement" in ts_type or "HTMLDivElement" in ts_type:
+                kind = "dom"
+                dom_props.append(js_name)
+
+            props.append(
+                Prop(
+                    js_name=js_name,
+                    py_name=_to_snake(js_name),
+                    ts_type=ts_type,
+                    required=required,
+                    kind=kind,
+                )
+            )
+            existing_names.add(js_name)
+
+    return props, callback_props, snippet_props, dom_props
+
+
+def add_extra_props(
+    props: List[Prop],
+    extra_props: Dict[str, str],
+    callback_props: List[str],
+) -> None:
+    """Add manually-specified extra props to the props list.
+
+    extra_props format: { "prop_name": "ts_type" }
+    """
+    existing_names = {p.js_name for p in props}
+    for js_name, ts_type in extra_props.items():
+        if js_name in existing_names:
+            continue
+
+        kind = "value"
+        if "=>" in ts_type:
+            kind = "callback"
+            callback_props.append(js_name)
+
+        props.append(
+            Prop(
+                js_name=js_name,
+                py_name=_to_snake(js_name),
+                ts_type=ts_type,
+                required=True,  # extra_props are assumed required
+                kind=kind,
+            )
+        )
 
 
 def find_component_dts(dist_dir: Path, key: str) -> Path:
@@ -468,7 +590,18 @@ def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) 
             raise SystemExit(f"[components.{class_name}] missing 'key'")
 
         dts_path = find_component_dts(dist_dir, key)
-        props, callback_props, snippet_props, dom_props = parse_svelte_dts(dts_path)
+        include_from = spec.get("include_from", [])
+        if include_from:
+            props, callback_props, snippet_props, dom_props = parse_svelte_dts_with_includes(
+                dts_path, dist_dir, include_from
+            )
+        else:
+            props, callback_props, snippet_props, dom_props = parse_svelte_dts(dts_path)
+
+        # Add any manually-specified extra props
+        extra_props = spec.get("extra_props", {})
+        if extra_props:
+            add_extra_props(props, extra_props, callback_props)
 
         # Select only "value" props that are JSON-ish and not DOM handles.
         value_props = [
