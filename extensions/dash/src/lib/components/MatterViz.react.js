@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types'
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { Component, useEffect, useMemo, useRef, useState } from 'react'
 
 function isPlainObject(value) {
   return (
@@ -36,7 +36,7 @@ function sanitizeForJson(value, seen = new WeakSet(), depth = 0, maxDepth = 6) {
   if (ArrayBuffer.isView(value)) {
     try {
       return Array.from(value)
-    } catch (e) {
+    } catch {
       return null
     }
   }
@@ -97,7 +97,7 @@ function sanitizeForJson(value, seen = new WeakSet(), depth = 0, maxDepth = 6) {
   // Fallback: best-effort stringify
   try {
     return JSON.parse(JSON.stringify(value))
-  } catch (e) {
+  } catch {
     return String(value)
   }
 }
@@ -122,7 +122,78 @@ function convertDashPropsToMatterviz(mvProps, setPropsList, float32PropsList) {
   return out
 }
 
-const MatterViz = (props) => {
+/**
+ * Error boundary component to catch and display errors from MatterViz components.
+ */
+class MatterVizErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null, errorInfo: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error, errorInfo) {
+    this.setState({ errorInfo })
+    // Log error to console for debugging
+    console.error(`MatterViz component error:`, error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      const { component } = this.props
+      const { error } = this.state
+      return React.createElement(
+        `div`,
+        {
+          style: {
+            padding: `16px`,
+            border: `1px solid #dc3545`,
+            borderRadius: `6px`,
+            background: `#fff5f5`,
+            color: `#dc3545`,
+            fontFamily: `ui-monospace, monospace`,
+            fontSize: `13px`,
+          },
+        },
+        React.createElement(`strong`, null, `Error in ${component || `MatterViz`}:`),
+        React.createElement(`br`),
+        React.createElement(`code`, null, error?.message || String(error)),
+        React.createElement(`br`),
+        React.createElement(`br`),
+        React.createElement(
+          `button`,
+          {
+            onClick: () => this.setState({ hasError: false, error: null }),
+            style: {
+              padding: `6px 12px`,
+              border: `1px solid #dc3545`,
+              borderRadius: `4px`,
+              background: `white`,
+              color: `#dc3545`,
+              cursor: `pointer`,
+            },
+          },
+          `Retry`,
+        ),
+      )
+    }
+
+    return this.props.children
+  }
+}
+
+MatterVizErrorBoundary.propTypes = {
+  children: PropTypes.node,
+  component: PropTypes.string,
+}
+
+/**
+ * Inner component that handles the actual MatterViz custom element.
+ */
+const MatterVizInner = (props) => {
   const {
     id,
     component = `Structure`,
@@ -130,13 +201,13 @@ const MatterViz = (props) => {
     set_props = [],
     float32_props = [],
     event_props = [],
-    last_event,  
     className,
     style,
     setProps,
   } = props
 
   const ref = useRef(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   // Build callback props that MatterViz will call.
   const injectedCallbacks = useMemo(() => {
@@ -161,21 +232,14 @@ const MatterViz = (props) => {
   // Serialize mv_props for stable dependency comparison (Dash re-creates objects on each render)
   const mvPropsKey = useMemo(() => JSON.stringify(mv_props), [mv_props])
   const setPropsKey = useMemo(() => JSON.stringify(set_props), [set_props])
-  const float32PropsKey = useMemo(() => JSON.stringify(float32_props), [
-    float32_props,
-  ])
+  const float32PropsKey = useMemo(() => JSON.stringify(float32_props), [float32_props])
 
   const resolvedProps = useMemo(() => {
-    const converted = convertDashPropsToMatterviz(
-      mv_props,
-      set_props,
-      float32_props,
-    )
+    const converted = convertDashPropsToMatterviz(mv_props, set_props, float32_props)
     return {
       ...converted,
       ...injectedCallbacks,
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mvPropsKey, setPropsKey, float32PropsKey, injectedCallbacks])
 
   useEffect(() => {
@@ -186,21 +250,70 @@ const MatterViz = (props) => {
     element.component = component
     element.props = resolvedProps
 
+    // Mark as loaded after a short delay to allow the component to render
+    const timer = setTimeout(() => setIsLoading(false), 100)
+
     // Cleanup: clear props to allow garbage collection
     return () => {
-      element.props = {}
+      clearTimeout(timer)
+      if (element) {
+        element.props = {}
+      }
     }
   }, [component, resolvedProps])
 
   // Use mvPropsKey as React key to force remount when props change significantly
   // This is needed because Svelte 5 custom elements don't always detect external prop changes
-  return React.createElement(`mv-matterviz`, {
-    key: `${component}-${mvPropsKey}`,
-    id,
-    ref,
-    className,
-    style,
-  })
+  return React.createElement(
+    `div`,
+    { style: { position: `relative`, ...style } },
+    isLoading &&
+      React.createElement(
+        `div`,
+        {
+          style: {
+            position: `absolute`,
+            top: `50%`,
+            left: `50%`,
+            transform: `translate(-50%, -50%)`,
+            color: `#888`,
+            fontSize: `14px`,
+          },
+        },
+        `Loading ${component}...`,
+      ),
+    React.createElement(`mv-matterviz`, {
+      key: `${component}-${mvPropsKey}`,
+      id,
+      ref,
+      className,
+      style: { opacity: isLoading ? 0.5 : 1, transition: `opacity 0.2s` },
+    }),
+  )
+}
+
+MatterVizInner.propTypes = {
+  id: PropTypes.string,
+  component: PropTypes.string,
+  mv_props: PropTypes.object,
+  set_props: PropTypes.arrayOf(PropTypes.string),
+  float32_props: PropTypes.arrayOf(PropTypes.string),
+  event_props: PropTypes.arrayOf(PropTypes.string),
+  className: PropTypes.string,
+  style: PropTypes.object,
+  setProps: PropTypes.func,
+}
+
+/**
+ * MatterViz component wrapper for Dash.
+ * Wraps any MatterViz Svelte component as a Dash-compatible React component.
+ */
+const MatterViz = (props) => {
+  return React.createElement(
+    MatterVizErrorBoundary,
+    { component: props.component },
+    React.createElement(MatterVizInner, props),
+  )
 }
 
 MatterViz.propTypes = {
