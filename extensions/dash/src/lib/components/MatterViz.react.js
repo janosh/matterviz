@@ -9,10 +9,8 @@ function isPlainObject(value) {
   )
 }
 
-/**
- * Convert values that Dash can't JSON-serialize (typed arrays, Set, Map, Error, File, etc.).
- * This is used for event payloads sent back to Python.
- */
+// Convert values that Dash can't JSON-serialize (typed arrays, Set, Map, Error, File, etc.).
+// This is used for event payloads sent back to Python.
 function sanitizeForJson(value, seen = new WeakSet(), depth = 0, maxDepth = 6) {
   if (depth > maxDepth) return null
 
@@ -122,9 +120,7 @@ function convertDashPropsToMatterviz(mvProps, setPropsList, float32PropsList) {
   return out
 }
 
-/**
- * Error boundary component to catch and display errors from MatterViz components.
- */
+// Error boundary component to catch and display errors from MatterViz components.
 class MatterVizErrorBoundary extends Component {
   constructor(props) {
     super(props)
@@ -190,9 +186,7 @@ MatterVizErrorBoundary.propTypes = {
   component: PropTypes.string,
 }
 
-/**
- * Inner component that handles the actual MatterViz custom element.
- */
+// Inner component that handles the actual MatterViz custom element.
 const MatterVizInner = (props) => {
   const {
     id,
@@ -304,10 +298,8 @@ MatterVizInner.propTypes = {
   setProps: PropTypes.func,
 }
 
-/**
- * MatterViz component wrapper for Dash.
- * Wraps any MatterViz Svelte component as a Dash-compatible React component.
- */
+// MatterViz component wrapper for Dash.
+// Wraps any MatterViz Svelte component as a Dash-compatible React component.
 const MatterViz = (props) => {
   return React.createElement(
     MatterVizErrorBoundary,
@@ -317,34 +309,25 @@ const MatterViz = (props) => {
 }
 
 MatterViz.propTypes = {
-  /** Dash component id */
+  // Dash component id
   id: PropTypes.string,
-
-  /** MatterViz component identifier (e.g. "Structure" or "structure/Structure") */
+  // MatterViz component identifier (e.g. "Structure" or "structure/Structure")
   component: PropTypes.string,
-
-  /** Props forwarded to the selected MatterViz component (JSON-serializable from Python) */
+  // Props forwarded to the selected MatterViz component (JSON-serializable from Python)
   mv_props: PropTypes.object,
-
-  /** List of mv_props keys that should be converted from list -> Set in JS */
+  // List of mv_props keys that should be converted from list -> Set in JS
   set_props: PropTypes.arrayOf(PropTypes.string),
-
-  /** List of mv_props keys that should be converted from list -> Float32Array in JS */
+  // List of mv_props keys that should be converted from list -> Float32Array in JS
   float32_props: PropTypes.arrayOf(PropTypes.string),
-
-  /** List of callback-prop names to inject (e.g. ["on_file_load", "on_error"]) */
+  // List of callback-prop names to inject (e.g. ["on_file_load", "on_error"])
   event_props: PropTypes.arrayOf(PropTypes.string),
-
-  /** Last event emitted back to Dash (set by this component) */
+  // Last event emitted back to Dash (set by this component)
   last_event: PropTypes.object,
-
-  /** CSS class */
+  // CSS class
   className: PropTypes.string,
-
-  /** Inline styles */
+  // Inline styles
   style: PropTypes.object,
-
-  /** Dash internal: callback to report prop changes */
+  // Dash internal: callback to report prop changes
   setProps: PropTypes.func,
 }
 

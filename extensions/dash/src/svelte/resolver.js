@@ -11,9 +11,9 @@ const modules = import.meta.glob(`/node_modules/matterviz/dist/**/*.svelte`, {
   eager: true,
 })
 
-/** @type {Map<string, any>} */
+// Map<string, any> - component key -> Svelte component
 const componentsByKey = new Map()
-/** @type {Map<string, string[]>} */
+// Map<string, string[]> - base name -> list of matching keys
 const keysByBaseName = new Map()
 
 for (const [rawPath, mod] of Object.entries(modules)) {
@@ -38,12 +38,9 @@ export function listComponentKeys() {
   return Array.from(componentsByKey.keys()).sort()
 }
 
-/**
- * Resolve a MatterViz component from an identifier.
- *
- * @param {string} id - e.g. "Structure" or "structure/Structure"
- * @returns {{ component: any | null, key: string | null, error: string | null, matches: string[] | null }}
- */
+// Resolve a MatterViz component from an identifier.
+// id: e.g. "Structure" or "structure/Structure"
+// Returns: { component, key, error, matches }
 export function resolveMattervizComponent(id) {
   if (!id || typeof id !== `string`) {
     return {
