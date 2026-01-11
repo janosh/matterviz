@@ -42,7 +42,7 @@ python -m pip install -e .
 python scripts/sample_app.py
 ```
 
-Then open http://127.0.0.1:8050 to see a `Structure` and `PeriodicTable` demo.
+Then open <http://127.0.0.1:8050> to see a `Structure` and `PeriodicTable` demo.
 
 ### Built assets for distribution
 
@@ -203,6 +203,31 @@ If a component is not in the manifest, it remains accessible through the generic
   - Use `event_props` to surface events (functions are injected client-side, not from Python).
 
 - This library uses a Svelte custom element with `shadow: "none"` so MatterViz styles can apply globally.
+
+## Testing
+
+### Unit tests
+
+```bash
+pip install -e ".[dev]"
+pytest tests/test_wrappers.py
+```
+
+### Integration tests (Playwright)
+
+Integration tests use Playwright to test components in a real browser:
+
+```bash
+pip install -e ".[dev]"
+playwright install chromium
+pytest tests/playwright/
+```
+
+To run with headed browser (visible):
+
+```bash
+pytest tests/playwright/ --headed
+```
 
 ## Development tips
 

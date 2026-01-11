@@ -1129,9 +1129,10 @@ class XrdPlot(MatterViz):
     - wavelength -> wavelength: number | null
     - x_axis -> x_axis: AxisConfig
     - y_axis -> y_axis: AxisConfig
+    - patterns -> patterns: XrdPattern | PatternEntry[] (required in TS)
     """
 
-    def __init__(self, id=None, allow_file_drop: Optional[bool] = None, annotate_peaks: Optional[float] = None, broadening_enabled: Optional[bool] = None, broadening_params: Optional[Any] = None, controls: Optional[Any] = None, error_msg: Optional[str] = None, hkl_format: Optional[Any] = None, loading: Optional[bool] = None, peak_width: Optional[float] = None, show_angles: Optional[Any] = None, wavelength: Optional[Any] = None, x_axis: Optional[Any] = None, y_axis: Optional[Any] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
+    def __init__(self, id=None, allow_file_drop: Optional[bool] = None, annotate_peaks: Optional[float] = None, broadening_enabled: Optional[bool] = None, broadening_params: Optional[Any] = None, controls: Optional[Any] = None, error_msg: Optional[str] = None, hkl_format: Optional[Any] = None, loading: Optional[bool] = None, peak_width: Optional[float] = None, show_angles: Optional[Any] = None, wavelength: Optional[Any] = None, x_axis: Optional[Any] = None, y_axis: Optional[Any] = None, patterns: Optional[list] = None, mv_props: Optional[dict] = None, set_props: Optional[list[str]] = None, float32_props: Optional[list[str]] = None, event_props: Optional[list[str]] = None, last_event: Optional[dict] = None, className: Optional[str] = None, style: Optional[dict] = None, **kwargs):
         _mv: dict = {}
         if allow_file_drop is not None:
             _mv['allow_file_drop'] = allow_file_drop
@@ -1159,6 +1160,8 @@ class XrdPlot(MatterViz):
             _mv['x_axis'] = x_axis
         if y_axis is not None:
             _mv['y_axis'] = y_axis
+        if patterns is not None:
+            _mv['patterns'] = patterns
         if mv_props:
             _mv.update(mv_props)
 

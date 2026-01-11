@@ -552,7 +552,9 @@ def _py_type_hint(ts_type: str) -> str:
     if t == "boolean":
         return "bool"
     if t.endswith("[]"):
-        return "list"
+        inner = t[:-2].strip()
+        inner_py = _py_type_hint(inner)
+        return f"list[{inner_py}]" if inner_py != "Any" else "list"
     if "Record" in t or "Partial" in t or "ComponentProps" in t:
         return "dict"
     if "Set" in t:
@@ -561,7 +563,37 @@ def _py_type_hint(ts_type: str) -> str:
         return "list[float]"
     if t.startswith("[") and t.endswith("]"):
         return "list"
+    if "|" in t:
+        # Union type - try to extract the first non-null type
+        parts = [p.strip() for p in t.split("|") if p.strip() not in ("null", "undefined")]
+        if parts:
+            return _py_type_hint(parts[0])
     return "Any"
+
+
+def _ts_type_to_docstring(ts_type: str) -> str:
+    """Convert a TS type to a human-readable docstring description."""
+    t = ts_type.strip()
+
+    # Common patterns
+    descriptions = {
+        "string": "Text value",
+        "number": "Numeric value",
+        "boolean": "True/False flag",
+        "Crystal": "Pymatgen-compatible structure dict with 'lattice' and 'sites'",
+        "TrajectoryData": "Trajectory object with 'frames' array of structures",
+    }
+
+    for pattern, desc in descriptions.items():
+        if pattern in t:
+            return desc
+
+    if "[]" in t:
+        return "List of values"
+    if "Record" in t or "Partial" in t:
+        return "Dictionary of key-value pairs"
+
+    return ""
 
 
 def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) -> None:
