@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generate typed Python wrapper classes for selected MatterViz components.
 

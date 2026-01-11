@@ -1,17 +1,31 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { resolve } from 'path'
-import { defineConfig } from 'vite'
+import { dirname, resolve } from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
+import { defineConfig } from 'vite'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const is_dev = process.env.NODE_ENV !== `production`
+
+// Plugin to strip Node.js imports from the UMD bundle
+function stripNodeImportsPlugin() {
+  return {
+    name: `strip-node-imports`,
+    renderChunk(code) {
+      // Remove the process import that Vite sometimes injects
+      return code.replace(/^import process from "node:process";\n?/m, ``)
+    },
+  }
+}
 
 export default defineConfig({
   define: {
     // Replace process.env.NODE_ENV for browser compatibility
-    'process.env.NODE_ENV': JSON.stringify(
-      process.env.NODE_ENV || `production`,
-    ),
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || `production`),
   },
 
   plugins: [
+    stripNodeImportsPlugin(),
     svelte({
       compilerOptions: {
         runes: true,
@@ -58,9 +72,9 @@ export default defineConfig({
       },
     },
     // Generate sourcemaps in dev
-    sourcemap: process.env.NODE_ENV !== `production`,
+    sourcemap: is_dev,
     // Minify in production
-    minify: process.env.NODE_ENV === `production` ? `esbuild` : false,
+    minify: is_dev ? false : `esbuild`,
   },
 
   // Ensure .wasm files are handled correctly

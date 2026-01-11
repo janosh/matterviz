@@ -38,14 +38,11 @@ __version__ = "0.0.2"
 
 __all__ = ["MatterViz", "component", "_js_dist", "_css_dist", *_typed_all]
 
-# Ensure wasm is served with the correct MIME type when hosted via Dash Flask.
-try:  # pragma: no cover
-    import mimetypes
+# Ensure wasm is served with correct MIME type via Dash Flask
+import mimetypes
 
-    if mimetypes.guess_type("file.wasm")[0] != "application/wasm":
-        mimetypes.add_type("application/wasm", ".wasm")
-except Exception:
-    pass
+if mimetypes.guess_type("x.wasm")[0] != "application/wasm":
+    mimetypes.add_type("application/wasm", ".wasm")
 
 
 def component(
@@ -91,45 +88,18 @@ def component(
 def __getattr__(name: str):
     """Fallback factory for arbitrary MatterViz components.
 
-    This is kept for advanced / experimental components that aren't in the curated
-    typed wrapper list. If the attribute name starts with an uppercase letter,
-    we return a factory function that builds ``MatterViz(component=name, mv_props=...)``.
+    Returns a factory that calls component(name, **kwargs).
 
     Example:
         import matterviz_dash_components as mvc
-        custom = mvc.MyNewComponent(foo=123)  # becomes MatterViz(component="MyNewComponent", mv_props={...})
+        mvc.MyNewComponent(foo=123)  # -> MatterViz(component="MyNewComponent", ...)
     """
     if name and name[0].isupper():
-
-        def _factory(
-            id: str | None = None,
-            className: str | None = None,
-            style: dict | None = None,
-            set_props: list[str] | None = None,
-            float32_props: list[str] | None = None,
-            event_props: list[str] | None = None,
-            last_event: dict | None = None,
-            **mv_props,
-        ) -> MatterViz:
-            return MatterViz(
-                id=id,
-                component=name,
-                mv_props=mv_props,
-                className=className,
-                style=style,
-                set_props=set_props,
-                float32_props=float32_props,
-                event_props=event_props,
-                last_event=last_event,
-            )
+        def _factory(**kwargs) -> MatterViz:
+            return component(name, **kwargs)
 
         _factory.__name__ = name
-        _factory.__doc__ = (
-            f"Factory for MatterViz component '{name}'.\n\n"
-            "This is syntactic sugar for:\n"
-            "    MatterViz(component=..., mv_props={...})\n\n"
-            "Supports id, className, style, set_props, float32_props, and event_props."
-        )
+        _factory.__doc__ = f"Factory for MatterViz component '{name}'."
         return _factory
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -7,7 +7,7 @@ import json
 import math
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import dash
 import matterviz_dash_components as mvc
@@ -56,46 +56,43 @@ def load_xye_file(file_path: Path) -> dict | None:
     return {"x": x_vals, "y": y_vals}
 
 
+def _load_site_data(subpath: str, name: str, ext: str = ".json.gz") -> Any:
+    """Load JSON data from src/site/{subpath}/{name}{ext}."""
+    return load_json_file(MATTERVIZ_ROOT / "src" / "site" / subpath / f"{name}{ext}")
+
+
 def load_phase_diagram(system: str) -> dict | None:
-    """Load a binary phase diagram from the gzipped JSON files."""
-    pd_dir = MATTERVIZ_ROOT / "src" / "site" / "phase-diagrams" / "binary"
-    return load_json_file(pd_dir / f"{system}.json.gz")
+    """Load a binary phase diagram."""
+    return _load_site_data("phase-diagrams/binary", system)
 
 
 def load_structure(name: str) -> dict | None:
-    """Load a structure file from the site/structures directory."""
+    """Load a structure file (tries .json then .json.gz)."""
     struct_dir = MATTERVIZ_ROOT / "src" / "site" / "structures"
-    # Try .json first, then .json.gz
-    for ext in [".json", ".json.gz"]:
-        file_path = struct_dir / f"{name}{ext}"
-        if file_path.exists():
-            return load_json_file(file_path)
+    for ext in (".json", ".json.gz"):
+        if (path := struct_dir / f"{name}{ext}").exists():
+            return load_json_file(path)
     return None
 
 
 def load_convex_hull_entries(system: str) -> list[dict] | None:
-    """Load convex hull entries from the site/convex-hull directory."""
-    hull_dir = MATTERVIZ_ROOT / "src" / "site" / "convex-hull" / "quaternaries"
-    file_path = hull_dir / f"{system}.json.gz"
-    return load_json_file(file_path)
+    """Load convex hull entries."""
+    return _load_site_data("convex-hull/quaternaries", system)
 
 
 def load_phonon_bands(name: str) -> dict | None:
-    """Load phonon band structure from the site/phonons directory."""
-    phonon_dir = MATTERVIZ_ROOT / "src" / "site" / "phonons"
-    return load_json_file(phonon_dir / f"{name}.json.gz")
+    """Load phonon band structure."""
+    return _load_site_data("phonons", name)
 
 
 def load_electronic_dos(name: str) -> dict | None:
-    """Load electronic DOS from the site/electronic/dos directory."""
-    dos_dir = MATTERVIZ_ROOT / "src" / "site" / "electronic" / "dos"
-    return load_json_file(dos_dir / f"{name}.json.gz")
+    """Load electronic DOS."""
+    return _load_site_data("electronic/dos", name)
 
 
 def load_electronic_bands(name: str) -> dict | None:
-    """Load electronic band structure from the site/electronic/bands directory."""
-    bands_dir = MATTERVIZ_ROOT / "src" / "site" / "electronic" / "bands"
-    return load_json_file(bands_dir / f"{name}.json.gz")
+    """Load electronic band structure."""
+    return _load_site_data("electronic/bands", name)
 
 
 def load_xrd_pattern(name: str) -> dict | None:
@@ -154,11 +151,10 @@ AVAILABLE_XRD = [
 _cache: dict[str, Any] = {}
 
 
-def get_cached(key: str, loader: callable, *args: Any) -> Any:
-    """Generic cache wrapper for data loading."""
+def get_cached(key: str, loader: Callable[[str], Any]) -> Any:
+    """Load data via loader(key), caching the result."""
     if key not in _cache:
-        data = loader(*args)
-        if data:
+        if data := loader(key):
             _cache[key] = data
     return _cache.get(key)
 
@@ -271,21 +267,13 @@ def layout() -> html.Div:
     ]
 
     # Initial data loading
-    initial_structure = (
-        get_cached("mp-1234", load_structure, "mp-1234") or SILICON_STRUCTURE
-    )
-    initial_hull = (
-        get_cached("Li-Co-Ni-O", load_convex_hull_entries, "Li-Co-Ni-O") or []
-    )
-    initial_phase = get_cached("Al-Cu", load_phase_diagram, "Al-Cu") or {}
-    initial_phonon = get_cached(
-        AVAILABLE_PHONONS[0], load_phonon_bands, AVAILABLE_PHONONS[0]
-    )
-    initial_dos = get_cached(AVAILABLE_DOS[0], load_electronic_dos, AVAILABLE_DOS[0])
-    initial_bands = get_cached(
-        AVAILABLE_BANDS[0], load_electronic_bands, AVAILABLE_BANDS[0]
-    )
-    initial_xrd = get_cached(AVAILABLE_XRD[0], load_xrd_pattern, AVAILABLE_XRD[0])
+    initial_structure = get_cached("mp-1234", load_structure) or SILICON_STRUCTURE
+    initial_hull = get_cached("Li-Co-Ni-O", load_convex_hull_entries) or []
+    initial_phase = get_cached("Al-Cu", load_phase_diagram) or {}
+    initial_phonon = get_cached(AVAILABLE_PHONONS[0], load_phonon_bands)
+    initial_dos = get_cached(AVAILABLE_DOS[0], load_electronic_dos)
+    initial_bands = get_cached(AVAILABLE_BANDS[0], load_electronic_bands)
+    initial_xrd = get_cached(AVAILABLE_XRD[0], load_xrd_pattern)
 
     # Get dark mode preference from localStorage via clientside callback
     return html.Div(
@@ -938,16 +926,9 @@ def create_app() -> dash.Dash:
     )
     def update_phase_diagram(selected_system: str) -> dict:
         """Update phase diagram when dropdown selection changes."""
-        data = get_cached(selected_system, load_phase_diagram, selected_system)
+        data = get_cached(selected_system, load_phase_diagram)
         if not data:
-            data = (
-                get_cached(
-                    AVAILABLE_PHASE_DIAGRAMS[0],
-                    load_phase_diagram,
-                    AVAILABLE_PHASE_DIAGRAMS[0],
-                )
-                or {}
-            )
+            data = get_cached(AVAILABLE_PHASE_DIAGRAMS[0], load_phase_diagram) or {}
         return {"data": data, "height": 500}
 
     # Structure callback
@@ -957,13 +938,10 @@ def create_app() -> dash.Dash:
     )
     def update_structure(selected_structure: str) -> dict:
         """Update structure when dropdown selection changes."""
-        data = get_cached(selected_structure, load_structure, selected_structure)
+        data = get_cached(selected_structure, load_structure)
         if not data:
             data = (
-                get_cached(
-                    AVAILABLE_STRUCTURES[0], load_structure, AVAILABLE_STRUCTURES[0]
-                )
-                or SILICON_STRUCTURE
+                get_cached(AVAILABLE_STRUCTURES[0], load_structure) or SILICON_STRUCTURE
             )
         return {"structure": data, "show_controls": True, "height": 400}
 
@@ -974,15 +952,10 @@ def create_app() -> dash.Dash:
     )
     def update_convex_hull(selected_system: str) -> dict:
         """Update convex hull when dropdown selection changes."""
-        entries = get_cached(selected_system, load_convex_hull_entries, selected_system)
+        entries = get_cached(selected_system, load_convex_hull_entries)
         if not entries:
             entries = (
-                get_cached(
-                    AVAILABLE_CONVEX_HULLS[0],
-                    load_convex_hull_entries,
-                    AVAILABLE_CONVEX_HULLS[0],
-                )
-                or []
+                get_cached(AVAILABLE_CONVEX_HULLS[0], load_convex_hull_entries) or []
             )
         return {"entries": entries, "height": 450}
 
@@ -993,8 +966,7 @@ def create_app() -> dash.Dash:
     )
     def update_phonon_bands(selected: str) -> dict:
         """Update phonon bands when dropdown selection changes."""
-        data = get_cached(selected, load_phonon_bands, selected)
-        return {"bands": data, "height": 400}
+        return {"bands": get_cached(selected, load_phonon_bands), "height": 400}
 
     # DOS callback
     @app.callback(
@@ -1003,8 +975,7 @@ def create_app() -> dash.Dash:
     )
     def update_dos(selected: str) -> dict:
         """Update DOS when dropdown selection changes."""
-        data = get_cached(selected, load_electronic_dos, selected)
-        return {"dos": data, "height": 350}
+        return {"dos": get_cached(selected, load_electronic_dos), "height": 350}
 
     # Electronic bands callback
     @app.callback(
@@ -1013,8 +984,7 @@ def create_app() -> dash.Dash:
     )
     def update_bands(selected: str) -> dict:
         """Update electronic bands when dropdown selection changes."""
-        data = get_cached(selected, load_electronic_bands, selected)
-        return {"bands": data, "height": 400}
+        return {"bands": get_cached(selected, load_electronic_bands), "height": 400}
 
     # Callback demo - display clicked element
     @app.callback(
