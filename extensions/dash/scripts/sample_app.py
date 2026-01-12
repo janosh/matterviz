@@ -42,8 +42,8 @@ def load_xye_file(file_path: Path) -> dict | None:
     y_vals: list[float] = []
 
     with open(file_path, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
+        for raw_line in fh:
+            line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
             parts = line.split()

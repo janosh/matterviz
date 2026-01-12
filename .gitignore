@@ -25,4 +25,5 @@ static/tmp
 # vscode extension
 *.vsix
 !extensions/vscode/.vscode/
-extensions/**/deno.jsonc
+extensions/vscode/deno.jsonc
+extensions/dash/deno.jsonc

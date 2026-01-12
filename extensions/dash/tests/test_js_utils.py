@@ -1,6 +1,6 @@
 """Tests for JavaScript utility functions using Node.js.
 
-These tests verify the sanitizeForJson and convertDashPropsToMatterviz functions
+These tests verify the sanitize_for_json and convert_dash_props_to_matterviz functions
 by running them through Node with the same test cases we'd use in Python.
 """
 
@@ -53,7 +53,7 @@ def run_js_test(js_code: str) -> dict:
 
 
 class TestSanitizeForJsonEdgeCases:
-    """Test edge cases for sanitizeForJson function."""
+    """Test edge cases for sanitize_for_json function."""
 
     @pytest.mark.parametrize(
         "input_val,expected",
@@ -69,18 +69,18 @@ class TestSanitizeForJsonEdgeCases:
     )
     def test_primitives(self, input_val: str, expected) -> None:
         """Primitive values should pass through unchanged."""
-        result = run_js_test(f"return sanitizeForJson({input_val})")
+        result = run_js_test(f"return sanitize_for_json({input_val})")
         assert result == expected
 
     def test_undefined_in_object_excluded(self) -> None:
         """Undefined values in objects should be excluded."""
-        result = run_js_test("return sanitizeForJson({a: 1, b: undefined, c: 3})")
+        result = run_js_test("return sanitize_for_json({a: 1, b: undefined, c: 3})")
         assert result == {"a": 1, "c": 3}
 
     @pytest.mark.parametrize("js_val", ["Infinity", "NaN"])
     def test_non_finite_becomes_null(self, js_val: str) -> None:
         """Infinity and NaN should become null."""
-        assert run_js_test(f"return sanitizeForJson({js_val})") is None
+        assert run_js_test(f"return sanitize_for_json({js_val})") is None
 
     @pytest.mark.parametrize(
         "js_expr,expected",
@@ -94,22 +94,22 @@ class TestSanitizeForJsonEdgeCases:
     )
     def test_special_types(self, js_expr: str, expected) -> None:
         """Special JS types are converted correctly."""
-        assert run_js_test(f"return sanitizeForJson({js_expr})") == expected
+        assert run_js_test(f"return sanitize_for_json({js_expr})") == expected
 
     def test_function_excluded(self) -> None:
         """Functions should be excluded from objects."""
-        result = run_js_test("return sanitizeForJson({fn: () => {}, val: 1})")
+        result = run_js_test("return sanitize_for_json({fn: () => {}, val: 1})")
         assert result == {"val": 1}
 
     def test_float32_array_precision(self) -> None:
         """Float32Array converts with acceptable precision."""
-        result = run_js_test("return sanitizeForJson(new Float32Array([1.5, 2.5, 3.5]))")
+        result = run_js_test("return sanitize_for_json(new Float32Array([1.5, 2.5, 3.5]))")
         assert len(result) == 3 and abs(result[0] - 1.5) < 0.01
 
     def test_error_to_object(self) -> None:
         """Error should become object with name, message, stack."""
         result = run_js_test(
-            'return sanitizeForJson(new Error("test error"))'
+            'return sanitize_for_json(new Error("test error"))'
         )
         assert result["name"] == "Error"
         assert result["message"] == "test error"
@@ -120,7 +120,7 @@ class TestSanitizeForJsonEdgeCases:
         result = run_js_test("""
             const obj = {a: 1};
             obj.self = obj;
-            return sanitizeForJson(obj);
+            return sanitize_for_json(obj);
         """)
         assert result["a"] == 1
         assert result["self"] == "[Circular]"
@@ -128,7 +128,7 @@ class TestSanitizeForJsonEdgeCases:
     def test_nested_objects(self) -> None:
         """Nested objects should be preserved."""
         result = run_js_test("""
-            return sanitizeForJson({
+            return sanitize_for_json({
                 a: {b: {c: {d: 1}}},
                 arr: [1, [2, [3]]]
             });
@@ -138,18 +138,18 @@ class TestSanitizeForJsonEdgeCases:
 
 
 class TestConvertDashPropsToMatterviz:
-    """Test edge cases for convertDashPropsToMatterviz function."""
+    """Test edge cases for convert_dash_props_to_matterviz function."""
 
     @pytest.mark.parametrize("props", ["{}", "null", "undefined"])
     def test_empty_null_undefined_props(self, props: str) -> None:
         """Empty/null/undefined props should return empty object."""
-        result = run_js_test(f"return convertDashPropsToMatterviz({props}, [], [])")
+        result = run_js_test(f"return convert_dash_props_to_matterviz({props}, [], [])")
         assert result == {}
 
     def test_set_props_conversion(self) -> None:
         """Arrays in set_props should become Sets (serialized as arrays)."""
         result = run_js_test("""
-            const result = convertDashPropsToMatterviz(
+            const result = convert_dash_props_to_matterviz(
                 {items: [1, 2, 3], other: "unchanged"},
                 ["items"],
                 []
@@ -168,7 +168,7 @@ class TestConvertDashPropsToMatterviz:
     def test_float32_props_conversion(self) -> None:
         """Arrays in float32_props should become Float32Arrays."""
         result = run_js_test("""
-            const result = convertDashPropsToMatterviz(
+            const result = convert_dash_props_to_matterviz(
                 {positions: [1.0, 2.0, 3.0]},
                 [],
                 ["positions"]
@@ -184,7 +184,7 @@ class TestConvertDashPropsToMatterviz:
     def test_non_array_not_converted(self) -> None:
         """Non-array values should not be converted even if in set_props."""
         result = run_js_test("""
-            const result = convertDashPropsToMatterviz(
+            const result = convert_dash_props_to_matterviz(
                 {notArray: "string value"},
                 ["notArray"],
                 []
@@ -196,7 +196,7 @@ class TestConvertDashPropsToMatterviz:
     def test_missing_keys_ignored(self) -> None:
         """Keys in set_props/float32_props not in props should be ignored."""
         result = run_js_test("""
-            return convertDashPropsToMatterviz(
+            return convert_dash_props_to_matterviz(
                 {existing: [1, 2]},
                 ["nonexistent", "existing"],
                 ["alsoMissing"]
