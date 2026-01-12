@@ -609,8 +609,8 @@ describe(`PeriodicTable`, () => {
       expect(colorbar).toBeTruthy()
       expect((bar as HTMLElement)?.style.background).toContain(`linear-gradient`)
 
-      // Defaults: 5 ticks on primary side
-      expect(colorbar?.querySelectorAll(`.tick-label.tick-primary`).length).toBe(5)
+      // Defaults: 3 ticks on primary side (reduced for better fit in small containers)
+      expect(colorbar?.querySelectorAll(`.tick-label.tick-primary`).length).toBe(3)
     })
 
     test.each([

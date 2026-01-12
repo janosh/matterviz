@@ -685,7 +685,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path) -> str:
             "**kwargs",
         ]
 
-        lines.append(f"    def __init__(\n        {',\n        '.join(sig)},\n    ):")
+        params = ",\n        ".join(sig)
+        lines.append(f"    def __init__(\n        {params},\n    ):")
         lines.append("        if mv_props is None:")
         lines.append("            mv_props = {}")
         for py, js in py_to_js.items():
