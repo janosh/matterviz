@@ -224,9 +224,11 @@ const MatterVizInner = (props) => {
     )
     const resolved_props = deep_merge(converted_props, callbacksRef.current)
 
-    // Set as properties (not attributes) so we can pass objects + functions.
-    element.component = component
+    // Set props BEFORE component to avoid race condition where Svelte's reactivity
+    // triggers a re-render when component changes but props are still empty.
+    // This ensures the component receives its props atomically.
     element.props = resolved_props
+    element.component = component
 
     // Mark as loaded after brief delay. Svelte custom elements don't expose
     // lifecycle events, so 100ms is a reasonable UX approximation.

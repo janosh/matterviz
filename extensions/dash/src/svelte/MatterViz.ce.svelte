@@ -11,16 +11,16 @@
 />
 
 <script>
-  import { listComponentKeys, resolveMattervizComponent } from './resolver'
+  import { list_component_keys, resolve_matterviz_component } from './resolver'
 
   // Custom element props (component identifier + props bag)
   let { component = `Structure`, props = {} } = $props()
 
-  let resolved = $derived(resolveMattervizComponent(component))
+  let resolved = $derived(resolve_matterviz_component(component))
 
   // Expose discovered components for easy debugging in the browser console.
   if (typeof globalThis !== `undefined` && !globalThis.__matterviz_components) {
-    globalThis.__matterviz_components = listComponentKeys()
+    globalThis.__matterviz_components = list_component_keys()
   }
 </script>
 
