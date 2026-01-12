@@ -31,26 +31,10 @@ from .typed import (  # noqa: F401
     XrdPlot,
 )
 
-_namespace = "matterviz_dash_components"
-
-# Asset definitions (served via Dash component suites)
-# Vite bundles everything into a single UMD file plus assets.
-_js_dist = [
-    {
-        "relative_package_path": "matterviz_dash_components.min.js",
-        "namespace": _namespace,
-    },
-]
-
-# Note: WASM files are loaded dynamically by the JS bundle when needed,
-# not as script tags. They should still be included in the package data.
-
-_css_dist = [
-    {
-        "relative_package_path": "matterviz_dash_components.css",
-        "namespace": _namespace,
-    }
-]
+# Re-export asset definitions from MatterViz class for package-level discovery.
+# Note: WASM files are loaded dynamically by the JS bundle when needed.
+_js_dist = MatterViz._js_dist
+_css_dist = MatterViz._css_dist
 
 __version__ = "0.0.2"
 
@@ -96,24 +80,3 @@ def component(
         event_props=event_props,
         last_event=last_event,
     )
-
-
-def __getattr__(name: str):
-    """Fallback factory for arbitrary MatterViz components.
-
-    Returns a factory that calls component(name, **kwargs).
-
-    Example:
-        import matterviz_dash_components as mvc
-        mvc.MyNewComponent(foo=123)  # -> MatterViz(component="MyNewComponent", ...)
-    """
-    if name and name[0].isupper():
-
-        def _factory(**kwargs) -> MatterViz:
-            return component(name, **kwargs)
-
-        _factory.__name__ = name
-        _factory.__doc__ = f"Factory for MatterViz component '{name}'."
-        return _factory
-
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -6,7 +6,7 @@
 
 from dash.development.base_component import Component, _explicitize_args
 
-# Import shared asset definitions from package __init__ to avoid duplication
+_NAMESPACE = "matterviz_dash_components"
 
 
 class MatterViz(Component):
@@ -32,8 +32,22 @@ class MatterViz(Component):
     _children_props: list[str] = []
     _base_nodes: list[str] = []
 
-    _namespace = "matterviz_dash_components"
+    _namespace = _NAMESPACE
     _type = "MatterViz"
+
+    # Asset definitions - required for Dash to serve JS/CSS bundles
+    _js_dist = [
+        {
+            "relative_package_path": "matterviz_dash_components.min.js",
+            "namespace": _NAMESPACE,
+        },
+    ]
+    _css_dist = [
+        {
+            "relative_package_path": "matterviz_dash_components.css",
+            "namespace": _NAMESPACE,
+        },
+    ]
 
     _valid_wildcard_attributes: list[str] = []
 

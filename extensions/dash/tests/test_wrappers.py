@@ -85,49 +85,6 @@ class TestComponentInstantiation:
         assert comp.set_props == ["hidden_elements", "hidden_prop_vals"]
 
 
-class TestDynamicFactory:
-    """Tests for the __getattr__ dynamic factory."""
-
-    def test_dynamic_factory_creates_component(self) -> None:
-        """Dynamic factory creates a MatterViz component."""
-        comp = mvc.SomeNewComponent(id="dyn-1", foo="bar", baz=123)
-        assert isinstance(comp, MatterViz)
-        assert comp.component == "SomeNewComponent"
-        assert comp.mv_props == {"foo": "bar", "baz": 123}
-
-    def test_dynamic_factory_supports_id(self) -> None:
-        """Dynamic factory supports id parameter."""
-        comp = mvc.AnotherComponent(id="my-id", value=42)
-        assert comp.id == "my-id"
-        assert comp.mv_props == {"value": 42}
-
-    def test_dynamic_factory_supports_style(self) -> None:
-        """Dynamic factory supports style and className."""
-        comp = mvc.StyledComponent(
-            id="styled-1",
-            className="my-class",
-            style={"height": "100%"},
-            prop1="value",
-        )
-        assert comp.className == "my-class"
-        assert comp.style == {"height": "100%"}
-        assert comp.mv_props == {"prop1": "value"}
-
-    def test_dynamic_factory_supports_event_props(self) -> None:
-        """Dynamic factory supports event_props."""
-        comp = mvc.EventComponent(
-            id="event-1",
-            event_props=["on_click"],
-            data={"key": "value"},
-        )
-        assert comp.event_props == ["on_click"]
-
-    def test_lowercase_attribute_raises(self) -> None:
-        """Lowercase attributes raise AttributeError."""
-        with pytest.raises(AttributeError):
-            _ = mvc.lowercase_thing
-
-
 class TestComponentHelper:
     """Tests for the component() helper function."""
 
@@ -215,12 +172,8 @@ class TestEdgeCases:
 
     def test_minimal_instantiation(self) -> None:
         """Components with minimal args (just id) should work."""
-        # Via component() helper
-        comp1 = mvc.component("Test", id="test-id")
-        assert comp1.component == "Test" and comp1.mv_props == {}
-        # Via dynamic factory
-        comp2 = mvc.EmptyComponent(id="empty")
-        assert comp2.component == "EmptyComponent" and comp2.mv_props == {}
+        comp = mvc.component("Test", id="test-id")
+        assert comp.component == "Test" and comp.mv_props == {}
 
 
 class TestPropValidation:
