@@ -164,15 +164,11 @@ class TestModuleExports:
 class TestEdgeCases:
     """Test edge cases and error handling."""
 
-    def test_empty_mv_props(self) -> None:
-        """Component with empty mv_props should work."""
-        comp = MatterViz(id="test", component="Structure", mv_props={})
-        assert comp.mv_props == {}
-
-    def test_none_mv_props(self) -> None:
-        """Component with None mv_props should work."""
-        comp = MatterViz(id="test", component="Structure", mv_props=None)
-        assert comp.mv_props is None
+    @pytest.mark.parametrize("mv_props", [{}, None])
+    def test_empty_or_none_mv_props(self, mv_props) -> None:
+        """Component with empty or None mv_props should work."""
+        comp = MatterViz(id="test", component="Structure", mv_props=mv_props)
+        assert comp.mv_props == mv_props
 
     def test_deeply_nested_props(self) -> None:
         """Deeply nested mv_props should be preserved."""
@@ -193,21 +189,18 @@ class TestEdgeCases:
         assert comp.mv_props["label"] == "H₂O"
         assert comp.mv_props["symbol"] == "α-Fe"
 
-    def test_empty_set_props_list(self) -> None:
-        """Empty set_props list should work."""
-        comp = MatterViz(id="test", component="Structure", set_props=[])
-        assert comp.set_props == []
-
-    def test_empty_float32_props_list(self) -> None:
-        """Empty float32_props list should work."""
-        comp = MatterViz(id="test", component="Structure", float32_props=[])
-        assert comp.float32_props == []
-
-    def test_multiple_event_props(self) -> None:
-        """Multiple event_props should all be stored."""
-        events = ["on_click", "on_hover", "on_load", "on_error"]
-        comp = MatterViz(id="test", component="Structure", event_props=events)
-        assert comp.event_props == events
+    @pytest.mark.parametrize(
+        "prop_name,prop_value",
+        [
+            ("set_props", []),
+            ("float32_props", []),
+            ("event_props", ["on_click", "on_hover", "on_load", "on_error"]),
+        ],
+    )
+    def test_list_props_stored(self, prop_name: str, prop_value: list) -> None:
+        """List props (empty or populated) should be stored correctly."""
+        comp = MatterViz(id="test", component="Structure", **{prop_name: prop_value})
+        assert getattr(comp, prop_name) == prop_value
 
     def test_last_event_can_be_set(self) -> None:
         """last_event prop should be settable."""
@@ -220,18 +213,14 @@ class TestEdgeCases:
         comp = MatterViz(id="test", component="structure/Structure")
         assert comp.component == "structure/Structure"
 
-    def test_component_helper_with_no_extra_props(self) -> None:
-        """component() helper with just name and id should work."""
-        comp = mvc.component("Test", id="test-id")
-        assert comp.component == "Test"
-        assert comp.id == "test-id"
-        assert comp.mv_props == {}
-
-    def test_dynamic_factory_with_empty_kwargs(self) -> None:
-        """Dynamic factory with only id should work."""
-        comp = mvc.EmptyComponent(id="empty")
-        assert comp.component == "EmptyComponent"
-        assert comp.mv_props == {}
+    def test_minimal_instantiation(self) -> None:
+        """Components with minimal args (just id) should work."""
+        # Via component() helper
+        comp1 = mvc.component("Test", id="test-id")
+        assert comp1.component == "Test" and comp1.mv_props == {}
+        # Via dynamic factory
+        comp2 = mvc.EmptyComponent(id="empty")
+        assert comp2.component == "EmptyComponent" and comp2.mv_props == {}
 
 
 class TestPropValidation:

@@ -77,62 +77,34 @@ class TestSanitizeForJsonEdgeCases:
         result = run_js_test("return sanitizeForJson({a: 1, b: undefined, c: 3})")
         assert result == {"a": 1, "c": 3}
 
-    def test_infinity_becomes_null(self) -> None:
-        """Infinity should become null."""
-        result = run_js_test("return sanitizeForJson(Infinity)")
-        assert result is None
+    @pytest.mark.parametrize("js_val", ["Infinity", "NaN"])
+    def test_non_finite_becomes_null(self, js_val: str) -> None:
+        """Infinity and NaN should become null."""
+        assert run_js_test(f"return sanitizeForJson({js_val})") is None
 
-    def test_nan_becomes_null(self) -> None:
-        """NaN should become null."""
-        result = run_js_test("return sanitizeForJson(NaN)")
-        assert result is None
-
-    def test_bigint_becomes_string(self) -> None:
-        """BigInt should become string."""
-        result = run_js_test("return sanitizeForJson(BigInt(9007199254740991))")
-        assert result == "9007199254740991"
+    @pytest.mark.parametrize(
+        "js_expr,expected",
+        [
+            ("BigInt(9007199254740991)", "9007199254740991"),
+            ('new Date("2024-01-15T12:00:00Z")', "2024-01-15T12:00:00.000Z"),
+            ("new Set([1, 2, 3])", [1, 2, 3]),
+            ('new Map([["a", 1], ["b", 2]])', [["a", 1], ["b", 2]]),
+            ("new Uint8Array([255, 128, 0])", [255, 128, 0]),
+        ],
+    )
+    def test_special_types(self, js_expr: str, expected) -> None:
+        """Special JS types are converted correctly."""
+        assert run_js_test(f"return sanitizeForJson({js_expr})") == expected
 
     def test_function_excluded(self) -> None:
-        """Functions should be excluded (undefined)."""
-        result = run_js_test(
-            "return sanitizeForJson({fn: () => {}, val: 1})"
-        )
+        """Functions should be excluded from objects."""
+        result = run_js_test("return sanitizeForJson({fn: () => {}, val: 1})")
         assert result == {"val": 1}
 
-    def test_date_to_iso_string(self) -> None:
-        """Date should become ISO string."""
-        result = run_js_test(
-            'return sanitizeForJson(new Date("2024-01-15T12:00:00Z"))'
-        )
-        assert result == "2024-01-15T12:00:00.000Z"
-
-    def test_set_to_array(self) -> None:
-        """Set should become array."""
-        result = run_js_test("return sanitizeForJson(new Set([1, 2, 3]))")
-        assert result == [1, 2, 3]
-
-    def test_map_to_entries(self) -> None:
-        """Map should become array of entries."""
-        result = run_js_test(
-            'return sanitizeForJson(new Map([["a", 1], ["b", 2]]))'
-        )
-        assert result == [["a", 1], ["b", 2]]
-
-    def test_typed_array_to_array(self) -> None:
-        """TypedArrays should become regular arrays."""
-        result = run_js_test(
-            "return sanitizeForJson(new Float32Array([1.5, 2.5, 3.5]))"
-        )
-        # Float32Array may have precision differences
-        assert len(result) == 3
-        assert abs(result[0] - 1.5) < 0.01
-
-    def test_uint8array_to_array(self) -> None:
-        """Uint8Array should become regular array."""
-        result = run_js_test(
-            "return sanitizeForJson(new Uint8Array([255, 128, 0]))"
-        )
-        assert result == [255, 128, 0]
+    def test_float32_array_precision(self) -> None:
+        """Float32Array converts with acceptable precision."""
+        result = run_js_test("return sanitizeForJson(new Float32Array([1.5, 2.5, 3.5]))")
+        assert len(result) == 3 and abs(result[0] - 1.5) < 0.01
 
     def test_error_to_object(self) -> None:
         """Error should become object with name, message, stack."""
@@ -168,21 +140,10 @@ class TestSanitizeForJsonEdgeCases:
 class TestConvertDashPropsToMatterviz:
     """Test edge cases for convertDashPropsToMatterviz function."""
 
-    def test_empty_props(self) -> None:
-        """Empty props should return empty object."""
-        result = run_js_test("return convertDashPropsToMatterviz({}, [], [])")
-        assert result == {}
-
-    def test_null_props(self) -> None:
-        """Null props should return empty object."""
-        result = run_js_test("return convertDashPropsToMatterviz(null, [], [])")
-        assert result == {}
-
-    def test_undefined_props(self) -> None:
-        """Undefined props should return empty object."""
-        result = run_js_test(
-            "return convertDashPropsToMatterviz(undefined, [], [])"
-        )
+    @pytest.mark.parametrize("props", ["{}", "null", "undefined"])
+    def test_empty_null_undefined_props(self, props: str) -> None:
+        """Empty/null/undefined props should return empty object."""
+        result = run_js_test(f"return convertDashPropsToMatterviz({props}, [], [])")
         assert result == {}
 
     def test_set_props_conversion(self) -> None:
