@@ -85,19 +85,6 @@ class TestComponentInstantiation:
         assert comp.set_props == ["hidden_elements", "hidden_prop_vals"]
 
 
-class TestComponentHelper:
-    """Tests for the component() helper function."""
-
-    def test_component_helper(self) -> None:
-        """component() helper creates MatterViz with given name."""
-        comp = mvc.component("MyComponent", id="helper-1", foo=1, bar=2)
-        assert isinstance(comp, MatterViz)
-        assert comp.id == "helper-1"
-        assert comp.component == "MyComponent"
-        assert comp.mv_props["foo"] == 1
-        assert comp.mv_props["bar"] == 2
-
-
 class TestModuleExports:
     """Tests for module-level exports."""
 
@@ -172,8 +159,8 @@ class TestEdgeCases:
 
     def test_minimal_instantiation(self) -> None:
         """Components with minimal args (just id) should work."""
-        comp = mvc.component("Test", id="test-id")
-        assert comp.component == "Test" and comp.mv_props == {}
+        comp = MatterViz(component="Test", id="test-id")
+        assert comp.component == "Test"
 
 
 class TestPropValidation:
