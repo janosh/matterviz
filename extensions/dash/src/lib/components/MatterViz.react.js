@@ -7,27 +7,23 @@ function sanitizeForJson(value) {
   const seen = new WeakSet()
   const replacer = (_key, val) => {
     if (val === null || val === undefined) return val
+    const { name, message, stack, size, type, lastModified } = val
     if (typeof val === `bigint`) return val.toString()
     if (typeof val === `function`) return undefined
     if (typeof val === `number` && !Number.isFinite(val)) return null
     if (val instanceof Date) return val.toISOString()
     if (val instanceof Error) {
-      return { name: val.name, message: val.message, stack: val.stack }
+      return { name, message, stack }
     }
     if (val instanceof Set) return [...val]
     if (val instanceof Map) return [...val.entries()]
     if (ArrayBuffer.isView(val)) return [...val]
     if (val instanceof ArrayBuffer) return [...new Uint8Array(val)]
     if (typeof File !== `undefined` && val instanceof File) {
-      return {
-        name: val.name,
-        size: val.size,
-        type: val.type,
-        lastModified: val.lastModified,
-      }
+      return { name, size, type, lastModified }
     }
     if (typeof Blob !== `undefined` && val instanceof Blob) {
-      return { size: val.size, type: val.type }
+      return { size, type }
     }
     // Circular reference detection
     if (typeof val === `object`) {

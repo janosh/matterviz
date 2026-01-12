@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
 import matterviz_dash_components as mvc
+import pytest
 from matterviz_dash_components import MatterViz
 
 # Note: We don't import typed wrappers (Structure, PeriodicTable, Trajectory) directly
@@ -58,8 +57,14 @@ class TestComponentInstantiation:
         "component,mv_props",
         [
             ("structure/Structure", {"structure": {"sites": []}, "height": 500}),
-            ("periodic-table/PeriodicTable", {"show_color_bar": True, "heatmap_values": [1, 2]}),
-            ("trajectory/Trajectory", {"fps": 30, "ELEM_PROPERTY_LABELS": {"energy": "E"}}),
+            (
+                "periodic-table/PeriodicTable",
+                {"show_color_bar": True, "heatmap_values": [1, 2]},
+            ),
+            (
+                "trajectory/Trajectory",
+                {"fps": 30, "ELEM_PROPERTY_LABELS": {"energy": "E"}},
+            ),
             ("brillouin/BrillouinZone", {"structure": {"sites": []}}),
             ("convex-hull/ConvexHull2D", {"entries": [], "height": 320}),
         ],
@@ -240,9 +245,7 @@ class TestPropValidation:
             ("event_props", ["on_a", "on_b"]),
         ],
     )
-    def test_list_props_accept_lists(
-        self, prop_name: str, prop_value: list
-    ) -> None:
+    def test_list_props_accept_lists(self, prop_name: str, prop_value: list) -> None:
         """List props should accept list values."""
         kwargs = {"id": "test", "component": "Test", prop_name: prop_value}
         comp = MatterViz(**kwargs)
