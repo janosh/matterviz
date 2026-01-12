@@ -851,9 +851,16 @@ def create_app() -> dash.Dash:
                 --mv-surface: #f8f9fa;
                 --mv-nav-bg: #f5f5f5;
                 --mv-nav-link: #1a56db;
-                /* Plot components use these variables */
-                --text-color: #222;
-                --border-color: #ccc;
+                /* MatterViz component CSS variables (must match themes.js) */
+                --text-color: #374151;
+                --border-color: #d1d5db;
+                --page-bg: #f1f3f5;
+                --pane-bg: rgb(229, 231, 235);
+                --pane-border: 1px solid rgba(0, 0, 0, 0.15);
+                --struct-bg: rgba(0, 0, 0, 0.02);
+                --accent-color: #4f46e5;
+                --btn-bg: rgba(0, 0, 0, 0.12);
+                --btn-bg-hover: rgba(0, 0, 0, 0.25);
             }
             [data-theme="dark"] {
                 color-scheme: dark;
@@ -864,9 +871,16 @@ def create_app() -> dash.Dash:
                 --mv-surface: #252540;
                 --mv-nav-bg: #2d2d44;
                 --mv-nav-link: #6ea8fe;
-                /* Plot components use these variables */
-                --text-color: #e8e8e8;
-                --border-color: #555;
+                /* MatterViz component CSS variables (must match themes.js) */
+                --text-color: #eee;
+                --border-color: #404040;
+                --page-bg: #18171c;
+                --pane-bg: rgb(28, 29, 33);
+                --pane-border: 1px solid rgba(255, 255, 255, 0.15);
+                --struct-bg: rgba(255, 255, 255, 0.07);
+                --accent-color: cornflowerblue;
+                --btn-bg: rgba(255, 255, 255, 0.3);
+                --btn-bg-hover: rgba(255, 255, 255, 0.2);
             }
             html, body {
                 background: var(--mv-bg);
