@@ -54,11 +54,6 @@ class Prop:
     kind: str  # "value" | "callback" | "snippet" | "dom"
 
 
-# ----------------------------
-# Parsing utilities
-# ----------------------------
-
-
 class BracketTracker:
     """Track nesting depth for (), [], {}, <> and string quotes."""
 
@@ -69,14 +64,19 @@ class BracketTracker:
         self.in_bt = self.in_sq = self.in_dq = False
 
     def update(self, ch: str, prev_ch: str = "") -> bool:
-        """Update state for character. Returns True if inside a string."""
-        if ch == "`" and not self.in_sq and not self.in_dq:
+        """Update state for character. Returns True if inside a string.
+
+        Handles escaped quotes (e.g., \\", \\', \\`) by checking if the previous
+        character is a backslash.
+        """
+        is_escaped = prev_ch == "\\"
+        if ch == "`" and not self.in_sq and not self.in_dq and not is_escaped:
             self.in_bt = not self.in_bt
             return True
-        if ch == "'" and not self.in_bt and not self.in_dq:
+        if ch == "'" and not self.in_bt and not self.in_dq and not is_escaped:
             self.in_sq = not self.in_sq
             return True
-        if ch == '"' and not self.in_bt and not self.in_sq:
+        if ch == '"' and not self.in_bt and not self.in_sq and not is_escaped:
             self.in_dq = not self.in_dq
             return True
         if self.in_string:
@@ -686,11 +686,12 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
             lines.append("        if float32_props is None:")
             lines.append(f"            float32_props = {default_float32_props!r}")
         lines.append("")
-        lines.append(
-            f"        super().__init__(id=id, component={key!r}, mv_props=mv_props,\n"
-            "            set_props=set_props, float32_props=float32_props, event_props=event_props,\n"
-            "            last_event=last_event, className=className, style=style, **kwargs)"
-        )
+        lines.append("        super().__init__(")
+        lines.append(f"            id=id, component={key!r}, mv_props=mv_props,")
+        lines.append("            set_props=set_props, float32_props=float32_props,")
+        lines.append("            event_props=event_props, last_event=last_event,")
+        lines.append("            className=className, style=style, **kwargs,")
+        lines.append("        )")
         lines.append("")
 
     out_path.write_text("\n".join(lines), encoding="utf-8")
