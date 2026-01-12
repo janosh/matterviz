@@ -1,100 +1,43 @@
 import PropTypes from 'prop-types'
 import React, { Component, useEffect, useMemo, useRef, useState } from 'react'
 
-function isPlainObject(value) {
-  return (
-    typeof value === `object` &&
-    value !== null &&
-    (value.constructor === Object || Object.getPrototypeOf(value) === null)
-  )
-}
-
-// Convert values that Dash can't JSON-serialize (typed arrays, Set, Map, Error, File, etc.).
-// This is used for event payloads sent back to Python.
-function sanitizeForJson(value, seen = new WeakSet(), depth = 0, maxDepth = 6) {
-  if (depth > maxDepth) return null
-
-  if (value === null || value === undefined) return value
-
-  const t = typeof value
-  if (t === `string` || t === `boolean`) return value
-  if (t === `number`) return Number.isFinite(value) ? value : null
-  if (t === `bigint`) return value.toString()
-  if (t === `function`) return undefined
-
-  if (value instanceof Date) return value.toISOString()
-
-  // Avoid cycles
-  if (t === `object`) {
-    if (seen.has(value)) return `[Circular]`
-    seen.add(value)
-  }
-
-  // Typed arrays + DataView
-  if (ArrayBuffer.isView(value)) {
-    try {
-      return Array.from(value)
-    } catch {
-      return null
+// Convert non-JSON-serializable values for Dash event payloads.
+// Uses JSON.stringify with a replacer to handle special types.
+function sanitizeForJson(value) {
+  const seen = new WeakSet()
+  const replacer = (_key, val) => {
+    if (val === null || val === undefined) return val
+    if (typeof val === `bigint`) return val.toString()
+    if (typeof val === `function`) return undefined
+    if (typeof val === `number` && !Number.isFinite(val)) return null
+    if (val instanceof Date) return val.toISOString()
+    if (val instanceof Error) {
+      return { name: val.name, message: val.message, stack: val.stack }
     }
-  }
-
-  if (value instanceof ArrayBuffer) {
-    return Array.from(new Uint8Array(value))
-  }
-
-  if (value instanceof Set) {
-    return Array.from(value).map((v) => sanitizeForJson(v, seen, depth + 1, maxDepth))
-  }
-
-  if (value instanceof Map) {
-    return Array.from(value.entries()).map(([k, v]) => [
-      sanitizeForJson(k, seen, depth + 1, maxDepth),
-      sanitizeForJson(v, seen, depth + 1, maxDepth),
-    ])
-  }
-
-  if (value instanceof Error) {
-    return {
-      name: value.name,
-      message: value.message,
-      stack: value.stack,
+    if (val instanceof Set) return [...val]
+    if (val instanceof Map) return [...val.entries()]
+    if (ArrayBuffer.isView(val)) return [...val]
+    if (val instanceof ArrayBuffer) return [...new Uint8Array(val)]
+    if (typeof File !== `undefined` && val instanceof File) {
+      return {
+        name: val.name,
+        size: val.size,
+        type: val.type,
+        lastModified: val.lastModified,
+      }
     }
-  }
-
-  // Browser File/Blob
-  if (typeof File !== `undefined` && value instanceof File) {
-    return {
-      name: value.name,
-      size: value.size,
-      type: value.type,
-      lastModified: value.lastModified,
+    if (typeof Blob !== `undefined` && val instanceof Blob) {
+      return { size: val.size, type: val.type }
     }
-  }
-
-  if (typeof Blob !== `undefined` && value instanceof Blob) {
-    return {
-      size: value.size,
-      type: value.type,
+    // Circular reference detection
+    if (typeof val === `object`) {
+      if (seen.has(val)) return `[Circular]`
+      seen.add(val)
     }
+    return val
   }
-
-  if (Array.isArray(value)) {
-    return value.map((v) => sanitizeForJson(v, seen, depth + 1, maxDepth))
-  }
-
-  if (isPlainObject(value)) {
-    const out = {}
-    for (const [k, v] of Object.entries(value)) {
-      const sv = sanitizeForJson(v, seen, depth + 1, maxDepth)
-      if (sv !== undefined) out[k] = sv
-    }
-    return out
-  }
-
-  // Fallback: best-effort stringify
   try {
-    return JSON.parse(JSON.stringify(value))
+    return JSON.parse(JSON.stringify(value, replacer))
   } catch {
     return String(value)
   }
