@@ -3,27 +3,31 @@ import React, { Component, useEffect, useMemo, useRef, useState } from 'react'
 
 // Convert non-JSON-serializable values for Dash event payloads.
 // Uses JSON.stringify with a replacer to handle special types.
-function sanitizeForJson(value) {
+function sanitize_for_json(value) {
   const seen = new WeakSet()
   const replacer = (_key, val) => {
     if (val === null || val === undefined) return val
-    const { name, message, stack, size, type, lastModified } = val
     if (typeof val === `bigint`) return val.toString()
     if (typeof val === `function`) return undefined
     if (typeof val === `number` && !Number.isFinite(val)) return null
     if (val instanceof Date) return val.toISOString()
     if (val instanceof Error) {
-      return { name, message, stack }
+      return { name: val.name, message: val.message, stack: val.stack }
     }
     if (val instanceof Set) return [...val]
     if (val instanceof Map) return [...val.entries()]
     if (ArrayBuffer.isView(val)) return [...val]
     if (val instanceof ArrayBuffer) return [...new Uint8Array(val)]
     if (typeof File !== `undefined` && val instanceof File) {
-      return { name, size, type, lastModified }
+      return {
+        name: val.name,
+        size: val.size,
+        type: val.type,
+        lastModified: val.lastModified,
+      }
     }
     if (typeof Blob !== `undefined` && val instanceof Blob) {
-      return { size, type }
+      return { size: val.size, type: val.type }
     }
     // Circular reference detection
     if (typeof val === `object`) {
@@ -39,24 +43,49 @@ function sanitizeForJson(value) {
   }
 }
 
-function convertDashPropsToMatterviz(mvProps, setPropsList, float32PropsList) {
-  if (!mvProps || typeof mvProps !== `object`) return {}
+function convert_dash_props_to_matterviz(mv_props, set_props_list, float32_props_list) {
+  if (!mv_props || typeof mv_props !== `object`) return {}
 
-  const out = { ...mvProps }
+  const out = { ...mv_props }
 
-  for (const key of setPropsList || []) {
+  for (const key of set_props_list || []) {
     if (Array.isArray(out[key])) {
       out[key] = new Set(out[key])
     }
   }
 
-  for (const key of float32PropsList || []) {
+  for (const key of float32_props_list || []) {
     if (Array.isArray(out[key])) {
       out[key] = new Float32Array(out[key])
     }
   }
 
   return out
+}
+
+// Deep merge two objects. Used to merge nested event callbacks with mv_props.
+// Callbacks (functions) always override, objects are recursively merged.
+function deep_merge(target, source) {
+  if (!source || typeof source !== `object`) return target
+  const result = { ...target }
+  for (const key of Object.keys(source)) {
+    const src_val = source[key]
+    const tgt_val = result[key]
+    if (
+      src_val &&
+      typeof src_val === `object` &&
+      !Array.isArray(src_val) &&
+      typeof src_val !== `function` &&
+      tgt_val &&
+      typeof tgt_val === `object` &&
+      !Array.isArray(tgt_val)
+    ) {
+      result[key] = deep_merge(tgt_val, src_val)
+    } else {
+      result[key] = src_val
+    }
+  }
+  return result
 }
 
 // Error boundary component to catch and display errors from MatterViz components.
@@ -101,7 +130,8 @@ class MatterVizErrorBoundary extends Component {
         React.createElement(
           `button`,
           {
-            onClick: () => this.setState({ hasError: false, error: null }),
+            onClick: () =>
+              this.setState({ hasError: false, error: null, errorInfo: null }),
             style: {
               padding: `6px 12px`,
               border: `1px solid #dc3545`,
@@ -143,42 +173,63 @@ const MatterVizInner = (props) => {
   const [isLoading, setIsLoading] = useState(true)
   const callbacksRef = useRef({})
 
-  // Build event callbacks (stable references via ref)
+  // Build event callbacks during render and store in ref for stability.
+  // This pattern is intentional: setProps is stable from Dash, and we avoid
+  // the overhead of useCallback for each dynamic callback.
+  // Clear previous callbacks to avoid stale handlers when event_props changes.
+  // Supports dot notation for nested props (e.g., "tile_props.onclick").
+  callbacksRef.current = {}
   if (setProps) {
     for (const propName of event_props || []) {
-      callbacksRef.current[propName] = (data) => {
+      const callback = (data) => {
         setProps({
           last_event: {
             prop: propName,
-            data: sanitizeForJson(data),
+            data: sanitize_for_json(data),
             timestamp: Date.now(),
           },
         })
+      }
+      // Handle dot notation for nested props (e.g., "tile_props.onclick")
+      if (propName.includes(`.`)) {
+        const parts = propName.split(`.`)
+        let target = callbacksRef.current
+        for (let idx = 0; idx < parts.length - 1; idx++) {
+          const part = parts[idx]
+          if (!target[part]) target[part] = {}
+          target = target[part]
+        }
+        target[parts[parts.length - 1]] = callback
+      } else {
+        callbacksRef.current[propName] = callback
       }
     }
   }
 
   // Serialize props for stable dependency comparison (Dash re-creates objects each render)
   const propsKey = useMemo(
-    () => JSON.stringify([mv_props, set_props, float32_props]),
-    [mv_props, set_props, float32_props],
+    () => JSON.stringify([mv_props, set_props, float32_props, event_props]),
+    [mv_props, set_props, float32_props, event_props],
   )
 
   useEffect(() => {
     const element = ref.current
     if (!element) return
 
-    // Convert and merge with callbacks
-    const resolvedProps = {
-      ...convertDashPropsToMatterviz(mv_props, set_props, float32_props),
-      ...callbacksRef.current,
-    }
+    // Convert and deep-merge with callbacks (supports nested event props)
+    const converted_props = convert_dash_props_to_matterviz(
+      mv_props,
+      set_props,
+      float32_props,
+    )
+    const resolved_props = deep_merge(converted_props, callbacksRef.current)
 
     // Set as properties (not attributes) so we can pass objects + functions.
     element.component = component
-    element.props = resolvedProps
+    element.props = resolved_props
 
-    // Mark as loaded after a short delay to allow the component to render
+    // Mark as loaded after brief delay. Svelte custom elements don't expose
+    // lifecycle events, so 100ms is a reasonable UX approximation.
     const timer = setTimeout(() => setIsLoading(false), 100)
 
     // Cleanup: clear props to allow garbage collection

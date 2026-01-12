@@ -646,19 +646,27 @@ def find_component_dts(dist_dir: Path, key: str) -> Path:
     return matches[0]
 
 
-def _py_type_hint(ts_type: str) -> str:
-    """Conservative TS->Python type hint mapper (best-effort)."""
+def _py_type_hint(ts_type: str, prop_name: str = "") -> str:
+    """Conservative TS->Python type hint mapper (best-effort).
+
+    Args:
+        ts_type: TypeScript type string
+        prop_name: Optional property name to infer more specific types
+    """
     t = ts_type.strip()
 
     if t == "string":
         return "str"
     if t == "number":
+        # Infer int for index-like properties
+        if any(kw in prop_name for kw in ("_idx", "_index", "sites", "_count")):
+            return "int"
         return "float"
     if t == "boolean":
         return "bool"
     if t.endswith("[]"):
         inner = t[:-2].strip()
-        inner_py = _py_type_hint(inner)
+        inner_py = _py_type_hint(inner, prop_name)
         return f"list[{inner_py}]" if inner_py != "Any" else "list"
     if "Record" in t or "Partial" in t or "ComponentProps" in t:
         return "dict"
@@ -823,7 +831,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
         sig_parts: list[str] = ["self", "id=None"]
         for py, js in py_to_js.items():
             p = next(pp for pp in value_props if pp.js_name == js)
-            hint = _py_type_hint(p.ts_type)
+            hint = _py_type_hint(p.ts_type, py)
             sig_parts.append(f"{py}: {hint} | None = None")
 
         sig_parts += [
@@ -836,14 +844,14 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
             "style: dict | None = None",
             "**kwargs",
         ]
-        lines.append(f"    def __init__({', '.join(sig_parts)}):")
-        lines.append("        _mv: dict = {}")
+        # Format signature with one parameter per line for readability
+        sig_joined = ",\n        ".join(sig_parts)
+        lines.append(f"    def __init__(\n        {sig_joined},\n    ):")
+        lines.append("        if mv_props is None:")
+        lines.append("            mv_props = {}")
         for py, js in py_to_js.items():
             lines.append(f"        if {py} is not None:")
-            lines.append(f"            _mv[{js!r}] = {py}")
-        lines.append("        if mv_props:")
-        lines.append("            _mv.update(mv_props)")
-        lines.append("")
+            lines.append(f"            mv_props[{js!r}] = {py}")
         if default_set_props:
             lines.append("        if set_props is None:")
             lines.append(f"            set_props = {default_set_props!r}")
@@ -855,7 +863,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
             "        super().__init__(\n"
             "            id=id,\n"
             f"            component={key!r},\n"
-            "            mv_props=_mv,\n"
+            "            mv_props=mv_props,\n"
             "            set_props=set_props,\n"
             "            float32_props=float32_props,\n"
             "            event_props=event_props,\n"

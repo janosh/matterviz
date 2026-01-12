@@ -82,6 +82,18 @@ doc = "Density of states plot (electronic or phonon)."
 [components.ScatterPlot]
 key = "plot/ScatterPlot"
 doc = "General-purpose scatter plot with customizable axes and tooltips."
+# Generic component with complex props - add key ones manually
+[components.ScatterPlot.extra_props]
+series = "DataSeries[]"
+x_axis = "{ label?: string; range?: [number | null, number | null]; scale_type?: 'linear' | 'log'; format?: string; ticks?: number | string }?"
+y_axis = "{ label?: string; range?: [number | null, number | null]; scale_type?: 'linear' | 'log'; format?: string; ticks?: number | string }?"
+height = "number?"
+width = "number?"
+legend = "LegendConfig | null?"
+color_scale = "{ type?: ScaleType; scheme?: string; value_range?: [number, number] } | string?"
+size_scale = "{ type?: ScaleType; radius_range?: [number, number]; value_range?: [number, number] }?"
+on_point_click = "((data: ScatterHandlerEvent) => void)?"
+on_point_hover = "((data: ScatterHandlerEvent | null) => void)?"
 
 [components.Histogram]
 key = "plot/Histogram"

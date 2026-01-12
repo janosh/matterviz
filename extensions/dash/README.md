@@ -47,9 +47,9 @@ Then open <http://127.0.0.1:8050> to see a `Structure` and `PeriodicTable` demo.
 ### Built assets for distribution
 
 - The compiled bundle **must** be present in `matterviz_dash_components/` for `pip` installs to work (Dash serves JS/CSS/wasm from the installed package).
-- Commit the emitted assets:
-  - `matterviz_dash_components.min.js`, hashed chunk files, `.css`, `.wasm`, and the LICENSE chunk.
-- Do **not** rely on consumers to run `pnpm run build`; publish wheels/sdists with these assets included.
+- **Do not commit** build artifacts to git. They are generated at release time.
+- The release workflow builds JS assets, then creates a Python wheel/sdist with assets included.
+- For local development, run `pnpm run build` before `pip install -e .`.
 
 ### 2) Python install
 

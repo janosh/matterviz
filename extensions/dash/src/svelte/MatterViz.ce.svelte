@@ -30,15 +30,7 @@
     display: block;
   }
   .mv-error {
-    font-family:
-      ui-monospace,
-      SFMono-Regular,
-      Menlo,
-      Monaco,
-      Consolas,
-      'Liberation Mono',
-      'Courier New',
-      monospace;
+    font-family: monospace;
     font-size: 12px;
     white-space: pre-wrap;
     padding: 0.5rem;

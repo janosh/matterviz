@@ -5,20 +5,21 @@
 // - base name: "Structure"
 // - path key:  "structure/Structure" (recommended if ambiguous)
 
-// Eagerly import all Svelte components from matterviz dist
-// The glob pattern uses the alias defined in vite.config.js
+// Eagerly import all Svelte components from matterviz dist.
+// The import.meta.glob uses a direct node_modules path (leading slash is
+// project-root relative) rather than a Vite alias.
 const modules = import.meta.glob(`/node_modules/matterviz/dist/**/*.svelte`, {
   eager: true,
 })
 
 // Map<string, any> - component key -> Svelte component
-const componentsByKey = new Map()
+const components_by_key = new Map()
 // Map<string, string[]> - base name -> list of matching keys
-const keysByBaseName = new Map()
+const keys_by_base_name = new Map()
 
-for (const [rawPath, mod] of Object.entries(modules)) {
-  // rawPath is like "/node_modules/matterviz/dist/structure/Structure.svelte"
-  const match = rawPath.match(/\/node_modules\/matterviz\/dist\/(.+)\.svelte$/)
+for (const [raw_path, mod] of Object.entries(modules)) {
+  // raw_path is like "/node_modules/matterviz/dist/structure/Structure.svelte"
+  const match = raw_path.match(/\/node_modules\/matterviz\/dist\/(.+)\.svelte$/)
   if (!match) continue
 
   const key = match[1] // e.g. "structure/Structure"
@@ -26,25 +27,25 @@ for (const [rawPath, mod] of Object.entries(modules)) {
 
   if (!comp) continue
 
-  componentsByKey.set(key, comp)
+  components_by_key.set(key, comp)
 
-  const baseName = key.split(`/`).pop()
-  const list = keysByBaseName.get(baseName) || []
+  const base_name = key.split(`/`).pop()
+  const list = keys_by_base_name.get(base_name) || []
   list.push(key)
-  keysByBaseName.set(baseName, list)
+  keys_by_base_name.set(base_name, list)
 }
 
-export function listComponentKeys() {
-  return Array.from(componentsByKey.keys()).sort()
+export function list_component_keys() {
+  return Array.from(components_by_key.keys()).sort()
 }
 
 // Resolve a MatterViz component from an identifier.
 // id: e.g. "Structure" or "structure/Structure"
 // Returns: { component, key, error, matches }
-export function resolveMattervizComponent(id) {
+export function resolve_matterviz_component(id) {
   const err = (error, matches = null) => ({ component: null, key: null, error, matches })
   const ok = (key) => ({
-    component: componentsByKey.get(key),
+    component: components_by_key.get(key),
     key,
     error: null,
     matches: null,
@@ -54,9 +55,9 @@ export function resolveMattervizComponent(id) {
 
   const norm = id.replace(/^\.\//, ``).replace(/\.svelte$/, ``)
 
-  if (componentsByKey.has(norm)) return ok(norm)
+  if (components_by_key.has(norm)) return ok(norm)
 
-  const matches = keysByBaseName.get(norm)
+  const matches = keys_by_base_name.get(norm)
   if (matches?.length === 1) return ok(matches[0])
   if (matches?.length > 1) {
     return err(`Ambiguous component name "${id}". Use a path key instead.`, matches)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import gzip
 import json
-import math
 import os
 from pathlib import Path
 from typing import Any, Callable
@@ -15,9 +14,10 @@ from dash import Input, Output, dcc, html
 
 # Path to the matterviz root directory (scripts/ -> dash/ -> extensions/ -> root)
 # Override with MATTERVIZ_ROOT env var if script is run from a different location
-MATTERVIZ_ROOT = Path(
-    os.environ.get("MATTERVIZ_ROOT") or __file__
-).parent.parent.parent.parent
+_env_root = os.environ.get("MATTERVIZ_ROOT")
+MATTERVIZ_ROOT = (
+    Path(_env_root) if _env_root else Path(__file__).parent.parent.parent.parent
+)
 
 
 def load_json_file(file_path: Path) -> Any:
@@ -78,11 +78,6 @@ def load_structure(name: str) -> dict | None:
     return None
 
 
-def load_convex_hull_entries(system: str) -> list[dict] | None:
-    """Load convex hull entries."""
-    return _load_site_data("convex-hull/quaternaries", system)
-
-
 def load_phonon_bands(name: str) -> dict | None:
     """Load phonon band structure."""
     return _load_site_data("phonons", name)
@@ -126,13 +121,10 @@ def _discover_files(directory: Path, pattern: str = "*.json*") -> list[str]:
 # Dynamically discover available demo files from the site directory
 _SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
 
-AVAILABLE_PHASE_DIAGRAMS = _discover_files(_SITE_DIR / "phase-diagrams" / "binary") or [
-    "Al-Cu"
-]
+# Exclude "A-B" (generic test file) and use real phase diagrams
+_all_phase_diagrams = _discover_files(_SITE_DIR / "phase-diagrams" / "binary")
+AVAILABLE_PHASE_DIAGRAMS = [p for p in _all_phase_diagrams if p != "A-B"] or ["Al-Cu"]
 AVAILABLE_STRUCTURES = _discover_files(_SITE_DIR / "structures") or ["mp-1234"]
-AVAILABLE_CONVEX_HULLS = _discover_files(
-    _SITE_DIR / "convex-hull" / "quaternaries"
-) or ["Li-Co-Ni-O"]
 AVAILABLE_PHONONS = _discover_files(_SITE_DIR / "phonons") or ["mp-2667-Cs1Au1-pbe"]
 AVAILABLE_DOS = _discover_files(_SITE_DIR / "electronic" / "dos") or [
     "dos-spin-polarization-mp-865805"
@@ -151,22 +143,20 @@ _cache: dict[str, Any] = {}
 def get_cached(key: str, loader: Callable[[str], Any]) -> Any:
     """Load data via loader(key), caching the result."""
     if key not in _cache:
-        if data := loader(key):
+        data = loader(key)
+        if data is not None:
             _cache[key] = data
     return _cache.get(key)
 
 
 # Note: WASM MIME type is set in matterviz_dash_components/__init__.py
 
-SILICON_STRUCTURE = {
+# Simple demo structure for Trajectory and BrillouinZone demos
+# (real pymatgen JSON has complex format that requires conversion)
+_DEMO_STRUCTURE: dict = {
     "lattice": {
-        "matrix": [
-            [5.43, 0, 0],
-            [0, 5.43, 0],
-            [0, 0, 5.43],
-        ],
+        "matrix": [[5.43, 0, 0], [0, 5.43, 0], [0, 0, 5.43]],
         "pbc": [True, True, True],
-        "volume": 5.43 * 5.43 * 5.43,
         "a": 5.43,
         "b": 5.43,
         "c": 5.43,
@@ -178,70 +168,64 @@ SILICON_STRUCTURE = {
         {
             "abc": [0, 0, 0],
             "xyz": [0, 0, 0],
-            "species": [{"element": "Si", "occu": 1, "oxidation_state": 0}],
+            "species": [{"element": "Si", "occu": 1}],
             "label": "Si",
-            "properties": {},
         },
         {
             "abc": [0.25, 0.25, 0.25],
             "xyz": [1.3575, 1.3575, 1.3575],
-            "species": [{"element": "Si", "occu": 1, "oxidation_state": 0}],
+            "species": [{"element": "Si", "occu": 1}],
             "label": "Si",
-            "properties": {},
         },
     ],
 }
 
-# K-path for simple cubic BZ: Γ → X → M → Γ → R
-# Reciprocal lattice constant: 2π/5.43 ≈ 1.157 Å⁻¹
-_B = 2 * math.pi / 5.43  # reciprocal lattice constant
-
-
-def _interp(start: list[float], end: list[float], n_pts: int = 10) -> list[list[float]]:
-    """Interpolate n_pts between start and end (excluding end)."""
-    return [
-        [start[j] + (end[j] - start[j]) * idx / n_pts for j in range(3)]
-        for idx in range(n_pts)
-    ]
-
-
-# High-symmetry points in Cartesian reciprocal coords
-_GAMMA = [0, 0, 0]
-_X = [0.5 * _B, 0, 0]
-_M = [0.5 * _B, 0.5 * _B, 0]
-_R = [0.5 * _B, 0.5 * _B, 0.5 * _B]
-
-# Build k-path: Γ → X → M → Γ → R with interpolated points
-KPATH_POINTS = (
-    _interp(_GAMMA, _X, 8)
-    + _interp(_X, _M, 8)
-    + _interp(_M, _GAMMA, 12)
-    + _interp(_GAMMA, _R, 10)
-    + [_R]
-)
-
-KPATH_LABELS = [
-    {"position": _GAMMA, "label": "Γ"},
-    {"position": _X, "label": "X"},
-    {"position": _M, "label": "M"},
-    {"position": _GAMMA, "label": "Γ"},
-    {"position": _R, "label": "R"},
-]
-
-TRAJECTORY_FRAMES = [
-    {
-        "structure": SILICON_STRUCTURE,
-        "step": 0,
-    },
+# Simple 2-frame trajectory for demo
+_DEMO_TRAJECTORY_FRAMES: list[dict] = [
+    {"structure": _DEMO_STRUCTURE, "step": 0},
     {
         "structure": {
-            **SILICON_STRUCTURE,
+            **_DEMO_STRUCTURE,
             "sites": [
-                {**SILICON_STRUCTURE["sites"][0], "abc": [0.02, 0.0, 0.0]},
-                {**SILICON_STRUCTURE["sites"][1], "abc": [0.27, 0.25, 0.25]},
+                {
+                    **_DEMO_STRUCTURE["sites"][0],
+                    "abc": [0.02, 0, 0],
+                    "xyz": [0.11, 0, 0],
+                },
+                {
+                    **_DEMO_STRUCTURE["sites"][1],
+                    "abc": [0.27, 0.25, 0.25],
+                    "xyz": [1.47, 1.36, 1.36],
+                },
             ],
         },
         "step": 1,
+    },
+]
+
+# Simple convex hull entries for 2D binary demo (Li-Co system)
+_DEMO_HULL_ENTRIES: list[dict] = [
+    # Pure elements (endpoints)
+    {"composition": {"Li": 1}, "energy": -1.9, "entry_id": "Li", "e_above_hull": 0},
+    {"composition": {"Co": 1}, "energy": -7.1, "entry_id": "Co", "e_above_hull": 0},
+    # Binary compounds (on the tie-line)
+    {
+        "composition": {"Li": 1, "Co": 1},
+        "energy": -4.6,
+        "entry_id": "LiCo",
+        "e_above_hull": 0,
+    },
+    {
+        "composition": {"Li": 2, "Co": 1},
+        "energy": -3.9,
+        "entry_id": "Li2Co",
+        "e_above_hull": 0.02,
+    },
+    {
+        "composition": {"Li": 1, "Co": 2},
+        "energy": -5.3,
+        "entry_id": "LiCo2",
+        "e_above_hull": 0.01,
     },
 ]
 
@@ -264,10 +248,7 @@ def layout() -> html.Div:
     ]
 
     # Initial data loading (use first discovered file for each category)
-    initial_structure = (
-        get_cached(AVAILABLE_STRUCTURES[0], load_structure) or SILICON_STRUCTURE
-    )
-    initial_hull = get_cached(AVAILABLE_CONVEX_HULLS[0], load_convex_hull_entries) or []
+    initial_structure = get_cached(AVAILABLE_STRUCTURES[0], load_structure)
     initial_phase = get_cached(AVAILABLE_PHASE_DIAGRAMS[0], load_phase_diagram) or {}
     initial_phonon = get_cached(AVAILABLE_PHONONS[0], load_phonon_bands)
     initial_dos = get_cached(AVAILABLE_DOS[0], load_electronic_dos)
@@ -492,15 +473,15 @@ def layout() -> html.Div:
                 ],
                 id="composition-section",
             ),
-            # Trajectory
+            # Trajectory (using simple 2-frame demo)
             html.Div(
                 [
-                    html.H4("Trajectory (2-frame toy)"),
+                    html.H4("Trajectory (2-frame demo)"),
                     mvc.MatterViz(
                         id="trajectory",
                         component="trajectory/Trajectory",
                         mv_props={
-                            "trajectory": {"frames": TRAJECTORY_FRAMES},
+                            "trajectory": {"frames": _DEMO_TRAJECTORY_FRAMES},
                             "show_controls": True,
                             "fps": 1,
                             "height": 360,
@@ -513,18 +494,16 @@ def layout() -> html.Div:
                 ],
                 id="trajectory-section",
             ),
-            # Brillouin Zone
+            # Brillouin Zone (using simple cubic demo structure)
             html.Div(
                 [
-                    html.H4("Brillouin Zone"),
+                    html.H4("Brillouin Zone (Simple Cubic)"),
                     mvc.MatterViz(
                         id="brillouin",
                         component="brillouin/BrillouinZone",
                         mv_props={
-                            "structure": SILICON_STRUCTURE,
+                            "structure": _DEMO_STRUCTURE,
                             "height": 360,
-                            "k_path_points": KPATH_POINTS,
-                            "k_path_labels": KPATH_LABELS,
                         },
                         style={
                             "minHeight": "380px",
@@ -537,36 +516,13 @@ def layout() -> html.Div:
             # Convex Hull
             html.Div(
                 [
-                    html.H4("Convex Hull (Quaternary)"),
-                    html.Div(
-                        [
-                            html.Label(
-                                "Select system: ",
-                                style={"fontWeight": "500", "marginRight": "8px"},
-                            ),
-                            dcc.Dropdown(
-                                id="convex-hull-selector",
-                                options=[
-                                    {"label": s, "value": s}
-                                    for s in AVAILABLE_CONVEX_HULLS
-                                ],
-                                value=AVAILABLE_CONVEX_HULLS[0],
-                                clearable=False,
-                                style={"width": "200px", "display": "inline-block"},
-                            ),
-                        ],
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "marginBottom": "12px",
-                        },
-                    ),
+                    html.H4("Convex Hull (Li-Co demo)"),
                     mvc.MatterViz(
-                        id="convex-4d",
-                        component="convex-hull/ConvexHull4D",
+                        id="convex-2d",
+                        component="convex-hull/ConvexHull2D",
                         mv_props={
-                            "entries": initial_hull,
-                            "height": 450,
+                            "entries": _DEMO_HULL_ENTRIES,
+                            "height": 400,
                         },
                         style={
                             "minHeight": "470px",
@@ -649,7 +605,7 @@ def layout() -> html.Div:
                         id="phonon-bands",
                         component="spectral/Bands",
                         mv_props={
-                            "bands": initial_phonon,
+                            "band_structs": initial_phonon,
                             "height": 400,
                         },
                         style={
@@ -692,7 +648,7 @@ def layout() -> html.Div:
                         id="electronic-dos",
                         component="spectral/Dos",
                         mv_props={
-                            "dos": initial_dos,
+                            "doses": initial_dos,
                             "height": 350,
                         },
                         style={
@@ -735,7 +691,7 @@ def layout() -> html.Div:
                         id="electronic-bands",
                         component="spectral/Bands",
                         mv_props={
-                            "bands": initial_bands,
+                            "band_structs": initial_bands,
                             "height": 400,
                         },
                         style={
@@ -775,54 +731,72 @@ def layout() -> html.Div:
                 [
                     html.H4("Callback Demo (Click Detection)"),
                     html.P(
-                        "Click on elements in the periodic table to see callbacks in action.",
+                        "Click on elements or hull points to see callbacks in action.",
                         style={
                             "marginBottom": "12px",
                             "color": "var(--mv-text-muted, #666)",
                         },
                     ),
+                    # Output panel (at top for visibility)
                     html.Div(
                         [
+                            html.H5("Last Clicked", style={"marginTop": "0"}),
+                            html.Pre(
+                                id="callback-output",
+                                children="Click an element or hull point...",
+                                style={
+                                    "padding": "12px",
+                                    "borderRadius": "6px",
+                                    "background": "var(--mv-surface, #f5f5f5)",
+                                    "border": "1px solid var(--mv-border, #ddd)",
+                                    "overflow": "auto",
+                                    "maxHeight": "150px",
+                                    "fontSize": "13px",
+                                    "margin": "0 0 16px 0",
+                                },
+                            ),
+                        ],
+                    ),
+                    # Periodic Table (clickable via tile_props.onclick)
+                    html.Div(
+                        [
+                            html.H5(
+                                "Periodic Table (click elements)",
+                                style={"marginTop": "0"},
+                            ),
                             mvc.MatterViz(
                                 id="callback-periodic-table",
                                 component="periodic-table/PeriodicTable",
-                                mv_props={
-                                    "height": 400,
-                                    "show_color_bar": False,
-                                },
-                                event_props=["on_element_click"],
+                                mv_props={"show_color_bar": False},
+                                # Use dot notation for nested event props
+                                event_props=["tile_props.onclick"],
                                 style={
                                     "border": "1px solid var(--mv-border, #ddd)",
-                                    "flex": "1",
                                 },
                             ),
-                            html.Div(
-                                [
-                                    html.H5(
-                                        "Last Clicked Element", style={"marginTop": "0"}
-                                    ),
-                                    html.Pre(
-                                        id="callback-output",
-                                        children="Click an element...",
-                                        style={
-                                            "padding": "12px",
-                                            "borderRadius": "6px",
-                                            "background": "var(--mv-surface, #f5f5f5)",
-                                            "border": "1px solid var(--mv-border, #ddd)",
-                                            "overflow": "auto",
-                                            "maxHeight": "300px",
-                                            "fontSize": "13px",
-                                        },
-                                    ),
-                                ],
-                                style={"width": "300px", "flexShrink": "0"},
+                        ],
+                        style={"marginBottom": "16px"},
+                    ),
+                    # Convex Hull (clickable with callback)
+                    html.Div(
+                        [
+                            html.H5(
+                                "Convex Hull (click points)", style={"marginTop": "0"}
+                            ),
+                            mvc.MatterViz(
+                                id="callback-convex-hull",
+                                component="convex-hull/ConvexHull2D",
+                                mv_props={
+                                    "entries": _DEMO_HULL_ENTRIES,
+                                    "height": 280,
+                                },
+                                event_props=["on_point_click"],
+                                style={
+                                    "border": "1px solid var(--mv-border, #ddd)",
+                                    "maxWidth": "500px",
+                                },
                             ),
                         ],
-                        style={
-                            "display": "flex",
-                            "gap": "16px",
-                            "alignItems": "flex-start",
-                        },
                     ),
                 ],
                 id="callback-section",
@@ -852,6 +826,9 @@ def create_app() -> dash.Dash:
                 --mv-surface: #f8f9fa;
                 --mv-nav-bg: #f5f5f5;
                 --mv-nav-link: #1a56db;
+                /* Plot components use these variables */
+                --text-color: #222;
+                --border-color: #ccc;
             }
             [data-theme="dark"] {
                 --mv-bg: #1a1a2e;
@@ -861,6 +838,9 @@ def create_app() -> dash.Dash:
                 --mv-surface: #252540;
                 --mv-nav-bg: #2d2d44;
                 --mv-nav-link: #6ea8fe;
+                /* Plot components use these variables */
+                --text-color: #e8e8e8;
+                --border-color: #555;
             }
             html, body {
                 background: var(--mv-bg);
@@ -939,24 +919,8 @@ def create_app() -> dash.Dash:
         """Update structure when dropdown selection changes."""
         data = get_cached(selected_structure, load_structure)
         if not data:
-            data = (
-                get_cached(AVAILABLE_STRUCTURES[0], load_structure) or SILICON_STRUCTURE
-            )
+            data = get_cached(AVAILABLE_STRUCTURES[0], load_structure)
         return {"structure": data, "show_controls": True, "height": 400}
-
-    # Convex hull callback
-    @app.callback(
-        Output("convex-4d", "mv_props"),
-        Input("convex-hull-selector", "value"),
-    )
-    def update_convex_hull(selected_system: str) -> dict:
-        """Update convex hull when dropdown selection changes."""
-        entries = get_cached(selected_system, load_convex_hull_entries)
-        if not entries:
-            entries = (
-                get_cached(AVAILABLE_CONVEX_HULLS[0], load_convex_hull_entries) or []
-            )
-        return {"entries": entries, "height": 450}
 
     # Phonon bands callback
     @app.callback(
@@ -965,7 +929,7 @@ def create_app() -> dash.Dash:
     )
     def update_phonon_bands(selected: str) -> dict:
         """Update phonon bands when dropdown selection changes."""
-        return {"bands": get_cached(selected, load_phonon_bands), "height": 400}
+        return {"band_structs": get_cached(selected, load_phonon_bands), "height": 400}
 
     # DOS callback
     @app.callback(
@@ -974,7 +938,7 @@ def create_app() -> dash.Dash:
     )
     def update_dos(selected: str) -> dict:
         """Update DOS when dropdown selection changes."""
-        return {"dos": get_cached(selected, load_electronic_dos), "height": 350}
+        return {"doses": get_cached(selected, load_electronic_dos), "height": 350}
 
     # Electronic bands callback
     @app.callback(
@@ -983,18 +947,36 @@ def create_app() -> dash.Dash:
     )
     def update_bands(selected: str) -> dict:
         """Update electronic bands when dropdown selection changes."""
-        return {"bands": get_cached(selected, load_electronic_bands), "height": 400}
+        return {
+            "band_structs": get_cached(selected, load_electronic_bands),
+            "height": 400,
+        }
 
-    # Callback demo - display clicked element
+    # Callback demo - display clicked phase entry
     @app.callback(
         Output("callback-output", "children"),
         Input("callback-periodic-table", "last_event"),
+        Input("callback-convex-hull", "last_event"),
     )
-    def display_clicked_element(last_event: dict | None) -> str:
-        """Display the last clicked element from the periodic table."""
-        if not last_event:
-            return "Click an element..."
-        return json.dumps(last_event, indent=2)
+    def display_clicked_entry(
+        ptable_event: dict | None, hull_event: dict | None
+    ) -> str:
+        """Display the last clicked entry from periodic table or convex hull."""
+        # Find most recent event by timestamp
+        events = [
+            (ptable_event, "Periodic Table"),
+            (hull_event, "Convex Hull"),
+        ]
+        latest = None
+        latest_source = None
+        for event, source in events:
+            if event and event.get("timestamp"):
+                if not latest or event["timestamp"] > latest.get("timestamp", 0):
+                    latest = event
+                    latest_source = source
+        if not latest:
+            return "Click an element or hull point..."
+        return f"Source: {latest_source}\n{json.dumps(latest, indent=2)}"
 
     return app
 
