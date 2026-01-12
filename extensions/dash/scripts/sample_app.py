@@ -15,7 +15,9 @@ from dash import Input, Output, dcc, html
 
 # Path to the matterviz root directory (scripts/ -> dash/ -> extensions/ -> root)
 # Override with MATTERVIZ_ROOT env var if script is run from a different location
-MATTERVIZ_ROOT = Path(os.environ.get("MATTERVIZ_ROOT") or __file__).parent.parent.parent.parent
+MATTERVIZ_ROOT = Path(
+    os.environ.get("MATTERVIZ_ROOT") or __file__
+).parent.parent.parent.parent
 
 
 def load_json_file(file_path: Path) -> Any:

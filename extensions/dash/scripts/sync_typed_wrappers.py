@@ -32,15 +32,15 @@ Usage
       --matterviz-dist node_modules/matterviz/dist \
       --out matterviz_dash_components/typed.py
 """
+
 from __future__ import annotations
 
 import argparse
 import keyword
 import re
-import textwrap
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import tomllib
 
@@ -57,6 +57,7 @@ class Prop:
 # ----------------------------
 # Small parsing utilities
 # ----------------------------
+
 
 def _is_arrow_gt(src: str, i: int) -> bool:
     """Return True if src[i] is '>' in a '=>' arrow."""
@@ -85,9 +86,9 @@ def _to_snake(name: str) -> str:
     return out
 
 
-def _split_top_level(expr: str, sep: str) -> List[str]:
+def _split_top_level(expr: str, sep: str) -> list[str]:
     """Split expr on sep only when not nested in (), [], {}, <> or quotes/backticks."""
-    parts: List[str] = []
+    parts: list[str] = []
     start = 0
 
     par = brk = brc = ang = 0
@@ -165,9 +166,9 @@ def _find_matching_angle(src: str, open_idx: int) -> int:
     raise ValueError("Unmatched '<' while scanning generic type arguments")
 
 
-def _extract_type_aliases(src: str) -> Dict[str, str]:
+def _extract_type_aliases(src: str) -> dict[str, str]:
     """Extract simple `type Name = ...;` aliases from a .d.ts file."""
-    aliases: Dict[str, str] = {}
+    aliases: dict[str, str] = {}
     for m in re.finditer(r"\btype\s+([A-Za-z0-9_]+)\s*=", src):
         name = m.group(1)
         expr_start = m.end()
@@ -234,7 +235,7 @@ def _extract_props_root_expr(src: str) -> str:
     # Fallback: parse Component<...> generic
     m = re.search(r'import\("svelte"\)\.Component<', src)
     if not m:
-        raise ValueError("Could not locate import(\"svelte\").Component<...>")
+        raise ValueError('Could not locate import("svelte").Component<...>')
 
     open_idx = m.end() - 1  # points to '<'
     close_idx = _find_matching_angle(src, open_idx)
@@ -247,7 +248,7 @@ def _extract_props_root_expr(src: str) -> str:
     return args[0].strip()
 
 
-def _parse_object_literal(obj: str) -> Dict[str, Tuple[str, bool]]:
+def _parse_object_literal(obj: str) -> dict[str, tuple[str, bool]]:
     """Parse `{ foo?: string; bar: number }` into {foo: (type, required)}."""
     obj = obj.strip()
     if not (obj.startswith("{") and obj.endswith("}")):
@@ -257,7 +258,7 @@ def _parse_object_literal(obj: str) -> Dict[str, Tuple[str, bool]]:
     if not inner:
         return {}
 
-    items: List[str] = []
+    items: list[str] = []
     start = 0
     par = brk = brc = ang = 0
     in_bt = in_sq = in_dq = False
@@ -301,7 +302,7 @@ def _parse_object_literal(obj: str) -> Dict[str, Tuple[str, bool]]:
     if tail:
         items.append(tail)
 
-    props: Dict[str, Tuple[str, bool]] = {}
+    props: dict[str, tuple[str, bool]] = {}
     for item in items:
         if item.startswith("["):  # index signature
             continue
@@ -320,12 +321,12 @@ def _parse_object_literal(obj: str) -> Dict[str, Tuple[str, bool]]:
 
 
 def _collect_props(
-    expr: str, aliases: Dict[str, str], _visited: set[str] | None = None
-) -> Dict[str, Tuple[str, bool]]:
+    expr: str, aliases: dict[str, str], _visited: set[str] | None = None
+) -> dict[str, tuple[str, bool]]:
     """Collect props from an intersection type expression."""
     if _visited is None:
         _visited = set()
-    out: Dict[str, Tuple[str, bool]] = {}
+    out: dict[str, tuple[str, bool]] = {}
 
     for term in _split_top_level(expr, "&"):
         term = term.strip()
@@ -369,7 +370,9 @@ def _collect_props(
     return out
 
 
-def _parse_interface_props(src: str, interface_name: str) -> Dict[str, Tuple[str, bool]]:
+def _parse_interface_props(
+    src: str, interface_name: str
+) -> dict[str, tuple[str, bool]]:
     """Extract props from an interface definition in a .d.ts file."""
     # Match interface Name<...> extends ... { ... }
     pattern = rf"\binterface\s+{re.escape(interface_name)}(?:<[^>]*>)?(?:\s+extends\s+[^{{]+)?\s*\{{"
@@ -388,11 +391,13 @@ def _parse_interface_props(src: str, interface_name: str) -> Dict[str, Tuple[str
             depth -= 1
         idx += 1
 
-    body = src[brace_start : idx]
+    body = src[brace_start:idx]
     return _parse_object_literal(body)
 
 
-def parse_external_type(dist_dir: Path, include_spec: str) -> Dict[str, Tuple[str, bool]]:
+def parse_external_type(
+    dist_dir: Path, include_spec: str
+) -> dict[str, tuple[str, bool]]:
     """Parse a type/interface from an external .d.ts file.
 
     include_spec format: "path/to/file.d.ts:TypeName"
@@ -421,7 +426,9 @@ def parse_external_type(dist_dir: Path, include_spec: str) -> Dict[str, Tuple[st
     return {}
 
 
-def parse_svelte_dts(dts_path: Path) -> Tuple[List[Prop], List[str], List[str], List[str]]:
+def parse_svelte_dts(
+    dts_path: Path,
+) -> tuple[list[Prop], list[str], list[str], list[str]]:
     """Parse a *.svelte.d.ts file into prop metadata."""
     src = dts_path.read_text(encoding="utf-8")
     aliases = _extract_type_aliases(src)
@@ -429,10 +436,10 @@ def parse_svelte_dts(dts_path: Path) -> Tuple[List[Prop], List[str], List[str], 
 
     js_props = _collect_props(root_expr, aliases)
 
-    props: List[Prop] = []
-    callback_props: List[str] = []
-    snippet_props: List[str] = []
-    dom_props: List[str] = []
+    props: list[Prop] = []
+    callback_props: list[str] = []
+    snippet_props: list[str] = []
+    dom_props: list[str] = []
 
     for js_name, (ts_type, required) in sorted(js_props.items()):
         kind = "value"
@@ -460,8 +467,8 @@ def parse_svelte_dts(dts_path: Path) -> Tuple[List[Prop], List[str], List[str], 
 
 
 def parse_svelte_dts_with_includes(
-    dts_path: Path, dist_dir: Path, include_from: List[str]
-) -> Tuple[List[Prop], List[str], List[str], List[str]]:
+    dts_path: Path, dist_dir: Path, include_from: list[str]
+) -> tuple[list[Prop], list[str], list[str], list[str]]:
     """Parse a *.svelte.d.ts file with additional external type includes."""
     # Start with base props from the .svelte.d.ts file
     props, callback_props, snippet_props, dom_props = parse_svelte_dts(dts_path)
@@ -500,9 +507,9 @@ def parse_svelte_dts_with_includes(
 
 
 def add_extra_props(
-    props: List[Prop],
-    extra_props: Dict[str, str],
-    callback_props: List[str],
+    props: list[Prop],
+    extra_props: dict[str, str],
+    callback_props: list[str],
 ) -> None:
     """Add manually-specified extra props to the props list.
 
@@ -570,7 +577,9 @@ def _py_type_hint(ts_type: str) -> str:
         return "list"
     if "|" in t:
         # Union type - try to extract the first non-null type
-        parts = [p.strip() for p in t.split("|") if p.strip() not in ("null", "undefined")]
+        parts = [
+            p.strip() for p in t.split("|") if p.strip() not in ("null", "undefined")
+        ]
         if parts:
             return _py_type_hint(parts[0])
     return "Any"
@@ -601,26 +610,26 @@ def _ts_type_to_docstring(ts_type: str) -> str:
     return ""
 
 
-def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) -> None:
+def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) -> None:
     """Generate typed Python wrapper classes from manifest and write to out_path."""
-    components: Dict[str, Any] = manifest.get("components", {})
+    components: dict[str, Any] = manifest.get("components", {})
     if not components:
         raise SystemExit("Manifest has no [components.*] sections")
 
-    lines: List[str] = []
+    lines: list[str] = []
     lines += [
         "# AUTO-GENERATED by scripts/sync_typed_wrappers.py",
         "# DO NOT EDIT MANUALLY",
         "",
         "from __future__ import annotations",
         "",
-        "from typing import Any, Optional",
+        "from typing import Any",
         "",
         "from .MatterViz import MatterViz",
         "",
     ]
 
-    exported: List[str] = []
+    exported: list[str] = []
 
     for class_name, spec in components.items():
         key = spec.get("key")
@@ -630,8 +639,8 @@ def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) 
         dts_path = find_component_dts(dist_dir, key)
         include_from = spec.get("include_from", [])
         if include_from:
-            props, callback_props, snippet_props, dom_props = parse_svelte_dts_with_includes(
-                dts_path, dist_dir, include_from
+            props, callback_props, snippet_props, dom_props = (
+                parse_svelte_dts_with_includes(dts_path, dist_dir, include_from)
             )
         else:
             props, callback_props, snippet_props, dom_props = parse_svelte_dts(dts_path)
@@ -643,22 +652,27 @@ def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) 
 
         # Select only "value" props that are JSON-ish and not DOM handles.
         value_props = [
-            p for p in props
-            if p.kind == "value" and p.js_name not in dom_props and p.js_name != "children"
+            p
+            for p in props
+            if p.kind == "value"
+            and p.js_name not in dom_props
+            and p.js_name != "children"
         ]
 
         # Conversion defaults inferred from TS types, overridable in manifest.
         auto_set_props = [p.js_name for p in value_props if "Set" in p.ts_type]
-        auto_float32_props = [p.js_name for p in value_props if "Float32Array" in p.ts_type]
+        auto_float32_props = [
+            p.js_name for p in value_props if "Float32Array" in p.ts_type
+        ]
 
         default_set_props = spec.get("set_props", auto_set_props)
         default_float32_props = spec.get("float32_props", auto_float32_props)
 
         # Apply optional alias overrides (python name -> js name)
-        alias_overrides: Dict[str, str] = spec.get("aliases", {}) or {}
+        alias_overrides: dict[str, str] = spec.get("aliases", {}) or {}
 
         # Build mapping python->js, ensuring unique python identifiers
-        py_to_js: Dict[str, str] = {}
+        py_to_js: dict[str, str] = {}
         used_py: set[str] = set()
 
         for p in value_props:
@@ -680,7 +694,9 @@ def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) 
         exported.append(class_name)
 
         # Docstring
-        doc = (spec.get("doc") or "").strip() or f"Typed wrapper for MatterViz component '{key}'."
+        doc = (
+            spec.get("doc") or ""
+        ).strip() or f"Typed wrapper for MatterViz component '{key}'."
         lines.append(f"class {class_name}(MatterViz):")
         lines.append('    """' + doc)
         lines.append("")
@@ -689,7 +705,9 @@ def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) 
         if callback_props:
             lines.append("    Events")
             lines.append("    ------")
-            lines.append("    MatterViz exposes callback props (functions) as events via ``event_props``.")
+            lines.append(
+                "    MatterViz exposes callback props (functions) as events via ``event_props``."
+            )
             lines.append("    For this component, available callback props include:")
             lines.append("        " + ", ".join(callback_props))
             lines.append("")
@@ -711,20 +729,20 @@ def generate_wrappers(manifest: Dict[str, Any], dist_dir: Path, out_path: Path) 
         # already has it, and the decorator doesn't work well when chained.
 
         # Signature
-        sig_parts: List[str] = ["self", "id=None"]
+        sig_parts: list[str] = ["self", "id=None"]
         for py, js in py_to_js.items():
             p = next(pp for pp in value_props if pp.js_name == js)
             hint = _py_type_hint(p.ts_type)
-            sig_parts.append(f"{py}: Optional[{hint}] = None")
+            sig_parts.append(f"{py}: {hint} | None = None")
 
         sig_parts += [
-            "mv_props: Optional[dict] = None",
-            "set_props: Optional[list[str]] = None",
-            "float32_props: Optional[list[str]] = None",
-            "event_props: Optional[list[str]] = None",
-            "last_event: Optional[dict] = None",
-            "className: Optional[str] = None",
-            "style: Optional[dict] = None",
+            "mv_props: dict | None = None",
+            "set_props: list[str] | None = None",
+            "float32_props: list[str] | None = None",
+            "event_props: list[str] | None = None",
+            "last_event: dict | None = None",
+            "className: str | None = None",
+            "style: dict | None = None",
             "**kwargs",
         ]
         lines.append(f"    def __init__({', '.join(sig_parts)}):")
