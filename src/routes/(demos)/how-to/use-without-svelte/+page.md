@@ -90,8 +90,12 @@ Notes
 
 For Python data science workflows, MatterViz provides a [Dash](https://dash.plotly.com) extension that wraps all components as native Dash components with full callback support.
 
-**Source**: [`extensions/dash/`](https://github.com/janosh/matterviz/tree/main/extensions/dash)
-**PyPI** (coming soon): `pip install matterviz-dash-components`
+| Resource        | Link                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| **Live Demo**   | [huggingface.co/spaces/janoshr/matterviz-dash](https://huggingface.co/spaces/janoshr/matterviz-dash)   |
+| **Source Code** | [`extensions/dash/`](https://github.com/janosh/matterviz/tree/main/extensions/dash)                    |
+| **Sample App**  | [`sample_app.py`](https://github.com/janosh/matterviz/blob/main/extensions/dash/scripts/sample_app.py) |
+| **PyPI**        | `pip install matterviz-dash-components` (coming soon)                                                  |
 
 ### Quick Start
 
@@ -129,7 +133,7 @@ if __name__ == "__main__":
 | `Trajectory`                          | Molecular dynamics trajectory player |
 | `BrillouinZone`                       | Reciprocal space visualization       |
 | `ConvexHull2D/3D/4D`                  | Thermodynamic stability hulls        |
-| `PhaseDiagram`                        | Binary/ternary phase diagrams        |
+| `IsobaricBinaryPhaseDiagram`          | Binary phase diagrams                |
 | `XrdPlot`                             | X-ray diffraction pattern viewer     |
 | `Bands`, `Dos`, `BandsAndDos`         | Electronic/phonon band structures    |
 | `ScatterPlot`, `Histogram`, `HeatMap` | General plotting components          |
@@ -151,7 +155,15 @@ def handle_event(event):
     return ""
 ```
 
-See the [sample app](https://github.com/janosh/matterviz/blob/main/extensions/dash/scripts/sample_app.py) for a complete demo with all components.
+### Deploy Your Own
+
+The demo is hosted on [Hugging Face Spaces](https://huggingface.co/spaces) using Docker. To deploy your own:
+
+1. Fork the repo
+2. Create a new Space on HF with Docker SDK
+3. Push the `extensions/dash/Dockerfile` to your Space
+
+The official demo auto-updates on every push to `main` via GitHub Action.
 
 ## VS Code Extension
 
