@@ -1,23 +1,22 @@
 <script lang="ts">
+  import type { D3InterpolateName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { normalize_show_controls } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import type { D3SymbolName } from '$lib/labels'
-  import type { UserContentProps } from '$lib/plot'
-  import { DEFAULTS } from '$lib/settings'
-  import type { AnyStructure } from '$lib/structure'
-  import { is_unary_entry } from './types'
-  import Icon from '$lib/Icon.svelte'
-  import type { D3InterpolateName } from '$lib/colors'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
+  import Icon from '$lib/Icon.svelte'
+  import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
   import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import type {
     AxisConfig,
     ScatterHandlerEvent,
     ScatterHandlerProps,
+    UserContentProps,
   } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
+  import type { AnyStructure } from '$lib/structure'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import * as helpers from './helpers'
@@ -32,10 +31,11 @@
     HoverData3D,
     PhaseData,
   } from './types'
+  import { is_unary_entry } from './types'
 
   // Binary convex hull rendered as energy vs composition (x in [0, 1])
   let {
-    entries,
+    entries = [],
     controls = {},
     config = {},
     on_point_click,

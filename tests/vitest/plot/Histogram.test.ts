@@ -132,7 +132,7 @@ describe(`Histogram`, () => {
       series: [{ x: [], y: [1, 1, 1, 1, 1] }],
       bins: 5,
       y_axis: { scale_type: `log`, format: `.2r` },
-      y_lim: [1, null],
+      y_range: [1, null],
     })
     await Promise.resolve()
     const ticks = get_y_tick_numbers()

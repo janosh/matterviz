@@ -1,14 +1,17 @@
 <script lang="ts">
-  import { normalize_show_controls } from '$lib/controls'
-  import { toggle_fullscreen } from '$lib/layout'
-  import { DEFAULTS } from '$lib/settings'
-  import type { AnyStructure } from '$lib/structure'
-  import Icon from '$lib/Icon.svelte'
   import type { D3InterpolateName } from '$lib/colors'
   import { is_dark_mode, watch_dark_mode } from '$lib/colors'
+  import { normalize_show_controls } from '$lib/controls'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
-  import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
+  import Icon from '$lib/Icon.svelte'
+  import {
+    set_fullscreen_bg,
+    setup_fullscreen_effect,
+    toggle_fullscreen,
+  } from '$lib/layout'
   import { ColorBar, PlotTooltip } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
+  import type { AnyStructure } from '$lib/structure'
   import {
     barycentric_to_tetrahedral,
     compute_4d_coords,
@@ -26,7 +29,7 @@
   import type { ConvexHullEntry, HighlightStyle, HoverData3D } from './types'
 
   let {
-    entries,
+    entries = [],
     controls = {},
     config = {},
     on_point_click,

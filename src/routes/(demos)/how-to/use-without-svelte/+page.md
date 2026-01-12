@@ -86,6 +86,80 @@ Notes
 - For callbacks, assign functions to element properties like `on_file_load` rather than listening for DOM CustomEvents.
 - If you need richer typing in React, wrap the element with a small typed component or use a helper like `@lit-labs/react` to generate typed React wrappers for custom elements: <https://github.com/lit/lit> ([NPM](https://www.npmjs.com/package/@lit-labs/react))
 
+## Dash (Plotly) Integration
+
+For Python data science workflows, MatterViz provides a [Dash](https://dash.plotly.com) extension that wraps all components as native Dash components with full callback support.
+
+**Source**: [`extensions/dash/`](https://github.com/janosh/matterviz/tree/main/extensions/dash)
+**PyPI** (coming soon): `pip install matterviz-dash-components`
+
+### Quick Start
+
+```python
+from dash import Dash, html
+from matterviz_dash_components import Structure, PeriodicTable, XrdPlot
+
+app = Dash(__name__)
+
+# Pymatgen-compatible structure dict
+structure = {
+    "lattice": {"matrix": [[5.43, 0, 0], [0, 5.43, 0], [0, 0, 5.43]]},
+    "sites": [
+        {"species": [{"element": "Si", "occu": 1}], "abc": [0, 0, 0]},
+        {"species": [{"element": "Si", "occu": 1}], "abc": [0.25, 0.25, 0.25]},
+    ],
+}
+
+app.layout = html.Div([
+    Structure(structure=structure, show_controls=True),
+    PeriodicTable(show_names=True),
+])
+
+if __name__ == "__main__":
+    app.run(debug=True)
+```
+
+### Available Components
+
+| Component                             | Description                          |
+| ------------------------------------- | ------------------------------------ |
+| `Structure`                           | 3D crystal structure viewer          |
+| `PeriodicTable`                       | Interactive periodic table           |
+| `Composition`                         | Composition breakdown visualization  |
+| `Trajectory`                          | Molecular dynamics trajectory player |
+| `BrillouinZone`                       | Reciprocal space visualization       |
+| `ConvexHull2D/3D/4D`                  | Thermodynamic stability hulls        |
+| `PhaseDiagram`                        | Binary/ternary phase diagrams        |
+| `XrdPlot`                             | X-ray diffraction pattern viewer     |
+| `Bands`, `Dos`, `BandsAndDos`         | Electronic/phonon band structures    |
+| `ScatterPlot`, `Histogram`, `HeatMap` | General plotting components          |
+
+### Callbacks
+
+All MatterViz events are surfaced via the `last_event` prop:
+
+```python
+from dash import callback, Input, Output
+
+@callback(
+    Output("info", "children"),
+    Input("structure-viewer", "last_event"),
+)
+def handle_event(event):
+    if event and event.get("type") == "atom_click":
+        return f"Clicked atom: {event['detail']['element']}"
+    return ""
+```
+
+See the [sample app](https://github.com/janosh/matterviz/blob/main/extensions/dash/scripts/sample_app.py) for a complete demo with all components.
+
+## VS Code Extension
+
+A VS Code extension for previewing structure files directly in the editor is also available.
+
+**Source**: [`extensions/vscode/`](https://github.com/janosh/matterviz/tree/main/extensions/vscode)
+**Marketplace** (coming soon): Search "MatterViz" in VS Code extensions
+
 ## `<iframe>` (future option)
 
 We may expose iframe embeds for some demos in the future, but this path is currently not supported. Prefer the custom‑elements approach above. Reasons favoring `<iframe>`:
