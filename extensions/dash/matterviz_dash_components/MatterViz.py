@@ -4,6 +4,8 @@
 # It intentionally keeps the prop surface small; MatterViz props are passed via
 # `mv_props` (a JSON-serializable dict).
 
+from typing import ClassVar
+
 from dash.development.base_component import Component, _explicitize_args
 
 _NAMESPACE = "matterviz_dash_components"
@@ -29,29 +31,29 @@ class MatterViz(Component):
         Updated whenever any injected callback fires.
     """
 
-    _children_props: list[str] = []
-    _base_nodes: list[str] = []
+    _children_props: ClassVar[list[str]] = []
+    _base_nodes: ClassVar[list[str]] = []
 
-    _namespace = _NAMESPACE
-    _type = "MatterViz"
+    _namespace: ClassVar[str] = _NAMESPACE
+    _type: ClassVar[str] = "MatterViz"
 
     # Asset definitions - required for Dash to serve JS/CSS bundles
-    _js_dist = [
+    _js_dist: ClassVar[list[dict[str, str]]] = [
         {
             "relative_package_path": "matterviz_dash_components.min.js",
             "namespace": _NAMESPACE,
         },
     ]
-    _css_dist = [
+    _css_dist: ClassVar[list[dict[str, str]]] = [
         {
             "relative_package_path": "matterviz_dash_components.css",
             "namespace": _NAMESPACE,
         },
     ]
 
-    _valid_wildcard_attributes: list[str] = []
+    _valid_wildcard_attributes: ClassVar[list[str]] = []
 
-    _prop_names = [
+    _prop_names: ClassVar[list[str]] = [
         "id",
         "component",
         "mv_props",
@@ -63,8 +65,8 @@ class MatterViz(Component):
         "style",
     ]
 
-    available_properties = _prop_names
-    available_wildcard_properties: list[str] = []
+    available_properties: ClassVar[list[str]] = _prop_names
+    available_wildcard_properties: ClassVar[list[str]] = []
 
     @_explicitize_args
     def __init__(
