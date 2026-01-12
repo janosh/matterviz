@@ -1,5 +1,5 @@
 // Import public path utilities (for Dash asset resolution)
-import './publicPath'
+import './public_path'
 
 // Register the Svelte custom element and global MatterViz CSS.
 import './registerCustomElements'

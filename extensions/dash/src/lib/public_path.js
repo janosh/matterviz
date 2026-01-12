@@ -15,7 +15,7 @@
 // Get the base URL for loading assets in a Dash context.
 // Call this function where needed rather than caching the result,
 // since __dash_config__ may not be available at module load time.
-export function getDashAssetBasePath() {
+export function get_dash_asset_base_path() {
   if (typeof globalThis !== `undefined` && globalThis.__dash_config__) {
     const prefix = globalThis.__dash_config__.requests_pathname_prefix || `/`
     const normalized = prefix.endsWith(`/`) ? prefix : `${prefix}/`
