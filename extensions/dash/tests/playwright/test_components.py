@@ -62,8 +62,8 @@ class TestStructure:
         section = dash_page.locator("#structure-section")
         dash_page.wait_for_timeout(2000)
 
-        # Three.js renders to a canvas element
-        canvas = section.locator("canvas")
+        # Three.js renders to a canvas element (use .first for strict mode)
+        canvas = section.locator("canvas").first
         expect(canvas).to_be_visible()
 
 
@@ -84,9 +84,10 @@ class TestComposition:
         section = dash_page.locator("#composition-section")
         dash_page.wait_for_timeout(2000)
 
-        # Pie/bar charts render as SVG
+        # Pie/bar charts render as SVG - use .first for visibility check
         svg_elements = section.locator("svg")
         assert svg_elements.count() > 0
+        expect(svg_elements.first).to_be_visible()
 
 
 class TestBrillouinZone:
@@ -105,7 +106,8 @@ class TestBrillouinZone:
         section = dash_page.locator("#brillouin-section")
         dash_page.wait_for_timeout(2000)
 
-        canvas = section.locator("canvas")
+        # Use .first to avoid strict mode violations
+        canvas = section.locator("canvas").first
         expect(canvas).to_be_visible()
 
 
@@ -114,7 +116,7 @@ class TestConvexHull:
 
     def test_convex_hull_renders(self, dash_page: Page) -> None:
         """ConvexHull component should render."""
-        section = dash_page.locator("#convex-3d-section")
+        section = dash_page.locator("#convex-2d-section")
         expect(section).to_be_visible()
 
         matterviz = section.locator("mv-matterviz")
@@ -160,7 +162,8 @@ class TestXrdPlot:
         section = dash_page.locator("#xrd-section")
         dash_page.wait_for_timeout(2000)
 
-        svg = section.locator("svg")
+        # Use .first to avoid strict mode violations with multiple SVG elements
+        svg = section.locator("svg").first
         expect(svg).to_be_visible()
 
 
@@ -200,7 +203,7 @@ class TestInteractivity:
             "composition-section",
             "trajectory-section",
             "brillouin-section",
-            "convex-3d-section",
+            "convex-2d-section",
             "phase-binary-section",
             "xrd-section",
         ],
@@ -211,10 +214,11 @@ class TestInteractivity:
         expect(section).to_be_visible()
 
         # Each section should have at least a heading and the mv-matterviz element
-        heading = section.locator("h4")
+        # Use .first to avoid strict mode violations when multiple h4 exist
+        heading = section.locator("h4").first
         expect(heading).to_be_visible()
 
-        matterviz = section.locator("mv-matterviz")
+        matterviz = section.locator("mv-matterviz").first
         expect(matterviz).to_be_visible()
 
 
