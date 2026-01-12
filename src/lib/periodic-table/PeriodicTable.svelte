@@ -296,11 +296,11 @@
 <div {...rest} class="periodic-table-container {rest.class ?? ``}">
   <div class="periodic-table" style:gap>
     {#if should_show_color_bar}
-      <TableInset style="place-items: center; padding: 1em 2em">
+      <TableInset class="auto-colorbar-inset">
         <ColorBar
           {color_scale}
           range={heat_range}
-          tick_labels={5}
+          tick_labels={color_bar_props.tick_labels ?? 3}
           tick_side="primary"
           scale_type={log ? `log` : `linear`}
           wrapper_style="width: 100%;"
@@ -419,6 +419,16 @@
     position: relative;
     container-type: inline-size;
     gap: var(--ptable-gap, 0.3cqw);
+  }
+  /* Auto-generated color bar inset with fluid responsive sizing using container query units */
+  div.periodic-table :global(.auto-colorbar-inset) {
+    place-items: center;
+    padding: clamp(0.3em, 1.5cqw, 1em) clamp(0.4em, 3cqw, 2em);
+    --cbar-font-size: clamp(7pt, 1.8cqw, 9pt);
+    --cbar-thickness: clamp(8px, 2.5cqw, 14px);
+  }
+  div.periodic-table :global(.auto-colorbar-inset .colorbar) {
+    width: 90%;
   }
   div.spacer {
     grid-row: 8;

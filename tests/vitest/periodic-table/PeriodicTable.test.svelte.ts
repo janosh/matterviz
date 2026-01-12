@@ -669,7 +669,8 @@ describe(`PeriodicTable`, () => {
       const inset = document.querySelector(`.table-inset`) as HTMLElement
       const colorbar = inset?.querySelector(`.colorbar`) as HTMLElement
 
-      expect(inset.getAttribute(`style`)).toMatch(/place-items: center.*padding/)
+      // auto-colorbar-inset class provides styling via CSS (place-items, padding)
+      expect(inset.classList.contains(`auto-colorbar-inset`)).toBe(true)
       expect(colorbar.getAttribute(`style`)).toContain(`width: 100%`)
       expect(colorbar.querySelector(`.label`)?.textContent).toBe(`Test Property`)
     })
