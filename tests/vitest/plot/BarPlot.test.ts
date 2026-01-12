@@ -20,7 +20,7 @@ describe(`BarPlot`, () => {
       display: { x_grid: true, y_zero_line: true },
     },
     { series: [{ x: [1, 2, 3, 4], y: [-10, -20, -15, -25] }] }, // all negative
-    { series: [basic], x_lim: [2, 4], y_lim: [10, 25] },
+    { series: [basic], x_axis: { range: [2, 4] }, y_axis: { range: [10, 25] } },
     { series: [basic], x_axis: { format: `.0r` }, y_axis: { format: `.2r` } },
     { series: [basic], x_axis: { ticks: 10 }, y_axis: { ticks: -3 } },
     { series: [basic], range_padding: 0.1 },
