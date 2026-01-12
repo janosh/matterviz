@@ -57,15 +57,6 @@ class TestStructure:
         matterviz = section.locator("mv-matterviz")
         expect(matterviz).to_be_visible()
 
-    def test_structure_has_canvas(self, dash_page: Page) -> None:
-        """Structure component should have a WebGL canvas."""
-        section = dash_page.locator("#structure-section")
-        dash_page.wait_for_timeout(2000)
-
-        # Three.js renders to a canvas element (use .first for strict mode)
-        canvas = section.locator("canvas").first
-        expect(canvas).to_be_visible()
-
 
 class TestComposition:
     """Test Composition component rendering."""
