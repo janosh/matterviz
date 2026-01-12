@@ -196,11 +196,22 @@ class TestConvertDashPropsToMatterviz:
     def test_missing_keys_ignored(self) -> None:
         """Keys in set_props/float32_props not in props should be ignored."""
         result = run_js_test("""
-            return convert_dash_props_to_matterviz(
+            const result = convert_dash_props_to_matterviz(
                 {existing: [1, 2]},
                 ["nonexistent", "existing"],
                 ["alsoMissing"]
             );
+            // Verify conversion and serialize for JSON
+            return {
+                existing: Array.from(result.existing),
+                isSet: result.existing instanceof Set,
+                hasNonexistent: "nonexistent" in result,
+                hasAlsoMissing: "alsoMissing" in result
+            };
         """)
-        # Should not throw, result should have existing converted
-        assert "existing" in result
+        # Should not throw, existing should be converted to Set
+        assert result["existing"] == [1, 2]
+        assert result["isSet"] is True
+        # Missing keys should not appear in result
+        assert result["hasNonexistent"] is False
+        assert result["hasAlsoMissing"] is False

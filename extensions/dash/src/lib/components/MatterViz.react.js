@@ -192,7 +192,7 @@ const MatterVizInner = (props) => {
       }
       // Handle dot notation for nested props (e.g., "tile_props.onclick")
       if (propName.includes(`.`)) {
-        const parts = propName.split(`.`)
+        const parts = propName.split(`.`).filter(Boolean)
         let target = callbacksRef.current
         for (let idx = 0; idx < parts.length - 1; idx++) {
           const part = parts[idx]

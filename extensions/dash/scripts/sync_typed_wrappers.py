@@ -214,29 +214,56 @@ def _extract_type_aliases(src: str) -> dict[str, str]:
     return aliases
 
 
-def _extract_props_root_expr(src: str) -> str:
+def _extract_props_root_expr(src: str, *, debug: bool = False) -> tuple[str, str]:
     """
     Extract the type expression that represents component props.
+
+    Args:
+        src: The .d.ts file content
+        debug: If True, print debug info about strategy selection
+
+    Returns:
+        Tuple of (props_expression, strategy_name) where strategy_name is one of:
+        - "$$ComponentProps": Found `type $$ComponentProps = ...`
+        - "$$render": Found `declare function $$render<...>(): { props: ... }`
+        - "Component<...>": Parsed first type arg of `import("svelte").Component<...>`
+
+    Raises:
+        ValueError: If no strategy succeeds (includes attempted strategies in message)
 
     Preference order:
       1) RHS of `type $$ComponentProps = ...` (if present)
       2) `props:` from `declare function $$render<...>(): { props: ... }`
       3) First type argument of `import("svelte").Component<...>`
     """
-    # Try type $$ComponentProps = ...
+    attempted_strategies: list[str] = []
+
+    # Strategy 1: Try type $$ComponentProps = ...
     m = re.search(r"type\s+\$\$ComponentProps\s*=", src)
     if m:
+        attempted_strategies.append("$$ComponentProps (found but extraction failed)")
         expr_start = m.end()
         m_end = re.search(r";\s*declare\s+const", src[expr_start:])
         if m_end:
-            return src[expr_start : expr_start + m_end.start()].strip()
+            result = src[expr_start : expr_start + m_end.start()].strip()
+            if debug:
+                print("  [props extraction] Strategy '$$ComponentProps' succeeded")
+            return result, "$$ComponentProps"
         semi = src.find(";", expr_start)
         if semi != -1:
-            return src[expr_start:semi].strip()
+            result = src[expr_start:semi].strip()
+            if debug:
+                print("  [props extraction] Strategy '$$ComponentProps' succeeded")
+            return result, "$$ComponentProps"
+    else:
+        attempted_strategies.append("$$ComponentProps (pattern not found)")
 
-    # Try $$render function format (generic components like ScatterPlot)
+    # Strategy 2: Try $$render function format (generic components like ScatterPlot)
     match = re.search(r"declare\s+function\s+\$\$render[^{]*\{\s*props\s*:", src)
     if match:
+        attempted_strategies[-1] = attempted_strategies[-1].replace(
+            "(found but extraction failed)", "(skipped)"
+        )
         # Find the props value - it starts after "props:" and ends at the next ";"
         props_start = match.end()
         # Find matching brace/semicolon
@@ -260,24 +287,53 @@ def _extract_props_root_expr(src: str) -> str:
             elif char in ")}]>":
                 depth -= 1
             elif char == ";" and depth == 0:
-                return src[props_start:idx].strip()
+                result = src[props_start:idx].strip()
+                if debug:
+                    print("  [props extraction] Strategy '$$render' succeeded")
+                return result, "$$render"
         # If we reach here, try to find end at first balanced semicolon
-        return src[props_start:].split(";")[0].strip()
+        result = src[props_start:].split(";")[0].strip()
+        if debug:
+            print("  [props extraction] Strategy '$$render' succeeded (fallback)")
+        return result, "$$render"
+    else:
+        attempted_strategies.append("$$render (pattern not found)")
 
-    # Fallback: parse Component<...> generic
+    # Strategy 3: Fallback - parse Component<...> generic
     m = re.search(r'import\("svelte"\)\.Component<', src)
     if not m:
-        raise ValueError('Could not locate import("svelte").Component<...>')
+        attempted_strategies.append("Component<...> (pattern not found)")
+        raise ValueError(
+            "Could not extract props type expression. Attempted strategies:\n"
+            + "\n".join(f"  - {s}" for s in attempted_strategies)
+            + "\n\nThe .d.ts file may use an unsupported format. "
+            "Check if the component exports a standard Svelte 5 declaration."
+        )
 
     open_idx = m.end() - 1  # points to '<'
-    close_idx = _find_matching_angle(src, open_idx)
+    try:
+        close_idx = _find_matching_angle(src, open_idx)
+    except ValueError as exc:
+        attempted_strategies.append(
+            f"Component<...> (angle bracket matching failed: {exc})"
+        )
+        raise ValueError(
+            "Could not extract props type expression. Attempted strategies:\n"
+            + "\n".join(f"  - {s}" for s in attempted_strategies)
+        ) from exc
 
     inside = src[m.end() : close_idx]  # between < and >
     args = _split_top_level(inside, ",")
     if not args:
-        raise ValueError("Could not parse Component<...> type arguments")
+        attempted_strategies.append("Component<...> (no type arguments found)")
+        raise ValueError(
+            "Could not extract props type expression. Attempted strategies:\n"
+            + "\n".join(f"  - {s}" for s in attempted_strategies)
+        )
 
-    return args[0].strip()
+    if debug:
+        print("  [props extraction] Strategy 'Component<...>' succeeded")
+    return args[0].strip(), "Component<...>"
 
 
 def _parse_object_literal(obj: str) -> dict[str, tuple[str, bool]]:
@@ -393,7 +449,7 @@ def _resolve_component_props_ref(
     ref_src = candidates[0].read_text(encoding="utf-8")
     ref_aliases = _extract_type_aliases(ref_src)
     try:
-        ref_expr = _extract_props_root_expr(ref_src)
+        ref_expr, _ = _extract_props_root_expr(ref_src)
         return _collect_props(ref_expr, ref_aliases, dist_dir, _visited, ref_src)
     except ValueError:
         return {}
@@ -519,11 +575,16 @@ def parse_external_type(
 def parse_svelte_dts(
     dts_path: Path,
     dist_dir: Path | None = None,
+    *,
+    debug: bool = False,
 ) -> tuple[list[Prop], list[str], list[str], list[str]]:
     """Parse a *.svelte.d.ts file into prop metadata."""
     src = dts_path.read_text(encoding="utf-8")
     aliases = _extract_type_aliases(src)
-    root_expr = _extract_props_root_expr(src)
+    root_expr, strategy = _extract_props_root_expr(src, debug=debug)
+
+    if debug:
+        print(f"  Extracted props via strategy: {strategy}")
 
     js_props = _collect_props(root_expr, aliases, dist_dir, src=src)
 
@@ -646,27 +707,47 @@ def find_component_dts(dist_dir: Path, key: str) -> Path:
     return matches[0]
 
 
-def _py_type_hint(ts_type: str, prop_name: str = "") -> str:
+# Heuristic keywords for inferring int type from TS number type.
+# If a prop name contains any of these substrings, we assume it's an integer.
+# Override in manifest via [components.Name.type_hints] if this heuristic fails.
+_INT_HEURISTIC_KEYWORDS = ("_idx", "_index", "_count", "n_bins", "n_ticks", "num_")
+
+
+def _py_type_hint(
+    ts_type: str, prop_name: str = "", type_hints: dict[str, str] | None = None
+) -> str:
     """Conservative TS->Python type hint mapper (best-effort).
 
     Args:
         ts_type: TypeScript type string
         prop_name: Optional property name to infer more specific types
+        type_hints: Optional dict of prop_name -> Python type hint overrides
+
+    Type Inference Heuristics:
+        - TS `number` -> Python `float` by default
+        - TS `number` -> Python `int` if prop_name contains keywords like:
+          _idx, _index, _count, n_bins, n_ticks, num_
+          (see _INT_HEURISTIC_KEYWORDS constant)
+        - Override any heuristic via manifest [components.Name.type_hints]
     """
+    # Check for explicit override first
+    if type_hints and prop_name in type_hints:
+        return type_hints[prop_name]
+
     t = ts_type.strip()
 
     if t == "string":
         return "str"
     if t == "number":
-        # Infer int for index-like properties
-        if any(kw in prop_name for kw in ("_idx", "_index", "sites", "_count")):
+        # Infer int for index-like properties based on name heuristics
+        if any(kw in prop_name for kw in _INT_HEURISTIC_KEYWORDS):
             return "int"
         return "float"
     if t == "boolean":
         return "bool"
     if t.endswith("[]"):
         inner = t[:-2].strip()
-        inner_py = _py_type_hint(inner, prop_name)
+        inner_py = _py_type_hint(inner, prop_name, type_hints)
         return f"list[{inner_py}]" if inner_py != "Any" else "list"
     if "Record" in t or "Partial" in t or "ComponentProps" in t:
         return "dict"
@@ -682,7 +763,7 @@ def _py_type_hint(ts_type: str, prop_name: str = "") -> str:
             p.strip() for p in t.split("|") if p.strip() not in ("null", "undefined")
         ]
         if parts:
-            return _py_type_hint(parts[0])
+            return _py_type_hint(parts[0], prop_name, type_hints)
     return "Any"
 
 
@@ -721,6 +802,12 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
     lines += [
         "# AUTO-GENERATED by scripts/sync_typed_wrappers.py",
         "# DO NOT EDIT MANUALLY",
+        "#",
+        "# Type Inference Notes:",
+        "# - TS `number` -> Python `float` by default",
+        "# - TS `number` -> Python `int` if prop name contains: _idx, _index, _count,",
+        "#   n_bins, n_ticks, num_ (heuristic-based)",
+        "# - Override via manifest [components.Name.type_hints] = { prop_name = 'int' }",
         "",
         "from __future__ import annotations",
         "",
@@ -771,6 +858,10 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
 
         # Apply optional alias overrides (python name -> js name)
         alias_overrides: dict[str, str] = spec.get("aliases", {}) or {}
+
+        # Optional type hint overrides (python prop name -> Python type hint)
+        # Use this to override the heuristic-based type inference
+        type_hints: dict[str, str] = spec.get("type_hints", {}) or {}
 
         # Build mapping python->js, ensuring unique python identifiers
         py_to_js: dict[str, str] = {}
@@ -831,7 +922,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
         sig_parts: list[str] = ["self", "id=None"]
         for py, js in py_to_js.items():
             p = next(pp for pp in value_props if pp.js_name == js)
-            hint = _py_type_hint(p.ts_type, py)
+            hint = _py_type_hint(p.ts_type, py, type_hints)
             sig_parts.append(f"{py}: {hint} | None = None")
 
         sig_parts += [
