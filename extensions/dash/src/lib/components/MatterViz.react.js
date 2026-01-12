@@ -180,7 +180,7 @@ const MatterVizInner = (props) => {
   // Supports dot notation for nested props (e.g., "tile_props.onclick").
   callbacksRef.current = {}
   if (setProps) {
-    for (const propName of event_props) {
+    for (const propName of event_props || []) {
       const callback = (data) => {
         setProps({
           last_event: {
