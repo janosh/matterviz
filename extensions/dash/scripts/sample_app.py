@@ -121,20 +121,31 @@ def _discover_files(directory: Path, pattern: str = "*.json*") -> list[str]:
 # Dynamically discover available demo files from the site directory
 _SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
 
+# Fallback defaults for each data category (used when discovery finds nothing)
+_FALLBACK_STRUCTURE = "mp-1234"
+_FALLBACK_PHASE_DIAGRAM = "Al-Cu"
+_FALLBACK_PHONON = "mp-2667-Cs1Au1-pbe"
+_FALLBACK_DOS = "dos-spin-polarization-mp-865805"
+_FALLBACK_BANDS = "cao-2605-bands"
+_FALLBACK_XRD = "synthetic-quartz-xrd"
+
 # Exclude "A-B" (generic test file) and use real phase diagrams
 _all_phase_diagrams = _discover_files(_SITE_DIR / "phase-diagrams" / "binary")
-AVAILABLE_PHASE_DIAGRAMS = [p for p in _all_phase_diagrams if p != "A-B"] or ["Al-Cu"]
-AVAILABLE_STRUCTURES = _discover_files(_SITE_DIR / "structures") or ["mp-1234"]
-AVAILABLE_PHONONS = _discover_files(_SITE_DIR / "phonons") or ["mp-2667-Cs1Au1-pbe"]
-AVAILABLE_DOS = _discover_files(_SITE_DIR / "electronic" / "dos") or [
-    "dos-spin-polarization-mp-865805"
+AVAILABLE_PHASE_DIAGRAMS = [p for p in _all_phase_diagrams if p != "A-B"] or [
+    _FALLBACK_PHASE_DIAGRAM
 ]
-AVAILABLE_BANDS = _discover_files(_SITE_DIR / "electronic" / "bands") or [
-    "cao-2605-bands"
-]
+AVAILABLE_STRUCTURES = _discover_files(_SITE_DIR / "structures") or [_FALLBACK_STRUCTURE]
+AVAILABLE_PHONONS = _discover_files(_SITE_DIR / "phonons") or [_FALLBACK_PHONON]
+AVAILABLE_DOS = _discover_files(_SITE_DIR / "electronic" / "dos") or [_FALLBACK_DOS]
+AVAILABLE_BANDS = _discover_files(_SITE_DIR / "electronic" / "bands") or [_FALLBACK_BANDS]
 AVAILABLE_XRD = _discover_files(MATTERVIZ_ROOT / "static" / "xrd", "*.xy*") or [
-    "synthetic-quartz-xrd"
+    _FALLBACK_XRD
 ]
+
+
+def _safe_first(lst: list[str], fallback: str) -> str:
+    """Safely get the first element of a list, returning fallback if empty."""
+    return lst[0] if lst else fallback
 
 # Caches for loaded data (not thread-safe; fine for demo app)
 _cache: dict[str, Any] = {}
@@ -248,12 +259,20 @@ def layout() -> html.Div:
     ]
 
     # Initial data loading (use first discovered file for each category)
-    initial_structure = get_cached(AVAILABLE_STRUCTURES[0], load_structure)
-    initial_phase = get_cached(AVAILABLE_PHASE_DIAGRAMS[0], load_phase_diagram) or {}
-    initial_phonon = get_cached(AVAILABLE_PHONONS[0], load_phonon_bands)
-    initial_dos = get_cached(AVAILABLE_DOS[0], load_electronic_dos)
-    initial_bands = get_cached(AVAILABLE_BANDS[0], load_electronic_bands)
-    initial_xrd = get_cached(AVAILABLE_XRD[0], load_xrd_pattern)
+    # Use _safe_first to guard against empty discovery lists
+    initial_structure_key = _safe_first(AVAILABLE_STRUCTURES, _FALLBACK_STRUCTURE)
+    initial_phase_key = _safe_first(AVAILABLE_PHASE_DIAGRAMS, _FALLBACK_PHASE_DIAGRAM)
+    initial_phonon_key = _safe_first(AVAILABLE_PHONONS, _FALLBACK_PHONON)
+    initial_dos_key = _safe_first(AVAILABLE_DOS, _FALLBACK_DOS)
+    initial_bands_key = _safe_first(AVAILABLE_BANDS, _FALLBACK_BANDS)
+    initial_xrd_key = _safe_first(AVAILABLE_XRD, _FALLBACK_XRD)
+
+    initial_structure = get_cached(initial_structure_key, load_structure)
+    initial_phase = get_cached(initial_phase_key, load_phase_diagram) or {}
+    initial_phonon = get_cached(initial_phonon_key, load_phonon_bands)
+    initial_dos = get_cached(initial_dos_key, load_electronic_dos)
+    initial_bands = get_cached(initial_bands_key, load_electronic_bands)
+    initial_xrd = get_cached(initial_xrd_key, load_xrd_pattern)
 
     # Get dark mode preference from localStorage via clientside callback
     return html.Div(
@@ -374,7 +393,7 @@ def layout() -> html.Div:
                                     {"label": s, "value": s}
                                     for s in AVAILABLE_STRUCTURES
                                 ],
-                                value=AVAILABLE_STRUCTURES[0],
+                                value=initial_structure_key,
                                 clearable=False,
                                 style={"width": "200px", "display": "inline-block"},
                             ),
@@ -548,7 +567,7 @@ def layout() -> html.Div:
                                     {"label": k, "value": k}
                                     for k in AVAILABLE_PHASE_DIAGRAMS
                                 ],
-                                value=AVAILABLE_PHASE_DIAGRAMS[0],
+                                value=initial_phase_key,
                                 clearable=False,
                                 style={"width": "200px", "display": "inline-block"},
                             ),
@@ -590,7 +609,7 @@ def layout() -> html.Div:
                                     {"label": s.replace("-pbe", ""), "value": s}
                                     for s in AVAILABLE_PHONONS
                                 ],
-                                value=AVAILABLE_PHONONS[0],
+                                value=initial_phonon_key,
                                 clearable=False,
                                 style={"width": "250px", "display": "inline-block"},
                             ),
@@ -633,7 +652,7 @@ def layout() -> html.Div:
                                 options=[
                                     {"label": s, "value": s} for s in AVAILABLE_DOS
                                 ],
-                                value=AVAILABLE_DOS[0],
+                                value=initial_dos_key,
                                 clearable=False,
                                 style={"width": "300px", "display": "inline-block"},
                             ),
@@ -676,7 +695,7 @@ def layout() -> html.Div:
                                 options=[
                                     {"label": s, "value": s} for s in AVAILABLE_BANDS
                                 ],
-                                value=AVAILABLE_BANDS[0],
+                                value=initial_bands_key,
                                 clearable=False,
                                 style={"width": "250px", "display": "inline-block"},
                             ),
@@ -907,7 +926,8 @@ def create_app() -> dash.Dash:
         """Update phase diagram when dropdown selection changes."""
         data = get_cached(selected_system, load_phase_diagram)
         if not data:
-            data = get_cached(AVAILABLE_PHASE_DIAGRAMS[0], load_phase_diagram) or {}
+            fallback_key = _safe_first(AVAILABLE_PHASE_DIAGRAMS, _FALLBACK_PHASE_DIAGRAM)
+            data = get_cached(fallback_key, load_phase_diagram) or {}
         return {"data": data, "height": 500}
 
     # Structure callback
@@ -919,7 +939,8 @@ def create_app() -> dash.Dash:
         """Update structure when dropdown selection changes."""
         data = get_cached(selected_structure, load_structure)
         if not data:
-            data = get_cached(AVAILABLE_STRUCTURES[0], load_structure)
+            fallback_key = _safe_first(AVAILABLE_STRUCTURES, _FALLBACK_STRUCTURE)
+            data = get_cached(fallback_key, load_structure)
         return {"structure": data, "show_controls": True, "height": 400}
 
     # Phonon bands callback

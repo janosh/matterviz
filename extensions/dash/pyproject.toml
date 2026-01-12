@@ -8,9 +8,10 @@ version = "0.0.2"
 description = "Plotly Dash wrapper for MatterViz (Svelte) components"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 authors = [{ name = "matterviz-dash-components contributors" }]
-dependencies = ["dash>=2.0.0"]
+# Tested with Dash 3.3.0; floor set to 3.0 for broader compatibility
+dependencies = ["dash>=3.0"]
 
 [project.optional-dependencies]
 dev = ["pytest-playwright>=0.4.0", "pytest>=7.0.0"]

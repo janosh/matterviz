@@ -45,7 +45,7 @@
     {#if resolved.matches}
       Possible matches:
       {#each resolved.matches as match (match)}
-        \n- {match}
+        <br />- {match}
       {/each}
     {/if}
   </div>

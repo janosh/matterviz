@@ -50,7 +50,11 @@
     generate_ticks,
     get_nice_data_range,
   } from '$lib/plot/scales'
-  import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
+  import {
+    DEFAULT_GRID_STYLE,
+    DEFAULT_MARKERS,
+    get_scale_type_name,
+  } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import type { Snippet } from 'svelte'
@@ -242,8 +246,8 @@
     // Calculate separate ranges for y1 and y2 axes
     const calc_y_range = (
       series_list: typeof visible_series,
-      y_range_input: typeof y_range,
-      scale_type: string,
+      y_limit: typeof y_range,
+      scale_type: ScaleType,
     ) => {
       let points = series_list.flatMap((srs: BarSeries<Metadata>) =>
         srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
@@ -285,20 +289,21 @@
       let y_range = get_nice_data_range(
         points,
         (pt) => pt.y,
-        y_range_input,
-        scale_type as `linear` | `log`,
+        y_limit,
+        scale_type,
         range_padding,
         false,
       )
 
       // For bar plots, ensure the value axis starts at 0 unless there are negative values
-      // Only apply zero-clamping for linear scales
-      if (scale_type === `linear`) {
+      // Only apply zero-clamping for linear and arcsinh scales (not log)
+      const type_name = get_scale_type_name(scale_type)
+      if (type_name === `linear` || type_name === `arcsinh`) {
         const has_negative = points.some((pt) => pt.y < 0)
         const has_positive = points.some((pt) => pt.y > 0)
 
         // Only adjust if no explicit y_range is set
-        if (y_range_input?.[0] == null && y_range_input?.[1] == null) {
+        if (y_limit?.[0] == null && y_limit?.[1] == null) {
           if (has_positive && !has_negative) y_range = [0, y_range[1]]
           else if (has_negative && !has_positive) y_range = [y_range[0], 0]
         }
@@ -1179,15 +1184,17 @@
 
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
-        <!-- Zero lines -->
-        {#if display.x_zero_line && (x_axis.scale_type ?? `linear`) === `linear` &&
+        <!-- Zero lines (shown for linear and arcsinh scales, not log) -->
+        {#if display.x_zero_line &&
+          get_scale_type_name(x_axis.scale_type) !== `log` &&
           ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
           {@const zx = scales.x(0)}
           {#if isFinite(zx)}
             <line class="zero-line" x1={zx} x2={zx} y1={pad.t} y2={height - pad.b} />
           {/if}
         {/if}
-        {#if display.y_zero_line && (y_axis.scale_type ?? `linear`) === `linear` &&
+        {#if display.y_zero_line &&
+          get_scale_type_name(y_axis.scale_type) !== `log` &&
           ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
           {@const zy = scales.y(0)}
           {#if isFinite(zy)}
@@ -1195,7 +1202,7 @@
           {/if}
         {/if}
         {#if display.y_zero_line && y2_series.length > 0 &&
-          (y2_axis.scale_type ?? `linear`) === `linear` &&
+          get_scale_type_name(y2_axis.scale_type) !== `log` &&
           ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
           {@const zero_y2 = scales.y2(0)}
           {#if isFinite(zero_y2)}

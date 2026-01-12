@@ -25,7 +25,7 @@ This avoids having to re-create every MatterViz component as a separate Dash com
 ### 1) JavaScript build
 
 ```bash
-cd matterviz-dash-components
+cd extensions/dash
 pnpm install
 pnpm run build
 ```
@@ -37,7 +37,7 @@ This emits the JS bundle (and any emitted assets like `.wasm`) into `matterviz_d
 Run a minimal Dash app to verify the bundle:
 
 ```bash
-# from the dash/ directory
+# from extensions/dash/
 python -m pip install -e .
 python scripts/sample_app.py
 ```

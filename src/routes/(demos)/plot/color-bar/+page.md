@@ -426,3 +426,83 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
   />
 </div>
 ```
+
+## Arcsinh Scale: Symmetric Ranges Including Negative Values
+
+The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both positive and negative values—something log scale cannot do. The gradient smoothly transitions through zero, with symmetric ticks like -1000, -100, -10, 0, 10, 100, 1000.
+
+```svelte example
+<script>
+  import { ColorBar } from 'matterviz'
+
+  const scale_types = [`linear`, `log`, `arcsinh`]
+  let scale_type = $state(`arcsinh`)
+  let threshold = $state(1)
+</script>
+
+<div
+  style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center; flex-wrap: wrap"
+>
+  <fieldset>
+    <legend>Scale Type</legend>
+    {#each scale_types as scale (scale)}
+      <label style="margin-right: 0.5em">
+        <input type="radio" bind:group={scale_type} value={scale} />
+        {scale}
+      </label>
+    {/each}
+  </fieldset>
+
+  {#if scale_type === `arcsinh`}
+    <label>
+      Threshold: {threshold}
+      <input type="range" bind:value={threshold} min="0.1" max="100" step="0.1" />
+    </label>
+  {/if}
+</div>
+
+<div
+  style="display: grid; grid-template-columns: 1fr 1fr; gap: 3em; place-items: center; margin: 1em 0"
+>
+  <ColorBar
+    title="Symmetric Range (-1000 to 1000)"
+    range={[-1000, 1000]}
+    scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
+    color_scale="interpolateRdBu"
+    tick_labels={7}
+    bar_style="width: 350px"
+  />
+
+  <ColorBar
+    title="Asymmetric Range (-100 to 1000)"
+    range={[-100, 1000]}
+    scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
+    color_scale="interpolatePuOr"
+    tick_labels={6}
+    bar_style="width: 350px"
+  />
+
+  <ColorBar
+    title="Vertical Arcsinh (-500 to 500)"
+    range={[-500, 500]}
+    scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
+    orientation="vertical"
+    color_scale="interpolateBrBG"
+    bar_style="height: 200px"
+  />
+
+  <ColorBar
+    title="Near-Zero Focus (-10 to 10)"
+    range={[-10, 10]}
+    scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
+    color_scale="interpolatePiYG"
+    tick_labels={5}
+    bar_style="width: 350px"
+  />
+</div>
+
+<p style="font-size: 0.9em; opacity: 0.8; text-align: center">
+  Try switching to "log" to see it fail on negative ranges. Arcsinh handles all ranges
+  smoothly.
+</p>
+```
