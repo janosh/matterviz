@@ -1,6 +1,13 @@
 import PropTypes from 'prop-types'
 import React, { Component, useEffect, useMemo, useRef, useState } from 'react'
 
+// Delay before hiding loading indicator (ms). Svelte custom elements don't expose
+// lifecycle events, so this is a reasonable UX approximation.
+const LOADING_DELAY_MS = 100
+
+// Guard against prototype pollution attacks via malicious prop names
+const DANGEROUS_KEYS = new Set([`__proto__`, `constructor`, `prototype`])
+
 // Convert non-JSON-serializable values for Dash event payloads.
 // Uses JSON.stringify with a replacer to handle special types.
 function sanitize_for_json(value) {
@@ -65,10 +72,13 @@ function convert_dash_props_to_matterviz(mv_props, set_props_list, float32_props
 
 // Deep merge two objects. Used to merge nested event callbacks with mv_props.
 // Callbacks (functions) always override, objects are recursively merged.
+// Skips dangerous keys to prevent prototype pollution.
 function deep_merge(target, source) {
   if (!source || typeof source !== `object`) return target
   const result = { ...target }
   for (const key of Object.keys(source)) {
+    // Skip dangerous keys (prototype pollution guard)
+    if (DANGEROUS_KEYS.has(key)) continue
     const src_val = source[key]
     const tgt_val = result[key]
     if (
@@ -179,9 +189,12 @@ const MatterVizInner = (props) => {
   // the overhead of useCallback for each dynamic callback.
   // Clear previous callbacks to avoid stale handlers when event_props changes.
   // Supports dot notation for nested props (e.g., "tile_props.onclick").
-  callbacksRef.current = {}
+  callbacksRef.current = Object.create(null) // null-prototype to avoid prototype chain
   if (setProps) {
     for (const propName of event_props || []) {
+      // Skip dangerous prop names (prototype pollution guard)
+      if (DANGEROUS_KEYS.has(propName)) continue
+
       const callback = (data) => {
         setProps({
           last_event: {
@@ -191,13 +204,17 @@ const MatterVizInner = (props) => {
           },
         })
       }
-      // Handle dot notation for nested props (e.g., "tile_props.onclick")
+
       if (propName.includes(`.`)) {
         const parts = propName.split(`.`).filter(Boolean)
+        // Skip if any part is a dangerous key
+        if (parts.some((part) => DANGEROUS_KEYS.has(part))) continue
+
         let target = callbacksRef.current
         for (let idx = 0; idx < parts.length - 1; idx++) {
           const part = parts[idx]
-          if (!target[part]) target[part] = {}
+          // Use null-prototype objects to avoid Object.prototype chain
+          if (!target[part]) target[part] = Object.create(null)
           target = target[part]
         }
         target[parts[parts.length - 1]] = callback
@@ -212,10 +229,6 @@ const MatterVizInner = (props) => {
     () => JSON.stringify([mv_props, set_props, float32_props, event_props]),
     [mv_props, set_props, float32_props, event_props],
   )
-
-  // Delay before hiding loading indicator. Svelte custom elements don't expose
-  // lifecycle events, so this is a reasonable UX approximation.
-  const LOADING_DELAY_MS = 100
 
   useEffect(() => {
     const element = ref.current
