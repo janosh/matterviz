@@ -124,6 +124,14 @@ _SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
 # Fallback defaults for each data category (used when discovery finds nothing)
 _FALLBACK_STRUCTURE = "mp-1234"
 _FALLBACK_PHASE_DIAGRAM = "Al-Cu"
+
+# Empty phase diagram structure for when loading fails
+_EMPTY_PHASE = {
+    "components": ["", ""],
+    "temperature_range": [0, 1000],
+    "regions": [],
+    "boundaries": [],
+}
 _FALLBACK_PHONON = "mp-2667-Cs1Au1-pbe"
 _FALLBACK_DOS = "dos-spin-polarization-mp-865805"
 _FALLBACK_BANDS = "cao-2605-bands"
@@ -271,14 +279,7 @@ def layout() -> html.Div:
     initial_xrd_key = _safe_first(AVAILABLE_XRD, _FALLBACK_XRD)
 
     initial_structure = get_cached(initial_structure_key, load_structure)
-    # Empty phase diagram structure as fallback if loading fails
-    empty_phase = {
-        "components": ["", ""],
-        "temperature_range": [0, 1000],
-        "regions": [],
-        "boundaries": [],
-    }
-    initial_phase = get_cached(initial_phase_key, load_phase_diagram) or empty_phase
+    initial_phase = get_cached(initial_phase_key, load_phase_diagram) or _EMPTY_PHASE
     initial_phonon = get_cached(initial_phonon_key, load_phonon_bands)
     initial_dos = get_cached(initial_dos_key, load_electronic_dos)
     initial_bands = get_cached(initial_bands_key, load_electronic_bands)
@@ -966,7 +967,7 @@ def create_app() -> dash.Dash:
             fallback_key = _safe_first(
                 AVAILABLE_PHASE_DIAGRAMS, _FALLBACK_PHASE_DIAGRAM
             )
-            data = get_cached(fallback_key, load_phase_diagram) or {}
+            data = get_cached(fallback_key, load_phase_diagram) or _EMPTY_PHASE
         return {"data": data, "height": 500}
 
     # Structure callback

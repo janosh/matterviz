@@ -43,12 +43,16 @@ def run_js_test(js_code: str) -> dict:
             timeout=5,
         )
         if result.returncode != 0:
-            pytest.skip(f"Node.js test failed: {result.stderr}")
-        return json.loads(result.stdout.strip())
+            err_msg = result.stderr.strip() or "(no stderr output)"
+            pytest.skip(f"Node.js test failed: {err_msg}")
+        stdout = result.stdout.strip()
+        if not stdout:
+            pytest.fail("Node.js produced empty stdout")
+        return json.loads(stdout)
     except FileNotFoundError:
         pytest.skip("Node.js not available")
     except json.JSONDecodeError as exc:
-        pytest.fail(f"Invalid JSON output: {result.stdout}, error: {exc}")
+        pytest.fail(f"Invalid JSON output: {result.stdout!r}, error: {exc}")
 
 
 class TestSanitizeForJsonEdgeCases:

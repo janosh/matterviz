@@ -213,6 +213,10 @@ const MatterVizInner = (props) => {
     [mv_props, set_props, float32_props, event_props],
   )
 
+  // Delay before hiding loading indicator. Svelte custom elements don't expose
+  // lifecycle events, so this is a reasonable UX approximation.
+  const LOADING_DELAY_MS = 100
+
   useEffect(() => {
     const element = ref.current
     if (!element) return
@@ -231,9 +235,8 @@ const MatterVizInner = (props) => {
     element.component = component
     element.props = resolved_props
 
-    // Mark as loaded after brief delay. Svelte custom elements don't expose
-    // lifecycle events, so 100ms is a reasonable UX approximation.
-    const timer = setTimeout(() => setIsLoading(false), 100)
+    // Mark as loaded after brief delay
+    const timer = setTimeout(() => setIsLoading(false), LOADING_DELAY_MS)
 
     // Cleanup: clear props to allow garbage collection
     return () => {
