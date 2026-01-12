@@ -16,20 +16,20 @@ describe(`ScatterPlot`, () => {
   test.each([
     {
       series: [basic],
-      x_lim: [null, null] as const,
-      y_lim: [null, null] as const,
+      x_axis: { range: [null, null] as [null, null] },
+      y_axis: { range: [null, null] as [null, null] },
       markers: `points`,
     },
     {
       series: [{ ...basic, y: [5, 3, 20, 2, 7] }],
-      x_lim: [null, null] as const,
-      y_lim: [0, 10] as const,
+      x_axis: { range: [null, null] as [null, null] },
+      y_axis: { range: [0, 10] as [number, number] },
       markers: `line`,
     },
     {
       series: [{ ...basic, x: [0, 1, 2, 3, 10] }],
-      x_lim: [0, 5] as const,
-      y_lim: [null, null] as const,
+      x_axis: { range: [0, 5] as [number, number] },
+      y_axis: { range: [null, null] as [null, null] },
       markers: `line+points`,
     },
     { series: [], markers: `points` },
