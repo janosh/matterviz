@@ -16,6 +16,12 @@
   // Custom element props (component identifier + props bag)
   let { component = `Structure`, props = {} } = $props()
 
+  // Ensure props is always a plain object to prevent spread errors
+  // Custom elements may receive non-object values during initialization
+  let safe_props = $derived(
+    props && typeof props === `object` && !Array.isArray(props) ? props : {},
+  )
+
   let resolved = $derived(resolve_matterviz_component(component))
 
   // Expose discovered components for easy debugging in the browser console.
@@ -38,7 +44,7 @@
 
 {#if resolved.component}
   {@const Component = resolved.component}
-  <Component {...props} />
+  <Component {...safe_props} />
 {:else}
   <div class="mv-error">
     {resolved.error}

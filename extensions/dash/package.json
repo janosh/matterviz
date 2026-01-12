@@ -10,7 +10,7 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "dev": "vite build --watch",
-    "clean": "rm -f matterviz_dash_components/matterviz_dash_components*.js matterviz_dash_components/matterviz_dash_components*.css matterviz_dash_components/*.wasm matterviz_dash_components/*.map",
+    "clean": "rm -f matterviz_dash_components/matterviz_dash_components*.js matterviz_dash_components/matterviz_dash_components*.css matterviz_dash_components/*.map",
     "prepublishOnly": "pnpm run build"
   },
   "peerDependencies": {

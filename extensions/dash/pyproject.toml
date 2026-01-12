@@ -27,7 +27,6 @@ matterviz_dash_components = [
   "*.json",
   "*.map",
   "*.txt",
-  "*.wasm",
   "py.typed",
 ]
 

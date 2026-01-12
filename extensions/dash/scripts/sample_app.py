@@ -165,8 +165,6 @@ def get_cached(key: str, loader: Callable[[str], Any]) -> Any:
     return _cache.get(key)
 
 
-# Note: WASM MIME type is set in matterviz_dash_components/__init__.py
-
 # Simple demo structure for Trajectory and BrillouinZone demos
 # (real pymatgen JSON has complex format that requires conversion)
 _DEMO_STRUCTURE: dict = {
@@ -273,7 +271,14 @@ def layout() -> html.Div:
     initial_xrd_key = _safe_first(AVAILABLE_XRD, _FALLBACK_XRD)
 
     initial_structure = get_cached(initial_structure_key, load_structure)
-    initial_phase = get_cached(initial_phase_key, load_phase_diagram) or {}
+    # Empty phase diagram structure as fallback if loading fails
+    empty_phase = {
+        "components": ["", ""],
+        "temperature_range": [0, 1000],
+        "regions": [],
+        "boundaries": [],
+    }
+    initial_phase = get_cached(initial_phase_key, load_phase_diagram) or empty_phase
     initial_phonon = get_cached(initial_phonon_key, load_phonon_bands)
     initial_dos = get_cached(initial_dos_key, load_electronic_dos)
     initial_bands = get_cached(initial_bands_key, load_electronic_bands)
@@ -902,6 +907,17 @@ def create_app() -> dash.Dash:
                 max-width: 100%;
                 overflow-x: auto;
                 box-sizing: border-box;
+                /* Inherit theme CSS variables for MatterViz components */
+                color-scheme: inherit;
+                --pane-bg: var(--pane-bg);
+                --page-bg: var(--page-bg);
+                --text-color: var(--text-color);
+                --struct-bg: var(--struct-bg);
+            }
+            /* Force light theme colors on draggable panes in light mode */
+            :root:not([data-theme="dark"]) .draggable-pane {
+                background: rgb(229, 231, 235) !important;
+                color: #374151 !important;
             }
             /* Dropdown styling for dark mode */
             [data-theme="dark"] .Select-control,

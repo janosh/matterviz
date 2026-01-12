@@ -160,14 +160,15 @@ const MatterVizInner = (props) => {
   const {
     id,
     component = `Structure`,
-    mv_props = {},
-    set_props = [],
-    float32_props = [],
-    event_props = [],
     className,
     style,
     setProps,
   } = props
+  // Handle null values from Python (destructuring defaults only apply to undefined)
+  const mv_props = props.mv_props ?? {}
+  const set_props = props.set_props ?? []
+  const float32_props = props.float32_props ?? []
+  const event_props = props.event_props ?? []
 
   const ref = useRef(null)
   const [isLoading, setIsLoading] = useState(true)
