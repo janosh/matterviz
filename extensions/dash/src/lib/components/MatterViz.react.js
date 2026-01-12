@@ -202,15 +202,12 @@ const MatterVizInner = (props) => {
 
   const ref = useRef(null)
   const [isLoading, setIsLoading] = useState(true)
+  const callbacksRef = useRef({})
 
-  // Build callback props that MatterViz will call.
-  const injectedCallbacks = useMemo(() => {
-    if (!setProps) return {}
-
-    const callbacks = {}
+  // Build event callbacks (stable references via ref)
+  if (setProps) {
     for (const propName of event_props || []) {
-      // propName is typically something like "on_file_load".
-      callbacks[propName] = (data) => {
+      callbacksRef.current[propName] = (data) => {
         setProps({
           last_event: {
             prop: propName,
@@ -220,25 +217,23 @@ const MatterVizInner = (props) => {
         })
       }
     }
-    return callbacks
-  }, [event_props, setProps])
+  }
 
-  // Serialize mv_props for stable dependency comparison (Dash re-creates objects on each render)
-  const mvPropsKey = useMemo(() => JSON.stringify(mv_props), [mv_props])
-  const setPropsKey = useMemo(() => JSON.stringify(set_props), [set_props])
-  const float32PropsKey = useMemo(() => JSON.stringify(float32_props), [float32_props])
-
-  const resolvedProps = useMemo(() => {
-    const converted = convertDashPropsToMatterviz(mv_props, set_props, float32_props)
-    return {
-      ...converted,
-      ...injectedCallbacks,
-    }
-  }, [mvPropsKey, setPropsKey, float32PropsKey, injectedCallbacks])
+  // Serialize props for stable dependency comparison (Dash re-creates objects each render)
+  const propsKey = useMemo(
+    () => JSON.stringify([mv_props, set_props, float32_props]),
+    [mv_props, set_props, float32_props],
+  )
 
   useEffect(() => {
     const element = ref.current
     if (!element) return
+
+    // Convert and merge with callbacks
+    const resolvedProps = {
+      ...convertDashPropsToMatterviz(mv_props, set_props, float32_props),
+      ...callbacksRef.current,
+    }
 
     // Set as properties (not attributes) so we can pass objects + functions.
     element.component = component
@@ -254,10 +249,9 @@ const MatterVizInner = (props) => {
         element.props = {}
       }
     }
-  }, [component, resolvedProps])
+  }, [component, propsKey])
 
-  // Use mvPropsKey as React key to force remount when props change significantly
-  // This is needed because Svelte 5 custom elements don't always detect external prop changes
+  // React key forces remount when component type changes
   return React.createElement(
     `div`,
     { style: { position: `relative`, ...style } },
@@ -277,7 +271,7 @@ const MatterVizInner = (props) => {
         `Loading ${component}...`,
       ),
     React.createElement(`mv-matterviz`, {
-      key: `${component}-${mvPropsKey}`,
+      key: component,
       id,
       ref,
       className,

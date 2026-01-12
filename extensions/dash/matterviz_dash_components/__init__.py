@@ -13,14 +13,19 @@ import mimetypes
 
 from .MatterViz import MatterViz
 from .typed import (  # noqa: F401
+    Bands,
     BrillouinZone,
     Composition,
     ConvexHull2D,
     ConvexHull3D,
     ConvexHull4D,
+    Dos,
+    Histogram,
     IsobaricBinaryPhaseDiagram,
     IsobaricTernaryPhaseDiagram,
     PeriodicTable,
+    RdfPlot,
+    ScatterPlot,
     Structure,
     Trajectory,
     XrdPlot,

@@ -220,8 +220,10 @@ def _extract_props_root_expr(src: str) -> str:
 
     Preference order:
       1) RHS of `type $$ComponentProps = ...` (if present)
-      2) First type argument of `import("svelte").Component<...>`
+      2) `props:` from `declare function $$render<...>(): { props: ... }`
+      3) First type argument of `import("svelte").Component<...>`
     """
+    # Try type $$ComponentProps = ...
     m = re.search(r"type\s+\$\$ComponentProps\s*=", src)
     if m:
         expr_start = m.end()
@@ -231,6 +233,36 @@ def _extract_props_root_expr(src: str) -> str:
         semi = src.find(";", expr_start)
         if semi != -1:
             return src[expr_start:semi].strip()
+
+    # Try $$render function format (generic components like ScatterPlot)
+    match = re.search(r"declare\s+function\s+\$\$render[^{]*\{\s*props\s*:", src)
+    if match:
+        # Find the props value - it starts after "props:" and ends at the next ";"
+        props_start = match.end()
+        # Find matching brace/semicolon
+        depth = 0
+        in_backtick = in_single_quote = in_double_quote = False
+        for idx in range(props_start, len(src)):
+            char = src[idx]
+            if char == "`" and not in_single_quote and not in_double_quote:
+                in_backtick = not in_backtick
+                continue
+            if char == "'" and not in_backtick and not in_double_quote:
+                in_single_quote = not in_single_quote
+                continue
+            if char == '"' and not in_backtick and not in_single_quote:
+                in_double_quote = not in_double_quote
+                continue
+            if in_backtick or in_single_quote or in_double_quote:
+                continue
+            if char in "({[<":
+                depth += 1
+            elif char in ")}]>":
+                depth -= 1
+            elif char == ";" and depth == 0:
+                return src[props_start:idx].strip()
+        # If we reach here, try to find end at first balanced semicolon
+        return src[props_start:].split(";")[0].strip()
 
     # Fallback: parse Component<...> generic
     m = re.search(r'import\("svelte"\)\.Component<', src)
@@ -320,8 +352,59 @@ def _parse_object_literal(obj: str) -> dict[str, tuple[str, bool]]:
     return props
 
 
+def _resolve_component_props_ref(
+    term: str, src: str, dist_dir: Path | None, _visited: set[str]
+) -> dict[str, tuple[str, bool]]:
+    """Resolve ComponentProps<typeof X> to the props of component X."""
+    # Match ComponentProps<typeof ComponentName>
+    match = re.match(r"ComponentProps\s*<\s*typeof\s+(\w+)\s*>", term)
+    if not match or not dist_dir:
+        return {}
+
+    component_name = match.group(1)
+    if component_name in _visited:
+        return {}
+    _visited.add(component_name)
+
+    # Find the import path for this component
+    # e.g. import ScatterPlot from '../plot/ScatterPlot.svelte';
+    import_match = re.search(
+        rf"import\s+{component_name}\s+from\s+['\"]([^'\"]+)['\"]", src
+    )
+    if not import_match:
+        return {}
+
+    import_path = import_match.group(1)
+    # Convert relative path like '../plot/ScatterPlot.svelte' to absolute
+    # We need to find this file relative to dist_dir
+    # The import is relative to the current file, but we'll search from dist root
+    component_file = import_path.split("/")[-1].replace(".svelte", ".svelte.d.ts")
+    subdir = import_path.split("/")[-2] if "/" in import_path else ""
+
+    # Search for the file
+    candidates = list(dist_dir.rglob(component_file))
+    if subdir:
+        candidates = [path for path in candidates if subdir in str(path)] or candidates
+
+    if not candidates:
+        return {}
+
+    # Parse the referenced component's .d.ts file
+    ref_src = candidates[0].read_text(encoding="utf-8")
+    ref_aliases = _extract_type_aliases(ref_src)
+    try:
+        ref_expr = _extract_props_root_expr(ref_src)
+        return _collect_props(ref_expr, ref_aliases, dist_dir, _visited, ref_src)
+    except ValueError:
+        return {}
+
+
 def _collect_props(
-    expr: str, aliases: dict[str, str], _visited: set[str] | None = None
+    expr: str,
+    aliases: dict[str, str],
+    dist_dir: Path | None = None,
+    _visited: set[str] | None = None,
+    src: str = "",
 ) -> dict[str, tuple[str, bool]]:
     """Collect props from an intersection type expression."""
     if _visited is None:
@@ -361,11 +444,18 @@ def _collect_props(
                         break
             continue
 
+        # Handle ComponentProps<typeof X> references
+        if term.startswith("ComponentProps<"):
+            out.update(_resolve_component_props_ref(term, src, dist_dir, _visited))
+            continue
+
         # Follow simple aliases used in the expression (e.g. EventHandlers).
         if re.fullmatch(r"[A-Za-z0-9_]+", term) and term in aliases:
             if term not in _visited:
                 _visited.add(term)
-                out.update(_collect_props(aliases[term], aliases, _visited))
+                out.update(
+                    _collect_props(aliases[term], aliases, dist_dir, _visited, src)
+                )
 
     return out
 
@@ -421,20 +511,21 @@ def parse_external_type(
     # Try type alias
     aliases = _extract_type_aliases(src)
     if type_name in aliases:
-        return _collect_props(aliases[type_name], aliases)
+        return _collect_props(aliases[type_name], aliases, dist_dir, src=src)
 
     return {}
 
 
 def parse_svelte_dts(
     dts_path: Path,
+    dist_dir: Path | None = None,
 ) -> tuple[list[Prop], list[str], list[str], list[str]]:
     """Parse a *.svelte.d.ts file into prop metadata."""
     src = dts_path.read_text(encoding="utf-8")
     aliases = _extract_type_aliases(src)
     root_expr = _extract_props_root_expr(src)
 
-    js_props = _collect_props(root_expr, aliases)
+    js_props = _collect_props(root_expr, aliases, dist_dir, src=src)
 
     props: list[Prop] = []
     callback_props: list[str] = []
@@ -471,7 +562,9 @@ def parse_svelte_dts_with_includes(
 ) -> tuple[list[Prop], list[str], list[str], list[str]]:
     """Parse a *.svelte.d.ts file with additional external type includes."""
     # Start with base props from the .svelte.d.ts file
-    props, callback_props, snippet_props, dom_props = parse_svelte_dts(dts_path)
+    props, callback_props, snippet_props, dom_props = parse_svelte_dts(
+        dts_path, dist_dir
+    )
     existing_names = {p.js_name for p in props}
 
     # Parse additional props from external type definitions
@@ -629,8 +722,6 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
         "",
     ]
 
-    exported: list[str] = []
-
     for class_name, spec in components.items():
         key = spec.get("key")
         if not key:
@@ -643,7 +734,9 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
                 parse_svelte_dts_with_includes(dts_path, dist_dir, include_from)
             )
         else:
-            props, callback_props, snippet_props, dom_props = parse_svelte_dts(dts_path)
+            props, callback_props, snippet_props, dom_props = parse_svelte_dts(
+                dts_path, dist_dir
+            )
 
         # Add any manually-specified extra props
         extra_props = spec.get("extra_props", {})
@@ -690,8 +783,6 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
 
             used_py.add(py)
             py_to_js[py] = js
-
-        exported.append(class_name)
 
         # Docstring
         doc = (
@@ -775,9 +866,6 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
             "        )"
         )
         lines.append("")
-
-    lines.append(f"__all__ = {exported!r}")
-    lines.append("")
 
     out_path.write_text("\n".join(lines), encoding="utf-8")
 

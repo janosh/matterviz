@@ -43,12 +43,18 @@ include_from = ["convex-hull/index.d.ts:BaseConvexHullProps"]
 [components.ConvexHull3D]
 key = "convex-hull/ConvexHull3D"
 doc = "3D convex hull phase diagram plot."
-include_from = ["convex-hull/index.d.ts:BaseConvexHullProps", "convex-hull/index.d.ts:Hull3DProps"]
+include_from = [
+  "convex-hull/index.d.ts:BaseConvexHullProps",
+  "convex-hull/index.d.ts:Hull3DProps",
+]
 
 [components.ConvexHull4D]
 key = "convex-hull/ConvexHull4D"
 doc = "4D convex hull phase diagram plot (for quaternary systems)."
-include_from = ["convex-hull/index.d.ts:BaseConvexHullProps", "convex-hull/index.d.ts:Hull3DProps"]
+include_from = [
+  "convex-hull/index.d.ts:BaseConvexHullProps",
+  "convex-hull/index.d.ts:Hull3DProps",
+]
 
 [components.IsobaricBinaryPhaseDiagram]
 key = "phase-diagram/IsobaricBinaryPhaseDiagram"
@@ -73,14 +79,6 @@ doc = "Band structure dispersion plot (phonon or electronic)."
 key = "spectral/Dos"
 doc = "Density of states plot (electronic or phonon)."
 
-[components.BandsAndDos]
-key = "spectral/BandsAndDos"
-doc = "Combined band structure and DOS layout."
-
-[components.BrillouinBandsDos]
-key = "spectral/BrillouinBandsDos"
-doc = "Brillouin zone with band structure and DOS visualization."
-
 [components.ScatterPlot]
 key = "plot/ScatterPlot"
 doc = "General-purpose scatter plot with customizable axes and tooltips."
@@ -88,10 +86,6 @@ doc = "General-purpose scatter plot with customizable axes and tooltips."
 [components.Histogram]
 key = "plot/Histogram"
 doc = "Histogram plot for data distributions."
-
-[components.HeatMap]
-key = "plot/HeatMap"
-doc = "2D heatmap visualization."
 
 [components.RdfPlot]
 key = "rdf/RdfPlot"

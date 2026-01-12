@@ -62,7 +62,7 @@ class Structure(MatterViz):
     - width -> width: number
     """
 
-    def __init__(self, id=None, allow_file_drop: bool | None = None, atom_color_config: dict | None = None, cell_type: Any | None = None, data_url: str | None = None, displayed_structure: Any | None = None, dragover: bool | None = None, element_mapping: dict | None = None, enable_info_pane: bool | None = None, enable_measure_mode: bool | None = None, error_msg: str | None = None, fullscreen: bool | None = None, height: float | None = None, hidden_elements: list | None = None, hidden_prop_vals: list | None = None, hovered: bool | None = None, info_pane_open: bool | None = None, loading: bool | None = None, measured_sites: list | None = None, on_camera_move: Any | None = None, on_camera_reset: Any | None = None, on_error: Any | None = None, on_file_load: Any | None = None, on_fullscreen_change: Any | None = None, performance_mode: Any | None = None, png_dpi: float | None = None, reset_text: str | None = None, scene_props: dict | None = None, selected_sites: list | None = None, show_controls: Any | None = None, spinner_props: dict | None = None, structure: Any | None = None, structure_string: str | None = None, sym_data: Any | None = None, symmetry_settings: dict | None = None, width: float | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+    def __init__(self, id=None, allow_file_drop: bool | None = None, atom_color_config: dict | None = None, cell_type: Any | None = None, data_url: str | None = None, displayed_structure: Any | None = None, dragover: bool | None = None, element_mapping: dict | None = None, enable_info_pane: bool | None = None, enable_measure_mode: bool | None = None, error_msg: str | None = None, fullscreen: bool | None = None, height: float | None = None, hidden_elements: list | None = None, hidden_prop_vals: list | None = None, hovered: bool | None = None, info_pane_open: bool | None = None, loading: bool | None = None, measured_sites: list[float] | None = None, on_camera_move: Any | None = None, on_camera_reset: Any | None = None, on_error: Any | None = None, on_file_load: Any | None = None, on_fullscreen_change: Any | None = None, performance_mode: Any | None = None, png_dpi: float | None = None, reset_text: str | None = None, scene_props: dict | None = None, selected_sites: list[float] | None = None, show_controls: bool | None = None, spinner_props: dict | None = None, structure: Any | None = None, structure_string: str | None = None, sym_data: Any | None = None, symmetry_settings: dict | None = None, width: float | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
         _mv: dict = {}
         if allow_file_drop is not None:
             _mv['allow_file_drop'] = allow_file_drop
@@ -192,7 +192,7 @@ class PeriodicTable(MatterViz):
     - tile_props -> tile_props: Partial<ComponentProps<typeof ElementTile>>
     """
 
-    def __init__(self, id=None, active_category: Any | None = None, active_element: Any | None = None, active_elements: list | None = None, color_bar_props: dict | None = None, color_overrides: dict | None = None, color_scale_range: list | None = None, disabled: bool | None = None, gap: str | None = None, heatmap_values: list | None = None, inner_transition_metal_offset: float | None = None, labels: dict | None = None, lanth_act_style: str | None = None, links: dict | None = None, log: bool | None = None, missing_color: str | None = None, show_color_bar: bool | None = None, show_photo: bool | None = None, split_layout: Any | None = None, tile_props: dict | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+    def __init__(self, id=None, active_category: Any | None = None, active_element: Any | None = None, active_elements: list | None = None, color_bar_props: dict | None = None, color_overrides: dict | None = None, color_scale_range: list | None = None, disabled: bool | None = None, gap: str | None = None, heatmap_values: list[dict] | None = None, inner_transition_metal_offset: float | None = None, labels: dict | None = None, lanth_act_style: str | None = None, links: dict | None = None, log: bool | None = None, missing_color: str | None = None, show_color_bar: bool | None = None, show_photo: bool | None = None, split_layout: Any | None = None, tile_props: dict | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
         _mv: dict = {}
         if active_category is not None:
             _mv['active_category'] = active_category
@@ -269,7 +269,7 @@ class Composition(MatterViz):
     - size -> size: number
     """
 
-    def __init__(self, id=None, color_scheme: Any | None = None, composition: Any | None = None, interactive: bool | None = None, mode: Any | None = None, size: float | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+    def __init__(self, id=None, color_scheme: Any | None = None, composition: str | None = None, interactive: bool | None = None, mode: Any | None = None, size: float | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
         _mv: dict = {}
         if color_scheme is not None:
             _mv['color_scheme'] = color_scheme
@@ -339,7 +339,7 @@ class Trajectory(MatterViz):
     - visible_properties -> visible_properties: string[]
     """
 
-    def __init__(self, id=None, elem_property_labels: dict | None = None, allow_file_drop: bool | None = None, atom_type_mapping: Any | None = None, auto_play: bool | None = None, current_step_idx: float | None = None, data_extractor: Any | None = None, data_url: str | None = None, display_mode: Any | None = None, fps: float | None = None, fps_range: list | None = None, histogram_props: dict | None = None, layout: Any | None = None, loading_options: Any | None = None, plot_skimming: bool | None = None, scatter_props: dict | None = None, show_controls: bool | None = None, spinner_props: dict | None = None, step_labels: list | None = None, structure_props: dict | None = None, trajectory: Any | None = None, visible_properties: list | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+    def __init__(self, id=None, elem_property_labels: dict | None = None, allow_file_drop: bool | None = None, atom_type_mapping: Any | None = None, auto_play: bool | None = None, current_step_idx: float | None = None, data_extractor: Any | None = None, data_url: str | None = None, display_mode: Any | None = None, fps: float | None = None, fps_range: list | None = None, histogram_props: dict | None = None, layout: Any | None = None, loading_options: Any | None = None, plot_skimming: bool | None = None, scatter_props: dict | None = None, show_controls: bool | None = None, spinner_props: dict | None = None, step_labels: list[float] | None = None, structure_props: dict | None = None, trajectory: Any | None = None, visible_properties: list[str] | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
         _mv: dict = {}
         if elem_property_labels is not None:
             _mv['ELEM_PROPERTY_LABELS'] = elem_property_labels
@@ -443,7 +443,7 @@ class BrillouinZone(MatterViz):
     - width -> width: number
     """
 
-    def __init__(self, id=None, allow_file_drop: bool | None = None, bz_data: Any | None = None, bz_order: float | None = None, camera_projection: Any | None = None, controls_open: bool | None = None, data_url: str | None = None, dragover: bool | None = None, edge_color: str | None = None, edge_width: float | None = None, error_msg: str | None = None, fullscreen: bool | None = None, height: float | None = None, hovered: bool | None = None, hovered_k_point: Any | None = None, hovered_qpoint_index: Any | None = None, info_pane_open: bool | None = None, k_path_points: list | None = None, loading: bool | None = None, png_dpi: float | None = None, show_controls: Any | None = None, show_vectors: bool | None = None, spinner_props: dict | None = None, structure: Any | None = None, structure_string: str | None = None, surface_color: str | None = None, surface_opacity: float | None = None, vector_scale: float | None = None, width: float | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+    def __init__(self, id=None, allow_file_drop: bool | None = None, bz_data: Any | None = None, bz_order: float | None = None, camera_projection: Any | None = None, controls_open: bool | None = None, data_url: str | None = None, dragover: bool | None = None, edge_color: str | None = None, edge_width: float | None = None, error_msg: str | None = None, fullscreen: bool | None = None, height: float | None = None, hovered: bool | None = None, hovered_k_point: Any | None = None, hovered_qpoint_index: float | None = None, info_pane_open: bool | None = None, k_path_points: list | None = None, loading: bool | None = None, png_dpi: float | None = None, show_controls: bool | None = None, show_vectors: bool | None = None, spinner_props: dict | None = None, structure: Any | None = None, structure_string: str | None = None, surface_color: str | None = None, surface_opacity: float | None = None, vector_scale: float | None = None, width: float | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
         _mv: dict = {}
         if allow_file_drop is not None:
             _mv['allow_file_drop'] = allow_file_drop
@@ -1129,10 +1129,10 @@ class XrdPlot(MatterViz):
     - wavelength -> wavelength: number | null
     - x_axis -> x_axis: AxisConfig
     - y_axis -> y_axis: AxisConfig
-    - patterns -> patterns: XrdPattern | PatternEntry[] (required in TS)
+    - patterns -> patterns: XrdPattern | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }> | PatternEntry[] (required in TS)
     """
 
-    def __init__(self, id=None, allow_file_drop: bool | None = None, annotate_peaks: float | None = None, broadening_enabled: bool | None = None, broadening_params: Any | None = None, controls: Any | None = None, error_msg: str | None = None, hkl_format: Any | None = None, loading: bool | None = None, peak_width: float | None = None, show_angles: Any | None = None, wavelength: Any | None = None, x_axis: Any | None = None, y_axis: Any | None = None, patterns: list | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+    def __init__(self, id=None, allow_file_drop: bool | None = None, annotate_peaks: float | None = None, broadening_enabled: bool | None = None, broadening_params: Any | None = None, controls: Any | None = None, error_msg: str | None = None, hkl_format: Any | None = None, loading: bool | None = None, peak_width: float | None = None, show_angles: bool | None = None, wavelength: float | None = None, x_axis: Any | None = None, y_axis: Any | None = None, patterns: list[dict] | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
         _mv: dict = {}
         if allow_file_drop is not None:
             _mv['allow_file_drop'] = allow_file_drop
@@ -1179,4 +1179,291 @@ class XrdPlot(MatterViz):
             **kwargs,
         )
 
-__all__ = ['Structure', 'PeriodicTable', 'Composition', 'Trajectory', 'BrillouinZone', 'ConvexHull2D', 'ConvexHull3D', 'ConvexHull4D', 'IsobaricBinaryPhaseDiagram', 'IsobaricTernaryPhaseDiagram', 'XrdPlot']
+class Bands(MatterViz):
+    """Band structure dispersion plot (phonon or electronic).
+
+    Underlying MatterViz component key: ``spectral/Bands``.
+
+    Prop reference (TypeScript)
+    ---------------------------
+    - band_structs -> band_structs: BaseBandStructure | Record<string, BaseBandStructure> (required in TS)
+    - band_type -> band_type: BandStructureType
+    - fermi_level -> fermi_level: number
+    - line_kwargs -> line_kwargs: LineKwargs
+    - path_mode -> path_mode: PathMode
+    - reference_frequency -> reference_frequency: number | null
+    - ribbon_config -> ribbon_config: RibbonConfig | Record<string, RibbonConfig>
+    - show_legend -> show_legend: boolean
+    - x_axis -> x_axis: AxisConfig
+    - x_positions -> x_positions: Record<string, [number, number]>
+    - y_axis -> y_axis: AxisConfig
+    """
+
+    def __init__(self, id=None, band_structs: dict | None = None, band_type: Any | None = None, fermi_level: float | None = None, line_kwargs: Any | None = None, path_mode: Any | None = None, reference_frequency: float | None = None, ribbon_config: dict | None = None, show_legend: bool | None = None, x_axis: Any | None = None, x_positions: dict | None = None, y_axis: Any | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+        _mv: dict = {}
+        if band_structs is not None:
+            _mv['band_structs'] = band_structs
+        if band_type is not None:
+            _mv['band_type'] = band_type
+        if fermi_level is not None:
+            _mv['fermi_level'] = fermi_level
+        if line_kwargs is not None:
+            _mv['line_kwargs'] = line_kwargs
+        if path_mode is not None:
+            _mv['path_mode'] = path_mode
+        if reference_frequency is not None:
+            _mv['reference_frequency'] = reference_frequency
+        if ribbon_config is not None:
+            _mv['ribbon_config'] = ribbon_config
+        if show_legend is not None:
+            _mv['show_legend'] = show_legend
+        if x_axis is not None:
+            _mv['x_axis'] = x_axis
+        if x_positions is not None:
+            _mv['x_positions'] = x_positions
+        if y_axis is not None:
+            _mv['y_axis'] = y_axis
+        if mv_props:
+            _mv.update(mv_props)
+
+
+        super().__init__(
+            id=id,
+            component='spectral/Bands',
+            mv_props=_mv,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
+        )
+
+class Dos(MatterViz):
+    """Density of states plot (electronic or phonon).
+
+    Underlying MatterViz component key: ``spectral/Dos``.
+
+    Prop reference (TypeScript)
+    ---------------------------
+    - doses -> doses: DosInput | Record<string, DosInput> (required in TS)
+    - fermi_level -> fermi_level: number
+    - hovered_frequency -> hovered_frequency: number | null
+    - normalize -> normalize: NormalizationMode
+    - orientation -> orientation: `vertical` | `horizontal`
+    - reference_frequency -> reference_frequency: number | null
+    - show_legend -> show_legend: boolean
+    - sigma -> sigma: number
+    - stack -> stack: boolean
+    - units -> units: FrequencyUnit
+    - x_axis -> x_axis: AxisConfig
+    - y_axis -> y_axis: AxisConfig
+    """
+
+    def __init__(self, id=None, doses: dict | None = None, fermi_level: float | None = None, hovered_frequency: float | None = None, normalize: Any | None = None, orientation: Any | None = None, reference_frequency: float | None = None, show_legend: bool | None = None, sigma: float | None = None, stack: bool | None = None, units: Any | None = None, x_axis: Any | None = None, y_axis: Any | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+        _mv: dict = {}
+        if doses is not None:
+            _mv['doses'] = doses
+        if fermi_level is not None:
+            _mv['fermi_level'] = fermi_level
+        if hovered_frequency is not None:
+            _mv['hovered_frequency'] = hovered_frequency
+        if normalize is not None:
+            _mv['normalize'] = normalize
+        if orientation is not None:
+            _mv['orientation'] = orientation
+        if reference_frequency is not None:
+            _mv['reference_frequency'] = reference_frequency
+        if show_legend is not None:
+            _mv['show_legend'] = show_legend
+        if sigma is not None:
+            _mv['sigma'] = sigma
+        if stack is not None:
+            _mv['stack'] = stack
+        if units is not None:
+            _mv['units'] = units
+        if x_axis is not None:
+            _mv['x_axis'] = x_axis
+        if y_axis is not None:
+            _mv['y_axis'] = y_axis
+        if mv_props:
+            _mv.update(mv_props)
+
+
+        super().__init__(
+            id=id,
+            component='spectral/Dos',
+            mv_props=_mv,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
+        )
+
+class ScatterPlot(MatterViz):
+    """General-purpose scatter plot with customizable axes and tooltips.
+
+    Underlying MatterViz component key: ``plot/ScatterPlot``.
+
+    Prop reference (TypeScript)
+    ---------------------------
+    """
+
+    def __init__(self, id=None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+        _mv: dict = {}
+        if mv_props:
+            _mv.update(mv_props)
+
+
+        super().__init__(
+            id=id,
+            component='plot/ScatterPlot',
+            mv_props=_mv,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
+        )
+
+class Histogram(MatterViz):
+    """Histogram plot for data distributions.
+
+    Underlying MatterViz component key: ``plot/Histogram``.
+
+    Events
+    ------
+    MatterViz exposes callback props (functions) as events via ``event_props``.
+    For this component, available callback props include:
+        on_series_toggle
+
+    Not supported in Dash
+    --------------------
+    Snippet/slot props are omitted from this wrapper:
+        controls_extra, tooltip
+
+    Prop reference (TypeScript)
+    ---------------------------
+    - bar -> bar: BarStyle
+    - bins -> bins: number
+    - legend -> legend: LegendConfig | null
+    - mode -> mode: `single` | `overlay`
+    - selected_property -> selected_property: string
+    - series -> series: DataSeries[] (required in TS)
+    - show_legend -> show_legend: boolean
+    """
+
+    def __init__(self, id=None, bar: Any | None = None, bins: float | None = None, legend: Any | None = None, mode: Any | None = None, selected_property: str | None = None, series: list | None = None, show_legend: bool | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+        _mv: dict = {}
+        if bar is not None:
+            _mv['bar'] = bar
+        if bins is not None:
+            _mv['bins'] = bins
+        if legend is not None:
+            _mv['legend'] = legend
+        if mode is not None:
+            _mv['mode'] = mode
+        if selected_property is not None:
+            _mv['selected_property'] = selected_property
+        if series is not None:
+            _mv['series'] = series
+        if show_legend is not None:
+            _mv['show_legend'] = show_legend
+        if mv_props:
+            _mv.update(mv_props)
+
+
+        super().__init__(
+            id=id,
+            component='plot/Histogram',
+            mv_props=_mv,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
+        )
+
+class RdfPlot(MatterViz):
+    """Radial distribution function (RDF) plot.
+
+    Underlying MatterViz component key: ``rdf/RdfPlot``.
+
+    Events
+    ------
+    MatterViz exposes callback props (functions) as events via ``event_props``.
+    For this component, available callback props include:
+        on_file_drop
+
+    Prop reference (TypeScript)
+    ---------------------------
+    - cutoff -> cutoff: number
+    - drag_dropped -> drag_dropped: Crystal[]
+    - dragging -> dragging: boolean
+    - enable_drop -> enable_drop: boolean
+    - error_msg -> error_msg: string
+    - loading -> loading: boolean
+    - mode -> mode: `element_pairs` | `full`
+    - n_bins -> n_bins: number
+    - patterns -> patterns: RdfEntry | RdfEntry[]
+    - pbc -> pbc: Pbc
+    - show_reference_line -> show_reference_line: boolean
+    - structures -> structures: Crystal | Crystal[] | Record<string, Crystal>
+    - x_axis -> x_axis: ComponentProps<typeof ScatterPlot>[`x_axis`]
+    - y_axis -> y_axis: ComponentProps<typeof ScatterPlot>[`y_axis`]
+    """
+
+    def __init__(self, id=None, cutoff: float | None = None, drag_dropped: list | None = None, dragging: bool | None = None, enable_drop: bool | None = None, error_msg: str | None = None, loading: bool | None = None, mode: Any | None = None, n_bins: float | None = None, patterns: list | None = None, pbc: Any | None = None, show_reference_line: bool | None = None, structures: dict | None = None, x_axis: dict | None = None, y_axis: dict | None = None, mv_props: dict | None = None, set_props: list[str] | None = None, float32_props: list[str] | None = None, event_props: list[str] | None = None, last_event: dict | None = None, className: str | None = None, style: dict | None = None, **kwargs):
+        _mv: dict = {}
+        if cutoff is not None:
+            _mv['cutoff'] = cutoff
+        if drag_dropped is not None:
+            _mv['drag_dropped'] = drag_dropped
+        if dragging is not None:
+            _mv['dragging'] = dragging
+        if enable_drop is not None:
+            _mv['enable_drop'] = enable_drop
+        if error_msg is not None:
+            _mv['error_msg'] = error_msg
+        if loading is not None:
+            _mv['loading'] = loading
+        if mode is not None:
+            _mv['mode'] = mode
+        if n_bins is not None:
+            _mv['n_bins'] = n_bins
+        if patterns is not None:
+            _mv['patterns'] = patterns
+        if pbc is not None:
+            _mv['pbc'] = pbc
+        if show_reference_line is not None:
+            _mv['show_reference_line'] = show_reference_line
+        if structures is not None:
+            _mv['structures'] = structures
+        if x_axis is not None:
+            _mv['x_axis'] = x_axis
+        if y_axis is not None:
+            _mv['y_axis'] = y_axis
+        if mv_props:
+            _mv.update(mv_props)
+
+
+        super().__init__(
+            id=id,
+            component='rdf/RdfPlot',
+            mv_props=_mv,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
+        )

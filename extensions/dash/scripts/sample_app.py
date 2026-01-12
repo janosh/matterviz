@@ -104,50 +104,44 @@ def load_xrd_pattern(name: str) -> dict | None:
     return load_xye_file(xrd_dir / f"{name}.xye")
 
 
-# Available demo files
-AVAILABLE_PHASE_DIAGRAMS = [
-    "Al-Cu",
-    "Al-Fe",
-    "Al-Mg",
-    "Al-Si",
-    "Au-Sn",
-    "Cu-Zn",
-    "Fe-Ni",
-    "Pb-Sn",
-]
+def _discover_files(directory: Path, pattern: str = "*.json*") -> list[str]:
+    """Discover available demo files by scanning a directory."""
+    if not directory.exists():
+        return []
+    seen: set[str] = set()
+    names = []
+    for path in sorted(directory.glob(pattern)):
+        # Strip compound extensions like .json.gz or .xy.gz
+        name = path.stem
+        for ext in (".json", ".xy"):
+            if name.endswith(ext):
+                name = name[: -len(ext)]
+                break
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
 
-AVAILABLE_STRUCTURES = [
-    "mp-1234",  # Lu3Al (garnet)
-    "mp-2",  # Pd (FCC)
-    "mp-1",  # Cs (BCC)
-    "Cu-FCC",
-    "Fe-BCC",
-    "mp-12712",  # LiFePO4
-]
 
-AVAILABLE_CONVEX_HULLS = [
-    "Li-Co-Ni-O",
-    "Na-Fe-P-O",
-]
+# Dynamically discover available demo files from the site directory
+_SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
 
-AVAILABLE_PHONONS = [
-    "mp-2667-Cs1Au1-pbe",
-    "mp-2691-Cd4Se4-pbe",
-    "mp-2758-Sr4Se4-pbe",
+AVAILABLE_PHASE_DIAGRAMS = _discover_files(_SITE_DIR / "phase-diagrams" / "binary") or [
+    "Al-Cu"
 ]
-
-AVAILABLE_DOS = [
-    "dos-spin-polarization-mp-865805",
-    "lobster-complete-dos-spin",
+AVAILABLE_STRUCTURES = _discover_files(_SITE_DIR / "structures") or ["mp-1234"]
+AVAILABLE_CONVEX_HULLS = _discover_files(
+    _SITE_DIR / "convex-hull" / "quaternaries"
+) or ["Li-Co-Ni-O"]
+AVAILABLE_PHONONS = _discover_files(_SITE_DIR / "phonons") or ["mp-2667-Cs1Au1-pbe"]
+AVAILABLE_DOS = _discover_files(_SITE_DIR / "electronic" / "dos") or [
+    "dos-spin-polarization-mp-865805"
 ]
-
-AVAILABLE_BANDS = [
-    "cao-2605-bands",
-    "vbr2-971787-bands",
+AVAILABLE_BANDS = _discover_files(_SITE_DIR / "electronic" / "bands") or [
+    "cao-2605-bands"
 ]
-
-AVAILABLE_XRD = [
-    "synthetic-quartz-xrd",
+AVAILABLE_XRD = _discover_files(MATTERVIZ_ROOT / "static" / "xrd", "*.xy*") or [
+    "synthetic-quartz-xrd"
 ]
 
 # Caches for loaded data (not thread-safe; fine for demo app)
@@ -269,10 +263,12 @@ def layout() -> html.Div:
         ("callback-section", "Callback Demo"),
     ]
 
-    # Initial data loading
-    initial_structure = get_cached("mp-1234", load_structure) or SILICON_STRUCTURE
-    initial_hull = get_cached("Li-Co-Ni-O", load_convex_hull_entries) or []
-    initial_phase = get_cached("Al-Cu", load_phase_diagram) or {}
+    # Initial data loading (use first discovered file for each category)
+    initial_structure = (
+        get_cached(AVAILABLE_STRUCTURES[0], load_structure) or SILICON_STRUCTURE
+    )
+    initial_hull = get_cached(AVAILABLE_CONVEX_HULLS[0], load_convex_hull_entries) or []
+    initial_phase = get_cached(AVAILABLE_PHASE_DIAGRAMS[0], load_phase_diagram) or {}
     initial_phonon = get_cached(AVAILABLE_PHONONS[0], load_phonon_bands)
     initial_dos = get_cached(AVAILABLE_DOS[0], load_electronic_dos)
     initial_bands = get_cached(AVAILABLE_BANDS[0], load_electronic_bands)
@@ -375,7 +371,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "340px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     ),
                 ],
@@ -397,7 +393,7 @@ def layout() -> html.Div:
                                     {"label": s, "value": s}
                                     for s in AVAILABLE_STRUCTURES
                                 ],
-                                value="mp-1234",
+                                value=AVAILABLE_STRUCTURES[0],
                                 clearable=False,
                                 style={"width": "200px", "display": "inline-block"},
                             ),
@@ -418,7 +414,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "420px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     ),
                 ],
@@ -440,7 +436,7 @@ def layout() -> html.Div:
                                     "color_scheme": "vesta",
                                 },
                                 style={
-                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "border": "1px solid var(--mv-border, #ddd)",
                                     "padding": "8px",
                                 },
                             ),
@@ -454,7 +450,7 @@ def layout() -> html.Div:
                                     "color_scheme": "jmol",
                                 },
                                 style={
-                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "border": "1px solid var(--mv-border, #ddd)",
                                     "padding": "8px",
                                 },
                             ),
@@ -468,7 +464,7 @@ def layout() -> html.Div:
                                     "color_scheme": "vesta",
                                 },
                                 style={
-                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "border": "1px solid var(--mv-border, #ddd)",
                                     "padding": "8px",
                                 },
                             ),
@@ -482,7 +478,7 @@ def layout() -> html.Div:
                                     "color_scheme": "jmol",
                                 },
                                 style={
-                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "border": "1px solid var(--mv-border, #ddd)",
                                     "padding": "8px",
                                 },
                             ),
@@ -511,7 +507,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "380px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     ),
                 ],
@@ -532,7 +528,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "380px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     ),
                 ],
@@ -554,7 +550,7 @@ def layout() -> html.Div:
                                     {"label": s, "value": s}
                                     for s in AVAILABLE_CONVEX_HULLS
                                 ],
-                                value="Li-Co-Ni-O",
+                                value=AVAILABLE_CONVEX_HULLS[0],
                                 clearable=False,
                                 style={"width": "200px", "display": "inline-block"},
                             ),
@@ -574,7 +570,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "470px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     ),
                 ],
@@ -596,7 +592,7 @@ def layout() -> html.Div:
                                     {"label": k, "value": k}
                                     for k in AVAILABLE_PHASE_DIAGRAMS
                                 ],
-                                value="Al-Cu",
+                                value=AVAILABLE_PHASE_DIAGRAMS[0],
                                 clearable=False,
                                 style={"width": "200px", "display": "inline-block"},
                             ),
@@ -616,7 +612,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "520px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     ),
                 ],
@@ -658,7 +654,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "420px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     )
                     if initial_phonon
@@ -701,7 +697,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "370px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     )
                     if initial_dos
@@ -744,7 +740,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "420px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     )
                     if initial_bands
@@ -768,7 +764,7 @@ def layout() -> html.Div:
                         },
                         style={
                             "minHeight": "340px",
-                            "border": "1px solid var(--border-color, #ddd)",
+                            "border": "1px solid var(--mv-border, #ddd)",
                         },
                     ),
                 ],
@@ -782,7 +778,7 @@ def layout() -> html.Div:
                         "Click on elements in the periodic table to see callbacks in action.",
                         style={
                             "marginBottom": "12px",
-                            "color": "var(--text-muted, #666)",
+                            "color": "var(--mv-text-muted, #666)",
                         },
                     ),
                     html.Div(
@@ -796,7 +792,7 @@ def layout() -> html.Div:
                                 },
                                 event_props=["on_element_click"],
                                 style={
-                                    "border": "1px solid var(--border-color, #ddd)",
+                                    "border": "1px solid var(--mv-border, #ddd)",
                                     "flex": "1",
                                 },
                             ),
@@ -811,8 +807,8 @@ def layout() -> html.Div:
                                         style={
                                             "padding": "12px",
                                             "borderRadius": "6px",
-                                            "background": "var(--surface-bg, #f5f5f5)",
-                                            "border": "1px solid var(--border-color, #ddd)",
+                                            "background": "var(--mv-surface, #f5f5f5)",
+                                            "border": "1px solid var(--mv-border, #ddd)",
                                             "overflow": "auto",
                                             "maxHeight": "300px",
                                             "fontSize": "13px",
@@ -839,7 +835,7 @@ def create_app() -> dash.Dash:
     """Create and configure the Dash application."""
     app = dash.Dash(__name__, suppress_callback_exceptions=True)
     app.layout = layout
-    # Theme styles with CSS variables
+    # Theme styles with CSS variables (mv- prefixed to avoid collisions)
     app.index_string = """<!DOCTYPE html>
 <html>
     <head>
@@ -849,37 +845,37 @@ def create_app() -> dash.Dash:
         {%css%}
         <style>
             :root {
-                --bg-color: #fff;
-                --text-color: #222;
-                --text-muted: #666;
-                --border-color: #ddd;
-                --surface-bg: #f8f9fa;
-                --nav-bg: #f5f5f5;
-                --nav-link: #1a56db;
+                --mv-bg: #fff;
+                --mv-text: #222;
+                --mv-text-muted: #666;
+                --mv-border: #ddd;
+                --mv-surface: #f8f9fa;
+                --mv-nav-bg: #f5f5f5;
+                --mv-nav-link: #1a56db;
             }
             [data-theme="dark"] {
-                --bg-color: #1a1a2e;
-                --text-color: #e8e8e8;
-                --text-muted: #a0a0a0;
-                --border-color: #444;
-                --surface-bg: #252540;
-                --nav-bg: #2d2d44;
-                --nav-link: #6ea8fe;
+                --mv-bg: #1a1a2e;
+                --mv-text: #e8e8e8;
+                --mv-text-muted: #a0a0a0;
+                --mv-border: #444;
+                --mv-surface: #252540;
+                --mv-nav-bg: #2d2d44;
+                --mv-nav-link: #6ea8fe;
             }
             html, body {
-                background: var(--bg-color);
-                color: var(--text-color);
+                background: var(--mv-bg);
+                color: var(--mv-text);
                 margin: 0;
                 overflow-x: hidden;
                 transition: background 0.3s, color 0.3s;
             }
             #main-container {
-                background: var(--bg-color);
-                color: var(--text-color);
+                background: var(--mv-bg);
+                color: var(--mv-text);
             }
             .nav-link {
-                background: var(--nav-bg) !important;
-                color: var(--nav-link) !important;
+                background: var(--mv-nav-bg) !important;
+                color: var(--mv-nav-link) !important;
             }
             mv-matterviz {
                 display: block;
@@ -890,9 +886,9 @@ def create_app() -> dash.Dash:
             /* Dropdown styling for dark mode */
             [data-theme="dark"] .Select-control,
             [data-theme="dark"] .Select-menu-outer {
-                background: var(--surface-bg);
-                border-color: var(--border-color);
-                color: var(--text-color);
+                background: var(--mv-surface);
+                border-color: var(--mv-border);
+                color: var(--mv-text);
             }
         </style>
     </head>
