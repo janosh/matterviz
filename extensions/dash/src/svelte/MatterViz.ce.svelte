@@ -17,11 +17,10 @@
   let { component = `Structure`, props = {} } = $props()
 
   let resolved = $derived(resolveMattervizComponent(component))
-  let mv_props = $derived(props ?? {})
 
   // Expose discovered components for easy debugging in the browser console.
-  if (typeof window !== `undefined` && !window.__matterviz_components) {
-    window.__matterviz_components = listComponentKeys()
+  if (typeof globalThis !== `undefined` && !globalThis.__matterviz_components) {
+    globalThis.__matterviz_components = listComponentKeys()
   }
 </script>
 
@@ -39,7 +38,7 @@
 
 {#if resolved.component}
   {@const Component = resolved.component}
-  <Component {...mv_props} />
+  <Component {...props} />
 {:else}
   <div class="mv-error">
     {resolved.error}
