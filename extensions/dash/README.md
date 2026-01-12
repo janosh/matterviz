@@ -161,7 +161,14 @@ Wrappers are generated from a curated manifest file:
 To regenerate wrappers after bumping the `matterviz` npm dependency:
 
 1. `pnpm install`
-2. `python scripts/sync_typed_wrappers.py --manifest component_manifest.toml --matterviz-dist node_modules/matterviz/dist --out matterviz_dash_components/typed.py`
+2. Regenerate typed wrappers:
+
+   ```bash
+   python scripts/sync_typed_wrappers.py \
+     --manifest component_manifest.toml \
+     --matterviz-dist node_modules/matterviz/dist \
+     --out matterviz_dash_components/typed.py
+   ```
 
 If a component is not in the manifest, it remains accessible through the generic `MatterViz` API
 (and via the `__getattr__` fallback factory).

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -104,7 +103,8 @@ class TestSanitizeForJsonEdgeCases:
     def test_float32_array_precision(self) -> None:
         """Float32Array converts with acceptable precision."""
         result = run_js_test("return sanitize_for_json(new Float32Array([1.5, 2.5, 3.5]))")
-        assert len(result) == 3 and abs(result[0] - 1.5) < 0.01
+        assert len(result) == 3
+        assert abs(result[0] - 1.5) < 0.01
 
     def test_error_to_object(self) -> None:
         """Error should become object with name, message, stack."""

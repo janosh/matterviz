@@ -134,10 +134,14 @@ _all_phase_diagrams = _discover_files(_SITE_DIR / "phase-diagrams" / "binary")
 AVAILABLE_PHASE_DIAGRAMS = [p for p in _all_phase_diagrams if p != "A-B"] or [
     _FALLBACK_PHASE_DIAGRAM
 ]
-AVAILABLE_STRUCTURES = _discover_files(_SITE_DIR / "structures") or [_FALLBACK_STRUCTURE]
+AVAILABLE_STRUCTURES = _discover_files(_SITE_DIR / "structures") or [
+    _FALLBACK_STRUCTURE
+]
 AVAILABLE_PHONONS = _discover_files(_SITE_DIR / "phonons") or [_FALLBACK_PHONON]
 AVAILABLE_DOS = _discover_files(_SITE_DIR / "electronic" / "dos") or [_FALLBACK_DOS]
-AVAILABLE_BANDS = _discover_files(_SITE_DIR / "electronic" / "bands") or [_FALLBACK_BANDS]
+AVAILABLE_BANDS = _discover_files(_SITE_DIR / "electronic" / "bands") or [
+    _FALLBACK_BANDS
+]
 AVAILABLE_XRD = _discover_files(MATTERVIZ_ROOT / "static" / "xrd", "*.xy*") or [
     _FALLBACK_XRD
 ]
@@ -146,6 +150,7 @@ AVAILABLE_XRD = _discover_files(MATTERVIZ_ROOT / "static" / "xrd", "*.xy*") or [
 def _safe_first(lst: list[str], fallback: str) -> str:
     """Safely get the first element of a list, returning fallback if empty."""
     return lst[0] if lst else fallback
+
 
 # Caches for loaded data (not thread-safe; fine for demo app)
 _cache: dict[str, Any] = {}
@@ -549,7 +554,7 @@ def layout() -> html.Div:
                         },
                     ),
                 ],
-                id="convex-3d-section",
+                id="convex-2d-section",
             ),
             # Phase Diagram
             html.Div(
@@ -926,7 +931,9 @@ def create_app() -> dash.Dash:
         """Update phase diagram when dropdown selection changes."""
         data = get_cached(selected_system, load_phase_diagram)
         if not data:
-            fallback_key = _safe_first(AVAILABLE_PHASE_DIAGRAMS, _FALLBACK_PHASE_DIAGRAM)
+            fallback_key = _safe_first(
+                AVAILABLE_PHASE_DIAGRAMS, _FALLBACK_PHASE_DIAGRAM
+            )
             data = get_cached(fallback_key, load_phase_diagram) or {}
         return {"data": data, "height": 500}
 
@@ -950,7 +957,11 @@ def create_app() -> dash.Dash:
     )
     def update_phonon_bands(selected: str) -> dict:
         """Update phonon bands when dropdown selection changes."""
-        return {"band_structs": get_cached(selected, load_phonon_bands), "height": 400}
+        data = get_cached(selected, load_phonon_bands)
+        if not data:
+            fallback_key = _safe_first(AVAILABLE_PHONONS, _FALLBACK_PHONON)
+            data = get_cached(fallback_key, load_phonon_bands)
+        return {"band_structs": data, "height": 400}
 
     # DOS callback
     @app.callback(
@@ -959,7 +970,11 @@ def create_app() -> dash.Dash:
     )
     def update_dos(selected: str) -> dict:
         """Update DOS when dropdown selection changes."""
-        return {"doses": get_cached(selected, load_electronic_dos), "height": 350}
+        data = get_cached(selected, load_electronic_dos)
+        if not data:
+            fallback_key = _safe_first(AVAILABLE_DOS, _FALLBACK_DOS)
+            data = get_cached(fallback_key, load_electronic_dos)
+        return {"doses": data, "height": 350}
 
     # Electronic bands callback
     @app.callback(
@@ -968,10 +983,11 @@ def create_app() -> dash.Dash:
     )
     def update_bands(selected: str) -> dict:
         """Update electronic bands when dropdown selection changes."""
-        return {
-            "band_structs": get_cached(selected, load_electronic_bands),
-            "height": 400,
-        }
+        data = get_cached(selected, load_electronic_bands)
+        if not data:
+            fallback_key = _safe_first(AVAILABLE_BANDS, _FALLBACK_BANDS)
+            data = get_cached(fallback_key, load_electronic_bands)
+        return {"band_structs": data, "height": 400}
 
     # Callback demo - display clicked phase entry
     @app.callback(
@@ -1004,5 +1020,8 @@ def create_app() -> dash.Dash:
 
 if __name__ == "__main__":
     debug_mode = os.environ.get("DASH_DEBUG", "1").lower() in ("1", "true", "yes")
-    port = int(os.environ.get("DASH_PORT", "8050"))
+    try:
+        port = int(os.environ.get("DASH_PORT", "8050"))
+    except ValueError:
+        port = 8050
     create_app().run(debug=debug_mode, port=port)
