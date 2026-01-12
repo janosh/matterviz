@@ -16,7 +16,7 @@
   }
 
   let {
-    entries,
+    entries = [],
     // bindable props not part of rest because Svelte 5 doesn't support spreading bindable props.
     fullscreen = $bindable(false),
     wrapper = $bindable(),

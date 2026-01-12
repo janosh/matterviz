@@ -123,22 +123,23 @@
   // Scales
   const x_scale = $derived(scaleLinear().domain([0, 1]).range([left, right]))
 
-  // Temperature units
+  // Temperature units (guard for initial render when data may be undefined)
   const data_temp_unit = $derived<TempUnit>(
-    (data.temperature_unit ?? `K`) as TempUnit,
+    (data?.temperature_unit ?? `K`) as TempUnit,
   )
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
+  const temp_range = $derived(data?.temperature_range ?? [0, 1000])
 
   // Convert temperature range for display
   const display_temp_range = $derived<Vec2>([
-    convert_temp(data.temperature_range[0], data_temp_unit, temp_unit),
-    convert_temp(data.temperature_range[1], data_temp_unit, temp_unit),
+    convert_temp(temp_range[0], data_temp_unit, temp_unit),
+    convert_temp(temp_range[1], data_temp_unit, temp_unit),
   ])
 
   // y_scale maps data temperatures to SVG coordinates
   // We keep this in data units so region vertices render correctly
   const y_scale = $derived(
-    scaleLinear().domain(data.temperature_range).range([bottom, top]),
+    scaleLinear().domain(temp_range).range([bottom, top]),
   )
 
   // y_scale_display maps display temperatures (after unit conversion) to SVG
@@ -160,7 +161,7 @@
 
   // Transform regions to SVG coordinates
   const transformed_regions = $derived(
-    (data.regions ?? []).map((region) => {
+    (data?.regions ?? []).map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
       const { width, height } = compute_bounding_box_2d(svg_vertices)
       const label_props = compute_label_properties(
@@ -189,7 +190,7 @@
 
   // Transform boundaries to SVG coordinates
   const transformed_boundaries = $derived(
-    (data.boundaries ?? []).map((boundary) => ({
+    (data?.boundaries ?? []).map((boundary) => ({
       ...boundary,
       svg_path: generate_boundary_path(
         transform_vertices(boundary.points, x_scale, y_scale),
@@ -199,7 +200,7 @@
 
   // Transform special points to SVG coordinates
   const transformed_special_points = $derived(
-    (data.special_points ?? []).map((point) => ({
+    (data?.special_points ?? []).map((point) => ({
       ...point,
       svg_x: x_scale(point.position[0]),
       svg_y: y_scale(point.position[1]),
@@ -375,10 +376,10 @@
     }
   })
 
-  // Component labels
-  const component_a = $derived(data.components[0])
-  const component_b = $derived(data.components[1])
-  const comp_unit = $derived(data.composition_unit ?? `at%`)
+  // Component labels (guard for initial render when data may be undefined)
+  const component_a = $derived(data?.components?.[0] ?? ``)
+  const component_b = $derived(data?.components?.[1] ?? ``)
+  const comp_unit = $derived(data?.composition_unit ?? `at%`)
 </script>
 
 <!-- Grid lines snippet for DRY rendering -->
