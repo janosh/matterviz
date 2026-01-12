@@ -23,7 +23,7 @@ for (const [raw_path, mod] of Object.entries(modules)) {
   if (!match) continue
 
   const key = match[1] // e.g. "structure/Structure"
-  const comp = mod && mod.default ? mod.default : mod
+  const comp = mod?.default ?? mod
 
   if (!comp) continue
 

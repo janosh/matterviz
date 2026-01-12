@@ -180,7 +180,7 @@ const MatterVizInner = (props) => {
   // Supports dot notation for nested props (e.g., "tile_props.onclick").
   callbacksRef.current = {}
   if (setProps) {
-    for (const propName of event_props || []) {
+    for (const propName of event_props) {
       const callback = (data) => {
         setProps({
           last_event: {
@@ -224,11 +224,11 @@ const MatterVizInner = (props) => {
     )
     const resolved_props = deep_merge(converted_props, callbacksRef.current)
 
-    // Set props BEFORE component to avoid race condition where Svelte's reactivity
-    // triggers a re-render when component changes but props are still empty.
-    // This ensures the component receives its props atomically.
-    element.props = resolved_props
+    // Set component and props. Due to Svelte's reactivity, there may be a brief
+    // render with incomplete props when switching components. Components should
+    // have sensible defaults to handle this gracefully.
     element.component = component
+    element.props = resolved_props
 
     // Mark as loaded after brief delay. Svelte custom elements don't expose
     // lifecycle events, so 100ms is a reasonable UX approximation.

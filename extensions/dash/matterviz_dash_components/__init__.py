@@ -50,7 +50,6 @@ def component(
     set_props: list[str] | None = None,
     float32_props: list[str] | None = None,
     event_props: list[str] | None = None,
-    last_event: dict | None = None,
     **mv_props,
 ) -> MatterViz:
     """Create a MatterViz component by name/path (generic API).
@@ -66,7 +65,6 @@ def component(
         set_props: Props to convert from list to Set on JS side.
         float32_props: Props to convert from list to Float32Array on JS side.
         event_props: Callback prop names to inject.
-        last_event: Updated whenever any injected callback fires.
         **mv_props: Props forwarded to the MatterViz component.
     """
     return MatterViz(
@@ -78,5 +76,4 @@ def component(
         set_props=set_props,
         float32_props=float32_props,
         event_props=event_props,
-        last_event=last_event,
     )

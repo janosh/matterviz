@@ -438,7 +438,7 @@ def layout() -> html.Div:
                                     "composition": "LiFePO4",
                                     "mode": "pie",
                                     "size": 180,
-                                    "color_scheme": "vesta",
+                                    "color_scheme": "Vesta",
                                 },
                                 style={
                                     "border": "1px solid var(--mv-border, #ddd)",
@@ -452,7 +452,7 @@ def layout() -> html.Div:
                                     "composition": "BaTiO3",
                                     "mode": "bar",
                                     "size": 180,
-                                    "color_scheme": "jmol",
+                                    "color_scheme": "Jmol",
                                 },
                                 style={
                                     "border": "1px solid var(--mv-border, #ddd)",
@@ -466,7 +466,7 @@ def layout() -> html.Div:
                                     "composition": "Sr2FeMoO6",
                                     "mode": "pie",
                                     "size": 180,
-                                    "color_scheme": "vesta",
+                                    "color_scheme": "Vesta",
                                 },
                                 style={
                                     "border": "1px solid var(--mv-border, #ddd)",
@@ -480,7 +480,7 @@ def layout() -> html.Div:
                                     "composition": {"Mg": 2, "Si": 1, "O": 4},
                                     "mode": "bar",
                                     "size": 180,
-                                    "color_scheme": "jmol",
+                                    "color_scheme": "Jmol",
                                 },
                                 style={
                                     "border": "1px solid var(--mv-border, #ddd)",
@@ -843,6 +843,7 @@ def create_app() -> dash.Dash:
         {%css%}
         <style>
             :root {
+                color-scheme: light;
                 --mv-bg: #fff;
                 --mv-text: #222;
                 --mv-text-muted: #666;
@@ -855,6 +856,7 @@ def create_app() -> dash.Dash:
                 --border-color: #ccc;
             }
             [data-theme="dark"] {
+                color-scheme: dark;
                 --mv-bg: #1a1a2e;
                 --mv-text: #e8e8e8;
                 --mv-text-muted: #a0a0a0;
