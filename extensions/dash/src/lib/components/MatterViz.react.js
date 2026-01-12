@@ -223,17 +223,7 @@ const MatterVizInner = (props) => {
   )
 }
 
-MatterVizInner.propTypes = {
-  id: PropTypes.string,
-  component: PropTypes.string,
-  mv_props: PropTypes.object,
-  set_props: PropTypes.arrayOf(PropTypes.string),
-  float32_props: PropTypes.arrayOf(PropTypes.string),
-  event_props: PropTypes.arrayOf(PropTypes.string),
-  className: PropTypes.string,
-  style: PropTypes.object,
-  setProps: PropTypes.func,
-}
+// PropTypes defined on outer MatterViz component
 
 // MatterViz component wrapper for Dash.
 // Wraps any MatterViz Svelte component as a Dash-compatible React component.

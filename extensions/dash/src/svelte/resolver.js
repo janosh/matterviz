@@ -42,42 +42,25 @@ export function listComponentKeys() {
 // id: e.g. "Structure" or "structure/Structure"
 // Returns: { component, key, error, matches }
 export function resolveMattervizComponent(id) {
-  if (!id || typeof id !== `string`) {
-    return {
-      component: null,
-      key: null,
-      error: `Missing component identifier`,
-      matches: null,
-    }
-  }
+  const err = (error, matches = null) => ({ component: null, key: null, error, matches })
+  const ok = (key) => ({
+    component: componentsByKey.get(key),
+    key,
+    error: null,
+    matches: null,
+  })
 
-  // normalize
+  if (!id || typeof id !== `string`) return err(`Missing component identifier`)
+
   const norm = id.replace(/^\.\//, ``).replace(/\.svelte$/, ``)
 
-  if (componentsByKey.has(norm)) {
-    return { component: componentsByKey.get(norm), key: norm, error: null, matches: null }
+  if (componentsByKey.has(norm)) return ok(norm)
+
+  const matches = keysByBaseName.get(norm)
+  if (matches?.length === 1) return ok(matches[0])
+  if (matches?.length > 1) {
+    return err(`Ambiguous component name "${id}". Use a path key instead.`, matches)
   }
 
-  // Try base-name resolution.
-  if (keysByBaseName.has(norm)) {
-    const matches = keysByBaseName.get(norm) || []
-    if (matches.length === 1) {
-      const key = matches[0]
-      return { component: componentsByKey.get(key), key, error: null, matches: null }
-    }
-
-    return {
-      component: null,
-      key: null,
-      error: `Ambiguous component name "${id}". Use a path key instead.`,
-      matches,
-    }
-  }
-
-  return {
-    component: null,
-    key: null,
-    error: `Unknown component "${id}".`,
-    matches: null,
-  }
+  return err(`Unknown component "${id}".`)
 }
