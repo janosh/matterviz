@@ -242,7 +242,7 @@
     // Calculate separate ranges for y1 and y2 axes
     const calc_y_range = (
       series_list: typeof visible_series,
-      y_limit: typeof y_range,
+      y_range_input: typeof y_range,
       scale_type: string,
     ) => {
       let points = series_list.flatMap((srs: BarSeries<Metadata>) =>
@@ -285,7 +285,7 @@
       let y_range = get_nice_data_range(
         points,
         (pt) => pt.y,
-        y_limit,
+        y_range_input,
         scale_type as `linear` | `log`,
         range_padding,
         false,
@@ -298,7 +298,7 @@
         const has_positive = points.some((pt) => pt.y > 0)
 
         // Only adjust if no explicit y_range is set
-        if (y_limit?.[0] == null && y_limit?.[1] == null) {
+        if (y_range_input?.[0] == null && y_range_input?.[1] == null) {
           if (has_positive && !has_negative) y_range = [0, y_range[1]]
           else if (has_negative && !has_positive) y_range = [y_range[0], 0]
         }

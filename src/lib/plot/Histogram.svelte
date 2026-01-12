@@ -205,7 +205,7 @@
     // Calculate y-range for a specific set of series
     const calc_y_range = (
       series_list: typeof selected_series,
-      y_limit: typeof y_range,
+      y_range_input: typeof y_range,
       scale_type: `linear` | `log`,
     ) => {
       if (!series_list.length) {
@@ -222,7 +222,7 @@
       const [y0, y1] = get_nice_data_range(
         [{ x: 0, y: 0 }, { x: max_count, y: 0 }],
         ({ x }) => x,
-        y_limit,
+        y_range_input,
         scale_type,
         range_padding,
         false,
