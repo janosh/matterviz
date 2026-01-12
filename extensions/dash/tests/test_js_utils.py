@@ -38,7 +38,7 @@ def run_js_test(js_code: str) -> dict:
 
     try:
         result = subprocess.run(
-            ["node", "-e", test_script],
+            ["node", "--input-type=module", "-e", test_script],
             capture_output=True,
             text=True,
             timeout=5,
