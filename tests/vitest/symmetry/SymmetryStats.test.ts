@@ -155,14 +155,14 @@ describe(`SymmetryStats`, () => {
       },
     )
 
-    test(`displays "N/A" when Hermann-Mauguin symbol is missing`, () => {
+    test(`displays "?" in space group when Hermann-Mauguin symbol is missing`, () => {
       mount(SymmetryStats, {
         target: document.body,
         props: { sym_data: create_mock_sym_data({ hm_symbol: undefined }) },
       })
       const text = doc_query(`.stats-grid`).textContent
-      expect(text).toContain(`Hermann-Mauguin`)
-      expect(text).toContain(`N/A`)
+      // HM symbol is now shown inline with space group number as "225 (?)"
+      expect(text).toContain(`225 (?)`)
     })
 
     test.each(

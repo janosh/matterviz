@@ -295,8 +295,7 @@ test.describe(`Trajectory Component`, () => {
   })
 
   describe_local_only(`plot and data visualization`, () => {
-    // Tests in this block are skipped on CI (via describe_local_only)
-    // because the parent beforeEach times out waiting for trajectory data
+    // Skipped on CI because scatter plot rendering times out
 
     test(`scatter plot displays with legend`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
