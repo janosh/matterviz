@@ -595,7 +595,8 @@ describe(`PeriodicTable`, () => {
     test(`shows ColorBar with correct structure and defaults`, () => {
       mount(PeriodicTable, {
         target: document.body,
-        props: { heatmap_values: [1, 2, 3, 4, 5] },
+        // Use range [0, 100] which produces exactly 3 nice ticks: 0, 50, 100
+        props: { heatmap_values: [0, 50, 100] },
       })
 
       const table_inset = document.querySelector(`.table-inset`)
@@ -609,8 +610,8 @@ describe(`PeriodicTable`, () => {
       expect(colorbar).toBeTruthy()
       expect((bar as HTMLElement)?.style.background).toContain(`linear-gradient`)
 
-      // Defaults: 5 ticks on primary side
-      expect(colorbar?.querySelectorAll(`.tick-label.tick-primary`).length).toBe(5)
+      // Defaults: 3 ticks on primary side (d3's snap_ticks produces nice values)
+      expect(colorbar?.querySelectorAll(`.tick-label.tick-primary`).length).toBe(3)
     })
 
     test.each([
@@ -669,7 +670,8 @@ describe(`PeriodicTable`, () => {
       const inset = document.querySelector(`.table-inset`) as HTMLElement
       const colorbar = inset?.querySelector(`.colorbar`) as HTMLElement
 
-      expect(inset.getAttribute(`style`)).toMatch(/place-items: center.*padding/)
+      // auto-colorbar-inset class provides styling via CSS (place-items, padding)
+      expect(inset.classList.contains(`auto-colorbar-inset`)).toBe(true)
       expect(colorbar.getAttribute(`style`)).toContain(`width: 100%`)
       expect(colorbar.querySelector(`.label`)?.textContent).toBe(`Test Property`)
     })

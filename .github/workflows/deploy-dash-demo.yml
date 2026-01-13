@@ -1,0 +1,36 @@
+name: Deploy Dash Demo to HF Spaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - extensions/dash/Dockerfile
+      - extensions/dash/hf_demo_app.py
+      - extensions/dash/hf_space_readme.md
+      - .github/workflows/deploy-dash-demo.yml
+  workflow_dispatch: # Allow manual deploys
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push to Hugging Face Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          cd /tmp
+          git clone https://user:${HF_TOKEN}@huggingface.co/spaces/janoshr/matterviz-dash hf-space
+          cd hf-space
+
+          # Copy deployment files
+          cp $GITHUB_WORKSPACE/extensions/dash/Dockerfile .
+          cp $GITHUB_WORKSPACE/extensions/dash/hf_demo_app.py .
+          cp $GITHUB_WORKSPACE/extensions/dash/hf_space_readme.md README.md
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "Auto-deploy from janosh/matterviz@${GITHUB_SHA::7}"
+          git push

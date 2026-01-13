@@ -1,0 +1,63 @@
+name: Dash Extension Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'extensions/dash/**'
+      - 'src/lib/**' # Core Svelte components that Dash wraps
+      - '.github/workflows/test-dash.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'extensions/dash/**'
+      - 'src/lib/**'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  test-dash:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/dash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Install root pnpm deps (matterviz package)
+      - name: Install root dependencies
+        run: pnpm install
+        working-directory: .
+
+      # Install dash extension deps
+      - name: Install Dash extension dependencies
+        run: |
+          pnpm install
+          pip install -e ".[dev]"
+
+      # Build the JS bundle (required for component tests)
+      - name: Build Dash components
+        run: pnpm build
+
+      # Run Python unit tests (fast, no browser)
+      - name: Run unit tests
+        run: pytest tests/test_wrappers.py tests/test_js_utils.py tests/test_sync.py -v
+
+      # Run Playwright integration tests
+      - name: Install Playwright browsers
+        run: playwright install chromium
+
+      - name: Run Playwright tests
+        run: pytest tests/playwright/ -v --tb=short

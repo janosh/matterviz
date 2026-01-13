@@ -63,13 +63,21 @@ class BracketTracker:
         self.par = self.brk = self.brc = self.ang = 0
         self.in_bt = self.in_sq = self.in_dq = False
 
-    def update(self, ch: str, prev_ch: str = "") -> bool:
-        """Update state for character. Returns True if inside a string.
+    def update(self, src: str, idx: int) -> bool:
+        """Update state for character at src[idx]. Returns True if inside a string.
 
-        Handles escaped quotes (e.g., \\", \\', \\`) by checking if the previous
-        character is a backslash.
+        Handles escaped quotes by counting preceding backslashes (odd = escaped).
         """
-        is_escaped = prev_ch == "\\"
+        ch = src[idx]
+        prev = src[idx - 1] if idx > 0 else ""
+
+        # Count consecutive backslashes before this character
+        bs_count, pos = 0, idx - 1
+        while pos >= 0 and src[pos] == "\\":
+            bs_count += 1
+            pos -= 1
+        is_escaped = bs_count % 2 == 1
+
         if ch == "`" and not self.in_sq and not self.in_dq and not is_escaped:
             self.in_bt = not self.in_bt
             return True
@@ -96,7 +104,7 @@ class BracketTracker:
             self.brc = max(0, self.brc - 1)
         elif ch == "<":
             self.ang += 1
-        elif ch == ">" and prev_ch != "=":  # Ignore '=>' arrows
+        elif ch == ">" and prev != "=":  # Ignore '=>' arrows
             self.ang = max(0, self.ang - 1)
         return False
 
@@ -132,8 +140,7 @@ def _split_top_level(expr: str, sep: str) -> list[str]:
     tracker = BracketTracker()
 
     for idx, ch in enumerate(expr):
-        prev = expr[idx - 1] if idx > 0 else ""
-        if tracker.update(ch, prev):
+        if tracker.update(expr, idx):
             continue
         if ch == sep and tracker.at_top_level:
             parts.append(expr[start:idx].strip())
@@ -156,7 +163,7 @@ def _find_matching_angle(src: str, open_idx: int) -> int:
         prev = src[idx - 1] if idx > 0 else ""
 
         if ch in "`'\"":
-            tracker.update(ch, prev)
+            tracker.update(src, idx)
             continue
         if tracker.in_string:
             continue
@@ -181,11 +188,9 @@ def _extract_type_aliases(src: str) -> dict[str, str]:
         tracker = BracketTracker()
 
         for idx in range(expr_start, len(src)):
-            ch = src[idx]
-            prev = src[idx - 1] if idx > 0 else ""
-            if tracker.update(ch, prev):
+            if tracker.update(src, idx):
                 continue
-            if ch == ";" and tracker.at_top_level:
+            if src[idx] == ";" and tracker.at_top_level:
                 aliases[name] = src[expr_start:idx].strip()
                 break
 
@@ -221,11 +226,9 @@ def _extract_props_root_expr(src: str, *, debug: bool = False) -> tuple[str, str
         props_start = match.end()
         tracker = BracketTracker()
         for idx in range(props_start, len(src)):
-            ch = src[idx]
-            prev = src[idx - 1] if idx > 0 else ""
-            if tracker.update(ch, prev):
+            if tracker.update(src, idx):
                 continue
-            if ch == ";" and tracker.at_top_level:
+            if src[idx] == ";" and tracker.at_top_level:
                 if debug:
                     print("  [props] Strategy '$$render' succeeded")
                 return src[props_start:idx].strip(), "$$render"
@@ -268,8 +271,7 @@ def _parse_object_literal(obj: str) -> dict[str, tuple[str, bool]]:
     tracker = BracketTracker()
 
     for idx, ch in enumerate(inner):
-        prev = inner[idx - 1] if idx > 0 else ""
-        if tracker.update(ch, prev):
+        if tracker.update(inner, idx):
             continue
         if ch == ";" and tracker.at_top_level:
             if item := inner[start:idx].strip():
@@ -350,8 +352,7 @@ def _collect_props(
             # Find matching brace
             tracker = BracketTracker()
             for idx, ch in enumerate(term):
-                prev = term[idx - 1] if idx > 0 else ""
-                if tracker.update(ch, prev):
+                if tracker.update(term, idx):
                     continue
                 if ch == "}" and tracker.brc == 0:
                     out.update(_parse_object_literal(term[: idx + 1]))
@@ -424,6 +425,17 @@ def parse_external_type(
     return {}
 
 
+def _detect_prop_kind(ts_type: str) -> str:
+    """Determine prop kind based on TypeScript type signature."""
+    if "=>" in ts_type:
+        return "callback"
+    if "Snippet" in ts_type:
+        return "snippet"
+    if "HTMLElement" in ts_type or "HTMLDivElement" in ts_type:
+        return "dom"
+    return "value"
+
+
 def parse_svelte_dts(
     dts_path: Path,
     dist_dir: Path | None = None,
@@ -446,15 +458,12 @@ def parse_svelte_dts(
     dom_props: list[str] = []
 
     for js_name, (ts_type, required) in sorted(js_props.items()):
-        kind = "value"
-        if "=>" in ts_type:
-            kind = "callback"
+        kind = _detect_prop_kind(ts_type)
+        if kind == "callback":
             callback_props.append(js_name)
-        elif "Snippet" in ts_type:
-            kind = "snippet"
+        elif kind == "snippet":
             snippet_props.append(js_name)
-        elif "HTMLElement" in ts_type or "HTMLDivElement" in ts_type:
-            kind = "dom"
+        elif kind == "dom":
             dom_props.append(js_name)
 
         props.append(Prop(js_name, _to_snake(js_name), ts_type, required, kind))
@@ -478,15 +487,12 @@ def parse_svelte_dts_with_includes(
             if js_name in existing:
                 continue
 
-            kind = "value"
-            if "=>" in ts_type:
-                kind = "callback"
+            kind = _detect_prop_kind(ts_type)
+            if kind == "callback":
                 callback_props.append(js_name)
-            elif "Snippet" in ts_type:
-                kind = "snippet"
+            elif kind == "snippet":
                 snippet_props.append(js_name)
-            elif "HTMLElement" in ts_type or "HTMLDivElement" in ts_type:
-                kind = "dom"
+            elif kind == "dom":
                 dom_props.append(js_name)
 
             props.append(Prop(js_name, _to_snake(js_name), ts_type, required, kind))
@@ -571,8 +577,8 @@ def _py_type_hint(
     return "Any"
 
 
-def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) -> None:
-    """Generate typed Python wrapper classes from manifest and write to out_path."""
+def generate_wrappers(manifest: dict[str, Any], dist_dir: Path) -> str:
+    """Generate typed Python wrapper classes from manifest and return as string."""
     components = manifest.get("components", {})
     if not components:
         raise SystemExit("Manifest has no [components.*] sections")
@@ -657,8 +663,14 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
 
         # Build signature
         sig = ["self", "id=None"]
+        js_to_prop = {p.js_name: p for p in value_props}
         for py, js in py_to_js.items():
-            p = next(pp for pp in value_props if pp.js_name == js)
+            p = js_to_prop.get(js)
+            if p is None:
+                raise ValueError(
+                    f"[{class_name}] alias '{py}' maps to unknown JS prop '{js}'. "
+                    f"Valid props: {list(js_to_prop.keys())}"
+                )
             sig.append(
                 f"{py}: {_py_type_hint(p.ts_type, py, type_hints)} | None = None"
             )
@@ -673,7 +685,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
             "**kwargs",
         ]
 
-        lines.append(f"    def __init__(\n        {',\n        '.join(sig)},\n    ):")
+        params = ",\n        ".join(sig)
+        lines.append(f"    def __init__(\n        {params},\n    ):")
         lines.append("        if mv_props is None:")
         lines.append("            mv_props = {}")
         for py, js in py_to_js.items():
@@ -694,7 +707,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path, out_path: Path) 
         lines.append("        )")
         lines.append("")
 
-    out_path.write_text("\n".join(lines), encoding="utf-8")
+    return "\n".join(lines)
 
 
 def main() -> None:
@@ -703,6 +716,11 @@ def main() -> None:
     ap.add_argument("--manifest", default="component_manifest.toml")
     ap.add_argument("--matterviz-dist", default="node_modules/matterviz/dist")
     ap.add_argument("--out", default="matterviz_dash_components/typed.py")
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help="Check if typed.py is up-to-date without writing. Exit 1 if outdated.",
+    )
     args = ap.parse_args()
 
     manifest_path = Path(args.manifest)
@@ -713,11 +731,29 @@ def main() -> None:
         raise SystemExit(f"Manifest not found: {manifest_path}")
     if not dist_dir.exists():
         raise SystemExit(
-            f"MatterViz dist not found: {dist_dir}\nRun `npm install` first."
+            f"MatterViz dist not found: {dist_dir}\nRun `pnpm install` first."
         )
 
     manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
-    generate_wrappers(manifest, dist_dir, out_path)
+
+    expected = generate_wrappers(manifest, dist_dir)
+
+    if args.check:
+        # Compare generated content with existing file
+        if not out_path.exists():
+            print(f"FAIL: {out_path} does not exist. Run sync_typed_wrappers.py first.")
+            raise SystemExit(1)
+
+        actual = out_path.read_text(encoding="utf-8")
+        if actual != expected:
+            print(f"FAIL: {out_path} is out of sync with component_manifest.toml")
+            print("Run: python scripts/sync_typed_wrappers.py")
+            raise SystemExit(1)
+
+        print(f"OK: {out_path} is up-to-date")
+        raise SystemExit(0)
+
+    out_path.write_text(expected, encoding="utf-8")
     print(f"Wrote {out_path}")
 
 

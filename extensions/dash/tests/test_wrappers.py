@@ -57,16 +57,10 @@ class TestComponentInstantiation:
         "component,mv_props",
         [
             ("structure/Structure", {"structure": {"sites": []}, "height": 500}),
-            (
-                "periodic-table/PeriodicTable",
-                {"show_color_bar": True, "heatmap_values": [1, 2]},
-            ),
-            (
-                "trajectory/Trajectory",
-                {"fps": 30, "ELEM_PROPERTY_LABELS": {"energy": "E"}},
-            ),
+            ("periodic-table/PeriodicTable", {"show_color_bar": True}),
+            ("trajectory/Trajectory", {"fps": 30}),
             ("brillouin/BrillouinZone", {"structure": {"sites": []}}),
-            ("convex-hull/ConvexHull2D", {"entries": [], "height": 320}),
+            ("convex-hull/ConvexHull2D", {"entries": []}),
         ],
     )
     def test_component_with_props(self, component: str, mv_props: dict) -> None:
@@ -74,15 +68,6 @@ class TestComponentInstantiation:
         comp = MatterViz(id="test", component=component, mv_props=mv_props)
         assert comp.component == component
         assert comp.mv_props == mv_props
-
-    def test_set_props_forwarded(self) -> None:
-        """set_props list is forwarded correctly."""
-        comp = MatterViz(
-            id="test",
-            component="structure/Structure",
-            set_props=["hidden_elements", "hidden_prop_vals"],
-        )
-        assert comp.set_props == ["hidden_elements", "hidden_prop_vals"]
 
 
 class TestModuleExports:
@@ -120,25 +105,28 @@ class TestEdgeCases:
         comp = MatterViz(id="test", component="Structure", mv_props=deep)
         assert comp.mv_props["a"]["b"]["c"]["d"]["e"] == 1
 
-    def test_special_characters_in_props(self) -> None:
-        """Props with special characters should work."""
-        props = {"key-with-dash": 1, "key_with_underscore": 2, "key.with.dot": 3}
-        comp = MatterViz(id="test", component="Structure", mv_props=props)
-        assert comp.mv_props == props
-
-    def test_unicode_in_props(self) -> None:
-        """Unicode characters in props should work."""
-        props = {"label": "H₂O", "symbol": "α-Fe", "description": "日本語"}
-        comp = MatterViz(id="test", component="Structure", mv_props=props)
-        assert comp.mv_props["label"] == "H₂O"
-        assert comp.mv_props["symbol"] == "α-Fe"
+    @pytest.mark.parametrize(
+        "mv_props",
+        [
+            {"key-with-dash": 1, "key_with_underscore": 2, "key.with.dot": 3},
+            {"label": "H₂O", "symbol": "α-Fe", "description": "日本語"},
+        ],
+        ids=["special-chars", "unicode"],
+    )
+    def test_special_and_unicode_props(self, mv_props: dict) -> None:
+        """Props with special characters and unicode should work."""
+        comp = MatterViz(id="test", component="Structure", mv_props=mv_props)
+        assert comp.mv_props == mv_props
 
     @pytest.mark.parametrize(
         "prop_name,prop_value",
         [
             ("set_props", []),
+            ("set_props", ["a", "b", "c"]),
             ("float32_props", []),
-            ("event_props", ["on_click", "on_hover", "on_load", "on_error"]),
+            ("float32_props", ["x", "y", "z"]),
+            ("event_props", []),
+            ("event_props", ["on_click", "on_hover"]),
         ],
     )
     def test_list_props_stored(self, prop_name: str, prop_value: list) -> None:
@@ -164,29 +152,16 @@ class TestEdgeCases:
 
 
 class TestPropValidation:
-    """Test that invalid props are handled correctly."""
+    """Test prop handling."""
 
     @pytest.mark.parametrize(
         "prop_name,prop_value",
         [
-            ("set_props", ["a", "b", "c"]),
-            ("float32_props", ["x", "y", "z"]),
-            ("event_props", ["on_a", "on_b"]),
+            ("style", {"height": "100%", "width": 500}),
+            ("className", "my-class other"),
         ],
     )
-    def test_list_props_accept_lists(self, prop_name: str, prop_value: list) -> None:
-        """List props should accept list values."""
-        kwargs = {"id": "test", "component": "Test", prop_name: prop_value}
-        comp = MatterViz(**kwargs)
+    def test_style_and_classname_preserved(self, prop_name: str, prop_value) -> None:
+        """Style dict and className should be preserved exactly."""
+        comp = MatterViz(id="test", component="Test", **{prop_name: prop_value})
         assert getattr(comp, prop_name) == prop_value
-
-    def test_style_dict_preserved(self) -> None:
-        """Style dict should be preserved exactly."""
-        style = {"height": "100%", "width": 500, "margin": "10px 20px"}
-        comp = MatterViz(id="test", component="Test", style=style)
-        assert comp.style == style
-
-    def test_classname_preserved(self) -> None:
-        """className should be preserved."""
-        comp = MatterViz(id="test", component="Test", className="my-class other")
-        assert comp.className == "my-class other"

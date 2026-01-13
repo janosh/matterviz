@@ -60,10 +60,6 @@ include_from = [
 key = "phase-diagram/IsobaricBinaryPhaseDiagram"
 doc = "Binary isobaric phase diagram."
 
-[components.IsobaricTernaryPhaseDiagram]
-key = "phase-diagram/IsobaricTernaryPhaseDiagram"
-doc = "Ternary isobaric phase diagram."
-
 [components.XrdPlot]
 key = "xrd/XrdPlot"
 doc = "X-ray diffraction pattern plot."

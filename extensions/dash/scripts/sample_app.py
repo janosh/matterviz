@@ -162,15 +162,16 @@ def _safe_first(lst: list[str], fallback: str) -> str:
 
 # Caches for loaded data (not thread-safe; fine for demo app)
 _cache: dict[str, Any] = {}
+_CACHE_MISS = object()  # Sentinel to cache None results
 
 
 def get_cached(key: str, loader: Callable[[str], Any]) -> Any:
-    """Load data via loader(key), caching the result."""
+    """Load data via loader(key), caching the result (including None)."""
     if key not in _cache:
         data = loader(key)
-        if data is not None:
-            _cache[key] = data
-    return _cache.get(key)
+        _cache[key] = data if data is not None else _CACHE_MISS
+    cached = _cache.get(key)
+    return None if cached is _CACHE_MISS else cached
 
 
 # Simple demo structure for Trajectory and BrillouinZone demos
@@ -260,7 +261,7 @@ def layout() -> html.Div:
         ("composition-section", "Composition"),
         ("trajectory-section", "Trajectory"),
         ("brillouin-section", "Brillouin Zone"),
-        ("convex-3d-section", "Convex Hull"),
+        ("convex-2d-section", "Convex Hull"),
         ("phase-binary-section", "Phase Diagram"),
         ("phonon-section", "Phonon Bands"),
         ("dos-section", "Electronic DOS"),
@@ -762,10 +763,7 @@ def layout() -> html.Div:
                     html.H4("Callback Demo (Click Detection)"),
                     html.P(
                         "Click on elements or hull points to see callbacks in action.",
-                        style={
-                            "marginBottom": "12px",
-                            "color": "var(--mv-text-muted, #666)",
-                        },
+                        className="text-muted",
                     ),
                     # Output panel (at top for visibility)
                     html.Div(
@@ -774,16 +772,7 @@ def layout() -> html.Div:
                             html.Pre(
                                 id="callback-output",
                                 children="Click an element or hull point...",
-                                style={
-                                    "padding": "12px",
-                                    "borderRadius": "6px",
-                                    "background": "var(--mv-surface, #f5f5f5)",
-                                    "border": "1px solid var(--mv-border, #ddd)",
-                                    "overflow": "auto",
-                                    "maxHeight": "150px",
-                                    "fontSize": "13px",
-                                    "margin": "0 0 16px 0",
-                                },
+                                className="callback-output",
                             ),
                         ],
                     ),
@@ -927,6 +916,21 @@ def create_app() -> dash.Dash:
                 border-color: var(--mv-border);
                 color: var(--mv-text);
             }
+            .callback-output {
+                padding: 12px;
+                border-radius: 6px;
+                background: var(--mv-surface);
+                color: var(--mv-text);
+                border: 1px solid var(--mv-border);
+                overflow: auto;
+                max-height: 150px;
+                font-size: 13px;
+                margin: 0 0 16px 0;
+            }
+            .text-muted {
+                color: var(--mv-text-muted);
+                margin-bottom: 12px;
+            }
         </style>
     </head>
     <body>
@@ -1057,4 +1061,6 @@ if __name__ == "__main__":
         port = int(os.environ.get("DASH_PORT", "8050"))
     except ValueError:
         port = 8050
-    create_app().run(debug=debug_mode, port=port)
+    # host="0.0.0.0" required for container deployments (Docker, HF Spaces)
+    host = os.environ.get("DASH_HOST", "127.0.0.1")
+    create_app().run(debug=debug_mode, port=port, host=host)

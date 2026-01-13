@@ -307,7 +307,7 @@
     const svg_y = event.clientY - rect.top
 
     // Check if within plot area
-    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom) {
+    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom || !data) {
       clear_hover()
       return
     }

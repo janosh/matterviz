@@ -44,7 +44,7 @@ def run_js_test(js_code: str) -> dict:
         )
         if result.returncode != 0:
             err_msg = result.stderr.strip() or "(no stderr output)"
-            pytest.skip(f"Node.js test failed: {err_msg}")
+            pytest.fail(f"Node.js execution failed: {err_msg}")
         stdout = result.stdout.strip()
         if not stdout:
             pytest.fail("Node.js produced empty stdout")
