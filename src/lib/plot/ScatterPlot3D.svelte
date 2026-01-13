@@ -383,7 +383,7 @@
         on_toggle={toggle_series_visibility}
         draggable={legend?.draggable ?? true}
         {...legend}
-        wrapper_style="position: absolute; top: 2.5em; right: 1em; {legend?.wrapper_style ?? ``}"
+        style={`position: absolute; top: 2.5em; right: 1em; ${legend?.style ?? ``}`}
       />
     {/if}
 

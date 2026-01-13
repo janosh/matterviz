@@ -554,7 +554,7 @@ Using time data on the x-axis with custom formatting. This example also demonstr
     legend={{
       layout: `horizontal`,
       n_items: 3,
-      wrapper_style: `max-width: none; justify-content: center;`,
+      style: `max-width: none; justify-content: center;`,
     }}
   >
     {#snippet tooltip({ x, y, x_formatted, y_formatted, metadata })}
@@ -1256,7 +1256,7 @@ This example combines multiple features including different display modes, custo
     bind:display
     style="height: 400px; position: relative;"
     legend={{
-      wrapper_style: `
+      style: `
         position: absolute;
         top: 3pt;
         left: 100%;
@@ -2754,7 +2754,7 @@ This demo showcases **interactive axis labels** with lazy data loading. Features
   {data_loader}
   {on_axis_change}
   on_error={handle_error}
-  legend={{ layout: `horizontal`, wrapper_style: `justify-content: center` }}
+  legend={{ layout: `horizontal`, style: `justify-content: center` }}
   style="height: 400px"
 />
 
@@ -3054,6 +3054,6 @@ between adjacent series with different densities:
   x_axis={{ label: 'X Value', range: [0, 20] }}
   y_axis={{ label: 'Y Value', range: [0, 20] }}
   style="height: 400px"
-  legend={{ layout: 'horizontal', wrapper_style: 'justify-content: center;' }}
+  legend={{ layout: 'horizontal', style: 'justify-content: center;' }}
 />
 ```

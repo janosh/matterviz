@@ -1519,7 +1519,9 @@
         series_data={legend_data}
         on_toggle={legend?.on_toggle || toggle_series_visibility}
         on_group_toggle={legend?.on_group_toggle || toggle_group_visibility}
-        wrapper_style="position: absolute; left: {legend_placement.x}px; top: {legend_placement.y}px; transform: {legend_placement.transform}; {legend?.wrapper_style || ``}"
+        style={`position: absolute; left: ${legend_placement.x}px; top: ${legend_placement.y}px; transform: ${legend_placement.transform}; ${
+          legend?.style || ``
+        }`}
       />
     {/if}
 

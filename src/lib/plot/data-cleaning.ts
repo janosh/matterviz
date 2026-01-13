@@ -9,6 +9,8 @@ import type {
   DataSeries,
   InstabilityResult,
   InvalidValueMode,
+  LocalOutlierConfig,
+  LocalOutlierResult,
   PhysicalBounds,
   SmoothingConfig,
 } from './types'
@@ -414,6 +416,138 @@ function apply_smoothing(
   return y_values
 }
 
+// --- Local Outlier Detection ---
+
+// Default values for local outlier detection
+const DEFAULT_LOCAL_WINDOW_HALF = 7
+const DEFAULT_LOCAL_MAD_THRESHOLD = 2.0
+const DEFAULT_LOCAL_MAX_ITERATIONS = 5
+
+// Compute local median within a window, excluding the center point
+// This allows detecting if the center point is an outlier relative to its neighbors
+function compute_local_median_excluding_center(
+  values: number[],
+  center_idx: number,
+  window_half: number,
+): number {
+  const window_values: number[] = []
+  const start = Math.max(0, center_idx - window_half)
+  const end = Math.min(values.length - 1, center_idx + window_half)
+
+  for (let idx = start; idx <= end; idx++) {
+    if (idx !== center_idx && Number.isFinite(values[idx])) {
+      window_values.push(values[idx])
+    }
+  }
+
+  if (window_values.length === 0) return values[center_idx]
+  return median(window_values)
+}
+
+// Compute local MAD (median absolute deviation) within a window, excluding center
+function compute_local_mad_excluding_center(
+  values: number[],
+  center_idx: number,
+  window_half: number,
+  local_median: number,
+): number {
+  const abs_devs: number[] = []
+  const start = Math.max(0, center_idx - window_half)
+  const end = Math.min(values.length - 1, center_idx + window_half)
+
+  for (let idx = start; idx <= end; idx++) {
+    if (idx !== center_idx && Number.isFinite(values[idx])) {
+      abs_devs.push(Math.abs(values[idx] - local_median))
+    }
+  }
+
+  if (abs_devs.length === 0) return 0
+  return median(abs_devs)
+}
+
+// Remove local outliers using iterative sliding window MAD-based detection
+// Detects points that deviate significantly from their local neighborhood
+// Returns only the indices to keep, preserving good data before AND after bad regions
+export function remove_local_outliers(
+  y_values: readonly number[],
+  config: LocalOutlierConfig = {},
+): LocalOutlierResult {
+  const window_half = config.window_half ?? DEFAULT_LOCAL_WINDOW_HALF
+  const mad_threshold = config.mad_threshold ?? DEFAULT_LOCAL_MAD_THRESHOLD
+  const max_iterations = config.max_iterations ?? DEFAULT_LOCAL_MAX_ITERATIONS
+
+  const len = y_values.length
+  if (len === 0) {
+    return { kept_indices: [], removed_indices: [], iterations_used: 0 }
+  }
+
+  // Need enough neighbors for meaningful local statistics
+  const min_points_needed = window_half * 2 + 1
+  if (len < min_points_needed) {
+    return {
+      kept_indices: Array.from({ length: len }, (_, idx) => idx),
+      removed_indices: [],
+      iterations_used: 0,
+    }
+  }
+
+  let kept_mask = new Array<boolean>(len).fill(true)
+  let iterations_used = 0
+
+  for (let iter = 0; iter < max_iterations; iter++) {
+    let removed_any = false
+    const new_kept_mask = [...kept_mask]
+    // Note: Local statistics are computed from original values, not filtered values.
+    // This prevents cascading removals where one outlier's removal dramatically
+    // shifts statistics and causes false positives on neighboring points.
+    for (let idx = 0; idx < len; idx++) {
+      if (!kept_mask[idx]) continue // Already removed
+      if (!Number.isFinite(y_values[idx])) continue // Skip invalid values
+
+      const local_median = compute_local_median_excluding_center(
+        y_values as number[],
+        idx,
+        window_half,
+      )
+      const local_mad = compute_local_mad_excluding_center(
+        y_values as number[],
+        idx,
+        window_half,
+        local_median,
+      )
+
+      // Cannot compute robust threshold if MAD is zero (all neighbors identical)
+      if (local_mad === 0) continue
+
+      const threshold = local_mad * mad_threshold
+      const deviation = Math.abs(y_values[idx] - local_median)
+
+      if (deviation > threshold) {
+        new_kept_mask[idx] = false
+        removed_any = true
+      }
+    }
+
+    kept_mask = new_kept_mask
+    iterations_used = iter + 1
+
+    if (!removed_any) break
+  }
+
+  const kept_indices: number[] = []
+  const removed_indices: number[] = []
+
+  for (let idx = 0; idx < len; idx++) {
+    if (kept_mask[idx]) {
+      kept_indices.push(idx)
+    } else {
+      removed_indices.push(idx)
+    }
+  }
+
+  return { kept_indices, removed_indices, iterations_used }
+}
+
 // --- Helper Functions ---
 
 // Handle NaN/Infinity based on mode
@@ -605,12 +739,22 @@ export function clean_series<T extends DataSeries>(
     }
   }
 
-  // Step 3: Apply smoothing
+  // Step 3: Remove local outliers (if configured)
+  if (config.local_outliers) {
+    const outlier_result = remove_local_outliers(y_arr, config.local_outliers)
+    quality.outliers_removed = outlier_result.removed_indices.length
+
+    if (outlier_result.removed_indices.length > 0) {
+      apply_filter(outlier_result.kept_indices, outlier_result.removed_indices.length)
+    }
+  }
+
+  // Step 4: Apply smoothing
   if (config.smooth) {
     y_arr = apply_smoothing(x_arr, y_arr, config.smooth)
   }
 
-  // Step 4: Detect instability
+  // Step 5: Detect instability
   const instability = detect_instability(x_arr, y_arr, config)
   quality.oscillation_detected = instability.detected
   quality.oscillation_score = instability.combined_score
