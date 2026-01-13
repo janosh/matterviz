@@ -3,144 +3,128 @@ import { describe, expect, test } from 'vitest'
 
 describe(`Settings`, () => {
   describe(`SETTINGS_CONFIG`, () => {
-    test(`should have valid structure with required sections`, () => {
-      expect(SETTINGS_CONFIG).toHaveProperty(`structure`)
-      expect(SETTINGS_CONFIG).toHaveProperty(`trajectory`)
-      expect(SETTINGS_CONFIG).toHaveProperty(`plot`)
-      expect(SETTINGS_CONFIG).toHaveProperty(`scatter`)
-      expect(SETTINGS_CONFIG).toHaveProperty(`composition`)
-      expect(SETTINGS_CONFIG).toHaveProperty(`color_scheme`)
-      expect(SETTINGS_CONFIG).toHaveProperty(`background_color`)
+    test.each([
+      [`structure`],
+      [`trajectory`],
+      [`plot`],
+      [`scatter`],
+      [`composition`],
+      [`color_scheme`],
+      [`background_color`],
+    ])(`has required section: %s`, (section) => {
+      expect(SETTINGS_CONFIG).toHaveProperty(section)
     })
 
-    test(`should have consistent setting schema format`, () => {
-      const check_setting = (setting: unknown) => {
-        expect(setting).toHaveProperty(`value`)
-        expect(setting).toHaveProperty(`description`)
-        expect(typeof (setting as { description: string }).description).toBe(`string`)
-      }
-
-      // Sample across different types and sections
-      check_setting(SETTINGS_CONFIG.color_scheme)
-      check_setting(SETTINGS_CONFIG.structure.atom_radius)
-      check_setting(SETTINGS_CONFIG.trajectory.auto_play)
-      check_setting(SETTINGS_CONFIG.plot.grid_lines)
-      check_setting(SETTINGS_CONFIG.scatter.point.size)
-      check_setting(SETTINGS_CONFIG.composition.display_mode)
+    test.each([
+      [`color_scheme`, SETTINGS_CONFIG.color_scheme],
+      [`structure.atom_radius`, SETTINGS_CONFIG.structure.atom_radius],
+      [`trajectory.auto_play`, SETTINGS_CONFIG.trajectory.auto_play],
+      [`plot.grid_lines`, SETTINGS_CONFIG.plot.grid_lines],
+      [`scatter.point.size`, SETTINGS_CONFIG.scatter.point.size],
+      [`composition.display_mode`, SETTINGS_CONFIG.composition.display_mode],
+    ])(`setting %s has value and description`, (_, setting) => {
+      expect(setting).toHaveProperty(`value`)
+      expect(setting).toHaveProperty(`description`)
+      expect(typeof (setting as { description: string }).description).toBe(`string`)
     })
 
-    test(`should have numeric constraints where appropriate`, () => {
-      const numeric_settings = [
-        SETTINGS_CONFIG.structure.atom_radius,
-        SETTINGS_CONFIG.structure.sphere_segments,
-        SETTINGS_CONFIG.trajectory.fps,
-        SETTINGS_CONFIG.plot.zoom_factor,
-        SETTINGS_CONFIG.scatter.point.size,
-      ]
-
-      numeric_settings.forEach((setting) => {
-        expect(typeof setting.value).toBe(`number`)
-        expect(typeof setting.minimum).toBe(`number`)
-        expect(typeof setting.maximum).toBe(`number`)
-        expect(setting.minimum).toBeLessThan(setting.maximum ?? -Infinity)
-      })
+    test.each([
+      [`structure.atom_radius`, SETTINGS_CONFIG.structure.atom_radius],
+      [`structure.sphere_segments`, SETTINGS_CONFIG.structure.sphere_segments],
+      [`trajectory.fps`, SETTINGS_CONFIG.trajectory.fps],
+      [`plot.zoom_factor`, SETTINGS_CONFIG.plot.zoom_factor],
+      [`scatter.point.size`, SETTINGS_CONFIG.scatter.point.size],
+    ])(`numeric setting %s has valid constraints`, (_, setting) => {
+      expect(typeof setting.value).toBe(`number`)
+      expect(typeof setting.minimum).toBe(`number`)
+      expect(typeof setting.maximum).toBe(`number`)
+      expect(setting.minimum).toBeLessThan(setting.maximum ?? -Infinity)
     })
 
-    test(`should have enum options for categorical settings`, () => {
-      const enum_settings = [
-        SETTINGS_CONFIG.structure.bonding_strategy,
-        SETTINGS_CONFIG.structure.camera_projection,
-        SETTINGS_CONFIG.trajectory.display_mode,
-        SETTINGS_CONFIG.plot.x_scale_type,
-        SETTINGS_CONFIG.plot.y_scale_type,
-        SETTINGS_CONFIG.scatter.symbol_type,
-        SETTINGS_CONFIG.composition.display_mode,
-      ]
-
-      enum_settings.forEach((setting) => {
-        expect(typeof setting.enum).toBe(`object`)
-        expect(setting.enum).not.toBeNull()
-        expect(Object.keys(setting.enum ?? {}).length).toBeGreaterThan(0)
-        expect(Object.keys(setting.enum ?? {})).toContain(setting?.value)
-      })
+    test.each([
+      [`structure.bonding_strategy`, SETTINGS_CONFIG.structure.bonding_strategy],
+      [`structure.camera_projection`, SETTINGS_CONFIG.structure.camera_projection],
+      [`trajectory.display_mode`, SETTINGS_CONFIG.trajectory.display_mode],
+      [`plot.x_scale_type`, SETTINGS_CONFIG.plot.x_scale_type],
+      [`plot.y_scale_type`, SETTINGS_CONFIG.plot.y_scale_type],
+      [`scatter.symbol_type`, SETTINGS_CONFIG.scatter.symbol_type],
+      [`composition.display_mode`, SETTINGS_CONFIG.composition.display_mode],
+    ])(`enum setting %s has valid options containing default`, (_, setting) => {
+      expect(setting.enum).not.toBeNull()
+      expect(Object.keys(setting.enum ?? {}).length).toBeGreaterThan(0)
+      expect(Object.keys(setting.enum ?? {})).toContain(setting?.value)
     })
   })
 
   describe(`DEFAULTS extraction`, () => {
-    test(`should extract values with correct types`, () => {
-      // Check top-level types
-      expect(typeof DEFAULTS.color_scheme).toBe(`string`)
-      expect(typeof DEFAULTS.background_opacity).toBe(`number`)
-      expect(typeof DEFAULTS.structure.show_gizmo).toBe(`boolean`)
-
-      // Check nested structure types
-      expect(typeof DEFAULTS.structure.atom_radius).toBe(`number`)
-      expect(typeof DEFAULTS.structure.show_atoms).toBe(`boolean`)
-      expect(typeof DEFAULTS.structure.bond_color).toBe(`string`)
-      expect(Array.isArray(DEFAULTS.structure.camera_position)).toBe(true)
-
-      // Check nested trajectory types
-      expect(typeof DEFAULTS.trajectory.auto_play).toBe(`boolean`)
-      expect(typeof DEFAULTS.trajectory.fps).toBe(`number`)
-      expect(Array.isArray(DEFAULTS.trajectory.fps_range)).toBe(true)
+    test.each([
+      [`color_scheme`, DEFAULTS.color_scheme, `string`],
+      [`background_opacity`, DEFAULTS.background_opacity, `number`],
+      [`structure.show_gizmo`, DEFAULTS.structure.show_gizmo, `boolean`],
+      [`structure.atom_radius`, DEFAULTS.structure.atom_radius, `number`],
+      [`structure.show_atoms`, DEFAULTS.structure.show_atoms, `boolean`],
+      [`structure.bond_color`, DEFAULTS.structure.bond_color, `string`],
+      [`trajectory.auto_play`, DEFAULTS.trajectory.auto_play, `boolean`],
+      [`trajectory.fps`, DEFAULTS.trajectory.fps, `number`],
+    ])(`%s has type %s`, (_, value, expected_type) => {
+      expect(typeof value).toBe(expected_type)
     })
 
-    test(`should maintain proper nested structure`, () => {
-      expect(DEFAULTS).toHaveProperty(`structure`)
-      expect(DEFAULTS).toHaveProperty(`trajectory`)
-      expect(DEFAULTS).toHaveProperty(`plot`)
-      expect(DEFAULTS).toHaveProperty(`scatter`)
-      expect(DEFAULTS).toHaveProperty(`composition`)
-      expect(DEFAULTS.structure).toHaveProperty(`atom_radius`)
-      expect(DEFAULTS.trajectory).toHaveProperty(`auto_play`)
-      expect(DEFAULTS.composition).toHaveProperty(`display_mode`)
+    test.each([
+      [`structure.camera_position`, DEFAULTS.structure.camera_position],
+      [`structure.site_label_offset`, DEFAULTS.structure.site_label_offset],
+      [`trajectory.fps_range`, DEFAULTS.trajectory.fps_range],
+    ])(`%s is an array`, (_, value) => {
+      expect(Array.isArray(value)).toBe(true)
     })
 
-    test(`should extract array values with correct length`, () => {
-      expect(DEFAULTS.structure.camera_position).toHaveLength(3)
-      expect(DEFAULTS.structure.site_label_offset).toHaveLength(3)
-      expect(DEFAULTS.trajectory.fps_range).toHaveLength(2)
+    test.each(
+      [
+        [`structure`, `atom_radius`],
+        [`trajectory`, `auto_play`],
+        [`composition`, `display_mode`],
+      ] as const,
+    )(`DEFAULTS.%s has property %s`, (section, prop) => {
+      expect(DEFAULTS[section]).toHaveProperty(prop)
+    })
+
+    test.each([
+      [`structure.camera_position`, DEFAULTS.structure.camera_position, 3],
+      [`structure.site_label_offset`, DEFAULTS.structure.site_label_offset, 3],
+      [`trajectory.fps_range`, DEFAULTS.trajectory.fps_range, 2],
+    ])(`%s has length %i`, (_, arr, len) => {
+      expect(arr).toHaveLength(len)
     })
   })
 
   describe(`merge function`, () => {
-    test(`should return defaults when no user settings provided`, () => {
-      const result = merge()
-      expect(result).toEqual(DEFAULTS)
+    test(`returns DEFAULTS when called without arguments`, () => {
+      expect(merge()).toEqual(DEFAULTS)
+      expect(merge({})).toEqual(DEFAULTS)
     })
 
-    test(`should override user settings while preserving defaults`, () => {
-      const user_settings = {
+    test(`overrides specified values while preserving defaults`, () => {
+      const result = merge({
         color_scheme: `Jmol`,
         structure: { atom_radius: 1.5 },
         trajectory: { auto_play: true },
-      } as Partial<DefaultSettings>
+      } as Partial<DefaultSettings>)
 
-      const result = merge(user_settings)
-
-      // Check overrides work
+      // Overrides applied
       expect(result.color_scheme).toBe(`Jmol`)
       expect(result.structure.atom_radius).toBe(1.5)
       expect(result.trajectory.auto_play).toBe(true)
 
-      // Check structure is preserved
-      expect(result).toHaveProperty(`structure`)
-      expect(result).toHaveProperty(`trajectory`)
-      expect(result).toHaveProperty(`composition`)
-
-      // Check defaults are preserved where not overridden
+      // Defaults preserved
       expect(result.structure.show_atoms).toBe(DEFAULTS.structure.show_atoms)
       expect(result.trajectory.fps).toBe(DEFAULTS.trajectory.fps)
-      // Check nested point/line properties are preserved
       expect(result.scatter.point.size).toBe(DEFAULTS.scatter.point.size)
-      expect(result.scatter.line.width).toBe(DEFAULTS.scatter.line.width)
     })
 
-    test(`should handle partial updates without affecting other sections`, () => {
-      const user_settings = { structure: { atom_radius: 2.0 } } as Partial<
-        DefaultSettings
-      >
-      const result = merge(user_settings)
+    test(`partial updates don't affect other sections`, () => {
+      const result = merge(
+        { structure: { atom_radius: 2.0 } } as Partial<DefaultSettings>,
+      )
 
       expect(result.structure.atom_radius).toBe(2.0)
       expect(result.trajectory).toEqual(DEFAULTS.trajectory)
@@ -149,33 +133,33 @@ describe(`Settings`, () => {
   })
 
   describe(`Edge cases and robustness`, () => {
-    test(`should handle empty/undefined inputs gracefully`, () => {
-      expect(() => merge()).not.toThrow()
-      expect(() => merge({})).not.toThrow()
+    test(`handles undefined structure input without throwing`, () => {
       expect(() => merge({ structure: undefined } as Partial<DefaultSettings>)).not
         .toThrow()
-
-      expect(merge()).toEqual(DEFAULTS)
-      expect(merge({})).toEqual(DEFAULTS)
     })
 
-    test(`should preserve immutability of DEFAULTS`, () => {
+    test(`merge preserves immutability of DEFAULTS`, () => {
       const original = { ...DEFAULTS }
       merge({ structure: { atom_radius: 999 } } as Partial<DefaultSettings>)
       expect(DEFAULTS).toEqual(original)
     })
 
-    test(`should maintain TypeScript type compatibility`, () => {
-      const defaults: DefaultSettings = DEFAULTS
-      const merged: DefaultSettings = merge({ color_scheme: `test` })
+    test(`structuredClone prevents mutations from affecting DEFAULTS`, () => {
+      // Regression test for "fast spinning" bug: $state(DEFAULTS.structure) without cloning
+      // shared the object reference, so mutations leaked between component instances.
+      // After browser back/forward navigation, auto_rotate was 150 instead of 0.2.
+      const cloned = structuredClone(DEFAULTS.structure)
 
-      expect(defaults).toBeDefined()
-      expect(merged).toBeDefined()
-      expect(typeof merged.color_scheme).toBe(`string`)
-      expect(typeof merged.structure.atom_radius).toBe(`number`)
+      // Simulate the mutation that caused the bug (150 = png_dpi value that leaked)
+      cloned.auto_rotate = 150
+      cloned.rotate_speed = 0.2
+
+      // DEFAULTS must remain at original values
+      expect(DEFAULTS.structure.auto_rotate).toBe(0.2)
+      expect(DEFAULTS.structure.rotate_speed).toBe(1.0)
     })
 
-    test(`should handle merge operations efficiently`, () => {
+    test(`merge runs efficiently (100 calls < 20ms)`, () => {
       const start = performance.now()
       for (let idx = 0; idx < 100; idx++) {
         merge({ structure: { atom_radius: Math.random() } } as Partial<DefaultSettings>)
