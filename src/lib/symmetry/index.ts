@@ -115,8 +115,11 @@ export function wyckoff_positions_from_moyo(
     positions: Vec3[]
   }>()
 
-  // Process all sites, including those without Wyckoff letters
-  for (const [idx, full] of wyckoffs.entries()) {
+  // Process all atoms in the standardized cell
+  // Note: wyckoffs array may be shorter than std_cell when moyo combines symmetry-equivalent sites
+  for (let idx = 0; idx < numbers.length; idx++) {
+    // Use wyckoff letter if available, otherwise mark as non-symmetric
+    const full = idx < wyckoffs.length ? wyckoffs[idx] : null
     const letter = (full?.match(/[a-z]+$/)?.[0] ?? full ?? ``).toString()
     const atomic_num = numbers[idx]
     const elem = ATOMIC_NUMBER_TO_SYMBOL[atomic_num] ?? `?`

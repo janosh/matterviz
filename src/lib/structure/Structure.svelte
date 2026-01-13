@@ -41,8 +41,8 @@
   type EventHandler = (data: StructureHandlerData) => void
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
-  // Scene model seeded from central defaults with a few normalized fields
-  let scene_props = $state(DEFAULTS.structure)
+  // Deep-clone to prevent mutations from leaking to global defaults across component instances.
+  let scene_props = $state(structuredClone(DEFAULTS.structure))
   let lattice_props = $state({
     cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,

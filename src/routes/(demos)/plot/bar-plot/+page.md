@@ -1070,7 +1070,7 @@ This demo stress-tests interactive axis labels with:
   {on_axis_change}
   mode="grouped"
   bar={{ border_radius: 1, gap: 0.1 }}
-  legend={{ layout: `horizontal`, wrapper_style: `justify-content: center; font-size: 0.8em` }}
+  legend={{ layout: `horizontal`, style: `justify-content: center; font-size: 0.8em` }}
   style="height: 400px"
 />
 

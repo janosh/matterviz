@@ -433,16 +433,18 @@ describe(`PlotLegend`, () => {
     expect(mock_toggle).toHaveBeenCalledTimes(2) // No extra call
   })
 
-  test(`applies wrapper_style and item_style`, () => {
-    const wrapper_style = `background: black; padding: 15px;`
+  test(`applies style and item_style`, () => {
+    // Use longhand background-color instead of shorthand background
+    // because happy-dom doesn't properly parse CSS shorthand properties
+    const style = `background-color: black; padding: 15px;`
     const item_style = `color: white; margin: 2px;`
     mount(PlotLegend, {
       target: document.body,
-      props: { series_data: default_series_data, wrapper_style, item_style },
+      props: { series_data: default_series_data, style, item_style },
     })
 
     const wrapper = doc_query(`.legend`)
-    expect(wrapper.style.background).toBe(`black`)
+    expect(wrapper.style.backgroundColor).toBe(`black`)
     expect(wrapper.style.padding).toBe(`15px`)
 
     const first_item = doc_query(`.legend-item`)

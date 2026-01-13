@@ -47,7 +47,7 @@
 
   let legend_layout: Orientation = $state(`vertical`)
   let legend_n_items = $state(1)
-  let legend_wrapper_style = $state(``)
+  let legend_style = $state(``)
   let legend_item_style = $state(``)
 
   let last_toggled_idx = $state<number | null>(null)
@@ -101,7 +101,7 @@
   {series_data}
   layout={legend_layout}
   layout_tracks={legend_n_items}
-  wrapper_style={legend_wrapper_style}
+  style={legend_style}
   item_style={legend_item_style}
   on_toggle={handle_toggle}
   on_double_click={handle_double_click}
@@ -119,8 +119,8 @@
 <input type="number" bind:value={legend_n_items} min="1" id="n_items" />
 <br />
 
-<label for="wrapper_style">Wrapper Style:</label>
-<input type="text" bind:value={legend_wrapper_style} id="wrapper_style" />
+<label for="style">Style:</label>
+<input type="text" bind:value={legend_style} id="style" />
 <br />
 
 <label for="item_style">Item Style:</label>
@@ -142,7 +142,7 @@
   series_data={series_data.slice(0, 2)}
   layout="horizontal"
   layout_tracks={2}
-  wrapper_style="background-color: rgba(255, 255, 255, 0.95); padding: 0px;"
+  style="background-color: rgba(255, 255, 255, 0.95); padding: 0px"
   item_style="color: rgb(55, 65, 81); padding: 1px 3px;"
   on_toggle={() => {}}
   on_double_click={() => {}}

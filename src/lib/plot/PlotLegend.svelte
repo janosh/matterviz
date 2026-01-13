@@ -11,7 +11,7 @@
     series_data = [],
     layout = `vertical`,
     layout_tracks = 1, // Default to 1 column/row
-    wrapper_style = ``,
+    style = ``,
     item_style = ``,
     on_toggle = () => {},
     on_double_click = () => {},
@@ -24,11 +24,11 @@
     on_drag_end = () => {},
     draggable = true,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  }: Omit<HTMLAttributes<HTMLDivElement>, `style`> & {
     series_data: LegendItem[]
     layout?: Orientation
     layout_tracks?: number // Number of columns for horizontal, rows for vertical
-    wrapper_style?: string
+    style?: string // Inline styles forwarded to wrapper div
     item_style?: string
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
@@ -143,7 +143,7 @@
       horizontal: `grid-template-columns: repeat(${layout_tracks}, auto);`,
       vertical:
         `grid-template-rows: repeat(${layout_tracks}, auto); grid-template-columns: auto;`,
-    }[layout] + wrapper_style + (rest.style ?? ``),
+    }[layout] + style,
   )
 
   // Extracted toggle handlers to reduce duplication
@@ -375,7 +375,10 @@
   .legend {
     display: grid;
     gap: 1px 6px; /* row-gap column-gap */
-    background-color: var(--plot-legend-bg-color);
+    background-color: var(
+      --plot-legend-bg-color,
+      light-dark(rgba(255, 255, 255, 0.75), rgba(40, 40, 40, 0.75))
+    );
     border: var(--plot-legend-border);
     border-radius: var(--plot-legend-border-radius, var(--border-radius, 3pt));
     font-size: var(--plot-legend-font-size, 0.8em);
@@ -405,6 +408,7 @@
     color: var(--plot-legend-item-color);
   }
   .legend-item.indented {
+    padding: var(--plot-legend-item-padding, 0 8px 1px 3px);
     padding-left: var(--plot-legend-group-indent, 16px);
   }
   .legend-item.hidden {
@@ -440,7 +444,7 @@
     align-items: center;
     cursor: pointer;
     white-space: nowrap;
-    padding: var(--plot-legend-group-padding, 2px 8px 2px 3px);
+    padding: var(--plot-legend-group-padding, 2px 8px 0 3px);
     font-weight: var(--plot-legend-group-font-weight, 600);
     color: var(--plot-legend-group-color, inherit);
     opacity: var(--plot-legend-group-opacity, 1);
