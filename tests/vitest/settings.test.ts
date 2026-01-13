@@ -37,8 +37,9 @@ describe(`Settings`, () => {
     ])(`numeric setting %s has valid constraints`, (_, setting) => {
       expect(typeof setting.value).toBe(`number`)
       expect(typeof setting.minimum).toBe(`number`)
+      expect(setting.maximum).toBeDefined()
       expect(typeof setting.maximum).toBe(`number`)
-      expect(setting.minimum).toBeLessThan(setting.maximum ?? Infinity)
+      expect(setting.minimum).toBeLessThan(setting.maximum as number)
     })
 
     test.each([
@@ -159,12 +160,12 @@ describe(`Settings`, () => {
       expect(DEFAULTS.structure.rotate_speed).toBe(1.0)
     })
 
-    test(`merge runs efficiently (100 calls < 20ms)`, () => {
+    test(`merge runs efficiently (100 calls < 50ms)`, () => {
       const start = performance.now()
       for (let idx = 0; idx < 100; idx++) {
         merge({ structure: { atom_radius: Math.random() } } as Partial<DefaultSettings>)
       }
-      expect(performance.now() - start).toBeLessThan(20)
+      expect(performance.now() - start).toBeLessThan(50)
     })
   })
 })

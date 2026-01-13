@@ -6,6 +6,9 @@ import { IS_CI } from './helpers'
 // Extended timeout for elements that load after trajectory data (plots, controls)
 const LOAD_TIMEOUT = 15_000
 
+// Helper to conditionally skip entire describe blocks on CI
+const describe_local_only = IS_CI ? test.describe.skip : test.describe
+
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
   const display_button = trajectory.locator(
@@ -291,10 +294,9 @@ test.describe(`Trajectory Component`, () => {
     })
   })
 
-  test.describe(`plot and data visualization`, () => {
-    test.beforeEach(() => {
-      test.skip(IS_CI, `Plot tests timeout in CI due to scatter plot rendering`)
-    })
+  describe_local_only(`plot and data visualization`, () => {
+    // Tests in this block are skipped on CI (via describe_local_only)
+    // because the parent beforeEach times out waiting for trajectory data
 
     test(`scatter plot displays with legend`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
