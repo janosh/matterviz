@@ -232,6 +232,44 @@
   {/snippet}
 </PeriodicTable>
 
+<h2>Auto-Scaling Color Bar</h2>
+<p>
+  When <code>show_color_bar</code> is enabled (the default) and no custom inset is
+  provided, the periodic table automatically displays a color bar that scales with the
+  table size. The color bar font and bar width adapt to container width using container
+  queries.
+</p>
+
+<div class="auto-colorbar-grid">
+  {#each [
+      {
+        title: `Atomic Mass`,
+        property: `atomic_mass`,
+        color_scale: `interpolatePlasma`,
+      },
+      { title: `Density`, property: `density`, color_scale: `interpolateCividis` },
+      {
+        title: `Boiling Point`,
+        property: `boiling_point`,
+        color_scale: `interpolateTurbo`,
+      },
+    ] as const as
+    { title, property, color_scale }
+    (title)
+  }
+    <div>
+      <h4 style="margin: 0 0 0.5em; text-align: center; font-size: 0.9em">{title}</h4>
+      <PeriodicTable
+        tile_props={{ show_name: false, show_number: false, show_symbol: false }}
+        heatmap_values={element_data.map((el) => el[property] || 0)}
+        {color_scale}
+        inner_transition_metal_offset={0.3}
+        gap="1px"
+      />
+    </div>
+  {/each}
+</div>
+
 <h2>2×2 Grid Layout</h2>
 
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2em">
@@ -270,3 +308,11 @@
     </PeriodicTable>
   {/each}
 </div>
+
+<style>
+  .auto-colorbar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5em;
+  }
+</style>

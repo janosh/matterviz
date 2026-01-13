@@ -49,7 +49,6 @@ describe(`BarChart component`, () => {
         target: document.body,
         props: {
           composition: { H: 2, O: 1, C: 1 },
-          border_radius: 5,
           outer_corners_only,
         },
       })
