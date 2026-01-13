@@ -497,7 +497,9 @@ export function remove_local_outliers(
   for (let iter = 0; iter < max_iterations; iter++) {
     let removed_any = false
     const new_kept_mask = [...kept_mask]
-
+    // Note: Local statistics are computed from original values, not filtered values.
+    // This prevents cascading removals where one outlier's removal dramatically
+    // shifts statistics and causes false positives on neighboring points.
     for (let idx = 0; idx < len; idx++) {
       if (!kept_mask[idx]) continue // Already removed
       if (!Number.isFinite(y_values[idx])) continue // Skip invalid values

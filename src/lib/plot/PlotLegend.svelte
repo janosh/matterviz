@@ -377,7 +377,7 @@
     gap: 1px 6px; /* row-gap column-gap */
     background-color: var(
       --plot-legend-bg-color,
-      light-dark(rgba(255, 255, 255, 0.9), rgba(40, 40, 40, 0.9))
+      light-dark(rgba(255, 255, 255, 0.75), rgba(40, 40, 40, 0.75))
     );
     border: var(--plot-legend-border);
     border-radius: var(--plot-legend-border-radius, var(--border-radius, 3pt));
@@ -408,6 +408,7 @@
     color: var(--plot-legend-item-color);
   }
   .legend-item.indented {
+    padding: var(--plot-legend-item-padding, 0 8px 1px 3px);
     padding-left: var(--plot-legend-group-indent, 16px);
   }
   .legend-item.hidden {
@@ -443,7 +444,7 @@
     align-items: center;
     cursor: pointer;
     white-space: nowrap;
-    padding: var(--plot-legend-group-padding, 2px 8px 2px 3px);
+    padding: var(--plot-legend-group-padding, 2px 8px 0 3px);
     font-weight: var(--plot-legend-group-font-weight, 600);
     color: var(--plot-legend-group-color, inherit);
     opacity: var(--plot-legend-group-opacity, 1);
