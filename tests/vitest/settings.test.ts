@@ -38,7 +38,7 @@ describe(`Settings`, () => {
       expect(typeof setting.value).toBe(`number`)
       expect(typeof setting.minimum).toBe(`number`)
       expect(typeof setting.maximum).toBe(`number`)
-      expect(setting.minimum).toBeLessThan(setting.maximum ?? -Infinity)
+      expect(setting.minimum).toBeLessThan(setting.maximum ?? Infinity)
     })
 
     test.each([

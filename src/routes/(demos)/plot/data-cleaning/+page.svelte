@@ -663,7 +663,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
     {ref_lines}
     x_axis={{ label: `X (index)` }}
     y_axis={{ label: `Y Value` }}
-    legend={{ layout: `horizontal`, wrapper_style: `justify-content: center;` }}
+    legend={{ layout: `horizontal`, style: `justify-content: center;` }}
     style="height: 400px"
   >
     {#snippet tooltip({ x, y, label })}
