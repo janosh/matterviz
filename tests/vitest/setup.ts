@@ -1,7 +1,25 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import * as math from '$lib/math'
 import type { Crystal, Pbc, Site } from '$lib/structure'
+import init from '@spglib/moyo-wasm'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import { beforeEach, vi } from 'vitest'
+
+// Resolve WASM path for Node.js environment (used by moyo-wasm integration tests)
+const MOYO_WASM_PATH = resolve(
+  import.meta.dirname,
+  `../../node_modules/@spglib/moyo-wasm/moyo_wasm_bg.wasm`,
+)
+
+// Initialize moyo-wasm for Node.js environment by reading binary directly
+let moyo_initialized = false
+export async function init_moyo_for_tests(): Promise<void> {
+  if (moyo_initialized) return
+  const wasm_bytes = readFileSync(MOYO_WASM_PATH)
+  await init({ module_or_path: wasm_bytes })
+  moyo_initialized = true
+}
 
 // Suppress Three.js multiple instances warning in tests
 const original_warn = console.warn

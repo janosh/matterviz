@@ -1039,6 +1039,20 @@ export type SmoothingConfig =
   | { type: `savgol`; window: number; polynomial_order?: number } // window must be odd
   | { type: `gaussian`; sigma: number } // sigma controls Gaussian kernel width
 
+// Local outlier detection config (sliding window approach)
+export interface LocalOutlierConfig {
+  window_half?: number // Points on each side for local context (default: 7)
+  mad_threshold?: number // MADs from local median to flag outlier (default: 2.0)
+  max_iterations?: number // Iterative passes to catch clustered outliers (default: 5)
+}
+
+// Result of local outlier detection
+export interface LocalOutlierResult {
+  kept_indices: number[]
+  removed_indices: number[]
+  iterations_used: number
+}
+
 // Main cleaning configuration
 export interface CleaningConfig {
   // Oscillation detection
@@ -1050,6 +1064,7 @@ export interface CleaningConfig {
   invalid_values?: InvalidValueMode // NaN/Infinity handling (default: 'remove')
   bounds?: PhysicalBounds // Physical constraints
   smooth?: SmoothingConfig // Optional smoothing
+  local_outliers?: LocalOutlierConfig // Local sliding window outlier removal
 
   // Truncation
   truncation_mode?: TruncationMode // 'hard_cut' or 'mark_unstable' (default: 'mark_unstable')
@@ -1065,6 +1080,7 @@ export interface CleaningQuality {
   oscillation_detected: boolean
   oscillation_score?: number // Combined weighted score
   bounds_violations: number
+  outliers_removed?: number // Count of local outliers removed
   stable_range?: [number, number] // [start_x, end_x] if mark_unstable mode
   truncated_at_x?: number // x value if hard_cut mode
 }

@@ -141,15 +141,25 @@ describe(`SymmetryStats`, () => {
 
   describe(`Stats grid section`, () => {
     test.each([
-      { wyckoffs: [`a`], expected: 1 },
-      { wyckoffs: [`a`, `b`, `c`], expected: 3 },
-      { wyckoffs: [], expected: 0 },
+      { wyckoffs: [`a`], numbers: [1], expected: 1 },
+      { wyckoffs: [`a`, `b`, `c`], numbers: [1, 2, 3], expected: 3 },
+      { wyckoffs: [], numbers: [], expected: 0 },
     ])(
-      `displays wyckoff count: $expected for $wyckoffs.length positions`,
-      ({ wyckoffs, expected }) => {
+      `displays wyckoff count: $expected for $numbers.length atoms`,
+      ({ wyckoffs, numbers, expected }) => {
+        // std_cell.numbers determines atom count, wyckoffs provides labels
+        const std_cell = {
+          lattice: { basis: [5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0] },
+          positions: numbers.map(() => [0.0, 0.0, 0.0]),
+          numbers,
+        }
         mount(SymmetryStats, {
           target: document.body,
-          props: { sym_data: create_mock_sym_data({ wyckoffs }) },
+          props: {
+            sym_data: create_mock_sym_data(
+              { wyckoffs, std_cell } as Partial<MoyoDataset>,
+            ),
+          },
         })
         expect(doc_query(`.stats-grid`).textContent).toContain(`${expected}`)
       },

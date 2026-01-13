@@ -5,6 +5,8 @@ import type {
   DataSeries,
   InstabilityResult,
   InvalidValueMode,
+  LocalOutlierConfig,
+  LocalOutlierResult,
   OscillationWeights,
   PhysicalBounds,
   SmoothingConfig,
@@ -19,6 +21,7 @@ import {
   compute_local_variance,
   detect_instability,
   handle_invalid_values,
+  remove_local_outliers,
   smooth_moving_average,
   smooth_savitzky_golay,
   sync_metadata,
@@ -154,6 +157,158 @@ describe(`detect_instability`, () => {
     // If score >= 0.0001, detected should be true; otherwise false
     // This tests that threshold is actually used
     expect(low_thresh.detected).toBe(low_thresh.combined_score >= 0.0001)
+  })
+})
+
+describe(`remove_local_outliers`, () => {
+  it(`returns empty result for empty input`, () => {
+    const result = remove_local_outliers([])
+    expect(result.kept_indices).toEqual([])
+    expect(result.removed_indices).toEqual([])
+    expect(result.iterations_used).toBe(0)
+  })
+
+  it(`keeps all points for small arrays below window size`, () => {
+    const result = remove_local_outliers([1, 2, 3])
+    expect(result.kept_indices).toEqual([0, 1, 2])
+    expect(result.removed_indices).toEqual([])
+    expect(result.iterations_used).toBe(0)
+  })
+
+  it(`keeps all points for smooth linear data`, () => {
+    const y = Array.from({ length: 30 }, (_, idx) => idx * 0.5)
+    const result = remove_local_outliers(y)
+    expect(result.kept_indices.length).toBe(30)
+    expect(result.removed_indices.length).toBe(0)
+  })
+
+  it(`removes single isolated outlier`, () => {
+    // Smooth curve with one spike
+    const y = Array.from({ length: 30 }, (_, idx) => idx * 0.5)
+    y[15] = 100 // Large spike
+    const result = remove_local_outliers(y, { window_half: 5, mad_threshold: 2.0 })
+    expect(result.removed_indices).toContain(15)
+    expect(result.kept_indices).not.toContain(15)
+  })
+
+  it(`removes multiple scattered outliers`, () => {
+    const y = Array.from({ length: 50 }, (_, idx) => Math.sin(idx / 5) * 10)
+    y[10] = 100 // Spike
+    y[25] = -100 // Dip
+    y[40] = 50 // Smaller spike
+    const result = remove_local_outliers(y, { window_half: 5, mad_threshold: 2.0 })
+    expect(result.removed_indices).toContain(10)
+    expect(result.removed_indices).toContain(25)
+    expect(result.removed_indices).toContain(40)
+  })
+
+  it(`removes clustered outliers with multiple iterations`, () => {
+    // Smooth curve with a cluster of bad points
+    const y = Array.from({ length: 50 }, (_, idx) => idx * 0.5)
+    // Add a cluster of outliers
+    y[20] = 50
+    y[21] = -30
+    y[22] = 60
+    const result = remove_local_outliers(y, {
+      window_half: 5,
+      mad_threshold: 2.0,
+      max_iterations: 5,
+    })
+    expect(result.removed_indices).toContain(20)
+    expect(result.removed_indices).toContain(21)
+    expect(result.removed_indices).toContain(22)
+    expect(result.iterations_used).toBeGreaterThanOrEqual(1)
+  })
+
+  it(`preserves good points before and after outlier regions`, () => {
+    // Use larger dataset to avoid edge effects
+    const y = Array.from({ length: 100 }, (_, idx) => idx)
+    // Add outliers in middle
+    y[40] = 500
+    y[41] = -500
+    const result = remove_local_outliers(y, { window_half: 5, mad_threshold: 2.5 })
+    // Points before and after should be kept
+    expect(result.kept_indices).toContain(10)
+    expect(result.kept_indices).toContain(39)
+    expect(result.kept_indices).toContain(42)
+    expect(result.kept_indices).toContain(90)
+    // Outliers should be removed
+    expect(result.removed_indices).toContain(40)
+    expect(result.removed_indices).toContain(41)
+  })
+
+  it(`handles NaN values gracefully`, () => {
+    const y = [1, 2, NaN, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    const result = remove_local_outliers(y)
+    // NaN is not counted as an outlier (handled separately by invalid_values)
+    // But it shouldn't cause the algorithm to crash
+    expect(result.kept_indices.length).toBeGreaterThan(0)
+  })
+
+  it(`respects window_half parameter`, () => {
+    const y = Array.from({ length: 50 }, (_, idx) => idx)
+    y[25] = 100
+    // With larger window, more neighbors = smoother median = easier to detect spike
+    const large_window = remove_local_outliers(y, { window_half: 10 })
+    const small_window = remove_local_outliers(y, { window_half: 3 })
+    expect(large_window.removed_indices).toContain(25)
+    expect(small_window.removed_indices).toContain(25)
+  })
+
+  it(`respects mad_threshold parameter`, () => {
+    const y = Array.from({ length: 50 }, (_, idx) => idx + Math.sin(idx) * 2)
+    y[25] = y[25] + 10 // Moderate deviation
+    // Low threshold = more aggressive = should catch it
+    const low_threshold = remove_local_outliers(y, { mad_threshold: 1.5 })
+    // High threshold = less aggressive = might keep it
+    const high_threshold = remove_local_outliers(y, { mad_threshold: 5.0 })
+    expect(low_threshold.removed_indices.length).toBeGreaterThanOrEqual(
+      high_threshold.removed_indices.length,
+    )
+  })
+
+  it(`stops early when no more outliers found`, () => {
+    const y = Array.from({ length: 30 }, (_, idx) => idx)
+    y[15] = 100 // Single outlier
+    const result = remove_local_outliers(y, { max_iterations: 10 })
+    expect(result.iterations_used).toBeLessThan(10)
+    expect(result.removed_indices).toContain(15)
+  })
+
+  it(`handles constant data (zero MAD) gracefully`, () => {
+    const y = new Array(30).fill(5)
+    const result = remove_local_outliers(y)
+    // All points identical, zero MAD, nothing should be removed
+    expect(result.kept_indices.length).toBe(30)
+    expect(result.removed_indices.length).toBe(0)
+  })
+
+  it(`handles oscillating data without false positives`, () => {
+    // Regular oscillations should not be flagged as outliers
+    // Use a slow oscillation with longer window to ensure smooth local neighborhoods
+    const y = Array.from({ length: 100 }, (_, idx) => Math.sin(idx / 10) * 5)
+    const result = remove_local_outliers(y, { window_half: 10, mad_threshold: 3.0 })
+    // Regular sine wave should not have many removals
+    expect(result.removed_indices.length).toBeLessThanOrEqual(2)
+  })
+
+  it(`handles thermodynamic data pattern (gradual increase with spikes)`, () => {
+    // Simulate typical thermodynamic data: G(T) = -aT^2 with spikes
+    const y = Array.from({ length: 100 }, (_, idx) => -0.001 * idx * idx)
+    // Add typical instability spikes at high T
+    y[70] = y[70] + 5
+    y[75] = y[75] - 8
+    y[80] = y[80] + 3
+    const result = remove_local_outliers(y, {
+      window_half: 7,
+      mad_threshold: 2.5,
+      max_iterations: 5,
+    })
+    expect(result.removed_indices.length).toBeGreaterThan(0)
+    // Should preserve the smooth regions
+    expect(result.kept_indices).toContain(0)
+    expect(result.kept_indices).toContain(50)
+    expect(result.kept_indices).toContain(99)
   })
 })
 
@@ -424,6 +579,61 @@ describe(`clean_series`, () => {
     expect(Number.isNaN(result.series.y[1])).toBe(true)
     expect(result.series.y[3]).toBe(Infinity)
     expect(result.quality.points_removed).toBe(0)
+  })
+
+  it(`applies local_outliers config to remove spikes`, () => {
+    // Smooth curve with a spike - use larger dataset to avoid edge effects
+    const { x, y } = generate_linear_data(100, 0.5)
+    y[50] = 500 // Large spike in the middle
+    const result = clean_series({ x, y }, {
+      local_outliers: { window_half: 5, mad_threshold: 3.0 },
+      in_place: false,
+    })
+    expect(result.quality.outliers_removed).toBeGreaterThanOrEqual(1)
+    expect(result.series.x).not.toContain(50)
+  })
+
+  it(`applies local_outliers after invalid_values removal`, () => {
+    // First remove NaN, then detect outliers - use larger dataset
+    const { x, y } = generate_linear_data(100, 0.5)
+    y[20] = NaN // Invalid
+    y[50] = 500 // Outlier
+    const result = clean_series({ x, y }, {
+      invalid_values: `remove`,
+      local_outliers: { window_half: 5, mad_threshold: 3.0 },
+      in_place: false,
+    })
+    expect(result.quality.invalid_values_found).toBe(1)
+    expect(result.quality.outliers_removed).toBeGreaterThanOrEqual(1)
+    // Should have removed at least the NaN and the outlier
+    expect(result.series.x.length).toBeLessThanOrEqual(98)
+  })
+
+  it(`local_outliers syncs metadata and auxiliary arrays`, () => {
+    // Larger dataset to avoid edge effects
+    const x = Array.from({ length: 100 }, (_, idx) => idx)
+    const y = x.map((val) => val)
+    y[50] = 1000 // Clear outlier
+    const result = clean_series({
+      x,
+      y,
+      metadata: x.map((val) => ({ id: val })),
+      color_values: x.map((val) => val * 2),
+      size_values: x.map((val) => val * 3),
+    }, {
+      local_outliers: { window_half: 5, mad_threshold: 3.0 },
+      in_place: false,
+    })
+    // All arrays should have same length
+    expect(result.series.y.length).toBe(result.series.x.length)
+    expect((result.series.metadata as { id: number }[])?.length).toBe(
+      result.series.x.length,
+    )
+    expect(result.series.color_values?.length).toBe(result.series.x.length)
+    expect(result.series.size_values?.length).toBe(result.series.x.length)
+    // Metadata should not contain id=50 (the outlier)
+    const ids = (result.series.metadata as { id: number }[]).map((m) => m.id)
+    expect(ids).not.toContain(50)
   })
 })
 
@@ -738,8 +948,10 @@ describe(`Type Exports`, () => {
       oscillation_threshold: 2.0,
       window_size: 5,
       in_place: false,
+      local_outliers: { window_half: 7, mad_threshold: 2.0, max_iterations: 5 },
     }
     expect(config.oscillation_threshold).toBe(2.0)
+    expect(config.local_outliers?.window_half).toBe(7)
 
     // PhysicalBounds
     const bounds: PhysicalBounds = { min: 0, max: (x) => x * 2, mode: `clamp` }
@@ -788,6 +1000,22 @@ describe(`Type Exports`, () => {
     const trunc_modes: TruncationMode[] = [`hard_cut`, `mark_unstable`]
     expect(invalid_modes).toContain(`remove`)
     expect(trunc_modes).toContain(`hard_cut`)
+
+    // LocalOutlierConfig
+    const local_outlier_config: LocalOutlierConfig = {
+      window_half: 7,
+      mad_threshold: 2.0,
+      max_iterations: 5,
+    }
+    expect(local_outlier_config.window_half).toBe(7)
+
+    // LocalOutlierResult
+    const local_outlier_result: LocalOutlierResult = {
+      kept_indices: [0, 1, 3, 4],
+      removed_indices: [2],
+      iterations_used: 1,
+    }
+    expect(local_outlier_result.removed_indices).toContain(2)
   })
 })
 
