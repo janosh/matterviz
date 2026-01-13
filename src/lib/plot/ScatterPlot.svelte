@@ -934,9 +934,11 @@
     if (!legend_placement) return null
 
     // Skip auto-placement if user set explicit position in style
-    const style = legend?.wrapper_style ?? ``
+    const legend_style = legend?.style ?? ``
     if (
-      /(^|[;{]\s*)(top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(style)
+      /(^|[;{]\s*)(top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(
+        legend_style,
+      )
     ) return null
 
     return legend_placement
@@ -2133,7 +2135,7 @@
             }))
           }
         }}
-        wrapper_style={`
+        style={`
           position: absolute;
           left: ${
           legend_is_dragging && legend_manual_position
@@ -2149,7 +2151,7 @@
           legend_manual_position ? `` : active_legend_placement?.transform ?? ``
         };
           pointer-events: auto;
-          ${legend?.wrapper_style ?? ``}
+          ${legend?.style ?? ``}
         `}
       />
     {/if}

@@ -1017,7 +1017,7 @@ This demo stress-tests histograms with interactive property switching:
   {data_loader}
   {on_axis_change}
   bar={{ border_radius: 1 }}
-  legend={{ layout: `horizontal`, wrapper_style: `justify-content: center` }}
+  legend={{ layout: `horizontal`, style: `justify-content: center` }}
   style="height: 400px"
 />
 

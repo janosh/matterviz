@@ -130,16 +130,13 @@
   {#if sym_data}
     <div class="stats-grid">
       <div
-        title="{tooltips?.space_group} at {settings.symprec} (using {settings.algo} algo)"
+        title="{tooltips?.space_group} at {settings.symprec} (using {settings.algo} algo). {tooltips?.hermann_mauguin}"
         {@attach tooltip()}
       >
-        Space Group <strong>{sym_data.number}</strong>
+        Space Group <strong>{sym_data.number} ({sym_data.hm_symbol ?? `?`})</strong>
       </div>
       <div title={tooltips?.crystal_system} {@attach tooltip()}>
         Crystal System <strong>{spg.spacegroup_to_crystal_sys(sym_data.number)}</strong>
-      </div>
-      <div title={tooltips?.hermann_mauguin} {@attach tooltip()}>
-        Hermann-Mauguin <strong>{sym_data.hm_symbol ?? `N/A`}</strong>
       </div>
       <div title={tooltips?.hall_number} {@attach tooltip()}>
         Hall Number <strong>{sym_data.hall_number}</strong>
