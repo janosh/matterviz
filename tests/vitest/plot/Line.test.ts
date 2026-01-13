@@ -126,7 +126,7 @@ describe(`Line`, () => {
 
     mount(Line, {
       target: document.body,
-      props: { points, origin, tween_duration: 0 },
+      props: { points, origin, line_tween: { duration: 0 } },
     })
 
     const paths = document.querySelectorAll(`path`)

@@ -2,6 +2,8 @@
 
 A Dash component library that renders **MatterViz** (Svelte) components inside **Plotly Dash**.
 
+**Live Demo**: [huggingface.co/spaces/janoshr/matterviz-dash](https://huggingface.co/spaces/janoshr/matterviz-dash)
+
 ## Design goals
 
 - **Simple**: one Dash component (`MatterViz`) + one browser custom element (`<mv-matterviz>`)

@@ -23,7 +23,6 @@ from .typed import (  # noqa: F401
     Dos,
     Histogram,
     IsobaricBinaryPhaseDiagram,
-    IsobaricTernaryPhaseDiagram,
     PeriodicTable,
     RdfPlot,
     ScatterPlot,
