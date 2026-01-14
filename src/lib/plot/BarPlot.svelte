@@ -687,6 +687,12 @@
     })
   })
 
+  // Legend placement stability state
+  let legend_element = $state<HTMLDivElement | undefined>()
+  const legend_hover = create_hover_lock()
+  const dim_tracker = create_dimension_tracker()
+  let has_initial_legend_placement = $state(false)
+
   // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
     const should_show = show_legend !== undefined ? show_legend : series.length > 1
@@ -739,12 +745,6 @@
   // Tooltip state
   let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
   let tooltip_el = $state<HTMLDivElement | undefined>()
-
-  // Legend placement stability state
-  let legend_element = $state<HTMLDivElement | undefined>()
-  const legend_hover = create_hover_lock()
-  const dim_tracker = create_dimension_tracker()
-  let has_initial_legend_placement = $state(false)
 
   function get_bar_data(
     series_idx: number,
