@@ -125,41 +125,32 @@ const set_density = async (
   await set_slider(`Bottom Right`, densities.br)
 }
 
-// Get colorbar transform for placement tests
-const get_colorbar_transform = async (
+// Get colorbar relative position within plot for placement tests
+// Returns 'top-left', 'top-right', 'bottom-left', or 'bottom-right'
+const get_colorbar_quadrant = async (
   section_locator: Locator,
 ): Promise<string> => {
-  const colorbar_wrapper = section_locator.locator(
-    `div.colorbar[style*='position: absolute']`,
-  )
-  await colorbar_wrapper.waitFor({ state: `visible`, timeout: 5000 })
-  const transform = await colorbar_wrapper.evaluate((el) =>
-    globalThis.getComputedStyle(el).transform
-  )
+  const plot = section_locator.locator(`.scatter`)
+  const colorbar = section_locator.locator(`.colorbar`)
+  await colorbar.waitFor({ state: `visible`, timeout: 5000 })
 
-  if (transform.startsWith(`matrix`)) {
-    const parts = transform.match(/matrix\((.+)\)/)
-    if (parts && parts[1]) {
-      const values = parts[1].split(`,`).map((str) => parseFloat(str.trim()))
-      if (values.length === 6) {
-        const tx = values[4]
-        const ty = values[5]
-        if (Math.abs(tx) < 1 && Math.abs(ty) < 1) return ``
-        if (Math.abs(tx) > 1 && Math.abs(ty) < 1) {
-          return `translateX(${tx < 0 ? `-100%` : `100%`})`
-        }
-        if (Math.abs(tx) < 1 && Math.abs(ty) > 1) {
-          return `translateY(${ty < 0 ? `-100%` : `100%`})`
-        }
-        if (Math.abs(tx) > 1 && Math.abs(ty) > 1) {
-          return `translate(${tx < 0 ? `-100%` : `100%`}, ${ty < 0 ? `-100%` : `100%`})`
-        }
-      }
-    }
-  } else if (transform === `none`) {
-    return ``
-  }
-  return transform
+  const plot_bbox = await plot.boundingBox()
+  const colorbar_bbox = await colorbar.boundingBox()
+
+  if (!plot_bbox || !colorbar_bbox) return `unknown`
+
+  const colorbar_center_x = colorbar_bbox.x + colorbar_bbox.width / 2
+  const colorbar_center_y = colorbar_bbox.y + colorbar_bbox.height / 2
+  const plot_center_x = plot_bbox.x + plot_bbox.width / 2
+  const plot_center_y = plot_bbox.y + plot_bbox.height / 2
+
+  const is_left = colorbar_center_x < plot_center_x
+  const is_top = colorbar_center_y < plot_center_y
+
+  if (is_top && is_left) return `top-left`
+  if (is_top && !is_left) return `top-right`
+  if (!is_top && is_left) return `bottom-left`
+  return `bottom-right`
 }
 
 // Get marker bounding box for sizing tests
@@ -1130,37 +1121,32 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   const colorbar_test_cases = [
     {
-      position: `top-left`,
+      expected_quadrant: `top-left`,
       densities: { tl: 0, tr: 50, bl: 50, br: 50 },
-      expected_transform: ``,
     },
     {
-      position: `top-right`,
+      expected_quadrant: `top-right`,
       densities: { tl: 50, tr: 0, bl: 50, br: 50 },
-      expected_transform: `translateX(-100%)`,
     },
     {
-      position: `bottom-left`,
+      expected_quadrant: `bottom-left`,
       densities: { tl: 50, tr: 50, bl: 0, br: 50 },
-      expected_transform: `translateY(-100%)`,
     },
     {
-      position: `bottom-right`,
+      expected_quadrant: `bottom-right`,
       densities: { tl: 50, tr: 50, bl: 50, br: 0 },
-      expected_transform: `translate(-100%, -100%)`,
     },
   ]
 
-  colorbar_test_cases.forEach(({ position, densities, expected_transform }) => {
-    test(`colorbar moves to ${position} when least dense`, async ({ page }) => {
+  colorbar_test_cases.forEach(({ expected_quadrant, densities }) => {
+    test(`colorbar moves to ${expected_quadrant} when least dense`, async ({ page }) => {
       const section = page.locator(`#auto-colorbar-placement`)
+      await section.scrollIntoViewIfNeeded()
       await set_density(section, densities)
-      const transform = await get_colorbar_transform(section)
-      if (expected_transform === ``) {
-        expect(transform).toBe(``)
-      } else {
-        expect(transform).toContain(expected_transform)
-      }
+      // Wait for placement animation
+      await page.waitForTimeout(500)
+      const actual_quadrant = await get_colorbar_quadrant(section)
+      expect(actual_quadrant).toBe(expected_quadrant)
     })
   })
 
@@ -1594,22 +1580,25 @@ test.describe(`ScatterPlot Component Tests`, () => {
   })
 
   test(`color bar positioning with edge cases`, async ({ page }) => {
-    // Test colorbar behavior at plot boundaries
+    // Test colorbar behavior with density settings
     const section = page.locator(`#auto-colorbar-placement`)
+    await section.scrollIntoViewIfNeeded()
 
-    // Test all corners with extreme density settings
+    // Test extreme density settings (all points in top-left)
     await set_density(section, { tl: 100, tr: 0, bl: 0, br: 0 })
-    const transform_extreme = await get_colorbar_transform(section)
-    // Should position away from high density area
-    expect(transform_extreme.length).toBeGreaterThan(0)
+    await page.waitForTimeout(500)
+    const quadrant_extreme = await get_colorbar_quadrant(section)
+    // Should position away from high density area (not top-left)
+    expect(quadrant_extreme).not.toBe(`top-left`)
 
-    // Test equal density (should pick default position)
+    // Test equal density (should pick a consistent position)
     await set_density(section, { tl: 50, tr: 50, bl: 50, br: 50 })
-    const transform_equal = await get_colorbar_transform(section)
-    // Should have some positioning or default to empty
-    expect(typeof transform_equal).toBe(`string`)
-    // When densities are equal, should use consistent positioning
-    expect(transform_equal.length).toBeGreaterThanOrEqual(0)
+    await page.waitForTimeout(500)
+    const quadrant_equal = await get_colorbar_quadrant(section)
+    // Should be in a valid quadrant
+    expect([`top-left`, `top-right`, `bottom-left`, `bottom-right`]).toContain(
+      quadrant_equal,
+    )
   })
 
   test(`point event handlers work with complex interactions`, async ({ page }) => {

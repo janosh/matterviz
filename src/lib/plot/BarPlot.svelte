@@ -28,7 +28,7 @@
   } from '$lib/plot'
   import {
     BarPlotControls,
-    find_best_plot_area,
+    compute_element_placement,
     InteractiveAxisLabel,
     PlotLegend,
     ReferenceLine,
@@ -59,6 +59,7 @@
   import { extent } from 'd3-array'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { Tween } from 'svelte/motion'
   import { SvelteMap } from 'svelte/reactivity'
   import type { Vec2 } from '../math'
   import {
@@ -682,23 +683,92 @@
     })
   })
 
-  // Calculate best legend placement
+  // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
     const should_show = show_legend !== undefined ? show_legend : series.length > 1
-    return should_show && width && height
-      ? find_best_plot_area(bar_points_for_placement, {
-        plot_width: chart_width,
-        plot_height: chart_height,
-        padding: pad,
-        margin: 10,
-        legend_size: { width: 120, height: 60 },
+    if (!should_show || !width || !height) return null
+
+    // Use measured size if available, otherwise estimate
+    const legend_size = legend_element
+      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
+      : { width: 120, height: 60 }
+
+    const result = compute_element_placement({
+      plot_bounds: { x: pad.l, y: pad.t, width: chart_width, height: chart_height },
+      element_size: legend_size,
+      axis_clearance: legend?.axis_clearance ?? 40,
+      exclude_rects: [],
+      points: bar_points_for_placement,
+    })
+
+    return {
+      ...result,
+      transform: ``,
+      position: `custom` as const,
+    }
+  })
+
+  // Detect if dimensions changed (for allowing updates even when non-responsive)
+  let dimensions_changed = $derived.by(() => {
+    if (!width || !height) return false
+    if (!prev_dimensions) return true
+    return prev_dimensions.width !== width || prev_dimensions.height !== height
+  })
+
+  // Tweened legend coordinates for smooth animation
+  const tweened_legend_coords = new Tween(
+    { x: 0, y: 0 },
+    { duration: 400, ...(legend?.tween ?? {}) },
+  )
+
+  // Update legend position with stability checks
+  $effect(() => {
+    if (!width || !height || !legend_placement) return
+
+    // Track dimensions for resize detection
+    if (
+      !prev_dimensions || prev_dimensions.width !== width ||
+      prev_dimensions.height !== height
+    ) {
+      prev_dimensions = { width, height }
+    }
+
+    // Skip update if:
+    // - hover-locked (unless dimensions changed)
+    // - non-responsive after initial placement (unless dimensions changed)
+    const is_responsive = legend?.responsive ?? false
+    const should_update = (!legend_is_hover_locked || dimensions_changed) &&
+      (is_responsive || !has_initial_legend_placement || dimensions_changed)
+
+    if (should_update) {
+      tweened_legend_coords.set({
+        x: legend_placement.x,
+        y: legend_placement.y,
       })
-      : null
+      has_initial_legend_placement = true
+    }
   })
 
   // Tooltip state
   let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
   let tooltip_el = $state<HTMLDivElement | undefined>()
+
+  // Legend placement stability state
+  let legend_element = $state<HTMLDivElement | undefined>()
+  let legend_is_hover_locked = $state(false)
+  let has_initial_legend_placement = $state(false)
+  let legend_hover_timeout: ReturnType<typeof setTimeout> | null = null
+  let prev_dimensions = $state<{ width: number; height: number } | null>(null)
+
+  // Hover lock handler with 300ms debounce
+  function set_legend_hover_locked(locked: boolean) {
+    if (locked) {
+      if (legend_hover_timeout) clearTimeout(legend_hover_timeout)
+      legend_is_hover_locked = true
+    } else {
+      legend_hover_timeout = setTimeout(() => (legend_is_hover_locked = false), 300)
+    }
+  }
 
   function get_bar_data(
     series_idx: number,
@@ -1515,13 +1585,19 @@
     <!-- Legend -->
     {#if legend_placement}
       <PlotLegend
+        bind:root_element={legend_element}
         {...legend}
         series_data={legend_data}
         on_toggle={legend?.on_toggle || toggle_series_visibility}
         on_group_toggle={legend?.on_group_toggle || toggle_group_visibility}
-        style={`position: absolute; left: ${legend_placement.x}px; top: ${legend_placement.y}px; transform: ${legend_placement.transform}; ${
-          legend?.style || ``
-        }`}
+        on_hover_change={set_legend_hover_locked}
+        style={`
+          position: absolute;
+          left: ${tweened_legend_coords.current.x}px;
+          top: ${tweened_legend_coords.current.y}px;
+          pointer-events: auto;
+          ${legend?.style || ``}
+        `}
       />
     {/if}
 
