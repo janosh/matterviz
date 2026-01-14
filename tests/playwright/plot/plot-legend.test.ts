@@ -1,3 +1,4 @@
+import { rects_overlap } from '$lib/plot/layout'
 import { expect, type Locator, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
 
@@ -12,18 +13,6 @@ async function get_element_center(
 
 function distance(p1: { x: number; y: number }, p2: { x: number; y: number }): number {
   return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2)
-}
-
-function boxes_overlap(
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number },
-): boolean {
-  return !(
-    a.x + a.width <= b.x ||
-    b.x + b.width <= a.x ||
-    a.y + a.height <= b.y ||
-    b.y + b.height <= a.y
-  )
 }
 
 async function wait_for_position_stable(
@@ -286,10 +275,8 @@ test.describe(`Legend Placement Stability`, () => {
     if (plot_bbox) {
       await page.mouse.move(plot_bbox.x + 10, plot_bbox.y + 10)
     }
-    await page.waitForTimeout(500)
-    await page.waitForTimeout(500)
-
-    const final_pos = await get_element_center(legend)
+    // Wait for hover debounce (300ms) to expire and position to stabilize
+    const final_pos = await wait_for_position_stable(legend, 2000)
     expect(final_pos).not.toBeNull()
 
     if (hovered_pos && final_pos) {
@@ -396,7 +383,7 @@ test.describe(`Coordinated Legend and ColorBar Placement`, () => {
     const colorbar_bbox = await colorbar_wrapper.boundingBox()
 
     if (legend_bbox && colorbar_bbox) {
-      const overlaps = boxes_overlap(legend_bbox, colorbar_bbox)
+      const overlaps = rects_overlap(legend_bbox, colorbar_bbox)
       expect(overlaps).toBe(false)
     }
   })

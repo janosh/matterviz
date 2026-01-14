@@ -906,15 +906,15 @@
       ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
       : { width: 120, height: 80 }
 
-    const result = compute_element_placement({
+    const placement_config = {
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
       element_size: legend_size,
-      axis_clearance: legend?.axis_clearance ?? 40,
+      axis_clearance: legend?.axis_clearance ?? 10,
       exclude_rects: [],
       points: plot_points_for_placement,
-    })
+    }
 
-    return result
+    return compute_element_placement(placement_config)
   })
 
   // Calculate color bar placement (coordinates with legend to avoid overlap)
@@ -945,15 +945,14 @@
       })
     }
 
-    const result = compute_element_placement({
+    return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
       element_size: colorbar_size,
-      axis_clearance: 40,
+      // Colorbar needs slightly more clearance than legend to avoid axis labels
+      axis_clearance: 15,
       exclude_rects,
       points: plot_points_for_placement,
     })
-
-    return result
   })
 
   // Active legend placement (null if user set explicit position)
@@ -993,16 +992,22 @@
     // Update colorbar position with stability checks
     if (color_bar_placement) {
       // Skip update if hover-locked, unless dimensions changed (resize always allowed)
-      const should_update_colorbar = !colorbar_hover.is_locked.current ||
-        dims_changed ||
-        !has_initial_colorbar_placement
+      const has_measured_colorbar_size = !!colorbar_element
+      const should_update_colorbar =
+        (!colorbar_hover.is_locked.current || dims_changed) &&
+        (!has_initial_colorbar_placement || dims_changed ||
+          has_measured_colorbar_size)
 
       if (should_update_colorbar) {
-        tweened_colorbar_coords.set({
-          x: color_bar_placement.x,
-          y: color_bar_placement.y,
-        })
-        has_initial_colorbar_placement = true
+        tweened_colorbar_coords.set(
+          { x: color_bar_placement.x, y: color_bar_placement.y },
+          // Skip animation on initial placement to avoid jump from (0, 0)
+          has_initial_colorbar_placement ? undefined : { duration: 0 },
+        )
+        // Only lock position after we have actual measured size
+        if (has_measured_colorbar_size) {
+          has_initial_colorbar_placement = true
+        }
       }
     }
 
@@ -1012,16 +1017,23 @@
     } else if (active_legend_placement && !legend_is_dragging) {
       // Skip update if hover-locked or non-responsive (unless dimensions changed)
       const is_responsive = legend?.responsive ?? false
+      // Allow update if legend_element exists (measured size) vs estimate was used initially
+      const has_measured_size = !!legend_element
       const should_update_legend =
         (!legend_hover.is_locked.current || dims_changed) &&
-        (is_responsive || !has_initial_legend_placement || dims_changed)
+        (is_responsive || !has_initial_legend_placement || dims_changed ||
+          has_measured_size)
 
       if (should_update_legend) {
-        tweened_legend_coords.set({
-          x: active_legend_placement.x,
-          y: active_legend_placement.y,
-        })
-        has_initial_legend_placement = true
+        tweened_legend_coords.set(
+          { x: active_legend_placement.x, y: active_legend_placement.y },
+          // Skip animation on initial placement to avoid jump from (0, 0)
+          has_initial_legend_placement ? undefined : { duration: 0 },
+        )
+        // Only lock position after we have actual measured size
+        if (has_measured_size) {
+          has_initial_legend_placement = true
+        }
       }
     }
   })

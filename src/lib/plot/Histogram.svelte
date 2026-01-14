@@ -482,7 +482,7 @@
     const result = compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
       element_size: legend_size,
-      axis_clearance: legend?.axis_clearance ?? 40,
+      axis_clearance: legend?.axis_clearance ?? 10,
       exclude_rects: [],
       points: hist_points_for_placement,
     })
@@ -506,15 +506,22 @@
 
     // Skip update if hover-locked or non-responsive (unless dimensions changed)
     const is_responsive = legend?.responsive ?? false
+    // Allow update if legend_element exists (measured size) vs estimate was used initially
+    const has_measured_size = !!legend_element
     const should_update = (!legend_hover.is_locked.current || dims_changed) &&
-      (is_responsive || !has_initial_legend_placement || dims_changed)
+      (is_responsive || !has_initial_legend_placement || dims_changed ||
+        has_measured_size)
 
     if (should_update) {
-      tweened_legend_coords.set({
-        x: legend_placement.x,
-        y: legend_placement.y,
-      })
-      has_initial_legend_placement = true
+      tweened_legend_coords.set(
+        { x: legend_placement.x, y: legend_placement.y },
+        // Skip animation on initial placement to avoid jump from (0, 0)
+        has_initial_legend_placement ? undefined : { duration: 0 },
+      )
+      // Only lock position after we have actual measured size
+      if (has_measured_size) {
+        has_initial_legend_placement = true
+      }
     }
   })
 

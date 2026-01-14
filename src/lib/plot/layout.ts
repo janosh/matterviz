@@ -1,4 +1,5 @@
 import { format_value } from '$lib/labels'
+import { euclidean_dist } from '$lib/math'
 import type { AxisConfig, Sides } from '$lib/plot'
 
 // Default gap between tick labels and axis labels
@@ -148,6 +149,8 @@ export interface ElementPlacementResult {
 // Scoring constants
 const EXCLUSION_PENALTY = 1000
 const DISTANCE_WEIGHT = 0.001
+// Strong corner preference: corners can have 3-4 more overlapping points and still win
+const CORNER_WEIGHT = 5.0
 const MAX_SAMPLE_POINTS = 500
 
 // Check if a point is inside a rectangle
@@ -181,7 +184,7 @@ export function compute_element_placement(
   const {
     plot_bounds,
     element_size,
-    axis_clearance = 40,
+    axis_clearance = 10,
     exclude_rects = [],
     points,
     grid_resolution: raw_resolution = 10,
@@ -226,6 +229,13 @@ export function compute_element_placement(
     ? (effective_y_max - effective_y_min) / (grid_resolution - 1)
     : 0
 
+  // Precompute plot corners (constant across all candidates)
+  const plot_left = plot_bounds.x + axis_clearance
+  const plot_right = plot_bounds.x + plot_bounds.width - axis_clearance
+  const plot_top = plot_bounds.y + axis_clearance
+  const plot_bottom = plot_bounds.y + plot_bounds.height - axis_clearance
+  const max_corner_dist = euclidean_dist([plot_left, plot_top], [plot_right, plot_bottom])
+
   for (let grid_x = 0; grid_x < grid_resolution; grid_x++) {
     for (let grid_y = 0; grid_y < grid_resolution; grid_y++) {
       const cand_x = effective_x_min + grid_x * x_step
@@ -267,7 +277,26 @@ export function compute_element_placement(
       // Score: fewer overlaps = better (less negative)
       // Add small distance bonus for tie-breaking
       const min_distance = Math.sqrt(min_distance_sq)
-      const score = -overlap_count + min_distance * DISTANCE_WEIGHT - exclusion_penalty
+
+      // Corner preference: use element's actual corner (not center) for distance
+      // This ensures a wide element at the left edge gets proper corner credit
+      const elem_right = cand_x + element_size.width
+      const elem_bottom = cand_y + element_size.height
+
+      // Distance from element's matching corner to each plot corner
+      const min_corner_dist = Math.min(
+        euclidean_dist([cand_x, cand_y], [plot_left, plot_top]), // top-left
+        euclidean_dist([elem_right, cand_y], [plot_right, plot_top]), // top-right
+        euclidean_dist([cand_x, elem_bottom], [plot_left, plot_bottom]), // bottom-left
+        euclidean_dist([elem_right, elem_bottom], [plot_right, plot_bottom]), // bottom-right
+      )
+      // Higher bonus for positions closer to corners (0 = at corner, 1 = far from all)
+      const corner_bonus = max_corner_dist > 0
+        ? (1 - min_corner_dist / max_corner_dist) * CORNER_WEIGHT
+        : 0
+
+      const score = -overlap_count + min_distance * DISTANCE_WEIGHT + corner_bonus -
+        exclusion_penalty
 
       if (score > best_result.score) {
         best_result = { x: cand_x, y: cand_y, score }
