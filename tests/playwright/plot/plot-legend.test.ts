@@ -12,7 +12,7 @@ async function get_element_center(
 }
 
 function distance(p1: { x: number; y: number }, p2: { x: number; y: number }): number {
-  return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2)
+  return Math.hypot(p1.x - p2.x, p1.y - p2.y)
 }
 
 async function wait_for_position_stable(
@@ -379,7 +379,7 @@ test.describe(`Coordinated Legend and ColorBar Placement`, () => {
     await expect(legend).toBeVisible()
 
     const legend_bbox = await legend.boundingBox()
-    const colorbar_wrapper = plot.locator(`div.colorbar[style*="position"]`)
+    const colorbar_wrapper = plot.locator(`.colorbar-wrapper`)
     const colorbar_bbox = await colorbar_wrapper.boundingBox()
 
     if (legend_bbox && colorbar_bbox) {

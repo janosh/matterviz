@@ -33,6 +33,7 @@ describe(`ScatterPlot`, () => {
       markers: `line+points`,
     },
     { series: [], markers: `points` },
+    { series: [basic], legend: null },
     {
       series: [basic, {
         x: [1, 2, 3],

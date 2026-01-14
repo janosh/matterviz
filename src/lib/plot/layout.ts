@@ -184,7 +184,7 @@ export function compute_element_placement(
   const {
     plot_bounds,
     element_size,
-    axis_clearance = 10,
+    axis_clearance = 40,
     exclude_rects = [],
     points,
     grid_resolution: raw_resolution = 10,
@@ -276,7 +276,8 @@ export function compute_element_placement(
 
       // Score: fewer overlaps = better (less negative)
       // Add small distance bonus for tie-breaking
-      const min_distance = Math.sqrt(min_distance_sq)
+      // When no points exist, min_distance_sq stays Infinity - treat as 0 (no distance bonus)
+      const min_distance = min_distance_sq === Infinity ? 0 : Math.sqrt(min_distance_sq)
 
       // Corner preference: use element's actual corner (not center) for distance
       // This ensures a wide element at the left edge gets proper corner credit

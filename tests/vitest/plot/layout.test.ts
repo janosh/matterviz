@@ -257,6 +257,8 @@ describe(`layout utility functions`, () => {
       expect(result.y).toBeGreaterThanOrEqual(
         base_config.plot_bounds.y + base_config.axis_clearance,
       )
+      // Score must be finite (not Infinity) so corner bonus can properly select best position
+      expect(Number.isFinite(result.score)).toBe(true)
       expect(result.score).toBeGreaterThan(-Infinity)
     })
 

@@ -88,6 +88,7 @@
   } from './fill-utils'
   import { get_relative_coords } from './interactions'
   import { calc_auto_padding, constrain_tooltip_position } from './layout'
+  import type { Rect } from './layout'
   import type { IndexedRefLine } from './reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from './reference-line'
   import {
@@ -894,7 +895,7 @@
   // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
     const should_place = legend != null &&
-      (legend_data.length > 1 || JSON.stringify(legend) !== `{}`)
+      (legend_data.length > 1 || Object.keys(legend).length > 0)
 
     if (!should_place || !width || !height) return null
 
@@ -909,7 +910,7 @@
     const placement_config = {
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
       element_size: legend_size,
-      axis_clearance: legend?.axis_clearance ?? 10,
+      axis_clearance: legend?.axis_clearance,
       exclude_rects: [],
       points: plot_points_for_placement,
     }
@@ -933,9 +934,7 @@
       : { width: 40, height: 100 }
 
     // Build exclusion rects (avoid legend if it's placed)
-    const exclude_rects: Array<
-      { x: number; y: number; width: number; height: number }
-    > = []
+    const exclude_rects: Rect[] = []
     if (legend_element && legend_placement) {
       exclude_rects.push({
         x: legend_placement.x,
@@ -992,11 +991,9 @@
     // Update colorbar position with stability checks
     if (color_bar_placement) {
       // Skip update if hover-locked, unless dimensions changed (resize always allowed)
-      const has_measured_colorbar_size = !!colorbar_element
-      const should_update_colorbar =
-        (!colorbar_hover.is_locked.current || dims_changed) &&
-        (!has_initial_colorbar_placement || dims_changed ||
-          has_measured_colorbar_size)
+      // Only update if: resize occurred, OR (not hover-locked AND not yet initially placed)
+      const should_update_colorbar = dims_changed ||
+        (!colorbar_hover.is_locked.current && !has_initial_colorbar_placement)
 
       if (should_update_colorbar) {
         tweened_colorbar_coords.set(
@@ -1005,7 +1002,7 @@
           has_initial_colorbar_placement ? undefined : { duration: 0 },
         )
         // Only lock position after we have actual measured size
-        if (has_measured_colorbar_size) {
+        if (colorbar_element) {
           has_initial_colorbar_placement = true
         }
       }
@@ -1015,14 +1012,10 @@
     if (legend_manual_position && !legend_is_dragging) {
       tweened_legend_coords.set(legend_manual_position)
     } else if (active_legend_placement && !legend_is_dragging) {
-      // Skip update if hover-locked or non-responsive (unless dimensions changed)
       const is_responsive = legend?.responsive ?? false
-      // Allow update if legend_element exists (measured size) vs estimate was used initially
-      const has_measured_size = !!legend_element
-      const should_update_legend =
-        (!legend_hover.is_locked.current || dims_changed) &&
-        (is_responsive || !has_initial_legend_placement || dims_changed ||
-          has_measured_size)
+      // Only update if: resize occurred, OR (not hover-locked AND (responsive OR not yet initially placed))
+      const should_update_legend = dims_changed || (!legend_hover.is_locked.current &&
+        (is_responsive || !has_initial_legend_placement))
 
       if (should_update_legend) {
         tweened_legend_coords.set(
@@ -1031,7 +1024,7 @@
           has_initial_legend_placement ? undefined : { duration: 0 },
         )
         // Only lock position after we have actual measured size
-        if (has_measured_size) {
+        if (legend_element) {
           has_initial_legend_placement = true
         }
       }
@@ -2127,6 +2120,7 @@
         bind:this={colorbar_element}
         onmouseenter={() => colorbar_hover.set_locked(true)}
         onmouseleave={() => colorbar_hover.set_locked(false)}
+        class="colorbar-wrapper"
         role="img"
         aria-label="Color scale legend"
         style={`
@@ -2153,7 +2147,7 @@
     <!-- Legend -->
     <!-- Only render if multiple series or if legend prop was explicitly provided by user (even if empty object) -->
     {#if legend != null && legend_data.length > 0 && legend_placement &&
-      (legend_data.length > 1 || (legend != null && JSON.stringify(legend) !== `{}`))}
+      (legend_data.length > 1 || Object.keys(legend).length > 0)}
       <PlotLegend
         bind:root_element={legend_element}
         series_data={legend_data}

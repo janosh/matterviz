@@ -73,7 +73,7 @@
     padding = { t: 20, b: 60, l: 60, r: 20 },
     bins = $bindable(100),
     show_legend = $bindable(true),
-    legend,
+    legend = {},
     bar: bar_init = {},
     selected_property = $bindable(``),
     mode = $bindable(`single`),
@@ -468,7 +468,7 @@
 
   // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
-    const should_place = show_legend && legend && series.length > 1
+    const should_place = show_legend && legend != null && series.length > 1
     if (!should_place || !width || !height) return null
 
     const plot_width = width - pad.l - pad.r
@@ -482,7 +482,7 @@
     const result = compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
       element_size: legend_size,
-      axis_clearance: legend?.axis_clearance ?? 10,
+      axis_clearance: legend?.axis_clearance,
       exclude_rects: [],
       points: hist_points_for_placement,
     })
@@ -504,13 +504,10 @@
     const dims_changed = dim_tracker.has_changed(width, height)
     if (dims_changed) dim_tracker.update(width, height)
 
-    // Skip update if hover-locked or non-responsive (unless dimensions changed)
+    // Only update if: resize occurred, OR (not hover-locked AND (responsive OR not yet initially placed))
     const is_responsive = legend?.responsive ?? false
-    // Allow update if legend_element exists (measured size) vs estimate was used initially
-    const has_measured_size = !!legend_element
-    const should_update = (!legend_hover.is_locked.current || dims_changed) &&
-      (is_responsive || !has_initial_legend_placement || dims_changed ||
-        has_measured_size)
+    const should_update = dims_changed || (!legend_hover.is_locked.current &&
+      (is_responsive || !has_initial_legend_placement))
 
     if (should_update) {
       tweened_legend_coords.set(
@@ -519,7 +516,7 @@
         has_initial_legend_placement ? undefined : { duration: 0 },
       )
       // Only lock position after we have actual measured size
-      if (has_measured_size) {
+      if (legend_element) {
         has_initial_legend_placement = true
       }
     }
@@ -1190,7 +1187,7 @@
     />
   {/if}
 
-  {#if show_legend && legend && series.length > 1 && legend_placement}
+  {#if show_legend && legend != null && series.length > 1 && legend_placement}
     <PlotLegend
       bind:root_element={legend_element}
       {...legend}
