@@ -41,6 +41,7 @@
   import type {
     BasePlotProps,
     DataSeries,
+    LegendConfig,
     PlotConfig,
     ScaleType,
   } from '$lib/plot/types'
@@ -51,21 +52,13 @@
   } from '$lib/plot/hover-lock.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
   import type { Vec2 } from '../math'
   import PlotTooltip from './PlotTooltip.svelte'
   import { bar_path } from './svg'
-  import type { TweenedOptions, XyObj } from '$lib/plot'
-
-  // Extended LegendConfig with placement options
-  type LegendConfig = ComponentProps<typeof PlotLegend> & {
-    axis_clearance?: number
-    responsive?: boolean
-    tween?: TweenedOptions<XyObj>
-  }
 
   let {
     series = $bindable([]),
@@ -80,7 +73,7 @@
     padding = { t: 20, b: 60, l: 60, r: 20 },
     bins = $bindable(100),
     show_legend = $bindable(true),
-    legend = { series_data: [] },
+    legend,
     bar: bar_init = {},
     selected_property = $bindable(``),
     mode = $bindable(`single`),

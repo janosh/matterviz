@@ -12,6 +12,7 @@ interface ReactiveBoolean {
 export function create_hover_lock(): {
   is_locked: ReactiveBoolean
   set_locked: (locked: boolean) => void
+  cleanup: () => void
 } {
   let is_locked = $state(false)
   let timeout: ReturnType<typeof setTimeout> | null = null
@@ -32,6 +33,9 @@ export function create_hover_lock(): {
       } else {
         timeout = setTimeout(() => (is_locked = false), HOVER_DEBOUNCE_MS)
       }
+    },
+    cleanup() {
+      if (timeout) clearTimeout(timeout)
     },
   }
 }
