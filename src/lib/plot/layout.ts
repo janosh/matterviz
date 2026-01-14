@@ -1,4 +1,5 @@
 import { format_value } from '$lib/labels'
+import { euclidean_dist } from '$lib/math'
 import type { AxisConfig, Sides } from '$lib/plot'
 
 // Default gap between tick labels and axis labels
@@ -112,126 +113,240 @@ export function constrain_tooltip_position(
   return { x: x_pos, y: y_pos }
 }
 
-// Legend auto-placement for plot components
-// Finds the least populated region inside the plot area for placing the legend
-export type PlacementPosition =
-  | `top-left`
-  | `top-right`
-  | `bottom-left`
-  | `bottom-right`
-  | `top-center`
-  | `right-center`
-  | `bottom-center`
-  | `left-center`
+// Continuous placement algorithm with grid sampling and overlap scoring
+// Finds the optimal position for a legend/colorbar by sampling a grid of candidates
+// and scoring each by data point overlap and distance to exclusion zones
 
-export interface LegendPlacement {
-  x: number // left position in px
-  y: number // top position in px
-  transform: string // CSS transform for alignment
-  position: PlacementPosition // which position was chosen
+// Common rectangle type for consistency
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
-export interface PlacementConfig {
-  plot_width: number
-  plot_height: number
-  padding: Required<Sides>
-  margin?: number
-  legend_size?: { width: number; height: number }
+export interface ElementPlacementConfig {
+  // Bounds of the plot area (in SVG coordinates)
+  plot_bounds: Rect
+  // Size of the element to place
+  element_size: { width: number; height: number }
+  // Minimum distance from plot edges to avoid axis label overlap (default: 40)
+  axis_clearance?: number
+  // Rectangles to avoid (e.g., already-placed legend when placing colorbar)
+  exclude_rects?: Rect[]
+  // Data points to avoid overlapping
+  points: { x: number; y: number }[]
+  // Number of samples per axis (default: 10, meaning 10x10 = 100 candidates)
+  grid_resolution?: number
 }
 
-// Define anchor positions with their transform origins
-export const PLACEMENT_ANCHORS: Record<
-  PlacementPosition,
-  { anchor: { x: number; y: number }; transform: string }
-> = {
-  // Corners (priority 1)
-  'top-left': { anchor: { x: 0, y: 0 }, transform: `` },
-  'top-right': { anchor: { x: 1, y: 0 }, transform: `translateX(-100%)` },
-  'bottom-left': { anchor: { x: 0, y: 1 }, transform: `translateY(-100%)` },
-  'bottom-right': { anchor: { x: 1, y: 1 }, transform: `translate(-100%, -100%)` },
-  // Edge midpoints (priority 2)
-  'top-center': { anchor: { x: 0.5, y: 0 }, transform: `translateX(-50%)` },
-  'right-center': { anchor: { x: 1, y: 0.5 }, transform: `translate(-100%, -50%)` },
-  'bottom-center': { anchor: { x: 0.5, y: 1 }, transform: `translate(-50%, -100%)` },
-  'left-center': { anchor: { x: 0, y: 0.5 }, transform: `translateY(-50%)` },
+export interface ElementPlacementResult {
+  x: number
+  y: number
+  score: number // Higher is better (fewer overlaps, farther from points)
 }
 
-// Priority order: corners first, then edge midpoints
-export const PLACEMENT_PRIORITY: PlacementPosition[] = [
-  `top-left`,
-  `top-right`,
-  `bottom-left`,
-  `bottom-right`,
-  `top-center`,
-  `right-center`,
-  `bottom-center`,
-  `left-center`,
-]
+// Scoring constants
+const EXCLUSION_PENALTY = 1000
+const DISTANCE_WEIGHT = 0.001
+// Strong corner preference: corners can have 3-4 more overlapping points and still win
+const CORNER_WEIGHT = 5.0
+const MAX_SAMPLE_POINTS = 500
 
-// Find the best placement position for a legend or color bar
-// (as in emptiest region of a plot that causes the least overlap with plot elements)
-export function find_best_plot_area(
-  points: { x: number; y: number }[],
-  config: PlacementConfig,
-): LegendPlacement {
-  const { plot_width, plot_height, padding, margin = 10 } = config
-  const { width = 120, height = 80 } = config.legend_size ?? {}
+// Check if a point is inside a rectangle
+function point_in_rect(point: { x: number; y: number }, rect: Rect): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  )
+}
 
-  // For performance, subsample points if there are too many (>500)
-  const max_points_for_full_calc = 500
-  const sampled_points = points.length > max_points_for_full_calc
-    ? (() => {
-      const step = points.length / max_points_for_full_calc
-      return Array.from({ length: max_points_for_full_calc }, (_, idx) =>
-        points[Math.floor(idx * step)])
-    })()
+// Check if two rectangles overlap
+export function rects_overlap(r1: Rect, r2: Rect): boolean {
+  return !(
+    r1.x + r1.width <= r2.x ||
+    r2.x + r2.width <= r1.x ||
+    r1.y + r1.height <= r2.y ||
+    r2.y + r2.height <= r1.y
+  )
+}
+
+// Find the best placement position using continuous grid sampling
+// Scores each candidate position by:
+// 1. Number of data points overlapping the element bounds (fewer = better)
+// 2. Overlap with exclusion rectangles (heavy penalty)
+// 3. Distance to nearest point (tie-breaker, farther = better)
+export function compute_element_placement(
+  config: ElementPlacementConfig,
+): ElementPlacementResult {
+  const {
+    plot_bounds,
+    element_size,
+    axis_clearance = 40,
+    exclude_rects = [],
+    points,
+    grid_resolution: raw_resolution = 10,
+  } = config
+
+  // Ensure grid_resolution >= 2 to avoid division by zero in step calculation
+  const grid_resolution = Math.max(2, raw_resolution)
+
+  const { width: elem_width, height: elem_height } = element_size
+
+  // Calculate valid placement region (plot bounds minus axis clearance)
+  const valid_x_min = plot_bounds.x + axis_clearance
+  const valid_y_min = plot_bounds.y + axis_clearance
+  const valid_x_max = plot_bounds.x + plot_bounds.width - axis_clearance - elem_width
+  const valid_y_max = plot_bounds.y + plot_bounds.height - axis_clearance - elem_height
+
+  // Handle case where element is too large for the valid region
+  const effective_x_min = Math.min(valid_x_min, valid_x_max)
+  const effective_x_max = Math.max(valid_x_min, valid_x_max)
+  const effective_y_min = Math.min(valid_y_min, valid_y_max)
+  const effective_y_max = Math.max(valid_y_min, valid_y_max)
+
+  // Subsample points for performance
+  const sampled_points = points.length > MAX_SAMPLE_POINTS
+    ? Array.from(
+      { length: MAX_SAMPLE_POINTS },
+      (_, idx) => points[Math.floor(idx * points.length / MAX_SAMPLE_POINTS)],
+    )
     : points
 
-  let best_position: PlacementPosition = `top-right`
-  let max_min_distance = -Infinity
+  let best_result: ElementPlacementResult = {
+    x: effective_x_min,
+    y: effective_y_min,
+    score: -Infinity,
+  }
 
-  // Try each position in priority order, pick the one with maximum distance to nearest point
-  for (const position of PLACEMENT_PRIORITY) {
-    const { anchor } = PLACEMENT_ANCHORS[position]
+  // Sample candidate positions on a grid
+  const x_step = effective_x_max > effective_x_min
+    ? (effective_x_max - effective_x_min) / (grid_resolution - 1)
+    : 0
+  const y_step = effective_y_max > effective_y_min
+    ? (effective_y_max - effective_y_min) / (grid_resolution - 1)
+    : 0
 
-    // Calculate position coordinates
-    const base_x = padding.l + plot_width * anchor.x
-    const base_y = padding.t + plot_height * anchor.y
+  // Precompute plot corners (constant across all candidates)
+  const plot_left = plot_bounds.x + axis_clearance
+  const plot_right = plot_bounds.x + plot_bounds.width - axis_clearance
+  const plot_top = plot_bounds.y + axis_clearance
+  const plot_bottom = plot_bounds.y + plot_bounds.height - axis_clearance
+  const max_corner_dist = euclidean_dist([plot_left, plot_top], [plot_right, plot_bottom])
 
-    // Apply margin
-    const x = base_x +
-      (anchor.x === 0 ? margin : anchor.x === 1 ? -margin : 0)
-    const y = base_y +
-      (anchor.y === 0 ? margin : anchor.y === 1 ? -margin : 0)
-
-    // Calculate legend center for distance measurement
-    const center_x = x + width * (0.5 - anchor.x)
-    const center_y = y + height * (0.5 - anchor.y)
-
-    // Find minimum distance to any point (distance to nearest point)
-    let min_distance_sq = Infinity
-    for (const point of sampled_points) {
-      const dx = point.x - center_x
-      const dy = point.y - center_y
-      const dist_sq = dx * dx + dy * dy
-      if (dist_sq < min_distance_sq) {
-        min_distance_sq = dist_sq
+  for (let grid_x = 0; grid_x < grid_resolution; grid_x++) {
+    for (let grid_y = 0; grid_y < grid_resolution; grid_y++) {
+      const cand_x = effective_x_min + grid_x * x_step
+      const cand_y = effective_y_min + grid_y * y_step
+      const cand_rect: Rect = {
+        x: cand_x,
+        y: cand_y,
+        width: elem_width,
+        height: elem_height,
       }
-    }
 
-    // Update best if this position has greater distance to nearest point
-    if (min_distance_sq > max_min_distance) {
-      max_min_distance = min_distance_sq
-      best_position = position
+      // Check for overlap with exclusion rectangles first (early rejection)
+      let exclusion_penalty = 0
+      for (const excl_rect of exclude_rects) {
+        if (rects_overlap(cand_rect, excl_rect)) {
+          exclusion_penalty += EXCLUSION_PENALTY
+        }
+      }
+
+      // Count points overlapping this candidate position
+      let overlap_count = 0
+      let min_distance_sq = Infinity
+      const center_x = cand_x + elem_width / 2
+      const center_y = cand_y + elem_height / 2
+
+      for (const point of sampled_points) {
+        if (point_in_rect(point, cand_rect)) {
+          overlap_count++
+        }
+        // Track distance to nearest point for tie-breaking
+        const dx = point.x - center_x
+        const dy = point.y - center_y
+        const dist_sq = dx * dx + dy * dy
+        if (dist_sq < min_distance_sq) {
+          min_distance_sq = dist_sq
+        }
+      }
+
+      // Score: fewer overlaps = better (less negative)
+      // Add small distance bonus for tie-breaking
+      // When no points exist, min_distance_sq stays Infinity - treat as 0 (no distance bonus)
+      const min_distance = min_distance_sq === Infinity ? 0 : Math.sqrt(min_distance_sq)
+
+      // Corner preference: use element's actual corner (not center) for distance
+      // This ensures a wide element at the left edge gets proper corner credit
+      const elem_right = cand_x + element_size.width
+      const elem_bottom = cand_y + element_size.height
+
+      // Distance from element's matching corner to each plot corner
+      const min_corner_dist = Math.min(
+        euclidean_dist([cand_x, cand_y], [plot_left, plot_top]), // top-left
+        euclidean_dist([elem_right, cand_y], [plot_right, plot_top]), // top-right
+        euclidean_dist([cand_x, elem_bottom], [plot_left, plot_bottom]), // bottom-left
+        euclidean_dist([elem_right, elem_bottom], [plot_right, plot_bottom]), // bottom-right
+      )
+      // Higher bonus for positions closer to corners (0 = at corner, 1 = far from all)
+      const corner_bonus = max_corner_dist > 0
+        ? (1 - min_corner_dist / max_corner_dist) * CORNER_WEIGHT
+        : 0
+
+      const score = -overlap_count + min_distance * DISTANCE_WEIGHT + corner_bonus -
+        exclusion_penalty
+
+      if (score > best_result.score) {
+        best_result = { x: cand_x, y: cand_y, score }
+      }
     }
   }
 
-  // Calculate final placement for the winning position
-  const { anchor, transform } = PLACEMENT_ANCHORS[best_position]
-  const base_x = padding.l + plot_width * anchor.x
-  const base_y = padding.t + plot_height * anchor.y
+  return best_result
+}
 
-  const x = base_x + (anchor.x === 0 ? margin : anchor.x === 1 ? -margin : 0)
-  const y = base_y + (anchor.y === 0 ? margin : anchor.y === 1 ? -margin : 0)
-  return { x, y, transform, position: best_position }
+// Layout selection types
+export type LegendLayout = `horizontal` | `vertical`
+
+export interface LayoutSelectionResult {
+  layout: LegendLayout
+  placement: ElementPlacementResult
+}
+
+// Select the best layout orientation (horizontal vs vertical) for a legend
+// by comparing placement scores for each layout
+export function select_legend_layout(
+  config: Omit<ElementPlacementConfig, `element_size`>,
+  vertical_size: { width: number; height: number },
+  horizontal_size: { width: number; height: number },
+): LayoutSelectionResult {
+  // Calculate best placement for each layout orientation
+  const vertical_result = compute_element_placement({
+    ...config,
+    element_size: vertical_size,
+  })
+
+  const horizontal_result = compute_element_placement({
+    ...config,
+    element_size: horizontal_size,
+  })
+
+  // Also consider aspect ratio of available space
+  // If plot is wider than tall, horizontal may fit better even with similar overlap scores
+  const plot_aspect = config.plot_bounds.width / config.plot_bounds.height
+
+  // Bonus for layout that matches plot aspect ratio (small factor)
+  const vertical_aspect_bonus = plot_aspect < 1 ? 0.1 : 0
+  const horizontal_aspect_bonus = plot_aspect >= 1 ? 0.1 : 0
+
+  const adjusted_vertical_score = vertical_result.score + vertical_aspect_bonus
+  const adjusted_horizontal_score = horizontal_result.score + horizontal_aspect_bonus
+
+  if (adjusted_vertical_score >= adjusted_horizontal_score) {
+    return { layout: `vertical`, placement: vertical_result }
+  }
+  return { layout: `horizontal`, placement: horizontal_result }
 }

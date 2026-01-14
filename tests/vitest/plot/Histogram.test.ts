@@ -139,4 +139,20 @@ describe(`Histogram`, () => {
     // log scale should not include non-positive ticks
     expect(Math.min(...ticks)).toBeGreaterThan(0)
   })
+
+  test(`renders without error when legend prop is null`, async () => {
+    ensure_client_size()
+    // Should not throw when legend={null} is passed
+    mount_histogram({
+      series: [
+        { x: [], y: [1, 2, 3], label: `A` },
+        { x: [], y: [2, 3, 4], label: `B` },
+      ],
+      legend: null,
+      show_legend: true,
+    })
+    await Promise.resolve()
+    // Verify component mounted without crashing
+    expect(document.querySelector(`.histogram`)).toBeTruthy()
+  })
 })

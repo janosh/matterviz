@@ -35,8 +35,8 @@
   } from '$lib/plot'
   import {
     ColorBar,
+    compute_element_placement,
     FillArea,
-    find_best_plot_area,
     get_tick_label,
     InteractiveAxisLabel,
     Line,
@@ -57,6 +57,10 @@
     process_prop,
   } from '$lib/plot/data-transform'
   import { AXIS_DEFAULTS } from '$lib/plot/defaults'
+  import {
+    create_dimension_tracker,
+    create_hover_lock,
+  } from '$lib/plot/hover-lock.svelte'
   import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import {
@@ -84,6 +88,7 @@
   } from './fill-utils'
   import { get_relative_coords } from './interactions'
   import { calc_auto_padding, constrain_tooltip_position } from './layout'
+  import type { Rect } from './layout'
   import type { IndexedRefLine } from './reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from './reference-line'
   import {
@@ -278,19 +283,19 @@
   let legend_drag_offset = $state<{ x: number; y: number }>({ x: 0, y: 0 })
   let legend_manual_position = $state<{ x: number; y: number } | null>(null)
 
+  // State for legend/colorbar placement stability
+  let legend_element = $state<HTMLDivElement | undefined>()
+  let colorbar_element = $state<HTMLDivElement | undefined>()
+  const legend_hover = create_hover_lock()
+  const colorbar_hover = create_hover_lock()
+  const dim_tracker = create_dimension_tracker()
+  let has_initial_legend_placement = $state(false)
+  let has_initial_colorbar_placement = $state(false)
+
   // Tooltip element reference for dynamic sizing
   let tooltip_el = $state<HTMLDivElement | undefined>()
 
   // Module-level constants to avoid repeated allocations
-  const DEFAULT_MARGIN = { t: 10, l: 10, b: 10, r: 10 } as const
-
-  function normalize_margin(margin: number | Sides | undefined): Required<Sides> {
-    if (typeof margin === `number`) {
-      return { t: margin, l: margin, b: margin, r: margin }
-    }
-    return { ...DEFAULT_MARGIN, ...(margin ?? {}) }
-  }
-
   // Create and categorize points in a single pass (instead of 3 separate iterations)
   type SimplePoint = { x: number; y: number }
   let points_by_axis = $derived.by(() => {
@@ -887,45 +892,65 @@
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
   let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
-  // Calculate best legend placement using new simple system
+  // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
     const should_place = legend != null &&
-      (legend_data.length > 1 || JSON.stringify(legend) !== `{}`)
+      (legend_data.length > 1 || Object.keys(legend).length > 0)
 
     if (!should_place || !width || !height) return null
 
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    return find_best_plot_area(plot_points_for_placement, {
-      plot_width,
-      plot_height,
-      padding: { t: pad.t, b: pad.b, l: pad.l, r: pad.r },
-      margin: normalize_margin(legend?.margin).t, // Use top margin as default spacing
-      legend_size: { width: 120, height: 80 }, // Estimated legend size
-    })
+    // Use measured size if available, otherwise estimate
+    const legend_size = legend_element
+      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
+      : { width: 120, height: 80 }
+
+    const placement_config = {
+      plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
+      element_size: legend_size,
+      axis_clearance: legend?.axis_clearance,
+      exclude_rects: [],
+      points: plot_points_for_placement,
+    }
+
+    return compute_element_placement(placement_config)
   })
 
-  // Calculate color bar placement
+  // Calculate color bar placement (coordinates with legend to avoid overlap)
   let color_bar_placement = $derived.by(() => {
     if (!color_bar || !all_color_values.length || !width || !height) return null
 
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    // Use the same smart placement logic as the legend
-    // Color bar is typically smaller than legend, estimate ~80x20 (horizontal) or ~20x80 (vertical)
+    // Use measured size if available, otherwise estimate based on orientation
     const is_horizontal = color_bar.orientation === `horizontal`
-    const estimated_size = is_horizontal
-      ? { width: 80, height: 20 }
-      : { width: 20, height: 80 }
+    const colorbar_size = colorbar_element
+      ? { width: colorbar_element.offsetWidth, height: colorbar_element.offsetHeight }
+      : is_horizontal
+      ? { width: 220, height: 40 }
+      : { width: 40, height: 100 }
 
-    return find_best_plot_area(plot_points_for_placement, {
-      plot_width,
-      plot_height,
-      padding: { t: pad.t, b: pad.b, l: pad.l, r: pad.r },
-      margin: normalize_margin(color_bar?.margin).t ?? 10,
-      legend_size: estimated_size,
+    // Build exclusion rects (avoid legend if it's placed)
+    const exclude_rects: Rect[] = []
+    if (legend_element && legend_placement) {
+      exclude_rects.push({
+        x: legend_placement.x,
+        y: legend_placement.y,
+        width: legend_element.offsetWidth || 120,
+        height: legend_element.offsetHeight || 80,
+      })
+    }
+
+    return compute_element_placement({
+      plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
+      element_size: colorbar_size,
+      // Colorbar needs slightly more clearance than legend to avoid axis labels
+      axis_clearance: 15,
+      exclude_rects,
+      points: plot_points_for_placement,
     })
   })
 
@@ -955,24 +980,54 @@
     { duration: 400, ...(legend?.tween ?? {}) },
   )
 
-  // Update placement positions (with animation)
+  // Update placement positions (with animation and stability checks)
   $effect(() => {
     if (!width || !height) return
 
+    // Track dimensions for resize detection
+    const dims_changed = dim_tracker.has_changed(width, height)
+    if (dims_changed) dim_tracker.update(width, height)
+
+    // Update colorbar position with stability checks
     if (color_bar_placement) {
-      tweened_colorbar_coords.set({
-        x: color_bar_placement.x,
-        y: color_bar_placement.y,
-      })
+      // Skip update if hover-locked, unless dimensions changed (resize always allowed)
+      // Only update if: resize occurred, OR (not hover-locked AND not yet initially placed)
+      const should_update_colorbar = dims_changed ||
+        (!colorbar_hover.is_locked.current && !has_initial_colorbar_placement)
+
+      if (should_update_colorbar) {
+        tweened_colorbar_coords.set(
+          { x: color_bar_placement.x, y: color_bar_placement.y },
+          // Skip animation on initial placement to avoid jump from (0, 0)
+          has_initial_colorbar_placement ? undefined : { duration: 0 },
+        )
+        // Only lock position after we have actual measured size
+        if (colorbar_element) {
+          has_initial_colorbar_placement = true
+        }
+      }
     }
 
+    // Update legend position with stability checks
     if (legend_manual_position && !legend_is_dragging) {
       tweened_legend_coords.set(legend_manual_position)
     } else if (active_legend_placement && !legend_is_dragging) {
-      tweened_legend_coords.set({
-        x: active_legend_placement.x,
-        y: active_legend_placement.y,
-      })
+      const is_responsive = legend?.responsive ?? false
+      // Only update if: resize occurred, OR (not hover-locked AND (responsive OR not yet initially placed))
+      const should_update_legend = dims_changed || (!legend_hover.is_locked.current &&
+        (is_responsive || !has_initial_legend_placement))
+
+      if (should_update_legend) {
+        tweened_legend_coords.set(
+          { x: active_legend_placement.x, y: active_legend_placement.y },
+          // Skip animation on initial placement to avoid jump from (0, 0)
+          has_initial_legend_placement ? undefined : { duration: 0 },
+        )
+        // Only lock position after we have actual measured size
+        if (legend_element) {
+          has_initial_legend_placement = true
+        }
+      }
     }
   })
 
@@ -2061,33 +2116,57 @@
       (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[1] ??
         auto_color_range[1],
     ] as Vec2}
-      <ColorBar
-        tick_labels={4}
-        tick_side="primary"
-        {color_scale_fn}
-        color_scale_domain={color_domain}
-        scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
-        range={color_domain?.every((val) => val != null) ? color_domain : undefined}
-        wrapper_style={`
+      <div
+        bind:this={colorbar_element}
+        onmouseenter={() => colorbar_hover.set_locked(true)}
+        onmouseleave={() => colorbar_hover.set_locked(false)}
+        class="colorbar-wrapper"
+        role="img"
+        aria-label="Color scale legend"
+        style={`
           position: absolute;
           left: ${tweened_colorbar_coords.current.x}px;
           top: ${tweened_colorbar_coords.current.y}px;
-          transform: ${color_bar_placement?.transform ?? ``};
-          ${color_bar?.wrapper_style ?? ``}`}
-        bar_style="width: 220px; height: 20px; {color_bar?.style ?? ``}"
-        {...color_bar}
-      />
+          pointer-events: auto;
+        `}
+      >
+        <ColorBar
+          tick_labels={4}
+          tick_side="primary"
+          {color_scale_fn}
+          color_scale_domain={color_domain}
+          scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
+          range={color_domain?.every((val) => val != null) ? color_domain : undefined}
+          wrapper_style={color_bar?.wrapper_style ?? ``}
+          bar_style="width: 220px; height: 20px; {color_bar?.style ?? ``}"
+          {...color_bar}
+        />
+      </div>
     {/if}
 
     <!-- Legend -->
     <!-- Only render if multiple series or if legend prop was explicitly provided by user (even if empty object) -->
-    {#if legend != null && legend_data.length > 0 && legend_placement &&
-      (legend_data.length > 1 || (legend != null && JSON.stringify(legend) !== `{}`))}
+    {#if legend != null && legend_data.length > 0 &&
+      (legend_data.length > 1 || Object.keys(legend).length > 0)}
+      {@const default_x = pad.l + 10}
+      {@const default_y = pad.t + 10}
+      {@const current_x = legend_is_dragging && legend_manual_position
+      ? legend_manual_position.x
+      : legend_placement
+      ? tweened_legend_coords.current.x
+      : default_x}
+      {@const current_y = legend_is_dragging && legend_manual_position
+      ? legend_manual_position.y
+      : legend_placement
+      ? tweened_legend_coords.current.y
+      : default_y}
       <PlotLegend
+        bind:root_element={legend_element}
         series_data={legend_data}
         on_drag_start={handle_legend_drag_start}
         on_drag={handle_legend_drag}
         on_drag_end={() => (legend_is_dragging = false)}
+        on_hover_change={legend_hover.set_locked}
         draggable={legend?.draggable ?? true}
         {...legend}
         on_toggle={legend?.on_toggle ??
@@ -2137,19 +2216,8 @@
         }}
         style={`
           position: absolute;
-          left: ${
-          legend_is_dragging && legend_manual_position
-            ? legend_manual_position.x
-            : tweened_legend_coords.current.x
-        }px;
-          top: ${
-          legend_is_dragging && legend_manual_position
-            ? legend_manual_position.y
-            : tweened_legend_coords.current.y
-        }px;
-          transform: ${
-          legend_manual_position ? `` : active_legend_placement?.transform ?? ``
-        };
+          left: ${current_x}px;
+          top: ${current_y}px;
           pointer-events: auto;
           ${legend?.style ?? ``}
         `}

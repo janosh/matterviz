@@ -294,6 +294,8 @@ export type LegendConfig =
     tween?: TweenedOptions<XyObj>
     responsive?: boolean // Allow legend to move if density changes (default: false)
     draggable?: boolean // Allow legend to be dragged (default: true)
+    // Minimum distance from plot edges to avoid axis label overlap (default: 40)
+    axis_clearance?: number
   }
 
 // attributes for each item passed to the legend
