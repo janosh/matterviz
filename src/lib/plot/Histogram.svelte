@@ -10,7 +10,7 @@
     RefLineEvent,
   } from '$lib/plot'
   import {
-    find_best_plot_area,
+    compute_element_placement,
     HistogramControls,
     InteractiveAxisLabel,
     PlotLegend,
@@ -41,20 +41,24 @@
   import type {
     BasePlotProps,
     DataSeries,
+    LegendConfig,
     PlotConfig,
     ScaleType,
   } from '$lib/plot/types'
   import { get_scale_type_name } from '$lib/plot/types'
+  import {
+    create_dimension_tracker,
+    create_hover_lock,
+  } from '$lib/plot/hover-lock.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { Tween } from 'svelte/motion'
   import type { Vec2 } from '../math'
   import PlotTooltip from './PlotTooltip.svelte'
   import { bar_path } from './svg'
-
-  type LegendConfig = ComponentProps<typeof PlotLegend>
 
   let {
     series = $bindable([]),
@@ -69,7 +73,7 @@
     padding = { t: 20, b: 60, l: 60, r: 20 },
     bins = $bindable(100),
     show_legend = $bindable(true),
-    legend = { series_data: [] },
+    legend = {},
     bar: bar_init = {},
     selected_property = $bindable(``),
     mode = $bindable(`single`),
@@ -179,6 +183,12 @@
     current: { x: number; y: number } | null
     bounds: DOMRect | null
   }>({ start: null, current: null, bounds: null })
+
+  // Legend placement stability state
+  let legend_element = $state<HTMLDivElement | undefined>()
+  const legend_hover = create_hover_lock()
+  const dim_tracker = create_dimension_tracker()
+  let has_initial_legend_placement = $state(false)
 
   // Derived data
   let selected_series = $derived(
@@ -456,19 +466,60 @@
     return points
   })
 
-  // Calculate best legend placement
+  // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
-    const should_place = show_legend && legend && series.length > 1
-
+    const should_place = show_legend && legend != null && series.length > 1
     if (!should_place || !width || !height) return null
 
-    return find_best_plot_area(hist_points_for_placement, {
-      plot_width: width - pad.l - pad.r,
-      plot_height: height - pad.t - pad.b,
-      padding: pad,
-      margin: 10,
-      legend_size: { width: 120, height: 60 },
+    const plot_width = width - pad.l - pad.r
+    const plot_height = height - pad.t - pad.b
+
+    // Use measured size if available, otherwise estimate
+    const legend_size = legend_element
+      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
+      : { width: 120, height: 60 }
+
+    const result = compute_element_placement({
+      plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
+      element_size: legend_size,
+      axis_clearance: legend?.axis_clearance,
+      exclude_rects: [],
+      points: hist_points_for_placement,
     })
+
+    return result
+  })
+
+  // Tweened legend coordinates for smooth animation
+  const tweened_legend_coords = new Tween(
+    { x: 0, y: 0 },
+    { duration: 400, ...(legend?.tween ?? {}) },
+  )
+
+  // Update legend position with stability checks
+  $effect(() => {
+    if (!width || !height || !legend_placement) return
+
+    // Track dimensions for resize detection
+    const dims_changed = dim_tracker.has_changed(width, height)
+    if (dims_changed) dim_tracker.update(width, height)
+
+    // Only update if: resize occurred, OR (not hover-locked AND (responsive OR not yet initially placed))
+    const is_responsive = legend?.responsive ?? false
+    const should_update = dims_changed || (!legend_hover.is_locked.current &&
+      (is_responsive || !has_initial_legend_placement))
+
+    if (should_update) {
+      tweened_legend_coords.set(
+        { x: legend_placement.x, y: legend_placement.y },
+        // Skip animation on initial placement to avoid jump from (0, 0)
+        has_initial_legend_placement ? undefined : { duration: 0 },
+      )
+      // Only lock position after we have actual measured size
+      if (legend_element) {
+        has_initial_legend_placement = true
+      }
+    }
   })
 
   // Event handlers
@@ -1136,14 +1187,20 @@
     />
   {/if}
 
-  {#if show_legend && legend && series.length > 1 && legend_placement}
+  {#if show_legend && legend != null && series.length > 1}
     <PlotLegend
+      bind:root_element={legend_element}
       {...legend}
       series_data={legend_data}
       on_toggle={legend?.on_toggle || toggle_series_visibility}
-      style={`position: absolute; left: ${legend_placement.x}px; top: ${legend_placement.y}px; transform: ${legend_placement.transform}; ${
-        legend?.style || ``
-      }`}
+      on_hover_change={legend_hover.set_locked}
+      style={`
+        position: absolute;
+        left: ${legend_placement ? tweened_legend_coords.current.x : pad.l + 10}px;
+        top: ${legend_placement ? tweened_legend_coords.current.y : pad.t + 10}px;
+        pointer-events: auto;
+        ${legend?.style || ``}
+      `}
     />
   {/if}
 

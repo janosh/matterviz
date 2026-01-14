@@ -22,7 +22,9 @@
     on_drag_start = () => {},
     on_drag = () => {},
     on_drag_end = () => {},
+    on_hover_change,
     draggable = true,
+    root_element = $bindable<HTMLDivElement | undefined>(undefined),
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `style`> & {
     series_data: LegendItem[]
@@ -45,7 +47,11 @@
     on_drag_start?: (event: MouseEvent) => void
     on_drag?: (event: MouseEvent) => void
     on_drag_end?: (event: MouseEvent) => void
+    // Callback when hover state changes (for placement stability)
+    on_hover_change?: (is_hovered: boolean) => void
     draggable?: boolean
+    // Bindable reference to the root DOM element for size measurements
+    root_element?: HTMLDivElement
   } = $props()
 
   let is_dragging = $state(false)
@@ -286,7 +292,10 @@
 {/snippet}
 
 <div
+  bind:this={root_element}
   onmousedown={handle_legend_mouse_down}
+  onmouseenter={() => on_hover_change?.(true)}
+  onmouseleave={() => on_hover_change?.(false)}
   {...rest}
   style={div_style}
   class="legend {rest.class ?? ``}"
