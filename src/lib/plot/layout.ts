@@ -161,7 +161,7 @@ function point_in_rect(point: { x: number; y: number }, rect: Rect): boolean {
 }
 
 // Check if two rectangles overlap
-function rects_overlap(r1: Rect, r2: Rect): boolean {
+export function rects_overlap(r1: Rect, r2: Rect): boolean {
   return !(
     r1.x + r1.width <= r2.x ||
     r2.x + r2.width <= r1.x ||
@@ -184,8 +184,11 @@ export function compute_element_placement(
     axis_clearance = 40,
     exclude_rects = [],
     points,
-    grid_resolution = 10,
+    grid_resolution: raw_resolution = 10,
   } = config
+
+  // Ensure grid_resolution >= 2 to avoid division by zero in step calculation
+  const grid_resolution = Math.max(2, raw_resolution)
 
   const { width: elem_width, height: elem_height } = element_size
 

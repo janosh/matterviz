@@ -45,6 +45,10 @@
     ScaleType,
   } from '$lib/plot/types'
   import { get_scale_type_name } from '$lib/plot/types'
+  import {
+    create_dimension_tracker,
+    create_hover_lock,
+  } from '$lib/plot/hover-lock.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -189,20 +193,9 @@
 
   // Legend placement stability state
   let legend_element = $state<HTMLDivElement | undefined>()
-  let legend_is_hover_locked = $state(false)
+  const legend_hover = create_hover_lock()
+  const dim_tracker = create_dimension_tracker()
   let has_initial_legend_placement = $state(false)
-  let legend_hover_timeout: ReturnType<typeof setTimeout> | null = null
-  let prev_dimensions = $state<{ width: number; height: number } | null>(null)
-
-  // Hover lock handler with 300ms debounce
-  function set_legend_hover_locked(locked: boolean) {
-    if (locked) {
-      if (legend_hover_timeout) clearTimeout(legend_hover_timeout)
-      legend_is_hover_locked = true
-    } else {
-      legend_hover_timeout = setTimeout(() => (legend_is_hover_locked = false), 300)
-    }
-  }
 
   // Derived data
   let selected_series = $derived(
@@ -501,18 +494,7 @@
       points: hist_points_for_placement,
     })
 
-    return {
-      ...result,
-      transform: ``,
-      position: `custom` as const,
-    }
-  })
-
-  // Detect if dimensions changed (for allowing updates even when non-responsive)
-  let dimensions_changed = $derived.by(() => {
-    if (!width || !height) return false
-    if (!prev_dimensions) return true
-    return prev_dimensions.width !== width || prev_dimensions.height !== height
+    return result
   })
 
   // Tweened legend coordinates for smooth animation
@@ -526,19 +508,13 @@
     if (!width || !height || !legend_placement) return
 
     // Track dimensions for resize detection
-    if (
-      !prev_dimensions || prev_dimensions.width !== width ||
-      prev_dimensions.height !== height
-    ) {
-      prev_dimensions = { width, height }
-    }
+    const dims_changed = dim_tracker.has_changed(width, height)
+    if (dims_changed) dim_tracker.update(width, height)
 
-    // Skip update if:
-    // - hover-locked (unless dimensions changed)
-    // - non-responsive after initial placement (unless dimensions changed)
+    // Skip update if hover-locked or non-responsive (unless dimensions changed)
     const is_responsive = legend?.responsive ?? false
-    const should_update = (!legend_is_hover_locked || dimensions_changed) &&
-      (is_responsive || !has_initial_legend_placement || dimensions_changed)
+    const should_update = (!legend_hover.is_locked.current || dims_changed) &&
+      (is_responsive || !has_initial_legend_placement || dims_changed)
 
     if (should_update) {
       tweened_legend_coords.set({
@@ -1220,7 +1196,7 @@
       {...legend}
       series_data={legend_data}
       on_toggle={legend?.on_toggle || toggle_series_visibility}
-      on_hover_change={set_legend_hover_locked}
+      on_hover_change={legend_hover.set_locked}
       style={`
         position: absolute;
         left: ${tweened_legend_coords.current.x}px;

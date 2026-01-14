@@ -57,6 +57,10 @@
     process_prop,
   } from '$lib/plot/data-transform'
   import { AXIS_DEFAULTS } from '$lib/plot/defaults'
+  import {
+    create_dimension_tracker,
+    create_hover_lock,
+  } from '$lib/plot/hover-lock.svelte'
   import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import {
@@ -281,35 +285,11 @@
   // State for legend/colorbar placement stability
   let legend_element = $state<HTMLDivElement | undefined>()
   let colorbar_element = $state<HTMLDivElement | undefined>()
-  let legend_is_hover_locked = $state(false)
-  let colorbar_is_hover_locked = $state(false)
+  const legend_hover = create_hover_lock()
+  const colorbar_hover = create_hover_lock()
+  const dim_tracker = create_dimension_tracker()
   let has_initial_legend_placement = $state(false)
   let has_initial_colorbar_placement = $state(false)
-  let legend_hover_timeout: ReturnType<typeof setTimeout> | null = null
-  let colorbar_hover_timeout: ReturnType<typeof setTimeout> | null = null
-  let prev_dimensions = $state<{ width: number; height: number } | null>(null)
-
-  // Hover lock handlers with 300ms debounce
-  function set_legend_hover_locked(locked: boolean) {
-    if (locked) {
-      if (legend_hover_timeout) clearTimeout(legend_hover_timeout)
-      legend_is_hover_locked = true
-    } else {
-      legend_hover_timeout = setTimeout(() => (legend_is_hover_locked = false), 300)
-    }
-  }
-
-  function set_colorbar_hover_locked(locked: boolean) {
-    if (locked) {
-      if (colorbar_hover_timeout) clearTimeout(colorbar_hover_timeout)
-      colorbar_is_hover_locked = true
-    } else {
-      colorbar_hover_timeout = setTimeout(
-        () => (colorbar_is_hover_locked = false),
-        300,
-      )
-    }
-  }
 
   // Tooltip element reference for dynamic sizing
   let tooltip_el = $state<HTMLDivElement | undefined>()
@@ -934,12 +914,7 @@
       points: plot_points_for_placement,
     })
 
-    // Also include legacy format for backwards compatibility with transform
-    return {
-      ...result,
-      transform: ``, // No transform needed for continuous placement
-      position: `custom` as const,
-    }
+    return result
   })
 
   // Calculate color bar placement (coordinates with legend to avoid overlap)
@@ -978,11 +953,7 @@
       points: plot_points_for_placement,
     })
 
-    return {
-      ...result,
-      transform: ``,
-      position: `custom` as const,
-    }
+    return result
   })
 
   // Active legend placement (null if user set explicit position)
@@ -1011,28 +982,19 @@
     { duration: 400, ...(legend?.tween ?? {}) },
   )
 
-  // Detect if dimensions changed (for allowing updates even when non-responsive)
-  let dimensions_changed = $derived.by(() => {
-    if (!width || !height) return false
-    if (!prev_dimensions) return true
-    return prev_dimensions.width !== width || prev_dimensions.height !== height
-  })
-
   // Update placement positions (with animation and stability checks)
   $effect(() => {
     if (!width || !height) return
 
     // Track dimensions for resize detection
-    if (
-      !prev_dimensions || prev_dimensions.width !== width ||
-      prev_dimensions.height !== height
-    ) prev_dimensions = { width, height }
+    const dims_changed = dim_tracker.has_changed(width, height)
+    if (dims_changed) dim_tracker.update(width, height)
 
     // Update colorbar position with stability checks
     if (color_bar_placement) {
       // Skip update if hover-locked, unless dimensions changed (resize always allowed)
-      const should_update_colorbar = !colorbar_is_hover_locked ||
-        dimensions_changed ||
+      const should_update_colorbar = !colorbar_hover.is_locked.current ||
+        dims_changed ||
         !has_initial_colorbar_placement
 
       if (should_update_colorbar) {
@@ -1050,8 +1012,9 @@
     } else if (active_legend_placement && !legend_is_dragging) {
       // Skip update if hover-locked or non-responsive (unless dimensions changed)
       const is_responsive = legend?.responsive ?? false
-      const should_update_legend = (!legend_is_hover_locked || dimensions_changed) &&
-        (is_responsive || !has_initial_legend_placement || dimensions_changed)
+      const should_update_legend =
+        (!legend_hover.is_locked.current || dims_changed) &&
+        (is_responsive || !has_initial_legend_placement || dims_changed)
 
       if (should_update_legend) {
         tweened_legend_coords.set({
@@ -2150,15 +2113,14 @@
     ] as Vec2}
       <div
         bind:this={colorbar_element}
-        onmouseenter={() => set_colorbar_hover_locked(true)}
-        onmouseleave={() => set_colorbar_hover_locked(false)}
+        onmouseenter={() => colorbar_hover.set_locked(true)}
+        onmouseleave={() => colorbar_hover.set_locked(false)}
         role="img"
         aria-label="Color scale legend"
         style={`
           position: absolute;
           left: ${tweened_colorbar_coords.current.x}px;
           top: ${tweened_colorbar_coords.current.y}px;
-          transform: ${color_bar_placement?.transform ?? ``};
           pointer-events: auto;
         `}
       >
@@ -2186,7 +2148,7 @@
         on_drag_start={handle_legend_drag_start}
         on_drag={handle_legend_drag}
         on_drag_end={() => (legend_is_dragging = false)}
-        on_hover_change={set_legend_hover_locked}
+        on_hover_change={legend_hover.set_locked}
         draggable={legend?.draggable ?? true}
         {...legend}
         on_toggle={legend?.on_toggle ??
@@ -2246,9 +2208,6 @@
             ? legend_manual_position.y
             : tweened_legend_coords.current.y
         }px;
-          transform: ${
-          legend_manual_position ? `` : active_legend_placement?.transform ?? ``
-        };
           pointer-events: auto;
           ${legend?.style ?? ``}
         `}
