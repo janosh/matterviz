@@ -380,6 +380,47 @@
   ]
   const legend_zero_series: DataSeries[] = []
 
+  // === Legend Deduplication Test Data ===
+  // Same label in different legend_groups should NOT be deduplicated
+  const legend_dedupe_different_groups: DataSeries[] = [
+    {
+      x: [1, 2],
+      y: [1, 2],
+      label: `Energy`,
+      legend_group: `DFT`,
+      point_style: { fill: `blue` },
+    },
+    {
+      x: [1, 2],
+      y: [2, 3],
+      label: `Energy`,
+      legend_group: `ML`,
+      point_style: { fill: `red` },
+    },
+  ]
+  // Same label in same legend_group should be deduplicated
+  const legend_dedupe_same_group: DataSeries[] = [
+    {
+      x: [1, 2],
+      y: [1, 2],
+      label: `Energy`,
+      legend_group: `DFT`,
+      point_style: { fill: `blue` },
+    },
+    {
+      x: [1, 2],
+      y: [2, 3],
+      label: `Energy`,
+      legend_group: `DFT`,
+      point_style: { fill: `red` },
+    },
+  ]
+  // Same label without legend_group should be deduplicated
+  const legend_dedupe_no_group: DataSeries[] = [
+    { x: [1, 2], y: [1, 2], label: `Energy`, point_style: { fill: `blue` } },
+    { x: [1, 2], y: [2, 3], label: `Energy`, point_style: { fill: `red` } },
+  ]
+
   // === Auto-Cycling Colors/Symbols Test Data ===
   // Series WITHOUT explicit colors/symbols to test auto-differentiation
   const auto_cycle_series: DataSeries[] = [
@@ -759,6 +800,24 @@
   />
   <h3>Zero Series - No Legend Expected</h3>
   <ScatterPlot series={legend_zero_series} id="legend-zero" />
+  <h3>Same Label, Different Groups - 2 Legend Items Expected</h3>
+  <ScatterPlot
+    series={legend_dedupe_different_groups}
+    legend={{ draggable: false }}
+    id="legend-dedupe-different-groups"
+  />
+  <h3>Same Label, Same Group - 1 Legend Item Expected (Deduplicated)</h3>
+  <ScatterPlot
+    series={legend_dedupe_same_group}
+    legend={{ draggable: false }}
+    id="legend-dedupe-same-group"
+  />
+  <h3>Same Label, No Group - 1 Legend Item Expected (Deduplicated)</h3>
+  <ScatterPlot
+    series={legend_dedupe_no_group}
+    legend={{ draggable: false }}
+    id="legend-dedupe-no-group"
+  />
 </section>
 
 <section id="auto-cycling-test">

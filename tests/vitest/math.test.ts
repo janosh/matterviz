@@ -8,6 +8,35 @@ test(`scale vector`, () => {
   expect(math.scale([1, 2, 3], 0)).toEqual([0, 0, 0])
 })
 
+describe(`centered_frac`, () => {
+  it.each([
+    // Already in range [-0.5, 0.5)
+    { input: 0, expected: 0 },
+    { input: 0.25, expected: 0.25 },
+    { input: -0.25, expected: -0.25 },
+    { input: -0.5, expected: -0.5 },
+    // Boundary: 0.5 wraps to -0.5 (range is [-0.5, 0.5), exclusive at +0.5)
+    { input: 0.5, expected: -0.5 },
+    // Wrapping from [0, 1] convention
+    { input: 0.75, expected: -0.25 },
+    { input: 0.9, expected: -0.1 },
+    { input: 1.0, expected: 0 },
+    // Negative values outside range
+    { input: -0.75, expected: 0.25 },
+    { input: -1.0, expected: 0 },
+    // Large values
+    { input: 2.25, expected: 0.25 },
+    { input: -2.25, expected: -0.25 },
+  ])(`centered_frac($input) = $expected`, ({ input, expected }) => {
+    expect(math.centered_frac(input)).toBeCloseTo(expected, 10)
+  })
+
+  it(`normalizes -0 to 0`, () => {
+    expect(Object.is(math.centered_frac(-0), 0)).toBe(true)
+    expect(Object.is(math.centered_frac(1), 0)).toBe(true)
+  })
+})
+
 describe(`angle conversions`, () => {
   test.each([
     [0, 0, `zero angle`],

@@ -943,6 +943,34 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(label_spans.nth(1)).toHaveText(`Series B`)
   })
 
+  // Legend deduplication tests - series with same label are deduplicated by label+legend_group
+  const legend_dedupe_test_cases = [
+    {
+      id: `legend-dedupe-different-groups`,
+      expected_count: 2,
+      description: `same label in different legend_groups shows both items`,
+    },
+    {
+      id: `legend-dedupe-same-group`,
+      expected_count: 1,
+      description: `same label in same legend_group is deduplicated`,
+    },
+    {
+      id: `legend-dedupe-no-group`,
+      expected_count: 1,
+      description: `same label without legend_group is deduplicated`,
+    },
+  ]
+  legend_dedupe_test_cases.forEach(({ id, expected_count, description }) => {
+    test(`legend deduplication: ${description}`, async ({ page }) => {
+      const plot = page.locator(`#${id}`)
+      await expect(plot).toBeVisible()
+      const legend = plot.locator(`.legend`)
+      await expect(legend).toBeVisible()
+      await expect(legend.locator(`.legend-item`)).toHaveCount(expected_count)
+    })
+  })
+
   test(`legend interaction toggles and isolates series visibility`, async ({ page }) => {
     // The id prop is applied directly to the .scatter div
     const plot_locator = page.locator(`#legend-multi-default.scatter`)
@@ -1165,10 +1193,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const section = page.locator(`#auto-colorbar-placement`)
       await section.scrollIntoViewIfNeeded()
       await set_density(section, densities)
-      // Wait for placement animation
-      await page.waitForTimeout(500)
-      const actual_quadrant = await get_colorbar_quadrant(section)
-      expect(actual_quadrant).toBe(expected_quadrant)
+      // Poll until colorbar reaches expected quadrant (auto-retries during animation)
+      await expect
+        .poll(() => get_colorbar_quadrant(section), { timeout: 3000 })
+        .toBe(expected_quadrant)
     })
   })
 
@@ -1608,19 +1636,20 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Test extreme density settings (all points in top-left)
     await set_density(section, { tl: 100, tr: 0, bl: 0, br: 0 })
-    await page.waitForTimeout(500)
-    const quadrant_extreme = await get_colorbar_quadrant(section)
-    // Should position away from high density area (not top-left)
-    expect(quadrant_extreme).not.toBe(`top-left`)
+    // Poll until colorbar moves away from high density area (auto-retries during animation)
+    await expect
+      .poll(() => get_colorbar_quadrant(section), { timeout: 3000 })
+      .not.toBe(`top-left`)
 
     // Test equal density (should pick a consistent position)
     await set_density(section, { tl: 50, tr: 50, bl: 50, br: 50 })
-    await page.waitForTimeout(500)
-    const quadrant_equal = await get_colorbar_quadrant(section)
-    // Should be in a valid quadrant
-    expect([`top-left`, `top-right`, `bottom-left`, `bottom-right`]).toContain(
-      quadrant_equal,
-    )
+    // Poll until colorbar is in a valid quadrant
+    const valid_quadrants = [`top-left`, `top-right`, `bottom-left`, `bottom-right`]
+    await expect
+      .poll(async () => valid_quadrants.includes(await get_colorbar_quadrant(section)), {
+        timeout: 3000,
+      })
+      .toBe(true)
   })
 
   test(`point event handlers work with complex interactions`, async ({ page }) => {

@@ -61,14 +61,17 @@
     create_dimension_tracker,
     create_hover_lock,
   } from '$lib/plot/hover-lock.svelte'
-  import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
+  import {
+    DEFAULT_GRID_STYLE,
+    DEFAULT_MARKERS,
+    get_scale_type_name,
+  } from '$lib/plot/types'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import {
     handle_legend_double_click,
     toggle_group_visibility,
     toggle_series_visibility,
   } from '$lib/plot/utils/series-visibility'
-  import { get_scale_type_name } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { scaleTime } from 'd3-scale'
@@ -87,8 +90,8 @@
     resolve_boundary,
   } from './fill-utils'
   import { get_relative_coords } from './interactions'
-  import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import type { Rect } from './layout'
+  import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import type { IndexedRefLine } from './reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from './reference-line'
   import {
@@ -291,6 +294,12 @@
   const dim_tracker = create_dimension_tracker()
   let has_initial_legend_placement = $state(false)
   let has_initial_colorbar_placement = $state(false)
+
+  // Clear pending hover lock timeouts on unmount
+  $effect(() => () => {
+    legend_hover.cleanup()
+    colorbar_hover.cleanup()
+  })
 
   // Tooltip element reference for dynamic sizing
   let tooltip_el = $state<HTMLDivElement | undefined>()
@@ -818,7 +827,7 @@
       },
     )
 
-    // Deduplicate by label - keep first occurrence of each unique label
+    // Deduplicate by label+legend_group - keep first occurrence of each unique combination
     const seen_labels = new SvelteSet<string>()
     const series_items = items.filter(
       (
@@ -828,20 +837,25 @@
           visible: boolean
           display_style: LegendDisplayStyle
           has_explicit_label: boolean
+          legend_group?: string
         },
       ) => {
-        if (seen_labels.has(legend_item.label)) return false
-        seen_labels.add(legend_item.label)
+        // Use label+group as unique key (group may be undefined)
+        const unique_key = `${legend_item.legend_group ?? ``}::${legend_item.label}`
+        if (seen_labels.has(unique_key)) return false
+        seen_labels.add(unique_key)
         return true
       },
     )
 
-    // Add fill region items to legend (also deduplicated by label)
+    // Add fill region items to legend (deduplicated using same key format as series)
     const fill_items = computed_fills
       .filter((fill) => fill.show_in_legend !== false && fill.label)
       .filter((fill) => {
-        if (seen_labels.has(fill.label!)) return false
-        seen_labels.add(fill.label!)
+        // Use same composite key as series: legend_group::label
+        const unique_key = `${fill.legend_group ?? ``}::${fill.label!}`
+        if (seen_labels.has(unique_key)) return false
+        seen_labels.add(unique_key)
         return true
       })
       .map((fill) => {
@@ -988,12 +1002,10 @@
     const dims_changed = dim_tracker.has_changed(width, height)
     if (dims_changed) dim_tracker.update(width, height)
 
-    // Update colorbar position with stability checks
+    // Update colorbar position - colorbar is always responsive to data density changes
     if (color_bar_placement) {
-      // Skip update if hover-locked, unless dimensions changed (resize always allowed)
-      // Only update if: resize occurred, OR (not hover-locked AND not yet initially placed)
-      const should_update_colorbar = dims_changed ||
-        (!colorbar_hover.is_locked.current && !has_initial_colorbar_placement)
+      // Skip update only if hover-locked (unless dimensions changed)
+      const should_update_colorbar = dims_changed || !colorbar_hover.is_locked.current
 
       if (should_update_colorbar) {
         tweened_colorbar_coords.set(
@@ -1001,8 +1013,8 @@
           // Skip animation on initial placement to avoid jump from (0, 0)
           has_initial_colorbar_placement ? undefined : { duration: 0 },
         )
-        // Only lock position after we have actual measured size
-        if (colorbar_element) {
+        // Track that initial placement has occurred (for animation purposes only)
+        if (colorbar_element && !has_initial_colorbar_placement) {
           has_initial_colorbar_placement = true
         }
       }

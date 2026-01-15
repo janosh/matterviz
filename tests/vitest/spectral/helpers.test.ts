@@ -301,7 +301,10 @@ describe(`extract_k_path_points`, () => {
     }
 
     const recip_lattice: Matrix3x3 = [[2, 0, 0], [0, 2, 0], [0, 0, 1]]
-    const result = extract_k_path_points(band_struct, recip_lattice)
+    // Disable BZ wrapping to test basic coordinate transformation
+    const result = extract_k_path_points(band_struct, recip_lattice, {
+      wrap_to_bz: false,
+    })
 
     expect(result[0]).toEqual([0, 0, 0]) // Γ: [0,0,0] -> [0,0,0]
     expect(result[1]).toEqual([1, 0, 0]) // X: [0.5,0,0] -> [1, 0, 0]
@@ -326,7 +329,14 @@ describe(`extract_k_path_points`, () => {
 
     // Non-orthogonal: frac[0]*recip[0] + frac[1]*recip[1] + frac[2]*recip[2]
     // X: 1*[1,0.5,0] + 0*[0,2,0] + 0*[0,0,1] = [1, 0.5, 0]
-    const result = extract_k_path_points(band_struct, [[1, 0.5, 0], [0, 2, 0], [0, 0, 1]])
+    // Disable BZ wrapping to test basic coordinate transformation
+    const result = extract_k_path_points(
+      band_struct,
+      [[1, 0.5, 0], [0, 2, 0], [0, 0, 1]],
+      {
+        wrap_to_bz: false,
+      },
+    )
     expect(result[1]).toEqual([1, 0.5, 0])
   })
 
