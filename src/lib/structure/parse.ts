@@ -1,4 +1,3 @@
-import type { ElementSymbol } from '$lib/element'
 import type { OptimadeStructure } from '$lib/api/optimade'
 import {
   COMPRESSION_EXTENSIONS_REGEX,
@@ -10,6 +9,7 @@ import {
   VASP_FILES_REGEX,
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
+import type { ElementSymbol } from '$lib/element'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
@@ -1210,8 +1210,12 @@ function is_parsed_structure(obj: unknown): obj is ParsedStructure {
 }
 
 // Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
+// Only normalizes when lattice matrix is available to ensure abc/xyz stay consistent
 export function normalize_fractional_coords(structure: ParsedStructure): ParsedStructure {
   if (!structure.sites || structure.sites.length === 0) return structure
+
+  // Require lattice to ensure we can keep abc and xyz consistent after wrapping
+  if (!structure.lattice?.matrix) return structure
 
   // Check if any sites have fractional coords outside [0, 1) range
   const needs_wrapping = structure.sites.some(
@@ -1219,18 +1223,13 @@ export function normalize_fractional_coords(structure: ParsedStructure): ParsedS
   )
   if (!needs_wrapping) return structure
 
-  // Create frac->cart converter if lattice is available
-  const frac_to_cart = structure.lattice?.matrix
-    ? math.create_frac_to_cart(structure.lattice.matrix)
-    : null
+  const frac_to_cart = math.create_frac_to_cart(structure.lattice.matrix)
 
   // Wrap fractional coordinates and recompute Cartesian
   const normalized_sites = structure.sites.map((site) => {
     if (!site.abc) return site
     const wrapped_abc = wrap_to_unit_cell(site.abc)
-    // Recompute xyz from wrapped fractional coordinates
-    const new_xyz = frac_to_cart ? frac_to_cart(wrapped_abc) : site.xyz
-    return { ...site, abc: wrapped_abc, xyz: new_xyz }
+    return { ...site, abc: wrapped_abc, xyz: frac_to_cart(wrapped_abc) }
   })
 
   return { ...structure, sites: normalized_sites }

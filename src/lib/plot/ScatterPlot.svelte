@@ -61,14 +61,17 @@
     create_dimension_tracker,
     create_hover_lock,
   } from '$lib/plot/hover-lock.svelte'
-  import { DEFAULT_GRID_STYLE, DEFAULT_MARKERS } from '$lib/plot/types'
+  import {
+    DEFAULT_GRID_STYLE,
+    DEFAULT_MARKERS,
+    get_scale_type_name,
+  } from '$lib/plot/types'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import {
     handle_legend_double_click,
     toggle_group_visibility,
     toggle_series_visibility,
   } from '$lib/plot/utils/series-visibility'
-  import { get_scale_type_name } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { scaleTime } from 'd3-scale'
@@ -87,8 +90,8 @@
     resolve_boundary,
   } from './fill-utils'
   import { get_relative_coords } from './interactions'
-  import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import type { Rect } from './layout'
+  import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import type { IndexedRefLine } from './reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from './reference-line'
   import {
@@ -291,6 +294,9 @@
   const dim_tracker = create_dimension_tracker()
   let has_initial_legend_placement = $state(false)
   let has_initial_colorbar_placement = $state(false)
+
+  // Clear pending hover lock timeouts on unmount
+  $effect(() => () => (legend_hover.cleanup(), colorbar_hover.cleanup()))
 
   // Tooltip element reference for dynamic sizing
   let tooltip_el = $state<HTMLDivElement | undefined>()

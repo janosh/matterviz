@@ -1193,10 +1193,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const section = page.locator(`#auto-colorbar-placement`)
       await section.scrollIntoViewIfNeeded()
       await set_density(section, densities)
-      // Wait for placement animation
-      await page.waitForTimeout(500)
-      const actual_quadrant = await get_colorbar_quadrant(section)
-      expect(actual_quadrant).toBe(expected_quadrant)
+      // Poll until colorbar reaches expected quadrant (auto-retries during animation)
+      await expect
+        .poll(() => get_colorbar_quadrant(section), { timeout: 3000 })
+        .toBe(expected_quadrant)
     })
   })
 
@@ -1636,19 +1636,20 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Test extreme density settings (all points in top-left)
     await set_density(section, { tl: 100, tr: 0, bl: 0, br: 0 })
-    await page.waitForTimeout(500)
-    const quadrant_extreme = await get_colorbar_quadrant(section)
-    // Should position away from high density area (not top-left)
-    expect(quadrant_extreme).not.toBe(`top-left`)
+    // Poll until colorbar moves away from high density area (auto-retries during animation)
+    await expect
+      .poll(() => get_colorbar_quadrant(section), { timeout: 3000 })
+      .not.toBe(`top-left`)
 
     // Test equal density (should pick a consistent position)
     await set_density(section, { tl: 50, tr: 50, bl: 50, br: 50 })
-    await page.waitForTimeout(500)
-    const quadrant_equal = await get_colorbar_quadrant(section)
-    // Should be in a valid quadrant
-    expect([`top-left`, `top-right`, `bottom-left`, `bottom-right`]).toContain(
-      quadrant_equal,
-    )
+    // Poll until colorbar is in a valid quadrant
+    const valid_quadrants = [`top-left`, `top-right`, `bottom-left`, `bottom-right`]
+    await expect
+      .poll(async () => valid_quadrants.includes(await get_colorbar_quadrant(section)), {
+        timeout: 3000,
+      })
+      .toBe(true)
   })
 
   test(`point event handlers work with complex interactions`, async ({ page }) => {

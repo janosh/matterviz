@@ -246,21 +246,19 @@ test.describe(`Legend Placement Stability`, () => {
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
 
-    await page.waitForTimeout(600)
+    // Wait for initial placement animation to complete
     const initial_pos = await wait_for_position_stable(legend, 3000)
     expect(initial_pos.x).toBeGreaterThan(10)
     expect(initial_pos.y).toBeGreaterThan(10)
 
     await legend.hover()
-    await page.waitForTimeout(100)
-
+    // Hover state is immediate, no wait needed
     const hovered_pos = await get_element_center(legend)
     expect(hovered_pos).not.toBeNull()
 
     const series_a = legend.locator(`.legend-item`).first()
     await series_a.click()
-    await page.waitForTimeout(200)
-
+    // Position should remain stable while hovered (hover lock)
     const after_toggle_pos = await get_element_center(legend)
     expect(after_toggle_pos).not.toBeNull()
 
@@ -293,7 +291,8 @@ test.describe(`Legend Placement Stability`, () => {
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
 
-    await page.waitForTimeout(600)
+    // Wait for initial placement to stabilize
+    await wait_for_position_stable(legend, 2000)
 
     const series_items = legend.locator(`.legend-item`)
     const count = await series_items.count()
@@ -329,7 +328,8 @@ test.describe(`Legend Placement Stability`, () => {
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
 
-    await page.waitForTimeout(600)
+    // Wait for initial placement to stabilize
+    await wait_for_position_stable(legend, 2000)
 
     const initial_bbox = await legend.boundingBox()
     expect(initial_bbox).not.toBeNull()
@@ -404,9 +404,8 @@ test.describe(`Legend Placement on Resize`, () => {
     await wait_for_position_stable(legend)
 
     await page.setViewportSize({ width: 600, height: 400 })
-    await page.waitForTimeout(500)
-
-    const resized_pos = await get_element_center(legend)
+    // Wait for legend to reposition after resize
+    const resized_pos = await wait_for_position_stable(legend, 2000)
     expect(resized_pos).not.toBeNull()
     await expect(legend).toBeVisible()
 
