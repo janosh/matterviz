@@ -292,7 +292,8 @@ test.describe(`Legend Placement Stability`, () => {
     await expect(legend).toBeVisible()
 
     // Wait for initial placement to stabilize
-    await wait_for_position_stable(legend, 2000)
+    const initial_pos = await wait_for_position_stable(legend, 2000)
+    expect(initial_pos).not.toBeNull()
 
     const series_items = legend.locator(`.legend-item`)
     const count = await series_items.count()
@@ -329,7 +330,8 @@ test.describe(`Legend Placement Stability`, () => {
     await expect(legend).toBeVisible()
 
     // Wait for initial placement to stabilize
-    await wait_for_position_stable(legend, 2000)
+    const initial_pos = await wait_for_position_stable(legend, 2000)
+    expect(initial_pos).not.toBeNull()
 
     const initial_bbox = await legend.boundingBox()
     expect(initial_bbox).not.toBeNull()

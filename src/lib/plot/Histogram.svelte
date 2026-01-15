@@ -191,7 +191,7 @@
   let has_initial_legend_placement = $state(false)
 
   // Clear pending hover lock timeout on unmount
-  $effect(() => legend_hover.cleanup)
+  $effect(() => () => legend_hover.cleanup())
 
   // Derived data
   let selected_series = $derived(

@@ -1,6 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import { euclidean_dist, type Matrix3x3, type Vec3 } from '$lib/math'
+import { centered_frac, euclidean_dist, type Matrix3x3, type Vec3 } from '$lib/math'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 
@@ -658,18 +658,6 @@ export function normalize_dos(
   return null
 }
 
-// Wrap a fractional coordinate to the first Brillouin zone [-0.5, 0.5]
-// This handles the case where k-points are stored in [0, 1] convention
-const wrap_to_first_bz = (frac: number): number => {
-  // Wrap to [-0.5, 0.5] range by subtracting nearest integer
-  let wrapped = frac - Math.round(frac)
-  // Handle floating point precision edge cases near boundaries
-  if (wrapped < -0.5) wrapped += 1
-  if (wrapped > 0.5) wrapped -= 1
-  // Normalize -0 to 0 (JS can produce -0, which is surprising when stringified or used as map keys)
-  return wrapped || 0
-}
-
 // Extract k-path points from band structure and convert to reciprocal space coordinates
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
 // Handles both matterviz format (qpoints as objects) and normalized pymatgen format
@@ -693,9 +681,9 @@ export function extract_k_path_points(
     let [x, y, z] = qpoint.frac_coords
     // Wrap to first BZ if enabled (handles [0,1] vs [-0.5,0.5] convention difference)
     if (wrap_to_bz) {
-      x = wrap_to_first_bz(x)
-      y = wrap_to_first_bz(y)
-      z = wrap_to_first_bz(z)
+      x = centered_frac(x)
+      y = centered_frac(y)
+      z = centered_frac(z)
     }
     return [
       x * m00 + y * m10 + z * m20,

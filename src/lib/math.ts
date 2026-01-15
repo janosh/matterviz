@@ -403,6 +403,16 @@ export const lerp_vec3 = (
   start[2] + t * (end[2] - start[2]),
 ]
 
+// Centered fractional part: offset from nearest integer, returns value in [-0.5, 0.5)
+// Useful for wrapping coordinates to first Brillouin zone or similar periodic domains
+export const centered_frac = (val: number): number => {
+  let wrapped = val - Math.round(val)
+  // Handle floating point edge cases at boundaries
+  if (wrapped < -0.5) wrapped += 1
+  if (wrapped > 0.5) wrapped -= 1
+  return wrapped || 0 // normalize -0 to 0
+}
+
 // Normalize a Vec3 to unit length, returns zero vector if input is zero
 export function normalize_vec3(vec: Vec3, fallback?: Vec3): Vec3 {
   const len = Math.hypot(vec[0], vec[1], vec[2])
