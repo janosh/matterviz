@@ -1210,7 +1210,7 @@ function is_parsed_structure(obj: unknown): obj is ParsedStructure {
 }
 
 // Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
-function normalize_fractional_coords(structure: ParsedStructure): ParsedStructure {
+export function normalize_fractional_coords(structure: ParsedStructure): ParsedStructure {
   if (!structure.sites || structure.sites.length === 0) return structure
 
   // Check if any sites have fractional coords outside [0, 1) range

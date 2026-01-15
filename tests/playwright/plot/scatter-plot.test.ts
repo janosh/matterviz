@@ -943,6 +943,34 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(label_spans.nth(1)).toHaveText(`Series B`)
   })
 
+  // Legend deduplication tests - series with same label are deduplicated by label+legend_group
+  const legend_dedupe_test_cases = [
+    {
+      id: `legend-dedupe-different-groups`,
+      expected_count: 2,
+      description: `same label in different legend_groups shows both items`,
+    },
+    {
+      id: `legend-dedupe-same-group`,
+      expected_count: 1,
+      description: `same label in same legend_group is deduplicated`,
+    },
+    {
+      id: `legend-dedupe-no-group`,
+      expected_count: 1,
+      description: `same label without legend_group is deduplicated`,
+    },
+  ]
+  legend_dedupe_test_cases.forEach(({ id, expected_count, description }) => {
+    test(`legend deduplication: ${description}`, async ({ page }) => {
+      const plot = page.locator(`#${id}`)
+      await expect(plot).toBeVisible()
+      const legend = plot.locator(`.legend`)
+      await expect(legend).toBeVisible()
+      await expect(legend.locator(`.legend-item`)).toHaveCount(expected_count)
+    })
+  })
+
   test(`legend interaction toggles and isolates series visibility`, async ({ page }) => {
     // The id prop is applied directly to the .scatter div
     const plot_locator = page.locator(`#legend-multi-default.scatter`)

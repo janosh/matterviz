@@ -31,7 +31,7 @@
   import CellSelect from './CellSelect.svelte'
   import type { StructureHandlerData } from './index'
   import { MAX_SELECTED_SITES } from './measure'
-  import { parse_any_structure } from './parse'
+  import { normalize_fractional_coords, parse_any_structure } from './parse'
   import StructureControls from './StructureControls.svelte'
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
@@ -376,21 +376,31 @@
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
+  // Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
+  // This ensures atoms are rendered inside the unit cell regardless of data source
+  let normalized_structure = $derived.by(() => {
+    if (!structure || !(`lattice` in structure)) return structure
+    return normalize_fractional_coords(structure) as AnyStructure
+  })
+
   // Apply cell type transformation (original, conventional, or primitive)
   // This must happen BEFORE supercell transformation
   let cell_transformed_structure = $derived.by(() => {
-    if (!structure || !(`lattice` in structure) || cell_type === `original`) {
-      return structure
+    if (
+      !normalized_structure || !(`lattice` in normalized_structure) ||
+      cell_type === `original`
+    ) {
+      return normalized_structure
     }
     // Cell type transformation requires symmetry data
     if (!sym_data) {
-      return structure
+      return normalized_structure
     }
     try {
-      return transform_cell(structure as Crystal, cell_type, sym_data)
+      return transform_cell(normalized_structure as Crystal, cell_type, sym_data)
     } catch (error) {
       console.error(`Failed to transform cell to ${cell_type}:`, error)
-      return structure
+      return normalized_structure
     }
   })
 
@@ -857,9 +867,10 @@
           </div>
         {/if}
 
-        {#if enable_info_pane && structure && controls_config.visible(`info-pane`)}
+        {#if enable_info_pane && normalized_structure &&
+        controls_config.visible(`info-pane`)}
           <StructureInfoPane
-            {structure}
+            structure={normalized_structure}
             bind:pane_open={info_pane_open}
             {selected_sites}
             {sym_data}
@@ -870,7 +881,7 @@
         {#if controls_config.visible(`export-pane`)}
           <StructureExportPane
             bind:export_pane_open
-            {structure}
+            structure={normalized_structure}
             {wrapper}
             {scene}
             {camera}

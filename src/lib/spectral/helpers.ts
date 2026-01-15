@@ -658,13 +658,27 @@ export function normalize_dos(
   return null
 }
 
+// Wrap a fractional coordinate to the first Brillouin zone [-0.5, 0.5]
+// This handles the case where k-points are stored in [0, 1] convention
+const wrap_to_first_bz = (frac: number): number => {
+  // Wrap to [-0.5, 0.5] range by subtracting nearest integer
+  let wrapped = frac - Math.round(frac)
+  // Handle floating point precision edge cases near boundaries
+  if (wrapped < -0.5) wrapped += 1
+  if (wrapped > 0.5) wrapped -= 1
+  return wrapped
+}
+
 // Extract k-path points from band structure and convert to reciprocal space coordinates
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
 // Handles both matterviz format (qpoints as objects) and normalized pymatgen format
+// Optionally wraps fractional coordinates to first BZ (default: true)
 export function extract_k_path_points(
   band_struct: types.BaseBandStructure,
   recip_lattice_matrix: Matrix3x3,
+  options: { wrap_to_bz?: boolean } = {},
 ): Vec3[] {
+  const { wrap_to_bz = true } = options
   if (!band_struct?.qpoints || !recip_lattice_matrix) return []
 
   if (
@@ -675,7 +689,13 @@ export function extract_k_path_points(
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = recip_lattice_matrix
 
   return band_struct.qpoints.map((qpoint) => {
-    const [x, y, z] = qpoint.frac_coords
+    let [x, y, z] = qpoint.frac_coords
+    // Wrap to first BZ if enabled (handles [0,1] vs [-0.5,0.5] convention difference)
+    if (wrap_to_bz) {
+      x = wrap_to_first_bz(x)
+      y = wrap_to_first_bz(y)
+      z = wrap_to_first_bz(z)
+    }
     return [
       x * m00 + y * m10 + z * m20,
       x * m01 + y * m11 + z * m21,
