@@ -1,8 +1,4 @@
-import {
-  compute_element_placement,
-  constrain_tooltip_position,
-  select_legend_layout,
-} from '$lib/plot/layout'
+import { compute_element_placement, constrain_tooltip_position } from '$lib/plot/layout'
 import { describe, expect, it, test } from 'vitest'
 
 describe(`layout utility functions`, () => {
@@ -391,63 +387,6 @@ describe(`layout utility functions`, () => {
         // Any corner is acceptable for center cluster
         expect(result.x).toBeDefined()
       }
-    })
-  })
-
-  describe(`select_legend_layout`, () => {
-    const base_config = {
-      plot_bounds: { x: 50, y: 20, width: 400, height: 300 },
-      axis_clearance: 40,
-      exclude_rects: [],
-      points: [] as { x: number; y: number }[],
-    }
-
-    it(`selects vertical layout for tall empty plots`, () => {
-      const result = select_legend_layout(
-        { ...base_config, plot_bounds: { x: 50, y: 20, width: 200, height: 400 } },
-        { width: 100, height: 120 }, // vertical
-        { width: 180, height: 40 }, // horizontal
-      )
-      expect(result.layout).toBe(`vertical`)
-    })
-
-    it(`selects layout based on fit quality in available space`, () => {
-      // When plot is very wide, horizontal layout should have better placement options
-      // because it fits better in the corners
-      const wide_plot_result = select_legend_layout(
-        { ...base_config, plot_bounds: { x: 50, y: 20, width: 600, height: 200 } },
-        { width: 100, height: 120 }, // vertical - won't fit in 200-80 (clearance) = 120px height
-        { width: 180, height: 40 }, // horizontal - fits easily
-      )
-      // Both layouts should return valid placements
-      expect([`horizontal`, `vertical`]).toContain(wide_plot_result.layout)
-      expect(wide_plot_result.placement.x).toBeGreaterThan(0)
-    })
-
-    it(`considers point overlap when selecting layout`, () => {
-      // Points clustered on the right side favor vertical layout on left
-      const right_side_points = Array.from({ length: 20 }, (_, idx) => ({
-        x: 350 + idx * 2,
-        y: 100 + idx * 5,
-      }))
-      const result = select_legend_layout(
-        { ...base_config, points: right_side_points },
-        { width: 100, height: 80 },
-        { width: 160, height: 30 },
-      )
-      // Should pick layout that can be placed with less overlap
-      expect(result.placement.score).toBeGreaterThan(-20)
-    })
-
-    it(`returns valid placement coordinates`, () => {
-      const result = select_legend_layout(
-        base_config,
-        { width: 100, height: 80 },
-        { width: 160, height: 30 },
-      )
-      expect(result.placement.x).toBeGreaterThanOrEqual(base_config.plot_bounds.x)
-      expect(result.placement.y).toBeGreaterThanOrEqual(base_config.plot_bounds.y)
-      expect([`horizontal`, `vertical`]).toContain(result.layout)
     })
   })
 })

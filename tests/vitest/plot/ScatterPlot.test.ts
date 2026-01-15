@@ -211,6 +211,55 @@ describe(`ScatterPlot`, () => {
       ],
       props: {},
     },
+    {
+      desc: `same label in different legend_groups (no dedupe)`,
+      series: [
+        {
+          x: [1, 2],
+          y: [2, 4],
+          label: `Energy`,
+          legend_group: `DFT`,
+          point_style: { fill: `blue` },
+        },
+        {
+          x: [1, 2],
+          y: [3, 5],
+          label: `Energy`,
+          legend_group: `ML`,
+          point_style: { fill: `red` },
+        },
+      ],
+      props: { legend: { draggable: false } },
+    },
+    {
+      desc: `same label in same legend_group (deduped)`,
+      series: [
+        {
+          x: [1, 2],
+          y: [2, 4],
+          label: `Energy`,
+          legend_group: `DFT`,
+          point_style: { fill: `blue` },
+        },
+        {
+          x: [1, 2],
+          y: [3, 5],
+          label: `Energy`,
+          legend_group: `DFT`,
+          point_style: { fill: `red` },
+        },
+      ],
+      props: { legend: { draggable: false } },
+    },
+    {
+      desc: `same label without legend_group (deduped)`,
+      series: [
+        { x: [1, 2], y: [2, 4], label: `Energy`, point_style: { fill: `blue` } },
+        { x: [1, 2], y: [3, 5], label: `Energy`, point_style: { fill: `red` } },
+      ],
+      props: { legend: { draggable: false } },
+    },
+    // NOTE: Legend deduplication counts are tested in Playwright since JSDOM lacks proper dimensions
   ])(`legend grouping: renders $desc`, ({ series, props }) => {
     mount(ScatterPlot, { target: document.body, props: { series, ...props } })
     expect(document.querySelector(`.scatter`)).toBeTruthy()

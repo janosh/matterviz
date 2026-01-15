@@ -1,6 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import { euclidean_dist, type Matrix3x3, type Vec3 } from '$lib/math'
+import { centered_frac, euclidean_dist, type Matrix3x3, type Vec3 } from '$lib/math'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 
@@ -661,10 +661,13 @@ export function normalize_dos(
 // Extract k-path points from band structure and convert to reciprocal space coordinates
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
 // Handles both matterviz format (qpoints as objects) and normalized pymatgen format
+// Optionally wraps fractional coordinates to first BZ (default: true)
 export function extract_k_path_points(
   band_struct: types.BaseBandStructure,
   recip_lattice_matrix: Matrix3x3,
+  options: { wrap_to_bz?: boolean } = {},
 ): Vec3[] {
+  const { wrap_to_bz = true } = options
   if (!band_struct?.qpoints || !recip_lattice_matrix) return []
 
   if (
@@ -675,7 +678,13 @@ export function extract_k_path_points(
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = recip_lattice_matrix
 
   return band_struct.qpoints.map((qpoint) => {
-    const [x, y, z] = qpoint.frac_coords
+    let [x, y, z] = qpoint.frac_coords
+    // Wrap to first BZ if enabled (handles [0,1] vs [-0.5,0.5] convention difference)
+    if (wrap_to_bz) {
+      x = centered_frac(x)
+      y = centered_frac(y)
+      z = centered_frac(z)
+    }
     return [
       x * m00 + y * m10 + z * m20,
       x * m01 + y * m11 + z * m21,

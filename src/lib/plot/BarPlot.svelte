@@ -40,6 +40,10 @@
     create_axis_change_handler,
   } from '$lib/plot/axis-utils'
   import { process_prop } from '$lib/plot/data-transform'
+  import {
+    create_dimension_tracker,
+    create_hover_lock,
+  } from '$lib/plot/hover-lock.svelte'
   import { get_relative_coords } from '$lib/plot/interactions'
   import type { IndexedRefLine } from '$lib/plot/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/reference-line'
@@ -55,10 +59,6 @@
     DEFAULT_MARKERS,
     get_scale_type_name,
   } from '$lib/plot/types'
-  import {
-    create_dimension_tracker,
-    create_hover_lock,
-  } from '$lib/plot/hover-lock.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import type { Snippet } from 'svelte'
@@ -692,6 +692,9 @@
   const legend_hover = create_hover_lock()
   const dim_tracker = create_dimension_tracker()
   let has_initial_legend_placement = $state(false)
+
+  // Clear pending hover lock timeout on unmount
+  $effect(() => () => legend_hover.cleanup())
 
   // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
