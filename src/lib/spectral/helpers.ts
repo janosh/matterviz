@@ -666,7 +666,8 @@ const wrap_to_first_bz = (frac: number): number => {
   // Handle floating point precision edge cases near boundaries
   if (wrapped < -0.5) wrapped += 1
   if (wrapped > 0.5) wrapped -= 1
-  return wrapped
+  // Normalize -0 to 0 (JS can produce -0, which is surprising when stringified or used as map keys)
+  return wrapped || 0
 }
 
 // Extract k-path points from band structure and convert to reciprocal space coordinates

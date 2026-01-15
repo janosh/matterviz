@@ -840,11 +840,11 @@
     )
 
     // Add fill region items to legend (deduplicated using same key format as series)
-    // Fills don't have legend_group, so they use the empty-group format `::label`
     const fill_items = computed_fills
       .filter((fill) => fill.show_in_legend !== false && fill.label)
       .filter((fill) => {
-        const unique_key = `::${fill.label!}`
+        // Use same composite key as series: legend_group::label
+        const unique_key = `${fill.legend_group ?? ``}::${fill.label!}`
         if (seen_labels.has(unique_key)) return false
         seen_labels.add(unique_key)
         return true
