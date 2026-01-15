@@ -187,6 +187,7 @@
       | (ComponentProps<typeof ColorBar> & {
         margin?: number | Sides
         tween?: TweenedOptions<XyObj>
+        responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
       })
       | null
     label_placement_config?: Partial<LabelPlacementConfig>
@@ -1002,43 +1003,37 @@
     const dims_changed = dim_tracker.has_changed(width, height)
     if (dims_changed) dim_tracker.update(width, height)
 
-    // Update colorbar position - colorbar is always responsive to data density changes
+    // Update colorbar position (stable after initial placement unless responsive)
     if (color_bar_placement) {
-      // Skip update only if hover-locked (unless dimensions changed)
-      const should_update_colorbar = dims_changed || !colorbar_hover.is_locked.current
+      const is_responsive = color_bar?.responsive ?? false
+      const should_update = dims_changed || (!colorbar_hover.is_locked.current &&
+        (is_responsive || !has_initial_colorbar_placement))
 
-      if (should_update_colorbar) {
+      if (should_update) {
         tweened_colorbar_coords.set(
           { x: color_bar_placement.x, y: color_bar_placement.y },
-          // Skip animation on initial placement to avoid jump from (0, 0)
           has_initial_colorbar_placement ? undefined : { duration: 0 },
         )
-        // Track that initial placement has occurred (for animation purposes only)
         if (colorbar_element && !has_initial_colorbar_placement) {
           has_initial_colorbar_placement = true
         }
       }
     }
 
-    // Update legend position with stability checks
+    // Update legend position (stable after initial placement unless responsive)
     if (legend_manual_position && !legend_is_dragging) {
       tweened_legend_coords.set(legend_manual_position)
     } else if (active_legend_placement && !legend_is_dragging) {
       const is_responsive = legend?.responsive ?? false
-      // Only update if: resize occurred, OR (not hover-locked AND (responsive OR not yet initially placed))
-      const should_update_legend = dims_changed || (!legend_hover.is_locked.current &&
+      const should_update = dims_changed || (!legend_hover.is_locked.current &&
         (is_responsive || !has_initial_legend_placement))
 
-      if (should_update_legend) {
+      if (should_update) {
         tweened_legend_coords.set(
           { x: active_legend_placement.x, y: active_legend_placement.y },
-          // Skip animation on initial placement to avoid jump from (0, 0)
           has_initial_legend_placement ? undefined : { duration: 0 },
         )
-        // Only lock position after we have actual measured size
-        if (legend_element) {
-          has_initial_legend_placement = true
-        }
+        if (legend_element) has_initial_legend_placement = true
       }
     }
   })

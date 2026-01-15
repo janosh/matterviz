@@ -1,5 +1,32 @@
 # Changelog
 
+## [v0.2.2](https://github.com/janosh/matterviz/compare/v0.2.1...v0.2.2)
+
+> 14 January 2026
+
+### 🛠 Enhancements
+
+- Hover visibility for convex hull control toggles and fix spectral/legend issues by @janosh in https://github.com/janosh/matterviz/pull/237
+- Add reference lines and planes for 2D/3D plots by @janosh in https://github.com/janosh/matterviz/pull/239
+- Clickable axis labels for switching plot properties with async data loading by @janosh in https://github.com/janosh/matterviz/pull/240
+- `Structure` add atomic size user override UI by @janosh in https://github.com/janosh/matterviz/pull/242
+- Add plot data cleaning API for handling noisy scientific data by @janosh in https://github.com/janosh/matterviz/pull/243
+- Add arcsinh scale for 2D plots by @janosh in https://github.com/janosh/matterviz/pull/245
+- Plotly Dash integration for MatterViz with typed Python wrappers by @mkhorton in https://github.com/janosh/matterviz/pull/244
+- HuggingFace Spaces deployment and typed wrapper improvements by @janosh in https://github.com/janosh/matterviz/pull/247
+
+### 🐛 Bug Fixes
+
+- fix: legend deduplication by label+group, structure coord normalization, BZ wrapping by @janosh in https://github.com/janosh/matterviz/pull/250
+
+### 🧪 Tests
+
+- Use `structuredClone` to prevent `DEFAULTS` mutation in `Structure` by @janosh in https://github.com/janosh/matterviz/pull/248
+
+## New Contributors
+
+- @mkhorton made their first contribution in https://github.com/janosh/matterviz/pull/244
+
 ## [v0.2.1](https://github.com/janosh/matterviz/compare/v0.2.0...v0.2.1)
 
 > 4 January 2026
