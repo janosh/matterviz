@@ -407,9 +407,9 @@ export const lerp_vec3 = (
 // Useful for wrapping coordinates to first Brillouin zone or similar periodic domains
 export const centered_frac = (val: number): number => {
   let wrapped = val - Math.round(val)
-  // Handle floating point edge cases at boundaries
+  // Handle floating point edge cases at boundaries (range is [-0.5, 0.5), exclusive at +0.5)
   if (wrapped < -0.5) wrapped += 1
-  if (wrapped > 0.5) wrapped -= 1
+  if (wrapped >= 0.5) wrapped -= 1
   return wrapped || 0 // normalize -0 to 0
 }
 

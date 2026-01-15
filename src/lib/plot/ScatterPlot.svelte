@@ -296,7 +296,10 @@
   let has_initial_colorbar_placement = $state(false)
 
   // Clear pending hover lock timeouts on unmount
-  $effect(() => () => (legend_hover.cleanup(), colorbar_hover.cleanup()))
+  $effect(() => () => {
+    legend_hover.cleanup()
+    colorbar_hover.cleanup()
+  })
 
   // Tooltip element reference for dynamic sizing
   let tooltip_el = $state<HTMLDivElement | undefined>()
