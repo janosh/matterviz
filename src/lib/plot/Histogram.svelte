@@ -23,6 +23,10 @@
   } from '$lib/plot/axis-utils'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
   import { AXIS_DEFAULTS } from '$lib/plot/defaults'
+  import {
+    create_dimension_tracker,
+    create_hover_lock,
+  } from '$lib/plot/hover-lock.svelte'
   import { get_relative_coords } from '$lib/plot/interactions'
   import {
     calc_auto_padding,
@@ -46,10 +50,6 @@
     ScaleType,
   } from '$lib/plot/types'
   import { get_scale_type_name } from '$lib/plot/types'
-  import {
-    create_dimension_tracker,
-    create_hover_lock,
-  } from '$lib/plot/hover-lock.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { Snippet } from 'svelte'
@@ -189,6 +189,9 @@
   const legend_hover = create_hover_lock()
   const dim_tracker = create_dimension_tracker()
   let has_initial_legend_placement = $state(false)
+
+  // Clear pending hover lock timeout on unmount
+  $effect(() => () => legend_hover.cleanup())
 
   // Derived data
   let selected_series = $derived(

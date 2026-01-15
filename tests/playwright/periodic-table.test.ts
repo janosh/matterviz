@@ -378,15 +378,25 @@ test.describe(`Periodic Table`, () => {
         // Check colors are distinct and valid
         if (idx === 1) {
           // Only test color distinctness on 2-value example
-          const top_color = await tile
-            .locator(`.segment.diagonal-top`)
-            .evaluate((el: Element) => getComputedStyle(el).backgroundColor)
-          const bottom_color = await tile
-            .locator(`.segment.diagonal-bottom`)
-            .evaluate((el: Element) => getComputedStyle(el).backgroundColor)
+          const top_segment = tile.locator(`.segment.diagonal-top`)
+          const bottom_segment = tile.locator(`.segment.diagonal-bottom`)
 
-          expect(top_color).not.toBe(`rgba(0, 0, 0, 0)`)
-          expect(bottom_color).not.toBe(`rgba(0, 0, 0, 0)`)
+          // Use condition-based waits instead of waitForTimeout - toHaveCSS auto-retries
+          // until the condition is met, making tests more robust and faster on average
+          await expect(top_segment).not.toHaveCSS(`background-color`, `rgba(0, 0, 0, 0)`)
+          await expect(bottom_segment).not.toHaveCSS(
+            `background-color`,
+            `rgba(0, 0, 0, 0)`,
+          )
+
+          // Get colors after they're confirmed to be applied
+          const top_color = await top_segment.evaluate(
+            (el: Element) => getComputedStyle(el).backgroundColor,
+          )
+          const bottom_color = await bottom_segment.evaluate(
+            (el: Element) => getComputedStyle(el).backgroundColor,
+          )
+
           expect(top_color).not.toBe(bottom_color)
         }
       })
