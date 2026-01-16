@@ -2,6 +2,7 @@ import { pick_contrast_color } from '$lib/colors'
 import { max, min } from 'd3-array'
 import { scaleLog, scaleSequential } from 'd3-scale'
 import * as d3sc from 'd3-scale-chromatic'
+import type { Snippet } from 'svelte'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
 export { default as ToggleMenu } from './ToggleMenu.svelte'
@@ -38,6 +39,14 @@ export type Label = {
 
 // Arguments passed to cell snippet renderers
 export type CellSnippetArgs = { row: RowData; col: Label; val: CellVal }
+
+// Type alias for cell snippets - use this for cross-package compatibility
+// instead of directly using Snippet<[CellSnippetArgs]> which can cause
+// type mismatches between different svelte package instances
+export type CellSnippet = Snippet<[CellSnippetArgs]>
+
+// Type for special_cells prop - maps column labels to cell snippets
+export type SpecialCells = Record<string, CellSnippet>
 
 // Sort state for single-column sorting
 export type SortState = { column: string; ascending: boolean }
