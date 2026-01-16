@@ -4,6 +4,7 @@ import { scaleLog, scaleSequential } from 'd3-scale'
 import * as d3sc from 'd3-scale-chromatic'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
+export { default as ToggleMenu } from './ToggleMenu.svelte'
 
 // Cell value types for table data
 export type CellVal =
