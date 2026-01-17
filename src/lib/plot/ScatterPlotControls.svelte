@@ -11,6 +11,9 @@
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
 
+  // Unique ID prefix to avoid conflicts when multiple instances on same page
+  const uid = crypto.randomUUID().slice(0, 8)
+
   let {
     series = [],
     x_axis = $bindable({}),
@@ -73,8 +76,8 @@
     <!-- Series Selection (for multi-series style controls) -->
     {#if has_multiple_series}
       <div class="pane-row">
-        <label for="series-select">Series</label>
-        <select bind:value={selected_series_idx} id="series-select">
+        <label for="{uid}-series">Series</label>
+        <select bind:value={selected_series_idx} id="{uid}-series">
           {#each series as srs, idx (idx)}
             {#if srs}
               <option value={idx}>
@@ -99,9 +102,9 @@
       >
         {#if styles.point}
           <div class="pane-row" data-key="point.size">
-            <label for="point-size-range">Size:</label>
+            <label for="{uid}-point-size">Size:</label>
             <input
-              id="point-size-range"
+              id="{uid}-point-size"
               type="range"
               min="1"
               max="20"
@@ -117,12 +120,13 @@
             />
           </div>
           <div class="pane-row" data-key="point.color">
-            <label for="point-color">Color:</label>
-            <input id="point-color" type="color" bind:value={styles.point.color} />
+            <label for="{uid}-point-color">Color:</label>
+            <input id="{uid}-point-color" type="color" bind:value={styles.point.color} />
           </div>
           <div class="pane-row" data-key="point.opacity">
-            <label for="point-opacity">Opacity:</label>
+            <label for="{uid}-point-opacity">Opacity:</label>
             <input
+              id="{uid}-point-opacity"
               type="range"
               min="0"
               max="1"
@@ -138,9 +142,9 @@
             />
           </div>
           <div class="pane-row" data-key="point.stroke_width">
-            <label for="point-stroke-width-range">Stroke Width:</label>
+            <label for="{uid}-point-stroke-width">Stroke Width:</label>
             <input
-              id="point-stroke-width-range"
+              id="{uid}-point-stroke-width"
               type="range"
               min="0"
               max="5"
@@ -156,16 +160,17 @@
             />
           </div>
           <div class="pane-row" data-key="point.stroke_color">
-            <label for="point-stroke-color">Stroke Color:</label>
+            <label for="{uid}-point-stroke-color">Stroke Color:</label>
             <input
-              id="point-stroke-color"
+              id="{uid}-point-stroke-color"
               type="color"
               bind:value={styles.point.stroke_color}
             />
           </div>
           <div class="pane-row" data-key="point.stroke_opacity">
-            <label for="point-stroke-opacity">Stroke Opacity:</label>
+            <label for="{uid}-point-stroke-opacity">Stroke Opacity:</label>
             <input
+              id="{uid}-point-stroke-opacity"
               type="range"
               min="0"
               max="1"
@@ -197,9 +202,9 @@
       >
         {#if styles.line}
           <div class="pane-row" data-key="line.width">
-            <label for="line-width-range">Width:</label>
+            <label for="{uid}-line-width">Width:</label>
             <input
-              id="line-width-range"
+              id="{uid}-line-width"
               type="range"
               min="0.5"
               max="10"
@@ -215,12 +220,13 @@
             />
           </div>
           <div class="pane-row" data-key="line.color">
-            <label for="line-color">Color:</label>
-            <input id="line-color" type="color" bind:value={styles.line.color} />
+            <label for="{uid}-line-color">Color:</label>
+            <input id="{uid}-line-color" type="color" bind:value={styles.line.color} />
           </div>
           <div class="pane-row" data-key="line.opacity">
-            <label for="line-opacity">Opacity:</label>
+            <label for="{uid}-line-opacity">Opacity:</label>
             <input
+              id="{uid}-line-opacity"
               type="range"
               min="0"
               max="1"
@@ -236,8 +242,8 @@
             />
           </div>
           <div class="pane-row" data-key="line.dash">
-            <label for="line-style-select">Style:</label>
-            <select id="line-style-select" bind:value={styles.line.dash}>
+            <label for="{uid}-line-style">Style:</label>
+            <select id="{uid}-line-style" bind:value={styles.line.dash}>
               <option value="solid">Solid</option>
               <option value="4,4">Dashed</option>
               <option value="2,2">Dotted</option>

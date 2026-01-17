@@ -131,6 +131,8 @@
 
 {#if hovered_elem_data}
   {@const { x, y } = tooltip_pos}
+  {@const tile_color = ELEMENT_COLOR_SCHEMES[color_scheme]?.[hovered_elem_data.symbol] ??
+    `#666666`}
   {@const transforms = {
     top: `translate(-50%, -100%)`,
     bottom: `translateX(-50%)`,
@@ -145,9 +147,10 @@
   >
     <ElementTile
       element={hovered_elem_data}
+      bg_color={tile_color}
       show_name={false}
       value={hovered_elem_data.atomic_mass}
-      style="width: 50px; height: 50px"
+      style="width: var(--formula-tooltip-tile-size, 30px); height: var(--formula-tooltip-tile-size, 30px)"
     />
     {hovered_elem_data.name}
   </div>
@@ -186,8 +189,9 @@
     position: fixed;
     display: flex;
     align-items: center;
-    gap: var(--formula-tooltip-gap, 5pt);
-    padding: var(--formula-tooltip-padding, 3pt 4pt);
+    gap: var(--formula-tooltip-gap, 4pt);
+    padding: var(--formula-tooltip-padding, 2pt 3pt);
+    font-size: var(--formula-tooltip-font-size, 0.85em);
     background: var(
       --formula-tooltip-bg,
       light-dark(rgba(255, 255, 255, 0.95), rgba(30, 30, 30, 0.95))

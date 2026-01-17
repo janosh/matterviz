@@ -1,5 +1,8 @@
 name: Dash Extension Tests
 
+permissions:
+  contents: write
+
 on:
   pull_request:
     branches: [main]
@@ -23,6 +26,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -30,15 +36,15 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # Install root pnpm deps (matterviz package)
-      - name: Install root dependencies
-        run: pnpm install
+      # Build root matterviz package (generates dist/*.d.ts files)
+      - name: Build matterviz package
+        run: pnpm install && npx svelte-kit sync && pnpm package
         working-directory: .
 
       # Install dash extension deps
@@ -46,6 +52,25 @@ jobs:
         run: |
           pnpm install
           pip install -e ".[dev]"
+
+      # Sync typed wrappers using local matterviz dist (not npm version)
+      - name: Sync typed wrappers
+        run: python scripts/sync_typed_wrappers.py --matterviz-dist ../../dist
+
+      # Auto-commit typed.py if it changed (skip for fork PRs - no write access)
+      - name: Commit typed.py changes
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          cd ../..
+          if git diff --quiet extensions/dash/matterviz_dash_components/typed.py; then
+            echo "typed.py is up to date"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add extensions/dash/matterviz_dash_components/typed.py
+            git commit -m "Auto-sync typed.py from component_manifest.toml"
+            git push
+          fi
 
       # Build the JS bundle (required for component tests)
       - name: Build Dash components
@@ -56,8 +81,5 @@ jobs:
         run: pytest tests/test_wrappers.py tests/test_js_utils.py tests/test_sync.py -v
 
       # Run Playwright integration tests
-      - name: Install Playwright browsers
-        run: playwright install chromium
-
       - name: Run Playwright tests
-        run: pytest tests/playwright/ -v --tb=short
+        run: playwright install chromium && pytest tests/playwright/ -v --tb=short
