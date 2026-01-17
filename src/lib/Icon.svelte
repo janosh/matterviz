@@ -2,22 +2,31 @@
   import type { SVGAttributes } from 'svelte/elements'
   import { ICON_DATA, type IconName } from './icons'
 
-  let { icon, ...rest }: { icon: IconName } & SVGAttributes<SVGSVGElement> = $props()
+  type IconData = { path: string; viewBox: string; stroke?: string }
+  let { icon, path, viewBox = `0 0 24 24`, stroke, ...rest }:
+    & { icon?: IconName }
+    & Partial<IconData>
+    & SVGAttributes<SVGSVGElement> = $props()
 
-  const { path, ...svg_props } = $derived.by(() => {
-    if (!(icon in ICON_DATA)) {
-      console.error(`Icon '${icon}' not found`)
-      return ICON_DATA.Alert // fallback
-    }
-    return ICON_DATA[icon]
+  const data: IconData = $derived.by(() => {
+    if (path) return { path, viewBox: viewBox ?? `0 0 24 24`, stroke }
+    if (icon && icon in ICON_DATA) return ICON_DATA[icon]
+    if (icon) console.error(`Icon '${icon}' not found`)
+    return ICON_DATA.Alert
   })
 </script>
 
-<svg role="img" fill="currentColor" {...svg_props} {...rest}>
-  {#if path.trim().startsWith(`<`)}
-    {@html path}
+<svg
+  role="img"
+  fill={data.stroke ? `none` : `currentColor`}
+  stroke={data.stroke}
+  viewBox={data.viewBox}
+  {...rest}
+>
+  {#if data.path.trim().startsWith(`<`)}
+    {@html data.path}
   {:else}
-    <path d={path} />
+    <path d={data.path} />
   {/if}
 </svg>
 

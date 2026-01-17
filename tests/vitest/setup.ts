@@ -43,9 +43,14 @@ beforeEach(() => {
 })
 
 export function doc_query<T extends HTMLElement>(selector: string): T {
-  const node = document.querySelector(selector)
+  const node = document.querySelector(selector) satisfies T | null
   if (!node) throw new Error(`No element found for selector: ${selector}`)
-  return node as T
+  return node
+}
+export function svg_query<T extends SVGElement>(selector: string): T {
+  const node = document.querySelector(selector) satisfies T | null
+  if (!node) throw new Error(`No element found for selector: ${selector}`)
+  return node
 }
 
 // Test data factory for creating mock structures

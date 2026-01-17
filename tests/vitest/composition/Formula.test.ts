@@ -1,3 +1,4 @@
+import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import type { OxiComposition } from '$lib/composition'
 import {
   Formula,
@@ -392,5 +393,47 @@ test.each([
     // Check correct number of oxidation state superscripts
     const superscripts = element?.querySelectorAll(`sup`) ?? []
     expect(superscripts.length).toBe(expected_superscripts)
+  },
+)
+
+// Normalize any color format to lowercase hex
+function normalize_to_hex(color: string): string {
+  if (color.startsWith(`#`)) return color.toLowerCase()
+  const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)
+  if (!match) return color
+  const [, r, g, b] = match
+  const to_hex = (n: string) => parseInt(n).toString(16).padStart(2, `0`)
+  return `#${to_hex(r)}${to_hex(g)}${to_hex(b)}`
+}
+
+test.each([`Vesta`, `Jmol`] as const)(
+  `Formula tooltip ElementTile uses same color scheme as symbol text (%s)`,
+  async (color_scheme) => {
+    mount(Formula, {
+      target: document.body,
+      props: { formula: `Fe2O3`, color_scheme },
+    })
+
+    const element_group = document.querySelector(`.element-group`) as HTMLElement
+    expect(element_group).toBeTruthy()
+
+    // Trigger mouseenter to show tooltip
+    element_group.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+
+    // Wait for Svelte to update the DOM
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const tooltip = document.querySelector(`.tooltip`)
+    expect(tooltip).toBeTruthy()
+
+    // Get the ElementTile inside the tooltip
+    const tile = tooltip?.querySelector(`.element-tile`) as HTMLElement
+    expect(tile).toBeTruthy()
+
+    // The tile background should match the color scheme for Fe
+    const expected_hex = ELEMENT_COLOR_SCHEMES[color_scheme]?.[`Fe`]
+    if (!expected_hex) throw new Error(`Missing color for Fe in ${color_scheme}`)
+    const actual_hex = normalize_to_hex(tile.style.backgroundColor)
+    expect(actual_hex).toBe(expected_hex.toLowerCase())
   },
 )
