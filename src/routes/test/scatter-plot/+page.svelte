@@ -763,7 +763,7 @@
     x_axis={{ label: `X Position`, range: [0, 100] }}
     y_axis={{ label: `Y Position`, range: [0, 100] }}
     color_scale={{ scheme: `Turbo` }}
-    color_bar={{ title: `Color Bar Title` }}
+    color_bar={{ title: `Color Bar Title`, responsive: true }}
   >
     {#snippet tooltip({ x, y, color_value })}
       Point ({x.toFixed(1)}, {y.toFixed(1)})<br />

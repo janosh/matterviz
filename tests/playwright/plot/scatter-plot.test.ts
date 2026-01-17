@@ -1612,7 +1612,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     )
 
     // Test series selector functionality
-    const series_selector = control_pane.locator(`select#series-select`)
+    const series_selector = control_pane.getByLabel(`Series`)
     if (await series_selector.isVisible()) {
       // Test switching between series
       await series_selector.selectOption(`0`)
@@ -1955,7 +1955,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const { pane: control_pane } = await open_control_pane(plot)
 
     // Select second series (Green)
-    const series_select = control_pane.locator(`select#series-select`)
+    const series_select = control_pane.getByLabel(`Series`)
     await series_select.selectOption(`1`)
 
     // Modify ONLY line width

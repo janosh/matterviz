@@ -5,6 +5,9 @@
   import type { Orientation, PlotControlsProps } from '$lib/plot/types'
   import type { Snippet } from 'svelte'
 
+  // Unique ID prefix to avoid conflicts when multiple instances on same page
+  const uid = crypto.randomUUID().slice(0, 8)
+
   let {
     orientation = $bindable(`vertical`),
     mode = $bindable(`overlay`),
@@ -44,14 +47,14 @@
   >
     <label style="flex: 1">
       Orientation:
-      <select bind:value={orientation} id="orientation-select">
+      <select bind:value={orientation} id="{uid}-orientation">
         <option value="vertical">Vertical</option>
         <option value="horizontal">Horizontal</option>
       </select>
     </label>
     <label style="flex: 1">
       Mode:
-      <select bind:value={mode} id="mode-select">
+      <select bind:value={mode} id="{uid}-mode">
         <option value="overlay">Overlay</option>
         <option value="stacked">Stacked</option>
         <option value="grouped">Grouped (Side-by-Side)</option>
