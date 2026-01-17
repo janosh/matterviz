@@ -2,7 +2,7 @@
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import type {
-    CellSnippetArgs,
+    CellSnippet,
     CellVal,
     ExportData,
     InitialSort,
@@ -13,6 +13,7 @@
     Search,
     SortHint,
     SortState,
+    SpecialCells,
   } from '$lib/table'
   import { calc_cell_color, strip_html } from '$lib/table'
   import type { Snippet } from 'svelte'
@@ -49,8 +50,8 @@
     data: RowData[]
     columns?: Label[]
     sort_hint?: SortHint
-    cell?: Snippet<[CellSnippetArgs]>
-    special_cells?: Record<string, Snippet<[CellSnippetArgs]>>
+    cell?: CellSnippet
+    special_cells?: SpecialCells
     controls?: Snippet
     initial_sort?: InitialSort
     sort?: { column: string; dir: `asc` | `desc` }

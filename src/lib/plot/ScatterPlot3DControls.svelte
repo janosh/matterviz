@@ -10,6 +10,9 @@
   } from '$lib/plot/types'
   import type { ComponentProps, Snippet } from 'svelte'
 
+  // Unique ID prefix to avoid conflicts when multiple instances on same page
+  const uid = crypto.randomUUID().slice(0, 8)
+
   let {
     x_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -75,16 +78,16 @@
     }}
   >
     <div class="pane-row">
-      <label for="camera-projection">Projection:</label>
-      <select id="camera-projection" bind:value={camera_projection}>
+      <label for="{uid}-camera-projection">Projection:</label>
+      <select id="{uid}-camera-projection" bind:value={camera_projection}>
         <option value="perspective">Perspective</option>
         <option value="orthographic">Orthographic</option>
       </select>
     </div>
     <div class="pane-row">
-      <label for="auto-rotate">Auto Rotate:</label>
+      <label for="{uid}-auto-rotate">Auto Rotate:</label>
       <input
-        id="auto-rotate"
+        id="{uid}-auto-rotate"
         type="range"
         min="0"
         max="5"
@@ -130,13 +133,13 @@
     on_reset={() => (x_axis = { ...x_axis, range: [null, null] })}
   >
     <div class="pane-row">
-      <label for="x-label">Label:</label>
-      <input id="x-label" type="text" bind:value={x_axis.label} placeholder="X" />
+      <label for="{uid}-x-label">Label:</label>
+      <input id="{uid}-x-label" type="text" bind:value={x_axis.label} placeholder="X" />
     </div>
     <div class="pane-row">
-      <label for="x-range-min">Range:</label>
+      <label for="{uid}-x-range-min">Range:</label>
       <input
-        id="x-range-min"
+        id="{uid}-x-range-min"
         type="number"
         step="any"
         value={x_axis.range?.[0] ?? auto_x_range[0]}
@@ -148,7 +151,7 @@
       />
       <span>to</span>
       <input
-        id="x-range-max"
+        id="{uid}-x-range-max"
         type="number"
         step="any"
         value={x_axis.range?.[1] ?? auto_x_range[1]}
@@ -168,13 +171,13 @@
     on_reset={() => (y_axis = { ...y_axis, range: [null, null] })}
   >
     <div class="pane-row">
-      <label for="y-label">Label:</label>
-      <input id="y-label" type="text" bind:value={y_axis.label} placeholder="Y" />
+      <label for="{uid}-y-label">Label:</label>
+      <input id="{uid}-y-label" type="text" bind:value={y_axis.label} placeholder="Y" />
     </div>
     <div class="pane-row">
-      <label for="y-range-min">Range:</label>
+      <label for="{uid}-y-range-min">Range:</label>
       <input
-        id="y-range-min"
+        id="{uid}-y-range-min"
         type="number"
         step="any"
         value={y_axis.range?.[0] ?? auto_y_range[0]}
@@ -186,7 +189,7 @@
       />
       <span>to</span>
       <input
-        id="y-range-max"
+        id="{uid}-y-range-max"
         type="number"
         step="any"
         value={y_axis.range?.[1] ?? auto_y_range[1]}
@@ -206,13 +209,13 @@
     on_reset={() => (z_axis = { ...z_axis, range: [null, null] })}
   >
     <div class="pane-row">
-      <label for="z-label">Label:</label>
-      <input id="z-label" type="text" bind:value={z_axis.label} placeholder="Z" />
+      <label for="{uid}-z-label">Label:</label>
+      <input id="{uid}-z-label" type="text" bind:value={z_axis.label} placeholder="Z" />
     </div>
     <div class="pane-row">
-      <label for="z-range-min">Range:</label>
+      <label for="{uid}-z-range-min">Range:</label>
       <input
-        id="z-range-min"
+        id="{uid}-z-range-min"
         type="number"
         step="any"
         value={z_axis.range?.[0] ?? auto_z_range[0]}
@@ -224,7 +227,7 @@
       />
       <span>to</span>
       <input
-        id="z-range-max"
+        id="{uid}-z-range-max"
         type="number"
         step="any"
         value={z_axis.range?.[1] ?? auto_z_range[1]}

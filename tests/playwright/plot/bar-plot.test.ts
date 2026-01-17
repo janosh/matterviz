@@ -244,7 +244,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const pane = section.locator(`.draggable-pane`)
     await expect(pane).toBeVisible()
 
-    const select = pane.locator(`#orientation-select`)
+    const select = pane.getByRole(`combobox`).first()
     await expect(select).toBeVisible()
     await select.selectOption(`horizontal`)
     // After change, majority of bars should be horizontal

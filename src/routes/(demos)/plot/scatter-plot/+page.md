@@ -2571,8 +2571,6 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
 
 ## Interactive Axis Labels with Lazy Data Loading
 
-This demo showcases **interactive axis labels** with lazy data loading. Features:
-
 - **240 data points** (80 per material class) to test rendering performance
 - **6 switchable properties** on each axis with realistic correlations
 - **Multi-series support** with 3 material classes (Metals, Ceramics, Polymers)
@@ -2634,14 +2632,22 @@ This demo showcases **interactive axis labels** with lazy data loading. Features
   const n_points = 80
   const all_data = generate_property_data(n_points, 42)
 
-  // Property definitions with realistic units
+  // Property definitions with HTML sub/superscripts
   const properties = {
-    density: { label: `Density`, unit: `g/cm³`, scale: `linear` },
-    bandgap: { label: `Band Gap`, unit: `eV`, scale: `linear` },
-    conductivity: { label: `Conductivity`, unit: `S/m`, scale: `log` },
-    formation_energy: { label: `Formation Energy`, unit: `eV/atom`, scale: `linear` },
-    bulk_modulus: { label: `Bulk Modulus`, unit: `GPa`, scale: `linear` },
-    thermal_expansion: { label: `Thermal Exp.`, unit: `ppm/K`, scale: `linear` },
+    density: { label: `Density ρ`, unit: `g·cm<sup>−3</sup>`, scale: `linear` },
+    bandgap: { label: `Band Gap E<sub>gap</sub>`, unit: `eV`, scale: `linear` },
+    conductivity: { label: `Conductivity σ`, unit: `S·m<sup>−1</sup>`, scale: `log` },
+    formation_energy: {
+      label: `Formation Energy E<sub>form</sub>`,
+      unit: `eV/atom`,
+      scale: `linear`,
+    },
+    bulk_modulus: { label: `Bulk Modulus K`, unit: `GPa`, scale: `linear` },
+    thermal_expansion: {
+      label: `Thermal Expansion α<sub>th</sub>`,
+      unit: `10<sup>−6</sup> K<sup>−1</sup>`,
+      scale: `linear`,
+    },
   }
 
   // Series colors
@@ -2816,14 +2822,17 @@ All changes trigger lazy data loading with simulated network delays.
   const n_points = 150
   const all_data = generate_data(n_points, 12345)
 
-  // Property definitions
+  // Property definitions with HTML sub/superscripts
   const properties = {
-    density: { label: `Density`, unit: `g/cm³` },
-    volume: { label: `Volume`, unit: `Å³/atom` },
-    formation_energy: { label: `Formation Energy`, unit: `eV/atom` },
-    bandgap: { label: `Band Gap`, unit: `eV` },
-    bulk_modulus: { label: `Bulk Modulus`, unit: `GPa` },
-    thermal_cond: { label: `Thermal Cond.`, unit: `W/mK` },
+    density: { label: `Density ρ`, unit: `g·cm<sup>−3</sup>` },
+    volume: { label: `Volume V`, unit: `Å<sup>3</sup>/atom` },
+    formation_energy: { label: `Formation Energy E<sub>form</sub>`, unit: `eV/atom` },
+    bandgap: { label: `Band Gap E<sub>gap</sub>`, unit: `eV` },
+    bulk_modulus: { label: `Bulk Modulus K`, unit: `GPa` },
+    thermal_cond: {
+      label: `Thermal Cond. κ`,
+      unit: `W·m<sup>−1</sup>·K<sup>−1</sup>`,
+    },
   }
 
   // Color scale options for ColorBar dropdown
