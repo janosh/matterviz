@@ -1,5 +1,8 @@
 name: Dash Extension Tests
 
+permissions:
+  contents: write
+
 on:
   pull_request:
     branches: [main]
@@ -23,6 +26,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -51,9 +57,9 @@ jobs:
       - name: Sync typed wrappers
         run: python scripts/sync_typed_wrappers.py --matterviz-dist ../../dist
 
-      # Auto-commit typed.py if it changed
+      # Auto-commit typed.py if it changed (skip for fork PRs - no write access)
       - name: Commit typed.py changes
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: |
           cd ../..
           if git diff --quiet extensions/dash/matterviz_dash_components/typed.py; then
@@ -61,11 +67,9 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git fetch origin ${{ github.head_ref }}
-            git checkout ${{ github.head_ref }}
             git add extensions/dash/matterviz_dash_components/typed.py
             git commit -m "Auto-sync typed.py from component_manifest.toml"
-            git push origin ${{ github.head_ref }}
+            git push
           fi
 
       # Build the JS bundle (required for component tests)
