@@ -179,142 +179,134 @@
 <main class="demo-container full-bleed">
   <h1>Convex Hulls</h1>
 
-  {#if loaded_data.size > 0}
-    <h2>Ternary Chemical Systems</h2>
-    <p class="section-description">
-      3D ternary convex hulls show composition on an equilateral triangle base with
-      formation energy as the z-axis. Convex hull faces are rendered between stable
-      points.
-    </p>
-    <div class="ternary-grid">
-      {#each [
+  <h2>Ternary Chemical Systems</h2>
+  <p class="section-description">
+    3D ternary convex hulls show composition on an equilateral triangle base with
+    formation energy as the z-axis. Convex hull faces are rendered between stable points.
+  </p>
+  <div class="ternary-grid">
+    {#each [
         { title: `Na-Fe-O`, entries: na_fe_o_entries },
         { title: `Li-Co-O`, entries: li_co_ni_o_data },
       ] as
-        { title, entries }
-        (title)
-      }
-        <ConvexHull3D {entries} controls={{ title }} />
-      {/each}
-    </div>
+      { title, entries }
+      (title)
+    }
+      <ConvexHull3D {entries} controls={{ title }} />
+    {/each}
+  </div>
 
-    <h2>Quaternary Chemical Systems</h2>
-    <p class="section-description">
-      4D quaternary convex hulls project tetrahedral composition coordinates into 3D
-      space. Each point represents a compound with its stability indicated by color.
-    </p>
-    <div class="quaternary-grid">
-      {#each [...loaded_data.entries()] as [path, data] (path)}
-        {@const title = (path as string).split(`/`).pop()?.split(`.`).shift()?.replace(
+  <h2>Quaternary Chemical Systems</h2>
+  <p class="section-description">
+    4D quaternary convex hulls project tetrahedral composition coordinates into 3D space.
+    Each point represents a compound with its stability indicated by color.
+  </p>
+  <div class="quaternary-grid">
+    {#each [...loaded_data.entries()] as [path, data] (path)}
+      {@const title = (path as string).split(`/`).pop()?.split(`.`).shift()?.replace(
         `.json`,
         ``,
       )}
-        <ConvexHull4D
-          entries={(entries_map.get(path as string) as PhaseData[] | undefined) ||
-          (data as PhaseData[])}
-          controls={{ title }}
-          on_file_drop={handle_file_drop(path as string)}
-        />
-      {/each}
-    </div>
+      <ConvexHull4D
+        entries={(entries_map.get(path as string) as PhaseData[] | undefined) ||
+        (data as PhaseData[])}
+        controls={{ title }}
+        on_file_drop={handle_file_drop(path as string)}
+      />
+    {/each}
+  </div>
 
-    <h2>Binary Chemical Systems</h2>
-    <p class="section-description">
-      2D binary convex hulls show formation energy versus composition. Stable phases lie
-      on the convex hull.
-    </p>
-    <div class="binary-grid">
-      {#each binary_examples as { title, entries } (title)}
-        <ConvexHull2D {entries} controls={{ title }} style="height: 500px" />
-      {/each}
-    </div>
+  <h2>Binary Chemical Systems</h2>
+  <p class="section-description">
+    2D binary convex hulls show formation energy versus composition. Stable phases lie on
+    the convex hull.
+  </p>
+  <div class="binary-grid">
+    {#each binary_examples as { title, entries } (title)}
+      <ConvexHull2D {entries} controls={{ title }} style="height: 500px" />
+    {/each}
+  </div>
 
-    <h2>3D Convex Hull with Statistics</h2>
-    <p class="section-description">
-      Example of a 3D ternary convex hull displayed alongside its computed statistics. The
-      stats are bound to the diagram and update automatically when the data changes.
-    </p>
-    <div class="stats-example-grid">
+  <h2>3D Convex Hull with Statistics</h2>
+  <p class="section-description">
+    Example of a 3D ternary convex hull displayed alongside its computed statistics. The
+    stats are bound to the diagram and update automatically when the data changes.
+  </p>
+  <div class="stats-example-grid">
+    <ConvexHull3D
+      entries={na_fe_o_entries}
+      controls={{ title: `Na-Fe-O with Stats` }}
+      bind:phase_stats
+      bind:stable_entries
+      bind:unstable_entries
+      bind:max_hull_dist_show_phases
+      style="height: 100%"
+    />
+    {#if phase_stats}
+      <ConvexHullStats {phase_stats} {stable_entries} {unstable_entries} />
+    {/if}
+  </div>
+
+  <h2>Highlighted Entries</h2>
+  <p class="section-description">
+    Highlight specific entries with customizable visual effects. Hover over highlighted
+    entries to see the "★ Highlighted" badge in the tooltip.
+  </p>
+  <div class="highlight-grid">
+    <ConvexHull2D
+      entries={binary_examples[1]?.entries ?? []}
+      controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
+      highlighted_entries={highlighted_fe_o}
+      highlight_style={{ effect: `pulse`, color: `#22cc88`, size_multiplier: 2.5, pulse_speed: 4 }}
+    />
+    <ConvexHull3D
+      entries={na_fe_o_entries}
+      controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
+      highlighted_entries={highlighted_na_fe_o}
+      highlight_style={{ effect: `pulse`, color: `#ff3333`, size_multiplier: 2, pulse_speed: 3 }}
+    />
+    <ConvexHull4D
+      entries={li_co_ni_o_quaternary}
+      controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
+      highlighted_entries={highlighted_li_co_ni_o}
+      highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2 }}
+    />
+  </div>
+
+  <h2>Marker Symbols</h2>
+  <p class="section-description">
+    Customize marker shapes to distinguish different entry types. Click an entry to select
+    it (shown as ★). Stable phases use ◆, high-energy phases use △, medium-energy use +.
+  </p>
+  <div class="ternary-grid">
+    <div>
+      <div class="marker-legend">
+        <span>★ Selected</span>
+        <span>◆ Stable</span>
+        <span>△ High E<sub>hull</sub></span>
+        <span>+ Medium E<sub>hull</sub></span>
+        <span>● Default</span>
+      </div>
       <ConvexHull3D
-        entries={na_fe_o_entries}
-        controls={{ title: `Na-Fe-O with Stats` }}
-        bind:phase_stats
-        bind:stable_entries
-        bind:unstable_entries
-        bind:max_hull_dist_show_phases
+        entries={marker_demo_entries}
+        controls={{ title: `Na-Fe-O with Markers` }}
+        bind:selected_entry={selected_marker_entry}
+      />
+    </div>
+    <div>
+      <div class="marker-legend">
+        <span>★ Selected</span>
+        <span>■ Stable</span>
+        <span>● Default</span>
+      </div>
+      <ConvexHull2D
+        entries={binary_marker_entries}
+        controls={{ title: `Na-O with Markers` }}
+        bind:selected_entry={selected_binary_entry}
         style="height: 100%"
       />
-      {#if phase_stats}
-        <ConvexHullStats {phase_stats} {stable_entries} {unstable_entries} />
-      {/if}
     </div>
-
-    <h2>Highlighted Entries</h2>
-    <p class="section-description">
-      Highlight specific entries with customizable visual effects. Hover over highlighted
-      entries to see the "★ Highlighted" badge in the tooltip.
-    </p>
-    <div class="highlight-grid">
-      <ConvexHull2D
-        entries={binary_examples[1]?.entries ?? []}
-        controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
-        highlighted_entries={highlighted_fe_o}
-        highlight_style={{ effect: `pulse`, color: `#22cc88`, size_multiplier: 2.5, pulse_speed: 4 }}
-      />
-      <ConvexHull3D
-        entries={na_fe_o_entries}
-        controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
-        highlighted_entries={highlighted_na_fe_o}
-        highlight_style={{ effect: `pulse`, color: `#ff3333`, size_multiplier: 2, pulse_speed: 3 }}
-      />
-      <ConvexHull4D
-        entries={li_co_ni_o_quaternary}
-        controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
-        highlighted_entries={highlighted_li_co_ni_o}
-        highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2 }}
-      />
-    </div>
-
-    <h2>Marker Symbols</h2>
-    <p class="section-description">
-      Customize marker shapes to distinguish different entry types. Click an entry to
-      select it (shown as ★). Stable phases use ◆, high-energy phases use △, medium-energy
-      use +.
-    </p>
-    <div class="ternary-grid">
-      <div>
-        <div class="marker-legend">
-          <span>★ Selected</span>
-          <span>◆ Stable</span>
-          <span>△ High E<sub>hull</sub></span>
-          <span>+ Medium E<sub>hull</sub></span>
-          <span>● Default</span>
-        </div>
-        <ConvexHull3D
-          entries={marker_demo_entries}
-          controls={{ title: `Na-Fe-O with Markers` }}
-          bind:selected_entry={selected_marker_entry}
-        />
-      </div>
-      <div>
-        <div class="marker-legend">
-          <span>★ Selected</span>
-          <span>■ Stable</span>
-          <span>● Default</span>
-        </div>
-        <ConvexHull2D
-          entries={binary_marker_entries}
-          controls={{ title: `Na-O with Markers` }}
-          bind:selected_entry={selected_binary_entry}
-          style="height: 100%"
-        />
-      </div>
-    </div>
-  {:else}
-    <div class="loading-state">
-      <p>Loading convex hulls...</p>
-    </div>
-  {/if}
+  </div>
 
   <p class="section-description">
     <strong>Note:</strong> If pure element references are missing from the data, they are
@@ -365,13 +357,6 @@
     width: 100%;
     margin: 2rem auto 0 auto;
     align-items: start;
-  }
-  .loading-state {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 200px;
-    color: var(--text-color-muted);
   }
   .marker-legend {
     display: flex;

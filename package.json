@@ -68,12 +68,9 @@
     "eslint": "^9.39.2",
     "eslint-plugin-svelte": "^3.14.0",
     "happy-dom": "^20.3.1",
-    "hastscript": "^9.0.1",
     "mdsvex": "^0.12.6",
     "mdsvexamples": "^0.5.1",
-    "rehype-autolink-headings": "^7.1.0",
     "rehype-katex": "^7.0.1",
-    "rehype-slug": "^6.0.0",
     "remark-math": "3.0.1",
     "svelte-check": "^4.3.5",
     "svelte-check-rs": "^0.6.8",
@@ -217,6 +214,9 @@
   "pnpm": {
     "allowBuilds": [
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "svelte-multiselect": "link:../svelte-multiselect"
+    }
   }
 }
