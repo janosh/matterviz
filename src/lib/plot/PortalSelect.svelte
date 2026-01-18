@@ -38,8 +38,23 @@
   function update_position() {
     if (!trigger_el || !portal_el) return
     const rect = trigger_el.getBoundingClientRect()
-    portal_el.style.top = `${rect.bottom + 4}px`
-    portal_el.style.left = `${rect.left + rect.width / 2}px`
+    const dropdown_rect = portal_el.getBoundingClientRect()
+    const gap = 4
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+
+    // Vertical: prefer below, flip above if no room
+    const below_y = rect.bottom + gap
+    const above_y = rect.top - gap - dropdown_rect.height
+    const fits_below = below_y + dropdown_rect.height <= vh
+    portal_el.style.top = `${fits_below ? below_y : Math.max(gap, above_y)}px`
+
+    // Horizontal: center, but clamp to viewport edges
+    const center_x = rect.left + rect.width / 2
+    const half_width = dropdown_rect.width / 2
+    const min_x = half_width + gap
+    const max_x = vw - half_width - gap
+    portal_el.style.left = `${Math.max(min_x, Math.min(max_x, center_x))}px`
   }
 
   // Inline styles for portal elements (can't use scoped CSS for elements in document.body)

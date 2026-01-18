@@ -359,7 +359,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   ]
   marker_test_cases.forEach(({ id, expected_markers, has_line }) => {
     test(`renders marker type ${id} correctly`, async ({ page }) => {
-      const section = page.locator(`#marker-types`)
+      const section = page.locator(`section#marker-types`)
       await expect(section).toBeVisible()
 
       const plot = section.locator(`${id}`)
@@ -1135,7 +1135,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   test(`legend line color reflects color scale for color-mapped series`, async ({ page }) => {
     // Test with color-mapped series that has lines but no explicit line stroke
-    const section = page.locator(`#color-mapped-line-legend-test`)
+    const section = page.locator(`section#color-mapped-line-legend-test`)
     await expect(section).toBeVisible()
 
     const plot_locator = section.locator(`.scatter`)
