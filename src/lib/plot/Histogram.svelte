@@ -143,17 +143,21 @@
 
   // Local state for controls (initialized from props, owned by this component)
   // Include key AXIS_DEFAULTS props (range, ticks, scale_type) that PlotControls needs
+  // Using $state because these have bindings in HistogramControls/PlotControls
+  // untrack() explicitly captures initial prop values (intentional - props provide initial config)
   const { format: _, ...axis_state_defaults } = AXIS_DEFAULTS // Exclude format (has component-specific default)
-  let bar = $state({ ...DEFAULTS.histogram.bar, ...bar_init })
-  let x_axis = $state({ ...axis_state_defaults, ...x_axis_init })
-  let y_axis = $state({ ...axis_state_defaults, ...y_axis_init })
+  let bar = $state(untrack(() => ({ ...DEFAULTS.histogram.bar, ...bar_init })))
+  let x_axis = $state(untrack(() => ({ ...axis_state_defaults, ...x_axis_init })))
+  let y_axis = $state(untrack(() => ({ ...axis_state_defaults, ...y_axis_init })))
   // y2-axis needs different default label_shift for right-side positioning
-  let y2_axis = $state({
+  let y2_axis = $state(untrack(() => ({
     ...axis_state_defaults,
     label_shift: { x: 0, y: 60 },
     ...y2_axis_init,
-  })
-  let display = $state({ ...DEFAULTS.histogram.display, ...display_init })
+  })))
+  let display = $state(
+    untrack(() => ({ ...DEFAULTS.histogram.display, ...display_init })),
+  )
 
   // Merge component-specific defaults with local state (format comes from here, not AXIS_DEFAULTS)
   const final_x_axis = $derived({ label: `Value`, format: `.2~s`, ...x_axis })
@@ -324,7 +328,7 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 20, b: 60, l: 60, r: 20 }
-  let pad = $state({ ...default_padding, ...padding })
+  let pad = $derived({ ...default_padding, ...padding })
 
   // Update padding based on tick label widths (untrack breaks circular dependency)
   $effect(() => {
@@ -493,10 +497,11 @@
     return result
   })
 
-  // Tweened legend coordinates for smooth animation
+  // Tweened legend coordinates for smooth animation - create once, update target via effect
+  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
   const tweened_legend_coords = new Tween(
     { x: 0, y: 0 },
-    { duration: 400, ...(legend?.tween ?? {}) },
+    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
   )
 
   // Update legend position with stability checks
@@ -651,12 +656,13 @@
   }
 
   // Create shared handler bound to this component's state
-  const handle_axis_change = create_axis_change_handler(
+  // Using $derived so handler updates when callback props change
+  const handle_axis_change = $derived(create_axis_change_handler(
     axis_state,
     data_loader,
     on_axis_change,
     on_error,
-  )
+  ))
 
   let auto_load_attempted = false // prevent infinite retries on failure
 

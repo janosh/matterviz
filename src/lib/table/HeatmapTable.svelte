@@ -139,7 +139,7 @@
 
   // Search/filter state
   let search_query = $state(``)
-  let search_expanded = $state(search_config?.expanded ?? false)
+  let search_expanded = $derived(search_config?.expanded ?? false)
 
   // Pagination state
   let current_page = $state(1)

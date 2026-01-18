@@ -876,8 +876,7 @@
       opacity: 0;
     }
   }
-  .tooltip-container,
-  .copy-feedback {
+  :is(.tooltip-container, .copy-feedback) {
     position: fixed;
   }
   .tooltip-container {

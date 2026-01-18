@@ -13,8 +13,9 @@ jobs:
   tests:
     uses: janosh/workflows/.github/workflows/deno-test.yml@main
     with:
+      node-version: 22
       test-cmd: npx vitest
-      e2e-install-cmd: npx svelte-kit sync && npx playwright install chromium
+      e2e-install-cmd: NODE_OPTIONS=--experimental-strip-types npx svelte-kit sync && npx playwright install chromium
       e2e-test-cmd: npx playwright test
       deno-version: 2.3.7
       e2e-continue-on-error: false

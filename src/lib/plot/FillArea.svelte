@@ -2,6 +2,7 @@
   // FillArea component for rendering fill-between regions in ScatterPlot
   // Supports gradients, hover/click interactions, and animated path transitions
   import { interpolatePath } from 'd3-interpolate-path'
+  import { untrack } from 'svelte'
   import { Tween } from 'svelte/motion'
   import type {
     FillGradient,
@@ -59,12 +60,16 @@
     region.hover_style?.cursor ?? (on_click ? `pointer` : `default`),
   )
 
-  // Path animation using Tween
-  const tweened_path = new Tween(path, {
-    duration: 300,
-    interpolate: interpolatePath,
-    ...tween_options,
-  })
+  // Path animation using Tween - create once, update target via effect
+  // untrack() explicitly captures initial values (intentional - config set once at mount)
+  const tweened_path = new Tween(
+    untrack(() => path),
+    untrack(() => ({
+      duration: 300,
+      interpolate: interpolatePath,
+      ...tween_options,
+    })),
+  )
 
   $effect.pre(() => {
     tweened_path.target = path

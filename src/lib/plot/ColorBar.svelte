@@ -10,6 +10,7 @@
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { D3InterpolateName } from '../colors'
+  import PortalSelect from './PortalSelect.svelte'
   import { generate_arcsinh_ticks, scale_arcsinh } from './scales'
   import type {
     AxisOption,
@@ -481,17 +482,13 @@
     }
   })
 
-  // Format option for display - takes the option object directly since we iterate over options
-  const format_opt = (opt: { label: string; unit?: string }) =>
-    opt.unit ? `${opt.label} (${opt.unit})` : opt.label
-
-  async function handle_property_change(event: Event) {
-    const new_key = (event.target as HTMLSelectElement).value
-    if (!new_key || new_key === selected_property_key || !data_loader) return
+  async function handle_property_change(new_key: string, prev_key?: string) {
+    if (!data_loader) return
     // Capture all state for full rollback on any error
-    const prev = { title, range, selected_property_key } as const
+    // Note: prev_key comes from PortalSelect since binding updates before callback
+    // prev_key can be undefined if no prior selection - that's a valid rollback state
+    const prev = { title, range, selected_property_key: prev_key } as const
 
-    selected_property_key = new_key
     loading = true
 
     try {
@@ -511,15 +508,14 @@
     }
   }
 
-  function handle_color_scale_change(event: Event) {
-    const new_key = (event.target as HTMLSelectElement).value
-    if (!new_key || new_key === selected_color_scale_key) return
-
-    // Find option first - only update state if option exists to avoid mismatch
+  function handle_color_scale_change(new_key: string, prev_key?: string) {
+    // Find option - rollback binding if not found to keep key and scale in sync
     const opt = color_scale_options?.find((item) => item.key === new_key)
-    if (!opt) return
+    if (!opt) {
+      selected_color_scale_key = prev_key
+      return
+    }
 
-    selected_color_scale_key = new_key
     color_scale = opt.scale
     on_color_scale_change?.(new_key)
   }
@@ -560,17 +556,13 @@
   {#if title || has_any_select}
     <div class="title-row {actual_title_side}" style={actual_title_style}>
       {#if has_property_select && property_options}
-        <select
-          class="property-select"
-          value={selected_property_key ?? property_options[0]?.key ?? ``}
-          onchange={handle_property_change}
+        <PortalSelect
+          options={property_options}
+          bind:selected_key={selected_property_key}
+          on_select={handle_property_change}
           disabled={loading}
-          aria-label="Select property"
-        >
-          {#each property_options as opt (opt.key)}
-            <option value={opt.key}>{format_opt(opt)}</option>
-          {/each}
-        </select>
+          class="property-select"
+        />
         {#if loading}
           <Spinner
             style="--spinner-size: 0.8em; --spinner-border-width: 2px; --spinner-margin: 0"
@@ -581,16 +573,13 @@
         <span class="label">{@html title}</span>
       {/if}
       {#if has_color_scale_select && color_scale_options}
-        <select
+        <PortalSelect
+          options={color_scale_options}
+          bind:selected_key={selected_color_scale_key}
+          on_select={handle_color_scale_change}
+          format_option={(opt) => opt.label}
           class="color-scale-select"
-          value={selected_color_scale_key ?? color_scale_options[0]?.key ?? ``}
-          onchange={handle_color_scale_change}
-          aria-label="Select color scale"
-        >
-          {#each color_scale_options as opt (opt.key)}
-            <option value={opt.key}>{opt.label}</option>
-          {/each}
-        </select>
+        />
       {/if}
     </div>
   {/if}
@@ -706,68 +695,23 @@
     white-space: nowrap;
     width: auto;
   }
-  .title-row.left,
-  .title-row.right {
+  .title-row:is(.left, .right) {
     flex-direction: column;
   }
   /* Rotate only the label element, not the entire row (keeps selects usable) */
-  .title-row.left .label,
-  .title-row.right .label {
+  .title-row:is(.left, .right) .label {
     writing-mode: vertical-lr;
     white-space: nowrap;
   }
   .title-row.left .label {
     transform: rotate(180deg);
   }
-  /* Native select styling */
-  .property-select,
-  .color-scale-select {
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    background: transparent;
-    border: none;
-    border-radius: 3px;
-    padding: 0 12px 0 0;
-    font: inherit;
-    color: inherit;
-    cursor: pointer;
-    text-align: center;
-    text-align-last: center;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0 center;
-    background-size: 8px;
+  /* Style PortalSelect triggers in colorbar context */
+  .title-row :global(:is(.property-select, .color-scale-select)) {
+    padding: 0 4px;
   }
-  .property-select:hover,
-  .color-scale-select:hover {
-    background-color: var(--cbar-select-hover-bg, rgba(128, 128, 128, 0.15));
-  }
-  .property-select:focus,
-  .color-scale-select:focus {
-    outline: 2px solid var(--cbar-select-focus-color, currentColor);
-    outline-offset: 1px;
-  }
-  .property-select:disabled,
-  .color-scale-select:disabled {
+  .title-row.loading :global(.property-select) {
     opacity: 0.6;
-    cursor: not-allowed;
-  }
-  .property-select option,
-  .color-scale-select option {
-    background: var(--cbar-select-option-bg, white);
-    color: var(--cbar-select-option-color, black);
-  }
-  /* Vertical orientation: selects stay horizontal (no transform needed on container) */
-  .title-row.left .property-select,
-  .title-row.left .color-scale-select,
-  .title-row.right .property-select,
-  .title-row.right .color-scale-select {
-    writing-mode: horizontal-tb; /* Ensure horizontal text in dropdowns */
-  }
-  /* Right-align property-select when color-scale-select is also visible */
-  .title-row:has(.color-scale-select) .property-select {
-    text-align: right;
-    text-align-last: right;
+    pointer-events: none;
   }
 </style>
