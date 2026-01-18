@@ -21,7 +21,7 @@
   }: Omit<HTMLButtonAttributes, `onclick`> & {
     options: Option[]
     selected_key?: string
-    on_select?: (key: string, prev_key?: string) => void
+    on_select?: (key: string, prev_key?: string) => void | Promise<void>
     disabled?: boolean
     format_option?: (opt: Option) => string
     class?: string
@@ -144,11 +144,15 @@
     if (return_focus) trigger_el?.focus()
   }
 
-  function select(key: string) {
+  async function select(key: string) {
     if (key !== selected_key) {
       const prev_key = selected_key
-      selected_key = key
-      on_select?.(key, prev_key)
+      selected_key = key // Optimistic update for responsive UI
+      try {
+        await on_select?.(key, prev_key)
+      } catch {
+        selected_key = prev_key // Roll back on error
+      }
     }
     close_dropdown()
   }
