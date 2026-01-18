@@ -14,8 +14,9 @@
   import type { Crystal } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import { optimade_to_crystal } from '$lib/structure/parse'
-  import { tooltip } from 'svelte-multiselect'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { tooltip } from 'svelte-multiselect'
 
   let { structure_id: init_structure_id, selected_provider: init_provider, ...rest }:
     & { structure_id?: string; selected_provider?: string }
@@ -26,8 +27,9 @@
   let struct_error = $state<string | null>(null)
   let available_providers = $state<OptimadeProvider[]>([])
   let providers_error = $state<string | null>(null)
-  let selected_db = $derived(init_provider ?? `mp`)
-  let input_value = $derived(init_structure_id ?? ``)
+  // Using $state with untrack() - these are initialized from props but mutated by user interactions
+  let selected_db = $state(untrack(() => init_provider ?? `mp`))
+  let input_value = $state(untrack(() => init_structure_id ?? ``))
   let suggested_structures = $state<OptimadeStructure[]>([])
   let last_loaded_db = $state<string | null>(null)
   let structure_id = $derived(input_value.trim())
