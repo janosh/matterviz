@@ -165,16 +165,17 @@
     if (!portal_el) return
     const buttons = [...portal_el.querySelectorAll(`button`)] as HTMLButtonElement[]
     const idx = buttons.indexOf(document.activeElement as HTMLButtonElement)
+    const len = buttons.length
 
     if (evt.key === `Escape`) {
       evt.preventDefault()
       close_dropdown()
     } else if (evt.key === `ArrowDown`) {
       evt.preventDefault()
-      buttons[(idx + 1) % buttons.length]?.focus()
+      buttons[(idx + 1) % len]?.focus()
     } else if (evt.key === `ArrowUp`) {
       evt.preventDefault()
-      buttons[(idx - 1 + buttons.length) % buttons.length]?.focus()
+      buttons[idx < 0 ? len - 1 : (idx - 1 + len) % len]?.focus()
     } else if (evt.key === `Enter` && idx >= 0) {
       evt.preventDefault()
       buttons[idx].click()

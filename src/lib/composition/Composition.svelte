@@ -25,8 +25,8 @@
   } = $props()
 
   // Make these reactive so context menu changes propagate
-  let current_color_scheme = $state(color_scheme as ColorSchemeName)
-  let current_mode = $state(mode)
+  let current_color_scheme = $derived(color_scheme as ColorSchemeName)
+  let current_mode = $derived(mode)
   let svg_node = $state<SVGSVGElement | null>(null)
 
   let Component = $derived(

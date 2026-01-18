@@ -42,7 +42,9 @@
     return copy
   }
 
-  const reference_values = deep_copy(current_values) as Record<string, unknown>
+  const reference_values = $derived(
+    deep_copy(current_values) as Record<string, unknown>,
+  )
 
   // Check if any values have changed from reference values
   let has_changes = $derived.by(() => {

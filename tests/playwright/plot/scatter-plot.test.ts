@@ -353,9 +353,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   // Marker and line rendering tests
   const marker_test_cases = [
-    { id: `#points-only`, expected_markers: 10, has_line: false },
-    { id: `#line-only`, expected_markers: 0, has_line: true },
-    { id: `#line-points`, expected_markers: 10, has_line: true },
+    { id: `#plot-points-only`, expected_markers: 10, has_line: false },
+    { id: `#plot-line-only`, expected_markers: 0, has_line: true },
+    { id: `#plot-line-points`, expected_markers: 10, has_line: true },
   ]
   marker_test_cases.forEach(({ id, expected_markers, has_line }) => {
     test(`renders marker type ${id} correctly`, async ({ page }) => {

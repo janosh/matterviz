@@ -50,8 +50,8 @@
     easing: linear,
     interpolate: interpolatePath,
   }
-  const tweened_line = new Tween(``, { ...default_tween, ...line_tween })
-  const tweened_area = new Tween(``, { ...default_tween, ...line_tween })
+  const tweened_line = $derived(new Tween(``, { ...default_tween, ...line_tween }))
+  const tweened_area = $derived(new Tween(``, { ...default_tween, ...line_tween }))
 
   $effect.pre(() => {
     tweened_line.target = line_path

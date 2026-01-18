@@ -57,6 +57,7 @@
     process_prop,
   } from '$lib/plot/data-transform'
   import { AXIS_DEFAULTS } from '$lib/plot/defaults'
+  import { untrack } from 'svelte'
   import {
     create_dimension_tracker,
     create_hover_lock,
@@ -230,14 +231,16 @@
   const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...(y2_axis ?? {}) })
   const final_display = $derived({ ...DEFAULTS.scatter.display, ...(display ?? {}) })
   // Local state for styles (initialized from prop, owned by this component for controls)
-  let styles = $state({
+  // Using $state because styles has bindings in ScatterPlotControls
+  // untrack() explicitly captures initial prop value (intentional - props provide initial config)
+  let styles = $state(untrack(() => ({
     show_points: DEFAULTS.scatter.show_points,
     show_lines: DEFAULTS.scatter.show_lines,
     point: { ...DEFAULTS.scatter.point, ...(styles_init?.point ?? {}) },
     line: { ...DEFAULTS.scatter.line, ...(styles_init?.line ?? {}) },
     ...(styles_init ?? {}),
-  })
-  let controls = $state({ show: true, open: false, ...controls_init })
+  })))
+  let controls = $derived({ show: true, open: false, ...controls_init })
 
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
@@ -334,7 +337,7 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 5, b: 50, l: 50, r: 20 }
-  let pad = $state({ ...default_padding, ...padding })
+  let pad = $derived({ ...default_padding, ...padding })
   // Update padding when format or ticks change, but prevent infinite loop
   $effect(() => {
     const new_pad = width && height && (y_tick_values.length || y2_tick_values.length)
@@ -985,14 +988,18 @@
   })
 
   // Initialize tweened values for color bar position
-  const tweened_colorbar_coords = new Tween({ x: 0, y: 0 }, {
-    duration: 400,
-    ...(color_bar?.tween ?? {}),
-  })
+  const tweened_colorbar_coords = $derived(
+    new Tween({ x: 0, y: 0 }, {
+      duration: 400,
+      ...(color_bar?.tween ?? {}),
+    }),
+  )
   // Initialize tweened values for legend position
-  const tweened_legend_coords = new Tween(
-    { x: 0, y: 0 },
-    { duration: 400, ...(legend?.tween ?? {}) },
+  const tweened_legend_coords = $derived(
+    new Tween(
+      { x: 0, y: 0 },
+      { duration: 400, ...(legend?.tween ?? {}) },
+    ),
   )
 
   // Update placement positions (with animation and stability checks)
@@ -1409,12 +1416,13 @@
   }
 
   // Create shared handler bound to this component's state
-  const handle_axis_change = create_axis_change_handler(
+  // Using $derived so handler updates when callback props change
+  const handle_axis_change = $derived(create_axis_change_handler(
     axis_state,
     data_loader,
     on_axis_change,
     on_error,
-  )
+  ))
 
   let auto_load_attempted = false // prevent infinite retries on failure
 

@@ -44,7 +44,7 @@ export default {
         if (path.startsWith(`/elements/`)) return
 
         // fail the build for other errors
-        throw message
+        throw new Error(message)
       },
     },
   },

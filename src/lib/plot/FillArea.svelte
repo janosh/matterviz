@@ -60,11 +60,13 @@
   )
 
   // Path animation using Tween
-  const tweened_path = new Tween(path, {
-    duration: 300,
-    interpolate: interpolatePath,
-    ...tween_options,
-  })
+  const tweened_path = $derived(
+    new Tween(path, {
+      duration: 300,
+      interpolate: interpolatePath,
+      ...tween_options,
+    }),
+  )
 
   $effect.pre(() => {
     tweened_path.target = path

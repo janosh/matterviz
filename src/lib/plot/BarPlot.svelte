@@ -204,9 +204,9 @@
     on_error?: (error: AxisLoadError) => void
   } = $props()
 
-  // Initialize bar, line, y2_axis with defaults (runs once)
-  bar = { ...DEFAULTS.bar.bar, ...bar }
-  line = { ...DEFAULTS.bar.line, ...line }
+  // Initialize bar, line, y2_axis with defaults - using $derived for reactivity
+  let bar_state = $derived({ ...DEFAULTS.bar.bar, ...bar })
+  let line_state = $derived({ ...DEFAULTS.bar.line, ...line })
   y2_axis = {
     format: ``,
     scale_type: `linear`,
@@ -387,7 +387,7 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 20, b: 60, l: 60, r: 20 }
-  let pad = $state({ ...default_padding, ...padding })
+  let pad = $derived({ ...default_padding, ...padding })
   // Update padding when format or ticks change, but prevent infinite loop
   $effect(() => {
     const new_pad = width && height && ticks.y.length
@@ -587,7 +587,7 @@
       const has_line = series_markers === `line` || series_markers === `line+points`
       const has_points = series_markers === `points` ||
         series_markers === `line+points`
-      const series_color = srs.color ?? (is_line ? line.color : bar.color)
+      const series_color = srs.color ?? (is_line ? line_state.color : bar_state.color)
 
       // Get point style for symbol color (handle array or single object)
       const first_point_style = Array.isArray(srs.point_style)
@@ -718,9 +718,11 @@
   })
 
   // Tweened legend coordinates for smooth animation
-  const tweened_legend_coords = new Tween(
-    { x: 0, y: 0 },
-    { duration: 400, ...(legend?.tween ?? {}) },
+  const tweened_legend_coords = $derived(
+    new Tween(
+      { x: 0, y: 0 },
+      { duration: 400, ...(legend?.tween ?? {}) },
+    ),
   )
 
   // Update legend position with stability checks
@@ -842,12 +844,13 @@
   }
 
   // Create shared handler bound to this component's state
-  const handle_axis_change = create_axis_change_handler(
+  // Using $derived so handler updates when callback props change
+  const handle_axis_change = $derived(create_axis_change_handler(
     axis_state,
     data_loader,
     on_axis_change,
     on_error,
-  )
+  ))
 
   let auto_load_attempted = false // prevent infinite retries on failure
 
@@ -1282,8 +1285,8 @@
             >
               {#if is_line}
                 <!-- Render as line -->
-                {@const color = srs.color ?? line.color ?? `steelblue`}
-                {@const stroke_width = srs.line_style?.stroke_width ?? line.width ?? 2}
+                {@const color = srs.color ?? line_state.color ?? `steelblue`}
+                {@const stroke_width = srs.line_style?.stroke_width ?? line_state.width ?? 2}
                 {@const line_dash = srs.line_style?.line_dash ?? `none`}
                 {@const use_y2 = srs.y_axis === `y2`}
                 {@const y_scale = use_y2 ? scales.y2 : scales.y}
@@ -1466,7 +1469,7 @@
                   {@const base = mode === `stacked`
             ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0)
             : 0}
-                  {@const color = srs.color ?? bar.color ?? `steelblue`}
+                  {@const color = srs.color ?? bar_state.color ?? `steelblue`}
                   {@const bar_width_val = Array.isArray(srs.bar_width)
             ? (srs.bar_width[bar_idx] ?? 0.5)
             : (srs.bar_width ?? 0.5)}
@@ -1506,14 +1509,14 @@
                         rect_y,
                         rect_w,
                         rect_h,
-                        Math.min(bar.border_radius ?? 0, rect_w / 2, rect_h / 2),
+                        Math.min(bar_state.border_radius ?? 0, rect_w / 2, rect_h / 2),
                         is_vertical,
                       )}
                       fill={color}
-                      opacity={mode === `overlay` ? bar.opacity : 1}
-                      stroke={bar.stroke_color}
-                      stroke-opacity={bar.stroke_opacity}
-                      stroke-width={bar.stroke_width}
+                      opacity={mode === `overlay` ? bar_state.opacity : 1}
+                      stroke={bar_state.stroke_color}
+                      stroke-opacity={bar_state.stroke_opacity}
+                      stroke-width={bar_state.stroke_width}
                       role="button"
                       tabindex="0"
                       aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
