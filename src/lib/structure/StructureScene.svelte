@@ -341,7 +341,8 @@
   let camera_near = $derived(Math.max(0.01, structure_size * 0.01))
   let camera_far = $derived(Math.max(1000, structure_size * 100))
 
-  let computed_zoom = $state<number>(initial_zoom)
+  // Using $state because this is mutated in an effect based on viewport/structure size
+  let computed_zoom = $state(untrack(() => initial_zoom))
   $effect(() => {
     if (!(width > 0) || !(height > 0)) return
     const structure_max_dim = Math.max(1, untrack(() => structure_size))

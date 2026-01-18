@@ -101,10 +101,13 @@ blockquote p:last-child {
 :where(h1, h2, h3, h4, h5, h6) {
   scroll-margin-top: 100px;
 }
+:where(h1, h2, h3, h4, h5, h6):target {
+  color: var(--accent-color, cornflowerblue);
+}
 body main > :where(h1, h2, h3, h4, h5, h6) {
   text-align: center;
 }
-/* style heading anchors added by rehype-autolink-headings, see svelte.config.js */
+/* style heading anchors added by heading_anchors attachment from svelte-multiselect */
 :where(h2, h3, h4, h5, h6) a[aria-hidden='true'] {
   transition: 0.3s;
   margin-left: 4pt;

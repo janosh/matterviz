@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
+  import { untrack } from 'svelte'
   import { ContextMenu } from '$lib/overlays'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import type { SVGAttributes } from 'svelte/elements'
@@ -24,9 +25,9 @@
     interactive?: boolean
   } = $props()
 
-  // Make these reactive so context menu changes propagate
-  let current_color_scheme = $state(color_scheme as ColorSchemeName)
-  let current_mode = $state(mode)
+  // Using $state with untrack() - initialized from props but mutated by context menu
+  let current_color_scheme = $state(untrack(() => color_scheme as ColorSchemeName))
+  let current_mode = $state(untrack(() => mode))
   let svg_node = $state<SVGSVGElement | null>(null)
 
   let Component = $derived(

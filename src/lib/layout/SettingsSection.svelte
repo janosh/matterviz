@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
   import type { Snippet } from 'svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -42,7 +43,10 @@
     return copy
   }
 
-  const reference_values = deep_copy(current_values) as Record<string, unknown>
+  // Capture initial values once at mount - must NOT be $derived or it tracks changes
+  const reference_values = untrack(() =>
+    deep_copy(current_values) as Record<string, unknown>
+  )
 
   // Check if any values have changed from reference values
   let has_changes = $derived.by(() => {

@@ -174,18 +174,18 @@
 
   // Local state for controls (initialized from props, owned by this component)
   const axis_defaults = { format: `.3~g`, scale_type: `linear` as const }
-  let x_axis = $state({ label: `X`, ...axis_defaults, ...x_axis_init })
-  let y_axis = $state({ label: `Y`, ...axis_defaults, ...y_axis_init })
-  let z_axis = $state({ label: `Z`, ...axis_defaults, ...z_axis_init })
-  let display = $state({
+  let x_axis = $derived({ label: `X`, ...axis_defaults, ...x_axis_init })
+  let y_axis = $derived({ label: `Y`, ...axis_defaults, ...y_axis_init })
+  let z_axis = $derived({ label: `Z`, ...axis_defaults, ...z_axis_init })
+  let display = $derived({
     show_axes: true,
     show_grid: true,
     show_axis_labels: true,
     ...display_init,
   })
-  let camera_projection = $state(camera_projection_init)
-  let auto_rotate = $state(auto_rotate_init)
-  let controls = $state({ show: true, open: false, ...controls_init })
+  let camera_projection = $derived(camera_projection_init)
+  let auto_rotate = $derived(auto_rotate_init)
+  let controls = $derived({ show: true, open: false, ...controls_init })
 
   // Normalize color_scale to always be an object
   let normalized_color_scale = $derived(

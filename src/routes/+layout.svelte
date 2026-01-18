@@ -13,6 +13,7 @@
   import type { Snippet } from 'svelte'
   import { CmdPalette, CopyButton, GitHubCorner, Nav } from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
+  import { heading_anchors } from 'svelte-multiselect/heading-anchors'
 
   let { children }: { children?: Snippet<[]> } = $props()
 
@@ -102,7 +103,7 @@
   </button>
 </Nav>
 
-<main>
+<main {@attach heading_anchors()}>
   {@render children?.()}
 </main>
 

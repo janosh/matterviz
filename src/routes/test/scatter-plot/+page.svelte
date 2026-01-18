@@ -583,21 +583,21 @@
   <h2>Marker Types</h2>
   <h3>Points Only</h3>
   <ScatterPlot
-    id="points-only"
+    id="plot-points-only"
     series={[{ ...points_data, markers: `points` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis (Points)` }}
   />
   <h3>Line Only</h3>
   <ScatterPlot
-    id="line-only"
+    id="plot-line-only"
     series={[{ ...line_data, markers: `line` }]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis (Line)` }}
   />
   <h3>Line + Points</h3>
   <ScatterPlot
-    id="line-points"
+    id="plot-line-points"
     series={[line_points_data]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis (Line+Points)` }}

@@ -842,8 +842,7 @@
 {/if}
 
 <style>
-  .axis-label,
-  .tick-label {
+  :is(.axis-label, .tick-label) {
     pointer-events: none;
     user-select: none;
     white-space: nowrap;
