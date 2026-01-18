@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@spglib/moyo-wasm": "^0.7.4",
-    "@sveltejs/kit": "^2.49.5",
+    "@sveltejs/kit": "^2.50.0",
     "@threlte/core": "^8.3.1",
     "@threlte/extras": "^9.7.1",
     "@types/d3-force": "^3.0.10",
@@ -43,8 +43,8 @@
     "h5wasm": "^0.8.11",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.1.1",
-    "svelte": "5.46.4",
-    "svelte-multiselect": "^11.5.1",
+    "svelte": "5.47.0",
+    "svelte-multiselect": "^11.5.2",
     "three": "^0.182.0"
   },
   "devDependencies": {
@@ -68,12 +68,9 @@
     "eslint": "^9.39.2",
     "eslint-plugin-svelte": "^3.14.0",
     "happy-dom": "^20.3.1",
-    "hastscript": "^9.0.1",
     "mdsvex": "^0.12.6",
     "mdsvexamples": "^0.5.1",
-    "rehype-autolink-headings": "^7.1.0",
     "rehype-katex": "^7.0.1",
-    "rehype-slug": "^6.0.0",
     "remark-math": "3.0.1",
     "svelte-check": "^4.3.5",
     "svelte-check-rs": "^0.6.8",

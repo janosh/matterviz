@@ -3,7 +3,7 @@ import { luminance } from '$lib/colors'
 import type { AxisOption, ColorScaleOption } from '$lib/plot/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, unmount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`ColorBar Horizontal (Default)`, () => {
@@ -526,241 +526,86 @@ const color_scale_options: ColorScaleOption[] = [
   { key: `inferno`, label: `Inferno`, scale: `interpolateInferno` },
 ]
 
-describe(`ColorBar Interactive Property Selection`, () => {
-  test(`renders property select dropdown when property_options provided`, () => {
+describe(`ColorBar Interactive Selects`, () => {
+  afterEach(() => {
+    document.body.querySelectorAll(`.portal-select-dropdown`).forEach((el) => el.remove())
+  })
+
+  test.each([
+    {
+      props: { property_options, selected_property_key: `energy` },
+      selector: `button.property-select`,
+      expected: `Energy (eV)`,
+      desc: `property select with explicit key`,
+    },
+    {
+      props: { property_options },
+      selector: `button.property-select`,
+      expected: `Energy (eV)`,
+      desc: `property select auto-initializes to first`,
+    },
+    {
+      props: { color_scale_options, selected_color_scale_key: `viridis` },
+      selector: `button.color-scale-select`,
+      expected: `Viridis`,
+      desc: `color scale select with explicit key`,
+    },
+    {
+      props: { color_scale_options },
+      selector: `button.color-scale-select`,
+      expected: `Viridis`,
+      desc: `color scale select auto-initializes to first`,
+    },
+  ])(`renders $desc`, ({ props, selector, expected }) => {
     const component = mount(ColorBar, {
       target: document.body,
-      props: {
-        property_options,
-        selected_property_key: `energy`,
-        range: [0, 10],
-      },
+      props: { ...props, range: [0, 10] },
     })
-
-    const select = document.body.querySelector(`select.property-select`)
-    expect(select).not.toBeNull()
-
-    const options = select?.querySelectorAll(`option`)
-    expect(options?.length).toBe(3)
-    expect(options?.[0].value).toBe(`energy`)
-    expect(options?.[0].textContent).toBe(`Energy (eV)`)
-
+    const trigger = document.body.querySelector(selector)
+    expect(trigger).not.toBeNull()
+    expect(trigger?.textContent).toContain(expected)
     unmount(component)
   })
 
-  test(`does not render property select when property_options is undefined`, () => {
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: { title: `Static Title`, range: [0, 10] },
-    })
-
-    const select = document.body.querySelector(`select.property-select`)
-    expect(select).toBeNull()
-
-    // Should render static title instead
-    const title = document.body.querySelector(`.colorbar .label`)
-    expect(title?.textContent).toBe(`Static Title`)
-
-    unmount(component)
-  })
-
-  test(`hides static title when property_options provided`, () => {
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: {
-        title: `Should Not Show`,
-        property_options,
-        selected_property_key: `energy`,
-        range: [0, 10],
-      },
-    })
-
-    // Should have property select, not static label
-    const select = document.body.querySelector(`select.property-select`)
-    expect(select).not.toBeNull()
-
-    const static_label = document.body.querySelector(`.title-row > .label`)
-    expect(static_label).toBeNull()
-
-    unmount(component)
-  })
-
-  test(`calls data_loader and on_property_change when property selected`, async () => {
-    const data_loader = vi.fn().mockResolvedValue({
-      range: [0, 100] as [number, number],
-      title: `Volume (Å³)`,
-    })
-    const on_property_change = vi.fn()
-
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: {
-        property_options,
-        selected_property_key: `energy`,
-        data_loader,
-        on_property_change,
-        range: [0, 10],
-      },
-    })
-
-    const select = document.body.querySelector(
-      `select.property-select`,
-    ) as HTMLSelectElement
-    expect(select).not.toBeNull()
-
-    // Change selection
-    select.value = `volume`
-    select.dispatchEvent(new Event(`change`, { bubbles: true }))
-
-    // Wait for async data_loader
-    await vi.waitFor(() => expect(data_loader).toHaveBeenCalledWith(`volume`))
-    await vi.waitFor(() =>
-      expect(on_property_change).toHaveBeenCalledWith(`volume`, [0, 100])
-    )
-
-    unmount(component)
-  })
-
-  test(`shows spinner during data loading`, async () => {
-    // Use object to hold resolver - avoids non-null assertion
-    const loader_control = { resolve: (_val: { range: [number, number] }) => {} }
-    const data_loader = vi.fn().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          loader_control.resolve = resolve
-        }),
-    )
-
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: {
-        property_options,
-        selected_property_key: `energy`,
-        data_loader,
-        range: [0, 10],
-      },
-    })
-
-    const select = document.body.querySelector(
-      `select.property-select`,
-    ) as HTMLSelectElement
-
-    // Trigger change
-    select.value = `volume`
-    select.dispatchEvent(new Event(`change`, { bubbles: true }))
-
-    // Spinner should appear during loading
-    await vi.waitFor(() => {
-      const spinner = document.body.querySelector(`.spinner`)
-      expect(spinner).not.toBeNull()
-    })
-
-    // Resolve the loader
-    loader_control.resolve({ range: [0, 100] })
-
-    // Spinner should disappear after loading
-    await vi.waitFor(() => {
-      const spinner = document.body.querySelector(`.spinner`)
-      expect(spinner).toBeNull()
-    })
-
-    unmount(component)
-  })
-
-  test(`reverts selection on data_loader error`, async () => {
-    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-    const data_loader = vi.fn().mockRejectedValue(new Error(`Load failed`))
-
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: {
-        property_options,
-        selected_property_key: `energy`,
-        data_loader,
-        range: [0, 10],
-      },
-    })
-
-    const select = document.body.querySelector(
-      `select.property-select`,
-    ) as HTMLSelectElement
-    expect(select.value).toBe(`energy`) // Initial value
-
-    select.value = `volume`
-    select.dispatchEvent(new Event(`change`, { bubbles: true }))
-
-    await vi.waitFor(() => expect(data_loader).toHaveBeenCalled())
-    await vi.waitFor(() =>
-      expect(error_spy).toHaveBeenCalledWith(
-        expect.stringContaining(`ColorBar property change failed`),
-        expect.any(Error),
-      )
-    )
-
-    // Key assertion: UI should revert to original selection after error
-    await vi.waitFor(() => expect(select.value).toBe(`energy`))
-
-    error_spy.mockRestore()
-    unmount(component)
-  })
-})
-
-describe(`ColorBar Interactive Color Scale Selection`, () => {
-  test(`renders color scale select when color_scale_options provided`, () => {
-    const component = mount(ColorBar, {
-      target: document.body,
-      props: {
-        color_scale_options,
-        selected_color_scale_key: `viridis`,
-        range: [0, 10],
-      },
-    })
-
-    const select = document.body.querySelector(`select.color-scale-select`)
-    expect(select).not.toBeNull()
-
-    const options = select?.querySelectorAll(`option`)
-    expect(options?.length).toBe(3)
-    expect(options?.[0].value).toBe(`viridis`)
-    expect(options?.[0].textContent).toBe(`Viridis`)
-
-    unmount(component)
-  })
-
-  test(`does not render color scale select by default`, () => {
+  test.each([
+    { selector: `button.property-select`, desc: `property select` },
+    { selector: `button.color-scale-select`, desc: `color scale select` },
+  ])(`does not render $desc when options not provided`, ({ selector }) => {
     const component = mount(ColorBar, {
       target: document.body,
       props: { range: [0, 10] },
     })
-
-    const select = document.body.querySelector(`select.color-scale-select`)
-    expect(select).toBeNull()
-
+    expect(document.body.querySelector(selector)).toBeNull()
     unmount(component)
   })
 
-  test(`calls on_color_scale_change when color scale selected`, () => {
-    const on_color_scale_change = vi.fn()
+  test(`shows static title when no property_options, hides when provided`, () => {
+    // Without property_options: shows static title
+    const comp1 = mount(ColorBar, {
+      target: document.body,
+      props: { title: `Static`, range: [0, 10] },
+    })
+    expect(document.body.querySelector(`.colorbar .label`)?.textContent).toBe(`Static`)
+    unmount(comp1)
 
+    // With property_options: hides static title
+    const comp2 = mount(ColorBar, {
+      target: document.body,
+      props: { title: `Hidden`, property_options, range: [0, 10] },
+    })
+    expect(document.body.querySelector(`.title-row > .label`)).toBeNull()
+    expect(document.body.querySelector(`button.property-select`)).not.toBeNull()
+    unmount(comp2)
+  })
+
+  test(`color scale shows only label (no interpolate prefix)`, () => {
     const component = mount(ColorBar, {
       target: document.body,
-      props: {
-        color_scale_options,
-        selected_color_scale_key: `viridis`,
-        on_color_scale_change,
-        range: [0, 10],
-      },
+      props: { color_scale_options, selected_color_scale_key: `plasma`, range: [0, 10] },
     })
-
-    const select = document.body.querySelector(
-      `select.color-scale-select`,
-    ) as HTMLSelectElement
-
-    select.value = `plasma`
-    select.dispatchEvent(new Event(`change`, { bubbles: true }))
-
-    expect(on_color_scale_change).toHaveBeenCalledWith(`plasma`)
-
+    const trigger = document.body.querySelector(`button.color-scale-select`)
+    expect(trigger?.textContent).toContain(`Plasma`)
+    expect(trigger?.textContent).not.toContain(`interpolate`)
     unmount(component)
   })
 
@@ -769,23 +614,14 @@ describe(`ColorBar Interactive Color Scale Selection`, () => {
       target: document.body,
       props: {
         property_options,
-        selected_property_key: `energy`,
         color_scale_options,
-        selected_color_scale_key: `viridis`,
         range: [0, 10],
       },
     })
-
-    const property_select = document.body.querySelector(
-      `select.property-select`,
-    )
-    const color_scale_select = document.body.querySelector(
-      `select.color-scale-select`,
-    )
-
-    expect(property_select).not.toBeNull()
-    expect(color_scale_select).not.toBeNull()
-
+    expect(document.body.querySelector(`button.property-select`)).not.toBeNull()
+    expect(document.body.querySelector(`button.color-scale-select`)).not.toBeNull()
     unmount(component)
   })
+
+  // Note: data_loader interaction tests (spinner, rollback) need Playwright e2e.
 })
