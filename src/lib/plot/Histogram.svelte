@@ -497,12 +497,11 @@
     return result
   })
 
-  // Tweened legend coordinates for smooth animation
-  const tweened_legend_coords = $derived(
-    new Tween(
-      { x: 0, y: 0 },
-      { duration: 400, ...(legend?.tween ?? {}) },
-    ),
+  // Tweened legend coordinates for smooth animation - create once, update target via effect
+  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
+  const tweened_legend_coords = new Tween(
+    { x: 0, y: 0 },
+    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
   )
 
   // Update legend position with stability checks

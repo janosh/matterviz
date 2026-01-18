@@ -48,8 +48,4 @@ export default {
       },
     },
   },
-
-  compilerOptions: { // TODO maybe remove in future
-    warningFilter: (warning) => warning.code !== `state_referenced_locally`,
-  },
 } satisfies Config

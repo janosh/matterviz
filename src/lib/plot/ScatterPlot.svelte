@@ -987,19 +987,16 @@
     return legend_placement
   })
 
-  // Initialize tweened values for color bar position
-  const tweened_colorbar_coords = $derived(
-    new Tween({ x: 0, y: 0 }, {
-      duration: 400,
-      ...(color_bar?.tween ?? {}),
-    }),
+  // Initialize tweened values for color bar position - create once, update target via effect
+  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
+  const tweened_colorbar_coords = new Tween(
+    { x: 0, y: 0 },
+    untrack(() => ({ duration: 400, ...(color_bar?.tween ?? {}) })),
   )
-  // Initialize tweened values for legend position
-  const tweened_legend_coords = $derived(
-    new Tween(
-      { x: 0, y: 0 },
-      { duration: 400, ...(legend?.tween ?? {}) },
-    ),
+  // Initialize tweened values for legend position - create once, update target via effect
+  const tweened_legend_coords = new Tween(
+    { x: 0, y: 0 },
+    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
   )
 
   // Update placement positions (with animation and stability checks)

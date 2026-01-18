@@ -61,6 +61,7 @@
   } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
+  import { untrack } from 'svelte'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
@@ -717,12 +718,11 @@
     return result
   })
 
-  // Tweened legend coordinates for smooth animation
-  const tweened_legend_coords = $derived(
-    new Tween(
-      { x: 0, y: 0 },
-      { duration: 400, ...(legend?.tween ?? {}) },
-    ),
+  // Tweened legend coordinates for smooth animation - create once, update target via effect
+  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
+  const tweened_legend_coords = new Tween(
+    { x: 0, y: 0 },
+    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
   )
 
   // Update legend position with stability checks

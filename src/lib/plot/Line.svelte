@@ -4,6 +4,7 @@
   import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
   import { curveMonotoneX, line } from 'd3-shape'
+  import { untrack } from 'svelte'
   import { linear } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
@@ -50,8 +51,16 @@
     easing: linear,
     interpolate: interpolatePath,
   }
-  const tweened_line = $derived(new Tween(``, { ...default_tween, ...line_tween }))
-  const tweened_area = $derived(new Tween(``, { ...default_tween, ...line_tween }))
+  // Tween objects are stateful - create once, update target via effect
+  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
+  const tweened_line = new Tween(
+    ``,
+    untrack(() => ({ ...default_tween, ...line_tween })),
+  )
+  const tweened_area = new Tween(
+    ``,
+    untrack(() => ({ ...default_tween, ...line_tween })),
+  )
 
   $effect.pre(() => {
     tweened_line.target = line_path
