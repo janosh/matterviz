@@ -212,11 +212,10 @@
     cursor: not-allowed;
   }
   .arrow {
-    font-size: 0.7em;
-    opacity: 0.6;
+    font-size: 1.4em;
+    opacity: 0.8;
   }
-  .portal-select-trigger :global(sub),
-  .portal-select-trigger :global(sup) {
+  .portal-select-trigger :global(:is(sub, sup)) {
     font-size: 0.75em;
     line-height: 0;
     margin: 0 0 0 -0.25em;

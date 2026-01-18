@@ -695,13 +695,11 @@
     white-space: nowrap;
     width: auto;
   }
-  .title-row.left,
-  .title-row.right {
+  .title-row:is(.left, .right) {
     flex-direction: column;
   }
   /* Rotate only the label element, not the entire row (keeps selects usable) */
-  .title-row.left .label,
-  .title-row.right .label {
+  .title-row:is(.left, .right) .label {
     writing-mode: vertical-lr;
     white-space: nowrap;
   }
@@ -709,8 +707,7 @@
     transform: rotate(180deg);
   }
   /* Style PortalSelect triggers in colorbar context */
-  .title-row :global(.property-select),
-  .title-row :global(.color-scale-select) {
+  .title-row :global(:is(.property-select, .color-scale-select)) {
     padding: 0 4px;
   }
   .title-row.loading :global(.property-select) {

@@ -76,8 +76,7 @@
     opacity: 0.7;
     pointer-events: none;
   }
-  .interactive-axis-label :global(sub),
-  .interactive-axis-label :global(sup) {
+  .interactive-axis-label :global(:is(sub, sup)) {
     font-size: 0.75em;
     line-height: 0;
   }
