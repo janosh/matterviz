@@ -29,7 +29,6 @@ class Structure(MatterViz):
         displayed_structure: Any | None = None,
         dragover: bool | None = None,
         element_mapping: dict | None = None,
-        element_radius_overrides: dict | None = None,
         enable_info_pane: bool | None = None,
         enable_measure_mode: bool | None = None,
         error_msg: str | None = None,
@@ -51,7 +50,7 @@ class Structure(MatterViz):
         reset_text: str | None = None,
         scene_props: dict | None = None,
         selected_sites: list[int] | None = None,
-        site_radius_overrides: Any | None = None,
+        show_controls: bool | None = None,
         spinner_props: dict | None = None,
         structure: Any | None = None,
         structure_string: str | None = None,
@@ -83,8 +82,6 @@ class Structure(MatterViz):
             mv_props['dragover'] = dragover
         if element_mapping is not None:
             mv_props['element_mapping'] = element_mapping
-        if element_radius_overrides is not None:
-            mv_props['element_radius_overrides'] = element_radius_overrides
         if enable_info_pane is not None:
             mv_props['enable_info_pane'] = enable_info_pane
         if enable_measure_mode is not None:
@@ -127,8 +124,8 @@ class Structure(MatterViz):
             mv_props['scene_props'] = scene_props
         if selected_sites is not None:
             mv_props['selected_sites'] = selected_sites
-        if site_radius_overrides is not None:
-            mv_props['site_radius_overrides'] = site_radius_overrides
+        if show_controls is not None:
+            mv_props['show_controls'] = show_controls
         if spinner_props is not None:
             mv_props['spinner_props'] = spinner_props
         if structure is not None:
@@ -313,7 +310,7 @@ class Trajectory(MatterViz):
         loading_options: Any | None = None,
         plot_skimming: bool | None = None,
         scatter_props: dict | None = None,
-        show_controls: Any | None = None,
+        show_controls: bool | None = None,
         spinner_props: dict | None = None,
         step_labels: list[float] | None = None,
         structure_props: dict | None = None,
@@ -410,6 +407,7 @@ class BrillouinZone(MatterViz):
         k_path_points: list | None = None,
         loading: bool | None = None,
         png_dpi: float | None = None,
+        show_controls: bool | None = None,
         show_vectors: bool | None = None,
         spinner_props: dict | None = None,
         structure: Any | None = None,
@@ -467,6 +465,8 @@ class BrillouinZone(MatterViz):
             mv_props['loading'] = loading
         if png_dpi is not None:
             mv_props['png_dpi'] = png_dpi
+        if show_controls is not None:
+            mv_props['show_controls'] = show_controls
         if show_vectors is not None:
             mv_props['show_vectors'] = show_vectors
         if spinner_props is not None:
@@ -532,7 +532,6 @@ class ConvexHull2D(MatterViz):
         unstable_entries: list | None = None,
         highlighted_entries: list | None = None,
         selected_entry: Any | None = None,
-        tooltip: Any | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -600,8 +599,6 @@ class ConvexHull2D(MatterViz):
             mv_props['highlighted_entries'] = highlighted_entries
         if selected_entry is not None:
             mv_props['selected_entry'] = selected_entry
-        if tooltip is not None:
-            mv_props['tooltip'] = tooltip
 
         super().__init__(
             id=id, component='convex-hull/ConvexHull2D', mv_props=mv_props,
@@ -649,7 +646,6 @@ class ConvexHull3D(MatterViz):
         unstable_entries: list | None = None,
         highlighted_entries: list | None = None,
         selected_entry: Any | None = None,
-        tooltip: Any | None = None,
         show_hull_faces: bool | None = None,
         hull_face_opacity: float | None = None,
         mv_props: dict | None = None,
@@ -715,8 +711,6 @@ class ConvexHull3D(MatterViz):
             mv_props['highlighted_entries'] = highlighted_entries
         if selected_entry is not None:
             mv_props['selected_entry'] = selected_entry
-        if tooltip is not None:
-            mv_props['tooltip'] = tooltip
         if show_hull_faces is not None:
             mv_props['show_hull_faces'] = show_hull_faces
         if hull_face_opacity is not None:
@@ -768,7 +762,6 @@ class ConvexHull4D(MatterViz):
         unstable_entries: list | None = None,
         highlighted_entries: list | None = None,
         selected_entry: Any | None = None,
-        tooltip: Any | None = None,
         show_hull_faces: bool | None = None,
         hull_face_opacity: float | None = None,
         mv_props: dict | None = None,
@@ -834,8 +827,6 @@ class ConvexHull4D(MatterViz):
             mv_props['highlighted_entries'] = highlighted_entries
         if selected_entry is not None:
             mv_props['selected_entry'] = selected_entry
-        if tooltip is not None:
-            mv_props['tooltip'] = tooltip
         if show_hull_faces is not None:
             mv_props['show_hull_faces'] = show_hull_faces
         if hull_face_opacity is not None:
@@ -1017,7 +1008,7 @@ class Bands(MatterViz):
 
     Component key: ``spectral/Bands``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
+    Events: on_point_click, on_point_hover
 
     Unsupported snippets: tooltip, user_content
     """
@@ -1029,10 +1020,7 @@ class Bands(MatterViz):
         band_type: Any | None = None,
         controls: Any | None = None,
         current_x_value: float | None = None,
-        data_loader: Any | None = None,
-        error_bands: list | None = None,
         fermi_level: float | None = None,
-        fill_regions: list | None = None,
         hover_config: dict | None = None,
         label_placement_config: dict | None = None,
         legend: Any | None = None,
@@ -1040,7 +1028,6 @@ class Bands(MatterViz):
         line_tween: Any | None = None,
         path_mode: Any | None = None,
         point_tween: Any | None = None,
-        ref_lines: list | None = None,
         reference_frequency: float | None = None,
         ribbon_config: dict | None = None,
         selected_series_idx: int | None = None,
@@ -1070,14 +1057,8 @@ class Bands(MatterViz):
             mv_props['controls'] = controls
         if current_x_value is not None:
             mv_props['current_x_value'] = current_x_value
-        if data_loader is not None:
-            mv_props['data_loader'] = data_loader
-        if error_bands is not None:
-            mv_props['error_bands'] = error_bands
         if fermi_level is not None:
             mv_props['fermi_level'] = fermi_level
-        if fill_regions is not None:
-            mv_props['fill_regions'] = fill_regions
         if hover_config is not None:
             mv_props['hover_config'] = hover_config
         if label_placement_config is not None:
@@ -1092,8 +1073,6 @@ class Bands(MatterViz):
             mv_props['path_mode'] = path_mode
         if point_tween is not None:
             mv_props['point_tween'] = point_tween
-        if ref_lines is not None:
-            mv_props['ref_lines'] = ref_lines
         if reference_frequency is not None:
             mv_props['reference_frequency'] = reference_frequency
         if ribbon_config is not None:
@@ -1127,7 +1106,7 @@ class Dos(MatterViz):
 
     Component key: ``spectral/Dos``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
+    Events: on_point_click, on_point_hover
 
     Unsupported snippets: tooltip, user_content
     """
@@ -1137,11 +1116,8 @@ class Dos(MatterViz):
         id=None,
         controls: Any | None = None,
         current_x_value: float | None = None,
-        data_loader: Any | None = None,
         doses: dict | None = None,
-        error_bands: list | None = None,
         fermi_level: float | None = None,
-        fill_regions: list | None = None,
         hover_config: dict | None = None,
         hovered_frequency: float | None = None,
         label_placement_config: dict | None = None,
@@ -1149,21 +1125,12 @@ class Dos(MatterViz):
         line_tween: Any | None = None,
         normalize: Any | None = None,
         orientation: Any | None = None,
-        pdos_filter: list[str] | None = None,
-        pdos_type: Any | None = None,
         point_tween: Any | None = None,
-        ref_lines: list | None = None,
         reference_frequency: float | None = None,
         selected_series_idx: int | None = None,
         series: list | None = None,
-        show_controls: bool | None = None,
         show_legend: bool | None = None,
-        show_normalize_control: bool | None = None,
-        show_sigma_control: bool | None = None,
-        show_units_control: bool | None = None,
         sigma: float | None = None,
-        sigma_range: list | None = None,
-        spin_mode: Any | None = None,
         stack: bool | None = None,
         styles: Any | None = None,
         tooltip_point: Any | None = None,
@@ -1185,16 +1152,10 @@ class Dos(MatterViz):
             mv_props['controls'] = controls
         if current_x_value is not None:
             mv_props['current_x_value'] = current_x_value
-        if data_loader is not None:
-            mv_props['data_loader'] = data_loader
         if doses is not None:
             mv_props['doses'] = doses
-        if error_bands is not None:
-            mv_props['error_bands'] = error_bands
         if fermi_level is not None:
             mv_props['fermi_level'] = fermi_level
-        if fill_regions is not None:
-            mv_props['fill_regions'] = fill_regions
         if hover_config is not None:
             mv_props['hover_config'] = hover_config
         if hovered_frequency is not None:
@@ -1209,36 +1170,18 @@ class Dos(MatterViz):
             mv_props['normalize'] = normalize
         if orientation is not None:
             mv_props['orientation'] = orientation
-        if pdos_filter is not None:
-            mv_props['pdos_filter'] = pdos_filter
-        if pdos_type is not None:
-            mv_props['pdos_type'] = pdos_type
         if point_tween is not None:
             mv_props['point_tween'] = point_tween
-        if ref_lines is not None:
-            mv_props['ref_lines'] = ref_lines
         if reference_frequency is not None:
             mv_props['reference_frequency'] = reference_frequency
         if selected_series_idx is not None:
             mv_props['selected_series_idx'] = selected_series_idx
         if series is not None:
             mv_props['series'] = series
-        if show_controls is not None:
-            mv_props['show_controls'] = show_controls
         if show_legend is not None:
             mv_props['show_legend'] = show_legend
-        if show_normalize_control is not None:
-            mv_props['show_normalize_control'] = show_normalize_control
-        if show_sigma_control is not None:
-            mv_props['show_sigma_control'] = show_sigma_control
-        if show_units_control is not None:
-            mv_props['show_units_control'] = show_units_control
         if sigma is not None:
             mv_props['sigma'] = sigma
-        if sigma_range is not None:
-            mv_props['sigma_range'] = sigma_range
-        if spin_mode is not None:
-            mv_props['spin_mode'] = spin_mode
         if stack is not None:
             mv_props['stack'] = stack
         if styles is not None:
@@ -1264,7 +1207,7 @@ class ScatterPlot(MatterViz):
 
     Component key: ``plot/ScatterPlot``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
+    Events: on_point_click, on_point_hover
 
     Unsupported snippets: tooltip, user_content
     """
@@ -1274,15 +1217,11 @@ class ScatterPlot(MatterViz):
         id=None,
         controls: Any | None = None,
         current_x_value: float | None = None,
-        data_loader: Any | None = None,
-        error_bands: list | None = None,
-        fill_regions: list | None = None,
         hover_config: dict | None = None,
         label_placement_config: dict | None = None,
         legend: Any | None = None,
         line_tween: Any | None = None,
         point_tween: Any | None = None,
-        ref_lines: list | None = None,
         selected_series_idx: int | None = None,
         series: list | None = None,
         styles: Any | None = None,
@@ -1308,12 +1247,6 @@ class ScatterPlot(MatterViz):
             mv_props['controls'] = controls
         if current_x_value is not None:
             mv_props['current_x_value'] = current_x_value
-        if data_loader is not None:
-            mv_props['data_loader'] = data_loader
-        if error_bands is not None:
-            mv_props['error_bands'] = error_bands
-        if fill_regions is not None:
-            mv_props['fill_regions'] = fill_regions
         if hover_config is not None:
             mv_props['hover_config'] = hover_config
         if label_placement_config is not None:
@@ -1324,8 +1257,6 @@ class ScatterPlot(MatterViz):
             mv_props['line_tween'] = line_tween
         if point_tween is not None:
             mv_props['point_tween'] = point_tween
-        if ref_lines is not None:
-            mv_props['ref_lines'] = ref_lines
         if selected_series_idx is not None:
             mv_props['selected_series_idx'] = selected_series_idx
         if series is not None:
@@ -1359,7 +1290,7 @@ class Histogram(MatterViz):
 
     Component key: ``plot/Histogram``
 
-    Events: on_axis_change, on_error, on_ref_line_click, on_ref_line_hover, on_series_toggle
+    Events: on_series_toggle
 
     Unsupported snippets: controls_extra, tooltip
     """
@@ -1369,10 +1300,8 @@ class Histogram(MatterViz):
         id=None,
         bar: Any | None = None,
         bins: float | None = None,
-        data_loader: Any | None = None,
         legend: Any | None = None,
         mode: Any | None = None,
-        ref_lines: list | None = None,
         selected_property: str | None = None,
         series: list | None = None,
         show_legend: bool | None = None,
@@ -1391,14 +1320,10 @@ class Histogram(MatterViz):
             mv_props['bar'] = bar
         if bins is not None:
             mv_props['bins'] = bins
-        if data_loader is not None:
-            mv_props['data_loader'] = data_loader
         if legend is not None:
             mv_props['legend'] = legend
         if mode is not None:
             mv_props['mode'] = mode
-        if ref_lines is not None:
-            mv_props['ref_lines'] = ref_lines
         if selected_property is not None:
             mv_props['selected_property'] = selected_property
         if series is not None:
