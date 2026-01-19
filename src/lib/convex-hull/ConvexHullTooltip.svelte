@@ -91,11 +91,13 @@
 
     {#if show_fractional && !is_element}
       {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
-      {@const fractions = Object.entries(entry.composition)
+      {#if total > 0}
+        {@const fractions = Object.entries(entry.composition)
       .filter(([, amt]) => amt > 0)
       .map(([el, amt]) => `${el}<sub>${format_num(amt / total, `.2~`)}</sub>`)}
-      {#if fractions.length > 1}
-        <div>Fractional: {@html fractions.join(` `)}</div>
+        {#if fractions.length > 1}
+          <div>Fractional: {@html fractions.join(` `)}</div>
+        {/if}
       {/if}
     {/if}
 

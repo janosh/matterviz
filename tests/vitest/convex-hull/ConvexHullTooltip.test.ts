@@ -203,51 +203,32 @@ describe(`ConvexHullTooltip`, () => {
   })
 
   describe(`custom tooltip config`, () => {
-    test(`renders prefix_html as static string`, () => {
-      mount_tooltip({
-        tooltip: { prefix: `<em>Custom prefix</em>` },
-      })
-      expect(document.body.innerHTML).toContain(`<em>Custom prefix</em>`)
-      expect(doc_query(`.tooltip-prefix`)).toBeTruthy()
+    test.each([
+      { key: `prefix`, html: `<em>Custom</em>`, class_name: `.tooltip-prefix` },
+      { key: `suffix`, html: `<strong>Custom</strong>`, class_name: `.tooltip-suffix` },
+    ])(`renders $key as static HTML`, ({ key, html, class_name }) => {
+      mount_tooltip({ tooltip: { [key]: html } })
+      expect(document.body.innerHTML).toContain(html)
+      expect(doc_query(class_name)).toBeTruthy()
     })
 
-    test(`renders suffix_html as static string`, () => {
-      mount_tooltip({
-        tooltip: { suffix: `<strong>Custom suffix</strong>` },
-      })
-      expect(document.body.innerHTML).toContain(`<strong>Custom suffix</strong>`)
-      expect(doc_query(`.tooltip-suffix`)).toBeTruthy()
+    test.each([
+      {
+        key: `prefix`,
+        fn: (e: PhaseData) => `ID: ${e.entry_id}`,
+        expected: `ID: mp-999`,
+      },
+      { key: `suffix`, fn: (e: PhaseData) => `E: ${e.e_above_hull}`, expected: `E: 0.1` },
+    ])(`renders $key as function`, ({ key, fn, expected }) => {
+      mount_tooltip({ entry: mock_entry({ entry_id: `mp-999` }), tooltip: { [key]: fn } })
+      expect(document.body.textContent).toContain(expected)
     })
 
-    test(`renders prefix as function with entry`, () => {
-      mount_tooltip({
-        entry: mock_entry({ entry_id: `mp-999` }),
-        tooltip: { prefix: (entry) => `ID: ${entry.entry_id}` },
-      })
-      expect(document.body.textContent).toContain(`ID: mp-999`)
-    })
-
-    test(`renders suffix as function with entry`, () => {
-      mount_tooltip({
-        entry: mock_entry({ e_above_hull: 0.05 }),
-        tooltip: { suffix: (entry) => `Hull dist: ${entry.e_above_hull}` },
-      })
-      expect(document.body.textContent).toContain(`Hull dist: 0.05`)
-    })
-
-    test(`renders both prefix and suffix together`, () => {
-      mount_tooltip({
-        tooltip: { prefix: `PREFIX`, suffix: `SUFFIX` },
-      })
+    test(`prefix appears before content, suffix after`, () => {
+      mount_tooltip({ tooltip: { prefix: `PREFIX`, suffix: `SUFFIX` } })
       const text = document.body.textContent ?? ``
-      expect(text).toContain(`PREFIX`)
-      expect(text).toContain(`SUFFIX`)
-      // Verify ordering: prefix before content, suffix after
-      const prefix_idx = text.indexOf(`PREFIX`)
-      const suffix_idx = text.indexOf(`SUFFIX`)
-      const hull_idx = text.indexOf(`above hull`)
-      expect(prefix_idx).toBeLessThan(hull_idx)
-      expect(suffix_idx).toBeGreaterThan(hull_idx)
+      expect(text.indexOf(`PREFIX`)).toBeLessThan(text.indexOf(`above hull`))
+      expect(text.indexOf(`SUFFIX`)).toBeGreaterThan(text.indexOf(`above hull`))
     })
   })
 })
