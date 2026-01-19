@@ -44,7 +44,7 @@ async function wait_for_position_stable(
 }
 
 test.describe(`PlotLegend Component Integration Tests`, () => {
-  const main_legend_wrapper = `div:has(h2:has-text("Legend Component"))`
+  const main_legend_wrapper = `#main-legend`
   const custom_style_legend_wrapper = `#custom-style-legend`
 
   test.beforeEach(async ({ page }) => {
