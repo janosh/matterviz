@@ -1,16 +1,19 @@
 import { expect, type Page, test } from '@playwright/test'
 import { get_canvas_timeout, goto_structure_test, IS_CI } from '../helpers'
 
+const STRUCTURE_CONTAINER = `#test-structure`
+
 async function open_export_pane(page: Page) {
-  const export_toggle = page.locator(`.structure-export-toggle`).first()
+  const structure = page.locator(STRUCTURE_CONTAINER)
+  const export_toggle = structure.locator(`.structure-export-toggle`)
   await expect(export_toggle).toBeVisible()
 
   await export_toggle.click()
 
   // Wait for the pane to appear - it's a draggable-pane with export-pane class
-  const pane_div = page.locator(`.draggable-pane.export-pane`).first()
+  const pane_div = structure.locator(`.draggable-pane.export-pane`)
   await expect(pane_div).toBeVisible({ timeout: get_canvas_timeout() })
-  return { export_toggle, pane_div }
+  return { structure, export_toggle, pane_div }
 }
 
 test.describe(`StructureExportPane Tests`, () => {
@@ -24,7 +27,8 @@ test.describe(`StructureExportPane Tests`, () => {
   })
 
   test(`toggle button visibility and tooltip`, async ({ page }) => {
-    const export_toggle = page.locator(`.structure-export-toggle`).first()
+    const structure = page.locator(STRUCTURE_CONTAINER)
+    const export_toggle = structure.locator(`.structure-export-toggle`)
     await expect(export_toggle).toBeVisible()
     await expect(export_toggle).toHaveAttribute(`title`, `Export Structure`)
   })
@@ -146,14 +150,16 @@ test.describe(`StructureExportPane Tests`, () => {
   })
 
   test(`export pane and control pane have mutual exclusion`, async ({ page }) => {
-    const { pane_div: export_pane, export_toggle } = await open_export_pane(page)
+    const { structure, pane_div: export_pane, export_toggle } = await open_export_pane(
+      page,
+    )
     await expect(export_pane).toBeVisible()
 
     // Opening control pane closes export pane (mutual exclusion)
-    const control_toggle = page.locator(`.structure-controls-toggle`).first()
+    const control_toggle = structure.locator(`.structure-controls-toggle`)
     await control_toggle.click()
 
-    const control_pane = page.locator(`.draggable-pane.controls-pane`).first()
+    const control_pane = structure.locator(`.draggable-pane.controls-pane`)
     await expect(control_pane).toBeVisible()
     await expect(export_pane).toBeHidden() // Export pane closes when control pane opens
 
@@ -198,7 +204,7 @@ test.describe(`StructureExportPane Tests`, () => {
 
     for (const { label, expected_text, description, link_href } of text_format_tooltips) {
       test(`${label} format shows tooltip on hover`, async ({ page }) => {
-        const { pane_div } = await open_export_pane(page)
+        const { structure, pane_div } = await open_export_pane(page)
 
         // Use getByText for reliable span matching
         const label_span = pane_div.getByText(label, { exact: true })
@@ -206,7 +212,7 @@ test.describe(`StructureExportPane Tests`, () => {
         await label_span.hover()
 
         // Wait for tooltip to appear (svelte-multiselect custom-tooltip)
-        const tooltip_elem = page.locator(`.custom-tooltip`).first()
+        const tooltip_elem = structure.locator(`.custom-tooltip`)
         await expect(tooltip_elem).toBeVisible({ timeout: 3000 })
 
         // Verify tooltip contains expected content
@@ -222,12 +228,12 @@ test.describe(`StructureExportPane Tests`, () => {
     }
 
     test(`tooltip disappears when mouse leaves label`, async ({ page }) => {
-      const { pane_div } = await open_export_pane(page)
+      const { structure, pane_div } = await open_export_pane(page)
 
       const json_label = pane_div.getByText(`JSON`, { exact: true })
       await json_label.hover()
 
-      const tooltip_elem = page.locator(`.custom-tooltip`).first()
+      const tooltip_elem = structure.locator(`.custom-tooltip`)
       await expect(tooltip_elem).toBeVisible({ timeout: 3000 })
 
       // Move mouse away from the label

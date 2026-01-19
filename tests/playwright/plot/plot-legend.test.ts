@@ -44,7 +44,7 @@ async function wait_for_position_stable(
 }
 
 test.describe(`PlotLegend Component Integration Tests`, () => {
-  const main_legend_wrapper = `div:has(h2:has-text("Legend Component"))`
+  const main_legend_wrapper = `#main-legend`
   const custom_style_legend_wrapper = `#custom-style-legend`
 
   test.beforeEach(async ({ page }) => {
@@ -53,7 +53,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
 
   test(`should render legend items correctly based on initial data`, async ({ page }) => {
     test.skip(IS_CI, `Plot legend rendering flaky in CI`)
-    const legend_items = page.locator(`.legend`).first().locator(`.legend-item`)
+    const legend_items = page.locator(main_legend_wrapper).locator(`.legend-item`)
     await expect(legend_items).toHaveCount(5)
 
     // Check labels
@@ -190,7 +190,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   })
 
   test(`should change layout based on props`, async ({ page }) => {
-    const legend = page.locator(`.legend`).first()
+    const legend = page.locator(main_legend_wrapper)
 
     await page.locator(`#layout`).selectOption(`horizontal`)
     await page.locator(`#n_items`).fill(`2`)
@@ -215,7 +215,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   })
 
   test(`should display correct line colors in legend markers`, async ({ page }) => {
-    const legend_items = page.locator(`.legend`).first().locator(`.legend-item`)
+    const legend_items = page.locator(main_legend_wrapper).locator(`.legend-item`)
     const expected_colors = [`crimson`, `steelblue`, undefined, `darkviolet`, `purple`]
 
     const promises = expected_colors.map(async (expected_color, idx) => {

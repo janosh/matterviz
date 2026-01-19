@@ -98,6 +98,7 @@
 
 <h2>Legend Component</h2>
 <PlotLegend
+  id="main-legend"
   {series_data}
   layout={legend_layout}
   layout_tracks={legend_n_items}

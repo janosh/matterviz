@@ -19,10 +19,10 @@
   } from './barycentric-coords'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
+  import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import * as helpers from './helpers'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
-  import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import type { Point4D } from './thermodynamics'
   import * as thermo from './thermodynamics'
@@ -72,6 +72,7 @@
     highlight_style = {},
     selected_entry = $bindable(null),
     children,
+    tooltip,
     ...rest
   }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps & {
     highlight_style?: HighlightStyle
@@ -1114,10 +1115,11 @@
       fixed
       style={tooltip_style}
     >
-      <PhaseEntryTooltip
+      <ConvexHullTooltip
         {entry}
         {polymorph_stats_map}
         highlight_style={entry_highlight}
+        {tooltip}
       />
     </PlotTooltip>
   {/if}

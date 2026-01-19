@@ -1,7 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state'
   import Icon from '$lib/Icon.svelte'
-  import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
   import {
     decode_structure_id,
     detect_provider_from_slug,
@@ -10,9 +9,10 @@
     fetch_optimade_structure,
     fetch_suggested_structures,
   } from '$lib/api/optimade'
+  import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
   import { Composition, get_electro_neg_formula } from '$lib/composition'
-  import type { Crystal } from '$lib/structure'
   import { Structure } from '$lib/structure'
+  import type { Crystal } from '$lib/structure'
   import { optimade_to_crystal } from '$lib/structure/parse'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
