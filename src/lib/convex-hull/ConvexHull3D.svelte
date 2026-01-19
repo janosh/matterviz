@@ -528,6 +528,7 @@
     const norm = raw_step / magnitude
     const nice = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10
     const step = nice * magnitude
+    if (step <= 0) return [min_val] // guard against infinite loop
 
     const ticks: number[] = []
     for (
@@ -548,13 +549,11 @@
     const tick_len = 6 * canvas_dims.scale
 
     ctx.save()
-    Object.assign(ctx, {
-      fillStyle: text_color,
-      textAlign: `right`,
-      textBaseline: `middle`,
-    })
+    ctx.fillStyle = text_color
+    ctx.textAlign = `right`
+    ctx.textBaseline = `middle`
     ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
-    ctx.font = `12px Arial`
+    ctx.font = `${merged_config.font_size}px Arial`
 
     for (const tick of generate_axis_ticks(e_min, e_max)) {
       const { x, y } = project_3d_point(axis_x, axis_y, tick)
@@ -570,8 +569,8 @@
     ctx.translate(lx - 50 * canvas_dims.scale, ly)
     ctx.rotate(-Math.PI / 2)
     ctx.textAlign = `center`
-    ctx.font = `bold 12px Arial`
-    ctx.fillText(`Eform (eV/atom)`, 0, 0)
+    ctx.font = `bold ${merged_config.font_size}px Arial`
+    ctx.fillText(`E\u1DA0\u1D52\u02B3\u1D50 (eV/atom)`, 0, 0)
     ctx.restore()
   }
 

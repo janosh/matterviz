@@ -169,7 +169,7 @@
   .controls {
     display: flex;
     gap: var(--sym-stats-controls-gap, 1em);
-    background: var(--sym-stats-controls-bg, var(--surface-bg, #f5f5f5));
+    background: var(--sym-stats-controls-bg, var(--surface-bg));
     padding: var(--sym-stats-controls-padding, 4pt 6pt);
     border-radius: var(--sym-stats-controls-border-radius, 4pt);
     margin-inline: var(--sym-stats-controls-margin-inline, -6pt);

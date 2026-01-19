@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import keyword
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -712,10 +713,14 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path) -> str:
 
 def main() -> None:
     """CLI entry point for generating typed wrappers."""
+    dash_root = os.path.dirname(os.path.dirname(__file__))
+
     ap = argparse.ArgumentParser()
-    ap.add_argument("--manifest", default="component_manifest.toml")
-    ap.add_argument("--matterviz-dist", default="node_modules/matterviz/dist")
-    ap.add_argument("--out", default="matterviz_dash_components/typed.py")
+    ap.add_argument("--manifest", default=f"{dash_root}/component_manifest.toml")
+    ap.add_argument(
+        "--matterviz-dist", default=f"{dash_root}/node_modules/matterviz/dist"
+    )
+    ap.add_argument("--out", default=f"{dash_root}/matterviz_dash_components/typed.py")
     ap.add_argument(
         "--check",
         action="store_true",
