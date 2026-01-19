@@ -40,7 +40,7 @@ import keyword
 import os
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from glob import glob
 from typing import Any
 
 import tomllib
@@ -293,7 +293,7 @@ def _parse_object_literal(obj: str) -> dict[str, tuple[str, bool]]:
 
 
 def _resolve_component_props_ref(
-    term: str, src: str, dist_dir: Path | None, visited: set[str]
+    term: str, src: str, dist_dir: str | None, visited: set[str]
 ) -> dict[str, tuple[str, bool]]:
     """Resolve ComponentProps<typeof X> to the props of component X."""
     match = re.match(r"ComponentProps\s*<\s*typeof\s+(\w+)\s*>", term)
@@ -316,13 +316,14 @@ def _resolve_component_props_ref(
     component_file = import_path.split("/")[-1].replace(".svelte", ".svelte.d.ts")
     subdir = import_path.split("/")[-2] if "/" in import_path else ""
 
-    candidates = list(dist_dir.rglob(component_file))
+    candidates = glob(f"{dist_dir}/**/{component_file}", recursive=True)
     if subdir:
-        candidates = [p for p in candidates if subdir in str(p)] or candidates
+        candidates = [p for p in candidates if subdir in p] or candidates
     if not candidates:
         return {}
 
-    ref_src = candidates[0].read_text(encoding="utf-8")
+    with open(candidates[0], encoding="utf-8") as file:
+        ref_src = file.read()
     try:
         ref_expr, _ = _extract_props_root_expr(ref_src)
         return _collect_props(
@@ -335,7 +336,7 @@ def _resolve_component_props_ref(
 def _collect_props(
     expr: str,
     aliases: dict[str, str],
-    dist_dir: Path | None = None,
+    dist_dir: str | None = None,
     visited: set[str] | None = None,
     src: str = "",
 ) -> dict[str, tuple[str, bool]]:
@@ -398,7 +399,7 @@ def _parse_interface_props(
 
 
 def parse_external_type(
-    dist_dir: Path, include_spec: str
+    dist_dir: str, include_spec: str
 ) -> dict[str, tuple[str, bool]]:
     """Parse a type/interface from an external .d.ts file.
 
@@ -408,12 +409,13 @@ def parse_external_type(
         return {}
 
     file_path, type_name = include_spec.rsplit(":", 1)
-    dts_path = dist_dir / file_path
-    if not dts_path.exists():
+    dts_path = f"{dist_dir}/{file_path}"
+    if not os.path.isfile(dts_path):
         print(f"Warning: External type file not found: {dts_path}")
         return {}
 
-    src = dts_path.read_text(encoding="utf-8")
+    with open(dts_path, encoding="utf-8") as fh:
+        src = fh.read()
 
     # Try interface first, then type alias
     if props := _parse_interface_props(src, type_name):
@@ -438,13 +440,14 @@ def _detect_prop_kind(ts_type: str) -> str:
 
 
 def parse_svelte_dts(
-    dts_path: Path,
-    dist_dir: Path | None = None,
+    dts_path: str,
+    dist_dir: str | None = None,
     *,
     debug: bool = False,
 ) -> tuple[list[Prop], list[str], list[str], list[str]]:
     """Parse a *.svelte.d.ts file into prop metadata."""
-    src = dts_path.read_text(encoding="utf-8")
+    with open(dts_path, encoding="utf-8") as fh:
+        src = fh.read()
     aliases = _extract_type_aliases(src)
     root_expr, strategy = _extract_props_root_expr(src, debug=debug)
 
@@ -473,7 +476,7 @@ def parse_svelte_dts(
 
 
 def parse_svelte_dts_with_includes(
-    dts_path: Path, dist_dir: Path, include_from: list[str]
+    dts_path: str, dist_dir: str, include_from: list[str]
 ) -> tuple[list[Prop], list[str], list[str], list[str]]:
     """Parse a *.svelte.d.ts file with additional external type includes."""
     props, callback_props, snippet_props, dom_props = parse_svelte_dts(
@@ -516,19 +519,19 @@ def add_extra_props(
         props.append(Prop(js_name, _to_snake(js_name), ts_type, True, kind))
 
 
-def find_component_dts(dist_dir: Path, key: str) -> Path:
+def find_component_dts(dist_dir: str, key: str) -> str:
     """Resolve a manifest key to a *.svelte.d.ts file."""
     if "/" in key:
-        path = dist_dir / f"{key}.svelte.d.ts"
-        if not path.exists():
+        path = f"{dist_dir}/{key}.svelte.d.ts"
+        if not os.path.isfile(path):
             raise FileNotFoundError(path)
         return path
 
-    matches = list(dist_dir.rglob(f"{key}.svelte.d.ts"))
+    matches = glob(f"{dist_dir}/**/{key}.svelte.d.ts", recursive=True)
     if not matches:
         raise FileNotFoundError(f"No match for {key!r} under {dist_dir}")
     if len(matches) > 1:
-        rel = ", ".join(str(p.relative_to(dist_dir)) for p in matches)
+        rel = ", ".join(p.replace(f"{dist_dir}/", "") for p in matches)
         raise RuntimeError(f"Ambiguous key={key!r}. Matches: {rel}. Use a path key.")
     return matches[0]
 
@@ -578,7 +581,7 @@ def _py_type_hint(
     return "Any"
 
 
-def generate_wrappers(manifest: dict[str, Any], dist_dir: Path) -> str:
+def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
     """Generate typed Python wrapper classes from manifest and return as string."""
     components = manifest.get("components", {})
     if not components:
@@ -729,37 +732,40 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    manifest_path = Path(args.manifest)
-    dist_dir = Path(args.matterviz_dist)
-    out_path = Path(args.out)
+    manifest_path = args.manifest
+    dist_dir = args.matterviz_dist
+    out_path = args.out
 
-    if not manifest_path.exists():
+    if not os.path.isfile(manifest_path):
         raise SystemExit(f"Manifest not found: {manifest_path}")
-    if not dist_dir.exists():
+    if not os.path.isdir(dist_dir):
         raise SystemExit(
             f"MatterViz dist not found: {dist_dir}\nRun `pnpm install` first."
         )
 
-    manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    with open(manifest_path, encoding="utf-8") as fh:
+        manifest = tomllib.loads(fh.read())
 
     expected = generate_wrappers(manifest, dist_dir)
 
     if args.check:
         # Compare generated content with existing file
-        if not out_path.exists():
+        if not os.path.isfile(out_path):
             print(f"FAIL: {out_path} does not exist. Run sync_typed_wrappers.py first.")
             raise SystemExit(1)
 
-        actual = out_path.read_text(encoding="utf-8")
+        with open(out_path, encoding="utf-8") as fh:
+            actual = fh.read()
         if actual != expected:
             print(f"FAIL: {out_path} is out of sync with component_manifest.toml")
-            print("Run: python scripts/sync_typed_wrappers.py")
+            print("Run: python extensions/dash/scripts/sync_typed_wrappers.py")
             raise SystemExit(1)
 
         print(f"OK: {out_path} is up-to-date")
         raise SystemExit(0)
 
-    out_path.write_text(expected, encoding="utf-8")
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write(expected)
     print(f"Wrote {out_path}")
 
 
