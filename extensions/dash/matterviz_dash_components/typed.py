@@ -532,6 +532,7 @@ class ConvexHull2D(MatterViz):
         unstable_entries: list | None = None,
         highlighted_entries: list | None = None,
         selected_entry: Any | None = None,
+        tooltip: Any | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -599,6 +600,8 @@ class ConvexHull2D(MatterViz):
             mv_props['highlighted_entries'] = highlighted_entries
         if selected_entry is not None:
             mv_props['selected_entry'] = selected_entry
+        if tooltip is not None:
+            mv_props['tooltip'] = tooltip
 
         super().__init__(
             id=id, component='convex-hull/ConvexHull2D', mv_props=mv_props,
@@ -646,6 +649,7 @@ class ConvexHull3D(MatterViz):
         unstable_entries: list | None = None,
         highlighted_entries: list | None = None,
         selected_entry: Any | None = None,
+        tooltip: Any | None = None,
         show_hull_faces: bool | None = None,
         hull_face_opacity: float | None = None,
         mv_props: dict | None = None,
@@ -711,6 +715,8 @@ class ConvexHull3D(MatterViz):
             mv_props['highlighted_entries'] = highlighted_entries
         if selected_entry is not None:
             mv_props['selected_entry'] = selected_entry
+        if tooltip is not None:
+            mv_props['tooltip'] = tooltip
         if show_hull_faces is not None:
             mv_props['show_hull_faces'] = show_hull_faces
         if hull_face_opacity is not None:
@@ -762,6 +768,7 @@ class ConvexHull4D(MatterViz):
         unstable_entries: list | None = None,
         highlighted_entries: list | None = None,
         selected_entry: Any | None = None,
+        tooltip: Any | None = None,
         show_hull_faces: bool | None = None,
         hull_face_opacity: float | None = None,
         mv_props: dict | None = None,
@@ -827,6 +834,8 @@ class ConvexHull4D(MatterViz):
             mv_props['highlighted_entries'] = highlighted_entries
         if selected_entry is not None:
             mv_props['selected_entry'] = selected_entry
+        if tooltip is not None:
+            mv_props['tooltip'] = tooltip
         if show_hull_faces is not None:
             mv_props['show_hull_faces'] = show_hull_faces
         if hull_face_opacity is not None:

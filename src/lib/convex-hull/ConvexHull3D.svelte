@@ -14,6 +14,7 @@
   import { ColorBar, PlotTooltip } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
+  import { ticks } from 'd3-array'
   import { SvelteMap } from 'svelte/reactivity'
   import {
     get_ternary_3d_coordinates,
@@ -24,10 +25,10 @@
   } from './barycentric-coords'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
+  import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import * as helpers from './helpers'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
-  import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import * as thermo from './thermodynamics'
   import type { ConvexHullEntry, HighlightStyle, HoverData3D, Point3D } from './types'
@@ -74,6 +75,7 @@
     highlight_style = {},
     selected_entry = $bindable(null),
     children,
+    tooltip,
     ...rest
   }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps & {
     highlight_style?: HighlightStyle
@@ -513,6 +515,53 @@
     ctx.restore()
   }
 
+  function draw_z_axis_ticks(): void {
+    if (!ctx || elements.length !== 3) return
+
+    const { min: e_min, max: e_max, center: e_mid } = energy_range
+    if (Math.abs(e_max - e_min) < 1e-6) return
+
+    // Find the vertex that projects to the leftmost x-position (changes with rotation)
+    const projected_vertices = TRIANGLE_VERTICES.map(([vx, vy]) =>
+      project_3d_point(vx, vy, e_mid)
+    )
+    const leftmost_idx = projected_vertices.reduce(
+      (
+        min_idx,
+        proj,
+        idx,
+      ) => (proj.x < projected_vertices[min_idx].x ? idx : min_idx),
+      0,
+    )
+    const [axis_x, axis_y] = TRIANGLE_VERTICES[leftmost_idx]
+    const tick_len = 6 * canvas_dims.scale
+
+    ctx.save()
+    ctx.fillStyle = text_color
+    ctx.textAlign = `right`
+    ctx.textBaseline = `middle`
+    ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
+    ctx.font = `${merged_config.font_size}px Arial`
+
+    for (const tick of ticks(e_min, e_max, 5)) {
+      const { x, y } = project_3d_point(axis_x, axis_y, tick)
+      ctx.beginPath()
+      ctx.moveTo(x - tick_len, y)
+      ctx.lineTo(x, y)
+      ctx.stroke()
+      ctx.fillText(format_num(tick, `.2~`), x - tick_len - 4, y)
+    }
+
+    // Rotated axis label (Unicode superscript: Eᶠᵒʳᵐ)
+    const { x: lx, y: ly } = project_3d_point(axis_x, axis_y, e_mid)
+    ctx.translate(lx - 50 * canvas_dims.scale, ly)
+    ctx.rotate(-Math.PI / 2)
+    ctx.textAlign = `center`
+    ctx.font = `bold ${merged_config.font_size}px Arial`
+    ctx.fillText(`E\u1DA0\u1D52\u02B3\u1D50 (eV/atom)`, 0, 0) // Eᶠᵒʳᵐ
+    ctx.restore()
+  }
+
   function draw_convex_hull_faces(): void {
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
@@ -766,19 +815,11 @@
       return
     }
 
-    // Draw triangle structure first
     draw_structure_outline()
-
-    // Draw convex hull faces (before points so they appear behind)
-    draw_convex_hull_faces()
-
-    // Draw data points last (on top)
+    draw_convex_hull_faces() // behind points
+    draw_z_axis_ticks() // after faces for visibility at high opacity
     draw_data_points()
-
-    // Draw hull labels after points
     draw_hull_labels()
-
-    // Draw element labels on top of everything
     draw_element_labels()
   }
 
@@ -1145,10 +1186,11 @@
       fixed
       style={tooltip_style}
     >
-      <PhaseEntryTooltip
+      <ConvexHullTooltip
         {entry}
         {polymorph_stats_map}
         highlight_style={entry_highlight}
+        {tooltip}
       />
     </PlotTooltip>
   {/if}

@@ -348,9 +348,10 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`tooltips and legend functionality`, async ({ page }) => {
     // Test tooltips - wait for histogram to render first
+    // Increased timeout to handle slower CI environments and Svelte reactivity
     const basic_histogram = page.locator(`#basic-single-series > svg[role="img"]`)
     await expect(basic_histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
+      timeout: 10000,
     })
 
     const first_bar = basic_histogram.locator(`path[role="button"]`).first()
@@ -399,6 +400,11 @@ test.describe(`Histogram Component Tests`, () => {
     const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
     const legend = page.locator(`#multiple-series-overlay .legend`)
 
+    // Wait for histogram bars to render first
+    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
+      timeout: 10000,
+    })
+
     // Verify legend is initially visible with multiple items
     await expect(legend).toBeVisible()
     const legend_items = legend.locator(`.legend-item`)
@@ -439,8 +445,10 @@ test.describe(`Histogram Component Tests`, () => {
     const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
     const legend = page.locator(`#multiple-series-overlay .legend`)
 
-    // Wait for histogram and legend to be visible
-    await expect(histogram).toBeVisible()
+    // Wait for histogram bars to render first
+    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
+      timeout: 10000,
+    })
     await expect(legend).toBeVisible()
 
     const legend_items = legend.locator(`.legend-item`)
@@ -557,6 +565,10 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`histogram controls pane functionality`, async ({ page }) => {
     // Wait for histogram to be fully rendered
+    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
+      timeout: 10000,
+    })
 
     // Wait for the toggle button to be visible and clickable
     const toggle_button = page.locator(`#basic-single-series .pane-toggle`)
@@ -579,7 +591,6 @@ test.describe(`Histogram Component Tests`, () => {
     await bins_number_input.fill(`15`)
 
     // Verify histogram updated
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
     const bar_count = await get_bar_count(histogram)
     expect(bar_count).toBeGreaterThan(0)
 
@@ -641,6 +652,10 @@ test.describe(`Histogram Component Tests`, () => {
   // TODO figure out how to actually open the control pane
   test(`histogram controls with multiple series`, async ({ page }) => {
     // Wait for histogram to be fully rendered
+    const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
+    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
+      timeout: 10000,
+    })
 
     // Move legend out of the way if it exists (it might be blocking the toggle button)
     await page.locator(`#multiple-series-overlay .legend`).evaluate((legend) => {
@@ -706,7 +721,6 @@ test.describe(`Histogram Component Tests`, () => {
     }
 
     // Verify histogram still renders correctly
-    const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
     await expect(histogram).toBeVisible()
 
     // Wait for histogram to render and check for meaningful SVG content (bars or axes)
@@ -1215,7 +1229,10 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`one-sided axis range pins via controls`, async ({ page }) => {
     const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
-    await expect(histogram).toBeVisible()
+    // Wait for histogram bars to render
+    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
+      timeout: 10000,
+    })
 
     const toggle = page.locator(`#basic-single-series .pane-toggle`)
     await toggle.click()
@@ -1339,7 +1356,10 @@ test.describe(`Histogram Component Tests`, () => {
   test(`y2 axis scaling is independent of y1 axis`, async ({ page }) => {
     const histogram = page.locator(`#y2-different-scale .histogram`)
     await histogram.scrollIntoViewIfNeeded()
-    await expect(histogram).toBeVisible()
+    // Wait for histogram bars to render
+    await expect(histogram.locator(`svg path[role="button"]`).first()).toBeVisible({
+      timeout: 10000,
+    })
 
     // Get tick values from y1 and y2 axes
     const y1_ticks = await histogram.locator(`g.y-axis .tick text`).allTextContents()
@@ -1484,7 +1504,10 @@ test.describe(`Histogram Component Tests`, () => {
   test(`legend toggles visibility for y2 series`, async ({ page }) => {
     const histogram = page.locator(`#y2-axis-histogram .histogram`)
     await histogram.scrollIntoViewIfNeeded()
-    await expect(histogram).toBeVisible()
+    // Wait for histogram bars to render
+    await expect(histogram.locator(`svg path[role="button"]`).first()).toBeVisible({
+      timeout: 10000,
+    })
 
     const legend = histogram.locator(`.legend`)
     await expect(legend).toBeVisible()
