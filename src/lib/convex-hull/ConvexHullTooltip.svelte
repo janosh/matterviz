@@ -24,7 +24,10 @@
     show_fractional?: boolean
   } = $props()
 
-  // Custom tooltip handling
+  // Custom tooltip handling - mode precedence:
+  // 1. If tooltip is a snippet function, render it exclusively (replaces default)
+  // 2. If tooltip is a config object, render prefix/suffix around default content
+  // 3. Otherwise, render default content only
   const is_snippet = $derived(typeof tooltip === `function`)
   const config = $derived(
     !is_snippet && tooltip ? (tooltip as TooltipConfig<EntryT>) : null,
@@ -41,12 +44,13 @@
 
   // Default tooltip content
   const is_element = $derived(is_unary_entry(entry))
+  // Find the single non-zero element (consistent with is_unary_entry filtering)
   const elem_symbol = $derived(
-    is_element ? (Object.keys(entry.composition)[0] as ElementSymbol) : ``,
-  )
-  const elem_name = $derived(
-    is_element ? ELEM_SYMBOL_TO_NAME[elem_symbol as ElementSymbol] ?? `` : ``,
-  )
+    is_element
+      ? (Object.entries(entry.composition).find(([, n]) => n > 0)?.[0] ?? ``)
+      : ``,
+  ) as ElementSymbol | ``
+  const elem_name = $derived(elem_symbol && ELEM_SYMBOL_TO_NAME[elem_symbol])
   // O(1) lookup of pre-computed polymorph stats
   const polymorph_stats = $derived(
     entry.entry_id && polymorph_stats_map

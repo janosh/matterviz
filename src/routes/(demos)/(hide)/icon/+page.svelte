@@ -50,7 +50,7 @@
   {@attach highlight_matches({
     query: filter_text,
     fuzzy: true,
-    css_class: `highlight`,
+    css_class: `text-filter-highlight`,
   })}
 >
   {#each filtered_icons as icon_name (icon_name)}
@@ -101,7 +101,7 @@ ${`<`}/script>
 <Icon path="M12 2L2 7l10 5 10-5-10-5z" viewBox="0 0 24 24" />`}</code></pre>
 
 <style>
-  ::highlight(highlight) {
+  ::highlight(text-filter-highlight) {
     background: color-mix(in srgb, var(--accent-color, cornflowerblue) 35%, transparent);
     color: inherit;
   }

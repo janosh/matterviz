@@ -713,6 +713,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: Path) -> str:
 
 def main() -> None:
     """CLI entry point for generating typed wrappers."""
+    # Path to extensions/dash/ directory (parent of scripts/)
     dash_root = os.path.dirname(os.path.dirname(__file__))
 
     ap = argparse.ArgumentParser()

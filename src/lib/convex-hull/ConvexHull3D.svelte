@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ticks } from 'd3-array'
   import type { D3InterpolateName } from '$lib/colors'
   import { is_dark_mode, watch_dark_mode } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
@@ -514,38 +515,25 @@
     ctx.restore()
   }
 
-  // Generate nice tick values for an axis range
-  function generate_axis_ticks(
-    min_val: number,
-    max_val: number,
-    n_ticks = 5,
-  ): number[] {
-    const range = max_val - min_val
-    if (range <= 0) return [min_val]
-
-    const raw_step = range / n_ticks
-    const magnitude = 10 ** Math.floor(Math.log10(raw_step))
-    const norm = raw_step / magnitude
-    const nice = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10
-    const step = nice * magnitude
-    if (step <= 0) return [min_val] // guard against infinite loop
-
-    const ticks: number[] = []
-    for (
-      let val = Math.ceil(min_val / step) * step;
-      val <= max_val + 1e-9;
-      val += step
-    ) ticks.push(Math.round(val * 1e10) / 1e10)
-    return ticks
-  }
-
   function draw_z_axis_ticks(): void {
     if (!ctx || elements.length !== 3) return
 
     const { min: e_min, max: e_max, center: e_mid } = energy_range
     if (Math.abs(e_max - e_min) < 1e-6) return
 
-    const [axis_x, axis_y] = TRIANGLE_VERTICES[2] // leftmost vertex
+    // Find the vertex that projects to the leftmost x-position (changes with rotation)
+    const projected_vertices = TRIANGLE_VERTICES.map(([vx, vy]) =>
+      project_3d_point(vx, vy, e_mid)
+    )
+    const leftmost_idx = projected_vertices.reduce(
+      (
+        min_idx,
+        proj,
+        idx,
+      ) => (proj.x < projected_vertices[min_idx].x ? idx : min_idx),
+      0,
+    )
+    const [axis_x, axis_y] = TRIANGLE_VERTICES[leftmost_idx]
     const tick_len = 6 * canvas_dims.scale
 
     ctx.save()
@@ -555,7 +543,7 @@
     ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
     ctx.font = `${merged_config.font_size}px Arial`
 
-    for (const tick of generate_axis_ticks(e_min, e_max)) {
+    for (const tick of ticks(e_min, e_max, 5)) {
       const { x, y } = project_3d_point(axis_x, axis_y, tick)
       ctx.beginPath()
       ctx.moveTo(x - tick_len, y)
@@ -564,13 +552,13 @@
       ctx.fillText(format_num(tick, `.2~`), x - tick_len - 4, y)
     }
 
-    // Rotated axis label
+    // Rotated axis label (Unicode superscript: Eᶠᵒʳᵐ)
     const { x: lx, y: ly } = project_3d_point(axis_x, axis_y, e_mid)
     ctx.translate(lx - 50 * canvas_dims.scale, ly)
     ctx.rotate(-Math.PI / 2)
     ctx.textAlign = `center`
     ctx.font = `bold ${merged_config.font_size}px Arial`
-    ctx.fillText(`E\u1DA0\u1D52\u02B3\u1D50 (eV/atom)`, 0, 0)
+    ctx.fillText(`E\u1DA0\u1D52\u02B3\u1D50 (eV/atom)`, 0, 0) // Eᶠᵒʳᵐ
     ctx.restore()
   }
 

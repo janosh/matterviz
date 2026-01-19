@@ -1,7 +1,7 @@
 // Tests for ConvexHullTooltip component
 import ConvexHullTooltip from '$lib/convex-hull/ConvexHullTooltip.svelte'
 import type { PolymorphStats } from '$lib/convex-hull/helpers'
-import type { TooltipConfig } from '$lib/convex-hull/index'
+import type { TooltipProp } from '$lib/convex-hull/index'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -20,7 +20,7 @@ type TooltipProps = {
   polymorph_stats_map?: Map<string, PolymorphStats>
   highlight_style?: { color?: string }
   show_fractional?: boolean
-  tooltip?: TooltipConfig<PhaseData>
+  tooltip?: TooltipProp<PhaseData>
 }
 
 const mount_tooltip = (props: Partial<TooltipProps> = {}) =>
