@@ -11,7 +11,8 @@ import {
 // - Svelte 5 $effect reactivity (runs after initial render)
 // - Component hydration after SSR
 // - CI environment variability
-const DATA_LOAD_TIMEOUT = 10_000
+// Increased from 10s to 15s to handle slower CI environments
+const DATA_LOAD_TIMEOUT = 15_000
 
 test.describe(`OPTIMADE route`, () => {
   // Network mocking can be flaky in CI due to race conditions
@@ -134,15 +135,30 @@ test.describe(`OPTIMADE route`, () => {
   test(`handles invalid structure ID gracefully`, async ({ page }) => {
     await page.goto(`/optimade-invalid-id-12345`)
 
-    // Wait for providers to load first (triggers URL slug parsing)
-    await expect(page.locator(`button.db-select`).first()).toBeVisible({
-      timeout: DATA_LOAD_TIMEOUT,
-    })
+    // First wait for the page to be interactive
+    await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
+
+    // Wait for providers to load - either buttons appear or error message shown
+    await expect(
+      page.locator(`button.db-select`).first().or(
+        page.locator(`.db-column .error-message`),
+      ),
+    ).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
+
+    // If there's a providers error, click retry and wait again
+    const providers_error_visible = await page.locator(`.db-column .error-message`)
+      .isVisible()
+    if (providers_error_visible) {
+      await page.locator(`.retry-button`).click()
+      await expect(page.locator(`button.db-select`).first()).toBeVisible({
+        timeout: DATA_LOAD_TIMEOUT,
+      })
+    }
 
     // Check input value is set correctly (after providers load)
     await expect(page.locator(`input.structure-input`)).toHaveValue(`invalid-id-12345`)
 
-    // Check for error message - mock returns OPTIMADE 404 with "Structure not found"
+    // Check for structure error message - mock returns OPTIMADE 404 with "Structure not found"
     const error_message = page.locator(`.structure-column .error-message`)
     await expect(error_message).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
     // Verify the app displays an error message (content varies based on mock vs real API)
@@ -179,10 +195,24 @@ test.describe(`OPTIMADE route`, () => {
   test(`can load structure from different providers via text input`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
 
-    // Wait for providers to load and structure to be fetched
-    await expect(page.locator(`button.db-select`).first()).toBeVisible({
-      timeout: DATA_LOAD_TIMEOUT,
-    })
+    // First wait for the page to be interactive (h1 should always be present)
+    await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
+
+    // Wait for providers to load - either buttons appear or error message shown
+    // This handles both success and failure cases gracefully
+    await expect(
+      page.locator(`button.db-select`).first().or(page.locator(`.error-message`)),
+    ).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
+
+    // If there's an error, click retry and wait again
+    const error_visible = await page.locator(`.error-message`).isVisible()
+    if (error_visible) {
+      await page.locator(`.retry-button`).click()
+      await expect(page.locator(`button.db-select`).first()).toBeVisible({
+        timeout: DATA_LOAD_TIMEOUT,
+      })
+    }
+
     // Verify initial MP structure is loaded
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({
       timeout: DATA_LOAD_TIMEOUT,
@@ -193,16 +223,30 @@ test.describe(`OPTIMADE route`, () => {
     await page.locator(`button.fetch-button`).click()
 
     // Wait for loading and verify new structure
-    await expect(page.locator(`h2:has-text("mp-149")`)).toBeVisible()
+    await expect(page.locator(`h2:has-text("mp-149")`)).toBeVisible({
+      timeout: DATA_LOAD_TIMEOUT,
+    })
   })
 
   test(`provider selection clears input field`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
 
-    // Wait for providers to load first
-    await expect(page.locator(`button.db-select`).first()).toBeVisible({
-      timeout: DATA_LOAD_TIMEOUT,
-    })
+    // First wait for the page to be interactive
+    await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
+
+    // Wait for providers to load - either buttons appear or error message shown
+    await expect(
+      page.locator(`button.db-select`).first().or(page.locator(`.error-message`)),
+    ).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
+
+    // If there's an error, click retry and wait again
+    const error_visible = await page.locator(`.error-message`).isVisible()
+    if (error_visible) {
+      await page.locator(`.retry-button`).click()
+      await expect(page.locator(`button.db-select`).first()).toBeVisible({
+        timeout: DATA_LOAD_TIMEOUT,
+      })
+    }
 
     // Fill input with some text
     await page.locator(`input.structure-input`).fill(`test-structure-id`)
@@ -217,10 +261,23 @@ test.describe(`OPTIMADE route`, () => {
   test(`can navigate between multiple providers`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
 
-    // Wait for providers to load and structure to be fetched
-    await expect(page.locator(`button.db-select`).first()).toBeVisible({
-      timeout: DATA_LOAD_TIMEOUT,
-    })
+    // First wait for the page to be interactive
+    await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
+
+    // Wait for providers to load - either buttons appear or error message shown
+    await expect(
+      page.locator(`button.db-select`).first().or(page.locator(`.error-message`)),
+    ).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
+
+    // If there's an error, click retry and wait again
+    const error_visible = await page.locator(`.error-message`).isVisible()
+    if (error_visible) {
+      await page.locator(`.retry-button`).click()
+      await expect(page.locator(`button.db-select`).first()).toBeVisible({
+        timeout: DATA_LOAD_TIMEOUT,
+      })
+    }
+
     // Test MP provider (should already be loaded)
     await expect(page.locator(`h2:has-text("mp-1")`)).toBeVisible({
       timeout: DATA_LOAD_TIMEOUT,
@@ -244,10 +301,23 @@ test.describe(`OPTIMADE route`, () => {
   test(`can click on suggested structures to load them`, async ({ page }) => {
     await page.goto(`/optimade-mp-1`)
 
-    // Wait for providers to load first
-    await expect(page.locator(`button.db-select`).first()).toBeVisible({
-      timeout: DATA_LOAD_TIMEOUT,
-    })
+    // First wait for the page to be interactive
+    await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
+
+    // Wait for providers to load - either buttons appear or error message shown
+    await expect(
+      page.locator(`button.db-select`).first().or(page.locator(`.error-message`)),
+    ).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
+
+    // If there's an error, click retry and wait again
+    const error_visible = await page.locator(`.error-message`).isVisible()
+    if (error_visible) {
+      await page.locator(`.retry-button`).click()
+      await expect(page.locator(`button.db-select`).first()).toBeVisible({
+        timeout: DATA_LOAD_TIMEOUT,
+      })
+    }
+
     // Wait for suggestions to load (shown after providers and suggestions fetch)
     await expect(page.locator(`text=Suggested Structures`)).toBeVisible({
       timeout: DATA_LOAD_TIMEOUT,

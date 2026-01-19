@@ -18,6 +18,7 @@ export { default as ConvexHull4D } from './ConvexHull4D.svelte'
 export { default as ConvexHullControls } from './ConvexHullControls.svelte'
 export { default as ConvexHullInfoPane } from './ConvexHullInfoPane.svelte'
 export { default as ConvexHullStats } from './ConvexHullStats.svelte'
+export { default as ConvexHullTooltip } from './ConvexHullTooltip.svelte'
 export * from './thermodynamics'
 export * from './types'
 
@@ -27,6 +28,24 @@ export interface BaseConvexHullChildrenProps<AnyDimEntry = PhaseData> {
   highlighted_entries: (string | AnyDimEntry)[]
   selected_entry: AnyDimEntry | null
 }
+
+// Props passed to tooltip snippet for custom tooltip rendering
+export interface TooltipSnippetProps<AnyDimEntry = PhaseData> {
+  entry: AnyDimEntry
+  highlight_style?: HighlightStyle
+}
+
+// Tooltip configuration object for prefix/suffix content
+// Values can be static strings or functions that receive the entry for dynamic content
+export interface TooltipConfig<AnyDimEntry = PhaseData> {
+  prefix?: string | ((entry: AnyDimEntry) => string)
+  suffix?: string | ((entry: AnyDimEntry) => string)
+}
+
+// Union type for tooltip prop - can be a snippet or config object
+export type TooltipProp<AnyDimEntry = PhaseData> =
+  | Snippet<[TooltipSnippetProps<AnyDimEntry>]>
+  | TooltipConfig<AnyDimEntry>
 
 // Base props shared across all convex hull components (2D, 3D, 4D)
 export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
@@ -75,6 +94,8 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   highlight_style?: HighlightStyle
   selected_entry?: AnyDimEntry | null
   children?: Snippet<[BaseConvexHullChildrenProps<AnyDimEntry>]>
+  // Custom tooltip - can be a snippet (replaces default) or config object (adds prefix/suffix)
+  tooltip?: TooltipProp<AnyDimEntry>
 }
 
 // Additional props specific to 3D and 4D convex hulls

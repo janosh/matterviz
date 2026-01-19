@@ -19,10 +19,10 @@
   import type { AnyStructure } from '$lib/structure'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
+  import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import * as helpers from './helpers'
   import type { BaseConvexHullProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
-  import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import * as thermo from './thermodynamics'
   import type {
@@ -76,6 +76,7 @@
     y_axis = {},
     selected_entry = $bindable(null),
     children,
+    tooltip: custom_tooltip,
     ...rest
   }: BaseConvexHullProps<ConvexHullEntry> & {
     highlight_style?: HighlightStyle
@@ -595,7 +596,12 @@
     ? merged_highlight_style
     : undefined}
   {#if entry}
-    <PhaseEntryTooltip {entry} {polymorph_stats_map} highlight_style={entry_highlight} />
+    <ConvexHullTooltip
+      {entry}
+      {polymorph_stats_map}
+      highlight_style={entry_highlight}
+      tooltip={custom_tooltip}
+    />
   {/if}
 {/snippet}
 
