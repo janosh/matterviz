@@ -828,22 +828,11 @@
       return
     }
 
-    // Draw triangle structure first
     draw_structure_outline()
-
-    // Draw z-axis tick labels
-    draw_z_axis_ticks()
-
-    // Draw convex hull faces (before points so they appear behind)
-    draw_convex_hull_faces()
-
-    // Draw data points last (on top)
+    draw_convex_hull_faces() // behind points
+    draw_z_axis_ticks() // after faces for visibility at high opacity
     draw_data_points()
-
-    // Draw hull labels after points
     draw_hull_labels()
-
-    // Draw element labels on top of everything
     draw_element_labels()
   }
 

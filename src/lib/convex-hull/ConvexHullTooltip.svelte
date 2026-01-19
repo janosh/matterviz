@@ -45,7 +45,7 @@
     is_element ? (Object.keys(entry.composition)[0] as ElementSymbol) : ``,
   )
   const elem_name = $derived(
-    is_element && elem_symbol ? ELEM_SYMBOL_TO_NAME[elem_symbol] ?? `` : ``,
+    is_element ? ELEM_SYMBOL_TO_NAME[elem_symbol as ElementSymbol] ?? `` : ``,
   )
   // O(1) lookup of pre-computed polymorph stats
   const polymorph_stats = $derived(

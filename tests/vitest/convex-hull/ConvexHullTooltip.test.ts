@@ -1,9 +1,10 @@
 // Tests for ConvexHullTooltip component
 import ConvexHullTooltip from '$lib/convex-hull/ConvexHullTooltip.svelte'
 import type { PolymorphStats } from '$lib/convex-hull/helpers'
+import type { TooltipConfig } from '$lib/convex-hull/index'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { mount } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
 const mock_entry = (overrides: Partial<PhaseData> = {}): PhaseData => ({
@@ -19,6 +20,7 @@ type TooltipProps = {
   polymorph_stats_map?: Map<string, PolymorphStats>
   highlight_style?: { color?: string }
   show_fractional?: boolean
+  tooltip?: TooltipConfig<PhaseData>
 }
 
 const mount_tooltip = (props: Partial<TooltipProps> = {}) =>
@@ -28,10 +30,6 @@ const mount_tooltip = (props: Partial<TooltipProps> = {}) =>
   })
 
 describe(`ConvexHullTooltip`, () => {
-  afterEach(() => {
-    document.body.innerHTML = ``
-  })
-
   test(`renders container with expected structure`, () => {
     mount_tooltip()
     expect(doc_query(`.tooltip-content`)).toBeTruthy()
@@ -73,15 +71,19 @@ describe(`ConvexHullTooltip`, () => {
     })
 
     test.each([
-      { composition: { Fe: 1 }, entry_id: undefined, expect_name: true },
+      // Element name only shown in parentheses after entry_id for unary entries
+      { composition: { Fe: 1 }, entry_id: undefined, expect_name: false },
       { composition: { Fe: 1 }, entry_id: `mp-13`, expect_name: true },
-      { composition: { Fe: 1, O: 2 }, entry_id: undefined, expect_name: false },
-    ])(`element name for $composition`, ({ composition, entry_id, expect_name }) => {
-      mount_tooltip({ entry: mock_entry({ composition, entry_id }) })
-      const text = document.body.textContent ?? ``
-      if (expect_name) expect(text).toContain(`Iron`)
-      else expect(text).not.toContain(`Iron`)
-    })
+      { composition: { Fe: 1, O: 2 }, entry_id: `mp-14`, expect_name: false },
+    ])(
+      `element name for $composition with entry_id=$entry_id`,
+      ({ composition, entry_id, expect_name }) => {
+        mount_tooltip({ entry: mock_entry({ composition, entry_id }) })
+        const text = document.body.textContent ?? ``
+        if (expect_name) expect(text).toContain(`Iron`)
+        else expect(text).not.toContain(`Iron`)
+      },
+    )
   })
 
   describe(`highlight badge`, () => {
@@ -157,7 +159,7 @@ describe(`ConvexHullTooltip`, () => {
       expect(document.querySelector(`[title="1 lower in energy"]`)).toBeTruthy()
     })
 
-    test(`hides equal when zero, hides arrows when total=0`, () => {
+    test(`hides equal count when zero`, () => {
       mount_tooltip({
         entry: mock_entry({ entry_id: `mp-456` }),
         polymorph_stats_map: make_stats(`mp-456`, {
@@ -197,6 +199,55 @@ describe(`ConvexHullTooltip`, () => {
         polymorph_stats_map: stats_map,
       })
       expect(document.body.textContent).not.toContain(`Polymorphs:`)
+    })
+  })
+
+  describe(`custom tooltip config`, () => {
+    test(`renders prefix_html as static string`, () => {
+      mount_tooltip({
+        tooltip: { prefix: `<em>Custom prefix</em>` },
+      })
+      expect(document.body.innerHTML).toContain(`<em>Custom prefix</em>`)
+      expect(doc_query(`.tooltip-prefix`)).toBeTruthy()
+    })
+
+    test(`renders suffix_html as static string`, () => {
+      mount_tooltip({
+        tooltip: { suffix: `<strong>Custom suffix</strong>` },
+      })
+      expect(document.body.innerHTML).toContain(`<strong>Custom suffix</strong>`)
+      expect(doc_query(`.tooltip-suffix`)).toBeTruthy()
+    })
+
+    test(`renders prefix as function with entry`, () => {
+      mount_tooltip({
+        entry: mock_entry({ entry_id: `mp-999` }),
+        tooltip: { prefix: (entry) => `ID: ${entry.entry_id}` },
+      })
+      expect(document.body.textContent).toContain(`ID: mp-999`)
+    })
+
+    test(`renders suffix as function with entry`, () => {
+      mount_tooltip({
+        entry: mock_entry({ e_above_hull: 0.05 }),
+        tooltip: { suffix: (entry) => `Hull dist: ${entry.e_above_hull}` },
+      })
+      expect(document.body.textContent).toContain(`Hull dist: 0.05`)
+    })
+
+    test(`renders both prefix and suffix together`, () => {
+      mount_tooltip({
+        tooltip: { prefix: `PREFIX`, suffix: `SUFFIX` },
+      })
+      const text = document.body.textContent ?? ``
+      expect(text).toContain(`PREFIX`)
+      expect(text).toContain(`SUFFIX`)
+      // Verify ordering: prefix before content, suffix after
+      const prefix_idx = text.indexOf(`PREFIX`)
+      const suffix_idx = text.indexOf(`SUFFIX`)
+      const hull_idx = text.indexOf(`above hull`)
+      expect(prefix_idx).toBeLessThan(hull_idx)
+      expect(suffix_idx).toBeGreaterThan(hull_idx)
     })
   })
 })
