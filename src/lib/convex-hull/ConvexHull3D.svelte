@@ -24,10 +24,10 @@
   } from './barycentric-coords'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
+  import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import * as helpers from './helpers'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
-  import PhaseEntryTooltip from './PhaseEntryTooltip.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import * as thermo from './thermodynamics'
   import type { ConvexHullEntry, HighlightStyle, HoverData3D, Point3D } from './types'
@@ -74,6 +74,7 @@
     highlight_style = {},
     selected_entry = $bindable(null),
     children,
+    tooltip,
     ...rest
   }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps & {
     highlight_style?: HighlightStyle
@@ -513,6 +514,67 @@
     ctx.restore()
   }
 
+  // Generate nice tick values for an axis range
+  function generate_axis_ticks(
+    min_val: number,
+    max_val: number,
+    n_ticks = 5,
+  ): number[] {
+    const range = max_val - min_val
+    if (range <= 0) return [min_val]
+
+    const raw_step = range / n_ticks
+    const magnitude = 10 ** Math.floor(Math.log10(raw_step))
+    const norm = raw_step / magnitude
+    const nice = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10
+    const step = nice * magnitude
+
+    const ticks: number[] = []
+    for (
+      let val = Math.ceil(min_val / step) * step;
+      val <= max_val + 1e-9;
+      val += step
+    ) ticks.push(Math.round(val * 1e10) / 1e10)
+    return ticks
+  }
+
+  function draw_z_axis_ticks(): void {
+    if (!ctx || elements.length !== 3) return
+
+    const { min: e_min, max: e_max, center: e_mid } = energy_range
+    if (Math.abs(e_max - e_min) < 1e-6) return
+
+    const [axis_x, axis_y] = TRIANGLE_VERTICES[2] // leftmost vertex
+    const tick_len = 6 * canvas_dims.scale
+
+    ctx.save()
+    Object.assign(ctx, {
+      fillStyle: text_color,
+      textAlign: `right`,
+      textBaseline: `middle`,
+    })
+    ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
+    ctx.font = `12px Arial`
+
+    for (const tick of generate_axis_ticks(e_min, e_max)) {
+      const { x, y } = project_3d_point(axis_x, axis_y, tick)
+      ctx.beginPath()
+      ctx.moveTo(x - tick_len, y)
+      ctx.lineTo(x, y)
+      ctx.stroke()
+      ctx.fillText(format_num(tick, `.2~`), x - tick_len - 4, y)
+    }
+
+    // Rotated axis label
+    const { x: lx, y: ly } = project_3d_point(axis_x, axis_y, e_mid)
+    ctx.translate(lx - 50 * canvas_dims.scale, ly)
+    ctx.rotate(-Math.PI / 2)
+    ctx.textAlign = `center`
+    ctx.font = `bold 12px Arial`
+    ctx.fillText(`Eform (eV/atom)`, 0, 0)
+    ctx.restore()
+  }
+
   function draw_convex_hull_faces(): void {
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
@@ -768,6 +830,9 @@
 
     // Draw triangle structure first
     draw_structure_outline()
+
+    // Draw z-axis tick labels
+    draw_z_axis_ticks()
 
     // Draw convex hull faces (before points so they appear behind)
     draw_convex_hull_faces()
@@ -1145,10 +1210,11 @@
       fixed
       style={tooltip_style}
     >
-      <PhaseEntryTooltip
+      <ConvexHullTooltip
         {entry}
         {polymorph_stats_map}
         highlight_style={entry_highlight}
+        {tooltip}
       />
     </PlotTooltip>
   {/if}
