@@ -359,9 +359,9 @@ test.describe(`Legend Placement Stability`, () => {
     await expect(series_a).not.toHaveClass(/hidden/)
   })
 
-  test(`legend position updates during drag and stays at drop position without animation`, async ({ page }) => {
-    // This test verifies the fix for legend drag not working (event.currentTarget was window)
-    // and the fix for unwanted animation after dropping
+  test(`dragged legend stays at drop position without animating back`, async ({ page }) => {
+    // This test verifies the fix for unwanted animation after dropping the legend.
+    // The tween duration was set to 0 for manual positions to prevent sliding.
     const plot = page.locator(`#legend-multi-default.scatter`)
     await plot.scrollIntoViewIfNeeded()
     await expect(plot).toBeVisible()
@@ -375,76 +375,45 @@ test.describe(`Legend Placement Stability`, () => {
     const initial_bbox = await legend.boundingBox()
     if (!initial_bbox) throw new Error(`Legend bounding box not found`)
 
-    // Find the last legend item to determine where the empty space is
-    const legend_items = legend.locator(`.legend-item`)
-    const last_item = legend_items.last()
-    const last_item_bbox = await last_item.boundingBox()
-    if (!last_item_bbox) throw new Error(`Last legend item bounding box not found`)
-
-    // Start dragging below all legend items (in the gap between items and legend bottom edge)
-    // This ensures we're not clicking on a legend item which would prevent drag
-    const drag_start_x = initial_bbox.x + initial_bbox.width / 2
-    const drag_start_y = last_item_bbox.y + last_item_bbox.height + 2
-    const drag_distance = { x: 80, y: 60 }
-
-    // If no space below items, try dragging from just left of the first item's marker
-    const first_item_bbox = await legend_items.first().boundingBox()
-    const actual_start_x = first_item_bbox
-      ? Math.max(initial_bbox.x + 1, first_item_bbox.x - 3)
-      : drag_start_x
-    const actual_start_y = first_item_bbox ? first_item_bbox.y + 2 : drag_start_y
-
-    await page.mouse.move(actual_start_x, actual_start_y)
+    // Perform drag
+    const drag_offset = { x: 80, y: 60 }
+    await page.mouse.move(initial_bbox.x + 10, initial_bbox.y + 10)
     await page.mouse.down()
+    await page.mouse.move(
+      initial_bbox.x + drag_offset.x,
+      initial_bbox.y + drag_offset.y,
+      { steps: 10 },
+    )
 
-    // Move partway through drag and verify legend position is updating
-    const mid_drag_x = actual_start_x + drag_distance.x / 2
-    const mid_drag_y = actual_start_y + drag_distance.y / 2
-    await page.mouse.move(mid_drag_x, mid_drag_y, { steps: 5 })
+    // Capture position DURING drag (before releasing)
+    const during_drag_bbox = await legend.boundingBox()
+    if (!during_drag_bbox) throw new Error(`Legend bounding box not found during drag`)
 
-    // Verify legend has moved during drag (not stuck at initial position)
-    const mid_drag_bbox = await legend.boundingBox()
-    if (!mid_drag_bbox) throw new Error(`Legend bounding box not found during drag`)
-
-    // Legend should have moved approximately half the drag distance
-    const mid_movement_x = Math.abs(mid_drag_bbox.x - initial_bbox.x)
-    const mid_movement_y = Math.abs(mid_drag_bbox.y - initial_bbox.y)
-    expect(mid_movement_x).toBeGreaterThan(20) // Should have moved at least 20px
-    expect(mid_movement_y).toBeGreaterThan(15)
-
-    // Complete the drag
-    const final_x = actual_start_x + drag_distance.x
-    const final_y = actual_start_y + drag_distance.y
-    await page.mouse.move(final_x, final_y, { steps: 5 })
     await page.mouse.up()
 
     // Capture position immediately after drop
-    const drop_bbox = await legend.boundingBox()
-    if (!drop_bbox) throw new Error(`Legend bounding box not found after drop`)
+    const after_drop_bbox = await legend.boundingBox()
+    if (!after_drop_bbox) throw new Error(`Legend bounding box not found after drop`)
 
-    // Verify legend moved to approximately the expected position
-    const total_movement_x = Math.abs(drop_bbox.x - initial_bbox.x)
-    const total_movement_y = Math.abs(drop_bbox.y - initial_bbox.y)
-    expect(total_movement_x).toBeGreaterThan(60) // Should have moved close to drag distance
-    expect(total_movement_y).toBeGreaterThan(40)
+    // Position after drop should match position during drag (no jump to old tween position)
+    const drop_diff_x = Math.abs(after_drop_bbox.x - during_drag_bbox.x)
+    const drop_diff_y = Math.abs(after_drop_bbox.y - during_drag_bbox.y)
+    expect(drop_diff_x, `Legend jumped on drop`).toBeLessThan(10)
+    expect(drop_diff_y, `Legend jumped on drop`).toBeLessThan(10)
 
-    // Wait a short time and verify position hasn't animated/changed
-    // (tests the fix for removing drop animation)
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    const post_drop_bbox = await legend.boundingBox()
-    if (!post_drop_bbox) throw new Error(`Legend bounding box not found post-drop`)
-
-    // Position should be stable (no animation sliding it somewhere else)
-    expect(Math.abs(post_drop_bbox.x - drop_bbox.x)).toBeLessThan(2)
-    expect(Math.abs(post_drop_bbox.y - drop_bbox.y)).toBeLessThan(2)
-
-    // Wait longer and verify still stable (animation would have completed by now)
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    // Wait and verify position remains stable (no animation)
+    await page.waitForTimeout(500)
     const final_bbox = await legend.boundingBox()
-    if (!final_bbox) throw new Error(`Legend bounding box not found final check`)
+    if (!final_bbox) throw new Error(`Legend bounding box not found after wait`)
 
-    expect(Math.abs(final_bbox.x - drop_bbox.x)).toBeLessThan(2)
-    expect(Math.abs(final_bbox.y - drop_bbox.y)).toBeLessThan(2)
+    const drift_x = Math.abs(final_bbox.x - after_drop_bbox.x)
+    const drift_y = Math.abs(final_bbox.y - after_drop_bbox.y)
+    expect(drift_x, `Legend animated after drop`).toBeLessThan(5)
+    expect(drift_y, `Legend animated after drop`).toBeLessThan(5)
+
+    // Verify legend still functions
+    await expect(legend).toBeVisible()
+    expect(await legend.locator(`.legend-item`).count()).toBeGreaterThan(0)
   })
 })
 

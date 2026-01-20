@@ -236,171 +236,57 @@ describe(`HeatmapTable`, () => {
       expect(scores).toEqual([`0.75`, `0.85`, `0.95`])
     })
 
-    it(`sorts numbers with ± error notation correctly`, async () => {
-      // Values with ± should sort by the primary number, not the whole string
-      const error_data = [
-        { Name: `A`, Value: `1.5 ± 0.2` },
-        { Name: `B`, Value: `0.8 ± 0.1` },
-        { Name: `C`, Value: `2.3 ± 0.5` },
-      ]
-      // better: lower triggers ascending sort on first click
-      const error_columns: Label[] = [
+    // Tests for sorting numbers with error/uncertainty notation (±, +-, parenthetical)
+    // Sorts by extracting the primary numeric value before the error term
+    it.each([
+      {
+        desc: `± notation`,
+        input: [`1.5 ± 0.2`, `0.8 ± 0.1`, `2.3 ± 0.5`],
+        expected: [`0.8 ± 0.1`, `1.5 ± 0.2`, `2.3 ± 0.5`],
+      },
+      {
+        desc: `+- notation`,
+        input: [`10.5 +- 1.2`, `5.2 +- 0.8`, `15.0 +- 2.0`],
+        expected: [`5.2 +- 0.8`, `10.5 +- 1.2`, `15.0 +- 2.0`],
+      },
+      {
+        desc: `parenthetical notation`,
+        input: [`1.234(5)`, `0.567(3)`, `2.890(8)`],
+        expected: [`0.567(3)`, `1.234(5)`, `2.890(8)`],
+      },
+      {
+        desc: `negative numbers`,
+        input: [`-1.5 ± 0.2`, `0.8 ± 0.1`, `-2.3 ± 0.5`],
+        expected: [`-2.3 ± 0.5`, `-1.5 ± 0.2`, `0.8 ± 0.1`],
+      },
+      {
+        desc: `scientific notation`,
+        input: [`1.5e-3 ± 0.2e-3`, `2.8e-2 ± 0.1e-2`, `5.0e-4 ± 1.0e-4`],
+        expected: [`5.0e-4 ± 1.0e-4`, `1.5e-3 ± 0.2e-3`, `2.8e-2 ± 0.1e-2`],
+      },
+      {
+        desc: `mixed plain and error notation`,
+        input: [`1.5 ± 0.2`, `0.8`, `2.3 ± 0.5`, `1.0`],
+        expected: [`0.8`, `1.0`, `1.5 ± 0.2`, `2.3 ± 0.5`],
+      },
+    ])(`sorts numbers with $desc correctly`, async ({ input, expected }) => {
+      const data = input.map((val, idx) => ({
+        Name: String.fromCharCode(65 + idx),
+        Value: val,
+      }))
+      const columns: Label[] = [
         { label: `Name`, description: `` },
         { label: `Value`, better: `lower`, description: `` },
       ]
 
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: error_data, columns: error_columns },
-      })
+      mount(HeatmapTable, { target: document.body, props: { data, columns } })
 
-      const value_header = document.querySelectorAll(`th`)[1]
-      value_header.click()
+      document.querySelectorAll(`th`)[1].click()
       await tick()
 
-      const values = Array.from(
-        document.querySelectorAll(`td[data-col="Value"]`),
-      ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically by primary value (ascending): 0.8, 1.5, 2.3
-      expect(values).toEqual([`0.8 ± 0.1`, `1.5 ± 0.2`, `2.3 ± 0.5`])
-    })
-
-    it(`sorts numbers with +- error notation correctly`, async () => {
-      // Values with +- should sort by the primary number
-      const error_data = [
-        { Name: `A`, Value: `10.5 +- 1.2` },
-        { Name: `B`, Value: `5.2 +- 0.8` },
-        { Name: `C`, Value: `15.0 +- 2.0` },
-      ]
-      const error_columns: Label[] = [
-        { label: `Name`, description: `` },
-        { label: `Value`, better: `lower`, description: `` },
-      ]
-
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: error_data, columns: error_columns },
-      })
-
-      const value_header = document.querySelectorAll(`th`)[1]
-      value_header.click()
-      await tick()
-
-      const values = Array.from(
-        document.querySelectorAll(`td[data-col="Value"]`),
-      ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically by primary value (ascending): 5.2, 10.5, 15.0
-      expect(values).toEqual([`5.2 +- 0.8`, `10.5 +- 1.2`, `15.0 +- 2.0`])
-    })
-
-    it(`sorts numbers with parenthetical error notation correctly`, async () => {
-      // Values like "1.234(5)" where (5) is the error
-      const error_data = [
-        { Name: `A`, Value: `1.234(5)` },
-        { Name: `B`, Value: `0.567(3)` },
-        { Name: `C`, Value: `2.890(8)` },
-      ]
-      const error_columns: Label[] = [
-        { label: `Name`, description: `` },
-        { label: `Value`, better: `lower`, description: `` },
-      ]
-
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: error_data, columns: error_columns },
-      })
-
-      const value_header = document.querySelectorAll(`th`)[1]
-      value_header.click()
-      await tick()
-
-      const values = Array.from(
-        document.querySelectorAll(`td[data-col="Value"]`),
-      ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically by primary value (ascending): 0.567, 1.234, 2.890
-      expect(values).toEqual([`0.567(3)`, `1.234(5)`, `2.890(8)`])
-    })
-
-    it(`sorts negative numbers with error notation correctly`, async () => {
-      const error_data = [
-        { Name: `A`, Value: `-1.5 ± 0.2` },
-        { Name: `B`, Value: `0.8 ± 0.1` },
-        { Name: `C`, Value: `-2.3 ± 0.5` },
-      ]
-      const error_columns: Label[] = [
-        { label: `Name`, description: `` },
-        { label: `Value`, better: `lower`, description: `` },
-      ]
-
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: error_data, columns: error_columns },
-      })
-
-      const value_header = document.querySelectorAll(`th`)[1]
-      value_header.click()
-      await tick()
-
-      const values = Array.from(
-        document.querySelectorAll(`td[data-col="Value"]`),
-      ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically (ascending): -2.3, -1.5, 0.8
-      expect(values).toEqual([`-2.3 ± 0.5`, `-1.5 ± 0.2`, `0.8 ± 0.1`])
-    })
-
-    it(`sorts scientific notation with error correctly`, async () => {
-      const error_data = [
-        { Name: `A`, Value: `1.5e-3 ± 0.2e-3` },
-        { Name: `B`, Value: `2.8e-2 ± 0.1e-2` },
-        { Name: `C`, Value: `5.0e-4 ± 1.0e-4` },
-      ]
-      const error_columns: Label[] = [
-        { label: `Name`, description: `` },
-        { label: `Value`, better: `lower`, description: `` },
-      ]
-
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: error_data, columns: error_columns },
-      })
-
-      const value_header = document.querySelectorAll(`th`)[1]
-      value_header.click()
-      await tick()
-
-      const values = Array.from(
-        document.querySelectorAll(`td[data-col="Value"]`),
-      ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically (ascending): 5e-4, 1.5e-3, 2.8e-2
-      expect(values).toEqual([`5.0e-4 ± 1.0e-4`, `1.5e-3 ± 0.2e-3`, `2.8e-2 ± 0.1e-2`])
-    })
-
-    it(`handles mixed plain numbers and error notation in same column`, async () => {
-      const mixed_data = [
-        { Name: `A`, Value: `1.5 ± 0.2` },
-        { Name: `B`, Value: `0.8` },
-        { Name: `C`, Value: `2.3 ± 0.5` },
-        { Name: `D`, Value: `1.0` },
-      ]
-      const mixed_columns: Label[] = [
-        { label: `Name`, description: `` },
-        { label: `Value`, better: `lower`, description: `` },
-      ]
-
-      mount(HeatmapTable, {
-        target: document.body,
-        props: { data: mixed_data, columns: mixed_columns },
-      })
-
-      const value_header = document.querySelectorAll(`th`)[1]
-      value_header.click()
-      await tick()
-
-      const values = Array.from(
-        document.querySelectorAll(`td[data-col="Value"]`),
-      ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically (ascending): 0.8, 1.0, 1.5, 2.3
-      expect(values).toEqual([`0.8`, `1.0`, `1.5 ± 0.2`, `2.3 ± 0.5`])
+      const values = Array.from(document.querySelectorAll(`td[data-col="Value"]`))
+        .map((cell) => cell.textContent?.trim())
+      expect(values).toEqual(expected)
     })
   })
 
