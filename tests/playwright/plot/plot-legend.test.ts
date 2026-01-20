@@ -321,42 +321,64 @@ test.describe(`Legend Placement Stability`, () => {
     }
   })
 
-  test(`legend can be dragged and remains functional after data updates`, async ({ page }) => {
+  test(`legend remains functional and stable after mouse drag gestures`, async ({ page }) => {
+    // Tests drag functionality, position stability, and that toggle still works.
+    // The test plot has legend padding (8px) to ensure clickable empty space for drag initiation.
     const plot = page.locator(`#legend-multi-default.scatter`)
     await plot.scrollIntoViewIfNeeded()
     await expect(plot).toBeVisible()
 
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
-
-    // Wait for initial placement to stabilize
-    const initial_pos = await wait_for_position_stable(legend, 2000)
-    expect(initial_pos).not.toBeNull()
-
-    const initial_bbox = await legend.boundingBox()
-    expect(initial_bbox).not.toBeNull()
     await expect(legend).toHaveClass(/draggable/)
 
+    // Wait for initial placement to stabilize
+    await wait_for_position_stable(legend, 2000)
+    const initial_bbox = await legend.boundingBox()
     if (!initial_bbox) throw new Error(`Legend bounding box not found`)
-    const drag_offset = { x: 50, y: 30 }
-    await page.mouse.move(initial_bbox.x + 10, initial_bbox.y + 10)
+
+    // Legend has 8px padding - click inside padding area to initiate drag (not on legend items)
+    const padding_offset = 4 // Half of 8px padding, ensures we're in empty space
+    const drag_distance = { x: 80, y: 60 } // Distance to drag the legend
+
+    // Click in top-left padding area (avoids legend items), then drag
+    await page.mouse.move(
+      initial_bbox.x + padding_offset,
+      initial_bbox.y + padding_offset,
+    )
     await page.mouse.down()
     await page.mouse.move(
-      initial_bbox.x + drag_offset.x,
-      initial_bbox.y + drag_offset.y,
+      initial_bbox.x + drag_distance.x,
+      initial_bbox.y + drag_distance.y,
       { steps: 10 },
     )
     await page.mouse.up()
 
-    await expect(legend).toBeVisible()
+    // Capture position after drag
+    const after_drag_bbox = await legend.boundingBox()
+    if (!after_drag_bbox) throw new Error(`Legend bounding box not found after drag`)
 
-    const series_a = legend.locator(`.legend-item`).first()
-    await series_a.click()
-    await expect(legend).toBeVisible()
-    await expect(series_a).toHaveClass(/hidden/)
+    // Verify drag actually moved the legend (at least 20px in one direction)
+    const displacement_x = Math.abs(after_drag_bbox.x - initial_bbox.x)
+    const displacement_y = Math.abs(after_drag_bbox.y - initial_bbox.y)
+    expect(
+      displacement_x > 20 || displacement_y > 20,
+      `Legend should move during drag (moved ${displacement_x}px, ${displacement_y}px)`,
+    ).toBe(true)
 
-    await series_a.click()
-    await expect(series_a).not.toHaveClass(/hidden/)
+    // Verify position stability (no unexpected drift after 500ms - tests animation fix)
+    await page.waitForTimeout(500)
+    const final_bbox = await legend.boundingBox()
+    if (!final_bbox) throw new Error(`Legend bounding box not found after wait`)
+    expect(Math.abs(final_bbox.x - after_drag_bbox.x)).toBeLessThan(5)
+    expect(Math.abs(final_bbox.y - after_drag_bbox.y)).toBeLessThan(5)
+
+    // Verify legend items still function (toggle works)
+    const first_item = legend.locator(`.legend-item`).first()
+    await first_item.click()
+    await expect(first_item).toHaveClass(/hidden/)
+    await first_item.click()
+    await expect(first_item).not.toHaveClass(/hidden/)
   })
 })
 

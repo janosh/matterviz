@@ -23,7 +23,7 @@
   import { SvelteMap } from 'svelte/reactivity'
 
   let {
-    data,
+    data = $bindable([]),
     columns = [],
     sort_hint = undefined,
     cell,
@@ -45,6 +45,10 @@
     selected_rows = $bindable([]),
     hidden_columns = $bindable([]),
     scroll_style,
+    onsort = undefined,
+    onsorterror = undefined,
+    loading = $bindable(false),
+    sort_data = true,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     data: RowData[]
@@ -73,6 +77,16 @@
     selected_rows?: RowData[]
     hidden_columns?: string[]
     scroll_style?: string
+    // Async callback for server-side sorting. When provided, client-side sorting is skipped
+    // and the callback is called with (column_id, direction) to fetch new data from server.
+    onsort?: (column: string, dir: `asc` | `desc`) => Promise<RowData[]>
+    // Callback when onsort fails, receives the error for parent handling (e.g. toast notification)
+    onsorterror?: (error: unknown, column: string, dir: `asc` | `desc`) => void
+    // Loading state during async sort operations
+    loading?: boolean
+    // Whether to sort data client-side. Set to false when parent handles sorting externally.
+    // When onsort is provided, sort_data behavior is implicitly false.
+    sort_data?: boolean
   } = $props()
 
   // Detect HTML to prevent setting raw HTML as data-sort-value. Simple string matching
@@ -308,20 +322,37 @@
   })
 
   let sorted_data = $derived.by(() => {
+    // Skip client-side sorting when using async onsort callback or sort_data is false
+    if (onsort || !sort_data) return filtered_data
+
     if (!sort_state.column && multi_sort.length === 0) return filtered_data
 
     // Helper to check if value is invalid (null, undefined, NaN)
     const is_invalid = (val: unknown) =>
       val == null || (typeof val === `number` && Number.isNaN(val))
 
-    // Get sort value from a cell (handles HTML data-sort-value)
+    // Get sort value from a cell (handles HTML data-sort-value and numbers with errors)
     const get_sort_val = (val: CellVal): string | number => {
       if (typeof val === `string`) {
-        const match = val.match(/data-sort-value="([^"]*)"/)
-        if (match) {
-          const num = Number(match[1])
-          return isNaN(num) ? match[1] : num
+        // Check for HTML data-sort-value attribute first
+        const sort_attr_match = val.match(/data-sort-value="([^"]*)"/)
+        if (sort_attr_match) {
+          const num = Number(sort_attr_match[1])
+          return isNaN(num) ? sort_attr_match[1] : num
         }
+        // Handle numbers with error notation: "1.23 ± 0.05" or "1.23 +- 0.05" or "1.23(5)"
+        // Extract the primary number before the ± or +- or (
+        // Supports: ± (U+00B1), ASCII +-, Unicode minus − (U+2212), with optional whitespace
+        const error_match = val.match(
+          /^([+-−]?\d+\.?\d*(?:[eE][+-−]?\d+)?)\s*(?:[±\u00B1]|[+][−-]|\()/,
+        )
+        if (error_match) {
+          const num = Number(error_match[1])
+          if (!isNaN(num)) return num
+        }
+        // Try parsing as a plain number (handles "1.23" strings)
+        const plain_num = Number(val)
+        if (!isNaN(plain_num) && val.trim() !== ``) return plain_num
       }
       return val as string | number
     }
@@ -386,6 +417,9 @@
   let prev_search_query = $state(``)
   let prev_data_length = $state(0)
 
+  // Track async sort requests to prevent race conditions
+  let sort_request_id = 0
+
   // Reset to page 1 when search query or data length actually changes
   $effect(() => {
     const query_changed = search_query !== prev_search_query
@@ -398,7 +432,11 @@
     }
   })
 
-  function sort_rows(column: string, group: string | undefined, event: MouseEvent) {
+  async function sort_rows(
+    column: string,
+    group: string | undefined,
+    event: MouseEvent,
+  ) {
     // Find the column using both label and group if provided
     const col = ordered_columns.find(
       (c) => c.label === column && c.group === group,
@@ -437,11 +475,37 @@
       // Regular click - single column sort
       multi_sort = [] // Clear multi-sort
       // Use sort_state.column for comparison since it includes initial_sort fallback
-      if (sort_state.column !== col_id) {
-        sort = { column: col_id, dir: col.better === `lower` ? `asc` : `desc` }
-      } else {
-        // Toggle direction - use sort_state.ascending since it reflects actual state
-        sort = { column: col_id, dir: sort_state.ascending ? `desc` : `asc` }
+      const new_dir = sort_state.column !== col_id
+        ? (col.better === `lower` ? `asc` : `desc`)
+        : (sort_state.ascending ? `desc` : `asc`)
+
+      // Save previous sort state in case we need to revert on error
+      const prev_sort = { ...sort }
+      sort = { column: col_id, dir: new_dir }
+
+      // If onsort callback provided, fetch new data from server
+      if (onsort) {
+        loading = true
+        const request_id = ++sort_request_id
+        try {
+          const result = await onsort(col_id, new_dir)
+          // Only update if this is still the most recent request (avoid race condition)
+          if (request_id === sort_request_id) {
+            data = result
+          }
+        } catch (err) {
+          console.error(`Sort callback failed:`, err)
+          // Revert sort state on failure so UI doesn't show wrong direction
+          if (request_id === sort_request_id) {
+            sort = prev_sort
+            onsorterror?.(err, col_id, new_dir)
+          }
+        } finally {
+          // Only clear loading if this is still the most recent request
+          if (request_id === sort_request_id) {
+            loading = false
+          }
+        }
       }
     }
   }
@@ -743,6 +807,11 @@
     style={scroll_style}
     class:has-scroll={scroll_style}
   >
+    {#if loading}
+      <div class="loading-overlay">
+        <div class="loading-spinner"></div>
+      </div>
+    {/if}
     <table class:fixed-header={fixed_header} class={heatmap_class}>
       <thead>
         <!-- Don't add a table row for group headers if there are none -->
@@ -955,6 +1024,9 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
+    position: relative;
+  }
+  .table-scroll {
     position: relative;
   }
   .table-scroll.has-scroll {
@@ -1246,5 +1318,28 @@
   .resize-handle:hover,
   th.resizing .resize-handle {
     background: var(--highlight, #4a9eff);
+  }
+  /* Loading overlay */
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: light-dark(rgba(255, 255, 255, 0.7), rgba(0, 0, 0, 0.5));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  .loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid light-dark(#e5e7eb, #444);
+    border-top-color: var(--highlight, #3b82f6);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

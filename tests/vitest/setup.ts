@@ -265,6 +265,9 @@ Element.prototype.animate = vi.fn().mockImplementation(() => {
   return animation
 })
 
+// Mock getAnimations for Svelte's animate:flip directive (not available in happy-dom)
+Element.prototype.getAnimations = vi.fn().mockReturnValue([])
+
 globalThis.matchMedia = vi.fn().mockImplementation((query) => ({
   matches: false,
   media: query,
