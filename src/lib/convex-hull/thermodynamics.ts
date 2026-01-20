@@ -362,8 +362,11 @@ export function calculate_e_above_hull(
       try {
         const bary = composition_to_barycentric_nd(ref.composition, elements)
         ref_points.push([...bary, e_form])
-      } catch {
-        // Skip invalid compositions
+      } catch (err) {
+        // Skip expected errors (missing elements), warn on unexpected
+        if (
+          err instanceof Error && !err.message.includes(`no elements from the system`)
+        ) console.warn(`Skipping reference entry: ${err.message}`)
       }
     }
 
@@ -390,8 +393,13 @@ export function calculate_e_above_hull(
         const bary = composition_to_barycentric_nd(entry.composition, elements)
         idx_to_point_idx.set(idx, interest_points.length)
         interest_points.push([...bary, e_form])
-      } catch {
-        // Skip invalid compositions
+      } catch (err) {
+        // Skip expected errors (missing elements), warn on unexpected
+        if (
+          err instanceof Error && !err.message.includes(`no elements from the system`)
+        ) {
+          console.warn(`Skipping interest entry: ${err.message}`)
+        }
       }
     }
 
@@ -1539,12 +1547,24 @@ export const compute_e_above_hull_4d = (
 
 // --- N-Dimensional Convex Hull (for 5+ element systems) ---
 
-// N-dimensional vector operations
-const subtract_nd = (vec_a: number[], vec_b: number[]): number[] =>
-  vec_a.map((val, idx) => val - vec_b[idx])
+// N-dimensional vector operations with dimension validation
+const subtract_nd = (vec_a: number[], vec_b: number[]): number[] => {
+  if (vec_a.length !== vec_b.length) {
+    throw new Error(
+      `Vector dimension mismatch: ${vec_a.length} vs ${vec_b.length}`,
+    )
+  }
+  return vec_a.map((val, idx) => val - vec_b[idx])
+}
 
-const dot_nd = (vec_a: number[], vec_b: number[]): number =>
-  vec_a.reduce((sum, val, idx) => sum + val * vec_b[idx], 0)
+const dot_nd = (vec_a: number[], vec_b: number[]): number => {
+  if (vec_a.length !== vec_b.length) {
+    throw new Error(
+      `Vector dimension mismatch: ${vec_a.length} vs ${vec_b.length}`,
+    )
+  }
+  return vec_a.reduce((sum, val, idx) => sum + val * vec_b[idx], 0)
+}
 
 const norm_nd = (vec: number[]): number => Math.sqrt(dot_nd(vec, vec))
 
@@ -1594,11 +1614,8 @@ function compute_hyperplane_nd(points: number[][]): HyperplaneND {
 
   const normal = normalize_nd(normal_components)
 
-  // Guard against degenerate (co-hyperplanar) points
-  const magnitude = normal.reduce((sum, val) => sum + Math.abs(val), 0)
-  if (magnitude < EPS) {
-    return { normal: normal_components.map(() => 0), offset: 0 }
-  }
+  // Degenerate case: co-hyperplanar points produce zero normal
+  if (norm_nd(normal) < EPS) return { normal, offset: 0 }
 
   const offset = -dot_nd(normal, points[0])
   return { normal, offset }
@@ -1653,12 +1670,13 @@ function choose_initial_simplex_nd(points: number[][]): number[] | null {
   // Add remaining points to span higher dimensions
   while (chosen.length < n + 1) {
     let [best_idx, best_distance] = [-1, -1]
+    // Hoist chosen_points computation outside inner loop for O(n) instead of O(n²)
+    const chosen_points = chosen.map((idx_c) => points[idx_c])
 
     for (let idx = 0; idx < points.length; idx++) {
       if (chosen_set.has(idx)) continue
 
       // Compute distance from point to affine hull of chosen points
-      const chosen_points = chosen.map((idx_c) => points[idx_c])
       const dist = distance_to_affine_hull_nd(points[idx], chosen_points)
 
       if (dist > best_distance) {
@@ -2056,7 +2074,10 @@ export function compute_e_above_hull_nd(
       hull_energy = hull_energy === null ? e_hull : Math.min(hull_energy, e_hull)
     }
 
-    if (hull_energy === null) return 0
+    // If no facet contains this point's spatial projection, it's outside the valid
+    // composition domain. Return NaN to indicate invalid input rather than 0 (which
+    // would falsely imply the point is stable/on-hull).
+    if (hull_energy === null) return NaN
     const distance = energy - hull_energy
     return distance > EPS ? distance : 0
   })

@@ -328,14 +328,27 @@
     const is_invalid = (val: unknown) =>
       val == null || (typeof val === `number` && Number.isNaN(val))
 
-    // Get sort value from a cell (handles HTML data-sort-value)
+    // Get sort value from a cell (handles HTML data-sort-value and numbers with errors)
     const get_sort_val = (val: CellVal): string | number => {
       if (typeof val === `string`) {
-        const match = val.match(/data-sort-value="([^"]*)"/)
-        if (match) {
-          const num = Number(match[1])
-          return isNaN(num) ? match[1] : num
+        // Check for HTML data-sort-value attribute first
+        const sort_attr_match = val.match(/data-sort-value="([^"]*)"/)
+        if (sort_attr_match) {
+          const num = Number(sort_attr_match[1])
+          return isNaN(num) ? sort_attr_match[1] : num
         }
+        // Handle numbers with error notation: "1.23 ± 0.05" or "1.23 +- 0.05" or "1.23(5)"
+        // Extract the primary number before the ± or +- or (
+        const error_match = val.match(
+          /^([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*(?:[±]|[+][-]|\()/,
+        )
+        if (error_match) {
+          const num = Number(error_match[1])
+          if (!isNaN(num)) return num
+        }
+        // Try parsing as a plain number (handles "1.23" strings)
+        const plain_num = Number(val)
+        if (!isNaN(plain_num) && val.trim() !== ``) return plain_num
       }
       return val as string | number
     }
@@ -399,6 +412,9 @@
   // Track previous values to detect actual changes
   let prev_search_query = $state(``)
   let prev_data_length = $state(0)
+
+  // Track async sort requests to prevent race conditions
+  let sort_request_id = 0
 
   // Reset to page 1 when search query or data length actually changes
   $effect(() => {
@@ -464,10 +480,18 @@
       // If onsort callback provided, fetch new data from server
       if (onsort) {
         loading = true
+        const request_id = ++sort_request_id
         try {
-          data = await onsort(col_id, new_dir)
+          const result = await onsort(col_id, new_dir)
+          // Only update if this is still the most recent request (avoid race condition)
+          if (request_id === sort_request_id) {
+            data = result
+          }
         } finally {
-          loading = false
+          // Only clear loading if this is still the most recent request
+          if (request_id === sort_request_id) {
+            loading = false
+          }
         }
       }
     }

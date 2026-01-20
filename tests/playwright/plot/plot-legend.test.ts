@@ -358,6 +358,80 @@ test.describe(`Legend Placement Stability`, () => {
     await series_a.click()
     await expect(series_a).not.toHaveClass(/hidden/)
   })
+
+  test(`legend position updates during drag and stays at drop position without animation`, async ({ page }) => {
+    // This test verifies the fix for legend drag not working (event.currentTarget was window)
+    // and the fix for unwanted animation after dropping
+    const plot = page.locator(`#legend-multi-default.scatter`)
+    await plot.scrollIntoViewIfNeeded()
+    await expect(plot).toBeVisible()
+
+    const legend = plot.locator(`.legend`)
+    await expect(legend).toBeVisible()
+
+    // Wait for initial placement to stabilize
+    await wait_for_position_stable(legend, 2000)
+
+    const initial_bbox = await legend.boundingBox()
+    if (!initial_bbox) throw new Error(`Legend bounding box not found`)
+
+    // Start dragging on empty area of legend (not on legend items)
+    const drag_start_x = initial_bbox.x + 5
+    const drag_start_y = initial_bbox.y + 5
+    const drag_distance = { x: 80, y: 60 }
+
+    await page.mouse.move(drag_start_x, drag_start_y)
+    await page.mouse.down()
+
+    // Move partway through drag and verify legend position is updating
+    const mid_drag_x = drag_start_x + drag_distance.x / 2
+    const mid_drag_y = drag_start_y + drag_distance.y / 2
+    await page.mouse.move(mid_drag_x, mid_drag_y, { steps: 5 })
+
+    // Verify legend has moved during drag (not stuck at initial position)
+    const mid_drag_bbox = await legend.boundingBox()
+    if (!mid_drag_bbox) throw new Error(`Legend bounding box not found during drag`)
+
+    // Legend should have moved approximately half the drag distance
+    const mid_movement_x = Math.abs(mid_drag_bbox.x - initial_bbox.x)
+    const mid_movement_y = Math.abs(mid_drag_bbox.y - initial_bbox.y)
+    expect(mid_movement_x).toBeGreaterThan(20) // Should have moved at least 20px
+    expect(mid_movement_y).toBeGreaterThan(15)
+
+    // Complete the drag
+    const final_x = drag_start_x + drag_distance.x
+    const final_y = drag_start_y + drag_distance.y
+    await page.mouse.move(final_x, final_y, { steps: 5 })
+    await page.mouse.up()
+
+    // Capture position immediately after drop
+    const drop_bbox = await legend.boundingBox()
+    if (!drop_bbox) throw new Error(`Legend bounding box not found after drop`)
+
+    // Verify legend moved to approximately the expected position
+    const total_movement_x = Math.abs(drop_bbox.x - initial_bbox.x)
+    const total_movement_y = Math.abs(drop_bbox.y - initial_bbox.y)
+    expect(total_movement_x).toBeGreaterThan(60) // Should have moved close to drag distance
+    expect(total_movement_y).toBeGreaterThan(40)
+
+    // Wait a short time and verify position hasn't animated/changed
+    // (tests the fix for removing drop animation)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const post_drop_bbox = await legend.boundingBox()
+    if (!post_drop_bbox) throw new Error(`Legend bounding box not found post-drop`)
+
+    // Position should be stable (no animation sliding it somewhere else)
+    expect(Math.abs(post_drop_bbox.x - drop_bbox.x)).toBeLessThan(2)
+    expect(Math.abs(post_drop_bbox.y - drop_bbox.y)).toBeLessThan(2)
+
+    // Wait longer and verify still stable (animation would have completed by now)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const final_bbox = await legend.boundingBox()
+    if (!final_bbox) throw new Error(`Legend bounding box not found final check`)
+
+    expect(Math.abs(final_bbox.x - drop_bbox.x)).toBeLessThan(2)
+    expect(Math.abs(final_bbox.y - drop_bbox.y)).toBeLessThan(2)
+  })
 })
 
 test.describe(`Coordinated Legend and ColorBar Placement`, () => {

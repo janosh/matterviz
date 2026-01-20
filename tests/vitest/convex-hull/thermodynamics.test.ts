@@ -600,4 +600,20 @@ describe(`N-Dimensional Convex Hull`, () => {
     const distances = compute_e_above_hull_nd([query], lower_hull, asymmetric_hull)
     expect(distances[0]).toBeCloseTo(expected, 1)
   })
+
+  test(`returns NaN for points outside valid composition domain`, () => {
+    // Point with spatial coords that don't sum to 1 (outside simplex)
+    const invalid_point = [0.9, 0.9, 0.9, 0.9, 0] // sum = 3.6, not 1
+    const lower_hull = compute_lower_hull_nd(compute_quickhull_nd(simplex_5d))
+    const distances = compute_e_above_hull_nd([invalid_point], lower_hull, simplex_5d)
+    expect(Number.isNaN(distances[0])).toBe(true)
+  })
+
+  test(`handles empty hull facets gracefully`, () => {
+    // Degenerate case: no lower hull facets
+    const query = [0.2, 0.2, 0.2, 0.2, 0]
+    const distances = compute_e_above_hull_nd([query], [], simplex_5d)
+    // With no facets to check, all points are "outside domain"
+    expect(Number.isNaN(distances[0])).toBe(true)
+  })
 })

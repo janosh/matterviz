@@ -1406,41 +1406,35 @@ describe(`det_nxn`, () => {
     }
   })
 
-  test(`5x5 matrix (quinary convex hull use case)`, () => {
-    // Identity matrix
-    const identity_5 = Array.from(
-      { length: 5 },
-      (_, idx) => Array.from({ length: 5 }, (_, jdx) => (idx === jdx ? 1 : 0)),
+  // Test higher-dimensional matrices (5x5 and 6x6 for N-element convex hulls)
+  const make_identity = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, idx) => Array.from({ length: n }, (_, jdx) => (idx === jdx ? 1 : 0)),
     )
-    expect(math.det_nxn(identity_5)).toBeCloseTo(1, 10)
 
-    // Diagonal matrix
-    const diag_5 = Array.from(
-      { length: 5 },
-      (_, idx) => Array.from({ length: 5 }, (_, jdx) => (idx === jdx ? idx + 1 : 0)),
+  const make_diagonal = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, idx) => Array.from({ length: n }, (_, jdx) => (idx === jdx ? idx + 1 : 0)),
     )
-    expect(math.det_nxn(diag_5)).toBeCloseTo(120, 10) // 1*2*3*4*5 = 120
 
-    // Singular matrix (has zero determinant)
-    const singular_5 = Array.from(
+  const factorial = (n: number): number => n <= 1 ? 1 : n * factorial(n - 1)
+
+  test.each([5, 6])(`%dx%d identity matrix → det=1`, (n) => {
+    expect(math.det_nxn(make_identity(n))).toBeCloseTo(1, 10)
+  })
+
+  test.each([5, 6])(`%dx%d diagonal matrix → det=n!`, (n) => {
+    expect(math.det_nxn(make_diagonal(n))).toBeCloseTo(factorial(n), 10)
+  })
+
+  test(`5x5 singular matrix → det=0`, () => {
+    const singular = Array.from(
       { length: 5 },
       (_, idx) => Array.from({ length: 5 }, (_, jdx) => idx + jdx + 1),
     )
-    expect(math.det_nxn(singular_5)).toBeCloseTo(0, 5)
-  })
-
-  test(`6x6 matrix (senary convex hull use case)`, () => {
-    const identity_6 = Array.from(
-      { length: 6 },
-      (_, idx) => Array.from({ length: 6 }, (_, jdx) => (idx === jdx ? 1 : 0)),
-    )
-    expect(math.det_nxn(identity_6)).toBeCloseTo(1, 10)
-
-    const diag_6 = Array.from(
-      { length: 6 },
-      (_, idx) => Array.from({ length: 6 }, (_, jdx) => (idx === jdx ? idx + 1 : 0)),
-    )
-    expect(math.det_nxn(diag_6)).toBeCloseTo(720, 10) // 6! = 720
+    expect(math.det_nxn(singular)).toBeCloseTo(0, 5)
   })
 
   test(`throws for non-square matrix`, () => {

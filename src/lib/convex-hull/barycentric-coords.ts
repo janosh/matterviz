@@ -165,6 +165,13 @@ export function composition_to_barycentric_nd(
     throw new Error(`Barycentric coordinates require at least 2 elements, got ${n}`)
   }
   const amounts = elements.map((el) => composition[el] || 0)
+
+  // Validate: negative amounts are physically meaningless
+  const negative = elements.filter((_, idx) => amounts[idx] < 0)
+  if (negative.length > 0) {
+    throw new Error(`Composition contains negative amounts for: ${negative.join(`, `)}`)
+  }
+
   const total = amounts.reduce((sum, amount) => sum + amount, 0)
   if (total === 0) {
     throw new Error(

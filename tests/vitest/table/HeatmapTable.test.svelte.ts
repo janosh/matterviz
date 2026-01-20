@@ -235,6 +235,172 @@ describe(`HeatmapTable`, () => {
 
       expect(scores).toEqual([`0.75`, `0.85`, `0.95`])
     })
+
+    it(`sorts numbers with ± error notation correctly`, async () => {
+      // Values with ± should sort by the primary number, not the whole string
+      const error_data = [
+        { Name: `A`, Value: `1.5 ± 0.2` },
+        { Name: `B`, Value: `0.8 ± 0.1` },
+        { Name: `C`, Value: `2.3 ± 0.5` },
+      ]
+      const error_columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, description: `` },
+      ]
+
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: error_data, columns: error_columns },
+      })
+
+      const value_header = document.querySelectorAll(`th`)[1]
+      value_header.click()
+      await tick()
+
+      const values = Array.from(
+        document.querySelectorAll(`td[data-col="Value"]`),
+      ).map((cell) => cell.textContent?.trim())
+      // Should sort numerically by primary value: 0.8, 1.5, 2.3
+      expect(values).toEqual([`0.8 ± 0.2`, `1.5 ± 0.1`, `2.3 ± 0.5`])
+    })
+
+    it(`sorts numbers with +- error notation correctly`, async () => {
+      // Values with +- should sort by the primary number
+      const error_data = [
+        { Name: `A`, Value: `10.5 +- 1.2` },
+        { Name: `B`, Value: `5.2 +- 0.8` },
+        { Name: `C`, Value: `15.0 +- 2.0` },
+      ]
+      const error_columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, description: `` },
+      ]
+
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: error_data, columns: error_columns },
+      })
+
+      const value_header = document.querySelectorAll(`th`)[1]
+      value_header.click()
+      await tick()
+
+      const values = Array.from(
+        document.querySelectorAll(`td[data-col="Value"]`),
+      ).map((cell) => cell.textContent?.trim())
+      // Should sort numerically by primary value: 5.2, 10.5, 15.0
+      expect(values).toEqual([`5.2 +- 0.8`, `10.5 +- 1.2`, `15.0 +- 2.0`])
+    })
+
+    it(`sorts numbers with parenthetical error notation correctly`, async () => {
+      // Values like "1.234(5)" where (5) is the error
+      const error_data = [
+        { Name: `A`, Value: `1.234(5)` },
+        { Name: `B`, Value: `0.567(3)` },
+        { Name: `C`, Value: `2.890(8)` },
+      ]
+      const error_columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, description: `` },
+      ]
+
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: error_data, columns: error_columns },
+      })
+
+      const value_header = document.querySelectorAll(`th`)[1]
+      value_header.click()
+      await tick()
+
+      const values = Array.from(
+        document.querySelectorAll(`td[data-col="Value"]`),
+      ).map((cell) => cell.textContent?.trim())
+      // Should sort numerically by primary value: 0.567, 1.234, 2.890
+      expect(values).toEqual([`0.567(3)`, `1.234(5)`, `2.890(8)`])
+    })
+
+    it(`sorts negative numbers with error notation correctly`, async () => {
+      const error_data = [
+        { Name: `A`, Value: `-1.5 ± 0.2` },
+        { Name: `B`, Value: `0.8 ± 0.1` },
+        { Name: `C`, Value: `-2.3 ± 0.5` },
+      ]
+      const error_columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, description: `` },
+      ]
+
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: error_data, columns: error_columns },
+      })
+
+      const value_header = document.querySelectorAll(`th`)[1]
+      value_header.click()
+      await tick()
+
+      const values = Array.from(
+        document.querySelectorAll(`td[data-col="Value"]`),
+      ).map((cell) => cell.textContent?.trim())
+      // Should sort numerically: -2.3, -1.5, 0.8
+      expect(values).toEqual([`-2.3 ± 0.5`, `-1.5 ± 0.2`, `0.8 ± 0.1`])
+    })
+
+    it(`sorts scientific notation with error correctly`, async () => {
+      const error_data = [
+        { Name: `A`, Value: `1.5e-3 ± 0.2e-3` },
+        { Name: `B`, Value: `2.8e-2 ± 0.1e-2` },
+        { Name: `C`, Value: `5.0e-4 ± 1.0e-4` },
+      ]
+      const error_columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, description: `` },
+      ]
+
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: error_data, columns: error_columns },
+      })
+
+      const value_header = document.querySelectorAll(`th`)[1]
+      value_header.click()
+      await tick()
+
+      const values = Array.from(
+        document.querySelectorAll(`td[data-col="Value"]`),
+      ).map((cell) => cell.textContent?.trim())
+      // Should sort numerically: 5e-4, 1.5e-3, 2.8e-2
+      expect(values).toEqual([`5.0e-4 ± 1.0e-4`, `1.5e-3 ± 0.2e-3`, `2.8e-2 ± 0.1e-2`])
+    })
+
+    it(`handles mixed plain numbers and error notation in same column`, async () => {
+      const mixed_data = [
+        { Name: `A`, Value: `1.5 ± 0.2` },
+        { Name: `B`, Value: `0.8` },
+        { Name: `C`, Value: `2.3 ± 0.5` },
+        { Name: `D`, Value: `1.0` },
+      ]
+      const mixed_columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, description: `` },
+      ]
+
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: mixed_data, columns: mixed_columns },
+      })
+
+      const value_header = document.querySelectorAll(`th`)[1]
+      value_header.click()
+      await tick()
+
+      const values = Array.from(
+        document.querySelectorAll(`td[data-col="Value"]`),
+      ).map((cell) => cell.textContent?.trim())
+      // Should sort numerically: 0.8, 1.0, 1.5, 2.3
+      expect(values).toEqual([`0.8`, `1.0`, `1.5 ± 0.2`, `2.3 ± 0.5`])
+    })
   })
 
   it(`handles formatting and styles`, () => {
@@ -1636,35 +1802,6 @@ describe(`HeatmapTable`, () => {
     })
 
     describe(`integration scenarios`, () => {
-      it(`server-side sorting workflow updates displayed data`, async () => {
-        const sorted_data = [
-          { Model: `B`, Score: 0.9, Value: 200 },
-          { Model: `A`, Score: 0.8, Value: 100 },
-        ]
-        const onsort_mock = vi.fn().mockResolvedValue(sorted_data)
-        mount(HeatmapTable, {
-          target: document.body,
-          props: {
-            data: [
-              { Model: `A`, Score: 0.8, Value: 100 },
-              { Model: `B`, Score: 0.9, Value: 200 },
-            ],
-            columns: sample_columns,
-            onsort: onsort_mock,
-          },
-        })
-
-        const table = document.body.lastElementChild as HTMLElement
-        table.querySelectorAll(`th`)[1].click()
-        await tick()
-
-        await vi.waitFor(() => {
-          const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`))
-            .map((cell) => cell.textContent?.trim())
-          expect(models).toEqual([`B`, `A`])
-        })
-      })
-
       it(`sort hint works with onsort`, () => {
         mount(HeatmapTable, {
           target: document.body,
@@ -1710,6 +1847,61 @@ describe(`HeatmapTable`, () => {
 
         // Column reorder works (headers are draggable)
         expect(table.querySelector(`th`)?.getAttribute(`draggable`)).toBe(`true`)
+      })
+
+      it(`handles race condition: stale responses are ignored`, async () => {
+        // Simulate two async sorts where the first resolves after the second
+        let resolve_first: (value: typeof initial_data) => void = () => {}
+        let resolve_second: (value: typeof initial_data) => void = () => {}
+
+        const first_data = [{ Model: `First`, Score: 0.1, Value: 1 }]
+        const second_data = [{ Model: `Second`, Score: 0.2, Value: 2 }]
+
+        let call_count = 0
+        const onsort_mock = vi.fn().mockImplementation(() => {
+          call_count++
+          if (call_count === 1) {
+            return new Promise((resolve) => {
+              resolve_first = resolve
+            })
+          }
+          return new Promise((resolve) => {
+            resolve_second = resolve
+          })
+        })
+
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
+        })
+
+        const table = document.body.lastElementChild as HTMLElement
+        const headers = table.querySelectorAll(`th`)
+
+        // Click first column (starts first async sort)
+        headers[1].click()
+        await tick()
+
+        // Click second column before first resolves (starts second async sort)
+        headers[2].click()
+        await tick()
+
+        expect(onsort_mock).toHaveBeenCalledTimes(2)
+
+        // Resolve second request first
+        resolve_second(second_data)
+        await tick()
+
+        // Now resolve first (stale) request
+        resolve_first(first_data)
+        await tick()
+
+        // Data should show second_data, not first_data (stale response ignored)
+        await vi.waitFor(() => {
+          const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`))
+            .map((cell) => cell.textContent?.trim())
+          expect(models).toEqual([`Second`])
+        })
       })
     })
   })

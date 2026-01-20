@@ -391,6 +391,7 @@ export function det_nxn(matrix: number[][]): number {
   if (n === 1) return matrix[0][0]
   if (n === 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
   if (n === 3) return det_3x3(matrix as Matrix3x3)
+  if (n === 4) return det_4x4(matrix as Matrix4x4)
 
   // LU decomposition with partial pivoting
   // Create a working copy to avoid mutating input
