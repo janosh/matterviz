@@ -322,9 +322,8 @@ test.describe(`Legend Placement Stability`, () => {
   })
 
   test(`legend remains functional and stable after mouse drag gestures`, async ({ page }) => {
-    // Tests legend stability after mouse interactions and that toggle still works.
-    // Note: Actual drag movement can't be reliably tested via E2E because legend items
-    // fill most of the legend space, preventing drag initiation (by design).
+    // Tests drag functionality, position stability, and that toggle still works.
+    // The test plot has legend padding (8px) to ensure clickable empty space for drag initiation.
     const plot = page.locator(`#legend-multi-default.scatter`)
     await plot.scrollIntoViewIfNeeded()
     await expect(plot).toBeVisible()
@@ -338,17 +337,25 @@ test.describe(`Legend Placement Stability`, () => {
     const initial_bbox = await legend.boundingBox()
     if (!initial_bbox) throw new Error(`Legend bounding box not found`)
 
-    // Perform drag gesture (may or may not move legend depending on click target)
-    await page.mouse.move(initial_bbox.x + 10, initial_bbox.y + 10)
+    // Click in top-left padding area (avoids legend items), then drag
+    await page.mouse.move(initial_bbox.x + 4, initial_bbox.y + 4)
     await page.mouse.down()
     await page.mouse.move(initial_bbox.x + 80, initial_bbox.y + 60, { steps: 10 })
     await page.mouse.up()
 
-    // Capture position after interaction
+    // Capture position after drag
     const after_drag_bbox = await legend.boundingBox()
     if (!after_drag_bbox) throw new Error(`Legend bounding box not found after drag`)
 
-    // Verify position stability (no unexpected drift after 500ms)
+    // Verify drag actually moved the legend (at least 20px in one direction)
+    const displacement_x = Math.abs(after_drag_bbox.x - initial_bbox.x)
+    const displacement_y = Math.abs(after_drag_bbox.y - initial_bbox.y)
+    expect(
+      displacement_x > 20 || displacement_y > 20,
+      `Legend should move during drag (moved ${displacement_x}px, ${displacement_y}px)`,
+    ).toBe(true)
+
+    // Verify position stability (no unexpected drift after 500ms - tests animation fix)
     await page.waitForTimeout(500)
     const final_bbox = await legend.boundingBox()
     if (!final_bbox) throw new Error(`Legend bounding box not found after wait`)
