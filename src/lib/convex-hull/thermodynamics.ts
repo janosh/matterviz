@@ -379,21 +379,21 @@ export function calculate_e_above_hull(
 
     const hull_facets = compute_lower_hull_nd(compute_quickhull_nd(ref_points))
 
-    // Build query points
+    // Build query points with mapping back to original indices
     const interest_points: number[][] = []
-    const interest_indices: number[] = []
+    const idx_to_point_idx = new Map<number, number>()
 
-    interest_data.forEach(({ entry, e_form }, idx) => {
-      if (typeof e_form === `number`) {
-        try {
-          const bary = composition_to_barycentric_nd(entry.composition, elements)
-          interest_points.push([...bary, e_form])
-          interest_indices.push(idx)
-        } catch {
-          // Skip invalid
-        }
+    for (let idx = 0; idx < interest_data.length; idx++) {
+      const { entry, e_form } = interest_data[idx]
+      if (typeof e_form !== `number`) continue
+      try {
+        const bary = composition_to_barycentric_nd(entry.composition, elements)
+        idx_to_point_idx.set(idx, interest_points.length)
+        interest_points.push([...bary, e_form])
+      } catch {
+        // Skip invalid compositions
       }
-    })
+    }
 
     // Compute hull distances (empty array if degenerate hull)
     const distances = hull_facets.length > 0
@@ -404,9 +404,9 @@ export function calculate_e_above_hull(
     for (let idx = 0; idx < interest_data.length; idx++) {
       const { entry, e_form } = interest_data[idx]
       const id = entry.entry_id ?? JSON.stringify(entry.composition)
-      const point_idx = interest_indices.indexOf(idx)
+      const point_idx = idx_to_point_idx.get(idx)
 
-      if (point_idx === -1) {
+      if (point_idx === undefined) {
         results[id] = NaN
       } else if (hull_facets.length === 0 && typeof e_form === `number`) {
         // Degenerate case: hull is tie-hyperplane at energy 0
@@ -1699,32 +1699,18 @@ function distance_to_affine_hull_nd(point: number[], hull_points: number[][]): n
   const edges = hull_points.slice(1).map((pt) => subtract_nd(pt, origin))
   const vp = subtract_nd(point, origin)
 
-  // Solve least squares: find coeffs such that sum(coeff_i * edge_i) ≈ vp
-  // Using Gram matrix G[i][j] = dot(edge_i, edge_j)
-  const k = edges.length
-  const gram: number[][] = []
-  const rhs: number[] = []
-
-  for (let idx_i = 0; idx_i < k; idx_i++) {
-    gram.push([])
-    for (let idx_j = 0; idx_j < k; idx_j++) {
-      gram[idx_i].push(dot_nd(edges[idx_i], edges[idx_j]))
-    }
-    rhs.push(dot_nd(edges[idx_i], vp))
-  }
+  // Solve least squares using Gram matrix G[i][j] = dot(edge_i, edge_j)
+  const gram = edges.map((edge_i) => edges.map((edge_j) => dot_nd(edge_i, edge_j)))
+  const rhs = edges.map((edge) => dot_nd(edge, vp))
 
   // Solve Gram * coeffs = rhs using simple Gaussian elimination
   const coeffs = solve_linear_system(gram, rhs)
   if (!coeffs) return norm_nd(vp) // Fallback if system is singular
 
-  // Compute projection and distance
-  const proj = [...origin]
-  for (let idx_i = 0; idx_i < k; idx_i++) {
-    for (let idx_d = 0; idx_d < origin.length; idx_d++) {
-      proj[idx_d] += coeffs[idx_i] * edges[idx_i][idx_d]
-    }
-  }
-
+  // Compute projection: origin + sum(coeffs[i] * edges[i])
+  const proj = origin.map((val, dim) =>
+    val + coeffs.reduce((sum, coeff, idx) => sum + coeff * edges[idx][dim], 0)
+  )
   return norm_nd(subtract_nd(point, proj))
 }
 
@@ -1807,16 +1793,12 @@ function farthest_outside_point_nd(
   points: number[][],
   face: SimplexFaceND,
 ): { idx: number; distance: number } | null {
-  let [best_idx, best_dist] = [-1, -1]
+  let best: { idx: number; distance: number } | null = null
   for (const idx of face.outside_points) {
-    const dist = point_hyperplane_signed_distance_nd(face.plane, points[idx])
-    if (dist > best_dist) {
-      best_dist = dist
-      best_idx = idx
-    }
+    const distance = point_hyperplane_signed_distance_nd(face.plane, points[idx])
+    if (!best || distance > best.distance) best = { idx, distance }
   }
-  if (best_idx === -1) return null
-  return { idx: best_idx, distance: best_dist }
+  return best
 }
 
 // Build horizon ridges (boundary between visible and non-visible faces)
@@ -1847,12 +1829,8 @@ function build_horizon_nd(
     }
   }
 
-  // Return only boundary ridges (seen exactly once)
-  const horizon: number[][] = []
-  for (const ridge of ridge_count.values()) {
-    if (ridge.length > 0) horizon.push(ridge)
-  }
-  return horizon
+  // Return only boundary ridges (seen exactly once, not marked empty)
+  return [...ridge_count.values()].filter((ridge) => ridge.length > 0)
 }
 
 // N-dimensional quickhull algorithm
@@ -1964,11 +1942,8 @@ export function compute_quickhull_nd(points: number[][]): SimplexFaceND[] {
 
 // Filter for lower hull facets (normal pointing "down" in energy dimension)
 export function compute_lower_hull_nd(faces: SimplexFaceND[]): SimplexFaceND[] {
-  return faces.filter((face) => {
-    const n = face.plane.normal.length
-    // Last dimension is energy; negative normal means "downward"
-    return face.plane.normal[n - 1] < -EPS
-  })
+  // Last dimension is energy; negative normal means "downward"
+  return faces.filter((face) => (face.plane.normal.at(-1) ?? 0) < -EPS)
 }
 
 // Precomputed model for fast containment checks
@@ -2032,18 +2007,12 @@ function point_in_simplex_nd(
   const coeffs = solve_linear_system(matrix, rhs)
   if (!coeffs) return null
 
-  // Compute b0 = 1 - sum(coeffs)
+  // Compute b0 = 1 - sum(coeffs), ensuring sum(bary) = 1 by construction
   const sum_coeffs = coeffs.reduce((sum, val) => sum + val, 0)
   const bary = [1 - sum_coeffs, ...coeffs]
 
-  // Check if all barycentric coords are non-negative (point inside simplex)
-  if (!bary.every((val) => val >= -EPS)) return null
-
-  // Validate barycentric sum is close to 1
-  const bary_sum = bary.reduce((sum, val) => sum + val, 0)
-  if (Math.abs(bary_sum - 1) > EPS * 1000) return null
-
-  return bary
+  // Point is inside simplex if all barycentric coords are non-negative
+  return bary.every((val) => val >= -EPS) ? bary : null
 }
 
 // Compute energy above hull for N-dimensional points
