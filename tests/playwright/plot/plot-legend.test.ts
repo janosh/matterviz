@@ -375,17 +375,31 @@ test.describe(`Legend Placement Stability`, () => {
     const initial_bbox = await legend.boundingBox()
     if (!initial_bbox) throw new Error(`Legend bounding box not found`)
 
-    // Start dragging on empty area of legend (not on legend items)
-    const drag_start_x = initial_bbox.x + 5
-    const drag_start_y = initial_bbox.y + 5
+    // Find the last legend item to determine where the empty space is
+    const legend_items = legend.locator(`.legend-item`)
+    const last_item = legend_items.last()
+    const last_item_bbox = await last_item.boundingBox()
+    if (!last_item_bbox) throw new Error(`Last legend item bounding box not found`)
+
+    // Start dragging below all legend items (in the gap between items and legend bottom edge)
+    // This ensures we're not clicking on a legend item which would prevent drag
+    const drag_start_x = initial_bbox.x + initial_bbox.width / 2
+    const drag_start_y = last_item_bbox.y + last_item_bbox.height + 2
     const drag_distance = { x: 80, y: 60 }
 
-    await page.mouse.move(drag_start_x, drag_start_y)
+    // If no space below items, try dragging from just left of the first item's marker
+    const first_item_bbox = await legend_items.first().boundingBox()
+    const actual_start_x = first_item_bbox
+      ? Math.max(initial_bbox.x + 1, first_item_bbox.x - 3)
+      : drag_start_x
+    const actual_start_y = first_item_bbox ? first_item_bbox.y + 2 : drag_start_y
+
+    await page.mouse.move(actual_start_x, actual_start_y)
     await page.mouse.down()
 
     // Move partway through drag and verify legend position is updating
-    const mid_drag_x = drag_start_x + drag_distance.x / 2
-    const mid_drag_y = drag_start_y + drag_distance.y / 2
+    const mid_drag_x = actual_start_x + drag_distance.x / 2
+    const mid_drag_y = actual_start_y + drag_distance.y / 2
     await page.mouse.move(mid_drag_x, mid_drag_y, { steps: 5 })
 
     // Verify legend has moved during drag (not stuck at initial position)
@@ -399,8 +413,8 @@ test.describe(`Legend Placement Stability`, () => {
     expect(mid_movement_y).toBeGreaterThan(15)
 
     // Complete the drag
-    const final_x = drag_start_x + drag_distance.x
-    const final_y = drag_start_y + drag_distance.y
+    const final_x = actual_start_x + drag_distance.x
+    const final_y = actual_start_y + drag_distance.y
     await page.mouse.move(final_x, final_y, { steps: 5 })
     await page.mouse.up()
 
