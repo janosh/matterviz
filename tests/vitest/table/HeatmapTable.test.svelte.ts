@@ -1790,6 +1790,43 @@ describe(`HeatmapTable`, () => {
           expect(models).toEqual([`Second`])
         })
       })
+
+      it(`reverts sort state on onsort callback failure`, async () => {
+        // First call succeeds, second call fails
+        const onsort_mock = vi.fn()
+          .mockResolvedValueOnce(initial_data) // First sort succeeds
+          .mockRejectedValueOnce(new Error(`Network error`)) // Second sort fails
+
+        mount(HeatmapTable, {
+          target: document.body,
+          props: {
+            data: initial_data,
+            columns: sample_columns,
+            onsort: onsort_mock,
+          },
+        })
+
+        const headers = document.querySelectorAll(`th`)
+
+        // First sort by Model (succeeds)
+        headers[0].click()
+        await tick()
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledTimes(1))
+
+        // Verify Model is sorted (check aria-sort attribute)
+        expect(headers[0].getAttribute(`aria-sort`)).not.toBe(`none`)
+
+        // Now click Score (will fail)
+        headers[1].click()
+        await tick()
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledTimes(2))
+
+        // Sort state should revert to Model after failure (Score should be unsorted)
+        await vi.waitFor(() => {
+          expect(headers[1].getAttribute(`aria-sort`)).toBe(`none`)
+          expect(headers[0].getAttribute(`aria-sort`)).not.toBe(`none`)
+        })
+      })
     })
   })
 })

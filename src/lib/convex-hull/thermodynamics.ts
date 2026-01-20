@@ -1549,7 +1549,9 @@ export const compute_e_above_hull_4d = (
       }
     }
 
-    if (hull_w === null) return 0
+    // If no tetrahedron contains this point's spatial projection, it's outside the valid
+    // composition domain. Return NaN to indicate invalid input.
+    if (hull_w === null) return NaN
     const distance = w - hull_w
     return distance > EPS ? distance : 0
   })

@@ -475,6 +475,8 @@
         ? (col.better === `lower` ? `asc` : `desc`)
         : (sort_state.ascending ? `desc` : `asc`)
 
+      // Save previous sort state in case we need to revert on error
+      const prev_sort = { ...sort }
       sort = { column: col_id, dir: new_dir }
 
       // If onsort callback provided, fetch new data from server
@@ -489,6 +491,10 @@
           }
         } catch (err) {
           console.error(`Sort callback failed:`, err)
+          // Revert sort state on failure so UI doesn't show wrong direction
+          if (request_id === sort_request_id) {
+            sort = prev_sort
+          }
         } finally {
           // Only clear loading if this is still the most recent request
           if (request_id === sort_request_id) {
