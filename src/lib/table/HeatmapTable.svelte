@@ -23,7 +23,7 @@
   import { SvelteMap } from 'svelte/reactivity'
 
   let {
-    data,
+    data = $bindable([]),
     columns = [],
     sort_hint = undefined,
     cell,
@@ -45,6 +45,9 @@
     selected_rows = $bindable([]),
     hidden_columns = $bindable([]),
     scroll_style,
+    onsort = undefined,
+    loading = $bindable(false),
+    sort_data = true,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     data: RowData[]
@@ -73,6 +76,14 @@
     selected_rows?: RowData[]
     hidden_columns?: string[]
     scroll_style?: string
+    // Async callback for server-side sorting. When provided, client-side sorting is skipped
+    // and the callback is called with (column_id, direction) to fetch new data from server.
+    onsort?: (column: string, dir: `asc` | `desc`) => Promise<RowData[]>
+    // Loading state during async sort operations
+    loading?: boolean
+    // Whether to sort data client-side. Set to false when parent handles sorting externally.
+    // When onsort is provided, sort_data behavior is implicitly false.
+    sort_data?: boolean
   } = $props()
 
   // Detect HTML to prevent setting raw HTML as data-sort-value. Simple string matching
@@ -308,6 +319,9 @@
   })
 
   let sorted_data = $derived.by(() => {
+    // Skip client-side sorting when using async onsort callback or sort_data is false
+    if (onsort || !sort_data) return filtered_data
+
     if (!sort_state.column && multi_sort.length === 0) return filtered_data
 
     // Helper to check if value is invalid (null, undefined, NaN)
@@ -398,7 +412,11 @@
     }
   })
 
-  function sort_rows(column: string, group: string | undefined, event: MouseEvent) {
+  async function sort_rows(
+    column: string,
+    group: string | undefined,
+    event: MouseEvent,
+  ) {
     // Find the column using both label and group if provided
     const col = ordered_columns.find(
       (c) => c.label === column && c.group === group,
@@ -437,11 +455,20 @@
       // Regular click - single column sort
       multi_sort = [] // Clear multi-sort
       // Use sort_state.column for comparison since it includes initial_sort fallback
-      if (sort_state.column !== col_id) {
-        sort = { column: col_id, dir: col.better === `lower` ? `asc` : `desc` }
-      } else {
-        // Toggle direction - use sort_state.ascending since it reflects actual state
-        sort = { column: col_id, dir: sort_state.ascending ? `desc` : `asc` }
+      const new_dir = sort_state.column !== col_id
+        ? (col.better === `lower` ? `asc` : `desc`)
+        : (sort_state.ascending ? `desc` : `asc`)
+
+      sort = { column: col_id, dir: new_dir }
+
+      // If onsort callback provided, fetch new data from server
+      if (onsort) {
+        loading = true
+        try {
+          data = await onsort(col_id, new_dir)
+        } finally {
+          loading = false
+        }
       }
     }
   }
@@ -743,6 +770,11 @@
     style={scroll_style}
     class:has-scroll={scroll_style}
   >
+    {#if loading}
+      <div class="loading-overlay">
+        <div class="loading-spinner"></div>
+      </div>
+    {/if}
     <table class:fixed-header={fixed_header} class={heatmap_class}>
       <thead>
         <!-- Don't add a table row for group headers if there are none -->
@@ -955,6 +987,9 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
+    position: relative;
+  }
+  .table-scroll {
     position: relative;
   }
   .table-scroll.has-scroll {
@@ -1246,5 +1281,28 @@
   .resize-handle:hover,
   th.resizing .resize-handle {
     background: var(--highlight, #4a9eff);
+  }
+  /* Loading overlay */
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: light-dark(rgba(255, 255, 255, 0.7), rgba(0, 0, 0, 0.5));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  .loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid light-dark(#e5e7eb, #444);
+    border-top-color: var(--highlight, #3b82f6);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>
