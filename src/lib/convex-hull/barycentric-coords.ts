@@ -164,7 +164,11 @@ export function composition_to_barycentric_nd(
   if (n < 2) {
     throw new Error(`Barycentric coordinates require at least 2 elements, got ${n}`)
   }
-  const amounts = elements.map((el) => composition[el] || 0)
+  // NaN and undefined/missing elements are treated as 0
+  const amounts = elements.map((el) => {
+    const val = composition[el]
+    return (val === null || val === undefined || Number.isNaN(val)) ? 0 : val
+  })
   let total = 0
   const negative: string[] = []
   for (let idx = 0; idx < amounts.length; idx++) {

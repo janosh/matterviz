@@ -22,7 +22,7 @@ import pymatgen_reference from './fixtures/quinary_pymatgen_reference.json' with
 interface PymatgenEntry {
   id: string
   composition: Record<string, number>
-  energy_per_atom: number
+  e_form_per_atom: number
   e_above_hull: number
   is_stable: boolean
 }
@@ -38,13 +38,13 @@ const reference = pymatgen_reference as PymatgenReference
 
 // Convert pymatgen entry to PhaseData format
 function to_phase_data(entry: PymatgenEntry): PhaseData {
+  const n_atoms = Object.values(entry.composition).reduce((sum, n) => sum + n, 0)
   return {
     composition: entry.composition,
-    energy_per_atom: entry.energy_per_atom,
-    energy: entry.energy_per_atom *
-      Object.values(entry.composition).reduce((s, n) => s + n, 0),
+    e_form_per_atom: entry.e_form_per_atom,
+    energy_per_atom: entry.e_form_per_atom, // same since elemental refs are 0
+    energy: entry.e_form_per_atom * n_atoms,
     entry_id: entry.id,
-    e_form_per_atom: entry.energy_per_atom,
   }
 }
 
@@ -106,7 +106,7 @@ describe(`Pymatgen cross-validation for quinary (5-element) system`, () => {
     for (const entries_same_comp of by_composition.values()) {
       if (entries_same_comp.length < 2) continue
       const sorted = [...entries_same_comp].sort(
-        (a, b) => a.energy_per_atom - b.energy_per_atom,
+        (a, b) => a.e_form_per_atom - b.e_form_per_atom,
       )
       for (let idx = 1; idx < sorted.length; idx++) {
         const lower_energy = sorted[idx - 1]
