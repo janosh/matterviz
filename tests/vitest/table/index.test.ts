@@ -1,4 +1,4 @@
-import type { CellVal } from '$lib/table'
+import type { CellVal, OnSortCallback, RowData } from '$lib/table'
 import { calc_cell_color, strip_html } from '$lib/table'
 import type * as d3sc from 'd3-scale-chromatic'
 import { describe, expect, it } from 'vitest'
@@ -186,5 +186,16 @@ describe(`strip_html`, () => {
     [`<b>bold</b> and <i>italic</i>`, `bold and italic`],
   ])(`strip_html(%j) = %j`, (input, expected) => {
     expect(strip_html(input)).toBe(expected)
+  })
+})
+
+describe(`OnSortCallback type`, () => {
+  it(`type is correctly exported and usable`, async () => {
+    // Verifies the type export works - runtime check is minimal since types are compile-time
+    const mock_onsort: OnSortCallback = () =>
+      Promise.resolve([{ id: 1 }, { id: 2 }] satisfies RowData[])
+
+    const result = await mock_onsort(`column`, `asc`)
+    expect(result).toHaveLength(2)
   })
 })

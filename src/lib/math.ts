@@ -378,6 +378,67 @@ export function det_4x4(matrix: Matrix4x4): number {
     a3 * (b0 * (c1 * d2 - c2 * d1) - b1 * (c0 * d2 - c2 * d0) + b2 * (c0 * d1 - c1 * d0)))
 }
 
+// Compute NxN determinant using LU decomposition with partial pivoting
+// More numerically stable than cofactor expansion for N > 4
+// Returns 0 for singular/near-singular matrices (pivot < EPS ≈ 1e-10)
+export function det_nxn(matrix: number[][]): number {
+  const n = matrix.length
+  if (n === 0) return 1
+  if (!matrix.every((row) => row.length === n)) {
+    throw new Error(`det_nxn requires a square matrix`)
+  }
+
+  // Fast paths for small matrices
+  if (n === 1) return matrix[0][0]
+  if (n === 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
+  if (n === 3) return det_3x3(matrix as Matrix3x3)
+  if (n === 4) return det_4x4(matrix as Matrix4x4)
+
+  // LU decomposition with partial pivoting
+  // Create a working copy to avoid mutating input
+  const lu = matrix.map((row) => [...row])
+  let swaps = 0
+
+  for (let col = 0; col < n; col++) {
+    // Find pivot (largest absolute value in column)
+    let max_row = col
+    let max_val = Math.abs(lu[col][col])
+    for (let row = col + 1; row < n; row++) {
+      const val = Math.abs(lu[row][col])
+      if (val > max_val) {
+        max_val = val
+        max_row = row
+      }
+    }
+
+    // Singular matrix (or nearly so)
+    if (max_val < EPS) return 0
+
+    // Swap rows if needed
+    if (max_row !== col) {
+      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
+      swaps++
+    }
+
+    // Eliminate below pivot
+    const pivot = lu[col][col]
+    for (let row = col + 1; row < n; row++) {
+      const factor = lu[row][col] / pivot
+      lu[row][col] = 0
+      for (let k = col + 1; k < n; k++) {
+        lu[row][k] -= factor * lu[col][k]
+      }
+    }
+  }
+
+  // Determinant is product of diagonal elements × (-1)^swaps
+  let det = swaps % 2 === 0 ? 1 : -1
+  for (let idx = 0; idx < n; idx++) {
+    det *= lu[idx][idx]
+  }
+  return det
+}
+
 // 3D cross product
 export const cross_3d = (
   vec1: Vec3,

@@ -10,6 +10,7 @@ import {
   barycentric_to_tetrahedral,
   composition_to_barycentric_3d,
   composition_to_barycentric_4d,
+  composition_to_barycentric_nd,
 } from './barycentric-coords'
 import type {
   ConvexHullFace,
@@ -353,7 +354,85 @@ export function calculate_e_above_hull(
       }
     }
   } else {
-    throw new Error(`Hull calculation not supported for arity ${arity}`)
+    // Arity 5+ uses generalized N-dimensional convex hull
+    // Helper to convert entry to hull point, returns null on expected errors
+    const to_hull_point = (entry: PhaseData, e_form: number): number[] | null => {
+      try {
+        return [...composition_to_barycentric_nd(entry.composition, elements), e_form]
+      } catch (err) {
+        // Skip expected errors (missing elements), warn on unexpected
+        if (
+          err instanceof Error && !err.message.includes(`no elements from the system`)
+        ) {
+          console.warn(`Skipping entry: ${err.message}`)
+        }
+        return null
+      }
+    }
+
+    // Build reference points
+    const ref_points: number[][] = []
+    for (const ref of reference_entries) {
+      const e_form = compute_e_form(ref)
+      if (typeof e_form !== `number`) continue
+      const point = to_hull_point(ref, e_form)
+      if (point) ref_points.push(point)
+    }
+
+    // Ensure corner points (pure elements default to e_form = 0)
+    for (let el_idx = 0; el_idx < arity; el_idx++) {
+      const corner = new Array(arity + 1).fill(0)
+      corner[el_idx] = 1 // ith barycentric coord = 1
+      if (!ref_points.some((pt) => norm_nd(subtract_nd(pt, corner)) < EPS)) {
+        ref_points.push(corner)
+      }
+    }
+
+    const hull_facets = compute_lower_hull_nd(compute_quickhull_nd(ref_points))
+
+    // Warn if hull is degenerate (all points coplanar or insufficient spread)
+    if (hull_facets.length === 0 && ref_points.length >= arity + 1) {
+      console.warn(
+        `N-dimensional hull for ${arity}-element system is degenerate. ` +
+          `Falling back to tie-hyperplane at energy 0. ` +
+          `Consider using pymatgen for complex high-dimensional phase diagrams.`,
+      )
+    }
+
+    // Build query points with mapping back to original indices
+    const interest_points: number[][] = []
+    const idx_to_point_idx = new Map<number, number>()
+
+    for (let idx = 0; idx < interest_data.length; idx++) {
+      const { entry, e_form } = interest_data[idx]
+      if (typeof e_form !== `number`) continue
+      const point = to_hull_point(entry, e_form)
+      if (point) {
+        idx_to_point_idx.set(idx, interest_points.length)
+        interest_points.push(point)
+      }
+    }
+
+    // Compute hull distances (empty array if degenerate hull)
+    const distances = hull_facets.length > 0
+      ? compute_e_above_hull_nd(interest_points, hull_facets, ref_points)
+      : []
+
+    // Map results back to entries
+    for (let idx = 0; idx < interest_data.length; idx++) {
+      const { entry, e_form } = interest_data[idx]
+      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      const point_idx = idx_to_point_idx.get(idx)
+
+      if (point_idx === undefined) {
+        results[id] = NaN
+      } else if (hull_facets.length === 0 && typeof e_form === `number`) {
+        // Degenerate case: hull is tie-hyperplane at energy 0
+        results[id] = Math.max(0, e_form)
+      } else {
+        results[id] = Math.max(0, distances[point_idx])
+      }
+    }
   }
 
   if (is_single) {
@@ -1470,8 +1549,581 @@ export const compute_e_above_hull_4d = (
       }
     }
 
-    if (hull_w === null) return 0
+    // If no tetrahedron contains this point's spatial projection, it's outside the valid
+    // composition domain. Return NaN to indicate invalid input.
+    if (hull_w === null) return NaN
     const distance = w - hull_w
+    return distance > EPS ? distance : 0
+  })
+}
+
+// --- N-Dimensional Convex Hull (for 5+ element systems) ---
+
+// N-dimensional vector operations with dimension validation
+const subtract_nd = (vec_a: number[], vec_b: number[]): number[] => {
+  if (vec_a.length !== vec_b.length) {
+    throw new Error(
+      `Vector dimension mismatch: ${vec_a.length} vs ${vec_b.length}`,
+    )
+  }
+  return vec_a.map((val, idx) => val - vec_b[idx])
+}
+
+const dot_nd = (vec_a: number[], vec_b: number[]): number => {
+  if (vec_a.length !== vec_b.length) {
+    throw new Error(
+      `Vector dimension mismatch: ${vec_a.length} vs ${vec_b.length}`,
+    )
+  }
+  return vec_a.reduce((sum, val, idx) => sum + val * vec_b[idx], 0)
+}
+
+const norm_nd = (vec: number[]): number => Math.sqrt(dot_nd(vec, vec))
+
+const normalize_nd = (vec: number[]): number[] => {
+  const len = norm_nd(vec)
+  if (len < EPS) return vec.map(() => 0)
+  return vec.map((val) => val / len)
+}
+
+// Hyperplane in N dimensions: normal · x + offset = 0
+interface HyperplaneND {
+  normal: number[]
+  offset: number
+}
+
+// Simplex facet of the convex hull (N vertices in N-dimensional space)
+export interface SimplexFaceND {
+  vertex_indices: number[]
+  plane: HyperplaneND
+  centroid: number[]
+  outside_points: Set<number>
+}
+
+// Compute normal to hyperplane through N points in N-dimensional space
+// Uses null space computation via cofactor expansion
+function compute_hyperplane_nd(points: number[][]): HyperplaneND {
+  const n = points.length
+  if (n < 2) return { normal: [], offset: 0 }
+
+  // Build (N-1) edge vectors from points[0]
+  const edges = points.slice(1).map((pt) => subtract_nd(pt, points[0]))
+
+  // Compute normal via cofactors of the (N-1)×N edge matrix
+  // Each component is ±det of (N-1)×(N-1) submatrix with that column removed
+  const dim = points[0].length
+  const normal_components: number[] = []
+
+  for (let col = 0; col < dim; col++) {
+    // Build (N-1)×(N-1) submatrix by removing column col
+    const submatrix = edges.map((row) => [
+      ...row.slice(0, col),
+      ...row.slice(col + 1),
+    ])
+    const sign = col % 2 === 0 ? 1 : -1
+    normal_components.push(sign * math.det_nxn(submatrix))
+  }
+
+  const normal = normalize_nd(normal_components)
+
+  // Degenerate case: co-hyperplanar points produce zero normal
+  if (norm_nd(normal) < EPS) return { normal, offset: 0 }
+
+  const offset = -dot_nd(normal, points[0])
+  return { normal, offset }
+}
+
+const point_hyperplane_signed_distance_nd = (
+  plane: HyperplaneND,
+  point: number[],
+): number => dot_nd(plane.normal, point) + plane.offset
+
+const compute_centroid_nd = (points: number[][]): number[] => {
+  if (points.length === 0) return []
+  const dim = points[0].length
+  return Array.from(
+    { length: dim },
+    (_, idx) => points.reduce((sum, pt) => sum + pt[idx], 0) / points.length,
+  )
+}
+
+// Find N+1 points that span N dimensions (initial simplex for quickhull)
+function choose_initial_simplex_nd(points: number[][]): number[] | null {
+  const n = points[0]?.length
+  if (!n || points.length < n + 1) return null
+
+  const chosen: number[] = []
+
+  // Greedily pick points that maximize distance from current affine hull
+  // Start with two points that are farthest apart
+  let [best_i, best_j, best_dist] = [0, 1, -1]
+  const sample_size = Math.min(points.length, 100)
+  const sample_indices = points.length <= sample_size
+    ? points.map((_, idx) => idx)
+    : Array.from({ length: sample_size }, (_, idx) =>
+      Math.floor((idx * points.length) / sample_size))
+
+  for (const idx_a of sample_indices) {
+    for (const idx_b of sample_indices) {
+      if (idx_a >= idx_b) continue
+      const dist = norm_nd(subtract_nd(points[idx_a], points[idx_b]))
+      if (dist > best_dist) {
+        best_dist = dist
+        best_i = idx_a
+        best_j = idx_b
+      }
+    }
+  }
+
+  if (best_dist < EPS) return null
+  chosen.push(best_i, best_j)
+  const chosen_set = new Set(chosen)
+
+  // Add remaining points to span higher dimensions
+  while (chosen.length < n + 1) {
+    let [best_idx, best_distance] = [-1, -1]
+    // Hoist chosen_points computation outside inner loop for O(n) instead of O(n²)
+    const chosen_points = chosen.map((idx_c) => points[idx_c])
+
+    for (let idx = 0; idx < points.length; idx++) {
+      if (chosen_set.has(idx)) continue
+
+      // Compute distance from point to affine hull of chosen points
+      const dist = distance_to_affine_hull_nd(points[idx], chosen_points)
+
+      if (dist > best_distance) {
+        best_distance = dist
+        best_idx = idx
+      }
+    }
+
+    if (best_idx === -1 || best_distance < EPS) return null
+    chosen.push(best_idx)
+    chosen_set.add(best_idx)
+  }
+
+  return chosen
+}
+
+// Distance from point to affine hull spanned by given points
+function distance_to_affine_hull_nd(point: number[], hull_points: number[][]): number {
+  if (hull_points.length === 1) {
+    return norm_nd(subtract_nd(point, hull_points[0]))
+  }
+
+  if (hull_points.length === 2) {
+    // Distance to line
+    const [pt_a, pt_b] = hull_points
+    const ab = subtract_nd(pt_b, pt_a)
+    const ap = subtract_nd(point, pt_a)
+    const ab_len_sq = dot_nd(ab, ab)
+    if (ab_len_sq < EPS) return norm_nd(ap)
+    const t = dot_nd(ap, ab) / ab_len_sq
+    const proj = pt_a.map((val, idx) => val + t * ab[idx])
+    return norm_nd(subtract_nd(point, proj))
+  }
+
+  // For 3+ points, use orthogonal projection
+  // Build edge vectors from hull_points[0]
+  const origin = hull_points[0]
+  const edges = hull_points.slice(1).map((pt) => subtract_nd(pt, origin))
+  const vp = subtract_nd(point, origin)
+
+  // Solve least squares using Gram matrix G[i][j] = dot(edge_i, edge_j)
+  const gram = edges.map((edge_i) => edges.map((edge_j) => dot_nd(edge_i, edge_j)))
+  const rhs = edges.map((edge) => dot_nd(edge, vp))
+
+  // Solve Gram * coeffs = rhs using simple Gaussian elimination
+  const coeffs = solve_linear_system(gram, rhs)
+  if (!coeffs) {
+    // Fallback: Gram-Schmidt when Gram matrix is singular (linearly dependent edges)
+    // Build orthogonal basis and accumulate projection in single pass
+    const ortho_basis: number[][] = []
+    let projection = vp.map(() => 0)
+
+    for (const edge of edges) {
+      // Orthogonalize edge against existing basis
+      let ortho = [...edge]
+      for (const basis of ortho_basis) {
+        const norm_sq = dot_nd(basis, basis)
+        if (norm_sq > EPS) {
+          const coeff = dot_nd(ortho, basis) / norm_sq
+          ortho = ortho.map((val, idx) => val - coeff * basis[idx])
+        }
+      }
+
+      // Add to basis and update projection if linearly independent
+      const ortho_norm_sq = dot_nd(ortho, ortho)
+      if (ortho_norm_sq > EPS) {
+        ortho_basis.push(ortho)
+        const proj_coeff = dot_nd(vp, ortho) / ortho_norm_sq
+        projection = projection.map((val, idx) => val + proj_coeff * ortho[idx])
+      }
+    }
+
+    return norm_nd(subtract_nd(vp, projection))
+  }
+
+  // Compute projection: origin + sum(coeffs[i] * edges[i])
+  const proj = origin.map((val, dim) =>
+    val + coeffs.reduce((sum, coeff, idx) => sum + coeff * edges[idx][dim], 0)
+  )
+  return norm_nd(subtract_nd(point, proj))
+}
+
+// Solve linear system Ax = b using Gaussian elimination with partial pivoting
+function solve_linear_system(matrix_a: number[][], vec_b: number[]): number[] | null {
+  const n = matrix_a.length
+  if (n === 0) return []
+  if (vec_b.length !== n) return null // Dimension mismatch
+
+  // Augmented matrix
+  const aug = matrix_a.map((row, idx) => [...row, vec_b[idx]])
+
+  for (let col = 0; col < n; col++) {
+    // Find pivot
+    let max_row = col
+    for (let row = col + 1; row < n; row++) {
+      if (Math.abs(aug[row][col]) > Math.abs(aug[max_row][col])) {
+        max_row = row
+      }
+    }
+
+    if (Math.abs(aug[max_row][col]) < EPS) return null // Singular
+
+    // Swap rows if needed
+    if (max_row !== col) {
+      const temp = aug[col]
+      aug[col] = aug[max_row]
+      aug[max_row] = temp
+    }
+
+    // Eliminate
+    for (let row = col + 1; row < n; row++) {
+      const factor = aug[row][col] / aug[col][col]
+      for (let k = col; k <= n; k++) {
+        aug[row][k] -= factor * aug[col][k]
+      }
+    }
+  }
+
+  // Back substitution
+  const result = new Array(n).fill(0)
+  for (let row = n - 1; row >= 0; row--) {
+    let sum = aug[row][n]
+    for (let col = row + 1; col < n; col++) {
+      sum -= aug[row][col] * result[col]
+    }
+    result[row] = sum / aug[row][row]
+  }
+
+  return result
+}
+
+// Create a simplex face with correct normal orientation (outward from interior)
+function make_face_nd(
+  points: number[][],
+  vertex_indices: number[],
+  interior_point: number[],
+): SimplexFaceND {
+  const face_points = vertex_indices.map((idx) => points[idx])
+  const plane = compute_hyperplane_nd(face_points)
+  const centroid = compute_centroid_nd(face_points)
+
+  // Flip normal if it points toward interior instead of away
+  const dist_interior = point_hyperplane_signed_distance_nd(plane, interior_point)
+  if (dist_interior > 0) {
+    plane.normal = plane.normal.map((val) => -val)
+    plane.offset = -plane.offset
+  }
+
+  return { vertex_indices, plane, centroid, outside_points: new Set() }
+}
+
+function assign_outside_points_nd(
+  face: SimplexFaceND,
+  points: number[][],
+  candidate_indices: number[],
+): void {
+  face.outside_points.clear()
+  for (const idx of candidate_indices) {
+    const dist = point_hyperplane_signed_distance_nd(face.plane, points[idx])
+    if (dist > EPS) face.outside_points.add(idx)
+  }
+}
+
+function farthest_outside_point_nd(
+  points: number[][],
+  face: SimplexFaceND,
+): { idx: number; distance: number } | null {
+  let best: { idx: number; distance: number } | null = null
+  for (const idx of face.outside_points) {
+    const distance = point_hyperplane_signed_distance_nd(face.plane, points[idx])
+    if (!best || distance > best.distance) best = { idx, distance }
+  }
+  return best
+}
+
+// Build horizon ridges (boundary between visible and non-visible faces)
+// In N dimensions, ridges are (N-2)-simplices with (N-1) vertices
+function build_horizon_nd(
+  faces: SimplexFaceND[],
+  visible_indices: Set<number>,
+): number[][] {
+  const ridge_count = new Map<string, number[]>()
+
+  for (const face_idx of visible_indices) {
+    const face = faces[face_idx]
+    const verts = face.vertex_indices
+    const n = verts.length
+
+    // Each face has n ridges, each ridge omits one vertex
+    for (let skip = 0; skip < n; skip++) {
+      const ridge = verts.filter((_, idx) => idx !== skip)
+      const sorted = [...ridge].sort((a, b) => a - b)
+      const key = sorted.join(`|`)
+
+      if (!ridge_count.has(key)) {
+        ridge_count.set(key, ridge)
+      } else {
+        // Mark as internal (seen twice)
+        ridge_count.set(key, [])
+      }
+    }
+  }
+
+  // Return only boundary ridges (seen exactly once, not marked empty)
+  return [...ridge_count.values()].filter((ridge) => ridge.length > 0)
+}
+
+// N-dimensional quickhull algorithm
+export function compute_quickhull_nd(points: number[][]): SimplexFaceND[] {
+  if (points.length === 0) return []
+  const n = points[0].length
+  if (points.length < n + 1) return []
+
+  // Find initial n-simplex
+  const initial = choose_initial_simplex_nd(points)
+  if (!initial) return []
+
+  // Interior point for normal orientation
+  const interior = compute_centroid_nd(initial.map((idx) => points[idx]))
+
+  // Create initial n+1 facets (each omits one vertex from the simplex)
+  const faces: SimplexFaceND[] = []
+  for (let skip = 0; skip <= n; skip++) {
+    const verts = initial.filter((_, idx) => idx !== skip)
+    faces.push(make_face_nd(points, verts, interior))
+  }
+
+  // Assign outside points to initial faces
+  const remaining = points.map((_, idx) => idx).filter((idx) => !initial.includes(idx))
+  for (const face of faces) {
+    assign_outside_points_nd(face, points, remaining)
+  }
+
+  // Main quickhull loop
+  while (true) {
+    // Find face with farthest outside point
+    let [chosen_face_idx, chosen_point_idx, max_distance] = [-1, -1, -1]
+
+    for (let face_idx = 0; face_idx < faces.length; face_idx++) {
+      const face = faces[face_idx]
+      if (face.outside_points.size === 0) continue
+
+      const far = farthest_outside_point_nd(points, face)
+      if (far && far.distance > max_distance) {
+        max_distance = far.distance
+        chosen_face_idx = face_idx
+        chosen_point_idx = far.idx
+      }
+    }
+
+    if (chosen_face_idx === -1) break // All points processed
+
+    const eye_idx = chosen_point_idx
+
+    // Find all faces visible from eye point
+    const visible_indices = new Set<number>()
+    for (let face_idx = 0; face_idx < faces.length; face_idx++) {
+      const dist = point_hyperplane_signed_distance_nd(
+        faces[face_idx].plane,
+        points[eye_idx],
+      )
+      if (dist > EPS) visible_indices.add(face_idx)
+    }
+
+    // Build horizon ridges
+    const horizon = build_horizon_nd(faces, visible_indices)
+
+    // Collect candidate points from visible faces
+    const candidates = new Set<number>()
+    for (const face_idx of visible_indices) {
+      for (const pt_idx of faces[face_idx].outside_points) {
+        candidates.add(pt_idx)
+      }
+    }
+
+    // Remove visible faces (in reverse order to maintain indices)
+    const sorted_visible = Array.from(visible_indices).sort((a, b) => b - a)
+    for (const idx of sorted_visible) {
+      faces.splice(idx, 1)
+    }
+
+    // Create new faces from horizon ridges to eye point
+    const new_faces: SimplexFaceND[] = []
+    for (const ridge of horizon) {
+      const new_verts = [...ridge, eye_idx]
+      new_faces.push(make_face_nd(points, new_verts, interior))
+    }
+
+    // Reassign candidate points to new faces
+    for (const face of new_faces) face.outside_points.clear()
+
+    for (const pt_idx of candidates) {
+      if (pt_idx === eye_idx) continue
+
+      let best_face: SimplexFaceND | null = null
+      let best_dist = EPS
+
+      for (const face of new_faces) {
+        const dist = point_hyperplane_signed_distance_nd(face.plane, points[pt_idx])
+        if (dist > best_dist) {
+          best_dist = dist
+          best_face = face
+        }
+      }
+
+      if (best_face) best_face.outside_points.add(pt_idx)
+    }
+
+    faces.push(...new_faces)
+  }
+
+  return faces
+}
+
+// Filter for lower hull facets (normal pointing "down" in energy dimension)
+export function compute_lower_hull_nd(faces: SimplexFaceND[]): SimplexFaceND[] {
+  // Last dimension is energy; negative normal means "downward"
+  return faces.filter((face) => (face.plane.normal.at(-1) ?? 0) < -EPS)
+}
+
+// Precomputed model for fast containment checks
+interface SimplexModelND {
+  vertices: number[][]
+  vertices_spatial: number[][] // Without energy dimension
+  bbox_min: number[]
+  bbox_max: number[]
+}
+
+function build_simplex_models_nd(
+  faces: SimplexFaceND[],
+  points: number[][],
+): SimplexModelND[] {
+  return faces.map((face) => {
+    const vertices = face.vertex_indices.map((idx) => points[idx])
+    const n = vertices[0].length
+    // Spatial coords are all except last (energy)
+    const vertices_spatial = vertices.map((pt) => pt.slice(0, n - 1))
+
+    // Compute bounding box in spatial dimensions
+    const spatial_dim = n - 1
+    const bbox_min = Array.from(
+      { length: spatial_dim },
+      (_, idx) => Math.min(...vertices_spatial.map((pt) => pt[idx])),
+    )
+    const bbox_max = Array.from(
+      { length: spatial_dim },
+      (_, idx) => Math.max(...vertices_spatial.map((pt) => pt[idx])),
+    )
+
+    return { vertices, vertices_spatial, bbox_min, bbox_max }
+  })
+}
+
+// Check if point is inside simplex and return barycentric coordinates
+// Uses linear system solution: point = sum(bary[i] * vertex[i]) with sum(bary) = 1
+function point_in_simplex_nd(
+  point: number[],
+  simplex_vertices: number[][],
+): number[] | null {
+  const n = simplex_vertices.length // Number of vertices = spatial_dim + 1
+  if (n === 0) return null
+
+  const dim = point.length
+  if (dim !== n - 1) return null // Spatial dim should be one less than vertex count
+
+  // Build linear system: [v1-v0, v2-v0, ..., vn-v0] * [b1, b2, ..., bn] = point - v0
+  // Then b0 = 1 - sum(b1..bn)
+  const v0 = simplex_vertices[0]
+  const edges = simplex_vertices.slice(1).map((vert) => subtract_nd(vert, v0))
+  const rhs = subtract_nd(point, v0)
+
+  // For square system (dim == n-1), solve directly
+  // Build matrix where each column is an edge vector
+  const matrix: number[][] = []
+  for (let row = 0; row < dim; row++) {
+    matrix.push(edges.map((edge) => edge[row]))
+  }
+
+  const coeffs = solve_linear_system(matrix, rhs)
+  if (!coeffs) return null
+
+  // Compute b0 = 1 - sum(coeffs), ensuring sum(bary) = 1 by construction
+  const sum_coeffs = coeffs.reduce((sum, val) => sum + val, 0)
+  const bary = [1 - sum_coeffs, ...coeffs]
+
+  // Point is inside simplex if all barycentric coords are non-negative
+  return bary.every((val) => val >= -EPS) ? bary : null
+}
+
+// Compute energy above hull for N-dimensional points
+export function compute_e_above_hull_nd(
+  query_points: number[][],
+  hull_facets: SimplexFaceND[],
+  all_points: number[][],
+): number[] {
+  const models = build_simplex_models_nd(hull_facets, all_points)
+
+  return query_points.map((query) => {
+    const n = query.length
+    const spatial = query.slice(0, n - 1) // All but last coord
+    const energy = query[n - 1]
+
+    let hull_energy: number | null = null
+
+    for (const model of models) {
+      // Fast bounding box rejection
+      let outside_bbox = false
+      for (let idx = 0; idx < spatial.length; idx++) {
+        if (
+          spatial[idx] < model.bbox_min[idx] - EPS ||
+          spatial[idx] > model.bbox_max[idx] + EPS
+        ) {
+          outside_bbox = true
+          break
+        }
+      }
+      if (outside_bbox) continue
+
+      // Check if spatial coords are inside simplex projection
+      const bary = point_in_simplex_nd(spatial, model.vertices_spatial)
+      if (!bary) continue
+
+      // Interpolate energy using barycentric coords
+      const e_hull = bary.reduce(
+        (sum, coeff, idx) => sum + coeff * model.vertices[idx][n - 1],
+        0,
+      )
+      hull_energy = hull_energy === null ? e_hull : Math.min(hull_energy, e_hull)
+    }
+
+    // If no facet contains this point's spatial projection, it's outside the valid
+    // composition domain. Return NaN to indicate invalid input rather than 0 (which
+    // would falsely imply the point is stable/on-hull).
+    if (hull_energy === null) return NaN
+    const distance = energy - hull_energy
     return distance > EPS ? distance : 0
   })
 }

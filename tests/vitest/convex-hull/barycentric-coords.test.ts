@@ -7,6 +7,7 @@ import {
   calculate_face_normal,
   composition_to_barycentric_3d,
   composition_to_barycentric_4d,
+  composition_to_barycentric_nd,
   compute_4d_coords,
   get_ternary_3d_coordinates,
   get_triangle_centroid,
@@ -190,5 +191,47 @@ describe(`quaternary: compute_4d_coords`, () => {
     expect(out[0]).toHaveProperty(`y`)
     expect(out[0]).toHaveProperty(`z`)
     expect(out[0]).toHaveProperty(`is_element`)
+  })
+})
+
+describe(`composition_to_barycentric_nd`, () => {
+  test(`normalizes composition to sum to 1`, () => {
+    const elements = [`Li`, `Na`, `K`, `Rb`, `Cs`] as ElementSymbol[]
+    const result = composition_to_barycentric_nd(
+      { Li: 2, Na: 2, K: 2, Rb: 2, Cs: 2 },
+      elements,
+    )
+    expect(result).toHaveLength(5)
+    expect(result.reduce((sum, val) => sum + val, 0)).toBeCloseTo(1, 10)
+    expect(result.every((val) => val === 0.2)).toBe(true)
+  })
+
+  test(`handles missing elements as zero`, () => {
+    const elements = [`Li`, `Na`, `K`] as ElementSymbol[]
+    const result = composition_to_barycentric_nd({ Li: 1 }, elements)
+    expect(result).toEqual([1, 0, 0])
+  })
+
+  const elems = [`Li`, `Na`] as ElementSymbol[]
+
+  test(`throws for <2 elements`, () => {
+    expect(() => composition_to_barycentric_nd({ Li: 1 }, [`Li`] as ElementSymbol[]))
+      .toThrow(/at least 2 elements/)
+  })
+
+  test(`throws for no matching elements`, () => {
+    expect(() => composition_to_barycentric_nd({ Fe: 1 }, elems)).toThrow(/no elements/)
+  })
+
+  test(`throws for negative amounts`, () => {
+    expect(() => composition_to_barycentric_nd({ Li: -1, Na: 2 }, elems)).toThrow(
+      /negative/,
+    )
+  })
+
+  test(`handles NaN as zero via || 0 fallback`, () => {
+    const elements = [`Li`, `Na`] as ElementSymbol[]
+    const result = composition_to_barycentric_nd({ Li: NaN, Na: 1 }, elements)
+    expect(result).toEqual([0, 1])
   })
 })

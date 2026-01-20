@@ -66,7 +66,7 @@
     "d3-time-format": "^4.1.0",
     "eslint": "^9.39.2",
     "eslint-plugin-svelte": "^3.14.0",
-    "happy-dom": "^20.3.3",
+    "happy-dom": "^20.3.4",
     "mdsvex": "^0.12.6",
     "mdsvexamples": "^0.5.1",
     "rehype-katex": "^7.0.1",

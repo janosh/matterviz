@@ -1026,7 +1026,8 @@
 
     // Update legend position (stable after initial placement unless responsive)
     if (legend_manual_position && !legend_is_dragging) {
-      tweened_legend_coords.set(legend_manual_position)
+      // Immediate update (no animation) for manually dragged positions
+      tweened_legend_coords.set(legend_manual_position, { duration: 0 })
     } else if (active_legend_placement && !legend_is_dragging) {
       const is_responsive = legend?.responsive ?? false
       const should_update = dims_changed || (!legend_hover.is_locked.current &&
@@ -1290,8 +1291,8 @@
     legend_is_dragging = true
 
     // Get the actual rendered position of the legend element (accounts for transforms)
-    const legend_element = event.currentTarget as HTMLElement
-    const legend_rect = legend_element.getBoundingClientRect()
+    const legend_el = event.currentTarget as HTMLElement
+    const legend_rect = legend_el.getBoundingClientRect()
 
     // Calculate offset from mouse to legend's actual rendered position relative to SVG
     const [x, y] = [event.clientX - legend_rect.left, event.clientY - legend_rect.top]
@@ -1299,7 +1300,7 @@
   }
 
   function handle_legend_drag(event: MouseEvent) {
-    if (!legend_is_dragging || !svg_element) return
+    if (!legend_is_dragging || !svg_element || !legend_element) return
 
     const svg_rect = svg_element.getBoundingClientRect()
 
@@ -1307,9 +1308,8 @@
     const new_x = event.clientX - svg_rect.left - legend_drag_offset.x
     const new_y = event.clientY - svg_rect.top - legend_drag_offset.y
 
-    // Get actual legend dimensions for accurate bounds checking
-    const legend_el = event.currentTarget as HTMLElement
-    const { width: legend_width, height: legend_height } = legend_el
+    // Get actual legend dimensions for accurate bounds checking using the bound element reference
+    const { width: legend_width, height: legend_height } = legend_element
       .getBoundingClientRect()
 
     // Constrain to plot bounds using measured legend size

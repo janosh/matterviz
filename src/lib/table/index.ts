@@ -85,6 +85,9 @@ export type ExportData =
   | boolean
   | { formats?: (`csv` | `json`)[]; filename?: string }
 
+// Callback type for async server-side sorting
+export type OnSortCallback = (column: string, dir: `asc` | `desc`) => Promise<RowData[]>
+
 // Strip HTML tags from a string (for search, export, etc.)
 export const strip_html = (str: string): string => str.replace(/<[^>]*>/g, ``)
 
