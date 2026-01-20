@@ -46,6 +46,7 @@
     hidden_columns = $bindable([]),
     scroll_style,
     onsort = undefined,
+    onsorterror = undefined,
     loading = $bindable(false),
     sort_data = true,
     ...rest
@@ -79,6 +80,8 @@
     // Async callback for server-side sorting. When provided, client-side sorting is skipped
     // and the callback is called with (column_id, direction) to fetch new data from server.
     onsort?: (column: string, dir: `asc` | `desc`) => Promise<RowData[]>
+    // Callback when onsort fails, receives the error for parent handling (e.g. toast notification)
+    onsorterror?: (error: unknown, column: string, dir: `asc` | `desc`) => void
     // Loading state during async sort operations
     loading?: boolean
     // Whether to sort data client-side. Set to false when parent handles sorting externally.
@@ -339,8 +342,9 @@
         }
         // Handle numbers with error notation: "1.23 ± 0.05" or "1.23 +- 0.05" or "1.23(5)"
         // Extract the primary number before the ± or +- or (
+        // Supports: ± (U+00B1), ASCII +-, Unicode minus − (U+2212), with optional whitespace
         const error_match = val.match(
-          /^([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*(?:[±]|[+][-]|\()/,
+          /^([+-−]?\d+\.?\d*(?:[eE][+-−]?\d+)?)\s*(?:[±\u00B1]|[+][−-]|\()/,
         )
         if (error_match) {
           const num = Number(error_match[1])
@@ -494,6 +498,7 @@
           // Revert sort state on failure so UI doesn't show wrong direction
           if (request_id === sort_request_id) {
             sort = prev_sort
+            onsorterror?.(err, col_id, new_dir)
           }
         } finally {
           // Only clear loading if this is still the most recent request

@@ -337,10 +337,21 @@ test.describe(`Legend Placement Stability`, () => {
     const initial_bbox = await legend.boundingBox()
     if (!initial_bbox) throw new Error(`Legend bounding box not found`)
 
+    // Legend has 8px padding - click inside padding area to initiate drag (not on legend items)
+    const padding_offset = 4 // Half of 8px padding, ensures we're in empty space
+    const drag_distance = { x: 80, y: 60 } // Distance to drag the legend
+
     // Click in top-left padding area (avoids legend items), then drag
-    await page.mouse.move(initial_bbox.x + 4, initial_bbox.y + 4)
+    await page.mouse.move(
+      initial_bbox.x + padding_offset,
+      initial_bbox.y + padding_offset,
+    )
     await page.mouse.down()
-    await page.mouse.move(initial_bbox.x + 80, initial_bbox.y + 60, { steps: 10 })
+    await page.mouse.move(
+      initial_bbox.x + drag_distance.x,
+      initial_bbox.y + drag_distance.y,
+      { steps: 10 },
+    )
     await page.mouse.up()
 
     // Capture position after drag

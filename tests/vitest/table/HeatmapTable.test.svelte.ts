@@ -1827,6 +1827,31 @@ describe(`HeatmapTable`, () => {
           expect(headers[0].getAttribute(`aria-sort`)).not.toBe(`none`)
         })
       })
+
+      it(`calls onsorterror callback with error details on failure`, async () => {
+        const error = new Error(`Server unavailable`)
+        const onsort_mock = vi.fn().mockRejectedValue(error)
+        const onsorterror_mock = vi.fn()
+
+        mount(HeatmapTable, {
+          target: document.body,
+          props: {
+            data: initial_data,
+            columns: sample_columns,
+            onsort: onsort_mock,
+            onsorterror: onsorterror_mock,
+          },
+        })
+
+        // Click Score header (better: higher → first click = desc)
+        document.querySelectorAll(`th`)[1].click()
+        await tick()
+
+        await vi.waitFor(() => {
+          expect(onsorterror_mock).toHaveBeenCalledTimes(1)
+          expect(onsorterror_mock).toHaveBeenCalledWith(error, `Score`, `desc`)
+        })
+      })
     })
   })
 })
