@@ -243,9 +243,10 @@ describe(`HeatmapTable`, () => {
         { Name: `B`, Value: `0.8 ± 0.1` },
         { Name: `C`, Value: `2.3 ± 0.5` },
       ]
+      // better: lower triggers ascending sort on first click
       const error_columns: Label[] = [
         { label: `Name`, description: `` },
-        { label: `Value`, description: `` },
+        { label: `Value`, better: `lower`, description: `` },
       ]
 
       mount(HeatmapTable, {
@@ -260,8 +261,8 @@ describe(`HeatmapTable`, () => {
       const values = Array.from(
         document.querySelectorAll(`td[data-col="Value"]`),
       ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically by primary value: 0.8, 1.5, 2.3
-      expect(values).toEqual([`0.8 ± 0.2`, `1.5 ± 0.1`, `2.3 ± 0.5`])
+      // Should sort numerically by primary value (ascending): 0.8, 1.5, 2.3
+      expect(values).toEqual([`0.8 ± 0.1`, `1.5 ± 0.2`, `2.3 ± 0.5`])
     })
 
     it(`sorts numbers with +- error notation correctly`, async () => {
@@ -273,7 +274,7 @@ describe(`HeatmapTable`, () => {
       ]
       const error_columns: Label[] = [
         { label: `Name`, description: `` },
-        { label: `Value`, description: `` },
+        { label: `Value`, better: `lower`, description: `` },
       ]
 
       mount(HeatmapTable, {
@@ -288,7 +289,7 @@ describe(`HeatmapTable`, () => {
       const values = Array.from(
         document.querySelectorAll(`td[data-col="Value"]`),
       ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically by primary value: 5.2, 10.5, 15.0
+      // Should sort numerically by primary value (ascending): 5.2, 10.5, 15.0
       expect(values).toEqual([`5.2 +- 0.8`, `10.5 +- 1.2`, `15.0 +- 2.0`])
     })
 
@@ -301,7 +302,7 @@ describe(`HeatmapTable`, () => {
       ]
       const error_columns: Label[] = [
         { label: `Name`, description: `` },
-        { label: `Value`, description: `` },
+        { label: `Value`, better: `lower`, description: `` },
       ]
 
       mount(HeatmapTable, {
@@ -316,7 +317,7 @@ describe(`HeatmapTable`, () => {
       const values = Array.from(
         document.querySelectorAll(`td[data-col="Value"]`),
       ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically by primary value: 0.567, 1.234, 2.890
+      // Should sort numerically by primary value (ascending): 0.567, 1.234, 2.890
       expect(values).toEqual([`0.567(3)`, `1.234(5)`, `2.890(8)`])
     })
 
@@ -328,7 +329,7 @@ describe(`HeatmapTable`, () => {
       ]
       const error_columns: Label[] = [
         { label: `Name`, description: `` },
-        { label: `Value`, description: `` },
+        { label: `Value`, better: `lower`, description: `` },
       ]
 
       mount(HeatmapTable, {
@@ -343,7 +344,7 @@ describe(`HeatmapTable`, () => {
       const values = Array.from(
         document.querySelectorAll(`td[data-col="Value"]`),
       ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically: -2.3, -1.5, 0.8
+      // Should sort numerically (ascending): -2.3, -1.5, 0.8
       expect(values).toEqual([`-2.3 ± 0.5`, `-1.5 ± 0.2`, `0.8 ± 0.1`])
     })
 
@@ -355,7 +356,7 @@ describe(`HeatmapTable`, () => {
       ]
       const error_columns: Label[] = [
         { label: `Name`, description: `` },
-        { label: `Value`, description: `` },
+        { label: `Value`, better: `lower`, description: `` },
       ]
 
       mount(HeatmapTable, {
@@ -370,7 +371,7 @@ describe(`HeatmapTable`, () => {
       const values = Array.from(
         document.querySelectorAll(`td[data-col="Value"]`),
       ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically: 5e-4, 1.5e-3, 2.8e-2
+      // Should sort numerically (ascending): 5e-4, 1.5e-3, 2.8e-2
       expect(values).toEqual([`5.0e-4 ± 1.0e-4`, `1.5e-3 ± 0.2e-3`, `2.8e-2 ± 0.1e-2`])
     })
 
@@ -383,7 +384,7 @@ describe(`HeatmapTable`, () => {
       ]
       const mixed_columns: Label[] = [
         { label: `Name`, description: `` },
-        { label: `Value`, description: `` },
+        { label: `Value`, better: `lower`, description: `` },
       ]
 
       mount(HeatmapTable, {
@@ -398,7 +399,7 @@ describe(`HeatmapTable`, () => {
       const values = Array.from(
         document.querySelectorAll(`td[data-col="Value"]`),
       ).map((cell) => cell.textContent?.trim())
-      // Should sort numerically: 0.8, 1.0, 1.5, 2.3
+      // Should sort numerically (ascending): 0.8, 1.0, 1.5, 2.3
       expect(values).toEqual([`0.8`, `1.0`, `1.5 ± 0.2`, `2.3 ± 0.5`])
     })
   })
