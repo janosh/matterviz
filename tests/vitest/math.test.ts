@@ -1369,6 +1369,100 @@ describe(`get_coefficient_of_variation`, () => {
   )
 })
 
+describe(`det_nxn`, () => {
+  test(`returns 1 for empty matrix`, () => {
+    expect(math.det_nxn([])).toBe(1)
+  })
+
+  test(`1x1 matrix`, () => {
+    expect(math.det_nxn([[5]])).toBe(5)
+    expect(math.det_nxn([[-3]])).toBe(-3)
+  })
+
+  test(`2x2 matrix`, () => {
+    expect(math.det_nxn([[1, 2], [3, 4]])).toBeCloseTo(-2, 10)
+    expect(math.det_nxn([[4, 6], [3, 8]])).toBeCloseTo(14, 10)
+  })
+
+  test(`matches det_3x3 for 3x3 matrices`, () => {
+    const matrices: math.Matrix3x3[] = [
+      [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      [[1, 2, 3], [0, 1, 4], [5, 6, 0]],
+      [[2, 1, 1], [1, 3, 2], [1, 0, 0]],
+    ]
+    for (const matrix of matrices) {
+      expect(math.det_nxn(matrix)).toBeCloseTo(math.det_3x3(matrix), 10)
+    }
+  })
+
+  test(`matches det_4x4 for 4x4 matrices`, () => {
+    const matrices: math.Matrix4x4[] = [
+      [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+      [[2, 0, 0, 0], [0, 3, 0, 0], [0, 0, 4, 0], [0, 0, 0, 5]],
+      [[1, 2, 3, 4], [0, 5, 6, 7], [0, 0, 8, 9], [0, 0, 0, 10]],
+    ]
+    for (const matrix of matrices) {
+      expect(math.det_nxn(matrix)).toBeCloseTo(math.det_4x4(matrix), 10)
+    }
+  })
+
+  test(`5x5 matrix (quinary convex hull use case)`, () => {
+    // Identity matrix
+    const identity_5 = Array.from(
+      { length: 5 },
+      (_, idx) => Array.from({ length: 5 }, (_, jdx) => (idx === jdx ? 1 : 0)),
+    )
+    expect(math.det_nxn(identity_5)).toBeCloseTo(1, 10)
+
+    // Diagonal matrix
+    const diag_5 = Array.from(
+      { length: 5 },
+      (_, idx) => Array.from({ length: 5 }, (_, jdx) => (idx === jdx ? idx + 1 : 0)),
+    )
+    expect(math.det_nxn(diag_5)).toBeCloseTo(120, 10) // 1*2*3*4*5 = 120
+
+    // Singular matrix (has zero determinant)
+    const singular_5 = Array.from(
+      { length: 5 },
+      (_, idx) => Array.from({ length: 5 }, (_, jdx) => idx + jdx + 1),
+    )
+    expect(math.det_nxn(singular_5)).toBeCloseTo(0, 5)
+  })
+
+  test(`6x6 matrix (senary convex hull use case)`, () => {
+    const identity_6 = Array.from(
+      { length: 6 },
+      (_, idx) => Array.from({ length: 6 }, (_, jdx) => (idx === jdx ? 1 : 0)),
+    )
+    expect(math.det_nxn(identity_6)).toBeCloseTo(1, 10)
+
+    const diag_6 = Array.from(
+      { length: 6 },
+      (_, idx) => Array.from({ length: 6 }, (_, jdx) => (idx === jdx ? idx + 1 : 0)),
+    )
+    expect(math.det_nxn(diag_6)).toBeCloseTo(720, 10) // 6! = 720
+  })
+
+  test(`throws for non-square matrix`, () => {
+    expect(() => math.det_nxn([[1, 2, 3], [4, 5, 6]])).toThrow(/square matrix/)
+    expect(() => math.det_nxn([[1, 2], [3, 4], [5, 6]])).toThrow(/square matrix/)
+  })
+
+  test(`numerical stability for near-singular matrix`, () => {
+    // Matrix with small but non-zero determinant
+    const near_singular = [
+      [1, 1, 1, 1, 1],
+      [1, 1.0001, 1, 1, 1],
+      [1, 1, 1.0001, 1, 1],
+      [1, 1, 1, 1.0001, 1],
+      [1, 1, 1, 1, 1.0001],
+    ]
+    const det = math.det_nxn(near_singular)
+    // Should be small but non-zero
+    expect(Math.abs(det)).toBeLessThan(1e-10)
+  })
+})
+
 describe(`det_4x4`, () => {
   test.each([
     [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], 1, `identity`],

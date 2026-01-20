@@ -151,6 +151,29 @@ export function get_triangle_vertical_edges(
   return vertices.map((vertex) => [{ ...vertex, z: min_z }, { ...vertex, z: max_z }])
 }
 
+// --- N-dimensional barycentric coordinates (for 5+ element systems) ---
+
+// Convert composition to N-dimensional barycentric coordinates
+// Returns array of length N where coords sum to 1 (all N coords are explicit)
+// The last coordinate represents formation energy when used in hull calculations
+export function composition_to_barycentric_nd(
+  composition: Record<string, number>,
+  elements: ElementSymbol[],
+): number[] {
+  const n = elements.length
+  if (n < 2) {
+    throw new Error(`Barycentric coordinates require at least 2 elements, got ${n}`)
+  }
+  const amounts = elements.map((el) => composition[el] || 0)
+  const total = amounts.reduce((sum, amount) => sum + amount, 0)
+  if (total === 0) {
+    throw new Error(
+      `Composition has no elements from the system: ${elements.join(`-`)}`,
+    )
+  }
+  return amounts.map((amount) => amount / total)
+}
+
 // --- Quaternary coordinates ---
 export const TETRAHEDRON_VERTICES = [
   [1, 0, 0],

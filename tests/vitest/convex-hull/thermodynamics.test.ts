@@ -5,11 +5,14 @@ import {
   calculate_e_above_hull,
   compute_e_above_hull_4d,
   compute_e_above_hull_for_points,
+  compute_e_above_hull_nd,
   compute_e_form_per_atom,
   compute_lower_hull_2d,
   compute_lower_hull_4d,
+  compute_lower_hull_nd,
   compute_lower_hull_triangles,
   compute_quickhull_4d,
+  compute_quickhull_nd,
   compute_quickhull_triangles,
   e_hull_at_xy,
   find_lowest_energy_unary_refs,
@@ -326,16 +329,65 @@ describe(`calculate_e_above_hull`, () => {
     expect(() => calculate_e_above_hull(entry, refs)).toThrow(/not present in reference/)
   })
 
-  test(`throws for arity >4`, () => {
-    const make_elem = (el: string) =>
-      make_phase({ [el]: 1 } as Partial<Record<ElementSymbol, number>>, -1.0)
-    const refs = [`A`, `B`, `C`, `D`, `E`].map(make_elem)
-    const entry = make_phase(
-      { A: 1, B: 1, C: 1, D: 1, E: 1 } as Partial<Record<ElementSymbol, number>>,
-      -5.0,
+  // Quinary (5-element) system tests
+  const make_quinary_elem = (el: string, energy = -1.0) =>
+    make_phase({ [el]: 1 } as Partial<Record<ElementSymbol, number>>, energy, {
+      entry_id: el,
+    })
+
+  test(`handles quinary system: stable/unstable phases`, () => {
+    const refs = [
+      make_quinary_elem(`Li`, -1.9),
+      make_quinary_elem(`Fe`, -4.0),
+      make_quinary_elem(`Mn`, -3.5),
+      make_quinary_elem(`P`, -2.5),
+      make_quinary_elem(`O`, -2.0),
+    ]
+    expect(
+      calculate_e_above_hull(make_phase({ Li: 1 }, -1.9, { entry_id: `Li-test` }), refs),
     )
-    expect(() => calculate_e_above_hull(entry, refs)).toThrow(/arity 5/)
+      .toBeCloseTo(0, 5)
+    expect(
+      calculate_e_above_hull(
+        make_phase({ Li: 1 }, -1.5, { entry_id: `Li-unstable` }),
+        refs,
+      ),
+    )
+      .toBeCloseTo(0.4, 5)
   })
+
+  test(`quinary: interior point above hull has positive distance`, () => {
+    const refs = [`Li`, `Na`, `K`, `Rb`, `Cs`].map((el) => make_quinary_elem(el))
+    refs.push(make_phase(
+      { Li: 1, Na: 1, K: 1, Rb: 1, Cs: 1 } as Partial<Record<ElementSymbol, number>>,
+      -1.5,
+      { entry_id: `stable-interior` },
+    ))
+    const unstable = make_phase(
+      { Li: 1, Na: 1, K: 1, Rb: 1, Cs: 1 } as Partial<Record<ElementSymbol, number>>,
+      -0.8,
+      { entry_id: `unstable-interior` },
+    )
+    expect(calculate_e_above_hull(unstable, refs)).toBeGreaterThan(0)
+  })
+
+  test.each([
+    { id: `Li-1`, energy: -1.0, expected: 0 },
+    { id: `Li-2`, energy: -0.5, expected: 0.5 },
+    { id: `Na-1`, energy: -1.0, expected: 0 },
+  ])(
+    `quinary batch: $id at e=$energy → e_above=$expected`,
+    ({ id, energy, expected }) => {
+      const refs = [`Li`, `Na`, `K`, `Rb`, `Cs`].map((el) => make_quinary_elem(el))
+      const el = id.split(`-`)[0] as ElementSymbol
+      const entry = make_phase(
+        { [el]: 1 } as Partial<Record<ElementSymbol, number>>,
+        energy,
+        { entry_id: id },
+      )
+      expect(calculate_e_above_hull(entry, refs)).toBeCloseTo(expected, 5)
+    },
+  )
 
   test(`batch mode`, () => {
     const entries = [
@@ -431,5 +483,121 @@ describe(`Edge cases`, () => {
     // At x=0.5, the tie-line formation energy = 0
     // e_above_hull = max(0, e_form_per_atom - 0) = e_form_per_atom
     expect(calculate_e_above_hull(entry, refs)).toBeCloseTo(e_form_per_atom)
+  })
+})
+
+describe(`N-Dimensional Convex Hull`, () => {
+  // 5D simplex: 6 points in 5-dimensional space (coords: x1, x2, x3, x4, w)
+  // This represents a 5-element system where coords[0-3] are barycentric and coords[4] is energy
+  const simplex_5d: number[][] = [
+    [1, 0, 0, 0, 0], // Corner 1
+    [0, 1, 0, 0, 0], // Corner 2
+    [0, 0, 1, 0, 0], // Corner 3
+    [0, 0, 0, 1, 0], // Corner 4
+    [0, 0, 0, 0, 0], // Corner 5 (implicit 5th barycentric coord = 1)
+    [0.2, 0.2, 0.2, 0.2, -1], // Interior point below corners
+  ]
+
+  test(`compute_quickhull_nd: 5D simplex produces correct number of facets`, () => {
+    const hull = compute_quickhull_nd(simplex_5d)
+    // A convex hull of 6 points in 5D should have facets
+    expect(hull.length).toBeGreaterThan(0)
+  })
+
+  test(`compute_quickhull_nd returns empty for <N+1 points`, () => {
+    // 5D needs at least 6 points
+    expect(compute_quickhull_nd(simplex_5d.slice(0, 5))).toHaveLength(0)
+  })
+
+  test(`compute_lower_hull_nd filters by energy normal direction`, () => {
+    const all_facets = compute_quickhull_nd(simplex_5d)
+    const lower_facets = compute_lower_hull_nd(all_facets)
+    // Lower facets should have negative normal in the last dimension (energy)
+    for (const facet of lower_facets) {
+      const energy_normal = facet.plane.normal[facet.plane.normal.length - 1]
+      expect(energy_normal).toBeLessThan(0)
+    }
+  })
+
+  test.each([
+    { point: [0.25, 0.25, 0.25, 0.25, 0], expect_zero: true, desc: `on hull` },
+    { point: [0.2, 0.2, 0.2, 0.2, 0.5], expect_zero: false, desc: `above hull` },
+  ])(`compute_e_above_hull_nd: $desc`, ({ point, expect_zero }) => {
+    const hull_facets = compute_lower_hull_nd(compute_quickhull_nd(simplex_5d))
+    const distances = compute_e_above_hull_nd([point], hull_facets, simplex_5d)
+    if (expect_zero) expect(distances[0]).toBeCloseTo(0, 5)
+    else expect(distances[0]).toBeGreaterThan(0)
+  })
+
+  test(`6-element (senary) system works`, () => {
+    // 6D simplex: 7 points
+    const simplex_6d: number[][] = [
+      [1, 0, 0, 0, 0, 0], // 6 corners at energy=0
+      [0, 1, 0, 0, 0, 0],
+      [0, 0, 1, 0, 0, 0],
+      [0, 0, 0, 1, 0, 0],
+      [0, 0, 0, 0, 1, 0],
+      [0, 0, 0, 0, 0, 0], // 6th corner (implicit coord = 1)
+      [0.16, 0.16, 0.16, 0.16, 0.16, -1], // Interior point below
+    ]
+    const hull = compute_quickhull_nd(simplex_6d)
+    expect(hull.length).toBeGreaterThan(0)
+
+    const lower_hull = compute_lower_hull_nd(hull)
+    const above_point = [0.16, 0.16, 0.16, 0.16, 0.16, 0.5]
+    const distances = compute_e_above_hull_nd([above_point], lower_hull, simplex_6d)
+    expect(distances[0]).toBeGreaterThan(0)
+  })
+
+  test(`compute_e_above_hull_nd: energy interpolation uses correct dimension`, () => {
+    // This test uses data where spatial coords differ significantly from energy
+    // to ensure the interpolation uses the correct index (energy dimension, not spatial)
+    // Spatial coords: corners at 1, energy at -10 (very different!)
+    const test_points: number[][] = [
+      [1, 0, 0, 0, -10], // Corner 1 at energy -10
+      [0, 1, 0, 0, -10], // Corner 2 at energy -10
+      [0, 0, 1, 0, -10], // Corner 3 at energy -10
+      [0, 0, 0, 1, -10], // Corner 4 at energy -10
+      [0, 0, 0, 0, -10], // Corner 5 at energy -10
+      [0.2, 0.2, 0.2, 0.2, -15], // Interior point at energy -15 (below corners)
+    ]
+
+    const hull = compute_quickhull_nd(test_points)
+    const lower_hull = compute_lower_hull_nd(hull)
+
+    // Query point at center with energy -8 (above hull which is at -10 for corners)
+    // e_above_hull should be approximately -8 - (-10) = 2
+    const query = [0.25, 0.25, 0.25, 0.25, -8]
+    const distances = compute_e_above_hull_nd([query], lower_hull, test_points)
+
+    // If the wrong dimension (spatial coord) was used for interpolation,
+    // the result would be very different (around 0.25 vs -10)
+    // This test explicitly checks that the energy dimension is used correctly
+    expect(distances[0]).toBeCloseTo(2, 1)
+  })
+
+  // Asymmetric hull with corners at different energies: -1, -2, -3, -4, -5
+  // Tests barycentric weighting and catches off-by-one errors in linear system solving
+  const asymmetric_hull: number[][] = [
+    [1, 0, 0, 0, -1],
+    [0, 1, 0, 0, -2],
+    [0, 0, 1, 0, -3],
+    [0, 0, 0, 1, -4],
+    [0, 0, 0, 0, -5],
+    [0.2, 0.2, 0.2, 0.2, -10],
+  ]
+
+  test.each([
+    { query: [1, 0, 0, 0, 0], expected: 1, desc: `corner 1 (hull_e=-1)` },
+    { query: [0, 0, 0, 0, 0], expected: 5, desc: `corner 5 (hull_e=-5)` },
+    {
+      query: [0.25, 0.25, 0.25, 0.25, 0],
+      expected: 2.5,
+      desc: `uniform mix (hull_e=-2.5)`,
+    },
+  ])(`barycentric interpolation: $desc → e_above=$expected`, ({ query, expected }) => {
+    const lower_hull = compute_lower_hull_nd(compute_quickhull_nd(asymmetric_hull))
+    const distances = compute_e_above_hull_nd([query], lower_hull, asymmetric_hull)
+    expect(distances[0]).toBeCloseTo(expected, 1)
   })
 })

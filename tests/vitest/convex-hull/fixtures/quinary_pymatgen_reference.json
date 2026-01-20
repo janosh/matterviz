@@ -1,0 +1,149 @@
+{
+  "elements": [
+    "Li",
+    "Na",
+    "K",
+    "Rb",
+    "Cs"
+  ],
+  "entries": [
+    {
+      "id": "entry_0",
+      "composition": {
+        "Li": 1.0
+      },
+      "energy_per_atom": 0.0,
+      "e_above_hull": 0.0,
+      "is_stable": true
+    },
+    {
+      "id": "entry_1",
+      "composition": {
+        "Na": 1.0
+      },
+      "energy_per_atom": 0.0,
+      "e_above_hull": 0.0,
+      "is_stable": true
+    },
+    {
+      "id": "entry_2",
+      "composition": {
+        "K": 1.0
+      },
+      "energy_per_atom": 0.0,
+      "e_above_hull": 0.0,
+      "is_stable": true
+    },
+    {
+      "id": "entry_3",
+      "composition": {
+        "Rb": 1.0
+      },
+      "energy_per_atom": 0.0,
+      "e_above_hull": 0.0,
+      "is_stable": true
+    },
+    {
+      "id": "entry_4",
+      "composition": {
+        "Cs": 1.0
+      },
+      "energy_per_atom": 0.0,
+      "e_above_hull": 0.0,
+      "is_stable": true
+    },
+    {
+      "id": "entry_5",
+      "composition": {
+        "Li": 1.0,
+        "Na": 1.0,
+        "K": 1.0,
+        "Rb": 1.0,
+        "Cs": 1.0
+      },
+      "energy_per_atom": -0.1,
+      "e_above_hull": 0.0,
+      "is_stable": true
+    },
+    {
+      "id": "entry_6",
+      "composition": {
+        "Li": 1.0,
+        "Na": 1.0,
+        "K": 1.0,
+        "Rb": 1.0,
+        "Cs": 1.0
+      },
+      "energy_per_atom": 0.02,
+      "e_above_hull": 0.12000000000000001,
+      "is_stable": false
+    },
+    {
+      "id": "entry_7",
+      "composition": {
+        "Li": 1.0,
+        "Na": 1.0,
+        "K": 1.0,
+        "Rb": 1.0,
+        "Cs": 1.0
+      },
+      "energy_per_atom": 0.06,
+      "e_above_hull": 0.16,
+      "is_stable": false
+    },
+    {
+      "id": "entry_8",
+      "composition": {
+        "Li": 2.0,
+        "Na": 1.0,
+        "K": 1.0,
+        "Rb": 1.0,
+        "Cs": 1.0
+      },
+      "energy_per_atom": -0.03333333333333333,
+      "e_above_hull": 0.050000000000000024,
+      "is_stable": false
+    },
+    {
+      "id": "entry_9",
+      "composition": {
+        "Li": 2.0,
+        "Na": 1.0,
+        "K": 1.0,
+        "Rb": 1.0,
+        "Cs": 1.0
+      },
+      "energy_per_atom": 0.024999999999999998,
+      "e_above_hull": 0.10833333333333335,
+      "is_stable": false
+    },
+    {
+      "id": "entry_10",
+      "composition": {
+        "Li": 1.0,
+        "Na": 2.0,
+        "K": 2.0,
+        "Rb": 1.0,
+        "Cs": 1.0
+      },
+      "energy_per_atom": -0.02142857142857143,
+      "e_above_hull": 0.05000000000000001,
+      "is_stable": false
+    },
+    {
+      "id": "entry_11",
+      "composition": {
+        "Li": 1.0,
+        "Na": 1.0,
+        "K": 2.0,
+        "Rb": 2.0,
+        "Cs": 1.0
+      },
+      "energy_per_atom": -0.014285714285714287,
+      "e_above_hull": 0.05714285714285715,
+      "is_stable": false
+    }
+  ],
+  "n_stable": 6,
+  "n_unstable": 6
+}
