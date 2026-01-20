@@ -346,6 +346,14 @@ test.describe(`Legend Placement Stability`, () => {
     const after_drag_bbox = await legend.boundingBox()
     if (!after_drag_bbox) throw new Error(`Legend bounding box not found after drag`)
 
+    // Verify drag actually moved the legend (at least 20px in one direction)
+    const displacement_x = Math.abs(after_drag_bbox.x - initial_bbox.x)
+    const displacement_y = Math.abs(after_drag_bbox.y - initial_bbox.y)
+    expect(
+      displacement_x > 20 || displacement_y > 20,
+      `Legend should move during drag (moved ${displacement_x}px, ${displacement_y}px)`,
+    ).toBe(true)
+
     // Verify position stability (no unexpected drift after 500ms)
     await page.waitForTimeout(500)
     const final_bbox = await legend.boundingBox()

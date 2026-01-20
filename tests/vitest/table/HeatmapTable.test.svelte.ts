@@ -1606,7 +1606,7 @@ describe(`HeatmapTable`, () => {
       })
 
       it(`manages loading state during async onsort`, async () => {
-        let resolve_sort: (value: typeof initial_data) => void = () => {}
+        let resolve_sort!: (value: typeof initial_data) => void
         const onsort_mock = vi.fn().mockReturnValue(
           new Promise<typeof initial_data>((resolve) => {
             resolve_sort = resolve
@@ -1738,8 +1738,8 @@ describe(`HeatmapTable`, () => {
 
       it(`handles race condition: stale responses are ignored`, async () => {
         // Simulate two async sorts where the first resolves after the second
-        let resolve_first: (value: typeof initial_data) => void = () => {}
-        let resolve_second: (value: typeof initial_data) => void = () => {}
+        let resolve_first!: (value: typeof initial_data) => void
+        let resolve_second!: (value: typeof initial_data) => void
 
         const first_data = [{ Model: `First`, Score: 0.1, Value: 1 }]
         const second_data = [{ Model: `Second`, Score: 0.2, Value: 2 }]
