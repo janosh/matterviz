@@ -356,20 +356,15 @@ export function calculate_e_above_hull(
   } else {
     // Arity 5+ uses generalized N-dimensional convex hull
     // Helper to convert entry to hull point, returns null on expected errors
-    const to_hull_point = (
-      entry: PhaseData,
-      e_form: number,
-      label: string,
-    ): number[] | null => {
+    const to_hull_point = (entry: PhaseData, e_form: number): number[] | null => {
       try {
-        const bary = composition_to_barycentric_nd(entry.composition, elements)
-        return [...bary, e_form]
+        return [...composition_to_barycentric_nd(entry.composition, elements), e_form]
       } catch (err) {
         // Skip expected errors (missing elements), warn on unexpected
         if (
           err instanceof Error && !err.message.includes(`no elements from the system`)
         ) {
-          console.warn(`Skipping ${label}: ${err.message}`)
+          console.warn(`Skipping entry: ${err.message}`)
         }
         return null
       }
@@ -380,7 +375,7 @@ export function calculate_e_above_hull(
     for (const ref of reference_entries) {
       const e_form = compute_e_form(ref)
       if (typeof e_form !== `number`) continue
-      const point = to_hull_point(ref, e_form, `reference entry`)
+      const point = to_hull_point(ref, e_form)
       if (point) ref_points.push(point)
     }
 
@@ -411,7 +406,7 @@ export function calculate_e_above_hull(
     for (let idx = 0; idx < interest_data.length; idx++) {
       const { entry, e_form } = interest_data[idx]
       if (typeof e_form !== `number`) continue
-      const point = to_hull_point(entry, e_form, `interest entry`)
+      const point = to_hull_point(entry, e_form)
       if (point) {
         idx_to_point_idx.set(idx, interest_points.length)
         interest_points.push(point)
