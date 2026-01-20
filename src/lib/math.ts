@@ -380,6 +380,7 @@ export function det_4x4(matrix: Matrix4x4): number {
 
 // Compute NxN determinant using LU decomposition with partial pivoting
 // More numerically stable than cofactor expansion for N > 4
+// Returns 0 for singular/near-singular matrices (pivot < EPS ≈ 1e-10)
 export function det_nxn(matrix: number[][]): number {
   const n = matrix.length
   if (n === 0) return 1

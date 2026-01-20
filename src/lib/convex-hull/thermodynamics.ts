@@ -355,32 +355,54 @@ export function calculate_e_above_hull(
     }
   } else {
     // Arity 5+ uses generalized N-dimensional convex hull
-    const ref_points: number[][] = []
-    for (const ref of reference_entries) {
-      const e_form = compute_e_form(ref)
-      if (typeof e_form !== `number`) continue
+    // Helper to convert entry to hull point, returns null on expected errors
+    const to_hull_point = (
+      entry: PhaseData,
+      e_form: number,
+      label: string,
+    ): number[] | null => {
       try {
-        const bary = composition_to_barycentric_nd(ref.composition, elements)
-        ref_points.push([...bary, e_form])
+        const bary = composition_to_barycentric_nd(entry.composition, elements)
+        return [...bary, e_form]
       } catch (err) {
         // Skip expected errors (missing elements), warn on unexpected
         if (
           err instanceof Error && !err.message.includes(`no elements from the system`)
-        ) console.warn(`Skipping reference entry: ${err.message}`)
+        ) {
+          console.warn(`Skipping ${label}: ${err.message}`)
+        }
+        return null
       }
+    }
+
+    // Build reference points
+    const ref_points: number[][] = []
+    for (const ref of reference_entries) {
+      const e_form = compute_e_form(ref)
+      if (typeof e_form !== `number`) continue
+      const point = to_hull_point(ref, e_form, `reference entry`)
+      if (point) ref_points.push(point)
     }
 
     // Ensure corner points (pure elements default to e_form = 0)
     for (let el_idx = 0; el_idx < arity; el_idx++) {
       const corner = new Array(arity + 1).fill(0)
       corner[el_idx] = 1 // ith barycentric coord = 1
-      // Check if corner already exists (using norm_nd for distance)
       if (!ref_points.some((pt) => norm_nd(subtract_nd(pt, corner)) < EPS)) {
         ref_points.push(corner)
       }
     }
 
     const hull_facets = compute_lower_hull_nd(compute_quickhull_nd(ref_points))
+
+    // Warn if hull is degenerate (all points coplanar or insufficient spread)
+    if (hull_facets.length === 0 && ref_points.length >= arity + 1) {
+      console.warn(
+        `N-dimensional hull for ${arity}-element system is degenerate. ` +
+          `Falling back to tie-hyperplane at energy 0. ` +
+          `Consider using pymatgen for complex high-dimensional phase diagrams.`,
+      )
+    }
 
     // Build query points with mapping back to original indices
     const interest_points: number[][] = []
@@ -389,17 +411,10 @@ export function calculate_e_above_hull(
     for (let idx = 0; idx < interest_data.length; idx++) {
       const { entry, e_form } = interest_data[idx]
       if (typeof e_form !== `number`) continue
-      try {
-        const bary = composition_to_barycentric_nd(entry.composition, elements)
+      const point = to_hull_point(entry, e_form, `interest entry`)
+      if (point) {
         idx_to_point_idx.set(idx, interest_points.length)
-        interest_points.push([...bary, e_form])
-      } catch (err) {
-        // Skip expected errors (missing elements), warn on unexpected
-        if (
-          err instanceof Error && !err.message.includes(`no elements from the system`)
-        ) {
-          console.warn(`Skipping interest entry: ${err.message}`)
-        }
+        interest_points.push(point)
       }
     }
 

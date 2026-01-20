@@ -336,10 +336,12 @@ test.describe(`Legend Placement Stability`, () => {
     const initial_bbox = await legend.boundingBox()
     if (!initial_bbox) throw new Error(`Legend bounding box not found`)
 
-    // Perform drag gesture
-    await page.mouse.move(initial_bbox.x + 10, initial_bbox.y + 10)
+    // Perform drag gesture from center of legend (avoids clicking on legend items)
+    const center_x = initial_bbox.x + initial_bbox.width / 2
+    const center_y = initial_bbox.y + initial_bbox.height / 2
+    await page.mouse.move(center_x, center_y)
     await page.mouse.down()
-    await page.mouse.move(initial_bbox.x + 80, initial_bbox.y + 60, { steps: 10 })
+    await page.mouse.move(center_x + 70, center_y + 50, { steps: 10 })
     await page.mouse.up()
 
     // Capture position after interaction

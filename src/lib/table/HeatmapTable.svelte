@@ -487,6 +487,8 @@
           if (request_id === sort_request_id) {
             data = result
           }
+        } catch (err) {
+          console.error(`Sort callback failed:`, err)
         } finally {
           // Only clear loading if this is still the most recent request
           if (request_id === sort_request_id) {

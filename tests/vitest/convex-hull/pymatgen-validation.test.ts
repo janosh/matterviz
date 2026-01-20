@@ -59,18 +59,19 @@ describe(`Pymatgen cross-validation for quinary (5-element) system`, () => {
   })
 
   // Elemental references should always have e_above_hull = 0
-  test.each([
-    [`Li`, 0],
-    [`Na`, 1],
-    [`K`, 2],
-    [`Rb`, 3],
-    [`Cs`, 4],
-  ])(`elemental %s has e_above_hull = 0`, (element, idx) => {
-    const entry = reference.entries[idx]
-    expect(Object.keys(entry.composition)).toEqual([element])
-    const result = calculate_e_above_hull(to_phase_data(entry), all_entries)
-    expect(result).toBeCloseTo(0, 10)
-  })
+  test.each([`Li`, `Na`, `K`, `Rb`, `Cs`])(
+    `elemental %s has e_above_hull = 0`,
+    (element) => {
+      // Find entry by composition rather than relying on array index
+      const entry = reference.entries.find(
+        (e) => Object.keys(e.composition).length === 1 && e.composition[element],
+      )
+      if (!entry) throw new Error(`Element ${element} not found in reference data`)
+      expect(Object.keys(entry.composition)).toEqual([element])
+      const result = calculate_e_above_hull(to_phase_data(entry), all_entries)
+      expect(result).toBeCloseTo(0, 10)
+    },
+  )
 
   test(`single entry mode matches batch mode`, () => {
     const batch_results = calculate_e_above_hull(all_entries, all_entries)
