@@ -1,6 +1,6 @@
 import { HeatmapTable, type Label } from '$lib'
 import { mount, tick } from 'svelte'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 describe(`HeatmapTable`, () => {
   const sample_data = [
@@ -234,6 +234,59 @@ describe(`HeatmapTable`, () => {
       ).map((cell) => cell.textContent?.trim())
 
       expect(scores).toEqual([`0.75`, `0.85`, `0.95`])
+    })
+
+    // Tests for sorting numbers with error/uncertainty notation (±, +-, parenthetical)
+    // Sorts by extracting the primary numeric value before the error term
+    it.each([
+      {
+        desc: `± notation`,
+        input: [`1.5 ± 0.2`, `0.8 ± 0.1`, `2.3 ± 0.5`],
+        expected: [`0.8 ± 0.1`, `1.5 ± 0.2`, `2.3 ± 0.5`],
+      },
+      {
+        desc: `+- notation`,
+        input: [`10.5 +- 1.2`, `5.2 +- 0.8`, `15.0 +- 2.0`],
+        expected: [`5.2 +- 0.8`, `10.5 +- 1.2`, `15.0 +- 2.0`],
+      },
+      {
+        desc: `parenthetical notation`,
+        input: [`1.234(5)`, `0.567(3)`, `2.890(8)`],
+        expected: [`0.567(3)`, `1.234(5)`, `2.890(8)`],
+      },
+      {
+        desc: `negative numbers`,
+        input: [`-1.5 ± 0.2`, `0.8 ± 0.1`, `-2.3 ± 0.5`],
+        expected: [`-2.3 ± 0.5`, `-1.5 ± 0.2`, `0.8 ± 0.1`],
+      },
+      {
+        desc: `scientific notation`,
+        input: [`1.5e-3 ± 0.2e-3`, `2.8e-2 ± 0.1e-2`, `5.0e-4 ± 1.0e-4`],
+        expected: [`5.0e-4 ± 1.0e-4`, `1.5e-3 ± 0.2e-3`, `2.8e-2 ± 0.1e-2`],
+      },
+      {
+        desc: `mixed plain and error notation`,
+        input: [`1.5 ± 0.2`, `0.8`, `2.3 ± 0.5`, `1.0`],
+        expected: [`0.8`, `1.0`, `1.5 ± 0.2`, `2.3 ± 0.5`],
+      },
+    ])(`sorts numbers with $desc correctly`, async ({ input, expected }) => {
+      const data = input.map((val, idx) => ({
+        Name: String.fromCharCode(65 + idx),
+        Value: val,
+      }))
+      const columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, better: `lower`, description: `` },
+      ]
+
+      mount(HeatmapTable, { target: document.body, props: { data, columns } })
+
+      document.querySelectorAll(`th`)[1].click()
+      await tick()
+
+      const values = Array.from(document.querySelectorAll(`td[data-col="Value"]`))
+        .map((cell) => cell.textContent?.trim())
+      expect(values).toEqual(expected)
     })
   })
 
@@ -1395,5 +1448,410 @@ describe(`HeatmapTable`, () => {
     // 1. happy-dom doesn't fully support getAnimations() for animate:flip directive
     // 2. Svelte 5's bind:value requires native input simulation that happy-dom doesn't support
     // The strip_html functionality is tested in tests/vitest/table/index.test.ts
+  })
+
+  describe(`Async Sort Feature`, () => {
+    const initial_data = [
+      { Model: `Model A`, Score: 0.95, Value: 100 },
+      { Model: `Model B`, Score: 0.85, Value: 200 },
+      { Model: `Model C`, Score: 0.75, Value: 300 },
+    ]
+
+    describe(`onsort callback prop`, () => {
+      it(`calls onsort with correct column and direction`, async () => {
+        const onsort_mock = vi.fn().mockResolvedValue(initial_data)
+
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
+        })
+
+        const headers = document.querySelectorAll(`th`)
+
+        // Score has better: higher, so first click = desc
+        headers[1].click()
+        await tick()
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledWith(`Score`, `desc`))
+
+        // Value has better: lower, so first click = asc
+        headers[2].click()
+        await tick()
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledWith(`Value`, `asc`))
+      })
+
+      it(`toggles sort direction on subsequent clicks`, async () => {
+        const onsort_mock = vi.fn().mockResolvedValue(initial_data)
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
+        })
+
+        const score_header = document.querySelectorAll(`th`)[1]
+
+        // First click = desc (better: higher), second = asc, third = desc
+        score_header.click()
+        await vi.waitFor(() =>
+          expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`)
+        )
+        score_header.click()
+        await vi.waitFor(() =>
+          expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `asc`)
+        )
+        score_header.click()
+        await vi.waitFor(() =>
+          expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`)
+        )
+        expect(onsort_mock).toHaveBeenCalledTimes(3)
+      })
+
+      it(`updates data with resolved Promise value`, async () => {
+        const server_data = [
+          { Model: `Server A`, Score: 0.99, Value: 999 },
+          { Model: `Server B`, Score: 0.88, Value: 888 },
+          { Model: `Server C`, Score: 0.77, Value: 777 },
+        ]
+        const onsort_mock = vi.fn().mockResolvedValue(server_data)
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
+        })
+
+        const table = document.body.lastElementChild as HTMLElement
+        const tbody = table.querySelector(`tbody`)
+
+        table.querySelectorAll(`th`)[1].click()
+        await tick()
+
+        await vi.waitFor(() => {
+          const models = Array.from(tbody?.querySelectorAll(`td[data-col="Model"]`) ?? [])
+            .map((cell) => cell.textContent?.trim())
+          expect(models).toEqual([`Server A`, `Server B`, `Server C`])
+        })
+      })
+
+      it(`does not call onsort for Shift+click or unsortable columns`, async () => {
+        const onsort_mock = vi.fn().mockResolvedValue(initial_data)
+        const cols: Label[] = [
+          { label: `Model`, sortable: false, description: `` },
+          { label: `Score`, better: `higher`, description: `` },
+        ]
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: initial_data, columns: cols, onsort: onsort_mock },
+        })
+
+        const headers = document.querySelectorAll(`th`)
+
+        // Click unsortable column
+        headers[0].click()
+        await tick()
+        expect(onsort_mock).not.toHaveBeenCalled()
+
+        // Shift+click for multi-sort
+        headers[1].dispatchEvent(
+          new MouseEvent(`click`, { shiftKey: true, bubbles: true }),
+        )
+        await tick()
+        expect(onsort_mock).not.toHaveBeenCalled()
+      })
+
+      it(`works with grouped columns`, async () => {
+        const onsort_mock = vi.fn().mockResolvedValue(initial_data)
+        const grouped_columns: Label[] = [
+          { label: `Name`, description: `` },
+          { label: `Value`, group: `Group A`, description: `` },
+          { label: `Value`, group: `Group B`, description: `` },
+        ]
+        mount(HeatmapTable, {
+          target: document.body,
+          props: {
+            data: [
+              { Name: `Item 1`, 'Value (Group A)': 10, 'Value (Group B)': 100 },
+              { Name: `Item 2`, 'Value (Group A)': 20, 'Value (Group B)': 50 },
+            ],
+            columns: grouped_columns,
+            onsort: onsort_mock,
+          },
+        })
+
+        // Click on Group B's "Value" header
+        const headers = document.querySelectorAll(`thead tr:last-child th`)
+        ;(headers[2] as HTMLElement).click()
+        await tick()
+
+        await vi.waitFor(() =>
+          expect(onsort_mock).toHaveBeenCalledWith(`Value (Group B)`, expect.any(String))
+        )
+      })
+    })
+
+    describe(`loading state`, () => {
+      it.each([
+        [true, `shows overlay and spinner`],
+        [false, `hides overlay`],
+      ])(`loading=%s %s`, (loading) => {
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: initial_data, columns: sample_columns, loading },
+        })
+        const container = document.body.lastElementChild as HTMLElement
+        const overlay = container.querySelector(`.loading-overlay`)
+        if (loading) {
+          expect(overlay).not.toBeNull()
+          expect(container.querySelector(`.loading-spinner`)).not.toBeNull()
+          expect(getComputedStyle(overlay as HTMLElement).position).toBe(`absolute`)
+        } else {
+          expect(overlay).toBeNull()
+        }
+      })
+
+      it(`manages loading state during async onsort`, async () => {
+        let resolve_sort!: (value: typeof initial_data) => void
+        const onsort_mock = vi.fn().mockReturnValue(
+          new Promise<typeof initial_data>((resolve) => {
+            resolve_sort = resolve
+          }),
+        )
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
+        })
+
+        const container = document.body.lastElementChild as HTMLElement
+        expect(container.querySelector(`.loading-overlay`)).toBeNull()
+
+        container.querySelectorAll(`th`)[1].click()
+        await tick()
+        expect(container.querySelector(`.loading-overlay`)).not.toBeNull()
+
+        resolve_sort(initial_data)
+        await tick()
+        await vi.waitFor(() =>
+          expect(container.querySelector(`.loading-overlay`)).toBeNull()
+        )
+      })
+    })
+
+    describe(`sort_data prop`, () => {
+      it.each([
+        {
+          sort_data: false,
+          expected_order: [`X`, `Y`, `Z`],
+          desc: `preserves original order`,
+        },
+        { sort_data: true, expected_order: [`Z`, `Y`, `X`], desc: `sorts client-side` },
+      ])(`sort_data=$sort_data $desc`, async ({ sort_data, expected_order }) => {
+        const unsorted = [
+          { Model: `X`, Score: 0.10, Value: 100 },
+          { Model: `Y`, Score: 0.50, Value: 200 },
+          { Model: `Z`, Score: 0.90, Value: 300 },
+        ]
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: unsorted, columns: sample_columns, sort_data },
+        })
+
+        const table = document.body.lastElementChild as HTMLElement
+        table.querySelectorAll(`th`)[1].click()
+        await tick()
+
+        const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`))
+          .map((cell) => cell.textContent?.trim())
+        expect(models).toEqual(expected_order)
+      })
+
+      it(`onsort implicitly disables client-side sorting`, async () => {
+        // Server returns data in "wrong" order that client-side would re-sort if not disabled
+        // Score column has better: higher, so client would sort desc (C=0.99, B=0.88, A=0.77)
+        // But server returns A, B, C - if onsort skips client sort, this order stays
+        const server_ordered = [
+          { Model: `A`, Score: 0.77, Value: 100 },
+          { Model: `B`, Score: 0.88, Value: 200 },
+          { Model: `C`, Score: 0.99, Value: 300 },
+        ]
+        const onsort_mock = vi.fn().mockResolvedValue(server_ordered)
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
+        })
+
+        const table = document.body.lastElementChild as HTMLElement
+        table.querySelectorAll(`th`)[1].click()
+        await tick()
+
+        await vi.waitFor(() => {
+          const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`))
+            .map((cell) => cell.textContent?.trim())
+          // Server order preserved (A, B, C), NOT client-side sorted (C, B, A)
+          expect(models).toEqual([`A`, `B`, `C`])
+        })
+      })
+    })
+
+    describe(`integration scenarios`, () => {
+      it(`sort hint works with onsort`, () => {
+        mount(HeatmapTable, {
+          target: document.body,
+          props: {
+            data: initial_data,
+            columns: sample_columns,
+            onsort: vi.fn().mockResolvedValue(initial_data),
+            sort_hint: { text: `Server-side sort`, permanent: true },
+          },
+        })
+
+        const hint = document.querySelector(`.sort-hint`)
+        expect(hint?.textContent).toContain(`Server-side sort`)
+        expect(hint?.classList.contains(`permanent`)).toBe(true)
+      })
+
+      it(`other features work with async sort props`, () => {
+        const paginated_data = Array.from({ length: 50 }, (_, idx) => ({
+          Model: `Model ${idx + 1}`,
+          Score: Math.random(),
+          Value: idx * 10,
+        }))
+        mount(HeatmapTable, {
+          target: document.body,
+          props: {
+            data: paginated_data,
+            columns: sample_columns,
+            onsort: vi.fn().mockResolvedValue(paginated_data),
+            pagination: { page_size: 10 },
+            search: { expanded: true },
+            sort_data: false,
+          },
+        })
+
+        const table = document.body.lastElementChild as HTMLElement
+
+        // Pagination works
+        expect(table.querySelector(`.pagination`)).not.toBeNull()
+        expect(table.querySelectorAll(`tbody tr`)).toHaveLength(10)
+
+        // Search works
+        expect(table.querySelector(`input[type="search"]`)).not.toBeNull()
+
+        // Column reorder works (headers are draggable)
+        expect(table.querySelector(`th`)?.getAttribute(`draggable`)).toBe(`true`)
+      })
+
+      it(`handles race condition: stale responses are ignored`, async () => {
+        // Simulate two async sorts where the first resolves after the second
+        let resolve_first!: (value: typeof initial_data) => void
+        let resolve_second!: (value: typeof initial_data) => void
+
+        const first_data = [{ Model: `First`, Score: 0.1, Value: 1 }]
+        const second_data = [{ Model: `Second`, Score: 0.2, Value: 2 }]
+
+        let call_count = 0
+        const onsort_mock = vi.fn().mockImplementation(() => {
+          call_count++
+          if (call_count === 1) {
+            return new Promise((resolve) => {
+              resolve_first = resolve
+            })
+          }
+          return new Promise((resolve) => {
+            resolve_second = resolve
+          })
+        })
+
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { data: initial_data, columns: sample_columns, onsort: onsort_mock },
+        })
+
+        const table = document.body.lastElementChild as HTMLElement
+        const headers = table.querySelectorAll(`th`)
+
+        // Click first column (starts first async sort)
+        headers[1].click()
+        await tick()
+
+        // Click second column before first resolves (starts second async sort)
+        headers[2].click()
+        await tick()
+
+        expect(onsort_mock).toHaveBeenCalledTimes(2)
+
+        // Resolve second request first
+        resolve_second(second_data)
+        await tick()
+
+        // Now resolve first (stale) request
+        resolve_first(first_data)
+        await tick()
+
+        // Data should show second_data, not first_data (stale response ignored)
+        await vi.waitFor(() => {
+          const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`))
+            .map((cell) => cell.textContent?.trim())
+          expect(models).toEqual([`Second`])
+        })
+      })
+
+      it(`reverts sort state on onsort callback failure`, async () => {
+        // First call succeeds, second call fails
+        const onsort_mock = vi.fn()
+          .mockResolvedValueOnce(initial_data) // First sort succeeds
+          .mockRejectedValueOnce(new Error(`Network error`)) // Second sort fails
+
+        mount(HeatmapTable, {
+          target: document.body,
+          props: {
+            data: initial_data,
+            columns: sample_columns,
+            onsort: onsort_mock,
+          },
+        })
+
+        const headers = document.querySelectorAll(`th`)
+
+        // First sort by Model (succeeds)
+        headers[0].click()
+        await tick()
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledTimes(1))
+
+        // Verify Model is sorted (check aria-sort attribute)
+        expect(headers[0].getAttribute(`aria-sort`)).not.toBe(`none`)
+
+        // Now click Score (will fail)
+        headers[1].click()
+        await tick()
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledTimes(2))
+
+        // Sort state should revert to Model after failure (Score should be unsorted)
+        await vi.waitFor(() => {
+          expect(headers[1].getAttribute(`aria-sort`)).toBe(`none`)
+          expect(headers[0].getAttribute(`aria-sort`)).not.toBe(`none`)
+        })
+      })
+
+      it(`calls onsorterror callback with error details on failure`, async () => {
+        const error = new Error(`Server unavailable`)
+        const onsort_mock = vi.fn().mockRejectedValue(error)
+        const onsorterror_mock = vi.fn()
+
+        mount(HeatmapTable, {
+          target: document.body,
+          props: {
+            data: initial_data,
+            columns: sample_columns,
+            onsort: onsort_mock,
+            onsorterror: onsorterror_mock,
+          },
+        })
+
+        // Click Score header (better: higher → first click = desc)
+        document.querySelectorAll(`th`)[1].click()
+        await tick()
+
+        await vi.waitFor(() => {
+          expect(onsorterror_mock).toHaveBeenCalledTimes(1)
+          expect(onsorterror_mock).toHaveBeenCalledWith(error, `Score`, `desc`)
+        })
+      })
+    })
   })
 })

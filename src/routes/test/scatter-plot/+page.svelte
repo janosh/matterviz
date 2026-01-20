@@ -794,7 +794,7 @@
   <h3>Multi Series (Default Legend) - Legend Expected</h3>
   <ScatterPlot
     series={legend_multi_series.map((srs) => ({ ...srs, markers: `points` }))}
-    legend={{ draggable: true }}
+    legend={{ draggable: true, style: `padding: 8px;` }}
     id="legend-multi-default"
     controls={{ show: true }}
   />
