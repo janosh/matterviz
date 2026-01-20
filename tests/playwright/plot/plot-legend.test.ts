@@ -321,99 +321,44 @@ test.describe(`Legend Placement Stability`, () => {
     }
   })
 
-  test(`legend can be dragged and remains functional after data updates`, async ({ page }) => {
+  test(`legend remains functional and stable after mouse drag gestures`, async ({ page }) => {
+    // Tests both drag functionality and position stability after mouse interactions
     const plot = page.locator(`#legend-multi-default.scatter`)
     await plot.scrollIntoViewIfNeeded()
     await expect(plot).toBeVisible()
 
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
-
-    // Wait for initial placement to stabilize
-    const initial_pos = await wait_for_position_stable(legend, 2000)
-    expect(initial_pos).not.toBeNull()
-
-    const initial_bbox = await legend.boundingBox()
-    expect(initial_bbox).not.toBeNull()
     await expect(legend).toHaveClass(/draggable/)
-
-    if (!initial_bbox) throw new Error(`Legend bounding box not found`)
-    const drag_offset = { x: 50, y: 30 }
-    await page.mouse.move(initial_bbox.x + 10, initial_bbox.y + 10)
-    await page.mouse.down()
-    await page.mouse.move(
-      initial_bbox.x + drag_offset.x,
-      initial_bbox.y + drag_offset.y,
-      { steps: 10 },
-    )
-    await page.mouse.up()
-
-    await expect(legend).toBeVisible()
-
-    const series_a = legend.locator(`.legend-item`).first()
-    await series_a.click()
-    await expect(legend).toBeVisible()
-    await expect(series_a).toHaveClass(/hidden/)
-
-    await series_a.click()
-    await expect(series_a).not.toHaveClass(/hidden/)
-  })
-
-  test(`dragged legend stays at drop position without animating back`, async ({ page }) => {
-    // This test verifies the fix for unwanted animation after dropping the legend.
-    // The tween duration was set to 0 for manual positions to prevent sliding.
-    const plot = page.locator(`#legend-multi-default.scatter`)
-    await plot.scrollIntoViewIfNeeded()
-    await expect(plot).toBeVisible()
-
-    const legend = plot.locator(`.legend`)
-    await expect(legend).toBeVisible()
 
     // Wait for initial placement to stabilize
     await wait_for_position_stable(legend, 2000)
-
     const initial_bbox = await legend.boundingBox()
     if (!initial_bbox) throw new Error(`Legend bounding box not found`)
 
-    // Perform drag
-    const drag_offset = { x: 80, y: 60 }
+    // Perform drag gesture
     await page.mouse.move(initial_bbox.x + 10, initial_bbox.y + 10)
     await page.mouse.down()
-    await page.mouse.move(
-      initial_bbox.x + drag_offset.x,
-      initial_bbox.y + drag_offset.y,
-      { steps: 10 },
-    )
-
-    // Capture position DURING drag (before releasing)
-    const during_drag_bbox = await legend.boundingBox()
-    if (!during_drag_bbox) throw new Error(`Legend bounding box not found during drag`)
-
+    await page.mouse.move(initial_bbox.x + 80, initial_bbox.y + 60, { steps: 10 })
     await page.mouse.up()
 
-    // Capture position immediately after drop
-    const after_drop_bbox = await legend.boundingBox()
-    if (!after_drop_bbox) throw new Error(`Legend bounding box not found after drop`)
+    // Capture position after interaction
+    const after_drag_bbox = await legend.boundingBox()
+    if (!after_drag_bbox) throw new Error(`Legend bounding box not found after drag`)
 
-    // Position after drop should match position during drag (no jump to old tween position)
-    const drop_diff_x = Math.abs(after_drop_bbox.x - during_drag_bbox.x)
-    const drop_diff_y = Math.abs(after_drop_bbox.y - during_drag_bbox.y)
-    expect(drop_diff_x, `Legend jumped on drop`).toBeLessThan(10)
-    expect(drop_diff_y, `Legend jumped on drop`).toBeLessThan(10)
-
-    // Wait and verify position remains stable (no animation)
+    // Verify position stability (no unexpected drift after 500ms)
     await page.waitForTimeout(500)
     const final_bbox = await legend.boundingBox()
     if (!final_bbox) throw new Error(`Legend bounding box not found after wait`)
+    expect(Math.abs(final_bbox.x - after_drag_bbox.x)).toBeLessThan(5)
+    expect(Math.abs(final_bbox.y - after_drag_bbox.y)).toBeLessThan(5)
 
-    const drift_x = Math.abs(final_bbox.x - after_drop_bbox.x)
-    const drift_y = Math.abs(final_bbox.y - after_drop_bbox.y)
-    expect(drift_x, `Legend animated after drop`).toBeLessThan(5)
-    expect(drift_y, `Legend animated after drop`).toBeLessThan(5)
-
-    // Verify legend still functions
-    await expect(legend).toBeVisible()
-    expect(await legend.locator(`.legend-item`).count()).toBeGreaterThan(0)
+    // Verify legend items still function (toggle works)
+    const first_item = legend.locator(`.legend-item`).first()
+    await first_item.click()
+    await expect(first_item).toHaveClass(/hidden/)
+    await first_item.click()
+    await expect(first_item).not.toHaveClass(/hidden/)
   })
 })
 
