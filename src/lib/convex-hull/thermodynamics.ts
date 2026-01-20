@@ -1736,34 +1736,32 @@ function distance_to_affine_hull_nd(point: number[], hull_points: number[][]): n
   // Solve Gram * coeffs = rhs using simple Gaussian elimination
   const coeffs = solve_linear_system(gram, rhs)
   if (!coeffs) {
-    // Fallback: use Gram-Schmidt to orthogonalize edges and project vp
-    // This handles the case where edges are linearly dependent
+    // Fallback: Gram-Schmidt when Gram matrix is singular (linearly dependent edges)
+    // Build orthogonal basis and accumulate projection in single pass
     const ortho_basis: number[][] = []
+    let projection = vp.map(() => 0)
+
     for (const edge of edges) {
-      // Subtract projections onto existing orthogonal basis vectors
-      let ortho_edge = [...edge]
-      for (const basis_vec of ortho_basis) {
-        const basis_norm_sq = dot_nd(basis_vec, basis_vec)
-        if (basis_norm_sq > EPS) {
-          const proj_coeff = dot_nd(ortho_edge, basis_vec) / basis_norm_sq
-          ortho_edge = ortho_edge.map((val, idx) => val - proj_coeff * basis_vec[idx])
+      // Orthogonalize edge against existing basis
+      let ortho = [...edge]
+      for (const basis of ortho_basis) {
+        const norm_sq = dot_nd(basis, basis)
+        if (norm_sq > EPS) {
+          const coeff = dot_nd(ortho, basis) / norm_sq
+          ortho = ortho.map((val, idx) => val - coeff * basis[idx])
         }
       }
-      // Only add if not near-zero (i.e., edge was not in span of previous edges)
-      if (norm_nd(ortho_edge) > EPS) ortho_basis.push(ortho_edge)
-    }
 
-    // Project vp onto the orthogonal basis and compute residual
-    let projection = vp.map(() => 0)
-    for (const basis_vec of ortho_basis) {
-      const basis_norm_sq = dot_nd(basis_vec, basis_vec)
-      if (basis_norm_sq > EPS) {
-        const proj_coeff = dot_nd(vp, basis_vec) / basis_norm_sq
-        projection = projection.map((val, idx) => val + proj_coeff * basis_vec[idx])
+      // Add to basis and update projection if linearly independent
+      const ortho_norm_sq = dot_nd(ortho, ortho)
+      if (ortho_norm_sq > EPS) {
+        ortho_basis.push(ortho)
+        const proj_coeff = dot_nd(vp, ortho) / ortho_norm_sq
+        projection = projection.map((val, idx) => val + proj_coeff * ortho[idx])
       }
     }
-    const residual = subtract_nd(vp, projection)
-    return norm_nd(residual)
+
+    return norm_nd(subtract_nd(vp, projection))
   }
 
   // Compute projection: origin + sum(coeffs[i] * edges[i])
