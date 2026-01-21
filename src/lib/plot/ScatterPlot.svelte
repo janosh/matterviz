@@ -1282,7 +1282,8 @@
   function handle_wheel(evt: WheelEvent) {
     const pan_enabled = pan?.enabled !== false
     // Only capture wheel when focused AND Shift is held
-    if (!pan_enabled || !is_focused || !evt.shiftKey) return
+    // Use shift_held state (tracked via keydown/keyup) for compatibility with synthetic events
+    if (!pan_enabled || !is_focused || !shift_held) return
 
     evt.preventDefault()
 
@@ -1761,7 +1762,11 @@
         on_point_hover?.(null)
       }}
       ondblclick={() => {
-        // Reset zoom to auto ranges (preserve other axis settings)
+        // Reset zoom to initial ranges (undo any pan/zoom)
+        zoom_x_range = [...initial_x_range] as [number, number]
+        zoom_y_range = [...initial_y_range] as [number, number]
+        zoom_y2_range = [...initial_y2_range] as [number, number]
+        // Also reset axis props so future data changes recalculate auto ranges
         x_axis = { ...x_axis, range: [null, null] }
         y_axis = { ...y_axis, range: [null, null] }
         y2_axis = { ...y2_axis, range: [null, null] }

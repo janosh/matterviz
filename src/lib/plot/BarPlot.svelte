@@ -67,8 +67,8 @@
   } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
-  import { untrack } from 'svelte'
   import type { Snippet } from 'svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
   import { SvelteMap } from 'svelte/reactivity'
@@ -667,7 +667,8 @@
   function handle_wheel(evt: WheelEvent) {
     const pan_enabled = pan?.enabled !== false
     // Only capture wheel when focused AND Shift is held
-    if (!pan_enabled || !is_focused || !evt.shiftKey) return
+    // Use shift_held state (tracked via keydown/keyup) for compatibility with synthetic events
+    if (!pan_enabled || !is_focused || !shift_held) return
 
     evt.preventDefault()
 
@@ -1144,7 +1145,11 @@
       onblur={() => (is_focused = false)}
       onmousedown={handle_mouse_down}
       ondblclick={() => {
-        // Reset zoom to auto ranges (preserve other axis settings)
+        // Reset zoom to initial ranges (undo any pan/zoom)
+        ranges.current.x = [...ranges.initial.x] as [number, number]
+        ranges.current.y = [...ranges.initial.y] as [number, number]
+        ranges.current.y2 = [...ranges.initial.y2] as [number, number]
+        // Also reset axis props so future data changes recalculate auto ranges
         x_axis = { ...x_axis, range: [null, null] }
         y_axis = { ...y_axis, range: [null, null] }
         y2_axis = { ...y2_axis, range: [null, null] }
@@ -1161,7 +1166,6 @@
       ontouchend={handle_touch_end}
       style:cursor={pan_drag_state ? `grabbing` : shift_held ? `grab` : `crosshair`}
       role="button"
-      aria-label="Interactive bar plot with zoom and tooltip"
     >
       <!-- Zoom rectangle -->
       {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&

@@ -56,19 +56,22 @@
           {fmt(hover_data.position_cartesian[2])})
         </span>
       </div>
-      <div class="coord-row">
-        <span class="coord-label">k (frac):</span>
-        <span class="coord-values">
-          ({fmt(hover_data.position_fractional[0])},
-          {fmt(hover_data.position_fractional[1])},
-          {fmt(hover_data.position_fractional[2])})
-        </span>
-      </div>
+      {#if hover_data.position_fractional}
+        <div class="coord-row">
+          <span class="coord-label">k (frac):</span>
+          <span class="coord-values">
+            ({fmt(hover_data.position_fractional[0])},
+            {fmt(hover_data.position_fractional[1])},
+            {fmt(hover_data.position_fractional[2])})
+          </span>
+        </div>
+      {/if}
     </div>
 
     {#if hover_data.property_value != null}
       <div class="property-row">
         {hover_data.property_name || `Property`}: {fmt(hover_data.property_value)}
+        <span class="nearest-note">(nearest)</span>
       </div>
     {/if}
 
@@ -127,6 +130,11 @@
   .property-row {
     margin-top: 4px;
     font-size: 0.9em;
+  }
+  .nearest-note {
+    opacity: 0.6;
+    font-size: 0.85em;
+    margin-left: 3px;
   }
   .tiling-info {
     margin-top: 4px;

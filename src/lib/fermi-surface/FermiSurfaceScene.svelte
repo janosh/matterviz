@@ -524,8 +524,9 @@
   })
 
   // Convert Cartesian k-coordinates to fractional (reciprocal lattice units)
-  function cartesian_to_fractional(cart: Vec3): Vec3 {
-    if (!k_lattice_inv) return cart
+  // Returns null if k_lattice is unavailable or inversion failed
+  function cartesian_to_fractional(cart: Vec3): Vec3 | null {
+    if (!k_lattice_inv) return null
     return math.mat3x3_vec3_multiply(k_lattice_inv, cart)
   }
 
@@ -667,7 +668,7 @@
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             {renderOrder}
-            onpointerenter={(event: ThreltePointerEvent) => {
+            onpointermove={(event: ThreltePointerEvent) => {
               hover_data = create_hover_data(event, surface, surface_color, sym_idx)
             }}
             onpointerleave={() => {
@@ -691,7 +692,7 @@
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             renderOrder={renderOrder * 2}
-            onpointerenter={(event: ThreltePointerEvent) => {
+            onpointermove={(event: ThreltePointerEvent) => {
               hover_data = create_hover_data(event, surface, surface_color, sym_idx)
             }}
             onpointerleave={() => {
@@ -711,7 +712,7 @@
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             renderOrder={renderOrder * 2 + 1}
-            onpointerenter={(event: ThreltePointerEvent) => {
+            onpointermove={(event: ThreltePointerEvent) => {
               hover_data = create_hover_data(event, surface, surface_color, sym_idx)
             }}
             onpointerleave={() => {
@@ -737,7 +738,7 @@
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             {renderOrder}
-            onpointerenter={(event: ThreltePointerEvent) => {
+            onpointermove={(event: ThreltePointerEvent) => {
               hover_data = create_hover_data(event, surface, surface_color, sym_idx)
             }}
             onpointerleave={() => {

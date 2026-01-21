@@ -134,7 +134,7 @@ export interface FermiHoverData {
   band_index: number
   spin: SpinChannel
   position_cartesian: Vec3 // k-space coordinates in Å⁻¹
-  position_fractional: Vec3 // in reciprocal lattice units
+  position_fractional: Vec3 | null // in reciprocal lattice units (null if conversion failed)
   screen_position: { x: number; y: number }
   surface_color?: string
   property_value?: number // nearest vertex property value
