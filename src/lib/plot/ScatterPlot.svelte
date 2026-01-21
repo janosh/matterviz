@@ -1349,6 +1349,8 @@
 
     // Calculate pinch scale (curr/start so spread = zoom out, pinch = zoom in)
     const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
+    // Guard against zero-distance pinch to avoid Infinity scale
+    if (start_dist < Number.EPSILON) return
     const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
     const scale = curr_dist / start_dist
 
