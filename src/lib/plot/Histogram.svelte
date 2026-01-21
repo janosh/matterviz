@@ -981,7 +981,11 @@
     ontouchstart={handle_touch_start}
     ontouchmove={handle_touch_move}
     ontouchend={handle_touch_end}
-    style:cursor={pan_drag_state ? `grabbing` : shift_held ? `grab` : `crosshair`}
+    style:cursor={pan_drag_state
+    ? `grabbing`
+    : shift_held && pan?.enabled !== false
+    ? `grab`
+    : `crosshair`}
     role="img"
     onkeydown={(event) => {
       if (event.key === `Escape` && drag_state.start) {

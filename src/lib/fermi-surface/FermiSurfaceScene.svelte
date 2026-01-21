@@ -1,7 +1,7 @@
 <script lang="ts">
   import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
   import type { BrillouinZoneData } from '$lib/brillouin'
-  import type { Vec3 } from '$lib/math'
+  import type { Matrix4Tuple, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import { Arrow, Cylinder } from '$lib/structure'
@@ -18,6 +18,7 @@
     Color,
     DoubleSide,
     FrontSide,
+    Matrix4,
     Plane,
     Vector3,
   } from 'three'
@@ -555,12 +556,21 @@
     surface: Isosurface,
     surface_color: string,
     sym_idx: number,
+    sym_matrix: Matrix4Tuple,
   ): FermiHoverData {
+    // event.point is in world space (after sym_matrix transformation)
     const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
     const position_fractional = cartesian_to_fractional(position_cartesian)
 
-    // Find nearest vertex for property lookup
-    const nearest_idx = find_nearest_vertex(surface, position_cartesian)
+    // Transform world-space point to local space for nearest-vertex lookup
+    // surface.vertices are in local space (raw geometry before sym_matrix)
+    const local_point = event.point.clone()
+    const inv_matrix = new Matrix4().fromArray(sym_matrix).invert()
+    local_point.applyMatrix4(inv_matrix)
+    const local_position: Vec3 = [local_point.x, local_point.y, local_point.z]
+
+    // Find nearest vertex for property lookup (in local space)
+    const nearest_idx = find_nearest_vertex(surface, local_position)
     const property_value = surface.properties?.[nearest_idx]
     const has_velocities = fermi_data?.metadata?.has_velocities
     const property_name = property_value != null
@@ -669,7 +679,13 @@
             matrixAutoUpdate={false}
             {renderOrder}
             onpointermove={(event: ThreltePointerEvent) => {
-              hover_data = create_hover_data(event, surface, surface_color, sym_idx)
+              hover_data = create_hover_data(
+                event,
+                surface,
+                surface_color,
+                sym_idx,
+                sym_matrix,
+              )
             }}
             onpointerleave={() => {
               hover_data = null
@@ -693,7 +709,13 @@
             matrixAutoUpdate={false}
             renderOrder={renderOrder * 2}
             onpointermove={(event: ThreltePointerEvent) => {
-              hover_data = create_hover_data(event, surface, surface_color, sym_idx)
+              hover_data = create_hover_data(
+                event,
+                surface,
+                surface_color,
+                sym_idx,
+                sym_matrix,
+              )
             }}
             onpointerleave={() => {
               hover_data = null
@@ -713,7 +735,13 @@
             matrixAutoUpdate={false}
             renderOrder={renderOrder * 2 + 1}
             onpointermove={(event: ThreltePointerEvent) => {
-              hover_data = create_hover_data(event, surface, surface_color, sym_idx)
+              hover_data = create_hover_data(
+                event,
+                surface,
+                surface_color,
+                sym_idx,
+                sym_matrix,
+              )
             }}
             onpointerleave={() => {
               hover_data = null
@@ -739,7 +767,13 @@
             matrixAutoUpdate={false}
             {renderOrder}
             onpointermove={(event: ThreltePointerEvent) => {
-              hover_data = create_hover_data(event, surface, surface_color, sym_idx)
+              hover_data = create_hover_data(
+                event,
+                surface,
+                surface_color,
+                sym_idx,
+                sym_matrix,
+              )
             }}
             onpointerleave={() => {
               hover_data = null

@@ -85,6 +85,10 @@
   )
 
   function toggle_group_collapse(group_name: string) {
+    // Normalize to SvelteSet if a plain Set was passed (ensures reactivity)
+    if (!(collapsed_groups instanceof SvelteSet)) {
+      collapsed_groups = new SvelteSet(collapsed_groups)
+    }
     // Set.delete returns true if element existed, so add if delete failed
     if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
   }
