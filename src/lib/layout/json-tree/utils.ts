@@ -79,13 +79,17 @@ export function get_child_count(value: unknown): number {
 
 // Format a path segment for display
 // Handles both string keys and numeric indices
-function format_path_segment(segment: string | number): string {
+// is_first: true for the first segment (no leading dot for valid identifiers)
+function format_path_segment(
+  segment: string | number,
+  is_first: boolean = false,
+): string {
   if (typeof segment === `number`) {
     return `[${segment}]`
   }
   // Check if the key is a valid identifier (can use dot notation)
   if (VALID_IDENTIFIER_RE.test(segment)) {
-    return `.${segment}`
+    return is_first ? segment : `.${segment}`
   }
   // Use bracket notation for keys with special characters
   return `["${segment.replace(/"/g, `\\"`)}"]`
@@ -93,10 +97,12 @@ function format_path_segment(segment: string | number): string {
 
 // Format a full path from segments
 // e.g., ["users", 0, "name"] -> "users[0].name"
+// e.g., [0, "name"] -> "[0].name" (root numeric index)
+// e.g., ["key.with.dot"] -> '["key.with.dot"]' (root special key)
 export function format_path(segments: (string | number)[]): string {
   if (segments.length === 0) return ``
 
-  let result = String(segments[0])
+  let result = format_path_segment(segments[0], true)
   for (let idx = 1; idx < segments.length; idx++) {
     result += format_path_segment(segments[idx])
   }
@@ -106,16 +112,9 @@ export function format_path(segments: (string | number)[]): string {
 // Build a path string from parent path and key
 export function build_path(parent_path: string, key: string | number): string {
   if (!parent_path) {
-    return typeof key === `number` ? `[${key}]` : String(key)
+    return format_path_segment(key, true)
   }
-  if (typeof key === `number`) {
-    return `${parent_path}[${key}]`
-  }
-  // Check if the key is a valid identifier
-  if (VALID_IDENTIFIER_RE.test(key)) {
-    return `${parent_path}.${key}`
-  }
-  return `${parent_path}["${key.replace(/"/g, `\\"`)}"]`
+  return parent_path + format_path_segment(key)
 }
 
 // Serialize a value for copying to clipboard

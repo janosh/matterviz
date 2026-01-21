@@ -185,7 +185,20 @@
       const segment = segments[idx]
       if (current === null || current === undefined) return undefined
 
-      if (typeof current === `object`) {
+      // Handle Map - paths index Maps numerically (e.g., map[0] for first entry)
+      if (current instanceof Map) {
+        const index = typeof segment === `number` ? segment : Number(segment)
+        if (Number.isNaN(index)) return undefined
+        const values = Array.from(current.values())
+        current = values[index]
+        // Handle Set - paths index Sets numerically (e.g., set[0] for first item)
+      } else if (current instanceof Set) {
+        const index = typeof segment === `number` ? segment : Number(segment)
+        if (Number.isNaN(index)) return undefined
+        const values = Array.from(current.values())
+        current = values[index]
+        // Handle objects and arrays
+      } else if (typeof current === `object`) {
         current = (current as Record<string | number, unknown>)[segment]
       } else {
         return undefined

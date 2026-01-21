@@ -133,12 +133,44 @@ describe(`format_path`, () => {
   it(`escapes quotes in keys`, () => {
     expect(format_path([`data`, `key"with"quotes`])).toBe(`data["key\\"with\\"quotes"]`)
   })
+
+  it(`formats root numeric index correctly`, () => {
+    expect(format_path([0, `name`])).toBe(`[0].name`)
+    expect(format_path([0])).toBe(`[0]`)
+    expect(format_path([42, `nested`, 3])).toBe(`[42].nested[3]`)
+  })
+
+  it(`formats root special key with bracket notation`, () => {
+    expect(format_path([`key.with.dot`])).toBe(`["key.with.dot"]`)
+    expect(format_path([`key.with.dot`, `child`])).toBe(`["key.with.dot"].child`)
+    expect(format_path([`key-with-dash`])).toBe(`["key-with-dash"]`)
+  })
+
+  it(`round-trips correctly with parse_path`, () => {
+    // Root numeric index
+    expect(parse_path(format_path([0, `name`]))).toEqual([0, `name`])
+    // Root special key with dots
+    expect(parse_path(format_path([`key.with.dot`]))).toEqual([`key.with.dot`])
+    // Mixed path
+    expect(parse_path(format_path([`users`, 0, `data`, `key.with.dot`]))).toEqual([
+      `users`,
+      0,
+      `data`,
+      `key.with.dot`,
+    ])
+  })
 })
 
 describe(`build_path`, () => {
   it(`builds path from empty parent`, () => {
     expect(build_path(``, `key`)).toBe(`key`)
     expect(build_path(``, 0)).toBe(`[0]`)
+  })
+
+  it(`builds path from empty parent with special keys`, () => {
+    expect(build_path(``, `key.with.dot`)).toBe(`["key.with.dot"]`)
+    expect(build_path(``, `key-with-dash`)).toBe(`["key-with-dash"]`)
+    expect(build_path(``, `key"with"quotes`)).toBe(`["key\\"with\\"quotes"]`)
   })
 
   it(`appends string key with dot notation`, () => {
