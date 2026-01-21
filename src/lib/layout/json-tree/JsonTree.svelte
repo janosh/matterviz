@@ -3,6 +3,7 @@
   import { setContext } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
+  import { highlight_matches } from 'svelte-multiselect/attachments'
   import JsonNode from './JsonNode.svelte'
   import type { JsonTreeContext, JsonTreeProps } from './types'
   import { JSON_TREE_CONTEXT_KEY } from './types'
@@ -333,7 +334,13 @@
     </header>
   {/if}
 
-  <div class="json-tree-content">
+  <div
+    class="json-tree-content"
+    {@attach highlight_matches({
+      query: search_query,
+      css_class: `json-tree-search-match`,
+    })}
+  >
     {#if copy_feedback_path !== null}
       <div class="copy-feedback" class:error={copy_feedback_error}>
         {copy_feedback_error ? `Copy failed` : `Copied!`}
@@ -344,6 +351,10 @@
 </div>
 
 <style>
+  ::highlight(json-tree-search-match) {
+    background: var(--jt-search-match-bg, light-dark(#fff59d, #614d00));
+    color: inherit;
+  }
   .json-tree {
     /* Color variables with light-dark() for automatic theme support */
     --jt-string: light-dark(#a31515, #ce9178);

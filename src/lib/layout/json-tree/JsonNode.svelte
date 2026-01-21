@@ -10,7 +10,6 @@
     get_child_count,
     get_value_type,
     is_expandable,
-    matches_search,
   } from './utils'
 
   let {
@@ -70,14 +69,7 @@
     return false
   })
 
-  // Check if this node matches search
-  let is_search_match = $derived(
-    ctx?.search_query
-      ? matches_search(path, node_key, value, ctx.search_query)
-      : false,
-  )
-
-  // Note: Auto-expand for search matches is handled in JsonTree.svelte
+  // Note: Search highlighting is handled by CSS Highlight API in JsonTree.svelte
 
   // Check if this node is focused
   let is_focused = $derived(ctx?.focused_path === path)
@@ -185,7 +177,6 @@
   class:collapsed={is_collapsed}
   class:expandable
   class:focused={is_focused}
-  class:search-match={is_search_match}
   role="treeitem"
   aria-expanded={expandable ? !is_collapsed : undefined}
   aria-selected={is_focused}
@@ -254,7 +245,7 @@
         <span class="bracket close">{close_bracket}</span>
       {/if}
     {:else}
-      <JsonValue {value} {value_type} {path} {is_search_match} />
+      <JsonValue {value} {value_type} {path} />
     {/if}
   </span>
 
@@ -293,10 +284,6 @@
   }
   .json-node.focused > .node-content {
     background: var(--jt-focus-bg, light-dark(#e3f2fd, #0d3a58));
-    border-radius: 2px;
-  }
-  .json-node.search-match > .node-content {
-    background: var(--jt-search-match-bg, light-dark(#fff59d, #614d00));
     border-radius: 2px;
   }
   .node-content {

@@ -8,12 +8,10 @@
     value,
     value_type,
     path,
-    is_search_match = false,
   }: {
     value: unknown
     value_type: JsonValueType
     path: string
-    is_search_match?: boolean
   } = $props()
 
   const ctx = getContext<JsonTreeContext>(JSON_TREE_CONTEXT_KEY)
@@ -109,7 +107,6 @@
 
 <span
   class="json-value {value_type}"
-  class:search-match={is_search_match}
   class:changed={just_changed}
   onclick={handle_click}
   onkeydown={(event) => {
@@ -142,7 +139,8 @@
       ▲
     </button>
   {/if}
-  {#if ctx?.settings.show_data_types && value_type !== `null` && value_type !== `undefined`}
+  {#if ctx?.settings.show_data_types && value_type !== `null` &&
+      value_type !== `undefined`}
     <span class="type-annotation">{value_type}</span>
   {/if}
 </span>
@@ -197,11 +195,6 @@
   .json-value.circular {
     color: var(--jt-circular, light-dark(#808080, #808080));
     font-style: italic;
-  }
-  /* Search match highlight */
-  .json-value.search-match {
-    background: var(--jt-search-match-bg, light-dark(#fff59d, #614d00));
-    border-radius: 2px;
   }
   /* Change animation */
   .json-value.changed {
