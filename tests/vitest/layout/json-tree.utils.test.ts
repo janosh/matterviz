@@ -444,6 +444,17 @@ describe(`parse_path`, () => {
   it(`parses bracket notation with strings`, () => {
     expect(parse_path(`data["special-key"]`)).toEqual([`data`, `special-key`])
   })
+
+  it(`unescapes quotes in bracketed keys`, () => {
+    expect(parse_path(`data["key\\"with\\"quotes"]`)).toEqual([`data`, `key"with"quotes`])
+  })
+
+  it(`round-trips keys with quotes via build_path and parse_path`, () => {
+    const key_with_quotes = `say "hello"`
+    const path = build_path(`root`, key_with_quotes)
+    const segments = parse_path(path)
+    expect(segments).toEqual([`root`, key_with_quotes])
+  })
 })
 
 describe(`values_equal`, () => {

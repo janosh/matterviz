@@ -388,7 +388,13 @@ export function parse_path(path: string): (string | number)[] {
       if (current) {
         // Check if it's a number index
         const num = Number(current)
-        segments.push(Number.isNaN(num) ? current.replace(/^"|"$/g, ``) : num)
+        if (Number.isNaN(num)) {
+          // Remove surrounding quotes and unescape internal quotes
+          const unquoted = current.replace(/^"|"$/g, ``).replace(/\\"/g, `"`)
+          segments.push(unquoted)
+        } else {
+          segments.push(num)
+        }
       }
       current = ``
       in_bracket = false
