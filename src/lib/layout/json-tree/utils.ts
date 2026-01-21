@@ -30,7 +30,13 @@ export function get_value_type(value: unknown): JsonValueType {
 
 // Check if a value type is expandable (has children)
 export function is_expandable_type(value_type: JsonValueType): boolean {
-  return [`object`, `array`, `map`, `set`].includes(value_type)
+  return value_type === `object` || value_type === `array` || value_type === `map` || value_type === `set`
+}
+
+// Check if a value type is a primitive (searchable as string)
+export function is_primitive_type(value_type: JsonValueType): boolean {
+  return value_type === `string` || value_type === `number` || value_type === `boolean` ||
+    value_type === `null` || value_type === `undefined` || value_type === `bigint`
 }
 
 // Check if a value is expandable
@@ -223,7 +229,7 @@ export function matches_search(
 
   // Check value (for primitives)
   const type = get_value_type(value)
-  if ([`string`, `number`, `boolean`, `null`, `undefined`, `bigint`].includes(type)) {
+  if (is_primitive_type(type)) {
     return String(value).toLowerCase().includes(lower_query)
   }
 
@@ -275,7 +281,8 @@ export function collect_all_paths(
   } else if (type === `map`) {
     const map = value as Map<unknown, unknown>
     let idx = 0
-    for (const [_map_key, map_value] of map) {
+    // Map keys are not used for paths - Maps are indexed numerically like arrays
+    for (const [, map_value] of map) {
       const child_path = build_path(current_path, idx)
       paths.push(
         ...collect_all_paths(map_value, child_path, max_depth, current_depth + 1, seen),
@@ -435,11 +442,7 @@ export function values_equal(val_a: unknown, val_b: unknown): boolean {
   const type = get_value_type(val_a)
 
   // For primitives, strict equality is sufficient
-  if (
-    [`string`, `number`, `boolean`, `null`, `undefined`, `symbol`, `bigint`].includes(
-      type,
-    )
-  ) {
+  if (is_primitive_type(type) || type === `symbol`) {
     return val_a === val_b
   }
 

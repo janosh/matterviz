@@ -53,13 +53,9 @@
     // Check if explicitly collapsed
     if (ctx?.collapsed.has(path)) return true
 
-    // Check if explicitly expanded (not in collapsed set but within fold level)
     // If depth >= default_fold_level, default to collapsed
     const fold_level = ctx?.settings.default_fold_level ?? 2
-    if (depth >= fold_level && !ctx?.collapsed.has(`!${path}`)) {
-      // Use a marker to track explicitly expanded nodes
-      return true
-    }
+    if (depth >= fold_level) return true
 
     // Check auto-fold thresholds
     if (value_type === `array`) {

@@ -25,6 +25,10 @@
   // Expanded state for long strings
   let is_expanded = $state(false)
 
+  // Extract max_string_length threshold for reuse
+  let max_len = $derived(ctx?.settings.max_string_length ?? 200)
+  let is_long_string = $derived(value_type === `string` && (value as string).length > max_len)
+
   // Check for changes on mount and when value changes
   $effect(() => {
     if (!ctx?.settings.highlight_changes) return
@@ -80,8 +84,7 @@
     // String
     if (value_type === `string`) {
       const str = value as string
-      const max_len = ctx?.settings.max_string_length ?? 200
-      if (str.length > max_len && !is_expanded) {
+      if (is_long_string && !is_expanded) {
         return `"${str.slice(0, max_len)}..."`
       }
       return `"${str}"`
@@ -93,11 +96,7 @@
   let display_value = $derived(get_display_value())
 
   // Check if string is truncated
-  let is_truncated = $derived(
-    value_type === `string` &&
-      (value as string).length > (ctx?.settings.max_string_length ?? 200) &&
-      !is_expanded,
-  )
+  let is_truncated = $derived(is_long_string && !is_expanded)
 
   // Toggle string expansion
   function toggle_expand(event: MouseEvent) {
@@ -131,8 +130,7 @@
     >
       ...
     </button>
-  {:else if value_type === `string` && is_expanded &&
-      (value as string).length > (ctx?.settings.max_string_length ?? 200)}
+  {:else if is_long_string && is_expanded}
     <button
       type="button"
       class="expand-btn"

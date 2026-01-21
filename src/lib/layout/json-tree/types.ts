@@ -88,31 +88,5 @@ export interface JsonTreeContext extends JsonTreeState {
   unregister_path: (path: string) => void
 }
 
-// Props for JsonNode component
-export interface JsonNodeProps {
-  // The key name (null for root node)
-  node_key: string | number | null
-  // The value at this node
-  value: unknown
-  // Dot-notation path like "root.users[0]"
-  path: string
-  // Current nesting depth
-  depth: number
-  // Whether this node is the last sibling (for comma rendering)
-  is_last?: boolean
-}
-
-// Props for JsonValue component
-export interface JsonValueProps {
-  // The value to render
-  value: unknown
-  // Pre-computed type for styling
-  value_type: JsonValueType
-  // Path for copy and change detection
-  path: string
-  // Whether this value matches the search query
-  is_search_match?: boolean
-}
-
 // Context key for Svelte's setContext/getContext
 export const JSON_TREE_CONTEXT_KEY = Symbol(`json-tree-context`)

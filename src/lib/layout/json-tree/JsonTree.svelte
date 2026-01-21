@@ -36,8 +36,11 @@
   let search_query = $state(``)
   let search_input_value = $state(``)
   let focused_path = $state<string | null>(null)
-  let registered_paths = $state<string[]>([])
+  // Use Set for O(1) lookup/add/delete instead of O(n) array operations
+  let registered_paths_set = $state(new Set<string>())
+  let registered_paths_list = $state<string[]>([]) // ordered list for keyboard nav
   let copy_feedback_path = $state<string | null>(null)
+  let copy_feedback_error = $state(false)
   let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
 
   // Debounce search input
@@ -132,31 +135,35 @@
   }
 
   async function copy_value(path: string, val: unknown): Promise<void> {
+    const serialized = serialize_for_copy(val)
     try {
-      const serialized = serialize_for_copy(val)
       await navigator.clipboard.writeText(serialized)
-
-      // Show feedback
-      copy_feedback_path = path
-      if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
-      copy_feedback_timeout = setTimeout(() => {
-        copy_feedback_path = null
-      }, 1000)
-
+      copy_feedback_error = false
       oncopy?.(path, serialized)
     } catch {
-      // Clipboard API not available
+      // Clipboard API failed - still show feedback but as error
+      copy_feedback_error = true
     }
+    // Show feedback regardless of success/failure
+    copy_feedback_path = path
+    if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
+    copy_feedback_timeout = setTimeout(() => {
+      copy_feedback_path = null
+    }, 1000)
   }
 
   function register_path(path: string): void {
-    if (!registered_paths.includes(path)) {
-      registered_paths = [...registered_paths, path]
+    if (!registered_paths_set.has(path)) {
+      registered_paths_set.add(path)
+      registered_paths_list = [...registered_paths_list, path]
     }
   }
 
   function unregister_path(path: string): void {
-    registered_paths = registered_paths.filter((registered) => registered !== path)
+    if (registered_paths_set.has(path)) {
+      registered_paths_set.delete(path)
+      registered_paths_list = registered_paths_list.filter((p) => p !== path)
+    }
   }
 
   // Helper to get value at a path (for onselect callback)
@@ -229,24 +236,24 @@
       // Focus first node on any arrow key
       if ([`ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight`].includes(event.key)) {
         event.preventDefault()
-        if (registered_paths.length > 0) {
-          set_focused(registered_paths[0])
+        if (registered_paths_list.length > 0) {
+          set_focused(registered_paths_list[0])
         }
       }
       return
     }
 
-    const current_index = registered_paths.indexOf(focused_path)
+    const current_index = registered_paths_list.indexOf(focused_path)
     if (current_index === -1) return
 
     if (event.key === `ArrowDown`) {
       event.preventDefault()
-      const next_index = Math.min(current_index + 1, registered_paths.length - 1)
-      set_focused(registered_paths[next_index])
+      const next_index = Math.min(current_index + 1, registered_paths_list.length - 1)
+      set_focused(registered_paths_list[next_index])
     } else if (event.key === `ArrowUp`) {
       event.preventDefault()
       const prev_index = Math.max(current_index - 1, 0)
-      set_focused(registered_paths[prev_index])
+      set_focused(registered_paths_list[prev_index])
     }
   }
 
@@ -325,7 +332,9 @@
 
   <div class="json-tree-content">
     {#if copy_feedback_path !== null}
-      <div class="copy-feedback">Copied!</div>
+      <div class="copy-feedback" class:error={copy_feedback_error}>
+        {copy_feedback_error ? `Copy failed` : `Copied!`}
+      </div>
     {/if}
     <JsonNode node_key={root_label ?? null} {value} path={root_label ?? ``} depth={0} />
   </div>
@@ -462,6 +471,9 @@
     animation: fade-in-out 1s ease-out forwards;
     pointer-events: none;
     z-index: 10;
+  }
+  .copy-feedback.error {
+    background: var(--error-color, #ef4444);
   }
   @keyframes fade-in-out {
     0% {
