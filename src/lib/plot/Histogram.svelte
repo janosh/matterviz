@@ -754,7 +754,8 @@
     const plot_height = height - pad.t - pad.b
 
     // If scale changed significantly, treat as pinch-zoom
-    if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD) {
+    // Also guard against scale being too small to avoid division by zero
+    if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
       // Pinch zoom centered on gesture center
       // Divide by scale so spread (scale > 1) = smaller span (zoom in)
       const x_span = touch_state.initial_x_range[1] - touch_state.initial_x_range[0]
