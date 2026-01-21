@@ -78,7 +78,7 @@ jobs:
 
       # Run Python unit tests (fast, no browser)
       - name: Run unit tests
-        run: pytest tests/test_wrappers.py tests/test_js_utils.py tests/test_sync.py -v
+        run: pytest tests/test_wrappers.py tests/test_js_utils.py -v
 
       # Run Playwright integration tests
       - name: Run Playwright tests

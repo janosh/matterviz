@@ -378,14 +378,15 @@
       y2_axis.range?.[0] ?? auto_ranges.y2[0],
       y2_axis.range?.[1] ?? auto_ranges.y2[1],
     ] as Vec2
-    // Only update if ranges actually changed
+    // Only update if the initial (data-driven) ranges changed, not when user pans
+    // Comparing against initial preserves user's pan/zoom state
     if (
-      ranges.current.x[0] !== new_x[0] ||
-      ranges.current.x[1] !== new_x[1] ||
-      ranges.current.y[0] !== new_y[0] ||
-      ranges.current.y[1] !== new_y[1] ||
-      ranges.current.y2[0] !== new_y2[0] ||
-      ranges.current.y2[1] !== new_y2[1]
+      ranges.initial.x[0] !== new_x[0] ||
+      ranges.initial.x[1] !== new_x[1] ||
+      ranges.initial.y[0] !== new_y[0] ||
+      ranges.initial.y[1] !== new_y[1] ||
+      ranges.initial.y2[0] !== new_y2[0] ||
+      ranges.initial.y2[1] !== new_y2[1]
     ) {
       ranges = {
         initial: { x: new_x, y: new_y, y2: new_y2 },

@@ -341,13 +341,14 @@
       ]
       : auto_ranges.y2
 
-    // Only update if values changed (prevent infinite loop)
-    const x_changed = new_x[0] !== ranges.current.x[0] ||
-      new_x[1] !== ranges.current.x[1]
-    const y_changed = new_y[0] !== ranges.current.y[0] ||
-      new_y[1] !== ranges.current.y[1]
-    const y2_changed = new_y2[0] !== ranges.current.y2[0] ||
-      new_y2[1] !== ranges.current.y2[1]
+    // Only update if the initial (data-driven) ranges changed, not when user pans
+    // Comparing against initial preserves user's pan/zoom state
+    const x_changed = new_x[0] !== ranges.initial.x[0] ||
+      new_x[1] !== ranges.initial.x[1]
+    const y_changed = new_y[0] !== ranges.initial.y[0] ||
+      new_y[1] !== ranges.initial.y[1]
+    const y2_changed = new_y2[0] !== ranges.initial.y2[0] ||
+      new_y2[1] !== ranges.initial.y2[1]
 
     if (x_changed) [ranges.initial.x, ranges.current.x] = [new_x, new_x]
     if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]

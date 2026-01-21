@@ -275,7 +275,10 @@
   let drag_start_coords = $state<XyObj | null>(null)
   let drag_current_coords = $state<XyObj | null>(null)
 
-  // Zoom/pan state - single range state used for both initial and current
+  // Zoom/pan state - track both initial (data-driven) and current (after pan/zoom) ranges
+  let initial_x_range = $state<[number, number]>([0, 1])
+  let initial_y_range = $state<[number, number]>([0, 1])
+  let initial_y2_range = $state<[number, number]>([0, 1])
   let zoom_x_range = $state<[number, number]>([0, 1])
   let zoom_y_range = $state<[number, number]>([0, 1])
   let zoom_y2_range = $state<[number, number]>([0, 1])
@@ -444,6 +447,7 @@
   )
 
   // Update zoom ranges when auto ranges or explicit ranges change
+  // Compare against initial (data-driven) ranges to preserve user's pan/zoom state
   $effect(() => {
     const new_x = [
       final_x_axis.range?.[0] ?? auto_x_range[0],
@@ -458,13 +462,16 @@
       final_y2_axis.range?.[1] ?? auto_y2_range[1],
     ] as Vec2
 
-    if (new_x[0] !== zoom_x_range[0] || new_x[1] !== zoom_x_range[1]) {
+    if (new_x[0] !== initial_x_range[0] || new_x[1] !== initial_x_range[1]) {
+      initial_x_range = new_x
       zoom_x_range = new_x
     }
-    if (new_y[0] !== zoom_y_range[0] || new_y[1] !== zoom_y_range[1]) {
+    if (new_y[0] !== initial_y_range[0] || new_y[1] !== initial_y_range[1]) {
+      initial_y_range = new_y
       zoom_y_range = new_y
     }
-    if (new_y2[0] !== zoom_y2_range[0] || new_y2[1] !== zoom_y2_range[1]) {
+    if (new_y2[0] !== initial_y2_range[0] || new_y2[1] !== initial_y2_range[1]) {
+      initial_y2_range = new_y2
       zoom_y2_range = new_y2
     }
   })
