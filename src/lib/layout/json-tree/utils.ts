@@ -52,14 +52,24 @@ export function get_value_type(value: unknown): JsonValueType {
 
 // Check if a value type is expandable (has children)
 export function is_expandable_type(value_type: JsonValueType): boolean {
-  return value_type === `object` || value_type === `array` || value_type === `map` ||
+  return (
+    value_type === `object` ||
+    value_type === `array` ||
+    value_type === `map` ||
     value_type === `set`
+  )
 }
 
 // Check if a value type is a primitive (searchable as string)
 export function is_primitive_type(value_type: JsonValueType): boolean {
-  return value_type === `string` || value_type === `number` || value_type === `boolean` ||
-    value_type === `null` || value_type === `undefined` || value_type === `bigint`
+  return (
+    value_type === `string` ||
+    value_type === `number` ||
+    value_type === `boolean` ||
+    value_type === `null` ||
+    value_type === `undefined` ||
+    value_type === `bigint`
+  )
 }
 
 // Check if a value is expandable
@@ -117,47 +127,36 @@ export function build_path(parent_path: string, key: string | number): string {
   return parent_path + format_path_segment(key)
 }
 
-// Serialize a value for copying to clipboard
-export function serialize_for_copy(value: unknown): string {
-  const type = get_value_type(value)
-
+// Format a primitive/special value to string (shared by serialize and preview)
+function format_special_value(value: unknown, type: JsonValueType): string | null {
   if (type === `undefined`) return `undefined`
   if (type === `null`) return `null`
-  if (type === `string`) return value as string
   if (type === `number` || type === `boolean`) return String(value)
   if (type === `bigint`) return `${value}n`
   if (type === `symbol`) return (value as symbol).toString()
-  if (type === `function`) {
-    const fn = value as (...args: unknown[]) => unknown
-    return fn.toString()
-  }
   if (type === `date`) return (value as Date).toISOString()
   if (type === `regexp`) return (value as RegExp).toString()
-  if (type === `error`) {
-    const err = value as Error
-    return `${err.name}: ${err.message}`
-  }
+  if (type === `error`) return `${(value as Error).name}: ${(value as Error).message}`
+  return null // not a special type
+}
 
-  if (type === `map`) {
-    const entries = Array.from((value as Map<unknown, unknown>).entries())
-    try {
-      return safe_stringify(entries)
-    } catch {
-      return `Map(${entries.length} entries)`
-    }
-  }
-  if (type === `set`) {
-    const items = Array.from(value as Set<unknown>)
-    try {
-      return safe_stringify(items)
-    } catch {
-      return `Set(${items.length} items)`
-    }
-  }
+// Serialize a value for copying to clipboard
+export function serialize_for_copy(value: unknown): string {
+  const type = get_value_type(value)
+  if (type === `string`) return value as string
+  if (type === `function`) return (value as (...args: unknown[]) => unknown).toString()
 
-  // Object or array
+  const special = format_special_value(value, type)
+  if (special !== null) return special
+
+  // Map/Set/Object/Array - try JSON stringify
+  const data = type === `map`
+    ? Array.from((value as Map<unknown, unknown>).entries())
+    : type === `set`
+    ? Array.from(value as Set<unknown>)
+    : value
   try {
-    return safe_stringify(value)
+    return safe_stringify(data)
   } catch {
     return String(value)
   }
@@ -167,51 +166,28 @@ export function serialize_for_copy(value: unknown): string {
 export function format_preview(value: unknown, max_length: number = 50): string {
   const type = get_value_type(value)
 
-  if (type === `array`) {
-    const arr = value as unknown[]
-    return `Array(${arr.length})`
-  }
+  // Collection summaries
+  if (type === `array`) return `Array(${(value as unknown[]).length})`
   if (type === `object`) {
-    const keys = Object.keys(value as object)
-    return `{${keys.length} ${keys.length === 1 ? `key` : `keys`}}`
+    const len = Object.keys(value as object).length
+    return `{${len} ${len === 1 ? `key` : `keys`}}`
   }
-  if (type === `map`) {
-    const map = value as Map<unknown, unknown>
-    return `Map(${map.size})`
-  }
-  if (type === `set`) {
-    const set = value as Set<unknown>
-    return `Set(${set.size})`
-  }
+  if (type === `map`) return `Map(${(value as Map<unknown, unknown>).size})`
+  if (type === `set`) return `Set(${(value as Set<unknown>).size})`
+
+  // String with truncation
   if (type === `string`) {
     const str = value as string
-    if (str.length > max_length) {
-      return `"${str.slice(0, max_length)}..."`
-    }
-    return `"${str}"`
-  }
-  if (type === `date`) {
-    return (value as Date).toISOString()
-  }
-  if (type === `regexp`) {
-    return (value as RegExp).toString()
-  }
-  if (type === `function`) {
-    const fn = value as (...args: unknown[]) => unknown
-    return `ƒ ${fn.name || `anonymous`}()`
-  }
-  if (type === `error`) {
-    const err = value as Error
-    return `${err.name}: ${err.message}`
-  }
-  if (type === `symbol`) {
-    return (value as symbol).toString()
-  }
-  if (type === `bigint`) {
-    return `${value}n`
+    return str.length > max_length ? `"${str.slice(0, max_length)}..."` : `"${str}"`
   }
 
-  return String(value)
+  // Function has special format
+  if (type === `function`) {
+    return `ƒ ${(value as (...args: unknown[]) => unknown).name || `anonymous`}()`
+  }
+
+  // Use shared formatter for other special types
+  return format_special_value(value, type) ?? String(value)
 }
 
 // Check if a path/key/value matches a search query (case-insensitive)
@@ -240,6 +216,33 @@ export function matches_search(
   return false
 }
 
+// Iterate over children of an expandable value, calling visitor for each
+function for_each_child(
+  value: unknown,
+  type: JsonValueType,
+  visitor: (child_value: unknown, key: string | number, map_key?: unknown) => void,
+): void {
+  if (type === `array`) {
+    ;(value as unknown[]).forEach((val, idx) => visitor(val, idx))
+  } else if (type === `object`) {
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      visitor((value as Record<string, unknown>)[key], key)
+    }
+  } else if (type === `map`) {
+    let idx = 0
+    for (const [map_key, map_value] of value as Map<unknown, unknown>) {
+      visitor(map_value, idx, map_key)
+      idx++
+    }
+  } else if (type === `set`) {
+    let idx = 0
+    for (const set_value of value as Set<unknown>) {
+      visitor(set_value, idx)
+      idx++
+    }
+  }
+}
+
 // Collect all expandable paths in a value tree
 export function collect_all_paths(
   value: unknown,
@@ -248,63 +251,21 @@ export function collect_all_paths(
   current_depth: number = 0,
   seen: WeakSet<object> = new WeakSet(),
 ): string[] {
-  const paths: string[] = []
-
-  if (current_depth >= max_depth) return paths
-
+  if (current_depth >= max_depth) return []
   const type = get_value_type(value)
-
-  if (!is_expandable_type(type)) return paths
-
-  // Circular reference check
+  if (!is_expandable_type(type)) return []
   if (typeof value === `object` && value !== null) {
-    if (seen.has(value)) return paths
+    if (seen.has(value)) return []
     seen.add(value)
   }
 
-  if (current_path) {
-    paths.push(current_path)
-  }
-
-  if (type === `array`) {
-    const arr = value as unknown[]
-    for (let idx = 0; idx < arr.length; idx++) {
-      const child_path = build_path(current_path, idx)
-      paths.push(
-        ...collect_all_paths(arr[idx], child_path, max_depth, current_depth + 1, seen),
-      )
-    }
-  } else if (type === `object`) {
-    const obj = value as Record<string, unknown>
-    for (const key of Object.keys(obj)) {
-      const child_path = build_path(current_path, key)
-      paths.push(
-        ...collect_all_paths(obj[key], child_path, max_depth, current_depth + 1, seen),
-      )
-    }
-  } else if (type === `map`) {
-    const map = value as Map<unknown, unknown>
-    let idx = 0
-    // Map keys are not used for paths - Maps are indexed numerically like arrays
-    for (const [, map_value] of map) {
-      const child_path = build_path(current_path, idx)
-      paths.push(
-        ...collect_all_paths(map_value, child_path, max_depth, current_depth + 1, seen),
-      )
-      idx++
-    }
-  } else if (type === `set`) {
-    const set = value as Set<unknown>
-    let idx = 0
-    for (const set_value of set) {
-      const child_path = build_path(current_path, idx)
-      paths.push(
-        ...collect_all_paths(set_value, child_path, max_depth, current_depth + 1, seen),
-      )
-      idx++
-    }
-  }
-
+  const paths: string[] = current_path ? [current_path] : []
+  for_each_child(value, type, (child_value, key) => {
+    const child_path = build_path(current_path, key)
+    paths.push(
+      ...collect_all_paths(child_value, child_path, max_depth, current_depth + 1, seen),
+    )
+  })
   return paths
 }
 
@@ -317,66 +278,30 @@ export function find_matching_paths(
   seen: WeakSet<object> = new WeakSet(),
 ): Set<string> {
   const matches = new Set<string>()
-
   if (!query) return matches
 
   const lower_query = query.toLowerCase()
-
-  // Check if this node matches
   if (matches_search(current_path, current_key, value, query)) {
     matches.add(current_path)
   }
 
   const type = get_value_type(value)
-
   if (!is_expandable_type(type)) return matches
-
-  // Circular reference check
   if (typeof value === `object` && value !== null) {
     if (seen.has(value)) return matches
     seen.add(value)
   }
 
-  // Recurse into children
-  if (type === `array`) {
-    const arr = value as unknown[]
-    for (let idx = 0; idx < arr.length; idx++) {
-      const child_path = build_path(current_path, idx)
-      const child_matches = find_matching_paths(arr[idx], query, child_path, idx, seen)
-      for (const match of child_matches) matches.add(match)
+  for_each_child(value, type, (child_value, key, map_key) => {
+    const child_path = build_path(current_path, key)
+    // Also check if Map key matches
+    if (map_key !== undefined && String(map_key).toLowerCase().includes(lower_query)) {
+      matches.add(child_path)
     }
-  } else if (type === `object`) {
-    const obj = value as Record<string, unknown>
-    for (const key of Object.keys(obj)) {
-      const child_path = build_path(current_path, key)
-      const child_matches = find_matching_paths(obj[key], query, child_path, key, seen)
-      for (const match of child_matches) matches.add(match)
+    for (const match of find_matching_paths(child_value, query, child_path, key, seen)) {
+      matches.add(match)
     }
-  } else if (type === `map`) {
-    const map = value as Map<unknown, unknown>
-    let idx = 0
-    for (const [map_key, map_value] of map) {
-      const child_path = build_path(current_path, idx)
-      // Also check if Map key matches (convert to string for searching)
-      const key_str = String(map_key)
-      if (key_str.toLowerCase().includes(lower_query)) {
-        matches.add(child_path)
-      }
-      const child_matches = find_matching_paths(map_value, query, child_path, idx, seen)
-      for (const match of child_matches) matches.add(match)
-      idx++
-    }
-  } else if (type === `set`) {
-    const set = value as Set<unknown>
-    let idx = 0
-    for (const set_value of set) {
-      const child_path = build_path(current_path, idx)
-      const child_matches = find_matching_paths(set_value, query, child_path, idx, seen)
-      for (const match of child_matches) matches.add(match)
-      idx++
-    }
-  }
-
+  })
   return matches
 }
 

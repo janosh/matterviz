@@ -174,37 +174,25 @@
   function get_value_at_path(path: string): unknown {
     if (!path || path === root_label) return value
 
-    // Use parse_path for accurate segment parsing (handles special keys like "key-with-dash")
     const segments = parse_path(path)
     let current: unknown = value
-
-    // Skip root label if present
     const start_idx = segments[0] === root_label ? 1 : 0
 
     for (let idx = start_idx; idx < segments.length; idx++) {
       const segment = segments[idx]
       if (current === null || current === undefined) return undefined
 
-      // Handle Map - paths index Maps numerically (e.g., map[0] for first entry)
-      if (current instanceof Map) {
+      // Map/Set use numeric indexing
+      if (current instanceof Map || current instanceof Set) {
         const index = typeof segment === `number` ? segment : Number(segment)
         if (Number.isNaN(index)) return undefined
-        const values = Array.from(current.values())
-        current = values[index]
-        // Handle Set - paths index Sets numerically (e.g., set[0] for first item)
-      } else if (current instanceof Set) {
-        const index = typeof segment === `number` ? segment : Number(segment)
-        if (Number.isNaN(index)) return undefined
-        const values = Array.from(current.values())
-        current = values[index]
-        // Handle objects and arrays
+        current = Array.from(current.values())[index]
       } else if (typeof current === `object`) {
         current = (current as Record<string | number, unknown>)[segment]
       } else {
         return undefined
       }
     }
-
     return current
   }
 
@@ -384,11 +372,8 @@
     --jt-boolean: light-dark(#0000ff, #569cd6);
     --jt-null: light-dark(#808080, #808080);
     --jt-key: light-dark(#001080, #9cdcfe);
-    --jt-index: light-dark(#098658, #b5cea8);
-    --jt-bracket: light-dark(#000000, #d4d4d4);
     --jt-punctuation: light-dark(#000000, #d4d4d4);
     --jt-arrow: light-dark(#6e6e6e, #858585);
-    --jt-arrow-hover: light-dark(#000000, #ffffff);
     --jt-preview: light-dark(#808080, #808080);
     --jt-search-match-bg: light-dark(#fff59d, #614d00);
     --jt-change-flash: light-dark(#c8e6c9, #1b5e20);
@@ -416,7 +401,6 @@
     gap: 8px;
     padding: 6px 8px;
     background: var(--jt-header-bg);
-    border-bottom: 1px solid var(--jt-header-border);
     flex-wrap: wrap;
   }
   .search-wrapper {

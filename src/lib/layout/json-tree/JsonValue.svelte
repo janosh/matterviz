@@ -2,7 +2,7 @@
   import { getContext } from 'svelte'
   import type { JsonTreeContext, JsonValueType } from './types'
   import { JSON_TREE_CONTEXT_KEY } from './types'
-  import { values_equal } from './utils'
+  import { format_preview, values_equal } from './utils'
 
   let {
     value,
@@ -56,44 +56,17 @@
     }
   }
 
-  // Format the display value based on type
-  function get_display_value(): string {
-    if (value_type === `null`) return `null`
-    if (value_type === `undefined`) return `undefined`
-    if (value_type === `boolean`) return String(value)
-    if (value_type === `number`) {
-      if (Number.isNaN(value as number)) return `NaN`
-      if (value === Infinity) return `Infinity`
-      if (value === -Infinity) return `-Infinity`
-      return String(value)
-    }
-    if (value_type === `bigint`) return `${value}n`
-    if (value_type === `symbol`) return (value as symbol).toString()
-    if (value_type === `date`) return (value as Date).toISOString()
-    if (value_type === `regexp`) return (value as RegExp).toString()
-    if (value_type === `function`) {
-      const fn = value as (...args: unknown[]) => unknown
-      return `ƒ ${fn.name || `anonymous`}()`
-    }
-    if (value_type === `error`) {
-      const err = value as Error
-      return `${err.name}: ${err.message}`
-    }
+  // Format display value - strings use custom truncation, others use format_preview
+  let display_value = $derived.by(() => {
     if (value_type === `circular`) return `[Circular]`
-
-    // String
     if (value_type === `string`) {
       const str = value as string
-      if (is_long_string && !is_expanded) {
-        return `"${str.slice(0, max_len)}..."`
-      }
-      return `"${str}"`
+      return is_long_string && !is_expanded
+        ? `"${str.slice(0, max_len)}..."`
+        : `"${str}"`
     }
-
-    return String(value)
-  }
-
-  let display_value = $derived(get_display_value())
+    return format_preview(value)
+  })
 
   // Check if string is truncated
   let is_truncated = $derived(is_long_string && !is_expanded)

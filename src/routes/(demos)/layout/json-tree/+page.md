@@ -87,7 +87,49 @@ title: JsonTree
     empty_array: [],
     empty_object: {},
     special_numbers: { infinity: Infinity, neg_infinity: -Infinity, nan: NaN },
-    long_string: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
+  }
+
+  // Example: Edge cases
+  const edge_cases = {
+    // Very long strings that wrap
+    long_paragraph: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+    single_long_word: "supercalifragilisticexpialidocious".repeat(5),
+    // Multiline strings
+    multiline: "First line\nSecond line\nThird line with\ttab",
+    code_snippet: "function hello() {\n  console.log('world');\n  return 42;\n}",
+    // Special characters
+    "key.with.dots": "dot notation won't work here",
+    "key with spaces": "needs bracket notation",
+    'key"with"quotes': "escaped in paths",
+    "key/with/slashes": "common in URLs",
+    "émojis_🎉_work": "unicode keys supported",
+    // Unicode content
+    unicode_text: "日本語テキスト • Ελληνικά • العربية",
+    emojis: "🚀 🎨 🔧 💡 ⚡ 🌈 🎯 🔥",
+    math_symbols: "∑∏∫∂∇ε δ→∞ √π ≈ ≠ ≤ ≥",
+    // Numbers edge cases
+    huge_number: 9999999999999999999999n,
+    tiny_float: 0.000000000001,
+    scientific: 6.022e23,
+    // URLs and paths
+    url: "https://example.com/api/v2/users?page=1&limit=100#section",
+    file_path: "/Users/developer/projects/my-app/src/components/Button.svelte",
+    // Base64-like data
+    base64: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ",
+    // Keys that look like numbers
+    "123": "numeric-looking string key",
+    "0": "zero as key",
+    "-1": "negative as key",
+    // Deeply nested mixed types
+    nested_collections: new Map([
+      ["set_value", new Set([{ inner: [1, 2, 3] }])],
+      ["map_value", new Map([["deep", { very: { deep: true } }]])]
+    ]),
+    // Edge case values
+    empty_string: "",
+    whitespace_only: "   \t\n   ",
+    html_content: "<div class='test'><span>HTML &amp; entities</span></div>",
+    json_string: '{"escaped": "json", "inside": ["a", "string"]}',
   }
 
   // Example 5: Large dataset for performance
@@ -180,6 +222,12 @@ Large nested structure with arrays of objects:
 Every JavaScript type rendered correctly:
 
 <JsonTree value={all_types} default_fold_level={1} show_data_types={true} />
+
+### Edge Cases
+
+Long strings, special characters, unicode, and nested collections:
+
+<JsonTree value={edge_cases} default_fold_level={1} />
 
 ### Large Dataset (100 items)
 

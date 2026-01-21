@@ -1,5 +1,4 @@
 // Unit tests for JSON tree utility functions
-import { describe, expect, it } from 'vitest'
 import {
   build_path,
   collect_all_paths,
@@ -16,6 +15,7 @@ import {
   serialize_for_copy,
   values_equal,
 } from '$lib/layout/json-tree/utils'
+import { describe, expect, it } from 'vitest'
 
 describe(`get_value_type`, () => {
   it.each([
@@ -201,30 +201,13 @@ describe(`serialize_for_copy`, () => {
     [42, `42`],
     [true, `true`],
     [false, `false`],
-  ])(`serializes primitive %p correctly`, (value, expected) => {
+    [BigInt(123), `123n`],
+    [Symbol(`test`), `Symbol(test)`],
+    [new Date(`2024-01-15T10:30:00.000Z`), `2024-01-15T10:30:00.000Z`],
+    [/test/gi, `/test/gi`],
+    [new Error(`Something went wrong`), `Error: Something went wrong`],
+  ])(`serializes %p correctly`, (value, expected) => {
     expect(serialize_for_copy(value)).toBe(expected)
-  })
-
-  it(`serializes BigInt with n suffix`, () => {
-    expect(serialize_for_copy(BigInt(123))).toBe(`123n`)
-  })
-
-  it(`serializes Symbol to string`, () => {
-    expect(serialize_for_copy(Symbol(`test`))).toBe(`Symbol(test)`)
-  })
-
-  it(`serializes Date to ISO string`, () => {
-    const date = new Date(`2024-01-15T10:30:00.000Z`)
-    expect(serialize_for_copy(date)).toBe(`2024-01-15T10:30:00.000Z`)
-  })
-
-  it(`serializes RegExp to string`, () => {
-    expect(serialize_for_copy(/test/gi)).toBe(`/test/gi`)
-  })
-
-  it(`serializes Error to name: message`, () => {
-    const error = new Error(`Something went wrong`)
-    expect(serialize_for_copy(error)).toBe(`Error: Something went wrong`)
   })
 
   it(`serializes function to its source`, () => {
@@ -234,106 +217,54 @@ describe(`serialize_for_copy`, () => {
     expect(serialize_for_copy(fn)).toContain(`function example()`)
   })
 
-  it(`serializes array to formatted JSON`, () => {
-    const result = serialize_for_copy([1, 2, 3])
-    expect(JSON.parse(result)).toEqual([1, 2, 3])
-  })
-
-  it(`serializes object to formatted JSON`, () => {
-    const result = serialize_for_copy({ a: 1, b: 2 })
-    expect(JSON.parse(result)).toEqual({ a: 1, b: 2 })
+  it.each([
+    [[1, 2, 3], [1, 2, 3]],
+    [{ a: 1, b: 2 }, { a: 1, b: 2 }],
+    [new Map([[`a`, 1], [`b`, 2]]), [[`a`, 1], [`b`, 2]]],
+    [new Set([1, 2, 3]), [1, 2, 3]],
+  ])(`serializes %p to JSON`, (value, expected) => {
+    expect(JSON.parse(serialize_for_copy(value))).toEqual(expected)
   })
 
   it(`handles circular references`, () => {
     const obj: Record<string, unknown> = { a: 1 }
     obj.self = obj
-    const result = serialize_for_copy(obj)
-    expect(result).toContain(`[Circular]`)
-  })
-
-  it(`serializes Map to array of entries`, () => {
-    const map = new Map([[`a`, 1], [`b`, 2]])
-    const result = serialize_for_copy(map)
-    expect(JSON.parse(result)).toEqual([[`a`, 1], [`b`, 2]])
-  })
-
-  it(`serializes Set to array`, () => {
-    const set = new Set([1, 2, 3])
-    const result = serialize_for_copy(set)
-    expect(JSON.parse(result)).toEqual([1, 2, 3])
-  })
-
-  it(`handles circular references in Map values`, () => {
-    const obj: Record<string, unknown> = { a: 1 }
-    obj.self = obj
+    expect(serialize_for_copy(obj)).toContain(`[Circular]`)
+    // Also in Map/Set values
     const map = new Map([[`circular`, obj]])
-    const result = serialize_for_copy(map)
-    expect(result).toContain(`[Circular]`)
-  })
-
-  it(`handles circular references in Set items`, () => {
-    const obj: Record<string, unknown> = { a: 1 }
-    obj.self = obj
+    expect(serialize_for_copy(map)).toContain(`[Circular]`)
     const set = new Set([obj])
-    const result = serialize_for_copy(set)
-    expect(result).toContain(`[Circular]`)
+    expect(serialize_for_copy(set)).toContain(`[Circular]`)
   })
 })
 
 describe(`format_preview`, () => {
-  it(`formats array with length`, () => {
-    expect(format_preview([1, 2, 3])).toBe(`Array(3)`)
-    expect(format_preview([])).toBe(`Array(0)`)
-  })
-
-  it(`formats object with key count`, () => {
-    expect(format_preview({ a: 1 })).toBe(`{1 key}`)
-    expect(format_preview({ a: 1, b: 2 })).toBe(`{2 keys}`)
-    expect(format_preview({})).toBe(`{0 keys}`)
-  })
-
-  it(`formats Map with size`, () => {
-    expect(format_preview(new Map([[`a`, 1], [`b`, 2]]))).toBe(`Map(2)`)
-  })
-
-  it(`formats Set with size`, () => {
-    expect(format_preview(new Set([1, 2, 3]))).toBe(`Set(3)`)
-  })
-
-  it(`formats short string with quotes`, () => {
-    expect(format_preview(`hello`)).toBe(`"hello"`)
+  it.each([
+    [[1, 2, 3], `Array(3)`],
+    [[], `Array(0)`],
+    [{ a: 1 }, `{1 key}`],
+    [{ a: 1, b: 2 }, `{2 keys}`],
+    [{}, `{0 keys}`],
+    [new Map([[`a`, 1], [`b`, 2]]), `Map(2)`],
+    [new Set([1, 2, 3]), `Set(3)`],
+    [`hello`, `"hello"`],
+    [new Date(`2024-01-15T10:30:00.000Z`), `2024-01-15T10:30:00.000Z`],
+    [/test/gi, `/test/gi`],
+    [new Error(`fail`), `Error: fail`],
+    [Symbol(`desc`), `Symbol(desc)`],
+    [BigInt(999), `999n`],
+  ])(`formats %p correctly`, (value, expected) => {
+    expect(format_preview(value)).toBe(expected)
   })
 
   it(`truncates long string`, () => {
-    const long_str = `a`.repeat(100)
-    expect(format_preview(long_str, 50)).toBe(`"${`a`.repeat(50)}..."`)
+    expect(format_preview(`a`.repeat(100), 50)).toBe(`"${`a`.repeat(50)}..."`)
   })
 
-  it(`formats function with ƒ prefix`, () => {
+  it(`formats functions with ƒ prefix`, () => {
     function named_fn() {}
     expect(format_preview(named_fn)).toBe(`ƒ named_fn()`)
     expect(format_preview(() => {})).toBe(`ƒ anonymous()`)
-  })
-
-  it(`formats Date to ISO string`, () => {
-    const date = new Date(`2024-01-15T10:30:00.000Z`)
-    expect(format_preview(date)).toBe(`2024-01-15T10:30:00.000Z`)
-  })
-
-  it(`formats RegExp to string`, () => {
-    expect(format_preview(/test/gi)).toBe(`/test/gi`)
-  })
-
-  it(`formats Error to name: message`, () => {
-    expect(format_preview(new Error(`fail`))).toBe(`Error: fail`)
-  })
-
-  it(`formats Symbol to string`, () => {
-    expect(format_preview(Symbol(`desc`))).toBe(`Symbol(desc)`)
-  })
-
-  it(`formats BigInt with n suffix`, () => {
-    expect(format_preview(BigInt(999))).toBe(`999n`)
   })
 })
 
@@ -516,17 +447,26 @@ describe(`parse_path`, () => {
 })
 
 describe(`values_equal`, () => {
-  it(`compares identical primitives`, () => {
-    expect(values_equal(`hello`, `hello`)).toBe(true)
-    expect(values_equal(42, 42)).toBe(true)
-    expect(values_equal(true, true)).toBe(true)
-    expect(values_equal(null, null)).toBe(true)
-  })
-
-  it(`compares different primitives`, () => {
-    expect(values_equal(`hello`, `world`)).toBe(false)
-    expect(values_equal(42, 43)).toBe(false)
-    expect(values_equal(true, false)).toBe(false)
+  it.each([
+    [`hello`, `hello`, true],
+    [42, 42, true],
+    [true, true, true],
+    [null, null, true],
+    [`hello`, `world`, false],
+    [42, 43, false],
+    [true, false, false],
+    [null, undefined, false],
+    [{}, null, false],
+    [`42`, 42, false],
+    [true, 1, false],
+    [/test/gi, /test/gi, true],
+    [/test/g, /test/i, false],
+    [[1, 2, 3], [4, 5, 6], true], // same length = equal (shallow)
+    [[1, 2], [1, 2, 3], false],
+    [{ a: 1, b: 2 }, { c: 3, d: 4 }, true], // same key count = equal (shallow)
+    [{ a: 1 }, { a: 1, b: 2 }, false],
+  ])(`values_equal(%p, %p) = %p`, (val_a, val_b, expected) => {
+    expect(values_equal(val_a, val_b)).toBe(expected)
   })
 
   it(`compares dates by timestamp`, () => {
@@ -535,31 +475,5 @@ describe(`values_equal`, () => {
     const date3 = new Date(`2024-01-16`)
     expect(values_equal(date1, date2)).toBe(true)
     expect(values_equal(date1, date3)).toBe(false)
-  })
-
-  it(`compares regexp by string representation`, () => {
-    expect(values_equal(/test/gi, /test/gi)).toBe(true)
-    expect(values_equal(/test/g, /test/i)).toBe(false)
-  })
-
-  it(`compares arrays by length (shallow)`, () => {
-    expect(values_equal([1, 2, 3], [4, 5, 6])).toBe(true) // Same length
-    expect(values_equal([1, 2], [1, 2, 3])).toBe(false) // Different length
-  })
-
-  it(`compares objects by key count (shallow)`, () => {
-    expect(values_equal({ a: 1, b: 2 }, { c: 3, d: 4 })).toBe(true) // Same key count
-    expect(values_equal({ a: 1 }, { a: 1, b: 2 })).toBe(false) // Different key count
-  })
-
-  it(`handles null comparisons`, () => {
-    expect(values_equal(null, null)).toBe(true)
-    expect(values_equal(null, undefined)).toBe(false)
-    expect(values_equal({}, null)).toBe(false)
-  })
-
-  it(`handles type mismatches`, () => {
-    expect(values_equal(`42`, 42)).toBe(false)
-    expect(values_equal(true, 1)).toBe(false)
   })
 })

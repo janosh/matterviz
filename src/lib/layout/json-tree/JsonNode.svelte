@@ -308,7 +308,7 @@
     flex-shrink: 0;
   }
   .collapse-toggle:hover {
-    color: var(--jt-arrow-hover, light-dark(#000, #fff));
+    color: light-dark(#000, #fff);
   }
   .arrow {
     display: inline-block;
@@ -331,14 +331,14 @@
     text-decoration: underline;
   }
   .node-key.array-index .index {
-    color: var(--jt-index, light-dark(#098658, #b5cea8));
+    color: var(--jt-number, light-dark(#098658, #b5cea8));
   }
   .colon {
     color: var(--jt-punctuation, light-dark(#000, #d4d4d4));
     margin-right: 4px;
   }
   .bracket {
-    color: var(--jt-bracket, light-dark(#000, #d4d4d4));
+    color: var(--jt-punctuation, light-dark(#000, #d4d4d4));
   }
   .preview {
     color: var(--jt-preview, light-dark(#808080, #808080));

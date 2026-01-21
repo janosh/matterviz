@@ -51,9 +51,8 @@ export interface JsonTreeProps {
   oncopy?: (path: string, value: string) => void
 }
 
-// Internal state shared via context
-export interface JsonTreeState {
-  // All settings from props
+// Context shared with child components (state + methods)
+export interface JsonTreeContext {
   settings: {
     default_fold_level: number
     auto_fold_arrays: number
@@ -64,20 +63,11 @@ export interface JsonTreeState {
     max_string_length: number
     highlight_changes: boolean
   }
-  // Set of collapsed paths (e.g., "root.users[0]")
   collapsed: Set<string>
-  // Current search query
   search_query: string
-  // Set of paths that match the search
   search_matches: Set<string>
-  // Path of the currently focused node (for keyboard nav)
   focused_path: string | null
-  // Map of path -> previous value for change detection
   previous_values: Map<string, unknown>
-}
-
-// Context methods for child components
-export interface JsonTreeContext extends JsonTreeState {
   toggle_collapse: (path: string) => void
   expand_all: () => void
   collapse_all: () => void
