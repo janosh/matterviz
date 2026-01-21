@@ -29,9 +29,6 @@
 
   const ctx = getContext<JsonTreeContext>(JSON_TREE_CONTEXT_KEY)
 
-  // Circular reference detection (handled by parent via WeakSet)
-  let is_circular = $state(false)
-
   onMount(() => {
     // Register this path with context for keyboard navigation
     if (ctx && path) {
@@ -41,10 +38,10 @@
   })
 
   // Determine value type
-  let value_type = $derived(is_circular ? `circular` : get_value_type(value))
+  let value_type = $derived(get_value_type(value))
 
   // Check if this node is expandable
-  let expandable = $derived(is_expandable(value) && !is_circular)
+  let expandable = $derived(is_expandable(value))
 
   // Get child count for preview
   let child_count = $derived(expandable ? get_child_count(value) : 0)
