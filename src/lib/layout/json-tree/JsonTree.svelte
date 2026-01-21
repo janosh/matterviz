@@ -14,6 +14,9 @@
     serialize_for_copy,
   } from './utils'
 
+  // Constant set for arrow key detection (avoid allocating on every keydown)
+  const ARROW_KEYS = new Set([`ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight`])
+
   let {
     value,
     root_label,
@@ -234,7 +237,7 @@
   function handle_tree_keydown(event: KeyboardEvent) {
     if (!focused_path) {
       // Focus first node on any arrow key
-      if ([`ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight`].includes(event.key)) {
+      if (ARROW_KEYS.has(event.key)) {
         event.preventDefault()
         if (registered_paths_list.length > 0) {
           set_focused(registered_paths_list[0])

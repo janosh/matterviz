@@ -1,6 +1,28 @@
 // JSON Tree utility functions
 import type { JsonValueType } from './types'
 
+// Pre-compiled regex for valid JS identifiers (used in path formatting)
+const VALID_IDENTIFIER_RE = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/
+
+// Circular-safe JSON.stringify helper (hoisted for reuse)
+function safe_stringify(val: unknown): string {
+  const seen = new WeakSet()
+  return JSON.stringify(
+    val,
+    (_key, inner) => {
+      if (typeof inner === `object` && inner !== null) {
+        if (seen.has(inner)) return `[Circular]`
+        seen.add(inner)
+      }
+      if (typeof inner === `bigint`) return `${inner}n`
+      if (typeof inner === `symbol`) return inner.toString()
+      if (typeof inner === `function`) return `[Function: ${inner.name || `anonymous`}]`
+      return inner
+    },
+    2,
+  )
+}
+
 // Detect the type of a value for rendering purposes
 export function get_value_type(value: unknown): JsonValueType {
   if (value === null) return `null`
@@ -30,7 +52,8 @@ export function get_value_type(value: unknown): JsonValueType {
 
 // Check if a value type is expandable (has children)
 export function is_expandable_type(value_type: JsonValueType): boolean {
-  return value_type === `object` || value_type === `array` || value_type === `map` || value_type === `set`
+  return value_type === `object` || value_type === `array` || value_type === `map` ||
+    value_type === `set`
 }
 
 // Check if a value type is a primitive (searchable as string)
@@ -61,7 +84,7 @@ function format_path_segment(segment: string | number): string {
     return `[${segment}]`
   }
   // Check if the key is a valid identifier (can use dot notation)
-  if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(segment)) {
+  if (VALID_IDENTIFIER_RE.test(segment)) {
     return `.${segment}`
   }
   // Use bracket notation for keys with special characters
@@ -89,7 +112,7 @@ export function build_path(parent_path: string, key: string | number): string {
     return `${parent_path}[${key}]`
   }
   // Check if the key is a valid identifier
-  if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
+  if (VALID_IDENTIFIER_RE.test(key)) {
     return `${parent_path}.${key}`
   }
   return `${parent_path}["${key.replace(/"/g, `\\"`)}"]`
@@ -114,24 +137,6 @@ export function serialize_for_copy(value: unknown): string {
   if (type === `error`) {
     const err = value as Error
     return `${err.name}: ${err.message}`
-  }
-  // Circular-safe JSON.stringify helper
-  function safe_stringify(val: unknown): string {
-    const seen = new WeakSet()
-    return JSON.stringify(
-      val,
-      (_key, inner) => {
-        if (typeof inner === `object` && inner !== null) {
-          if (seen.has(inner)) return `[Circular]`
-          seen.add(inner)
-        }
-        if (typeof inner === `bigint`) return `${inner}n`
-        if (typeof inner === `symbol`) return inner.toString()
-        if (typeof inner === `function`) return `[Function: ${inner.name || `anonymous`}]`
-        return inner
-      },
-      2,
-    )
   }
 
   if (type === `map`) {
@@ -316,6 +321,8 @@ export function find_matching_paths(
 
   if (!query) return matches
 
+  const lower_query = query.toLowerCase()
+
   // Check if this node matches
   if (matches_search(current_path, current_key, value, query)) {
     matches.add(current_path)
@@ -353,7 +360,7 @@ export function find_matching_paths(
       const child_path = build_path(current_path, idx)
       // Also check if Map key matches (convert to string for searching)
       const key_str = String(map_key)
-      if (key_str.toLowerCase().includes(query.toLowerCase())) {
+      if (key_str.toLowerCase().includes(lower_query)) {
         matches.add(child_path)
       }
       const child_matches = find_matching_paths(map_value, query, child_path, idx, seen)

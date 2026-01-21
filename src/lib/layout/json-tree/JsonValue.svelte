@@ -27,7 +27,9 @@
 
   // Extract max_string_length threshold for reuse
   let max_len = $derived(ctx?.settings.max_string_length ?? 200)
-  let is_long_string = $derived(value_type === `string` && (value as string).length > max_len)
+  let is_long_string = $derived(
+    value_type === `string` && (value as string).length > max_len,
+  )
 
   // Check for changes on mount and when value changes
   $effect(() => {
@@ -140,7 +142,7 @@
       ▲
     </button>
   {/if}
-  {#if ctx?.settings.show_data_types && ![`null`, `undefined`].includes(value_type)}
+  {#if ctx?.settings.show_data_types && value_type !== `null` && value_type !== `undefined`}
     <span class="type-annotation">{value_type}</span>
   {/if}
 </span>

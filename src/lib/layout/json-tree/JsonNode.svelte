@@ -214,10 +214,10 @@
         title="Click to copy key"
         onclick={(event) => {
           event.stopPropagation()
-          navigator.clipboard.writeText(String(node_key))
+          navigator.clipboard.writeText(String(node_key)).catch(() => {})
         }}
         onkeydown={(event) => {
-          if (event.key === `Enter`) navigator.clipboard.writeText(String(node_key))
+          if (event.key === `Enter`) navigator.clipboard.writeText(String(node_key)).catch(() => {})
         }}
         role="button"
         tabindex="-1"
