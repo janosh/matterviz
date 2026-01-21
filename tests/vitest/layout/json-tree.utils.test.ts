@@ -297,47 +297,36 @@ describe(`format_preview`, () => {
 })
 
 describe(`matches_search`, () => {
-  it(`returns false for empty query`, () => {
-    expect(matches_search(`path`, `key`, `value`, ``)).toBe(false)
-  })
-
-  it(`matches path (case-insensitive)`, () => {
-    expect(matches_search(`users.name`, `name`, `John`, `user`)).toBe(true)
-    expect(matches_search(`USERS.name`, `name`, `John`, `user`)).toBe(true)
-  })
-
-  it(`matches key (case-insensitive)`, () => {
-    expect(matches_search(`path`, `firstName`, `John`, `name`)).toBe(true)
-    expect(matches_search(`path`, `FIRSTNAME`, `John`, `name`)).toBe(true)
-  })
-
-  it(`matches numeric key`, () => {
-    expect(matches_search(`arr`, 123, `value`, `12`)).toBe(true)
-  })
-
-  it(`matches string value (case-insensitive)`, () => {
-    expect(matches_search(`path`, `key`, `Hello World`, `world`)).toBe(true)
-    expect(matches_search(`path`, `key`, `HELLO`, `hello`)).toBe(true)
-  })
-
-  it(`matches number value`, () => {
-    expect(matches_search(`path`, `key`, 42, `42`)).toBe(true)
-    expect(matches_search(`path`, `key`, 3.14, `3.14`)).toBe(true)
-  })
-
-  it(`matches boolean value`, () => {
-    expect(matches_search(`path`, `key`, true, `true`)).toBe(true)
-    expect(matches_search(`path`, `key`, false, `fal`)).toBe(true)
-  })
-
-  it(`does not match object/array values directly`, () => {
-    expect(matches_search(`path`, `key`, { nested: true }, `nested`)).toBe(false)
-    expect(matches_search(`path`, `key`, [1, 2, 3], `1`)).toBe(false)
-  })
-
-  it(`handles null key`, () => {
-    expect(matches_search(`root`, null, `value`, `root`)).toBe(true)
-    expect(matches_search(`root`, null, `value`, `key`)).toBe(false)
+  it.each(
+    [
+      // empty query
+      [`path`, `key`, `value`, ``, false],
+      // path matches (case-insensitive)
+      [`users.name`, `name`, `John`, `user`, true],
+      [`USERS.name`, `name`, `John`, `user`, true],
+      // key matches (case-insensitive)
+      [`path`, `firstName`, `John`, `name`, true],
+      [`path`, `FIRSTNAME`, `John`, `name`, true],
+      // numeric key
+      [`arr`, 123, `value`, `12`, true],
+      // string value (case-insensitive)
+      [`path`, `key`, `Hello World`, `world`, true],
+      [`path`, `key`, `HELLO`, `hello`, true],
+      // number value
+      [`path`, `key`, 42, `42`, true],
+      [`path`, `key`, 3.14, `3.14`, true],
+      // boolean value
+      [`path`, `key`, true, `true`, true],
+      [`path`, `key`, false, `fal`, true],
+      // object/array don't match directly
+      [`path`, `key`, { nested: true }, `nested`, false],
+      [`path`, `key`, [1, 2, 3], `1`, false],
+      // null key
+      [`root`, null, `value`, `root`, true],
+      [`root`, null, `value`, `key`, false],
+    ] as const,
+  )(`matches_search(%p, %p, %p, %p) = %p`, (path, key, value, query, expected) => {
+    expect(matches_search(path, key, value, query)).toBe(expected)
   })
 })
 
@@ -432,19 +421,14 @@ describe(`find_matching_paths`, () => {
 })
 
 describe(`get_ancestor_paths`, () => {
-  it(`returns empty array for empty path`, () => {
-    expect(get_ancestor_paths(``)).toEqual([])
-  })
-
-  it(`returns empty array for root path`, () => {
-    expect(get_ancestor_paths(`root`)).toEqual([])
-  })
-
-  it(`returns ancestor paths`, () => {
-    const ancestors = get_ancestor_paths(`users[0].name`)
-    expect(ancestors).toContain(`users`)
-    expect(ancestors).toContain(`users[0]`)
-    expect(ancestors).not.toContain(`users[0].name`)
+  it.each([
+    [``, []],
+    [`root`, []],
+    [`users[0].name`, [`users`, `users[0]`]],
+    [`a.b.c.d`, [`a`, `a.b`, `a.b.c`]],
+  ])(`get_ancestor_paths(%p) = %p`, (path, expected) => {
+    const result = get_ancestor_paths(path)
+    expect(result).toEqual(expected)
   })
 })
 

@@ -201,34 +201,12 @@ describe(`JsonTree`, () => {
       expect(keys).toEqual([`apple`, `mango`, `zebra`])
     })
 
-    it(`shows preview for collapsed arrays`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { arr: [1, 2, 3, 4, 5] },
-          show_header: false,
-          default_fold_level: 1,
-        },
-      })
-      expect(document.body.textContent).toContain(`Array(5)`)
-    })
-
-    it(`shows preview for collapsed objects`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { obj: { a: 1, b: 2 } },
-          show_header: false,
-          default_fold_level: 1,
-        },
-      })
-      expect(document.body.textContent).toContain(`{2 keys}`)
-    })
-
     it.each([
+      { value: { arr: [1, 2, 3, 4, 5] }, expected: `Array(5)` },
+      { value: { obj: { a: 1, b: 2 } }, expected: `{2 keys}` },
       { value: { empty: [] }, expected: `Array(0)` },
       { value: { empty: {} }, expected: `{0 keys}` },
-    ])(`handles empty container: $expected`, ({ value, expected }) => {
+    ])(`shows collapsed preview: $expected`, ({ value, expected }) => {
       mount(JsonTree, {
         target: document.body,
         props: { value, show_header: false, default_fold_level: 1 },
@@ -275,35 +253,27 @@ describe(`JsonTree`, () => {
       expect(final_expanded).not.toBe(initial_expanded)
     })
 
-    it(`auto-folds large arrays`, () => {
+    it.each([
+      {
+        desc: `arrays`,
+        value: Array.from({ length: 15 }, (_, idx) => idx),
+        props: { auto_fold_arrays: 10 },
+        expected: `Array(15)`,
+      },
+      {
+        desc: `objects`,
+        value: Object.fromEntries(
+          Array.from({ length: 25 }, (_, idx) => [`key${idx}`, idx]),
+        ),
+        props: { auto_fold_objects: 20 },
+        expected: `{25 keys}`,
+      },
+    ])(`auto-folds large $desc`, ({ value, props, expected }) => {
       mount(JsonTree, {
         target: document.body,
-        props: {
-          value: Array.from({ length: 15 }, (_, idx) => idx),
-          show_header: false,
-          auto_fold_arrays: 10,
-          default_fold_level: 5,
-        },
+        props: { value, show_header: false, default_fold_level: 5, ...props },
       })
-      // Array should be auto-collapsed because it has > 10 items
-      expect(document.body.textContent).toContain(`Array(15)`)
-    })
-
-    it(`auto-folds large objects`, () => {
-      const large_obj: Record<string, number> = {}
-      for (let idx = 0; idx < 25; idx++) {
-        large_obj[`key${idx}`] = idx
-      }
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: large_obj,
-          show_header: false,
-          auto_fold_objects: 20,
-          default_fold_level: 5,
-        },
-      })
-      expect(document.body.textContent).toContain(`{25 keys}`)
+      expect(document.body.textContent).toContain(expected)
     })
 
     it(`clicking auto-folded node expands it`, async () => {
@@ -488,25 +458,15 @@ describe(`JsonTree`, () => {
   })
 
   describe(`Map and Set`, () => {
-    it(`renders Map with entries`, () => {
-      const map = new Map([[`key1`, `value1`], [`key2`, `value2`]])
+    it.each([
+      { collection: new Map([[`key1`, `value1`]]), expected: [`key1`, `value1`] },
+      { collection: new Set([1, 2, 3]), expected: [`1`, `2`, `3`] },
+    ])(`renders collection entries`, ({ collection, expected }) => {
       mount(JsonTree, {
         target: document.body,
-        props: { value: { map }, show_header: false, default_fold_level: 5 },
+        props: { value: { collection }, show_header: false, default_fold_level: 5 },
       })
-      expect(document.body.textContent).toContain(`key`)
-      expect(document.body.textContent).toContain(`value`)
-    })
-
-    it(`renders Set with values`, () => {
-      const set = new Set([1, 2, 3])
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { set }, show_header: false, default_fold_level: 5 },
-      })
-      expect(document.body.textContent).toContain(`1`)
-      expect(document.body.textContent).toContain(`2`)
-      expect(document.body.textContent).toContain(`3`)
+      expected.forEach((text) => expect(document.body.textContent).toContain(text))
     })
 
     it.each([
@@ -526,10 +486,9 @@ describe(`JsonTree`, () => {
         target: document.body,
         props: { value: { nested }, show_header: false, default_fold_level: 10 },
       })
-      const text = document.body.textContent
-      expect(text).toContain(`inner`)
-      expect(text).toContain(`deep`)
-      expect(text).toContain(`true`)
+      ;[`inner`, `deep`, `true`].forEach((s) =>
+        expect(document.body.textContent).toContain(s)
+      )
     })
   })
 
@@ -619,34 +578,28 @@ describe(`accessibility`, () => {
 })
 
 describe(`edge cases`, () => {
-  it(`handles deeply nested data`, () => {
-    const deep = { a: { b: { c: { d: { e: { f: `deep` } } } } } }
+  it.each([
+    {
+      desc: `deeply nested`,
+      value: { a: { b: { c: { d: { e: { f: `deep` } } } } } },
+      expected: [`"deep"`],
+    },
+    {
+      desc: `mixed array`,
+      value: [1, `two`, true, null],
+      expected: [`1`, `"two"`, `true`, `null`],
+    },
+    {
+      desc: `special key names`,
+      value: { 'key-with-dash': 1, 'key with spaces': 2 },
+      expected: [`key-with-dash`, `key with spaces`],
+    },
+  ])(`handles $desc`, ({ value, expected }) => {
     mount(JsonTree, {
       target: document.body,
-      props: { value: deep, show_header: false, default_fold_level: 10 },
+      props: { value, show_header: false, default_fold_level: 10 },
     })
-    expect(document.body.textContent).toContain(`"deep"`)
-  })
-
-  it(`handles mixed array with various types`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: [1, `two`, true, null], show_header: false, default_fold_level: 5 },
-    })
-    const text = document.body.textContent
-    expect(text).toContain(`1`)
-    expect(text).toContain(`"two"`)
-    expect(text).toContain(`true`)
-    expect(text).toContain(`null`)
-  })
-
-  it(`handles object with special key names`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { 'key-with-dash': 1, 'key with spaces': 2 }, show_header: false },
-    })
-    expect(document.body.textContent).toContain(`key-with-dash`)
-    expect(document.body.textContent).toContain(`key with spaces`)
+    expected.forEach((text) => expect(document.body.textContent).toContain(text))
   })
 
   test.each([
