@@ -129,6 +129,26 @@ export interface FermiErrorData {
   filename?: string
 }
 
+// Hover data emitted when user hovers over a Fermi surface
+export interface FermiHoverData {
+  band_index: number
+  spin: SpinChannel
+  position_cartesian: Vec3 // k-space coordinates in Å⁻¹
+  position_fractional: Vec3 // in reciprocal lattice units
+  screen_position: { x: number; y: number }
+  surface_color?: string
+  property_value?: number // nearest vertex property value
+  property_name?: string // "velocity" | "custom" | undefined
+  is_tiled?: boolean // true if from symmetry copy
+  symmetry_index?: number // 0-47 (0 = identity)
+}
+
+// Tooltip config for prefix/suffix content
+export interface FermiTooltipConfig {
+  prefix?: string | ((data: FermiHoverData) => string)
+  suffix?: string | ((data: FermiHoverData) => string)
+}
+
 // Type guard: checks if parsed result is FermiSurfaceData (has pre-computed isosurfaces)
 export const is_fermi_surface_data = (
   data: BandGridData | FermiSurfaceData | null,

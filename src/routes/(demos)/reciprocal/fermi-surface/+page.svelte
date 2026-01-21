@@ -7,6 +7,7 @@
   import type {
     BandGridData,
     FermiFileLoadData,
+    FermiHoverData,
     FermiSurfaceData,
   } from '$lib/fermi-surface'
   import {
@@ -15,6 +16,7 @@
     is_band_grid_data,
     is_fermi_surface_data,
   } from '$lib/fermi-surface'
+  import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import { fermi_file_colors, fermi_surface_files } from '$site/fermi-surfaces'
   import { onMount } from 'svelte'
@@ -28,6 +30,7 @@
   let loading = $state(false)
   let slice_miller = $state<Vec3>([0, 0, 1])
   let slice_distance = $state(0)
+  let hover_data = $state<FermiHoverData | null>(null)
 
   function update_url(filename: string) {
     if (!browser) return
@@ -135,24 +138,40 @@
   style="margin-block: 1em"
 />
 
-<FermiSurface
-  bind:fermi_data
-  bind:band_data
-  bind:error_msg
-  bind:loading
-  style="height: 500px"
-  show_controls="hover"
-  on_file_drop={(filename: string) => {
-    active_file = filename
-    update_url(filename)
-  }}
-  on_file_load={(data: FermiFileLoadData) => {
-    active_file = data.filename
-    fermi_data = data.fermi_data
-    band_data = data.band_data
-    error_msg = undefined
-  }}
-/>
+<div class="fermi-container">
+  <FermiSurface
+    bind:fermi_data
+    bind:band_data
+    bind:error_msg
+    bind:loading
+    style="height: 500px"
+    show_controls="hover"
+    on_file_drop={(filename: string) => {
+      active_file = filename
+      update_url(filename)
+    }}
+    on_file_load={(data: FermiFileLoadData) => {
+      active_file = data.filename
+      fermi_data = data.fermi_data
+      band_data = data.band_data
+      error_msg = undefined
+    }}
+    on_hover={(data) => hover_data = data}
+    tooltip_config={{
+      suffix: (_data) => `File: <code>${active_file ?? `none`}</code>`,
+    }}
+  />
+
+  {#if hover_data}
+    <div class="hover-status">
+      <strong>Hovering:</strong> Band {hover_data.band_index}
+      {#if hover_data.spin}({hover_data.spin}){/if}
+      at k = ({format_num(hover_data.position_fractional[0], `.2f`)},
+      {format_num(hover_data.position_fractional[1], `.2f`)},
+      {format_num(hover_data.position_fractional[2], `.2f`)})
+    </div>
+  {/if}
+</div>
 
 {#if fermi_data}
   <section class="slice-section">
@@ -192,6 +211,10 @@
     <li><strong>✂️ Slicing</strong> &ndash; 2D cross-sections along any plane</li>
     <li><strong>🔬 Brillouin Zone</strong> &ndash; 1st BZ overlay with axes</li>
     <li><strong>📊 Real-time</strong> &ndash; adjust μ and see changes instantly</li>
+    <li>
+      <strong>💬 Hover Tooltips</strong> &ndash; k-coordinates in Cartesian &amp;
+      fractional
+    </li>
   </ul>
 </section>
 
@@ -218,5 +241,19 @@
   }
   section.slice-section input[type='number'] {
     text-align: center;
+  }
+  .fermi-container {
+    position: relative;
+  }
+  .hover-status {
+    position: absolute;
+    bottom: 1ex;
+    left: 1em;
+    background: var(--tooltip-bg, rgba(0, 0, 0, 0.85));
+    color: var(--tooltip-text, white);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    z-index: 10;
   }
 </style>
