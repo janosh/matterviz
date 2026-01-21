@@ -217,7 +217,10 @@
           navigator.clipboard.writeText(String(node_key)).catch(() => {})
         }}
         onkeydown={(event) => {
-          if (event.key === `Enter`) navigator.clipboard.writeText(String(node_key)).catch(() => {})
+          if (event.key === `Enter`) {
+            navigator.clipboard.writeText(String(node_key))
+              .catch(() => {})
+          }
         }}
         role="button"
         tabindex="-1"
