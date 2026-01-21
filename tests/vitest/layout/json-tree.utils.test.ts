@@ -384,6 +384,13 @@ describe(`collect_all_paths`, () => {
     // won't add its children (since they're already seen)
     expect(paths).toContain(`root`)
   })
+
+  it(`collects paths in Map and Set`, () => {
+    const map = new Map([[`key`, { nested: true }]])
+    const set = new Set([{ inner: 1 }])
+    expect(collect_all_paths({ map }, `root`)).toContain(`root.map[0]`)
+    expect(collect_all_paths({ set }, `root`)).toContain(`root.set[0]`)
+  })
 })
 
 describe(`find_matching_paths`, () => {

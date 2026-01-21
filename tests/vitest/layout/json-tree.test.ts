@@ -306,6 +306,30 @@ describe(`JsonTree`, () => {
       expect(document.body.textContent).toContain(`{25 keys}`)
     })
 
+    it(`clicking auto-folded node expands it`, async () => {
+      mount(JsonTree, {
+        target: document.body,
+        props: {
+          value: Array.from({ length: 15 }, (_, idx) => idx),
+          show_header: false,
+          auto_fold_arrays: 10,
+          default_fold_level: 5,
+        },
+      })
+      // Initially auto-collapsed
+      expect(document.body.textContent).toContain(`Array(15)`)
+      expect(document.body.textContent).not.toContain(`14`)
+
+      // Click toggle to expand
+      get_collapse_toggles()[0].click()
+      flushSync()
+      await tick()
+
+      // Should now show contents
+      expect(document.body.textContent).toContain(`14`)
+      expect(document.body.textContent).not.toContain(`Array(15)`)
+    })
+
     it(`expand all button expands collapsed nodes`, async () => {
       mount(JsonTree, {
         target: document.body,
