@@ -49,6 +49,15 @@
   // Track paths explicitly expanded (overrides auto-fold thresholds)
   let force_expanded = $state(new SvelteSet<string>())
 
+  // Clear force_expanded when value changes (stale paths from old data)
+  let prev_value_ref: unknown
+  $effect.pre(() => {
+    if (prev_value_ref !== undefined && value !== prev_value_ref) {
+      force_expanded.clear()
+    }
+    prev_value_ref = value
+  })
+
   // Debounce search input
   let search_debounce_timeout: ReturnType<typeof setTimeout> | undefined
 

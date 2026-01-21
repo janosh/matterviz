@@ -463,6 +463,27 @@ describe(`parse_path`, () => {
     const segments = parse_path(path)
     expect(segments).toEqual([`root`, key_with_quotes])
   })
+
+  it(`handles unclosed bracket with numeric index`, () => {
+    // Malformed path with unclosed bracket should still parse trailing number correctly
+    expect(parse_path(`a[0`)).toEqual([`a`, 0])
+    expect(parse_path(`arr[123`)).toEqual([`arr`, 123])
+  })
+
+  it(`handles unclosed bracket with string key`, () => {
+    // Unclosed bracket with quoted string
+    expect(parse_path(`data["key`)).toEqual([`data`, `key`])
+  })
+
+  it(`handles empty brackets`, () => {
+    // Empty brackets are silently ignored
+    expect(parse_path(`a[]`)).toEqual([`a`])
+    expect(parse_path(`a[].b`)).toEqual([`a`, `b`])
+  })
+
+  it(`handles negative indices`, () => {
+    expect(parse_path(`a[-1]`)).toEqual([`a`, -1])
+  })
 })
 
 describe(`values_equal`, () => {
@@ -494,5 +515,13 @@ describe(`values_equal`, () => {
     const date3 = new Date(`2024-01-16`)
     expect(values_equal(date1, date2)).toBe(true)
     expect(values_equal(date1, date3)).toBe(false)
+  })
+
+  it(`treats NaN as equal to NaN`, () => {
+    // NaN === NaN is false in JS, but for change detection we want NaN === NaN
+    expect(values_equal(NaN, NaN)).toBe(true)
+    expect(values_equal(NaN, 0)).toBe(false)
+    expect(values_equal(0, NaN)).toBe(false)
+    expect(values_equal(NaN, null)).toBe(false)
   })
 })

@@ -486,9 +486,10 @@ describe(`JsonTree`, () => {
         target: document.body,
         props: { value: { nested }, show_header: false, default_fold_level: 10 },
       })
-      ;[`inner`, `deep`, `true`].forEach((s) =>
-        expect(document.body.textContent).toContain(s)
-      )
+      const text = document.body.textContent
+      expect(text).toContain(`inner`)
+      expect(text).toContain(`deep`)
+      expect(text).toContain(`true`)
     })
   })
 
