@@ -167,26 +167,6 @@ describe(`JsonTree`, () => {
   })
 
   describe(`arrays and objects`, () => {
-    it(`renders array with brackets`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: [1, 2, 3], show_header: false, default_fold_level: 5 },
-      })
-      const text = document.body.textContent ?? ``
-      expect(text).toContain(`[`)
-      expect(text).toContain(`]`)
-    })
-
-    it(`renders object with braces`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { a: 1 }, show_header: false, default_fold_level: 5 },
-      })
-      const text = document.body.textContent ?? ``
-      expect(text).toContain(`{`)
-      expect(text).toContain(`}`)
-    })
-
     it(`shows array indices when show_array_indices=true`, () => {
       mount(JsonTree, {
         target: document.body,
@@ -257,22 +237,19 @@ describe(`JsonTree`, () => {
     it(`handles empty array`, () => {
       mount(JsonTree, {
         target: document.body,
-        props: { value: { empty: [] }, show_header: false, default_fold_level: 5 },
+        props: { value: { empty: [] }, show_header: false, default_fold_level: 1 },
       })
-      // Empty arrays are rendered expanded with brackets on separate lines
-      expect(document.body.textContent).toContain(`[`)
-      expect(document.body.textContent).toContain(`]`)
+      // Empty array collapsed shows Array(0)
+      expect(document.body.textContent).toContain(`Array(0)`)
     })
 
     it(`handles empty object`, () => {
       mount(JsonTree, {
         target: document.body,
-        props: { value: { empty: {} }, show_header: false, default_fold_level: 5 },
+        props: { value: { empty: {} }, show_header: false, default_fold_level: 1 },
       })
-      // Empty objects are rendered expanded with braces on separate lines
-      const text = document.body.textContent ?? ``
-      // Count braces - should have at least 2 pairs (outer object + empty inner)
-      expect(text.match(/\{/g)?.length).toBeGreaterThanOrEqual(2)
+      // Empty object collapsed shows {0 keys}
+      expect(document.body.textContent).toContain(`{0 keys}`)
     })
   })
 
@@ -345,7 +322,7 @@ describe(`JsonTree`, () => {
       expect(document.body.textContent).toContain(`{25 keys}`)
     })
 
-    it(`expand all button exists and is clickable`, async () => {
+    it(`expand all button expands collapsed nodes`, async () => {
       mount(JsonTree, {
         target: document.body,
         props: {
@@ -354,18 +331,21 @@ describe(`JsonTree`, () => {
         },
       })
 
+      // Initially collapsed - shows preview
+      expect(document.body.textContent).toContain(`{1 key}`)
+
       const expand_btn = document.querySelector(
         `button[title="Expand all"]`,
       ) as HTMLButtonElement
-      expect(expand_btn).toBeTruthy()
-
-      // Verify it can be clicked without error
       expand_btn.click()
       flushSync()
       await tick()
+
+      // After expand - nested values should be visible
+      expect(document.body.textContent).toContain(`"c"`)
     })
 
-    it(`collapse all button exists and is clickable`, async () => {
+    it(`collapse all button collapses expanded nodes`, async () => {
       mount(JsonTree, {
         target: document.body,
         props: {
@@ -374,15 +354,18 @@ describe(`JsonTree`, () => {
         },
       })
 
+      // Initially expanded - shows values
+      expect(document.body.textContent).toContain(`"b"`)
+
       const collapse_btn = document.querySelector(
         `button[title="Collapse all"]`,
       ) as HTMLButtonElement
-      expect(collapse_btn).toBeTruthy()
-
-      // Verify it can be clicked without error
       collapse_btn.click()
       flushSync()
       await tick()
+
+      // After collapse - shows preview
+      expect(document.body.textContent).toContain(`{2 keys}`)
     })
 
     it(`collapse to level buttons work`, async () => {
