@@ -1,9 +1,9 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
   import { setContext } from 'svelte'
+  import { highlight_matches, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import { highlight_matches } from 'svelte-multiselect/attachments'
   import JsonNode from './JsonNode.svelte'
   import type { JsonTreeContext, JsonTreeProps } from './types'
   import { JSON_TREE_CONTEXT_KEY } from './types'
@@ -292,22 +292,29 @@
             class="clear-search"
             onclick={clear_search}
             title="Clear search"
+            {@attach tooltip()}
           >
             <Icon icon="Cross" style="width: 12px; height: 12px" />
           </button>
         {/if}
       </div>
       <div class="controls">
-        <button type="button" onclick={expand_all} title="Expand all">
+        <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip()}>
           <Icon icon="Expand" style="width: 14px; height: 14px" />
         </button>
-        <button type="button" onclick={collapse_all} title="Collapse all">
+        <button
+          type="button"
+          onclick={collapse_all}
+          title="Collapse all"
+          {@attach tooltip()}
+        >
           <Icon icon="Collapse" style="width: 14px; height: 14px" />
         </button>
         <button
           type="button"
           onclick={() => collapse_to_level(1)}
           title="Collapse to level 1"
+          {@attach tooltip()}
         >
           1
         </button>
@@ -315,6 +322,7 @@
           type="button"
           onclick={() => collapse_to_level(2)}
           title="Collapse to level 2"
+          {@attach tooltip()}
         >
           2
         </button>
@@ -322,6 +330,7 @@
           type="button"
           onclick={() => collapse_to_level(3)}
           title="Collapse to level 3"
+          {@attach tooltip()}
         >
           3
         </button>

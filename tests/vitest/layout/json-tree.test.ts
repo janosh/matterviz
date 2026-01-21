@@ -315,10 +315,10 @@ describe(`JsonTree`, () => {
         },
       })
 
+      const btns = document.querySelectorAll(`.controls button`)
+      const [expand_btn, collapse_btn] = btns as NodeListOf<HTMLButtonElement>
+
       // Manually collapse via collapse all first
-      const collapse_btn = document.querySelector(
-        `button[title="Collapse all"]`,
-      ) as HTMLButtonElement
       collapse_btn.click()
       flushSync()
       await tick()
@@ -328,9 +328,6 @@ describe(`JsonTree`, () => {
       expect(document.body.textContent).not.toContain(`"b"`)
 
       // Click expand all
-      const expand_btn = document.querySelector(
-        `button[title="Expand all"]`,
-      ) as HTMLButtonElement
       expand_btn.click()
       flushSync()
       await tick()
@@ -351,9 +348,8 @@ describe(`JsonTree`, () => {
       // Initially expanded - nested value visible
       expect(document.body.textContent).toContain(`"b"`)
 
-      const collapse_btn = document.querySelector(
-        `button[title="Collapse all"]`,
-      ) as HTMLButtonElement
+      const btns = document.querySelectorAll(`.controls button`)
+      const collapse_btn = btns[1] as HTMLButtonElement
       collapse_btn.click()
       flushSync()
       await tick()
@@ -372,9 +368,8 @@ describe(`JsonTree`, () => {
         },
       })
 
-      const level_1_btn = document.querySelector(
-        `button[title="Collapse to level 1"]`,
-      ) as HTMLButtonElement
+      const btns = document.querySelectorAll(`.controls button`)
+      const level_1_btn = btns[2] as HTMLButtonElement // [expand, collapse, 1, 2, 3]
       level_1_btn.click()
       flushSync()
       await tick()
@@ -386,11 +381,8 @@ describe(`JsonTree`, () => {
   describe(`header controls`, () => {
     it(`has expand/collapse and level buttons`, () => {
       mount(JsonTree, { target: document.body, props: { value: { name: `test` } } })
-      expect(document.querySelector(`button[title="Expand all"]`)).toBeTruthy()
-      expect(document.querySelector(`button[title="Collapse all"]`)).toBeTruthy()
-      expect(document.querySelector(`button[title="Collapse to level 1"]`)).toBeTruthy()
-      expect(document.querySelector(`button[title="Collapse to level 2"]`)).toBeTruthy()
-      expect(document.querySelector(`button[title="Collapse to level 3"]`)).toBeTruthy()
+      const btns = document.querySelectorAll(`.controls button`)
+      expect(btns.length).toBe(5) // expand, collapse, 1, 2, 3
     })
   })
 
