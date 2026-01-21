@@ -109,32 +109,45 @@ export function serialize_for_copy(value: unknown): string {
     const err = value as Error
     return `${err.name}: ${err.message}`
   }
-  if (type === `map`) {
-    const entries = Array.from((value as Map<unknown, unknown>).entries())
-    return JSON.stringify(entries, null, 2)
-  }
-  if (type === `set`) {
-    const items = Array.from(value as Set<unknown>)
-    return JSON.stringify(items, null, 2)
-  }
-
-  // Object or array - use JSON.stringify with circular reference handling
-  try {
+  // Circular-safe JSON.stringify helper
+  function safe_stringify(val: unknown): string {
     const seen = new WeakSet()
     return JSON.stringify(
-      value,
-      (_key, val) => {
-        if (typeof val === `object` && val !== null) {
-          if (seen.has(val)) return `[Circular]`
-          seen.add(val)
+      val,
+      (_key, inner) => {
+        if (typeof inner === `object` && inner !== null) {
+          if (seen.has(inner)) return `[Circular]`
+          seen.add(inner)
         }
-        if (typeof val === `bigint`) return `${val}n`
-        if (typeof val === `symbol`) return val.toString()
-        if (typeof val === `function`) return `[Function: ${val.name || `anonymous`}]`
-        return val
+        if (typeof inner === `bigint`) return `${inner}n`
+        if (typeof inner === `symbol`) return inner.toString()
+        if (typeof inner === `function`) return `[Function: ${inner.name || `anonymous`}]`
+        return inner
       },
       2,
     )
+  }
+
+  if (type === `map`) {
+    const entries = Array.from((value as Map<unknown, unknown>).entries())
+    try {
+      return safe_stringify(entries)
+    } catch {
+      return `Map(${entries.length} entries)`
+    }
+  }
+  if (type === `set`) {
+    const items = Array.from(value as Set<unknown>)
+    try {
+      return safe_stringify(items)
+    } catch {
+      return `Set(${items.length} items)`
+    }
+  }
+
+  // Object or array
+  try {
+    return safe_stringify(value)
   } catch {
     return String(value)
   }

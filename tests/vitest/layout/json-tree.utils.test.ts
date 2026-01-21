@@ -230,6 +230,22 @@ describe(`serialize_for_copy`, () => {
     const result = serialize_for_copy(set)
     expect(JSON.parse(result)).toEqual([1, 2, 3])
   })
+
+  it(`handles circular references in Map values`, () => {
+    const obj: Record<string, unknown> = { a: 1 }
+    obj.self = obj
+    const map = new Map([[`circular`, obj]])
+    const result = serialize_for_copy(map)
+    expect(result).toContain(`[Circular]`)
+  })
+
+  it(`handles circular references in Set items`, () => {
+    const obj: Record<string, unknown> = { a: 1 }
+    obj.self = obj
+    const set = new Set([obj])
+    const result = serialize_for_copy(set)
+    expect(result).toContain(`[Circular]`)
+  })
 })
 
 describe(`format_preview`, () => {
