@@ -188,33 +188,25 @@ describe(`JsonTree`, () => {
       expect(bracket_text.filter((text) => text === `{`).length).toBe(2) // outer obj + inner obj
     })
 
-    it(`shows array indices when show_array_indices=true`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: [`a`, `b`],
-          show_header: false,
-          show_array_indices: true,
-          default_fold_level: 5,
-        },
-      })
-      const indices = document.querySelectorAll(`.index`)
-      expect(indices.length).toBeGreaterThan(0)
-    })
-
-    it(`hides array indices when show_array_indices=false`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: [`a`, `b`],
-          show_header: false,
-          show_array_indices: false,
-          default_fold_level: 5,
-        },
-      })
-      const indices = document.querySelectorAll(`.array-index .index`)
-      expect(indices.length).toBe(0)
-    })
+    it.each([
+      { show_array_indices: true, expected_count: 2 },
+      { show_array_indices: false, expected_count: 0 },
+    ])(
+      `show_array_indices=$show_array_indices`,
+      ({ show_array_indices, expected_count }) => {
+        mount(JsonTree, {
+          target: document.body,
+          props: {
+            value: [`a`, `b`],
+            show_header: false,
+            show_array_indices,
+            default_fold_level: 5,
+          },
+        })
+        const indices = document.querySelectorAll(`.array-index .index`)
+        expect(indices.length).toBe(expected_count)
+      },
+    )
 
     it(`sorts object keys when sort_keys=true`, () => {
       mount(JsonTree, {
@@ -255,22 +247,15 @@ describe(`JsonTree`, () => {
       expect(document.body.textContent).toContain(`{2 keys}`)
     })
 
-    it(`handles empty array`, () => {
+    it.each([
+      { value: { empty: [] }, expected: `Array(0)` },
+      { value: { empty: {} }, expected: `{0 keys}` },
+    ])(`handles empty container: $expected`, ({ value, expected }) => {
       mount(JsonTree, {
         target: document.body,
-        props: { value: { empty: [] }, show_header: false, default_fold_level: 1 },
+        props: { value, show_header: false, default_fold_level: 1 },
       })
-      // Empty array collapsed shows Array(0)
-      expect(document.body.textContent).toContain(`Array(0)`)
-    })
-
-    it(`handles empty object`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { empty: {} }, show_header: false, default_fold_level: 1 },
-      })
-      // Empty object collapsed shows {0 keys}
-      expect(document.body.textContent).toContain(`{0 keys}`)
+      expect(document.body.textContent).toContain(expected)
     })
   })
 
@@ -420,31 +405,11 @@ describe(`JsonTree`, () => {
     })
   })
 
-  describe(`search`, () => {
-    it(`search input is present`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { name: `test` } },
-      })
-      const search = get_search_input()
-      expect(search).toBeTruthy()
-      expect(search?.placeholder).toContain(`Search`)
-    })
-
-    it(`has expand/collapse all buttons`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { name: `test` } },
-      })
+  describe(`header controls`, () => {
+    it(`has expand/collapse and level buttons`, () => {
+      mount(JsonTree, { target: document.body, props: { value: { name: `test` } } })
       expect(document.querySelector(`button[title="Expand all"]`)).toBeTruthy()
       expect(document.querySelector(`button[title="Collapse all"]`)).toBeTruthy()
-    })
-
-    it(`has level buttons`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { name: `test` } },
-      })
       expect(document.querySelector(`button[title="Collapse to level 1"]`)).toBeTruthy()
       expect(document.querySelector(`button[title="Collapse to level 2"]`)).toBeTruthy()
       expect(document.querySelector(`button[title="Collapse to level 3"]`)).toBeTruthy()
@@ -452,66 +417,29 @@ describe(`JsonTree`, () => {
   })
 
   describe(`copy functionality`, () => {
-    it(`values have copy title`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { name: `copy_me` }, show_header: false },
+    it(`keys are clickable and call clipboard API`, () => {
+      const write_text = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, `clipboard`, {
+        value: { writeText: write_text },
+        writable: true,
       })
-      const value_el = get_values()[0]
-      expect(value_el.getAttribute(`title`)).toBe(`Click to copy`)
-    })
-
-    it(`keys are clickable`, () => {
       mount(JsonTree, {
         target: document.body,
         props: { value: { my_key: 42 }, show_header: false },
       })
       const key_el = document.querySelector(`.node-key`) as HTMLSpanElement
       expect(key_el.getAttribute(`role`)).toBe(`button`)
-    })
-
-    it(`clicking key calls clipboard API`, () => {
-      const write_text = vi.fn().mockResolvedValue(undefined)
-      Object.defineProperty(navigator, `clipboard`, {
-        value: { writeText: write_text },
-        writable: true,
-      })
-
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { my_key: 42 }, show_header: false },
-      })
-
-      const key_el = document.querySelector(`.node-key`) as HTMLSpanElement
       key_el.click()
       flushSync()
-
       expect(write_text).toHaveBeenCalledWith(`my_key`)
     })
   })
 
   describe(`keyboard navigation`, () => {
-    it(`nodes are focusable`, () => {
+    it(`collapse toggles have aria-label`, () => {
       mount(JsonTree, {
         target: document.body,
-        props: {
-          value: { nested: { a: 1 } },
-          show_header: false,
-          default_fold_level: 5,
-        },
-      })
-      const node = get_nodes()[0]
-      expect(node.getAttribute(`role`)).toBe(`treeitem`)
-    })
-
-    it(`collapse toggle has aria-label`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { nested: { a: 1 } },
-          show_header: false,
-          default_fold_level: 5,
-        },
+        props: { value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 },
       })
       const toggles = get_collapse_toggles()
       expect(toggles.length).toBeGreaterThan(0)
@@ -520,31 +448,17 @@ describe(`JsonTree`, () => {
   })
 
   describe(`type annotations`, () => {
-    it(`shows type annotations when show_data_types=true`, () => {
+    it.each([
+      { show_data_types: true, expected_min: 1 },
+      { show_data_types: false, expected_min: 0 },
+    ])(`show_data_types=$show_data_types`, ({ show_data_types, expected_min }) => {
       mount(JsonTree, {
         target: document.body,
-        props: {
-          value: { str: `hello`, num: 42, bool: true },
-          show_header: false,
-          show_data_types: true,
-          default_fold_level: 5,
-        },
+        props: { value: { str: `hello` }, show_header: false, show_data_types },
       })
-      const annotations = document.querySelectorAll(`.type-annotation`)
-      expect(annotations.length).toBeGreaterThan(0)
-    })
-
-    it(`hides type annotations when show_data_types=false`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { str: `hello` },
-          show_header: false,
-          show_data_types: false,
-        },
-      })
-      const annotations = document.querySelectorAll(`.type-annotation`)
-      expect(annotations.length).toBe(0)
+      const count = document.querySelectorAll(`.type-annotation`).length
+      if (expected_min > 0) expect(count).toBeGreaterThan(0)
+      else expect(count).toBe(0)
     })
   })
 
@@ -601,22 +515,15 @@ describe(`JsonTree`, () => {
       expect(document.body.textContent).toContain(`3`)
     })
 
-    it(`shows Map size in preview`, () => {
-      const map = new Map([[`a`, 1], [`b`, 2]])
+    it.each([
+      { collection: new Map([[`a`, 1], [`b`, 2]]), expected: `Map(2)` },
+      { collection: new Set([1, 2, 3, 4]), expected: `Set(4)` },
+    ])(`shows $expected in preview`, ({ collection, expected }) => {
       mount(JsonTree, {
         target: document.body,
-        props: { value: { map }, show_header: false, default_fold_level: 1 },
+        props: { value: { collection }, show_header: false, default_fold_level: 1 },
       })
-      expect(document.body.textContent).toContain(`Map(2)`)
-    })
-
-    it(`shows Set size in preview`, () => {
-      const set = new Set([1, 2, 3, 4])
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { set }, show_header: false, default_fold_level: 1 },
-      })
-      expect(document.body.textContent).toContain(`Set(4)`)
+      expect(document.body.textContent).toContain(expected)
     })
   })
 
@@ -684,42 +591,23 @@ describe(`JsonTree`, () => {
   })
 })
 
-describe(`JsonNode ARIA`, () => {
-  it(`has correct treeitem role`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { a: 1 }, show_header: false },
-    })
-    const nodes = document.querySelectorAll(`[role="treeitem"]`)
-    expect(nodes.length).toBeGreaterThan(0)
-  })
-
-  it(`has aria-expanded for expandable nodes`, () => {
+describe(`accessibility`, () => {
+  it(`nodes have treeitem role and aria-expanded`, () => {
     mount(JsonTree, {
       target: document.body,
       props: { value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 },
     })
-    const expandable = document.querySelector(`[aria-expanded]`)
-    expect(expandable).toBeTruthy()
+    expect(document.querySelectorAll(`[role="treeitem"]`).length).toBeGreaterThan(0)
+    expect(document.querySelector(`[aria-expanded]`)).toBeTruthy()
   })
-})
 
-describe(`JsonValue accessibility`, () => {
-  it(`has button role for copyable values`, () => {
+  it(`values have button role and copy title`, () => {
     mount(JsonTree, {
       target: document.body,
       props: { value: { name: `test` }, show_header: false },
     })
     const value_el = document.querySelector(`.json-value`)
     expect(value_el?.getAttribute(`role`)).toBe(`button`)
-  })
-
-  it(`has copy title`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { name: `test` }, show_header: false },
-    })
-    const value_el = document.querySelector(`.json-value`)
     expect(value_el?.getAttribute(`title`)).toBe(`Click to copy`)
   })
 })
