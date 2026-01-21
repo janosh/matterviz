@@ -10,6 +10,7 @@
     collect_all_paths,
     find_matching_paths,
     get_ancestor_paths,
+    parse_path,
     serialize_for_copy,
   } from './utils'
 
@@ -112,8 +113,11 @@
     const new_collapsed = new SvelteSet<string>()
 
     for (const path of all_paths) {
-      // Count depth by counting dots and brackets
-      const depth = path.split(/[\.\[]/).length - 1
+      // Use parse_path for accurate depth calculation (handles special keys)
+      const segments = parse_path(path)
+      const depth = root_label && segments[0] === root_label
+        ? segments.length - 1
+        : segments.length
       if (depth >= level) {
         new_collapsed.add(path)
       }
@@ -159,7 +163,8 @@
   function get_value_at_path(path: string): unknown {
     if (!path || path === root_label) return value
 
-    const segments = path.split(/[\.\[\]]/).filter(Boolean)
+    // Use parse_path for accurate segment parsing (handles special keys like "key-with-dash")
+    const segments = parse_path(path)
     let current: unknown = value
 
     // Skip root label if present
@@ -170,8 +175,7 @@
       if (current === null || current === undefined) return undefined
 
       if (typeof current === `object`) {
-        const key = /^\d+$/.test(segment) ? Number(segment) : segment
-        current = (current as Record<string | number, unknown>)[key]
+        current = (current as Record<string | number, unknown>)[segment]
       } else {
         return undefined
       }
