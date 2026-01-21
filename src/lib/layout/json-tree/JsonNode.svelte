@@ -29,7 +29,7 @@
 
   const ctx = getContext<JsonTreeContext>(JSON_TREE_CONTEXT_KEY)
 
-  // Circular reference detection
+  // Circular reference detection (handled by parent via WeakSet)
   let is_circular = $state(false)
 
   onMount(() => {
@@ -37,15 +37,6 @@
     if (ctx && path) {
       ctx.register_path(path)
       return () => ctx.unregister_path(path)
-    }
-  })
-
-  // Check for circular reference
-  $effect(() => {
-    if (typeof value === `object` && value !== null) {
-      // Access the seen set from parent scope or create tracking
-      // For simplicity, we'll mark as circular if we detect it during render
-      // The main JsonTree handles the WeakSet
     }
   })
 
@@ -93,16 +84,7 @@
       : false,
   )
 
-  // Check if this path has matching descendants (for highlighting purposes)
-  let _has_matching_descendants = $derived.by(() => {
-    if (!ctx?.search_query || !ctx.search_matches.size) return false
-    for (const match of ctx.search_matches) {
-      if (match.startsWith(path) && match !== path) return true
-    }
-    return false
-  })
-
-  // Note: Auto-expand is handled in JsonTree.svelte to avoid infinite loops
+  // Note: Auto-expand for search matches is handled in JsonTree.svelte
 
   // Check if this node is focused
   let is_focused = $derived(ctx?.focused_path === path)

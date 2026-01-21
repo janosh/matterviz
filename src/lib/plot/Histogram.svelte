@@ -6,6 +6,7 @@
     BarStyle,
     DataLoaderFn,
     HistogramHandlerProps,
+    PanConfig,
     RefLine,
     RefLineEvent,
   } from '$lib/plot'
@@ -27,7 +28,12 @@
     create_dimension_tracker,
     create_hover_lock,
   } from '$lib/plot/hover-lock.svelte'
-  import { get_relative_coords } from '$lib/plot/interactions'
+  import {
+    get_relative_coords,
+    pan_range,
+    PINCH_ZOOM_THRESHOLD,
+    pixels_to_data_delta,
+  } from '$lib/plot/interactions'
   import {
     calc_auto_padding,
     constrain_tooltip_position,
@@ -98,6 +104,7 @@
     data_loader,
     on_axis_change,
     on_error,
+    pan = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & BasePlotProps & PlotConfig & {
     series: DataSeries[]
@@ -139,6 +146,7 @@
       new_series: DataSeries[],
     ) => void
     on_error?: (error: AxisLoadError) => void
+    pan?: PanConfig
   } = $props()
 
   // Local state for controls (initialized from props, owned by this component)
@@ -187,6 +195,26 @@
     current: { x: number; y: number } | null
     bounds: DOMRect | null
   }>({ start: null, current: null, bounds: null })
+
+  // Pan state
+  let is_focused = $state(false)
+  let shift_held = $state(false)
+  let pan_drag_state = $state<
+    {
+      start: { x: number; y: number }
+      initial_x_range: [number, number]
+      initial_y_range: [number, number]
+      initial_y2_range: [number, number]
+    } | null
+  >(null)
+  let touch_state = $state<
+    {
+      start_touches: { x: number; y: number }[]
+      initial_x_range: [number, number]
+      initial_y_range: [number, number]
+      initial_y2_range: [number, number]
+    } | null
+  >(null)
 
   // Legend placement stability state
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -577,9 +605,65 @@
     document.body.style.cursor = `default`
   }
 
+  // Pan drag handlers
+  const on_pan_move = (evt: MouseEvent) => {
+    if (!pan_drag_state) return
+    const dx = evt.clientX - pan_drag_state.start.x
+    const dy = evt.clientY - pan_drag_state.start.y
+
+    // Convert pixel delta to data delta (note: drag direction is inverted for natural pan feel)
+    const plot_width = width - pad.l - pad.r
+    const plot_height = height - pad.t - pad.b
+    const sensitivity = pan?.drag_sensitivity ?? 1
+
+    const x_delta = pixels_to_data_delta(
+      -dx * sensitivity,
+      pan_drag_state.initial_x_range,
+      plot_width,
+    )
+    const y_delta = pixels_to_data_delta(
+      dy * sensitivity,
+      pan_drag_state.initial_y_range,
+      plot_height,
+    )
+    const y2_delta = pixels_to_data_delta(
+      dy * sensitivity,
+      pan_drag_state.initial_y2_range,
+      plot_height,
+    )
+
+    ranges.current.x = pan_range(pan_drag_state.initial_x_range, x_delta)
+    ranges.current.y = pan_range(pan_drag_state.initial_y_range, y_delta)
+    ranges.current.y2 = pan_range(pan_drag_state.initial_y2_range, y2_delta)
+  }
+
+  const on_pan_end = () => {
+    pan_drag_state = null
+    document.body.style.cursor = ``
+    window.removeEventListener(`mousemove`, on_pan_move)
+    window.removeEventListener(`mouseup`, on_pan_end)
+  }
+
   function handle_mouse_down(evt: MouseEvent) {
     const coords = get_relative_coords(evt)
     if (!coords || !svg_element) return
+
+    // Check if pan is enabled and shift is held for pan mode
+    const pan_enabled = pan?.enabled !== false
+    if (pan_enabled && evt.shiftKey) {
+      evt.preventDefault()
+      pan_drag_state = {
+        start: { x: evt.clientX, y: evt.clientY },
+        initial_x_range: [...ranges.current.x] as [number, number],
+        initial_y_range: [...ranges.current.y] as [number, number],
+        initial_y2_range: [...ranges.current.y2] as [number, number],
+      }
+      document.body.style.cursor = `grabbing`
+      window.addEventListener(`mousemove`, on_pan_move)
+      window.addEventListener(`mouseup`, on_pan_end)
+      return
+    }
+
     drag_state = {
       start: coords,
       current: coords,
@@ -588,6 +672,136 @@
     window.addEventListener(`mousemove`, on_window_mouse_move)
     window.addEventListener(`mouseup`, on_window_mouse_up)
     evt.preventDefault()
+  }
+
+  // Wheel handler for pan (requires focus and shift)
+  function handle_wheel(evt: WheelEvent) {
+    const pan_enabled = pan?.enabled !== false
+    // Only capture wheel when focused AND Shift is held
+    if (!pan_enabled || !is_focused || !evt.shiftKey) return
+
+    evt.preventDefault()
+
+    const plot_width = width - pad.l - pad.r
+    const plot_height = height - pad.t - pad.b
+    const sensitivity = pan?.wheel_sensitivity ?? 1
+
+    // Determine pan direction based on wheel delta
+    const x_delta = pixels_to_data_delta(
+      evt.deltaX * sensitivity,
+      ranges.current.x,
+      plot_width,
+    )
+    const y_delta = pixels_to_data_delta(
+      evt.deltaY * sensitivity,
+      ranges.current.y,
+      plot_height,
+    )
+    const y2_delta = pixels_to_data_delta(
+      evt.deltaY * sensitivity,
+      ranges.current.y2,
+      plot_height,
+    )
+
+    if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
+      ranges.current.x = pan_range(ranges.current.x, x_delta)
+    } else {
+      ranges.current.y = pan_range(ranges.current.y, y_delta)
+      ranges.current.y2 = pan_range(ranges.current.y2, y2_delta)
+    }
+  }
+
+  // Touch handlers for pinch-zoom and two-finger pan
+  function handle_touch_start(evt: TouchEvent) {
+    const touch_enabled = pan?.touch_enabled !== false
+    if (!touch_enabled || evt.touches.length !== 2) return
+
+    evt.preventDefault()
+    const touches = Array.from(evt.touches)
+    touch_state = {
+      start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
+      initial_x_range: [...ranges.current.x] as [number, number],
+      initial_y_range: [...ranges.current.y] as [number, number],
+      initial_y2_range: [...ranges.current.y2] as [number, number],
+    }
+  }
+
+  function handle_touch_move(evt: TouchEvent) {
+    if (!touch_state || evt.touches.length !== 2) return
+    evt.preventDefault()
+
+    const [t1, t2] = Array.from(evt.touches)
+    const [s1, s2] = touch_state.start_touches
+
+    // Calculate center movement for pan
+    const start_center = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 }
+    const curr_center = {
+      x: (t1.clientX + t2.clientX) / 2,
+      y: (t1.clientY + t2.clientY) / 2,
+    }
+    const dx = curr_center.x - start_center.x
+    const dy = curr_center.y - start_center.y
+
+    // Calculate pinch scale (curr/start so spread = zoom out, pinch = zoom in)
+    const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
+    const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
+    const scale = curr_dist / start_dist
+
+    const plot_width = width - pad.l - pad.r
+    const plot_height = height - pad.t - pad.b
+
+    // If scale changed significantly, treat as pinch-zoom
+    if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD) {
+      // Pinch zoom centered on gesture center
+      // Divide by scale so spread (scale > 1) = smaller span (zoom in)
+      const x_span = touch_state.initial_x_range[1] - touch_state.initial_x_range[0]
+      const y_span = touch_state.initial_y_range[1] - touch_state.initial_y_range[0]
+      const y2_span = touch_state.initial_y2_range[1] -
+        touch_state.initial_y2_range[0]
+      const x_center =
+        (touch_state.initial_x_range[0] + touch_state.initial_x_range[1]) / 2
+      const y_center =
+        (touch_state.initial_y_range[0] + touch_state.initial_y_range[1]) / 2
+      const y2_center =
+        (touch_state.initial_y2_range[0] + touch_state.initial_y2_range[1]) / 2
+
+      ranges.current.x = [
+        x_center - x_span / scale / 2,
+        x_center + x_span / scale / 2,
+      ]
+      ranges.current.y = [
+        y_center - y_span / scale / 2,
+        y_center + y_span / scale / 2,
+      ]
+      ranges.current.y2 = [
+        y2_center - y2_span / scale / 2,
+        y2_center + y2_span / scale / 2,
+      ]
+    } else {
+      // Pan
+      const x_delta = pixels_to_data_delta(
+        -dx,
+        touch_state.initial_x_range,
+        plot_width,
+      )
+      const y_delta = pixels_to_data_delta(
+        dy,
+        touch_state.initial_y_range,
+        plot_height,
+      )
+      const y2_delta = pixels_to_data_delta(
+        dy,
+        touch_state.initial_y2_range,
+        plot_height,
+      )
+      ranges.current.x = pan_range(touch_state.initial_x_range, x_delta)
+      ranges.current.y = pan_range(touch_state.initial_y_range, y_delta)
+      ranges.current.y2 = pan_range(touch_state.initial_y2_range, y2_delta)
+    }
+  }
+
+  function handle_touch_end() {
+    touch_state = null
   }
 
   function handle_double_click() {
@@ -711,11 +925,15 @@
 {/snippet}
 
 <svelte:window
-  onkeydown={(e) => {
-    if (e.key === `Escape` && fullscreen) {
-      e.preventDefault()
+  onkeydown={(evt) => {
+    if (evt.key === `Escape` && fullscreen) {
+      evt.preventDefault()
       fullscreen = false
     }
+    if (evt.key === `Shift`) shift_held = true
+  }}
+  onkeyup={(evt) => {
+    if (evt.key === `Shift`) shift_held = false
   }}
 />
 
@@ -739,6 +957,9 @@
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <svg
     bind:this={svg_element}
+    tabindex="0"
+    onfocus={() => (is_focused = true)}
+    onblur={() => (is_focused = false)}
     onmouseenter={() => (hovered = true)}
     onmousedown={handle_mouse_down}
     onmouseleave={() => {
@@ -747,10 +968,13 @@
       on_bar_hover?.(null)
     }}
     ondblclick={handle_double_click}
-    style:cursor="crosshair"
+    onwheel={handle_wheel}
+    ontouchstart={handle_touch_start}
+    ontouchmove={handle_touch_move}
+    ontouchend={handle_touch_end}
+    style:cursor={pan_drag_state ? `grabbing` : shift_held ? `grab` : `crosshair`}
     role="img"
     aria-label="Interactive histogram. Drag to zoom, double-click to reset."
-    tabindex="0"
     onkeydown={(event) => {
       if (event.key === `Escape` && drag_state.start) {
         drag_state = { start: null, current: null, bounds: null }

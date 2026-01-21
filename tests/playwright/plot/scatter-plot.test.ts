@@ -1,7 +1,7 @@
 // deno-lint-ignore-file no-await-in-loop
 import type { XyObj } from '$lib/plot'
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
+import { get_tick_range, IS_CI } from '../helpers'
 
 // SHARED HELPER FUNCTIONS
 //
@@ -28,23 +28,6 @@ const click_radio = async (page: Page, selector: string): Promise<void> => {
 // Check if array values are in ascending order (empty arrays are vacuously ascending)
 const is_ascending = (arr: number[]): boolean =>
   arr.every((val, idx) => idx === 0 || val >= arr[idx - 1])
-
-// Get tick values and calculate range
-const get_tick_range = async (
-  axis_locator: Locator,
-): Promise<{ ticks: number[]; range: number }> => {
-  const tick_elements = await axis_locator.locator(`.tick text`).all()
-  const tick_texts = await Promise.all(
-    tick_elements.map((tick) => tick.textContent()),
-  )
-  const ticks = tick_texts
-    .map((text) => (text ? parseFloat(text) : NaN))
-    .filter((num) => !isNaN(num))
-
-  if (ticks.length < 2) return { ticks, range: 0 }
-  const range = Math.abs(Math.max(...ticks) - Math.min(...ticks))
-  return { ticks, range }
-}
 
 // Get label positions based on parent group transform
 const get_label_positions = async (
@@ -2182,5 +2165,130 @@ test.describe(`ScatterPlot Component Tests`, () => {
     if (dense_label_data.length > 1) {
       expect(unique_positions.size).toBeGreaterThan(1)
     }
+  })
+
+  // PAN FUNCTIONALITY TESTS
+
+  test(`Shift+drag pans the plot instead of zooming`, async ({ page }) => {
+    const plot_locator = page.locator(`#basic-example .scatter`)
+    const svg = plot_locator.locator(`> svg[role="img"]`).first()
+    const x_axis = plot_locator.locator(`g.x-axis`)
+    const y_axis = plot_locator.locator(`g.y-axis`)
+    const zoom_rect = plot_locator.locator(`rect.zoom-rect`)
+
+    // Get initial tick ranges
+    await x_axis.locator(`.tick text`).first().waitFor({
+      state: `visible`,
+      timeout: 15000,
+    })
+    const initial_x = await get_tick_range(x_axis)
+    const initial_y = await get_tick_range(y_axis)
+
+    const svg_box = await svg.boundingBox()
+    if (!svg_box) throw new Error(`SVG box not found`)
+
+    // Perform Shift+drag (should pan, not zoom)
+    const start_x = svg_box.x + svg_box.width * 0.3
+    const start_y = svg_box.y + svg_box.height * 0.5
+    const end_x = svg_box.x + svg_box.width * 0.7
+    const end_y = svg_box.y + svg_box.height * 0.5
+
+    await page.keyboard.down(`Shift`)
+    await page.mouse.move(start_x, start_y)
+    await page.mouse.down()
+    await page.mouse.move(end_x, end_y, { steps: 10 })
+
+    // Zoom rectangle should NOT appear during Shift+drag (pan mode)
+    await expect(zoom_rect).toBeHidden()
+
+    await page.mouse.up()
+    await page.keyboard.up(`Shift`)
+
+    // Verify axis ranges changed (pan occurred)
+    const panned_x = await get_tick_range(x_axis)
+    const panned_y = await get_tick_range(y_axis)
+
+    // X range should have shifted (pan moves the view)
+    // Since we dragged from left to right, the view should shift left (data shifts right)
+    expect(panned_x.ticks).not.toEqual(initial_x.ticks)
+
+    // Y range should remain approximately the same (horizontal pan only)
+    // Allow some tolerance for tick generation differences
+    expect(Math.abs(panned_y.range - initial_y.range)).toBeLessThan(initial_y.range * 0.1)
+
+    // Double-click to reset
+    await svg.dblclick()
+    const reset_x = await get_tick_range(x_axis)
+    expect(reset_x.ticks).toEqual(initial_x.ticks)
+  })
+
+  test(`cursor changes to grab/grabbing during pan`, async ({ page }) => {
+    const plot_locator = page.locator(`#basic-example .scatter`)
+    const svg = plot_locator.locator(`> svg[role="img"]`).first()
+
+    await expect(svg).toBeVisible()
+
+    // Initial cursor should be crosshair
+    await expect(svg).toHaveCSS(`cursor`, `crosshair`)
+
+    // Hold Shift - cursor should change to grab
+    await page.keyboard.down(`Shift`)
+    await expect(svg).toHaveCSS(`cursor`, `grab`)
+
+    // Start dragging - cursor should change to grabbing (via document.body)
+    const svg_box = await svg.boundingBox()
+    if (!svg_box) throw new Error(`SVG box not found`)
+
+    await page.mouse.move(svg_box.x + 100, svg_box.y + 100)
+    await page.mouse.down()
+
+    // Cursor is set on document.body during pan drag
+    const body_cursor = await page.evaluate(() => document.body.style.cursor)
+    expect(body_cursor).toBe(`grabbing`)
+
+    await page.mouse.up()
+    await page.keyboard.up(`Shift`)
+
+    // Cursor should return to crosshair
+    await expect(svg).toHaveCSS(`cursor`, `crosshair`)
+  })
+
+  test(`pan requires focus for wheel events`, async ({ page }) => {
+    const plot_locator = page.locator(`#basic-example .scatter`)
+    const svg = plot_locator.locator(`> svg[role="img"]`).first()
+    const y_axis = plot_locator.locator(`g.y-axis`)
+
+    await y_axis.locator(`.tick text`).first().waitFor({
+      state: `visible`,
+      timeout: 15000,
+    })
+    const initial_y = await get_tick_range(y_axis)
+
+    const svg_box = await svg.boundingBox()
+    if (!svg_box) throw new Error(`SVG box not found`)
+
+    // Try Shift+wheel WITHOUT focus (should not pan)
+    await page.mouse.move(svg_box.x + svg_box.width / 2, svg_box.y + svg_box.height / 2)
+    await page.keyboard.down(`Shift`)
+    await page.mouse.wheel(0, 100)
+    await page.keyboard.up(`Shift`)
+
+    // Verify no change (wheel was not captured without focus)
+    const after_wheel_no_focus = await get_tick_range(y_axis)
+    expect(after_wheel_no_focus.ticks).toEqual(initial_y.ticks)
+
+    // Now click to focus and try again
+    await svg.click()
+
+    await page.keyboard.down(`Shift`)
+    await page.mouse.wheel(0, 100)
+    await page.keyboard.up(`Shift`)
+
+    // Verify pan occurred (wheel was captured with focus)
+    const after_wheel_with_focus = await get_tick_range(y_axis)
+    expect(after_wheel_with_focus.ticks).not.toEqual(initial_y.ticks)
+
+    // Double-click to reset
+    await svg.dblclick()
   })
 })

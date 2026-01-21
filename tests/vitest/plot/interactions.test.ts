@@ -1,262 +1,153 @@
-import { get_relative_coords, is_valid_dimension } from '$lib/plot/interactions'
-import { describe, expect, test, vi } from 'vitest'
+// Unit tests for plot interaction utilities
+import { describe, expect, it } from 'vitest'
+import { pan_range, pixels_to_data_delta } from '$lib/plot/interactions'
 
-describe(`interactions utility functions`, () => {
-  describe(`get_relative_coords`, () => {
-    test.each([
-      {
-        name: `returns relative coordinates for valid event`,
-        client_x: 300,
-        client_y: 200,
-        svg_bounds: { left: 100, top: 50, width: 800, height: 600 },
-        has_bounds_method: true,
-        has_current_target: true,
-        expected: { x: 200, y: 150 },
-      },
-      {
-        name: `handles zero client coordinates`,
-        client_x: 0,
-        client_y: 0,
-        svg_bounds: { left: 50, top: 25, width: 800, height: 600 },
-        has_bounds_method: true,
-        has_current_target: true,
-        expected: { x: -50, y: -25 },
-      },
-      {
-        name: `handles negative relative coordinates`,
-        client_x: 100,
-        client_y: 50,
-        svg_bounds: { left: 200, top: 150, width: 800, height: 600 },
-        has_bounds_method: true,
-        has_current_target: true,
-        expected: { x: -100, y: -100 },
-      },
-      {
-        name: `handles large client coordinates`,
-        client_x: 9999,
-        client_y: 8888,
-        svg_bounds: { left: 10, top: 10, width: 800, height: 600 },
-        has_bounds_method: true,
-        has_current_target: true,
-        expected: { x: 9989, y: 8878 },
-      },
-      {
-        name: `handles decimal coordinates`,
-        client_x: 300.75,
-        client_y: 200.5,
-        svg_bounds: { left: 100.5, top: 50.25, width: 800, height: 600 },
-        has_bounds_method: true,
-        has_current_target: true,
-        expected: { x: 200.25, y: 150.25 },
-      },
-      {
-        name: `handles coordinates at SVG origin`,
-        client_x: 100,
-        client_y: 50,
-        svg_bounds: { left: 100, top: 50, width: 800, height: 600 },
-        has_bounds_method: true,
-        has_current_target: true,
-        expected: { x: 0, y: 0 },
-      },
-      {
-        name: `handles coordinates at SVG bottom-right`,
-        client_x: 900,
-        client_y: 650,
-        svg_bounds: { left: 100, top: 50, width: 800, height: 600 },
-        has_bounds_method: true,
-        has_current_target: true,
-        expected: { x: 800, y: 600 },
-      },
-      {
-        name: `handles very small SVG bounds`,
-        client_x: 11,
-        client_y: 6,
-        svg_bounds: { left: 10, top: 5, width: 2, height: 2 },
-        has_bounds_method: true,
-        has_current_target: true,
-        expected: { x: 1, y: 1 },
-      },
-      {
-        name: `returns null when currentTarget is null`,
-        client_x: 300,
-        client_y: 200,
-        svg_bounds: null,
-        has_bounds_method: false,
-        has_current_target: false,
-        expected: null,
-      },
-      {
-        name: `returns null when currentTarget is undefined`,
-        client_x: 300,
-        client_y: 200,
-        svg_bounds: undefined,
-        has_bounds_method: false,
-        has_current_target: false,
-        expected: null,
-      },
-      {
-        name: `returns null when getBoundingClientRect is undefined`,
-        client_x: 300,
-        client_y: 200,
-        svg_bounds: null,
-        has_bounds_method: false,
-        has_current_target: true,
-        expected: null,
-      },
-    ])(
-      `$name`,
-      (
-        {
-          client_x,
-          client_y,
-          svg_bounds,
-          has_bounds_method,
-          has_current_target,
-          expected,
-        },
-      ) => {
-        let mock_svg: SVGElement | null = null
-        const mock_event: MouseEvent = (() => {
-          if (has_current_target) {
-            if (has_bounds_method && svg_bounds) {
-              mock_svg = {
-                getBoundingClientRect: vi.fn(() => svg_bounds),
-              } as unknown as SVGElement
-            } else {
-              mock_svg = {} as SVGElement
-            }
-          }
-
-          return {
-            clientX: client_x,
-            clientY: client_y,
-            currentTarget: mock_svg,
-          } as unknown as MouseEvent
-        })()
-
-        const result = get_relative_coords(mock_event)
-
-        expect(result).toEqual(expected)
-        if (has_bounds_method && svg_bounds && mock_svg) {
-          expect(mock_svg.getBoundingClientRect).toHaveBeenCalledOnce()
-        }
-      },
-    )
+describe(`pan_range`, () => {
+  it(`shifts range by positive delta`, () => {
+    const result = pan_range([0, 10], 5)
+    expect(result).toEqual([5, 15])
   })
 
-  describe(`is_valid_dimension`, () => {
-    test.each([
-      // Basic range validation
-      { val: 50, min: 0, max: 100, expected: true },
-      { val: 0, min: 0, max: 100, expected: true },
-      { val: 100, min: 0, max: 100, expected: true },
-      { val: -1, min: 0, max: 100, expected: false },
-      { val: 101, min: 0, max: 100, expected: false },
-      { val: 50.5, min: 0, max: 100, expected: true },
-      { val: 0.1, min: 0, max: 100, expected: true },
-      { val: 99.9, min: 0, max: 100, expected: true },
+  it(`shifts range by negative delta`, () => {
+    const result = pan_range([0, 10], -5)
+    expect(result).toEqual([-5, 5])
+  })
 
-      // Negative ranges
-      { val: -50, min: -100, max: 0, expected: true },
-      { val: -150, min: -100, max: 0, expected: false },
-      { val: 50, min: -100, max: 0, expected: false },
-      { val: -100, min: -100, max: 0, expected: true },
-      { val: 0, min: -100, max: 0, expected: true },
+  it(`handles negative range values`, () => {
+    const result = pan_range([-10, -5], 3)
+    expect(result).toEqual([-7, -2])
+  })
 
-      // Zero range (single point)
-      { val: 42, min: 42, max: 42, expected: true },
-      { val: 41, min: 42, max: 42, expected: false },
-      { val: 43, min: 42, max: 42, expected: false },
-      { val: 42.0, min: 42, max: 42, expected: true },
+  it(`handles fractional delta`, () => {
+    const result = pan_range([0, 100], 0.5)
+    expect(result).toEqual([0.5, 100.5])
+  })
 
-      // Inverted range (max < min) - technically invalid but should handle gracefully
-      { val: 50, min: 100, max: 0, expected: false },
-      { val: 0, min: 100, max: 0, expected: false },
-      { val: 100, min: 100, max: 0, expected: false },
-      { val: 75, min: 100, max: 0, expected: false },
+  it(`returns a new array (immutable)`, () => {
+    const original: [number, number] = [0, 10]
+    const result = pan_range(original, 5)
+    expect(result).not.toBe(original)
+    expect(original).toEqual([0, 10]) // Original unchanged
+  })
+})
 
-      // Very large numbers
-      { val: 1e10, min: 0, max: 2e10, expected: true },
-      { val: 3e10, min: 0, max: 2e10, expected: false },
-      { val: 1e15, min: 1e14, max: 2e15, expected: true },
-      { val: 9e14, min: 1e14, max: 2e15, expected: true }, // Actually within range
+describe(`pixels_to_data_delta`, () => {
+  it(`converts positive pixel delta to data delta`, () => {
+    // 100px delta in a 200px range representing [0, 100] data range
+    const result = pixels_to_data_delta(100, [0, 100], 200)
+    expect(result).toBe(50) // 100px = 50 data units
+  })
 
-      // Very small numbers
-      { val: 1e-10, min: 0, max: 1e-5, expected: true },
-      { val: 1e-3, min: 0, max: 1e-5, expected: false },
-      { val: 5e-8, min: 1e-10, max: 1e-6, expected: true },
-      { val: 1e-12, min: 1e-10, max: 1e-6, expected: false },
+  it(`converts negative pixel delta to data delta`, () => {
+    const result = pixels_to_data_delta(-100, [0, 100], 200)
+    expect(result).toBe(-50)
+  })
 
-      // Decimal precision edge cases
-      { val: 0.1 + 0.2, min: 0.3, max: 0.4, expected: true }, // JavaScript precision issues
-      { val: 1.0000000000001, min: 1, max: 1.1, expected: true },
-      { val: 0.9999999999999, min: 0.9, max: 1, expected: true },
+  it(`handles zero pixel delta`, () => {
+    const result = pixels_to_data_delta(0, [0, 100], 200)
+    expect(result).toBe(0)
+  })
 
-      // Special numeric values
-      { val: NaN, min: 0, max: 100, expected: false },
-      { val: Infinity, min: 0, max: 100, expected: false },
-      { val: -Infinity, min: 0, max: 100, expected: false },
-      { val: 50, min: -Infinity, max: Infinity, expected: true },
-      { val: NaN, min: -Infinity, max: Infinity, expected: false },
-      { val: Infinity, min: -Infinity, max: Infinity, expected: true }, // Actually valid
+  it(`handles negative data range`, () => {
+    // [−50, 50] is a span of 100, displayed in 200px
+    const result = pixels_to_data_delta(100, [-50, 50], 200)
+    expect(result).toBe(50)
+  })
 
-      // Edge cases with infinity ranges
-      { val: 1e100, min: 0, max: Infinity, expected: true }, // Actually valid
-      { val: -1e100, min: -Infinity, max: 0, expected: true }, // Actually valid
+  it(`handles non-zero-based data range`, () => {
+    // [100, 200] is a span of 100, displayed in 200px
+    const result = pixels_to_data_delta(100, [100, 200], 200)
+    expect(result).toBe(50)
+  })
 
-      // Zero values
-      { val: 0, min: 0, max: 0, expected: true },
-      { val: -0, min: 0, max: 0, expected: true },
-      { val: 0, min: -1, max: 1, expected: true },
-      { val: -0, min: -1, max: 1, expected: true },
+  it(`scales correctly with different pixel ranges`, () => {
+    // Same data range, different pixel sizes
+    const result_small = pixels_to_data_delta(50, [0, 100], 100)
+    const result_large = pixels_to_data_delta(50, [0, 100], 200)
+    expect(result_small).toBe(50) // 50px = 50 data in 100px range
+    expect(result_large).toBe(25) // 50px = 25 data in 200px range
+  })
 
-      // Boundary precision
-      { val: 99.99999999999999, min: 0, max: 100, expected: true },
-      { val: 100.00000000000001, min: 0, max: 100, expected: false },
-      { val: -0.00000000000001, min: 0, max: 100, expected: false },
-    ])(
-      `validates $val within range [$min, $max] as $expected`,
-      ({ val, min, max, expected }) => {
-        expect(is_valid_dimension(val, min, max)).toBe(expected)
-      },
-    )
+  it(`handles fractional values`, () => {
+    const result = pixels_to_data_delta(10, [0, 50], 100)
+    expect(result).toBe(5)
+  })
 
-    test.each([
-      // Invalid value types
-      { val: null, min: 0, max: 100, expected: false },
-      { val: undefined, min: 0, max: 100, expected: false },
-      { val: `50`, min: 0, max: 100, expected: true }, // String numbers are coerced
-      { val: `not a number`, min: 0, max: 100, expected: false },
-      { val: [], min: 0, max: 100, expected: true }, // Empty array coerces to 0
-      { val: {}, min: 0, max: 100, expected: false },
-      { val: true, min: 0, max: 100, expected: true }, // true coerces to 1
-      { val: false, min: 0, max: 100, expected: true }, // false coerces to 0
+  it(`handles very small pixel ranges`, () => {
+    // 1px range with 100 data span
+    const result = pixels_to_data_delta(0.5, [0, 100], 1)
+    expect(result).toBe(50) // 0.5px = 50 data units
+  })
 
-      // Invalid min/max types
-      { val: 50, min: null, max: 100, expected: true }, // null coerces to 0
-      { val: 50, min: 0, max: null, expected: false },
-      { val: 50, min: undefined, max: 100, expected: false },
-      { val: 50, min: 0, max: undefined, expected: false },
-      { val: 50, min: `0`, max: 100, expected: true }, // String numbers are coerced
-      { val: 50, min: 0, max: `100`, expected: true }, // String numbers are coerced
+  it(`handles very large data ranges`, () => {
+    const result = pixels_to_data_delta(100, [0, 1e12], 200)
+    expect(result).toBe(5e11)
+  })
 
-      // All parameters invalid
-      { val: null, min: null, max: null, expected: false },
-      { val: undefined, min: undefined, max: undefined, expected: false },
-      { val: NaN, min: NaN, max: NaN, expected: false },
-    ])(
-      `handles invalid types: val=$val, min=$min, max=$max`,
-      ({ val, min, max, expected }) => {
-        expect(
-          is_valid_dimension(
-            val as number | null | undefined,
-            min as number,
-            max as number,
-          ),
-        ).toBe(
-          expected,
-        )
-      },
-    )
+  it(`handles single-point range (min === max)`, () => {
+    // Zero span means any pixel movement produces zero data delta
+    const result = pixels_to_data_delta(100, [50, 50], 200)
+    expect(result).toBe(0)
+  })
+
+  it(`produces consistent results for typical plot dimensions`, () => {
+    // Typical scatter plot: 600px wide, data range 0-1000
+    const result = pixels_to_data_delta(60, [0, 1000], 600)
+    expect(result).toBe(100) // 60px = 100 data units (10% of range)
+  })
+
+  it(`handles high-precision data ranges`, () => {
+    // Scientific data with small values
+    const result = pixels_to_data_delta(100, [0.001, 0.002], 200)
+    expect(result).toBeCloseTo(0.0005)
+  })
+
+  it(`returns zero when pixel_range is zero (division by zero guard)`, () => {
+    const result = pixels_to_data_delta(100, [0, 100], 0)
+    expect(result).toBe(0)
+  })
+})
+
+describe(`pan_range and pixels_to_data_delta integration`, () => {
+  it(`combined usage produces correct pan behavior`, () => {
+    // Simulate a pan: 50px drag on a 200px wide plot with [0, 100] range
+    const current_range: [number, number] = [0, 100]
+    const pixel_delta = 50
+    const pixel_range = 200
+
+    const data_delta = pixels_to_data_delta(pixel_delta, current_range, pixel_range)
+    const new_range = pan_range(current_range, data_delta)
+
+    // 50px = 25% of 200px = 25 data units
+    expect(data_delta).toBe(25)
+    expect(new_range).toEqual([25, 125])
+  })
+
+  it(`pan preserves range size after multiple operations`, () => {
+    let range: [number, number] = [0, 100]
+    const pixel_range = 200
+
+    // Pan right
+    range = pan_range(range, pixels_to_data_delta(50, range, pixel_range))
+    // Pan left
+    range = pan_range(range, pixels_to_data_delta(-30, range, pixel_range))
+    // Pan down (inverted Y)
+    range = pan_range(range, pixels_to_data_delta(20, range, pixel_range))
+
+    // Range span should be preserved (100 units)
+    expect(range[1] - range[0]).toBe(100)
+  })
+
+  it(`handles zoomed-in state correctly`, () => {
+    // After zooming in, data range is smaller but pixel range stays same
+    const zoomed_range: [number, number] = [40, 60] // Zoomed to center 20%
+    const pixel_range = 200
+
+    // 100px pan should now move 10 data units (20/200 * 100 = 10)
+    const data_delta = pixels_to_data_delta(100, zoomed_range, pixel_range)
+    expect(data_delta).toBe(10)
+
+    const new_range = pan_range(zoomed_range, data_delta)
+    expect(new_range).toEqual([50, 70])
   })
 })

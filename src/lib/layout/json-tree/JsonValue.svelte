@@ -2,7 +2,7 @@
   import { getContext } from 'svelte'
   import type { JsonTreeContext, JsonValueType } from './types'
   import { JSON_TREE_CONTEXT_KEY } from './types'
-  import { serialize_for_copy, values_equal } from './utils'
+  import { values_equal } from './utils'
 
   let {
     value,
@@ -104,15 +104,6 @@
     event.stopPropagation()
     is_expanded = !is_expanded
   }
-
-  // Copy the raw value
-  async function copy_raw() {
-    try {
-      await navigator.clipboard.writeText(serialize_for_copy(value))
-    } catch {
-      // Clipboard API not available
-    }
-  }
 </script>
 
 <span
@@ -123,7 +114,7 @@
   onkeydown={(event) => {
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
-      copy_raw()
+      ctx?.copy_value(path, value)
     }
   }}
   role="button"

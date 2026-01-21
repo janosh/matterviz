@@ -2,6 +2,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   get_axis_range_inputs,
+  get_tick_range,
   IS_CI,
   set_input_value,
   set_range_input,
@@ -1545,5 +1546,58 @@ test.describe(`Histogram Component Tests`, () => {
     await expect
       .poll(async () => await get_visible_series_count(), { timeout: 3000 })
       .toBe(2)
+  })
+
+  // PAN FUNCTIONALITY TESTS
+
+  test(`Shift+drag pans the histogram instead of zooming`, async ({ page }) => {
+    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const zoom_rect = histogram.locator(`.zoom-rect`)
+
+    // Wait for histogram to render
+    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
+      timeout: 5000,
+    })
+
+    const x_axis = histogram.locator(`g.x-axis`)
+    const y_axis = histogram.locator(`g.y-axis`)
+
+    const initial_x = await get_tick_range(x_axis)
+    const initial_y = await get_tick_range(y_axis)
+
+    const box = await histogram.boundingBox()
+    if (!box) throw new Error(`Histogram bbox not found`)
+
+    // Perform Shift+drag (should pan, not zoom)
+    const start_x = box.x + box.width * 0.3
+    const start_y = box.y + box.height * 0.5
+    const end_x = box.x + box.width * 0.7
+    const end_y = box.y + box.height * 0.5
+
+    await page.keyboard.down(`Shift`)
+    await page.mouse.move(start_x, start_y)
+    await page.mouse.down()
+    await page.mouse.move(end_x, end_y, { steps: 10 })
+
+    // Zoom rectangle should NOT appear during Shift+drag (pan mode)
+    await expect(zoom_rect).toBeHidden()
+
+    await page.mouse.up()
+    await page.keyboard.up(`Shift`)
+
+    // Verify axis ranges changed (pan occurred)
+    const panned_x = await get_tick_range(x_axis)
+    const panned_y = await get_tick_range(y_axis)
+
+    // X range should have shifted (pan moves the view)
+    expect(panned_x.ticks).not.toEqual(initial_x.ticks)
+
+    // Y range should remain approximately the same (horizontal pan only)
+    expect(Math.abs(panned_y.range - initial_y.range)).toBeLessThan(initial_y.range * 0.1)
+
+    // Double-click to reset
+    await histogram.dblclick()
+    const reset_x = await get_tick_range(x_axis)
+    expect(reset_x.ticks).toEqual(initial_x.ticks)
   })
 })
