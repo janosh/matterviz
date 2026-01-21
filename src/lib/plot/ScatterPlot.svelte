@@ -20,6 +20,7 @@
     InternalPoint,
     LabelPlacementConfig,
     LegendConfig,
+    PanConfig,
     PlotConfig,
     Point,
     RefLine,
@@ -90,7 +91,12 @@
     is_fill_gradient,
     resolve_boundary,
   } from './fill-utils'
-  import { get_relative_coords } from './interactions'
+  import {
+    get_relative_coords,
+    pan_range,
+    PINCH_ZOOM_THRESHOLD,
+    pixels_to_data_delta,
+  } from './interactions'
   import type { Rect } from './layout'
   import { calc_auto_padding, constrain_tooltip_position } from './layout'
   import type { IndexedRefLine } from './reference-line'
@@ -152,6 +158,7 @@
     data_loader,
     on_axis_change,
     on_error,
+    pan = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & Omit<BasePlotProps, `change`> & PlotConfig & {
     series?: DataSeries<Metadata>[]
@@ -219,6 +226,7 @@
       new_series: DataSeries<Metadata>[],
     ) => void
     on_error?: (error: AxisLoadError) => void
+    pan?: PanConfig
   } = $props()
 
   // Merged axis/display values with defaults (use $derived to avoid breaking $bindable)
@@ -267,11 +275,34 @@
   let drag_start_coords = $state<XyObj | null>(null)
   let drag_current_coords = $state<XyObj | null>(null)
 
-  // Zoom/pan state - single range state used for both initial and current
+  // Zoom/pan state - track both initial (data-driven) and current (after pan/zoom) ranges
+  let initial_x_range = $state<[number, number]>([0, 1])
+  let initial_y_range = $state<[number, number]>([0, 1])
+  let initial_y2_range = $state<[number, number]>([0, 1])
   let zoom_x_range = $state<[number, number]>([0, 1])
   let zoom_y_range = $state<[number, number]>([0, 1])
   let zoom_y2_range = $state<[number, number]>([0, 1])
   let previous_series_visibility: boolean[] | null = $state(null)
+
+  // Pan state
+  let is_focused = $state(false)
+  let shift_held = $state(false)
+  let pan_drag_state = $state<
+    {
+      start: { x: number; y: number }
+      initial_x_range: [number, number]
+      initial_y_range: [number, number]
+      initial_y2_range: [number, number]
+    } | null
+  >(null)
+  let touch_state = $state<
+    {
+      start_touches: { x: number; y: number }[]
+      initial_x_range: [number, number]
+      initial_y_range: [number, number]
+      initial_y2_range: [number, number]
+    } | null
+  >(null)
 
   // Fill region hover state
   let hovered_fill_idx = $state<number | null>(null)
@@ -416,6 +447,7 @@
   )
 
   // Update zoom ranges when auto ranges or explicit ranges change
+  // Compare against initial (data-driven) ranges to preserve user's pan/zoom state
   $effect(() => {
     const new_x = [
       final_x_axis.range?.[0] ?? auto_x_range[0],
@@ -430,13 +462,16 @@
       final_y2_axis.range?.[1] ?? auto_y2_range[1],
     ] as Vec2
 
-    if (new_x[0] !== zoom_x_range[0] || new_x[1] !== zoom_x_range[1]) {
+    if (new_x[0] !== initial_x_range[0] || new_x[1] !== initial_x_range[1]) {
+      initial_x_range = new_x
       zoom_x_range = new_x
     }
-    if (new_y[0] !== zoom_y_range[0] || new_y[1] !== zoom_y_range[1]) {
+    if (new_y[0] !== initial_y_range[0] || new_y[1] !== initial_y_range[1]) {
+      initial_y_range = new_y
       zoom_y_range = new_y
     }
-    if (new_y2[0] !== zoom_y2_range[0] || new_y2[1] !== zoom_y2_range[1]) {
+    if (new_y2[0] !== initial_y2_range[0] || new_y2[1] !== initial_y2_range[1]) {
+      initial_y2_range = new_y2
       zoom_y2_range = new_y2
     }
   })
@@ -1168,8 +1203,64 @@
     document.body.style.cursor = `default`
   }
 
+  // Pan drag handlers
+  const on_pan_move = (evt: MouseEvent) => {
+    if (!pan_drag_state) return
+    const dx = evt.clientX - pan_drag_state.start.x
+    const dy = evt.clientY - pan_drag_state.start.y
+
+    // Convert pixel delta to data delta (note: drag direction is inverted for natural pan feel)
+    // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
+    const plot_width = Math.max(1, width - pad.l - pad.r)
+    const plot_height = Math.max(1, height - pad.t - pad.b)
+    const sensitivity = pan?.drag_sensitivity ?? 1
+
+    const x_delta = pixels_to_data_delta(
+      -dx * sensitivity,
+      pan_drag_state.initial_x_range,
+      plot_width,
+    )
+    const y_delta = pixels_to_data_delta(
+      dy * sensitivity,
+      pan_drag_state.initial_y_range,
+      plot_height,
+    )
+    const y2_delta = pixels_to_data_delta(
+      dy * sensitivity,
+      pan_drag_state.initial_y2_range,
+      plot_height,
+    )
+
+    zoom_x_range = pan_range(pan_drag_state.initial_x_range, x_delta)
+    zoom_y_range = pan_range(pan_drag_state.initial_y_range, y_delta)
+    zoom_y2_range = pan_range(pan_drag_state.initial_y2_range, y2_delta)
+  }
+
+  const on_pan_end = () => {
+    pan_drag_state = null
+    document.body.style.cursor = ``
+    window.removeEventListener(`mousemove`, on_pan_move)
+    window.removeEventListener(`mouseup`, on_pan_end)
+  }
+
   function handle_mouse_down(evt: MouseEvent) {
     if (!svg_element) return
+
+    // Check if pan is enabled and shift is held for pan mode
+    const pan_enabled = pan?.enabled !== false
+    if (pan_enabled && evt.shiftKey) {
+      evt.preventDefault()
+      pan_drag_state = {
+        start: { x: evt.clientX, y: evt.clientY },
+        initial_x_range: [...zoom_x_range] as [number, number],
+        initial_y_range: [...zoom_y_range] as [number, number],
+        initial_y2_range: [...zoom_y2_range] as [number, number],
+      }
+      document.body.style.cursor = `grabbing`
+      window.addEventListener(`mousemove`, on_pan_move)
+      window.addEventListener(`mouseup`, on_pan_end)
+      return
+    }
 
     // Store bounding box first, then calculate coords using it
     svg_bounding_box = svg_element.getBoundingClientRect()
@@ -1186,6 +1277,137 @@
     window.addEventListener(`mouseup`, on_window_mouse_up)
     document.body.style.cursor = `crosshair`
     evt.preventDefault()
+  }
+
+  // Wheel handler for pan (requires focus and shift)
+  function handle_wheel(evt: WheelEvent) {
+    const pan_enabled = pan?.enabled !== false
+    // Only capture wheel when focused AND Shift is held
+    // Use shift_held state (tracked via keydown/keyup) for compatibility with synthetic events
+    if (!pan_enabled || !is_focused || !shift_held) return
+
+    evt.preventDefault()
+
+    // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
+    const plot_width = Math.max(1, width - pad.l - pad.r)
+    const plot_height = Math.max(1, height - pad.t - pad.b)
+    const sensitivity = pan?.wheel_sensitivity ?? 1
+
+    // Determine pan direction based on wheel delta
+    // deltaX for horizontal scroll (trackpad), deltaY for vertical
+    const x_delta = pixels_to_data_delta(
+      evt.deltaX * sensitivity,
+      zoom_x_range,
+      plot_width,
+    )
+    const y_delta = pixels_to_data_delta(
+      evt.deltaY * sensitivity,
+      zoom_y_range,
+      plot_height,
+    )
+    const y2_delta = pixels_to_data_delta(
+      evt.deltaY * sensitivity,
+      zoom_y2_range,
+      plot_height,
+    )
+
+    if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
+      zoom_x_range = pan_range(zoom_x_range, x_delta)
+    } else {
+      zoom_y_range = pan_range(zoom_y_range, y_delta)
+      zoom_y2_range = pan_range(zoom_y2_range, y2_delta)
+    }
+  }
+
+  // Touch handlers for pinch-zoom and two-finger pan
+  function handle_touch_start(evt: TouchEvent) {
+    const touch_enabled = pan?.enabled !== false && pan?.touch_enabled !== false
+    if (!touch_enabled || evt.touches.length !== 2) return
+
+    evt.preventDefault()
+    const touches = Array.from(evt.touches)
+    touch_state = {
+      start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
+      initial_x_range: [...zoom_x_range] as [number, number],
+      initial_y_range: [...zoom_y_range] as [number, number],
+      initial_y2_range: [...zoom_y2_range] as [number, number],
+    }
+  }
+
+  function handle_touch_move(evt: TouchEvent) {
+    if (!touch_state || evt.touches.length !== 2) return
+    evt.preventDefault()
+
+    const [t1, t2] = Array.from(evt.touches)
+    const [s1, s2] = touch_state.start_touches
+
+    // Calculate center movement for pan
+    const start_center = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 }
+    const curr_center = {
+      x: (t1.clientX + t2.clientX) / 2,
+      y: (t1.clientY + t2.clientY) / 2,
+    }
+    const dx = curr_center.x - start_center.x
+    const dy = curr_center.y - start_center.y
+
+    // Calculate pinch scale (curr/start so spread = zoom out, pinch = zoom in)
+    const start_dist = Math.hypot(s2.x - s1.x, s2.y - s1.y)
+    // Guard against zero-distance pinch to avoid Infinity scale
+    if (start_dist < Number.EPSILON) return
+    const curr_dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
+    const scale = curr_dist / start_dist
+
+    // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
+    const plot_width = Math.max(1, width - pad.l - pad.r)
+    const plot_height = Math.max(1, height - pad.t - pad.b)
+
+    // If scale changed significantly, treat as pinch-zoom
+    // Also guard against scale being too small to avoid division by zero
+    if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
+      // Pinch zoom centered on gesture center
+      // Divide by scale so spread (scale > 1) = smaller span (zoom in)
+      const x_span = touch_state.initial_x_range[1] - touch_state.initial_x_range[0]
+      const y_span = touch_state.initial_y_range[1] - touch_state.initial_y_range[0]
+      const y2_span = touch_state.initial_y2_range[1] -
+        touch_state.initial_y2_range[0]
+      const x_center =
+        (touch_state.initial_x_range[0] + touch_state.initial_x_range[1]) / 2
+      const y_center =
+        (touch_state.initial_y_range[0] + touch_state.initial_y_range[1]) / 2
+      const y2_center =
+        (touch_state.initial_y2_range[0] + touch_state.initial_y2_range[1]) / 2
+
+      zoom_x_range = [x_center - x_span / scale / 2, x_center + x_span / scale / 2]
+      zoom_y_range = [y_center - y_span / scale / 2, y_center + y_span / scale / 2]
+      zoom_y2_range = [
+        y2_center - y2_span / scale / 2,
+        y2_center + y2_span / scale / 2,
+      ]
+    } else {
+      // Pan
+      const x_delta = pixels_to_data_delta(
+        -dx,
+        touch_state.initial_x_range,
+        plot_width,
+      )
+      const y_delta = pixels_to_data_delta(
+        dy,
+        touch_state.initial_y_range,
+        plot_height,
+      )
+      const y2_delta = pixels_to_data_delta(
+        dy,
+        touch_state.initial_y2_range,
+        plot_height,
+      )
+      zoom_x_range = pan_range(touch_state.initial_x_range, x_delta)
+      zoom_y_range = pan_range(touch_state.initial_y_range, y_delta)
+      zoom_y2_range = pan_range(touch_state.initial_y2_range, y2_delta)
+    }
+  }
+
+  function handle_touch_end() {
+    touch_state = null
   }
 
   // tooltip logic: find closest point and update tooltip state
@@ -1497,11 +1719,15 @@
 {/snippet}
 
 <svelte:window
-  onkeydown={(e) => {
-    if (e.key === `Escape` && fullscreen) {
-      e.preventDefault()
+  onkeydown={(evt) => {
+    if (evt.key === `Escape` && fullscreen) {
+      evt.preventDefault()
       fullscreen = false
     }
+    if (evt.key === `Shift`) shift_held = true
+  }}
+  onkeyup={(evt) => {
+    if (evt.key === `Shift`) shift_held = false
   }}
 />
 
@@ -1521,13 +1747,17 @@
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <svg
       bind:this={svg_element}
+      tabindex="0"
+      onfocusin={() => (is_focused = true)}
+      onfocusout={() => (is_focused = false)}
       onmouseenter={() => (hovered = true)}
       onmousedown={handle_mouse_down}
       onmousemove={(evt: MouseEvent) => {
         // Only find closest point if not actively dragging
-        if (!drag_start_coords) on_mouse_move(evt)
+        if (!drag_start_coords && !pan_drag_state) on_mouse_move(evt)
       }}
       onmouseleave={() => {
         hovered = false
@@ -1535,12 +1765,24 @@
         on_point_hover?.(null)
       }}
       ondblclick={() => {
-        // Reset zoom to auto ranges (preserve other axis settings)
+        // Reset zoom to initial ranges (undo any pan/zoom)
+        zoom_x_range = [...initial_x_range] as [number, number]
+        zoom_y_range = [...initial_y_range] as [number, number]
+        zoom_y2_range = [...initial_y2_range] as [number, number]
+        // Also reset axis props so future data changes recalculate auto ranges
         x_axis = { ...x_axis, range: [null, null] }
         y_axis = { ...y_axis, range: [null, null] }
         y2_axis = { ...y2_axis, range: [null, null] }
       }}
-      style:cursor="crosshair"
+      onwheel={handle_wheel}
+      ontouchstart={handle_touch_start}
+      ontouchmove={handle_touch_move}
+      ontouchend={handle_touch_end}
+      style:cursor={pan_drag_state
+      ? `grabbing`
+      : shift_held && pan?.enabled !== false
+      ? `grab`
+      : `crosshair`}
       role="img"
     >
       {@render user_content?.({

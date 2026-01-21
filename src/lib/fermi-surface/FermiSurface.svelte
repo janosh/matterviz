@@ -11,6 +11,7 @@
   import type { CameraProjection } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
+  import { PlotTooltip } from '$lib/plot'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -20,13 +21,16 @@
   import { detect_irreducible_bz, extract_fermi_surface } from './compute'
   import FermiSurfaceControls from './FermiSurfaceControls.svelte'
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
+  import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
   import { parse_fermi_file } from './parse'
   import type {
     BandGridData,
     ColorProperty,
     FermiErrorData,
     FermiFileLoadData,
+    FermiHoverData,
     FermiSurfaceData,
+    FermiTooltipConfig,
     RepresentationMode,
   } from './types'
 
@@ -78,11 +82,13 @@
     loading = $bindable(false),
     error_msg = $bindable(),
     children,
+    tooltip_config,
     on_file_drop,
     on_file_load,
     on_error,
     on_fullscreen_change,
     on_mu_change,
+    on_hover,
     ...rest
   }: {
     fermi_data?: FermiSurfaceData
@@ -136,12 +142,20 @@
     on_error?: (data: FermiErrorData) => void
     on_fullscreen_change?: (data: FermiHandlerData) => void
     on_mu_change?: (mu: number) => void
+    tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
+    on_hover?: (data: FermiHoverData | null) => void
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
   let current_filename = $state<string | undefined>(undefined)
   let recompute_job_id = 0 // monotonic counter to track latest recompute call
+  let hover_data = $state<FermiHoverData | null>(null)
+
+  // Call on_hover callback when hover_data changes
+  $effect(() => {
+    on_hover?.(hover_data)
+  })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
@@ -478,8 +492,23 @@
           {camera_projection}
           bind:scene
           bind:camera
+          bind:hover_data
         />
       </Canvas>
+
+      <!-- Hover tooltip -->
+      {#if hover_data}
+        <PlotTooltip
+          x={hover_data.screen_position.x}
+          y={hover_data.screen_position.y}
+          offset={{ x: 12, y: -12 }}
+          bg_color={hover_data.surface_color}
+          fixed
+          style="z-index: 100000001; backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+        >
+          <FermiSurfaceTooltip {hover_data} tooltip={tooltip_config} />
+        </PlotTooltip>
+      {/if}
     {/if}
   {:else}
     <EmptyState>
