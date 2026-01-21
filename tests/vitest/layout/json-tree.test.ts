@@ -495,6 +495,18 @@ describe(`JsonTree`, () => {
       })
       expect(document.body.textContent).toContain(expected)
     })
+
+    it(`renders nested Map containing Set`, () => {
+      const nested = new Map([[`inner`, new Set([{ deep: true }])]])
+      mount(JsonTree, {
+        target: document.body,
+        props: { value: { nested }, show_header: false, default_fold_level: 10 },
+      })
+      const text = document.body.textContent
+      expect(text).toContain(`inner`)
+      expect(text).toContain(`deep`)
+      expect(text).toContain(`true`)
+    })
   })
 
   describe(`callbacks`, () => {
@@ -631,5 +643,41 @@ describe(`edge cases`, () => {
       props: { value: { test: value }, show_header: false },
     })
     expect(document.body.textContent).toContain(expected)
+  })
+
+  test.each([
+    [`日本語`, `日本語`],
+    [`🚀 🎨`, `🚀 🎨`],
+    [`∑∏∫`, `∑∏∫`],
+    [`line1\nline2`, `line1`],
+    [`   `, `"   "`],
+    [`<div>html</div>`, `<div>html</div>`],
+  ])(`renders unicode/special content: %p`, (content, expected) => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { text: content }, show_header: false },
+    })
+    expect(document.body.textContent).toContain(expected)
+  })
+
+  it(`renders numeric-looking string keys correctly`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { '123': `a`, '0': `b`, '-1': `c` }, show_header: false },
+    })
+    const text = document.body.textContent
+    expect(text).toContain(`"123"`)
+    expect(text).toContain(`"0"`)
+    expect(text).toContain(`"-1"`)
+  })
+
+  it(`renders scientific notation numbers`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { sci: 6.022e23, tiny: 1e-10 }, show_header: false },
+    })
+    const text = document.body.textContent
+    expect(text).toContain(`6.022e+23`)
+    expect(text).toContain(`1e-10`)
   })
 })

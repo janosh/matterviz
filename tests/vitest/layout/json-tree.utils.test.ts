@@ -173,6 +173,15 @@ describe(`build_path`, () => {
     expect(build_path(``, `key"with"quotes`)).toBe(`["key\\"with\\"quotes"]`)
   })
 
+  it.each([`123`, `0`, `-1`, `1.5`, `1e10`])(
+    `treats numeric-looking key %p as string`,
+    (key) => {
+      const path = build_path(`obj`, key)
+      expect(path).toBe(`obj["${key}"]`)
+      expect(parse_path(path)).toEqual([`obj`, key])
+    },
+  )
+
   it(`appends string key with dot notation`, () => {
     expect(build_path(`root`, `child`)).toBe(`root.child`)
   })
@@ -265,6 +274,25 @@ describe(`format_preview`, () => {
     function named_fn() {}
     expect(format_preview(named_fn)).toBe(`ƒ named_fn()`)
     expect(format_preview(() => {})).toBe(`ƒ anonymous()`)
+  })
+
+  it.each([
+    [6.022e23, `6.022e+23`],
+    [1e-10, `1e-10`],
+    [0.000000000001, `1e-12`],
+  ])(`formats scientific number %p as %p`, (value, expected) => {
+    expect(format_preview(value)).toBe(expected)
+  })
+
+  it.each([
+    `日本語テキスト`,
+    `🚀 🎨 🔧`,
+    `∑∏∫∂∇`,
+    `First\nSecond\tThird`,
+    ``,
+    `   `,
+  ])(`preserves unicode/special string: %p`, (str) => {
+    expect(format_preview(str)).toBe(`"${str}"`)
   })
 })
 

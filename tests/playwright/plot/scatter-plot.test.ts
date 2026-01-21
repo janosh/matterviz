@@ -2277,8 +2277,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const after_wheel_no_focus = await get_tick_range(y_axis)
     expect(after_wheel_no_focus.ticks).toEqual(initial_y.ticks)
 
-    // Now click to focus and try again
-    await svg.click()
+    // Now focus the element and try again
+    await svg.focus()
     await expect(svg).toBeFocused()
 
     // Re-position mouse and do Shift+wheel
