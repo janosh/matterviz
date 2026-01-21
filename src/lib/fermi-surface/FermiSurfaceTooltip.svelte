@@ -30,6 +30,8 @@
 
   // Format coordinate for display
   const fmt = (val: number) => format_num(val, `.4~`)
+  const fmt_vec = (vec: [number, number, number]) =>
+    `(${fmt(vec[0])}, ${fmt(vec[1])}, ${fmt(vec[2])})`
 </script>
 
 {#if tooltip_snippet}
@@ -50,20 +52,12 @@
     <div class="coords-section">
       <div class="coord-row">
         <span class="coord-label">k (Å⁻¹):</span>
-        <span class="coord-values">
-          ({fmt(hover_data.position_cartesian[0])},
-          {fmt(hover_data.position_cartesian[1])},
-          {fmt(hover_data.position_cartesian[2])})
-        </span>
+        <span class="coord-values">{fmt_vec(hover_data.position_cartesian)}</span>
       </div>
       {#if hover_data.position_fractional}
         <div class="coord-row">
           <span class="coord-label">k (frac):</span>
-          <span class="coord-values">
-            ({fmt(hover_data.position_fractional[0])},
-            {fmt(hover_data.position_fractional[1])},
-            {fmt(hover_data.position_fractional[2])})
-          </span>
+          <span class="coord-values">{fmt_vec(hover_data.position_fractional)}</span>
         </div>
       {/if}
     </div>

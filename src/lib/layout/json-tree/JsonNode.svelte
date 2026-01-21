@@ -52,6 +52,9 @@
     // Check if explicitly collapsed
     if (ctx?.collapsed.has(path)) return true
 
+    // Check if explicitly force-expanded (overrides auto-fold)
+    if (ctx?.force_expanded.has(path)) return false
+
     // If depth >= default_fold_level, default to collapsed
     const fold_level = ctx?.settings.default_fold_level ?? 2
     if (depth >= fold_level) return true
@@ -78,7 +81,7 @@
   function toggle_collapse(event?: MouseEvent) {
     event?.stopPropagation()
     if (ctx && expandable) {
-      ctx.toggle_collapse(path)
+      ctx.toggle_collapse(path, is_collapsed)
     }
   }
 

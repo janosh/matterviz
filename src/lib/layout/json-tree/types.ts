@@ -64,11 +64,12 @@ export interface JsonTreeContext {
     highlight_changes: boolean
   }
   collapsed: Set<string>
+  force_expanded: Set<string>
   search_query: string
   search_matches: Set<string>
   focused_path: string | null
   previous_values: Map<string, unknown>
-  toggle_collapse: (path: string) => void
+  toggle_collapse: (path: string, is_currently_collapsed: boolean) => void
   expand_all: () => void
   collapse_all: () => void
   collapse_to_level: (level: number) => void

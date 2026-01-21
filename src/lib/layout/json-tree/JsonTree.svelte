@@ -46,6 +46,8 @@
   let copy_feedback_path = $state<string | null>(null)
   let copy_feedback_error = $state(false)
   let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
+  // Track paths explicitly expanded (overrides auto-fold thresholds)
+  let force_expanded = $state(new SvelteSet<string>())
 
   // Debounce search input
   let search_debounce_timeout: ReturnType<typeof setTimeout> | undefined
@@ -95,42 +97,44 @@
   // Previous values map for change detection
   const previous_values = new Map<string, unknown>()
 
-  // Context functions
-  function toggle_collapse(path: string): void {
-    if (collapsed_paths.has(path)) {
+  // Toggle collapse - tracks force_expanded to override auto-fold thresholds
+  function toggle_collapse(path: string, is_currently_collapsed: boolean): void {
+    if (is_currently_collapsed) {
       collapsed_paths.delete(path)
+      force_expanded.add(path)
     } else {
+      force_expanded.delete(path)
       collapsed_paths.add(path)
     }
-    collapsed_paths = new SvelteSet(collapsed_paths) // trigger reactivity
+    collapsed_paths = new SvelteSet(collapsed_paths)
+    force_expanded = new SvelteSet(force_expanded)
   }
 
   function expand_all(): void {
-    collapsed_paths.clear()
-    collapsed_paths = new SvelteSet(collapsed_paths)
+    force_expanded = new SvelteSet(collect_all_paths(value, root_label ?? ``))
+    collapsed_paths = new SvelteSet()
   }
 
   function collapse_all(): void {
-    const all_paths = collect_all_paths(value, root_label ?? ``)
-    collapsed_paths = new SvelteSet(all_paths)
+    force_expanded = new SvelteSet()
+    collapsed_paths = new SvelteSet(collect_all_paths(value, root_label ?? ``))
   }
 
   function collapse_to_level(level: number): void {
     const all_paths = collect_all_paths(value, root_label ?? ``)
     const new_collapsed = new SvelteSet<string>()
+    const new_expanded = new SvelteSet<string>()
 
     for (const path of all_paths) {
-      // Use parse_path for accurate depth calculation (handles special keys)
       const segments = parse_path(path)
       const depth = root_label && segments[0] === root_label
         ? segments.length - 1
         : segments.length
-      if (depth >= level) {
-        new_collapsed.add(path)
-      }
+      ;(depth >= level ? new_collapsed : new_expanded).add(path)
     }
 
     collapsed_paths = new_collapsed
+    force_expanded = new_expanded
   }
 
   function set_focused(path: string | null): void {
@@ -212,6 +216,9 @@
     },
     get collapsed() {
       return collapsed_paths
+    },
+    get force_expanded() {
+      return force_expanded
     },
     get search_query() {
       return search_query
