@@ -348,15 +348,11 @@ export function parse_path(path: string): (string | number)[] {
           // Remove surrounding quotes and unescape internal quotes
           const unquoted = current.replace(/^"|"$/g, ``).replace(/\\"/g, `"`)
           segments.push(unquoted)
-        } else {
-          segments.push(num)
-        }
+        } else segments.push(num)
       }
       current = ``
       in_bracket = false
-    } else {
-      current += char
-    }
+    } else current += char
   }
 
   if (current) segments.push(current)
