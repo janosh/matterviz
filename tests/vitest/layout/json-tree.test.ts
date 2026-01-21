@@ -167,6 +167,27 @@ describe(`JsonTree`, () => {
   })
 
   describe(`arrays and objects`, () => {
+    it(`uses square brackets for arrays and braces for objects`, () => {
+      mount(JsonTree, {
+        target: document.body,
+        props: {
+          value: { arr: [1], obj: { a: 1 } },
+          show_header: false,
+          default_fold_level: 5,
+        },
+      })
+      const brackets = document.querySelectorAll(`.bracket`)
+      const bracket_text = Array.from(brackets).map((el) => el.textContent)
+      // Arrays use [ ], objects use { }
+      expect(bracket_text).toContain(`[`)
+      expect(bracket_text).toContain(`]`)
+      expect(bracket_text).toContain(`{`)
+      expect(bracket_text).toContain(`}`)
+      // Count: outer object { }, inner array [ ], inner object { } = 3 pairs each
+      expect(bracket_text.filter((text) => text === `[`).length).toBe(1) // Only arr uses [
+      expect(bracket_text.filter((text) => text === `{`).length).toBe(2) // outer obj + inner obj
+    })
+
     it(`shows array indices when show_array_indices=true`, () => {
       mount(JsonTree, {
         target: document.body,
@@ -326,14 +347,24 @@ describe(`JsonTree`, () => {
       mount(JsonTree, {
         target: document.body,
         props: {
-          value: { a: { b: { c: 1 } } },
-          default_fold_level: 1,
+          value: { a: { b: 1 } },
+          default_fold_level: 5, // High level so nothing auto-collapses
         },
       })
 
-      // Initially collapsed - shows preview
-      expect(document.body.textContent).toContain(`{1 key}`)
+      // Manually collapse via collapse all first
+      const collapse_btn = document.querySelector(
+        `button[title="Collapse all"]`,
+      ) as HTMLButtonElement
+      collapse_btn.click()
+      flushSync()
+      await tick()
 
+      // Now collapsed - shows preview
+      expect(document.body.textContent).toContain(`{1 key}`)
+      expect(document.body.textContent).not.toContain(`"b"`)
+
+      // Click expand all
       const expand_btn = document.querySelector(
         `button[title="Expand all"]`,
       ) as HTMLButtonElement
@@ -341,8 +372,8 @@ describe(`JsonTree`, () => {
       flushSync()
       await tick()
 
-      // After expand - nested values should be visible
-      expect(document.body.textContent).toContain(`"c"`)
+      // After expand - nested value visible again
+      expect(document.body.textContent).toContain(`"b"`)
     })
 
     it(`collapse all button collapses expanded nodes`, async () => {
@@ -354,7 +385,7 @@ describe(`JsonTree`, () => {
         },
       })
 
-      // Initially expanded - shows values
+      // Initially expanded - nested value visible
       expect(document.body.textContent).toContain(`"b"`)
 
       const collapse_btn = document.querySelector(
@@ -364,8 +395,9 @@ describe(`JsonTree`, () => {
       flushSync()
       await tick()
 
-      // After collapse - shows preview
-      expect(document.body.textContent).toContain(`{2 keys}`)
+      // After collapse - nested node shows preview, b is hidden
+      expect(document.body.textContent).toContain(`{1 key}`)
+      expect(document.body.textContent).not.toContain(`"b"`)
     })
 
     it(`collapse to level buttons work`, async () => {
@@ -589,23 +621,46 @@ describe(`JsonTree`, () => {
   })
 
   describe(`callbacks`, () => {
-    it(`accepts onselect prop`, () => {
+    it(`calls onselect when node is clicked`, async () => {
       const onselect = vi.fn()
-      // Just verify the component accepts the callback without error
       mount(JsonTree, {
         target: document.body,
-        props: { value: { name: `test` }, show_header: false, onselect },
+        props: {
+          value: { name: `test` },
+          show_header: false,
+          default_fold_level: 5,
+          onselect,
+        },
       })
-      expect(get_nodes().length).toBeGreaterThan(0)
+
+      // Click the child node (index 1), not root (index 0 has empty path)
+      const nodes = get_nodes()
+      nodes[1].click()
+      flushSync()
+      await tick()
+
+      expect(onselect).toHaveBeenCalledWith(`name`, `test`)
     })
 
-    it(`accepts oncopy prop`, () => {
+    it(`calls oncopy when value is copied`, async () => {
       const oncopy = vi.fn()
+      const write_text = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, `clipboard`, {
+        value: { writeText: write_text },
+        writable: true,
+      })
+
       mount(JsonTree, {
         target: document.body,
         props: { value: { name: `test` }, show_header: false, oncopy },
       })
-      expect(get_nodes().length).toBeGreaterThan(0)
+
+      const value_el = get_values()[0]
+      value_el.click()
+      flushSync()
+      await tick()
+
+      expect(oncopy).toHaveBeenCalledWith(`name`, `test`)
     })
   })
 
