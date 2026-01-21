@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { type FillGradient, type LegendItem, PlotLegend } from '$lib/plot'
 import { mount, tick } from 'svelte'
+import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -623,6 +624,29 @@ describe(`PlotLegend`, () => {
       chevron.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
       await tick()
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
+      expect(document.querySelectorAll(`.legend-item`).length).toBe(6)
+    })
+
+    test(`collapsed_groups prop controls initial collapse state`, async () => {
+      // Start with Li₂O group collapsed via prop
+      const collapsed = new SvelteSet([`Li₂O`])
+      mount(PlotLegend, {
+        target: document.body,
+        props: { series_data: make_grouped_data(), collapsed_groups: collapsed },
+      })
+
+      const chevrons = document.querySelectorAll(`.group-chevron`)
+      // Li₂O (first group) should be collapsed
+      expect(chevrons[0].classList.contains(`collapsed`)).toBe(true)
+      // NaCl (second group) should be expanded
+      expect(chevrons[1].classList.contains(`collapsed`)).toBe(false)
+      // Only 3 items visible (NaCl: 2 + Ungrouped: 1)
+      expect(document.querySelectorAll(`.legend-item`).length).toBe(3)
+
+      // Clicking chevron updates the bound set
+      chevrons[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+      expect(collapsed.has(`Li₂O`)).toBe(false) // Removed from set
       expect(document.querySelectorAll(`.legend-item`).length).toBe(6)
     })
 

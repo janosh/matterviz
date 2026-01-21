@@ -1,9 +1,10 @@
 <script lang="ts">
   import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
   import type { BrillouinZoneData } from '$lib/brillouin'
-  import type { Vec3 } from '$lib/math'
+  import type { Matrix4Tuple, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import { type CameraProjection, DEFAULTS } from '$lib/settings'
+  import { DEFAULTS } from '$lib/settings'
+  import type { CameraProjection } from '$lib/settings'
   import { Arrow, Cylinder } from '$lib/structure'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -18,6 +19,7 @@
     Color,
     DoubleSide,
     FrontSide,
+    Matrix4,
     Plane,
     Vector3,
   } from 'three'
@@ -25,10 +27,14 @@
   import { IDENTITY_4x4, OH_SYMMETRY_MATRICES } from './symmetry'
   import type {
     ColorProperty,
+    FermiHoverData,
     FermiSurfaceData,
     Isosurface,
     RepresentationMode,
   } from './types'
+
+  // Threlte pointer event type for mesh interactions
+  type ThreltePointerEvent = { point: Vector3; nativeEvent: PointerEvent }
 
   let {
     fermi_data = $bindable(),
@@ -72,6 +78,7 @@
     camera_is_moving = $bindable(false),
     scene = $bindable(),
     camera = $bindable(),
+    hover_data = $bindable<FermiHoverData | null>(null),
   }: {
     fermi_data?: FermiSurfaceData
     bz_data?: BrillouinZoneData
@@ -110,6 +117,7 @@
     camera_is_moving?: boolean
     scene?: Scene
     camera?: Camera
+    hover_data?: FermiHoverData | null
   } = $props()
 
   const threlte = useThrelte()
@@ -506,6 +514,102 @@
     }
     return { ...base, color: surface_color }
   }
+
+  // Compute inverse of k_lattice for Cartesian->fractional conversion (cached)
+  const k_lattice_inv = $derived.by(() => {
+    if (!fermi_data?.k_lattice) return null
+    try {
+      return math.matrix_inverse_3x3(fermi_data.k_lattice)
+    } catch {
+      return null
+    }
+  })
+
+  // Throttle state for pointer move events to avoid O(n) vertex lookups causing jank
+  let last_hover_time = 0
+
+  // Convert Cartesian k-coordinates to fractional (reciprocal lattice units)
+  // Returns null if k_lattice is unavailable or inversion failed
+  function cartesian_to_fractional(cart: Vec3): Vec3 | null {
+    if (!k_lattice_inv) return null
+    return math.mat3x3_vec3_multiply(k_lattice_inv, cart)
+  }
+
+  // Find index of nearest vertex to a point in a surface
+  function find_nearest_vertex(surface: Isosurface, point: Vec3): number {
+    let min_dist = Infinity
+    let nearest_idx = 0
+    for (let idx = 0; idx < surface.vertices.length; idx++) {
+      const vertex = surface.vertices[idx]
+      const dist = Math.hypot(
+        point[0] - vertex[0],
+        point[1] - vertex[1],
+        point[2] - vertex[2],
+      )
+      if (dist < min_dist) {
+        min_dist = dist
+        nearest_idx = idx
+      }
+    }
+    return nearest_idx
+  }
+
+  // Create hover data from pointer event on a surface
+  function create_hover_data(
+    event: ThreltePointerEvent,
+    surface: Isosurface,
+    surface_color: string,
+    sym_idx: number,
+    sym_matrix: Matrix4Tuple,
+  ): FermiHoverData {
+    // event.point is in world space (after sym_matrix transformation)
+    const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
+    const position_fractional = cartesian_to_fractional(position_cartesian)
+
+    // Transform world-space point to local space for nearest-vertex lookup
+    // surface.vertices are in local space (raw geometry before sym_matrix)
+    const local_point = event.point.clone()
+    const inv_matrix = new Matrix4().fromArray(sym_matrix).invert()
+    local_point.applyMatrix4(inv_matrix)
+    const local_position: Vec3 = [local_point.x, local_point.y, local_point.z]
+
+    // Find nearest vertex for property lookup (in local space)
+    const nearest_idx = find_nearest_vertex(surface, local_position)
+    const property_value = surface.properties?.[nearest_idx]
+    const has_velocities = fermi_data?.metadata?.has_velocities
+    const property_name = property_value != null
+      ? (has_velocities ? `velocity` : `custom`)
+      : undefined
+
+    const { clientX, clientY } = event.nativeEvent
+    return {
+      band_index: surface.band_index,
+      spin: surface.spin,
+      position_cartesian,
+      position_fractional,
+      screen_position: { x: clientX, y: clientY },
+      surface_color,
+      property_value,
+      property_name,
+      is_tiled: effective_tile_bz,
+      symmetry_index: sym_idx,
+    }
+  }
+
+  // Throttled handler for pointer move events
+  // Skips expensive nearest-vertex lookups if called too frequently
+  function handle_pointer_move(
+    event: ThreltePointerEvent,
+    surface: Isosurface,
+    surface_color: string,
+    sym_idx: number,
+    sym_matrix: Matrix4Tuple,
+  ): void {
+    const now = performance.now()
+    if (now - last_hover_time < constants.HOVER_THROTTLE_MS) return
+    last_hover_time = now
+    hover_data = create_hover_data(event, surface, surface_color, sym_idx, sym_matrix)
+  }
 </script>
 
 {#if camera_projection === `perspective`}
@@ -591,6 +695,11 @@
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             {renderOrder}
+            onpointermove={(event: ThreltePointerEvent) =>
+            handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+            onpointerleave={() => {
+              hover_data = null
+            }}
           >
             <T.MeshBasicMaterial
               color={surface_color}
@@ -609,6 +718,11 @@
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             renderOrder={renderOrder * 2}
+            onpointermove={(event: ThreltePointerEvent) =>
+            handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+            onpointerleave={() => {
+              hover_data = null
+            }}
           >
             <T.MeshStandardMaterial
               {...get_material_props(surface_color, use_vertex_colors, surface_idx, `back`)}
@@ -623,6 +737,11 @@
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             renderOrder={renderOrder * 2 + 1}
+            onpointermove={(event: ThreltePointerEvent) =>
+            handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+            onpointerleave={() => {
+              hover_data = null
+            }}
           >
             <T.MeshStandardMaterial
               {...get_material_props(
@@ -643,6 +762,11 @@
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             {renderOrder}
+            onpointermove={(event: ThreltePointerEvent) =>
+            handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+            onpointerleave={() => {
+              hover_data = null
+            }}
           >
             <T.MeshStandardMaterial
               {...get_material_props(

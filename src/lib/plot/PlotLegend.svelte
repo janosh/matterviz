@@ -13,6 +13,7 @@
     layout_tracks = 1, // Default to 1 column/row
     style = ``,
     item_style = ``,
+    collapsed_groups = $bindable(new SvelteSet<string>()),
     on_toggle = () => {},
     on_double_click = () => {},
     on_fill_toggle,
@@ -32,6 +33,8 @@
     layout_tracks?: number // Number of columns for horizontal, rows for vertical
     style?: string // Inline styles forwarded to wrapper div
     item_style?: string
+    // Bindable set of collapsed group names (pass initial values to collapse groups by default)
+    collapsed_groups?: Set<string>
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
     on_fill_toggle?: (
@@ -56,8 +59,6 @@
 
   let is_dragging = $state(false)
   let drag_start_coords = $state<{ x: number; y: number } | null>(null)
-  // Track collapsed groups
-  let collapsed_groups = new SvelteSet<string>()
 
   // Group series by legend_group, preserving order
   type GroupedData = { group_name: string | null; items: LegendItem[] }
@@ -84,6 +85,10 @@
   )
 
   function toggle_group_collapse(group_name: string) {
+    // Normalize to SvelteSet if a plain Set was passed (ensures reactivity)
+    if (!(collapsed_groups instanceof SvelteSet)) {
+      collapsed_groups = new SvelteSet(collapsed_groups)
+    }
     // Set.delete returns true if element existed, so add if delete failed
     if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
   }

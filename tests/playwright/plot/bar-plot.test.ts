@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
+import { get_tick_range, IS_CI } from '../helpers'
 
 test.describe(`BarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -460,5 +460,56 @@ test.describe(`BarPlot Component Tests`, () => {
     // Check that y2 axis exists
     const y2_axis = plot.locator(`g.y2-axis`)
     await expect(y2_axis).toBeVisible()
+  })
+
+  // PAN FUNCTIONALITY TESTS
+
+  test(`Shift+drag pans the bar plot instead of zooming`, async ({ page }) => {
+    const plot = page.locator(`#basic-bar .bar-plot`)
+    const svg = plot.locator(`svg[role="button"]`)
+    const x_axis = plot.locator(`g.x-axis`)
+    const y_axis = plot.locator(`g.y-axis`)
+    const zoom_rect = plot.locator(`.zoom-rect`)
+
+    // Wait for initial ticks
+    await expect(x_axis.locator(`.tick text`).first()).toBeVisible()
+
+    const initial_x = await get_tick_range(x_axis)
+    const initial_y = await get_tick_range(y_axis)
+
+    const box = await svg.boundingBox()
+    if (!box) throw new Error(`SVG bbox not found`)
+
+    // Perform Shift+drag (should pan, not zoom)
+    const start_x = box.x + box.width * 0.3
+    const start_y = box.y + box.height * 0.5
+    const end_x = box.x + box.width * 0.7
+    const end_y = box.y + box.height * 0.5
+
+    await page.keyboard.down(`Shift`)
+    await page.mouse.move(start_x, start_y)
+    await page.mouse.down()
+    await page.mouse.move(end_x, end_y, { steps: 10 })
+
+    // Zoom rectangle should NOT appear during Shift+drag (pan mode)
+    await expect(zoom_rect).toBeHidden()
+
+    await page.mouse.up()
+    await page.keyboard.up(`Shift`)
+
+    // Verify axis ranges changed (pan occurred)
+    const panned_x = await get_tick_range(x_axis)
+    const panned_y = await get_tick_range(y_axis)
+
+    // X range should have shifted (pan moves the view)
+    expect(panned_x.ticks).not.toEqual(initial_x.ticks)
+
+    // Y range should remain approximately the same (horizontal pan only)
+    expect(Math.abs(panned_y.range - initial_y.range)).toBeLessThan(initial_y.range * 0.1)
+
+    // Double-click to reset
+    await svg.dblclick()
+    const reset_x = await get_tick_range(x_axis)
+    expect(reset_x.ticks).toEqual(initial_x.ticks)
   })
 })

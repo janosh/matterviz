@@ -7,6 +7,7 @@
   import type {
     BandGridData,
     FermiFileLoadData,
+    FermiHoverData,
     FermiSurfaceData,
   } from '$lib/fermi-surface'
   import {
@@ -15,6 +16,7 @@
     is_band_grid_data,
     is_fermi_surface_data,
   } from '$lib/fermi-surface'
+  import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import { fermi_file_colors, fermi_surface_files } from '$site/fermi-surfaces'
   import { onMount } from 'svelte'
@@ -28,6 +30,38 @@
   let loading = $state(false)
   let slice_miller = $state<Vec3>([0, 0, 1])
   let slice_distance = $state(0)
+  let hover_data = $state<FermiHoverData | null>(null)
+  let hkl_input = $state(`001`) // Combined hkl input as string
+
+  // Parse hkl string like "001", "111", "121" into Vec3
+  function parse_hkl(input: string): Vec3 | null {
+    // Handle negative values with - prefix (e.g., "-101", "1-11")
+    const cleaned = input.replace(/\s/g, ``)
+    if (cleaned.length < 3) return null
+    const parts: number[] = []
+    let idx = 0
+    while (idx < cleaned.length && parts.length < 3) {
+      let neg = false
+      if (cleaned[idx] === `-`) {
+        neg = true
+        idx++
+      }
+      const digit = parseInt(cleaned[idx], 10)
+      if (isNaN(digit)) return null
+      parts.push(neg ? -digit : digit)
+      idx++
+    }
+    if (parts.length !== 3) return null
+    return parts as Vec3
+  }
+
+  // Update slice_miller when hkl_input changes
+  function handle_hkl_change(event: Event) {
+    const target = event.target as HTMLInputElement
+    hkl_input = target.value
+    const parsed = parse_hkl(hkl_input)
+    if (parsed) slice_miller = parsed
+  }
 
   function update_url(filename: string) {
     if (!browser) return
@@ -135,24 +169,46 @@
   style="margin-block: 1em"
 />
 
-<FermiSurface
-  bind:fermi_data
-  bind:band_data
-  bind:error_msg
-  bind:loading
-  style="height: 500px"
-  show_controls="hover"
-  on_file_drop={(filename: string) => {
-    active_file = filename
-    update_url(filename)
-  }}
-  on_file_load={(data: FermiFileLoadData) => {
-    active_file = data.filename
-    fermi_data = data.fermi_data
-    band_data = data.band_data
-    error_msg = undefined
-  }}
-/>
+<div class="fermi-container">
+  <FermiSurface
+    bind:fermi_data
+    bind:band_data
+    bind:error_msg
+    bind:loading
+    style="height: 500px"
+    show_controls="hover"
+    on_file_drop={(filename: string) => {
+      active_file = filename
+      update_url(filename)
+    }}
+    on_file_load={(data: FermiFileLoadData) => {
+      active_file = data.filename
+      fermi_data = data.fermi_data
+      band_data = data.band_data
+      error_msg = undefined
+    }}
+    on_hover={(data) => hover_data = data}
+    tooltip_config={{
+      suffix: (_data) => `File: <code>${active_file ?? `none`}</code>`,
+    }}
+  />
+
+  {#if hover_data}
+    <div class="hover-status">
+      <strong>Hovering:</strong> Band {hover_data.band_index}
+      {#if hover_data.spin}({hover_data.spin}){/if}
+      {#if hover_data.position_fractional}
+        at k = ({format_num(hover_data.position_fractional[0], `.2f`)},
+        {format_num(hover_data.position_fractional[1], `.2f`)},
+        {format_num(hover_data.position_fractional[2], `.2f`)})
+      {:else}
+        at k = ({format_num(hover_data.position_cartesian[0], `.3f`)},
+        {format_num(hover_data.position_cartesian[1], `.3f`)},
+        {format_num(hover_data.position_cartesian[2], `.3f`)}) Å⁻¹
+      {/if}
+    </div>
+  {/if}
+</div>
 
 {#if fermi_data}
   <section class="slice-section">
@@ -160,12 +216,18 @@
       <h3 style="margin: 0">2D Slice</h3>
       <label>
         hkl:
-        <input type="number" bind:value={slice_miller[0]} min="-3" max="3" />
-        <input type="number" bind:value={slice_miller[1]} min="-3" max="3" />
-        <input type="number" bind:value={slice_miller[2]} min="-3" max="3" />
+        <input
+          type="text"
+          value={hkl_input}
+          oninput={handle_hkl_change}
+          placeholder="001"
+          maxlength="6"
+          title="Miller indices (e.g. 001, 111, -101)"
+        />
       </label>
       <label>
-        d: <input type="range" bind:value={slice_distance} min="-1" max="1" step="0.05" />
+        d:
+        <input type="range" bind:value={slice_distance} min="-1" max="1" step="0.05" />
         <code>{slice_distance.toFixed(2)}</code>
       </label>
     </header>
@@ -192,6 +254,10 @@
     <li><strong>✂️ Slicing</strong> &ndash; 2D cross-sections along any plane</li>
     <li><strong>🔬 Brillouin Zone</strong> &ndash; 1st BZ overlay with axes</li>
     <li><strong>📊 Real-time</strong> &ndash; adjust μ and see changes instantly</li>
+    <li>
+      <strong>💬 Hover Tooltips</strong> &ndash; k-coordinates in Cartesian &amp;
+      fractional
+    </li>
   </ul>
 </section>
 
@@ -210,13 +276,34 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 1rem;
+    z-index: 10;
+    pointer-events: auto;
   }
   section.slice-section label {
     display: flex;
     align-items: center;
     gap: 3pt;
   }
-  section.slice-section input[type='number'] {
+  section.slice-section input[type='text'] {
+    width: 4em;
     text-align: center;
+    font-family: monospace;
+  }
+  section.slice-section input[type='range'] {
+    pointer-events: auto;
+  }
+  .fermi-container {
+    position: relative;
+  }
+  .hover-status {
+    position: absolute;
+    bottom: 1ex;
+    left: 1em;
+    background: var(--tooltip-bg, rgba(0, 0, 0, 0.85));
+    color: var(--tooltip-text, white);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    z-index: 10;
   }
 </style>
