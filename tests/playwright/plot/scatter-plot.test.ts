@@ -2279,7 +2279,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Now click to focus and try again
     await svg.click()
+    await expect(svg).toBeFocused()
 
+    // Re-position mouse and do Shift+wheel
+    await page.mouse.move(svg_box.x + svg_box.width / 2, svg_box.y + svg_box.height / 2)
     await page.keyboard.down(`Shift`)
     await page.mouse.wheel(0, 100)
     await page.keyboard.up(`Shift`)
