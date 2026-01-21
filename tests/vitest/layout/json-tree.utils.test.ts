@@ -412,9 +412,9 @@ describe(`find_matching_paths`, () => {
     expect(result.has(`users[0].name`)).toBe(true)
   })
 
-  it(`finds matches in Map keys`, () => {
+  it(`finds matches in Map keys (case-insensitive)`, () => {
     const map = new Map([
-      [`alice_key`, `value1`],
+      [`Alice_Key`, `value1`],
       [`bob_key`, `value2`],
     ])
     const result = find_matching_paths({ data: map }, `alice`)
