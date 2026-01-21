@@ -43,9 +43,7 @@
     <div class="tooltip-title">
       <strong>Band {hover_data.band_index}</strong>
       {#if hover_data.spin}
-        <span class="spin-label spin-{hover_data.spin}">
-          Spin {hover_data.spin === `up` ? `↑` : `↓`}
-        </span>
+        <span class="spin-badge spin-{hover_data.spin}">{hover_data.spin}</span>
       {/if}
     </div>
 
@@ -97,22 +95,25 @@
     gap: 6px;
     margin-bottom: 4px;
   }
-  .spin-label {
-    font-size: 0.85em;
+  .spin-badge {
+    font-size: 0.75em;
+    padding: 1px 4px;
+    border-radius: 3px;
     font-weight: 500;
   }
-  .spin-label.spin-up {
-    color: #e41a1c;
+  .spin-badge.spin-up {
+    background: #e41a1c;
+    color: white;
   }
-  .spin-label.spin-down {
-    color: #377eb8;
+  .spin-badge.spin-down {
+    background: #377eb8;
+    color: white;
   }
   .coords-section {
     margin: 4px 0;
   }
   .coord-row {
     display: flex;
-    align-items: center;
     gap: 4px;
     font-size: 0.9em;
   }
