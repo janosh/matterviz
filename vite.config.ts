@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck - tsgo has "Excessive stack depth" bug with Vite Plugin types
 import yaml from '@rollup/plugin-yaml'
 import { sveltekit } from '@sveltejs/kit/vite'
 import mdsvexamples from 'mdsvexamples/vite'

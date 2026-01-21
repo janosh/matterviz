@@ -164,6 +164,9 @@
 
   // Compute BZ when structure/order changes
   $effect(() => {
+    // Skip if bz_data was already provided externally (has valid vertices)
+    if (bz_data?.vertices?.length) return
+
     if (!structure || !(`lattice` in structure) || !structure.lattice) {
       bz_data = undefined
       return

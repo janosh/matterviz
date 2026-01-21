@@ -1,8 +1,16 @@
-// Parse and validate date, returns null if invalid
+// Parse and validate date, returns null if invalid.
+// Strings without timezone are treated as UTC (append Z if missing).
 export const parse_date = (date?: Date | string): Date | null => {
   if (!date) return null
-  const parsed = typeof date === `string` ? new Date(date) : date
-  return isNaN(parsed.getTime()) ? null : parsed
+  if (typeof date === `string`) {
+    // If string lacks timezone indicator, treat as UTC by appending Z
+    // Matches ISO format without timezone: 2024-01-15T14:30:00 or 2024-01-15 14:30:00
+    const has_tz = /Z$|[+-]\d{2}:\d{2}$|[+-]\d{4}$/.test(date)
+    const normalized = has_tz ? date : `${date.replace(` `, `T`)}Z`
+    const parsed = new Date(normalized)
+    return isNaN(parsed.getTime()) ? null : parsed
+  }
+  return isNaN(date.getTime()) ? null : date
 }
 
 // Format date as relative time: "5 hours ago", "2 days ago".

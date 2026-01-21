@@ -495,6 +495,14 @@ export interface ControlsConfig {
   pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
 }
 
+// Pan configuration for 2D plot components
+export interface PanConfig {
+  enabled?: boolean // default: true - whether panning is enabled
+  wheel_sensitivity?: number // default: 1 - multiplier for wheel delta
+  drag_sensitivity?: number // default: 1 - multiplier for drag delta
+  touch_enabled?: boolean // default: true - whether touch gestures are enabled
+}
+
 export type ControlsState = Required<PlotConfig> & {
   show_controls: boolean
   controls_open: boolean

@@ -10,9 +10,25 @@ export function get_relative_coords(evt: MouseEvent): { x: number; y: number } |
   return { x: evt.clientX - svg_box.left, y: evt.clientY - svg_box.top }
 }
 
-// Check if a value is within a range
-export const is_valid_dimension = (
-  val: number | null | undefined,
-  min: number,
-  max: number,
-): boolean => val !== null && val !== undefined && !isNaN(val) && val >= min && val <= max
+// Shift a range by a delta amount (no bounds constraint for free panning)
+export function pan_range(
+  current: [number, number],
+  delta: number,
+): [number, number] {
+  return [current[0] + delta, current[1] + delta]
+}
+
+// Convert pixel delta to data delta using current data range and pixel range
+export function pixels_to_data_delta(
+  pixel_delta: number,
+  data_range: [number, number],
+  pixel_range: number,
+): number {
+  if (pixel_range === 0) return 0
+  const data_span = data_range[1] - data_range[0]
+  return (pixel_delta / pixel_range) * data_span
+}
+
+// Threshold for distinguishing pinch-zoom from pan in touch gestures
+// Scale change > this value triggers zoom instead of pan
+export const PINCH_ZOOM_THRESHOLD = 0.1

@@ -294,10 +294,15 @@ describe(`Structure`, () => {
     // Trigger the drop event
     wrapper.dispatchEvent(drag_event)
 
-    // Wait for DOM update that indicates structure text is rendered
-    await new Promise<void>((resolve) => {
+    // Wait for DOM update that indicates structure text is rendered (with timeout)
+    await new Promise<void>((resolve, reject) => {
+      const timeout_id = setTimeout(() => {
+        observer.disconnect()
+        reject(new Error(`Timed out waiting for structure text "Ba Ti O3"`))
+      }, 3000)
       const maybe_resolve = (observer: MutationObserver) => {
         if (document.body.textContent?.includes(`Ba Ti O3`)) {
+          clearTimeout(timeout_id)
           observer.disconnect()
           resolve()
         }

@@ -127,6 +127,18 @@ export function get_axis_range_inputs(pane: Locator, axis_label: string) {
   return { min: inputs.first(), max: inputs.last() }
 }
 
+// Get tick values and range from an axis locator
+export async function get_tick_range(
+  axis_locator: Locator,
+): Promise<{ ticks: number[]; range: number }> {
+  const tick_texts = await axis_locator.locator(`.tick text`).allTextContents()
+  const ticks = tick_texts
+    .map((text) => (text ? parseFloat(text) : NaN))
+    .filter((num) => !isNaN(num))
+  if (ticks.length < 2) return { ticks, range: 0 }
+  return { ticks, range: Math.abs(Math.max(...ticks) - Math.min(...ticks)) }
+}
+
 // Set range input with optional verification
 export async function set_range_input(input: Locator, value: string): Promise<void> {
   await set_input_value(input, value)

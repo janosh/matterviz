@@ -4,6 +4,10 @@
 // Above this, tiling is auto-disabled for performance
 export const MAX_TRIANGLES_FOR_TILING = 50_000
 
+// Throttle interval (ms) for pointer move events during hover
+// Prevents expensive nearest-vertex O(n) lookups from causing UI jank
+export const HOVER_THROTTLE_MS = 16 // ~60fps
+
 // Numerical tolerances
 export const CLOSED_CONTOUR_TOLERANCE = 1e-6 // Distance threshold for detecting closed contours
 export const IRREDUCIBLE_BZ_TOLERANCE = 0.01 // Threshold for detecting irreducible BZ (vertices in positive octant)

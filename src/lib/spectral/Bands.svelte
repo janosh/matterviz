@@ -531,11 +531,16 @@
       {/if}
     {/each}
 
-    <!-- Symmetry point vertical lines -->
-    {#each Object.keys(x_axis_ticks).map(Number) as x_pos (x_pos)}
+    <!-- Symmetry point vertical lines (filter NaN from scale) -->
+    {#each Object.keys(x_axis_ticks).map(Number).map((x) => x_scale_fn(x)).filter(
+      Number.isFinite,
+    ) as
+      scaled_x
+      (scaled_x)
+    }
       <line
-        x1={x_scale_fn(x_pos)}
-        x2={x_scale_fn(x_pos)}
+        x1={scaled_x}
+        x2={scaled_x}
         y1={pad.t}
         y2={height - pad.b}
         stroke="var(--bands-symmetry-line-color, light-dark(black, white))"
@@ -545,22 +550,24 @@
     {/each}
 
     <!-- Fermi level line for electronic bands -->
-    {#if effective_fermi_level !== undefined}
-      {@const y_pos = y_scale_fn(effective_fermi_level)}
-      {@const x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
+    {@const fermi_y = effective_fermi_level !== undefined
+      ? y_scale_fn(effective_fermi_level)
+      : NaN}
+    {@const bands_x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
+    {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
       <line
         x1={pad.l}
-        x2={x_end}
-        y1={y_pos}
-        y2={y_pos}
+        x2={bands_x_end}
+        y1={fermi_y}
+        y2={fermi_y}
         stroke="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
         stroke-width="var(--bands-fermi-line-width, 1.5)"
         stroke-dasharray="var(--bands-fermi-line-dash, 6,3)"
         opacity="var(--bands-fermi-line-opacity, 0.8)"
       />
       <text
-        x={x_end + 4}
-        y={y_pos}
+        x={bands_x_end + 4}
+        y={fermi_y}
         dy="0.35em"
         font-size="10"
         fill="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
@@ -571,14 +578,13 @@
     {/if}
 
     <!-- Reference frequency horizontal line -->
-    {#if reference_frequency !== null}
-      {@const y_pos = y_scale_fn(reference_frequency)}
-      {@const x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
+    {@const ref_y = reference_frequency !== null ? y_scale_fn(reference_frequency) : NaN}
+    {#if Number.isFinite(ref_y) && Number.isFinite(bands_x_end)}
       <line
         x1={pad.l}
-        x2={x_end}
-        y1={y_pos}
-        y2={y_pos}
+        x2={bands_x_end}
+        y1={ref_y}
+        y2={ref_y}
         stroke="var(--bands-reference-line-color, light-dark(#d48860, #c47850))"
         stroke-width="var(--bands-reference-line-width, 1)"
         stroke-dasharray="var(--bands-reference-line-dash, 4,3)"

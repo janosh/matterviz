@@ -1038,6 +1038,7 @@ class Bands(MatterViz):
         legend: Any | None = None,
         line_kwargs: Any | None = None,
         line_tween: Any | None = None,
+        pan: Any | None = None,
         path_mode: Any | None = None,
         point_tween: Any | None = None,
         ref_lines: list | None = None,
@@ -1088,6 +1089,8 @@ class Bands(MatterViz):
             mv_props['line_kwargs'] = line_kwargs
         if line_tween is not None:
             mv_props['line_tween'] = line_tween
+        if pan is not None:
+            mv_props['pan'] = pan
         if path_mode is not None:
             mv_props['path_mode'] = path_mode
         if point_tween is not None:
@@ -1149,6 +1152,7 @@ class Dos(MatterViz):
         line_tween: Any | None = None,
         normalize: Any | None = None,
         orientation: Any | None = None,
+        pan: Any | None = None,
         pdos_filter: list[str] | None = None,
         pdos_type: Any | None = None,
         point_tween: Any | None = None,
@@ -1209,6 +1213,8 @@ class Dos(MatterViz):
             mv_props['normalize'] = normalize
         if orientation is not None:
             mv_props['orientation'] = orientation
+        if pan is not None:
+            mv_props['pan'] = pan
         if pdos_filter is not None:
             mv_props['pdos_filter'] = pdos_filter
         if pdos_type is not None:
@@ -1281,6 +1287,7 @@ class ScatterPlot(MatterViz):
         label_placement_config: dict | None = None,
         legend: Any | None = None,
         line_tween: Any | None = None,
+        pan: Any | None = None,
         point_tween: Any | None = None,
         ref_lines: list | None = None,
         selected_series_idx: int | None = None,
@@ -1322,6 +1329,8 @@ class ScatterPlot(MatterViz):
             mv_props['legend'] = legend
         if line_tween is not None:
             mv_props['line_tween'] = line_tween
+        if pan is not None:
+            mv_props['pan'] = pan
         if point_tween is not None:
             mv_props['point_tween'] = point_tween
         if ref_lines is not None:
@@ -1372,6 +1381,7 @@ class Histogram(MatterViz):
         data_loader: Any | None = None,
         legend: Any | None = None,
         mode: Any | None = None,
+        pan: Any | None = None,
         ref_lines: list | None = None,
         selected_property: str | None = None,
         series: list | None = None,
@@ -1397,6 +1407,8 @@ class Histogram(MatterViz):
             mv_props['legend'] = legend
         if mode is not None:
             mv_props['mode'] = mode
+        if pan is not None:
+            mv_props['pan'] = pan
         if ref_lines is not None:
             mv_props['ref_lines'] = ref_lines
         if selected_property is not None:

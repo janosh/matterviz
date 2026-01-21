@@ -545,13 +545,15 @@
       {/if}
 
       <!-- Fermi level line for electronic DOS -->
-      {#if effective_fermi_level !== undefined}
-        {@const pos = is_horizontal
-      ? y_scale_fn(effective_fermi_level)
-      : x_scale_fn(effective_fermi_level)}
+      {@const fermi_pos = effective_fermi_level !== undefined
+      ? (is_horizontal
+        ? y_scale_fn(effective_fermi_level)
+        : x_scale_fn(effective_fermi_level))
+      : NaN}
+      {#if Number.isFinite(fermi_pos)}
         {@const [x1, x2, y1, y2] = is_horizontal
-      ? [pad.l, width - pad.r, pos, pos]
-      : [pos, pos, pad.t, height - pad.b]}
+      ? [pad.l, width - pad.r, fermi_pos, fermi_pos]
+      : [fermi_pos, fermi_pos, pad.t, height - pad.b]}
         <line
           {x1}
           {x2}
@@ -566,7 +568,7 @@
         {#if is_horizontal}
           <text
             x={width - pad.r + 4}
-            y={pos}
+            y={fermi_pos}
             dy="0.35em"
             font-size="10"
             fill="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
@@ -576,7 +578,7 @@
           </text>
         {:else}
           <text
-            x={pos}
+            x={fermi_pos}
             y={pad.t - 4}
             text-anchor="middle"
             font-size="10"
@@ -589,13 +591,15 @@
       {/if}
 
       <!-- Reference frequency line -->
-      {#if reference_frequency !== null}
-        {@const pos = is_horizontal
-      ? y_scale_fn(reference_frequency)
-      : x_scale_fn(reference_frequency)}
+      {@const ref_pos = reference_frequency !== null
+      ? (is_horizontal
+        ? y_scale_fn(reference_frequency)
+        : x_scale_fn(reference_frequency))
+      : NaN}
+      {#if Number.isFinite(ref_pos)}
         {@const [x1, x2, y1, y2] = is_horizontal
-      ? [pad.l, width - pad.r, pos, pos]
-      : [pos, pos, pad.t, height - pad.b]}
+      ? [pad.l, width - pad.r, ref_pos, ref_pos]
+      : [ref_pos, ref_pos, pad.t, height - pad.b]}
         <line
           {x1}
           {x2}

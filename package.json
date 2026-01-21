@@ -18,6 +18,7 @@
     "preview": "vite preview",
     "test": "vitest --run && playwright test",
     "package": "svelte-package",
+    "prepare": "svelte-kit sync && svelte-package",
     "prepublishOnly": "svelte-package"
   },
   "dependencies": {
@@ -71,7 +72,7 @@
     "mdsvexamples": "^0.5.1",
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
-    "svelte-check": "^4.3.5",
+    "svelte-check-rs": "0.6.9",
     "svelte-preprocess": "^6.0.3",
     "svelte2tsx": "^0.7.46",
     "typescript": "5.9.3",
@@ -123,6 +124,10 @@
     "./feedback": {
       "types": "./dist/feedback/index.d.ts",
       "default": "./dist/feedback/index.js"
+    },
+    "./fermi-surface": {
+      "types": "./dist/fermi-surface/index.d.ts",
+      "default": "./dist/fermi-surface/index.js"
     },
     "./io": {
       "types": "./dist/io/index.d.ts",
