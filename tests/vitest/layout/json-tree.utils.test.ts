@@ -412,6 +412,16 @@ describe(`find_matching_paths`, () => {
     expect(result.has(`users[0].name`)).toBe(true)
   })
 
+  it(`finds matches in Map keys`, () => {
+    const map = new Map([
+      [`alice_key`, `value1`],
+      [`bob_key`, `value2`],
+    ])
+    const result = find_matching_paths({ data: map }, `alice`)
+    expect(result.has(`data[0]`)).toBe(true)
+    expect(result.has(`data[1]`)).toBe(false)
+  })
+
   it(`finds matches in keys and values`, () => {
     const obj = {
       alice: `not a name`,

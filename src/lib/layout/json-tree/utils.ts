@@ -342,8 +342,13 @@ export function find_matching_paths(
   } else if (type === `map`) {
     const map = value as Map<unknown, unknown>
     let idx = 0
-    for (const [_map_key, map_value] of map) {
+    for (const [map_key, map_value] of map) {
       const child_path = build_path(current_path, idx)
+      // Also check if Map key matches (convert to string for searching)
+      const key_str = String(map_key)
+      if (key_str.toLowerCase().includes(query.toLowerCase())) {
+        matches.add(child_path)
+      }
       const child_matches = find_matching_paths(map_value, query, child_path, idx, seen)
       for (const match of child_matches) matches.add(match)
       idx++
