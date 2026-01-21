@@ -96,31 +96,27 @@ describe(`JsonTree`, () => {
       },
     )
 
-    it(`renders BigInt with n suffix`, () => {
+    it.each([
+      { value: BigInt(9007199254740991), css: `bigint`, expected: `n` },
+      {
+        value: new Date(`2024-01-15T10:30:00.000Z`),
+        css: `date`,
+        expected: `2024-01-15T10:30:00.000Z`,
+      },
+      { value: /test/gi, css: `regexp`, expected: `/test/gi` },
+      {
+        value: new Error(`Something failed`),
+        css: `error`,
+        expected: `Error: Something failed`,
+      },
+      { value: Symbol(`description`), css: `symbol`, expected: `Symbol(description)` },
+    ])(`renders $css type containing "$expected"`, ({ value, css, expected }) => {
       mount(JsonTree, {
         target: document.body,
-        props: { value: { big: BigInt(9007199254740991) }, show_header: false },
+        props: { value: { test: value }, show_header: false },
       })
-      const value_el = get_values()[0]
-      expect(value_el.classList.contains(`bigint`)).toBe(true)
-      expect(value_el.textContent).toContain(`n`)
-    })
-
-    it(`renders Date as ISO string`, () => {
-      const date = new Date(`2024-01-15T10:30:00.000Z`)
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { date }, show_header: false },
-      })
-      expect(document.body.textContent).toContain(`2024-01-15T10:30:00.000Z`)
-    })
-
-    it(`renders RegExp correctly`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { pattern: /test/gi }, show_header: false },
-      })
-      expect(document.body.textContent).toContain(`/test/gi`)
+      expect(get_values()[0].classList.contains(css)).toBe(true)
+      expect(document.body.textContent).toContain(expected)
     })
 
     it(`renders function with ƒ prefix`, () => {
@@ -134,35 +130,17 @@ describe(`JsonTree`, () => {
       expect(document.body.textContent).toContain(`ƒ example_fn()`)
     })
 
-    it(`renders Error with name and message`, () => {
+    it.each([`Infinity`, `-Infinity`, `NaN`])(`renders special number %s`, (expected) => {
+      const value = expected === `NaN`
+        ? NaN
+        : expected === `Infinity`
+        ? Infinity
+        : -Infinity
       mount(JsonTree, {
         target: document.body,
-        props: { value: { err: new Error(`Something failed`) }, show_header: false },
+        props: { value: { num: value }, show_header: false },
       })
-      expect(document.body.textContent).toContain(`Error: Something failed`)
-    })
-
-    it(`renders Symbol correctly`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: { value: { sym: Symbol(`description`) }, show_header: false },
-      })
-      expect(document.body.textContent).toContain(`Symbol(description)`)
-    })
-
-    it(`renders special number values`, () => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { inf: Infinity, neg_inf: -Infinity, nan: NaN },
-          show_header: false,
-          default_fold_level: 5,
-        },
-      })
-      const text = document.body.textContent
-      expect(text).toContain(`Infinity`)
-      expect(text).toContain(`-Infinity`)
-      expect(text).toContain(`NaN`)
+      expect(document.body.textContent).toContain(expected)
     })
   })
 
@@ -623,52 +601,39 @@ describe(`edge cases`, () => {
   })
 
   it(`handles mixed array with various types`, () => {
-    const mixed = [1, `two`, true, null, { nested: `obj` }, [1, 2]]
     mount(JsonTree, {
       target: document.body,
-      props: { value: mixed, show_header: false, default_fold_level: 5 },
+      props: { value: [1, `two`, true, null], show_header: false, default_fold_level: 5 },
     })
-    expect(document.body.textContent).toContain(`1`)
-    expect(document.body.textContent).toContain(`"two"`)
-    expect(document.body.textContent).toContain(`true`)
-    expect(document.body.textContent).toContain(`null`)
+    const text = document.body.textContent
+    expect(text).toContain(`1`)
+    expect(text).toContain(`"two"`)
+    expect(text).toContain(`true`)
+    expect(text).toContain(`null`)
   })
 
   it(`handles object with special key names`, () => {
-    const obj = {
-      'key-with-dash': 1,
-      'key with spaces': 2,
-      '123numeric': 3,
-    }
     mount(JsonTree, {
       target: document.body,
-      props: { value: obj, show_header: false, default_fold_level: 5 },
+      props: { value: { 'key-with-dash': 1, 'key with spaces': 2 }, show_header: false },
     })
     expect(document.body.textContent).toContain(`key-with-dash`)
     expect(document.body.textContent).toContain(`key with spaces`)
   })
 
-  it(`handles primitive root values`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: `just a string`, show_header: false },
-    })
-    expect(document.body.textContent).toContain(`"just a string"`)
-  })
-
-  it(`handles null root value`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: null, show_header: false },
-    })
-    expect(document.body.textContent).toContain(`null`)
+  test.each([
+    { value: `just a string`, expected: `"just a string"` },
+    { value: null, expected: `null` },
+  ])(`handles primitive root: $expected`, ({ value, expected }) => {
+    mount(JsonTree, { target: document.body, props: { value, show_header: false } })
+    expect(document.body.textContent).toContain(expected)
   })
 
   test.each([
     { value: 0, expected: `0` },
     { value: ``, expected: `""` },
     { value: false, expected: `false` },
-  ])(`handles falsy value: $value`, ({ value, expected }) => {
+  ])(`handles falsy value: $expected`, ({ value, expected }) => {
     mount(JsonTree, {
       target: document.body,
       props: { value: { test: value }, show_header: false },

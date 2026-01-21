@@ -3,108 +3,47 @@ import { describe, expect, it } from 'vitest'
 import { pan_range, pixels_to_data_delta } from '$lib/plot/interactions'
 
 describe(`pan_range`, () => {
-  it(`shifts range by positive delta`, () => {
-    const result = pan_range([0, 10], 5)
-    expect(result).toEqual([5, 15])
-  })
-
-  it(`shifts range by negative delta`, () => {
-    const result = pan_range([0, 10], -5)
-    expect(result).toEqual([-5, 5])
-  })
-
-  it(`handles negative range values`, () => {
-    const result = pan_range([-10, -5], 3)
-    expect(result).toEqual([-7, -2])
-  })
-
-  it(`handles fractional delta`, () => {
-    const result = pan_range([0, 100], 0.5)
-    expect(result).toEqual([0.5, 100.5])
+  it.each([
+    { range: [0, 10], delta: 5, expected: [5, 15], desc: `positive delta` },
+    { range: [0, 10], delta: -5, expected: [-5, 5], desc: `negative delta` },
+    { range: [-10, -5], delta: 3, expected: [-7, -2], desc: `negative range` },
+    { range: [0, 100], delta: 0.5, expected: [0.5, 100.5], desc: `fractional delta` },
+  ])(`$desc: pan_range($range, $delta) = $expected`, ({ range, delta, expected }) => {
+    expect(pan_range(range as [number, number], delta)).toEqual(expected)
   })
 
   it(`returns a new array (immutable)`, () => {
     const original: [number, number] = [0, 10]
     const result = pan_range(original, 5)
     expect(result).not.toBe(original)
-    expect(original).toEqual([0, 10]) // Original unchanged
+    expect(original).toEqual([0, 10])
   })
 })
 
 describe(`pixels_to_data_delta`, () => {
-  it(`converts positive pixel delta to data delta`, () => {
-    // 100px delta in a 200px range representing [0, 100] data range
-    const result = pixels_to_data_delta(100, [0, 100], 200)
-    expect(result).toBe(50) // 100px = 50 data units
-  })
-
-  it(`converts negative pixel delta to data delta`, () => {
-    const result = pixels_to_data_delta(-100, [0, 100], 200)
-    expect(result).toBe(-50)
-  })
-
-  it(`handles zero pixel delta`, () => {
-    const result = pixels_to_data_delta(0, [0, 100], 200)
-    expect(result).toBe(0)
-  })
-
-  it(`handles negative data range`, () => {
-    // [−50, 50] is a span of 100, displayed in 200px
-    const result = pixels_to_data_delta(100, [-50, 50], 200)
-    expect(result).toBe(50)
-  })
-
-  it(`handles non-zero-based data range`, () => {
-    // [100, 200] is a span of 100, displayed in 200px
-    const result = pixels_to_data_delta(100, [100, 200], 200)
-    expect(result).toBe(50)
-  })
-
-  it(`scales correctly with different pixel ranges`, () => {
-    // Same data range, different pixel sizes
-    const result_small = pixels_to_data_delta(50, [0, 100], 100)
-    const result_large = pixels_to_data_delta(50, [0, 100], 200)
-    expect(result_small).toBe(50) // 50px = 50 data in 100px range
-    expect(result_large).toBe(25) // 50px = 25 data in 200px range
-  })
-
-  it(`handles fractional values`, () => {
-    const result = pixels_to_data_delta(10, [0, 50], 100)
-    expect(result).toBe(5)
-  })
-
-  it(`handles very small pixel ranges`, () => {
-    // 1px range with 100 data span
-    const result = pixels_to_data_delta(0.5, [0, 100], 1)
-    expect(result).toBe(50) // 0.5px = 50 data units
-  })
-
-  it(`handles very large data ranges`, () => {
-    const result = pixels_to_data_delta(100, [0, 1e12], 200)
-    expect(result).toBe(5e11)
-  })
-
-  it(`handles single-point range (min === max)`, () => {
-    // Zero span means any pixel movement produces zero data delta
-    const result = pixels_to_data_delta(100, [50, 50], 200)
-    expect(result).toBe(0)
-  })
-
-  it(`produces consistent results for typical plot dimensions`, () => {
-    // Typical scatter plot: 600px wide, data range 0-1000
-    const result = pixels_to_data_delta(60, [0, 1000], 600)
-    expect(result).toBe(100) // 60px = 100 data units (10% of range)
+  it.each([
+    { px: 100, data: [0, 100], size: 200, expected: 50, desc: `positive delta` },
+    { px: -100, data: [0, 100], size: 200, expected: -50, desc: `negative delta` },
+    { px: 0, data: [0, 100], size: 200, expected: 0, desc: `zero delta` },
+    { px: 100, data: [-50, 50], size: 200, expected: 50, desc: `negative data range` },
+    { px: 100, data: [100, 200], size: 200, expected: 50, desc: `non-zero-based range` },
+    { px: 10, data: [0, 50], size: 100, expected: 5, desc: `fractional result` },
+    { px: 0.5, data: [0, 100], size: 1, expected: 50, desc: `small pixel range` },
+    { px: 100, data: [0, 1e12], size: 200, expected: 5e11, desc: `large data range` },
+    { px: 100, data: [50, 50], size: 200, expected: 0, desc: `zero-span range` },
+    { px: 60, data: [0, 1000], size: 600, expected: 100, desc: `typical plot` },
+    { px: 100, data: [0, 100], size: 0, expected: 0, desc: `zero pixel range` },
+  ])(`$desc`, ({ px, data, size, expected }) => {
+    expect(pixels_to_data_delta(px, data as [number, number], size)).toBe(expected)
   })
 
   it(`handles high-precision data ranges`, () => {
-    // Scientific data with small values
-    const result = pixels_to_data_delta(100, [0.001, 0.002], 200)
-    expect(result).toBeCloseTo(0.0005)
+    expect(pixels_to_data_delta(100, [0.001, 0.002], 200)).toBeCloseTo(0.0005)
   })
 
-  it(`returns zero when pixel_range is zero (division by zero guard)`, () => {
-    const result = pixels_to_data_delta(100, [0, 100], 0)
-    expect(result).toBe(0)
+  it(`scales correctly with different pixel ranges`, () => {
+    expect(pixels_to_data_delta(50, [0, 100], 100)).toBe(50)
+    expect(pixels_to_data_delta(50, [0, 100], 200)).toBe(25)
   })
 })
 
