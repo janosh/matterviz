@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
-  import { setContext } from 'svelte'
+  import { setContext, tick } from 'svelte'
   import { highlight_matches, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -76,8 +76,7 @@
     if (search_debounce_timeout) clearTimeout(search_debounce_timeout)
     search_debounce_timeout = setTimeout(() => {
       search_query = search_input_value
-      // Auto-expand to show matches after search updates
-      // Using queueMicrotask to let derived values update first
+      // queueMicrotask lets derived search_matches update before expand_to_matches runs
       queueMicrotask(() => expand_to_matches())
     }, 150)
   }
@@ -103,7 +102,7 @@
 
   // Auto-expand ancestors of search matches when search query changes
   // This is called manually from the search input handler to avoid reactivity issues
-  function expand_to_matches(): void {
+  async function expand_to_matches(): Promise<void> {
     if (search_matches.size === 0) {
       current_match_index = -1
       return
@@ -134,13 +133,15 @@
     if (force_expanded_changed) {
       force_expanded = new SvelteSet(force_expanded)
     }
-    // Navigate to first match after DOM updates
-    queueMicrotask(() => {
-      if (sorted_matches.length > 0) {
+    // Wait for DOM to update before scrolling to match
+    await tick()
+    if (sorted_matches.length > 0) {
+      // Reset to first match if no selection or index is out of bounds
+      if (current_match_index < 0 || current_match_index >= sorted_matches.length) {
         current_match_index = 0
-        scroll_to_current_match()
       }
-    })
+      scroll_to_current_match()
+    }
   }
 
   // Scroll the current match into view
@@ -165,9 +166,8 @@
   // Navigate to previous match
   function go_to_prev_match(): void {
     if (sorted_matches.length === 0) return
-    current_match_index = current_match_index <= 0
-      ? sorted_matches.length - 1
-      : current_match_index - 1
+    current_match_index = (current_match_index - 1 + sorted_matches.length) %
+      sorted_matches.length
     scroll_to_current_match()
   }
 
@@ -191,9 +191,12 @@
   function toggle_collapse_recursive(path: string, collapse: boolean): void {
     const all_paths = collect_all_paths(value, root_label ?? ``)
     // Find all paths that start with this path (descendants)
-    const descendants = all_paths.filter(
+    // Empty path means root without label - all paths are descendants
+    let descendants = path === `` ? all_paths : all_paths.filter(
       (p) => p === path || p.startsWith(path + `.`) || p.startsWith(path + `[`),
     )
+    // Always include the current path itself (collect_all_paths excludes empty root path)
+    if (!descendants.includes(path)) descendants = [path, ...descendants]
     if (collapse) {
       for (const desc of descendants) {
         force_expanded.delete(desc)
@@ -247,10 +250,10 @@
       await navigator.clipboard.writeText(text)
       copy_feedback_error = false
       oncopy?.(path, text)
-    } catch {
+    } catch { // Clipboard API failed - still show feedback but as error
       copy_feedback_error = true
     }
-    copy_feedback_path = path
+    copy_feedback_path = path // Show feedback regardless of success/failure
     if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
     copy_feedback_timeout = setTimeout(() => {
       copy_feedback_path = null
@@ -401,6 +404,7 @@
       clear_search()
       search_input_element?.blur()
     } else if (event.key === `Enter` || event.key === `F3`) {
+      event.stopPropagation() // Prevent bubbling to handle_global_keydown
       navigate_match(event)
     }
   }
@@ -513,7 +517,7 @@
       <button
         type="button"
         class="copy-path-btn"
-        onclick={() => copy_path(focused_path ?? ``)}
+        onclick={() => copy_path(focused_path!)}
         title="Click to copy path"
         {@attach tooltip()}
       >

@@ -652,6 +652,27 @@ describe(`search navigation`, () => {
     expect(count?.textContent).toContain(`2 of 2`)
   })
 
+  it(`clamps match index when search results shrink`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { bar: 1, baz: 2, bat: 3 }, default_fold_level: 5 },
+    })
+
+    await type_search(`ba`)
+    expect(get_match_count()?.textContent).toContain(`1 of 3`)
+
+    // Navigate to third match
+    get_nav_btns()[1].click()
+    get_nav_btns()[1].click()
+    flushSync()
+    await tick()
+    expect(get_match_count()?.textContent).toContain(`3 of 3`)
+
+    // Change search to only match one item - index should clamp to 0
+    await type_search(`bat`)
+    expect(get_match_count()?.textContent).toContain(`1 of 1`)
+  })
+
   it(`highlights current match with distinct class`, async () => {
     mount(JsonTree, {
       target: document.body,
@@ -866,6 +887,81 @@ describe(`double-click recursive expand/collapse`, () => {
     after.notContains.forEach((text) =>
       expect(document.body.textContent).not.toContain(text)
     )
+  })
+
+  // Test for root node double-click when root_label is undefined (empty path)
+  // Verifies that toggle_collapse_recursive handles empty path correctly
+  it.each([
+    {
+      desc: `collapses all from root without label`,
+      fold_level: 10,
+      before: { contains: [`"b"`, `"c"`], notContains: [] },
+      after: { contains: [], notContains: [`"b"`, `"c"`] },
+    },
+  ])(
+    `double-click root (empty path) $desc`,
+    async ({ fold_level, before, after }) => {
+      mount(JsonTree, {
+        target: document.body,
+        props: {
+          value: { a: { b: { c: 1 }, d: 2 } },
+          show_header: false,
+          default_fold_level: fold_level,
+          // No root_label means root path is empty string
+        },
+      })
+
+      before.contains.forEach((text) => expect(document.body.textContent).toContain(text))
+      before.notContains.forEach((text) =>
+        expect(document.body.textContent).not.toContain(text)
+      )
+
+      // Double-click on root node (index 0) - has empty path when no root_label
+      const root_node = document.querySelectorAll(`.json-node`)[0]
+      expect(root_node.getAttribute(`data-path`)).toBe(``)
+      root_node.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      flushSync()
+      await tick()
+
+      after.contains.forEach((text) => expect(document.body.textContent).toContain(text))
+      after.notContains.forEach((text) =>
+        expect(document.body.textContent).not.toContain(text)
+      )
+    },
+  )
+
+  it(`double-click root (empty path) expands after collapse all`, async () => {
+    // Start with everything expanded, collapse all, then double-click root to expand
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: { b: { c: 1 }, d: 2 } },
+        show_header: false,
+        default_fold_level: 10, // Everything expanded initially
+      },
+    })
+
+    // Initially everything is visible
+    expect(document.body.textContent).toContain(`"c"`)
+
+    // Double-click root to collapse all descendants
+    const root_node = document.querySelectorAll(`.json-node`)[0]
+    expect(root_node.getAttribute(`data-path`)).toBe(``)
+    root_node.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    flushSync()
+    await tick()
+
+    // Now everything should be collapsed - c is hidden
+    expect(document.body.textContent).not.toContain(`"c"`)
+
+    // Double-click root again to expand all descendants
+    root_node.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    flushSync()
+    await tick()
+
+    // Now everything should be visible again
+    expect(document.body.textContent).toContain(`"c"`)
+    expect(document.body.textContent).toContain(`"d"`)
   })
 
   it(`nodes have data-path attribute`, () => {

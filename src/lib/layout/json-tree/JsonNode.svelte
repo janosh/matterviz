@@ -168,9 +168,7 @@
       (event.key === `c` || event.key === `C`) && (event.ctrlKey || event.metaKey)
     ) {
       event.preventDefault()
-      if (ctx) {
-        ctx.copy_value(path, value)
-      }
+      ctx?.copy_value(path, value)
     }
   }
 
