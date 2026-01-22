@@ -67,14 +67,17 @@ export interface JsonTreeContext {
   force_expanded: Set<string>
   search_query: string
   search_matches: Set<string>
+  current_match_path: string | null
   focused_path: string | null
   previous_values: Map<string, unknown>
   toggle_collapse: (path: string, is_currently_collapsed: boolean) => void
+  toggle_collapse_recursive: (path: string, collapse: boolean) => void
   expand_all: () => void
   collapse_all: () => void
   collapse_to_level: (level: number) => void
   set_focused: (path: string | null) => void
   copy_value: (path: string, value: unknown) => Promise<void>
+  copy_path: (path: string) => Promise<void>
   register_path: (path: string) => void
   unregister_path: (path: string) => void
 }

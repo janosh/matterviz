@@ -77,6 +77,9 @@
   // Check if this node is focused
   let is_focused = $derived(ctx?.focused_path === path)
 
+  // Check if this is the current search match being navigated
+  let is_current_match = $derived(ctx?.current_match_path === path)
+
   // Toggle collapse state
   function toggle_collapse(event?: MouseEvent) {
     event?.stopPropagation()
@@ -85,11 +88,18 @@
     }
   }
 
+  // Toggle collapse recursively on double-click
+  function toggle_collapse_recursive(event: MouseEvent) {
+    event.stopPropagation()
+    if (ctx && expandable) {
+      // If collapsed, expand all; if expanded, collapse all
+      ctx.toggle_collapse_recursive(path, !is_collapsed)
+    }
+  }
+
   // Focus this node
   function focus_node() {
-    if (ctx) {
-      ctx.set_focused(path)
-    }
+    ctx?.set_focused(path)
   }
 
   // Get children based on value type
@@ -180,11 +190,14 @@
   class:collapsed={is_collapsed}
   class:expandable
   class:focused={is_focused}
+  class:current-match={is_current_match}
+  data-path={path}
   role="treeitem"
   aria-expanded={expandable ? !is_collapsed : undefined}
   aria-selected={is_focused}
   tabindex={is_focused ? 0 : -1}
   onclick={focus_node}
+  ondblclick={toggle_collapse_recursive}
   onkeydown={handle_keydown}
 >
   <span class="node-content">
@@ -206,11 +219,11 @@
         type="button"
         class="node-key"
         class:array-index={typeof node_key === `number`}
-        title="Click to copy key"
+        title="Click to copy path: {path}"
         tabindex="-1"
         onclick={(event) => {
           event.stopPropagation()
-          navigator.clipboard.writeText(String(node_key)).catch(() => {})
+          ctx?.copy_path(path)
         }}
       >
         {#if typeof node_key === `number` && ctx?.settings.show_array_indices}
@@ -270,6 +283,10 @@
   }
   .json-node.focused > .node-content {
     background: var(--jt-focus-bg, light-dark(#e3f2fd, #0d3a58));
+    border-radius: 2px;
+  }
+  .json-node.current-match > .node-content {
+    background: var(--jt-current-match-bg, light-dark(#ffcc80, #8a5600));
     border-radius: 2px;
   }
   .node-content {

@@ -17,6 +17,8 @@
 
   // Constant set for arrow key detection (avoid allocating on every keydown)
   const ARROW_KEYS = new Set([`ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight`])
+  // Shared empty set for when there's no search query (avoid allocation on every derivation)
+  const EMPTY_MATCHES = new SvelteSet<string>()
 
   let {
     value,
@@ -48,6 +50,12 @@
   let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
   // Track paths explicitly expanded (overrides auto-fold thresholds)
   let force_expanded = $state(new SvelteSet<string>())
+  // Current match index for navigation (0-based, -1 means no selection)
+  let current_match_index = $state(-1)
+  // Reference to the content container for scrolling
+  let content_element: HTMLDivElement | undefined = $state()
+  // Reference to the search input for focus management
+  let search_input_element: HTMLInputElement | undefined = $state()
 
   // Clear force_expanded when value changes (stale paths from old data)
   let prev_value_ref: unknown
@@ -76,14 +84,30 @@
 
   // Compute search matches
   let search_matches = $derived.by(() => {
-    if (!search_query) return new SvelteSet<string>()
+    if (!search_query) return EMPTY_MATCHES
     return new SvelteSet(find_matching_paths(value, search_query, root_label ?? ``))
+  })
+
+  // Sorted matches list for navigation (maintains DOM order via registered_paths_list)
+  let sorted_matches = $derived.by(() => {
+    if (search_matches.size === 0) return []
+    // Filter registered paths to only include matches, preserving DOM order
+    return registered_paths_list.filter((path) => search_matches.has(path))
+  })
+
+  // Current match path (the one being navigated to)
+  let current_match_path = $derived.by(() => {
+    if (sorted_matches.length === 0 || current_match_index < 0) return null
+    return sorted_matches[current_match_index] ?? null
   })
 
   // Auto-expand ancestors of search matches when search query changes
   // This is called manually from the search input handler to avoid reactivity issues
   function expand_to_matches(): void {
-    if (search_matches.size === 0) return
+    if (search_matches.size === 0) {
+      current_match_index = -1
+      return
+    }
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local variable, not reactive state
     const paths_to_expand = new Set<string>()
     for (const match of search_matches) {
@@ -91,16 +115,60 @@
         paths_to_expand.add(ancestor)
       }
     }
-    let changed = false
+    let collapsed_changed = false
+    let force_expanded_changed = false
     for (const path_to_expand of paths_to_expand) {
       if (collapsed_paths.has(path_to_expand)) {
         collapsed_paths.delete(path_to_expand)
-        changed = true
+        collapsed_changed = true
+      }
+      // Also add to force_expanded to override auto-fold thresholds (depth/size)
+      if (!force_expanded.has(path_to_expand)) {
+        force_expanded.add(path_to_expand)
+        force_expanded_changed = true
       }
     }
-    if (changed) {
+    if (collapsed_changed) {
       collapsed_paths = new SvelteSet(collapsed_paths)
     }
+    if (force_expanded_changed) {
+      force_expanded = new SvelteSet(force_expanded)
+    }
+    // Navigate to first match after DOM updates
+    queueMicrotask(() => {
+      if (sorted_matches.length > 0) {
+        current_match_index = 0
+        scroll_to_current_match()
+      }
+    })
+  }
+
+  // Scroll the current match into view
+  function scroll_to_current_match(): void {
+    if (!current_match_path || !content_element) return
+    // Find the element with the matching path using data attribute
+    const match_element = content_element.querySelector(
+      `[data-path="${CSS.escape(current_match_path)}"]`,
+    )
+    if (match_element) {
+      match_element.scrollIntoView({ behavior: `smooth`, block: `center` })
+    }
+  }
+
+  // Navigate to next match
+  function go_to_next_match(): void {
+    if (sorted_matches.length === 0) return
+    current_match_index = (current_match_index + 1) % sorted_matches.length
+    scroll_to_current_match()
+  }
+
+  // Navigate to previous match
+  function go_to_prev_match(): void {
+    if (sorted_matches.length === 0) return
+    current_match_index = current_match_index <= 0
+      ? sorted_matches.length - 1
+      : current_match_index - 1
+    scroll_to_current_match()
   }
 
   // Previous values map for change detection
@@ -114,6 +182,28 @@
     } else {
       force_expanded.delete(path)
       collapsed_paths.add(path)
+    }
+    collapsed_paths = new SvelteSet(collapsed_paths)
+    force_expanded = new SvelteSet(force_expanded)
+  }
+
+  // Toggle collapse recursively for all descendants
+  function toggle_collapse_recursive(path: string, collapse: boolean): void {
+    const all_paths = collect_all_paths(value, root_label ?? ``)
+    // Find all paths that start with this path (descendants)
+    const descendants = all_paths.filter(
+      (p) => p === path || p.startsWith(path + `.`) || p.startsWith(path + `[`),
+    )
+    if (collapse) {
+      for (const desc of descendants) {
+        force_expanded.delete(desc)
+        collapsed_paths.add(desc)
+      }
+    } else {
+      for (const desc of descendants) {
+        collapsed_paths.delete(desc)
+        force_expanded.add(desc)
+      }
     }
     collapsed_paths = new SvelteSet(collapsed_paths)
     force_expanded = new SvelteSet(force_expanded)
@@ -151,22 +241,28 @@
     if (path) onselect?.(path, get_value_at_path(path))
   }
 
-  async function copy_value(path: string, val: unknown): Promise<void> {
-    const serialized = serialize_for_copy(val)
+  // Shared clipboard copy with feedback
+  async function copy_to_clipboard(path: string, text: string): Promise<void> {
     try {
-      await navigator.clipboard.writeText(serialized)
+      await navigator.clipboard.writeText(text)
       copy_feedback_error = false
-      oncopy?.(path, serialized)
+      oncopy?.(path, text)
     } catch {
-      // Clipboard API failed - still show feedback but as error
       copy_feedback_error = true
     }
-    // Show feedback regardless of success/failure
     copy_feedback_path = path
     if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
     copy_feedback_timeout = setTimeout(() => {
       copy_feedback_path = null
     }, 1000)
+  }
+
+  async function copy_value(path: string, val: unknown): Promise<void> {
+    await copy_to_clipboard(path, serialize_for_copy(val))
+  }
+
+  async function copy_path(path: string): Promise<void> {
+    await copy_to_clipboard(path, path)
   }
 
   function register_path(path: string): void {
@@ -235,16 +331,21 @@
     get search_matches() {
       return search_matches
     },
+    get current_match_path() {
+      return current_match_path
+    },
     get focused_path() {
       return focused_path
     },
     previous_values,
     toggle_collapse,
+    toggle_collapse_recursive,
     expand_all,
     collapse_all,
     collapse_to_level,
     set_focused,
     copy_value,
+    copy_path,
     register_path,
     unregister_path,
   }
@@ -280,8 +381,33 @@
 
   // Clear search
   function clear_search() {
+    if (search_debounce_timeout) clearTimeout(search_debounce_timeout)
     search_input_value = ``
     search_query = ``
+    current_match_index = -1
+  }
+
+  // Navigate matches based on shift key
+  function navigate_match(event: KeyboardEvent): void {
+    event.preventDefault()
+    if (event.shiftKey) go_to_prev_match()
+    else go_to_next_match()
+  }
+
+  // Handle keyboard events on search input
+  function handle_search_keydown(event: KeyboardEvent) {
+    if (event.key === `Escape`) {
+      event.preventDefault()
+      clear_search()
+      search_input_element?.blur()
+    } else if (event.key === `Enter` || event.key === `F3`) {
+      navigate_match(event)
+    }
+  }
+
+  // Handle F3 at tree level for match navigation
+  function handle_global_keydown(event: KeyboardEvent) {
+    if (event.key === `F3`) navigate_match(event)
   }
 </script>
 
@@ -290,17 +416,19 @@
   role="tree"
   aria-label="JSON tree viewer"
   {...rest}
-  onkeydown={handle_tree_keydown}
+  onkeydown={(event) => (handle_tree_keydown(event), handle_global_keydown(event))}
 >
   {#if show_header}
     <header class="json-tree-header">
       <div class="search-wrapper">
         <Icon icon="Search" style="width: 14px; height: 14px; opacity: 0.6" />
         <input
+          bind:this={search_input_element}
           type="search"
           placeholder="Search keys and values..."
           value={search_input_value}
           oninput={handle_search_input}
+          onkeydown={handle_search_keydown}
           class="search-input"
         />
         {#if search_input_value}
@@ -308,13 +436,38 @@
             type="button"
             class="clear-search"
             onclick={clear_search}
-            title="Clear search"
+            title="Clear search (Esc)"
             {@attach tooltip()}
           >
             <Icon icon="Cross" style="width: 12px; height: 12px" />
           </button>
         {/if}
       </div>
+      {#if search_query && sorted_matches.length > 0}
+        <div class="match-nav">
+          <button
+            type="button"
+            class="nav-btn"
+            onclick={go_to_prev_match}
+            title="Previous match (Shift+F3)"
+            {@attach tooltip()}
+          >
+            <Icon icon="ArrowUp" style="width: 12px; height: 12px" />
+          </button>
+          <button
+            type="button"
+            class="nav-btn"
+            onclick={go_to_next_match}
+            title="Next match (F3)"
+            {@attach tooltip()}
+          >
+            <Icon icon="ArrowDown" style="width: 12px; height: 12px" />
+          </button>
+          <span class="match-count">{current_match_index + 1} of {
+              sorted_matches.length
+            }</span>
+        </div>
+      {/if}
       <div class="controls">
         <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip()}>
           <Icon icon="Expand" style="width: 14px; height: 14px" />
@@ -352,15 +505,25 @@
           3
         </button>
       </div>
-      {#if search_query && search_matches.size > 0}
-        <span class="match-count">{search_matches.size} match{
-            search_matches.size === 1 ? `` : `es`
-          }</span>
-      {/if}
     </header>
   {/if}
 
+  {#if focused_path}
+    <div class="path-breadcrumb">
+      <button
+        type="button"
+        class="copy-path-btn"
+        onclick={() => copy_path(focused_path ?? ``)}
+        title="Click to copy path"
+        {@attach tooltip()}
+      >
+        {focused_path}
+      </button>
+    </div>
+  {/if}
+
   <div
+    bind:this={content_element}
     class="json-tree-content"
     {@attach highlight_matches({
       query: search_query,
@@ -392,6 +555,7 @@
     --jt-arrow: light-dark(#6e6e6e, #858585);
     --jt-preview: light-dark(#808080, #808080);
     --jt-search-match-bg: light-dark(#fff59d, #614d00);
+    --jt-current-match-bg: light-dark(#ffcc80, #8a5600);
     --jt-change-flash: light-dark(#c8e6c9, #1b5e20);
     --jt-focus-bg: light-dark(#e3f2fd, #0d3a58);
     --jt-hover-bg: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.08));
@@ -485,10 +649,61 @@
       light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.15))
     );
   }
+  .match-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--jt-header-border);
+    background: var(--jt-btn-bg, light-dark(white, rgba(255, 255, 255, 0.1)));
+    border-radius: 3px;
+    cursor: pointer;
+    color: inherit;
+  }
+  .nav-btn:hover {
+    background: var(
+      --jt-btn-hover-bg,
+      light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.15))
+    );
+  }
   .match-count {
     font-size: 11px;
     color: var(--jt-match-count-color, light-dark(#666, #aaa));
     white-space: nowrap;
+    margin-left: 4px;
+  }
+  .path-breadcrumb {
+    padding: 4px 8px;
+    background: var(--jt-header-bg);
+    border-bottom: 1px solid var(--jt-header-border);
+    font-size: 11px;
+    overflow: hidden;
+  }
+  .copy-path-btn {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    font: inherit;
+    font-family: var(--jt-font-family);
+    color: var(--jt-key, light-dark(#001080, #9cdcfe));
+    cursor: pointer;
+    border-radius: 2px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+  }
+  .copy-path-btn:hover {
+    background: var(--jt-hover-bg);
+    text-decoration: underline;
   }
   .json-tree-content {
     padding: var(--jt-content-padding, 8px);
