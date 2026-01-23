@@ -109,14 +109,14 @@
   // Update y-axis configs when props or shared range changes
   $effect(() => {
     const base_range = synced_zoom_range ?? shared_frequency_range
-    bands_y_axis = { range: base_range, ...bands_props.y_axis }
+    bands_y_axis = { range: base_range, ...(bands_props.y_axis ?? {}) }
   })
 
   $effect(() => {
     const base_range = synced_zoom_range ?? shared_frequency_range
     dos_y_axis = is_desktop
-      ? { label: ``, range: base_range, ...dos_props.y_axis }
-      : { ...dos_props.y_axis }
+      ? { label: ``, range: base_range, ...(dos_props.y_axis ?? {}) }
+      : { ...(dos_props.y_axis ?? {}) }
   })
 
   // Detect zoom changes and sync between components
