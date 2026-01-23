@@ -1803,6 +1803,271 @@ def create_ab_example_diagram() -> PhaseDiagramData:
     }
 
 
+def create_fe_fe3c_diagram() -> PhaseDiagramData:
+    """Create Fe-Fe3C (iron-cementite) pseudo-binary phase diagram.
+
+    This is the classic metastable iron-carbon diagram, which is actually a
+    pseudo-binary section through the Fe-C system from pure Fe to the compound Fe3C.
+
+    Key features:
+    - Peritectic at ~1495°C: L + δ → γ
+    - Eutectic at ~1147°C: L → γ + Fe3C (ledeburite)
+    - Eutectoid at ~727°C: γ → α + Fe3C (pearlite)
+
+    Note: Composition is normalized 0-1 where 0=Fe and 1=Fe3C (6.67 wt% C).
+    """
+    t_min, t_max = 400, 1600
+    t_melt_fe = 1538  # Fe melting point
+    t_peritectic = 1495  # δ + L → γ
+    t_eutectic = 1147  # L → γ + Fe3C
+    t_eutectoid = 727  # γ → α + Fe3C
+    t_a3 = 912  # α → γ transformation in pure Fe
+    t_a4 = 1394  # γ → δ transformation in pure Fe
+
+    # Composition points (normalized to 0-1 scale, where 1 = Fe3C = 6.67 wt% C)
+    x_peritectic_l = 0.077  # 0.51 wt% C / 6.67
+    x_peritectic_delta = 0.015  # 0.10 wt% C / 6.67
+    x_peritectic_gamma = 0.024  # 0.16 wt% C / 6.67
+    x_eutectic = 0.645  # 4.3 wt% C / 6.67
+    x_eutectic_gamma = 0.32  # 2.14 wt% C / 6.67
+    x_eutectoid = 0.115  # 0.77 wt% C / 6.67
+    x_eutectoid_alpha = 0.003  # 0.02 wt% C / 6.67
+
+    # Solvus lines
+    gamma_solvus_left = [
+        [x_eutectoid_alpha, t_eutectoid],
+        [0.001, 600],
+        [0.0, t_min],
+    ]
+    gamma_solvus_right = [
+        [x_eutectoid, t_eutectoid],
+        [0.14, 800],
+        [0.18, t_min],
+    ]
+
+    regions = [
+        # Liquid region
+        make_region(
+            "liquid",
+            "Liquid",
+            dedupe_consecutive_vertices([
+                [0.0, t_max],
+                [1.0, t_max],
+                [1.0, t_eutectic],
+                [x_eutectic, t_eutectic],
+                [x_peritectic_l, t_peritectic],
+                [0.0, t_melt_fe],
+            ]),
+            PHASE_COLORS["liquid"],
+        ),
+        # δ-ferrite (BCC, high temp)
+        make_region(
+            "delta",
+            "δ (BCC)",
+            dedupe_consecutive_vertices([
+                [0.0, t_melt_fe],
+                [x_peritectic_delta, t_peritectic],
+                [0.0, t_a4],
+            ]),
+            PHASE_COLORS["bcc_a2"],
+        ),
+        # γ-austenite (FCC)
+        make_region(
+            "gamma",
+            "γ (FCC)",
+            dedupe_consecutive_vertices([
+                [0.0, t_a4],
+                [x_peritectic_gamma, t_peritectic],
+                [x_eutectic_gamma, t_eutectic],
+                [x_eutectoid, t_eutectoid],
+                [x_eutectoid_alpha, t_eutectoid],
+                [0.0, t_a3],
+            ]),
+            PHASE_COLORS["fcc_a1"],
+        ),
+        # α-ferrite (BCC, low temp)
+        make_region(
+            "alpha",
+            "α (BCC)",
+            dedupe_consecutive_vertices([
+                [0.0, t_a3],
+                *gamma_solvus_left,
+                [0.0, t_min],
+            ]),
+            rgba(255, 200, 200),  # Light pink for α
+        ),
+        # Fe3C (cementite) - appears at right edge
+        make_region(
+            "fe3c",
+            "Fe3C",
+            dedupe_consecutive_vertices([
+                [1.0, t_eutectic],
+                [1.0, t_min],
+                [0.95, t_min],
+                [0.95, t_eutectic],
+            ]),
+            rgba(180, 180, 200),  # Grayish for cementite
+        ),
+        # L + δ two-phase region
+        make_region(
+            "l_plus_delta",
+            "L + δ",
+            dedupe_consecutive_vertices([
+                [0.0, t_melt_fe],
+                [x_peritectic_l, t_peritectic],
+                [x_peritectic_delta, t_peritectic],
+            ]),
+            PHASE_COLORS["two_phase_bcc_liquid"],
+        ),
+        # L + γ two-phase region
+        make_region(
+            "l_plus_gamma",
+            "L + γ",
+            dedupe_consecutive_vertices([
+                [x_peritectic_l, t_peritectic],
+                [x_eutectic, t_eutectic],
+                [x_eutectic_gamma, t_eutectic],
+                [x_peritectic_gamma, t_peritectic],
+            ]),
+            PHASE_COLORS["two_phase_fcc_liquid"],
+        ),
+        # L + Fe3C two-phase region
+        make_region(
+            "l_plus_fe3c",
+            "L + Fe3C",
+            dedupe_consecutive_vertices([
+                [x_eutectic, t_eutectic],
+                [1.0, t_eutectic],
+                [0.95, t_eutectic],
+            ]),
+            PHASE_COLORS["two_phase_intermetallic"],
+        ),
+        # γ + Fe3C two-phase region
+        make_region(
+            "gamma_plus_fe3c",
+            "γ + Fe3C",
+            dedupe_consecutive_vertices([
+                [x_eutectic_gamma, t_eutectic],
+                [0.95, t_eutectic],
+                [0.95, t_eutectoid],
+                [x_eutectoid, t_eutectoid],
+            ]),
+            PHASE_COLORS["two_phase_gamma"],
+        ),
+        # α + γ two-phase region
+        make_region(
+            "alpha_plus_gamma",
+            "α + γ",
+            dedupe_consecutive_vertices([
+                [0.0, t_a3],
+                [x_eutectoid_alpha, t_eutectoid],
+                [x_eutectoid, t_eutectoid],
+                [0.0, t_a4],  # Approximate - simplified
+            ]),
+            PHASE_COLORS["two_phase_mixed"],
+        ),
+        # α + Fe3C two-phase region (pearlite region)
+        make_region(
+            "alpha_plus_fe3c",
+            "α + Fe3C",
+            dedupe_consecutive_vertices([
+                *gamma_solvus_left[1:],
+                [0.18, t_min],
+                [0.95, t_min],
+                [0.95, t_eutectoid],
+                [x_eutectoid, t_eutectoid],
+                [x_eutectoid_alpha, t_eutectoid],
+            ]),
+            PHASE_COLORS["two_phase_alt"],
+        ),
+    ]
+
+    boundary_style = {"color": "#333", "width": 2}
+    boundary_style_horizontal = {"color": "#666", "width": 1.5, "dash": "4"}
+
+    boundaries = [
+        # Liquidus
+        make_boundary(
+            "liquidus-left",
+            "liquidus",
+            [[0.0, t_melt_fe], [x_peritectic_l, t_peritectic]],
+            boundary_style,
+        ),
+        make_boundary(
+            "liquidus-right",
+            "liquidus",
+            [[x_peritectic_l, t_peritectic], [x_eutectic, t_eutectic], [1.0, t_eutectic]],
+            boundary_style,
+        ),
+        # Solidus
+        make_boundary(
+            "solidus-delta",
+            "solidus",
+            [[0.0, t_melt_fe], [x_peritectic_delta, t_peritectic]],
+            boundary_style,
+        ),
+        make_boundary(
+            "solidus-gamma",
+            "solidus",
+            [[x_peritectic_gamma, t_peritectic], [x_eutectic_gamma, t_eutectic]],
+            boundary_style,
+        ),
+        # Peritectic horizontal
+        make_boundary(
+            "peritectic-line",
+            "peritectic",
+            [[x_peritectic_delta, t_peritectic], [x_peritectic_l, t_peritectic]],
+            boundary_style_horizontal,
+        ),
+        # Eutectic horizontal
+        make_boundary(
+            "eutectic-line",
+            "eutectic",
+            [[x_eutectic_gamma, t_eutectic], [1.0, t_eutectic]],
+            boundary_style_horizontal,
+        ),
+        # Eutectoid horizontal
+        make_boundary(
+            "eutectoid-line",
+            "custom",
+            [[x_eutectoid_alpha, t_eutectoid], [0.95, t_eutectoid]],
+            boundary_style_horizontal,
+        ),
+        # A3 transformation line
+        make_boundary(
+            "a3-line",
+            "solvus",
+            [[0.0, t_a3], [x_eutectoid_alpha, t_eutectoid]],
+            boundary_style,
+        ),
+    ]
+
+    special_points = [
+        make_special_point("peritectic", "peritectic", [x_peritectic_l, t_peritectic], "P"),
+        make_special_point("eutectic", "eutectic", [x_eutectic, t_eutectic], "E"),
+        make_special_point("eutectoid", "eutectoid", [x_eutectoid, t_eutectoid], "S"),
+        make_special_point("melting-fe", "melting_point", [0, t_melt_fe], "Tₘ"),
+    ]
+
+    return {
+        "components": ["Fe", "Fe3C"],
+        "temperature_range": [t_min, t_max],
+        "temperature_unit": "°C",
+        "composition_unit": "wt%",
+        "title": "Fe-Fe₃C Pseudo-Binary Phase Diagram",
+        "regions": regions,
+        "boundaries": boundaries,
+        "special_points": special_points,
+        # Pseudo-binary metadata
+        "pseudo_binary": {
+            "parent_system": ["Fe", "C"],
+            "section_description": "Metastable iron-cementite section (0 to 6.67 wt% C)",
+            "use_subscripts": True,
+        },
+        "x_axis_label": "wt% C (as Fe<sub>3</sub>C)",
+    }
+
+
 def main() -> None:
     """Generate all binary phase diagrams."""
     output_dir = Path(__file__).parent
@@ -1816,6 +2081,7 @@ def main() -> None:
         ("Al-Si", create_al_si_diagram),
         ("Au-Sn", create_au_sn_diagram),
         ("Cu-Zn", create_cu_zn_diagram),
+        ("Fe-Fe3C", create_fe_fe3c_diagram),  # Pseudo-binary example
         ("Fe-Ni", create_fe_ni_diagram),
         ("Pb-Sn", create_pb_sn_diagram),
     ]

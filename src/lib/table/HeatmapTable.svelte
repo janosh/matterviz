@@ -737,7 +737,7 @@
                   checked={!hidden_columns.includes(col_id)}
                   onchange={() => toggle_column(col_id)}
                 />
-                {col.label}
+                {@html col.label}
               </label>
             {/each}
           </div>

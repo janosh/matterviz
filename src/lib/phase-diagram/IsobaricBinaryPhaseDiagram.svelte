@@ -17,6 +17,7 @@
   import type {
     PhaseDiagramConfig,
     PhaseDiagramData,
+    PhaseDiagramTooltipConfig,
     PhaseHoverInfo,
     PhaseRegion,
     TempUnit,
@@ -27,12 +28,15 @@
     convert_temp,
     find_phase_at_point,
     format_composition,
+    format_formula_html,
     format_hover_info_text,
     generate_boundary_path,
     generate_region_path,
     get_multi_phase_gradient,
     get_phase_color,
+    is_compound,
     merge_phase_diagram_config,
+    parse_chemical_formula,
     PHASE_COLOR_RGB,
     transform_vertices,
   } from './utils'
@@ -67,8 +71,9 @@
     // Axis configuration
     x_axis?: AxisConfig
     y_axis?: AxisConfig
-    // Custom content snippets
-    tooltip?: Snippet<[PhaseHoverInfo]>
+    // Custom tooltip - can be a snippet (replaces default), config object (adds prefix/suffix),
+    // or false to disable tooltip entirely
+    tooltip?: Snippet<[PhaseHoverInfo]> | PhaseDiagramTooltipConfig | false
     children?: Snippet<
       [{ width: number; height: number; fullscreen: boolean }]
     >
@@ -380,6 +385,16 @@
   const component_a = $derived(data?.components?.[0] ?? ``)
   const component_b = $derived(data?.components?.[1] ?? ``)
   const comp_unit = $derived(data?.composition_unit ?? `at%`)
+
+  // Pseudo-binary support: format compound names with subscripts when enabled
+  const use_subscripts = $derived(data?.pseudo_binary?.use_subscripts ?? true)
+
+  // Formatted component label for HTML axis labels (with subscripts if compound)
+  const component_b_html = $derived(format_formula_html(component_b, use_subscripts))
+
+  // Custom axis labels from data (for pseudo-binary or special cases)
+  const data_x_axis_label = $derived(data?.x_axis_label)
+  const data_y_axis_label = $derived(data?.y_axis_label)
 </script>
 
 <!-- Grid lines snippet for DRY rendering -->
@@ -394,6 +409,54 @@
       stroke-dasharray="4"
     />
   {/each}
+{/snippet}
+
+<!-- Formula rendering snippet for compound names with subscripts -->
+{#snippet formula_text(
+  formula: string,
+  x_pos: number,
+  y_pos: number,
+  anchor: string = `middle`,
+)}
+  {@const parts = use_subscripts && is_compound(formula)
+    ? parse_chemical_formula(formula)
+    : null}
+  {#if parts && parts.length > 0}
+    <text
+      x={x_pos}
+      y={y_pos}
+      text-anchor={anchor}
+      fill={merged_config.colors.text}
+      font-size={merged_config.font_size + 2}
+      font-weight="bold"
+    >
+      {#each parts as part, idx (idx)}
+        {#if part.text !== undefined}
+          {#if idx > 0 &&
+      (parts[idx - 1]?.sub !== undefined || parts[idx - 1]?.sup !== undefined)}
+            <tspan dy="-0.25em">{part.text}</tspan>
+          {:else}
+            <tspan>{part.text}</tspan>
+          {/if}
+        {:else if part.sub !== undefined}
+          <tspan dy="0.25em" font-size="0.75em">{part.sub}</tspan>
+        {:else if part.sup !== undefined}
+          <tspan dy="-0.4em" font-size="0.75em">{part.sup}</tspan>
+        {/if}
+      {/each}
+    </text>
+  {:else}
+    <text
+      x={x_pos}
+      y={y_pos}
+      text-anchor={anchor}
+      fill={merged_config.colors.text}
+      font-size={merged_config.font_size + 2}
+      font-weight="bold"
+    >
+      {formula}
+    </text>
+  {/if}
 {/snippet}
 
 <svelte:document
@@ -676,7 +739,7 @@
             </text>
           </g>
         {/each}
-        <!-- X-axis label -->
+        <!-- X-axis label (supports custom labels from props, data, or auto-generated with subscripts) -->
         <text
           x={left + plot_width / 2}
           y={height - 10}
@@ -686,9 +749,12 @@
         >
           {#if x_axis.label}
             {@html x_axis.label}
+          {:else if data_x_axis_label}
+            {@html data_x_axis_label}
           {:else}
-            {comp_unit === `fraction` ? `x ` : ``}{component_b}
-            ({comp_unit === `fraction` ? `mole fraction` : comp_unit})
+            {@html `${comp_unit === `fraction` ? `x ` : ``}${component_b_html} (${
+            comp_unit === `fraction` ? `mole fraction` : comp_unit
+          })`}
           {/if}
         </text>
       </g>
@@ -717,7 +783,7 @@
             </text>
           </g>
         {/each}
-        <!-- Y-axis label -->
+        <!-- Y-axis label (supports custom labels from props or data) -->
         <text
           transform="rotate(-90)"
           x={-(top + plot_height / 2)}
@@ -728,31 +794,24 @@
         >
           {#if y_axis.label}
             {@html y_axis.label}
+          {:else if data_y_axis_label}
+            {@html data_y_axis_label}
           {:else}
             Temperature ({temp_unit})
           {/if}
         </text>
       </g>
 
-      <!-- Component labels at corners -->
+      <!-- Component labels at corners (supports compound formulas with subscripts) -->
       {#if show_component_labels}
-        {#each [[left, component_a], [right, component_b]] as [x_pos, label] (label)}
-          <text
-            x={x_pos}
-            y={bottom + 45}
-            text-anchor="middle"
-            fill={merged_config.colors.text}
-            font-size={merged_config.font_size + 2}
-            font-weight="bold"
-          >
-            {label}
-          </text>
-        {/each}
+        {@render formula_text(component_a, left, bottom + 45)}
+        {@render formula_text(component_b, right, bottom + 45)}
       {/if}
     </svg>
 
     <!-- Tooltip (uses effective_hover_info which respects locked state) -->
-    {#if effective_hover_info}
+    <!-- tooltip={false} disables tooltip entirely -->
+    {#if effective_hover_info && tooltip !== false}
       <div
         bind:this={tooltip_el}
         class="tooltip-container"
@@ -763,7 +822,7 @@
         {#if locked_hover_info}
           <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
         {/if}
-        {#if tooltip}
+        {#if typeof tooltip === `function`}
           {@render tooltip(effective_hover_info)}
         {:else}
           <PhaseDiagramTooltip
@@ -772,6 +831,7 @@
             composition_unit={comp_unit}
             {component_a}
             {component_b}
+            {tooltip}
           />
         {/if}
       </div>

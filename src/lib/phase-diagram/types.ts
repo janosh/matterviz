@@ -55,9 +55,20 @@ export interface SpecialPoint {
   label?: string
 }
 
+// Metadata for pseudo-binary phase diagrams (vertical sections through ternary/higher systems)
+export interface PseudoBinaryMetadata {
+  // The full system being sectioned (e.g., ["Fe", "C", "Mn"] for Fe-Fe3C section)
+  parent_system?: string[]
+  // Description of the section (e.g., "Fe corner to Fe3C")
+  section_description?: string
+  // Whether to render chemical formulas with subscripts (default: true)
+  use_subscripts?: boolean
+}
+
 // Complete diagram data structure
 export interface PhaseDiagramData {
-  components: [string, string] // e.g., ["A", "B"] or ["Cu", "Ni"]
+  // Components can be elements or compounds (e.g., ["Fe", "Fe3C"] for pseudo-binary)
+  components: [string, string]
   temperature_range: Vec2 // [min, max] in Kelvin or Celsius
   temperature_unit?: TempUnit
   composition_unit?: CompUnit
@@ -65,6 +76,11 @@ export interface PhaseDiagramData {
   boundaries: PhaseBoundary[]
   special_points?: SpecialPoint[]
   title?: string
+  // Pseudo-binary metadata - presence indicates this is a section through a higher-order system
+  pseudo_binary?: PseudoBinaryMetadata
+  // Custom axis labels (useful for pseudo-binary context or non-standard units)
+  x_axis_label?: string
+  y_axis_label?: string
 }
 
 // Tie-line display configuration
@@ -108,4 +124,11 @@ export interface PhaseHoverInfo {
   position: { x: number; y: number } // screen coordinates
   lever_rule?: LeverRuleResult // Only populated for two-phase regions
   special_point?: SpecialPoint // Populated when hovering near a special point
+}
+
+// Tooltip configuration object for prefix/suffix content
+// Values can be static strings or functions that receive hover info for dynamic content
+export interface PhaseDiagramTooltipConfig {
+  prefix?: string | ((info: PhaseHoverInfo) => string)
+  suffix?: string | ((info: PhaseHoverInfo) => string)
 }

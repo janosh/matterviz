@@ -2,12 +2,17 @@
   import type { ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
   import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
-  import type { PhaseBoundary, PhaseHoverInfo } from './types'
+  import type {
+    PhaseBoundary,
+    PhaseDiagramTooltipConfig,
+    PhaseHoverInfo,
+  } from './types'
   import {
     format_composition,
     format_temperature,
     get_phase_stability_range,
   } from './utils'
+  import type { Snippet } from 'svelte'
 
   let {
     hover_info,
@@ -16,6 +21,7 @@
     component_a = `A`,
     component_b = `B`,
     boundaries = [],
+    tooltip,
   }: {
     hover_info: PhaseHoverInfo
     temperature_unit?: string
@@ -23,7 +29,27 @@
     component_a?: string
     component_b?: string
     boundaries?: PhaseBoundary[]
+    tooltip?: Snippet<[PhaseHoverInfo]> | PhaseDiagramTooltipConfig
   } = $props()
+
+  // Custom tooltip handling - mode precedence:
+  // 1. If tooltip is a snippet function, render it exclusively (replaces default)
+  // 2. If tooltip is a config object, render prefix/suffix around default content
+  // 3. Otherwise, render default content only
+  const is_snippet = $derived(typeof tooltip === `function`)
+  const config = $derived(
+    !is_snippet && tooltip ? (tooltip as PhaseDiagramTooltipConfig) : null,
+  )
+  // Resolve prefix/suffix - call if function, otherwise use directly
+  // Using $derived.by for more reliable function detection in Svelte 5
+  const prefix_html = $derived.by(() => {
+    const prefix = config?.prefix
+    return prefix instanceof Function ? prefix(hover_info) : prefix
+  })
+  const suffix_html = $derived.by(() => {
+    const suffix = config?.suffix
+    return suffix instanceof Function ? suffix(hover_info) : suffix
+  })
 
   // Convert atomic fraction to weight fraction: wt_B = (x_B * M_B) / (x_A * M_A + x_B * M_B)
   const wt_fraction_b = $derived.by(() => {
@@ -98,76 +124,87 @@
   })
 </script>
 
-<div class="phase-diagram-tooltip">
-  <header>
-    <strong>{hover_info.region.name}</strong>
-    {#if special_point_info}<span class="special-point-badge">{
-        special_point_info.badge
-      }</span>{/if}
-  </header>
+{#if is_snippet}
+  {@render (tooltip as Snippet<[PhaseHoverInfo]>)(hover_info)}
+{:else}
+  <div class="phase-diagram-tooltip">
+    {#if prefix_html}
+      <div class="tooltip-prefix">{@html prefix_html}</div>
+    {/if}
 
-  {#if special_point_info?.description}
-    <div class="special-point-description">{special_point_info.description}</div>
-  {/if}
+    <header>
+      <strong>{hover_info.region.name}</strong>
+      {#if special_point_info}<span class="special-point-badge">{
+          special_point_info.badge
+        }</span>{/if}
+    </header>
 
-  <dl>
-    <dt>Temperature</dt>
-    <dd>{format_temperature(hover_info.temperature, temperature_unit)}</dd>
-    <dt>Composition</dt>
-    <dd>
-      {format_composition(hover_info.composition, composition_unit)} {component_b}
-      <small>({format_composition(1 - hover_info.composition, composition_unit)} {
-          component_a
-        })</small>
-    </dd>
-    {#if wt_fraction_b !== null}
-      <dt>Weight</dt>
+    {#if special_point_info?.description}
+      <div class="special-point-description">{special_point_info.description}</div>
+    {/if}
+
+    <dl>
+      <dt>Temperature</dt>
+      <dd>{format_temperature(hover_info.temperature, temperature_unit)}</dd>
+      <dt>Composition</dt>
       <dd>
-        {format_num(wt_fraction_b * 100, `.1f`)}% {component_b}
-        <small>({format_num((1 - wt_fraction_b) * 100, `.1f`)}% {component_a})</small>
+        {format_composition(hover_info.composition, composition_unit)} {component_b}
+        <small>({format_composition(1 - hover_info.composition, composition_unit)} {
+            component_a
+          })</small>
       </dd>
-    {/if}
-    {#if stability}
-      <dt>Stable</dt><dd>{stability.t_min} – {stability.t_max} {temperature_unit}</dd>
-    {/if}
-  </dl>
+      {#if wt_fraction_b !== null}
+        <dt>Weight</dt>
+        <dd>
+          {format_num(wt_fraction_b * 100, `.1f`)}% {component_b}
+          <small>({format_num((1 - wt_fraction_b) * 100, `.1f`)}% {component_a})</small>
+        </dd>
+      {/if}
+      {#if stability}
+        <dt>Stable</dt><dd>{stability.t_min} – {stability.t_max} {temperature_unit}</dd>
+      {/if}
+    </dl>
 
-  {#if hover_info.lever_rule}
-    {@const lr = hover_info.lever_rule}
-    <div class="lever">
-      <span>Lever Rule</span>
-      <div class="bar">
-        <div
-          style:width="{lr.fraction_left * 100}%"
-          title="{lr.left_phase}: {format_num(lr.fraction_left * 100, `.1f`)}%"
-        >
+    {#if hover_info.lever_rule}
+      {@const lr = hover_info.lever_rule}
+      <div class="lever">
+        <span>Lever Rule</span>
+        <div class="bar">
+          <div
+            style:width="{lr.fraction_left * 100}%"
+            title="{lr.left_phase}: {format_num(lr.fraction_left * 100, `.1f`)}%"
+          >
+          </div>
+          <div
+            style:width="{lr.fraction_right * 100}%"
+            title="{lr.right_phase}: {format_num(lr.fraction_right * 100, `.1f`)}%"
+          >
+          </div>
+          <i style:left="{lr.fraction_left * 100}%"></i>
         </div>
-        <div
-          style:width="{lr.fraction_right * 100}%"
-          title="{lr.right_phase}: {format_num(lr.fraction_right * 100, `.1f`)}%"
-        >
+        <div class="phase-info">
+          <span>{lr.left_phase}: {format_num(lr.fraction_left * 100, `.0f`)}% <small>at {
+                format_composition(lr.left_composition, composition_unit)
+              }</small></span>
+          <span>{lr.right_phase}: {format_num(lr.fraction_right * 100, `.0f`)}% <small>at
+              {format_composition(lr.right_composition, composition_unit)}</small></span>
         </div>
-        <i style:left="{lr.fraction_left * 100}%"></i>
       </div>
-      <div class="phase-info">
-        <span>{lr.left_phase}: {format_num(lr.fraction_left * 100, `.0f`)}% <small>at {
-              format_composition(lr.left_composition, composition_unit)
-            }</small></span>
-        <span>{lr.right_phase}: {format_num(lr.fraction_right * 100, `.0f`)}% <small>at {
-              format_composition(lr.right_composition, composition_unit)
-            }</small></span>
-      </div>
-    </div>
-  {/if}
+    {/if}
 
-  {#if boundary_distance}
-    {@const { type, delta_t } = boundary_distance}
-    {@const label = delta_t > 0 ? `above` : `below`}
-    <div class="boundary-info">
-      {Math.round(Math.abs(delta_t))} {temperature_unit} {label} {type}
-    </div>
-  {/if}
-</div>
+    {#if boundary_distance}
+      {@const { type, delta_t } = boundary_distance}
+      {@const label = delta_t > 0 ? `above` : `below`}
+      <div class="boundary-info">
+        {Math.round(Math.abs(delta_t))} {temperature_unit} {label} {type}
+      </div>
+    {/if}
+
+    {#if suffix_html}
+      <div class="tooltip-suffix">{@html suffix_html}</div>
+    {/if}
+  </div>
+{/if}
 
 <style>
   .phase-diagram-tooltip {
@@ -287,5 +324,15 @@
     font-size: 10px;
     opacity: 0.85;
     font-style: italic;
+  }
+  .tooltip-prefix {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tooltip-suffix {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
   }
 </style>

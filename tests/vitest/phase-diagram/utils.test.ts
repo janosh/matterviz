@@ -5,13 +5,17 @@ import {
   compute_label_properties,
   find_phase_at_point,
   format_composition,
+  format_formula_html,
+  format_formula_svg,
   format_temperature,
   generate_boundary_path,
   generate_region_path,
   get_multi_phase_gradient,
   get_phase_color,
   get_phase_color_key,
+  is_compound,
   merge_phase_diagram_config,
+  parse_chemical_formula,
   PHASE_COLOR_HEX,
   PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
@@ -490,5 +494,144 @@ describe(`merge_phase_diagram_config`, () => {
     },
   ])(`merges partial config correctly`, ({ config, check }) => {
     expect(check(merge_phase_diagram_config(config))).toBe(true)
+  })
+})
+
+// ============================================================================
+// Chemical Formula Parsing Tests (for pseudo-binary phase diagrams)
+// ============================================================================
+
+describe(`is_compound`, () => {
+  test.each([
+    // Single elements - should return false
+    { name: `Fe`, expected: false, desc: `single element Fe` },
+    { name: `C`, expected: false, desc: `single element C` },
+    { name: `Al`, expected: false, desc: `single element Al` },
+    // Compounds with digits - should return true
+    { name: `Fe3C`, expected: true, desc: `compound with digit Fe3C` },
+    { name: `SiO2`, expected: true, desc: `compound with digit SiO2` },
+    { name: `Al2O3`, expected: true, desc: `compound with digit Al2O3` },
+    { name: `H2O`, expected: true, desc: `compound with digit H2O` },
+    // Compounds with multiple uppercase (no digits)
+    { name: `MgO`, expected: true, desc: `oxide MgO` },
+    { name: `CaO`, expected: true, desc: `oxide CaO` },
+    { name: `NaCl`, expected: true, desc: `salt NaCl` },
+    // Edge cases
+    { name: ``, expected: false, desc: `empty string` },
+    { name: `α`, expected: false, desc: `Greek letter alone` },
+    { name: `α-Fe`, expected: false, desc: `Greek phase notation (not a compound)` },
+  ])(`$desc → $expected`, ({ name, expected }) => {
+    expect(is_compound(name)).toBe(expected)
+  })
+})
+
+describe(`parse_chemical_formula`, () => {
+  test(`parses simple element`, () => {
+    expect(parse_chemical_formula(`Fe`)).toEqual([{ text: `Fe` }])
+  })
+
+  test(`parses compound with subscript`, () => {
+    const result = parse_chemical_formula(`Fe3C`)
+    expect(result).toEqual([
+      { text: `Fe` },
+      { sub: `3` },
+      { text: `C` },
+    ])
+  })
+
+  test(`parses oxide with subscript`, () => {
+    const result = parse_chemical_formula(`SiO2`)
+    expect(result).toEqual([
+      { text: `Si` },
+      { text: `O` },
+      { sub: `2` },
+    ])
+  })
+
+  test(`parses complex formula Al2O3`, () => {
+    const result = parse_chemical_formula(`Al2O3`)
+    expect(result).toEqual([
+      { text: `Al` },
+      { sub: `2` },
+      { text: `O` },
+      { sub: `3` },
+    ])
+  })
+
+  test(`parses multi-digit subscripts`, () => {
+    const result = parse_chemical_formula(`C12H22O11`)
+    expect(result).toEqual([
+      { text: `C` },
+      { sub: `12` },
+      { text: `H` },
+      { sub: `22` },
+      { text: `O` },
+      { sub: `11` },
+    ])
+  })
+
+  test(`returns Greek phase names unchanged`, () => {
+    expect(parse_chemical_formula(`α`)).toEqual([{ text: `α` }])
+    expect(parse_chemical_formula(`α + β`)).toEqual([{ text: `α + β` }])
+  })
+
+  test(`handles empty string`, () => {
+    expect(parse_chemical_formula(``)).toEqual([])
+  })
+
+  test(`parses MgO (no subscripts)`, () => {
+    const result = parse_chemical_formula(`MgO`)
+    expect(result).toEqual([
+      { text: `Mg` },
+      { text: `O` },
+    ])
+  })
+})
+
+describe(`format_formula_html`, () => {
+  test.each([
+    { formula: `Fe`, expected: `Fe`, desc: `single element unchanged` },
+    { formula: `Fe3C`, expected: `Fe<sub>3</sub>C`, desc: `compound with subscript` },
+    { formula: `SiO2`, expected: `SiO<sub>2</sub>`, desc: `oxide` },
+    { formula: `Al2O3`, expected: `Al<sub>2</sub>O<sub>3</sub>`, desc: `complex oxide` },
+    { formula: `α`, expected: `α`, desc: `Greek letter` },
+    { formula: ``, expected: ``, desc: `empty string` },
+  ])(`$desc: "$formula" → "$expected"`, ({ formula, expected }) => {
+    expect(format_formula_html(formula)).toBe(expected)
+  })
+
+  test(`respects use_subscripts=false`, () => {
+    expect(format_formula_html(`Fe3C`, false)).toBe(`Fe3C`)
+    expect(format_formula_html(`SiO2`, false)).toBe(`SiO2`)
+  })
+})
+
+describe(`format_formula_svg`, () => {
+  test(`returns simple element unchanged`, () => {
+    expect(format_formula_svg(`Fe`)).toBe(`Fe`)
+  })
+
+  test(`formats compound with tspan subscripts`, () => {
+    const result = format_formula_svg(`Fe3C`)
+    expect(result).toContain(`Fe`)
+    expect(result).toContain(`<tspan`)
+    expect(result).toContain(`>3</tspan>`)
+    expect(result).toContain(`C`)
+  })
+
+  test(`formats oxide correctly`, () => {
+    const result = format_formula_svg(`SiO2`)
+    expect(result).toContain(`Si`)
+    expect(result).toContain(`O`)
+    expect(result).toContain(`>2</tspan>`)
+  })
+
+  test(`respects use_subscripts=false`, () => {
+    expect(format_formula_svg(`Fe3C`, false)).toBe(`Fe3C`)
+  })
+
+  test(`returns Greek letters unchanged`, () => {
+    expect(format_formula_svg(`α`)).toBe(`α`)
+    expect(format_formula_svg(`α + β`)).toBe(`α + β`)
   })
 })

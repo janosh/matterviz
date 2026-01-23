@@ -1,5 +1,5 @@
-import { format_num } from '$lib/labels'
 import { add_alpha } from '$lib/colors'
+import { format_num } from '$lib/labels'
 import { point_in_polygon, type Vec2 } from '$lib/math'
 import type { Sides } from '$lib/plot'
 import { line } from 'd3-shape'
@@ -429,4 +429,168 @@ export function summarize_models(
     .sort(([a], [b]) => a - b)
     .map(([n, c]) => `${c}×${n}-SL`)
     .join(`, `)
+}
+
+// ============================================================================
+// Chemical Formula Parsing Utilities (for pseudo-binary phase diagrams)
+// ============================================================================
+
+// Parsed formula part - can be text, subscript, or superscript
+export interface FormulaPart {
+  text?: string
+  sub?: string
+  sup?: string
+}
+
+// Check if a component name is a compound (vs single element)
+// Returns true if name contains digits (e.g., "Fe3C", "SiO2") or multiple uppercase letters
+// that aren't separated by common delimiters (e.g., "MgO" vs "Mg-O")
+export function is_compound(name: string): boolean {
+  if (!name) return false
+  // Contains digits -> likely a compound (Fe3C, SiO2, Al2O3)
+  if (/\d/.test(name)) return true
+  // Count uppercase letters not at start - if multiple, likely compound (MgO, CaO)
+  const uppercase_count = (name.match(/[A-Z]/g) || []).length
+  return uppercase_count >= 2
+}
+
+// Parse a chemical formula into parts for rendering with subscripts/superscripts
+// Examples:
+//   "Fe3C" -> [{text: "Fe"}, {sub: "3"}, {text: "C"}]
+//   "SiO2" -> [{text: "Si"}, {text: "O"}, {sub: "2"}]
+//   "Al2O3" -> [{text: "Al"}, {sub: "2"}, {text: "O"}, {sub: "3"}]
+//   "Fe" -> [{text: "Fe"}]
+//   "α-Fe" -> [{text: "α-Fe"}] (Greek phases pass through unchanged)
+export function parse_chemical_formula(formula: string): FormulaPart[] {
+  if (!formula) return []
+
+  // If it contains Greek letters or special phase notation, return as-is
+  if (/[α-ωΑ-Ω]/.test(formula) || formula.includes(`+`)) {
+    return [{ text: formula }]
+  }
+
+  const parts: FormulaPart[] = []
+  let idx = 0
+
+  while (idx < formula.length) {
+    const char = formula[idx]
+
+    // Check for subscript digits (numbers following letters)
+    if (/\d/.test(char)) {
+      // Collect consecutive digits
+      let num = ``
+      while (idx < formula.length && /\d/.test(formula[idx])) {
+        num += formula[idx]
+        idx++
+      }
+      parts.push({ sub: num })
+      continue
+    }
+
+    // Check for superscript (- charge notation, e.g., "O2-")
+    // Note: + is handled by the early return for phase notation like "α + β"
+    if (char === `-`) {
+      let charge = char
+      idx++
+      // Collect following digits if any (e.g., 2- becomes superscript)
+      while (idx < formula.length && /\d/.test(formula[idx])) {
+        charge += formula[idx]
+        idx++
+      }
+      parts.push({ sup: charge })
+      continue
+    }
+
+    // Check for element symbol (uppercase followed by optional lowercase)
+    if (/[A-Z]/.test(char)) {
+      let element = char
+      idx++
+      // Collect following lowercase letters
+      while (idx < formula.length && /[a-z]/.test(formula[idx])) {
+        element += formula[idx]
+        idx++
+      }
+      parts.push({ text: element })
+      continue
+    }
+
+    // Any other character (lowercase, hyphen, etc.) - collect as text
+    let text = char
+    idx++
+    while (idx < formula.length && !/[A-Z\d\-]/.test(formula[idx])) {
+      text += formula[idx]
+      idx++
+    }
+    // Merge with previous text part if possible
+    if (parts.length > 0 && parts[parts.length - 1].text !== undefined) {
+      parts[parts.length - 1].text += text
+    } else {
+      parts.push({ text })
+    }
+  }
+
+  return parts
+}
+
+// Format a chemical formula as SVG tspan elements with subscripts
+// Returns SVG markup string to be used inside a <text> element
+// Example: "Fe3C" -> "Fe<tspan dy='0.25em' font-size='0.75em'>3</tspan><tspan dy='-0.25em'>C</tspan>"
+export function format_formula_svg(
+  formula: string,
+  use_subscripts: boolean = true,
+): string {
+  if (!use_subscripts || !is_compound(formula)) {
+    return formula
+  }
+
+  const parts = parse_chemical_formula(formula)
+  if (parts.length === 0) return formula
+
+  let result = ``
+  let needs_baseline_reset = false
+
+  for (const part of parts) {
+    if (part.text !== undefined) {
+      // Reset baseline after subscript/superscript
+      if (needs_baseline_reset) {
+        result += `<tspan dy="-0.25em">${part.text}</tspan>`
+        needs_baseline_reset = false
+      } else result += part.text
+    } else if (part.sub !== undefined) {
+      result += `<tspan dy="0.25em" font-size="0.75em">${part.sub}</tspan>`
+      needs_baseline_reset = true
+    } else if (part.sup !== undefined) {
+      result += `<tspan dy="-0.4em" font-size="0.75em">${part.sup}</tspan>`
+      needs_baseline_reset = true
+    }
+  }
+
+  return result
+}
+
+// Format a chemical formula as HTML with <sub> and <sup> tags
+// Example: "Fe3C" -> "Fe<sub>3</sub>C"
+export function format_formula_html(
+  formula: string,
+  use_subscripts: boolean = true,
+): string {
+  if (!use_subscripts || !is_compound(formula)) {
+    return formula
+  }
+
+  const parts = parse_chemical_formula(formula)
+  if (parts.length === 0) return formula
+
+  let result = ``
+  for (const part of parts) {
+    if (part.text !== undefined) {
+      result += part.text
+    } else if (part.sub !== undefined) {
+      result += `<sub>${part.sub}</sub>`
+    } else if (part.sup !== undefined) {
+      result += `<sup>${part.sup}</sup>`
+    }
+  }
+
+  return result
 }

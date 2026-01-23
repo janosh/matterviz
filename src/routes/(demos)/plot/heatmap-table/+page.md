@@ -43,6 +43,154 @@ A simple table with sortable columns and automatic heatmap coloring based on cel
 />
 ```
 
+## Periodic Table Elements
+
+All 118 chemical elements with physical and chemical properties. Features column grouping, category/phase filters, row selection with statistics, double-click to open element pages, and radioactive element highlighting:
+
+```svelte example
+<script>
+  import { HeatmapTable } from 'matterviz'
+  import element_data from 'matterviz/element/data'
+
+  // Get unique categories and phases for filters
+  const categories = [...new Set(element_data.map((el) => el.category))].sort()
+  const phases = [...new Set(element_data.map((el) => el.phase))].sort()
+
+  let category_filter = $state(`all`)
+  let phase_filter = $state(`all`)
+  let selected_rows = $state([])
+
+  // Transform and filter element data
+  let data = $derived(
+    element_data
+      .filter((el) => category_filter === `all` || el.category === category_filter)
+      .filter((el) => phase_filter === `all` || el.phase === phase_filter)
+      .map((el) => ({
+        Symbol: el.radioactive ? `☢️ ${el.symbol}` : el.symbol,
+        Name: el.name,
+        'Z': el.number,
+        'Mass (u)': el.atomic_mass,
+        Category: el.category,
+        Period: el.period,
+        Group: el.column,
+        'n<sub>val</sub>': el.n_valence,
+        'ρ (g/cm³)': el.density,
+        'r<sub>atom</sub> (Å)': el.atomic_radius,
+        'r<sub>cov</sub> (Å)': el.covalent_radius,
+        'χ': el.electronegativity,
+        'EA (kJ/mol)': el.electron_affinity,
+        'IE<sub>1</sub> (eV)': el.first_ionization,
+        'C<sub>p</sub>': el.specific_heat,
+        'T<sub>m</sub> (K)': el.melting_point,
+        'T<sub>b</sub> (K)': el.boiling_point,
+        Phase: el.phase,
+        Year: el.year,
+        _symbol: el.symbol, // for navigation
+      })),
+  )
+
+  // Calculate statistics for selected elements
+  let stats = $derived.by(() => {
+    if (selected_rows.length === 0) return null
+    const nums = (key) => selected_rows.map((r) => r[key]).filter((v) => v != null)
+    const avg = (arr) =>
+      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+    return {
+      count: selected_rows.length,
+      avg_mass: avg(nums(`Mass (u)`))?.toFixed(2),
+      avg_density: avg(nums(`ρ (g/cm³)`))?.toFixed(2),
+      avg_electronegativity: avg(nums(`χ`))?.toFixed(2),
+    }
+  })
+
+  // deno-fmt-ignore
+  const columns = [
+    // Identity
+    { label: `Symbol`, sticky: true, style: `min-width: 75px; font-weight: 600;` },
+    { label: `Name`, group: `Identity`, style: `min-width: 100px;` },
+    { label: `Z`, group: `Identity`, color_scale: `interpolateViridis`, format: `d` },
+    { label: `Mass (u)`, group: `Identity`, color_scale: `interpolateBlues`, format: `.2f` },
+    { label: `Category`, group: `Identity`, style: `min-width: 160px;` },
+    // Structure
+    { label: `Period`, group: `Structure`, color_scale: `interpolatePurples`, format: `d` },
+    { label: `Group`, group: `Structure`, color_scale: `interpolateGreens`, format: `d` },
+    { label: `n<sub>val</sub>`, group: `Structure`, color_scale: `interpolateCool`, format: `d`, description: `Valence electrons` },
+    // Physical
+    { label: `ρ (g/cm³)`, group: `Physical`, better: `higher`, color_scale: `interpolateOranges`, format: `.3~`, scale_type: `log`, description: `Density` },
+    { label: `r<sub>atom</sub> (Å)`, group: `Physical`, color_scale: `interpolatePlasma`, format: `.2f`, description: `Atomic radius` },
+    { label: `r<sub>cov</sub> (Å)`, group: `Physical`, color_scale: `interpolateMagma`, format: `.2f`, description: `Covalent radius` },
+    { label: `Phase`, group: `Physical`, style: `min-width: 60px;` },
+    // Chemical
+    { label: `χ`, group: `Chemical`, better: `higher`, color_scale: `interpolateRdYlBu`, format: `.2f`, description: `Electronegativity (Pauling)` },
+    { label: `EA (kJ/mol)`, group: `Chemical`, color_scale: `interpolateRdYlGn`, format: `.1f`, description: `Electron affinity` },
+    { label: `IE<sub>1</sub> (eV)`, group: `Chemical`, better: `higher`, color_scale: `interpolateInferno`, format: `.2f`, description: `First ionization energy` },
+    // Thermal
+    { label: `C<sub>p</sub>`, group: `Thermal`, color_scale: `interpolateYlOrRd`, format: `.2f`, description: `Specific heat (J/g·K)` },
+    { label: `T<sub>m</sub> (K)`, group: `Thermal`, color_scale: `interpolateCool`, format: `,.0f`, description: `Melting point` },
+    { label: `T<sub>b</sub> (K)`, group: `Thermal`, color_scale: `interpolateWarm`, format: `,.0f`, description: `Boiling point` },
+    // Discovery
+    { label: `Year`, group: `Discovery`, color_scale: `interpolateGreys`, format: `d`, description: `Year of discovery` },
+  ]
+</script>
+
+<div
+  style="display: flex; gap: 1em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
+>
+  <label>
+    Category:
+    <select bind:value={category_filter}>
+      <option value="all">All ({element_data.length})</option>
+      {#each categories as cat}
+        <option value={cat}>
+          {cat} ({element_data.filter((el) => el.category === cat).length})
+        </option>
+      {/each}
+    </select>
+  </label>
+  <label>
+    Phase:
+    <select bind:value={phase_filter}>
+      <option value="all">All</option>
+      {#each phases as phase}
+        <option value={phase}>{phase}</option>
+      {/each}
+    </select>
+  </label>
+  {#if stats}
+    <span style="font-size: 0.9em; opacity: 0.8; margin-left: auto">
+      Selected: <strong>{stats.count}</strong> | Avg mass: <strong>{
+        stats.avg_mass
+      }</strong> u | Avg ρ: <strong>{stats.avg_density}</strong> g/cm³ | Avg χ: <strong>{
+        stats.avg_electronegativity
+      }</strong>
+    </span>
+  {/if}
+</div>
+
+<HeatmapTable
+  {data}
+  {columns}
+  scroll_style="max-height: 500px;"
+  search
+  export_data
+  show_column_toggle
+  show_row_select
+  bind:selected_rows
+  pagination={{ page_size: 20 }}
+  sort_hint="Click headers to sort, Shift+click for multi-sort"
+  onrowdblclick={(_, row) => window.open(`/${row._symbol}`, `_blank`)}
+  style="margin: 0 auto"
+/>
+
+{#if selected_rows.length > 0}
+  <p style="margin-top: 0.5em; font-size: 0.9em; color: var(--text-muted)">
+    Double-click a row to open element page. Selected: {
+      selected_rows.map((r) => r._symbol).join(`, `)
+    }
+  </p>
+{/if}
+```
+
 ## Color Scales and Scale Types
 
 Choose from various D3 color scales and switch between linear and logarithmic scaling. Log scale is useful for properties spanning many orders of magnitude like electrical conductivity:
