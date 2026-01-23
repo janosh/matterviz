@@ -106,20 +106,7 @@
   let bands_y_axis = $state<AxisConfig>({})
   let dos_y_axis = $state<AxisConfig>({})
 
-  // Update y-axis configs when props or shared range changes
-  $effect(() => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    bands_y_axis = { ...(bands_props.y_axis ?? {}), range: base_range }
-  })
-
-  $effect(() => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    dos_y_axis = is_desktop
-      ? { label: ``, ...(dos_props.y_axis ?? {}), range: base_range }
-      : { ...(dos_props.y_axis ?? {}) }
-  })
-
-  // Detect zoom changes and sync between components (DOS sync only on desktop)
+  // Detect zoom changes and sync between components (runs first to capture child updates)
   $effect(() => {
     if (!sync_y_zoom || !shared_frequency_range) return
     const result = helpers.detect_zoom_change(
@@ -130,6 +117,32 @@
       is_desktop, // DOS sync only enabled on desktop
     )
     if (result !== undefined) synced_zoom_range = result
+  })
+
+  // Propagate synced range to bands y-axis (untrack current to avoid overwriting child zoom)
+  $effect(() => {
+    const base_range = synced_zoom_range ?? shared_frequency_range
+    const current_range = untrack(() => bands_y_axis.range)
+    // Skip if current range is valid but differs from base (child zoom in progress)
+    if (
+      helpers.is_valid_range(current_range) &&
+      !helpers.ranges_equal(current_range, base_range)
+    ) return
+    bands_y_axis = { ...(bands_props.y_axis ?? {}), range: base_range }
+  })
+
+  // Propagate synced range to DOS y-axis (untrack current to avoid overwriting child zoom)
+  $effect(() => {
+    const base_range = synced_zoom_range ?? shared_frequency_range
+    const current_range = untrack(() => dos_y_axis.range)
+    // Skip if current range is valid but differs from base (child zoom in progress)
+    if (
+      helpers.is_valid_range(current_range) &&
+      !helpers.ranges_equal(current_range, base_range)
+    ) return
+    dos_y_axis = is_desktop
+      ? { label: ``, ...(dos_props.y_axis ?? {}), range: base_range }
+      : { ...(dos_props.y_axis ?? {}) }
   })
 
   let hovered_frequency = $state<number | null>(null)

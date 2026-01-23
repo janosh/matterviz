@@ -19,15 +19,20 @@ export const is_valid_range = (range: unknown): range is Vec2 =>
 
 // Check if two ranges are approximately equal (within tolerance)
 // Returns false if either range is invalid (null, undefined, or fails is_valid_range)
+// Negative tol is clamped to 0; tol=0 checks exact equality
 export const ranges_equal = (
   a: Vec2 | undefined | null,
   b: Vec2 | undefined | null,
   tol = 0.001,
-): boolean =>
-  is_valid_range(a) &&
-  is_valid_range(b) &&
-  Math.abs(a[0] - b[0]) < tol &&
-  Math.abs(a[1] - b[1]) < tol
+): boolean => {
+  const safe_tol = Math.max(0, tol)
+  return (
+    is_valid_range(a) &&
+    is_valid_range(b) &&
+    Math.abs(a[0] - b[0]) <= safe_tol &&
+    Math.abs(a[1] - b[1]) <= safe_tol
+  )
+}
 
 // Detect which plot triggered a zoom change and return the new synced range.
 // Returns null to reset to shared range, undefined for no change, or Vec2 for new zoom.

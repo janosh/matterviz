@@ -10,6 +10,8 @@
     compute_frequency_range,
     detect_zoom_change,
     extract_efermi,
+    is_valid_range,
+    ranges_equal,
   } from './helpers'
   import type { BaseBandStructure, DosInput, HoveredData } from './types'
 
@@ -43,22 +45,7 @@
   let bands_y_axis = $state<AxisConfig>({})
   let dos_y_axis = $state<AxisConfig>({ label: `` })
 
-  // Update y-axis configs when props or shared range changes
-  $effect(() => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    bands_y_axis = shared_y_axis
-      ? { ...(bands_props.y_axis ?? {}), range: base_range }
-      : { ...(bands_props.y_axis ?? {}) }
-  })
-
-  $effect(() => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    dos_y_axis = shared_y_axis
-      ? { label: ``, ...(dos_props.y_axis ?? {}), range: base_range }
-      : { label: ``, ...(dos_props.y_axis ?? {}) }
-  })
-
-  // Detect zoom changes and sync between components
+  // Detect zoom changes and sync between components (runs first to capture child updates)
   $effect(() => {
     if (!sync_y_zoom || !shared_frequency_range) return
     const result = detect_zoom_change(
@@ -68,6 +55,34 @@
       untrack(() => synced_zoom_range),
     )
     if (result !== undefined) synced_zoom_range = result
+  })
+
+  // Propagate synced range to bands y-axis (untrack current to avoid overwriting child zoom)
+  $effect(() => {
+    const base_range = synced_zoom_range ?? shared_frequency_range
+    const current_range = untrack(() => bands_y_axis.range)
+    // Skip if current range is valid but differs from base (child zoom in progress)
+    if (
+      is_valid_range(current_range) &&
+      !ranges_equal(current_range, base_range)
+    ) return
+    bands_y_axis = shared_y_axis
+      ? { ...(bands_props.y_axis ?? {}), range: base_range }
+      : { ...(bands_props.y_axis ?? {}) }
+  })
+
+  // Propagate synced range to DOS y-axis (untrack current to avoid overwriting child zoom)
+  $effect(() => {
+    const base_range = synced_zoom_range ?? shared_frequency_range
+    const current_range = untrack(() => dos_y_axis.range)
+    // Skip if current range is valid but differs from base (child zoom in progress)
+    if (
+      is_valid_range(current_range) &&
+      !ranges_equal(current_range, base_range)
+    ) return
+    dos_y_axis = shared_y_axis
+      ? { label: ``, ...(dos_props.y_axis ?? {}), range: base_range }
+      : { label: ``, ...(dos_props.y_axis ?? {}) }
   })
 
   let hovered_frequency = $state<number | null>(null)
