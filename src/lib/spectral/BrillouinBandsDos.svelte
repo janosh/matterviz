@@ -122,26 +122,37 @@
   // Propagate synced range to bands y-axis (untrack current to avoid overwriting child zoom)
   $effect(() => {
     const base_range = synced_zoom_range ?? shared_frequency_range
-    const current_range = untrack(() => bands_y_axis.range)
-    // Skip if current range is valid but differs from base (child zoom in progress)
+    const current_range = untrack(() => bands_y_axis.range) as Vec2 | undefined
+    // Skip if current range already matches base, or is valid but differs (child zoom in progress)
+    if (helpers.ranges_equal(current_range, base_range)) return
     if (
       helpers.is_valid_range(current_range) &&
       !helpers.ranges_equal(current_range, base_range)
     ) return
-    bands_y_axis = { ...(bands_props.y_axis ?? {}), range: base_range }
+    // Only include range if it's valid (don't override child's auto-range with undefined)
+    bands_y_axis = {
+      ...(bands_props.y_axis ?? {}),
+      ...(helpers.is_valid_range(base_range) && { range: base_range }),
+    }
   })
 
   // Propagate synced range to DOS y-axis (untrack current to avoid overwriting child zoom)
   $effect(() => {
     const base_range = synced_zoom_range ?? shared_frequency_range
-    const current_range = untrack(() => dos_y_axis.range)
-    // Skip if current range is valid but differs from base (child zoom in progress)
+    const current_range = untrack(() => dos_y_axis.range) as Vec2 | undefined
+    // Skip if current range already matches base, or is valid but differs (child zoom in progress)
+    if (helpers.ranges_equal(current_range, base_range)) return
     if (
       helpers.is_valid_range(current_range) &&
       !helpers.ranges_equal(current_range, base_range)
     ) return
+    // Only include range if it's valid (don't override child's auto-range with undefined)
     dos_y_axis = is_desktop
-      ? { label: ``, ...(dos_props.y_axis ?? {}), range: base_range }
+      ? {
+        label: ``,
+        ...(dos_props.y_axis ?? {}),
+        ...(helpers.is_valid_range(base_range) && { range: base_range }),
+      }
       : { ...(dos_props.y_axis ?? {}) }
   })
 
