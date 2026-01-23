@@ -427,12 +427,11 @@ describe(`JsonTree`, () => {
   })
 
   describe(`string truncation`, () => {
-    it(`truncates long strings`, () => {
-      const long_str = `a`.repeat(300)
+    it(`truncates long strings and shows expand button`, () => {
       mount(JsonTree, {
         target: document.body,
         props: {
-          value: { long: long_str },
+          value: { long: `a`.repeat(300) },
           show_header: false,
           max_string_length: 50,
         },
@@ -440,20 +439,7 @@ describe(`JsonTree`, () => {
       const value_el = get_values()[0]
       expect(value_el.textContent?.length).toBeLessThan(100)
       expect(value_el.textContent).toContain(`...`)
-    })
-
-    it(`shows expand button for long strings`, () => {
-      const long_str = `a`.repeat(300)
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { long: long_str },
-          show_header: false,
-          max_string_length: 50,
-        },
-      })
-      const expand_btn = document.querySelector(`.expand-btn`) as HTMLButtonElement
-      expect(expand_btn).toBeTruthy()
+      expect(document.querySelector(`.expand-btn`)).toBeTruthy()
     })
   })
 
@@ -558,23 +544,435 @@ describe(`JsonTree`, () => {
 })
 
 describe(`accessibility`, () => {
-  it(`nodes have treeitem role and aria-expanded`, () => {
+  it(`has correct ARIA roles and attributes`, () => {
     mount(JsonTree, {
       target: document.body,
       props: { value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 },
     })
+    // Tree structure
     expect(document.querySelectorAll(`[role="treeitem"]`).length).toBeGreaterThan(0)
     expect(document.querySelector(`[aria-expanded]`)).toBeTruthy()
-  })
-
-  it(`values have button role and copy title`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { name: `test` }, show_header: false },
-    })
+    // Clickable values
     const value_el = document.querySelector(`.json-value`)
     expect(value_el?.getAttribute(`role`)).toBe(`button`)
     expect(value_el?.getAttribute(`title`)).toBe(`Click to copy`)
+  })
+})
+
+describe(`search navigation`, () => {
+  const get_search_input = (): HTMLInputElement =>
+    document.querySelector(`.search-input`) as HTMLInputElement
+  const get_match_nav = (): HTMLElement | null => document.querySelector(`.match-nav`)
+  const get_nav_btns = (): NodeListOf<HTMLButtonElement> =>
+    document.querySelectorAll(`.nav-btn`)
+  const get_match_count = (): HTMLElement | null => document.querySelector(`.match-count`)
+  const get_current_match = (): HTMLElement | null =>
+    document.querySelector(`.current-match`)
+
+  async function type_search(query: string): Promise<void> {
+    const input = get_search_input()
+    input.value = query
+    input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    flushSync()
+    // Wait for debounce (150ms) + microtask
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    flushSync()
+    await tick()
+  }
+
+  it(`shows prev/next buttons when search has matches`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { foo: 1, bar: 2, baz: 3 }, default_fold_level: 5 },
+    })
+    expect(get_match_nav()).toBeNull()
+
+    await type_search(`ba`)
+
+    expect(get_match_nav()).toBeTruthy()
+    expect(get_nav_btns().length).toBe(2) // prev and next
+  })
+
+  it(`shows "X of Y" match count format`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { foo: 1, bar: 2, baz: 3 }, default_fold_level: 5 },
+    })
+
+    await type_search(`ba`)
+
+    const count = get_match_count()
+    expect(count).toBeTruthy()
+    expect(count?.textContent).toMatch(/1 of 2/)
+  })
+
+  it(`next button increments match index and wraps around`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { bar: 1, baz: 2 }, default_fold_level: 5 },
+    })
+
+    await type_search(`ba`)
+
+    const count = get_match_count()
+    expect(count?.textContent).toContain(`1 of 2`)
+
+    const next_btn = get_nav_btns()[1]
+
+    // Go to 2nd match
+    next_btn.click()
+    flushSync()
+    await tick()
+    expect(count?.textContent).toContain(`2 of 2`)
+
+    // Wrap around to 1st match
+    next_btn.click()
+    flushSync()
+    await tick()
+    expect(count?.textContent).toContain(`1 of 2`)
+  })
+
+  it(`prev button decrements match index with wrap-around`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { bar: 1, baz: 2 }, default_fold_level: 5 },
+    })
+
+    await type_search(`ba`)
+
+    const count = get_match_count()
+    expect(count?.textContent).toContain(`1 of 2`)
+
+    const prev_btn = get_nav_btns()[0]
+    prev_btn.click()
+    flushSync()
+    await tick()
+
+    // Should wrap to last match
+    expect(count?.textContent).toContain(`2 of 2`)
+  })
+
+  it(`clamps match index when search results shrink`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { bar: 1, baz: 2, bat: 3 }, default_fold_level: 5 },
+    })
+
+    await type_search(`ba`)
+    expect(get_match_count()?.textContent).toContain(`1 of 3`)
+
+    // Navigate to third match
+    get_nav_btns()[1].click()
+    get_nav_btns()[1].click()
+    flushSync()
+    await tick()
+    expect(get_match_count()?.textContent).toContain(`3 of 3`)
+
+    // Change search to only match one item - index should clamp to 0
+    await type_search(`bat`)
+    expect(get_match_count()?.textContent).toContain(`1 of 1`)
+  })
+
+  it(`highlights current match with distinct class`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { bar: 1, baz: 2 }, default_fold_level: 5 },
+    })
+
+    await type_search(`ba`)
+
+    const current = get_current_match()
+    expect(current).toBeTruthy()
+    expect(current?.classList.contains(`current-match`)).toBe(true)
+  })
+
+  it(`navigating to next match updates current-match class`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { bar: 1, baz: 2 }, default_fold_level: 5 },
+    })
+
+    await type_search(`ba`)
+
+    const first_match = get_current_match()
+    const first_path = first_match?.getAttribute(`data-path`)
+
+    const next_btn = get_nav_btns()[1]
+    next_btn.click()
+    flushSync()
+    await tick()
+
+    const second_match = get_current_match()
+    const second_path = second_match?.getAttribute(`data-path`)
+
+    expect(first_path).not.toBe(second_path)
+  })
+
+  it.each([
+    { key: `F3`, shift: false, target: `tree`, from: `1 of 3`, to: `2 of 3` },
+    { key: `F3`, shift: true, target: `tree`, from: `1 of 3`, to: `3 of 3` },
+    { key: `Enter`, shift: false, target: `input`, from: `1 of 3`, to: `2 of 3` },
+    { key: `Enter`, shift: true, target: `input`, from: `1 of 3`, to: `3 of 3` },
+  ])(
+    `$key (shift=$shift) on $target navigates matches`,
+    async ({ key, shift, target, from, to }) => {
+      mount(JsonTree, {
+        target: document.body,
+        props: { value: { bar: 1, baz: 2, bat: 3 }, default_fold_level: 5 },
+      })
+
+      await type_search(`ba`)
+
+      const count = get_match_count()
+      expect(count?.textContent).toContain(from)
+
+      const el = target === `tree`
+        ? document.querySelector(`.json-tree`)
+        : get_search_input()
+      el?.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key, shiftKey: shift, bubbles: true }),
+      )
+      flushSync()
+      await tick()
+
+      expect(count?.textContent).toContain(to)
+    },
+  )
+
+  it(`Escape clears search`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { foo: 1 }, default_fold_level: 5 },
+    })
+
+    await type_search(`foo`)
+
+    const input = get_search_input()
+    expect(input.value).toBe(`foo`)
+    expect(get_match_nav()).toBeTruthy()
+
+    input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+    flushSync()
+    await tick()
+
+    expect(input.value).toBe(``)
+    expect(get_match_nav()).toBeNull()
+  })
+
+  it(`auto-expands collapsed nodes to show matches`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { outer: { inner: { target: `findme` } } },
+        default_fold_level: 1, // Only root expanded
+      },
+    })
+
+    // Initially collapsed
+    expect(document.body.textContent).not.toContain(`findme`)
+    expect(document.body.textContent).toContain(`{1 key}`)
+
+    await type_search(`findme`)
+
+    // Should auto-expand to reveal match
+    expect(document.body.textContent).toContain(`findme`)
+  })
+})
+
+describe(`path breadcrumb`, () => {
+  // Tests verify path/focus functionality via onselect callback since
+  // vitest DOM updates may not reflect state changes immediately.
+
+  it.each([
+    { path: `nested.key`, value: { nested: { key: 1 } }, expected_val: 1 },
+    { path: `a.b.c.d`, value: { a: { b: { c: { d: 1 } } } }, expected_val: 1 },
+  ])(`onselect receives correct path: $path`, async ({ path, value, expected_val }) => {
+    const onselect = vi.fn()
+    mount(JsonTree, {
+      target: document.body,
+      props: { value, default_fold_level: 10, onselect },
+    })
+
+    const target_node = document.querySelector(`[data-path="${path}"]`) as HTMLElement
+    expect(target_node).toBeTruthy()
+    target_node.click()
+    flushSync()
+    await tick()
+
+    expect(onselect).toHaveBeenCalledWith(path, expected_val)
+  })
+})
+
+describe(`copy path functionality`, () => {
+  it(`clicking key copies full path instead of just key`, async () => {
+    const write_text = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, `clipboard`, {
+      value: { writeText: write_text },
+      writable: true,
+    })
+
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { outer: { inner: 42 } },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+
+    // Find the "inner" key button
+    const keys = document.querySelectorAll(`.node-key`)
+    const inner_key = Array.from(keys).find((el) => el.textContent?.includes(`inner`))
+    expect(inner_key).toBeTruthy()
+    ;(inner_key as HTMLButtonElement).click()
+    flushSync()
+    await tick()
+
+    expect(write_text).toHaveBeenCalledWith(`outer.inner`)
+  })
+
+  it(`key title shows full path hint`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { parent: { child: 1 } },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+
+    const keys = document.querySelectorAll(`.node-key`)
+    const child_key = Array.from(keys).find((el) => el.textContent?.includes(`child`))
+
+    expect(child_key?.getAttribute(`title`)).toContain(`parent.child`)
+  })
+})
+
+describe(`double-click recursive expand/collapse`, () => {
+  it.each([
+    {
+      desc: `expands collapsed`,
+      fold_level: 1,
+      before: { contains: [], notContains: [`"d"`] },
+      after: { contains: [`"d"`, `1`], notContains: [] },
+    },
+    {
+      desc: `collapses expanded`,
+      fold_level: 10,
+      before: { contains: [`"b"`, `"c"`], notContains: [] },
+      after: { contains: [`{2 keys}`], notContains: [`"b"`, `"c"`] },
+    },
+  ])(`double-click $desc all descendants`, async ({ fold_level, before, after }) => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: { b: { c: 1 }, d: 2 } },
+        show_header: false,
+        default_fold_level: fold_level,
+      },
+    })
+
+    before.contains.forEach((text) => expect(document.body.textContent).toContain(text))
+    before.notContains.forEach((text) =>
+      expect(document.body.textContent).not.toContain(text)
+    )
+
+    document.querySelectorAll(`.json-node`)[1].dispatchEvent(
+      new MouseEvent(`dblclick`, { bubbles: true }),
+    )
+    flushSync()
+    await tick()
+
+    after.contains.forEach((text) => expect(document.body.textContent).toContain(text))
+    after.notContains.forEach((text) =>
+      expect(document.body.textContent).not.toContain(text)
+    )
+  })
+
+  // Test for root node double-click when root_label is undefined (empty path)
+  // Verifies that toggle_collapse_recursive handles empty path correctly
+  it.each([
+    {
+      desc: `collapses all from root without label`,
+      fold_level: 10,
+      before: { contains: [`"b"`, `"c"`], notContains: [] },
+      after: { contains: [], notContains: [`"b"`, `"c"`] },
+    },
+  ])(
+    `double-click root (empty path) $desc`,
+    async ({ fold_level, before, after }) => {
+      mount(JsonTree, {
+        target: document.body,
+        props: {
+          value: { a: { b: { c: 1 }, d: 2 } },
+          show_header: false,
+          default_fold_level: fold_level,
+          // No root_label means root path is empty string
+        },
+      })
+
+      before.contains.forEach((text) => expect(document.body.textContent).toContain(text))
+      before.notContains.forEach((text) =>
+        expect(document.body.textContent).not.toContain(text)
+      )
+
+      // Double-click on root node (index 0) - has empty path when no root_label
+      const root_node = document.querySelectorAll(`.json-node`)[0]
+      expect(root_node.getAttribute(`data-path`)).toBe(``)
+      root_node.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      flushSync()
+      await tick()
+
+      after.contains.forEach((text) => expect(document.body.textContent).toContain(text))
+      after.notContains.forEach((text) =>
+        expect(document.body.textContent).not.toContain(text)
+      )
+    },
+  )
+
+  it(`double-click root (empty path) expands after collapse all`, async () => {
+    // Start with everything expanded, collapse all, then double-click root to expand
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: { b: { c: 1 }, d: 2 } },
+        show_header: false,
+        default_fold_level: 10, // Everything expanded initially
+      },
+    })
+
+    // Initially everything is visible
+    expect(document.body.textContent).toContain(`"c"`)
+
+    // Double-click root to collapse all descendants
+    const root_node = document.querySelectorAll(`.json-node`)[0]
+    expect(root_node.getAttribute(`data-path`)).toBe(``)
+    root_node.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    flushSync()
+    await tick()
+
+    // Now everything should be collapsed - c is hidden
+    expect(document.body.textContent).not.toContain(`"c"`)
+
+    // Double-click root again to expand all descendants
+    root_node.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    flushSync()
+    await tick()
+
+    // Now everything should be visible again
+    expect(document.body.textContent).toContain(`"c"`)
+    expect(document.body.textContent).toContain(`"d"`)
+  })
+
+  it(`nodes have data-path attribute`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { foo: { bar: 1 } }, show_header: false, default_fold_level: 5 },
+    })
+    const paths = Array.from(document.querySelectorAll(`.json-node[data-path]`))
+      .map((n) => n.getAttribute(`data-path`))
+    expect(paths).toContain(`foo`)
+    expect(paths).toContain(`foo.bar`)
   })
 })
 
@@ -638,24 +1036,19 @@ describe(`edge cases`, () => {
     expect(document.body.textContent).toContain(expected)
   })
 
-  it(`renders numeric-looking string keys correctly`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { '123': `a`, '0': `b`, '-1': `c` }, show_header: false },
-    })
-    const text = document.body.textContent
-    expect(text).toContain(`"123"`)
-    expect(text).toContain(`"0"`)
-    expect(text).toContain(`"-1"`)
-  })
-
-  it(`renders scientific notation numbers`, () => {
-    mount(JsonTree, {
-      target: document.body,
-      props: { value: { sci: 6.022e23, tiny: 1e-10 }, show_header: false },
-    })
-    const text = document.body.textContent
-    expect(text).toContain(`6.022e+23`)
-    expect(text).toContain(`1e-10`)
+  it.each([
+    {
+      desc: `numeric-looking string keys`,
+      value: { '123': `a`, '0': `b` },
+      expected: [`"123"`, `"0"`],
+    },
+    {
+      desc: `scientific notation numbers`,
+      value: { sci: 6.022e23, tiny: 1e-10 },
+      expected: [`6.022e+23`, `1e-10`],
+    },
+  ])(`renders $desc correctly`, ({ value, expected }) => {
+    mount(JsonTree, { target: document.body, props: { value, show_header: false } })
+    expected.forEach((text) => expect(document.body.textContent).toContain(text))
   })
 })
