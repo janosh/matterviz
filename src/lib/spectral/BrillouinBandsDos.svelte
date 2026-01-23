@@ -1,8 +1,10 @@
 <script lang="ts">
   import { BrillouinZone, reciprocal_lattice } from '$lib/brillouin'
-  import type { Vec3 } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import type { InternalPoint } from '$lib/plot'
+  import type { AxisConfig } from '$lib/plot/types'
   import type { Crystal } from '$lib/structure'
+  import { untrack } from 'svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
@@ -17,6 +19,7 @@
     bands_props = {},
     dos_props = {},
     bz_props = {},
+    sync_y_zoom = true,
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -26,6 +29,7 @@
     bands_props?: Partial<ComponentProps<typeof Bands>>
     dos_props?: Partial<ComponentProps<typeof Dos>>
     bz_props?: Partial<ComponentProps<typeof BrillouinZone>>
+    sync_y_zoom?: boolean // Sync frequency/energy axis zoom between plots (default: true)
     children?: Snippet<[HoveredData]>
   } = $props()
 
@@ -96,13 +100,54 @@
       ? `tablet`
       : `phone`,
   )
-  // For DOS in horizontal orientation, frequency/energy is on y-axis
-  // Share the same range with bands for consistency
-  let y_axis_dos = $derived({
-    ...(is_desktop ? { label: ``, range: shared_frequency_range } : {}),
-    ...dos_props.y_axis,
+
+  // Synced zoom state (null = use auto-computed range)
+  let synced_zoom_range = $state<Vec2 | null>(null)
+  let bands_y_axis = $state<AxisConfig>({})
+  let dos_y_axis = $state<AxisConfig>({})
+
+  // Update y-axis configs when props or shared range changes
+  $effect(() => {
+    const base_range = synced_zoom_range ?? shared_frequency_range
+    bands_y_axis = { range: base_range, ...bands_props.y_axis }
   })
-  // Track hovered frequency from DOS to show reference line in Bands
+
+  $effect(() => {
+    const base_range = synced_zoom_range ?? shared_frequency_range
+    dos_y_axis = is_desktop
+      ? { label: ``, range: base_range, ...dos_props.y_axis }
+      : { ...dos_props.y_axis }
+  })
+
+  // Detect zoom changes and sync between components
+  $effect(() => {
+    if (!sync_y_zoom || !shared_frequency_range) return
+
+    const bands_range = bands_y_axis.range
+    const dos_range = dos_y_axis.range
+    const current_synced = untrack(() => synced_zoom_range)
+
+    const bands_at_shared = helpers.is_valid_range(bands_range) &&
+      helpers.ranges_equal(bands_range, shared_frequency_range)
+    const dos_at_shared = is_desktop && helpers.is_valid_range(dos_range) &&
+      helpers.ranges_equal(dos_range, shared_frequency_range)
+    const bands_is_new = helpers.is_valid_range(bands_range) &&
+      !helpers.ranges_equal(bands_range, shared_frequency_range) &&
+      !helpers.ranges_equal(bands_range, current_synced)
+    const dos_is_new = is_desktop && helpers.is_valid_range(dos_range) &&
+      !helpers.ranges_equal(dos_range, shared_frequency_range) &&
+      !helpers.ranges_equal(dos_range, current_synced)
+
+    // Reset if either returns to shared range
+    if (current_synced !== null && (bands_at_shared || dos_at_shared)) {
+      synced_zoom_range = null
+    } else if (bands_is_new && !dos_is_new) {
+      synced_zoom_range = bands_range as Vec2
+    } else if (dos_is_new && !bands_is_new) {
+      synced_zoom_range = dos_range as Vec2
+    }
+  })
+
   let hovered_frequency = $state<number | null>(null)
 </script>
 
@@ -118,7 +163,7 @@
     {fermi_level}
     {...bands_props}
     padding={{ r: is_desktop ? 10 : 5, ...bands_props.padding }}
-    y_axis={{ range: shared_frequency_range, ...bands_props.y_axis }}
+    bind:y_axis={bands_y_axis}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
     on_point_hover={(event) => {
@@ -155,7 +200,7 @@
       range: is_desktop ? undefined : shared_frequency_range,
       ...dos_props.x_axis,
     }}
-    y_axis={y_axis_dos}
+    bind:y_axis={dos_y_axis}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
     padding={{

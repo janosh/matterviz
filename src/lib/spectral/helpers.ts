@@ -1,8 +1,33 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import { centered_frac, euclidean_dist, type Matrix3x3, type Vec3 } from '$lib/math'
+import {
+  centered_frac,
+  euclidean_dist,
+  type Matrix3x3,
+  type Vec2,
+  type Vec3,
+} from '$lib/math'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
+
+// Check if range is a valid [min, max] tuple (strict 2-element array of finite numbers)
+export const is_valid_range = (range: unknown): range is Vec2 =>
+  Array.isArray(range) &&
+  range.length === 2 &&
+  Number.isFinite(range[0]) &&
+  Number.isFinite(range[1])
+
+// Check if two ranges are approximately equal (within tolerance)
+// Returns false if either range is invalid (null, undefined, or fails is_valid_range)
+export const ranges_equal = (
+  a: Vec2 | undefined | null,
+  b: Vec2 | undefined | null,
+  tol = 0.001,
+): boolean =>
+  is_valid_range(a) &&
+  is_valid_range(b) &&
+  Math.abs(a[0] - b[0]) < tol &&
+  Math.abs(a[1] - b[1]) < tol
 
 // Physical constants for unit conversions (SI units)
 const PLANCK = 6.62607015e-34 // J⋅s

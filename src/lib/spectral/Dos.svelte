@@ -42,7 +42,7 @@
     orientation = `vertical`,
     show_legend = true,
     x_axis = {},
-    y_axis = {},
+    y_axis = $bindable({}),
     hovered_frequency = $bindable(null),
     reference_frequency = null,
     fermi_level = undefined,
@@ -347,12 +347,26 @@
     ...(is_horizontal && { ticks: 4 }),
     ...x_axis,
   })
-  let final_y_axis = $derived({
+  // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
+  let internal_y_axis = $derived({
     label: y_label,
     format: `.2f`,
     range: y_range,
     ...y_axis,
   })
+
+  // Sync zoom changes from ScatterPlot back to parent via bindable y_axis
+  $effect(() => {
+    const range = internal_y_axis.range
+    // Only sync if range changed (to avoid infinite loops)
+    if (
+      range && Array.isArray(range) &&
+      (y_axis.range?.[0] !== range[0] || y_axis.range?.[1] !== range[1])
+    ) {
+      y_axis = { ...y_axis, range }
+    }
+  })
+
   let display = $state({
     x_grid: true,
     y_grid: true,
@@ -416,7 +430,7 @@
   <ScatterPlot
     series={series_data}
     x_axis={final_x_axis}
-    y_axis={final_y_axis}
+    bind:y_axis={internal_y_axis}
     bind:display
     legend={show_legend ? {} : null}
     hover_config={{ threshold_px: 50 }}
@@ -437,7 +451,7 @@
       is_phonon,
       units,
       final_x_axis.label ?? ``,
-      final_y_axis.label ?? ``,
+      internal_y_axis.label ?? ``,
       Object.keys(doses_dict).length,
     )}
       {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}

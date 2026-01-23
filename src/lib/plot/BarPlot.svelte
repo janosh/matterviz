@@ -76,6 +76,7 @@
   import {
     calc_auto_padding,
     constrain_tooltip_position,
+    filter_padding,
     LABEL_GAP_DEFAULT,
     measure_text_width,
   } from './layout'
@@ -397,8 +398,9 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 20, b: 60, l: 60, r: 20 }
-  let pad = $derived({ ...default_padding, ...padding })
-  // Update padding when format or ticks change, but prevent infinite loop
+  let pad = $derived(filter_padding(padding, default_padding))
+
+  // Update padding when format or ticks change
   $effect(() => {
     const new_pad = width && height && ticks.y.length
       ? calc_auto_padding({
@@ -407,7 +409,7 @@
         y_axis: { ...y_axis, tick_values: ticks.y },
         y2_axis: { ...y2_axis, tick_values: ticks.y2 },
       })
-      : { ...default_padding, ...padding }
+      : filter_padding(padding, default_padding)
     // Expand right padding if y2 ticks are shown (only for vertical orientation)
     if (
       width && height && y2_series.length && ticks.y2.length &&

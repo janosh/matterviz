@@ -21,7 +21,7 @@
     band_type = undefined,
     show_legend = true,
     x_axis = {},
-    y_axis = {},
+    y_axis = $bindable({}),
     x_positions = $bindable(),
     reference_frequency = null,
     ribbon_config = {},
@@ -462,13 +462,27 @@
     return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
   })
 
-  let final_y_axis = $derived({
+  // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
+  let internal_y_axis = $derived({
     label: detected_band_type === `phonon` ? `Frequency (THz)` : `Energy (eV)`,
     format: `.2f`,
     label_shift: { y: 15 },
     range: y_range,
     ...y_axis,
   })
+
+  // Sync zoom changes from ScatterPlot back to parent via bindable y_axis
+  $effect(() => {
+    const range = internal_y_axis.range
+    // Only sync if range changed (to avoid infinite loops)
+    if (
+      range && Array.isArray(range) &&
+      (y_axis.range?.[0] !== range[0] || y_axis.range?.[1] !== range[1])
+    ) {
+      y_axis = { ...y_axis, range }
+    }
+  })
+
   let display = $state({ x_grid: false, y_grid: true, y_zero_line: true })
 </script>
 
@@ -481,14 +495,14 @@
     range: x_range,
     ...x_axis,
   }}
-  y_axis={final_y_axis}
+  bind:y_axis={internal_y_axis}
   bind:display
   legend={show_legend && Object.keys(band_structs_dict).length > 1 ? {} : null}
   hover_config={{ threshold_px: 50 }}
   {...rest}
 >
   {#snippet tooltip({ x, y_formatted, label, metadata })}
-    {@const y_label_full = final_y_axis.label ?? ``}
+    {@const y_label_full = internal_y_axis.label ?? ``}
     {@const [, y_label, y_unit] = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/) ??
       [, y_label_full, ``]}
     {@const segment = Object.entries(x_positions ?? {}).find(([, [start, end]]) =>
