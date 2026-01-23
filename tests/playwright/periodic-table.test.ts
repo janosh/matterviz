@@ -381,6 +381,10 @@ test.describe(`Periodic Table`, () => {
           const top_segment = tile.locator(`.segment.diagonal-top`)
           const bottom_segment = tile.locator(`.segment.diagonal-bottom`)
 
+          // Wait for segments to be visible before checking CSS - addresses timing issues on CI
+          await expect(top_segment).toBeVisible()
+          await expect(bottom_segment).toBeVisible()
+
           // Use condition-based waits instead of waitForTimeout - toHaveCSS auto-retries
           // until the condition is met, making tests more robust and faster on average
           await expect(top_segment).not.toHaveCSS(`background-color`, `rgba(0, 0, 0, 0)`)

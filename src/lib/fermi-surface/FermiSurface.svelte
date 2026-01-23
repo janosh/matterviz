@@ -53,6 +53,7 @@
     controls_open = $bindable(false),
     color_property = $bindable(`band`),
     color_scale = $bindable(`interpolateViridis`),
+    custom_property_label,
     representation = $bindable(`solid`),
     surface_opacity = $bindable(0.8),
     selected_bands = $bindable(),
@@ -99,6 +100,8 @@
     controls_open?: boolean
     color_property?: ColorProperty
     color_scale?: string
+    // Label for custom property coloring (e.g. "λ(k)", "DOS", etc.)
+    custom_property_label?: string
     representation?: RepresentationMode
     surface_opacity?: number
     selected_bands?: number[]
@@ -450,6 +453,7 @@
             bind:mu
             bind:color_property
             bind:color_scale
+            {custom_property_label}
             bind:representation
             bind:surface_opacity
             bind:selected_bands
