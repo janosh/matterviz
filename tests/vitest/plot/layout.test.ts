@@ -1,7 +1,34 @@
-import { compute_element_placement, constrain_tooltip_position } from '$lib/plot/layout'
+import {
+  compute_element_placement,
+  constrain_tooltip_position,
+  filter_padding,
+} from '$lib/plot/layout'
 import { describe, expect, it, test } from 'vitest'
 
 describe(`layout utility functions`, () => {
+  describe(`filter_padding`, () => {
+    const defaults = { t: 20, b: 60, l: 60, r: 20 }
+
+    it.each([
+      // Null/undefined/empty -> defaults
+      [undefined, defaults],
+      [null, defaults],
+      [{}, defaults],
+      // Partial override
+      [{ t: 10, l: 30 }, { t: 10, b: 60, l: 30, r: 20 }],
+      // Full override
+      [{ t: 5, b: 10, l: 15, r: 25 }, { t: 5, b: 10, l: 15, r: 25 }],
+      // Filters undefined values (preserves defaults)
+      [{ t: 10, b: undefined, r: 5 }, { t: 10, b: 60, l: 60, r: 5 }],
+      // Zero values are preserved (not filtered)
+      [{ t: 0, b: 0 }, { t: 0, b: 0, l: 60, r: 20 }],
+      // Negative values are preserved
+      [{ t: -5 }, { t: -5, b: 60, l: 60, r: 20 }],
+    ])(`filter_padding(%j) -> %j`, (padding, expected) => {
+      expect(filter_padding(padding, defaults)).toEqual(expected)
+    })
+  })
+
   describe(`constrain_tooltip_position`, () => {
     // New behavior: tooltip positioned bottom-right of cursor (+offset for both x,y)
     // Flips to opposite side when it would overflow viewport

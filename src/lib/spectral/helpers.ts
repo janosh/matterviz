@@ -1,8 +1,72 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import { centered_frac, euclidean_dist, type Matrix3x3, type Vec3 } from '$lib/math'
+import {
+  centered_frac,
+  euclidean_dist,
+  type Matrix3x3,
+  type Vec2,
+  type Vec3,
+} from '$lib/math'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
+
+// Check if range is a valid [min, max] tuple (strict 2-element array of finite numbers)
+export const is_valid_range = (range: unknown): range is Vec2 =>
+  Array.isArray(range) &&
+  range.length === 2 &&
+  Number.isFinite(range[0]) &&
+  Number.isFinite(range[1])
+
+// Check if two ranges are approximately equal (within tolerance)
+// Returns false if either range is invalid (null, undefined, or fails is_valid_range)
+// Negative tol is clamped to 0; tol=0 checks exact equality
+export const ranges_equal = (
+  a: Vec2 | undefined | null,
+  b: Vec2 | undefined | null,
+  tol = 0.001,
+): boolean => {
+  const safe_tol = Math.max(0, tol)
+  return (
+    is_valid_range(a) &&
+    is_valid_range(b) &&
+    Math.abs(a[0] - b[0]) <= safe_tol &&
+    Math.abs(a[1] - b[1]) <= safe_tol
+  )
+}
+
+// Detect which plot triggered a zoom change and return the new synced range.
+// Returns null to reset to shared range, undefined for no change, or Vec2 for new zoom.
+export function detect_zoom_change(
+  bands_range: unknown,
+  dos_range: unknown,
+  shared_range: Vec2,
+  current_synced: Vec2 | null,
+  dos_enabled = true,
+): Vec2 | null | undefined {
+  const bands_valid = is_valid_range(bands_range)
+  const dos_valid = dos_enabled && is_valid_range(dos_range)
+
+  // Reset if either becomes invalid (auto-range reset) or returns to shared range
+  if (current_synced !== null) {
+    const bands_at_shared = bands_valid && ranges_equal(bands_range, shared_range)
+    const dos_at_shared = dos_valid && ranges_equal(dos_range, shared_range)
+    if (bands_at_shared || dos_at_shared || !bands_valid || (dos_enabled && !dos_valid)) {
+      return null
+    }
+  }
+
+  // Check for new zoom from either plot
+  const bands_is_new = bands_valid &&
+    !ranges_equal(bands_range, shared_range) &&
+    !ranges_equal(bands_range, current_synced)
+  const dos_is_new = dos_valid &&
+    !ranges_equal(dos_range, shared_range) &&
+    !ranges_equal(dos_range, current_synced)
+
+  if (bands_is_new && !dos_is_new) return bands_range
+  if (dos_is_new && !bands_is_new) return dos_range
+  return undefined // no change
+}
 
 // Physical constants for unit conversions (SI units)
 const PLANCK = 6.62607015e-34 // J⋅s

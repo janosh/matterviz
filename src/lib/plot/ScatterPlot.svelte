@@ -98,7 +98,11 @@
     pixels_to_data_delta,
   } from './interactions'
   import type { Rect } from './layout'
-  import { calc_auto_padding, constrain_tooltip_position } from './layout'
+  import {
+    calc_auto_padding,
+    constrain_tooltip_position,
+    filter_padding,
+  } from './layout'
   import type { IndexedRefLine } from './reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from './reference-line'
   import {
@@ -368,8 +372,9 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 5, b: 50, l: 50, r: 20 }
-  let pad = $derived({ ...default_padding, ...padding })
-  // Update padding when format or ticks change, but prevent infinite loop
+  let pad = $derived(filter_padding(padding, default_padding))
+
+  // Update padding when format or ticks change
   $effect(() => {
     const new_pad = width && height && (y_tick_values.length || y2_tick_values.length)
       ? calc_auto_padding({
@@ -378,9 +383,8 @@
         y_axis: { ...final_y_axis, tick_values: y_tick_values },
         y2_axis: { ...final_y2_axis, tick_values: y2_tick_values },
       })
-      : { ...default_padding, ...padding }
+      : filter_padding(padding, default_padding)
 
-    // Only update if padding actually changed (prevents infinite loop)
     if (JSON.stringify(pad) !== JSON.stringify(new_pad)) pad = new_pad
   })
 

@@ -38,7 +38,14 @@ test.describe(`Trajectory Component`, () => {
   let trajectory_viewer: Locator
   let controls: Locator
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    // Skip beforeEach for tests that are known to be flaky on CI
+    // This prevents the 30s timeout in beforeEach for skipped tests
+    const ci_flaky_tests = [`info pane displays trajectory information correctly`]
+    if (IS_CI && ci_flaky_tests.includes(testInfo.title)) {
+      test.skip()
+      return
+    }
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
     await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
@@ -108,7 +115,6 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test(`info pane displays trajectory information correctly`, async () => {
-    test.skip(IS_CI, `Info pane toggle flaky in CI due to timing`)
     // Wait for trajectory to be loaded first
     await expect(trajectory_viewer.locator(`.trajectory-controls`)).toBeVisible()
 

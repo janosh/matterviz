@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
-  import type { ElementSymbol } from '$lib/element'
   import { ELEMENT_COLOR_SCHEMES, luminance } from '$lib/colors'
+  import type { ElementSymbol } from '$lib/element'
   import { element_data } from '$lib/element'
   import ElementTile from '$lib/element/ElementTile.svelte'
   import { format_num } from '$lib/labels'
@@ -74,6 +74,34 @@
     hovered_element ? element_data.find((el) => el.symbol === hovered_element) : null,
   )
 
+  // Format formula as plain text for clipboard: "Li2 O" or "Fe(+3)2 O(-2)3"
+  const plain_text_formula = $derived(
+    sorted_elements
+      .map(({ element, amount, oxidation_state }) => {
+        let text = element
+        if (oxidation_state !== undefined && oxidation_state !== 0) {
+          // Use parentheses to avoid ambiguity like "Fe+32" looking like oxidation +32
+          text += `(${format_oxi_state(oxidation_state)})`
+        }
+        if (amount !== 1) text += format_num(amount, amount_format)
+        return text
+      })
+      .join(` `),
+  )
+
+  function handle_copy(event: ClipboardEvent) {
+    const selection = window.getSelection()
+    // Only intercept if user selected text fully within this formula
+    if (!selection || selection.isCollapsed) return
+    const formula_el = event.currentTarget as HTMLElement
+    if (
+      !formula_el.contains(selection.anchorNode) ||
+      !formula_el.contains(selection.focusNode)
+    ) return // Selection extends outside formula, let browser handle normally
+    event.preventDefault()
+    event.clipboardData?.setData(`text/plain`, plain_text_formula)
+  }
+
   function show_tooltip(element: ElementSymbol, event: MouseEvent) {
     const { left, width, top, bottom, right, height } = (event.target as HTMLElement)
       .getBoundingClientRect()
@@ -90,7 +118,12 @@
   }
 </script>
 
-<svelte:element this={as} {...rest} class="formula {rest.class ?? ``}">
+<svelte:element
+  this={as}
+  {...rest}
+  class="formula {rest.class ?? ``}"
+  oncopy={handle_copy}
+>
   {#each sorted_elements as { element, amount, oxidation_state } (element)}
     {@const color = ELEMENT_COLOR_SCHEMES[color_scheme]?.[element] ?? `#666666`}
     {@const lum = luminance(color)}
