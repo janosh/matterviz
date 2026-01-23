@@ -474,13 +474,10 @@
   // Sync zoom changes from ScatterPlot back to parent via bindable y_axis
   $effect(() => {
     const range = internal_y_axis.range
-    // Only sync if range changed (to avoid infinite loops)
     if (
-      range && Array.isArray(range) &&
+      helpers.is_valid_range(range) &&
       (y_axis.range?.[0] !== range[0] || y_axis.range?.[1] !== range[1])
-    ) {
-      y_axis = { ...y_axis, range }
-    }
+    ) y_axis = { ...y_axis, range }
   })
 
   let display = $state({ x_grid: false, y_grid: true, y_zero_line: true })

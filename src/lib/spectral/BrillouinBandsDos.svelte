@@ -4,8 +4,8 @@
   import type { InternalPoint } from '$lib/plot'
   import type { AxisConfig } from '$lib/plot/types'
   import type { Crystal } from '$lib/structure'
-  import { untrack } from 'svelte'
   import type { ComponentProps, Snippet } from 'svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
@@ -109,43 +109,27 @@
   // Update y-axis configs when props or shared range changes
   $effect(() => {
     const base_range = synced_zoom_range ?? shared_frequency_range
-    bands_y_axis = { range: base_range, ...(bands_props.y_axis ?? {}) }
+    bands_y_axis = { ...(bands_props.y_axis ?? {}), range: base_range }
   })
 
   $effect(() => {
     const base_range = synced_zoom_range ?? shared_frequency_range
     dos_y_axis = is_desktop
-      ? { label: ``, range: base_range, ...(dos_props.y_axis ?? {}) }
+      ? { label: ``, ...(dos_props.y_axis ?? {}), range: base_range }
       : { ...(dos_props.y_axis ?? {}) }
   })
 
-  // Detect zoom changes and sync between components
+  // Detect zoom changes and sync between components (DOS sync only on desktop)
   $effect(() => {
     if (!sync_y_zoom || !shared_frequency_range) return
-
-    const bands_range = bands_y_axis.range
-    const dos_range = dos_y_axis.range
-    const current_synced = untrack(() => synced_zoom_range)
-
-    const bands_at_shared = helpers.is_valid_range(bands_range) &&
-      helpers.ranges_equal(bands_range, shared_frequency_range)
-    const dos_at_shared = is_desktop && helpers.is_valid_range(dos_range) &&
-      helpers.ranges_equal(dos_range, shared_frequency_range)
-    const bands_is_new = helpers.is_valid_range(bands_range) &&
-      !helpers.ranges_equal(bands_range, shared_frequency_range) &&
-      !helpers.ranges_equal(bands_range, current_synced)
-    const dos_is_new = is_desktop && helpers.is_valid_range(dos_range) &&
-      !helpers.ranges_equal(dos_range, shared_frequency_range) &&
-      !helpers.ranges_equal(dos_range, current_synced)
-
-    // Reset if either returns to shared range
-    if (current_synced !== null && (bands_at_shared || dos_at_shared)) {
-      synced_zoom_range = null
-    } else if (bands_is_new && !dos_is_new) {
-      synced_zoom_range = bands_range as Vec2
-    } else if (dos_is_new && !bands_is_new) {
-      synced_zoom_range = dos_range as Vec2
-    }
+    const result = helpers.detect_zoom_change(
+      bands_y_axis.range,
+      dos_y_axis.range,
+      shared_frequency_range,
+      untrack(() => synced_zoom_range),
+      is_desktop, // DOS sync only enabled on desktop
+    )
+    if (result !== undefined) synced_zoom_range = result
   })
 
   let hovered_frequency = $state<number | null>(null)

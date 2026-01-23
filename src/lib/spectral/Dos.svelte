@@ -16,6 +16,7 @@
     format_sigma,
     FREQUENCY_UNITS,
     IMAGINARY_MODE_NOISE_THRESHOLD,
+    is_valid_range,
     negative_fraction,
     NORMALIZATION_MODES,
     normalize_densities,
@@ -360,7 +361,7 @@
     const range = internal_y_axis.range
     // Only sync if range changed (to avoid infinite loops)
     if (
-      range && Array.isArray(range) &&
+      is_valid_range(range) &&
       (y_axis.range?.[0] !== range[0] || y_axis.range?.[1] !== range[1])
     ) {
       y_axis = { ...y_axis, range }

@@ -1,25 +1,124 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   apply_gaussian_smearing,
   compute_frequency_range,
   convert_frequencies,
+  detect_zoom_change,
   extract_k_path_points,
   find_qpoint_at_distance,
   find_qpoint_at_rescaled_x,
   generate_ribbon_path,
   get_band_xaxis_ticks,
   get_ribbon_config,
+  is_valid_range,
   negative_fraction,
   normalize_band_structure,
   normalize_densities,
   normalize_dos,
   pretty_sym_point,
+  ranges_equal,
   scale_segment_distances,
   shift_to_fermi,
 } from '$lib/spectral/helpers'
 import type { BaseBandStructure } from '$lib/spectral/types'
 import { describe, expect, it, vi } from 'vitest'
+
+describe(`is_valid_range`, () => {
+  it.each([
+    // Valid: finite 2-element arrays
+    [[0, 10], true],
+    [[-5, 5], true],
+    [[0, 0], true],
+    [[Number.MIN_VALUE, Number.MAX_VALUE], true],
+    // Invalid: non-arrays
+    [null, false],
+    [undefined, false],
+    [`[0, 10]`, false],
+    [{ 0: 0, 1: 10 }, false],
+    // Invalid: wrong length
+    [[], false],
+    [[5], false],
+    [[1, 2, 3], false],
+    // Invalid: non-finite numbers (NaN, Infinity)
+    [[NaN, 5], false],
+    [[5, NaN], false],
+    [[Infinity, 5], false],
+    [[5, -Infinity], false],
+    // Invalid: non-number elements
+    [[`0`, 10], false],
+    [[0, null], false],
+  ])(`is_valid_range(%j) -> %s`, (input, expected) => {
+    expect(is_valid_range(input)).toBe(expected)
+  })
+})
+
+describe(`ranges_equal`, () => {
+  it.each([
+    // Equal within default tolerance (0.001)
+    [[0, 10], [0, 10], true],
+    [[0, 10], [0.0001, 10.0001], true],
+    // Beyond tolerance
+    [[0, 10], [0.01, 10], false],
+    [[0, 10], [5, 15], false],
+    // Invalid inputs (leverages is_valid_range)
+    [null, [0, 10], false],
+    [[0, 10], undefined, false],
+    [[NaN, 10], [0, 10], false],
+    [[1, 2, 3], [1, 2], false],
+  ])(`ranges_equal(%j, %j) -> %s`, (a, b, expected) => {
+    expect(ranges_equal(a as Vec2, b as Vec2)).toBe(expected)
+  })
+
+  it(`respects custom tolerance`, () => {
+    expect(ranges_equal([0, 10], [0.5, 10], 1)).toBe(true)
+    expect(ranges_equal([0, 10], [2, 10], 1)).toBe(false)
+  })
+})
+
+describe(`detect_zoom_change`, () => {
+  const shared: Vec2 = [0, 10]
+  const zoomed: Vec2 = [2, 8]
+  const other: Vec2 = [3, 7]
+
+  // Returns null (reset): bands/dos returns to shared or becomes invalid
+  it.each([
+    { bands: shared, dos: zoomed, synced: zoomed, dos_en: true, expected: null },
+    { bands: zoomed, dos: shared, synced: zoomed, dos_en: true, expected: null },
+    { bands: null, dos: zoomed, synced: zoomed, dos_en: true, expected: null },
+    { bands: zoomed, dos: null, synced: zoomed, dos_en: true, expected: null },
+  ])(
+    `returns null for reset: $bands,$dos`,
+    ({ bands, dos, synced, dos_en, expected }) => {
+      expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toBe(expected)
+    },
+  )
+
+  // Returns new zoom range
+  it.each([
+    { bands: zoomed, dos: shared, synced: null, dos_en: true, expected: zoomed },
+    { bands: shared, dos: zoomed, synced: null, dos_en: true, expected: zoomed },
+    { bands: zoomed, dos: other, synced: other, dos_en: true, expected: zoomed },
+  ])(`returns new zoom: $bands`, ({ bands, dos, synced, dos_en, expected }) => {
+    expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toEqual(expected)
+  })
+
+  // Returns undefined (no change)
+  it.each([
+    { bands: shared, dos: shared, synced: null, dos_en: true },
+    { bands: zoomed, dos: zoomed, synced: zoomed, dos_en: true },
+    { bands: [1, 9], dos: [2, 6], synced: null, dos_en: true },
+  ])(`returns undefined for no change: $bands,$dos`, ({ bands, dos, synced, dos_en }) => {
+    expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toBe(undefined)
+  })
+
+  // dos_enabled=false: ignores DOS
+  it(`ignores dos when dos_enabled=false`, () => {
+    expect(detect_zoom_change(shared, zoomed, shared, null, false)).toBe(undefined)
+    expect(detect_zoom_change(zoomed, null, shared, zoomed, false)).toBe(undefined)
+    expect(detect_zoom_change(zoomed, shared, shared, null, false)).toEqual(zoomed)
+  })
+})
 
 describe(`pretty_sym_point`, () => {
   it.each([
