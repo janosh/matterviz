@@ -5,6 +5,18 @@ import type { AxisConfig, Sides } from '$lib/plot'
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 30
 
+// Filter undefined values from padding to prevent overriding defaults when spreading
+// Guards against undefined/null padding inputs (common for optional props)
+export const filter_padding = <T extends Partial<Sides>>(
+  padding: T | undefined | null,
+  defaults: Required<Sides>,
+): Required<Sides> => ({
+  ...defaults,
+  ...Object.fromEntries(
+    Object.entries(padding ?? {}).filter(([, v]) => v !== undefined),
+  ),
+} as Required<Sides>)
+
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null
 

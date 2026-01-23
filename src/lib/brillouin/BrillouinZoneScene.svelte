@@ -264,7 +264,7 @@
       {#each k_path_points.slice(0, -1) as
         from_point,
         idx
-        (`${from_point}${k_path_points[idx + 1]}`)
+        (`${from_point}-${k_path_points[idx + 1]}#${idx}`)
       }
         {@const to_point = k_path_points[idx + 1]}
         {@const is_hovered = hovered_qpoint_index !== null &&

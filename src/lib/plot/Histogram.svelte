@@ -37,6 +37,7 @@
   import {
     calc_auto_padding,
     constrain_tooltip_position,
+    filter_padding,
     LABEL_GAP_DEFAULT,
     measure_text_width,
   } from '$lib/plot/layout'
@@ -357,7 +358,7 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 20, b: 60, l: 60, r: 20 }
-  let pad = $derived({ ...default_padding, ...padding })
+  let pad = $derived(filter_padding(padding, default_padding))
 
   // Update padding based on tick label widths (untrack breaks circular dependency)
   $effect(() => {
@@ -371,7 +372,7 @@
         y_axis: { ...final_y_axis, tick_values: current_ticks_y },
         y2_axis: { ...final_y2_axis, tick_values: current_ticks_y2 },
       })
-      : { ...default_padding, ...padding }
+      : filter_padding(padding, default_padding)
 
     // Add y2 axis label space (calc_auto_padding only accounts for tick labels)
     if (
