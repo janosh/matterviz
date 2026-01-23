@@ -6,7 +6,7 @@ import {
   parse_formula_with_oxidation,
 } from '$lib/composition'
 import { mount } from 'svelte'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 test(`parse_formula_with_oxidation parses simple formulas`, () => {
   const result = parse_formula_with_oxidation(`H2O`)
@@ -437,3 +437,83 @@ test.each([`Vesta`, `Jmol`] as const)(
     expect(actual_hex).toBe(expected_hex.toLowerCase())
   },
 )
+
+// Helper to simulate copy event and return clipboard data
+function simulate_copy(
+  is_collapsed = false,
+  selection_outside = false,
+): { text: string; type: string; prevented: boolean } {
+  const formula_el = document.querySelector(`.formula`)
+  if (!formula_el) throw new Error(`Formula element not found`)
+  // Mock selection with anchorNode/focusNode inside or outside formula
+  const node_inside = formula_el.firstChild
+  const node_outside = document.body
+  vi.spyOn(window, `getSelection`).mockReturnValue({
+    isCollapsed: is_collapsed,
+    anchorNode: selection_outside ? node_outside : node_inside,
+    focusNode: selection_outside ? node_outside : node_inside,
+  } as unknown as Selection)
+
+  let text = ``
+  let type = ``
+  const event = new ClipboardEvent(`copy`, { bubbles: true, cancelable: true })
+  Object.defineProperty(event, `clipboardData`, {
+    value: {
+      setData: (t: string, d: string) => {
+        type = t
+        text = d
+      },
+    },
+  })
+
+  formula_el.dispatchEvent(event)
+  vi.restoreAllMocks()
+  return { text, type, prevented: event.defaultPrevented }
+}
+
+// Test copy functionality - clipboard should contain plain text with spaces between elements
+test.each([
+  [`H2O`, `H2 O`],
+  [`Fe2O3`, `Fe2 O3`],
+  [`NaCl`, `Na Cl`],
+  [`Li2SO4`, `Li2 S O4`],
+  [`Ca(OH)2`, `Ca O2 H2`],
+  [`Fe^3+2O^2-3`, `Fe(+3)2 O(-2)3`], // oxidation in parens to avoid "Fe+32" ambiguity
+])(`Formula copy: "%s" -> "%s"`, (formula, expected) => {
+  mount(Formula, { target: document.body, props: { formula } })
+  const { text, type, prevented } = simulate_copy()
+  expect(prevented).toBe(true)
+  expect(type).toBe(`text/plain`)
+  expect(text).toBe(expected)
+})
+
+test(`Formula copy skipped when selection collapsed`, () => {
+  mount(Formula, { target: document.body, props: { formula: `H2O` } })
+  const { text, prevented } = simulate_copy(true)
+  expect(prevented).toBe(false)
+  expect(text).toBe(``)
+})
+
+test(`Formula copy skipped when selection extends outside formula`, () => {
+  mount(Formula, { target: document.body, props: { formula: `H2O` } })
+  const { text, prevented } = simulate_copy(false, true) // selection_outside = true
+  expect(prevented).toBe(false)
+  expect(text).toBe(``)
+})
+
+test(`Formula copy respects ordering prop`, () => {
+  mount(Formula, {
+    target: document.body,
+    props: { formula: `OHFe`, ordering: `alphabetical` },
+  })
+  expect(simulate_copy().text).toBe(`Fe H O`)
+})
+
+test(`Formula copy handles fractional amounts`, () => {
+  const composition = { Li: { amount: 0.5 }, O: { amount: 1 } } as OxiComposition
+  mount(Formula, {
+    target: document.body,
+    props: { formula: composition, amount_format: `.2f` },
+  })
+  expect(simulate_copy().text).toBe(`Li0.50 O`)
+})
