@@ -17,6 +17,7 @@
     mu = $bindable(0),
     color_property = $bindable(`band`),
     color_scale = $bindable(`interpolateViridis`),
+    custom_property_label,
     representation = $bindable(`solid`),
     surface_opacity = $bindable(0.8),
     selected_bands = $bindable(),
@@ -44,6 +45,8 @@
     mu?: number | undefined
     color_property?: ColorProperty
     color_scale?: string
+    // Label for custom property coloring (e.g. "λ(k)", "DOS", etc.)
+    custom_property_label?: string
     representation?: RepresentationMode
     surface_opacity?: number
     selected_bands?: number[]
@@ -76,6 +79,11 @@
     { value: `interpolateRdYlBu`, label: `RdYlBu` },
     { value: `interpolateSpectral`, label: `Spectral` },
   ]
+
+  // Check if custom properties are available on any surface
+  let has_custom_properties = $derived(
+    fermi_data?.isosurfaces?.some((iso) => iso.properties?.length) ?? false,
+  )
 
   // Get unique band indices from Fermi surface data
   let available_bands = $derived(
@@ -208,9 +216,12 @@
         <option value="band">Band</option>
         <option value="velocity">Velocity</option>
         <option value="spin">Spin</option>
+        {#if has_custom_properties || custom_property_label}
+          <option value="custom">{custom_property_label ?? `Custom`}</option>
+        {/if}
       </select>
     </label>
-    {#if color_property === `velocity`}
+    {#if color_property === `velocity` || color_property === `custom`}
       <label>
         <span>Color scale:</span>
         <select bind:value={color_scale}>
