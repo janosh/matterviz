@@ -49,6 +49,8 @@ export interface JsonTreeProps {
   onselect?: (path: string, value: unknown) => void
   // Callback when a value is copied
   oncopy?: (path: string, value: string) => void
+  // Custom filename for JSON download (default: "data-YYYY-MM-DD.json")
+  download_filename?: string
 }
 
 // Context shared with child components (state + methods)
