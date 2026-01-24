@@ -391,6 +391,18 @@ export interface AxisOption {
   unit?: string // optional unit (e.g., 'eV', 'Å³')
 }
 
+// Y2 axis synchronization modes
+// - 'none': Independent axes (default)
+// - 'synced': Y2 has exact same range as Y1
+// - 'align': Y2 expands to show all data while keeping align_value (default 0) at same position as Y1
+export type Y2SyncMode = `none` | `synced` | `align`
+
+export interface Y2SyncConfig {
+  mode: Y2SyncMode
+  // For align mode: optionally specify which value to align (default: 0)
+  align_value?: number
+}
+
 // Axis configuration type for grouping related axis properties
 export interface AxisConfig {
   label?: string
@@ -406,6 +418,13 @@ export interface AxisConfig {
   // Interactive axis options (enables clickable axis labels)
   options?: AxisOption[] // available properties for this axis
   selected_key?: string // currently selected property key
+  // Synchronization with y1 axis (only applicable when used as y2_axis)
+  // - 'synced': Y2 has exact same range as Y1
+  // - 'align': Y2 expands to show all data, align_value (default 0) at same position
+  // - 'none' or undefined: Independent axes (default)
+  // Shorthand: 'synced' | 'align' | 'none'
+  // Full config: { mode: Y2SyncMode, align_value?: number }
+  sync?: Y2SyncConfig | Y2SyncMode
 }
 
 // Result from data loader - returns complete series array

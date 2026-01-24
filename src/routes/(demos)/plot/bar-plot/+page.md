@@ -1165,3 +1165,75 @@ Display multiple bar plots in a responsive 2×2 grid:
   }
 </style>
 ```
+
+## Y2 Axis Synchronization
+
+Dual y-axes with `y2_axis.sync` controlling the Y2 axis range. Modes: `'synced'` (same range as Y1), `'align'` (shared anchor point, default 0), or `undefined`/`'none'` (independent).
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  const quarters = [1, 2, 3, 4, 5, 6, 7, 8]
+  const quarterly_data = [
+    {
+      x: quarters,
+      y: [125, 142, 158, 171, 165, 189, 203, 218],
+      label: `Sales ($K)`,
+      color: `#4c6ef5`,
+      labels: [
+        `Q1-22`,
+        `Q2-22`,
+        `Q3-22`,
+        `Q4-22`,
+        `Q1-23`,
+        `Q2-23`,
+        `Q3-23`,
+        `Q4-23`,
+      ],
+    },
+    {
+      x: quarters,
+      y: [12.5, 15.2, 18.3, 14.8, 13.1, 19.5, 21.2, 23.8],
+      label: `Profit Margin (%)`,
+      color: `#51cf66`,
+      render_mode: `line`,
+      y_axis: `y2`,
+      markers: `line+points`,
+      line_style: { stroke_width: 2 },
+      point_style: {
+        radius: 6,
+        symbol_type: `Triangle`,
+        stroke: `#2f9e44`,
+        stroke_width: 2,
+      },
+    },
+  ]
+
+  const sync_labels = {
+    none: `Independent`,
+    synced: `Synced`,
+    align: `Align`,
+  }
+  let sync_mode = $state(`synced`)
+</script>
+
+<div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
+  <strong>Y2 Sync:</strong>
+  {#each Object.entries(sync_labels) as [mode, label]}
+    <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
+  {/each}
+</div>
+
+<BarPlot
+  series={quarterly_data}
+  x_axis={{ label: `Quarter` }}
+  y_axis={{ label: `Revenue ($K)`, color: `#4c6ef5` }}
+  y2_axis={{
+    label: `Margin (%)`,
+    color: `#51cf66`,
+    sync: sync_mode,
+  }}
+  style="height: 400px"
+/>
+```

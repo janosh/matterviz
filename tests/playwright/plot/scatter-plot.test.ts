@@ -1001,6 +1001,88 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(final_markers).toHaveCount(4) // Both series should be visible
   })
 
+  test(`axis ranges stay stable when series visibility is toggled (lazy range expansion)`, async ({ page }) => {
+    // This tests the lazy range expansion behavior: axis ranges should NOT shrink
+    // when a series is hidden, only expand when new data exceeds current bounds
+    const plot_locator = page.locator(`#legend-multi-default.scatter`)
+    const x_axis = plot_locator.locator(`g.x-axis`)
+    const y_axis = plot_locator.locator(`g.y-axis`)
+    const series_a_item = plot_locator.locator(`.legend-item >> text=Series A`).locator(
+      `..`,
+    )
+    const series_b_item = plot_locator.locator(`.legend-item >> text=Series B`).locator(
+      `..`,
+    )
+
+    // Wait for plot to fully render with both series
+    await expect(plot_locator.locator(`g[data-series-id] .marker`)).toHaveCount(4)
+    await expect(x_axis.locator(`.tick text`).first()).toBeVisible()
+    await expect(y_axis.locator(`.tick text`).first()).toBeVisible()
+
+    // Record initial axis ranges with both series visible
+    const initial_x = await get_tick_range(x_axis)
+    const initial_y = await get_tick_range(y_axis)
+
+    expect(initial_x.ticks.length).toBeGreaterThan(0)
+    expect(initial_y.ticks.length).toBeGreaterThan(0)
+    expect(initial_x.range).toBeGreaterThan(0)
+    expect(initial_y.range).toBeGreaterThan(0)
+
+    // Hide Series A - axis ranges should NOT shrink (lazy expansion behavior)
+    await series_a_item.click()
+    await expect(series_a_item).toHaveClass(/hidden/)
+
+    // Wait a moment for any range updates to settle
+    await page.waitForTimeout(100)
+
+    const after_hide_a_x = await get_tick_range(x_axis)
+    const after_hide_a_y = await get_tick_range(y_axis)
+
+    // Ranges should be the same or larger (lazy - never shrink)
+    expect(after_hide_a_x.range).toBeGreaterThanOrEqual(initial_x.range * 0.95) // Allow 5% tolerance
+    expect(after_hide_a_y.range).toBeGreaterThanOrEqual(initial_y.range * 0.95)
+
+    // Show Series A again - ranges should stay the same
+    await series_a_item.click()
+    await expect(series_a_item).not.toHaveClass(/hidden/)
+
+    await page.waitForTimeout(100)
+
+    const after_restore_a_x = await get_tick_range(x_axis)
+    const after_restore_a_y = await get_tick_range(y_axis)
+
+    // Ranges should still be stable
+    expect(after_restore_a_x.range).toBeGreaterThanOrEqual(initial_x.range * 0.95)
+    expect(after_restore_a_y.range).toBeGreaterThanOrEqual(initial_y.range * 0.95)
+
+    // Hide both series - ranges should still NOT shrink to [0,1] default
+    await series_a_item.click()
+    await series_b_item.click()
+    await expect(series_a_item).toHaveClass(/hidden/)
+    await expect(series_b_item).toHaveClass(/hidden/)
+
+    await page.waitForTimeout(100)
+
+    const after_hide_both_x = await get_tick_range(x_axis)
+    const after_hide_both_y = await get_tick_range(y_axis)
+
+    // Crucially: ranges should NOT snap to default [0, 1] range
+    // They should remain at the data-driven range
+    expect(after_hide_both_x.range).toBeGreaterThanOrEqual(initial_x.range * 0.95)
+    expect(after_hide_both_y.range).toBeGreaterThanOrEqual(initial_y.range * 0.95)
+
+    // Restore both series
+    await series_a_item.click()
+    await series_b_item.click()
+
+    const final_x = await get_tick_range(x_axis)
+    const final_y = await get_tick_range(y_axis)
+
+    // Final ranges should match initial ranges
+    expect(final_x.range).toBeCloseTo(initial_x.range, 0)
+    expect(final_y.range).toBeCloseTo(initial_y.range, 0)
+  })
+
   test(`legend positioning and dragging functionality`, async ({ page }) => {
     // The id prop is applied directly to the .scatter div
     const plot_locator = page.locator(`#legend-multi-default.scatter`)
@@ -1367,6 +1449,91 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await scatter_plot.hover()
     await controls_toggle.click()
     await expect(control_pane).toBeHidden()
+  })
+
+  test(`scale type dropdown in control pane changes axis scale`, async ({ page }) => {
+    // This test verifies that changing scale type via control pane dropdown
+    // propagates correctly to the plot (regression test for $bindable reactivity bug)
+    const plot = page.locator(`#basic-example .scatter`)
+    await expect(plot).toBeVisible()
+
+    const x_axis = plot.locator(`g.x-axis`)
+    const y_axis = plot.locator(`g.y-axis`)
+
+    // Get initial tick values (linear scale)
+    await x_axis.locator(`.tick text`).first().waitFor({ state: `visible` })
+    const initial_y_ticks = await get_tick_range(y_axis)
+
+    // Open control pane
+    const { toggle, pane } = await open_control_pane(plot)
+
+    // Find the Scale Type section
+    const scale_type_heading = pane.locator(`h4:has-text("Scale Type")`)
+    await expect(scale_type_heading).toBeVisible()
+
+    // Find and change the Y-axis scale type dropdown from Linear to Log
+    const y_scale_select = pane.locator(`label:has-text("Y:") select`)
+    await expect(y_scale_select).toBeVisible()
+    await expect(y_scale_select).toHaveValue(`linear`)
+
+    // Change to log scale - this is the critical test for the $bindable reactivity fix
+    await y_scale_select.selectOption(`log`)
+    await expect(y_scale_select).toHaveValue(`log`)
+
+    // Verify axis ticks changed (log scale produces different tick distribution)
+    // This confirms the scale change propagated from PlotControls -> ScatterPlot
+    await expect(async () => {
+      const log_y_ticks = await get_tick_range(y_axis)
+      // Log scale should have different tick values than linear
+      expect(log_y_ticks.ticks).not.toEqual(initial_y_ticks.ticks)
+    }).toPass({ timeout: 5000 })
+
+    // Capture log ticks for comparison after switching back
+    const log_y_ticks = await get_tick_range(y_axis)
+
+    // Change back to linear
+    await y_scale_select.selectOption(`linear`)
+    await expect(y_scale_select).toHaveValue(`linear`)
+
+    // Verify axis changed again (back to linear distribution)
+    await expect(async () => {
+      const restored_y_ticks = await get_tick_range(y_axis)
+      // Ticks should be different from log scale (may not match initial exactly due to range changes)
+      expect(restored_y_ticks.ticks).not.toEqual(log_y_ticks.ticks)
+    }).toPass({ timeout: 5000 })
+
+    // Also test X-axis scale type change
+    const x_scale_select = pane.locator(`label:has-text("X:") select`)
+    await expect(x_scale_select).toBeVisible()
+    await expect(x_scale_select).toHaveValue(`linear`)
+
+    // Capture initial X ticks
+    const initial_x_ticks = await get_tick_range(x_axis)
+
+    // Change X to arcsinh scale
+    await x_scale_select.selectOption(`arcsinh`)
+    await expect(x_scale_select).toHaveValue(`arcsinh`)
+
+    // Verify X axis ticks changed
+    await expect(async () => {
+      const new_x_ticks = await get_tick_range(x_axis)
+      expect(new_x_ticks.ticks).not.toEqual(initial_x_ticks.ticks)
+    }).toPass({ timeout: 5000 })
+
+    // Test reset button restores all scales to linear
+    const reset_button = scale_type_heading.locator(`+ section button.reset-button`)
+    if (await reset_button.isVisible()) {
+      await reset_button.click()
+
+      // Both scales should return to linear (dropdown values)
+      await expect(x_scale_select).toHaveValue(`linear`)
+      await expect(y_scale_select).toHaveValue(`linear`)
+    }
+
+    // Close control pane
+    await plot.hover()
+    await toggle.click()
+    await expect(pane).toBeHidden()
   })
 
   test(`one-sided axis range pins via controls`, async ({ page }) => {

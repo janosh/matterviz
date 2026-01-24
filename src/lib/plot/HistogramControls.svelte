@@ -1,4 +1,5 @@
 <script lang="ts">
+  // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { SettingsSection } from '$lib/layout'
   import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
@@ -152,9 +153,18 @@
       y2_scale_type: y2_axis.scale_type,
     }}
     on_reset={() => {
-      x_axis.scale_type = DEFAULTS.plot.x_scale_type as `linear` | `log`
-      y_axis.scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
-      y2_axis.scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
+      x_axis = {
+        ...x_axis,
+        scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
+      }
+      y_axis = {
+        ...y_axis,
+        scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
+      }
+      y2_axis = {
+        ...y2_axis,
+        scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
+      }
     }}
     class="pane-grid"
     style="grid-template-columns: 1fr 1fr"

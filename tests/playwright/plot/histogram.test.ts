@@ -1256,8 +1256,8 @@ test.describe(`Histogram Component Tests`, () => {
     ]
 
     // Use shared helpers for range inputs
-    const x_inputs = get_axis_range_inputs(pane, `X-axis`)
-    const y_inputs = get_axis_range_inputs(pane, `Y-axis`)
+    const x_inputs = get_axis_range_inputs(pane, `X`)
+    const y_inputs = get_axis_range_inputs(pane, `Y`)
 
     // Test: set specific min/max values and verify axis updates
     // X-axis: set a specific min value
