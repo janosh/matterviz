@@ -391,6 +391,18 @@ export interface AxisOption {
   unit?: string // optional unit (e.g., 'eV', 'Å³')
 }
 
+// Y2 axis synchronization modes
+// - 'none': Independent axes (default)
+// - 'proportional': Y2 follows Y1 zoom/pan with same scale factor and center shift
+// - 'align_zero': Keep zero (or align_value) at same vertical position on both axes
+export type Y2SyncMode = `none` | `proportional` | `align_zero`
+
+export interface Y2SyncConfig {
+  mode: Y2SyncMode
+  // For align_zero: optionally specify which value to align (default: 0)
+  align_value?: number
+}
+
 // Axis configuration type for grouping related axis properties
 export interface AxisConfig {
   label?: string
@@ -406,6 +418,14 @@ export interface AxisConfig {
   // Interactive axis options (enables clickable axis labels)
   options?: AxisOption[] // available properties for this axis
   selected_key?: string // currently selected property key
+  // Synchronization with y1 axis (only applicable when used as y2_axis)
+  // - 'proportional': Y2 follows Y1 zoom/pan with same scale factor
+  // - 'align_zero': Keeps zero (or align_value) at same vertical position on both axes.
+  //   Note: if align_value is outside the data range, axes expand to include it.
+  // - 'none' or undefined: Independent axes (default)
+  // Shorthand: 'proportional' | 'align_zero' | 'none'
+  // Full config: { mode: Y2SyncMode, align_value?: number }
+  sync?: Y2SyncConfig | Y2SyncMode
 }
 
 // Result from data loader - returns complete series array

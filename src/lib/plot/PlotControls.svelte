@@ -6,8 +6,9 @@
   import { timeFormat } from 'd3-time-format'
   import type { Vec2 } from '../math'
   import type { AxisKey, PlotControlsProps } from './index'
-  import type { ScaleTypeName } from './types'
+  import type { ScaleTypeName, Y2SyncMode } from './types'
   import { get_scale_type_name } from './types'
+  import { normalize_y2_sync } from './interactions'
 
   let {
     show_controls = $bindable(false),
@@ -309,6 +310,57 @@
         </label>
       {/if}
     </SettingsSection>
+
+    <!-- Y2 Sync controls (only when y2 axis has points) -->
+    {#if has_y2_points}
+      {@const current_sync = normalize_y2_sync(y2_axis.sync)}
+      <SettingsSection
+        title="Y2 Sync"
+        current_values={{ y2_sync: current_sync.mode, align_value: current_sync.align_value }}
+        on_reset={() => {
+          y2_axis.sync = undefined
+        }}
+        style="display: flex; gap: 1ex; align-items: center; flex-wrap: wrap"
+      >
+        <label>Mode:
+          <select
+            value={current_sync.mode}
+            aria-label="Y2 axis synchronization mode"
+            onchange={(e) => {
+              const mode = e.currentTarget.value as Y2SyncMode
+              if (mode === `none`) {
+                y2_axis.sync = undefined
+              } else if (mode === `align_zero`) {
+                y2_axis.sync = { mode, align_value: current_sync.align_value ?? 0 }
+              } else {
+                y2_axis.sync = mode
+              }
+            }}
+          >
+            <option value="none">Independent</option>
+            <option value="proportional">Proportional</option>
+            <option value="align_zero">Align Zero</option>
+          </select>
+        </label>
+        {#if current_sync.mode === `align_zero`}
+          <label>Align at:
+            <input
+              type="number"
+              value={current_sync.align_value ?? 0}
+              aria-label="Value to align on both axes"
+              style="width: 5em"
+              onchange={(e) => {
+                const val = parseFloat(e.currentTarget.value)
+                y2_axis.sync = {
+                  mode: `align_zero`,
+                  align_value: Number.isFinite(val) ? val : 0,
+                }
+              }}
+            />
+          </label>
+        {/if}
+      </SettingsSection>
+    {/if}
 
     <!-- Base Tick Format controls -->
     <SettingsSection

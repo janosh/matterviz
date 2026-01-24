@@ -1001,6 +1001,88 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(final_markers).toHaveCount(4) // Both series should be visible
   })
 
+  test(`axis ranges stay stable when series visibility is toggled (lazy range expansion)`, async ({ page }) => {
+    // This tests the lazy range expansion behavior: axis ranges should NOT shrink
+    // when a series is hidden, only expand when new data exceeds current bounds
+    const plot_locator = page.locator(`#legend-multi-default.scatter`)
+    const x_axis = plot_locator.locator(`g.x-axis`)
+    const y_axis = plot_locator.locator(`g.y-axis`)
+    const series_a_item = plot_locator.locator(`.legend-item >> text=Series A`).locator(
+      `..`,
+    )
+    const series_b_item = plot_locator.locator(`.legend-item >> text=Series B`).locator(
+      `..`,
+    )
+
+    // Wait for plot to fully render with both series
+    await expect(plot_locator.locator(`g[data-series-id] .marker`)).toHaveCount(4)
+    await expect(x_axis.locator(`.tick text`).first()).toBeVisible()
+    await expect(y_axis.locator(`.tick text`).first()).toBeVisible()
+
+    // Record initial axis ranges with both series visible
+    const initial_x = await get_tick_range(x_axis)
+    const initial_y = await get_tick_range(y_axis)
+
+    expect(initial_x.ticks.length).toBeGreaterThan(0)
+    expect(initial_y.ticks.length).toBeGreaterThan(0)
+    expect(initial_x.range).toBeGreaterThan(0)
+    expect(initial_y.range).toBeGreaterThan(0)
+
+    // Hide Series A - axis ranges should NOT shrink (lazy expansion behavior)
+    await series_a_item.click()
+    await expect(series_a_item).toHaveClass(/hidden/)
+
+    // Wait a moment for any range updates to settle
+    await page.waitForTimeout(100)
+
+    const after_hide_a_x = await get_tick_range(x_axis)
+    const after_hide_a_y = await get_tick_range(y_axis)
+
+    // Ranges should be the same or larger (lazy - never shrink)
+    expect(after_hide_a_x.range).toBeGreaterThanOrEqual(initial_x.range * 0.95) // Allow 5% tolerance
+    expect(after_hide_a_y.range).toBeGreaterThanOrEqual(initial_y.range * 0.95)
+
+    // Show Series A again - ranges should stay the same
+    await series_a_item.click()
+    await expect(series_a_item).not.toHaveClass(/hidden/)
+
+    await page.waitForTimeout(100)
+
+    const after_restore_a_x = await get_tick_range(x_axis)
+    const after_restore_a_y = await get_tick_range(y_axis)
+
+    // Ranges should still be stable
+    expect(after_restore_a_x.range).toBeGreaterThanOrEqual(initial_x.range * 0.95)
+    expect(after_restore_a_y.range).toBeGreaterThanOrEqual(initial_y.range * 0.95)
+
+    // Hide both series - ranges should still NOT shrink to [0,1] default
+    await series_a_item.click()
+    await series_b_item.click()
+    await expect(series_a_item).toHaveClass(/hidden/)
+    await expect(series_b_item).toHaveClass(/hidden/)
+
+    await page.waitForTimeout(100)
+
+    const after_hide_both_x = await get_tick_range(x_axis)
+    const after_hide_both_y = await get_tick_range(y_axis)
+
+    // Crucially: ranges should NOT snap to default [0, 1] range
+    // They should remain at the data-driven range
+    expect(after_hide_both_x.range).toBeGreaterThanOrEqual(initial_x.range * 0.95)
+    expect(after_hide_both_y.range).toBeGreaterThanOrEqual(initial_y.range * 0.95)
+
+    // Restore both series
+    await series_a_item.click()
+    await series_b_item.click()
+
+    const final_x = await get_tick_range(x_axis)
+    const final_y = await get_tick_range(y_axis)
+
+    // Final ranges should match initial ranges
+    expect(final_x.range).toBeCloseTo(initial_x.range, 0)
+    expect(final_y.range).toBeCloseTo(initial_y.range, 0)
+  })
+
   test(`legend positioning and dragging functionality`, async ({ page }) => {
     // The id prop is applied directly to the .scatter div
     const plot_locator = page.locator(`#legend-multi-default.scatter`)

@@ -1165,3 +1165,139 @@ Display multiple bar plots in a responsive 2×2 grid:
   }
 </style>
 ```
+
+## Y2 Axis Synchronization
+
+Dual y-axes with `y2_axis.sync` controlling how axes respond to zoom/pan. Modes: `'proportional'`, `'align_zero'`, or `undefined`/`'none'`.
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  const quarters = [1, 2, 3, 4, 5, 6, 7, 8]
+  const quarterly_data = [
+    {
+      x: quarters,
+      y: [125, 142, 158, 171, 165, 189, 203, 218],
+      label: `Sales ($K)`,
+      color: `#4c6ef5`,
+      labels: [
+        `Q1-22`,
+        `Q2-22`,
+        `Q3-22`,
+        `Q4-22`,
+        `Q1-23`,
+        `Q2-23`,
+        `Q3-23`,
+        `Q4-23`,
+      ],
+    },
+    {
+      x: quarters,
+      y: [12.5, 15.2, 18.3, 14.8, 13.1, 19.5, 21.2, 23.8],
+      label: `Profit Margin (%)`,
+      color: `#51cf66`,
+      render_mode: `line`,
+      y_axis: `y2`,
+      markers: `line+points`,
+      line_style: { stroke_width: 2 },
+      point_style: {
+        radius: 6,
+        symbol_type: `Triangle`,
+        stroke: `#2f9e44`,
+        stroke_width: 2,
+      },
+    },
+  ]
+
+  const sync_labels = {
+    none: `Independent`,
+    proportional: `Proportional`,
+    align_zero: `Align Zero`,
+  }
+  let sync_mode = $state(`proportional`)
+</script>
+
+<div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
+  <strong>Y2 Sync:</strong>
+  {#each Object.entries(sync_labels) as [mode, label]}
+    <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
+  {/each}
+</div>
+
+<BarPlot
+  series={quarterly_data}
+  x_axis={{ label: `Quarter` }}
+  y_axis={{ label: `Revenue ($K)`, color: `#4c6ef5` }}
+  y2_axis={{
+    label: `Margin (%)`,
+    color: `#51cf66`,
+    sync: sync_mode === `none` ? undefined : sync_mode,
+  }}
+  style="height: 400px"
+/>
+```
+
+### Stacked Bars with Line Overlay
+
+Bars showing product amounts with a temperature profile line on the secondary axis.
+
+```svelte example
+<script>
+  import { BarPlot } from 'matterviz'
+
+  const time = [0, 10, 20, 30, 40, 50, 60]
+  const reaction_data = [
+    {
+      x: time,
+      y: [0, 12, 28, 45, 58, 67, 72],
+      label: `Product A (mol)`,
+      color: `#4c6ef5`,
+    },
+    {
+      x: time,
+      y: [0, 8, 19, 32, 41, 48, 52],
+      label: `Product B (mol)`,
+      color: `#ff6b6b`,
+    },
+    {
+      x: time,
+      y: [25, 80, 120, 140, 145, 142, 138],
+      label: `Temperature (°C)`,
+      color: `#ffd43b`,
+      render_mode: `line`,
+      y_axis: `y2`,
+      markers: `line+points`,
+      line_style: { stroke_width: 2, line_dash: `5,5` },
+      point_style: { radius: 5, stroke: `white`, stroke_width: 2 },
+    },
+  ]
+
+  const sync_labels = {
+    none: `Independent`,
+    proportional: `Proportional`,
+    align_zero: `Align Zero`,
+  }
+  let sync_mode = $state(`none`)
+</script>
+
+<div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
+  <strong>Y2 Sync:</strong>
+  {#each Object.entries(sync_labels) as [mode, label]}
+    <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
+  {/each}
+</div>
+
+<BarPlot
+  series={reaction_data}
+  mode="stacked"
+  x_axis={{ label: `Time (minutes)` }}
+  y_axis={{ label: `Product Amount (mol)`, color: `#4c6ef5` }}
+  y2_axis={{
+    label: `Temperature (°C)`,
+    color: `#ffd43b`,
+    sync: sync_mode === `none` ? undefined : sync_mode,
+  }}
+  style="height: 450px"
+/>
+```

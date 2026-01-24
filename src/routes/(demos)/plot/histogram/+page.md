@@ -1109,3 +1109,69 @@ Display multiple histograms in a responsive 2×2 grid:
   }
 </style>
 ```
+
+## Y2 Axis Synchronization
+
+Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` to control axis behavior during zoom/pan.
+
+```svelte example
+<script>
+  import { Histogram } from 'matterviz'
+
+  const n_samples = 200
+  // Normal-ish distribution (Box-Muller transform)
+  const y1_values = Array.from({ length: n_samples }, () => {
+    const [u1, u2] = [Math.random(), Math.random()]
+    return 50 + 15 * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+  })
+  // Exponential-ish distribution
+  const y2_values = Array.from(
+    { length: n_samples },
+    () => 1000 + 500 * -Math.log(Math.random()),
+  )
+
+  const series = [
+    {
+      y: y1_values,
+      label: `Sample A`,
+      line_style: { stroke: `#e74c3c` },
+      y_axis: `y1`,
+    },
+    {
+      y: y2_values,
+      label: `Sample B`,
+      line_style: { stroke: `#3498db` },
+      y_axis: `y2`,
+    },
+  ]
+
+  const sync_labels = {
+    none: `Independent`,
+    proportional: `Proportional`,
+    align_zero: `Align Zero`,
+  }
+  let sync_mode = $state(`proportional`)
+</script>
+
+<div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
+  <strong>Y2 Sync:</strong>
+  {#each Object.entries(sync_labels) as [mode, label]}
+    <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
+  {/each}
+</div>
+
+<Histogram
+  {series}
+  mode="overlay"
+  bins={30}
+  x_axis={{ label: `Value` }}
+  y_axis={{ label: `Count (A)`, color: `#e74c3c` }}
+  y2_axis={{
+    label: `Count (B)`,
+    color: `#3498db`,
+    sync: sync_mode === `none` ? undefined : sync_mode,
+  }}
+  bar={{ opacity: 0.6 }}
+  style="height: 400px"
+/>
+```
