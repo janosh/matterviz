@@ -959,7 +959,7 @@ This demo stress-tests histograms with interactive property switching:
 
   // State
   let current_prop = $state(`formation_energy`)
-  let series = $state(build_series(current_prop))
+  let series = $derived(build_series(current_prop))
   let bins = $state(property_configs.formation_energy.bins)
   let load_times = $state([])
   let switch_count = $state(0)

@@ -2676,7 +2676,7 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
   // Initial state
   let x_key = $state(`density`)
   let y_key = $state(`formation_energy`)
-  let series = $state(build_series(x_key, y_key))
+  let series = $derived(build_series(x_key, y_key))
   let loading_log = $state([])
   let error_count = $state(0)
   let load_count = $state(0)
@@ -2876,7 +2876,7 @@ All changes trigger lazy data loading with simulated network delays.
   let y_key = $state(`formation_energy`)
   let color_key = $state(`bandgap`)
   let color_scale_key = $state(`viridis`)
-  let series = $state(build_series(x_key, y_key, color_key))
+  let series = $derived(build_series(x_key, y_key, color_key))
   let axis_switches = $state(0)
   let color_switches = $state(0)
 

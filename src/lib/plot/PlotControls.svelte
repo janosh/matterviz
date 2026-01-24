@@ -4,11 +4,12 @@
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { Vec2 } from '../math'
   import type { AxisKey, PlotControlsProps } from './index'
+  import { normalize_y2_sync } from './interactions'
   import type { ScaleTypeName, Y2SyncMode } from './types'
   import { get_scale_type_name } from './types'
-  import { normalize_y2_sync } from './interactions'
 
   let {
     show_controls = $bindable(false),
@@ -173,17 +174,18 @@
       title="Axis Range"
       current_values={{ x_range: x_axis.range, y_range: y_axis.range, y2_range: y2_axis.range }}
       on_reset={() => {
-        x_axis.range = [null, null]
-        y_axis.range = [null, null]
-        y2_axis.range = [null, null]
+        // Reassign entire objects to trigger $bindable reactivity up the chain
+        x_axis = { ...x_axis, range: [null, null] }
+        y_axis = { ...y_axis, range: [null, null] }
+        y2_axis = { ...y2_axis, range: [null, null] }
         Object.values(range_els).forEach((el) => el.classList.remove(`invalid`))
       }}
-      class="pane-grid"
+      style="display: flex; flex-wrap: wrap; gap: 2pt"
     >
       {#each [
-        [`x`, `X-axis`],
-        [`y`, `Y-axis`],
-        ...(has_y2_points ? [[`y2`, `Y2-axis`]] : []),
+        [`x`, `X`],
+        [`y`, `Y`],
+        ...(has_y2_points ? [[`y2`, `Y2`]] : []),
       ] as
         [axis_key, label]
         (axis_key)
@@ -198,9 +200,7 @@
             class="range-input"
             oninput={(e) => update_range(axis, 0, e.currentTarget.value)}
             onkeydown={(e) => e.key === `Enter` && e.currentTarget.blur()}
-          />
-          &nbsp;to
-          <input
+          />to<input
             type="number"
             value={range_inputs[axis][1] ?? ``}
             bind:this={range_els[`${axis}-max`]}
@@ -220,8 +220,9 @@
         title="Ticks"
         current_values={{ x_ticks: x_axis.ticks, y_ticks: y_axis.ticks }}
         on_reset={() => {
-          x_axis.ticks = DEFAULTS.plot.x_ticks
-          y_axis.ticks = DEFAULTS.plot.y_ticks
+          // Reassign entire objects to trigger $bindable reactivity up the chain
+          x_axis = { ...x_axis, ticks: DEFAULTS.plot.x_ticks }
+          y_axis = { ...y_axis, ticks: DEFAULTS.plot.y_ticks }
         }}
         style="display: flex; flex-wrap: wrap; gap: 1ex"
       >
@@ -235,7 +236,11 @@
             oninput={(e) => {
               const v = parseInt(e.currentTarget.value, 10)
               if (isNaN(v)) return
-              x_axis.ticks = Math.max(min_ticks, Math.min(max_ticks, v))
+              // Reassign entire object to trigger $bindable reactivity up the chain
+              x_axis = {
+                ...x_axis,
+                ticks: Math.max(min_ticks, Math.min(max_ticks, v)),
+              }
             }}
           />
         </label>
@@ -249,7 +254,11 @@
             oninput={(e) => {
               const v = parseInt(e.currentTarget.value, 10)
               if (isNaN(v)) return
-              y_axis.ticks = Math.max(min_ticks, Math.min(max_ticks, v))
+              // Reassign entire object to trigger $bindable reactivity up the chain
+              y_axis = {
+                ...y_axis,
+                ticks: Math.max(min_ticks, Math.min(max_ticks, v)),
+              }
             }}
           />
         </label>
@@ -265,9 +274,10 @@
         y2_scale: get_scale_type_name(y2_axis.scale_type),
       }}
       on_reset={() => {
-        x_axis.scale_type = `linear`
-        y_axis.scale_type = `linear`
-        y2_axis.scale_type = `linear`
+        // Reassign entire objects to trigger $bindable reactivity up the chain
+        x_axis = { ...x_axis, scale_type: `linear` }
+        y_axis = { ...y_axis, scale_type: `linear` }
+        y2_axis = { ...y2_axis, scale_type: `linear` }
       }}
       style="display: flex; flex-wrap: wrap; gap: 1ex"
     >
@@ -275,7 +285,11 @@
         <select
           value={get_scale_type_name(x_axis.scale_type)}
           onchange={(e) => {
-            x_axis.scale_type = e.currentTarget.value as ScaleTypeName
+            // Reassign entire object to trigger $bindable reactivity up the chain
+            x_axis = {
+              ...x_axis,
+              scale_type: e.currentTarget.value as ScaleTypeName,
+            }
           }}
         >
           <option value="linear">Linear</option>
@@ -287,7 +301,11 @@
         <select
           value={get_scale_type_name(y_axis.scale_type)}
           onchange={(e) => {
-            y_axis.scale_type = e.currentTarget.value as ScaleTypeName
+            // Reassign entire object to trigger $bindable reactivity up the chain
+            y_axis = {
+              ...y_axis,
+              scale_type: e.currentTarget.value as ScaleTypeName,
+            }
           }}
         >
           <option value="linear">Linear</option>
@@ -300,7 +318,11 @@
           <select
             value={get_scale_type_name(y2_axis.scale_type)}
             onchange={(e) => {
-              y2_axis.scale_type = e.currentTarget.value as ScaleTypeName
+              // Reassign entire object to trigger $bindable reactivity up the chain
+              y2_axis = {
+                ...y2_axis,
+                scale_type: e.currentTarget.value as ScaleTypeName,
+              }
             }}
           >
             <option value="linear">Linear</option>
@@ -314,26 +336,35 @@
     <!-- Y2 Sync controls (only when y2 axis has points) -->
     {#if has_y2_points}
       {@const current_sync = normalize_y2_sync(y2_axis.sync)}
+      {@const y2_sync_tip = `Controls how Y and Y2 axes interact during zoom/pan:
+• Independent: Y2 scales freely, ignoring Y axis changes
+• Proportional: Y2 maintains its ratio to Y when zooming
+• Align Zero: Both axes share a common alignment point (default 0)`}
       <SettingsSection
         title="Y2 Sync"
         current_values={{ y2_sync: current_sync.mode, align_value: current_sync.align_value }}
         on_reset={() => {
-          y2_axis.sync = undefined
+          // Reassign entire object to trigger $bindable reactivity up the chain
+          y2_axis = { ...y2_axis, sync: undefined }
         }}
         style="display: flex; gap: 1ex; align-items: center; flex-wrap: wrap"
       >
-        <label>Mode:
+        <label {@attach tooltip({ content: y2_sync_tip })}>Mode:
           <select
             value={current_sync.mode}
             aria-label="Y2 axis synchronization mode"
             onchange={(e) => {
               const mode = e.currentTarget.value as Y2SyncMode
+              // Reassign entire object to trigger $bindable reactivity up the chain
               if (mode === `none`) {
-                y2_axis.sync = undefined
+                y2_axis = { ...y2_axis, sync: undefined }
               } else if (mode === `align_zero`) {
-                y2_axis.sync = { mode, align_value: current_sync.align_value ?? 0 }
+                y2_axis = {
+                  ...y2_axis,
+                  sync: { mode, align_value: current_sync.align_value ?? 0 },
+                }
               } else {
-                y2_axis.sync = mode
+                y2_axis = { ...y2_axis, sync: mode }
               }
             }}
           >
@@ -351,9 +382,13 @@
               style="width: 5em"
               onchange={(e) => {
                 const val = parseFloat(e.currentTarget.value)
-                y2_axis.sync = {
-                  mode: `align_zero`,
-                  align_value: Number.isFinite(val) ? val : 0,
+                // Reassign entire object to trigger $bindable reactivity up the chain
+                y2_axis = {
+                  ...y2_axis,
+                  sync: {
+                    mode: `align_zero`,
+                    align_value: Number.isFinite(val) ? val : 0,
+                  },
                 }
               }}
             />
@@ -372,9 +407,10 @@
         y2_format: y2_axis.format,
       }}
       on_reset={() => {
-        x_axis.format = DEFAULTS.plot.x_format
-        y_axis.format = DEFAULTS.plot.y_format
-        y2_axis.format = DEFAULTS.plot.y2_format
+        // Reassign entire objects to trigger $bindable reactivity up the chain
+        x_axis = { ...x_axis, format: DEFAULTS.plot.x_format }
+        y_axis = { ...y_axis, format: DEFAULTS.plot.y_format }
+        y2_axis = { ...y2_axis, format: DEFAULTS.plot.y2_format }
       }}
       class="pane-grid"
       style="grid-template-columns: 1fr 1fr"

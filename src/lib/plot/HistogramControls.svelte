@@ -152,9 +152,19 @@
       y2_scale_type: y2_axis.scale_type,
     }}
     on_reset={() => {
-      x_axis.scale_type = DEFAULTS.plot.x_scale_type as `linear` | `log`
-      y_axis.scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
-      y2_axis.scale_type = DEFAULTS.plot.y_scale_type as `linear` | `log`
+      // Reassign entire objects to trigger $bindable reactivity up the chain
+      x_axis = {
+        ...x_axis,
+        scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
+      }
+      y_axis = {
+        ...y_axis,
+        scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
+      }
+      y2_axis = {
+        ...y2_axis,
+        scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
+      }
     }}
     class="pane-grid"
     style="grid-template-columns: 1fr 1fr"
