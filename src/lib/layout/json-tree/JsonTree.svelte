@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
+  import { download } from '$lib/io/fetch'
   import { setContext, tick } from 'svelte'
   import { highlight_matches, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -28,13 +29,14 @@
     auto_fold_objects = 20,
     collapsed_paths = $bindable(new SvelteSet<string>()),
     show_header = true,
-    show_data_types = false,
-    show_array_indices = true,
+    show_data_types = $bindable(false),
+    show_array_indices = $bindable(true),
     sort_keys = false,
     max_string_length = 200,
     highlight_changes = true,
     onselect,
     oncopy,
+    download_filename,
     ...rest
   }: JsonTreeProps & Omit<HTMLAttributes<HTMLDivElement>, `onselect`> = $props()
 
@@ -383,6 +385,19 @@
     current_match_index = -1
   }
 
+  // Copy entire JSON to clipboard
+  function copy_all(): void {
+    copy_to_clipboard(`[root]`, serialize_for_copy(value))
+  }
+
+  // Download JSON as file
+  function download_json(): void {
+    const json_str = serialize_for_copy(value)
+    const date_str = new Date().toISOString().slice(0, 10)
+    const filename = download_filename ?? `data-${date_str}.json`
+    download(json_str, filename, `application/json`)
+  }
+
   // Handle keyboard events on search input
   function handle_search_keydown(event: KeyboardEvent) {
     if (event.key === `Escape`) {
@@ -464,6 +479,27 @@
         </div>
       {/if}
       <div class="controls">
+        <button
+          type="button"
+          onclick={() => (show_data_types = !show_data_types)}
+          title={show_data_types ? `Hide data types` : `Show data types`}
+          class:active={show_data_types}
+          {@attach tooltip()}
+        >
+          T
+        </button>
+        <button
+          type="button"
+          onclick={() => (show_array_indices = !show_array_indices)}
+          title={show_array_indices ? `Hide array indices` : `Show array indices`}
+          class:active={show_array_indices}
+          {@attach tooltip()}
+        >
+          #
+        </button>
+      </div>
+      <div class="divider"></div>
+      <div class="controls">
         <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip()}>
           <Icon icon="Expand" style="width: 14px; height: 14px" />
         </button>
@@ -498,6 +534,25 @@
           {@attach tooltip()}
         >
           3
+        </button>
+      </div>
+      <div class="divider"></div>
+      <div class="controls">
+        <button
+          type="button"
+          onclick={copy_all}
+          title="Copy JSON to clipboard"
+          {@attach tooltip()}
+        >
+          <Icon icon="Copy" style="width: 14px; height: 14px" />
+        </button>
+        <button
+          type="button"
+          onclick={download_json}
+          title="Download as JSON file"
+          {@attach tooltip()}
+        >
+          <Icon icon="Download" style="width: 14px; height: 14px" />
         </button>
       </div>
     </header>
@@ -622,6 +677,13 @@
     display: flex;
     gap: 2px;
   }
+  .divider {
+    width: 1px;
+    height: 16px;
+    background: var(--jt-header-border);
+    margin: 0 4px;
+    align-self: center;
+  }
   .controls button {
     display: flex;
     align-items: center;
@@ -642,6 +704,12 @@
     background: var(
       --jt-btn-hover-bg,
       light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.15))
+    );
+  }
+  .controls button.active {
+    background: var(
+      --jt-btn-active-bg,
+      light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2))
     );
   }
   .match-nav {

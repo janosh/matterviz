@@ -288,6 +288,60 @@ describe(`HeatmapTable`, () => {
         .map((cell) => cell.textContent?.trim())
       expect(values).toEqual(expected)
     })
+
+    // Tests for heatmap coloring with uncertainty notation strings
+    // Heatmap colors should be applied by parsing the primary numeric value
+    it.each([
+      { desc: `± notation`, values: [`1.0 ± 0.1`, `5.0 ± 0.2`, `10.0 ± 0.3`] },
+      { desc: `+- notation`, values: [`1.0 +- 0.1`, `5.0 +- 0.2`, `10.0 +- 0.3`] },
+      { desc: `parenthetical notation`, values: [`1.0(1)`, `5.0(2)`, `10.0(3)`] },
+      { desc: `mixed formats`, values: [`1.0 ± 0.1`, `5.0 +- 0.2`, `10.0(3)`] },
+      { desc: `unicode minus (−)`, values: [`−1.0 ± 0.1`, `−5.0 ± 0.2`, `−10.0 ± 0.3`] },
+      { desc: `leading decimals`, values: [`.5 ± 0.1`, `-.5 ± 0.1`, `.25(1)`] },
+    ])(`applies heatmap colors to $desc strings`, ({ values }) => {
+      const data = values.map((val, idx) => ({
+        Name: String.fromCharCode(65 + idx),
+        Value: val,
+      }))
+      const columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, color_scale: `interpolateViridis`, description: `` },
+      ]
+
+      mount(HeatmapTable, { target: document.body, props: { data, columns } })
+
+      const cells = document.querySelectorAll(`td[data-col="Value"]`)
+      const backgrounds = Array.from(cells).map(
+        (cell) => (cell as HTMLElement).style.backgroundColor,
+      )
+
+      // All cells should have background colors set (not empty)
+      expect(backgrounds.every((bg) => bg !== ``)).toBe(true)
+      // Colors should be different for different values
+      expect(new Set(backgrounds).size).toBeGreaterThan(1)
+    })
+
+    it(`does not apply heatmap colors to non-numeric strings`, () => {
+      const data = [
+        { Name: `A`, Value: `hello` },
+        { Name: `B`, Value: `world` },
+        { Name: `C`, Value: `test` },
+      ]
+      const columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, color_scale: `interpolateViridis`, description: `` },
+      ]
+
+      mount(HeatmapTable, { target: document.body, props: { data, columns } })
+
+      const cells = document.querySelectorAll(`td[data-col="Value"]`)
+      const backgrounds = Array.from(cells).map(
+        (cell) => (cell as HTMLElement).style.backgroundColor,
+      )
+
+      // No background colors should be set for non-numeric strings
+      expect(backgrounds.every((bg) => bg === ``)).toBe(true)
+    })
   })
 
   it(`handles formatting and styles`, () => {
