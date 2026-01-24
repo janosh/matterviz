@@ -2676,7 +2676,7 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
   // Initial state
   let x_key = $state(`density`)
   let y_key = $state(`formation_energy`)
-  let series = $state(build_series(x_key, y_key))
+  let series = $derived(build_series(x_key, y_key))
   let loading_log = $state([])
   let error_count = $state(0)
   let load_count = $state(0)
@@ -2876,7 +2876,7 @@ All changes trigger lazy data loading with simulated network delays.
   let y_key = $state(`formation_energy`)
   let color_key = $state(`bandgap`)
   let color_scale_key = $state(`viridis`)
-  let series = $state(build_series(x_key, y_key, color_key))
+  let series = $derived(build_series(x_key, y_key, color_key))
   let axis_switches = $state(0)
   let color_switches = $state(0)
 
@@ -2923,7 +2923,7 @@ All changes trigger lazy data loading with simulated network delays.
   function handle_color_property_change(property_key) {
     color_switches++
     color_key = property_key
-    series = build_series(x_key, y_key, property_key)
+    // series is $derived from color_key, so it auto-updates
   }
 
   // Handle color scale change (no data loading needed, just update scheme)
@@ -3064,5 +3064,108 @@ between adjacent series with different densities:
   y_axis={{ label: 'Y Value', range: [0, 20] }}
   style="height: 400px"
   legend={{ layout: 'horizontal', style: 'justify-content: center;' }}
+/>
+```
+
+## Y2 Axis Synchronization
+
+When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` controls the Y2 axis range. Modes: `'synced'` (Y2 has exact same range as Y1), `'align'` (Y2 expands to show all data with a shared anchor point, default 0), or `undefined`/`'none'` (independent).
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  const n_points = 50
+  const time = Array.from({ length: n_points }, (_, idx) => idx * 0.5)
+
+  const temperature_data = {
+    x: time,
+    y: time.map((t) => 20 + 15 * Math.sin(t * 0.3) + Math.random() * 3),
+    label: `Temperature (°C)`,
+    point_style: { fill: `#e74c3c`, radius: 4 },
+    line_style: { stroke: `#e74c3c`, stroke_width: 2 },
+    markers: `line+points`,
+    y_axis: `y1`,
+  }
+
+  const pressure_data = {
+    x: time,
+    y: time.map((t) => 100 + 30 * Math.sin(t * 0.3 + 0.5) + Math.random() * 5),
+    label: `Pressure (kPa)`,
+    point_style: { fill: `#3498db`, radius: 4 },
+    line_style: { stroke: `#3498db`, stroke_width: 2 },
+    markers: `line+points`,
+    y_axis: `y2`,
+  }
+
+  const sync_labels = {
+    none: `Independent`,
+    synced: `Synced`,
+    align: `Align`,
+  }
+  let sync_mode = $state(`synced`)
+</script>
+
+<div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
+  <strong>Y2 Sync:</strong>
+  {#each Object.entries(sync_labels) as [mode, label]}
+    <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
+  {/each}
+</div>
+
+<ScatterPlot
+  series={[temperature_data, pressure_data]}
+  x_axis={{ label: `Time (s)` }}
+  y_axis={{ label: `Temperature (°C)`, color: `#e74c3c` }}
+  y2_axis={{
+    label: `Pressure (kPa)`,
+    color: `#3498db`,
+    sync: sync_mode,
+  }}
+  style="height: 400px"
+/>
+```
+
+### Y2 Sync via PlotControls
+
+Click the gear icon to access the Y2 Sync dropdown in PlotControls.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  const n_points = 30
+  const x_vals = Array.from({ length: n_points }, (_, idx) => idx)
+
+  const make_series = (label, color, y_axis, freq, offset, amp, noise) => ({
+    x: x_vals,
+    y: x_vals.map((x) => offset + amp * Math.sin(x * freq) + Math.random() * noise),
+    label,
+    y_axis,
+    markers: `line+points`,
+    point_style: { fill: color, radius: 4 },
+    line_style: { stroke: color, stroke_width: 2 },
+  })
+
+  const series = [
+    make_series(`Efficiency (%)`, `#e74c3c`, `y1`, 0.2, 60, 20, 5),
+    make_series(`Yield (%)`, `#f39c12`, `y1`, 0.15, 70, 15, 4),
+    make_series(`Throughput (units/hr)`, `#3498db`, `y2`, 0.25, 500, 200, 30),
+    {
+      ...make_series(`Cost ($/unit)`, `#9b59b6`, `y2`, 0.18, 200, 100, 20),
+      line_style: { stroke: `#9b59b6`, stroke_width: 2, line_dash: `4 2` },
+    },
+  ]
+
+  let y2_axis = $state({ label: `Secondary Metrics`, sync: `synced` })
+</script>
+
+<ScatterPlot
+  {series}
+  x_axis={{ label: `Sample Index` }}
+  y_axis={{ label: `Percentage Metrics (%)` }}
+  bind:y2_axis
+  show_controls={true}
+  style="height: 450px"
 />
 ```

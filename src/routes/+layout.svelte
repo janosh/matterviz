@@ -103,7 +103,11 @@
   </button>
 </Nav>
 
-<main {@attach heading_anchors()}>
+<main
+  {@attach heading_anchors({
+    selector: `:scope > :is(h2, h3, h4, h5, h6), :scope > * > :is(h2, h3, h4, h5, h6)`,
+  })}
+>
   {@render children?.()}
 </main>
 
