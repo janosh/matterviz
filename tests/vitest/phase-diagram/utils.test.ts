@@ -15,10 +15,10 @@ import {
   get_phase_color_key,
   is_compound,
   merge_phase_diagram_config,
-  parse_chemical_formula,
   PHASE_COLOR_HEX,
   PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
+  tokenize_formula,
   transform_vertices,
 } from '$lib/phase-diagram/utils'
 import { describe, expect, test } from 'vitest'
@@ -532,13 +532,13 @@ describe(`is_compound`, () => {
   })
 })
 
-describe(`parse_chemical_formula`, () => {
+describe(`tokenize_formula`, () => {
   test(`parses simple element`, () => {
-    expect(parse_chemical_formula(`Fe`)).toEqual([{ text: `Fe` }])
+    expect(tokenize_formula(`Fe`)).toEqual([{ text: `Fe` }])
   })
 
   test(`parses compound with subscript`, () => {
-    const result = parse_chemical_formula(`Fe3C`)
+    const result = tokenize_formula(`Fe3C`)
     expect(result).toEqual([
       { text: `Fe` },
       { sub: `3` },
@@ -547,7 +547,7 @@ describe(`parse_chemical_formula`, () => {
   })
 
   test(`parses oxide with subscript`, () => {
-    const result = parse_chemical_formula(`SiO2`)
+    const result = tokenize_formula(`SiO2`)
     expect(result).toEqual([
       { text: `Si` },
       { text: `O` },
@@ -556,7 +556,7 @@ describe(`parse_chemical_formula`, () => {
   })
 
   test(`parses complex formula Al2O3`, () => {
-    const result = parse_chemical_formula(`Al2O3`)
+    const result = tokenize_formula(`Al2O3`)
     expect(result).toEqual([
       { text: `Al` },
       { sub: `2` },
@@ -566,7 +566,7 @@ describe(`parse_chemical_formula`, () => {
   })
 
   test(`parses multi-digit subscripts`, () => {
-    const result = parse_chemical_formula(`C12H22O11`)
+    const result = tokenize_formula(`C12H22O11`)
     expect(result).toEqual([
       { text: `C` },
       { sub: `12` },
@@ -578,16 +578,16 @@ describe(`parse_chemical_formula`, () => {
   })
 
   test(`returns Greek phase names unchanged`, () => {
-    expect(parse_chemical_formula(`α`)).toEqual([{ text: `α` }])
-    expect(parse_chemical_formula(`α + β`)).toEqual([{ text: `α + β` }])
+    expect(tokenize_formula(`α`)).toEqual([{ text: `α` }])
+    expect(tokenize_formula(`α + β`)).toEqual([{ text: `α + β` }])
   })
 
   test(`handles empty string`, () => {
-    expect(parse_chemical_formula(``)).toEqual([])
+    expect(tokenize_formula(``)).toEqual([])
   })
 
   test(`parses MgO (no subscripts)`, () => {
-    const result = parse_chemical_formula(`MgO`)
+    const result = tokenize_formula(`MgO`)
     expect(result).toEqual([
       { text: `Mg` },
       { text: `O` },
@@ -595,7 +595,7 @@ describe(`parse_chemical_formula`, () => {
   })
 
   test(`parses charge notation (superscript)`, () => {
-    const result = parse_chemical_formula(`O2-`)
+    const result = tokenize_formula(`O2-`)
     expect(result).toEqual([
       { text: `O` },
       { sub: `2` },

@@ -433,8 +433,8 @@ export function summarize_models(
 // Chemical Formula Parsing Utilities (for pseudo-binary phase diagrams)
 // ============================================================================
 
-// Parsed formula part - can be text, subscript, or superscript
-export interface FormulaPart {
+// Token from formula tokenization - can be text, subscript, or superscript
+export interface FormulaToken {
   text?: string
   sub?: string
   sup?: string
@@ -458,14 +458,14 @@ export function is_compound(name: string): boolean {
   return uppercase_count >= 2
 }
 
-// Parse a chemical formula into parts for rendering with subscripts/superscripts
+// Tokenize a chemical formula for rendering with subscripts/superscripts
 // Examples:
 //   "Fe3C" -> [{text: "Fe"}, {sub: "3"}, {text: "C"}]
 //   "SiO2" -> [{text: "Si"}, {text: "O"}, {sub: "2"}]
 //   "Al2O3" -> [{text: "Al"}, {sub: "2"}, {text: "O"}, {sub: "3"}]
 //   "Fe" -> [{text: "Fe"}]
 //   "α-Fe" -> [{text: "α-Fe"}] (Greek phases pass through unchanged)
-export function parse_chemical_formula(formula: string): FormulaPart[] {
+export function tokenize_formula(formula: string): FormulaToken[] {
   if (!formula) return []
 
   // If it contains Greek letters or special phase notation, return as-is
@@ -473,7 +473,7 @@ export function parse_chemical_formula(formula: string): FormulaPart[] {
     return [{ text: formula }]
   }
 
-  const parts: FormulaPart[] = []
+  const tokens: FormulaToken[] = []
   let idx = 0
 
   while (idx < formula.length) {
@@ -487,25 +487,25 @@ export function parse_chemical_formula(formula: string): FormulaPart[] {
         num += formula[idx]
         idx++
       }
-      parts.push({ sub: num })
+      tokens.push({ sub: num })
       continue
     }
 
-    // Check for superscript (- charge notation, e.g., "O2-")
+    // Check for superscript (- charge notation, e.g., "O2-" or "Cl-2")
     // Note: + is handled by the early return for phase notation like "α + β"
-    // Only treat '-' as charge when followed by a digit (e.g., "2-")
+    // Treat '-' as charge when: at end of string, OR followed by digit
     // Otherwise preserve as text for hyphenated names like "Fe-Fe3C"
     if (char === `-`) {
       idx++
-      if (idx < formula.length && /\d/.test(formula[idx])) {
-        // Followed by digit - parse as charge superscript
+      if (idx >= formula.length || /\d/.test(formula[idx])) {
+        // End of string or followed by digit - parse as charge superscript
         let charge = `-`
         while (idx < formula.length && /\d/.test(formula[idx])) {
           charge += formula[idx]
           idx++
         }
-        parts.push({ sup: charge })
-      } else parts.push({ text: `-` }) // Not followed by digit - preserve hyphen as text
+        tokens.push({ sup: charge })
+      } else tokens.push({ text: `-` }) // Not at end and not followed by digit - preserve hyphen
       continue
     }
 
@@ -518,7 +518,7 @@ export function parse_chemical_formula(formula: string): FormulaPart[] {
         element += formula[idx]
         idx++
       }
-      parts.push({ text: element })
+      tokens.push({ text: element })
       continue
     }
 
@@ -529,15 +529,15 @@ export function parse_chemical_formula(formula: string): FormulaPart[] {
       text += formula[idx]
       idx++
     }
-    // Merge with previous text part if possible
-    if (parts.length > 0 && parts[parts.length - 1].text !== undefined) {
-      parts[parts.length - 1].text += text
+    // Merge with previous text token if possible
+    if (tokens.length > 0 && tokens[tokens.length - 1].text !== undefined) {
+      tokens[tokens.length - 1].text += text
     } else {
-      parts.push({ text })
+      tokens.push({ text })
     }
   }
 
-  return parts
+  return tokens
 }
 
 // Baseline shifts for sub/superscript (SVG dy values are cumulative across tspans)
@@ -551,13 +551,13 @@ export function format_formula_svg(formula: string, use_subscripts = true): stri
   let result = ``
   let offset = 0
 
-  for (const part of parse_chemical_formula(formula)) {
-    if (part.text !== undefined) {
-      result += offset ? `<tspan dy="${-offset}em">${part.text}</tspan>` : part.text
+  for (const token of tokenize_formula(formula)) {
+    if (token.text !== undefined) {
+      result += offset ? `<tspan dy="${-offset}em">${token.text}</tspan>` : token.text
       offset = 0
     } else {
-      const dy = part.sub !== undefined ? DY.sub : DY.sup
-      result += `<tspan dy="${dy}em" font-size="0.75em">${part.sub ?? part.sup}</tspan>`
+      const dy = token.sub !== undefined ? DY.sub : DY.sup
+      result += `<tspan dy="${dy}em" font-size="0.75em">${token.sub ?? token.sup}</tspan>`
       offset += dy
     }
   }
@@ -570,9 +570,9 @@ export function format_formula_svg(formula: string, use_subscripts = true): stri
 export function format_formula_html(formula: string, use_subscripts = true): string {
   if (!use_subscripts || !is_compound(formula)) return formula
 
-  return parse_chemical_formula(formula)
-    .map((part) =>
-      part.text ?? (part.sub ? `<sub>${part.sub}</sub>` : `<sup>${part.sup}</sup>`)
+  return tokenize_formula(formula)
+    .map((token) =>
+      token.text ?? (token.sub ? `<sub>${token.sub}</sub>` : `<sup>${token.sup}</sup>`)
     )
     .join(``)
 }
