@@ -1,7 +1,7 @@
 // Component tests for JsonTree, JsonNode, and JsonValue
 import { JsonTree } from '$lib/layout'
 import { flushSync, mount, tick } from 'svelte'
-import { describe, expect, it, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`JsonTree`, () => {
@@ -309,8 +309,12 @@ describe(`JsonTree`, () => {
         },
       })
 
-      const btns = document.querySelectorAll(`.controls button`)
-      const [expand_btn, collapse_btn] = btns as NodeListOf<HTMLButtonElement>
+      // Second controls group has expand/collapse buttons
+      const control_groups = document.querySelectorAll(`.controls`)
+      const expand_collapse_group = control_groups[1]
+      const btns = expand_collapse_group.querySelectorAll(`button`)
+      const expand_btn = btns[0] as HTMLButtonElement
+      const collapse_btn = btns[1] as HTMLButtonElement
 
       // Manually collapse via collapse all first
       collapse_btn.click()
@@ -342,8 +346,12 @@ describe(`JsonTree`, () => {
       // Initially expanded - nested value visible
       expect(document.body.textContent).toContain(`"b"`)
 
-      const btns = document.querySelectorAll(`.controls button`)
-      const collapse_btn = btns[1] as HTMLButtonElement
+      // Second controls group has expand/collapse buttons
+      const control_groups = document.querySelectorAll(`.controls`)
+      const expand_collapse_group = control_groups[1]
+      const collapse_btn = expand_collapse_group.querySelectorAll(
+        `button`,
+      )[1] as HTMLButtonElement
       collapse_btn.click()
       flushSync()
       await tick()
@@ -362,8 +370,12 @@ describe(`JsonTree`, () => {
         },
       })
 
-      const btns = document.querySelectorAll(`.controls button`)
-      const level_1_btn = btns[2] as HTMLButtonElement // [expand, collapse, 1, 2, 3]
+      // Second controls group has expand/collapse buttons
+      const control_groups = document.querySelectorAll(`.controls`)
+      const expand_collapse_group = control_groups[1]
+      const level_1_btn = expand_collapse_group.querySelectorAll(
+        `button`,
+      )[2] as HTMLButtonElement
       level_1_btn.click()
       flushSync()
       await tick()
@@ -373,10 +385,35 @@ describe(`JsonTree`, () => {
   })
 
   describe(`header controls`, () => {
-    it(`has expand/collapse and level buttons`, () => {
+    it(`has all control button groups with dividers`, () => {
       mount(JsonTree, { target: document.body, props: { value: { name: `test` } } })
       const btns = document.querySelectorAll(`.controls button`)
-      expect(btns.length).toBe(5) // expand, collapse, 1, 2, 3
+      // 2 toggles (T, #) + 5 expand/collapse (expand, collapse, 1, 2, 3) + 2 copy/download
+      expect(btns.length).toBe(9)
+      const dividers = document.querySelectorAll(`.divider`)
+      expect(dividers.length).toBe(2) // separators between 3 button groups
+    })
+
+    it(`has toggle buttons for data types and array indices`, () => {
+      mount(JsonTree, { target: document.body, props: { value: { arr: [1, 2] } } })
+      const toggle_btns = document.querySelectorAll(`.controls button`)
+      const type_toggle = toggle_btns[0] as HTMLButtonElement
+      const index_toggle = toggle_btns[1] as HTMLButtonElement
+      expect(type_toggle.textContent).toBe(`T`)
+      expect(index_toggle.textContent).toBe(`#`)
+    })
+
+    it(`has copy and download buttons with icons`, () => {
+      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+      const control_groups = document.querySelectorAll(`.controls`)
+      const last_group = control_groups[control_groups.length - 1]
+      const btns = last_group.querySelectorAll(`button`)
+      expect(btns.length).toBe(2)
+      // Both should have SVG icons
+      expect(btns[0].querySelector(`svg`)).toBeTruthy()
+      expect(btns[1].querySelector(`svg`)).toBeTruthy()
+      expect(btns[0].getAttribute(`title`)).toBe(`Copy JSON to clipboard`)
+      expect(btns[1].getAttribute(`title`)).toBe(`Download as JSON file`)
     })
   })
 
@@ -396,6 +433,173 @@ describe(`JsonTree`, () => {
       key_el.click()
       flushSync()
       expect(write_text).toHaveBeenCalledWith(`my_key`)
+    })
+  })
+
+  describe(`copy all button`, () => {
+    const get_copy_btn = (): HTMLButtonElement => {
+      const groups = document.querySelectorAll(`.controls`)
+      return groups[groups.length - 1].querySelectorAll(`button`)[0] as HTMLButtonElement
+    }
+
+    const write_text_mock = vi.fn()
+
+    beforeEach(() => {
+      write_text_mock.mockReset().mockResolvedValue(undefined)
+      vi.stubGlobal(`navigator`, { clipboard: { writeText: write_text_mock } })
+    })
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    const mock_clipboard_error = () => {
+      write_text_mock.mockRejectedValue(new Error(`Clipboard error`))
+    }
+
+    it(`copies entire JSON to clipboard`, async () => {
+      const test_value = { name: `test`, count: 42, nested: { a: 1 } }
+      mount(JsonTree, { target: document.body, props: { value: test_value } })
+
+      get_copy_btn().click()
+      flushSync()
+      await tick()
+
+      expect(write_text_mock).toHaveBeenCalledTimes(1)
+      expect(JSON.parse(write_text_mock.mock.calls[0][0])).toEqual(test_value)
+    })
+
+    it(`shows copy feedback after copying`, async () => {
+      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+
+      get_copy_btn().click()
+      await vi.waitFor(() => expect(write_text_mock).toHaveBeenCalled())
+      flushSync()
+      await tick()
+
+      const feedback = document.querySelector(`.copy-feedback`)
+      expect(feedback).toBeTruthy()
+      expect(feedback?.textContent).toBe(`Copied!`)
+    })
+
+    it(`shows error feedback when clipboard fails`, async () => {
+      mock_clipboard_error()
+      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+
+      get_copy_btn().click()
+      await vi.waitFor(() => expect(write_text_mock).toHaveBeenCalled())
+      flushSync()
+      await tick()
+
+      const feedback = document.querySelector(`.copy-feedback.error`)
+      expect(feedback).toBeTruthy()
+      expect(feedback?.textContent).toBe(`Copy failed`)
+    })
+
+    it(`calls oncopy callback when copying all`, async () => {
+      const oncopy = vi.fn()
+      mount(JsonTree, { target: document.body, props: { value: { test: 123 }, oncopy } })
+
+      get_copy_btn().click()
+      flushSync()
+      await tick()
+
+      expect(oncopy).toHaveBeenCalledWith(`[root]`, expect.any(String))
+    })
+
+    it.each([
+      { value: [1, 2, 3], desc: `array` },
+      { value: { nested: { deep: { value: true } } }, desc: `nested object` },
+      { value: `just a string`, desc: `primitive string` },
+      { value: 42, desc: `primitive number` },
+      { value: null, desc: `null` },
+    ])(`copies $desc correctly`, async ({ value }) => {
+      mount(JsonTree, { target: document.body, props: { value } })
+
+      get_copy_btn().click()
+      flushSync()
+      await tick()
+
+      expect(write_text_mock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe(`download button`, () => {
+    // Use global download override from $lib/io/fetch to avoid mocking document.createElement
+    let mock_download: ReturnType<typeof vi.fn>
+
+    const get_download_btn = (): HTMLButtonElement => {
+      const groups = document.querySelectorAll(`.controls`)
+      return groups[groups.length - 1].querySelectorAll(`button`)[1] as HTMLButtonElement
+    }
+
+    beforeEach(() => {
+      mock_download = vi.fn()
+      ;(globalThis as Record<string, unknown>).download = mock_download
+    })
+
+    afterEach(() => {
+      delete (globalThis as Record<string, unknown>).download
+    })
+
+    it(`creates download with correct filename format`, async () => {
+      mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+
+      get_download_btn().click()
+      flushSync()
+      await tick()
+
+      expect(mock_download).toHaveBeenCalledTimes(1)
+      const [, filename] = mock_download.mock.calls[0]
+      expect(filename).toMatch(/^data-\d{4}-\d{2}-\d{2}\.json$/)
+    })
+
+    it(`creates download with JSON content and correct mime type`, async () => {
+      const test_value = { name: `test`, count: 42 }
+      mount(JsonTree, { target: document.body, props: { value: test_value } })
+
+      get_download_btn().click()
+      flushSync()
+      await tick()
+
+      const [data, , mime_type] = mock_download.mock.calls[0]
+      expect(mime_type).toBe(`application/json`)
+      expect(JSON.parse(data)).toEqual(test_value)
+    })
+
+    it.each([
+      {
+        value: { deep: { nested: { obj: true } } },
+        desc: `nested object`,
+        is_json: true,
+      },
+      { value: [1, 2, 3, 4, 5], desc: `array`, is_json: true },
+      { value: `string value`, desc: `string`, is_json: false },
+      { value: 42, desc: `number`, is_json: false },
+    ])(`downloads $desc correctly`, async ({ value, is_json }) => {
+      mount(JsonTree, { target: document.body, props: { value } })
+
+      get_download_btn().click()
+      flushSync()
+      await tick()
+
+      const [data] = mock_download.mock.calls[0]
+      if (is_json) expect(JSON.parse(data)).toEqual(value)
+      else expect(data).toBe(String(value))
+    })
+
+    it(`uses custom download_filename when provided`, async () => {
+      mount(JsonTree, {
+        target: document.body,
+        props: { value: { a: 1 }, download_filename: `my-custom-data.json` },
+      })
+
+      get_download_btn().click()
+      flushSync()
+      await tick()
+
+      const [, filename] = mock_download.mock.calls[0]
+      expect(filename).toBe(`my-custom-data.json`)
     })
   })
 
@@ -423,6 +627,162 @@ describe(`JsonTree`, () => {
       const count = document.querySelectorAll(`.type-annotation`).length
       if (expected_min > 0) expect(count).toBeGreaterThan(0)
       else expect(count).toBe(0)
+    })
+  })
+
+  describe(`toggle buttons`, () => {
+    const get_toggle_btns = (): NodeListOf<HTMLButtonElement> => {
+      const first_controls = document.querySelector(`.controls`)
+      return first_controls?.querySelectorAll(`button`) as NodeListOf<HTMLButtonElement>
+    }
+
+    it(`data types toggle button toggles show_data_types`, async () => {
+      mount(JsonTree, {
+        target: document.body,
+        props: { value: { str: `hello` }, show_data_types: false },
+      })
+
+      // Initially no type annotations
+      expect(document.querySelectorAll(`.type-annotation`).length).toBe(0)
+
+      const type_toggle = get_toggle_btns()[0]
+      expect(type_toggle.textContent).toBe(`T`)
+      expect(type_toggle.classList.contains(`active`)).toBe(false)
+
+      type_toggle.click()
+      flushSync()
+      await tick()
+
+      // Now type annotations should appear
+      expect(document.querySelectorAll(`.type-annotation`).length).toBeGreaterThan(0)
+      expect(type_toggle.classList.contains(`active`)).toBe(true)
+
+      // Toggle off again
+      type_toggle.click()
+      flushSync()
+      await tick()
+
+      expect(document.querySelectorAll(`.type-annotation`).length).toBe(0)
+      expect(type_toggle.classList.contains(`active`)).toBe(false)
+    })
+
+    it(`array indices toggle button toggles show_array_indices`, async () => {
+      mount(JsonTree, {
+        target: document.body,
+        props: {
+          value: [`a`, `b`, `c`],
+          show_array_indices: true,
+          default_fold_level: 5,
+        },
+      })
+
+      // Initially indices are shown
+      expect(document.querySelectorAll(`.array-index .index`).length).toBe(3)
+
+      const index_toggle = get_toggle_btns()[1]
+      expect(index_toggle.textContent).toBe(`#`)
+      expect(index_toggle.classList.contains(`active`)).toBe(true)
+
+      index_toggle.click()
+      flushSync()
+      await tick()
+
+      // Now indices should be hidden
+      expect(document.querySelectorAll(`.array-index .index`).length).toBe(0)
+      expect(index_toggle.classList.contains(`active`)).toBe(false)
+
+      // Toggle on again
+      index_toggle.click()
+      flushSync()
+      await tick()
+
+      expect(document.querySelectorAll(`.array-index .index`).length).toBe(3)
+      expect(index_toggle.classList.contains(`active`)).toBe(true)
+    })
+
+    it(`toggle buttons have correct titles`, () => {
+      mount(JsonTree, {
+        target: document.body,
+        props: { value: { a: 1 }, show_data_types: false, show_array_indices: true },
+      })
+
+      const toggle_btns = get_toggle_btns()
+      const type_toggle = toggle_btns[0]
+      const index_toggle = toggle_btns[1]
+
+      // When off, title should say "Show..."
+      expect(type_toggle.getAttribute(`title`)).toBe(`Show data types`)
+      // When on, title should say "Hide..."
+      expect(index_toggle.getAttribute(`title`)).toBe(`Hide array indices`)
+    })
+
+    it(`toggle button active state updates when toggled`, async () => {
+      mount(JsonTree, {
+        target: document.body,
+        props: { value: { a: 1 }, show_data_types: false },
+      })
+
+      let type_toggle = get_toggle_btns()[0]
+      expect(type_toggle.classList.contains(`active`)).toBe(false)
+
+      type_toggle.click()
+      flushSync()
+      await tick()
+
+      // Re-query the button after state change
+      type_toggle = get_toggle_btns()[0]
+      expect(type_toggle.classList.contains(`active`)).toBe(true)
+
+      // Toggle off
+      type_toggle.click()
+      flushSync()
+      await tick()
+
+      type_toggle = get_toggle_btns()[0]
+      expect(type_toggle.classList.contains(`active`)).toBe(false)
+    })
+
+    it(`toggle states are independent`, async () => {
+      mount(JsonTree, {
+        target: document.body,
+        props: {
+          value: [`item`],
+          show_data_types: false,
+          show_array_indices: true,
+          default_fold_level: 5,
+        },
+      })
+
+      const toggle_btns = get_toggle_btns()
+      const type_toggle = toggle_btns[0]
+      const index_toggle = toggle_btns[1]
+
+      // Toggle data types on
+      type_toggle.click()
+      flushSync()
+      await tick()
+
+      expect(type_toggle.classList.contains(`active`)).toBe(true)
+      expect(index_toggle.classList.contains(`active`)).toBe(true) // unchanged
+
+      // Toggle array indices off
+      index_toggle.click()
+      flushSync()
+      await tick()
+
+      expect(type_toggle.classList.contains(`active`)).toBe(true) // unchanged
+      expect(index_toggle.classList.contains(`active`)).toBe(false)
+    })
+
+    it(`respects initial prop values`, () => {
+      mount(JsonTree, {
+        target: document.body,
+        props: { value: { a: 1 }, show_data_types: true, show_array_indices: false },
+      })
+
+      const toggle_btns = get_toggle_btns()
+      expect(toggle_btns[0].classList.contains(`active`)).toBe(true)
+      expect(toggle_btns[1].classList.contains(`active`)).toBe(false)
     })
   })
 

@@ -510,18 +510,59 @@
     }
   }
 
+  // Extract numeric value from strings with uncertainty notation: "1.23 ± 0.05", "1.23 +- 0.05", "1.23(5)"
+  function parse_numeric_val(val: CellVal): number | null {
+    if (typeof val === `number`) return Number.isNaN(val) ? null : val
+    if (typeof val !== `string`) return null
+
+    // Handle numbers with error notation: "1.23 ± 0.05" or "1.23 +- 0.05" or "1.23(5)"
+    // Supports: ± (U+00B1), ASCII +-, Unicode minus − (U+2212), with optional whitespace
+    // Note: [-+−] has hyphen first to avoid regex range interpretation
+    // Pattern allows leading decimals like .5 or -.5 via (?:\d+\.?\d*|\d*\.\d+)
+    const error_match = val.match(
+      /^([-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/,
+    )
+    if (error_match) {
+      // Normalize unicode minus (U+2212) to ASCII hyphen for Number()
+      const normalized = error_match[1].replace(/−/g, `-`)
+      const num = Number(normalized)
+      if (!isNaN(num)) return num
+    }
+    // Try parsing as a plain number (handles "1.23" strings)
+    // Also normalize unicode minus for plain numbers
+    const normalized_val = val.replace(/−/g, `-`)
+    const plain_num = Number(normalized_val)
+    if (!isNaN(plain_num) && val.trim() !== ``) return plain_num
+    return null
+  }
+
+  // Memoize parsed column values to avoid O(N²) re-parsing in calc_color
+  let parsed_column_values = $derived.by(() => {
+    const result = new SvelteMap<string, (number | null)[]>()
+    for (const col of ordered_columns) {
+      if (col.color_scale === null) continue
+      const col_id = get_col_id(col)
+      result.set(col_id, sorted_data.map((row) => parse_numeric_val(row[col_id])))
+    }
+    return result
+  })
+
   function calc_color(val: CellVal, col: Label) {
-    // Early exit for non-numeric values or when heatmap is disabled
-    if (!show_heatmap || typeof val !== `number` || col.color_scale === null) {
+    if (!show_heatmap || col.color_scale === null) {
       return { bg: null, text: null }
     }
 
+    // Parse numeric value from strings with uncertainty notation
+    const numeric_val = parse_numeric_val(val)
+    if (numeric_val === null) return { bg: null, text: null }
+
     const col_id = get_col_id(col)
-    const numeric_vals = sorted_data.map((row) => row[col_id])
+    // Use memoized parsed values for the column
+    const numeric_vals = parsed_column_values.get(col_id) ?? []
 
     // calc_cell_color handles null/NaN filtering internally
     return calc_cell_color(
-      val,
+      numeric_val,
       numeric_vals,
       col.better,
       col.color_scale || `interpolateViridis`,
