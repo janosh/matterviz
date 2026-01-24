@@ -98,7 +98,7 @@ describe(`normalize_y2_sync`, () => {
 
 describe(`sync_y2_range`, () => {
   it(`mode: none returns y2_base_range unchanged`, () => {
-    expect(sync_y2_range([0, 100], [0, 100], [0, 50], { mode: `none` })).toEqual([0, 50])
+    expect(sync_y2_range([0, 100], [0, 50], { mode: `none` })).toEqual([0, 50])
   })
 
   // Synced mode: y2 has exact same range as y1
@@ -113,12 +113,9 @@ describe(`sync_y2_range`, () => {
       desc: `vastly different scales`,
     },
   ])(`synced: $desc`, ({ y1, y2_base, expected }) => {
-    const result = sync_y2_range(
-      y1 as [number, number],
-      [0, 0], // y1_base unused for synced mode
-      y2_base as [number, number],
-      { mode: `synced` },
-    )
+    const result = sync_y2_range(y1 as [number, number], y2_base as [number, number], {
+      mode: `synced`,
+    })
     expect(result).toEqual(expected)
   })
 
@@ -161,12 +158,9 @@ describe(`sync_y2_range`, () => {
       desc: `zero span fallback`,
     },
   ])(`align: $desc`, ({ y1, y2_base, expected }) => {
-    const result = sync_y2_range(
-      y1 as [number, number],
-      [0, 0], // y1_base unused
-      y2_base as [number, number],
-      { mode: `align` },
-    )
+    const result = sync_y2_range(y1 as [number, number], y2_base as [number, number], {
+      mode: `align`,
+    })
     expect(result).toEqual(expected)
   })
 
@@ -175,10 +169,7 @@ describe(`sync_y2_range`, () => {
     // y1 = [0, 200], align at 100 which is at 50%
     // y2_base = [80, 120], data centered on 100
     // With 100 at 50% and needing to show 80-120, span = max(40, 20/0.5=40, 20/0.5=40) = 40
-    const result = sync_y2_range([0, 200], [0, 0], [80, 120], {
-      mode: `align`,
-      align_value: 100,
-    })
+    const result = sync_y2_range([0, 200], [80, 120], { mode: `align`, align_value: 100 })
     expect(result).toEqual([80, 120]) // 100 at 50%, data fits perfectly
   })
 
@@ -190,14 +181,10 @@ describe(`sync_y2_range`, () => {
     { y1: [NaN, 100], y2_base: [0, 50], desc: `NaN in y1_range` },
     { y1: [0, 100], y2_base: [NaN, 50], desc: `NaN in y2_base_range` },
   ])(`non-finite fallback: $desc`, ({ y1, y2_base }) => {
-    const result = sync_y2_range(
-      y1 as [number, number],
-      [0, 0],
-      y2_base as [number, number],
-      { mode: `synced` },
-    )
-    // Should return y2_base_range unchanged (fallback behavior)
-    expect(result).toEqual(y2_base)
+    const result = sync_y2_range(y1 as [number, number], y2_base as [number, number], {
+      mode: `synced`,
+    })
+    expect(result).toEqual(y2_base) // fallback to y2_base_range
   })
 })
 

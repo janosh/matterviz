@@ -299,7 +299,7 @@
   // Helper to compute synced y2 range or return fallback when sync disabled
   const get_synced_y2 = (y1_range: Vec2, fallback: Vec2): Vec2 =>
     y2_sync_config.mode !== `none`
-      ? sync_y2_range(y1_range, initial_y_range, initial_y2_range, y2_sync_config)
+      ? sync_y2_range(y1_range, initial_y2_range, y2_sync_config)
       : fallback
 
   // Effect to update y2 range when sync mode changes - use $effect.pre to capture
@@ -310,12 +310,7 @@
     if (mode !== prev_sync_mode) {
       // When sync mode becomes enabled (or changes), apply sync immediately
       if (mode !== `none`) {
-        zoom_y2_range = sync_y2_range(
-          zoom_y_range,
-          initial_y_range,
-          initial_y2_range,
-          y2_sync_config,
-        )
+        zoom_y2_range = sync_y2_range(zoom_y_range, initial_y2_range, y2_sync_config)
       } else {
         // When switching to independent mode, reset Y2 to its data range
         zoom_y2_range = [...initial_y2_range] as [number, number]
@@ -534,12 +529,7 @@
       if (result.changed) initial_y2_range = result.range
       // Apply sync if enabled, otherwise use expanded range (or keep current if unchanged)
       if (y2_sync_config.mode !== `none`) {
-        zoom_y2_range = sync_y2_range(
-          zoom_y_range,
-          initial_y_range,
-          initial_y2_range,
-          y2_sync_config,
-        )
+        zoom_y2_range = sync_y2_range(zoom_y_range, initial_y2_range, y2_sync_config)
       } else if (result.changed) {
         zoom_y2_range = result.range
       }

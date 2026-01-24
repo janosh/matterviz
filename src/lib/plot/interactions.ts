@@ -28,7 +28,6 @@ const all_finite = (...ranges: [number, number][]) =>
 // Calculate synced y2 range based on sync mode
 export function sync_y2_range(
   y1_range: [number, number],
-  _y1_base_range: [number, number], // kept for API compatibility
   y2_base_range: [number, number],
   sync: Y2SyncConfig,
 ): [number, number] {
