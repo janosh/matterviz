@@ -1,3 +1,6 @@
+export { build_diagram } from './build-diagram'
+export * from './colors'
+export * from './diagram-input'
 export { default as IsobaricBinaryPhaseDiagram } from './IsobaricBinaryPhaseDiagram.svelte'
 export * from './parse'
 export { default as PhaseDiagramControls } from './PhaseDiagramControls.svelte'

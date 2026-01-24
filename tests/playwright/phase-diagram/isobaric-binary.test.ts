@@ -217,7 +217,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(active_file).toBeVisible({ timeout: 5000 })
     const initial_active_text = (await active_file.textContent())?.trim()
 
-    // Find a non-active JSON file (one without .active class that ends in .json.gz)
+    // Find a non-active JSON file (one without .active class that ends in .json)
     // TDB files may not load properly so skip them
     const all_inactive = await page.locator(`.file-picker .file-item:not(.active)`).all()
     let clicked_file_name: string | null = null

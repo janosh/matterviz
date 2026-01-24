@@ -22,6 +22,9 @@ export type RowData = { style?: string; class?: string; [key: string]: CellVal }
 
 // Column configuration for HeatmapTable
 export type Label = {
+  // Display label for the column header. Supports HTML markup (e.g., "n<sub>val</sub>")
+  // for subscripts/superscripts. Note: HTML is rendered via {@html}, so ensure
+  // labels are developer-defined, not user input, to avoid XSS vulnerabilities.
   label: string
   key?: string
   group?: string

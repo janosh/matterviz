@@ -5,16 +5,20 @@ import {
   compute_label_properties,
   find_phase_at_point,
   format_composition,
+  format_formula_html,
+  format_formula_svg,
   format_temperature,
   generate_boundary_path,
   generate_region_path,
   get_multi_phase_gradient,
   get_phase_color,
   get_phase_color_key,
+  is_compound,
   merge_phase_diagram_config,
   PHASE_COLOR_HEX,
   PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
+  tokenize_formula,
   transform_vertices,
 } from '$lib/phase-diagram/utils'
 import { describe, expect, test } from 'vitest'
@@ -490,5 +494,181 @@ describe(`merge_phase_diagram_config`, () => {
     },
   ])(`merges partial config correctly`, ({ config, check }) => {
     expect(check(merge_phase_diagram_config(config))).toBe(true)
+  })
+})
+
+// ============================================================================
+// Chemical Formula Parsing Tests (for pseudo-binary phase diagrams)
+// ============================================================================
+
+describe(`is_compound`, () => {
+  test.each([
+    // Single elements (one letter) - should return false
+    { name: `C`, expected: false, desc: `single letter element C` },
+    { name: `N`, expected: false, desc: `single letter element N` },
+    { name: `O`, expected: false, desc: `single letter element O` },
+    // Single elements (two letters) - should return false
+    { name: `Fe`, expected: false, desc: `two-letter element Fe` },
+    { name: `Ca`, expected: false, desc: `two-letter element Ca` },
+    { name: `He`, expected: false, desc: `two-letter element He` },
+    { name: `Al`, expected: false, desc: `two-letter element Al` },
+    { name: `Si`, expected: false, desc: `two-letter element Si` },
+    // Compounds with digits - should return true
+    { name: `Fe3C`, expected: true, desc: `compound with digit Fe3C` },
+    { name: `SiO2`, expected: true, desc: `compound with digit SiO2` },
+    { name: `Al2O3`, expected: true, desc: `compound with digit Al2O3` },
+    { name: `H2O`, expected: true, desc: `compound with digit H2O` },
+    // Compounds with multiple elements (no digits) - should return true
+    { name: `MgO`, expected: true, desc: `oxide MgO` },
+    { name: `CaO`, expected: true, desc: `oxide CaO` },
+    { name: `NaCl`, expected: true, desc: `salt NaCl` },
+    { name: `FeO`, expected: true, desc: `oxide FeO` },
+    // Edge cases
+    { name: ``, expected: false, desc: `empty string` },
+    { name: `α`, expected: false, desc: `Greek letter alone` },
+    { name: `α-Fe`, expected: false, desc: `Greek phase notation (not a compound)` },
+  ])(`$desc → $expected`, ({ name, expected }) => {
+    expect(is_compound(name)).toBe(expected)
+  })
+})
+
+describe(`tokenize_formula`, () => {
+  test(`parses simple element`, () => {
+    expect(tokenize_formula(`Fe`)).toEqual([{ text: `Fe` }])
+  })
+
+  test(`parses compound with subscript`, () => {
+    const result = tokenize_formula(`Fe3C`)
+    expect(result).toEqual([
+      { text: `Fe` },
+      { sub: `3` },
+      { text: `C` },
+    ])
+  })
+
+  test(`parses oxide with subscript`, () => {
+    const result = tokenize_formula(`SiO2`)
+    expect(result).toEqual([
+      { text: `Si` },
+      { text: `O` },
+      { sub: `2` },
+    ])
+  })
+
+  test(`parses complex formula Al2O3`, () => {
+    const result = tokenize_formula(`Al2O3`)
+    expect(result).toEqual([
+      { text: `Al` },
+      { sub: `2` },
+      { text: `O` },
+      { sub: `3` },
+    ])
+  })
+
+  test(`parses multi-digit subscripts`, () => {
+    const result = tokenize_formula(`C12H22O11`)
+    expect(result).toEqual([
+      { text: `C` },
+      { sub: `12` },
+      { text: `H` },
+      { sub: `22` },
+      { text: `O` },
+      { sub: `11` },
+    ])
+  })
+
+  test(`returns Greek phase names unchanged`, () => {
+    expect(tokenize_formula(`α`)).toEqual([{ text: `α` }])
+    expect(tokenize_formula(`α + β`)).toEqual([{ text: `α + β` }])
+  })
+
+  test(`handles empty string`, () => {
+    expect(tokenize_formula(``)).toEqual([])
+  })
+
+  test(`parses MgO (no subscripts)`, () => {
+    const result = tokenize_formula(`MgO`)
+    expect(result).toEqual([
+      { text: `Mg` },
+      { text: `O` },
+    ])
+  })
+
+  test(`parses charge notation (superscript)`, () => {
+    const result = tokenize_formula(`O2-`)
+    expect(result).toEqual([
+      { text: `O` },
+      { sub: `2` },
+      { sup: `-` },
+    ])
+  })
+})
+
+describe(`format_formula_html`, () => {
+  test.each([
+    { formula: `Fe`, expected: `Fe`, desc: `single element unchanged` },
+    { formula: `Fe3C`, expected: `Fe<sub>3</sub>C`, desc: `compound with subscript` },
+    { formula: `SiO2`, expected: `SiO<sub>2</sub>`, desc: `oxide` },
+    { formula: `Al2O3`, expected: `Al<sub>2</sub>O<sub>3</sub>`, desc: `complex oxide` },
+    { formula: `α`, expected: `α`, desc: `Greek letter` },
+    { formula: ``, expected: ``, desc: `empty string` },
+  ])(`$desc: "$formula" → "$expected"`, ({ formula, expected }) => {
+    expect(format_formula_html(formula)).toBe(expected)
+  })
+
+  test(`respects use_subscripts=false`, () => {
+    expect(format_formula_html(`Fe3C`, false)).toBe(`Fe3C`)
+    expect(format_formula_html(`SiO2`, false)).toBe(`SiO2`)
+  })
+})
+
+describe(`format_formula_svg`, () => {
+  test(`returns simple element unchanged`, () => {
+    expect(format_formula_svg(`Fe`)).toBe(`Fe`)
+  })
+
+  test(`formats compound with tspan subscripts`, () => {
+    const result = format_formula_svg(`Fe3C`)
+    expect(result).toContain(`Fe`)
+    expect(result).toContain(`<tspan`)
+    expect(result).toContain(`>3</tspan>`)
+    expect(result).toContain(`C`)
+  })
+
+  test(`formats oxide correctly`, () => {
+    const result = format_formula_svg(`SiO2`)
+    expect(result).toContain(`Si`)
+    expect(result).toContain(`O`)
+    expect(result).toContain(`>2</tspan>`)
+  })
+
+  test(`adds trailing baseline reset when formula ends with subscript`, () => {
+    // When formula ends with subscript, any text concatenated after should not be shifted
+    const result = format_formula_svg(`SiO2`)
+    // Should end with an empty tspan that resets baseline
+    expect(result).toMatch(/<tspan dy="-0\.25em"><\/tspan>$/)
+  })
+
+  test(`no trailing reset when formula ends with text`, () => {
+    // Fe3C ends with "C" which already has baseline reset, no extra tspan needed
+    const result = format_formula_svg(`Fe3C`)
+    // Should not end with empty trailing tspan
+    expect(result).not.toMatch(/<tspan dy="[^"]+"><\/tspan>$/)
+  })
+
+  test(`cumulative offset for consecutive sub/superscripts`, () => {
+    // O2- has subscript (0.25em) then superscript (-0.4em), cumulative = -0.15em
+    // Reset should be dy≈0.15em to return to baseline (allow floating-point tolerance)
+    const result = format_formula_svg(`O2-`)
+    expect(result).toMatch(/<tspan dy="0\.15\d*em"><\/tspan>$/)
+  })
+
+  test(`respects use_subscripts=false`, () => {
+    expect(format_formula_svg(`Fe3C`, false)).toBe(`Fe3C`)
+  })
+
+  test(`returns Greek letters unchanged`, () => {
+    expect(format_formula_svg(`α`)).toBe(`α`)
+    expect(format_formula_svg(`α + β`)).toBe(`α + β`)
   })
 })
