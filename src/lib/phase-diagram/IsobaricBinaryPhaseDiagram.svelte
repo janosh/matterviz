@@ -702,9 +702,9 @@
           {:else if data_x_axis_label}
             {@html data_x_axis_label}
           {:else}
-            {@html `${comp_unit === `fraction` ? `x ` : ``}${component_b_svg} (${
-            comp_unit === `fraction` ? `mole fraction` : comp_unit
-          })`}
+            {comp_unit === `fraction` ? `x ` : ``}{@html component_b_svg} ({
+              comp_unit === `fraction` ? `mole fraction` : comp_unit
+            })
           {/if}
         </text>
       </g>
