@@ -1833,16 +1833,11 @@ def create_fe_fe3c_diagram() -> PhaseDiagramData:
     x_eutectoid = 0.115  # 0.77 wt% C / 6.67
     x_eutectoid_alpha = 0.003  # 0.02 wt% C / 6.67
 
-    # Solvus lines
+    # Solvus line (α/α+Fe3C boundary)
     gamma_solvus_left = [
         [x_eutectoid_alpha, t_eutectoid],
         [0.001, 600],
         [0.0, t_min],
-    ]
-    gamma_solvus_right = [
-        [x_eutectoid, t_eutectoid],
-        [0.14, 800],
-        [0.18, t_min],
     ]
 
     regions = [
