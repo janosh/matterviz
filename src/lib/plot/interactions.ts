@@ -63,8 +63,12 @@ export function sync_y2_range(
       y2_span = Math.max(y2_span, (y2_max_data - align_val) / (1 - rel_pos))
     }
 
-    const y2_min = align_val - rel_pos * y2_span
-    const y2_max = align_val + (1 - rel_pos) * y2_span
+    const y2_min_computed = align_val - rel_pos * y2_span
+    const y2_max_computed = align_val + (1 - rel_pos) * y2_span
+    // When align_val is outside y1_range (rel_pos < 0 or > 1), the formula can produce
+    // a range that omits y2_base_range or align_val. Ensure both are always included.
+    const y2_min = Math.min(y2_min_computed, y2_base_range[0], align_val)
+    const y2_max = Math.max(y2_max_computed, y2_base_range[1], align_val)
     return [y2_min, y2_max]
   }
 

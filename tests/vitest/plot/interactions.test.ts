@@ -136,7 +136,7 @@ describe(`sync_y2_range`, () => {
     {
       y1: [-100, 0], // 0 at top (100%)
       y2_base: [0, 50],
-      expected: [-50, 0], // 0 at top
+      expected: [-50, 50], // 0 at top, but expanded to show all y2 data
       desc: `zero at top, y2 includes 0`,
     },
     {
@@ -157,21 +157,38 @@ describe(`sync_y2_range`, () => {
       expected: [0, 50],
       desc: `zero span fallback`,
     },
-  ])(`align: $desc`, ({ y1, y2_base, expected }) => {
+    {
+      y1: [0, 200],
+      y2_base: [80, 120],
+      expected: [80, 120],
+      align_value: 100, // 100 at 50%, data fits perfectly
+      desc: `custom align_value at 50%`,
+    },
+  ])(`align: $desc`, ({ y1, y2_base, expected, align_value }) => {
     const result = sync_y2_range(y1 as [number, number], y2_base as [number, number], {
       mode: `align`,
+      align_value,
     })
     expect(result).toEqual(expected)
   })
 
-  // Custom align_value
-  it(`align with custom align_value`, () => {
-    // y1 = [0, 200], align at 100 which is at 50%
-    // y2_base = [80, 120], data centered on 100
-    // With 100 at 50% and needing to show 80-120, span = max(40, 20/0.5=40, 20/0.5=40) = 40
-    const result = sync_y2_range([0, 200], [80, 120], { mode: `align`, align_value: 100 })
-    expect(result).toEqual([80, 120]) // 100 at 50%, data fits perfectly
-  })
+  // Edge case: align_value outside y1_range - must always include y2_base_range and align_value
+  it.each([
+    { y1: [10, 20], y2_base: [60, 140], align_value: 0, desc: `rel_pos < 0` },
+    { y1: [10, 20], y2_base: [60, 140], align_value: 30, desc: `rel_pos > 1` },
+    { y1: [0, 100], y2_base: [200, 300], align_value: -50, desc: `rel_pos = -0.5` },
+    { y1: [0, 100], y2_base: [-50, 50], align_value: 150, desc: `rel_pos = 1.5` },
+  ])(
+    `align edge case ($desc): result contains data and align_value`,
+    ({ y1, y2_base, align_value }) => {
+      const result = sync_y2_range(y1 as [number, number], y2_base as [number, number], {
+        mode: `align`,
+        align_value,
+      })
+      expect(result[0]).toBeLessThanOrEqual(Math.min(y2_base[0], align_value))
+      expect(result[1]).toBeGreaterThanOrEqual(Math.max(y2_base[1], align_value))
+    },
+  )
 
   // Non-finite input handling: Infinity and NaN should fall back to y2_base_range
   it.each([
