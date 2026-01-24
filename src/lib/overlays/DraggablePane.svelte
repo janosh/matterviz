@@ -345,7 +345,7 @@
     box-sizing: border-box;
     text-align: center;
     width: 2.2em;
-    margin: 0 3pt 0 6pt;
+    margin: 0 3pt;
     flex-shrink: 0;
   }
   .draggable-pane :global(input::-webkit-inner-spin-button) {

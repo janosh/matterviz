@@ -92,10 +92,13 @@
     resolve_boundary,
   } from './fill-utils'
   import {
+    expand_range_if_needed,
     get_relative_coords,
+    normalize_y2_sync,
     pan_range,
     PINCH_ZOOM_THRESHOLD,
     pixels_to_data_delta,
+    sync_y2_range,
   } from './interactions'
   import type { Rect } from './layout'
   import {
@@ -288,6 +291,34 @@
   let zoom_y2_range = $state<[number, number]>([0, 1])
   let previous_series_visibility: boolean[] | null = $state(null)
 
+  // Y2 axis sync configuration
+  let y2_sync_config = $derived(normalize_y2_sync(y2_axis?.sync))
+  // Track previous sync mode to detect changes (updated in $effect.pre to avoid race conditions)
+  let prev_sync_mode = $state<string>(`none`)
+
+  // Helper to compute synced y2 range or return fallback when sync disabled
+  const get_synced_y2 = (y1_range: Vec2, fallback: Vec2): Vec2 =>
+    y2_sync_config.mode !== `none`
+      ? sync_y2_range(y1_range, initial_y2_range, y2_sync_config)
+      : fallback
+
+  // Effect to update y2 range when sync mode changes - use $effect.pre to capture
+  // mode change before the main range-update effect runs, ensuring sync is applied
+  // immediately when toggled (not delayed until next data change)
+  $effect.pre(() => {
+    const mode = y2_sync_config.mode
+    if (mode !== prev_sync_mode) {
+      // When sync mode becomes enabled (or changes), apply sync immediately
+      if (mode !== `none`) {
+        zoom_y2_range = sync_y2_range(zoom_y_range, initial_y2_range, y2_sync_config)
+      } else {
+        // When switching to independent mode, reset Y2 to its data range
+        zoom_y2_range = [...initial_y2_range] as [number, number]
+      }
+      prev_sync_mode = mode
+    }
+  })
+
   // Pan state
   let is_focused = $state(false)
   let shift_held = $state(false)
@@ -451,32 +482,57 @@
   )
 
   // Update zoom ranges when auto ranges or explicit ranges change
-  // Compare against initial (data-driven) ranges to preserve user's pan/zoom state
+  // - Explicit ranges (from zoom/pan): apply directly
+  // - Auto ranges (from data changes): use lazy expansion to preserve view context
   $effect(() => {
-    const new_x = [
-      final_x_axis.range?.[0] ?? auto_x_range[0],
-      final_x_axis.range?.[1] ?? auto_x_range[1],
-    ] as Vec2
-    const new_y = [
-      final_y_axis.range?.[0] ?? auto_y_range[0],
-      final_y_axis.range?.[1] ?? auto_y_range[1],
-    ] as Vec2
-    const new_y2 = [
-      final_y2_axis.range?.[0] ?? auto_y2_range[0],
-      final_y2_axis.range?.[1] ?? auto_y2_range[1],
-    ] as Vec2
+    // Helper to get effective range (explicit ?? auto) and check if explicit
+    const get_range = (
+      axis: { range?: [number | null, number | null] },
+      auto: Vec2,
+    ) => {
+      const explicit = axis.range?.[0] != null && axis.range?.[1] != null
+      return {
+        explicit,
+        range: [axis.range?.[0] ?? auto[0], axis.range?.[1] ?? auto[1]] as Vec2,
+      }
+    }
 
-    if (new_x[0] !== initial_x_range[0] || new_x[1] !== initial_x_range[1]) {
-      initial_x_range = new_x
-      zoom_x_range = new_x
+    const x = get_range(final_x_axis, auto_x_range)
+    const y = get_range(final_y_axis, auto_y_range)
+    const y2 = get_range(final_y2_axis, auto_y2_range)
+
+    // X axis: explicit → direct, auto → lazy expand
+    if (x.explicit) {
+      zoom_x_range = x.range
+    } else {
+      const result = expand_range_if_needed(initial_x_range, x.range)
+      if (result.changed) {
+        ;[initial_x_range, zoom_x_range] = [result.range, result.range]
+      }
     }
-    if (new_y[0] !== initial_y_range[0] || new_y[1] !== initial_y_range[1]) {
-      initial_y_range = new_y
-      zoom_y_range = new_y
+
+    // Y axis: explicit → direct, auto → lazy expand
+    if (y.explicit) {
+      zoom_y_range = y.range
+    } else {
+      const result = expand_range_if_needed(initial_y_range, y.range)
+      if (result.changed) {
+        ;[initial_y_range, zoom_y_range] = [result.range, result.range]
+      }
     }
-    if (new_y2[0] !== initial_y2_range[0] || new_y2[1] !== initial_y2_range[1]) {
-      initial_y2_range = new_y2
-      zoom_y2_range = new_y2
+
+    // Y2 axis: explicit → direct, else expand initial range then optionally sync
+    if (y2.explicit) {
+      zoom_y2_range = y2.range
+    } else {
+      const result = expand_range_if_needed(initial_y2_range, y2.range)
+      if (result.changed) initial_y2_range = result.range
+      // Apply sync if enabled, otherwise use expanded range (or keep current if unchanged)
+      if (y2_sync_config.mode !== `none`) {
+        zoom_y2_range = sync_y2_range(zoom_y_range, initial_y2_range, y2_sync_config)
+      } else if (result.changed) {
+        zoom_y2_range = result.range
+      }
     }
   })
 
@@ -1192,9 +1248,9 @@
         next_y_range[0] !== next_y_range[1]
       ) {
         // Update axis ranges to trigger reactivity (like BarPlot/Histogram do)
+        // Y2 sync is handled by the effect that reacts to y_axis changes
         x_axis = { ...x_axis, range: next_x_range }
         y_axis = { ...y_axis, range: next_y_range }
-        // Note: y2_range zoom not yet implemented for scatter
       }
     }
 
@@ -1237,7 +1293,10 @@
 
     zoom_x_range = pan_range(pan_drag_state.initial_x_range, x_delta)
     zoom_y_range = pan_range(pan_drag_state.initial_y_range, y_delta)
-    zoom_y2_range = pan_range(pan_drag_state.initial_y2_range, y2_delta)
+    zoom_y2_range = get_synced_y2(
+      zoom_y_range,
+      pan_range(pan_drag_state.initial_y2_range, y2_delta),
+    )
   }
 
   const on_pan_end = () => {
@@ -1319,7 +1378,7 @@
       zoom_x_range = pan_range(zoom_x_range, x_delta)
     } else {
       zoom_y_range = pan_range(zoom_y_range, y_delta)
-      zoom_y2_range = pan_range(zoom_y2_range, y2_delta)
+      zoom_y2_range = get_synced_y2(zoom_y_range, pan_range(zoom_y2_range, y2_delta))
     }
   }
 
@@ -1383,10 +1442,10 @@
 
       zoom_x_range = [x_center - x_span / scale / 2, x_center + x_span / scale / 2]
       zoom_y_range = [y_center - y_span / scale / 2, y_center + y_span / scale / 2]
-      zoom_y2_range = [
+      zoom_y2_range = get_synced_y2(zoom_y_range, [
         y2_center - y2_span / scale / 2,
         y2_center + y2_span / scale / 2,
-      ]
+      ])
     } else {
       // Pan
       const x_delta = pixels_to_data_delta(
@@ -1406,7 +1465,10 @@
       )
       zoom_x_range = pan_range(touch_state.initial_x_range, x_delta)
       zoom_y_range = pan_range(touch_state.initial_y_range, y_delta)
-      zoom_y2_range = pan_range(touch_state.initial_y2_range, y2_delta)
+      zoom_y2_range = get_synced_y2(
+        zoom_y_range,
+        pan_range(touch_state.initial_y2_range, y2_delta),
+      )
     }
   }
 
@@ -1769,10 +1831,14 @@
         on_point_hover?.(null)
       }}
       ondblclick={() => {
-        // Reset zoom to initial ranges (undo any pan/zoom)
-        zoom_x_range = [...initial_x_range] as [number, number]
-        zoom_y_range = [...initial_y_range] as [number, number]
-        zoom_y2_range = [...initial_y2_range] as [number, number]
+        // Reset to current auto ranges (not stale initial_*_range which may have expanded)
+        // This ensures lazy expansion restarts fresh from current data bounds
+        initial_x_range = [...auto_x_range] as [number, number]
+        initial_y_range = [...auto_y_range] as [number, number]
+        initial_y2_range = [...auto_y2_range] as [number, number]
+        zoom_x_range = [...auto_x_range] as [number, number]
+        zoom_y_range = [...auto_y_range] as [number, number]
+        zoom_y2_range = get_synced_y2(auto_y_range, [...auto_y2_range] as Vec2)
         // Also reset axis props so future data changes recalculate auto ranges
         x_axis = { ...x_axis, range: [null, null] }
         y_axis = { ...y_axis, range: [null, null] }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { format_num } from '$lib/labels'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
@@ -302,8 +303,8 @@
     title="Axes"
     current_values={{ x_ticks: x_axis.ticks, y_ticks: y_axis.ticks }}
     on_reset={() => {
-      x_axis.ticks = PHASE_DIAGRAM_DEFAULTS.x_ticks
-      y_axis.ticks = PHASE_DIAGRAM_DEFAULTS.y_ticks
+      x_axis = { ...x_axis, ticks: PHASE_DIAGRAM_DEFAULTS.x_ticks }
+      y_axis = { ...y_axis, ticks: PHASE_DIAGRAM_DEFAULTS.y_ticks }
     }}
   >
     <div class="pane-row">
@@ -316,7 +317,9 @@
             max={15}
             value={axis_cfg.ticks ?? PHASE_DIAGRAM_DEFAULTS[`${axis_name}_ticks`]}
             oninput={(ev) => {
-              axis_cfg.ticks = Number(ev.currentTarget.value)
+              const new_ticks = Number(ev.currentTarget.value)
+              if (axis_name === `x`) x_axis = { ...x_axis, ticks: new_ticks }
+              else if (axis_name === `y`) y_axis = { ...y_axis, ticks: new_ticks }
             }}
           />
         </label>

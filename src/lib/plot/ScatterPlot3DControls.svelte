@@ -1,4 +1,6 @@
 <script lang="ts">
+  // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
+  // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
   import { SettingsSection } from '$lib/layout'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type {
@@ -146,7 +148,10 @@
         oninput={(event) => {
           const val = parseFloat((event.target as HTMLInputElement).value)
           if (Number.isNaN(val)) return
-          x_axis.range = [val, x_axis.range?.[1] ?? auto_x_range[1]]
+          x_axis = {
+            ...x_axis,
+            range: [val, x_axis.range?.[1] ?? auto_x_range[1]],
+          }
         }}
       />
       <span>to</span>
@@ -158,7 +163,10 @@
         oninput={(event) => {
           const val = parseFloat((event.target as HTMLInputElement).value)
           if (Number.isNaN(val)) return
-          x_axis.range = [x_axis.range?.[0] ?? auto_x_range[0], val]
+          x_axis = {
+            ...x_axis,
+            range: [x_axis.range?.[0] ?? auto_x_range[0], val],
+          }
         }}
       />
     </div>
@@ -184,7 +192,10 @@
         oninput={(event) => {
           const val = parseFloat((event.target as HTMLInputElement).value)
           if (Number.isNaN(val)) return
-          y_axis.range = [val, y_axis.range?.[1] ?? auto_y_range[1]]
+          y_axis = {
+            ...y_axis,
+            range: [val, y_axis.range?.[1] ?? auto_y_range[1]],
+          }
         }}
       />
       <span>to</span>
@@ -196,7 +207,10 @@
         oninput={(event) => {
           const val = parseFloat((event.target as HTMLInputElement).value)
           if (Number.isNaN(val)) return
-          y_axis.range = [y_axis.range?.[0] ?? auto_y_range[0], val]
+          y_axis = {
+            ...y_axis,
+            range: [y_axis.range?.[0] ?? auto_y_range[0], val],
+          }
         }}
       />
     </div>
@@ -222,7 +236,10 @@
         oninput={(event) => {
           const val = parseFloat((event.target as HTMLInputElement).value)
           if (Number.isNaN(val)) return
-          z_axis.range = [val, z_axis.range?.[1] ?? auto_z_range[1]]
+          z_axis = {
+            ...z_axis,
+            range: [val, z_axis.range?.[1] ?? auto_z_range[1]],
+          }
         }}
       />
       <span>to</span>
@@ -234,7 +251,10 @@
         oninput={(event) => {
           const val = parseFloat((event.target as HTMLInputElement).value)
           if (Number.isNaN(val)) return
-          z_axis.range = [z_axis.range?.[0] ?? auto_z_range[0], val]
+          z_axis = {
+            ...z_axis,
+            range: [z_axis.range?.[0] ?? auto_z_range[0], val],
+          }
         }}
       />
     </div>
