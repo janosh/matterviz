@@ -1,5 +1,4 @@
 // Unit tests for plot interaction utilities
-import { describe, expect, it } from 'vitest'
 import {
   expand_range_if_needed,
   normalize_y2_sync,
@@ -8,6 +7,7 @@ import {
   sync_y2_range,
 } from '$lib/plot/interactions'
 import type { Y2SyncConfig, Y2SyncMode } from '$lib/plot/types'
+import { describe, expect, it } from 'vitest'
 
 describe(`pan_range`, () => {
   it.each([
@@ -83,24 +83,12 @@ describe(`normalize_y2_sync`, () => {
   >([
     { input: undefined, expected: { mode: `none` }, desc: `undefined` },
     { input: `none`, expected: { mode: `none` }, desc: `'none' string` },
+    { input: `synced`, expected: { mode: `synced` }, desc: `'synced' string` },
+    { input: `align`, expected: { mode: `align` }, desc: `'align' string` },
+    { input: { mode: `synced` }, expected: { mode: `synced` }, desc: `config object` },
     {
-      input: `proportional`,
-      expected: { mode: `proportional` },
-      desc: `'proportional' string`,
-    },
-    {
-      input: `align_zero`,
-      expected: { mode: `align_zero` },
-      desc: `'align_zero' string`,
-    },
-    {
-      input: { mode: `proportional` },
-      expected: { mode: `proportional` },
-      desc: `config object`,
-    },
-    {
-      input: { mode: `align_zero`, align_value: 100 },
-      expected: { mode: `align_zero`, align_value: 100 },
+      input: { mode: `align`, align_value: 100 },
+      expected: { mode: `align`, align_value: 100 },
       desc: `config with align_value`,
     },
   ])(`$desc → $expected.mode`, ({ input, expected }) => {
@@ -113,141 +101,100 @@ describe(`sync_y2_range`, () => {
     expect(sync_y2_range([0, 100], [0, 100], [0, 50], { mode: `none` })).toEqual([0, 50])
   })
 
-  // Proportional mode: y2 follows y1's zoom/pan proportionally
+  // Synced mode: y2 has exact same range as y1
   it.each([
+    { y1: [0, 100], y2_base: [0, 50], expected: [0, 100], desc: `basic` },
+    { y1: [25, 75], y2_base: [0, 50], expected: [25, 75], desc: `zoomed` },
+    { y1: [-50, 50], y2_base: [100, 200], expected: [-50, 50], desc: `different ranges` },
     {
-      y1: [25, 75],
-      y1_base: [0, 100],
-      y2_base: [0, 50],
-      expected: [12.5, 37.5],
-      desc: `2x zoom centered`,
+      y1: [0, 1000],
+      y2_base: [0, 1],
+      expected: [0, 1000],
+      desc: `vastly different scales`,
     },
-    {
-      y1: [50, 150],
-      y1_base: [0, 100],
-      y2_base: [0, 50],
-      expected: [25, 75],
-      desc: `50% pan`,
-    },
-    {
-      y1: [50, 100],
-      y1_base: [0, 100],
-      y2_base: [0, 50],
-      expected: [25, 50],
-      desc: `zoom + pan`,
-    },
-    {
-      y1: [0, 0],
-      y1_base: [0, 0],
-      y2_base: [0, 50],
-      expected: [0, 50],
-      desc: `zero span fallback`,
-    },
-  ])(`proportional: $desc`, ({ y1, y1_base, y2_base, expected }) => {
+  ])(`synced: $desc`, ({ y1, y2_base, expected }) => {
     const result = sync_y2_range(
       y1 as [number, number],
-      y1_base as [number, number],
+      [0, 0], // y1_base unused for synced mode
       y2_base as [number, number],
-      { mode: `proportional` },
+      { mode: `synced` },
     )
     expect(result).toEqual(expected)
   })
 
-  // Align zero mode: keeps zero (or custom value) at same relative position
+  // Align mode: align_value (default 0) at same relative position, Y2 expands to show all data
   it.each([
     {
-      y1: [0, 100],
-      y1_base: [0, 100],
+      y1: [0, 100], // 0 at bottom (0%)
       y2_base: [0, 50],
-      config: { mode: `align_zero` as const },
-      expected: [0, 50],
-      desc: `zero at 0%`,
+      expected: [0, 50], // no expansion needed
+      desc: `zero at bottom, y2 includes 0`,
     },
     {
-      y1: [-50, 50],
-      y1_base: [0, 100],
+      y1: [-50, 50], // 0 at middle (50%)
       y2_base: [0, 100],
-      config: { mode: `align_zero` as const },
-      expected: [-50, 50],
-      desc: `zero at 50%`,
+      expected: [-100, 100], // expanded to fit data with 0 at middle
+      desc: `zero at middle, y2 includes 0`,
     },
     {
-      y1: [10, 100],
-      y1_base: [0, 100],
-      y2_base: [-20, 80],
-      config: { mode: `align_zero` as const },
-      expected: [0, 100],
-      desc: `expands y1 to include zero`,
+      y1: [-100, 0], // 0 at top (100%)
+      y2_base: [0, 50],
+      expected: [-50, 0], // 0 at top
+      desc: `zero at top, y2 includes 0`,
     },
     {
-      y1: [-50, 50],
-      y1_base: [0, 100],
-      y2_base: [10, 60],
-      config: { mode: `align_zero` as const },
-      expected: [-30, 30],
-      desc: `expands y2 to include zero`,
+      y1: [0, 40], // 0 at bottom (0%)
+      y2_base: [60, 140], // data doesn't include 0!
+      expected: [0, 140], // expand down to 0, show all data up to 140
+      desc: `zero at bottom, y2 data above 0`,
     },
     {
-      y1: [0, 200],
-      y1_base: [0, 200],
-      y2_base: [50, 150],
-      config: { mode: `align_zero` as const, align_value: 100 },
-      expected: [50, 150],
-      desc: `custom align_value=100`,
+      y1: [-20, 20], // 0 at middle (50%)
+      y2_base: [60, 140], // data doesn't include 0
+      expected: [-140, 140], // expand symmetrically to show all data with 0 at middle
+      desc: `zero at middle, y2 data above 0`,
     },
     {
       y1: [0, 0],
-      y1_base: [0, 0],
       y2_base: [0, 50],
-      config: { mode: `align_zero` as const },
       expected: [0, 50],
       desc: `zero span fallback`,
     },
-  ])(`align_zero: $desc`, ({ y1, y1_base, y2_base, config, expected }) => {
+  ])(`align: $desc`, ({ y1, y2_base, expected }) => {
     const result = sync_y2_range(
       y1 as [number, number],
-      y1_base as [number, number],
+      [0, 0], // y1_base unused
       y2_base as [number, number],
-      config,
+      { mode: `align` },
     )
     expect(result).toEqual(expected)
+  })
+
+  // Custom align_value
+  it(`align with custom align_value`, () => {
+    // y1 = [0, 200], align at 100 which is at 50%
+    // y2_base = [80, 120], data centered on 100
+    // With 100 at 50% and needing to show 80-120, span = max(40, 20/0.5=40, 20/0.5=40) = 40
+    const result = sync_y2_range([0, 200], [0, 0], [80, 120], {
+      mode: `align`,
+      align_value: 100,
+    })
+    expect(result).toEqual([80, 120]) // 100 at 50%, data fits perfectly
   })
 
   // Non-finite input handling: Infinity and NaN should fall back to y2_base_range
   it.each([
-    {
-      y1: [0, Infinity],
-      y1_base: [0, 100],
-      y2_base: [0, 50],
-      desc: `Infinity in y1_range`,
-    },
-    {
-      y1: [-Infinity, 100],
-      y1_base: [0, 100],
-      y2_base: [0, 50],
-      desc: `-Infinity in y1_range`,
-    },
-    {
-      y1: [0, 100],
-      y1_base: [0, Infinity],
-      y2_base: [0, 50],
-      desc: `Infinity in y1_base_range`,
-    },
-    {
-      y1: [0, 100],
-      y1_base: [0, 100],
-      y2_base: [0, Infinity],
-      desc: `Infinity in y2_base_range`,
-    },
-    { y1: [NaN, 100], y1_base: [0, 100], y2_base: [0, 50], desc: `NaN in y1_range` },
-    { y1: [0, 100], y1_base: [NaN, 100], y2_base: [0, 50], desc: `NaN in y1_base_range` },
-    { y1: [0, 100], y1_base: [0, 100], y2_base: [NaN, 50], desc: `NaN in y2_base_range` },
-  ])(`non-finite fallback: $desc`, ({ y1, y1_base, y2_base }) => {
+    { y1: [0, Infinity], y2_base: [0, 50], desc: `Infinity in y1_range` },
+    { y1: [-Infinity, 100], y2_base: [0, 50], desc: `-Infinity in y1_range` },
+    { y1: [0, 100], y2_base: [0, Infinity], desc: `Infinity in y2_base_range` },
+    { y1: [NaN, 100], y2_base: [0, 50], desc: `NaN in y1_range` },
+    { y1: [0, 100], y2_base: [NaN, 50], desc: `NaN in y2_base_range` },
+  ])(`non-finite fallback: $desc`, ({ y1, y2_base }) => {
     const result = sync_y2_range(
       y1 as [number, number],
-      y1_base as [number, number],
+      [0, 0],
       y2_base as [number, number],
-      { mode: `proportional` },
+      { mode: `synced` },
     )
     // Should return y2_base_range unchanged (fallback behavior)
     expect(result).toEqual(y2_base)

@@ -2923,7 +2923,7 @@ All changes trigger lazy data loading with simulated network delays.
   function handle_color_property_change(property_key) {
     color_switches++
     color_key = property_key
-    series = build_series(x_key, y_key, property_key)
+    // series is $derived from color_key, so it auto-updates
   }
 
   // Handle color scale change (no data loading needed, just update scheme)
@@ -3069,7 +3069,7 @@ between adjacent series with different densities:
 
 ## Y2 Axis Synchronization
 
-When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` controls how the secondary axis responds to zoom/pan operations. Modes: `'proportional'` (Y2 follows Y1's zoom/pan), `'align_zero'` (zero stays aligned on both axes), or `undefined`/`'none'` (independent).
+When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` controls the Y2 axis range. Modes: `'synced'` (Y2 has exact same range as Y1), `'align'` (Y2 expands to show all data with a shared anchor point, default 0), or `undefined`/`'none'` (independent).
 
 ```svelte example
 <script>
@@ -3100,10 +3100,10 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
 
   const sync_labels = {
     none: `Independent`,
-    proportional: `Proportional`,
-    align_zero: `Align Zero`,
+    synced: `Synced`,
+    align: `Align`,
   }
-  let sync_mode = $state(`proportional`)
+  let sync_mode = $state(`synced`)
 </script>
 
 <div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
@@ -3120,66 +3120,8 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
   y2_axis={{
     label: `Pressure (kPa)`,
     color: `#3498db`,
-    sync: sync_mode === `none` ? undefined : sync_mode,
+    sync: sync_mode,
   }}
-  style="height: 400px"
-/>
-```
-
-### Align Zero Mode
-
-When comparing data that crosses zero, `align_zero` ensures zero is at the same vertical position on both axes.
-
-```svelte example
-<script>
-  import { ScatterPlot } from 'matterviz'
-
-  const n_points = 40
-  const x_vals = Array.from({ length: n_points }, (_, idx) => idx + 1)
-
-  const formation_energy = {
-    x: x_vals,
-    y: x_vals.map(() => -2 + Math.random() * 5 - 1.5),
-    label: `Formation Energy (eV/atom)`,
-    point_style: { fill: `#9b59b6`, radius: 5 },
-    markers: `points`,
-    y_axis: `y1`,
-  }
-
-  const band_gap = {
-    x: x_vals,
-    y: x_vals.map(() => Math.random() * 6 - 1),
-    label: `Band Gap (eV)`,
-    point_style: { fill: `#2ecc71`, radius: 5 },
-    markers: `points`,
-    y_axis: `y2`,
-  }
-
-  const sync_labels = {
-    none: `Independent`,
-    proportional: `Proportional`,
-    align_zero: `Align Zero`,
-  }
-  let sync_mode = $state(`align_zero`)
-</script>
-
-<div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
-  <strong>Y2 Sync:</strong>
-  {#each Object.entries(sync_labels) as [mode, label]}
-    <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
-  {/each}
-</div>
-
-<ScatterPlot
-  series={[formation_energy, band_gap]}
-  x_axis={{ label: `Material Index` }}
-  y_axis={{ label: `Formation Energy (eV/atom)`, color: `#9b59b6` }}
-  y2_axis={{
-    label: `Band Gap (eV)`,
-    color: `#2ecc71`,
-    sync: sync_mode === `none` ? undefined : sync_mode,
-  }}
-  display={{ y_zero_line: true }}
   style="height: 400px"
 />
 ```
@@ -3215,7 +3157,7 @@ Click the gear icon to access the Y2 Sync dropdown in PlotControls.
     },
   ]
 
-  let y2_axis = $state({ label: `Secondary Metrics`, sync: `proportional` })
+  let y2_axis = $state({ label: `Secondary Metrics`, sync: `synced` })
 </script>
 
 <ScatterPlot

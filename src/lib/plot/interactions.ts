@@ -25,68 +25,48 @@ export function normalize_y2_sync(
 const all_finite = (...ranges: [number, number][]) =>
   ranges.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))
 
-// Calculate synced y2 range based on y1 transformation
-// When sync is enabled, y2 range follows y1's zoom/pan behavior
+// Calculate synced y2 range based on sync mode
 export function sync_y2_range(
   y1_range: [number, number],
-  y1_base_range: [number, number],
+  _y1_base_range: [number, number], // kept for API compatibility
   y2_base_range: [number, number],
   sync: Y2SyncConfig,
 ): [number, number] {
   if (sync.mode === `none`) return y2_base_range
-  // Guard against non-finite inputs (Infinity, NaN from division-by-zero)
-  if (!all_finite(y1_range, y1_base_range, y2_base_range)) return y2_base_range
+  if (!all_finite(y1_range, y2_base_range)) return y2_base_range
 
-  if (sync.mode === `proportional`) {
-    // Same zoom factor + same relative center movement
-    const y1_base_span = y1_base_range[1] - y1_base_range[0]
-    const y1_span = y1_range[1] - y1_range[0]
-
-    // Avoid division by zero
-    if (y1_base_span === 0) return y2_base_range
-
-    const scale_factor = y1_span / y1_base_span
-
-    const y1_base_center = (y1_base_range[0] + y1_base_range[1]) / 2
-    const y1_center = (y1_range[0] + y1_range[1]) / 2
-    const center_shift_ratio = (y1_center - y1_base_center) / y1_base_span
-
-    const y2_base_span = y2_base_range[1] - y2_base_range[0]
-    const y2_base_center = (y2_base_range[0] + y2_base_range[1]) / 2
-
-    const y2_new_span = y2_base_span * scale_factor
-    const y2_new_center = y2_base_center + center_shift_ratio * y2_base_span
-
-    return [y2_new_center - y2_new_span / 2, y2_new_center + y2_new_span / 2]
+  // Synced: Y2 has exact same range as Y1
+  if (sync.mode === `synced`) {
+    return [...y1_range] as [number, number]
   }
 
-  if (sync.mode === `align_zero`) {
+  // Align: Position so align_val (default 0) is at same relative position on both axes
+  // Y2 range expands as needed to show all data while maintaining alignment
+  if (sync.mode === `align`) {
     const align_val = sync.align_value ?? 0
-
-    // Ensure y1 range includes align_val (expand if needed)
-    // Note: if align_val is outside the data range, both axes will be expanded to include it
-    const y1_min = Math.min(y1_range[0], align_val)
-    const y1_max = Math.max(y1_range[1], align_val)
-    const y1_span = y1_max - y1_min
-
-    // Avoid division by zero
+    const y1_span = y1_range[1] - y1_range[0]
     if (y1_span === 0) return y2_base_range
 
-    // Calculate relative position of align_val in y1 range (0 to 1)
-    const rel_pos = (align_val - y1_min) / y1_span
+    // Where is align_val in Y1's range? (0 = bottom, 1 = top)
+    const rel_pos = (align_val - y1_range[0]) / y1_span
 
-    // Ensure y2 base range includes align_val (expand if needed)
-    const y2_min = Math.min(y2_base_range[0], align_val)
-    const y2_max = Math.max(y2_base_range[1], align_val)
-    const y2_expanded_span = y2_max - y2_min
+    // Ensure Y2 range includes both align_val and all data
+    const y2_min_data = Math.min(y2_base_range[0], align_val)
+    const y2_max_data = Math.max(y2_base_range[1], align_val)
 
-    // Position align_val at rel_pos within y2 range
-    // align_val = y2_new_min + rel_pos * y2_new_span
-    // Solve: y2_new_min = align_val - rel_pos * y2_expanded_span
-    const y2_new_min = align_val - rel_pos * y2_expanded_span
-    const y2_new_max = y2_new_min + y2_expanded_span
+    // Calculate minimum span needed to fit all data while keeping align_val at rel_pos
+    // Constraints: y2_min <= y2_min_data AND y2_max >= y2_max_data
+    let y2_span = y2_max_data - y2_min_data
+    if (rel_pos > 0) {
+      y2_span = Math.max(y2_span, (align_val - y2_min_data) / rel_pos)
+    }
+    if (rel_pos < 1) {
+      y2_span = Math.max(y2_span, (y2_max_data - align_val) / (1 - rel_pos))
+    }
 
-    return [y2_new_min, y2_new_max]
+    const y2_min = align_val - rel_pos * y2_span
+    const y2_max = align_val + (1 - rel_pos) * y2_span
+    return [y2_min, y2_max]
   }
 
   return y2_base_range

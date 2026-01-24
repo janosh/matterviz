@@ -1147,10 +1147,10 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
 
   const sync_labels = {
     none: `Independent`,
-    proportional: `Proportional`,
-    align_zero: `Align Zero`,
+    synced: `Synced`,
+    align: `Align`,
   }
-  let sync_mode = $state(`proportional`)
+  let sync_mode = $state(`synced`)
 </script>
 
 <div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
@@ -1169,7 +1169,7 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
   y2_axis={{
     label: `Count (B)`,
     color: `#3498db`,
-    sync: sync_mode === `none` ? undefined : sync_mode,
+    sync: sync_mode,
   }}
   bar={{ opacity: 0.6 }}
   style="height: 400px"

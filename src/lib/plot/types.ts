@@ -393,13 +393,13 @@ export interface AxisOption {
 
 // Y2 axis synchronization modes
 // - 'none': Independent axes (default)
-// - 'proportional': Y2 follows Y1 zoom/pan with same scale factor and center shift
-// - 'align_zero': Keep zero (or align_value) at same vertical position on both axes
-export type Y2SyncMode = `none` | `proportional` | `align_zero`
+// - 'synced': Y2 has exact same range as Y1
+// - 'align': Y2 expands to show all data while keeping align_value (default 0) at same position as Y1
+export type Y2SyncMode = `none` | `synced` | `align`
 
 export interface Y2SyncConfig {
   mode: Y2SyncMode
-  // For align_zero: optionally specify which value to align (default: 0)
+  // For align mode: optionally specify which value to align (default: 0)
   align_value?: number
 }
 
@@ -419,11 +419,10 @@ export interface AxisConfig {
   options?: AxisOption[] // available properties for this axis
   selected_key?: string // currently selected property key
   // Synchronization with y1 axis (only applicable when used as y2_axis)
-  // - 'proportional': Y2 follows Y1 zoom/pan with same scale factor
-  // - 'align_zero': Keeps zero (or align_value) at same vertical position on both axes.
-  //   Note: if align_value is outside the data range, axes expand to include it.
+  // - 'synced': Y2 has exact same range as Y1
+  // - 'align': Y2 expands to show all data, align_value (default 0) at same position
   // - 'none' or undefined: Independent axes (default)
-  // Shorthand: 'proportional' | 'align_zero' | 'none'
+  // Shorthand: 'synced' | 'align' | 'none'
   // Full config: { mode: Y2SyncMode, align_value?: number }
   sync?: Y2SyncConfig | Y2SyncMode
 }

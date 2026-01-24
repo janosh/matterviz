@@ -316,6 +316,9 @@
           initial_y2_range,
           y2_sync_config,
         )
+      } else {
+        // When switching to independent mode, reset Y2 to its data range
+        zoom_y2_range = [...initial_y2_range] as [number, number]
       }
       prev_sync_mode = mode
     }
@@ -529,16 +532,17 @@
     } else {
       const result = expand_range_if_needed(initial_y2_range, y2.range)
       if (result.changed) initial_y2_range = result.range
-      zoom_y2_range = y2_sync_config.mode !== `none`
-        ? sync_y2_range(
+      // Apply sync if enabled, otherwise use expanded range (or keep current if unchanged)
+      if (y2_sync_config.mode !== `none`) {
+        zoom_y2_range = sync_y2_range(
           zoom_y_range,
           initial_y_range,
           initial_y2_range,
           y2_sync_config,
         )
-        : result.changed
-        ? result.range
-        : zoom_y2_range
+      } else if (result.changed) {
+        zoom_y2_range = result.range
+      }
     }
   })
 

@@ -1,4 +1,7 @@
 <script lang="ts">
+  // NOTE: Axis config objects (x_axis, y_axis, y2_axis) must be reassigned (not mutated)
+  // to trigger $bindable reactivity propagation to parent components.
+  // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { DEFAULTS } from '$lib/settings'
@@ -174,7 +177,6 @@
       title="Axis Range"
       current_values={{ x_range: x_axis.range, y_range: y_axis.range, y2_range: y2_axis.range }}
       on_reset={() => {
-        // Reassign entire objects to trigger $bindable reactivity up the chain
         x_axis = { ...x_axis, range: [null, null] }
         y_axis = { ...y_axis, range: [null, null] }
         y2_axis = { ...y2_axis, range: [null, null] }
@@ -200,7 +202,7 @@
             class="range-input"
             oninput={(e) => update_range(axis, 0, e.currentTarget.value)}
             onkeydown={(e) => e.key === `Enter` && e.currentTarget.blur()}
-          />to<input
+          /> to <input
             type="number"
             value={range_inputs[axis][1] ?? ``}
             bind:this={range_els[`${axis}-max`]}
@@ -220,7 +222,6 @@
         title="Ticks"
         current_values={{ x_ticks: x_axis.ticks, y_ticks: y_axis.ticks }}
         on_reset={() => {
-          // Reassign entire objects to trigger $bindable reactivity up the chain
           x_axis = { ...x_axis, ticks: DEFAULTS.plot.x_ticks }
           y_axis = { ...y_axis, ticks: DEFAULTS.plot.y_ticks }
         }}
@@ -236,7 +237,6 @@
             oninput={(e) => {
               const v = parseInt(e.currentTarget.value, 10)
               if (isNaN(v)) return
-              // Reassign entire object to trigger $bindable reactivity up the chain
               x_axis = {
                 ...x_axis,
                 ticks: Math.max(min_ticks, Math.min(max_ticks, v)),
@@ -254,7 +254,6 @@
             oninput={(e) => {
               const v = parseInt(e.currentTarget.value, 10)
               if (isNaN(v)) return
-              // Reassign entire object to trigger $bindable reactivity up the chain
               y_axis = {
                 ...y_axis,
                 ticks: Math.max(min_ticks, Math.min(max_ticks, v)),
@@ -274,7 +273,6 @@
         y2_scale: get_scale_type_name(y2_axis.scale_type),
       }}
       on_reset={() => {
-        // Reassign entire objects to trigger $bindable reactivity up the chain
         x_axis = { ...x_axis, scale_type: `linear` }
         y_axis = { ...y_axis, scale_type: `linear` }
         y2_axis = { ...y2_axis, scale_type: `linear` }
@@ -285,7 +283,6 @@
         <select
           value={get_scale_type_name(x_axis.scale_type)}
           onchange={(e) => {
-            // Reassign entire object to trigger $bindable reactivity up the chain
             x_axis = {
               ...x_axis,
               scale_type: e.currentTarget.value as ScaleTypeName,
@@ -301,7 +298,6 @@
         <select
           value={get_scale_type_name(y_axis.scale_type)}
           onchange={(e) => {
-            // Reassign entire object to trigger $bindable reactivity up the chain
             y_axis = {
               ...y_axis,
               scale_type: e.currentTarget.value as ScaleTypeName,
@@ -318,7 +314,6 @@
           <select
             value={get_scale_type_name(y2_axis.scale_type)}
             onchange={(e) => {
-              // Reassign entire object to trigger $bindable reactivity up the chain
               y2_axis = {
                 ...y2_axis,
                 scale_type: e.currentTarget.value as ScaleTypeName,
@@ -336,15 +331,14 @@
     <!-- Y2 Sync controls (only when y2 axis has points) -->
     {#if has_y2_points}
       {@const current_sync = normalize_y2_sync(y2_axis.sync)}
-      {@const y2_sync_tip = `Controls how Y and Y2 axes interact during zoom/pan:
-• Independent: Y2 scales freely, ignoring Y axis changes
-• Proportional: Y2 maintains its ratio to Y when zooming
-• Align Zero: Both axes share a common alignment point (default 0)`}
+      {@const y2_sync_tip = `Controls Y2 axis range:
+• Independent: Y2 has its own range based on its data
+• Synced: Y2 has exact same range as Y1
+• Align: Y2 expands to show all data, with a shared anchor point (default 0)`}
       <SettingsSection
         title="Y2 Sync"
         current_values={{ y2_sync: current_sync.mode, align_value: current_sync.align_value }}
         on_reset={() => {
-          // Reassign entire object to trigger $bindable reactivity up the chain
           y2_axis = { ...y2_axis, sync: undefined }
         }}
         style="display: flex; gap: 1ex; align-items: center; flex-wrap: wrap"
@@ -355,10 +349,9 @@
             aria-label="Y2 axis synchronization mode"
             onchange={(e) => {
               const mode = e.currentTarget.value as Y2SyncMode
-              // Reassign entire object to trigger $bindable reactivity up the chain
               if (mode === `none`) {
                 y2_axis = { ...y2_axis, sync: undefined }
-              } else if (mode === `align_zero`) {
+              } else if (mode === `align`) {
                 y2_axis = {
                   ...y2_axis,
                   sync: { mode, align_value: current_sync.align_value ?? 0 },
@@ -369,11 +362,11 @@
             }}
           >
             <option value="none">Independent</option>
-            <option value="proportional">Proportional</option>
-            <option value="align_zero">Align Zero</option>
+            <option value="synced">Synced</option>
+            <option value="align">Align</option>
           </select>
         </label>
-        {#if current_sync.mode === `align_zero`}
+        {#if current_sync.mode === `align`}
           <label>Align at:
             <input
               type="number"
@@ -382,11 +375,10 @@
               style="width: 5em"
               onchange={(e) => {
                 const val = parseFloat(e.currentTarget.value)
-                // Reassign entire object to trigger $bindable reactivity up the chain
                 y2_axis = {
                   ...y2_axis,
                   sync: {
-                    mode: `align_zero`,
+                    mode: `align`,
                     align_value: Number.isFinite(val) ? val : 0,
                   },
                 }
@@ -407,7 +399,6 @@
         y2_format: y2_axis.format,
       }}
       on_reset={() => {
-        // Reassign entire objects to trigger $bindable reactivity up the chain
         x_axis = { ...x_axis, format: DEFAULTS.plot.x_format }
         y_axis = { ...y_axis, format: DEFAULTS.plot.y_format }
         y2_axis = { ...y2_axis, format: DEFAULTS.plot.y2_format }
