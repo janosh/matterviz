@@ -5,13 +5,14 @@ import type { CompUnit, PseudoBinaryMetadata, SpecialPointType, TempUnit } from 
 
 // A point is [composition, temperature] for phase diagram curves
 export type DiagramPoint = [number, number]
+export type TempRange = [number, number] // [min, max]
 
 // A bound can be a curve reference (string) or an inline point
 export type BoundElement = string | DiagramPoint
 
 export interface DiagramInputMeta {
   components: [string, string]
-  temp_range: DiagramPoint
+  temp_range: TempRange
   temp_unit?: TempUnit
   comp_unit?: CompUnit
   title?: string

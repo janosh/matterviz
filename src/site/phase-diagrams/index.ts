@@ -88,7 +88,7 @@ export async function load_binary_phase_diagram(
   }
 
   // Handle legacy .json.gz URLs - try to extract system name
-  const match = url.match(/([A-Za-z]+-[A-Za-z0-9]+)\.json/)
+  const match = url.match(/([A-Za-z0-9]+-[A-Za-z0-9]+)\.json/)
   if (match) {
     const system = match[1]
     const diagram = find_precomputed_diagram(system)

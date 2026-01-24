@@ -387,12 +387,20 @@
   // Pseudo-binary support: format compound names with subscripts when enabled
   const use_subscripts = $derived(data?.pseudo_binary?.use_subscripts ?? true)
 
-  // Formatted component label for SVG axis labels (with tspan subscripts if compound)
+  // Formatted component labels for SVG axis labels (with tspan subscripts if compound)
+  const component_a_svg = $derived(format_formula_svg(component_a, use_subscripts))
   const component_b_svg = $derived(format_formula_svg(component_b, use_subscripts))
 
   // Custom axis labels from data (for pseudo-binary or special cases)
   const data_x_axis_label = $derived(data?.x_axis_label)
   const data_y_axis_label = $derived(data?.y_axis_label)
+
+  // Default x-axis label as a single string (avoids mixing plain text with {@html})
+  const default_x_axis_label = $derived.by(() => {
+    const prefix = comp_unit === `fraction` ? `x ` : ``
+    const unit = comp_unit === `fraction` ? `mole fraction` : comp_unit
+    return `${prefix}${component_b_svg} (${unit})`
+  })
 </script>
 
 <!-- Grid lines snippet for DRY rendering -->
@@ -702,9 +710,7 @@
           {:else if data_x_axis_label}
             {@html data_x_axis_label}
           {:else}
-            {comp_unit === `fraction` ? `x ` : ``}{@html component_b_svg} ({
-              comp_unit === `fraction` ? `mole fraction` : comp_unit
-            })
+            {@html default_x_axis_label}
           {/if}
         </text>
       </g>
@@ -762,7 +768,7 @@
           font-size={merged_config.font_size + 2}
           font-weight="bold"
         >
-          {@html format_formula_svg(component_a, use_subscripts)}
+          {@html component_a_svg}
         </text>
         <text
           x={right}
@@ -772,7 +778,7 @@
           font-size={merged_config.font_size + 2}
           font-weight="bold"
         >
-          {@html format_formula_svg(component_b, use_subscripts)}
+          {@html component_b_svg}
         </text>
       {/if}
     </svg>

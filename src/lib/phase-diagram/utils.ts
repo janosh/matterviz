@@ -493,15 +493,19 @@ export function parse_chemical_formula(formula: string): FormulaPart[] {
 
     // Check for superscript (- charge notation, e.g., "O2-")
     // Note: + is handled by the early return for phase notation like "α + β"
+    // Only treat '-' as charge when followed by a digit (e.g., "2-")
+    // Otherwise preserve as text for hyphenated names like "Fe-Fe3C"
     if (char === `-`) {
-      let charge = char
       idx++
-      // Collect following digits if any (e.g., 2- becomes superscript)
-      while (idx < formula.length && /\d/.test(formula[idx])) {
-        charge += formula[idx]
-        idx++
-      }
-      parts.push({ sup: charge })
+      if (idx < formula.length && /\d/.test(formula[idx])) {
+        // Followed by digit - parse as charge superscript
+        let charge = `-`
+        while (idx < formula.length && /\d/.test(formula[idx])) {
+          charge += formula[idx]
+          idx++
+        }
+        parts.push({ sup: charge })
+      } else parts.push({ text: `-` }) // Not followed by digit - preserve hyphen as text
       continue
     }
 

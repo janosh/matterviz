@@ -5,6 +5,7 @@
 import { chromium } from '@playwright/test'
 import { execFile } from 'node:child_process'
 import { mkdir, readFile, unlink } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { promisify } from 'node:util'
 
 const exec_file_async = promisify(execFile)
@@ -42,7 +43,7 @@ const pages: PageConfig[] = [
 
 await mkdir(output_dir, { recursive: true })
 const browser = await chromium.launch()
-const webp_paths: string[] = []
+const output_paths: string[] = []
 
 for (const { url, name, actions, wait, scroll = 200 } of pages) {
   console.log(`Capturing: ${name}`)
@@ -68,38 +69,38 @@ for (const { url, name, actions, wait, scroll = 200 } of pages) {
   const png_path = `${output_dir}/${today}-${name}.png`
   const webp_path = `${output_dir}/${today}-${name}.webp`
   await page.screenshot({ path: png_path })
+  await page.close()
   await context.close()
 
   try {
     await exec_file_async(`cwebp`, [`-q`, `85`, png_path, `-o`, webp_path])
     await unlink(png_path)
-    webp_paths.push(webp_path)
+    output_paths.push(webp_path)
   } catch (err) {
     console.warn(
       `  cwebp failed, keeping PNG: ${err instanceof Error ? err.message : err}`,
     )
-    webp_paths.push(png_path) // keep PNG if cwebp unavailable
+    output_paths.push(png_path) // keep PNG if cwebp unavailable
   }
-  console.log(`  -> ${webp_paths.at(-1)}`)
+  console.log(`  -> ${output_paths.at(-1)}`)
 }
 
 await browser.close()
 console.log(`\nSaved to: ${output_dir}`)
 
-// Upload to GitHub release
-try {
+try { // Upload to GitHub release
   await exec_file_async(`gh`, [
     `release`,
     `upload`,
     RELEASE_TAG,
-    ...webp_paths,
+    ...output_paths,
     `--repo`,
     `janosh/matterviz`,
     `--clobber`,
   ])
   console.log(`\nUploaded to ${RELEASE_TAG}. README URLs:`)
-  for (const path of webp_paths) {
-    const file = path.substring(path.lastIndexOf(`/`) + 1)
+  for (const path of output_paths) {
+    const file = basename(path)
     console.log(
       `![${file}](https://github.com/janosh/matterviz/releases/download/${RELEASE_TAG}/${file})`,
     )
@@ -107,6 +108,6 @@ try {
 } catch (err) {
   console.warn(`\nUpload failed: ${err instanceof Error ? err.message : err}`)
   console.log(
-    `Run manually:\ngh release upload ${RELEASE_TAG} ${webp_paths.join(` `)} --clobber`,
+    `Run manually:\ngh release upload ${RELEASE_TAG} ${output_paths.join(` `)} --clobber`,
   )
 }

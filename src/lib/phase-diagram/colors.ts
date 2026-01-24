@@ -44,10 +44,14 @@ export const DIAGRAM_COLORS = {
 
 export type DiagramColorKey = keyof typeof DIAGRAM_COLORS
 
-// Resolve color from DIAGRAM_COLORS key or pass through raw rgba string
+// Resolve color from DIAGRAM_COLORS key or pass through raw CSS color string
 export function resolve_diagram_color(color: string): string {
   const resolved = (DIAGRAM_COLORS as Record<string, string>)[color]
-  if (!resolved && !color.startsWith(`rgba`) && !color.startsWith(`#`)) {
+  const is_raw_color = color.startsWith(`rgb`) ||
+    color.startsWith(`hsl`) ||
+    color.startsWith(`#`) ||
+    color.startsWith(`var(`)
+  if (!resolved && !is_raw_color) {
     console.warn(`Unknown diagram color key: "${color}". Using as raw color value.`)
   }
   return resolved ?? color
