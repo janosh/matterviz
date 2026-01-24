@@ -128,7 +128,8 @@
   <!-- onmouseleave makes ElementScatter always show current element unless user actively hovers another element -->
   <ElementScatter
     y={scatter_plot_values}
-    y_axis={{ label: y_label, range: [0, null] }}
+    x_axis={{ label_shift: { y: -50 } }}
+    y_axis={{ label: y_label, range: [0, null], format: `.2~f`, label_shift: { y: 20 } }}
     {y_unit}
     {color_scale}
     onmouseleave={() => (selected.element = element)}
@@ -246,7 +247,7 @@
     display: grid;
     grid-gap: 3em;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    background-color: rgba(0, 30, 100, 0.4);
+    background-color: rgba(150, 150, 180, 0.2);
     margin: 3em 0;
     padding: 2em 1em;
     border-radius: 4pt;
@@ -257,11 +258,11 @@
     place-content: center;
   }
   section.properties strong {
-    font-size: 14pt;
+    font-size: 12pt;
   }
   section.properties small {
     display: block;
-    font-size: 12pt;
+    font-size: 10pt;
     font-weight: lighter;
     opacity: 0.8;
     margin-top: 1ex;

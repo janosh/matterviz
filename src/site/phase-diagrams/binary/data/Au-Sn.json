@@ -1,0 +1,108 @@
+{
+  "meta": {
+    "components": ["Au", "Sn"],
+    "temp_range": [300, 1400],
+    "temp_unit": "K",
+    "comp_unit": "mol%",
+    "title": "Au-Sn Binary Phase Diagram"
+  },
+  "curves": {
+    "liquidus": [
+      [0, 1337],
+      [0.1, 1100],
+      [0.2, 900],
+      [0.29, 553],
+      [0.5, 600],
+      [0.7, 520],
+      [0.78, 490],
+      [0.9, 500],
+      [1, 505]
+    ],
+    "solvus_au": [[0.05, 553], [0.03, 400], [0.02, 300]],
+    "solvus_sn": [[0.95, 490], [0.97, 400], [0.98, 300]],
+    "eutectic1_line": [[0.05, 553], [0.55, 553]],
+    "eutectic2_line": [[0.55, 490], [0.95, 490]]
+  },
+  "regions": [
+    {
+      "id": "liquid",
+      "name": "Liquid",
+      "color": "liquid",
+      "bounds": [[0, 1400], [1, 1400], [1, 505], "~liquidus", [0, 1337]]
+    },
+    {
+      "id": "fcc_au",
+      "name": "FCC (Au)",
+      "color": "gold",
+      "bounds": [[0, 1337], [0.05, 553], "solvus_au[1:]", [0.02, 300], [0, 300]]
+    },
+    {
+      "id": "bct_sn",
+      "name": "BCT (Sn)",
+      "color": "hcp_a3",
+      "bounds": [[0.95, 490], "solvus_sn[1:]", [0.98, 300], [1, 300], [1, 505]]
+    },
+    {
+      "id": "au5sn",
+      "name": "Au₅Sn",
+      "color": "intermetallic",
+      "bounds": [[0.15, 490], [0.2, 490], [0.2, 300], [0.15, 300]]
+    },
+    {
+      "id": "ausn",
+      "name": "AuSn",
+      "color": "intermetallic_alt",
+      "bounds": [[0.45, 490], [0.55, 490], [0.55, 300], [0.45, 300]]
+    },
+    {
+      "id": "au_liquid",
+      "name": "FCC + L",
+      "color": "two_phase_au_liquid",
+      "bounds": [[0, 1337], [0.1, 1100], [0.2, 900], [0.29, 553], [0.05, 553]]
+    },
+    {
+      "id": "sn_liquid",
+      "name": "BCT + L",
+      "color": "two_phase_hcp_liquid",
+      "bounds": [[0.78, 490], [0.9, 500], [1, 505], [0.95, 490]]
+    },
+    {
+      "id": "au_au5sn",
+      "name": "FCC + Au₅Sn",
+      "color": "two_phase_au_ausn",
+      "bounds": [[0.05, 490], [0.15, 490], [0.15, 300], [0.02, 300], "~solvus_au[1:]"]
+    },
+    {
+      "id": "au5sn_ausn",
+      "name": "Au₅Sn + AuSn",
+      "color": "two_phase_intermetallic_alt",
+      "bounds": [[0.2, 490], [0.45, 490], [0.45, 300], [0.2, 300]]
+    },
+    {
+      "id": "ausn_sn",
+      "name": "AuSn + BCT",
+      "color": "two_phase_alt",
+      "bounds": [[0.55, 490], [0.95, 490], "solvus_sn[1:]", [0.98, 300], [0.55, 300]]
+    },
+    {
+      "id": "ausn_liquid",
+      "name": "AuSn + L",
+      "color": "two_phase_ausn",
+      "bounds": [
+        [0.05, 490],
+        [0.05, 553],
+        [0.29, 553],
+        [0.5, 600],
+        [0.7, 520],
+        [0.78, 490],
+        [0.55, 490],
+        [0.45, 490],
+        [0.2, 490]
+      ]
+    }
+  ],
+  "special_points": [
+    { "id": "eutectic1", "type": "eutectic", "position": [0.29, 553], "label": "E₁" },
+    { "id": "eutectic2", "type": "eutectic", "position": [0.78, 490], "label": "E₂" }
+  ]
+}

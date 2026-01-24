@@ -1,0 +1,117 @@
+{
+  "meta": {
+    "components": ["Fe", "Fe3C"],
+    "temp_range": [400, 1600],
+    "temp_unit": "°C",
+    "comp_unit": "wt%",
+    "title": "Fe-Fe₃C Pseudo-Binary Phase Diagram",
+    "pseudo_binary": {
+      "parent_system": ["Fe", "C"],
+      "section_description": "Metastable iron-cementite section (0 to 6.67 wt% C)",
+      "use_subscripts": true
+    },
+    "x_axis_label": "wt% C (as Fe<sub>3</sub>C)"
+  },
+  "curves": {
+    "liquidus_left": [[0, 1538], [0.077, 1495]],
+    "liquidus_right": [[0.077, 1495], [0.645, 1147]],
+    "liquidus_fe3c": [[0.645, 1147], [1, 1227]],
+    "solidus_delta": [[0, 1538], [0.015, 1495]],
+    "solidus_gamma": [[0.024, 1495], [0.32, 1147]],
+    "peritectic_line": [[0.015, 1495], [0.077, 1495]],
+    "eutectic_line": [[0.32, 1147], [1, 1147]],
+    "eutectoid_line": [[0.003, 727], [0.95, 727]],
+    "solvus_a3": [[0, 912], [0.003, 727]],
+    "solvus_alpha": [[0.003, 727], [0.001, 600], [0, 400]]
+  },
+  "regions": [
+    {
+      "id": "liquid",
+      "name": "Liquid",
+      "color": "liquid",
+      "bounds": [
+        [0, 1600],
+        [1, 1600],
+        [1, 1227],
+        "~liquidus_fe3c",
+        [0.077, 1495],
+        [0, 1538]
+      ]
+    },
+    {
+      "id": "delta",
+      "name": "δ (BCC)",
+      "color": "bcc_a2",
+      "bounds": [[0, 1538], [0.015, 1495], [0, 1394]]
+    },
+    {
+      "id": "gamma",
+      "name": "γ (FCC)",
+      "color": "fcc_a1",
+      "bounds": [
+        [0, 1394],
+        [0.015, 1495],
+        [0.024, 1495],
+        [0.32, 1147],
+        [0.115, 727],
+        [0.115, 832],
+        [0.003, 892],
+        [0, 912]
+      ]
+    },
+    {
+      "id": "alpha",
+      "name": "α (BCC)",
+      "color": "rgba(255, 200, 200, 0.6)",
+      "bounds": [[0, 912], [0.003, 892], [0.003, 727], [0, 400]]
+    },
+    {
+      "id": "fe3c",
+      "name": "Fe3C",
+      "color": "rgba(180, 180, 200, 0.6)",
+      "bounds": [[1, 1227], [1, 400], [0.95, 400], [0.95, 1227]]
+    },
+    {
+      "id": "l_plus_delta",
+      "name": "L + δ",
+      "color": "two_phase_bcc_liquid",
+      "bounds": [[0, 1538], [0.077, 1495], [0.015, 1495]]
+    },
+    {
+      "id": "l_plus_gamma",
+      "name": "L + γ",
+      "color": "two_phase_fcc_liquid",
+      "bounds": [[0.077, 1495], [0.645, 1147], [0.32, 1147], [0.024, 1495]]
+    },
+    {
+      "id": "l_plus_fe3c",
+      "name": "L + Fe3C",
+      "color": "two_phase_intermetallic",
+      "bounds": [[0.645, 1147], [0.95, 1147], [0.95, 1227], [1, 1227]]
+    },
+    {
+      "id": "gamma_plus_fe3c",
+      "name": "γ + Fe3C",
+      "color": "two_phase_gamma",
+      "bounds": [[0.32, 1147], [0.95, 1147], [0.95, 727], [0.115, 727]]
+    },
+    {
+      "id": "alpha_plus_gamma",
+      "name": "α + γ",
+      "color": "two_phase_mixed",
+      "bounds": [[0.003, 892], [0.003, 727], [0.115, 727], [0.115, 832]]
+    },
+    {
+      "id": "alpha_plus_fe3c",
+      "name": "α + Fe3C",
+      "color": "two_phase_alt",
+      "bounds": [[0, 400], [0.95, 400], [0.95, 727], [0.115, 727], [0.003, 727]]
+    }
+  ],
+  "special_points": [
+    { "id": "peritectic", "type": "peritectic", "position": [0.077, 1495], "label": "P" },
+    { "id": "eutectic", "type": "eutectic", "position": [0.645, 1147], "label": "E" },
+    { "id": "eutectoid", "type": "eutectoid", "position": [0.115, 727], "label": "S" },
+    { "id": "melting_fe", "type": "melting_point", "position": [0, 1538], "label": "Tₘ" }
+  ]
+}

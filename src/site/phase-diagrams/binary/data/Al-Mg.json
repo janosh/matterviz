@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "components": ["Al", "Mg"],
+    "temp_range": [300, 1100],
+    "temp_unit": "K",
+    "comp_unit": "mol%",
+    "title": "Al-Mg Binary Phase Diagram"
+  },
+  "curves": {
+    "liquidus_left": [[0, 933], [0.1, 870], [0.2, 800], [0.35, 710]],
+    "liquidus_right": [[0.35, 710], [0.5, 750], [0.65, 800], [0.8, 870], [1, 923]],
+    "solidus_al": [[0, 933], [0.03, 850], [0.08, 780], [0.12, 710]],
+    "solidus_mg": [[0.88, 710], [0.92, 780], [0.96, 850], [1, 923]],
+    "solvus_al": [[0.12, 710], [0.1, 600], [0.07, 500], [0.04, 400], [0.02, 300]],
+    "solvus_mg": [[0.88, 710], [0.9, 600], [0.93, 500], [0.96, 400], [0.98, 300]],
+    "eutectic_line": [[0.12, 710], [0.88, 710]]
+  },
+  "regions": [
+    {
+      "id": "liquid",
+      "name": "Liquid",
+      "color": "liquid",
+      "bounds": [
+        [0, 1100],
+        [1, 1100],
+        [1, 923],
+        "~liquidus_right[1:]",
+        "~liquidus_left[1:]"
+      ]
+    },
+    {
+      "id": "fcc_al",
+      "name": "α (FCC Al)",
+      "color": "fcc_a1",
+      "bounds": [[0, 933], "solidus_al[1:]", "solvus_al[1:]", [0, 300]]
+    },
+    {
+      "id": "hcp_mg",
+      "name": "β (HCP Mg)",
+      "color": "hcp_a3",
+      "bounds": [[1, 923], "~solidus_mg[1:]", "solvus_mg[1:]", [1, 300]]
+    },
+    {
+      "id": "fcc_liquid",
+      "name": "FCC + L",
+      "color": "two_phase_fcc_liquid",
+      "bounds": [[0, 933], "liquidus_left[1:]", [0.12, 710], "~solidus_al[1:-1]"]
+    },
+    {
+      "id": "hcp_liquid",
+      "name": "HCP + L",
+      "color": "two_phase_hcp_liquid",
+      "bounds": [[1, 923], "~liquidus_right[1:]", [0.88, 710], "solidus_mg[1:-1]"]
+    },
+    {
+      "id": "fcc_hcp",
+      "name": "FCC + HCP",
+      "color": "two_phase",
+      "bounds": [
+        [0.12, 710],
+        [0.88, 710],
+        "solvus_mg[1:]",
+        [1, 300],
+        [0, 300],
+        [0.02, 300],
+        "~solvus_al[1:-1]"
+      ]
+    }
+  ],
+  "special_points": [
+    { "id": "eutectic", "type": "eutectic", "position": [0.35, 710], "label": "E" },
+    { "id": "melt_al", "type": "melting_point", "position": [0, 933], "label": "Tₘ(Al)" },
+    { "id": "melt_mg", "type": "melting_point", "position": [1, 923], "label": "Tₘ(Mg)" }
+  ]
+}

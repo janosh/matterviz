@@ -1,0 +1,91 @@
+{
+  "meta": {
+    "components": ["Fe", "Ni"],
+    "temp_range": [300, 1900],
+    "temp_unit": "K",
+    "comp_unit": "mol%",
+    "title": "Fe-Ni Binary Phase Diagram"
+  },
+  "curves": {
+    "liquidus": [
+      [0, 1811],
+      [0.2, 1790],
+      [0.4, 1770],
+      [0.6, 1755],
+      [0.8, 1740],
+      [1, 1728]
+    ],
+    "solidus": [[0, 1811], [0.2, 1770], [0.4, 1750], [0.6, 1735], [0.8, 1725], [1, 1728]],
+    "solvus_alpha": [
+      [0, 1185],
+      [0.03, 1100],
+      [0.06, 1000],
+      [0.09, 900],
+      [0.12, 800],
+      [0.15, 700],
+      [0.18, 600],
+      [0.21, 500],
+      [0.24, 400],
+      [0.27, 300]
+    ],
+    "solvus_gamma": [
+      [0, 1394],
+      [0.08, 1200],
+      [0.15, 1000],
+      [0.22, 800],
+      [0.29, 600],
+      [0.36, 400],
+      [0.43, 300]
+    ]
+  },
+  "regions": [
+    {
+      "id": "liquid",
+      "name": "Liquid",
+      "color": "liquid",
+      "bounds": [[0, 1900], [1, 1900], [1, 1728], "~liquidus[1:]"]
+    },
+    {
+      "id": "fcc_liquid",
+      "name": "FCC + L",
+      "color": "two_phase_fcc_alt",
+      "bounds": [[0, 1811], "liquidus[1:]", [1, 1728], "~solidus[1:]"]
+    },
+    {
+      "id": "fcc",
+      "name": "γ (FCC)",
+      "color": "fcc_a1",
+      "bounds": [
+        [0, 1811],
+        "solidus[1:]",
+        [1, 300],
+        [0.43, 300],
+        "~solvus_gamma[1:]",
+        [0, 1394]
+      ]
+    },
+    {
+      "id": "bcc_fcc",
+      "name": "α + γ",
+      "color": "two_phase",
+      "bounds": [
+        [0, 1394],
+        "solvus_gamma[1:]",
+        [0.43, 300],
+        [0.27, 300],
+        "~solvus_alpha[1:]",
+        [0, 1185]
+      ]
+    },
+    {
+      "id": "bcc",
+      "name": "α (BCC)",
+      "color": "bcc_a2",
+      "bounds": [[0, 1185], "solvus_alpha[1:]", [0.27, 300], [0, 300]]
+    }
+  ],
+  "special_points": [
+    { "id": "curie_fe", "type": "custom", "position": [0, 1043], "label": "Tc(Fe)" },
+    { "id": "curie_ni", "type": "custom", "position": [1, 631], "label": "Tc(Ni)" }
+  ]
+}

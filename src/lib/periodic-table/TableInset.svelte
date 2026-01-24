@@ -19,5 +19,7 @@
     grid-column: var(--ptable-inset-col, 3 / span 10);
     container-type: inline-size;
     container-name: table-inset;
+    overflow: visible;
+    padding: var(--ptable-inset-padding, 0 0 5px 15px);
   }
 </style>

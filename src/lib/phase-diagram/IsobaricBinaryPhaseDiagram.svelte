@@ -17,6 +17,7 @@
   import type {
     PhaseDiagramConfig,
     PhaseDiagramData,
+    PhaseDiagramTooltipConfig,
     PhaseHoverInfo,
     PhaseRegion,
     TempUnit,
@@ -27,6 +28,7 @@
     convert_temp,
     find_phase_at_point,
     format_composition,
+    format_formula_svg,
     format_hover_info_text,
     generate_boundary_path,
     generate_region_path,
@@ -67,8 +69,9 @@
     // Axis configuration
     x_axis?: AxisConfig
     y_axis?: AxisConfig
-    // Custom content snippets
-    tooltip?: Snippet<[PhaseHoverInfo]>
+    // Custom tooltip - can be a snippet (replaces default), config object (adds prefix/suffix),
+    // or false to disable tooltip entirely
+    tooltip?: Snippet<[PhaseHoverInfo]> | PhaseDiagramTooltipConfig | false
     children?: Snippet<
       [{ width: number; height: number; fullscreen: boolean }]
     >
@@ -380,6 +383,24 @@
   const component_a = $derived(data?.components?.[0] ?? ``)
   const component_b = $derived(data?.components?.[1] ?? ``)
   const comp_unit = $derived(data?.composition_unit ?? `at%`)
+
+  // Pseudo-binary support: format compound names with subscripts when enabled
+  const use_subscripts = $derived(data?.pseudo_binary?.use_subscripts ?? true)
+
+  // Formatted component labels for SVG axis labels (with tspan subscripts if compound)
+  const component_a_svg = $derived(format_formula_svg(component_a, use_subscripts))
+  const component_b_svg = $derived(format_formula_svg(component_b, use_subscripts))
+
+  // Custom axis labels from data (for pseudo-binary or special cases)
+  const data_x_axis_label = $derived(data?.x_axis_label)
+  const data_y_axis_label = $derived(data?.y_axis_label)
+
+  // Default x-axis label as a single string (avoids mixing plain text with {@html})
+  const default_x_axis_label = $derived.by(() => {
+    const prefix = comp_unit === `fraction` ? `x ` : ``
+    const unit = comp_unit === `fraction` ? `mole fraction` : comp_unit
+    return `${prefix}${component_b_svg} (${unit})`
+  })
 </script>
 
 <!-- Grid lines snippet for DRY rendering -->
@@ -676,7 +697,7 @@
             </text>
           </g>
         {/each}
-        <!-- X-axis label -->
+        <!-- X-axis label (supports custom labels from props, data, or auto-generated with subscripts) -->
         <text
           x={left + plot_width / 2}
           y={height - 10}
@@ -686,9 +707,10 @@
         >
           {#if x_axis.label}
             {@html x_axis.label}
+          {:else if data_x_axis_label}
+            {@html data_x_axis_label}
           {:else}
-            {comp_unit === `fraction` ? `x ` : ``}{component_b}
-            ({comp_unit === `fraction` ? `mole fraction` : comp_unit})
+            {@html default_x_axis_label}
           {/if}
         </text>
       </g>
@@ -717,7 +739,7 @@
             </text>
           </g>
         {/each}
-        <!-- Y-axis label -->
+        <!-- Y-axis label (supports custom labels from props or data) -->
         <text
           transform="rotate(-90)"
           x={-(top + plot_height / 2)}
@@ -728,31 +750,42 @@
         >
           {#if y_axis.label}
             {@html y_axis.label}
+          {:else if data_y_axis_label}
+            {@html data_y_axis_label}
           {:else}
             Temperature ({temp_unit})
           {/if}
         </text>
       </g>
 
-      <!-- Component labels at corners -->
+      <!-- Component labels at corners (supports compound formulas with subscripts) -->
       {#if show_component_labels}
-        {#each [[left, component_a], [right, component_b]] as [x_pos, label] (label)}
-          <text
-            x={x_pos}
-            y={bottom + 45}
-            text-anchor="middle"
-            fill={merged_config.colors.text}
-            font-size={merged_config.font_size + 2}
-            font-weight="bold"
-          >
-            {label}
-          </text>
-        {/each}
+        <text
+          x={left}
+          y={bottom + 45}
+          text-anchor="middle"
+          fill={merged_config.colors.text}
+          font-size={merged_config.font_size + 2}
+          font-weight="bold"
+        >
+          {@html component_a_svg}
+        </text>
+        <text
+          x={right}
+          y={bottom + 45}
+          text-anchor="middle"
+          fill={merged_config.colors.text}
+          font-size={merged_config.font_size + 2}
+          font-weight="bold"
+        >
+          {@html component_b_svg}
+        </text>
       {/if}
     </svg>
 
     <!-- Tooltip (uses effective_hover_info which respects locked state) -->
-    {#if effective_hover_info}
+    <!-- tooltip={false} disables tooltip entirely -->
+    {#if effective_hover_info && tooltip !== false}
       <div
         bind:this={tooltip_el}
         class="tooltip-container"
@@ -763,7 +796,7 @@
         {#if locked_hover_info}
           <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
         {/if}
-        {#if tooltip}
+        {#if typeof tooltip === `function`}
           {@render tooltip(effective_hover_info)}
         {:else}
           <PhaseDiagramTooltip
@@ -772,6 +805,7 @@
             composition_unit={comp_unit}
             {component_a}
             {component_b}
+            {tooltip}
           />
         {/if}
       </div>

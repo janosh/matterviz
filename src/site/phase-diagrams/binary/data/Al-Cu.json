@@ -1,0 +1,106 @@
+{
+  "meta": {
+    "components": ["Al", "Cu"],
+    "temp_range": [300, 1400],
+    "temp_unit": "K",
+    "comp_unit": "mol%",
+    "title": "Al-Cu Binary Phase Diagram"
+  },
+  "curves": {
+    "liquidus_left": [[0, 933], [0.05, 900], [0.1, 860], [0.17, 821]],
+    "liquidus_right": [
+      [0.17, 821],
+      [0.25, 900],
+      [0.32, 863],
+      [0.5, 1000],
+      [0.7, 1150],
+      [0.85, 1280],
+      [1, 1358]
+    ],
+    "solvus_al": [[0.05, 821], [0.03, 600], [0.02, 300]],
+    "solidus_cu": [[0.88, 863], [0.92, 1000], [0.95, 1150], [1, 1358]],
+    "solvus_cu": [[0.88, 863], [0.9, 700], [0.92, 500], [0.95, 300]],
+    "eutectic_line": [[0.05, 821], [0.36, 821]],
+    "peritectic_line": [[0.32, 863], [0.88, 863]]
+  },
+  "regions": [
+    {
+      "id": "liquid",
+      "name": "Liquid",
+      "color": "liquid",
+      "bounds": [
+        [0, 1400],
+        [1, 1400],
+        [1, 1358],
+        "~liquidus_right[1:]",
+        "~liquidus_left[1:]"
+      ]
+    },
+    {
+      "id": "fcc_al",
+      "name": "FCC (Al)",
+      "color": "fcc_a1",
+      "bounds": [[0, 933], [0.05, 821], "solvus_al[1:]", [0, 300]]
+    },
+    {
+      "id": "fcc_cu",
+      "name": "FCC (Cu)",
+      "color": "fcc_cu",
+      "bounds": [[1, 1358], "~solidus_cu[1:]", "solvus_cu[1:]", [1, 300]]
+    },
+    {
+      "id": "al_liquid",
+      "name": "FCC + L",
+      "color": "two_phase_fcc_liquid",
+      "bounds": [[0, 933], "liquidus_left[1:]", [0.05, 821]]
+    },
+    {
+      "id": "cu_liquid",
+      "name": "FCC + L",
+      "color": "two_phase_theta_cu",
+      "bounds": [
+        [1, 1358],
+        "~solidus_cu[1:]",
+        [0.88, 863],
+        [0.32, 863],
+        "liquidus_right[2:]"
+      ]
+    },
+    {
+      "id": "theta",
+      "name": "θ (Al₂Cu)",
+      "color": "intermetallic",
+      "bounds": [[0.3, 821], [0.36, 821], [0.36, 300], [0.3, 300]]
+    },
+    {
+      "id": "al_theta",
+      "name": "FCC + θ",
+      "color": "two_phase",
+      "bounds": [[0.05, 821], [0.3, 821], [0.3, 300], [0.02, 300], "~solvus_al[1:]"]
+    },
+    {
+      "id": "theta_cu",
+      "name": "θ + FCC",
+      "color": "two_phase_intermetallic",
+      "bounds": [[0.36, 821], [0.88, 821], "solvus_cu[1:]", [0.95, 300], [0.36, 300]]
+    },
+    {
+      "id": "theta_liquid",
+      "name": "θ + L",
+      "color": "two_phase_theta_liquid",
+      "bounds": [
+        [0.17, 821],
+        [0.25, 900],
+        [0.32, 863],
+        [0.88, 863],
+        [0.88, 821],
+        [0.36, 821],
+        [0.3, 821]
+      ]
+    }
+  ],
+  "special_points": [
+    { "id": "eutectic", "type": "eutectic", "position": [0.17, 821], "label": "E" },
+    { "id": "peritectic", "type": "peritectic", "position": [0.32, 863], "label": "P" }
+  ]
+}

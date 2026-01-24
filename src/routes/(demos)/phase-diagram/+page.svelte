@@ -248,7 +248,7 @@
   }
 
   // Load example A-B eutectic diagram as default when no other diagram is loaded
-  const example_file_name = `A-B.json.gz`
+  const example_file_name = `A-B.json`
   $effect(() => {
     if (browser && !current_data && !loading) {
       const example_file = all_phase_diagram_files.find((f) =>

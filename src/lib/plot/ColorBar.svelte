@@ -554,7 +554,7 @@
   class="colorbar {rest.class ?? ``}"
 >
   {#if title || has_any_select}
-    <div class="title-row {actual_title_side}" style={actual_title_style}>
+    <div class="title-row {actual_title_side} {orientation}" style={actual_title_style}>
       {#if has_property_select && property_options}
         <PortalSelect
           options={property_options}
@@ -699,11 +699,12 @@
     flex-direction: column;
   }
   /* Rotate only the label element, not the entire row (keeps selects usable) */
-  .title-row:is(.left, .right) .label {
+  /* Only rotate when orientation is vertical AND title is on left/right side */
+  .title-row.vertical:is(.left, .right) .label {
     writing-mode: vertical-lr;
     white-space: nowrap;
   }
-  .title-row.left .label {
+  .title-row.vertical.left .label {
     transform: rotate(180deg);
   }
   /* Style PortalSelect triggers in colorbar context */
