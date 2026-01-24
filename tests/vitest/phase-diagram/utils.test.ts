@@ -503,19 +503,26 @@ describe(`merge_phase_diagram_config`, () => {
 
 describe(`is_compound`, () => {
   test.each([
-    // Single elements - should return false
-    { name: `Fe`, expected: false, desc: `single element Fe` },
-    { name: `C`, expected: false, desc: `single element C` },
-    { name: `Al`, expected: false, desc: `single element Al` },
+    // Single elements (one letter) - should return false
+    { name: `C`, expected: false, desc: `single letter element C` },
+    { name: `N`, expected: false, desc: `single letter element N` },
+    { name: `O`, expected: false, desc: `single letter element O` },
+    // Single elements (two letters) - should return false
+    { name: `Fe`, expected: false, desc: `two-letter element Fe` },
+    { name: `Ca`, expected: false, desc: `two-letter element Ca` },
+    { name: `He`, expected: false, desc: `two-letter element He` },
+    { name: `Al`, expected: false, desc: `two-letter element Al` },
+    { name: `Si`, expected: false, desc: `two-letter element Si` },
     // Compounds with digits - should return true
     { name: `Fe3C`, expected: true, desc: `compound with digit Fe3C` },
     { name: `SiO2`, expected: true, desc: `compound with digit SiO2` },
     { name: `Al2O3`, expected: true, desc: `compound with digit Al2O3` },
     { name: `H2O`, expected: true, desc: `compound with digit H2O` },
-    // Compounds with multiple uppercase (no digits)
+    // Compounds with multiple elements (no digits) - should return true
     { name: `MgO`, expected: true, desc: `oxide MgO` },
     { name: `CaO`, expected: true, desc: `oxide CaO` },
     { name: `NaCl`, expected: true, desc: `salt NaCl` },
+    { name: `FeO`, expected: true, desc: `oxide FeO` },
     // Edge cases
     { name: ``, expected: false, desc: `empty string` },
     { name: `α`, expected: false, desc: `Greek letter alone` },

@@ -28,15 +28,13 @@
     convert_temp,
     find_phase_at_point,
     format_composition,
-    format_formula_html,
+    format_formula_svg,
     format_hover_info_text,
     generate_boundary_path,
     generate_region_path,
     get_multi_phase_gradient,
     get_phase_color,
-    is_compound,
     merge_phase_diagram_config,
-    parse_chemical_formula,
     PHASE_COLOR_RGB,
     transform_vertices,
   } from './utils'
@@ -389,8 +387,8 @@
   // Pseudo-binary support: format compound names with subscripts when enabled
   const use_subscripts = $derived(data?.pseudo_binary?.use_subscripts ?? true)
 
-  // Formatted component label for HTML axis labels (with subscripts if compound)
-  const component_b_html = $derived(format_formula_html(component_b, use_subscripts))
+  // Formatted component label for SVG axis labels (with tspan subscripts if compound)
+  const component_b_svg = $derived(format_formula_svg(component_b, use_subscripts))
 
   // Custom axis labels from data (for pseudo-binary or special cases)
   const data_x_axis_label = $derived(data?.x_axis_label)
@@ -409,54 +407,6 @@
       stroke-dasharray="4"
     />
   {/each}
-{/snippet}
-
-<!-- Formula rendering snippet for compound names with subscripts -->
-{#snippet formula_text(
-  formula: string,
-  x_pos: number,
-  y_pos: number,
-  anchor: string = `middle`,
-)}
-  {@const parts = use_subscripts && is_compound(formula)
-    ? parse_chemical_formula(formula)
-    : null}
-  {#if parts && parts.length > 0}
-    <text
-      x={x_pos}
-      y={y_pos}
-      text-anchor={anchor}
-      fill={merged_config.colors.text}
-      font-size={merged_config.font_size + 2}
-      font-weight="bold"
-    >
-      {#each parts as part, idx (idx)}
-        {#if part.text !== undefined}
-          {#if idx > 0 &&
-      (parts[idx - 1]?.sub !== undefined || parts[idx - 1]?.sup !== undefined)}
-            <tspan dy="-0.25em">{part.text}</tspan>
-          {:else}
-            <tspan>{part.text}</tspan>
-          {/if}
-        {:else if part.sub !== undefined}
-          <tspan dy="0.25em" font-size="0.75em">{part.sub}</tspan>
-        {:else if part.sup !== undefined}
-          <tspan dy="-0.4em" font-size="0.75em">{part.sup}</tspan>
-        {/if}
-      {/each}
-    </text>
-  {:else}
-    <text
-      x={x_pos}
-      y={y_pos}
-      text-anchor={anchor}
-      fill={merged_config.colors.text}
-      font-size={merged_config.font_size + 2}
-      font-weight="bold"
-    >
-      {formula}
-    </text>
-  {/if}
 {/snippet}
 
 <svelte:document
@@ -752,7 +702,7 @@
           {:else if data_x_axis_label}
             {@html data_x_axis_label}
           {:else}
-            {@html `${comp_unit === `fraction` ? `x ` : ``}${component_b_html} (${
+            {@html `${comp_unit === `fraction` ? `x ` : ``}${component_b_svg} (${
             comp_unit === `fraction` ? `mole fraction` : comp_unit
           })`}
           {/if}
@@ -804,8 +754,26 @@
 
       <!-- Component labels at corners (supports compound formulas with subscripts) -->
       {#if show_component_labels}
-        {@render formula_text(component_a, left, bottom + 45)}
-        {@render formula_text(component_b, right, bottom + 45)}
+        <text
+          x={left}
+          y={bottom + 45}
+          text-anchor="middle"
+          fill={merged_config.colors.text}
+          font-size={merged_config.font_size + 2}
+          font-weight="bold"
+        >
+          {@html format_formula_svg(component_a, use_subscripts)}
+        </text>
+        <text
+          x={right}
+          y={bottom + 45}
+          text-anchor="middle"
+          fill={merged_config.colors.text}
+          font-size={merged_config.font_size + 2}
+          font-weight="bold"
+        >
+          {@html format_formula_svg(component_b, use_subscripts)}
+        </text>
       {/if}
     </svg>
 

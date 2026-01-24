@@ -49,8 +49,7 @@ All 118 chemical elements with physical and chemical properties. Features column
 
 ```svelte example
 <script>
-  import { HeatmapTable } from 'matterviz'
-  import element_data from 'matterviz/element/data'
+  import { element_data, HeatmapTable } from 'matterviz'
 
   // Get unique categories and phases for filters
   const categories = [...new Set(element_data.map((el) => el.category))].sort()
@@ -178,7 +177,7 @@ All 118 chemical elements with physical and chemical properties. Features column
   bind:selected_rows
   pagination={{ page_size: 20 }}
   sort_hint="Click headers to sort, Shift+click for multi-sort"
-  onrowdblclick={(_, row) => window.open(`/${row._symbol}`, `_blank`)}
+  onrowdblclick={(_, row) => window.open(`/${row.Name.toLowerCase()}`, `_blank`)}
   style="margin: 0 auto"
 />
 

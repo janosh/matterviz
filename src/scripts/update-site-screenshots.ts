@@ -3,11 +3,11 @@
 // Requires: pnpm dev (server on port 3000), brew install webp (for cwebp)
 
 import { chromium } from '@playwright/test'
-import { exec } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { mkdir, unlink } from 'node:fs/promises'
 import { promisify } from 'node:util'
 
-const exec_async = promisify(exec)
+const exec_file_async = promisify(execFile)
 const PORT = process.env.PORT || 3000
 const RELEASE_TAG = process.env.RELEASE_TAG || `v0.2.2`
 const today = new Date().toISOString().slice(0, 10)
@@ -66,7 +66,7 @@ for (const { url, name, actions, wait, scroll = 200 } of pages) {
   await context.close()
 
   try {
-    await exec_async(`cwebp -q 85 "${png_path}" -o "${webp_path}"`)
+    await exec_file_async(`cwebp`, [`-q`, `85`, png_path, `-o`, webp_path])
     await unlink(png_path)
     webp_paths.push(webp_path)
   } catch (err) {
@@ -83,11 +83,15 @@ console.log(`\nSaved to: ${output_dir}`)
 
 // Upload to GitHub release
 try {
-  await exec_async(
-    `gh release upload ${RELEASE_TAG} ${
-      webp_paths.join(` `)
-    } --repo janosh/matterviz --clobber`,
-  )
+  await exec_file_async(`gh`, [
+    `release`,
+    `upload`,
+    RELEASE_TAG,
+    ...webp_paths,
+    `--repo`,
+    `janosh/matterviz`,
+    `--clobber`,
+  ])
   console.log(`\nUploaded to ${RELEASE_TAG}. README URLs:`)
   for (const path of webp_paths) {
     const file = path.split(`/`).pop()

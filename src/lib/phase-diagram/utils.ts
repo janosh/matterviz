@@ -444,12 +444,15 @@ export interface FormulaPart {
 
 // Check if a component name is a compound (vs single element)
 // Returns true if name contains digits (e.g., "Fe3C", "SiO2") or multiple uppercase letters
-// that aren't separated by common delimiters (e.g., "MgO" vs "Mg-O")
+// that indicate multiple elements (e.g., "MgO", "CaO")
+// Single elements like "Fe", "Ca", "He" return false
 export function is_compound(name: string): boolean {
   if (!name) return false
   // Contains digits -> likely a compound (Fe3C, SiO2, Al2O3)
   if (/\d/.test(name)) return true
-  // Count uppercase letters not at start - if multiple, likely compound (MgO, CaO)
+  // Single element pattern: one uppercase followed by optional lowercase (Fe, Ca, He, C)
+  if (/^[A-Z][a-z]?$/.test(name)) return false
+  // Multiple uppercase letters indicate multiple elements (MgO, CaO, NaCl)
   const uppercase_count = (name.match(/[A-Z]/g) || []).length
   return uppercase_count >= 2
 }
@@ -544,8 +547,6 @@ export function format_formula_svg(
   }
 
   const parts = parse_chemical_formula(formula)
-  if (parts.length === 0) return formula
-
   let result = ``
   let needs_baseline_reset = false
 
@@ -579,8 +580,6 @@ export function format_formula_html(
   }
 
   const parts = parse_chemical_formula(formula)
-  if (parts.length === 0) return formula
-
   let result = ``
   for (const part of parts) {
     if (part.text !== undefined) {

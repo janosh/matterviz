@@ -36,19 +36,19 @@
   // 1. If tooltip is a snippet function, render it exclusively (replaces default)
   // 2. If tooltip is a config object, render prefix/suffix around default content
   // 3. Otherwise, render default content only
-  const is_snippet = $derived(typeof tooltip === `function`)
   const config = $derived(
-    !is_snippet && tooltip ? (tooltip as PhaseDiagramTooltipConfig) : null,
+    typeof tooltip !== `function` && tooltip
+      ? (tooltip as PhaseDiagramTooltipConfig)
+      : null,
   )
   // Resolve prefix/suffix - call if function, otherwise use directly
-  // Using $derived.by for more reliable function detection in Svelte 5
   const prefix_html = $derived.by(() => {
     const prefix = config?.prefix
-    return prefix instanceof Function ? prefix(hover_info) : prefix
+    return typeof prefix === `function` ? prefix(hover_info) : prefix
   })
   const suffix_html = $derived.by(() => {
     const suffix = config?.suffix
-    return suffix instanceof Function ? suffix(hover_info) : suffix
+    return typeof suffix === `function` ? suffix(hover_info) : suffix
   })
 
   // Convert atomic fraction to weight fraction: wt_B = (x_B * M_B) / (x_A * M_A + x_B * M_B)
@@ -124,8 +124,8 @@
   })
 </script>
 
-{#if is_snippet}
-  {@render (tooltip as Snippet<[PhaseHoverInfo]>)(hover_info)}
+{#if typeof tooltip === `function`}
+  {@render tooltip(hover_info)}
 {:else}
   <div class="phase-diagram-tooltip">
     {#if prefix_html}
