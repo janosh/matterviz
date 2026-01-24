@@ -593,6 +593,15 @@ describe(`parse_chemical_formula`, () => {
       { text: `O` },
     ])
   })
+
+  test(`parses charge notation (superscript)`, () => {
+    const result = parse_chemical_formula(`O2-`)
+    expect(result).toEqual([
+      { text: `O` },
+      { sub: `2` },
+      { sup: `-` },
+    ])
+  })
 })
 
 describe(`format_formula_html`, () => {
@@ -631,6 +640,27 @@ describe(`format_formula_svg`, () => {
     expect(result).toContain(`Si`)
     expect(result).toContain(`O`)
     expect(result).toContain(`>2</tspan>`)
+  })
+
+  test(`adds trailing baseline reset when formula ends with subscript`, () => {
+    // When formula ends with subscript, any text concatenated after should not be shifted
+    const result = format_formula_svg(`SiO2`)
+    // Should end with an empty tspan that resets baseline
+    expect(result).toMatch(/<tspan dy="-0\.25em"><\/tspan>$/)
+  })
+
+  test(`no trailing reset when formula ends with text`, () => {
+    // Fe3C ends with "C" which already has baseline reset, no extra tspan needed
+    const result = format_formula_svg(`Fe3C`)
+    // Should not end with empty trailing tspan
+    expect(result).not.toMatch(/<tspan dy="[^"]+"><\/tspan>$/)
+  })
+
+  test(`cumulative offset for consecutive sub/superscripts`, () => {
+    // O2- has subscript (0.25em) then superscript (-0.4em), cumulative = -0.15em
+    // Reset should be dy≈0.15em to return to baseline (allow floating-point tolerance)
+    const result = format_formula_svg(`O2-`)
+    expect(result).toMatch(/<tspan dy="0\.15\d*em"><\/tspan>$/)
   })
 
   test(`respects use_subscripts=false`, () => {

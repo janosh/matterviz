@@ -1840,139 +1840,175 @@ def create_fe_fe3c_diagram() -> PhaseDiagramData:
         [0.0, t_min],
     ]
 
+    # Fe3C decomposition temperature (metastable)
+    t_fe3c_decomp = 1227
+
     regions = [
-        # Liquid region
+        # Liquid region (adjusted for L + Fe3C two-phase field)
         make_region(
             "liquid",
             "Liquid",
-            dedupe_consecutive_vertices([
-                [0.0, t_max],
-                [1.0, t_max],
-                [1.0, t_eutectic],
-                [x_eutectic, t_eutectic],
-                [x_peritectic_l, t_peritectic],
-                [0.0, t_melt_fe],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [0.0, t_max],
+                    [1.0, t_max],
+                    [1.0, t_fe3c_decomp],  # Fe3C decomposes here
+                    [x_eutectic + 0.15, t_fe3c_decomp],  # Liquidus at decomposition
+                    [x_eutectic, t_eutectic],
+                    [x_peritectic_l, t_peritectic],
+                    [0.0, t_melt_fe],
+                ]
+            ),
             PHASE_COLORS["liquid"],
         ),
         # δ-ferrite (BCC, high temp)
         make_region(
             "delta",
             "δ (BCC)",
-            dedupe_consecutive_vertices([
-                [0.0, t_melt_fe],
-                [x_peritectic_delta, t_peritectic],
-                [0.0, t_a4],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [0.0, t_melt_fe],
+                    [x_peritectic_delta, t_peritectic],
+                    [0.0, t_a4],
+                ]
+            ),
             PHASE_COLORS["bcc_a2"],
         ),
         # γ-austenite (FCC)
+        # Lower boundary follows A3 line (γ/α+γ boundary), not the eutectoid line
         make_region(
             "gamma",
             "γ (FCC)",
-            dedupe_consecutive_vertices([
-                [0.0, t_a4],
-                [x_peritectic_gamma, t_peritectic],
-                [x_eutectic_gamma, t_eutectic],
-                [x_eutectoid, t_eutectoid],
-                [x_eutectoid_alpha, t_eutectoid],
-                [0.0, t_a3],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [0.0, t_a4],
+                    [x_peritectic_gamma, t_peritectic],
+                    [x_eutectic_gamma, t_eutectic],
+                    [x_eutectoid, t_eutectoid],
+                    [x_eutectoid, t_a3 - 80],  # Connect to A3 line at eutectoid x
+                    [x_eutectoid_alpha, t_a3 - 20],  # A3 line slopes down with C
+                    [0.0, t_a3],
+                ]
+            ),
             PHASE_COLORS["fcc_a1"],
         ),
         # α-ferrite (BCC, low temp)
+        # Right boundary follows the α/α+γ solvus (A3 line), then α/α+Fe3C solvus
         make_region(
             "alpha",
             "α (BCC)",
-            dedupe_consecutive_vertices([
-                [0.0, t_a3],
-                *gamma_solvus_left,
-                [0.0, t_min],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [0.0, t_a3],
+                    [x_eutectoid_alpha, t_a3 - 20],  # Along A3 line
+                    *gamma_solvus_left,  # Continues to α/α+Fe3C solvus
+                    [0.0, t_min],
+                ]
+            ),
             rgba(255, 200, 200),  # Light pink for α
         ),
-        # Fe3C (cementite) - appears at right edge
+        # Fe3C (cementite) - appears at right edge, up to decomposition at ~1227°C
         make_region(
             "fe3c",
             "Fe3C",
-            dedupe_consecutive_vertices([
-                [1.0, t_eutectic],
-                [1.0, t_min],
-                [0.95, t_min],
-                [0.95, t_eutectic],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [1.0, t_fe3c_decomp],  # Fe3C decomposes here (metastable)
+                    [1.0, t_min],
+                    [0.95, t_min],
+                    [0.95, t_fe3c_decomp],
+                ]
+            ),
             rgba(180, 180, 200),  # Grayish for cementite
         ),
         # L + δ two-phase region
         make_region(
             "l_plus_delta",
             "L + δ",
-            dedupe_consecutive_vertices([
-                [0.0, t_melt_fe],
-                [x_peritectic_l, t_peritectic],
-                [x_peritectic_delta, t_peritectic],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [0.0, t_melt_fe],
+                    [x_peritectic_l, t_peritectic],
+                    [x_peritectic_delta, t_peritectic],
+                ]
+            ),
             PHASE_COLORS["two_phase_bcc_liquid"],
         ),
         # L + γ two-phase region
         make_region(
             "l_plus_gamma",
             "L + γ",
-            dedupe_consecutive_vertices([
-                [x_peritectic_l, t_peritectic],
-                [x_eutectic, t_eutectic],
-                [x_eutectic_gamma, t_eutectic],
-                [x_peritectic_gamma, t_peritectic],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [x_peritectic_l, t_peritectic],
+                    [x_eutectic, t_eutectic],
+                    [x_eutectic_gamma, t_eutectic],
+                    [x_peritectic_gamma, t_peritectic],
+                ]
+            ),
             PHASE_COLORS["two_phase_fcc_liquid"],
         ),
-        # L + Fe3C two-phase region
+        # L + Fe3C two-phase region (extends from eutectic up to Fe3C decomposition)
         make_region(
             "l_plus_fe3c",
             "L + Fe3C",
-            dedupe_consecutive_vertices([
-                [x_eutectic, t_eutectic],
-                [1.0, t_eutectic],
-                [0.95, t_eutectic],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [x_eutectic, t_eutectic],  # Eutectic point
+                    [0.95, t_eutectic],  # Right side at eutectic temp
+                    [0.95, t_fe3c_decomp],  # Fe3C decomposition temperature
+                    [
+                        x_eutectic + 0.15,
+                        t_fe3c_decomp,
+                    ],  # Liquidus at decomposition temp
+                ]
+            ),
             PHASE_COLORS["two_phase_intermetallic"],
         ),
         # γ + Fe3C two-phase region
         make_region(
             "gamma_plus_fe3c",
             "γ + Fe3C",
-            dedupe_consecutive_vertices([
-                [x_eutectic_gamma, t_eutectic],
-                [0.95, t_eutectic],
-                [0.95, t_eutectoid],
-                [x_eutectoid, t_eutectoid],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [x_eutectic_gamma, t_eutectic],
+                    [0.95, t_eutectic],
+                    [0.95, t_eutectoid],
+                    [x_eutectoid, t_eutectoid],
+                ]
+            ),
             PHASE_COLORS["two_phase_gamma"],
         ),
-        # α + γ two-phase region
+        # α + γ two-phase region (narrow field along A3 line)
+        # This region exists between the A3 transformation and eutectoid temperature
+        # At x=0, α transforms directly to γ at 912°C (no two-phase coexistence)
         make_region(
             "alpha_plus_gamma",
             "α + γ",
-            dedupe_consecutive_vertices([
-                [0.0, t_a3],
-                [x_eutectoid_alpha, t_eutectoid],
-                [x_eutectoid, t_eutectoid],
-                [0.0, t_a4],  # Approximate - simplified
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    [x_eutectoid_alpha, t_a3 - 20],  # Point on A3 line near pure Fe
+                    [x_eutectoid_alpha, t_eutectoid],
+                    [x_eutectoid, t_eutectoid],
+                    [x_eutectoid, t_a3 - 80],  # Point on A3 line at higher C content
+                ]
+            ),
             PHASE_COLORS["two_phase_mixed"],
         ),
         # α + Fe3C two-phase region (pearlite region)
         make_region(
             "alpha_plus_fe3c",
             "α + Fe3C",
-            dedupe_consecutive_vertices([
-                *gamma_solvus_left[1:],
-                [0.18, t_min],
-                [0.95, t_min],
-                [0.95, t_eutectoid],
-                [x_eutectoid, t_eutectoid],
-                [x_eutectoid_alpha, t_eutectoid],
-            ]),
+            dedupe_consecutive_vertices(
+                [
+                    *gamma_solvus_left[1:],
+                    [0.18, t_min],
+                    [0.95, t_min],
+                    [0.95, t_eutectoid],
+                    [x_eutectoid, t_eutectoid],
+                    [x_eutectoid_alpha, t_eutectoid],
+                ]
+            ),
             PHASE_COLORS["two_phase_alt"],
         ),
     ]
@@ -1991,7 +2027,11 @@ def create_fe_fe3c_diagram() -> PhaseDiagramData:
         make_boundary(
             "liquidus-right",
             "liquidus",
-            [[x_peritectic_l, t_peritectic], [x_eutectic, t_eutectic], [1.0, t_eutectic]],
+            [
+                [x_peritectic_l, t_peritectic],
+                [x_eutectic, t_eutectic],
+                [1.0, t_eutectic],
+            ],
             boundary_style,
         ),
         # Solidus
@@ -2038,7 +2078,9 @@ def create_fe_fe3c_diagram() -> PhaseDiagramData:
     ]
 
     special_points = [
-        make_special_point("peritectic", "peritectic", [x_peritectic_l, t_peritectic], "P"),
+        make_special_point(
+            "peritectic", "peritectic", [x_peritectic_l, t_peritectic], "P"
+        ),
         make_special_point("eutectic", "eutectic", [x_eutectic, t_eutectic], "E"),
         make_special_point("eutectoid", "eutectoid", [x_eutectoid, t_eutectoid], "S"),
         make_special_point("melting-fe", "melting_point", [0, t_melt_fe], "Tₘ"),

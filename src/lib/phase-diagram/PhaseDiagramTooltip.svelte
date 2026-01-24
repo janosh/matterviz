@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
   import type { ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
+  import type { Snippet } from 'svelte'
   import type {
     PhaseBoundary,
     PhaseDiagramTooltipConfig,
@@ -12,7 +13,6 @@
     format_temperature,
     get_phase_stability_range,
   } from './utils'
-  import type { Snippet } from 'svelte'
 
   let {
     hover_info,
@@ -32,24 +32,17 @@
     tooltip?: Snippet<[PhaseHoverInfo]> | PhaseDiagramTooltipConfig
   } = $props()
 
-  // Custom tooltip handling - mode precedence:
-  // 1. If tooltip is a snippet function, render it exclusively (replaces default)
-  // 2. If tooltip is a config object, render prefix/suffix around default content
-  // 3. Otherwise, render default content only
+  // Custom tooltip: snippet replaces default, config object adds prefix/suffix
   const config = $derived(
     typeof tooltip !== `function` && tooltip
       ? (tooltip as PhaseDiagramTooltipConfig)
       : null,
   )
   // Resolve prefix/suffix - call if function, otherwise use directly
-  const prefix_html = $derived.by(() => {
-    const prefix = config?.prefix
-    return typeof prefix === `function` ? prefix(hover_info) : prefix
-  })
-  const suffix_html = $derived.by(() => {
-    const suffix = config?.suffix
-    return typeof suffix === `function` ? suffix(hover_info) : suffix
-  })
+  const resolve = (val: string | ((info: PhaseHoverInfo) => string) | undefined) =>
+    typeof val === `function` ? val(hover_info) : val
+  const prefix_html = $derived(resolve(config?.prefix))
+  const suffix_html = $derived(resolve(config?.suffix))
 
   // Convert atomic fraction to weight fraction: wt_B = (x_B * M_B) / (x_A * M_A + x_B * M_B)
   const wt_fraction_b = $derived.by(() => {

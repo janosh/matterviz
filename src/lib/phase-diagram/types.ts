@@ -128,6 +128,8 @@ export interface PhaseHoverInfo {
 
 // Tooltip configuration object for prefix/suffix content
 // Values can be static strings or functions that receive hover info for dynamic content
+// Note: prefix/suffix are rendered via {@html}, so ensure values are developer-defined,
+// not user input, to avoid XSS vulnerabilities.
 export interface PhaseDiagramTooltipConfig {
   prefix?: string | ((info: PhaseHoverInfo) => string)
   suffix?: string | ((info: PhaseHoverInfo) => string)

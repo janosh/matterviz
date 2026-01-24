@@ -4,12 +4,15 @@
 
 import { chromium } from '@playwright/test'
 import { execFile } from 'node:child_process'
-import { mkdir, unlink } from 'node:fs/promises'
+import { mkdir, readFile, unlink } from 'node:fs/promises'
 import { promisify } from 'node:util'
 
 const exec_file_async = promisify(execFile)
 const PORT = process.env.PORT || 3000
-const RELEASE_TAG = process.env.RELEASE_TAG || `v0.2.2`
+
+// Derive default RELEASE_TAG from package.json version
+const pkg_json = JSON.parse(await readFile(`package.json`, `utf-8`))
+const RELEASE_TAG = process.env.RELEASE_TAG || `v${pkg_json.version}`
 const today = new Date().toISOString().slice(0, 10)
 const output_dir = `/tmp/matterviz-screenshots`
 
@@ -26,9 +29,10 @@ const pages: PageConfig[] = [
   {
     url: `/periodic-table`,
     name: `heatmap`,
+    // Use text selector for stability - won't break if dropdown order changes
     actions: [[`click`, `input[placeholder="Select a heatmap"]`], [
       `click`,
-      `ul.options li:nth-child(2)`,
+      `ul.options li:has-text("Atomic Mass")`,
     ]],
     wait: 1500,
   },
@@ -53,9 +57,10 @@ for (const { url, name, actions, wait, scroll = 200 } of pages) {
   await page.waitForTimeout(300)
 
   for (const [action, selector] of actions ?? []) {
-    await page.waitForSelector(selector, { timeout: 10000 })
-    if (action === `click`) await page.click(selector)
-    else await page.hover(selector)
+    const locator = page.locator(selector)
+    await locator.waitFor({ timeout: 10000 })
+    if (action === `click`) await locator.click()
+    else await locator.hover()
     await page.waitForTimeout(300)
   }
   if (wait) await page.waitForTimeout(wait)
@@ -94,7 +99,7 @@ try {
   ])
   console.log(`\nUploaded to ${RELEASE_TAG}. README URLs:`)
   for (const path of webp_paths) {
-    const file = path.split(`/`).pop()
+    const file = path.substring(path.lastIndexOf(`/`) + 1)
     console.log(
       `![${file}](https://github.com/janosh/matterviz/releases/download/${RELEASE_TAG}/${file})`,
     )

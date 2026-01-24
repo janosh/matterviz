@@ -266,10 +266,8 @@ function wrap_text(text: string, max_chars: number): string[] {
     const candidate = current_line ? `${current_line}_${word}` : word
     if (candidate.length <= max_chars) {
       current_line = candidate
-    } else if (current_line) {
-      lines.push(current_line)
-      current_line = word
     } else {
+      if (current_line) lines.push(current_line)
       current_line = word
     }
   }
@@ -452,8 +450,11 @@ export function is_compound(name: string): boolean {
   if (/\d/.test(name)) return true
   // Single element pattern: one uppercase followed by optional lowercase (Fe, Ca, He, C)
   if (/^[A-Z][a-z]?$/.test(name)) return false
-  // Multiple uppercase letters indicate multiple elements (MgO, CaO, NaCl)
-  const uppercase_count = (name.match(/[A-Z]/g) || []).length
+  // Count uppercase letters without array allocation
+  let uppercase_count = 0
+  for (const char of name) {
+    if (char >= `A` && char <= `Z`) uppercase_count++
+  }
   return uppercase_count >= 2
 }
 
@@ -535,61 +536,39 @@ export function parse_chemical_formula(formula: string): FormulaPart[] {
   return parts
 }
 
-// Format a chemical formula as SVG tspan elements with subscripts
-// Returns SVG markup string to be used inside a <text> element
-// Example: "Fe3C" -> "Fe<tspan dy='0.25em' font-size='0.75em'>3</tspan><tspan dy='-0.25em'>C</tspan>"
-export function format_formula_svg(
-  formula: string,
-  use_subscripts: boolean = true,
-): string {
-  if (!use_subscripts || !is_compound(formula)) {
-    return formula
-  }
+// Baseline shifts for sub/superscript (SVG dy values are cumulative across tspans)
+const DY = { sub: 0.25, sup: -0.4 } as const
 
-  const parts = parse_chemical_formula(formula)
+// Format chemical formula as SVG tspan elements with subscripts
+// Tracks cumulative baseline offset and adds trailing reset so concatenated text aligns
+export function format_formula_svg(formula: string, use_subscripts = true): string {
+  if (!use_subscripts || !is_compound(formula)) return formula
+
   let result = ``
-  let needs_baseline_reset = false
+  let offset = 0
 
-  for (const part of parts) {
+  for (const part of parse_chemical_formula(formula)) {
     if (part.text !== undefined) {
-      // Reset baseline after subscript/superscript
-      if (needs_baseline_reset) {
-        result += `<tspan dy="-0.25em">${part.text}</tspan>`
-        needs_baseline_reset = false
-      } else result += part.text
-    } else if (part.sub !== undefined) {
-      result += `<tspan dy="0.25em" font-size="0.75em">${part.sub}</tspan>`
-      needs_baseline_reset = true
-    } else if (part.sup !== undefined) {
-      result += `<tspan dy="-0.4em" font-size="0.75em">${part.sup}</tspan>`
-      needs_baseline_reset = true
+      result += offset ? `<tspan dy="${-offset}em">${part.text}</tspan>` : part.text
+      offset = 0
+    } else {
+      const dy = part.sub !== undefined ? DY.sub : DY.sup
+      result += `<tspan dy="${dy}em" font-size="0.75em">${part.sub ?? part.sup}</tspan>`
+      offset += dy
     }
   }
 
+  if (offset) result += `<tspan dy="${-offset}em"></tspan>`
   return result
 }
 
-// Format a chemical formula as HTML with <sub> and <sup> tags
-// Example: "Fe3C" -> "Fe<sub>3</sub>C"
-export function format_formula_html(
-  formula: string,
-  use_subscripts: boolean = true,
-): string {
-  if (!use_subscripts || !is_compound(formula)) {
-    return formula
-  }
+// Format chemical formula as HTML with <sub> and <sup> tags
+export function format_formula_html(formula: string, use_subscripts = true): string {
+  if (!use_subscripts || !is_compound(formula)) return formula
 
-  const parts = parse_chemical_formula(formula)
-  let result = ``
-  for (const part of parts) {
-    if (part.text !== undefined) {
-      result += part.text
-    } else if (part.sub !== undefined) {
-      result += `<sub>${part.sub}</sub>`
-    } else if (part.sup !== undefined) {
-      result += `<sup>${part.sup}</sup>`
-    }
-  }
-
-  return result
+  return parse_chemical_formula(formula)
+    .map((part) =>
+      part.text ?? (part.sub ? `<sub>${part.sub}</sub>` : `<sup>${part.sup}</sup>`)
+    )
+    .join(``)
 }

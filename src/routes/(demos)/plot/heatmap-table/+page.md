@@ -537,6 +537,59 @@ For large datasets, pagination keeps the table responsive while allowing navigat
 />
 ```
 
+## Values with Uncertainties
+
+The table correctly handles numeric strings with uncertainty notation for sorting. Values like `1.23 ± 0.05`, `1.23 +- 0.05`, and `1.23(5)` are parsed to extract the primary number for sorting. Note that heatmap colors only apply to numeric values, so string columns display the uncertainty text without coloring while numeric columns show full heatmap coloring:
+
+```svelte example
+<script>
+  import { HeatmapTable } from 'matterviz'
+
+  // Experimental measurements: strings with uncertainty for display, numbers for heatmap
+  const data = [
+    [`mp-149`, `Si`, `1.12 ± 0.02`, 1.12, `148 +- 3`, 148],
+    [`mp-32`, `GaAs`, `1.42 ± 0.03`, 1.42, `55 +- 2`, 55],
+    [`mp-2133`, `ZnO`, `3.44 ± 0.05`, 3.44, `60 +- 4`, 60],
+    [`mp-390`, `TiO₂`, `3.20 ± 0.04`, 3.20, `8.5 +- 0.5`, 8.5],
+    [`mp-66`, `Diamond`, `5.47 ± 0.01`, 5.47, `2200 +- 50`, 2200],
+    [`mp-1143`, `Al₂O₃`, `8.80 ± 0.10`, 8.80, `30 +- 2`, 30],
+    [`mp-1265`, `MgO`, `7.83 ± 0.08`, 7.83, `60 +- 3`, 60],
+    [`mp-804`, `SiC`, `3.26 ± 0.04`, 3.26, `490 +- 20`, 490],
+    [`mp-35`, `GaN`, `3.40 ± 0.05`, 3.40, `130 +- 8`, 130],
+    [`mp-5020`, `NaCl`, `8.50 ± 0.12`, 8.50, `6.5 +- 0.3`, 6.5],
+  ].map(([id, formula, gap_str, gap_num, thermal_str, thermal_num]) => ({
+    ID: id,
+    Formula: formula,
+    'E<sub>gap</sub> (± err)': gap_str,
+    'E<sub>gap</sub>': gap_num,
+    'κ (± err)': thermal_str,
+    'κ': thermal_num,
+  }))
+
+  // deno-fmt-ignore
+  const columns = [
+    { label: `ID` },
+    { label: `Formula` },
+    { label: `E<sub>gap</sub> (± err)`, description: `Band gap with uncertainty (string) — sortable but no heatmap` },
+    { label: `E<sub>gap</sub>`, better: `higher`, color_scale: `interpolateViridis`, format: `.2f`, description: `Band gap (eV) — numeric with heatmap` },
+    { label: `κ (± err)`, description: `Thermal conductivity with uncertainty (string) — sortable but no heatmap` },
+    { label: `κ`, better: `higher`, color_scale: `interpolateOranges`, format: `.0f`, description: `Thermal conductivity (W/m·K) — numeric with heatmap` },
+  ]
+</script>
+
+<p style="color: var(--text-muted); margin-bottom: 0.5em; font-size: 0.9em">
+  Click column headers to sort — string columns with ± are sorted by the primary number,
+  numeric columns show heatmap colors
+</p>
+
+<HeatmapTable
+  {data}
+  {columns}
+  initial_sort="E<sub>gap</sub> (± err)"
+  style="margin: 0 auto"
+/>
+```
+
 ## All Color Scales
 
 Explore different D3 color scales. The `better` prop controls whether high or low values get the "good" end of the scale:

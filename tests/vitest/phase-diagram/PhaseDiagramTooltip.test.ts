@@ -131,10 +131,12 @@ describe(`PhaseDiagramTooltip`, () => {
       expect(lever?.querySelector(`:scope > span`)?.textContent).toBe(`Lever Rule`)
 
       const phase_info = document.querySelector(`.phase-info`)
-      expect(phase_info?.textContent).toContain(`α: 60%`)
-      expect(phase_info?.textContent).toContain(`at 20 at%`)
-      expect(phase_info?.textContent).toContain(`β: 40%`)
-      expect(phase_info?.textContent).toContain(`at 80 at%`)
+      // Normalize whitespace since formatter may introduce line breaks
+      const text = phase_info?.textContent?.replace(/\s+/g, ` `)
+      expect(text).toContain(`α: 60%`)
+      expect(text).toContain(`at 20 at%`)
+      expect(text).toContain(`β: 40%`)
+      expect(text).toContain(`at 80 at%`)
     })
 
     test(`bar widths and marker position match fractions`, () => {

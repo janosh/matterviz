@@ -1,15 +1,14 @@
 import type { FileInfo } from '$lib'
-import { decompress_data } from '$lib/io/decompress'
 import type { PhaseDiagramData } from '$lib/phase-diagram'
+import { build_diagram } from '$lib/phase-diagram/build-diagram'
+import type { DiagramInput } from '$lib/phase-diagram/diagram-input'
 import { normalize_system_name } from '$lib/phase-diagram/parse'
 
-// Auto-discover binary phase diagram files using Vite's import.meta.glob
-// Supports both JSON and gzipped JSON files
-const binary_pd_modules = import.meta.glob(`./binary/*.json.gz`, {
-  query: `?url`,
+// Import all diagram JSON files eagerly
+const diagram_modules = import.meta.glob(`./binary/data/*.json`, {
   eager: true,
   import: `default`,
-}) as Record<string, string>
+}) as Record<string, DiagramInput>
 
 // Auto-discover TDB files
 const tdb_modules = import.meta.glob(`./tdb/*.tdb`, {
@@ -18,13 +17,24 @@ const tdb_modules = import.meta.glob(`./tdb/*.tdb`, {
   import: `default`,
 }) as Record<string, string>
 
-// Convert glob results to FileInfo array for binary phase diagrams
-export const binary_phase_diagram_files: FileInfo[] = Object.entries(
-  binary_pd_modules,
-).map(([path, url]) => {
-  const name = path.split(`/`).pop() || path
-  return { name, url, type: `json.gz`, category: `Binary`, category_icon: `📊` }
-})
+// Build all diagrams from JSON data
+const built_diagrams = new Map<string, PhaseDiagramData>()
+for (const [path, input] of Object.entries(diagram_modules)) {
+  const name = path.split(`/`).pop()?.replace(`.json`, ``) || path
+  built_diagrams.set(name, build_diagram(input))
+}
+
+// Convert to FileInfo array for binary phase diagrams
+// These are now built-in (no URL needed), but we keep the API compatible
+export const binary_phase_diagram_files: FileInfo[] = Array.from(
+  built_diagrams.keys(),
+).map((name) => ({
+  name: `${name}.json`,
+  url: `builtin:${name}`, // Special marker for built-in diagrams
+  type: `json`,
+  category: `Binary`,
+  category_icon: `📊`,
+}))
 
 // Convert glob results to FileInfo array for TDB files
 export const tdb_files: FileInfo[] = Object.entries(tdb_modules).map(
@@ -40,50 +50,65 @@ export const all_phase_diagram_files: FileInfo[] = [
   ...tdb_files,
 ]
 
-// Map normalized system names to pre-computed JSON URLs for auto-loading when TDB is dropped
+// Map normalized system names to {original_name, data} for quick lookup
 const precomputed_map = new Map(
-  binary_phase_diagram_files.map((file) => [
-    normalize_system_name(file.name.replace(/\.json(\.gz)?$/, ``)),
-    file.url,
+  Array.from(built_diagrams.entries()).map(([name, data]) => [
+    normalize_system_name(name),
+    { name, data },
   ]),
 )
 
-// Find precomputed phase diagram URL by system name (handles any format: "Al-Cu", "AlCu", "al_cu")
-export function find_precomputed_url(system: string): string | undefined {
-  return precomputed_map.get(normalize_system_name(system))
+// Find precomputed phase diagram by system name (handles any format: "Al-Cu", "AlCu", "al_cu")
+export function find_precomputed_diagram(
+  system: string,
+): PhaseDiagramData | undefined {
+  return precomputed_map.get(normalize_system_name(system))?.data
 }
 
-// Load binary phase diagram data from URL
+// Backward compatibility: find precomputed URL by system name
+// Returns a builtin: URL that load_binary_phase_diagram can handle
+export function find_precomputed_url(system: string): string | undefined {
+  const entry = precomputed_map.get(normalize_system_name(system))
+  return entry ? `builtin:${entry.name}` : undefined
+}
+
+// Get diagram by exact name
+export function get_diagram(name: string): PhaseDiagramData | undefined {
+  return built_diagrams.get(name)
+}
+
+// For backward compatibility - load binary phase diagram
 export async function load_binary_phase_diagram(
   url: string,
 ): Promise<PhaseDiagramData | null> {
+  // Handle built-in diagrams (new format)
+  if (url.startsWith(`builtin:`)) {
+    const name = url.replace(`builtin:`, ``)
+    return built_diagrams.get(name) ?? null
+  }
+
+  // Handle legacy .json.gz URLs - try to extract system name
+  const match = url.match(/([A-Za-z]+-[A-Za-z0-9]+)\.json/)
+  if (match) {
+    const system = match[1]
+    const diagram = find_precomputed_diagram(system)
+    if (diagram) return diagram
+  }
+
+  // Fallback: try to fetch from URL (for external files)
   try {
     const response = await fetch(url)
     if (!response.ok) {
       console.error(`Failed to fetch phase diagram: ${response.statusText}`)
       return null
     }
-
-    // Handle gzipped files using shared decompress utility
-    // Note: Vite dev server may auto-decompress .gz files and serve as application/json
-    const content_type = response.headers.get(`content-type`) || ``
-    const is_json_content = content_type.includes(`application/json`)
-    const is_gzipped_content = content_type.includes(`gzip`) ||
-      content_type.includes(`octet-stream`)
-
-    // Only decompress if content is actually gzipped (not if Vite already decompressed it)
-    const needs_decompress = !is_json_content &&
-      (is_gzipped_content || url.endsWith(`.gz`))
-
-    if (needs_decompress) {
-      const buffer = await response.arrayBuffer()
-      const decompressed = await decompress_data(buffer, `gzip`)
-      return JSON.parse(decompressed) as PhaseDiagramData
-    }
-
     return (await response.json()) as PhaseDiagramData
   } catch (error) {
     console.error(`Failed to load phase diagram from ${url}:`, error)
     return null
   }
 }
+
+// Export the build function for users who want to create custom diagrams
+export { build_diagram } from '$lib/phase-diagram/build-diagram'
+export type { DiagramInput } from '$lib/phase-diagram/diagram-input'
