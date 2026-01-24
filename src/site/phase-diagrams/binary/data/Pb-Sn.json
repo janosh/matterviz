@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "components": ["Pb", "Sn"],
+    "temp_range": [300, 700],
+    "temp_unit": "K",
+    "comp_unit": "mol%",
+    "title": "Pb-Sn Binary Phase Diagram"
+  },
+  "curves": {
+    "liquidus_left": [[0, 600], [0.15, 570], [0.3, 520], [0.45, 480], [0.62, 456]],
+    "liquidus_right": [[0.62, 456], [0.75, 470], [0.85, 485], [0.95, 500], [1, 505]],
+    "solidus_pb": [[0, 600], [0.05, 550], [0.15, 480], [0.19, 456]],
+    "solidus_sn": [[0.97, 456], [0.98, 480], [0.99, 495], [1, 505]],
+    "solvus_pb": [[0.19, 456], [0.15, 400], [0.1, 350], [0.05, 300]],
+    "solvus_sn": [[0.97, 456], [0.98, 400], [0.99, 350], [0.995, 300]],
+    "eutectic_line": [[0.19, 456], [0.97, 456]]
+  },
+  "regions": [
+    {
+      "id": "liquid",
+      "name": "Liquid",
+      "color": "liquid",
+      "bounds": [
+        [0, 700],
+        [1, 700],
+        [1, 505],
+        "~liquidus_right",
+        "~liquidus_left",
+        [0, 600]
+      ]
+    },
+    {
+      "id": "fcc_pb",
+      "name": "FCC (Pb)",
+      "color": "fcc_a1",
+      "bounds": [[0, 600], "solidus_pb", "solvus_pb", [0.05, 300], [0, 300]]
+    },
+    {
+      "id": "bct_sn",
+      "name": "BCT (Sn)",
+      "color": "hcp_a3",
+      "bounds": [[1, 505], "~solidus_sn[1:]", "solvus_sn[1:]", [1, 300]]
+    },
+    {
+      "id": "pb_liquid",
+      "name": "FCC + L",
+      "color": "two_phase_fcc_liquid",
+      "bounds": [[0, 600], "liquidus_left", [0.62, 456], [0.19, 456], "~solidus_pb"]
+    },
+    {
+      "id": "sn_liquid",
+      "name": "BCT + L",
+      "color": "two_phase_hcp_liquid",
+      "bounds": [[1, 505], "~liquidus_right[1:]", [0.97, 456], "solidus_sn[1:-1]"]
+    },
+    {
+      "id": "pb_sn",
+      "name": "FCC + BCT",
+      "color": "two_phase",
+      "bounds": [
+        [0.19, 456],
+        [0.97, 456],
+        "solvus_sn",
+        [0.995, 300],
+        [0.05, 300],
+        "~solvus_pb"
+      ]
+    }
+  ],
+  "special_points": [
+    { "id": "eutectic", "type": "eutectic", "position": [0.62, 456], "label": "E" }
+  ]
+}

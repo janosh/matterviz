@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "components": ["Al", "Si"],
+    "temp_range": [300, 1700],
+    "temp_unit": "K",
+    "comp_unit": "mol%",
+    "title": "Al-Si Binary Phase Diagram"
+  },
+  "curves": {
+    "liquidus_left": [[0, 933], [0.05, 900], [0.12, 850]],
+    "liquidus_right": [
+      [0.12, 850],
+      [0.2, 1000],
+      [0.4, 1200],
+      [0.6, 1400],
+      [0.8, 1550],
+      [1, 1687]
+    ],
+    "solidus_al": [[0, 933], [0.01, 880], [0.015, 850]],
+    "solvus_al": [[0.015, 850], [0.01, 700], [0.005, 300]],
+    "eutectic_line": [[0.015, 850], [0.999, 850]]
+  },
+  "regions": [
+    {
+      "id": "liquid",
+      "name": "Liquid",
+      "color": "liquid",
+      "bounds": [
+        [0, 1700],
+        [1, 1700],
+        [1, 1687],
+        "~liquidus_right",
+        "~liquidus_left",
+        [0, 933]
+      ]
+    },
+    {
+      "id": "fcc_al",
+      "name": "α (FCC Al)",
+      "color": "fcc_a1",
+      "bounds": [[0, 933], "solidus_al", "solvus_al", [0.005, 300], [0, 300]]
+    },
+    {
+      "id": "diamond_si",
+      "name": "Si (diamond)",
+      "color": "diamond",
+      "bounds": [[1, 1687], [1, 300], [0.999, 300], [0.999, 850], [1, 1687]]
+    },
+    {
+      "id": "al_liquid",
+      "name": "FCC + L",
+      "color": "two_phase_fcc_liquid",
+      "bounds": [[0, 933], "liquidus_left", [0.12, 850], [0.015, 850], "~solidus_al"]
+    },
+    {
+      "id": "si_liquid",
+      "name": "Si + L",
+      "color": "two_phase_si",
+      "bounds": [[1, 1687], [0.999, 850], [0.12, 850], "liquidus_right[1:]"]
+    },
+    {
+      "id": "al_si",
+      "name": "FCC + Si",
+      "color": "two_phase",
+      "bounds": [[0.015, 850], [0.999, 850], [0.999, 300], [0.005, 300], "~solvus_al"]
+    }
+  ],
+  "special_points": [
+    { "id": "eutectic", "type": "eutectic", "position": [0.12, 850], "label": "E" }
+  ]
+}

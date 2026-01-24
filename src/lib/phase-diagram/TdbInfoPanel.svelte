@@ -52,7 +52,7 @@
     {#if has_precomputed}
       <p class="notice success">
         ✓ {#if is_precomputed_loaded}
-          <strong>Phase diagram loaded</strong> ({sys}.json.gz)
+          <strong>Phase diagram loaded</strong> ({sys}.json)
           <small>TDB contains model parameters. Boundaries computed offline via
             <a href="https://pycalphad.org" target="_blank">pycalphad</a>.</small>
         {:else}

@@ -13,7 +13,7 @@
 
 </h4>
 
-`matterviz` is a toolkit for building interactive web UIs for materials science: periodic tables, 3d crystal structures (and molecules, though needs some improvements!), Bohr atoms, nuclei, heatmaps, scatter plots. It's under active development and not yet ready for production use but we appreciate any feedback from beta testers! 🙏
+`matterviz` is a toolkit for building interactive web UIs for materials science: 3D crystal structures, molecules, MD/relaxation trajectories, periodic tables, phase diagrams, convex hulls, spectral data (bands, DOS, XRD), heatmaps, and scatter plots.
 
 ## 🔌 &thinsp; [MatterViz VSCode Extension]
 
@@ -28,27 +28,29 @@ Visualize crystal structures, molecules, and molecular dynamics trajectories [di
 
 ## 🗺️ &thinsp; Roadmap
 
-- **✅ MatterViz Web**: [matterviz.janosh.dev](https://matterviz.janosh.dev) (works but under active development)
-- **✅ MatterViz VSCode**: [marketplace.visualstudio.com/items?itemName=janosh.matterviz](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz) (works but under active development)
-- **✅ pymatviz**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) extension for Python notebooks. Read about widgets in [`pymatviz` readme](https://github.com/janosh/pymatviz/blob/main/readme.md#interactive-widgets) for details.
+- **✅ MatterViz Web**: [matterviz.janosh.dev](https://matterviz.janosh.dev)
+- **✅ MatterViz VSCode/Cursor**: [marketplace.visualstudio.com/items?itemName=janosh.matterviz](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz)
+- **✅ pymatviz**: [Jupyter](https://jupyter.org)/[Marimo](https://marimo.io) widgets for Python notebooks. See [`pymatviz` readme](https://github.com/janosh/pymatviz/blob/main/readme.md#interactive-widgets).
 
-![Screenshot of landing page](static/2023-02-13-landing-page.webp)
-
-## 📦 &thinsp; Heatmap
-
-This screenshot demonstrates the periodicity of elemental properties (i.e. why it's called periodic table). In this case, you're seeing recurring bumps and valleys in the first ionization energy as a function of atomic number.
-
-![Screenshot of periodic table heatmap](static/2023-02-13-heatmap.webp)
+![Landing page showing 3D structure viewers](https://github.com/janosh/matterviz/releases/download/v0.2.2/2026-01-23-landing-page.webp)
 
 ## ⚛️ &thinsp; 3D Structure Viewer
 
-![3D Structure Viewer](https://github.com/janosh/matterviz/assets/30958850/72f78ad8-16fc-4eab-84ca-a985ce27e2b1)
+Interactively visualize crystal structures and molecules. Supports drag-and-drop file loading for CIF, POSCAR, XYZ/EXTXYZ, pymatgen JSON, OPTIMADE JSON, and compressed formats.
 
-## ⚛️ &thinsp; Element Details Pages
+![3D Structure Viewer](https://github.com/janosh/matterviz/releases/download/v0.2.2/2026-01-23-structure-viewer.webp)
 
-The details page for gold.
+## 📊 &thinsp; Periodic Table Heatmap
 
-<https://user-images.githubusercontent.com/30958850/186975855-8e0d94f9-e4e3-47a2-9354-9c012b37307c.mp4>
+Visualize elemental properties across the periodic table. The inset scatter plot shows how properties vary with atomic number - here demonstrating the periodicity of first ionization energy.
+
+![Periodic table heatmap](https://github.com/janosh/matterviz/releases/download/v0.2.2/2026-01-23-heatmap.webp)
+
+## 🔬 &thinsp; Element Details Pages
+
+Rich element pages with physical properties, electron configurations, Bohr atom visualizations, and element photos.
+
+![Element details page for gold](https://github.com/janosh/matterviz/releases/download/v0.2.2/2026-01-23-details-page.webp)
 
 ## 🔨 &thinsp; Installation
 
@@ -133,12 +135,12 @@ Use [`citation.cff`](citation.cff) or cite the [Zenodo record](https://zenodo.or
 @software{riebesell_matterviz_2022,
   title = {matterviz: visualization toolkit for materials informatics},
   author = {Riebesell, Janosh and Evans, Matthew},
-  date = {2025-09-10},
-  year = {2025},
+  date = {2026-01-23},
+  year = {2026},
   doi = {10.5281/zenodo.17094509},
   url = {https://github.com/janosh/matterviz},
   note = {10.5281/zenodo.17094509 - https://github.com/janosh/matterviz},
-  urldate = {2025-09-10}, % optional, replace with your date of access
-  version = {0.1.9}, % replace with the version you use
+  urldate = {2026-01-23}, % optional, replace with your date of access
+  version = {0.2.2}, % replace with the version you use
 }
 ```

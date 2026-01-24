@@ -1,5 +1,5 @@
-import { format_num } from '$lib/labels'
 import { add_alpha } from '$lib/colors'
+import { format_num } from '$lib/labels'
 import { point_in_polygon, type Vec2 } from '$lib/math'
 import type { Sides } from '$lib/plot'
 import { line } from 'd3-shape'
@@ -266,10 +266,8 @@ function wrap_text(text: string, max_chars: number): string[] {
     const candidate = current_line ? `${current_line}_${word}` : word
     if (candidate.length <= max_chars) {
       current_line = candidate
-    } else if (current_line) {
-      lines.push(current_line)
-      current_line = word
     } else {
+      if (current_line) lines.push(current_line)
       current_line = word
     }
   }
@@ -429,4 +427,152 @@ export function summarize_models(
     .sort(([a], [b]) => a - b)
     .map(([n, c]) => `${c}×${n}-SL`)
     .join(`, `)
+}
+
+// ============================================================================
+// Chemical Formula Parsing Utilities (for pseudo-binary phase diagrams)
+// ============================================================================
+
+// Token from formula tokenization - can be text, subscript, or superscript
+export interface FormulaToken {
+  text?: string
+  sub?: string
+  sup?: string
+}
+
+// Check if a component name is a compound (vs single element)
+// Returns true if name contains digits (e.g., "Fe3C", "SiO2") or multiple uppercase letters
+// that indicate multiple elements (e.g., "MgO", "CaO")
+// Single elements like "Fe", "Ca", "He" return false
+export function is_compound(name: string): boolean {
+  if (!name) return false
+  // Contains digits -> likely a compound (Fe3C, SiO2, Al2O3)
+  if (/\d/.test(name)) return true
+  // Single element pattern: one uppercase followed by optional lowercase (Fe, Ca, He, C)
+  if (/^[A-Z][a-z]?$/.test(name)) return false
+  // Count uppercase letters without array allocation
+  let uppercase_count = 0
+  for (const char of name) {
+    if (char >= `A` && char <= `Z`) uppercase_count++
+  }
+  return uppercase_count >= 2
+}
+
+// Tokenize a chemical formula for rendering with subscripts/superscripts
+// Examples:
+//   "Fe3C" -> [{text: "Fe"}, {sub: "3"}, {text: "C"}]
+//   "SiO2" -> [{text: "Si"}, {text: "O"}, {sub: "2"}]
+//   "Al2O3" -> [{text: "Al"}, {sub: "2"}, {text: "O"}, {sub: "3"}]
+//   "Fe" -> [{text: "Fe"}]
+//   "α-Fe" -> [{text: "α-Fe"}] (Greek phases pass through unchanged)
+export function tokenize_formula(formula: string): FormulaToken[] {
+  if (!formula) return []
+
+  // If it contains Greek letters or special phase notation, return as-is
+  if (/[α-ωΑ-Ω]/.test(formula) || formula.includes(`+`)) {
+    return [{ text: formula }]
+  }
+
+  const tokens: FormulaToken[] = []
+  let idx = 0
+
+  while (idx < formula.length) {
+    const char = formula[idx]
+
+    // Check for subscript digits (numbers following letters)
+    if (/\d/.test(char)) {
+      // Collect consecutive digits
+      let num = ``
+      while (idx < formula.length && /\d/.test(formula[idx])) {
+        num += formula[idx]
+        idx++
+      }
+      tokens.push({ sub: num })
+      continue
+    }
+
+    // Check for superscript (- charge notation, e.g., "O2-" or "Cl-2")
+    // Note: + is handled by the early return for phase notation like "α + β"
+    // Treat '-' as charge when: at end of string, OR followed by digit
+    // Otherwise preserve as text for hyphenated names like "Fe-Fe3C"
+    if (char === `-`) {
+      idx++
+      if (idx >= formula.length || /\d/.test(formula[idx])) {
+        // End of string or followed by digit - parse as charge superscript
+        let charge = `-`
+        while (idx < formula.length && /\d/.test(formula[idx])) {
+          charge += formula[idx]
+          idx++
+        }
+        tokens.push({ sup: charge })
+      } else tokens.push({ text: `-` }) // Not at end and not followed by digit - preserve hyphen
+      continue
+    }
+
+    // Check for element symbol (uppercase followed by optional lowercase)
+    if (/[A-Z]/.test(char)) {
+      let element = char
+      idx++
+      // Collect following lowercase letters
+      while (idx < formula.length && /[a-z]/.test(formula[idx])) {
+        element += formula[idx]
+        idx++
+      }
+      tokens.push({ text: element })
+      continue
+    }
+
+    // Any other character (lowercase, hyphen, etc.) - collect as text
+    let text = char
+    idx++
+    while (idx < formula.length && !/[A-Z\d\-]/.test(formula[idx])) {
+      text += formula[idx]
+      idx++
+    }
+    // Merge with previous text token if possible
+    if (tokens.length > 0 && tokens[tokens.length - 1].text !== undefined) {
+      tokens[tokens.length - 1].text += text
+    } else {
+      tokens.push({ text })
+    }
+  }
+
+  return tokens
+}
+
+// Baseline shifts for sub/superscript (SVG dy values are cumulative across tspans)
+const DY = { sub: 0.25, sup: -0.4 } as const
+
+// Format chemical formula as SVG tspan elements with subscripts
+// Tracks cumulative baseline offset and adds trailing reset so concatenated text aligns
+export function format_formula_svg(formula: string, use_subscripts = true): string {
+  if (!use_subscripts || !is_compound(formula)) return formula
+
+  let result = ``
+  let offset = 0
+
+  for (const token of tokenize_formula(formula)) {
+    if (token.text !== undefined) {
+      result += offset ? `<tspan dy="${-offset}em">${token.text}</tspan>` : token.text
+      offset = 0
+    } else {
+      const dy = token.sub !== undefined ? DY.sub : DY.sup
+      result += `<tspan dy="${dy}em" font-size="0.75em">${token.sub ?? token.sup}</tspan>`
+      offset += dy
+    }
+  }
+
+  if (offset) result += `<tspan dy="${-offset}em"></tspan>`
+  return result
+}
+
+// Format chemical formula as HTML with <sub> and <sup> tags
+export function format_formula_html(formula: string, use_subscripts = true): string {
+  if (!use_subscripts || !is_compound(formula)) return formula
+
+  return tokenize_formula(formula)
+    .map((token) =>
+      token.text ?? (token.sub ? `<sub>${token.sub}</sub>` : `<sup>${token.sup}</sup>`)
+    )
+    .join(``)
 }

@@ -47,10 +47,11 @@
   ]}
   bind:tooltip_point
   bind:hovered
-  x_axis={{ label: `Atomic Number`, ...x_axis }}
+  x_axis={{ label: `Atomic Number`, range: [0, null], ...x_axis }}
   y_axis={{ format: `~s`, ...y_axis }}
   color_bar={null}
-  padding={{ l: 45, r: 10, t: 0, b: 40 }}
+  padding={{ l: 60, r: 10, t: 5, b: 45 }}
+  range_padding={0}
   {...rest}
 >
   {#snippet tooltip({ x, y })}

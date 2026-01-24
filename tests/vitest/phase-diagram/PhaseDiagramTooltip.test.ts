@@ -1,4 +1,4 @@
-import type { LeverRuleResult, PhaseBoundary } from '$lib/phase-diagram'
+import type { LeverRuleResult, PhaseBoundary, PhaseHoverInfo } from '$lib/phase-diagram'
 import { PhaseDiagramTooltip } from '$lib/phase-diagram'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -131,10 +131,12 @@ describe(`PhaseDiagramTooltip`, () => {
       expect(lever?.querySelector(`:scope > span`)?.textContent).toBe(`Lever Rule`)
 
       const phase_info = document.querySelector(`.phase-info`)
-      expect(phase_info?.textContent).toContain(`α: 60%`)
-      expect(phase_info?.textContent).toContain(`at 20 at%`)
-      expect(phase_info?.textContent).toContain(`β: 40%`)
-      expect(phase_info?.textContent).toContain(`at 80 at%`)
+      // Normalize whitespace since formatter may introduce line breaks
+      const text = phase_info?.textContent?.replace(/\s+/g, ` `)
+      expect(text).toContain(`α: 60%`)
+      expect(text).toContain(`at 20 at%`)
+      expect(text).toContain(`β: 40%`)
+      expect(text).toContain(`at 80 at%`)
     })
 
     test(`bar widths and marker position match fractions`, () => {
@@ -215,6 +217,117 @@ describe(`PhaseDiagramTooltip`, () => {
         props: { hover_info, boundaries },
       })
       expect(document.querySelector(`.boundary-info`)).toBeNull()
+    })
+  })
+
+  describe(`tooltip customization`, () => {
+    test(`snippet function hides default tooltip`, () => {
+      const hover_info = create_hover_info()
+      const mock_snippet = (() => {}) as unknown as import('svelte').Snippet<
+        [PhaseHoverInfo]
+      >
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, tooltip: mock_snippet },
+      })
+      expect(document.querySelector(`.phase-diagram-tooltip`)).toBeNull()
+    })
+
+    test.each(
+      [
+        [`prefix`, `<strong>Header</strong>`, `.tooltip-prefix`],
+        [`suffix`, `<em>Footer</em>`, `.tooltip-suffix`],
+      ] as const,
+    )(`renders static %s string`, (key, html, selector) => {
+      const hover_info = create_hover_info()
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, tooltip: { [key]: html } },
+      })
+      expect(document.querySelector(selector)?.innerHTML).toContain(html)
+      expect(document.querySelector(`.phase-diagram-tooltip`)).not.toBeNull()
+    })
+
+    test.each(
+      [
+        [
+          `prefix`,
+          (info: PhaseHoverInfo) => `T=${info.temperature}`,
+          `.tooltip-prefix`,
+          `T=850`,
+        ],
+        [
+          `suffix`,
+          (info: PhaseHoverInfo) => `x=${info.composition}`,
+          `.tooltip-suffix`,
+          `x=0.5`,
+        ],
+      ] as const,
+    )(`renders %s from function`, (key, fn, selector, expected) => {
+      const hover_info = create_hover_info()
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, tooltip: { [key]: fn } },
+      })
+      expect(document.querySelector(selector)?.textContent).toBe(expected)
+    })
+
+    test(`renders both prefix and suffix together`, () => {
+      const hover_info = create_hover_info()
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, tooltip: { prefix: `Header`, suffix: `Footer` } },
+      })
+      expect(document.querySelector(`.tooltip-prefix`)?.textContent).toBe(`Header`)
+      expect(document.querySelector(`.tooltip-suffix`)?.textContent).toBe(`Footer`)
+    })
+
+    test.each([
+      [`no tooltip prop`, undefined],
+      [`empty config`, {}],
+    ])(`no prefix/suffix rendered with %s`, (_, tooltip) => {
+      const hover_info = create_hover_info()
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, tooltip },
+      })
+      expect(document.querySelector(`.tooltip-prefix`)).toBeNull()
+      expect(document.querySelector(`.tooltip-suffix`)).toBeNull()
+      expect(document.querySelector(`.phase-diagram-tooltip`)).not.toBeNull()
+    })
+
+    test(`function receives lever_rule in hover_info`, () => {
+      const lever_rule: LeverRuleResult = {
+        left_phase: `α`,
+        right_phase: `β`,
+        left_composition: 0.2,
+        right_composition: 0.8,
+        fraction_left: 0.6,
+        fraction_right: 0.4,
+      }
+      const hover_info = create_hover_info({ lever_rule })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: {
+          hover_info,
+          tooltip: {
+            prefix: (info) =>
+              info.lever_rule
+                ? `${info.lever_rule.left_phase}/${info.lever_rule.right_phase}`
+                : ``,
+          },
+        },
+      })
+      expect(document.querySelector(`.tooltip-prefix`)?.textContent).toBe(`α/β`)
+    })
+
+    test(`empty string from function hides element`, () => {
+      const hover_info = create_hover_info()
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, tooltip: { suffix: () => `` } },
+      })
+      expect(document.querySelector(`.tooltip-suffix`)).toBeNull()
     })
   })
 })
