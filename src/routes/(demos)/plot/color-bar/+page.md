@@ -3,7 +3,7 @@
 Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorBar } from 'matterviz'
 </script>
 
@@ -31,7 +31,7 @@ Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
 You can make fat and skinny bars:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorBar } from 'matterviz'
 
   const wrapper_style = 'margin: auto;'
@@ -53,7 +53,7 @@ You can make fat and skinny bars:
 `PeriodicTable.svelte` now automatically shows a `ColorBar` when `heatmap_values` is provided!
 
 ```svelte example code_above
-<script>
+<script lang="ts">
   import { element_data } from 'matterviz/element'
   import { ColorScaleSelect } from 'matterviz/plot'
   import { PeriodicTable, PropertySelect } from 'matterviz/periodic-table'
@@ -93,7 +93,7 @@ You can make fat and skinny bars:
 For more control, you can also manually add a `ColorBar` inside a custom `TableInset` (which overrides the automatic color bar):
 
 ```svelte example
-<script>
+<script lang="ts">
   import { element_data } from 'matterviz/element'
   import { ColorBar } from 'matterviz/plot'
   import { PeriodicTable, TableInset } from 'matterviz/periodic-table'
@@ -126,7 +126,7 @@ For more control, you can also manually add a `ColorBar` inside a custom `TableI
 Example demonstrating `title_side` and `tick_side` interaction:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorBar } from 'matterviz'
 
   const title_sides = [`top`, `bottom`, `left`, `right`]
@@ -134,8 +134,8 @@ Example demonstrating `title_side` and `tick_side` interaction:
 </script>
 
 <section>
-  {#each title_sides as title_side, l_idx}
-    {#each tick_sides as tick_side, t_idx}
+  {#each title_sides as title_side, l_idx (title_side)}
+    {#each tick_sides as tick_side, t_idx (tick_side)}
       {@const orientation = title_side === `top` || title_side === `bottom`
       ? `horizontal`
       : `vertical`}
@@ -188,7 +188,7 @@ Example demonstrating `title_side` and `tick_side` interaction:
 You can format tick labels for date/time ranges by providing a D3 format string via the `tick_format` prop. The color bar accepts ranges as milliseconds since the epoch (standard JavaScript `Date.getTime()`).
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorBar } from 'matterviz'
 
   // Example date range (e.g. start and end of 2024)
@@ -231,7 +231,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 The `ColorBar` now supports interactive dropdowns for switching properties and color scales. Use `property_options` with a `data_loader` for lazy-loading property data, and `color_scale_options` for color scheme switching.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorBar } from 'matterviz'
 
   // Property options with different data ranges
@@ -270,7 +270,7 @@ The `ColorBar` now supports interactive dropdowns for switching properties and c
   let last_load_time = $state(0)
 
   // Data loader with simulated delay
-  async function data_loader(property_key) {
+  async function data_loader(property_key: string) {
     const start = performance.now()
     // Simulate network delay (200-800ms)
     await new Promise((r) => setTimeout(r, 200 + Math.random() * 600))
@@ -307,7 +307,7 @@ The `ColorBar` now supports interactive dropdowns for switching properties and c
 Here's an example with vertical orientation and title on different sides:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorBar } from 'matterviz'
 
   const property_options = [
@@ -380,7 +380,7 @@ Here's an example with vertical orientation and title on different sides:
 Demonstrating the color bar with large numeric ranges, using both linear and logarithmic scales (`scale_type='log'`). Log scales require a positive range (both min and max > 0). Scientific notation is used for tick labels via `tick_format='.0e'`.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorBar } from 'matterviz'
 </script>
 
@@ -432,7 +432,7 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
 The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both positive and negative values—something log scale cannot do. The gradient smoothly transitions through zero, with symmetric ticks like -1000, -100, -10, 0, 10, 100, 1000.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorBar } from 'matterviz'
 
   const scale_types = [`linear`, `log`, `arcsinh`]

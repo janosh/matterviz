@@ -7,7 +7,7 @@ Render chemical formulas with colored element symbols, subscripted amounts, supe
 Simple formulas with subscripted amounts and oxidation states:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Formula } from 'matterviz'
 </script>
 
@@ -38,7 +38,7 @@ Simple formulas with subscripted amounts and oxidation states:
 Control element ordering and apply different color schemes:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Formula } from 'matterviz'
 
   let formula = $state(`C6H12O6N2Fe2`)
@@ -85,7 +85,7 @@ Control element ordering and apply different color schemes:
 Click element symbols to trigger custom actions:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Formula } from 'matterviz'
 
   let clicked_element = $state(null)
@@ -122,7 +122,7 @@ Click element symbols to trigger custom actions:
 Control tooltip placement and distance from elements:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Formula } from 'matterviz'
 
   let tooltip_side = $state(`bottom`)
@@ -166,7 +166,7 @@ Control tooltip placement and distance from elements:
 Use the `as` prop to render formulas as headings, inline text, etc.:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Formula } from 'matterviz'
 </script>
 
@@ -187,7 +187,7 @@ Use the `as` prop to render formulas as headings, inline text, etc.:
 Use `OxiComposition` objects and customize number formatting:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Formula } from 'matterviz'
 
   const iron_oxide = {
@@ -230,7 +230,7 @@ Use `OxiComposition` objects and customize number formatting:
 Battery materials, minerals, and organic compounds:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Formula } from 'matterviz'
 
   const categories = {
@@ -252,12 +252,12 @@ Battery materials, minerals, and organic compounds:
   }
 </script>
 
-{#each Object.entries(categories) as [category, compounds]}
+{#each Object.entries(categories) as [category, compounds] (category)}
   <h3 style="margin: 1.5em 0 0.5em; font-size: 1.1em">{category}</h3>
   <div
     style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1em"
   >
-    {#each compounds as { name, formula }}
+    {#each compounds as { name, formula } (formula)}
       <div
         style="padding: 0.8em; border: 1px solid var(--border-color, #ddd); border-radius: 6px"
       >
@@ -279,12 +279,13 @@ Battery materials, minerals, and organic compounds:
 Build formulas dynamically with live preview:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Formula } from 'matterviz'
 
+  let next_id = 2
   let elements = $state([
-    { symbol: `Fe`, amount: 2, oxidation: 3 },
-    { symbol: `O`, amount: 3, oxidation: -2 },
+    { id: 0, symbol: `Fe`, amount: 2, oxidation: 3 },
+    { id: 1, symbol: `O`, amount: 3, oxidation: -2 },
   ])
 
   const formula_obj = $derived.by(() => {
@@ -298,13 +299,18 @@ Build formulas dynamically with live preview:
 
 <div style="margin-bottom: 1em">
   <button
-    onclick={() => (elements = [...elements, { symbol: `H`, amount: 1, oxidation: 0 }])}
+    onclick={() => (elements = [...elements, {
+      id: next_id++,
+      symbol: `H`,
+      amount: 1,
+      oxidation: 0,
+    }])}
   >
     Add Element
   </button>
 </div>
 
-{#each elements as element, idx}
+{#each elements as element (element.id)}
   <div style="display: flex; gap: 0.8em; align-items: center; margin-bottom: 0.5em">
     <input type="text" bind:value={element.symbol} style="width: 50px" placeholder="El" />
     <input
@@ -320,7 +326,9 @@ Build formulas dynamically with live preview:
       style="width: 60px"
       placeholder="Ox"
     />
-    <button onclick={() => (elements = elements.filter((_, i) => i !== idx))}>×</button>
+    <button onclick={() => (elements = elements.filter((el) => el.id !== element.id))}>
+      ×
+    </button>
   </div>
 {/each}
 

@@ -7,7 +7,7 @@ Visualize crystallographic space group distributions with automatic crystal syst
 Pass space group numbers (1-230) to visualize their distribution with automatic crystal system coloring and region annotations:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { SpacegroupBarPlot } from 'matterviz'
 
   // Sample data: space group numbers from a materials database
@@ -46,7 +46,7 @@ Pass space group numbers (1-230) to visualize their distribution with automatic 
 The component also accepts space group symbols (Hermann-Mauguin notation):
 
 ```svelte example
-<script>
+<script lang="ts">
   import { SpacegroupBarPlot } from 'matterviz'
 
   // deno-fmt-ignore
@@ -69,7 +69,7 @@ The component also accepts space group symbols (Hermann-Mauguin notation):
 Display spacegroup distributions horizontally:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { SpacegroupBarPlot } from 'matterviz'
 
   // deno-fmt-ignore
@@ -108,7 +108,7 @@ Display spacegroup distributions horizontally:
 Simulated space group distributions from Materials Project database:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { SpacegroupBarPlot } from 'matterviz'
 
   // Simulated distribution resembling Materials Project statistics

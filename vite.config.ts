@@ -2,9 +2,9 @@
 // @ts-nocheck - tsgo has "Excessive stack depth" bug with Vite Plugin types
 import yaml from '@rollup/plugin-yaml'
 import { sveltekit } from '@sveltejs/kit/vite'
-import mdsvexamples from 'mdsvexamples/vite'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
+import { vite_plugin as live_examples } from 'svelte-multiselect/live-examples'
 import { defineConfig, type Plugin } from 'vite'
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock'
 
@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => ({
       },
     } satisfies Plugin,
     sveltekit(),
-    mdsvexamples,
+    live_examples(),
     yaml(),
     mode === `test` ? mock_vscode() : null,
   ].filter((plugin): plugin is Plugin => Boolean(plugin)),

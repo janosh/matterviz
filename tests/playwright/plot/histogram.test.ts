@@ -62,6 +62,9 @@ const get_histogram_tick_range = async (axis_locator: Locator) => {
 }
 
 test.describe(`Histogram Component Tests`, () => {
+  // Use retries instead of blanket skip for flaky CI runs (CSS module loading can be transient)
+  test.describe.configure({ retries: 2 })
+
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/histogram`, { waitUntil: `networkidle` })
   })

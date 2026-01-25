@@ -1,5 +1,5 @@
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorBar, ColorScaleSelect, PeriodicTable, TableInset } from 'matterviz'
   import { format_num } from 'matterviz/labels'
   import mp_elem_counts from './mp-element-counts.json'
@@ -32,7 +32,7 @@
       <section>
         <span>
           Data set &ensp;
-          {#each [`MP`, `WBM`] as data_set}
+          {#each [`MP`, `WBM`] as data_set (data_set)}
             <input type="radio" bind:group={data_name} value={data_set} /> {data_set}
           {/each}
         </span>
