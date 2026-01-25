@@ -1,3 +1,6 @@
+/* Starry-night syntax highlighting (GitHub-style, auto light/dark) */
+@import '@wooorm/starry-night/style/both';
+
 :root {
   --theme-transition-duration: 0.3s;
   --text-color: #eee;

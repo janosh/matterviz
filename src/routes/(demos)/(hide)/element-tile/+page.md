@@ -3,7 +3,7 @@
 `ElementTile.svelte` automatically changes text color to ensure high contrast with its background. If its background is transparent, it traverses up the DOM tree to find the first element with non-transparent background color. This can, of course, go wrong e.g. if the tile is absolutely positioned outside its parent element. In that case, pass an explicit `text_color` prop and `luminance_threshold={null}` to `ElementTile` to override the automatic color selection.
 
 ```svelte example code_above
-<script>
+<script lang="ts">
   import { element_data, ElementTile } from 'matterviz'
 
   const rand_color = () =>
@@ -13,8 +13,14 @@
 </script>
 
 <ol>
-  {#each Array(27).fill(0).map(rand_color) as bg_color, idx}
-    <ElementTile {bg_color} element={element_data[idx]} style="width: 4em; margin: 0" />
+  {#each Array(27).fill(0).map((_, idx) => ({
+      bg_color: rand_color(),
+      element: element_data[idx],
+    })) as
+    { bg_color, element }
+    (element.symbol)
+  }
+    <ElementTile {bg_color} {element} style="width: 4em; margin: 0" />
   {/each}
 </ol>
 
@@ -30,14 +36,14 @@
 Displaying values instead of element names by passing the `value` prop.
 
 ```svelte example code_above
-<script>
+<script lang="ts">
   import { element_data, ElementTile } from 'matterviz'
 
-  const bg_colors = 'red green blue yellow cyan magenta black white'.split()
+  const bg_colors = `red green blue yellow cyan magenta black white`.split(` `)
 </script>
 
 <ol>
-  {#each bg_colors as bg_color, idx}
+  {#each bg_colors as bg_color, idx (bg_color)}
     <ElementTile
       {bg_color}
       element={element_data[idx]}
@@ -62,7 +68,7 @@ Displaying values instead of element names by passing the `value` prop.
 ElementTile supports displaying multiple values per tile with different split layout options. Control the layout using the `split_layout` prop.
 
 ```svelte example code_above
-<script>
+<script lang="ts">
   import { element_data, ElementTile } from 'matterviz'
 
   const values = {

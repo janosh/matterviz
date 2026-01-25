@@ -7,26 +7,26 @@ A compact, interactive tag for displaying labeled values. Click to copy, support
 Five semantic variants (default, success, warning, error, info) × three sizes (sm, md, lg):
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Icon, InfoTag } from 'matterviz'
 
-  const sizes = [`sm`, `md`, `lg`]
+  const sizes = [`sm`, `md`, `lg`] as const
   const tags = [
     { label: `Band Gap:`, value: `1.12 eV`, variant: `default` },
     { label: ``, value: `Stable`, variant: `success`, icon: `CheckCircle` },
     { label: `⚠️`, value: `Metastable`, variant: `warning` },
     { label: ``, value: `Failed`, variant: `error`, icon: `XCircle` },
     { label: `ℹ️`, value: `MP`, variant: `info` },
-  ]
+  ] as const
 </script>
 
 <div style="display: grid; gap: 12pt">
-  {#each sizes as size}
+  {#each sizes as size (size)}
     <div style="display: flex; flex-wrap: wrap; gap: 8pt; align-items: center">
       <span
         style="width: 30px; font-size: 0.75em; opacity: 0.5; text-transform: uppercase"
       >{size}</span>
-      {#each tags as tag}
+      {#each tags as tag (tag.value)}
         <InfoTag label={tag.label} value={tag.value} variant={tag.variant} {size}>
           {#if tag.icon}
             <Icon icon={tag.icon} style="width: 1em; height: 1em; margin-left: 2pt" />
@@ -47,7 +47,7 @@ Five semantic variants (default, success, warning, error, info) × three sizes (
 Removable tags, custom click handlers, and custom copy values:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { InfoTag } from 'matterviz'
 
   const init_filters = [
@@ -90,7 +90,7 @@ Removable tags, custom click handlers, and custom copy values:
   style="display: flex; flex-wrap: wrap; gap: 8pt; padding-top: 1em; border-top: 1px solid rgba(128, 128, 128, 0.2)"
 >
   <strong style="font-size: 0.85em; opacity: 0.7; align-self: center">Clickable:</strong>
-  {#each [`LiFePO4`, `LiCoO2`, `Fe2O3`] as mat}
+  {#each [`LiFePO4`, `LiCoO2`, `Fe2O3`] as mat (mat)}
     <InfoTag
       label="Material:"
       value={mat}
@@ -128,7 +128,7 @@ Removable tags, custom click handlers, and custom copy values:
 Both `label` and `value` support HTML via `{@html}`:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { InfoTag } from 'matterviz'
 </script>
 
@@ -146,7 +146,7 @@ Both `label` and `value` support HTML via `{@html}`:
 Combine tags with icons to display material properties with dynamic styling:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Icon, InfoTag } from 'matterviz'
 
   const materials = [
@@ -173,11 +173,11 @@ Combine tags with icons to display material properties with dynamic styling:
     },
   ]
 
-  function stability_variant(ehull) {
+  function stability_variant(ehull: number) {
     return ehull <= 0 ? `success` : ehull <= 0.05 ? `warning` : `error`
   }
 
-  function stability_icon(ehull) {
+  function stability_icon(ehull: number) {
     return ehull <= 0 ? `CheckCircle` : ehull <= 0.05 ? `Alert` : `XCircle`
   }
 </script>
@@ -185,7 +185,7 @@ Combine tags with icons to display material properties with dynamic styling:
 <div
   style="display: grid; gap: 1em; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))"
 >
-  {#each materials as mat}
+  {#each materials as mat (mat.mp_id)}
     <div
       style="padding: 12pt; border: 1px solid rgba(128, 128, 128, 0.15); border-radius: 10px; background: rgba(255, 255, 255, 0.02)"
     >
