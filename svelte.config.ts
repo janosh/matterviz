@@ -1,11 +1,14 @@
 import adapter from '@sveltejs/adapter-static'
 import type { Config } from '@sveltejs/kit'
 import { mdsvex } from 'mdsvex'
-import mdsvexamples from 'mdsvexamples'
 import katex from 'rehype-katex'
 import math from 'remark-math' // remark-math@3.0.0 pinned due to mdsvex https://github.com/kwshi/rehype-katex-svelte#usage
-import { heading_ids } from 'svelte-multiselect/heading-anchors' // adds IDs to headings at build time
-import { sveltePreprocess } from 'svelte-preprocess'
+import { heading_ids } from 'svelte-multiselect/heading-anchors'
+import {
+  mdsvex_transform,
+  starry_night_highlighter,
+  sveltePreprocess,
+} from 'svelte-multiselect/live-examples'
 import type { PreprocessorGroup } from 'svelte/compiler'
 
 const { default: pkg } = await import(`./package.json`, {
@@ -13,7 +16,6 @@ const { default: pkg } = await import(`./package.json`, {
 })
 const defaults = {
   Wrapper: [`svelte-multiselect`, `CodeExample`],
-  pkg: pkg.name,
   repo: pkg.repository,
   hideStyle: true,
 }
@@ -22,11 +24,12 @@ export default {
   extensions: [`.svelte`, `.svx`, `.md`],
 
   preprocess: [
-    sveltePreprocess(),
+    sveltePreprocess(), // wrapped version that skips markdown files
     mdsvex({
-      remarkPlugins: [[mdsvexamples, { defaults }], math],
+      remarkPlugins: [[mdsvex_transform, { defaults }], math],
       rehypePlugins: [katex],
       extensions: [`.svx`, `.md`],
+      highlight: { highlighter: starry_night_highlighter },
     }) as PreprocessorGroup,
     heading_ids(), // runs after mdsvex converts markdown to HTML
   ],

@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import pkg from '$root/package.json'
 </script>
 
@@ -7,7 +7,7 @@
 **Multi-scheme comparison**: Compare 3 color palettes side by side as horizontal bars in each element tile.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { element_data, PeriodicTable, TableInset } from 'matterviz'
   import { ELEMENT_COLOR_SCHEMES } from 'matterviz/colors'
 
@@ -81,12 +81,12 @@
 ## Individual Color Schemes
 
 ```svelte example
-<script>
+<script lang="ts">
   import { PeriodicTable } from 'matterviz'
   import { ELEMENT_COLOR_SCHEMES } from 'matterviz/colors'
   import { ELEM_SYMBOLS } from 'matterviz/labels'
 
-  const subtitles = {
+  const subtitles: Record<string, string> = {
     Vesta:
       'From the <a href="https://jp-minerals.org/vesta/en/" target="_blank" rel="noopener">VESTA</a> crystallographic visualization software',
     Jmol:
@@ -101,7 +101,7 @@
   }
 </script>
 
-{#each Object.entries(ELEMENT_COLOR_SCHEMES) as [id, scheme]}
+{#each Object.entries(ELEMENT_COLOR_SCHEMES) as [id, scheme] (id)}
   {@const color_overrides = Object.fromEntries(
     ELEM_SYMBOLS.map((key) => [key, scheme[key] ?? 'transparent']),
   )}

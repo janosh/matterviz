@@ -7,7 +7,7 @@ Integrated visualization of band structures, density of states, and Brillouin zo
 Electronic band structures display the Fermi level (E<sub>F</sub>) as a dashed red line when `efermi` is present. Note: this example uses bands and DOS from different materials for demonstration.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BrillouinBandsDos } from 'matterviz'
   import { electronic_bands } from '$site/electronic/bands'
   import { dos_spin_polarization } from '$site/electronic/dos'
@@ -30,7 +30,7 @@ Electronic band structures display the Fermi level (E<sub>F</sub>) as a dashed r
 Phonon band structure with acoustic/optical mode styling:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BrillouinBandsDos } from 'matterviz'
   import { phonon_bands, phonon_data, phonon_dos } from '$site/phonons'
 
@@ -68,7 +68,7 @@ Phonon band structure with acoustic/optical mode styling:
 Compare phonon predictions from DFT and machine learning potentials:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BrillouinBandsDos } from 'matterviz'
   import { phonon_bands, phonon_data, phonon_dos } from '$site/phonons'
 </script>
@@ -94,7 +94,7 @@ Compare phonon predictions from DFT and machine learning potentials:
 Customize the Brillouin zone appearance (colors, opacity, edges) via `bz_props`.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BrillouinBandsDos } from 'matterviz'
   import { phonon_bands, phonon_data, phonon_dos } from '$site/phonons'
 </script>

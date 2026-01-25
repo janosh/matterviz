@@ -2,7 +2,7 @@
 title: JsonTree
 ---
 
-<script>
+<script lang="ts">
   import { JsonTree } from '$lib'
 
   // Example 1: Simple config-like data
@@ -174,14 +174,14 @@ title: JsonTree
   }
 
   // Callback demo state
-  let last_selected = $state(null)
-  let last_copied = $state(null)
+  let last_selected: { path: string; value: string } | null = $state(null)
+  let last_copied: { path: string; preview: string } | null = $state(null)
 
-  function handle_select(path, value) {
+  function handle_select(path: string, value: unknown) {
     last_selected = { path, value: typeof value === 'object' ? JSON.stringify(value) : String(value) }
   }
 
-  function handle_copy(path, value) {
+  function handle_copy(path: string, value: string) {
     last_copied = { path, preview: value.slice(0, 50) + (value.length > 50 ? '...' : '') }
   }
 </script>
@@ -191,7 +191,7 @@ A fully-featured JSON tree viewer with folding, search, copy, keyboard navigatio
 ## Quick Start
 
 ```svelte
-<script>
+<script lang="ts">
   import { JsonTree } from '$lib'
   const data = { name: 'Example', values: [1, 2, 3] }
 </script>

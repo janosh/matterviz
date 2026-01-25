@@ -129,10 +129,12 @@
   )
 
   // Normalize export_data config
+  type ExportFormat = 'csv' | 'json'
+  const default_formats: ExportFormat[] = [`csv`, `json`]
   let export_config = $derived(
     export_data
       ? {
-        formats: [`csv`, `json`] as (`csv` | `json`)[],
+        formats: default_formats,
         filename: `table-export`,
         ...(typeof export_data === `object` ? export_data : {}),
       }

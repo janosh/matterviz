@@ -1,7 +1,7 @@
 # Structure
 
 ```svelte example
-<script>
+<script lang="ts">
   import { page } from '$app/state'
   import { goto } from '$app/navigation'
   import { browser } from '$app/environment'
@@ -15,7 +15,7 @@
   let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
 
   const all_files = [...structure_files, ...molecule_files]
-  function get_file_url(filename) {
+  function get_file_url(filename: string): string {
     const file_info = all_files.find((file) => file.name === filename)
     return file_info?.url || `/structures/${filename}`
   }
@@ -29,7 +29,7 @@
 
 <Structure
   data_url={get_file_url(current_filename)}
-  on_file_load={(data) => {
+  on_file_load={(data: { filename: string }) => {
     current_filename = data.filename
     page.url.searchParams.set(`file`, current_filename)
     goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
@@ -56,7 +56,7 @@
 Showcasing structures with different crystal systems.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { CRYSTAL_SYSTEMS, Structure } from 'matterviz'
   import { structures } from '$site/structures'
 </script>
@@ -66,6 +66,7 @@ Showcasing structures with different crystal systems.
       CRYSTAL_SYSTEMS.some((system) => struct.id.includes(system))
     ) as
     structure
+    (structure.id)
   }
     {@const mp_id = structure.id.split(`-`).slice(0, 2).join(`-`)}
     {@const href = `https://materialsproject.org/materials/${mp_id}`}
@@ -108,7 +109,7 @@ Showcasing structures with different crystal systems.
 You can load structures directly from text content using the `structure_string` prop, supporting various formats (CIF, POSCAR, XYZ, JSON, etc.).
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Structure } from 'matterviz'
   import { format_num } from '$lib'
   import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
