@@ -7,7 +7,7 @@ A sortable, colorable data table component with heatmap-style cell coloring, col
 A simple table with sortable columns and automatic heatmap coloring based on cell values:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { HeatmapTable } from 'matterviz'
 
   const data = [
@@ -48,7 +48,7 @@ A simple table with sortable columns and automatic heatmap coloring based on cel
 All 118 chemical elements with physical and chemical properties. Features column grouping, category/phase filters, row selection with statistics, double-click to open element pages, and radioactive element highlighting:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { element_data, HeatmapTable } from 'matterviz'
 
   // Get unique categories and phases for filters
@@ -139,7 +139,7 @@ All 118 chemical elements with physical and chemical properties. Features column
     Category:
     <select bind:value={category_filter}>
       <option value="all">All ({element_data.length})</option>
-      {#each categories as cat}
+      {#each categories as cat (cat)}
         <option value={cat}>
           {cat} ({element_data.filter((el) => el.category === cat).length})
         </option>
@@ -150,7 +150,7 @@ All 118 chemical elements with physical and chemical properties. Features column
     Phase:
     <select bind:value={phase_filter}>
       <option value="all">All</option>
-      {#each phases as phase}
+      {#each phases as phase (phase)}
         <option value={phase}>{phase}</option>
       {/each}
     </select>
@@ -195,7 +195,7 @@ All 118 chemical elements with physical and chemical properties. Features column
 Columns can be reordered by dragging within the same group. Useful for comparing specific metrics side-by-side:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { HeatmapTable } from 'matterviz'
 
   const data = [
@@ -239,7 +239,7 @@ Columns can be reordered by dragging within the same group. Useful for comparing
 A comprehensive ML model benchmark comparison with sticky first column. Scroll horizontally to compare models across different datasets:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { HeatmapTable } from 'matterviz'
 
   const models = [
@@ -309,7 +309,7 @@ A comprehensive ML model benchmark comparison with sticky first column. Scroll h
 The table correctly handles numeric strings with uncertainty notation for both sorting and heatmap coloring. Values like `1.23 ± 0.05`, `1.23 +- 0.05`, and `1.23(5)` are parsed to extract the primary number:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { HeatmapTable } from 'matterviz'
 
   // Experimental measurements with uncertainties in various formats
@@ -360,7 +360,7 @@ The table correctly handles numeric strings with uncertainty notation for both s
 Explore different D3 color scales, scale types (linear vs logarithmic), and the `better` prop which controls whether high or low values get the "good" end of the scale. Log scale is useful for properties spanning many orders of magnitude like electrical conductivity:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { HeatmapTable } from 'matterviz'
 
   const color_scales = [
@@ -435,7 +435,7 @@ Explore different D3 color scales, scale types (linear vs logarithmic), and the 
   <label>
     Color Scale:
     <select bind:value={selected_scale}>
-      {#each color_scales as scale}
+      {#each color_scales as scale (scale)}
         <option value={scale}>{scale.replace(`interpolate`, ``)}</option>
       {/each}
     </select>

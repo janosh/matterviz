@@ -5,8 +5,8 @@
 A simple scatter plot showing different display modes (points, lines, or both). Notice the gear icon in the top-right corner. Click it to access styling controls including point size, colors, line width, opacity, and more:
 
 ```svelte example
-<script>
-  import { ScatterPlot } from 'matterviz'
+<script lang="ts">
+  import { type InternalPoint, ScatterPlot } from 'matterviz'
 
   // Basic single series data
   const basic_data = {
@@ -38,8 +38,9 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   let double_clicked_point_info = $state('No point double-clicked yet.')
   let hovered_point_info = $state('No point hovered yet.')
 
-  // It's good practice to type event handlers if you know the structure
-  function on_point_click({ point }) {
+  type PointMeta = { id?: string; series_label?: string }
+
+  function on_point_click({ point }: { point: InternalPoint<PointMeta> }): void {
     const { x, y, metadata, series_idx, point_idx } = point
     clicked_point_info = `Clicked: Point (${x}, ${y}), Series: '${
       metadata?.series_label ??
@@ -50,7 +51,9 @@ A simple scatter plot showing different display modes (points, lines, or both). 
     }
   }
 
-  function handle_point_double_click({ point }) {
+  function handle_point_double_click(
+    { point }: { point: InternalPoint<PointMeta> },
+  ): void {
     const { x, y, metadata, series_idx, point_idx } = point
     double_clicked_point_info = `Double-clicked: Point (${x}, ${y}), Series: '${
       metadata?.series_label ??
@@ -61,7 +64,9 @@ A simple scatter plot showing different display modes (points, lines, or both). 
     }
   }
 
-  function handle_point_hover({ point }) {
+  function handle_point_hover(
+    { point }: { point: InternalPoint<PointMeta> | null },
+  ): void {
     if (point) {
       const { x, y, metadata, series_idx, point_idx } = point
       hovered_point_info = `Hovering: Point (${x}, ${y}), Series: '${
@@ -123,7 +128,7 @@ A simple scatter plot showing different display modes (points, lines, or both). 
 Demonstrate various point styles, custom tooltips, and hover effects:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Generate data for demonstration
@@ -274,7 +279,7 @@ Hovered point:
 This example demonstrates how to apply different styles _and sizes_ to individual points within a single series, including different marker symbols. The size of each point is determined by its distance from the center of the spiral, controlled by the `size_values` prop.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
   import { symbol_names } from 'matterviz/labels'
 
@@ -391,7 +396,7 @@ This example demonstrates how to apply different styles _and sizes_ to individua
 This example shows categorized data with color coding, custom tick intervals, and demonstrates handling negative values:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Define categories
@@ -464,7 +469,7 @@ This example shows categorized data with color coding, custom tick intervals, an
 
 <!-- Legend -->
 <div style="display: flex; justify-content: center; margin: 1em; gap: 3ex;">
-  {#each categories as category, idx}
+  {#each categories as category, idx (category)}
     <div style="display: flex; align-items: center;">
       <span style="width: 12px; height: 12px; background: {category_colors[idx]}; border-radius: 50%;"></span>
       &ensp;{category}
@@ -478,7 +483,7 @@ This example shows categorized data with color coding, custom tick intervals, an
 Using time data on the x-axis with custom formatting. This example also demonstrates `tick.label.inside` which positions tick labels inside the plot area for a more compact design:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Generate dates for the past 30 days
@@ -571,7 +576,7 @@ Using time data on the x-axis with custom formatting. This example also demonstr
 This example demonstrates how points with identical coordinates can still be individually identified and interacted with:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Create points with shared X or Y coordinates
@@ -634,7 +639,7 @@ This example demonstrates how points with identical coordinates can still be ind
 This example shows how to add permanent text labels to your scatter points:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Data with text labels
@@ -666,7 +671,7 @@ This example shows how to add permanent text labels to your scatter points:
 You can position labels in different directions relative to each point:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   const position_data = {
@@ -697,7 +702,7 @@ You can position labels in different directions relative to each point:
 ScatterPlot supports logarithmic scaling for data that spans multiple orders of magnitude. This example combines multiple datasets and allows you to dynamically switch between linear and logarithmic scales for both the X and Y axes using the checkboxes below. Observe how the appearance of the data changes, particularly for power-law relationships which appear as straight lines on log-log plots.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
   import { symbol_names } from 'matterviz/labels'
   import * as math from 'matterviz/math'
@@ -890,7 +895,7 @@ The configurable `threshold` parameter controls the transition point: smaller va
   let arcsinh_threshold = $state(10)
 
   // Seeded random for reproducibility
-  function seeded_random(seed) {
+  function seeded_random(seed: number): () => number {
     let state = seed
     return () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
@@ -1079,7 +1084,7 @@ The configurable `threshold` parameter controls the transition point: smaller va
 This example combines multiple features including different display modes, custom styling, various marker types, interactive controls for axis customization, and hover styling. It demonstrates the new grid customization options with independent X and Y grid controls and custom grid styling. Click the gear icon in the top-right corner to open a control pane with point size, line width, colors, and styling options:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
   import { symbol_names } from 'matterviz/labels'
 
@@ -1180,7 +1185,7 @@ This example combines multiple features including different display modes, custo
 
   <!-- Legend with toggles -->
   <div style="display: flex; margin-left: 2em;">
-    {#each categories as category, idx}
+    {#each categories as category, idx (category)}
       <label style="margin-right: 1em; display: flex; align-items: center;">
         <input type="checkbox" bind:checked={visible_series[category]} />
         <span style="display: inline-block; width: 12px; height: 12px; background: {category_colors[idx]}; border-radius: 50%; margin: 0 0.5em;"></span>
@@ -1281,7 +1286,7 @@ This example combines multiple features including different display modes, custo
 This example demonstrates how the color bar automatically positions itself in one of the four corners (top-left, top-right, bottom-left, bottom-right) based on where the data points are least dense. Use the sliders to adjust the number of points generated in each quadrant and observe how the color bar moves to avoid overlapping the data.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // State for controlling point density in each quadrant
@@ -1413,7 +1418,7 @@ To enable this feature, set `auto_placement: true` within the `point_label` obje
 This example demonstrates automatic placement with both clustered points (showing collision avoidance) and isolated markers (showing how labels position below markers without overlap):
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Function to generate a dense cluster of points
@@ -1540,7 +1545,7 @@ This example demonstrates automatic placement with both clustered points (showin
 This example shows how to place the color bar vertically on the right side of the plot, outside the main plotting area, and make it span the full height available. It also demonstrates how to dynamically change the color scheme and toggle between linear and log color scales.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ColorScaleSelect, ScatterPlot } from 'matterviz'
 
   // Generate data where color value relates to y-value
@@ -1620,7 +1625,7 @@ and scale type.
 This example demonstrates how lines are clipped when they extend beyond the fixed `x_axis.range` and `y_axis.range` provided to the `ScatterPlot`. Lines originating and ending outside the plot area are cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Function to generate a line that extends beyond the limits
@@ -1718,7 +1723,7 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
 When comparing results from multiple methods or categories, you can organize legend items into collapsible groups using the `legend_group` property. This is particularly useful for comparing DFT methods, ML potentials, or experimental data. Click the group header to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Grouped series data - comparing DFT methods vs ML potentials vs experiment
@@ -1800,7 +1805,7 @@ When comparing results from multiple methods or categories, you can organize leg
 Display multiple scatter plots in a responsive 2×2 grid:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   const make_data = (fn) => {
@@ -1826,7 +1831,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
 </script>
 
 <div class="grid">
-  {#each plots as { title, data }}
+  {#each plots as { title, data } (title)}
     <div class="cell">
       <h4>{title}</h4>
       <ScatterPlot series={[data]} x_axis={{ label: 'x' }} y_axis={{ label: 'y' }} />
@@ -1864,7 +1869,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
 The `fill_regions` prop enables filling areas between boundaries defined by series, constants, functions, or raw data arrays. The `error_bands` prop provides a convenient shorthand for showing uncertainty ranges around data series. Both support hover interactions and appear in the legend.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Generate two series to fill between
@@ -1949,7 +1954,7 @@ The `fill_regions` prop enables filling areas between boundaries defined by seri
 Use the `where` condition to fill only where a condition is true—for example, highlighting regions where one series exceeds another. Boundaries can also be defined as functions for dynamic fills like confidence intervals or thresholds.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Two crossing series
@@ -2025,7 +2030,7 @@ Use the `where` condition to fill only where a condition is true—for example, 
 A key feature of the fill-between API is automatic interpolation when series have different x-values. This example demonstrates filling between two series with completely different sampling points—the fill utility automatically aligns them using linear interpolation.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Series A: sparse sampling (every 2 units)
@@ -2079,7 +2084,7 @@ different x-coordinates. The fill region correctly interpolates between them:
 When series have non-overlapping x-ranges, the fill utility extrapolates using the nearest available values. This example shows three scenarios: partial overlap, no overlap, and one series contained within another.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Series 1: x from 0 to 8
@@ -2145,7 +2150,7 @@ When series have non-overlapping x-ranges, the fill utility extrapolates using t
 The `curve` property controls how the fill area is interpolated between data points. This example compares different curve types side-by-side, showing how each affects the fill shape.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Same data for all plots
@@ -2209,7 +2214,7 @@ The `curve` property controls how the fill area is interpolated between data poi
 Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to your plots. These are useful for thresholds, targets, parity lines, and annotations. Lines support custom styling, annotations, z-index positioning, hover effects, and click handlers.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Sample data points
@@ -2275,7 +2280,7 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to you
 <div
   style="margin-top: 0.5em; font-size: 0.9em; display: flex; gap: 1em; flex-wrap: wrap"
 >
-  {#each ref_lines as line}
+  {#each ref_lines as line (line.label)}
     <label>
       <input
         type="checkbox"
@@ -2296,7 +2301,7 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to you
 Create line segments between specific points, or lines that extend through two points to the plot edges:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Data with clusters
@@ -2369,7 +2374,7 @@ Create line segments between specific points, or lines that extend through two p
 Reference lines support interactive features including hover styling, click handlers, and custom metadata:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   const data = {
@@ -2460,7 +2465,7 @@ Reference lines support interactive features including hover styling, click hand
 Control where reference lines appear in the rendering stack using `z_index`. Options are `below-grid`, `below-lines`, `below-points` (default), and `above-all`:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   const series = [{
@@ -2489,7 +2494,7 @@ Control where reference lines appear in the rendering stack using `z_index`. Opt
 
 <div style="margin-bottom: 1em">
   <strong>Z-Index:</strong>
-  {#each [`below-grid`, `below-lines`, `below-points`, `above-all`] as zi}
+  {#each [`below-grid`, `below-lines`, `below-points`, `above-all`] as zi (zi)}
     <label style="margin-left: 1em">
       <input type="radio" bind:group={z_index} value={zi} />
       {zi}
@@ -2511,7 +2516,7 @@ Control where reference lines appear in the rendering stack using `z_index`. Opt
 Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO strings for time values:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Generate time series data for the past 30 days
@@ -2578,11 +2583,11 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
 - **Error simulation** (5% chance) to test error handling
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Seeded random for reproducible data
-  function seeded_random(seed) {
+  function seeded_random(seed: number): () => number {
     let state = seed
     return () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
@@ -2590,10 +2595,23 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
     }
   }
 
+  type MaterialData = {
+    density: number
+    bandgap: number
+    conductivity: number
+    formation_energy: number
+    bulk_modulus: number
+    thermal_expansion: number
+  }
+
   // Generate realistic materials data with correlations
-  function generate_property_data(n_points, base_seed) {
+  function generate_property_data(n_points: number, base_seed: number) {
     const rng = seeded_random(base_seed)
-    const data = { metals: [], ceramics: [], polymers: [] }
+    const data: Record<string, MaterialData[]> = {
+      metals: [],
+      ceramics: [],
+      polymers: [],
+    }
 
     for (let idx = 0; idx < n_points; idx++) {
       // Metals: high density, low bandgap, high conductivity
@@ -2657,9 +2675,17 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
     polymers: `#2ecc71`,
   }
 
+  type PropKey = keyof typeof properties
+
   // Build series from data
-  function build_series(x_prop, y_prop) {
-    const series_list = []
+  function build_series(x_prop: PropKey, y_prop: PropKey) {
+    const series_list: Array<{
+      x: number[]
+      y: number[]
+      label: string
+      point_style: { fill: string; radius: number; fill_opacity: number }
+      markers: string
+    }> = []
     for (const [material, color] of Object.entries(colors)) {
       const mat_data = all_data[material]
       series_list.push({
@@ -2674,16 +2700,20 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
   }
 
   // Initial state
-  let x_key = $state(`density`)
-  let y_key = $state(`formation_energy`)
+  let x_key = $state<PropKey>(`density`)
+  let y_key = $state<PropKey>(`formation_energy`)
   let series = $derived(build_series(x_key, y_key))
-  let loading_log = $state([])
+  let loading_log = $state<string[]>([])
   let error_count = $state(0)
   let load_count = $state(0)
   let load_start = $state(0)
 
   // Async data loader - side-effect free, state updates in on_axis_change
-  async function data_loader(axis, property_key, current_series) {
+  async function data_loader(
+    _axis: string,
+    property_key: PropKey,
+    _current_series: unknown,
+  ) {
     load_start = performance.now()
     loading_log = [...loading_log, `⏳ Loading ${properties[property_key].label}...`]
 
@@ -2698,8 +2728,8 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
     }
 
     // Determine new keys for series build (don't mutate x_key/y_key here)
-    const new_x_key = axis === `x` ? property_key : x_key
-    const new_y_key = axis === `y` ? property_key : y_key
+    const new_x_key = _axis === `x` ? property_key : x_key
+    const new_y_key = _axis === `y` ? property_key : y_key
 
     const prop = properties[property_key]
     return {
@@ -2708,7 +2738,7 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
     }
   }
 
-  function on_axis_change(axis, property_key) {
+  function on_axis_change(axis: `x` | `y`, property_key: PropKey): void {
     load_count++
     if (axis === `x`) x_key = property_key
     if (axis === `y`) y_key = property_key
@@ -2719,8 +2749,9 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
     ]
   }
 
-  function handle_error(err) {
-    // err is AxisLoadError: { axis, key, message }
+  type AxisLoadError = { axis: string; key: string; message: string }
+
+  function handle_error(err: AxisLoadError): void {
     loading_log = [
       ...loading_log,
       `❌ ${err.axis}-axis error (${err.key}): ${err.message}`,
@@ -2767,7 +2798,7 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
 <div
   style="margin-top: 0.5em; padding: 0.5em; background: var(--surface-bg-hover, rgba(0, 0, 0, 0.05)); border-radius: 4px; font-size: 0.8em; max-height: 80px; overflow-y: auto; font-family: monospace"
 >
-  {#each loading_log.slice(-6) as msg}
+  {#each loading_log.slice(-6) as msg, idx (idx)}
     <div>{msg}</div>
   {/each}
   {#if loading_log.length === 0}
@@ -2788,11 +2819,11 @@ This example demonstrates combining **interactive axis labels** with an **intera
 All changes trigger lazy data loading with simulated network delays.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Seeded random for reproducible data
-  function seeded_random(seed) {
+  function seeded_random(seed: number): () => number {
     let state = seed
     return () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
@@ -2800,10 +2831,19 @@ All changes trigger lazy data loading with simulated network delays.
     }
   }
 
+  type DataPoint = {
+    density: number
+    volume: number
+    formation_energy: number
+    bandgap: number
+    bulk_modulus: number
+    thermal_cond: number
+  }
+
   // Generate correlated materials data
-  function generate_data(n_points, base_seed) {
+  function generate_data(n_points: number, base_seed: number): DataPoint[] {
     const rng = seeded_random(base_seed)
-    const data = []
+    const data: DataPoint[] = []
 
     for (let idx = 0; idx < n_points; idx++) {
       const base_density = 2 + rng() * 18
@@ -2993,7 +3033,7 @@ All changes trigger lazy data loading with simulated network delays.
 This example creates multiple fill regions between series with varying sample densities to stress test the interpolation algorithm:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   // Generate series with different densities and offsets
@@ -3072,7 +3112,7 @@ between adjacent series with different densities:
 When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` controls the Y2 axis range. Modes: `'synced'` (Y2 has exact same range as Y1), `'align'` (Y2 expands to show all data with a shared anchor point, default 0), or `undefined`/`'none'` (independent).
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   const n_points = 50
@@ -3108,7 +3148,7 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
 
 <div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
   <strong>Y2 Sync:</strong>
-  {#each Object.entries(sync_labels) as [mode, label]}
+  {#each Object.entries(sync_labels) as [mode, label] (mode)}
     <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
   {/each}
 </div>
@@ -3131,7 +3171,7 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
 Click the gear icon to access the Y2 Sync dropdown in PlotControls.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
   const n_points = 30

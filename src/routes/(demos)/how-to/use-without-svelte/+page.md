@@ -12,7 +12,7 @@ Minimal custom element `StructureCE.svelte` for [`Structure.svelte`](https://git
 
 ```svelte
 <!-- matterviz/structure/StructureCE.svelte -->
-<script>
+<script lang="ts">
   import { Structure } from 'matterviz'
   let props = $props()
 </script>

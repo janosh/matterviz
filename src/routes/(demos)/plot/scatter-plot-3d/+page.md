@@ -7,7 +7,7 @@ The `ScatterPlot3D` component provides efficient 3D scatter plot visualization u
 A simple 3D scatter plot with multiple data series. Use mouse to rotate, scroll to zoom, and right-click drag to pan:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate helical data
@@ -43,7 +43,7 @@ A simple 3D scatter plot with multiple data series. Use mouse to rotate, scroll 
 Points can be colored based on data values using a continuous color scale. The color bar automatically displays the value range:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate spherical shell of points with color based on z-coordinate
@@ -88,7 +88,7 @@ Points can be colored based on data values using a continuous color scale. The c
 Add a surface defined by a z = f(x, y) function. The surface is colored by the z-value by default:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Define a saddle surface: z = x^2 - y^2
@@ -141,7 +141,7 @@ Add a surface defined by a z = f(x, y) function. The surface is colored by the z
 Create surfaces using parametric equations. This example shows a torus:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   const [major_radius, minor_radius] = [0.4, 0.15]
@@ -180,7 +180,7 @@ Create surfaces using parametric equations. This example shows a torus:
 Display 3D trajectories as connected lines with markers at each data point. Each series can have its own color and style:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate Lissajous curves - parametric 3D curves
@@ -255,7 +255,7 @@ Display 3D trajectories as connected lines with markers at each data point. Each
 Points can be sized based on data values using the `size_scale` prop:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate random 3D data with varying sizes
@@ -296,7 +296,7 @@ Points can be sized based on data values using the `size_scale` prop:
 Enable automatic rotation with the `auto_rotate` prop. Use the controls pane (gear icon) to adjust rotation speed:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate a spiral galaxy-like structure
@@ -349,7 +349,7 @@ Enable automatic rotation with the `auto_rotate` prop. Use the controls pane (ge
 Combine multiple surfaces in the same plot:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Paraboloid surface
@@ -393,7 +393,7 @@ Combine multiple surfaces in the same plot:
 The component uses instanced rendering with per-instance colors for efficient handling of large datasets:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate many random points
@@ -428,7 +428,7 @@ The component uses instanced rendering with per-instance colors for efficient ha
 Add reference lines in 3D space to highlight axes, thresholds, or specific values. Lines can be parallel to any axis or defined as segments between points:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate random 3D data
@@ -503,7 +503,7 @@ Add reference lines in 3D space to highlight axes, thresholds, or specific value
 Add reference planes in 3D space. Planes can be aligned to axis pairs (XY, XZ, YZ), defined by a normal vector and point, or through three points:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate data clustered above and below a plane
@@ -567,7 +567,7 @@ Add reference planes in 3D space. Planes can be aligned to axis pairs (XY, XZ, Y
 Create complex 3D visualizations by combining reference lines, planes, and surfaces:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Generate points on a paraboloid z = x² + y²
@@ -673,7 +673,7 @@ Create complex 3D visualizations by combining reference lines, planes, and surfa
 Define a plane by specifying three non-collinear points:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Three points defining a plane
@@ -767,7 +767,7 @@ Define a plane by specifying three non-collinear points:
 Surfaces can be colored using a custom color function that receives x, y, z coordinates:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { ScatterPlot3D } from 'matterviz'
 
   // Ripple surface with custom coloring

@@ -7,7 +7,7 @@ A numeric range filter with histogram visualization for filtering materials by q
 Filter with histogram, logarithmic scale toggle, and callbacks:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { PropertyFilter } from 'matterviz'
 
   // Generate sample data
@@ -16,12 +16,12 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
     () => Math.abs(Math.random() * 5 + Math.random() * 2 - 0.5),
   )
 
-  let min = $state()
-  let max = $state()
+  let min = $state<number>()
+  let max = $state<number>()
   let log_scale = $state(false)
-  let events = $state([])
+  let events = $state<string[]>([])
 
-  function log_event(type) {
+  function log_event(type: string) {
     events = [
       ...events.slice(-2),
       `${type}: [${min?.toFixed(1) ?? `-∞`}, ${max?.toFixed(1) ?? `+∞`}]`,
@@ -66,7 +66,7 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
 Control histogram placement, custom placeholders, and without histogram:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { PropertyFilter } from 'matterviz'
 
   const data = Array.from({ length: 300 }, () => Math.random() * 10 - 2)
@@ -125,7 +125,7 @@ Control histogram placement, custom placeholders, and without histogram:
 Filter materials by multiple properties simultaneously:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { PropertyFilter } from 'matterviz'
 
   const n_mats = 500
@@ -140,7 +140,7 @@ Filter materials by multiple properties simultaneously:
   let v_min = $state()
   let v_max = $state()
 
-  function in_range(val, min, max) {
+  function in_range(val: number, min: number | undefined, max: number | undefined) {
     return (min === undefined || val >= min) && (max === undefined || val <= max)
   }
 
@@ -209,7 +209,7 @@ Filter materials by multiple properties simultaneously:
 Filter and display a materials table:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { PropertyFilter } from 'matterviz'
 
   const materials = [
@@ -254,7 +254,7 @@ Filter and display a materials table:
     </tr>
   </thead>
   <tbody>
-    {#each filtered as m}
+    {#each filtered as m (m.name)}
       <tr style="border-bottom: 1px solid rgba(128, 128, 128, 0.1)">
         <td style="padding: 8pt; font-family: monospace">{m.name}</td>
         <td style="padding: 8pt; text-align: right">{m.bandgap}</td>

@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { OptimadeStructureViewer } from '$site'
   import { FileDetails } from 'svelte-multiselect'
   import optimade_viewer_src from '$site/OptimadeStructureViewer.svelte?raw'

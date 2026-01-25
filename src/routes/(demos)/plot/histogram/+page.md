@@ -5,8 +5,8 @@
 This example demonstrates bar styling options including `border_radius` for rounded corners and `stroke_color`/`stroke_width` for bar borders:
 
 ```svelte example
-<script>
-  import { format_num, Histogram } from 'matterviz'
+<script lang="ts">
+  import { format_num, Histogram, type HistogramHandlerProps } from 'matterviz'
   import { generate_normal } from '$site/plot-utils'
 
   let bins = $state(50)
@@ -21,7 +21,7 @@ This example demonstrates bar styling options including `border_radius` for roun
     label: `Normal Distribution (μ=50, σ=15)`,
   })
 
-  function handle_bar_hover(data) {
+  function handle_bar_hover(data: HistogramHandlerProps | null): void {
     if (data) {
       const { value, count, property } = data
       hover_info = `Hovering: ${property} - Value: ${
@@ -32,7 +32,7 @@ This example demonstrates bar styling options including `border_radius` for roun
     }
   }
 
-  function handle_bar_click(data) {
+  function handle_bar_click(data: HistogramHandlerProps): void {
     const { value, count, property } = data
     click_info = `Clicked: ${property} - Value: ${
       value.toFixed(1)
@@ -80,7 +80,7 @@ This example demonstrates bar styling options including `border_radius` for roun
 When comparing distributions with vastly different sample sizes, use **dual y-axes** for independent scaling. This example shows test scores from two cohorts with 1000 vs 200 samples:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
   import { generate_normal } from '$site/plot-utils'
 
@@ -129,7 +129,7 @@ When comparing distributions with vastly different sample sizes, use **dual y-ax
 Compare distributions with vastly different scales using **dual y-axes**. Some distributions use the left axis, while others use the independent right y2-axis:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
   import * as utils from '$site/plot-utils'
 
@@ -146,7 +146,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
     { y: utils.generate_gamma(1000, 2, 3), label: `Gamma (α=2, β=3)`, line_style: { stroke: `darkorange` }, y_axis: `y2` },
   ])
 
-  function toggle_series(idx) {
+  function toggle_series(idx: number): void {
     series[idx].visible = !series[idx].visible
     series = [...series]
   }
@@ -162,13 +162,13 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
     <input type="range" bind:value={bar.stroke_width} min="0" max="5" step="0.5" />
   </label>
 
-  <label style="display: flex; gap: 5pt">X: {#each [`linear`, `log`] as scale}
+  <label style="display: flex; gap: 5pt">X: {#each [`linear`, `log`] as scale (scale)}
     <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
   {/each}</label>
-  <label style="display: flex; gap: 5pt">Y1: {#each [`linear`, `log`] as scale}
+  <label style="display: flex; gap: 5pt">Y1: {#each [`linear`, `log`] as scale (scale)}
     <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
   {/each}</label>
-  <label style="display: flex; gap: 5pt">Y2: {#each [`linear`, `log`] as scale}
+  <label style="display: flex; gap: 5pt">Y2: {#each [`linear`, `log`] as scale (scale)}
     <input type="radio" bind:group={y2_axis.scale_type} value={scale} />{scale}
   {/each}</label>
 
@@ -177,7 +177,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   <label><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
 </div>
 
-{#each series as srs, idx}
+{#each series as srs, idx (srs.label)}
   <label>
     <input type="checkbox" checked={srs.visible} onchange={() => toggle_series(idx)} />
     <span style="width: 16px; height: 16px; margin: 0 0.5em; background: {srs.line_style.stroke}"></span>
@@ -206,7 +206,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 ## Logarithmic Scales
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
   import * as utils from '$site/plot-utils'
 
@@ -278,12 +278,12 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both positive and negative values with large dynamic range. Unlike log scale, arcsinh handles zero and negative values smoothly, transitioning from linear behavior near zero to logarithmic behavior for large absolute values.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
 
   // Generate data with both positive and negative values
-  function generate_mixed_data(n, seed = 42) {
-    const data = []
+  function generate_mixed_data(n: number, seed = 42): number[] {
+    const data: number[] = []
     let state = seed
     const rng = () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
@@ -377,7 +377,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 ## Real-World Distributions
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
   import * as utils from '$site/plot-utils'
   import { format_num } from 'matterviz'
@@ -437,12 +437,12 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 </script>
 
 <select bind:value={selected}>
-  {#each Object.entries(distributions) as [key, dist]}
+  {#each Object.entries(distributions) as [key, dist] (key)}
     <option value={key}>{dist.label}</option>
   {/each}
 </select>
 
-{#each [`single`, `overlay`] as display_mode}
+{#each [`single`, `overlay`] as display_mode (display_mode)}
   <label><input type="radio" bind:group={mode} value={display_mode} />{
       display_mode
     }</label>
@@ -470,7 +470,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 ## Bin Size Comparison
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
   import * as utils from '$site/plot-utils'
 
@@ -504,7 +504,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 {#if !show_overlay}
   <label>Bins: {bin_counts[1]}<input type="range" bind:value={bin_counts[1]} min="5" max="200" step="5" /></label>
 {:else}
-  {#each bin_counts as count, idx (count)}
+  {#each bin_counts as count, idx (idx)}
     <label style="color: {colors[idx]}">{count} bins: <input type="range" bind:value={bin_counts[idx]} min="5" max="200" step="5" /></label>
   {/each}
 {/if}
@@ -526,7 +526,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 ## Custom Styling
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
   import * as utils from '$site/plot-utils'
 
@@ -559,18 +559,18 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
   }])
 </script>
 
-{#each [`financial`, `scientific`] as source}<label><input type="radio" bind:group={data_source} value={source} />{source}</label>{/each}
+{#each [`financial`, `scientific`] as source (source)}<label><input type="radio" bind:group={data_source} value={source} />{source}</label>{/each}
 
 <select bind:value={color_scheme}>
-  {#each Object.keys(color_schemes) as scheme}<option value={scheme}>{scheme}</option>{/each}
+  {#each Object.keys(color_schemes) as scheme (scheme)}<option value={scheme}>{scheme}</option>{/each}
 </select>
 
 <select bind:value={x_format}>
-  {#each Object.entries(x_formats) as [key, format]}<option value={key}>{key} ({format})</option>{/each}
+  {#each Object.entries(x_formats) as [key, format] (key)}<option value={key}>{key} ({format})</option>{/each}
 </select>
 
 <select bind:value={y_format}>
-  {#each Object.entries(y_formats) as [key, format]}<option value={key}>{key} ({format})</option>{/each}
+  {#each Object.entries(y_formats) as [key, format] (key)}<option value={key}>{key} ({format})</option>{/each}
 </select>
 
 <Histogram
@@ -593,7 +593,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 ## Performance Test
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
   import * as utils from '$site/plot-utils'
 
@@ -638,7 +638,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
     step="1000"
   /></label>
 
-{#each [`normal`, `uniform`, `sparse`] as type}<label><input
+{#each [`normal`, `uniform`, `sparse`] as type (type)}<label><input
       type="radio"
       bind:group={data_type}
       value={type}
@@ -652,7 +652,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
     step="10"
   /></label>
 
-{#each [`single`, `overlay`] as display_mode}
+{#each [`single`, `overlay`] as display_mode (display_mode)}
   <label><input
       type="radio"
       bind:group={mode}
@@ -681,7 +681,7 @@ points, {bins} bins, {mode} mode
 Use `ref_lines` to show statistical reference values like mean, median, standard deviations, or to compare distributions against expected values. Toggle between single distribution (with full statistics) and comparison mode:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
   import { generate_normal } from '$site/plot-utils'
 
@@ -828,11 +828,11 @@ This demo stress-tests histograms with interactive property switching:
 - **Rapid property switching** to test state management
 
 ```svelte example
-<script>
-  import { Histogram } from 'matterviz'
+<script lang="ts">
+  import { type DataSeries, Histogram } from 'matterviz'
 
   // Seeded random number generator
-  function seeded_random(seed) {
+  function seeded_random(seed: number): () => number {
     let state = seed
     return () => {
       state = (state * 1103515245 + 12345) & 0x7fffffff
@@ -841,19 +841,29 @@ This demo stress-tests histograms with interactive property switching:
   }
 
   // Box-Muller transform for normal distribution
-  function box_muller(rng) {
+  function box_muller(rng: () => number): number {
     const u1 = rng()
     const u2 = rng()
     return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
   }
 
+  type DistType =
+    | `normal`
+    | `exponential`
+    | `bimodal`
+    | `uniform`
+    | `log-normal`
+    | `heavy-tail`
+    | `skewed`
+    | `multimodal`
+
   // Generate various distributions
-  function generate_distribution(type, n, seed) {
+  function generate_distribution(type: DistType, n: number, seed: number): number[] {
     const rng = seeded_random(seed)
-    const data = []
+    const data: number[] = []
 
     for (let idx = 0; idx < n; idx++) {
-      let val
+      let val: number
       if (type === `normal`) {
         val = box_muller(rng) * 1.5 - 2
       } else if (type === `exponential`) {
@@ -862,14 +872,15 @@ This demo stress-tests histograms with interactive property switching:
         val = rng() < 0.4 ? box_muller(rng) * 0.8 - 3 : box_muller(rng) * 1.2 + 2
       } else if (type === `uniform`) {
         val = rng() * 10 - 2
-      } else if (type === `log_normal`) {
+      } else if (type === `log-normal`) {
         val = Math.exp(box_muller(rng) * 0.8)
-      } else if (type === `heavy_tail`) {
+      } else if (type === `heavy-tail`) {
         val = box_muller(rng) / (rng() + 0.1)
       } else if (type === `skewed`) {
         const u = rng()
         val = Math.pow(u, 3) * 15 - 2
-      } else if (type === `multimodal`) {
+      } else {
+        // multimodal
         const mode = Math.floor(rng() * 4)
         val = box_muller(rng) * 0.5 + mode * 3 - 4
       }
@@ -904,13 +915,13 @@ This demo stress-tests histograms with interactive property switching:
       bins: 45,
     },
     density: {
-      type: `log_normal`,
+      type: `log-normal`,
       label: `Density`,
       unit: `g/cm³`,
       bins: 50,
     },
     bulk_modulus: {
-      type: `heavy_tail`,
+      type: `heavy-tail`,
       label: `Bulk Modulus`,
       unit: `GPa`,
       bins: 60,
@@ -947,8 +958,10 @@ This demo stress-tests histograms with interactive property switching:
     })
   }
 
+  type PropKey = keyof typeof property_configs
+
   // Build series for a property
-  function build_series(prop_key) {
+  function build_series(prop_key: PropKey): DataSeries[] {
     return material_classes.map((name, idx) => ({
       y: all_data[prop_key][idx],
       label: name,
@@ -958,14 +971,17 @@ This demo stress-tests histograms with interactive property switching:
   }
 
   // State
-  let current_prop = $state(`formation_energy`)
+  let current_prop = $state<PropKey>(`formation_energy`)
   let series = $derived(build_series(current_prop))
   let bins = $state(property_configs.formation_energy.bins)
-  let load_times = $state([])
+  let load_times = $state<number[]>([])
   let switch_count = $state(0)
   let load_start = $state(0)
 
-  async function data_loader(axis, property_key) {
+  async function data_loader(
+    _axis: string,
+    property_key: PropKey,
+  ): Promise<{ series: DataSeries[]; axis_label: string }> {
     load_start = performance.now()
     await new Promise((r) => setTimeout(r, 100 + Math.random() * 400))
     const config = property_configs[property_key]
@@ -975,7 +991,7 @@ This demo stress-tests histograms with interactive property switching:
     }
   }
 
-  function on_axis_change(axis, property_key) {
+  function on_axis_change(_axis: string, property_key: PropKey): void {
     switch_count++
     current_prop = property_key
     bins = property_configs[property_key].bins
@@ -1034,7 +1050,7 @@ This demo stress-tests histograms with interactive property switching:
 Display multiple histograms in a responsive 2×2 grid:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
   import * as utils from '$site/plot-utils'
 
@@ -1071,7 +1087,7 @@ Display multiple histograms in a responsive 2×2 grid:
 </script>
 
 <div class="grid">
-  {#each plots as { title, data, color, x_label, bins }}
+  {#each plots as { title, data, color, x_label, bins } (title)}
     <div class="cell">
       <h4>{title}</h4>
       <Histogram
@@ -1115,7 +1131,7 @@ Display multiple histograms in a responsive 2×2 grid:
 Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` to control axis behavior during zoom/pan.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Histogram } from 'matterviz'
 
   const n_samples = 200
@@ -1155,7 +1171,7 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
 
 <div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
   <strong>Y2 Sync:</strong>
-  {#each Object.entries(sync_labels) as [mode, label]}
+  {#each Object.entries(sync_labels) as [mode, label] (mode)}
     <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
   {/each}
 </div>

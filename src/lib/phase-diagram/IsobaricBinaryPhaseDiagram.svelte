@@ -599,14 +599,14 @@
       ]}
         <g class="tie-line" class:locked={locked_hover_info}>
           <!-- Horizontal tie-line with white outline for contrast -->
-          {#each [`white`, `rgb(${PHASE_COLOR_RGB.tie_line})`] as stroke, idx (idx)}
+          {#each [`white`, `rgb(${PHASE_COLOR_RGB.tie_line})`] as stroke (stroke)}
             <line
               x1={x_left}
               y1={y_pos}
               x2={x_right}
               y2={y_pos}
               {stroke}
-              stroke-width={tie_line.stroke_width + (idx === 0 ? 1 : 0)}
+              stroke-width={tie_line.stroke_width + (stroke === `white` ? 1 : 0)}
               stroke-linecap="round"
             />
           {/each}

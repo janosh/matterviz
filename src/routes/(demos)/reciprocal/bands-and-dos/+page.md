@@ -7,7 +7,7 @@ Combined visualization of band structures with density of states.
 Electronic band structures display the Fermi level (E<sub>F</sub>) as a dashed red line when `efermi` is present. Note: this example uses bands and DOS from different materials for demonstration purposes.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BandsAndDos } from 'matterviz'
   import { electronic_bands } from '$site/electronic/bands'
   import { dos_spin_polarization } from '$site/electronic/dos'
@@ -29,7 +29,7 @@ Electronic band structures display the Fermi level (E<sub>F</sub>) as a dashed r
 Phonon band structure with DOS side-by-side, synchronized axes and custom styling:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BandsAndDos } from 'matterviz'
   import { phonon_bands, phonon_dos } from '$site/phonons'
 </script>
@@ -55,7 +55,7 @@ Phonon band structure with DOS side-by-side, synchronized axes and custom stylin
 Compare band structures and DOS from different computational methods:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BandsAndDos } from 'matterviz'
   import { phonon_bands, phonon_dos } from '$site/phonons'
 </script>

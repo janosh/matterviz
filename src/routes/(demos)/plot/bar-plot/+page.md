@@ -5,7 +5,7 @@
 A simple bar plot showing lattice parameters across different crystal systems. Use the controls (gear icon) to toggle orientation, modes, and grid display. This example also demonstrates rounded corners (`border_radius`) and bar borders (`stroke_color`, `stroke_width`):
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const lattice_params = [
@@ -33,7 +33,7 @@ A simple bar plot showing lattice parameters across different crystal systems. U
 Compare overlay, stacked, and grouped (side-by-side) modes using band gap data from different measurement techniques. Click legend items to toggle series visibility:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const band_gaps = [
@@ -81,7 +81,7 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
 Combine bars and lines with **dual y-axes** to show product formation alongside temperature. Temperature uses the right y2-axis with independent scaling. Line series support **marker symbols** using the `markers` prop (`line`, `points`, or `line+points`):
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const reaction_data = [
@@ -136,7 +136,7 @@ Combine bars and lines with **dual y-axes** to show product formation alongside 
 A classic business use case: comparing raw sales (bars, left axis) with profit margins (line, right axis) that have different scales and units. The line uses `markers: 'line+points'` with custom `point_style` for triangle markers:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const quarterly_data = [
@@ -190,7 +190,7 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
 Horizontal bar charts work well for categorical data with long labels. This example demonstrates `tick.label.inside` which positions tick labels inside the plot area for a more compact design:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const abundances = [
@@ -243,7 +243,7 @@ Horizontal bar charts work well for categorical data with long labels. This exam
 Add rich interactivity with custom tooltips, hover effects, and click handlers:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const phase_stability = [
@@ -325,7 +325,7 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges including negative values—ideal for formation energies, binding energies, or financial data. Unlike log scale, it smoothly transitions through zero.
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const scale_types = [`linear`, `log`, `arcsinh`]
@@ -395,7 +395,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges
 Bar plots handle negative values automatically and display zero lines for reference. The threshold line uses `markers: 'line'` to show only the line without marker points:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const formation_energies = [
@@ -443,7 +443,7 @@ Bar plots handle negative values automatically and display zero lines for refere
 Custom formatting, tick control, and **dual y-axes** showing both material counts and computational performance metrics:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const yearly_data = [
@@ -516,7 +516,7 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
 Interactive zoom and pan for exploring large datasets. Click and drag to zoom, double-click to reset. This example demonstrates **color scaling** on line markers using `color_values` and `color_scale`:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   // deno-fmt-ignore
@@ -567,7 +567,7 @@ Interactive zoom and pan for exploring large datasets. Click and drag to zoom, d
 Line series support full marker customization including symbol types, sizes, colors, and hover effects. Use the `markers` prop to control visibility (`line`, `points`, `line+points`, or `none`), and `point_style` / `point_hover` for styling:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   let markers = $state(`line+points`)
@@ -640,7 +640,7 @@ Line series support full marker customization including symbol types, sizes, col
   <label>
     Symbol:
     <select bind:value={symbol_type}>
-      {#each symbol_types as sym}
+      {#each symbol_types as sym (sym)}
         <option value={sym}>{sym}</option>
       {/each}
     </select>
@@ -665,7 +665,7 @@ Line series support full marker customization including symbol types, sizes, col
 Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar plots. Toggle between threshold mode (performance tiers) and comparison mode (showing means for grouped bars):
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   let comparison_mode = $state(false)
@@ -784,7 +784,7 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar
 Reference lines support hover effects and click handlers for interactivity:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const production_data = [
@@ -878,7 +878,7 @@ Reference lines support hover effects and click handlers for interactivity:
 When comparing results from different computational methods or experimental techniques, you can organize legend items into collapsible groups using the `legend_group` property. Click the group header to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   // Comparing formation energies from different methods
@@ -943,7 +943,7 @@ This demo stress-tests interactive axis labels with:
 - **Rapid switching test** - try clicking properties quickly!
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   // Seeded random for reproducible data
@@ -1084,7 +1084,7 @@ This demo stress-tests interactive axis labels with:
 Display multiple bar plots in a responsive 2×2 grid:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const make_data = (fn, label_fn) => {
@@ -1129,7 +1129,7 @@ Display multiple bar plots in a responsive 2×2 grid:
 </script>
 
 <div class="grid">
-  {#each plots as { title, data, x_label, y_label, color }}
+  {#each plots as { title, data, x_label, y_label, color } (title)}
     <div class="cell">
       <h4>{title}</h4>
       <BarPlot
@@ -1171,7 +1171,7 @@ Display multiple bar plots in a responsive 2×2 grid:
 Dual y-axes with `y2_axis.sync` controlling the Y2 axis range. Modes: `'synced'` (same range as Y1), `'align'` (shared anchor point, default 0), or `undefined`/`'none'` (independent).
 
 ```svelte example
-<script>
+<script lang="ts">
   import { BarPlot } from 'matterviz'
 
   const quarters = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -1220,7 +1220,7 @@ Dual y-axes with `y2_axis.sync` controlling the Y2 axis range. Modes: `'synced'`
 
 <div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
   <strong>Y2 Sync:</strong>
-  {#each Object.entries(sync_labels) as [mode, label]}
+  {#each Object.entries(sync_labels) as [mode, label] (mode)}
     <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
   {/each}
 </div>

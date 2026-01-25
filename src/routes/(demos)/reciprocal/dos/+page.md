@@ -7,7 +7,7 @@ The `Dos` component visualizes electronic and phonon density of states from pyma
 Pass DOS data to the `doses` prop. The component auto-detects phonon vs electronic data:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Dos } from 'matterviz'
   import { phonon_dos } from '$site/phonons'
 </script>
@@ -20,7 +20,7 @@ Pass DOS data to the `doses` prop. The component auto-detects phonon vs electron
 Electronic DOS from pymatgen `CompleteDos` objects render directly. Spin-polarized data (stored as `{1: [...], -1: [...]}`) is automatically extracted. Use `shift_to_fermi()` to center energies at E_F = 0:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Dos } from 'matterviz'
   import { shift_to_fermi } from '$lib/spectral/helpers'
   import { dos_spin_polarization } from '$site/electronic/dos'
@@ -40,7 +40,7 @@ The built-in toolbar (hover to reveal) lets you toggle between spin modes:
 Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `pdos_type`:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Dos } from 'matterviz'
   import { shift_to_fermi } from '$lib/spectral/helpers'
   import { dos_spin_polarization } from '$site/electronic/dos'
@@ -69,7 +69,7 @@ Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `
 Multiple DOS curves can be stacked as filled areas. Gaussian smearing (σ) smooths noisy data:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Dos } from 'matterviz'
   import { phonon_dos } from '$site/phonons'
 
@@ -89,7 +89,7 @@ Multiple DOS curves can be stacked as filled areas. Gaussian smearing (σ) smoot
 Browse all available DOS files. Click to load, use controls to adjust visualization:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Dos, FilePicker } from 'matterviz'
   import { shift_to_fermi } from '$lib/spectral/helpers'
   import { dos_spin_polarization, lobster_complete_dos } from '$site/electronic/dos'

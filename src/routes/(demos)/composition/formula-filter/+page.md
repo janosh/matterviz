@@ -9,7 +9,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
 ## Interactive Demo
 
 ```svelte example
-<script>
+<script lang="ts">
   import {
     Formula,
     FormulaFilter,
@@ -68,7 +68,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
       materials.length
     }:</strong>
   <div style="display: flex; flex-wrap: wrap; gap: 6pt; margin-top: 6pt">
-    {#each filtered.slice(0, 40) as comp}
+    {#each filtered.slice(0, 40) as comp (to_str(comp))}
       <span
         style="padding: 3pt 6pt; background: rgba(77, 182, 255, 0.1); border-radius: 4px"
       >
@@ -93,7 +93,7 @@ Try these examples:
 ## Include/Exclude Filters
 
 ```svelte example
-<script>
+<script lang="ts">
   import {
     Formula,
     FormulaFilter,
@@ -132,7 +132,7 @@ Try these examples:
 </div>
 
 <div style="display: flex; flex-wrap: wrap; gap: 6pt">
-  {#each results.slice(0, 30) as comp}
+  {#each results.slice(0, 30) as comp (to_str(comp))}
     <span
       style="padding: 3pt 6pt; background: rgba(16, 185, 129, 0.15); border-radius: 4px"
     >

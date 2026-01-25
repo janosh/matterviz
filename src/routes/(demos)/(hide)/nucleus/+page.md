@@ -1,12 +1,12 @@
 # Nucleus
 
 ```svelte example code_above
-<script>
+<script lang="ts">
   import { element_data, Nucleus } from 'matterviz'
 </script>
 
 <ul>
-  {#each element_data as { protons, neutrons, symbol, name }}
+  {#each element_data as { protons, neutrons, symbol, name } (symbol)}
     <li>
       <a href="/{name.toLowerCase()}">{symbol}</a>
       <Nucleus {protons} {neutrons} />

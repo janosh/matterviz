@@ -7,7 +7,7 @@ Interactive phonon and electronic band structure visualization. The `Bands` comp
 A phonon band structure plot with custom line styling for acoustic and optical modes:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Bands } from 'matterviz'
   import { phonon_bands } from '$site/phonons'
 
@@ -27,7 +27,7 @@ A phonon band structure plot with custom line styling for acoustic and optical m
 Pymatgen's `BandStructureSymmLine` objects render directly, handling spin-keyed bands (`"1"` for spin-up, `"-1"` for spin-down):
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Bands } from 'matterviz'
   import { electronic_bands } from '$site/electronic/bands'
 </script>
@@ -40,7 +40,7 @@ Pymatgen's `BandStructureSymmLine` objects render directly, handling spin-keyed 
 This example shows a spin-polarized electronic band structure (VBr₂). The component automatically extracts the first spin channel:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Bands } from 'matterviz'
   import { electronic_bands } from '$site/electronic/bands'
 </script>
@@ -53,7 +53,7 @@ This example shows a spin-polarized electronic band structure (VBr₂). The comp
 Compare multiple band structures on the same plot with interactive controls:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Bands } from 'matterviz'
   import { phonon_bands } from '$site/phonons'
 
@@ -85,7 +85,7 @@ The `Bands` component supports "fat bands" visualization, where the width of eac
 Add `band_widths` to your band structure data - a 2D array matching the shape of `bands` where each value represents the ribbon width at that point:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Bands } from 'matterviz'
   import { phonon_bands } from '$site/phonons'
 
@@ -112,7 +112,7 @@ Add `band_widths` to your band structure data - a 2D array matching the shape of
 Customize the ribbon appearance with `ribbon_config`. You can set color, opacity, maximum width, and scale factor:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Bands } from 'matterviz'
   import { phonon_bands } from '$site/phonons'
 
@@ -144,22 +144,21 @@ Customize the ribbon appearance with `ribbon_config`. You can set color, opacity
 When comparing multiple band structures, each can have its own `band_widths`. The ribbon color defaults to the line color for each structure:
 
 ```svelte example
-<script>
+<script lang="ts">
   import { Bands } from 'matterviz'
   import { phonon_bands } from '$site/phonons'
 
   const base_bs = phonon_bands['mp-2758-Sr4Se4-pbe']
 
   // DFT vs ML: coupling on different bands with smooth Gaussian profiles
-  const gauss = (pos, center, width) => Math.exp(-((pos - center) ** 2) / width)
-  const make_widths = (active_bands, centers) =>
+  const gauss = (pos: number, center: number, width: number) =>
+    Math.exp(-((pos - center) ** 2) / width)
+  const make_widths = (active_bands: number[], centers: number[]) =>
     base_bs.bands.map((band, idx) =>
-      band.map((
-        _,
-        q,
-      ) => (active_bands.includes(idx)
-        ? gauss(q / band.length, centers[idx % centers.length], 0.08)
-        : 0)
+      band.map((_, q) =>
+        active_bands.includes(idx)
+          ? gauss(q / band.length, centers[idx % centers.length], 0.08)
+          : 0
       )
     )
 
