@@ -151,15 +151,14 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
   const base_bs = phonon_bands['mp-2758-Sr4Se4-pbe']
 
   // DFT vs ML: coupling on different bands with smooth Gaussian profiles
-  const gauss = (pos, center, width) => Math.exp(-((pos - center) ** 2) / width)
-  const make_widths = (active_bands, centers) =>
+  const gauss = (pos: number, center: number, width: number) =>
+    Math.exp(-((pos - center) ** 2) / width)
+  const make_widths = (active_bands: number[], centers: number[]) =>
     base_bs.bands.map((band, idx) =>
-      band.map((
-        _,
-        q,
-      ) => (active_bands.includes(idx)
-        ? gauss(q / band.length, centers[idx % centers.length], 0.08)
-        : 0)
+      band.map((_, q) =>
+        active_bands.includes(idx)
+          ? gauss(q / band.length, centers[idx % centers.length], 0.08)
+          : 0
       )
     )
 

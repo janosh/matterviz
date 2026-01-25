@@ -86,7 +86,7 @@
   import { ELEMENT_COLOR_SCHEMES } from 'matterviz/colors'
   import { ELEM_SYMBOLS } from 'matterviz/labels'
 
-  const subtitles: Record<string, string> = {
+  const subtitles: Partial<Record<keyof typeof ELEMENT_COLOR_SCHEMES, string>> = {
     Vesta:
       'From the <a href="https://jp-minerals.org/vesta/en/" target="_blank" rel="noopener">VESTA</a> crystallographic visualization software',
     Jmol:

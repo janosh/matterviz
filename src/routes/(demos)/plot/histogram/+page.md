@@ -504,7 +504,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
 {#if !show_overlay}
   <label>Bins: {bin_counts[1]}<input type="range" bind:value={bin_counts[1]} min="5" max="200" step="5" /></label>
 {:else}
-  {#each bin_counts as count, idx (count)}
+  {#each bin_counts as count, idx (idx)}
     <label style="color: {colors[idx]}">{count} bins: <input type="range" bind:value={bin_counts[idx]} min="5" max="200" step="5" /></label>
   {/each}
 {/if}
@@ -829,7 +829,7 @@ This demo stress-tests histograms with interactive property switching:
 
 ```svelte example
 <script lang="ts">
-  import { Histogram } from 'matterviz'
+  import { type DataSeries, Histogram } from 'matterviz'
 
   // Seeded random number generator
   function seeded_random(seed: number): () => number {
@@ -863,7 +863,7 @@ This demo stress-tests histograms with interactive property switching:
     const data: number[] = []
 
     for (let idx = 0; idx < n; idx++) {
-      let val
+      let val: number
       if (type === `normal`) {
         val = box_muller(rng) * 1.5 - 2
       } else if (type === `exponential`) {
@@ -879,7 +879,8 @@ This demo stress-tests histograms with interactive property switching:
       } else if (type === `skewed`) {
         const u = rng()
         val = Math.pow(u, 3) * 15 - 2
-      } else if (type === `multimodal`) {
+      } else {
+        // multimodal
         const mode = Math.floor(rng() * 4)
         val = box_muller(rng) * 0.5 + mode * 3 - 4
       }
@@ -960,7 +961,7 @@ This demo stress-tests histograms with interactive property switching:
   type PropKey = keyof typeof property_configs
 
   // Build series for a property
-  function build_series(prop_key: PropKey) {
+  function build_series(prop_key: PropKey): DataSeries[] {
     return material_classes.map((name, idx) => ({
       y: all_data[prop_key][idx],
       label: name,
@@ -977,7 +978,10 @@ This demo stress-tests histograms with interactive property switching:
   let switch_count = $state(0)
   let load_start = $state(0)
 
-  async function data_loader(_axis: string, property_key: PropKey) {
+  async function data_loader(
+    _axis: string,
+    property_key: PropKey,
+  ): Promise<{ series: DataSeries[]; axis_label: string }> {
     load_start = performance.now()
     await new Promise((r) => setTimeout(r, 100 + Math.random() * 400))
     const config = property_configs[property_key]

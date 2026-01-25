@@ -270,7 +270,7 @@ The `ColorBar` now supports interactive dropdowns for switching properties and c
   let last_load_time = $state(0)
 
   // Data loader with simulated delay
-  async function data_loader(property_key) {
+  async function data_loader(property_key: string) {
     const start = performance.now()
     // Simulate network delay (200-800ms)
     await new Promise((r) => setTimeout(r, 200 + Math.random() * 600))
