@@ -39,7 +39,7 @@ Displaying values instead of element names by passing the `value` prop.
 <script lang="ts">
   import { element_data, ElementTile } from 'matterviz'
 
-  const bg_colors = 'red green blue yellow cyan magenta black white'.split()
+  const bg_colors = `red green blue yellow cyan magenta black white`.split(` `)
 </script>
 
 <ol>
