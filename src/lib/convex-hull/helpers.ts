@@ -680,42 +680,22 @@ export function filter_entries_at_temperature(
     ...options,
   }
 
-  return entries
-    .filter((entry) => {
-      // Keep entries without temp data (use static energy)
-      if (!entry_has_temp_data(entry)) return true
-      // Keep if exact temperature exists
-      if (entry_has_temperature(entry, T)) return true
-      // Keep if interpolation is enabled and possible
-      if (
-        interpolate && can_interpolate_at_temperature(entry, T, max_interpolation_gap)
-      ) {
-        return true
-      }
-      return false
-    })
-    .map((entry) => {
-      // No temp data - keep static energy
-      if (!entry_has_temp_data(entry)) return entry
+  return entries.flatMap((entry) => {
+    // No temp data - keep with static energy
+    if (!entry_has_temp_data(entry)) return [entry]
 
-      // Exact temperature - use it
-      if (entry_has_temperature(entry, T)) {
-        return { ...entry, energy: get_energy_at_temperature(entry, T) }
-      }
+    // Exact temperature match - use G(T)
+    if (entry_has_temperature(entry, T)) {
+      return [{ ...entry, energy: get_energy_at_temperature(entry, T) }]
+    }
 
-      // Try interpolation
-      if (interpolate) {
-        const interpolated = interpolate_energy_at_temperature(
-          entry,
-          T,
-          max_interpolation_gap,
-        )
-        if (interpolated !== null) {
-          return { ...entry, energy: interpolated }
-        }
-      }
+    // Try interpolation if enabled
+    if (interpolate) {
+      const energy = interpolate_energy_at_temperature(entry, T, max_interpolation_gap)
+      if (energy !== null) return [{ ...entry, energy }]
+    }
 
-      // Shouldn't reach here due to filter, but return unchanged as fallback
-      return entry
-    })
+    // Exclude entry (has temp data but can't get energy at T)
+    return []
+  })
 }
