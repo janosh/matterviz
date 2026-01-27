@@ -26,11 +26,11 @@
     oninput={(e) => temperature = available_temperatures[+e.currentTarget.value]}
     aria-label="Temperature (Kelvin)"
   />
-  <span class="temp-range">
-    {available_temperatures[0]}–{
-      available_temperatures[available_temperatures.length - 1]
-    } K
-  </span>
+  {#if available_temperatures.length > 0}
+    <span class="temp-range">
+      {available_temperatures[0]}–{available_temperatures.at(-1)} K
+    </span>
+  {/if}
 </div>
 
 <style>

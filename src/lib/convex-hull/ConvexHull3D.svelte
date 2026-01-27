@@ -179,6 +179,27 @@
     }
   })
 
+  // Compute lower convex hull faces (triangles) for 3D rendering (low energy hull only)
+  // Must be defined before all_enriched_entries which uses hull_model
+  type HullTriangle = {
+    vertices: [Point3D, Point3D, Point3D]
+    normal: Point3D
+    centroid: Point3D
+  }
+  const hull_faces = $derived.by((): HullTriangle[] => {
+    if (coords_entries.length === 0) return []
+    const points = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    try {
+      return thermo.compute_lower_hull_triangles(points)
+    } catch (error) {
+      console.error(`Error computing convex hull:`, error)
+      return []
+    }
+  })
+
+  // Cached hull model for e_above_hull queries; recompute only when faces change
+  let hull_model = $derived.by(() => thermo.build_lower_hull_model(hull_faces))
+
   // Enrich coords with e_above_hull from cached hull model (before filtering)
   const all_enriched_entries = $derived.by(() => {
     if (coords_entries.length === 0) return []
@@ -227,28 +248,6 @@
       !entry.is_stable
     )
   })
-
-  // Compute lower convex hull faces (triangles) for 3D rendering (low energy hull only)
-  type HullTriangle = {
-    vertices: [Point3D, Point3D, Point3D]
-    normal: Point3D
-    centroid: Point3D
-  }
-  const hull_faces = $derived.by((): HullTriangle[] => {
-    if (coords_entries.length === 0) {
-      return []
-    }
-    const points = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
-    try {
-      return thermo.compute_lower_hull_triangles(points)
-    } catch (error) {
-      console.error(`Error computing convex hull:`, error)
-      return []
-    }
-  })
-
-  // Cached hull model for e_above_hull queries; recompute only when faces change
-  let hull_model = $derived.by(() => thermo.build_lower_hull_model(hull_faces))
 
   // Canvas rendering
   let canvas: HTMLCanvasElement

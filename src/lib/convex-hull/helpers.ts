@@ -576,20 +576,16 @@ function entry_has_temp_data(entry: PhaseData): boolean {
 
 // Check if entry has data at exact temperature T
 export function entry_has_temperature(entry: PhaseData, T: number): boolean {
-  const temps = entry.temperatures
-  const energies = entry.free_energies
-  if (!temps?.length || !energies?.length || temps.length !== energies.length) {
-    return false
-  }
-  return temps.includes(T)
+  return entry_has_temp_data(entry) && (entry.temperatures?.includes(T) ?? false)
 }
 
-// Get energy at temperature T (only call if entry_has_temperature returns true)
+// Get energy at temperature T (throws if T not found - validate with entry_has_temperature first)
 export function get_energy_at_temperature(entry: PhaseData, T: number): number {
   const temps = entry.temperatures ?? []
   const energies = entry.free_energies ?? []
   const idx = temps.indexOf(T)
-  return energies[idx] ?? 0
+  if (idx === -1) throw new Error(`Temperature ${T}K not found in entry temperatures`)
+  return energies[idx]
 }
 
 // Find bracketing temperatures for interpolation (T_low < T < T_high)
@@ -608,16 +604,16 @@ function find_bracket_temperatures(
   let E_low = 0
   let E_high = 0
 
-  for (let idx = 0; idx < temps.length; idx++) {
-    const temp = temps[idx]
+  for (const [idx, temp] of temps.entries()) {
     if (temp < T && temp > T_low) {
       T_low = temp
       E_low = energies[idx]
-    }
-    if (temp > T && temp < T_high) {
+    } else if (temp > T && temp < T_high) {
       T_high = temp
       E_high = energies[idx]
     }
+    // Early exit once both brackets are found
+    if (isFinite(T_low) && isFinite(T_high)) break
   }
 
   // Must have valid brackets on both sides

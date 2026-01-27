@@ -614,6 +614,58 @@ describe(`helpers: temperature interpolation`, () => {
     ...extra,
   })
 
+  describe(`analyze_temperature_data`, () => {
+    test(`returns has_temp_data=false for empty entries`, () => {
+      const result = helpers.analyze_temperature_data([])
+      expect(result.has_temp_data).toBe(false)
+      expect(result.available_temperatures).toEqual([])
+    })
+
+    test(`returns has_temp_data=false when no entries have temp data`, () => {
+      const entries: PhaseData[] = [
+        { composition: { Fe: 1 }, energy: 0 },
+        { composition: { Li: 1 }, energy: 0 },
+      ]
+      const result = helpers.analyze_temperature_data(entries)
+      expect(result.has_temp_data).toBe(false)
+      expect(result.available_temperatures).toEqual([])
+    })
+
+    test(`returns union of temperatures from multiple entries`, () => {
+      const entries = [
+        make_entry([300, 600], [-1, -2]),
+        make_entry([600, 900, 1200], [-1, -2, -3]),
+      ]
+      const result = helpers.analyze_temperature_data(entries)
+      expect(result.has_temp_data).toBe(true)
+      expect(result.available_temperatures).toEqual([300, 600, 900, 1200])
+    })
+
+    test(`ignores entries with mismatched array lengths`, () => {
+      const entries: PhaseData[] = [
+        {
+          composition: { Fe: 1 },
+          energy: 0,
+          temperatures: [300, 600],
+          free_energies: [-1],
+        },
+        make_entry([900], [-2]),
+      ]
+      const result = helpers.analyze_temperature_data(entries)
+      expect(result.has_temp_data).toBe(true)
+      expect(result.available_temperatures).toEqual([900])
+    })
+
+    test(`ignores entries with empty arrays`, () => {
+      const entries: PhaseData[] = [
+        { composition: { Fe: 1 }, energy: 0, temperatures: [], free_energies: [] },
+        make_entry([300, 600], [-1, -2]),
+      ]
+      const result = helpers.analyze_temperature_data(entries)
+      expect(result.available_temperatures).toEqual([300, 600])
+    })
+  })
+
   describe(`can_interpolate_at_temperature`, () => {
     test(`returns true when T is bracketed within max_gap`, () => {
       const entry = make_entry([300, 600, 900], [-1, -1.5, -2])

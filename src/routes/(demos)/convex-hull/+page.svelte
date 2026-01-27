@@ -171,229 +171,100 @@
   // Simulate G(T) = E_0K + a*T + b*T*ln(T) with varying coefficients per phase
   const temperatures = [300, 600, 900, 1200, 1500]
 
-  const make_free_energies = (e_0k: number, entropy_coef: number) =>
-    temperatures.map((T) =>
-      e_0k + entropy_coef * T * 0.0001 - 0.00005 * T * Math.log(T)
-    )
+  // Helper to add temperature-dependent free energies to a base entry
+  type BaseEntry = {
+    composition: Record<string, number>
+    energy: number
+    entropy_coef: number
+  }
+  const with_temp_data = (
+    { composition, energy, entropy_coef }: BaseEntry,
+  ): PhaseData => ({
+    composition,
+    energy,
+    temperatures,
+    free_energies: temperatures.map((T) =>
+      energy + entropy_coef * T * 0.0001 - 0.00005 * T * Math.log(T)
+    ),
+  })
 
   // Binary Li-Fe system with temperature-dependent G(T)
-  const temp_binary_entries: PhaseData[] = [
-    {
-      composition: { Li: 1 },
-      energy: 0,
-      temperatures,
-      free_energies: make_free_energies(0, 0.5),
-    },
-    {
-      composition: { Fe: 1 },
-      energy: 0,
-      temperatures,
-      free_energies: make_free_energies(0, 0.8),
-    },
-    {
-      composition: { Li: 0.5, Fe: 0.5 },
-      energy: -0.3,
-      temperatures,
-      free_energies: make_free_energies(-0.3, 1.2),
-    },
-    {
-      composition: { Li: 0.33, Fe: 0.67 },
-      energy: -0.25,
-      temperatures,
-      free_energies: make_free_energies(-0.25, 1.5),
-    },
-    {
-      composition: { Li: 0.67, Fe: 0.33 },
-      energy: -0.22,
-      temperatures,
-      free_energies: make_free_energies(-0.22, 0.9),
-    },
-    {
-      composition: { Li: 0.25, Fe: 0.75 },
-      energy: -0.15,
-      temperatures,
-      free_energies: make_free_energies(-0.15, 1.8),
-    },
-    {
-      composition: { Li: 0.75, Fe: 0.25 },
-      energy: -0.12,
-      temperatures,
-      free_energies: make_free_energies(-0.12, 0.6),
-    },
-    // Some unstable phases
-    {
-      composition: { Li: 0.4, Fe: 0.6 },
-      energy: -0.1,
-      temperatures,
-      free_energies: make_free_energies(-0.1, 2.0),
-    },
-    {
-      composition: { Li: 0.6, Fe: 0.4 },
-      energy: -0.08,
-      temperatures,
-      free_energies: make_free_energies(-0.08, 1.1),
-    },
-  ]
+  const temp_binary_entries = [
+    { composition: { Li: 1 }, energy: 0, entropy_coef: 0.5 },
+    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.8 },
+    { composition: { Li: 0.5, Fe: 0.5 }, energy: -0.3, entropy_coef: 1.2 },
+    { composition: { Li: 0.33, Fe: 0.67 }, energy: -0.25, entropy_coef: 1.5 },
+    { composition: { Li: 0.67, Fe: 0.33 }, energy: -0.22, entropy_coef: 0.9 },
+    { composition: { Li: 0.25, Fe: 0.75 }, energy: -0.15, entropy_coef: 1.8 },
+    { composition: { Li: 0.75, Fe: 0.25 }, energy: -0.12, entropy_coef: 0.6 },
+    { composition: { Li: 0.4, Fe: 0.6 }, energy: -0.1, entropy_coef: 2.0 },
+    { composition: { Li: 0.6, Fe: 0.4 }, energy: -0.08, entropy_coef: 1.1 },
+  ].map(with_temp_data)
 
   // Ternary Li-Fe-O system with temperature-dependent G(T)
-  const temp_ternary_entries: PhaseData[] = [
-    {
-      composition: { Li: 1 },
-      energy: 0,
-      temperatures,
-      free_energies: make_free_energies(0, 0.4),
-    },
-    {
-      composition: { Fe: 1 },
-      energy: 0,
-      temperatures,
-      free_energies: make_free_energies(0, 0.6),
-    },
-    {
-      composition: { O: 1 },
-      energy: 0,
-      temperatures,
-      free_energies: make_free_energies(0, 0.5),
-    },
-    {
-      composition: { Li: 0.5, Fe: 0.5 },
-      energy: -0.35,
-      temperatures,
-      free_energies: make_free_energies(-0.35, 1.3),
-    },
-    {
-      composition: { Fe: 0.5, O: 0.5 },
-      energy: -0.28,
-      temperatures,
-      free_energies: make_free_energies(-0.28, 1.6),
-    },
-    {
-      composition: { Li: 0.5, O: 0.5 },
-      energy: -0.32,
-      temperatures,
-      free_energies: make_free_energies(-0.32, 1.1),
-    },
+  const temp_ternary_entries = [
+    { composition: { Li: 1 }, energy: 0, entropy_coef: 0.4 },
+    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.6 },
+    { composition: { O: 1 }, energy: 0, entropy_coef: 0.5 },
+    { composition: { Li: 0.5, Fe: 0.5 }, energy: -0.35, entropy_coef: 1.3 },
+    { composition: { Fe: 0.5, O: 0.5 }, energy: -0.28, entropy_coef: 1.6 },
+    { composition: { Li: 0.5, O: 0.5 }, energy: -0.32, entropy_coef: 1.1 },
     {
       composition: { Li: 0.33, Fe: 0.33, O: 0.34 },
       energy: -0.45,
-      temperatures,
-      free_energies: make_free_energies(-0.45, 1.8),
+      entropy_coef: 1.8,
     },
-    {
-      composition: { Li: 0.5, Fe: 0.25, O: 0.25 },
-      energy: -0.38,
-      temperatures,
-      free_energies: make_free_energies(-0.38, 1.4),
-    },
-    {
-      composition: { Li: 0.25, Fe: 0.5, O: 0.25 },
-      energy: -0.36,
-      temperatures,
-      free_energies: make_free_energies(-0.36, 1.5),
-    },
-    {
-      composition: { Li: 0.25, Fe: 0.25, O: 0.5 },
-      energy: -0.34,
-      temperatures,
-      free_energies: make_free_energies(-0.34, 1.2),
-    },
-    // Some unstable phases
-    {
-      composition: { Li: 0.4, Fe: 0.4, O: 0.2 },
-      energy: -0.2,
-      temperatures,
-      free_energies: make_free_energies(-0.2, 2.2),
-    },
-    {
-      composition: { Li: 0.2, Fe: 0.4, O: 0.4 },
-      energy: -0.18,
-      temperatures,
-      free_energies: make_free_energies(-0.18, 2.0),
-    },
-  ]
+    { composition: { Li: 0.5, Fe: 0.25, O: 0.25 }, energy: -0.38, entropy_coef: 1.4 },
+    { composition: { Li: 0.25, Fe: 0.5, O: 0.25 }, energy: -0.36, entropy_coef: 1.5 },
+    { composition: { Li: 0.25, Fe: 0.25, O: 0.5 }, energy: -0.34, entropy_coef: 1.2 },
+    { composition: { Li: 0.4, Fe: 0.4, O: 0.2 }, energy: -0.2, entropy_coef: 2.2 },
+    { composition: { Li: 0.2, Fe: 0.4, O: 0.4 }, energy: -0.18, entropy_coef: 2.0 },
+  ].map(with_temp_data)
 
   // Quaternary Li-Fe-Ni-O system with temperature-dependent G(T)
-  const temp_quaternary_entries: PhaseData[] = [
-    {
-      composition: { Li: 1 },
-      energy: 0,
-      temperatures,
-      free_energies: make_free_energies(0, 0.3),
-    },
-    {
-      composition: { Fe: 1 },
-      energy: 0,
-      temperatures,
-      free_energies: make_free_energies(0, 0.5),
-    },
-    {
-      composition: { Ni: 1 },
-      energy: 0,
-      temperatures,
-      free_energies: make_free_energies(0, 0.4),
-    },
-    {
-      composition: { O: 1 },
-      energy: 0,
-      temperatures,
-      free_energies: make_free_energies(0, 0.6),
-    },
-    {
-      composition: { Li: 0.5, Fe: 0.5 },
-      energy: -0.3,
-      temperatures,
-      free_energies: make_free_energies(-0.3, 1.2),
-    },
-    {
-      composition: { Ni: 0.5, O: 0.5 },
-      energy: -0.28,
-      temperatures,
-      free_energies: make_free_energies(-0.28, 1.4),
-    },
+  const temp_quaternary_entries = [
+    { composition: { Li: 1 }, energy: 0, entropy_coef: 0.3 },
+    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.5 },
+    { composition: { Ni: 1 }, energy: 0, entropy_coef: 0.4 },
+    { composition: { O: 1 }, energy: 0, entropy_coef: 0.6 },
+    { composition: { Li: 0.5, Fe: 0.5 }, energy: -0.3, entropy_coef: 1.2 },
+    { composition: { Ni: 0.5, O: 0.5 }, energy: -0.28, entropy_coef: 1.4 },
     {
       composition: { Li: 0.33, Fe: 0.33, Ni: 0.34 },
       energy: -0.4,
-      temperatures,
-      free_energies: make_free_energies(-0.4, 1.6),
+      entropy_coef: 1.6,
     },
     {
       composition: { Fe: 0.33, Ni: 0.33, O: 0.34 },
       energy: -0.38,
-      temperatures,
-      free_energies: make_free_energies(-0.38, 1.7),
+      entropy_coef: 1.7,
     },
     {
       composition: { Li: 0.25, Fe: 0.25, Ni: 0.25, O: 0.25 },
       energy: -0.5,
-      temperatures,
-      free_energies: make_free_energies(-0.5, 2.0),
+      entropy_coef: 2.0,
     },
     {
       composition: { Li: 0.4, Fe: 0.2, Ni: 0.2, O: 0.2 },
       energy: -0.42,
-      temperatures,
-      free_energies: make_free_energies(-0.42, 1.8),
+      entropy_coef: 1.8,
     },
     {
       composition: { Li: 0.2, Fe: 0.4, Ni: 0.2, O: 0.2 },
       energy: -0.4,
-      temperatures,
-      free_energies: make_free_energies(-0.4, 1.9),
+      entropy_coef: 1.9,
     },
-    // Unstable phases
     {
       composition: { Li: 0.3, Fe: 0.3, Ni: 0.3, O: 0.1 },
       energy: -0.25,
-      temperatures,
-      free_energies: make_free_energies(-0.25, 2.5),
+      entropy_coef: 2.5,
     },
     {
       composition: { Li: 0.1, Fe: 0.3, Ni: 0.3, O: 0.3 },
       energy: -0.22,
-      temperatures,
-      free_energies: make_free_energies(-0.22, 2.3),
+      entropy_coef: 2.3,
     },
-  ]
+  ].map(with_temp_data)
 </script>
 
 <svelte:head>
