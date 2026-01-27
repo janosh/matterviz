@@ -22,7 +22,8 @@ function is_identity_rotation(rot: Matrix3x3): boolean {
 }
 
 // Extract unique point group rotation matrices from space group operations.
-// In reciprocal space, real-space rotation R becomes R^T (transpose).
+// Returns fractional-coordinate rotations (W matrices from spglib convention).
+// These must be converted to Cartesian k-space before use in clipping.
 export function extract_point_group_from_operations(
   operations: MoyoDataset[`operations`],
 ): Matrix3x3[] {
@@ -35,10 +36,34 @@ export function extract_point_group_from_operations(
     seen.add(key)
 
     const rot = math.vec9_to_mat3x3(Array.from(rotation)) as Matrix3x3
-    unique_rotations.push(math.transpose_3x3_matrix(rot))
+    unique_rotations.push(rot)
   }
 
   return unique_rotations
+}
+
+// Multiply two 3x3 matrices: C = A · B
+function mat3x3_multiply(A: Matrix3x3, B: Matrix3x3): Matrix3x3 {
+  const result: Matrix3x3 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      result[row][col] = A[row][0] * B[0][col] + A[row][1] * B[1][col] +
+        A[row][2] * B[2][col]
+    }
+  }
+  return result
+}
+
+// Convert fractional-coordinate rotation W to Cartesian k-space rotation.
+// In reciprocal space: R_cart = B · W^T · B^{-1}, where B is the k_lattice.
+function fractional_to_cartesian_rotation(
+  W: Matrix3x3,
+  k_lattice: Matrix3x3,
+): Matrix3x3 {
+  const k_lattice_inv = math.matrix_inverse_3x3(k_lattice)
+  const W_T = math.transpose_3x3_matrix(W)
+  // R_cart = B · W^T · B^{-1}
+  return mat3x3_multiply(mat3x3_multiply(k_lattice, W_T), k_lattice_inv)
 }
 
 // Compute reciprocal lattice: k = inv(real).T * 2π
@@ -425,7 +450,12 @@ export function compute_irreducible_bz(
   point_group_ops: Matrix3x3[],
   edge_sharp_angle_deg = 5,
 ): IrreducibleBZData | null {
-  const clipping_planes = compute_ibz_clipping_planes(point_group_ops)
+  // Convert fractional rotations to Cartesian k-space rotations
+  // R_cart = B · W^T · B^{-1}, where B is k_lattice
+  const cartesian_ops = point_group_ops.map((W) =>
+    fractional_to_cartesian_rotation(W, bz_data.k_lattice)
+  )
+  const clipping_planes = compute_ibz_clipping_planes(cartesian_ops)
 
   if (clipping_planes.length === 0) {
     // No symmetry (P1), IBZ = full BZ

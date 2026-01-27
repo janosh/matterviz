@@ -335,11 +335,11 @@ describe(`extract_point_group_from_operations`, () => {
     )
   })
 
-  test(`transposes non-symmetric rotation`, () => {
-    // ROT_Z_90 [[0,-1,0],[1,0,0],[0,0,1]] → transpose [[0,1,0],[-1,0,0],[0,0,1]]
+  test(`preserves fractional rotation (no transpose)`, () => {
+    // ROT_Z_90 [[0,-1,0],[1,0,0],[0,0,1]] - returned as-is for later conversion
     const [pg] = extract_point_group_from_operations([make_op(ROT_Z_90)])
-    expect(pg[0][1]).toBe(1) // from [1][0]
-    expect(pg[1][0]).toBe(-1) // from [0][1]
+    expect(pg[0][1]).toBe(-1) // original value at [0][1]
+    expect(pg[1][0]).toBe(1) // original value at [1][0]
   })
 })
 
