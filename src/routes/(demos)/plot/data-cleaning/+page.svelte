@@ -486,7 +486,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
 </p>
 
 <section class="controls-panel">
-  <h3>Data Generation</h3>
+  <h2>Data Generation</h2>
 
   <div class="control-row">
     <label>
@@ -554,7 +554,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
     </div>
   {/if}
 
-  <h3>Cleaning Options</h3>
+  <h2>Cleaning Options</h2>
 
   <div class="control-row">
     <label>
@@ -695,7 +695,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
 
   <div class="multi-series-grid">
     <div>
-      <h4>Raw Data (NaN positions marked)</h4>
+      <h3>Raw Data (NaN positions marked)</h3>
       <ScatterPlot
         series={[
           {
@@ -752,7 +752,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
       />
     </div>
     <div>
-      <h4>Cleaned (series aligned)</h4>
+      <h3>Cleaned (series aligned)</h3>
       <ScatterPlot
         series={[
           {
@@ -797,7 +797,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
 
   <div class="multi-series-grid">
     <div>
-      <h4>Raw Data (NaN positions marked)</h4>
+      <h3>Raw Data (NaN positions marked)</h3>
       <ScatterPlot
         series={[
           {
@@ -832,7 +832,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
       />
     </div>
     <div>
-      <h4>Cleaned (NaN points removed)</h4>
+      <h3>Cleaned (NaN points removed)</h3>
       <ScatterPlot
         series={[
           {
@@ -896,7 +896,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
     border-radius: 8px;
     padding: 0.6em 1.2em;
     margin-bottom: 1.5em;
-    h3 {
+    h2 {
       margin: 0.3em 0 0.5em;
       font-size: 1.1em;
       font-weight: 600;
@@ -965,7 +965,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 1.5em;
-    h4 {
+    h3 {
       margin: 0 0 0.5em;
       text-align: center;
     }

@@ -213,7 +213,7 @@
 {#if fermi_data}
   <section class="slice-section">
     <header>
-      <h3 style="margin: 0">2D Slice</h3>
+      <h2 style="margin: 0">2D Slice</h2>
       <label>
         hkl:
         <input

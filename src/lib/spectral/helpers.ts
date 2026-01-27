@@ -1046,7 +1046,6 @@ export function generate_ribbon_path(
 // Returns undefined if no valid efermi is found or if the source is empty.
 export function extract_efermi(data: unknown): number | undefined {
   if (!data || typeof data !== `object`) return undefined
-
   const obj = data as Record<string, unknown>
 
   // Direct efermi field on the object
@@ -1089,8 +1088,8 @@ function is_electronic_band_struct(bs: unknown): boolean {
     return true
   }
   // Pymatgen @class: BandStructure* but not Phonon*
-  const class_name = String(obj[`@class`] ?? ``)
-  if (class_name.startsWith(`BandStructure`) && !class_name.includes(`Phonon`)) {
+  const py_class_name = String(obj[`@class`] ?? ``)
+  if (py_class_name.startsWith(`BandStructure`) && !py_class_name.includes(`Phonon`)) {
     return true
   }
   return false

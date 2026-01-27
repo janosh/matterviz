@@ -147,11 +147,12 @@
     if (!source) return `phonon`
 
     // Electronic: has kpoints, BandStructure* class (not Phonon*), or electronic_structure module
-    const class_name = String(source[`@class`] ?? ``)
+    const py_class_name = String(source[`@class`] ?? ``)
     if (
       (`kpoints` in source && Array.isArray(source.kpoints) &&
         source.kpoints.length > 0) ||
-      (class_name.startsWith(`BandStructure`) && !class_name.startsWith(`Phonon`)) ||
+      (py_class_name.startsWith(`BandStructure`) &&
+        !py_class_name.startsWith(`Phonon`)) ||
       String(source[`@module`] ?? ``).includes(`electronic_structure`)
     ) return `electronic`
 
