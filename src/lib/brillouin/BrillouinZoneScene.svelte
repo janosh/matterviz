@@ -9,7 +9,7 @@
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { BufferAttribute, BufferGeometry, type Camera, type Scene } from 'three'
-  import type { BrillouinZoneData } from './types'
+  import type { BrillouinZoneData, IrreducibleBZData } from './types'
 
   let {
     bz_data = $bindable(),
@@ -21,6 +21,11 @@
     edge_width = $bindable(0.05),
     show_vectors = $bindable(true),
     vector_scale = $bindable(1.0),
+    // Irreducible BZ options
+    show_ibz = false,
+    ibz_data = null as IrreducibleBZData | null,
+    ibz_color = `#ff8844`,
+    ibz_opacity = 0.5,
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = DEFAULTS.structure.max_zoom,
     min_zoom = DEFAULTS.structure.min_zoom,
@@ -51,6 +56,11 @@
     edge_width?: number
     show_vectors?: boolean
     vector_scale?: number
+    // Irreducible BZ options
+    show_ibz?: boolean
+    ibz_data?: IrreducibleBZData | null
+    ibz_color?: string
+    ibz_opacity?: number
     rotation_damping?: number
     max_zoom?: number
     min_zoom?: number
@@ -151,23 +161,24 @@
   const vector_colors = [`red`, `green`, `blue`]
   const vector_labels = [`b₁`, `b₂`, `b₃`]
 
-  // Create BZ mesh geometry from faces with fan triangulation
-  const bz_geometry = $derived.by(() => {
-    if (!bz_data || bz_data.faces.length === 0) return null
+  // Create mesh geometry from faces with fan triangulation
+  function create_mesh_geometry(
+    vertices: Vec3[],
+    faces: number[][],
+  ): BufferGeometry | null {
+    if (faces.length === 0) return null
 
     const positions: number[] = []
     const normals: number[] = []
 
-    for (const face of bz_data.faces) {
+    for (const face of faces) {
       if (face.length < 3) continue
-
       for (let face_idx = 1; face_idx < face.length - 1; face_idx++) {
         const indices = [face[0], face[face_idx], face[face_idx + 1]]
-        if (indices.some((idx) => idx < 0 || idx >= bz_data.vertices.length)) continue
-        const [v0, v1, v2] = indices.map((idx) => bz_data.vertices[idx])
+        if (indices.some((idx) => idx < 0 || idx >= vertices.length)) continue
+        const [v0, v1, v2] = indices.map((idx) => vertices[idx])
         positions.push(...v0, ...v1, ...v2)
 
-        // Compute normal via cross product
         const e1: Vec3 = math.subtract(v1, v0)
         const e2: Vec3 = math.subtract(v2, v0)
         const normal_vec = math.cross_3d(e1, e2)
@@ -185,11 +196,24 @@
     geometry.setAttribute(`normal`, new BufferAttribute(new Float32Array(normals), 3))
     geometry.computeBoundingSphere()
     return geometry
-  })
+  }
+
+  const bz_geometry = $derived(
+    bz_data ? create_mesh_geometry(bz_data.vertices, bz_data.faces) : null,
+  )
+  const ibz_geometry = $derived(
+    show_ibz && ibz_data
+      ? create_mesh_geometry(ibz_data.vertices, ibz_data.faces)
+      : null,
+  )
 
   $effect(() => {
-    const prev_geometry = bz_geometry // Dispose previous geometry on change/unmount; prevents memory leaks
-    return () => prev_geometry?.dispose() // (need to assign to a variable in function so closure captures old value)
+    const prev_bz = bz_geometry
+    const prev_ibz = ibz_geometry
+    return () => {
+      prev_bz?.dispose()
+      prev_ibz?.dispose()
+    }
   })
 </script>
 
@@ -231,10 +255,31 @@
     {/if}
 
     <!-- BZ edges -->
-    {#each bz_data.edges as edge_segment (JSON.stringify(edge_segment))}
+    {#each bz_data.edges as edge_segment, idx (`bz-edge-${idx}`)}
       {@const [from, to] = edge_segment}
       <Cylinder {from} {to} thickness={edge_width} color={edge_color} />
     {/each}
+
+    <!-- Irreducible BZ surface mesh -->
+    {#if show_ibz && ibz_geometry}
+      <T.Mesh geometry={ibz_geometry}>
+        <T.MeshStandardMaterial
+          color={ibz_color}
+          transparent
+          opacity={ibz_opacity}
+          side={2}
+          depthWrite={false}
+        />
+      </T.Mesh>
+    {/if}
+
+    <!-- IBZ edges -->
+    {#if show_ibz && ibz_data}
+      {#each ibz_data.edges as edge_segment, idx (`ibz-edge-${idx}`)}
+        {@const [from, to] = edge_segment}
+        <Cylinder {from} {to} thickness={edge_width * 1.5} color={ibz_color} />
+      {/each}
+    {/if}
 
     <!-- Reciprocal lattice vectors -->
     {#if show_vectors && bz_data.k_lattice}

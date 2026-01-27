@@ -11,6 +11,7 @@
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
+  import { analyze_structure_symmetry } from '$lib/symmetry'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -20,8 +21,13 @@
   import BrillouinZoneExportPane from './BrillouinZoneExportPane.svelte'
   import BrillouinZoneInfoPane from './BrillouinZoneInfoPane.svelte'
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
-  import { compute_brillouin_zone, reciprocal_lattice } from './compute'
-  import type { BrillouinZoneData } from './types'
+  import {
+    compute_brillouin_zone,
+    compute_irreducible_bz,
+    extract_point_group_from_operations,
+    reciprocal_lattice,
+  } from './compute'
+  import type { BrillouinZoneData, IrreducibleBZData } from './types'
 
   type BZHandlerData = {
     structure?: Crystal
@@ -45,6 +51,11 @@
     show_vectors = $bindable(true),
     vector_scale = $bindable(1.0),
     camera_projection = $bindable(`perspective`),
+    // Irreducible BZ options
+    show_ibz = $bindable(false),
+    ibz_color = $bindable(`#ff8844`),
+    ibz_opacity = $bindable(0.5),
+    ibz_data = $bindable<IrreducibleBZData | null>(null),
     show_controls,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
@@ -84,6 +95,11 @@
       show_vectors?: boolean
       vector_scale?: number
       camera_projection?: CameraProjection
+      // Irreducible BZ options
+      show_ibz?: boolean
+      ibz_color?: string
+      ibz_opacity?: number
+      ibz_data?: IrreducibleBZData | null
       /**
        * Controls visibility configuration.
        * - 'always': controls always visible
@@ -183,6 +199,35 @@
       bz_data = undefined
       untrack(() => on_error?.({ error_msg, structure, bz_order }))
     }
+  })
+
+  // Compute IBZ when show_ibz is enabled and structure changes
+  $effect(() => {
+    if (!show_ibz || !bz_data || !structure || !(`lattice` in structure)) {
+      ibz_data = null
+      return
+    }
+
+    // Capture current values to check for staleness after async call
+    const current_bz = bz_data
+    const current_structure = structure
+
+    // Compute IBZ asynchronously using moyo-wasm symmetry analysis
+    analyze_structure_symmetry(structure, {})
+      .then((sym_data) => {
+        // Guard against stale results if dependencies changed during async call
+        if (bz_data !== current_bz || structure !== current_structure || !show_ibz) {
+          return
+        }
+        const point_group_ops = extract_point_group_from_operations(
+          sym_data.operations,
+        )
+        ibz_data = compute_irreducible_bz(current_bz, point_group_ops)
+      })
+      .catch((err) => {
+        console.warn(`IBZ computation failed:`, err)
+        ibz_data = null
+      })
   })
 
   // Load structure from URL or string
@@ -357,6 +402,9 @@
             bind:edge_width
             bind:show_vectors
             bind:camera_projection
+            bind:show_ibz
+            bind:ibz_color
+            bind:ibz_opacity
           />
         {/if}
       {/if}
@@ -378,6 +426,10 @@
             {k_path_labels}
             {hovered_k_point}
             {hovered_qpoint_index}
+            {show_ibz}
+            {ibz_data}
+            {ibz_color}
+            {ibz_opacity}
             bind:scene
             bind:camera
           />
