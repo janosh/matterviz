@@ -2,10 +2,10 @@
   import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
   import type { ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import type { Snippet } from 'svelte'
+  import { TooltipContent } from '$lib/tooltip'
   import type {
     PhaseBoundary,
-    PhaseDiagramTooltipConfig,
+    PhaseDiagramTooltipProp,
     PhaseHoverInfo,
   } from './types'
   import {
@@ -29,20 +29,8 @@
     component_a?: string
     component_b?: string
     boundaries?: PhaseBoundary[]
-    tooltip?: Snippet<[PhaseHoverInfo]> | PhaseDiagramTooltipConfig
+    tooltip?: PhaseDiagramTooltipProp
   } = $props()
-
-  // Custom tooltip: snippet replaces default, config object adds prefix/suffix
-  const config = $derived(
-    typeof tooltip !== `function` && tooltip
-      ? (tooltip as PhaseDiagramTooltipConfig)
-      : null,
-  )
-  // Resolve prefix/suffix - call if function, otherwise use directly
-  const resolve = (val: string | ((info: PhaseHoverInfo) => string) | undefined) =>
-    typeof val === `function` ? val(hover_info) : val
-  const prefix_html = $derived(resolve(config?.prefix))
-  const suffix_html = $derived(resolve(config?.suffix))
 
   // Convert atomic fraction to weight fraction: wt_B = (x_B * M_B) / (x_A * M_A + x_B * M_B)
   const wt_fraction_b = $derived.by(() => {
@@ -117,14 +105,8 @@
   })
 </script>
 
-{#if typeof tooltip === `function`}
-  {@render tooltip(hover_info)}
-{:else}
+<TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
   <div class="phase-diagram-tooltip">
-    {#if prefix_html}
-      <div class="tooltip-prefix">{@html prefix_html}</div>
-    {/if}
-
     <header>
       <strong>{hover_info.region.name}</strong>
       {#if special_point_info}<span class="special-point-badge">{
@@ -192,12 +174,8 @@
         {Math.round(Math.abs(delta_t))} {temperature_unit} {label} {type}
       </div>
     {/if}
-
-    {#if suffix_html}
-      <div class="tooltip-suffix">{@html suffix_html}</div>
-    {/if}
   </div>
-{/if}
+</TooltipContent>
 
 <style>
   .phase-diagram-tooltip {
@@ -254,7 +232,6 @@
     margin: 0;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
-
     small {
       opacity: 0.6;
       font-weight: normal;
@@ -265,7 +242,6 @@
     margin-top: 6px;
     padding-top: 6px;
     border-top: 1px solid var(--border);
-
     & > span {
       font-size: 10px;
       opacity: 0.7;
@@ -279,7 +255,6 @@
     display: flex;
     margin-top: 3px;
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15));
-
     & > div:first-child {
       height: 100%;
       background: rgba(144, 238, 144, 0.8);
@@ -304,7 +279,6 @@
     margin-top: 3px;
     font-size: 10px;
     font-variant-numeric: tabular-nums;
-
     small {
       opacity: 0.6;
       margin-left: 2px;
@@ -317,15 +291,5 @@
     font-size: 10px;
     opacity: 0.85;
     font-style: italic;
-  }
-  .tooltip-prefix {
-    margin-bottom: 6px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border);
-  }
-  .tooltip-suffix {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid var(--border);
   }
 </style>

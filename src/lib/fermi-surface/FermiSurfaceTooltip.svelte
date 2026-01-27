@@ -1,46 +1,20 @@
 <script lang="ts">
   // Tooltip component for Fermi surface hover information
   // Displays band index, spin, k-coordinates, and optional property values
-  import { format_num } from '$lib/labels'
-  import type { Snippet } from 'svelte'
-  import type { FermiHoverData, FermiTooltipConfig } from './types'
+  import { format_num, format_vec3 } from '$lib/labels'
+  import { TooltipContent } from '$lib/tooltip'
+  import type { FermiHoverData, FermiTooltipProp } from './types'
 
   let {
     hover_data,
     tooltip,
   }: {
     hover_data: FermiHoverData
-    tooltip?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
+    tooltip?: FermiTooltipProp
   } = $props()
-
-  // Determine tooltip mode: snippet replaces content, config adds prefix/suffix
-  const is_snippet = $derived(typeof tooltip === `function`)
-  const config = $derived(
-    !is_snippet && tooltip ? (tooltip as FermiTooltipConfig) : null,
-  )
-  const prefix_html = $derived(
-    typeof config?.prefix === `function` ? config.prefix(hover_data) : config?.prefix,
-  )
-  const suffix_html = $derived(
-    typeof config?.suffix === `function` ? config.suffix(hover_data) : config?.suffix,
-  )
-  const tooltip_snippet = $derived(
-    is_snippet ? (tooltip as Snippet<[{ hover_data: FermiHoverData }]>) : null,
-  )
-
-  // Format coordinate for display
-  const fmt = (val: number) => format_num(val, `.4~`)
-  const fmt_vec = (vec: [number, number, number]) =>
-    `(${fmt(vec[0])}, ${fmt(vec[1])}, ${fmt(vec[2])})`
 </script>
 
-{#if tooltip_snippet}
-  {@render tooltip_snippet({ hover_data })}
-{:else}
-  {#if prefix_html}
-    <div class="tooltip-prefix">{@html prefix_html}</div>
-  {/if}
-
+<TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>
   <div class="tooltip-content">
     <div class="tooltip-title">
       <strong>Band {hover_data.band_index}</strong>
@@ -52,35 +26,33 @@
     <div class="coords-section">
       <div class="coord-row">
         <span class="coord-label">k (Å⁻¹):</span>
-        <span class="coord-values">{fmt_vec(hover_data.position_cartesian)}</span>
+        <span class="coord-values">{format_vec3(hover_data.position_cartesian)}</span>
       </div>
       {#if hover_data.position_fractional}
         <div class="coord-row">
           <span class="coord-label">k (frac):</span>
-          <span class="coord-values">{fmt_vec(hover_data.position_fractional)}</span>
+          <span class="coord-values">{format_vec3(hover_data.position_fractional)}</span>
         </div>
       {/if}
     </div>
 
     {#if hover_data.property_value != null}
       <div class="property-row">
-        {hover_data.property_name || `Property`}: {fmt(hover_data.property_value)}
+        {hover_data.property_name || `Property`}: {
+          format_num(hover_data.property_value, `.4~`)
+        }
         <span class="nearest-note">(nearest)</span>
       </div>
     {/if}
 
     {#if hover_data.is_tiled && hover_data.symmetry_index != null &&
-      hover_data.symmetry_index > 0}
+        hover_data.symmetry_index > 0}
       <div class="tiling-info">
         Symmetry copy #{hover_data.symmetry_index + 1}/48
       </div>
     {/if}
   </div>
-
-  {#if suffix_html}
-    <div class="tooltip-suffix">{@html suffix_html}</div>
-  {/if}
-{/if}
+</TooltipContent>
 
 <style>
   .tooltip-content {
