@@ -138,6 +138,15 @@ export const format_num = (num: number, fmt?: string | number) => {
   return format(fmt)(num)
 }
 
+// Format a 3D vector as "(x, y, z)" with configurable precision
+export const format_vec3 = (
+  vec: readonly [number, number, number],
+  fmt_spec = `.4~`,
+): string =>
+  `(${format_num(vec[0], fmt_spec)}, ${format_num(vec[1], fmt_spec)}, ${
+    format_num(vec[2], fmt_spec)
+  })`
+
 const BYTE_UNITS = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`] as const
 
 // Format file sizes using IEC binary units (1024 factor).

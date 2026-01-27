@@ -1,6 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
-import type { Snippet } from 'svelte'
+import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
 
 // Hover data for BZ tooltip
 export type BZHoverData = {
@@ -15,13 +15,10 @@ export type BZHoverData = {
 }
 
 // Tooltip configuration for prefix/suffix customization
-export type BZTooltipConfig = {
-  prefix?: string | ((data: BZHoverData) => string)
-  suffix?: string | ((data: BZHoverData) => string)
-}
+export type BZTooltipConfig = TooltipConfig<BZHoverData>
 
 // Tooltip prop can be a snippet for full customization or config for prefix/suffix
-export type BZTooltipProp = Snippet<[{ hover_data: BZHoverData }]> | BZTooltipConfig
+export type BZTooltipProp = TooltipProp<BZHoverData, [{ hover_data: BZHoverData }]>
 
 // Data structure for the irreducible Brillouin zone wedge
 export type IrreducibleBZData = {

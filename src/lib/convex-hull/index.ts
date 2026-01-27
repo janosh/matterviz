@@ -35,17 +35,12 @@ export interface TooltipSnippetProps<AnyDimEntry = PhaseData> {
   highlight_style?: HighlightStyle
 }
 
-// Tooltip configuration object for prefix/suffix content
-// Values can be static strings or functions that receive the entry for dynamic content
-export interface TooltipConfig<AnyDimEntry = PhaseData> {
-  prefix?: string | ((entry: AnyDimEntry) => string)
-  suffix?: string | ((entry: AnyDimEntry) => string)
-}
-
-// Union type for tooltip prop - can be a snippet or config object
-export type TooltipProp<AnyDimEntry = PhaseData> =
+// ConvexHull-specific tooltip types
+import type { TooltipConfig } from '$lib/tooltip'
+export type ConvexHullTooltipConfig<AnyDimEntry = PhaseData> = TooltipConfig<AnyDimEntry>
+export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> =
   | Snippet<[TooltipSnippetProps<AnyDimEntry>]>
-  | TooltipConfig<AnyDimEntry>
+  | ConvexHullTooltipConfig<AnyDimEntry>
 
 // Base props shared across all convex hull components (2D, 3D, 4D)
 export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
@@ -95,7 +90,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   selected_entry?: AnyDimEntry | null
   children?: Snippet<[BaseConvexHullChildrenProps<AnyDimEntry>]>
   // Custom tooltip - can be a snippet (replaces default) or config object (adds prefix/suffix)
-  tooltip?: TooltipProp<AnyDimEntry>
+  tooltip?: ConvexHullTooltipProp<AnyDimEntry>
 }
 
 // Additional props specific to 3D and 4D convex hulls

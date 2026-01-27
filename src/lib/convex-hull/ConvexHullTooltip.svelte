@@ -1,12 +1,11 @@
 <script lang="ts" generics="EntryT extends PhaseData = PhaseData">
   // Unified tooltip component for convex hull diagrams
-  // Handles: custom snippets, prefix/suffix config, and default content
   import { ELEM_SYMBOL_TO_NAME, get_electro_neg_formula } from '$lib/composition'
   import type { ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import type { Snippet } from 'svelte'
+  import { TooltipContent } from '$lib/tooltip'
   import type { PolymorphStats } from './helpers'
-  import type { TooltipConfig, TooltipSnippetProps } from './index'
+  import type { ConvexHullTooltipProp, TooltipSnippetProps } from './index'
   import type { HighlightStyle, PhaseData } from './types'
   import { is_unary_entry } from './types'
 
@@ -20,38 +19,17 @@
     entry: EntryT
     polymorph_stats_map?: Map<string, PolymorphStats>
     highlight_style?: HighlightStyle
-    tooltip?: Snippet<[TooltipSnippetProps<EntryT>]> | TooltipConfig<EntryT>
+    tooltip?: ConvexHullTooltipProp<EntryT>
     show_fractional?: boolean
   } = $props()
 
-  // Custom tooltip handling - mode precedence:
-  // 1. If tooltip is a snippet function, render it exclusively (replaces default)
-  // 2. If tooltip is a config object, render prefix/suffix around default content
-  // 3. Otherwise, render default content only
-  const is_snippet = $derived(typeof tooltip === `function`)
-  const config = $derived(
-    !is_snippet && tooltip ? (tooltip as TooltipConfig<EntryT>) : null,
-  )
-  const prefix_html = $derived(
-    typeof config?.prefix === `function` ? config.prefix(entry) : config?.prefix,
-  )
-  const suffix_html = $derived(
-    typeof config?.suffix === `function` ? config.suffix(entry) : config?.suffix,
-  )
-  const tooltip_snippet = $derived(
-    is_snippet ? (tooltip as Snippet<[TooltipSnippetProps<EntryT>]>) : null,
-  )
-
-  // Default tooltip content
   const is_element = $derived(is_unary_entry(entry))
-  // Find the single non-zero element (consistent with is_unary_entry filtering)
   const elem_symbol = $derived(
     is_element
       ? (Object.entries(entry.composition).find(([, n]) => n > 0)?.[0] ?? ``)
       : ``,
   ) as ElementSymbol | ``
   const elem_name = $derived(elem_symbol && ELEM_SYMBOL_TO_NAME[elem_symbol])
-  // O(1) lookup of pre-computed polymorph stats
   const polymorph_stats = $derived(
     entry.entry_id && polymorph_stats_map
       ? polymorph_stats_map.get(entry.entry_id)
@@ -59,13 +37,11 @@
   )
 </script>
 
-{#if tooltip_snippet}
-  {@render tooltip_snippet({ entry, highlight_style })}
-{:else}
-  {#if prefix_html}
-    <div class="tooltip-prefix">{@html prefix_html}</div>
-  {/if}
-
+<TooltipContent
+  data={entry}
+  snippet_arg={{ entry, highlight_style } as TooltipSnippetProps<EntryT>}
+  {tooltip}
+>
   <div class="tooltip-content" style:--highlight-color={highlight_style?.color}>
     {#if highlight_style}
       <span class="highlight-badge">★ Highlighted</span>
@@ -94,11 +70,14 @@
     {/if}
 
     {#if show_fractional && !is_element}
-      {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
+      {@const total = Object.values(entry.composition).reduce(
+        (sum, amt) => sum + amt,
+        0,
+      )}
       {#if total > 0}
         {@const fractions = Object.entries(entry.composition)
-      .filter(([, amt]) => amt > 0)
-      .map(([el, amt]) => `${el}<sub>${format_num(amt / total, `.2~`)}</sub>`)}
+        .filter(([, amt]) => amt > 0)
+        .map(([el, amt]) => `${el}<sub>${format_num(amt / total, `.2~`)}</sub>`)}
         {#if fractions.length > 1}
           <div>Fractional: {@html fractions.join(` `)}</div>
         {/if}
@@ -123,11 +102,7 @@
       </div>
     {/if}
   </div>
-
-  {#if suffix_html}
-    <div class="tooltip-suffix">{@html suffix_html}</div>
-  {/if}
-{/if}
+</TooltipContent>
 
 <style>
   .tooltip-content {
