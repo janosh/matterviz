@@ -1,5 +1,6 @@
 // Type definitions for Fermi surface visualization
 import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
 
 // Spin channel type
 export type SpinChannel = `up` | `down` | null
@@ -144,10 +145,11 @@ export interface FermiHoverData {
 }
 
 // Tooltip config for prefix/suffix content
-export interface FermiTooltipConfig {
-  prefix?: string | ((data: FermiHoverData) => string)
-  suffix?: string | ((data: FermiHoverData) => string)
-}
+export type FermiTooltipConfig = TooltipConfig<FermiHoverData>
+export type FermiTooltipProp = TooltipProp<
+  FermiHoverData,
+  [{ hover_data: FermiHoverData }]
+>
 
 // Type guard: checks if parsed result is FermiSurfaceData (has pre-computed isosurfaces)
 export const is_fermi_surface_data = (
