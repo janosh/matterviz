@@ -1,5 +1,6 @@
 <script lang="ts">
   import { BrillouinZone, type Crystal } from '$lib'
+  import type { IrreducibleBZData } from '$lib/brillouin/types'
   import mp1_struct from '$site/structures/mp-1.json'
 
   let controls_open = $state(false)
@@ -15,6 +16,11 @@
   let show_controls = $state<`always` | `hover` | `never`>(`hover`)
   let png_dpi = $state(150)
   let fullscreen = $state(false)
+  // IBZ state
+  let show_ibz = $state(false)
+  let ibz_color = $state(`#ff8844`)
+  let ibz_opacity = $state(0.5)
+  let ibz_data = $state<IrreducibleBZData | null>(null)
 
   let structure = $state<Crystal | undefined>(
     mp1_struct as unknown as Crystal,
@@ -51,6 +57,10 @@
     if (params.has(`show_controls`)) {
       const param = params.get(`show_controls`) as `always` | `hover` | `never` | null
       if (param && [`always`, `hover`, `never`].includes(param)) show_controls = param
+    }
+
+    if (params.has(`show_ibz`)) {
+      show_ibz = params.get(`show_ibz`) === `true`
     }
 
     ;(globalThis as Record<string, unknown>).event_calls = event_calls
@@ -94,6 +104,25 @@
       data-testid="fullscreen-checkbox"
       type="checkbox"
       bind:checked={fullscreen}
+    /></label><br />
+  <label>Show IBZ: <input
+      id="show-ibz"
+      data-testid="show-ibz-checkbox"
+      type="checkbox"
+      bind:checked={show_ibz}
+    /></label><br />
+  <label>IBZ Color: <input
+      id="ibz-color"
+      type="color"
+      bind:value={ibz_color}
+    /></label><br />
+  <label>IBZ Opacity: <input
+      id="ibz-opacity"
+      type="range"
+      min="0"
+      max="1"
+      step="0.1"
+      bind:value={ibz_opacity}
     /></label>
 </section>
 
@@ -105,6 +134,11 @@
   <p data-testid="show-controls">{show_controls}</p>
   <p data-testid="camera-projection">{camera_projection}</p>
   <p data-testid="fullscreen-status">{fullscreen}</p>
+  <p data-testid="show-ibz">{show_ibz}</p>
+  <p data-testid="ibz-color">{ibz_color}</p>
+  <p data-testid="ibz-opacity">{ibz_opacity}</p>
+  <p data-testid="ibz-data-status">{ibz_data ? `loaded` : `null`}</p>
+  <p data-testid="ibz-vertices-count">{ibz_data?.vertices?.length ?? 0}</p>
   <p data-testid="events">{event_calls.map((ec) => ec.event).join(`, `)}</p>
 </section>
 
@@ -124,6 +158,10 @@
   bind:camera_projection
   bind:png_dpi
   bind:fullscreen
+  bind:show_ibz
+  bind:ibz_color
+  bind:ibz_opacity
+  bind:ibz_data
   {show_controls}
   on_file_load={log_event(`on_file_load`)}
   on_error={log_event(`on_error`)}

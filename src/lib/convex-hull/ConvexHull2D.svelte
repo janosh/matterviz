@@ -738,7 +738,7 @@
       selected_entry,
     })}
     <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
-      {phase_stats?.chemical_system}
+      {merged_controls.title || phase_stats?.chemical_system}
     </h3>
 
     <ClickFeedback

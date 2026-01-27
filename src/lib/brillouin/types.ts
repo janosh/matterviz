@@ -1,5 +1,35 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
+import type { Snippet } from 'svelte'
+
+// Hover data for BZ tooltip
+export type BZHoverData = {
+  position_cartesian: Vec3 // k-point in Cartesian coords (Å⁻¹)
+  position_fractional: Vec3 | null // k-point in fractional coords
+  screen_position: { x: number; y: number } // for tooltip positioning
+  is_ibz: boolean // true if hovering the IBZ mesh
+  bz_order: number
+  bz_volume: number
+  ibz_volume: number | null // only when IBZ is shown
+  symmetry_multiplicity: number | null // BZ volume / IBZ volume (e.g., 48 for cubic)
+}
+
+// Tooltip configuration for prefix/suffix customization
+export type BZTooltipConfig = {
+  prefix?: string | ((data: BZHoverData) => string)
+  suffix?: string | ((data: BZHoverData) => string)
+}
+
+// Tooltip prop can be a snippet for full customization or config for prefix/suffix
+export type BZTooltipProp = Snippet<[{ hover_data: BZHoverData }]> | BZTooltipConfig
+
+// Data structure for the irreducible Brillouin zone wedge
+export type IrreducibleBZData = {
+  vertices: Vec3[] // Vertices of the irreducible wedge
+  faces: number[][] // Face indices for IBZ mesh
+  edges: Vec3[][] // Edge segments for IBZ boundary rendering
+  volume: number // IBZ volume in Å⁻³
+}
 
 export type BrillouinZoneData = {
   order: number // 1st, 2nd, 3rd BZ

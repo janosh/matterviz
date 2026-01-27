@@ -2,6 +2,9 @@ import { expect, type Page, test } from '@playwright/test'
 import { IS_CI, wait_for_3d_canvas } from './helpers'
 
 const BZ_SELECTOR = `#test-brillouin-zone`
+// IBZ computation requires moyo-wasm symmetry analysis which can be slow,
+// especially in CI with software rendering. 10s accommodates most structures.
+const IBZ_LOAD_TIMEOUT = 10000
 
 test.describe(`BrillouinZone Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
@@ -176,7 +179,7 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
     })
     await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 20000 })
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_file_load`, {
-      timeout: 10000,
+      timeout: IBZ_LOAD_TIMEOUT,
     })
   })
 
@@ -188,5 +191,119 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_error`, {
       timeout: 20000,
     })
+  })
+})
+
+test.describe(`BrillouinZone IBZ (Irreducible Brillouin Zone) Tests`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    test.skip(IS_CI, `BrillouinZone IBZ tests timeout in CI`)
+    await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
+    await wait_for_3d_canvas(page, BZ_SELECTOR)
+  })
+
+  test(`IBZ toggle control works`, async ({ page }) => {
+    const checkbox = page.locator(`#show-ibz`)
+    const status = page.locator(`[data-testid="show-ibz"]`)
+
+    await expect(checkbox).not.toBeChecked()
+    await expect(status).toHaveText(`false`)
+
+    await checkbox.check()
+    await expect(status).toHaveText(`true`)
+    await expect(checkbox).toBeChecked()
+
+    await checkbox.uncheck()
+    await expect(status).toHaveText(`false`)
+  })
+
+  test(`IBZ data loads when enabled`, async ({ page }) => {
+    const checkbox = page.locator(`#show-ibz`)
+    const data_status = page.locator(`[data-testid="ibz-data-status"]`)
+    const vertices_count = page.locator(`[data-testid="ibz-vertices-count"]`)
+
+    // Initially null
+    await expect(data_status).toHaveText(`null`)
+    await expect(vertices_count).toHaveText(`0`)
+
+    // Enable IBZ
+    await checkbox.check()
+
+    // Wait for IBZ data to load (async operation via moyo-wasm)
+    await expect(data_status).toHaveText(`loaded`, { timeout: IBZ_LOAD_TIMEOUT })
+
+    // Should have vertices
+    await expect(async () => {
+      const count = await vertices_count.textContent()
+      expect(parseInt(count || `0`)).toBeGreaterThan(0)
+    }).toPass({ timeout: 5000 })
+  })
+
+  test(`IBZ color control updates`, async ({ page }) => {
+    const color_input = page.locator(`#ibz-color`)
+    const color_status = page.locator(`[data-testid="ibz-color"]`)
+
+    await expect(color_status).toHaveText(`#ff8844`)
+
+    await color_input.fill(`#00ff00`)
+    await expect(color_status).toHaveText(`#00ff00`)
+  })
+
+  test(`IBZ opacity control updates`, async ({ page }) => {
+    const opacity_input = page.locator(`#ibz-opacity`)
+    const opacity_status = page.locator(`[data-testid="ibz-opacity"]`)
+
+    await expect(opacity_status).toHaveText(`0.5`)
+
+    await opacity_input.fill(`0.8`)
+    await expect(opacity_status).toHaveText(`0.8`)
+  })
+
+  test(`IBZ renders differently from full BZ`, async ({ page }) => {
+    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
+    const show_ibz = page.locator(`#show-ibz`)
+
+    // Screenshot without IBZ
+    const without_ibz = await canvas.screenshot()
+
+    // Enable IBZ and wait for it to load
+    await show_ibz.check()
+    await expect(page.locator(`[data-testid="ibz-data-status"]`)).toHaveText(`loaded`, {
+      timeout: IBZ_LOAD_TIMEOUT,
+    })
+
+    // Screenshot with IBZ - should be different (retry handles render timing)
+    await expect(async () => {
+      const with_ibz = await canvas.screenshot()
+      expect(with_ibz.equals(without_ibz)).toBe(false)
+    }).toPass({ timeout: 5000 })
+  })
+
+  test(`IBZ can be enabled via URL parameter`, async ({ page }) => {
+    await page.goto(`/test/brillouin-zone?show_ibz=true`, { waitUntil: `networkidle` })
+    await wait_for_3d_canvas(page, BZ_SELECTOR)
+
+    const checkbox = page.locator(`#show-ibz`)
+    const status = page.locator(`[data-testid="show-ibz"]`)
+
+    await expect(checkbox).toBeChecked()
+    await expect(status).toHaveText(`true`)
+
+    // IBZ data should load automatically
+    await expect(page.locator(`[data-testid="ibz-data-status"]`)).toHaveText(`loaded`, {
+      timeout: IBZ_LOAD_TIMEOUT,
+    })
+  })
+
+  test(`IBZ data cleared when disabled`, async ({ page }) => {
+    const checkbox = page.locator(`#show-ibz`)
+    const data_status = page.locator(`[data-testid="ibz-data-status"]`)
+
+    // Enable IBZ and wait for data
+    await checkbox.check()
+    await expect(data_status).toHaveText(`loaded`, { timeout: IBZ_LOAD_TIMEOUT })
+
+    // Disable IBZ
+    await checkbox.uncheck()
+    await expect(data_status).toHaveText(`null`)
   })
 })

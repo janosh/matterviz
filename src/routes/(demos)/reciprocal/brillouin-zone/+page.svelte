@@ -2,11 +2,20 @@
   import { BrillouinZone } from '$lib'
   import { structure_map } from '$site/structures'
 
-  const examples = [
+  type BZExample = {
+    id: string
+    label: string
+    description: string
+    show_ibz?: boolean
+    order?: number
+  }
+
+  const examples: BZExample[] = [
     {
       id: `Po-simple-cubic`,
       label: `Simple Cubic (SC)`,
-      description: `Po - cubic BZ`,
+      description: `Po - cubic BZ with IBZ wedge (1/48th)`,
+      show_ibz: true,
     },
     {
       id: `Fe-BCC`,
@@ -16,7 +25,8 @@
     {
       id: `Cu-FCC`,
       label: `Face-Centered Cubic (FCC)`,
-      description: `Cu - rhombic dodecahedron BZ`,
+      description: `Cu - rhombic dodecahedron with IBZ`,
+      show_ibz: true,
     },
     {
       id: `mp-1207297-Ac2Br2O1-tetragonal`,
@@ -26,7 +36,8 @@
     {
       id: `mp-862690-Ac4-hexagonal`,
       label: `Hexagonal`,
-      description: `Ac - hexagonal prism BZ`,
+      description: `Ac - hexagonal prism with IBZ`,
+      show_ibz: true,
     },
     {
       id: `mp-1183085-Ac4Mg2-orthorhombic`,
@@ -94,12 +105,12 @@
 </label>
 
 <div class="full-bleed grid">
-  {#each examples as { id, label, description } (id)}
+  {#each examples as { id, label, description, show_ibz } (id)}
     {@const structure = structure_map.get(id)}
     <div>
       <h3>{label}</h3>
       <p>{description}</p>
-      <BrillouinZone {structure} {surface_opacity} />
+      <BrillouinZone {structure} {surface_opacity} {show_ibz} />
     </div>
   {/each}
 </div>
