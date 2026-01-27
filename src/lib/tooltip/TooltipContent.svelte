@@ -46,11 +46,12 @@
   .tooltip-prefix {
     margin-bottom: 6px;
     padding-bottom: 6px;
-    border-bottom: 1px solid var(--tooltip-border, rgba(128, 128, 128, 0.3));
+    border-bottom: 1px solid
+      var(--tooltip-border, var(--border, rgba(128, 128, 128, 0.3)));
   }
   .tooltip-suffix {
     margin-top: 6px;
     padding-top: 6px;
-    border-top: 1px solid var(--tooltip-border, rgba(128, 128, 128, 0.3));
+    border-top: 1px solid var(--tooltip-border, var(--border, rgba(128, 128, 128, 0.3)));
   }
 </style>
