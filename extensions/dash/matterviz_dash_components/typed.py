@@ -385,7 +385,7 @@ class BrillouinZone(MatterViz):
 
     Component key: ``brillouin/BrillouinZone``
 
-    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change
+    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_hover
     """
 
     def __init__(
@@ -420,6 +420,7 @@ class BrillouinZone(MatterViz):
         structure_string: str | None = None,
         surface_color: str | None = None,
         surface_opacity: float | None = None,
+        tooltip_config: Any | None = None,
         vector_scale: float | None = None,
         width: float | None = None,
         mv_props: dict | None = None,
@@ -491,6 +492,8 @@ class BrillouinZone(MatterViz):
             mv_props['surface_color'] = surface_color
         if surface_opacity is not None:
             mv_props['surface_opacity'] = surface_opacity
+        if tooltip_config is not None:
+            mv_props['tooltip_config'] = tooltip_config
         if vector_scale is not None:
             mv_props['vector_scale'] = vector_scale
         if width is not None:
