@@ -4,6 +4,7 @@ import {
   compute_ibz_clipping_planes,
   compute_irreducible_bz,
   extract_point_group_from_operations,
+  fractional_to_cartesian_rotation,
   generate_bz_vertices,
   reciprocal_lattice,
 } from '$lib/brillouin/compute'
@@ -16,6 +17,10 @@ import reference_data from './bz_reference_data.json' with { type: 'json' }
 const CUBIC_5: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
 const IDENTITY_MAT: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
 const INVERSION_MAT: Matrix3x3 = [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]
+
+// Hexagonal 3-fold rotation in fractional coords (non-orthogonal: W^T ≠ W^{-1})
+const C3_HEX: Matrix3x3 = [[0, -1, 0], [1, -1, 0], [0, 0, 1]]
+const C3_HEX_SQ: Matrix3x3 = [[-1, 1, 0], [-1, 0, 0], [0, 0, 1]] // C3²
 
 // Helpers
 const has_vertex = (vertices: Vec3[], target: Vec3, tol = 1e-8) =>
@@ -371,42 +376,73 @@ describe(`compute_irreducible_bz`, () => {
   test(`P1 (identity only) → full BZ`, () => {
     const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT])
     expect(ibz).not.toBeNull()
-    if (ibz) {
-      expect(ibz.vertices).toHaveLength(bz.vertices.length)
-      expect(ibz.volume).toBeCloseTo(bz.volume, 6)
-    }
+    if (!ibz) return
+    expect(ibz.vertices).toHaveLength(bz.vertices.length)
+    expect(ibz.volume).toBeCloseTo(bz.volume, 6)
   })
 
-  test(`inversion symmetry → smaller volume`, () => {
+  test(`inversion symmetry → half volume`, () => {
     const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, INVERSION_MAT])
-    if (ibz) {
-      expect(ibz.volume).toBeLessThanOrEqual(bz.volume + 1e-6)
-      expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
-    }
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume).toBeLessThanOrEqual(bz.volume)
+    expect(ibz.volume).toBeCloseTo(bz.volume / 2, 5)
+    expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
   })
 
   test(`mirror symmetry → valid geometry`, () => {
     const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, MIRROR_Z_MAT])
-    if (ibz) {
-      expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
-      expect(ibz.faces.length).toBeGreaterThanOrEqual(4)
-      expect(ibz.edges.length).toBeGreaterThan(0)
-      expect(ibz.volume).toBeGreaterThan(0)
-      ibz.faces.flat().forEach((idx) => {
-        expect(idx).toBeGreaterThanOrEqual(0)
-        expect(idx).toBeLessThan(ibz.vertices.length)
-      })
-    }
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
+    expect(ibz.faces.length).toBeGreaterThanOrEqual(4)
+    expect(ibz.edges.length).toBeGreaterThan(0)
+    expect(ibz.volume).toBeGreaterThan(0)
+    ibz.faces.flat().forEach((idx) => {
+      expect(idx).toBeGreaterThanOrEqual(0)
+      expect(idx).toBeLessThan(ibz.vertices.length)
+    })
   })
 
   test(`handles all crystal systems with inversion`, () => {
     for (const data of Object.values(reference_data)) {
       const crystal_bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
       const ibz = compute_irreducible_bz(crystal_bz, [IDENTITY_MAT, INVERSION_MAT])
-      if (ibz) {
-        expect(ibz.volume).toBeGreaterThan(0)
-        expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
-      }
+      expect(ibz).not.toBeNull()
+      if (!ibz) continue
+      expect(ibz.volume).toBeGreaterThan(0)
+      expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
     }
+  })
+
+  test(`hexagonal C3 group uses W^{-T} correctly`, () => {
+    const hex_bz = compute_brillouin_zone(
+      reference_data.hexagonal.reciprocal_lattice as Matrix3x3,
+      1,
+    )
+    const ibz = compute_irreducible_bz(hex_bz, [IDENTITY_MAT, C3_HEX, C3_HEX_SQ])
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume).toBeGreaterThan(0)
+    expect(ibz.volume).toBeLessThan(hex_bz.volume * 0.6)
+  })
+})
+
+describe(`fractional_to_cartesian_rotation`, () => {
+  const k_lattice = reference_data.hexagonal.reciprocal_lattice as Matrix3x3
+
+  test(`det = +1 and correct matrix elements for hexagonal C3`, () => {
+    const R = fractional_to_cartesian_rotation(C3_HEX, k_lattice)
+
+    // det(R) should be +1 for proper rotation
+    const det = R[0][0] * (R[1][1] * R[2][2] - R[1][2] * R[2][1]) -
+      R[0][1] * (R[1][0] * R[2][2] - R[1][2] * R[2][0]) +
+      R[0][2] * (R[1][0] * R[2][1] - R[1][1] * R[2][0])
+    expect(det).toBeCloseTo(1, 10)
+
+    // These values distinguish W^{-T} from W^T (wrong impl gives ~-0.577, ~-0.906, ~0.577)
+    expect(R[0][0]).toBeCloseTo(-0.4226497308103744, 6)
+    expect(R[0][1]).toBeCloseTo(-0.6547005383792517, 6)
+    expect(R[1][0]).toBeCloseTo(1.1547005383792515, 6)
   })
 })

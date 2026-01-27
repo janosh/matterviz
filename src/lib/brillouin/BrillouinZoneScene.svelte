@@ -250,6 +250,9 @@
 
   // Track IBZ hover state - IBZ takes priority over BZ
   let ibz_hovered = false
+  $effect(() => {
+    if (!show_ibz) ibz_hovered = false
+  }) // reset when mesh removed
 
   // Create hover data from pointer event
   function create_hover_data(

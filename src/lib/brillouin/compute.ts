@@ -55,15 +55,21 @@ function mat3x3_multiply(A: Matrix3x3, B: Matrix3x3): Matrix3x3 {
 }
 
 // Convert fractional-coordinate rotation W to Cartesian k-space rotation.
-// In reciprocal space: R_cart = B · W^T · B^{-1}, where B is the k_lattice.
-function fractional_to_cartesian_rotation(
+// In reciprocal space: R_cart = B · W^{-T} · B^{-1}, where B is the k_lattice
+// and W^{-T} is the inverse transpose of the direct-space rotation matrix.
+// This follows the dual-basis relation: if direct fractional rotation is x' = W·x,
+// then reciprocal fractional rotation is q' = W^{-T}·q. For non-orthogonal lattices
+// (monoclinic, triclinic, hexagonal), W^{-1} ≠ W^T since integer rotation matrices
+// are not orthogonal in these systems.
+export function fractional_to_cartesian_rotation(
   W: Matrix3x3,
   k_lattice: Matrix3x3,
 ): Matrix3x3 {
   const k_lattice_inv = math.matrix_inverse_3x3(k_lattice)
-  const W_T = math.transpose_3x3_matrix(W)
-  // R_cart = B · W^T · B^{-1}
-  return mat3x3_multiply(mat3x3_multiply(k_lattice, W_T), k_lattice_inv)
+  const W_inv = math.matrix_inverse_3x3(W)
+  const W_inv_T = math.transpose_3x3_matrix(W_inv)
+  // R_cart = B · W^{-T} · B^{-1}
+  return mat3x3_multiply(mat3x3_multiply(k_lattice, W_inv_T), k_lattice_inv)
 }
 
 // Compute reciprocal lattice: k = inv(real).T * 2π
@@ -451,7 +457,7 @@ export function compute_irreducible_bz(
   edge_sharp_angle_deg = 5,
 ): IrreducibleBZData | null {
   // Convert fractional rotations to Cartesian k-space rotations
-  // R_cart = B · W^T · B^{-1}, where B is k_lattice
+  // R_cart = B · W^{-T} · B^{-1}, where B is k_lattice and W^{-T} is inverse-transpose
   const cartesian_ops = point_group_ops.map((W) =>
     fractional_to_cartesian_rotation(W, bz_data.k_lattice)
   )
