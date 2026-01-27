@@ -166,6 +166,234 @@
       marker: get_marker(e, selected_binary_entry?.entry_id, `square`),
     })),
   )
+
+  // Temperature-dependent free energy synthetic data
+  // Simulate G(T) = E_0K + a*T + b*T*ln(T) with varying coefficients per phase
+  const temperatures = [300, 600, 900, 1200, 1500]
+
+  const make_free_energies = (e_0k: number, entropy_coef: number) =>
+    temperatures.map((T) =>
+      e_0k + entropy_coef * T * 0.0001 - 0.00005 * T * Math.log(T)
+    )
+
+  // Binary A-B system with temperature-dependent G(T)
+  const temp_binary_entries: PhaseData[] = [
+    {
+      composition: { A: 1 },
+      energy: 0,
+      temperatures,
+      free_energies: make_free_energies(0, 0.5),
+    },
+    {
+      composition: { B: 1 },
+      energy: 0,
+      temperatures,
+      free_energies: make_free_energies(0, 0.8),
+    },
+    {
+      composition: { A: 0.5, B: 0.5 },
+      energy: -0.3,
+      temperatures,
+      free_energies: make_free_energies(-0.3, 1.2),
+    },
+    {
+      composition: { A: 0.33, B: 0.67 },
+      energy: -0.25,
+      temperatures,
+      free_energies: make_free_energies(-0.25, 1.5),
+    },
+    {
+      composition: { A: 0.67, B: 0.33 },
+      energy: -0.22,
+      temperatures,
+      free_energies: make_free_energies(-0.22, 0.9),
+    },
+    {
+      composition: { A: 0.25, B: 0.75 },
+      energy: -0.15,
+      temperatures,
+      free_energies: make_free_energies(-0.15, 1.8),
+    },
+    {
+      composition: { A: 0.75, B: 0.25 },
+      energy: -0.12,
+      temperatures,
+      free_energies: make_free_energies(-0.12, 0.6),
+    },
+    // Some unstable phases
+    {
+      composition: { A: 0.4, B: 0.6 },
+      energy: -0.1,
+      temperatures,
+      free_energies: make_free_energies(-0.1, 2.0),
+    },
+    {
+      composition: { A: 0.6, B: 0.4 },
+      energy: -0.08,
+      temperatures,
+      free_energies: make_free_energies(-0.08, 1.1),
+    },
+  ]
+
+  // Ternary A-B-C system with temperature-dependent G(T)
+  const temp_ternary_entries: PhaseData[] = [
+    {
+      composition: { A: 1 },
+      energy: 0,
+      temperatures,
+      free_energies: make_free_energies(0, 0.4),
+    },
+    {
+      composition: { B: 1 },
+      energy: 0,
+      temperatures,
+      free_energies: make_free_energies(0, 0.6),
+    },
+    {
+      composition: { C: 1 },
+      energy: 0,
+      temperatures,
+      free_energies: make_free_energies(0, 0.5),
+    },
+    {
+      composition: { A: 0.5, B: 0.5 },
+      energy: -0.35,
+      temperatures,
+      free_energies: make_free_energies(-0.35, 1.3),
+    },
+    {
+      composition: { B: 0.5, C: 0.5 },
+      energy: -0.28,
+      temperatures,
+      free_energies: make_free_energies(-0.28, 1.6),
+    },
+    {
+      composition: { A: 0.5, C: 0.5 },
+      energy: -0.32,
+      temperatures,
+      free_energies: make_free_energies(-0.32, 1.1),
+    },
+    {
+      composition: { A: 0.33, B: 0.33, C: 0.34 },
+      energy: -0.45,
+      temperatures,
+      free_energies: make_free_energies(-0.45, 1.8),
+    },
+    {
+      composition: { A: 0.5, B: 0.25, C: 0.25 },
+      energy: -0.38,
+      temperatures,
+      free_energies: make_free_energies(-0.38, 1.4),
+    },
+    {
+      composition: { A: 0.25, B: 0.5, C: 0.25 },
+      energy: -0.36,
+      temperatures,
+      free_energies: make_free_energies(-0.36, 1.5),
+    },
+    {
+      composition: { A: 0.25, B: 0.25, C: 0.5 },
+      energy: -0.34,
+      temperatures,
+      free_energies: make_free_energies(-0.34, 1.2),
+    },
+    // Some unstable phases
+    {
+      composition: { A: 0.4, B: 0.4, C: 0.2 },
+      energy: -0.2,
+      temperatures,
+      free_energies: make_free_energies(-0.2, 2.2),
+    },
+    {
+      composition: { A: 0.2, B: 0.4, C: 0.4 },
+      energy: -0.18,
+      temperatures,
+      free_energies: make_free_energies(-0.18, 2.0),
+    },
+  ]
+
+  // Quaternary A-B-C-D system with temperature-dependent G(T)
+  const temp_quaternary_entries: PhaseData[] = [
+    {
+      composition: { A: 1 },
+      energy: 0,
+      temperatures,
+      free_energies: make_free_energies(0, 0.3),
+    },
+    {
+      composition: { B: 1 },
+      energy: 0,
+      temperatures,
+      free_energies: make_free_energies(0, 0.5),
+    },
+    {
+      composition: { C: 1 },
+      energy: 0,
+      temperatures,
+      free_energies: make_free_energies(0, 0.4),
+    },
+    {
+      composition: { D: 1 },
+      energy: 0,
+      temperatures,
+      free_energies: make_free_energies(0, 0.6),
+    },
+    {
+      composition: { A: 0.5, B: 0.5 },
+      energy: -0.3,
+      temperatures,
+      free_energies: make_free_energies(-0.3, 1.2),
+    },
+    {
+      composition: { C: 0.5, D: 0.5 },
+      energy: -0.28,
+      temperatures,
+      free_energies: make_free_energies(-0.28, 1.4),
+    },
+    {
+      composition: { A: 0.33, B: 0.33, C: 0.34 },
+      energy: -0.4,
+      temperatures,
+      free_energies: make_free_energies(-0.4, 1.6),
+    },
+    {
+      composition: { B: 0.33, C: 0.33, D: 0.34 },
+      energy: -0.38,
+      temperatures,
+      free_energies: make_free_energies(-0.38, 1.7),
+    },
+    {
+      composition: { A: 0.25, B: 0.25, C: 0.25, D: 0.25 },
+      energy: -0.5,
+      temperatures,
+      free_energies: make_free_energies(-0.5, 2.0),
+    },
+    {
+      composition: { A: 0.4, B: 0.2, C: 0.2, D: 0.2 },
+      energy: -0.42,
+      temperatures,
+      free_energies: make_free_energies(-0.42, 1.8),
+    },
+    {
+      composition: { A: 0.2, B: 0.4, C: 0.2, D: 0.2 },
+      energy: -0.4,
+      temperatures,
+      free_energies: make_free_energies(-0.4, 1.9),
+    },
+    // Unstable phases
+    {
+      composition: { A: 0.3, B: 0.3, C: 0.3, D: 0.1 },
+      energy: -0.25,
+      temperatures,
+      free_energies: make_free_energies(-0.25, 2.5),
+    },
+    {
+      composition: { A: 0.1, B: 0.3, C: 0.3, D: 0.3 },
+      energy: -0.22,
+      temperatures,
+      free_energies: make_free_energies(-0.22, 2.3),
+    },
+  ]
 </script>
 
 <svelte:head>
@@ -312,6 +540,29 @@
     <strong>Note:</strong> If pure element references are missing from the data, they are
     automatically added with formation energy = 0 eV/atom (the thermodynamic definition).
   </p>
+
+  <h2>Temperature-Dependent Free Energies</h2>
+  <p class="section-description">
+    When entries include <code>temperatures</code> and <code>free_energies</code> arrays,
+    a temperature slider appears allowing dynamic visualization of G(T) at different
+    temperatures. The hull is recomputed at each temperature, showing how phase stability
+    changes.
+  </p>
+  <div class="temp-grid">
+    <ConvexHull2D
+      entries={temp_binary_entries}
+      controls={{ title: `A-B with G(T)` }}
+      style="height: 500px"
+    />
+    <ConvexHull3D
+      entries={temp_ternary_entries}
+      controls={{ title: `A-B-C with G(T)` }}
+    />
+    <ConvexHull4D
+      entries={temp_quaternary_entries}
+      controls={{ title: `A-B-C-D with G(T)` }}
+    />
+  </div>
 </main>
 
 <style>
@@ -376,8 +627,20 @@
       grid-template-columns: 1fr 1fr;
     }
   }
+  .temp-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    width: 100%;
+    margin: 0 auto 3rem auto;
+  }
+  @media (max-width: 1400px) {
+    .temp-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
   @media (max-width: 1100px) {
-    .ternary-grid, .quaternary-grid, .binary-grid, .highlight-grid {
+    .ternary-grid, .quaternary-grid, .binary-grid, .highlight-grid, .temp-grid {
       grid-template-columns: 1fr;
     }
     .stats-example-grid {
