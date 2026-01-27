@@ -1140,8 +1140,11 @@
         <FullscreenToggle bind:fullscreen />
       {/if}
     </div>
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <svg
       bind:this={svg_element}
+      role="application"
       tabindex="0"
       onfocusin={() => (is_focused = true)}
       onfocusout={() => (is_focused = false)}
@@ -1171,7 +1174,6 @@
       : shift_held && pan?.enabled !== false
       ? `grab`
       : `crosshair`}
-      role="button"
     >
       <!-- Zoom rectangle -->
       {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&

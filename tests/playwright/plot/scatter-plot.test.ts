@@ -9,7 +9,7 @@ import { get_tick_range, IS_CI } from '../helpers'
 // (main plot SVG plus control pane icons). When targeting the main plot SVG for
 // interactions like zoom/hover, use .first() to avoid Playwright strict mode
 // violations. For visibility assertions where any match is acceptable, .first()
-// is optional. Example: plot.locator(`> svg[role="img"]`).first()
+// is optional. Example: plot.locator(`> svg[role="application"]`).first()
 
 // Ensure plot is visible in viewport (useful for long test pages)
 const ensure_plot_visible = async (plot_locator: Locator): Promise<void> => {
@@ -201,7 +201,7 @@ const hover_to_show_tooltip = async (
   marker_locator: Locator,
 ): Promise<void> => {
   // Use .first() to avoid strict mode violations if plot contains additional SVGs (e.g., icons)
-  const svg = plot_locator.locator(`> svg[role="img"]`).first()
+  const svg = plot_locator.locator(`> svg[role="application"]`).first()
   await expect(svg).toBeVisible()
   await expect(marker_locator).toBeVisible()
 
@@ -622,7 +622,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   test(`no console errors on linear-log scale transition`, async ({ page }) => {
     const section = page.locator(`#lin-log-transition`)
     const plot_locator = section.locator(`.scatter`)
-    const svg = plot_locator.locator(`> svg[role="img"]`).first()
+    const svg = plot_locator.locator(`> svg[role="application"]`).first()
     const linear_radio = section.locator(`input[value="linear"]`)
     const log_radio = section.locator(`input[value="log"]`)
     const y_axis_ticks = plot_locator.locator(`g.y-axis .tick`)
@@ -666,7 +666,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   test(`bind:hovered prop reflects hover state`, async ({ page }) => {
     const section = page.locator(`#bind-hovered`)
     const scatter_plot = section.locator(`.scatter`)
-    const svg = scatter_plot.locator(`> svg[role="img"]`).first()
+    const svg = scatter_plot.locator(`> svg[role="application"]`).first()
     const hover_status = page.locator(`#hover-status`)
 
     // Initial state: not hovered
@@ -717,7 +717,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   test(`zooms correctly inside and outside plot area and resets`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
-    const svg = plot_locator.locator(`> svg[role="img"]`).first()
+    const svg = plot_locator.locator(`> svg[role="application"]`).first()
     const x_axis = plot_locator.locator(`g.x-axis`)
     const y_axis = plot_locator.locator(`g.y-axis`)
     const zoom_rect = plot_locator.locator(`rect.zoom-rect`)
@@ -1590,7 +1590,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const plot_locator = page.locator(`#axis-color-test ${plot_id}.scatter`)
       await expect(plot_locator).toBeVisible()
       // Use direct child SVG (the main plot SVG, not icon SVGs)
-      await expect(plot_locator.locator(`> svg[role="img"]`)).toBeVisible()
+      await expect(plot_locator.locator(`> svg[role="application"]`)).toBeVisible()
       await expect(plot_locator.locator(`path.marker`)).toHaveCount(expected_markers)
 
       // Check for dual-axis specific elements
@@ -1695,7 +1695,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   test(`handles extreme zoom levels and data ranges`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
-    const svg = plot_locator.locator(`> svg[role="img"]`).first()
+    const svg = plot_locator.locator(`> svg[role="application"]`).first()
 
     // Test extreme zoom in (very small area)
     const svg_box = await svg.boundingBox()
@@ -1712,7 +1712,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.mouse.up()
 
     // Should still render properly after extreme zoom
-    await expect(plot_locator.locator(`> svg[role="img"]`)).toBeVisible()
+    await expect(plot_locator.locator(`> svg[role="application"]`)).toBeVisible()
     await expect(plot_locator.locator(`g.x-axis .tick text`).first()).toBeVisible()
 
     // Reset zoom for next test
@@ -1827,7 +1827,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await marker_group.dispatchEvent(`mouseleave`)
 
     // Verify plot remains functional
-    await expect(plot_locator.locator(`> svg[role="img"]`)).toBeVisible()
+    await expect(plot_locator.locator(`> svg[role="application"]`)).toBeVisible()
     await expect(first_marker).toBeVisible()
   })
 
@@ -1951,7 +1951,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   test(`zoom behavior with logarithmic scales`, async ({ page }) => {
     const section = page.locator(`#log-scale`)
     const log_y_plot = section.locator(`#log-y .scatter`)
-    const svg = log_y_plot.locator(`> svg[role="img"]`).first()
+    const svg = log_y_plot.locator(`> svg[role="application"]`).first()
 
     // Test zoom on logarithmic scale
     const svg_box = await svg.boundingBox()
@@ -2214,7 +2214,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Plot should still be visible and functional
     await expect(plot_locator).toBeVisible()
     // Use direct child selector for main plot SVG
-    await expect(plot_locator.locator(`> svg[role="img"]`)).toBeVisible()
+    await expect(plot_locator.locator(`> svg[role="application"]`)).toBeVisible()
 
     // Test with smaller viewport
     await page.setViewportSize({ width: 400, height: 300 })
@@ -2338,7 +2338,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   test(`Shift+drag pans the plot instead of zooming`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
-    const svg = plot_locator.locator(`> svg[role="img"]`).first()
+    const svg = plot_locator.locator(`> svg[role="application"]`).first()
     const x_axis = plot_locator.locator(`g.x-axis`)
     const y_axis = plot_locator.locator(`g.y-axis`)
     const zoom_rect = plot_locator.locator(`rect.zoom-rect`)
@@ -2391,7 +2391,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   test(`cursor changes to grab/grabbing during pan`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
-    const svg = plot_locator.locator(`> svg[role="img"]`).first()
+    const svg = plot_locator.locator(`> svg[role="application"]`).first()
 
     await expect(svg).toBeVisible()
 
@@ -2422,7 +2422,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   test(`pan requires focus for wheel events`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
-    const svg = plot_locator.locator(`> svg[role="img"]`).first()
+    const svg = plot_locator.locator(`> svg[role="application"]`).first()
     const y_axis = plot_locator.locator(`g.y-axis`)
 
     await y_axis.locator(`.tick text`).first().waitFor({

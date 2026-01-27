@@ -108,7 +108,7 @@
   {#each examples as { id, label, description, show_ibz } (id)}
     {@const structure = structure_map.get(id)}
     <div>
-      <h3>{label}</h3>
+      <h2>{label}</h2>
       <p>{description}</p>
       <BrillouinZone {structure} {surface_opacity} {show_ibz} />
     </div>
@@ -121,7 +121,7 @@
   {#each higher_order_examples as { id, label, description, order } (`${id}-${order}`)}
     {@const structure = id ? structure_map.get(id) : undefined}
     <div>
-      <h3>{label}</h3>
+      <h2>{label}</h2>
       <p>{description}</p>
       <BrillouinZone
         {structure}
@@ -150,7 +150,7 @@
     text-align: center;
   }
   .full-bleed {
-    h3 {
+    h2 {
       margin: 0;
     }
     > div {

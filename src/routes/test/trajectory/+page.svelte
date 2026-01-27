@@ -294,7 +294,7 @@
   data_url="/non-existent-file.json"
 >
   {#snippet error_snippet({ error_msg, on_dismiss })}
-    <h3>Custom Error Handler</h3>
+    <h2>Custom Error Handler</h2>
     <p>{error_msg}</p>
     <button onclick={on_dismiss}>Dismiss Error</button>
   {/snippet}

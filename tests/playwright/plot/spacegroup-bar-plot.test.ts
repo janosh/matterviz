@@ -80,7 +80,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
   test(`double-click on plot area works`, async ({ page }) => {
     const plot = page.locator(`.bar-plot`).first()
-    const svg = plot.locator(`svg[role="button"]`)
+    const svg = plot.locator(`svg[role="application"]`)
     await expect(svg).toBeVisible()
 
     // Wait for initial render

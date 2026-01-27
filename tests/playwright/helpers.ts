@@ -147,7 +147,7 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 
 // Get the chart SVG from a plot container (avoids control button SVGs)
 export const get_chart_svg = (plot: Locator): Locator =>
-  plot.locator(`:scope > svg[role="img"]`)
+  plot.locator(`:scope > svg[role="application"]`)
 
 // Poll until canvas has rendered non-trivial content (screenshot size > threshold)
 // Use this to wait for WebGL/Three.js canvas initialization before interacting.

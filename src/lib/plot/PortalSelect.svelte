@@ -16,7 +16,6 @@
     format_option = (
       opt: Option,
     ) => (opt.unit ? `${opt.label} (${opt.unit})` : opt.label),
-    class: class_name = ``,
     ...rest
   }: Omit<HTMLButtonAttributes, `onclick`> & {
     options: Option[]
@@ -24,7 +23,6 @@
     on_select?: (key: string, prev_key?: string) => void | Promise<void>
     disabled?: boolean
     format_option?: (opt: Option) => string
-    class?: string
   } = $props()
 
   let dropdown_open = $state(false)
@@ -199,12 +197,12 @@
   <button
     bind:this={trigger_el}
     type="button"
-    class="portal-select-trigger {class_name}"
     onclick={() => (dropdown_open ? close_dropdown() : open_dropdown())}
     {disabled}
     aria-expanded={dropdown_open}
     aria-haspopup="listbox"
     {...rest}
+    class="portal-select-trigger {rest.class ?? ``}"
   >
     {@html format_option(selected_option)}
     <span class="arrow">▾</span>

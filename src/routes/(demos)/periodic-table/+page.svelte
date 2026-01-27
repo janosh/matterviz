@@ -98,7 +98,7 @@
 
 <PeriodicTableDemo />
 
-<h3>4-fold Split</h3>
+<h2>4-fold Split</h2>
 <p>
   Each element shows four values as quadrants: <strong>top-left = atomic radius</strong>,
   <strong>top-right = electronegativity * 100</strong>,
@@ -258,7 +258,7 @@
     (title)
   }
     <div>
-      <h4 style="margin: 0 0 0.5em; text-align: center; font-size: 0.9em">{title}</h4>
+      <h3 style="margin: 0 0 0.5em; text-align: center; font-size: 0.9em">{title}</h3>
       <PeriodicTable
         tile_props={{ show_name: false, show_number: false, show_symbol: false }}
         heatmap_values={element_data.map((el) => el[property] || 0)}
@@ -302,7 +302,7 @@
     >
       {#snippet inset()}
         <TableInset style="display: grid; place-content: center">
-          <h4 style="margin: 0">{title}</h4>
+          <h3 style="margin: 0">{title}</h3>
         </TableInset>
       {/snippet}
     </PeriodicTable>

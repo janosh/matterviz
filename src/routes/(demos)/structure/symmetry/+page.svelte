@@ -127,11 +127,11 @@
     }}
     style="height: 100%; min-height: 500px"
   >
-    <h3
-      style="position: absolute; left: 1em; top: 1ex; margin: 0; font-family: monospace"
+    <h2
+      style="position: absolute; left: 1em; top: 1ex; margin: 0; font-family: monospace; font-size: 1em"
     >
       {current_filename}
-    </h3>
+    </h2>
   </Structure>
 </div>
 

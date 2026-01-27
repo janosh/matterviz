@@ -267,7 +267,7 @@
 </div>
 
 <div class="controls">
-  <h3>Quick Presets</h3>
+  <h2>Quick Presets</h2>
   {#each [
       [100, `Small`],
       [500, `Medium`],
@@ -311,7 +311,7 @@
   h1 {
     margin-bottom: 1.5rem;
   }
-  h3 {
+  h2 {
     width: 100%;
     margin: 0 0 0.5rem 0;
   }

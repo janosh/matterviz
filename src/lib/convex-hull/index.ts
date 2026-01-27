@@ -19,6 +19,8 @@ export { default as ConvexHullControls } from './ConvexHullControls.svelte'
 export { default as ConvexHullInfoPane } from './ConvexHullInfoPane.svelte'
 export { default as ConvexHullStats } from './ConvexHullStats.svelte'
 export { default as ConvexHullTooltip } from './ConvexHullTooltip.svelte'
+export * from './helpers'
+export { default as TemperatureSlider } from './TemperatureSlider.svelte'
 export * from './thermodynamics'
 export * from './types'
 
@@ -37,7 +39,9 @@ export interface TooltipSnippetProps<AnyDimEntry = PhaseData> {
 
 // ConvexHull-specific tooltip types
 import type { TooltipConfig } from '$lib/tooltip'
-export type ConvexHullTooltipConfig<AnyDimEntry = PhaseData> = TooltipConfig<AnyDimEntry>
+export type ConvexHullTooltipConfig<AnyDimEntry = PhaseData> = TooltipConfig<
+  AnyDimEntry
+>
 export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> =
   | Snippet<[TooltipSnippetProps<AnyDimEntry>]>
   | ConvexHullTooltipConfig<AnyDimEntry>
@@ -91,6 +95,16 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   children?: Snippet<[BaseConvexHullChildrenProps<AnyDimEntry>]>
   // Custom tooltip - can be a snippet (replaces default) or config object (adds prefix/suffix)
   tooltip?: ConvexHullTooltipProp<AnyDimEntry>
+  // Temperature for temperature-dependent free energy G(T) data
+  // When entries have temperatures/free_energies arrays, this selects the active temperature
+  temperature?: number
+  // Enable linear interpolation for temperatures not in the data (default: true)
+  // When true, entries missing the exact temperature but having values above and below
+  // will have their energy linearly interpolated
+  interpolate_temperature?: boolean
+  // Maximum temperature gap (Kelvin) allowed for interpolation (default: 500)
+  // Prevents extrapolation over unreasonably large gaps
+  max_interpolation_gap?: number
 }
 
 // Additional props specific to 3D and 4D convex hulls

@@ -492,7 +492,8 @@
       Same size atoms
       <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
     </label>
-    <label
+    <span
+      class="label"
       style="align-items: start"
       {@attach tooltip({ content: SETTINGS_CONFIG.color_scheme.description })}
     >
@@ -504,6 +505,7 @@
         bind:selected={color_scheme_selected}
         liOptionStyle="padding: 3pt 6pt;"
         style="width: 10em; border: none"
+        aria-label="Color scheme"
       >
         {#snippet children({ option })}
           {@const option_style =
@@ -520,7 +522,7 @@
           </div>
         {/snippet}
       </Select>
-    </label>
+    </span>
     <label
       style="align-items: start"
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_mode.description })}
@@ -536,7 +538,8 @@
       </select>
     </label>
     {#if atom_color_config.mode !== `element`}
-      <label
+      <span
+        class="label"
         style="align-items: start; white-space: nowrap"
         {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_scale.description })}
       >
@@ -550,8 +553,9 @@
             title_style: `font-size: 0.95em;`,
           }}
           style="width: 100%; border: none"
+          aria-label="Color scale"
         />
-      </label>
+      </span>
     {/if}
   </SettingsSection>
 
@@ -981,7 +985,7 @@
     justify-content: space-between;
     width: 100%;
   }
-  label {
+  label, .label {
     display: flex;
     align-items: center;
     gap: 10pt;

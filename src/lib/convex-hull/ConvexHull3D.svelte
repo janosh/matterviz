@@ -30,6 +30,7 @@
   import type { BaseConvexHullProps, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
   import StructurePopup from './StructurePopup.svelte'
+  import TemperatureSlider from './TemperatureSlider.svelte'
   import * as thermo from './thermodynamics'
   import type { ConvexHullEntry, HighlightStyle, HoverData3D, Point3D } from './types'
 
@@ -74,6 +75,9 @@
     highlighted_entries = $bindable([]),
     highlight_style = {},
     selected_entry = $bindable(null),
+    temperature = $bindable(),
+    interpolate_temperature = true,
+    max_interpolation_gap = 500,
     children,
     tooltip,
     ...rest
@@ -90,6 +94,30 @@
     margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
   })
 
+  // Temperature-dependent free energy support
+  const { has_temp_data, available_temperatures } = $derived(
+    helpers.analyze_temperature_data(entries),
+  )
+
+  // Initialize or reset temperature when it's undefined or no longer valid
+  $effect(() => {
+    if (
+      has_temp_data &&
+      available_temperatures.length > 0 &&
+      (temperature === undefined || !available_temperatures.includes(temperature))
+    ) temperature = available_temperatures[0]
+  })
+
+  // Filter entries by temperature when in temperature mode
+  const temp_filtered_entries = $derived(
+    has_temp_data && temperature !== undefined
+      ? helpers.filter_entries_at_temperature(entries, temperature, {
+        interpolate: interpolate_temperature,
+        max_interpolation_gap,
+      })
+      : entries,
+  )
+
   let { // Compute energy mode information
     has_precomputed_e_form,
     has_precomputed_hull,
@@ -99,7 +127,7 @@
     unary_refs,
   } = $derived(
     helpers.compute_energy_mode_info(
-      entries,
+      temp_filtered_entries,
       thermo.find_lowest_energy_unary_refs,
       energy_source_mode,
     ),
@@ -107,7 +135,7 @@
 
   const effective_entries = $derived(
     helpers.get_effective_entries(
-      entries,
+      temp_filtered_entries,
       energy_mode,
       unary_refs,
       thermo.compute_e_form_per_atom,
@@ -151,6 +179,27 @@
       return []
     }
   })
+
+  // Compute lower convex hull faces (triangles) for 3D rendering (low energy hull only)
+  // Must be defined before all_enriched_entries which uses hull_model
+  type HullTriangle = {
+    vertices: [Point3D, Point3D, Point3D]
+    normal: Point3D
+    centroid: Point3D
+  }
+  const hull_faces = $derived.by((): HullTriangle[] => {
+    if (coords_entries.length === 0) return []
+    const points = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    try {
+      return thermo.compute_lower_hull_triangles(points)
+    } catch (error) {
+      console.error(`Error computing convex hull:`, error)
+      return []
+    }
+  })
+
+  // Cached hull model for e_above_hull queries; recompute only when faces change
+  let hull_model = $derived.by(() => thermo.build_lower_hull_model(hull_faces))
 
   // Enrich coords with e_above_hull from cached hull model (before filtering)
   const all_enriched_entries = $derived.by(() => {
@@ -200,28 +249,6 @@
       !entry.is_stable
     )
   })
-
-  // Compute lower convex hull faces (triangles) for 3D rendering (low energy hull only)
-  type HullTriangle = {
-    vertices: [Point3D, Point3D, Point3D]
-    normal: Point3D
-    centroid: Point3D
-  }
-  const hull_faces = $derived.by((): HullTriangle[] => {
-    if (coords_entries.length === 0) {
-      return []
-    }
-    const points = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
-    try {
-      return thermo.compute_lower_hull_triangles(points)
-    } catch (error) {
-      console.error(`Error computing convex hull:`, error)
-      return []
-    }
-  })
-
-  // Cached hull model for e_above_hull queries; recompute only when faces change
-  let hull_model = $derived.by(() => thermo.build_lower_hull_model(hull_faces))
 
   // Canvas rendering
   let canvas: HTMLCanvasElement
@@ -1062,6 +1089,7 @@
   </h3>
   <canvas
     bind:this={canvas}
+    aria-label={merged_controls.title || phase_stats?.chemical_system || `3D Convex Hull`}
     onmousedown={handle_mouse_down}
     onmousemove={handle_hover}
     onclick={handle_click}
@@ -1169,6 +1197,10 @@
         />
       {/if}
     </section>
+  {/if}
+
+  {#if has_temp_data && temperature !== undefined}
+    <TemperatureSlider {available_temperatures} bind:temperature />
   {/if}
 
   <!-- Hover tooltip -->

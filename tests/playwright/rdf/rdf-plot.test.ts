@@ -59,7 +59,7 @@ test.describe(`RdfPlot Component Tests`, () => {
   // Test tooltip
   test(`tooltip shows x and y values on hover`, async ({ page }) => {
     const plot = page.locator(`#single-pattern`)
-    // Select the main plot SVG (has role="img" and contains the x-axis)
+    // Select the main plot SVG (has role="application" and contains the x-axis)
     const main_svg = plot.locator(`svg:has(g.x-axis)`)
     await expect(main_svg).toBeVisible()
 
