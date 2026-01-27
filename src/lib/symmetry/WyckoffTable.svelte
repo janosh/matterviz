@@ -45,9 +45,8 @@
         <tr
           class="wyckoff-row"
           class:selected={is_selected}
-          role="button"
           tabindex="0"
-          aria-pressed={is_selected}
+          aria-selected={is_selected}
           style:--active-color={active_color}
           style:--hover-color="#6cf0ff"
           onmouseenter={() => on_hover?.(site_indices ?? null)}

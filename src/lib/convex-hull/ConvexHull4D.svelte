@@ -105,6 +105,7 @@
   $effect(() => {
     if (
       has_temp_data &&
+      available_temperatures.length > 0 &&
       (temperature === undefined || !available_temperatures.includes(temperature))
     ) temperature = available_temperatures[0]
   })

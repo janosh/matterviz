@@ -20,6 +20,11 @@
   {@attach tooltip({ content: `Temperature for G(T) free energies` })}
 >
   <span class="temp-label">{display_temp} K</span>
+  {#if available_temperatures.length > 0}
+    <span class="temp-range">
+      {available_temperatures[0]}–{available_temperatures.at(-1)} K
+    </span>
+  {/if}
   <input
     type="range"
     min="0"
@@ -28,11 +33,6 @@
     oninput={(e) => temperature = available_temperatures[+e.currentTarget.value]}
     aria-label="Temperature (Kelvin)"
   />
-  {#if available_temperatures.length > 0}
-    <span class="temp-range">
-      {available_temperatures[0]}–{available_temperatures.at(-1)} K
-    </span>
-  {/if}
 </div>
 
 <style>

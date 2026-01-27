@@ -505,6 +505,7 @@
         bind:selected={color_scheme_selected}
         liOptionStyle="padding: 3pt 6pt;"
         style="width: 10em; border: none"
+        aria-label="Color scheme"
       >
         {#snippet children({ option })}
           {@const option_style =
@@ -552,6 +553,7 @@
             title_style: `font-size: 0.95em;`,
           }}
           style="width: 100%; border: none"
+          aria-label="Color scale"
         />
       </span>
     {/if}

@@ -690,7 +690,7 @@
   function handle_resize(event: MouseEvent) {
     if (!resize_col_id) return
     const delta = event.clientX - resize_start_x
-    const new_width = Math.max(50, resize_start_width + delta)
+    const new_width = Math.min(500, Math.max(50, resize_start_width + delta))
     column_widths = { ...column_widths, [resize_col_id]: new_width }
   }
 
@@ -898,6 +898,8 @@
             {@const col_width = column_widths[col_id]}
             <th
               title={col.description}
+              tabindex={col.sortable === false ? undefined : 0}
+              role={col.sortable === false ? undefined : `button`}
               onclick={(event) => {
                 if (!drag_col_id && !resize_col_id) {
                   sort_rows(
@@ -912,6 +914,7 @@
                   (event.key === `Enter` || event.key === ` `) &&
                   !drag_col_id && !resize_col_id
                 ) {
+                  event.preventDefault()
                   sort_rows(col.label, col.group, event)
                 }
               }}

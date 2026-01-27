@@ -86,7 +86,7 @@
       (name)
     }
       <div class="composition-card">
-        <h4>{name}</h4>
+        <h3>{name}</h3>
         <Composition composition={parsed_composition} {mode} {color_scheme} {...props} />
       </div>
     {/each}
