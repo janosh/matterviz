@@ -545,8 +545,7 @@ export function create_marker_path(
   return new Path2D(path_data)
 }
 
-// Temperature-dependent free energy helpers
-// ==========================================
+// Temperature-dependent free energy helpers (use integer K values for exact matching)
 
 // Result of analyzing entries for temperature-dependent data
 export interface TemperatureAnalysis {

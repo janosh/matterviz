@@ -9,15 +9,17 @@
     temperature: number
   } = $props()
 
-  // Guard against -1 when temperature is temporarily out of sync during reactivity
-  let temp_index = $derived(Math.max(0, available_temperatures.indexOf(temperature)))
+  const temp_index = $derived(
+    Math.max(0, available_temperatures.indexOf(temperature)),
+  )
+  const display_temp = $derived(available_temperatures[temp_index] ?? temperature)
 </script>
 
 <div
   class="temperature-slider"
   {@attach tooltip({ content: `Temperature for G(T) free energies` })}
 >
-  <span class="temp-label">{temperature} K</span>
+  <span class="temp-label">{display_temp} K</span>
   <input
     type="range"
     min="0"

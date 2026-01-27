@@ -167,11 +167,9 @@
     })),
   )
 
-  // Temperature-dependent free energy synthetic data
-  // Simulate G(T) = E_0K + a*T + b*T*ln(T) with varying coefficients per phase
+  // Synthetic G(T) data: G(T) ≈ E_0K + a*T - b*T*ln(T)
   const temperatures = [300, 600, 900, 1200, 1500]
 
-  // Helper to add temperature-dependent free energies to a base entry
   type BaseEntry = {
     composition: Record<string, number>
     energy: number
