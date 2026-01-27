@@ -386,7 +386,8 @@ function clip_polyhedron_by_plane(
     const d1 = signed_dists[i1]
     const d2 = signed_dists[i2]
 
-    if ((d1 > TOL && d2 < -TOL) || (d1 < -TOL && d2 > TOL)) {
+    // Detect sign change (edge crosses plane) - use product to catch edges near tolerance
+    if (d1 * d2 < 0) {
       const t = d1 / (d1 - d2)
       const [v1, v2] = [vertices[i1], vertices[i2]]
       result.push([
