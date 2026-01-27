@@ -604,6 +604,7 @@ function find_bracket_temperatures(
   let E_low = 0
   let E_high = 0
 
+  // Must scan all temperatures to find the tightest bracket (arrays may be unsorted)
   for (const [idx, temp] of temps.entries()) {
     if (temp < T && temp > T_low) {
       T_low = temp
@@ -612,8 +613,6 @@ function find_bracket_temperatures(
       T_high = temp
       E_high = energies[idx]
     }
-    // Early exit once both brackets are found
-    if (isFinite(T_low) && isFinite(T_high)) break
   }
 
   // Must have valid brackets on both sides

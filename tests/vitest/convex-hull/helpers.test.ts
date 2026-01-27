@@ -720,6 +720,21 @@ describe(`helpers: temperature interpolation`, () => {
       // 650 is exactly halfway between 400 and 900
       expect(result).toBeCloseTo((-1.2 + -2) / 2)
     })
+
+    test(`finds tightest bracket with unsorted temperatures`, () => {
+      // Unsorted: [900, 300, 600] - must scan all to find closest bracket
+      const entry = make_entry([900, 300, 600], [-3, -1, -2])
+      // T=450 should bracket between 300 and 600 (gap=300), not 300 and 900 (gap=600)
+      const result = helpers.interpolate_energy_at_temperature(entry, 450, 400)
+      // With max_gap=400, should succeed (gap=300) and interpolate halfway between -1 and -2
+      expect(result).toBeCloseTo(-1.5)
+    })
+
+    test(`fails when tightest bracket still exceeds max_gap`, () => {
+      const entry = make_entry([900, 300, 600], [-3, -1, -2])
+      // T=450, tightest bracket is 300-600 (gap=300), max_gap=200 should fail
+      expect(helpers.interpolate_energy_at_temperature(entry, 450, 200)).toBeNull()
+    })
   })
 
   describe(`filter_entries_at_temperature with interpolation`, () => {

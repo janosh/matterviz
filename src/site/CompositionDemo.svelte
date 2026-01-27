@@ -55,7 +55,7 @@
     <div class="composition-grid">
       {#each compositions as [name, formula] (formula)}
         <div class="composition-card">
-          <h4>{name}</h4>
+          <h3>{name}</h3>
           <div class="card-formula">{@html get_formula_display(formula)}</div>
           <Composition composition={formula} {mode} />
         </div>
@@ -113,7 +113,7 @@
     border-radius: var(--border-radius);
     border: 1px solid var(--card-border, rgba(255, 255, 255, 0.1));
   }
-  .composition-card h4 {
+  .composition-card h3 {
     margin: 0 0 4pt;
   }
   .card-formula {
