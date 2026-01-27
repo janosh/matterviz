@@ -305,10 +305,24 @@ export function compute_brillouin_zone(
 // Clipping plane defined by normal and distance from origin (n·x = d)
 type ClippingPlane = { normal: Vec3; dist: number }
 
+// Test points for IBZ plane detection. These are chosen to:
+// 1. Avoid common rotation axes (2-fold, 3-fold, 4-fold, 6-fold)
+// 2. Span different directions to catch all symmetry operations
+// 3. Include a generic point [1,2,3] that lies on no special axis
+const IBZ_TEST_POINTS: Vec3[] = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1], // basis vectors (avoid 4-fold axes)
+  [1, 1, 0],
+  [1, 0, 1],
+  [0, 1, 1], // face diagonals (avoid 2-fold axes)
+  [1, 1, 1], // body diagonal (avoid 3-fold axis)
+  [1, 2, 3], // generic point on no special axis
+]
+
 // Compute clipping planes from point group operations.
 // For each non-identity rotation, we define a plane that selects one representative
-// from each equivalence class. The plane normal is chosen to create a consistent
-// fundamental domain.
+// from each equivalence class.
 export function compute_ibz_clipping_planes(
   point_group_ops: Matrix3x3[],
 ): ClippingPlane[] {
@@ -316,23 +330,9 @@ export function compute_ibz_clipping_planes(
   const seen_normals = new Set<string>()
 
   for (const rot of point_group_ops) {
-    // Skip identity matrix
     if (is_identity_rotation(rot)) continue
 
-    // Test points chosen to avoid rotation axes for common symmetries
-    // Includes basis vectors, face diagonals, and body diagonal
-    const test_points: Vec3[] = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1], // basis vectors
-      [1, 1, 0],
-      [1, 0, 1],
-      [0, 1, 1], // face diagonals
-      [1, 1, 1],
-      [1, 2, 3], // body diagonal + generic point
-    ]
-
-    for (const test_pt of test_points) {
+    for (const test_pt of IBZ_TEST_POINTS) {
       const rotated = math.mat3x3_vec3_multiply(rot, test_pt)
       const diff: Vec3 = math.subtract(rotated, test_pt)
       if (Math.hypot(...diff) < TOL) continue // point on rotation axis
@@ -386,15 +386,20 @@ function clip_polyhedron_by_plane(
     const d1 = signed_dists[i1]
     const d2 = signed_dists[i2]
 
-    // Detect sign change (edge crosses plane) - use product to catch edges near tolerance
-    if (d1 * d2 < 0) {
+    // Edge crosses plane if exactly one endpoint is inside the half-space
+    const inside1 = d1 <= TOL
+    const inside2 = d2 <= TOL
+    if (inside1 !== inside2) {
       const t = d1 / (d1 - d2)
-      const [v1, v2] = [vertices[i1], vertices[i2]]
-      result.push([
-        v1[0] + t * (v2[0] - v1[0]),
-        v1[1] + t * (v2[1] - v1[1]),
-        v1[2] + t * (v2[2] - v1[2]),
-      ])
+      // Only add intersection if it's not at an endpoint (which is already kept)
+      if (t > TOL && t < 1 - TOL) {
+        const [v1, v2] = [vertices[i1], vertices[i2]]
+        result.push([
+          v1[0] + t * (v2[0] - v1[0]),
+          v1[1] + t * (v2[1] - v1[1]),
+          v1[2] + t * (v2[2] - v1[2]),
+        ])
+      }
     }
   }
 

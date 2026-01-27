@@ -8,8 +8,12 @@
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
-  import { BufferAttribute, BufferGeometry, type Camera, type Scene } from 'three'
-  import type { BrillouinZoneData, IrreducibleBZData } from './types'
+  import type { Camera, Scene } from 'three'
+  import { BufferAttribute, BufferGeometry, Vector3 } from 'three'
+  import type { BrillouinZoneData, BZHoverData, IrreducibleBZData } from './types'
+
+  // Threlte pointer event type for mesh interactions
+  type ThreltePointerEvent = { point: Vector3; nativeEvent: PointerEvent }
 
   let {
     bz_data = $bindable(),
@@ -46,6 +50,7 @@
     k_path_labels = [],
     hovered_k_point = null,
     hovered_qpoint_index = null,
+    hover_data = $bindable<BZHoverData | null>(null),
   }: {
     bz_data?: BrillouinZoneData
     camera_position?: Vec3 | undefined
@@ -81,6 +86,7 @@
     k_path_labels?: { position: Vec3; label: string | null }[]
     hovered_k_point?: Vec3 | null
     hovered_qpoint_index?: number | null
+    hover_data?: BZHoverData | null
   } = $props()
 
   const threlte = useThrelte()
@@ -216,6 +222,79 @@
     const prev = ibz_geometry
     return () => prev?.dispose()
   })
+
+  // Compute inverse of k_lattice for Cartesian->fractional conversion
+  const k_lattice_inv = $derived.by(() => {
+    if (!bz_data?.k_lattice) return null
+    try {
+      return math.matrix_inverse_3x3(bz_data.k_lattice)
+    } catch {
+      return null
+    }
+  })
+
+  // Convert Cartesian k-coordinates to fractional (reciprocal lattice units)
+  function cartesian_to_fractional(cart: Vec3): Vec3 | null {
+    if (!k_lattice_inv) return null
+    return math.mat3x3_vec3_multiply(k_lattice_inv, cart)
+  }
+
+  // Throttle state for pointer move events
+  let last_hover_time = 0
+  const HOVER_THROTTLE_MS = 16 // ~60fps
+
+  // Reset throttle when bz_data changes to ensure immediate response
+  $effect(() => {
+    if (bz_data) last_hover_time = 0
+  })
+
+  // Track IBZ hover state - IBZ takes priority over BZ
+  let ibz_hovered = false
+
+  // Create hover data from pointer event
+  function create_hover_data(
+    event: ThreltePointerEvent,
+    is_ibz: boolean,
+  ): BZHoverData | null {
+    if (!bz_data) return null
+
+    const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
+    const position_fractional = cartesian_to_fractional(position_cartesian)
+
+    const { clientX, clientY } = event.nativeEvent
+    const ibz_vol = ibz_data?.volume ?? null
+    const symmetry_multiplicity = ibz_vol != null && ibz_vol > 0
+      ? bz_data.volume / ibz_vol
+      : null
+
+    return {
+      position_cartesian,
+      position_fractional,
+      screen_position: { x: clientX, y: clientY },
+      is_ibz,
+      bz_order: bz_data.order,
+      bz_volume: bz_data.volume,
+      ibz_volume: ibz_vol,
+      symmetry_multiplicity,
+    }
+  }
+
+  // Throttled hover handler - IBZ takes priority over BZ
+  function handle_hover(event: ThreltePointerEvent, is_ibz: boolean): void {
+    if (is_ibz) ibz_hovered = true
+    else if (ibz_hovered) return // BZ defers to IBZ
+
+    const now = performance.now()
+    if (now - last_hover_time < HOVER_THROTTLE_MS) return
+    last_hover_time = now
+    hover_data = create_hover_data(event, is_ibz)
+  }
+
+  // Leave handler - IBZ clears state, BZ only clears if IBZ not hovered
+  function handle_leave(is_ibz: boolean): void {
+    if (is_ibz) ibz_hovered = false
+    if (is_ibz || !ibz_hovered) hover_data = null
+  }
 </script>
 
 {#if camera_projection === `perspective`}
@@ -244,7 +323,11 @@
   {#if bz_data}
     <!-- Brillouin zone surface mesh -->
     {#if bz_geometry}
-      <T.Mesh geometry={bz_geometry}>
+      <T.Mesh
+        geometry={bz_geometry}
+        onpointermove={(e: ThreltePointerEvent) => handle_hover(e, false)}
+        onpointerleave={() => handle_leave(false)}
+      >
         <T.MeshStandardMaterial
           color={surface_color}
           transparent
@@ -263,7 +346,11 @@
 
     <!-- Irreducible BZ surface mesh -->
     {#if show_ibz && ibz_geometry}
-      <T.Mesh geometry={ibz_geometry}>
+      <T.Mesh
+        geometry={ibz_geometry}
+        onpointermove={(e: ThreltePointerEvent) => handle_hover(e, true)}
+        onpointerleave={() => handle_leave(true)}
+      >
         <T.MeshStandardMaterial
           color={ibz_color}
           transparent

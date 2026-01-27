@@ -2,6 +2,9 @@ import { expect, type Page, test } from '@playwright/test'
 import { IS_CI, wait_for_3d_canvas } from './helpers'
 
 const BZ_SELECTOR = `#test-brillouin-zone`
+// IBZ computation requires moyo-wasm symmetry analysis which can be slow,
+// especially in CI with software rendering. 10s accommodates most structures.
+const IBZ_LOAD_TIMEOUT = 10000
 
 test.describe(`BrillouinZone Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
@@ -176,7 +179,7 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
     })
     await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 20000 })
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_file_load`, {
-      timeout: 10000,
+      timeout: IBZ_LOAD_TIMEOUT,
     })
   })
 
@@ -226,7 +229,7 @@ test.describe(`BrillouinZone IBZ (Irreducible Brillouin Zone) Tests`, () => {
     await checkbox.check()
 
     // Wait for IBZ data to load (async operation via moyo-wasm)
-    await expect(data_status).toHaveText(`loaded`, { timeout: 10000 })
+    await expect(data_status).toHaveText(`loaded`, { timeout: IBZ_LOAD_TIMEOUT })
 
     // Should have vertices
     await expect(async () => {
@@ -265,7 +268,7 @@ test.describe(`BrillouinZone IBZ (Irreducible Brillouin Zone) Tests`, () => {
     // Enable IBZ and wait for it to load
     await show_ibz.check()
     await expect(page.locator(`[data-testid="ibz-data-status"]`)).toHaveText(`loaded`, {
-      timeout: 10000,
+      timeout: IBZ_LOAD_TIMEOUT,
     })
 
     // Screenshot with IBZ - should be different (retry handles render timing)
@@ -287,7 +290,7 @@ test.describe(`BrillouinZone IBZ (Irreducible Brillouin Zone) Tests`, () => {
 
     // IBZ data should load automatically
     await expect(page.locator(`[data-testid="ibz-data-status"]`)).toHaveText(`loaded`, {
-      timeout: 10000,
+      timeout: IBZ_LOAD_TIMEOUT,
     })
   })
 
@@ -297,7 +300,7 @@ test.describe(`BrillouinZone IBZ (Irreducible Brillouin Zone) Tests`, () => {
 
     // Enable IBZ and wait for data
     await checkbox.check()
-    await expect(data_status).toHaveText(`loaded`, { timeout: 10000 })
+    await expect(data_status).toHaveText(`loaded`, { timeout: IBZ_LOAD_TIMEOUT })
 
     // Disable IBZ
     await checkbox.uncheck()

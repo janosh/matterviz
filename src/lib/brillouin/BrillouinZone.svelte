@@ -17,17 +17,24 @@
   import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { PlotTooltip } from '$lib/plot'
   import BrillouinZoneControls from './BrillouinZoneControls.svelte'
   import BrillouinZoneExportPane from './BrillouinZoneExportPane.svelte'
   import BrillouinZoneInfoPane from './BrillouinZoneInfoPane.svelte'
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
+  import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import {
     compute_brillouin_zone,
     compute_irreducible_bz,
     extract_point_group_from_operations,
     reciprocal_lattice,
   } from './compute'
-  import type { BrillouinZoneData, IrreducibleBZData } from './types'
+  import type {
+    BrillouinZoneData,
+    BZHoverData,
+    BZTooltipProp,
+    IrreducibleBZData,
+  } from './types'
 
   type BZHandlerData = {
     structure?: Crystal
@@ -77,9 +84,11 @@
     hovered_k_point = null,
     hovered_qpoint_index = null,
     children,
+    tooltip_config,
     on_file_load,
     on_error,
     on_fullscreen_change,
+    on_hover,
     ...rest
   }:
     & {
@@ -138,9 +147,11 @@
       children?: Snippet<
         [{ structure?: Crystal; bz_data?: BrillouinZoneData }]
       >
+      tooltip_config?: BZTooltipProp
       on_file_load?: (data: BZHandlerData) => void
       on_error?: (data: BZHandlerData) => void
       on_fullscreen_change?: (data: BZHandlerData) => void
+      on_hover?: (data: BZHoverData | null) => void
     }
     & HTMLAttributes<HTMLDivElement> = $props()
 
@@ -148,6 +159,12 @@
   let camera = $state(undefined)
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
+  let hover_data = $state<BZHoverData | null>(null)
+
+  // Call on_hover callback when hover_data changes
+  $effect(() => {
+    on_hover?.(hover_data)
+  })
 
   // Normalize show_controls prop into consistent config
   let controls_config = $derived(normalize_show_controls(show_controls))
@@ -203,31 +220,31 @@
 
   // Compute IBZ when show_ibz is enabled and structure changes
   $effect(() => {
-    if (!show_ibz || !bz_data || !structure || !(`lattice` in structure)) {
+    if (!show_ibz || !bz_data || !structure?.lattice) {
       ibz_data = null
       return
     }
 
-    // Capture current values to check for staleness after async call
-    const current_bz = bz_data
-    const current_structure = structure
+    let stale = false
+    const captured_bz = bz_data
 
-    // Compute IBZ asynchronously using moyo-wasm symmetry analysis
     analyze_structure_symmetry(structure, {})
       .then((sym_data) => {
-        // Guard against stale results if dependencies changed during async call
-        if (bz_data !== current_bz || structure !== current_structure || !show_ibz) {
-          return
-        }
+        if (stale) return
         const point_group_ops = extract_point_group_from_operations(
           sym_data.operations,
         )
-        ibz_data = compute_irreducible_bz(current_bz, point_group_ops)
+        ibz_data = compute_irreducible_bz(captured_bz, point_group_ops)
       })
       .catch((err) => {
+        if (stale) return
         console.warn(`IBZ computation failed:`, err)
         ibz_data = null
       })
+
+    return () => {
+      stale = true
+    }
   })
 
   // Load structure from URL or string
@@ -432,8 +449,22 @@
             {ibz_opacity}
             bind:scene
             bind:camera
+            bind:hover_data
           />
         </Canvas>
+
+        <!-- Hover tooltip -->
+        {#if hover_data}
+          <PlotTooltip
+            x={hover_data.screen_position.x}
+            y={hover_data.screen_position.y}
+            bg_color={hover_data.is_ibz ? ibz_color : surface_color}
+            fixed
+            style="z-index: calc(var(--bz-buttons-z-index, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+          >
+            <BrillouinZoneTooltip {hover_data} tooltip={tooltip_config} />
+          </PlotTooltip>
+        {/if}
       </div>
     {/if}
   {:else if structure}
