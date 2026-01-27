@@ -30,6 +30,7 @@
   import type { BaseConvexHullProps, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
   import StructurePopup from './StructurePopup.svelte'
+  import TemperatureSlider from './TemperatureSlider.svelte'
   import * as thermo from './thermodynamics'
   import type { ConvexHullEntry, HighlightStyle, HoverData3D, Point3D } from './types'
 
@@ -74,6 +75,9 @@
     highlighted_entries = $bindable([]),
     highlight_style = {},
     selected_entry = $bindable(null),
+    temperature = $bindable(),
+    interpolate_temperature = true,
+    max_interpolation_gap = 500,
     children,
     tooltip,
     ...rest
@@ -90,6 +94,29 @@
     margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
   })
 
+  // Temperature-dependent free energy support
+  const { has_temp_data, available_temperatures } = $derived(
+    helpers.analyze_temperature_data(entries),
+  )
+
+  // Initialize or reset temperature when it's undefined or no longer valid
+  $effect(() => {
+    if (
+      has_temp_data &&
+      (temperature === undefined || !available_temperatures.includes(temperature))
+    ) temperature = available_temperatures[0]
+  })
+
+  // Filter entries by temperature when in temperature mode
+  const temp_filtered_entries = $derived(
+    has_temp_data && temperature !== undefined
+      ? helpers.filter_entries_at_temperature(entries, temperature, {
+        interpolate: interpolate_temperature,
+        max_interpolation_gap,
+      })
+      : entries,
+  )
+
   let { // Compute energy mode information
     has_precomputed_e_form,
     has_precomputed_hull,
@@ -99,7 +126,7 @@
     unary_refs,
   } = $derived(
     helpers.compute_energy_mode_info(
-      entries,
+      temp_filtered_entries,
       thermo.find_lowest_energy_unary_refs,
       energy_source_mode,
     ),
@@ -107,7 +134,7 @@
 
   const effective_entries = $derived(
     helpers.get_effective_entries(
-      entries,
+      temp_filtered_entries,
       energy_mode,
       unary_refs,
       thermo.compute_e_form_per_atom,
@@ -1169,6 +1196,10 @@
         />
       {/if}
     </section>
+  {/if}
+
+  {#if has_temp_data && temperature !== undefined}
+    <TemperatureSlider {available_temperatures} bind:temperature />
   {/if}
 
   <!-- Hover tooltip -->
