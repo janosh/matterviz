@@ -51,7 +51,7 @@ test.describe(`BarPlot Component Tests`, () => {
 
   test(`zoom drag and double-click reset works`, async ({ page }) => {
     const plot = page.locator(`#basic-bar .bar-plot`)
-    const svg = plot.locator(`svg[role="button"]`)
+    const svg = plot.locator(`svg[role="application"]`)
 
     // Wait for initial ticks
     await expect(plot.locator(`g.x-axis .tick text`).first()).toBeVisible()
@@ -394,7 +394,7 @@ test.describe(`BarPlot Component Tests`, () => {
 
   test(`zoom updates both y1 and y2 ranges`, async ({ page }) => {
     const plot = page.locator(`#y2-axis-bar .bar-plot`)
-    const svg = plot.locator(`svg[role="button"]`)
+    const svg = plot.locator(`svg[role="application"]`)
 
     // Scroll to the plot to ensure it's in viewport
     await plot.scrollIntoViewIfNeeded()
@@ -466,7 +466,7 @@ test.describe(`BarPlot Component Tests`, () => {
 
   test(`Shift+drag pans the bar plot instead of zooming`, async ({ page }) => {
     const plot = page.locator(`#basic-bar .bar-plot`)
-    const svg = plot.locator(`svg[role="button"]`)
+    const svg = plot.locator(`svg[role="application"]`)
     const x_axis = plot.locator(`g.x-axis`)
     const y_axis = plot.locator(`g.y-axis`)
     const zoom_rect = plot.locator(`.zoom-rect`)

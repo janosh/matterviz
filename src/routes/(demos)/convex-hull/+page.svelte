@@ -166,6 +166,103 @@
       marker: get_marker(e, selected_binary_entry?.entry_id, `square`),
     })),
   )
+
+  // Synthetic G(T) data: G(T) ≈ E_0K + a*T - b*T*ln(T)
+  const temperatures = [300, 600, 900, 1200, 1500]
+
+  type BaseEntry = {
+    composition: Record<string, number>
+    energy: number
+    entropy_coef: number
+  }
+  const with_temp_data = (
+    { composition, energy, entropy_coef }: BaseEntry,
+  ): PhaseData => ({
+    composition,
+    energy,
+    temperatures,
+    free_energies: temperatures.map((T) =>
+      energy + entropy_coef * T * 0.0001 - 0.00005 * T * Math.log(T)
+    ),
+  })
+
+  // Binary Li-Fe system with temperature-dependent G(T)
+  const temp_binary_entries = [
+    { composition: { Li: 1 }, energy: 0, entropy_coef: 0.5 },
+    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.8 },
+    { composition: { Li: 0.5, Fe: 0.5 }, energy: -0.3, entropy_coef: 1.2 },
+    { composition: { Li: 0.33, Fe: 0.67 }, energy: -0.25, entropy_coef: 1.5 },
+    { composition: { Li: 0.67, Fe: 0.33 }, energy: -0.22, entropy_coef: 0.9 },
+    { composition: { Li: 0.25, Fe: 0.75 }, energy: -0.15, entropy_coef: 1.8 },
+    { composition: { Li: 0.75, Fe: 0.25 }, energy: -0.12, entropy_coef: 0.6 },
+    { composition: { Li: 0.4, Fe: 0.6 }, energy: -0.1, entropy_coef: 2.0 },
+    { composition: { Li: 0.6, Fe: 0.4 }, energy: -0.08, entropy_coef: 1.1 },
+  ].map(with_temp_data)
+
+  // Ternary Li-Fe-O system with temperature-dependent G(T)
+  const temp_ternary_entries = [
+    { composition: { Li: 1 }, energy: 0, entropy_coef: 0.4 },
+    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.6 },
+    { composition: { O: 1 }, energy: 0, entropy_coef: 0.5 },
+    { composition: { Li: 0.5, Fe: 0.5 }, energy: -0.35, entropy_coef: 1.3 },
+    { composition: { Fe: 0.5, O: 0.5 }, energy: -0.28, entropy_coef: 1.6 },
+    { composition: { Li: 0.5, O: 0.5 }, energy: -0.32, entropy_coef: 1.1 },
+    {
+      composition: { Li: 0.33, Fe: 0.33, O: 0.34 },
+      energy: -0.45,
+      entropy_coef: 1.8,
+    },
+    { composition: { Li: 0.5, Fe: 0.25, O: 0.25 }, energy: -0.38, entropy_coef: 1.4 },
+    { composition: { Li: 0.25, Fe: 0.5, O: 0.25 }, energy: -0.36, entropy_coef: 1.5 },
+    { composition: { Li: 0.25, Fe: 0.25, O: 0.5 }, energy: -0.34, entropy_coef: 1.2 },
+    { composition: { Li: 0.4, Fe: 0.4, O: 0.2 }, energy: -0.2, entropy_coef: 2.2 },
+    { composition: { Li: 0.2, Fe: 0.4, O: 0.4 }, energy: -0.18, entropy_coef: 2.0 },
+  ].map(with_temp_data)
+
+  // Quaternary Li-Fe-Ni-O system with temperature-dependent G(T)
+  const temp_quaternary_entries = [
+    { composition: { Li: 1 }, energy: 0, entropy_coef: 0.3 },
+    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.5 },
+    { composition: { Ni: 1 }, energy: 0, entropy_coef: 0.4 },
+    { composition: { O: 1 }, energy: 0, entropy_coef: 0.6 },
+    { composition: { Li: 0.5, Fe: 0.5 }, energy: -0.3, entropy_coef: 1.2 },
+    { composition: { Ni: 0.5, O: 0.5 }, energy: -0.28, entropy_coef: 1.4 },
+    {
+      composition: { Li: 0.33, Fe: 0.33, Ni: 0.34 },
+      energy: -0.4,
+      entropy_coef: 1.6,
+    },
+    {
+      composition: { Fe: 0.33, Ni: 0.33, O: 0.34 },
+      energy: -0.38,
+      entropy_coef: 1.7,
+    },
+    {
+      composition: { Li: 0.25, Fe: 0.25, Ni: 0.25, O: 0.25 },
+      energy: -0.5,
+      entropy_coef: 2.0,
+    },
+    {
+      composition: { Li: 0.4, Fe: 0.2, Ni: 0.2, O: 0.2 },
+      energy: -0.42,
+      entropy_coef: 1.8,
+    },
+    {
+      composition: { Li: 0.2, Fe: 0.4, Ni: 0.2, O: 0.2 },
+      energy: -0.4,
+      entropy_coef: 1.9,
+    },
+    {
+      composition: { Li: 0.3, Fe: 0.3, Ni: 0.3, O: 0.1 },
+      energy: -0.25,
+      entropy_coef: 2.5,
+    },
+    {
+      composition: { Li: 0.1, Fe: 0.3, Ni: 0.3, O: 0.3 },
+      energy: -0.22,
+      entropy_coef: 2.3,
+    },
+  ].map(with_temp_data)
 </script>
 
 <svelte:head>
@@ -312,6 +409,29 @@
     <strong>Note:</strong> If pure element references are missing from the data, they are
     automatically added with formation energy = 0 eV/atom (the thermodynamic definition).
   </p>
+
+  <h2>Temperature-Dependent Free Energies</h2>
+  <p class="section-description">
+    When entries include <code>temperatures</code> and <code>free_energies</code> arrays,
+    a temperature slider appears allowing dynamic visualization of G(T) at different
+    temperatures. The hull is recomputed at each temperature, showing how phase stability
+    changes.
+  </p>
+  <div class="temp-grid">
+    <ConvexHull2D
+      entries={temp_binary_entries}
+      controls={{ title: `Li-Fe with G(T)` }}
+      style="height: 500px"
+    />
+    <ConvexHull3D
+      entries={temp_ternary_entries}
+      controls={{ title: `Li-Fe-O with G(T)` }}
+    />
+    <ConvexHull4D
+      entries={temp_quaternary_entries}
+      controls={{ title: `Li-Fe-Ni-O with G(T)` }}
+    />
+  </div>
 </main>
 
 <style>
@@ -376,8 +496,16 @@
       grid-template-columns: 1fr 1fr;
     }
   }
+  .temp-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto 3rem auto;
+  }
   @media (max-width: 1100px) {
-    .ternary-grid, .quaternary-grid, .binary-grid, .highlight-grid {
+    .ternary-grid, .quaternary-grid, .binary-grid, .highlight-grid, .temp-grid {
       grid-template-columns: 1fr;
     }
     .stats-example-grid {

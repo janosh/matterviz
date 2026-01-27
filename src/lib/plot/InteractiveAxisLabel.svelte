@@ -11,7 +11,6 @@
     axis_type = `x`,
     color = $bindable(),
     on_select,
-    class: class_name = ``,
     ...rest
   }: {
     label?: string
@@ -21,24 +20,29 @@
     axis_type?: `x` | `y` | `y2`
     color?: string | null
     on_select?: (key: string) => void
-    class?: string
     [key: string]: unknown
   } = $props()
 
   let is_interactive = $derived(Boolean(options?.length))
 
   const stop = (evt: Event) => evt.stopPropagation()
+  // Only stop propagation for keys the dropdown handles, allow Tab/Escape for navigation
+  const stop_key = (evt: KeyboardEvent) => {
+    if (![`Tab`, `Escape`].includes(evt.key)) evt.stopPropagation()
+  }
 </script>
 
 <div
-  class="interactive-axis-label {axis_type} {class_name}"
   class:interactive={is_interactive}
   class:loading
   style:color
   onmousedown={stop}
   onmouseup={stop}
   onclick={stop}
+  onkeydown={stop_key}
+  role="group"
   {...rest}
+  class="interactive-axis-label {axis_type} {rest.class ?? ``}"
 >
   {#if is_interactive && options}
     <PortalSelect

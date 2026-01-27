@@ -19,6 +19,10 @@ export interface PhaseData {
   reduced_formula?: string
   name?: string
 
+  // Temperature-dependent free energies (replaces `energy` at selected T)
+  temperatures?: number[] // in Kelvin, use integers for exact matching
+  free_energies?: number[] // G(T) in eV, same length as temperatures
+
   // Pymatgen-specific fields (optional)
   '@module'?: string
   '@class'?: string

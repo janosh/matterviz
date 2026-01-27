@@ -600,3 +600,191 @@ describe(`helpers: get_canvas_text_color`, () => {
     expect(globalThis.getComputedStyle).toHaveBeenCalledWith(document.documentElement)
   })
 })
+
+describe(`helpers: temperature interpolation`, () => {
+  const make_entry = (
+    temps: number[],
+    energies: number[],
+    extra: Partial<PhaseData> = {},
+  ): PhaseData => ({
+    composition: { Fe: 1 },
+    energy: 0,
+    temperatures: temps,
+    free_energies: energies,
+    ...extra,
+  })
+
+  describe(`analyze_temperature_data`, () => {
+    test(`returns has_temp_data=false for empty entries`, () => {
+      const result = helpers.analyze_temperature_data([])
+      expect(result.has_temp_data).toBe(false)
+      expect(result.available_temperatures).toEqual([])
+    })
+
+    test(`returns has_temp_data=false when no entries have temp data`, () => {
+      const entries: PhaseData[] = [
+        { composition: { Fe: 1 }, energy: 0 },
+        { composition: { Li: 1 }, energy: 0 },
+      ]
+      const result = helpers.analyze_temperature_data(entries)
+      expect(result.has_temp_data).toBe(false)
+      expect(result.available_temperatures).toEqual([])
+    })
+
+    test(`returns union of temperatures from multiple entries`, () => {
+      const entries = [
+        make_entry([300, 600], [-1, -2]),
+        make_entry([600, 900, 1200], [-1, -2, -3]),
+      ]
+      const result = helpers.analyze_temperature_data(entries)
+      expect(result.has_temp_data).toBe(true)
+      expect(result.available_temperatures).toEqual([300, 600, 900, 1200])
+    })
+
+    test(`ignores entries with mismatched array lengths`, () => {
+      const entries: PhaseData[] = [
+        {
+          composition: { Fe: 1 },
+          energy: 0,
+          temperatures: [300, 600],
+          free_energies: [-1],
+        },
+        make_entry([900], [-2]),
+      ]
+      const result = helpers.analyze_temperature_data(entries)
+      expect(result.has_temp_data).toBe(true)
+      expect(result.available_temperatures).toEqual([900])
+    })
+
+    test(`ignores entries with empty arrays`, () => {
+      const entries: PhaseData[] = [
+        { composition: { Fe: 1 }, energy: 0, temperatures: [], free_energies: [] },
+        make_entry([300, 600], [-1, -2]),
+      ]
+      const result = helpers.analyze_temperature_data(entries)
+      expect(result.available_temperatures).toEqual([300, 600])
+    })
+  })
+
+  describe(`can_interpolate_at_temperature`, () => {
+    const standard_entry = make_entry([300, 600, 900], [-1, -1.5, -2])
+    const sparse_entry = make_entry([300, 900], [-1, -2])
+
+    test.each([
+      [`bracketed within max_gap`, standard_entry, 450, 500, true],
+      [`bracketed at different position`, standard_entry, 750, 500, true],
+      [`T below data range`, standard_entry, 200, 500, false],
+      [`T above data range`, standard_entry, 1000, 500, false],
+      [`gap exceeds max_gap`, sparse_entry, 600, 500, false],
+      [`gap equals max_gap`, sparse_entry, 600, 600, true],
+      [
+        `no temp data`,
+        { composition: { Fe: 1 }, energy: -1 } as PhaseData,
+        450,
+        500,
+        false,
+      ],
+    ])(`%s → %s`, (_, entry, T, max_gap, expected) => {
+      expect(helpers.can_interpolate_at_temperature(entry, T, max_gap)).toBe(expected)
+    })
+  })
+
+  describe(`interpolate_energy_at_temperature`, () => {
+    test(`linearly interpolates between bracketing temperatures`, () => {
+      const entry = make_entry([300, 600], [-1, -2])
+      // At T=450 (midpoint), energy should be -1.5
+      expect(helpers.interpolate_energy_at_temperature(entry, 450, 500)).toBeCloseTo(-1.5)
+      // At T=375 (1/4 of the way), energy should be -1.25
+      expect(helpers.interpolate_energy_at_temperature(entry, 375, 500)).toBeCloseTo(
+        -1.25,
+      )
+    })
+
+    test(`returns null when T is outside range`, () => {
+      const entry = make_entry([300, 600], [-1, -2])
+      expect(helpers.interpolate_energy_at_temperature(entry, 200, 500)).toBeNull()
+      expect(helpers.interpolate_energy_at_temperature(entry, 700, 500)).toBeNull()
+    })
+
+    test(`returns null when gap exceeds max_gap`, () => {
+      const entry = make_entry([300, 900], [-1, -2])
+      expect(helpers.interpolate_energy_at_temperature(entry, 600, 500)).toBeNull()
+    })
+
+    test(`handles non-uniform temperature spacing`, () => {
+      const entry = make_entry([300, 400, 900], [-1, -1.2, -2])
+      // Interpolate between 400 and 900
+      const result = helpers.interpolate_energy_at_temperature(entry, 650, 600)
+      // 650 is exactly halfway between 400 and 900
+      expect(result).toBeCloseTo((-1.2 + -2) / 2)
+    })
+
+    test(`finds tightest bracket with unsorted temperatures`, () => {
+      // Unsorted: [900, 300, 600] - must scan all to find closest bracket
+      const entry = make_entry([900, 300, 600], [-3, -1, -2])
+      // T=450 should bracket between 300 and 600 (gap=300), not 300 and 900 (gap=600)
+      const result = helpers.interpolate_energy_at_temperature(entry, 450, 400)
+      // With max_gap=400, should succeed (gap=300) and interpolate halfway between -1 and -2
+      expect(result).toBeCloseTo(-1.5)
+    })
+
+    test(`fails when tightest bracket still exceeds max_gap`, () => {
+      const entry = make_entry([900, 300, 600], [-3, -1, -2])
+      // T=450, tightest bracket is 300-600 (gap=300), max_gap=200 should fail
+      expect(helpers.interpolate_energy_at_temperature(entry, 450, 200)).toBeNull()
+    })
+  })
+
+  describe(`filter_entries_at_temperature with interpolation`, () => {
+    test(`includes entries with exact temperature match`, () => {
+      const entries = [make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 300)
+      expect(result).toHaveLength(1)
+      expect(result[0].energy).toBe(-1)
+    })
+
+    test(`interpolates when exact match missing but bracketed`, () => {
+      const entries = [make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 450, {
+        interpolate: true,
+      })
+      expect(result).toHaveLength(1)
+      expect(result[0].energy).toBeCloseTo(-1.5)
+    })
+
+    test(`excludes entries when interpolation disabled and no exact match`, () => {
+      const entries = [make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 450, {
+        interpolate: false,
+      })
+      expect(result).toHaveLength(0)
+    })
+
+    test(`excludes entries when gap exceeds max_interpolation_gap`, () => {
+      const entries = [make_entry([300, 900], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 600, {
+        interpolate: true,
+        max_interpolation_gap: 500,
+      })
+      expect(result).toHaveLength(0)
+    })
+
+    test(`keeps static entries (no temp data) unchanged`, () => {
+      const static_entry: PhaseData = { composition: { Fe: 1 }, energy: -0.5 }
+      const entries = [static_entry, make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 450, {
+        interpolate: true,
+      })
+      expect(result).toHaveLength(2)
+      expect(result[0].energy).toBe(-0.5) // static entry unchanged
+      expect(result[1].energy).toBeCloseTo(-1.5) // interpolated
+    })
+
+    test(`defaults to interpolate=true and max_gap=500`, () => {
+      const entries = [make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 450)
+      expect(result).toHaveLength(1)
+      expect(result[0].energy).toBeCloseTo(-1.5)
+    })
+  })
+})

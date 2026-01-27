@@ -39,6 +39,7 @@
     unstable_entries = $bindable([]),
     highlighted_entries = $bindable([]),
     selected_entry = $bindable(null),
+    temperature = $bindable(),
     ...rest
   }: ConvexHullProps = $props()
 
@@ -97,6 +98,7 @@
     bind:unstable_entries
     bind:highlighted_entries
     bind:selected_entry
+    bind:temperature
   />
 {:else}
   <!-- Error state for unsupported dimensionalities -->

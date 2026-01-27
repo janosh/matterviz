@@ -437,7 +437,7 @@
   async function sort_rows(
     column: string,
     group: string | undefined,
-    event: MouseEvent,
+    event: MouseEvent | KeyboardEvent,
   ) {
     // Find the column using both label and group if provided
     const col = ordered_columns.find(
@@ -690,7 +690,7 @@
   function handle_resize(event: MouseEvent) {
     if (!resize_col_id) return
     const delta = event.clientX - resize_start_x
-    const new_width = Math.max(50, resize_start_width + delta)
+    const new_width = Math.min(500, Math.max(50, resize_start_width + delta))
     column_widths = { ...column_widths, [resize_col_id]: new_width }
   }
 
@@ -898,6 +898,8 @@
             {@const col_width = column_widths[col_id]}
             <th
               title={col.description}
+              tabindex={col.sortable === false ? undefined : 0}
+              role={col.sortable === false ? undefined : `button`}
               onclick={(event) => {
                 if (!drag_col_id && !resize_col_id) {
                   sort_rows(
@@ -905,6 +907,15 @@
                     col.group,
                     event,
                   )
+                }
+              }}
+              onkeydown={(event) => {
+                if (
+                  (event.key === `Enter` || event.key === ` `) &&
+                  !drag_col_id && !resize_col_id
+                ) {
+                  event.preventDefault()
+                  sort_rows(col.label, col.group, event)
                 }
               }}
               style={`${col.style ?? ``}${
@@ -936,13 +947,16 @@
             >
               {@html col.label}
               {@html sort_indicator(col, sort_state)}
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <!-- Column resize handle -->
+              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <span
                 class="resize-handle"
                 onmousedown={(event) => start_resize(event, col)}
                 role="separator"
                 aria-orientation="vertical"
+                aria-valuenow={column_widths[get_col_id(col)] ?? 100}
+                aria-valuemin={50}
+                aria-valuemax={500}
               ></span>
             </th>
           {/each}

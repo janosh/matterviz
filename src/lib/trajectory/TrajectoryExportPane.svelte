@@ -189,7 +189,7 @@
         />
       </label>
 
-      <label>
+      <span class="field-label">
         Resolution
         <div class="resolution-buttons">
           {#each [0.5, 1, 2, 4, 8] as multiplier (multiplier)}
@@ -207,7 +207,7 @@
             </button>
           {/each}
         </div>
-      </label>
+      </span>
 
       <label>
         Start Frame
@@ -294,6 +294,11 @@
 </DraggablePane>
 
 <style>
+  .field-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2pt;
+  }
   .warning, .error-message {
     padding: 1ex;
     border-radius: var(--traj-border-radius, var(--border-radius, 3pt));
