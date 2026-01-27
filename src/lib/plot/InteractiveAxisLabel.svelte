@@ -38,6 +38,8 @@
   onmousedown={stop}
   onmouseup={stop}
   onclick={stop}
+  onkeydown={stop}
+  role="group"
   {...rest}
 >
   {#if is_interactive && options}

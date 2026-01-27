@@ -437,7 +437,7 @@
   async function sort_rows(
     column: string,
     group: string | undefined,
-    event: MouseEvent,
+    event: MouseEvent | KeyboardEvent,
   ) {
     // Find the column using both label and group if provided
     const col = ordered_columns.find(
@@ -907,6 +907,14 @@
                   )
                 }
               }}
+              onkeydown={(event) => {
+                if (
+                  (event.key === `Enter` || event.key === ` `) &&
+                  !drag_col_id && !resize_col_id
+                ) {
+                  sort_rows(col.label, col.group, event)
+                }
+              }}
               style={`${col.style ?? ``}${
                 col_width
                   ? `; width: ${col_width}px; min-width: ${col_width}px`
@@ -936,13 +944,16 @@
             >
               {@html col.label}
               {@html sort_indicator(col, sort_state)}
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <!-- Column resize handle -->
+              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <span
                 class="resize-handle"
                 onmousedown={(event) => start_resize(event, col)}
                 role="separator"
                 aria-orientation="vertical"
+                aria-valuenow={column_widths[get_col_id(col)] ?? 100}
+                aria-valuemin={50}
+                aria-valuemax={500}
               ></span>
             </th>
           {/each}

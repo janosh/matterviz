@@ -1031,6 +1031,7 @@
 
   <canvas
     bind:this={canvas}
+    aria-label={merged_controls.title || phase_stats?.chemical_system || `4D Convex Hull`}
     onmousedown={handle_mouse_down}
     onmousemove={handle_hover}
     onclick={handle_click}

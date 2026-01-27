@@ -969,6 +969,7 @@
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <svg
     bind:this={svg_element}
+    role="application"
     tabindex="0"
     onfocusin={() => (is_focused = true)}
     onfocusout={() => (is_focused = false)}
@@ -989,7 +990,6 @@
     : shift_held && pan?.enabled !== false
     ? `grab`
     : `crosshair`}
-    role="img"
     onkeydown={(event) => {
       if (event.key === `Escape` && drag_state.start) {
         drag_state = { start: null, current: null, bounds: null }
