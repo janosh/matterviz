@@ -74,7 +74,7 @@
       </div>
       {#if hover_data.symmetry_multiplicity != null}
         <div class="bz-tooltip-symmetry">
-          Symmetry: 1/{Math.round(hover_data.symmetry_multiplicity)} of BZ
+          Symmetry: 1/{hover_data.symmetry_multiplicity} of BZ
         </div>
       {/if}
     {/if}

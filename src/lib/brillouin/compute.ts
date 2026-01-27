@@ -65,11 +65,20 @@ export function fractional_to_cartesian_rotation(
   W: Matrix3x3,
   k_lattice: Matrix3x3,
 ): Matrix3x3 {
-  const k_lattice_inv = math.matrix_inverse_3x3(k_lattice)
-  const W_inv = math.matrix_inverse_3x3(W)
-  const W_inv_T = math.transpose_3x3_matrix(W_inv)
-  // R_cart = B · W^{-T} · B^{-1}
-  return mat3x3_multiply(mat3x3_multiply(k_lattice, W_inv_T), k_lattice_inv)
+  try {
+    const k_lattice_inv = math.matrix_inverse_3x3(k_lattice)
+    const W_inv = math.matrix_inverse_3x3(W)
+    const W_inv_T = math.transpose_3x3_matrix(W_inv)
+    // R_cart = B · W^{-T} · B^{-1}
+    return mat3x3_multiply(mat3x3_multiply(k_lattice, W_inv_T), k_lattice_inv)
+  } catch {
+    // Fallback to identity if inversion fails (shouldn't happen for valid rotations)
+    return [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]
+  }
 }
 
 // Compute reciprocal lattice: k = inv(real).T * 2π
@@ -421,7 +430,10 @@ function clip_polyhedron_by_plane(
     const inside1 = d1 <= TOL
     const inside2 = d2 <= TOL
     if (inside1 !== inside2) {
-      const t = d1 / (d1 - d2)
+      const denom = d1 - d2
+      // Skip if denominator too small (tighter than TOL for numerical stability)
+      if (Math.abs(denom) < 1e-12) continue
+      const t = d1 / denom
       // Only add intersection if it's not at an endpoint (which is already kept)
       if (t > TOL && t < 1 - TOL) {
         const [v1, v2] = [vertices[i1], vertices[i2]]
@@ -478,14 +490,22 @@ export function compute_irreducible_bz(
 
   for (const plane of clipping_planes) {
     // Try clipping with plane, then flipped plane if needed
+    let clipped_successfully = false
     for (const try_plane of [plane, flip_plane(plane)]) {
       const clipped = clip_polyhedron_by_plane(current_vertices, current_faces, try_plane)
       const hull = try_build_hull(clipped, edge_sharp_angle_deg)
       if (hull) {
         current_vertices = hull.vertices
         current_faces = hull.faces
+        clipped_successfully = true
         break
       }
+    }
+    // If both orientations failed, vertices unchanged - continue with best effort
+    if (!clipped_successfully) {
+      console.warn(
+        `IBZ clipping: plane orientation failed, continuing with current geometry`,
+      )
     }
   }
 

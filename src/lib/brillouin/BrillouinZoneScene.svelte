@@ -241,18 +241,26 @@
 
   // Throttle state for pointer move events
   let last_hover_time = 0
+  let last_hover_mesh: `bz` | `ibz` | null = null
   const HOVER_THROTTLE_MS = 16 // ~60fps
 
   // Reset throttle when bz_data changes to ensure immediate response
   $effect(() => {
-    if (bz_data) last_hover_time = 0
+    if (bz_data) {
+      last_hover_time = 0
+      last_hover_mesh = null
+    }
   })
 
   // Track IBZ hover state - IBZ takes priority over BZ
   let ibz_hovered = false
   $effect(() => {
-    if (!show_ibz) ibz_hovered = false
-  }) // reset when mesh removed
+    if (!show_ibz) {
+      ibz_hovered = false
+      // Clear hover tooltip if it was showing IBZ data
+      if (hover_data?.is_ibz) hover_data = null
+    }
+  })
 
   // Create hover data from pointer event
   function create_hover_data(
@@ -266,8 +274,9 @@
 
     const { clientX, clientY } = event.nativeEvent
     const ibz_vol = ibz_data?.volume ?? null
+    // Round to nearest integer since symmetry multiplicity is the point group order
     const symmetry_multiplicity = ibz_vol != null && ibz_vol > 0
-      ? bz_data.volume / ibz_vol
+      ? Math.round(bz_data.volume / ibz_vol)
       : null
 
     return {
@@ -287,9 +296,13 @@
     if (is_ibz) ibz_hovered = true
     else if (ibz_hovered) return // BZ defers to IBZ
 
+    const mesh = is_ibz ? `ibz` : `bz`
     const now = performance.now()
-    if (now - last_hover_time < HOVER_THROTTLE_MS) return
+    // Bypass throttle when switching meshes for responsive transitions
+    if (last_hover_mesh === mesh && now - last_hover_time < HOVER_THROTTLE_MS) return
+
     last_hover_time = now
+    last_hover_mesh = mesh
     hover_data = create_hover_data(event, is_ibz)
   }
 

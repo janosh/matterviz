@@ -424,7 +424,11 @@ describe(`compute_irreducible_bz`, () => {
     expect(ibz).not.toBeNull()
     if (!ibz) return
     expect(ibz.volume).toBeGreaterThan(0)
-    expect(ibz.volume).toBeLessThan(hex_bz.volume * 0.6)
+    // C3 symmetry should give ~1/3 of BZ volume (geometric clipping is approximate)
+    const expected_ratio = 1 / 3
+    const actual_ratio = ibz.volume / hex_bz.volume
+    expect(actual_ratio).toBeGreaterThan(expected_ratio * 0.7) // at least 70% of expected
+    expect(actual_ratio).toBeLessThan(expected_ratio * 1.3) // at most 130% of expected
   })
 })
 
@@ -444,5 +448,24 @@ describe(`fractional_to_cartesian_rotation`, () => {
     expect(R[0][0]).toBeCloseTo(-0.4226497308103744, 6)
     expect(R[0][1]).toBeCloseTo(-0.6547005383792517, 6)
     expect(R[1][0]).toBeCloseTo(1.1547005383792515, 6)
+  })
+
+  test.each([
+    {
+      name: `singular W`,
+      W: [[0, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3,
+      k: k_lattice,
+    },
+    {
+      name: `singular k_lattice`,
+      W: IDENTITY_MAT,
+      k: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] as Matrix3x3,
+    },
+  ])(`returns identity matrix for $name`, ({ W, k }) => {
+    expect(fractional_to_cartesian_rotation(W, k)).toEqual([[1, 0, 0], [0, 1, 0], [
+      0,
+      0,
+      1,
+    ]])
   })
 })
