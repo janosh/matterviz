@@ -667,27 +667,25 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`can_interpolate_at_temperature`, () => {
-    test(`returns true when T is bracketed within max_gap`, () => {
-      const entry = make_entry([300, 600, 900], [-1, -1.5, -2])
-      expect(helpers.can_interpolate_at_temperature(entry, 450, 500)).toBe(true)
-      expect(helpers.can_interpolate_at_temperature(entry, 750, 500)).toBe(true)
-    })
+    const standard_entry = make_entry([300, 600, 900], [-1, -1.5, -2])
+    const sparse_entry = make_entry([300, 900], [-1, -2])
 
-    test(`returns false when T is outside data range`, () => {
-      const entry = make_entry([300, 600, 900], [-1, -1.5, -2])
-      expect(helpers.can_interpolate_at_temperature(entry, 200, 500)).toBe(false)
-      expect(helpers.can_interpolate_at_temperature(entry, 1000, 500)).toBe(false)
-    })
-
-    test(`returns false when gap exceeds max_gap`, () => {
-      const entry = make_entry([300, 900], [-1, -2])
-      expect(helpers.can_interpolate_at_temperature(entry, 600, 500)).toBe(false)
-      expect(helpers.can_interpolate_at_temperature(entry, 600, 600)).toBe(true)
-    })
-
-    test(`returns false for entries without temp data`, () => {
-      const entry: PhaseData = { composition: { Fe: 1 }, energy: -1 }
-      expect(helpers.can_interpolate_at_temperature(entry, 450, 500)).toBe(false)
+    test.each([
+      [`bracketed within max_gap`, standard_entry, 450, 500, true],
+      [`bracketed at different position`, standard_entry, 750, 500, true],
+      [`T below data range`, standard_entry, 200, 500, false],
+      [`T above data range`, standard_entry, 1000, 500, false],
+      [`gap exceeds max_gap`, sparse_entry, 600, 500, false],
+      [`gap equals max_gap`, sparse_entry, 600, 600, true],
+      [
+        `no temp data`,
+        { composition: { Fe: 1 }, energy: -1 } as PhaseData,
+        450,
+        500,
+        false,
+      ],
+    ])(`%s → %s`, (_, entry, T, max_gap, expected) => {
+      expect(helpers.can_interpolate_at_temperature(entry, T, max_gap)).toBe(expected)
     })
   })
 

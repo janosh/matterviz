@@ -71,7 +71,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`renders basic histogram with correct structure`, async ({ page }) => {
     test.skip(IS_CI, `Histogram rendering flaky in CI`)
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram).toBeVisible()
 
     // Wait for histogram to render bars properly
@@ -110,7 +110,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`responds to control changes`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
 
     // Wait for histogram to render with bars (D3 may adjust bin count slightly)
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
@@ -145,7 +145,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`multiple series overlay functionality`, async ({ page }) => {
-    const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
+    const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
     await expect(histogram).toBeVisible()
 
     // Wait for histogram to render bars and axes
@@ -191,7 +191,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`series visibility toggles work`, async ({ page }) => {
     test.skip(IS_CI, `Histogram series toggle test flaky in CI due to render timing`)
-    const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
+    const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
     const legend = page.locator(`#multiple-series-overlay .legend`)
     const first_legend_item = legend.locator(`.legend-item`).first()
 
@@ -226,7 +226,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`logarithmic scale combinations`, async ({ page }) => {
     test.skip(IS_CI, `Logarithmic histogram rendering flaky in CI`)
-    const histogram = page.locator(`#logarithmic-scales > svg[role="img"]`)
+    const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
 
     // Wait for initial histogram to render
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
@@ -274,7 +274,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`distribution types`, async ({ page }) => {
-    const histogram = page.locator(`#real-world-distributions > svg[role="img"]`)
+    const histogram = page.locator(`#real-world-distributions > svg[role="application"]`)
 
     const distributions = [
       { type: `bimodal`, min_bars: 5 },
@@ -306,7 +306,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`bin size comparison modes`, async ({ page }) => {
     const section = page.locator(`[data-testid="bin-size-comparison-section"]`)
-    const histogram = section.locator(`#bin-size-comparison > svg[role="img"]`)
+    const histogram = section.locator(`#bin-size-comparison > svg[role="application"]`)
 
     // Wait for histogram to render initially
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
@@ -338,7 +338,7 @@ test.describe(`Histogram Component Tests`, () => {
 
     // This test is no longer applicable since we removed the custom styling section
     // The histogram still renders correctly with default styling
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram).toBeVisible()
 
     // Verify histogram renders with bars
@@ -353,7 +353,7 @@ test.describe(`Histogram Component Tests`, () => {
   test(`tooltips and legend functionality`, async ({ page }) => {
     // Test tooltips - wait for histogram to render first
     // Increased timeout to handle slower CI environments and Svelte reactivity
-    const basic_histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const basic_histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(basic_histogram.locator(`path[role="button"]`).first()).toBeVisible({
       timeout: 10000,
     })
@@ -401,7 +401,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`legend remains functional when all series are disabled`, async ({ page }) => {
     // Use the multiple-series-overlay histogram which already has a legend
-    const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
+    const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
     const legend = page.locator(`#multiple-series-overlay .legend`)
 
     // Wait for histogram bars to render first
@@ -446,7 +446,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`legend toggle functionality properly hides and shows series`, async ({ page }) => {
     // Use the multiple-series-overlay histogram which already has a legend
-    const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
+    const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
     const legend = page.locator(`#multiple-series-overlay .legend`)
 
     // Wait for histogram bars to render first
@@ -514,7 +514,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`maintains minimum bar width for very narrow bins`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
 
     // Wait for histogram to be rendered first
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
@@ -569,7 +569,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`histogram controls pane functionality`, async ({ page }) => {
     // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
       timeout: 10000,
     })
@@ -656,7 +656,7 @@ test.describe(`Histogram Component Tests`, () => {
   // TODO figure out how to actually open the control pane
   test(`histogram controls with multiple series`, async ({ page }) => {
     // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#multiple-series-overlay > svg[role="img"]`)
+    const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
       timeout: 10000,
     })
@@ -742,7 +742,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`histogram controls with different scale types`, async ({ page }) => {
     // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#logarithmic-scales > svg[role="img"]`)
+    const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
       timeout: 5000,
     })
@@ -778,7 +778,7 @@ test.describe(`Histogram Component Tests`, () => {
       await y_scale_select.selectOption(`log`)
 
       // Verify histogram renders with log scales
-      const histogram = page.locator(`#logarithmic-scales > svg[role="img"]`)
+      const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
       await expect(histogram.locator(`g.x-axis .tick`).first()).toBeVisible({
         timeout: 3000,
       })
@@ -803,7 +803,7 @@ test.describe(`Histogram Component Tests`, () => {
       await y_tick_input.fill(`8`)
 
       // Verify histogram still renders
-      const histogram = page.locator(`#logarithmic-scales > svg[role="img"]`)
+      const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
       const bar_count = await get_bar_count(histogram)
       expect(bar_count).toBeGreaterThan(0)
     }
@@ -811,7 +811,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`histogram controls format validation`, async ({ page }) => {
     // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#tick-configuration > svg[role="img"]`)
+    const histogram = page.locator(`#tick-configuration > svg[role="application"]`)
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
       timeout: 5000,
     })
@@ -869,7 +869,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`histogram controls keyboard navigation`, async ({ page }) => {
     // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
       timeout: 5000,
     })
@@ -909,7 +909,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`histogram controls responsive behavior`, async ({ page }) => {
     // Wait for histogram to be fully rendered first
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
       timeout: 5000,
     })
@@ -943,7 +943,7 @@ test.describe(`Histogram Component Tests`, () => {
         await bins_slider.fill(`25`)
 
         // Verify histogram still renders
-        const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+        const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
         const bar_count = await get_bar_count(histogram)
         expect(bar_count).toBeGreaterThan(0)
       }
@@ -957,7 +957,7 @@ test.describe(`Histogram Component Tests`, () => {
     // Test with extremely small viewport
     await page.setViewportSize({ width: 200, height: 150 })
 
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram).toBeVisible()
 
     // Should attempt to render axes (may be 0 for identical data)
@@ -984,7 +984,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`handles rapid data updates without rendering errors`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
 
     // Rapidly change bin count and sample size (use more reasonable values)
     for (let idx = 0; idx < 5; idx++) {
@@ -1031,7 +1031,7 @@ test.describe(`Histogram Component Tests`, () => {
   test(`tick configuration and dynamic updates`, async ({ page }) => {
     // Helper to wait for and validate histogram render
     const wait_for_histogram = async (selector: string) => {
-      const histogram = page.locator(`${selector} > svg[role="img"]`)
+      const histogram = page.locator(`${selector} > svg[role="application"]`)
       await expect(histogram).toBeVisible()
       await expect(histogram.locator(`path[role="button"]`).first())
         .toBeVisible()
@@ -1079,7 +1079,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`logarithmic scale tick generation and validation`, async ({ page }) => {
-    const histogram = page.locator(`#logarithmic-scales > svg[role="img"]`)
+    const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
       timeout: 5000,
     })
@@ -1145,7 +1145,7 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`tick interval generation and formatting`, async ({ page }) => {
     // Test tick generation with the existing histogram
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram).toBeVisible()
 
     const x_axis = histogram.locator(`g.x-axis`)
@@ -1161,7 +1161,9 @@ test.describe(`Histogram Component Tests`, () => {
     }
 
     // Test tick text formatting
-    const tick_config_histogram = page.locator(`#tick-configuration > svg[role="img"]`)
+    const tick_config_histogram = page.locator(
+      `#tick-configuration > svg[role="application"]`,
+    )
     await expect(tick_config_histogram.locator(`path[role="button"]`).first())
       .toBeVisible({
         timeout: 5000,
@@ -1195,7 +1197,7 @@ test.describe(`Histogram Component Tests`, () => {
   test(`zoom rectangle positioning fix is applied correctly`, async ({ page }) => {
     // Test actual zoom functionality with mouse interactions
 
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram).toBeVisible()
 
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
@@ -1232,7 +1234,7 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`one-sided axis range pins via controls`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     // Wait for histogram bars to render
     await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
       timeout: 10000,
@@ -1306,7 +1308,7 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(click_div).toContainText(`Click on a bar`)
 
     // Use the main histogram SVG, not icon SVGs
-    const svg = histogram_section.locator(`> svg[role="img"]`)
+    const svg = histogram_section.locator(`> svg[role="application"]`)
     await expect(svg).toBeVisible({ timeout: 10000 })
     const bars = svg.locator(`path[role="button"]`)
     // Wait for bars to be rendered
@@ -1400,8 +1402,8 @@ test.describe(`Histogram Component Tests`, () => {
   test(`zoom updates both y1 and y2 ranges in histogram`, async ({ page }) => {
     const histogram = page.locator(`#y2-axis-histogram .histogram`)
     await histogram.scrollIntoViewIfNeeded()
-    // Use the main interactive SVG with role="img", not icon SVGs
-    const svg = histogram.locator(`> svg[role="img"]`)
+    // Use the main interactive SVG with role="application", not icon SVGs
+    const svg = histogram.locator(`> svg[role="application"]`)
     await expect(svg).toBeVisible()
 
     // Wait for initial ticks
@@ -1554,7 +1556,7 @@ test.describe(`Histogram Component Tests`, () => {
   // PAN FUNCTIONALITY TESTS
 
   test(`Shift+drag pans the histogram instead of zooming`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="img"]`)
+    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     const zoom_rect = histogram.locator(`.zoom-rect`)
 
     // Wait for histogram to render

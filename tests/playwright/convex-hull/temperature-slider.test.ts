@@ -206,24 +206,16 @@ test.describe(`Temperature Slider - Accessibility`, () => {
     await expect(range_input).toHaveAttribute(`max`, `4`)
   })
 
-  test(`3D canvas has aria-label`, async ({ page }) => {
-    const diagram = page.locator(`.temp-grid .convex-hull-3d`).first()
-    await expect(diagram).toBeVisible()
+  for (const dim of [`3d`, `4d`]) {
+    test(`${dim.toUpperCase()} canvas has aria-label`, async ({ page }) => {
+      const diagram = page.locator(`.temp-grid .convex-hull-${dim}`).first()
+      await expect(diagram).toBeVisible()
 
-    const canvas = diagram.locator(`canvas`)
-    // Canvas should have aria-label (added for a11y)
-    const aria_label = await canvas.getAttribute(`aria-label`)
-    expect(aria_label).toBeTruthy()
-  })
-
-  test(`4D canvas has aria-label`, async ({ page }) => {
-    const diagram = page.locator(`.temp-grid .convex-hull-4d`).first()
-    await expect(diagram).toBeVisible()
-
-    const canvas = diagram.locator(`canvas`)
-    const aria_label = await canvas.getAttribute(`aria-label`)
-    expect(aria_label).toBeTruthy()
-  })
+      const canvas = diagram.locator(`canvas`)
+      const aria_label = await canvas.getAttribute(`aria-label`)
+      expect(aria_label).toBeTruthy()
+    })
+  }
 })
 
 test.describe(`Temperature Slider - Static Data`, () => {
@@ -234,22 +226,17 @@ test.describe(`Temperature Slider - Static Data`, () => {
     await expect(page.locator(`.binary-grid`)).toBeVisible({ timeout: 50_000 })
   })
 
-  test(`temperature slider does not appear for static data (no temperatures array)`, async ({ page }) => {
-    // Binary grid contains static data without temperature-dependent energies
-    const diagram = page.locator(`.binary-grid .scatter.convex-hull-2d`).first()
-    await expect(diagram).toBeVisible()
-
-    // Temperature slider should NOT be present
-    const temp_slider = diagram.locator(`.temperature-slider`)
-    await expect(temp_slider).toHaveCount(0)
-  })
-
-  test(`ternary static data has no temperature slider`, async ({ page }) => {
-    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
-    await expect(diagram).toBeVisible()
-
-    // Temperature slider should NOT be present
-    const temp_slider = diagram.locator(`.temperature-slider`)
-    await expect(temp_slider).toHaveCount(0)
-  })
+  // Static data grids should not have temperature sliders
+  for (
+    const [grid, selector] of [
+      [`binary-grid`, `.scatter.convex-hull-2d`],
+      [`ternary-grid`, `.convex-hull-3d`],
+    ]
+  ) {
+    test(`${grid} has no temperature slider`, async ({ page }) => {
+      const diagram = page.locator(`.${grid} ${selector}`).first()
+      await expect(diagram).toBeVisible()
+      await expect(diagram.locator(`.temperature-slider`)).toHaveCount(0)
+    })
+  }
 })
