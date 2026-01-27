@@ -2,13 +2,43 @@
 
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { Vector3 } from 'three'
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
-import type { BrillouinZoneData, ConvexHullData } from './types'
+import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './types'
+
+const TOL = 1e-8
 
 const normalize = (vec: Vec3): Vec3 => {
   const mag = Math.hypot(...vec)
   return mag < 1e-10 ? [0, 0, 0] : [vec[0] / mag, vec[1] / mag, vec[2] / mag]
+}
+
+// Check if rotation matrix is identity
+function is_identity_rotation(rot: Matrix3x3): boolean {
+  return rot.every((row, idx) =>
+    row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL)
+  )
+}
+
+// Extract unique point group rotation matrices from space group operations.
+// In reciprocal space, real-space rotation R becomes R^T (transpose).
+export function extract_point_group_from_operations(
+  operations: MoyoDataset[`operations`],
+): Matrix3x3[] {
+  const seen = new Set<string>()
+  const unique_rotations: Matrix3x3[] = []
+
+  for (const { rotation } of operations) {
+    const key = rotation.map((val) => val.toFixed(6)).join(`,`)
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    const rot = math.vec9_to_mat3x3(Array.from(rotation)) as Matrix3x3
+    unique_rotations.push(math.transpose_3x3_matrix(rot))
+  }
+
+  return unique_rotations
 }
 
 // Compute reciprocal lattice: k = inv(real).T * 2π
@@ -37,8 +67,6 @@ function generate_k_space_grid(k_lattice: Matrix3x3, order: number): Vec3[] {
   }
   return points
 }
-
-const TOL = 1e-8
 
 // O(1) duplicate vertex detection using spatial hashing
 class VertexDeduplicator {
@@ -157,6 +185,22 @@ export function generate_bz_vertices(
   return vertices
 }
 
+// Compute polyhedron volume via divergence theorem (sum of signed tetrahedral volumes)
+function compute_hull_volume(vertices: Vec3[], faces: number[][]): number {
+  if (faces.length === 0) return 0
+  return Math.abs(
+    faces.reduce((sum, face) => {
+      if (face.length < 3) return sum
+      const [v0, v1, v2] = face.slice(0, 3).map((idx) => vertices[idx])
+      const area_normal = math.scale(
+        math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),
+        0.5,
+      ) as Vec3
+      return sum + (math.dot(v0, area_normal) as number) / 3
+    }, 0),
+  )
+}
+
 // Build convex hull from vertices and extract topology
 export function compute_convex_hull(
   vertices: Vec3[],
@@ -248,25 +292,168 @@ export function compute_brillouin_zone(
 
   const hull = compute_convex_hull(vertices, edge_sharp_angle_deg)
 
-  // Compute volume via divergence theorem (sum of signed tetrahedral volumes)
-  const volume = Math.abs(
-    hull.faces.reduce((sum, face) => {
-      if (face.length < 3) return sum
-      const [v0, v1, v2] = face.slice(0, 3).map((idx) => hull.vertices[idx])
-      const area_normal = math.scale(
-        math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),
-        0.5,
-      ) as Vec3
-      return sum + (math.dot(v0, area_normal) as number) / 3
-    }, 0),
-  )
-
   return {
     order,
     vertices: hull.vertices,
     faces: hull.faces,
     edges: hull.edges.map(([i1, i2]) => [hull.vertices[i1], hull.vertices[i2]]),
     k_lattice,
-    volume,
+    volume: compute_hull_volume(hull.vertices, hull.faces),
+  }
+}
+
+// Clipping plane defined by normal and distance from origin (n·x = d)
+type ClippingPlane = { normal: Vec3; dist: number }
+
+// Compute clipping planes from point group operations.
+// For each non-identity rotation, we define a plane that selects one representative
+// from each equivalence class. The plane normal is chosen to create a consistent
+// fundamental domain.
+export function compute_ibz_clipping_planes(
+  point_group_ops: Matrix3x3[],
+): ClippingPlane[] {
+  const planes: ClippingPlane[] = []
+  const seen_normals = new Set<string>()
+
+  for (const rot of point_group_ops) {
+    // Skip identity matrix
+    if (is_identity_rotation(rot)) continue
+
+    // Test points chosen to avoid rotation axes for common symmetries
+    // Includes basis vectors, face diagonals, and body diagonal
+    const test_points: Vec3[] = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1], // basis vectors
+      [1, 1, 0],
+      [1, 0, 1],
+      [0, 1, 1], // face diagonals
+      [1, 1, 1],
+      [1, 2, 3], // body diagonal + generic point
+    ]
+
+    for (const test_pt of test_points) {
+      const rotated = math.mat3x3_vec3_multiply(rot, test_pt)
+      const diff: Vec3 = math.subtract(rotated, test_pt)
+      if (Math.hypot(...diff) < TOL) continue // point on rotation axis
+
+      const plane_normal = normalize(diff)
+      const key = plane_normal.map((val) => Math.round(val * 1000)).join(`,`)
+      const neg_key = plane_normal.map((val) => Math.round(-val * 1000)).join(`,`)
+
+      if (!seen_normals.has(key) && !seen_normals.has(neg_key)) {
+        seen_normals.add(key)
+        planes.push({ normal: plane_normal, dist: 0 })
+      }
+      break
+    }
+  }
+
+  return planes
+}
+
+// Flip a clipping plane to the opposite half-space
+const flip_plane = (p: ClippingPlane): ClippingPlane => ({
+  normal: math.scale(p.normal, -1) as Vec3,
+  dist: -p.dist,
+})
+
+// Clip polyhedron vertices by a half-space, adding intersection points where edges cross
+function clip_polyhedron_by_plane(
+  vertices: Vec3[],
+  faces: number[][],
+  plane: ClippingPlane,
+): Vec3[] {
+  const { normal, dist } = plane
+  const signed_dists = vertices.map((v) => (math.dot(v, normal) as number) - dist)
+
+  // Keep vertices inside the half-space
+  const result = vertices.filter((_, idx) => signed_dists[idx] <= TOL)
+
+  // Build edge set from faces
+  const edge_set = new Set<string>()
+  for (const face of faces) {
+    for (let idx = 0; idx < face.length; idx++) {
+      const i1 = face[idx]
+      const i2 = face[(idx + 1) % face.length]
+      edge_set.add(i1 < i2 ? `${i1},${i2}` : `${i2},${i1}`)
+    }
+  }
+
+  // Add intersection points where edges cross the plane
+  for (const key of edge_set) {
+    const [i1, i2] = key.split(`,`).map(Number)
+    const d1 = signed_dists[i1]
+    const d2 = signed_dists[i2]
+
+    if ((d1 > TOL && d2 < -TOL) || (d1 < -TOL && d2 > TOL)) {
+      const t = d1 / (d1 - d2)
+      const [v1, v2] = [vertices[i1], vertices[i2]]
+      result.push([
+        v1[0] + t * (v2[0] - v1[0]),
+        v1[1] + t * (v2[1] - v1[1]),
+        v1[2] + t * (v2[2] - v1[2]),
+      ])
+    }
+  }
+
+  return result
+}
+
+// Try to build hull from vertices, returns null on failure
+function try_build_hull(
+  vertices: Vec3[],
+  edge_sharp_angle_deg: number,
+): ConvexHullData | null {
+  if (vertices.length < 4) return null
+  try {
+    return compute_convex_hull(vertices, edge_sharp_angle_deg)
+  } catch {
+    return null
+  }
+}
+
+// Compute the irreducible Brillouin zone by clipping the full BZ with symmetry planes
+export function compute_irreducible_bz(
+  bz_data: BrillouinZoneData,
+  point_group_ops: Matrix3x3[],
+  edge_sharp_angle_deg = 5,
+): IrreducibleBZData | null {
+  const clipping_planes = compute_ibz_clipping_planes(point_group_ops)
+
+  if (clipping_planes.length === 0) {
+    // No symmetry (P1), IBZ = full BZ
+    return {
+      vertices: [...bz_data.vertices],
+      faces: [...bz_data.faces],
+      edges: [...bz_data.edges],
+      volume: bz_data.volume,
+    }
+  }
+
+  let current_vertices = [...bz_data.vertices]
+  let current_faces = [...bz_data.faces]
+
+  for (const plane of clipping_planes) {
+    // Try clipping with plane, then flipped plane if needed
+    for (const try_plane of [plane, flip_plane(plane)]) {
+      const clipped = clip_polyhedron_by_plane(current_vertices, current_faces, try_plane)
+      const hull = try_build_hull(clipped, edge_sharp_angle_deg)
+      if (hull) {
+        current_vertices = hull.vertices
+        current_faces = hull.faces
+        break
+      }
+    }
+  }
+
+  const hull = try_build_hull(current_vertices, edge_sharp_angle_deg)
+  if (!hull) return null
+
+  return {
+    vertices: hull.vertices,
+    faces: hull.faces,
+    edges: hull.edges.map(([i1, i2]) => [hull.vertices[i1], hull.vertices[i2]]),
+    volume: compute_hull_volume(hull.vertices, hull.faces),
   }
 }

@@ -1,6 +1,14 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 
+// Data structure for the irreducible Brillouin zone wedge
+export type IrreducibleBZData = {
+  vertices: Vec3[] // Vertices of the irreducible wedge
+  faces: number[][] // Face indices for IBZ mesh
+  edges: Vec3[][] // Edge segments for IBZ boundary rendering
+  volume: number // IBZ volume in Å⁻³
+}
+
 export type BrillouinZoneData = {
   order: number // 1st, 2nd, 3rd BZ
   vertices: Vec3[]
