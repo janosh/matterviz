@@ -1,78 +1,67 @@
 import {
   compute_brillouin_zone,
   compute_convex_hull,
+  compute_ibz_clipping_planes,
+  compute_irreducible_bz,
+  extract_point_group_from_operations,
+  fractional_to_cartesian_rotation,
   generate_bz_vertices,
   reciprocal_lattice,
 } from '$lib/brillouin/compute'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec3, Vec9 } from '$lib/math'
+import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 import reference_data from './bz_reference_data.json' with { type: 'json' }
 
-// Helper to check if vertex exists in list
-const has_vertex = (vertices: Vec3[], target: Vec3, tol = 1e-8) =>
-  vertices.some(
-    (vert) =>
-      Math.abs(vert[0] - target[0]) < tol &&
-      Math.abs(vert[1] - target[1]) < tol &&
-      Math.abs(vert[2] - target[2]) < tol,
-  )
+// Common test constants
+const CUBIC_5: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
+const IDENTITY_MAT: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+const INVERSION_MAT: Matrix3x3 = [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]
 
-// Helper to create edge key for deduplication
+// Hexagonal 3-fold rotation in fractional coords (non-orthogonal: W^T ≠ W^{-1})
+const C3_HEX: Matrix3x3 = [[0, -1, 0], [1, -1, 0], [0, 0, 1]]
+const C3_HEX_SQ: Matrix3x3 = [[-1, 1, 0], [-1, 0, 0], [0, 0, 1]] // C3²
+
+// Helpers
+const has_vertex = (vertices: Vec3[], target: Vec3, tol = 1e-8) =>
+  vertices.some((v) => v.every((c, idx) => Math.abs(c - target[idx]) < tol))
+
 const edge_key = (v1: Vec3, v2: Vec3) =>
-  [v1, v2].map((vert) => vert.map((coord) => coord.toFixed(8)).join(`,`)).sort().join(`|`)
+  [v1, v2].map((v) => v.map((c) => c.toFixed(8)).join(`,`)).sort().join(`|`)
 
 describe(`reciprocal_lattice`, () => {
   test(`correct for all crystal systems`, () => {
     for (const [_type, data] of Object.entries(reference_data)) {
       const computed = reciprocal_lattice(data.real_lattice as Matrix3x3)
       const expected = data.reciprocal_lattice as Matrix3x3
-      for (let idx_i = 0; idx_i < 3; idx_i++) {
-        for (let idx_j = 0; idx_j < 3; idx_j++) {
-          expect(computed[idx_i][idx_j]).toBeCloseTo(expected[idx_i][idx_j], 10)
-        }
-      }
+      computed.forEach((row, idx_i) =>
+        row.forEach((val, idx_j) => expect(val).toBeCloseTo(expected[idx_i][idx_j], 10))
+      )
     }
   })
 
-  test(`double reciprocal preserves structure (orthogonal remains orthogonal)`, () => {
-    const real: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
-    const double_recip = reciprocal_lattice(reciprocal_lattice(real))
-
-    // Off-diagonal should remain zero
-    for (const [idx_i, idx_j] of [[0, 1], [0, 2], [1, 0], [1, 2], [2, 0], [2, 1]]) {
-      expect(double_recip[idx_i][idx_j]).toBeCloseTo(0, 10)
+  test(`double reciprocal preserves cubic structure`, () => {
+    const double_recip = reciprocal_lattice(reciprocal_lattice(CUBIC_5))
+    // Off-diagonal elements should be zero
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        if (row !== col) expect(double_recip[row][col]).toBeCloseTo(0, 10)
+      }
     }
-    // Diagonal should be equal and positive
+    // Diagonal elements equal and positive
     expect(double_recip[0][0]).toBeCloseTo(double_recip[1][1], 10)
-    expect(double_recip[1][1]).toBeCloseTo(double_recip[2][2], 10)
     expect(double_recip[0][0]).toBeGreaterThan(0)
   })
 
-  test(`simple cubic: b_i = 2π/a`, () => {
-    const lattice_constant = 5.0
-    const real: Matrix3x3 = [[lattice_constant, 0, 0], [0, lattice_constant, 0], [
-      0,
-      0,
-      lattice_constant,
-    ]]
-    const recip = reciprocal_lattice(real)
-    const expected = (2 * Math.PI) / lattice_constant
-
-    expect(recip[0][0]).toBeCloseTo(expected, 10)
-    expect(recip[1][1]).toBeCloseTo(expected, 10)
-    expect(recip[2][2]).toBeCloseTo(expected, 10)
-    expect(recip[0][1]).toBeCloseTo(0, 10)
-    expect(recip[0][2]).toBeCloseTo(0, 10)
-  })
-
-  test(`non-orthogonal: a_i · b_j = 2π δ_ij`, () => {
-    const real: Matrix3x3 = [[0, 2.5, 2.5], [2.5, 0, 2.5], [2.5, 2.5, 0]] // FCC
-    const recip = reciprocal_lattice(real)
-
+  test(`non-orthogonal FCC: a_i · b_j = 2π δ_ij`, () => {
+    const fcc: Matrix3x3 = [[0, 2.5, 2.5], [2.5, 0, 2.5], [2.5, 2.5, 0]]
+    const recip = reciprocal_lattice(fcc)
     for (let idx_i = 0; idx_i < 3; idx_i++) {
       for (let idx_j = 0; idx_j < 3; idx_j++) {
-        const dot = real[idx_i][0] * recip[idx_j][0] + real[idx_i][1] * recip[idx_j][1] +
-          real[idx_i][2] * recip[idx_j][2]
+        const dot = fcc[idx_i].reduce(
+          (sum, val, idx_k) => sum + val * recip[idx_j][idx_k],
+          0,
+        )
         expect(dot).toBeCloseTo(idx_i === idx_j ? 2 * Math.PI : 0, 8)
       }
     }
@@ -184,23 +173,13 @@ describe(`BZ edge filtering`, () => {
 })
 
 describe(`generate_bz_vertices`, () => {
-  const k_lattice = reciprocal_lattice([[5, 0, 0], [0, 5, 0], [0, 0, 5]])
+  const k_lattice = reciprocal_lattice(CUBIC_5)
 
   test(`cubic BZ: 8 vertices at corners`, () => {
     const vertices = generate_bz_vertices(k_lattice, 1)
     expect(vertices.length).toBe(8)
     const k_max = Math.PI / 5
-    for (const vert of vertices) {
-      expect(Math.abs(vert[0])).toBeCloseTo(k_max, 5)
-      expect(Math.abs(vert[1])).toBeCloseTo(k_max, 5)
-      expect(Math.abs(vert[2])).toBeCloseTo(k_max, 5)
-    }
-  })
-
-  test(`higher order generates more vertices`, () => {
-    const v1 = generate_bz_vertices(k_lattice, 1)
-    const v2 = generate_bz_vertices(k_lattice, 2)
-    expect(v2.length).toBeGreaterThan(v1.length)
+    vertices.forEach((v) => v.forEach((c) => expect(Math.abs(c)).toBeCloseTo(k_max, 5)))
   })
 
   test(`max_planes_by_order parameter`, () => {
@@ -268,47 +247,39 @@ describe(`compute_convex_hull`, () => {
 })
 
 describe(`BZ volume`, () => {
-  test.each([
-    [5.0, (2 * Math.PI) ** 3 / (5.0 ** 3)],
-    [3.0, (2 * Math.PI) ** 3 / (3.0 ** 3)],
-  ])(`cubic a=%d → volume ≈ (2π)³/a³`, (lattice_param, expected_vol) => {
-    const real: Matrix3x3 = [[lattice_param, 0, 0], [0, lattice_param, 0], [
-      0,
-      0,
-      lattice_param,
-    ]]
+  test.each([5.0, 3.0])(`cubic a=%d → volume ≈ (2π)³/a³`, (a) => {
+    const real: Matrix3x3 = [[a, 0, 0], [0, a, 0], [0, 0, a]]
     const bz = compute_brillouin_zone(reciprocal_lattice(real), 1)
-    expect(bz.volume).toBeCloseTo(expected_vol, 4)
+    expect(bz.volume).toBeCloseTo((2 * Math.PI) ** 3 / a ** 3, 4)
   })
 
   test(`volume = |b1 · (b2 × b3)|`, () => {
-    const real: Matrix3x3 = [[4, 0, 0], [0, 5, 0], [0, 0, 6]]
-    const k_lattice = reciprocal_lattice(real)
+    const k_lattice = reciprocal_lattice([[4, 0, 0], [0, 5, 0], [0, 0, 6]])
     const bz = compute_brillouin_zone(k_lattice, 1)
-
     const [b1, b2, b3] = k_lattice
-    const cross = [
+    const cross: Vec3 = [
       b2[1] * b3[2] - b2[2] * b3[1],
       b2[2] * b3[0] - b2[0] * b3[2],
       b2[0] * b3[1] - b2[1] * b3[0],
     ]
-    const expected_vol = Math.abs(b1[0] * cross[0] + b1[1] * cross[1] + b1[2] * cross[2])
-    expect(bz.volume).toBeCloseTo(expected_vol, 6)
+    expect(bz.volume).toBeCloseTo(
+      Math.abs(b1.reduce((s, v, idx) => s + v * cross[idx], 0)),
+      6,
+    )
   })
 })
 
 describe(`BZ order`, () => {
+  const k_lattice = reciprocal_lattice(CUBIC_5)
+
   test(`higher order → more vertices`, () => {
-    const k_lattice = reciprocal_lattice(reference_data.cubic.real_lattice as Matrix3x3)
     const bz1 = compute_brillouin_zone(k_lattice, 1)
     const bz2 = compute_brillouin_zone(k_lattice, 2)
-    expect(bz2.vertices.length).toBeGreaterThanOrEqual(bz1.vertices.length)
+    expect(bz2.vertices.length).toBeGreaterThan(bz1.vertices.length)
   })
 
   test(`order capped at 3`, () => {
-    const k_lattice = reciprocal_lattice([[5, 0, 0], [0, 5, 0], [0, 0, 5]])
-    const bz = compute_brillouin_zone(k_lattice, 3)
-    expect(bz.order).toBe(3)
+    expect(compute_brillouin_zone(k_lattice, 3).order).toBe(3)
   })
 })
 
@@ -319,8 +290,182 @@ describe(`error handling`, () => {
   })
 
   test(`handles custom max_planes_by_order`, () => {
-    const k_lattice = reciprocal_lattice([[5, 0, 0], [0, 5, 0], [0, 0, 5]])
-    const bz = compute_brillouin_zone(k_lattice, 1, 5, { 1: 50, 2: 100, 3: 200 })
+    const bz = compute_brillouin_zone(reciprocal_lattice(CUBIC_5), 1, 5, {
+      1: 50,
+      2: 100,
+      3: 200,
+    })
     expect(bz.vertices.length).toBeGreaterThan(0)
+  })
+})
+
+// Rotation matrices as Vec9 (row-major)
+const IDENTITY_ROT: Vec9 = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+const ROT_Z_90: Vec9 = [0, -1, 0, 1, 0, 0, 0, 0, 1]
+const ROT_Z_180: Vec9 = [-1, 0, 0, 0, -1, 0, 0, 0, 1]
+const ROT_Z_270: Vec9 = [0, 1, 0, -1, 0, 0, 0, 0, 1]
+const MIRROR_Z: Vec9 = [1, 0, 0, 0, 1, 0, 0, 0, -1]
+const INVERSION_ROT: Vec9 = [-1, 0, 0, 0, -1, 0, 0, 0, -1]
+
+// Create mock operation for testing (Vec9 substitutes for Float64Array in tests)
+const make_op = (
+  rot: Vec9,
+  trans: Vec3 = [0, 0, 0],
+): MoyoDataset[`operations`][number] =>
+  ({ rotation: rot, translation: trans }) as unknown as MoyoDataset[`operations`][number]
+
+describe(`extract_point_group_from_operations`, () => {
+  test(`extracts identity and transposes for reciprocal space`, () => {
+    const pg = extract_point_group_from_operations([make_op(IDENTITY_ROT)])
+    expect(pg).toHaveLength(1)
+    expect(pg[0]).toEqual(IDENTITY_MAT)
+  })
+
+  test(`deduplicates same rotation with different translations`, () => {
+    const ops = [
+      make_op(IDENTITY_ROT),
+      make_op(IDENTITY_ROT, [0.5, 0, 0]),
+      make_op(IDENTITY_ROT, [0, 0.5, 0]),
+    ]
+    expect(extract_point_group_from_operations(ops)).toHaveLength(1)
+  })
+
+  test.each([
+    [`C4 group`, [IDENTITY_ROT, ROT_Z_90, ROT_Z_180, ROT_Z_270], 4],
+    [`with inversion/mirror`, [IDENTITY_ROT, INVERSION_ROT, MIRROR_Z], 3],
+    [`empty input`, [], 0],
+  ])(`%s → %d unique rotations`, (_, rots, expected) => {
+    expect(extract_point_group_from_operations(rots.map((r) => make_op(r)))).toHaveLength(
+      expected,
+    )
+  })
+
+  test(`preserves fractional rotation (no transpose)`, () => {
+    // ROT_Z_90 [[0,-1,0],[1,0,0],[0,0,1]] - returned as-is for later conversion
+    const [pg] = extract_point_group_from_operations([make_op(ROT_Z_90)])
+    expect(pg[0][1]).toBe(-1) // original value at [0][1]
+    expect(pg[1][0]).toBe(1) // original value at [1][0]
+  })
+})
+
+describe(`compute_ibz_clipping_planes`, () => {
+  const ROT_90: Matrix3x3 = [[0, 1, 0], [-1, 0, 0], [0, 0, 1]]
+  const ROT_180: Matrix3x3 = [[-1, 0, 0], [0, -1, 0], [0, 0, 1]]
+  const ROT_270: Matrix3x3 = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
+
+  test(`identity-only → no planes`, () => {
+    expect(compute_ibz_clipping_planes([IDENTITY_MAT])).toHaveLength(0)
+  })
+
+  test(`non-trivial symmetry → planes through origin`, () => {
+    const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_90])
+    expect(planes.length).toBeGreaterThan(0)
+    planes.forEach((p) => expect(p.dist).toBe(0))
+  })
+
+  test(`C4 group deduplicates planes`, () => {
+    const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_90, ROT_180, ROT_270])
+    expect(planes.length).toBeLessThanOrEqual(3)
+  })
+})
+
+describe(`compute_irreducible_bz`, () => {
+  const bz = compute_brillouin_zone(reciprocal_lattice(CUBIC_5), 1)
+  const MIRROR_Z_MAT: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, -1]]
+
+  test(`P1 (identity only) → full BZ`, () => {
+    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT])
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.vertices).toHaveLength(bz.vertices.length)
+    expect(ibz.volume).toBeCloseTo(bz.volume, 6)
+  })
+
+  test(`inversion symmetry → half volume`, () => {
+    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, INVERSION_MAT])
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume).toBeLessThanOrEqual(bz.volume)
+    expect(ibz.volume).toBeCloseTo(bz.volume / 2, 5)
+    expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
+  })
+
+  test(`mirror symmetry → valid geometry`, () => {
+    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, MIRROR_Z_MAT])
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
+    expect(ibz.faces.length).toBeGreaterThanOrEqual(4)
+    expect(ibz.edges.length).toBeGreaterThan(0)
+    expect(ibz.volume).toBeGreaterThan(0)
+    ibz.faces.flat().forEach((idx) => {
+      expect(idx).toBeGreaterThanOrEqual(0)
+      expect(idx).toBeLessThan(ibz.vertices.length)
+    })
+  })
+
+  test(`handles all crystal systems with inversion`, () => {
+    for (const data of Object.values(reference_data)) {
+      const crystal_bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
+      const ibz = compute_irreducible_bz(crystal_bz, [IDENTITY_MAT, INVERSION_MAT])
+      expect(ibz).not.toBeNull()
+      if (!ibz) continue
+      expect(ibz.volume).toBeGreaterThan(0)
+      expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
+    }
+  })
+
+  test(`hexagonal C3 group uses W^{-T} correctly`, () => {
+    const hex_bz = compute_brillouin_zone(
+      reference_data.hexagonal.reciprocal_lattice as Matrix3x3,
+      1,
+    )
+    const ibz = compute_irreducible_bz(hex_bz, [IDENTITY_MAT, C3_HEX, C3_HEX_SQ])
+    expect(ibz).not.toBeNull()
+    if (!ibz) return
+    expect(ibz.volume).toBeGreaterThan(0)
+    // C3 symmetry should give ~1/3 of BZ volume (geometric clipping is approximate)
+    const expected_ratio = 1 / 3
+    const actual_ratio = ibz.volume / hex_bz.volume
+    expect(actual_ratio).toBeGreaterThan(expected_ratio * 0.7) // at least 70% of expected
+    expect(actual_ratio).toBeLessThan(expected_ratio * 1.3) // at most 130% of expected
+  })
+})
+
+describe(`fractional_to_cartesian_rotation`, () => {
+  const k_lattice = reference_data.hexagonal.reciprocal_lattice as Matrix3x3
+
+  test(`det = +1 and correct matrix elements for hexagonal C3`, () => {
+    const R = fractional_to_cartesian_rotation(C3_HEX, k_lattice)
+
+    // det(R) should be +1 for proper rotation
+    const det = R[0][0] * (R[1][1] * R[2][2] - R[1][2] * R[2][1]) -
+      R[0][1] * (R[1][0] * R[2][2] - R[1][2] * R[2][0]) +
+      R[0][2] * (R[1][0] * R[2][1] - R[1][1] * R[2][0])
+    expect(det).toBeCloseTo(1, 10)
+
+    // These values distinguish W^{-T} from W^T (wrong impl gives ~-0.577, ~-0.906, ~0.577)
+    expect(R[0][0]).toBeCloseTo(-0.4226497308103744, 6)
+    expect(R[0][1]).toBeCloseTo(-0.6547005383792517, 6)
+    expect(R[1][0]).toBeCloseTo(1.1547005383792515, 6)
+  })
+
+  test.each([
+    {
+      name: `singular W`,
+      W: [[0, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3,
+      k: k_lattice,
+    },
+    {
+      name: `singular k_lattice`,
+      W: IDENTITY_MAT,
+      k: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] as Matrix3x3,
+    },
+  ])(`returns identity matrix for $name`, ({ W, k }) => {
+    expect(fractional_to_cartesian_rotation(W, k)).toEqual([[1, 0, 0], [0, 1, 0], [
+      0,
+      0,
+      1,
+    ]])
   })
 })

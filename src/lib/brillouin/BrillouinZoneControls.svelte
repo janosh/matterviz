@@ -12,6 +12,10 @@
     edge_width = $bindable(0.05),
     show_vectors = $bindable(true),
     camera_projection = $bindable(`perspective`),
+    // Irreducible BZ options
+    show_ibz = $bindable(false),
+    ibz_color = $bindable(`#ff8844`),
+    ibz_opacity = $bindable(0.5),
   }: {
     controls_open?: boolean
     bz_order?: number
@@ -21,6 +25,10 @@
     edge_width?: number
     show_vectors?: boolean
     camera_projection?: CameraProjection
+    // Irreducible BZ options
+    show_ibz?: boolean
+    ibz_color?: string
+    ibz_opacity?: number
   } = $props()
 </script>
 
@@ -106,5 +114,31 @@
         <option value="orthographic">Orthographic</option>
       </select>
     </label>
+  </SettingsSection>
+
+  <SettingsSection
+    title="Irreducible BZ"
+    current_values={{ show_ibz, ibz_color, ibz_opacity }}
+    on_reset={() => {
+      show_ibz = false
+      ibz_color = `#ff8844`
+      ibz_opacity = 0.5
+    }}
+  >
+    <label>
+      <span>Show IBZ:</span>
+      <input type="checkbox" bind:checked={show_ibz} />
+    </label>
+    {#if show_ibz}
+      <label>
+        <span>Color:</span>
+        <input type="color" bind:value={ibz_color} />
+      </label>
+      <label>
+        <span>Opacity:</span>
+        <input type="range" min="0" max="1" step="0.01" bind:value={ibz_opacity} />
+        <span class="value">{ibz_opacity.toFixed(2)}</span>
+      </label>
+    {/if}
   </SettingsSection>
 </DraggablePane>

@@ -11,17 +11,30 @@
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
+  import { analyze_structure_symmetry } from '$lib/symmetry'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { PlotTooltip } from '$lib/plot'
   import BrillouinZoneControls from './BrillouinZoneControls.svelte'
   import BrillouinZoneExportPane from './BrillouinZoneExportPane.svelte'
   import BrillouinZoneInfoPane from './BrillouinZoneInfoPane.svelte'
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
-  import { compute_brillouin_zone, reciprocal_lattice } from './compute'
-  import type { BrillouinZoneData } from './types'
+  import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
+  import {
+    compute_brillouin_zone,
+    compute_irreducible_bz,
+    extract_point_group_from_operations,
+    reciprocal_lattice,
+  } from './compute'
+  import type {
+    BrillouinZoneData,
+    BZHoverData,
+    BZTooltipProp,
+    IrreducibleBZData,
+  } from './types'
 
   type BZHandlerData = {
     structure?: Crystal
@@ -45,6 +58,11 @@
     show_vectors = $bindable(true),
     vector_scale = $bindable(1.0),
     camera_projection = $bindable(`perspective`),
+    // Irreducible BZ options
+    show_ibz = $bindable(false),
+    ibz_color = $bindable(`#ff8844`),
+    ibz_opacity = $bindable(0.5),
+    ibz_data = $bindable<IrreducibleBZData | null>(null),
     show_controls,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
@@ -66,9 +84,11 @@
     hovered_k_point = null,
     hovered_qpoint_index = null,
     children,
+    tooltip_config,
     on_file_load,
     on_error,
     on_fullscreen_change,
+    on_hover,
     ...rest
   }:
     & {
@@ -84,6 +104,11 @@
       show_vectors?: boolean
       vector_scale?: number
       camera_projection?: CameraProjection
+      // Irreducible BZ options
+      show_ibz?: boolean
+      ibz_color?: string
+      ibz_opacity?: number
+      ibz_data?: IrreducibleBZData | null
       /**
        * Controls visibility configuration.
        * - 'always': controls always visible
@@ -122,9 +147,11 @@
       children?: Snippet<
         [{ structure?: Crystal; bz_data?: BrillouinZoneData }]
       >
+      tooltip_config?: BZTooltipProp
       on_file_load?: (data: BZHandlerData) => void
       on_error?: (data: BZHandlerData) => void
       on_fullscreen_change?: (data: BZHandlerData) => void
+      on_hover?: (data: BZHoverData | null) => void
     }
     & HTMLAttributes<HTMLDivElement> = $props()
 
@@ -132,6 +159,12 @@
   let camera = $state(undefined)
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
+  let hover_data = $state<BZHoverData | null>(null)
+
+  // Call on_hover callback when hover_data changes
+  $effect(() => {
+    on_hover?.(hover_data)
+  })
 
   // Normalize show_controls prop into consistent config
   let controls_config = $derived(normalize_show_controls(show_controls))
@@ -182,6 +215,35 @@
       error_msg = `BZ computation failed: ${msg}`
       bz_data = undefined
       untrack(() => on_error?.({ error_msg, structure, bz_order }))
+    }
+  })
+
+  // Compute IBZ when show_ibz is enabled and structure changes
+  $effect(() => {
+    if (!show_ibz || !bz_data || !structure?.lattice) {
+      ibz_data = null
+      return
+    }
+
+    let stale = false
+    const captured_bz = bz_data
+
+    analyze_structure_symmetry(structure, {})
+      .then((sym_data) => {
+        if (stale) return
+        const point_group_ops = extract_point_group_from_operations(
+          sym_data.operations,
+        )
+        ibz_data = compute_irreducible_bz(captured_bz, point_group_ops)
+      })
+      .catch((err) => {
+        if (stale) return
+        console.warn(`IBZ computation failed:`, err)
+        ibz_data = null
+      })
+
+    return () => {
+      stale = true
     }
   })
 
@@ -357,6 +419,9 @@
             bind:edge_width
             bind:show_vectors
             bind:camera_projection
+            bind:show_ibz
+            bind:ibz_color
+            bind:ibz_opacity
           />
         {/if}
       {/if}
@@ -378,10 +443,28 @@
             {k_path_labels}
             {hovered_k_point}
             {hovered_qpoint_index}
+            {show_ibz}
+            {ibz_data}
+            {ibz_color}
+            {ibz_opacity}
             bind:scene
             bind:camera
+            bind:hover_data
           />
         </Canvas>
+
+        <!-- Hover tooltip -->
+        {#if hover_data}
+          <PlotTooltip
+            x={hover_data.screen_position.x}
+            y={hover_data.screen_position.y}
+            bg_color={hover_data.is_ibz ? ibz_color : surface_color}
+            fixed
+            style="z-index: calc(var(--bz-buttons-z-index, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+          >
+            <BrillouinZoneTooltip {hover_data} tooltip={tooltip_config} />
+          </PlotTooltip>
+        {/if}
       </div>
     {/if}
   {:else if structure}

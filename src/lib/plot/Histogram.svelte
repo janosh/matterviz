@@ -17,11 +17,11 @@
     PlotLegend,
     ReferenceLine,
   } from '$lib/plot'
+  import type { AxisChangeState } from '$lib/plot/axis-utils'
   import {
     AXIS_LABEL_CONTAINER,
     create_axis_change_handler,
   } from '$lib/plot/axis-utils'
-  import type { AxisChangeState } from '$lib/plot/axis-utils'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
   import { AXIS_DEFAULTS } from '$lib/plot/defaults'
   import {
