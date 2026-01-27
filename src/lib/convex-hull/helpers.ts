@@ -544,3 +544,178 @@ export function create_marker_path(
 
   return new Path2D(path_data)
 }
+
+// Temperature-dependent free energy helpers
+// ==========================================
+
+// Result of analyzing entries for temperature-dependent data
+export interface TemperatureAnalysis {
+  has_temp_data: boolean
+  available_temperatures: number[] // sorted unique T values (union across all entries)
+}
+
+// Analyze entries for temperature-dependent free energy data.
+// Returns available temperatures (union of all T values across entries) if any entries have temp data.
+export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnalysis {
+  const valid_temps = entries
+    .filter(entry_has_temp_data)
+    .flatMap((entry) => entry.temperatures ?? [])
+  const available_temperatures = [...new Set(valid_temps)].sort((a, b) => a - b)
+  return { has_temp_data: available_temperatures.length > 0, available_temperatures }
+}
+
+// Check if an entry has valid temperature-dependent data (matching array lengths, non-empty)
+function entry_has_temp_data(entry: PhaseData): boolean {
+  const { temperatures, free_energies } = entry
+  return Boolean(
+    temperatures?.length &&
+      free_energies?.length &&
+      temperatures.length === free_energies.length,
+  )
+}
+
+// Check if entry has data at exact temperature T
+export function entry_has_temperature(entry: PhaseData, T: number): boolean {
+  const temps = entry.temperatures
+  const energies = entry.free_energies
+  if (!temps?.length || !energies?.length || temps.length !== energies.length) {
+    return false
+  }
+  return temps.includes(T)
+}
+
+// Get energy at temperature T (only call if entry_has_temperature returns true)
+export function get_energy_at_temperature(entry: PhaseData, T: number): number {
+  const temps = entry.temperatures ?? []
+  const energies = entry.free_energies ?? []
+  const idx = temps.indexOf(T)
+  return energies[idx] ?? 0
+}
+
+// Find bracketing temperatures for interpolation (T_low < T < T_high)
+// Returns null if T is outside the range or no valid bracket exists
+function find_bracket_temperatures(
+  entry: PhaseData,
+  T: number,
+): { T_low: number; T_high: number; E_low: number; E_high: number } | null {
+  const temps = entry.temperatures ?? []
+  const energies = entry.free_energies ?? []
+  if (temps.length < 2) return null
+
+  // Find the largest T_low < T and smallest T_high > T
+  let T_low = -Infinity
+  let T_high = Infinity
+  let E_low = 0
+  let E_high = 0
+
+  for (let idx = 0; idx < temps.length; idx++) {
+    const temp = temps[idx]
+    if (temp < T && temp > T_low) {
+      T_low = temp
+      E_low = energies[idx]
+    }
+    if (temp > T && temp < T_high) {
+      T_high = temp
+      E_high = energies[idx]
+    }
+  }
+
+  // Must have valid brackets on both sides
+  if (!isFinite(T_low) || !isFinite(T_high)) return null
+  return { T_low, T_high, E_low, E_high }
+}
+
+// Check if we can interpolate energy at temperature T
+// Requires temperatures both above and below T within max_gap
+export function can_interpolate_at_temperature(
+  entry: PhaseData,
+  T: number,
+  max_gap: number,
+): boolean {
+  const bracket = find_bracket_temperatures(entry, T)
+  if (!bracket) return false
+  return bracket.T_high - bracket.T_low <= max_gap
+}
+
+// Linearly interpolate energy at temperature T
+// Returns null if interpolation is not possible
+export function interpolate_energy_at_temperature(
+  entry: PhaseData,
+  T: number,
+  max_gap: number,
+): number | null {
+  const bracket = find_bracket_temperatures(entry, T)
+  if (!bracket) return null
+  if (bracket.T_high - bracket.T_low > max_gap) return null
+
+  // Linear interpolation: E(T) = E_low + (E_high - E_low) * (T - T_low) / (T_high - T_low)
+  const fraction = (T - bracket.T_low) / (bracket.T_high - bracket.T_low)
+  return bracket.E_low + (bracket.E_high - bracket.E_low) * fraction
+}
+
+// Options for temperature filtering
+export interface TemperatureFilterOptions {
+  // Enable linear interpolation for missing temperatures (default: true)
+  interpolate?: boolean
+  // Maximum temperature gap (in Kelvin) allowed for interpolation (default: 500K)
+  max_interpolation_gap?: number
+}
+
+const DEFAULT_TEMP_FILTER_OPTIONS: Required<TemperatureFilterOptions> = {
+  interpolate: true,
+  max_interpolation_gap: 500,
+}
+
+// Filter entries for temperature T, replacing energy with G(T) where available.
+// - Entries WITH temp data at T: use G(T) as energy
+// - Entries WITHOUT any temp data: keep with static energy (e.g., pure element refs)
+// - Entries WITH temp data but MISSING T: interpolate if enabled and possible, else excluded
+export function filter_entries_at_temperature(
+  entries: PhaseData[],
+  T: number,
+  options: TemperatureFilterOptions = {},
+): PhaseData[] {
+  const { interpolate, max_interpolation_gap } = {
+    ...DEFAULT_TEMP_FILTER_OPTIONS,
+    ...options,
+  }
+
+  return entries
+    .filter((entry) => {
+      // Keep entries without temp data (use static energy)
+      if (!entry_has_temp_data(entry)) return true
+      // Keep if exact temperature exists
+      if (entry_has_temperature(entry, T)) return true
+      // Keep if interpolation is enabled and possible
+      if (
+        interpolate && can_interpolate_at_temperature(entry, T, max_interpolation_gap)
+      ) {
+        return true
+      }
+      return false
+    })
+    .map((entry) => {
+      // No temp data - keep static energy
+      if (!entry_has_temp_data(entry)) return entry
+
+      // Exact temperature - use it
+      if (entry_has_temperature(entry, T)) {
+        return { ...entry, energy: get_energy_at_temperature(entry, T) }
+      }
+
+      // Try interpolation
+      if (interpolate) {
+        const interpolated = interpolate_energy_at_temperature(
+          entry,
+          T,
+          max_interpolation_gap,
+        )
+        if (interpolated !== null) {
+          return { ...entry, energy: interpolated }
+        }
+      }
+
+      // Shouldn't reach here due to filter, but return unchanged as fallback
+      return entry
+    })
+}

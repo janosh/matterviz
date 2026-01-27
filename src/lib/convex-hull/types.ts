@@ -19,6 +19,11 @@ export interface PhaseData {
   reduced_formula?: string
   name?: string
 
+  // Temperature-dependent free energies (optional)
+  // When present, these replace `energy` for hull calculations at the selected temperature
+  temperatures?: number[] // Temperature values in Kelvin (e.g. [300, 600, 900, 1200])
+  free_energies?: number[] // Total G(T) values at each temperature (same length as temperatures)
+
   // Pymatgen-specific fields (optional)
   '@module'?: string
   '@class'?: string
