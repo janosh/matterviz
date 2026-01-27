@@ -406,10 +406,14 @@ class BrillouinZone(MatterViz):
         hovered: bool | None = None,
         hovered_k_point: Any | None = None,
         hovered_qpoint_index: int | None = None,
+        ibz_color: str | None = None,
+        ibz_data: Any | None = None,
+        ibz_opacity: float | None = None,
         info_pane_open: bool | None = None,
         k_path_points: list | None = None,
         loading: bool | None = None,
         png_dpi: float | None = None,
+        show_ibz: bool | None = None,
         show_vectors: bool | None = None,
         spinner_props: dict | None = None,
         structure: Any | None = None,
@@ -459,6 +463,12 @@ class BrillouinZone(MatterViz):
             mv_props['hovered_k_point'] = hovered_k_point
         if hovered_qpoint_index is not None:
             mv_props['hovered_qpoint_index'] = hovered_qpoint_index
+        if ibz_color is not None:
+            mv_props['ibz_color'] = ibz_color
+        if ibz_data is not None:
+            mv_props['ibz_data'] = ibz_data
+        if ibz_opacity is not None:
+            mv_props['ibz_opacity'] = ibz_opacity
         if info_pane_open is not None:
             mv_props['info_pane_open'] = info_pane_open
         if k_path_points is not None:
@@ -467,6 +477,8 @@ class BrillouinZone(MatterViz):
             mv_props['loading'] = loading
         if png_dpi is not None:
             mv_props['png_dpi'] = png_dpi
+        if show_ibz is not None:
+            mv_props['show_ibz'] = show_ibz
         if show_vectors is not None:
             mv_props['show_vectors'] = show_vectors
         if spinner_props is not None:
