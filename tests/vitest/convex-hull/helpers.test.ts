@@ -600,3 +600,126 @@ describe(`helpers: get_canvas_text_color`, () => {
     expect(globalThis.getComputedStyle).toHaveBeenCalledWith(document.documentElement)
   })
 })
+
+describe(`helpers: temperature interpolation`, () => {
+  const make_entry = (
+    temps: number[],
+    energies: number[],
+    extra: Partial<PhaseData> = {},
+  ): PhaseData => ({
+    composition: { Fe: 1 },
+    energy: 0,
+    temperatures: temps,
+    free_energies: energies,
+    ...extra,
+  })
+
+  describe(`can_interpolate_at_temperature`, () => {
+    test(`returns true when T is bracketed within max_gap`, () => {
+      const entry = make_entry([300, 600, 900], [-1, -1.5, -2])
+      expect(helpers.can_interpolate_at_temperature(entry, 450, 500)).toBe(true)
+      expect(helpers.can_interpolate_at_temperature(entry, 750, 500)).toBe(true)
+    })
+
+    test(`returns false when T is outside data range`, () => {
+      const entry = make_entry([300, 600, 900], [-1, -1.5, -2])
+      expect(helpers.can_interpolate_at_temperature(entry, 200, 500)).toBe(false)
+      expect(helpers.can_interpolate_at_temperature(entry, 1000, 500)).toBe(false)
+    })
+
+    test(`returns false when gap exceeds max_gap`, () => {
+      const entry = make_entry([300, 900], [-1, -2])
+      expect(helpers.can_interpolate_at_temperature(entry, 600, 500)).toBe(false)
+      expect(helpers.can_interpolate_at_temperature(entry, 600, 600)).toBe(true)
+    })
+
+    test(`returns false for entries without temp data`, () => {
+      const entry: PhaseData = { composition: { Fe: 1 }, energy: -1 }
+      expect(helpers.can_interpolate_at_temperature(entry, 450, 500)).toBe(false)
+    })
+  })
+
+  describe(`interpolate_energy_at_temperature`, () => {
+    test(`linearly interpolates between bracketing temperatures`, () => {
+      const entry = make_entry([300, 600], [-1, -2])
+      // At T=450 (midpoint), energy should be -1.5
+      expect(helpers.interpolate_energy_at_temperature(entry, 450, 500)).toBeCloseTo(-1.5)
+      // At T=375 (1/4 of the way), energy should be -1.25
+      expect(helpers.interpolate_energy_at_temperature(entry, 375, 500)).toBeCloseTo(
+        -1.25,
+      )
+    })
+
+    test(`returns null when T is outside range`, () => {
+      const entry = make_entry([300, 600], [-1, -2])
+      expect(helpers.interpolate_energy_at_temperature(entry, 200, 500)).toBeNull()
+      expect(helpers.interpolate_energy_at_temperature(entry, 700, 500)).toBeNull()
+    })
+
+    test(`returns null when gap exceeds max_gap`, () => {
+      const entry = make_entry([300, 900], [-1, -2])
+      expect(helpers.interpolate_energy_at_temperature(entry, 600, 500)).toBeNull()
+    })
+
+    test(`handles non-uniform temperature spacing`, () => {
+      const entry = make_entry([300, 400, 900], [-1, -1.2, -2])
+      // Interpolate between 400 and 900
+      const result = helpers.interpolate_energy_at_temperature(entry, 650, 600)
+      // 650 is exactly halfway between 400 and 900
+      expect(result).toBeCloseTo((-1.2 + -2) / 2)
+    })
+  })
+
+  describe(`filter_entries_at_temperature with interpolation`, () => {
+    test(`includes entries with exact temperature match`, () => {
+      const entries = [make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 300)
+      expect(result).toHaveLength(1)
+      expect(result[0].energy).toBe(-1)
+    })
+
+    test(`interpolates when exact match missing but bracketed`, () => {
+      const entries = [make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 450, {
+        interpolate: true,
+      })
+      expect(result).toHaveLength(1)
+      expect(result[0].energy).toBeCloseTo(-1.5)
+    })
+
+    test(`excludes entries when interpolation disabled and no exact match`, () => {
+      const entries = [make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 450, {
+        interpolate: false,
+      })
+      expect(result).toHaveLength(0)
+    })
+
+    test(`excludes entries when gap exceeds max_interpolation_gap`, () => {
+      const entries = [make_entry([300, 900], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 600, {
+        interpolate: true,
+        max_interpolation_gap: 500,
+      })
+      expect(result).toHaveLength(0)
+    })
+
+    test(`keeps static entries (no temp data) unchanged`, () => {
+      const static_entry: PhaseData = { composition: { Fe: 1 }, energy: -0.5 }
+      const entries = [static_entry, make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 450, {
+        interpolate: true,
+      })
+      expect(result).toHaveLength(2)
+      expect(result[0].energy).toBe(-0.5) // static entry unchanged
+      expect(result[1].energy).toBeCloseTo(-1.5) // interpolated
+    })
+
+    test(`defaults to interpolate=true and max_gap=500`, () => {
+      const entries = [make_entry([300, 600], [-1, -2])]
+      const result = helpers.filter_entries_at_temperature(entries, 450)
+      expect(result).toHaveLength(1)
+      expect(result[0].energy).toBeCloseTo(-1.5)
+    })
+  })
+})
