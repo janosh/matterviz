@@ -194,6 +194,10 @@
       "types": "./dist/theme/themes.d.ts",
       "default": "./dist/theme/themes.js"
     },
+    "./tooltip": {
+      "types": "./dist/tooltip/index.d.ts",
+      "default": "./dist/tooltip/index.js"
+    },
     "./time": {
       "types": "./dist/time.d.ts",
       "default": "./dist/time.js"
