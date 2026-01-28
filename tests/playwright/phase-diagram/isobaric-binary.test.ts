@@ -13,7 +13,7 @@ function get_diagram_elements(page: Page): { diagram: Locator; svg: Locator } {
 
 test.describe(`IsobaricBinaryPhaseDiagram`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/phase-diagram`, { waitUntil: `networkidle` })
+    await page.goto(`/phase-diagram`, { waitUntil: `domcontentloaded` })
     const { svg } = get_diagram_elements(page)
     await expect(svg.locator(`.phase-regions path`).first()).toBeVisible({
       timeout: LOAD_TIMEOUT,

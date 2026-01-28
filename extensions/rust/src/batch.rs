@@ -174,28 +174,35 @@ impl StructureMatcher {
         let len = structures.len();
         let uf = UnionFind::new(len);
 
-        // Step 1: Group by composition hash for early termination.
-        // Uses comparator-aware hashing to ensure prefilter aligns with match semantics.
-        let mut comp_groups: IndexMap<u64, Vec<usize>> = IndexMap::new();
-        for (idx, s) in structures.iter().enumerate() {
-            let hash = self.composition_hash(s);
-            comp_groups.entry(hash).or_default().push(idx);
+        // Step 1: Reduce all structures in parallel, then group by composition hash.
+        // Reducing first ensures supercells are properly grouped with their primitive cells.
+        let reduced: Vec<_> = structures
+            .par_iter()
+            .enumerate()
+            .map(|(idx, s)| {
+                let reduced = self.reduce_structure(s);
+                let hash = self.composition_hash(&reduced);
+                (idx, hash, reduced)
+            })
+            .collect();
+
+        let mut comp_groups: IndexMap<u64, Vec<(usize, Structure)>> = IndexMap::new();
+        for (idx, hash, reduced) in reduced {
+            comp_groups.entry(hash).or_default().push((idx, reduced));
         }
 
         // Step 2: Within each composition group, compare pairwise in parallel
-        // Convert to vec for parallel iteration
         let groups_vec: Vec<_> = comp_groups.values().collect();
         groups_vec.par_iter().for_each(|group| {
             // Generate all pairs within this group
             for idx in 0..group.len() {
                 for jdx in (idx + 1)..group.len() {
-                    let idx_i = group[idx];
-                    let idx_j = group[jdx];
+                    let (idx_i, reduced_i) = &group[idx];
+                    let (idx_j, reduced_j) = &group[jdx];
 
-                    // Compare structures and union if they match
-                    // Note: union() is a no-op if already connected, so no pre-check needed
-                    if self.fit(&structures[idx_i], &structures[idx_j]) {
-                        uf.union(idx_i, idx_j);
+                    // Compare pre-reduced structures (avoids redundant reduction)
+                    if self.fit_preprocessed(reduced_i, reduced_j) {
+                        uf.union(*idx_i, *idx_j);
                     }
                 }
             }
@@ -263,6 +270,104 @@ impl StructureMatcher {
     /// * `json_strings` - JSON strings in pymatgen Structure.as_dict() format
     pub fn group_json(&self, json_strings: &[&str]) -> Result<IndexMap<usize, Vec<usize>>> {
         self.group(&parse_json_structures(json_strings)?)
+    }
+
+    /// Find matches for new structures against existing (already-deduplicated) structures.
+    ///
+    /// This is optimized for the common deduplication scenario where:
+    /// - `existing` structures are already deduplicated (don't need to compare against each other)
+    /// - `new` structures need to be matched against `existing` to find duplicates
+    ///
+    /// Returns a vector where `result[i]` is:
+    /// - `Some(j)` if new structure `i` matches existing structure `j`
+    /// - `None` if new structure `i` is unique (no match in existing)
+    ///
+    /// # Algorithm
+    ///
+    /// 1. Preprocess existing structures (Niggli reduction, composition hashing)
+    /// 2. For each new structure (in parallel):
+    ///    - Filter by composition hash
+    ///    - Compare against matching existing structures until first match (early termination)
+    ///
+    /// # Performance
+    ///
+    /// This is O(new × existing_per_composition) instead of O((new + existing)²) because:
+    /// - Existing structures aren't compared against each other
+    /// - Composition hashing filters most comparisons
+    /// - Early termination on first match
+    ///
+    /// # Arguments
+    ///
+    /// * `new_structures` - New structures to check for matches
+    /// * `existing_structures` - Already-deduplicated structures to match against
+    pub fn find_matches(
+        &self,
+        new_structures: &[Structure],
+        existing_structures: &[Structure],
+    ) -> Result<Vec<Option<usize>>> {
+        if new_structures.is_empty() {
+            return Ok(vec![]);
+        }
+
+        if existing_structures.is_empty() {
+            return Ok(vec![None; new_structures.len()]);
+        }
+
+        // Step 1: Reduce existing structures in parallel, then group by composition hash
+        let existing_reduced: Vec<_> = existing_structures
+            .par_iter()
+            .enumerate()
+            .map(|(idx, s)| {
+                let reduced = self.reduce_structure(s);
+                let hash = self.composition_hash(&reduced);
+                (idx, hash, reduced)
+            })
+            .collect();
+
+        let mut existing_by_comp: IndexMap<u64, Vec<(usize, Structure)>> = IndexMap::new();
+        for (idx, hash, reduced) in existing_reduced {
+            existing_by_comp
+                .entry(hash)
+                .or_default()
+                .push((idx, reduced));
+        }
+
+        // Step 2: For each new structure, find first matching existing structure
+        let results: Vec<Option<usize>> = new_structures
+            .par_iter()
+            .map(|new_struct| {
+                let reduced_new = self.reduce_structure(new_struct);
+                let new_hash = self.composition_hash(&reduced_new);
+
+                // Find first match among candidates with same composition (early termination)
+                existing_by_comp.get(&new_hash).and_then(|candidates| {
+                    candidates
+                        .iter()
+                        .find(|(_, reduced_existing)| {
+                            self.fit_preprocessed(&reduced_new, reduced_existing)
+                        })
+                        .map(|(idx, _)| *idx)
+                })
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Find matches from JSON strings.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_json` - JSON strings for new structures
+    /// * `existing_json` - JSON strings for existing (already-deduplicated) structures
+    pub fn find_matches_json(
+        &self,
+        new_json: &[&str],
+        existing_json: &[&str],
+    ) -> Result<Vec<Option<usize>>> {
+        let new_structures = parse_json_structures(new_json)?;
+        let existing_structures = parse_json_structures(existing_json)?;
+        self.find_matches(&new_structures, &existing_structures)
     }
 }
 
@@ -495,6 +600,79 @@ mod tests {
 
         // Should have 3 groups: NaCl, Fe-BCC, Cu-FCC
         assert_eq!(groups.len(), 3);
+    }
+
+    // ========================================================================
+    // find_matches Tests
+    // ========================================================================
+
+    #[test]
+    fn test_find_matches_basic() {
+        // Existing structures (already deduplicated)
+        let existing = vec![
+            make_nacl(),
+            make_bcc(Element::Fe, 2.87),
+            make_fcc(Element::Cu, 3.6),
+        ];
+
+        // New structures: one matches NaCl, one matches Fe BCC, one is unique
+        let new_si = make_fcc(Element::Si, 5.43); // Unique - different element
+        let new_nacl = make_nacl_shifted(); // Matches existing[0]
+        let new_fe = make_bcc(Element::Fe, 2.87); // Matches existing[1]
+
+        let new = vec![new_si, new_nacl, new_fe];
+
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&new, &existing).unwrap();
+
+        // Si unique, NaCl matches existing[0], Fe matches existing[1]
+        assert_eq!(matches, vec![None, Some(0), Some(1)]);
+    }
+
+    #[test]
+    fn test_find_matches_empty_new() {
+        let existing = vec![make_nacl()];
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&[], &existing).unwrap();
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn test_find_matches_empty_existing() {
+        let new = vec![make_nacl(), make_bcc(Element::Fe, 2.87)];
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&new, &[]).unwrap();
+
+        // All should be None (no matches possible)
+        assert_eq!(matches, vec![None, None]);
+    }
+
+    #[test]
+    fn test_find_matches_all_unique() {
+        let existing = vec![make_nacl()];
+        let new = vec![make_bcc(Element::Fe, 2.87), make_fcc(Element::Cu, 3.6)];
+
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&new, &existing).unwrap();
+
+        // All new structures are unique (different compositions)
+        assert_eq!(matches, vec![None, None]);
+    }
+
+    #[test]
+    fn test_find_matches_all_duplicates() {
+        let existing = vec![make_nacl(), make_bcc(Element::Fe, 2.87)];
+        let new = vec![
+            make_nacl(),
+            make_nacl_shifted(),
+            make_bcc(Element::Fe, 2.87),
+        ];
+
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&new, &existing).unwrap();
+
+        // NaCl->existing[0], NaCl shifted->existing[0], Fe BCC->existing[1]
+        assert_eq!(matches, vec![Some(0), Some(0), Some(1)]);
     }
 
     // ========================================================================
