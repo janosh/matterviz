@@ -15,3 +15,4 @@ benchmark_large_scale_results.json
 # IDE
 .idea/
 *.iml
+tmp/

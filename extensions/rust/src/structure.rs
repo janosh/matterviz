@@ -137,7 +137,9 @@ impl Structure {
             .iter()
             .enumerate()
             .map(|(idx, &n)| {
-                let elem = Element::from_atomic_number(n as u8).ok_or_else(|| {
+                // Guard against invalid atomic numbers (negative or > 255)
+                let z = u8::try_from(n).ok().filter(|&z| z > 0 && z <= 118);
+                let elem = z.and_then(Element::from_atomic_number).ok_or_else(|| {
                     FerroxError::InvalidStructure {
                         index: idx,
                         reason: format!("Invalid atomic number: {n}"),
@@ -488,9 +490,6 @@ mod tests {
         assert!((lengths[0] - 4.0).abs() < 1e-10);
         assert!((lengths[1] - 4.0).abs() < 1e-10);
         assert!((lengths[2] - 4.0).abs() < 1e-10);
-
-        // Spacegroup detection should work (returns P1 for empty)
-        // Note: moyo may fail on empty structures, which is acceptable
     }
 
     #[test]

@@ -111,6 +111,11 @@ pub fn pbc_shortest_vectors(
     let n1 = fcoords1.len();
     let n2 = fcoords2.len();
 
+    // Early return for empty inputs
+    if n1 == 0 || n2 == 0 {
+        return (vec![], vec![]);
+    }
+
     // Use LLL-reduced coordinates for full 3D PBC
     let pbc = lattice.pbc;
     let use_lll = pbc[0] && pbc[1] && pbc[2];

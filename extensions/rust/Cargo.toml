@@ -1,6 +1,6 @@
 [package]
 name = "ferrox"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 authors = ["Janosh Riebesell <janosh@lbl.gov>"]
 description = "High-performance structure matching for crystallographic data"
@@ -10,7 +10,7 @@ keywords = ["crystallography", "materials-science", "structure-matching"]
 
 [lib]
 name = "ferrox"
-crate-type = ["cdylib", "rlib"]  # cdylib for Python, rlib for Rust
+crate-type = ["cdylib", "rlib"] # cdylib for Python, rlib for Rust
 
 [dependencies]
 # Python bindings
@@ -30,7 +30,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Algorithms
-pathfinding = "4.11"  # Hungarian algorithm (kuhn_munkres)
+pathfinding = "4.11" # Hungarian algorithm (kuhn_munkres)
 
 # Utilities
 indexmap = { version = "2.7", features = ["serde"] }

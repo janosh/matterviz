@@ -54,7 +54,9 @@ def init_matchers() -> None:
     """Initialize module-level matchers."""
     global py_matcher, rust_matcher, results
     py_matcher = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False)
-    rust_matcher = RustMatcher(latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0)
+    rust_matcher = RustMatcher(
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False
+    )
     results = []
 
 
@@ -518,21 +520,24 @@ def run_category_e_batch(structures: dict[str, Structure]) -> None:
             if not found_group:
                 py_groups[i] = [i]
 
-        # Check if grouping results match
-        py_num_groups = len(py_groups)
-        rust_num_groups = len(rust_groups)
+        # Normalize groups to sets of frozensets for comparison (order-agnostic)
+        py_membership = {frozenset(members) for members in py_groups.values()}
+        rust_membership = {frozenset(members) for members in rust_groups.values()}
 
-        if py_num_groups == rust_num_groups:
+        if py_membership == rust_membership:
             results.append(
                 Result(
                     category="E-batch",
-                    description=f"Group {len(struct_list)} structures: {rust_num_groups} groups",
+                    description=f"Group {len(struct_list)} structures: {len(rust_groups)} groups",
                     pymatgen_result=True,
                     ferrox_result=True,
                     match=True,
                 )
             )
         else:
+            # Find differences for error message
+            only_py = py_membership - rust_membership
+            only_rust = rust_membership - py_membership
             results.append(
                 Result(
                     category="E-batch",
@@ -540,7 +545,7 @@ def run_category_e_batch(structures: dict[str, Structure]) -> None:
                     pymatgen_result=True,
                     ferrox_result=True,
                     match=False,
-                    error=f"pymatgen found {py_num_groups} groups, ferrox found {rust_num_groups}",
+                    error=f"Group memberships differ: pymatgen-only={only_py}, ferrox-only={only_rust}",
                 )
             )
     except Exception as exc:
@@ -570,10 +575,18 @@ def run_category_f_comparators() -> None:
         comparator=ElementComparator(),
     )
     rust_species = RustMatcher(
-        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, comparator="species"
+        latt_len_tol=0.2,
+        site_pos_tol=0.3,
+        angle_tol=5.0,
+        primitive_cell=False,
+        comparator="species",
     )
     rust_element = RustMatcher(
-        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, comparator="element"
+        latt_len_tol=0.2,
+        site_pos_tol=0.3,
+        angle_tol=5.0,
+        primitive_cell=False,
+        comparator="element",
     )
 
     # Test 1: Same element, different oxidation states (should not match with SpeciesComparator)
@@ -836,7 +849,9 @@ def run_regression_tests() -> dict[str, bool]:
     from ferrox import StructureMatcher as RustMatcher
 
     results: dict[str, bool] = {}
-    rust_matcher = RustMatcher(latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0)
+    rust_matcher = RustMatcher(
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False
+    )
 
     # Agent 1: Acute angle lattices (Niggli reduction)
     print("\n=== Agent 1 Regression Tests (Acute Angles) ===")
@@ -985,7 +1000,7 @@ def run_regression_tests() -> dict[str, bool]:
         ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=False
     )
     rust_matcher_noscale = RustMatcher(
-        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, scale=False
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False, scale=False
     )
 
     def run_ltol_test(
@@ -1051,7 +1066,7 @@ def run_regression_tests() -> dict[str, bool]:
         ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=True
     )
     rust_matcher_scale = RustMatcher(
-        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, scale=True
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False, scale=True
     )
 
     # Different angles should not match even after scaling

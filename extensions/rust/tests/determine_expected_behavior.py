@@ -98,7 +98,12 @@ class MatchResult:
 
 @pytest.fixture
 def py_matcher() -> PyMatcher:
-    """Default pymatgen matcher matching ferrox defaults."""
+    """Pymatgen matcher with primitive_cell=False for fair comparison.
+
+    We disable primitive cell reduction because ferrox's implementation
+    may produce different (but equivalent) primitive cells, causing
+    false mismatches in these compatibility tests.
+    """
     return PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False)
 
 

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ferrox"
-version = "0.1.0"
+version = "0.0.1"
 description = "High-performance structure matching for crystallographic data"
 readme = "readme.md"
 license = { text = "MIT" }

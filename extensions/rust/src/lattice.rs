@@ -30,9 +30,6 @@ use std::f64::consts::PI;
 pub struct Lattice {
     /// The 3x3 lattice matrix (rows are lattice vectors).
     matrix: Matrix3<f64>,
-    /// Cached inverse matrix.
-    #[serde(skip)]
-    inv_matrix: Option<Matrix3<f64>>,
     /// Periodic boundary conditions along each axis.
     pub pbc: [bool; 3],
 }
@@ -44,7 +41,6 @@ impl Lattice {
     pub fn new(matrix: Matrix3<f64>) -> Self {
         Self {
             matrix,
-            inv_matrix: None,
             pbc: [true, true, true],
         }
     }
@@ -132,14 +128,12 @@ impl Lattice {
     /// Returns identity matrix if the lattice matrix is singular (degenerate lattice).
     /// Callers expecting valid physical lattices should verify `volume() > 0` first.
     pub fn inv_matrix(&self) -> Matrix3<f64> {
-        self.inv_matrix.unwrap_or_else(|| {
-            self.matrix.try_inverse().unwrap_or_else(|| {
-                tracing::warn!(
-                    "Singular lattice matrix (det={:.2e}), using identity inverse",
-                    self.matrix.determinant()
-                );
-                Matrix3::identity()
-            })
+        self.matrix.try_inverse().unwrap_or_else(|| {
+            tracing::warn!(
+                "Singular lattice matrix (det={:.2e}), using identity inverse",
+                self.matrix.determinant()
+            );
+            Matrix3::identity()
         })
     }
 

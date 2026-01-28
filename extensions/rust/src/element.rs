@@ -426,10 +426,14 @@ impl Element {
     /// assert_eq!(Element::from_atomic_number(119), None);
     /// ```
     pub fn from_atomic_number(z: u8) -> Option<Self> {
+        // Compile-time check that Og (last element) has discriminant 118
+        const _: () = assert!(Element::Og as u8 == 118);
+
         if z == 0 || z > 118 {
             return None;
         }
-        // SAFETY: z is in range 1-118 which matches our enum discriminants
+        // SAFETY: z is in range 1-118, matching our enum discriminants (H=1 to Og=118).
+        // The repr(u8) guarantees memory layout, and the const assert above validates Og=118.
         Some(unsafe { std::mem::transmute::<u8, Element>(z) })
     }
 

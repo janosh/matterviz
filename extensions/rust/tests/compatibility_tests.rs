@@ -217,7 +217,11 @@ fn test_get_rms_dist_perturbed() {
     let result = matcher.get_rms_dist(&s1, &s2);
     assert!(result.is_some(), "Should get RMS for perturbed structures");
     let (rms, _max_dist) = result.unwrap();
-    assert!(rms < 0.5, "RMS should be small for slightly perturbed");
+    // With max_displacement=0.02, RMS should be well under 0.1
+    assert!(
+        rms < 0.1,
+        "RMS should be small for slightly perturbed (max_disp=0.02)"
+    );
 }
 
 // =============================================================================

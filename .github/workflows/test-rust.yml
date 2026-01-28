@@ -8,13 +8,20 @@ on:
     branches: [main]
     paths: [extensions/rust/**, .github/workflows/test-rust.yml]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Force publish to PyPI (yes/no)'
+        default: 'no'
+
+env:
+  WORKING_DIR: extensions/rust
 
 jobs:
   rust-tests:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: extensions/rust
+        working-directory: ${{ env.WORKING_DIR }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,9 +35,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            extensions/rust/target
+            ${{ env.WORKING_DIR }}/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('extensions/rust/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-
       - name: Check formatting
         run: cargo fmt --check
       - name: Run clippy
@@ -42,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: extensions/rust
+        working-directory: ${{ env.WORKING_DIR }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,24 +57,105 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - name: Install uv
         uses: astral-sh/setup-uv@v5
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            extensions/rust/target
-          key: ${{ runner.os }}-cargo-py-${{ hashFiles('extensions/rust/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-py-
       - name: Build and install ferrox
         run: |
           uv pip install maturin --system
           maturin build --features python --release
-          uv pip install target/wheels/*.whl --system
-      - name: Install test dependencies
-        run: uv pip install pymatgen numpy --system
+          uv pip install target/wheels/*.whl pymatgen numpy --system
       - name: Run Python tests
         run: python tests/test_pymatgen_compat.py --regression
+
+  check-version:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check if version needs publishing
+        id: check
+        run: |
+          VERSION=$(grep '^version' ${{ env.WORKING_DIR }}/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Check if version exists on PyPI
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/ferrox/$VERSION/json")
+          if [ "$HTTP_STATUS" = "404" ] || [ "${{ github.event.inputs.publish }}" = "yes" ]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-wheels:
+    needs: [rust-tests, python-tests, check-version]
+    if: needs.check-version.outputs.should_publish == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64, manylinux: auto }
+          - { os: ubuntu-latest, target: aarch64, manylinux: auto }
+          - { os: macos-latest, target: x86_64-apple-darwin }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: windows-latest, target: x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --features python --out dist
+          sccache: true
+          manylinux: ${{ matrix.manylinux }}
+          working-directory: ${{ env.WORKING_DIR }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: ${{ env.WORKING_DIR }}/dist
+
+  build-sdist:
+    needs: [rust-tests, python-tests, check-version]
+    if: needs.check-version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          working-directory: ${{ env.WORKING_DIR }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: ${{ env.WORKING_DIR }}/dist
+
+  publish:
+    name: Publish to PyPI
+    needs: [build-wheels, build-sdist, check-version]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ferrox/${{ needs.check-version.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -la dist/
+      - name: Publish to PyPI
+        uses: PyO3/maturin-action@v1
+        with:
+          command: upload
+          args: --non-interactive dist/*
+        env:
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}

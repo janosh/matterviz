@@ -318,14 +318,14 @@ impl StructureMatcher {
         // Solve linear assignment problem
         // Convert to integer costs (multiply by large factor for precision)
         let scale = 1e10;
-        // Max value that won't overflow i64 when multiplied by scale
-        let max_safe_dist = (i64::MAX as f64) / scale * 0.9; // 0.9 safety margin
         let mut cost_matrix = PathMatrix::new(n2, n1, i64::MAX / 2);
 
         for idx in 0..n2 {
             for jdx in 0..n1 {
-                if !mask[idx][jdx] && d2[idx][jdx] < max_safe_dist {
-                    cost_matrix[(idx, jdx)] = (d2[idx][jdx] * scale) as i64;
+                if !mask[idx][jdx] {
+                    // Clamp to avoid overflow (masked cells already have i64::MAX / 2)
+                    cost_matrix[(idx, jdx)] =
+                        (d2[idx][jdx] * scale).min(i64::MAX as f64 / 2.0) as i64;
                 }
             }
         }
