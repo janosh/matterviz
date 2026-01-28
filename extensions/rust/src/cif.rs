@@ -130,9 +130,13 @@ fn find_cif_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
     for line in content.lines() {
         let line = line.trim();
         if let Some(rest) = line.strip_prefix(key) {
-            let value = rest.trim();
-            if !value.is_empty() {
-                return Some(value);
+            // Ensure the key is followed by whitespace (complete key match)
+            // This prevents `_cell_length_a` from matching `_cell_length_a_backup`
+            if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+                let value = rest.trim();
+                if !value.is_empty() {
+                    return Some(value);
+                }
             }
         }
     }
@@ -141,22 +145,15 @@ fn find_cif_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
 
 /// Find space group from CIF content.
 fn find_space_group(content: &str) -> Option<String> {
-    // Try various space group keys
-    let keys = [
+    const KEYS: [&str; 4] = [
         "_symmetry_space_group_name_H-M",
         "_space_group_name_H-M_alt",
         "_symmetry_Int_Tables_number",
         "_space_group_IT_number",
     ];
-
-    for key in keys {
-        if let Some(value) = find_cif_value(content, key) {
-            // Remove quotes
-            let value = value.trim_matches(|c| c == '\'' || c == '"');
-            return Some(value.to_string());
-        }
-    }
-    None
+    KEYS.iter()
+        .find_map(|key| find_cif_value(content, key))
+        .map(|v| v.trim_matches(['\'', '"']).to_string())
 }
 
 /// Parse the _atom_site loop in CIF.
@@ -200,17 +197,12 @@ fn parse_atom_site_loop(content: &str, path: &str) -> Result<Vec<AtomSite>> {
         }
 
         // Parse data rows in atom_site loop
-        if in_atom_site_loop && !line.starts_with('_') && !line.starts_with("loop_") {
-            // Check if this looks like a data row
-            if line.is_empty() {
-                in_atom_site_loop = false;
-                continue;
-            }
-
-            // Parse the row
-            if let Some(site) = parse_atom_site_row(line, &headers, path)? {
-                sites.push(site);
-            }
+        if in_atom_site_loop
+            && !line.starts_with('_')
+            && !line.starts_with("loop_")
+            && let Some(site) = parse_atom_site_row(line, &headers, path)?
+        {
+            sites.push(site);
         }
     }
 
@@ -228,10 +220,11 @@ fn parse_atom_site_row(line: &str, headers: &[String], path: &str) -> Result<Opt
     }
 
     // Create a map of header -> value
-    let mut map: HashMap<&str, &str> = HashMap::new();
-    for (header, value) in headers.iter().zip(values.iter()) {
-        map.insert(header.as_str(), *value);
-    }
+    let map: HashMap<&str, &str> = headers
+        .iter()
+        .map(String::as_str)
+        .zip(values.iter().copied())
+        .collect();
 
     // Extract element symbol
     let element = map
@@ -246,7 +239,7 @@ fn parse_atom_site_row(line: &str, headers: &[String], path: &str) -> Result<Opt
     let element = clean_element_symbol(element);
 
     // Extract label
-    let label = map.get("_atom_site_label").map(|s| (*s).to_string());
+    let label = map.get("_atom_site_label").map(|s| s.to_string());
 
     // Extract fractional coordinates
     let x = parse_cif_coord(map.get("_atom_site_fract_x").copied(), path)?;
@@ -282,9 +275,22 @@ fn parse_cif_coord(value: Option<&str>, path: &str) -> Result<f64> {
     })
 }
 
-/// Try to parse a float from CIF, handling uncertainties like "1.234(5)".
+/// Try to parse a float from CIF, handling uncertainties like "1.234(5)" and fractions like "1/2".
 fn parse_cif_float_opt(value: &str) -> Option<f64> {
-    let clean = value.split_once('(').map_or(value, |(v, _)| v);
+    // Strip uncertainty suffix: "1.234(5)" -> "1.234"
+    let clean = value.split_once('(').map_or(value, |(v, _)| v).trim();
+
+    // Handle rational fractions: "1/2", "-1/3", "2/3"
+    if let Some((num_str, denom_str)) = clean.split_once('/') {
+        let num: f64 = num_str.trim().parse().ok()?;
+        let denom: f64 = denom_str.trim().parse().ok()?;
+        if denom == 0.0 {
+            return None;
+        }
+        return Some(num / denom);
+    }
+
+    // Fall back to decimal parsing
     clean.parse().ok()
 }
 
@@ -344,48 +350,95 @@ mod tests {
             .count()
     }
 
+    // Helper for float comparison
+    fn assert_float_eq(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-10, "{actual} != {expected}");
+    }
+
     #[test]
     fn test_parse_cif_float() {
-        // Normal value
-        let content = "_cell_length_a 5.64";
-        assert!((parse_cif_float(content, "_cell_length_a", "test").unwrap() - 5.64).abs() < 1e-10);
+        for (content, expected) in [
+            ("_cell_length_a 5.64", 5.64),
+            ("_cell_length_a 5.6432(12)", 5.6432), // with uncertainty
+        ] {
+            assert_float_eq(
+                parse_cif_float(content, "_cell_length_a", "test").unwrap(),
+                expected,
+            );
+        }
+    }
 
-        // Value with uncertainty
-        let content = "_cell_length_a 5.6432(12)";
-        assert!(
-            (parse_cif_float(content, "_cell_length_a", "test").unwrap() - 5.6432).abs() < 1e-10
-        );
+    #[test]
+    fn test_parse_cif_float_opt_fractions() {
+        // Valid values: (input, expected)
+        for (input, expected) in [
+            ("1/2", 0.5),
+            ("1/3", 1.0 / 3.0),
+            ("2/3", 2.0 / 3.0),
+            ("1/4", 0.25),
+            ("3/4", 0.75),
+            ("-1/2", -0.5),
+            ("-1/3", -1.0 / 3.0), // negative
+            ("1 / 2", 0.5),
+            (" 1/2 ", 0.5), // whitespace
+            ("0.5", 0.5),
+            ("0.333333", 0.333333), // decimals
+            ("1/2(1)", 0.5),        // fraction with uncertainty
+        ] {
+            assert_float_eq(parse_cif_float_opt(input).unwrap(), expected);
+        }
+        // Invalid: division by zero
+        assert!(parse_cif_float_opt("1/0").is_none());
+    }
+
+    #[test]
+    fn test_find_cif_value_exact_key_match() {
+        // Valid matches
+        for (content, expected) in [
+            ("_cell_length_a 5.64", Some("5.64")),
+            ("_cell_length_a\t5.64", Some("5.64")),
+            (
+                "_cell_length_a_backup 5.0\n_cell_length_a 5.64",
+                Some("5.64"),
+            ),
+            // Should NOT match
+            ("_cell_length_a_backup 5.0", None), // partial key
+            ("_cell_length_alpha 90", None),     // different key
+            ("_cell_length_a   ", None),         // empty value
+            ("_cell_length_a", None),            // no value
+        ] {
+            assert_eq!(find_cif_value(content, "_cell_length_a"), expected);
+        }
     }
 
     #[test]
     fn test_clean_element_symbol() {
-        // Basic elements
-        assert_eq!(clean_element_symbol("O"), "O");
-        assert_eq!(clean_element_symbol("Na"), "Na");
-        assert_eq!(clean_element_symbol("Mn"), "Mn");
-        // With charge notation
-        assert_eq!(clean_element_symbol("O2-"), "O");
-        assert_eq!(clean_element_symbol("Fe3+"), "Fe");
-        assert_eq!(clean_element_symbol("Ti4+"), "Ti");
-        assert_eq!(clean_element_symbol("Fe2+"), "Fe");
-        // With numbers
-        assert_eq!(clean_element_symbol("Ca1"), "Ca");
-        assert_eq!(clean_element_symbol("Li1"), "Li");
-        assert_eq!(clean_element_symbol("O2"), "O");
-        // With parentheses
-        assert_eq!(clean_element_symbol("H(1)"), "H");
+        for (input, expected) in [
+            ("O", "O"),
+            ("Na", "Na"),
+            ("Mn", "Mn"), // basic
+            ("O2-", "O"),
+            ("Fe3+", "Fe"),
+            ("Ti4+", "Ti"), // with charge
+            ("Ca1", "Ca"),
+            ("Li1", "Li"),
+            ("O2", "O"),   // with numbers
+            ("H(1)", "H"), // with parentheses
+        ] {
+            assert_eq!(clean_element_symbol(input), expected);
+        }
     }
 
     #[test]
     fn test_split_cif_line() {
-        let line = "Na Na1 0.0 0.0 0.0 1.0";
-        let parts = split_cif_line(line);
-        assert_eq!(parts, vec!["Na", "Na1", "0.0", "0.0", "0.0", "1.0"]);
-
-        // With quotes
-        let line = "'Na' 'Na site 1' 0.0 0.0 0.0";
-        let parts = split_cif_line(line);
-        assert_eq!(parts, vec!["Na", "Na site 1", "0.0", "0.0", "0.0"]);
+        assert_eq!(
+            split_cif_line("Na Na1 0.0 0.0 0.0 1.0"),
+            vec!["Na", "Na1", "0.0", "0.0", "0.0", "1.0"]
+        );
+        assert_eq!(
+            split_cif_line("'Na' 'Na site 1' 0.0 0.0 0.0"),
+            vec!["Na", "Na site 1", "0.0", "0.0", "0.0"]
+        );
     }
 
     #[test]
@@ -621,6 +674,39 @@ O2-  O1  0.5 0.5 0.5
         // Oxidation states should be stripped from element
         assert_eq!(structure.species[0].element, Element::Fe);
         assert_eq!(structure.species[1].element, Element::O);
+    }
+
+    #[test]
+    fn test_parse_cif_with_fractional_coords() {
+        // CIF with rational fraction coordinates (common in high-symmetry structures)
+        let cif_content = r#"data_test
+_cell_length_a   5.0
+_cell_length_b   5.0
+_cell_length_c   5.0
+_cell_angle_alpha   90
+_cell_angle_beta   90
+_cell_angle_gamma   90
+
+loop_
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Na 0 0 0
+Cl 1/2 1/2 1/2
+O 1/3 2/3 1/4
+"#;
+
+        let structure = parse_cif_str(cif_content, Path::new("fractions.cif")).unwrap();
+        assert_eq!(structure.num_sites(), 3);
+
+        // Check fractional coordinates were parsed correctly
+        assert!((structure.frac_coords[0].x - 0.0).abs() < 1e-10);
+        assert!((structure.frac_coords[1].x - 0.5).abs() < 1e-10);
+        assert!((structure.frac_coords[1].y - 0.5).abs() < 1e-10);
+        assert!((structure.frac_coords[2].x - 1.0 / 3.0).abs() < 1e-10);
+        assert!((structure.frac_coords[2].y - 2.0 / 3.0).abs() < 1e-10);
+        assert!((structure.frac_coords[2].z - 0.25).abs() < 1e-10);
     }
 
     #[test]

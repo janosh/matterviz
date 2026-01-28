@@ -116,6 +116,31 @@ mod tests {
                 },
                 &["no valid mapping", "Matching"],
             ),
+            (
+                FerroxError::ParseError {
+                    path: "structure.cif".to_string(),
+                    reason: "invalid cell parameter".to_string(),
+                },
+                &["structure.cif", "invalid cell parameter", "Parse"],
+            ),
+            (
+                FerroxError::UnknownFormat {
+                    path: "data.xyz123".to_string(),
+                },
+                &["data.xyz123", "Unknown", "format"],
+            ),
+            (
+                FerroxError::MissingLattice {
+                    path: "molecule.xyz".to_string(),
+                },
+                &["molecule.xyz", "lattice", "crystal"],
+            ),
+            (
+                FerroxError::EmptyFile {
+                    path: "empty.cif".to_string(),
+                },
+                &["empty.cif", "Empty", "frames"],
+            ),
         ];
 
         for (err, expected_substrings) in test_cases {

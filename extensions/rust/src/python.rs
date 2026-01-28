@@ -425,6 +425,10 @@ fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<PyObject> {
             if let Some(i) = n.as_i64() {
                 let py_int = i.into_pyobject(py)?;
                 Ok(py_int.unbind().into_any())
+            } else if let Some(u) = n.as_u64() {
+                // Handle large unsigned integers that don't fit in i64
+                let py_int = u.into_pyobject(py)?;
+                Ok(py_int.unbind().into_any())
             } else if let Some(f) = n.as_f64() {
                 let py_float = f.into_pyobject(py)?;
                 Ok(py_float.unbind().into_any())
@@ -482,13 +486,13 @@ fn parse_structure_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
 
 /// Parse trajectory file (extXYZ format).
 ///
-/// Returns an iterator that yields structure dicts for each frame.
+/// Loads all frames from a trajectory file into a list of structure dicts.
 ///
 /// Args:
 ///     path: Path to the trajectory file (xyz/extxyz format)
 ///
 /// Returns:
-///     list: List of structure dicts for each frame
+///     List of pymatgen-compatible structure dicts, one per frame
 ///
 /// Example:
 ///     >>> from ferrox import parse_trajectory
