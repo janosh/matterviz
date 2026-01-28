@@ -1,0 +1,36 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ferrox"
+version = "0.1.0"
+description = "High-performance structure matching for crystallographic data"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Janosh Riebesell", email = "janosh@lbl.gov" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+keywords = ["crystallography", "materials-science", "structure-matching", "pymatgen"]
+
+[project.urls]
+Repository = "https://github.com/janosh/matterviz"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pymatgen>=2024.1.1"]
+
+[tool.maturin]
+features = ["python"]
+python-source = "python"
+module-name = "ferrox._ferrox"
