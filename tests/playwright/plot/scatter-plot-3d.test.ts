@@ -126,33 +126,29 @@ test.describe(`ScatterPlot3D`, () => {
   })
 })
 
-// Helper to open controls pane
-async function open_controls_pane(page: import('@playwright/test').Page) {
-  const container = page.locator(CONTAINER_SELECTOR)
-  await container.hover()
-  const toggle = container.locator(`button.pane-toggle`)
-  await expect(toggle).toBeVisible({ timeout: 5000 })
-  await toggle.click()
-  const pane = container.locator(`.draggable-pane`)
-  await expect(pane).toBeVisible({ timeout: 5000 })
-  return pane
-}
-
-// Helper to get projection checkbox
-function get_projection_checkbox(
-  pane: import('@playwright/test').Locator,
-  plane: string,
-) {
-  return pane.locator(`label`).filter({ hasText: plane }).locator(
-    `input[type="checkbox"]`,
-  )
-}
-
-// Helper to get slider row by label text
-const get_slider_row = (pane: import('@playwright/test').Locator, label: string) =>
-  pane.locator(`.pane-row`).filter({ hasText: label })
-
 test.describe(`ScatterPlot3D Projections`, () => {
+  // Helper to open controls pane
+  async function open_controls_pane(page: import('@playwright/test').Page) {
+    const container = page.locator(CONTAINER_SELECTOR)
+    await container.hover()
+    const toggle = container.locator(`button.pane-toggle`)
+    await expect(toggle).toBeVisible({ timeout: 5000 })
+    await toggle.click()
+    const pane = container.locator(`.draggable-pane`)
+    await expect(pane).toBeVisible({ timeout: 5000 })
+    return pane
+  }
+
+  // Helper to get projection checkbox
+  const get_projection_checkbox = (
+    pane: import('@playwright/test').Locator,
+    plane: string,
+  ) => pane.locator(`label`).filter({ hasText: plane }).locator(`input[type="checkbox"]`)
+
+  // Helper to get slider row by label text
+  const get_slider_row = (pane: import('@playwright/test').Locator, label: string) =>
+    pane.locator(`.pane-row`).filter({ hasText: label })
+
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
