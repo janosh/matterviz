@@ -573,6 +573,92 @@ impl StructureMatcher {
              Anonymous matching with species permutation is planned for a future release."
         )
     }
+
+    /// Check if two already-reduced structures match.
+    ///
+    /// This is an optimization for batch operations where structures have already
+    /// been preprocessed with `get_reduced_structure`. Skips redundant Niggli
+    /// reduction and primitive cell reduction.
+    ///
+    /// # Arguments
+    ///
+    /// * `reduced1` - First structure (already Niggli reduced + primitive cell if enabled)
+    /// * `reduced2` - Second structure (already preprocessed)
+    ///
+    /// # Note
+    ///
+    /// Use this when you've already called `get_reduced_structure` on both inputs.
+    /// For general use, prefer `fit` which handles preprocessing automatically.
+    pub fn fit_preprocessed(&self, reduced1: &Structure, reduced2: &Structure) -> bool {
+        // Clone for potential volume scaling (avoid mutating inputs)
+        let mut s1 = reduced1.clone();
+        let mut s2 = reduced2.clone();
+
+        // Composition check
+        let comp1 = s1.composition();
+        let comp2 = s2.composition();
+        if comp1 != comp2 {
+            return false;
+        }
+
+        // Site count check (without supercell)
+        if !self.attempt_supercell && s1.num_sites() != s2.num_sites() {
+            return false;
+        }
+
+        // Determine supercell factor
+        const MAX_SUPERCELL_FACTOR: usize = 10;
+        let (supercell_factor, s1_supercell) = if self.attempt_supercell {
+            if s1.num_sites() == 0 || s2.num_sites() == 0 {
+                (1, true)
+            } else {
+                let ratio = s2.num_sites() as f64 / s1.num_sites() as f64;
+                if ratio < 2.0 / 3.0 {
+                    let factor = (1.0 / ratio).round() as usize;
+                    (factor.clamp(1, MAX_SUPERCELL_FACTOR), false)
+                } else {
+                    let factor = ratio.round() as usize;
+                    (factor.clamp(1, MAX_SUPERCELL_FACTOR), true)
+                }
+            }
+        } else {
+            (1, true)
+        };
+
+        let mult = if s1_supercell {
+            supercell_factor as f64
+        } else {
+            1.0 / supercell_factor as f64
+        };
+
+        // Scale lattices to same volume
+        let v1 = s1.lattice.volume();
+        let v2 = s2.lattice.volume();
+        if self.scale && v1 > f64::EPSILON && v2 > f64::EPSILON {
+            let pbc = s1.lattice.pbc;
+            let ratio = (v2 / (v1 * mult)).powf(1.0 / 6.0);
+            s1.lattice = Lattice::new(*s1.lattice.matrix() * ratio);
+            s1.lattice.pbc = pbc;
+            s2.lattice = Lattice::new(*s2.lattice.matrix() / ratio);
+            s2.lattice.pbc = pbc;
+        }
+
+        if let Some((val, _, _)) =
+            self.match_internal(&s1, &s2, supercell_factor.max(1), s1_supercell, true, false)
+        {
+            val <= self.site_pos_tol
+        } else {
+            false
+        }
+    }
+
+    /// Get reduced structure (public version for batch operations).
+    ///
+    /// Applies Niggli reduction and optionally primitive cell reduction.
+    /// Use this to preprocess structures before calling `fit_preprocessed`.
+    pub fn get_reduced_structure_public(&self, structure: &Structure) -> Structure {
+        self.get_reduced_structure(structure)
+    }
 }
 
 #[cfg(test)]

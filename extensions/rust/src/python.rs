@@ -185,6 +185,44 @@ impl PyStructureMatcher {
         Ok(unique)
     }
 
+    /// Find matches for new structures against existing (already-deduplicated) structures.
+    ///
+    /// This is optimized for the common deduplication scenario where you have a small
+    /// batch of new structures (~100) and a large set of existing structures (~28,000)
+    /// that are already deduplicated.
+    ///
+    /// Args:
+    ///     new_structures: List of new structure JSON strings to check
+    ///     existing_structures: List of existing (already-deduplicated) structure JSON strings
+    ///
+    /// Returns:
+    ///     List where result[i] is the index of the matching existing structure,
+    ///     or None if new structure i has no match.
+    ///
+    /// Example:
+    ///     >>> # 100 new structures, 28000 existing
+    ///     >>> matches = matcher.find_matches(new_json_strs, existing_json_strs)
+    ///     >>> for i, match_idx in enumerate(matches):
+    ///     ...     if match_idx is not None:
+    ///     ...         print(f"New {i} matches existing {match_idx}")
+    ///     ...     else:
+    ///     ...         print(f"New {i} is unique")
+    ///
+    /// Performance:
+    ///     - Skips comparing existing structures against each other (already deduplicated)
+    ///     - Uses composition hashing to filter candidates
+    ///     - Early termination on first match
+    ///     - Parallelized across new structures
+    fn find_matches(
+        &self,
+        new_structures: Vec<String>,
+        existing_structures: Vec<String>,
+    ) -> PyResult<Vec<Option<usize>>> {
+        self.inner
+            .find_matches_json(&to_str_refs(&new_structures), &to_str_refs(&existing_structures))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
     fn __repr__(&self) -> String {
         let sm = &self.inner;
         // Use Python-style True/False for booleans

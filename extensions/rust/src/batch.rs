@@ -264,6 +264,101 @@ impl StructureMatcher {
     pub fn group_json(&self, json_strings: &[&str]) -> Result<IndexMap<usize, Vec<usize>>> {
         self.group(&parse_json_structures(json_strings)?)
     }
+
+    /// Find matches for new structures against existing (already-deduplicated) structures.
+    ///
+    /// This is optimized for the common deduplication scenario where:
+    /// - `existing` structures are already deduplicated (don't need to compare against each other)
+    /// - `new` structures need to be matched against `existing` to find duplicates
+    ///
+    /// Returns a vector where `result[i]` is:
+    /// - `Some(j)` if new structure `i` matches existing structure `j`
+    /// - `None` if new structure `i` is unique (no match in existing)
+    ///
+    /// # Algorithm
+    ///
+    /// 1. Preprocess existing structures (Niggli reduction, composition hashing)
+    /// 2. For each new structure (in parallel):
+    ///    - Filter by composition hash
+    ///    - Compare against matching existing structures until first match (early termination)
+    ///
+    /// # Performance
+    ///
+    /// This is O(new × existing_per_composition) instead of O((new + existing)²) because:
+    /// - Existing structures aren't compared against each other
+    /// - Composition hashing filters most comparisons
+    /// - Early termination on first match
+    ///
+    /// # Arguments
+    ///
+    /// * `new_structures` - New structures to check for matches
+    /// * `existing_structures` - Already-deduplicated structures to match against
+    pub fn find_matches(
+        &self,
+        new_structures: &[Structure],
+        existing_structures: &[Structure],
+    ) -> Result<Vec<Option<usize>>> {
+        if new_structures.is_empty() {
+            return Ok(vec![]);
+        }
+
+        if existing_structures.is_empty() {
+            return Ok(vec![None; new_structures.len()]);
+        }
+
+        // Step 1: Build composition-indexed lookup for existing structures
+        // Uses comparator-aware hashing to ensure prefilter aligns with match semantics.
+        let mut existing_by_comp: IndexMap<u64, Vec<(usize, Structure)>> = IndexMap::new();
+        for (idx, s) in existing_structures.iter().enumerate() {
+            let reduced = self.get_reduced_structure_public(s);
+            let hash = self.composition_hash(&reduced);
+            existing_by_comp
+                .entry(hash)
+                .or_default()
+                .push((idx, reduced));
+        }
+
+        // Step 2: For each new structure, find first matching existing structure
+        let results: Vec<Option<usize>> = new_structures
+            .par_iter()
+            .map(|new_struct| {
+                let reduced_new = self.get_reduced_structure_public(new_struct);
+                let new_hash = self.composition_hash(&reduced_new);
+
+                // Get existing structures with matching composition
+                let Some(candidates) = existing_by_comp.get(&new_hash) else {
+                    return None; // No existing structures with this composition
+                };
+
+                // Find first match (early termination)
+                for (existing_idx, reduced_existing) in candidates {
+                    if self.fit_preprocessed(&reduced_new, reduced_existing) {
+                        return Some(*existing_idx);
+                    }
+                }
+
+                None // No match found
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Find matches from JSON strings.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_json` - JSON strings for new structures
+    /// * `existing_json` - JSON strings for existing (already-deduplicated) structures
+    pub fn find_matches_json(
+        &self,
+        new_json: &[&str],
+        existing_json: &[&str],
+    ) -> Result<Vec<Option<usize>>> {
+        let new_structures = parse_json_structures(new_json)?;
+        let existing_structures = parse_json_structures(existing_json)?;
+        self.find_matches(&new_structures, &existing_structures)
+    }
 }
 
 #[cfg(test)]
@@ -495,6 +590,75 @@ mod tests {
 
         // Should have 3 groups: NaCl, Fe-BCC, Cu-FCC
         assert_eq!(groups.len(), 3);
+    }
+
+    // ========================================================================
+    // find_matches Tests
+    // ========================================================================
+
+    #[test]
+    fn test_find_matches_basic() {
+        // Existing structures (already deduplicated)
+        let existing = vec![make_nacl(), make_bcc(Element::Fe, 2.87), make_fcc(Element::Cu, 3.6)];
+
+        // New structures: one matches NaCl, one matches Fe BCC, one is unique
+        let new_si = make_fcc(Element::Si, 5.43); // Unique - different element
+        let new_nacl = make_nacl_shifted(); // Matches existing[0]
+        let new_fe = make_bcc(Element::Fe, 2.87); // Matches existing[1]
+
+        let new = vec![new_si, new_nacl, new_fe];
+
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&new, &existing).unwrap();
+
+        assert_eq!(matches.len(), 3);
+        assert_eq!(matches[0], None); // Si is unique
+        assert_eq!(matches[1], Some(0)); // NaCl matches existing[0]
+        assert_eq!(matches[2], Some(1)); // Fe matches existing[1]
+    }
+
+    #[test]
+    fn test_find_matches_empty_new() {
+        let existing = vec![make_nacl()];
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&[], &existing).unwrap();
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn test_find_matches_empty_existing() {
+        let new = vec![make_nacl(), make_bcc(Element::Fe, 2.87)];
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&new, &[]).unwrap();
+
+        // All should be None (no matches possible)
+        assert_eq!(matches, vec![None, None]);
+    }
+
+    #[test]
+    fn test_find_matches_all_unique() {
+        let existing = vec![make_nacl()];
+        let new = vec![make_bcc(Element::Fe, 2.87), make_fcc(Element::Cu, 3.6)];
+
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&new, &existing).unwrap();
+
+        // All new structures are unique (different compositions)
+        assert_eq!(matches, vec![None, None]);
+    }
+
+    #[test]
+    fn test_find_matches_all_duplicates() {
+        let existing = vec![make_nacl(), make_bcc(Element::Fe, 2.87)];
+        let new = vec![make_nacl(), make_nacl_shifted(), make_bcc(Element::Fe, 2.87)];
+
+        let matcher = StructureMatcher::new();
+        let matches = matcher.find_matches(&new, &existing).unwrap();
+
+        // All new structures match existing ones
+        assert_eq!(matches[0], Some(0)); // NaCl -> existing[0]
+        assert_eq!(matches[1], Some(0)); // NaCl shifted -> existing[0]
+        assert_eq!(matches[2], Some(1)); // Fe BCC -> existing[1]
     }
 
     // ========================================================================
