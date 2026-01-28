@@ -1,15 +1,12 @@
 default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+  - repo: builtin
     hooks:
       - id: check-case-conflict
       - id: check-symlinks
       - id: check-yaml
-      - id: destroyed-symlinks
       - id: end-of-file-fixer
-      - id: forbid-new-submodules
       - id: mixed-line-ending
       - id: trailing-whitespace
 
@@ -32,6 +29,19 @@ repos:
         entry: bash -c 'deno install --allow-scripts && deno run -A --node-modules-dir npm:@sveltejs/kit sync && deno run -A --node-modules-dir npm:svelte-check-rs@latest --fail-on-warnings --threshold error'
         language: system
         types_or: [ts, svelte]
+        pass_filenames: false
+
+      - id: cargo-fmt
+        name: Cargo format
+        entry: cargo fmt --manifest-path extensions/rust/Cargo.toml --
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: cargo-clippy
+        name: Cargo clippy
+        entry: cargo clippy --manifest-path extensions/rust/Cargo.toml --all-targets -- -D warnings
+        language: system
+        types: [rust]
         pass_filenames: false
 
   - repo: https://github.com/codespell-project/codespell

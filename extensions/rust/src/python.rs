@@ -169,7 +169,11 @@ impl PyStructureMatcher {
     ///     >>> groups = matcher.group(json_strs)
     ///     >>> for canonical, members in groups.items():
     ///     ...     print(f"Group {canonical}: {members}")
-    fn group(&self, py: Python<'_>, structures: Vec<String>) -> PyResult<HashMap<usize, Vec<usize>>> {
+    fn group(
+        &self,
+        py: Python<'_>,
+        structures: Vec<String>,
+    ) -> PyResult<HashMap<usize, Vec<usize>>> {
         // Release GIL during heavy computation
         py.allow_threads(|| {
             self.inner
