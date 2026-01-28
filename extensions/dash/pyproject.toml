@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "matterviz-dash-components"
 version = "0.0.2"
 description = "Plotly Dash wrapper for MatterViz (Svelte) components"
-readme = "README.md"
+readme = "readme.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [{ name = "matterviz-dash-components contributors" }]
