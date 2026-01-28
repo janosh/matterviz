@@ -2,6 +2,8 @@
   import type { ElementSymbol } from '$lib'
   import type {
     ConvexHullEntry,
+    GasSpecies,
+    GasThermodynamicsConfig,
     MarkerSymbol,
     PhaseData,
     PhaseStats,
@@ -263,6 +265,45 @@
       entropy_coef: 2.3,
     },
   ].map(with_temp_data)
+
+  // Gas pressure demo: configurable gas atmosphere control
+  // Available gases for the demo selector (all supported gases)
+  const demo_gases: GasSpecies[] = [`O2`, `N2`, `H2`, `F2`, `CO`, `CO2`, `H2O`]
+  let selected_demo_gas = $state<GasSpecies>(`O2`)
+
+  // Derive gas config from selected gas
+  const gas_demo_config = $derived<GasThermodynamicsConfig>({
+    enabled_gases: [selected_demo_gas],
+  })
+
+  // Bindable gas pressures for the demo
+  let gas_demo_pressures = $state<Partial<Record<GasSpecies, number>>>({})
+
+  // Synthetic Fe-O data with temperature dependence for gas demo
+  const gas_demo_fe_o_entries = ([
+    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.6 },
+    { composition: { O: 1 }, energy: 0, entropy_coef: 0.5 },
+    { composition: { Fe: 0.67, O: 0.33 }, energy: -0.85, entropy_coef: 1.2 }, // FeO
+    { composition: { Fe: 0.6, O: 0.4 }, energy: -0.95, entropy_coef: 1.4 }, // Fe3O4
+    { composition: { Fe: 0.4, O: 0.6 }, energy: -1.05, entropy_coef: 1.6 }, // Fe2O3
+    { composition: { Fe: 0.5, O: 0.5 }, energy: -0.78, entropy_coef: 1.3 },
+    { composition: { Fe: 0.75, O: 0.25 }, energy: -0.45, entropy_coef: 0.9 },
+    { composition: { Fe: 0.33, O: 0.67 }, energy: -0.68, entropy_coef: 1.8 },
+  ] as BaseEntry[]).map(with_temp_data)
+
+  // Ternary Fe-Ni-O system for gas demo
+  const gas_demo_ternary_entries = ([
+    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.6 },
+    { composition: { Ni: 1 }, energy: 0, entropy_coef: 0.5 },
+    { composition: { O: 1 }, energy: 0, entropy_coef: 0.5 },
+    { composition: { Fe: 0.5, O: 0.5 }, energy: -0.9, entropy_coef: 1.3 },
+    { composition: { Ni: 0.5, O: 0.5 }, energy: -0.85, entropy_coef: 1.2 },
+    { composition: { Fe: 0.5, Ni: 0.5 }, energy: -0.15, entropy_coef: 1.0 },
+    { composition: { Fe: 0.33, Ni: 0.33, O: 0.34 }, energy: -0.72, entropy_coef: 1.5 },
+    { composition: { Fe: 0.4, Ni: 0.2, O: 0.4 }, energy: -0.82, entropy_coef: 1.6 },
+    { composition: { Fe: 0.2, Ni: 0.4, O: 0.4 }, energy: -0.78, entropy_coef: 1.4 },
+    { composition: { Fe: 0.25, Ni: 0.25, O: 0.5 }, energy: -0.68, entropy_coef: 1.7 },
+  ] as BaseEntry[]).map(with_temp_data)
 </script>
 
 <svelte:head>
@@ -432,6 +473,41 @@
       controls={{ title: `Li-Fe-Ni-O with G(T)` }}
     />
   </div>
+
+  <h2>Gas Atmosphere Control</h2>
+  <p class="section-description">
+    For systems containing elements from gaseous species (O, N, H, etc.), the chemical
+    potential depends on both temperature and partial pressure: μ(T, P) = μ°(T) + RT·ln(P).
+    Use the gas pressure controls (left side) to simulate different atmospheric conditions.
+  </p>
+  <div class="gas-selector">
+    <label for="gas-select">Gas species:</label>
+    <select id="gas-select" bind:value={selected_demo_gas}>
+      {#each demo_gases as gas}
+        <option value={gas}>{gas}</option>
+      {/each}
+    </select>
+  </div>
+  <div class="gas-grid">
+    <ConvexHull2D
+      entries={gas_demo_fe_o_entries}
+      controls={{ title: `Fe-O with ${selected_demo_gas} Pressure` }}
+      gas_config={gas_demo_config}
+      bind:gas_pressures={gas_demo_pressures}
+      style="height: 500px"
+    />
+    <ConvexHull3D
+      entries={gas_demo_ternary_entries}
+      controls={{ title: `Fe-Ni-O with ${selected_demo_gas} Pressure` }}
+      gas_config={gas_demo_config}
+      bind:gas_pressures={gas_demo_pressures}
+    />
+  </div>
+  <p class="section-description" style="margin-top: 1rem;">
+    <strong>Tip:</strong> Try setting pressure to very low values (10⁻⁶ bar) to simulate
+    reducing conditions, or high values (1 bar) for oxidizing conditions. Observe how the
+    relative stability of phases changes.
+  </p>
 </main>
 
 <style>
@@ -504,8 +580,32 @@
     max-width: 900px;
     margin: 0 auto 3rem auto;
   }
+  .gas-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .gas-selector label {
+    font-weight: 500;
+  }
+  .gas-selector select {
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-color, #ccc);
+    background: var(--bg-color, white);
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  .gas-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    width: 100%;
+    margin: 0 auto 1rem auto;
+  }
   @media (max-width: 1100px) {
-    .ternary-grid, .quaternary-grid, .binary-grid, .highlight-grid, .temp-grid {
+    .ternary-grid, .quaternary-grid, .binary-grid, .highlight-grid, .temp-grid, .gas-grid {
       grid-template-columns: 1fr;
     }
     .stats-example-grid {

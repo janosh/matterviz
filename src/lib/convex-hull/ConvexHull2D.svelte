@@ -20,6 +20,7 @@
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
+  import GasPressureControls from './GasPressureControls.svelte'
   import * as helpers from './helpers'
   import type { BaseConvexHullProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
@@ -28,6 +29,8 @@
   import * as thermo from './thermodynamics'
   import type {
     ConvexHullEntry,
+    GasSpecies,
+    GasThermodynamicsConfig,
     HighlightStyle,
     HoverData3D,
     PhaseData,
@@ -79,6 +82,8 @@
     temperature = $bindable(),
     interpolate_temperature = true,
     max_interpolation_gap = 500,
+    gas_config,
+    gas_pressures = $bindable({}),
     children,
     tooltip: custom_tooltip,
     ...rest
@@ -131,6 +136,30 @@
       : entries,
   )
 
+  // Gas-dependent chemical potential support
+  const gas_analysis = $derived(helpers.analyze_gas_data(temp_filtered_entries, gas_config))
+
+  // Merge gas_pressures prop with config.pressures (prop takes precedence)
+  const merged_gas_config = $derived.by((): GasThermodynamicsConfig | undefined => {
+    if (!gas_config) return undefined
+    return {
+      ...gas_config,
+      pressures: { ...gas_config.pressures, ...gas_pressures },
+    }
+  })
+
+  // Apply gas corrections when gas config is provided
+  // Uses temperature from the slider (default to 300K if no temperature data)
+  const gas_corrected_entries = $derived(
+    gas_analysis.has_gas_dependent_elements && merged_gas_config
+      ? helpers.apply_gas_corrections(
+        temp_filtered_entries,
+        merged_gas_config,
+        temperature ?? 300,
+      )
+      : temp_filtered_entries,
+  )
+
   let { // Compute energy mode information
     has_precomputed_e_form,
     has_precomputed_hull,
@@ -140,7 +169,7 @@
     unary_refs,
   } = $derived(
     helpers.compute_energy_mode_info(
-      temp_filtered_entries,
+      gas_corrected_entries,
       thermo.find_lowest_energy_unary_refs,
       energy_source_mode,
     ),
@@ -148,7 +177,7 @@
 
   const effective_entries = $derived(
     helpers.get_effective_entries(
-      temp_filtered_entries,
+      gas_corrected_entries,
       energy_mode,
       unary_refs,
       thermo.compute_e_form_per_atom,
@@ -777,6 +806,14 @@
 
     {#if has_temp_data && temperature !== undefined}
       <TemperatureSlider {available_temperatures} bind:temperature />
+    {/if}
+
+    {#if gas_analysis.has_gas_dependent_elements && merged_gas_config}
+      <GasPressureControls
+        config={merged_gas_config}
+        bind:pressures={gas_pressures}
+        temperature={temperature ?? 300}
+      />
     {/if}
 
     {#if structure_popup.open && structure_popup.structure}

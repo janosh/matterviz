@@ -693,3 +693,86 @@ export function filter_entries_at_temperature(
     return []
   })
 }
+
+// ============================================================================
+// Gas-dependent chemical potential helpers
+// ============================================================================
+
+import {
+  analyze_gas_data as _analyze_gas_data,
+  apply_gas_corrections as _apply_gas_corrections,
+  compute_gas_chemical_potential,
+  format_chemical_potential,
+  format_pressure,
+  get_default_gas_provider,
+  get_effective_pressures,
+} from './gas-thermodynamics'
+import type { GasAnalysis, GasSpecies, GasThermodynamicsConfig } from './types'
+import { DEFAULT_GAS_PRESSURES } from './types'
+
+// Re-export for convenience
+export {
+  compute_gas_chemical_potential,
+  format_chemical_potential,
+  format_pressure,
+  get_default_gas_provider,
+  get_effective_pressures,
+}
+
+/**
+ * Analyze entries for gas-dependent elements
+ *
+ * Returns information about which gases are relevant for the chemical system.
+ */
+export function analyze_gas_data(
+  entries: PhaseData[],
+  config?: GasThermodynamicsConfig,
+): GasAnalysis {
+  if (!config || !config.enabled_gases?.length) {
+    return {
+      has_gas_dependent_elements: false,
+      gas_elements: [],
+      relevant_gases: [],
+    }
+  }
+  return _analyze_gas_data(entries, config)
+}
+
+/**
+ * Apply gas chemical potential corrections to entries
+ *
+ * This adjusts formation energies based on gas atmosphere conditions (T, P).
+ * Should be applied after temperature filtering.
+ */
+export function apply_gas_corrections(
+  entries: PhaseData[],
+  config: GasThermodynamicsConfig | undefined,
+  T: number,
+): PhaseData[] {
+  if (!config || !config.enabled_gases?.length) return entries
+  return _apply_gas_corrections(entries, config, T)
+}
+
+/**
+ * Compute all gas chemical potentials for display
+ *
+ * Returns a map of gas species to their chemical potential at the given (T, P).
+ */
+export function compute_all_gas_chemical_potentials(
+  config: GasThermodynamicsConfig | undefined,
+  T: number,
+): Map<GasSpecies, number> {
+  const result = new Map<GasSpecies, number>()
+  if (!config || !config.enabled_gases?.length) return result
+
+  const provider = config.provider ?? get_default_gas_provider()
+  const pressures = get_effective_pressures(config)
+
+  for (const gas of config.enabled_gases) {
+    const P = pressures[gas] ?? DEFAULT_GAS_PRESSURES[gas]
+    const mu = compute_gas_chemical_potential(provider, gas, T, P)
+    result.set(gas, mu)
+  }
+
+  return result
+}
