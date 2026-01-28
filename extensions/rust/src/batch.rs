@@ -174,28 +174,35 @@ impl StructureMatcher {
         let len = structures.len();
         let uf = UnionFind::new(len);
 
-        // Step 1: Group by composition hash for early termination.
-        // Uses comparator-aware hashing to ensure prefilter aligns with match semantics.
-        let mut comp_groups: IndexMap<u64, Vec<usize>> = IndexMap::new();
-        for (idx, s) in structures.iter().enumerate() {
-            let hash = self.composition_hash(s);
-            comp_groups.entry(hash).or_default().push(idx);
+        // Step 1: Reduce all structures in parallel, then group by composition hash.
+        // Reducing first ensures supercells are properly grouped with their primitive cells.
+        let reduced: Vec<_> = structures
+            .par_iter()
+            .enumerate()
+            .map(|(idx, s)| {
+                let reduced = self.reduce_structure(s);
+                let hash = self.composition_hash(&reduced);
+                (idx, hash, reduced)
+            })
+            .collect();
+
+        let mut comp_groups: IndexMap<u64, Vec<(usize, Structure)>> = IndexMap::new();
+        for (idx, hash, reduced) in reduced {
+            comp_groups.entry(hash).or_default().push((idx, reduced));
         }
 
         // Step 2: Within each composition group, compare pairwise in parallel
-        // Convert to vec for parallel iteration
         let groups_vec: Vec<_> = comp_groups.values().collect();
         groups_vec.par_iter().for_each(|group| {
             // Generate all pairs within this group
             for idx in 0..group.len() {
                 for jdx in (idx + 1)..group.len() {
-                    let idx_i = group[idx];
-                    let idx_j = group[jdx];
+                    let (idx_i, reduced_i) = &group[idx];
+                    let (idx_j, reduced_j) = &group[jdx];
 
-                    // Compare structures and union if they match
-                    // Note: union() is a no-op if already connected, so no pre-check needed
-                    if self.fit(&structures[idx_i], &structures[idx_j]) {
-                        uf.union(idx_i, idx_j);
+                    // Compare pre-reduced structures (avoids redundant reduction)
+                    if self.fit_preprocessed(reduced_i, reduced_j) {
+                        uf.union(*idx_i, *idx_j);
                     }
                 }
             }
@@ -313,12 +320,12 @@ impl StructureMatcher {
             .map(|(idx, s)| {
                 let reduced = self.reduce_structure(s);
                 let hash = self.composition_hash(&reduced);
-                (hash, idx, reduced)
+                (idx, hash, reduced)
             })
             .collect();
 
         let mut existing_by_comp: IndexMap<u64, Vec<(usize, Structure)>> = IndexMap::new();
-        for (hash, idx, reduced) in existing_reduced {
+        for (idx, hash, reduced) in existing_reduced {
             existing_by_comp
                 .entry(hash)
                 .or_default()

@@ -134,6 +134,8 @@ impl StructureMatcher {
     /// Matches pymatgen's `_get_reduced_structure` behavior:
     /// 1. Niggli reduction on the lattice
     /// 2. If `primitive_cell` is true, reduce to primitive cell via symmetry analysis
+    ///
+    /// Properties from the original structure are preserved.
     fn get_reduced_structure(&self, structure: &Structure) -> Structure {
         let mut result = structure.clone();
 
@@ -152,8 +154,10 @@ impl StructureMatcher {
         // Reduce to primitive cell if requested (skip empty structures)
         if self.primitive_cell
             && result.num_sites() > 0
-            && let Ok(prim) = result.get_primitive(1e-4)
+            && let Ok(mut prim) = result.get_primitive(1e-4)
         {
+            // Preserve properties from original structure
+            prim.properties = result.properties.clone();
             result = prim;
         }
 
@@ -213,16 +217,15 @@ impl StructureMatcher {
             1.0 / supercell_factor as f64
         };
 
-        // PBC consistency check - prevents silent drift when scaling overwrites pbc
-        debug_assert_eq!(
-            s1.lattice.pbc, s2.lattice.pbc,
-            "PBC mismatch in preprocess_pair"
-        );
-
         // Scale lattices to same volume (skip if empty or degenerate to avoid division by zero)
         let v1 = s1.lattice.volume();
         let v2 = s2.lattice.volume();
         if self.scale && v1 > f64::EPSILON && v2 > f64::EPSILON {
+            // PBC consistency check - prevents silent drift when scaling overwrites pbc
+            debug_assert_eq!(
+                s1.lattice.pbc, s2.lattice.pbc,
+                "PBC mismatch in preprocess_pair"
+            );
             let pbc = s1.lattice.pbc;
             let ratio = (v2 / (v1 * mult)).powf(1.0 / 6.0);
             s1.lattice = Lattice::new(*s1.lattice.matrix() * ratio);

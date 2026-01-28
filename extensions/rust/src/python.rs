@@ -148,10 +148,13 @@ impl PyStructureMatcher {
     ///     >>> structures = [s.as_dict() for s in my_structures]
     ///     >>> json_strs = [json.dumps(s) for s in structures]
     ///     >>> indices = matcher.deduplicate(json_strs)
-    fn deduplicate(&self, structures: Vec<String>) -> PyResult<Vec<usize>> {
-        self.inner
-            .deduplicate_json(&to_str_refs(&structures))
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+    fn deduplicate(&self, py: Python<'_>, structures: Vec<String>) -> PyResult<Vec<usize>> {
+        // Release GIL during heavy computation
+        py.allow_threads(|| {
+            self.inner
+                .deduplicate_json(&to_str_refs(&structures))
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        })
     }
 
     /// Group structures into equivalence classes.
@@ -166,11 +169,14 @@ impl PyStructureMatcher {
     ///     >>> groups = matcher.group(json_strs)
     ///     >>> for canonical, members in groups.items():
     ///     ...     print(f"Group {canonical}: {members}")
-    fn group(&self, structures: Vec<String>) -> PyResult<HashMap<usize, Vec<usize>>> {
-        self.inner
-            .group_json(&to_str_refs(&structures))
-            .map(|m| m.into_iter().collect())
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+    fn group(&self, py: Python<'_>, structures: Vec<String>) -> PyResult<HashMap<usize, Vec<usize>>> {
+        // Release GIL during heavy computation
+        py.allow_threads(|| {
+            self.inner
+                .group_json(&to_str_refs(&structures))
+                .map(|m| m.into_iter().collect())
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        })
     }
 
     /// Get unique structures from a list.
@@ -227,15 +233,19 @@ impl PyStructureMatcher {
     ///     - Parallelized across new structures
     fn find_matches(
         &self,
+        py: Python<'_>,
         new_structures: Vec<String>,
         existing_structures: Vec<String>,
     ) -> PyResult<Vec<Option<usize>>> {
-        self.inner
-            .find_matches_json(
-                &to_str_refs(&new_structures),
-                &to_str_refs(&existing_structures),
-            )
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+        // Release GIL during heavy computation to allow other Python threads to run
+        py.allow_threads(|| {
+            self.inner
+                .find_matches_json(
+                    &to_str_refs(&new_structures),
+                    &to_str_refs(&existing_structures),
+                )
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        })
     }
 
     /// Apply Niggli reduction and optionally primitive cell reduction to a structure.
