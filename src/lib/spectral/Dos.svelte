@@ -575,6 +575,7 @@
       ? [pad.l, width - pad.r, fermi_pos, fermi_pos]
       : [fermi_pos, fermi_pos, pad.t, height - pad.b]}
         <line
+          class="fermi-level-line"
           {x1}
           {x2}
           {y1}
@@ -587,6 +588,7 @@
         <!-- Fermi level label -->
         {#if is_horizontal}
           <text
+            class="fermi-level-label"
             x={width - pad.r + 4}
             y={fermi_pos}
             dy="0.35em"
@@ -598,6 +600,7 @@
           </text>
         {:else}
           <text
+            class="fermi-level-label"
             x={fermi_pos}
             y={pad.t - 4}
             text-anchor="middle"

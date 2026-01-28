@@ -71,7 +71,7 @@
     fov = 50,
     min_zoom = 0.1,
     max_zoom = 100,
-    rotate_speed = 2,
+    rotate_speed = 1,
     zoom_speed = 2,
     pan_speed = 2,
     // Lighting
@@ -247,11 +247,21 @@
   let computed_gizmo = $derived.by(() => {
     if (gizmo === false) return false
     const base_offset = { left: 5, bottom: has_color_bar ? 70 : 5 }
-    if (gizmo === true) {
-      return { background: { enabled: false }, offset: base_offset }
+    // className enables CSS targeting for z-index and pointer-events
+    const base = {
+      background: { enabled: false },
+      offset: base_offset,
+      className: `scatter3d-gizmo`,
     }
-    // Merge user-provided gizmo config with adjusted offset
-    return { ...gizmo, offset: { ...base_offset, ...gizmo.offset } }
+    if (gizmo === true) return base
+    // Merge user-provided gizmo config, preserving scatter3d-gizmo class
+    const merged_class = `scatter3d-gizmo ${gizmo.className ?? ``}`.trim()
+    return {
+      ...base,
+      ...gizmo,
+      offset: { ...base_offset, ...gizmo.offset },
+      className: merged_class,
+    }
   })
 
   function toggle_series_visibility(idx: number) {
@@ -340,11 +350,15 @@
       <ScatterPlot3DControls
         toggle_props={{
           ...controls.toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 32px); ${
             controls.toggle_props?.style ?? ``
           }`,
         }}
-        pane_props={controls.pane_props}
+        pane_props={{
+          ...controls.pane_props,
+          // z-index must exceed fullscreen z-index (100000001) to remain clickable in fullscreen mode
+          style: `--pane-z-index: 100000002; ${controls.pane_props?.style ?? ``}`,
+        }}
         bind:x_axis
         bind:y_axis
         bind:z_axis
@@ -423,11 +437,32 @@
     padding-top: var(--plot-fullscreen-padding-top, 2em);
     box-sizing: border-box;
   }
+  /* Threlte Canvas container needs flex: 1 to fill available space in flex layout
+     Fallback for browsers without :has() - targets any direct child div */
+  div.scatter-3d > :global(div) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Modern browsers: more specific selector using :has() */
+  @supports selector(:has(> canvas)) {
+    div.scatter-3d > :global(div:not(:has(> canvas))) {
+      flex: initial;
+      display: initial;
+      flex-direction: initial;
+    }
+  }
   div.scatter-3d :global(canvas) {
     width: 100% !important;
     height: 100% !important;
     flex: 1;
     outline: none;
+  }
+  /* Ensure gizmo is clickable above other overlay elements (ColorBar, Legend, etc.)
+     Use !important to override inline z-index: 1000 set by three-viewport-gizmo */
+  div.scatter-3d :global(.scatter3d-gizmo) {
+    z-index: 10000 !important;
+    pointer-events: auto !important;
   }
   .header-controls {
     position: absolute;

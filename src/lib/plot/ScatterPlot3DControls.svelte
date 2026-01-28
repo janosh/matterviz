@@ -53,13 +53,40 @@
     return [min_val - padding, max_val + padding]
   }
 
-  let all_x_values = $derived(series.flatMap((srs) => [...srs.x]))
-  let all_y_values = $derived(series.flatMap((srs) => [...srs.y]))
-  let all_z_values = $derived(series.flatMap((srs) => [...srs.z]))
+  // flatMap already creates new array, no need to spread
+  let all_x_values = $derived(series.flatMap((srs) => srs.x))
+  let all_y_values = $derived(series.flatMap((srs) => srs.y))
+  let all_z_values = $derived(series.flatMap((srs) => srs.z))
 
   let auto_x_range = $derived(calc_auto_range(all_x_values))
   let auto_y_range = $derived(calc_auto_range(all_y_values))
   let auto_z_range = $derived(calc_auto_range(all_z_values))
+
+  // Helper to extract input value from event - DRYs up event handler casts
+  const get_input_value = (event: Event) => (event.target as HTMLInputElement).value
+
+  // Helpers to update display properties - avoids verbose inline handlers
+  const update_display = (key: keyof DisplayConfig3D) => (event: Event) => {
+    const parsed = parseFloat(get_input_value(event))
+    // Guard against NaN when input is cleared - preserve existing value
+    if (!Number.isNaN(parsed)) display = { ...display, [key]: parsed }
+  }
+  const toggle_display = (key: keyof DisplayConfig3D) => () => {
+    display = { ...display, [key]: !display[key] }
+  }
+  const toggle_projection = (plane: `xy` | `xz` | `yz`) => () => {
+    display = {
+      ...display,
+      projections: { ...display.projections, [plane]: !display.projections?.[plane] },
+    }
+  }
+
+  // Helper for axis label updates
+  const update_axis_label =
+    <T extends { label?: string }>(axis: T, setter: (val: T) => void) =>
+    (event: Event) => {
+      setter({ ...axis, label: get_input_value(event) })
+    }
 </script>
 
 <DraggablePane
@@ -120,12 +147,120 @@
     }}
     style="display: flex; flex-wrap: wrap; gap: 1ex"
   >
-    <label><input type="checkbox" bind:checked={display.show_axes} /> Axes</label>
-    <label><input type="checkbox" bind:checked={display.show_grid} /> Grid</label>
-    <label><input type="checkbox" bind:checked={display.show_axis_labels} />
-      Labels</label>
-    <label><input type="checkbox" bind:checked={display.show_bounding_box} />
-      Bounds</label>
+    <label>
+      <input
+        type="checkbox"
+        checked={display.show_axes}
+        onchange={toggle_display(`show_axes`)}
+      /> Axes
+    </label>
+    <label>
+      <input
+        type="checkbox"
+        checked={display.show_grid}
+        onchange={toggle_display(`show_grid`)}
+      /> Grid
+    </label>
+    <label>
+      <input
+        type="checkbox"
+        checked={display.show_axis_labels}
+        onchange={toggle_display(`show_axis_labels`)}
+      /> Labels
+    </label>
+    <label>
+      <input
+        type="checkbox"
+        checked={display.show_bounding_box}
+        onchange={toggle_display(`show_bounding_box`)}
+      /> Bounds
+    </label>
+  </SettingsSection>
+
+  <!-- Projections -->
+  <SettingsSection
+    title="Projections"
+    current_values={{
+      xy: display.projections?.xy,
+      xz: display.projections?.xz,
+      yz: display.projections?.yz,
+      opacity: display.projection_opacity,
+      scale: display.projection_scale,
+    }}
+    on_reset={() => {
+      display = {
+        ...display,
+        projections: { xy: false, xz: false, yz: false },
+        projection_opacity: 0.3,
+        projection_scale: 0.5,
+      }
+    }}
+  >
+    <div style="display: flex; flex-wrap: wrap; gap: 1ex">
+      <label>
+        <input
+          type="checkbox"
+          checked={display.projections?.xy}
+          onchange={toggle_projection(`xy`)}
+        /> XY
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={display.projections?.xz}
+          onchange={toggle_projection(`xz`)}
+        /> XZ
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={display.projections?.yz}
+          onchange={toggle_projection(`yz`)}
+        /> YZ
+      </label>
+    </div>
+    <div class="pane-row">
+      <label for="{uid}-proj-opacity">Opacity:</label>
+      <input
+        id="{uid}-proj-opacity"
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        value={display.projection_opacity ?? 0.3}
+        oninput={update_display(`projection_opacity`)}
+      />
+      <input
+        type="number"
+        min="0"
+        max="1"
+        step="0.05"
+        value={display.projection_opacity ?? 0.3}
+        oninput={update_display(`projection_opacity`)}
+        style="width: 3.5em"
+      />
+    </div>
+    <div class="pane-row">
+      <label for="{uid}-proj-scale">Size:</label>
+      <input
+        id="{uid}-proj-scale"
+        type="range"
+        min="0.1"
+        max="1"
+        step="0.05"
+        value={display.projection_scale ?? 0.5}
+        oninput={update_display(`projection_scale`)}
+      />
+      <input
+        type="number"
+        min="0.1"
+        max="1"
+        step="0.05"
+        value={display.projection_scale ?? 0.5}
+        oninput={update_display(`projection_scale`)}
+        style="width: 3.5em"
+      />
+    </div>
   </SettingsSection>
 
   <!-- X Axis Range -->
@@ -136,7 +271,13 @@
   >
     <div class="pane-row">
       <label for="{uid}-x-label">Label:</label>
-      <input id="{uid}-x-label" type="text" bind:value={x_axis.label} placeholder="X" />
+      <input
+        id="{uid}-x-label"
+        type="text"
+        value={x_axis.label}
+        oninput={update_axis_label(x_axis, (val) => (x_axis = val))}
+        placeholder="X"
+      />
     </div>
     <div class="pane-row">
       <label for="{uid}-x-range-min">Range:</label>
@@ -180,7 +321,13 @@
   >
     <div class="pane-row">
       <label for="{uid}-y-label">Label:</label>
-      <input id="{uid}-y-label" type="text" bind:value={y_axis.label} placeholder="Y" />
+      <input
+        id="{uid}-y-label"
+        type="text"
+        value={y_axis.label}
+        oninput={update_axis_label(y_axis, (val) => (y_axis = val))}
+        placeholder="Y"
+      />
     </div>
     <div class="pane-row">
       <label for="{uid}-y-range-min">Range:</label>
@@ -224,7 +371,13 @@
   >
     <div class="pane-row">
       <label for="{uid}-z-label">Label:</label>
-      <input id="{uid}-z-label" type="text" bind:value={z_axis.label} placeholder="Z" />
+      <input
+        id="{uid}-z-label"
+        type="text"
+        value={z_axis.label}
+        oninput={update_axis_label(z_axis, (val) => (z_axis = val))}
+        placeholder="Z"
+      />
     </div>
     <div class="pane-row">
       <label for="{uid}-z-range-min">Range:</label>

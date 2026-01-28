@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot/types'
-  import { untrack } from 'svelte'
   import type { ComponentProps, Snippet } from 'svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
@@ -95,6 +95,9 @@
   })
 
   let hovered_frequency = $state<number | null>(null)
+
+  // Ensure both plots use identical top/bottom padding for aligned y_scale_fn
+  const shared_tb_padding = { t: 20, b: 50 }
 </script>
 
 <div
@@ -104,22 +107,22 @@
 >
   {@render children?.({ hovered_frequency })}
   <Bands
+    {...bands_props}
     {band_structs}
     {fermi_level}
-    {...bands_props}
     bind:y_axis={bands_y_axis}
     reference_frequency={hovered_frequency}
-    padding={{ r: 15, ...bands_props.padding }}
+    padding={{ r: 15, ...bands_props.padding, ...shared_tb_padding }}
   />
 
   <Dos
+    {...dos_props}
     {doses}
     {fermi_level}
     orientation="horizontal"
-    {...dos_props}
     bind:y_axis={dos_y_axis}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
-    padding={{ l: 15, ...dos_props.padding }}
+    padding={{ l: 15, ...dos_props.padding, ...shared_tb_padding }}
   />
 </div>

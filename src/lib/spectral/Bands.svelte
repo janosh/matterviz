@@ -576,6 +576,7 @@
     {@const bands_x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
     {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
       <line
+        class="fermi-level-line"
         x1={pad.l}
         x2={bands_x_end}
         y1={fermi_y}
@@ -586,6 +587,7 @@
         opacity="var(--bands-fermi-line-opacity, 0.8)"
       />
       <text
+        class="fermi-level-label"
         x={bands_x_end + 4}
         y={fermi_y}
         dy="0.35em"

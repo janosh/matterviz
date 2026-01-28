@@ -174,4 +174,44 @@ test.describe(`BandsAndDos Component Tests`, () => {
     const plots = container.locator(`.scatter`)
     expect(await plots.count()).toBe(2)
   })
+
+  // Fermi level alignment tests - verifies BandsAndDos fermi_level prop takes precedence
+  // over any fermi_level in bands_props/dos_props, ensuring Bands and DOS are aligned
+  const fermi_alignment_cases = [
+    { anchor: `#electronic-bands`, testid: `bands-and-dos-electronic`, tolerance: 15 },
+    {
+      anchor: `#electronic-spin-polarized`,
+      testid: `bands-and-dos-spin-polarized`,
+      tolerance: 30,
+    },
+  ] as const
+
+  for (const { anchor, testid, tolerance } of fermi_alignment_cases) {
+    test(`Fermi level lines aligned in ${testid}`, async ({ page }) => {
+      await page.locator(anchor).scrollIntoViewIfNeeded()
+      const container = page.locator(`[data-testid="${testid}"]`)
+      await expect(container).toBeVisible()
+      // Wait for plots to render rather than fixed delay
+      const plots = container.locator(`.scatter`)
+      await expect(plots).toHaveCount(2)
+
+      const bands_fermi = plots.first().locator(`.fermi-level-line`)
+      const dos_fermi = plots.nth(1).locator(`.fermi-level-line`)
+
+      await expect(bands_fermi).toHaveCount(1, { timeout: 10000 })
+      await expect(dos_fermi).toHaveCount(1, { timeout: 10000 })
+
+      // Fermi lines should be at approximately the same y position
+      await expect(async () => {
+        const [bands_y1, dos_y1] = await Promise.all([
+          bands_fermi.getAttribute(`y1`),
+          dos_fermi.getAttribute(`y1`),
+        ])
+        if (!bands_y1 || !dos_y1) throw new Error(`Fermi level y-coordinates not found`)
+        expect(Math.abs(parseFloat(bands_y1) - parseFloat(dos_y1))).toBeLessThanOrEqual(
+          tolerance,
+        )
+      }).toPass({ timeout: 5000 })
+    })
+  }
 })

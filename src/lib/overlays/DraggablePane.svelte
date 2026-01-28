@@ -386,6 +386,7 @@
     gap: 0.5em;
     align-items: center;
   }
+  /* Labels containing range inputs should fill available width */
   .draggable-pane :global(label:has(input[type='range'])) {
     flex: 1;
   }

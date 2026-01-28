@@ -123,6 +123,51 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await expect(diagram.locator(`canvas`)).toBeVisible()
   })
 
+  test(`drag release does not trigger click callback`, async ({ page }) => {
+    // Regression: dragging to rotate should not trigger on_point_click
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
+    await expect(diagram).toBeVisible()
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+
+    const canvas = diagram.locator(`canvas`)
+    const box = await canvas.boundingBox()
+    expect(box, `Canvas bounding box not found - rendering may have failed`).toBeTruthy()
+    if (!box) throw new Error(`Canvas bounding box not found`)
+
+    // Find an entry by scanning - selection indicates we hit one
+    let entry_pos: { x: number; y: number } | null = null
+    outer: for (let x_frac = 0.3; x_frac <= 0.7; x_frac += 0.04) {
+      for (let y_frac = 0.3; y_frac <= 0.7; y_frac += 0.04) {
+        const [test_x, test_y] = [box.x + box.width * x_frac, box.y + box.height * y_frac]
+        // deno-lint-ignore no-await-in-loop -- sequential scanning required
+        await page.mouse.click(test_x, test_y)
+        // deno-lint-ignore no-await-in-loop -- sequential scanning required
+        await page.waitForTimeout(30)
+        // deno-lint-ignore no-await-in-loop -- sequential scanning required
+        if ((await diagram.getAttribute(`data-has-selection`)) === `true`) {
+          entry_pos = { x: test_x, y: test_y }
+          break outer
+        }
+      }
+    }
+    expect(entry_pos, `No selectable entry found - data may not be rendering`)
+      .toBeTruthy()
+    if (!entry_pos) throw new Error(`No selectable entry found`)
+
+    // Clear selection by clicking corner
+    await page.mouse.click(box.x + 5, box.y + 5)
+    await page.waitForTimeout(50)
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+
+    // Drag operation should not trigger selection
+    await page.mouse.move(entry_pos.x, entry_pos.y)
+    await page.mouse.down()
+    await page.mouse.move(entry_pos.x + 30, entry_pos.y + 30, { steps: 3 })
+    await page.mouse.up()
+    await page.waitForTimeout(50)
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+  })
+
   test(`tooltip shows fractional compositions with unicode glyphs`, async ({ page }) => {
     const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
