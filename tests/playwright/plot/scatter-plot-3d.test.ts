@@ -148,6 +148,10 @@ function get_projection_checkbox(
   )
 }
 
+// Helper to get slider row by label text
+const get_slider_row = (pane: import('@playwright/test').Locator, label: string) =>
+  pane.locator(`.pane-row`).filter({ hasText: label })
+
 test.describe(`ScatterPlot3D Projections`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)
@@ -184,10 +188,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
       await expect(checkbox).toBeChecked()
     }
   })
-
-  // Helper to get slider row by label text for better selector specificity
-  const get_slider_row = (pane: import('@playwright/test').Locator, label: string) =>
-    pane.locator(`.pane-row`).filter({ hasText: label })
 
   // Parameterized slider default and range tests
   for (

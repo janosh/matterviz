@@ -356,7 +356,8 @@
         }}
         pane_props={{
           ...controls.pane_props,
-          style: `--pane-z-index: 100000001; ${controls.pane_props?.style ?? ``}`,
+          // z-index must exceed fullscreen z-index (100000001) to remain clickable in fullscreen mode
+          style: `--pane-z-index: 100000002; ${controls.pane_props?.style ?? ``}`,
         }}
         bind:x_axis
         bind:y_axis

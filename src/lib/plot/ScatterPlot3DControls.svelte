@@ -53,13 +53,38 @@
     return [min_val - padding, max_val + padding]
   }
 
-  let all_x_values = $derived(series.flatMap((srs) => [...srs.x]))
-  let all_y_values = $derived(series.flatMap((srs) => [...srs.y]))
-  let all_z_values = $derived(series.flatMap((srs) => [...srs.z]))
+  // flatMap already creates new array, no need to spread
+  let all_x_values = $derived(series.flatMap((srs) => srs.x))
+  let all_y_values = $derived(series.flatMap((srs) => srs.y))
+  let all_z_values = $derived(series.flatMap((srs) => srs.z))
 
   let auto_x_range = $derived(calc_auto_range(all_x_values))
   let auto_y_range = $derived(calc_auto_range(all_y_values))
   let auto_z_range = $derived(calc_auto_range(all_z_values))
+
+  // Helpers to update properties - avoids verbose inline handlers
+  const update_display = (key: keyof DisplayConfig3D) => (event: Event) => {
+    display = {
+      ...display,
+      [key]: parseFloat((event.target as HTMLInputElement).value),
+    }
+  }
+  const toggle_display = (key: keyof DisplayConfig3D) => () => {
+    display = { ...display, [key]: !display[key] }
+  }
+  const toggle_projection = (plane: `xy` | `xz` | `yz`) => () => {
+    display = {
+      ...display,
+      projections: { ...display.projections, [plane]: !display.projections?.[plane] },
+    }
+  }
+  const update_axis_label = (
+    axis: { label?: string },
+    setter: (val: typeof axis) => void,
+  ) =>
+  (event: Event) => {
+    setter({ ...axis, label: (event.target as HTMLInputElement).value })
+  }
 </script>
 
 <DraggablePane
@@ -124,34 +149,28 @@
       <input
         type="checkbox"
         checked={display.show_axes}
-        onchange={() => (display = { ...display, show_axes: !display.show_axes })}
+        onchange={toggle_display(`show_axes`)}
       /> Axes
     </label>
     <label>
       <input
         type="checkbox"
         checked={display.show_grid}
-        onchange={() => (display = { ...display, show_grid: !display.show_grid })}
+        onchange={toggle_display(`show_grid`)}
       /> Grid
     </label>
     <label>
       <input
         type="checkbox"
         checked={display.show_axis_labels}
-        onchange={() => (display = {
-          ...display,
-          show_axis_labels: !display.show_axis_labels,
-        })}
+        onchange={toggle_display(`show_axis_labels`)}
       /> Labels
     </label>
     <label>
       <input
         type="checkbox"
         checked={display.show_bounding_box}
-        onchange={() => (display = {
-          ...display,
-          show_bounding_box: !display.show_bounding_box,
-        })}
+        onchange={toggle_display(`show_bounding_box`)}
       /> Bounds
     </label>
   </SettingsSection>
@@ -180,39 +199,21 @@
         <input
           type="checkbox"
           checked={display.projections?.xy}
-          onchange={() => (display = {
-            ...display,
-            projections: {
-              ...display.projections,
-              xy: !display.projections?.xy,
-            },
-          })}
+          onchange={toggle_projection(`xy`)}
         /> XY
       </label>
       <label>
         <input
           type="checkbox"
           checked={display.projections?.xz}
-          onchange={() => (display = {
-            ...display,
-            projections: {
-              ...display.projections,
-              xz: !display.projections?.xz,
-            },
-          })}
+          onchange={toggle_projection(`xz`)}
         /> XZ
       </label>
       <label>
         <input
           type="checkbox"
           checked={display.projections?.yz}
-          onchange={() => (display = {
-            ...display,
-            projections: {
-              ...display.projections,
-              yz: !display.projections?.yz,
-            },
-          })}
+          onchange={toggle_projection(`yz`)}
         /> YZ
       </label>
     </div>
@@ -225,14 +226,7 @@
         max="1"
         step="0.05"
         value={display.projection_opacity ?? 0.3}
-        oninput={(
-          event,
-        ) => (display = {
-          ...display,
-          projection_opacity: parseFloat(
-            (event.target as HTMLInputElement).value,
-          ),
-        })}
+        oninput={update_display(`projection_opacity`)}
       />
       <input
         type="number"
@@ -240,14 +234,7 @@
         max="1"
         step="0.05"
         value={display.projection_opacity ?? 0.3}
-        oninput={(
-          event,
-        ) => (display = {
-          ...display,
-          projection_opacity: parseFloat(
-            (event.target as HTMLInputElement).value,
-          ),
-        })}
+        oninput={update_display(`projection_opacity`)}
         style="width: 3.5em"
       />
     </div>
@@ -260,12 +247,7 @@
         max="1"
         step="0.05"
         value={display.projection_scale ?? 0.5}
-        oninput={(
-          event,
-        ) => (display = {
-          ...display,
-          projection_scale: parseFloat((event.target as HTMLInputElement).value),
-        })}
+        oninput={update_display(`projection_scale`)}
       />
       <input
         type="number"
@@ -273,12 +255,7 @@
         max="1"
         step="0.05"
         value={display.projection_scale ?? 0.5}
-        oninput={(
-          event,
-        ) => (display = {
-          ...display,
-          projection_scale: parseFloat((event.target as HTMLInputElement).value),
-        })}
+        oninput={update_display(`projection_scale`)}
         style="width: 3.5em"
       />
     </div>
@@ -296,12 +273,7 @@
         id="{uid}-x-label"
         type="text"
         value={x_axis.label}
-        oninput={(
-          event,
-        ) => (x_axis = {
-          ...x_axis,
-          label: (event.target as HTMLInputElement).value,
-        })}
+        oninput={update_axis_label(x_axis, (val) => (x_axis = val))}
         placeholder="X"
       />
     </div>
@@ -351,12 +323,7 @@
         id="{uid}-y-label"
         type="text"
         value={y_axis.label}
-        oninput={(
-          event,
-        ) => (y_axis = {
-          ...y_axis,
-          label: (event.target as HTMLInputElement).value,
-        })}
+        oninput={update_axis_label(y_axis, (val) => (y_axis = val))}
         placeholder="Y"
       />
     </div>
@@ -406,12 +373,7 @@
         id="{uid}-z-label"
         type="text"
         value={z_axis.label}
-        oninput={(
-          event,
-        ) => (z_axis = {
-          ...z_axis,
-          label: (event.target as HTMLInputElement).value,
-        })}
+        oninput={update_axis_label(z_axis, (val) => (z_axis = val))}
         placeholder="Z"
       />
     </div>

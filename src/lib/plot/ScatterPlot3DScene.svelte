@@ -485,24 +485,14 @@
     if (data) on_point_click?.(data)
   }
 
-  // Gizmo props - className enables CSS targeting for z-index and pointer-events
-  let gizmo_props = $derived.by(() => {
-    if (gizmo === false) return null
-    const base = {
-      background: { enabled: false },
-      offset: { left: 5, bottom: 5 },
-      className: `scatter3d-gizmo`,
-    }
-    if (gizmo === true) return base
-    // Merge user-provided gizmo config with base, preserving scatter3d-gizmo class
-    const merged_class = `scatter3d-gizmo ${gizmo.className ?? ``}`.trim()
-    return {
-      ...base,
-      ...gizmo,
-      offset: { ...base.offset, ...gizmo.offset },
-      className: merged_class,
-    }
-  })
+  // Gizmo props - parent (ScatterPlot3D) handles className and ColorBar offset adjustments
+  let gizmo_props = $derived(
+    gizmo === false
+      ? null
+      : gizmo === true
+      ? { background: { enabled: false }, offset: { left: 5, bottom: 5 } }
+      : gizmo,
+  )
 
   // Orbit controls - snappy with minimal inertia
   let orbit_controls_props = $derived({
@@ -811,7 +801,7 @@
   </extras.InstancedMesh>
 {/each}
 
-<!-- XY Plane Projections (floor/ceiling) - fix Z to pos.z, keep X and Y -->
+<!-- XY Plane Projections (floor/ceiling) - fix user Z (Three.js Y) to backside -->
 {#if display.projections?.xy}
   {#each radius_groups as group (group.radius)}
     <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
@@ -819,7 +809,7 @@
       <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
       {#each group.points as point, idx (`xy-${point.series_idx}-${point.point_idx}`)}
         <extras.Instance
-          position={[point.x, point.y, pos.z]}
+          position={[point.x, pos.y, point.z]}
           scale={group.radius * proj_scale}
           color={group.colors[idx]}
         />
@@ -828,7 +818,7 @@
   {/each}
 {/if}
 
-<!-- XZ Plane Projections (back wall) - fix Y to pos.y, keep X and Z -->
+<!-- XZ Plane Projections (back wall) - fix user Y (Three.js Z) to backside -->
 {#if display.projections?.xz}
   {#each radius_groups as group (group.radius)}
     <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
@@ -836,7 +826,7 @@
       <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
       {#each group.points as point, idx (`xz-${point.series_idx}-${point.point_idx}`)}
         <extras.Instance
-          position={[point.x, pos.y, point.z]}
+          position={[point.x, point.y, pos.z]}
           scale={group.radius * proj_scale}
           color={group.colors[idx]}
         />
