@@ -28,11 +28,7 @@
   import TemperatureSlider from './TemperatureSlider.svelte'
   import type { Point4D } from './thermodynamics'
   import * as thermo from './thermodynamics'
-  import type {
-    ConvexHullEntry,
-    HighlightStyle,
-    HoverData3D,
-  } from './types'
+  import type { ConvexHullEntry, HighlightStyle, HoverData3D } from './types'
 
   let {
     entries = [],

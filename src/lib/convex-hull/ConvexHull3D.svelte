@@ -33,12 +33,7 @@
   import StructurePopup from './StructurePopup.svelte'
   import TemperatureSlider from './TemperatureSlider.svelte'
   import * as thermo from './thermodynamics'
-  import type {
-    ConvexHullEntry,
-    HighlightStyle,
-    HoverData3D,
-    Point3D,
-  } from './types'
+  import type { ConvexHullEntry, HighlightStyle, HoverData3D, Point3D } from './types'
 
   let {
     entries = [],

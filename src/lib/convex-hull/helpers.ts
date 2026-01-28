@@ -694,36 +694,20 @@ export function filter_entries_at_temperature(
   })
 }
 
-// ============================================================================
 // Gas-dependent chemical potential helpers
-// ============================================================================
 
 import {
   analyze_gas_data as _analyze_gas_data,
   apply_gas_corrections as _apply_gas_corrections,
-  compute_gas_chemical_potential,
-  format_chemical_potential,
-  format_pressure,
-  get_default_gas_provider,
-  get_effective_pressures,
 } from './gas-thermodynamics'
 import type { GasAnalysis, GasThermodynamicsConfig } from './types'
 
-// Re-export for convenience
-export {
-  compute_gas_chemical_potential,
-  format_chemical_potential,
-  format_pressure,
-  get_default_gas_provider,
-  get_effective_pressures,
-}
-
 /**
- * Analyze entries for gas-dependent elements
+ * Analyze entries for gas-dependent elements (safe wrapper with optional config)
  *
  * Returns information about which gases are relevant for the chemical system.
  */
-export function analyze_gas_data(
+export function safe_analyze_gas_data(
   entries: PhaseData[],
   config?: GasThermodynamicsConfig,
 ): GasAnalysis {
@@ -738,12 +722,12 @@ export function analyze_gas_data(
 }
 
 /**
- * Apply gas chemical potential corrections to entries
+ * Apply gas chemical potential corrections to entries (safe wrapper with optional config)
  *
  * This adjusts formation energies based on gas atmosphere conditions (T, P).
  * Should be applied after temperature filtering.
  */
-export function apply_gas_corrections(
+export function safe_apply_gas_corrections(
   entries: PhaseData[],
   config: GasThermodynamicsConfig | undefined,
   T: number,
@@ -764,11 +748,19 @@ export function get_gas_corrected_entries(
   gas_config: GasThermodynamicsConfig | undefined,
   gas_pressures: Partial<Record<string, number>>,
   temperature: number,
-): { entries: PhaseData[]; analysis: GasAnalysis; merged_config: GasThermodynamicsConfig | undefined } {
+): {
+  entries: PhaseData[]
+  analysis: GasAnalysis
+  merged_config: GasThermodynamicsConfig | undefined
+} {
   if (!gas_config?.enabled_gases?.length) {
     return {
       entries,
-      analysis: { has_gas_dependent_elements: false, gas_elements: [], relevant_gases: [] },
+      analysis: {
+        has_gas_dependent_elements: false,
+        gas_elements: [],
+        relevant_gases: [],
+      },
       merged_config: undefined,
     }
   }
@@ -789,4 +781,3 @@ export function get_gas_corrected_entries(
     merged_config,
   }
 }
-

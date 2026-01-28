@@ -35,7 +35,9 @@
   // Get current pressure for first enabled gas
   const gas = $derived(enabled_gases[0])
   const P = $derived(gas ? (pressures[gas] ?? effective_pressures[gas]) : 1)
-  const mu = $derived(gas ? compute_gas_chemical_potential(provider, gas, temperature, P) : 0)
+  const mu = $derived(
+    gas ? compute_gas_chemical_potential(provider, gas, temperature, P) : 0,
+  )
 
   // Slider value (0-100)
   const slider_value = $derived(pressure_to_slider(P))
@@ -74,7 +76,11 @@
 {#if gas}
   <div
     class="pressure-slider"
-    {@attach tooltip({ content: `${gas} partial pressure for μ(T,P)\nμ = ${format_chemical_potential(mu, 3)}` })}
+    {@attach tooltip({
+      content: `${gas} partial pressure for μ(T,P)\nμ = ${
+        format_chemical_potential(mu, 3)
+      }`,
+    })}
   >
     <div class="pressure-label">
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->

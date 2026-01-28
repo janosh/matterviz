@@ -2,16 +2,15 @@
 // Enables atmosphere-controlled phase diagram analysis
 
 import { count_atoms_in_composition } from '$lib/composition'
+import type {
+  GasAnalysis,
+  GasSpecies,
+  GasThermodynamicsConfig,
+  GasThermodynamicsProvider,
+  PhaseData,
+} from '$lib/convex-hull/types'
+import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
-import {
-  DEFAULT_GAS_PRESSURES,
-  type GasAnalysis,
-  type GasSpecies,
-  GAS_SPECIES,
-  type GasThermodynamicsConfig,
-  type GasThermodynamicsProvider,
-  type PhaseData,
-} from './types'
 
 // Physical constants
 export const R_EV_PER_K = 8.617333262e-5 // Gas constant in eV/K (k_B)
@@ -28,7 +27,9 @@ export const DEFAULT_ELEMENT_TO_GAS: Readonly<Partial<Record<string, GasSpecies>
 
 // Stoichiometric coefficients: atoms of element per molecule of gas
 // e.g., O2 has 2 O atoms, H2O has 2 H and 1 O
-export const GAS_STOICHIOMETRY: Readonly<Record<GasSpecies, Partial<Record<string, number>>>> = {
+export const GAS_STOICHIOMETRY: Readonly<
+  Record<GasSpecies, Partial<Record<string, number>>>
+> = {
   O2: { O: 2 },
   N2: { N: 2 },
   H2: { H: 2 },
@@ -38,9 +39,7 @@ export const GAS_STOICHIOMETRY: Readonly<Record<GasSpecies, Partial<Record<strin
   H2O: { H: 2, O: 1 },
 }
 
-// ============================================================================
 // Default Thermodynamic Data (abstracted - users can provide their own)
-// ============================================================================
 
 // Entropy contribution T*S at various temperatures (in eV/molecule)
 // Data points at 0, 298, 300, 400, ..., 2000 K
@@ -53,6 +52,7 @@ interface TabulatedTSData {
 // Default T*S data for common gases (converted to eV from literature values)
 // Source: Thermochemical tables (Barin, NBS)
 // Note: These values are T*S in eV/molecule
+// deno-fmt-ignore
 const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, TabulatedTSData>> = {
   O2: {
     temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
@@ -94,13 +94,9 @@ const DEFAULT_ENTHALPY: Readonly<Partial<Record<GasSpecies, number>>> = {
   // O2, N2, H2, F2 are reference states with H_f = 0
 }
 
-// ============================================================================
 // Interpolation Helpers
-// ============================================================================
 
-/**
- * Linearly interpolate T*S value at given temperature
- */
+// Linearly interpolate T*S value at given temperature
 function interpolate_ts(data: TabulatedTSData, T: number): number {
   const { temperatures, values } = data
 
@@ -124,13 +120,9 @@ function interpolate_ts(data: TabulatedTSData, T: number): number {
   return v_low + fraction * (v_high - v_low)
 }
 
-// ============================================================================
 // Default Provider Implementation
-// ============================================================================
 
-/**
- * Create the default gas thermodynamics provider using built-in data
- */
+// Create the default gas thermodynamics provider using built-in data
 export function create_default_gas_provider(): GasThermodynamicsProvider {
   return {
     get_standard_chemical_potential(gas: GasSpecies, T: number): number {
@@ -154,9 +146,7 @@ export function create_default_gas_provider(): GasThermodynamicsProvider {
 // Singleton default provider
 let default_provider: GasThermodynamicsProvider | null = null
 
-/**
- * Get the default gas thermodynamics provider (lazy initialization)
- */
+// Get the default gas thermodynamics provider (lazy initialization)
 export function get_default_gas_provider(): GasThermodynamicsProvider {
   if (!default_provider) {
     default_provider = create_default_gas_provider()
@@ -164,9 +154,7 @@ export function get_default_gas_provider(): GasThermodynamicsProvider {
   return default_provider
 }
 
-// ============================================================================
 // Gas Chemical Potential Calculations
-// ============================================================================
 
 // Number of atoms in each gas molecule
 const GAS_NUM_ATOMS: Readonly<Record<GasSpecies, number>> = {
@@ -179,18 +167,14 @@ const GAS_NUM_ATOMS: Readonly<Record<GasSpecies, number>> = {
   H2O: 3,
 }
 
-/**
- * Compute gas chemical potential at given temperature and pressure
- *
- * Following PIRO's convention, all values are per atom:
- * μ_per_atom(T, P) = H_per_atom - (TS)_per_atom + k_B·T·ln(P/P₀) / num_atoms
- *
- * @param provider - Thermodynamic data provider
- * @param gas - Gas species
- * @param T - Temperature in Kelvin
- * @param P - Pressure in bar
- * @returns Chemical potential in eV/atom
- */
+// Compute gas chemical potential at given temperature and pressure
+// Following PIRO's convention, all values are per atom:
+// μ_per_atom(T, P) = H_per_atom - (TS)_per_atom + k_B·T·ln(P/P₀) / num_atoms
+// provider - Thermodynamic data provider
+// gas - Gas species
+// T - Temperature in Kelvin
+// P - Pressure in bar
+// Returns chemical potential in eV/atom
 export function compute_gas_chemical_potential(
   provider: GasThermodynamicsProvider,
   gas: GasSpecies,
@@ -208,22 +192,17 @@ export function compute_gas_chemical_potential(
   return mu_standard + (R_EV_PER_K * T * Math.log(P / P_REF)) / num_atoms
 }
 
-/**
- * Compute chemical potential per atom of a specific element from a gas
- *
- * Since compute_gas_chemical_potential returns per-atom of gas molecule,
- * we need to convert to per-atom of the specific element.
- *
- * For O from O2: μ(O) = μ(O2)_per_atom * num_atoms(O2) / stoich(O in O2) = μ(O2)_per_atom * 2 / 2 = μ(O2)_per_atom
- * For O from CO2: μ(O) = μ(CO2)_per_atom * num_atoms(CO2) / stoich(O in CO2) = μ(CO2)_per_atom * 3 / 2
- *
- * @param provider - Thermodynamic data provider
- * @param gas - Gas species
- * @param element - Element symbol
- * @param T - Temperature in Kelvin
- * @param P - Pressure in bar
- * @returns Chemical potential per atom of element in eV/atom
- */
+// Compute chemical potential per atom of a specific element from a gas
+// Since compute_gas_chemical_potential returns per-atom of gas molecule,
+// we need to convert to per-atom of the specific element.
+// For O from O2: μ(O) = μ(O2)_per_atom * num_atoms(O2) / stoich(O in O2) = μ(O2)_per_atom * 2 / 2 = μ(O2)_per_atom
+// For O from CO2: μ(O) = μ(CO2)_per_atom * num_atoms(CO2) / stoich(O in CO2) = μ(CO2)_per_atom * 3 / 2
+// provider - Thermodynamic data provider
+// gas - Gas species
+// element - Element symbol
+// T - Temperature in Kelvin
+// P - Pressure in bar
+// Returns chemical potential per atom of element in eV/atom
 export function compute_element_chemical_potential(
   provider: GasThermodynamicsProvider,
   gas: GasSpecies,
@@ -238,13 +217,9 @@ export function compute_element_chemical_potential(
   return (mu_gas_per_atom * num_atoms) / stoich
 }
 
-// ============================================================================
 // Gas Analysis and Corrections
-// ============================================================================
 
-/**
- * Analyze entries to determine which gases are relevant for the chemical system
- */
+// Analyze entries to determine which gases are relevant for the chemical system
 export function analyze_gas_data(
   entries: PhaseData[],
   config: GasThermodynamicsConfig,
@@ -292,9 +267,7 @@ export function analyze_gas_data(
   }
 }
 
-/**
- * Get effective pressures for gases, using defaults for unspecified values
- */
+// Get effective pressures for gases, using defaults for unspecified values
 export function get_effective_pressures(
   config: GasThermodynamicsConfig,
 ): Record<GasSpecies, number> {
@@ -309,17 +282,12 @@ export function get_effective_pressures(
   return pressures
 }
 
-/**
- * Compute gas chemical potential correction for an entry's energy
- *
- * The correction accounts for the difference between the gas chemical potential
- * at the given (T, P) and the reference state (0 K, 1 bar).
- *
- * For a compound A_x B_y where B comes from gas B2:
- * ΔE_correction = (y/2) * [μ(B2, T, P) - μ(B2, 0K, 1bar)]
- *
- * This shifts the formation energy based on the gas atmosphere.
- */
+// Compute gas chemical potential correction for an entry's energy
+// The correction accounts for the difference between the gas chemical potential
+// at the given (T, P) and the reference state (0 K, 1 bar).
+// For a compound A_x B_y where B comes from gas B2:
+// ΔE_correction = (y/2) * [μ(B2, T, P) - μ(B2, 0K, 1bar)]
+// This shifts the formation energy based on the gas atmosphere.
 export function compute_gas_correction(
   entry: PhaseData,
   config: GasThermodynamicsConfig,
@@ -360,21 +328,16 @@ export function compute_gas_correction(
   return correction
 }
 
-/**
- * Apply gas chemical potential corrections to elemental reference entries only.
- *
- * IMPORTANT: Corrections are only applied to unary (single-element) entries.
- * This is thermodynamically correct because:
- * - Formation energy = E(compound) - Σ n_i * μ_i
- * - For gas-forming elements (O, N, H...), μ_i = μ(gas, T, P)
- * - For solid elements, μ_i = E(element)
- *
- * If we applied corrections to ALL entries, they would cancel out in the
- * formation energy calculation, resulting in no change to the hull.
- *
- * By only correcting unary references, we effectively replace the standard
- * elemental reference with the gas chemical potential at (T, P).
- */
+// Apply gas chemical potential corrections to elemental reference entries only.
+// IMPORTANT: Corrections are only applied to unary (single-element) entries.
+// This is thermodynamically correct because:
+// - Formation energy = E(compound) - Σ n_i * μ_i
+// - For gas-forming elements (O, N, H...), μ_i = μ(gas, T, P)
+// - For solid elements, μ_i = E(element)
+// If we applied corrections to ALL entries, they would cancel out in the
+// formation energy calculation, resulting in no change to the hull.
+// By only correcting unary references, we effectively replace the standard
+// elemental reference with the gas chemical potential at (T, P).
 export function apply_gas_corrections(
   entries: PhaseData[],
   config: GasThermodynamicsConfig | undefined,
@@ -410,16 +373,12 @@ export function apply_gas_corrections(
   })
 }
 
-/**
- * Format chemical potential for display (e.g., "-1.23 eV")
- */
+// Format chemical potential for display (e.g., "-1.23 eV")
 export function format_chemical_potential(mu: number, decimals = 3): string {
   return `${mu >= 0 ? `+` : ``}${mu.toFixed(decimals)} eV`
 }
 
-/**
- * Format pressure for display (scientific notation for very small/large values)
- */
+// Format pressure for display (scientific notation for very small/large values)
 export function format_pressure(P: number): string {
   if (P >= 0.01 && P < 100) {
     return `${P.toPrecision(3)} bar`

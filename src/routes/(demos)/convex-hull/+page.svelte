@@ -298,7 +298,11 @@
     { composition: { Fe: 0.5, O: 0.5 }, energy: -0.9, entropy_coef: 1.3 },
     { composition: { Ni: 0.5, O: 0.5 }, energy: -0.85, entropy_coef: 1.2 },
     { composition: { Fe: 0.5, Ni: 0.5 }, energy: -0.15, entropy_coef: 1.0 },
-    { composition: { Fe: 0.33, Ni: 0.33, O: 0.34 }, energy: -0.72, entropy_coef: 1.5 },
+    {
+      composition: { Fe: 0.33, Ni: 0.33, O: 0.34 },
+      energy: -0.72,
+      entropy_coef: 1.5,
+    },
     { composition: { Fe: 0.4, Ni: 0.2, O: 0.4 }, energy: -0.82, entropy_coef: 1.6 },
     { composition: { Fe: 0.2, Ni: 0.4, O: 0.4 }, energy: -0.78, entropy_coef: 1.4 },
     { composition: { Fe: 0.25, Ni: 0.25, O: 0.5 }, energy: -0.68, entropy_coef: 1.7 },
@@ -476,8 +480,9 @@
   <h2>Gas Atmosphere Control</h2>
   <p class="section-description">
     For systems containing elements from gaseous species (O, N, H, etc.), the chemical
-    potential depends on both temperature and partial pressure: μ(T, P) = μ°(T) + RT·ln(P).
-    Use the gas pressure controls (left side) to simulate different atmospheric conditions.
+    potential depends on both temperature and partial pressure: μ(T, P) = μ°(T) +
+    RT·ln(P). Use the gas pressure controls (left side) to simulate different atmospheric
+    conditions.
   </p>
   <div class="gas-selector">
     <label for="gas-select">Gas species:</label>
@@ -502,7 +507,7 @@
       bind:gas_pressures={gas_demo_pressures}
     />
   </div>
-  <p class="section-description" style="margin-top: 1rem;">
+  <p class="section-description" style="margin-top: 1rem">
     <strong>Tip:</strong> Try setting pressure to very low values (10⁻⁶ bar) to simulate
     reducing conditions, or high values (1 bar) for oxidizing conditions. Observe how the
     relative stability of phases changes.
@@ -604,7 +609,12 @@
     margin: 0 auto 1rem auto;
   }
   @media (max-width: 1100px) {
-    .ternary-grid, .quaternary-grid, .binary-grid, .highlight-grid, .temp-grid, .gas-grid {
+    .ternary-grid,
+    .quaternary-grid,
+    .binary-grid,
+    .highlight-grid,
+    .temp-grid,
+    .gas-grid {
       grid-template-columns: 1fr;
     }
     .stats-example-grid {
