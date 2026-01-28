@@ -536,9 +536,16 @@
   }
   /* Clip threlte HTML overlays (b₁/b₂/b₃ labels) when they fall outside canvas bounds.
   Targets threlte-generated container (parent of canvas), not main wrapper
-  so control pane can still be dragged outside component bounds. */
-  .fermi-surface :global(> div:has(> canvas)) {
+  so control pane can still be dragged outside component bounds.
+  Fallback for browsers without :has() - targets any direct child div */
+  .fermi-surface :global(> div) {
     overflow: hidden;
+  }
+  /* Modern browsers: reset overflow for non-canvas containers */
+  @supports selector(:has(> canvas)) {
+    .fermi-surface :global(> div:not(:has(> canvas))) {
+      overflow: visible;
+    }
   }
   .fermi-surface.active {
     z-index: var(--fermi-active-z-index, 2);
