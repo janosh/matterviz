@@ -212,6 +212,69 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
     Structure::try_new_with_properties(lattice, species, frac_coords, properties)
 }
 
+/// Serialize a structure to pymatgen's JSON format.
+///
+/// Produces JSON compatible with pymatgen's `Structure.from_dict()`.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to serialize
+///
+/// # Returns
+///
+/// JSON string in pymatgen format.
+pub fn structure_to_pymatgen_json(structure: &Structure) -> String {
+    use serde_json::{Value, json};
+
+    // Build lattice
+    let mat = structure.lattice.matrix();
+    let lattice = json!({
+        "matrix": [
+            [mat[(0, 0)], mat[(0, 1)], mat[(0, 2)]],
+            [mat[(1, 0)], mat[(1, 1)], mat[(1, 2)]],
+            [mat[(2, 0)], mat[(2, 1)], mat[(2, 2)]]
+        ],
+        "pbc": structure.lattice.pbc
+    });
+
+    // Build sites
+    let sites: Vec<Value> = structure
+        .species
+        .iter()
+        .zip(structure.frac_coords.iter())
+        .map(|(sp, coord)| {
+            let mut species_entry = json!({
+                "element": sp.element.symbol(),
+                "occu": 1.0
+            });
+            if let Some(oxi) = sp.oxidation_state {
+                species_entry["oxidation_state"] = json!(oxi);
+            }
+
+            json!({
+                "species": [species_entry],
+                "abc": [coord.x, coord.y, coord.z],
+                "properties": {}
+            })
+        })
+        .collect();
+
+    // Build structure properties
+    let properties: serde_json::Map<String, Value> =
+        structure.properties.clone().into_iter().collect();
+
+    // Build full structure
+    let result = json!({
+        "@module": "pymatgen.core.structure",
+        "@class": "Structure",
+        "lattice": lattice,
+        "sites": sites,
+        "properties": properties
+    });
+
+    result.to_string()
+}
+
 /// Parse a structure from a JSON file.
 ///
 /// # Arguments
@@ -273,56 +336,10 @@ pub fn parse_structures_glob(pattern: &str) -> Result<Vec<(String, Structure)>> 
 
 /// Serialize a structure to pymatgen JSON format.
 ///
-/// This produces JSON compatible with pymatgen's `Structure.from_dict()`.
-///
-/// # Arguments
-///
-/// * `structure` - The structure to serialize
-///
-/// # Returns
-///
-/// JSON string in pymatgen format.
+/// Alias for [`structure_to_pymatgen_json`] for backwards compatibility.
+#[inline]
 pub fn structure_to_json(structure: &Structure) -> String {
-    let mat = structure.lattice.matrix();
-
-    let sites: Vec<serde_json::Value> = structure
-        .species
-        .iter()
-        .zip(structure.frac_coords.iter())
-        .map(|(sp, fc)| {
-            let mut species_entry = serde_json::json!({
-                "element": sp.element.symbol()
-            });
-            if let Some(oxi) = sp.oxidation_state {
-                species_entry["oxidation_state"] = serde_json::json!(oxi);
-            }
-
-            serde_json::json!({
-                "species": [species_entry],
-                "abc": [fc[0], fc[1], fc[2]]
-            })
-        })
-        .collect();
-
-    let pbc = structure.lattice.pbc;
-    let properties: serde_json::Map<String, serde_json::Value> =
-        structure.properties.clone().into_iter().collect();
-
-    serde_json::json!({
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {
-            "matrix": [
-                [mat[(0,0)], mat[(0,1)], mat[(0,2)]],
-                [mat[(1,0)], mat[(1,1)], mat[(1,2)]],
-                [mat[(2,0)], mat[(2,1)], mat[(2,2)]]
-            ],
-            "pbc": [pbc[0], pbc[1], pbc[2]]
-        },
-        "sites": sites,
-        "properties": properties
-    })
-    .to_string()
+    structure_to_pymatgen_json(structure)
 }
 
 #[cfg(test)]

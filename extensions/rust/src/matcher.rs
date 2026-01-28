@@ -134,6 +134,8 @@ impl StructureMatcher {
     /// Matches pymatgen's `_get_reduced_structure` behavior:
     /// 1. Niggli reduction on the lattice
     /// 2. If `primitive_cell` is true, reduce to primitive cell via symmetry analysis
+    ///
+    /// Properties from the original structure are preserved.
     fn get_reduced_structure(&self, structure: &Structure) -> Structure {
         let mut result = structure.clone();
 
@@ -152,15 +154,17 @@ impl StructureMatcher {
         // Reduce to primitive cell if requested (skip empty structures)
         if self.primitive_cell
             && result.num_sites() > 0
-            && let Ok(prim) = result.get_primitive(1e-4)
+            && let Ok(mut prim) = result.get_primitive(1e-4)
         {
+            // Preserve properties from original structure
+            prim.properties = result.properties.clone();
             result = prim;
         }
 
         result
     }
 
-    /// Preprocess structures for matching.
+    /// Preprocess structures for matching (reduces then prepares pair).
     ///
     /// Returns (struct1, struct2, supercell_factor, s1_supercell)
     fn preprocess(
@@ -168,9 +172,22 @@ impl StructureMatcher {
         struct1: &Structure,
         struct2: &Structure,
     ) -> (Structure, Structure, usize, bool) {
-        let mut s1 = self.get_reduced_structure(struct1);
-        let mut s2 = self.get_reduced_structure(struct2);
+        let s1 = self.get_reduced_structure(struct1);
+        let s2 = self.get_reduced_structure(struct2);
+        self.preprocess_pair(s1, s2)
+    }
 
+    /// Prepare already-reduced structures for matching.
+    ///
+    /// Computes supercell factor and scales volumes. Use when structures have
+    /// already been reduced via `reduce_structure`.
+    ///
+    /// Returns (struct1, struct2, supercell_factor, s1_supercell)
+    fn preprocess_pair(
+        &self,
+        mut s1: Structure,
+        mut s2: Structure,
+    ) -> (Structure, Structure, usize, bool) {
         // Determine supercell factor with bounds checking
         // Maximum supercell factor to prevent extremely expensive computations
         const MAX_SUPERCELL_FACTOR: usize = 10;
@@ -204,8 +221,12 @@ impl StructureMatcher {
         let v1 = s1.lattice.volume();
         let v2 = s2.lattice.volume();
         if self.scale && v1 > f64::EPSILON && v2 > f64::EPSILON {
+            // PBC consistency check - prevents silent drift when scaling overwrites pbc
+            debug_assert_eq!(
+                s1.lattice.pbc, s2.lattice.pbc,
+                "PBC mismatch in preprocess_pair"
+            );
             let pbc = s1.lattice.pbc;
-            debug_assert_eq!(s1.lattice.pbc, s2.lattice.pbc, "PBC mismatch in preprocess");
             let ratio = (v2 / (v1 * mult)).powf(1.0 / 6.0);
             s1.lattice = Lattice::new(*s1.lattice.matrix() * ratio);
             s1.lattice.pbc = pbc;
@@ -213,7 +234,7 @@ impl StructureMatcher {
             s2.lattice.pbc = pbc;
         }
 
-        (s1, s2, supercell_factor.max(1), s1_supercell)
+        (s1, s2, supercell_factor, s1_supercell)
     }
 
     /// Create a mask for species matching.
@@ -515,28 +536,11 @@ impl StructureMatcher {
     /// Empty structures (with no sites) always return `false` since there are no
     /// atoms to compare for structural equivalence.
     pub fn fit(&self, struct1: &Structure, struct2: &Structure) -> bool {
-        // Preprocess first (Niggli reduction, optionally primitive cell reduction)
-        let (s1, s2, supercell_factor, s1_supercell) = self.preprocess(struct1, struct2);
-
-        // Composition check on reduced structures
-        let comp1 = s1.composition();
-        let comp2 = s2.composition();
-        if comp1 != comp2 {
-            return false;
-        }
-
-        // Site count check on reduced structures (without supercell)
-        if !self.attempt_supercell && s1.num_sites() != s2.num_sites() {
-            return false;
-        }
-
-        if let Some((val, _, _)) =
-            self.match_internal(&s1, &s2, supercell_factor, s1_supercell, true, false)
-        {
-            val <= self.site_pos_tol
-        } else {
-            false
-        }
+        // Reduce structures then delegate to fit_preprocessed
+        self.fit_preprocessed(
+            &self.get_reduced_structure(struct1),
+            &self.get_reduced_structure(struct2),
+        )
     }
 
     /// Get the RMS distance between two structures.
@@ -546,15 +550,11 @@ impl StructureMatcher {
     /// `Some((rms, max_dist))` if structures match, `None` otherwise.
     pub fn get_rms_dist(&self, struct1: &Structure, struct2: &Structure) -> Option<(f64, f64)> {
         let (s1, s2, supercell_factor, s1_supercell) = self.preprocess(struct1, struct2);
-
-        if let Some((rms, distances, _)) =
-            self.match_internal(&s1, &s2, supercell_factor, s1_supercell, false, true)
-        {
-            let max_dist = distances.iter().cloned().fold(0.0, f64::max);
-            Some((rms, max_dist))
-        } else {
-            None
-        }
+        self.match_internal(&s1, &s2, supercell_factor, s1_supercell, false, true)
+            .map(|(rms, distances, _)| {
+                let max_dist = distances.iter().cloned().fold(0.0, f64::max);
+                (rms, max_dist)
+            })
     }
 
     /// Check if two structures match under any species permutation.
@@ -572,6 +572,47 @@ impl StructureMatcher {
             "fit_anonymous is not yet implemented. \
              Anonymous matching with species permutation is planned for a future release."
         )
+    }
+
+    /// Check if two already-reduced structures match.
+    ///
+    /// This is an optimization for batch operations where structures have already
+    /// been preprocessed with `reduce_structure`. Skips redundant Niggli reduction
+    /// and primitive cell reduction.
+    ///
+    /// # Arguments
+    ///
+    /// * `reduced1` - First structure (already Niggli reduced + primitive cell if enabled)
+    /// * `reduced2` - Second structure (already preprocessed)
+    ///
+    /// # Note
+    ///
+    /// Use this when you've already called `reduce_structure` on both inputs.
+    /// For general use, prefer `fit` which handles preprocessing automatically.
+    pub fn fit_preprocessed(&self, reduced1: &Structure, reduced2: &Structure) -> bool {
+        // Use preprocess_pair to handle supercell factor and volume scaling
+        let (s1, s2, supercell_factor, s1_supercell) =
+            self.preprocess_pair(reduced1.clone(), reduced2.clone());
+
+        // Composition check
+        if s1.composition() != s2.composition() {
+            return false;
+        }
+
+        // Site count check (without supercell)
+        if !self.attempt_supercell && s1.num_sites() != s2.num_sites() {
+            return false;
+        }
+
+        self.match_internal(&s1, &s2, supercell_factor, s1_supercell, true, false)
+            .is_some_and(|(val, _, _)| val <= self.site_pos_tol)
+    }
+
+    /// Apply Niggli reduction and optionally primitive cell reduction.
+    ///
+    /// Use this to preprocess structures before calling `fit_preprocessed`.
+    pub fn reduce_structure(&self, structure: &Structure) -> Structure {
+        self.get_reduced_structure(structure)
     }
 }
 

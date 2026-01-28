@@ -1,6 +1,6 @@
 [package]
 name = "ferrox"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 authors = ["Janosh Riebesell <janosh@lbl.gov>"]
 description = "High-performance structure matching for crystallographic data"
