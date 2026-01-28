@@ -799,6 +799,10 @@ def main() -> None:
     run_category_g_rms_consistency()
     run_cross_file_comparisons(all_structures)
 
+    # Test new APIs (find_matches, reduce_structure)
+    test_find_matches()
+    test_reduce_structure()
+
     elapsed = time.time() - start_time
 
     # Print results
@@ -1000,7 +1004,11 @@ def run_regression_tests() -> dict[str, bool]:
         ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=False
     )
     rust_matcher_noscale = RustMatcher(
-        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False, scale=False
+        latt_len_tol=0.2,
+        site_pos_tol=0.3,
+        angle_tol=5.0,
+        primitive_cell=False,
+        scale=False,
     )
 
     def run_ltol_test(
@@ -1066,7 +1074,11 @@ def run_regression_tests() -> dict[str, bool]:
         ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=True
     )
     rust_matcher_scale = RustMatcher(
-        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False, scale=True
+        latt_len_tol=0.2,
+        site_pos_tol=0.3,
+        angle_tol=5.0,
+        primitive_cell=False,
+        scale=True,
     )
 
     # Different angles should not match even after scaling
@@ -1103,6 +1115,88 @@ def run_regression_tests() -> dict[str, bool]:
     print(f"  Total: {sum(results.values())}/{len(results)}")
 
     return results
+
+
+def test_find_matches() -> None:
+    """Test find_matches API for matching new structures against existing."""
+    print("\n=== Testing find_matches API ===")
+
+    matcher = RustMatcher(
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=True
+    )
+
+    # Create existing structures (already deduplicated)
+    nacl = Structure(Lattice.cubic(5.64), ["Na", "Cl"], [[0, 0, 0], [0.5, 0.5, 0.5]])
+    fe_bcc = Structure(Lattice.cubic(2.87), ["Fe", "Fe"], [[0, 0, 0], [0.5, 0.5, 0.5]])
+    cu_fcc = Structure(Lattice.cubic(3.6), ["Cu"], [[0, 0, 0]])
+
+    existing = [nacl, fe_bcc, cu_fcc]
+    existing_json = [json.dumps(s.as_dict()) for s in existing]
+
+    # Create new structures: some match, some unique
+    nacl_shifted = Structure(
+        Lattice.cubic(5.64), ["Na", "Cl"], [[0.1, 0.1, 0.1], [0.6, 0.6, 0.6]]
+    )
+    si = Structure(Lattice.cubic(5.43), ["Si"], [[0, 0, 0]])  # unique
+
+    new = [nacl_shifted, fe_bcc, si]
+    new_json = [json.dumps(s.as_dict()) for s in new]
+
+    matches = matcher.find_matches(new_json, existing_json)
+    expected = [0, 1, None]  # nacl->0, fe->1, si->None
+
+    assert matches == expected, f"find_matches failed: {matches} != {expected}"
+    print("  find_matches: PASSED")
+
+    # Test empty inputs
+    assert matcher.find_matches([], existing_json) == []
+    assert matcher.find_matches(new_json, []) == [None, None, None]
+    print("  find_matches empty inputs: PASSED")
+
+
+def test_reduce_structure() -> None:
+    """Test reduce_structure and skip_structure_reduction APIs."""
+    print("\n=== Testing reduce_structure API ===")
+
+    matcher = RustMatcher(
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=True
+    )
+
+    # Create structure with properties
+    nacl = Structure(Lattice.cubic(5.64), ["Na", "Cl"], [[0, 0, 0], [0.5, 0.5, 0.5]])
+    nacl.properties = {"energy": -5.5, "source": "DFT"}
+
+    json_str = json.dumps(nacl.as_dict())
+    reduced = matcher.reduce_structure(json_str)
+    reduced_dict = json.loads(reduced)
+
+    # Check structure is valid pymatgen format
+    assert "@module" in reduced_dict
+    assert "@class" in reduced_dict
+    assert "lattice" in reduced_dict
+    assert "sites" in reduced_dict
+    print("  reduce_structure format: PASSED")
+
+    # Check properties preserved
+    assert reduced_dict.get("properties") == {"energy": -5.5, "source": "DFT"}
+    print("  reduce_structure properties: PASSED")
+
+    # Test fit with skip_structure_reduction
+    reduced2 = matcher.reduce_structure(json_str)
+    assert matcher.fit(reduced, reduced2, skip_structure_reduction=True)
+    print("  fit with skip_structure_reduction: PASSED")
+
+    # Consistency: normal fit should match skip fit
+    nacl_shifted = Structure(
+        Lattice.cubic(5.64), ["Na", "Cl"], [[0.1, 0.1, 0.1], [0.6, 0.6, 0.6]]
+    )
+    json_shifted = json.dumps(nacl_shifted.as_dict())
+    reduced_shifted = matcher.reduce_structure(json_shifted)
+
+    normal_result = matcher.fit(json_str, json_shifted)
+    skip_result = matcher.fit(reduced, reduced_shifted, skip_structure_reduction=True)
+    assert normal_result == skip_result, "fit consistency failed"
+    print("  fit consistency: PASSED")
 
 
 if __name__ == "__main__":

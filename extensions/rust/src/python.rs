@@ -10,7 +10,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
-use crate::io::parse_structure_json;
+use crate::io::{parse_structure_json, structure_to_pymatgen_json};
 use crate::matcher::{ComparatorType, StructureMatcher};
 use crate::structure::Structure;
 
@@ -95,6 +95,8 @@ impl PyStructureMatcher {
     /// Args:
     ///     struct1: First structure as JSON string (from Structure.as_dict())
     ///     struct2: Second structure as JSON string
+    ///     skip_structure_reduction: If True, skip Niggli and primitive cell reduction.
+    ///         Only use this with structures from `reduce_structure()`. (default: False)
     ///
     /// Returns:
     ///     True if structures match within tolerances.
@@ -105,10 +107,20 @@ impl PyStructureMatcher {
     ///     >>> matcher = StructureMatcher()
     ///     >>> s1 = Structure(...)
     ///     >>> s2 = Structure(...)
+    ///     >>> # Normal usage
     ///     >>> matcher.fit(json.dumps(s1.as_dict()), json.dumps(s2.as_dict()))
-    fn fit(&self, struct1: &str, struct2: &str) -> PyResult<bool> {
+    ///     >>> # With pre-reduced structures (for batch comparisons)
+    ///     >>> r1 = matcher.reduce_structure(json.dumps(s1.as_dict()))
+    ///     >>> r2 = matcher.reduce_structure(json.dumps(s2.as_dict()))
+    ///     >>> matcher.fit(r1, r2, skip_structure_reduction=True)
+    #[pyo3(signature = (struct1, struct2, skip_structure_reduction = false))]
+    fn fit(&self, struct1: &str, struct2: &str, skip_structure_reduction: bool) -> PyResult<bool> {
         let (s1, s2) = parse_structure_pair(struct1, struct2)?;
-        Ok(self.inner.fit(&s1, &s2))
+        Ok(if skip_structure_reduction {
+            self.inner.fit_preprocessed(&s1, &s2)
+        } else {
+            self.inner.fit(&s1, &s2)
+        })
     }
 
     /// Get RMS distance between two structures.
@@ -136,10 +148,13 @@ impl PyStructureMatcher {
     ///     >>> structures = [s.as_dict() for s in my_structures]
     ///     >>> json_strs = [json.dumps(s) for s in structures]
     ///     >>> indices = matcher.deduplicate(json_strs)
-    fn deduplicate(&self, structures: Vec<String>) -> PyResult<Vec<usize>> {
-        self.inner
-            .deduplicate_json(&to_str_refs(&structures))
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+    fn deduplicate(&self, py: Python<'_>, structures: Vec<String>) -> PyResult<Vec<usize>> {
+        // Release GIL during heavy computation
+        py.allow_threads(|| {
+            self.inner
+                .deduplicate_json(&to_str_refs(&structures))
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        })
     }
 
     /// Group structures into equivalence classes.
@@ -154,11 +169,18 @@ impl PyStructureMatcher {
     ///     >>> groups = matcher.group(json_strs)
     ///     >>> for canonical, members in groups.items():
     ///     ...     print(f"Group {canonical}: {members}")
-    fn group(&self, structures: Vec<String>) -> PyResult<HashMap<usize, Vec<usize>>> {
-        self.inner
-            .group_json(&to_str_refs(&structures))
-            .map(|m| m.into_iter().collect())
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+    fn group(
+        &self,
+        py: Python<'_>,
+        structures: Vec<String>,
+    ) -> PyResult<HashMap<usize, Vec<usize>>> {
+        // Release GIL during heavy computation
+        py.allow_threads(|| {
+            self.inner
+                .group_json(&to_str_refs(&structures))
+                .map(|m| m.into_iter().collect())
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        })
     }
 
     /// Get unique structures from a list.
@@ -183,6 +205,77 @@ impl PyStructureMatcher {
             .collect();
 
         Ok(unique)
+    }
+
+    /// Find matches for new structures against existing (already-deduplicated) structures.
+    ///
+    /// This is optimized for the common deduplication scenario where you have a small
+    /// batch of new structures (~100) and a large set of existing structures (~28,000)
+    /// that are already deduplicated.
+    ///
+    /// Args:
+    ///     new_structures: List of new structure JSON strings to check
+    ///     existing_structures: List of existing (already-deduplicated) structure JSON strings
+    ///
+    /// Returns:
+    ///     List where result[i] is the index of the matching existing structure,
+    ///     or None if new structure i has no match.
+    ///
+    /// Example:
+    ///     >>> # 100 new structures, 28000 existing
+    ///     >>> matches = matcher.find_matches(new_json_strs, existing_json_strs)
+    ///     >>> for i, match_idx in enumerate(matches):
+    ///     ...     if match_idx is not None:
+    ///     ...         print(f"New {i} matches existing {match_idx}")
+    ///     ...     else:
+    ///     ...         print(f"New {i} is unique")
+    ///
+    /// Performance:
+    ///     - Skips comparing existing structures against each other (already deduplicated)
+    ///     - Uses composition hashing to filter candidates
+    ///     - Early termination on first match
+    ///     - Parallelized across new structures
+    fn find_matches(
+        &self,
+        py: Python<'_>,
+        new_structures: Vec<String>,
+        existing_structures: Vec<String>,
+    ) -> PyResult<Vec<Option<usize>>> {
+        // Release GIL during heavy computation to allow other Python threads to run
+        py.allow_threads(|| {
+            self.inner
+                .find_matches_json(
+                    &to_str_refs(&new_structures),
+                    &to_str_refs(&existing_structures),
+                )
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        })
+    }
+
+    /// Apply Niggli reduction and optionally primitive cell reduction to a structure.
+    ///
+    /// Use this to pre-reduce structures before calling `fit(..., skip_structure_reduction=True)`.
+    /// This is an optimization for comparing many structures - reduce once, compare many times.
+    ///
+    /// Args:
+    ///     structure: Structure as JSON string (from Structure.as_dict())
+    ///
+    /// Returns:
+    ///     Reduced structure as JSON string (pymatgen-compatible format).
+    ///
+    /// Example:
+    ///     >>> # Pre-reduce structures for batch comparison
+    ///     >>> reduced_structs = [matcher.reduce_structure(s) for s in json_strs]
+    ///     >>> # Now compare without redundant reduction
+    ///     >>> for i, s1 in enumerate(reduced_structs):
+    ///     ...     for s2 in reduced_structs[i+1:]:
+    ///     ...         matcher.fit(s1, s2, skip_structure_reduction=True)
+    fn reduce_structure(&self, py: Python<'_>, structure: &str) -> PyResult<String> {
+        let s = parse_structure_json(structure)
+            .map_err(|e| PyValueError::new_err(format!("Error parsing structure: {e}")))?;
+        // Release GIL during reduction (supports batch usage in loops)
+        let reduced = py.allow_threads(|| self.inner.reduce_structure(&s));
+        Ok(structure_to_pymatgen_json(&reduced))
     }
 
     fn __repr__(&self) -> String {
