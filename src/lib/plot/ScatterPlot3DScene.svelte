@@ -315,6 +315,28 @@
     return Object.values(groups)
   })
 
+  // Projection settings - render point shadows on background planes
+  let proj_opacity = $derived(display.projection_opacity ?? 0.3)
+  let proj_scale = $derived(display.projection_scale ?? 0.5)
+
+  // Projection plane configs: each fixes one axis to the backside position
+  type ProjectionConfig = {
+    key: `xy` | `xz` | `yz`
+    get_pos: (pt: InternalPoint3D<Metadata>) => Vec3
+  }
+  let projection_configs = $derived(
+    ([`xy`, `xz`, `yz`] as const)
+      .filter((key) => display.projections?.[key])
+      .map((key): ProjectionConfig => ({
+        key,
+        get_pos: key === `xy`
+          ? (pt) => [pt.x, pos.y, pt.z]
+          : key === `xz`
+          ? (pt) => [pt.x, pt.y, pos.z]
+          : (pt) => [pos.x, pt.y, pt.z],
+      })),
+  )
+
   // Series line data for connecting points
   type SeriesLineData = {
     series_idx: number
@@ -481,12 +503,12 @@
     if (data) on_point_click?.(data)
   }
 
-  // Gizmo props
+  // Gizmo props - parent (ScatterPlot3D) handles className and ColorBar offset adjustments
   let gizmo_props = $derived(
-    typeof gizmo === `boolean`
-      ? gizmo
-        ? { background: { enabled: false }, offset: { left: 5, bottom: 5 } }
-        : null
+    gizmo === false
+      ? null
+      : gizmo === true
+      ? { background: { enabled: false }, offset: { left: 5, bottom: 5 } }
       : gizmo,
   )
 
@@ -795,6 +817,23 @@
       />
     {/each}
   </extras.InstancedMesh>
+{/each}
+
+<!-- Plane Projections - render point shadows on enabled background planes -->
+{#each projection_configs as { key, get_pos } (key)}
+  {#each radius_groups as group (group.radius)}
+    <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
+      <T.SphereGeometry args={[1, 8, 8]} />
+      <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
+      {#each group.points as point, idx (`${key}-${point.series_idx}-${point.point_idx}`)}
+        <extras.Instance
+          position={get_pos(point)}
+          scale={group.radius * proj_scale}
+          color={group.colors[idx]}
+        />
+      {/each}
+    </extras.InstancedMesh>
+  {/each}
 {/each}
 
 <!-- Hover highlight -->
