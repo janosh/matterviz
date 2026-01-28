@@ -530,11 +530,11 @@ impl Lattice {
                 // Ensure positive determinant (right-handed coordinate system).
                 // The mapping may flip handedness; negating the matrix restores it.
                 // This preserves volume sign convention and is consistent with pymatgen.
-                if aligned.matrix.determinant() > 0.0 {
-                    return Ok(aligned);
+                return if aligned.matrix.determinant() > 0.0 {
+                    Ok(aligned)
                 } else {
-                    return Ok(Self::new(-aligned.matrix));
-                }
+                    Ok(Self::new(-aligned.matrix))
+                };
             }
 
             // Fallback if no mapping found
@@ -718,7 +718,7 @@ impl Lattice {
             dist_a.cmp(&dist_b)
         });
 
-        Some(mappings.into_iter().next().unwrap())
+        mappings.into_iter().next()
     }
 }
 

@@ -3,6 +3,9 @@
 //! This module provides PyO3 bindings to expose the Rust StructureMatcher
 //! to Python code.
 
+// PyO3 proc macros generate code that triggers false positive clippy warnings
+#![allow(clippy::useless_conversion)]
+
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::collections::HashMap;
@@ -18,6 +21,11 @@ fn parse_structure_pair(struct1: &str, struct2: &str) -> PyResult<(Structure, St
     let s2 = parse_structure_json(struct2)
         .map_err(|e| PyValueError::new_err(format!("Error parsing struct2: {e}")))?;
     Ok((s1, s2))
+}
+
+/// Convert Vec<String> to Vec<&str> for batch operations.
+fn to_str_refs(strings: &[String]) -> Vec<&str> {
+    strings.iter().map(|s| s.as_str()).collect()
 }
 
 /// Python wrapper for StructureMatcher.
@@ -131,9 +139,8 @@ impl PyStructureMatcher {
     ///     >>> json_strs = [json.dumps(s) for s in structures]
     ///     >>> indices = matcher.deduplicate(json_strs)
     fn deduplicate(&self, structures: Vec<String>) -> PyResult<Vec<usize>> {
-        let str_refs: Vec<&str> = structures.iter().map(|s| s.as_str()).collect();
         self.inner
-            .deduplicate_json(&str_refs)
+            .deduplicate_json(&to_str_refs(&structures))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -150,9 +157,8 @@ impl PyStructureMatcher {
     ///     >>> for canonical, members in groups.items():
     ///     ...     print(f"Group {canonical}: {members}")
     fn group(&self, structures: Vec<String>) -> PyResult<HashMap<usize, Vec<usize>>> {
-        let str_refs: Vec<&str> = structures.iter().map(|s| s.as_str()).collect();
         self.inner
-            .group_json(&str_refs)
+            .group_json(&to_str_refs(&structures))
             .map(|m| m.into_iter().collect())
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -165,10 +171,9 @@ impl PyStructureMatcher {
     /// Returns:
     ///     List of indices of unique (first occurrence) structures.
     fn get_unique_indices(&self, structures: Vec<String>) -> PyResult<Vec<usize>> {
-        let str_refs: Vec<&str> = structures.iter().map(|s| s.as_str()).collect();
         let dedup = self
             .inner
-            .deduplicate_json(&str_refs)
+            .deduplicate_json(&to_str_refs(&structures))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         // Get indices where result[i] == i (first occurrences)

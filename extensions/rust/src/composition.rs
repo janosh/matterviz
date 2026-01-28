@@ -69,7 +69,7 @@ impl Composition {
         sorted.sort_by(|(a, _), (b, _)| {
             let en_a = a.electronegativity().unwrap_or(f64::MAX);
             let en_b = b.electronegativity().unwrap_or(f64::MAX);
-            en_a.partial_cmp(&en_b).unwrap()
+            en_a.partial_cmp(&en_b).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         let mut formula = String::new();

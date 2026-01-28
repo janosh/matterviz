@@ -430,13 +430,11 @@ mod tests {
             (Element::F, Some(3.98)), // Most electronegative
             (Element::Fe, Some(1.83)),
             (Element::Au, Some(2.54)),
-            // Noble gases have no electronegativity
+            // Some noble gases have no electronegativity (stored as NaN)
             (Element::He, None),
             (Element::Ne, None),
             (Element::Ar, None),
-            (Element::Kr, None),
-            (Element::Xe, None),
-            (Element::Rn, None),
+            // Note: Kr, Xe, Rn have values in this dataset (some sources assign them)
         ];
 
         for (elem, expected) in known_values {
@@ -457,6 +455,16 @@ mod tests {
                     );
                 }
             }
+        }
+
+        // Verify electronegativity() returns None for elements with NaN
+        // (He=2, Ne=10, Ar=18 are confirmed NaN in the dataset)
+        for z in [2, 10, 18] {
+            let elem = Element::from_atomic_number(z).unwrap();
+            assert!(
+                elem.electronegativity().is_none(),
+                "{elem:?} (Z={z}) should have no electronegativity"
+            );
         }
     }
 }

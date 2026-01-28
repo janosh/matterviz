@@ -5,7 +5,7 @@
 
 use crate::error::OnError;
 use crate::lattice::Lattice;
-use crate::pbc::{is_coord_subset_pbc, pbc_shortest_vectors, wrap_frac_coord};
+use crate::pbc::{is_coord_subset_pbc, pbc_shortest_vectors, wrap_frac_coords};
 use crate::species::Species;
 use crate::structure::Structure;
 use nalgebra::{Matrix3, Vector3};
@@ -149,9 +149,7 @@ impl StructureMatcher {
             result.frac_coords = result.lattice.get_fractional_coords(&old_cart);
             // Wrap to [0, 1)
             for coord in &mut result.frac_coords {
-                for idx in 0..3 {
-                    coord[idx] = wrap_frac_coord(coord[idx]);
-                }
+                *coord = wrap_frac_coords(coord);
             }
         }
 
@@ -234,11 +232,12 @@ impl StructureMatcher {
         }
 
         // Find the row with the most masked (incompatible) entries
+        // Note: mask is guaranteed non-empty (checked at line 230), so unwrap is safe
         let (best_row, _) = mask
             .iter()
             .enumerate()
             .max_by_key(|(_, row)| row.iter().filter(|&&x| x).count())
-            .unwrap_or((0, &vec![]));
+            .unwrap();
 
         // Find unmasked indices in struct1 for this row
         let s1_inds: Vec<usize> = mask[best_row]
@@ -426,12 +425,12 @@ impl StructureMatcher {
             // Compute fractional coordinate tolerance
             let normalization =
                 (struct1.num_sites() as f64 / avg_lattice.volume()).powf(1.0 / 3.0);
-            let recip = avg_lattice.reciprocal();
-            let recip_lengths = recip.lengths();
+            let recip_lengths = avg_lattice.reciprocal().lengths();
+            let scale = self.site_pos_tol / (PI * normalization);
             let frac_coord_tol = [
-                recip_lengths[0] * self.site_pos_tol / (PI * normalization),
-                recip_lengths[1] * self.site_pos_tol / (PI * normalization),
-                recip_lengths[2] * self.site_pos_tol / (PI * normalization),
+                recip_lengths[0] * scale,
+                recip_lengths[1] * scale,
+                recip_lengths[2] * scale,
             ];
 
             // Get fractional coords in the aligned lattice
@@ -439,12 +438,10 @@ impl StructureMatcher {
             let mut s1_fc = latt.get_fractional_coords(&s1_cart);
             // Wrap to [0, 1)
             for coord in &mut s1_fc {
-                for idx in 0..3 {
-                    coord[idx] = wrap_frac_coord(coord[idx]);
-                }
+                *coord = wrap_frac_coords(coord);
             }
 
-            let s2_fc = struct2.frac_coords.clone();
+            let s2_fc = &struct2.frac_coords;
 
             // Try different translations
             for &s1i in &struct1_translation_indices {
@@ -469,7 +466,7 @@ impl StructureMatcher {
                             distances.iter().copied().fold(0.0, f64::max)
                         };
 
-                        if best_match.is_none() || val < best_match.as_ref().unwrap().0 {
+                        if best_match.as_ref().is_none_or(|m| val < m.0) {
                             best_match = Some((val, distances.clone(), mapping));
 
                             if (break_on_match || val < 1e-5) && val < self.site_pos_tol {
@@ -962,18 +959,35 @@ mod tests {
     #[test]
     fn test_fit_with_primitive_cell_option() {
         let fcc_conv = make_fcc_conventional(Element::Cu, 3.6);
-        let fcc_prim = make_simple_cubic(Element::Cu, 3.6 / (2.0_f64).sqrt()); // primitive cell
+        // FCC primitive cell has different lattice than simple cubic
+        let fcc_prim = Structure::new(
+            Lattice::from_parameters(
+                3.6 / (2.0_f64).sqrt(),
+                3.6 / (2.0_f64).sqrt(),
+                3.6 / (2.0_f64).sqrt(),
+                60.0, 60.0, 60.0,
+            ),
+            vec![Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
 
-        // Without primitive_cell option, they might not match due to different sizes
+        // Without primitive_cell option, conventional (4 atoms) vs primitive (1 atom)
+        // should NOT match due to different site counts (attempt_supercell=false by default)
         let matcher = StructureMatcher::new().with_primitive_cell(false);
         let result_no_prim = matcher.fit(&fcc_conv, &fcc_prim);
+        assert!(
+            !result_no_prim,
+            "Conv (4 sites) vs prim (1 site) should not match without supercell"
+        );
 
-        // With primitive_cell option enabled (if implemented)
-        let matcher_prim = StructureMatcher::new().with_primitive_cell(true);
-        let _result_prim = matcher_prim.fit(&fcc_conv, &fcc_prim);
+        // With attempt_supercell=true, they might match if supercell logic works
+        let matcher_supercell = StructureMatcher::new().with_attempt_supercell(true);
+        let _result_supercell = matcher_supercell.fit(&fcc_conv, &fcc_prim);
+        // Note: actual result depends on supercell implementation status
 
-        // At minimum, the matcher should not crash
-        assert!(result_no_prim || !result_no_prim); // tautology just to use the variable
+        // Same structure should always match
+        assert!(matcher.fit(&fcc_conv, &fcc_conv), "Same structure should match");
+        assert!(matcher.fit(&fcc_prim, &fcc_prim), "Same structure should match");
     }
 
     #[test]

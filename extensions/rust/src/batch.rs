@@ -94,19 +94,14 @@ impl UnionFind {
             // Atomically try to make small point to large
             // Expected: small is still its own root (parent[small] == small)
             // Desired: small points to large
-            match self.parent[small].compare_exchange(
-                small, // expected value
-                large, // new value
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => return true, // Successfully united
-                Err(_) => {
-                    // CAS failed: another thread modified parent[small]
-                    // Retry from the beginning to find new roots
-                    continue;
-                }
+            if self
+                .parent[small]
+                .compare_exchange(small, large, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                return true; // Successfully united
             }
+            // CAS failed: another thread modified parent[small], retry
         }
     }
 
@@ -198,12 +193,8 @@ impl StructureMatcher {
                     let idx_i = group[idx];
                     let idx_j = group[jdx];
 
-                    // Skip if already connected
-                    if uf.connected(idx_i, idx_j) {
-                        continue;
-                    }
-
-                    // Compare structures
+                    // Compare structures and union if they match
+                    // Note: union() is a no-op if already connected, so no pre-check needed
                     if self.fit(&structures[idx_i], &structures[idx_j]) {
                         uf.union(idx_i, idx_j);
                     }
@@ -216,8 +207,8 @@ impl StructureMatcher {
         let mut result = vec![0; len];
 
         for members in groups.values() {
-            // groups from UnionFind always have at least one member
-            let min_idx = members.iter().min().copied().unwrap_or(0);
+            // UnionFind groups always have at least one member, so unwrap is safe
+            let min_idx = members.iter().min().copied().unwrap();
             for &idx in members {
                 result[idx] = min_idx;
             }

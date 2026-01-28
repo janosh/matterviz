@@ -453,7 +453,10 @@ mod tests {
 
         // Lattice properties still work
         assert!((s.lattice.volume() - 64.0).abs() < 1e-10);
-        assert_eq!(s.lattice.lengths(), [4.0, 4.0, 4.0]);
+        let lengths = s.lattice.lengths();
+        assert!((lengths[0] - 4.0).abs() < 1e-10);
+        assert!((lengths[1] - 4.0).abs() < 1e-10);
+        assert!((lengths[2] - 4.0).abs() < 1e-10);
 
         // Spacegroup detection should work (returns P1 for empty)
         // Note: moyo may fail on empty structures, which is acceptable
