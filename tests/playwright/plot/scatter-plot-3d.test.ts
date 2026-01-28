@@ -46,7 +46,7 @@ test.describe(`ScatterPlot3D`, () => {
     await expect_canvas_changed(canvas, initial, get_canvas_timeout())
   })
 
-  // Verify CSS properties that enable gizmo clickability
+  // Parameterized CSS property tests for gizmo clickability
   for (
     const { selector, prop, expected, compare } of [
       { selector: `.scatter3d-gizmo`, prop: `zIndex`, expected: 1000, compare: `gte` },
@@ -84,12 +84,12 @@ test.describe(`ScatterPlot3D`, () => {
 
     const box = await canvas.boundingBox()
     if (!box) throw new Error(`Canvas bounding box not found`)
-    const cx = box.x + box.width / 2
-    const cy = box.y + box.height / 2
 
-    await page.mouse.move(cx, cy)
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
-    await page.mouse.move(cx + 100, cy + 50, { steps: 10 })
+    await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2 + 50, {
+      steps: 10,
+    })
     await page.mouse.up()
     await page.waitForTimeout(300)
 
@@ -109,13 +109,6 @@ test.describe(`ScatterPlot3D`, () => {
     await page.waitForTimeout(300)
 
     await expect_canvas_changed(canvas, initial, get_canvas_timeout())
-  })
-
-  test(`controls pane toggle visible on hover`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const container = page.locator(CONTAINER_SELECTOR)
-    await container.hover()
-    await expect(container.locator(`button.pane-toggle`)).toBeVisible({ timeout: 5000 })
   })
 
   test(`controls pane opens on toggle click`, async ({ page }) => {
@@ -143,47 +136,31 @@ async function open_controls_pane(page: import('@playwright/test').Page) {
   return pane
 }
 
+// Helper to get projection checkbox
+function get_projection_checkbox(
+  pane: import('@playwright/test').Locator,
+  plane: string,
+) {
+  return pane.locator(`label`).filter({ hasText: plane }).locator(
+    `input[type="checkbox"]`,
+  )
+}
+
 test.describe(`ScatterPlot3D Projections`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
   })
 
-  test(`projections section exists in controls pane`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const pane = await open_controls_pane(page)
-
-    // Find Projections section by title
-    const projections_section = pane.locator(`text=Projections`).first()
-    await expect(projections_section).toBeVisible()
-  })
-
-  test(`projection checkboxes are unchecked by default`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const pane = await open_controls_pane(page)
-
-    // Find projection checkboxes by their labels
-    for (const plane of [`XY`, `XZ`, `YZ`]) {
-      const checkbox = pane.locator(`label`).filter({ hasText: plane }).locator(
-        `input[type="checkbox"]`,
-      )
-      // deno-lint-ignore no-await-in-loop -- sequential verification required
-      await expect(checkbox).not.toBeChecked()
-    }
-  })
-
-  // Test each projection plane toggle
+  // Parameterized tests for each projection plane toggle
   for (const plane of [`XY`, `XZ`, `YZ`] as const) {
     test(`toggling ${plane} projection changes canvas`, async ({ page }) => {
       const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
       await wait_for_canvas_rendered(canvas)
       const pane = await open_controls_pane(page)
-
       const initial = await canvas.screenshot()
 
-      // Find and click the projection checkbox
-      const checkbox = pane.locator(`label`).filter({ hasText: plane }).locator(
-        `input[type="checkbox"]`,
-      )
+      const checkbox = get_projection_checkbox(pane, plane)
+      await expect(checkbox).not.toBeChecked() // verify default unchecked
       await checkbox.click()
       await expect(checkbox).toBeChecked()
       await page.waitForTimeout(200)
@@ -193,127 +170,83 @@ test.describe(`ScatterPlot3D Projections`, () => {
   }
 
   test(`multiple projections can be enabled simultaneously`, async ({ page }) => {
-    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await wait_for_canvas_rendered(canvas)
+    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     const pane = await open_controls_pane(page)
 
-    // Enable all three projections
     for (const plane of [`XY`, `XZ`, `YZ`]) {
-      const checkbox = pane.locator(`label`).filter({ hasText: plane }).locator(
-        `input[type="checkbox"]`,
-      )
+      const checkbox = get_projection_checkbox(pane, plane)
       // deno-lint-ignore no-await-in-loop -- sequential clicks required
       await checkbox.click()
       // deno-lint-ignore no-await-in-loop -- sequential verification required
       await expect(checkbox).toBeChecked()
     }
-
-    // Verify all are checked
-    for (const plane of [`XY`, `XZ`, `YZ`]) {
-      const checkbox = pane.locator(`label`).filter({ hasText: plane }).locator(
-        `input[type="checkbox"]`,
-      )
-      // deno-lint-ignore no-await-in-loop -- sequential verification required
-      await expect(checkbox).toBeChecked()
-    }
   })
 
-  test(`opacity slider has correct default value and range`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const pane = await open_controls_pane(page)
+  // Parameterized slider default and range tests
+  for (
+    const { name, idx, default_val, min, max } of [
+      { name: `opacity`, idx: 0, default_val: `0.3`, min: `0`, max: `1` },
+      { name: `size`, idx: 1, default_val: `0.5`, min: `0.1`, max: `1` },
+    ] as const
+  ) {
+    test(`${name} slider has correct defaults (${default_val}, ${min}-${max})`, async ({ page }) => {
+      await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+      const pane = await open_controls_pane(page)
 
-    const opacity_slider = pane.locator(`input[type="range"]`).first()
-    await expect(opacity_slider).toHaveValue(`0.3`)
-    await expect(opacity_slider).toHaveAttribute(`min`, `0`)
-    await expect(opacity_slider).toHaveAttribute(`max`, `1`)
-    await expect(opacity_slider).toHaveAttribute(`step`, `0.05`)
+      const slider = pane.locator(`input[type="range"]`).nth(idx)
+      await expect(slider).toHaveValue(default_val)
+      await expect(slider).toHaveAttribute(`min`, min)
+      await expect(slider).toHaveAttribute(`max`, max)
+      await expect(slider).toHaveAttribute(`step`, `0.05`)
 
-    const opacity_number = pane.locator(`input[type="number"]`).first()
-    await expect(opacity_number).toHaveValue(`0.3`)
-  })
+      const number_input = pane.locator(`input[type="number"]`).nth(idx)
+      await expect(number_input).toHaveValue(default_val)
+    })
+  }
 
-  test(`size slider has correct default value and range`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const pane = await open_controls_pane(page)
+  // Parameterized slider visual effect tests
+  for (
+    const { name, idx } of [
+      { name: `opacity`, idx: 0 },
+      { name: `size`, idx: 1 },
+    ] as const
+  ) {
+    test(`${name} slider changes projection appearance`, async ({ page }) => {
+      const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+      await wait_for_canvas_rendered(canvas)
+      const pane = await open_controls_pane(page)
 
-    // Size slider is the second range input in Projections section
-    const size_slider = pane.locator(`input[type="range"]`).nth(1)
-    await expect(size_slider).toHaveValue(`0.5`)
-    await expect(size_slider).toHaveAttribute(`min`, `0.1`)
-    await expect(size_slider).toHaveAttribute(`max`, `1`)
-    await expect(size_slider).toHaveAttribute(`step`, `0.05`)
+      // Enable XY projection first
+      await get_projection_checkbox(pane, `XY`).click()
+      await page.waitForTimeout(200)
+      const before = await canvas.screenshot()
 
-    const size_number = pane.locator(`input[type="number"]`).nth(1)
-    await expect(size_number).toHaveValue(`0.5`)
-  })
+      // Change slider to max
+      await pane.locator(`input[type="range"]`).nth(idx).fill(`1`)
+      await page.waitForTimeout(200)
 
-  test(`opacity slider changes projection appearance`, async ({ page }) => {
-    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await wait_for_canvas_rendered(canvas)
-    const pane = await open_controls_pane(page)
+      await expect_canvas_changed(canvas, before, get_canvas_timeout())
+    })
+  }
 
-    // Enable XY projection first
-    const xy_checkbox = pane.locator(`label`).filter({ hasText: `XY` }).locator(
-      `input[type="checkbox"]`,
-    )
-    await xy_checkbox.click()
-    await page.waitForTimeout(200)
+  // Parameterized number input sync tests
+  for (
+    const { name, idx, test_val } of [
+      { name: `opacity`, idx: 0, test_val: `0.7` },
+      { name: `size`, idx: 1, test_val: `0.8` },
+    ] as const
+  ) {
+    test(`${name} number input syncs with slider`, async ({ page }) => {
+      await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+      const pane = await open_controls_pane(page)
 
-    const before_opacity_change = await canvas.screenshot()
+      const number_input = pane.locator(`input[type="number"]`).nth(idx)
+      await number_input.fill(test_val)
+      await number_input.press(`Enter`)
 
-    // Change opacity to max
-    const opacity_slider = pane.locator(`input[type="range"]`).first()
-    await opacity_slider.fill(`1`)
-    await page.waitForTimeout(200)
-
-    await expect_canvas_changed(canvas, before_opacity_change, get_canvas_timeout())
-  })
-
-  test(`size slider changes projection appearance`, async ({ page }) => {
-    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await wait_for_canvas_rendered(canvas)
-    const pane = await open_controls_pane(page)
-
-    // Enable XY projection first
-    const xy_checkbox = pane.locator(`label`).filter({ hasText: `XY` }).locator(
-      `input[type="checkbox"]`,
-    )
-    await xy_checkbox.click()
-    await page.waitForTimeout(200)
-
-    const before_size_change = await canvas.screenshot()
-
-    // Change size to max
-    const size_slider = pane.locator(`input[type="range"]`).nth(1)
-    await size_slider.fill(`1`)
-    await page.waitForTimeout(200)
-
-    await expect_canvas_changed(canvas, before_size_change, get_canvas_timeout())
-  })
-
-  test(`opacity number input syncs with slider`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const pane = await open_controls_pane(page)
-
-    const opacity_number = pane.locator(`input[type="number"]`).first()
-    await opacity_number.fill(`0.7`)
-    await opacity_number.press(`Enter`)
-
-    const opacity_slider = pane.locator(`input[type="range"]`).first()
-    await expect(opacity_slider).toHaveValue(`0.7`)
-  })
-
-  test(`size number input syncs with slider`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    const pane = await open_controls_pane(page)
-
-    const size_number = pane.locator(`input[type="number"]`).nth(1)
-    await size_number.fill(`0.8`)
-    await size_number.press(`Enter`)
-
-    const size_slider = pane.locator(`input[type="range"]`).nth(1)
-    await expect(size_slider).toHaveValue(`0.8`)
-  })
+      await expect(pane.locator(`input[type="range"]`).nth(idx)).toHaveValue(test_val)
+    })
+  }
 
   test(`reset button resets projections to defaults`, async ({ page }) => {
     await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
@@ -321,33 +254,25 @@ test.describe(`ScatterPlot3D Projections`, () => {
 
     // Enable all projections and change sliders
     for (const plane of [`XY`, `XZ`, `YZ`]) {
-      const checkbox = pane.locator(`label`).filter({ hasText: plane }).locator(
-        `input[type="checkbox"]`,
-      )
       // deno-lint-ignore no-await-in-loop -- sequential clicks required
-      await checkbox.click()
+      await get_projection_checkbox(pane, plane).click()
     }
     const opacity_slider = pane.locator(`input[type="range"]`).first()
-    await opacity_slider.fill(`0.8`)
     const size_slider = pane.locator(`input[type="range"]`).nth(1)
+    await opacity_slider.fill(`0.8`)
     await size_slider.fill(`0.9`)
 
-    // Find and click reset button in Projections section
-    // Reset buttons are in SettingsSection headers
-    const projections_header = pane.locator(`text=Projections`).first()
-    const reset_btn = projections_header.locator(`..`).locator(`button[title="Reset"]`)
+    // Click reset button in Projections section
+    const reset_btn = pane.locator(`text=Projections`).first().locator(`..`).locator(
+      `button[title="Reset"]`,
+    )
     await reset_btn.click()
 
-    // Verify all checkboxes are unchecked
+    // Verify reset to defaults
     for (const plane of [`XY`, `XZ`, `YZ`]) {
-      const checkbox = pane.locator(`label`).filter({ hasText: plane }).locator(
-        `input[type="checkbox"]`,
-      )
       // deno-lint-ignore no-await-in-loop -- sequential verification required
-      await expect(checkbox).not.toBeChecked()
+      await expect(get_projection_checkbox(pane, plane)).not.toBeChecked()
     }
-
-    // Verify sliders are at defaults
     await expect(opacity_slider).toHaveValue(`0.3`)
     await expect(size_slider).toHaveValue(`0.5`)
   })
@@ -357,15 +282,11 @@ test.describe(`ScatterPlot3D Projections`, () => {
     await wait_for_canvas_rendered(canvas)
     const pane = await open_controls_pane(page)
 
-    // Enable XY projection
-    const xy_checkbox = pane.locator(`label`).filter({ hasText: `XY` }).locator(
-      `input[type="checkbox"]`,
-    )
+    const xy_checkbox = get_projection_checkbox(pane, `XY`)
     await xy_checkbox.click()
     await page.waitForTimeout(200)
     const with_projection = await canvas.screenshot()
 
-    // Disable XY projection
     await xy_checkbox.click()
     await expect(xy_checkbox).not.toBeChecked()
     await page.waitForTimeout(200)
@@ -380,32 +301,27 @@ test.describe(`ScatterPlot3D Projections`, () => {
 
     // Enable all projections
     for (const plane of [`XY`, `XZ`, `YZ`]) {
-      const checkbox = pane.locator(`label`).filter({ hasText: plane }).locator(
-        `input[type="checkbox"]`,
-      )
       // deno-lint-ignore no-await-in-loop -- sequential clicks required
-      await checkbox.click()
+      await get_projection_checkbox(pane, plane).click()
     }
     await page.waitForTimeout(200)
     const initial = await canvas.screenshot()
 
-    // Close pane to rotate canvas
+    // Close pane and rotate camera
     await page.keyboard.press(`Escape`)
     await page.waitForTimeout(100)
 
-    // Rotate camera by dragging
     const box = await canvas.boundingBox()
     if (!box) throw new Error(`Canvas bounding box not found`)
-    const cx = box.x + box.width / 2
-    const cy = box.y + box.height / 2
 
-    await page.mouse.move(cx, cy)
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
-    await page.mouse.move(cx + 150, cy + 100, { steps: 10 })
+    await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 + 100, {
+      steps: 10,
+    })
     await page.mouse.up()
     await page.waitForTimeout(300)
 
-    // Projections should have moved with camera (canvas should be different)
     await expect_canvas_changed(canvas, initial, get_canvas_timeout())
   })
 })
