@@ -437,11 +437,20 @@
     padding-top: var(--plot-fullscreen-padding-top, 2em);
     box-sizing: border-box;
   }
-  /* Threlte Canvas container needs flex: 1 to fill available space in flex layout */
-  div.scatter-3d > :global(div:has(> canvas)) {
+  /* Threlte Canvas container needs flex: 1 to fill available space in flex layout
+     Fallback for browsers without :has() - targets any direct child div */
+  div.scatter-3d > :global(div) {
     flex: 1;
     display: flex;
     flex-direction: column;
+  }
+  /* Modern browsers: more specific selector using :has() */
+  @supports selector(:has(> canvas)) {
+    div.scatter-3d > :global(div:not(:has(> canvas))) {
+      flex: initial;
+      display: initial;
+      flex-direction: initial;
+    }
   }
   div.scatter-3d :global(canvas) {
     width: 100% !important;

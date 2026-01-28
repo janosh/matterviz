@@ -864,6 +864,8 @@
   {onkeydown}
   {...rest}
   class="trajectory {actual_layout} {rest.class ?? ``}"
+  class:show-both-views={[`structure+scatter`, `structure+histogram`].includes(display_mode) &&
+  actual_show_plot && show_structure}
 >
   {#if loading}
     {@const text = parsing_progress
@@ -1457,8 +1459,15 @@
   }
   /* Responsive design */
   @media (orientation: portrait) {
-    .trajectory:has(.content-area.show-both:not(.hide-plot):not(.hide-structure)) {
+    /* Fallback class for browsers without :has() support */
+    .trajectory.show-both-views {
       min-height: calc(var(--min-height) * 2);
+    }
+    /* Modern browsers: use :has() for same effect */
+    @supports selector(:has(.content-area)) {
+      .trajectory:has(.content-area.show-both:not(.hide-plot):not(.hide-structure)) {
+        min-height: calc(var(--min-height) * 2);
+      }
     }
     .trajectory .content-area.show-both:not(.hide-plot):not(.hide-structure) {
       grid-template-columns: 1fr !important;

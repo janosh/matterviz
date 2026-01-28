@@ -270,8 +270,8 @@ test.describe(`ScatterPlot3D Projections`, () => {
     await opacity_row.locator(`input[type="range"]`).fill(`0.8`)
     await size_row.locator(`input[type="range"]`).fill(`0.9`)
 
-    // Click first reset button (Projections section is first with sliders)
-    await pane.locator(`button[title="Reset"]`).first().click()
+    // Click reset button in Projections section specifically
+    await pane.locator(`button[title="Reset projections to defaults"]`).click()
 
     // Verify reset to defaults
     for (const plane of [`XY`, `XZ`, `YZ`]) {

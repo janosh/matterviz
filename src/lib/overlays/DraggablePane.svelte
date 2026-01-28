@@ -386,8 +386,15 @@
     gap: 0.5em;
     align-items: center;
   }
-  .draggable-pane :global(label:has(input[type='range'])) {
+  /* Fallback class for browsers without :has() support */
+  .draggable-pane :global(label.range-label) {
     flex: 1;
+  }
+  /* Modern browsers: use :has() selector */
+  @supports selector(:has(input)) {
+    .draggable-pane :global(label:has(input[type='range'])) {
+      flex: 1;
+    }
   }
   .draggable-pane .control-buttons {
     display: flex;

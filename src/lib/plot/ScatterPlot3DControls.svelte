@@ -62,12 +62,11 @@
   let auto_y_range = $derived(calc_auto_range(all_y_values))
   let auto_z_range = $derived(calc_auto_range(all_z_values))
 
-  // Helpers to update properties - avoids verbose inline handlers
+  // Helpers to update display properties - avoids verbose inline handlers
   const update_display = (key: keyof DisplayConfig3D) => (event: Event) => {
-    display = {
-      ...display,
-      [key]: parseFloat((event.target as HTMLInputElement).value),
-    }
+    const parsed = parseFloat((event.target as HTMLInputElement).value)
+    // Guard against NaN when input is cleared - preserve existing value
+    if (!Number.isNaN(parsed)) display = { ...display, [key]: parsed }
   }
   const toggle_display = (key: keyof DisplayConfig3D) => () => {
     display = { ...display, [key]: !display[key] }
@@ -78,13 +77,13 @@
       projections: { ...display.projections, [plane]: !display.projections?.[plane] },
     }
   }
-  const update_axis_label = (
-    axis: { label?: string },
-    setter: (val: typeof axis) => void,
-  ) =>
-  (event: Event) => {
-    setter({ ...axis, label: (event.target as HTMLInputElement).value })
-  }
+
+  // Helper for axis label updates
+  const update_axis_label =
+    <T extends { label?: string }>(axis: T, setter: (val: T) => void) =>
+    (event: Event) => {
+      setter({ ...axis, label: (event.target as HTMLInputElement).value })
+    }
 </script>
 
 <DraggablePane
