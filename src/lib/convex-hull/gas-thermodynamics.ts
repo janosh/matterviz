@@ -49,8 +49,9 @@ interface TabulatedTSData {
   values: number[] // eV/molecule
 }
 
-// Default T*S data for common gases (converted to eV from literature values)
-// Source: Thermochemical tables (Barin, NBS)
+// Default T*S data for common gases (in eV/molecule)
+// Source: Barin Thermochemical Tables and NBS Thermochemical Tables
+// Data compiled to match PIRO (https://github.com/GENESIS-EFRC/piro)
 // Note: These values are T*S in eV/molecule
 // deno-fmt-ignore
 const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, TabulatedTSData>> = {
@@ -79,7 +80,7 @@ const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, TabulatedTSData>> = {
     values: [0, 0.1946, 0.1961, 0.2749, 0.357, 0.4419, 0.5293, 0.6189, 0.7107, 0.8045, 0.9001, 0.9975, 1.0966, 1.1972, 1.2994, 1.403, 1.5079, 1.6142, 1.7216, 1.8303],
   },
   F2: {
-    // F2 data approximated from similar diatomic gases
+    // F2 not in Barin/NBS tables used by PIRO - approximated from similar homonuclear diatomics (O2, N2)
     temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
     values: [0, 0.31, 0.312, 0.435, 0.56, 0.69, 0.82, 0.96, 1.1, 1.24, 1.38, 1.53, 1.68, 1.83, 1.98, 2.13, 2.29, 2.45, 2.61, 2.77],
   },
