@@ -1315,6 +1315,20 @@ O 0.0 -1.578 1.081
         let lengths = s.lattice.lengths();
         assert!((lengths.x - 4.916).abs() < 0.01);
         assert!((lengths.z - 5.405).abs() < 0.01);
+
+        // Verify fractional coordinates are sensible (within reasonable bounds)
+        // First Si at Cartesian (1.229, 0, 0) should have fractional x ≈ 0.25
+        assert!(
+            s.frac_coords[0].x > 0.1 && s.frac_coords[0].x < 0.5,
+            "First Si x-coord should be ~0.25, got {}",
+            s.frac_coords[0].x
+        );
+        // All fractional coordinates should be finite
+        for (idx, coord) in s.frac_coords.iter().enumerate() {
+            assert!(coord.x.is_finite(), "Site {idx} x not finite");
+            assert!(coord.y.is_finite(), "Site {idx} y not finite");
+            assert!(coord.z.is_finite(), "Site {idx} z not finite");
+        }
     }
 
     #[test]
