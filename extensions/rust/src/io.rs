@@ -761,6 +761,15 @@ mod tests {
     use super::*;
     use crate::element::Element;
 
+    // Helper to count elements in a structure
+    fn count_element(structure: &Structure, elem: Element) -> usize {
+        structure
+            .species
+            .iter()
+            .filter(|sp| sp.element == elem)
+            .count()
+    }
+
     #[test]
     fn test_parse_simple_structure() {
         let json = r#"{
@@ -1222,18 +1231,8 @@ Direct
         assert_eq!(s.num_sites(), 8);
 
         // Count elements
-        let na_count = s
-            .species
-            .iter()
-            .filter(|sp| sp.element == Element::Na)
-            .count();
-        let cl_count = s
-            .species
-            .iter()
-            .filter(|sp| sp.element == Element::Cl)
-            .count();
-        assert_eq!(na_count, 4);
-        assert_eq!(cl_count, 4);
+        assert_eq!(count_element(&s, Element::Na), 4);
+        assert_eq!(count_element(&s, Element::Cl), 4);
 
         // Check lattice constant (a = first length)
         let lengths = s.lattice.lengths();
@@ -1298,18 +1297,8 @@ O 0.0 -1.578 1.081
         assert_eq!(s.num_sites(), 6);
 
         // Count elements
-        let si_count = s
-            .species
-            .iter()
-            .filter(|sp| sp.element == Element::Si)
-            .count();
-        let o_count = s
-            .species
-            .iter()
-            .filter(|sp| sp.element == Element::O)
-            .count();
-        assert_eq!(si_count, 2);
-        assert_eq!(o_count, 4);
+        assert_eq!(count_element(&s, Element::Si), 2);
+        assert_eq!(count_element(&s, Element::O), 4);
 
         // Check lattice (a, b, c)
         let lengths = s.lattice.lengths();

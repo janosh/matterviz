@@ -119,19 +119,10 @@ fn parse_cif_float(content: &str, key: &str, path: &str) -> Result<f64> {
         reason: format!("Missing required field: {key}"),
     })?;
 
-    // Remove uncertainty in parentheses: "1.234(5)" -> "1.234"
-    let clean_value = if let Some(idx) = value_str.find('(') {
-        &value_str[..idx]
-    } else {
-        value_str
-    };
-
-    clean_value
-        .parse::<f64>()
-        .map_err(|e| FerroxError::ParseError {
-            path: path.to_string(),
-            reason: format!("Invalid value for {key}: '{value_str}' - {e}"),
-        })
+    parse_cif_float_opt(value_str).ok_or_else(|| FerroxError::ParseError {
+        path: path.to_string(),
+        reason: format!("Invalid value for {key}: '{value_str}'"),
+    })
 }
 
 /// Find a simple key-value pair in CIF content.
@@ -291,14 +282,10 @@ fn parse_cif_coord(value: Option<&str>, path: &str) -> Result<f64> {
     })
 }
 
-/// Try to parse a float from CIF, handling uncertainties.
+/// Try to parse a float from CIF, handling uncertainties like "1.234(5)".
 fn parse_cif_float_opt(value: &str) -> Option<f64> {
-    let clean = if let Some(idx) = value.find('(') {
-        &value[..idx]
-    } else {
-        value
-    };
-    clean.parse::<f64>().ok()
+    let clean = value.split_once('(').map_or(value, |(v, _)| v);
+    clean.parse().ok()
 }
 
 /// Split a CIF line by whitespace, respecting quotes.
@@ -339,29 +326,23 @@ fn split_cif_line(line: &str) -> Vec<&str> {
 }
 
 /// Clean element symbol by removing charge notation.
+/// Examples: "O2-" -> "O", "Fe3+" -> "Fe", "Ca1" -> "Ca"
 fn clean_element_symbol(symbol: &str) -> String {
-    // Remove digits and +/- at the end: "O2-" -> "O", "Fe3+" -> "Fe"
-    let mut result = String::new();
-    for ch in symbol.chars() {
-        if ch.is_alphabetic() {
-            result.push(ch);
-        } else {
-            break;
-        }
-    }
-
-    // Handle cases like "Ca1" -> "Ca"
-    if result.is_empty() {
-        // Fallback: take alphabetic prefix
-        result = symbol.chars().take_while(|c| c.is_alphabetic()).collect();
-    }
-
-    result
+    symbol.chars().take_while(|c| c.is_alphabetic()).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Helper to count elements in a structure
+    fn count_element(structure: &Structure, elem: Element) -> usize {
+        structure
+            .species
+            .iter()
+            .filter(|sp| sp.element == elem)
+            .count()
+    }
 
     #[test]
     fn test_parse_cif_float() {
@@ -378,11 +359,21 @@ mod tests {
 
     #[test]
     fn test_clean_element_symbol() {
+        // Basic elements
         assert_eq!(clean_element_symbol("O"), "O");
+        assert_eq!(clean_element_symbol("Na"), "Na");
+        assert_eq!(clean_element_symbol("Mn"), "Mn");
+        // With charge notation
         assert_eq!(clean_element_symbol("O2-"), "O");
         assert_eq!(clean_element_symbol("Fe3+"), "Fe");
+        assert_eq!(clean_element_symbol("Ti4+"), "Ti");
+        assert_eq!(clean_element_symbol("Fe2+"), "Fe");
+        // With numbers
         assert_eq!(clean_element_symbol("Ca1"), "Ca");
-        assert_eq!(clean_element_symbol("Na"), "Na");
+        assert_eq!(clean_element_symbol("Li1"), "Li");
+        assert_eq!(clean_element_symbol("O2"), "O");
+        // With parentheses
+        assert_eq!(clean_element_symbol("H(1)"), "H");
     }
 
     #[test]
@@ -458,18 +449,8 @@ loop_
         assert_eq!(structure.num_sites(), 6);
 
         // Count elements
-        let ti_count = structure
-            .species
-            .iter()
-            .filter(|sp| sp.element == Element::Ti)
-            .count();
-        let o_count = structure
-            .species
-            .iter()
-            .filter(|sp| sp.element == Element::O)
-            .count();
-        assert_eq!(ti_count, 2);
-        assert_eq!(o_count, 4);
+        assert_eq!(count_element(&structure, Element::Ti), 2);
+        assert_eq!(count_element(&structure, Element::O), 4);
 
         // Check lattice parameters
         let lengths = structure.lattice.lengths();
@@ -743,16 +724,5 @@ Cu 0.0 0.0 0.0
 
         // Volume should be a^3 = 64
         assert!((structure.lattice.volume() - 64.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_clean_element_symbol_complex() {
-        // More complex element symbol cleaning
-        assert_eq!(clean_element_symbol("Ti4+"), "Ti");
-        assert_eq!(clean_element_symbol("Fe2+"), "Fe");
-        assert_eq!(clean_element_symbol("Mn"), "Mn");
-        assert_eq!(clean_element_symbol("Li1"), "Li");
-        assert_eq!(clean_element_symbol("O2"), "O");
-        assert_eq!(clean_element_symbol("H(1)"), "H");
     }
 }
