@@ -191,9 +191,10 @@ test.describe(`BandsAndDos Component Tests`, () => {
       await page.locator(anchor).scrollIntoViewIfNeeded()
       const container = page.locator(`[data-testid="${testid}"]`)
       await expect(container).toBeVisible()
-      await page.waitForTimeout(500)
-
+      // Wait for plots to render rather than fixed delay
       const plots = container.locator(`.scatter`)
+      await expect(plots).toHaveCount(2)
+
       const bands_fermi = plots.first().locator(`.fermi-level-line`)
       const dos_fermi = plots.nth(1).locator(`.fermi-level-line`)
 

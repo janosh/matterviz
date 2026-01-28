@@ -131,7 +131,8 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
 
     const canvas = diagram.locator(`canvas`)
     const box = await canvas.boundingBox()
-    if (!box) return
+    expect(box, `Canvas bounding box not found - rendering may have failed`).toBeTruthy()
+    if (!box) throw new Error(`Canvas bounding box not found`)
 
     // Find an entry by scanning - selection indicates we hit one
     let entry_pos: { x: number; y: number } | null = null
@@ -149,7 +150,9 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
         }
       }
     }
-    if (!entry_pos) return // No selectable entry found
+    expect(entry_pos, `No selectable entry found - data may not be rendering`)
+      .toBeTruthy()
+    if (!entry_pos) throw new Error(`No selectable entry found`)
 
     // Clear selection by clicking corner
     await page.mouse.click(box.x + 5, box.y + 5)
