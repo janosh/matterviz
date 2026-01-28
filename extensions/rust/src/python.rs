@@ -270,10 +270,11 @@ impl PyStructureMatcher {
     ///     >>> for i, s1 in enumerate(reduced_structs):
     ///     ...     for s2 in reduced_structs[i+1:]:
     ///     ...         matcher.fit(s1, s2, skip_structure_reduction=True)
-    fn reduce_structure(&self, structure: &str) -> PyResult<String> {
+    fn reduce_structure(&self, py: Python<'_>, structure: &str) -> PyResult<String> {
         let s = parse_structure_json(structure)
             .map_err(|e| PyValueError::new_err(format!("Error parsing structure: {e}")))?;
-        let reduced = self.inner.reduce_structure(&s);
+        // Release GIL during reduction (supports batch usage in loops)
+        let reduced = py.allow_threads(|| self.inner.reduce_structure(&s));
         Ok(structure_to_pymatgen_json(&reduced))
     }
 
