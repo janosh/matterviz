@@ -218,24 +218,30 @@ test.describe(`ScatterPlot3D Projections`, () => {
     }
   })
 
-  test(`opacity slider has correct default value`, async ({ page }) => {
+  test(`opacity slider has correct default value and range`, async ({ page }) => {
     await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     const pane = await open_controls_pane(page)
 
     const opacity_slider = pane.locator(`input[type="range"]`).first()
     await expect(opacity_slider).toHaveValue(`0.3`)
+    await expect(opacity_slider).toHaveAttribute(`min`, `0`)
+    await expect(opacity_slider).toHaveAttribute(`max`, `1`)
+    await expect(opacity_slider).toHaveAttribute(`step`, `0.05`)
 
     const opacity_number = pane.locator(`input[type="number"]`).first()
     await expect(opacity_number).toHaveValue(`0.3`)
   })
 
-  test(`size slider has correct default value`, async ({ page }) => {
+  test(`size slider has correct default value and range`, async ({ page }) => {
     await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     const pane = await open_controls_pane(page)
 
     // Size slider is the second range input in Projections section
     const size_slider = pane.locator(`input[type="range"]`).nth(1)
     await expect(size_slider).toHaveValue(`0.5`)
+    await expect(size_slider).toHaveAttribute(`min`, `0.1`)
+    await expect(size_slider).toHaveAttribute(`max`, `1`)
+    await expect(size_slider).toHaveAttribute(`step`, `0.05`)
 
     const size_number = pane.locator(`input[type="number"]`).nth(1)
     await expect(size_number).toHaveValue(`0.5`)

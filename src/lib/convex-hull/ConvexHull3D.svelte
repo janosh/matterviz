@@ -1054,7 +1054,10 @@
     fullscreen = Boolean(document.fullscreenElement)
   }}
   onmousemove={handle_mouse_move}
-  onmouseup={() => is_dragging = false}
+  onmouseup={() => {
+    is_dragging = false
+    drag_started = false
+  }}
 />
 
 <div

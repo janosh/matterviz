@@ -494,8 +494,14 @@
       className: `scatter3d-gizmo`,
     }
     if (gizmo === true) return base
-    // Merge user-provided gizmo config with base (ensures className is always included)
-    return { ...base, ...gizmo, offset: { ...base.offset, ...gizmo.offset } }
+    // Merge user-provided gizmo config with base, preserving scatter3d-gizmo class
+    const merged_class = `scatter3d-gizmo ${gizmo.className ?? ``}`.trim()
+    return {
+      ...base,
+      ...gizmo,
+      offset: { ...base.offset, ...gizmo.offset },
+      className: merged_class,
+    }
   })
 
   // Orbit controls - snappy with minimal inertia
@@ -805,7 +811,7 @@
   </extras.InstancedMesh>
 {/each}
 
-<!-- XY Plane Projections (floor/ceiling) -->
+<!-- XY Plane Projections (floor/ceiling) - fix Z to pos.z, keep X and Y -->
 {#if display.projections?.xy}
   {#each radius_groups as group (group.radius)}
     <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
@@ -813,7 +819,7 @@
       <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
       {#each group.points as point, idx (`xy-${point.series_idx}-${point.point_idx}`)}
         <extras.Instance
-          position={[point.x, pos.y, point.z]}
+          position={[point.x, point.y, pos.z]}
           scale={group.radius * proj_scale}
           color={group.colors[idx]}
         />
@@ -822,7 +828,7 @@
   {/each}
 {/if}
 
-<!-- XZ Plane Projections (back wall) -->
+<!-- XZ Plane Projections (back wall) - fix Y to pos.y, keep X and Z -->
 {#if display.projections?.xz}
   {#each radius_groups as group (group.radius)}
     <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
@@ -830,7 +836,7 @@
       <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
       {#each group.points as point, idx (`xz-${point.series_idx}-${point.point_idx}`)}
         <extras.Instance
-          position={[point.x, point.y, pos.z]}
+          position={[point.x, pos.y, point.z]}
           scale={group.radius * proj_scale}
           color={group.colors[idx]}
         />

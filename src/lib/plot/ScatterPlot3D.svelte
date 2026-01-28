@@ -254,8 +254,14 @@
       className: `scatter3d-gizmo`,
     }
     if (gizmo === true) return base
-    // Merge user-provided gizmo config with adjusted offset
-    return { ...base, ...gizmo, offset: { ...base_offset, ...gizmo.offset } }
+    // Merge user-provided gizmo config, preserving scatter3d-gizmo class
+    const merged_class = `scatter3d-gizmo ${gizmo.className ?? ``}`.trim()
+    return {
+      ...base,
+      ...gizmo,
+      offset: { ...base_offset, ...gizmo.offset },
+      className: merged_class,
+    }
   })
 
   function toggle_series_visibility(idx: number) {
