@@ -33,6 +33,22 @@ pub enum FerroxError {
     /// Structure matching failed.
     #[error("Matching failed: {reason}")]
     MatchingError { reason: String },
+
+    /// File format parsing error.
+    #[error("Parse error in {path}: {reason}")]
+    ParseError { path: String, reason: String },
+
+    /// Unknown file format.
+    #[error("Unknown file format: {path}")]
+    UnknownFormat { path: String },
+
+    /// Missing lattice in structure file.
+    #[error("Missing lattice in {path}: crystal structures require lattice information")]
+    MissingLattice { path: String },
+
+    /// Empty file or no frames.
+    #[error("Empty file or no valid frames in {path}")]
+    EmptyFile { path: String },
 }
 
 /// Result type alias for ferrox operations.

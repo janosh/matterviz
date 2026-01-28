@@ -1,8 +1,15 @@
 //! I/O utilities for structure parsing.
 //!
-//! This module provides functions for parsing structures from various formats,
-//! primarily pymatgen's JSON format (Structure.as_dict()).
+//! This module provides functions for parsing structures from various formats:
+//! - Pymatgen JSON (`Structure.as_dict()`)
+//! - VASP POSCAR/CONTCAR
+//! - extXYZ (Extended XYZ format)
+//! - CIF (Crystallographic Information File)
+//!
+//! Use [`parse_structure`] for automatic format detection, or the format-specific
+//! functions for explicit control.
 
+use crate::cif::parse_cif;
 use crate::element::Element;
 use crate::error::{FerroxError, Result};
 use crate::lattice::Lattice;
@@ -11,6 +18,97 @@ use crate::structure::Structure;
 use nalgebra::Vector3;
 use serde::Deserialize;
 use std::path::Path;
+
+// ============================================================================
+// Unified API
+// ============================================================================
+
+/// Supported structure file formats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StructureFormat {
+    /// Pymatgen JSON format (`Structure.as_dict()`)
+    PymatgenJson,
+    /// VASP POSCAR/CONTCAR format
+    Poscar,
+    /// Extended XYZ format
+    ExtXyz,
+    /// Crystallographic Information File
+    Cif,
+}
+
+impl StructureFormat {
+    /// Detect format from file path (extension and filename).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    /// use ferrox::io::StructureFormat;
+    ///
+    /// assert_eq!(StructureFormat::from_path(Path::new("structure.json")), Some(StructureFormat::PymatgenJson));
+    /// assert_eq!(StructureFormat::from_path(Path::new("POSCAR")), Some(StructureFormat::Poscar));
+    /// assert_eq!(StructureFormat::from_path(Path::new("trajectory.xyz")), Some(StructureFormat::ExtXyz));
+    /// assert_eq!(StructureFormat::from_path(Path::new("diamond.cif")), Some(StructureFormat::Cif));
+    /// ```
+    pub fn from_path(path: &Path) -> Option<Self> {
+        // Check extension first
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            let ext_lower = ext.to_lowercase();
+            match ext_lower.as_str() {
+                "json" => return Some(Self::PymatgenJson),
+                "xyz" | "extxyz" => return Some(Self::ExtXyz),
+                "cif" => return Some(Self::Cif),
+                "vasp" => return Some(Self::Poscar),
+                _ => {}
+            }
+        }
+
+        // Check filename for POSCAR/CONTCAR
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            let name_upper = name.to_uppercase();
+            if name_upper.starts_with("POSCAR") || name_upper.starts_with("CONTCAR") {
+                return Some(Self::Poscar);
+            }
+        }
+
+        None
+    }
+}
+
+/// Parse a structure from a file with automatic format detection.
+///
+/// The format is detected based on:
+/// 1. File extension (`.json`, `.xyz`, `.cif`, `.vasp`)
+/// 2. Filename pattern (`POSCAR*`, `CONTCAR*`)
+///
+/// # Arguments
+///
+/// * `path` - Path to the structure file
+///
+/// # Returns
+///
+/// The parsed structure or an error if parsing fails.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use ferrox::io::parse_structure;
+/// use std::path::Path;
+///
+/// let structure = parse_structure(Path::new("structure.cif"))?;
+/// ```
+pub fn parse_structure(path: &Path) -> Result<Structure> {
+    let format = StructureFormat::from_path(path).ok_or_else(|| FerroxError::UnknownFormat {
+        path: path.display().to_string(),
+    })?;
+
+    match format {
+        StructureFormat::PymatgenJson => parse_structure_file(path),
+        StructureFormat::Poscar => parse_poscar(path),
+        StructureFormat::ExtXyz => parse_extxyz(path),
+        StructureFormat::Cif => parse_cif(path),
+    }
+}
 
 /// Represents a species entry in pymatgen JSON.
 #[derive(Debug, Deserialize)]
@@ -342,6 +440,322 @@ pub fn structure_to_json(structure: &Structure) -> String {
     structure_to_pymatgen_json(structure)
 }
 
+// ============================================================================
+// POSCAR Parser
+// ============================================================================
+
+/// Parse a structure from VASP POSCAR format.
+///
+/// Supports VASP 5+ format with element symbols. VASP 4 format (without symbols)
+/// is not supported and will return an error.
+///
+/// # Arguments
+///
+/// * `path` - Path to the POSCAR/CONTCAR file
+///
+/// # Returns
+///
+/// The parsed structure or an error if parsing fails.
+pub fn parse_poscar(path: &Path) -> Result<Structure> {
+    use std::io::BufReader;
+    use vasp_poscar::Poscar;
+
+    let file = std::fs::File::open(path)?;
+    let poscar =
+        Poscar::from_reader(BufReader::new(file)).map_err(|e| FerroxError::ParseError {
+            path: path.display().to_string(),
+            reason: format!("POSCAR parse error: {e}"),
+        })?;
+
+    poscar_to_structure(&poscar, path)
+}
+
+/// Parse a structure from POSCAR content string.
+///
+/// # Arguments
+///
+/// * `content` - POSCAR file content as string
+///
+/// # Returns
+///
+/// The parsed structure or an error if parsing fails.
+pub fn parse_poscar_str(content: &str) -> Result<Structure> {
+    use vasp_poscar::Poscar;
+
+    let poscar = Poscar::from_reader(content.as_bytes()).map_err(|e| FerroxError::ParseError {
+        path: "inline".to_string(),
+        reason: format!("POSCAR parse error: {e}"),
+    })?;
+
+    poscar_to_structure(&poscar, Path::new("inline"))
+}
+
+fn poscar_to_structure(poscar: &vasp_poscar::Poscar, path: &Path) -> Result<Structure> {
+    let raw = poscar.clone().into_raw();
+
+    // Get scaling factor
+    let scale = match raw.scale {
+        vasp_poscar::ScaleLine::Factor(f) => f,
+        vasp_poscar::ScaleLine::Volume(v) => {
+            // Calculate scale from volume
+            let det = raw.lattice_vectors[0][0]
+                * (raw.lattice_vectors[1][1] * raw.lattice_vectors[2][2]
+                    - raw.lattice_vectors[1][2] * raw.lattice_vectors[2][1])
+                - raw.lattice_vectors[0][1]
+                    * (raw.lattice_vectors[1][0] * raw.lattice_vectors[2][2]
+                        - raw.lattice_vectors[1][2] * raw.lattice_vectors[2][0])
+                + raw.lattice_vectors[0][2]
+                    * (raw.lattice_vectors[1][0] * raw.lattice_vectors[2][1]
+                        - raw.lattice_vectors[1][1] * raw.lattice_vectors[2][0]);
+            (v.abs() / det.abs()).powf(1.0 / 3.0)
+        }
+    };
+
+    // Build lattice matrix (row-major, scaled)
+    let vecs = &raw.lattice_vectors;
+    let matrix = nalgebra::Matrix3::new(
+        vecs[0][0] * scale,
+        vecs[0][1] * scale,
+        vecs[0][2] * scale,
+        vecs[1][0] * scale,
+        vecs[1][1] * scale,
+        vecs[1][2] * scale,
+        vecs[2][0] * scale,
+        vecs[2][1] * scale,
+        vecs[2][2] * scale,
+    );
+    let lattice = Lattice::new(matrix);
+
+    // Get element symbols - VASP 5+ required
+    let symbols = raw
+        .group_symbols
+        .as_ref()
+        .ok_or_else(|| FerroxError::ParseError {
+            path: path.display().to_string(),
+            reason: "VASP 4 format (no element symbols) not supported. Use VASP 5+ format."
+                .to_string(),
+        })?;
+
+    // Build species list (expand symbols by counts)
+    let mut species = Vec::new();
+    for (symbol, &count) in symbols.iter().zip(raw.group_counts.iter()) {
+        let element = Element::from_symbol(symbol).ok_or_else(|| FerroxError::ParseError {
+            path: path.display().to_string(),
+            reason: format!("Unknown element symbol: {symbol}"),
+        })?;
+        for _ in 0..count {
+            species.push(Species::neutral(element));
+        }
+    }
+
+    // Extract coordinates
+    let frac_coords: Vec<Vector3<f64>> = match &raw.positions {
+        vasp_poscar::Coords::Frac(coords) => coords
+            .iter()
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect(),
+        vasp_poscar::Coords::Cart(coords) => {
+            // Convert Cartesian to fractional
+            let cart_coords: Vec<Vector3<f64>> = coords
+                .iter()
+                .map(|c| Vector3::new(c[0] * scale, c[1] * scale, c[2] * scale))
+                .collect();
+            lattice.get_fractional_coords(&cart_coords)
+        }
+    };
+
+    Structure::try_new(lattice, species, frac_coords)
+}
+
+// ============================================================================
+// extXYZ Parser
+// ============================================================================
+
+/// Parse a single structure from an extXYZ file.
+///
+/// For multi-frame trajectory files, only the first frame is returned.
+/// Use [`parse_extxyz_trajectory`] to get all frames.
+///
+/// # Arguments
+///
+/// * `path` - Path to the XYZ/extXYZ file
+///
+/// # Returns
+///
+/// The parsed structure or an error if parsing fails.
+pub fn parse_extxyz(path: &Path) -> Result<Structure> {
+    let frames = parse_extxyz_trajectory(path)?;
+    frames
+        .into_iter()
+        .next()
+        .ok_or_else(|| FerroxError::EmptyFile {
+            path: path.display().to_string(),
+        })?
+}
+
+/// Parse all frames from an extXYZ trajectory file.
+///
+/// Returns a vector of structures for all frames in the file.
+///
+/// # Arguments
+///
+/// * `path` - Path to the XYZ/extXYZ file
+///
+/// # Returns
+///
+/// Vector of Result<Structure> for each frame.
+pub fn parse_extxyz_trajectory(path: &Path) -> Result<Vec<Result<Structure>>> {
+    let path_str = path.to_string_lossy().to_string();
+    // Use 0.. to read all frames
+    let frames = extxyz::read_xyz_frames(&path_str, 0..).map_err(|e| FerroxError::ParseError {
+        path: path.display().to_string(),
+        reason: format!("extXYZ read error: {e}"),
+    })?;
+
+    Ok(frames
+        .map(|frame| frame_to_structure(&frame, path))
+        .collect())
+}
+
+fn frame_to_structure(frame: &str, path: &Path) -> Result<Structure> {
+    let atoms = extxyz::RawAtoms::parse_from(frame).map_err(|e| FerroxError::ParseError {
+        path: path.display().to_string(),
+        reason: format!("extXYZ parse error: {e}"),
+    })?;
+
+    // Parse comment line for lattice and properties
+    let info: extxyz::Info = atoms.comment.parse().map_err(|e| FerroxError::ParseError {
+        path: path.display().to_string(),
+        reason: format!("extXYZ info parse error: {e}"),
+    })?;
+
+    // Extract lattice (REQUIRED for crystal structures)
+    let lattice_value = info
+        .get("Lattice")
+        .ok_or_else(|| FerroxError::MissingLattice {
+            path: path.display().to_string(),
+        })?;
+
+    // Parse lattice - format is "ax ay az bx by bz cx cy cz" as a JSON string or array
+    let lattice_str = match lattice_value {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(arr) => {
+            // Array of 9 numbers
+            arr.iter()
+                .filter_map(|v| v.as_f64().map(|f| f.to_string()))
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        _ => {
+            return Err(FerroxError::ParseError {
+                path: path.display().to_string(),
+                reason: "Lattice must be a string or array".to_string(),
+            });
+        }
+    };
+
+    let lattice_vals: Vec<f64> = lattice_str
+        .split_whitespace()
+        .map(|s| {
+            s.parse::<f64>().map_err(|e| FerroxError::ParseError {
+                path: path.display().to_string(),
+                reason: format!("Invalid lattice value '{s}': {e}"),
+            })
+        })
+        .collect::<Result<_>>()?;
+
+    if lattice_vals.len() != 9 {
+        return Err(FerroxError::ParseError {
+            path: path.display().to_string(),
+            reason: format!(
+                "Lattice must have 9 values (3x3 matrix), got {}",
+                lattice_vals.len()
+            ),
+        });
+    }
+
+    // Build lattice matrix (row-major: a, b, c as rows)
+    let matrix = nalgebra::Matrix3::new(
+        lattice_vals[0],
+        lattice_vals[1],
+        lattice_vals[2],
+        lattice_vals[3],
+        lattice_vals[4],
+        lattice_vals[5],
+        lattice_vals[6],
+        lattice_vals[7],
+        lattice_vals[8],
+    );
+    let mut lattice = Lattice::new(matrix);
+
+    // Parse PBC if present (default to [true, true, true])
+    if let Some(pbc_value) = info.get("pbc") {
+        lattice.pbc = parse_pbc_value(pbc_value);
+    }
+
+    // Parse species and coordinates
+    let mut species = Vec::with_capacity(atoms.atoms.len());
+    let mut cart_coords = Vec::with_capacity(atoms.atoms.len());
+
+    for atom in &atoms.atoms {
+        let element =
+            Element::from_symbol(atom.element).ok_or_else(|| FerroxError::ParseError {
+                path: path.display().to_string(),
+                reason: format!("Unknown element symbol: {}", atom.element),
+            })?;
+        species.push(Species::neutral(element));
+
+        // extXYZ uses Cartesian coordinates
+        cart_coords.push(Vector3::new(
+            atom.position[0],
+            atom.position[1],
+            atom.position[2],
+        ));
+    }
+
+    // Convert Cartesian to fractional using Lattice method
+    let frac_coords = lattice.get_fractional_coords(&cart_coords);
+
+    // Extract properties (energy, etc.)
+    let mut properties = std::collections::HashMap::new();
+    if let Some(energy_value) = info.get("energy")
+        && let Some(energy) = energy_value.as_f64()
+    {
+        properties.insert("energy".to_string(), serde_json::json!(energy));
+    }
+    // Store other info as properties
+    for (key, value) in info.raw_map().iter() {
+        if key != "Lattice" && key != "pbc" && key != "energy" && key != "Properties" {
+            properties.insert(key.to_string(), value.clone());
+        }
+    }
+
+    Structure::try_new_with_properties(lattice, species, frac_coords, properties)
+}
+
+fn parse_pbc_value(pbc_value: &serde_json::Value) -> [bool; 3] {
+    match pbc_value {
+        serde_json::Value::String(s) => {
+            let parts: Vec<&str> = s.split_whitespace().collect();
+            if parts.len() >= 3 {
+                [
+                    parts[0] == "T" || parts[0].eq_ignore_ascii_case("true"),
+                    parts[1] == "T" || parts[1].eq_ignore_ascii_case("true"),
+                    parts[2] == "T" || parts[2].eq_ignore_ascii_case("true"),
+                ]
+            } else {
+                [true, true, true]
+            }
+        }
+        serde_json::Value::Array(arr) if arr.len() >= 3 => [
+            arr[0].as_bool().unwrap_or(true),
+            arr[1].as_bool().unwrap_or(true),
+            arr[2].as_bool().unwrap_or(true),
+        ],
+        _ => [true, true, true],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,5 +1047,496 @@ mod tests {
         let s = parse_structure_json(json).unwrap();
         assert_eq!(s.num_sites(), 1);
         assert!((s.lattice.volume() - 27.0).abs() < 1e-10);
+    }
+
+    // ========================================================================
+    // POSCAR Parser Tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_poscar_cubic_diamond() {
+        let poscar = r#"cubic diamond
+  3.7
+    0.5 0.5 0.0
+    0.0 0.5 0.5
+    0.5 0.0 0.5
+   C
+   2
+Direct
+  0.0 0.0 0.0
+  0.25 0.25 0.25
+"#;
+        let s = parse_poscar_str(poscar).unwrap();
+        assert_eq!(s.num_sites(), 2);
+        assert_eq!(s.species[0].element, Element::C);
+        assert_eq!(s.species[1].element, Element::C);
+
+        // Check fractional coordinates
+        assert!((s.frac_coords[0].x - 0.0).abs() < 1e-10);
+        assert!((s.frac_coords[1].x - 0.25).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_poscar_nacl() {
+        let poscar = r#"NaCl
+   5.64
+     1.0  0.0  0.0
+     0.0  1.0  0.0
+     0.0  0.0  1.0
+   Na Cl
+   1 1
+Direct
+   0.0  0.0  0.0
+   0.5  0.5  0.5
+"#;
+        let s = parse_poscar_str(poscar).unwrap();
+        assert_eq!(s.num_sites(), 2);
+        assert_eq!(s.species[0].element, Element::Na);
+        assert_eq!(s.species[1].element, Element::Cl);
+
+        // Check volume (5.64^3)
+        assert!((s.lattice.volume() - 5.64f64.powi(3)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_parse_poscar_cartesian() {
+        // POSCAR with Cartesian coordinates
+        // Note: In POSCAR, Cartesian coords are already scaled by the lattice constant
+        // So (1.435, 1.435, 1.435) with scale 2.87 gives actual coords (4.12, 4.12, 4.12)
+        // which maps to fractional (0.5, 0.5, 0.5) with a=2.87*2=5.74
+        let poscar = r#"Fe BCC
+   2.87
+     1.0  0.0  0.0
+     0.0  1.0  0.0
+     0.0  0.0  1.0
+   Fe
+   2
+Cartesian
+   0.0     0.0     0.0
+   0.5     0.5     0.5
+"#;
+        let s = parse_poscar_str(poscar).unwrap();
+        assert_eq!(s.num_sites(), 2);
+        assert_eq!(s.species[0].element, Element::Fe);
+
+        // First atom at origin
+        assert!((s.frac_coords[0].x - 0.0).abs() < 1e-10);
+
+        // Second atom should be at (0.5, 0.5, 0.5) in fractional
+        // Cartesian (0.5, 0.5, 0.5) * scale 2.87 = (1.435, 1.435, 1.435) in Å
+        // Divide by lattice length 2.87 = (0.5, 0.5, 0.5) in fractional
+        assert!((s.frac_coords[1].x - 0.5).abs() < 1e-6);
+        assert!((s.frac_coords[1].y - 0.5).abs() < 1e-6);
+        assert!((s.frac_coords[1].z - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_parse_poscar_vasp4_error() {
+        // VASP 4 format without element symbols should error
+        let poscar = r#"Si
+   5.43
+     0.5 0.5 0.0
+     0.0 0.5 0.5
+     0.5 0.0 0.5
+   2
+Direct
+   0.0 0.0 0.0
+   0.25 0.25 0.25
+"#;
+        let result = parse_poscar_str(poscar);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("VASP 4 format"));
+    }
+
+    #[test]
+    fn test_parse_poscar_negative_scale_factor() {
+        // Negative scale factor means volume = |scale|
+        let poscar = r#"Test with volume scaling
+  -27.0
+    3.0 0.0 0.0
+    0.0 3.0 0.0
+    0.0 0.0 3.0
+   H
+   1
+Direct
+  0.0 0.0 0.0
+"#;
+        let s = parse_poscar_str(poscar).unwrap();
+        assert_eq!(s.num_sites(), 1);
+        // Volume should be 27.0 (scale factor applied)
+        assert!((s.lattice.volume() - 27.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_parse_poscar_multiple_elements() {
+        // BaTiO3 tetragonal structure
+        let poscar = r#"Ba1 Ti1 O3
+1.0
+4.001368 0.000000 0.000000
+0.000000 4.001368 0.000000
+0.000000 0.000000 4.215744
+Ba Ti O
+1 1 3
+direct
+0.000000 0.000000 0.020273
+0.500000 0.500000 0.538852
+0.000000 0.500000 0.492022
+0.500000 0.000000 0.492022
+0.500000 0.500000 0.970829
+"#;
+        let s = parse_poscar_str(poscar).unwrap();
+        assert_eq!(s.num_sites(), 5);
+        assert_eq!(s.species[0].element, Element::Ba);
+        assert_eq!(s.species[1].element, Element::Ti);
+        assert_eq!(s.species[2].element, Element::O);
+        assert_eq!(s.species[3].element, Element::O);
+        assert_eq!(s.species[4].element, Element::O);
+
+        // Check lattice parameters (a, b, c)
+        let lengths = s.lattice.lengths();
+        assert!((lengths.x - 4.001368).abs() < 1e-5);
+        assert!((lengths.z - 4.215744).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_parse_poscar_rocksalt_full() {
+        // Full NaCl structure (8 atoms)
+        let poscar = r#"Na Cl
+   1.00000000000000
+     5.6903014761756712    0.0000000000000000    0.0000000000000000
+     0.0000000000000000    5.6903014761756712    0.0000000000000000
+     0.0000000000000000    0.0000000000000000    5.6903014761756712
+  Na  Cl
+   4   4
+Direct
+  0.0000000000000000  0.0000000000000000  0.0000000000000000
+  0.0000000000000000  0.5000000000000000  0.5000000000000000
+  0.5000000000000000  0.0000000000000000  0.5000000000000000
+  0.5000000000000000  0.5000000000000000  0.0000000000000000
+  0.5000000000000000  0.5000000000000000  0.5000000000000000
+  0.5000000000000000  0.0000000000000000  0.0000000000000000
+  0.0000000000000000  0.5000000000000000  0.0000000000000000
+  0.0000000000000000  0.0000000000000000  0.5000000000000000
+"#;
+        let s = parse_poscar_str(poscar).unwrap();
+        assert_eq!(s.num_sites(), 8);
+
+        // Count elements
+        let na_count = s
+            .species
+            .iter()
+            .filter(|sp| sp.element == Element::Na)
+            .count();
+        let cl_count = s
+            .species
+            .iter()
+            .filter(|sp| sp.element == Element::Cl)
+            .count();
+        assert_eq!(na_count, 4);
+        assert_eq!(cl_count, 4);
+
+        // Check lattice constant (a = first length)
+        let lengths = s.lattice.lengths();
+        assert!((lengths.x - 5.6903014762).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_parse_poscar_selective_dynamics() {
+        // Selective dynamics (should be parsed but flags ignored)
+        let poscar = r#"Silicon slab with selective dynamics
+1.0
+   5.4689999999999999    0.0000000000000000    0.0000000000000000
+   0.0000000000000000    5.4689999999999999    0.0000000000000000
+   0.0000000000000000    0.0000000000000000   20.0000000000000000
+Si
+8
+Selective dynamics
+Direct
+0.000 0.000 0.100 F F F
+0.500 0.000 0.100 F F F
+0.000 0.500 0.100 F F F
+0.500 0.500 0.100 F F F
+0.250 0.250 0.150 T T T
+0.750 0.250 0.150 T T T
+0.250 0.750 0.150 T T T
+0.750 0.750 0.150 T T T
+"#;
+        let s = parse_poscar_str(poscar).unwrap();
+        assert_eq!(s.num_sites(), 8);
+        assert_eq!(s.species[0].element, Element::Si);
+
+        // Check some coordinates
+        assert!((s.frac_coords[0].x - 0.0).abs() < 1e-10);
+        assert!((s.frac_coords[0].z - 0.1).abs() < 1e-10);
+        assert!((s.frac_coords[4].x - 0.25).abs() < 1e-10);
+    }
+
+    // ========================================================================
+    // extXYZ Parser Tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_extxyz_quartz() {
+        // Quartz structure in extXYZ format
+        let extxyz = r#"6
+Lattice="4.916 0.0 0.0 -2.458 4.257 0.0 0.0 0.0 5.405" Properties=species:S:1:pos:R:3
+Si 1.229 0.0 0.0
+Si -1.229 2.128 2.703
+O 2.679 0.0 1.624
+O -2.679 2.128 4.327
+O 0.0 1.578 3.781
+O 0.0 -1.578 1.081
+"#;
+        // Write to temp file and parse
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join("test_quartz.xyz");
+        std::fs::write(&temp_path, extxyz).unwrap();
+
+        let s = parse_extxyz(&temp_path).unwrap();
+        std::fs::remove_file(&temp_path).ok();
+
+        assert_eq!(s.num_sites(), 6);
+
+        // Count elements
+        let si_count = s
+            .species
+            .iter()
+            .filter(|sp| sp.element == Element::Si)
+            .count();
+        let o_count = s
+            .species
+            .iter()
+            .filter(|sp| sp.element == Element::O)
+            .count();
+        assert_eq!(si_count, 2);
+        assert_eq!(o_count, 4);
+
+        // Check lattice (a, b, c)
+        let lengths = s.lattice.lengths();
+        assert!((lengths.x - 4.916).abs() < 0.01);
+        assert!((lengths.z - 5.405).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_extxyz_with_energy() {
+        // extXYZ with energy property
+        let extxyz = r#"2
+Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" energy=-10.5
+H 0.0 0.0 0.0
+O 2.5 2.5 2.5
+"#;
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join("test_with_energy.xyz");
+        std::fs::write(&temp_path, extxyz).unwrap();
+
+        let s = parse_extxyz(&temp_path).unwrap();
+        std::fs::remove_file(&temp_path).ok();
+
+        assert_eq!(s.num_sites(), 2);
+        // Check energy is preserved in properties
+        assert!(s.properties.contains_key("energy"));
+        assert_eq!(s.properties["energy"], serde_json::json!(-10.5));
+    }
+
+    #[test]
+    fn test_parse_extxyz_with_pbc() {
+        // extXYZ with PBC specification
+        let extxyz = r#"1
+Lattice="4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0" pbc="T T F"
+C 2.0 2.0 2.0
+"#;
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join("test_with_pbc.xyz");
+        std::fs::write(&temp_path, extxyz).unwrap();
+
+        let s = parse_extxyz(&temp_path).unwrap();
+        std::fs::remove_file(&temp_path).ok();
+
+        assert_eq!(s.num_sites(), 1);
+        assert_eq!(s.lattice.pbc, [true, true, false]);
+    }
+
+    #[test]
+    fn test_parse_extxyz_missing_lattice_error() {
+        // Plain XYZ without lattice should error for crystal structure
+        let xyz = r#"2
+Cyclohexane (no lattice)
+C 0.0 0.0 0.0
+H 1.0 0.0 0.0
+"#;
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join("test_no_lattice.xyz");
+        std::fs::write(&temp_path, xyz).unwrap();
+
+        let result = parse_extxyz(&temp_path);
+        std::fs::remove_file(&temp_path).ok();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("lattice"));
+    }
+
+    #[test]
+    fn test_parse_extxyz_trajectory() {
+        // Multi-frame trajectory
+        let extxyz = r#"2
+Lattice="4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0" energy=-5.0
+H 0.0 0.0 0.0
+H 2.0 2.0 2.0
+2
+Lattice="4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0" energy=-5.5
+H 0.1 0.1 0.1
+H 2.1 2.1 2.1
+"#;
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join("test_trajectory.xyz");
+        std::fs::write(&temp_path, extxyz).unwrap();
+
+        let frames = parse_extxyz_trajectory(&temp_path).unwrap();
+        std::fs::remove_file(&temp_path).ok();
+
+        assert_eq!(frames.len(), 2);
+
+        // Check first frame
+        let s1 = frames[0].as_ref().unwrap();
+        assert_eq!(s1.num_sites(), 2);
+        assert_eq!(s1.properties["energy"], serde_json::json!(-5.0));
+
+        // Check second frame
+        let s2 = frames[1].as_ref().unwrap();
+        assert_eq!(s2.num_sites(), 2);
+        assert_eq!(s2.properties["energy"], serde_json::json!(-5.5));
+    }
+
+    #[test]
+    fn test_parse_extxyz_cubic_lattice() {
+        // Simple cubic lattice with single atom
+        let extxyz = r#"1
+Lattice="3.0 0.0 0.0 0.0 3.0 0.0 0.0 0.0 3.0"
+Fe 1.5 1.5 1.5
+"#;
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join("test_cubic.xyz");
+        std::fs::write(&temp_path, extxyz).unwrap();
+
+        let s = parse_extxyz(&temp_path).unwrap();
+        std::fs::remove_file(&temp_path).ok();
+
+        assert_eq!(s.num_sites(), 1);
+        assert_eq!(s.species[0].element, Element::Fe);
+
+        // Check fractional coords (1.5 / 3.0 = 0.5)
+        assert!((s.frac_coords[0].x - 0.5).abs() < 1e-10);
+        assert!((s.frac_coords[0].y - 0.5).abs() < 1e-10);
+        assert!((s.frac_coords[0].z - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_extxyz_hexagonal_lattice() {
+        // Hexagonal lattice (non-orthogonal)
+        let a = 3.0;
+        let c = 5.0;
+        let extxyz = format!(
+            r#"1
+Lattice="{a} 0.0 0.0 {} {} 0.0 0.0 0.0 {c}"
+Mg 0.0 0.0 0.0
+"#,
+            -a / 2.0,
+            a * (3.0_f64).sqrt() / 2.0
+        );
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join("test_hex.xyz");
+        std::fs::write(&temp_path, &extxyz).unwrap();
+
+        let s = parse_extxyz(&temp_path).unwrap();
+        std::fs::remove_file(&temp_path).ok();
+
+        assert_eq!(s.num_sites(), 1);
+        // Atom at origin should have fractional coords (0, 0, 0)
+        assert!((s.frac_coords[0].x - 0.0).abs() < 1e-10);
+        assert!((s.frac_coords[0].y - 0.0).abs() < 1e-10);
+        assert!((s.frac_coords[0].z - 0.0).abs() < 1e-10);
+    }
+
+    // ========================================================================
+    // Format Detection Tests
+    // ========================================================================
+
+    #[test]
+    fn test_format_detection() {
+        assert_eq!(
+            StructureFormat::from_path(Path::new("structure.json")),
+            Some(StructureFormat::PymatgenJson)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("structure.cif")),
+            Some(StructureFormat::Cif)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("trajectory.xyz")),
+            Some(StructureFormat::ExtXyz)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("structure.extxyz")),
+            Some(StructureFormat::ExtXyz)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("structure.vasp")),
+            Some(StructureFormat::Poscar)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("POSCAR")),
+            Some(StructureFormat::Poscar)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("CONTCAR")),
+            Some(StructureFormat::Poscar)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("POSCAR.vasp")),
+            Some(StructureFormat::Poscar)
+        );
+        assert_eq!(StructureFormat::from_path(Path::new("unknown.txt")), None);
+    }
+
+    #[test]
+    fn test_format_detection_case_insensitive() {
+        // Extensions should be case-insensitive
+        assert_eq!(
+            StructureFormat::from_path(Path::new("structure.JSON")),
+            Some(StructureFormat::PymatgenJson)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("structure.CIF")),
+            Some(StructureFormat::Cif)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("structure.XYZ")),
+            Some(StructureFormat::ExtXyz)
+        );
+    }
+
+    #[test]
+    fn test_format_detection_poscar_variants() {
+        // Various POSCAR naming conventions
+        assert_eq!(
+            StructureFormat::from_path(Path::new("POSCAR")),
+            Some(StructureFormat::Poscar)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("POSCAR.vasp")),
+            Some(StructureFormat::Poscar)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("CONTCAR")),
+            Some(StructureFormat::Poscar)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("CONTCAR.relax")),
+            Some(StructureFormat::Poscar)
+        );
+        assert_eq!(
+            StructureFormat::from_path(Path::new("structure.vasp")),
+            Some(StructureFormat::Poscar)
+        );
     }
 }
