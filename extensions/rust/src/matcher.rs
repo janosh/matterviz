@@ -523,6 +523,11 @@ impl StructureMatcher {
     /// # Returns
     ///
     /// `true` if the structures are equivalent within the specified tolerances.
+    ///
+    /// # Note
+    ///
+    /// Empty structures (with no sites) always return `false` since there are no
+    /// atoms to compare for structural equivalence.
     pub fn fit(&self, struct1: &Structure, struct2: &Structure) -> bool {
         // Early composition check (use structural equality, not hash, to avoid collisions)
         let comp1 = struct1.composition();

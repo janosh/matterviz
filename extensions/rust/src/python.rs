@@ -43,9 +43,7 @@ impl PyStructureMatcher {
     ///
     /// Args:
     ///     latt_len_tol: Fractional length tolerance for lattice vectors (default: 0.2).
-    ///         Also accepts `ltol` for pymatgen compatibility.
     ///     site_pos_tol: Site position tolerance, normalized (default: 0.3).
-    ///         Also accepts `stol` for pymatgen compatibility.
     ///     angle_tol: Angle tolerance in degrees (default: 5.0)
     ///     primitive_cell: Whether to reduce to primitive cell (default: False, not yet implemented)
     ///     scale: Whether to scale volumes to match (default: True)

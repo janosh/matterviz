@@ -856,7 +856,7 @@ def main() -> None:
         print(f"FAILED STRUCTURES ({len(failed_results)}/{total})")
         print("=" * 70)
         for result in failed_results[:10]:  # Show first 10 failures
-            print(f"  - {result.name}")
+            print(f"  - {result.description}")
         if len(failed_results) > 10:
             print(f"  ... and {len(failed_results) - 10} more")
 

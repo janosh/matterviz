@@ -30,29 +30,47 @@ pub struct Structure {
 }
 
 impl Structure {
+    /// Try to create a new structure, returning an error if inputs are invalid.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FerroxError::InvalidStructure` if `species.len() != frac_coords.len()`.
+    pub fn try_new(
+        lattice: Lattice,
+        species: Vec<Species>,
+        frac_coords: Vec<Vector3<f64>>,
+    ) -> Result<Self> {
+        if species.len() != frac_coords.len() {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "species and frac_coords must have same length: {} vs {}",
+                    species.len(),
+                    frac_coords.len()
+                ),
+            });
+        }
+        Ok(Self {
+            lattice,
+            species,
+            frac_coords,
+            properties: HashMap::new(),
+        })
+    }
+
     /// Create a new structure.
     ///
     /// # Panics
     ///
     /// Panics if `species.len() != frac_coords.len()`.
+    /// For fallible construction, use [`Structure::try_new`] instead.
     pub fn new(
         lattice: Lattice,
         species: Vec<Species>,
         frac_coords: Vec<Vector3<f64>>,
     ) -> Self {
-        assert_eq!(
-            species.len(),
-            frac_coords.len(),
-            "species and frac_coords must have same length: {} vs {}",
-            species.len(),
-            frac_coords.len()
-        );
-        Self {
-            lattice,
-            species,
-            frac_coords,
-            properties: HashMap::new(),
-        }
+        Self::try_new(lattice, species, frac_coords)
+            .expect("species and frac_coords must have same length")
     }
 
     /// Get the number of sites in the structure.
@@ -144,7 +162,7 @@ impl Structure {
         // Convert positions
         let frac_coords = cell.positions.clone();
 
-        Ok(Structure::new(lattice, species, frac_coords))
+        Structure::try_new(lattice, species, frac_coords)
     }
 
     /// Get the primitive cell using moyo symmetry analysis.
@@ -241,6 +259,30 @@ mod tests {
 
         let structure = Structure::new(lattice, species, coords);
         assert_eq!(structure.num_sites(), 2);
+    }
+
+    #[test]
+    fn test_try_new_success() {
+        let lattice = Lattice::cubic(4.0);
+        let species = vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)];
+        let coords = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
+
+        let result = Structure::try_new(lattice, species, coords);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().num_sites(), 2);
+    }
+
+    #[test]
+    fn test_try_new_length_mismatch() {
+        let lattice = Lattice::cubic(4.0);
+        let species = vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)];
+        let coords = vec![Vector3::new(0.0, 0.0, 0.0)]; // Only 1 coord for 2 species
+
+        let result = Structure::try_new(lattice, species, coords);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("same length"));
+        assert!(err.to_string().contains("2 vs 1"));
     }
 
     #[test]

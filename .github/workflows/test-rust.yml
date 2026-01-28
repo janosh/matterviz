@@ -1,0 +1,87 @@
+name: Rust Extension Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'extensions/rust/**'
+      - '.github/workflows/test-rust.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'extensions/rust/**'
+      - '.github/workflows/test-rust.yml'
+  workflow_dispatch:
+
+jobs:
+  rust-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/rust
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            extensions/rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('extensions/rust/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --all-features
+
+  python-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/rust
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            extensions/rust/target
+          key: ${{ runner.os }}-cargo-python-${{ hashFiles('extensions/rust/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-python-
+
+      - name: Install maturin and build ferrox
+        run: |
+          pip install maturin
+          maturin develop --features python
+
+      - name: Install test dependencies
+        run: pip install pytest pymatgen numpy
+
+      - name: Run Python tests
+        run: pytest tests/ -v --tb=short

@@ -163,9 +163,10 @@ impl Lattice {
         let b = self.matrix.row(1).transpose();
         let c = self.matrix.row(2).transpose();
 
-        let alpha = (b.dot(&c) / (b.norm() * c.norm())).acos() * 180.0 / PI;
-        let beta = (a.dot(&c) / (a.norm() * c.norm())).acos() * 180.0 / PI;
-        let gamma = (a.dot(&b) / (a.norm() * b.norm())).acos() * 180.0 / PI;
+        // Clamp cosine values to [-1, 1] to avoid NaN from floating-point drift
+        let alpha = (b.dot(&c) / (b.norm() * c.norm())).clamp(-1.0, 1.0).acos() * 180.0 / PI;
+        let beta = (a.dot(&c) / (a.norm() * c.norm())).clamp(-1.0, 1.0).acos() * 180.0 / PI;
+        let gamma = (a.dot(&b) / (a.norm() * b.norm())).clamp(-1.0, 1.0).acos() * 180.0 / PI;
 
         Vector3::new(alpha, beta, gamma)
     }
@@ -188,8 +189,26 @@ impl Lattice {
     }
 
     /// Get the reciprocal lattice.
+    ///
+    /// For degenerate lattices (near-zero volume), falls back to using the
+    /// inverse matrix approach to avoid producing inf/NaN vectors.
     pub fn reciprocal(&self) -> Self {
         let vol = self.volume();
+
+        // Guard against near-zero volume to avoid inf/NaN from division.
+        // Threshold chosen to match typical floating-point precision limits.
+        const SMALL_EPS: f64 = 1e-15;
+        if vol < SMALL_EPS {
+            // Mirror inv_matrix()'s defensive behavior: use the safe inverse
+            // matrix (which falls back to identity for singular matrices).
+            tracing::warn!(
+                "Near-zero volume ({:.2e}) in reciprocal(), using inv_matrix fallback",
+                vol
+            );
+            let recip_matrix = self.inv_matrix().transpose() * 2.0 * PI;
+            return Self::new(recip_matrix);
+        }
+
         let a = self.matrix.row(0).transpose();
         let b = self.matrix.row(1).transpose();
         let c = self.matrix.row(2).transpose();
@@ -515,9 +534,10 @@ impl Lattice {
             let n_final = 2.0 * g[(0, 2)];
             let y_final = 2.0 * g[(0, 1)];
 
-            let alpha = (e_final / (2.0 * b_len * c_len)).acos() * 180.0 / PI;
-            let beta = (n_final / (2.0 * a_len * c_len)).acos() * 180.0 / PI;
-            let gamma = (y_final / (2.0 * a_len * b_len)).acos() * 180.0 / PI;
+            // Clamp cosine values to [-1, 1] to avoid NaN from floating-point drift
+            let alpha = (e_final / (2.0 * b_len * c_len)).clamp(-1.0, 1.0).acos() * 180.0 / PI;
+            let beta = (n_final / (2.0 * a_len * c_len)).clamp(-1.0, 1.0).acos() * 180.0 / PI;
+            let gamma = (y_final / (2.0 * a_len * b_len)).clamp(-1.0, 1.0).acos() * 180.0 / PI;
 
             let niggli_lattice = Self::from_parameters(a_len, b_len, c_len, alpha, beta, gamma);
 
@@ -1663,6 +1683,70 @@ mod tests {
                 }
             }
             // Some edge cases may fail reduction, which is acceptable
+        }
+    }
+
+    #[test]
+    fn test_reciprocal_degenerate_lattice() {
+        // Test that reciprocal() doesn't produce inf/NaN for degenerate lattices.
+        // A degenerate lattice has zero or near-zero volume (coplanar/collinear vectors).
+
+        // Coplanar vectors: all vectors lie in the xy-plane (z=0)
+        let degenerate = Lattice::new(Matrix3::new(
+            1.0, 0.0, 0.0, // a along x
+            0.0, 1.0, 0.0, // b along y
+            1.0, 1.0, 0.0, // c also in xy-plane (degenerate)
+        ));
+        assert!(degenerate.volume() < 1e-10, "Degenerate lattice should have ~zero volume");
+
+        let recip = degenerate.reciprocal();
+        let recip_m = recip.matrix();
+
+        // Verify no inf or NaN values in the reciprocal matrix
+        for idx in 0..3 {
+            for jdx in 0..3 {
+                let val = recip_m[(idx, jdx)];
+                assert!(
+                    val.is_finite(),
+                    "Reciprocal matrix element ({}, {}) = {} is not finite",
+                    idx,
+                    jdx,
+                    val
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_reciprocal_near_degenerate_lattice() {
+        // Test with a very flat lattice (extremely small volume but not zero).
+        let near_degenerate = Lattice::new(Matrix3::new(
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1e-20, // extremely small z-component
+        ));
+
+        let recip = near_degenerate.reciprocal();
+        let recip_m = recip.matrix();
+
+        // Verify no inf or NaN values
+        for idx in 0..3 {
+            for jdx in 0..3 {
+                let val = recip_m[(idx, jdx)];
+                assert!(
+                    val.is_finite(),
+                    "Near-degenerate reciprocal matrix element ({}, {}) = {} is not finite",
+                    idx,
+                    jdx,
+                    val
+                );
+            }
         }
     }
 }

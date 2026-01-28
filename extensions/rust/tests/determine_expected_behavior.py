@@ -494,7 +494,7 @@ def print_summary() -> None:
 
     all_pass = True
     for name, struct_a, struct_b, py_m, expected, reason in test_cases:
-        rust_m = rust_no_scale if py_m._scale is False else rust_default
+        rust_m = rust_no_scale if py_m.scale is False else rust_default
         result = MatchResult.compare(struct_a, struct_b, py_m, rust_m)
 
         py_ok = result.pymatgen == expected

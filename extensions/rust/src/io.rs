@@ -24,6 +24,9 @@ struct PymatgenSpecies {
 }
 
 /// Deserialize oxidation_state from either integer or float.
+///
+/// Validates that the value fits within i32 range before conversion to avoid
+/// undefined behavior from overflow.
 fn deserialize_oxidation_state<'de, D>(deserializer: D) -> std::result::Result<Option<i32>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -36,9 +39,25 @@ where
         Some(serde_json::Value::Null) => Ok(None),
         Some(serde_json::Value::Number(n)) => {
             if let Some(int_val) = n.as_i64() {
+                // Check i64 fits in i32 before converting
+                if int_val < i32::MIN as i64 || int_val > i32::MAX as i64 {
+                    return Err(D::Error::custom(format!(
+                        "oxidation_state {int_val} overflows i32 range"
+                    )));
+                }
                 Ok(Some(int_val as i32))
             } else if let Some(float_val) = n.as_f64() {
-                Ok(Some(float_val.round() as i32))
+                // Check float is finite and within i32 range before converting
+                let rounded = float_val.round();
+                if !rounded.is_finite()
+                    || rounded < i32::MIN as f64
+                    || rounded > i32::MAX as f64
+                {
+                    return Err(D::Error::custom(format!(
+                        "oxidation_state {float_val} overflows i32 range"
+                    )));
+                }
+                Ok(Some(rounded as i32))
             } else {
                 Err(D::Error::custom("oxidation_state must be a number"))
             }
@@ -183,7 +202,7 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
         frac_coords.push(Vector3::new(site.abc[0], site.abc[1], site.abc[2]));
     }
 
-    Ok(Structure::new(lattice, species, frac_coords))
+    Structure::try_new(lattice, species, frac_coords)
 }
 
 /// Parse a structure from a JSON file.
@@ -218,13 +237,22 @@ pub fn parse_structure_file(path: &Path) -> Result<Structure> {
 /// # Returns
 ///
 /// Vector of (path, structure) pairs, or error if any file fails to parse.
+/// File access errors (permissions, broken symlinks) during glob iteration
+/// are logged as warnings but do not cause the function to fail.
 pub fn parse_structures_glob(pattern: &str) -> Result<Vec<(String, Structure)>> {
     let paths: Vec<_> = glob::glob(pattern)
         .map_err(|e| FerroxError::JsonError {
             path: pattern.to_string(),
             reason: format!("Invalid glob pattern: {e}"),
         })?
-        .filter_map(|r| r.ok())
+        .filter_map(|result| match result {
+            Ok(path) => Some(path),
+            Err(err) => {
+                // Log glob errors (permissions, broken symlinks, etc.) for debugging
+                tracing::warn!("Glob iteration error: {err}");
+                None
+            }
+        })
         .collect();
 
     let mut results = Vec::with_capacity(paths.len());
@@ -468,8 +496,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_oxidation_state_overflow() {
-        // Oxidation states outside i8 range should error
+    fn test_parse_oxidation_state_overflow_i8() {
+        // Oxidation states outside i8 range should error (after successful parsing)
         for oxi in [200, -200] {
             let json = format!(
                 r#"{{"lattice": {{"matrix": [[4,0,0],[0,4,0],[0,0,4]]}},
@@ -479,6 +507,34 @@ mod tests {
             assert!(result.is_err(), "oxi={oxi} should error");
             assert!(result.unwrap_err().to_string().contains("out of range"));
         }
+    }
+
+    #[test]
+    fn test_parse_oxidation_state_overflow_i32() {
+        // Float values that would overflow i32 should error during deserialization
+        // Use scientific notation to create values beyond i32 range
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{"species": [{"element": "Fe", "oxidation_state": 3e10}], "abc": [0,0,0]}]
+        }"#;
+        let result = parse_structure_json(json);
+        assert!(result.is_err(), "Large float oxidation_state should error");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("overflow"),
+            "Error should mention overflow, got: {err_msg}"
+        );
+
+        // Also test negative overflow
+        let json_neg = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{"species": [{"element": "Fe", "oxidation_state": -3e10}], "abc": [0,0,0]}]
+        }"#;
+        let result_neg = parse_structure_json(json_neg);
+        assert!(
+            result_neg.is_err(),
+            "Large negative float oxidation_state should error"
+        );
     }
 
     #[test]
