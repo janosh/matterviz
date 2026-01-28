@@ -145,7 +145,6 @@ impl StructureMatcher {
             // Transform coordinates to new lattice
             let old_cart = result.cart_coords();
             result.lattice = niggli;
-            // Convert back to fractional
             result.frac_coords = result.lattice.get_fractional_coords(&old_cart);
             // Wrap to [0, 1)
             for coord in &mut result.frac_coords {
@@ -325,10 +324,7 @@ impl StructureMatcher {
             }
         }
 
-        // Use Hungarian algorithm
         let (_total_cost, assignment) = kuhn_munkres_min(&cost_matrix);
-
-        // Get the assigned columns for each row
         let mapping: Vec<usize> = assignment.to_vec();
 
         // Compute translation and distances
@@ -370,21 +366,11 @@ impl StructureMatcher {
     }
 
     /// Strict matching - s1 should contain all sites in s2.
-    ///
-    /// # Arguments
-    ///
-    /// * `struct1` - First structure (larger, may be supercell)
-    /// * `struct2` - Second structure (smaller)
-    /// * `supercell_factor` - Supercell multiplier
-    /// * `_s1_supercell` - Whether s1 is the supercell (reserved for future supercell matching)
-    /// * `break_on_match` - If true, return first match found
-    /// * `use_rms` - If true, compute RMS distances
     fn strict_match(
         &self,
         struct1: &Structure,
         struct2: &Structure,
         supercell_factor: usize,
-        _s1_supercell: bool, // TODO: use for supercell matching when attempt_supercell=true
         break_on_match: bool,
         use_rms: bool,
     ) -> Option<(f64, Vec<f64>, Vec<usize>)> {
@@ -498,23 +484,9 @@ impl StructureMatcher {
         };
 
         if (struct1.num_sites() as f64 * ratio) >= struct2.num_sites() as f64 {
-            self.strict_match(
-                struct1,
-                struct2,
-                supercell_factor,
-                s1_supercell,
-                break_on_match,
-                use_rms,
-            )
+            self.strict_match(struct1, struct2, supercell_factor, break_on_match, use_rms)
         } else {
-            self.strict_match(
-                struct2,
-                struct1,
-                supercell_factor,
-                !s1_supercell,
-                break_on_match,
-                use_rms,
-            )
+            self.strict_match(struct2, struct1, supercell_factor, break_on_match, use_rms)
         }
     }
 

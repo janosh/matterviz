@@ -908,7 +908,7 @@ mod tests {
 
         for (idx, &angle) in angles.iter().enumerate() {
             assert!(
-                angle >= 60.0 - 1.0 && angle <= 120.0 + 1.0,
+                (59.0..=121.0).contains(&angle),
                 "Niggli angle[{}] = {} out of valid range [60, 120]",
                 idx,
                 angle
@@ -927,7 +927,7 @@ mod tests {
 
         for (idx, &angle) in angles2.iter().enumerate() {
             assert!(
-                angle >= 60.0 - 1.0 && angle <= 120.0 + 1.0,
+                (59.0..=121.0).contains(&angle),
                 "Niggli angle[{}] = {} out of valid range [60, 120]",
                 idx,
                 angle
@@ -1343,7 +1343,7 @@ mod tests {
         for idx in 0..3 {
             let angle = angles[idx];
             assert!(
-                angle >= 60.0 - 1.0 && angle <= 120.0 + 1.0,
+                (59.0..=121.0).contains(&angle),
                 "Niggli angle {} out of expected range [60°, 120°]",
                 angle
             );
@@ -1675,7 +1675,7 @@ mod tests {
                 for (idx, &angle) in angles.iter().enumerate() {
                     // Allow small tolerance for numerical errors
                     assert!(
-                        angle >= 59.0 && angle <= 121.0,
+                        (59.0..=121.0).contains(&angle),
                         "Niggli angle[{}] = {:.2} out of expected [60, 120] range",
                         idx,
                         angle
@@ -1687,66 +1687,47 @@ mod tests {
     }
 
     #[test]
-    fn test_reciprocal_degenerate_lattice() {
+    fn test_reciprocal_degenerate_lattices() {
         // Test that reciprocal() doesn't produce inf/NaN for degenerate lattices.
-        // A degenerate lattice has zero or near-zero volume (coplanar/collinear vectors).
+        let test_cases = [
+            // Coplanar vectors: all lie in xy-plane (zero volume)
+            Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0),
+            // Near-degenerate: extremely small z-component
+            Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1e-20),
+        ];
 
-        // Coplanar vectors: all vectors lie in the xy-plane (z=0)
-        let degenerate = Lattice::new(Matrix3::new(
-            1.0, 0.0, 0.0, // a along x
-            0.0, 1.0, 0.0, // b along y
-            1.0, 1.0, 0.0, // c also in xy-plane (degenerate)
-        ));
-        assert!(degenerate.volume() < 1e-10, "Degenerate lattice should have ~zero volume");
-
-        let recip = degenerate.reciprocal();
-        let recip_m = recip.matrix();
-
-        // Verify no inf or NaN values in the reciprocal matrix
-        for idx in 0..3 {
-            for jdx in 0..3 {
-                let val = recip_m[(idx, jdx)];
-                assert!(
-                    val.is_finite(),
-                    "Reciprocal matrix element ({}, {}) = {} is not finite",
-                    idx,
-                    jdx,
-                    val
-                );
-            }
+        for matrix in test_cases {
+            let lattice = Lattice::new(matrix);
+            let recip_m = *lattice.reciprocal().matrix();
+            assert!(
+                recip_m.iter().all(|v| v.is_finite()),
+                "Reciprocal matrix has non-finite values for vol={:.2e}",
+                lattice.volume()
+            );
         }
     }
 
     #[test]
-    fn test_reciprocal_near_degenerate_lattice() {
-        // Test with a very flat lattice (extremely small volume but not zero).
-        let near_degenerate = Lattice::new(Matrix3::new(
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            1e-20, // extremely small z-component
-        ));
+    fn test_angles_no_nan_edge_cases() {
+        // Test angles() with edge cases that could cause NaN from floating-point drift.
+        let test_cases = [
+            // Extreme angles close to 0° and 180°
+            Lattice::from_parameters(1.0, 1.0, 1.0, 5.0, 90.0, 90.0),
+            Lattice::from_parameters(1.0, 1.0, 1.0, 175.0, 90.0, 90.0),
+            Lattice::from_parameters(1.0, 1.0, 1.0, 2.0, 2.0, 2.0),
+            Lattice::from_parameters(1.0, 1.0, 1.0, 178.0, 178.0, 178.0),
+            // Nearly parallel vectors (can push cos slightly > 1)
+            Lattice::new(Matrix3::new(1.0, 0.0, 0.0, 0.9999999999, 1e-10, 0.0, 0.0, 0.0, 1.0)),
+        ];
 
-        let recip = near_degenerate.reciprocal();
-        let recip_m = recip.matrix();
-
-        // Verify no inf or NaN values
-        for idx in 0..3 {
-            for jdx in 0..3 {
-                let val = recip_m[(idx, jdx)];
-                assert!(
-                    val.is_finite(),
-                    "Near-degenerate reciprocal matrix element ({}, {}) = {} is not finite",
-                    idx,
-                    jdx,
-                    val
-                );
-            }
+        for lattice in test_cases {
+            let angles = lattice.angles();
+            assert!(
+                angles.iter().all(|&a| a.is_finite() && (0.0..=180.0).contains(&a)),
+                "angles={:?} invalid for lattice with vol={:.2e}",
+                angles,
+                lattice.volume()
+            );
         }
     }
 }

@@ -98,7 +98,6 @@ impl Structure {
     /// This creates a moyo Cell from the structure's lattice, positions,
     /// and atomic numbers (derived from species).
     pub fn to_moyo_cell(&self) -> MoyoCell {
-        // Convert lattice matrix to moyo format (row-major)
         let m = self.lattice.matrix();
         let moyo_matrix = Matrix3::new(
             m[(0, 0)],
@@ -112,11 +111,7 @@ impl Structure {
             m[(2, 2)],
         );
         let moyo_lattice = MoyoLattice::new(moyo_matrix);
-
-        // Clone positions since MoyoCell::new() takes ownership
         let positions: Vec<Vector3<f64>> = self.frac_coords.clone();
-
-        // Convert species to atomic numbers
         let numbers: Vec<i32> = self
             .species
             .iter()
@@ -139,11 +134,7 @@ impl Structure {
     ///
     /// A Structure with neutral species matching the atomic numbers.
     pub fn from_moyo_cell(cell: &MoyoCell) -> Result<Self> {
-        // Convert lattice (moyo uses row-major, we use row-major too)
-        let basis = cell.lattice.basis;
-        let lattice = Lattice::new(basis);
-
-        // Convert atomic numbers to Species
+        let lattice = Lattice::new(cell.lattice.basis);
         let species: Vec<Species> = cell
             .numbers
             .iter()
@@ -158,8 +149,6 @@ impl Structure {
                 Ok(Species::neutral(elem))
             })
             .collect::<Result<Vec<_>>>()?;
-
-        // Convert positions
         let frac_coords = cell.positions.clone();
 
         Structure::try_new(lattice, species, frac_coords)

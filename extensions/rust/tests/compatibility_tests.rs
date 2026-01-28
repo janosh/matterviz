@@ -355,20 +355,23 @@ fn test_deduplicate_many() {
     let matcher = StructureMatcher::new();
     let result = matcher.deduplicate(&structures).unwrap();
 
-    // First 5 should map to 0
-    for idx in 0..5 {
-        assert_eq!(result[idx], 0, "NaCl structures should map to index 0");
-    }
+    // First 5 should map to 0 (NaCl structures)
+    assert!(
+        result[..5].iter().all(|&v| v == 0),
+        "NaCl structures should map to index 0"
+    );
 
-    // Next 3 should map to 5
-    for idx in 5..8 {
-        assert_eq!(result[idx], 5, "BCC Fe structures should map to index 5");
-    }
+    // Next 3 should map to 5 (BCC Fe structures)
+    assert!(
+        result[5..8].iter().all(|&v| v == 5),
+        "BCC Fe structures should map to index 5"
+    );
 
-    // Last 2 should map to 8
-    for idx in 8..10 {
-        assert_eq!(result[idx], 8, "FCC Cu structures should map to index 8");
-    }
+    // Last 2 should map to 8 (FCC Cu structures)
+    assert!(
+        result[8..10].iter().all(|&v| v == 8),
+        "FCC Cu structures should map to index 8"
+    );
 }
 
 // =============================================================================

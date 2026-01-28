@@ -512,29 +512,18 @@ mod tests {
     #[test]
     fn test_parse_oxidation_state_overflow_i32() {
         // Float values that would overflow i32 should error during deserialization
-        // Use scientific notation to create values beyond i32 range
-        let json = r#"{
-            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
-            "sites": [{"species": [{"element": "Fe", "oxidation_state": 3e10}], "abc": [0,0,0]}]
-        }"#;
-        let result = parse_structure_json(json);
-        assert!(result.is_err(), "Large float oxidation_state should error");
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("overflow"),
-            "Error should mention overflow, got: {err_msg}"
-        );
-
-        // Also test negative overflow
-        let json_neg = r#"{
-            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
-            "sites": [{"species": [{"element": "Fe", "oxidation_state": -3e10}], "abc": [0,0,0]}]
-        }"#;
-        let result_neg = parse_structure_json(json_neg);
-        assert!(
-            result_neg.is_err(),
-            "Large negative float oxidation_state should error"
-        );
+        for oxi in ["3e10", "-3e10"] {
+            let json = format!(
+                r#"{{"lattice": {{"matrix": [[4,0,0],[0,4,0],[0,0,4]]}},
+                    "sites": [{{"species": [{{"element": "Fe", "oxidation_state": {oxi}}}], "abc": [0,0,0]}}]}}"#
+            );
+            let result = parse_structure_json(&json);
+            assert!(result.is_err(), "oxi={oxi} should error");
+            assert!(
+                result.unwrap_err().to_string().contains("overflow"),
+                "Error for oxi={oxi} should mention overflow"
+            );
+        }
     }
 
     #[test]
