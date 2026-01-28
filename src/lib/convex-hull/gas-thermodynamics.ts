@@ -90,7 +90,9 @@ const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, TabulatedTSData>> = {
 // These are the reference energies for formation from elements
 const DEFAULT_ENTHALPY: Readonly<Partial<Record<GasSpecies, number>>> = {
   CO: -0.5897,
-  CO2: -1.3583 - 0.2482, // Includes correction for carbonate accuracy
+  // CO2: Base value -1.3583 eV from JANAF tables, with -0.2482 eV correction
+  // to improve accuracy for carbonate phase predictions (Wang et al., PRB 73, 195107)
+  CO2: -1.3583 - 0.2482,
   H2O: -0.82547,
   // O2, N2, H2, F2 are reference states with H_f = 0
 }
@@ -184,13 +186,13 @@ export function compute_gas_chemical_potential(
 ): number {
   const mu_standard = provider.get_standard_chemical_potential(gas, T)
 
-  // Clamp invalid pressure to reference pressure
-  if (P <= 0) P = P_REF
+  // Clamp invalid/infinite pressure to reference pressure
+  const effective_P = Number.isFinite(P) && P > 0 ? P : P_REF
 
   // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms
   // The RT·ln(P) term must be divided by num_atoms to match PIRO's per-atom convention
   const num_atoms = GAS_NUM_ATOMS[gas]
-  return mu_standard + (R_EV_PER_K * T * Math.log(P / P_REF)) / num_atoms
+  return mu_standard + (R_EV_PER_K * T * Math.log(effective_P / P_REF)) / num_atoms
 }
 
 // Compute chemical potential per atom of a specific element from a gas
@@ -275,7 +277,7 @@ export function get_effective_pressures(
   const pressures = { ...DEFAULT_GAS_PRESSURES }
   if (config.pressures) {
     for (const [gas, P] of Object.entries(config.pressures)) {
-      if (typeof P === `number` && P > 0) {
+      if (Number.isFinite(P) && P > 0) {
         pressures[gas as GasSpecies] = P
       }
     }
@@ -308,7 +310,7 @@ export function compute_gas_correction(
     const gas = element_to_gas[el]
     if (!gas || !enabled_gases.has(gas)) continue
 
-    const P = pressures[gas] ?? DEFAULT_GAS_PRESSURES[gas]
+    const P = pressures[gas]
     const stoich = GAS_STOICHIOMETRY[gas][el] ?? 1
     const num_atoms = GAS_NUM_ATOMS[gas]
 

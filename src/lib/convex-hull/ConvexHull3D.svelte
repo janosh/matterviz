@@ -122,6 +122,8 @@
   )
 
   // Gas-dependent chemical potential support (corrections based on T, P)
+  // Default to 300K (room temperature) when no temperature specified
+  // This is reasonable for most applications but may affect gas corrections
   const {
     entries: gas_corrected_entries,
     analysis: gas_analysis,

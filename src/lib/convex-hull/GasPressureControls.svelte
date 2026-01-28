@@ -60,10 +60,13 @@
     return gas.replace(/(\d+)/g, `<sub>$1</sub>`)
   }
 
-  // Format pressure exponent with HTML superscript
+  // Format pressure with HTML - exponent notation for powers of 10, actual value otherwise
   function format_pressure_html(P: number): string {
-    const exp = Math.round(Math.log10(Math.max(P, 1e-15)))
-    return `10<sup>${exp}</sup>`
+    const log_P = Math.log10(Math.max(P, 1e-15))
+    const exp = Math.round(log_P)
+    if (Math.abs(log_P - exp) < 0.1) return `10<sup>${exp}</sup>`
+    if (P >= 0.01 && P < 100) return `${P.toPrecision(2)}`
+    return `${P.toExponential(1)}`
   }
 
   function set_pressure(value: number): void {

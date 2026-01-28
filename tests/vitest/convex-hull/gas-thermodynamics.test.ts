@@ -1,9 +1,3 @@
-import type {
-  GasSpecies,
-  GasThermodynamicsConfig,
-  PhaseData,
-} from '$lib/convex-hull/types'
-import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
 import {
   analyze_gas_data,
   apply_gas_corrections,
@@ -19,6 +13,12 @@ import {
   P_REF,
   R_EV_PER_K,
 } from '$lib/convex-hull/gas-thermodynamics'
+import type {
+  GasSpecies,
+  GasThermodynamicsConfig,
+  PhaseData,
+} from '$lib/convex-hull/types'
+import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`gas-thermodynamics: constants`, () => {
@@ -276,6 +276,17 @@ describe(`gas-thermodynamics: get_effective_pressures`, () => {
 
     expect(pressures.O2).toBe(DEFAULT_GAS_PRESSURES.O2) // Invalid, use default
     expect(pressures.N2).toBe(DEFAULT_GAS_PRESSURES.N2) // Zero is invalid
+  })
+
+  test(`ignores NaN and Infinity pressure values`, () => {
+    const config: GasThermodynamicsConfig = {
+      pressures: { O2: NaN, N2: Infinity, H2: -Infinity },
+    }
+    const pressures = get_effective_pressures(config)
+
+    expect(pressures.O2).toBe(DEFAULT_GAS_PRESSURES.O2) // NaN is invalid
+    expect(pressures.N2).toBe(DEFAULT_GAS_PRESSURES.N2) // Infinity is invalid
+    expect(pressures.H2).toBe(DEFAULT_GAS_PRESSURES.H2) // -Infinity is invalid
   })
 })
 
