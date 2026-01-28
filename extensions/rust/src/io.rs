@@ -202,7 +202,14 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
         frac_coords.push(Vector3::new(site.abc[0], site.abc[1], site.abc[2]));
     }
 
-    Structure::try_new(lattice, species, frac_coords)
+    // Extract properties from JSON (convert Value to HashMap)
+    let properties = match parsed.properties {
+        serde_json::Value::Object(map) => map.into_iter().collect(),
+        serde_json::Value::Null => std::collections::HashMap::new(),
+        _ => std::collections::HashMap::new(),
+    };
+
+    Structure::try_new_with_properties(lattice, species, frac_coords, properties)
 }
 
 /// Parse a structure from a JSON file.
@@ -298,6 +305,9 @@ pub fn structure_to_json(structure: &Structure) -> String {
         .collect();
 
     let pbc = structure.lattice.pbc;
+    let properties: serde_json::Map<String, serde_json::Value> =
+        structure.properties.clone().into_iter().collect();
+
     serde_json::json!({
         "@module": "pymatgen.core.structure",
         "@class": "Structure",
@@ -310,7 +320,7 @@ pub fn structure_to_json(structure: &Structure) -> String {
             "pbc": [pbc[0], pbc[1], pbc[2]]
         },
         "sites": sites,
-        "properties": {}
+        "properties": properties
     })
     .to_string()
 }
@@ -474,6 +484,33 @@ mod tests {
             s2.lattice.pbc,
             [true, true, false],
             "PBC should be preserved in roundtrip"
+        );
+    }
+
+    #[test]
+    fn test_structure_to_json_preserves_properties() {
+        // Test that properties survive JSON round-trip
+        let json_with_props = r#"{
+            "lattice": {"matrix": [[5.0,0,0],[0,5.0,0],[0,0,5.0]]},
+            "sites": [{"species": [{"element": "Fe"}], "abc": [0.0, 0.0, 0.0]}],
+            "properties": {"energy": -3.5, "source": "dft", "tags": ["test", "example"]}
+        }"#;
+
+        let s1 = parse_structure_json(json_with_props).unwrap();
+        assert_eq!(s1.properties.len(), 3);
+        assert_eq!(s1.properties["energy"], serde_json::json!(-3.5));
+        assert_eq!(s1.properties["source"], serde_json::json!("dft"));
+
+        // Round-trip through JSON
+        let json_out = structure_to_json(&s1);
+        let s2 = parse_structure_json(&json_out).unwrap();
+
+        assert_eq!(s2.properties.len(), 3);
+        assert_eq!(s2.properties["energy"], serde_json::json!(-3.5));
+        assert_eq!(s2.properties["source"], serde_json::json!("dft"));
+        assert_eq!(
+            s2.properties["tags"],
+            serde_json::json!(["test", "example"])
         );
     }
 

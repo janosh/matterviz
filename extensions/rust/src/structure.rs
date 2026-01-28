@@ -40,6 +40,20 @@ impl Structure {
         species: Vec<Species>,
         frac_coords: Vec<Vector3<f64>>,
     ) -> Result<Self> {
+        Self::try_new_with_properties(lattice, species, frac_coords, HashMap::new())
+    }
+
+    /// Create a structure with properties.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FerroxError::InvalidStructure` if `species.len() != frac_coords.len()`.
+    pub fn try_new_with_properties(
+        lattice: Lattice,
+        species: Vec<Species>,
+        frac_coords: Vec<Vector3<f64>>,
+        properties: HashMap<String, serde_json::Value>,
+    ) -> Result<Self> {
         if species.len() != frac_coords.len() {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
@@ -54,7 +68,7 @@ impl Structure {
             lattice,
             species,
             frac_coords,
-            properties: HashMap::new(),
+            properties,
         })
     }
 

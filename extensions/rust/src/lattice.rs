@@ -251,7 +251,12 @@ impl Lattice {
 
         for idx in 1..3 {
             for jdx in 0..idx {
-                u[(idx, jdx)] = a.column(idx).dot(&b.column(jdx)) / m[jdx];
+                // Guard against division by zero for degenerate lattices
+                u[(idx, jdx)] = if m[jdx] > f64::EPSILON {
+                    a.column(idx).dot(&b.column(jdx)) / m[jdx]
+                } else {
+                    0.0
+                };
             }
             let mut b_col = a.column(idx).clone_owned();
             for jdx in 0..idx {
@@ -316,7 +321,12 @@ impl Lattice {
                 // Update Gram-Schmidt coefficients
                 for col_idx in (k - 1)..=k.min(3) {
                     for jdx in 0..(col_idx - 1) {
-                        u[(col_idx - 1, jdx)] = a.column(col_idx - 1).dot(&b.column(jdx)) / m[jdx];
+                        // Guard against division by zero for degenerate lattices
+                        u[(col_idx - 1, jdx)] = if m[jdx] > f64::EPSILON {
+                            a.column(col_idx - 1).dot(&b.column(jdx)) / m[jdx]
+                        } else {
+                            0.0
+                        };
                     }
                     let mut b_col = a.column(col_idx - 1).clone_owned();
                     for jdx in 0..(col_idx - 1) {
@@ -850,6 +860,31 @@ mod tests {
         let total_orig: f64 = orig_lengths.iter().sum();
         let total_lll: f64 = lll_lengths.iter().sum();
         assert!(total_lll <= total_orig + 1e-8);
+    }
+
+    #[test]
+    fn test_lll_reduction_degenerate_lattice() {
+        // Test with near-degenerate lattice (linearly dependent vectors)
+        // This should not panic or produce NaN/Inf due to division by zero
+        let matrix = Matrix3::new(
+            1.0, 0.0, 0.0, // first vector
+            2.0, 0.0, 0.0, // parallel to first (degenerate)
+            0.0, 0.0, 1.0, // third vector
+        );
+        let lattice = Lattice::new(matrix);
+        let lll = lattice.get_lll_reduced(0.75);
+
+        // Result should not contain NaN or Inf
+        let lll_mat = lll.matrix();
+        for idx in 0..3 {
+            for jdx in 0..3 {
+                assert!(
+                    lll_mat[(idx, jdx)].is_finite(),
+                    "LLL result should be finite, got {:?}",
+                    lll_mat
+                );
+            }
+        }
     }
 
     #[test]

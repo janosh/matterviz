@@ -36,6 +36,29 @@ pub fn wrap_frac_coords(coords: &Vector3<f64>) -> Vector3<f64> {
     )
 }
 
+/// Wrap fractional coordinates only along periodic axes.
+/// Non-periodic axes retain their original values (may be outside [0, 1)).
+#[inline]
+fn wrap_frac_coords_pbc(coords: &Vector3<f64>, pbc: [bool; 3]) -> Vector3<f64> {
+    Vector3::new(
+        if pbc[0] {
+            wrap_frac_coord(coords[0])
+        } else {
+            coords[0]
+        },
+        if pbc[1] {
+            wrap_frac_coord(coords[1])
+        } else {
+            coords[1]
+        },
+        if pbc[2] {
+            wrap_frac_coord(coords[2])
+        } else {
+            coords[2]
+        },
+    )
+}
+
 /// Check if two fractional coordinates match within tolerance under PBC.
 #[inline]
 fn coords_match_pbc(
@@ -148,15 +171,15 @@ pub fn pbc_shortest_vectors(
         .map(|frac_im| matrix.transpose() * frac_im)
         .collect();
 
-    // Convert fractional coords to Cartesian (with mod 1 for frac part)
+    // Convert fractional coords to Cartesian (wrap only periodic axes)
     let cart_f1: Vec<Vector3<f64>> = fc1
         .iter()
-        .map(|f| matrix.transpose() * wrap_frac_coords(f))
+        .map(|f| matrix.transpose() * wrap_frac_coords_pbc(f, pbc))
         .collect();
 
     let cart_f2: Vec<Vector3<f64>> = fc2
         .iter()
-        .map(|f| matrix.transpose() * wrap_frac_coords(f))
+        .map(|f| matrix.transpose() * wrap_frac_coords_pbc(f, pbc))
         .collect();
 
     // Initialize output arrays with infinity for masked/skipped entries
@@ -486,6 +509,26 @@ mod tests {
         // No PBC at all
         let no_pbc = [false, false, false];
         assert!(!coords_match_pbc(&c1, &c2, atol, no_pbc));
+    }
+
+    #[test]
+    fn test_pbc_shortest_vectors_partial_pbc_no_wrap() {
+        // Non-periodic axes should NOT wrap coordinates outside [0,1)
+        let mut lattice = Lattice::cubic(10.0);
+        lattice.pbc = [true, true, false]; // z is not periodic
+
+        // Coords at z=0.1 and z=1.5 (outside [0,1) on non-periodic axis)
+        let c1 = vec![Vector3::new(0.5, 0.5, 0.1)];
+        let c2 = vec![Vector3::new(0.5, 0.5, 1.5)];
+        let (_, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+
+        // Without fix: z=1.5 wraps to 0.5, distance would be 0.4*10=4
+        // With fix: z stays at 1.5, distance is (1.5-0.1)*10=14
+        let dist = d2[0][0].sqrt();
+        assert!(
+            dist > 10.0,
+            "Non-periodic z should NOT wrap: expected ~14, got {dist}"
+        );
     }
 
     #[test]

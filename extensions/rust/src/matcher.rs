@@ -203,9 +203,13 @@ impl StructureMatcher {
         let v1 = s1.lattice.volume();
         let v2 = s2.lattice.volume();
         if self.scale && v1 > f64::EPSILON && v2 > f64::EPSILON {
+            let pbc = s1.lattice.pbc;
+            debug_assert_eq!(s1.lattice.pbc, s2.lattice.pbc, "PBC mismatch in preprocess");
             let ratio = (v2 / (v1 * mult)).powf(1.0 / 6.0);
             s1.lattice = Lattice::new(*s1.lattice.matrix() * ratio);
+            s1.lattice.pbc = pbc;
             s2.lattice = Lattice::new(*s2.lattice.matrix() / ratio);
+            s2.lattice.pbc = pbc;
         }
 
         (s1, s2, supercell_factor.max(1), s1_supercell)
