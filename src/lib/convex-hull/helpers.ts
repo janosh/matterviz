@@ -707,8 +707,7 @@ import {
   get_default_gas_provider,
   get_effective_pressures,
 } from './gas-thermodynamics'
-import type { GasAnalysis, GasSpecies, GasThermodynamicsConfig } from './types'
-import { DEFAULT_GAS_PRESSURES } from './types'
+import type { GasAnalysis, GasThermodynamicsConfig } from './types'
 
 // Re-export for convenience
 export {
@@ -754,25 +753,40 @@ export function apply_gas_corrections(
 }
 
 /**
- * Compute all gas chemical potentials for display
+ * Get gas-corrected entries in one call (consolidates analysis + correction)
  *
- * Returns a map of gas species to their chemical potential at the given (T, P).
+ * Merges gas_pressures with config.pressures and applies corrections if the
+ * chemical system contains gas-dependent elements. Returns original entries
+ * if no gas config or no relevant gases.
  */
-export function compute_all_gas_chemical_potentials(
-  config: GasThermodynamicsConfig | undefined,
-  T: number,
-): Map<GasSpecies, number> {
-  const result = new Map<GasSpecies, number>()
-  if (!config || !config.enabled_gases?.length) return result
-
-  const provider = config.provider ?? get_default_gas_provider()
-  const pressures = get_effective_pressures(config)
-
-  for (const gas of config.enabled_gases) {
-    const P = pressures[gas] ?? DEFAULT_GAS_PRESSURES[gas]
-    const mu = compute_gas_chemical_potential(provider, gas, T, P)
-    result.set(gas, mu)
+export function get_gas_corrected_entries(
+  entries: PhaseData[],
+  gas_config: GasThermodynamicsConfig | undefined,
+  gas_pressures: Partial<Record<string, number>>,
+  temperature: number,
+): { entries: PhaseData[]; analysis: GasAnalysis; merged_config: GasThermodynamicsConfig | undefined } {
+  if (!gas_config?.enabled_gases?.length) {
+    return {
+      entries,
+      analysis: { has_gas_dependent_elements: false, gas_elements: [], relevant_gases: [] },
+      merged_config: undefined,
+    }
   }
 
-  return result
+  const merged_config: GasThermodynamicsConfig = {
+    ...gas_config,
+    pressures: { ...gas_config.pressures, ...gas_pressures },
+  }
+  const analysis = _analyze_gas_data(entries, merged_config)
+
+  if (!analysis.has_gas_dependent_elements) {
+    return { entries, analysis, merged_config }
+  }
+
+  return {
+    entries: _apply_gas_corrections(entries, merged_config, temperature),
+    analysis,
+    merged_config,
+  }
 }
+

@@ -35,8 +35,6 @@
   import * as thermo from './thermodynamics'
   import type {
     ConvexHullEntry,
-    GasSpecies,
-    GasThermodynamicsConfig,
     HighlightStyle,
     HoverData3D,
     Point3D,
@@ -128,27 +126,18 @@
       : entries,
   )
 
-  // Gas-dependent chemical potential support
-  const gas_analysis = $derived(helpers.analyze_gas_data(temp_filtered_entries, gas_config))
-
-  // Merge gas_pressures prop with config.pressures (prop takes precedence)
-  const merged_gas_config = $derived.by((): GasThermodynamicsConfig | undefined => {
-    if (!gas_config) return undefined
-    return {
-      ...gas_config,
-      pressures: { ...gas_config.pressures, ...gas_pressures },
-    }
-  })
-
-  // Apply gas corrections when gas config is provided
-  const gas_corrected_entries = $derived(
-    gas_analysis.has_gas_dependent_elements && merged_gas_config
-      ? helpers.apply_gas_corrections(
-        temp_filtered_entries,
-        merged_gas_config,
-        temperature ?? 300,
-      )
-      : temp_filtered_entries,
+  // Gas-dependent chemical potential support (corrections based on T, P)
+  const {
+    entries: gas_corrected_entries,
+    analysis: gas_analysis,
+    merged_config: merged_gas_config,
+  } = $derived(
+    helpers.get_gas_corrected_entries(
+      temp_filtered_entries,
+      gas_config,
+      gas_pressures,
+      temperature ?? 300,
+    ),
   )
 
   let { // Compute energy mode information

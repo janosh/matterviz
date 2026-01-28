@@ -199,11 +199,8 @@ export function compute_gas_chemical_potential(
 ): number {
   const mu_standard = provider.get_standard_chemical_potential(gas, T)
 
-  // Handle edge cases for pressure
-  if (P <= 0) {
-    console.warn(`Invalid pressure ${P} for gas ${gas}, using P_REF`)
-    P = P_REF
-  }
+  // Clamp invalid pressure to reference pressure
+  if (P <= 0) P = P_REF
 
   // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms
   // The RT·ln(P) term must be divided by num_atoms to match PIRO's per-atom convention

@@ -13,6 +13,7 @@
     ConvexHull3D,
     ConvexHull4D,
     ConvexHullStats,
+    GAS_SPECIES,
   } from '$lib/convex-hull'
   import { decompress_data } from '$lib/io/decompress'
   import { onMount } from 'svelte'
@@ -267,8 +268,6 @@
   ].map(with_temp_data)
 
   // Gas pressure demo: configurable gas atmosphere control
-  // Available gases for the demo selector (all supported gases)
-  const demo_gases: GasSpecies[] = [`O2`, `N2`, `H2`, `F2`, `CO`, `CO2`, `H2O`]
   let selected_demo_gas = $state<GasSpecies>(`O2`)
 
   // Derive gas config from selected gas
@@ -483,7 +482,7 @@
   <div class="gas-selector">
     <label for="gas-select">Gas species:</label>
     <select id="gas-select" bind:value={selected_demo_gas}>
-      {#each demo_gases as gas}
+      {#each GAS_SPECIES as gas (gas)}
         <option value={gas}>{gas}</option>
       {/each}
     </select>
