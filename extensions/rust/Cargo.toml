@@ -1,0 +1,58 @@
+[package]
+name = "ferrox"
+version = "0.0.1"
+edition = "2024"
+authors = ["Janosh Riebesell <janosh@lbl.gov>"]
+description = "High-performance structure matching for crystallographic data"
+license = "MIT"
+repository = "https://github.com/janosh/matterviz"
+keywords = ["crystallography", "materials-science", "structure-matching"]
+
+[lib]
+name = "ferrox"
+crate-type = ["cdylib", "rlib"] # cdylib for Python, rlib for Rust
+
+[dependencies]
+# Python bindings
+pyo3 = { version = "0.27.2", features = [
+  "abi3-py311",
+  "extension-module",
+], optional = true }
+
+# Math
+nalgebra = "0.34"
+
+# Symmetry - same underlying Rust crate as moyopy
+moyo = "0.7"
+
+# Parallelism
+rayon = "1.11"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Algorithms
+pathfinding = "4.14" # Hungarian algorithm (kuhn_munkres)
+
+# Utilities
+indexmap = { version = "2.13", features = ["serde"] }
+thiserror = "2.0"
+glob = "0.3"
+tracing = "0.1"
+
+[dev-dependencies]
+approx = "0.5"
+criterion = { version = "0.8", features = ["html_reports"] }
+proptest = "1.9"
+
+[build-dependencies]
+pyo3-build-config = { version = "0.27.2", optional = true }
+
+[features]
+default = []
+python = ["dep:pyo3", "dep:pyo3-build-config"]
+
+[[bench]]
+name = "matcher_bench"
+harness = false

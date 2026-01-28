@@ -1,0 +1,66 @@
+//! # ferrox
+//!
+//! High-performance structure matching for crystallographic data.
+//!
+//! This crate provides a Rust implementation of structure matching algorithms,
+//! compatible with pymatgen's StructureMatcher but optimized for batch processing.
+//!
+//! ## Features
+//!
+//! - **Fast single-pair matching**: Compare two structures for equivalence
+//! - **Batch deduplication**: Find unique structures in large sets
+//! - **Parallel processing**: Automatic parallelization via Rayon
+//! - **Multiple comparators**: Species or Element-based matching
+//! - **Python bindings**: Optional PyO3 bindings for use from Python
+//!
+//! ## Example
+//!
+//! ```rust,ignore
+//! use ferrox::{Structure, StructureMatcher};
+//!
+//! let matcher = StructureMatcher::new()
+//!     .with_latt_len_tol(0.2)
+//!     .with_site_pos_tol(0.3)
+//!     .with_angle_tol(5.0);
+//!
+//! let is_match = matcher.fit(&struct1, &struct2);
+//! ```
+
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+
+pub mod error;
+
+// Core types
+pub mod composition;
+pub mod element;
+pub mod lattice;
+pub mod species;
+pub mod structure;
+
+// Algorithms
+pub mod batch;
+pub mod matcher;
+pub mod pbc;
+
+// I/O
+pub mod io;
+
+// Re-exports for convenience
+pub use error::{FerroxError, OnError, Result};
+
+// Python bindings (optional)
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+
+/// Python module entry point.
+#[cfg(feature = "python")]
+#[pymodule]
+fn _ferrox(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    python::register(m)?;
+    Ok(())
+}

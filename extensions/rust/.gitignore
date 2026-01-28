@@ -1,0 +1,18 @@
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.eggs/
+
+# Benchmark outputs
+benchmark_large_scale_results.json
+
+# IDE
+.idea/
+*.iml
+tmp/
