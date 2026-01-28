@@ -1000,7 +1000,11 @@ def run_regression_tests() -> dict[str, bool]:
         ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=False
     )
     rust_matcher_noscale = RustMatcher(
-        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False, scale=False
+        latt_len_tol=0.2,
+        site_pos_tol=0.3,
+        angle_tol=5.0,
+        primitive_cell=False,
+        scale=False,
     )
 
     def run_ltol_test(
@@ -1066,7 +1070,11 @@ def run_regression_tests() -> dict[str, bool]:
         ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=True
     )
     rust_matcher_scale = RustMatcher(
-        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False, scale=True
+        latt_len_tol=0.2,
+        site_pos_tol=0.3,
+        angle_tol=5.0,
+        primitive_cell=False,
+        scale=True,
     )
 
     # Different angles should not match even after scaling
