@@ -268,19 +268,124 @@ impl Element {
     /// Pauling electronegativities (NaN for elements without defined values).
     /// Index 0 corresponds to H (Z=1).
     const ELECTRONEGATIVITIES: [f64; 118] = [
-        2.20, f64::NAN, 0.98, 1.57, 2.04, 2.55, 3.04, 3.44, 3.98, f64::NAN, // H-Ne
-        0.93, 1.31, 1.61, 1.90, 2.19, 2.58, 3.16, f64::NAN, 0.82, 1.00, // Na-Ca
-        1.36, 1.54, 1.63, 1.66, 1.55, 1.83, 1.88, 1.91, 1.90, 1.65, // Sc-Zn
-        1.81, 2.01, 2.18, 2.55, 2.96, 3.00, 0.82, 0.95, 1.22, 1.33, // Ga-Zr
-        1.60, 2.16, 1.90, 2.20, 2.28, 2.20, 1.93, 1.69, 1.78, 1.96, // Nb-Sn
-        2.05, 2.10, 2.66, 2.60, 0.79, 0.89, 1.10, 1.12, 1.13, 1.14, // Sb-Nd
-        f64::NAN, 1.17, f64::NAN, 1.20, f64::NAN, 1.22, 1.23, 1.24, 1.25, f64::NAN, // Pm-Yb
-        1.27, 1.30, 1.50, 2.36, 1.90, 2.20, 2.20, 2.28, 2.54, 2.00, // Lu-Hg
-        1.62, 2.33, 2.02, 2.00, 2.20, f64::NAN, 0.70, 0.90, 1.10, 1.30, // Tl-Th
-        1.50, 1.38, 1.36, 1.28, 1.30, 1.30, 1.30, 1.30, 1.30, 1.30, // Pa-Fm
-        1.30, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN, // Md-Hs
-        f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN, // Mt-Lv
-        f64::NAN, f64::NAN, // Ts-Og
+        2.20,
+        f64::NAN,
+        0.98,
+        1.57,
+        2.04,
+        2.55,
+        3.04,
+        3.44,
+        3.98,
+        f64::NAN, // H-Ne
+        0.93,
+        1.31,
+        1.61,
+        1.90,
+        2.19,
+        2.58,
+        3.16,
+        f64::NAN,
+        0.82,
+        1.00, // Na-Ca
+        1.36,
+        1.54,
+        1.63,
+        1.66,
+        1.55,
+        1.83,
+        1.88,
+        1.91,
+        1.90,
+        1.65, // Sc-Zn
+        1.81,
+        2.01,
+        2.18,
+        2.55,
+        2.96,
+        3.00,
+        0.82,
+        0.95,
+        1.22,
+        1.33, // Ga-Zr
+        1.60,
+        2.16,
+        1.90,
+        2.20,
+        2.28,
+        2.20,
+        1.93,
+        1.69,
+        1.78,
+        1.96, // Nb-Sn
+        2.05,
+        2.10,
+        2.66,
+        2.60,
+        0.79,
+        0.89,
+        1.10,
+        1.12,
+        1.13,
+        1.14, // Sb-Nd
+        f64::NAN,
+        1.17,
+        f64::NAN,
+        1.20,
+        f64::NAN,
+        1.22,
+        1.23,
+        1.24,
+        1.25,
+        f64::NAN, // Pm-Yb
+        1.27,
+        1.30,
+        1.50,
+        2.36,
+        1.90,
+        2.20,
+        2.20,
+        2.28,
+        2.54,
+        2.00, // Lu-Hg
+        1.62,
+        2.33,
+        2.02,
+        2.00,
+        2.20,
+        f64::NAN,
+        0.70,
+        0.90,
+        1.10,
+        1.30, // Tl-Th
+        1.50,
+        1.38,
+        1.36,
+        1.28,
+        1.30,
+        1.30,
+        1.30,
+        1.30,
+        1.30,
+        1.30, // Pa-Fm
+        1.30,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN, // Md-Hs
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN, // Mt-Lv
+        f64::NAN,
+        f64::NAN, // Ts-Og
     ];
 
     /// Create an element from its symbol string.
@@ -411,12 +516,36 @@ mod tests {
         }
 
         // Edge cases: invalid inputs
-        assert_eq!(Element::from_symbol("Xx"), None, "invalid symbol should return None");
-        assert_eq!(Element::from_symbol(""), None, "empty string should return None");
-        assert_eq!(Element::from_symbol("  "), None, "whitespace should return None");
-        assert_eq!(Element::from_atomic_number(0), None, "Z=0 should return None");
-        assert_eq!(Element::from_atomic_number(119), None, "Z=119 should return None");
-        assert_eq!(Element::from_atomic_number(255), None, "Z=255 should return None");
+        assert_eq!(
+            Element::from_symbol("Xx"),
+            None,
+            "invalid symbol should return None"
+        );
+        assert_eq!(
+            Element::from_symbol(""),
+            None,
+            "empty string should return None"
+        );
+        assert_eq!(
+            Element::from_symbol("  "),
+            None,
+            "whitespace should return None"
+        );
+        assert_eq!(
+            Element::from_atomic_number(0),
+            None,
+            "Z=0 should return None"
+        );
+        assert_eq!(
+            Element::from_atomic_number(119),
+            None,
+            "Z=119 should return None"
+        );
+        assert_eq!(
+            Element::from_atomic_number(255),
+            None,
+            "Z=255 should return None"
+        );
     }
 
     #[test]
@@ -440,9 +569,9 @@ mod tests {
         for (elem, expected) in known_values {
             match expected {
                 Some(val) => {
-                    let en = elem.electronegativity().unwrap_or_else(|| {
-                        panic!("{elem:?} should have electronegativity")
-                    });
+                    let en = elem
+                        .electronegativity()
+                        .unwrap_or_else(|| panic!("{elem:?} should have electronegativity"));
                     assert!(
                         (en - val).abs() < 0.01,
                         "{elem:?} electronegativity {en} != expected {val}"

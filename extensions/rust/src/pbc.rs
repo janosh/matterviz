@@ -38,7 +38,12 @@ pub fn wrap_frac_coords(coords: &Vector3<f64>) -> Vector3<f64> {
 
 /// Check if two fractional coordinates match within tolerance under PBC.
 #[inline]
-fn coords_match_pbc(fc1: &Vector3<f64>, fc2: &Vector3<f64>, atol: [f64; 3], pbc: [bool; 3]) -> bool {
+fn coords_match_pbc(
+    fc1: &Vector3<f64>,
+    fc2: &Vector3<f64>,
+    atol: [f64; 3],
+    pbc: [bool; 3],
+) -> bool {
     for idx in 0..3 {
         let diff = fc1[idx] - fc2[idx];
         let wrapped_diff = if pbc[idx] { diff - diff.round() } else { diff };
@@ -315,7 +320,9 @@ mod tests {
         let superset = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
         let mask = vec![vec![false; 2]; 1];
         let atol_tight = [0.01, 0.01, 0.01];
-        assert!(!is_coord_subset_pbc(&subset, &superset, atol_tight, &mask, pbc));
+        assert!(!is_coord_subset_pbc(
+            &subset, &superset, atol_tight, &mask, pbc
+        ));
     }
 
     #[test]
@@ -329,7 +336,10 @@ mod tests {
         let pbc = [true, true, true];
 
         // Returns mapping indices
-        assert_eq!(coord_list_mapping_pbc(&subset, &superset, 0.01, pbc), Some(vec![1, 0]));
+        assert_eq!(
+            coord_list_mapping_pbc(&subset, &superset, 0.01, pbc),
+            Some(vec![1, 0])
+        );
 
         // No match returns None
         let no_match = vec![Vector3::new(0.3, 0.3, 0.3)];
@@ -337,7 +347,10 @@ mod tests {
 
         // Empty subset -> empty mapping
         let empty: Vec<Vector3<f64>> = vec![];
-        assert_eq!(coord_list_mapping_pbc(&empty, &superset, 0.01, pbc), Some(vec![]));
+        assert_eq!(
+            coord_list_mapping_pbc(&empty, &superset, 0.01, pbc),
+            Some(vec![])
+        );
     }
 
     #[test]
@@ -346,15 +359,30 @@ mod tests {
         let test_cases = [
             // (lattice, frac_coord1, frac_coord2, expected_max_dist)
             // For cubic: (0,0,0) to (0.5,0.5,0.5) is half body diagonal = a*sqrt(3)/2
-            (Lattice::cubic(4.0), [0.0, 0.0, 0.0], [0.5, 0.5, 0.5], 4.0 * (3.0_f64).sqrt() / 2.0),
+            (
+                Lattice::cubic(4.0),
+                [0.0, 0.0, 0.0],
+                [0.5, 0.5, 0.5],
+                4.0 * (3.0_f64).sqrt() / 2.0,
+            ),
             // Origin to origin should be 0
             (Lattice::cubic(4.0), [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0),
             // PBC wrap: (0.9, 0, 0) to (0.1, 0, 0) should be 0.2*a = 0.8, not 0.8*a
             (Lattice::cubic(4.0), [0.9, 0.0, 0.0], [0.1, 0.0, 0.0], 0.8),
             // Hexagonal lattice
-            (Lattice::hexagonal(3.0, 5.0), [0.0, 0.0, 0.0], [0.0, 0.0, 0.5], 2.5),
+            (
+                Lattice::hexagonal(3.0, 5.0),
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.5],
+                2.5,
+            ),
             // Triclinic lattice - just verify it computes something reasonable
-            (Lattice::from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0), [0.0, 0.0, 0.0], [0.5, 0.5, 0.5], 10.0),
+            (
+                Lattice::from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0),
+                [0.0, 0.0, 0.0],
+                [0.5, 0.5, 0.5],
+                10.0,
+            ),
         ];
 
         for (lattice, fc1, fc2, max_expected) in test_cases {
@@ -363,14 +391,12 @@ mod tests {
             let (vecs, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
 
             let dist = d2[0][0].sqrt();
-            assert!(
-                dist >= 0.0,
-                "Distance should be non-negative, got {dist}"
-            );
+            assert!(dist >= 0.0, "Distance should be non-negative, got {dist}");
             assert!(
                 dist <= max_expected + 0.1,
                 "Distance {dist} exceeds expected max {max_expected} for {:?} -> {:?}",
-                fc1, fc2
+                fc1,
+                fc2
             );
 
             // Vector norm should match distance

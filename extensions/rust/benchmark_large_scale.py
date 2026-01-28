@@ -1041,8 +1041,8 @@ Examples:
         "--n-structures",
         "-n",
         type=int,
-        default=10000,
-        help="Maximum number of structures to load (default: 10000)",
+        default=None,
+        help="Maximum number of structures to load (default: 10000, or 1000 with --quick)",
     )
     parser.add_argument(
         "--runs",
@@ -1100,8 +1100,11 @@ def main() -> None:
     """Run the large-scale benchmark."""
     args = parse_args()
 
-    # Build config
-    n_structures = 1000 if args.quick else args.n_structures
+    # Build config: respect explicit --n-structures, otherwise use defaults
+    if args.n_structures is not None:
+        n_structures = args.n_structures
+    else:
+        n_structures = 1000 if args.quick else 10000
 
     config = BenchmarkConfig(
         n_structures=n_structures,

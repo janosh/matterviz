@@ -27,7 +27,9 @@ struct PymatgenSpecies {
 ///
 /// Validates that the value fits within i32 range before conversion to avoid
 /// undefined behavior from overflow.
-fn deserialize_oxidation_state<'de, D>(deserializer: D) -> std::result::Result<Option<i32>, D::Error>
+fn deserialize_oxidation_state<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<i32>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -49,10 +51,7 @@ where
             } else if let Some(float_val) = n.as_f64() {
                 // Check float is finite and within i32 range before converting
                 let rounded = float_val.round();
-                if !rounded.is_finite()
-                    || rounded < i32::MIN as f64
-                    || rounded > i32::MAX as f64
-                {
+                if !rounded.is_finite() || rounded < i32::MIN as f64 || rounded > i32::MAX as f64 {
                     return Err(D::Error::custom(format!(
                         "oxidation_state {float_val} overflows i32 range"
                     )));
@@ -151,7 +150,8 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
     // Build lattice from row-major matrix
     let mat = &parsed.lattice.matrix;
     let matrix = nalgebra::Matrix3::new(
-        mat[0][0], mat[0][1], mat[0][2], mat[1][0], mat[1][1], mat[1][2], mat[2][0], mat[2][1], mat[2][2],
+        mat[0][0], mat[0][1], mat[0][2], mat[1][0], mat[1][1], mat[1][2], mat[2][0], mat[2][1],
+        mat[2][2],
     );
     let mut lattice = Lattice::new(matrix);
     lattice.pbc = parsed.lattice.pbc;
@@ -464,10 +464,17 @@ mod tests {
         let s1 = Structure::new(lattice, species, coords);
 
         let json = structure_to_json(&s1);
-        assert!(json.contains(r#""pbc":[true,true,false]"#), "JSON should contain pbc: {json}");
+        assert!(
+            json.contains(r#""pbc":[true,true,false]"#),
+            "JSON should contain pbc: {json}"
+        );
 
         let s2 = parse_structure_json(&json).unwrap();
-        assert_eq!(s2.lattice.pbc, [true, true, false], "PBC should be preserved in roundtrip");
+        assert_eq!(
+            s2.lattice.pbc,
+            [true, true, false],
+            "PBC should be preserved in roundtrip"
+        );
     }
 
     #[test]

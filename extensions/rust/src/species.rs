@@ -187,9 +187,9 @@ mod tests {
         assert_eq!(cu.oxidation_state, None);
 
         // Extreme oxidation states (valid for i8)
-        let high_oxi = Species::new(Element::Os, Some(8));  // Os can be +8
+        let high_oxi = Species::new(Element::Os, Some(8)); // Os can be +8
         assert_eq!(high_oxi.oxidation_state, Some(8));
-        let neg_oxi = Species::new(Element::N, Some(-3));  // N can be -3
+        let neg_oxi = Species::new(Element::N, Some(-3)); // N can be -3
         assert_eq!(neg_oxi.oxidation_state, Some(-3));
     }
 
@@ -226,8 +226,8 @@ mod tests {
         ];
 
         for (input, elem, oxi, display) in cases {
-            let sp = Species::from_string(input)
-                .unwrap_or_else(|| panic!("Failed to parse: {input}"));
+            let sp =
+                Species::from_string(input).unwrap_or_else(|| panic!("Failed to parse: {input}"));
             assert_eq!(sp.element, *elem, "element mismatch for '{input}'");
             assert_eq!(sp.oxidation_state, *oxi, "oxi mismatch for '{input}'");
             assert_eq!(sp.to_string(), *display, "display mismatch for '{input}'");
@@ -285,7 +285,10 @@ mod tests {
         let mut set = HashSet::new();
         set.insert(fe2a);
         assert!(set.contains(&fe2b), "Equal species should have same hash");
-        assert!(!set.contains(&fe3), "Different species should have different hash");
+        assert!(
+            !set.contains(&fe3),
+            "Different species should have different hash"
+        );
     }
 
     #[test]
@@ -294,7 +297,7 @@ mod tests {
         let test_cases = [
             (Element::Fe, 1.83),
             (Element::O, 3.44),
-            (Element::F, 3.98),  // Most electronegative
+            (Element::F, 3.98), // Most electronegative
             (Element::Na, 0.93),
             (Element::Cs, 0.79), // Least electronegative metal
         ];

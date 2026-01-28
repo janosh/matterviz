@@ -32,16 +32,16 @@
 pub mod error;
 
 // Core types
-pub mod element;
-pub mod species;
 pub mod composition;
+pub mod element;
 pub mod lattice;
+pub mod species;
 pub mod structure;
 
 // Algorithms
-pub mod pbc;
-pub mod matcher;
 pub mod batch;
+pub mod matcher;
+pub mod pbc;
 
 // I/O
 pub mod io;

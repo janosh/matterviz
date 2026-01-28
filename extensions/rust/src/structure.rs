@@ -64,11 +64,7 @@ impl Structure {
     ///
     /// Panics if `species.len() != frac_coords.len()`.
     /// For fallible construction, use [`Structure::try_new`] instead.
-    pub fn new(
-        lattice: Lattice,
-        species: Vec<Species>,
-        frac_coords: Vec<Vector3<f64>>,
-    ) -> Self {
+    pub fn new(lattice: Lattice, species: Vec<Species>, frac_coords: Vec<Vector3<f64>>) -> Self {
         Self::try_new(lattice, species, frac_coords)
             .expect("species and frac_coords must have same length")
     }
@@ -81,7 +77,8 @@ impl Structure {
     /// Get the composition of the structure.
     pub fn composition(&self) -> Composition {
         // Use BTreeMap for deterministic iteration order (sorted by element)
-        let mut counts: std::collections::BTreeMap<Element, f64> = std::collections::BTreeMap::new();
+        let mut counts: std::collections::BTreeMap<Element, f64> =
+            std::collections::BTreeMap::new();
         for sp in &self.species {
             *counts.entry(sp.element).or_insert(0.0) += 1.0;
         }
@@ -407,7 +404,10 @@ mod tests {
         // Test structures with various oxidation state configurations
         let nacl = Structure::new(
             Lattice::cubic(5.64),
-            vec![Species::new(Element::Na, Some(1)), Species::new(Element::Cl, Some(-1))],
+            vec![
+                Species::new(Element::Na, Some(1)),
+                Species::new(Element::Cl, Some(-1)),
+            ],
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
         assert_eq!(nacl.species[0].oxidation_state, Some(1));

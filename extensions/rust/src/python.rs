@@ -192,8 +192,12 @@ impl PyStructureMatcher {
         format!(
             "StructureMatcher(latt_len_tol={}, site_pos_tol={}, angle_tol={}, \
              primitive_cell={}, scale={}, attempt_supercell={})",
-            sm.latt_len_tol, sm.site_pos_tol, sm.angle_tol,
-            py_bool(sm.primitive_cell), py_bool(sm.scale), py_bool(sm.attempt_supercell)
+            sm.latt_len_tol,
+            sm.site_pos_tol,
+            sm.angle_tol,
+            py_bool(sm.primitive_cell),
+            py_bool(sm.scale),
+            py_bool(sm.attempt_supercell)
         )
     }
 

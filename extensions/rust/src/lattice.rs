@@ -426,7 +426,9 @@ impl Lattice {
                 (2.0 * g[(1, 2)], 2.0 * g[(0, 2)], 2.0 * g[(0, 1)]);
 
             // A1: Ensure A <= B
-            if b_val + eps < a_val || (f64::abs(a_val - b_val) < eps && f64::abs(e_val) > f64::abs(n_val) + eps) {
+            if b_val + eps < a_val
+                || (f64::abs(a_val - b_val) < eps && f64::abs(e_val) > f64::abs(n_val) + eps)
+            {
                 let xform = Matrix3::new(0.0, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0);
                 g = xform.transpose() * g * xform;
                 // Update values needed for A2 check (a_val recomputed after A3/A4)
@@ -438,16 +440,30 @@ impl Lattice {
             }
 
             // A2: Ensure B <= C
-            if c_val + eps < b_val || (f64::abs(b_val - c_val) < eps && f64::abs(n_val) > f64::abs(y_val) + eps) {
+            if c_val + eps < b_val
+                || (f64::abs(b_val - c_val) < eps && f64::abs(n_val) > f64::abs(y_val) + eps)
+            {
                 let xform = Matrix3::new(-1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, -1.0, 0.0);
                 g = xform.transpose() * g * xform;
                 continue;
             }
 
             // A3 & A4: Sign adjustment
-            let sign_e = if f64::abs(e_val) < eps { 0.0 } else { e_val.signum() };
-            let sign_n = if f64::abs(n_val) < eps { 0.0 } else { n_val.signum() };
-            let sign_y = if f64::abs(y_val) < eps { 0.0 } else { y_val.signum() };
+            let sign_e = if f64::abs(e_val) < eps {
+                0.0
+            } else {
+                e_val.signum()
+            };
+            let sign_n = if f64::abs(n_val) < eps {
+                0.0
+            } else {
+                n_val.signum()
+            };
+            let sign_y = if f64::abs(y_val) < eps {
+                0.0
+            } else {
+                y_val.signum()
+            };
 
             if sign_e * sign_n * sign_y == 1.0 {
                 // A3
@@ -682,11 +698,8 @@ impl Lattice {
                     }
 
                     // Build aligned matrix
-                    let aligned_m = Matrix3::from_rows(&[
-                        ca.transpose(),
-                        cb.transpose(),
-                        cc.transpose(),
-                    ]);
+                    let aligned_m =
+                        Matrix3::from_rows(&[ca.transpose(), cb.transpose(), cc.transpose()]);
                     let aligned_lattice = Lattice::new(aligned_m);
 
                     // Compute rotation matrix if requested
@@ -942,9 +955,24 @@ mod tests {
         let cubic = Lattice::from_parameters(4.0, 4.0, 4.0, 90.0, 90.0, 90.0);
         let m = cubic.matrix();
         println!("Cubic (4, 4, 4, 90, 90, 90):");
-        println!("  row0 = ({:.4}, {:.4}, {:.4})", m[(0, 0)], m[(0, 1)], m[(0, 2)]);
-        println!("  row1 = ({:.4}, {:.4}, {:.4})", m[(1, 0)], m[(1, 1)], m[(1, 2)]);
-        println!("  row2 = ({:.4}, {:.4}, {:.4})", m[(2, 0)], m[(2, 1)], m[(2, 2)]);
+        println!(
+            "  row0 = ({:.4}, {:.4}, {:.4})",
+            m[(0, 0)],
+            m[(0, 1)],
+            m[(0, 2)]
+        );
+        println!(
+            "  row1 = ({:.4}, {:.4}, {:.4})",
+            m[(1, 0)],
+            m[(1, 1)],
+            m[(1, 2)]
+        );
+        println!(
+            "  row2 = ({:.4}, {:.4}, {:.4})",
+            m[(2, 0)],
+            m[(2, 1)],
+            m[(2, 2)]
+        );
 
         // For cubic, should have:
         // a = [4, 0, 0]
@@ -964,9 +992,24 @@ mod tests {
         let hex = Lattice::from_parameters(3.0, 3.0, 5.0, 90.0, 90.0, 120.0);
         let mh = hex.matrix();
         println!("\nHexagonal (3, 3, 5, 90, 90, 120):");
-        println!("  row0 = ({:.4}, {:.4}, {:.4})", mh[(0, 0)], mh[(0, 1)], mh[(0, 2)]);
-        println!("  row1 = ({:.4}, {:.4}, {:.4})", mh[(1, 0)], mh[(1, 1)], mh[(1, 2)]);
-        println!("  row2 = ({:.4}, {:.4}, {:.4})", mh[(2, 0)], mh[(2, 1)], mh[(2, 2)]);
+        println!(
+            "  row0 = ({:.4}, {:.4}, {:.4})",
+            mh[(0, 0)],
+            mh[(0, 1)],
+            mh[(0, 2)]
+        );
+        println!(
+            "  row1 = ({:.4}, {:.4}, {:.4})",
+            mh[(1, 0)],
+            mh[(1, 1)],
+            mh[(1, 2)]
+        );
+        println!(
+            "  row2 = ({:.4}, {:.4}, {:.4})",
+            mh[(2, 0)],
+            mh[(2, 1)],
+            mh[(2, 2)]
+        );
 
         // For hexagonal:
         // a = [3, 0, 0]
@@ -982,9 +1025,24 @@ mod tests {
         let acute = Lattice::from_parameters(5.935, 5.935, 5.935, 28.05, 28.05, 28.05);
         let ma = acute.matrix();
         println!("\nAcute (5.935, 5.935, 5.935, 28.05, 28.05, 28.05):");
-        println!("  row0 = ({:.4}, {:.4}, {:.4})", ma[(0, 0)], ma[(0, 1)], ma[(0, 2)]);
-        println!("  row1 = ({:.4}, {:.4}, {:.4})", ma[(1, 0)], ma[(1, 1)], ma[(1, 2)]);
-        println!("  row2 = ({:.4}, {:.4}, {:.4})", ma[(2, 0)], ma[(2, 1)], ma[(2, 2)]);
+        println!(
+            "  row0 = ({:.4}, {:.4}, {:.4})",
+            ma[(0, 0)],
+            ma[(0, 1)],
+            ma[(0, 2)]
+        );
+        println!(
+            "  row1 = ({:.4}, {:.4}, {:.4})",
+            ma[(1, 0)],
+            ma[(1, 1)],
+            ma[(1, 2)]
+        );
+        println!(
+            "  row2 = ({:.4}, {:.4}, {:.4})",
+            ma[(2, 0)],
+            ma[(2, 1)],
+            ma[(2, 2)]
+        );
         println!("  lengths: {:?}", acute.lengths());
         println!("  angles: {:?}", acute.angles());
 
@@ -1081,7 +1139,10 @@ mod tests {
         assert_relative_eq!(lengths[2], 5.9353, epsilon = 0.001);
 
         // Verify positive determinant (same volume as original)
-        assert!(mn.determinant() > 0.0, "Niggli determinant should be positive");
+        assert!(
+            mn.determinant() > 0.0,
+            "Niggli determinant should be positive"
+        );
     }
 
     #[test]
@@ -1104,9 +1165,24 @@ mod tests {
         let m2 = niggli2.matrix();
         let m3 = niggli3.matrix();
 
-        println!("Run 1: row0 = ({:.6}, {:.6}, {:.6})", m1[(0, 0)], m1[(0, 1)], m1[(0, 2)]);
-        println!("Run 2: row0 = ({:.6}, {:.6}, {:.6})", m2[(0, 0)], m2[(0, 1)], m2[(0, 2)]);
-        println!("Run 3: row0 = ({:.6}, {:.6}, {:.6})", m3[(0, 0)], m3[(0, 1)], m3[(0, 2)]);
+        println!(
+            "Run 1: row0 = ({:.6}, {:.6}, {:.6})",
+            m1[(0, 0)],
+            m1[(0, 1)],
+            m1[(0, 2)]
+        );
+        println!(
+            "Run 2: row0 = ({:.6}, {:.6}, {:.6})",
+            m2[(0, 0)],
+            m2[(0, 1)],
+            m2[(0, 2)]
+        );
+        println!(
+            "Run 3: row0 = ({:.6}, {:.6}, {:.6})",
+            m3[(0, 0)],
+            m3[(0, 1)],
+            m3[(0, 2)]
+        );
 
         for idx in 0..3 {
             for jdx in 0..3 {
@@ -1127,25 +1203,57 @@ mod tests {
         let lattice = Lattice::new(matrix);
 
         // Create ideal Niggli from parameters (same as pymatgen does internally)
-        let ideal_niggli =
-            Lattice::from_parameters(2.8767, 2.8767, 5.9353, 75.975, 75.975, 60.0);
+        let ideal_niggli = Lattice::from_parameters(2.8767, 2.8767, 5.9353, 75.975, 75.975, 60.0);
 
         println!("Ideal Niggli matrix:");
         let mi = ideal_niggli.matrix();
-        println!("  row0 = ({:.6}, {:.6}, {:.6})", mi[(0, 0)], mi[(0, 1)], mi[(0, 2)]);
-        println!("  row1 = ({:.6}, {:.6}, {:.6})", mi[(1, 0)], mi[(1, 1)], mi[(1, 2)]);
-        println!("  row2 = ({:.6}, {:.6}, {:.6})", mi[(2, 0)], mi[(2, 1)], mi[(2, 2)]);
+        println!(
+            "  row0 = ({:.6}, {:.6}, {:.6})",
+            mi[(0, 0)],
+            mi[(0, 1)],
+            mi[(0, 2)]
+        );
+        println!(
+            "  row1 = ({:.6}, {:.6}, {:.6})",
+            mi[(1, 0)],
+            mi[(1, 1)],
+            mi[(1, 2)]
+        );
+        println!(
+            "  row2 = ({:.6}, {:.6}, {:.6})",
+            mi[(2, 0)],
+            mi[(2, 1)],
+            mi[(2, 2)]
+        );
 
         // Find mapping from original to ideal Niggli
         let tol = 1e-5 * lattice.volume().powf(1.0 / 3.0);
-        if let Some((aligned, _, scale)) =
-            lattice.find_mapping(&ideal_niggli, tol, 5.0 * tol * 180.0 / std::f64::consts::PI, true)
-        {
+        if let Some((aligned, _, scale)) = lattice.find_mapping(
+            &ideal_niggli,
+            tol,
+            5.0 * tol * 180.0 / std::f64::consts::PI,
+            true,
+        ) {
             let ma = aligned.matrix();
             println!("\nAligned lattice from find_mapping:");
-            println!("  row0 = ({:.6}, {:.6}, {:.6})", ma[(0, 0)], ma[(0, 1)], ma[(0, 2)]);
-            println!("  row1 = ({:.6}, {:.6}, {:.6})", ma[(1, 0)], ma[(1, 1)], ma[(1, 2)]);
-            println!("  row2 = ({:.6}, {:.6}, {:.6})", ma[(2, 0)], ma[(2, 1)], ma[(2, 2)]);
+            println!(
+                "  row0 = ({:.6}, {:.6}, {:.6})",
+                ma[(0, 0)],
+                ma[(0, 1)],
+                ma[(0, 2)]
+            );
+            println!(
+                "  row1 = ({:.6}, {:.6}, {:.6})",
+                ma[(1, 0)],
+                ma[(1, 1)],
+                ma[(1, 2)]
+            );
+            println!(
+                "  row2 = ({:.6}, {:.6}, {:.6})",
+                ma[(2, 0)],
+                ma[(2, 1)],
+                ma[(2, 2)]
+            );
             println!("  determinant: {:.6}", ma.determinant());
             println!("  scale_matrix: {:?}", scale);
 
@@ -1173,9 +1281,24 @@ mod tests {
         let niggli = lattice.get_niggli_reduced(1e-5).unwrap();
         println!("Niggli lattice:");
         let m = niggli.matrix();
-        println!("  row0 = ({:.4}, {:.4}, {:.4})", m[(0, 0)], m[(0, 1)], m[(0, 2)]);
-        println!("  row1 = ({:.4}, {:.4}, {:.4})", m[(1, 0)], m[(1, 1)], m[(1, 2)]);
-        println!("  row2 = ({:.4}, {:.4}, {:.4})", m[(2, 0)], m[(2, 1)], m[(2, 2)]);
+        println!(
+            "  row0 = ({:.4}, {:.4}, {:.4})",
+            m[(0, 0)],
+            m[(0, 1)],
+            m[(0, 2)]
+        );
+        println!(
+            "  row1 = ({:.4}, {:.4}, {:.4})",
+            m[(1, 0)],
+            m[(1, 1)],
+            m[(1, 2)]
+        );
+        println!(
+            "  row2 = ({:.4}, {:.4}, {:.4})",
+            m[(2, 0)],
+            m[(2, 1)],
+            m[(2, 2)]
+        );
         println!("  angles: {:?}", niggli.angles());
         println!("  lengths: {:?}", niggli.lengths());
 
@@ -1650,7 +1773,11 @@ mod tests {
                 * (supercell[(1, 0)] * supercell[(2, 2)] - supercell[(1, 2)] * supercell[(2, 0)])
             + supercell[(0, 2)]
                 * (supercell[(1, 0)] * supercell[(2, 1)] - supercell[(1, 1)] * supercell[(2, 0)]);
-        assert_eq!(det.abs(), 1, "Supercell det should be ±1 for identical lattices");
+        assert_eq!(
+            det.abs(),
+            1,
+            "Supercell det should be ±1 for identical lattices"
+        );
     }
 
     #[test]
@@ -1717,13 +1844,25 @@ mod tests {
             Lattice::from_parameters(1.0, 1.0, 1.0, 2.0, 2.0, 2.0),
             Lattice::from_parameters(1.0, 1.0, 1.0, 178.0, 178.0, 178.0),
             // Nearly parallel vectors (can push cos slightly > 1)
-            Lattice::new(Matrix3::new(1.0, 0.0, 0.0, 0.9999999999, 1e-10, 0.0, 0.0, 0.0, 1.0)),
+            Lattice::new(Matrix3::new(
+                1.0,
+                0.0,
+                0.0,
+                0.9999999999,
+                1e-10,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+            )),
         ];
 
         for lattice in test_cases {
             let angles = lattice.angles();
             assert!(
-                angles.iter().all(|&a| a.is_finite() && (0.0..=180.0).contains(&a)),
+                angles
+                    .iter()
+                    .all(|&a| a.is_finite() && (0.0..=180.0).contains(&a)),
                 "angles={:?} invalid for lattice with vol={:.2e}",
                 angles,
                 lattice.volume()

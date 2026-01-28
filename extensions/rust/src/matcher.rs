@@ -256,10 +256,12 @@ impl StructureMatcher {
         source: &Structure,
         supercell_size: usize,
     ) -> Vec<(Lattice, Matrix3<i32>)> {
-        let all_mappings =
-            source
-                .lattice
-                .find_all_mappings(target_lattice, self.latt_len_tol, self.angle_tol, true);
+        let all_mappings = source.lattice.find_all_mappings(
+            target_lattice,
+            self.latt_len_tol,
+            self.angle_tol,
+            true,
+        );
 
         all_mappings
             .into_iter()
@@ -341,8 +343,8 @@ impl StructureMatcher {
         if short_vecs.is_empty() {
             return None;
         }
-        let translation: Vector3<f64> = short_vecs.iter().fold(Vector3::zeros(), |acc, v| acc + v)
-            / short_vecs.len() as f64;
+        let translation: Vector3<f64> =
+            short_vecs.iter().fold(Vector3::zeros(), |acc, v| acc + v) / short_vecs.len() as f64;
 
         // Distances after translation adjustment
         let distances: Vec<f64> = short_vecs
@@ -409,8 +411,7 @@ impl StructureMatcher {
             let avg_lattice = Self::average_lattice(latt, &struct2.lattice);
 
             // Compute fractional coordinate tolerance
-            let normalization =
-                (struct1.num_sites() as f64 / avg_lattice.volume()).powf(1.0 / 3.0);
+            let normalization = (struct1.num_sites() as f64 / avg_lattice.volume()).powf(1.0 / 3.0);
             let recip_lengths = avg_lattice.reciprocal().lengths();
             let scale = self.site_pos_tol / (PI * normalization);
             let frac_coord_tol = [
@@ -442,9 +443,13 @@ impl StructureMatcher {
                 // Check if fractional coords match
                 if Self::cmp_fstruct(&s1_fc, &translated_s2_fc, frac_coord_tol, &mask) {
                     // Compute distances
-                    if let Some((distances, _adjusted_translation, mapping)) =
-                        self.cart_dists(&s1_fc, &translated_s2_fc, &avg_lattice, &mask, normalization)
-                    {
+                    if let Some((distances, _adjusted_translation, mapping)) = self.cart_dists(
+                        &s1_fc,
+                        &translated_s2_fc,
+                        &avg_lattice,
+                        &mask,
+                        normalization,
+                    ) {
                         let val = if use_rms {
                             let sum_sq: f64 = distances.iter().map(|d| d * d).sum();
                             (sum_sq / distances.len() as f64).sqrt()
@@ -630,14 +635,8 @@ mod tests {
         let s1 = make_nacl();
         // KCl instead of NaCl
         let lattice = Lattice::cubic(5.64);
-        let species = vec![
-            Species::neutral(Element::K),
-            Species::neutral(Element::Cl),
-        ];
-        let frac_coords = vec![
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(0.5, 0.5, 0.5),
-        ];
+        let species = vec![Species::neutral(Element::K), Species::neutral(Element::Cl)];
+        let frac_coords = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
         let s2 = Structure::new(lattice, species, frac_coords);
 
         let matcher = StructureMatcher::new();
@@ -671,14 +670,8 @@ mod tests {
         );
         let s2 = Structure::new(
             lattice,
-            vec![
-                Species::neutral(Element::Na),
-                Species::neutral(Element::Na),
-            ],
-            vec![
-                Vector3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.5, 0.5, 0.5),
-            ],
+            vec![Species::neutral(Element::Na), Species::neutral(Element::Na)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
 
         let matcher = StructureMatcher::new();
@@ -693,7 +686,10 @@ mod tests {
         let s2 = make_simple_cubic(Element::Fe, 6.0); // 50% larger
 
         let matcher = StructureMatcher::new().with_scale(true);
-        assert!(matcher.fit(&s1, &s2), "Same structure at different scales should match");
+        assert!(
+            matcher.fit(&s1, &s2),
+            "Same structure at different scales should match"
+        );
     }
 
     #[test]
@@ -711,7 +707,11 @@ mod tests {
 
     // Helper: single atom at origin with custom lattice
     fn make_single_site(lattice: Lattice, element: Element) -> Structure {
-        Structure::new(lattice, vec![Species::neutral(element)], vec![Vector3::new(0.0, 0.0, 0.0)])
+        Structure::new(
+            lattice,
+            vec![Species::neutral(element)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        )
     }
 
     // Helper: FCC conventional cell (4 atoms)
@@ -735,11 +735,17 @@ mod tests {
 
     #[test]
     fn test_fit_angle_tolerance() {
-        let s1 = make_single_site(Lattice::from_parameters(5.0, 5.0, 5.0, 90.0, 90.0, 90.0), Element::Si);
+        let s1 = make_single_site(
+            Lattice::from_parameters(5.0, 5.0, 5.0, 90.0, 90.0, 90.0),
+            Element::Si,
+        );
         let matcher = StructureMatcher::new().with_angle_tol(5.0);
         // (gamma, should_match)
         for (gamma, should_match) in [(93.0, true), (110.0, false)] {
-            let s2 = make_single_site(Lattice::from_parameters(5.0, 5.0, 5.0, 90.0, 90.0, gamma), Element::Si);
+            let s2 = make_single_site(
+                Lattice::from_parameters(5.0, 5.0, 5.0, 90.0, 90.0, gamma),
+                Element::Si,
+            );
             assert_eq!(matcher.fit(&s1, &s2), should_match, "gamma={gamma}");
         }
     }
@@ -835,7 +841,11 @@ mod tests {
         let groups = matcher.group(&structures).unwrap();
 
         // Each should be its own group
-        assert_eq!(groups.len(), 3, "Different compositions should be in different groups");
+        assert_eq!(
+            groups.len(),
+            3,
+            "Different compositions should be in different groups"
+        );
     }
 
     #[test]
@@ -863,19 +873,16 @@ mod tests {
         let lattice = Lattice::from_parameters(3.0, 4.0, 5.0, 75.0, 85.0, 95.0);
         let s1 = Structure::new(
             lattice.clone(),
-            vec![
-                Species::neutral(Element::Ca),
-                Species::neutral(Element::O),
-            ],
-            vec![
-                Vector3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.5, 0.5, 0.5),
-            ],
+            vec![Species::neutral(Element::Ca), Species::neutral(Element::O)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
         let s2 = s1.clone();
 
         let matcher = StructureMatcher::new();
-        assert!(matcher.fit(&s1, &s2), "Identical triclinic structures should match");
+        assert!(
+            matcher.fit(&s1, &s2),
+            "Identical triclinic structures should match"
+        );
     }
 
     #[test]
@@ -883,10 +890,7 @@ mod tests {
         let lattice = Lattice::hexagonal(3.0, 5.0);
         let s1 = Structure::new(
             lattice.clone(),
-            vec![
-                Species::neutral(Element::Ti),
-                Species::neutral(Element::Ti),
-            ],
+            vec![Species::neutral(Element::Ti), Species::neutral(Element::Ti)],
             vec![
                 Vector3::new(1.0 / 3.0, 2.0 / 3.0, 0.25),
                 Vector3::new(2.0 / 3.0, 1.0 / 3.0, 0.75),
@@ -895,7 +899,10 @@ mod tests {
         let s2 = s1.clone();
 
         let matcher = StructureMatcher::new();
-        assert!(matcher.fit(&s1, &s2), "Identical hexagonal structures should match");
+        assert!(
+            matcher.fit(&s1, &s2),
+            "Identical hexagonal structures should match"
+        );
     }
 
     #[test]
@@ -942,7 +949,9 @@ mod tests {
                 3.6 / (2.0_f64).sqrt(),
                 3.6 / (2.0_f64).sqrt(),
                 3.6 / (2.0_f64).sqrt(),
-                60.0, 60.0, 60.0,
+                60.0,
+                60.0,
+                60.0,
             ),
             vec![Species::neutral(Element::Cu)],
             vec![Vector3::new(0.0, 0.0, 0.0)],
@@ -963,8 +972,14 @@ mod tests {
         // Note: actual result depends on supercell implementation status
 
         // Same structure should always match
-        assert!(matcher.fit(&fcc_conv, &fcc_conv), "Same structure should match");
-        assert!(matcher.fit(&fcc_prim, &fcc_prim), "Same structure should match");
+        assert!(
+            matcher.fit(&fcc_conv, &fcc_conv),
+            "Same structure should match"
+        );
+        assert!(
+            matcher.fit(&fcc_prim, &fcc_prim),
+            "Same structure should match"
+        );
     }
 
     #[test]
@@ -1019,6 +1034,9 @@ mod tests {
         );
 
         let matcher = StructureMatcher::new().with_site_pos_tol(0.1);
-        assert!(!matcher.fit(&s1, &s2), "Large perturbation should not match");
+        assert!(
+            !matcher.fit(&s1, &s2),
+            "Large perturbation should not match"
+        );
     }
 }

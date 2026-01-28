@@ -29,10 +29,8 @@ pub struct Composition {
 impl Composition {
     /// Create a new composition from element-amount pairs.
     pub fn new(elements: impl IntoIterator<Item = (Element, f64)>) -> Self {
-        let elements: IndexMap<Element, f64> = elements
-            .into_iter()
-            .filter(|(_, amt)| *amt > 0.0)
-            .collect();
+        let elements: IndexMap<Element, f64> =
+            elements.into_iter().filter(|(_, amt)| *amt > 0.0).collect();
         Self { elements }
     }
 
@@ -192,17 +190,23 @@ mod tests {
             (&[(Element::Na, 1.0), (Element::Cl, 1.0)], "NaCl"),
             (&[(Element::H, 2.0), (Element::O, 1.0)], "H2O"),
             // Reduction required
-            (&[(Element::H, 4.0), (Element::O, 2.0)], "H2O"),      // 4:2 -> 2:1
-            (&[(Element::Fe, 4.0), (Element::O, 6.0)], "Fe2O3"),   // 4:6 -> 2:3
-            (&[(Element::Ca, 3.0), (Element::P, 2.0), (Element::O, 8.0)], "Ca3P2O8"),
+            (&[(Element::H, 4.0), (Element::O, 2.0)], "H2O"), // 4:2 -> 2:1
+            (&[(Element::Fe, 4.0), (Element::O, 6.0)], "Fe2O3"), // 4:6 -> 2:3
+            (
+                &[(Element::Ca, 3.0), (Element::P, 2.0), (Element::O, 8.0)],
+                "Ca3P2O8",
+            ),
             // Single element
             (&[(Element::Cu, 1.0)], "Cu"),
-            (&[(Element::Cu, 4.0)], "Cu"),  // reduces to Cu, not Cu4
+            (&[(Element::Cu, 4.0)], "Cu"), // reduces to Cu, not Cu4
             (&[(Element::Fe, 100.0)], "Fe"),
             // Fractional amounts that reduce to integers
             (&[(Element::Fe, 0.5), (Element::O, 0.75)], "Fe2O3"),
             (&[(Element::Fe, 1.0), (Element::O, 1.5)], "Fe2O3"),
-            (&[(Element::Li, 0.25), (Element::Co, 0.25), (Element::O, 0.5)], "LiCoO2"),
+            (
+                &[(Element::Li, 0.25), (Element::Co, 0.25), (Element::O, 0.5)],
+                "LiCoO2",
+            ),
         ];
 
         for (elements, expected) in cases {
@@ -225,8 +229,16 @@ mod tests {
 
         assert_eq!(fe2o3_a, fe2o3_b, "Same reduced formula should be equal");
         assert_eq!(fe2o3_a, fe2o3_c, "Same reduced formula should be equal");
-        assert_eq!(fe2o3_a.hash(), fe2o3_b.hash(), "Equal compositions should have same hash");
-        assert_eq!(fe2o3_a.hash(), fe2o3_c.hash(), "Equal compositions should have same hash");
+        assert_eq!(
+            fe2o3_a.hash(),
+            fe2o3_b.hash(),
+            "Equal compositions should have same hash"
+        );
+        assert_eq!(
+            fe2o3_a.hash(),
+            fe2o3_c.hash(),
+            "Equal compositions should have same hash"
+        );
 
         // Different compositions are not equal
         let feo = Composition::new([(Element::Fe, 1.0), (Element::O, 1.0)]);
@@ -259,7 +271,7 @@ mod tests {
         // Zero amounts filtered out
         let comp = Composition::new([
             (Element::Fe, 2.0),
-            (Element::O, 0.0),  // filtered
+            (Element::O, 0.0), // filtered
             (Element::Cu, 3.0),
         ]);
         assert_eq!(comp.num_elements(), 2);
@@ -269,7 +281,7 @@ mod tests {
 
         // Negative amounts filtered out
         let comp2 = Composition::new([
-            (Element::Fe, -1.0),  // filtered
+            (Element::Fe, -1.0), // filtered
             (Element::O, 2.0),
             (Element::Cu, -0.5), // filtered
         ]);

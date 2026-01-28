@@ -94,8 +94,7 @@ impl UnionFind {
             // Atomically try to make small point to large
             // Expected: small is still its own root (parent[small] == small)
             // Desired: small points to large
-            if self
-                .parent[small]
+            if self.parent[small]
                 .compare_exchange(small, large, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
