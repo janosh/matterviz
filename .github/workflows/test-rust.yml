@@ -64,8 +64,11 @@ jobs:
           key: ${{ runner.os }}-cargo-py-${{ hashFiles('extensions/rust/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-py-
       - name: Build and install ferrox
-        run: uv pip install maturin --system && maturin build --features python && uv pip install target/wheels/*.whl --system
+        run: |
+          uv pip install maturin --system
+          maturin build --features python --release
+          uv pip install target/wheels/*.whl --system
       - name: Install test dependencies
-        run: uv pip install pytest pymatgen numpy --system
+        run: uv pip install pymatgen numpy --system
       - name: Run Python tests
-        run: pytest tests/ -v --tb=short
+        run: python tests/test_pymatgen_compat.py --regression

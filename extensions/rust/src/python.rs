@@ -45,7 +45,7 @@ impl PyStructureMatcher {
     ///     latt_len_tol: Fractional length tolerance for lattice vectors (default: 0.2).
     ///     site_pos_tol: Site position tolerance, normalized (default: 0.3).
     ///     angle_tol: Angle tolerance in degrees (default: 5.0)
-    ///     primitive_cell: Whether to reduce to primitive cell (default: False, not yet implemented)
+    ///     primitive_cell: Whether to reduce to primitive cell (default: True)
     ///     scale: Whether to scale volumes to match (default: True)
     ///     attempt_supercell: Whether to try supercell matching (default: False)
     ///     comparator: "species" or "element" (default: "species")
@@ -54,7 +54,7 @@ impl PyStructureMatcher {
         latt_len_tol = 0.2,
         site_pos_tol = 0.3,
         angle_tol = 5.0,
-        primitive_cell = false,
+        primitive_cell = true,
         scale = true,
         attempt_supercell = false,
         comparator = "species"

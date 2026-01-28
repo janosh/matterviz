@@ -211,7 +211,9 @@ fn test_get_rms_dist_identical() {
 fn test_get_rms_dist_perturbed() {
     let s1 = make_bcc(Element::Fe, 2.87);
     let s2 = perturb_structure(&s1, 0.02);
-    let matcher = StructureMatcher::new();
+    // Use primitive_cell=false because perturbation breaks symmetry,
+    // causing different primitive cell reductions
+    let matcher = StructureMatcher::new().with_primitive_cell(false);
     let result = matcher.get_rms_dist(&s1, &s2);
     assert!(result.is_some(), "Should get RMS for perturbed structures");
     let (rms, _max_dist) = result.unwrap();

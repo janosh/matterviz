@@ -114,7 +114,7 @@ def py_matcher_no_scale() -> PyMatcher:
 def rust_matcher() -> RustMatcher | None:
     """Ferrox matcher (None if not installed)."""
     if FERROX_AVAILABLE:
-        return RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0)
+        return RustMatcher(latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0)
     return None
 
 
@@ -122,300 +122,284 @@ def rust_matcher() -> RustMatcher | None:
 def rust_matcher_no_scale() -> RustMatcher | None:
     """Ferrox matcher with scale=False (None if not installed)."""
     if FERROX_AVAILABLE:
-        return RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, scale=False)
+        return RustMatcher(
+            latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, scale=False
+        )
     return None
 
 
 # Lattice Tolerance Tests
+#
+# The ltol parameter defines allowed lattice length ratios.
+# With ltol=0.2, the allowed range is (1/(1+ltol), 1+ltol) = (0.833, 1.2).
+# This is an ASYMMETRIC range:
+# - Smaller lattice: ratio > 0.833 (17% smaller allowed)
+# - Larger lattice: ratio < 1.2 (20% larger allowed)
 
 
-class TestLatticeTolerance:
-    """Tests for lattice length tolerance (ltol) behavior.
+@pytest.mark.parametrize(
+    ("a1", "a2", "expected", "reason"),
+    [
+        # Inside tolerance
+        (4.0, 4.0, True, "identical"),
+        (4.0, 4.0 * 1.033, True, "3.3% larger, ratio=1.033 inside (0.833, 1.2)"),
+        (4.0, 4.0 * 1.15, True, "15% larger, ratio=1.15 inside (0.833, 1.2)"),
+        (4.0, 4.0 * 0.85, True, "15% smaller, ratio=0.85 inside (0.833, 1.2)"),
+        # Outside tolerance
+        (4.0, 5.0, False, "25% larger, ratio=1.25 outside (0.833, 1.2)"),
+        (4.0, 3.0, False, "25% smaller, ratio=0.75 outside (0.833, 1.2)"),
+        # Boundary cases (exclusive, so exact boundary should fail)
+        (4.0, 4.0 * 1.2, False, "exact upper bound 1.2 (exclusive)"),
+        (4.0, 4.0 / 1.2, False, "exact lower bound 0.833 (exclusive)"),
+    ],
+)
+def test_ltol_boundaries(
+    py_matcher_no_scale: PyMatcher,
+    rust_matcher_no_scale: RustMatcher | None,
+    a1: float,
+    a2: float,
+    expected: bool,
+    reason: str,
+) -> None:
+    """Test lattice tolerance boundaries with scale=False."""
+    s1 = make_cubic("Fe", a1)
+    s2 = make_cubic("Fe", a2)
 
-    The ltol parameter defines allowed lattice length ratios.
-    With ltol=0.2, the allowed range is (1/(1+ltol), 1+ltol) = (0.833, 1.2).
+    result = MatchResult.compare(s1, s2, py_matcher_no_scale, rust_matcher_no_scale)
 
-    This is an ASYMMETRIC range:
-    - Smaller lattice: ratio > 0.833 (17% smaller allowed)
-    - Larger lattice: ratio < 1.2 (20% larger allowed)
-    """
+    assert result.pymatgen == expected, f"pymatgen: {reason}"
+    if result.ferrox is not None:
+        assert result.agree, f"ferrox disagrees with pymatgen: {reason}"
 
-    @pytest.mark.parametrize(
-        ("a1", "a2", "expected", "reason"),
-        [
-            # Inside tolerance
-            (4.0, 4.0, True, "identical"),
-            (4.0, 4.0 * 1.033, True, "3.3% larger, ratio=1.033 inside (0.833, 1.2)"),
-            (4.0, 4.0 * 1.15, True, "15% larger, ratio=1.15 inside (0.833, 1.2)"),
-            (4.0, 4.0 * 0.85, True, "15% smaller, ratio=0.85 inside (0.833, 1.2)"),
-            # Outside tolerance
-            (4.0, 5.0, False, "25% larger, ratio=1.25 outside (0.833, 1.2)"),
-            (4.0, 3.0, False, "25% smaller, ratio=0.75 outside (0.833, 1.2)"),
-            # Boundary cases (exclusive, so exact boundary should fail)
-            (4.0, 4.0 * 1.2, False, "exact upper bound 1.2 (exclusive)"),
-            (4.0, 4.0 / 1.2, False, "exact lower bound 0.833 (exclusive)"),
-        ],
+
+# Site Order Invariance Tests
+#
+# The Hungarian algorithm should find optimal site assignment regardless
+# of the order atoms appear in the structure definition.
+
+
+def test_shuffled_sites_rocksalt(
+    py_matcher: PyMatcher,
+    rust_matcher: RustMatcher | None,
+) -> None:
+    """NaCl with swapped atom order should still match."""
+    s1 = make_rocksalt("Na", "Cl", 5.64)
+    s2 = Structure(
+        Lattice.cubic(5.64),
+        ["Cl", "Na"],
+        [[0.5, 0.5, 0.5], [0.0, 0.0, 0.0]],
     )
-    def test_ltol_boundaries(
-        self,
-        py_matcher_no_scale: PyMatcher,
-        rust_matcher_no_scale: RustMatcher | None,
-        a1: float,
-        a2: float,
-        expected: bool,
-        reason: str,
-    ) -> None:
-        """Test lattice tolerance boundaries with scale=False."""
-        s1 = make_cubic("Fe", a1)
-        s2 = make_cubic("Fe", a2)
 
-        result = MatchResult.compare(s1, s2, py_matcher_no_scale, rust_matcher_no_scale)
+    result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
 
-        assert result.pymatgen == expected, f"pymatgen: {reason}"
-        if result.ferrox is not None:
-            assert result.agree, f"ferrox disagrees with pymatgen: {reason}"
+    assert result.pymatgen, "Hungarian algorithm should find correct assignment"
+    if result.ferrox is not None:
+        assert result.agree, "ferrox should match pymatgen"
 
 
-class TestSiteOrderInvariance:
-    """Tests that site ordering doesn't affect matching.
-
-    The Hungarian algorithm should find optimal site assignment regardless
-    of the order atoms appear in the structure definition.
-    """
-
-    def test_shuffled_sites_rocksalt(
-        self,
-        py_matcher: PyMatcher,
-        rust_matcher: RustMatcher | None,
-    ) -> None:
-        """NaCl with swapped atom order should still match."""
-        # Original: Na at origin, Cl at body center
-        s1 = make_rocksalt("Na", "Cl", 5.64)
-
-        # Swapped listing order (same structure, different representation)
-        s2 = Structure(
-            Lattice.cubic(5.64),
-            ["Cl", "Na"],
-            [[0.5, 0.5, 0.5], [0.0, 0.0, 0.0]],
-        )
-
-        result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
-
-        assert result.pymatgen, "Hungarian algorithm should find correct assignment"
-        if result.ferrox is not None:
-            assert result.agree, "ferrox should match pymatgen"
-
-    def test_shuffled_sites_fcc(
-        self,
-        py_matcher: PyMatcher,
-        rust_matcher: RustMatcher | None,
-    ) -> None:
-        """FCC with shuffled site order should still match."""
-        s1 = make_fcc("Cu", 3.6)
-
-        # Shuffle the 4 FCC sites
-        s2 = Structure(
-            Lattice.cubic(3.6),
-            ["Cu"] * 4,
-            [[0, 0.5, 0.5], [0.5, 0, 0.5], [0, 0, 0], [0.5, 0.5, 0]],  # Reordered
-        )
-
-        result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
-
-        assert result.pymatgen, "shuffled FCC sites should still match"
-        if result.ferrox is not None:
-            assert result.agree
-
-
-class TestVolumeScaling:
-    """Tests for scale parameter behavior.
-
-    With scale=True (default), structures are normalized by volume before
-    comparison, so differently-sized versions of the same structure match.
-    With scale=False, volume differences within ltol still match.
-    """
-
-    def test_scale_true_large_difference(
-        self,
-        py_matcher: PyMatcher,
-        rust_matcher: RustMatcher | None,
-    ) -> None:
-        """With scale=True, even large volume differences should match."""
-        s1 = make_cubic("Fe", 4.0)
-        s2 = make_cubic("Fe", 8.0)  # 8x volume
-
-        result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
-
-        assert result.pymatgen, "scale=True normalizes volume"
-        if result.ferrox is not None:
-            assert result.agree
-
-    def test_scale_false_within_tolerance(
-        self,
-        py_matcher_no_scale: PyMatcher,
-        rust_matcher_no_scale: RustMatcher | None,
-    ) -> None:
-        """With scale=False, small volume differences within ltol should match."""
-        s1 = make_cubic("Fe", 4.0)
-        s2 = make_cubic("Fe", 4.0 * 1.033)  # ~10% volume, ratio=1.033 inside ltol
-
-        result = MatchResult.compare(s1, s2, py_matcher_no_scale, rust_matcher_no_scale)
-
-        assert result.pymatgen, "ratio 1.033 inside (0.833, 1.2)"
-        if result.ferrox is not None:
-            assert result.agree
-
-    def test_scale_false_outside_tolerance(
-        self,
-        py_matcher_no_scale: PyMatcher,
-        rust_matcher_no_scale: RustMatcher | None,
-    ) -> None:
-        """With scale=False, large volume differences outside ltol should NOT match."""
-        s1 = make_cubic("Fe", 4.0)
-        s2 = make_cubic("Fe", 5.0)  # ratio=1.25 outside ltol
-
-        result = MatchResult.compare(s1, s2, py_matcher_no_scale, rust_matcher_no_scale)
-
-        assert not result.pymatgen, "ratio 1.25 outside (0.833, 1.2)"
-        if result.ferrox is not None:
-            assert result.agree
-
-
-class TestOriginShift:
-    """Tests that origin shifts don't affect matching.
-
-    Fractional coordinate origin is arbitrary - shifting all atoms by the
-    same vector should produce an equivalent structure.
-    """
-
-    @pytest.mark.parametrize(
-        "shift",
-        [
-            [0.5, 0.0, 0.0],
-            [0.0, 0.5, 0.0],
-            [0.0, 0.0, 0.5],
-            [0.5, 0.5, 0.5],
-            [0.25, 0.25, 0.25],
-            [0.1, 0.2, 0.3],
-        ],
+def test_shuffled_sites_fcc(
+    py_matcher: PyMatcher,
+    rust_matcher: RustMatcher | None,
+) -> None:
+    """FCC with shuffled site order should still match."""
+    s1 = make_fcc("Cu", 3.6)
+    s2 = Structure(
+        Lattice.cubic(3.6),
+        ["Cu"] * 4,
+        [[0, 0.5, 0.5], [0.5, 0, 0.5], [0, 0, 0], [0.5, 0.5, 0]],
     )
-    def test_origin_shift(
-        self,
-        py_matcher: PyMatcher,
-        rust_matcher: RustMatcher | None,
-        shift: list[float],
-    ) -> None:
-        """Structures with shifted origin should match."""
-        s1 = make_cubic("Fe", 4.0)
-        s2 = Structure(
-            Lattice.cubic(4.0),
-            ["Fe"],
-            [[shift[0] % 1, shift[1] % 1, shift[2] % 1]],
+
+    result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
+
+    assert result.pymatgen, "shuffled FCC sites should still match"
+    if result.ferrox is not None:
+        assert result.agree
+
+
+# Volume Scaling Tests
+#
+# With scale=True (default), structures are normalized by volume before
+# comparison, so differently-sized versions of the same structure match.
+# With scale=False, volume differences within ltol still match.
+
+
+def test_scale_true_large_difference(
+    py_matcher: PyMatcher,
+    rust_matcher: RustMatcher | None,
+) -> None:
+    """With scale=True, even large volume differences should match."""
+    s1 = make_cubic("Fe", 4.0)
+    s2 = make_cubic("Fe", 8.0)  # 8x volume
+
+    result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
+
+    assert result.pymatgen, "scale=True normalizes volume"
+    if result.ferrox is not None:
+        assert result.agree
+
+
+def test_scale_false_within_tolerance(
+    py_matcher_no_scale: PyMatcher,
+    rust_matcher_no_scale: RustMatcher | None,
+) -> None:
+    """With scale=False, small volume differences within ltol should match."""
+    s1 = make_cubic("Fe", 4.0)
+    s2 = make_cubic("Fe", 4.0 * 1.033)  # ~10% volume, ratio=1.033 inside ltol
+
+    result = MatchResult.compare(s1, s2, py_matcher_no_scale, rust_matcher_no_scale)
+
+    assert result.pymatgen, "ratio 1.033 inside (0.833, 1.2)"
+    if result.ferrox is not None:
+        assert result.agree
+
+
+def test_scale_false_outside_tolerance(
+    py_matcher_no_scale: PyMatcher,
+    rust_matcher_no_scale: RustMatcher | None,
+) -> None:
+    """With scale=False, large volume differences outside ltol should NOT match."""
+    s1 = make_cubic("Fe", 4.0)
+    s2 = make_cubic("Fe", 5.0)  # ratio=1.25 outside ltol
+
+    result = MatchResult.compare(s1, s2, py_matcher_no_scale, rust_matcher_no_scale)
+
+    assert not result.pymatgen, "ratio 1.25 outside (0.833, 1.2)"
+    if result.ferrox is not None:
+        assert result.agree
+
+
+# Origin Shift Tests
+#
+# Fractional coordinate origin is arbitrary - shifting all atoms by the
+# same vector should produce an equivalent structure.
+
+
+@pytest.mark.parametrize(
+    "shift",
+    [
+        [0.5, 0.0, 0.0],
+        [0.0, 0.5, 0.0],
+        [0.0, 0.0, 0.5],
+        [0.5, 0.5, 0.5],
+        [0.25, 0.25, 0.25],
+        [0.1, 0.2, 0.3],
+    ],
+)
+def test_origin_shift(
+    py_matcher: PyMatcher,
+    rust_matcher: RustMatcher | None,
+    shift: list[float],
+) -> None:
+    """Structures with shifted origin should match."""
+    s1 = make_cubic("Fe", 4.0)
+    s2 = Structure(
+        Lattice.cubic(4.0),
+        ["Fe"],
+        [[shift[0] % 1, shift[1] % 1, shift[2] % 1]],
+    )
+
+    result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
+
+    assert result.pymatgen, f"origin shift {shift} should match"
+    if result.ferrox is not None:
+        assert result.agree
+
+
+# Oxidation State Tests
+#
+# SpeciesComparator (default): Fe2+ != Fe3+
+# ElementComparator: Fe2+ == Fe3+ (oxidation state ignored)
+
+
+def test_species_comparator_different_oxi() -> None:
+    """SpeciesComparator should NOT match different oxidation states."""
+    lattice = Lattice.cubic(5.0)
+    s_fe2 = Structure(lattice, [Species("Fe", 2)], [[0, 0, 0]])
+    s_fe3 = Structure(lattice, [Species("Fe", 3)], [[0, 0, 0]])
+
+    matcher = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False)
+    assert not matcher.fit(s_fe2, s_fe3), "Fe2+ != Fe3+ with SpeciesComparator"
+
+    if FERROX_AVAILABLE:
+        rust_matcher = RustMatcher(
+            latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, comparator="species"
         )
-
-        result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
-
-        assert result.pymatgen, f"origin shift {shift} should match"
-        if result.ferrox is not None:
-            assert result.agree
+        json1 = json.dumps(s_fe2.as_dict())
+        json2 = json.dumps(s_fe3.as_dict())
+        assert not rust_matcher.fit(json1, json2)
 
 
-class TestOxidationStates:
-    """Tests for oxidation state handling with different comparators.
+def test_element_comparator_different_oxi() -> None:
+    """ElementComparator SHOULD match different oxidation states."""
+    lattice = Lattice.cubic(5.0)
+    s_fe2 = Structure(lattice, [Species("Fe", 2)], [[0, 0, 0]])
+    s_fe3 = Structure(lattice, [Species("Fe", 3)], [[0, 0, 0]])
 
-    SpeciesComparator (default): Fe2+ != Fe3+
-    ElementComparator: Fe2+ == Fe3+ (oxidation state ignored)
-    """
+    matcher = PyMatcher(
+        ltol=0.2,
+        stol=0.3,
+        angle_tol=5.0,
+        primitive_cell=False,
+        comparator=ElementComparator(),
+    )
+    assert matcher.fit(s_fe2, s_fe3), "Fe2+ == Fe3+ with ElementComparator"
 
-    def test_species_comparator_different_oxi(self) -> None:
-        """SpeciesComparator should NOT match different oxidation states."""
-        lattice = Lattice.cubic(5.0)
-        s_fe2 = Structure(lattice, [Species("Fe", 2)], [[0, 0, 0]])
-        s_fe3 = Structure(lattice, [Species("Fe", 3)], [[0, 0, 0]])
-
-        matcher = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False)
-        assert not matcher.fit(s_fe2, s_fe3), "Fe2+ != Fe3+ with SpeciesComparator"
-
-        if FERROX_AVAILABLE:
-            rust_matcher = RustMatcher(
-                ltol=0.2, stol=0.3, angle_tol=5.0, comparator="species"
-            )
-            json1 = json.dumps(s_fe2.as_dict())
-            json2 = json.dumps(s_fe3.as_dict())
-            assert not rust_matcher.fit(json1, json2)
-
-    def test_element_comparator_different_oxi(self) -> None:
-        """ElementComparator SHOULD match different oxidation states."""
-        lattice = Lattice.cubic(5.0)
-        s_fe2 = Structure(lattice, [Species("Fe", 2)], [[0, 0, 0]])
-        s_fe3 = Structure(lattice, [Species("Fe", 3)], [[0, 0, 0]])
-
-        matcher = PyMatcher(
-            ltol=0.2,
-            stol=0.3,
-            angle_tol=5.0,
-            primitive_cell=False,
-            comparator=ElementComparator(),
+    if FERROX_AVAILABLE:
+        rust_matcher = RustMatcher(
+            latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, comparator="element"
         )
-        assert matcher.fit(s_fe2, s_fe3), "Fe2+ == Fe3+ with ElementComparator"
-
-        if FERROX_AVAILABLE:
-            rust_matcher = RustMatcher(
-                ltol=0.2, stol=0.3, angle_tol=5.0, comparator="element"
-            )
-            json1 = json.dumps(s_fe2.as_dict())
-            json2 = json.dumps(s_fe3.as_dict())
-            assert rust_matcher.fit(json1, json2)
+        json1 = json.dumps(s_fe2.as_dict())
+        json2 = json.dumps(s_fe3.as_dict())
+        assert rust_matcher.fit(json1, json2)
 
 
-class TestNonMatching:
-    """Tests that verify structures that should NOT match."""
+# Non-Matching Tests
 
-    def test_different_elements(
-        self,
-        py_matcher: PyMatcher,
-        rust_matcher: RustMatcher | None,
-    ) -> None:
-        """Different elements should never match."""
-        s1 = make_cubic("Fe", 4.0)
-        s2 = make_cubic("Cu", 4.0)
 
-        result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
+def test_different_elements(
+    py_matcher: PyMatcher,
+    rust_matcher: RustMatcher | None,
+) -> None:
+    """Different elements should never match."""
+    s1 = make_cubic("Fe", 4.0)
+    s2 = make_cubic("Cu", 4.0)
 
-        assert not result.pymatgen, "Fe != Cu"
-        if result.ferrox is not None:
-            assert result.agree
+    result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
 
-    def test_different_compositions(
-        self,
-        py_matcher: PyMatcher,
-        rust_matcher: RustMatcher | None,
-    ) -> None:
-        """Different compositions should never match."""
-        s1 = make_bcc("Fe", 2.87)
-        s2 = make_rocksalt("Fe", "O", 4.3)
+    assert not result.pymatgen, "Fe != Cu"
+    if result.ferrox is not None:
+        assert result.agree
 
-        result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
 
-        assert not result.pymatgen, "Fe2 != FeO"
-        if result.ferrox is not None:
-            assert result.agree
+def test_different_compositions(
+    py_matcher: PyMatcher,
+    rust_matcher: RustMatcher | None,
+) -> None:
+    """Different compositions should never match."""
+    s1 = make_bcc("Fe", 2.87)
+    s2 = make_rocksalt("Fe", "O", 4.3)
 
-    def test_different_structure_types(self) -> None:
-        """Same element but different crystal structure should not match."""
-        s1 = make_bcc("Fe", 2.87)
-        s2 = make_fcc("Fe", 3.6)
+    result = MatchResult.compare(s1, s2, py_matcher, rust_matcher)
 
-        # Without supercell matching, different site counts won't match
-        matcher = PyMatcher(
-            ltol=0.2,
-            stol=0.3,
-            angle_tol=5.0,
-            primitive_cell=False,
-            attempt_supercell=False,
-        )
+    assert not result.pymatgen, "Fe2 != FeO"
+    if result.ferrox is not None:
+        assert result.agree
 
-        assert not matcher.fit(s1, s2), "BCC (2 atoms) != FCC (4 atoms)"
+
+def test_different_structure_types() -> None:
+    """Same element but different crystal structure should not match."""
+    s1 = make_bcc("Fe", 2.87)
+    s2 = make_fcc("Fe", 3.6)
+
+    matcher = PyMatcher(
+        ltol=0.2,
+        stol=0.3,
+        angle_tol=5.0,
+        primitive_cell=False,
+        attempt_supercell=False,
+    )
+
+    assert not matcher.fit(s1, s2), "BCC (2 atoms) != FCC (4 atoms)"
 
 
 # Standalone Execution
@@ -484,10 +468,12 @@ def print_summary() -> None:
     print("-" * 70)
 
     rust_default = (
-        RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0) if FERROX_AVAILABLE else None
+        RustMatcher(latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0)
+        if FERROX_AVAILABLE
+        else None
     )
     rust_no_scale = (
-        RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, scale=False)
+        RustMatcher(latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, scale=False)
         if FERROX_AVAILABLE
         else None
     )
@@ -522,8 +508,6 @@ def print_summary() -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--pytest":
-        # Run with pytest
         sys.exit(pytest.main([__file__, "-v"]))
     else:
-        # Run standalone summary
         print_summary()

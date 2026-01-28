@@ -16,34 +16,31 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
-
-# Portable path resolution for test data directories
-_TEST_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _TEST_DIR.parent.parent.parent  # extensions/rust/tests -> repo root
+from typing import NamedTuple
 
 import numpy as np
 from pymatgen.analysis.structure_matcher import ElementComparator
 from pymatgen.analysis.structure_matcher import StructureMatcher as PyMatcher
 from pymatgen.core import Lattice, Structure
 
-# Import ferrox
+_TEST_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _TEST_DIR.parent.parent.parent
+
 try:
     from ferrox import StructureMatcher as RustMatcher
 except ImportError:
-    print(
-        "ERROR: ferrox not installed. Run: cd rust/ferrox && maturin develop --features python"
-    )
-    sys.exit(1)
+    print("ERROR: ferrox not installed. Run: maturin develop --features python")
+    raise SystemExit(1)
+
+# Module-level matchers and results (initialized in main())
+py_matcher: PyMatcher | None = None
+rust_matcher: RustMatcher | None = None
+results: list[Result] = []
 
 
-# Test Result Tracking
-
-
-@dataclass
-class TestResult:
-    """Result of a single comparison test."""
+class Result(NamedTuple):
+    """Comparison result between pymatgen and ferrox."""
 
     category: str
     description: str
@@ -53,96 +50,70 @@ class TestResult:
     error: str | None = None
 
 
-class TestSuite:
-    """Test suite for tracking results."""
+def init_matchers() -> None:
+    """Initialize module-level matchers."""
+    global py_matcher, rust_matcher, results
+    py_matcher = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False)
+    rust_matcher = RustMatcher(latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0)
+    results = []
 
-    def __init__(self) -> None:
-        self.results: list[TestResult] = []
-        # Both matchers use primitive_cell=False for fair comparison
-        # (ferrox doesn't implement primitive cell reduction yet)
-        self.py_matcher = PyMatcher(
-            ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False
+
+def compare(s1: Structure, s2: Structure, category: str, description: str) -> Result:
+    """Compare two structures using both matchers."""
+    try:
+        py_result = py_matcher.fit(s1, s2)
+    except Exception as exc:
+        return Result(
+            category, description, False, False, False, f"pymatgen error: {exc}"
         )
-        self.rust_matcher = RustMatcher(
-            latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0
+
+    try:
+        json1 = json.dumps(s1.as_dict())
+        json2 = json.dumps(s2.as_dict())
+        ferrox_result = rust_matcher.fit(json1, json2)
+    except Exception as exc:
+        return Result(
+            category, description, py_result, False, False, f"ferrox error: {exc}"
         )
 
-    def compare(
-        self, s1: Structure, s2: Structure, category: str, description: str
-    ) -> TestResult:
-        """Compare two structures using both matchers."""
-        try:
-            py_result = self.py_matcher.fit(s1, s2)
-        except Exception as exc:
-            return TestResult(
-                category=category,
-                description=description,
-                pymatgen_result=False,
-                ferrox_result=False,
-                match=False,
-                error=f"pymatgen error: {exc}",
-            )
+    result = Result(
+        category, description, py_result, ferrox_result, py_result == ferrox_result
+    )
+    results.append(result)
+    return result
 
-        try:
-            json1 = json.dumps(s1.as_dict())
-            json2 = json.dumps(s2.as_dict())
-            rust_result = self.rust_matcher.fit(json1, json2)
-        except Exception as exc:
-            return TestResult(
-                category=category,
-                description=description,
-                pymatgen_result=py_result,
-                ferrox_result=False,
-                match=False,
-                error=f"ferrox error: {exc}",
-            )
 
-        result = TestResult(
-            category=category,
-            description=description,
-            pymatgen_result=py_result,
-            ferrox_result=rust_result,
-            match=(py_result == rust_result),
-        )
-        self.results.append(result)
-        return result
+def print_summary() -> None:
+    """Print test summary."""
+    total = len(results)
+    passed = sum(1 for r in results if r.match)
+    failed = sum(1 for r in results if not r.match)
+    errors = sum(1 for r in results if r.error)
 
-    def print_summary(self) -> None:
-        """Print test summary."""
-        total = len(self.results)
-        passed = sum(1 for r in self.results if r.match)
-        failed = sum(1 for r in self.results if not r.match)
-        errors = sum(1 for r in self.results if r.error)
+    print("\n" + "=" * 70)
+    print("TEST SUMMARY")
+    print("=" * 70)
+    print(f"Total: {total} | Passed: {passed} | Failed: {failed} | Errors: {errors}")
+    print(f"Pass rate: {100 * passed / total:.1f}%" if total > 0 else "N/A")
 
-        print("\n" + "=" * 70)
-        print("TEST SUMMARY")
-        print("=" * 70)
-        print(f"Total tests: {total}")
-        print(f"Passed: {passed}")
-        print(f"Failed: {failed}")
-        print(f"Errors: {errors}")
-        print(f"Pass rate: {100 * passed / total:.1f}%" if total > 0 else "N/A")
+    categories = set(r.category for r in results)
+    print("\nBy category:")
+    for cat in sorted(categories):
+        cat_results = [r for r in results if r.category == cat]
+        cat_passed = sum(1 for r in cat_results if r.match)
+        print(f"  {cat}: {cat_passed}/{len(cat_results)}")
 
-        # Print by category
-        categories = set(r.category for r in self.results)
-        print("\nBy category:")
-        for cat in sorted(categories):
-            cat_results = [r for r in self.results if r.category == cat]
-            cat_passed = sum(1 for r in cat_results if r.match)
-            print(f"  {cat}: {cat_passed}/{len(cat_results)} passed")
-
-        # Print failures
-        failures = [r for r in self.results if not r.match]
-        if failures:
-            print("\nFAILURES:")
-            for r in failures[:20]:  # Limit output
-                status = "ERROR" if r.error else "MISMATCH"
-                print(f"  [{status}] {r.category}: {r.description}")
-                print(f"    pymatgen={r.pymatgen_result}, ferrox={r.ferrox_result}")
-                if r.error:
-                    print(f"    {r.error}")
-            if len(failures) > 20:
-                print(f"  ... and {len(failures) - 20} more failures")
+    failures = [r for r in results if not r.match]
+    if failures:
+        print("\nFAILURES:")
+        for r in failures[:20]:
+            status = "ERROR" if r.error else "MISMATCH"
+            print(f"  [{status}] {r.category}: {r.description}")
+            print(f"    pymatgen={r.pymatgen_result}, ferrox={r.ferrox_result}")
+            if r.error:
+                print(f"    {r.error}")
+        if len(failures) > 20:
+            print(f"  ... and {len(failures) - 20} more")
 
 
 # Structure Loading
@@ -339,13 +310,11 @@ def translate_structure(s: Structure, translation: list[float]) -> Structure:
 # Test Categories
 
 
-def run_category_a_self_matching(
-    suite: TestSuite, structures: dict[str, Structure]
-) -> None:
+def run_category_a_self_matching(structures: dict[str, Structure]) -> None:
     """Category A: Self-comparison (identical structures should always match)."""
     print("\nCategory A: Self-matching tests")
     for name, s in structures.items():
-        result = suite.compare(s, s, "A-self", f"{name} vs itself")
+        result = compare(s, s, "A-self", f"{name} vs itself")
         status = "✓" if result.match else "✗"
         if not result.match:
             print(
@@ -353,7 +322,7 @@ def run_category_a_self_matching(
             )
 
 
-def run_category_b_perturbations(suite: TestSuite) -> None:
+def run_category_b_perturbations() -> None:
     """Category B: Perturbed structures."""
     print("\nCategory B: Perturbation tests")
 
@@ -372,22 +341,22 @@ def run_category_b_perturbations(suite: TestSuite) -> None:
     for name, s in base_structures:
         for mag in [0.01, 0.02, 0.05]:
             s_pert = perturb_structure(s, mag)
-            suite.compare(s, s_pert, "B-perturb", f"{name} perturb={mag}")
+            compare(s, s_pert, "B-perturb", f"{name} perturb={mag}")
 
     # Lattice scaling (should match with scale=True)
     for name, s in base_structures:
         for scale in [0.98, 1.02, 1.05]:
             s_scaled = scale_lattice(s, scale)
-            suite.compare(s, s_scaled, "B-scale", f"{name} scale={scale}")
+            compare(s, s_scaled, "B-scale", f"{name} scale={scale}")
 
     # Uniaxial strain
     for name, s in base_structures:
         for strain in [0.01, 0.02]:
             s_strained = strain_lattice(s, strain)
-            suite.compare(s, s_strained, "B-strain", f"{name} strain={strain}")
+            compare(s, s_strained, "B-strain", f"{name} strain={strain}")
 
 
-def run_category_c_non_matching(suite: TestSuite) -> None:
+def run_category_c_non_matching() -> None:
     """Category C: Cross-structure comparisons (should NOT match)."""
     print("\nCategory C: Non-matching tests")
 
@@ -411,13 +380,13 @@ def run_category_c_non_matching(suite: TestSuite) -> None:
             comp1 = s1.composition.reduced_formula
             comp2 = s2.composition.reduced_formula
             if comp1 != comp2:
-                suite.compare(s1, s2, "C-diff-comp", f"{name1} vs {name2}")
+                compare(s1, s2, "C-diff-comp", f"{name1} vs {name2}")
 
     # Same element, different structure type
-    suite.compare(
+    compare(
         make_bcc("Fe", 2.87), make_fcc("Fe", 3.6), "C-diff-struct", "bcc-Fe vs fcc-Fe"
     )
-    suite.compare(
+    compare(
         make_cubic("Cu", 3.6),
         make_fcc("Cu", 3.6),
         "C-diff-struct",
@@ -425,57 +394,55 @@ def run_category_c_non_matching(suite: TestSuite) -> None:
     )
 
 
-def run_category_d_edge_cases(suite: TestSuite) -> None:
+def run_category_d_edge_cases() -> None:
     """Category D: Edge cases."""
     print("\nCategory D: Edge case tests")
 
     # Shuffled sites (should match)
     s_nacl = make_rocksalt("Na", "Cl", 5.64)
     s_shuffled = shuffle_sites(s_nacl)
-    suite.compare(s_nacl, s_shuffled, "D-shuffle", "NaCl vs shuffled-NaCl")
+    compare(s_nacl, s_shuffled, "D-shuffle", "NaCl vs shuffled-NaCl")
 
     s_perov = make_perovskite("Ba", "Ti", "O", 4.0)
     s_shuffled = shuffle_sites(s_perov)
-    suite.compare(s_perov, s_shuffled, "D-shuffle", "BaTiO3 vs shuffled-BaTiO3")
+    compare(s_perov, s_shuffled, "D-shuffle", "BaTiO3 vs shuffled-BaTiO3")
 
     # Translated structures (should match)
     for trans in [[0.1, 0, 0], [0, 0.1, 0], [0, 0, 0.1], [0.25, 0.25, 0.25]]:
         s_trans = translate_structure(s_nacl, trans)
-        suite.compare(s_nacl, s_trans, "D-translate", f"NaCl translated by {trans}")
+        compare(s_nacl, s_trans, "D-translate", f"NaCl translated by {trans}")
 
     # Tolerance boundary tests
     s_base = make_bcc("Fe", 2.87)
 
     # Just under stol (should match)
     s_small = perturb_structure(s_base, 0.05, seed=1)
-    suite.compare(s_base, s_small, "D-tol-under", "BCC-Fe perturb=0.05 (under stol)")
+    compare(s_base, s_small, "D-tol-under", "BCC-Fe perturb=0.05 (under stol)")
 
     # Near ltol boundary
     s_scaled = scale_lattice(s_base, 1.15)  # 15% scale
-    suite.compare(s_base, s_scaled, "D-tol-ltol", "BCC-Fe scale=1.15 (near ltol)")
+    compare(s_base, s_scaled, "D-tol-ltol", "BCC-Fe scale=1.15 (near ltol)")
 
     # Large displacement (should not match with default tolerances)
     s_large = perturb_structure(s_base, 0.4, seed=2)
-    suite.compare(s_base, s_large, "D-large-perturb", "BCC-Fe perturb=0.4 (large)")
+    compare(s_base, s_large, "D-large-perturb", "BCC-Fe perturb=0.4 (large)")
 
     # Different lattice types with similar parameters
     lattice_ortho = Lattice.orthorhombic(4.0, 4.0, 4.0)
     s_ortho = Structure(lattice_ortho, ["Fe"], [[0, 0, 0]])
     lattice_cubic = Lattice.cubic(4.0)
     s_cubic = Structure(lattice_cubic, ["Fe"], [[0, 0, 0]])
-    suite.compare(
-        s_ortho, s_cubic, "D-lattice-type", "ortho-Fe vs cubic-Fe (same params)"
-    )
+    compare(s_ortho, s_cubic, "D-lattice-type", "ortho-Fe vs cubic-Fe (same params)")
 
     # Triclinic lattice
     lattice_tri = Lattice.from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0)
     s_tri = Structure(lattice_tri, ["Ca"], [[0, 0, 0]])
-    suite.compare(s_tri, s_tri, "D-triclinic", "triclinic-Ca vs itself")
+    compare(s_tri, s_tri, "D-triclinic", "triclinic-Ca vs itself")
 
     # Highly oblique cell
     lattice_oblique = Lattice.from_parameters(5.0, 5.0, 10.0, 60.0, 80.0, 70.0)
     s_oblique = Structure(lattice_oblique, ["Bi", "Se"], [[0, 0, 0], [0.5, 0.5, 0.5]])
-    suite.compare(s_oblique, s_oblique, "D-oblique", "oblique BiSe vs itself")
+    compare(s_oblique, s_oblique, "D-oblique", "oblique BiSe vs itself")
 
     # Perturbed oblique
     s_oblique_pert = perturb_structure(s_oblique, 0.02)
@@ -487,9 +454,7 @@ def run_category_d_edge_cases(suite: TestSuite) -> None:
     s_left = Structure(lattice_left, ["Ag"], [[0, 0, 0]])
     lattice_right = Lattice([[4.0, 0, 0], [0, 4.0, 0], [0, 0, 4.0]])
     s_right = Structure(lattice_right, ["Ag"], [[0, 0, 0]])
-    suite.compare(
-        s_left, s_right, "D-left-handed", "left-handed vs right-handed lattice"
-    )
+    compare(s_left, s_right, "D-left-handed", "left-handed vs right-handed lattice")
 
     # Coordinates outside [0,1) - pymatgen wraps automatically
     coords_outside = [
@@ -500,37 +465,33 @@ def run_category_d_edge_cases(suite: TestSuite) -> None:
     lattice_simple = Lattice.cubic(5.0)
     s_outside = Structure(lattice_simple, ["Li", "Li"], coords_outside)
     s_wrapped = Structure(lattice_simple, ["Li", "Li"], coords_wrapped)
-    suite.compare(
-        s_outside, s_wrapped, "D-coords-wrap", "coords outside [0,1) vs wrapped"
-    )
+    compare(s_outside, s_wrapped, "D-coords-wrap", "coords outside [0,1) vs wrapped")
 
     # Very small structures (1-2 atoms)
     s_single = Structure(Lattice.cubic(3.0), ["Au"], [[0, 0, 0]])
-    suite.compare(s_single, s_single, "D-single-atom", "single Au atom self-match")
+    compare(s_single, s_single, "D-single-atom", "single Au atom self-match")
 
     s_two = Structure(Lattice.cubic(4.0), ["Pt", "Pt"], [[0, 0, 0], [0.5, 0.5, 0.5]])
-    suite.compare(s_two, s_two, "D-two-atoms", "two Pt atoms self-match")
+    compare(s_two, s_two, "D-two-atoms", "two Pt atoms self-match")
 
     # Extreme lattice parameter ratios (needle-like cell)
     lattice_needle = Lattice.from_parameters(2.0, 2.0, 20.0, 90.0, 90.0, 90.0)
     s_needle = Structure(lattice_needle, ["C"], [[0, 0, 0]])
-    suite.compare(s_needle, s_needle, "D-needle-cell", "needle-like cell (c >> a)")
+    compare(s_needle, s_needle, "D-needle-cell", "needle-like cell (c >> a)")
 
     # Flat cell (c << a)
     lattice_flat = Lattice.from_parameters(20.0, 20.0, 2.0, 90.0, 90.0, 90.0)
     s_flat = Structure(lattice_flat, ["C"], [[0, 0, 0]])
-    suite.compare(s_flat, s_flat, "D-flat-cell", "flat cell (c << a)")
+    compare(s_flat, s_flat, "D-flat-cell", "flat cell (c << a)")
 
     # Near-90 degree angles (close to but not cubic)
     lattice_near90 = Lattice.from_parameters(5.0, 5.0, 5.0, 89.5, 90.5, 89.8)
     s_near90 = Structure(lattice_near90, ["V"], [[0, 0, 0]])
-    suite.compare(s_near90, s_near90, "D-near-cubic", "near-cubic angles self-match")
-    suite.compare(
-        s_oblique, s_oblique_pert, "D-oblique-pert", "oblique BiSe vs perturbed"
-    )
+    compare(s_near90, s_near90, "D-near-cubic", "near-cubic angles self-match")
+    compare(s_oblique, s_oblique_pert, "D-oblique-pert", "oblique BiSe vs perturbed")
 
 
-def run_category_e_batch(suite: TestSuite, structures: dict[str, Structure]) -> None:
+def run_category_e_batch(structures: dict[str, Structure]) -> None:
     """Category E: Batch processing tests."""
     print("\nCategory E: Batch processing tests")
 
@@ -543,14 +504,14 @@ def run_category_e_batch(suite: TestSuite, structures: dict[str, Structure]) -> 
 
     try:
         json_strs = [json.dumps(s.as_dict()) for s in struct_list]
-        rust_groups = suite.rust_matcher.group(json_strs)
+        rust_groups = rust_matcher.group(json_strs)
 
         # Compare with pymatgen grouping
         py_groups: dict[int, list[int]] = {}
         for i, s1 in enumerate(struct_list):
             found_group = False
             for canonical, members in py_groups.items():
-                if suite.py_matcher.fit(struct_list[canonical], s1):
+                if py_matcher.fit(struct_list[canonical], s1):
                     members.append(i)
                     found_group = True
                     break
@@ -562,8 +523,8 @@ def run_category_e_batch(suite: TestSuite, structures: dict[str, Structure]) -> 
         rust_num_groups = len(rust_groups)
 
         if py_num_groups == rust_num_groups:
-            suite.results.append(
-                TestResult(
+            results.append(
+                Result(
                     category="E-batch",
                     description=f"Group {len(struct_list)} structures: {rust_num_groups} groups",
                     pymatgen_result=True,
@@ -572,8 +533,8 @@ def run_category_e_batch(suite: TestSuite, structures: dict[str, Structure]) -> 
                 )
             )
         else:
-            suite.results.append(
-                TestResult(
+            results.append(
+                Result(
                     category="E-batch",
                     description=f"Group {len(struct_list)} structures",
                     pymatgen_result=True,
@@ -583,8 +544,8 @@ def run_category_e_batch(suite: TestSuite, structures: dict[str, Structure]) -> 
                 )
             )
     except Exception as exc:
-        suite.results.append(
-            TestResult(
+        results.append(
+            Result(
                 category="E-batch",
                 description="Group structures",
                 pymatgen_result=False,
@@ -595,7 +556,7 @@ def run_category_e_batch(suite: TestSuite, structures: dict[str, Structure]) -> 
         )
 
 
-def run_category_f_comparators(suite: TestSuite) -> None:
+def run_category_f_comparators() -> None:
     """Category F: Comparator and oxidation state tests."""
     print("\nCategory F: Comparator tests")
 
@@ -628,8 +589,8 @@ def run_category_f_comparators(suite: TestSuite) -> None:
     json2 = json.dumps(s_fe3.as_dict())
     rust_result_species = rust_species.fit(json1, json2)
 
-    suite.results.append(
-        TestResult(
+    results.append(
+        Result(
             category="F-oxi-species",
             description="Fe2+ vs Fe3+ (SpeciesComparator)",
             pymatgen_result=py_result_species,
@@ -642,8 +603,8 @@ def run_category_f_comparators(suite: TestSuite) -> None:
     py_result_element = py_element.fit(s_fe2, s_fe3)
     rust_result_element = rust_element.fit(json1, json2)
 
-    suite.results.append(
-        TestResult(
+    results.append(
+        Result(
             category="F-oxi-element",
             description="Fe2+ vs Fe3+ (ElementComparator)",
             pymatgen_result=py_result_element,
@@ -665,8 +626,8 @@ def run_category_f_comparators(suite: TestSuite) -> None:
     py_result = py_species.fit(s_nacl_oxi, s_nacl_neutral)
     rust_result = rust_species.fit(json_oxi, json_neutral)
 
-    suite.results.append(
-        TestResult(
+    results.append(
+        Result(
             category="F-oxi-species",
             description="NaCl with vs without oxidation states (SpeciesComparator)",
             pymatgen_result=py_result,
@@ -679,8 +640,8 @@ def run_category_f_comparators(suite: TestSuite) -> None:
     py_result = py_element.fit(s_nacl_oxi, s_nacl_neutral)
     rust_result = rust_element.fit(json_oxi, json_neutral)
 
-    suite.results.append(
-        TestResult(
+    results.append(
+        Result(
             category="F-oxi-element",
             description="NaCl with vs without oxidation states (ElementComparator)",
             pymatgen_result=py_result,
@@ -698,8 +659,8 @@ def run_category_f_comparators(suite: TestSuite) -> None:
     py_result = py_element.fit(s_cu, s_ag)
     rust_result = rust_element.fit(json_cu, json_ag)
 
-    suite.results.append(
-        TestResult(
+    results.append(
+        Result(
             category="F-diff-elem",
             description="Cu vs Ag (ElementComparator)",
             pymatgen_result=py_result,
@@ -709,7 +670,7 @@ def run_category_f_comparators(suite: TestSuite) -> None:
     )
 
 
-def run_category_g_rms_consistency(suite: TestSuite) -> None:
+def run_category_g_rms_consistency() -> None:
     """Category G: RMS distance consistency tests."""
     print("\nCategory G: RMS distance consistency")
 
@@ -721,10 +682,10 @@ def run_category_g_rms_consistency(suite: TestSuite) -> None:
         s_pert = perturb_structure(s_base, mag, seed=100)
 
         try:
-            py_rms = suite.py_matcher.get_rms_dist(s_base, s_pert)
+            py_rms = py_matcher.get_rms_dist(s_base, s_pert)
             json1 = json.dumps(s_base.as_dict())
             json2 = json.dumps(s_pert.as_dict())
-            rust_rms = suite.rust_matcher.get_rms_dist(json1, json2)
+            rust_rms = rust_matcher.get_rms_dist(json1, json2)
 
             if py_rms is not None and rust_rms is not None:
                 py_val = py_rms[0]  # (rms, max_dist)
@@ -733,8 +694,8 @@ def run_category_g_rms_consistency(suite: TestSuite) -> None:
                 # Check if RMS values are close (within 10% or 0.01 absolute)
                 rms_match = abs(py_val - rust_val) < max(0.01, 0.1 * py_val)
 
-                suite.results.append(
-                    TestResult(
+                results.append(
+                    Result(
                         category="G-rms",
                         description=f"RMS at perturb={mag}: py={py_val:.4f}, rust={rust_val:.4f}",
                         pymatgen_result=True,
@@ -746,8 +707,8 @@ def run_category_g_rms_consistency(suite: TestSuite) -> None:
                     )
                 )
             else:
-                suite.results.append(
-                    TestResult(
+                results.append(
+                    Result(
                         category="G-rms",
                         description=f"RMS at perturb={mag}",
                         pymatgen_result=py_rms is not None,
@@ -756,8 +717,8 @@ def run_category_g_rms_consistency(suite: TestSuite) -> None:
                     )
                 )
         except Exception as exc:
-            suite.results.append(
-                TestResult(
+            results.append(
+                Result(
                     category="G-rms",
                     description=f"RMS at perturb={mag}",
                     pymatgen_result=False,
@@ -768,9 +729,7 @@ def run_category_g_rms_consistency(suite: TestSuite) -> None:
             )
 
 
-def run_cross_file_comparisons(
-    suite: TestSuite, structures: dict[str, Structure]
-) -> None:
+def run_cross_file_comparisons(structures: dict[str, Structure]) -> None:
     """Compare structures across files."""
     print("\nCross-file comparisons")
 
@@ -784,7 +743,7 @@ def run_cross_file_comparisons(
         for name2, s2 in struct_list[i + 1 :]:
             if pair_count >= max_pairs:
                 break
-            suite.compare(s1, s2, "cross-file", f"{name1} vs {name2}")
+            compare(s1, s2, "cross-file", f"{name1} vs {name2}")
             pair_count += 1
         if pair_count >= max_pairs:
             break
@@ -799,7 +758,7 @@ def main() -> None:
     print("MATTERIM vs PYMATGEN COMPATIBILITY TEST SUITE")
     print("=" * 70)
 
-    suite = TestSuite()
+    init_matchers()
 
     # Load structures
     print("\nLoading structures...")
@@ -818,19 +777,19 @@ def main() -> None:
     # Run test categories
     start_time = time.time()
 
-    run_category_a_self_matching(suite, all_structures)
-    run_category_b_perturbations(suite)
-    run_category_c_non_matching(suite)
-    run_category_d_edge_cases(suite)
-    run_category_e_batch(suite, matterviz_structures)
-    run_category_f_comparators(suite)
-    run_category_g_rms_consistency(suite)
-    run_cross_file_comparisons(suite, all_structures)
+    run_category_a_self_matching(all_structures)
+    run_category_b_perturbations()
+    run_category_c_non_matching()
+    run_category_d_edge_cases()
+    run_category_e_batch(matterviz_structures)
+    run_category_f_comparators()
+    run_category_g_rms_consistency()
+    run_cross_file_comparisons(all_structures)
 
     elapsed = time.time() - start_time
 
     # Print results
-    suite.print_summary()
+    print_summary()
     print(f"\nTotal time: {elapsed:.2f}s")
 
     # Known limitation note
@@ -847,8 +806,8 @@ def main() -> None:
 """)
 
     # Log failed structures for debugging
-    total = len(suite.results)
-    failed_results = [r for r in suite.results if not r.match]
+    total = len(results)
+    failed_results = [r for r in results if not r.match]
     pass_rate = (total - len(failed_results)) / total if total > 0 else 0
 
     if failed_results:
@@ -1134,8 +1093,8 @@ def run_regression_tests() -> dict[str, bool]:
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--regression":
         # Run only regression tests
-        results = run_regression_tests()
-        sys.exit(0 if all(results.values()) else 1)
+        regression_results = run_regression_tests()
+        sys.exit(0 if all(regression_results.values()) else 1)
     else:
         # Run full test suite
         main()
