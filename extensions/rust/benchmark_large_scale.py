@@ -36,14 +36,12 @@ if TYPE_CHECKING:
 try:
     from tqdm import tqdm
 except ImportError:
-    print("ERROR: tqdm not installed. Run: pip install tqdm")
-    sys.exit(1)
+    raise ImportError("tqdm not installed. Run: pip install tqdm") from None
 
 try:
     from tabulate import tabulate
 except ImportError:
-    print("ERROR: tabulate not installed. Run: pip install tabulate")
-    sys.exit(1)
+    raise ImportError("tabulate not installed. Run: pip install tabulate") from None
 
 # pymatgen imports
 from pymatgen.analysis.structure_matcher import StructureMatcher as PyMatcher
@@ -53,15 +51,12 @@ from pymatgen.core import Structure
 try:
     from ferrox import StructureMatcher as RustMatcher
 except ImportError:
-    print(
-        "ERROR: ferrox not installed. Run: cd extensions/rust && maturin develop --features python --release"
-    )
-    sys.exit(1)
+    raise ImportError(
+        "ferrox not installed. Run: cd extensions/rust && maturin develop --features python --release"
+    ) from None
 
 
-# =============================================================================
 # Data Classes
-# =============================================================================
 
 
 @dataclass
@@ -158,9 +153,7 @@ class ComparisonResult:
         }
 
 
-# =============================================================================
 # Structure Loading
-# =============================================================================
 
 
 def generate_synthetic_structures(
@@ -209,7 +202,7 @@ def generate_synthetic_structures(
     nonmetals = ["O", "S", "Se", "N", "P", "F", "Cl", "Br", "I"]
 
     iterator = tqdm(range(n_structures), desc="Generating", disable=not verbose)
-    for idx in iterator:
+    for _idx in iterator:
         # Random lattice parameters
         a = rng.uniform(3.0, 12.0)
         b = rng.uniform(3.0, 12.0)
@@ -308,10 +301,12 @@ def load_wbm_structures(limit: int = 10000, verbose: bool = True) -> list[Struct
         return structures
 
     except Exception as exc:
+        import traceback
+
         if verbose:
-            print(
-                f"WARNING: Failed to load WBM structures ({exc}), using synthetic structures"
-            )
+            print(f"WARNING: Failed to load WBM structures: {exc}")
+            print(traceback.format_exc())
+            print("Falling back to synthetic structures")
         return generate_synthetic_structures(limit, verbose=verbose)
 
 
@@ -348,9 +343,7 @@ def compute_structure_stats(structures: list[Structure]) -> StructureStats:
     )
 
 
-# =============================================================================
 # JSON Conversion
-# =============================================================================
 
 
 def convert_structures_to_json(
@@ -376,9 +369,7 @@ def convert_structures_to_json(
     return json_structures
 
 
-# =============================================================================
 # Benchmark Utilities
-# =============================================================================
 
 
 def benchmark_with_memory(
@@ -423,9 +414,7 @@ def benchmark_with_memory(
     return result, median_time, std_time, peak_memory_mb
 
 
-# =============================================================================
 # Benchmark Scenarios
-# =============================================================================
 
 
 def benchmark_deduplication(
@@ -470,8 +459,8 @@ def benchmark_deduplication(
         # Pymatgen benchmark
         print("  Running pymatgen...")
 
-        def py_dedup():
-            groups = py_matcher.group_structures(subset_structs)
+        def py_dedup(structs=subset_structs):
+            groups = py_matcher.group_structures(structs)
             return len(groups)
 
         py_result, py_time, py_std, py_mem = benchmark_with_memory(
@@ -487,8 +476,8 @@ def benchmark_deduplication(
         # ferrox benchmark
         print("  Running ferrox...")
 
-        def rust_dedup():
-            groups = rust_matcher.group(subset_json)
+        def rust_dedup(json_strs=subset_json):
+            groups = rust_matcher.group(json_strs)
             return len(groups)
 
         rust_result, rust_time, rust_std, rust_mem = benchmark_with_memory(
@@ -575,10 +564,10 @@ def benchmark_pairwise_fit(
         # Pymatgen benchmark
         print("  Running pymatgen...")
 
-        def py_fit():
+        def py_fit(pair_idx=indices, structs=structures):
             n_matches = 0
-            for idx1, idx2 in indices:
-                if py_matcher.fit(structures[idx1], structures[idx2]):
+            for idx1, idx2 in pair_idx:
+                if py_matcher.fit(structs[idx1], structs[idx2]):
                     n_matches += 1
             return n_matches
 
@@ -597,10 +586,10 @@ def benchmark_pairwise_fit(
         # ferrox benchmark
         print("  Running ferrox...")
 
-        def rust_fit():
+        def rust_fit(pair_idx=indices, json_strs=json_structures):
             n_matches = 0
-            for idx1, idx2 in indices:
-                if rust_matcher.fit(json_structures[idx1], json_structures[idx2]):
+            for idx1, idx2 in pair_idx:
+                if rust_matcher.fit(json_strs[idx1], json_strs[idx2]):
                     n_matches += 1
             return n_matches
 
@@ -683,8 +672,8 @@ def benchmark_group_structures_scaling(
         # Pymatgen benchmark
         print("  Running pymatgen...")
 
-        def py_group():
-            return py_matcher.group_structures(subset_structs)
+        def py_group(structs=subset_structs):
+            return py_matcher.group_structures(structs)
 
         py_result, py_time, py_std, py_mem = benchmark_with_memory(
             py_group,
@@ -701,8 +690,8 @@ def benchmark_group_structures_scaling(
         # ferrox benchmark
         print("  Running ferrox...")
 
-        def rust_group():
-            return rust_matcher.group(subset_json)
+        def rust_group(json_strs=subset_json):
+            return rust_matcher.group(json_strs)
 
         rust_result, rust_time, rust_std, rust_mem = benchmark_with_memory(
             rust_group,
@@ -787,14 +776,14 @@ def benchmark_by_structure_size(
         # Pymatgen benchmark
         print("  Running pymatgen...")
 
-        def py_fit():
+        def py_fit(pairs=pair_indices, structs=structures):
             n_matches = 0
-            for idx1, idx2 in pair_indices:
-                if py_matcher.fit(structures[idx1], structures[idx2]):
+            for idx1, idx2 in pairs:
+                if py_matcher.fit(structs[idx1], structs[idx2]):
                     n_matches += 1
             return n_matches
 
-        py_result, py_time, py_std, py_mem = benchmark_with_memory(
+        py_result, py_time, _py_std, py_mem = benchmark_with_memory(
             py_fit,
             n_warmup=config.n_warmup_runs,
             n_timed=config.n_timed_runs,
@@ -805,14 +794,14 @@ def benchmark_by_structure_size(
         # ferrox benchmark
         print("  Running ferrox...")
 
-        def rust_fit():
+        def rust_fit(pairs=pair_indices, json_strs=json_structures):
             n_matches = 0
-            for idx1, idx2 in pair_indices:
-                if rust_matcher.fit(json_structures[idx1], json_structures[idx2]):
+            for idx1, idx2 in pairs:
+                if rust_matcher.fit(json_strs[idx1], json_strs[idx2]):
                     n_matches += 1
             return n_matches
 
-        rust_result, rust_time, rust_std, rust_mem = benchmark_with_memory(
+        rust_result, rust_time, _rust_std, rust_mem = benchmark_with_memory(
             rust_fit,
             n_warmup=config.n_warmup_runs,
             n_timed=config.n_timed_runs,
@@ -842,9 +831,7 @@ def benchmark_by_structure_size(
     return results
 
 
-# =============================================================================
 # Output Functions
-# =============================================================================
 
 
 def print_summary_table(results: list[ComparisonResult]) -> None:
@@ -872,16 +859,7 @@ def print_summary_table(results: list[ComparisonResult]) -> None:
             ]
         )
 
-    headers = [
-        "Scenario",
-        "N",
-        "Pymatgen",
-        "ferrox",
-        "Speedup",
-        "Py Mem",
-        "Rust Mem",
-        "Match",
-    ]
+    headers = "Scenario,N,Pymatgen,ferrox,Speedup,Py Mem,Rust Mem,Match".split(",")
     print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
     # Summary statistics
@@ -937,7 +915,7 @@ def create_plots(results: list[ComparisonResult], output_dir: str = ".") -> None
     group_results = [r for r in results if r.scenario.startswith("group_")]
     pairwise_results = [r for r in results if r.scenario.startswith("pairwise_")]
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    _fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
     # Plot 1: Deduplication scaling
     if dedup_results:
@@ -1033,9 +1011,7 @@ def create_plots(results: list[ComparisonResult], output_dir: str = ".") -> None
     plt.close()
 
 
-# =============================================================================
 # CLI and Main
-# =============================================================================
 
 
 def parse_args() -> argparse.Namespace:

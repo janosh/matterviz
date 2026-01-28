@@ -34,16 +34,18 @@ impl Structure {
     ///
     /// # Panics
     ///
-    /// Panics in debug builds if `species.len() != frac_coords.len()`.
+    /// Panics if `species.len() != frac_coords.len()`.
     pub fn new(
         lattice: Lattice,
         species: Vec<Species>,
         frac_coords: Vec<Vector3<f64>>,
     ) -> Self {
-        debug_assert_eq!(
+        assert_eq!(
             species.len(),
             frac_coords.len(),
-            "species and frac_coords must have same length"
+            "species and frac_coords must have same length: {} vs {}",
+            species.len(),
+            frac_coords.len()
         );
         Self {
             lattice,
@@ -93,7 +95,7 @@ impl Structure {
         );
         let moyo_lattice = MoyoLattice::new(moyo_matrix);
 
-        // Convert positions (already fractional Vector3<f64>)
+        // Clone positions since MoyoCell::new() takes ownership
         let positions: Vec<Vector3<f64>> = self.frac_coords.clone();
 
         // Convert species to atomic numbers
@@ -127,10 +129,11 @@ impl Structure {
         let species: Vec<Species> = cell
             .numbers
             .iter()
-            .map(|&n| {
+            .enumerate()
+            .map(|(idx, &n)| {
                 let elem = Element::from_atomic_number(n as u8).ok_or_else(|| {
                     FerroxError::InvalidStructure {
-                        index: 0,
+                        index: idx,
                         reason: format!("Invalid atomic number: {n}"),
                     }
                 })?;
@@ -370,13 +373,35 @@ mod tests {
 
     #[test]
     fn test_oxidation_states() {
-        let s = Structure::new(
+        // Test structures with various oxidation state configurations
+        let nacl = Structure::new(
             Lattice::cubic(5.64),
             vec![Species::new(Element::Na, Some(1)), Species::new(Element::Cl, Some(-1))],
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
-        assert_eq!(s.species[0].oxidation_state, Some(1));
-        assert_eq!(s.species[1].oxidation_state, Some(-1));
+        assert_eq!(nacl.species[0].oxidation_state, Some(1));
+        assert_eq!(nacl.species[1].oxidation_state, Some(-1));
+
+        // Mixed neutral and charged
+        let mixed = Structure::new(
+            Lattice::cubic(4.0),
+            vec![
+                Species::neutral(Element::Fe),
+                Species::new(Element::Fe, Some(2)),
+                Species::new(Element::Fe, Some(3)),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.0, 0.0),
+                Vector3::new(0.0, 0.5, 0.0),
+            ],
+        );
+        assert_eq!(mixed.species[0].oxidation_state, None);
+        assert_eq!(mixed.species[1].oxidation_state, Some(2));
+        assert_eq!(mixed.species[2].oxidation_state, Some(3));
+
+        // Oxidation states are preserved in composition (element only)
+        assert_eq!(mixed.composition().reduced_formula(), "Fe");
     }
 
     #[test]
@@ -420,10 +445,18 @@ mod tests {
 
     #[test]
     fn test_empty_structure() {
+        // Empty structures are valid (useful for lattice-only operations)
         let s = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
         assert_eq!(s.num_sites(), 0);
         assert!(s.cart_coords().is_empty());
         assert!(s.composition().is_empty());
+
+        // Lattice properties still work
+        assert!((s.lattice.volume() - 64.0).abs() < 1e-10);
+        assert_eq!(s.lattice.lengths(), [4.0, 4.0, 4.0]);
+
+        // Spacegroup detection should work (returns P1 for empty)
+        // Note: moyo may fail on empty structures, which is acceptable
     }
 
     #[test]

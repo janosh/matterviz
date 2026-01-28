@@ -70,7 +70,6 @@ struct PymatgenSite {
 
 /// Represents the lattice in pymatgen JSON.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)] // pbc parsed for compatibility but not used
 struct PymatgenLattice {
     matrix: [[f64; 3]; 3],
     #[serde(default = "default_pbc")]
@@ -101,6 +100,11 @@ struct PymatgenStructure {
 ///
 /// Supports the format produced by `Structure.as_dict()` in pymatgen.
 ///
+/// # Limitations
+///
+/// - **Disordered sites**: Sites with multiple species (partial occupancy) use only
+///   the first species. Full disorder support is not yet implemented.
+///
 /// # Arguments
 ///
 /// * `json` - JSON string in pymatgen Structure.as_dict() format
@@ -126,11 +130,12 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
         })?;
 
     // Build lattice from row-major matrix
-    let m = &parsed.lattice.matrix;
+    let mat = &parsed.lattice.matrix;
     let matrix = nalgebra::Matrix3::new(
-        m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2],
+        mat[0][0], mat[0][1], mat[0][2], mat[1][0], mat[1][1], mat[1][2], mat[2][0], mat[2][1], mat[2][2],
     );
-    let lattice = Lattice::new(matrix);
+    let mut lattice = Lattice::new(matrix);
+    lattice.pbc = parsed.lattice.pbc;
 
     // Build species and coordinates
     let mut species = Vec::with_capacity(parsed.sites.len());
@@ -145,7 +150,8 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
             });
         }
 
-        // For now, only handle single-species sites (no disorder)
+        // TODO: Add proper disordered site support with occupancy tracking.
+        // Currently uses only the first species, losing partial occupancy information.
         if site.species.len() > 1 {
             tracing::warn!(
                 "Site {} has {} species (disordered site), using first species only",
@@ -242,7 +248,7 @@ pub fn parse_structures_glob(pattern: &str) -> Result<Vec<(String, Structure)>> 
 ///
 /// JSON string in pymatgen format.
 pub fn structure_to_json(structure: &Structure) -> String {
-    let m = structure.lattice.matrix();
+    let mat = structure.lattice.matrix();
 
     let sites: Vec<serde_json::Value> = structure
         .species
@@ -263,16 +269,17 @@ pub fn structure_to_json(structure: &Structure) -> String {
         })
         .collect();
 
+    let pbc = structure.lattice.pbc;
     serde_json::json!({
         "@module": "pymatgen.core.structure",
         "@class": "Structure",
         "lattice": {
             "matrix": [
-                [m[(0,0)], m[(0,1)], m[(0,2)]],
-                [m[(1,0)], m[(1,1)], m[(1,2)]],
-                [m[(2,0)], m[(2,1)], m[(2,2)]]
+                [mat[(0,0)], mat[(0,1)], mat[(0,2)]],
+                [mat[(1,0)], mat[(1,1)], mat[(1,2)]],
+                [mat[(2,0)], mat[(2,1)], mat[(2,2)]]
             ],
-            "pbc": [true, true, true]
+            "pbc": [pbc[0], pbc[1], pbc[2]]
         },
         "sites": sites,
         "properties": {}
@@ -416,6 +423,23 @@ mod tests {
         assert_eq!(s1.species[0].element, s2.species[0].element);
         assert_eq!(s1.species[1].element, s2.species[1].element);
         assert!((s1.lattice.volume() - s2.lattice.volume()).abs() < 1e-10);
+        assert_eq!(s1.lattice.pbc, s2.lattice.pbc);
+    }
+
+    #[test]
+    fn test_structure_to_json_preserves_pbc() {
+        // Test non-standard PBC (e.g., slab with vacuum in z-direction)
+        let mut lattice = Lattice::cubic(10.0);
+        lattice.pbc = [true, true, false]; // Non-periodic in z
+        let species = vec![Species::neutral(Element::Si)];
+        let coords = vec![Vector3::new(0.5, 0.5, 0.5)];
+        let s1 = Structure::new(lattice, species, coords);
+
+        let json = structure_to_json(&s1);
+        assert!(json.contains(r#""pbc":[true,true,false]"#), "JSON should contain pbc: {json}");
+
+        let s2 = parse_structure_json(&json).unwrap();
+        assert_eq!(s2.lattice.pbc, [true, true, false], "PBC should be preserved in roundtrip");
     }
 
     #[test]

@@ -4,6 +4,8 @@
 //! along with associated data like atomic numbers, symbols, and electronegativities.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
 /// All 118 chemical elements.
 ///
@@ -293,11 +295,18 @@ impl Element {
     /// assert_eq!(Element::from_symbol("Xx"), None);
     /// ```
     pub fn from_symbol(symbol: &str) -> Option<Self> {
-        let symbol_lower = symbol.to_lowercase();
-        Self::SYMBOLS
-            .iter()
-            .position(|s| s.to_lowercase() == symbol_lower)
-            .and_then(|idx| Self::from_atomic_number((idx + 1) as u8))
+        // Static lookup map initialized once (case-insensitive via lowercase keys)
+        static SYMBOL_MAP: OnceLock<HashMap<String, Element>> = OnceLock::new();
+        let map = SYMBOL_MAP.get_or_init(|| {
+            let mut map = HashMap::with_capacity(118);
+            for (idx, sym) in Self::SYMBOLS.iter().enumerate() {
+                if let Some(elem) = Self::from_atomic_number((idx + 1) as u8) {
+                    map.insert(sym.to_lowercase(), elem);
+                }
+            }
+            map
+        });
+        map.get(&symbol.to_lowercase()).copied()
     }
 
     /// Create an element from its atomic number (1-118).
@@ -378,58 +387,76 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_from_symbol() {
-        assert_eq!(Element::from_symbol("H"), Some(Element::H));
-        assert_eq!(Element::from_symbol("Fe"), Some(Element::Fe));
-        assert_eq!(Element::from_symbol("fe"), Some(Element::Fe));
-        assert_eq!(Element::from_symbol("FE"), Some(Element::Fe));
-        assert_eq!(Element::from_symbol("Og"), Some(Element::Og));
-        assert_eq!(Element::from_symbol("Xx"), None);
-        assert_eq!(Element::from_symbol(""), None);
-    }
+    fn test_roundtrip() {
+        // Comprehensive test: all 118 elements round-trip correctly
+        for z in 1..=118 {
+            let elem = Element::from_atomic_number(z).unwrap();
+            assert_eq!(elem.atomic_number(), z, "atomic_number mismatch for Z={z}");
+            assert_eq!(
+                Element::from_symbol(elem.symbol()),
+                Some(elem),
+                "symbol roundtrip failed for Z={z}"
+            );
+            // Case-insensitive lookup
+            assert_eq!(
+                Element::from_symbol(&elem.symbol().to_lowercase()),
+                Some(elem),
+                "lowercase lookup failed for Z={z}"
+            );
+            assert_eq!(
+                Element::from_symbol(&elem.symbol().to_uppercase()),
+                Some(elem),
+                "uppercase lookup failed for Z={z}"
+            );
+        }
 
-    #[test]
-    fn test_from_atomic_number() {
-        assert_eq!(Element::from_atomic_number(1), Some(Element::H));
-        assert_eq!(Element::from_atomic_number(26), Some(Element::Fe));
-        assert_eq!(Element::from_atomic_number(118), Some(Element::Og));
-        assert_eq!(Element::from_atomic_number(0), None);
-        assert_eq!(Element::from_atomic_number(119), None);
-    }
-
-    #[test]
-    fn test_symbol() {
-        assert_eq!(Element::H.symbol(), "H");
-        assert_eq!(Element::Fe.symbol(), "Fe");
-        assert_eq!(Element::Og.symbol(), "Og");
-    }
-
-    #[test]
-    fn test_atomic_number() {
-        assert_eq!(Element::H.atomic_number(), 1);
-        assert_eq!(Element::Fe.atomic_number(), 26);
-        assert_eq!(Element::Og.atomic_number(), 118);
+        // Edge cases: invalid inputs
+        assert_eq!(Element::from_symbol("Xx"), None, "invalid symbol should return None");
+        assert_eq!(Element::from_symbol(""), None, "empty string should return None");
+        assert_eq!(Element::from_symbol("  "), None, "whitespace should return None");
+        assert_eq!(Element::from_atomic_number(0), None, "Z=0 should return None");
+        assert_eq!(Element::from_atomic_number(119), None, "Z=119 should return None");
+        assert_eq!(Element::from_atomic_number(255), None, "Z=255 should return None");
     }
 
     #[test]
     fn test_electronegativity() {
-        // Known values
-        assert!((Element::H.electronegativity().unwrap() - 2.20).abs() < 0.01);
-        assert!((Element::Fe.electronegativity().unwrap() - 1.83).abs() < 0.01);
-        assert!((Element::F.electronegativity().unwrap() - 3.98).abs() < 0.01);
+        // Spot-check known values (Pauling scale)
+        let known_values = [
+            (Element::H, Some(2.20)),
+            (Element::C, Some(2.55)),
+            (Element::N, Some(3.04)),
+            (Element::O, Some(3.44)),
+            (Element::F, Some(3.98)), // Most electronegative
+            (Element::Fe, Some(1.83)),
+            (Element::Au, Some(2.54)),
+            // Noble gases have no electronegativity
+            (Element::He, None),
+            (Element::Ne, None),
+            (Element::Ar, None),
+            (Element::Kr, None),
+            (Element::Xe, None),
+            (Element::Rn, None),
+        ];
 
-        // Noble gases have no electronegativity
-        assert!(Element::He.electronegativity().is_none());
-        assert!(Element::Ne.electronegativity().is_none());
-        assert!(Element::Ar.electronegativity().is_none());
-    }
-
-    #[test]
-    fn test_roundtrip() {
-        for z in 1..=118 {
-            let elem = Element::from_atomic_number(z).unwrap();
-            assert_eq!(elem.atomic_number(), z);
-            assert_eq!(Element::from_symbol(elem.symbol()), Some(elem));
+        for (elem, expected) in known_values {
+            match expected {
+                Some(val) => {
+                    let en = elem.electronegativity().unwrap_or_else(|| {
+                        panic!("{elem:?} should have electronegativity")
+                    });
+                    assert!(
+                        (en - val).abs() < 0.01,
+                        "{elem:?} electronegativity {en} != expected {val}"
+                    );
+                }
+                None => {
+                    assert!(
+                        elem.electronegativity().is_none(),
+                        "{elem:?} should have no electronegativity"
+                    );
+                }
+            }
         }
     }
 }

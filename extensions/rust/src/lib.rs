@@ -40,7 +40,6 @@ pub mod structure;
 
 // Algorithms
 pub mod pbc;
-pub mod comparator;
 pub mod matcher;
 pub mod batch;
 

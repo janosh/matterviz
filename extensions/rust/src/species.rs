@@ -78,27 +78,27 @@ impl Species {
     /// assert_eq!(o.element, Element::O);
     /// assert_eq!(o.oxidation_state, None);
     /// ```
-    pub fn from_string(s: &str) -> Option<Self> {
-        let s = s.trim();
-        if s.is_empty() {
+    pub fn from_string(input: &str) -> Option<Self> {
+        let input = input.trim();
+        if input.is_empty() {
             return None;
         }
 
         // Check if there's a sign at the end
-        let last_char = s.chars().last()?;
+        let last_char = input.chars().last()?;
         if last_char != '+' && last_char != '-' {
             // No oxidation state, just element
-            let element = Element::from_symbol(s)?;
+            let element = Element::from_symbol(input)?;
             return Some(Self::new(element, None));
         }
 
         // Has a sign - find where the number starts
         let sign: i8 = if last_char == '+' { 1 } else { -1 };
-        let s_without_sign = &s[..s.len() - 1];
+        let without_sign = &input[..input.len() - 1];
 
         // Find where digits end (searching from the end)
-        let mut digit_start = s_without_sign.len();
-        for (idx, ch) in s_without_sign.char_indices().rev() {
+        let mut digit_start = without_sign.len();
+        for (idx, ch) in without_sign.char_indices().rev() {
             if ch.is_ascii_digit() {
                 digit_start = idx;
             } else {
@@ -106,12 +106,12 @@ impl Species {
             }
         }
 
-        let symbol = &s_without_sign[..digit_start];
+        let symbol = &without_sign[..digit_start];
         let element = Element::from_symbol(symbol)?;
 
-        let oxi_state = if digit_start < s_without_sign.len() {
+        let oxi_state = if digit_start < without_sign.len() {
             // There's a number
-            let num_str = &s_without_sign[digit_start..];
+            let num_str = &without_sign[digit_start..];
             let num: i8 = num_str.parse().ok()?;
             Some(num * sign)
         } else {
@@ -147,7 +147,7 @@ impl fmt::Display for Species {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.element.symbol())?;
         if let Some(oxi) = self.oxidation_state {
-            let abs_oxi = oxi.abs();
+            let abs_oxi = oxi.unsigned_abs(); // Safe for all i8 values including -128
             let sign = if oxi >= 0 { '+' } else { '-' };
             if abs_oxi == 1 {
                 write!(f, "{sign}")?;
@@ -170,77 +170,158 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_new() {
+    fn test_constructors() {
+        // Species::new with oxidation state
         let fe2 = Species::new(Element::Fe, Some(2));
         assert_eq!(fe2.element, Element::Fe);
         assert_eq!(fe2.oxidation_state, Some(2));
-    }
 
-    #[test]
-    fn test_neutral() {
+        // Species::neutral
         let fe = Species::neutral(Element::Fe);
         assert_eq!(fe.element, Element::Fe);
         assert_eq!(fe.oxidation_state, None);
+
+        // From<Element> trait
+        let cu: Species = Element::Cu.into();
+        assert_eq!(cu.element, Element::Cu);
+        assert_eq!(cu.oxidation_state, None);
+
+        // Extreme oxidation states (valid for i8)
+        let high_oxi = Species::new(Element::Os, Some(8));  // Os can be +8
+        assert_eq!(high_oxi.oxidation_state, Some(8));
+        let neg_oxi = Species::new(Element::N, Some(-3));  // N can be -3
+        assert_eq!(neg_oxi.oxidation_state, Some(-3));
     }
 
     #[test]
     fn test_from_string_and_display() {
+        // Comprehensive parsing and display tests
         // (input, expected_element, expected_oxi, expected_display)
         let cases: &[(&str, Element, Option<i8>, &str)] = &[
+            // Neutral elements
             ("Fe", Element::Fe, None, "Fe"),
+            ("Mg", Element::Mg, None, "Mg"),
+            ("Cu", Element::Cu, None, "Cu"),
+            // Common positive oxidation states
+            ("Na+", Element::Na, Some(1), "Na+"),
+            ("Ca2+", Element::Ca, Some(2), "Ca2+"),
             ("Fe2+", Element::Fe, Some(2), "Fe2+"),
             ("Fe3+", Element::Fe, Some(3), "Fe3+"),
-            ("O2-", Element::O, Some(-2), "O2-"),
-            ("Na+", Element::Na, Some(1), "Na+"),
-            ("Cl-", Element::Cl, Some(-1), "Cl-"),
-            ("Ca2+", Element::Ca, Some(2), "Ca2+"),
-            ("Mg", Element::Mg, None, "Mg"),
+            ("Al3+", Element::Al, Some(3), "Al3+"),
+            ("Ti4+", Element::Ti, Some(4), "Ti4+"),
             ("Mn7+", Element::Mn, Some(7), "Mn7+"),
+            // Common negative oxidation states
+            ("Cl-", Element::Cl, Some(-1), "Cl-"),
+            ("O2-", Element::O, Some(-2), "O2-"),
+            ("N3-", Element::N, Some(-3), "N3-"),
+            ("S2-", Element::S, Some(-2), "S2-"),
+            // Edge cases: single-letter elements
+            ("H", Element::H, None, "H"),
+            ("H+", Element::H, Some(1), "H+"),
+            ("O", Element::O, None, "O"),
+            // Two-letter symbols with oxidation states
+            ("Zn2+", Element::Zn, Some(2), "Zn2+"),
+            ("Pb2+", Element::Pb, Some(2), "Pb2+"),
+            ("Pb4+", Element::Pb, Some(4), "Pb4+"),
         ];
+
         for (input, elem, oxi, display) in cases {
-            let sp = Species::from_string(input).unwrap();
-            assert_eq!(sp.element, *elem, "element mismatch for {input}");
-            assert_eq!(sp.oxidation_state, *oxi, "oxi mismatch for {input}");
-            assert_eq!(sp.to_string(), *display, "display mismatch for {input}");
+            let sp = Species::from_string(input)
+                .unwrap_or_else(|| panic!("Failed to parse: {input}"));
+            assert_eq!(sp.element, *elem, "element mismatch for '{input}'");
+            assert_eq!(sp.oxidation_state, *oxi, "oxi mismatch for '{input}'");
+            assert_eq!(sp.to_string(), *display, "display mismatch for '{input}'");
         }
-    }
-
-    #[test]
-    fn test_equality() {
-        let fe2a = Species::new(Element::Fe, Some(2));
-        let fe2b = Species::new(Element::Fe, Some(2));
-        let fe3 = Species::new(Element::Fe, Some(3));
-        let fe_neutral = Species::neutral(Element::Fe);
-
-        assert_eq!(fe2a, fe2b);
-        assert_ne!(fe2a, fe3);
-        assert_ne!(fe2a, fe_neutral);
-    }
-
-    #[test]
-    fn test_from_element() {
-        let fe: Species = Element::Fe.into();
-        assert_eq!(fe.element, Element::Fe);
-        assert_eq!(fe.oxidation_state, None);
     }
 
     #[test]
     fn test_from_string_errors() {
-        for invalid in ["Xx", "InvalidElement", "", "   ", "+", "-", "2+Fe", "++"] {
-            assert!(Species::from_string(invalid).is_none(), "{invalid} should fail");
+        // Invalid inputs should return None
+        let invalid_cases = [
+            ("Xx", "unknown element"),
+            ("InvalidElement", "long invalid string"),
+            ("", "empty string"),
+            ("   ", "whitespace only"),
+            ("+", "just plus sign"),
+            ("-", "just minus sign"),
+            ("2+Fe", "number before element"),
+            ("++", "double plus"),
+            ("--", "double minus"),
+            ("Fe++", "double plus after element"),
+            ("123", "just numbers"),
+            ("Fe2", "number without sign"),
+        ];
+
+        for (input, desc) in invalid_cases {
+            assert!(
+                Species::from_string(input).is_none(),
+                "'{input}' ({desc}) should return None"
+            );
         }
     }
 
     #[test]
-    fn test_electronegativity() {
-        for (elem, expected) in [(Element::Fe, 1.83), (Element::O, 3.44)] {
-            let en = Species::neutral(elem).electronegativity().unwrap();
-            assert!((en - expected).abs() < 0.01, "{elem:?} EN mismatch");
-        }
-        // Oxidation state doesn't affect electronegativity
-        let fe = Species::neutral(Element::Fe);
-        let fe2 = Species::new(Element::Fe, Some(2));
-        assert_eq!(fe.electronegativity(), fe2.electronegativity());
+    fn test_equality_and_hashing() {
+        use std::collections::HashSet;
+
+        let fe2a = Species::new(Element::Fe, Some(2));
+        let fe2b = Species::new(Element::Fe, Some(2));
+        let fe3 = Species::new(Element::Fe, Some(3));
+        let fe_neutral = Species::neutral(Element::Fe);
+        let cu2 = Species::new(Element::Cu, Some(2));
+
+        // Same element and oxidation state are equal
+        assert_eq!(fe2a, fe2b);
+
+        // Different oxidation state -> not equal
+        assert_ne!(fe2a, fe3);
+        assert_ne!(fe2a, fe_neutral);
+        assert_ne!(fe3, fe_neutral);
+
+        // Different element -> not equal
+        assert_ne!(fe2a, cu2);
+
+        // Hash consistency: equal species hash to same value
+        let mut set = HashSet::new();
+        set.insert(fe2a);
+        assert!(set.contains(&fe2b), "Equal species should have same hash");
+        assert!(!set.contains(&fe3), "Different species should have different hash");
     }
 
+    #[test]
+    fn test_electronegativity() {
+        // Electronegativity comes from element, not affected by oxidation state
+        let test_cases = [
+            (Element::Fe, 1.83),
+            (Element::O, 3.44),
+            (Element::F, 3.98),  // Most electronegative
+            (Element::Na, 0.93),
+            (Element::Cs, 0.79), // Least electronegative metal
+        ];
+
+        for (elem, expected) in test_cases {
+            let neutral = Species::neutral(elem);
+            let charged = Species::new(elem, Some(2));
+
+            let en_neutral = neutral.electronegativity().unwrap();
+            let en_charged = charged.electronegativity().unwrap();
+
+            assert!(
+                (en_neutral - expected).abs() < 0.01,
+                "{elem:?} EN {en_neutral} != expected {expected}"
+            );
+            assert_eq!(
+                en_neutral, en_charged,
+                "Oxidation state should not affect electronegativity"
+            );
+        }
+
+        // Noble gases have no electronegativity
+        for elem in [Element::He, Element::Ne, Element::Ar] {
+            assert!(
+                Species::neutral(elem).electronegativity().is_none(),
+                "{elem:?} should have no electronegativity"
+            );
+        }
+    }
 }

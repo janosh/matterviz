@@ -177,13 +177,14 @@ impl StructureMatcher {
             return Ok(vec![]);
         }
 
-        let n = structures.len();
-        let uf = UnionFind::new(n);
+        let len = structures.len();
+        let uf = UnionFind::new(len);
 
-        // Step 1: Group by composition hash for early termination
+        // Step 1: Group by composition hash for early termination.
+        // Uses comparator-aware hashing to ensure prefilter aligns with match semantics.
         let mut comp_groups: IndexMap<u64, Vec<usize>> = IndexMap::new();
         for (idx, s) in structures.iter().enumerate() {
-            let hash = s.composition().hash();
+            let hash = self.composition_hash(s);
             comp_groups.entry(hash).or_default().push(idx);
         }
 
@@ -212,7 +213,7 @@ impl StructureMatcher {
 
         // Step 3: Build result - for each structure, find the minimum index in its group
         let groups = uf.get_groups();
-        let mut result = vec![0; n];
+        let mut result = vec![0; len];
 
         for members in groups.values() {
             // groups from UnionFind always have at least one member

@@ -13,13 +13,17 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
+# Portable path resolution for test data directories
+_TEST_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _TEST_DIR.parent.parent.parent  # extensions/rust/tests -> repo root
 
+import numpy as np
 from pymatgen.analysis.structure_matcher import ElementComparator
 from pymatgen.analysis.structure_matcher import StructureMatcher as PyMatcher
 from pymatgen.core import Lattice, Structure
@@ -28,13 +32,13 @@ from pymatgen.core import Lattice, Structure
 try:
     from ferrox import StructureMatcher as RustMatcher
 except ImportError:
-    print("ERROR: ferrox not installed. Run: cd rust/ferrox && maturin develop --features python")
+    print(
+        "ERROR: ferrox not installed. Run: cd rust/ferrox && maturin develop --features python"
+    )
     sys.exit(1)
 
 
-# =============================================================================
 # Test Result Tracking
-# =============================================================================
 
 
 @dataclass
@@ -56,10 +60,16 @@ class TestSuite:
         self.results: list[TestResult] = []
         # Both matchers use primitive_cell=False for fair comparison
         # (ferrox doesn't implement primitive cell reduction yet)
-        self.py_matcher = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False)
-        self.rust_matcher = RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0)
+        self.py_matcher = PyMatcher(
+            ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False
+        )
+        self.rust_matcher = RustMatcher(
+            latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0
+        )
 
-    def compare(self, s1: Structure, s2: Structure, category: str, description: str) -> TestResult:
+    def compare(
+        self, s1: Structure, s2: Structure, category: str, description: str
+    ) -> TestResult:
         """Compare two structures using both matchers."""
         try:
             py_result = self.py_matcher.fit(s1, s2)
@@ -135,15 +145,15 @@ class TestSuite:
                 print(f"  ... and {len(failures) - 20} more failures")
 
 
-# =============================================================================
 # Structure Loading
-# =============================================================================
 
 
 def load_matterviz_structures() -> dict[str, Structure]:
     """Load JSON structures from matterviz."""
     structures = {}
-    matterviz_dir = Path("/Users/janosh/dev/matterviz/src/site/structures")
+    matterviz_dir = Path(
+        os.environ.get("MATTERVIZ_STRUCTURES_DIR", _REPO_ROOT / "src/site/structures")
+    )
 
     if not matterviz_dir.exists():
         print(f"WARNING: matterviz directory not found: {matterviz_dir}")
@@ -179,7 +189,10 @@ def load_matterviz_structures() -> dict[str, Structure]:
 def load_pymatgen_cif_structures() -> dict[str, Structure]:
     """Load CIF structures from pymatgen test files."""
     structures = {}
-    cif_dir = Path("/Users/janosh/dev/pymatgen/tests/files/cif")
+    failed_files: list[str] = []
+    cif_dir = Path(
+        os.environ.get("PYMATGEN_CIF_DIR", Path.home() / "dev/pymatgen/tests/files/cif")
+    )
 
     if not cif_dir.exists():
         print(f"WARNING: CIF directory not found: {cif_dir}")
@@ -189,16 +202,20 @@ def load_pymatgen_cif_structures() -> dict[str, Structure]:
         try:
             s = Structure.from_file(str(cif_file))
             structures[cif_file.stem] = s
-        except Exception:
-            # Many CIFs may not be parseable as structures
-            pass
+        except Exception as exc:
+            failed_files.append(f"{cif_file.name}: {exc}")
+
+    if failed_files:
+        print(f"    Failed to parse {len(failed_files)} CIF files:")
+        for fail in failed_files[:5]:  # Show first 5 failures
+            print(f"      - {fail}")
+        if len(failed_files) > 5:
+            print(f"      ... and {len(failed_files) - 5} more")
 
     return structures
 
 
-# =============================================================================
 # Synthetic Structure Generation
-# =============================================================================
 
 
 def make_cubic(element: str, a: float) -> Structure:
@@ -216,7 +233,9 @@ def make_bcc(element: str, a: float) -> Structure:
 def make_fcc(element: str, a: float) -> Structure:
     """Create FCC structure (conventional cell)."""
     lattice = Lattice.cubic(a)
-    return Structure(lattice, [element] * 4, [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]])
+    return Structure(
+        lattice, [element] * 4, [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
+    )
 
 
 def make_rocksalt(cation: str, anion: str, a: float) -> Structure:
@@ -238,7 +257,9 @@ def make_perovskite(a_site: str, b_site: str, x_site: str, a: float) -> Structur
 def make_hexagonal(element: str, a: float, c: float) -> Structure:
     """Create HCP structure."""
     lattice = Lattice.hexagonal(a, c)
-    return Structure(lattice, [element, element], [[1 / 3, 2 / 3, 0.25], [2 / 3, 1 / 3, 0.75]])
+    return Structure(
+        lattice, [element, element], [[1 / 3, 2 / 3, 0.25], [2 / 3, 1 / 3, 0.75]]
+    )
 
 
 def make_wurtzite(cation: str, anion: str, a: float, c: float) -> Structure:
@@ -247,7 +268,12 @@ def make_wurtzite(cation: str, anion: str, a: float, c: float) -> Structure:
     return Structure(
         lattice,
         [cation, cation, anion, anion],
-        [[1 / 3, 2 / 3, 0], [2 / 3, 1 / 3, 0.5], [1 / 3, 2 / 3, 0.375], [2 / 3, 1 / 3, 0.875]],
+        [
+            [1 / 3, 2 / 3, 0],
+            [2 / 3, 1 / 3, 0.5],
+            [1 / 3, 2 / 3, 0.375],
+            [2 / 3, 1 / 3, 0.875],
+        ],
     )
 
 
@@ -310,19 +336,21 @@ def translate_structure(s: Structure, translation: list[float]) -> Structure:
     return Structure(s.lattice, s.species, new_coords)
 
 
-# =============================================================================
 # Test Categories
-# =============================================================================
 
 
-def run_category_a_self_matching(suite: TestSuite, structures: dict[str, Structure]) -> None:
+def run_category_a_self_matching(
+    suite: TestSuite, structures: dict[str, Structure]
+) -> None:
     """Category A: Self-comparison (identical structures should always match)."""
     print("\nCategory A: Self-matching tests")
     for name, s in structures.items():
         result = suite.compare(s, s, "A-self", f"{name} vs itself")
         status = "✓" if result.match else "✗"
         if not result.match:
-            print(f"  {status} {name}: py={result.pymatgen_result}, rust={result.ferrox_result}")
+            print(
+                f"  {status} {name}: py={result.pymatgen_result}, rust={result.ferrox_result}"
+            )
 
 
 def run_category_b_perturbations(suite: TestSuite) -> None:
@@ -386,8 +414,15 @@ def run_category_c_non_matching(suite: TestSuite) -> None:
                 suite.compare(s1, s2, "C-diff-comp", f"{name1} vs {name2}")
 
     # Same element, different structure type
-    suite.compare(make_bcc("Fe", 2.87), make_fcc("Fe", 3.6), "C-diff-struct", "bcc-Fe vs fcc-Fe")
-    suite.compare(make_cubic("Cu", 3.6), make_fcc("Cu", 3.6), "C-diff-struct", "cubic-Cu vs fcc-Cu")
+    suite.compare(
+        make_bcc("Fe", 2.87), make_fcc("Fe", 3.6), "C-diff-struct", "bcc-Fe vs fcc-Fe"
+    )
+    suite.compare(
+        make_cubic("Cu", 3.6),
+        make_fcc("Cu", 3.6),
+        "C-diff-struct",
+        "cubic-Cu vs fcc-Cu",
+    )
 
 
 def run_category_d_edge_cases(suite: TestSuite) -> None:
@@ -428,7 +463,9 @@ def run_category_d_edge_cases(suite: TestSuite) -> None:
     s_ortho = Structure(lattice_ortho, ["Fe"], [[0, 0, 0]])
     lattice_cubic = Lattice.cubic(4.0)
     s_cubic = Structure(lattice_cubic, ["Fe"], [[0, 0, 0]])
-    suite.compare(s_ortho, s_cubic, "D-lattice-type", "ortho-Fe vs cubic-Fe (same params)")
+    suite.compare(
+        s_ortho, s_cubic, "D-lattice-type", "ortho-Fe vs cubic-Fe (same params)"
+    )
 
     # Triclinic lattice
     lattice_tri = Lattice.from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0)
@@ -450,15 +487,22 @@ def run_category_d_edge_cases(suite: TestSuite) -> None:
     s_left = Structure(lattice_left, ["Ag"], [[0, 0, 0]])
     lattice_right = Lattice([[4.0, 0, 0], [0, 4.0, 0], [0, 0, 4.0]])
     s_right = Structure(lattice_right, ["Ag"], [[0, 0, 0]])
-    suite.compare(s_left, s_right, "D-left-handed", "left-handed vs right-handed lattice")
+    suite.compare(
+        s_left, s_right, "D-left-handed", "left-handed vs right-handed lattice"
+    )
 
     # Coordinates outside [0,1) - pymatgen wraps automatically
-    coords_outside = [[1.5, 0.3, 0.2], [-0.3, 0.7, 0.8]]  # Will wrap to [0.5, 0.3, 0.2], [0.7, 0.7, 0.8]
+    coords_outside = [
+        [1.5, 0.3, 0.2],
+        [-0.3, 0.7, 0.8],
+    ]  # Will wrap to [0.5, 0.3, 0.2], [0.7, 0.7, 0.8]
     coords_wrapped = [[0.5, 0.3, 0.2], [0.7, 0.7, 0.8]]
     lattice_simple = Lattice.cubic(5.0)
     s_outside = Structure(lattice_simple, ["Li", "Li"], coords_outside)
     s_wrapped = Structure(lattice_simple, ["Li", "Li"], coords_wrapped)
-    suite.compare(s_outside, s_wrapped, "D-coords-wrap", "coords outside [0,1) vs wrapped")
+    suite.compare(
+        s_outside, s_wrapped, "D-coords-wrap", "coords outside [0,1) vs wrapped"
+    )
 
     # Very small structures (1-2 atoms)
     s_single = Structure(Lattice.cubic(3.0), ["Au"], [[0, 0, 0]])
@@ -481,7 +525,9 @@ def run_category_d_edge_cases(suite: TestSuite) -> None:
     lattice_near90 = Lattice.from_parameters(5.0, 5.0, 5.0, 89.5, 90.5, 89.8)
     s_near90 = Structure(lattice_near90, ["V"], [[0, 0, 0]])
     suite.compare(s_near90, s_near90, "D-near-cubic", "near-cubic angles self-match")
-    suite.compare(s_oblique, s_oblique_pert, "D-oblique-pert", "oblique BiSe vs perturbed")
+    suite.compare(
+        s_oblique, s_oblique_pert, "D-oblique-pert", "oblique BiSe vs perturbed"
+    )
 
 
 def run_category_e_batch(suite: TestSuite, structures: dict[str, Structure]) -> None:
@@ -555,9 +601,19 @@ def run_category_f_comparators(suite: TestSuite) -> None:
 
     # Create matchers with different comparators
     py_species = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False)
-    py_element = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, comparator=ElementComparator())
-    rust_species = RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, comparator="species")
-    rust_element = RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, comparator="element")
+    py_element = PyMatcher(
+        ltol=0.2,
+        stol=0.3,
+        angle_tol=5.0,
+        primitive_cell=False,
+        comparator=ElementComparator(),
+    )
+    rust_species = RustMatcher(
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, comparator="species"
+    )
+    rust_element = RustMatcher(
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, comparator="element"
+    )
 
     # Test 1: Same element, different oxidation states (should not match with SpeciesComparator)
     lattice = Lattice.cubic(5.0)
@@ -597,7 +653,9 @@ def run_category_f_comparators(suite: TestSuite) -> None:
     )
 
     # Test 2: Multi-species with oxidation states
-    s_nacl_oxi = Structure(lattice, [Species("Na", 1), Species("Cl", -1)], [[0, 0, 0], [0.5, 0.5, 0.5]])
+    s_nacl_oxi = Structure(
+        lattice, [Species("Na", 1), Species("Cl", -1)], [[0, 0, 0], [0.5, 0.5, 0.5]]
+    )
     s_nacl_neutral = Structure(lattice, ["Na", "Cl"], [[0, 0, 0], [0.5, 0.5, 0.5]])
 
     json_oxi = json.dumps(s_nacl_oxi.as_dict())
@@ -682,7 +740,9 @@ def run_category_g_rms_consistency(suite: TestSuite) -> None:
                         pymatgen_result=True,
                         ferrox_result=True,
                         match=rms_match,
-                        error=None if rms_match else f"RMS mismatch: py={py_val:.4f}, rust={rust_val:.4f}",
+                        error=None
+                        if rms_match
+                        else f"RMS mismatch: py={py_val:.4f}, rust={rust_val:.4f}",
                     )
                 )
             else:
@@ -708,7 +768,9 @@ def run_category_g_rms_consistency(suite: TestSuite) -> None:
             )
 
 
-def run_cross_file_comparisons(suite: TestSuite, structures: dict[str, Structure]) -> None:
+def run_cross_file_comparisons(
+    suite: TestSuite, structures: dict[str, Structure]
+) -> None:
     """Compare structures across files."""
     print("\nCross-file comparisons")
 
@@ -728,9 +790,7 @@ def run_cross_file_comparisons(suite: TestSuite, structures: dict[str, Structure
             break
 
 
-# =============================================================================
 # Main
-# =============================================================================
 
 
 def main() -> None:
@@ -786,16 +846,26 @@ def main() -> None:
   structures with oblique lattices.
 """)
 
-    # Exit with code based on pass rate (allow up to 15% failures for known issues)
+    # Log failed structures for debugging
     total = len(suite.results)
-    failures = sum(1 for r in suite.results if not r.match)
-    pass_rate = (total - failures) / total if total > 0 else 0
+    failed_results = [r for r in suite.results if not r.match]
+    pass_rate = (total - len(failed_results)) / total if total > 0 else 0
 
-    if pass_rate >= 0.85:
-        print(f"Pass rate {pass_rate * 100:.1f}% meets threshold (≥85%)")
+    if failed_results:
+        print("\n" + "=" * 70)
+        print(f"FAILED STRUCTURES ({len(failed_results)}/{total})")
+        print("=" * 70)
+        for result in failed_results[:10]:  # Show first 10 failures
+            print(f"  - {result.name}")
+        if len(failed_results) > 10:
+            print(f"  ... and {len(failed_results) - 10} more")
+
+    # Exit with code based on pass rate (allow up to 10% failures for known oblique lattice issues)
+    if pass_rate >= 0.90:
+        print(f"\nPass rate {pass_rate * 100:.1f}% meets threshold (≥90%)")
         sys.exit(0)
     else:
-        print(f"Pass rate {pass_rate * 100:.1f}% below threshold (<85%)")
+        print(f"\nPass rate {pass_rate * 100:.1f}% below threshold (<90%)")
         sys.exit(1)
 
 
@@ -807,7 +877,7 @@ def run_regression_tests() -> dict[str, bool]:
     from ferrox import StructureMatcher as RustMatcher
 
     results: dict[str, bool] = {}
-    rust_matcher = RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0)
+    rust_matcher = RustMatcher(latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0)
 
     # Agent 1: Acute angle lattices (Niggli reduction)
     print("\n=== Agent 1 Regression Tests (Acute Angles) ===")
@@ -895,7 +965,15 @@ def run_regression_tests() -> dict[str, bool]:
         s_la2coo4 = Structure(
             lattice_la2coo4,
             ["La", "La", "Co", "O", "O", "O", "O"],
-            [[0, 0, 0.36], [0, 0, 0.64], [0, 0, 0], [0.25, 0.25, 0], [0.75, 0.75, 0], [0, 0.5, 0.18], [0.5, 0, 0.82]],
+            [
+                [0, 0, 0.36],
+                [0, 0, 0.64],
+                [0, 0, 0],
+                [0.25, 0.25, 0],
+                [0.75, 0.75, 0],
+                [0, 0.5, 0.18],
+                [0.5, 0, 0.82],
+            ],
         )
         json_str = json.dumps(s_la2coo4.as_dict())
         passed = rust_matcher.fit(json_str, json_str)
@@ -940,10 +1018,16 @@ def run_regression_tests() -> dict[str, bool]:
 
     # Length tolerance bounds tests (fix for symmetric tolerance)
     print("\n=== Length Tolerance Bounds Tests ===")
-    print("  Testing that length tolerance uses (1/(1+ltol), 1+ltol) not (1-ltol, 1+ltol)")
+    print(
+        "  Testing that length tolerance uses (1/(1+ltol), 1+ltol) not (1-ltol, 1+ltol)"
+    )
 
-    py_matcher = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=False)
-    rust_matcher_noscale = RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, scale=False)
+    py_matcher = PyMatcher(
+        ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=False
+    )
+    rust_matcher_noscale = RustMatcher(
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, scale=False
+    )
 
     def run_ltol_test(
         name: str,
@@ -956,7 +1040,9 @@ def run_regression_tests() -> dict[str, bool]:
         """Run a length tolerance test comparing pymatgen vs ferrox."""
         try:
             py_result = py_match.fit(s1, s2)
-            rust_result = rust_match.fit(json.dumps(s1.as_dict()), json.dumps(s2.as_dict()))
+            rust_result = rust_match.fit(
+                json.dumps(s1.as_dict()), json.dumps(s2.as_dict())
+            )
             passed = py_result == rust_result
             if expect_false:
                 passed = passed and py_result is False
@@ -974,7 +1060,9 @@ def run_regression_tests() -> dict[str, bool]:
         lat1 = Lattice.cubic(5.0)
         lat2 = Lattice.cubic(5.0 * scale)
         coords = [[0, 0, 0], [0.5, 0.5, 0.5]]
-        return Structure(lat1, ["Na", "Cl"], coords), Structure(lat2, ["Na", "Cl"], coords)
+        return Structure(lat1, ["Na", "Cl"], coords), Structure(
+            lat2, ["Na", "Cl"], coords
+        )
 
     # Test cases: (name, scale_factor, expect_both_false)
     ltol_tests = [
@@ -994,17 +1082,29 @@ def run_regression_tests() -> dict[str, bool]:
     coords = [[0, 0, 0], [0.3, 0.3, 0.3], [0.7, 0.7, 0.7]]
     s1 = Structure(lat1, ["Fe", "O", "O"], coords)
     s2 = Structure(lat2, ["Fe", "O", "O"], coords)
-    run_ltol_test("ltol_triclinic_one_axis_outside", s1, s2, py_matcher, rust_matcher_noscale)
+    run_ltol_test(
+        "ltol_triclinic_one_axis_outside", s1, s2, py_matcher, rust_matcher_noscale
+    )
 
     # Scale=True tests
     print("\n=== Scale=True Tolerance Tests ===")
-    py_matcher_scale = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=True)
-    rust_matcher_scale = RustMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, scale=True)
+    py_matcher_scale = PyMatcher(
+        ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=True
+    )
+    rust_matcher_scale = RustMatcher(
+        latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, scale=True
+    )
 
     # Different angles should not match even after scaling
-    s1 = Structure(Lattice.from_parameters(5.0, 5.0, 5.0, 85.0, 85.0, 85.0), ["Si"], [[0, 0, 0]])
-    s2 = Structure(Lattice.from_parameters(8.0, 8.0, 8.0, 105.0, 105.0, 105.0), ["Si"], [[0, 0, 0]])
-    run_ltol_test("scale_different_angles", s1, s2, py_matcher_scale, rust_matcher_scale)
+    s1 = Structure(
+        Lattice.from_parameters(5.0, 5.0, 5.0, 85.0, 85.0, 85.0), ["Si"], [[0, 0, 0]]
+    )
+    s2 = Structure(
+        Lattice.from_parameters(8.0, 8.0, 8.0, 105.0, 105.0, 105.0), ["Si"], [[0, 0, 0]]
+    )
+    run_ltol_test(
+        "scale_different_angles", s1, s2, py_matcher_scale, rust_matcher_scale
+    )
 
     # Same structure at different scales should match
     s1, s2 = make_cubic_pair(8.0 / 5.0)
@@ -1032,8 +1132,6 @@ def run_regression_tests() -> dict[str, bool]:
 
 
 if __name__ == "__main__":
-    import sys
-
     if len(sys.argv) > 1 and sys.argv[1] == "--regression":
         # Run only regression tests
         results = run_regression_tests()

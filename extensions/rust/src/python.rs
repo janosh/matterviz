@@ -183,19 +183,15 @@ impl PyStructureMatcher {
     }
 
     fn __repr__(&self) -> String {
+        let sm = &self.inner;
+        // Use Python-style True/False for booleans
+        let py_bool = |b: bool| if b { "True" } else { "False" };
         format!(
-            "StructureMatcher(latt_len_tol={}, site_pos_tol={}, angle_tol={}, primitive_cell={}, scale={}, attempt_supercell={})",
-            self.inner.latt_len_tol,
-            self.inner.site_pos_tol,
-            self.inner.angle_tol,
-            self.inner.primitive_cell,
-            self.inner.scale,
-            self.inner.attempt_supercell
+            "StructureMatcher(latt_len_tol={}, site_pos_tol={}, angle_tol={}, \
+             primitive_cell={}, scale={}, attempt_supercell={})",
+            sm.latt_len_tol, sm.site_pos_tol, sm.angle_tol,
+            py_bool(sm.primitive_cell), py_bool(sm.scale), py_bool(sm.attempt_supercell)
         )
-    }
-
-    fn __str__(&self) -> String {
-        self.__repr__()
     }
 
     /// Get the lattice length tolerance.

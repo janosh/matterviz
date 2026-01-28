@@ -123,6 +123,13 @@ impl StructureMatcher {
         }
     }
 
+    /// Get composition hash for prefiltering, aligned with comparator semantics.
+    pub fn composition_hash(&self, structure: &Structure) -> u64 {
+        // Currently both comparators use the same hash, but this method
+        // ensures the prefilter stays aligned if comparator semantics diverge.
+        structure.composition().hash()
+    }
+
     /// Get reduced structure (Niggli reduced, optionally primitive).
     ///
     /// Note: We only do Niggli reduction on the lattice, not primitive cell reduction.
@@ -162,13 +169,24 @@ impl StructureMatcher {
         let mut s1 = self.get_reduced_structure(struct1);
         let mut s2 = self.get_reduced_structure(struct2);
 
-        // Determine supercell factor
+        // Determine supercell factor with bounds checking
+        // Maximum supercell factor to prevent extremely expensive computations
+        const MAX_SUPERCELL_FACTOR: usize = 10;
+
         let (supercell_factor, s1_supercell) = if self.attempt_supercell {
-            let ratio = s2.num_sites() as f64 / s1.num_sites() as f64;
-            if ratio < 2.0 / 3.0 {
-                ((1.0 / ratio).round() as usize, false)
+            // Guard against division by zero
+            if s1.num_sites() == 0 || s2.num_sites() == 0 {
+                (1, true)
             } else {
-                (ratio.round() as usize, true)
+                let ratio = s2.num_sites() as f64 / s1.num_sites() as f64;
+                if ratio < 2.0 / 3.0 {
+                    // Clamp to valid range [1, MAX_SUPERCELL_FACTOR]
+                    let factor = (1.0 / ratio).round() as usize;
+                    (factor.clamp(1, MAX_SUPERCELL_FACTOR), false)
+                } else {
+                    let factor = ratio.round() as usize;
+                    (factor.clamp(1, MAX_SUPERCELL_FACTOR), true)
+                }
             }
         } else {
             (1, true)
@@ -180,9 +198,11 @@ impl StructureMatcher {
             1.0 / supercell_factor as f64
         };
 
-        // Scale lattices to same volume
-        if self.scale {
-            let ratio = (s2.lattice.volume() / (s1.lattice.volume() * mult)).powf(1.0 / 6.0);
+        // Scale lattices to same volume (skip if empty or degenerate to avoid division by zero)
+        let v1 = s1.lattice.volume();
+        let v2 = s2.lattice.volume();
+        if self.scale && v1 > f64::EPSILON && v2 > f64::EPSILON {
+            let ratio = (v2 / (v1 * mult)).powf(1.0 / 6.0);
             s1.lattice = Lattice::new(*s1.lattice.matrix() * ratio);
             s2.lattice = Lattice::new(*s2.lattice.matrix() / ratio);
         }
@@ -322,7 +342,10 @@ impl StructureMatcher {
             }
         }
 
-        // Translation is mean of short vectors
+        // Translation is mean of short vectors (guard against empty vector)
+        if short_vecs.is_empty() {
+            return None;
+        }
         let translation: Vector3<f64> = short_vecs.iter().fold(Vector3::zeros(), |acc, v| acc + v)
             / short_vecs.len() as f64;
 
@@ -348,12 +371,21 @@ impl StructureMatcher {
     }
 
     /// Strict matching - s1 should contain all sites in s2.
+    ///
+    /// # Arguments
+    ///
+    /// * `struct1` - First structure (larger, may be supercell)
+    /// * `struct2` - Second structure (smaller)
+    /// * `supercell_factor` - Supercell multiplier
+    /// * `_s1_supercell` - Whether s1 is the supercell (reserved for future supercell matching)
+    /// * `break_on_match` - If true, return first match found
+    /// * `use_rms` - If true, compute RMS distances
     fn strict_match(
         &self,
         struct1: &Structure,
         struct2: &Structure,
         supercell_factor: usize,
-        _s1_supercell: bool,
+        _s1_supercell: bool, // TODO: use for supercell matching when attempt_supercell=true
         break_on_match: bool,
         use_rms: bool,
     ) -> Option<(f64, Vec<f64>, Vec<usize>)> {
@@ -495,10 +527,10 @@ impl StructureMatcher {
     ///
     /// `true` if the structures are equivalent within the specified tolerances.
     pub fn fit(&self, struct1: &Structure, struct2: &Structure) -> bool {
-        // Early composition check
+        // Early composition check (use structural equality, not hash, to avoid collisions)
         let comp1 = struct1.composition();
         let comp2 = struct2.composition();
-        if comp1.hash() != comp2.hash() {
+        if comp1 != comp2 {
             return false;
         }
 
@@ -545,8 +577,9 @@ impl StructureMatcher {
     ///
     /// This method is not yet implemented and always returns `false`.
     /// Anonymous matching with species permutation is planned for a future release.
+    #[allow(clippy::unused_self)]
     pub fn fit_anonymous(&self, _struct1: &Structure, _struct2: &Structure) -> bool {
-        // Anonymous matching with species permutation not yet implemented
+        tracing::warn!("fit_anonymous is not yet implemented, always returns false");
         false
     }
 }
@@ -813,7 +846,7 @@ mod tests {
 
         // All three should be in one group
         assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].len(), 3);
+        assert_eq!(groups[&0].len(), 3);
     }
 
     #[test]

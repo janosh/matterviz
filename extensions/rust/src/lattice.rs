@@ -128,9 +128,19 @@ impl Lattice {
     }
 
     /// Get the inverse of the lattice matrix.
+    ///
+    /// Returns identity matrix if the lattice matrix is singular (degenerate lattice).
+    /// Callers expecting valid physical lattices should verify `volume() > 0` first.
     pub fn inv_matrix(&self) -> Matrix3<f64> {
-        self.inv_matrix
-            .unwrap_or_else(|| self.matrix.try_inverse().unwrap_or(Matrix3::identity()))
+        self.inv_matrix.unwrap_or_else(|| {
+            self.matrix.try_inverse().unwrap_or_else(|| {
+                tracing::warn!(
+                    "Singular lattice matrix (det={:.2e}), using identity inverse",
+                    self.matrix.determinant()
+                );
+                Matrix3::identity()
+            })
+        })
     }
 
     /// Get the lattice volume.
@@ -239,8 +249,17 @@ impl Lattice {
         }
 
         let mut k = 2usize;
+        // LLL typically converges in O(n^3 log B) iterations where B is input size.
+        // For 3D lattices, 1000 iterations is extremely generous.
+        const MAX_LLL_ITER: usize = 1000;
+        let mut iter_count = 0;
 
         while k <= 3 {
+            iter_count += 1;
+            if iter_count > MAX_LLL_ITER {
+                // LLL should always converge, but guard against numerical issues
+                break;
+            }
             // Size reduction
             for idx in (1..k).rev() {
                 let q = u[(k - 1, idx - 1)].round();
@@ -273,28 +292,25 @@ impl Lattice {
                 k += 1;
             } else {
                 // Swap k-th and (k-1)-th basis vectors
-                let v = a.column(k - 1).clone_owned();
+                let temp_col = a.column(k - 1).clone_owned();
                 a.set_column(k - 1, &a.column(k - 2).clone_owned());
-                a.set_column(k - 2, &v);
+                a.set_column(k - 2, &temp_col);
 
-                let v_m = mapping.column(k - 1).clone_owned();
+                let temp_map = mapping.column(k - 1).clone_owned();
                 mapping.set_column(k - 1, &mapping.column(k - 2).clone_owned());
-                mapping.set_column(k - 2, &v_m);
+                mapping.set_column(k - 2, &temp_map);
 
                 // Update Gram-Schmidt coefficients
-                for s in (k - 1)..=k.min(3) {
-                    if s > 3 {
-                        break;
+                for col_idx in (k - 1)..=k.min(3) {
+                    for jdx in 0..(col_idx - 1) {
+                        u[(col_idx - 1, jdx)] = a.column(col_idx - 1).dot(&b.column(jdx)) / m[jdx];
                     }
-                    for jdx in 0..(s - 1) {
-                        u[(s - 1, jdx)] = a.column(s - 1).dot(&b.column(jdx)) / m[jdx];
+                    let mut b_col = a.column(col_idx - 1).clone_owned();
+                    for jdx in 0..(col_idx - 1) {
+                        b_col -= u[(col_idx - 1, jdx)] * b.column(jdx);
                     }
-                    let mut b_col = a.column(s - 1).clone_owned();
-                    for jdx in 0..(s - 1) {
-                        b_col -= u[(s - 1, jdx)] * b.column(jdx);
-                    }
-                    b.set_column(s - 1, &b_col);
-                    m[s - 1] = b.column(s - 1).dot(&b.column(s - 1));
+                    b.set_column(col_idx - 1, &b_col);
+                    m[col_idx - 1] = b.column(col_idx - 1).dot(&b.column(col_idx - 1));
                 }
 
                 if k > 2 {
@@ -332,9 +348,14 @@ impl Lattice {
 
     /// Get the inverse of the LLL mapping.
     pub fn lll_inverse(&self) -> Matrix3<f64> {
-        self.lll_mapping()
-            .try_inverse()
-            .unwrap_or(Matrix3::identity())
+        let mapping = self.lll_mapping();
+        mapping.try_inverse().unwrap_or_else(|| {
+            tracing::warn!(
+                "Singular LLL mapping matrix (det={:.2e}), using identity inverse",
+                mapping.determinant()
+            );
+            Matrix3::identity()
+        })
     }
 
     /// Convert fractional coordinates to LLL-reduced fractional coordinates.
@@ -368,11 +389,13 @@ impl Lattice {
     pub fn get_niggli_reduced(&self, tol: f64) -> Result<Self> {
         // Start with LLL-reduced matrix for numerical stability
         let matrix = self.lll_matrix();
-        let e = tol * self.volume().powf(1.0 / 3.0);
+        let eps = tol * self.volume().powf(1.0 / 3.0);
 
         // Define metric tensor G = M * M^T
         let mut g = matrix * matrix.transpose();
 
+        // Niggli reduction typically converges in ~10 iterations for most lattices.
+        // 100 is a safe upper bound; if exceeded, the algorithm returns an error.
         const MAX_ITER: usize = 100;
 
         for _ in 0..MAX_ITER {
@@ -384,11 +407,10 @@ impl Lattice {
                 (2.0 * g[(1, 2)], 2.0 * g[(0, 2)], 2.0 * g[(0, 1)]);
 
             // A1: Ensure A <= B
-            if b_val + e < a_val || (f64::abs(a_val - b_val) < e && f64::abs(e_val) > f64::abs(n_val) + e) {
-                let m = Matrix3::new(0.0, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0);
-                g = m.transpose() * g * m;
-                // Update values
-                a_val = g[(0, 0)];
+            if b_val + eps < a_val || (f64::abs(a_val - b_val) < eps && f64::abs(e_val) > f64::abs(n_val) + eps) {
+                let xform = Matrix3::new(0.0, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0);
+                g = xform.transpose() * g * xform;
+                // Update values needed for A2 check (a_val recomputed after A3/A4)
                 b_val = g[(1, 1)];
                 c_val = g[(2, 2)];
                 e_val = 2.0 * g[(1, 2)];
@@ -397,103 +419,90 @@ impl Lattice {
             }
 
             // A2: Ensure B <= C
-            if c_val + e < b_val || (f64::abs(b_val - c_val) < e && f64::abs(n_val) > f64::abs(y_val) + e) {
-                let m = Matrix3::new(-1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, -1.0, 0.0);
-                g = m.transpose() * g * m;
+            if c_val + eps < b_val || (f64::abs(b_val - c_val) < eps && f64::abs(n_val) > f64::abs(y_val) + eps) {
+                let xform = Matrix3::new(-1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, -1.0, 0.0);
+                g = xform.transpose() * g * xform;
                 continue;
             }
 
             // A3 & A4: Sign adjustment
-            let ll = if f64::abs(e_val) < e {
-                0.0
-            } else {
-                e_val.signum()
-            };
-            let mm = if f64::abs(n_val) < e {
-                0.0
-            } else {
-                n_val.signum()
-            };
-            let nn = if f64::abs(y_val) < e {
-                0.0
-            } else {
-                y_val.signum()
-            };
+            let sign_e = if f64::abs(e_val) < eps { 0.0 } else { e_val.signum() };
+            let sign_n = if f64::abs(n_val) < eps { 0.0 } else { n_val.signum() };
+            let sign_y = if f64::abs(y_val) < eps { 0.0 } else { y_val.signum() };
 
-            if ll * mm * nn == 1.0 {
+            if sign_e * sign_n * sign_y == 1.0 {
                 // A3
-                let i_val = if ll == -1.0 { -1.0 } else { 1.0 };
-                let j_val = if mm == -1.0 { -1.0 } else { 1.0 };
-                let k_val = if nn == -1.0 { -1.0 } else { 1.0 };
-                let m = Matrix3::new(i_val, 0.0, 0.0, 0.0, j_val, 0.0, 0.0, 0.0, k_val);
-                g = m.transpose() * g * m;
-            } else if ll * mm * nn == 0.0 || ll * mm * nn == -1.0 {
+                let i_val = if sign_e == -1.0 { -1.0 } else { 1.0 };
+                let j_val = if sign_n == -1.0 { -1.0 } else { 1.0 };
+                let k_val = if sign_y == -1.0 { -1.0 } else { 1.0 };
+                let xform = Matrix3::new(i_val, 0.0, 0.0, 0.0, j_val, 0.0, 0.0, 0.0, k_val);
+                g = xform.transpose() * g * xform;
+            } else if sign_e * sign_n * sign_y == 0.0 || sign_e * sign_n * sign_y == -1.0 {
                 // A4
-                let mut i_val = if ll == 1.0 { -1.0 } else { 1.0 };
-                let mut j_val = if mm == 1.0 { -1.0 } else { 1.0 };
-                let mut k_val = if nn == 1.0 { -1.0 } else { 1.0 };
+                let mut i_val = if sign_e == 1.0 { -1.0 } else { 1.0 };
+                let mut j_val = if sign_n == 1.0 { -1.0 } else { 1.0 };
+                let mut k_val = if sign_y == 1.0 { -1.0 } else { 1.0 };
 
                 if i_val * j_val * k_val == -1.0 {
-                    if nn == 0.0 {
+                    if sign_y == 0.0 {
                         k_val = -1.0;
-                    } else if mm == 0.0 {
+                    } else if sign_n == 0.0 {
                         j_val = -1.0;
-                    } else if ll == 0.0 {
+                    } else if sign_e == 0.0 {
                         i_val = -1.0;
                     }
                 }
-                let m = Matrix3::new(i_val, 0.0, 0.0, 0.0, j_val, 0.0, 0.0, 0.0, k_val);
-                g = m.transpose() * g * m;
+                let xform = Matrix3::new(i_val, 0.0, 0.0, 0.0, j_val, 0.0, 0.0, 0.0, k_val);
+                g = xform.transpose() * g * xform;
             }
 
-            // Recompute values after sign adjustment
+            // Recompute values after sign adjustment (c_val not needed for A5-A8)
             a_val = g[(0, 0)];
             b_val = g[(1, 1)];
-            c_val = g[(2, 2)];
             e_val = 2.0 * g[(1, 2)];
             n_val = 2.0 * g[(0, 2)];
             y_val = 2.0 * g[(0, 1)];
 
             // A5
-            if f64::abs(e_val) > b_val + e
-                || (f64::abs(e_val - b_val) < e && y_val - e > 2.0 * n_val)
-                || (f64::abs(e_val + b_val) < e && -e > y_val)
+            if f64::abs(e_val) > b_val + eps
+                || (f64::abs(e_val - b_val) < eps && y_val - eps > 2.0 * n_val)
+                || (f64::abs(e_val + b_val) < eps && -eps > y_val)
             {
                 let sign = -e_val.signum();
-                let m = Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, sign, 0.0, 0.0, 1.0);
-                g = m.transpose() * g * m;
+                let xform = Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, sign, 0.0, 0.0, 1.0);
+                g = xform.transpose() * g * xform;
                 continue;
             }
 
             // A6
-            if f64::abs(n_val) > a_val + e
-                || (f64::abs(a_val - n_val) < e && y_val - e > 2.0 * e_val)
-                || (f64::abs(a_val + n_val) < e && -e > y_val)
+            if f64::abs(n_val) > a_val + eps
+                || (f64::abs(a_val - n_val) < eps && y_val - eps > 2.0 * e_val)
+                || (f64::abs(a_val + n_val) < eps && -eps > y_val)
             {
                 let sign = -n_val.signum();
-                let m = Matrix3::new(1.0, 0.0, sign, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
-                g = m.transpose() * g * m;
+                let xform = Matrix3::new(1.0, 0.0, sign, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
+                g = xform.transpose() * g * xform;
                 continue;
             }
 
             // A7
-            if f64::abs(y_val) > a_val + e
-                || (f64::abs(a_val - y_val) < e && n_val - e > 2.0 * e_val)
-                || (f64::abs(a_val + y_val) < e && -e > n_val)
+            if f64::abs(y_val) > a_val + eps
+                || (f64::abs(a_val - y_val) < eps && n_val - eps > 2.0 * e_val)
+                || (f64::abs(a_val + y_val) < eps && -eps > n_val)
             {
                 let sign = -y_val.signum();
-                let m = Matrix3::new(1.0, sign, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
-                g = m.transpose() * g * m;
+                let xform = Matrix3::new(1.0, sign, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
+                g = xform.transpose() * g * xform;
                 continue;
             }
 
             // A8
-            if -e > e_val + n_val + y_val + a_val + b_val
-                || (f64::abs(e_val + n_val + y_val + a_val + b_val) < e
-                    && e < y_val + (a_val + n_val) * 2.0)
+            if -eps > e_val + n_val + y_val + a_val + b_val
+                || (f64::abs(e_val + n_val + y_val + a_val + b_val) < eps
+                    && eps < y_val + (a_val + n_val) * 2.0)
             {
-                let m = Matrix3::new(1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0);
-                g = m.transpose() * g * m;
+                let xform = Matrix3::new(1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0);
+                g = xform.transpose() * g * xform;
                 continue;
             }
 
@@ -518,7 +527,9 @@ impl Lattice {
             if let Some((aligned, _, _)) =
                 self.find_mapping(&niggli_lattice, tol, 5.0 * tol * 180.0 / PI, true)
             {
-                // Ensure positive determinant (same volume orientation as original)
+                // Ensure positive determinant (right-handed coordinate system).
+                // The mapping may flip handedness; negating the matrix restores it.
+                // This preserves volume sign convention and is consistent with pymatgen.
                 if aligned.matrix.determinant() > 0.0 {
                     return Ok(aligned);
                 } else {
@@ -711,6 +722,8 @@ impl Lattice {
     }
 }
 
+/// Lattice equality uses a fixed tolerance of 1e-10 on matrix Frobenius norm.
+/// For approximate comparisons with custom tolerances, use `find_mapping`.
 impl PartialEq for Lattice {
     fn eq(&self, other: &Self) -> bool {
         (self.matrix - other.matrix).norm() < 1e-10

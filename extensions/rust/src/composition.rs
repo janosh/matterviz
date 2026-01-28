@@ -168,61 +168,98 @@ mod tests {
         // get() returns correct counts
         assert_eq!(comp.get(Element::Fe), 2.0);
         assert_eq!(comp.get(Element::O), 3.0);
-        assert_eq!(comp.get(Element::H), 0.0); // missing element
+        assert_eq!(comp.get(Element::H), 0.0); // missing element returns 0
 
         // num_atoms and num_elements
         assert!((comp.num_atoms() - 5.0).abs() < 1e-10);
         assert_eq!(comp.num_elements(), 2);
+        assert!(!comp.is_empty());
+
+        // iter() covers all elements
+        let pairs: Vec<_> = comp.iter().collect();
+        assert_eq!(pairs.len(), 2);
+        let elements: Vec<_> = pairs.iter().map(|(e, _)| **e).collect();
+        assert!(elements.contains(&Element::Fe));
+        assert!(elements.contains(&Element::O));
     }
 
     #[test]
     fn test_reduced_formula() {
-        // Test various formula reductions
-        let cases = [
-            (vec![(Element::Fe, 2.0), (Element::O, 3.0)], "Fe2O3"),
-            (vec![(Element::Na, 1.0), (Element::Cl, 1.0)], "NaCl"),
-            (vec![(Element::H, 4.0), (Element::O, 2.0)], "H2O"),   // reduces 4:2 -> 2:1
-            (vec![(Element::Fe, 4.0), (Element::O, 6.0)], "Fe2O3"), // reduces
-            (vec![(Element::Cu, 1.0)], "Cu"),                       // single element
-            (vec![(Element::Fe, 4.0)], "Fe"),                       // single element reduces
+        // Comprehensive formula reduction tests including edge cases
+        let cases: &[(&[(Element, f64)], &str)] = &[
+            // Standard cases
+            (&[(Element::Fe, 2.0), (Element::O, 3.0)], "Fe2O3"),
+            (&[(Element::Na, 1.0), (Element::Cl, 1.0)], "NaCl"),
+            (&[(Element::H, 2.0), (Element::O, 1.0)], "H2O"),
+            // Reduction required
+            (&[(Element::H, 4.0), (Element::O, 2.0)], "H2O"),      // 4:2 -> 2:1
+            (&[(Element::Fe, 4.0), (Element::O, 6.0)], "Fe2O3"),   // 4:6 -> 2:3
+            (&[(Element::Ca, 3.0), (Element::P, 2.0), (Element::O, 8.0)], "Ca3P2O8"),
+            // Single element
+            (&[(Element::Cu, 1.0)], "Cu"),
+            (&[(Element::Cu, 4.0)], "Cu"),  // reduces to Cu, not Cu4
+            (&[(Element::Fe, 100.0)], "Fe"),
+            // Fractional amounts that reduce to integers
+            (&[(Element::Fe, 0.5), (Element::O, 0.75)], "Fe2O3"),
+            (&[(Element::Fe, 1.0), (Element::O, 1.5)], "Fe2O3"),
+            (&[(Element::Li, 0.25), (Element::Co, 0.25), (Element::O, 0.5)], "LiCoO2"),
         ];
 
         for (elements, expected) in cases {
-            let comp = Composition::new(elements);
-            assert_eq!(comp.reduced_formula(), expected);
+            let comp = Composition::new(elements.iter().copied());
+            assert_eq!(
+                comp.reduced_formula(),
+                *expected,
+                "Failed for {:?}",
+                elements
+            );
         }
     }
 
     #[test]
-    fn test_hash_equality() {
+    fn test_equality_and_hashing() {
+        // Compositions with same reduced formula are equal and have same hash
         let fe2o3_a = Composition::new([(Element::Fe, 2.0), (Element::O, 3.0)]);
-        let fe2o3_b = Composition::new([(Element::Fe, 4.0), (Element::O, 6.0)]); // same reduced
+        let fe2o3_b = Composition::new([(Element::Fe, 4.0), (Element::O, 6.0)]);
+        let fe2o3_c = Composition::new([(Element::Fe, 0.2), (Element::O, 0.3)]);
+
+        assert_eq!(fe2o3_a, fe2o3_b, "Same reduced formula should be equal");
+        assert_eq!(fe2o3_a, fe2o3_c, "Same reduced formula should be equal");
+        assert_eq!(fe2o3_a.hash(), fe2o3_b.hash(), "Equal compositions should have same hash");
+        assert_eq!(fe2o3_a.hash(), fe2o3_c.hash(), "Equal compositions should have same hash");
+
+        // Different compositions are not equal
         let feo = Composition::new([(Element::Fe, 1.0), (Element::O, 1.0)]);
         let nacl = Composition::new([(Element::Na, 1.0), (Element::Cl, 1.0)]);
 
-        // Same reduced formula -> same hash
-        assert_eq!(fe2o3_a.hash(), fe2o3_b.hash());
-
-        // Different compositions -> different hash
+        assert_ne!(fe2o3_a, feo);
+        assert_ne!(fe2o3_a, nacl);
+        assert_ne!(feo, nacl);
         assert_ne!(fe2o3_a.hash(), feo.hash());
         assert_ne!(fe2o3_a.hash(), nacl.hash());
+
+        // Empty compositions are equal
+        let empty1 = Composition::new([]);
+        let empty2 = Composition::new([(Element::Fe, 0.0)]); // filtered to empty
+        let empty3 = Composition::new([(Element::O, -1.0)]); // negative filtered
+        assert_eq!(empty1, empty2);
+        assert_eq!(empty1, empty3);
+        assert_eq!(empty1.hash(), empty2.hash());
     }
 
     #[test]
-    fn test_empty_composition() {
+    fn test_empty_and_filtering() {
+        // Empty composition
         let empty = Composition::new([]);
         assert!(empty.is_empty());
         assert_eq!(empty.num_atoms(), 0.0);
         assert_eq!(empty.num_elements(), 0);
         assert_eq!(empty.reduced_formula(), "");
-    }
 
-    #[test]
-    fn test_zero_amounts_filtered() {
-        // Zero amounts should be filtered out
+        // Zero amounts filtered out
         let comp = Composition::new([
             (Element::Fe, 2.0),
-            (Element::O, 0.0), // should be filtered
+            (Element::O, 0.0),  // filtered
             (Element::Cu, 3.0),
         ]);
         assert_eq!(comp.num_elements(), 2);
@@ -230,54 +267,14 @@ mod tests {
         assert_eq!(comp.get(Element::Fe), 2.0);
         assert_eq!(comp.get(Element::Cu), 3.0);
 
-        // Negative amounts should also be filtered
-        let comp2 = Composition::new([(Element::Fe, -1.0), (Element::O, 2.0)]);
+        // Negative amounts filtered out
+        let comp2 = Composition::new([
+            (Element::Fe, -1.0),  // filtered
+            (Element::O, 2.0),
+            (Element::Cu, -0.5), // filtered
+        ]);
         assert_eq!(comp2.num_elements(), 1);
         assert_eq!(comp2.get(Element::Fe), 0.0);
-    }
-
-    #[test]
-    fn test_iter() {
-        let comp = Composition::new([(Element::Na, 1.0), (Element::Cl, 1.0)]);
-
-        let pairs: Vec<_> = comp.iter().collect();
-        assert_eq!(pairs.len(), 2);
-
-        // Check that iteration covers all elements
-        let elements: Vec<_> = pairs.iter().map(|(e, _)| **e).collect();
-        assert!(elements.contains(&Element::Na));
-        assert!(elements.contains(&Element::Cl));
-    }
-
-    #[test]
-    fn test_partial_eq() {
-        let a = Composition::new([(Element::Fe, 2.0), (Element::O, 3.0)]);
-        let b = Composition::new([(Element::Fe, 4.0), (Element::O, 6.0)]); // same reduced
-        let c = Composition::new([(Element::Fe, 1.0), (Element::O, 1.0)]); // different
-
-        // Same reduced formula -> equal
-        assert_eq!(a, b);
-
-        // Different reduced formula -> not equal
-        assert_ne!(a, c);
-
-        // Empty compositions are equal
-        let empty1 = Composition::new([]);
-        let empty2 = Composition::new([(Element::Fe, 0.0)]); // filtered to empty
-        assert_eq!(empty1, empty2);
-    }
-
-    #[test]
-    fn test_reduced_formula_cases() {
-        let cases: &[(&[(Element, f64)], &str)] = &[
-            (&[(Element::Cu, 1.0)], "Cu"),
-            (&[(Element::Cu, 4.0)], "Cu"),
-            (&[(Element::Fe, 0.5), (Element::O, 0.75)], "Fe2O3"),
-            (&[(Element::Fe, 1.0), (Element::O, 1.5)], "Fe2O3"),
-        ];
-        for (elements, expected) in cases {
-            let comp = Composition::new(elements.iter().copied());
-            assert_eq!(comp.reduced_formula(), *expected);
-        }
+        assert_eq!(comp2.get(Element::O), 2.0);
     }
 }

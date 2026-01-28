@@ -149,9 +149,9 @@ pub fn pbc_shortest_vectors(
         .map(|f| matrix.transpose() * wrap_frac_coords(f))
         .collect();
 
-    // Initialize output arrays
-    let mut vectors = vec![vec![Vector3::new(1e20, 1e20, 1e20); n2]; n1];
-    let mut d2 = vec![vec![1e20; n2]; n1];
+    // Initialize output arrays with infinity for masked/skipped entries
+    let mut vectors = vec![vec![Vector3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY); n2]; n1];
+    let mut d2 = vec![vec![f64::INFINITY; n2]; n1];
 
     for (idx, f1) in fc1.iter().enumerate() {
         for (jdx, f2) in fc2.iter().enumerate() {
@@ -342,18 +342,43 @@ mod tests {
 
     #[test]
     fn test_pbc_various_lattices() {
-        // Verify PBC works for different lattice types
-        let lattices = [
-            Lattice::cubic(4.0),
-            Lattice::hexagonal(3.0, 5.0),
-            Lattice::from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0),
+        // Verify PBC shortest vectors are computed correctly for different lattice types
+        let test_cases = [
+            // (lattice, frac_coord1, frac_coord2, expected_max_dist)
+            // For cubic: (0,0,0) to (0.5,0.5,0.5) is half body diagonal = a*sqrt(3)/2
+            (Lattice::cubic(4.0), [0.0, 0.0, 0.0], [0.5, 0.5, 0.5], 4.0 * (3.0_f64).sqrt() / 2.0),
+            // Origin to origin should be 0
+            (Lattice::cubic(4.0), [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0),
+            // PBC wrap: (0.9, 0, 0) to (0.1, 0, 0) should be 0.2*a = 0.8, not 0.8*a
+            (Lattice::cubic(4.0), [0.9, 0.0, 0.0], [0.1, 0.0, 0.0], 0.8),
+            // Hexagonal lattice
+            (Lattice::hexagonal(3.0, 5.0), [0.0, 0.0, 0.0], [0.0, 0.0, 0.5], 2.5),
+            // Triclinic lattice - just verify it computes something reasonable
+            (Lattice::from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0), [0.0, 0.0, 0.0], [0.5, 0.5, 0.5], 10.0),
         ];
 
-        for lattice in lattices {
-            let c1 = vec![Vector3::new(0.0, 0.0, 0.0)];
-            let c2 = vec![Vector3::new(0.5, 0.5, 0.5)];
-            let (_, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
-            assert!(d2[0][0] > 0.0 && d2[0][0] < 100.0);
+        for (lattice, fc1, fc2, max_expected) in test_cases {
+            let c1 = vec![Vector3::new(fc1[0], fc1[1], fc1[2])];
+            let c2 = vec![Vector3::new(fc2[0], fc2[1], fc2[2])];
+            let (vecs, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+
+            let dist = d2[0][0].sqrt();
+            assert!(
+                dist >= 0.0,
+                "Distance should be non-negative, got {dist}"
+            );
+            assert!(
+                dist <= max_expected + 0.1,
+                "Distance {dist} exceeds expected max {max_expected} for {:?} -> {:?}",
+                fc1, fc2
+            );
+
+            // Vector norm should match distance
+            let vec_norm = vecs[0][0].norm();
+            assert!(
+                (vec_norm - dist).abs() < 1e-10,
+                "Vector norm {vec_norm} != distance {dist}"
+            );
         }
     }
 
@@ -383,9 +408,9 @@ mod tests {
         let mask = vec![vec![true, false], vec![false, true]];
         let (vecs, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, Some(&mask), None);
 
-        // Masked entries should be large (1e20)
-        assert!(d2[0][0] > 1e19);
-        assert!(d2[1][1] > 1e19);
+        // Masked entries should be infinity
+        assert!(d2[0][0].is_infinite());
+        assert!(d2[1][1].is_infinite());
 
         // Unmasked entries should be computed
         assert!(d2[0][1] < 100.0);
@@ -404,7 +429,7 @@ mod tests {
         let (_, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, ftol);
 
         // (0.5, 0.5, 0.5) is outside tolerance
-        assert!(d2[0][0] > 1e19);
+        assert!(d2[0][0].is_infinite());
         // (0.01, 0.01, 0.01) is within tolerance
         assert!(d2[0][1] < 1.0);
     }

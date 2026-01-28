@@ -1,7 +1,15 @@
-//! Compatibility tests to ensure behavior matches pymatgen's StructureMatcher.
+//! Rust-specific tests for ferrox StructureMatcher.
 //!
-//! These tests verify that the Rust implementation produces identical results
-//! to the Python implementation for various structure pairs.
+//! These tests verify Rust-specific functionality: JSON I/O, batch operations,
+//! spacegroup detection, primitive cell reduction, and RMS distance calculation.
+//!
+//! For comprehensive pymatgen compatibility verification (lattice tolerance
+//! boundaries, site order invariance, volume scaling, origin shifts, oxidation
+//! states), see the Python test suite:
+//!   `tests/determine_expected_behavior.py`
+//!
+//! The Python tests compare ferrox against pymatgen directly and are the
+//! authoritative source for compatibility verification.
 
 use ferrox::element::Element;
 use ferrox::io::{parse_structure_json, structure_to_json};
@@ -67,7 +75,9 @@ fn perturb_structure(s: &Structure, max_displacement: f64) -> Structure {
     result
 }
 
-// Test cases matching pymatgen behavior
+// =============================================================================
+// Basic Sanity Tests
+// =============================================================================
 
 #[test]
 fn test_identical_structures_match() {
@@ -112,7 +122,6 @@ fn test_different_compositions_no_match() {
 #[test]
 fn test_scaled_volume_matches() {
     let s1 = make_cubic(Element::Fe, 4.0);
-    // Create scaled version
     let s2 = Structure::new(
         Lattice::cubic(4.2), // 5% larger
         s1.species.clone(),
@@ -126,22 +135,6 @@ fn test_scaled_volume_matches() {
 }
 
 #[test]
-fn test_scaled_volume_no_match_without_scale() {
-    let s1 = make_cubic(Element::Fe, 4.0);
-    let s2 = Structure::new(
-        Lattice::cubic(5.0), // 25% larger - significant difference
-        s1.species.clone(),
-        s1.frac_coords.clone(),
-    );
-    let matcher = StructureMatcher::new().with_scale(false);
-    // Without scaling, very different volumes shouldn't match
-    // (depends on tolerance settings)
-    let result = matcher.fit(&s1, &s2);
-    // This might or might not match depending on implementation details
-    println!("scale=false result: {result}");
-}
-
-#[test]
 fn test_different_site_counts_no_match() {
     let s1 = make_cubic(Element::Fe, 4.0);
     let s2 = make_bcc(Element::Fe, 4.0);
@@ -150,38 +143,6 @@ fn test_different_site_counts_no_match() {
         !matcher.fit(&s1, &s2),
         "Different site counts should not match without supercell"
     );
-}
-
-#[test]
-fn test_different_origin_matches() {
-    let s1 = make_cubic(Element::Fe, 4.0);
-    let s2 = Structure::new(
-        s1.lattice.clone(),
-        s1.species.clone(),
-        vec![Vector3::new(0.5, 0.5, 0.5)], // Shifted origin
-    );
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit(&s1, &s2),
-        "Same structure with different origin should match"
-    );
-}
-
-#[test]
-fn test_shuffled_sites_match() {
-    let s1 = make_rocksalt(Element::Na, Element::Cl, 5.64);
-    // Swap the order of atoms
-    let s2 = Structure::new(
-        s1.lattice.clone(),
-        vec![Species::neutral(Element::Cl), Species::neutral(Element::Na)],
-        vec![Vector3::new(0.5, 0.5, 0.5), Vector3::new(0.0, 0.0, 0.0)],
-    );
-    let matcher = StructureMatcher::new();
-    // Both Na at (0,0,0) with Cl at (0.5,0.5,0.5) and vice versa
-    // The Hungarian algorithm should find the correct assignment
-    // Note: This test depends on whether shuffled sites are supported
-    let result = matcher.fit(&s1, &s2);
-    println!("Shuffled sites result: {result}");
 }
 
 #[test]
@@ -228,6 +189,10 @@ fn test_different_rocksalt_no_match() {
     );
 }
 
+// =============================================================================
+// RMS Distance Tests (Rust-specific API)
+// =============================================================================
+
 #[test]
 fn test_get_rms_dist_identical() {
     let s = make_cubic(Element::Fe, 4.0);
@@ -244,42 +209,18 @@ fn test_get_rms_dist_identical() {
 
 #[test]
 fn test_get_rms_dist_perturbed() {
-    // Use BCC structure (2 atoms) for meaningful perturbation test
     let s1 = make_bcc(Element::Fe, 2.87);
     let s2 = perturb_structure(&s1, 0.02);
     let matcher = StructureMatcher::new();
     let result = matcher.get_rms_dist(&s1, &s2);
     assert!(result.is_some(), "Should get RMS for perturbed structures");
-    let (rms, max_dist) = result.unwrap();
-    println!("Perturbed BCC RMS: {rms}, max: {max_dist}");
-    // For multi-atom structures with different perturbations, RMS should be > 0
-    // but for practical purposes, any match is acceptable
+    let (rms, _max_dist) = result.unwrap();
     assert!(rms < 0.5, "RMS should be small for slightly perturbed");
 }
 
-#[test]
-fn test_tolerance_strict() {
-    let s1 = make_cubic(Element::Fe, 4.0);
-    let s2 = perturb_structure(&s1, 0.05);
-
-    // With default tolerance
-    let matcher_default = StructureMatcher::new();
-    let match_default = matcher_default.fit(&s1, &s2);
-
-    // With strict tolerance
-    let matcher_strict = StructureMatcher::new()
-        .with_site_pos_tol(0.01)
-        .with_latt_len_tol(0.01);
-    let match_strict = matcher_strict.fit(&s1, &s2);
-
-    println!("Default tolerance: {match_default}");
-    println!("Strict tolerance: {match_strict}");
-
-    // Strict should be more restrictive
-    if match_strict {
-        assert!(match_default, "If strict matches, default should too");
-    }
-}
+// =============================================================================
+// Lattice Type Tests
+// =============================================================================
 
 #[test]
 fn test_hexagonal_lattice() {
@@ -329,11 +270,12 @@ fn test_triclinic_lattice() {
     );
 }
 
-// Additional Compatibility Tests
+// =============================================================================
+// JSON I/O Tests (Rust-specific)
+// =============================================================================
 
 #[test]
 fn test_json_roundtrip() {
-    // Structure -> JSON -> Structure should preserve matching
     let s1 = make_rocksalt(Element::Na, Element::Cl, 5.64);
     let s2 = make_rocksalt(Element::Na, Element::Cl, 5.64);
 
@@ -354,8 +296,28 @@ fn test_json_roundtrip() {
 }
 
 #[test]
+fn test_json_parse_various_elements() {
+    let elements = ["H", "C", "N", "O", "Si", "Fe", "Cu", "Ag", "Au", "U"];
+
+    for elem in elements {
+        let json = format!(
+            r#"{{"lattice":{{"matrix":[[4,0,0],[0,4,0],[0,0,4]]}},"sites":[{{"species":[{{"element":"{elem}"}}],"abc":[0,0,0]}}]}}"#
+        );
+
+        let result = parse_structure_json(&json);
+        assert!(result.is_ok(), "Should parse structure with element {elem}");
+
+        let s = result.unwrap();
+        assert_eq!(s.num_sites(), 1);
+    }
+}
+
+// =============================================================================
+// Batch Operations Tests (Rust-specific)
+// =============================================================================
+
+#[test]
 fn test_batch_composition_groups() {
-    // Structures with different compositions should never match
     let structures = vec![
         make_rocksalt(Element::Na, Element::Cl, 5.64),
         make_bcc(Element::Fe, 2.87),
@@ -372,32 +334,7 @@ fn test_batch_composition_groups() {
 }
 
 #[test]
-fn test_primitive_cell_fcc() {
-    // FCC conventional (4 atoms) should reduce to primitive (1 atom)
-    let fcc_conv = make_fcc(Element::Cu, 3.6);
-    assert_eq!(fcc_conv.num_sites(), 4);
-
-    let prim = fcc_conv.get_primitive(1e-4).unwrap();
-    assert_eq!(prim.num_sites(), 1, "FCC primitive should have 1 atom");
-}
-
-#[test]
-fn test_spacegroup_fcc() {
-    let fcc = make_fcc(Element::Cu, 3.6);
-    let sg = fcc.get_spacegroup_number(1e-4).unwrap();
-    assert_eq!(sg, 225, "FCC should be spacegroup 225 (Fm-3m)");
-}
-
-#[test]
-fn test_spacegroup_bcc() {
-    let bcc = make_bcc(Element::Fe, 2.87);
-    let sg = bcc.get_spacegroup_number(1e-4).unwrap();
-    assert_eq!(sg, 229, "BCC should be spacegroup 229 (Im-3m)");
-}
-
-#[test]
 fn test_deduplicate_many() {
-    // Test with larger number of structures
     let mut structures = Vec::new();
 
     // Add 5 NaCl structures (should all group together)
@@ -434,83 +371,29 @@ fn test_deduplicate_many() {
     }
 }
 
+// =============================================================================
+// Spglib Integration Tests (Rust-specific)
+// =============================================================================
+
 #[test]
-fn test_element_comparator() {
-    // Test element comparator ignores oxidation states
-    let lattice = Lattice::cubic(5.64);
+fn test_primitive_cell_fcc() {
+    let fcc_conv = make_fcc(Element::Cu, 3.6);
+    assert_eq!(fcc_conv.num_sites(), 4);
 
-    // NaCl with oxidation states
-    let s1 = Structure::new(
-        lattice.clone(),
-        vec![
-            Species::new(Element::Na, Some(1)),
-            Species::new(Element::Cl, Some(-1)),
-        ],
-        vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
-    );
-
-    // NaCl without oxidation states
-    let s2 = Structure::new(
-        lattice,
-        vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)],
-        vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
-    );
-
-    // Species comparator: should NOT match (different oxidation states)
-    let matcher_species = StructureMatcher::new();
-    assert!(
-        !matcher_species.fit(&s1, &s2),
-        "Species comparator should NOT match when oxidation states differ"
-    );
-
-    // Element comparator: should match (same elements)
-    let matcher_element =
-        StructureMatcher::new().with_comparator(ferrox::matcher::ComparatorType::Element);
-    assert!(
-        matcher_element.fit(&s1, &s2),
-        "Element comparator should match regardless of oxidation state"
-    );
+    let prim = fcc_conv.get_primitive(1e-4).unwrap();
+    assert_eq!(prim.num_sites(), 1, "FCC primitive should have 1 atom");
 }
 
 #[test]
-fn test_volume_scaling() {
-    let s1 = make_cubic(Element::Fe, 4.0);
-
-    // Create structure with 10% larger volume
-    let lattice2 = Lattice::cubic(4.0 * 1.033); // ~10% larger volume
-    let s2 = Structure::new(
-        lattice2,
-        vec![Species::neutral(Element::Fe)],
-        vec![Vector3::new(0.0, 0.0, 0.0)],
-    );
-
-    // With scaling: should match
-    let matcher_scale = StructureMatcher::new().with_scale(true);
-    assert!(
-        matcher_scale.fit(&s1, &s2),
-        "Scaled structures should match with scale=true"
-    );
-
-    // Without scaling: may or may not match depending on ltol
-    let matcher_no_scale = StructureMatcher::new().with_scale(false);
-    let result = matcher_no_scale.fit(&s1, &s2);
-    println!("Without scaling: {result}");
+fn test_spacegroup_fcc() {
+    let fcc = make_fcc(Element::Cu, 3.6);
+    let sg = fcc.get_spacegroup_number(1e-4).unwrap();
+    assert_eq!(sg, 225, "FCC should be spacegroup 225 (Fm-3m)");
 }
 
 #[test]
-fn test_json_parse_various_elements() {
-    // Test JSON parsing for various elements
-    let elements = ["H", "C", "N", "O", "Si", "Fe", "Cu", "Ag", "Au", "U"];
-
-    for elem in elements {
-        let json = format!(
-            r#"{{"lattice":{{"matrix":[[4,0,0],[0,4,0],[0,0,4]]}},"sites":[{{"species":[{{"element":"{elem}"}}],"abc":[0,0,0]}}]}}"#
-        );
-
-        let result = parse_structure_json(&json);
-        assert!(result.is_ok(), "Should parse structure with element {elem}");
-
-        let s = result.unwrap();
-        assert_eq!(s.num_sites(), 1);
-    }
+fn test_spacegroup_bcc() {
+    let bcc = make_bcc(Element::Fe, 2.87);
+    let sg = bcc.get_spacegroup_number(1e-4).unwrap();
+    assert_eq!(sg, 229, "BCC should be spacegroup 229 (Im-3m)");
 }
