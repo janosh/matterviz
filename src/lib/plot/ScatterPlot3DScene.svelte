@@ -315,6 +315,10 @@
     return Object.values(groups)
   })
 
+  // Projection settings - render point shadows on background planes
+  let proj_opacity = $derived(display.projection_opacity ?? 0.3)
+  let proj_scale = $derived(display.projection_scale ?? 0.5)
+
   // Series line data for connecting points
   type SeriesLineData = {
     series_idx: number
@@ -481,14 +485,18 @@
     if (data) on_point_click?.(data)
   }
 
-  // Gizmo props
-  let gizmo_props = $derived(
-    typeof gizmo === `boolean`
-      ? gizmo
-        ? { background: { enabled: false }, offset: { left: 5, bottom: 5 } }
-        : null
-      : gizmo,
-  )
+  // Gizmo props - className enables CSS targeting for z-index and pointer-events
+  let gizmo_props = $derived.by(() => {
+    if (gizmo === false) return null
+    const base = {
+      background: { enabled: false },
+      offset: { left: 5, bottom: 5 },
+      className: `scatter3d-gizmo`,
+    }
+    if (gizmo === true) return base
+    // Merge user-provided gizmo config with base (ensures className is always included)
+    return { ...base, ...gizmo, offset: { ...base.offset, ...gizmo.offset } }
+  })
 
   // Orbit controls - snappy with minimal inertia
   let orbit_controls_props = $derived({
@@ -796,6 +804,57 @@
     {/each}
   </extras.InstancedMesh>
 {/each}
+
+<!-- XY Plane Projections (floor/ceiling) -->
+{#if display.projections?.xy}
+  {#each radius_groups as group (group.radius)}
+    <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
+      <T.SphereGeometry args={[1, 8, 8]} />
+      <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
+      {#each group.points as point, idx (`xy-${point.series_idx}-${point.point_idx}`)}
+        <extras.Instance
+          position={[point.x, pos.y, point.z]}
+          scale={group.radius * proj_scale}
+          color={group.colors[idx]}
+        />
+      {/each}
+    </extras.InstancedMesh>
+  {/each}
+{/if}
+
+<!-- XZ Plane Projections (back wall) -->
+{#if display.projections?.xz}
+  {#each radius_groups as group (group.radius)}
+    <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
+      <T.SphereGeometry args={[1, 8, 8]} />
+      <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
+      {#each group.points as point, idx (`xz-${point.series_idx}-${point.point_idx}`)}
+        <extras.Instance
+          position={[point.x, point.y, pos.z]}
+          scale={group.radius * proj_scale}
+          color={group.colors[idx]}
+        />
+      {/each}
+    </extras.InstancedMesh>
+  {/each}
+{/if}
+
+<!-- YZ Plane Projections (side wall) -->
+{#if display.projections?.yz}
+  {#each radius_groups as group (group.radius)}
+    <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
+      <T.SphereGeometry args={[1, 8, 8]} />
+      <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
+      {#each group.points as point, idx (`yz-${point.series_idx}-${point.point_idx}`)}
+        <extras.Instance
+          position={[pos.x, point.y, point.z]}
+          scale={group.radius * proj_scale}
+          color={group.colors[idx]}
+        />
+      {/each}
+    </extras.InstancedMesh>
+  {/each}
+{/if}
 
 <!-- Hover highlight -->
 {#if hovered_point}

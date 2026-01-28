@@ -707,6 +707,14 @@ export interface DisplayConfig3D extends DisplayConfig {
   show_axis_labels?: boolean
   show_bounding_box?: boolean
   show_grid?: boolean
+  // Projection settings - render point shadows on background planes
+  projections?: {
+    xy?: boolean // Project onto XY plane (floor/ceiling, Three.js Y backside)
+    xz?: boolean // Project onto XZ plane (back wall, Three.js Z backside)
+    yz?: boolean // Project onto YZ plane (side wall, Three.js X backside)
+  }
+  projection_opacity?: number // 0-1, default 0.3
+  projection_scale?: number // Relative to point size, default 0.5
 }
 
 // 3D scatter handler props
