@@ -1987,12 +1987,16 @@ Mg 0.0 0.0 0.0
 
     #[test]
     fn test_json_edge_cases() {
-        // Oxidation states
+        // Oxidation states - verify the oxidation state is parsed
         let oxi = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Fe","oxidation_state":2,"occu":1.0}],"abc":[0,0,0]}]}"#;
-        assert_eq!(parse_structure_json(oxi).unwrap().num_sites(), 1);
+        let s_oxi = parse_structure_json(oxi).unwrap();
+        assert_eq!(s_oxi.num_sites(), 1);
+        assert_eq!(s_oxi.species()[0].oxidation_state, Some(2));
 
-        // Disordered site
+        // Disordered site - verify it's recognized as disordered
         let dis = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Fe","occu":0.5},{"element":"Mn","occu":0.5}],"abc":[0,0,0]}]}"#;
-        assert_eq!(parse_structure_json(dis).unwrap().num_sites(), 1);
+        let s_dis = parse_structure_json(dis).unwrap();
+        assert_eq!(s_dis.num_sites(), 1);
+        assert!(!s_dis.is_ordered());
     }
 }

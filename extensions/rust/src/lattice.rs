@@ -1947,20 +1947,20 @@ mod tests {
     fn test_lll_preserves_volume() {
         let matrix = Matrix3::new(0.5, 0.3, 0.1, 0.2, 0.7, 0.4, 0.1, 0.2, 0.8);
         let lattice = Lattice::new(matrix);
-        if lattice.volume().abs() > 1e-8 {
-            let lll = lattice.get_lll_reduced(0.75);
-            assert_relative_eq!(lll.volume().abs(), lattice.volume().abs(), epsilon = 1e-8);
-        }
+        let lll = lattice.get_lll_reduced(0.75);
+        assert_relative_eq!(lll.volume().abs(), lattice.volume().abs(), epsilon = 1e-8);
     }
 
     #[test]
     fn test_coordinate_operations() {
-        // Roundtrip: frac → cart → frac
+        // Roundtrip: frac → cart → frac (validate all components)
         let lattice = Lattice::from_parameters(4.0, 5.0, 6.0, 85.0, 95.0, 100.0);
         let frac = Vector3::new(0.3, 0.7, 0.2);
         let cart = lattice.get_cartesian_coords(&[frac]);
         let frac_back = lattice.get_fractional_coords(&cart);
         assert_relative_eq!(frac.x, frac_back[0].x, epsilon = 1e-10);
+        assert_relative_eq!(frac.y, frac_back[0].y, epsilon = 1e-10);
+        assert_relative_eq!(frac.z, frac_back[0].z, epsilon = 1e-10);
 
         // Large fractional coords
         let lattice2 = Lattice::cubic(4.0);

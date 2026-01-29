@@ -306,6 +306,9 @@ impl Composition {
     /// Get a formula string with elements sorted by electronegativity.
     ///
     /// Most electropositive elements come first (e.g., "Li4 Fe4 P4 O16").
+    ///
+    /// Note: Oxidation states are ignored. Species are collapsed to element
+    /// symbols only. Use `iter()` to access full Species information.
     pub fn formula(&self) -> String {
         if self.is_empty() {
             return String::new();
@@ -320,6 +323,10 @@ impl Composition {
     /// Get the reduced formula string.
     ///
     /// Amounts are divided by their GCD, producing minimal integer ratios.
+    ///
+    /// Note: Oxidation states are ignored. Species are collapsed to element
+    /// symbols only. Two compositions with identical elements but different
+    /// oxidation states (e.g., Fe²⁺O vs Fe³⁺O) produce identical formulas.
     pub fn reduced_formula(&self) -> String {
         if self.is_empty() {
             return String::new();
@@ -492,10 +499,14 @@ impl Composition {
         Ok(result)
     }
 
-    /// Get a hash of the reduced formula for fast equality checks.
+    /// Get a hash of the reduced formula (element-only, ignores oxidation states).
     ///
-    /// Note: This is separate from the `Hash` trait implementation but produces
-    /// the same result. Use this when you need the raw `u64` hash value.
+    /// This is useful for grouping compositions by stoichiometry regardless of
+    /// oxidation states. Note: This is different from the `Hash` trait which
+    /// includes full Species information including oxidation states.
+    ///
+    /// Two compositions with Fe2O3 stoichiometry will have the same formula_hash
+    /// even if one has Fe²⁺/Fe³⁺ and the other has neutral Fe.
     pub fn formula_hash(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.reduced_formula().hash(&mut hasher);
@@ -581,11 +592,26 @@ impl Mul<Composition> for f64 {
 // Trait Implementations
 // =============================================================================
 
-/// Equality is based on reduced formula, so `Fe2O3 == Fe4O6` is true.
-/// Use `almost_equals()` for tolerance-based comparison of actual amounts.
+/// Equality compares actual Species and amounts (with tolerance).
+///
+/// Two compositions are equal if they have the same Species with the same
+/// amounts (within `AMOUNT_TOLERANCE`). Oxidation states matter: Fe²⁺O ≠ Fe³⁺O.
+/// Scaling also matters: Fe2O3 ≠ Fe4O6 (use `reduced_composition()` first if
+/// you want to compare reduced forms).
 impl PartialEq for Composition {
     fn eq(&self, other: &Self) -> bool {
-        self.reduced_formula() == other.reduced_formula()
+        // Quick check: same number of species
+        if self.species.len() != other.species.len() {
+            return false;
+        }
+        // Compare each species and amount
+        for (sp, amt) in &self.species {
+            match other.species.get(sp) {
+                Some(other_amt) if (amt - other_amt).abs() <= AMOUNT_TOLERANCE => {}
+                _ => return false,
+            }
+        }
+        true
     }
 }
 
@@ -593,7 +619,14 @@ impl Eq for Composition {}
 
 impl std::hash::Hash for Composition {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.reduced_formula().hash(state);
+        // Hash species in a deterministic order (sorted by string representation)
+        let mut entries: Vec<_> = self.species.iter().collect();
+        entries.sort_by_key(|(sp, _)| sp.to_string());
+        for (sp, amt) in entries {
+            sp.hash(state);
+            // Hash amount as integer millis to handle floating point
+            ((amt * 1000.0).round() as i64).hash(state);
+        }
     }
 }
 
@@ -1018,15 +1051,28 @@ mod tests {
     fn test_equality_and_comparison() {
         let fe2o3 = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
         let fe4o6 = Composition::from_elements([(Element::Fe, 4.0), (Element::O, 6.0)]);
-        let fe_frac = Composition::from_elements([(Element::Fe, 0.2), (Element::O, 0.3)]);
+        let fe2o3_copy = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
 
-        // PartialEq based on reduced formula
-        assert_eq!(fe2o3, fe4o6, "same reduced formula");
-        assert_eq!(fe2o3, fe_frac, "fractional also reduces to Fe2O3");
+        // PartialEq compares exact species and amounts (scaling matters)
+        assert_eq!(fe2o3, fe2o3_copy, "same species and amounts");
+        assert_ne!(
+            fe2o3, fe4o6,
+            "different amounts, even if same reduced formula"
+        );
 
-        // Hash consistency
+        // formula_hash ignores scaling (groups by stoichiometry)
         assert_eq!(fe2o3.formula_hash(), fe4o6.formula_hash());
-        assert_eq!(fe2o3.formula_hash(), fe_frac.formula_hash());
+
+        // Oxidation states matter for equality
+        let fe2_species = Species::new(Element::Fe, Some(2));
+        let fe3_species = Species::new(Element::Fe, Some(3));
+        let o2_species = Species::new(Element::O, Some(-2));
+
+        let feo_with_fe2 = Composition::new([(fe2_species, 1.0), (o2_species, 1.0)]);
+        let feo_with_fe3 = Composition::new([(fe3_species, 1.0), (o2_species, 1.0)]);
+        assert_ne!(feo_with_fe2, feo_with_fe3, "different oxidation states");
+        // But formula_hash ignores oxidation states
+        assert_eq!(feo_with_fe2.formula_hash(), feo_with_fe3.formula_hash());
 
         // almost_equals with tolerances
         let comp_approx = Composition::from_elements([(Element::Fe, 2.001), (Element::O, 2.999)]);

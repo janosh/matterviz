@@ -856,14 +856,16 @@ Cu 0.0 0.0 0.0
         for (atoms, expected) in cases {
             let cif = make_cif("", atoms);
             let s = parse_cif_str(&cif, Path::new("t.cif")).unwrap();
+            assert_eq!(s.num_sites(), expected.len(), "{atoms}");
             for (idx, elem) in expected.iter().enumerate() {
                 assert_eq!(s.species()[idx].element, *elem, "{atoms}");
             }
         }
 
-        // Site labels with numbers (Fe1, Na2, O1a) - uses _atom_site_label
+        // Site labels with numbers (Fe1, Na2) - uses _atom_site_label
         let label_cif = "data_t\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nFe1 0 0 0\nNa2 0.5 0.5 0.5";
         let s = parse_cif_str(label_cif, Path::new("l.cif")).unwrap();
+        assert_eq!(s.num_sites(), 2);
         assert_eq!(s.species()[0].element, Element::Fe);
         assert_eq!(s.species()[1].element, Element::Na);
     }
