@@ -44,6 +44,14 @@ repos:
         types: [rust]
         pass_filenames: false
 
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.31.0
+    hooks:
+      - id: check-jsonschema
+        name: Validate element data JSON
+        files: ^src/lib/element/data\.json$
+        args: [--schemafile, src/lib/element/data.schema.json]
+
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
     hooks:
@@ -51,7 +59,7 @@ repos:
         stages: [pre-commit, commit-msg]
         args:
           - --ignore-words-list
-          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear'
+          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant'
           - --check-filenames
 
   - repo: https://github.com/igorshubovych/markdownlint-cli

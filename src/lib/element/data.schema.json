@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "element-data.schema.json",
+  "title": "Chemical Element Data",
+  "description": "Array of chemical element data for all 118 elements",
+  "type": "array",
+  "minItems": 118,
+  "maxItems": 118,
+  "items": {
+    "type": "object",
+    "required": [
+      "number",
+      "symbol",
+      "name",
+      "atomic_mass",
+      "row",
+      "column",
+      "period",
+      "category"
+    ],
+    "properties": {
+      "number": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 118,
+        "description": "Atomic number (Z)"
+      },
+      "symbol": {
+        "type": "string",
+        "pattern": "^[A-Z][a-z]?$",
+        "description": "Element symbol (1-2 characters)"
+      },
+      "name": {
+        "type": "string",
+        "description": "Full element name"
+      },
+      "atomic_mass": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Atomic mass in atomic mass units (u)"
+      },
+      "row": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Periodic table row (1-7 for main, 8-9 for lanthanides, 9-10 for actinides in some layouts)"
+      },
+      "column": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 18,
+        "description": "Periodic table column (group, 1-18)"
+      },
+      "period": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 7,
+        "description": "Periodic table period"
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "actinide",
+          "alkali metal",
+          "alkaline earth metal",
+          "diatomic nonmetal",
+          "lanthanide",
+          "metalloid",
+          "noble gas",
+          "polyatomic nonmetal",
+          "post-transition metal",
+          "transition metal"
+        ],
+        "description": "Element category"
+      },
+      "appearance": {
+        "type": ["string", "null"],
+        "description": "Physical appearance"
+      },
+      "density": {
+        "type": "number",
+        "description": "Density in g/cm³"
+      },
+      "discoverer": {
+        "type": "string",
+        "description": "Discoverer name(s)"
+      },
+      "molar_heat": {
+        "type": ["number", "null"],
+        "description": "Molar heat capacity in J/(mol·K)"
+      },
+      "phase": {
+        "type": "string",
+        "enum": ["Gas", "Liquid", "Solid"],
+        "description": "Standard state phase"
+      },
+      "spectral_img": {
+        "type": ["string", "null"],
+        "description": "URL to spectral image"
+      },
+      "summary": {
+        "type": "string",
+        "description": "Brief description of the element"
+      },
+      "shells": {
+        "type": "array",
+        "items": { "type": "integer", "minimum": 0 },
+        "description": "Electron shell configuration"
+      },
+      "electron_configuration": {
+        "type": "string",
+        "description": "Full electron configuration"
+      },
+      "electron_configuration_semantic": {
+        "type": "string",
+        "description": "Semantic electron configuration with noble gas core"
+      },
+      "electron_affinity": {
+        "type": ["number", "null"],
+        "description": "Electron affinity in kJ/mol"
+      },
+      "electronegativity_pauling": {
+        "type": ["number", "null"],
+        "description": "Pauling electronegativity"
+      },
+      "electronegativity": {
+        "type": ["number", "null"],
+        "description": "Electronegativity (same as Pauling)"
+      },
+      "ionization_energies": {
+        "type": "array",
+        "items": { "type": "number" },
+        "description": "Ionization energies in kJ/mol"
+      },
+      "cpk-hex": {
+        "type": ["string", "null"],
+        "pattern": "^[0-9a-fA-F]{6}$",
+        "description": "CPK color as hex string (without #)"
+      },
+      "neutrons": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Number of neutrons in most common isotope"
+      },
+      "protons": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Number of protons (same as atomic number)"
+      },
+      "electrons": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Number of electrons in neutral atom"
+      },
+      "radioactive": {
+        "type": ["boolean", "null"],
+        "description": "Whether element is radioactive"
+      },
+      "natural": {
+        "type": ["boolean", "null"],
+        "description": "Whether element occurs naturally"
+      },
+      "metal": {
+        "type": ["boolean", "null"],
+        "description": "Whether element is a metal"
+      },
+      "nonmetal": {
+        "type": ["boolean", "null"],
+        "description": "Whether element is a nonmetal"
+      },
+      "metalloid": {
+        "type": ["boolean", "null"],
+        "description": "Whether element is a metalloid"
+      },
+      "atomic_radius": {
+        "type": ["number", "null"],
+        "description": "Atomic radius in Angstroms"
+      },
+      "covalent_radius": {
+        "type": ["number", "null"],
+        "description": "Covalent radius in Angstroms"
+      },
+      "first_ionization": {
+        "type": ["number", "null"],
+        "description": "First ionization energy in eV"
+      },
+      "melting_point": {
+        "type": ["number", "null"],
+        "description": "Melting point in Kelvin"
+      },
+      "boiling_point": {
+        "type": ["number", "null"],
+        "description": "Boiling point in Kelvin"
+      },
+      "number_of_isotopes": {
+        "type": ["integer", "null"],
+        "description": "Number of known isotopes"
+      },
+      "year": {
+        "type": ["integer", "string"],
+        "description": "Year of discovery"
+      },
+      "specific_heat": {
+        "type": ["number", "null"],
+        "description": "Specific heat capacity in J/(g·K)"
+      },
+      "n_shells": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Number of electron shells"
+      },
+      "n_valence": {
+        "type": ["integer", "null"],
+        "description": "Number of valence electrons"
+      },
+      "oxidation_states": {
+        "type": "array",
+        "items": { "type": "integer" },
+        "description": "All known oxidation states"
+      },
+      "common_oxidation_states": {
+        "type": "array",
+        "items": { "type": "integer" },
+        "description": "Common oxidation states"
+      },
+      "ionic_radii": {
+        "type": ["object", "null"],
+        "additionalProperties": { "type": "number" },
+        "description": "Ionic radii by oxidation state (string keys like '2', '-1')"
+      },
+      "shannon_radii": {
+        "type": ["object", "null"],
+        "description": "Shannon radii: oxidation_state -> coordination -> spin -> {crystal_radius, ionic_radius}",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "crystal_radius": { "type": "number" },
+                "ionic_radius": { "type": "number" }
+              },
+              "required": ["crystal_radius", "ionic_radius"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
