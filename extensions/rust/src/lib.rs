@@ -34,7 +34,6 @@ pub mod error;
 // Core types
 pub mod composition;
 pub mod element;
-pub mod element_data;
 pub mod lattice;
 pub mod species;
 pub mod structure;

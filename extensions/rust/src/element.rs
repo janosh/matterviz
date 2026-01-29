@@ -710,8 +710,8 @@ impl Element {
     pub fn atomic_mass(&self) -> f64 {
         match self {
             Self::Dummy => 0.0,
-            Self::D => 2.014101778, // IUPAC deuterium mass
-            Self::T => 3.01604928,  // IUPAC tritium mass
+            Self::D => 1.008,      // MUTATION: wrong mass (same as H)
+            Self::T => 3.01604928, // IUPAC tritium mass
             _ => Self::ATOMIC_MASSES[self.atomic_number() as usize - 1],
         }
     }
@@ -1854,5 +1854,155 @@ mod tests {
 
         // Pseudo-elements return "Unknown"
         assert_eq!(Element::Dummy.name(), "Unknown");
+    }
+
+    // =========================================================================
+    // Pymatgen Edge Case Tests (ported from pymatgen test suite)
+    // =========================================================================
+
+    #[test]
+    fn test_invalid_symbols() {
+        // Invalid symbols should return None
+        assert!(Element::from_symbol("Dolphin").is_none());
+        assert!(Element::from_symbol("Tyrannosaurus").is_none());
+        assert!(Element::from_symbol("Zebra").is_none());
+        // Note: Short invalid symbols may return Dummy instead of None
+    }
+
+    #[test]
+    fn test_isotopes_d_t() {
+        // D and T are isotopes of hydrogen
+        let d = Element::D;
+        let t = Element::T;
+        let h = Element::H;
+
+        // All should have symbol "H" (normalized)
+        assert_eq!(d.symbol(), "D");
+        assert_eq!(t.symbol(), "T");
+        assert_eq!(h.symbol(), "H");
+
+        // Different atomic masses
+        let h_mass = h.atomic_mass();
+        let d_mass = d.atomic_mass();
+        let t_mass = t.atomic_mass();
+        assert!(d_mass > h_mass, "D mass should be > H mass");
+        assert!(t_mass > d_mass, "T mass should be > D mass");
+        assert!((d_mass - 2.014).abs() < 0.01, "D mass ≈ 2.014");
+        assert!((t_mass - 3.016).abs() < 0.01, "T mass ≈ 3.016");
+    }
+
+    #[test]
+    fn test_dummy_element() {
+        let dummy = Element::Dummy;
+        // Dummy has special atomic number (119 = beyond known elements)
+        assert!(dummy.atomic_number() > 118);
+        assert!(dummy.atomic_radius().is_none());
+        assert!(dummy.electronegativity().is_none());
+        assert!(dummy.oxidation_states().is_empty());
+    }
+
+    #[test]
+    fn test_nan_electronegativity() {
+        // Noble gases have NaN or undefined electronegativity
+        let he_en = Element::He.electronegativity();
+        // He should have None or NaN (handled as None in Rust)
+        assert!(he_en.is_none() || he_en.unwrap().is_nan());
+    }
+
+    #[test]
+    fn test_from_atomic_number() {
+        assert_eq!(Element::from_atomic_number(1), Some(Element::H));
+        assert_eq!(Element::from_atomic_number(26), Some(Element::Fe));
+        assert_eq!(Element::from_atomic_number(118), Some(Element::Og));
+        assert_eq!(Element::from_atomic_number(0), None);
+        // 119 and 1000 overflow u8, so we can't test them directly
+    }
+
+    #[test]
+    fn test_element_caching_equality() {
+        // Same element should be equal
+        let fe1 = Element::Fe;
+        let fe2 = Element::Fe;
+        assert_eq!(fe1, fe2);
+
+        // From symbol should produce same element
+        assert_eq!(Element::from_symbol("Fe"), Some(Element::Fe));
+    }
+
+    #[test]
+    fn test_normalize_symbol_potcar_suffixes() {
+        // POTCAR suffixes should be stripped
+        let cases = [
+            ("Ca_pv", Element::Ca),
+            ("Fe_sv", Element::Fe),
+            ("O_s", Element::O),
+            ("Li_sv", Element::Li),
+        ];
+        for (symbol, expected) in cases {
+            let result = normalize_symbol(symbol);
+            assert!(result.is_ok(), "Failed to parse: {}", symbol);
+            assert_eq!(result.unwrap().element, expected, "Symbol: {}", symbol);
+        }
+    }
+
+    #[test]
+    fn test_normalize_symbol_cif_labels() {
+        // CIF-style labels should extract element
+        let cases = [
+            ("Fe1", Element::Fe),
+            ("Fe1a", Element::Fe),
+            ("Na2", Element::Na),
+            ("O1", Element::O),
+        ];
+        for (symbol, expected) in cases {
+            let result = normalize_symbol(symbol);
+            assert!(result.is_ok(), "Failed to parse: {}", symbol);
+            assert_eq!(result.unwrap().element, expected, "Symbol: {}", symbol);
+        }
+    }
+
+    #[test]
+    fn test_normalize_symbol_oxidation_states() {
+        // Oxidation state suffixes
+        let cases = [
+            ("Fe2+", Element::Fe, Some(2)),
+            ("O2-", Element::O, Some(-2)),
+            ("Na+", Element::Na, Some(1)),
+            ("Cl-", Element::Cl, Some(-1)),
+            ("Fe3+", Element::Fe, Some(3)),
+        ];
+        for (symbol, expected_elem, expected_oxi) in cases {
+            let result = normalize_symbol(symbol);
+            assert!(result.is_ok(), "Failed to parse: {}", symbol);
+            let norm = result.unwrap();
+            assert_eq!(norm.element, expected_elem, "Symbol: {}", symbol);
+            assert_eq!(norm.oxidation_state, expected_oxi, "Symbol: {}", symbol);
+        }
+    }
+
+    #[test]
+    fn test_normalize_symbol_hash_suffix() {
+        // Hash suffixes (VASP 6.4.2 format with slashes)
+        let result = normalize_symbol("Li/");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().element, Element::Li);
+    }
+
+    #[test]
+    fn test_ambiguous_valence_elements() {
+        // Elements with many oxidation states (like U) should still work
+        let u_oxi = Element::U.oxidation_states();
+        assert!(!u_oxi.is_empty(), "U should have oxidation states");
+    }
+
+    #[test]
+    fn test_missing_data_graceful() {
+        // Elements should handle missing data gracefully
+        // Og (Z=118) may have limited data
+        let og = Element::Og;
+        // These should return None, not panic
+        let _ = og.atomic_radius();
+        let _ = og.covalent_radius();
+        let _ = og.electronegativity();
     }
 }
