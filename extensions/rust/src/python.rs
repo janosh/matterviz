@@ -427,7 +427,13 @@ fn structure_to_pydict<'py>(
 
         // Coordinates
         site.set_item("abc", PyList::new(py, [coord.x, coord.y, coord.z])?)?;
-        site.set_item("properties", PyDict::new(py))?;
+
+        // Site-level properties (label, magmom, orig_site_idx, etc.)
+        let site_props = PyDict::new(py);
+        for (key, value) in &site_occ.properties {
+            site_props.set_item(key, json_to_py(py, value)?)?;
+        }
+        site.set_item("properties", site_props)?;
 
         sites.append(site)?;
     }
@@ -446,40 +452,30 @@ fn structure_to_pydict<'py>(
 }
 
 /// Convert serde_json::Value to Python object.
-fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<PyObject> {
+fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<Py<PyAny>> {
     use pyo3::IntoPyObject;
 
     match value {
         serde_json::Value::Null => Ok(py.None()),
-        serde_json::Value::Bool(b) => {
-            let py_bool = b.into_pyobject(py)?;
-            Ok(py_bool.to_owned().unbind().into_any())
-        }
+        serde_json::Value::Bool(b) => Ok(b.into_pyobject(py)?.to_owned().unbind().into_any()),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                let py_int = i.into_pyobject(py)?;
-                Ok(py_int.unbind().into_any())
+                Ok(i.into_pyobject(py)?.unbind().into_any())
             } else if let Some(u) = n.as_u64() {
-                // Handle large unsigned integers that don't fit in i64
-                let py_int = u.into_pyobject(py)?;
-                Ok(py_int.unbind().into_any())
+                Ok(u.into_pyobject(py)?.unbind().into_any())
             } else if let Some(f) = n.as_f64() {
-                let py_float = f.into_pyobject(py)?;
-                Ok(py_float.unbind().into_any())
+                Ok(f.into_pyobject(py)?.unbind().into_any())
             } else {
-                Ok(py.None())
+                Err(PyValueError::new_err("Invalid number in JSON"))
             }
         }
-        serde_json::Value::String(s) => {
-            let py_str = s.into_pyobject(py)?;
-            Ok(py_str.unbind().into_any())
-        }
+        serde_json::Value::String(s) => Ok(s.into_pyobject(py)?.unbind().into_any()),
         serde_json::Value::Array(arr) => {
-            let list = PyList::empty(py);
-            for item in arr {
-                list.append(json_to_py(py, item)?)?;
-            }
-            Ok(list.unbind().into_any())
+            let list: Vec<Py<PyAny>> = arr
+                .iter()
+                .map(|v| json_to_py(py, v))
+                .collect::<PyResult<_>>()?;
+            Ok(PyList::new(py, list)?.into_any().unbind())
         }
         serde_json::Value::Object(obj) => {
             let dict = PyDict::new(py);
@@ -1080,6 +1076,165 @@ fn perturb(
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
 
+// ============================================================================
+// Normalization and Site Properties
+// ============================================================================
+
+/// Normalize an element symbol string.
+///
+/// Parses various element symbol formats and extracts:
+/// - The base element
+/// - Oxidation state (if present, e.g., "Fe2+")
+/// - Metadata (POTCAR suffix, labels, etc.)
+///
+/// Args:
+///     symbol: Element symbol string (e.g., "Fe", "Fe2+", "Ca_pv", "Fe1_oct")
+///
+/// Returns:
+///     dict with keys: element (str), oxidation_state (int or None), metadata (dict)
+#[pyfunction]
+fn normalize_element_symbol(py: Python<'_>, symbol: &str) -> PyResult<Py<PyDict>> {
+    use crate::element::normalize_symbol;
+
+    let normalized = normalize_symbol(symbol)
+        .map_err(|e| PyValueError::new_err(format!("Invalid symbol '{}': {}", symbol, e)))?;
+
+    let dict = PyDict::new(py);
+    dict.set_item("element", normalized.element.symbol())?;
+    dict.set_item(
+        "oxidation_state",
+        normalized.oxidation_state.map(|o| o as i32),
+    )?;
+
+    // Convert metadata HashMap to Python dict
+    let metadata = PyDict::new(py);
+    for (key, val) in normalized.metadata {
+        // Convert serde_json::Value to Python
+        let py_val = json_to_py(py, &val)?;
+        metadata.set_item(key, py_val)?;
+    }
+    dict.set_item("metadata", metadata)?;
+
+    Ok(dict.unbind())
+}
+
+/// Convert a HashMap of JSON values to a Python dict.
+fn props_to_pydict<'py>(
+    py: Python<'py>,
+    props: &HashMap<String, serde_json::Value>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    for (key, val) in props {
+        dict.set_item(key, json_to_py(py, val)?)?;
+    }
+    Ok(dict)
+}
+
+/// Get site properties for a specific site.
+///
+/// Args:
+///     structure: Structure as JSON string
+///     idx: Site index
+///
+/// Returns:
+///     dict: Site properties as a Python dict
+#[pyfunction]
+fn get_site_properties(py: Python<'_>, structure: &str, idx: usize) -> PyResult<Py<PyDict>> {
+    let s = parse_struct(structure)?;
+    if idx >= s.num_sites() {
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+            "Site index {idx} out of bounds for structure with {} sites",
+            s.num_sites()
+        )));
+    }
+    Ok(props_to_pydict(py, s.site_properties(idx))?.unbind())
+}
+
+/// Get all site properties for a structure.
+///
+/// Args:
+///     structure: Structure as JSON string
+///
+/// Returns:
+///     list[dict]: List of site property dicts (parallel to sites)
+#[pyfunction]
+fn get_all_site_properties(py: Python<'_>, structure: &str) -> PyResult<Py<PyList>> {
+    let s = parse_struct(structure)?;
+    let result: Vec<_> = (0..s.num_sites())
+        .map(|idx| props_to_pydict(py, s.site_properties(idx)))
+        .collect::<PyResult<_>>()?;
+    Ok(PyList::new(py, result)?.unbind())
+}
+
+/// Set a site property.
+///
+/// Args:
+///     structure: Structure as JSON string
+///     idx: Site index
+///     key: Property key
+///     value: Property value (must be JSON-serializable)
+///
+/// Returns:
+///     dict: Updated structure as pymatgen-compatible dict
+#[pyfunction]
+fn set_site_property(
+    py: Python<'_>,
+    structure: &str,
+    idx: usize,
+    key: &str,
+    value: Bound<'_, pyo3::PyAny>,
+) -> PyResult<Py<PyDict>> {
+    let mut s = parse_struct(structure)?;
+    if idx >= s.num_sites() {
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+            "Site index {idx} out of bounds for structure with {} sites",
+            s.num_sites()
+        )));
+    }
+
+    // Convert Python value to serde_json::Value
+    let json_val = py_to_json_value(&value)?;
+    s.set_site_property(idx, key, json_val);
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
+/// Convert Python object to serde_json::Value.
+#[allow(deprecated)] // downcast is deprecated but still functional
+fn py_to_json_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<serde_json::Value> {
+    if obj.is_none() {
+        Ok(serde_json::Value::Null)
+    } else if let Ok(b) = obj.extract::<bool>() {
+        Ok(serde_json::Value::Bool(b))
+    } else if let Ok(i) = obj.extract::<i64>() {
+        Ok(serde_json::json!(i))
+    } else if let Ok(u) = obj.extract::<u64>() {
+        // Handle large positive integers in range (2^63, 2^64) that don't fit in i64
+        Ok(serde_json::json!(u))
+    } else if let Ok(f) = obj.extract::<f64>() {
+        Ok(serde_json::json!(f))
+    } else if let Ok(s) = obj.extract::<String>() {
+        Ok(serde_json::Value::String(s))
+    } else if let Ok(list) = obj.downcast::<PyList>() {
+        let arr: Vec<serde_json::Value> = list
+            .iter()
+            .map(|item| py_to_json_value(&item))
+            .collect::<PyResult<_>>()?;
+        Ok(serde_json::Value::Array(arr))
+    } else if let Ok(dict) = obj.downcast::<PyDict>() {
+        let mut map = serde_json::Map::new();
+        for (k, v) in dict {
+            let key: String = k.extract()?;
+            map.insert(key, py_to_json_value(&v)?);
+        }
+        Ok(serde_json::Value::Object(map))
+    } else {
+        Err(PyValueError::new_err(format!(
+            "Cannot convert Python object to JSON: {:?}",
+            obj.get_type().name()
+        )))
+    }
+}
+
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
@@ -1117,5 +1272,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Site manipulation functions
     m.add_function(wrap_pyfunction!(translate_sites, m)?)?;
     m.add_function(wrap_pyfunction!(perturb, m)?)?;
+    // Normalization and site property functions
+    m.add_function(wrap_pyfunction!(normalize_element_symbol, m)?)?;
+    m.add_function(wrap_pyfunction!(get_site_properties, m)?)?;
+    m.add_function(wrap_pyfunction!(get_all_site_properties, m)?)?;
+    m.add_function(wrap_pyfunction!(set_site_property, m)?)?;
     Ok(())
 }
