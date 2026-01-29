@@ -4,18 +4,34 @@
 //! along with associated data like atomic numbers, symbols, and electronegativities.
 //!
 //! Extended element data (oxidation states, ionic radii, Shannon radii) is loaded
-//! from the shared JSON file at compile time.
+//! from a gzipped JSON file at compile time and decompressed once on first access.
 
+use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Read;
 use std::sync::OnceLock;
 
 // =============================================================================
-// Extended Element Data (loaded from JSON)
+// Extended Element Data (loaded from gzipped JSON)
 // =============================================================================
 
-/// Compile-time embedded JSON data (single source of truth shared with TypeScript).
-const ELEMENT_DATA_JSON: &str = include_str!("../../../src/lib/element/data.json");
+/// Compile-time embedded gzipped JSON data (single source of truth shared with TypeScript).
+const ELEMENT_DATA_GZ: &[u8] = include_bytes!("../../../src/lib/element/data.json.gz");
+
+/// Decompressed JSON string (lazily initialized on first access).
+static ELEMENT_DATA_JSON: OnceLock<String> = OnceLock::new();
+
+fn get_element_data_json() -> &'static str {
+    ELEMENT_DATA_JSON.get_or_init(|| {
+        let mut decoder = GzDecoder::new(ELEMENT_DATA_GZ);
+        let mut json = String::new();
+        decoder
+            .read_to_string(&mut json)
+            .expect("Failed to decompress element data");
+        json
+    })
+}
 
 /// Shannon radius pair: crystal and ionic radii in Angstroms.
 #[derive(Debug, Clone, Deserialize)]
@@ -52,7 +68,7 @@ fn get_element_data(z: u8) -> Option<&'static ElementData> {
         return None;
     }
     let data = ELEMENT_DATA.get_or_init(|| {
-        serde_json::from_str(ELEMENT_DATA_JSON).expect("Failed to parse element data JSON")
+        serde_json::from_str(get_element_data_json()).expect("Failed to parse element data JSON")
     });
     data.get((z - 1) as usize)
 }

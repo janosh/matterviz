@@ -1970,18 +1970,27 @@ Mg 0.0 0.0 0.0
     fn test_extxyz_edge_cases() {
         let temp_dir = std::env::temp_dir();
 
-        // With forces property
+        // With forces column - verify parsing succeeds with extra per-atom columns
+        // Note: per-atom properties (forces) are parsed by extxyz crate but not
+        // currently extracted to site_properties; only structure is verified
         let forces = "2\nLattice=\"4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0\" Properties=species:S:1:pos:R:3:forces:R:3\nFe 0.0 0.0 0.0 0.1 0.2 0.3\nFe 2.0 2.0 2.0 -0.1 -0.2 -0.3\n";
         let p1 = temp_dir.join("forces.xyz");
         std::fs::write(&p1, forces).unwrap();
-        assert_eq!(parse_extxyz(&p1).unwrap().num_sites(), 2);
+        let s_forces = parse_extxyz(&p1).unwrap();
+        assert_eq!(s_forces.num_sites(), 2);
+        assert_eq!(s_forces.species()[0].element, Element::Fe);
         std::fs::remove_file(&p1).ok();
 
-        // With energy property
+        // With energy property - verify global property is extracted
         let energy = "2\nLattice=\"4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0\" energy=-5.5\nH 0.0 0.0 0.0\nH 2.0 2.0 2.0\n";
         let p2 = temp_dir.join("energy.xyz");
         std::fs::write(&p2, energy).unwrap();
-        assert!(parse_extxyz(&p2).unwrap().properties.contains_key("energy"));
+        let s_energy = parse_extxyz(&p2).unwrap();
+        assert!(s_energy.properties.contains_key("energy"));
+        assert_eq!(
+            s_energy.properties.get("energy").unwrap().as_f64(),
+            Some(-5.5)
+        );
         std::fs::remove_file(&p2).ok();
     }
 

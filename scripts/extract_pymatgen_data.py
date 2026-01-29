@@ -47,7 +47,10 @@ def load_pymatgen_data() -> dict[str, Any]:
 
 
 def load_existing_data(path: Path) -> list[dict[str, Any]]:
-    """Load existing element data from TypeScript file or JSON."""
+    """Load existing element data from TypeScript file, JSON, or gzipped JSON."""
+    if path.suffix == ".gz":
+        with gzip.open(path, "rb") as file:
+            return json.loads(file.read())
     if path.suffix == ".json":
         with open(path, encoding="utf-8") as file:
             return json.load(file)
@@ -134,11 +137,17 @@ def merge_data(
 
 def main() -> None:
     """Main entry point."""
-    # Prefer JSON if it exists (post-migration), fall back to TypeScript
     json_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.json"
+    gz_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.json.gz"
     ts_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.ts"
-    data_path = json_path if json_path.exists() else ts_path
-    output_path = json_path
+
+    # Prefer JSON, fall back to gzipped or TypeScript
+    if json_path.exists():
+        data_path = json_path
+    elif gz_path.exists():
+        data_path = gz_path
+    else:
+        data_path = ts_path
 
     print(f"Loading existing data from {data_path}")
     existing_data = load_existing_data(data_path)
@@ -163,11 +172,19 @@ def main() -> None:
                 f"  {symbol}: oxidation_states={oxi}, common={common}, shannon={shannon}"
             )
 
-    print(f"Writing output to {output_path}")
-    with open(output_path, "w", encoding="utf-8") as file:
-        json.dump(merged_data, file, indent=2, ensure_ascii=False)
+    # Write both JSON (for TypeScript) and gzipped (for Rust)
+    json_str = json.dumps(merged_data, indent=2, ensure_ascii=False)
+    print(f"Writing JSON to {json_path}")
+    with open(json_path, "w", encoding="utf-8") as file:
+        file.write(json_str)
 
-    print("Done!")
+    print(f"Writing gzipped to {gz_path}")
+    with gzip.open(gz_path, "wb") as file:
+        file.write(json_str.encode("utf-8"))
+
+    print(
+        f"Done! JSON: {json_path.stat().st_size:,} bytes, GZ: {gz_path.stat().st_size:,} bytes"
+    )
 
 
 if __name__ == "__main__":

@@ -313,7 +313,9 @@ impl Composition {
         if self.is_empty() {
             return String::new();
         }
-        self.sorted_by_electronegativity()
+        // Aggregate by element (collapse oxidation states), then sort
+        self.element_composition()
+            .sorted_by_electronegativity()
             .iter()
             .map(|(sp, amt)| format_amount(sp.element.symbol(), **amt))
             .collect::<Vec<_>>()
@@ -331,13 +333,15 @@ impl Composition {
         if self.is_empty() {
             return String::new();
         }
-
-        let gcd = self.gcd_of_amounts();
+        // Aggregate by element (collapse oxidation states)
+        let elem_comp = self.element_composition();
+        let gcd = elem_comp.gcd_of_amounts();
         if gcd < AMOUNT_TOLERANCE {
             return self.formula().replace(' ', "");
         }
 
-        self.sorted_by_electronegativity()
+        elem_comp
+            .sorted_by_electronegativity()
             .iter()
             .map(|(sp, amt)| format_amount(sp.element.symbol(), **amt / gcd))
             .collect::<Vec<_>>()
@@ -1073,6 +1077,14 @@ mod tests {
         assert_ne!(feo_with_fe2, feo_with_fe3, "different oxidation states");
         // But formula_hash ignores oxidation states
         assert_eq!(feo_with_fe2.formula_hash(), feo_with_fe3.formula_hash());
+
+        // Mixed oxidation states: formulas aggregate by element
+        let mixed = Composition::new([(fe2_species, 1.0), (fe3_species, 2.0), (o2_species, 4.0)]);
+        assert_eq!(mixed.formula(), "Fe3 O4", "Fe²⁺ + 2×Fe³⁺ = Fe3");
+        assert_eq!(mixed.reduced_formula(), "Fe3O4");
+        // Same formula_hash as neutral Fe3O4
+        let neutral_fe3o4 = Composition::from_elements([(Element::Fe, 3.0), (Element::O, 4.0)]);
+        assert_eq!(mixed.formula_hash(), neutral_fe3o4.formula_hash());
 
         // almost_equals with tolerances
         let comp_approx = Composition::from_elements([(Element::Fe, 2.001), (Element::O, 2.999)]);
