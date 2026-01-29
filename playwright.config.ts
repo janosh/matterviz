@@ -1,7 +1,7 @@
 import type { PlaywrightTestConfig } from '@playwright/test'
 import process from 'node:process'
 
-const is_ci = process.env.CI === `true`
+const is_ci = [`true`, `1`].includes(process.env.CI ?? ``)
 
 export default {
   webServer: {
