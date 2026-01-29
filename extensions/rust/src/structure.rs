@@ -1953,11 +1953,8 @@ mod tests {
         let dm = fcc.distance_matrix();
         for (idx, row) in dm.iter().enumerate() {
             assert!(row[idx] < 1e-10, "Diagonal should be 0");
-            for jdx in idx + 1..row.len() {
-                assert!(
-                    (dm[idx][jdx] - dm[jdx][idx]).abs() < 1e-10,
-                    "Should be symmetric"
-                );
+            for (jdx, &val) in row.iter().enumerate().skip(idx + 1) {
+                assert!((val - dm[jdx][idx]).abs() < 1e-10, "Should be symmetric");
             }
         }
     }
