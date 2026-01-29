@@ -1034,44 +1034,33 @@ mod tests {
 
     #[test]
     fn test_fit_anonymous_swapped_species() {
-        let nacl = Structure::new(
-            Lattice::cubic(5.64),
-            vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)],
-            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
-        );
+        // NaCl with swapped species order should match
+        let nacl = make_nacl();
         let clna = Structure::new(
             Lattice::cubic(5.64),
             vec![Species::neutral(Element::Cl), Species::neutral(Element::Na)],
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
-        let matcher = StructureMatcher::new();
-        assert!(matcher.fit_anonymous(&nacl, &clna));
+        assert!(StructureMatcher::new().fit_anonymous(&nacl, &clna));
     }
 
     #[test]
     fn test_fit_anonymous_same_prototype() {
-        let nacl = Structure::new(
-            Lattice::cubic(5.64),
-            vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)],
-            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
-        );
+        // NaCl and MgO have the same rocksalt prototype
+        let nacl = make_nacl();
         let mgo = Structure::new(
             Lattice::cubic(4.21),
             vec![Species::neutral(Element::Mg), Species::neutral(Element::O)],
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
-        let matcher = StructureMatcher::new();
-        assert!(matcher.fit_anonymous(&nacl, &mgo));
+        assert!(StructureMatcher::new().fit_anonymous(&nacl, &mgo));
     }
 
     #[test]
     fn test_fit_anonymous_different_stoichiometry() {
-        let nacl = Structure::new(
-            Lattice::cubic(5.64),
-            vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)],
-            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
-        );
-        let fe2o3 = Structure::new(
+        // AB vs A2B3 stoichiometry should not match
+        let nacl = make_nacl();
+        let a2b3 = Structure::new(
             Lattice::cubic(5.0),
             vec![
                 Species::neutral(Element::Fe),
@@ -1088,8 +1077,7 @@ mod tests {
                 Vector3::new(0.25, 0.75, 0.25),
             ],
         );
-        let matcher = StructureMatcher::new();
-        assert!(!matcher.fit_anonymous(&nacl, &fe2o3));
+        assert!(!StructureMatcher::new().fit_anonymous(&nacl, &a2b3));
     }
 
     #[test]

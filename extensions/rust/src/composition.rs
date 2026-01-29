@@ -361,25 +361,6 @@ mod tests {
     #[test]
     fn test_remap_elements_combines_amounts() {
         // Multiple source elements mapping to the same target should sum their amounts
-        let comp = Composition::new([(Element::Na, 2.0), (Element::K, 1.0)]);
-        let mapping = HashMap::from([(Element::Na, Element::Li), (Element::K, Element::Li)]);
-        let remapped = comp.remap_elements(&mapping);
-
-        assert_eq!(
-            remapped.get(Element::Li),
-            3.0,
-            "Na (2.0) + K (1.0) both mapping to Li should give Li: 3.0"
-        );
-        assert_eq!(
-            remapped.num_elements(),
-            1,
-            "Should only have Li after remapping"
-        );
-    }
-
-    #[test]
-    fn test_remap_elements_multiple_to_same_target() {
-        // More comprehensive test: 3 elements mapping to 2 targets
         let comp = Composition::new([
             (Element::Na, 1.0),
             (Element::K, 2.0),
@@ -387,24 +368,24 @@ mod tests {
             (Element::Cl, 4.0),
         ]);
         let mapping = HashMap::from([
-            (Element::Na, Element::Li), // alkali metals -> Li
+            (Element::Na, Element::Li),
             (Element::K, Element::Li),
             (Element::Rb, Element::Li),
-            (Element::Cl, Element::F), // halide -> F
+            (Element::Cl, Element::F),
         ]);
         let remapped = comp.remap_elements(&mapping);
 
         assert_eq!(
             remapped.get(Element::Li),
             6.0,
-            "Na (1) + K (2) + Rb (3) -> Li should give 6.0"
+            "Na + K + Rb should sum to Li"
         );
         assert_eq!(
             remapped.get(Element::F),
             4.0,
             "Cl -> F should preserve amount"
         );
-        assert_eq!(remapped.num_elements(), 2, "Should only have Li and F");
+        assert_eq!(remapped.num_elements(), 2);
     }
 
     // =========================================================================

@@ -417,15 +417,16 @@ mod tests {
     }
 
     #[test]
-    fn test_site_occupancy_dominant_with_equal_occupancy() {
-        // When occupancies are equal, should return one deterministically
+    fn test_site_occupancy_equal_occupancy_deterministic() {
+        // When occupancies are equal, result should be deterministic across calls
         let so = SiteOccupancy::new(vec![
             (Species::neutral(Element::Fe), 0.5),
             (Species::neutral(Element::Co), 0.5),
         ]);
-        // Should not panic, should return one of them
-        let dominant = so.dominant_species();
-        assert!(dominant.element == Element::Fe || dominant.element == Element::Co);
+        let dom1 = so.dominant_species().element;
+        let dom2 = so.dominant_species().element;
+        assert_eq!(dom1, dom2, "dominant_species should be deterministic");
+        assert!(dom1 == Element::Fe || dom1 == Element::Co);
     }
 
     #[test]
@@ -480,31 +481,6 @@ mod tests {
             (so.total_occupancy() - 0.7).abs() < 1e-10,
             "Total occupancy should be 0.7, got {}",
             so.total_occupancy()
-        );
-    }
-
-    #[test]
-    fn test_site_occupancy_dominant_deterministic() {
-        // When occupancies are equal, result should be deterministic across calls
-        let so = SiteOccupancy::new(vec![
-            (Species::neutral(Element::Fe), 0.5),
-            (Species::neutral(Element::Co), 0.5),
-        ]);
-        let dom1 = so.dominant_species().element;
-        let dom2 = so.dominant_species().element;
-        assert_eq!(dom1, dom2, "dominant_species should be deterministic");
-    }
-
-    #[test]
-    fn test_site_occupancy_full_occupancy_check() {
-        // Verify total_occupancy() works for full occupancy
-        let so = SiteOccupancy::new(vec![
-            (Species::neutral(Element::Fe), 0.5),
-            (Species::neutral(Element::Co), 0.5),
-        ]);
-        assert!(
-            (so.total_occupancy() - 1.0).abs() < 1e-10,
-            "Total occupancy should be 1.0"
         );
     }
 }
