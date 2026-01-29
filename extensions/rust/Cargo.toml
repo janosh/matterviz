@@ -41,6 +41,10 @@ thiserror = "2.0"
 glob = "0.3"
 tracing = "0.1"
 
+# File format parsing
+vasp-poscar = "0.3"
+extxyz = "0.2"
+
 [dev-dependencies]
 approx = "0.5"
 criterion = { version = "0.8", features = ["html_reports"] }
