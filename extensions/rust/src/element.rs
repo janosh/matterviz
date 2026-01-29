@@ -1134,6 +1134,12 @@ impl Block {
     }
 }
 
+impl std::fmt::Display for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 impl std::fmt::Display for Element {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.symbol())
@@ -1904,9 +1910,9 @@ mod tests {
     #[test]
     fn test_nan_electronegativity() {
         // Noble gases have NaN or undefined electronegativity
+        // electronegativity() converts NaN values to None
         let he_en = Element::He.electronegativity();
-        // He should have None or NaN (handled as None in Rust)
-        assert!(he_en.is_none() || he_en.unwrap().is_nan());
+        assert!(he_en.is_none());
     }
 
     #[test]
