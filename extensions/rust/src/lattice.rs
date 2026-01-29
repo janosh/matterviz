@@ -1898,4 +1898,119 @@ mod tests {
             );
         }
     }
+
+    // =========================================================================
+    // Pymatgen Edge Case Tests (ported from pymatgen test suite)
+    // =========================================================================
+
+    #[test]
+    fn test_unusual_lattice_edge_cases() {
+        // Combined test for unusual lattices that should not crash
+        let edge_cases: Vec<(&str, Lattice)> = vec![
+            (
+                "near-singular 10°",
+                Lattice::from_parameters(1.0, 1.0, 1.0, 10.0, 10.0, 10.0),
+            ),
+            (
+                "obtuse 156°",
+                Lattice::from_parameters(7.365, 6.199, 5.353, 75.54, 81.18, 156.4),
+            ),
+            (
+                "two obtuse",
+                Lattice::from_parameters(4.0, 10.0, 11.0, 100.0, 110.0, 80.0),
+            ),
+            (
+                "monoclinic 66°",
+                Lattice::from_parameters(10.0, 20.0, 30.0, 90.0, 66.0, 90.0),
+            ),
+            (
+                "negative matrix",
+                Lattice::from_array([
+                    [-0.259, 1.187, -0.124],
+                    [2.217, 1.007, 0.733],
+                    [1.144, -0.469, -0.023],
+                ]),
+            ),
+        ];
+        for (name, lattice) in edge_cases {
+            let vol = lattice.volume();
+            let angles = lattice.angles();
+            assert!(vol.is_finite(), "{name}: volume not finite");
+            assert!(
+                angles.iter().all(|a| a.is_finite()),
+                "{name}: angles not finite"
+            );
+        }
+    }
+
+    #[test]
+    fn test_lll_preserves_volume() {
+        let matrix = Matrix3::new(0.5, 0.3, 0.1, 0.2, 0.7, 0.4, 0.1, 0.2, 0.8);
+        let lattice = Lattice::new(matrix);
+        let lll = lattice.get_lll_reduced(0.75);
+        assert_relative_eq!(lll.volume().abs(), lattice.volume().abs(), epsilon = 1e-8);
+    }
+
+    #[test]
+    fn test_coordinate_operations() {
+        // Roundtrip: frac → cart → frac (validate all components)
+        let lattice = Lattice::from_parameters(4.0, 5.0, 6.0, 85.0, 95.0, 100.0);
+        let frac = Vector3::new(0.3, 0.7, 0.2);
+        let cart = lattice.get_cartesian_coords(&[frac]);
+        let frac_back = lattice.get_fractional_coords(&cart);
+        assert_relative_eq!(frac.x, frac_back[0].x, epsilon = 1e-10);
+        assert_relative_eq!(frac.y, frac_back[0].y, epsilon = 1e-10);
+        assert_relative_eq!(frac.z, frac_back[0].z, epsilon = 1e-10);
+
+        // Large fractional coords
+        let lattice2 = Lattice::cubic(4.0);
+        let cart1 = lattice2.matrix().transpose() * Vector3::new(0.0, 0.0, 17.0);
+        let cart2 = lattice2.matrix().transpose() * Vector3::new(0.0, 0.0, 10.0);
+        assert!((cart1.z - cart2.z - 28.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_reciprocal_lattice() {
+        // Cubic: reciprocal should have 2π/a factor
+        let cubic = Lattice::cubic(10.0);
+        assert_relative_eq!(
+            cubic.reciprocal().lengths()[0],
+            2.0 * PI / 10.0,
+            epsilon = 1e-6
+        );
+
+        // Hexagonal: a* ≠ c*
+        let hex = Lattice::hexagonal(3.0, 5.0);
+        let recip = hex.reciprocal().lengths();
+        assert!((recip[0] - recip[2]).abs() > 0.1);
+    }
+
+    #[test]
+    fn test_niggli_extreme_angles() {
+        // Triclinic with fractional minutes (103°55', 109°28', 134°53')
+        let lattice = Lattice::from_parameters(
+            3.0,
+            5.196,
+            2.0,
+            103.0 + 55.0 / 60.0,
+            109.0 + 28.0 / 60.0,
+            134.0 + 53.0 / 60.0,
+        );
+        assert!(lattice.volume().abs() > 0.0);
+        if let Ok(niggli) = lattice.get_niggli_reduced(1e-5) {
+            assert_relative_eq!(
+                niggli.volume().abs(),
+                lattice.volume().abs(),
+                epsilon = 1e-3
+            );
+        }
+    }
+
+    #[test]
+    fn test_partial_pbc() {
+        let mut lattice = Lattice::cubic(4.0);
+        lattice.pbc = [true, true, false];
+        assert_eq!(lattice.pbc, [true, true, false]);
+        assert_relative_eq!(lattice.volume(), 64.0, epsilon = 1e-10);
+    }
 }

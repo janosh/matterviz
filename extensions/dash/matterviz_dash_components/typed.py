@@ -551,6 +551,8 @@ class ConvexHull2D(MatterViz):
         temperature: float | None = None,
         interpolate_temperature: bool | None = None,
         max_interpolation_gap: float | None = None,
+        gas_config: Any | None = None,
+        gas_pressures: dict | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -626,6 +628,10 @@ class ConvexHull2D(MatterViz):
             mv_props['interpolate_temperature'] = interpolate_temperature
         if max_interpolation_gap is not None:
             mv_props['max_interpolation_gap'] = max_interpolation_gap
+        if gas_config is not None:
+            mv_props['gas_config'] = gas_config
+        if gas_pressures is not None:
+            mv_props['gas_pressures'] = gas_pressures
 
         super().__init__(
             id=id, component='convex-hull/ConvexHull2D', mv_props=mv_props,
@@ -677,6 +683,8 @@ class ConvexHull3D(MatterViz):
         temperature: float | None = None,
         interpolate_temperature: bool | None = None,
         max_interpolation_gap: float | None = None,
+        gas_config: Any | None = None,
+        gas_pressures: dict | None = None,
         show_hull_faces: bool | None = None,
         hull_face_opacity: float | None = None,
         mv_props: dict | None = None,
@@ -750,6 +758,10 @@ class ConvexHull3D(MatterViz):
             mv_props['interpolate_temperature'] = interpolate_temperature
         if max_interpolation_gap is not None:
             mv_props['max_interpolation_gap'] = max_interpolation_gap
+        if gas_config is not None:
+            mv_props['gas_config'] = gas_config
+        if gas_pressures is not None:
+            mv_props['gas_pressures'] = gas_pressures
         if show_hull_faces is not None:
             mv_props['show_hull_faces'] = show_hull_faces
         if hull_face_opacity is not None:
@@ -805,6 +817,8 @@ class ConvexHull4D(MatterViz):
         temperature: float | None = None,
         interpolate_temperature: bool | None = None,
         max_interpolation_gap: float | None = None,
+        gas_config: Any | None = None,
+        gas_pressures: dict | None = None,
         show_hull_faces: bool | None = None,
         hull_face_opacity: float | None = None,
         mv_props: dict | None = None,
@@ -878,6 +892,10 @@ class ConvexHull4D(MatterViz):
             mv_props['interpolate_temperature'] = interpolate_temperature
         if max_interpolation_gap is not None:
             mv_props['max_interpolation_gap'] = max_interpolation_gap
+        if gas_config is not None:
+            mv_props['gas_config'] = gas_config
+        if gas_pressures is not None:
+            mv_props['gas_pressures'] = gas_pressures
         if show_hull_faces is not None:
             mv_props['show_hull_faces'] = show_hull_faces
         if hull_face_opacity is not None:
