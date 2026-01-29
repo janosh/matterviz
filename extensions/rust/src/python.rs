@@ -451,35 +451,25 @@ fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<Py<PyAny>> 
 
     match value {
         serde_json::Value::Null => Ok(py.None()),
-        serde_json::Value::Bool(b) => {
-            let py_bool = b.into_pyobject(py)?;
-            Ok(py_bool.to_owned().unbind().into_any())
-        }
+        serde_json::Value::Bool(b) => Ok(b.into_pyobject(py)?.to_owned().unbind().into_any()),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                let py_int = i.into_pyobject(py)?;
-                Ok(py_int.unbind().into_any())
+                Ok(i.into_pyobject(py)?.unbind().into_any())
             } else if let Some(u) = n.as_u64() {
-                // Handle large unsigned integers that don't fit in i64
-                let py_int = u.into_pyobject(py)?;
-                Ok(py_int.unbind().into_any())
+                Ok(u.into_pyobject(py)?.unbind().into_any())
             } else if let Some(f) = n.as_f64() {
-                let py_float = f.into_pyobject(py)?;
-                Ok(py_float.unbind().into_any())
+                Ok(f.into_pyobject(py)?.unbind().into_any())
             } else {
-                Ok(py.None())
+                Err(PyValueError::new_err("Invalid number in JSON"))
             }
         }
-        serde_json::Value::String(s) => {
-            let py_str = s.into_pyobject(py)?;
-            Ok(py_str.unbind().into_any())
-        }
+        serde_json::Value::String(s) => Ok(s.into_pyobject(py)?.unbind().into_any()),
         serde_json::Value::Array(arr) => {
-            let list = PyList::empty(py);
-            for item in arr {
-                list.append(json_to_py(py, item)?)?;
-            }
-            Ok(list.unbind().into_any())
+            let list: Vec<Py<PyAny>> = arr
+                .iter()
+                .map(|v| json_to_py(py, v))
+                .collect::<PyResult<_>>()?;
+            Ok(PyList::new(py, list)?.into_any().unbind())
         }
         serde_json::Value::Object(obj) => {
             let dict = PyDict::new(py);
@@ -1114,7 +1104,7 @@ fn normalize_element_symbol(py: Python<'_>, symbol: &str) -> PyResult<Py<PyDict>
     let metadata = PyDict::new(py);
     for (key, val) in normalized.metadata {
         // Convert serde_json::Value to Python
-        let py_val = json_value_to_py(py, &val)?;
+        let py_val = json_to_py(py, &val)?;
         metadata.set_item(key, py_val)?;
     }
     dict.set_item("metadata", metadata)?;
@@ -1129,7 +1119,7 @@ fn props_to_pydict<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     for (key, val) in props {
-        dict.set_item(key, json_value_to_py(py, val)?)?;
+        dict.set_item(key, json_to_py(py, val)?)?;
     }
     Ok(dict)
 }
@@ -1202,40 +1192,6 @@ fn set_site_property(
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
 
-/// Convert serde_json::Value to Python object.
-fn json_value_to_py(py: Python<'_>, val: &serde_json::Value) -> PyResult<Py<PyAny>> {
-    match val {
-        serde_json::Value::Null => Ok(py.None()),
-        serde_json::Value::Bool(b) => Ok(b.into_pyobject(py)?.to_owned().unbind().into_any()),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(i.into_pyobject(py)?.unbind().into_any())
-            } else if let Some(u) = n.as_u64() {
-                Ok(u.into_pyobject(py)?.unbind().into_any())
-            } else if let Some(f) = n.as_f64() {
-                Ok(f.into_pyobject(py)?.unbind().into_any())
-            } else {
-                Err(PyValueError::new_err("Invalid number in JSON"))
-            }
-        }
-        serde_json::Value::String(s) => Ok(s.into_pyobject(py)?.unbind().into_any()),
-        serde_json::Value::Array(arr) => {
-            let list: Vec<Py<PyAny>> = arr
-                .iter()
-                .map(|v| json_value_to_py(py, v))
-                .collect::<PyResult<_>>()?;
-            Ok(PyList::new(py, list)?.into_any().unbind())
-        }
-        serde_json::Value::Object(obj) => {
-            let dict = PyDict::new(py);
-            for (k, v) in obj {
-                dict.set_item(k, json_value_to_py(py, v)?)?;
-            }
-            Ok(dict.into_any().unbind())
-        }
-    }
-}
-
 /// Convert Python object to serde_json::Value.
 #[allow(deprecated)] // downcast is deprecated but still functional
 fn py_to_json_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<serde_json::Value> {
@@ -1245,6 +1201,9 @@ fn py_to_json_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<serde_json::Value>
         Ok(serde_json::Value::Bool(b))
     } else if let Ok(i) = obj.extract::<i64>() {
         Ok(serde_json::json!(i))
+    } else if let Ok(u) = obj.extract::<u64>() {
+        // Handle large positive integers in range (2^63, 2^64) that don't fit in i64
+        Ok(serde_json::json!(u))
     } else if let Ok(f) = obj.extract::<f64>() {
         Ok(serde_json::json!(f))
     } else if let Ok(s) = obj.extract::<String>() {
