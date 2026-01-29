@@ -129,7 +129,7 @@ impl StructureMatcher {
     pub fn composition_hash(&self, structure: &Structure) -> u64 {
         // Currently both comparators use the same hash, but this method
         // ensures the prefilter stays aligned if comparator semantics diverge.
-        structure.composition().hash()
+        structure.composition().formula_hash()
     }
 
     /// Get reduced structure (Niggli reduced, optionally primitive).
@@ -602,7 +602,7 @@ impl StructureMatcher {
         // Get compositions for fast pruning (compute once, outside loop)
         let comp1 = struct1.composition();
         let comp2 = struct2.composition();
-        let comp2_hash = comp2.hash();
+        let comp2_hash = comp2.formula_hash();
 
         // Create element-only matcher once (used for all permutations)
         let element_matcher = Self {
@@ -621,7 +621,7 @@ impl StructureMatcher {
 
             // Fast composition hash check before expensive structure matching
             let mapped_comp = comp1.remap_elements(&mapping);
-            if mapped_comp.hash() != comp2_hash {
+            if mapped_comp.formula_hash() != comp2_hash {
                 continue;
             }
 

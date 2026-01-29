@@ -162,7 +162,7 @@ impl Structure {
                 *counts.entry(sp.element).or_insert(0.0) += occ;
             }
         }
-        Composition::new(counts)
+        Composition::from_elements(counts)
     }
 
     /// Get Cartesian coordinates.
