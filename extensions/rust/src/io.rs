@@ -294,11 +294,15 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
             let json_oxi = sp_json.oxidation_state.map(|o| o as i8);
             let final_oxi = match (json_oxi, normalized.oxidation_state) {
                 (Some(json), Some(sym)) if json != sym => {
+                    // Use original i32 value in error message for clarity (even though
+                    // range check above ensures no truncation, this is defense-in-depth)
                     return Err(FerroxError::JsonError {
                         path: "inline".to_string(),
                         reason: format!(
                             "Conflicting oxidation states for '{}': symbol implies {}, but JSON has {}",
-                            sp_json.element, sym, json
+                            sp_json.element,
+                            sym,
+                            sp_json.oxidation_state.unwrap()
                         ),
                     });
                 }
