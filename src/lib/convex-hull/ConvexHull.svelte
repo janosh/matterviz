@@ -7,12 +7,17 @@
   import ConvexHull3D from './ConvexHull3D.svelte'
   import ConvexHull4D from './ConvexHull4D.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
+  import type { GasSpecies, GasThermodynamicsConfig } from './types'
 
   // Union type combining all possible props from 2D, 3D, and 4D components
   // each specific component will only use its relevant props from this super set
   type ConvexHullProps = BaseConvexHullProps & Hull3DProps & {
     x_axis?: AxisConfig
     y_axis?: AxisConfig
+    // Gas thermodynamics config - enables atmosphere-controlled phase diagrams
+    gas_config?: GasThermodynamicsConfig
+    // Gas pressure binding - enables two-way binding for atmosphere control
+    gas_pressures?: Partial<Record<GasSpecies, number>>
   }
 
   let {
@@ -40,6 +45,7 @@
     highlighted_entries = $bindable([]),
     selected_entry = $bindable(null),
     temperature = $bindable(),
+    gas_pressures = $bindable({}),
     ...rest
   }: ConvexHullProps = $props()
 
@@ -99,6 +105,7 @@
     bind:highlighted_entries
     bind:selected_entry
     bind:temperature
+    bind:gas_pressures
   />
 {:else}
   <!-- Error state for unsupported dimensionalities -->
