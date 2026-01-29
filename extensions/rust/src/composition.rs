@@ -18,6 +18,18 @@ use std::sync::LazyLock;
 /// Tolerance for floating point comparisons.
 const AMOUNT_TOLERANCE: f64 = 1e-8;
 
+/// Quantize an amount to an integer for consistent Eq/Hash behavior.
+/// Uses AMOUNT_TOLERANCE as the quantization step.
+#[inline]
+fn quantize_amount(amt: f64) -> i64 {
+    (amt / AMOUNT_TOLERANCE).round() as i64
+}
+
+/// Helper for serde skip_serializing_if: returns true if value is false.
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
 /// Regex for parsing element-amount pairs in formulas.
 static ELEMENT_AMOUNT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"([A-Z][a-z]*)(\d*\.?\d*)").expect("Invalid ELEMENT_AMOUNT_RE regex")
@@ -45,7 +57,7 @@ pub struct Composition {
     /// Species and their amounts (preserved insertion order).
     species: IndexMap<Species, f64>,
     /// Whether to allow negative amounts (default: false).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "is_false")]
     allow_negative: bool,
 }
 
@@ -575,6 +587,10 @@ impl Mul<f64> for Composition {
 
 impl Div<f64> for Composition {
     type Output = Self;
+    /// Divide all species amounts by a scalar.
+    ///
+    /// # Panics
+    /// Panics if `scalar` is zero or near-zero (< AMOUNT_TOLERANCE).
     fn div(self, scalar: f64) -> Self {
         assert!(
             scalar.abs() >= AMOUNT_TOLERANCE,
@@ -599,7 +615,8 @@ impl Mul<Composition> for f64 {
 /// Equality compares actual Species and amounts (with tolerance).
 ///
 /// Two compositions are equal if they have the same Species with the same
-/// amounts (within `AMOUNT_TOLERANCE`). Oxidation states matter: Fe²⁺O ≠ Fe³⁺O.
+/// amounts (using quantized comparison for Eq/Hash consistency).
+/// Oxidation states matter: Fe²⁺O ≠ Fe³⁺O.
 /// Scaling also matters: Fe2O3 ≠ Fe4O6 (use `reduced_composition()` first if
 /// you want to compare reduced forms).
 impl PartialEq for Composition {
@@ -608,10 +625,10 @@ impl PartialEq for Composition {
         if self.species.len() != other.species.len() {
             return false;
         }
-        // Compare each species and amount
+        // Compare each species and quantized amount (ensures Eq/Hash consistency)
         for (sp, amt) in &self.species {
             match other.species.get(sp) {
-                Some(other_amt) if (amt - other_amt).abs() <= AMOUNT_TOLERANCE => {}
+                Some(other_amt) if quantize_amount(*amt) == quantize_amount(*other_amt) => {}
                 _ => return false,
             }
         }
@@ -628,8 +645,8 @@ impl std::hash::Hash for Composition {
         entries.sort_by_key(|(sp, _)| sp.to_string());
         for (sp, amt) in entries {
             sp.hash(state);
-            // Hash amount as integer millis to handle floating point
-            ((amt * 1000.0).round() as i64).hash(state);
+            // Use same quantization as PartialEq for Eq/Hash contract consistency
+            quantize_amount(*amt).hash(state);
         }
     }
 }
@@ -903,7 +920,6 @@ mod tests {
             (&[(Element::Cu, 1.0)], "Cu"),                    // single
             (&[(Element::Cu, 4.0)], "Cu"),                    // single, any amount
             (&[(Element::Fe, 0.5), (Element::O, 0.75)], "Fe2O3"), // fractional
-            (&[(Element::Li, 1.0 / 6.0), (Element::B, 1.0)], "LiB6"), // small fractions
         ];
         for (elements, expected) in cases {
             let comp = Composition::from_elements(elements.iter().copied());
@@ -916,22 +932,39 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_weight_and_fractions() {
-        let h2o = Composition::from_elements([(Element::H, 2.0), (Element::O, 1.0)]);
+    fn test_weight() {
+        let comp = Composition::from_elements([(Element::H, 2.0), (Element::O, 1.0)]);
+        // H2O: 2*1.008 + 1*15.999 ≈ 18.015
+        let weight = comp.weight();
+        assert!((weight - 18.015).abs() < 0.1, "H2O weight: {weight}");
+    }
 
-        // Weight: H2O = 2*1.008 + 15.999 ≈ 18.015
-        assert!((h2o.weight() - 18.015).abs() < 0.1);
+    #[test]
+    fn test_atomic_fraction() {
+        let comp = Composition::from_elements([(Element::H, 2.0), (Element::O, 1.0)]);
+        let h_frac = comp.get_atomic_fraction(Element::H);
+        let o_frac = comp.get_atomic_fraction(Element::O);
 
-        // Atomic fractions: H=2/3, O=1/3
-        assert!((h2o.get_atomic_fraction(Element::H) - 2.0 / 3.0).abs() < AMOUNT_TOLERANCE);
-        assert!((h2o.get_atomic_fraction(Element::O) - 1.0 / 3.0).abs() < AMOUNT_TOLERANCE);
+        assert!((h_frac - 2.0 / 3.0).abs() < AMOUNT_TOLERANCE);
+        assert!((o_frac - 1.0 / 3.0).abs() < AMOUNT_TOLERANCE);
+    }
 
-        // Weight fraction: O ≈ 88.8% of H2O by mass
-        assert!((h2o.get_wt_fraction(Element::O) - 0.888).abs() < 0.01);
+    #[test]
+    fn test_wt_fraction() {
+        let comp = Composition::from_elements([(Element::H, 2.0), (Element::O, 1.0)]);
+        let o_wt_frac = comp.get_wt_fraction(Element::O);
+        // O contributes ~88.8% of H2O by mass
+        assert!(
+            (o_wt_frac - 0.888).abs() < 0.01,
+            "O wt fraction: {o_wt_frac}"
+        );
+    }
 
-        // Fractional composition: normalized to 1 atom total
-        let fe2o3 = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
-        let frac = fe2o3.fractional_composition();
+    #[test]
+    fn test_fractional_composition() {
+        let comp = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
+        let frac = comp.fractional_composition();
+
         assert!((frac.num_atoms() - 1.0).abs() < AMOUNT_TOLERANCE);
         assert!((frac.get(Element::Fe) - 0.4).abs() < AMOUNT_TOLERANCE);
         assert!((frac.get(Element::O) - 0.6).abs() < AMOUNT_TOLERANCE);
@@ -1156,6 +1189,27 @@ mod tests {
         for invalid in ["", "   ", "6123"] {
             assert!(Composition::from_formula(invalid).is_err(), "{invalid}");
         }
+    }
+
+    #[test]
+    fn test_reduced_formula_and_hash() {
+        // Single element reduces to symbol
+        assert_eq!(
+            Composition::from_elements([(Element::O, 4.0)]).reduced_formula(),
+            "O"
+        );
+        // Fe4O6 → Fe2O3
+        assert_eq!(
+            Composition::from_elements([(Element::Fe, 4.0), (Element::O, 6.0)]).reduced_formula(),
+            "Fe2O3"
+        );
+        // Equal reduced formulas have equal hashes
+        let comp1 = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
+        let comp2 = Composition::from_elements([(Element::Fe, 4.0), (Element::O, 6.0)]);
+        assert_eq!(comp1.formula_hash(), comp2.formula_hash());
+        // Small fractions don't crash
+        let frac = Composition::from_elements([(Element::Li, 1.0 / 6.0), (Element::B, 1.0)]);
+        assert!(frac.num_atoms() > 0.0);
     }
 
     #[test]

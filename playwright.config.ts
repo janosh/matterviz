@@ -1,5 +1,6 @@
 import type { PlaywrightTestConfig } from '@playwright/test'
 import process from 'node:process'
+import './scripts/ensure-element-data' // decompress data.json.gz if needed
 
 const is_ci = [`true`, `1`].includes(process.env.CI ?? ``)
 

@@ -138,13 +138,9 @@ def merge_data(
 def main() -> None:
     """Main entry point."""
     gz_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.json.gz"
-    ts_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.ts"
 
-    # Load from gzipped JSON or fall back to TypeScript
-    data_path = gz_path if gz_path.exists() else ts_path
-
-    print(f"Loading existing data from {data_path}")
-    existing_data = load_existing_data(data_path)
+    print(f"Loading existing data from {gz_path}")
+    existing_data = load_existing_data(gz_path)
     print(f"Loaded {len(existing_data)} elements")
 
     print("Loading pymatgen periodic table data...")

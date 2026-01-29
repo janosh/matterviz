@@ -57,6 +57,7 @@ extxyz = "0.2"
 approx = "0.5"
 criterion = { version = "0.8", features = ["html_reports"] }
 proptest = "1.9"
+tempfile = "3"
 
 [build-dependencies]
 pyo3-build-config = { version = "0.27.2", optional = true }

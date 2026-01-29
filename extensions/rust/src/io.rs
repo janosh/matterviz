@@ -853,6 +853,7 @@ fn parse_pbc_value(pbc_value: &serde_json::Value) -> [bool; 3] {
 mod tests {
     use super::*;
     use crate::element::Element;
+    use tempfile::{NamedTempFile, TempDir};
 
     // Helper to count elements in a structure (counts dominant species per site)
     fn count_element(structure: &Structure, elem: Element) -> usize {
@@ -1901,20 +1902,18 @@ Mg 0.0 0.0 0.0
 
     #[test]
     fn test_parse_structures_glob_basic() {
-        let temp_dir = std::env::temp_dir().join("ferrox_glob_test_basic");
-        std::fs::create_dir_all(&temp_dir).unwrap();
+        let temp_dir = TempDir::new().unwrap();
 
         // Create two JSON files
         let json = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Cu"}],"abc":[0,0,0]}]}"#;
-        std::fs::write(temp_dir.join("struct1.json"), json).unwrap();
-        std::fs::write(temp_dir.join("struct2.json"), json).unwrap();
+        std::fs::write(temp_dir.path().join("struct1.json"), json).unwrap();
+        std::fs::write(temp_dir.path().join("struct2.json"), json).unwrap();
 
-        let pattern = temp_dir.join("*.json").to_string_lossy().to_string();
+        let pattern = temp_dir.path().join("*.json").to_string_lossy().to_string();
         let results = parse_structures_glob(&pattern).unwrap();
 
-        std::fs::remove_dir_all(&temp_dir).ok();
-
         assert_eq!(results.len(), 2, "Should find 2 JSON files");
+        // TempDir automatically cleans up on drop
     }
 
     #[test]
@@ -1968,30 +1967,29 @@ Mg 0.0 0.0 0.0
 
     #[test]
     fn test_extxyz_edge_cases() {
-        let temp_dir = std::env::temp_dir();
+        use std::io::Write;
 
         // With forces column - verify parsing succeeds with extra per-atom columns
         // Note: per-atom properties (forces) are parsed by extxyz crate but not
         // currently extracted to site_properties; only structure is verified
         let forces = "2\nLattice=\"4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0\" Properties=species:S:1:pos:R:3:forces:R:3\nFe 0.0 0.0 0.0 0.1 0.2 0.3\nFe 2.0 2.0 2.0 -0.1 -0.2 -0.3\n";
-        let p1 = temp_dir.join("forces.xyz");
-        std::fs::write(&p1, forces).unwrap();
-        let s_forces = parse_extxyz(&p1).unwrap();
+        let mut p1 = NamedTempFile::with_suffix(".xyz").unwrap();
+        p1.write_all(forces.as_bytes()).unwrap();
+        let s_forces = parse_extxyz(p1.path()).unwrap();
         assert_eq!(s_forces.num_sites(), 2);
         assert_eq!(s_forces.species()[0].element, Element::Fe);
-        std::fs::remove_file(&p1).ok();
 
         // With energy property - verify global property is extracted
         let energy = "2\nLattice=\"4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0\" energy=-5.5\nH 0.0 0.0 0.0\nH 2.0 2.0 2.0\n";
-        let p2 = temp_dir.join("energy.xyz");
-        std::fs::write(&p2, energy).unwrap();
-        let s_energy = parse_extxyz(&p2).unwrap();
+        let mut p2 = NamedTempFile::with_suffix(".xyz").unwrap();
+        p2.write_all(energy.as_bytes()).unwrap();
+        let s_energy = parse_extxyz(p2.path()).unwrap();
         assert!(s_energy.properties.contains_key("energy"));
         assert_eq!(
             s_energy.properties.get("energy").unwrap().as_f64(),
             Some(-5.5)
         );
-        std::fs::remove_file(&p2).ok();
+        // NamedTempFile automatically cleans up on drop
     }
 
     #[test]
