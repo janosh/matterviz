@@ -601,6 +601,47 @@ describe(`helpers: get_canvas_text_color`, () => {
   })
 })
 
+describe(`helpers: is_entry_highlighted`, () => {
+  type E = { entry_id?: string; structure_id?: string }
+  const both: E = { entry_id: `mp-1`, structure_id: `s-1` }
+  const only_eid: E = { entry_id: `mp-2` }
+  const only_sid: E = { structure_id: `s-2` }
+
+  test.each([
+    // Edge cases
+    [`empty list`, both, [], false],
+    [`entry has no ids (string)`, {}, [`mp-1`], false],
+    [`entry has no ids (object)`, {}, [both], false],
+    // String matching
+    [`string matches entry_id`, both, [`mp-1`], true],
+    [`string matches structure_id`, both, [`s-1`], true],
+    [`string matches only entry_id`, only_eid, [`mp-2`], true],
+    [`string matches only structure_id`, only_sid, [`s-2`], true],
+    [`string no match`, both, [`x`, `y`], false],
+    // Object matching
+    [`object structure_id match`, both, [{ structure_id: `s-1` }], true],
+    [`object structure_id no match`, both, [{ structure_id: `x` }], false],
+    [`object entry_id fallback`, both, [{ entry_id: `mp-1` }], true],
+    [`object entry_id no match`, both, [{ entry_id: `x` }], false],
+    // REGRESSION: structure_id takes precedence, ignores entry_id match
+    [
+      `REGRESSION: structure_id priority`,
+      both,
+      [{ entry_id: `mp-1`, structure_id: `x` }],
+      false,
+    ],
+    // Mixed list
+    [`mixed list finds match`, both, [`no`, { structure_id: `s-1` }], true],
+    // Null/undefined handling
+    [`null/undefined in list`, both, [null, undefined, { entry_id: `mp-1` }], true],
+  ] as [string, E, (string | E | null | undefined)[], boolean][])(
+    `%s`,
+    (_, entry, list, expected) => {
+      expect(helpers.is_entry_highlighted(entry, list as (string | E)[])).toBe(expected)
+    },
+  )
+})
+
 describe(`helpers: temperature interpolation`, () => {
   const make_entry = (
     temps: number[],
