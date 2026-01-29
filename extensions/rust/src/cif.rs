@@ -8,10 +8,10 @@
 //! already contain all atoms in the unit cell. Files with higher symmetry that require
 //! symmetry expansion are not yet supported.
 
-use crate::element::Element;
+use crate::element::{Element, normalize_symbol};
 use crate::error::{FerroxError, Result};
 use crate::lattice::Lattice;
-use crate::species::Species;
+use crate::species::{SiteOccupancy, Species};
 use crate::structure::Structure;
 use nalgebra::Vector3;
 use std::collections::HashMap;
@@ -75,41 +75,48 @@ pub fn parse_cif_str(content: &str, path: &Path) -> Result<Structure> {
     }
 
     // Convert to Structure
-    let mut species = Vec::with_capacity(sites.len());
+    let mut site_occupancies = Vec::with_capacity(sites.len());
     let mut frac_coords = Vec::with_capacity(sites.len());
 
     for site in sites {
-        let element =
-            Element::from_symbol(&site.element).ok_or_else(|| FerroxError::ParseError {
-                path: path_str.clone(),
-                reason: format!("Unknown element symbol: {}", site.element),
-            })?;
-
         // Check occupancy
         if site.occupancy < 0.99 {
             tracing::warn!(
                 "Site {} has partial occupancy ({:.2}), treating as fully occupied",
-                site.label.as_deref().unwrap_or(&site.element),
+                site.label.as_deref().unwrap_or(site.element.symbol()),
                 site.occupancy
             );
         }
 
-        species.push(Species::neutral(element));
+        // Create species with oxidation state if extracted
+        let species = Species::new(site.element, site.oxidation_state);
+
+        // Build site properties from metadata and label
+        let mut props = site.metadata;
+        if let Some(label) = site.label {
+            props.insert("label".to_string(), serde_json::json!(label));
+        }
+
+        let site_occ = SiteOccupancy::with_properties(vec![(species, 1.0)], props);
+        site_occupancies.push(site_occ);
         frac_coords.push(Vector3::new(site.x, site.y, site.z));
     }
 
-    Structure::try_new(lattice, species, frac_coords)
+    Structure::try_new_from_occupancies(lattice, site_occupancies, frac_coords)
 }
 
 /// Parsed atom site from CIF.
 #[derive(Debug)]
 struct AtomSite {
-    element: String,
+    element: Element,
+    oxidation_state: Option<i8>,
     label: Option<String>,
     x: f64,
     y: f64,
     z: f64,
     occupancy: f64,
+    /// Metadata extracted from symbol normalization
+    metadata: HashMap<String, serde_json::Value>,
 }
 
 /// Parse a float value from CIF, handling uncertainties like "1.234(5)".
@@ -227,7 +234,7 @@ fn parse_atom_site_row(line: &str, headers: &[String], path: &str) -> Result<Opt
         .collect();
 
     // Extract element symbol
-    let element = map
+    let raw_symbol = map
         .get("_atom_site_type_symbol")
         .or_else(|| map.get("_atom_site_label"))
         .ok_or_else(|| FerroxError::ParseError {
@@ -235,8 +242,11 @@ fn parse_atom_site_row(line: &str, headers: &[String], path: &str) -> Result<Opt
             reason: "Atom site missing element symbol".to_string(),
         })?;
 
-    // Clean element symbol (remove charge like "O2-" -> "O")
-    let element = clean_element_symbol(element);
+    // Normalize element symbol (extracts element, oxidation state, metadata)
+    let normalized = normalize_symbol(raw_symbol).map_err(|e| FerroxError::ParseError {
+        path: path.to_string(),
+        reason: format!("Invalid element symbol '{}': {}", raw_symbol, e),
+    })?;
 
     // Extract label
     let label = map.get("_atom_site_label").map(|s| s.to_string());
@@ -253,12 +263,14 @@ fn parse_atom_site_row(line: &str, headers: &[String], path: &str) -> Result<Opt
         .unwrap_or(1.0);
 
     Ok(Some(AtomSite {
-        element,
+        element: normalized.element,
+        oxidation_state: normalized.oxidation_state,
         label,
         x,
         y,
         z,
         occupancy,
+        metadata: normalized.metadata,
     }))
 }
 
@@ -331,11 +343,7 @@ fn split_cif_line(line: &str) -> Vec<&str> {
     result
 }
 
-/// Clean element symbol by removing charge notation.
-/// Examples: "O2-" -> "O", "Fe3+" -> "Fe", "Ca1" -> "Ca"
-fn clean_element_symbol(symbol: &str) -> String {
-    symbol.chars().take_while(|c| c.is_alphabetic()).collect()
-}
+// Note: clean_element_symbol has been replaced by normalize_symbol from element module
 
 #[cfg(test)]
 mod tests {
@@ -412,20 +420,32 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_element_symbol() {
-        for (input, expected) in [
-            ("O", "O"),
-            ("Na", "Na"),
-            ("Mn", "Mn"), // basic
-            ("O2-", "O"),
-            ("Fe3+", "Fe"),
-            ("Ti4+", "Ti"), // with charge
-            ("Ca1", "Ca"),
-            ("Li1", "Li"),
-            ("O2", "O"),   // with numbers
-            ("H(1)", "H"), // with parentheses
+    fn test_normalize_symbol_in_cif() {
+        use crate::element::Element;
+
+        // Test that normalize_symbol extracts element correctly from CIF-style symbols
+        for (input, expected_elem, expected_oxi) in [
+            ("O", Element::O, None),
+            ("Na", Element::Na, None),
+            ("Mn", Element::Mn, None),
+            ("O2-", Element::O, Some(-2)),
+            ("Fe3+", Element::Fe, Some(3)),
+            ("Ti4+", Element::Ti, Some(4)),
+            ("Ca1", Element::Ca, None),  // CIF label, element extracted
+            ("Li1", Element::Li, None),  // CIF label
+            ("O2", Element::O, None),    // CIF label (O with number)
+            ("D", Element::D, None),     // Deuterium
+            ("X", Element::Dummy, None), // Dummy atom
         ] {
-            assert_eq!(clean_element_symbol(input), expected);
+            let result = normalize_symbol(input).unwrap();
+            assert_eq!(
+                result.element, expected_elem,
+                "element mismatch for '{input}'"
+            );
+            assert_eq!(
+                result.oxidation_state, expected_oxi,
+                "oxi mismatch for '{input}'"
+            );
         }
     }
 
