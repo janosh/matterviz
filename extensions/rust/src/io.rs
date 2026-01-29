@@ -640,11 +640,16 @@ fn frame_to_structure(frame: &str, path: &Path) -> Result<Structure> {
     let lattice_str = match lattice_value {
         serde_json::Value::String(s) => s.clone(),
         serde_json::Value::Array(arr) => {
-            // Array of 9 numbers
-            arr.iter()
-                .filter_map(|v| v.as_f64().map(|f| f.to_string()))
-                .collect::<Vec<_>>()
-                .join(" ")
+            // Array of 9 numbers - reject non-numeric values with error (don't silently drop)
+            let mut values = Vec::with_capacity(arr.len());
+            for (idx, v) in arr.iter().enumerate() {
+                let num = v.as_f64().ok_or_else(|| FerroxError::ParseError {
+                    path: path.display().to_string(),
+                    reason: format!("Lattice array element {idx} is not a number: {v}"),
+                })?;
+                values.push(num.to_string());
+            }
+            values.join(" ")
         }
         _ => {
             return Err(FerroxError::ParseError {
