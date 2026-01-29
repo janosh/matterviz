@@ -48,7 +48,7 @@ test.describe(`Trajectory Component`, () => {
     }
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
-    await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
     await expect(trajectory_viewer).toBeVisible({ timeout: 30_000 })
   })
 

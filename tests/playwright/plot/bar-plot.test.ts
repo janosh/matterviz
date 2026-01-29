@@ -3,7 +3,7 @@ import { get_tick_range, IS_CI } from '../helpers'
 
 test.describe(`BarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/bar-plot`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/test/bar-plot`, { waitUntil: `networkidle` })
   })
 
   test(`renders basic bar plot with axes and bars`, async ({ page }) => {

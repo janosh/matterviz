@@ -6,8 +6,20 @@ import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
 import { symbol } from 'd3-shape'
-import type { ConvexHullConfig, HighlightStyle, MarkerSymbol, PhaseData } from './types'
-import { is_unary_entry } from './types'
+import {
+  analyze_gas_data as _analyze_gas_data,
+  apply_gas_corrections as _apply_gas_corrections,
+} from './gas-thermodynamics'
+import type {
+  ConvexHullConfig,
+  GasAnalysis,
+  GasThermodynamicsConfig,
+  HighlightStyle,
+  MarkerSymbol,
+  PhaseData,
+} from './types'
+import { DEFAULT_GAS_TEMP, is_unary_entry } from './types'
+export { DEFAULT_GAS_TEMP }
 
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
@@ -692,4 +704,86 @@ export function filter_entries_at_temperature(
     // Exclude entry (has temp data but can't get energy at T)
     return []
   })
+}
+
+// Gas-dependent chemical potential helpers
+
+/**
+ * Analyze entries for gas-dependent elements (safe wrapper with optional config)
+ *
+ * Returns information about which gases are relevant for the chemical system.
+ */
+export function safe_analyze_gas_data(
+  entries: PhaseData[],
+  config?: GasThermodynamicsConfig,
+): GasAnalysis {
+  if (!config || !config.enabled_gases?.length) {
+    return {
+      has_gas_dependent_elements: false,
+      gas_elements: [],
+      relevant_gases: [],
+    }
+  }
+  return _analyze_gas_data(entries, config)
+}
+
+/**
+ * Apply gas chemical potential corrections to entries (safe wrapper with optional config)
+ *
+ * This adjusts formation energies based on gas atmosphere conditions (T, P).
+ * Should be applied after temperature filtering.
+ */
+export function safe_apply_gas_corrections(
+  entries: PhaseData[],
+  config: GasThermodynamicsConfig | undefined,
+  T: number,
+): PhaseData[] {
+  if (!config || !config.enabled_gases?.length) return entries
+  return _apply_gas_corrections(entries, config, T)
+}
+
+/**
+ * Get gas-corrected entries in one call (consolidates analysis + correction)
+ *
+ * Merges gas_pressures with config.pressures and applies corrections if the
+ * chemical system contains gas-dependent elements. Returns original entries
+ * if no gas config or no relevant gases.
+ */
+export function get_gas_corrected_entries(
+  entries: PhaseData[],
+  gas_config: GasThermodynamicsConfig | undefined,
+  gas_pressures: Partial<Record<string, number>>,
+  temperature: number,
+): {
+  entries: PhaseData[]
+  analysis: GasAnalysis
+  merged_config: GasThermodynamicsConfig | undefined
+} {
+  if (!gas_config?.enabled_gases?.length) {
+    return {
+      entries,
+      analysis: {
+        has_gas_dependent_elements: false,
+        gas_elements: [],
+        relevant_gases: [],
+      },
+      merged_config: undefined,
+    }
+  }
+
+  const merged_config: GasThermodynamicsConfig = {
+    ...gas_config,
+    pressures: { ...gas_config.pressures, ...gas_pressures },
+  }
+  const analysis = _analyze_gas_data(entries, merged_config)
+
+  if (!analysis.has_gas_dependent_elements) {
+    return { entries, analysis, merged_config }
+  }
+
+  return {
+    entries: _apply_gas_corrections(entries, merged_config, temperature),
+    analysis,
+    merged_config,
+  }
 }
