@@ -250,6 +250,14 @@ pub enum Element {
     Ts = 117,
     /// Oganesson (Z=118)
     Og = 118,
+
+    // Pseudo-elements (Z > 118) for special cases
+    /// Dummy atom placeholder for unknown/invalid elements
+    Dummy = 119,
+    /// Deuterium (hydrogen isotope, mass ~2.014)
+    D = 120,
+    /// Tritium (hydrogen isotope, mass ~3.016)
+    T = 121,
 }
 
 impl Element {
@@ -521,9 +529,20 @@ impl Element {
     ///
     /// assert_eq!(Element::from_symbol("Fe"), Some(Element::Fe));
     /// assert_eq!(Element::from_symbol("fe"), Some(Element::Fe));  // Case insensitive
-    /// assert_eq!(Element::from_symbol("Xx"), None);
+    /// assert_eq!(Element::from_symbol("D"), Some(Element::D));    // Deuterium
+    /// assert_eq!(Element::from_symbol("X"), Some(Element::Dummy)); // Dummy atom
     /// ```
     pub fn from_symbol(symbol: &str) -> Option<Self> {
+        let lower = symbol.to_lowercase();
+
+        // Check pseudo-elements first (before the static map)
+        match lower.as_str() {
+            "d" => return Some(Self::D),
+            "t" => return Some(Self::T),
+            "x" | "xx" | "dummy" | "vac" | "va" => return Some(Self::Dummy),
+            _ => {}
+        }
+
         // Static lookup map initialized once (case-insensitive via lowercase keys)
         static SYMBOL_MAP: OnceLock<HashMap<String, Element>> = OnceLock::new();
         let map = SYMBOL_MAP.get_or_init(|| {
@@ -535,10 +554,10 @@ impl Element {
             }
             map
         });
-        map.get(&symbol.to_lowercase()).copied()
+        map.get(&lower).copied()
     }
 
-    /// Create an element from its atomic number (1-118).
+    /// Create an element from its atomic number (1-118 for real elements, 119-121 for pseudo-elements).
     ///
     /// # Examples
     ///
@@ -547,17 +566,23 @@ impl Element {
     ///
     /// assert_eq!(Element::from_atomic_number(26), Some(Element::Fe));
     /// assert_eq!(Element::from_atomic_number(0), None);
-    /// assert_eq!(Element::from_atomic_number(119), None);
+    /// assert_eq!(Element::from_atomic_number(119), Some(Element::Dummy));
+    /// assert_eq!(Element::from_atomic_number(120), Some(Element::D));
+    /// assert_eq!(Element::from_atomic_number(121), Some(Element::T));
+    /// assert_eq!(Element::from_atomic_number(122), None);
     /// ```
     pub fn from_atomic_number(z: u8) -> Option<Self> {
-        // Compile-time check that Og (last element) has discriminant 118
+        // Compile-time checks for discriminant values
         const _: () = assert!(Element::Og as u8 == 118);
+        const _: () = assert!(Element::Dummy as u8 == 119);
+        const _: () = assert!(Element::D as u8 == 120);
+        const _: () = assert!(Element::T as u8 == 121);
 
-        if z == 0 || z > 118 {
+        if z == 0 || z > 121 {
             return None;
         }
-        // SAFETY: z is in range 1-118, matching our enum discriminants (H=1 to Og=118).
-        // The repr(u8) guarantees memory layout, and the const assert above validates Og=118.
+        // SAFETY: z is in range 1-121, matching our enum discriminants.
+        // The repr(u8) guarantees memory layout, and the const asserts validate bounds.
         Some(unsafe { std::mem::transmute::<u8, Element>(z) })
     }
 
@@ -569,9 +594,16 @@ impl Element {
     /// use ferrox::element::Element;
     ///
     /// assert_eq!(Element::Fe.symbol(), "Fe");
+    /// assert_eq!(Element::D.symbol(), "D");
+    /// assert_eq!(Element::Dummy.symbol(), "X");
     /// ```
     pub fn symbol(&self) -> &'static str {
-        Self::SYMBOLS[self.atomic_number() as usize - 1]
+        match self {
+            Self::Dummy => "X",
+            Self::D => "D",
+            Self::T => "T",
+            _ => Self::SYMBOLS[self.atomic_number() as usize - 1],
+        }
     }
 
     /// Get the atomic number (1-118).
@@ -589,7 +621,7 @@ impl Element {
 
     /// Get the Pauling electronegativity, if defined.
     ///
-    /// Returns `None` for noble gases and some transactinides.
+    /// Returns `None` for noble gases, transactinides, and pseudo-elements.
     ///
     /// # Examples
     ///
@@ -598,13 +630,23 @@ impl Element {
     ///
     /// assert!((Element::Fe.electronegativity().unwrap() - 1.83).abs() < 0.01);
     /// assert!(Element::He.electronegativity().is_none());  // Noble gas
+    /// assert!(Element::Dummy.electronegativity().is_none()); // Pseudo-element
     /// ```
     pub fn electronegativity(&self) -> Option<f64> {
+        // Pseudo-elements have no electronegativity
+        if self.atomic_number() > 118 {
+            return None;
+        }
         let en = Self::ELECTRONEGATIVITIES[self.atomic_number() as usize - 1];
         if en.is_nan() { None } else { Some(en) }
     }
 
     /// Get the standard atomic weight in atomic mass units (u).
+    ///
+    /// For pseudo-elements:
+    /// - Dummy returns 0.0
+    /// - D (deuterium) returns 2.014
+    /// - T (tritium) returns 3.016
     ///
     /// # Examples
     ///
@@ -612,16 +654,244 @@ impl Element {
     /// use ferrox::element::Element;
     ///
     /// assert!((Element::C.atomic_mass() - 12.011).abs() < 0.001);
-    /// assert!((Element::Fe.atomic_mass() - 55.845).abs() < 0.01);
+    /// assert!((Element::D.atomic_mass() - 2.014).abs() < 0.001);
+    /// assert_eq!(Element::Dummy.atomic_mass(), 0.0);
     /// ```
     pub fn atomic_mass(&self) -> f64 {
-        Self::ATOMIC_MASSES[self.atomic_number() as usize - 1]
+        match self {
+            Self::Dummy => 0.0,
+            Self::D => 2.014101778, // IUPAC deuterium mass
+            Self::T => 3.01604928,  // IUPAC tritium mass
+            _ => Self::ATOMIC_MASSES[self.atomic_number() as usize - 1],
+        }
+    }
+
+    /// Check if this is a pseudo-element (Dummy, D, or T).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::element::Element;
+    ///
+    /// assert!(!Element::Fe.is_pseudo());
+    /// assert!(Element::Dummy.is_pseudo());
+    /// assert!(Element::D.is_pseudo());
+    /// ```
+    pub fn is_pseudo(&self) -> bool {
+        self.atomic_number() > 118
+    }
+
+    /// Check if this is a dummy/placeholder element.
+    pub fn is_dummy(&self) -> bool {
+        matches!(self, Self::Dummy)
     }
 }
 
 impl std::fmt::Display for Element {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.symbol())
+    }
+}
+
+// =============================================================================
+// Symbol Normalization
+// =============================================================================
+
+/// Result of normalizing an element symbol string.
+///
+/// Contains the parsed element, optional oxidation state, and any metadata
+/// extracted from non-standard symbol formats (POTCAR suffixes, labels, etc.).
+#[derive(Debug, Clone)]
+pub struct NormalizedSymbol {
+    /// The normalized element.
+    pub element: Element,
+    /// Oxidation state extracted from the symbol (e.g., "Fe2+" -> Some(2)).
+    pub oxidation_state: Option<i8>,
+    /// Additional metadata extracted from the symbol.
+    pub metadata: HashMap<String, serde_json::Value>,
+}
+
+impl NormalizedSymbol {
+    /// Create a new normalized symbol with no metadata.
+    pub fn new(element: Element, oxidation_state: Option<i8>) -> Self {
+        Self {
+            element,
+            oxidation_state,
+            metadata: HashMap::new(),
+        }
+    }
+
+    /// Create with metadata.
+    pub fn with_metadata(
+        element: Element,
+        oxidation_state: Option<i8>,
+        metadata: HashMap<String, serde_json::Value>,
+    ) -> Self {
+        Self {
+            element,
+            oxidation_state,
+            metadata,
+        }
+    }
+}
+
+/// Normalize an element symbol string to extract the element and any metadata.
+///
+/// Handles various non-standard symbol formats:
+/// - Standard elements: "Fe", "Ca", "O"
+/// - Pseudo-elements: "X", "D", "T", "Vac"
+/// - Oxidation states: "Fe2+", "O2-", "Na+", "Cl-"
+/// - POTCAR suffixes: "Ca_pv", "Fe_sv", "O_s"
+/// - Hash suffixes: "Fe/hash123" (stripped)
+/// - CIF-style labels: "Fe1", "Fe1_oct"
+///
+/// # Returns
+///
+/// - `Ok(NormalizedSymbol)` with the parsed element and extracted data
+/// - `Err(String)` for empty strings
+///
+/// Unknown symbols are mapped to `Element::Dummy` with original stored in metadata.
+///
+/// # Examples
+///
+/// ```
+/// use ferrox::element::{normalize_symbol, Element};
+///
+/// let norm = normalize_symbol("Fe2+").unwrap();
+/// assert_eq!(norm.element, Element::Fe);
+/// assert_eq!(norm.oxidation_state, Some(2));
+///
+/// let norm = normalize_symbol("Ca_pv").unwrap();
+/// assert_eq!(norm.element, Element::Ca);
+/// assert_eq!(norm.metadata.get("potcar_suffix").unwrap(), "_pv");
+///
+/// let norm = normalize_symbol("Unknown123").unwrap();
+/// assert_eq!(norm.element, Element::Dummy);
+/// ```
+pub fn normalize_symbol(symbol: &str) -> Result<NormalizedSymbol, String> {
+    let symbol = symbol.trim();
+    if symbol.is_empty() {
+        return Err("Empty symbol".to_string());
+    }
+
+    // Fast path: exact match with known element
+    if let Some(elem) = Element::from_symbol(symbol) {
+        return Ok(NormalizedSymbol::new(elem, None));
+    }
+
+    // Check for oxidation state suffix: Fe2+, O2-, Na+, Cl-
+    if let Some(result) = try_parse_oxidation_state(symbol) {
+        return Ok(result);
+    }
+
+    // Check for POTCAR suffix: Ca_pv, Fe_sv, O_s
+    if let Some(result) = try_parse_potcar_suffix(symbol) {
+        return Ok(result);
+    }
+
+    // Check for hash suffix: Fe/hash123
+    if let Some(pos) = symbol.find('/') {
+        let base = &symbol[..pos];
+        if let Some(elem) = Element::from_symbol(base) {
+            return Ok(NormalizedSymbol::new(elem, None));
+        }
+    }
+
+    // Check for CIF-style label: Fe1, Fe1_oct, Na2a
+    if let Some(result) = try_parse_cif_label(symbol) {
+        return Ok(result);
+    }
+
+    // Fallback: treat as Dummy atom
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "original_symbol".to_string(),
+        serde_json::Value::String(symbol.to_string()),
+    );
+    Ok(NormalizedSymbol::with_metadata(
+        Element::Dummy,
+        None,
+        metadata,
+    ))
+}
+
+/// Try to parse oxidation state from symbol like "Fe2+", "O2-", "Na+", "Cl-".
+fn try_parse_oxidation_state(symbol: &str) -> Option<NormalizedSymbol> {
+    let last_char = symbol.chars().last()?;
+    if last_char != '+' && last_char != '-' {
+        return None;
+    }
+
+    let sign: i8 = if last_char == '+' { 1 } else { -1 };
+    let without_sign = &symbol[..symbol.len() - 1];
+
+    // Find where digits start (from the end)
+    let mut digit_start = without_sign.len();
+    for (idx, ch) in without_sign.char_indices().rev() {
+        if ch.is_ascii_digit() {
+            digit_start = idx;
+        } else {
+            break;
+        }
+    }
+
+    let elem_str = &without_sign[..digit_start];
+    let elem = Element::from_symbol(elem_str)?;
+
+    let oxi = if digit_start == without_sign.len() {
+        // No digits, just sign: Na+ -> +1, Cl- -> -1
+        sign
+    } else {
+        let digit_str = &without_sign[digit_start..];
+        let magnitude: i8 = digit_str.parse().ok()?;
+        sign * magnitude
+    };
+
+    Some(NormalizedSymbol::new(elem, Some(oxi)))
+}
+
+/// Try to parse POTCAR suffix: Ca_pv, Fe_sv, O_s, etc.
+fn try_parse_potcar_suffix(symbol: &str) -> Option<NormalizedSymbol> {
+    // Known POTCAR suffixes
+    const POTCAR_SUFFIXES: &[&str] = &[
+        "_pv", "_sv", "_s", "_h", "_d", "_f", "_sv_GW", "_pv_GW", "_GW",
+    ];
+
+    for suffix in POTCAR_SUFFIXES {
+        if let Some(base) = symbol.strip_suffix(suffix)
+            && let Some(elem) = Element::from_symbol(base)
+        {
+            let mut metadata = HashMap::new();
+            metadata.insert(
+                "potcar_suffix".to_string(),
+                serde_json::Value::String(suffix.to_string()),
+            );
+            return Some(NormalizedSymbol::with_metadata(elem, None, metadata));
+        }
+    }
+    None
+}
+
+/// Try to parse CIF-style label: Fe1, Fe1_oct, Na2a, etc.
+fn try_parse_cif_label(symbol: &str) -> Option<NormalizedSymbol> {
+    // Extract alphabetic prefix as element symbol
+    let elem_str: String = symbol.chars().take_while(|c| c.is_alphabetic()).collect();
+    if elem_str.is_empty() {
+        return None;
+    }
+
+    let elem = Element::from_symbol(&elem_str)?;
+
+    // Store the full label if it differs from the element symbol
+    if symbol.len() > elem_str.len() {
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            "label".to_string(),
+            serde_json::Value::String(symbol.to_string()),
+        );
+        Some(NormalizedSymbol::with_metadata(elem, None, metadata))
+    } else {
+        Some(NormalizedSymbol::new(elem, None))
     }
 }
 
@@ -653,12 +923,27 @@ mod tests {
             );
         }
 
-        // Edge cases: invalid inputs
-        assert_eq!(
-            Element::from_symbol("Xx"),
-            None,
-            "invalid symbol should return None"
-        );
+        // Pseudo-elements roundtrip
+        for (z, elem, sym) in [
+            (119, Element::Dummy, "X"),
+            (120, Element::D, "D"),
+            (121, Element::T, "T"),
+        ] {
+            assert_eq!(Element::from_atomic_number(z), Some(elem));
+            assert_eq!(elem.symbol(), sym);
+            assert_eq!(Element::from_symbol(sym), Some(elem));
+        }
+
+        // Dummy atom aliases
+        for alias in ["X", "Xx", "dummy", "Vac", "VA"] {
+            assert_eq!(
+                Element::from_symbol(alias),
+                Some(Element::Dummy),
+                "Dummy alias '{alias}' should work"
+            );
+        }
+
+        // Edge cases: truly invalid inputs
         assert_eq!(
             Element::from_symbol(""),
             None,
@@ -675,9 +960,9 @@ mod tests {
             "Z=0 should return None"
         );
         assert_eq!(
-            Element::from_atomic_number(119),
+            Element::from_atomic_number(122),
             None,
-            "Z=119 should return None"
+            "Z=122 should return None"
         );
         assert_eq!(
             Element::from_atomic_number(255),
@@ -770,5 +1055,114 @@ mod tests {
                 "{elem:?} (Z={z}) should have no electronegativity"
             );
         }
+    }
+
+    #[test]
+    #[allow(clippy::type_complexity)]
+    fn test_normalize_symbol_comprehensive() {
+        use super::{Element, normalize_symbol};
+
+        // Test cases from the plan's symbol normalization table
+        let test_cases: Vec<(&str, Element, Option<i8>, Vec<(&str, &str)>)> = vec![
+            // (input, expected_element, expected_oxi, expected_metadata_pairs)
+            ("Fe", Element::Fe, None, vec![]),
+            ("Ca", Element::Ca, None, vec![]),
+            ("O", Element::O, None, vec![]),
+            // Oxidation states
+            ("Fe2+", Element::Fe, Some(2), vec![]),
+            ("O2-", Element::O, Some(-2), vec![]),
+            ("Na+", Element::Na, Some(1), vec![]),
+            ("Cl-", Element::Cl, Some(-1), vec![]),
+            ("Fe3+", Element::Fe, Some(3), vec![]),
+            ("Ti4+", Element::Ti, Some(4), vec![]),
+            // POTCAR suffixes
+            ("Ca_pv", Element::Ca, None, vec![("potcar_suffix", "_pv")]),
+            ("Fe_sv", Element::Fe, None, vec![("potcar_suffix", "_sv")]),
+            ("O_s", Element::O, None, vec![("potcar_suffix", "_s")]),
+            // Pseudo-elements
+            ("D", Element::D, None, vec![]),
+            ("T", Element::T, None, vec![]),
+            ("X", Element::Dummy, None, vec![]),
+            ("Xx", Element::Dummy, None, vec![]),
+            ("Dummy", Element::Dummy, None, vec![]),
+            ("Vac", Element::Dummy, None, vec![]),
+            // CIF-style labels
+            ("Fe1", Element::Fe, None, vec![("label", "Fe1")]),
+            ("Fe1_oct", Element::Fe, None, vec![("label", "Fe1_oct")]),
+            ("Na2a", Element::Na, None, vec![("label", "Na2a")]),
+            ("O2", Element::O, None, vec![("label", "O2")]),
+            // Hash suffix (should be stripped, no metadata)
+            ("Fe/hash123", Element::Fe, None, vec![]),
+        ];
+
+        for (input, expected_elem, expected_oxi, expected_metadata) in test_cases {
+            let result = normalize_symbol(input)
+                .unwrap_or_else(|e| panic!("Failed to normalize '{input}': {e}"));
+            assert_eq!(
+                result.element, expected_elem,
+                "Element mismatch for '{input}': got {:?}, expected {:?}",
+                result.element, expected_elem
+            );
+            assert_eq!(
+                result.oxidation_state, expected_oxi,
+                "Oxidation state mismatch for '{input}'"
+            );
+
+            // Check metadata
+            for (key, expected_val) in expected_metadata {
+                let actual = result.metadata.get(key);
+                assert!(
+                    actual.is_some(),
+                    "Missing metadata key '{key}' for '{input}'"
+                );
+                let actual_str = actual.unwrap().as_str().unwrap_or("");
+                assert_eq!(
+                    actual_str, expected_val,
+                    "Metadata mismatch for '{input}' key '{key}'"
+                );
+            }
+        }
+
+        // Test unknown symbol fallback to Dummy with original_symbol
+        let unknown = normalize_symbol("UnknownElement123").unwrap();
+        assert_eq!(unknown.element, Element::Dummy);
+        assert_eq!(
+            unknown
+                .metadata
+                .get("original_symbol")
+                .and_then(|v| v.as_str()),
+            Some("UnknownElement123")
+        );
+
+        // Test empty string error
+        assert!(normalize_symbol("").is_err());
+        assert!(normalize_symbol("   ").is_err());
+    }
+
+    #[test]
+    fn test_pseudo_element_properties() {
+        // Test is_pseudo and is_dummy methods
+        assert!(!Element::Fe.is_pseudo());
+        assert!(!Element::H.is_pseudo());
+        assert!(!Element::Og.is_pseudo());
+
+        assert!(Element::Dummy.is_pseudo());
+        assert!(Element::D.is_pseudo());
+        assert!(Element::T.is_pseudo());
+
+        assert!(Element::Dummy.is_dummy());
+        assert!(!Element::D.is_dummy());
+        assert!(!Element::T.is_dummy());
+        assert!(!Element::Fe.is_dummy());
+
+        // Test atomic_mass for pseudo-elements
+        assert_eq!(Element::Dummy.atomic_mass(), 0.0);
+        assert!((Element::D.atomic_mass() - 2.014).abs() < 0.01);
+        assert!((Element::T.atomic_mass() - 3.016).abs() < 0.01);
+
+        // Test electronegativity returns None for pseudo-elements
+        assert!(Element::Dummy.electronegativity().is_none());
+        assert!(Element::D.electronegativity().is_none());
+        assert!(Element::T.electronegativity().is_none());
     }
 }
