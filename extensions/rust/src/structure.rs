@@ -1734,23 +1734,16 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_neighbor_list_empty_structure() {
-        let s = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
-        let (centers, neighbors, images, distances) = s.get_neighbor_list(3.0, 1e-8, true);
-        assert!(centers.is_empty());
-        assert!(neighbors.is_empty());
-        assert!(images.is_empty());
-        assert!(distances.is_empty());
-    }
+    fn test_neighbor_list_edge_cases() {
+        // Empty structure returns empty results
+        let empty = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
+        let (c, n, i, d) = empty.get_neighbor_list(3.0, 1e-8, true);
+        assert!(c.is_empty() && n.is_empty() && i.is_empty() && d.is_empty());
 
-    #[test]
-    fn test_neighbor_list_zero_cutoff() {
-        let s = make_nacl();
-        let (centers, neighbors, images, distances) = s.get_neighbor_list(0.0, 1e-8, true);
-        assert!(centers.is_empty());
-        assert!(neighbors.is_empty());
-        assert!(images.is_empty());
-        assert!(distances.is_empty());
+        // Zero cutoff returns empty results
+        let nacl = make_nacl();
+        let (c, n, i, d) = nacl.get_neighbor_list(0.0, 1e-8, true);
+        assert!(c.is_empty() && n.is_empty() && i.is_empty() && d.is_empty());
     }
 
     #[test]
@@ -2053,108 +2046,68 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_operation_identity() {
-        let s = make_nacl();
-        let transformed = s.apply_operation_copy(&SymmOp::identity(), true);
+    fn test_apply_operation_fractional() {
+        let cu = |x, y, z| {
+            Structure::new(
+                Lattice::cubic(4.0),
+                vec![Species::neutral(Element::Cu)],
+                vec![Vector3::new(x, y, z)],
+            )
+        };
 
-        for (orig, new) in s.frac_coords.iter().zip(&transformed.frac_coords) {
-            assert!((orig - new).norm() < 1e-10);
-        }
+        // Identity: coords unchanged
+        let s = cu(0.25, 0.25, 0.25);
+        let t = s.apply_operation_copy(&SymmOp::identity(), true);
+        assert!((t.frac_coords[0] - s.frac_coords[0]).norm() < 1e-10);
+
+        // Inversion: (0.25, 0.25, 0.25) -> (-0.25, -0.25, -0.25)
+        let t = s.apply_operation_copy(&SymmOp::inversion(), true);
+        assert!((t.frac_coords[0] - Vector3::new(-0.25, -0.25, -0.25)).norm() < 1e-10);
+
+        // Translation: (0,0,0) + (0.5,0,0) = (0.5, 0, 0)
+        let s = cu(0.0, 0.0, 0.0);
+        let t = s.apply_operation_copy(&SymmOp::translation(Vector3::new(0.5, 0.0, 0.0)), true);
+        assert!((t.frac_coords[0] - Vector3::new(0.5, 0.0, 0.0)).norm() < 1e-10);
     }
 
     #[test]
-    fn test_apply_operation_inversion_fractional() {
-        let s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.25, 0.25, 0.25)],
-        );
-
-        let inverted = s.apply_operation_copy(&SymmOp::inversion(), true);
-
-        // (0.25, 0.25, 0.25) -> (-0.25, -0.25, -0.25)
-        assert!((inverted.frac_coords[0][0] - (-0.25)).abs() < 1e-10);
-        assert!((inverted.frac_coords[0][1] - (-0.25)).abs() < 1e-10);
-        assert!((inverted.frac_coords[0][2] - (-0.25)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_apply_operation_translation_fractional() {
-        let s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
-
-        let op = SymmOp::translation(Vector3::new(0.5, 0.0, 0.0));
-        let translated = s.apply_operation_copy(&op, true);
-
-        assert!((translated.frac_coords[0][0] - 0.5).abs() < 1e-10);
-        assert!(translated.frac_coords[0][1].abs() < 1e-10);
-        assert!(translated.frac_coords[0][2].abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_apply_operation_rotation_cartesian() {
+    fn test_apply_operation_cartesian() {
         use std::f64::consts::FRAC_PI_2;
-        // 90 degree rotation around z-axis in Cartesian coords
-        let op = SymmOp::rotation_z(FRAC_PI_2);
-
+        // 90° rotation around z-axis: (0.25,0,0) frac -> (1,0,0) Å -> (0,1,0) Å -> (0,0.25,0) frac
         let s = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.25, 0.0, 0.0)], // 1 Å in x direction
+            vec![Vector3::new(0.25, 0.0, 0.0)],
         );
-
-        let rotated = s.apply_operation_copy(&op, false);
-
-        // (1, 0, 0) Cartesian -> (0, 1, 0) Cartesian
-        // -> (0, 0.25, 0) fractional for 4 Å cubic lattice
-        assert!(rotated.frac_coords[0][0].abs() < 1e-10);
-        assert!((rotated.frac_coords[0][1] - 0.25).abs() < 1e-10);
-        assert!(rotated.frac_coords[0][2].abs() < 1e-10);
+        let rotated = s.apply_operation_copy(&SymmOp::rotation_z(FRAC_PI_2), false);
+        assert!((rotated.frac_coords[0] - Vector3::new(0.0, 0.25, 0.0)).norm() < 1e-10);
     }
 
     #[test]
-    fn test_apply_operation_mutates_in_place() {
+    fn test_apply_operation_in_place_and_chaining() {
         let mut s = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::neutral(Element::Cu)],
             vec![Vector3::new(0.0, 0.0, 0.0)],
         );
 
+        // In-place translation
         s.apply_operation(&SymmOp::translation(Vector3::new(0.5, 0.5, 0.5)), true);
+        assert!((s.frac_coords[0] - Vector3::new(0.5, 0.5, 0.5)).norm() < 1e-10);
 
-        assert!((s.frac_coords[0][0] - 0.5).abs() < 1e-10);
-        assert!((s.frac_coords[0][1] - 0.5).abs() < 1e-10);
-        assert!((s.frac_coords[0][2] - 0.5).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_apply_operation_chaining() {
-        let mut s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
-
-        // Translate then invert
+        // Chaining: translate then invert
+        s.frac_coords[0] = Vector3::zeros();
         s.apply_operation(&SymmOp::translation(Vector3::new(0.25, 0.0, 0.0)), true)
             .apply_operation(&SymmOp::inversion(), true);
-
-        // 0.0 + 0.25 = 0.25, then inverted: -0.25
         assert!((s.frac_coords[0][0] - (-0.25)).abs() < 1e-10);
     }
 
     #[test]
     fn test_apply_operation_preserves_sites() {
-        let s = make_nacl();
-        let transformed = s.apply_operation_copy(&SymmOp::inversion(), true);
-
-        assert_eq!(transformed.num_sites(), s.num_sites());
-        assert_eq!(transformed.species().len(), s.species().len());
-        assert_eq!(transformed.species()[0].element, s.species()[0].element);
-        assert_eq!(transformed.species()[1].element, s.species()[1].element);
+        let nacl = make_nacl();
+        let transformed = nacl.apply_operation_copy(&SymmOp::inversion(), true);
+        assert_eq!(transformed.num_sites(), nacl.num_sites());
+        assert_eq!(transformed.species()[0].element, nacl.species()[0].element);
     }
 
     // =========================================================================
@@ -2673,22 +2626,17 @@ mod tests {
     }
 
     #[test]
-    fn test_interpolate_zero_images() {
-        let s = make_nacl();
-        let s2 = make_nacl();
-        let images = s.interpolate(&s2, 0, false, true).unwrap();
-        assert_eq!(images.len(), 1, "n_images=0 should return just start");
-    }
+    fn test_interpolate_edge_cases() {
+        // n_images=0 returns just start structure
+        let nacl = make_nacl();
+        let images = nacl.interpolate(&nacl, 0, false, true).unwrap();
+        assert_eq!(images.len(), 1);
 
-    #[test]
-    fn test_interpolate_empty_structure() {
-        let s1 = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
-        let s2 = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
-        let images = s1.interpolate(&s2, 5, false, true).unwrap();
+        // Empty structures work
+        let empty = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
+        let images = empty.interpolate(&empty, 5, false, true).unwrap();
         assert_eq!(images.len(), 6);
-        for img in &images {
-            assert_eq!(img.num_sites(), 0);
-        }
+        assert!(images.iter().all(|img| img.num_sites() == 0));
     }
 
     // =========================================================================
