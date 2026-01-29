@@ -10,6 +10,11 @@ declare module '*-colors.yml' {
   export default content
 }
 
+declare module '*.json.gz' {
+  const content: unknown
+  export default content
+}
+
 // Global type declarations for theme system
 declare global {
   interface Window {

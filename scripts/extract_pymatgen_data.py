@@ -137,17 +137,11 @@ def merge_data(
 
 def main() -> None:
     """Main entry point."""
-    json_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.json"
     gz_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.json.gz"
     ts_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.ts"
 
-    # Prefer JSON, fall back to gzipped or TypeScript
-    if json_path.exists():
-        data_path = json_path
-    elif gz_path.exists():
-        data_path = gz_path
-    else:
-        data_path = ts_path
+    # Load from gzipped JSON or fall back to TypeScript
+    data_path = gz_path if gz_path.exists() else ts_path
 
     print(f"Loading existing data from {data_path}")
     existing_data = load_existing_data(data_path)
@@ -172,19 +166,13 @@ def main() -> None:
                 f"  {symbol}: oxidation_states={oxi}, common={common}, shannon={shannon}"
             )
 
-    # Write both JSON (for TypeScript) and gzipped (for Rust)
-    json_str = json.dumps(merged_data, indent=2, ensure_ascii=False)
-    print(f"Writing JSON to {json_path}")
-    with open(json_path, "w", encoding="utf-8") as file:
-        file.write(json_str)
-
-    print(f"Writing gzipped to {gz_path}")
+    # Write gzipped JSON (used by TypeScript via Vite plugin and Rust via flate2)
+    json_bytes = json.dumps(merged_data, indent=2, ensure_ascii=False).encode("utf-8")
+    print(f"Writing gzipped output to {gz_path}")
     with gzip.open(gz_path, "wb") as file:
-        file.write(json_str.encode("utf-8"))
+        file.write(json_bytes)
 
-    print(
-        f"Done! JSON: {json_path.stat().st_size:,} bytes, GZ: {gz_path.stat().st_size:,} bytes"
-    )
+    print(f"Done! {len(json_bytes):,} bytes -> {gz_path.stat().st_size:,} bytes")
 
 
 if __name__ == "__main__":

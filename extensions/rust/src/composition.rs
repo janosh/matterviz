@@ -903,6 +903,7 @@ mod tests {
             (&[(Element::Cu, 1.0)], "Cu"),                    // single
             (&[(Element::Cu, 4.0)], "Cu"),                    // single, any amount
             (&[(Element::Fe, 0.5), (Element::O, 0.75)], "Fe2O3"), // fractional
+            (&[(Element::Li, 1.0 / 6.0), (Element::B, 1.0)], "LiB6"), // small fractions
         ];
         for (elements, expected) in cases {
             let comp = Composition::from_elements(elements.iter().copied());
@@ -915,39 +916,22 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_weight() {
-        let comp = Composition::from_elements([(Element::H, 2.0), (Element::O, 1.0)]);
-        // H2O: 2*1.008 + 1*15.999 ≈ 18.015
-        let weight = comp.weight();
-        assert!((weight - 18.015).abs() < 0.1, "H2O weight: {weight}");
-    }
+    fn test_weight_and_fractions() {
+        let h2o = Composition::from_elements([(Element::H, 2.0), (Element::O, 1.0)]);
 
-    #[test]
-    fn test_atomic_fraction() {
-        let comp = Composition::from_elements([(Element::H, 2.0), (Element::O, 1.0)]);
-        let h_frac = comp.get_atomic_fraction(Element::H);
-        let o_frac = comp.get_atomic_fraction(Element::O);
+        // Weight: H2O = 2*1.008 + 15.999 ≈ 18.015
+        assert!((h2o.weight() - 18.015).abs() < 0.1);
 
-        assert!((h_frac - 2.0 / 3.0).abs() < AMOUNT_TOLERANCE);
-        assert!((o_frac - 1.0 / 3.0).abs() < AMOUNT_TOLERANCE);
-    }
+        // Atomic fractions: H=2/3, O=1/3
+        assert!((h2o.get_atomic_fraction(Element::H) - 2.0 / 3.0).abs() < AMOUNT_TOLERANCE);
+        assert!((h2o.get_atomic_fraction(Element::O) - 1.0 / 3.0).abs() < AMOUNT_TOLERANCE);
 
-    #[test]
-    fn test_wt_fraction() {
-        let comp = Composition::from_elements([(Element::H, 2.0), (Element::O, 1.0)]);
-        let o_wt_frac = comp.get_wt_fraction(Element::O);
-        // O contributes ~88.8% of H2O by mass
-        assert!(
-            (o_wt_frac - 0.888).abs() < 0.01,
-            "O wt fraction: {o_wt_frac}"
-        );
-    }
+        // Weight fraction: O ≈ 88.8% of H2O by mass
+        assert!((h2o.get_wt_fraction(Element::O) - 0.888).abs() < 0.01);
 
-    #[test]
-    fn test_fractional_composition() {
-        let comp = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
-        let frac = comp.fractional_composition();
-
+        // Fractional composition: normalized to 1 atom total
+        let fe2o3 = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
+        let frac = fe2o3.fractional_composition();
         assert!((frac.num_atoms() - 1.0).abs() < AMOUNT_TOLERANCE);
         assert!((frac.get(Element::Fe) - 0.4).abs() < AMOUNT_TOLERANCE);
         assert!((frac.get(Element::O) - 0.6).abs() < AMOUNT_TOLERANCE);
@@ -1172,27 +1156,6 @@ mod tests {
         for invalid in ["", "   ", "6123"] {
             assert!(Composition::from_formula(invalid).is_err(), "{invalid}");
         }
-    }
-
-    #[test]
-    fn test_reduced_formula_and_hash() {
-        // Single element reduces to symbol
-        assert_eq!(
-            Composition::from_elements([(Element::O, 4.0)]).reduced_formula(),
-            "O"
-        );
-        // Fe4O6 → Fe2O3
-        assert_eq!(
-            Composition::from_elements([(Element::Fe, 4.0), (Element::O, 6.0)]).reduced_formula(),
-            "Fe2O3"
-        );
-        // Equal reduced formulas have equal hashes
-        let comp1 = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
-        let comp2 = Composition::from_elements([(Element::Fe, 4.0), (Element::O, 6.0)]);
-        assert_eq!(comp1.formula_hash(), comp2.formula_hash());
-        // Small fractions don't crash
-        let frac = Composition::from_elements([(Element::Li, 1.0 / 6.0), (Element::B, 1.0)]);
-        assert!(frac.num_atoms() > 0.0);
     }
 
     #[test]
