@@ -1329,37 +1329,63 @@ mod tests {
     use super::*;
     use crate::element::Element;
 
+    // =========================================================================
+    // Test Structure Factories
+    // =========================================================================
+
+    // NaCl primitive cell (rocksalt, a=5.64Å)
     fn make_nacl() -> Structure {
-        let lattice = Lattice::cubic(5.64);
-        let species = vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)];
-        let coords = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
-        Structure::new(lattice, species, coords)
+        make_rocksalt(Element::Na, Element::Cl, 5.64)
     }
 
+    // FCC conventional cell (4 atoms)
     fn make_fcc_conventional(element: Element, a: f64) -> Structure {
-        let lattice = Lattice::cubic(a);
-        let species = vec![Species::neutral(element); 4];
-        let coords = vec![
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(0.5, 0.5, 0.0),
-            Vector3::new(0.5, 0.0, 0.5),
-            Vector3::new(0.0, 0.5, 0.5),
-        ];
-        Structure::new(lattice, species, coords)
+        Structure::new(
+            Lattice::cubic(a),
+            vec![Species::neutral(element); 4],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.0),
+                Vector3::new(0.5, 0.0, 0.5),
+                Vector3::new(0.0, 0.5, 0.5),
+            ],
+        )
     }
 
+    // BCC conventional cell (2 atoms)
     fn make_bcc(element: Element, a: f64) -> Structure {
-        let lattice = Lattice::cubic(a);
-        let species = vec![Species::neutral(element), Species::neutral(element)];
-        let coords = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
-        Structure::new(lattice, species, coords)
+        Structure::new(
+            Lattice::cubic(a),
+            vec![Species::neutral(element); 2],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        )
     }
 
+    // Rocksalt structure (cation at origin, anion at body center)
     fn make_rocksalt(cation: Element, anion: Element, a: f64) -> Structure {
-        let lattice = Lattice::cubic(a);
-        let species = vec![Species::neutral(cation), Species::neutral(anion)];
-        let coords = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
-        Structure::new(lattice, species, coords)
+        Structure::new(
+            Lattice::cubic(a),
+            vec![Species::neutral(cation), Species::neutral(anion)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        )
+    }
+
+    // Single Cu atom at fractional position in 4Å cubic cell
+    fn make_cu_at(x: f64, y: f64, z: f64) -> Structure {
+        Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Cu)],
+            vec![Vector3::new(x, y, z)],
+        )
+    }
+
+    // Single Cu atom at origin in cubic cell with variable lattice constant
+    fn make_cu_cubic(a: f64) -> Structure {
+        Structure::new(
+            Lattice::cubic(a),
+            vec![Species::neutral(Element::Cu)],
+            vec![Vector3::zeros()],
+        )
     }
 
     #[test]
@@ -1737,13 +1763,17 @@ mod tests {
     fn test_neighbor_list_edge_cases() {
         // Empty structure returns empty results
         let empty = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
-        let (c, n, i, d) = empty.get_neighbor_list(3.0, 1e-8, true);
-        assert!(c.is_empty() && n.is_empty() && i.is_empty() && d.is_empty());
+        let (centers, neighbors, images, distances) = empty.get_neighbor_list(3.0, 1e-8, true);
+        assert!(
+            centers.is_empty() && neighbors.is_empty() && images.is_empty() && distances.is_empty()
+        );
 
         // Zero cutoff returns empty results
         let nacl = make_nacl();
-        let (c, n, i, d) = nacl.get_neighbor_list(0.0, 1e-8, true);
-        assert!(c.is_empty() && n.is_empty() && i.is_empty() && d.is_empty());
+        let (centers, neighbors, images, distances) = nacl.get_neighbor_list(0.0, 1e-8, true);
+        assert!(
+            centers.is_empty() && neighbors.is_empty() && images.is_empty() && distances.is_empty()
+        );
     }
 
     #[test]
@@ -1822,76 +1852,45 @@ mod tests {
 
     #[test]
     fn test_neighbor_list_self_pairs() {
-        let s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
+        let s = make_cu_at(0.0, 0.0, 0.0);
 
         // With exclude_self=true, should not find self at distance 0
-        let (centers, neighbors, images, _distances) = s.get_neighbor_list(10.0, 1e-8, true);
-
-        // Self in same image should not be included
+        let (centers, neighbors, images, _) = s.get_neighbor_list(10.0, 1e-8, true);
         let self_same_image = centers
             .iter()
             .zip(&neighbors)
             .zip(&images)
             .any(|((&c, &n), &img)| c == n && img == [0, 0, 0]);
-        assert!(
-            !self_same_image,
-            "Self in same image should not be included when exclude_self=true"
-        );
+        assert!(!self_same_image, "Self in same image should be excluded");
 
         // With exclude_self=false, should find self at distance 0
-        let (_, _, images2, distances2) = s.get_neighbor_list(0.1, 1e-8, false);
-        let self_found = images2
+        let (_, _, images, distances) = s.get_neighbor_list(0.1, 1e-8, false);
+        let self_found = images
             .iter()
-            .zip(&distances2)
+            .zip(&distances)
             .any(|(&img, &d)| img == [0, 0, 0] && d < 1e-8);
-        assert!(
-            self_found,
-            "Self at distance 0 should be found when exclude_self=false"
-        );
+        assert!(self_found, "Self at distance 0 should be found");
     }
 
     #[test]
     fn test_neighbor_list_periodic_images() {
-        // Single atom at origin with small cutoff
-        let s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
-
         // Cutoff = 4.0 should find 6 neighbors (periodic images along each axis)
-        let (centers, _neighbors, images, distances) = s.get_neighbor_list(4.0, 1e-8, true);
+        let (centers, _, images, distances) =
+            make_cu_at(0.0, 0.0, 0.0).get_neighbor_list(4.0, 1e-8, true);
 
-        assert_eq!(
-            centers.len(),
-            6,
-            "Should find 6 periodic images at distance a"
-        );
+        assert_eq!(centers.len(), 6, "Should find 6 periodic images");
+        assert!(distances.iter().all(|&d| (d - 4.0).abs() < 1e-8));
 
-        // All should be at distance exactly 4.0
-        for d in &distances {
-            assert!(
-                (d - 4.0).abs() < 1e-8,
-                "Periodic image distance should be 4.0, got {}",
-                d
-            );
-        }
-
-        // Check images are the 6 face-center images
-        let expected_images = vec![
+        // Check all 6 face-adjacent images are found
+        for exp in [
             [-1, 0, 0],
             [1, 0, 0],
             [0, -1, 0],
             [0, 1, 0],
             [0, 0, -1],
             [0, 0, 1],
-        ];
-        for exp_img in &expected_images {
-            assert!(images.contains(exp_img), "Should find image {:?}", exp_img);
+        ] {
+            assert!(images.contains(&exp), "Missing image {exp:?}");
         }
     }
 
@@ -2047,59 +2046,42 @@ mod tests {
 
     #[test]
     fn test_apply_operation_fractional() {
-        let cu = |x, y, z| {
-            Structure::new(
-                Lattice::cubic(4.0),
-                vec![Species::neutral(Element::Cu)],
-                vec![Vector3::new(x, y, z)],
-            )
-        };
-
         // Identity: coords unchanged
-        let s = cu(0.25, 0.25, 0.25);
-        let t = s.apply_operation_copy(&SymmOp::identity(), true);
-        assert!((t.frac_coords[0] - s.frac_coords[0]).norm() < 1e-10);
+        let original = make_cu_at(0.25, 0.25, 0.25);
+        let transformed = original.apply_operation_copy(&SymmOp::identity(), true);
+        assert!((transformed.frac_coords[0] - original.frac_coords[0]).norm() < 1e-10);
 
         // Inversion: (0.25, 0.25, 0.25) -> (-0.25, -0.25, -0.25)
-        let t = s.apply_operation_copy(&SymmOp::inversion(), true);
-        assert!((t.frac_coords[0] - Vector3::new(-0.25, -0.25, -0.25)).norm() < 1e-10);
+        let inverted = original.apply_operation_copy(&SymmOp::inversion(), true);
+        assert!((inverted.frac_coords[0] - Vector3::new(-0.25, -0.25, -0.25)).norm() < 1e-10);
 
         // Translation: (0,0,0) + (0.5,0,0) = (0.5, 0, 0)
-        let s = cu(0.0, 0.0, 0.0);
-        let t = s.apply_operation_copy(&SymmOp::translation(Vector3::new(0.5, 0.0, 0.0)), true);
-        assert!((t.frac_coords[0] - Vector3::new(0.5, 0.0, 0.0)).norm() < 1e-10);
+        let translated = make_cu_at(0.0, 0.0, 0.0)
+            .apply_operation_copy(&SymmOp::translation(Vector3::new(0.5, 0.0, 0.0)), true);
+        assert!((translated.frac_coords[0] - Vector3::new(0.5, 0.0, 0.0)).norm() < 1e-10);
     }
 
     #[test]
     fn test_apply_operation_cartesian() {
         use std::f64::consts::FRAC_PI_2;
         // 90° rotation around z-axis: (0.25,0,0) frac -> (1,0,0) Å -> (0,1,0) Å -> (0,0.25,0) frac
-        let s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.25, 0.0, 0.0)],
-        );
-        let rotated = s.apply_operation_copy(&SymmOp::rotation_z(FRAC_PI_2), false);
+        let rotated =
+            make_cu_at(0.25, 0.0, 0.0).apply_operation_copy(&SymmOp::rotation_z(FRAC_PI_2), false);
         assert!((rotated.frac_coords[0] - Vector3::new(0.0, 0.25, 0.0)).norm() < 1e-10);
     }
 
     #[test]
     fn test_apply_operation_in_place_and_chaining() {
-        let mut s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
-
         // In-place translation
+        let mut s = make_cu_at(0.0, 0.0, 0.0);
         s.apply_operation(&SymmOp::translation(Vector3::new(0.5, 0.5, 0.5)), true);
         assert!((s.frac_coords[0] - Vector3::new(0.5, 0.5, 0.5)).norm() < 1e-10);
 
         // Chaining: translate then invert
-        s.frac_coords[0] = Vector3::zeros();
+        let mut s = make_cu_at(0.0, 0.0, 0.0);
         s.apply_operation(&SymmOp::translation(Vector3::new(0.25, 0.0, 0.0)), true)
             .apply_operation(&SymmOp::inversion(), true);
-        assert!((s.frac_coords[0][0] - (-0.25)).abs() < 1e-10);
+        assert!((s.frac_coords[0] - Vector3::new(-0.25, 0.0, 0.0)).norm() < 1e-10);
     }
 
     #[test]
@@ -2117,12 +2099,7 @@ mod tests {
     #[test]
     fn test_volume() {
         // Cubic cell: 4^3 = 64 Å³
-        let cubic = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
-        assert!((cubic.volume() - 64.0).abs() < 1e-10);
+        assert!((make_cu_at(0.0, 0.0, 0.0).volume() - 64.0).abs() < 1e-10);
         // Structure.volume() should delegate to Lattice.volume()
         let nacl = make_nacl();
         assert!((nacl.volume() - nacl.lattice.volume()).abs() < 1e-10);
@@ -2160,11 +2137,7 @@ mod tests {
         let nacl_density = nacl.density().unwrap();
         assert!(nacl_density > 0.5 && nacl_density < 0.6);
         // 1 Cu in 1 Å³ → ~105.5 g/cm³
-        let tiny = Structure::new(
-            Lattice::cubic(1.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
+        let tiny = make_cu_cubic(1.0);
         assert!((tiny.density().unwrap() - 105.5).abs() < 1.0);
     }
 
@@ -2187,11 +2160,7 @@ mod tests {
         assert!((s.frac_coords[1][0] - 0.6).abs() < 1e-10);
 
         // Cartesian coords: 2Å on 4Å lattice = 0.5 fractional
-        let mut s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
+        let mut s = make_cu_at(0.0, 0.0, 0.0);
         s.translate_sites(&[0], Vector3::new(2.0, 0.0, 0.0), false);
         assert!((s.frac_coords[0][0] - 0.5).abs() < 1e-10);
 
@@ -2442,27 +2411,16 @@ mod tests {
 
     #[test]
     fn test_wrap_to_unit_cell() {
-        // Test wrapping out-of-range coords: (1.5, -0.3, 2.7) -> (0.5, 0.7, 0.7)
-        let mut s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(1.5, -0.3, 2.7)],
-        );
+        // (1.5, -0.3, 2.7) -> (0.5, 0.7, 0.7)
+        let mut s = make_cu_at(1.5, -0.3, 2.7);
         s.wrap_to_unit_cell();
-        let fc = s.frac_coords[0];
-        assert!((fc[0] - 0.5).abs() < 1e-10);
-        assert!((fc[1] - 0.7).abs() < 1e-10);
-        assert!((fc[2] - 0.7).abs() < 1e-10);
+        assert!((s.frac_coords[0] - Vector3::new(0.5, 0.7, 0.7)).norm() < 1e-10);
 
         // Already in [0,1) should be unchanged
-        let mut s2 = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.25, 0.5, 0.75)],
-        );
-        let orig = s2.frac_coords[0];
-        s2.wrap_to_unit_cell();
-        assert!((s2.frac_coords[0] - orig).norm() < 1e-10);
+        let mut s = make_cu_at(0.25, 0.5, 0.75);
+        let orig = s.frac_coords[0];
+        s.wrap_to_unit_cell();
+        assert!((s.frac_coords[0] - orig).norm() < 1e-10);
     }
 
     #[test]
@@ -2519,60 +2477,42 @@ mod tests {
 
     #[test]
     fn test_interpolate_linear_displacement() {
-        let cu_at = |x: f64| {
-            Structure::new(
-                Lattice::cubic(4.0),
-                vec![Species::neutral(Element::Cu)],
-                vec![Vector3::new(x, 0.0, 0.0)],
-            )
-        };
-        let images = cu_at(0.0)
-            .interpolate(&cu_at(0.5), 4, false, false)
+        let images = make_cu_at(0.0, 0.0, 0.0)
+            .interpolate(&make_cu_at(0.5, 0.0, 0.0), 4, false, false)
             .unwrap();
         assert_eq!(images.len(), 5);
         for (idx, img) in images.iter().enumerate() {
             let expected = 0.5 * idx as f64 / 4.0;
-            let got = img.frac_coords[0][0];
             assert!(
-                (got - expected).abs() < 1e-10,
-                "Image {idx}: expected {expected}, got {got}"
+                (img.frac_coords[0][0] - expected).abs() < 1e-10,
+                "Image {idx}"
             );
         }
     }
 
     #[test]
     fn test_interpolate_pbc() {
-        // Helper to create single-atom Cu structure
-        let cu_at = |x: f64| {
-            Structure::new(
-                Lattice::cubic(4.0),
-                vec![Species::neutral(Element::Cu)],
-                vec![Vector3::new(x, 0.0, 0.0)],
-            )
-        };
-
-        // Case 1: 0.9→0.1 crosses boundary with PBC, goes through 0.5 without
-        let (start, end) = (cu_at(0.9), cu_at(0.1));
-        let with_pbc = start.interpolate(&end, 4, false, true).unwrap();
-        let without_pbc = start.interpolate(&end, 4, false, false).unwrap();
-
-        let mid_pbc = with_pbc[2].frac_coords[0][0];
-        let mid_no_pbc = without_pbc[2].frac_coords[0][0];
+        // 0.9→0.1 crosses boundary with PBC, goes through 0.5 without
+        let (start, end) = (make_cu_at(0.9, 0.0, 0.0), make_cu_at(0.1, 0.0, 0.0));
+        let mid_pbc = start.interpolate(&end, 4, false, true).unwrap()[2].frac_coords[0][0];
+        let mid_no_pbc = start.interpolate(&end, 4, false, false).unwrap()[2].frac_coords[0][0];
         assert!(
             !(0.2..=0.8).contains(&mid_pbc),
-            "PBC: middle should be near boundary, got {mid_pbc}"
+            "PBC: middle should be near boundary"
         );
         assert!(
             (mid_no_pbc - 0.5).abs() < 0.1,
-            "No PBC: middle should be ~0.5, got {mid_no_pbc}"
+            "No PBC: middle should be ~0.5"
         );
 
-        // Case 2: 0.3→0.8 (diff=0.5) - distinguishes round() from floor()
-        let images = cu_at(0.3).interpolate(&cu_at(0.8), 4, false, true).unwrap();
-        let mid = images[2].frac_coords[0][0];
+        // 0.3→0.8 (diff=0.5) - distinguishes round() from floor()
+        let mid = make_cu_at(0.3, 0.0, 0.0)
+            .interpolate(&make_cu_at(0.8, 0.0, 0.0), 4, false, true)
+            .unwrap()[2]
+            .frac_coords[0][0];
         assert!(
             !(0.15..=0.85).contains(&mid),
-            "0.3→0.8 with PBC should cross boundary, got {mid}"
+            "0.3→0.8 with PBC should cross boundary"
         );
     }
 
@@ -2599,15 +2539,8 @@ mod tests {
 
     #[test]
     fn test_interpolate_lattice() {
-        let cu_cubic = |a: f64| {
-            Structure::new(
-                Lattice::cubic(a),
-                vec![Species::neutral(Element::Cu)],
-                vec![Vector3::new(0.0, 0.0, 0.0)],
-            )
-        };
-        let images = cu_cubic(4.0)
-            .interpolate(&cu_cubic(5.0), 4, true, false)
+        let images = make_cu_cubic(4.0)
+            .interpolate(&make_cu_cubic(5.0), 4, true, false)
             .unwrap();
 
         // Check endpoints and middle
@@ -2618,10 +2551,7 @@ mod tests {
 
         // Verify monotonic increase
         for idx in 1..images.len() {
-            assert!(
-                get_a(idx) >= get_a(idx - 1),
-                "Lattice should increase monotonically"
-            );
+            assert!(get_a(idx) >= get_a(idx - 1), "Lattice should increase");
         }
     }
 
@@ -2773,16 +2703,11 @@ mod tests {
 
     #[test]
     fn test_reduced_structure_wraps_coords() {
-        let s = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(1.5, -0.3, 0.8)], // outside [0,1)
-        );
-        let reduced = s.get_reduced_structure(ReductionAlgo::Niggli).unwrap();
-        for fc in &reduced.frac_coords {
-            for &c in fc.iter() {
-                assert!((0.0..1.0).contains(&c), "coord {c} not in [0,1)");
-            }
+        let reduced = make_cu_at(1.5, -0.3, 0.8) // outside [0,1)
+            .get_reduced_structure(ReductionAlgo::Niggli)
+            .unwrap();
+        for &c in reduced.frac_coords[0].iter() {
+            assert!((0.0..1.0).contains(&c), "coord {c} not in [0,1)");
         }
     }
 }

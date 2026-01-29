@@ -573,7 +573,8 @@ fn parse_reduction_algo(algo: &str) -> PyResult<crate::structure::ReductionAlgo>
 ///
 /// Args:
 ///     structure (str): Structure as JSON string (from Structure.as_dict())
-///     scaling_matrix (list[list[int]]): 3x3 integer scaling matrix [[a1,a2,a3],[b1,b2,b3],[c1,c2,c3]]
+///     scaling_matrix (list[list[int]]): 3x3 integer scaling matrix [[a1,a2,a3],[b1,b2,b3],[c1,c2,c3]].
+///         Negative values are allowed and create mirror transformations.
 ///
 /// Returns:
 ///     dict: Supercell structure as a Python dict compatible with pymatgen
@@ -619,6 +620,11 @@ fn make_supercell_diag(
     ny: i32,
     nz: i32,
 ) -> PyResult<Py<PyDict>> {
+    if nx <= 0 || ny <= 0 || nz <= 0 {
+        return Err(PyValueError::new_err(format!(
+            "make_supercell_diag: scaling factors must be positive, got [{nx}, {ny}, {nz}]"
+        )));
+    }
     let supercell = parse_struct(structure)?.make_supercell_diag([nx, ny, nz]);
     Ok(structure_to_pydict(py, &supercell)?.unbind())
 }
