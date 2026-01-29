@@ -12,7 +12,6 @@ use pyo3::types::{PyDict, PyList};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::error::Result;
 use crate::io::{
     parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_pymatgen_json,
 };
@@ -969,6 +968,120 @@ fn apply_translation(
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
 
+// ============================================================================
+// Structure Properties Functions
+// ============================================================================
+
+/// Get the volume of the unit cell in Angstrom^3.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///
+/// Returns:
+///     float: Volume in Angstrom^3
+#[pyfunction]
+fn get_volume(structure: &str) -> PyResult<f64> {
+    Ok(parse_struct(structure)?.volume())
+}
+
+/// Get the total mass of the structure in atomic mass units (u).
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///
+/// Returns:
+///     float: Total mass in amu
+#[pyfunction]
+fn get_total_mass(structure: &str) -> PyResult<f64> {
+    Ok(parse_struct(structure)?.total_mass())
+}
+
+/// Get the density of the structure in g/cm^3.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///
+/// Returns:
+///     float | None: Density in g/cm^3, or None if volume is zero
+#[pyfunction]
+fn get_density(structure: &str) -> PyResult<Option<f64>> {
+    Ok(parse_struct(structure)?.density())
+}
+
+// ============================================================================
+// Site Manipulation Functions
+// ============================================================================
+
+/// Translate specific sites by a vector.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     indices (list[int]): Site indices to translate
+///     vector (list[float]): Translation vector as [x, y, z]
+///     fractional (bool): If True, vector is in fractional coords; else Cartesian (Angstroms)
+///
+/// Returns:
+///     dict: Structure with translated sites as pymatgen-compatible dict
+#[pyfunction]
+#[pyo3(signature = (structure, indices, vector, fractional = true))]
+fn translate_sites(
+    py: Python<'_>,
+    structure: &str,
+    indices: Vec<usize>,
+    vector: [f64; 3],
+    fractional: bool,
+) -> PyResult<Py<PyDict>> {
+    let mut s = parse_struct(structure)?;
+    let n = s.num_sites();
+    for &idx in &indices {
+        if idx >= n {
+            return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+                "Site index {idx} out of bounds (num_sites={n})"
+            )));
+        }
+    }
+    s.translate_sites(&indices, Vector3::from(vector), fractional);
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
+/// Perturb all sites by random vectors.
+///
+/// Each site is translated by a random vector with magnitude uniformly
+/// distributed in [min_distance, distance].
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     distance (float): Maximum perturbation distance in Angstroms
+///     min_distance (float | None): Minimum perturbation distance (default: 0)
+///     seed (int | None): Random seed for reproducibility
+///
+/// Returns:
+///     dict: Perturbed structure as pymatgen-compatible dict
+#[pyfunction]
+#[pyo3(signature = (structure, distance, min_distance = None, seed = None))]
+fn perturb(
+    py: Python<'_>,
+    structure: &str,
+    distance: f64,
+    min_distance: Option<f64>,
+    seed: Option<u64>,
+) -> PyResult<Py<PyDict>> {
+    if distance < 0.0 {
+        return Err(PyValueError::new_err("distance must be non-negative"));
+    }
+    if let Some(min_dist) = min_distance {
+        if min_dist < 0.0 {
+            return Err(PyValueError::new_err("min_distance must be non-negative"));
+        }
+        if min_dist > distance {
+            return Err(PyValueError::new_err("min_distance must be <= distance"));
+        }
+    }
+    let mut s = parse_struct(structure)?;
+    s.perturb(distance, min_distance, seed);
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
@@ -999,5 +1112,12 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_operation, m)?)?;
     m.add_function(wrap_pyfunction!(apply_inversion, m)?)?;
     m.add_function(wrap_pyfunction!(apply_translation, m)?)?;
+    // Property functions
+    m.add_function(wrap_pyfunction!(get_volume, m)?)?;
+    m.add_function(wrap_pyfunction!(get_total_mass, m)?)?;
+    m.add_function(wrap_pyfunction!(get_density, m)?)?;
+    // Site manipulation functions
+    m.add_function(wrap_pyfunction!(translate_sites, m)?)?;
+    m.add_function(wrap_pyfunction!(perturb, m)?)?;
     Ok(())
 }
