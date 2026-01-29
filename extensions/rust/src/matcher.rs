@@ -126,10 +126,14 @@ impl StructureMatcher {
     }
 
     /// Get composition hash for prefiltering, aligned with comparator semantics.
+    ///
+    /// For `ComparatorType::Element`, oxidation states are ignored.
+    /// For `ComparatorType::Species`, full species information is used.
     pub fn composition_hash(&self, structure: &Structure) -> u64 {
-        // Currently both comparators use the same hash, but this method
-        // ensures the prefilter stays aligned if comparator semantics diverge.
-        structure.composition().hash()
+        match self.comparator_type {
+            ComparatorType::Element => structure.composition().formula_hash(),
+            ComparatorType::Species => structure.species_composition().species_hash(),
+        }
     }
 
     /// Get reduced structure (Niggli reduced, optionally primitive).
@@ -600,9 +604,10 @@ impl StructureMatcher {
         }
 
         // Get compositions for fast pruning (compute once, outside loop)
+        // Use element_composition() since fit_anonymous ignores oxidation states
         let comp1 = struct1.composition();
         let comp2 = struct2.composition();
-        let comp2_hash = comp2.hash();
+        let comp2_hash = comp2.element_composition().formula_hash();
 
         // Create element-only matcher once (used for all permutations)
         let element_matcher = Self {
@@ -621,7 +626,7 @@ impl StructureMatcher {
 
             // Fast composition hash check before expensive structure matching
             let mapped_comp = comp1.remap_elements(&mapping);
-            if mapped_comp.hash() != comp2_hash {
+            if mapped_comp.element_composition().formula_hash() != comp2_hash {
                 continue;
             }
 
@@ -1476,6 +1481,172 @@ mod tests {
         assert!(
             matcher.fit_anonymous(&s1, &s2),
             "fit_anonymous should ignore oxidation states and match NaCl with MgO"
+        );
+    }
+
+    // =========================================================================
+    // Pymatgen Edge Case Tests (ported from pymatgen test suite)
+    // =========================================================================
+
+    #[test]
+    fn test_matching_edge_cases() {
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+
+        // Out-of-cell sites: 0.98 ≈ -0.02 (wrapped)
+        let s1 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.98, 0.0, 0.0)],
+        );
+        let s2 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(-0.02, 0.0, 0.0)],
+        );
+        assert!(matcher.fit(&s1, &s2), "Wrapped coords should match");
+
+        // Site shuffling: order shouldn't matter
+        let s3 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::O)],
+            vec![Vector3::zeros(), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let s4 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::O), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.5, 0.5, 0.5), Vector3::zeros()],
+        );
+        assert!(matcher.fit(&s3, &s4), "Site order shouldn't matter");
+
+        // Large translation should fail
+        let s5 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::zeros(), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let s6 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::zeros(), Vector3::new(0.9, 0.9, 0.7)],
+        );
+        assert!(
+            !matcher.with_site_pos_tol(0.3).fit(&s5, &s6),
+            "Large shift should fail"
+        );
+    }
+
+    #[test]
+    fn test_scaling_and_comparators() {
+        // scale=false is more restrictive
+        let s1 = make_simple_cubic(Element::Fe, 4.0);
+        let s2 = make_simple_cubic(Element::Fe, 4.5);
+        let fit_scale = StructureMatcher::new().fit(&s1, &s2);
+        let fit_no_scale = StructureMatcher::new().with_scale(false).fit(&s1, &s2);
+        assert!(!fit_no_scale || fit_scale, "no_scale more restrictive");
+
+        // Element comparator ignores oxidation states
+        let s3 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::new(Element::Fe, Some(2))],
+            vec![Vector3::zeros()],
+        );
+        let s4 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::new(Element::Fe, Some(3))],
+            vec![Vector3::zeros()],
+        );
+        let m_species = StructureMatcher::new().with_primitive_cell(false);
+        let m_elem = m_species.clone().with_comparator(ComparatorType::Element);
+        assert!(
+            !m_species.fit(&s3, &s4),
+            "Species comparator rejects diff oxi"
+        );
+        assert!(m_elem.fit(&s3, &s4), "Element comparator accepts same elem");
+    }
+
+    #[test]
+    fn test_supercell_matching() {
+        let s1 = make_simple_cubic(Element::Fe, 4.0);
+        let coords: Vec<_> = (0..8)
+            .map(|i| {
+                Vector3::new(
+                    (i & 1) as f64 * 0.5,
+                    ((i >> 1) & 1) as f64 * 0.5,
+                    ((i >> 2) & 1) as f64 * 0.5,
+                )
+            })
+            .collect();
+        let s2 = Structure::new(
+            Lattice::cubic(8.0),
+            vec![Species::neutral(Element::Fe); 8],
+            coords,
+        );
+
+        assert!(
+            !StructureMatcher::new()
+                .with_primitive_cell(false)
+                .fit(&s1, &s2)
+        );
+        assert!(
+            StructureMatcher::new()
+                .with_primitive_cell(true)
+                .fit(&s1, &s2)
+        );
+    }
+
+    #[test]
+    fn test_rms_distance() {
+        let s = make_simple_cubic(Element::Fe, 4.0);
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        // Identical → RMS ≈ 0
+        if let Some((rms, _)) = matcher.get_rms_dist(&s, &s) {
+            assert!(rms < 1e-10);
+        }
+        // Small perturbation → small RMS
+        let s2 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.01, 0.0, 0.0)],
+        );
+        if let Some((rms, _)) = matcher.with_site_pos_tol(0.5).get_rms_dist(&s, &s2) {
+            assert!(rms < 0.1);
+        }
+    }
+
+    #[test]
+    fn test_composition_hash_respects_comparator_type() {
+        // Create two structures: same elements, different oxidation states
+        let fe2 = Species::new(Element::Fe, Some(2));
+        let fe3 = Species::new(Element::Fe, Some(3));
+        let o2 = Species::new(Element::O, Some(-2));
+
+        // FeO with Fe2+
+        let s1 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![fe2, o2],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        // FeO with Fe3+
+        let s2 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![fe3, o2],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        // Element comparator: same hash (oxidation states ignored)
+        let elem_matcher = StructureMatcher::new().with_comparator(ComparatorType::Element);
+        assert_eq!(
+            elem_matcher.composition_hash(&s1),
+            elem_matcher.composition_hash(&s2),
+            "Element comparator should give same hash for same elements"
+        );
+
+        // Species comparator: different hash (oxidation states matter)
+        let species_matcher = StructureMatcher::new().with_comparator(ComparatorType::Species);
+        assert_ne!(
+            species_matcher.composition_hash(&s1),
+            species_matcher.composition_hash(&s2),
+            "Species comparator should give different hash for different oxidation states"
         );
     }
 }

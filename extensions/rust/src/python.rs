@@ -12,12 +12,19 @@ use pyo3::types::{PyDict, PyList};
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::composition::Composition;
 use crate::io::{
     parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_pymatgen_json,
 };
 use crate::matcher::{ComparatorType, StructureMatcher};
 use crate::structure::{Structure, SymmOp};
 use nalgebra::{Matrix3, Vector3};
+
+/// Parse a composition formula string, returning a PyResult.
+fn parse_comp(formula: &str) -> PyResult<Composition> {
+    Composition::from_formula(formula)
+        .map_err(|e| PyValueError::new_err(format!("Error parsing formula: {e}")))
+}
 
 /// Parse a structure JSON string, returning a PyResult.
 fn parse_struct(json: &str) -> PyResult<Structure> {
@@ -1235,6 +1242,56 @@ fn py_to_json_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<serde_json::Value>
     }
 }
 
+// ============================================================================
+// Composition Functions
+// ============================================================================
+
+/// Parse a chemical formula and return composition data.
+///
+/// Args:
+///     formula: Chemical formula string (e.g., "LiFePO4", "Ca3(PO4)2")
+///
+/// Returns:
+///     dict with keys:
+///         - species: dict mapping element symbols to amounts
+///         - formula: full formula string
+///         - reduced_formula: reduced formula string
+///         - chemical_system: element system (e.g., "Fe-Li-O-P")
+///         - num_atoms: total number of atoms
+///         - weight: molecular weight in atomic mass units
+#[pyfunction]
+fn parse_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
+    let comp = parse_comp(formula)?;
+    let dict = PyDict::new(py);
+
+    // Species dict
+    let species_dict = PyDict::new(py);
+    for (sp, amt) in comp.iter() {
+        species_dict.set_item(sp.to_string(), *amt)?;
+    }
+    dict.set_item("species", species_dict)?;
+
+    // Other properties
+    dict.set_item("formula", comp.formula())?;
+    dict.set_item("reduced_formula", comp.reduced_formula())?;
+    dict.set_item("hill_formula", comp.hill_formula())?;
+    dict.set_item("alphabetical_formula", comp.alphabetical_formula())?;
+    dict.set_item("chemical_system", comp.chemical_system())?;
+    dict.set_item("num_atoms", comp.num_atoms())?;
+    dict.set_item("num_elements", comp.num_elements())?;
+    dict.set_item("weight", comp.weight())?;
+    dict.set_item("is_element", comp.is_element())?;
+
+    if let Some(avg_en) = comp.average_electroneg() {
+        dict.set_item("average_electroneg", avg_en)?;
+    } else {
+        dict.set_item("average_electroneg", py.None())?;
+    }
+    dict.set_item("total_electrons", comp.total_electrons())?;
+
+    Ok(dict.unbind())
+}
+
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
@@ -1277,5 +1334,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_site_properties, m)?)?;
     m.add_function(wrap_pyfunction!(get_all_site_properties, m)?)?;
     m.add_function(wrap_pyfunction!(set_site_property, m)?)?;
+    // Composition functions
+    m.add_function(wrap_pyfunction!(parse_composition, m)?)?;
     Ok(())
 }

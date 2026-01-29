@@ -27,3 +27,4 @@ static/tmp
 !extensions/vscode/.vscode/
 extensions/vscode/deno.jsonc
 extensions/dash/deno.jsonc
+src/lib/element/data.json

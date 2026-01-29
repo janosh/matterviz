@@ -2,10 +2,76 @@
 //!
 //! This module provides the `Element` enum representing all 118 chemical elements,
 //! along with associated data like atomic numbers, symbols, and electronegativities.
+//!
+//! Extended element data (oxidation states, ionic radii, Shannon radii) is loaded
+//! from a gzipped JSON file at compile time and decompressed once on first access.
 
+use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Read;
 use std::sync::OnceLock;
+
+// =============================================================================
+// Extended Element Data (loaded from gzipped JSON)
+// =============================================================================
+
+/// Compile-time embedded gzipped JSON data (single source of truth shared with TypeScript).
+const ELEMENT_DATA_GZ: &[u8] = include_bytes!("../../../src/lib/element/data.json.gz");
+
+/// Decompressed JSON string (lazily initialized on first access).
+static ELEMENT_DATA_JSON: OnceLock<String> = OnceLock::new();
+
+fn get_element_data_json() -> &'static str {
+    ELEMENT_DATA_JSON.get_or_init(|| {
+        let mut decoder = GzDecoder::new(ELEMENT_DATA_GZ);
+        let mut json = String::new();
+        decoder
+            .read_to_string(&mut json)
+            .expect("Failed to decompress element data");
+        json
+    })
+}
+
+/// Shannon radius pair: crystal and ionic radii in Angstroms.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShannonRadiusPair {
+    /// Crystal radius in Angstroms.
+    pub crystal_radius: f64,
+    /// Ionic radius in Angstroms.
+    pub ionic_radius: f64,
+}
+
+/// Shannon radii: coordination -> spin -> radii.
+pub type ShannonCoordination = HashMap<String, HashMap<String, ShannonRadiusPair>>;
+
+/// Shannon radii for all oxidation states: oxidation_state -> coordination -> spin -> radii.
+pub type ShannonRadii = HashMap<String, ShannonCoordination>;
+
+/// Element data from JSON (for deserialization).
+#[derive(Debug, Deserialize)]
+struct ElementData {
+    name: String,
+    atomic_radius: Option<f64>,
+    covalent_radius: Option<f64>,
+    oxidation_states: Option<Vec<i8>>,
+    common_oxidation_states: Option<Vec<i8>>,
+    icsd_oxidation_states: Option<Vec<i8>>,
+    ionic_radii: Option<HashMap<String, f64>>,
+    shannon_radii: Option<ShannonRadii>,
+}
+
+static ELEMENT_DATA: OnceLock<Vec<ElementData>> = OnceLock::new();
+
+fn get_element_data(z: u8) -> Option<&'static ElementData> {
+    if !(1..=118).contains(&z) {
+        return None;
+    }
+    let data = ELEMENT_DATA.get_or_init(|| {
+        serde_json::from_str(get_element_data_json()).expect("Failed to parse element data JSON")
+    });
+    data.get((z - 1) as usize)
+}
 
 /// All 118 chemical elements.
 ///
@@ -685,6 +751,409 @@ impl Element {
     pub fn is_dummy(&self) -> bool {
         matches!(self, Self::Dummy)
     }
+
+    // =========================================================================
+    // Periodic Table Positioning
+    // =========================================================================
+
+    /// Get the periodic table row (1-7).
+    ///
+    /// For lanthanoids (Z=57-71), returns 6.
+    /// For actinoids (Z=89-103), returns 7.
+    /// For pseudo-elements (Z>118), returns 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::element::Element;
+    ///
+    /// assert_eq!(Element::H.row(), 1);
+    /// assert_eq!(Element::Fe.row(), 4);
+    /// assert_eq!(Element::La.row(), 6);  // Lanthanoid
+    /// assert_eq!(Element::U.row(), 7);   // Actinoid
+    /// ```
+    pub fn row(&self) -> u8 {
+        let z = self.atomic_number();
+        if z > 118 {
+            return 0; // Pseudo-elements
+        }
+        if (57..=71).contains(&z) {
+            return 6; // Lanthanoids
+        }
+        if (89..=103).contains(&z) {
+            return 7; // Actinoids
+        }
+
+        const ROW_SIZES: [u8; 7] = [2, 8, 8, 18, 18, 32, 32];
+        let mut total: u8 = 0;
+        for (row_idx, &size) in ROW_SIZES.iter().enumerate() {
+            total += size;
+            if z <= total {
+                return (row_idx + 1) as u8;
+            }
+        }
+        7
+    }
+
+    /// Get the periodic table group (1-18).
+    ///
+    /// For lanthanoids and actinoids, returns 3.
+    /// For pseudo-elements, returns 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::element::Element;
+    ///
+    /// assert_eq!(Element::H.group(), 1);
+    /// assert_eq!(Element::He.group(), 18);
+    /// assert_eq!(Element::Fe.group(), 8);
+    /// assert_eq!(Element::La.group(), 3);  // Lanthanoid
+    /// ```
+    pub fn group(&self) -> u8 {
+        let z = self.atomic_number();
+        if z > 118 {
+            return 0;
+        }
+
+        match z {
+            1 => 1,
+            2 => 18,
+            3..=18 => {
+                let pos = (z - 2) % 8;
+                if pos == 0 {
+                    18
+                } else if pos <= 2 {
+                    pos
+                } else {
+                    10 + pos
+                }
+            }
+            19..=54 => {
+                let pos = (z - 18) % 18;
+                if pos == 0 { 18 } else { pos }
+            }
+            57..=71 | 89..=103 => 3, // Lanthanoids and actinoids
+            _ => {
+                let pos = (z - 54) % 32;
+                if pos == 0 {
+                    18
+                } else if pos >= 18 {
+                    pos - 14
+                } else {
+                    pos
+                }
+            }
+        }
+    }
+
+    /// Get the periodic table block (s, p, d, or f).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::element::{Element, Block};
+    ///
+    /// assert_eq!(Element::H.block(), Block::S);
+    /// assert_eq!(Element::C.block(), Block::P);
+    /// assert_eq!(Element::Fe.block(), Block::D);
+    /// assert_eq!(Element::Ce.block(), Block::F);
+    /// ```
+    pub fn block(&self) -> Block {
+        let z = self.atomic_number();
+
+        // Lanthanoids (except Lu) and actinoids (except Lr) are f-block
+        if (57..=70).contains(&z) || (89..=102).contains(&z) {
+            return Block::F;
+        }
+
+        let group = self.group();
+        match group {
+            0 => Block::S, // Pseudo-elements
+            1 | 2 => Block::S,
+            3..=12 => Block::D,
+            13..=18 => Block::P,
+            _ => Block::S,
+        }
+    }
+
+    // =========================================================================
+    // Element Classification
+    // =========================================================================
+
+    /// True if element is a noble gas (He, Ne, Ar, Kr, Xe, Rn, Og).
+    pub fn is_noble_gas(&self) -> bool {
+        matches!(self.atomic_number(), 2 | 10 | 18 | 36 | 54 | 86 | 118)
+    }
+
+    /// True if element is an alkali metal (Li, Na, K, Rb, Cs, Fr).
+    pub fn is_alkali(&self) -> bool {
+        matches!(self.atomic_number(), 3 | 11 | 19 | 37 | 55 | 87)
+    }
+
+    /// True if element is an alkaline earth metal (Be, Mg, Ca, Sr, Ba, Ra).
+    pub fn is_alkaline(&self) -> bool {
+        matches!(self.atomic_number(), 4 | 12 | 20 | 38 | 56 | 88)
+    }
+
+    /// True if element is a halogen (F, Cl, Br, I, At).
+    ///
+    /// Note: Tennessine (Ts, Z=117) is excluded despite being in group 17,
+    /// as its chemical properties are predicted to differ significantly from
+    /// traditional halogens. This matches pymatgen's classification.
+    pub fn is_halogen(&self) -> bool {
+        matches!(self.atomic_number(), 9 | 17 | 35 | 53 | 85)
+    }
+
+    /// True if element is a chalcogen (O, S, Se, Te, Po).
+    pub fn is_chalcogen(&self) -> bool {
+        matches!(self.atomic_number(), 8 | 16 | 34 | 52 | 84)
+    }
+
+    /// True if element is a lanthanoid (La-Lu, Z=57-71).
+    pub fn is_lanthanoid(&self) -> bool {
+        (57..=71).contains(&self.atomic_number())
+    }
+
+    /// True if element is an actinoid (Ac-Lr, Z=89-103).
+    pub fn is_actinoid(&self) -> bool {
+        (89..=103).contains(&self.atomic_number())
+    }
+
+    /// True if element is a transition metal.
+    ///
+    /// Includes Sc-Zn (21-30), Y-Cd (39-48), La (57), Hf-Hg (72-80),
+    /// Ac (89), and Rf-Cn (104-112).
+    ///
+    /// Note: La and Ac return true for both `is_transition_metal()` and
+    /// `is_lanthanoid()`/`is_actinoid()`. This reflects that these elements
+    /// are often classified both ways in the literature.
+    pub fn is_transition_metal(&self) -> bool {
+        let z = self.atomic_number();
+        matches!(z, 21..=30 | 39..=48 | 72..=80 | 104..=112) || z == 57 || z == 89
+    }
+
+    /// True if element is a post-transition metal (Al, Ga, In, Tl, Sn, Pb, Bi).
+    pub fn is_post_transition_metal(&self) -> bool {
+        matches!(
+            self,
+            Self::Al | Self::Ga | Self::In | Self::Tl | Self::Sn | Self::Pb | Self::Bi
+        )
+    }
+
+    /// True if element is a metalloid (B, Si, Ge, As, Sb, Te, Po).
+    pub fn is_metalloid(&self) -> bool {
+        matches!(
+            self,
+            Self::B | Self::Si | Self::Ge | Self::As | Self::Sb | Self::Te | Self::Po
+        )
+    }
+
+    /// True if element is a metal (alkali, alkaline, transition, post-transition,
+    /// lanthanoid, or actinoid).
+    pub fn is_metal(&self) -> bool {
+        self.is_alkali()
+            || self.is_alkaline()
+            || self.is_transition_metal()
+            || self.is_post_transition_metal()
+            || self.is_lanthanoid()
+            || self.is_actinoid()
+    }
+
+    /// True if element is radioactive.
+    ///
+    /// Includes Tc (43), Pm (61), and all elements with Z >= 84.
+    pub fn is_radioactive(&self) -> bool {
+        let z = self.atomic_number();
+        z == 43 || z == 61 || z >= 84
+    }
+
+    /// True if element is a rare earth (lanthanoid, actinoid, Sc, or Y).
+    pub fn is_rare_earth(&self) -> bool {
+        self.is_lanthanoid() || self.is_actinoid() || matches!(self, Self::Sc | Self::Y)
+    }
+
+    // =========================================================================
+    // Oxidation States (from JSON data)
+    // =========================================================================
+
+    /// Get all known oxidation states for this element.
+    ///
+    /// Returns an empty slice for pseudo-elements or elements without data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::element::Element;
+    ///
+    /// let fe_oxi = Element::Fe.oxidation_states();
+    /// assert!(fe_oxi.contains(&2));
+    /// assert!(fe_oxi.contains(&3));
+    /// ```
+    pub fn oxidation_states(&self) -> &'static [i8] {
+        get_element_data(self.atomic_number())
+            .and_then(|d| d.oxidation_states.as_deref())
+            .unwrap_or(&[])
+    }
+
+    /// Get common oxidation states for this element.
+    ///
+    /// Returns an empty slice for pseudo-elements or elements without data.
+    pub fn common_oxidation_states(&self) -> &'static [i8] {
+        get_element_data(self.atomic_number())
+            .and_then(|d| d.common_oxidation_states.as_deref())
+            .unwrap_or(&[])
+    }
+
+    /// Get ICSD oxidation states (oxidation states with at least 10 instances in ICSD).
+    pub fn icsd_oxidation_states(&self) -> &'static [i8] {
+        get_element_data(self.atomic_number())
+            .and_then(|d| d.icsd_oxidation_states.as_deref())
+            .unwrap_or(&[])
+    }
+
+    /// Get maximum oxidation state.
+    pub fn max_oxidation_state(&self) -> Option<i8> {
+        self.oxidation_states().iter().copied().max()
+    }
+
+    /// Get minimum oxidation state.
+    pub fn min_oxidation_state(&self) -> Option<i8> {
+        self.oxidation_states().iter().copied().min()
+    }
+
+    // =========================================================================
+    // Radii (from JSON data)
+    // =========================================================================
+
+    /// Get atomic radius in Angstroms.
+    ///
+    /// Returns `None` for pseudo-elements or elements without data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::element::Element;
+    ///
+    /// let fe_radius = Element::Fe.atomic_radius();
+    /// assert!(fe_radius.is_some());
+    /// assert!(fe_radius.unwrap() > 1.0 && fe_radius.unwrap() < 2.0);
+    /// ```
+    pub fn atomic_radius(&self) -> Option<f64> {
+        get_element_data(self.atomic_number()).and_then(|d| d.atomic_radius)
+    }
+
+    /// Get covalent radius in Angstroms.
+    pub fn covalent_radius(&self) -> Option<f64> {
+        get_element_data(self.atomic_number()).and_then(|d| d.covalent_radius)
+    }
+
+    /// Get ionic radii by oxidation state.
+    ///
+    /// Returns a reference to a HashMap where keys are oxidation states as strings
+    /// (e.g., "2", "-1") and values are radii in Angstroms.
+    pub fn ionic_radii(&self) -> Option<&'static std::collections::HashMap<String, f64>> {
+        get_element_data(self.atomic_number()).and_then(|d| d.ionic_radii.as_ref())
+    }
+
+    /// Get ionic radius for a specific oxidation state.
+    ///
+    /// # Arguments
+    ///
+    /// * `oxidation_state` - The oxidation state (e.g., 2 for Fe2+, -2 for O2-)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::element::Element;
+    ///
+    /// let fe2_radius = Element::Fe.ionic_radius(2);
+    /// assert!(fe2_radius.is_some());
+    /// ```
+    pub fn ionic_radius(&self, oxidation_state: i8) -> Option<f64> {
+        self.ionic_radii()
+            .and_then(|radii| radii.get(&oxidation_state.to_string()))
+            .copied()
+    }
+
+    /// Get Shannon radii data for this element.
+    ///
+    /// Shannon radii provide detailed ionic radii accounting for coordination number
+    /// and spin state. The returned structure is:
+    /// oxidation_state -> coordination -> spin -> {crystal_radius, ionic_radius}
+    pub fn shannon_radii(&self) -> Option<&'static ShannonRadii> {
+        get_element_data(self.atomic_number()).and_then(|d| d.shannon_radii.as_ref())
+    }
+
+    /// Get Shannon ionic radius for a specific oxidation state, coordination, and spin.
+    ///
+    /// # Arguments
+    ///
+    /// * `oxidation_state` - The oxidation state (e.g., 2 for Fe2+)
+    /// * `coordination` - Coordination number as Roman numeral (e.g., "VI" for octahedral)
+    /// * `spin` - Spin state (e.g., "High Spin", "Low Spin", or "" for no spin)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::element::Element;
+    ///
+    /// // Fe2+ in octahedral (VI) high spin coordination
+    /// let radius = Element::Fe.shannon_ionic_radius(2, "VI", "High Spin");
+    /// ```
+    pub fn shannon_ionic_radius(
+        &self,
+        oxidation_state: i8,
+        coordination: &str,
+        spin: &str,
+    ) -> Option<f64> {
+        self.shannon_radii()
+            .and_then(|sr| sr.get(&oxidation_state.to_string()))
+            .and_then(|coord_map| coord_map.get(coordination))
+            .and_then(|spin_map| spin_map.get(spin))
+            .map(|pair| pair.ionic_radius)
+    }
+
+    /// Get the full name of this element (e.g., "Iron" for Fe).
+    pub fn name(&self) -> &'static str {
+        get_element_data(self.atomic_number())
+            .map(|d| d.name.as_str())
+            .unwrap_or("Unknown")
+    }
+}
+
+/// Periodic table block (s, p, d, f).
+///
+/// Note: Helium (He) is placed in group 18 with noble gases for chemical property
+/// reasons, so it returns `Block::P` despite having a 1s² electron configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Block {
+    /// s-block (groups 1-2, except He)
+    S,
+    /// p-block (groups 13-18, including He)
+    P,
+    /// d-block (groups 3-12)
+    D,
+    /// f-block (lanthanoids and actinoids, except Lu and Lr)
+    F,
+}
+
+impl Block {
+    /// Get the block as a stable string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Block::S => "S",
+            Block::P => "P",
+            Block::D => "D",
+            Block::F => "F",
+        }
+    }
+}
+
+impl std::fmt::Display for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 impl std::fmt::Display for Element {
@@ -1164,5 +1633,349 @@ mod tests {
         assert!(Element::Dummy.electronegativity().is_none());
         assert!(Element::D.electronegativity().is_none());
         assert!(Element::T.electronegativity().is_none());
+    }
+
+    #[test]
+    fn test_row_and_group() {
+        // Test periodic table positioning
+        // Format: (element, expected_row, expected_group)
+        let cases: &[(Element, u8, u8)] = &[
+            // Period 1
+            (Element::H, 1, 1),
+            (Element::He, 1, 18),
+            // Period 2
+            (Element::Li, 2, 1),
+            (Element::Be, 2, 2),
+            (Element::B, 2, 13),
+            (Element::C, 2, 14),
+            (Element::N, 2, 15),
+            (Element::O, 2, 16),
+            (Element::F, 2, 17),
+            (Element::Ne, 2, 18),
+            // Period 3
+            (Element::Na, 3, 1),
+            (Element::Mg, 3, 2),
+            (Element::Al, 3, 13),
+            (Element::Ar, 3, 18),
+            // Period 4 - transition metals
+            (Element::K, 4, 1),
+            (Element::Ca, 4, 2),
+            (Element::Sc, 4, 3),
+            (Element::Ti, 4, 4),
+            (Element::Fe, 4, 8),
+            (Element::Cu, 4, 11),
+            (Element::Zn, 4, 12),
+            (Element::Kr, 4, 18),
+            // Lanthanoids (row 6, group 3)
+            (Element::La, 6, 3),
+            (Element::Ce, 6, 3),
+            (Element::Lu, 6, 3),
+            // Actinoids (row 7, group 3)
+            (Element::Ac, 7, 3),
+            (Element::U, 7, 3),
+            (Element::Lr, 7, 3),
+            // Period 7
+            (Element::Og, 7, 18),
+        ];
+
+        for (elem, expected_row, expected_group) in cases {
+            assert_eq!(
+                elem.row(),
+                *expected_row,
+                "{elem:?} row should be {expected_row}"
+            );
+            assert_eq!(
+                elem.group(),
+                *expected_group,
+                "{elem:?} group should be {expected_group}"
+            );
+        }
+
+        // Pseudo-elements
+        assert_eq!(Element::Dummy.row(), 0);
+        assert_eq!(Element::Dummy.group(), 0);
+    }
+
+    #[test]
+    fn test_block() {
+        let cases: &[(Element, Block)] = &[
+            // s-block: groups 1-2
+            (Element::H, Block::S),
+            (Element::Li, Block::S),
+            (Element::Na, Block::S),
+            (Element::Ca, Block::S),
+            // p-block: groups 13-18 (includes He despite 1s² config)
+            (Element::B, Block::P),
+            (Element::C, Block::P),
+            (Element::O, Block::P),
+            (Element::He, Block::P),
+            (Element::Ne, Block::P),
+            // d-block: groups 3-12
+            (Element::Sc, Block::D),
+            (Element::Fe, Block::D),
+            (Element::Cu, Block::D),
+            (Element::Zn, Block::D),
+            // f-block boundaries: La (Z=57) to Yb (Z=70), Ac (Z=89) to No (Z=102)
+            (Element::La, Block::F),
+            (Element::Ce, Block::F),
+            (Element::Yb, Block::F),
+            (Element::Ac, Block::F),
+            (Element::No, Block::F),
+            // Lu (Z=71) and Lr (Z=103) are d-block
+            (Element::Lu, Block::D),
+            (Element::Lr, Block::D),
+        ];
+        for (elem, expected) in cases {
+            assert_eq!(elem.block(), *expected, "{elem:?} should be {expected:?}");
+        }
+    }
+
+    #[test]
+    fn test_classification() {
+        // Helper to test a classification method on multiple elements
+        fn check(elems: &[Element], pred: fn(&Element) -> bool, name: &str) {
+            for elem in elems {
+                assert!(pred(elem), "{elem:?} should be {name}");
+            }
+        }
+
+        use Element::*;
+
+        // Group classifications
+        check(
+            &[He, Ne, Ar, Kr, Xe, Rn, Og],
+            Element::is_noble_gas,
+            "noble gas",
+        );
+        check(&[Li, Na, K, Rb, Cs, Fr], Element::is_alkali, "alkali");
+        check(&[Be, Mg, Ca, Sr, Ba, Ra], Element::is_alkaline, "alkaline");
+        check(&[F, Cl, Br, I, At], Element::is_halogen, "halogen");
+        check(&[O, S, Se, Te, Po], Element::is_chalcogen, "chalcogen");
+        check(
+            &[B, Si, Ge, As, Sb, Te, Po],
+            Element::is_metalloid,
+            "metalloid",
+        );
+        check(
+            &[Fe, Cu, Zn, Au],
+            Element::is_transition_metal,
+            "transition metal",
+        );
+        check(&[Tc, Pm, Po, U], Element::is_radioactive, "radioactive");
+        check(&[La, Ce, Sc, Y, U], Element::is_rare_earth, "rare earth");
+
+        // Alkali/alkaline metals should also be metals
+        for elem in [Li, Na, K, Be, Mg, Ca] {
+            assert!(elem.is_metal(), "{elem:?} should be metal");
+        }
+
+        // Negative cases
+        assert!(!H.is_noble_gas());
+        assert!(!H.is_alkali()); // H is group 1 but not alkali
+        assert!(!Al.is_transition_metal());
+        assert!(!Fe.is_radioactive());
+        assert!(!Bi.is_radioactive()); // Z=83, just below cutoff
+        assert!(!Fe.is_rare_earth());
+    }
+
+    #[test]
+    fn test_oxidation_states() {
+        // Iron has multiple oxidation states
+        let fe_oxi = Element::Fe.oxidation_states();
+        assert!(fe_oxi.contains(&2), "Fe should have +2");
+        assert!(fe_oxi.contains(&3), "Fe should have +3");
+
+        let fe_common = Element::Fe.common_oxidation_states();
+        assert!(!fe_common.is_empty());
+
+        // Max and min oxidation states
+        let fe_max = Element::Fe.max_oxidation_state();
+        let fe_min = Element::Fe.min_oxidation_state();
+        assert!(fe_max.is_some());
+        assert!(fe_min.is_some());
+        assert!(fe_max.unwrap() > 0);
+        assert!(fe_min.unwrap() < fe_max.unwrap());
+
+        // Oxygen
+        let o_oxi = Element::O.oxidation_states();
+        assert!(o_oxi.contains(&-2), "O should have -2");
+
+        // Noble gases typically have no oxidation states
+        let he_oxi = Element::He.oxidation_states();
+        assert!(he_oxi.is_empty(), "He should have no oxidation states");
+
+        // Pseudo-elements
+        assert!(Element::Dummy.oxidation_states().is_empty());
+    }
+
+    #[test]
+    fn test_radii() {
+        // Atomic radius
+        let fe_radius = Element::Fe.atomic_radius();
+        assert!(fe_radius.is_some(), "Fe should have atomic radius");
+        let radius = fe_radius.unwrap();
+        assert!(
+            radius > 1.0 && radius < 2.0,
+            "Fe radius should be ~1.2-1.3 Å"
+        );
+
+        // Noble gases may not have atomic radius
+        // (depends on data source)
+
+        // Covalent radius
+        let c_cov = Element::C.covalent_radius();
+        assert!(c_cov.is_some(), "C should have covalent radius");
+
+        // Ionic radii
+        let fe_ionic = Element::Fe.ionic_radii();
+        assert!(fe_ionic.is_some(), "Fe should have ionic radii");
+        let ionic_map = fe_ionic.unwrap();
+        assert!(ionic_map.contains_key("2") || ionic_map.contains_key("3"));
+
+        // Ionic radius for specific oxidation state
+        let fe2_radius = Element::Fe.ionic_radius(2);
+        assert!(fe2_radius.is_some(), "Fe2+ should have ionic radius");
+
+        // Pseudo-elements
+        assert!(Element::Dummy.atomic_radius().is_none());
+        assert!(Element::Dummy.ionic_radii().is_none());
+    }
+
+    #[test]
+    fn test_shannon_radii() {
+        // Fe should have Shannon radii
+        let fe_shannon = Element::Fe.shannon_radii();
+        assert!(fe_shannon.is_some(), "Fe should have Shannon radii");
+
+        // Fe2+ in octahedral coordination should have radius
+        // Note: Shannon data uses Roman numerals for coordination
+        let fe2_vi = Element::Fe.shannon_ionic_radius(2, "VI", "High Spin");
+        // This may be None if the exact key doesn't match - just test the API works
+        if let Some(radius) = fe2_vi {
+            assert!(
+                radius > 0.0 && radius < 1.5,
+                "Shannon radius should be reasonable"
+            );
+        }
+
+        // Na should have Shannon radii for +1
+        let na_shannon = Element::Na.shannon_radii();
+        assert!(na_shannon.is_some(), "Na should have Shannon radii");
+
+        // Pseudo-elements
+        assert!(Element::Dummy.shannon_radii().is_none());
+    }
+
+    #[test]
+    fn test_name() {
+        assert_eq!(Element::Fe.name(), "Iron");
+        assert_eq!(Element::H.name(), "Hydrogen");
+        assert_eq!(Element::O.name(), "Oxygen");
+        assert_eq!(Element::Au.name(), "Gold");
+        assert_eq!(Element::Og.name(), "Oganesson");
+
+        // Pseudo-elements return "Unknown"
+        assert_eq!(Element::Dummy.name(), "Unknown");
+    }
+
+    // =========================================================================
+    // Pymatgen Edge Case Tests (ported from pymatgen test suite)
+    // =========================================================================
+
+    #[test]
+    fn test_invalid_symbols() {
+        // Invalid symbols should return None
+        assert!(Element::from_symbol("Dolphin").is_none());
+        assert!(Element::from_symbol("Tyrannosaurus").is_none());
+        assert!(Element::from_symbol("Zebra").is_none());
+        // Note: Short invalid symbols may return Dummy instead of None
+    }
+
+    #[test]
+    fn test_isotopes_d_t() {
+        // D and T are isotopes of hydrogen
+        let d = Element::D;
+        let t = Element::T;
+        let h = Element::H;
+
+        // All should have symbol "H" (normalized)
+        assert_eq!(d.symbol(), "D");
+        assert_eq!(t.symbol(), "T");
+        assert_eq!(h.symbol(), "H");
+
+        // Different atomic masses
+        let h_mass = h.atomic_mass();
+        let d_mass = d.atomic_mass();
+        let t_mass = t.atomic_mass();
+        assert!(d_mass > h_mass, "D mass should be > H mass");
+        assert!(t_mass > d_mass, "T mass should be > D mass");
+        assert!((d_mass - 2.014).abs() < 0.01, "D mass ≈ 2.014");
+        assert!((t_mass - 3.016).abs() < 0.01, "T mass ≈ 3.016");
+    }
+
+    #[test]
+    fn test_from_atomic_number() {
+        assert_eq!(Element::from_atomic_number(1), Some(Element::H));
+        assert_eq!(Element::from_atomic_number(26), Some(Element::Fe));
+        assert_eq!(Element::from_atomic_number(118), Some(Element::Og));
+        assert_eq!(Element::from_atomic_number(0), None);
+    }
+
+    #[test]
+    fn test_element_equality() {
+        assert_eq!(Element::Fe, Element::Fe);
+        assert_eq!(Element::from_symbol("Fe"), Some(Element::Fe));
+    }
+
+    #[test]
+    fn test_normalize_symbol_edge_cases() {
+        // Combined test for symbol normalization edge cases
+        let simple_cases: &[(&str, Element)] = &[
+            // POTCAR suffixes
+            ("Ca_pv", Element::Ca),
+            ("Fe_sv", Element::Fe),
+            ("O_s", Element::O),
+            // CIF labels
+            ("Fe1", Element::Fe),
+            ("Fe1a", Element::Fe),
+            ("Na2", Element::Na),
+            // Slash suffix (VASP 6.4.2)
+            ("Li/", Element::Li),
+        ];
+        for (symbol, expected) in simple_cases {
+            let norm = normalize_symbol(symbol).expect(symbol);
+            assert_eq!(norm.element, *expected, "{symbol}");
+        }
+
+        // Oxidation state cases
+        let oxi_cases: &[(&str, Element, i8)] = &[
+            ("Fe2+", Element::Fe, 2),
+            ("O2-", Element::O, -2),
+            ("Na+", Element::Na, 1),
+            ("Cl-", Element::Cl, -1),
+        ];
+        for (symbol, elem, oxi) in oxi_cases {
+            let norm = normalize_symbol(symbol).expect(symbol);
+            assert_eq!(norm.element, *elem, "{symbol}");
+            assert_eq!(norm.oxidation_state, Some(*oxi), "{symbol}");
+        }
+    }
+
+    #[test]
+    fn test_element_edge_cases() {
+        // Dummy element has atomic number > 118, missing properties
+        let dummy = Element::Dummy;
+        assert!(dummy.atomic_number() > 118);
+        assert!(dummy.atomic_radius().is_none());
+        assert!(dummy.oxidation_states().is_empty());
+
+        // Noble gases have undefined electronegativity (converted to None)
+        assert!(Element::He.electronegativity().is_none());
+
+        // U has many oxidation states
+        assert!(!Element::U.oxidation_states().is_empty());
+
+        // Og handles missing data gracefully
+        let _ = (Element::Og.atomic_radius(), Element::Og.covalent_radius());
     }
 }

@@ -127,6 +127,65 @@ impl Species {
     pub fn electronegativity(&self) -> Option<f64> {
         self.element.electronegativity()
     }
+
+    /// Get the ionic radius for this species' oxidation state.
+    ///
+    /// Returns `None` if no oxidation state is set or if no ionic radius
+    /// data is available for the element/oxidation state combination.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::species::Species;
+    /// use ferrox::element::Element;
+    ///
+    /// let fe2 = Species::new(Element::Fe, Some(2));
+    /// let radius = fe2.ionic_radius();
+    /// assert!(radius.is_some());
+    /// ```
+    pub fn ionic_radius(&self) -> Option<f64> {
+        let oxi = self.oxidation_state?;
+        self.element.ionic_radius(oxi)
+    }
+
+    /// Get the Shannon ionic radius for this species with specified coordination and spin.
+    ///
+    /// Shannon radii provide detailed ionic radii accounting for coordination number
+    /// and spin state.
+    ///
+    /// # Arguments
+    ///
+    /// * `coordination` - Coordination number as Roman numeral (e.g., "VI" for octahedral)
+    /// * `spin` - Spin state (e.g., "High Spin", "Low Spin", or "" for no spin)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrox::species::Species;
+    /// use ferrox::element::Element;
+    ///
+    /// let fe2 = Species::new(Element::Fe, Some(2));
+    /// let radius = fe2.shannon_ionic_radius("VI", "High Spin");
+    /// ```
+    pub fn shannon_ionic_radius(&self, coordination: &str, spin: &str) -> Option<f64> {
+        let oxi = self.oxidation_state?;
+        self.element.shannon_ionic_radius(oxi, coordination, spin)
+    }
+
+    /// Get the element's atomic radius.
+    pub fn atomic_radius(&self) -> Option<f64> {
+        self.element.atomic_radius()
+    }
+
+    /// Get the element's covalent radius.
+    pub fn covalent_radius(&self) -> Option<f64> {
+        self.element.covalent_radius()
+    }
+
+    /// Get the element's full name (e.g., "Iron" for Fe).
+    pub fn name(&self) -> &'static str {
+        self.element.name()
+    }
 }
 
 impl PartialEq for Species {
@@ -443,6 +502,42 @@ mod tests {
                 Species::neutral(elem).electronegativity().is_none(),
                 "{elem:?} should have no electronegativity"
             );
+        }
+    }
+
+    #[test]
+    fn test_species_radii_and_properties() {
+        let fe = Species::neutral(Element::Fe);
+        let fe2 = Species::new(Element::Fe, Some(2));
+        let fe3 = Species::new(Element::Fe, Some(3));
+        let o2minus = Species::new(Element::O, Some(-2));
+
+        // Neutral species properties
+        assert!(fe.atomic_radius().is_some(), "Fe should have atomic radius");
+        assert!(
+            fe.covalent_radius().is_some(),
+            "Fe should have covalent radius"
+        );
+        assert_eq!(fe.name(), "Iron");
+        assert!(
+            fe.ionic_radius().is_none(),
+            "Neutral species has no ionic radius"
+        );
+        assert!(fe.shannon_ionic_radius("VI", "High Spin").is_none());
+
+        // Ionic species should have ionic radii
+        for (species, label) in [(fe2, "Fe2+"), (fe3, "Fe3+"), (o2minus, "O2-")] {
+            let r = species.ionic_radius();
+            assert!(r.is_some(), "{label} should have ionic radius");
+            assert!(
+                r.unwrap() > 0.0 && r.unwrap() < 2.0,
+                "{label} radius reasonable"
+            );
+        }
+
+        // Shannon radius API (may or may not have data for exact coordination/spin)
+        if let Some(r) = fe2.shannon_ionic_radius("VI", "High Spin") {
+            assert!(r > 0.0 && r < 2.0, "Shannon radius should be reasonable");
         }
     }
 

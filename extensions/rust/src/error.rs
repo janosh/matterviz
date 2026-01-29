@@ -49,6 +49,10 @@ pub enum FerroxError {
     /// Empty file or no frames.
     #[error("Empty file or no valid frames in {path}")]
     EmptyFile { path: String },
+
+    /// Composition operation error.
+    #[error("Composition error: {reason}")]
+    CompositionError { reason: String },
 }
 
 /// Result type alias for ferrox operations.
@@ -140,6 +144,12 @@ mod tests {
                     path: "empty.cif".to_string(),
                 },
                 &["empty.cif", "Empty", "frames"],
+            ),
+            (
+                FerroxError::CompositionError {
+                    reason: "invalid formula".to_string(),
+                },
+                &["Composition error", "invalid formula"],
             ),
         ];
 
