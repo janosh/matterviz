@@ -3,14 +3,17 @@
 //! This module provides `StructureMatcher` for comparing crystal structures,
 //! implementing the same algorithm as pymatgen's StructureMatcher.
 
+use crate::element::Element;
 use crate::error::OnError;
 use crate::lattice::Lattice;
 use crate::pbc::{is_coord_subset_pbc, pbc_shortest_vectors, wrap_frac_coords};
 use crate::species::Species;
 use crate::structure::Structure;
+use itertools::Itertools;
 use nalgebra::{Matrix3, Vector3};
 use pathfinding::kuhn_munkres::kuhn_munkres_min;
 use pathfinding::matrix::Matrix as PathMatrix;
+use std::collections::HashMap;
 use std::f64::consts::PI;
 
 /// Type of comparator to use for species matching.
@@ -245,8 +248,10 @@ impl StructureMatcher {
         let n2 = struct2.num_sites();
         let mut mask = vec![vec![false; n1]; n2];
 
-        for (idx2, sp2) in struct2.species.iter().enumerate() {
-            for (idx1, sp1) in struct1.species.iter().enumerate() {
+        let species1 = struct1.species();
+        let species2 = struct2.species();
+        for (idx2, sp2) in species2.iter().enumerate() {
+            for (idx1, sp1) in species1.iter().enumerate() {
                 mask[idx2][idx1] = !self.species_equal(sp1, sp2);
             }
         }
@@ -560,18 +565,74 @@ impl StructureMatcher {
     /// Check if two structures match under any species permutation.
     ///
     /// This is useful for comparing structures where the identity of species
-    /// is not important, only the arrangement.
+    /// is not important, only the arrangement. For example, NaCl and MgO both
+    /// have the rocksalt structure, so `fit_anonymous` would return true.
     ///
-    /// # Panics
+    /// # Algorithm (matches pymatgen's fit_anonymous)
     ///
-    /// Always panics - anonymous matching is not yet implemented.
-    /// This will be implemented in a future release.
-    #[allow(clippy::unused_self)]
-    pub fn fit_anonymous(&self, _struct1: &Structure, _struct2: &Structure) -> bool {
-        unimplemented!(
-            "fit_anonymous is not yet implemented. \
-             Anonymous matching with species permutation is planned for a future release."
-        )
+    /// 1. Get unique elements from both structures in order of first appearance
+    /// 2. If different number of unique elements, return false
+    /// 3. For each permutation of struct2's elements:
+    ///    - Create mapping: struct1.elements[i] -> permuted_elements[i]
+    ///    - Compute mapped composition from struct1
+    ///    - If mapped composition hash != struct2 composition hash, skip (fast pruning)
+    ///    - Otherwise, remap struct1's species and call fit()
+    /// 4. Return true on first match
+    ///
+    /// # Note
+    ///
+    /// This method always uses element-only matching (ignores oxidation states),
+    /// regardless of the matcher's `comparator_type` setting. This matches pymatgen's
+    /// behavior where anonymous matching only considers elemental identity.
+    pub fn fit_anonymous(&self, struct1: &Structure, struct2: &Structure) -> bool {
+        // Get unique elements in order of first appearance
+        let elements1 = struct1.unique_elements();
+        let elements2 = struct2.unique_elements();
+
+        // Different number of unique elements -> no match possible
+        if elements1.len() != elements2.len() {
+            return false;
+        }
+
+        // Handle empty structures
+        if elements1.is_empty() {
+            return false;
+        }
+
+        // Get compositions for fast pruning (compute once, outside loop)
+        let comp1 = struct1.composition();
+        let comp2 = struct2.composition();
+        let comp2_hash = comp2.hash();
+
+        // Create element-only matcher once (used for all permutations)
+        let element_matcher = Self {
+            comparator_type: ComparatorType::Element,
+            ..self.clone()
+        };
+
+        // Try all permutations of elements2
+        for perm in elements2.iter().permutations(elements2.len()) {
+            // Create mapping: elements1[i] -> perm[i]
+            let mapping: HashMap<Element, Element> = elements1
+                .iter()
+                .zip(perm.iter())
+                .map(|(&e1, &&e2)| (e1, e2))
+                .collect();
+
+            // Fast composition hash check before expensive structure matching
+            let mapped_comp = comp1.remap_elements(&mapping);
+            if mapped_comp.hash() != comp2_hash {
+                continue;
+            }
+
+            // Composition matches - do full structure comparison
+            let remapped_struct1 = struct1.remap_species(&mapping);
+            if element_matcher.fit(&remapped_struct1, struct2) {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Check if two already-reduced structures match.
@@ -965,14 +1026,74 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "fit_anonymous is not yet implemented")]
-    fn test_fit_anonymous_not_implemented() {
-        // fit_anonymous panics since it's not yet implemented
-        let s1 = make_nacl();
-        let s2 = make_nacl();
+    fn test_fit_anonymous_identical() {
+        let s = make_nacl();
         let matcher = StructureMatcher::new();
+        assert!(matcher.fit_anonymous(&s, &s));
+    }
 
-        matcher.fit_anonymous(&s1, &s2);
+    #[test]
+    fn test_fit_anonymous_swapped_species() {
+        // NaCl with swapped species order should match
+        let nacl = make_nacl();
+        let clna = Structure::new(
+            Lattice::cubic(5.64),
+            vec![Species::neutral(Element::Cl), Species::neutral(Element::Na)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        assert!(StructureMatcher::new().fit_anonymous(&nacl, &clna));
+    }
+
+    #[test]
+    fn test_fit_anonymous_same_prototype() {
+        // NaCl and MgO have the same rocksalt prototype
+        let nacl = make_nacl();
+        let mgo = Structure::new(
+            Lattice::cubic(4.21),
+            vec![Species::neutral(Element::Mg), Species::neutral(Element::O)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        assert!(StructureMatcher::new().fit_anonymous(&nacl, &mgo));
+    }
+
+    #[test]
+    fn test_fit_anonymous_different_stoichiometry() {
+        // AB vs A2B3 stoichiometry should not match
+        let nacl = make_nacl();
+        let a2b3 = Structure::new(
+            Lattice::cubic(5.0),
+            vec![
+                Species::neutral(Element::Fe),
+                Species::neutral(Element::Fe),
+                Species::neutral(Element::O),
+                Species::neutral(Element::O),
+                Species::neutral(Element::O),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+                Vector3::new(0.25, 0.25, 0.25),
+                Vector3::new(0.75, 0.75, 0.75),
+                Vector3::new(0.25, 0.75, 0.25),
+            ],
+        );
+        assert!(!StructureMatcher::new().fit_anonymous(&nacl, &a2b3));
+    }
+
+    #[test]
+    fn test_fit_anonymous_single_element() {
+        let fe = make_simple_cubic(Element::Fe, 4.0);
+        let cu = make_simple_cubic(Element::Cu, 4.0);
+        let matcher = StructureMatcher::new();
+        assert!(matcher.fit_anonymous(&fe, &cu));
+    }
+
+    #[test]
+    fn test_fit_anonymous_different_num_elements() {
+        let nacl = make_nacl();
+        let fe = make_simple_cubic(Element::Fe, 4.0);
+        let matcher = StructureMatcher::new();
+        assert!(!matcher.fit_anonymous(&nacl, &fe));
     }
 
     #[test]
@@ -1114,6 +1235,247 @@ mod tests {
         assert!(
             !matcher.fit(&s1, &s2),
             "Large perturbation should not match"
+        );
+    }
+
+    // =========================================================================
+    // Degenerate lattice tests
+    // =========================================================================
+
+    #[test]
+    fn test_fit_degenerate_lattice_zero_volume() {
+        // Coplanar vectors - zero volume (degenerate)
+        let lattice = Lattice::new(Matrix3::new(
+            1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, // third vector in same plane
+        ));
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::zeros()],
+        );
+        let matcher = StructureMatcher::new();
+
+        // Should return false gracefully (not panic) for degenerate lattice
+        assert!(
+            !matcher.fit(&s, &s),
+            "Degenerate lattice (zero volume) should return false"
+        );
+    }
+
+    #[test]
+    fn test_fit_near_degenerate_lattice() {
+        // Very flat lattice (small c parameter)
+        let lattice = Lattice::from_parameters(5.0, 5.0, 0.1, 90.0, 90.0, 90.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::C)],
+            vec![Vector3::zeros()],
+        );
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+
+        // Should handle gracefully without panicking (returns false for pathological lattice)
+        let _ = matcher.fit(&s, &s);
+    }
+
+    // =========================================================================
+    // fit_preprocessed() direct tests
+    // =========================================================================
+
+    #[test]
+    fn test_fit_preprocessed_skips_reduction() {
+        let s1 = make_fcc_conventional(Element::Cu, 3.6);
+        let s2 = make_fcc_conventional(Element::Cu, 3.65);
+        let matcher = StructureMatcher::new();
+
+        // Manually reduce
+        let r1 = matcher.reduce_structure(&s1);
+        let r2 = matcher.reduce_structure(&s2);
+
+        // fit_preprocessed should work on already-reduced structures
+        assert!(
+            matcher.fit_preprocessed(&r1, &r2),
+            "Preprocessed FCC structures should match"
+        );
+    }
+
+    #[test]
+    fn test_reduce_structure_produces_niggli_cell() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        let matcher = StructureMatcher::new();
+        let reduced = matcher.reduce_structure(&fcc);
+
+        // Reduced cell should have fewer or equal sites (FCC -> primitive)
+        assert!(
+            reduced.num_sites() <= fcc.num_sites(),
+            "Reduced structure should have <= sites"
+        );
+        // Volume should be preserved or reduced by integer factor
+        let vol_ratio = fcc.lattice.volume() / reduced.lattice.volume();
+        assert!(
+            (vol_ratio.round() - vol_ratio).abs() < 0.01,
+            "Volume ratio should be close to integer: {vol_ratio}"
+        );
+    }
+
+    #[test]
+    fn test_reduce_structure_idempotent() {
+        let s = make_bcc(Element::Fe, 2.87);
+        let matcher = StructureMatcher::new();
+        let r1 = matcher.reduce_structure(&s);
+        let r2 = matcher.reduce_structure(&r1);
+
+        // Reducing twice should give same result
+        assert_eq!(
+            r1.num_sites(),
+            r2.num_sites(),
+            "Reducing twice should preserve site count"
+        );
+        assert!(
+            (r1.lattice.volume() - r2.lattice.volume()).abs() < 1e-6,
+            "Reducing twice should preserve volume"
+        );
+    }
+
+    // =========================================================================
+    // Extreme tolerance tests
+    // =========================================================================
+
+    #[test]
+    fn test_fit_very_small_site_tolerance_strict() {
+        // Use multi-atom structure (BCC) so relative positions matter
+        let s1 = make_bcc(Element::Fe, 4.0);
+        // Create perturbed structure with significant relative shift
+        let s2 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.7)], // shifted from 0.5
+        );
+        let matcher = StructureMatcher::new()
+            .with_site_pos_tol(0.01)
+            .with_primitive_cell(false); // keep multi-atom structure
+
+        // Small tolerance should reject significant perturbation
+        assert!(
+            !matcher.fit(&s1, &s2),
+            "Small tolerance should reject perturbation"
+        );
+        // Identical should still match
+        assert!(
+            matcher.fit(&s1, &s1),
+            "Identical structures should match with small tolerance"
+        );
+    }
+
+    #[test]
+    fn test_fit_very_large_tolerance_permissive() {
+        let s1 = make_simple_cubic(Element::Fe, 4.0);
+        let s2 = make_simple_cubic(Element::Fe, 6.0); // 50% larger
+
+        let matcher = StructureMatcher::new()
+            .with_site_pos_tol(1.0)
+            .with_latt_len_tol(0.5)
+            .with_scale(false); // Don't scale volumes
+
+        // Very large tolerance might match very different structures - tests boundary behavior
+        let _ = matcher.fit(&s1, &s2);
+    }
+
+    #[test]
+    fn test_fit_zero_angle_tolerance() {
+        let s1 = make_simple_cubic(Element::Fe, 4.0);
+        let s2 = Structure::new(
+            Lattice::from_parameters(4.0, 4.0, 4.0, 90.0, 90.0, 91.0), // 1° off
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::zeros()],
+        );
+        let matcher = StructureMatcher::new().with_angle_tol(0.0);
+
+        // Zero angle tolerance should reject 1° deviation
+        assert!(
+            !matcher.fit(&s1, &s2),
+            "Zero angle tolerance should reject 1° deviation"
+        );
+    }
+
+    // =========================================================================
+    // fit_anonymous() edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_fit_anonymous_many_elements_stress() {
+        // 7 elements = 5040 permutations (moderate stress test)
+        let lattice = Lattice::cubic(14.0);
+        let elements = [
+            Element::Li,
+            Element::Na,
+            Element::K,
+            Element::Rb,
+            Element::Cs,
+            Element::Fr,
+            Element::Be,
+        ];
+        let species: Vec<_> = elements.iter().map(|&e| Species::neutral(e)).collect();
+        let coords: Vec<_> = (0..7)
+            .map(|i| Vector3::new(i as f64 * 0.14, 0.0, 0.0))
+            .collect();
+        let s1 = Structure::new(lattice.clone(), species.clone(), coords.clone());
+
+        // Same structure with elements reversed (permuted)
+        let species2: Vec<_> = elements
+            .iter()
+            .rev()
+            .map(|&e| Species::neutral(e))
+            .collect();
+        let s2 = Structure::new(lattice, species2, coords);
+
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        // Should find a matching permutation within reasonable time
+        assert!(
+            matcher.fit_anonymous(&s1, &s2),
+            "fit_anonymous should handle 7 elements (5040 permutations)"
+        );
+    }
+
+    #[test]
+    fn test_fit_anonymous_works_with_any_comparator() {
+        // fit_anonymous should work regardless of matcher's comparator_type setting
+        let s = make_simple_cubic(Element::Fe, 4.0);
+
+        // Works with default Species comparator
+        let matcher_species = StructureMatcher::new();
+        assert!(matcher_species.fit_anonymous(&s, &s));
+
+        // Works with Element comparator too
+        let matcher_element = StructureMatcher::new().with_comparator(ComparatorType::Element);
+        assert!(matcher_element.fit_anonymous(&s, &s));
+    }
+
+    #[test]
+    fn test_fit_anonymous_ignores_oxidation_states() {
+        // fit_anonymous should ignore oxidation states and match based on elements only
+        // Use primitive_cell=false to preserve oxidation states through processing
+        let s1 = Structure::new(
+            Lattice::cubic(5.64),
+            vec![
+                Species::new(Element::Na, Some(1)),
+                Species::new(Element::Cl, Some(-1)),
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let s2 = Structure::new(
+            Lattice::cubic(5.64),
+            vec![
+                Species::new(Element::Mg, Some(2)), // Different oxidation state
+                Species::new(Element::O, Some(-2)), // Different oxidation state
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        // Should match anonymously (same rocksalt prototype)
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        assert!(
+            matcher.fit_anonymous(&s1, &s2),
+            "fit_anonymous should ignore oxidation states and match NaCl with MgO"
         );
     }
 }

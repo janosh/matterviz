@@ -118,6 +118,27 @@ impl Composition {
     pub fn iter(&self) -> impl Iterator<Item = (&Element, &f64)> {
         self.elements.iter()
     }
+
+    /// Get elements in iteration order.
+    ///
+    /// Note: This allocates a new Vec. For iteration without allocation,
+    /// use `self.iter().map(|(elem, _)| *elem)`.
+    pub fn elements(&self) -> Vec<Element> {
+        self.elements.keys().copied().collect()
+    }
+
+    /// Create new composition with elements remapped according to mapping.
+    ///
+    /// Elements not in the mapping are preserved as-is.
+    /// If multiple elements map to the same target, their amounts are summed.
+    pub fn remap_elements(&self, mapping: &std::collections::HashMap<Element, Element>) -> Self {
+        let mut remapped: IndexMap<Element, f64> = IndexMap::new();
+        for (&elem, &amt) in &self.elements {
+            let new_elem = mapping.get(&elem).copied().unwrap_or(elem);
+            *remapped.entry(new_elem).or_insert(0.0) += amt;
+        }
+        Self { elements: remapped }
+    }
 }
 
 /// Compute GCD of two floating point numbers (treating as approximate integers).
@@ -158,6 +179,7 @@ impl std::hash::Hash for Composition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_composition_basics() {
@@ -288,5 +310,113 @@ mod tests {
         assert_eq!(comp2.num_elements(), 1);
         assert_eq!(comp2.get(Element::Fe), 0.0);
         assert_eq!(comp2.get(Element::O), 2.0);
+    }
+
+    // =========================================================================
+    // remap_elements() tests
+    // =========================================================================
+
+    #[test]
+    fn test_remap_elements_basic() {
+        let comp = Composition::new([(Element::Na, 4.0), (Element::Cl, 4.0)]);
+        let mapping = HashMap::from([(Element::Na, Element::K)]);
+        let remapped = comp.remap_elements(&mapping);
+
+        assert_eq!(
+            remapped.get(Element::K),
+            4.0,
+            "Na should map to K with same amount"
+        );
+        assert_eq!(remapped.get(Element::Cl), 4.0, "Cl should be unchanged");
+        assert_eq!(
+            remapped.get(Element::Na),
+            0.0,
+            "Na should be gone after remapping"
+        );
+    }
+
+    #[test]
+    fn test_remap_elements_unmapped_preserved() {
+        let comp = Composition::new([(Element::Fe, 2.0)]);
+        let mapping = HashMap::from([(Element::Na, Element::K)]); // irrelevant
+        let remapped = comp.remap_elements(&mapping);
+
+        assert_eq!(
+            remapped.get(Element::Fe),
+            2.0,
+            "Unmapped element should be preserved"
+        );
+    }
+
+    #[test]
+    fn test_remap_elements_hash_changes() {
+        let comp = Composition::new([(Element::Li, 2.0), (Element::O, 1.0)]);
+        let mapping = HashMap::from([(Element::Li, Element::Na)]);
+        let remapped = comp.remap_elements(&mapping);
+
+        assert_ne!(
+            comp.hash(),
+            remapped.hash(),
+            "Hash should change when elements are remapped"
+        );
+    }
+
+    #[test]
+    fn test_remap_elements_combines_amounts() {
+        // Multiple source elements mapping to the same target should sum their amounts
+        let comp = Composition::new([
+            (Element::Na, 1.0),
+            (Element::K, 2.0),
+            (Element::Rb, 3.0),
+            (Element::Cl, 4.0),
+        ]);
+        let mapping = HashMap::from([
+            (Element::Na, Element::Li),
+            (Element::K, Element::Li),
+            (Element::Rb, Element::Li),
+            (Element::Cl, Element::F),
+        ]);
+        let remapped = comp.remap_elements(&mapping);
+
+        assert_eq!(
+            remapped.get(Element::Li),
+            6.0,
+            "Na + K + Rb should sum to Li"
+        );
+        assert_eq!(
+            remapped.get(Element::F),
+            4.0,
+            "Cl -> F should preserve amount"
+        );
+        assert_eq!(remapped.num_elements(), 2);
+    }
+
+    // =========================================================================
+    // composition_hash() tests
+    // =========================================================================
+
+    #[test]
+    fn test_composition_hash_same_for_equivalent() {
+        // Compositions that reduce to same formula should have same hash
+        let comp1 = Composition::new([(Element::Fe, 2.0), (Element::O, 3.0)]);
+        let comp2 = Composition::new([(Element::Fe, 4.0), (Element::O, 6.0)]);
+
+        assert_eq!(
+            comp1.hash(),
+            comp2.hash(),
+            "Equivalent compositions should have same hash"
+        );
+    }
+
+    #[test]
+    fn test_composition_hash_differs_for_different() {
+        let nacl = Composition::new([(Element::Na, 1.0), (Element::Cl, 1.0)]);
+        let mgo = Composition::new([(Element::Mg, 1.0), (Element::O, 1.0)]);
+
+        assert_ne!(
+            nacl.hash(),
+            mgo.hash(),
+            "Different compositions should have different hashes"
+        );
     }
 }
