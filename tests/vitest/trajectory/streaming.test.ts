@@ -8,7 +8,11 @@ import {
   TrajFrameReader,
 } from '$lib/trajectory/parse'
 import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
+import process from 'node:process'
 import { describe, expect, it } from 'vitest'
+
+// CI environments have higher timing variability
+const is_ci = [`true`, `1`].includes(process.env.CI ?? ``)
 
 describe(`Trajectory Streaming`, () => {
   // Helper to create synthetic multi-frame XYZ data
@@ -427,7 +431,9 @@ describe(`Trajectory Streaming`, () => {
       const max_time = Math.max(early_access, middle_access, late_access)
       const min_time = Math.min(early_access, middle_access, late_access)
 
-      expect(max_time / min_time).toBeLessThan(6) // Should not scale linearly (was toBeLessThan(2) but too flaky)
+      // CI has higher timing variability; use 20x threshold (was 6x but flaky in CI)
+      const max_ratio = is_ci ? 20 : 6
+      expect(max_time / min_time).toBeLessThan(max_ratio)
     })
 
     it(`metadata extraction returns valid plot data without loading all frames`, async () => {

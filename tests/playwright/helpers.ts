@@ -8,7 +8,7 @@ const LOCAL_CANVAS_TIMEOUT = 5_000
 const CI_CANVAS_TIMEOUT = 15_000
 
 // Centralized CI detection - use this instead of inline process.env.CI checks
-export const IS_CI = process.env.CI === `true`
+export const IS_CI = [`true`, `1`].includes(process.env.CI ?? ``)
 
 // Get appropriate canvas initialization timeout based on environment
 // Use this for WebGL/Three.js canvas waits where CI needs more time

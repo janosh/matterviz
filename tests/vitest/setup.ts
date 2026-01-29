@@ -2,9 +2,10 @@ import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import * as math from '$lib/math'
 import type { Crystal, Pbc, Site } from '$lib/structure'
 import init from '@spglib/moyo-wasm'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, vi } from 'vitest'
+import '../../scripts/ensure-element-data' // decompress data.json.gz if needed
 
 // Resolve WASM path for Node.js environment (used by moyo-wasm integration tests)
 const MOYO_WASM_PATH = resolve(

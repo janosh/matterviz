@@ -48,7 +48,8 @@ describe(`Bonding Algorithms`, () => {
         () => measure_performance(() => func(structure)),
       )
       const avg_time = measurements.reduce((a, b) => a + b, 0) / measurements.length
-      const is_ci = typeof process !== `undefined` && process.env?.CI === `true`
+      const is_ci = typeof process !== `undefined` &&
+        [`true`, `1`].includes(process.env?.CI ?? ``)
       const max_allowed = max_time * (is_ci ? 5 : 2)
 
       expect(
