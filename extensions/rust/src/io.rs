@@ -17,6 +17,7 @@ use crate::species::{SiteOccupancy, Species};
 use crate::structure::Structure;
 use nalgebra::Vector3;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::Path;
 
 // ============================================================================
@@ -268,24 +269,45 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
 
         // Parse all species with their occupancies
         let mut species_vec = Vec::with_capacity(site.species.len());
-        for sp_json in &site.species {
-            let element =
-                Element::from_symbol(&sp_json.element).ok_or_else(|| FerroxError::JsonError {
-                    path: "inline".to_string(),
-                    reason: format!("Unknown element: {}", sp_json.element),
-                })?;
+        let mut site_props: HashMap<String, serde_json::Value> = HashMap::new();
 
-            let sp = if let Some(oxi) = sp_json.oxidation_state {
-                if oxi < i8::MIN as i32 || oxi > i8::MAX as i32 {
+        for sp_json in &site.species {
+            // Use normalize_symbol for comprehensive element parsing
+            let normalized = crate::element::normalize_symbol(&sp_json.element).map_err(|e| {
+                FerroxError::JsonError {
+                    path: "inline".to_string(),
+                    reason: format!("Invalid element symbol '{}': {}", sp_json.element, e),
+                }
+            })?;
+
+            // Validate oxidation state range BEFORE casting to i8 (to avoid silent truncation)
+            if let Some(oxi) = sp_json.oxidation_state
+                && (oxi < i8::MIN as i32 || oxi > i8::MAX as i32)
+            {
+                return Err(FerroxError::JsonError {
+                    path: "inline".to_string(),
+                    reason: format!("Oxidation state {oxi} out of range [-128, 127]"),
+                });
+            }
+
+            // Check for oxidation state conflict (safe to cast now - range validated above)
+            let json_oxi = sp_json.oxidation_state.map(|o| o as i8);
+            let final_oxi = match (json_oxi, normalized.oxidation_state) {
+                (Some(json), Some(sym)) if json != sym => {
                     return Err(FerroxError::JsonError {
                         path: "inline".to_string(),
-                        reason: format!("Oxidation state {oxi} out of range [-128, 127]"),
+                        reason: format!(
+                            "Conflicting oxidation states for '{}': symbol implies {}, but JSON has {}",
+                            sp_json.element, sym, json
+                        ),
                     });
                 }
-                Species::new(element, Some(oxi as i8))
-            } else {
-                Species::neutral(element)
+                (Some(json), _) => Some(json),
+                (None, Some(sym)) => Some(sym),
+                (None, None) => None,
             };
+
+            let sp = Species::new(normalized.element, final_oxi);
 
             // Validate occupancy: must be finite and in range (0.0, 1.0]
             let occu = sp_json.occu;
@@ -299,18 +321,40 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
                 });
             }
 
+            // Merge normalization metadata into site properties
+            for (key, val) in normalized.metadata {
+                site_props.insert(key, val);
+            }
+
             species_vec.push((sp, occu));
         }
 
-        site_occupancies.push(SiteOccupancy::new(species_vec));
+        // Add site label if present
+        if let Some(ref label) = site.label {
+            site_props.insert("label".to_string(), serde_json::json!(label));
+        }
+
+        // Merge site properties from JSON (takes precedence over normalization metadata)
+        if let serde_json::Value::Object(map) = &site.properties {
+            for (key, val) in map {
+                site_props.insert(key.clone(), val.clone());
+            }
+        }
+
+        site_occupancies.push(SiteOccupancy::with_properties(species_vec, site_props));
         frac_coords.push(Vector3::new(site.abc[0], site.abc[1], site.abc[2]));
     }
 
-    // Extract properties from JSON
-    let properties = match parsed.properties {
+    // Extract structure-level properties from JSON
+    let mut properties: HashMap<String, serde_json::Value> = match parsed.properties {
         serde_json::Value::Object(map) => map.into_iter().collect(),
-        _ => std::collections::HashMap::new(),
+        _ => HashMap::new(),
     };
+
+    // Store charge in properties if present
+    if let Some(charge) = parsed.charge {
+        properties.insert("charge".to_string(), serde_json::json!(charge));
+    }
 
     Structure::try_new_from_occupancies_with_properties(
         lattice,
@@ -366,11 +410,36 @@ pub fn structure_to_pymatgen_json(structure: &Structure) -> String {
                 })
                 .collect();
 
-            json!({
+            // Extract label from properties if present (pymatgen uses top-level label)
+            let label = site_occ
+                .properties
+                .get("label")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            // Build site JSON
+            let mut site_json = json!({
                 "species": species_list,
-                "abc": [coord.x, coord.y, coord.z],
-                "properties": {}
-            })
+                "abc": [coord.x, coord.y, coord.z]
+            });
+
+            // Add label if present
+            if let Some(lbl) = label {
+                site_json["label"] = json!(lbl);
+            }
+
+            // Add site properties (excluding label which is at top level)
+            let props: serde_json::Map<String, Value> = site_occ
+                .properties
+                .iter()
+                .filter(|(k, _)| k.as_str() != "label")
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            if !props.is_empty() {
+                site_json["properties"] = Value::Object(props);
+            }
+
+            site_json
         })
         .collect();
 
@@ -729,7 +798,7 @@ fn frame_to_structure(frame: &str, path: &Path) -> Result<Structure> {
     let frac_coords = lattice.get_fractional_coords(&cart_coords);
 
     // Extract properties (energy, etc.)
-    let mut properties = std::collections::HashMap::new();
+    let mut properties = HashMap::new();
     if let Some(energy_value) = info.get("energy")
         && let Some(energy) = energy_value.as_f64()
     {
@@ -867,16 +936,180 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_invalid_element() {
+    fn test_parse_unknown_element_becomes_dummy() {
+        // Unknown elements are now mapped to Dummy with original_symbol in properties
         let json = r#"{
             "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
-            "sites": [{"species": [{"element": "Xx"}], "abc": [0,0,0]}]
+            "sites": [{"species": [{"element": "Zzz"}], "abc": [0,0,0]}]
+        }"#;
+
+        let s = parse_structure_json(json).unwrap();
+        assert_eq!(s.num_sites(), 1);
+        assert_eq!(s.species()[0].element, Element::Dummy);
+
+        // The original symbol should be stored in site properties
+        let props = &s.site_occupancies[0].properties;
+        assert_eq!(
+            props.get("original_symbol").and_then(|v| v.as_str()),
+            Some("Zzz")
+        );
+    }
+
+    #[test]
+    fn test_parse_empty_symbol_fails() {
+        // Empty symbol should fail
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{"species": [{"element": ""}], "abc": [0,0,0]}]
         }"#;
 
         let result = parse_structure_json(json);
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("Unknown element"));
+    }
+
+    #[test]
+    fn test_parse_pseudo_elements() {
+        // Dummy atoms are now valid
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [
+                {"species": [{"element": "X"}], "abc": [0,0,0]},
+                {"species": [{"element": "D"}], "abc": [0.5,0,0]},
+                {"species": [{"element": "T"}], "abc": [0,0.5,0]}
+            ]
+        }"#;
+
+        let s = parse_structure_json(json).unwrap();
+        assert_eq!(s.num_sites(), 3);
+        assert_eq!(s.species()[0].element, Element::Dummy);
+        assert_eq!(s.species()[1].element, Element::D);
+        assert_eq!(s.species()[2].element, Element::T);
+    }
+
+    #[test]
+    fn test_parse_oxidation_state_from_symbol() {
+        // Oxidation state extracted from symbol (e.g., Fe2+)
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{"species": [{"element": "Fe2+"}], "abc": [0,0,0]}]
+        }"#;
+
+        let s = parse_structure_json(json).unwrap();
+        assert_eq!(s.species()[0].element, Element::Fe);
+        assert_eq!(s.species()[0].oxidation_state, Some(2));
+    }
+
+    #[test]
+    fn test_parse_oxidation_state_conflict_error() {
+        // Conflicting oxidation state: symbol says 2+, JSON says 3
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{"species": [{"element": "Fe2+", "oxidation_state": 3}], "abc": [0,0,0]}]
+        }"#;
+
+        let result = parse_structure_json(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Conflicting oxidation states"));
+    }
+
+    #[test]
+    fn test_parse_oxidation_state_match_ok() {
+        // Same oxidation state in symbol and JSON is fine
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{"species": [{"element": "Fe2+", "oxidation_state": 2}], "abc": [0,0,0]}]
+        }"#;
+
+        let s = parse_structure_json(json).unwrap();
+        assert_eq!(s.species()[0].oxidation_state, Some(2));
+    }
+
+    #[test]
+    fn test_parse_site_properties() {
+        // Site properties should be preserved
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{
+                "species": [{"element": "Fe"}],
+                "abc": [0,0,0],
+                "label": "Fe1_oct",
+                "properties": {"magmom": 2.5, "selective_dynamics": [true, true, false]}
+            }]
+        }"#;
+
+        let s = parse_structure_json(json).unwrap();
+        let props = s.site_properties(0);
+
+        // Check label is in properties
+        assert_eq!(props.get("label").and_then(|v| v.as_str()), Some("Fe1_oct"));
+
+        // Check magmom
+        assert_eq!(props.get("magmom").and_then(|v| v.as_f64()), Some(2.5));
+
+        // Check selective_dynamics
+        let sd = props.get("selective_dynamics").and_then(|v| v.as_array());
+        assert!(sd.is_some());
+    }
+
+    #[test]
+    fn test_parse_potcar_suffix() {
+        // POTCAR suffix should be extracted to metadata
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{"species": [{"element": "Ca_pv"}], "abc": [0,0,0]}]
+        }"#;
+
+        let s = parse_structure_json(json).unwrap();
+        assert_eq!(s.species()[0].element, Element::Ca);
+
+        // Check potcar_suffix in site properties
+        let props = s.site_properties(0);
+        assert_eq!(
+            props.get("potcar_suffix").and_then(|v| v.as_str()),
+            Some("_pv")
+        );
+    }
+
+    #[test]
+    fn test_parse_structure_charge() {
+        // Structure-level charge should be stored in properties
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{"species": [{"element": "Na"}], "abc": [0,0,0]}],
+            "charge": 1.0
+        }"#;
+
+        let s = parse_structure_json(json).unwrap();
+        assert_eq!(
+            s.properties.get("charge").and_then(|v| v.as_f64()),
+            Some(1.0)
+        );
+    }
+
+    #[test]
+    fn test_site_properties_serialization() {
+        // Site properties should round-trip through serialization
+        let lattice = Lattice::cubic(4.0);
+        let species = Species::neutral(Element::Fe);
+        let coords = vec![Vector3::new(0.0, 0.0, 0.0)];
+
+        let mut props = HashMap::new();
+        props.insert("magmom".to_string(), serde_json::json!(2.5));
+        props.insert("label".to_string(), serde_json::json!("Fe1"));
+
+        let site_occ = crate::species::SiteOccupancy::with_properties(vec![(species, 1.0)], props);
+
+        let s1 = Structure::try_new_from_occupancies(lattice, vec![site_occ], coords).unwrap();
+
+        // Serialize and parse back
+        let json = structure_to_pymatgen_json(&s1);
+        let s2 = parse_structure_json(&json).unwrap();
+
+        // Check properties are preserved
+        let props2 = s2.site_properties(0);
+        assert_eq!(props2.get("magmom").and_then(|v| v.as_f64()), Some(2.5));
+        assert_eq!(props2.get("label").and_then(|v| v.as_str()), Some("Fe1"));
     }
 
     #[test]

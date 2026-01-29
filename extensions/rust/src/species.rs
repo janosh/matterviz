@@ -5,6 +5,7 @@
 
 use crate::element::Element;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
@@ -170,6 +171,9 @@ impl From<Element> for Species {
 pub struct SiteOccupancy {
     /// Species with their occupancies.
     pub species: Vec<(Species, f64)>,
+    /// Site-level properties (label, magmom, forces, etc.).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub properties: HashMap<String, serde_json::Value>,
 }
 
 impl SiteOccupancy {
@@ -184,6 +188,18 @@ impl SiteOccupancy {
     /// This constructor allows occupancies > 1.0 for flexibility. JSON parsing
     /// in `io.rs` applies stricter validation (0.0 < occu <= 1.0).
     pub fn new(species: Vec<(Species, f64)>) -> Self {
+        Self::with_properties(species, HashMap::new())
+    }
+
+    /// Create a new site occupancy with properties.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `species` is empty or if any occupancy is not finite or positive.
+    pub fn with_properties(
+        species: Vec<(Species, f64)>,
+        properties: HashMap<String, serde_json::Value>,
+    ) -> Self {
         assert!(
             !species.is_empty(),
             "SiteOccupancy requires at least one species"
@@ -192,13 +208,17 @@ impl SiteOccupancy {
             species.iter().all(|(_, occ)| occ.is_finite() && *occ > 0.0),
             "SiteOccupancy occupancies must be finite and positive"
         );
-        Self { species }
+        Self {
+            species,
+            properties,
+        }
     }
 
     /// Create an ordered site with a single species at full occupancy.
     pub fn ordered(species: Species) -> Self {
         Self {
             species: vec![(species, 1.0)],
+            properties: HashMap::new(),
         }
     }
 
@@ -307,8 +327,9 @@ mod tests {
     #[test]
     fn test_from_string_errors() {
         // Invalid inputs should return None
+        // Note: "X", "Xx", "D", "T" are now valid pseudo-elements
         let invalid_cases = [
-            ("Xx", "unknown element"),
+            ("Zzz", "truly unknown element"),
             ("InvalidElement", "long invalid string"),
             ("", "empty string"),
             ("   ", "whitespace only"),
@@ -328,6 +349,33 @@ mod tests {
                 "'{input}' ({desc}) should return None"
             );
         }
+    }
+
+    #[test]
+    fn test_pseudo_elements() {
+        use crate::element::Element;
+
+        // Pseudo-elements should parse correctly
+        let pseudo_cases = [
+            ("X", Element::Dummy),
+            ("Xx", Element::Dummy),
+            ("D", Element::D),
+            ("T", Element::T),
+            ("Dummy", Element::Dummy),
+            ("Vac", Element::Dummy),
+        ];
+
+        for (input, expected_elem) in pseudo_cases {
+            let sp = Species::from_string(input)
+                .unwrap_or_else(|| panic!("Failed to parse pseudo-element: {input}"));
+            assert_eq!(sp.element, expected_elem, "element mismatch for '{input}'");
+            assert_eq!(sp.oxidation_state, None);
+        }
+
+        // Pseudo-elements with oxidation states
+        let sp = Species::from_string("D+").unwrap();
+        assert_eq!(sp.element, Element::D);
+        assert_eq!(sp.oxidation_state, Some(1));
     }
 
     #[test]
