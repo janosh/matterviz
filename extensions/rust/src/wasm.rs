@@ -3,11 +3,9 @@
 //! This module provides JavaScript-accessible wrappers for Element, Species,
 //! and Composition types via wasm-bindgen.
 
-#![cfg(feature = "wasm")]
-
 use wasm_bindgen::prelude::*;
 
-use crate::element::{Block, Element};
+use crate::element::Element;
 use crate::species::Species;
 
 // =============================================================================
@@ -83,7 +81,7 @@ impl JsElement {
     /// Get the periodic table block ("S", "P", "D", or "F").
     #[wasm_bindgen(getter)]
     pub fn block(&self) -> String {
-        format!("{:?}", self.inner.block())
+        self.inner.block().as_str().to_string()
     }
 
     /// Get atomic radius in Angstroms (or NaN if not defined).

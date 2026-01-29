@@ -504,81 +504,65 @@ impl Composition {
 // Operator Implementations
 // =============================================================================
 
-impl Add for Composition {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self {
+impl Composition {
+    /// Helper for Add/Sub: merge rhs into self with given sign (+1 or -1).
+    fn merge_with(self, rhs: Self, sign: f64) -> Self {
         let mut result = self.species.clone();
         for (sp, amt) in rhs.species {
-            *result.entry(sp).or_insert(0.0) += amt;
+            *result.entry(sp).or_insert(0.0) += sign * amt;
         }
-        // Filter out near-zero amounts
-        let filtered: IndexMap<Species, f64> = result
-            .into_iter()
-            .filter(|(_, amt)| amt.abs() > AMOUNT_TOLERANCE)
-            .collect();
         Self {
-            species: filtered,
+            species: result
+                .into_iter()
+                .filter(|(_, amt)| amt.abs() > AMOUNT_TOLERANCE)
+                .collect(),
             allow_negative: self.allow_negative || rhs.allow_negative,
         }
+    }
+
+    /// Helper for Mul/Div: scale all amounts.
+    fn scale(self, factor: f64) -> Self {
+        Self {
+            species: self
+                .species
+                .into_iter()
+                .map(|(sp, amt)| (sp, amt * factor))
+                .filter(|(_, amt)| amt.abs() > AMOUNT_TOLERANCE)
+                .collect(),
+            allow_negative: self.allow_negative,
+        }
+    }
+}
+
+impl Add for Composition {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        self.merge_with(rhs, 1.0)
     }
 }
 
 impl Sub for Composition {
     type Output = Self;
-
     fn sub(self, rhs: Self) -> Self {
-        let mut result = self.species.clone();
-        for (sp, amt) in rhs.species {
-            *result.entry(sp).or_insert(0.0) -= amt;
-        }
-        // Filter out near-zero amounts
-        let filtered: IndexMap<Species, f64> = result
-            .into_iter()
-            .filter(|(_, amt)| amt.abs() > AMOUNT_TOLERANCE)
-            .collect();
-        Self {
-            species: filtered,
-            allow_negative: self.allow_negative || rhs.allow_negative,
-        }
+        self.merge_with(rhs, -1.0)
     }
 }
 
 impl Mul<f64> for Composition {
     type Output = Self;
-
     fn mul(self, scalar: f64) -> Self {
-        let species: IndexMap<Species, f64> = self
-            .species
-            .into_iter()
-            .map(|(sp, amt)| (sp, amt * scalar))
-            .filter(|(_, amt)| amt.abs() > AMOUNT_TOLERANCE)
-            .collect();
-        Self {
-            species,
-            allow_negative: self.allow_negative,
-        }
+        self.scale(scalar)
     }
 }
 
 impl Div<f64> for Composition {
     type Output = Self;
-
     fn div(self, scalar: f64) -> Self {
         assert!(
             scalar.abs() >= AMOUNT_TOLERANCE,
             "Cannot divide Composition by zero or near-zero value"
         );
-        let species: IndexMap<Species, f64> = self
-            .species
-            .into_iter()
-            .map(|(sp, amt)| (sp, amt / scalar))
-            .filter(|(_, amt)| amt.abs() > AMOUNT_TOLERANCE)
-            .collect();
-        Self {
-            species,
-            allow_negative: self.allow_negative,
-        }
+        self.scale(1.0 / scalar)
     }
 }
 
@@ -617,32 +601,57 @@ impl std::hash::Hash for Composition {
 /// Parse a formula string recursively, expanding parentheses.
 fn parse_formula_recursive(formula: &str) -> Result<Vec<(Species, f64)>> {
     let mut formula = formula.to_string();
+    let mut parse_error: Option<FerroxError> = None;
 
     // Recursively expand parentheses from innermost to outermost
     while PAREN_GROUP_RE.is_match(&formula) {
         let new_formula = PAREN_GROUP_RE.replace(&formula, |caps: &regex::Captures| {
             let inner = &caps[1];
-            let multiplier: f64 = if caps[2].is_empty() {
+            let mult_str = &caps[2];
+            let multiplier: f64 = if mult_str.is_empty() {
                 1.0
             } else {
-                caps[2].parse().unwrap_or(1.0)
+                match mult_str.parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        parse_error = Some(FerroxError::ParseError {
+                            path: "formula".into(),
+                            reason: format!("Invalid multiplier '{mult_str}' for group ({inner})"),
+                        });
+                        1.0 // Dummy value, error will be returned after replace
+                    }
+                }
             };
 
             // Parse inner content and multiply amounts
-            if let Ok(inner_species) = parse_flat_formula(inner) {
-                inner_species
+            match parse_flat_formula(inner) {
+                Ok(inner_species) => inner_species
                     .iter()
                     .map(|(sp, amt)| format!("{}{}", sp.element.symbol(), amt * multiplier))
                     .collect::<Vec<_>>()
-                    .join("")
-            } else {
-                inner.to_string()
+                    .join(""),
+                Err(err) => {
+                    parse_error = Some(err);
+                    inner.to_string()
+                }
             }
         });
         formula = new_formula.to_string();
+
+        // Propagate any error from inner parsing
+        if let Some(err) = parse_error {
+            return Err(err);
+        }
     }
 
-    parse_flat_formula(&formula)
+    let results = parse_flat_formula(&formula)?;
+    if results.is_empty() {
+        return Err(FerroxError::ParseError {
+            path: "formula".into(),
+            reason: "No elements found in formula".into(),
+        });
+    }
+    Ok(results)
 }
 
 /// Parse a flat formula (no parentheses) into species-amount pairs.
@@ -651,10 +660,14 @@ fn parse_flat_formula(formula: &str) -> Result<Vec<(Species, f64)>> {
 
     for cap in ELEMENT_AMOUNT_RE.captures_iter(formula) {
         let symbol = &cap[1];
-        let amt: f64 = if cap[2].is_empty() {
+        let amt_str = &cap[2];
+        let amt: f64 = if amt_str.is_empty() {
             1.0
         } else {
-            cap[2].parse().unwrap_or(1.0)
+            amt_str.parse().map_err(|_| FerroxError::ParseError {
+                path: "formula".into(),
+                reason: format!("Invalid amount '{amt_str}' for element {symbol}"),
+            })?
         };
 
         let element = Element::from_symbol(symbol).ok_or_else(|| FerroxError::ParseError {
@@ -671,7 +684,7 @@ fn parse_flat_formula(formula: &str) -> Result<Vec<(Species, f64)>> {
 /// Hill formula sort key: C=0, H=1 (only if carbon present), rest alphabetical.
 fn hill_sort_key(sym: &str, has_carbon: bool) -> (u8, &str) {
     match sym {
-        "C" if has_carbon => (0, sym),
+        "C" => (0, sym),
         "H" if has_carbon => (1, sym),
         _ => (2, sym),
     }
@@ -690,14 +703,13 @@ fn format_amount(symbol: &str, amt: f64) -> String {
 
 /// Compute GCD of two floating point numbers.
 fn gcd_float(mut a: f64, mut b: f64) -> f64 {
-    const EPSILON: f64 = 1e-10;
     const MAX_ITER: usize = 100;
 
     a = a.abs();
     b = b.abs();
 
     for _ in 0..MAX_ITER {
-        if b < EPSILON {
+        if b < AMOUNT_TOLERANCE {
             return a;
         }
         let temp = b;
@@ -808,6 +820,12 @@ mod tests {
             Composition::from_formula("XxYy2").is_err(),
             "unknown element"
         );
+        assert!(
+            Composition::from_formula("(OH).").is_err(),
+            "invalid multiplier '.'"
+        );
+        // Note: "(PO4)abc" parses as PO4 - trailing lowercase is silently ignored.
+        // This matches pymatgen behavior where regex-based parsing skips non-matching text.
     }
 
     // =========================================================================

@@ -2,10 +2,60 @@
 //!
 //! This module provides the `Element` enum representing all 118 chemical elements,
 //! along with associated data like atomic numbers, symbols, and electronegativities.
+//!
+//! Extended element data (oxidation states, ionic radii, Shannon radii) is loaded
+//! from the shared JSON file at compile time.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::OnceLock;
+
+// =============================================================================
+// Extended Element Data (loaded from JSON)
+// =============================================================================
+
+/// Compile-time embedded JSON data (single source of truth shared with TypeScript).
+const ELEMENT_DATA_JSON: &str = include_str!("../../../src/lib/element/data.json");
+
+/// Shannon radius pair: crystal and ionic radii in Angstroms.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShannonRadiusPair {
+    /// Crystal radius in Angstroms.
+    pub crystal_radius: f64,
+    /// Ionic radius in Angstroms.
+    pub ionic_radius: f64,
+}
+
+/// Shannon radii: coordination -> spin -> radii.
+pub type ShannonCoordination = HashMap<String, HashMap<String, ShannonRadiusPair>>;
+
+/// Shannon radii for all oxidation states: oxidation_state -> coordination -> spin -> radii.
+pub type ShannonRadii = HashMap<String, ShannonCoordination>;
+
+/// Element data from JSON (for deserialization).
+#[derive(Debug, Deserialize)]
+struct ElementData {
+    name: String,
+    atomic_radius: Option<f64>,
+    covalent_radius: Option<f64>,
+    oxidation_states: Option<Vec<i8>>,
+    common_oxidation_states: Option<Vec<i8>>,
+    icsd_oxidation_states: Option<Vec<i8>>,
+    ionic_radii: Option<HashMap<String, f64>>,
+    shannon_radii: Option<ShannonRadii>,
+}
+
+static ELEMENT_DATA: OnceLock<Vec<ElementData>> = OnceLock::new();
+
+fn get_element_data(z: u8) -> Option<&'static ElementData> {
+    if !(1..=118).contains(&z) {
+        return None;
+    }
+    let data = ELEMENT_DATA.get_or_init(|| {
+        serde_json::from_str(ELEMENT_DATA_JSON).expect("Failed to parse element data JSON")
+    });
+    data.get((z - 1) as usize)
+}
 
 /// All 118 chemical elements.
 ///
@@ -831,6 +881,10 @@ impl Element {
     }
 
     /// True if element is a halogen (F, Cl, Br, I, At).
+    ///
+    /// Note: Tennessine (Ts, Z=117) is excluded despite being in group 17,
+    /// as its chemical properties are predicted to differ significantly from
+    /// traditional halogens. This matches pymatgen's classification.
     pub fn is_halogen(&self) -> bool {
         matches!(self.atomic_number(), 9 | 17 | 35 | 53 | 85)
     }
@@ -854,6 +908,10 @@ impl Element {
     ///
     /// Includes Sc-Zn (21-30), Y-Cd (39-48), La (57), Hf-Hg (72-80),
     /// Ac (89), and Rf-Cn (104-112).
+    ///
+    /// Note: La and Ac return true for both `is_transition_metal()` and
+    /// `is_lanthanoid()`/`is_actinoid()`. This reflects that these elements
+    /// are often classified both ways in the literature.
     pub fn is_transition_metal(&self) -> bool {
         let z = self.atomic_number();
         matches!(z, 21..=30 | 39..=48 | 72..=80 | 104..=112) || z == 57 || z == 89
@@ -917,7 +975,7 @@ impl Element {
     /// assert!(fe_oxi.contains(&3));
     /// ```
     pub fn oxidation_states(&self) -> &'static [i8] {
-        crate::element_data::get_by_atomic_number(self.atomic_number())
+        get_element_data(self.atomic_number())
             .and_then(|d| d.oxidation_states.as_deref())
             .unwrap_or(&[])
     }
@@ -926,14 +984,14 @@ impl Element {
     ///
     /// Returns an empty slice for pseudo-elements or elements without data.
     pub fn common_oxidation_states(&self) -> &'static [i8] {
-        crate::element_data::get_by_atomic_number(self.atomic_number())
+        get_element_data(self.atomic_number())
             .and_then(|d| d.common_oxidation_states.as_deref())
             .unwrap_or(&[])
     }
 
     /// Get ICSD oxidation states (oxidation states with at least 10 instances in ICSD).
     pub fn icsd_oxidation_states(&self) -> &'static [i8] {
-        crate::element_data::get_by_atomic_number(self.atomic_number())
+        get_element_data(self.atomic_number())
             .and_then(|d| d.icsd_oxidation_states.as_deref())
             .unwrap_or(&[])
     }
@@ -966,14 +1024,12 @@ impl Element {
     /// assert!(fe_radius.unwrap() > 1.0 && fe_radius.unwrap() < 2.0);
     /// ```
     pub fn atomic_radius(&self) -> Option<f64> {
-        crate::element_data::get_by_atomic_number(self.atomic_number())
-            .and_then(|d| d.atomic_radius)
+        get_element_data(self.atomic_number()).and_then(|d| d.atomic_radius)
     }
 
     /// Get covalent radius in Angstroms.
     pub fn covalent_radius(&self) -> Option<f64> {
-        crate::element_data::get_by_atomic_number(self.atomic_number())
-            .and_then(|d| d.covalent_radius)
+        get_element_data(self.atomic_number()).and_then(|d| d.covalent_radius)
     }
 
     /// Get ionic radii by oxidation state.
@@ -981,8 +1037,7 @@ impl Element {
     /// Returns a reference to a HashMap where keys are oxidation states as strings
     /// (e.g., "2", "-1") and values are radii in Angstroms.
     pub fn ionic_radii(&self) -> Option<&'static std::collections::HashMap<String, f64>> {
-        crate::element_data::get_by_atomic_number(self.atomic_number())
-            .and_then(|d| d.ionic_radii.as_ref())
+        get_element_data(self.atomic_number()).and_then(|d| d.ionic_radii.as_ref())
     }
 
     /// Get ionic radius for a specific oxidation state.
@@ -1010,9 +1065,8 @@ impl Element {
     /// Shannon radii provide detailed ionic radii accounting for coordination number
     /// and spin state. The returned structure is:
     /// oxidation_state -> coordination -> spin -> {crystal_radius, ionic_radius}
-    pub fn shannon_radii(&self) -> Option<&'static crate::element_data::ShannonRadii> {
-        crate::element_data::get_by_atomic_number(self.atomic_number())
-            .and_then(|d| d.shannon_radii.as_ref())
+    pub fn shannon_radii(&self) -> Option<&'static ShannonRadii> {
+        get_element_data(self.atomic_number()).and_then(|d| d.shannon_radii.as_ref())
     }
 
     /// Get Shannon ionic radius for a specific oxidation state, coordination, and spin.
@@ -1046,7 +1100,7 @@ impl Element {
 
     /// Get the full name of this element (e.g., "Iron" for Fe).
     pub fn name(&self) -> &'static str {
-        crate::element_data::get_by_atomic_number(self.atomic_number())
+        get_element_data(self.atomic_number())
             .map(|d| d.name.as_str())
             .unwrap_or("Unknown")
     }
@@ -1066,6 +1120,18 @@ pub enum Block {
     D,
     /// f-block (lanthanoids and actinoids, except Lu and Lr)
     F,
+}
+
+impl Block {
+    /// Get the block as a stable string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Block::S => "S",
+            Block::P => "P",
+            Block::D => "D",
+            Block::F => "F",
+        }
+    }
 }
 
 impl std::fmt::Display for Element {

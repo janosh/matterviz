@@ -133,8 +133,11 @@ def merge_data(
 
 def main() -> None:
     """Main entry point."""
-    data_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.ts"
-    output_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.json"
+    # Prefer JSON if it exists (post-migration), fall back to TypeScript
+    json_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.json"
+    ts_path = PROJECT_ROOT / "src" / "lib" / "element" / "data.ts"
+    data_path = json_path if json_path.exists() else ts_path
+    output_path = json_path
 
     print(f"Loading existing data from {data_path}")
     existing_data = load_existing_data(data_path)

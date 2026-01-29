@@ -1292,36 +1292,6 @@ fn parse_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
     Ok(dict.unbind())
 }
 
-/// Get the chemical system for a formula.
-#[pyfunction]
-fn composition_chemical_system(formula: &str) -> PyResult<String> {
-    Ok(parse_comp(formula)?.chemical_system())
-}
-
-/// Get the molecular weight for a formula.
-#[pyfunction]
-fn composition_weight(formula: &str) -> PyResult<f64> {
-    Ok(parse_comp(formula)?.weight())
-}
-
-/// Get the reduced formula for a formula.
-#[pyfunction]
-fn composition_reduced_formula(formula: &str) -> PyResult<String> {
-    Ok(parse_comp(formula)?.reduced_formula())
-}
-
-/// Get the Hill formula for a formula.
-#[pyfunction]
-fn composition_hill_formula(formula: &str) -> PyResult<String> {
-    Ok(parse_comp(formula)?.hill_formula())
-}
-
-/// Get the number of atoms for a formula.
-#[pyfunction]
-fn composition_num_atoms(formula: &str) -> PyResult<f64> {
-    Ok(parse_comp(formula)?.num_atoms())
-}
-
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
@@ -1366,10 +1336,5 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_site_property, m)?)?;
     // Composition functions
     m.add_function(wrap_pyfunction!(parse_composition, m)?)?;
-    m.add_function(wrap_pyfunction!(composition_chemical_system, m)?)?;
-    m.add_function(wrap_pyfunction!(composition_weight, m)?)?;
-    m.add_function(wrap_pyfunction!(composition_reduced_formula, m)?)?;
-    m.add_function(wrap_pyfunction!(composition_hill_formula, m)?)?;
-    m.add_function(wrap_pyfunction!(composition_num_atoms, m)?)?;
     Ok(())
 }
