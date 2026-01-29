@@ -4,6 +4,8 @@ import type { HTMLAttributes } from 'svelte/elements'
 import type {
   ConvexHullConfig,
   ConvexHullControlsType,
+  GasSpecies,
+  GasThermodynamicsConfig,
   HighlightStyle,
   HoverData3D,
   PhaseData,
@@ -19,6 +21,8 @@ export { default as ConvexHullControls } from './ConvexHullControls.svelte'
 export { default as ConvexHullInfoPane } from './ConvexHullInfoPane.svelte'
 export { default as ConvexHullStats } from './ConvexHullStats.svelte'
 export { default as ConvexHullTooltip } from './ConvexHullTooltip.svelte'
+export * from './gas-thermodynamics'
+export { default as GasPressureControls } from './GasPressureControls.svelte'
 export * from './helpers'
 export { default as TemperatureSlider } from './TemperatureSlider.svelte'
 export * from './thermodynamics'
@@ -105,6 +109,12 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // Maximum temperature gap (Kelvin) allowed for interpolation (default: 500)
   // Prevents extrapolation over unreasonably large gaps
   max_interpolation_gap?: number
+  // Gas thermodynamics configuration for atmosphere-controlled phase diagrams
+  // Enables chemical potential corrections based on gas partial pressures
+  gas_config?: GasThermodynamicsConfig
+  // Bindable gas partial pressures (in bar) - overrides values in gas_config.pressures
+  // Use this for two-way binding to gas pressure controls
+  gas_pressures?: Partial<Record<GasSpecies, number>>
 }
 
 // Additional props specific to 3D and 4D convex hulls

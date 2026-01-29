@@ -429,9 +429,7 @@ export function summarize_models(
     .join(`, `)
 }
 
-// ============================================================================
 // Chemical Formula Parsing Utilities (for pseudo-binary phase diagrams)
-// ============================================================================
 
 // Token from formula tokenization - can be text, subscript, or superscript
 export interface FormulaToken {
