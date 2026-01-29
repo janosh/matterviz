@@ -165,6 +165,76 @@ impl From<Element> for Species {
     }
 }
 
+/// A site with potentially multiple species (partial occupancy).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteOccupancy {
+    /// Species with their occupancies.
+    pub species: Vec<(Species, f64)>,
+}
+
+impl SiteOccupancy {
+    /// Create a new site occupancy from species-occupancy pairs.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `species` is empty or if any occupancy is not finite or positive.
+    ///
+    /// # Note
+    ///
+    /// This constructor allows occupancies > 1.0 for flexibility. JSON parsing
+    /// in `io.rs` applies stricter validation (0.0 < occu <= 1.0).
+    pub fn new(species: Vec<(Species, f64)>) -> Self {
+        assert!(
+            !species.is_empty(),
+            "SiteOccupancy requires at least one species"
+        );
+        assert!(
+            species.iter().all(|(_, occ)| occ.is_finite() && *occ > 0.0),
+            "SiteOccupancy occupancies must be finite and positive"
+        );
+        Self { species }
+    }
+
+    /// Create an ordered site with a single species at full occupancy.
+    pub fn ordered(species: Species) -> Self {
+        Self {
+            species: vec![(species, 1.0)],
+        }
+    }
+
+    /// Check if this is an ordered site (single species).
+    ///
+    /// Returns `true` if there is exactly one species, even if it has partial
+    /// occupancy (vacancy). A site with Fe at 0.8 occupancy is still "ordered"
+    /// in the crystallographic sense - the disorder refers to mixed species,
+    /// not vacancies.
+    pub fn is_ordered(&self) -> bool {
+        self.species.len() == 1
+    }
+
+    /// Get the dominant species (highest occupancy).
+    ///
+    /// Uses total ordering for f64 comparison (NaN is treated as less than all other values).
+    pub fn dominant_species(&self) -> &Species {
+        self.species
+            .iter()
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(sp, _)| sp)
+            .expect("SiteOccupancy must have at least one species")
+    }
+
+    /// Get the total occupancy.
+    pub fn total_occupancy(&self) -> f64 {
+        self.species.iter().map(|(_, occ)| occ).sum()
+    }
+}
+
+impl From<Species> for SiteOccupancy {
+    fn from(species: Species) -> Self {
+        Self::ordered(species)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,5 +396,99 @@ mod tests {
                 "{elem:?} should have no electronegativity"
             );
         }
+    }
+
+    // =========================================================================
+    // SiteOccupancy tests
+    // =========================================================================
+
+    #[test]
+    fn test_site_occupancy_ordered() {
+        let so = SiteOccupancy::ordered(Species::neutral(Element::Fe));
+        assert!(so.is_ordered());
+        assert_eq!(so.species.len(), 1);
+        assert!((so.total_occupancy() - 1.0).abs() < 1e-10);
+        assert_eq!(so.dominant_species().element, Element::Fe);
+    }
+
+    #[test]
+    fn test_site_occupancy_disordered() {
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.6),
+            (Species::neutral(Element::Co), 0.4),
+        ]);
+        assert!(!so.is_ordered());
+        assert_eq!(so.species.len(), 2);
+        assert!((so.total_occupancy() - 1.0).abs() < 1e-10);
+        // Fe has higher occupancy, so it's dominant
+        assert_eq!(so.dominant_species().element, Element::Fe);
+    }
+
+    #[test]
+    fn test_site_occupancy_equal_occupancy_deterministic() {
+        // When occupancies are equal, result should be deterministic across calls
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.5),
+            (Species::neutral(Element::Co), 0.5),
+        ]);
+        let dom1 = so.dominant_species().element;
+        let dom2 = so.dominant_species().element;
+        assert_eq!(dom1, dom2, "dominant_species should be deterministic");
+        assert!(dom1 == Element::Fe || dom1 == Element::Co);
+    }
+
+    #[test]
+    fn test_site_occupancy_from_species() {
+        let sp = Species::neutral(Element::Cu);
+        let so: SiteOccupancy = sp.into();
+        assert!(so.is_ordered());
+        assert_eq!(so.dominant_species().element, Element::Cu);
+    }
+
+    #[test]
+    #[should_panic(expected = "SiteOccupancy requires at least one species")]
+    fn test_site_occupancy_empty_panics() {
+        SiteOccupancy::new(vec![]);
+    }
+
+    #[test]
+    #[should_panic(expected = "SiteOccupancy occupancies must be finite and positive")]
+    fn test_site_occupancy_negative_panics() {
+        SiteOccupancy::new(vec![(Species::neutral(Element::Fe), -0.5)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "SiteOccupancy occupancies must be finite and positive")]
+    fn test_site_occupancy_nan_panics() {
+        SiteOccupancy::new(vec![(Species::neutral(Element::Fe), f64::NAN)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "SiteOccupancy occupancies must be finite and positive")]
+    fn test_site_occupancy_infinity_panics() {
+        SiteOccupancy::new(vec![(Species::neutral(Element::Fe), f64::INFINITY)]);
+    }
+
+    #[test]
+    fn test_site_occupancy_partial_vacancy() {
+        // Site with partial vacancy (total occupancy < 1.0)
+        let so = SiteOccupancy::new(vec![(Species::neutral(Element::Fe), 0.8)]);
+        assert!(so.is_ordered()); // Only one species, so "ordered"
+        assert!((so.total_occupancy() - 0.8).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_site_occupancy_partial_total_multiple_species() {
+        // Multiple species with partial occupancy not summing to 1.0
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.3),
+            (Species::neutral(Element::Co), 0.4),
+        ]);
+        assert!(!so.is_ordered());
+        assert!(
+            (so.total_occupancy() - 0.7).abs() < 1e-10,
+            "Total occupancy should be 0.7, got {}",
+            so.total_occupancy()
+        );
     }
 }
