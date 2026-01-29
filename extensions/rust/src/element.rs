@@ -376,7 +376,7 @@ impl Element {
         268.0,         // Db (radioactive)
         269.0,         // Sg (radioactive)
         270.0,         // Bh (radioactive)
-        269.0,         // Hs (radioactive)
+        277.0,         // Hs (radioactive)
         278.0,         // Mt (radioactive)
         281.0,         // Ds (radioactive)
         282.0,         // Rg (radioactive)
@@ -708,6 +708,18 @@ mod tests {
         // All 118 elements should have positive mass
         for z in 1..=118 {
             assert!(Element::from_atomic_number(z).unwrap().atomic_mass() > 0.0);
+        }
+
+        // Superheavy elements (Z >= 104) should have monotonically increasing mass
+        // (since values are based on most stable isotopes which increase with Z)
+        for z in 104..118 {
+            let m1 = Element::from_atomic_number(z).unwrap().atomic_mass();
+            let m2 = Element::from_atomic_number(z + 1).unwrap().atomic_mass();
+            assert!(
+                m2 >= m1,
+                "Mass should increase: Z={z} ({m1}) <= Z={} ({m2})",
+                z + 1
+            );
         }
     }
 

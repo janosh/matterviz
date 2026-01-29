@@ -1033,12 +1033,10 @@ fn translate_sites(
 ) -> PyResult<Py<PyDict>> {
     let mut s = parse_struct(structure)?;
     let n = s.num_sites();
-    for &idx in &indices {
-        if idx >= n {
-            return Err(pyo3::exceptions::PyIndexError::new_err(format!(
-                "Site index {idx} out of bounds (num_sites={n})"
-            )));
-        }
+    if let Some(&idx) = indices.iter().find(|&&i| i >= n) {
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+            "Site index {idx} out of bounds (num_sites={n})"
+        )));
     }
     s.translate_sites(&indices, Vector3::from(vector), fractional);
     Ok(structure_to_pydict(py, &s)?.unbind())

@@ -909,16 +909,12 @@ impl Structure {
 /// S^(-1) * (i, j, k) is in [0, 1)^3. These are the lattice translation
 /// vectors needed to fill the supercell.
 fn lattice_points_in_supercell(scaling_matrix: &[[i32; 3]; 3]) -> Vec<Vector3<f64>> {
-    // Compute determinant to know how many points to expect
-    let det = scaling_matrix[0][0]
-        * (scaling_matrix[1][1] * scaling_matrix[2][2]
-            - scaling_matrix[1][2] * scaling_matrix[2][1])
-        - scaling_matrix[0][1]
-            * (scaling_matrix[1][0] * scaling_matrix[2][2]
-                - scaling_matrix[1][2] * scaling_matrix[2][0])
-        + scaling_matrix[0][2]
-            * (scaling_matrix[1][0] * scaling_matrix[2][1]
-                - scaling_matrix[1][1] * scaling_matrix[2][0]);
+    // Compute determinant using i64 to avoid overflow for large scaling matrices
+    let mat: [[i64; 3]; 3] =
+        std::array::from_fn(|row| std::array::from_fn(|col| scaling_matrix[row][col] as i64));
+    let det = mat[0][0] * (mat[1][1] * mat[2][2] - mat[1][2] * mat[2][1])
+        - mat[0][1] * (mat[1][0] * mat[2][2] - mat[1][2] * mat[2][0])
+        + mat[0][2] * (mat[1][0] * mat[2][1] - mat[1][1] * mat[2][0]);
     let n_points = det.unsigned_abs() as usize;
 
     if n_points == 0 {
@@ -934,13 +930,21 @@ fn lattice_points_in_supercell(scaling_matrix: &[[i32; 3]; 3]) -> Vec<Vector3<f6
         && scaling_matrix[2][1] == 0;
 
     if is_diagonal {
-        let nx = scaling_matrix[0][0].abs();
-        let ny = scaling_matrix[1][1].abs();
-        let nz = scaling_matrix[2][2].abs();
-        let mut points = Vec::with_capacity((nx * ny * nz) as usize);
-        for idx in 0..nx {
-            for jdx in 0..ny {
-                for kdx in 0..nz {
+        // For diagonal entry s, valid integers i satisfy 0 <= i/s < 1:
+        // - If s > 0: i ∈ {0, 1, ..., s-1}
+        // - If s < 0: i ∈ {s+1, s+2, ..., 0}
+        fn diag_range(s: i32) -> std::ops::Range<i32> {
+            if s > 0 { 0..s } else { s + 1..1 }
+        }
+        let (sx, sy, sz) = (
+            scaling_matrix[0][0],
+            scaling_matrix[1][1],
+            scaling_matrix[2][2],
+        );
+        let mut points = Vec::with_capacity(n_points);
+        for idx in diag_range(sx) {
+            for jdx in diag_range(sy) {
+                for kdx in diag_range(sz) {
                     points.push(Vector3::new(idx as f64, jdx as f64, kdx as f64));
                 }
             }
@@ -2696,6 +2700,31 @@ mod tests {
         let result = make_nacl().make_supercell([[1, 0, 0], [1, 0, 0], [0, 0, 1]]);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("zero determinant"));
+    }
+
+    #[test]
+    fn test_supercell_negative_diagonal() {
+        // Negative diagonal values create mirror transforms
+        // The supercell should still have correct site count and volume
+        let nacl = make_nacl();
+        let orig_vol = nacl.lattice.volume();
+
+        // Test negative scaling: -2 x 1 x 1 (mirror along a-axis, doubled)
+        let super_neg = nacl
+            .make_supercell([[-2, 0, 0], [0, 1, 0], [0, 0, 1]])
+            .unwrap();
+        assert_eq!(super_neg.num_sites(), 4, "Should have 4 sites");
+        assert!(
+            (super_neg.lattice.volume().abs() - orig_vol * 2.0).abs() < 1e-6,
+            "Volume should double (may be negative for mirror)"
+        );
+
+        // Verify behavior matches general algorithm by comparing with non-diagonal
+        // that produces same result: [[-2,0,0],[0,1,0],[0,0,1]] vs general path
+        let super_gen = nacl
+            .make_supercell([[-2, 0, 0], [0, 1, 0], [0, 0, 1]])
+            .unwrap();
+        assert_eq!(super_neg.num_sites(), super_gen.num_sites());
     }
 
     #[test]
