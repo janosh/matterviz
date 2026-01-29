@@ -223,6 +223,11 @@
         "items": { "type": "integer" },
         "description": "Common oxidation states"
       },
+      "icsd_oxidation_states": {
+        "type": "array",
+        "items": { "type": "integer" },
+        "description": "ICSD oxidation states (oxidation states with at least 10 instances in ICSD)"
+      },
       "ionic_radii": {
         "type": ["object", "null"],
         "additionalProperties": { "type": "number" },

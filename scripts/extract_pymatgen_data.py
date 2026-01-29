@@ -32,6 +32,7 @@ def load_pymatgen_data() -> dict[str, Any]:
     """Load pymatgen's periodic table JSON data."""
     try:
         import pymatgen.core
+
         pymatgen_path = Path(pymatgen.core.__file__).parent / "periodic_table.json.gz"
     except ImportError:
         print("pymatgen not installed. Install with: pip install pymatgen")
@@ -60,7 +61,11 @@ def load_existing_data(path: Path) -> list[dict[str, Any]]:
 
     relative_path = path.relative_to(PROJECT_ROOT)
     result = subprocess.run(
-        ["deno", "eval", f"import data from './{relative_path}'; console.log(JSON.stringify(data))"],
+        [
+            "deno",
+            "eval",
+            f"import data from './{relative_path}'; console.log(JSON.stringify(data))",
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -73,7 +78,9 @@ def load_existing_data(path: Path) -> list[dict[str, Any]]:
     return json.loads(result.stdout)
 
 
-def extract_pymatgen_properties(pymatgen_data: dict[str, Any], symbol: str) -> dict[str, Any]:
+def extract_pymatgen_properties(
+    pymatgen_data: dict[str, Any], symbol: str
+) -> dict[str, Any]:
     """Extract relevant properties from pymatgen data for a given element."""
     if symbol not in pymatgen_data:
         return {}
@@ -94,7 +101,8 @@ def extract_pymatgen_properties(pymatgen_data: dict[str, Any], symbol: str) -> d
     # Ionic radii (simplified: just oxidation state -> radius)
     if "Ionic radii" in elem_data:
         result["ionic_radii"] = {
-            str(k): v for k, v in elem_data["Ionic radii"].items()
+            str(oxi_state): radius
+            for oxi_state, radius in elem_data["Ionic radii"].items()
         }
 
     # Shannon radii (full nested structure)
@@ -105,8 +113,7 @@ def extract_pymatgen_properties(pymatgen_data: dict[str, Any], symbol: str) -> d
 
 
 def merge_data(
-    existing: list[dict[str, Any]],
-    pymatgen_data: dict[str, Any]
+    existing: list[dict[str, Any]], pymatgen_data: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """Merge pymatgen data into existing element data."""
     result = []
@@ -143,12 +150,14 @@ def main() -> None:
     # Verify we have oxidation states for common elements
     sample_elements = ["Fe", "O", "Na", "Cl"]
     for symbol in sample_elements:
-        elem = next((e for e in merged_data if e["symbol"] == symbol), None)
+        elem = next((el for el in merged_data if el["symbol"] == symbol), None)
         if elem:
             oxi = elem.get("oxidation_states", [])
             common = elem.get("common_oxidation_states", [])
             shannon = "yes" if elem.get("shannon_radii") else "no"
-            print(f"  {symbol}: oxidation_states={oxi}, common={common}, shannon={shannon}")
+            print(
+                f"  {symbol}: oxidation_states={oxi}, common={common}, shannon={shannon}"
+            )
 
     print(f"Writing output to {output_path}")
     with open(output_path, "w", encoding="utf-8") as file:
