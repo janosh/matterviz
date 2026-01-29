@@ -165,6 +165,52 @@ impl From<Element> for Species {
     }
 }
 
+/// A site with potentially multiple species (partial occupancy).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteOccupancy {
+    /// Species with their occupancies.
+    pub species: Vec<(Species, f64)>,
+}
+
+impl SiteOccupancy {
+    /// Create a new site occupancy from species-occupancy pairs.
+    pub fn new(species: Vec<(Species, f64)>) -> Self {
+        Self { species }
+    }
+
+    /// Create an ordered site with a single species at full occupancy.
+    pub fn ordered(species: Species) -> Self {
+        Self {
+            species: vec![(species, 1.0)],
+        }
+    }
+
+    /// Check if this is an ordered site (single species).
+    pub fn is_ordered(&self) -> bool {
+        self.species.len() == 1
+    }
+
+    /// Get the dominant species (highest occupancy).
+    pub fn dominant_species(&self) -> &Species {
+        self.species
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(sp, _)| sp)
+            .expect("SiteOccupancy must have at least one species")
+    }
+
+    /// Get the total occupancy.
+    pub fn total_occupancy(&self) -> f64 {
+        self.species.iter().map(|(_, occ)| occ).sum()
+    }
+}
+
+impl From<Species> for SiteOccupancy {
+    fn from(species: Species) -> Self {
+        Self::ordered(species)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -13,7 +13,7 @@ use crate::cif::parse_cif;
 use crate::element::Element;
 use crate::error::{FerroxError, Result};
 use crate::lattice::Lattice;
-use crate::species::Species;
+use crate::species::{SiteOccupancy, Species};
 use crate::structure::Structure;
 use nalgebra::Vector3;
 use serde::Deserialize;
@@ -254,12 +254,11 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
     let mut lattice = Lattice::new(matrix);
     lattice.pbc = parsed.lattice.pbc;
 
-    // Build species and coordinates
-    let mut species = Vec::with_capacity(parsed.sites.len());
+    // Build site occupancies and coordinates (supports disordered sites)
+    let mut site_occupancies = Vec::with_capacity(parsed.sites.len());
     let mut frac_coords = Vec::with_capacity(parsed.sites.len());
 
     for (idx, site) in parsed.sites.iter().enumerate() {
-        // Handle empty species list
         if site.species.is_empty() {
             return Err(FerroxError::JsonError {
                 path: "inline".to_string(),
@@ -267,47 +266,47 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
             });
         }
 
-        // TODO: Add proper disordered site support with occupancy tracking.
-        // Currently uses only the first species, losing partial occupancy information.
-        if site.species.len() > 1 {
-            tracing::warn!(
-                "Site {} has {} species (disordered site), using first species only",
-                idx,
-                site.species.len()
-            );
-        }
-        let sp_json = &site.species[0];
-
-        let element =
-            Element::from_symbol(&sp_json.element).ok_or_else(|| FerroxError::JsonError {
-                path: "inline".to_string(),
-                reason: format!("Unknown element: {}", sp_json.element),
-            })?;
-
-        let sp = if let Some(oxi) = sp_json.oxidation_state {
-            if oxi < i8::MIN as i32 || oxi > i8::MAX as i32 {
-                return Err(FerroxError::JsonError {
+        // Parse all species with their occupancies
+        let mut species_vec = Vec::with_capacity(site.species.len());
+        for sp_json in &site.species {
+            let element =
+                Element::from_symbol(&sp_json.element).ok_or_else(|| FerroxError::JsonError {
                     path: "inline".to_string(),
-                    reason: format!("Oxidation state {oxi} out of range [-128, 127]"),
-                });
-            }
-            Species::new(element, Some(oxi as i8))
-        } else {
-            Species::neutral(element)
-        };
+                    reason: format!("Unknown element: {}", sp_json.element),
+                })?;
 
-        species.push(sp);
+            let sp = if let Some(oxi) = sp_json.oxidation_state {
+                if oxi < i8::MIN as i32 || oxi > i8::MAX as i32 {
+                    return Err(FerroxError::JsonError {
+                        path: "inline".to_string(),
+                        reason: format!("Oxidation state {oxi} out of range [-128, 127]"),
+                    });
+                }
+                Species::new(element, Some(oxi as i8))
+            } else {
+                Species::neutral(element)
+            };
+
+            species_vec.push((sp, sp_json.occu));
+        }
+
+        site_occupancies.push(SiteOccupancy::new(species_vec));
         frac_coords.push(Vector3::new(site.abc[0], site.abc[1], site.abc[2]));
     }
 
-    // Extract properties from JSON (convert Value to HashMap)
+    // Extract properties from JSON
     let properties = match parsed.properties {
         serde_json::Value::Object(map) => map.into_iter().collect(),
         serde_json::Value::Null => std::collections::HashMap::new(),
         _ => std::collections::HashMap::new(),
     };
 
-    Structure::try_new_with_properties(lattice, species, frac_coords, properties)
+    Structure::try_new_from_occupancies_with_properties(
+        lattice,
+        site_occupancies,
+        frac_coords,
+        properties,
+    )
 }
 
 /// Serialize a structure to pymatgen's JSON format.
@@ -335,22 +334,29 @@ pub fn structure_to_pymatgen_json(structure: &Structure) -> String {
         "pbc": structure.lattice.pbc
     });
 
-    // Build sites
+    // Build sites with all species and their occupancies
     let sites: Vec<Value> = structure
-        .species
+        .site_occupancies
         .iter()
         .zip(structure.frac_coords.iter())
-        .map(|(sp, coord)| {
-            let mut species_entry = json!({
-                "element": sp.element.symbol(),
-                "occu": 1.0
-            });
-            if let Some(oxi) = sp.oxidation_state {
-                species_entry["oxidation_state"] = json!(oxi);
-            }
+        .map(|(site_occ, coord)| {
+            let species_list: Vec<Value> = site_occ
+                .species
+                .iter()
+                .map(|(sp, occ)| {
+                    let mut entry = json!({
+                        "element": sp.element.symbol(),
+                        "occu": occ
+                    });
+                    if let Some(oxi) = sp.oxidation_state {
+                        entry["oxidation_state"] = json!(oxi);
+                    }
+                    entry
+                })
+                .collect();
 
             json!({
-                "species": [species_entry],
+                "species": species_list,
                 "abc": [coord.x, coord.y, coord.z],
                 "properties": {}
             })
@@ -511,9 +517,9 @@ fn poscar_to_structure(poscar: &vasp_poscar::Poscar, path: &Path) -> Result<Stru
         }
     };
 
-    // Build lattice matrix (row-major, scaled)
+    // Build lattice matrix (rows are lattice vectors a, b, c)
     let vecs = &raw.lattice_vectors;
-    let matrix = nalgebra::Matrix3::new(
+    let matrix = nalgebra::Matrix3::from_row_slice(&[
         vecs[0][0] * scale,
         vecs[0][1] * scale,
         vecs[0][2] * scale,
@@ -523,7 +529,7 @@ fn poscar_to_structure(poscar: &vasp_poscar::Poscar, path: &Path) -> Result<Stru
         vecs[2][0] * scale,
         vecs[2][1] * scale,
         vecs[2][2] * scale,
-    );
+    ]);
     let lattice = Lattice::new(matrix);
 
     // Get element symbols - VASP 5+ required
@@ -679,18 +685,8 @@ fn frame_to_structure(frame: &str, path: &Path) -> Result<Structure> {
         });
     }
 
-    // Build lattice matrix (row-major: a, b, c as rows)
-    let matrix = nalgebra::Matrix3::new(
-        lattice_vals[0],
-        lattice_vals[1],
-        lattice_vals[2],
-        lattice_vals[3],
-        lattice_vals[4],
-        lattice_vals[5],
-        lattice_vals[6],
-        lattice_vals[7],
-        lattice_vals[8],
-    );
+    // Build lattice matrix (rows are lattice vectors a, b, c)
+    let matrix = nalgebra::Matrix3::from_row_slice(&lattice_vals);
     let mut lattice = Lattice::new(matrix);
 
     // Parse PBC if present (default to [true, true, true])
@@ -766,10 +762,10 @@ mod tests {
     use super::*;
     use crate::element::Element;
 
-    // Helper to count elements in a structure
+    // Helper to count elements in a structure (counts dominant species per site)
     fn count_element(structure: &Structure, elem: Element) -> usize {
         structure
-            .species
+            .species()
             .iter()
             .filter(|sp| sp.element == elem)
             .count()
@@ -787,8 +783,8 @@ mod tests {
 
         let s = parse_structure_json(json).unwrap();
         assert_eq!(s.num_sites(), 2);
-        assert_eq!(s.species[0].element, Element::Fe);
-        assert_eq!(s.species[1].element, Element::Fe);
+        assert_eq!(s.species()[0].element, Element::Fe);
+        assert_eq!(s.species()[1].element, Element::Fe);
         assert!((s.lattice.volume() - 64.0).abs() < 1e-10);
     }
 
@@ -803,8 +799,8 @@ mod tests {
         }"#;
 
         let s = parse_structure_json(json).unwrap();
-        assert_eq!(s.species[0].oxidation_state, Some(1));
-        assert_eq!(s.species[1].oxidation_state, Some(-1));
+        assert_eq!(s.species()[0].oxidation_state, Some(1));
+        assert_eq!(s.species()[1].oxidation_state, Some(-1));
     }
 
     #[test]
@@ -819,8 +815,8 @@ mod tests {
         }"#;
 
         let s = parse_structure_json(json).unwrap();
-        assert_eq!(s.species[0].oxidation_state, Some(3));
-        assert_eq!(s.species[1].oxidation_state, Some(4));
+        assert_eq!(s.species()[0].oxidation_state, Some(3));
+        assert_eq!(s.species()[1].oxidation_state, Some(4));
     }
 
     #[test]
@@ -834,7 +830,7 @@ mod tests {
         }"#;
 
         let s = parse_structure_json(json).unwrap();
-        assert_eq!(s.species[0].oxidation_state, None);
+        assert_eq!(s.species()[0].oxidation_state, None);
     }
 
     #[test]
@@ -856,7 +852,7 @@ mod tests {
 
         let s = parse_structure_json(json).unwrap();
         assert_eq!(s.num_sites(), 1);
-        assert_eq!(s.species[0].element, Element::Cu);
+        assert_eq!(s.species()[0].element, Element::Cu);
     }
 
     #[test]
@@ -903,8 +899,8 @@ mod tests {
         let s2 = parse_structure_json(&json).unwrap();
 
         assert_eq!(s1.num_sites(), s2.num_sites());
-        assert_eq!(s1.species[0].element, s2.species[0].element);
-        assert_eq!(s1.species[1].element, s2.species[1].element);
+        assert_eq!(s1.species()[0].element, s2.species()[0].element);
+        assert_eq!(s1.species()[1].element, s2.species()[1].element);
         assert!((s1.lattice.volume() - s2.lattice.volume()).abs() < 1e-10);
         assert_eq!(s1.lattice.pbc, s2.lattice.pbc);
     }
@@ -1017,7 +1013,7 @@ mod tests {
 
     #[test]
     fn test_parse_disordered_site() {
-        // Multiple species per site (disordered) - should use first species
+        // Multiple species per site (disordered)
         let json = r#"{
             "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
             "sites": [
@@ -1028,10 +1024,20 @@ mod tests {
             ]
         }"#;
 
-        // Should parse successfully, using first species
+        // Should parse successfully with all species preserved
         let s = parse_structure_json(json).unwrap();
         assert_eq!(s.num_sites(), 1);
-        assert_eq!(s.species[0].element, Element::Fe);
+        assert!(!s.is_ordered());
+
+        // Check all species are present
+        let site_occ = &s.site_occupancies[0];
+        assert_eq!(site_occ.species.len(), 2);
+        assert!((site_occ.total_occupancy() - 1.0).abs() < 1e-10);
+
+        // Verify both Fe and Co are present
+        let elements: Vec<_> = site_occ.species.iter().map(|(sp, _)| sp.element).collect();
+        assert!(elements.contains(&Element::Fe));
+        assert!(elements.contains(&Element::Co));
     }
 
     #[test]
@@ -1082,8 +1088,8 @@ Direct
 "#;
         let s = parse_poscar_str(poscar).unwrap();
         assert_eq!(s.num_sites(), 2);
-        assert_eq!(s.species[0].element, Element::C);
-        assert_eq!(s.species[1].element, Element::C);
+        assert_eq!(s.species()[0].element, Element::C);
+        assert_eq!(s.species()[1].element, Element::C);
 
         // Check fractional coordinates
         assert!((s.frac_coords[0].x - 0.0).abs() < 1e-10);
@@ -1105,8 +1111,8 @@ Direct
 "#;
         let s = parse_poscar_str(poscar).unwrap();
         assert_eq!(s.num_sites(), 2);
-        assert_eq!(s.species[0].element, Element::Na);
-        assert_eq!(s.species[1].element, Element::Cl);
+        assert_eq!(s.species()[0].element, Element::Na);
+        assert_eq!(s.species()[1].element, Element::Cl);
 
         // Check volume (5.64^3)
         assert!((s.lattice.volume() - 5.64f64.powi(3)).abs() < 1e-6);
@@ -1131,7 +1137,7 @@ Cartesian
 "#;
         let s = parse_poscar_str(poscar).unwrap();
         assert_eq!(s.num_sites(), 2);
-        assert_eq!(s.species[0].element, Element::Fe);
+        assert_eq!(s.species()[0].element, Element::Fe);
 
         // First atom at origin
         assert!((s.frac_coords[0].x - 0.0).abs() < 1e-10);
@@ -1200,11 +1206,11 @@ direct
 "#;
         let s = parse_poscar_str(poscar).unwrap();
         assert_eq!(s.num_sites(), 5);
-        assert_eq!(s.species[0].element, Element::Ba);
-        assert_eq!(s.species[1].element, Element::Ti);
-        assert_eq!(s.species[2].element, Element::O);
-        assert_eq!(s.species[3].element, Element::O);
-        assert_eq!(s.species[4].element, Element::O);
+        assert_eq!(s.species()[0].element, Element::Ba);
+        assert_eq!(s.species()[1].element, Element::Ti);
+        assert_eq!(s.species()[2].element, Element::O);
+        assert_eq!(s.species()[3].element, Element::O);
+        assert_eq!(s.species()[4].element, Element::O);
 
         // Check lattice parameters (a, b, c)
         let lengths = s.lattice.lengths();
@@ -1267,7 +1273,7 @@ Direct
 "#;
         let s = parse_poscar_str(poscar).unwrap();
         assert_eq!(s.num_sites(), 8);
-        assert_eq!(s.species[0].element, Element::Si);
+        assert_eq!(s.species()[0].element, Element::Si);
 
         // Check some coordinates
         assert!((s.frac_coords[0].x - 0.0).abs() < 1e-10);
@@ -1430,7 +1436,7 @@ Fe 1.5 1.5 1.5
         std::fs::remove_file(&temp_path).ok();
 
         assert_eq!(s.num_sites(), 1);
-        assert_eq!(s.species[0].element, Element::Fe);
+        assert_eq!(s.species()[0].element, Element::Fe);
 
         // Check fractional coords (1.5 / 3.0 = 0.5)
         assert!((s.frac_coords[0].x - 0.5).abs() < 1e-10);

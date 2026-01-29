@@ -341,10 +341,10 @@ fn clean_element_symbol(symbol: &str) -> String {
 mod tests {
     use super::*;
 
-    // Helper to count elements in a structure
+    // Helper to count elements in a structure (counts dominant species per site)
     fn count_element(structure: &Structure, elem: Element) -> usize {
         structure
-            .species
+            .species()
             .iter()
             .filter(|sp| sp.element == elem)
             .count()
@@ -465,8 +465,8 @@ Cl Cl1 0.5 0.5 0.5
 
         let structure = parse_cif_str(cif_content, Path::new("test.cif")).unwrap();
         assert_eq!(structure.num_sites(), 2);
-        assert_eq!(structure.species[0].element, Element::Na);
-        assert_eq!(structure.species[1].element, Element::Cl);
+        assert_eq!(structure.species()[0].element, Element::Na);
+        assert_eq!(structure.species()[1].element, Element::Cl);
     }
 
     #[test]
@@ -580,9 +580,9 @@ S1   S   0.500  0.500  0.500  1.000
         assert!((angles.y - 95.0).abs() < 1e-5);
 
         // Check elements
-        assert_eq!(structure.species[0].element, Element::Ru);
-        assert_eq!(structure.species[1].element, Element::P);
-        assert_eq!(structure.species[2].element, Element::S);
+        assert_eq!(structure.species()[0].element, Element::Ru);
+        assert_eq!(structure.species()[1].element, Element::P);
+        assert_eq!(structure.species()[2].element, Element::S);
     }
 
     #[test]
@@ -641,10 +641,10 @@ N4   0.750  0.750  0.750  1.000
         assert_eq!(structure.num_sites(), 4);
 
         // Elements should be extracted from labels
-        assert_eq!(structure.species[0].element, Element::Ru);
-        assert_eq!(structure.species[1].element, Element::P);
-        assert_eq!(structure.species[2].element, Element::S);
-        assert_eq!(structure.species[3].element, Element::N);
+        assert_eq!(structure.species()[0].element, Element::Ru);
+        assert_eq!(structure.species()[1].element, Element::P);
+        assert_eq!(structure.species()[2].element, Element::S);
+        assert_eq!(structure.species()[3].element, Element::N);
     }
 
     #[test]
@@ -672,8 +672,8 @@ O2-  O1  0.5 0.5 0.5
         assert_eq!(structure.num_sites(), 2);
 
         // Oxidation states should be stripped from element
-        assert_eq!(structure.species[0].element, Element::Fe);
-        assert_eq!(structure.species[1].element, Element::O);
+        assert_eq!(structure.species()[0].element, Element::Fe);
+        assert_eq!(structure.species()[1].element, Element::O);
     }
 
     #[test]

@@ -118,6 +118,26 @@ impl Composition {
     pub fn iter(&self) -> impl Iterator<Item = (&Element, &f64)> {
         self.elements.iter()
     }
+
+    /// Get elements in iteration order.
+    pub fn elements(&self) -> Vec<Element> {
+        self.elements.keys().copied().collect()
+    }
+
+    /// Create new composition with elements remapped according to mapping.
+    ///
+    /// Elements not in the mapping are preserved as-is.
+    pub fn remap_elements(&self, mapping: &std::collections::HashMap<Element, Element>) -> Self {
+        let remapped: IndexMap<Element, f64> = self
+            .elements
+            .iter()
+            .map(|(&elem, &amt)| {
+                let new_elem = mapping.get(&elem).copied().unwrap_or(elem);
+                (new_elem, amt)
+            })
+            .collect();
+        Self { elements: remapped }
+    }
 }
 
 /// Compute GCD of two floating point numbers (treating as approximate integers).

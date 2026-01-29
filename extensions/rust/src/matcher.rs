@@ -3,14 +3,17 @@
 //! This module provides `StructureMatcher` for comparing crystal structures,
 //! implementing the same algorithm as pymatgen's StructureMatcher.
 
+use crate::element::Element;
 use crate::error::OnError;
 use crate::lattice::Lattice;
 use crate::pbc::{is_coord_subset_pbc, pbc_shortest_vectors, wrap_frac_coords};
 use crate::species::Species;
 use crate::structure::Structure;
+use itertools::Itertools;
 use nalgebra::{Matrix3, Vector3};
 use pathfinding::kuhn_munkres::kuhn_munkres_min;
 use pathfinding::matrix::Matrix as PathMatrix;
+use std::collections::HashMap;
 use std::f64::consts::PI;
 
 /// Type of comparator to use for species matching.
@@ -245,8 +248,10 @@ impl StructureMatcher {
         let n2 = struct2.num_sites();
         let mut mask = vec![vec![false; n1]; n2];
 
-        for (idx2, sp2) in struct2.species.iter().enumerate() {
-            for (idx1, sp1) in struct1.species.iter().enumerate() {
+        let species1 = struct1.species();
+        let species2 = struct2.species();
+        for (idx2, sp2) in species2.iter().enumerate() {
+            for (idx1, sp1) in species1.iter().enumerate() {
                 mask[idx2][idx1] = !self.species_equal(sp1, sp2);
             }
         }
@@ -560,18 +565,68 @@ impl StructureMatcher {
     /// Check if two structures match under any species permutation.
     ///
     /// This is useful for comparing structures where the identity of species
-    /// is not important, only the arrangement.
+    /// is not important, only the arrangement. For example, NaCl and MgO both
+    /// have the rocksalt structure, so `fit_anonymous` would return true.
     ///
-    /// # Panics
+    /// # Algorithm (matches pymatgen's fit_anonymous)
     ///
-    /// Always panics - anonymous matching is not yet implemented.
-    /// This will be implemented in a future release.
-    #[allow(clippy::unused_self)]
-    pub fn fit_anonymous(&self, _struct1: &Structure, _struct2: &Structure) -> bool {
-        unimplemented!(
-            "fit_anonymous is not yet implemented. \
-             Anonymous matching with species permutation is planned for a future release."
-        )
+    /// 1. Get unique elements from both structures in order of first appearance
+    /// 2. If different number of unique elements, return false
+    /// 3. For each permutation of struct2's elements:
+    ///    - Create mapping: struct1.elements[i] -> permuted_elements[i]
+    ///    - Compute mapped composition from struct1
+    ///    - If mapped composition hash != struct2 composition hash, skip (fast pruning)
+    ///    - Otherwise, remap struct1's species and call fit()
+    /// 4. Return true on first match
+    ///
+    /// # Note
+    ///
+    /// This method ignores oxidation states and only considers elements, matching
+    /// pymatgen's behavior which requires `SpeciesComparator` (ignores oxidation states
+    /// for anonymous matching). The comparator_type setting is not used for this method.
+    pub fn fit_anonymous(&self, struct1: &Structure, struct2: &Structure) -> bool {
+        // Get unique elements in order of first appearance
+        let elements1 = struct1.unique_elements();
+        let elements2 = struct2.unique_elements();
+
+        // Different number of unique elements -> no match possible
+        if elements1.len() != elements2.len() {
+            return false;
+        }
+
+        // Handle empty structures
+        if elements1.is_empty() {
+            return false;
+        }
+
+        // Get struct2's composition hash for fast pruning
+        let comp2 = struct2.composition();
+        let comp2_hash = comp2.hash();
+
+        // Try all permutations of elements2
+        for perm in elements2.iter().permutations(elements2.len()) {
+            // Create mapping: elements1[i] -> perm[i]
+            let mapping: HashMap<Element, Element> = elements1
+                .iter()
+                .zip(perm.iter())
+                .map(|(&e1, &&e2)| (e1, e2))
+                .collect();
+
+            // Fast composition hash check before expensive structure matching
+            let comp1 = struct1.composition();
+            let mapped_comp = comp1.remap_elements(&mapping);
+            if mapped_comp.hash() != comp2_hash {
+                continue;
+            }
+
+            // Composition matches - do full structure comparison
+            let remapped_struct1 = struct1.remap_species(&mapping);
+            if self.fit(&remapped_struct1, struct2) {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Check if two already-reduced structures match.
@@ -965,14 +1020,86 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "fit_anonymous is not yet implemented")]
-    fn test_fit_anonymous_not_implemented() {
-        // fit_anonymous panics since it's not yet implemented
-        let s1 = make_nacl();
-        let s2 = make_nacl();
+    fn test_fit_anonymous_identical() {
+        let s = make_nacl();
         let matcher = StructureMatcher::new();
+        assert!(matcher.fit_anonymous(&s, &s));
+    }
 
-        matcher.fit_anonymous(&s1, &s2);
+    #[test]
+    fn test_fit_anonymous_swapped_species() {
+        let nacl = Structure::new(
+            Lattice::cubic(5.64),
+            vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let clna = Structure::new(
+            Lattice::cubic(5.64),
+            vec![Species::neutral(Element::Cl), Species::neutral(Element::Na)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let matcher = StructureMatcher::new();
+        assert!(matcher.fit_anonymous(&nacl, &clna));
+    }
+
+    #[test]
+    fn test_fit_anonymous_same_prototype() {
+        let nacl = Structure::new(
+            Lattice::cubic(5.64),
+            vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let mgo = Structure::new(
+            Lattice::cubic(4.21),
+            vec![Species::neutral(Element::Mg), Species::neutral(Element::O)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let matcher = StructureMatcher::new();
+        assert!(matcher.fit_anonymous(&nacl, &mgo));
+    }
+
+    #[test]
+    fn test_fit_anonymous_different_stoichiometry() {
+        let nacl = Structure::new(
+            Lattice::cubic(5.64),
+            vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let fe2o3 = Structure::new(
+            Lattice::cubic(5.0),
+            vec![
+                Species::neutral(Element::Fe),
+                Species::neutral(Element::Fe),
+                Species::neutral(Element::O),
+                Species::neutral(Element::O),
+                Species::neutral(Element::O),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+                Vector3::new(0.25, 0.25, 0.25),
+                Vector3::new(0.75, 0.75, 0.75),
+                Vector3::new(0.25, 0.75, 0.25),
+            ],
+        );
+        let matcher = StructureMatcher::new();
+        assert!(!matcher.fit_anonymous(&nacl, &fe2o3));
+    }
+
+    #[test]
+    fn test_fit_anonymous_single_element() {
+        let fe = make_simple_cubic(Element::Fe, 4.0);
+        let cu = make_simple_cubic(Element::Cu, 4.0);
+        let matcher = StructureMatcher::new();
+        assert!(matcher.fit_anonymous(&fe, &cu));
+    }
+
+    #[test]
+    fn test_fit_anonymous_different_num_elements() {
+        let nacl = make_nacl();
+        let fe = make_simple_cubic(Element::Fe, 4.0);
+        let matcher = StructureMatcher::new();
+        assert!(!matcher.fit_anonymous(&nacl, &fe));
     }
 
     #[test]
