@@ -427,7 +427,13 @@ fn structure_to_pydict<'py>(
 
         // Coordinates
         site.set_item("abc", PyList::new(py, [coord.x, coord.y, coord.z])?)?;
-        site.set_item("properties", PyDict::new(py))?;
+
+        // Site-level properties (label, magmom, orig_site_idx, etc.)
+        let site_props = PyDict::new(py);
+        for (key, value) in &site_occ.properties {
+            site_props.set_item(key, json_to_py(py, value)?)?;
+        }
+        site.set_item("properties", site_props)?;
 
         sites.append(site)?;
     }
