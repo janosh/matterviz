@@ -65,6 +65,16 @@ impl Structure {
                 ),
             });
         }
+        // Validate that each site has at least one species (required by dominant_species(),
+        // species(), to_moyo_cell(), etc.)
+        for (idx, site_occ) in site_occupancies.iter().enumerate() {
+            if site_occ.species.is_empty() {
+                return Err(FerroxError::InvalidStructure {
+                    index: idx,
+                    reason: "SiteOccupancy must have at least one species".to_string(),
+                });
+            }
+        }
         Ok(Self {
             lattice,
             site_occupancies,
@@ -247,7 +257,9 @@ impl Structure {
             .iter()
             .map(|so| {
                 // Group by (new_element, oxidation_state) and sum occupancies
-                let mut grouped: HashMap<(Element, Option<i8>), f64> = HashMap::new();
+                // Use BTreeMap for deterministic ordering (important for dominant_species on ties)
+                let mut grouped: std::collections::BTreeMap<(Element, Option<i8>), f64> =
+                    std::collections::BTreeMap::new();
                 for (sp, occ) in &so.species {
                     let new_elem = mapping.get(&sp.element).copied().unwrap_or(sp.element);
                     let key = (new_elem, sp.oxidation_state);
@@ -336,6 +348,25 @@ mod tests {
             vec![Vector3::new(0.0, 0.0, 0.0)],
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_try_new_empty_site_occupancy_error() {
+        // Manually create an empty SiteOccupancy (bypassing SiteOccupancy::new's panic)
+        let empty_occ = SiteOccupancy {
+            species: vec![], // Empty species list
+        };
+        let result = Structure::try_new_from_occupancies(
+            Lattice::cubic(4.0),
+            vec![empty_occ],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+        assert!(result.is_err(), "Empty SiteOccupancy should be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("at least one species"),
+            "Error should mention empty species: {err}"
+        );
     }
 
     #[test]
@@ -533,6 +564,35 @@ mod tests {
         assert!(elements.contains(&Element::Fe));
         assert!(elements.contains(&Element::Co));
         assert!(elements.contains(&Element::O));
+    }
+
+    #[test]
+    fn test_unique_elements_non_consecutive_duplicates() {
+        // Verify itertools::unique() removes ALL duplicates, not just consecutive ones.
+        // Pattern: disordered site with Fe+Co followed by ordered Fe site.
+        // Should produce [Fe, Co], not [Fe, Co, Fe].
+        let site_occ = vec![
+            SiteOccupancy::new(vec![
+                (Species::neutral(Element::Fe), 0.5),
+                (Species::neutral(Element::Co), 0.5),
+            ]),
+            SiteOccupancy::ordered(Species::neutral(Element::Fe)), // Fe again, non-consecutive
+        ];
+        let s = Structure::new_from_occupancies(
+            Lattice::cubic(4.0),
+            site_occ,
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let elements = s.unique_elements();
+        // itertools::unique() correctly removes ALL duplicates (not just consecutive ones
+        // like dedup() would). This is critical for fit_anonymous() to work correctly.
+        assert_eq!(
+            elements.len(),
+            2,
+            "unique_elements should dedupe non-consecutive duplicates, got: {elements:?}"
+        );
+        assert!(elements.contains(&Element::Fe));
+        assert!(elements.contains(&Element::Co));
     }
 
     // =========================================================================

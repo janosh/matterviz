@@ -581,18 +581,10 @@ impl StructureMatcher {
     ///
     /// # Note
     ///
-    /// This method ignores oxidation states and only considers elements, matching
-    /// pymatgen's behavior which requires `SpeciesComparator` (ignores oxidation states
-    /// for anonymous matching). The comparator_type setting is not used for this method.
+    /// This method always uses element-only matching (ignores oxidation states),
+    /// regardless of the matcher's `comparator_type` setting. This matches pymatgen's
+    /// behavior where anonymous matching only considers elemental identity.
     pub fn fit_anonymous(&self, struct1: &Structure, struct2: &Structure) -> bool {
-        // fit_anonymous requires SpeciesComparator (matches pymatgen behavior)
-        if self.comparator_type != ComparatorType::Species {
-            panic!(
-                "fit_anonymous requires SpeciesComparator, got {:?}",
-                self.comparator_type
-            );
-        }
-
         // Get unique elements in order of first appearance
         let elements1 = struct1.unique_elements();
         let elements2 = struct2.unique_elements();
@@ -627,9 +619,15 @@ impl StructureMatcher {
                 continue;
             }
 
-            // Composition matches - do full structure comparison
+            // Composition matches - do full structure comparison with element-only matching.
+            // We use ComparatorType::Element to ignore oxidation states, matching
+            // pymatgen's anonymous matching behavior.
             let remapped_struct1 = struct1.remap_species(&mapping);
-            if self.fit(&remapped_struct1, struct2) {
+            let element_matcher = Self {
+                comparator_type: ComparatorType::Element,
+                ..self.clone()
+            };
+            if element_matcher.fit(&remapped_struct1, struct2) {
                 return true;
             }
         }
@@ -1451,12 +1449,45 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "SpeciesComparator")]
-    fn test_fit_anonymous_requires_species_comparator() {
+    fn test_fit_anonymous_works_with_any_comparator() {
+        // fit_anonymous should work regardless of matcher's comparator_type setting
         let s = make_simple_cubic(Element::Fe, 4.0);
-        let matcher = StructureMatcher::new().with_comparator(ComparatorType::Element);
 
-        // Should panic - fit_anonymous requires SpeciesComparator (like pymatgen)
-        matcher.fit_anonymous(&s, &s);
+        // Works with default Species comparator
+        let matcher_species = StructureMatcher::new();
+        assert!(matcher_species.fit_anonymous(&s, &s));
+
+        // Works with Element comparator too
+        let matcher_element = StructureMatcher::new().with_comparator(ComparatorType::Element);
+        assert!(matcher_element.fit_anonymous(&s, &s));
+    }
+
+    #[test]
+    fn test_fit_anonymous_ignores_oxidation_states() {
+        // fit_anonymous should ignore oxidation states and match based on elements only
+        // Use primitive_cell=false to preserve oxidation states through processing
+        let s1 = Structure::new(
+            Lattice::cubic(5.64),
+            vec![
+                Species::new(Element::Na, Some(1)),
+                Species::new(Element::Cl, Some(-1)),
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let s2 = Structure::new(
+            Lattice::cubic(5.64),
+            vec![
+                Species::new(Element::Mg, Some(2)), // Different oxidation state
+                Species::new(Element::O, Some(-2)), // Different oxidation state
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        // Should match anonymously (same rocksalt prototype)
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        assert!(
+            matcher.fit_anonymous(&s1, &s2),
+            "fit_anonymous should ignore oxidation states and match NaCl with MgO"
+        );
     }
 }

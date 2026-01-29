@@ -177,11 +177,17 @@ impl SiteOccupancy {
     ///
     /// # Panics
     ///
-    /// Panics if `species` is empty.
+    /// Panics if `species` is empty or if any occupancy is not finite or negative.
     pub fn new(species: Vec<(Species, f64)>) -> Self {
         assert!(
             !species.is_empty(),
             "SiteOccupancy requires at least one species"
+        );
+        assert!(
+            species
+                .iter()
+                .all(|(_, occ)| occ.is_finite() && *occ >= 0.0),
+            "SiteOccupancy occupancies must be finite and non-negative"
         );
         Self { species }
     }
@@ -434,6 +440,24 @@ mod tests {
     #[should_panic(expected = "SiteOccupancy requires at least one species")]
     fn test_site_occupancy_empty_panics() {
         SiteOccupancy::new(vec![]);
+    }
+
+    #[test]
+    #[should_panic(expected = "SiteOccupancy occupancies must be finite and non-negative")]
+    fn test_site_occupancy_negative_panics() {
+        SiteOccupancy::new(vec![(Species::neutral(Element::Fe), -0.5)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "SiteOccupancy occupancies must be finite and non-negative")]
+    fn test_site_occupancy_nan_panics() {
+        SiteOccupancy::new(vec![(Species::neutral(Element::Fe), f64::NAN)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "SiteOccupancy occupancies must be finite and non-negative")]
+    fn test_site_occupancy_infinity_panics() {
+        SiteOccupancy::new(vec![(Species::neutral(Element::Fe), f64::INFINITY)]);
     }
 
     #[test]

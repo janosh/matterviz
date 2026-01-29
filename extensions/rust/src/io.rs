@@ -287,7 +287,19 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
                 Species::neutral(element)
             };
 
-            species_vec.push((sp, sp_json.occu));
+            // Validate occupancy: must be finite and in range (0.0, 1.0]
+            let occu = sp_json.occu;
+            if !occu.is_finite() || occu <= 0.0 || occu > 1.0 {
+                return Err(FerroxError::JsonError {
+                    path: "inline".to_string(),
+                    reason: format!(
+                        "Site {idx} species {} has invalid occupancy {occu} (must be in (0.0, 1.0])",
+                        sp_json.element
+                    ),
+                });
+            }
+
+            species_vec.push((sp, occu));
         }
 
         site_occupancies.push(SiteOccupancy::new(species_vec));
@@ -1038,6 +1050,80 @@ mod tests {
         let elements: Vec<_> = site_occ.species.iter().map(|(sp, _)| sp.element).collect();
         assert!(elements.contains(&Element::Fe));
         assert!(elements.contains(&Element::Co));
+    }
+
+    #[test]
+    fn test_parse_negative_occupancy_rejected() {
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [
+                {"species": [{"element": "Fe", "occu": -0.5}], "abc": [0,0,0]}
+            ]
+        }"#;
+
+        let result = parse_structure_json(json);
+        assert!(result.is_err(), "Negative occupancy should be rejected");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("non-positive occupancy"),
+            "Error should mention non-positive occupancy: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_zero_occupancy_rejected() {
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [
+                {"species": [{"element": "Fe", "occu": 0.0}], "abc": [0,0,0]}
+            ]
+        }"#;
+
+        let result = parse_structure_json(json);
+        assert!(result.is_err(), "Zero occupancy should be rejected");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("non-positive occupancy"),
+            "Error should mention non-positive occupancy: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_occupancy_greater_than_one_rejected() {
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [
+                {"species": [{"element": "Fe", "occu": 1.5}], "abc": [0,0,0]}
+            ]
+        }"#;
+
+        let result = parse_structure_json(json);
+        assert!(result.is_err(), "Occupancy > 1.0 should be rejected");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("occupancy > 1.0"),
+            "Error should mention occupancy > 1.0: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_overflow_occupancy_rejected() {
+        // 1e309 overflows f64 to infinity - JSON parser catches this as "out of range"
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [
+                {"species": [{"element": "Fe", "occu": 1e309}], "abc": [0,0,0]}
+            ]
+        }"#;
+
+        let result = parse_structure_json(json);
+        assert!(result.is_err(), "Overflow occupancy should be rejected");
+        // JSON parser catches overflow before our validation
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("out of range") || err.contains("non-finite"),
+            "Error should mention invalid value: {err}"
+        );
     }
 
     #[test]
