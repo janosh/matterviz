@@ -48,7 +48,12 @@ test.describe(`Trajectory Component`, () => {
     }
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
-    await page.goto(`/test/trajectory`, { waitUntil: `networkidle` })
+    // Use domcontentloaded instead of networkidle because this page has 20 Trajectory
+    // components, some of which intentionally make 404 requests (#error-state, #error-snippet)
+    // that can delay or prevent networkidle from completing on CI
+    await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+    // Wait for page structure to be ready before checking component visibility
+    await page.locator(`h1`).waitFor({ state: `visible` })
     await expect(trajectory_viewer).toBeVisible({ timeout: 30_000 })
   })
 

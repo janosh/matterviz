@@ -34,6 +34,7 @@ serde_json = "1.0"
 
 # Algorithms
 pathfinding = "4.14" # Hungarian algorithm (kuhn_munkres)
+itertools = "0.14"   # permutations for fit_anonymous
 
 # Utilities
 indexmap = { version = "2.13", features = ["serde"] }

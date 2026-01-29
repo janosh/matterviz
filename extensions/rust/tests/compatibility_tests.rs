@@ -124,7 +124,7 @@ fn test_scaled_volume_matches() {
     let s1 = make_cubic(Element::Fe, 4.0);
     let s2 = Structure::new(
         Lattice::cubic(4.2), // 5% larger
-        s1.species.clone(),
+        s1.species().into_iter().cloned().collect(),
         s1.frac_coords.clone(),
     );
     let matcher = StructureMatcher::new().with_scale(true);
@@ -405,4 +405,44 @@ fn test_spacegroup_bcc() {
     let bcc = make_bcc(Element::Fe, 2.87);
     let sg = bcc.get_spacegroup_number(1e-4).unwrap();
     assert_eq!(sg, 229, "BCC should be spacegroup 229 (Im-3m)");
+}
+
+// =============================================================================
+// fit_anonymous Integration Tests (complements unit tests in matcher.rs)
+// =============================================================================
+
+#[test]
+fn test_fit_anonymous_bcc_vs_bcc() {
+    // Two BCC structures with different elements and lattice parameters
+    let fe_bcc = make_bcc(Element::Fe, 2.87);
+    let w_bcc = make_bcc(Element::W, 3.16);
+    assert!(
+        StructureMatcher::new().fit_anonymous(&fe_bcc, &w_bcc),
+        "BCC Fe and BCC W should match anonymously"
+    );
+}
+
+#[test]
+fn test_fit_anonymous_fcc_vs_fcc() {
+    // Two FCC structures with different elements and lattice parameters
+    let cu_fcc = make_fcc(Element::Cu, 3.6);
+    let al_fcc = make_fcc(Element::Al, 4.05);
+    assert!(
+        StructureMatcher::new().fit_anonymous(&cu_fcc, &al_fcc),
+        "FCC Cu and FCC Al should match anonymously"
+    );
+}
+
+#[test]
+fn test_fit_anonymous_bcc_vs_fcc_no_match() {
+    // BCC vs FCC should NOT match (different structures)
+    // Note: with primitive_cell=true (default), both reduce to 1 atom
+    // so they would match. Use primitive_cell=false for this test.
+    let fe_bcc = make_bcc(Element::Fe, 2.87);
+    let cu_fcc = make_fcc(Element::Cu, 3.6);
+    let matcher = StructureMatcher::new().with_primitive_cell(false);
+    assert!(
+        !matcher.fit_anonymous(&fe_bcc, &cu_fcc),
+        "BCC vs FCC should not match (without primitive reduction)"
+    );
 }

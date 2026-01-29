@@ -141,6 +141,32 @@ impl PyStructureMatcher {
         Ok(self.inner.get_rms_dist(&s1, &s2))
     }
 
+    /// Check if two structures match under any species permutation.
+    ///
+    /// This is useful for comparing structures where the identity of species
+    /// is not important, only the arrangement. For example, NaCl and MgO both
+    /// have the rocksalt structure, so `fit_anonymous` would return true.
+    ///
+    /// Args:
+    ///     struct1: First structure as JSON string (from Structure.as_dict())
+    ///     struct2: Second structure as JSON string
+    ///
+    /// Returns:
+    ///     True if structures match under some species permutation.
+    ///
+    /// Example:
+    ///     >>> import json
+    ///     >>> from ferrox import StructureMatcher
+    ///     >>> matcher = StructureMatcher()
+    ///     >>> nacl = Structure(Lattice.cubic(5.64), ["Na", "Cl"], [[0, 0, 0], [0.5, 0.5, 0.5]])
+    ///     >>> mgo = Structure(Lattice.cubic(4.21), ["Mg", "O"], [[0, 0, 0], [0.5, 0.5, 0.5]])
+    ///     >>> matcher.fit_anonymous(json.dumps(nacl.as_dict()), json.dumps(mgo.as_dict()))
+    ///     True
+    fn fit_anonymous(&self, struct1: &str, struct2: &str) -> PyResult<bool> {
+        let (s1, s2) = parse_structure_pair(struct1, struct2)?;
+        Ok(self.inner.fit_anonymous(&s1, &s2))
+    }
+
     /// Deduplicate a list of structures.
     ///
     /// Args:
@@ -376,19 +402,26 @@ fn structure_to_pydict<'py>(
     )?;
     dict.set_item("lattice", lattice_dict)?;
 
-    // Sites
+    // Sites with all species and their occupancies
     let sites = PyList::empty(py);
-    for (sp, coord) in structure.species.iter().zip(structure.frac_coords.iter()) {
+    for (site_occ, coord) in structure
+        .site_occupancies
+        .iter()
+        .zip(structure.frac_coords.iter())
+    {
         let site = PyDict::new(py);
 
-        // Species list
-        let species_entry = PyDict::new(py);
-        species_entry.set_item("element", sp.element.symbol())?;
-        species_entry.set_item("occu", 1.0)?;
-        if let Some(oxi) = sp.oxidation_state {
-            species_entry.set_item("oxidation_state", oxi)?;
+        // Species list with occupancies
+        let species_list = PyList::empty(py);
+        for (sp, occ) in &site_occ.species {
+            let species_entry = PyDict::new(py);
+            species_entry.set_item("element", sp.element.symbol())?;
+            species_entry.set_item("occu", occ)?;
+            if let Some(oxi) = sp.oxidation_state {
+                species_entry.set_item("oxidation_state", oxi)?;
+            }
+            species_list.append(species_entry)?;
         }
-        let species_list = PyList::new(py, [species_entry])?;
         site.set_item("species", species_list)?;
 
         // Coordinates
