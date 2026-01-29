@@ -1212,6 +1212,12 @@ impl Structure {
     ///
     /// Panics if `idx` is out of bounds.
     pub fn site_properties(&self, idx: usize) -> &HashMap<String, serde_json::Value> {
+        assert!(
+            idx < self.num_sites(),
+            "Site index {} out of bounds (num_sites={})",
+            idx,
+            self.num_sites()
+        );
         &self.site_occupancies[idx].properties
     }
 
@@ -1221,6 +1227,12 @@ impl Structure {
     ///
     /// Panics if `idx` is out of bounds.
     pub fn site_properties_mut(&mut self, idx: usize) -> &mut HashMap<String, serde_json::Value> {
+        assert!(
+            idx < self.num_sites(),
+            "Site index {} out of bounds (num_sites={})",
+            idx,
+            self.num_sites()
+        );
         &mut self.site_occupancies[idx].properties
     }
 
@@ -1235,6 +1247,12 @@ impl Structure {
         key: &str,
         value: serde_json::Value,
     ) -> &mut Self {
+        assert!(
+            idx < self.num_sites(),
+            "Site index {} out of bounds (num_sites={})",
+            idx,
+            self.num_sites()
+        );
         self.site_occupancies[idx]
             .properties
             .insert(key.to_string(), value);
