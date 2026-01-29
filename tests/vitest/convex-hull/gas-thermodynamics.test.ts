@@ -18,8 +18,18 @@ import type {
   GasThermodynamicsConfig,
   PhaseData,
 } from '$lib/convex-hull/types'
-import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
+import {
+  DEFAULT_GAS_PRESSURES,
+  DEFAULT_GAS_TEMP,
+  GAS_SPECIES,
+} from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
+
+// Helper to create test entries with default energy=0
+const make_entry = (comp: Record<string, number>, energy = 0): PhaseData => ({
+  composition: comp,
+  energy,
+})
 
 describe(`gas-thermodynamics: constants`, () => {
   test(`R_EV_PER_K is the Boltzmann constant in eV/K`, () => {
@@ -32,41 +42,39 @@ describe(`gas-thermodynamics: constants`, () => {
   })
 
   test(`GAS_SPECIES contains all expected gases`, () => {
-    expect(GAS_SPECIES).toContain(`O2`)
-    expect(GAS_SPECIES).toContain(`N2`)
-    expect(GAS_SPECIES).toContain(`H2`)
-    expect(GAS_SPECIES).toContain(`CO`)
-    expect(GAS_SPECIES).toContain(`CO2`)
-    expect(GAS_SPECIES).toContain(`H2O`)
-    expect(GAS_SPECIES).toContain(`F2`)
-    expect(GAS_SPECIES).toHaveLength(7)
+    expect([...GAS_SPECIES].sort()).toEqual([`CO`, `CO2`, `F2`, `H2`, `H2O`, `N2`, `O2`])
   })
 
-  test(`GAS_STOICHIOMETRY has correct atom counts`, () => {
-    expect(GAS_STOICHIOMETRY.O2.O).toBe(2)
-    expect(GAS_STOICHIOMETRY.N2.N).toBe(2)
-    expect(GAS_STOICHIOMETRY.H2.H).toBe(2)
-    expect(GAS_STOICHIOMETRY.CO.C).toBe(1)
-    expect(GAS_STOICHIOMETRY.CO.O).toBe(1)
-    expect(GAS_STOICHIOMETRY.CO2.C).toBe(1)
-    expect(GAS_STOICHIOMETRY.CO2.O).toBe(2)
-    expect(GAS_STOICHIOMETRY.H2O.H).toBe(2)
-    expect(GAS_STOICHIOMETRY.H2O.O).toBe(1)
-    expect(GAS_STOICHIOMETRY.F2.F).toBe(2)
+  test.each([
+    [`O2`, { O: 2 }],
+    [`N2`, { N: 2 }],
+    [`H2`, { H: 2 }],
+    [`F2`, { F: 2 }],
+    [`CO`, { C: 1, O: 1 }],
+    [`CO2`, { C: 1, O: 2 }],
+    [`H2O`, { H: 2, O: 1 }],
+  ] as const)(`GAS_STOICHIOMETRY[%s] has correct atom counts`, (gas, expected) => {
+    expect(GAS_STOICHIOMETRY[gas]).toEqual(expected)
   })
 
-  test(`DEFAULT_ELEMENT_TO_GAS maps common elements correctly`, () => {
-    expect(DEFAULT_ELEMENT_TO_GAS.O).toBe(`O2`)
-    expect(DEFAULT_ELEMENT_TO_GAS.N).toBe(`N2`)
-    expect(DEFAULT_ELEMENT_TO_GAS.H).toBe(`H2`)
-    expect(DEFAULT_ELEMENT_TO_GAS.F).toBe(`F2`)
-    expect(DEFAULT_ELEMENT_TO_GAS.C).toBe(`CO2`)
+  test.each([
+    [`O`, `O2`],
+    [`N`, `N2`],
+    [`H`, `H2`],
+    [`F`, `F2`],
+    [`C`, `CO2`],
+  ] as const)(`DEFAULT_ELEMENT_TO_GAS[%s] = %s`, (element, gas) => {
+    expect(DEFAULT_ELEMENT_TO_GAS[element]).toBe(gas)
   })
 
   test(`DEFAULT_GAS_PRESSURES has reasonable atmospheric values`, () => {
     expect(DEFAULT_GAS_PRESSURES.O2).toBeCloseTo(0.21, 2)
     expect(DEFAULT_GAS_PRESSURES.N2).toBeCloseTo(0.78, 2)
     expect(DEFAULT_GAS_PRESSURES.CO2).toBeLessThan(0.001) // ~400 ppm
+  })
+
+  test(`DEFAULT_GAS_TEMP is 300K (room temperature)`, () => {
+    expect(DEFAULT_GAS_TEMP).toBe(300)
   })
 })
 
@@ -190,11 +198,6 @@ describe(`gas-thermodynamics: chemical potential calculations`, () => {
 })
 
 describe(`gas-thermodynamics: analyze_gas_data`, () => {
-  const make_entry = (comp: Record<string, number>): PhaseData => ({
-    composition: comp,
-    energy: 0,
-  })
-
   test(`returns no gas elements when config has no enabled gases`, () => {
     const entries = [make_entry({ Fe: 1, O: 2 })]
     const config: GasThermodynamicsConfig = {}
@@ -237,14 +240,15 @@ describe(`gas-thermodynamics: analyze_gas_data`, () => {
   })
 
   test(`respects custom element_to_gas mapping`, () => {
-    const entries = [make_entry({ Fe: 1, X: 1 })]
+    // Use Xe (xenon) as a custom element mapped to O2 for testing
+    const entries = [make_entry({ Fe: 1, Xe: 1 })]
     const config: GasThermodynamicsConfig = {
       enabled_gases: [`O2`],
-      element_to_gas: { X: `O2` }, // Custom: X comes from O2
+      element_to_gas: { Xe: `O2` }, // Custom: Xe comes from O2
     }
     const result = analyze_gas_data(entries, config)
 
-    expect(result.gas_elements).toContain(`X`)
+    expect(result.gas_elements).toContain(`Xe`)
   })
 })
 
@@ -268,37 +272,20 @@ describe(`gas-thermodynamics: get_effective_pressures`, () => {
     expect(pressures.H2).toBe(DEFAULT_GAS_PRESSURES.H2) // Not overridden
   })
 
-  test(`ignores invalid pressure values`, () => {
-    const config: GasThermodynamicsConfig = {
-      pressures: { O2: -1, N2: 0 },
-    }
+  test.each([
+    [`negative`, -1],
+    [`zero`, 0],
+    [`NaN`, NaN],
+    [`Infinity`, Infinity],
+    [`-Infinity`, -Infinity],
+  ])(`ignores %s pressure values`, (_, invalid_value) => {
+    const config: GasThermodynamicsConfig = { pressures: { O2: invalid_value } }
     const pressures = get_effective_pressures(config)
-
-    expect(pressures.O2).toBe(DEFAULT_GAS_PRESSURES.O2) // Invalid, use default
-    expect(pressures.N2).toBe(DEFAULT_GAS_PRESSURES.N2) // Zero is invalid
-  })
-
-  test(`ignores NaN and Infinity pressure values`, () => {
-    const config: GasThermodynamicsConfig = {
-      pressures: { O2: NaN, N2: Infinity, H2: -Infinity },
-    }
-    const pressures = get_effective_pressures(config)
-
-    expect(pressures.O2).toBe(DEFAULT_GAS_PRESSURES.O2) // NaN is invalid
-    expect(pressures.N2).toBe(DEFAULT_GAS_PRESSURES.N2) // Infinity is invalid
-    expect(pressures.H2).toBe(DEFAULT_GAS_PRESSURES.H2) // -Infinity is invalid
+    expect(pressures.O2).toBe(DEFAULT_GAS_PRESSURES.O2)
   })
 })
 
 describe(`gas-thermodynamics: apply_gas_corrections`, () => {
-  const make_entry = (
-    comp: Record<string, number>,
-    energy: number,
-  ): PhaseData => ({
-    composition: comp,
-    energy,
-  })
-
   test(`returns entries unchanged when no gas config`, () => {
     const entries = [make_entry({ Fe: 2, O: 3 }, -10)]
     const result = apply_gas_corrections(entries, undefined, 500)
@@ -363,29 +350,157 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
 })
 
 describe(`gas-thermodynamics: formatting`, () => {
-  test(`format_chemical_potential includes sign and units`, () => {
-    expect(format_chemical_potential(-1.234)).toBe(`-1.234 eV`)
-    expect(format_chemical_potential(0.5)).toBe(`+0.500 eV`)
-    expect(format_chemical_potential(0)).toBe(`+0.000 eV`)
+  test.each([
+    [-1.234, 3, `-1.234 eV`],
+    [0.5, 3, `+0.500 eV`],
+    [0, 3, `+0.000 eV`],
+    [-1.23456, 2, `-1.23 eV`],
+    [-1.23456, 4, `-1.2346 eV`],
+  ])(`format_chemical_potential(%s, %s) = %s`, (mu, decimals, expected) => {
+    expect(format_chemical_potential(mu, decimals)).toBe(expected)
   })
 
-  test(`format_chemical_potential respects decimals`, () => {
-    expect(format_chemical_potential(-1.23456, 2)).toBe(`-1.23 eV`)
-    expect(format_chemical_potential(-1.23456, 4)).toBe(`-1.2346 eV`)
+  test.each([
+    [0.21, /bar/, true],
+    [1e-6, /e/, true],
+    [1e5, /e/, true],
+    [0.5, /e/, false],
+    [10, /e/, false],
+  ])(`format_pressure(%s) %s pattern`, (P, pattern, should_match) => {
+    const result = format_pressure(P)
+    expect(result).toMatch(/bar/)
+    if (should_match) expect(result).toMatch(pattern)
+    else expect(result).not.toMatch(pattern)
+  })
+})
+
+describe(`gas-thermodynamics: multi-gas scenarios`, () => {
+  test(`analyze_gas_data detects multiple gas elements in ternary system`, () => {
+    const entries = [
+      make_entry({ Fe: 1 }),
+      make_entry({ O: 1 }),
+      make_entry({ N: 1 }),
+      make_entry({ Fe: 0.5, O: 0.5 }),
+      make_entry({ Fe: 0.5, N: 0.5 }),
+      make_entry({ O: 0.5, N: 0.5 }),
+    ]
+    const config: GasThermodynamicsConfig = { enabled_gases: [`O2`, `N2`] }
+    const result = analyze_gas_data(entries, config)
+
+    expect(result.has_gas_dependent_elements).toBe(true)
+    expect(result.gas_elements).toContain(`O`)
+    expect(result.gas_elements).toContain(`N`)
+    expect(result.relevant_gases).toHaveLength(2)
+    expect(result.relevant_gases).toContain(`O2`)
+    expect(result.relevant_gases).toContain(`N2`)
   })
 
-  test(`format_pressure uses bar units`, () => {
-    expect(format_pressure(0.21)).toMatch(/bar/)
-    expect(format_pressure(1.0)).toMatch(/bar/)
+  test(`apply_gas_corrections applies to both O and N unary references`, () => {
+    const entries = [
+      make_entry({ O: 1 }),
+      make_entry({ N: 1 }),
+      make_entry({ Fe: 1 }),
+    ]
+    const config: GasThermodynamicsConfig = {
+      enabled_gases: [`O2`, `N2`],
+      pressures: { O2: 0.21, N2: 0.78 },
+    }
+    const T = 500
+    const result = apply_gas_corrections(entries, config, T)
+
+    // Both O and N references should be corrected
+    expect(result[0].energy).not.toBe(0) // O reference
+    expect(result[1].energy).not.toBe(0) // N reference
+    // Fe should remain unchanged (not a gas element)
+    expect(result[2].energy).toBe(0)
   })
 
-  test(`format_pressure uses scientific notation for extreme values`, () => {
-    expect(format_pressure(1e-6)).toMatch(/e/)
-    expect(format_pressure(1e5)).toMatch(/e/)
+  test(`different pressures give different corrections for each gas`, () => {
+    const entries_O = [make_entry({ O: 1 })]
+    const entries_N = [make_entry({ N: 1 })]
+
+    const config_low: GasThermodynamicsConfig = {
+      enabled_gases: [`O2`, `N2`],
+      pressures: { O2: 0.001, N2: 0.001 },
+    }
+    const config_high: GasThermodynamicsConfig = {
+      enabled_gases: [`O2`, `N2`],
+      pressures: { O2: 1.0, N2: 1.0 },
+    }
+    const T = 500
+
+    const [O_low] = apply_gas_corrections(entries_O, config_low, T)
+    const [O_high] = apply_gas_corrections(entries_O, config_high, T)
+    const [N_low] = apply_gas_corrections(entries_N, config_low, T)
+    const [N_high] = apply_gas_corrections(entries_N, config_high, T)
+
+    // Higher pressure should give higher (less negative) energy
+    expect(O_high.energy).toBeGreaterThan(O_low.energy)
+    expect(N_high.energy).toBeGreaterThan(N_low.energy)
   })
 
-  test(`format_pressure uses decimal for normal range`, () => {
-    expect(format_pressure(0.5)).not.toMatch(/e/)
-    expect(format_pressure(10)).not.toMatch(/e/)
+  test(`quaternary system with multiple gas elements`, () => {
+    const entries = [
+      make_entry({ Fe: 1 }),
+      make_entry({ O: 1 }),
+      make_entry({ N: 1 }),
+      make_entry({ H: 1 }),
+      make_entry({ Fe: 0.5, O: 0.25, N: 0.25 }),
+    ]
+    const config: GasThermodynamicsConfig = {
+      enabled_gases: [`O2`, `N2`, `H2`],
+    }
+    const result = analyze_gas_data(entries, config)
+
+    expect(result.gas_elements).toHaveLength(3)
+    expect(result.gas_elements).toContain(`O`)
+    expect(result.gas_elements).toContain(`N`)
+    expect(result.gas_elements).toContain(`H`)
+    expect(result.relevant_gases).toHaveLength(3)
+  })
+})
+
+describe(`gas-thermodynamics: boundary pressures`, () => {
+  const provider = get_default_gas_provider()
+
+  // Slider range: 10^-10 to 10^2 bar
+  const P_MIN = 1e-10
+  const P_MAX = 1e2
+
+  test(`chemical potential is finite at minimum pressure (10^-10 bar)`, () => {
+    const mu = compute_gas_chemical_potential(provider, `O2`, 300, P_MIN)
+    expect(Number.isFinite(mu)).toBe(true)
+    // At very low pressure, μ should be strongly negative due to -RT*ln(P) term
+    expect(mu).toBeLessThan(-0.5)
+  })
+
+  test(`chemical potential is finite at maximum pressure (10^2 bar)`, () => {
+    const mu = compute_gas_chemical_potential(provider, `O2`, 300, P_MAX)
+    expect(Number.isFinite(mu)).toBe(true)
+    // At high pressure, μ should be less negative than at low pressure
+    expect(mu).toBeGreaterThan(-0.5)
+  })
+
+  test(`monotonic increase in μ across full pressure range`, () => {
+    const pressures = [1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1, 100]
+    const mus = pressures.map((P) =>
+      compute_gas_chemical_potential(provider, `O2`, 500, P)
+    )
+    // Each subsequent μ should be greater (less negative)
+    for (let idx = 1; idx < mus.length; idx++) {
+      expect(mus[idx]).toBeGreaterThan(mus[idx - 1])
+    }
+  })
+
+  test.each([
+    [`zero`, 0],
+    [`negative`, -1],
+    [`NaN`, NaN],
+    [`Infinity`, Infinity],
+    [`-Infinity`, -Infinity],
+  ])(`handles %s pressure gracefully (falls back to P_REF)`, (_, invalid_P) => {
+    const mu_ref = compute_gas_chemical_potential(provider, `O2`, 300, P_REF)
+    const mu_invalid = compute_gas_chemical_potential(provider, `O2`, 300, invalid_P)
+    expect(mu_invalid).toBe(mu_ref)
   })
 })

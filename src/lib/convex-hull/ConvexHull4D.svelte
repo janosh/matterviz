@@ -133,7 +133,7 @@
       temp_filtered_entries,
       gas_config,
       gas_pressures,
-      temperature ?? 300,
+      temperature ?? helpers.DEFAULT_GAS_TEMP,
     ),
   )
 

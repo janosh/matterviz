@@ -6,8 +6,20 @@ import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
 import * as d3_sc from 'd3-scale-chromatic'
 import { symbol } from 'd3-shape'
-import type { ConvexHullConfig, HighlightStyle, MarkerSymbol, PhaseData } from './types'
-import { is_unary_entry } from './types'
+import {
+  analyze_gas_data as _analyze_gas_data,
+  apply_gas_corrections as _apply_gas_corrections,
+} from './gas-thermodynamics'
+import type {
+  ConvexHullConfig,
+  GasAnalysis,
+  GasThermodynamicsConfig,
+  HighlightStyle,
+  MarkerSymbol,
+  PhaseData,
+} from './types'
+import { DEFAULT_GAS_TEMP, is_unary_entry } from './types'
+export { DEFAULT_GAS_TEMP }
 
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
@@ -695,12 +707,6 @@ export function filter_entries_at_temperature(
 }
 
 // Gas-dependent chemical potential helpers
-
-import {
-  analyze_gas_data as _analyze_gas_data,
-  apply_gas_corrections as _apply_gas_corrections,
-} from './gas-thermodynamics'
-import type { GasAnalysis, GasThermodynamicsConfig } from './types'
 
 /**
  * Analyze entries for gas-dependent elements (safe wrapper with optional config)

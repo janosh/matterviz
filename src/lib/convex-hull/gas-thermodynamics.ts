@@ -17,7 +17,9 @@ export const R_EV_PER_K = 8.617333262e-5 // Gas constant in eV/K (k_B)
 export const P_REF = 1.0 // Reference pressure in bar
 
 // Default element-to-gas mapping (which element comes from which gas)
-export const DEFAULT_ELEMENT_TO_GAS: Readonly<Partial<Record<string, GasSpecies>>> = {
+export const DEFAULT_ELEMENT_TO_GAS: Readonly<
+  Partial<Record<ElementSymbol, GasSpecies>>
+> = {
   O: `O2`,
   N: `N2`,
   H: `H2`,
@@ -28,7 +30,7 @@ export const DEFAULT_ELEMENT_TO_GAS: Readonly<Partial<Record<string, GasSpecies>
 // Stoichiometric coefficients: atoms of element per molecule of gas
 // e.g., O2 has 2 O atoms, H2O has 2 H and 1 O
 export const GAS_STOICHIOMETRY: Readonly<
-  Record<GasSpecies, Partial<Record<string, number>>>
+  Record<GasSpecies, Partial<Record<ElementSymbol, number>>>
 > = {
   O2: { O: 2 },
   N2: { N: 2 },
@@ -209,7 +211,7 @@ export function compute_gas_chemical_potential(
 export function compute_element_chemical_potential(
   provider: GasThermodynamicsProvider,
   gas: GasSpecies,
-  element: string,
+  element: ElementSymbol,
   T: number,
   P: number,
 ): number {
@@ -240,17 +242,17 @@ export function analyze_gas_data(
   const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...config.element_to_gas }
 
   // Find all elements in the chemical system
-  const all_elements = new Set<string>()
+  const all_elements = new Set<ElementSymbol>()
   for (const entry of entries) {
     for (const el of Object.keys(entry.composition)) {
       if ((entry.composition[el as ElementSymbol] ?? 0) > 0) {
-        all_elements.add(el)
+        all_elements.add(el as ElementSymbol)
       }
     }
   }
 
   // Find elements that come from enabled gases
-  const gas_elements: string[] = []
+  const gas_elements: ElementSymbol[] = []
   const relevant_gases: GasSpecies[] = []
 
   for (const el of all_elements) {
@@ -304,8 +306,9 @@ export function compute_gas_correction(
   let correction = 0
   const n_atoms = count_atoms_in_composition(entry.composition)
 
-  for (const [el, amount] of Object.entries(entry.composition)) {
+  for (const [el_str, amount] of Object.entries(entry.composition)) {
     if (typeof amount !== `number` || amount <= 0) continue
+    const el = el_str as ElementSymbol
 
     const gas = element_to_gas[el]
     if (!gas || !enabled_gases.has(gas)) continue
