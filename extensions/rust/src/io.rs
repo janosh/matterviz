@@ -309,7 +309,6 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
     // Extract properties from JSON
     let properties = match parsed.properties {
         serde_json::Value::Object(map) => map.into_iter().collect(),
-        serde_json::Value::Null => std::collections::HashMap::new(),
         _ => std::collections::HashMap::new(),
     };
 

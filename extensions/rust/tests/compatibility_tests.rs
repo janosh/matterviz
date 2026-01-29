@@ -408,98 +408,27 @@ fn test_spacegroup_bcc() {
 }
 
 // =============================================================================
-// fit_anonymous Tests
+// fit_anonymous Integration Tests (complements unit tests in matcher.rs)
 // =============================================================================
 
 #[test]
-fn test_fit_anonymous_nacl_vs_clna() {
-    // NaCl with swapped species (ClNa) should match
-    let nacl = make_rocksalt(Element::Na, Element::Cl, 5.64);
-    let clna = Structure::new(
-        Lattice::cubic(5.64),
-        vec![Species::neutral(Element::Cl), Species::neutral(Element::Na)],
-        vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
-    );
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit_anonymous(&nacl, &clna),
-        "NaCl vs ClNa should match anonymously"
-    );
-}
-
-#[test]
-fn test_fit_anonymous_nacl_vs_mgo() {
-    // NaCl and MgO have the same rocksalt prototype
-    let nacl = make_rocksalt(Element::Na, Element::Cl, 5.64);
-    let mgo = make_rocksalt(Element::Mg, Element::O, 4.21);
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit_anonymous(&nacl, &mgo),
-        "NaCl and MgO should match as same rocksalt prototype"
-    );
-}
-
-#[test]
-fn test_fit_anonymous_different_stoichiometry() {
-    // NaCl (AB) vs different stoichiometry (A2B3) should NOT match
-    let nacl = make_rocksalt(Element::Na, Element::Cl, 5.64);
-    // Create a simple structure with 2:3 stoichiometry
-    let a2b3 = Structure::new(
-        Lattice::cubic(5.0),
-        vec![
-            Species::neutral(Element::Fe),
-            Species::neutral(Element::Fe),
-            Species::neutral(Element::O),
-            Species::neutral(Element::O),
-            Species::neutral(Element::O),
-        ],
-        vec![
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(0.5, 0.5, 0.5),
-            Vector3::new(0.25, 0.25, 0.25),
-            Vector3::new(0.75, 0.75, 0.75),
-            Vector3::new(0.25, 0.75, 0.25),
-        ],
-    );
-    let matcher = StructureMatcher::new();
-    assert!(
-        !matcher.fit_anonymous(&nacl, &a2b3),
-        "Different stoichiometry (AB vs A2B3) should not match"
-    );
-}
-
-#[test]
-fn test_fit_anonymous_single_element_structures() {
-    // Same structure with different single elements should match
-    let fe = make_cubic(Element::Fe, 4.0);
-    let cu = make_cubic(Element::Cu, 4.0);
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit_anonymous(&fe, &cu),
-        "Single-element structures with same arrangement should match"
-    );
-}
-
-#[test]
 fn test_fit_anonymous_bcc_vs_bcc() {
-    // Two BCC structures with different elements should match
+    // Two BCC structures with different elements and lattice parameters
     let fe_bcc = make_bcc(Element::Fe, 2.87);
     let w_bcc = make_bcc(Element::W, 3.16);
-    let matcher = StructureMatcher::new();
     assert!(
-        matcher.fit_anonymous(&fe_bcc, &w_bcc),
+        StructureMatcher::new().fit_anonymous(&fe_bcc, &w_bcc),
         "BCC Fe and BCC W should match anonymously"
     );
 }
 
 #[test]
 fn test_fit_anonymous_fcc_vs_fcc() {
-    // Two FCC structures with different elements should match
+    // Two FCC structures with different elements and lattice parameters
     let cu_fcc = make_fcc(Element::Cu, 3.6);
     let al_fcc = make_fcc(Element::Al, 4.05);
-    let matcher = StructureMatcher::new();
     assert!(
-        matcher.fit_anonymous(&cu_fcc, &al_fcc),
+        StructureMatcher::new().fit_anonymous(&cu_fcc, &al_fcc),
         "FCC Cu and FCC Al should match anonymously"
     );
 }
@@ -507,37 +436,13 @@ fn test_fit_anonymous_fcc_vs_fcc() {
 #[test]
 fn test_fit_anonymous_bcc_vs_fcc_no_match() {
     // BCC vs FCC should NOT match (different structures)
-    let fe_bcc = make_bcc(Element::Fe, 2.87);
-    let cu_fcc = make_fcc(Element::Cu, 3.6);
     // Note: with primitive_cell=true (default), both reduce to 1 atom
     // so they would match. Use primitive_cell=false for this test.
-    let matcher_no_prim = StructureMatcher::new().with_primitive_cell(false);
+    let fe_bcc = make_bcc(Element::Fe, 2.87);
+    let cu_fcc = make_fcc(Element::Cu, 3.6);
+    let matcher = StructureMatcher::new().with_primitive_cell(false);
     assert!(
-        !matcher_no_prim.fit_anonymous(&fe_bcc, &cu_fcc),
+        !matcher.fit_anonymous(&fe_bcc, &cu_fcc),
         "BCC vs FCC should not match (without primitive reduction)"
-    );
-}
-
-#[test]
-fn test_fit_anonymous_different_num_elements() {
-    // Structure with 2 elements vs structure with 1 element should NOT match
-    let nacl = make_rocksalt(Element::Na, Element::Cl, 5.64);
-    let fe = make_cubic(Element::Fe, 4.0);
-    let matcher = StructureMatcher::new();
-    assert!(
-        !matcher.fit_anonymous(&nacl, &fe),
-        "Different number of unique elements should not match"
-    );
-}
-
-#[test]
-fn test_fit_anonymous_empty_structures() {
-    // Empty structures should not match
-    let empty1 = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
-    let empty2 = Structure::new(Lattice::cubic(5.0), vec![], vec![]);
-    let matcher = StructureMatcher::new();
-    assert!(
-        !matcher.fit_anonymous(&empty1, &empty2),
-        "Empty structures should not match"
     );
 }

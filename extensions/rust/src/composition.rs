@@ -120,6 +120,9 @@ impl Composition {
     }
 
     /// Get elements in iteration order.
+    ///
+    /// Note: This allocates a new Vec. For iteration without allocation,
+    /// use `self.iter().map(|(elem, _)| *elem)`.
     pub fn elements(&self) -> Vec<Element> {
         self.elements.keys().copied().collect()
     }

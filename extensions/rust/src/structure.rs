@@ -14,7 +14,7 @@ use moyo::base::{AngleTolerance, Cell as MoyoCell, Lattice as MoyoLattice};
 use moyo::data::Setting;
 use nalgebra::{Matrix3, Vector3};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// A crystal structure with lattice, site occupancies, and coordinates.
 ///
@@ -135,6 +135,9 @@ impl Structure {
     }
 
     /// Get the dominant species at each site.
+    ///
+    /// Note: This allocates a new Vec on each call. For performance-critical
+    /// code that iterates once, consider using `site_occupancies` directly.
     pub fn species(&self) -> Vec<&Species> {
         self.site_occupancies
             .iter()
@@ -144,8 +147,7 @@ impl Structure {
 
     /// Get the composition of the structure (weighted by occupancy for disordered sites).
     pub fn composition(&self) -> Composition {
-        let mut counts: std::collections::BTreeMap<Element, f64> =
-            std::collections::BTreeMap::new();
+        let mut counts: BTreeMap<Element, f64> = BTreeMap::new();
         for site_occ in &self.site_occupancies {
             for (sp, occ) in &site_occ.species {
                 *counts.entry(sp.element).or_insert(0.0) += occ;
@@ -258,8 +260,7 @@ impl Structure {
             .map(|so| {
                 // Group by (new_element, oxidation_state) and sum occupancies
                 // Use BTreeMap for deterministic ordering (important for dominant_species on ties)
-                let mut grouped: std::collections::BTreeMap<(Element, Option<i8>), f64> =
-                    std::collections::BTreeMap::new();
+                let mut grouped: BTreeMap<(Element, Option<i8>), f64> = BTreeMap::new();
                 for (sp, occ) in &so.species {
                     let new_elem = mapping.get(&sp.element).copied().unwrap_or(sp.element);
                     let key = (new_elem, sp.oxidation_state);
@@ -672,6 +673,31 @@ mod tests {
             remapped.num_sites(),
             0,
             "Empty structure should remain empty"
+        );
+    }
+
+    #[test]
+    fn test_remap_species_disordered_site() {
+        // Disordered site with Fe(0.6) + Co(0.4), mapping both to Ni
+        // Should produce single Ni(1.0) species
+        let site_occ = vec![SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.6),
+            (Species::neutral(Element::Co), 0.4),
+        ])];
+        let s = Structure::new_from_occupancies(
+            Lattice::cubic(4.0),
+            site_occ,
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+        let mapping = HashMap::from([(Element::Fe, Element::Ni), (Element::Co, Element::Ni)]);
+        let remapped = s.remap_species(&mapping);
+
+        // Should have single species with combined occupancy
+        assert_eq!(remapped.site_occupancies[0].species.len(), 1);
+        assert_eq!(remapped.species()[0].element, Element::Ni);
+        assert!(
+            (remapped.site_occupancies[0].total_occupancy() - 1.0).abs() < 1e-10,
+            "Occupancies should sum to 1.0"
         );
     }
 }

@@ -177,17 +177,20 @@ impl SiteOccupancy {
     ///
     /// # Panics
     ///
-    /// Panics if `species` is empty or if any occupancy is not finite or negative.
+    /// Panics if `species` is empty or if any occupancy is not finite or positive.
+    ///
+    /// # Note
+    ///
+    /// This constructor allows occupancies > 1.0 for flexibility. JSON parsing
+    /// in `io.rs` applies stricter validation (0.0 < occu <= 1.0).
     pub fn new(species: Vec<(Species, f64)>) -> Self {
         assert!(
             !species.is_empty(),
             "SiteOccupancy requires at least one species"
         );
         assert!(
-            species
-                .iter()
-                .all(|(_, occ)| occ.is_finite() && *occ >= 0.0),
-            "SiteOccupancy occupancies must be finite and non-negative"
+            species.iter().all(|(_, occ)| occ.is_finite() && *occ > 0.0),
+            "SiteOccupancy occupancies must be finite and positive"
         );
         Self { species }
     }
@@ -200,6 +203,11 @@ impl SiteOccupancy {
     }
 
     /// Check if this is an ordered site (single species).
+    ///
+    /// Returns `true` if there is exactly one species, even if it has partial
+    /// occupancy (vacancy). A site with Fe at 0.8 occupancy is still "ordered"
+    /// in the crystallographic sense - the disorder refers to mixed species,
+    /// not vacancies.
     pub fn is_ordered(&self) -> bool {
         self.species.len() == 1
     }
@@ -444,19 +452,19 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "SiteOccupancy occupancies must be finite and non-negative")]
+    #[should_panic(expected = "SiteOccupancy occupancies must be finite and positive")]
     fn test_site_occupancy_negative_panics() {
         SiteOccupancy::new(vec![(Species::neutral(Element::Fe), -0.5)]);
     }
 
     #[test]
-    #[should_panic(expected = "SiteOccupancy occupancies must be finite and non-negative")]
+    #[should_panic(expected = "SiteOccupancy occupancies must be finite and positive")]
     fn test_site_occupancy_nan_panics() {
         SiteOccupancy::new(vec![(Species::neutral(Element::Fe), f64::NAN)]);
     }
 
     #[test]
-    #[should_panic(expected = "SiteOccupancy occupancies must be finite and non-negative")]
+    #[should_panic(expected = "SiteOccupancy occupancies must be finite and positive")]
     fn test_site_occupancy_infinity_panics() {
         SiteOccupancy::new(vec![(Species::neutral(Element::Fe), f64::INFINITY)]);
     }

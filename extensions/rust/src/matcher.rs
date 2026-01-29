@@ -604,6 +604,12 @@ impl StructureMatcher {
         let comp2 = struct2.composition();
         let comp2_hash = comp2.hash();
 
+        // Create element-only matcher once (used for all permutations)
+        let element_matcher = Self {
+            comparator_type: ComparatorType::Element,
+            ..self.clone()
+        };
+
         // Try all permutations of elements2
         for perm in elements2.iter().permutations(elements2.len()) {
             // Create mapping: elements1[i] -> perm[i]
@@ -619,14 +625,8 @@ impl StructureMatcher {
                 continue;
             }
 
-            // Composition matches - do full structure comparison with element-only matching.
-            // We use ComparatorType::Element to ignore oxidation states, matching
-            // pymatgen's anonymous matching behavior.
+            // Composition matches - do full structure comparison
             let remapped_struct1 = struct1.remap_species(&mapping);
-            let element_matcher = Self {
-                comparator_type: ComparatorType::Element,
-                ..self.clone()
-            };
             if element_matcher.fit(&remapped_struct1, struct2) {
                 return true;
             }
