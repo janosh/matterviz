@@ -270,6 +270,9 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
         // Parse all species with their occupancies
         let mut species_vec = Vec::with_capacity(site.species.len());
         let mut site_props: HashMap<String, serde_json::Value> = HashMap::new();
+        // Collect metadata from each species separately to handle multi-species sites
+        let mut species_metadata: Vec<HashMap<String, serde_json::Value>> =
+            Vec::with_capacity(site.species.len());
 
         for sp_json in &site.species {
             // Use normalize_symbol for comprehensive element parsing
@@ -325,12 +328,17 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
                 });
             }
 
-            // Merge normalization metadata into site properties
-            for (key, val) in normalized.metadata {
+            // Store metadata for later (don't merge yet to avoid overwrites in multi-species sites)
+            species_metadata.push(normalized.metadata);
+            species_vec.push((sp, occu));
+        }
+
+        // Only merge species metadata for single-species sites (no conflict possible)
+        // For multi-species sites, per-species metadata would be ambiguous at site level
+        if species_metadata.len() == 1 {
+            for (key, val) in species_metadata.into_iter().next().unwrap() {
                 site_props.insert(key, val);
             }
-
-            species_vec.push((sp, occu));
         }
 
         // Add site label if present
@@ -1072,6 +1080,33 @@ mod tests {
         assert_eq!(
             props.get("potcar_suffix").and_then(|v| v.as_str()),
             Some("_pv")
+        );
+    }
+
+    #[test]
+    fn test_parse_multi_species_no_metadata_overwrite() {
+        // Multi-species sites should NOT merge per-species metadata to avoid overwrites
+        // E.g., a disordered site with Fe_pv and Ni_sv should not lose one's suffix
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [{"species": [
+                {"element": "Fe_pv", "occu": 0.5},
+                {"element": "Ni_sv", "occu": 0.5}
+            ], "abc": [0,0,0]}]
+        }"#;
+
+        let s = parse_structure_json(json).unwrap();
+        assert_eq!(s.num_sites(), 1);
+
+        // Both species should be present
+        let site_occ = &s.site_occupancies[0];
+        assert_eq!(site_occ.species.len(), 2);
+
+        // Metadata should NOT be merged (would cause overwrite conflicts)
+        let props = s.site_properties(0);
+        assert!(
+            props.get("potcar_suffix").is_none(),
+            "Multi-species metadata should not be merged to avoid overwrites"
         );
     }
 
