@@ -34,6 +34,7 @@ pub mod error;
 // Core types
 pub mod composition;
 pub mod element;
+pub mod element_data;
 pub mod lattice;
 pub mod species;
 pub mod structure;
@@ -56,6 +57,10 @@ mod python;
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
+
+// WASM bindings (optional)
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 /// Python module entry point.
 #[cfg(feature = "python")]
