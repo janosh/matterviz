@@ -162,13 +162,12 @@
   )
 
   // Process convex hull data with unified PhaseData interface using effective entries
-  const processed_entries = $derived(effective_entries)
+  const pd_data = $derived(thermo.process_hull_entries(effective_entries))
 
-  const pd_data = $derived(thermo.process_hull_entries(processed_entries))
-
+  // Pre-compute polymorph stats once for O(1) tooltip lookups
   const polymorph_stats_map = $derived(
-    helpers.compute_all_polymorph_stats(processed_entries),
-  ) // Pre-compute polymorph stats once for O(1) tooltip lookups
+    helpers.compute_all_polymorph_stats(effective_entries),
+  )
 
   const elements = $derived.by(() => {
     if (pd_data.elements.length > 4) {
@@ -368,7 +367,7 @@
 
   // Smart label defaults - hide labels if too many entries
   $effect(() => {
-    const total_entries = processed_entries.length
+    const total_entries = effective_entries.length
     if (total_entries > label_threshold) {
       show_stable_labels = false
       show_unstable_labels = false
@@ -1044,7 +1043,7 @@
       selected_entry,
     })}
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
-    {merged_controls.title || phase_stats?.chemical_system}
+    {@html merged_controls.title || phase_stats?.chemical_system}
   </h3>
 
   <canvas

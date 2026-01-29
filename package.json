@@ -22,6 +22,7 @@
     "prepublishOnly": "svelte-package"
   },
   "dependencies": {
+    "@matterviz/ferrox-wasm": "workspace:*",
     "@spglib/moyo-wasm": "^0.7.4",
     "@sveltejs/kit": "^2.50.1",
     "@threlte/core": "^8.3.1",

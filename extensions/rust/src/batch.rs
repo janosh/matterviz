@@ -1,15 +1,18 @@
 //! Batch processing for structure matching.
 //!
-//! This module provides parallel batch processing capabilities for
-//! deduplicating and grouping large sets of structures.
+//! This module provides batch processing capabilities for deduplicating and
+//! grouping large sets of structures. When the `rayon` feature is enabled,
+//! operations are parallelized for better performance on multi-core systems.
 
 use crate::error::{FerroxError, Result};
 use crate::io::parse_structure_json;
 use crate::matcher::StructureMatcher;
 use crate::structure::Structure;
 use indexmap::IndexMap;
-use rayon::prelude::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 
 // Union-Find Data Structure
 
@@ -156,7 +159,7 @@ impl StructureMatcher {
     ///
     /// 1. Group structures by composition hash (fast pre-filter)
     /// 2. Within each group, compare pairwise using union-find
-    /// 3. Parallelize comparisons with Rayon
+    /// 3. Parallelize comparisons with Rayon (when available)
     ///
     /// # Example
     ///
@@ -174,10 +177,22 @@ impl StructureMatcher {
         let len = structures.len();
         let uf = UnionFind::new(len);
 
-        // Step 1: Reduce all structures in parallel, then group by composition hash.
+        // Step 1: Reduce all structures (parallel when rayon enabled), then group by composition hash.
         // Reducing first ensures supercells are properly grouped with their primitive cells.
+        #[cfg(feature = "rayon")]
         let reduced: Vec<_> = structures
             .par_iter()
+            .enumerate()
+            .map(|(idx, s)| {
+                let reduced = self.reduce_structure(s);
+                let hash = self.composition_hash(&reduced);
+                (idx, hash, reduced)
+            })
+            .collect();
+
+        #[cfg(not(feature = "rayon"))]
+        let reduced: Vec<_> = structures
+            .iter()
             .enumerate()
             .map(|(idx, s)| {
                 let reduced = self.reduce_structure(s);
@@ -191,22 +206,43 @@ impl StructureMatcher {
             comp_groups.entry(hash).or_default().push((idx, reduced));
         }
 
-        // Step 2: Within each composition group, compare pairwise in parallel
-        let groups_vec: Vec<_> = comp_groups.values().collect();
-        groups_vec.par_iter().for_each(|group| {
-            // Generate all pairs within this group
-            for idx in 0..group.len() {
-                for jdx in (idx + 1)..group.len() {
-                    let (idx_i, reduced_i) = &group[idx];
-                    let (idx_j, reduced_j) = &group[jdx];
+        // Step 2: Within each composition group, compare pairwise (parallel when rayon enabled)
+        #[cfg(feature = "rayon")]
+        {
+            let groups_vec: Vec<_> = comp_groups.values().collect();
+            groups_vec.par_iter().for_each(|group| {
+                // Generate all pairs within this group
+                for idx in 0..group.len() {
+                    for jdx in (idx + 1)..group.len() {
+                        let (idx_i, reduced_i) = &group[idx];
+                        let (idx_j, reduced_j) = &group[jdx];
 
-                    // Compare pre-reduced structures (avoids redundant reduction)
-                    if self.fit_preprocessed(reduced_i, reduced_j) {
-                        uf.union(*idx_i, *idx_j);
+                        // Compare pre-reduced structures (avoids redundant reduction)
+                        if self.fit_preprocessed(reduced_i, reduced_j) {
+                            uf.union(*idx_i, *idx_j);
+                        }
+                    }
+                }
+            });
+        }
+
+        #[cfg(not(feature = "rayon"))]
+        {
+            for group in comp_groups.values() {
+                // Generate all pairs within this group
+                for idx in 0..group.len() {
+                    for jdx in (idx + 1)..group.len() {
+                        let (idx_i, reduced_i) = &group[idx];
+                        let (idx_j, reduced_j) = &group[jdx];
+
+                        // Compare pre-reduced structures (avoids redundant reduction)
+                        if self.fit_preprocessed(reduced_i, reduced_j) {
+                            uf.union(*idx_i, *idx_j);
+                        }
                     }
                 }
             }
-        });
+        }
 
         // Step 3: Build result - for each structure, find the minimum index in its group
         let groups = uf.get_groups();
@@ -285,7 +321,7 @@ impl StructureMatcher {
     /// # Algorithm
     ///
     /// 1. Preprocess existing structures (Niggli reduction, composition hashing)
-    /// 2. For each new structure (in parallel):
+    /// 2. For each new structure (in parallel when available):
     ///    - Filter by composition hash
     ///    - Compare against matching existing structures until first match (early termination)
     ///
@@ -313,9 +349,21 @@ impl StructureMatcher {
             return Ok(vec![None; new_structures.len()]);
         }
 
-        // Step 1: Reduce existing structures in parallel, then group by composition hash
+        // Step 1: Reduce existing structures (parallel when rayon enabled), then group by composition hash
+        #[cfg(feature = "rayon")]
         let existing_reduced: Vec<_> = existing_structures
             .par_iter()
+            .enumerate()
+            .map(|(idx, s)| {
+                let reduced = self.reduce_structure(s);
+                let hash = self.composition_hash(&reduced);
+                (idx, hash, reduced)
+            })
+            .collect();
+
+        #[cfg(not(feature = "rayon"))]
+        let existing_reduced: Vec<_> = existing_structures
+            .iter()
             .enumerate()
             .map(|(idx, s)| {
                 let reduced = self.reduce_structure(s);
@@ -333,8 +381,28 @@ impl StructureMatcher {
         }
 
         // Step 2: For each new structure, find first matching existing structure
+        #[cfg(feature = "rayon")]
         let results: Vec<Option<usize>> = new_structures
             .par_iter()
+            .map(|new_struct| {
+                let reduced_new = self.reduce_structure(new_struct);
+                let new_hash = self.composition_hash(&reduced_new);
+
+                // Find first match among candidates with same composition (early termination)
+                existing_by_comp.get(&new_hash).and_then(|candidates| {
+                    candidates
+                        .iter()
+                        .find(|(_, reduced_existing)| {
+                            self.fit_preprocessed(&reduced_new, reduced_existing)
+                        })
+                        .map(|(idx, _)| *idx)
+                })
+            })
+            .collect();
+
+        #[cfg(not(feature = "rayon"))]
+        let results: Vec<Option<usize>> = new_structures
+            .iter()
             .map(|new_struct| {
                 let reduced_new = self.reduce_structure(new_struct);
                 let new_hash = self.composition_hash(&reduced_new);

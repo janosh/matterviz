@@ -1,0 +1,5 @@
+# wasm-pack output
+pkg/
+
+# Build artifacts
+target/

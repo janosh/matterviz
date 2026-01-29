@@ -161,12 +161,12 @@
   )
 
   // Process convex hull data with unified PhaseData interface using effective entries
-  const processed_entries = $derived(effective_entries)
-  const pd_data = $derived(thermo.process_hull_entries(processed_entries))
+  const pd_data = $derived(thermo.process_hull_entries(effective_entries))
 
+  // Pre-compute polymorph stats once for O(1) tooltip lookups
   const polymorph_stats_map = $derived(
-    helpers.compute_all_polymorph_stats(processed_entries),
-  ) // Pre-compute polymorph stats once for O(1) tooltip lookups
+    helpers.compute_all_polymorph_stats(effective_entries),
+  )
 
   const elements = $derived.by(() => {
     if (pd_data.elements.length > 3) {
@@ -1103,7 +1103,7 @@
       selected_entry,
     })}
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
-    {merged_controls.title || phase_stats?.chemical_system}
+    {@html merged_controls.title || phase_stats?.chemical_system}
   </h3>
   <canvas
     bind:this={canvas}
