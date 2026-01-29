@@ -1119,17 +1119,6 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_deeply_nested_formula_gh3559() {
-        // gh-3559: very nested formula with fractional coefficients
-        let comp = Composition::from_formula("Li3Fe2((PO4)3(CO3)5)2").unwrap();
-        assert_eq!(comp.get(Element::Li), 3.0);
-        assert_eq!(comp.get(Element::Fe), 2.0);
-        assert_eq!(comp.get(Element::P), 6.0); // 3*2
-        assert_eq!(comp.get(Element::C), 10.0); // 5*2
-        assert_eq!(comp.get(Element::O), 54.0); // (12+15)*2
-    }
-
-    #[test]
     fn test_formula_parsing_edge_cases() {
         // Various formula edge cases in one test
         let cases: &[(&str, &[(Element, f64)])] = &[
@@ -1139,6 +1128,17 @@ mod tests {
                 &[(Element::Y, 3.0), (Element::N, 1.0), (Element::C, 80.0)],
             ), // metallofullerene
             ("{Fe2O3}2", &[(Element::Fe, 4.0), (Element::O, 6.0)]), // curly brackets
+            // gh-3559: deeply nested formula
+            (
+                "Li3Fe2((PO4)3(CO3)5)2",
+                &[
+                    (Element::Li, 3.0),
+                    (Element::Fe, 2.0),
+                    (Element::P, 6.0),
+                    (Element::C, 10.0),
+                    (Element::O, 54.0),
+                ],
+            ),
         ];
         for (formula, expected) in cases {
             let comp = Composition::from_formula(formula).expect(formula);

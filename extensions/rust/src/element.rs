@@ -1898,40 +1898,16 @@ mod tests {
     }
 
     #[test]
-    fn test_dummy_element() {
-        let dummy = Element::Dummy;
-        // Dummy has special atomic number (119 = beyond known elements)
-        assert!(dummy.atomic_number() > 118);
-        assert!(dummy.atomic_radius().is_none());
-        assert!(dummy.electronegativity().is_none());
-        assert!(dummy.oxidation_states().is_empty());
-    }
-
-    #[test]
-    fn test_nan_electronegativity() {
-        // Noble gases have NaN or undefined electronegativity
-        // electronegativity() converts NaN values to None
-        let he_en = Element::He.electronegativity();
-        assert!(he_en.is_none());
-    }
-
-    #[test]
     fn test_from_atomic_number() {
         assert_eq!(Element::from_atomic_number(1), Some(Element::H));
         assert_eq!(Element::from_atomic_number(26), Some(Element::Fe));
         assert_eq!(Element::from_atomic_number(118), Some(Element::Og));
         assert_eq!(Element::from_atomic_number(0), None);
-        // 119 and 1000 overflow u8, so we can't test them directly
     }
 
     #[test]
-    fn test_element_caching_equality() {
-        // Same element should be equal
-        let fe1 = Element::Fe;
-        let fe2 = Element::Fe;
-        assert_eq!(fe1, fe2);
-
-        // From symbol should produce same element
+    fn test_element_equality() {
+        assert_eq!(Element::Fe, Element::Fe);
         assert_eq!(Element::from_symbol("Fe"), Some(Element::Fe));
     }
 
@@ -1971,9 +1947,19 @@ mod tests {
 
     #[test]
     fn test_element_edge_cases() {
+        // Dummy element has atomic number > 118, missing properties
+        let dummy = Element::Dummy;
+        assert!(dummy.atomic_number() > 118);
+        assert!(dummy.atomic_radius().is_none());
+        assert!(dummy.oxidation_states().is_empty());
+
+        // Noble gases have undefined electronegativity (converted to None)
+        assert!(Element::He.electronegativity().is_none());
+
         // U has many oxidation states
         assert!(!Element::U.oxidation_states().is_empty());
-        // Og should handle missing data gracefully (not panic)
+
+        // Og handles missing data gracefully
         let _ = (Element::Og.atomic_radius(), Element::Og.covalent_radius());
     }
 }

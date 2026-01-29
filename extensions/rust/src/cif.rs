@@ -836,9 +836,15 @@ Cu 0.0 0.0 0.0
     // Pymatgen Edge Case Tests (ported from pymatgen test suite)
     // =========================================================================
 
-    fn make_cif(header: &str, atoms: &str) -> String {
+    fn make_cif(atoms: &str) -> String {
         format!(
-            "data_test\n_cell_length_a 5.0\n_cell_length_b 5.0\n_cell_length_c 5.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\n{header}\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n{atoms}"
+            "data_test\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n{atoms}"
+        )
+    }
+
+    fn make_cif_with_labels(atoms: &str) -> String {
+        format!(
+            "data_test\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n{atoms}"
         )
     }
 
@@ -854,8 +860,7 @@ Cu 0.0 0.0 0.0
             ("D 0 0 0\nO 0.5 0.5 0.5", &[Element::D, Element::O]),       // deuterium
         ];
         for (atoms, expected) in cases {
-            let cif = make_cif("", atoms);
-            let s = parse_cif_str(&cif, Path::new("t.cif")).unwrap();
+            let s = parse_cif_str(&make_cif(atoms), Path::new("t.cif")).unwrap();
             assert_eq!(s.num_sites(), expected.len(), "{atoms}");
             for (idx, elem) in expected.iter().enumerate() {
                 assert_eq!(s.species()[idx].element, *elem, "{atoms}");
@@ -863,8 +868,11 @@ Cu 0.0 0.0 0.0
         }
 
         // Site labels with numbers (Fe1, Na2) - uses _atom_site_label
-        let label_cif = "data_t\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nFe1 0 0 0\nNa2 0.5 0.5 0.5";
-        let s = parse_cif_str(label_cif, Path::new("l.cif")).unwrap();
+        let s = parse_cif_str(
+            &make_cif_with_labels("Fe1 0 0 0\nNa2 0.5 0.5 0.5"),
+            Path::new("l.cif"),
+        )
+        .unwrap();
         assert_eq!(s.num_sites(), 2);
         assert_eq!(s.species()[0].element, Element::Fe);
         assert_eq!(s.species()[1].element, Element::Na);
@@ -879,8 +887,7 @@ Cu 0.0 0.0 0.0
         assert!((s.lattice.lengths().x - 5.123).abs() < 0.01);
 
         // Negative coordinates
-        let neg = make_cif("", "Fe -0.1 0 0\nFe 0 -0.2 0");
-        let s2 = parse_cif_str(&neg, Path::new("n.cif")).unwrap();
+        let s2 = parse_cif_str(&make_cif("Fe -0.1 0 0\nFe 0 -0.2 0"), Path::new("n.cif")).unwrap();
         assert_eq!(s2.num_sites(), 2);
         assert!(s2.frac_coords[0].x.is_finite());
     }
