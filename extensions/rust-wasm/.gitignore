@@ -1,5 +1,8 @@
-# wasm-pack output
-pkg/
+# wasm-pack output (keep stub files for workspace install)
+pkg/ferrox_bg.wasm
+pkg/ferrox_bg.wasm.d.ts
+pkg/.gitignore
+pkg/package.json
 
 # Build artifacts
 target/
