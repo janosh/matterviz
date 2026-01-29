@@ -446,7 +446,7 @@ fn structure_to_pydict<'py>(
 }
 
 /// Convert serde_json::Value to Python object.
-fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<PyObject> {
+fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<Py<PyAny>> {
     use pyo3::IntoPyObject;
 
     match value {
@@ -1203,22 +1203,22 @@ fn set_site_property(
 }
 
 /// Convert serde_json::Value to Python object.
-fn json_value_to_py(py: Python<'_>, val: &serde_json::Value) -> PyResult<PyObject> {
+fn json_value_to_py(py: Python<'_>, val: &serde_json::Value) -> PyResult<Py<PyAny>> {
     match val {
         serde_json::Value::Null => Ok(py.None()),
-        serde_json::Value::Bool(b) => Ok(b.into_pyobject(py)?.into_any().unbind()),
+        serde_json::Value::Bool(b) => Ok(b.into_pyobject(py)?.to_owned().unbind().into_any()),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                Ok(i.into_pyobject(py)?.into_any().unbind())
+                Ok(i.into_pyobject(py)?.unbind().into_any())
             } else if let Some(f) = n.as_f64() {
-                Ok(f.into_pyobject(py)?.into_any().unbind())
+                Ok(f.into_pyobject(py)?.unbind().into_any())
             } else {
                 Err(PyValueError::new_err("Invalid number in JSON"))
             }
         }
-        serde_json::Value::String(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
+        serde_json::Value::String(s) => Ok(s.into_pyobject(py)?.unbind().into_any()),
         serde_json::Value::Array(arr) => {
-            let list: Vec<PyObject> = arr
+            let list: Vec<Py<PyAny>> = arr
                 .iter()
                 .map(|v| json_value_to_py(py, v))
                 .collect::<PyResult<_>>()?;
@@ -1235,6 +1235,7 @@ fn json_value_to_py(py: Python<'_>, val: &serde_json::Value) -> PyResult<PyObjec
 }
 
 /// Convert Python object to serde_json::Value.
+#[allow(deprecated)] // downcast is deprecated but still functional
 fn py_to_json_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<serde_json::Value> {
     if obj.is_none() {
         Ok(serde_json::Value::Null)
