@@ -809,12 +809,26 @@ impl Structure {
         let mut new_site_occupancies = Vec::with_capacity(self.num_sites() * n_cells);
         let mut new_frac_coords = Vec::with_capacity(self.num_sites() * n_cells);
 
-        for (site_occ, frac) in self.site_occupancies.iter().zip(&self.frac_coords) {
+        for (orig_idx, (site_occ, frac)) in self
+            .site_occupancies
+            .iter()
+            .zip(&self.frac_coords)
+            .enumerate()
+        {
             for lattice_pt in &lattice_points {
                 // Shift by lattice point, then transform to new fractional coords
                 let shifted = frac + lattice_pt;
                 let new_frac = inv_scale * shifted;
-                new_site_occupancies.push(site_occ.clone());
+
+                // Copy site occupancy with orig_site_idx for tracking
+                // Only set if not already present (preserves chain for nested supercells)
+                let mut new_site_occ = site_occ.clone();
+                new_site_occ
+                    .properties
+                    .entry("orig_site_idx".to_string())
+                    .or_insert_with(|| serde_json::json!(orig_idx));
+
+                new_site_occupancies.push(new_site_occ);
                 new_frac_coords.push(new_frac);
             }
         }
@@ -1189,6 +1203,83 @@ impl Structure {
     }
 
     // =========================================================================
+    // Site Properties
+    // =========================================================================
+
+    /// Get site properties for a specific site index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `idx` is out of bounds.
+    pub fn site_properties(&self, idx: usize) -> &HashMap<String, serde_json::Value> {
+        assert!(
+            idx < self.num_sites(),
+            "Site index {} out of bounds (num_sites={})",
+            idx,
+            self.num_sites()
+        );
+        &self.site_occupancies[idx].properties
+    }
+
+    /// Get mutable site properties for a specific site index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `idx` is out of bounds.
+    pub fn site_properties_mut(&mut self, idx: usize) -> &mut HashMap<String, serde_json::Value> {
+        assert!(
+            idx < self.num_sites(),
+            "Site index {} out of bounds (num_sites={})",
+            idx,
+            self.num_sites()
+        );
+        &mut self.site_occupancies[idx].properties
+    }
+
+    /// Set a site property.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `idx` is out of bounds.
+    pub fn set_site_property(
+        &mut self,
+        idx: usize,
+        key: &str,
+        value: serde_json::Value,
+    ) -> &mut Self {
+        assert!(
+            idx < self.num_sites(),
+            "Site index {} out of bounds (num_sites={})",
+            idx,
+            self.num_sites()
+        );
+        self.site_occupancies[idx]
+            .properties
+            .insert(key.to_string(), value);
+        self
+    }
+
+    /// Get all site properties as a vector (parallel to frac_coords).
+    pub fn all_site_properties(&self) -> Vec<&HashMap<String, serde_json::Value>> {
+        self.site_occupancies
+            .iter()
+            .map(|so| &so.properties)
+            .collect()
+    }
+
+    /// Normalize all species symbols in the structure.
+    ///
+    /// Since structures are already normalized during parsing (element symbols
+    /// are converted to Element enum variants), this is a no-op. Provided for
+    /// API symmetry with pymatgen.
+    ///
+    /// Returns mutable reference to self for method chaining.
+    pub fn normalize(&mut self) -> &mut Self {
+        // Already normalized - Element enum guarantees valid symbols
+        self
+    }
+
+    // =========================================================================
     // Site Manipulation
     // =========================================================================
 
@@ -1423,7 +1514,10 @@ mod tests {
         assert!(result.is_err());
 
         // Empty SiteOccupancy
-        let empty_occ = SiteOccupancy { species: vec![] };
+        let empty_occ = SiteOccupancy {
+            species: vec![],
+            properties: HashMap::new(),
+        };
         let result = Structure::try_new_from_occupancies(
             Lattice::cubic(4.0),
             vec![empty_occ],
@@ -2725,6 +2819,114 @@ mod tests {
             .make_supercell([[-2, 0, 0], [0, 1, 0], [0, 0, 1]])
             .unwrap();
         assert_eq!(super_neg.num_sites(), super_gen.num_sites());
+    }
+
+    #[test]
+    fn test_supercell_preserves_site_properties() {
+        // Create a structure with site properties
+        let lattice = Lattice::cubic(4.0);
+        let species = Species::neutral(Element::Fe);
+
+        let mut props = HashMap::new();
+        props.insert("magmom".to_string(), serde_json::json!(2.5));
+        props.insert("label".to_string(), serde_json::json!("Fe1"));
+
+        let site_occ = SiteOccupancy::with_properties(vec![(species, 1.0)], props);
+        let s = Structure::try_new_from_occupancies(
+            lattice,
+            vec![site_occ],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        )
+        .unwrap();
+
+        // Make 2x2x2 supercell
+        let super_cell = s.make_supercell_diag([2, 2, 2]);
+        assert_eq!(super_cell.num_sites(), 8);
+
+        // Each site should have the original properties plus orig_site_idx
+        for idx in 0..8 {
+            let props = super_cell.site_properties(idx);
+
+            // Original properties preserved
+            assert_eq!(props.get("magmom").and_then(|v| v.as_f64()), Some(2.5));
+            assert_eq!(props.get("label").and_then(|v| v.as_str()), Some("Fe1"));
+
+            // orig_site_idx should be 0 (only one original site)
+            assert_eq!(
+                props.get("orig_site_idx").and_then(|v| v.as_u64()),
+                Some(0),
+                "Site {idx} missing orig_site_idx"
+            );
+        }
+    }
+
+    #[test]
+    fn test_supercell_orig_site_idx_multiple_sites() {
+        // Test with multiple original sites
+        let nacl = make_nacl(); // 2 sites: Na at 0,0,0 and Cl at 0.5,0.5,0.5
+
+        // Make 2x1x1 supercell
+        let super_cell = nacl.make_supercell_diag([2, 1, 1]);
+        assert_eq!(super_cell.num_sites(), 4);
+
+        // Should have 2 sites from orig_site_idx 0 and 2 from orig_site_idx 1
+        let orig_indices: Vec<u64> = (0..4)
+            .map(|idx| {
+                super_cell
+                    .site_properties(idx)
+                    .get("orig_site_idx")
+                    .and_then(|v| v.as_u64())
+                    .expect("Missing orig_site_idx")
+            })
+            .collect();
+
+        assert_eq!(orig_indices.iter().filter(|&&x| x == 0).count(), 2);
+        assert_eq!(orig_indices.iter().filter(|&&x| x == 1).count(), 2);
+    }
+
+    #[test]
+    fn test_supercell_nested_preserves_orig_site_idx() {
+        // Test that nested supercells preserve the original site index
+        let lattice = Lattice::cubic(4.0);
+        let species = Species::neutral(Element::Fe);
+        let site_occ = SiteOccupancy::ordered(species);
+        let s = Structure::try_new_from_occupancies(
+            lattice,
+            vec![site_occ],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        )
+        .unwrap();
+
+        // First supercell: 2x1x1
+        let super1 = s.make_supercell_diag([2, 1, 1]);
+        assert_eq!(super1.num_sites(), 2);
+
+        // All sites should have orig_site_idx = 0 (from original structure)
+        for idx in 0..2 {
+            assert_eq!(
+                super1
+                    .site_properties(idx)
+                    .get("orig_site_idx")
+                    .and_then(|v| v.as_u64()),
+                Some(0)
+            );
+        }
+
+        // Second supercell of the first: 1x2x1
+        let super2 = super1.make_supercell_diag([1, 2, 1]);
+        assert_eq!(super2.num_sites(), 4);
+
+        // All sites should STILL have orig_site_idx = 0 (preserved from first supercell)
+        for idx in 0..4 {
+            assert_eq!(
+                super2
+                    .site_properties(idx)
+                    .get("orig_site_idx")
+                    .and_then(|v| v.as_u64()),
+                Some(0),
+                "Site {idx} should preserve original orig_site_idx"
+            );
+        }
     }
 
     #[test]
