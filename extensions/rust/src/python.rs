@@ -17,15 +17,18 @@ use crate::io::{
     parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_pymatgen_json,
 };
 use crate::matcher::{ComparatorType, StructureMatcher};
-use crate::structure::Structure;
+use crate::structure::{Structure, SymmOp};
+use nalgebra::{Matrix3, Vector3};
+
+/// Parse a structure JSON string, returning a PyResult.
+fn parse_struct(json: &str) -> PyResult<Structure> {
+    parse_structure_json(json)
+        .map_err(|e| PyValueError::new_err(format!("Error parsing structure: {e}")))
+}
 
 /// Parse a pair of structure JSON strings, returning a PyResult.
 fn parse_structure_pair(struct1: &str, struct2: &str) -> PyResult<(Structure, Structure)> {
-    let s1 = parse_structure_json(struct1)
-        .map_err(|e| PyValueError::new_err(format!("Error parsing struct1: {e}")))?;
-    let s2 = parse_structure_json(struct2)
-        .map_err(|e| PyValueError::new_err(format!("Error parsing struct2: {e}")))?;
-    Ok((s1, s2))
+    Ok((parse_struct(struct1)?, parse_struct(struct2)?))
 }
 
 /// Convert Vec<String> to Vec<&str> for batch operations.
@@ -302,8 +305,7 @@ impl PyStructureMatcher {
     ///     ...     for s2 in reduced_structs[i+1:]:
     ///     ...         matcher.fit(s1, s2, skip_structure_reduction=True)
     fn reduce_structure(&self, py: Python<'_>, structure: &str) -> PyResult<String> {
-        let s = parse_structure_json(structure)
-            .map_err(|e| PyValueError::new_err(format!("Error parsing structure: {e}")))?;
+        let s = parse_struct(structure)?;
         // Release GIL during reduction (supports batch usage in loops)
         let reduced = py.detach(|| self.inner.reduce_structure(&s));
         Ok(structure_to_pymatgen_json(&reduced))
@@ -548,10 +550,441 @@ fn parse_trajectory(py: Python<'_>, path: &str) -> PyResult<Vec<Py<PyDict>>> {
     Ok(results)
 }
 
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Parse reduction algorithm from string ("niggli" or "lll").
+fn parse_reduction_algo(algo: &str) -> PyResult<crate::structure::ReductionAlgo> {
+    match algo.to_lowercase().as_str() {
+        "niggli" => Ok(crate::structure::ReductionAlgo::Niggli),
+        "lll" => Ok(crate::structure::ReductionAlgo::LLL),
+        _ => Err(PyValueError::new_err(format!(
+            "Invalid algorithm: {algo}. Use 'niggli' or 'lll'"
+        ))),
+    }
+}
+
+// ============================================================================
+// Structure Manipulation Functions
+// ============================================================================
+
+/// Create a supercell from a structure.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     scaling_matrix (list[list[int]]): 3x3 integer scaling matrix [[a1,a2,a3],[b1,b2,b3],[c1,c2,c3]]
+///
+/// Returns:
+///     dict: Supercell structure as a Python dict compatible with pymatgen
+///
+/// Example:
+///     >>> from ferrox import make_supercell
+///     >>> import json
+///     >>> supercell_dict = make_supercell(json.dumps(s.as_dict()), [[2,0,0],[0,2,0],[0,0,2]])
+///     >>> supercell = Structure.from_dict(supercell_dict)
+#[pyfunction]
+fn make_supercell(
+    py: Python<'_>,
+    structure: &str,
+    scaling_matrix: [[i32; 3]; 3],
+) -> PyResult<Py<PyDict>> {
+    let supercell = parse_struct(structure)?
+        .make_supercell(scaling_matrix)
+        .map_err(|e| PyValueError::new_err(format!("Error creating supercell: {e}")))?;
+    Ok(structure_to_pydict(py, &supercell)?.unbind())
+}
+
+/// Create a diagonal supercell (nx x ny x nz).
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     nx (int): Scaling factor along a-axis
+///     ny (int): Scaling factor along b-axis
+///     nz (int): Scaling factor along c-axis
+///
+/// Returns:
+///     dict: Supercell structure as a Python dict compatible with pymatgen
+///
+/// Example:
+///     >>> from ferrox import make_supercell_diag
+///     >>> import json
+///     >>> supercell_dict = make_supercell_diag(json.dumps(s.as_dict()), 2, 2, 2)
+///     >>> supercell = Structure.from_dict(supercell_dict)
+#[pyfunction]
+fn make_supercell_diag(
+    py: Python<'_>,
+    structure: &str,
+    nx: i32,
+    ny: i32,
+    nz: i32,
+) -> PyResult<Py<PyDict>> {
+    let supercell = parse_struct(structure)?.make_supercell_diag([nx, ny, nz]);
+    Ok(structure_to_pydict(py, &supercell)?.unbind())
+}
+
+/// Get a structure with reduced lattice (Niggli or LLL).
+///
+/// Atomic positions are preserved in Cartesian space; only the lattice
+/// basis changes. Fractional coordinates are wrapped to [0, 1).
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     algo (str): Reduction algorithm - "niggli" or "lll"
+///
+/// Returns:
+///     dict: Reduced structure as a Python dict compatible with pymatgen
+///
+/// Example:
+///     >>> from ferrox import get_reduced_structure
+///     >>> import json
+///     >>> reduced_dict = get_reduced_structure(json.dumps(s.as_dict()), "niggli")
+///     >>> reduced = Structure.from_dict(reduced_dict)
+#[pyfunction]
+fn get_reduced_structure(py: Python<'_>, structure: &str, algo: &str) -> PyResult<Py<PyDict>> {
+    let reduced = parse_struct(structure)?
+        .get_reduced_structure(parse_reduction_algo(algo)?)
+        .map_err(|e| PyValueError::new_err(format!("Error reducing structure: {e}")))?;
+    Ok(structure_to_pydict(py, &reduced)?.unbind())
+}
+
+/// Get a structure with reduced lattice using custom parameters.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     algo (str): Reduction algorithm - "niggli" or "lll"
+///     niggli_tol (float): Tolerance for Niggli reduction (default: 1e-5, ignored for LLL)
+///     lll_delta (float): Delta parameter for LLL reduction (default: 0.75, ignored for Niggli)
+///
+/// Returns:
+///     dict: Reduced structure as a Python dict compatible with pymatgen
+#[pyfunction]
+#[pyo3(signature = (structure, algo, niggli_tol = 1e-5, lll_delta = 0.75))]
+fn get_reduced_structure_with_params(
+    py: Python<'_>,
+    structure: &str,
+    algo: &str,
+    niggli_tol: f64,
+    lll_delta: f64,
+) -> PyResult<Py<PyDict>> {
+    let reduced = parse_struct(structure)?
+        .get_reduced_structure_with_params(parse_reduction_algo(algo)?, niggli_tol, lll_delta)
+        .map_err(|e| PyValueError::new_err(format!("Error reducing structure: {e}")))?;
+    Ok(structure_to_pydict(py, &reduced)?.unbind())
+}
+
+// ============================================================================
+// Neighbor Finding Functions
+// ============================================================================
+
+/// Get neighbor list for a structure.
+///
+/// Finds all atom pairs within cutoff radius using periodic boundary conditions.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     r (float): Cutoff radius in Angstroms
+///     numerical_tol (float): Tolerance for distance comparisons (typically 1e-8)
+///     exclude_self (bool): If True, exclude self-pairs (distance ~0)
+///
+/// Returns:
+///     tuple[list[int], list[int], list[list[int]], list[float]]: (center_indices, neighbor_indices, image_offsets, distances)
+#[pyfunction]
+#[pyo3(signature = (structure, r, numerical_tol = 1e-8, exclude_self = true))]
+fn get_neighbor_list(
+    structure: &str,
+    r: f64,
+    numerical_tol: f64,
+    exclude_self: bool,
+) -> PyResult<(Vec<usize>, Vec<usize>, Vec<[i32; 3]>, Vec<f64>)> {
+    if r < 0.0 {
+        return Err(PyValueError::new_err("Cutoff radius must be non-negative"));
+    }
+    Ok(parse_struct(structure)?.get_neighbor_list(r, numerical_tol, exclude_self))
+}
+
+/// Get distance between two sites using minimum image convention.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     i (int): First site index
+///     j (int): Second site index
+///
+/// Returns:
+///     float: Distance in Angstroms
+#[pyfunction]
+fn get_distance(structure: &str, i: usize, j: usize) -> PyResult<f64> {
+    Ok(parse_struct(structure)?.get_distance(i, j))
+}
+
+/// Get the full distance matrix between all sites.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///
+/// Returns:
+///     list[list[float]]: n x n distance matrix where n = num_sites
+#[pyfunction]
+fn distance_matrix(structure: &str) -> PyResult<Vec<Vec<f64>>> {
+    Ok(parse_struct(structure)?.distance_matrix())
+}
+
+// ============================================================================
+// Structure Interpolation Functions
+// ============================================================================
+
+/// Interpolate between two structures for NEB calculations.
+///
+/// Generates n_images + 1 structures from start to end with linearly
+/// interpolated coordinates.
+///
+/// Args:
+///     struct1 (str): Start structure as JSON string
+///     struct2 (str): End structure as JSON string
+///     n_images (int): Number of intermediate images (total returned = n_images + 1)
+///     interpolate_lattices (bool): If True, also interpolate lattice parameters
+///     use_pbc (bool): If True, use minimum image convention for interpolation
+///
+/// Returns:
+///     list[dict]: List of structure dicts from start to end
+#[pyfunction]
+#[pyo3(signature = (struct1, struct2, n_images, interpolate_lattices = false, use_pbc = true))]
+fn interpolate(
+    py: Python<'_>,
+    struct1: &str,
+    struct2: &str,
+    n_images: usize,
+    interpolate_lattices: bool,
+    use_pbc: bool,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let (s1, s2) = parse_structure_pair(struct1, struct2)?;
+    let images = s1
+        .interpolate(&s2, n_images, interpolate_lattices, use_pbc)
+        .map_err(|e| PyValueError::new_err(format!("Interpolation error: {e}")))?;
+    images
+        .iter()
+        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
+        .collect()
+}
+
+// ============================================================================
+// Structure Matching Convenience Functions
+// ============================================================================
+
+/// Check if two structures match using default matcher settings.
+///
+/// This is a convenience wrapper around StructureMatcher.fit() that uses
+/// sensible defaults. For more control, create a StructureMatcher instance.
+///
+/// Args:
+///     struct1 (str): First structure as JSON string
+///     struct2 (str): Second structure as JSON string
+///     anonymous (bool): If True, allows any species permutation (prototype matching)
+///
+/// Returns:
+///     bool: True if structures match, False otherwise
+///
+/// Example:
+///     >>> from ferrox import matches
+///     >>> import json
+///     >>> nacl = Structure(...)
+///     >>> mgo = Structure(...)
+///     >>> # Check if same structure
+///     >>> matches(json.dumps(nacl.as_dict()), json.dumps(nacl.as_dict()), anonymous=False)
+///     True
+///     >>> # Check if same prototype (rocksalt)
+///     >>> matches(json.dumps(nacl.as_dict()), json.dumps(mgo.as_dict()), anonymous=True)
+///     True
+#[pyfunction]
+#[pyo3(signature = (struct1, struct2, anonymous = false))]
+fn matches(struct1: &str, struct2: &str, anonymous: bool) -> PyResult<bool> {
+    let (s1, s2) = parse_structure_pair(struct1, struct2)?;
+    Ok(s1.matches(&s2, anonymous))
+}
+
+// ============================================================================
+// Structure Sorting Functions
+// ============================================================================
+
+/// Get a sorted copy of the structure by atomic number.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     reverse (bool): If True, sort in descending order (default False)
+///
+/// Returns:
+///     dict: Sorted structure as pymatgen-compatible dict
+#[pyfunction]
+#[pyo3(signature = (structure, reverse = false))]
+fn get_sorted_structure(py: Python<'_>, structure: &str, reverse: bool) -> PyResult<Py<PyDict>> {
+    let sorted = parse_struct(structure)?.get_sorted_structure(reverse);
+    Ok(structure_to_pydict(py, &sorted)?.unbind())
+}
+
+/// Get a sorted copy of the structure by electronegativity.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     reverse (bool): If True, sort in descending order (default False)
+///
+/// Returns:
+///     dict: Sorted structure as pymatgen-compatible dict
+#[pyfunction]
+#[pyo3(signature = (structure, reverse = false))]
+fn get_sorted_by_electronegativity(
+    py: Python<'_>,
+    structure: &str,
+    reverse: bool,
+) -> PyResult<Py<PyDict>> {
+    let sorted = parse_struct(structure)?.get_sorted_by_electronegativity(reverse);
+    Ok(structure_to_pydict(py, &sorted)?.unbind())
+}
+
+// ============================================================================
+// Structure Copy/Sanitization Functions
+// ============================================================================
+
+/// Create a copy of the structure, optionally sanitized.
+///
+/// Sanitization applies:
+/// 1. LLL lattice reduction
+/// 2. Sort sites by electronegativity
+/// 3. Wrap fractional coords to [0, 1)
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     sanitize (bool): If True, apply sanitization steps (default False)
+///
+/// Returns:
+///     dict: Copy of structure as pymatgen-compatible dict
+#[pyfunction]
+#[pyo3(signature = (structure, sanitize = false))]
+fn copy_structure(py: Python<'_>, structure: &str, sanitize: bool) -> PyResult<Py<PyDict>> {
+    let copied = parse_struct(structure)?.copy(sanitize);
+    Ok(structure_to_pydict(py, &copied)?.unbind())
+}
+
+/// Wrap all fractional coordinates to [0, 1).
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///
+/// Returns:
+///     dict: Structure with wrapped coordinates as pymatgen-compatible dict
+#[pyfunction]
+fn wrap_to_unit_cell(py: Python<'_>, structure: &str) -> PyResult<Py<PyDict>> {
+    let mut s = parse_struct(structure)?;
+    s.wrap_to_unit_cell();
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
+// ============================================================================
+// Symmetry Operation Functions
+// ============================================================================
+
+/// Apply a symmetry operation to a structure.
+///
+/// A symmetry operation consists of a 3x3 rotation matrix and a translation vector.
+/// The transformation is: new = rotation * old + translation
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     rotation (list[list[float]]): 3x3 rotation matrix as [[r11,r12,r13],[r21,r22,r23],[r31,r32,r33]]
+///     translation (list[float]): Translation vector as [t1, t2, t3]
+///     fractional (bool): If True, operation is in fractional coords; else Cartesian
+///
+/// Returns:
+///     dict: Transformed structure as pymatgen-compatible dict
+///
+/// Example:
+///     >>> from ferrox import apply_operation
+///     >>> import json
+///     >>> # Inversion operation: rotation = -I, translation = [0,0,0]
+///     >>> inverted = apply_operation(json.dumps(s.as_dict()),
+///     ...     [[-1,0,0],[0,-1,0],[0,0,-1]], [0,0,0], fractional=True)
+#[pyfunction]
+#[pyo3(signature = (structure, rotation, translation, fractional = true))]
+fn apply_operation(
+    py: Python<'_>,
+    structure: &str,
+    rotation: [[f64; 3]; 3],
+    translation: [f64; 3],
+    fractional: bool,
+) -> PyResult<Py<PyDict>> {
+    let mut s = parse_struct(structure)?;
+    let rot = Matrix3::from_row_slice(&rotation.concat());
+    let op = SymmOp::new(rot, Vector3::from(translation));
+    s.apply_operation(&op, fractional);
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
+/// Apply inversion through the origin.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     fractional (bool): If True, operation is in fractional coords; else Cartesian
+///
+/// Returns:
+///     dict: Inverted structure as pymatgen-compatible dict
+#[pyfunction]
+#[pyo3(signature = (structure, fractional = true))]
+fn apply_inversion(py: Python<'_>, structure: &str, fractional: bool) -> PyResult<Py<PyDict>> {
+    let mut s = parse_struct(structure)?;
+    s.apply_operation(&SymmOp::inversion(), fractional);
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
+/// Apply a translation to all sites.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     translation (list[float]): Translation vector as [t1, t2, t3]
+///     fractional (bool): If True, translation is in fractional coords; else Cartesian (Angstroms)
+///
+/// Returns:
+///     dict: Translated structure as pymatgen-compatible dict
+#[pyfunction]
+#[pyo3(signature = (structure, translation, fractional = true))]
+fn apply_translation(
+    py: Python<'_>,
+    structure: &str,
+    translation: [f64; 3],
+    fractional: bool,
+) -> PyResult<Py<PyDict>> {
+    let mut s = parse_struct(structure)?;
+    s.apply_operation(&SymmOp::translation(Vector3::from(translation)), fractional);
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
+    // I/O functions
     m.add_function(wrap_pyfunction!(parse_structure_file, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trajectory, m)?)?;
+    // Supercell functions
+    m.add_function(wrap_pyfunction!(make_supercell, m)?)?;
+    m.add_function(wrap_pyfunction!(make_supercell_diag, m)?)?;
+    // Reduction functions
+    m.add_function(wrap_pyfunction!(get_reduced_structure, m)?)?;
+    m.add_function(wrap_pyfunction!(get_reduced_structure_with_params, m)?)?;
+    // Neighbor finding functions
+    m.add_function(wrap_pyfunction!(get_neighbor_list, m)?)?;
+    m.add_function(wrap_pyfunction!(get_distance, m)?)?;
+    m.add_function(wrap_pyfunction!(distance_matrix, m)?)?;
+    // Interpolation functions
+    m.add_function(wrap_pyfunction!(interpolate, m)?)?;
+    // Matching convenience functions
+    m.add_function(wrap_pyfunction!(matches, m)?)?;
+    // Sorting functions
+    m.add_function(wrap_pyfunction!(get_sorted_structure, m)?)?;
+    m.add_function(wrap_pyfunction!(get_sorted_by_electronegativity, m)?)?;
+    // Copy/sanitization functions
+    m.add_function(wrap_pyfunction!(copy_structure, m)?)?;
+    m.add_function(wrap_pyfunction!(wrap_to_unit_cell, m)?)?;
+    // Symmetry operation functions
+    m.add_function(wrap_pyfunction!(apply_operation, m)?)?;
+    m.add_function(wrap_pyfunction!(apply_inversion, m)?)?;
+    m.add_function(wrap_pyfunction!(apply_translation, m)?)?;
     Ok(())
 }
