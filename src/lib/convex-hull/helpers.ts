@@ -266,18 +266,28 @@ export const DEFAULT_HIGHLIGHT_STYLE: Required<HighlightStyle> = {
 
 export const merge_highlight_style = (
   custom_style: HighlightStyle | undefined,
-): Required<HighlightStyle> => ({ ...DEFAULT_HIGHLIGHT_STYLE, ...custom_style })
+): Required<HighlightStyle> => ({
+  ...DEFAULT_HIGHLIGHT_STYLE,
+  ...custom_style,
+})
 
-export function is_entry_highlighted<T extends { entry_id?: string }>(
-  entry: T,
-  highlighted_list: (string | T)[],
-): boolean {
+// Check if entry matches any item in highlighted_list (by structure_id or entry_id)
+export function is_entry_highlighted<
+  T extends { entry_id?: string; structure_id?: string },
+>(entry: T, highlighted_list: (string | T)[]): boolean {
   if (!highlighted_list.length) return false
-  const { entry_id } = entry
-  if (!entry_id) return false
-  return highlighted_list.some((item) =>
-    typeof item === `string` ? item === entry_id : item?.entry_id === entry_id
-  )
+  const { entry_id, structure_id } = entry
+  if (!entry_id && !structure_id) return false
+
+  return highlighted_list.some((item) => {
+    if (typeof item === `string`) {
+      return item === entry_id || item === structure_id
+    }
+    // Object: match by structure_id if present, else fall back to entry_id
+    return item?.structure_id
+      ? structure_id === item.structure_id
+      : item?.entry_id === entry_id
+  })
 }
 
 // Calculate fractional composition (normalized composition) for an entry
@@ -708,11 +718,8 @@ export function filter_entries_at_temperature(
 
 // Gas-dependent chemical potential helpers
 
-/**
- * Analyze entries for gas-dependent elements (safe wrapper with optional config)
- *
- * Returns information about which gases are relevant for the chemical system.
- */
+// Analyze entries for gas-dependent elements (safe wrapper with optional config)
+// Returns information about which gases are relevant for the chemical system.
 export function safe_analyze_gas_data(
   entries: PhaseData[],
   config?: GasThermodynamicsConfig,
@@ -727,12 +734,9 @@ export function safe_analyze_gas_data(
   return _analyze_gas_data(entries, config)
 }
 
-/**
- * Apply gas chemical potential corrections to entries (safe wrapper with optional config)
- *
- * This adjusts formation energies based on gas atmosphere conditions (T, P).
- * Should be applied after temperature filtering.
- */
+// Apply gas chemical potential corrections to entries (safe wrapper with optional config)
+// This adjusts formation energies based on gas atmosphere conditions (T, P).
+// Should be applied after temperature filtering.
 export function safe_apply_gas_corrections(
   entries: PhaseData[],
   config: GasThermodynamicsConfig | undefined,
@@ -742,13 +746,10 @@ export function safe_apply_gas_corrections(
   return _apply_gas_corrections(entries, config, T)
 }
 
-/**
- * Get gas-corrected entries in one call (consolidates analysis + correction)
- *
- * Merges gas_pressures with config.pressures and applies corrections if the
- * chemical system contains gas-dependent elements. Returns original entries
- * if no gas config or no relevant gases.
- */
+// Get gas-corrected entries in one call (consolidates analysis + correction)
+// Merges gas_pressures with config.pressures and applies corrections if the
+// chemical system contains gas-dependent elements. Returns original entries
+// if no gas config or no relevant gases.
 export function get_gas_corrected_entries(
   entries: PhaseData[],
   gas_config: GasThermodynamicsConfig | undefined,

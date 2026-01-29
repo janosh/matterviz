@@ -1,8 +1,6 @@
-/**
- * Tests for element data including basic structure and physicality checks.
- * Physicality tests validate that physical properties follow expected periodic trends.
- * Would have caught the bug where H had larger atomic_radius than O.
- */
+// Tests for element data including basic structure and physicality checks.
+// Physicality tests validate that physical properties follow expected periodic trends.
+// Would have caught the bug where H had larger atomic_radius than O.
 
 import type { ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
