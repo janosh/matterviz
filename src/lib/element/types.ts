@@ -3,6 +3,16 @@ import type { ELEM_SYMBOLS, ELEMENT_CATEGORIES } from '$lib/labels'
 export type ElementCategory = (typeof ELEMENT_CATEGORIES)[number]
 export type ElementSymbol = (typeof ELEM_SYMBOLS)[number]
 
+// Shannon radii structure: oxidation_state -> coordination -> spin -> radii
+export type ShannonRadiusPair = {
+  crystal_radius: number
+  ionic_radius: number
+}
+export type ShannonRadii = Record<
+  string,
+  Record<string, Record<string, ShannonRadiusPair>>
+>
+
 export type ChemicalElement = {
   'cpk-hex': string | null
   appearance: string | null
@@ -45,4 +55,10 @@ export type ChemicalElement = {
   summary: string
   symbol: ElementSymbol
   year: number | string
+  // Properties from pymatgen
+  oxidation_states?: number[]
+  common_oxidation_states?: number[]
+  icsd_oxidation_states?: number[]
+  ionic_radii?: Record<string, number> // oxidation_state (as string) -> radius in Angstrom
+  shannon_radii?: ShannonRadii
 }
