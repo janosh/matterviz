@@ -720,7 +720,14 @@ fn get_neighbor_list(
 ///     float: Distance in Angstroms
 #[pyfunction]
 fn get_distance(structure: &str, i: usize, j: usize) -> PyResult<f64> {
-    Ok(parse_struct(structure)?.get_distance(i, j))
+    let s = parse_struct(structure)?;
+    let n = s.num_sites();
+    if i >= n || j >= n {
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+            "Site index out of bounds: i={i}, j={j}, num_sites={n}"
+        )));
+    }
+    Ok(s.get_distance(i, j))
 }
 
 /// Get the full distance matrix between all sites.
