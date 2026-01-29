@@ -1,8 +1,8 @@
 import type { CompositionType } from '$lib/composition'
 import type { ShowControlsProp } from '$lib/controls'
 import type { ElementSymbol } from '$lib/element'
-import type { Sides } from '$lib/plot'
 import type { Vec3 } from '$lib/math'
+import type { Sides } from '$lib/plot'
 
 // Unified convex hull entry interface supporting both pymatgen and Materials Project formats
 export interface PhaseData {
@@ -172,3 +172,82 @@ export interface HighlightStyle {
   opacity?: number
   pulse_speed?: number
 }
+
+// --- Gas Phase Thermodynamics ---
+
+// Default temperature (Kelvin) for gas corrections when no temperature is specified
+export const DEFAULT_GAS_TEMP = 300
+
+// Supported gas species for chemical potential calculations
+export type GasSpecies = `O2` | `N2` | `H2` | `CO` | `CO2` | `H2O` | `F2`
+
+// All supported gas species as an array (for iteration)
+export const GAS_SPECIES: readonly GasSpecies[] = [
+  `O2`,
+  `N2`,
+  `H2`,
+  `CO`,
+  `CO2`,
+  `H2O`,
+  `F2`,
+] as const
+
+// Default atmospheric partial pressures (in bar)
+export const DEFAULT_GAS_PRESSURES: Readonly<Record<GasSpecies, number>> = {
+  O2: 0.2095, // ~21% in atmosphere
+  N2: 0.7809, // ~78% in atmosphere
+  H2: 0.1, // typical experimental
+  CO: 1e-6, // trace
+  CO2: 3.95e-4, // ~400 ppm in atmosphere
+  H2O: 0.03, // ~3% humidity
+  F2: 0.1, // typical experimental
+}
+
+// Interface for providing gas thermodynamic data (abstracted for privacy)
+export interface GasThermodynamicsProvider {
+  // Get standard chemical potential μ°(T) at reference pressure P₀=1 bar
+  // Returns value in eV/molecule (not per atom)
+  get_standard_chemical_potential(gas: GasSpecies, T: number): number
+
+  // Get list of supported gas species
+  get_supported_gases(): GasSpecies[]
+
+  // Get valid temperature range [T_min, T_max] in Kelvin
+  get_temperature_range(): [number, number]
+}
+
+// Configuration for gas thermodynamics in convex hull calculations
+export interface GasThermodynamicsConfig {
+  // Which gas species to enable (default: none)
+  enabled_gases?: GasSpecies[]
+
+  // Partial pressures for each gas (in bar, default: DEFAULT_GAS_PRESSURES)
+  pressures?: Partial<Record<GasSpecies, number>>
+
+  // Custom thermodynamic data provider (default: built-in data)
+  provider?: GasThermodynamicsProvider
+
+  // Element mapping: which elements are derived from which gases
+  // e.g., { O: 'O2', N: 'N2' } means O comes from O2 gas, N from N2 gas
+  // Default mapping is inferred from gas formula (O2 -> O, N2 -> N, etc.)
+  element_to_gas?: Partial<Record<ElementSymbol, GasSpecies>>
+}
+
+// Result of analyzing entries for gas-dependent data
+export interface GasAnalysis {
+  // Whether any enabled gas affects the chemical system
+  has_gas_dependent_elements: boolean
+  // Elements that come from gas phases
+  gas_elements: ElementSymbol[]
+  // Gas species that are relevant for this system
+  relevant_gases: GasSpecies[]
+}
+
+// Position options for UI control panels (e.g., GasPressureControls)
+export const GAS_CONTROL_POSITIONS = [
+  `top-left`,
+  `top-right`,
+  `bottom-left`,
+  `bottom-right`,
+] as const
+export type GasControlPosition = (typeof GAS_CONTROL_POSITIONS)[number]
