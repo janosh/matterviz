@@ -284,7 +284,7 @@ const extract_legend_properties = async <T>(
 // Scatter plot tests
 test.describe(`ScatterPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/scatter-plot`, { waitUntil: `domcontentloaded` })
+    await page.goto(`/test/scatter-plot`, { waitUntil: `networkidle` })
   })
 
   // Basic rendering tests

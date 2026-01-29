@@ -20,6 +20,7 @@
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
+  import GasPressureControls from './GasPressureControls.svelte'
   import * as helpers from './helpers'
   import type { BaseConvexHullProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
@@ -79,6 +80,8 @@
     temperature = $bindable(),
     interpolate_temperature = true,
     max_interpolation_gap = 500,
+    gas_config,
+    gas_pressures = $bindable({}),
     children,
     tooltip: custom_tooltip,
     ...rest
@@ -131,6 +134,20 @@
       : entries,
   )
 
+  // Gas-dependent chemical potential support (corrections based on T, P)
+  const {
+    entries: gas_corrected_entries,
+    analysis: gas_analysis,
+    merged_config: merged_gas_config,
+  } = $derived(
+    helpers.get_gas_corrected_entries(
+      temp_filtered_entries,
+      gas_config,
+      gas_pressures,
+      temperature ?? helpers.DEFAULT_GAS_TEMP,
+    ),
+  )
+
   let { // Compute energy mode information
     has_precomputed_e_form,
     has_precomputed_hull,
@@ -140,7 +157,7 @@
     unary_refs,
   } = $derived(
     helpers.compute_energy_mode_info(
-      temp_filtered_entries,
+      gas_corrected_entries,
       thermo.find_lowest_energy_unary_refs,
       energy_source_mode,
     ),
@@ -148,7 +165,7 @@
 
   const effective_entries = $derived(
     helpers.get_effective_entries(
-      temp_filtered_entries,
+      gas_corrected_entries,
       energy_mode,
       unary_refs,
       thermo.compute_e_form_per_atom,
@@ -777,6 +794,14 @@
 
     {#if has_temp_data && temperature !== undefined}
       <TemperatureSlider {available_temperatures} bind:temperature />
+    {/if}
+
+    {#if gas_analysis.has_gas_dependent_elements && merged_gas_config}
+      <GasPressureControls
+        config={merged_gas_config}
+        bind:pressures={gas_pressures}
+        temperature={temperature ?? 300}
+      />
     {/if}
 
     {#if structure_popup.open && structure_popup.structure}

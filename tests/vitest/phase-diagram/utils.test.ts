@@ -497,9 +497,7 @@ describe(`merge_phase_diagram_config`, () => {
   })
 })
 
-// ============================================================================
 // Chemical Formula Parsing Tests (for pseudo-binary phase diagrams)
-// ============================================================================
 
 describe(`is_compound`, () => {
   test.each([
