@@ -44,6 +44,7 @@ pub mod matcher;
 pub mod pbc;
 
 // I/O
+pub mod cif;
 pub mod io;
 
 // Re-exports for convenience
