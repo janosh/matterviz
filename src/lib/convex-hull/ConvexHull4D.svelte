@@ -9,6 +9,7 @@
     setup_fullscreen_effect,
     toggle_fullscreen,
   } from '$lib/layout'
+  import { sanitize_html } from '$lib/labels'
   import { ColorBar, PlotTooltip } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
@@ -1043,7 +1044,7 @@
       selected_entry,
     })}
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
-    {@html merged_controls.title || phase_stats?.chemical_system}
+    {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
   </h3>
 
   <canvas

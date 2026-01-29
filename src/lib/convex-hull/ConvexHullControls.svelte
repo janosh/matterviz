@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { format_num } from '$lib/labels'
+  import { format_num, sanitize_html } from '$lib/labels'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
@@ -103,7 +103,9 @@
   open_icon="Cross"
   {...rest}
 >
-  <h4 style="margin: 0">{@html merged_controls.title || `Convex Hull Controls`}</h4>
+  <h4 style="margin: 0">
+    {@html sanitize_html(merged_controls.title || `Convex Hull Controls`)}
+  </h4>
 
   <!-- Energy source selection (only if both options are available) -->
   {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form &&
