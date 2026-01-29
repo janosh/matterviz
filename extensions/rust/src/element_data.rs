@@ -84,7 +84,8 @@ pub fn get_by_atomic_number(z: u8) -> Option<&'static ElementData> {
     if !(1..=118).contains(&z) {
         return None;
     }
-    get_all().get((z - 1) as usize)
+    // Use linear search instead of index-based lookup to avoid relying on JSON array order
+    get_all().iter().find(|e| e.number == z)
 }
 
 /// Get element data by symbol.

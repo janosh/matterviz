@@ -59,7 +59,8 @@ def load_existing_data(path: Path) -> list[dict[str, Any]]:
             "Install from https://deno.land or run: curl -fsSL https://deno.land/install.sh | sh"
         )
 
-    relative_path = path.relative_to(PROJECT_ROOT)
+    # Use .as_posix() to convert backslashes to forward slashes on Windows
+    relative_path = path.relative_to(PROJECT_ROOT).as_posix()
     result = subprocess.run(
         [
             "deno",

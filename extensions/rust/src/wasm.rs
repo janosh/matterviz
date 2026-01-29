@@ -20,7 +20,10 @@ pub struct JsElement {
 
 #[wasm_bindgen]
 impl JsElement {
-    /// Create an element from its symbol.
+    /// Create an element from its symbol (e.g., "Fe", "O", "Na").
+    ///
+    /// Also accepts pseudo-elements: "D" (Deuterium), "T" (Tritium),
+    /// and "X"/"Dummy"/"Vac" (placeholder atom).
     #[wasm_bindgen(constructor)]
     pub fn new(symbol: &str) -> Result<JsElement, JsError> {
         Element::from_symbol(symbol)
@@ -28,12 +31,17 @@ impl JsElement {
             .ok_or_else(|| JsError::new(&format!("Unknown element symbol: {symbol}")))
     }
 
-    /// Create an element from its atomic number (1-118).
+    /// Create an element from its atomic number.
+    ///
+    /// Accepts 1-118 for real elements, plus pseudo-elements:
+    /// - 119: Dummy (placeholder atom)
+    /// - 120: D (Deuterium)
+    /// - 121: T (Tritium)
     #[wasm_bindgen(js_name = "fromAtomicNumber")]
     pub fn from_atomic_number(z: u8) -> Result<JsElement, JsError> {
         Element::from_atomic_number(z)
             .map(|e| JsElement { inner: e })
-            .ok_or_else(|| JsError::new(&format!("Invalid atomic number: {z}")))
+            .ok_or_else(|| JsError::new(&format!("Invalid atomic number: {z} (valid: 1-121)")))
     }
 
     /// Get the element symbol.

@@ -56,11 +56,11 @@ impl Composition {
 
     /// Create a new composition from species-amount pairs.
     ///
-    /// Zero and negative amounts are filtered out by default.
+    /// Zero and negative amounts are filtered out (since allow_negative defaults to false).
     pub fn new(species: impl IntoIterator<Item = (Species, f64)>) -> Self {
         let species: IndexMap<Species, f64> = species
             .into_iter()
-            .filter(|(_, amt)| amt.abs() > AMOUNT_TOLERANCE)
+            .filter(|(_, amt)| amt.abs() > AMOUNT_TOLERANCE) // MUTATION
             .collect();
         Self {
             species,
@@ -478,9 +478,12 @@ impl Composition {
     /// Subtract with error checking for negative amounts.
     ///
     /// Returns an error if the result would have negative amounts and
-    /// allow_negative is false.
+    /// self.allow_negative is false. The result inherits the caller's
+    /// allow_negative policy, not the RHS's.
     pub fn sub_checked(&self, other: &Self) -> Result<Self> {
-        let result = self.clone() - other.clone();
+        let mut result = self.clone() - other.clone();
+        // Enforce caller's policy, not the merged policy from the - operator
+        result.allow_negative = self.allow_negative;
         if !result.is_valid() {
             return Err(FerroxError::CompositionError {
                 reason: "Subtraction resulted in negative amounts".into(),
@@ -756,6 +759,25 @@ mod tests {
         assert_eq!(comp.num_elements(), 2); // Fe and O
     }
 
+    #[test]
+    fn test_constructor_filters_zero_and_negative_amounts() {
+        // new() filters zero, negative, and near-zero amounts (allow_negative=false)
+        let fe = Species::neutral(Element::Fe);
+        let comp = Composition::new([
+            (fe, 2.0),                              // positive: kept
+            (Species::neutral(Element::O), 0.0),    // zero: filtered
+            (Species::neutral(Element::Na), -1.0),  // negative: filtered
+            (Species::neutral(Element::Cl), 1e-12), // near-zero: filtered
+        ]);
+        assert_eq!(comp.num_species(), 1);
+        assert_eq!(comp.get(fe), 2.0);
+        assert!(comp.is_valid());
+
+        // from_elements() delegates to new(), same behavior
+        let comp2 = Composition::from_elements([(Element::Fe, 2.0), (Element::O, -3.0)]);
+        assert_eq!(comp2.num_elements(), 1);
+    }
+
     // =========================================================================
     // Formula Parsing Tests
     // =========================================================================
@@ -930,19 +952,23 @@ mod tests {
     fn test_subtraction_negative_handling() {
         let small = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
         let large = Composition::from_elements([(Element::Fe, 4.0), (Element::O, 6.0)]);
-
-        // Normal subtraction produces invalid composition
-        let result = small.clone() - large.clone();
-        assert!(!result.is_valid());
-
-        // With allow_negative flag
-        let result_allowed = small.clone().with_allow_negative(true) - large.clone();
-        assert!(result_allowed.is_valid());
-
-        // sub_checked returns error
-        assert!(small.sub_checked(&large).is_err());
         let feo = Composition::from_elements([(Element::Fe, 1.0), (Element::O, 1.0)]);
+
+        // Subtraction producing negatives: invalid unless allow_negative=true
+        assert!(!(small.clone() - large.clone()).is_valid());
+        assert!((small.clone().with_allow_negative(true) - large.clone()).is_valid());
+
+        // sub_checked: error on negatives, ok otherwise
+        assert!(small.sub_checked(&large).is_err());
         assert!(small.sub_checked(&feo).is_ok());
+
+        // sub_checked enforces caller's policy (not RHS's) and result inherits it
+        assert!(
+            small
+                .sub_checked(&large.clone().with_allow_negative(true))
+                .is_err()
+        );
+        assert!(!small.sub_checked(&feo).unwrap().allow_negative);
     }
 
     #[test]

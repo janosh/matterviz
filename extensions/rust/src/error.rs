@@ -145,6 +145,12 @@ mod tests {
                 },
                 &["empty.cif", "Empty", "frames"],
             ),
+            (
+                FerroxError::CompositionError {
+                    reason: "invalid formula".to_string(),
+                },
+                &["Composition error", "invalid formula"],
+            ),
         ];
 
         for (err, expected_substrings) in test_cases {
