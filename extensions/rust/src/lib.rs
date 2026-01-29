@@ -57,6 +57,10 @@ mod python;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 
+// WASM bindings (optional)
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
 /// Python module entry point.
 #[cfg(feature = "python")]
 #[pymodule]

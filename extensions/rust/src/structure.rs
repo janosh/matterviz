@@ -154,12 +154,27 @@ impl Structure {
             .collect()
     }
 
-    /// Get the composition of the structure (weighted by occupancy for disordered sites).
+    /// Get the element composition (oxidation states ignored, weighted by occupancy).
     pub fn composition(&self) -> Composition {
         let mut counts: BTreeMap<Element, f64> = BTreeMap::new();
         for site_occ in &self.site_occupancies {
             for (sp, occ) in &site_occ.species {
                 *counts.entry(sp.element).or_insert(0.0) += occ;
+            }
+        }
+        Composition::from_elements(counts)
+    }
+
+    /// Get the species composition (preserves oxidation states, weighted by occupancy).
+    pub fn species_composition(&self) -> Composition {
+        let mut counts: Vec<(Species, f64)> = Vec::new();
+        for site_occ in &self.site_occupancies {
+            for (sp, occ) in &site_occ.species {
+                if let Some(entry) = counts.iter_mut().find(|(s, _)| s == sp) {
+                    entry.1 += occ;
+                } else {
+                    counts.push((*sp, *occ));
+                }
             }
         }
         Composition::new(counts)
@@ -1673,6 +1688,37 @@ mod tests {
         assert!((comp.get(Element::Fe) - 1.0).abs() < 1e-10);
         assert!((comp.get(Element::Co) - 1.0).abs() < 1e-10);
         assert_eq!(comp.reduced_formula(), "FeCo");
+    }
+
+    #[test]
+    fn test_species_composition_preserves_oxidation_states() {
+        let fe2 = Species::new(Element::Fe, Some(2));
+        let fe3 = Species::new(Element::Fe, Some(3));
+        let o2 = Species::new(Element::O, Some(-2));
+
+        // Minimal structure: Fe2+, Fe3+, O2- (3 sites)
+        let structure = Structure::new(
+            Lattice::cubic(4.0),
+            vec![fe2, fe3, o2],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+            ],
+        );
+
+        // composition() loses oxidation states
+        let elem_comp = structure.composition();
+        assert!((elem_comp.get(Element::Fe) - 2.0).abs() < 1e-10);
+
+        // species_composition() preserves them
+        let species_comp = structure.species_composition();
+        assert!((species_comp.get(fe2) - 1.0).abs() < 1e-10);
+        assert!((species_comp.get(fe3) - 1.0).abs() < 1e-10);
+
+        // species_hash differs, formula_hash is the same
+        assert_ne!(elem_comp.species_hash(), species_comp.species_hash());
+        assert_eq!(elem_comp.formula_hash(), species_comp.formula_hash());
     }
 
     #[test]

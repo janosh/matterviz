@@ -831,4 +831,82 @@ Cu 0.0 0.0 0.0
         // Volume should be a^3 = 64
         assert!((structure.lattice.volume() - 64.0).abs() < 1e-6);
     }
+
+    // =========================================================================
+    // Pymatgen Edge Case Tests (ported from pymatgen test suite)
+    // =========================================================================
+
+    fn make_cif(atoms: &str) -> String {
+        format!(
+            "data_test\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n{atoms}"
+        )
+    }
+
+    fn make_cif_with_labels(atoms: &str) -> String {
+        format!(
+            "data_test\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n{atoms}"
+        )
+    }
+
+    #[test]
+    fn test_cif_symbol_parsing() {
+        // Various symbol formats that need normalization
+        let cases: &[(&str, &[Element])] = &[
+            ("Fe2+ 0 0 0\nO2- 0.5 0.5 0.5", &[Element::Fe, Element::O]), // oxidation states
+            (
+                "Ca_pv 0 0 0\nFe_sv 0.5 0.5 0.5",
+                &[Element::Ca, Element::Fe],
+            ), // POTCAR
+            ("D 0 0 0\nO 0.5 0.5 0.5", &[Element::D, Element::O]),       // deuterium
+        ];
+        for (atoms, expected) in cases {
+            let s = parse_cif_str(&make_cif(atoms), Path::new("t.cif")).unwrap();
+            assert_eq!(s.num_sites(), expected.len(), "{atoms}");
+            for (idx, elem) in expected.iter().enumerate() {
+                assert_eq!(s.species()[idx].element, *elem, "{atoms}");
+            }
+        }
+
+        // Site labels with numbers (Fe1, Na2) - uses _atom_site_label
+        let s = parse_cif_str(
+            &make_cif_with_labels("Fe1 0 0 0\nNa2 0.5 0.5 0.5"),
+            Path::new("l.cif"),
+        )
+        .unwrap();
+        assert_eq!(s.num_sites(), 2);
+        assert_eq!(s.species()[0].element, Element::Fe);
+        assert_eq!(s.species()[1].element, Element::Na);
+    }
+
+    #[test]
+    fn test_cif_coordinate_edge_cases() {
+        // Uncertainties in coordinates: 0.1234(5) → 0.1234
+        let unc = "data_u\n_cell_length_a 5.123(4)\n_cell_length_b 5.123(4)\n_cell_length_c 5.123(4)\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nNa 0.1234(5) 0.5 0.5";
+        let s = parse_cif_str(unc, Path::new("u.cif")).unwrap();
+        assert!((s.frac_coords[0].x - 0.1234).abs() < 1e-4);
+        assert!((s.lattice.lengths().x - 5.123).abs() < 0.01);
+
+        // Negative coordinates
+        let s2 = parse_cif_str(&make_cif("Fe -0.1 0 0\nFe 0 -0.2 0"), Path::new("n.cif")).unwrap();
+        assert_eq!(s2.num_sites(), 2);
+        assert!(s2.frac_coords[0].x.is_finite());
+    }
+
+    #[test]
+    fn test_cif_lattice_types() {
+        // Triclinic (all angles different)
+        let tri = "data_t\n_cell_length_a 4.5\n_cell_length_b 5.5\n_cell_length_c 6.5\n_cell_angle_alpha 75\n_cell_angle_beta 85\n_cell_angle_gamma 95\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nFe 0 0 0";
+        let s = parse_cif_str(tri, Path::new("t.cif")).unwrap();
+        assert!((s.lattice.angles().x - 75.0).abs() < 1e-6);
+
+        // Hexagonal (γ = 120°)
+        let hex = "data_h\n_cell_length_a 3\n_cell_length_b 3\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 120\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nMg 0 0 0";
+        let s2 = parse_cif_str(hex, Path::new("h.cif")).unwrap();
+        assert!((s2.lattice.angles().z - 120.0).abs() < 1e-6);
+
+        // Near-flat (PR4133 fix) - shouldn't hang
+        let flat = "data_f\n_cell_length_a 10\n_cell_length_b 10\n_cell_length_c 0.1\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nFe 0.5 0.5 0.5";
+        let s3 = parse_cif_str(flat, Path::new("f.cif")).unwrap();
+        assert!(s3.lattice.volume().abs() > 0.0 && s3.lattice.volume().abs() < 20.0);
+    }
 }

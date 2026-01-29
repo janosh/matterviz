@@ -853,6 +853,7 @@ fn parse_pbc_value(pbc_value: &serde_json::Value) -> [bool; 3] {
 mod tests {
     use super::*;
     use crate::element::Element;
+    use tempfile::{NamedTempFile, TempDir};
 
     // Helper to count elements in a structure (counts dominant species per site)
     fn count_element(structure: &Structure, elem: Element) -> usize {
@@ -1901,20 +1902,18 @@ Mg 0.0 0.0 0.0
 
     #[test]
     fn test_parse_structures_glob_basic() {
-        let temp_dir = std::env::temp_dir().join("ferrox_glob_test_basic");
-        std::fs::create_dir_all(&temp_dir).unwrap();
+        let temp_dir = TempDir::new().unwrap();
 
         // Create two JSON files
         let json = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Cu"}],"abc":[0,0,0]}]}"#;
-        std::fs::write(temp_dir.join("struct1.json"), json).unwrap();
-        std::fs::write(temp_dir.join("struct2.json"), json).unwrap();
+        std::fs::write(temp_dir.path().join("struct1.json"), json).unwrap();
+        std::fs::write(temp_dir.path().join("struct2.json"), json).unwrap();
 
-        let pattern = temp_dir.join("*.json").to_string_lossy().to_string();
+        let pattern = temp_dir.path().join("*.json").to_string_lossy().to_string();
         let results = parse_structures_glob(&pattern).unwrap();
 
-        std::fs::remove_dir_all(&temp_dir).ok();
-
         assert_eq!(results.len(), 2, "Should find 2 JSON files");
+        // TempDir automatically cleans up on drop
     }
 
     #[test]
@@ -1929,5 +1928,82 @@ Mg 0.0 0.0 0.0
         let pattern = "[invalid";
         let result = parse_structures_glob(pattern);
         assert!(result.is_err(), "Invalid glob pattern should return error");
+    }
+
+    // =========================================================================
+    // Pymatgen Edge Case Tests (ported from pymatgen test suite)
+    // =========================================================================
+
+    #[test]
+    fn test_poscar_edge_cases() {
+        // Fluorine element (not confused with False)
+        let f_poscar = "F test\n1.0\n4.0 0.0 0.0\n0.0 4.0 0.0\n0.0 0.0 4.0\nF\n2\nDirect\n0.0 0.0 0.0\n0.5 0.5 0.5\n";
+        let s = parse_poscar_str(f_poscar).unwrap();
+        assert_eq!(s.num_sites(), 2);
+        assert!(s.species().iter().all(|sp| sp.element == Element::F));
+
+        // Selective dynamics with F element (T/F flags shouldn't affect element)
+        let sd_poscar = "F slab\n1.0\n4.0 0.0 0.0\n0.0 4.0 0.0\n0.0 0.0 10.0\nF\n2\nSelective dynamics\nDirect\n0.0 0.0 0.1 F F F\n0.5 0.5 0.1 T T T\n";
+        let s2 = parse_poscar_str(sd_poscar).unwrap();
+        assert!(s2.species().iter().all(|sp| sp.element == Element::F));
+
+        // Scale factor 1.1 scales lattice
+        let scaled =
+            "Scaled\n1.1\n4.0 0.0 0.0\n0.0 4.0 0.0\n0.0 0.0 4.0\nFe\n1\nCartesian\n2.0 2.0 2.0\n";
+        assert!((parse_poscar_str(scaled).unwrap().lattice.lengths().x - 4.4).abs() < 1e-6);
+
+        // Negative lattice vectors
+        let neg = "Neg\n1.0\n-4.0 0.0 0.0\n0.0 4.0 0.0\n2.0 2.0 4.0\nFe\n1\nDirect\n0.0 0.0 0.0\n";
+        assert!(parse_poscar_str(neg).unwrap().lattice.volume().abs() > 0.0);
+
+        // Large structure (27 atoms)
+        let mut large =
+            String::from("Large\n1.0\n10.0 0.0 0.0\n0.0 10.0 0.0\n0.0 0.0 10.0\nFe\n27\nDirect\n");
+        for i in 0..27 {
+            large.push_str(&format!("{:.1} 0.0 0.0\n", i as f64 / 27.0));
+        }
+        assert_eq!(parse_poscar_str(&large).unwrap().num_sites(), 27);
+    }
+
+    #[test]
+    fn test_extxyz_edge_cases() {
+        use std::io::Write;
+
+        // With forces column - verify parsing succeeds with extra per-atom columns
+        // Note: per-atom properties (forces) are parsed by extxyz crate but not
+        // currently extracted to site_properties; only structure is verified
+        let forces = "2\nLattice=\"4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0\" Properties=species:S:1:pos:R:3:forces:R:3\nFe 0.0 0.0 0.0 0.1 0.2 0.3\nFe 2.0 2.0 2.0 -0.1 -0.2 -0.3\n";
+        let mut p1 = NamedTempFile::with_suffix(".xyz").unwrap();
+        p1.write_all(forces.as_bytes()).unwrap();
+        let s_forces = parse_extxyz(p1.path()).unwrap();
+        assert_eq!(s_forces.num_sites(), 2);
+        assert_eq!(s_forces.species()[0].element, Element::Fe);
+
+        // With energy property - verify global property is extracted
+        let energy = "2\nLattice=\"4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0\" energy=-5.5\nH 0.0 0.0 0.0\nH 2.0 2.0 2.0\n";
+        let mut p2 = NamedTempFile::with_suffix(".xyz").unwrap();
+        p2.write_all(energy.as_bytes()).unwrap();
+        let s_energy = parse_extxyz(p2.path()).unwrap();
+        assert!(s_energy.properties.contains_key("energy"));
+        assert_eq!(
+            s_energy.properties.get("energy").unwrap().as_f64(),
+            Some(-5.5)
+        );
+        // NamedTempFile automatically cleans up on drop
+    }
+
+    #[test]
+    fn test_json_edge_cases() {
+        // Oxidation states - verify the oxidation state is parsed
+        let oxi = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Fe","oxidation_state":2,"occu":1.0}],"abc":[0,0,0]}]}"#;
+        let s_oxi = parse_structure_json(oxi).unwrap();
+        assert_eq!(s_oxi.num_sites(), 1);
+        assert_eq!(s_oxi.species()[0].oxidation_state, Some(2));
+
+        // Disordered site - verify it's recognized as disordered
+        let dis = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Fe","occu":0.5},{"element":"Mn","occu":0.5}],"abc":[0,0,0]}]}"#;
+        let s_dis = parse_structure_json(dis).unwrap();
+        assert_eq!(s_dis.num_sites(), 1);
+        assert!(!s_dis.is_ordered());
     }
 }

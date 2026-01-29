@@ -19,6 +19,10 @@ pyo3 = { version = "0.27.2", features = [
   "extension-module",
 ], optional = true }
 
+# WASM bindings
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+
 # Math
 nalgebra = "0.34"
 
@@ -36,12 +40,14 @@ serde_json = "1.0"
 pathfinding = "4.14" # Hungarian algorithm (kuhn_munkres)
 itertools = "0.14"   # permutations for fit_anonymous
 rand = "0.9"         # random perturbations
+regex = "1.12"       # formula parsing
 
 # Utilities
 indexmap = { version = "2.13", features = ["serde"] }
 thiserror = "2.0"
 glob = "0.3"
 tracing = "0.1"
+flate2 = "1.1"  # gzip decompression for element data
 
 # File format parsing
 vasp-poscar = "0.3"
@@ -51,6 +57,7 @@ extxyz = "0.2"
 approx = "0.5"
 criterion = { version = "0.8", features = ["html_reports"] }
 proptest = "1.9"
+tempfile = "3"
 
 [build-dependencies]
 pyo3-build-config = { version = "0.27.2", optional = true }
@@ -58,6 +65,7 @@ pyo3-build-config = { version = "0.27.2", optional = true }
 [features]
 default = []
 python = ["dep:pyo3", "dep:pyo3-build-config"]
+wasm = ["dep:wasm-bindgen", "dep:js-sys"]
 
 [[bench]]
 name = "matcher_bench"
