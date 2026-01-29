@@ -45,25 +45,29 @@ describe(`gas-thermodynamics: constants`, () => {
     expect([...GAS_SPECIES].sort()).toEqual([`CO`, `CO2`, `F2`, `H2`, `H2O`, `N2`, `O2`])
   })
 
-  test.each([
-    [`O2`, { O: 2 }],
-    [`N2`, { N: 2 }],
-    [`H2`, { H: 2 }],
-    [`F2`, { F: 2 }],
-    [`CO`, { C: 1, O: 1 }],
-    [`CO2`, { C: 1, O: 2 }],
-    [`H2O`, { H: 2, O: 1 }],
-  ] as const)(`GAS_STOICHIOMETRY[%s] has correct atom counts`, (gas, expected) => {
+  test.each(
+    [
+      [`O2`, { O: 2 }],
+      [`N2`, { N: 2 }],
+      [`H2`, { H: 2 }],
+      [`F2`, { F: 2 }],
+      [`CO`, { C: 1, O: 1 }],
+      [`CO2`, { C: 1, O: 2 }],
+      [`H2O`, { H: 2, O: 1 }],
+    ] as const,
+  )(`GAS_STOICHIOMETRY[%s] has correct atom counts`, (gas, expected) => {
     expect(GAS_STOICHIOMETRY[gas]).toEqual(expected)
   })
 
-  test.each([
-    [`O`, `O2`],
-    [`N`, `N2`],
-    [`H`, `H2`],
-    [`F`, `F2`],
-    [`C`, `CO2`],
-  ] as const)(`DEFAULT_ELEMENT_TO_GAS[%s] = %s`, (element, gas) => {
+  test.each(
+    [
+      [`O`, `O2`],
+      [`N`, `N2`],
+      [`H`, `H2`],
+      [`F`, `F2`],
+      [`C`, `CO2`],
+    ] as const,
+  )(`DEFAULT_ELEMENT_TO_GAS[%s] = %s`, (element, gas) => {
     expect(DEFAULT_ELEMENT_TO_GAS[element]).toBe(gas)
   })
 
