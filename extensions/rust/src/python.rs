@@ -1210,6 +1210,8 @@ fn json_value_to_py(py: Python<'_>, val: &serde_json::Value) -> PyResult<Py<PyAn
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Ok(i.into_pyobject(py)?.unbind().into_any())
+            } else if let Some(u) = n.as_u64() {
+                Ok(u.into_pyobject(py)?.unbind().into_any())
             } else if let Some(f) = n.as_f64() {
                 Ok(f.into_pyobject(py)?.unbind().into_any())
             } else {
