@@ -174,7 +174,15 @@ pub struct SiteOccupancy {
 
 impl SiteOccupancy {
     /// Create a new site occupancy from species-occupancy pairs.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `species` is empty.
     pub fn new(species: Vec<(Species, f64)>) -> Self {
+        assert!(
+            !species.is_empty(),
+            "SiteOccupancy requires at least one species"
+        );
         Self { species }
     }
 
@@ -191,10 +199,12 @@ impl SiteOccupancy {
     }
 
     /// Get the dominant species (highest occupancy).
+    ///
+    /// Uses total ordering for f64 comparison (NaN is treated as less than all other values).
     pub fn dominant_species(&self) -> &Species {
         self.species
             .iter()
-            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(sp, _)| sp)
             .expect("SiteOccupancy must have at least one species")
     }
@@ -372,5 +382,105 @@ mod tests {
                 "{elem:?} should have no electronegativity"
             );
         }
+    }
+
+    // =========================================================================
+    // SiteOccupancy tests
+    // =========================================================================
+
+    #[test]
+    fn test_site_occupancy_ordered() {
+        let so = SiteOccupancy::ordered(Species::neutral(Element::Fe));
+        assert!(so.is_ordered());
+        assert_eq!(so.species.len(), 1);
+        assert!((so.total_occupancy() - 1.0).abs() < 1e-10);
+        assert_eq!(so.dominant_species().element, Element::Fe);
+    }
+
+    #[test]
+    fn test_site_occupancy_disordered() {
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.6),
+            (Species::neutral(Element::Co), 0.4),
+        ]);
+        assert!(!so.is_ordered());
+        assert_eq!(so.species.len(), 2);
+        assert!((so.total_occupancy() - 1.0).abs() < 1e-10);
+        // Fe has higher occupancy, so it's dominant
+        assert_eq!(so.dominant_species().element, Element::Fe);
+    }
+
+    #[test]
+    fn test_site_occupancy_dominant_with_equal_occupancy() {
+        // When occupancies are equal, should return one deterministically
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.5),
+            (Species::neutral(Element::Co), 0.5),
+        ]);
+        // Should not panic, should return one of them
+        let dominant = so.dominant_species();
+        assert!(dominant.element == Element::Fe || dominant.element == Element::Co);
+    }
+
+    #[test]
+    fn test_site_occupancy_from_species() {
+        let sp = Species::neutral(Element::Cu);
+        let so: SiteOccupancy = sp.into();
+        assert!(so.is_ordered());
+        assert_eq!(so.dominant_species().element, Element::Cu);
+    }
+
+    #[test]
+    #[should_panic(expected = "SiteOccupancy requires at least one species")]
+    fn test_site_occupancy_empty_panics() {
+        SiteOccupancy::new(vec![]);
+    }
+
+    #[test]
+    fn test_site_occupancy_partial_vacancy() {
+        // Site with partial vacancy (total occupancy < 1.0)
+        let so = SiteOccupancy::new(vec![(Species::neutral(Element::Fe), 0.8)]);
+        assert!(so.is_ordered()); // Only one species, so "ordered"
+        assert!((so.total_occupancy() - 0.8).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_site_occupancy_partial_total_multiple_species() {
+        // Multiple species with partial occupancy not summing to 1.0
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.3),
+            (Species::neutral(Element::Co), 0.4),
+        ]);
+        assert!(!so.is_ordered());
+        assert!(
+            (so.total_occupancy() - 0.7).abs() < 1e-10,
+            "Total occupancy should be 0.7, got {}",
+            so.total_occupancy()
+        );
+    }
+
+    #[test]
+    fn test_site_occupancy_dominant_deterministic() {
+        // When occupancies are equal, result should be deterministic across calls
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.5),
+            (Species::neutral(Element::Co), 0.5),
+        ]);
+        let dom1 = so.dominant_species().element;
+        let dom2 = so.dominant_species().element;
+        assert_eq!(dom1, dom2, "dominant_species should be deterministic");
+    }
+
+    #[test]
+    fn test_site_occupancy_full_occupancy_check() {
+        // Verify total_occupancy() works for full occupancy
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.5),
+            (Species::neutral(Element::Co), 0.5),
+        ]);
+        assert!(
+            (so.total_occupancy() - 1.0).abs() < 1e-10,
+            "Total occupancy should be 1.0"
+        );
     }
 }

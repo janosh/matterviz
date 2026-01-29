@@ -239,18 +239,23 @@ impl Structure {
     }
 
     /// Create a copy with species elements remapped.
+    ///
+    /// If multiple species map to the same element, their occupancies are summed.
     pub fn remap_species(&self, mapping: &HashMap<Element, Element>) -> Self {
         let new_site_occupancies: Vec<SiteOccupancy> = self
             .site_occupancies
             .iter()
             .map(|so| {
-                let new_species: Vec<(Species, f64)> = so
-                    .species
-                    .iter()
-                    .map(|(sp, occ)| {
-                        let new_elem = mapping.get(&sp.element).copied().unwrap_or(sp.element);
-                        (Species::new(new_elem, sp.oxidation_state), *occ)
-                    })
+                // Group by (new_element, oxidation_state) and sum occupancies
+                let mut grouped: HashMap<(Element, Option<i8>), f64> = HashMap::new();
+                for (sp, occ) in &so.species {
+                    let new_elem = mapping.get(&sp.element).copied().unwrap_or(sp.element);
+                    let key = (new_elem, sp.oxidation_state);
+                    *grouped.entry(key).or_insert(0.0) += occ;
+                }
+                let new_species: Vec<(Species, f64)> = grouped
+                    .into_iter()
+                    .map(|((elem, oxi), occ)| (Species::new(elem, oxi), occ))
                     .collect();
                 SiteOccupancy::new(new_species)
             })
@@ -291,6 +296,13 @@ mod tests {
     fn make_bcc(element: Element, a: f64) -> Structure {
         let lattice = Lattice::cubic(a);
         let species = vec![Species::neutral(element), Species::neutral(element)];
+        let coords = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
+        Structure::new(lattice, species, coords)
+    }
+
+    fn make_rocksalt(cation: Element, anion: Element, a: f64) -> Structure {
+        let lattice = Lattice::cubic(a);
+        let species = vec![Species::neutral(cation), Species::neutral(anion)];
         let coords = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
         Structure::new(lattice, species, coords)
     }
@@ -521,5 +533,85 @@ mod tests {
         assert!(elements.contains(&Element::Fe));
         assert!(elements.contains(&Element::Co));
         assert!(elements.contains(&Element::O));
+    }
+
+    // =========================================================================
+    // remap_species() tests
+    // =========================================================================
+
+    #[test]
+    fn test_remap_species_basic() {
+        // NaCl -> KCl mapping
+        let nacl = make_rocksalt(Element::Na, Element::Cl, 5.64);
+        let mapping = HashMap::from([(Element::Na, Element::K)]);
+        let remapped = nacl.remap_species(&mapping);
+
+        assert_eq!(
+            remapped.species()[0].element,
+            Element::K,
+            "Na should map to K"
+        );
+        assert_eq!(
+            remapped.species()[1].element,
+            Element::Cl,
+            "Cl should be unchanged"
+        );
+        assert_eq!(
+            remapped.num_sites(),
+            nacl.num_sites(),
+            "Site count should be preserved"
+        );
+    }
+
+    #[test]
+    fn test_remap_species_preserves_oxidation_states() {
+        // Species with oxidation states should preserve them
+        let s = Structure::new(
+            Lattice::cubic(5.0),
+            vec![
+                Species::new(Element::Fe, Some(2)),
+                Species::new(Element::O, Some(-2)),
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let mapping = HashMap::from([(Element::Fe, Element::Co)]);
+        let remapped = s.remap_species(&mapping);
+
+        assert_eq!(remapped.species()[0].element, Element::Co);
+        assert_eq!(
+            remapped.species()[0].oxidation_state,
+            Some(2),
+            "Oxidation state should be preserved"
+        );
+    }
+
+    #[test]
+    fn test_remap_species_unmapped_elements_unchanged() {
+        let s = make_rocksalt(Element::Na, Element::Cl, 5.64);
+        let mapping = HashMap::from([(Element::Fe, Element::Co)]); // irrelevant mapping
+        let remapped = s.remap_species(&mapping);
+
+        assert_eq!(
+            remapped.species()[0].element,
+            Element::Na,
+            "Na should be unchanged"
+        );
+        assert_eq!(
+            remapped.species()[1].element,
+            Element::Cl,
+            "Cl should be unchanged"
+        );
+    }
+
+    #[test]
+    fn test_remap_species_empty_structure() {
+        let s = Structure::new(Lattice::cubic(5.0), vec![], vec![]);
+        let mapping = HashMap::from([(Element::Na, Element::K)]);
+        let remapped = s.remap_species(&mapping);
+        assert_eq!(
+            remapped.num_sites(),
+            0,
+            "Empty structure should remain empty"
+        );
     }
 }

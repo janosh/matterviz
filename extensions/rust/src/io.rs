@@ -1553,4 +1553,73 @@ Mg 0.0 0.0 0.0
             Some(StructureFormat::Poscar)
         );
     }
+
+    // =========================================================================
+    // parse_structure() auto-detection tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_structure_detects_json() {
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("test_struct_detect.json");
+        std::fs::write(
+            &path,
+            r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Fe"}],"abc":[0,0,0]}]}"#,
+        )
+        .unwrap();
+
+        let s = parse_structure(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(s.num_sites(), 1);
+        assert_eq!(s.species()[0].element, Element::Fe);
+    }
+
+    #[test]
+    fn test_parse_structure_unknown_extension_error() {
+        let path = Path::new("structure.unknown");
+        let result = parse_structure(path);
+        assert!(result.is_err(), "Unknown extension should return error");
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("Unknown"),
+            "Error should mention unknown format: {err}"
+        );
+    }
+
+    // =========================================================================
+    // parse_structures_glob() tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_structures_glob_basic() {
+        let temp_dir = std::env::temp_dir().join("ferrox_glob_test_basic");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create two JSON files
+        let json = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Cu"}],"abc":[0,0,0]}]}"#;
+        std::fs::write(temp_dir.join("struct1.json"), json).unwrap();
+        std::fs::write(temp_dir.join("struct2.json"), json).unwrap();
+
+        let pattern = temp_dir.join("*.json").to_string_lossy().to_string();
+        let results = parse_structures_glob(&pattern).unwrap();
+
+        std::fs::remove_dir_all(&temp_dir).ok();
+
+        assert_eq!(results.len(), 2, "Should find 2 JSON files");
+    }
+
+    #[test]
+    fn test_parse_structures_glob_no_matches() {
+        let pattern = "/nonexistent/path/*.json";
+        let results = parse_structures_glob(pattern).unwrap();
+        assert!(results.is_empty(), "No matches should return empty vec");
+    }
+
+    #[test]
+    fn test_parse_structures_glob_invalid_pattern() {
+        let pattern = "[invalid";
+        let result = parse_structures_glob(pattern);
+        assert!(result.is_err(), "Invalid glob pattern should return error");
+    }
 }

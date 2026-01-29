@@ -585,6 +585,14 @@ impl StructureMatcher {
     /// pymatgen's behavior which requires `SpeciesComparator` (ignores oxidation states
     /// for anonymous matching). The comparator_type setting is not used for this method.
     pub fn fit_anonymous(&self, struct1: &Structure, struct2: &Structure) -> bool {
+        // fit_anonymous requires SpeciesComparator (matches pymatgen behavior)
+        if self.comparator_type != ComparatorType::Species {
+            panic!(
+                "fit_anonymous requires SpeciesComparator, got {:?}",
+                self.comparator_type
+            );
+        }
+
         // Get unique elements in order of first appearance
         let elements1 = struct1.unique_elements();
         let elements2 = struct2.unique_elements();
@@ -599,7 +607,8 @@ impl StructureMatcher {
             return false;
         }
 
-        // Get struct2's composition hash for fast pruning
+        // Get compositions for fast pruning (compute once, outside loop)
+        let comp1 = struct1.composition();
         let comp2 = struct2.composition();
         let comp2_hash = comp2.hash();
 
@@ -613,7 +622,6 @@ impl StructureMatcher {
                 .collect();
 
             // Fast composition hash check before expensive structure matching
-            let comp1 = struct1.composition();
             let mapped_comp = comp1.remap_elements(&mapping);
             if mapped_comp.hash() != comp2_hash {
                 continue;
@@ -1242,5 +1250,213 @@ mod tests {
             !matcher.fit(&s1, &s2),
             "Large perturbation should not match"
         );
+    }
+
+    // =========================================================================
+    // Degenerate lattice tests
+    // =========================================================================
+
+    #[test]
+    fn test_fit_degenerate_lattice_zero_volume() {
+        // Coplanar vectors - zero volume (degenerate)
+        let lattice = Lattice::new(Matrix3::new(
+            1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, // third vector in same plane
+        ));
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::zeros()],
+        );
+        let matcher = StructureMatcher::new();
+
+        // Should return false gracefully (not panic) for degenerate lattice
+        assert!(
+            !matcher.fit(&s, &s),
+            "Degenerate lattice (zero volume) should return false"
+        );
+    }
+
+    #[test]
+    fn test_fit_near_degenerate_lattice() {
+        // Very flat lattice (small c parameter)
+        let lattice = Lattice::from_parameters(5.0, 5.0, 0.1, 90.0, 90.0, 90.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::C)],
+            vec![Vector3::zeros()],
+        );
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+
+        // Should handle gracefully without panicking (returns false for pathological lattice)
+        let _ = matcher.fit(&s, &s);
+    }
+
+    // =========================================================================
+    // fit_preprocessed() direct tests
+    // =========================================================================
+
+    #[test]
+    fn test_fit_preprocessed_skips_reduction() {
+        let s1 = make_fcc_conventional(Element::Cu, 3.6);
+        let s2 = make_fcc_conventional(Element::Cu, 3.65);
+        let matcher = StructureMatcher::new();
+
+        // Manually reduce
+        let r1 = matcher.reduce_structure(&s1);
+        let r2 = matcher.reduce_structure(&s2);
+
+        // fit_preprocessed should work on already-reduced structures
+        assert!(
+            matcher.fit_preprocessed(&r1, &r2),
+            "Preprocessed FCC structures should match"
+        );
+    }
+
+    #[test]
+    fn test_reduce_structure_produces_niggli_cell() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        let matcher = StructureMatcher::new();
+        let reduced = matcher.reduce_structure(&fcc);
+
+        // Reduced cell should have fewer or equal sites (FCC -> primitive)
+        assert!(
+            reduced.num_sites() <= fcc.num_sites(),
+            "Reduced structure should have <= sites"
+        );
+        // Volume should be preserved or reduced by integer factor
+        let vol_ratio = fcc.lattice.volume() / reduced.lattice.volume();
+        assert!(
+            (vol_ratio.round() - vol_ratio).abs() < 0.01,
+            "Volume ratio should be close to integer: {vol_ratio}"
+        );
+    }
+
+    #[test]
+    fn test_reduce_structure_idempotent() {
+        let s = make_bcc(Element::Fe, 2.87);
+        let matcher = StructureMatcher::new();
+        let r1 = matcher.reduce_structure(&s);
+        let r2 = matcher.reduce_structure(&r1);
+
+        // Reducing twice should give same result
+        assert_eq!(
+            r1.num_sites(),
+            r2.num_sites(),
+            "Reducing twice should preserve site count"
+        );
+        assert!(
+            (r1.lattice.volume() - r2.lattice.volume()).abs() < 1e-6,
+            "Reducing twice should preserve volume"
+        );
+    }
+
+    // =========================================================================
+    // Extreme tolerance tests
+    // =========================================================================
+
+    #[test]
+    fn test_fit_very_small_site_tolerance_strict() {
+        // Use multi-atom structure (BCC) so relative positions matter
+        let s1 = make_bcc(Element::Fe, 4.0);
+        // Create perturbed structure with significant relative shift
+        let s2 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.7)], // shifted from 0.5
+        );
+        let matcher = StructureMatcher::new()
+            .with_site_pos_tol(0.01)
+            .with_primitive_cell(false); // keep multi-atom structure
+
+        // Small tolerance should reject significant perturbation
+        assert!(
+            !matcher.fit(&s1, &s2),
+            "Small tolerance should reject perturbation"
+        );
+        // Identical should still match
+        assert!(
+            matcher.fit(&s1, &s1),
+            "Identical structures should match with small tolerance"
+        );
+    }
+
+    #[test]
+    fn test_fit_very_large_tolerance_permissive() {
+        let s1 = make_simple_cubic(Element::Fe, 4.0);
+        let s2 = make_simple_cubic(Element::Fe, 6.0); // 50% larger
+
+        let matcher = StructureMatcher::new()
+            .with_site_pos_tol(1.0)
+            .with_latt_len_tol(0.5)
+            .with_scale(false); // Don't scale volumes
+
+        // Very large tolerance might match very different structures - tests boundary behavior
+        let _ = matcher.fit(&s1, &s2);
+    }
+
+    #[test]
+    fn test_fit_zero_angle_tolerance() {
+        let s1 = make_simple_cubic(Element::Fe, 4.0);
+        let s2 = Structure::new(
+            Lattice::from_parameters(4.0, 4.0, 4.0, 90.0, 90.0, 91.0), // 1° off
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::zeros()],
+        );
+        let matcher = StructureMatcher::new().with_angle_tol(0.0);
+
+        // Zero angle tolerance should reject 1° deviation
+        assert!(
+            !matcher.fit(&s1, &s2),
+            "Zero angle tolerance should reject 1° deviation"
+        );
+    }
+
+    // =========================================================================
+    // fit_anonymous() edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_fit_anonymous_many_elements_stress() {
+        // 7 elements = 5040 permutations (moderate stress test)
+        let lattice = Lattice::cubic(14.0);
+        let elements = [
+            Element::Li,
+            Element::Na,
+            Element::K,
+            Element::Rb,
+            Element::Cs,
+            Element::Fr,
+            Element::Be,
+        ];
+        let species: Vec<_> = elements.iter().map(|&e| Species::neutral(e)).collect();
+        let coords: Vec<_> = (0..7)
+            .map(|i| Vector3::new(i as f64 * 0.14, 0.0, 0.0))
+            .collect();
+        let s1 = Structure::new(lattice.clone(), species.clone(), coords.clone());
+
+        // Same structure with elements reversed (permuted)
+        let species2: Vec<_> = elements
+            .iter()
+            .rev()
+            .map(|&e| Species::neutral(e))
+            .collect();
+        let s2 = Structure::new(lattice, species2, coords);
+
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        // Should find a matching permutation within reasonable time
+        assert!(
+            matcher.fit_anonymous(&s1, &s2),
+            "fit_anonymous should handle 7 elements (5040 permutations)"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "SpeciesComparator")]
+    fn test_fit_anonymous_requires_species_comparator() {
+        let s = make_simple_cubic(Element::Fe, 4.0);
+        let matcher = StructureMatcher::new().with_comparator(ComparatorType::Element);
+
+        // Should panic - fit_anonymous requires SpeciesComparator (like pymatgen)
+        matcher.fit_anonymous(&s, &s);
     }
 }
