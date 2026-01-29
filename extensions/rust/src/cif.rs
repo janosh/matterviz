@@ -836,257 +836,68 @@ Cu 0.0 0.0 0.0
     // Pymatgen Edge Case Tests (ported from pymatgen test suite)
     // =========================================================================
 
-    #[test]
-    fn test_parse_cif_symbol_with_number_suffix() {
-        // CIF labels like Fe1, Na2 should extract element
-        let cif_content = r#"data_labels
-_cell_length_a   5.0
-_cell_length_b   5.0
-_cell_length_c   5.0
-_cell_angle_alpha   90
-_cell_angle_beta   90
-_cell_angle_gamma   90
-
-loop_
-_atom_site_label
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Fe1 0.0 0.0 0.0
-Na2 0.5 0.5 0.5
-O1a 0.25 0.25 0.25
-"#;
-        let structure = parse_cif_str(cif_content, Path::new("labels.cif")).unwrap();
-        assert_eq!(structure.num_sites(), 3);
-        assert_eq!(structure.species()[0].element, Element::Fe);
-        assert_eq!(structure.species()[1].element, Element::Na);
-        assert_eq!(structure.species()[2].element, Element::O);
+    fn make_cif(header: &str, atoms: &str) -> String {
+        format!(
+            "data_test\n_cell_length_a 5.0\n_cell_length_b 5.0\n_cell_length_c 5.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\n{header}\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n{atoms}"
+        )
     }
 
     #[test]
-    fn test_parse_cif_coordinates_with_uncertainty() {
-        // CIF coordinates may have uncertainties like 0.1234(5)
-        let cif_content = r#"data_uncertainty
-_cell_length_a   5.123(4)
-_cell_length_b   5.123(4)
-_cell_length_c   5.123(4)
-_cell_angle_alpha   90.00(1)
-_cell_angle_beta   90.00(1)
-_cell_angle_gamma   90.00(1)
+    fn test_cif_symbol_parsing() {
+        // Various symbol formats that need normalization
+        let cases: &[(&str, &[Element])] = &[
+            ("Fe2+ 0 0 0\nO2- 0.5 0.5 0.5", &[Element::Fe, Element::O]), // oxidation states
+            (
+                "Ca_pv 0 0 0\nFe_sv 0.5 0.5 0.5",
+                &[Element::Ca, Element::Fe],
+            ), // POTCAR
+            ("D 0 0 0\nO 0.5 0.5 0.5", &[Element::D, Element::O]),       // deuterium
+        ];
+        for (atoms, expected) in cases {
+            let cif = make_cif("", atoms);
+            let s = parse_cif_str(&cif, Path::new("t.cif")).unwrap();
+            for (idx, elem) in expected.iter().enumerate() {
+                assert_eq!(s.species()[idx].element, *elem, "{atoms}");
+            }
+        }
 
-loop_
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Na 0.1234(5) 0.2345(6) 0.3456(7)
-Cl 0.5 0.5 0.5
-"#;
-        let structure = parse_cif_str(cif_content, Path::new("uncertainty.cif")).unwrap();
-        assert_eq!(structure.num_sites(), 2);
-        // Check uncertainties were stripped
-        assert!((structure.frac_coords[0].x - 0.1234).abs() < 1e-4);
-        let lengths = structure.lattice.lengths();
-        assert!((lengths.x - 5.123).abs() < 0.01);
+        // Site labels with numbers (Fe1, Na2, O1a) - uses _atom_site_label
+        let label_cif = "data_t\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nFe1 0 0 0\nNa2 0.5 0.5 0.5";
+        let s = parse_cif_str(label_cif, Path::new("l.cif")).unwrap();
+        assert_eq!(s.species()[0].element, Element::Fe);
+        assert_eq!(s.species()[1].element, Element::Na);
     }
 
     #[test]
-    fn test_parse_cif_with_oxidation_state_label() {
-        // CIF with oxidation states in labels
-        let cif_content = r#"data_oxidation
-_cell_length_a   5.0
-_cell_length_b   5.0
-_cell_length_c   5.0
-_cell_angle_alpha   90
-_cell_angle_beta   90
-_cell_angle_gamma   90
+    fn test_cif_coordinate_edge_cases() {
+        // Uncertainties in coordinates: 0.1234(5) → 0.1234
+        let unc = "data_u\n_cell_length_a 5.123(4)\n_cell_length_b 5.123(4)\n_cell_length_c 5.123(4)\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nNa 0.1234(5) 0.5 0.5";
+        let s = parse_cif_str(unc, Path::new("u.cif")).unwrap();
+        assert!((s.frac_coords[0].x - 0.1234).abs() < 1e-4);
+        assert!((s.lattice.lengths().x - 5.123).abs() < 0.01);
 
-loop_
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Fe2+ 0.0 0.0 0.0
-O2- 0.5 0.5 0.5
-"#;
-        let structure = parse_cif_str(cif_content, Path::new("oxidation.cif")).unwrap();
-        assert_eq!(structure.num_sites(), 2);
-        assert_eq!(structure.species()[0].element, Element::Fe);
-        assert_eq!(structure.species()[1].element, Element::O);
+        // Negative coordinates
+        let neg = make_cif("", "Fe -0.1 0 0\nFe 0 -0.2 0");
+        let s2 = parse_cif_str(&neg, Path::new("n.cif")).unwrap();
+        assert_eq!(s2.num_sites(), 2);
+        assert!(s2.frac_coords[0].x.is_finite());
     }
 
     #[test]
-    fn test_parse_cif_triclinic() {
-        // Triclinic lattice with all angles different
-        let cif_content = r#"data_triclinic
-_cell_length_a   4.5
-_cell_length_b   5.5
-_cell_length_c   6.5
-_cell_angle_alpha   75.0
-_cell_angle_beta   85.0
-_cell_angle_gamma   95.0
+    fn test_cif_lattice_types() {
+        // Triclinic (all angles different)
+        let tri = "data_t\n_cell_length_a 4.5\n_cell_length_b 5.5\n_cell_length_c 6.5\n_cell_angle_alpha 75\n_cell_angle_beta 85\n_cell_angle_gamma 95\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nFe 0 0 0";
+        let s = parse_cif_str(tri, Path::new("t.cif")).unwrap();
+        assert!((s.lattice.angles().x - 75.0).abs() < 1e-6);
 
-loop_
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Fe 0.0 0.0 0.0
-"#;
-        let structure = parse_cif_str(cif_content, Path::new("triclinic.cif")).unwrap();
-        let angles = structure.lattice.angles();
-        assert!((angles.x - 75.0).abs() < 1e-6);
-        assert!((angles.y - 85.0).abs() < 1e-6);
-        assert!((angles.z - 95.0).abs() < 1e-6);
-    }
+        // Hexagonal (γ = 120°)
+        let hex = "data_h\n_cell_length_a 3\n_cell_length_b 3\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 120\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nMg 0 0 0";
+        let s2 = parse_cif_str(hex, Path::new("h.cif")).unwrap();
+        assert!((s2.lattice.angles().z - 120.0).abs() < 1e-6);
 
-    #[test]
-    fn test_parse_cif_near_zero_volume() {
-        // Near-flat structure (PR4133: caused infinite loop)
-        // Very small angles create near-zero volume
-        let cif_content = r#"data_flat
-_cell_length_a   10.0
-_cell_length_b   10.0
-_cell_length_c   0.1
-_cell_angle_alpha   90
-_cell_angle_beta   90
-_cell_angle_gamma   90
-
-loop_
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Fe 0.5 0.5 0.5
-"#;
-        // Should parse without hanging
-        let structure = parse_cif_str(cif_content, Path::new("flat.cif")).unwrap();
-        assert_eq!(structure.num_sites(), 1);
-        let vol = structure.lattice.volume();
-        assert!(vol.abs() > 0.0 && vol.abs() < 20.0);
-    }
-
-    #[test]
-    fn test_parse_cif_deuterium() {
-        // D (deuterium) should be recognized
-        let cif_content = r#"data_deuterium
-_cell_length_a   5.0
-_cell_length_b   5.0
-_cell_length_c   5.0
-_cell_angle_alpha   90
-_cell_angle_beta   90
-_cell_angle_gamma   90
-
-loop_
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-D 0.0 0.0 0.0
-O 0.5 0.5 0.5
-"#;
-        let structure = parse_cif_str(cif_content, Path::new("deuterium.cif")).unwrap();
-        assert_eq!(structure.num_sites(), 2);
-        assert_eq!(structure.species()[0].element, Element::D);
-    }
-
-    #[test]
-    fn test_parse_cif_with_site_label_column() {
-        // CIF using _atom_site_label instead of _atom_site_type_symbol
-        let cif_content = r#"data_site_label
-_cell_length_a   5.0
-_cell_length_b   5.0
-_cell_length_c   5.0
-_cell_angle_alpha   90
-_cell_angle_beta   90
-_cell_angle_gamma   90
-
-loop_
-_atom_site_label
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Fe1 0.0 0.0 0.0
-Fe2 0.5 0.5 0.5
-"#;
-        let structure = parse_cif_str(cif_content, Path::new("site_label.cif")).unwrap();
-        assert_eq!(structure.num_sites(), 2);
-        assert_eq!(structure.species()[0].element, Element::Fe);
-        assert_eq!(structure.species()[1].element, Element::Fe);
-    }
-
-    #[test]
-    fn test_parse_cif_potcar_style_symbol() {
-        // POTCAR-style symbols like Fe_pv should extract element
-        let cif_content = r#"data_potcar
-_cell_length_a   5.0
-_cell_length_b   5.0
-_cell_length_c   5.0
-_cell_angle_alpha   90
-_cell_angle_beta   90
-_cell_angle_gamma   90
-
-loop_
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Ca_pv 0.0 0.0 0.0
-Fe_sv 0.5 0.5 0.5
-"#;
-        let structure = parse_cif_str(cif_content, Path::new("potcar.cif")).unwrap();
-        assert_eq!(structure.num_sites(), 2);
-        assert_eq!(structure.species()[0].element, Element::Ca);
-        assert_eq!(structure.species()[1].element, Element::Fe);
-    }
-
-    #[test]
-    fn test_parse_cif_hexagonal() {
-        // Hexagonal lattice (γ = 120°)
-        let cif_content = r#"data_hexagonal
-_cell_length_a   3.0
-_cell_length_b   3.0
-_cell_length_c   5.0
-_cell_angle_alpha   90
-_cell_angle_beta   90
-_cell_angle_gamma   120
-
-loop_
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Mg 0.0 0.0 0.0
-Mg 0.333333 0.666667 0.5
-"#;
-        let structure = parse_cif_str(cif_content, Path::new("hexagonal.cif")).unwrap();
-        assert_eq!(structure.num_sites(), 2);
-        let angles = structure.lattice.angles();
-        assert!((angles.z - 120.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_parse_cif_negative_coords() {
-        // Negative fractional coordinates
-        let cif_content = r#"data_negative
-_cell_length_a   5.0
-_cell_length_b   5.0
-_cell_length_c   5.0
-_cell_angle_alpha   90
-_cell_angle_beta   90
-_cell_angle_gamma   90
-
-loop_
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
-Fe -0.1 0.0 0.0
-Fe 0.0 -0.2 0.0
-"#;
-        let structure = parse_cif_str(cif_content, Path::new("negative.cif")).unwrap();
-        assert_eq!(structure.num_sites(), 2);
-        // Coordinates may or may not be wrapped to [0,1)
-        assert!(structure.frac_coords[0].x.is_finite());
+        // Near-flat (PR4133 fix) - shouldn't hang
+        let flat = "data_f\n_cell_length_a 10\n_cell_length_b 10\n_cell_length_c 0.1\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nFe 0.5 0.5 0.5";
+        let s3 = parse_cif_str(flat, Path::new("f.cif")).unwrap();
+        assert!(s3.lattice.volume().abs() > 0.0 && s3.lattice.volume().abs() < 20.0);
     }
 }

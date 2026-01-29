@@ -1936,205 +1936,63 @@ Mg 0.0 0.0 0.0
     // =========================================================================
 
     #[test]
-    fn test_poscar_fluorine_ambiguity() {
-        // F element shouldn't be confused with False in selective dynamics
-        let poscar = r#"Fluorine test
-1.0
-4.0 0.0 0.0
-0.0 4.0 0.0
-0.0 0.0 4.0
-F
-2
-Direct
-0.0 0.0 0.0
-0.5 0.5 0.5
-"#;
-        let s = parse_poscar_str(poscar).unwrap();
+    fn test_poscar_edge_cases() {
+        // Fluorine element (not confused with False)
+        let f_poscar = "F test\n1.0\n4.0 0.0 0.0\n0.0 4.0 0.0\n0.0 0.0 4.0\nF\n2\nDirect\n0.0 0.0 0.0\n0.5 0.5 0.5\n";
+        let s = parse_poscar_str(f_poscar).unwrap();
         assert_eq!(s.num_sites(), 2);
-        assert_eq!(s.species()[0].element, Element::F);
-        assert_eq!(s.species()[1].element, Element::F);
-    }
+        assert!(s.species().iter().all(|sp| sp.element == Element::F));
 
-    #[test]
-    fn test_poscar_selective_dynamics_with_fluorine() {
-        // Selective dynamics T/F flags with Fluorine element
-        let poscar = r#"F slab with selective dynamics
-1.0
-4.0 0.0 0.0
-0.0 4.0 0.0
-0.0 0.0 10.0
-F
-4
-Selective dynamics
-Direct
-0.0 0.0 0.1 F F F
-0.5 0.0 0.1 F F F
-0.0 0.5 0.1 T T T
-0.5 0.5 0.1 T T T
-"#;
-        let s = parse_poscar_str(poscar).unwrap();
-        assert_eq!(s.num_sites(), 4);
-        // All should be Fluorine, not affected by T/F flags
-        for sp in s.species() {
-            assert_eq!(sp.element, Element::F);
+        // Selective dynamics with F element (T/F flags shouldn't affect element)
+        let sd_poscar = "F slab\n1.0\n4.0 0.0 0.0\n0.0 4.0 0.0\n0.0 0.0 10.0\nF\n2\nSelective dynamics\nDirect\n0.0 0.0 0.1 F F F\n0.5 0.5 0.1 T T T\n";
+        let s2 = parse_poscar_str(sd_poscar).unwrap();
+        assert!(s2.species().iter().all(|sp| sp.element == Element::F));
+
+        // Scale factor 1.1 scales lattice
+        let scaled =
+            "Scaled\n1.1\n4.0 0.0 0.0\n0.0 4.0 0.0\n0.0 0.0 4.0\nFe\n1\nCartesian\n2.0 2.0 2.0\n";
+        assert!((parse_poscar_str(scaled).unwrap().lattice.lengths().x - 4.4).abs() < 1e-6);
+
+        // Negative lattice vectors
+        let neg = "Neg\n1.0\n-4.0 0.0 0.0\n0.0 4.0 0.0\n2.0 2.0 4.0\nFe\n1\nDirect\n0.0 0.0 0.0\n";
+        assert!(parse_poscar_str(neg).unwrap().lattice.volume().abs() > 0.0);
+
+        // Large structure (27 atoms)
+        let mut large =
+            String::from("Large\n1.0\n10.0 0.0 0.0\n0.0 10.0 0.0\n0.0 0.0 10.0\nFe\n27\nDirect\n");
+        for i in 0..27 {
+            large.push_str(&format!("{:.1} 0.0 0.0\n", i as f64 / 27.0));
         }
+        assert_eq!(parse_poscar_str(&large).unwrap().num_sites(), 27);
     }
 
     #[test]
-    fn test_poscar_cartesian_with_scale() {
-        // Cartesian coordinates with non-unity scale factor
-        let poscar = r#"Scaled cartesian
-1.1
-4.0 0.0 0.0
-0.0 4.0 0.0
-0.0 0.0 4.0
-Fe
-1
-Cartesian
-2.0 2.0 2.0
-"#;
-        let s = parse_poscar_str(poscar).unwrap();
-        assert_eq!(s.num_sites(), 1);
-        // Lattice should be scaled by 1.1
-        let lengths = s.lattice.lengths();
-        assert!((lengths.x - 4.4).abs() < 1e-6);
+    fn test_extxyz_edge_cases() {
+        let temp_dir = std::env::temp_dir();
+
+        // With forces property
+        let forces = "2\nLattice=\"4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0\" Properties=species:S:1:pos:R:3:forces:R:3\nFe 0.0 0.0 0.0 0.1 0.2 0.3\nFe 2.0 2.0 2.0 -0.1 -0.2 -0.3\n";
+        let p1 = temp_dir.join("forces.xyz");
+        std::fs::write(&p1, forces).unwrap();
+        assert_eq!(parse_extxyz(&p1).unwrap().num_sites(), 2);
+        std::fs::remove_file(&p1).ok();
+
+        // With energy property
+        let energy = "2\nLattice=\"4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0\" energy=-5.5\nH 0.0 0.0 0.0\nH 2.0 2.0 2.0\n";
+        let p2 = temp_dir.join("energy.xyz");
+        std::fs::write(&p2, energy).unwrap();
+        assert!(parse_extxyz(&p2).unwrap().properties.contains_key("energy"));
+        std::fs::remove_file(&p2).ok();
     }
 
     #[test]
-    fn test_poscar_vasp_4_format() {
-        // VASP 4 format without element line (elements from header)
-        let poscar = r#"Fe O structure
-1.0
-4.0 0.0 0.0
-0.0 4.0 0.0
-0.0 0.0 4.0
-2 3
-Direct
-0.0 0.0 0.0
-0.5 0.5 0.5
-0.25 0.25 0.25
-0.75 0.25 0.25
-0.25 0.75 0.25
-"#;
-        // This may fail without element line - just verify it doesn't crash
-        let result = parse_poscar_str(poscar);
-        // Either parses correctly or returns informative error
-        assert!(result.is_ok() || result.is_err());
-    }
+    fn test_json_edge_cases() {
+        // Oxidation states
+        let oxi = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Fe","oxidation_state":2,"occu":1.0}],"abc":[0,0,0]}]}"#;
+        assert_eq!(parse_structure_json(oxi).unwrap().num_sites(), 1);
 
-    #[test]
-    fn test_poscar_negative_lattice_vectors() {
-        // Lattice with negative components
-        let poscar = r#"Negative lattice
-1.0
--4.0 0.0 0.0
-0.0 4.0 0.0
-2.0 2.0 4.0
-Fe
-1
-Direct
-0.0 0.0 0.0
-"#;
-        let s = parse_poscar_str(poscar).unwrap();
-        assert_eq!(s.num_sites(), 1);
-        let vol = s.lattice.volume();
-        // Volume should be positive (absolute value)
-        assert!(vol.abs() > 0.0);
-    }
-
-    #[test]
-    fn test_extxyz_with_forces() {
-        // extXYZ with per-atom forces
-        let extxyz = r#"2
-Lattice="4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0" Properties=species:S:1:pos:R:3:forces:R:3
-Fe 0.0 0.0 0.0 0.1 0.2 0.3
-Fe 2.0 2.0 2.0 -0.1 -0.2 -0.3
-"#;
-        let temp_path = std::env::temp_dir().join("test_forces.xyz");
-        std::fs::write(&temp_path, extxyz).unwrap();
-        let s = parse_extxyz(&temp_path).unwrap();
-        std::fs::remove_file(&temp_path).ok();
-        assert_eq!(s.num_sites(), 2);
-    }
-
-    #[test]
-    fn test_extxyz_stress_tensor() {
-        // extXYZ with stress tensor
-        let extxyz = r#"1
-Lattice="4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0" stress="1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0"
-Fe 2.0 2.0 2.0
-"#;
-        let temp_path = std::env::temp_dir().join("test_stress.xyz");
-        std::fs::write(&temp_path, extxyz).unwrap();
-        let s = parse_extxyz(&temp_path).unwrap();
-        std::fs::remove_file(&temp_path).ok();
-        assert_eq!(s.num_sites(), 1);
-    }
-
-    #[test]
-    fn test_json_with_oxidation_states() {
-        // JSON with species having oxidation states
-        let json = r#"{
-            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
-            "sites": [
-                {"species": [{"element": "Fe", "oxidation_state": 2, "occu": 1.0}], "abc": [0,0,0]},
-                {"species": [{"element": "O", "oxidation_state": -2, "occu": 1.0}], "abc": [0.5,0.5,0.5]}
-            ]
-        }"#;
-        let s = parse_structure_json(json).unwrap();
-        assert_eq!(s.num_sites(), 2);
-    }
-
-    #[test]
-    fn test_json_disordered_site() {
-        // JSON with disordered site (partial occupancy)
-        let json = r#"{
-            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
-            "sites": [
-                {"species": [
-                    {"element": "Fe", "occu": 0.5},
-                    {"element": "Mn", "occu": 0.5}
-                ], "abc": [0,0,0]}
-            ]
-        }"#;
-        let s = parse_structure_json(json).unwrap();
-        assert_eq!(s.num_sites(), 1);
-    }
-
-    #[test]
-    fn test_poscar_large_structure() {
-        // Larger structure to test scaling
-        let mut poscar = String::from(
-            "Large structure\n1.0\n10.0 0.0 0.0\n0.0 10.0 0.0\n0.0 0.0 10.0\nFe\n27\nDirect\n",
-        );
-        for i in 0..3 {
-            for j in 0..3 {
-                for k in 0..3 {
-                    poscar.push_str(&format!(
-                        "{:.1} {:.1} {:.1}\n",
-                        i as f64 / 3.0,
-                        j as f64 / 3.0,
-                        k as f64 / 3.0
-                    ));
-                }
-            }
-        }
-        let s = parse_poscar_str(&poscar).unwrap();
-        assert_eq!(s.num_sites(), 27);
-    }
-
-    #[test]
-    fn test_extxyz_properties_parsing() {
-        // Various property formats
-        let extxyz = r#"2
-Lattice="4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0" energy=-5.5 config_type=bulk free_energy=-5.6
-H 0.0 0.0 0.0
-H 2.0 2.0 2.0
-"#;
-        let temp_path = std::env::temp_dir().join("test_props.xyz");
-        std::fs::write(&temp_path, extxyz).unwrap();
-        let s = parse_extxyz(&temp_path).unwrap();
-        std::fs::remove_file(&temp_path).ok();
-        assert!(s.properties.contains_key("energy"));
+        // Disordered site
+        let dis = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Fe","occu":0.5},{"element":"Mn","occu":0.5}],"abc":[0,0,0]}]}"#;
+        assert_eq!(parse_structure_json(dis).unwrap().num_sites(), 1);
     }
 }

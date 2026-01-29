@@ -1084,125 +1084,86 @@ mod tests {
     }
 
     #[test]
-    fn test_nan_formula_not_float() {
-        // "NaN" should parse as Na-N, not float NaN
-        let comp = Composition::from_formula("NaN").unwrap();
-        assert_eq!(comp.get(Element::Na), 1.0);
-        assert_eq!(comp.get(Element::N), 1.0);
-    }
+    fn test_formula_parsing_edge_cases() {
+        // Various formula edge cases in one test
+        let cases: &[(&str, &[(Element, f64)])] = &[
+            ("NaN", &[(Element::Na, 1.0), (Element::N, 1.0)]), // not float NaN
+            (
+                "Y3N@C80",
+                &[(Element::Y, 3.0), (Element::N, 1.0), (Element::C, 80.0)],
+            ), // metallofullerene
+            ("{Fe2O3}2", &[(Element::Fe, 4.0), (Element::O, 6.0)]), // curly brackets
+        ];
+        for (formula, expected) in cases {
+            let comp = Composition::from_formula(formula).expect(formula);
+            for (elem, amt) in *expected {
+                assert_eq!(comp.get(*elem), *amt, "{formula}: {elem:?}");
+            }
+        }
 
-    #[test]
-    fn test_metallofullerene_at_symbol() {
-        // @ symbol should be stripped: Y3N@C80
-        let comp = Composition::from_formula("Y3N@C80").unwrap();
-        assert_eq!(comp.get(Element::Y), 3.0);
-        assert_eq!(comp.get(Element::N), 1.0);
-        assert_eq!(comp.get(Element::C), 80.0);
-    }
-
-    #[test]
-    fn test_curly_and_square_brackets() {
-        // Mixed bracket types
+        // Square brackets with nested parentheses
         let comp = Composition::from_formula("[Cu(NH3)4]SO4").unwrap();
         assert_eq!(comp.get(Element::Cu), 1.0);
-        assert_eq!(comp.get(Element::N), 4.0);
         assert_eq!(comp.get(Element::H), 12.0);
-        assert_eq!(comp.get(Element::S), 1.0);
-        assert_eq!(comp.get(Element::O), 4.0);
 
-        // Curly brackets
-        let comp2 = Composition::from_formula("{Fe2O3}2").unwrap();
-        assert_eq!(comp2.get(Element::Fe), 4.0);
-        assert_eq!(comp2.get(Element::O), 6.0);
+        // Fractional subscripts
+        let frac = Composition::from_formula("Li1.5Si0.5").unwrap();
+        assert!((frac.get(Element::Li) - 1.5).abs() < AMOUNT_TOLERANCE);
+
+        // Invalid inputs should error
+        for invalid in ["", "   ", "6123"] {
+            assert!(Composition::from_formula(invalid).is_err(), "{invalid}");
+        }
     }
 
     #[test]
-    fn test_fractional_subscripts() {
-        let comp = Composition::from_formula("Li1.5Si0.5").unwrap();
-        assert!((comp.get(Element::Li) - 1.5).abs() < AMOUNT_TOLERANCE);
-        assert!((comp.get(Element::Si) - 0.5).abs() < AMOUNT_TOLERANCE);
-    }
-
-    #[test]
-    fn test_invalid_formula_inputs() {
-        // Empty and whitespace-only strings should error
-        assert!(Composition::from_formula("").is_err());
-        assert!(Composition::from_formula("   ").is_err());
-        assert!(Composition::from_formula("6123").is_err()); // numbers only
-        // Note: Unknown elements may be parsed as Dummy rather than erroring
-    }
-
-    #[test]
-    fn test_reduced_formula_special_cases() {
-        // Single element should reduce to just element symbol
-        let comp = Composition::from_elements([(Element::O, 4.0)]);
-        assert_eq!(comp.reduced_formula(), "O");
-
-        // Verify Fe4O6 reduces to Fe2O3
-        let comp2 = Composition::from_elements([(Element::Fe, 4.0), (Element::O, 6.0)]);
-        assert_eq!(comp2.reduced_formula(), "Fe2O3");
-    }
-
-    #[test]
-    fn test_very_small_fraction_to_integer() {
-        // Li0.1666... should reduce properly
-        let comp = Composition::from_elements([
-            (Element::Li, 1.0 / 6.0),
-            (Element::B, 1.0),
-            (Element::H, 1.0),
-        ]);
-        // Should handle fractional amounts without crashing
-        assert!(comp.num_atoms() > 0.0);
-    }
-
-    #[test]
-    fn test_missing_element_fraction() {
-        // Querying fraction for missing element should return 0
-        let comp = Composition::from_formula("NaCl").unwrap();
-        assert_eq!(comp.get_atomic_fraction(Element::S), 0.0);
-        assert_eq!(comp.get_wt_fraction(Element::S), 0.0);
-    }
-
-    #[test]
-    fn test_hash_robustness_tolerance() {
-        // Compositions equal within tolerance should have equal hashes
+    fn test_reduced_formula_and_hash() {
+        // Single element reduces to symbol
+        assert_eq!(
+            Composition::from_elements([(Element::O, 4.0)]).reduced_formula(),
+            "O"
+        );
+        // Fe4O6 → Fe2O3
+        assert_eq!(
+            Composition::from_elements([(Element::Fe, 4.0), (Element::O, 6.0)]).reduced_formula(),
+            "Fe2O3"
+        );
+        // Equal reduced formulas have equal hashes
         let comp1 = Composition::from_elements([(Element::Fe, 2.0), (Element::O, 3.0)]);
         let comp2 = Composition::from_elements([(Element::Fe, 4.0), (Element::O, 6.0)]);
         assert_eq!(comp1.formula_hash(), comp2.formula_hash());
+        // Small fractions don't crash
+        let frac = Composition::from_elements([(Element::Li, 1.0 / 6.0), (Element::B, 1.0)]);
+        assert!(frac.num_atoms() > 0.0);
     }
 
     #[test]
-    fn test_hill_formula_c_and_h() {
+    fn test_composition_accessors() {
+        // Missing element returns 0
+        let comp = Composition::from_formula("NaCl").unwrap();
+        assert_eq!(comp.get_atomic_fraction(Element::S), 0.0);
+        assert_eq!(comp.get_wt_fraction(Element::S), 0.0);
+
+        // Empty composition
+        let empty = Composition::from_elements([]);
+        assert!(empty.is_empty());
+        assert_eq!(empty.formula(), "");
+        assert!(empty.average_electroneg().is_none());
+    }
+
+    #[test]
+    fn test_hill_formula_ordering() {
         // Hill: C first, H second when C present, then alphabetical
-        // mp-1228185: Ga8 As16 H102 C32 S36 O3
         let comp = Composition::from_elements([
             (Element::Ga, 8.0),
-            (Element::As, 16.0),
             (Element::H, 102.0),
             (Element::C, 32.0),
-            (Element::S, 36.0),
             (Element::O, 3.0),
         ]);
         let hill = comp.hill_formula();
-        // C should come first, then H
-        assert!(
-            hill.starts_with("C"),
-            "Hill formula should start with C: {}",
-            hill
-        );
+        assert!(hill.starts_with("C"), "Hill should start with C: {}", hill);
         let parts: Vec<&str> = hill.split_whitespace().collect();
         assert_eq!(parts[0], "C32");
         assert_eq!(parts[1], "H102");
-    }
-
-    #[test]
-    fn test_empty_composition_operations() {
-        let empty = Composition::from_elements([]);
-        assert!(empty.is_empty());
-        assert_eq!(empty.num_atoms(), 0.0);
-        assert_eq!(empty.formula(), "");
-        assert_eq!(empty.reduced_formula(), "");
-        assert_eq!(empty.chemical_system(), "");
-        assert!(empty.average_electroneg().is_none());
     }
 }

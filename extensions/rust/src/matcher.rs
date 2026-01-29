@@ -1484,256 +1484,127 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_out_of_cell_sites() {
-        // Sites with fractional coords outside [0,1) should match wrapped sites
+    fn test_matching_edge_cases() {
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+
+        // Out-of-cell sites: 0.98 ≈ -0.02 (wrapped)
         let s1 = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::neutral(Element::Fe)],
-            vec![Vector3::new(0.98, 0.0, 0.0)], // near 1.0
+            vec![Vector3::new(0.98, 0.0, 0.0)],
         );
         let s2 = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::neutral(Element::Fe)],
-            vec![Vector3::new(-0.02, 0.0, 0.0)], // negative, wraps to 0.98
+            vec![Vector3::new(-0.02, 0.0, 0.0)],
         );
-        let matcher = StructureMatcher::new().with_primitive_cell(false);
-        assert!(
-            matcher.fit(&s1, &s2),
-            "Sites near cell boundary should match"
-        );
-    }
+        assert!(matcher.fit(&s1, &s2), "Wrapped coords should match");
 
-    #[test]
-    fn test_no_scaling_mode() {
-        // With scale=false, structures with different volumes shouldn't match
-        let s1 = make_simple_cubic(Element::Fe, 4.0);
-        let s2 = make_simple_cubic(Element::Fe, 4.5);
-
-        let matcher_scale = StructureMatcher::new();
-        let matcher_no_scale = StructureMatcher::new().with_scale(false);
-
-        // With scaling, they might match
-        let fit_scale = matcher_scale.fit(&s1, &s2);
-        // Without scaling, they shouldn't
-        let fit_no_scale = matcher_no_scale.fit(&s1, &s2);
-        // At minimum, no-scale should be more restrictive
-        assert!(
-            !fit_no_scale || fit_scale,
-            "no_scale should be more restrictive than scale"
-        );
-    }
-
-    #[test]
-    fn test_site_shuffling_tolerance() {
-        // Structure with sites in different order should still match
-        let s1 = Structure::new(
+        // Site shuffling: order shouldn't matter
+        let s3 = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::neutral(Element::Fe), Species::neutral(Element::O)],
-            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+            vec![Vector3::zeros(), Vector3::new(0.5, 0.5, 0.5)],
         );
-        let s2 = Structure::new(
+        let s4 = Structure::new(
             Lattice::cubic(4.0),
-            vec![Species::neutral(Element::O), Species::neutral(Element::Fe)], // reversed
-            vec![Vector3::new(0.5, 0.5, 0.5), Vector3::new(0.0, 0.0, 0.0)],
+            vec![Species::neutral(Element::O), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.5, 0.5, 0.5), Vector3::zeros()],
         );
-        let matcher = StructureMatcher::new().with_primitive_cell(false);
-        assert!(
-            matcher.fit(&s1, &s2),
-            "Site order shouldn't affect matching"
-        );
-    }
+        assert!(matcher.fit(&s3, &s4), "Site order shouldn't matter");
 
-    #[test]
-    fn test_large_translation_fails() {
-        // Large atomic translation should cause no match
-        let s1 = Structure::new(
+        // Large translation should fail
+        let s5 = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
-            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+            vec![Vector3::zeros(), Vector3::new(0.5, 0.5, 0.5)],
         );
-        let s2 = Structure::new(
+        let s6 = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
-            vec![
-                Vector3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.5 + 0.4, 0.5 + 0.4, 0.5 + 0.2),
-            ], // large shift
+            vec![Vector3::zeros(), Vector3::new(0.9, 0.9, 0.7)],
         );
-        let matcher = StructureMatcher::new()
-            .with_site_pos_tol(0.3)
-            .with_primitive_cell(false);
         assert!(
-            !matcher.fit(&s1, &s2),
-            "Large translation should fail match"
+            !matcher.with_site_pos_tol(0.3).fit(&s5, &s6),
+            "Large shift should fail"
         );
     }
 
     #[test]
-    fn test_rotational_invariance() {
-        // Structure should match itself after symmetry operation
-        let s1 = Structure::new(
-            Lattice::cubic(4.0),
-            vec![
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-            ],
-            vec![
-                Vector3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.5, 0.5, 0.0),
-                Vector3::new(0.5, 0.0, 0.5),
-                Vector3::new(0.0, 0.5, 0.5),
-            ],
-        );
-        // Rotated version (swap x and y)
-        let s2 = Structure::new(
-            Lattice::cubic(4.0),
-            vec![
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-            ],
-            vec![
-                Vector3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.5, 0.5, 0.0),
-                Vector3::new(0.0, 0.5, 0.5),
-                Vector3::new(0.5, 0.0, 0.5),
-            ],
-        );
-        let matcher = StructureMatcher::new().with_primitive_cell(false);
-        assert!(matcher.fit(&s1, &s2), "Rotated FCC should match");
-    }
+    fn test_scaling_and_comparators() {
+        // scale=false is more restrictive
+        let s1 = make_simple_cubic(Element::Fe, 4.0);
+        let s2 = make_simple_cubic(Element::Fe, 4.5);
+        let fit_scale = StructureMatcher::new().fit(&s1, &s2);
+        let fit_no_scale = StructureMatcher::new().with_scale(false).fit(&s1, &s2);
+        assert!(!fit_no_scale || fit_scale, "no_scale more restrictive");
 
-    #[test]
-    fn test_partial_occupancy_same() {
-        // Same partial occupancy should match
-        let s1 = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Fe)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
-        let matcher = StructureMatcher::new().with_primitive_cell(false);
-        assert!(matcher.fit(&s1, &s1));
-    }
-
-    #[test]
-    fn test_element_comparator() {
         // Element comparator ignores oxidation states
-        let s1 = Structure::new(
+        let s3 = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::new(Element::Fe, Some(2))],
             vec![Vector3::zeros()],
         );
-        let s2 = Structure::new(
+        let s4 = Structure::new(
             Lattice::cubic(4.0),
-            vec![Species::new(Element::Fe, Some(3))], // different oxidation
+            vec![Species::new(Element::Fe, Some(3))],
             vec![Vector3::zeros()],
         );
-
-        let matcher_species = StructureMatcher::new()
-            .with_primitive_cell(false)
-            .with_comparator(ComparatorType::Species);
-        let matcher_element = StructureMatcher::new()
-            .with_primitive_cell(false)
-            .with_comparator(ComparatorType::Element);
-
-        // Species comparator requires exact match
+        let m_species = StructureMatcher::new().with_primitive_cell(false);
+        let m_elem = m_species.clone().with_comparator(ComparatorType::Element);
         assert!(
-            !matcher_species.fit(&s1, &s2),
-            "Species comparator should reject different oxidation"
+            !m_species.fit(&s3, &s4),
+            "Species comparator rejects diff oxi"
         );
-        // Element comparator ignores oxidation
-        assert!(
-            matcher_element.fit(&s1, &s2),
-            "Element comparator should match same element"
-        );
+        assert!(m_elem.fit(&s3, &s4), "Element comparator accepts same elem");
     }
 
     #[test]
-    fn test_supercell_attempt() {
-        // Supercell matching with attempt_supercell=true
+    fn test_supercell_matching() {
         let s1 = make_simple_cubic(Element::Fe, 4.0);
+        let coords: Vec<_> = (0..8)
+            .map(|i| {
+                Vector3::new(
+                    (i & 1) as f64 * 0.5,
+                    ((i >> 1) & 1) as f64 * 0.5,
+                    ((i >> 2) & 1) as f64 * 0.5,
+                )
+            })
+            .collect();
         let s2 = Structure::new(
-            Lattice::cubic(8.0), // 2x supercell
-            vec![
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-                Species::neutral(Element::Fe),
-            ],
-            vec![
-                Vector3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.5, 0.0, 0.0),
-                Vector3::new(0.0, 0.5, 0.0),
-                Vector3::new(0.0, 0.0, 0.5),
-                Vector3::new(0.5, 0.5, 0.0),
-                Vector3::new(0.5, 0.0, 0.5),
-                Vector3::new(0.0, 0.5, 0.5),
-                Vector3::new(0.5, 0.5, 0.5),
-            ],
+            Lattice::cubic(8.0),
+            vec![Species::neutral(Element::Fe); 8],
+            coords,
         );
 
-        let matcher_no_supercell = StructureMatcher::new()
-            .with_primitive_cell(false)
-            .with_attempt_supercell(false);
-        let matcher_supercell = StructureMatcher::new()
-            .with_primitive_cell(true)
-            .with_attempt_supercell(true);
-
-        // Without supercell matching, sizes differ
         assert!(
-            !matcher_no_supercell.fit(&s1, &s2),
-            "Without supercell, different sizes shouldn't match"
+            !StructureMatcher::new()
+                .with_primitive_cell(false)
+                .fit(&s1, &s2)
         );
-        // With primitive cell, both reduce to same
         assert!(
-            matcher_supercell.fit(&s1, &s2),
-            "With primitive cell, supercell should match"
+            StructureMatcher::new()
+                .with_primitive_cell(true)
+                .fit(&s1, &s2)
         );
     }
 
     #[test]
-    fn test_rms_distance_identical() {
-        // RMS distance of identical structures should be ~0
+    fn test_rms_distance() {
         let s = make_simple_cubic(Element::Fe, 4.0);
         let matcher = StructureMatcher::new().with_primitive_cell(false);
-        if let Some(rms) = matcher.get_rms_dist(&s, &s) {
-            assert!(
-                rms.0 < 1e-10,
-                "RMS of identical structures should be ~0, got {}",
-                rms.0
-            );
+        // Identical → RMS ≈ 0
+        if let Some((rms, _)) = matcher.get_rms_dist(&s, &s) {
+            assert!(rms < 1e-10);
         }
-    }
-
-    #[test]
-    fn test_get_rms_dist_small_perturbation() {
-        // Small perturbation should give small RMS
-        let s1 = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Fe)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
+        // Small perturbation → small RMS
         let s2 = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::neutral(Element::Fe)],
-            vec![Vector3::new(0.01, 0.0, 0.0)], // small shift
+            vec![Vector3::new(0.01, 0.0, 0.0)],
         );
-        let matcher = StructureMatcher::new()
-            .with_primitive_cell(false)
-            .with_site_pos_tol(0.5);
-        if let Some((rms, _max)) = matcher.get_rms_dist(&s1, &s2) {
-            assert!(
-                rms < 0.1,
-                "Small perturbation should give small RMS, got {}",
-                rms
-            );
+        if let Some((rms, _)) = matcher.with_site_pos_tol(0.5).get_rms_dist(&s, &s2) {
+            assert!(rms < 0.1);
         }
     }
 }

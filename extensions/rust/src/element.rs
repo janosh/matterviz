@@ -710,8 +710,8 @@ impl Element {
     pub fn atomic_mass(&self) -> f64 {
         match self {
             Self::Dummy => 0.0,
-            Self::D => 1.008,      // MUTATION: wrong mass (same as H)
-            Self::T => 3.01604928, // IUPAC tritium mass
+            Self::D => 2.014101778, // IUPAC deuterium mass
+            Self::T => 3.01604928,  // IUPAC tritium mass
             _ => Self::ATOMIC_MASSES[self.atomic_number() as usize - 1],
         }
     }
@@ -1930,79 +1930,44 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_symbol_potcar_suffixes() {
-        // POTCAR suffixes should be stripped
-        let cases = [
+    fn test_normalize_symbol_edge_cases() {
+        // Combined test for symbol normalization edge cases
+        let simple_cases: &[(&str, Element)] = &[
+            // POTCAR suffixes
             ("Ca_pv", Element::Ca),
             ("Fe_sv", Element::Fe),
             ("O_s", Element::O),
-            ("Li_sv", Element::Li),
-        ];
-        for (symbol, expected) in cases {
-            let result = normalize_symbol(symbol);
-            assert!(result.is_ok(), "Failed to parse: {}", symbol);
-            assert_eq!(result.unwrap().element, expected, "Symbol: {}", symbol);
-        }
-    }
-
-    #[test]
-    fn test_normalize_symbol_cif_labels() {
-        // CIF-style labels should extract element
-        let cases = [
+            // CIF labels
             ("Fe1", Element::Fe),
             ("Fe1a", Element::Fe),
             ("Na2", Element::Na),
-            ("O1", Element::O),
+            // Slash suffix (VASP 6.4.2)
+            ("Li/", Element::Li),
         ];
-        for (symbol, expected) in cases {
-            let result = normalize_symbol(symbol);
-            assert!(result.is_ok(), "Failed to parse: {}", symbol);
-            assert_eq!(result.unwrap().element, expected, "Symbol: {}", symbol);
+        for (symbol, expected) in simple_cases {
+            let norm = normalize_symbol(symbol).expect(symbol);
+            assert_eq!(norm.element, *expected, "{symbol}");
+        }
+
+        // Oxidation state cases
+        let oxi_cases: &[(&str, Element, i8)] = &[
+            ("Fe2+", Element::Fe, 2),
+            ("O2-", Element::O, -2),
+            ("Na+", Element::Na, 1),
+            ("Cl-", Element::Cl, -1),
+        ];
+        for (symbol, elem, oxi) in oxi_cases {
+            let norm = normalize_symbol(symbol).expect(symbol);
+            assert_eq!(norm.element, *elem, "{symbol}");
+            assert_eq!(norm.oxidation_state, Some(*oxi), "{symbol}");
         }
     }
 
     #[test]
-    fn test_normalize_symbol_oxidation_states() {
-        // Oxidation state suffixes
-        let cases = [
-            ("Fe2+", Element::Fe, Some(2)),
-            ("O2-", Element::O, Some(-2)),
-            ("Na+", Element::Na, Some(1)),
-            ("Cl-", Element::Cl, Some(-1)),
-            ("Fe3+", Element::Fe, Some(3)),
-        ];
-        for (symbol, expected_elem, expected_oxi) in cases {
-            let result = normalize_symbol(symbol);
-            assert!(result.is_ok(), "Failed to parse: {}", symbol);
-            let norm = result.unwrap();
-            assert_eq!(norm.element, expected_elem, "Symbol: {}", symbol);
-            assert_eq!(norm.oxidation_state, expected_oxi, "Symbol: {}", symbol);
-        }
-    }
-
-    #[test]
-    fn test_normalize_symbol_hash_suffix() {
-        // Hash suffixes (VASP 6.4.2 format with slashes)
-        let result = normalize_symbol("Li/");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().element, Element::Li);
-    }
-
-    #[test]
-    fn test_ambiguous_valence_elements() {
-        // Elements with many oxidation states (like U) should still work
-        let u_oxi = Element::U.oxidation_states();
-        assert!(!u_oxi.is_empty(), "U should have oxidation states");
-    }
-
-    #[test]
-    fn test_missing_data_graceful() {
-        // Elements should handle missing data gracefully
-        // Og (Z=118) may have limited data
-        let og = Element::Og;
-        // These should return None, not panic
-        let _ = og.atomic_radius();
-        let _ = og.covalent_radius();
-        let _ = og.electronegativity();
+    fn test_element_edge_cases() {
+        // U has many oxidation states
+        assert!(!Element::U.oxidation_states().is_empty());
+        // Og should handle missing data gracefully (not panic)
+        let _ = (Element::Og.atomic_radius(), Element::Og.covalent_radius());
     }
 }

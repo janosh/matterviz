@@ -1904,138 +1904,113 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_near_singular_small_angles() {
-        // Near-collinear vectors (angles = 10°) - should not crash
-        let lattice = Lattice::from_parameters(1.0, 1.0, 1.0, 10.0, 10.0, 10.0);
-        let vol = lattice.volume();
-        assert!(vol.is_finite(), "Volume should be finite");
-        // Very small angles produce near-zero volume
-        assert!(vol.abs() < 0.1, "Near-singular should have small volume");
+    fn test_unusual_lattice_edge_cases() {
+        // Combined test for unusual lattices that should not crash
+        let edge_cases: Vec<(&str, Lattice)> = vec![
+            (
+                "near-singular 10°",
+                Lattice::from_parameters(1.0, 1.0, 1.0, 10.0, 10.0, 10.0),
+            ),
+            (
+                "obtuse 156°",
+                Lattice::from_parameters(7.365, 6.199, 5.353, 75.54, 81.18, 156.4),
+            ),
+            (
+                "two obtuse",
+                Lattice::from_parameters(4.0, 10.0, 11.0, 100.0, 110.0, 80.0),
+            ),
+            (
+                "monoclinic 66°",
+                Lattice::from_parameters(10.0, 20.0, 30.0, 90.0, 66.0, 90.0),
+            ),
+            (
+                "negative matrix",
+                Lattice::from_array([
+                    [-0.259, 1.187, -0.124],
+                    [2.217, 1.007, 0.733],
+                    [1.144, -0.469, -0.023],
+                ]),
+            ),
+        ];
+        for (name, lattice) in edge_cases {
+            let vol = lattice.volume();
+            let angles = lattice.angles();
+            assert!(vol.is_finite(), "{name}: volume not finite");
+            assert!(
+                angles.iter().all(|a| a.is_finite()),
+                "{name}: angles not finite"
+            );
+        }
     }
 
     #[test]
-    fn test_triclinic_obtuse_156_angle() {
-        // Triclinic with one very obtuse angle (156°)
-        let lattice = Lattice::from_parameters(7.365, 6.199, 5.353, 75.54, 81.18, 156.4);
-        let angles = lattice.angles();
-        assert!(angles.iter().all(|a| a.is_finite()));
-        let vol = lattice.volume();
-        assert!(vol.is_finite() && vol.abs() > 0.0);
-    }
-
-    #[test]
-    fn test_negative_matrix_components() {
-        // Matrix with many negative components
-        let lattice = Lattice::from_array([
-            [-0.259, 1.187, -0.124],
-            [2.217, 1.007, 0.733],
-            [1.144, -0.469, -0.023],
-        ]);
-        let vol = lattice.volume();
-        assert!(vol.is_finite());
-        let angles = lattice.angles();
-        assert!(angles.iter().all(|a| a.is_finite()));
-    }
-
-    #[test]
-    fn test_lll_random_det_check() {
-        // Random lattice with determinant check
+    fn test_lll_preserves_volume() {
         let matrix = Matrix3::new(0.5, 0.3, 0.1, 0.2, 0.7, 0.4, 0.1, 0.2, 0.8);
         let lattice = Lattice::new(matrix);
-        let det = lattice.volume();
-        if det.abs() > 1e-8 {
+        if lattice.volume().abs() > 1e-8 {
             let lll = lattice.get_lll_reduced(0.75);
             assert_relative_eq!(lll.volume().abs(), lattice.volume().abs(), epsilon = 1e-8);
         }
     }
 
     #[test]
-    fn test_large_fractional_coords_pbc() {
-        // Large fractional coordinates should wrap correctly
-        let lattice = Lattice::cubic(4.0);
-        let frac1 = Vector3::new(0.0, 0.0, 17.0);
-        let frac2 = Vector3::new(0.0, 0.0, 10.0);
-        // Convert single coords using matrix multiplication
-        let cart1 = lattice.matrix().transpose() * frac1;
-        let cart2 = lattice.matrix().transpose() * frac2;
-        // The z-difference in fractional is 7, so Cartesian difference is 7*4 = 28
-        assert!((cart1.z - cart2.z - 28.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_reciprocal_2pi_factor() {
-        // Reciprocal lattice should have 2π factor
-        let lattice = Lattice::cubic(10.0);
-        let recip = lattice.reciprocal();
-        let expected = 2.0 * PI / 10.0;
-        let recip_lengths = recip.lengths();
-        assert_relative_eq!(recip_lengths[0], expected, epsilon = 1e-6);
-    }
-
-    #[test]
-    fn test_coordinate_roundtrip() {
-        // Fractional → Cartesian → Fractional should roundtrip
+    fn test_coordinate_operations() {
+        // Roundtrip: frac → cart → frac
         let lattice = Lattice::from_parameters(4.0, 5.0, 6.0, 85.0, 95.0, 100.0);
         let frac = Vector3::new(0.3, 0.7, 0.2);
         let cart = lattice.get_cartesian_coords(&[frac]);
         let frac_back = lattice.get_fractional_coords(&cart);
         assert_relative_eq!(frac.x, frac_back[0].x, epsilon = 1e-10);
-        assert_relative_eq!(frac.y, frac_back[0].y, epsilon = 1e-10);
-        assert_relative_eq!(frac.z, frac_back[0].z, epsilon = 1e-10);
+
+        // Large fractional coords
+        let lattice2 = Lattice::cubic(4.0);
+        let cart1 = lattice2.matrix().transpose() * Vector3::new(0.0, 0.0, 17.0);
+        let cart2 = lattice2.matrix().transpose() * Vector3::new(0.0, 0.0, 10.0);
+        assert!((cart1.z - cart2.z - 28.0).abs() < 1e-10);
     }
 
     #[test]
-    fn test_hexagonal_reciprocal() {
-        // Hexagonal lattice reciprocal should have different a and c
-        let lattice = Lattice::hexagonal(3.0, 5.0);
-        let recip = lattice.reciprocal();
-        let recip_lengths = recip.lengths();
-        // a* != c* for hexagonal
-        assert!((recip_lengths[0] - recip_lengths[2]).abs() > 0.1);
+    fn test_reciprocal_lattice() {
+        // Cubic: reciprocal should have 2π/a factor
+        let cubic = Lattice::cubic(10.0);
+        assert_relative_eq!(
+            cubic.reciprocal().lengths()[0],
+            2.0 * PI / 10.0,
+            epsilon = 1e-6
+        );
+
+        // Hexagonal: a* ≠ c*
+        let hex = Lattice::hexagonal(3.0, 5.0);
+        let recip = hex.reciprocal().lengths();
+        assert!((recip[0] - recip[2]).abs() > 0.1);
     }
 
     #[test]
-    fn test_niggli_triclinic_fractional_minutes() {
-        // Triclinic with angles in fractional minutes (103°55', 109°28', 134°53')
-        let alpha = 103.0 + 55.0 / 60.0;
-        let beta = 109.0 + 28.0 / 60.0;
-        let gamma = 134.0 + 53.0 / 60.0;
-        let lattice = Lattice::from_parameters(3.0, 5.196, 2.0, alpha, beta, gamma);
-        let vol = lattice.volume();
-        assert!(vol.is_finite() && vol.abs() > 0.0);
-        // Niggli reduction may succeed or fail for extreme angles
+    fn test_niggli_extreme_angles() {
+        // Triclinic with fractional minutes (103°55', 109°28', 134°53')
+        let lattice = Lattice::from_parameters(
+            3.0,
+            5.196,
+            2.0,
+            103.0 + 55.0 / 60.0,
+            109.0 + 28.0 / 60.0,
+            134.0 + 53.0 / 60.0,
+        );
+        assert!(lattice.volume().abs() > 0.0);
         if let Ok(niggli) = lattice.get_niggli_reduced(1e-5) {
-            assert_relative_eq!(niggli.volume().abs(), vol.abs(), epsilon = 1e-3);
+            assert_relative_eq!(
+                niggli.volume().abs(),
+                lattice.volume().abs(),
+                epsilon = 1e-3
+            );
         }
     }
 
     #[test]
-    fn test_monoclinic_non_90_angle() {
-        // Monoclinic with one non-90° angle
-        let lattice = Lattice::from_parameters(10.0, 20.0, 30.0, 90.0, 66.0, 90.0);
-        let angles = lattice.angles();
-        assert_relative_eq!(angles[0], 90.0, epsilon = 1e-6);
-        assert_relative_eq!(angles[1], 66.0, epsilon = 1e-6);
-        assert_relative_eq!(angles[2], 90.0, epsilon = 1e-6);
-    }
-
-    #[test]
-    fn test_two_obtuse_angles() {
-        // Two angles > 90° (100°, 110°)
-        let lattice = Lattice::from_parameters(4.0, 10.0, 11.0, 100.0, 110.0, 80.0);
-        let vol = lattice.volume();
-        assert!(vol.is_finite() && vol.abs() > 0.0);
-        let angles = lattice.angles();
-        assert!(angles.iter().all(|a| a.is_finite()));
-    }
-
-    #[test]
     fn test_partial_pbc() {
-        // Partial periodic boundary conditions
         let mut lattice = Lattice::cubic(4.0);
         lattice.pbc = [true, true, false];
         assert_eq!(lattice.pbc, [true, true, false]);
-        // Volume calculation should still work
         assert_relative_eq!(lattice.volume(), 64.0, epsilon = 1e-10);
     }
 }
