@@ -321,7 +321,7 @@ impl SiteOccupancy {
         } else {
             self.species
                 .iter()
-                .sorted_by(|a, b| a.0.to_string().cmp(&b.0.to_string()))
+                .sorted_by_cached_key(|(sp, _)| sp.to_string())
                 .map(|(sp, occ)| format!("{sp}:{occ:.3}"))
                 .join(", ")
         }

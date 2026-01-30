@@ -416,25 +416,8 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `i` or `j` is out of bounds.
-    #[inline]
     pub fn get_distance(&self, i: usize, j: usize) -> f64 {
-        assert!(
-            i < self.num_sites(),
-            "Index i={} out of bounds (num_sites={})",
-            i,
-            self.num_sites()
-        );
-        assert!(
-            j < self.num_sites(),
-            "Index j={} out of bounds (num_sites={})",
-            j,
-            self.num_sites()
-        );
-        let fcoords_i = vec![self.frac_coords[i]];
-        let fcoords_j = vec![self.frac_coords[j]];
-        let (_, d2, _) =
-            crate::pbc::pbc_shortest_vectors(&self.lattice, &fcoords_i, &fcoords_j, None, None);
-        d2[0][0].sqrt()
+        self.get_distance_and_image(i, j).0
     }
 
     /// Get distance and periodic image between sites `i` and `j`.
@@ -446,7 +429,6 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `i` or `j` is out of bounds.
-    #[inline]
     pub fn get_distance_and_image(&self, i: usize, j: usize) -> (f64, [i32; 3]) {
         assert!(
             i < self.num_sites(),
@@ -1436,7 +1418,6 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `idx` is out of bounds.
-    #[inline]
     pub fn site_label(&self, idx: usize) -> String {
         assert!(
             idx < self.num_sites(),
