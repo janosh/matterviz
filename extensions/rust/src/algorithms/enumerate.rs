@@ -14,7 +14,7 @@
 // than iterator patterns. Allow them at module level.
 #![allow(clippy::needless_range_loop)]
 
-use crate::error::Result;
+use crate::error::{FerroxError, Result};
 use crate::species::Species;
 use crate::structure::Structure;
 use crate::transformations::TransformMany;
@@ -118,9 +118,23 @@ impl EnumerateDerivativesTransform {
     fn enumerate_derivatives(&self, structure: &Structure) -> Vec<Result<Structure>> {
         let mut results = Vec::new();
 
+        // Validate size range fits in i32 (generate_hnf takes i32 determinant)
+        let max_det = i32::MAX as usize;
+        if self.config.max_size > max_det {
+            results.push(Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "max_size {} exceeds i32::MAX ({}), cannot enumerate supercells this large",
+                    self.config.max_size, max_det
+                ),
+            }));
+            return results;
+        }
+
         // For each supercell size
         for det in self.config.min_size..=self.config.max_size {
             // Generate HNF matrices with this determinant
+            // Safe: validated above that det <= i32::MAX
             let hnf_matrices = generate_hnf(det as i32);
 
             for hnf in hnf_matrices {
