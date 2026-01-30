@@ -878,6 +878,45 @@ fn parse_pbc_value(pbc_value: &serde_json::Value) -> [bool; 3] {
 pub fn structure_to_poscar(structure: &Structure, comment: Option<&str>) -> String {
     let mat = structure.lattice.matrix();
 
+    // Check for disordered/partial-occupancy sites and warn users
+    // POSCAR format cannot represent multi-species or partial occupancy sites
+    for (idx, site_occ) in structure.site_occupancies.iter().enumerate() {
+        let total_occ = site_occ.total_occupancy();
+        let is_disordered = !site_occ.is_ordered();
+        let has_partial_occ = (total_occ - 1.0).abs() > 1e-6;
+
+        if is_disordered || has_partial_occ {
+            let species_str: Vec<String> = site_occ
+                .species
+                .iter()
+                .map(|(sp, occ)| format!("{sp}:{occ:.3}"))
+                .collect();
+            let dominant = site_occ.dominant_species();
+
+            if is_disordered && has_partial_occ {
+                tracing::warn!(
+                    "Site {idx}: disordered with partial occupancy (total={total_occ:.3}): [{}] \
+                     -> reduced to {} for POSCAR output",
+                    species_str.join(", "),
+                    dominant
+                );
+            } else if is_disordered {
+                tracing::warn!(
+                    "Site {idx}: disordered (multi-species): [{}] -> reduced to {} for POSCAR output",
+                    species_str.join(", "),
+                    dominant
+                );
+            } else {
+                // has_partial_occ only
+                tracing::warn!(
+                    "Site {idx}: partial occupancy (total={total_occ:.3}): [{}] \
+                     -> vacancy ignored in POSCAR output",
+                    species_str.join(", ")
+                );
+            }
+        }
+    }
+
     // Group sites by element (POSCAR requires contiguous blocks)
     // Use IndexMap to preserve insertion order (first occurrence)
     let mut element_sites: indexmap::IndexMap<&str, Vec<usize>> = indexmap::IndexMap::new();
