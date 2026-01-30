@@ -76,6 +76,18 @@ impl InsertSitesTransform {
 
 impl Transform for InsertSitesTransform {
     fn apply(&self, structure: &mut Structure) -> Result<()> {
+        // Validate lengths match (guards against mismatched public fields)
+        if self.species.len() != self.coords.len() {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "species and coords must have same length ({} vs {})",
+                    self.species.len(),
+                    self.coords.len()
+                ),
+            });
+        }
+
         for (species, coord) in self.species.iter().zip(self.coords.iter()) {
             let frac_coord = if self.fractional {
                 *coord
@@ -253,8 +265,13 @@ impl Transform for TranslateSitesTransform {
     fn apply(&self, structure: &mut Structure) -> Result<()> {
         let n_sites = structure.num_sites();
 
+        // Deduplicate indices to avoid translating the same site multiple times
+        let mut unique_indices = self.indices.clone();
+        unique_indices.sort_unstable();
+        unique_indices.dedup();
+
         // Validate indices
-        for &idx in &self.indices {
+        for &idx in &unique_indices {
             if idx >= n_sites {
                 return Err(FerroxError::InvalidStructure {
                     index: idx,
@@ -271,7 +288,7 @@ impl Transform for TranslateSitesTransform {
         };
 
         // Apply translation
-        for &idx in &self.indices {
+        for &idx in &unique_indices {
             structure.frac_coords[idx] += frac_vector;
         }
 

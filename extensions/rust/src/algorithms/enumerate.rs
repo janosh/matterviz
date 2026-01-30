@@ -29,8 +29,8 @@ pub struct EnumConfig {
     pub max_size: usize,
     /// Concentration constraints per species: (min_frac, max_frac)
     pub concentrations: HashMap<Species, (f64, f64)>,
-    /// Symmetry precision for duplicate detection
-    pub symprec: f64,
+    // NOTE: Symmetry-based duplicate elimination is not yet implemented.
+    // When added, a `symprec: f64` field should be introduced here.
 }
 
 impl Default for EnumConfig {
@@ -39,7 +39,6 @@ impl Default for EnumConfig {
             min_size: 1,
             max_size: 10,
             concentrations: HashMap::new(),
-            symprec: 0.01,
         }
     }
 }
