@@ -135,20 +135,14 @@ export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
         const { default: init } = (await import(
           /* @vite-ignore */ `@matterviz/wasm`
         )) as unknown as {
-          default: (
-            options?: { module_or_path?: string | URL },
-          ) => Promise<FerroxWasmModule>
+          default: (opts?: { module_or_path?: string }) => Promise<FerroxWasmModule>
         }
 
-        // Get the WASM binary URL and initialize
-        const wasm_url_module = await import(
+        // Get WASM binary URL and initialize
+        const { default: wasm_url } = await import(
           /* @vite-ignore */ `@matterviz/wasm/ferrox_bg.wasm?url`
         )
-        const wasm_url = wasm_url_module.default as string
-
-        // init() loads pkg/ferrox.js, initializes WASM, and returns the module
-        const mod = await init({ module_or_path: wasm_url })
-        wasm_module = mod as FerroxWasmModule
+        wasm_module = await init({ module_or_path: wasm_url })
         return wasm_module
       } catch (err) {
         // Clear the promise on failure so retry is possible
