@@ -6,7 +6,9 @@ on:
     paths: &paths
       - src/**
       - tests/**
-      - '*.config.*' # vite, svelte, playwright, tsconfig
+      - '*.config.*' # vite, svelte, playwright, eslint
+      - tsconfig*.json
+      - deno.jsonc
       - package.json
       - .github/workflows/test.yml
   push:

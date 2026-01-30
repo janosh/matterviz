@@ -214,11 +214,7 @@ impl Ord for Species {
             .partial_cmp(&en_other)
             .unwrap_or(Ordering::Equal)
             .then_with(|| self.element.symbol().cmp(other.element.symbol()))
-            .then_with(|| {
-                self.oxidation_state
-                    .unwrap_or(0)
-                    .cmp(&other.oxidation_state.unwrap_or(0))
-            })
+            .then_with(|| self.oxidation_state.cmp(&other.oxidation_state))
     }
 }
 

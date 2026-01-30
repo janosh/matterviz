@@ -206,12 +206,17 @@ pub fn pbc_shortest_vectors(
                 continue;
             }
 
-            // Check fractional tolerance
+            // Check fractional tolerance (only wrap periodic axes)
             let mut within_frac = true;
             if let Some(ftol) = lll_frac_tol {
                 for axis in 0..3 {
                     let fdist = f2[axis] - f1[axis];
-                    if (fdist - fdist.round()).abs() > ftol[axis] {
+                    let wrapped = if pbc[axis] {
+                        fdist - fdist.round()
+                    } else {
+                        fdist
+                    };
+                    if wrapped.abs() > ftol[axis] {
                         within_frac = false;
                         break;
                     }
