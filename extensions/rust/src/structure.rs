@@ -478,8 +478,7 @@ impl Structure {
         let frac_j = crate::pbc::wrap_frac_coords(&self.frac_coords[j]);
 
         let cart_i = self.lattice.get_cartesian_coords(&[frac_i])[0];
-        let frac_j_shifted =
-            frac_j + Vector3::new(jimage[0] as f64, jimage[1] as f64, jimage[2] as f64);
+        let frac_j_shifted = frac_j + Vector3::from(jimage.map(|x| x as f64));
         let cart_j = self.lattice.get_cartesian_coords(&[frac_j_shifted])[0];
         (cart_j - cart_i).norm()
     }

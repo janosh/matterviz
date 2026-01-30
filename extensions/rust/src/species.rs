@@ -4,6 +4,7 @@
 //! e.g., Fe2+ or O2-.
 
 use crate::element::Element;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -318,12 +319,10 @@ impl SiteOccupancy {
         if self.is_ordered() {
             self.dominant_species().to_string()
         } else {
-            let mut sorted: Vec<_> = self.species.iter().collect();
-            sorted.sort_by(|a, b| a.0.element.symbol().cmp(b.0.element.symbol()));
-            sorted
+            self.species
                 .iter()
-                .map(|(sp, occ)| format!("{}:{:.3}", sp, occ))
-                .collect::<Vec<_>>()
+                .sorted_by(|a, b| a.0.element.symbol().cmp(b.0.element.symbol()))
+                .map(|(sp, occ)| format!("{sp}:{occ:.3}"))
                 .join(", ")
         }
     }

@@ -245,23 +245,13 @@ pub fn pbc_shortest_vectors(
 
             // Convert image to original lattice basis if using LLL
             let lll_image = frac_images[best_image_idx];
-            let image = if let Some(ref mapping) = lll_mapping {
+            result_images[idx][jdx] = if let Some(ref mapping) = lll_mapping {
                 // Transform from LLL basis back to original: orig_image = mapping * lll_image
-                let lll_vec = Vector3::new(lll_image[0], lll_image[1], lll_image[2]);
-                let orig_vec = mapping * lll_vec;
-                [
-                    orig_vec[0].round() as i32,
-                    orig_vec[1].round() as i32,
-                    orig_vec[2].round() as i32,
-                ]
+                let orig_vec = mapping * Vector3::from(lll_image);
+                std::array::from_fn(|k| orig_vec[k].round() as i32)
             } else {
-                [
-                    lll_image[0] as i32,
-                    lll_image[1] as i32,
-                    lll_image[2] as i32,
-                ]
+                lll_image.map(|x| x as i32)
             };
-            result_images[idx][jdx] = image;
         }
     }
 
