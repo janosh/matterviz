@@ -20,5 +20,6 @@ jobs:
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         . "$HOME/.cargo/env"
         curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-        wasm-pack build extensions/rust --target web --features wasm --no-default-features --out-dir ../rust-wasm/pkg
+        wasm-pack build extensions/rust --target web --features wasm --no-default-features
+        cp -r extensions/rust/pkg/* extensions/rust-wasm/pkg/
         deno task build
