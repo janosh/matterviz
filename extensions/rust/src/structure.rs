@@ -2497,63 +2497,114 @@ fn reduce_miller_indices(hkl: [i32; 3]) -> [i32; 3] {
     }
 }
 
-/// Find two linearly independent in-plane lattice vectors for the given Miller indices.
-/// Returns (a_vec, b_vec) as integer linear combinations of the original lattice vectors.
-/// Produces minimal vectors to avoid unnecessarily large supercells.
-fn find_in_plane_vectors(hkl: [i32; 3]) -> ([i32; 3], [i32; 3]) {
+/// Compute LCM of two integers.
+fn int_lcm(a: i32, b: i32) -> i32 {
+    fn int_gcd(a: i32, b: i32) -> i32 {
+        if b == 0 { a.abs() } else { int_gcd(b, a % b) }
+    }
+    if a == 0 || b == 0 {
+        0
+    } else {
+        (a * b).abs() / int_gcd(a, b)
+    }
+}
+
+/// Calculate the slab transformation matrix using pymatgen's algorithm.
+/// This produces minimal supercells by using LCM-based in-plane vector construction.
+///
+/// The algorithm (matching pymatgen's SlabGenerator):
+/// 1. For Miller indices that are 0, use the corresponding basis vector (it's in-plane)
+/// 2. For non-zero indices, use LCM trick to construct minimal in-plane vectors
+/// 3. For c-direction, use the basis vector with maximum projection onto surface normal
+fn get_slab_transformation(lattice: &Lattice, hkl: [i32; 3]) -> [[i32; 3]; 3] {
     let [h, k, l] = reduce_miller_indices(hkl);
 
-    // Find two linearly independent vectors satisfying h*u + k*v + l*w = 0
-    // Strategy: for each pair of non-zero Miller indices, construct a simple in-plane vector
-    let candidates: Vec<[i32; 3]> = vec![
-        [-k, h, 0], // satisfies if h or k != 0
-        [-l, 0, h], // satisfies if h or l != 0
-        [0, -l, k], // satisfies if k or l != 0
-        [1, 0, 0],  // satisfies if h == 0
-        [0, 1, 0],  // satisfies if k == 0
-        [0, 0, 1],  // satisfies if l == 0
-    ];
+    // Calculate surface normal in Cartesian coordinates
+    let inv_t = lattice.inv_matrix().transpose();
+    let hkl_vec = Vector3::new(h as f64, k as f64, l as f64);
+    let normal = inv_t * hkl_vec;
+    let normal_len = normal.norm();
+    let normal = if normal_len > 1e-10 {
+        normal / normal_len
+    } else {
+        Vector3::new(0.0, 0.0, 1.0)
+    };
 
-    // Filter to valid in-plane vectors (dot product with hkl == 0, non-zero vector)
-    let valid: Vec<[i32; 3]> = candidates
-        .into_iter()
-        .filter(|v| {
-            let dot = h * v[0] + k * v[1] + l * v[2];
-            let nonzero = v[0] != 0 || v[1] != 0 || v[2] != 0;
-            dot == 0 && nonzero
-        })
-        .map(reduce_miller_indices)
-        .collect();
+    let miller = [h, k, l];
+    let eye: [[i32; 3]; 3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
 
-    // Pick two linearly independent vectors (cross product non-zero)
-    let a_vec = valid[0];
-    let mut b_vec = valid[1];
+    let mut slab_scale_factor: Vec<[i32; 3]> = Vec::new();
+    let mut non_orth_ind: Vec<(usize, f64)> = Vec::new();
 
-    for v in &valid[1..] {
-        let cross = [
-            a_vec[1] * v[2] - a_vec[2] * v[1],
-            a_vec[2] * v[0] - a_vec[0] * v[2],
-            a_vec[0] * v[1] - a_vec[1] * v[0],
-        ];
-        if cross.iter().any(|&x| x != 0) {
-            b_vec = *v;
-            break;
+    for (idx, &miller_idx) in miller.iter().enumerate() {
+        if miller_idx == 0 {
+            slab_scale_factor.push(eye[idx]);
+        } else {
+            let lat_vec = lattice.matrix().row(idx).transpose();
+            let lat_len = lat_vec.norm();
+            let d = (normal.dot(&lat_vec)).abs() / lat_len;
+            non_orth_ind.push((idx, d));
         }
     }
 
-    (a_vec, b_vec)
-}
+    if non_orth_ind.len() > 1 {
+        let lcm_miller = non_orth_ind
+            .iter()
+            .map(|&(idx, _)| miller[idx].abs())
+            .fold(1, int_lcm);
+        'outer: for i in 0..non_orth_ind.len() {
+            for j in (i + 1)..non_orth_ind.len() {
+                let (ii, _) = non_orth_ind[i];
+                let (jj, _) = non_orth_ind[j];
+                let mut scale_factor = [0i32; 3];
+                scale_factor[ii] = -(lcm_miller / miller[ii]);
+                scale_factor[jj] = lcm_miller / miller[jj];
+                slab_scale_factor.push(reduce_miller_indices(scale_factor));
+                if slab_scale_factor.len() == 2 {
+                    break 'outer;
+                }
+            }
+        }
+    }
 
-/// Get the transformation matrix that creates an oriented unit cell.
-/// The new lattice will have a,b in the surface plane and c along the [hkl] direction.
-///
-/// Note: For orthogonal lattices (cubic, tetragonal, orthorhombic), c is perpendicular
-/// to the surface. For non-orthogonal lattices (monoclinic, triclinic, hexagonal),
-/// the c-vector may be tilted. Full reciprocal-space normal computation is not yet implemented.
-fn get_slab_transformation(hkl: [i32; 3]) -> [[i32; 3]; 3] {
-    let hkl = reduce_miller_indices(hkl);
-    let (a_int, b_int) = find_in_plane_vectors(hkl);
-    [a_int, b_int, hkl]
+    let c_index = if non_orth_ind.is_empty() {
+        2
+    } else {
+        non_orth_ind
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|&(idx, _)| idx)
+            .unwrap_or(2)
+    };
+    slab_scale_factor.push(eye[c_index]);
+
+    while slab_scale_factor.len() < 3 {
+        for basis in &eye {
+            if !slab_scale_factor.contains(basis) {
+                slab_scale_factor.push(*basis);
+                break;
+            }
+        }
+    }
+
+    let mut result = [[0i32; 3]; 3];
+    for (i, v) in slab_scale_factor.iter().take(3).enumerate() {
+        result[i] = *v;
+    }
+
+    let det = result[0][0] * (result[1][1] * result[2][2] - result[1][2] * result[2][1])
+        - result[0][1] * (result[1][0] * result[2][2] - result[1][2] * result[2][0])
+        + result[0][2] * (result[1][0] * result[2][1] - result[1][1] * result[2][0]);
+
+    if det < 0 {
+        for row in &mut result {
+            for val in row {
+                *val = -*val;
+            }
+        }
+    }
+
+    result
 }
 
 /// Identify unique atomic layers along the c-axis (surface normal direction).
@@ -2660,7 +2711,7 @@ impl Structure {
         }
 
         // Create oriented unit cell with a,b in surface plane
-        let oriented = self.make_supercell(get_slab_transformation(hkl))?;
+        let oriented = self.make_supercell(get_slab_transformation(&self.lattice, hkl))?;
 
         // Identify unique layer positions in the oriented cell (single repeat)
         // This preserves all distinct terminations within one unit cell
@@ -4925,38 +4976,6 @@ mod tests {
     }
 
     #[test]
-    fn test_find_in_plane_vectors() {
-        use super::find_in_plane_vectors;
-
-        let dot = |hkl: [i32; 3], v: [i32; 3]| hkl[0] * v[0] + hkl[1] * v[1] + hkl[2] * v[2];
-        let cross_nonzero = |a: [i32; 3], b: [i32; 3]| {
-            let c = [
-                a[1] * b[2] - a[2] * b[1],
-                a[2] * b[0] - a[0] * b[2],
-                a[0] * b[1] - a[1] * b[0],
-            ];
-            c.iter().any(|&x| x != 0)
-        };
-
-        for hkl in [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-            [1, 1, 0],
-            [1, 1, 1],
-            [2, 1, 0],
-            [1, 2, 3],
-            [-1, 1, 0],
-            [1, -1, 1],
-        ] {
-            let (a, b) = find_in_plane_vectors(hkl);
-            assert_eq!(dot(hkl, a), 0, "a not in plane {:?}", hkl);
-            assert_eq!(dot(hkl, b), 0, "b not in plane {:?}", hkl);
-            assert!(cross_nonzero(a, b), "a,b collinear for {:?}", hkl);
-        }
-    }
-
-    #[test]
     fn test_slab_transformation_nonsingular() {
         use super::get_slab_transformation;
 
@@ -4966,6 +4985,7 @@ mod tests {
                 + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
         };
 
+        let cubic = Lattice::cubic(4.0);
         for hkl in [
             [1, 0, 0],
             [0, 1, 0],
@@ -4975,7 +4995,7 @@ mod tests {
             [3, 1, 1],
         ] {
             assert!(
-                det3(get_slab_transformation(hkl)) != 0,
+                det3(get_slab_transformation(&cubic, hkl)) != 0,
                 "{:?} singular",
                 hkl
             );
