@@ -4,7 +4,6 @@
   import { normalize_show_controls } from '$lib/controls'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
-  import { sanitize_html } from '$lib/labels'
   import {
     set_fullscreen_bg,
     setup_fullscreen_effect,
@@ -1044,7 +1043,7 @@
       selected_entry,
     })}
   <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
-    {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
+    {@html merged_controls.title || phase_stats?.chemical_system || ``}
   </h3>
 
   <canvas

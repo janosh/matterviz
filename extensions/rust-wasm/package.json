@@ -1,23 +1,25 @@
 {
-  "name": "@matterviz/ferrox-wasm",
+  "name": "@matterviz/wasm",
   "version": "0.0.1",
   "description": "WASM bindings for ferrox structure matching library",
   "type": "module",
-  "main": "pkg/ferrox.js",
-  "types": "pkg/ferrox.d.ts",
+  "main": "index.js",
+  "types": "types.d.ts",
   "exports": {
     ".": {
-      "types": "./pkg/ferrox.d.ts",
-      "import": "./pkg/ferrox.js"
+      "types": "./types.d.ts",
+      "import": "./index.js"
     },
     "./ferrox_bg.wasm": "./pkg/ferrox_bg.wasm"
   },
   "files": [
+    "index.js",
+    "types.d.ts",
     "pkg/"
   ],
   "scripts": {
-    "build": "wasm-pack build ../rust --target web --features wasm --no-default-features --out-dir ../rust-wasm/pkg",
-    "build:dev": "wasm-pack build ../rust --target web --features wasm --no-default-features --out-dir ../rust-wasm/pkg --dev"
+    "build": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg .",
+    "build:dev": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features --dev && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg ."
   },
   "repository": {
     "type": "git",
