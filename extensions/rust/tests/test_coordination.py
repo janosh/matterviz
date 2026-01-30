@@ -155,7 +155,7 @@ class TestVoronoiCoordination:
     ])
     def test_negative_solid_angle_error(self, fcc_cu_json: str, func) -> None:
         """Negative min_solid_angle raises ValueError."""
-        with pytest.raises(ValueError, match="non-negative"):
+        with pytest.raises(ValueError, match="0.0 and 1.0"):
             func(fcc_cu_json)
 
     @pytest.mark.parametrize("func", [

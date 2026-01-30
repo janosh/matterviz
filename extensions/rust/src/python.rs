@@ -2198,9 +2198,9 @@ fn get_neighbors(
 
 /// Validate and create VoronoiConfig from min_solid_angle.
 fn make_voronoi_config(min_solid_angle: f64) -> PyResult<crate::coordination::VoronoiConfig> {
-    if min_solid_angle < 0.0 {
+    if !(0.0..=1.0).contains(&min_solid_angle) {
         return Err(PyValueError::new_err(
-            "min_solid_angle must be non-negative",
+            "min_solid_angle must be between 0.0 and 1.0 inclusive",
         ));
     }
     Ok(crate::coordination::VoronoiConfig { min_solid_angle })
