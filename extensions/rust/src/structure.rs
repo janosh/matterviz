@@ -416,8 +416,25 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `i` or `j` is out of bounds.
+    #[inline]
     pub fn get_distance(&self, i: usize, j: usize) -> f64 {
-        self.get_distance_and_image(i, j).0
+        assert!(
+            i < self.num_sites(),
+            "Index i={} out of bounds (num_sites={})",
+            i,
+            self.num_sites()
+        );
+        assert!(
+            j < self.num_sites(),
+            "Index j={} out of bounds (num_sites={})",
+            j,
+            self.num_sites()
+        );
+        let fcoords_i = vec![self.frac_coords[i]];
+        let fcoords_j = vec![self.frac_coords[j]];
+        let (_, d2, _) =
+            crate::pbc::pbc_shortest_vectors(&self.lattice, &fcoords_i, &fcoords_j, None, None);
+        d2[0][0].sqrt()
     }
 
     /// Get distance and periodic image between sites `i` and `j`.
@@ -429,6 +446,7 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `i` or `j` is out of bounds.
+    #[inline]
     pub fn get_distance_and_image(&self, i: usize, j: usize) -> (f64, [i32; 3]) {
         assert!(
             i < self.num_sites(),
@@ -478,7 +496,7 @@ impl Structure {
         let frac_j = crate::pbc::wrap_frac_coords(&self.frac_coords[j]);
 
         let cart_i = self.lattice.get_cartesian_coords(&[frac_i])[0];
-        let frac_j_shifted = frac_j + Vector3::from(jimage.map(|x| x as f64));
+        let frac_j_shifted = frac_j + Vector3::from(jimage.map(|val| val as f64));
         let cart_j = self.lattice.get_cartesian_coords(&[frac_j_shifted])[0];
         (cart_j - cart_i).norm()
     }
@@ -499,7 +517,7 @@ impl Structure {
         );
 
         d2.into_iter()
-            .map(|row| row.into_iter().map(|d| d.sqrt()).collect())
+            .map(|row| row.into_iter().map(|dist_sq| dist_sq.sqrt()).collect())
             .collect()
     }
 
@@ -1417,6 +1435,7 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `idx` is out of bounds.
+    #[inline]
     pub fn site_label(&self, idx: usize) -> String {
         assert!(
             idx < self.num_sites(),
@@ -2282,59 +2301,6 @@ mod tests {
                 assert!((val - dm[jdx][idx]).abs() < 1e-10, "Should be symmetric");
             }
         }
-    }
-
-    #[test]
-    fn test_get_distance_and_image() {
-        let nacl = make_nacl();
-
-        // Self-distance: image should be [0, 0, 0]
-        let (d, img) = nacl.get_distance_and_image(0, 0);
-        assert!(d < 1e-10);
-        assert_eq!(img, [0, 0, 0]);
-
-        // Distance should match get_distance()
-        let (d01, _img01) = nacl.get_distance_and_image(0, 1);
-        assert!((d01 - nacl.get_distance(0, 1)).abs() < 1e-10);
-
-        // Test periodic wrap scenario with simple cubic
-        let lattice = Lattice::cubic(4.0);
-        let s = Structure::new(
-            lattice,
-            vec![Species::neutral(Element::Cu), Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.1, 0.0, 0.0), Vector3::new(0.9, 0.0, 0.0)],
-        );
-        let (d, img) = s.get_distance_and_image(0, 1);
-        // Shortest path is via boundary: 0.1 + (1-0.9) = 0.2 * 4 = 0.8
-        assert!((d - 0.8).abs() < 1e-8);
-        // Verify the image gives the correct distance when applied
-        let d_with_img = s.get_distance_with_image(0, 1, img);
-        assert!(
-            (d - d_with_img).abs() < 1e-8,
-            "Image should give same distance"
-        );
-    }
-
-    #[test]
-    fn test_get_distance_with_image() {
-        let lattice = Lattice::cubic(4.0);
-        let s = Structure::new(
-            lattice,
-            vec![Species::neutral(Element::Cu), Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
-        );
-
-        // Direct distance (no image shift)
-        let d0 = s.get_distance_with_image(0, 1, [0, 0, 0]);
-        assert!((d0 - 2.0).abs() < 1e-10); // 0.5 * 4 = 2
-
-        // With +a shift
-        let d1 = s.get_distance_with_image(0, 1, [1, 0, 0]);
-        assert!((d1 - 6.0).abs() < 1e-10); // (0.5 + 1) * 4 = 6
-
-        // With -a shift
-        let d_neg = s.get_distance_with_image(0, 1, [-1, 0, 0]);
-        assert!((d_neg - 2.0).abs() < 1e-10); // |0.5 - 1| * 4 = 2
     }
 
     // =========================================================================

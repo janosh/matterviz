@@ -248,9 +248,14 @@ pub fn pbc_shortest_vectors(
             result_images[idx][jdx] = if let Some(ref mapping) = lll_mapping {
                 // Transform from LLL basis back to original: orig_image = mapping * lll_image
                 let orig_vec = mapping * Vector3::from(lll_image);
-                std::array::from_fn(|k| orig_vec[k].round() as i32)
+                // Debug check: transformed image should be near-integer (within 0.1)
+                debug_assert!(
+                    (0..3).all(|axis| (orig_vec[axis] - orig_vec[axis].round()).abs() < 0.1),
+                    "LLL image transform gave non-integer result: {orig_vec:?}"
+                );
+                std::array::from_fn(|axis| orig_vec[axis].round() as i32)
             } else {
-                lll_image.map(|x| x as i32)
+                lll_image.map(|val| val as i32)
             };
         }
     }

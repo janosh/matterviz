@@ -42,6 +42,18 @@ fn to_str_refs(strings: &[String]) -> Vec<&str> {
     strings.iter().map(|s| s.as_str()).collect()
 }
 
+/// Check if site indices are within bounds, returning PyIndexError if not.
+fn check_site_bounds(num_sites: usize, indices: &[usize]) -> PyResult<()> {
+    for &idx in indices {
+        if idx >= num_sites {
+            return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+                "Site index {idx} out of bounds (num_sites={num_sites})"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Python wrapper for StructureMatcher.
 ///
 /// Provides structure matching functionality from Python, accepting
@@ -756,14 +768,9 @@ fn distance_matrix(structure: &str) -> PyResult<Vec<Vec<f64>>> {
 ///     which periodic image of site j is closest to site i.
 #[pyfunction]
 fn get_distance_and_image(structure: &str, i: usize, j: usize) -> PyResult<(f64, [i32; 3])> {
-    let s = parse_struct(structure)?;
-    let n = s.num_sites();
-    if i >= n || j >= n {
-        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
-            "Site index out of bounds: i={i}, j={j}, num_sites={n}"
-        )));
-    }
-    Ok(s.get_distance_and_image(i, j))
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[i, j])?;
+    Ok(parsed.get_distance_and_image(i, j))
 }
 
 /// Get distance to a specific periodic image of site j.
@@ -778,14 +785,9 @@ fn get_distance_and_image(structure: &str, i: usize, j: usize) -> PyResult<(f64,
 ///     float: Distance to the specified periodic image
 #[pyfunction]
 fn get_distance_with_image(structure: &str, i: usize, j: usize, jimage: [i32; 3]) -> PyResult<f64> {
-    let s = parse_struct(structure)?;
-    let n = s.num_sites();
-    if i >= n || j >= n {
-        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
-            "Site index out of bounds: i={i}, j={j}, num_sites={n}"
-        )));
-    }
-    Ok(s.get_distance_with_image(i, j, jimage))
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[i, j])?;
+    Ok(parsed.get_distance_with_image(i, j, jimage))
 }
 
 /// Get Cartesian distance from a site to an arbitrary point.
@@ -801,15 +803,9 @@ fn get_distance_with_image(structure: &str, i: usize, j: usize, jimage: [i32; 3]
 ///     float: Distance in Angstroms
 #[pyfunction]
 fn distance_from_point(structure: &str, idx: usize, point: [f64; 3]) -> PyResult<f64> {
-    let s = parse_struct(structure)?;
-    if idx >= s.num_sites() {
-        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
-            "Site index {} out of bounds for structure with {} sites",
-            idx,
-            s.num_sites()
-        )));
-    }
-    Ok(s.distance_from_point(idx, Vector3::new(point[0], point[1], point[2])))
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[idx])?;
+    Ok(parsed.distance_from_point(idx, point.into()))
 }
 
 /// Check if two sites are periodic images of each other.
@@ -828,14 +824,9 @@ fn distance_from_point(structure: &str, idx: usize, point: [f64; 3]) -> PyResult
 #[pyfunction]
 #[pyo3(signature = (structure, i, j, tolerance = 1e-8))]
 fn is_periodic_image(structure: &str, i: usize, j: usize, tolerance: f64) -> PyResult<bool> {
-    let s = parse_struct(structure)?;
-    let n = s.num_sites();
-    if i >= n || j >= n {
-        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
-            "Site index out of bounds: i={i}, j={j}, num_sites={n}"
-        )));
-    }
-    Ok(s.is_periodic_image(i, j, tolerance))
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[i, j])?;
+    Ok(parsed.is_periodic_image(i, j, tolerance))
 }
 
 /// Get label for a specific site.
@@ -850,15 +841,9 @@ fn is_periodic_image(structure: &str, i: usize, j: usize, tolerance: f64) -> PyR
 ///     str: Site label
 #[pyfunction]
 fn site_label(structure: &str, idx: usize) -> PyResult<String> {
-    let s = parse_struct(structure)?;
-    if idx >= s.num_sites() {
-        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
-            "Site index {} out of bounds for structure with {} sites",
-            idx,
-            s.num_sites()
-        )));
-    }
-    Ok(s.site_label(idx))
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[idx])?;
+    Ok(parsed.site_label(idx))
 }
 
 /// Get labels for all sites.
