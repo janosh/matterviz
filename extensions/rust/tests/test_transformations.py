@@ -460,3 +460,20 @@ class TestErrorHandling:
             ferrox.ewald_energy(nacl_with_oxi_json, real_cutoff=0.0)
         with pytest.raises(ValueError, match="real_cutoff must be positive"):
             ferrox.ewald_energy(nacl_with_oxi_json, real_cutoff=-5.0)
+
+    def test_ewald_non_neutral_system(self) -> None:
+        """Non-neutral systems should raise ValueError."""
+        # Structure with only Na+ (no compensating negative charge)
+        non_neutral = json.dumps({
+            "@module": "pymatgen.core.structure",
+            "@class": "Structure",
+            "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
+            "sites": [
+                {
+                    "species": [{"element": "Na", "oxidation_state": 1, "occu": 1}],
+                    "abc": [0, 0, 0],
+                },
+            ],
+        })
+        with pytest.raises(ValueError, match="charge-neutral"):
+            ferrox.ewald_energy(non_neutral)

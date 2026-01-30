@@ -104,13 +104,14 @@ impl Ewald {
 
     /// Get charges from oxidation states.
     ///
-    /// Returns an error if any site lacks an oxidation state.
+    /// Returns an error if any site lacks an oxidation state or if the
+    /// structure is not charge-neutral (Ewald summation diverges otherwise).
     fn get_charges(&self, structure: &Structure) -> Result<Vec<f64>> {
         let mut charges = Vec::with_capacity(structure.num_sites());
 
         for (idx, site_occ) in structure.site_occupancies.iter().enumerate() {
             // For disordered sites, use weighted average of charges
-            let mut total_charge = 0.0;
+            let mut site_charge = 0.0;
             for (species, occ) in &site_occ.species {
                 let oxi = species
                     .oxidation_state
@@ -121,9 +122,23 @@ impl Ewald {
                             idx, species
                         ),
                     })?;
-                total_charge += (oxi as f64) * occ;
+                site_charge += (oxi as f64) * occ;
             }
-            charges.push(total_charge);
+            charges.push(site_charge);
+        }
+
+        // Validate charge neutrality - Ewald summation diverges for non-neutral systems
+        let net_charge: f64 = charges.iter().sum();
+        const CHARGE_TOLERANCE: f64 = 1e-8;
+        if net_charge.abs() > CHARGE_TOLERANCE {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "Structure is not charge-neutral (net charge = {:.6}). \
+                     Ewald summation requires charge neutrality.",
+                    net_charge
+                ),
+            });
         }
 
         Ok(charges)
@@ -168,14 +183,20 @@ impl Ewald {
 
         let mut site_energies = vec![0.0; n_sites];
 
-        // Real space contribution
+        // Real space contribution - use upper triangle like real_space_energy()
+        // to ensure consistency and avoid double-counting issues
         let real_cutoff_sq = self.real_cutoff.powi(2);
         for idx_i in 0..n_sites {
             let pos_i = structure
                 .lattice
                 .get_cartesian_coord(&structure.frac_coords[idx_i]);
 
-            for idx_j in 0..n_sites {
+            for idx_j in idx_i..n_sites {
+                // For diagonal (i==j), we use factor 0.5 because periodic images
+                // come in symmetric pairs (L and -L). For off-diagonal, factor 1.0
+                // since upper triangle visits each pair once.
+                let factor = if idx_i == idx_j { 0.5 } else { 1.0 };
+
                 // Include periodic images
                 for na in -3i32..=3 {
                     for nb in -3i32..=3 {
@@ -199,9 +220,19 @@ impl Ewald {
                             let r = r_sq.sqrt();
                             let erfc_term = erfc(eta * r) / r;
 
-                            // Half because we count each pair twice
-                            site_energies[idx_i] +=
-                                0.5 * coulomb_const * charges[idx_i] * charges[idx_j] * erfc_term;
+                            let contrib = factor
+                                * coulomb_const
+                                * charges[idx_i]
+                                * charges[idx_j]
+                                * erfc_term;
+
+                            // Distribute energy equally to both sites for off-diagonal
+                            if idx_i == idx_j {
+                                site_energies[idx_i] += contrib;
+                            } else {
+                                site_energies[idx_i] += 0.5 * contrib;
+                                site_energies[idx_j] += 0.5 * contrib;
+                            }
                         }
                     }
                 }
@@ -584,9 +615,9 @@ mod tests {
 
         // Count matches sites
         assert_eq!(site_energies.len(), structure.num_sites());
-        // Sum approximately equals total (allow ~1 eV tolerance due to reciprocal space)
+        // Sum should equal total energy (reciprocal space is evenly distributed)
         let sum: f64 = site_energies.iter().sum();
-        assert_relative_eq!(sum, total, epsilon = 1.0);
+        assert_relative_eq!(sum, total, epsilon = 1e-10);
     }
 
     #[test]
@@ -722,20 +753,45 @@ mod tests {
     }
 
     #[test]
-    fn test_ewald_single_atom() {
+    fn test_ewald_non_neutral_fails() {
         let a = 5.0;
         let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(a, a, a)));
         let na = Species::new(Element::Na, Some(1));
 
+        // Single Na+ ion is not charge-neutral
         let structure = Structure::new(lattice, vec![na], vec![Vector3::new(0.0, 0.0, 0.0)]);
 
         let ewald = Ewald::new();
         let result = ewald.energy(&structure);
 
-        // Single ion: only self-energy, which should be non-zero
-        if let Ok(energy) = result {
-            assert!(energy != 0.0);
-        }
+        // Should fail because structure is not charge-neutral
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("charge-neutral"),
+            "Error should mention charge neutrality: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_ewald_unbalanced_charges_fails() {
+        let a = 5.64;
+        let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(a, a, a)));
+
+        // Two Na+ ions without compensating negative charge
+        let na = Species::new(Element::Na, Some(1));
+        let structure = Structure::new(
+            lattice,
+            vec![na, na],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        let ewald = Ewald::new();
+        let result = ewald.energy(&structure);
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("net charge"));
     }
 
     // ========== Consistency Tests ==========
