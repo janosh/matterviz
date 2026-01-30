@@ -12,11 +12,18 @@ use crate::species::{SiteOccupancy, Species};
 use crate::transformations::{OrderDisorderedConfig, PartialRemoveConfig};
 use itertools::Itertools;
 use moyo::MoyoDataset;
-use moyo::base::{AngleTolerance, Cell as MoyoCell, Lattice as MoyoLattice};
+use moyo::base::{
+    AngleTolerance, Cell as MoyoCell, Lattice as MoyoLattice, Operation as MoyoOperation,
+};
 use moyo::data::Setting;
 use nalgebra::{Matrix3, Vector3};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+/// A symmetry operation represented as a rotation matrix and translation vector.
+/// The rotation is a 3x3 integer matrix (in fractional coordinates) and the
+/// translation is a 3-element float array (in fractional coordinates).
+pub type SymmetryOperation = ([[i32; 3]; 3], [f64; 3]);
 
 /// Lattice reduction algorithm choice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -281,8 +288,22 @@ impl Structure {
 
     /// Get the spacegroup number using moyo.
     pub fn get_spacegroup_number(&self, symprec: f64) -> Result<i32> {
+        Ok(self.get_symmetry_dataset(symprec)?.number)
+    }
+
+    /// Get the full symmetry dataset from moyo.
+    ///
+    /// This is more efficient when you need multiple symmetry properties,
+    /// as it only runs the symmetry analysis once.
+    pub fn get_symmetry_dataset(&self, symprec: f64) -> Result<MoyoDataset> {
+        if self.num_sites() == 0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: "Cannot compute symmetry for empty structure (0 sites)".to_string(),
+            });
+        }
         let moyo_cell = self.to_moyo_cell();
-        let dataset = MoyoDataset::new(
+        MoyoDataset::new(
             &moyo_cell,
             symprec,
             AngleTolerance::Default,
@@ -292,8 +313,74 @@ impl Structure {
         .map_err(|e| FerroxError::MoyoError {
             index: 0,
             reason: format!("{e:?}"),
-        })?;
-        Ok(dataset.number)
+        })
+    }
+
+    /// Get the Hermann-Mauguin spacegroup symbol (e.g., "Fm-3m", "P2_1/c").
+    pub fn get_spacegroup_symbol(&self, symprec: f64) -> Result<String> {
+        Ok(self.get_symmetry_dataset(symprec)?.hm_symbol)
+    }
+
+    /// Get the Hall number (1-530) identifying the specific spacegroup setting.
+    pub fn get_hall_number(&self, symprec: f64) -> Result<i32> {
+        Ok(self.get_symmetry_dataset(symprec)?.hall_number)
+    }
+
+    /// Get the Pearson symbol (e.g., "cF8" for FCC Cu).
+    ///
+    /// The Pearson symbol encodes the crystal system, centering type, and
+    /// number of atoms in the conventional cell.
+    pub fn get_pearson_symbol(&self, symprec: f64) -> Result<String> {
+        Ok(self.get_symmetry_dataset(symprec)?.pearson_symbol)
+    }
+
+    /// Get Wyckoff letters for each site in the structure.
+    ///
+    /// Wyckoff positions describe the site symmetry and multiplicity of each
+    /// atomic position. Sites with the same letter have equivalent positions
+    /// under the space group symmetry.
+    pub fn get_wyckoff_letters(&self, symprec: f64) -> Result<Vec<char>> {
+        Ok(self.get_symmetry_dataset(symprec)?.wyckoffs)
+    }
+
+    /// Get site symmetry symbols for each site (e.g., "m..", "-1", "4mm").
+    ///
+    /// The site symmetry describes the point group symmetry at each atomic site,
+    /// oriented with respect to the standardized cell.
+    pub fn get_site_symmetry_symbols(&self, symprec: f64) -> Result<Vec<String>> {
+        Ok(self.get_symmetry_dataset(symprec)?.site_symmetry_symbols)
+    }
+
+    /// Get symmetry operations in the input cell.
+    ///
+    /// Returns a vector of (rotation_matrix, translation_vector) pairs.
+    /// The rotation is a 3x3 integer matrix in fractional coordinates,
+    /// and the translation is a 3-vector in fractional coordinates.
+    ///
+    /// A symmetry operation transforms a point r to: R @ r + t
+    pub fn get_symmetry_operations(&self, symprec: f64) -> Result<Vec<SymmetryOperation>> {
+        let dataset = self.get_symmetry_dataset(symprec)?;
+        Ok(moyo_ops_to_arrays(&dataset.operations))
+    }
+
+    /// Get equivalent sites (crystallographic orbits).
+    ///
+    /// Returns a vector where orbits[i] is the index of the representative site
+    /// that site i is equivalent to. Sites with the same orbit index are
+    /// related by space group symmetry.
+    ///
+    /// For example, orbits=[0, 0, 2, 2, 2, 2] means sites 0-1 are equivalent
+    /// to site 0, and sites 2-5 are equivalent to site 2.
+    pub fn get_equivalent_sites(&self, symprec: f64) -> Result<Vec<usize>> {
+        Ok(self.get_symmetry_dataset(symprec)?.orbits)
+    }
+
+    /// Get the crystal system based on the spacegroup number.
+    ///
+    /// Returns one of: "triclinic", "monoclinic", "orthorhombic",
+    /// "tetragonal", "trigonal", "hexagonal", "cubic".
+    pub fn get_crystal_system(&self, symprec: f64) -> Result<String> {
+        Ok(spacegroup_to_crystal_system(self.get_symmetry_dataset(symprec)?.number).to_string())
     }
 
     /// Get unique elements in this structure.
@@ -2238,6 +2325,51 @@ impl Structure {
     }
 }
 
+// =============================================================================
+// Symmetry Helper Functions
+// =============================================================================
+
+/// Convert moyo Operations to arrays for easy serialization.
+pub(crate) fn moyo_ops_to_arrays(ops: &[MoyoOperation]) -> Vec<SymmetryOperation> {
+    ops.iter()
+        .map(|op| {
+            let rot = [
+                [
+                    op.rotation[(0, 0)],
+                    op.rotation[(0, 1)],
+                    op.rotation[(0, 2)],
+                ],
+                [
+                    op.rotation[(1, 0)],
+                    op.rotation[(1, 1)],
+                    op.rotation[(1, 2)],
+                ],
+                [
+                    op.rotation[(2, 0)],
+                    op.rotation[(2, 1)],
+                    op.rotation[(2, 2)],
+                ],
+            ];
+            let trans = [op.translation.x, op.translation.y, op.translation.z];
+            (rot, trans)
+        })
+        .collect()
+}
+
+/// Get crystal system from spacegroup number.
+pub(crate) fn spacegroup_to_crystal_system(sg: i32) -> &'static str {
+    match sg {
+        1..=2 => "triclinic",
+        3..=15 => "monoclinic",
+        16..=74 => "orthorhombic",
+        75..=142 => "tetragonal",
+        143..=167 => "trigonal",
+        168..=194 => "hexagonal",
+        195..=230 => "cubic",
+        _ => "unknown",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2381,6 +2513,145 @@ mod tests {
     fn test_get_spacegroup_number() {
         let fcc = make_fcc_conventional(Element::Cu, 3.6);
         assert_eq!(fcc.get_spacegroup_number(1e-4).unwrap(), 225);
+    }
+
+    #[test]
+    fn test_get_spacegroup_symbol() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        // moyo returns space-separated symbols
+        assert_eq!(fcc.get_spacegroup_symbol(1e-4).unwrap(), "F m -3 m");
+        let bcc = make_bcc(Element::Fe, 2.87);
+        assert_eq!(bcc.get_spacegroup_symbol(1e-4).unwrap(), "I m -3 m");
+        let nacl = make_nacl();
+        assert_eq!(nacl.get_spacegroup_symbol(1e-4).unwrap(), "P m -3 m");
+    }
+
+    #[test]
+    fn test_get_hall_number() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        // FCC (Fm-3m) has Hall number 523
+        let hall = fcc.get_hall_number(1e-4).unwrap();
+        assert!(hall > 0 && hall <= 530);
+    }
+
+    #[test]
+    fn test_get_pearson_symbol() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        // FCC Cu conventional cell: face-centered cubic with 4 atoms
+        assert_eq!(fcc.get_pearson_symbol(1e-4).unwrap(), "cF4");
+        let bcc = make_bcc(Element::Fe, 2.87);
+        // BCC Fe: body-centered cubic with 2 atoms
+        assert_eq!(bcc.get_pearson_symbol(1e-4).unwrap(), "cI2");
+    }
+
+    #[test]
+    fn test_get_wyckoff_letters() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        let wyckoffs = fcc.get_wyckoff_letters(1e-4).unwrap();
+        assert_eq!(wyckoffs.len(), 4); // 4 atoms in conventional FCC cell
+        // All should be same Wyckoff position for identical atoms
+        let first = wyckoffs[0];
+        assert!(wyckoffs.iter().all(|&w| w == first));
+    }
+
+    #[test]
+    fn test_get_site_symmetry_symbols() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        let symbols = fcc.get_site_symmetry_symbols(1e-4).unwrap();
+        assert_eq!(symbols.len(), 4);
+        // FCC atoms at high-symmetry positions should have same site symmetry
+        let first = &symbols[0];
+        assert!(symbols.iter().all(|s| s == first));
+    }
+
+    #[test]
+    fn test_get_symmetry_operations() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        let ops = fcc.get_symmetry_operations(1e-4).unwrap();
+        // Fm-3m has 192 operations in the conventional cell
+        assert!(!ops.is_empty());
+        // Check that operations have valid structure
+        for (rot, trans) in &ops {
+            // Rotation determinant should be +/- 1
+            let det = rot[0][0] * (rot[1][1] * rot[2][2] - rot[1][2] * rot[2][1])
+                - rot[0][1] * (rot[1][0] * rot[2][2] - rot[1][2] * rot[2][0])
+                + rot[0][2] * (rot[1][0] * rot[2][1] - rot[1][1] * rot[2][0]);
+            assert!(det == 1 || det == -1);
+            // Translation should be in [0, 1)
+            for &t in trans {
+                assert!((-0.5..=0.5 + 1e-8).contains(&t));
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_equivalent_sites() {
+        // NaCl: 2 sites should be inequivalent (different elements)
+        let nacl = make_nacl();
+        let orbits = nacl.get_equivalent_sites(1e-4).unwrap();
+        assert_eq!(orbits.len(), 2);
+        // Each site should be its own representative since they're different elements
+        assert_eq!(orbits[0], 0);
+        assert_eq!(orbits[1], 1);
+
+        // FCC: All 4 sites should be equivalent
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        let orbits_fcc = fcc.get_equivalent_sites(1e-4).unwrap();
+        assert_eq!(orbits_fcc.len(), 4);
+        // All should map to the same representative
+        let representative = orbits_fcc[0];
+        assert!(orbits_fcc.iter().all(|&o| o == representative));
+    }
+
+    #[test]
+    fn test_get_crystal_system() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        assert_eq!(fcc.get_crystal_system(1e-4).unwrap(), "cubic");
+        let bcc = make_bcc(Element::Fe, 2.87);
+        assert_eq!(bcc.get_crystal_system(1e-4).unwrap(), "cubic");
+        let nacl = make_nacl();
+        assert_eq!(nacl.get_crystal_system(1e-4).unwrap(), "cubic");
+    }
+
+    #[test]
+    fn test_get_symmetry_dataset() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        let dataset = fcc.get_symmetry_dataset(1e-4).unwrap();
+        assert_eq!(dataset.number, 225);
+        assert_eq!(dataset.hm_symbol, "F m -3 m");
+        assert_eq!(dataset.wyckoffs.len(), 4);
+        assert_eq!(dataset.orbits.len(), 4);
+        assert!(!dataset.operations.is_empty());
+    }
+
+    #[test]
+    fn test_empty_structure_symmetry_error() {
+        let empty = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
+        let result = empty.get_symmetry_dataset(1e-4);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("empty structure"));
+    }
+
+    #[test]
+    fn test_crystal_system_coverage() {
+        // Test the spacegroup_to_crystal_system helper
+        assert_eq!(spacegroup_to_crystal_system(1), "triclinic");
+        assert_eq!(spacegroup_to_crystal_system(2), "triclinic");
+        assert_eq!(spacegroup_to_crystal_system(3), "monoclinic");
+        assert_eq!(spacegroup_to_crystal_system(15), "monoclinic");
+        assert_eq!(spacegroup_to_crystal_system(16), "orthorhombic");
+        assert_eq!(spacegroup_to_crystal_system(74), "orthorhombic");
+        assert_eq!(spacegroup_to_crystal_system(75), "tetragonal");
+        assert_eq!(spacegroup_to_crystal_system(142), "tetragonal");
+        assert_eq!(spacegroup_to_crystal_system(143), "trigonal");
+        assert_eq!(spacegroup_to_crystal_system(167), "trigonal");
+        assert_eq!(spacegroup_to_crystal_system(168), "hexagonal");
+        assert_eq!(spacegroup_to_crystal_system(194), "hexagonal");
+        assert_eq!(spacegroup_to_crystal_system(195), "cubic");
+        assert_eq!(spacegroup_to_crystal_system(230), "cubic");
+        assert_eq!(spacegroup_to_crystal_system(0), "unknown");
+        assert_eq!(spacegroup_to_crystal_system(231), "unknown");
     }
 
     #[test]
