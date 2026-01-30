@@ -2740,9 +2740,11 @@ fn get_slab_transformation(lattice: &Lattice, hkl: [i32; 3]) -> [[i32; 3]; 3] {
         result[i] = *v;
     }
 
-    let det = result[0][0] * (result[1][1] * result[2][2] - result[1][2] * result[2][1])
-        - result[0][1] * (result[1][0] * result[2][2] - result[1][2] * result[2][0])
-        + result[0][2] * (result[1][0] * result[2][1] - result[1][1] * result[2][0]);
+    // Use i64 to avoid overflow for large Miller indices
+    let r = |i: usize, j: usize| result[i][j] as i64;
+    let det = r(0, 0) * (r(1, 1) * r(2, 2) - r(1, 2) * r(2, 1))
+        - r(0, 1) * (r(1, 0) * r(2, 2) - r(1, 2) * r(2, 0))
+        + r(0, 2) * (r(1, 0) * r(2, 1) - r(1, 1) * r(2, 0));
 
     if det < 0 {
         for row in &mut result {
@@ -2866,13 +2868,12 @@ impl Structure {
 
         // Create oriented unit cell with a,b in surface plane
         let transform = get_slab_transformation(&self.lattice, hkl);
-        let det = transform[0][0]
-            * (transform[1][1] * transform[2][2] - transform[1][2] * transform[2][1])
-            - transform[0][1]
-                * (transform[1][0] * transform[2][2] - transform[1][2] * transform[2][0])
-            + transform[0][2]
-                * (transform[1][0] * transform[2][1] - transform[1][1] * transform[2][0]);
-        if det.abs() > MAX_SUPERCELL_DET {
+        // Use i64 to avoid overflow for large Miller indices
+        let t = |i: usize, j: usize| transform[i][j] as i64;
+        let det = t(0, 0) * (t(1, 1) * t(2, 2) - t(1, 2) * t(2, 1))
+            - t(0, 1) * (t(1, 0) * t(2, 2) - t(1, 2) * t(2, 0))
+            + t(0, 2) * (t(1, 0) * t(2, 1) - t(1, 1) * t(2, 0));
+        if det.abs() > MAX_SUPERCELL_DET as i64 {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
                 reason: format!(
