@@ -2497,16 +2497,26 @@ fn reduce_miller_indices(hkl: [i32; 3]) -> [i32; 3] {
     }
 }
 
-/// Compute LCM of two integers.
-fn int_lcm(a: i32, b: i32) -> i32 {
-    fn int_gcd(a: i32, b: i32) -> i32 {
-        if b == 0 { a.abs() } else { int_gcd(b, a % b) }
-    }
+/// Compute GCD of two integers using Euclidean algorithm.
+fn int_gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a.abs() } else { int_gcd(b, a % b) }
+}
+
+/// Compute LCM of two integers, avoiding intermediate overflow.
+/// Returns None if result would overflow i32.
+fn int_lcm_checked(a: i32, b: i32) -> Option<i32> {
     if a == 0 || b == 0 {
-        0
-    } else {
-        (a * b).abs() / int_gcd(a, b)
+        return Some(0);
     }
+    let gcd = int_gcd(a, b);
+    let a_div = a.abs() / gcd;
+    // Use checked multiplication to detect overflow
+    a_div.checked_mul(b.abs())
+}
+
+/// Compute LCM of two integers, saturating at i32::MAX on overflow.
+fn int_lcm(a: i32, b: i32) -> i32 {
+    int_lcm_checked(a, b).unwrap_or(i32::MAX)
 }
 
 /// Calculate the slab transformation matrix using pymatgen's algorithm.
@@ -2644,6 +2654,12 @@ fn identify_layer_positions(frac_coords: &[Vector3<f64>], tol: f64) -> Vec<f64> 
 /// Maximum allowed n_layers to prevent integer overflow when casting to i32.
 const MAX_SLAB_LAYERS: usize = 10_000;
 
+/// Maximum allowed supercell determinant (atoms in oriented cell) to prevent memory issues.
+const MAX_SUPERCELL_DET: i32 = 100_000;
+
+/// Maximum allowed total atoms in final slab (det × n_layers × original_atoms).
+const MAX_SLAB_ATOMS: usize = 100_000;
+
 impl Structure {
     /// Generate a surface slab with the specified configuration.
     ///
@@ -2711,7 +2727,51 @@ impl Structure {
         }
 
         // Create oriented unit cell with a,b in surface plane
-        let oriented = self.make_supercell(get_slab_transformation(&self.lattice, hkl))?;
+        let transform = get_slab_transformation(&self.lattice, hkl);
+        let det = transform[0][0]
+            * (transform[1][1] * transform[2][2] - transform[1][2] * transform[2][1])
+            - transform[0][1]
+                * (transform[1][0] * transform[2][2] - transform[1][2] * transform[2][0])
+            + transform[0][2]
+                * (transform[1][0] * transform[2][1] - transform[1][1] * transform[2][0]);
+        if det.abs() > MAX_SUPERCELL_DET {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "Miller indices {:?} require supercell with {} unit cells, exceeding maximum of {}",
+                    hkl,
+                    det.abs(),
+                    MAX_SUPERCELL_DET
+                ),
+            });
+        }
+
+        // Pre-compute expected total atoms to avoid creating huge structures
+        let d_spacing = compute_d_spacing(&self.lattice, hkl);
+        let n_layers_estimate = if config.in_unit_planes {
+            config.min_slab_size.ceil() as usize
+        } else {
+            (config.min_slab_size / d_spacing).ceil() as usize
+        }
+        .max(1);
+        let expected_atoms =
+            self.frac_coords.len() * (det.unsigned_abs() as usize) * n_layers_estimate;
+        if expected_atoms > MAX_SLAB_ATOMS {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "Slab would contain ~{} atoms ({} sites × {} unit cells × {} layers), exceeding maximum of {}. \
+                     Consider using smaller Miller indices or reducing min_slab_size.",
+                    expected_atoms,
+                    self.frac_coords.len(),
+                    det.abs(),
+                    n_layers_estimate,
+                    MAX_SLAB_ATOMS
+                ),
+            });
+        }
+
+        let oriented = self.make_supercell(transform)?;
 
         // Identify unique layer positions in the oriented cell (single repeat)
         // This preserves all distinct terminations within one unit cell
