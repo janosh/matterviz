@@ -2510,7 +2510,11 @@ fn find_in_plane_vectors(hkl: [i32; 3]) -> ([i32; 3], [i32; 3]) {
 }
 
 /// Get the transformation matrix that creates an oriented unit cell.
-/// The new lattice will have a,b in the surface plane and c perpendicular to it.
+/// The new lattice will have a,b in the surface plane and c along the [hkl] direction.
+///
+/// Note: For orthogonal lattices (cubic, tetragonal, orthorhombic), c is perpendicular
+/// to the surface. For non-orthogonal lattices (monoclinic, triclinic, hexagonal),
+/// the c-vector may be tilted. Full reciprocal-space normal computation is not yet implemented.
 fn get_slab_transformation(hkl: [i32; 3]) -> [[i32; 3]; 3] {
     let hkl = reduce_miller_indices(hkl);
     let (a_int, b_int) = find_in_plane_vectors(hkl);
@@ -2587,15 +2591,32 @@ impl Structure {
                 reason: "Cannot generate slab from empty structure".to_string(),
             });
         }
+        if !config.min_slab_size.is_finite() || config.min_slab_size <= 0.0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: "min_slab_size must be positive and finite".to_string(),
+            });
+        }
         if config.min_vacuum_size < 0.0 {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
                 reason: "min_vacuum_size must be non-negative".to_string(),
             });
         }
+        if !config.symprec.is_finite() || config.symprec <= 0.0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: "symprec must be positive and finite".to_string(),
+            });
+        }
 
         // Create oriented unit cell with a,b in surface plane
         let oriented = self.make_supercell(get_slab_transformation(hkl))?;
+
+        // Identify unique layer positions in the oriented cell (single repeat)
+        // This preserves all distinct terminations within one unit cell
+        let oriented_layers = identify_layer_positions(&oriented.frac_coords, config.symprec);
+        let unique_terminations = oriented_layers.len().max(1);
 
         // Determine slab thickness in number of unit cells
         let d_spacing = compute_d_spacing(&self.lattice, hkl);
@@ -2624,9 +2645,9 @@ impl Structure {
             oriented
         };
 
-        // Identify unique layer positions for terminations
+        // Use layer positions from supercell for shifting, but limit to unique terminations
         let layer_positions = identify_layer_positions(&slab_supercell.frac_coords, config.symprec);
-        let termination_count = layer_positions.len().min(n_layers).max(1);
+        let termination_count = unique_terminations.min(layer_positions.len()).max(1);
 
         let mut slabs = Vec::with_capacity(termination_count);
 
@@ -4970,19 +4991,11 @@ mod tests {
         assert!(cfg.in_unit_planes);
     }
 
-    fn make_simple_cubic() -> Structure {
-        Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Cu)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        )
-    }
-
     #[test]
     fn test_make_slab_basic() {
         use super::SlabConfig;
 
-        let cubic = make_simple_cubic();
+        let cubic = make_cu_cubic(4.0);
         let slab = cubic
             .make_slab(
                 &SlabConfig::new([1, 0, 0])
@@ -5004,7 +5017,7 @@ mod tests {
     fn test_make_slab_various_surfaces() {
         use super::SlabConfig;
 
-        let cubic = make_simple_cubic();
+        let cubic = make_cu_cubic(4.0);
 
         for hkl in [[1, 0, 0], [1, 1, 0], [1, 1, 1], [2, 1, 0], [2, 1, 1]] {
             let slab = cubic
@@ -5031,7 +5044,7 @@ mod tests {
     fn test_make_slab_in_unit_planes() {
         use super::SlabConfig;
 
-        let cubic = make_simple_cubic();
+        let cubic = make_cu_cubic(4.0);
         let slab = cubic
             .make_slab(
                 &SlabConfig::new([1, 0, 0])
@@ -5050,7 +5063,7 @@ mod tests {
     fn test_make_slab_centering() {
         use super::SlabConfig;
 
-        let cubic = make_simple_cubic();
+        let cubic = make_cu_cubic(4.0);
         let avg_z =
             |s: &Structure| s.frac_coords.iter().map(|c| c.z).sum::<f64>() / s.num_sites() as f64;
 
@@ -5083,7 +5096,7 @@ mod tests {
     fn test_make_slab_errors() {
         use super::SlabConfig;
 
-        let cubic = make_simple_cubic();
+        let cubic = make_cu_cubic(4.0);
         let empty = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
 
         // [0,0,0] rejected
@@ -5099,6 +5112,18 @@ mod tests {
         // Empty structure rejected
         let err = empty.make_slab(&SlabConfig::new([1, 0, 0])).unwrap_err();
         assert!(err.to_string().contains("empty"));
+
+        // Non-positive slab size rejected
+        let err = cubic
+            .make_slab(&SlabConfig::new([1, 0, 0]).with_min_slab_size(0.0))
+            .unwrap_err();
+        assert!(err.to_string().contains("positive"));
+
+        // Invalid symprec rejected
+        let err = cubic
+            .make_slab(&SlabConfig::new([1, 0, 0]).with_symprec(0.0))
+            .unwrap_err();
+        assert!(err.to_string().contains("positive"));
     }
 
     #[test]

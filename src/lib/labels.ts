@@ -269,19 +269,6 @@ export const superscript_digits = (input: string): string =>
     (match) => SUPERSCRIPT_MAP[match as keyof typeof SUPERSCRIPT_MAP] ?? match,
   )
 
-// Allowed HTML tags for chemical formula rendering (sub, sup, bold, italic)
-const SAFE_HTML_TAGS = new Set([`sub`, `sup`, `b`, `i`, `em`, `strong`])
-
-// Sanitize HTML string to only allow safe tags for chemical formula display.
-// Strips all attributes to prevent XSS via event handlers.
-export function sanitize_html(html: string): string {
-  return html.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (match, tag_name) => {
-    const lower_tag = tag_name.toLowerCase()
-    if (!SAFE_HTML_TAGS.has(lower_tag)) return `` // strip unsafe tags
-    return match.startsWith(`</`) ? `</${lower_tag}>` : `<${lower_tag}>`
-  })
-}
-
 // Trajectory property configuration: clean labels and units as structured data
 export const trajectory_property_config: Record<string, { label: string; unit: string }> =
   {
