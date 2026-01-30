@@ -22,7 +22,7 @@ pub mod site;
 pub mod standard;
 
 // Re-export config types (these are the public API)
-pub use ordering::{OrderDisorderedConfig, PartialRemoveConfig, RemovalAlgo};
+pub use ordering::{OrderDisorderedConfig, PartialRemoveConfig};
 
 // Re-export internal transform types used by Structure methods
 pub(crate) use ordering::{

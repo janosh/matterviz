@@ -1511,9 +1511,9 @@ fn deform(py: Python<'_>, structure: &str, gradient: [[f64; 3]; 3]) -> PyResult<
 fn ewald_energy(structure: &str, accuracy: f64, real_cutoff: f64) -> PyResult<f64> {
     use crate::algorithms::Ewald;
 
-    if accuracy <= 0.0 {
+    if accuracy <= 0.0 || accuracy >= 1.0 {
         return Err(PyValueError::new_err(format!(
-            "accuracy must be positive, got {accuracy}"
+            "accuracy must be in (0, 1), got {accuracy}"
         )));
     }
     if real_cutoff <= 0.0 {

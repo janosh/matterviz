@@ -50,7 +50,7 @@ pub(crate) mod transformations;
 
 // Re-export config structs for use with Structure transformation methods
 pub use algorithms::EnumConfig;
-pub use transformations::{OrderDisorderedConfig, PartialRemoveConfig, RemovalAlgo};
+pub use transformations::{OrderDisorderedConfig, PartialRemoveConfig};
 
 // I/O
 pub mod cif;
