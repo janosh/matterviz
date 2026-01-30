@@ -1,9 +1,9 @@
 <script lang="ts">
   import { replaceState } from '$app/navigation'
   import type { ElementSymbol } from '$lib'
-  import Spinner from '$lib/feedback/Spinner.svelte'
   import type { PhaseData } from '$lib/convex-hull'
   import { ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import { tick } from 'svelte'
 
   type Dimension = `2d` | `3d` | `4d`
@@ -20,6 +20,7 @@
   let enable_click_selection = $state(true)
   let render_start = $state(0)
   let render_time_ms = $state(0)
+  let custom_title = $state<string | undefined>(undefined)
 
   const ELEMENTS: Record<Dimension, ElementSymbol[]> = {
     '2d': [`Fe`, `O`],
@@ -112,16 +113,21 @@
     if (!isNaN(hull) && hull >= 0) max_hull_dist = hull
     const click_sel = params.get(`click_selection`)
     if (click_sel !== null) enable_click_selection = click_sel !== `false`
+    const title_param = params.get(`title`)
+    if (title_param !== null) custom_title = title_param
     // Initial generation after URL params are loaded
     regenerate()
   })
 
   function update_url(): void {
     if (typeof window === `undefined`) return
-    replaceState(
-      `?dim=${dimension}&count=${entry_count}&hull_dist=${max_hull_dist}`,
-      {},
-    )
+    const params = new URLSearchParams()
+    params.set(`dim`, dimension)
+    params.set(`count`, String(entry_count))
+    params.set(`hull_dist`, String(max_hull_dist))
+    if (!enable_click_selection) params.set(`click_selection`, `false`)
+    if (custom_title) params.set(`title`, custom_title)
+    replaceState(`?${params.toString()}`, {})
   }
 
   const PRESETS = [100, 500, 1000, 2500, 5000, 10000]
@@ -217,7 +223,10 @@
       {#if dimension === `2d`}
         <ConvexHull2D
           entries={generated_entries}
-          controls={{ title: `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})` }}
+          controls={{
+            title: custom_title ??
+              `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})`,
+          }}
           {show_stable}
           {show_unstable}
           max_hull_dist_show_phases={max_hull_dist}
@@ -227,7 +236,10 @@
       {:else if dimension === `3d`}
         <ConvexHull3D
           entries={generated_entries}
-          controls={{ title: `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})` }}
+          controls={{
+            title: custom_title ??
+              `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})`,
+          }}
           {show_stable}
           {show_unstable}
           max_hull_dist_show_phases={max_hull_dist}
@@ -237,7 +249,10 @@
       {:else}
         <ConvexHull4D
           entries={generated_entries}
-          controls={{ title: `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})` }}
+          controls={{
+            title: custom_title ??
+              `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})`,
+          }}
           {show_stable}
           {show_unstable}
           max_hull_dist_show_phases={max_hull_dist}

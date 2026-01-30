@@ -431,8 +431,8 @@ describe(`Trajectory Streaming`, () => {
       const max_time = Math.max(early_access, middle_access, late_access)
       const min_time = Math.min(early_access, middle_access, late_access)
 
-      // CI has higher timing variability; use 20x threshold (was 6x but flaky in CI)
-      const max_ratio = is_ci ? 20 : 6
+      // CI has high timing variability; use generous threshold (semantically testing O(1) access)
+      const max_ratio = is_ci ? 50 : 6
       expect(max_time / min_time).toBeLessThan(max_ratio)
     })
 

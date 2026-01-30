@@ -10,7 +10,7 @@ keywords = ["crystallography", "materials-science", "structure-matching"]
 
 [lib]
 name = "ferrox"
-crate-type = ["cdylib", "rlib"] # cdylib for Python, rlib for Rust
+crate-type = ["cdylib", "rlib"] # cdylib for Python/WASM, rlib for Rust
 
 [dependencies]
 # Python bindings
@@ -20,8 +20,13 @@ pyo3 = { version = "0.27.2", features = [
 ], optional = true }
 
 # WASM bindings
-wasm-bindgen = { version = "0.2", optional = true }
-js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2.108", optional = true }
+js-sys = { version = "0.3.85", optional = true }
+serde-wasm-bindgen = { version = "0.6.5", optional = true }
+console_error_panic_hook = { version = "0.1.7", optional = true }
+# WASM random number generation - need js feature for wasm32-unknown-unknown
+# This is a regular dep (not optional) so the js feature applies to rand's transitive dep
+getrandom = { version = "0.2", features = ["js"] }
 
 # Math
 nalgebra = "0.34"
@@ -29,8 +34,8 @@ nalgebra = "0.34"
 # Symmetry - same underlying Rust crate as moyopy
 moyo = "0.7"
 
-# Parallelism
-rayon = "1.11"
+# Parallelism (not used in WASM builds)
+rayon = { version = "1.11", optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -39,7 +44,7 @@ serde_json = "1.0"
 # Algorithms
 pathfinding = "4.14" # Hungarian algorithm (kuhn_munkres)
 itertools = "0.14"   # permutations for fit_anonymous
-rand = "0.9"         # random perturbations
+rand = "0.8"         # random perturbations (0.8 uses getrandom 0.2 with simpler WASM support)
 regex = "1.12"       # formula parsing
 
 # Utilities
@@ -63,9 +68,15 @@ tempfile = "3"
 pyo3-build-config = { version = "0.27.2", optional = true }
 
 [features]
-default = []
-python = ["dep:pyo3", "dep:pyo3-build-config"]
-wasm = ["dep:wasm-bindgen", "dep:js-sys"]
+default = ["rayon"]
+python = ["dep:pyo3", "dep:pyo3-build-config", "rayon"]
+wasm = [
+  "dep:console_error_panic_hook",
+  "dep:js-sys",
+  "dep:serde-wasm-bindgen",
+  "dep:wasm-bindgen",
+]
+rayon = ["dep:rayon"]
 
 [[bench]]
 name = "matcher_bench"

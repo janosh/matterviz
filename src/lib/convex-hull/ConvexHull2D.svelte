@@ -6,7 +6,7 @@
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
   import type { D3SymbolName } from '$lib/labels'
-  import { symbol_map } from '$lib/labels'
+  import { sanitize_html, symbol_map } from '$lib/labels'
   import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import type {
     AxisConfig,
@@ -783,7 +783,7 @@
       selected_entry,
     })}
     <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
-      {merged_controls.title || phase_stats?.chemical_system}
+      {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
     </h3>
 
     <ClickFeedback
