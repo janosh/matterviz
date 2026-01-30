@@ -24,12 +24,15 @@ wasm-bindgen = { version = "0.2.108", optional = true }
 js-sys = { version = "0.3.85", optional = true }
 serde-wasm-bindgen = { version = "0.6.5", optional = true }
 console_error_panic_hook = { version = "0.1.7", optional = true }
-# WASM random number generation - need js feature for wasm32-unknown-unknown
-# This is a regular dep (not optional) so the js feature applies to rand's transitive dep
-getrandom = { version = "0.2", features = ["js"] }
+# WASM random number generation
+# getrandom 0.2.x: needs "js" feature for wasm32-unknown-unknown (used by rand 0.8)
+# getrandom 0.3.x: needs "wasm_js" feature + rustflag config in .cargo/config.toml (used by meshless_voronoi -> ahash)
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 # Math
 nalgebra = "0.34"
+glam = "0.27"  # Vector math for Voronoi (compatible with meshless_voronoi)
 
 # Symmetry - same underlying Rust crate as moyopy
 moyo = "0.7"
@@ -42,10 +45,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Algorithms
-pathfinding = "4.14" # Hungarian algorithm (kuhn_munkres)
-itertools = "0.14"   # permutations for fit_anonymous
-rand = "0.8"         # random perturbations (0.8 uses getrandom 0.2 with simpler WASM support)
-regex = "1.12"       # formula parsing
+pathfinding = "4.14"      # Hungarian algorithm (kuhn_munkres)
+itertools = "0.14"        # permutations for fit_anonymous
+rand = "0.8"              # random perturbations (0.8 uses getrandom 0.2 with simpler WASM support)
+regex = "1.12"            # formula parsing
+meshless_voronoi = "0.7"  # Voronoi tessellation for coordination analysis
 
 # Utilities
 indexmap = { version = "2.13", features = ["serde"] }

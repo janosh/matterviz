@@ -42,6 +42,7 @@ pub mod structure;
 // Algorithms
 pub mod algorithms;
 pub mod batch;
+pub mod coordination;
 pub mod matcher;
 pub mod pbc;
 
