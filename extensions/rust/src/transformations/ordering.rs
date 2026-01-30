@@ -135,11 +135,11 @@ impl PartialOrd for EnergyStructure {
 
 impl Ord for EnergyStructure {
     fn cmp(&self, other: &Self) -> CmpOrdering {
-        // Reverse ordering: max-heap becomes min-heap for top-k lowest
-        // We want to pop the HIGHEST energy when heap exceeds capacity
-        other
-            .energy
-            .partial_cmp(&self.energy)
+        // Standard ordering: highest energy at top of heap
+        // When heap exceeds capacity, pop() removes highest energy (worst)
+        // This keeps the k lowest-energy (best) structures
+        self.energy
+            .partial_cmp(&other.energy)
             .unwrap_or(CmpOrdering::Equal)
     }
 }
@@ -229,8 +229,8 @@ impl OrderDisorderedTransform {
     {
         let max = self.config.max_structures.unwrap_or(usize::MAX);
 
-        // Use a max-heap (with inverted ordering) to keep k lowest energies
-        // When heap exceeds k, pop the highest energy (top of max-heap)
+        // Use a max-heap to keep k lowest energies
+        // Highest energy is at top, so pop() removes the worst structure
         let mut heap: BinaryHeap<EnergyStructure> = BinaryHeap::new();
 
         for species_list in orderings_iter {
@@ -266,7 +266,7 @@ impl OrderDisorderedTransform {
 
         // Extract results sorted by energy (lowest first)
         let mut results: Vec<_> = heap.into_vec();
-        // Sort ascending by energy (EnergyStructure has inverted Ord, so reverse)
+        // Sort ascending by energy
         results.sort_by(|a, b| {
             a.energy
                 .partial_cmp(&b.energy)
@@ -724,6 +724,83 @@ mod tests {
 
         // 2^2 = 4 ways to order two sites with 2 options each
         assert_eq!(orderings.len(), 4);
+    }
+
+    #[test]
+    fn test_order_disordered_heap_keeps_lowest_energies() {
+        // This test verifies that when using sort_by_energy with max_structures,
+        // the heap correctly keeps the LOWEST energy structures, not the highest.
+        let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(5.64, 5.64, 5.64)));
+
+        // NaCl-like structure with disordered Na/K site
+        // Na+ and K+ have different ionic radii, so energies will differ
+        let na = Species::new(Element::Na, Some(1));
+        let k = Species::new(Element::K, Some(1));
+        let cl = Species::new(Element::Cl, Some(-1));
+
+        // Two cation sites (disordered Na/K) + two Cl sites
+        let cation_site = SiteOccupancy::new(vec![(na, 0.5), (k, 0.5)]);
+        let cl_site = SiteOccupancy::ordered(cl);
+
+        let structure = Structure::new_from_occupancies(
+            lattice,
+            vec![cation_site.clone(), cation_site, cl_site.clone(), cl_site],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.0),
+                Vector3::new(0.5, 0.0, 0.5),
+                Vector3::new(0.0, 0.5, 0.5),
+            ],
+        );
+
+        // Get all 4 orderings with energies
+        let config_all = OrderDisorderedConfig {
+            max_structures: None,
+            sort_by_energy: true,
+            compute_energy: true,
+            ..Default::default()
+        };
+        let all_orderings: Vec<_> = OrderDisorderedTransform::new(config_all)
+            .iter_apply(&structure)
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Get just top 2 lowest energy
+        let config_top2 = OrderDisorderedConfig {
+            max_structures: Some(2),
+            sort_by_energy: true,
+            compute_energy: true,
+            ..Default::default()
+        };
+        let top2_orderings: Vec<_> = OrderDisorderedTransform::new(config_top2)
+            .iter_apply(&structure)
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert_eq!(top2_orderings.len(), 2);
+
+        // Extract energies
+        let get_energy = |s: &Structure| -> f64 {
+            s.properties
+                .get("ewald_energy")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(f64::INFINITY)
+        };
+
+        let mut all_energies: Vec<f64> = all_orderings.iter().map(get_energy).collect();
+        all_energies.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        let top2_energies: Vec<f64> = top2_orderings.iter().map(get_energy).collect();
+
+        // The top 2 should contain the 2 lowest energies from all orderings
+        for energy in &top2_energies {
+            assert!(
+                all_energies[..2].iter().any(|e| (e - energy).abs() < 1e-6),
+                "Top-2 energy {} should be among the 2 lowest energies {:?}",
+                energy,
+                &all_energies[..2]
+            );
+        }
     }
 
     #[test]

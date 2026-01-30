@@ -16,7 +16,7 @@ use crate::species::Species;
 use crate::structure::Structure;
 use crate::transformations::Transform;
 use nalgebra::{Matrix3, Vector3};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Create a supercell via a 3x3 integer scaling matrix.
 ///
@@ -141,22 +141,18 @@ impl Transform for RotateTransform {
     fn apply(&self, structure: &mut Structure) -> Result<()> {
         let rot = self.rotation_matrix()?;
 
-        // Rotate lattice vectors (each row is a lattice vector)
+        // Rotate lattice vectors: for columns-as-vectors convention, L_new = R * L
+        // This ensures that for a rigid rotation, fractional coordinates are preserved
         let old_matrix = *structure.lattice.matrix();
-        let new_matrix = old_matrix * rot.transpose();
+        let new_matrix = rot * old_matrix;
         structure.lattice =
             crate::lattice::Lattice::from_matrix_with_pbc(new_matrix, structure.lattice.pbc);
 
-        // Rotate atomic positions (convert to Cartesian, rotate, convert back)
-        let new_frac_coords: Vec<Vector3<f64>> = structure
-            .frac_coords
-            .iter()
-            .map(|fc| {
-                let rotated_cart = rot * (old_matrix * fc);
-                structure.lattice.inv_matrix() * rotated_cart
-            })
-            .collect();
-        structure.frac_coords = new_frac_coords;
+        // For a rigid rotation, fractional coordinates remain unchanged since:
+        // cart_new = R * cart_old = R * L_old * frac_old
+        // L_new = R * L_old
+        // frac_new = L_new^-1 * cart_new = (R*L)^-1 * R*L * frac_old = frac_old
+        // So we don't need to modify frac_coords at all!
 
         Ok(())
     }
@@ -243,6 +239,9 @@ impl RemoveSpeciesTransform {
 
 impl Transform for RemoveSpeciesTransform {
     fn apply(&self, structure: &mut Structure) -> Result<()> {
+        // Use HashSet for O(1) lookup instead of Vec::contains which is O(n)
+        let species_to_remove: HashSet<&Species> = self.species.iter().collect();
+
         // Find indices of sites to keep
         let indices_to_keep: Vec<usize> = structure
             .site_occupancies
@@ -253,7 +252,7 @@ impl Transform for RemoveSpeciesTransform {
                 !site_occ
                     .species
                     .iter()
-                    .any(|(sp, _)| self.species.contains(sp))
+                    .any(|(sp, _)| species_to_remove.contains(sp))
             })
             .map(|(idx, _)| idx)
             .collect();
@@ -487,7 +486,7 @@ mod tests {
     use crate::element::Element;
     use crate::lattice::Lattice;
     use approx::assert_relative_eq;
-    use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
+    use std::f64::consts::{FRAC_PI_2, FRAC_PI_3, FRAC_PI_4, PI};
 
     /// Create a simple cubic NaCl structure for testing.
     fn nacl_structure() -> Structure {
@@ -711,6 +710,66 @@ mod tests {
         assert!(
             err_msg.contains("zero length"),
             "Error should mention zero length axis: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_rotate_preserves_frac_coords() {
+        // For a rigid rotation where both lattice and atoms rotate together,
+        // the fractional coordinates should remain unchanged
+        let structure = nacl_structure();
+        let original_frac = structure.frac_coords.clone();
+
+        // Apply various rotations
+        for transform in [
+            RotateTransform::around_x(FRAC_PI_4),
+            RotateTransform::around_y(FRAC_PI_3),
+            RotateTransform::around_z(FRAC_PI_2),
+            RotateTransform::new(Vector3::new(1.0, 1.0, 1.0), 0.7),
+        ] {
+            let mut s = structure.clone();
+            transform.apply(&mut s).unwrap();
+
+            // Fractional coordinates should be preserved (or very close due to numerical precision)
+            for (orig, rotated) in original_frac.iter().zip(s.frac_coords.iter()) {
+                assert_relative_eq!(orig.x, rotated.x, epsilon = 1e-10);
+                assert_relative_eq!(orig.y, rotated.y, epsilon = 1e-10);
+                assert_relative_eq!(orig.z, rotated.z, epsilon = 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn test_rotate_cartesian_coords_change() {
+        // While frac coords stay the same, Cartesian coords SHOULD change after rotation
+        let mut structure = nacl_structure();
+        let original_cart: Vec<_> = structure
+            .frac_coords
+            .iter()
+            .map(|fc| structure.lattice.matrix() * fc)
+            .collect();
+
+        // Apply a 90-degree rotation around z
+        RotateTransform::around_z(FRAC_PI_2)
+            .apply(&mut structure)
+            .unwrap();
+
+        let new_cart: Vec<_> = structure
+            .frac_coords
+            .iter()
+            .map(|fc| structure.lattice.matrix() * fc)
+            .collect();
+
+        // Cartesian coords should differ (unless the atom is at origin)
+        // The second atom at (0.5, 0.5, 0.5) in frac should have different cart coords
+        let orig_second = &original_cart[1];
+        let new_second = &new_cart[1];
+
+        // After 90° rotation around z: (x, y, z) -> (-y, x, z)
+        // Check that coordinates changed appropriately
+        assert!(
+            (orig_second - new_second).norm() > 1e-10 || orig_second.norm() < 1e-10,
+            "Cartesian coords should change after rotation (unless at origin)"
         );
     }
 

@@ -10,6 +10,10 @@
 //! - Phys. Rev. B 80, 014120 (2009)
 //! - Comp. Mat. Sci. 59, 101 (2012)
 
+// This module contains many 3x3 matrix operations where range loops are clearer
+// than iterator patterns. Allow them at module level.
+#![allow(clippy::needless_range_loop)]
+
 use crate::error::Result;
 use crate::species::Species;
 use crate::structure::Structure;
@@ -216,66 +220,293 @@ pub fn generate_hnf(det: i32) -> Vec<[[i32; 3]; 3]> {
 }
 
 /// Smith Normal Form result.
-#[derive(Debug, Clone)]
+///
+/// Contains matrices U, S, V such that S = U * A * V where:
+/// - S is diagonal with non-negative entries
+/// - Diagonal entries satisfy s[0][0] | s[1][1] | s[2][2] (each divides the next)
+/// - U and V are unimodular (|det| = 1)
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SmithResult {
-    /// Left transform matrix U
+    /// Left transform matrix U (unimodular)
     pub u: [[i32; 3]; 3],
     /// Diagonal Smith form S
     pub s: [[i32; 3]; 3],
-    /// Right transform matrix V
+    /// Right transform matrix V (unimodular)
     pub v: [[i32; 3]; 3],
 }
 
-/// Compute the Smith Normal Form of a 3x3 integer matrix.
+// ============================================================================
+// Helper Functions for Smith Normal Form
+// ============================================================================
+
+/// Extended Euclidean algorithm computing Bezout coefficients.
 ///
-/// Returns U, S, V such that A = U * S * V where S is diagonal.
-/// The diagonal elements of S divide each other: s11 | s22 | s33.
-#[allow(clippy::needless_range_loop)]
-pub fn smith_normal_form(mat: &[[i32; 3]; 3]) -> SmithResult {
-    let mut smith = *mat;
-    let mut left_transform = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
-    let mut right_transform = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+/// Returns (gcd, x, y) such that a*x + b*y = gcd(a, b) with gcd >= 0.
+fn extended_gcd(a: i32, b: i32) -> (i32, i32, i32) {
+    if b == 0 {
+        if a >= 0 { (a, 1, 0) } else { (-a, -1, 0) }
+    } else {
+        let (gcd, x1, y1) = extended_gcd(b, a % b);
+        // a*x + b*y = gcd
+        // b*x1 + (a % b)*y1 = gcd
+        // b*x1 + (a - (a/b)*b)*y1 = gcd
+        // a*y1 + b*(x1 - (a/b)*y1) = gcd
+        (gcd, y1, x1 - (a / b) * y1)
+    }
+}
 
-    // Simplified SNF using pivot-based elimination
-    for diag_idx in 0..3 {
-        let mut pivot_row = diag_idx;
-        let mut pivot_col = diag_idx;
-        let mut pivot_val = i32::MAX;
+/// Swap rows i and j in a 3x3 matrix.
+fn swap_rows(m: &mut [[i32; 3]; 3], row_i: usize, row_j: usize) {
+    m.swap(row_i, row_j);
+}
 
-        for row in diag_idx..3 {
-            for col in diag_idx..3 {
-                let val = smith[row][col].abs();
-                if val != 0 && val < pivot_val {
-                    pivot_val = val;
-                    pivot_row = row;
-                    pivot_col = col;
+/// Swap columns i and j in a 3x3 matrix.
+fn swap_cols(m: &mut [[i32; 3]; 3], col_i: usize, col_j: usize) {
+    for row in m.iter_mut() {
+        row.swap(col_i, col_j);
+    }
+}
+
+/// Add c times row src to row dst: R[dst] += c * R[src]
+#[allow(dead_code)]
+fn add_row_multiple(m: &mut [[i32; 3]; 3], dst: usize, src: usize, coeff: i32) {
+    for col in 0..3 {
+        m[dst][col] += coeff * m[src][col];
+    }
+}
+
+/// Negate row i: R[i] *= -1
+fn negate_row(m: &mut [[i32; 3]; 3], row: usize) {
+    for col in 0..3 {
+        m[row][col] = -m[row][col];
+    }
+}
+
+/// Find the smallest non-zero absolute value in the submatrix [k:, k:].
+/// Returns (row, col, value) or None if all zeros.
+fn find_pivot(m: &[[i32; 3]; 3], diag_k: usize) -> Option<(usize, usize, i32)> {
+    let mut best: Option<(usize, usize, i32)> = None;
+    for row in diag_k..3 {
+        for col in diag_k..3 {
+            let val = m[row][col];
+            if val != 0 {
+                let abs_val = val.abs();
+                if best.is_none() || abs_val < best.unwrap().2.abs() {
+                    best = Some((row, col, val));
                 }
             }
         }
+    }
+    best
+}
 
-        if pivot_val == i32::MAX {
-            break;
+/// Check if row k has any non-zero entries after column k.
+fn row_has_off_diagonal(m: &[[i32; 3]; 3], row: usize, diag_k: usize) -> bool {
+    for col in (diag_k + 1)..3 {
+        if m[row][col] != 0 {
+            return true;
         }
+    }
+    false
+}
 
-        // Swap rows and columns to put pivot at (diag_idx, diag_idx)
-        if pivot_row != diag_idx {
-            smith.swap(pivot_row, diag_idx);
-            left_transform.swap(pivot_row, diag_idx);
+/// Check if column k has any non-zero entries after row k.
+fn col_has_off_diagonal(m: &[[i32; 3]; 3], col: usize, diag_k: usize) -> bool {
+    for row in (diag_k + 1)..3 {
+        if m[row][col] != 0 {
+            return true;
         }
-        if pivot_col != diag_idx {
-            for row in &mut smith {
-                row.swap(pivot_col, diag_idx);
+    }
+    false
+}
+
+/// Check if s[k][k] divides all entries in the submatrix [k+1:, k+1:].
+fn diagonal_divides_submatrix(m: &[[i32; 3]; 3], diag_k: usize) -> bool {
+    let divisor = m[diag_k][diag_k];
+    if divisor == 0 {
+        // 0 divides everything trivially (we only have zeros left)
+        return true;
+    }
+    for row in (diag_k + 1)..3 {
+        for col in (diag_k + 1)..3 {
+            if m[row][col] % divisor != 0 {
+                return false;
             }
-            for row in &mut right_transform {
-                row.swap(pivot_col, diag_idx);
+        }
+    }
+    true
+}
+
+/// Find an entry in the submatrix [k+1:, k+1:] not divisible by s[k][k].
+/// Returns (row, col) if found.
+fn find_non_divisible_entry(m: &[[i32; 3]; 3], diag_k: usize) -> Option<(usize, usize)> {
+    let divisor = m[diag_k][diag_k];
+    if divisor == 0 {
+        return None;
+    }
+    for row in (diag_k + 1)..3 {
+        for col in (diag_k + 1)..3 {
+            if m[row][col] % divisor != 0 {
+                return Some((row, col));
+            }
+        }
+    }
+    None
+}
+
+/// Perform one round of elimination for diagonal position k.
+/// Returns true if the row and column are now clean (zeros except diagonal).
+fn eliminate_row_and_col(
+    smith: &mut [[i32; 3]; 3],
+    u_mat: &mut [[i32; 3]; 3],
+    v_mat: &mut [[i32; 3]; 3],
+    diag_k: usize,
+) -> bool {
+    // Find and position the pivot
+    let pivot = find_pivot(smith, diag_k);
+    if pivot.is_none() {
+        return true; // All zeros in submatrix
+    }
+    let (pivot_row, pivot_col, _) = pivot.unwrap();
+
+    // Move pivot to diagonal position (k, k)
+    if pivot_row != diag_k {
+        swap_rows(smith, pivot_row, diag_k);
+        swap_rows(u_mat, pivot_row, diag_k);
+    }
+    if pivot_col != diag_k {
+        swap_cols(smith, pivot_col, diag_k);
+        swap_cols(v_mat, pivot_col, diag_k);
+    }
+
+    // Eliminate entries in row k (columns > k) using column operations
+    for col_j in (diag_k + 1)..3 {
+        if smith[diag_k][col_j] != 0 {
+            let a = smith[diag_k][diag_k];
+            let b = smith[diag_k][col_j];
+            let (gcd, coeff_x, coeff_y) = extended_gcd(a, b);
+            let coeff_a = a / gcd;
+            let coeff_b = b / gcd;
+
+            // Apply column transformation to S
+            for row in 0..3 {
+                let old_k = smith[row][diag_k];
+                let old_j = smith[row][col_j];
+                smith[row][diag_k] = coeff_x * old_k + coeff_y * old_j;
+                smith[row][col_j] = -coeff_b * old_k + coeff_a * old_j;
+            }
+
+            // Apply same transformation to V
+            for row in 0..3 {
+                let old_k = v_mat[row][diag_k];
+                let old_j = v_mat[row][col_j];
+                v_mat[row][diag_k] = coeff_x * old_k + coeff_y * old_j;
+                v_mat[row][col_j] = -coeff_b * old_k + coeff_a * old_j;
             }
         }
     }
 
+    // Eliminate entries in column k (rows > k) using row operations
+    for row_i in (diag_k + 1)..3 {
+        if smith[row_i][diag_k] != 0 {
+            let a = smith[diag_k][diag_k];
+            let b = smith[row_i][diag_k];
+            let (gcd, coeff_x, coeff_y) = extended_gcd(a, b);
+            let coeff_a = a / gcd;
+            let coeff_b = b / gcd;
+
+            // Apply row transformation to S
+            for col in 0..3 {
+                let old_k = smith[diag_k][col];
+                let old_i = smith[row_i][col];
+                smith[diag_k][col] = coeff_x * old_k + coeff_y * old_i;
+                smith[row_i][col] = -coeff_b * old_k + coeff_a * old_i;
+            }
+
+            // Apply same transformation to U
+            for col in 0..3 {
+                let old_k = u_mat[diag_k][col];
+                let old_i = u_mat[row_i][col];
+                u_mat[diag_k][col] = coeff_x * old_k + coeff_y * old_i;
+                u_mat[row_i][col] = -coeff_b * old_k + coeff_a * old_i;
+            }
+        }
+    }
+
+    // Check if we're done
+    !row_has_off_diagonal(smith, diag_k, diag_k) && !col_has_off_diagonal(smith, diag_k, diag_k)
+}
+
+/// Compute the Smith Normal Form of a 3x3 integer matrix.
+///
+/// Returns U, S, V such that S = U * A * V where:
+/// - S is diagonal with non-negative entries
+/// - Diagonal elements satisfy divisibility: s[0][0] | s[1][1] | s[2][2]
+/// - U and V are unimodular (determinant +/-1)
+///
+/// # Algorithm
+///
+/// For each diagonal position k:
+/// 1. Find smallest non-zero pivot in submatrix [k:, k:]
+/// 2. Move pivot to position (k, k) via row/column swaps
+/// 3. Use Bezout coefficients to eliminate row k and column k
+/// 4. Repeat until row/column k is fully zeroed (except diagonal)
+/// 5. Ensure s[k][k] divides all remaining submatrix entries
+/// 6. Normalize signs to ensure non-negative diagonal
+#[allow(clippy::needless_range_loop)]
+pub fn smith_normal_form(mat: &[[i32; 3]; 3]) -> SmithResult {
+    let mut smith = *mat;
+    let mut u_mat = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]; // Left transform
+    let mut v_mat = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]; // Right transform
+
+    // Process each diagonal position
+    for diag_k in 0..3 {
+        // Phase 1: Elimination loop - zero out row k and column k
+        // Use a safety counter to prevent infinite loops
+        for _ in 0..100 {
+            if eliminate_row_and_col(&mut smith, &mut u_mat, &mut v_mat, diag_k) {
+                break;
+            }
+        }
+
+        // Phase 2: Divisibility enforcement
+        // Ensure s[k][k] divides all entries in the remaining submatrix
+        for _ in 0..100 {
+            if diagonal_divides_submatrix(&smith, diag_k) {
+                break;
+            }
+
+            if let Some((_bad_row, bad_col)) = find_non_divisible_entry(&smith, diag_k) {
+                // Add column bad_col to column k to bring the non-divisible element
+                // into column k, then re-run elimination
+                // This ensures gcd(s[k][k], s[bad_row][bad_col]) becomes new s[k][k]
+                for row in 0..3 {
+                    smith[row][diag_k] += smith[row][bad_col];
+                    v_mat[row][diag_k] += v_mat[row][bad_col];
+                }
+
+                // Re-run elimination
+                for _ in 0..100 {
+                    if eliminate_row_and_col(&mut smith, &mut u_mat, &mut v_mat, diag_k) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 3: Sign normalization - ensure non-negative diagonal
+    for diag_k in 0..3 {
+        if smith[diag_k][diag_k] < 0 {
+            negate_row(&mut smith, diag_k);
+            negate_row(&mut u_mat, diag_k);
+        }
+    }
+
     SmithResult {
-        u: left_transform,
+        u: u_mat,
         s: smith,
-        v: right_transform,
+        v: v_mat,
     }
 }
 
@@ -300,6 +531,26 @@ mod tests {
         let fe = Species::neutral(Element::Fe);
 
         Structure::new(lattice, vec![fe], vec![Vector3::new(0.0, 0.0, 0.0)])
+    }
+
+    /// Multiply two 3x3 integer matrices.
+    fn mat3_multiply(mat_a: &[[i32; 3]; 3], mat_b: &[[i32; 3]; 3]) -> [[i32; 3]; 3] {
+        let mut result = [[0; 3]; 3];
+        for row in 0..3 {
+            for col in 0..3 {
+                for k in 0..3 {
+                    result[row][col] += mat_a[row][k] * mat_b[k][col];
+                }
+            }
+        }
+        result
+    }
+
+    /// Compute determinant of a 3x3 integer matrix.
+    fn mat3_determinant(mat: &[[i32; 3]; 3]) -> i32 {
+        mat[0][0] * (mat[1][1] * mat[2][2] - mat[1][2] * mat[2][1])
+            - mat[0][1] * (mat[1][0] * mat[2][2] - mat[1][2] * mat[2][0])
+            + mat[0][2] * (mat[1][0] * mat[2][1] - mat[1][1] * mat[2][0])
     }
 
     #[test]
@@ -344,26 +595,328 @@ mod tests {
         }
     }
 
-    // ========== Smith Normal Form Tests ==========
+    // ========== Extended GCD Tests ==========
 
     #[test]
-    fn test_smith_normal_form() {
+    fn test_extended_gcd_basic() {
+        // Test basic cases
         let cases = [
-            [[1, 0, 0], [0, 1, 0], [0, 0, 1]], // identity
-            [[2, 0, 0], [0, 3, 0], [0, 0, 4]], // diagonal
+            (12, 8, 4),  // gcd(12, 8) = 4
+            (15, 10, 5), // gcd(15, 10) = 5
+            (7, 3, 1),   // coprime
+            (100, 25, 25),
+            (17, 13, 1), // coprime primes
         ];
-        for mat in cases {
-            let result = smith_normal_form(&mat);
-            // Result should be diagonal with positive entries
-            for row in 0..3 {
-                for col in 0..3 {
-                    if row != col {
-                        assert_eq!(result.s[row][col], 0, "SNF should be diagonal");
-                    } else {
-                        assert!(result.s[row][col] > 0, "Diagonal should be positive");
-                    }
+        for (a, b, expected_gcd) in cases {
+            let (gcd, x, y) = extended_gcd(a, b);
+            assert_eq!(gcd, expected_gcd, "gcd({a}, {b}) should be {expected_gcd}");
+            assert_eq!(a * x + b * y, gcd, "Bezout identity failed for ({a}, {b})");
+        }
+    }
+
+    #[test]
+    fn test_extended_gcd_edge_cases() {
+        // Zero cases - verify Bézout identity: a*x + b*y = gcd
+        let (gcd, _x, y) = extended_gcd(0, 5);
+        assert_eq!(gcd, 5);
+        assert_eq!(5 * y, 5); // 0*x + 5*y = 5
+
+        let (gcd, x, _y) = extended_gcd(7, 0);
+        assert_eq!(gcd, 7);
+        assert_eq!(7 * x, 7); // 7*x + 0*y = 7
+
+        let (gcd, _, _) = extended_gcd(0, 0);
+        assert_eq!(gcd, 0);
+
+        // Negative inputs
+        let (gcd, x, y) = extended_gcd(-12, 8);
+        assert!(gcd >= 0, "GCD should be non-negative");
+        assert_eq!((-12) * x + 8 * y, gcd);
+
+        let (gcd, x, y) = extended_gcd(12, -8);
+        assert!(gcd >= 0);
+        assert_eq!(12 * x + (-8) * y, gcd);
+    }
+
+    // ========== Matrix Helper Tests ==========
+
+    #[test]
+    fn test_mat3_multiply() {
+        let identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+        let mat_a = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+
+        // A * I = A
+        assert_eq!(mat3_multiply(&mat_a, &identity), mat_a);
+        // I * A = A
+        assert_eq!(mat3_multiply(&identity, &mat_a), mat_a);
+
+        // Specific multiplication
+        let mat_b = [[1, 0, 0], [0, 2, 0], [0, 0, 3]];
+        let result = mat3_multiply(&mat_a, &mat_b);
+        assert_eq!(result, [[1, 4, 9], [4, 10, 18], [7, 16, 27]]);
+    }
+
+    #[test]
+    fn test_mat3_determinant() {
+        assert_eq!(mat3_determinant(&[[1, 0, 0], [0, 1, 0], [0, 0, 1]]), 1);
+        assert_eq!(mat3_determinant(&[[2, 0, 0], [0, 3, 0], [0, 0, 4]]), 24);
+        assert_eq!(mat3_determinant(&[[0, 0, 0], [0, 0, 0], [0, 0, 0]]), 0);
+        // Singular matrix
+        assert_eq!(mat3_determinant(&[[1, 2, 3], [4, 5, 6], [7, 8, 9]]), 0);
+        // Non-singular
+        assert_eq!(mat3_determinant(&[[1, 2, 3], [0, 1, 4], [5, 6, 0]]), 1);
+    }
+
+    // ========== Smith Normal Form Tests ==========
+
+    /// Helper to verify SNF properties for a given result
+    fn verify_snf_properties(mat: &[[i32; 3]; 3], result: &SmithResult, name: &str) {
+        // 1. S should be diagonal
+        for row in 0..3 {
+            for col in 0..3 {
+                if row != col {
+                    assert_eq!(
+                        result.s[row][col], 0,
+                        "{name}: S should be diagonal, but s[{row}][{col}] = {}",
+                        result.s[row][col]
+                    );
                 }
             }
+        }
+
+        // 2. Diagonal should be non-negative
+        for diag_k in 0..3 {
+            assert!(
+                result.s[diag_k][diag_k] >= 0,
+                "{name}: Diagonal should be non-negative, but s[{diag_k}][{diag_k}] = {}",
+                result.s[diag_k][diag_k]
+            );
+        }
+
+        // 3. Divisibility chain: s[0][0] | s[1][1] | s[2][2]
+        let s0 = result.s[0][0];
+        let s1 = result.s[1][1];
+        let s2 = result.s[2][2];
+        if s0 != 0 {
+            assert_eq!(
+                s1 % s0,
+                0,
+                "{name}: s[0][0]={s0} should divide s[1][1]={s1}"
+            );
+            assert_eq!(
+                s2 % s0,
+                0,
+                "{name}: s[0][0]={s0} should divide s[2][2]={s2}"
+            );
+        }
+        if s1 != 0 {
+            assert_eq!(
+                s2 % s1,
+                0,
+                "{name}: s[1][1]={s1} should divide s[2][2]={s2}"
+            );
+        }
+
+        // 4. Reconstruction: S = U * A * V
+        let ua = mat3_multiply(&result.u, mat);
+        let uav = mat3_multiply(&ua, &result.v);
+        assert_eq!(
+            uav, result.s,
+            "{name}: Reconstruction failed. S != U * A * V\nS = {:?}\nU*A*V = {:?}",
+            result.s, uav
+        );
+
+        // 5. Unimodularity: |det(U)| = |det(V)| = 1
+        let det_u = mat3_determinant(&result.u);
+        let det_v = mat3_determinant(&result.v);
+        assert!(
+            det_u == 1 || det_u == -1,
+            "{name}: U should be unimodular, but det(U) = {det_u}"
+        );
+        assert!(
+            det_v == 1 || det_v == -1,
+            "{name}: V should be unimodular, but det(V) = {det_v}"
+        );
+    }
+
+    #[test]
+    fn test_snf_identity() {
+        let identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+        let result = smith_normal_form(&identity);
+        verify_snf_properties(&identity, &result, "identity");
+        assert_eq!(result.s, identity, "SNF of identity should be identity");
+    }
+
+    #[test]
+    fn test_snf_diagonal_matrices() {
+        let cases = [
+            ([[2, 0, 0], [0, 3, 0], [0, 0, 4]], "diag(2,3,4)"),
+            (
+                [[6, 0, 0], [0, 2, 0], [0, 0, 4]],
+                "diag(6,2,4) needs reorder",
+            ),
+            (
+                [[4, 0, 0], [0, 2, 0], [0, 0, 6]],
+                "diag(4,2,6) needs reorder",
+            ),
+            ([[1, 0, 0], [0, 1, 0], [0, 0, 1]], "identity"),
+        ];
+        for (mat, name) in cases {
+            let result = smith_normal_form(&mat);
+            verify_snf_properties(&mat, &result, name);
+        }
+    }
+
+    #[test]
+    fn test_snf_non_diagonal_matrices() {
+        // These matrices require actual elimination, not just pivot swapping
+        let cases = [
+            ([[2, 4, 0], [0, 6, 0], [0, 0, 8]], "upper triangular"),
+            ([[2, 0, 0], [4, 6, 0], [0, 0, 8]], "lower triangular"),
+            ([[1, 2, 3], [0, 1, 0], [0, 0, 1]], "upper with off-diag"),
+            ([[2, 1, 0], [1, 2, 0], [0, 0, 1]], "symmetric 2x2 block"),
+            ([[6, 4, 0], [4, 6, 0], [0, 0, 1]], "symmetric needs GCD"),
+        ];
+        for (mat, name) in cases {
+            let result = smith_normal_form(&mat);
+            verify_snf_properties(&mat, &result, name);
+        }
+    }
+
+    #[test]
+    fn test_snf_hnf_matrices() {
+        // SNF should work correctly on HNF matrices (common use case)
+        for det in 1..=6 {
+            let hnf_matrices = generate_hnf(det);
+            for hnf in &hnf_matrices {
+                let result = smith_normal_form(hnf);
+                verify_snf_properties(hnf, &result, &format!("HNF det={det}"));
+
+                // Product of diagonal should equal original determinant
+                let snf_det = result.s[0][0] * result.s[1][1] * result.s[2][2];
+                assert_eq!(
+                    snf_det.abs(),
+                    det,
+                    "SNF diagonal product should equal original det"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_snf_zero_matrix() {
+        let zero = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+        let result = smith_normal_form(&zero);
+        verify_snf_properties(&zero, &result, "zero matrix");
+        assert_eq!(result.s, zero, "SNF of zero should be zero");
+    }
+
+    #[test]
+    fn test_snf_singular_matrices() {
+        let cases = [
+            ([[1, 0, 0], [0, 0, 0], [0, 0, 0]], "rank 1"),
+            ([[1, 0, 0], [0, 1, 0], [0, 0, 0]], "rank 2"),
+            ([[1, 2, 3], [2, 4, 6], [0, 0, 0]], "rank 1 non-trivial"),
+            ([[1, 2, 3], [4, 5, 6], [7, 8, 9]], "classic singular"),
+        ];
+        for (mat, name) in cases {
+            let result = smith_normal_form(&mat);
+            verify_snf_properties(&mat, &result, name);
+        }
+    }
+
+    #[test]
+    fn test_snf_negative_entries() {
+        let cases = [
+            ([[-1, 0, 0], [0, 1, 0], [0, 0, 1]], "negative diagonal"),
+            ([[1, -2, 0], [0, 3, 0], [0, 0, 1]], "negative off-diag"),
+            ([[-2, -4, 0], [0, -6, 0], [0, 0, -8]], "all negative"),
+        ];
+        for (mat, name) in cases {
+            let result = smith_normal_form(&mat);
+            verify_snf_properties(&mat, &result, name);
+        }
+    }
+
+    #[test]
+    fn test_snf_divisibility_requires_row_addition() {
+        // Matrix where divisibility enforcement is needed:
+        // After initial elimination, s[0][0] might not divide s[1][1]
+        let mat = [[2, 0, 0], [0, 3, 0], [0, 0, 6]];
+        let result = smith_normal_form(&mat);
+        verify_snf_properties(&mat, &result, "divisibility check");
+
+        // The SNF should have s[0][0] = 1 (gcd of 2,3,6)
+        // and s[1][1] | s[2][2]
+        assert_eq!(result.s[0][0], 1, "First diagonal should be gcd = 1");
+    }
+
+    #[test]
+    fn test_snf_known_results() {
+        // Known SNF results from literature/references
+        // For [[2, 4], [6, 8]] extended to 3x3: SNF is diag(2, 4, 0) in 2D
+        let mat = [[2, 4, 0], [6, 8, 0], [0, 0, 1]];
+        let result = smith_normal_form(&mat);
+        verify_snf_properties(&mat, &result, "known result");
+
+        // 2x2 block has det = 2*8 - 4*6 = 16 - 24 = -8
+        // SNF of [[2,4],[6,8]] is diag(2, 4) since gcd(2,4,6,8)=2
+        // Full matrix det = -8 * 1 = -8
+        // Product of SNF diagonal should have same absolute value
+        let snf_product = result.s[0][0] * result.s[1][1] * result.s[2][2];
+        assert_eq!(snf_product.abs(), 8);
+    }
+
+    #[test]
+    fn test_snf_reconstruction_explicit() {
+        // Explicit test of S = U * A * V for various matrices
+        let test_matrices = [
+            [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+            [[2, 3, 0], [0, 4, 0], [0, 0, 5]],
+            [[6, 4, 2], [4, 6, 4], [2, 4, 6]],
+            [[1, 2, 3], [4, 5, 6], [7, 8, 10]], // non-singular
+        ];
+
+        for mat in test_matrices {
+            let result = smith_normal_form(&mat);
+
+            // Compute U * A
+            let ua = mat3_multiply(&result.u, &mat);
+            // Compute (U * A) * V
+            let uav = mat3_multiply(&ua, &result.v);
+
+            assert_eq!(
+                uav, result.s,
+                "Reconstruction failed for {:?}\nU = {:?}\nV = {:?}\nS = {:?}\nU*A*V = {:?}",
+                mat, result.u, result.v, result.s, uav
+            );
+        }
+    }
+
+    #[test]
+    fn test_snf_unimodularity_explicit() {
+        let test_matrices = [
+            [[2, 4, 6], [1, 3, 5], [0, 1, 2]],
+            [[3, 0, 1], [0, 2, 0], [1, 0, 3]],
+            [[5, 2, 1], [2, 5, 2], [1, 2, 5]],
+        ];
+
+        for mat in test_matrices {
+            let result = smith_normal_form(&mat);
+
+            let det_u = mat3_determinant(&result.u);
+            let det_v = mat3_determinant(&result.v);
+
+            assert!(
+                det_u == 1 || det_u == -1,
+                "det(U) = {det_u} should be ±1 for {:?}",
+                mat
+            );
+            assert!(
+                det_v == 1 || det_v == -1,
+                "det(V) = {det_v} should be ±1 for {:?}",
+                mat
+            );
         }
     }
 

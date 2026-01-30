@@ -268,12 +268,10 @@ impl Ewald {
         let real_cutoff_sq = self.real_cutoff.powi(2);
 
         // Real space contribution
-        for idx_i in 0..n_sites {
-            let pos_i = structure
-                .lattice
-                .get_cartesian_coord(&structure.frac_coords[idx_i]);
+        for (idx_i, frac_i) in structure.frac_coords.iter().enumerate() {
+            let pos_i = structure.lattice.get_cartesian_coord(frac_i);
 
-            for idx_j in idx_i..n_sites {
+            for (idx_j, frac_j) in structure.frac_coords.iter().enumerate().skip(idx_i) {
                 let mut e_ij = 0.0;
 
                 // Sum over periodic images
@@ -285,7 +283,7 @@ impl Ewald {
                             }
 
                             let offset = Vector3::new(na as f64, nb as f64, nc as f64);
-                            let pos_j_frac = structure.frac_coords[idx_j] + offset;
+                            let pos_j_frac = frac_j + offset;
                             let pos_j = structure.lattice.get_cartesian_coord(&pos_j_frac);
 
                             let r_vec = pos_j - pos_i;
@@ -337,14 +335,11 @@ impl Ewald {
                     let coeff = prefactor * exp_term / recip_sq;
 
                     // Add contribution to energy matrix
-                    for idx_i in 0..n_sites {
-                        let pos_i = structure
-                            .lattice
-                            .get_cartesian_coord(&structure.frac_coords[idx_i]);
-                        for idx_j in idx_i..n_sites {
-                            let pos_j = structure
-                                .lattice
-                                .get_cartesian_coord(&structure.frac_coords[idx_j]);
+                    for (idx_i, frac_i) in structure.frac_coords.iter().enumerate() {
+                        let pos_i = structure.lattice.get_cartesian_coord(frac_i);
+                        for (idx_j, frac_j) in structure.frac_coords.iter().enumerate().skip(idx_i)
+                        {
+                            let pos_j = structure.lattice.get_cartesian_coord(frac_j);
                             let r_ij = pos_j - pos_i;
                             let phase = recip_cart.dot(&r_ij);
 
@@ -631,9 +626,9 @@ mod tests {
         assert!(matrix.iter().all(|row| row.len() == n_sites));
 
         // Should be symmetric
-        for idx_i in 0..n_sites {
-            for idx_j in 0..n_sites {
-                assert_relative_eq!(matrix[idx_i][idx_j], matrix[idx_j][idx_i], epsilon = 1e-10);
+        for (idx_i, row) in matrix.iter().enumerate() {
+            for (idx_j, &val) in row.iter().enumerate() {
+                assert_relative_eq!(val, matrix[idx_j][idx_i], epsilon = 1e-10);
             }
         }
     }
