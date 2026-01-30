@@ -1,7 +1,7 @@
-// TypeScript wrapper for @matterviz/ferrox-wasm WASM bindings
+// TypeScript wrapper for @matterviz/wasm WASM bindings
 //
 // Provides lazy initialization, typed wrappers, and result handling utilities
-// for the ferrox structure matching library compiled to WebAssembly.
+// for the matterviz WASM module (structure matching, analysis, etc).
 
 import type { Crystal } from '$lib/structure'
 import type {
@@ -132,24 +132,29 @@ export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
       try {
         // Dynamic import to avoid loading WASM until needed
         // @vite-ignore prevents Vite from trying to resolve this during SSR
-        const mod = (await import(
-          /* @vite-ignore */ `@matterviz/ferrox-wasm`
-        )) as unknown as FerroxWasmModule
+        const { default: init } = (await import(
+          /* @vite-ignore */ `@matterviz/wasm`
+        )) as unknown as {
+          default: (
+            options?: { module_or_path?: string | URL },
+          ) => Promise<FerroxWasmModule>
+        }
 
         // Get the WASM binary URL and initialize
         const wasm_url_module = await import(
-          /* @vite-ignore */ `@matterviz/ferrox-wasm/ferrox_bg.wasm?url`
+          /* @vite-ignore */ `@matterviz/wasm/ferrox_bg.wasm?url`
         )
         const wasm_url = wasm_url_module.default as string
-        await mod.default({ module_or_path: wasm_url })
 
-        wasm_module = mod
-        return mod
+        // init() loads pkg/ferrox.js, initializes WASM, and returns the module
+        const mod = await init({ module_or_path: wasm_url })
+        wasm_module = mod as FerroxWasmModule
+        return wasm_module
       } catch (err) {
         // Clear the promise on failure so retry is possible
         init_promise = null
         throw new Error(
-          `Failed to load ferrox-wasm. Make sure the WASM package is built: cd extensions/rust-wasm && pnpm build. Original error: ${err}`,
+          `Failed to load @matterviz/wasm. Install with: pnpm add @matterviz/wasm. Original error: ${err}`,
         )
       }
     })()
@@ -159,7 +164,7 @@ export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
 }
 
 // Check if the module is already initialized
-export function is_ferrox_wasm_ready(): boolean {
+export function is_wasm_ready(): boolean {
   return wasm_module !== null
 }
 

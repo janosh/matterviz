@@ -1,5 +1,5 @@
 {
-  "name": "@matterviz/ferrox-wasm",
+  "name": "@matterviz/wasm",
   "version": "0.0.1",
   "description": "WASM bindings for ferrox structure matching library",
   "type": "module",

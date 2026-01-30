@@ -1,4 +1,4 @@
-// Entry point for @matterviz/ferrox-wasm
+// Entry point for @matterviz/wasm
 // Loads wasm-pack output dynamically, throws helpful error if not built
 
 const NOT_BUILT = `ferrox-wasm not built. Run 'cd extensions/rust-wasm && pnpm build'`

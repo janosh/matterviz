@@ -25,11 +25,7 @@ pnpm build
 ## Usage
 
 ```typescript
-import init, {
-  parse_cif,
-  parse_poscar,
-  WasmStructureMatcher,
-} from '@matterviz/ferrox-wasm'
+import init, { parse_cif, parse_poscar, WasmStructureMatcher } from '@matterviz/wasm'
 
 // Initialize the WASM module
 await init()

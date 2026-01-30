@@ -1,4 +1,4 @@
-// Type definitions for @matterviz/ferrox-wasm
+// Type definitions for @matterviz/wasm
 // These are hand-maintained and won't be overwritten by wasm-pack
 
 export default function init(

@@ -1,0 +1,42 @@
+name: Publish WASM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - extensions/rust/**
+      - extensions/rust-wasm/**
+      - .github/workflows/publish-wasm.yml
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM
+        run: |
+          wasm-pack build extensions/rust --target web --features wasm --no-default-features
+          mkdir -p extensions/rust-wasm/pkg/
+          cp -r extensions/rust/pkg/* extensions/rust-wasm/pkg/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish to npm
+        working-directory: extensions/rust-wasm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
