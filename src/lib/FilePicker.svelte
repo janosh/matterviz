@@ -3,13 +3,18 @@
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
 
+  // Delay for distinguishing click from double-click (ms)
+  const CLICK_DELAY = 250
+
   let {
     files = [],
     active_files = [],
     show_category_filters = false,
+    layout = `wrap`,
     on_drag_start,
     on_drag_end,
     on_click,
+    on_dblclick,
     type_mapper,
     file_type_colors = {
       cif: `rgba(100, 149, 237, 0.8)`,
@@ -23,16 +28,18 @@
       md: `rgba(255, 215, 0, 0.8)`,
       yaml: `rgba(255, 0, 255, 0.8)`,
       xdatcar: `rgba(255, 215, 0, 0.8)`,
-      tdb: `rgba(0, 188, 212, 0.8)`, // Cyan for thermodynamic database files
+      tdb: `rgba(0, 188, 212, 0.8)`,
     },
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     files?: FileInfo[]
     active_files?: string[]
     show_category_filters?: boolean
+    layout?: `wrap` | `vertical`
     on_drag_start?: (file: FileInfo, event: DragEvent) => void
     on_drag_end?: () => void
     on_click?: (file: FileInfo, event: MouseEvent | KeyboardEvent) => void
+    on_dblclick?: (file: FileInfo, event: MouseEvent) => void
     type_mapper?: (file: FileInfo) => string
     file_type_colors?: Record<string, string>
   } = $props()
@@ -40,6 +47,16 @@
   let active_category_filter = $state<string | null>(null)
   let active_type_filter = $state<string | null>(null)
   type FilterKind = `category` | `type`
+
+  // Timer for distinguishing click from double-click (per-component state)
+  let click_timer: ReturnType<typeof setTimeout> | null = null
+  let click_timer_file: string | null = null
+
+  const clear_click_timer = () => {
+    if (click_timer) clearTimeout(click_timer)
+    click_timer = null
+    click_timer_file = null
+  }
 
   // Helper function to get the base file type (removing .gz extension)
   const get_base_file_type = (file: FileInfo): string => {
@@ -108,7 +125,7 @@
   )
 </script>
 
-<div class="file-picker" {...rest}>
+<div class="file-picker" class:vertical={layout === `vertical`} {...rest}>
   <div class="legend">
     {#each show_category_filters ? uniq_categories : [] as category (category)}
       {@const is_active = active_category_filter === category}
@@ -171,10 +188,30 @@
       draggable="true"
       ondragstart={handle_drag_start(file)}
       ondragend={() => on_drag_end?.()}
-      onclick={(event) => on_click?.(file, event)}
+      onclick={(event) => {
+        clear_click_timer()
+        if (on_dblclick) {
+          // Delay click to allow double-click to cancel it
+          const target_file = file.name
+          click_timer_file = target_file
+          click_timer = setTimeout(() => {
+            if (click_timer_file === target_file) {
+              clear_click_timer()
+              on_click?.(file, event)
+            }
+          }, CLICK_DELAY)
+        } else {
+          on_click?.(file, event)
+        }
+      }}
+      ondblclick={(event) => {
+        clear_click_timer()
+        on_dblclick?.(file, event)
+      }}
       onkeydown={(event) => {
         if ([`Enter`, ` `].includes(event.key)) {
           event.preventDefault()
+          clear_click_timer()
           on_click?.(file, event)
         }
       }}
@@ -199,6 +236,21 @@
     gap: 0.5em;
     flex: 1;
     align-content: start;
+  }
+  .file-picker.vertical {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 2px;
+    overflow-y: auto;
+  }
+  .file-picker.vertical .file-item {
+    border-radius: 4px;
+    padding: 3px 8px;
+  }
+  .file-picker.vertical .legend {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-bottom: 0.3em;
   }
   .legend {
     width: 100%;
@@ -255,7 +307,7 @@
     border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
     border-radius: 20px;
     cursor: grab;
-    background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
+    background: light-dark(rgba(0, 0, 0, 0.02), rgba(255, 255, 255, 0.1));
     transition: all 0.2s ease;
     gap: 0.5em;
   }
