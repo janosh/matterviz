@@ -254,12 +254,7 @@ impl Structure {
 
     /// Get the primitive cell using moyo symmetry analysis.
     pub fn get_primitive(&self, symprec: f64) -> Result<Self> {
-        if !symprec.is_finite() || symprec <= 0.0 {
-            return Err(FerroxError::InvalidStructure {
-                index: 0,
-                reason: format!("symprec must be positive and finite, got {symprec}"),
-            });
-        }
+        validate_symprec(symprec)?;
         let moyo_cell = self.to_moyo_cell();
         let dataset = MoyoDataset::new(
             &moyo_cell,
@@ -277,12 +272,7 @@ impl Structure {
 
     /// Get the conventional (standardized) cell using moyo symmetry analysis.
     pub fn get_conventional_structure(&self, symprec: f64) -> Result<Self> {
-        if !symprec.is_finite() || symprec <= 0.0 {
-            return Err(FerroxError::InvalidStructure {
-                index: 0,
-                reason: format!("symprec must be positive and finite, got {symprec}"),
-            });
-        }
+        validate_symprec(symprec)?;
         let moyo_cell = self.to_moyo_cell();
         let dataset = MoyoDataset::new(
             &moyo_cell,
@@ -309,12 +299,7 @@ impl Structure {
     /// This is more efficient when you need multiple symmetry properties,
     /// as it only runs the symmetry analysis once.
     pub fn get_symmetry_dataset(&self, symprec: f64) -> Result<MoyoDataset> {
-        if !symprec.is_finite() || symprec <= 0.0 {
-            return Err(FerroxError::InvalidStructure {
-                index: 0,
-                reason: format!("symprec must be positive and finite, got {symprec}"),
-            });
-        }
+        validate_symprec(symprec)?;
         if self.num_sites() == 0 {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
@@ -2348,27 +2333,22 @@ impl Structure {
 // Symmetry Helper Functions
 // =============================================================================
 
+/// Validate symprec parameter for symmetry operations.
+fn validate_symprec(symprec: f64) -> Result<()> {
+    if !symprec.is_finite() || symprec <= 0.0 {
+        return Err(FerroxError::InvalidStructure {
+            index: 0,
+            reason: format!("symprec must be positive and finite, got {symprec}"),
+        });
+    }
+    Ok(())
+}
+
 /// Convert moyo Operations to arrays for easy serialization.
 pub(crate) fn moyo_ops_to_arrays(ops: &[MoyoOperation]) -> Vec<SymmetryOperation> {
     ops.iter()
         .map(|op| {
-            let rot = [
-                [
-                    op.rotation[(0, 0)],
-                    op.rotation[(0, 1)],
-                    op.rotation[(0, 2)],
-                ],
-                [
-                    op.rotation[(1, 0)],
-                    op.rotation[(1, 1)],
-                    op.rotation[(1, 2)],
-                ],
-                [
-                    op.rotation[(2, 0)],
-                    op.rotation[(2, 1)],
-                    op.rotation[(2, 2)],
-                ],
-            ];
+            let rot = std::array::from_fn(|i| std::array::from_fn(|j| op.rotation[(i, j)]));
             let trans = [op.translation.x, op.translation.y, op.translation.z];
             (rot, trans)
         })
