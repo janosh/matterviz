@@ -214,8 +214,8 @@ def translate(s: Structure, vec: list[float]) -> Structure:
 class TestSelfMatching:
     """Identical structures should always match."""
 
-    @pytest.mark.parametrize("struct", BASE_STRUCTURES, ids=BASE_STRUCTURE_IDS)
-    def test_base_structures(self, compare: Callable, struct: Structure) -> None:
+    @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
+    def test_base_structures(self, compare: Callable, name: str, struct: Structure) -> None:
         """Base structures match themselves."""
         assert compare(struct, struct) is True, f"{name} should self-match"
 
@@ -241,30 +241,26 @@ class TestSelfMatching:
 class TestPerturbations:
     """Perturbed structures within tolerance should match."""
 
-    @pytest.mark.parametrize("struct", BASE_STRUCTURES, ids=BASE_STRUCTURE_IDS)
+    @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
     @pytest.mark.parametrize("magnitude", [0.01, 0.02, 0.05])
     def test_coordinate_perturbations(
-        self, compare: Callable, struct: Structure, magnitude: float
+        self, compare: Callable, name: str, struct: Structure, magnitude: float
     ) -> None:
         """Small coordinate perturbations should match."""
-        assert compare(struct, perturb(struct, magnitude)) is True, (
-            f"{name} ±{magnitude}"
-        )
+        assert compare(struct, perturb(struct, magnitude)) is True, f"{name} +/-{magnitude}"
 
-    @pytest.mark.parametrize("struct", BASE_STRUCTURES, ids=BASE_STRUCTURE_IDS)
+    @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
     @pytest.mark.parametrize("factor", [0.98, 1.02, 1.05])
     def test_lattice_scaling(
-        self, compare: Callable, struct: Structure, factor: float
+        self, compare: Callable, name: str, struct: Structure, factor: float
     ) -> None:
         """Lattice scaling within tolerance should match."""
-        assert compare(struct, scale_lattice(struct, factor)) is True, (
-            f"{name} ×{factor}"
-        )
+        assert compare(struct, scale_lattice(struct, factor)) is True, f"{name} x{factor}"
 
-    @pytest.mark.parametrize("struct", BASE_STRUCTURES, ids=BASE_STRUCTURE_IDS)
+    @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
     @pytest.mark.parametrize("strain", [0.01, 0.02])
     def test_uniaxial_strain(
-        self, compare: Callable, struct: Structure, strain: float
+        self, compare: Callable, name: str, struct: Structure, strain: float
     ) -> None:
         """Uniaxial strain within tolerance should match."""
         assert compare(struct, strain_lattice(struct, strain)) is True, (
