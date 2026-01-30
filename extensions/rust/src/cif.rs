@@ -345,6 +345,125 @@ fn split_cif_line(line: &str) -> Vec<&str> {
 
 // Note: clean_element_symbol has been replaced by normalize_symbol from element module
 
+// ============================================================================
+// CIF Writer
+// ============================================================================
+
+/// Convert a structure to CIF format string.
+///
+/// The output is a valid CIF file with P1 symmetry.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to serialize
+/// * `data_name` - Optional data block name (defaults to reduced formula)
+///
+/// # Returns
+///
+/// CIF format string.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use ferrox::cif::structure_to_cif;
+///
+/// let cif_string = structure_to_cif(&structure, None);
+/// ```
+pub fn structure_to_cif(structure: &Structure, data_name: Option<&str>) -> String {
+    let mut lines = Vec::new();
+
+    // Data block header
+    let name = data_name.unwrap_or("");
+    let name = if name.is_empty() {
+        structure.composition().reduced_formula()
+    } else {
+        name.to_string()
+    };
+    // CIF data names cannot contain spaces or special characters
+    let name = name.replace([' ', '-'], "_");
+    lines.push(format!("data_{}", name));
+    lines.push(String::new());
+
+    // Cell parameters
+    let lengths = structure.lattice.lengths();
+    let angles = structure.lattice.angles();
+    lines.push(format!("_cell_length_a   {:.10}", lengths.x));
+    lines.push(format!("_cell_length_b   {:.10}", lengths.y));
+    lines.push(format!("_cell_length_c   {:.10}", lengths.z));
+    lines.push(format!("_cell_angle_alpha   {:.6}", angles.x));
+    lines.push(format!("_cell_angle_beta   {:.6}", angles.y));
+    lines.push(format!("_cell_angle_gamma   {:.6}", angles.z));
+    lines.push(String::new());
+
+    // Symmetry (always P1 for now)
+    lines.push("_symmetry_space_group_name_H-M   'P 1'".to_string());
+    lines.push("_symmetry_Int_Tables_number   1".to_string());
+    lines.push(String::new());
+
+    // Atom site loop
+    lines.push("loop_".to_string());
+    lines.push("_atom_site_type_symbol".to_string());
+    lines.push("_atom_site_label".to_string());
+    lines.push("_atom_site_fract_x".to_string());
+    lines.push("_atom_site_fract_y".to_string());
+    lines.push("_atom_site_fract_z".to_string());
+    lines.push("_atom_site_occupancy".to_string());
+
+    // Count occurrences of each element for labeling (Fe1, Fe2, etc.)
+    let mut element_counts: HashMap<&str, usize> = HashMap::new();
+
+    for (site_occ, frac) in structure
+        .site_occupancies
+        .iter()
+        .zip(structure.frac_coords.iter())
+    {
+        // For disordered sites, write each species as a separate entry at the same position
+        for (species, occupancy) in &site_occ.species {
+            let symbol = species.element.symbol();
+            let count = element_counts.entry(symbol).or_insert(0);
+            *count += 1;
+
+            // Generate label
+            let label = format!("{}{}", symbol, *count);
+
+            // Build type symbol with oxidation state if present
+            let type_symbol = match species.oxidation_state {
+                Some(oxi) if oxi > 0 => format!("{}{}+", symbol, oxi),
+                Some(oxi) if oxi < 0 => format!("{}{}-", symbol, -oxi),
+                _ => symbol.to_string(),
+            };
+
+            lines.push(format!(
+                "  {}  {}  {:.10}  {:.10}  {:.10}  {:.6}",
+                type_symbol, label, frac.x, frac.y, frac.z, occupancy
+            ));
+        }
+    }
+
+    lines.join("\n") + "\n"
+}
+
+/// Write a structure to a CIF file.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to write
+/// * `path` - Path to the output file
+/// * `data_name` - Optional data block name
+///
+/// # Returns
+///
+/// Result indicating success or file I/O error.
+pub fn write_cif(
+    structure: &Structure,
+    path: &Path,
+    data_name: Option<&str>,
+) -> crate::error::Result<()> {
+    let content = structure_to_cif(structure, data_name);
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -908,5 +1027,78 @@ Cu 0.0 0.0 0.0
         let flat = "data_f\n_cell_length_a 10\n_cell_length_b 10\n_cell_length_c 0.1\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nFe 0.5 0.5 0.5";
         let s3 = parse_cif_str(flat, Path::new("f.cif")).unwrap();
         assert!(s3.lattice.volume().abs() > 0.0 && s3.lattice.volume().abs() < 20.0);
+    }
+
+    // =========================================================================
+    // CIF Writer Tests
+    // =========================================================================
+
+    use crate::lattice::Lattice;
+    use crate::species::Species;
+    use nalgebra::Vector3;
+
+    #[test]
+    fn test_structure_to_cif_roundtrip() {
+        // NaCl structure - tests basic format and roundtrip
+        let lattice = Lattice::cubic(5.64);
+        let species = vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)];
+        let coords = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
+        let s1 = Structure::try_new(lattice, species, coords).unwrap();
+
+        let cif = structure_to_cif(&s1, Some("NaCl_test"));
+
+        // Verify format
+        assert!(cif.starts_with("data_NaCl_test\n"));
+        assert!(cif.contains("_symmetry_space_group_name_H-M   'P 1'"));
+
+        // Roundtrip parse and compare
+        let s2 = parse_cif_str(&cif, Path::new("test.cif")).unwrap();
+        assert_eq!(s1.num_sites(), s2.num_sites());
+        assert!((s1.lattice.volume() - s2.lattice.volume()).abs() < 1e-6);
+
+        // Verify lattice lengths (catches a↔b swaps in cubic systems)
+        let (len1, len2) = (s1.lattice.lengths(), s2.lattice.lengths());
+        assert!((len1.x - len2.x).abs() < 1e-6);
+        assert!((len1.y - len2.y).abs() < 1e-6);
+        assert!((len1.z - len2.z).abs() < 1e-6);
+
+        assert_eq!(s1.species()[0].element, s2.species()[0].element);
+        assert_eq!(s1.species()[1].element, s2.species()[1].element);
+    }
+
+    #[test]
+    fn test_structure_to_cif_oxidation_states() {
+        let s = Structure::try_new(
+            Lattice::cubic(5.0),
+            vec![
+                Species::new(Element::Fe, Some(3)),
+                Species::new(Element::O, Some(-2)),
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        )
+        .unwrap();
+
+        let cif = structure_to_cif(&s, None);
+        assert!(cif.contains("Fe3+"));
+        assert!(cif.contains("O2-"));
+    }
+
+    #[test]
+    fn test_structure_to_cif_hexagonal() {
+        // Hexagonal lattice (gamma = 120) - catches angle ordering bugs
+        let s1 = Structure::try_new(
+            Lattice::from_parameters(4.0, 4.0, 5.0, 90.0, 90.0, 120.0),
+            vec![Species::neutral(Element::Mg)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        )
+        .unwrap();
+
+        let cif = structure_to_cif(&s1, None);
+        let s2 = parse_cif_str(&cif, Path::new("hex.cif")).unwrap();
+
+        let (a1, a2) = (s1.lattice.angles(), s2.lattice.angles());
+        assert!((a1.x - a2.x).abs() < 1e-4);
+        assert!((a1.y - a2.y).abs() < 1e-4);
+        assert!((a1.z - a2.z).abs() < 1e-4);
     }
 }

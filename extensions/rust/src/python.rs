@@ -14,7 +14,8 @@ use std::path::Path;
 
 use crate::composition::Composition;
 use crate::io::{
-    parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_pymatgen_json,
+    parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_extxyz,
+    structure_to_poscar, structure_to_pymatgen_json, write_structure,
 };
 use crate::matcher::{ComparatorType, StructureMatcher};
 use crate::structure::{Structure, SymmOp};
@@ -562,6 +563,112 @@ fn parse_trajectory(py: Python<'_>, path: &str) -> PyResult<Vec<Py<PyDict>>> {
     }
 
     Ok(results)
+}
+
+// ============================================================================
+// Structure Writing Functions
+// ============================================================================
+
+/// Write a structure to a file with automatic format detection.
+///
+/// The format is determined by the file extension:
+/// - `.json` - Pymatgen JSON format
+/// - `.cif` - CIF format
+/// - `.xyz`, `.extxyz` - extXYZ format
+/// - `.vasp`, `POSCAR*`, `CONTCAR*` - POSCAR format
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     path (str): Path to the output file
+///
+/// Example:
+///     >>> from ferrox import write_structure_file
+///     >>> import json
+///     >>> write_structure_file(json.dumps(s.as_dict()), "output.cif")
+#[pyfunction]
+fn write_structure_file(structure: &str, path: &str) -> PyResult<()> {
+    let s = parse_struct(structure)?;
+    write_structure(&s, Path::new(path))
+        .map_err(|e| PyValueError::new_err(format!("Error writing {path}: {e}")))
+}
+
+/// Convert a structure to POSCAR format string.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     comment (str, optional): Comment line for the POSCAR (defaults to formula)
+///
+/// Returns:
+///     str: POSCAR format string
+///
+/// Example:
+///     >>> from ferrox import to_poscar
+///     >>> import json
+///     >>> poscar_str = to_poscar(json.dumps(s.as_dict()))
+///     >>> print(poscar_str)
+#[pyfunction]
+#[pyo3(signature = (structure, comment = None))]
+fn to_poscar(structure: &str, comment: Option<&str>) -> PyResult<String> {
+    let s = parse_struct(structure)?;
+    Ok(structure_to_poscar(&s, comment))
+}
+
+/// Convert a structure to CIF format string.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     data_name (str, optional): Data block name (defaults to formula)
+///
+/// Returns:
+///     str: CIF format string
+///
+/// Example:
+///     >>> from ferrox import to_cif
+///     >>> import json
+///     >>> cif_str = to_cif(json.dumps(s.as_dict()))
+///     >>> print(cif_str)
+#[pyfunction]
+#[pyo3(signature = (structure, data_name = None))]
+fn to_cif(structure: &str, data_name: Option<&str>) -> PyResult<String> {
+    let s = parse_struct(structure)?;
+    Ok(crate::cif::structure_to_cif(&s, data_name))
+}
+
+/// Convert a structure to extXYZ format string.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///
+/// Returns:
+///     str: extXYZ format string
+///
+/// Example:
+///     >>> from ferrox import to_extxyz
+///     >>> import json
+///     >>> xyz_str = to_extxyz(json.dumps(s.as_dict()))
+///     >>> print(xyz_str)
+#[pyfunction]
+fn to_extxyz(structure: &str) -> PyResult<String> {
+    let s = parse_struct(structure)?;
+    Ok(structure_to_extxyz(&s, None))
+}
+
+/// Convert a structure to pymatgen JSON format string.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///
+/// Returns:
+///     str: JSON format string compatible with pymatgen's Structure.from_dict()
+///
+/// Example:
+///     >>> from ferrox import to_pymatgen_json
+///     >>> import json
+///     >>> json_str = to_pymatgen_json(json.dumps(s.as_dict()))
+#[pyfunction]
+fn to_pymatgen_json(structure: &str) -> PyResult<String> {
+    let s = parse_struct(structure)?;
+    Ok(structure_to_pymatgen_json(&s))
 }
 
 // ============================================================================
@@ -1738,9 +1845,15 @@ fn enumerate_derivatives(
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
-    // I/O functions
+    // I/O functions (reading)
     m.add_function(wrap_pyfunction!(parse_structure_file, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trajectory, m)?)?;
+    // I/O functions (writing)
+    m.add_function(wrap_pyfunction!(write_structure_file, m)?)?;
+    m.add_function(wrap_pyfunction!(to_poscar, m)?)?;
+    m.add_function(wrap_pyfunction!(to_cif, m)?)?;
+    m.add_function(wrap_pyfunction!(to_extxyz, m)?)?;
+    m.add_function(wrap_pyfunction!(to_pymatgen_json, m)?)?;
     // Supercell functions
     m.add_function(wrap_pyfunction!(make_supercell, m)?)?;
     m.add_function(wrap_pyfunction!(make_supercell_diag, m)?)?;
