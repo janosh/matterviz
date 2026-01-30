@@ -2475,6 +2475,7 @@ impl SlabConfig {
 ///
 /// # Panics
 /// Panics if `hkl` is `[0, 0, 0]` (division by zero).
+#[allow(dead_code)] // Used in tests; useful utility for crystallography
 fn compute_d_spacing(lattice: &Lattice, hkl: [i32; 3]) -> f64 {
     debug_assert!(hkl != [0, 0, 0], "Miller indices cannot all be zero");
     // d = 1 / |G| where G = h*b1 + k*b2 + l*b3 (reciprocal lattice vector)
@@ -2690,8 +2691,8 @@ impl Structure {
     /// - **Unit cell size**: The transformation matrix may produce larger supercells than
     ///   pymatgen's minimal algorithm for some Miller indices (e.g., (111)). The surface
     ///   is mathematically equivalent but with more atoms in the periodic unit.
-    /// - **Layer counting**: Uses `ceil(min_slab_size / d_spacing)` to determine the number
-    ///   of layers, which may differ slightly from pymatgen's calculation.
+    /// - **Layer counting**: Uses `ceil(min_slab_size / proj_height)` where `proj_height` is the
+    ///   projection of the c-vector onto the surface normal, matching pymatgen's SlabGenerator.
     /// - **Primitive reduction**: The `primitive` option is not yet implemented.
     pub fn generate_slabs(&self, config: &SlabConfig) -> Result<Vec<Self>> {
         let hkl = config.miller_index;
@@ -2747,11 +2748,22 @@ impl Structure {
         }
 
         // Pre-compute expected total atoms to avoid creating huge structures
-        let d_spacing = compute_d_spacing(&self.lattice, hkl);
+        // Estimate proj_height = abs(dot(normal, c_vec)) like pymatgen
+        let inv_t = self.lattice.inv_matrix().transpose();
+        let hkl_vec = Vector3::new(hkl[0] as f64, hkl[1] as f64, hkl[2] as f64);
+        let normal = inv_t * hkl_vec;
+        let normal = normal / normal.norm();
+        let c_row = Vector3::new(
+            transform[2][0] as f64,
+            transform[2][1] as f64,
+            transform[2][2] as f64,
+        );
+        let c_vec_estimate = self.lattice.matrix() * c_row;
+        let proj_height_estimate = normal.dot(&c_vec_estimate).abs();
         let n_layers_estimate = if config.in_unit_planes {
             config.min_slab_size.ceil() as usize
         } else {
-            (config.min_slab_size / d_spacing).ceil() as usize
+            (config.min_slab_size / proj_height_estimate).ceil() as usize
         }
         .max(1);
         let expected_atoms =
@@ -2778,12 +2790,21 @@ impl Structure {
         let oriented_layers = identify_layer_positions(&oriented.frac_coords, config.symprec);
         let unique_terminations = oriented_layers.len().max(1);
 
+        // Calculate surface normal for layer thickness calculation
+        let inv_t = self.lattice.inv_matrix().transpose();
+        let hkl_vec = Vector3::new(hkl[0] as f64, hkl[1] as f64, hkl[2] as f64);
+        let normal = inv_t * hkl_vec;
+        let normal = normal / normal.norm();
+
         // Determine slab thickness in number of unit cells
-        let d_spacing = compute_d_spacing(&self.lattice, hkl);
+        // Use _proj_height = abs(dot(normal, c_vec)) to match pymatgen's behavior
+        // This gives the actual slab thickness contribution per layer
+        let c_vec = oriented.lattice.matrix().row(2).transpose();
+        let proj_height = normal.dot(&c_vec).abs();
         let n_layers = if config.in_unit_planes {
             config.min_slab_size.ceil() as usize
         } else {
-            (config.min_slab_size / d_spacing).ceil() as usize
+            (config.min_slab_size / proj_height).ceil() as usize
         }
         .max(1);
 

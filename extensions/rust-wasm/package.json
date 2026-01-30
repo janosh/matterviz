@@ -3,16 +3,18 @@
   "version": "0.0.1",
   "description": "WASM bindings for ferrox structure matching library",
   "type": "module",
-  "main": "pkg/ferrox.js",
-  "types": "pkg/ferrox.d.ts",
+  "main": "index.js",
+  "types": "types.d.ts",
   "exports": {
     ".": {
-      "types": "./pkg/ferrox.d.ts",
-      "import": "./pkg/ferrox.js"
+      "types": "./types.d.ts",
+      "import": "./index.js"
     },
     "./ferrox_bg.wasm": "./pkg/ferrox_bg.wasm"
   },
   "files": [
+    "index.js",
+    "types.d.ts",
     "pkg/"
   ],
   "scripts": {
