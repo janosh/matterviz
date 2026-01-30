@@ -85,12 +85,38 @@ impl Ewald {
     ///
     /// The parameter balances real and reciprocal space sums for efficiency.
     /// η ~ sqrt(π) * (N/V^2)^(1/6) for optimal N atoms in volume V.
-    fn compute_eta(&self, structure: &Structure) -> f64 {
+    ///
+    /// Returns an error if accuracy is not in (0, 1) or volume <= 0, which would
+    /// cause NaN/Inf in the calculation.
+    fn compute_eta(&self, structure: &Structure) -> Result<f64> {
         if let Some(eta) = self.eta {
-            return eta;
+            return Ok(eta);
+        }
+
+        // Validate accuracy: must be in (0, 1) for -ln(accuracy) to be positive
+        if self.accuracy <= 0.0 || self.accuracy >= 1.0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "Ewald accuracy must be in (0, 1), got {}. Values outside this range \
+                     cause -ln(accuracy) to be non-positive, yielding NaN/Inf.",
+                    self.accuracy
+                ),
+            });
         }
 
         let volume = structure.volume();
+        if volume <= 0.0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "Structure volume must be positive, got {}. Zero or negative volume \
+                     causes division by zero in eta calculation.",
+                    volume
+                ),
+            });
+        }
+
         let n_atoms = structure.num_sites() as f64;
 
         // Optimal η from literature: balances real/recip convergence
@@ -99,7 +125,7 @@ impl Ewald {
 
         // Adjust based on accuracy requirement
         // Higher accuracy -> smaller η -> more real-space terms
-        eta * (-self.accuracy.ln()).sqrt().max(1.0)
+        Ok(eta * (-self.accuracy.ln()).sqrt().max(1.0))
     }
 
     /// Get charges from oxidation states.
@@ -159,7 +185,7 @@ impl Ewald {
     /// ```
     pub fn energy(&self, structure: &Structure) -> Result<f64> {
         let charges = self.get_charges(structure)?;
-        let eta = self.compute_eta(structure);
+        let eta = self.compute_eta(structure)?;
 
         let e_real = self.real_space_energy(structure, &charges, eta);
         let e_recip = self.reciprocal_space_energy(structure, &charges, eta);
@@ -177,7 +203,7 @@ impl Ewald {
     /// of site i to the total energy.
     pub fn site_energies(&self, structure: &Structure) -> Result<Vec<f64>> {
         let charges = self.get_charges(structure)?;
-        let eta = self.compute_eta(structure);
+        let eta = self.compute_eta(structure)?;
         let n_sites = structure.num_sites();
         let coulomb_const = 14.3996;
 
@@ -240,12 +266,53 @@ impl Ewald {
             site_energies[idx_i] -= coulomb_const * charges[idx_i].powi(2) * eta / PI.sqrt();
         }
 
-        // Reciprocal space contribution (distributed among sites)
-        // This is a simplification; for full accuracy, need structure factor decomposition
-        let e_recip = self.reciprocal_space_energy(structure, &charges, eta) * coulomb_const;
-        let e_recip_per_site = e_recip / n_sites as f64;
-        for energy in &mut site_energies {
-            *energy += e_recip_per_site;
+        // Reciprocal space contribution - proper per-site decomposition
+        // E_recip_i = Σ_G (4π/V) * exp(-G²/4η²)/G² * q_i * Re[exp(-iG·r_i) * S(G)]
+        // where S(G) = Σ_j q_j * exp(iG·r_j)
+        let volume = structure.volume();
+        let recip_lattice = structure.lattice.reciprocal_lattice();
+        let prefactor = 4.0 * PI / volume;
+
+        for ha in -5i32..=5 {
+            for hb in -5i32..=5 {
+                for hc in -5i32..=5 {
+                    if ha == 0 && hb == 0 && hc == 0 {
+                        continue;
+                    }
+
+                    let recip_vec = Vector3::new(ha as f64, hb as f64, hc as f64);
+                    let recip_cart = recip_lattice.get_cartesian_coord(&recip_vec);
+                    let recip_sq = recip_cart.norm_squared();
+
+                    if recip_sq > self.recip_cutoff.powi(2) {
+                        continue;
+                    }
+
+                    // Compute structure factor S(G) = Σ_j q_j * exp(iG·r_j)
+                    let mut s_real = 0.0;
+                    let mut s_imag = 0.0;
+                    let mut phases = Vec::with_capacity(n_sites);
+                    for (idx, fc) in structure.frac_coords.iter().enumerate() {
+                        let pos = structure.lattice.get_cartesian_coord(fc);
+                        let phase = recip_cart.dot(&pos);
+                        phases.push((phase.cos(), phase.sin()));
+                        s_real += charges[idx] * phase.cos();
+                        s_imag += charges[idx] * phase.sin();
+                    }
+
+                    let exp_term = (-recip_sq / (4.0 * eta.powi(2))).exp();
+                    // Factor of 0.5 to match reciprocal_space_energy which has 0.5*energy
+                    let coeff = 0.5 * coulomb_const * prefactor * exp_term / recip_sq;
+
+                    // Per-site contribution: q_i * Re[exp(-iG·r_i) * S(G)]
+                    // = q_i * [cos(G·r_i)*S_real + sin(G·r_i)*S_imag]
+                    for (idx, (cos_phase, sin_phase)) in phases.iter().enumerate() {
+                        let contrib =
+                            coeff * charges[idx] * (cos_phase * s_real + sin_phase * s_imag);
+                        site_energies[idx] += contrib;
+                    }
+                }
+            }
         }
 
         Ok(site_energies)
@@ -258,7 +325,7 @@ impl Ewald {
     pub fn energy_matrix(&self, structure: &Structure) -> Result<Vec<Vec<f64>>> {
         // Validate structure has oxidation states
         let _charges = self.get_charges(structure)?;
-        let eta = self.compute_eta(structure);
+        let eta = self.compute_eta(structure)?;
         let n_sites = structure.num_sites();
         let coulomb_const = 14.3996;
 
@@ -810,5 +877,31 @@ mod tests {
             energy < 0.0,
             "Ionic crystal should have negative Coulomb energy"
         );
+    }
+
+    #[test]
+    fn test_ewald_invalid_accuracy() {
+        let structure = nacl_structure();
+
+        // Accuracy <= 0 should fail
+        let ewald = Ewald::new().with_accuracy(0.0);
+        let result = ewald.energy(&structure);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("accuracy"));
+
+        // Accuracy >= 1 should fail
+        let ewald = Ewald::new().with_accuracy(1.0);
+        let result = ewald.energy(&structure);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("accuracy"));
+
+        // Negative accuracy should fail
+        let ewald = Ewald::new().with_accuracy(-0.1);
+        let result = ewald.energy(&structure);
+        assert!(result.is_err());
+
+        // Valid accuracy in (0, 1) should work
+        let ewald = Ewald::new().with_accuracy(0.5);
+        assert!(ewald.energy(&structure).is_ok());
     }
 }

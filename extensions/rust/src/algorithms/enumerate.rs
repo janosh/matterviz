@@ -148,6 +148,11 @@ impl EnumerateDerivativesTransform {
             return true;
         }
 
+        // Guard against divide-by-zero: empty structures can't satisfy concentration constraints
+        if structure.num_sites() == 0 {
+            return false;
+        }
+
         let n_sites = structure.num_sites() as f64;
         let mut species_counts: HashMap<Species, f64> = HashMap::new();
 
