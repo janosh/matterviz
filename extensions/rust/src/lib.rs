@@ -40,9 +40,13 @@ pub mod species;
 pub mod structure;
 
 // Algorithms
+pub mod algorithms;
 pub mod batch;
 pub mod matcher;
 pub mod pbc;
+
+// Transformations
+pub mod transformations;
 
 // I/O
 pub mod cif;

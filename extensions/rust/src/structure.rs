@@ -248,6 +248,23 @@ impl Structure {
         Self::from_moyo_cell(&dataset.prim_std_cell)
     }
 
+    /// Get the conventional (standardized) cell using moyo symmetry analysis.
+    pub fn get_conventional_structure(&self, symprec: f64) -> Result<Self> {
+        let moyo_cell = self.to_moyo_cell();
+        let dataset = MoyoDataset::new(
+            &moyo_cell,
+            symprec,
+            AngleTolerance::Default,
+            Setting::Standard,
+            false,
+        )
+        .map_err(|e| FerroxError::MoyoError {
+            index: 0,
+            reason: format!("{e:?}"),
+        })?;
+        Self::from_moyo_cell(&dataset.std_cell)
+    }
+
     /// Get the spacegroup number using moyo.
     pub fn get_spacegroup_number(&self, symprec: f64) -> Result<i32> {
         let moyo_cell = self.to_moyo_cell();
