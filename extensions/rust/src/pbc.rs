@@ -42,7 +42,7 @@ pub fn wrap_frac_coords(coords: &Vector3<f64>) -> Vector3<f64> {
 /// Wrap fractional coordinates only along periodic axes.
 /// Non-periodic axes retain their original values (may be outside [0, 1)).
 #[inline]
-fn wrap_frac_coords_pbc(coords: &Vector3<f64>, pbc: [bool; 3]) -> Vector3<f64> {
+pub fn wrap_frac_coords_pbc(coords: &Vector3<f64>, pbc: [bool; 3]) -> Vector3<f64> {
     Vector3::new(
         if pbc[0] {
             wrap_frac_coord(coords[0])

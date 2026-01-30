@@ -471,8 +471,8 @@ impl Structure {
     /// Get distance to a specific periodic image of site `j`.
     ///
     /// `jimage` specifies the lattice translation, e.g., `[1, 0, 0]` means the image
-    /// of site `j` shifted by +a lattice vector. The coordinates are wrapped to [0, 1)
-    /// before applying the image shift, consistent with `get_distance_and_image()`.
+    /// of site `j` shifted by +a lattice vector. Coordinates are wrapped to [0, 1)
+    /// only along periodic axes, consistent with `pbc_shortest_vectors`.
     ///
     /// # Panics
     ///
@@ -491,9 +491,10 @@ impl Structure {
             self.num_sites()
         );
 
-        // Wrap coordinates to [0, 1) for consistency with pbc_shortest_vectors
-        let frac_i = crate::pbc::wrap_frac_coords(&self.frac_coords[i]);
-        let frac_j = crate::pbc::wrap_frac_coords(&self.frac_coords[j]);
+        // Wrap coordinates only along periodic axes for consistency with pbc_shortest_vectors
+        let pbc = self.lattice.pbc;
+        let frac_i = crate::pbc::wrap_frac_coords_pbc(&self.frac_coords[i], pbc);
+        let frac_j = crate::pbc::wrap_frac_coords_pbc(&self.frac_coords[j], pbc);
 
         let cart_i = self.lattice.get_cartesian_coords(&[frac_i])[0];
         let frac_j_shifted = frac_j + Vector3::from(jimage.map(|val| val as f64));
@@ -2421,7 +2422,7 @@ mod tests {
         let (dist, img) = s.get_distance_and_image(0, 1);
         assert!((dist - s.get_distance_with_image(0, 1, img)).abs() < 1e-10);
 
-        // Coordinates outside [0,1) are wrapped correctly
+        // Coordinates outside [0,1) are wrapped correctly for periodic axes
         let s = Structure::new(
             Lattice::cubic(10.0),
             vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
@@ -2429,6 +2430,22 @@ mod tests {
         );
         let (dist, img) = s.get_distance_and_image(0, 1);
         assert!((dist - s.get_distance_with_image(0, 1, img)).abs() < 1e-10);
+
+        // Non-periodic axes: coordinates outside [0,1) should NOT be wrapped
+        let mut slab_lattice = Lattice::cubic(10.0);
+        slab_lattice.pbc = [true, true, false]; // z is non-periodic (slab)
+        let s = Structure::new(
+            slab_lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.1), Vector3::new(0.0, 0.0, 1.5)], // z=1.5 outside [0,1)
+        );
+        // With non-periodic z, z=1.5 should NOT wrap to 0.5
+        // Distance should be (1.5 - 0.1) * 10 = 14, not (0.5 - 0.1) * 10 = 4
+        let dist = s.get_distance_with_image(0, 1, [0, 0, 0]);
+        assert!(
+            (dist - 14.0).abs() < 1e-10,
+            "Non-periodic axis should not wrap: expected 14.0, got {dist}"
+        );
     }
 
     #[test]
