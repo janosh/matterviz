@@ -367,6 +367,39 @@ impl Composition {
             .join("")
     }
 
+    /// Get the anonymous formula with elements replaced by A, B, C, etc.
+    ///
+    /// Elements are sorted by electronegativity (same order as reduced_formula),
+    /// then replaced with sequential letters. Useful for structure matching.
+    ///
+    /// # Example
+    /// ```
+    /// use ferrox::composition::Composition;
+    /// let comp = Composition::from_formula("Fe2O3").unwrap();
+    /// assert_eq!(comp.anonymous_formula(), "A2B3");
+    /// ```
+    pub fn anonymous_formula(&self) -> String {
+        if self.is_empty() {
+            return String::new();
+        }
+        let elem_comp = self.element_composition();
+        let gcd = elem_comp.gcd_of_amounts();
+        if gcd < AMOUNT_TOLERANCE {
+            return String::new();
+        }
+
+        elem_comp
+            .sorted_by_electronegativity()
+            .iter()
+            .enumerate()
+            .map(|(idx, (_, amt))| {
+                let letter = (b'A' + idx as u8) as char;
+                format_amount(&letter.to_string(), **amt / gcd)
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
     /// Get the Hill formula.
     ///
     /// Carbon first, then hydrogen, then remaining elements alphabetically.
