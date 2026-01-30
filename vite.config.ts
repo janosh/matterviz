@@ -56,4 +56,10 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     conditions: mode === `test` ? [`browser`] : undefined,
   },
+
+  // Externalize WASM package for SSR - it only works in browser
+  ssr: {
+    noExternal: [], // Let SvelteKit handle most packages
+    external: [`@matterviz/ferrox-wasm`],
+  },
 }))
