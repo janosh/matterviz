@@ -91,10 +91,10 @@ class TestGetStructureMetadata:
         """Verify all metadata fields are correct."""
         result = get_structure_metadata(nacl_json)
 
-        # Formula fields
+        # Formula fields (keys match parse_composition for consistency)
         assert result["formula"] == "NaCl"
-        assert result["formula_anonymous"] == "AB"  # Na (0.93) < Cl (3.16)
-        assert result["formula_hill"] == "Cl Na"
+        assert result["anonymous_formula"] == "AB"  # Na (0.93) < Cl (3.16)
+        assert result["hill_formula"] == "Cl Na"
         assert result["chemical_system"] == "Cl-Na"
 
         # Element/site counts
@@ -111,7 +111,7 @@ class TestGetStructureMetadata:
     def test_binary_structure(self, fe2o3_json: str) -> None:
         """Test Fe2O3 structure metadata."""
         result = get_structure_metadata(fe2o3_json)
-        assert result["formula_anonymous"] == "A2B3"  # Fe (1.83) < O (3.44)
+        assert result["anonymous_formula"] == "A2B3"  # Fe (1.83) < O (3.44)
         assert result["n_sites"] == 5
 
     def test_spacegroup_optional(self, nacl_json: str) -> None:
@@ -127,7 +127,7 @@ class TestGetStructureMetadata:
         metadata = get_structure_metadata(nacl_json)
         comp = parse_composition("NaCl")
         assert metadata["formula"] == comp["reduced_formula"]
-        assert metadata["formula_anonymous"] == comp["anonymous_formula"]
+        assert metadata["anonymous_formula"] == comp["anonymous_formula"]
         assert metadata["chemical_system"] == comp["chemical_system"]
 
 

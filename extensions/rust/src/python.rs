@@ -1024,8 +1024,8 @@ fn get_density(structure: &str) -> PyResult<Option<f64>> {
 /// Returns:
 ///     dict: Metadata dictionary with keys:
 ///         - formula: reduced formula (e.g., "Fe2O3")
-///         - formula_anonymous: anonymous formula (e.g., "A2B3")
-///         - formula_hill: Hill notation formula
+///         - anonymous_formula: anonymous formula (e.g., "A2B3")
+///         - hill_formula: Hill notation formula
 ///         - chemical_system: element system (e.g., "Fe-O")
 ///         - elements: sorted list of unique element symbols
 ///         - n_elements: number of unique elements
@@ -1047,10 +1047,10 @@ fn get_structure_metadata(
     let comp = s.composition();
     let dict = PyDict::new(py);
 
-    // Composition-derived properties
+    // Composition-derived properties (keys match parse_composition for consistency)
     dict.set_item("formula", comp.reduced_formula())?;
-    dict.set_item("formula_anonymous", comp.anonymous_formula())?;
-    dict.set_item("formula_hill", comp.hill_formula())?;
+    dict.set_item("anonymous_formula", comp.anonymous_formula())?;
+    dict.set_item("hill_formula", comp.hill_formula())?;
     dict.set_item("chemical_system", comp.chemical_system())?;
 
     // Element list (sorted)
