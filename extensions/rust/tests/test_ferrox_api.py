@@ -17,37 +17,35 @@ except ImportError:
 
 @pytest.fixture
 def nacl_json() -> str:
-    """NaCl rocksalt structure as JSON."""
-    return json.dumps(
-        {
-            "@module": "pymatgen.core.structure",
-            "@class": "Structure",
-            "lattice": {"matrix": [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]},
-            "sites": [
-                {"species": [{"element": "Na", "occu": 1}], "abc": [0, 0, 0]},
-                {"species": [{"element": "Cl", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
-            ],
-        }
-    )
+    """NaCl in CsCl-type structure (Pm-3m, #221) as JSON."""
+    struct = {
+        "@module": "pymatgen.core.structure",
+        "@class": "Structure",
+        "lattice": {"matrix": [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]},
+        "sites": [
+            {"species": [{"element": "Na", "occu": 1}], "abc": [0, 0, 0]},
+            {"species": [{"element": "Cl", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
+        ],
+    }
+    return json.dumps(struct)
 
 
 @pytest.fixture
 def fe2o3_json() -> str:
     """Fe2O3 structure as JSON (simplified)."""
-    return json.dumps(
-        {
-            "@module": "pymatgen.core.structure",
-            "@class": "Structure",
-            "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 13.7]]},
-            "sites": [
-                {"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0.35]},
-                {"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0.65]},
-                {"species": [{"element": "O", "occu": 1}], "abc": [0.3, 0, 0.25]},
-                {"species": [{"element": "O", "occu": 1}], "abc": [0.7, 0, 0.25]},
-                {"species": [{"element": "O", "occu": 1}], "abc": [0, 0.3, 0.25]},
-            ],
-        }
-    )
+    struct = {
+        "@module": "pymatgen.core.structure",
+        "@class": "Structure",
+        "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 13.7]]},
+        "sites": [
+            {"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0.35]},
+            {"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0.65]},
+            {"species": [{"element": "O", "occu": 1}], "abc": [0.3, 0, 0.25]},
+            {"species": [{"element": "O", "occu": 1}], "abc": [0.7, 0, 0.25]},
+            {"species": [{"element": "O", "occu": 1}], "abc": [0, 0.3, 0.25]},
+        ],
+    }
+    return json.dumps(struct)
 
 
 # parse_composition tests

@@ -222,8 +222,19 @@ function make_fcc_al(): Crystal {
 function make_displaced_nacl(): Crystal {
   // NaCl with atoms slightly displaced from ideal positions
   const nacl = make_nacl_structure()
+  // Convert fractional to Cartesian coords (for cubic lattice: xyz = abc * a)
+  const to_xyz = (abc: [number, number, number]): [number, number, number] => {
+    const [[a0, a1, a2], [b0, b1, b2], [c0, c1, c2]] = nacl.lattice.matrix
+    return [
+      abc[0] * a0 + abc[1] * b0 + abc[2] * c0,
+      abc[0] * a1 + abc[1] * b1 + abc[2] * c1,
+      abc[0] * a2 + abc[1] * b2 + abc[2] * c2,
+    ]
+  }
   nacl.sites[0].abc = [0.01, 0.01, 0.01]
+  nacl.sites[0].xyz = to_xyz(nacl.sites[0].abc)
   nacl.sites[1].abc = [0.51, 0.49, 0.5]
+  nacl.sites[1].xyz = to_xyz(nacl.sites[1].abc)
   return nacl
 }
 
