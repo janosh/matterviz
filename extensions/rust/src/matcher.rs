@@ -348,7 +348,7 @@ impl StructureMatcher {
         }
 
         // Get shortest vectors
-        let (vecs, d2) = pbc_shortest_vectors(avg_lattice, s2_fc, s1_fc, Some(mask), None);
+        let (vecs, d2, _) = pbc_shortest_vectors(avg_lattice, s2_fc, s1_fc, Some(mask), None);
 
         // Solve linear assignment problem
         // Convert to integer costs (multiply by large factor for precision)

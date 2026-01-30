@@ -6,6 +6,9 @@
 use crate::lattice::Lattice;
 use nalgebra::Vector3;
 
+/// Result type for pbc_shortest_vectors: (vectors, distances_squared, images)
+pub type PbcShortestResult = (Vec<Vec<Vector3<f64>>>, Vec<Vec<f64>>, Vec<Vec<[i32; 3]>>);
+
 /// Wrap fractional coordinates to the range [0, 1).
 ///
 /// Uses `coord - coord.floor()` instead of `coord % 1.0` because Rust's modulo
@@ -39,7 +42,7 @@ pub fn wrap_frac_coords(coords: &Vector3<f64>) -> Vector3<f64> {
 /// Wrap fractional coordinates only along periodic axes.
 /// Non-periodic axes retain their original values (may be outside [0, 1)).
 #[inline]
-fn wrap_frac_coords_pbc(coords: &Vector3<f64>, pbc: [bool; 3]) -> Vector3<f64> {
+pub fn wrap_frac_coords_pbc(coords: &Vector3<f64>, pbc: [bool; 3]) -> Vector3<f64> {
     Vector3::new(
         if pbc[0] {
             wrap_frac_coord(coords[0])
@@ -67,10 +70,10 @@ fn coords_match_pbc(
     atol: [f64; 3],
     pbc: [bool; 3],
 ) -> bool {
-    for idx in 0..3 {
-        let diff = fc1[idx] - fc2[idx];
-        let wrapped_diff = if pbc[idx] { diff - diff.round() } else { diff };
-        if wrapped_diff.abs() > atol[idx] {
+    for axis in 0..3 {
+        let diff = fc1[axis] - fc2[axis];
+        let wrapped_diff = if pbc[axis] { diff - diff.round() } else { diff };
+        if wrapped_diff.abs() > atol[axis] {
             return false;
         }
     }
@@ -121,54 +124,61 @@ const IMAGES: [[f64; 3]; 27] = [
 ///
 /// # Returns
 ///
-/// A tuple of (vectors, distances_squared) where:
+/// A tuple of (vectors, distances_squared, images) where:
 /// - `vectors[i][j]` is the shortest Cartesian vector from fcoords1[i] to fcoords2[j]
 /// - `distances_squared[i][j]` is the squared length of that vector
+/// - `images[i][j]` is the periodic image offset [da, db, dc] that gives the shortest distance
 pub fn pbc_shortest_vectors(
     lattice: &Lattice,
     fcoords1: &[Vector3<f64>],
     fcoords2: &[Vector3<f64>],
     mask: Option<&[Vec<bool>]>,
     lll_frac_tol: Option<[f64; 3]>,
-) -> (Vec<Vec<Vector3<f64>>>, Vec<Vec<f64>>) {
+) -> PbcShortestResult {
     let n1 = fcoords1.len();
     let n2 = fcoords2.len();
 
     // Early return for empty inputs
     if n1 == 0 || n2 == 0 {
-        return (vec![], vec![]);
+        return (vec![], vec![], vec![]);
     }
 
     // Use LLL-reduced coordinates for full 3D PBC
     let pbc = lattice.pbc;
     let use_lll = pbc[0] && pbc[1] && pbc[2];
 
-    let (fc1, fc2, matrix) = if use_lll {
+    let (fc1, fc2, matrix, lll_mapping) = if use_lll {
         let lll_fc1 = lattice.get_lll_frac_coords(fcoords1);
         let lll_fc2 = lattice.get_lll_frac_coords(fcoords2);
         let lll_mat = lattice.lll_matrix();
-        (lll_fc1, lll_fc2, lll_mat)
+        let lll_map = lattice.lll_mapping();
+        (lll_fc1, lll_fc2, lll_mat, Some(lll_map))
     } else {
-        (fcoords1.to_vec(), fcoords2.to_vec(), *lattice.matrix())
+        (
+            fcoords1.to_vec(),
+            fcoords2.to_vec(),
+            *lattice.matrix(),
+            None,
+        )
     };
 
-    // Filter images based on PBC
-    let images: Vec<Vector3<f64>> = if use_lll {
-        IMAGES.iter().map(|img| Vector3::from(*img)).collect()
+    // Store both fractional and integer images for tracking
+    let frac_images: Vec<[f64; 3]> = if use_lll {
+        IMAGES.to_vec()
     } else {
         IMAGES
             .iter()
             .filter(|img| {
                 (pbc[0] || img[0] == 0.0) && (pbc[1] || img[1] == 0.0) && (pbc[2] || img[2] == 0.0)
             })
-            .map(|img| Vector3::from(*img))
+            .copied()
             .collect()
     };
 
     // Convert fractional images to Cartesian
-    let cart_images: Vec<Vector3<f64>> = images
+    let cart_images: Vec<Vector3<f64>> = frac_images
         .iter()
-        .map(|frac_im| matrix.transpose() * frac_im)
+        .map(|img| matrix.transpose() * Vector3::from(*img))
         .collect();
 
     // Convert fractional coords to Cartesian (wrap only periodic axes)
@@ -182,9 +192,10 @@ pub fn pbc_shortest_vectors(
         .map(|f| matrix.transpose() * wrap_frac_coords_pbc(f, pbc))
         .collect();
 
-    // Initialize output arrays with infinity for masked/skipped entries
+    // Initialize output arrays with infinity/zeros for masked/skipped entries
     let mut vectors = vec![vec![Vector3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY); n2]; n1];
     let mut d2 = vec![vec![f64::INFINITY; n2]; n1];
+    let mut result_images = vec![vec![[0i32; 3]; n2]; n1];
 
     for (idx, f1) in fc1.iter().enumerate() {
         for (jdx, f2) in fc2.iter().enumerate() {
@@ -195,12 +206,17 @@ pub fn pbc_shortest_vectors(
                 continue;
             }
 
-            // Check fractional tolerance
+            // Check fractional tolerance (only wrap periodic axes)
             let mut within_frac = true;
             if let Some(ftol) = lll_frac_tol {
-                for kdx in 0..3 {
-                    let fdist = f2[kdx] - f1[kdx];
-                    if (fdist - fdist.round()).abs() > ftol[kdx] {
+                for axis in 0..3 {
+                    let fdist = f2[axis] - f1[axis];
+                    let wrapped = if pbc[axis] {
+                        fdist - fdist.round()
+                    } else {
+                        fdist
+                    };
+                    if wrapped.abs() > ftol[axis] {
                         within_frac = false;
                         break;
                     }
@@ -217,22 +233,39 @@ pub fn pbc_shortest_vectors(
             // Find shortest image
             let mut best_d2 = 1e100;
             let mut best_vec = pre_im;
+            let mut best_image_idx = 0usize;
 
-            for cart_im in &cart_images {
+            for (im_idx, cart_im) in cart_images.iter().enumerate() {
                 let vec = pre_im + cart_im;
                 let dist_sq = vec.norm_squared();
                 if dist_sq < best_d2 {
                     best_d2 = dist_sq;
                     best_vec = vec;
+                    best_image_idx = im_idx;
                 }
             }
 
             d2[idx][jdx] = best_d2;
             vectors[idx][jdx] = best_vec;
+
+            // Convert image to original lattice basis if using LLL
+            let lll_image = frac_images[best_image_idx];
+            result_images[idx][jdx] = if let Some(ref mapping) = lll_mapping {
+                // Transform from LLL basis back to original: orig_image = mapping * lll_image
+                let orig_vec = mapping * Vector3::from(lll_image);
+                // Debug check: transformed image should be near-integer (within 0.1)
+                debug_assert!(
+                    (0..3).all(|axis| (orig_vec[axis] - orig_vec[axis].round()).abs() < 0.1),
+                    "LLL image transform gave non-integer result: {orig_vec:?}"
+                );
+                std::array::from_fn(|axis| orig_vec[axis].round() as i32)
+            } else {
+                lll_image.map(|val| val as i32)
+            };
         }
     }
 
-    (vectors, d2)
+    (vectors, d2, result_images)
 }
 
 /// Check if all fractional coordinates in `subset` are contained in `superset`
@@ -304,22 +337,27 @@ mod tests {
 
         // Same point: zero distance
         let coords = vec![Vector3::new(0.5, 0.5, 0.5)];
-        let (vecs, d2) = pbc_shortest_vectors(&lattice, &coords, &coords, None, None);
+        let (vecs, d2, images) = pbc_shortest_vectors(&lattice, &coords, &coords, None, None);
         assert!(d2[0][0] < 1e-10);
         assert!(vecs[0][0].norm() < 1e-10);
+        assert_eq!(images[0][0], [0, 0, 0]); // Same point, no image shift
 
         // Periodic wrap: 0.1 and 0.9 are 0.2 apart (via boundary)
         let c1 = vec![Vector3::new(0.1, 0.0, 0.0)];
         let c2 = vec![Vector3::new(0.9, 0.0, 0.0)];
-        let (_, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+        let (_, d2, images) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
         assert!((d2[0][0] - (0.8_f64).powi(2)).abs() < 1e-8); // 0.2 * 4.0 = 0.8
+        // Shortest path is via -1 in x direction (0.9 - 1.0 = -0.1, closer to 0.1)
+        assert_eq!(images[0][0][0], -1); // Shift in -x direction
 
         // Corner wrap: (0.05, 0.05, 0.05) to (0.95, 0.95, 0.95) = 0.1 per axis
         let c1 = vec![Vector3::new(0.05, 0.05, 0.05)];
         let c2 = vec![Vector3::new(0.95, 0.95, 0.95)];
-        let (_, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+        let (_, d2, images) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
         let expected = (3.0_f64).sqrt() * 0.4; // 0.1*4 per axis
         assert!((d2[0][0].sqrt() - expected).abs() < 1e-6);
+        // Shortest path is via -1 in all directions
+        assert_eq!(images[0][0], [-1, -1, -1]);
     }
 
     #[test]
@@ -416,7 +454,7 @@ mod tests {
         for (lattice, fc1, fc2, max_expected) in test_cases {
             let c1 = vec![Vector3::new(fc1[0], fc1[1], fc1[2])];
             let c2 = vec![Vector3::new(fc2[0], fc2[1], fc2[2])];
-            let (vecs, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+            let (vecs, d2, _images) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
 
             let dist = d2[0][0].sqrt();
             assert!(dist >= 0.0, "Distance should be non-negative, got {dist}");
@@ -453,6 +491,29 @@ mod tests {
     }
 
     #[test]
+    fn test_wrap_frac_coords_pbc() {
+        let v = Vector3::new(-0.5, 1.5, 2.3);
+        // (pbc flags, expected x, expected y, expected z)
+        let cases = [
+            ([true, true, true], [0.5, 0.5, 0.3]), // all periodic: all wrap
+            ([true, true, false], [0.5, 0.5, 2.3]), // slab: z unchanged
+            ([true, false, false], [0.5, 1.5, 2.3]), // wire: only x wraps
+            ([false, false, false], [-0.5, 1.5, 2.3]), // none: all unchanged
+        ];
+        for (pbc, expected) in cases {
+            let result = wrap_frac_coords_pbc(&v, pbc);
+            for axis in 0..3 {
+                assert!(
+                    (result[axis] - expected[axis]).abs() < 1e-10,
+                    "pbc={pbc:?} axis={axis}: expected {}, got {}",
+                    expected[axis],
+                    result[axis]
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_pbc_shortest_vectors_with_mask() {
         let lattice = Lattice::cubic(4.0);
         let c1 = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
@@ -460,7 +521,7 @@ mod tests {
 
         // Mask out (0,0) and (1,1) pairs
         let mask = vec![vec![true, false], vec![false, true]];
-        let (vecs, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, Some(&mask), None);
+        let (vecs, d2, _images) = pbc_shortest_vectors(&lattice, &c1, &c2, Some(&mask), None);
 
         // Masked entries should be infinity
         assert!(d2[0][0].is_infinite());
@@ -480,7 +541,7 @@ mod tests {
 
         // Tight tolerance - only nearby points
         let ftol = Some([0.1, 0.1, 0.1]);
-        let (_, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, ftol);
+        let (_, d2, _images) = pbc_shortest_vectors(&lattice, &c1, &c2, None, ftol);
 
         // (0.5, 0.5, 0.5) is outside tolerance
         assert!(d2[0][0].is_infinite());
@@ -520,7 +581,7 @@ mod tests {
         // Coords at z=0.1 and z=1.5 (outside [0,1) on non-periodic axis)
         let c1 = vec![Vector3::new(0.5, 0.5, 0.1)];
         let c2 = vec![Vector3::new(0.5, 0.5, 1.5)];
-        let (_, d2) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+        let (_, d2, _images) = pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
 
         // Without fix: z=1.5 wraps to 0.5, distance would be 0.4*10=4
         // With fix: z stays at 1.5, distance is (1.5-0.1)*10=14
