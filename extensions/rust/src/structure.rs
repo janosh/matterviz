@@ -320,7 +320,10 @@ impl Structure {
         })
     }
 
-    /// Get the Hermann-Mauguin spacegroup symbol (e.g., "Fm-3m", "P2_1/c").
+    /// Get the Hermann-Mauguin spacegroup symbol (e.g., "F m -3 m", "P 2_1/c").
+    ///
+    /// Note: Returns space-separated tokens as provided by the underlying
+    /// symmetry library (moyo). For condensed symbols, post-process by removing spaces.
     pub fn get_spacegroup_symbol(&self, symprec: f64) -> Result<String> {
         Ok(self.get_symmetry_dataset(symprec)?.hm_symbol)
     }

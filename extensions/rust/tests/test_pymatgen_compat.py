@@ -1,6 +1,6 @@
 """Compatibility tests comparing ferrox vs pymatgen StructureMatcher.
 
-Run with: pytest tests/test_pymatgen_compat.py -v
+Run with: pytest extensions/rust/tests/test_pymatgen_compat.py -v
 """
 
 from __future__ import annotations
@@ -707,7 +707,7 @@ class TestMattervizStructures:
                 data = json.loads(json_file.read_text())
                 if data.get("@class") == "Structure":
                     result[json_file.stem] = Structure.from_dict(data)
-            except Exception as exc:
+            except (json.JSONDecodeError, ValueError, TypeError, KeyError, OSError) as exc:
                 warnings.warn(f"Failed to load {json_file.stem}: {exc}", stacklevel=2)
         return result
 
@@ -733,7 +733,7 @@ class TestPymatgenCifStructures:
         for cif_file in PYMATGEN_CIF_DIR.glob("*.cif"):
             try:
                 result[cif_file.stem] = Structure.from_file(str(cif_file))
-            except Exception as exc:
+            except (ValueError, TypeError, KeyError, OSError) as exc:
                 warnings.warn(f"Failed to load {cif_file.stem}: {exc}", stacklevel=2)
         return result
 
