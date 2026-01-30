@@ -1,7 +1,9 @@
 // Type definitions for @matterviz/ferrox-wasm
 // These are hand-maintained and won't be overwritten by wasm-pack
 
-export default function init(options?: { module_or_path?: string | URL }): Promise<void>
+export default function init(
+  options?: { module_or_path?: string | URL },
+): Promise<void>
 
 export class WasmStructureMatcher {
   constructor()
@@ -27,10 +29,22 @@ export function make_supercell_diag(
   ny: number,
   nz: number,
 ): Promise<unknown>
-export function make_supercell(structure: unknown, matrix: number[][]): Promise<unknown>
-export function get_reduced_structure(structure: unknown, algo: string): Promise<unknown>
-export function get_primitive(structure: unknown, symprec: number): Promise<unknown>
-export function get_spacegroup_number(structure: unknown, symprec: number): Promise<unknown>
+export function make_supercell(
+  structure: unknown,
+  matrix: number[][],
+): Promise<unknown>
+export function get_reduced_structure(
+  structure: unknown,
+  algo: string,
+): Promise<unknown>
+export function get_primitive(
+  structure: unknown,
+  symprec: number,
+): Promise<unknown>
+export function get_spacegroup_number(
+  structure: unknown,
+  symprec: number,
+): Promise<unknown>
 export function structure_to_json(structure: unknown): Promise<unknown>
 export function get_volume(structure: unknown): Promise<unknown>
 export function get_total_mass(structure: unknown): Promise<unknown>
@@ -40,9 +54,16 @@ export function get_neighbor_list(
   r: number,
   exclude_self: boolean,
 ): Promise<unknown>
-export function get_distance(structure: unknown, i: number, j: number): Promise<unknown>
+export function get_distance(
+  structure: unknown,
+  i: number,
+  j: number,
+): Promise<unknown>
 export function get_distance_matrix(structure: unknown): Promise<unknown>
-export function get_sorted_structure(structure: unknown, reverse: boolean): Promise<unknown>
+export function get_sorted_structure(
+  structure: unknown,
+  reverse: boolean,
+): Promise<unknown>
 export function get_sorted_by_electronegativity(
   structure: unknown,
   reverse: boolean,
@@ -54,7 +75,10 @@ export function interpolate_structures(
   interpolate_lattices: boolean,
   use_pbc: boolean,
 ): Promise<unknown>
-export function copy_structure(structure: unknown, sanitize: boolean): Promise<unknown>
+export function copy_structure(
+  structure: unknown,
+  sanitize: boolean,
+): Promise<unknown>
 export function wrap_to_unit_cell(structure: unknown): Promise<unknown>
 export function translate_sites(
   structure: unknown,
