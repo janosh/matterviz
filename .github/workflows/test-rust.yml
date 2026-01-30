@@ -65,9 +65,11 @@ jobs:
         run: |
           uv pip install maturin --system
           maturin build --features python --release
-          uv pip install target/wheels/*.whl pymatgen numpy --system
+          uv pip install target/wheels/*.whl pymatgen numpy pytest --system
       - name: Run Python tests
-        run: python tests/test_pymatgen_compat.py --regression
+        run: |
+          python tests/test_pymatgen_compat.py --regression
+          pytest tests/test_ferrox_api.py tests/test_transformations.py -v
 
   check-version:
     runs-on: ubuntu-latest
