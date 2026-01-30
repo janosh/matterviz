@@ -70,10 +70,10 @@ fn coords_match_pbc(
     atol: [f64; 3],
     pbc: [bool; 3],
 ) -> bool {
-    for idx in 0..3 {
-        let diff = fc1[idx] - fc2[idx];
-        let wrapped_diff = if pbc[idx] { diff - diff.round() } else { diff };
-        if wrapped_diff.abs() > atol[idx] {
+    for axis in 0..3 {
+        let diff = fc1[axis] - fc2[axis];
+        let wrapped_diff = if pbc[axis] { diff - diff.round() } else { diff };
+        if wrapped_diff.abs() > atol[axis] {
             return false;
         }
     }
@@ -209,9 +209,9 @@ pub fn pbc_shortest_vectors(
             // Check fractional tolerance
             let mut within_frac = true;
             if let Some(ftol) = lll_frac_tol {
-                for kdx in 0..3 {
-                    let fdist = f2[kdx] - f1[kdx];
-                    if (fdist - fdist.round()).abs() > ftol[kdx] {
+                for axis in 0..3 {
+                    let fdist = f2[axis] - f1[axis];
+                    if (fdist - fdist.round()).abs() > ftol[axis] {
                         within_frac = false;
                         break;
                     }
@@ -483,6 +483,38 @@ mod tests {
         assert!((wrapped2[0] - 0.5).abs() < 1e-10);
         assert!((wrapped2[1] - 0.75).abs() < 1e-10);
         assert!((wrapped2[2] - 0.25).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_wrap_frac_coords_pbc() {
+        let v = Vector3::new(-0.5, 1.5, 2.3);
+
+        // All periodic: wraps all axes
+        let all_pbc = wrap_frac_coords_pbc(&v, [true, true, true]);
+        assert!((all_pbc[0] - 0.5).abs() < 1e-10);
+        assert!((all_pbc[1] - 0.5).abs() < 1e-10);
+        assert!((all_pbc[2] - 0.3).abs() < 1e-10);
+
+        // z non-periodic: x,y wrap, z unchanged
+        let slab_pbc = wrap_frac_coords_pbc(&v, [true, true, false]);
+        assert!((slab_pbc[0] - 0.5).abs() < 1e-10);
+        assert!((slab_pbc[1] - 0.5).abs() < 1e-10);
+        assert!(
+            (slab_pbc[2] - 2.3).abs() < 1e-10,
+            "Non-periodic z should NOT wrap"
+        );
+
+        // Only x periodic
+        let x_only = wrap_frac_coords_pbc(&v, [true, false, false]);
+        assert!((x_only[0] - 0.5).abs() < 1e-10);
+        assert!((x_only[1] - 1.5).abs() < 1e-10);
+        assert!((x_only[2] - 2.3).abs() < 1e-10);
+
+        // None periodic: all unchanged
+        let no_pbc = wrap_frac_coords_pbc(&v, [false, false, false]);
+        assert!((no_pbc[0] - (-0.5)).abs() < 1e-10);
+        assert!((no_pbc[1] - 1.5).abs() < 1e-10);
+        assert!((no_pbc[2] - 2.3).abs() < 1e-10);
     }
 
     #[test]

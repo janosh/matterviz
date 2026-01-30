@@ -183,7 +183,8 @@ impl Structure {
     /// Get species strings for all sites.
     ///
     /// Returns a vector of human-readable species strings, one per site.
-    /// For ordered sites: "Fe" or "Fe2+". For disordered: "Co:0.500, Fe:0.500".
+    /// For ordered sites: "Fe" or "Fe2+". For disordered: "Fe:0.5, Co:0.5"
+    /// (sorted by electronegativity, matching pymatgen).
     pub fn species_strings(&self) -> Vec<String> {
         self.site_occupancies
             .iter()
@@ -416,6 +417,7 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `i` or `j` is out of bounds.
+    #[inline]
     pub fn get_distance(&self, i: usize, j: usize) -> f64 {
         self.get_distance_and_image(i, j).0
     }
@@ -1413,7 +1415,7 @@ impl Structure {
     /// Get label for a specific site.
     ///
     /// Returns the explicit label if set in site properties, otherwise falls back
-    /// to `species_string()` (e.g., "Fe" or "Fe:0.500, Co:0.500").
+    /// to `species_string()` (e.g., "Fe" or "Fe:0.5, Co:0.5").
     ///
     /// # Panics
     ///
@@ -2290,46 +2292,29 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_distance_and_image_cubic_lattice() {
-        // Test with simple cubic lattice - easy to verify manually
-        let lattice = Lattice::cubic(10.0);
+    fn test_distance_and_image_cubic() {
+        // sqrt(2.5^2 + 3.5^2 + 4.5^2) = 6.22494979899
+        let expected_dist = 6.22494979899;
+
+        // Direct path (no image shift)
         let s = Structure::new(
-            lattice,
+            Lattice::cubic(10.0),
             vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
-            vec![Vector3::new(0.25, 0.35, 0.45), Vector3::new(0.0, 0.0, 0.0)],
+            vec![Vector3::new(0.25, 0.35, 0.45), Vector3::zeros()],
         );
-
-        // Distance from pymatgen: site at (2.5, 3.5, 4.5) to origin = sqrt(2.5^2 + 3.5^2 + 4.5^2) = 6.22494979899
         let (dist, img) = s.get_distance_and_image(0, 1);
-        assert!((dist - 6.22494979899).abs() < 1e-6);
-        assert_eq!(img, [0, 0, 0]); // No image shift needed
-    }
+        assert!((dist - expected_dist).abs() < 1e-6);
+        assert_eq!(img, [0, 0, 0]);
 
-    #[test]
-    fn test_distance_and_image_periodic_wrap() {
-        // Test when shortest path crosses periodic boundary
-        let lattice = Lattice::cubic(10.0);
+        // Via periodic boundary (site at 1.0 wraps to 0.0)
         let s = Structure::new(
-            lattice,
+            Lattice::cubic(10.0),
             vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
-            vec![
-                Vector3::new(0.25, 0.35, 0.45),
-                Vector3::new(1.0, 1.0, 1.0), // Same as origin via PBC (wraps to 0,0,0)
-            ],
+            vec![Vector3::new(0.25, 0.35, 0.45), Vector3::new(1.0, 1.0, 1.0)],
         );
-
         let (dist, img) = s.get_distance_and_image(0, 1);
-        // Shortest distance should be to the image at origin
-        assert!((dist - 6.22494979899).abs() < 1e-6);
-        // Verify the image gives the correct distance
-        let d_with_img = s.get_distance_with_image(0, 1, img);
-        assert!(
-            (dist - d_with_img).abs() < 1e-10,
-            "Image {:?} should give same distance: {} vs {}",
-            img,
-            dist,
-            d_with_img
-        );
+        assert!((dist - expected_dist).abs() < 1e-6);
+        assert!((dist - s.get_distance_with_image(0, 1, img)).abs() < 1e-10);
     }
 
     #[test]
@@ -2416,7 +2401,7 @@ mod tests {
         let mut slab_lattice = Lattice::cubic(10.0);
         slab_lattice.pbc = [true, true, false]; // z is non-periodic (slab)
         let s = Structure::new(
-            slab_lattice,
+            slab_lattice.clone(),
             vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
             vec![Vector3::new(0.0, 0.0, 0.1), Vector3::new(0.0, 0.0, 1.5)], // z=1.5 outside [0,1)
         );
@@ -2426,6 +2411,43 @@ mod tests {
         assert!(
             (dist - 14.0).abs() < 1e-10,
             "Non-periodic axis should not wrap: expected 14.0, got {dist}"
+        );
+
+        // Negative coordinate on non-periodic axis should also NOT wrap
+        let s = Structure::new(
+            slab_lattice.clone(),
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.5), Vector3::new(0.0, 0.0, -0.5)], // z=-0.5
+        );
+        // z=-0.5 should NOT wrap to 0.5, distance = |0.5 - (-0.5)| * 10 = 10
+        let dist = s.get_distance_with_image(0, 1, [0, 0, 0]);
+        assert!(
+            (dist - 10.0).abs() < 1e-10,
+            "Negative coord on non-periodic axis should not wrap: expected 10.0, got {dist}"
+        );
+
+        // Non-zero jimage on partial-PBC: only periodic axes should use the image shift
+        let s = Structure::new(
+            slab_lattice.clone(),
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        // jimage [1, 0, 0] shifts site 1 by +a (periodic): x = 0.5 + 1 = 1.5
+        // Distance in x: 1.5 * 10 = 15, y: 0.5 * 10 = 5, z: 0.5 * 10 = 5
+        let dist_with_x_shift = s.get_distance_with_image(0, 1, [1, 0, 0]);
+        let expected = (15.0_f64.powi(2) + 5.0_f64.powi(2) + 5.0_f64.powi(2)).sqrt();
+        assert!(
+            (dist_with_x_shift - expected).abs() < 1e-10,
+            "jimage shift on periodic x axis: expected {expected}, got {dist_with_x_shift}"
+        );
+
+        // jimage [0, 0, 1] shifts site 1 by +c (non-periodic z): z = 0.5 + 1 = 1.5
+        // Note: for non-periodic axes, the jimage shift still applies but coords don't wrap
+        let dist_with_z_shift = s.get_distance_with_image(0, 1, [0, 0, 1]);
+        let expected_z = (5.0_f64.powi(2) + 5.0_f64.powi(2) + 15.0_f64.powi(2)).sqrt();
+        assert!(
+            (dist_with_z_shift - expected_z).abs() < 1e-10,
+            "jimage shift on non-periodic z axis: expected {expected_z}, got {dist_with_z_shift}"
         );
     }
 
@@ -2543,7 +2565,7 @@ mod tests {
         assert_eq!(s.site_label(0), "Fe");
         assert_eq!(s.site_label(1), "O2-");
 
-        // Disordered site uses species_string
+        // Disordered site uses species_string (sorted by electronegativity: Fe < Co)
         let s = Structure::new_from_occupancies(
             lattice.clone(),
             vec![SiteOccupancy::new(vec![
@@ -2552,7 +2574,7 @@ mod tests {
             ])],
             vec![Vector3::new(0.0, 0.0, 0.0)],
         );
-        assert_eq!(s.site_label(0), "Co:0.500, Fe:0.500");
+        assert_eq!(s.site_label(0), "Fe:0.5, Co:0.5");
 
         // Custom labels override defaults
         let mut s = Structure::new(
