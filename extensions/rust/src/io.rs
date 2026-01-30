@@ -853,6 +853,293 @@ fn parse_pbc_value(pbc_value: &serde_json::Value) -> [bool; 3] {
     }
 }
 
+// ============================================================================
+// Structure Writers
+// ============================================================================
+
+/// Convert a structure to VASP POSCAR format string.
+///
+/// The output uses VASP 5+ format with element symbols.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to serialize
+/// * `comment` - Optional comment line (defaults to reduced formula)
+///
+/// # Returns
+///
+/// POSCAR format string.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let poscar_string = structure_to_poscar(&structure, None);
+/// ```
+pub fn structure_to_poscar(structure: &Structure, comment: Option<&str>) -> String {
+    let mat = structure.lattice.matrix();
+
+    // Check for disordered/partial-occupancy sites and collect warnings
+    // POSCAR format cannot represent multi-species or partial occupancy sites
+    let warnings: Vec<String> = structure
+        .site_occupancies
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, site_occ)| {
+            let total_occ = site_occ.total_occupancy();
+            let is_disordered = !site_occ.is_ordered();
+            let has_partial_occ = (total_occ - 1.0).abs() > 1e-6;
+
+            if !is_disordered && !has_partial_occ {
+                return None;
+            }
+
+            let species_str = site_occ
+                .species
+                .iter()
+                .map(|(sp, occ)| format!("{sp}:{occ:.3}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let dominant = site_occ.dominant_species();
+
+            Some(if is_disordered && has_partial_occ {
+                format!(
+                    "  Site {idx}: disordered+partial (total={total_occ:.3}): [{species_str}] -> {dominant}"
+                )
+            } else if is_disordered {
+                format!("  Site {idx}: disordered: [{species_str}] -> {dominant}")
+            } else {
+                format!("  Site {idx}: partial occupancy (total={total_occ:.3}): [{species_str}]")
+            })
+        })
+        .collect();
+
+    if !warnings.is_empty() {
+        tracing::warn!(
+            "POSCAR cannot represent disorder/partial occupancy. {} site(s) simplified:\n{}",
+            warnings.len(),
+            warnings.join("\n")
+        );
+    }
+
+    // Group sites by element (POSCAR requires contiguous blocks)
+    // Use IndexMap to preserve insertion order (first occurrence)
+    let mut element_sites: indexmap::IndexMap<&str, Vec<usize>> = indexmap::IndexMap::new();
+    for (idx, site_occ) in structure.site_occupancies.iter().enumerate() {
+        let symbol = site_occ.dominant_species().element.symbol();
+        element_sites.entry(symbol).or_default().push(idx);
+    }
+
+    // Build the POSCAR string
+    let mut lines = Vec::new();
+
+    // Line 1: Comment (use provided or fall back to formula)
+    lines.push(match comment {
+        Some(c) if !c.is_empty() => c.to_string(),
+        _ => structure.composition().reduced_formula(),
+    });
+
+    // Line 2: Scaling factor
+    lines.push("1.0".to_string());
+
+    // Lines 3-5: Lattice vectors (rows are a, b, c)
+    for row in 0..3 {
+        lines.push(format!(
+            "  {:20.16}  {:20.16}  {:20.16}",
+            mat[(row, 0)],
+            mat[(row, 1)],
+            mat[(row, 2)]
+        ));
+    }
+
+    // Line 6: Element symbols
+    let symbols: Vec<&str> = element_sites.keys().copied().collect();
+    lines.push(format!("  {}", symbols.join("  ")));
+
+    // Line 7: Element counts
+    let counts: Vec<String> = element_sites
+        .values()
+        .map(|v| v.len().to_string())
+        .collect();
+    lines.push(format!("  {}", counts.join("  ")));
+
+    // Line 8: Direct (fractional coordinates)
+    lines.push("Direct".to_string());
+
+    // Coordinate lines (in element order)
+    for indices in element_sites.values() {
+        for &idx in indices {
+            let frac = &structure.frac_coords[idx];
+            lines.push(format!(
+                "  {:20.16}  {:20.16}  {:20.16}",
+                frac.x, frac.y, frac.z
+            ));
+        }
+    }
+
+    lines.join("\n") + "\n"
+}
+
+/// Write a structure to a POSCAR file.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to write
+/// * `path` - Path to the output file
+/// * `comment` - Optional comment line
+///
+/// # Returns
+///
+/// Result indicating success or file I/O error.
+pub fn write_poscar(structure: &Structure, path: &Path, comment: Option<&str>) -> Result<()> {
+    let content = structure_to_poscar(structure, comment);
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+/// Format a JSON value for extXYZ comment line.
+/// Returns None for arrays/objects which can't be represented inline.
+fn format_extxyz_value(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        serde_json::Value::String(s) => {
+            // Escape quotes, backslashes, and newlines to prevent malformed output
+            let escaped = s
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n");
+            Some(format!("\"{}\"", escaped))
+        }
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        _ => None, // Skip arrays/objects
+    }
+}
+
+/// Convert a structure to extXYZ format string.
+///
+/// The output follows the extended XYZ format with lattice in the comment line.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to serialize
+/// * `properties` - Optional additional properties for the comment line
+///
+/// # Returns
+///
+/// extXYZ format string.
+pub fn structure_to_extxyz(
+    structure: &Structure,
+    properties: Option<&HashMap<String, serde_json::Value>>,
+) -> String {
+    let mat = structure.lattice.matrix();
+    let pbc = structure.lattice.pbc;
+
+    // Line 1: Number of atoms
+    let mut lines = vec![structure.num_sites().to_string()];
+
+    // Line 2: Comment with Lattice and properties
+    // Format: Lattice="ax ay az bx by bz cx cy cz" pbc="T T T" [other properties]
+    let lattice_str = format!(
+        "{:.10} {:.10} {:.10} {:.10} {:.10} {:.10} {:.10} {:.10} {:.10}",
+        mat[(0, 0)],
+        mat[(0, 1)],
+        mat[(0, 2)],
+        mat[(1, 0)],
+        mat[(1, 1)],
+        mat[(1, 2)],
+        mat[(2, 0)],
+        mat[(2, 1)],
+        mat[(2, 2)]
+    );
+
+    let pbc_str = pbc.map(|b| if b { "T" } else { "F" }).join(" ");
+
+    let mut comment_parts = vec![
+        format!("Lattice=\"{}\"", lattice_str),
+        format!("pbc=\"{}\"", pbc_str),
+    ];
+
+    // Add structure properties and additional properties
+    let all_props = structure
+        .properties
+        .iter()
+        .chain(properties.into_iter().flatten());
+    for (key, value) in all_props {
+        if key != "Lattice"
+            && key != "pbc"
+            && let Some(value_str) = format_extxyz_value(value)
+        {
+            comment_parts.push(format!("{}={}", key, value_str));
+        }
+    }
+
+    lines.push(comment_parts.join(" "));
+
+    // Atom lines: Element X Y Z (Cartesian coordinates)
+    let cart_coords = structure.cart_coords();
+    for (site_occ, cart) in structure.site_occupancies.iter().zip(cart_coords.iter()) {
+        let symbol = site_occ.dominant_species().element.symbol();
+        lines.push(format!(
+            "{} {:20.16} {:20.16} {:20.16}",
+            symbol, cart.x, cart.y, cart.z
+        ));
+    }
+
+    lines.join("\n") + "\n"
+}
+
+/// Write a structure to an extXYZ file.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to write
+/// * `path` - Path to the output file
+/// * `properties` - Optional additional properties
+///
+/// # Returns
+///
+/// Result indicating success or file I/O error.
+pub fn write_extxyz(
+    structure: &Structure,
+    path: &Path,
+    properties: Option<&HashMap<String, serde_json::Value>>,
+) -> Result<()> {
+    let content = structure_to_extxyz(structure, properties);
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+/// Write a structure to a file with automatic format detection.
+///
+/// The format is determined by the file extension:
+/// - `.json` - Pymatgen JSON format
+/// - `.cif` - CIF format
+/// - `.xyz`, `.extxyz` - extXYZ format
+/// - `.vasp`, `POSCAR*`, `CONTCAR*` - POSCAR format
+///
+/// # Arguments
+///
+/// * `structure` - The structure to write
+/// * `path` - Path to the output file
+///
+/// # Returns
+///
+/// Result indicating success or error.
+pub fn write_structure(structure: &Structure, path: &Path) -> Result<()> {
+    let format = StructureFormat::from_path(path).ok_or_else(|| FerroxError::UnknownFormat {
+        path: path.display().to_string(),
+    })?;
+
+    match format {
+        StructureFormat::PymatgenJson => {
+            std::fs::write(path, structure_to_pymatgen_json(structure))?;
+        }
+        StructureFormat::Poscar => write_poscar(structure, path, None)?,
+        StructureFormat::ExtXyz => write_extxyz(structure, path, None)?,
+        StructureFormat::Cif => crate::cif::write_cif(structure, path, None)?,
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2009,5 +2296,458 @@ Mg 0.0 0.0 0.0
         let s_dis = parse_structure_json(dis).unwrap();
         assert_eq!(s_dis.num_sites(), 1);
         assert!(!s_dis.is_ordered());
+    }
+
+    // =========================================================================
+    // Structure Writer Tests
+    // =========================================================================
+
+    #[test]
+    fn test_structure_to_poscar_roundtrip() {
+        // NaCl structure - tests format and coordinate roundtrip
+        let lattice = Lattice::cubic(5.64);
+        let species = vec![
+            Species::neutral(Element::Na),
+            Species::neutral(Element::Na),
+            Species::neutral(Element::Cl),
+            Species::neutral(Element::Cl),
+        ];
+        let coords = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.5, 0.5, 0.0),
+            Vector3::new(0.5, 0.0, 0.5),
+            Vector3::new(0.0, 0.5, 0.5),
+        ];
+        let s1 = Structure::new(lattice, species, coords);
+
+        let poscar = structure_to_poscar(&s1, Some("NaCl test"));
+
+        // Verify format
+        assert!(poscar.starts_with("NaCl test\n"));
+        assert!(poscar.contains("Direct\n"));
+
+        // Roundtrip and compare
+        let s2 = parse_poscar_str(&poscar).unwrap();
+        assert_eq!(s1.num_sites(), s2.num_sites());
+        assert!((s1.lattice.volume() - s2.lattice.volume()).abs() < 1e-6);
+        assert_eq!(
+            count_element(&s1, Element::Na),
+            count_element(&s2, Element::Na)
+        );
+
+        // Verify coordinates (POSCAR groups by element, so match by position)
+        let (cart1, cart2) = (s1.cart_coords(), s2.cart_coords());
+        for c1 in &cart1 {
+            assert!(
+                cart2.iter().any(|c2| (c1 - c2).norm() < 1e-6),
+                "Coordinate {:?} not found",
+                c1
+            );
+        }
+    }
+
+    #[test]
+    fn test_structure_to_poscar_multi_element() {
+        // BaTiO3 - tests element grouping with 3 species
+        let s = Structure::new(
+            Lattice::cubic(5.0),
+            vec![
+                Species::neutral(Element::Ba),
+                Species::neutral(Element::Ti),
+                Species::neutral(Element::O),
+                Species::neutral(Element::O),
+                Species::neutral(Element::O),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+                Vector3::new(0.5, 0.5, 0.0),
+                Vector3::new(0.5, 0.0, 0.5),
+                Vector3::new(0.0, 0.5, 0.5),
+            ],
+        );
+
+        let poscar = structure_to_poscar(&s, None);
+        let s2 = parse_poscar_str(&poscar).unwrap();
+
+        assert_eq!(s2.num_sites(), 5);
+        assert_eq!(count_element(&s2, Element::Ba), 1);
+        assert_eq!(count_element(&s2, Element::Ti), 1);
+        assert_eq!(count_element(&s2, Element::O), 3);
+    }
+
+    #[test]
+    fn test_structure_to_extxyz_roundtrip() {
+        use std::io::Write;
+        // Non-cubic lattice catches vector ordering bugs
+        let s1 = Structure::new(
+            Lattice::from_parameters(3.0, 4.0, 5.0, 90.0, 90.0, 90.0),
+            vec![Species::neutral(Element::H), Species::neutral(Element::O)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        let xyz = structure_to_extxyz(&s1, None);
+
+        // Verify format
+        let lines: Vec<&str> = xyz.lines().collect();
+        assert_eq!(lines[0], "2");
+        assert!(lines[1].contains("Lattice="));
+        assert!(lines[1].contains("pbc="));
+
+        // Roundtrip via temp file
+        let mut temp_file = NamedTempFile::with_suffix(".xyz").unwrap();
+        temp_file.write_all(xyz.as_bytes()).unwrap();
+        let s2 = parse_extxyz(temp_file.path()).unwrap();
+
+        // Compare lattice (catches ordering bugs)
+        let (len1, len2) = (s1.lattice.lengths(), s2.lattice.lengths());
+        assert!((len1.x - len2.x).abs() < 1e-6, "a mismatch");
+        assert!((len1.y - len2.y).abs() < 1e-6, "b mismatch");
+        assert!((len1.z - len2.z).abs() < 1e-6, "c mismatch");
+
+        // Compare species and coords
+        assert_eq!(s1.species()[0].element, s2.species()[0].element);
+        assert_eq!(s1.species()[1].element, s2.species()[1].element);
+        let (cart1, cart2) = (s1.cart_coords(), s2.cart_coords());
+        for idx in 0..2 {
+            assert!((cart1[idx] - cart2[idx]).norm() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_write_structure_auto_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let s = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+
+        for filename in ["test.json", "POSCAR", "test.xyz", "test.cif"] {
+            let path = temp_dir.path().join(filename);
+            write_structure(&s, &path).unwrap();
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert!(!content.is_empty(), "{} should not be empty", filename);
+        }
+    }
+
+    #[test]
+    fn test_structure_to_extxyz_escapes_strings() {
+        let s = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+
+        // Test with problematic string values
+        let mut props = HashMap::new();
+        props.insert("with_quote".to_string(), serde_json::json!("foo\"bar"));
+        props.insert(
+            "with_newline".to_string(),
+            serde_json::json!("line1\nline2"),
+        );
+        props.insert(
+            "with_backslash".to_string(),
+            serde_json::json!("path\\to\\file"),
+        );
+
+        let xyz = structure_to_extxyz(&s, Some(&props));
+        let lines: Vec<&str> = xyz.lines().collect();
+
+        // Output should be exactly 3 lines (count, comment, atom)
+        assert_eq!(lines.len(), 3, "Newlines in properties should be escaped");
+
+        // Check escaped values are in comment line
+        assert!(
+            lines[1].contains(r#"with_quote="foo\"bar""#),
+            "Quotes should be escaped"
+        );
+        assert!(
+            lines[1].contains(r#"with_newline="line1\nline2""#),
+            "Newlines should be escaped"
+        );
+        assert!(
+            lines[1].contains(r#"with_backslash="path\\to\\file""#),
+            "Backslashes should be escaped"
+        );
+    }
+
+    // =========================================================================
+    // Fixture-based Roundtrip Tests (matches TypeScript coverage)
+    // =========================================================================
+
+    #[test]
+    fn test_roundtrip_poscar_batio3_fixture() {
+        // Parse BaTiO3 fixture, export, reparse - verifies real-world POSCAR handling
+        let fixture = include_str!("../../../src/site/structures/BaTiO3-tetragonal.poscar");
+        let s1 = parse_poscar_str(fixture).unwrap();
+        let exported = structure_to_poscar(&s1, None);
+        let s2 = parse_poscar_str(&exported).unwrap();
+
+        assert_eq!(s1.num_sites(), s2.num_sites());
+        assert!((s1.lattice.volume() - s2.lattice.volume()).abs() < 1e-3);
+        // Verify all coordinates roundtrip
+        let (cart1, cart2) = (s1.cart_coords(), s2.cart_coords());
+        for c1 in &cart1 {
+            assert!(cart2.iter().any(|c2| (c1 - c2).norm() < 1e-4));
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_cif_tio2_fixture() {
+        // Parse TiO2 CIF fixture, export, reparse
+        let fixture = include_str!("../../../src/site/structures/TiO2.cif");
+        let s1 = crate::cif::parse_cif_str(fixture, std::path::Path::new("TiO2.cif")).unwrap();
+        let exported = crate::cif::structure_to_cif(&s1, None);
+        let s2 =
+            crate::cif::parse_cif_str(&exported, std::path::Path::new("exported.cif")).unwrap();
+
+        assert_eq!(s1.num_sites(), s2.num_sites());
+        let (len1, len2) = (s1.lattice.lengths(), s2.lattice.lengths());
+        assert!((len1.x - len2.x).abs() < 1e-4);
+        assert!((len1.y - len2.y).abs() < 1e-4);
+        assert!((len1.z - len2.z).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_roundtrip_extxyz_quartz_fixture() {
+        use std::io::Write;
+        // Parse quartz extXYZ fixture, export, reparse
+        let fixture = include_str!("../../../src/site/structures/quartz.extxyz");
+        let mut temp = NamedTempFile::with_suffix(".xyz").unwrap();
+        temp.write_all(fixture.as_bytes()).unwrap();
+        let s1 = parse_extxyz(temp.path()).unwrap();
+
+        let exported = structure_to_extxyz(&s1, None);
+        let mut temp2 = NamedTempFile::with_suffix(".xyz").unwrap();
+        temp2.write_all(exported.as_bytes()).unwrap();
+        let s2 = parse_extxyz(temp2.path()).unwrap();
+
+        assert_eq!(s1.num_sites(), s2.num_sites());
+        let (len1, len2) = (s1.lattice.lengths(), s2.lattice.lengths());
+        assert!((len1.x - len2.x).abs() < 1e-4);
+        assert!((len1.y - len2.y).abs() < 1e-4);
+        assert!((len1.z - len2.z).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_roundtrip_json_mp1_fixture() {
+        // Parse mp-1 JSON fixture, export, reparse
+        let fixture = include_str!("../../../src/site/structures/mp-1.json");
+        let s1 = parse_structure_json(fixture).unwrap();
+        let exported = structure_to_pymatgen_json(&s1);
+        let s2 = parse_structure_json(&exported).unwrap();
+
+        assert_eq!(s1.num_sites(), s2.num_sites());
+        assert!((s1.lattice.volume() - s2.lattice.volume()).abs() < 1e-6);
+    }
+
+    // =========================================================================
+    // Triclinic/Non-orthogonal Lattice Tests
+    // =========================================================================
+
+    #[test]
+    fn test_poscar_triclinic_lattice() {
+        // Triclinic lattice with all angles non-90
+        let s1 = Structure::new(
+            Lattice::from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0),
+            vec![Species::neutral(Element::C)],
+            vec![Vector3::new(0.25, 0.5, 0.75)],
+        );
+        let poscar = structure_to_poscar(&s1, None);
+        let s2 = parse_poscar_str(&poscar).unwrap();
+
+        // Verify angles preserved
+        let (a1, a2) = (s1.lattice.angles(), s2.lattice.angles());
+        assert!((a1.x - a2.x).abs() < 1e-4, "alpha mismatch");
+        assert!((a1.y - a2.y).abs() < 1e-4, "beta mismatch");
+        assert!((a1.z - a2.z).abs() < 1e-4, "gamma mismatch");
+    }
+
+    #[test]
+    fn test_cif_triclinic_lattice() {
+        let s1 = Structure::try_new(
+            Lattice::from_parameters(3.0, 4.0, 5.0, 70.0, 80.0, 100.0),
+            vec![Species::neutral(Element::Si)],
+            vec![Vector3::new(0.1, 0.2, 0.3)],
+        )
+        .unwrap();
+        let cif = crate::cif::structure_to_cif(&s1, None);
+        let s2 = crate::cif::parse_cif_str(&cif, std::path::Path::new("tri.cif")).unwrap();
+
+        let (a1, a2) = (s1.lattice.angles(), s2.lattice.angles());
+        assert!((a1.x - a2.x).abs() < 1e-4);
+        assert!((a1.y - a2.y).abs() < 1e-4);
+        assert!((a1.z - a2.z).abs() < 1e-4);
+    }
+
+    // =========================================================================
+    // High Precision Tests
+    // =========================================================================
+
+    #[test]
+    fn test_poscar_high_precision_coords() {
+        let s1 = Structure::new(
+            Lattice::cubic(10.0),
+            vec![Species::neutral(Element::H)],
+            vec![Vector3::new(0.123456789, 0.987654321, 0.555555555)],
+        );
+        let poscar = structure_to_poscar(&s1, None);
+
+        // Verify high precision is preserved in roundtrip (16 decimal format)
+        let s2 = parse_poscar_str(&poscar).unwrap();
+        let (f1, f2) = (&s1.frac_coords[0], &s2.frac_coords[0]);
+        assert!((f1.x - f2.x).abs() < 1e-10, "x precision loss");
+        assert!((f1.y - f2.y).abs() < 1e-10, "y precision loss");
+        assert!((f1.z - f2.z).abs() < 1e-10, "z precision loss");
+    }
+
+    // =========================================================================
+    // Disordered Site Handling (CIF preserves occupancy)
+    // =========================================================================
+
+    #[test]
+    fn test_cif_disordered_site_roundtrip() {
+        use crate::species::SiteOccupancy;
+        // Create structure with disordered site
+        let lattice = Lattice::cubic(4.0);
+        let disordered = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.6),
+            (Species::neutral(Element::Co), 0.4),
+        ]);
+        let s1 = Structure::try_new_from_occupancies(
+            lattice,
+            vec![disordered],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        )
+        .unwrap();
+
+        let cif = crate::cif::structure_to_cif(&s1, None);
+
+        // Verify both species and occupancies appear
+        assert!(cif.contains("Fe"));
+        assert!(cif.contains("Co"));
+        assert!(cif.contains("0.600000") || cif.contains("0.6"));
+        assert!(cif.contains("0.400000") || cif.contains("0.4"));
+    }
+
+    // =========================================================================
+    // CIF Data Block Name Sanitization
+    // =========================================================================
+
+    #[test]
+    fn test_cif_data_name_sanitization() {
+        let s = Structure::try_new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::H)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        )
+        .unwrap();
+
+        // Spaces and hyphens should be replaced with underscores
+        let cif = crate::cif::structure_to_cif(&s, Some("test-structure name"));
+        assert!(cif.starts_with("data_test_structure_name\n"));
+
+        // Formula used when no name provided
+        let cif2 = crate::cif::structure_to_cif(&s, None);
+        assert!(cif2.starts_with("data_H\n"));
+    }
+
+    // =========================================================================
+    // Large Structure Handling
+    // =========================================================================
+
+    #[test]
+    fn test_large_structure_export() {
+        // Create 500-site structure (TypeScript tests 1000, but smaller for speed)
+        let lattice = Lattice::cubic(20.0);
+        let species: Vec<Species> = (0..500).map(|_| Species::neutral(Element::H)).collect();
+        let coords: Vec<Vector3<f64>> = (0..500)
+            .map(|idx| {
+                Vector3::new(
+                    (idx % 10) as f64 / 10.0,
+                    ((idx / 10) % 10) as f64 / 10.0,
+                    (idx / 100) as f64 / 5.0,
+                )
+            })
+            .collect();
+        let s = Structure::new(lattice, species, coords);
+
+        // All formats should handle large structures without panicking
+        let poscar = structure_to_poscar(&s, None);
+        let xyz = structure_to_extxyz(&s, None);
+        let cif = crate::cif::structure_to_cif(&s, None);
+        let json = structure_to_pymatgen_json(&s);
+
+        // Verify all 500 sites are exported
+        let s2 = parse_poscar_str(&poscar).unwrap();
+        assert_eq!(s2.num_sites(), 500);
+
+        let xyz_lines: Vec<&str> = xyz.lines().collect();
+        assert_eq!(xyz_lines[0], "500"); // First line is atom count
+
+        assert!(cif.matches("H").count() >= 500);
+        assert!(json.contains("\"sites\""));
+    }
+
+    // =========================================================================
+    // POSCAR Default Comment (formula)
+    // =========================================================================
+
+    #[test]
+    fn test_poscar_default_comment_uses_formula() {
+        let s = Structure::new(
+            Lattice::cubic(5.0),
+            vec![
+                Species::neutral(Element::Li),
+                Species::neutral(Element::Fe),
+                Species::neutral(Element::P),
+                Species::neutral(Element::O),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.25, 0.25, 0.25),
+                Vector3::new(0.5, 0.5, 0.5),
+                Vector3::new(0.75, 0.75, 0.75),
+            ],
+        );
+        let poscar = structure_to_poscar(&s, None);
+
+        // First line should be the reduced formula
+        let first_line = poscar.lines().next().unwrap();
+        assert!(
+            first_line.contains("Li") && first_line.contains("Fe"),
+            "Default comment should contain formula elements"
+        );
+    }
+
+    // =========================================================================
+    // extXYZ Properties Preservation
+    // =========================================================================
+
+    #[test]
+    fn test_extxyz_preserves_properties() {
+        use std::io::Write;
+        let mut s = Structure::new(
+            Lattice::cubic(5.0),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+        s.properties
+            .insert("energy".to_string(), serde_json::json!(-5.5));
+        s.properties
+            .insert("config_type".to_string(), serde_json::json!("relaxed"));
+
+        let xyz = structure_to_extxyz(&s, None);
+
+        // Properties should appear in comment line
+        assert!(xyz.contains("energy=-5.5") || xyz.contains("energy="));
+        assert!(xyz.contains("config_type=\"relaxed\""));
+
+        // Roundtrip preserves properties
+        let mut temp = NamedTempFile::with_suffix(".xyz").unwrap();
+        temp.write_all(xyz.as_bytes()).unwrap();
+        let s2 = parse_extxyz(temp.path()).unwrap();
+        assert_eq!(s2.properties.get("energy"), Some(&serde_json::json!(-5.5)));
     }
 }
