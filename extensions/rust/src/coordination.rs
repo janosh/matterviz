@@ -49,6 +49,9 @@ pub struct LocalEnvNeighbor {
     /// The species at this neighbor site (element + optional oxidation state).
     pub species: Species,
     /// Distance from the central site in Angstroms.
+    ///
+    /// **Note**: For Voronoi-based methods, this is an approximation derived from
+    /// face geometry (2× centroid distance). Use cutoff-based methods for exact distances.
     pub distance: f64,
     /// Periodic image offset [da, db, dc] in lattice vector units.
     pub image: [i32; 3],
@@ -220,6 +223,28 @@ impl Default for VoronoiConfig {
     }
 }
 
+impl VoronoiConfig {
+    /// Validate config values are physically meaningful.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `min_solid_angle` is negative or greater than 1.0.
+    pub fn validate(&self) {
+        assert!(
+            (0.0..=1.0).contains(&self.min_solid_angle),
+            "min_solid_angle must be in [0.0, 1.0], got {}",
+            self.min_solid_angle
+        );
+    }
+}
+
+/// Get validated config, using default if None.
+fn validated_config(config: Option<&VoronoiConfig>) -> VoronoiConfig {
+    let cfg = config.copied().unwrap_or_default();
+    cfg.validate();
+    cfg
+}
+
 /// Check if a lattice is orthogonal (all angles ≈ 90°).
 fn is_orthogonal(structure: &Structure) -> bool {
     const ANGLE_TOL: f64 = 1.0; // degrees
@@ -325,7 +350,7 @@ pub fn get_cn_voronoi(
     config: Option<&VoronoiConfig>,
 ) -> f64 {
     check_site_idx(structure, site_idx);
-    let config = config.copied().unwrap_or_default();
+    let config = validated_config(config);
     let Some(voronoi) = build_voronoi(structure) else {
         return 0.0;
     };
@@ -342,7 +367,7 @@ pub fn get_cn_voronoi(
 
 /// Get Voronoi-weighted coordination numbers for all sites.
 pub fn get_cn_voronoi_all(structure: &Structure, config: Option<&VoronoiConfig>) -> Vec<f64> {
-    let config = config.copied().unwrap_or_default();
+    let config = validated_config(config);
     let Some(voronoi) = build_voronoi(structure) else {
         return vec![];
     };
@@ -374,7 +399,7 @@ pub fn get_voronoi_neighbors(
     config: Option<&VoronoiConfig>,
 ) -> Vec<(usize, f64)> {
     check_site_idx(structure, site_idx);
-    let config = config.copied().unwrap_or_default();
+    let config = validated_config(config);
     let Some(voronoi) = build_voronoi(structure) else {
         return vec![];
     };
@@ -403,7 +428,7 @@ pub fn get_local_environment_voronoi(
     config: Option<&VoronoiConfig>,
 ) -> Vec<LocalEnvNeighbor> {
     check_site_idx(structure, site_idx);
-    let config = config.copied().unwrap_or_default();
+    let config = validated_config(config);
     let Some(voronoi) = build_voronoi(structure) else {
         return vec![];
     };

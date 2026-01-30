@@ -158,9 +158,8 @@ def benchmark(quick: bool = False) -> None:
         status = "✓" if passed == total else "✗"
         print(f"  {status} {category}: {passed}/{total}")
 
-    print(
-        f"\nTotal: {total_passed}/{total_tests} ({100 * total_passed / total_tests:.1f}%)"
-    )
+    pct = 100 * total_passed / total_tests if total_tests else 0.0
+    print(f"\nTotal: {total_passed}/{total_tests} ({pct:.1f}%)")
     print(f"Time: {elapsed:.2f}s")
 
     # Show failures
