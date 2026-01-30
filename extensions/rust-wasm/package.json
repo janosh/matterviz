@@ -1,0 +1,39 @@
+{
+  "name": "@matterviz/ferrox-wasm",
+  "version": "0.0.1",
+  "description": "WASM bindings for ferrox structure matching library",
+  "type": "module",
+  "main": "pkg/ferrox.js",
+  "types": "pkg/ferrox.d.ts",
+  "exports": {
+    ".": {
+      "types": "./pkg/ferrox.d.ts",
+      "import": "./pkg/ferrox.js"
+    },
+    "./ferrox_bg.wasm": "./pkg/ferrox_bg.wasm"
+  },
+  "files": [
+    "pkg/"
+  ],
+  "scripts": {
+    "build": "wasm-pack build ../rust --target web --features wasm --no-default-features --out-dir ../rust-wasm/pkg",
+    "build:dev": "wasm-pack build ../rust --target web --features wasm --no-default-features --out-dir ../rust-wasm/pkg --dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/janosh/matterviz.git",
+    "directory": "extensions/rust-wasm"
+  },
+  "keywords": [
+    "wasm",
+    "crystallography",
+    "structure-matching",
+    "materials-science"
+  ],
+  "author": "Janosh Riebesell <janosh@lbl.gov>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/janosh/matterviz/issues"
+  },
+  "homepage": "https://github.com/janosh/matterviz#readme"
+}

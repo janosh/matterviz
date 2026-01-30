@@ -1362,7 +1362,7 @@ impl Structure {
                 &mut seeded_rng
             }
             None => {
-                thread_rng = rand::rng();
+                thread_rng = rand::thread_rng();
                 &mut thread_rng
             }
         };
@@ -1387,15 +1387,15 @@ fn get_random_vector(rng: &mut dyn rand::RngCore, min_dist: f64, max_dist: f64) 
 
     loop {
         // Generate point in cube [-1, 1]^3
-        let x: f64 = rng.random_range(-1.0..1.0);
-        let y: f64 = rng.random_range(-1.0..1.0);
-        let z: f64 = rng.random_range(-1.0..1.0);
+        let x: f64 = rng.gen_range(-1.0..1.0);
+        let y: f64 = rng.gen_range(-1.0..1.0);
+        let z: f64 = rng.gen_range(-1.0..1.0);
         let norm_sq = x * x + y * y + z * z;
 
         // Rejection sampling: accept if inside unit sphere and not at origin
         if norm_sq > 0.01 && norm_sq <= 1.0 {
             let norm = norm_sq.sqrt();
-            let magnitude = rng.random_range(min_dist..=max_dist);
+            let magnitude = rng.gen_range(min_dist..=max_dist);
             return Vector3::new(x, y, z) / norm * magnitude;
         }
     }

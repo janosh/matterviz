@@ -402,11 +402,13 @@ pub fn structure_to_pymatgen_json(structure: &Structure) -> String {
     });
 
     // Build sites with all species and their occupancies
+    let cart_coords = structure.cart_coords();
     let sites: Vec<Value> = structure
         .site_occupancies
         .iter()
         .zip(structure.frac_coords.iter())
-        .map(|(site_occ, coord)| {
+        .zip(cart_coords.iter())
+        .map(|((site_occ, frac), cart)| {
             let species_list: Vec<Value> = site_occ
                 .species
                 .iter()
@@ -429,29 +431,31 @@ pub fn structure_to_pymatgen_json(structure: &Structure) -> String {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
-            // Build site JSON
-            let mut site_json = json!({
-                "species": species_list,
-                "abc": [coord.x, coord.y, coord.z]
-            });
-
-            // Add label if present
-            if let Some(lbl) = label {
-                site_json["label"] = json!(lbl);
-            }
-
-            // Add site properties (excluding label which is at top level)
+            // Build site properties (excluding label which is at top level)
             let props: serde_json::Map<String, Value> = site_occ
                 .properties
                 .iter()
                 .filter(|(k, _)| k.as_str() != "label")
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
-            if !props.is_empty() {
-                site_json["properties"] = Value::Object(props);
-            }
 
-            site_json
+            // Generate default label from species symbols if not present
+            let default_label: String = site_occ
+                .species
+                .iter()
+                .map(|(sp, _)| sp.element.symbol())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            // Build site JSON with both fractional and Cartesian coords
+            // Always include label and properties for JavaScript compatibility
+            json!({
+                "species": species_list,
+                "abc": [frac.x, frac.y, frac.z],
+                "xyz": [cart.x, cart.y, cart.z],
+                "label": label.unwrap_or(default_label),
+                "properties": Value::Object(props)
+            })
         })
         .collect();
 

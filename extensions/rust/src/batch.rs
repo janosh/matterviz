@@ -1,15 +1,18 @@
 //! Batch processing for structure matching.
 //!
-//! This module provides parallel batch processing capabilities for
-//! deduplicating and grouping large sets of structures.
+//! This module provides batch processing capabilities for deduplicating and
+//! grouping large sets of structures. When the `rayon` feature is enabled,
+//! operations are parallelized for better performance on multi-core systems.
 
 use crate::error::{FerroxError, Result};
 use crate::io::parse_structure_json;
 use crate::matcher::StructureMatcher;
 use crate::structure::Structure;
 use indexmap::IndexMap;
-use rayon::prelude::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 
 // Union-Find Data Structure
 
@@ -143,6 +146,47 @@ fn parse_json_structures(json_strings: &[&str]) -> Result<Vec<Structure>> {
         .collect()
 }
 
+// Helper macro to reduce cfg-gated code duplication between parallel and sequential paths
+macro_rules! maybe_par_iter {
+    ($collection:expr, $body:expr) => {{
+        #[cfg(feature = "rayon")]
+        {
+            $collection.par_iter().for_each($body);
+        }
+        #[cfg(not(feature = "rayon"))]
+        {
+            $collection.iter().for_each($body);
+        }
+    }};
+}
+
+macro_rules! maybe_par_map {
+    ($collection:expr, $body:expr) => {{
+        #[cfg(feature = "rayon")]
+        {
+            $collection.par_iter().enumerate().map($body).collect()
+        }
+        #[cfg(not(feature = "rayon"))]
+        {
+            $collection.iter().enumerate().map($body).collect()
+        }
+    }};
+}
+
+// Simpler variant without enumerate for cases where index isn't needed
+macro_rules! maybe_par_map_ref {
+    ($collection:expr, $body:expr) => {{
+        #[cfg(feature = "rayon")]
+        {
+            $collection.par_iter().map($body).collect()
+        }
+        #[cfg(not(feature = "rayon"))]
+        {
+            $collection.iter().map($body).collect()
+        }
+    }};
+}
+
 // Batch Processing Methods
 
 impl StructureMatcher {
@@ -156,7 +200,7 @@ impl StructureMatcher {
     ///
     /// 1. Group structures by composition hash (fast pre-filter)
     /// 2. Within each group, compare pairwise using union-find
-    /// 3. Parallelize comparisons with Rayon
+    /// 3. Parallelize comparisons with Rayon (when available)
     ///
     /// # Example
     ///
@@ -174,26 +218,22 @@ impl StructureMatcher {
         let len = structures.len();
         let uf = UnionFind::new(len);
 
-        // Step 1: Reduce all structures in parallel, then group by composition hash.
+        // Step 1: Reduce all structures (parallel when rayon enabled), then group by composition hash.
         // Reducing first ensures supercells are properly grouped with their primitive cells.
-        let reduced: Vec<_> = structures
-            .par_iter()
-            .enumerate()
-            .map(|(idx, s)| {
-                let reduced = self.reduce_structure(s);
-                let hash = self.composition_hash(&reduced);
-                (idx, hash, reduced)
-            })
-            .collect();
+        let reduced: Vec<_> = maybe_par_map!(structures, |(idx, s)| {
+            let reduced = self.reduce_structure(s);
+            let hash = self.composition_hash(&reduced);
+            (idx, hash, reduced)
+        });
 
         let mut comp_groups: IndexMap<u64, Vec<(usize, Structure)>> = IndexMap::new();
         for (idx, hash, reduced) in reduced {
             comp_groups.entry(hash).or_default().push((idx, reduced));
         }
 
-        // Step 2: Within each composition group, compare pairwise in parallel
+        // Step 2: Within each composition group, compare pairwise (parallel when rayon enabled)
         let groups_vec: Vec<_> = comp_groups.values().collect();
-        groups_vec.par_iter().for_each(|group| {
+        maybe_par_iter!(groups_vec, |group| {
             // Generate all pairs within this group
             for idx in 0..group.len() {
                 for jdx in (idx + 1)..group.len() {
@@ -285,7 +325,7 @@ impl StructureMatcher {
     /// # Algorithm
     ///
     /// 1. Preprocess existing structures (Niggli reduction, composition hashing)
-    /// 2. For each new structure (in parallel):
+    /// 2. For each new structure (in parallel when available):
     ///    - Filter by composition hash
     ///    - Compare against matching existing structures until first match (early termination)
     ///
@@ -313,16 +353,12 @@ impl StructureMatcher {
             return Ok(vec![None; new_structures.len()]);
         }
 
-        // Step 1: Reduce existing structures in parallel, then group by composition hash
-        let existing_reduced: Vec<_> = existing_structures
-            .par_iter()
-            .enumerate()
-            .map(|(idx, s)| {
-                let reduced = self.reduce_structure(s);
-                let hash = self.composition_hash(&reduced);
-                (idx, hash, reduced)
-            })
-            .collect();
+        // Step 1: Reduce existing structures (parallel when rayon enabled), then group by composition hash
+        let existing_reduced: Vec<_> = maybe_par_map!(existing_structures, |(idx, s)| {
+            let reduced = self.reduce_structure(s);
+            let hash = self.composition_hash(&reduced);
+            (idx, hash, reduced)
+        });
 
         let mut existing_by_comp: IndexMap<u64, Vec<(usize, Structure)>> = IndexMap::new();
         for (idx, hash, reduced) in existing_reduced {
@@ -333,23 +369,20 @@ impl StructureMatcher {
         }
 
         // Step 2: For each new structure, find first matching existing structure
-        let results: Vec<Option<usize>> = new_structures
-            .par_iter()
-            .map(|new_struct| {
-                let reduced_new = self.reduce_structure(new_struct);
-                let new_hash = self.composition_hash(&reduced_new);
+        let results: Vec<Option<usize>> = maybe_par_map_ref!(new_structures, |new_struct| {
+            let reduced_new = self.reduce_structure(new_struct);
+            let new_hash = self.composition_hash(&reduced_new);
 
-                // Find first match among candidates with same composition (early termination)
-                existing_by_comp.get(&new_hash).and_then(|candidates| {
-                    candidates
-                        .iter()
-                        .find(|(_, reduced_existing)| {
-                            self.fit_preprocessed(&reduced_new, reduced_existing)
-                        })
-                        .map(|(idx, _)| *idx)
-                })
+            // Find first match among candidates with same composition (early termination)
+            existing_by_comp.get(&new_hash).and_then(|candidates| {
+                candidates
+                    .iter()
+                    .find(|(_, reduced_existing)| {
+                        self.fit_preprocessed(&reduced_new, reduced_existing)
+                    })
+                    .map(|(idx, _)| *idx)
             })
-            .collect();
+        });
 
         Ok(results)
     }

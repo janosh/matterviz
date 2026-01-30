@@ -9,9 +9,10 @@
 //!
 //! - **Fast single-pair matching**: Compare two structures for equivalence
 //! - **Batch deduplication**: Find unique structures in large sets
-//! - **Parallel processing**: Automatic parallelization via Rayon
+//! - **Parallel processing**: Automatic parallelization via Rayon (native only)
 //! - **Multiple comparators**: Species or Element-based matching
 //! - **Python bindings**: Optional PyO3 bindings for use from Python
+//! - **WASM bindings**: Optional wasm-bindgen bindings for browser use
 //!
 //! ## Example
 //!
