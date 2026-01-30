@@ -446,3 +446,17 @@ class TestErrorHandling:
         """Out-of-bounds site index should raise error."""
         with pytest.raises((ValueError, IndexError)):
             ferrox.remove_sites(nacl_json, [999])
+
+    def test_ewald_invalid_accuracy(self, nacl_with_oxi_json: str) -> None:
+        """Non-positive accuracy should raise ValueError."""
+        with pytest.raises(ValueError, match="accuracy must be positive"):
+            ferrox.ewald_energy(nacl_with_oxi_json, accuracy=0.0)
+        with pytest.raises(ValueError, match="accuracy must be positive"):
+            ferrox.ewald_energy(nacl_with_oxi_json, accuracy=-1e-5)
+
+    def test_ewald_invalid_real_cutoff(self, nacl_with_oxi_json: str) -> None:
+        """Non-positive real_cutoff should raise ValueError."""
+        with pytest.raises(ValueError, match="real_cutoff must be positive"):
+            ferrox.ewald_energy(nacl_with_oxi_json, real_cutoff=0.0)
+        with pytest.raises(ValueError, match="real_cutoff must be positive"):
+            ferrox.ewald_energy(nacl_with_oxi_json, real_cutoff=-5.0)
