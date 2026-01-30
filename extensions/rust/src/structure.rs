@@ -2663,7 +2663,17 @@ impl Structure {
         };
 
         // Use layer positions from supercell for shifting, but limit to unique terminations
-        let layer_positions = identify_layer_positions(&slab_supercell.frac_coords, config.symprec);
+        // Scale symprec by z-range to maintain consistent absolute tolerance in original cell units
+        let z_range = slab_supercell
+            .frac_coords
+            .iter()
+            .map(|fc| fc.z)
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), z| {
+                (min.min(z), max.max(z))
+            });
+        let z_span = (z_range.1 - z_range.0).max(1.0);
+        let scaled_symprec = config.symprec / z_span;
+        let layer_positions = identify_layer_positions(&slab_supercell.frac_coords, scaled_symprec);
         let termination_count = unique_terminations.min(layer_positions.len()).max(1);
 
         // Determine which terminations to generate
