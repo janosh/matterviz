@@ -14,10 +14,13 @@ use std::path::Path;
 
 use crate::composition::Composition;
 use crate::io::{
-    parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_pymatgen_json,
+    parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_extxyz,
+    structure_to_poscar, structure_to_pymatgen_json, write_structure,
 };
 use crate::matcher::{ComparatorType, StructureMatcher};
-use crate::structure::{Structure, SymmOp};
+use crate::structure::{
+    Structure, SymmOp, SymmetryOperation, moyo_ops_to_arrays, spacegroup_to_crystal_system,
+};
 use nalgebra::{Matrix3, Vector3};
 
 /// Parse a composition formula string, returning a PyResult.
@@ -562,6 +565,112 @@ fn parse_trajectory(py: Python<'_>, path: &str) -> PyResult<Vec<Py<PyDict>>> {
     }
 
     Ok(results)
+}
+
+// ============================================================================
+// Structure Writing Functions
+// ============================================================================
+
+/// Write a structure to a file with automatic format detection.
+///
+/// The format is determined by the file extension:
+/// - `.json` - Pymatgen JSON format
+/// - `.cif` - CIF format
+/// - `.xyz`, `.extxyz` - extXYZ format
+/// - `.vasp`, `POSCAR*`, `CONTCAR*` - POSCAR format
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     path (str): Path to the output file
+///
+/// Example:
+///     >>> from ferrox import write_structure_file
+///     >>> import json
+///     >>> write_structure_file(json.dumps(s.as_dict()), "output.cif")
+#[pyfunction]
+fn write_structure_file(structure: &str, path: &str) -> PyResult<()> {
+    let s = parse_struct(structure)?;
+    write_structure(&s, Path::new(path))
+        .map_err(|e| PyValueError::new_err(format!("Error writing {path}: {e}")))
+}
+
+/// Convert a structure to POSCAR format string.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     comment (str, optional): Comment line for the POSCAR (defaults to formula)
+///
+/// Returns:
+///     str: POSCAR format string
+///
+/// Example:
+///     >>> from ferrox import to_poscar
+///     >>> import json
+///     >>> poscar_str = to_poscar(json.dumps(s.as_dict()))
+///     >>> print(poscar_str)
+#[pyfunction]
+#[pyo3(signature = (structure, comment = None))]
+fn to_poscar(structure: &str, comment: Option<&str>) -> PyResult<String> {
+    let s = parse_struct(structure)?;
+    Ok(structure_to_poscar(&s, comment))
+}
+
+/// Convert a structure to CIF format string.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     data_name (str, optional): Data block name (defaults to formula)
+///
+/// Returns:
+///     str: CIF format string
+///
+/// Example:
+///     >>> from ferrox import to_cif
+///     >>> import json
+///     >>> cif_str = to_cif(json.dumps(s.as_dict()))
+///     >>> print(cif_str)
+#[pyfunction]
+#[pyo3(signature = (structure, data_name = None))]
+fn to_cif(structure: &str, data_name: Option<&str>) -> PyResult<String> {
+    let s = parse_struct(structure)?;
+    Ok(crate::cif::structure_to_cif(&s, data_name))
+}
+
+/// Convert a structure to extXYZ format string.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///
+/// Returns:
+///     str: extXYZ format string
+///
+/// Example:
+///     >>> from ferrox import to_extxyz
+///     >>> import json
+///     >>> xyz_str = to_extxyz(json.dumps(s.as_dict()))
+///     >>> print(xyz_str)
+#[pyfunction]
+fn to_extxyz(structure: &str) -> PyResult<String> {
+    let s = parse_struct(structure)?;
+    Ok(structure_to_extxyz(&s, None))
+}
+
+/// Convert a structure to pymatgen JSON format string.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///
+/// Returns:
+///     str: JSON format string compatible with pymatgen's Structure.from_dict()
+///
+/// Example:
+///     >>> from ferrox import to_pymatgen_json
+///     >>> import json
+///     >>> json_str = to_pymatgen_json(json.dumps(s.as_dict()))
+#[pyfunction]
+fn to_pymatgen_json(structure: &str) -> PyResult<String> {
+    let s = parse_struct(structure)?;
+    Ok(structure_to_pymatgen_json(&s))
 }
 
 // ============================================================================
@@ -1211,6 +1320,233 @@ fn get_structure_metadata(
 }
 
 // ============================================================================
+// Symmetry Analysis Functions
+// ============================================================================
+
+/// Get the spacegroup number of a structure.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     int: Spacegroup number (1-230)
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_spacegroup_number(structure: &str, symprec: f64) -> PyResult<i32> {
+    parse_struct(structure)?
+        .get_spacegroup_number(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
+}
+
+/// Get the Hermann-Mauguin spacegroup symbol (e.g., "Fm-3m", "P2_1/c").
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     str: Hermann-Mauguin symbol
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_spacegroup_symbol(structure: &str, symprec: f64) -> PyResult<String> {
+    parse_struct(structure)?
+        .get_spacegroup_symbol(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
+}
+
+/// Get the Hall number (1-530) identifying the specific spacegroup setting.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     int: Hall number
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_hall_number(structure: &str, symprec: f64) -> PyResult<i32> {
+    parse_struct(structure)?
+        .get_hall_number(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
+}
+
+/// Get the Pearson symbol (e.g., "cF8" for FCC Cu).
+///
+/// The Pearson symbol encodes the crystal system, centering type, and
+/// number of atoms in the conventional cell.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     str: Pearson symbol
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_pearson_symbol(structure: &str, symprec: f64) -> PyResult<String> {
+    parse_struct(structure)?
+        .get_pearson_symbol(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
+}
+
+/// Get Wyckoff letters for each site in the structure.
+///
+/// Wyckoff positions describe the site symmetry and multiplicity of each
+/// atomic position. Sites with the same letter have equivalent positions
+/// under the space group symmetry.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     list[str]: Wyckoff letters for each site (single-character strings)
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_wyckoff_letters(structure: &str, symprec: f64) -> PyResult<Vec<String>> {
+    let letters = parse_struct(structure)?
+        .get_wyckoff_letters(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))?;
+    // Convert chars to strings for Python compatibility
+    Ok(letters.into_iter().map(|c| c.to_string()).collect())
+}
+
+/// Get site symmetry symbols for each site (e.g., "m..", "-1", "4mm").
+///
+/// The site symmetry describes the point group symmetry at each atomic site,
+/// oriented with respect to the standardized cell.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     list[str]: Site symmetry symbols for each site
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_site_symmetry_symbols(structure: &str, symprec: f64) -> PyResult<Vec<String>> {
+    parse_struct(structure)?
+        .get_site_symmetry_symbols(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
+}
+
+/// Get symmetry operations in the input cell.
+///
+/// Returns a list of symmetry operations, each consisting of a 3x3 rotation
+/// matrix (integer, in fractional coordinates) and a translation vector
+/// (float, in fractional coordinates).
+///
+/// A symmetry operation transforms a point r to: R @ r + t
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     list[tuple[list[list[int]], list[float]]]: List of (rotation, translation) pairs
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_symmetry_operations(structure: &str, symprec: f64) -> PyResult<Vec<SymmetryOperation>> {
+    parse_struct(structure)?
+        .get_symmetry_operations(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
+}
+
+/// Get equivalent sites (crystallographic orbits).
+///
+/// Returns a list where orbits[i] is the index of the representative site
+/// that site i is equivalent to. Sites with the same orbit index are
+/// related by space group symmetry.
+///
+/// For example, orbits=[0, 0, 2, 2, 2, 2] means sites 0-1 are equivalent
+/// to site 0, and sites 2-5 are equivalent to site 2.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     list[int]: Orbit indices for each site
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_equivalent_sites(structure: &str, symprec: f64) -> PyResult<Vec<usize>> {
+    parse_struct(structure)?
+        .get_equivalent_sites(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
+}
+
+/// Get the crystal system based on the spacegroup.
+///
+/// Returns one of: "triclinic", "monoclinic", "orthorhombic",
+/// "tetragonal", "trigonal", "hexagonal", "cubic".
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     str: Crystal system name
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_crystal_system(structure: &str, symprec: f64) -> PyResult<String> {
+    parse_struct(structure)?
+        .get_crystal_system(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
+}
+
+/// Get full symmetry dataset for a structure.
+///
+/// This is more efficient when you need multiple symmetry properties,
+/// as it only runs the symmetry analysis once.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision (default: 0.01)
+///
+/// Returns:
+///     dict: Dictionary with keys:
+///         - spacegroup_number: int (1-230)
+///         - spacegroup_symbol: str (Hermann-Mauguin symbol)
+///         - hall_number: int (1-530)
+///         - pearson_symbol: str
+///         - crystal_system: str
+///         - wyckoff_letters: list[str]
+///         - site_symmetry_symbols: list[str]
+///         - equivalent_sites: list[int]
+///         - symmetry_operations: list[tuple[list[list[int]], list[float]]]
+///         - num_operations: int
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_symmetry_dataset(py: Python<'_>, structure: &str, symprec: f64) -> PyResult<Py<PyDict>> {
+    let dataset = parse_struct(structure)?
+        .get_symmetry_dataset(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))?;
+
+    let dict = PyDict::new(py);
+    dict.set_item("spacegroup_number", dataset.number)?;
+    dict.set_item("spacegroup_symbol", &dataset.hm_symbol)?;
+    dict.set_item("hall_number", dataset.hall_number)?;
+    dict.set_item("pearson_symbol", &dataset.pearson_symbol)?;
+    dict.set_item(
+        "crystal_system",
+        spacegroup_to_crystal_system(dataset.number),
+    )?;
+
+    let wyckoffs: Vec<String> = dataset.wyckoffs.iter().map(|c| c.to_string()).collect();
+    dict.set_item("wyckoff_letters", wyckoffs)?;
+    dict.set_item("site_symmetry_symbols", &dataset.site_symmetry_symbols)?;
+    dict.set_item("equivalent_sites", &dataset.orbits)?;
+    dict.set_item(
+        "symmetry_operations",
+        moyo_ops_to_arrays(&dataset.operations),
+    )?;
+    dict.set_item("num_operations", dataset.operations.len())?;
+
+    Ok(dict.unbind())
+}
+
+// ============================================================================
 // Site Manipulation Functions
 // ============================================================================
 
@@ -1738,9 +2074,15 @@ fn enumerate_derivatives(
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
-    // I/O functions
+    // I/O functions (reading)
     m.add_function(wrap_pyfunction!(parse_structure_file, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trajectory, m)?)?;
+    // I/O functions (writing)
+    m.add_function(wrap_pyfunction!(write_structure_file, m)?)?;
+    m.add_function(wrap_pyfunction!(to_poscar, m)?)?;
+    m.add_function(wrap_pyfunction!(to_cif, m)?)?;
+    m.add_function(wrap_pyfunction!(to_extxyz, m)?)?;
+    m.add_function(wrap_pyfunction!(to_pymatgen_json, m)?)?;
     // Supercell functions
     m.add_function(wrap_pyfunction!(make_supercell, m)?)?;
     m.add_function(wrap_pyfunction!(make_supercell_diag, m)?)?;
@@ -1778,6 +2120,17 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_total_mass, m)?)?;
     m.add_function(wrap_pyfunction!(get_density, m)?)?;
     m.add_function(wrap_pyfunction!(get_structure_metadata, m)?)?;
+    // Symmetry analysis functions
+    m.add_function(wrap_pyfunction!(get_spacegroup_number, m)?)?;
+    m.add_function(wrap_pyfunction!(get_spacegroup_symbol, m)?)?;
+    m.add_function(wrap_pyfunction!(get_hall_number, m)?)?;
+    m.add_function(wrap_pyfunction!(get_pearson_symbol, m)?)?;
+    m.add_function(wrap_pyfunction!(get_wyckoff_letters, m)?)?;
+    m.add_function(wrap_pyfunction!(get_site_symmetry_symbols, m)?)?;
+    m.add_function(wrap_pyfunction!(get_symmetry_operations, m)?)?;
+    m.add_function(wrap_pyfunction!(get_equivalent_sites, m)?)?;
+    m.add_function(wrap_pyfunction!(get_crystal_system, m)?)?;
+    m.add_function(wrap_pyfunction!(get_symmetry_dataset, m)?)?;
     // Site manipulation functions
     m.add_function(wrap_pyfunction!(translate_sites, m)?)?;
     m.add_function(wrap_pyfunction!(perturb, m)?)?;
