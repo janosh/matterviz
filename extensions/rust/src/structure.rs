@@ -320,7 +320,10 @@ impl Structure {
         })
     }
 
-    /// Get the Hermann-Mauguin spacegroup symbol (e.g., "Fm-3m", "P2_1/c").
+    /// Get the Hermann-Mauguin spacegroup symbol (e.g., "F m -3 m", "P 2_1/c").
+    ///
+    /// Note: Returns space-separated tokens as provided by the underlying
+    /// symmetry library (moyo). For condensed symbols, post-process by removing spaces.
     pub fn get_spacegroup_symbol(&self, symprec: f64) -> Result<String> {
         Ok(self.get_symmetry_dataset(symprec)?.hm_symbol)
     }
@@ -684,6 +687,140 @@ impl Structure {
             }
         }
         true
+    }
+
+    // =========================================================================
+    // Coordination Analysis
+    // =========================================================================
+
+    /// Get coordination numbers for all sites using a distance cutoff.
+    ///
+    /// Counts the number of neighbors within the specified cutoff distance for each site.
+    /// Uses periodic boundary conditions.
+    ///
+    /// # Arguments
+    ///
+    /// * `cutoff` - Maximum distance (in Angstroms) to consider a site as a neighbor
+    ///
+    /// # Returns
+    ///
+    /// A vector of coordination numbers, one for each site in the structure.
+    pub fn get_coordination_numbers(&self, cutoff: f64) -> Vec<usize> {
+        crate::coordination::get_coordination_numbers(self, cutoff)
+    }
+
+    /// Get coordination number for a single site using a distance cutoff.
+    ///
+    /// # Arguments
+    ///
+    /// * `site_idx` - Index of the site to analyze
+    /// * `cutoff` - Maximum distance (in Angstroms) to consider a site as a neighbor
+    ///
+    /// # Returns
+    ///
+    /// The coordination number for the specified site.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `site_idx` is out of bounds.
+    pub fn get_coordination_number(&self, site_idx: usize, cutoff: f64) -> usize {
+        crate::coordination::get_coordination_number(self, site_idx, cutoff)
+    }
+
+    /// Get the local environment (detailed neighbor information) for a site.
+    ///
+    /// Returns detailed information about each neighbor including species, distance,
+    /// and periodic image offset.
+    ///
+    /// # Arguments
+    ///
+    /// * `site_idx` - Index of the site to analyze
+    /// * `cutoff` - Maximum distance (in Angstroms) to consider a site as a neighbor
+    ///
+    /// # Returns
+    ///
+    /// A vector of `LocalEnvNeighbor` structs describing each neighbor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `site_idx` is out of bounds.
+    pub fn get_local_environment(
+        &self,
+        site_idx: usize,
+        cutoff: f64,
+    ) -> Vec<crate::coordination::LocalEnvNeighbor> {
+        crate::coordination::get_local_environment(self, site_idx, cutoff)
+    }
+
+    /// Get Voronoi-weighted coordination number for a single site.
+    ///
+    /// Uses Voronoi tessellation to determine neighbors based on solid angle.
+    ///
+    /// **Note**: Results are only geometrically correct for orthogonal lattices
+    /// (cubic/tetragonal/orthorhombic). Use cutoff-based methods for non-orthogonal cells.
+    ///
+    /// # Arguments
+    ///
+    /// * `site_idx` - Index of the site to analyze
+    /// * `config` - Optional configuration (min_solid_angle threshold)
+    ///
+    /// # Returns
+    ///
+    /// The effective coordination number (can be fractional).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `site_idx` is out of bounds.
+    pub fn get_cn_voronoi(
+        &self,
+        site_idx: usize,
+        config: Option<&crate::coordination::VoronoiConfig>,
+    ) -> f64 {
+        crate::coordination::get_cn_voronoi(self, site_idx, config)
+    }
+
+    /// Get Voronoi-weighted coordination numbers for all sites.
+    ///
+    /// Uses Voronoi tessellation to determine neighbors based on solid angle.
+    ///
+    /// **Note**: Results are only geometrically correct for orthogonal lattices
+    /// (cubic/tetragonal/orthorhombic). Use cutoff-based methods for non-orthogonal cells.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Optional configuration (min_solid_angle threshold)
+    ///
+    /// # Returns
+    ///
+    /// A vector of effective coordination numbers, one for each site.
+    pub fn get_cn_voronoi_all(
+        &self,
+        config: Option<&crate::coordination::VoronoiConfig>,
+    ) -> Vec<f64> {
+        crate::coordination::get_cn_voronoi_all(self, config)
+    }
+
+    /// Get Voronoi neighbors with their solid angle fractions for a site.
+    ///
+    /// Returns neighbors sorted by solid angle (largest first).
+    ///
+    /// **Note**: Results are only geometrically correct for orthogonal lattices
+    /// (cubic/tetragonal/orthorhombic). Use cutoff-based methods for non-orthogonal cells.
+    ///
+    /// # Arguments
+    ///
+    /// * `site_idx` - Index of the site to analyze
+    /// * `config` - Optional configuration (min_solid_angle threshold)
+    ///
+    /// # Returns
+    ///
+    /// A vector of tuples `(neighbor_idx, solid_angle_fraction)`.
+    pub fn get_voronoi_neighbors(
+        &self,
+        site_idx: usize,
+        config: Option<&crate::coordination::VoronoiConfig>,
+    ) -> Vec<(usize, f64)> {
+        crate::coordination::get_voronoi_neighbors(self, site_idx, config)
     }
 
     // =========================================================================

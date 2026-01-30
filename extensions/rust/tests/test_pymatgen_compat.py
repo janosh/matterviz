@@ -1,6 +1,6 @@
 """Compatibility tests comparing ferrox vs pymatgen StructureMatcher.
 
-Run with: pytest tests/test_pymatgen_compat.py -v
+Run with: pytest extensions/rust/tests/test_pymatgen_compat.py -v
 """
 
 from __future__ import annotations
@@ -23,7 +23,10 @@ if TYPE_CHECKING:
 try:
     from ferrox import StructureMatcher as RustMatcher
 except ImportError:
-    pytest.skip("ferrox not installed. Run: maturin develop --features python", allow_module_level=True)
+    pytest.skip(
+        "ferrox not installed. Run: maturin develop --features python",
+        allow_module_level=True,
+    )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 MATTERVIZ_STRUCTURES_DIR = Path(
@@ -82,9 +85,7 @@ def make_cubic(element: str, a: float) -> Structure:
 
 def make_bcc(element: str, a: float) -> Structure:
     """BCC structure."""
-    return Structure(
-        Lattice.cubic(a), [element, element], [[0, 0, 0], [0.5, 0.5, 0.5]]
-    )
+    return Structure(Lattice.cubic(a), [element, element], [[0, 0, 0], [0.5, 0.5, 0.5]])
 
 
 def make_fcc(element: str, a: float) -> Structure:
@@ -124,7 +125,12 @@ def make_wurtzite(cation: str, anion: str, a: float, c: float) -> Structure:
     return Structure(
         Lattice.hexagonal(a, c),
         [cation, cation, anion, anion],
-        [[1 / 3, 2 / 3, 0], [2 / 3, 1 / 3, 0.5], [1 / 3, 2 / 3, 0.375], [2 / 3, 1 / 3, 0.875]],
+        [
+            [1 / 3, 2 / 3, 0],
+            [2 / 3, 1 / 3, 0.5],
+            [1 / 3, 2 / 3, 0.375],
+            [2 / 3, 1 / 3, 0.875],
+        ],
     )
 
 
@@ -134,8 +140,14 @@ def make_diamond(element: str, a: float) -> Structure:
         Lattice.cubic(a),
         [element] * 8,
         [
-            [0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5],
-            [0.25, 0.25, 0.25], [0.75, 0.75, 0.25], [0.75, 0.25, 0.75], [0.25, 0.75, 0.75],
+            [0, 0, 0],
+            [0.5, 0.5, 0],
+            [0.5, 0, 0.5],
+            [0, 0.5, 0.5],
+            [0.25, 0.25, 0.25],
+            [0.75, 0.75, 0.25],
+            [0.75, 0.25, 0.75],
+            [0.25, 0.75, 0.75],
         ],
     )
 
@@ -202,15 +214,17 @@ def translate(s: Structure, vec: list[float]) -> Structure:
 class TestSelfMatching:
     """Identical structures should always match."""
 
-    @pytest.mark.parametrize("struct", BASE_STRUCTURES, ids=BASE_STRUCTURE_IDS)
-    def test_base_structures(self, compare: Callable, struct: Structure) -> None:
+    @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
+    def test_base_structures(self, compare: Callable, name: str, struct: Structure) -> None:
         """Base structures match themselves."""
-        assert compare(struct, struct) is True
+        assert compare(struct, struct) is True, f"{name} should self-match"
 
     def test_triclinic(self, compare: Callable) -> None:
         """Triclinic lattice self-match."""
         struct = Structure(
-            Lattice.from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0), ["Ca"], [[0, 0, 0]]
+            Lattice.from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0),
+            ["Ca"],
+            [[0, 0, 0]],
         )
         assert compare(struct, struct) is True
 
@@ -227,29 +241,31 @@ class TestSelfMatching:
 class TestPerturbations:
     """Perturbed structures within tolerance should match."""
 
-    @pytest.mark.parametrize("struct", BASE_STRUCTURES, ids=BASE_STRUCTURE_IDS)
+    @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
     @pytest.mark.parametrize("magnitude", [0.01, 0.02, 0.05])
     def test_coordinate_perturbations(
-        self, compare: Callable, struct: Structure, magnitude: float
+        self, compare: Callable, name: str, struct: Structure, magnitude: float
     ) -> None:
         """Small coordinate perturbations should match."""
-        assert compare(struct, perturb(struct, magnitude)) is True
+        assert compare(struct, perturb(struct, magnitude)) is True, f"{name} +/-{magnitude}"
 
-    @pytest.mark.parametrize("struct", BASE_STRUCTURES, ids=BASE_STRUCTURE_IDS)
+    @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
     @pytest.mark.parametrize("factor", [0.98, 1.02, 1.05])
     def test_lattice_scaling(
-        self, compare: Callable, struct: Structure, factor: float
+        self, compare: Callable, name: str, struct: Structure, factor: float
     ) -> None:
         """Lattice scaling within tolerance should match."""
-        assert compare(struct, scale_lattice(struct, factor)) is True
+        assert compare(struct, scale_lattice(struct, factor)) is True, f"{name} x{factor}"
 
-    @pytest.mark.parametrize("struct", BASE_STRUCTURES, ids=BASE_STRUCTURE_IDS)
+    @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
     @pytest.mark.parametrize("strain", [0.01, 0.02])
     def test_uniaxial_strain(
-        self, compare: Callable, struct: Structure, strain: float
+        self, compare: Callable, name: str, struct: Structure, strain: float
     ) -> None:
         """Uniaxial strain within tolerance should match."""
-        assert compare(struct, strain_lattice(struct, strain)) is True
+        assert compare(struct, strain_lattice(struct, strain)) is True, (
+            f"{name} +{strain}"
+        )
 
 
 class TestNonMatching:
@@ -263,10 +279,15 @@ class TestNonMatching:
             (make_fcc("Cu", 3.6), make_fcc("Al", 4.05)),
             (make_rocksalt("Na", "Cl", 5.64), make_rocksalt("Mg", "O", 4.21)),
             (make_bcc("Fe", 2.87), make_fcc("Fe", 3.6)),  # same element, diff structure
-            (make_cubic("Cu", 3.6), make_fcc("Cu", 3.6)),  # same element, diff structure
+            (
+                make_cubic("Cu", 3.6),
+                make_fcc("Cu", 3.6),
+            ),  # same element, diff structure
         ],
     )
-    def test_different_structures(self, compare: Callable, s1: Structure, s2: Structure) -> None:
+    def test_different_structures(
+        self, compare: Callable, s1: Structure, s2: Structure
+    ) -> None:
         """Different structures should not match."""
         assert compare(s1, s2) is False
 
@@ -296,14 +317,20 @@ class TestEdgeCases:
 
     def test_left_vs_right_handed_lattice(self, compare: Callable) -> None:
         """Left-handed vs right-handed lattice."""
-        s_left = Structure(Lattice([[-4.0, 0, 0], [0, 4.0, 0], [0, 0, 4.0]]), ["Ag"], [[0, 0, 0]])
-        s_right = Structure(Lattice([[4.0, 0, 0], [0, 4.0, 0], [0, 0, 4.0]]), ["Ag"], [[0, 0, 0]])
+        s_left = Structure(
+            Lattice([[-4.0, 0, 0], [0, 4.0, 0], [0, 0, 4.0]]), ["Ag"], [[0, 0, 0]]
+        )
+        s_right = Structure(
+            Lattice([[4.0, 0, 0], [0, 4.0, 0], [0, 0, 4.0]]), ["Ag"], [[0, 0, 0]]
+        )
         compare(s_left, s_right)  # just check agreement, result may vary
 
     def test_coords_outside_unit_cell(self, compare: Callable) -> None:
         """Coordinates outside [0,1) should wrap correctly."""
         lattice = Lattice.cubic(5.0)
-        s_outside = Structure(lattice, ["Li", "Li"], [[1.5, 0.3, 0.2], [-0.3, 0.7, 0.8]])
+        s_outside = Structure(
+            lattice, ["Li", "Li"], [[1.5, 0.3, 0.2], [-0.3, 0.7, 0.8]]
+        )
         s_wrapped = Structure(lattice, ["Li", "Li"], [[0.5, 0.3, 0.2], [0.7, 0.7, 0.8]])
         assert compare(s_outside, s_wrapped) is True
 
@@ -315,14 +342,18 @@ class TestEdgeCases:
     def test_needle_cell(self, compare: Callable) -> None:
         """Needle-like cell (c >> a)."""
         struct = Structure(
-            Lattice.from_parameters(2.0, 2.0, 20.0, 90.0, 90.0, 90.0), ["C"], [[0, 0, 0]]
+            Lattice.from_parameters(2.0, 2.0, 20.0, 90.0, 90.0, 90.0),
+            ["C"],
+            [[0, 0, 0]],
         )
         assert compare(struct, struct) is True
 
     def test_flat_cell(self, compare: Callable) -> None:
         """Flat cell (c << a)."""
         struct = Structure(
-            Lattice.from_parameters(20.0, 20.0, 2.0, 90.0, 90.0, 90.0), ["C"], [[0, 0, 0]]
+            Lattice.from_parameters(20.0, 20.0, 2.0, 90.0, 90.0, 90.0),
+            ["C"],
+            [[0, 0, 0]],
         )
         assert compare(struct, struct) is True
 
@@ -341,7 +372,11 @@ class TestComparators:
         """Different oxidation states should NOT match with SpeciesComparator."""
         py_match = PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False)
         rust_match = RustMatcher(
-            latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False, comparator="species"
+            latt_len_tol=0.2,
+            site_pos_tol=0.3,
+            angle_tol=5.0,
+            primitive_cell=False,
+            comparator="species",
         )
 
         lattice = Lattice.cubic(5.0)
@@ -357,10 +392,18 @@ class TestComparators:
     def test_oxidation_state_element_comparator(self) -> None:
         """Different oxidation states should match with ElementComparator."""
         py_match = PyMatcher(
-            ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, comparator=ElementComparator()
+            ltol=0.2,
+            stol=0.3,
+            angle_tol=5.0,
+            primitive_cell=False,
+            comparator=ElementComparator(),
         )
         rust_match = RustMatcher(
-            latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False, comparator="element"
+            latt_len_tol=0.2,
+            site_pos_tol=0.3,
+            angle_tol=5.0,
+            primitive_cell=False,
+            comparator="element",
         )
 
         lattice = Lattice.cubic(5.0)
@@ -383,7 +426,9 @@ class TestRmsDistance:
         self, py_matcher: PyMatcher, rust_matcher: RustMatcher, magnitude: float
     ) -> None:
         """RMS values should be close between pymatgen and ferrox."""
-        struct = Structure(Lattice.cubic(5.0), ["Fe", "Fe"], [[0, 0, 0], [0.5, 0.5, 0.5]])
+        struct = Structure(
+            Lattice.cubic(5.0), ["Fe", "Fe"], [[0, 0, 0], [0.5, 0.5, 0.5]]
+        )
         s_pert = perturb(struct, magnitude, seed=100)
 
         py_rms = py_matcher.get_rms_dist(struct, s_pert)
@@ -403,7 +448,9 @@ class TestRmsDistance:
 class TestBatchOperations:
     """Batch processing tests."""
 
-    def test_group_structures(self, py_matcher: PyMatcher, rust_matcher: RustMatcher) -> None:
+    def test_group_structures(
+        self, py_matcher: PyMatcher, rust_matcher: RustMatcher
+    ) -> None:
         """Group operation should match pymatgen."""
         structures = [
             make_cubic("Fe", 2.87),
@@ -438,8 +485,16 @@ class TestLengthToleranceBounds:
     def matchers_no_scale(self) -> tuple[PyMatcher, RustMatcher]:
         """Matchers with scale=False."""
         return (
-            PyMatcher(ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=False),
-            RustMatcher(latt_len_tol=0.2, site_pos_tol=0.3, angle_tol=5.0, primitive_cell=False, scale=False),
+            PyMatcher(
+                ltol=0.2, stol=0.3, angle_tol=5.0, primitive_cell=False, scale=False
+            ),
+            RustMatcher(
+                latt_len_tol=0.2,
+                site_pos_tol=0.3,
+                angle_tol=5.0,
+                primitive_cell=False,
+                scale=False,
+            ),
         )
 
     @pytest.mark.parametrize(
@@ -466,7 +521,9 @@ class TestRegressionCases:
     def test_acute_28deg_rhomb(self, compare: Callable) -> None:
         """Acute angle rhombohedral lattice (28°)."""
         struct = Structure(
-            Lattice.from_parameters(5.0, 5.0, 5.0, 28.0, 28.0, 28.0), ["Si"], [[0, 0, 0]]
+            Lattice.from_parameters(5.0, 5.0, 5.0, 28.0, 28.0, 28.0),
+            ["Si"],
+            [[0, 0, 0]],
         )
         assert compare(struct, struct) is True
 
@@ -475,8 +532,16 @@ class TestRegressionCases:
         struct = Structure(
             Lattice.from_parameters(4.8, 4.8, 4.8, 56.5, 56.5, 56.5),
             ["Mg", "Ni", "F", "F", "F", "F", "F", "F"],
-            [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75],
-             [0.25, 0.75, 0.25], [0.75, 0.25, 0.75], [0.25, 0.25, 0.75], [0.75, 0.75, 0.25]],
+            [
+                [0, 0, 0],
+                [0.5, 0.5, 0.5],
+                [0.25, 0.25, 0.25],
+                [0.75, 0.75, 0.75],
+                [0.25, 0.75, 0.25],
+                [0.75, 0.25, 0.75],
+                [0.25, 0.25, 0.75],
+                [0.75, 0.75, 0.25],
+            ],
         )
         assert compare(struct, struct) is True
 
@@ -485,8 +550,16 @@ class TestRegressionCases:
         struct = Structure(
             Lattice.from_parameters(3.7, 3.7, 8.0, 103.4, 103.4, 90.0),
             ["Co"] * 8,
-            [[0, 0, 0], [0.5, 0, 0.25], [0, 0.5, 0.25], [0.5, 0.5, 0],
-             [0, 0, 0.5], [0.5, 0, 0.75], [0, 0.5, 0.75], [0.5, 0.5, 0.5]],
+            [
+                [0, 0, 0],
+                [0.5, 0, 0.25],
+                [0, 0.5, 0.25],
+                [0.5, 0.5, 0],
+                [0, 0, 0.5],
+                [0.5, 0, 0.75],
+                [0, 0.5, 0.75],
+                [0.5, 0.5, 0.5],
+            ],
         )
         assert compare(struct, struct) is True
 
@@ -504,8 +577,15 @@ class TestRegressionCases:
         struct = Structure(
             Lattice.from_parameters(5.5, 5.5, 6.5, 90.0, 90.0, 132.8),
             ["La", "La", "Co", "O", "O", "O", "O"],
-            [[0, 0, 0.36], [0, 0, 0.64], [0, 0, 0], [0.25, 0.25, 0],
-             [0.75, 0.75, 0], [0, 0.5, 0.18], [0.5, 0, 0.82]],
+            [
+                [0, 0, 0.36],
+                [0, 0, 0.64],
+                [0, 0, 0],
+                [0.25, 0.25, 0],
+                [0.75, 0.75, 0],
+                [0, 0.5, 0.18],
+                [0.5, 0, 0.82],
+            ],
         )
         assert compare(struct, struct) is True
 
@@ -596,7 +676,9 @@ class TestAPIs:
         reduced_shifted = matcher.reduce_structure(json.dumps(struct_shifted.as_dict()))
 
         normal_result = matcher.fit(json_str, json.dumps(struct_shifted.as_dict()))
-        skip_result = matcher.fit(reduced, reduced_shifted, skip_structure_reduction=True)
+        skip_result = matcher.fit(
+            reduced, reduced_shifted, skip_structure_reduction=True
+        )
         assert normal_result == skip_result
 
 
@@ -621,11 +703,13 @@ class TestMattervizStructures:
                 data = json.loads(json_file.read_text())
                 if data.get("@class") == "Structure":
                     result[json_file.stem] = Structure.from_dict(data)
-            except Exception as exc:
+            except (json.JSONDecodeError, ValueError, TypeError, KeyError, OSError) as exc:
                 warnings.warn(f"Failed to load {json_file.stem}: {exc}", stacklevel=2)
         return result
 
-    def test_self_matching(self, compare: Callable, structures: dict[str, Structure]) -> None:
+    def test_self_matching(
+        self, compare: Callable, structures: dict[str, Structure]
+    ) -> None:
         """All matterviz structures should match themselves."""
         for name, struct in structures.items():
             assert compare(struct, struct) is True, f"Failed: {name}"
@@ -645,11 +729,13 @@ class TestPymatgenCifStructures:
         for cif_file in PYMATGEN_CIF_DIR.glob("*.cif"):
             try:
                 result[cif_file.stem] = Structure.from_file(str(cif_file))
-            except Exception as exc:
+            except (ValueError, TypeError, KeyError, OSError) as exc:
                 warnings.warn(f"Failed to load {cif_file.stem}: {exc}", stacklevel=2)
         return result
 
-    def test_self_matching(self, compare: Callable, structures: dict[str, Structure]) -> None:
+    def test_self_matching(
+        self, compare: Callable, structures: dict[str, Structure]
+    ) -> None:
         """All pymatgen CIF structures should match themselves."""
         for name, struct in structures.items():
             assert compare(struct, struct) is True, f"Failed: {name}"
