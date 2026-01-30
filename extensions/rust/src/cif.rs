@@ -372,15 +372,12 @@ fn split_cif_line(line: &str) -> Vec<&str> {
 pub fn structure_to_cif(structure: &Structure, data_name: Option<&str>) -> String {
     let mut lines = Vec::new();
 
-    // Data block header
-    let name = data_name.unwrap_or("");
-    let name = if name.is_empty() {
-        structure.composition().reduced_formula()
-    } else {
-        name.to_string()
-    };
-    // CIF data names cannot contain spaces or special characters
-    let name = name.replace([' ', '-'], "_");
+    // Data block header - use provided name or fall back to formula
+    let name = match data_name {
+        Some(n) if !n.is_empty() => n.to_string(),
+        _ => structure.composition().reduced_formula(),
+    }
+    .replace([' ', '-'], "_"); // CIF data names cannot contain spaces or special characters
     lines.push(format!("data_{}", name));
     lines.push(String::new());
 

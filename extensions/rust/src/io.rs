@@ -878,43 +878,47 @@ fn parse_pbc_value(pbc_value: &serde_json::Value) -> [bool; 3] {
 pub fn structure_to_poscar(structure: &Structure, comment: Option<&str>) -> String {
     let mat = structure.lattice.matrix();
 
-    // Check for disordered/partial-occupancy sites and warn users
+    // Check for disordered/partial-occupancy sites and collect warnings
     // POSCAR format cannot represent multi-species or partial occupancy sites
-    for (idx, site_occ) in structure.site_occupancies.iter().enumerate() {
-        let total_occ = site_occ.total_occupancy();
-        let is_disordered = !site_occ.is_ordered();
-        let has_partial_occ = (total_occ - 1.0).abs() > 1e-6;
+    let warnings: Vec<String> = structure
+        .site_occupancies
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, site_occ)| {
+            let total_occ = site_occ.total_occupancy();
+            let is_disordered = !site_occ.is_ordered();
+            let has_partial_occ = (total_occ - 1.0).abs() > 1e-6;
 
-        if is_disordered || has_partial_occ {
-            let species_str: Vec<String> = site_occ
+            if !is_disordered && !has_partial_occ {
+                return None;
+            }
+
+            let species_str = site_occ
                 .species
                 .iter()
                 .map(|(sp, occ)| format!("{sp}:{occ:.3}"))
-                .collect();
+                .collect::<Vec<_>>()
+                .join(", ");
             let dominant = site_occ.dominant_species();
 
-            if is_disordered && has_partial_occ {
-                tracing::warn!(
-                    "Site {idx}: disordered with partial occupancy (total={total_occ:.3}): [{}] \
-                     -> reduced to {} for POSCAR output",
-                    species_str.join(", "),
-                    dominant
-                );
+            Some(if is_disordered && has_partial_occ {
+                format!(
+                    "  Site {idx}: disordered+partial (total={total_occ:.3}): [{species_str}] -> {dominant}"
+                )
             } else if is_disordered {
-                tracing::warn!(
-                    "Site {idx}: disordered (multi-species): [{}] -> reduced to {} for POSCAR output",
-                    species_str.join(", "),
-                    dominant
-                );
+                format!("  Site {idx}: disordered: [{species_str}] -> {dominant}")
             } else {
-                // has_partial_occ only
-                tracing::warn!(
-                    "Site {idx}: partial occupancy (total={total_occ:.3}): [{}] \
-                     -> vacancy ignored in POSCAR output",
-                    species_str.join(", ")
-                );
-            }
-        }
+                format!("  Site {idx}: partial occupancy (total={total_occ:.3}): [{species_str}]")
+            })
+        })
+        .collect();
+
+    if !warnings.is_empty() {
+        tracing::warn!(
+            "POSCAR cannot represent disorder/partial occupancy. {} site(s) simplified:\n{}",
+            warnings.len(),
+            warnings.join("\n")
+        );
     }
 
     // Group sites by element (POSCAR requires contiguous blocks)
@@ -925,17 +929,14 @@ pub fn structure_to_poscar(structure: &Structure, comment: Option<&str>) -> Stri
         element_sites.entry(symbol).or_default().push(idx);
     }
 
-    // Build the POSCAR string manually
+    // Build the POSCAR string
     let mut lines = Vec::new();
 
-    // Line 1: Comment (use formula if not provided)
-    let comment = comment.unwrap_or("");
-    let comment = if comment.is_empty() {
-        structure.composition().reduced_formula()
-    } else {
-        comment.to_string()
-    };
-    lines.push(comment);
+    // Line 1: Comment (use provided or fall back to formula)
+    lines.push(match comment {
+        Some(c) if !c.is_empty() => c.to_string(),
+        _ => structure.composition().reduced_formula(),
+    });
 
     // Line 2: Scaling factor
     lines.push("1.0".to_string());
@@ -995,6 +996,24 @@ pub fn write_poscar(structure: &Structure, path: &Path, comment: Option<&str>) -
     Ok(())
 }
 
+/// Format a JSON value for extXYZ comment line.
+/// Returns None for arrays/objects which can't be represented inline.
+fn format_extxyz_value(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        serde_json::Value::String(s) => {
+            // Escape quotes, backslashes, and newlines to prevent malformed output
+            let escaped = s
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n");
+            Some(format!("\"{}\"", escaped))
+        }
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        _ => None, // Skip arrays/objects
+    }
+}
+
 /// Convert a structure to extXYZ format string.
 ///
 /// The output follows the extended XYZ format with lattice in the comment line.
@@ -1032,33 +1051,12 @@ pub fn structure_to_extxyz(
         mat[(2, 2)]
     );
 
-    let pbc_str: String = pbc
-        .iter()
-        .map(|&b| if b { "T" } else { "F" })
-        .collect::<Vec<_>>()
-        .join(" ");
+    let pbc_str = pbc.map(|b| if b { "T" } else { "F" }).join(" ");
 
     let mut comment_parts = vec![
         format!("Lattice=\"{}\"", lattice_str),
         format!("pbc=\"{}\"", pbc_str),
     ];
-
-    // Helper to serialize a JSON value to extXYZ format
-    let format_value = |value: &serde_json::Value| -> Option<String> {
-        match value {
-            serde_json::Value::Number(n) => Some(n.to_string()),
-            serde_json::Value::String(s) => {
-                // Escape quotes and newlines to prevent malformed output
-                let escaped = s
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-                    .replace('\n', "\\n");
-                Some(format!("\"{}\"", escaped))
-            }
-            serde_json::Value::Bool(b) => Some(b.to_string()),
-            _ => None, // Skip arrays/objects
-        }
-    };
 
     // Add structure properties and additional properties
     let all_props = structure
@@ -1068,7 +1066,7 @@ pub fn structure_to_extxyz(
     for (key, value) in all_props {
         if key != "Lattice"
             && key != "pbc"
-            && let Some(value_str) = format_value(value)
+            && let Some(value_str) = format_extxyz_value(value)
         {
             comment_parts.push(format!("{}={}", key, value_str));
         }
@@ -1133,18 +1131,13 @@ pub fn write_structure(structure: &Structure, path: &Path) -> Result<()> {
 
     match format {
         StructureFormat::PymatgenJson => {
-            let json = structure_to_pymatgen_json(structure);
-            std::fs::write(path, json)?;
-            Ok(())
+            std::fs::write(path, structure_to_pymatgen_json(structure))?;
         }
-        StructureFormat::Poscar => write_poscar(structure, path, None),
-        StructureFormat::ExtXyz => write_extxyz(structure, path, None),
-        StructureFormat::Cif => {
-            let cif = crate::cif::structure_to_cif(structure, None);
-            std::fs::write(path, cif)?;
-            Ok(())
-        }
+        StructureFormat::Poscar => write_poscar(structure, path, None)?,
+        StructureFormat::ExtXyz => write_extxyz(structure, path, None)?,
+        StructureFormat::Cif => crate::cif::write_cif(structure, path, None)?,
     }
+    Ok(())
 }
 
 #[cfg(test)]
