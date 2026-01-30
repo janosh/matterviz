@@ -146,7 +146,7 @@ class TestVoronoiCoordination:
     def test_simple_cubic_voronoi(self) -> None:
         """Simple cubic: CN=6 (cube faces)."""
         sc_json = make_structure(3.0, [site("Cu", [0.0, 0.0, 0.0])])
-        assert ferrox.get_cn_voronoi(sc_json, 0) == 6.0
+        assert ferrox.get_cn_voronoi(sc_json, 0) == pytest.approx(6.0, abs=1e-6)
 
     @pytest.mark.parametrize("func", [
         pytest.param(lambda s: ferrox.get_cn_voronoi(s, 0, min_solid_angle=-0.1), id="cn"),
