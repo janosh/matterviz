@@ -53,6 +53,10 @@ pub enum FerroxError {
     /// Composition operation error.
     #[error("Composition error: {reason}")]
     CompositionError { reason: String },
+
+    /// Transformation error.
+    #[error("Transform error: {reason}")]
+    TransformError { reason: String },
 }
 
 /// Result type alias for ferrox operations.
@@ -150,6 +154,12 @@ mod tests {
                     reason: "invalid formula".to_string(),
                 },
                 &["Composition error", "invalid formula"],
+            ),
+            (
+                FerroxError::TransformError {
+                    reason: "zero-length axis".to_string(),
+                },
+                &["Transform error", "zero-length axis"],
             ),
         ];
 
