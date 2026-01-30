@@ -1492,6 +1492,249 @@ fn parse_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
     Ok(dict.unbind())
 }
 
+// ============================================================================
+// Transformation Functions
+// ============================================================================
+
+/// Get the primitive cell of a structure.
+///
+/// Uses symmetry analysis to find the smallest unit cell that generates
+/// the original structure through translational symmetry.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision for spacegroup detection
+///
+/// Returns:
+///     dict: Primitive structure as pymatgen-compatible dict
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn to_primitive(py: Python<'_>, structure: &str, symprec: f64) -> PyResult<Py<PyDict>> {
+    let primitive = parse_struct(structure)?
+        .get_primitive(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Error getting primitive: {e}")))?;
+    Ok(structure_to_pydict(py, &primitive)?.unbind())
+}
+
+/// Get the conventional cell of a structure.
+///
+/// Uses symmetry analysis to find the conventional unit cell based on
+/// the spacegroup's standard setting.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     symprec (float): Symmetry precision for spacegroup detection
+///
+/// Returns:
+///     dict: Conventional structure as pymatgen-compatible dict
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn to_conventional(py: Python<'_>, structure: &str, symprec: f64) -> PyResult<Py<PyDict>> {
+    let conventional = parse_struct(structure)?
+        .get_conventional_structure(symprec)
+        .map_err(|e| PyValueError::new_err(format!("Error getting conventional: {e}")))?;
+    Ok(structure_to_pydict(py, &conventional)?.unbind())
+}
+
+/// Substitute species throughout a structure.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     from_species (str): Species to replace (e.g., "Fe", "Fe2+")
+///     to_species (str): Replacement species
+///
+/// Returns:
+///     dict: Structure with substituted species
+#[pyfunction]
+fn substitute_species(
+    py: Python<'_>,
+    structure: &str,
+    from_species: &str,
+    to_species: &str,
+) -> PyResult<Py<PyDict>> {
+    use crate::species::Species;
+
+    let from_sp = Species::from_string(from_species).ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "Invalid species '{from_species}': expected format like 'Fe' or 'Fe2+'"
+        ))
+    })?;
+    let to_sp = Species::from_string(to_species).ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "Invalid species '{to_species}': expected format like 'Fe' or 'Fe2+'"
+        ))
+    })?;
+
+    let s = parse_struct(structure)?
+        .substitute(from_sp, to_sp)
+        .map_err(|e| PyValueError::new_err(format!("Error substituting: {e}")))?;
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
+/// Remove all sites containing specified species.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     species (list[str]): Species to remove (e.g., ["Li", "Na"])
+///
+/// Returns:
+///     dict: Structure with species removed
+#[pyfunction]
+fn remove_species(py: Python<'_>, structure: &str, species: Vec<String>) -> PyResult<Py<PyDict>> {
+    use crate::species::Species;
+
+    let species_vec: Vec<Species> = species
+        .iter()
+        .map(|s| {
+            Species::from_string(s)
+                .ok_or_else(|| PyValueError::new_err(format!("Invalid species: {s}")))
+        })
+        .collect::<Result<_, _>>()?;
+
+    let s = parse_struct(structure)?
+        .remove_species(&species_vec)
+        .map_err(|e| PyValueError::new_err(format!("Error removing species: {e}")))?;
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
+/// Remove sites by index.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     indices (list[int]): Site indices to remove
+///
+/// Returns:
+///     dict: Structure with sites removed
+#[pyfunction]
+fn remove_sites(py: Python<'_>, structure: &str, indices: Vec<usize>) -> PyResult<Py<PyDict>> {
+    let s = parse_struct(structure)?
+        .remove_sites(&indices)
+        .map_err(|e| PyValueError::new_err(format!("Error removing sites: {e}")))?;
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
+/// Apply a deformation gradient to the lattice.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     gradient (list[list[float]]): 3x3 deformation gradient matrix
+///
+/// Returns:
+///     dict: Deformed structure
+#[pyfunction]
+fn deform(py: Python<'_>, structure: &str, gradient: [[f64; 3]; 3]) -> PyResult<Py<PyDict>> {
+    let grad_matrix = Matrix3::from_row_slice(&gradient.concat());
+    let s = parse_struct(structure)?
+        .deform(grad_matrix)
+        .map_err(|e| PyValueError::new_err(format!("Error deforming: {e}")))?;
+    Ok(structure_to_pydict(py, &s)?.unbind())
+}
+
+/// Compute Ewald energy of an ionic structure.
+///
+/// Args:
+///     structure (str): Structure as JSON string (must have oxidation states)
+///     accuracy (float): Accuracy parameter for Ewald summation
+///     real_cutoff (float): Real-space cutoff in Angstroms
+///
+/// Returns:
+///     float: Coulomb energy in eV
+#[pyfunction]
+#[pyo3(signature = (structure, accuracy = 1e-5, real_cutoff = 10.0))]
+fn ewald_energy(structure: &str, accuracy: f64, real_cutoff: f64) -> PyResult<f64> {
+    use crate::algorithms::Ewald;
+
+    if accuracy <= 0.0 || accuracy >= 1.0 {
+        return Err(PyValueError::new_err(format!(
+            "accuracy must be in (0, 1), got {accuracy}"
+        )));
+    }
+    if real_cutoff <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "real_cutoff must be positive, got {real_cutoff}"
+        )));
+    }
+
+    let s = parse_struct(structure)?;
+    let ewald = Ewald::new()
+        .with_accuracy(accuracy)
+        .with_real_cutoff(real_cutoff);
+    ewald
+        .energy(&s)
+        .map_err(|e| PyValueError::new_err(format!("Ewald error: {e}")))
+}
+
+/// Enumerate orderings of a disordered structure.
+///
+/// Takes a structure with disordered sites and returns all possible
+/// ordered configurations, optionally ranked by Ewald energy.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     max_structures (int, optional): Maximum number of structures to return
+///     sort_by_energy (bool): Whether to sort by Ewald energy
+///
+/// Returns:
+///     list[dict]: List of ordered structures as pymatgen-compatible dicts
+#[pyfunction]
+#[pyo3(signature = (structure, max_structures = None, sort_by_energy = true))]
+fn order_disordered(
+    py: Python<'_>,
+    structure: &str,
+    max_structures: Option<usize>,
+    sort_by_energy: bool,
+) -> PyResult<Vec<Py<PyDict>>> {
+    use crate::transformations::OrderDisorderedConfig;
+
+    let s = parse_struct(structure)?;
+    let config = OrderDisorderedConfig {
+        max_structures,
+        sort_by_energy,
+        compute_energy: sort_by_energy,
+        ..Default::default()
+    };
+
+    // Release GIL during heavy computation
+    let results = py.detach(|| s.order_disordered(config));
+
+    results
+        .map_err(|e| PyValueError::new_err(format!("Error ordering: {e}")))?
+        .iter()
+        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
+        .collect()
+}
+
+/// Enumerate derivative structures from a parent structure.
+///
+/// Generates all symmetrically unique supercells up to a given size.
+///
+/// Args:
+///     structure (str): Parent structure as JSON string
+///     min_size (int): Minimum supercell size (number of formula units)
+///     max_size (int): Maximum supercell size
+///
+/// Returns:
+///     list[dict]: List of derivative structures
+#[pyfunction]
+#[pyo3(signature = (structure, min_size = 1, max_size = 4))]
+fn enumerate_derivatives(
+    py: Python<'_>,
+    structure: &str,
+    min_size: usize,
+    max_size: usize,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let s = parse_struct(structure)?;
+
+    // Release GIL during heavy computation
+    let results = py.detach(|| s.enumerate_derivatives(min_size, max_size));
+
+    results
+        .map_err(|e| PyValueError::new_err(format!("Error enumerating: {e}")))?
+        .iter()
+        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
+        .collect()
+}
+
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
@@ -1545,5 +1788,15 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_site_property, m)?)?;
     // Composition functions
     m.add_function(wrap_pyfunction!(parse_composition, m)?)?;
+    // Transformation functions
+    m.add_function(wrap_pyfunction!(to_primitive, m)?)?;
+    m.add_function(wrap_pyfunction!(to_conventional, m)?)?;
+    m.add_function(wrap_pyfunction!(substitute_species, m)?)?;
+    m.add_function(wrap_pyfunction!(remove_species, m)?)?;
+    m.add_function(wrap_pyfunction!(remove_sites, m)?)?;
+    m.add_function(wrap_pyfunction!(deform, m)?)?;
+    m.add_function(wrap_pyfunction!(ewald_energy, m)?)?;
+    m.add_function(wrap_pyfunction!(order_disordered, m)?)?;
+    m.add_function(wrap_pyfunction!(enumerate_derivatives, m)?)?;
     Ok(())
 }

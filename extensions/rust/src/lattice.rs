@@ -182,6 +182,22 @@ impl Lattice {
             .collect()
     }
 
+    /// Create a new lattice from a matrix and PBC settings.
+    pub fn from_matrix_with_pbc(matrix: Matrix3<f64>, pbc: [bool; 3]) -> Self {
+        Self { matrix, pbc }
+    }
+
+    /// Convert a single Cartesian coordinate to fractional.
+    pub fn get_fractional_coord(&self, cart_coord: &Vector3<f64>) -> Vector3<f64> {
+        let inv_t = self.inv_matrix().transpose();
+        inv_t * cart_coord
+    }
+
+    /// Convert a single fractional coordinate to Cartesian.
+    pub fn get_cartesian_coord(&self, frac_coord: &Vector3<f64>) -> Vector3<f64> {
+        self.matrix.transpose() * frac_coord
+    }
+
     /// Get the reciprocal lattice.
     ///
     /// For degenerate lattices (near-zero volume), falls back to using the
@@ -215,6 +231,11 @@ impl Lattice {
             Matrix3::from_rows(&[a_star.transpose(), b_star.transpose(), c_star.transpose()]);
 
         Self::new(recip_matrix * 2.0 * PI)
+    }
+
+    /// Alias for `reciprocal()` for compatibility.
+    pub fn reciprocal_lattice(&self) -> Self {
+        self.reciprocal()
     }
 
     /// Get the metric tensor G = A * A^T.

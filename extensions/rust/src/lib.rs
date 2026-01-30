@@ -40,9 +40,17 @@ pub mod species;
 pub mod structure;
 
 // Algorithms
+pub mod algorithms;
 pub mod batch;
 pub mod matcher;
 pub mod pbc;
+
+// Transformations (internal - public API is via Structure methods)
+pub(crate) mod transformations;
+
+// Re-export config structs for use with Structure transformation methods
+pub use algorithms::EnumConfig;
+pub use transformations::{OrderDisorderedConfig, PartialRemoveConfig};
 
 // I/O
 pub mod cif;
