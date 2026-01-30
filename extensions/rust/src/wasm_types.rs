@@ -6,9 +6,7 @@
 use serde::{Deserialize, Serialize};
 use tsify_next::Tsify;
 
-// =============================================================================
-// Result Types
-// =============================================================================
+// === Result Types ===
 
 /// Result wrapper that serializes to `{ ok: T }` on success or `{ error: string }` on failure.
 /// TypeScript: `WasmResult<T> = { ok: T } | { error: string }`
@@ -49,9 +47,7 @@ impl<T, E: std::fmt::Display> From<Result<T, E>> for WasmResult<T> {
     }
 }
 
-// =============================================================================
-// Vector and Matrix Types
-// =============================================================================
+// === Vector and Matrix Types ===
 
 /// 3x3 matrix represented as nested arrays (row-major).
 pub type Matrix3x3 = [[f64; 3]; 3];
@@ -91,9 +87,7 @@ fn default_pbc() -> [bool; 3] {
     [true, true, true]
 }
 
-// =============================================================================
-// Species Types
-// =============================================================================
+// === Species Types ===
 
 /// Species occupancy at a site (element + occupancy + optional oxidation state).
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -113,9 +107,7 @@ fn default_occupancy() -> f64 {
     1.0
 }
 
-// =============================================================================
-// Site Types
-// =============================================================================
+// === Site Types ===
 
 /// A crystallographic site with species, coordinates, and properties.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -136,9 +128,7 @@ pub struct JsSite {
     pub properties: serde_json::Map<String, serde_json::Value>,
 }
 
-// =============================================================================
-// Structure Types
-// =============================================================================
+// === Structure Types ===
 
 /// A crystal structure matching pymatgen's JSON format.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -153,9 +143,7 @@ pub struct JsCrystal {
     pub properties: serde_json::Map<String, serde_json::Value>,
 }
 
-// =============================================================================
-// Neighbor List Types
-// =============================================================================
+// === Neighbor List Types ===
 
 /// Result of neighbor list calculation.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -171,9 +159,7 @@ pub struct JsNeighborList {
     pub distances: Vec<f64>,
 }
 
-// =============================================================================
-// RMS Distance Types
-// =============================================================================
+// === RMS Distance Types ===
 
 /// Result of RMS distance calculation between two structures.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -185,9 +171,7 @@ pub struct JsRmsDistResult {
     pub max_dist: f64,
 }
 
-// =============================================================================
-// Symmetry Types
-// =============================================================================
+// === Symmetry Types ===
 
 /// A symmetry operation (rotation + translation in fractional coordinates).
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -221,9 +205,7 @@ pub struct JsSymmetryDataset {
     pub operations: Vec<JsSymmetryOperation>,
 }
 
-// =============================================================================
-// Coordination Types
-// =============================================================================
+// === Coordination Types ===
 
 /// Information about a neighboring atom in coordination analysis.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -253,39 +235,7 @@ pub struct JsLocalEnvironment {
     pub neighbors: Vec<JsNeighborInfo>,
 }
 
-// =============================================================================
-// Composition Types
-// =============================================================================
-
-/// Element count in a composition.
-#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-pub struct JsElementCount {
-    /// Element symbol
-    pub element: String,
-    /// Count (can be fractional for disordered structures)
-    pub count: f64,
-}
-
-/// Chemical composition of a structure.
-#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-#[tsify(into_wasm_abi)]
-pub struct JsComposition {
-    /// List of elements and their counts
-    pub elements: Vec<JsElementCount>,
-    /// Reduced formula (e.g., "Fe2O3")
-    pub reduced_formula: String,
-    /// Total number of atoms
-    pub num_atoms: f64,
-}
-
-// =============================================================================
-// Slab Types (Miller index defined above as JsMillerIndex)
-// =============================================================================
-
-// =============================================================================
-// Structure Metadata Types
-// =============================================================================
+// === Structure Metadata Types ===
 
 /// Metadata about a crystal structure.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -295,7 +245,7 @@ pub struct JsStructureMetadata {
     pub num_sites: u32,
     /// Reduced chemical formula
     pub formula: String,
-    /// Volume in Ų
+    /// Volume in Å³
     pub volume: f64,
     /// Density in g/cm³ (null if zero volume)
     pub density: Option<f64>,
@@ -307,9 +257,7 @@ pub struct JsStructureMetadata {
     pub is_ordered: bool,
 }
 
-// =============================================================================
-// Reduction Algorithm Enum
-// =============================================================================
+// === Reduction Algorithm Enum ===
 
 /// Lattice reduction algorithm.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Tsify)]
@@ -322,9 +270,7 @@ pub enum JsReductionAlgo {
     Lll,
 }
 
-// =============================================================================
-// Conversion Utilities
-// =============================================================================
+// === Conversion Utilities ===
 
 use crate::element::Element;
 use crate::lattice::Lattice;
@@ -336,7 +282,7 @@ use std::collections::HashMap;
 impl JsCrystal {
     /// Convert from internal Structure type to JS-compatible type
     pub fn from_structure(structure: &Structure) -> Self {
-        let lattice_matrix = structure.lattice.matrix();
+        let mat = structure.lattice.matrix();
         let cart_coords = structure.cart_coords();
 
         let sites: Vec<JsSite> = structure
@@ -381,21 +327,9 @@ impl JsCrystal {
         JsCrystal {
             lattice: JsLattice {
                 matrix: [
-                    [
-                        lattice_matrix[(0, 0)],
-                        lattice_matrix[(0, 1)],
-                        lattice_matrix[(0, 2)],
-                    ],
-                    [
-                        lattice_matrix[(1, 0)],
-                        lattice_matrix[(1, 1)],
-                        lattice_matrix[(1, 2)],
-                    ],
-                    [
-                        lattice_matrix[(2, 0)],
-                        lattice_matrix[(2, 1)],
-                        lattice_matrix[(2, 2)],
-                    ],
+                    [mat[(0, 0)], mat[(0, 1)], mat[(0, 2)]],
+                    [mat[(1, 0)], mat[(1, 1)], mat[(1, 2)]],
+                    [mat[(2, 0)], mat[(2, 1)], mat[(2, 2)]],
                 ],
                 pbc: structure.lattice.pbc,
             },
@@ -406,16 +340,9 @@ impl JsCrystal {
 
     /// Convert to internal Structure type
     pub fn to_structure(&self) -> Result<Structure, String> {
+        let m = &self.lattice.matrix;
         let lattice_matrix = nalgebra::Matrix3::from_row_slice(&[
-            self.lattice.matrix[0][0],
-            self.lattice.matrix[0][1],
-            self.lattice.matrix[0][2],
-            self.lattice.matrix[1][0],
-            self.lattice.matrix[1][1],
-            self.lattice.matrix[1][2],
-            self.lattice.matrix[2][0],
-            self.lattice.matrix[2][1],
-            self.lattice.matrix[2][2],
+            m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2],
         ]);
         let mut lattice = Lattice::new(lattice_matrix);
         lattice.pbc = self.lattice.pbc;

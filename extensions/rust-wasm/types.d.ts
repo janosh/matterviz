@@ -90,7 +90,7 @@ export function get_structure_metadata(
 // Neighbor finding
 export function get_neighbor_list(
   structure: JsCrystal,
-  r: number,
+  cutoff_radius: number,
   numerical_tol: number,
   exclude_self: boolean,
 ): WasmResult<JsNeighborList>
