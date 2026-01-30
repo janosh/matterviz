@@ -4,7 +4,7 @@
 //!
 //! - `OrderDisorderedTransform`: Enumerate orderings of disordered structures
 //! - `PartialRemoveTransform`: Partial removal of species
-//! - `DiscretizeOccupanciesTransform`: Convert fractional occupancies to integers
+//! - `DiscretizeOccupanciesTransform`: Scale structure so fractional occupancies become integral site counts
 
 use crate::algorithms::Ewald;
 use crate::error::{FerroxError, Result};
@@ -12,7 +12,8 @@ use crate::species::{SiteOccupancy, Species};
 use crate::structure::Structure;
 use crate::transformations::{Transform, TransformMany};
 use itertools::Itertools;
-use std::collections::HashSet;
+use std::cmp::Ordering as CmpOrdering;
+use std::collections::{BinaryHeap, HashSet};
 
 /// Configuration for ordering disordered structures.
 #[derive(Debug, Clone)]
@@ -111,8 +112,44 @@ impl TransformMany for OrderDisorderedTransform {
     }
 }
 
+/// Wrapper for heap-based top-k selection by energy.
+/// Uses max-heap with inverted ordering to efficiently track k lowest energies.
+struct EnergyStructure {
+    energy: f64,
+    structure: Structure,
+}
+
+impl PartialEq for EnergyStructure {
+    fn eq(&self, other: &Self) -> bool {
+        self.energy == other.energy
+    }
+}
+
+impl Eq for EnergyStructure {}
+
+impl PartialOrd for EnergyStructure {
+    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for EnergyStructure {
+    fn cmp(&self, other: &Self) -> CmpOrdering {
+        // Reverse ordering: max-heap becomes min-heap for top-k lowest
+        // We want to pop the HIGHEST energy when heap exceeds capacity
+        other
+            .energy
+            .partial_cmp(&self.energy)
+            .unwrap_or(CmpOrdering::Equal)
+    }
+}
+
 impl OrderDisorderedTransform {
-    /// Enumerate all orderings of a disordered structure.
+    /// Enumerate orderings of a disordered structure with lazy evaluation.
+    ///
+    /// When `sort_by_energy` is false, uses early termination after `max_structures`.
+    /// When `sort_by_energy` is true, uses a bounded heap for top-k selection
+    /// to avoid materializing all combinations.
     fn enumerate_orderings(&self, structure: &Structure) -> Vec<Result<Structure>> {
         // Check if structure is actually disordered
         if structure.is_ordered() {
@@ -126,15 +163,38 @@ impl OrderDisorderedTransform {
             .map(|site_occ| site_occ.species.iter().map(|(sp, _)| *sp).collect())
             .collect();
 
-        // Generate all combinations using Cartesian product
-        let orderings: Vec<Vec<Species>> =
-            site_options.into_iter().multi_cartesian_product().collect();
-
-        // Convert orderings to structures
-        let mut results: Vec<(f64, Structure)> = Vec::new();
         let ewald = Ewald::new().with_accuracy(self.config.ewald_accuracy);
 
-        for species_list in orderings {
+        // Create lazy iterator over all orderings (no .collect()!)
+        let orderings_iter = site_options.into_iter().multi_cartesian_product();
+
+        if self.config.sort_by_energy && self.config.compute_energy {
+            // Use heap-based top-k selection
+            self.enumerate_with_heap(structure, orderings_iter, &ewald)
+        } else {
+            // Use early termination - stop after max_structures
+            self.enumerate_with_early_termination(structure, orderings_iter, &ewald)
+        }
+    }
+
+    /// Enumerate orderings with early termination (no sorting).
+    fn enumerate_with_early_termination<I>(
+        &self,
+        structure: &Structure,
+        orderings_iter: I,
+        ewald: &Ewald,
+    ) -> Vec<Result<Structure>>
+    where
+        I: Iterator<Item = Vec<Species>>,
+    {
+        let max = self.config.max_structures.unwrap_or(usize::MAX);
+        let mut results = Vec::with_capacity(max.min(1024)); // Reasonable initial capacity
+
+        for species_list in orderings_iter {
+            if results.len() >= max {
+                break; // Early termination
+            }
+
             let mut ordered_struct = structure.clone();
 
             // Set species for each site
@@ -142,32 +202,78 @@ impl OrderDisorderedTransform {
                 ordered_struct.site_occupancies[idx] = SiteOccupancy::ordered(*species);
             }
 
-            // Compute energy if requested
-            let energy = if self.config.compute_energy {
-                match ewald.energy(&ordered_struct) {
-                    Ok(e) => {
-                        ordered_struct
-                            .properties
-                            .insert("ewald_energy".to_string(), serde_json::json!(e));
-                        e
-                    }
-                    Err(_) => f64::INFINITY, // Skip energy for structures without oxi states
+            // Compute energy if requested (skip silently if structure lacks oxidation states)
+            if self.config.compute_energy
+                && let Ok(energy) = ewald.energy(&ordered_struct)
+            {
+                ordered_struct
+                    .properties
+                    .insert("ewald_energy".to_string(), serde_json::json!(energy));
+            }
+
+            results.push(Ok(ordered_struct));
+        }
+
+        results
+    }
+
+    /// Enumerate orderings with heap-based top-k selection (sorted by energy).
+    fn enumerate_with_heap<I>(
+        &self,
+        structure: &Structure,
+        orderings_iter: I,
+        ewald: &Ewald,
+    ) -> Vec<Result<Structure>>
+    where
+        I: Iterator<Item = Vec<Species>>,
+    {
+        let max = self.config.max_structures.unwrap_or(usize::MAX);
+
+        // Use a max-heap (with inverted ordering) to keep k lowest energies
+        // When heap exceeds k, pop the highest energy (top of max-heap)
+        let mut heap: BinaryHeap<EnergyStructure> = BinaryHeap::new();
+
+        for species_list in orderings_iter {
+            let mut ordered_struct = structure.clone();
+
+            // Set species for each site
+            for (idx, species) in species_list.iter().enumerate() {
+                ordered_struct.site_occupancies[idx] = SiteOccupancy::ordered(*species);
+            }
+
+            // Compute energy
+            let energy = match ewald.energy(&ordered_struct) {
+                Ok(energy) => {
+                    ordered_struct
+                        .properties
+                        .insert("ewald_energy".to_string(), serde_json::json!(energy));
+                    energy
                 }
-            } else {
-                0.0
+                Err(_) => f64::INFINITY, // High energy for structures without oxi states
             };
 
-            results.push((energy, ordered_struct));
+            // Add to heap
+            heap.push(EnergyStructure {
+                energy,
+                structure: ordered_struct,
+            });
+
+            // If heap exceeds max, remove the highest energy (worst) structure
+            if heap.len() > max {
+                heap.pop();
+            }
         }
 
-        // Sort by energy if requested
-        if self.config.sort_by_energy && self.config.compute_energy {
-            results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        }
+        // Extract results sorted by energy (lowest first)
+        let mut results: Vec<_> = heap.into_vec();
+        // Sort ascending by energy (EnergyStructure has inverted Ord, so reverse)
+        results.sort_by(|a, b| {
+            a.energy
+                .partial_cmp(&b.energy)
+                .unwrap_or(CmpOrdering::Equal)
+        });
 
-        // Apply max_structures limit
-        let max = self.config.max_structures.unwrap_or(results.len());
-        results.into_iter().take(max).map(|(_, s)| Ok(s)).collect()
+        results.into_iter().map(|es| Ok(es.structure)).collect()
     }
 }
 
@@ -278,6 +384,16 @@ impl TransformMany for PartialRemoveTransform {
 impl PartialRemoveTransform {
     /// Enumerate all removal patterns.
     fn enumerate_removals(&self, structure: &Structure) -> Vec<Result<Structure>> {
+        // Validate fraction is in [0.0, 1.0]
+        if !(0.0..=1.0).contains(&self.config.fraction) {
+            return vec![Err(FerroxError::TransformError {
+                reason: format!(
+                    "Fraction must be in [0.0, 1.0], got {}",
+                    self.config.fraction
+                ),
+            })];
+        }
+
         // Find sites with the target species
         let target_sites: Vec<usize> = structure
             .site_occupancies
@@ -354,19 +470,22 @@ impl PartialRemoveTransform {
     }
 }
 
-/// Convert fractional occupancies to integers via rationalization.
+/// Scale structure so fractional occupancies become integral site counts.
 ///
-/// Finds the smallest supercell where all occupancies become integers.
+/// Creates the smallest supercell where fractional occupancies can be represented
+/// as whole numbers of fully-occupied sites. After transformation, all sites have
+/// occupancy 1.0, ready for use with `OrderDisorderedTransform`.
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// use ferrox::transformations::{Transform, DiscretizeOccupanciesTransform};
 ///
-/// // Structure with Li at 0.75 occupancy
+/// // Structure with 1 site at 0.75 Li, 0.25 vacancy
 /// let transform = DiscretizeOccupanciesTransform::new(10, 0.01);
 /// let discretized = transform.applied(&structure)?;
-/// // Now has supercell with 3 Li for every 4 original sites
+/// // Now has 4x supercell with 4 sites, each at 1.0 occupancy
+/// // (representing 3 Li sites + 1 vacancy that can be enumerated)
 /// ```
 #[derive(Debug, Clone)]
 pub struct DiscretizeOccupanciesTransform {
@@ -430,7 +549,14 @@ impl Transform for DiscretizeOccupanciesTransform {
 
         // Create supercell
         let supercell_matrix = [[lcm as i32, 0, 0], [0, 1, 0], [0, 0, 1]];
-        let supercell = structure.make_supercell(supercell_matrix)?;
+        let mut supercell = structure.make_supercell(supercell_matrix)?;
+
+        // Set all occupancies to 1.0 (sites are now discrete)
+        for site_occ in &mut supercell.site_occupancies {
+            for (_, occ) in &mut site_occ.species {
+                *occ = 1.0;
+            }
+        }
 
         // Update structure
         *structure = supercell;
@@ -679,6 +805,152 @@ mod tests {
         assert_eq!(results.len(), 1);
     }
 
+    // ========== Fraction Validation Tests ==========
+
+    #[test]
+    fn test_partial_remove_fraction_negative() {
+        let structure = partial_li_structure();
+        let config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), -0.1);
+        let transform = PartialRemoveTransform::new(config);
+
+        let results: Vec<_> = transform.iter_apply(&structure).collect();
+
+        assert_eq!(results.len(), 1);
+        let err = results[0].as_ref().unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Fraction"),
+            "Error should mention 'Fraction': {msg}"
+        );
+        assert!(
+            msg.contains("-0.1"),
+            "Error should contain the invalid value: {msg}"
+        );
+        assert!(
+            msg.contains("[0.0, 1.0]"),
+            "Error should mention valid range: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_partial_remove_fraction_greater_than_one() {
+        let structure = partial_li_structure();
+        let config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), 1.5);
+        let transform = PartialRemoveTransform::new(config);
+
+        let results: Vec<_> = transform.iter_apply(&structure).collect();
+
+        assert_eq!(results.len(), 1);
+        let err = results[0].as_ref().unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Fraction"),
+            "Error should mention 'Fraction': {msg}"
+        );
+        assert!(
+            msg.contains("1.5"),
+            "Error should contain the invalid value: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_partial_remove_fraction_boundary_values() {
+        let structure = partial_li_structure();
+        let li = Species::new(Element::Li, Some(1));
+
+        // Test boundary values: 0.0 and 1.0 should be valid
+        for fraction in [0.0, 1.0] {
+            let config = PartialRemoveConfig::new(li, fraction);
+            let transform = PartialRemoveTransform::new(config);
+            let results: Vec<_> = transform.iter_apply(&structure).collect();
+
+            // All results should be Ok
+            for result in &results {
+                assert!(
+                    result.is_ok(),
+                    "fraction={fraction} should be valid, got error: {:?}",
+                    result.as_ref().unwrap_err()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_partial_remove_fraction_just_outside_bounds() {
+        let structure = partial_li_structure();
+        let li = Species::new(Element::Li, Some(1));
+
+        // Just below 0.0 and just above 1.0 should fail
+        for (fraction, _expected_in_msg) in [(-1e-10, "-"), (1.0 + 1e-10, "1.0")] {
+            let config = PartialRemoveConfig::new(li, fraction);
+            let transform = PartialRemoveTransform::new(config);
+            let results: Vec<_> = transform.iter_apply(&structure).collect();
+
+            assert_eq!(results.len(), 1);
+            assert!(results[0].is_err(), "fraction={fraction} should be invalid");
+            let msg = results[0].as_ref().unwrap_err().to_string();
+            assert!(
+                msg.contains("Fraction"),
+                "Error message should mention 'Fraction': {msg}"
+            );
+            // Just verify it's a transform error with reasonable message
+            assert!(
+                msg.contains("[0.0, 1.0]"),
+                "Error should mention valid range: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_partial_remove_fraction_nan() {
+        let structure = partial_li_structure();
+        let config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), f64::NAN);
+        let transform = PartialRemoveTransform::new(config);
+
+        let results: Vec<_> = transform.iter_apply(&structure).collect();
+
+        // NaN is not in [0.0, 1.0], so should fail
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_err(), "NaN fraction should be invalid");
+    }
+
+    #[test]
+    fn test_partial_remove_fraction_infinity() {
+        let structure = partial_li_structure();
+        let li = Species::new(Element::Li, Some(1));
+
+        for fraction in [f64::INFINITY, f64::NEG_INFINITY] {
+            let config = PartialRemoveConfig::new(li, fraction);
+            let transform = PartialRemoveTransform::new(config);
+            let results: Vec<_> = transform.iter_apply(&structure).collect();
+
+            assert_eq!(results.len(), 1);
+            assert!(results[0].is_err(), "fraction={fraction} should be invalid");
+        }
+    }
+
+    #[test]
+    fn test_partial_remove_fraction_valid_interior_values() {
+        let structure = partial_li_structure();
+        let li = Species::new(Element::Li, Some(1));
+
+        // Various valid fractions in (0, 1)
+        for fraction in [0.1, 0.25, 0.333, 0.5, 0.666, 0.75, 0.9] {
+            let config = PartialRemoveConfig::new(li, fraction);
+            let transform = PartialRemoveTransform::new(config);
+            let results: Vec<_> = transform.iter_apply(&structure).collect();
+
+            // All results should be Ok (might be empty if n_remove rounds to 0)
+            for result in &results {
+                assert!(
+                    result.is_ok(),
+                    "fraction={fraction} should be valid, got error: {:?}",
+                    result.as_ref().unwrap_err()
+                );
+            }
+        }
+    }
+
     // ========== Discretize Occupancies Tests ==========
 
     #[test]
@@ -686,23 +958,77 @@ mod tests {
         let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(3.0, 3.0, 3.0)));
 
         let li = Species::new(Element::Li, Some(1));
-        let na = Species::new(Element::Na, Some(1));
-        let k = Species::new(Element::K, Some(1));
+        let fe = Species::new(Element::Fe, Some(2));
 
-        // Occupancies that don't add up to exactly 1.0
-        let site = SiteOccupancy::new(vec![(li, 0.19), (na, 0.19), (k, 0.62)]);
+        // 0.5 Li, 0.5 Fe - should require 2x supercell
+        let site = SiteOccupancy::new(vec![(li, 0.5), (fe, 0.5)]);
 
         let structure =
             Structure::new_from_occupancies(lattice, vec![site], vec![Vector3::new(0.0, 0.0, 0.0)]);
 
-        let transform = DiscretizeOccupanciesTransform::new(5, 0.5);
+        let transform = DiscretizeOccupanciesTransform::new(10, 0.01);
         let mut discretized = structure.clone();
         transform.apply(&mut discretized).unwrap();
 
-        // Check that occupancies sum to 1.0 and are discretized
-        let occ = &discretized.site_occupancies[0];
-        let total: f64 = occ.species.iter().map(|(_, o)| *o).sum();
-        assert!((total - 1.0).abs() < 1e-10, "Total occupancy should be 1.0");
+        // Should have 2 sites (2x supercell along first axis)
+        assert_eq!(discretized.num_sites(), 2);
+
+        // Each species on each site should now have occupancy 1.0
+        for site_occ in &discretized.site_occupancies {
+            for (_, occ) in &site_occ.species {
+                assert!(
+                    (*occ - 1.0).abs() < 1e-10,
+                    "Each species occupancy should be 1.0, got {}",
+                    occ
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_discretize_occupancies_quarter() {
+        let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(3.0, 3.0, 3.0)));
+
+        let li = Species::new(Element::Li, Some(1));
+        let na = Species::new(Element::Na, Some(1));
+
+        // 0.25 Li, 0.75 Na - should require 4x supercell
+        let site = SiteOccupancy::new(vec![(li, 0.25), (na, 0.75)]);
+
+        let structure =
+            Structure::new_from_occupancies(lattice, vec![site], vec![Vector3::new(0.0, 0.0, 0.0)]);
+
+        let transform = DiscretizeOccupanciesTransform::new(10, 0.01);
+        let mut discretized = structure.clone();
+        transform.apply(&mut discretized).unwrap();
+
+        // Should have 4 sites (4x supercell)
+        assert_eq!(discretized.num_sites(), 4);
+
+        // All occupancies should be 1.0
+        for site_occ in &discretized.site_occupancies {
+            for (_, occ) in &site_occ.species {
+                assert!((*occ - 1.0).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn test_discretize_already_integral() {
+        let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(3.0, 3.0, 3.0)));
+        let li = Species::new(Element::Li, Some(1));
+
+        // Already fully occupied - no change needed
+        let site = SiteOccupancy::new(vec![(li, 1.0)]);
+        let structure =
+            Structure::new_from_occupancies(lattice, vec![site], vec![Vector3::new(0.0, 0.0, 0.0)]);
+
+        let transform = DiscretizeOccupanciesTransform::default();
+        let mut discretized = structure.clone();
+        transform.apply(&mut discretized).unwrap();
+
+        // Should still have 1 site (no supercell needed)
+        assert_eq!(discretized.num_sites(), 1);
     }
 
     // ========== Rationalize Helper Tests ==========

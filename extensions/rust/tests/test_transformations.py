@@ -259,7 +259,6 @@ class TestDeform:
 
     def test_volumetric_expansion(self, nacl_json: str) -> None:
         """10% volumetric expansion."""
-        original = json.loads(nacl_json)
         original_volume = 5.64**3
 
         # Apply 10% volumetric strain (1.1^(1/3) along each axis)

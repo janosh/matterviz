@@ -11,7 +11,7 @@
 //! - `ConventionalTransform`: Find conventional cell
 //! - `PerturbTransform`: Random perturbation of atomic positions
 
-use crate::error::Result;
+use crate::error::{FerroxError, Result};
 use crate::species::Species;
 use crate::structure::Structure;
 use crate::transformations::Transform;
@@ -108,15 +108,22 @@ impl RotateTransform {
     }
 
     /// Compute the rotation matrix using Rodrigues' formula.
-    fn rotation_matrix(&self) -> Matrix3<f64> {
-        let axis = self.axis.normalize();
+    ///
+    /// Returns an error if the rotation axis has zero length.
+    fn rotation_matrix(&self) -> Result<Matrix3<f64>> {
+        let axis =
+            self.axis
+                .try_normalize(f64::EPSILON)
+                .ok_or_else(|| FerroxError::TransformError {
+                    reason: "rotation axis has zero length".to_string(),
+                })?;
         let cos_a = self.angle.cos();
         let sin_a = self.angle.sin();
         let one_minus_cos = 1.0 - cos_a;
 
         let (ax, ay, az) = (axis.x, axis.y, axis.z);
 
-        Matrix3::new(
+        Ok(Matrix3::new(
             one_minus_cos * ax * ax + cos_a,
             one_minus_cos * ax * ay - sin_a * az,
             one_minus_cos * ax * az + sin_a * ay,
@@ -126,13 +133,13 @@ impl RotateTransform {
             one_minus_cos * ax * az - sin_a * ay,
             one_minus_cos * ay * az + sin_a * ax,
             one_minus_cos * az * az + cos_a,
-        )
+        ))
     }
 }
 
 impl Transform for RotateTransform {
     fn apply(&self, structure: &mut Structure) -> Result<()> {
-        let rot = self.rotation_matrix();
+        let rot = self.rotation_matrix()?;
 
         // Rotate lattice vectors (each row is a lattice vector)
         let old_matrix = *structure.lattice.matrix();
@@ -691,6 +698,20 @@ mod tests {
             assert_relative_eq!(orig.y, final_fc.y, epsilon = 1e-10);
             assert_relative_eq!(orig.z, final_fc.z, epsilon = 1e-10);
         }
+    }
+
+    #[test]
+    fn test_rotate_zero_axis_error() {
+        let mut structure = nacl_structure();
+        let transform = RotateTransform::new(Vector3::zeros(), FRAC_PI_4);
+        let result = transform.apply(&mut structure);
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("zero length"),
+            "Error should mention zero length axis: {err_msg}"
+        );
     }
 
     // ========== SubstituteTransform Tests ==========
