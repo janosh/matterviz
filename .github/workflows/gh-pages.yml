@@ -19,7 +19,7 @@ jobs:
         # Build WASM package (remove once published to npm)
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         . "$HOME/.cargo/env"
-        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        cargo install wasm-pack@0.13.1 --locked
         wasm-pack build extensions/rust --target web --features wasm --no-default-features
         mkdir -p extensions/rust-wasm/pkg/
         cp -r extensions/rust/pkg/* extensions/rust-wasm/pkg/

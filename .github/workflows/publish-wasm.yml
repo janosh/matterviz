@@ -22,7 +22,7 @@ jobs:
         uses: dtolnay/rust-action@stable
 
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        run: cargo install wasm-pack@0.13.1 --locked
 
       - name: Build WASM
         run: |

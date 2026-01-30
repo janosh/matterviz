@@ -22,7 +22,6 @@
     "prepublishOnly": "svelte-package"
   },
   "dependencies": {
-    "@matterviz/wasm": "file:extensions/rust-wasm",
     "@spglib/moyo-wasm": "^0.7.4",
     "@sveltejs/kit": "^2.50.1",
     "@threlte/core": "^8.3.1",
@@ -48,7 +47,16 @@
     "svelte-multiselect": "^11.6.0",
     "three": "^0.182.0"
   },
+  "peerDependencies": {
+    "@matterviz/wasm": ">=0.0.1"
+  },
+  "peerDependenciesMeta": {
+    "@matterviz/wasm": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@matterviz/wasm": "file:extensions/rust-wasm",
     "@playwright/test": "^1.58.0",
     "@rollup/plugin-yaml": "^4.1.2",
     "@stylistic/eslint-plugin": "^5.7.1",
