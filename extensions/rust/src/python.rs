@@ -1011,6 +1011,72 @@ fn get_density(structure: &str) -> PyResult<Option<f64>> {
     Ok(parse_struct(structure)?.density())
 }
 
+/// Get all queryable metadata from a structure in a single call.
+///
+/// This is more efficient than calling individual functions when you need
+/// multiple properties, as it only parses the structure once.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     compute_spacegroup (bool): Whether to compute spacegroup (expensive). Default: False.
+///     symprec (float): Symmetry precision for spacegroup detection. Default: 0.01.
+///
+/// Returns:
+///     dict: Metadata dictionary with keys:
+///         - formula: reduced formula (e.g., "Fe2O3")
+///         - formula_anonymous: anonymous formula (e.g., "A2B3")
+///         - formula_hill: Hill notation formula
+///         - chemical_system: element system (e.g., "Fe-O")
+///         - elements: sorted list of unique element symbols
+///         - n_elements: number of unique elements
+///         - n_sites: number of sites
+///         - volume: unit cell volume in Angstrom^3
+///         - density: density in g/cm^3 (or None if volume is zero)
+///         - mass: total mass in atomic mass units
+///         - is_ordered: whether all sites have single species
+///         - spacegroup_number: (optional) spacegroup number if compute_spacegroup=True
+#[pyfunction]
+#[pyo3(signature = (structure, compute_spacegroup = false, symprec = 0.01))]
+fn get_structure_metadata(
+    py: Python<'_>,
+    structure: &str,
+    compute_spacegroup: bool,
+    symprec: f64,
+) -> PyResult<Py<PyDict>> {
+    let s = parse_struct(structure)?;
+    let comp = s.composition();
+    let dict = PyDict::new(py);
+
+    // Composition-derived properties
+    dict.set_item("formula", comp.reduced_formula())?;
+    dict.set_item("formula_anonymous", comp.anonymous_formula())?;
+    dict.set_item("formula_hill", comp.hill_formula())?;
+    dict.set_item("chemical_system", comp.chemical_system())?;
+
+    // Element list (sorted)
+    let mut elements: Vec<&str> = s.unique_elements().iter().map(|e| e.symbol()).collect();
+    elements.sort();
+    dict.set_item("elements", elements)?;
+    dict.set_item("n_elements", comp.num_elements())?;
+
+    // Structure properties
+    dict.set_item("n_sites", s.num_sites())?;
+    dict.set_item("volume", s.volume())?;
+    dict.set_item("density", s.density())?;
+    dict.set_item("mass", s.total_mass())?;
+    dict.set_item("is_ordered", s.is_ordered())?;
+
+    // Spacegroup (expensive, optional)
+    if compute_spacegroup {
+        match s.get_spacegroup_number(symprec) {
+            Ok(sg) => dict.set_item("spacegroup_number", sg)?,
+            Err(_) => dict.set_item("spacegroup_number", py.None())?,
+        }
+    }
+
+    Ok(dict.unbind())
+}
+
 // ============================================================================
 // Site Manipulation Functions
 // ============================================================================
@@ -1274,6 +1340,7 @@ fn parse_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
     // Other properties
     dict.set_item("formula", comp.formula())?;
     dict.set_item("reduced_formula", comp.reduced_formula())?;
+    dict.set_item("anonymous_formula", comp.anonymous_formula())?;
     dict.set_item("hill_formula", comp.hill_formula())?;
     dict.set_item("alphabetical_formula", comp.alphabetical_formula())?;
     dict.set_item("chemical_system", comp.chemical_system())?;
@@ -1326,6 +1393,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_volume, m)?)?;
     m.add_function(wrap_pyfunction!(get_total_mass, m)?)?;
     m.add_function(wrap_pyfunction!(get_density, m)?)?;
+    m.add_function(wrap_pyfunction!(get_structure_metadata, m)?)?;
     // Site manipulation functions
     m.add_function(wrap_pyfunction!(translate_sites, m)?)?;
     m.add_function(wrap_pyfunction!(perturb, m)?)?;
