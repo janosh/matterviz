@@ -16,11 +16,9 @@ import json
 import time
 import warnings
 from collections import defaultdict
-from pathlib import Path
 
 from pymatgen.analysis.structure_matcher import StructureMatcher as PyMatcher
 from pymatgen.core import Structure
-
 from test_pymatgen_compat import (
     BASE_STRUCTURES,
     MATTERVIZ_STRUCTURES_DIR,
@@ -59,7 +57,9 @@ def load_matterviz_structures() -> dict[str, Structure]:
             with gzip.open(gz_file, "rt") as fh:
                 data = json.load(fh)
             if data.get("@class") == "Structure":
-                structures[gz_file.stem.replace(".json", "")] = Structure.from_dict(data)
+                structures[gz_file.stem.replace(".json", "")] = Structure.from_dict(
+                    data
+                )
         except Exception as exc:
             warnings.warn(f"Failed to load {gz_file.stem}: {exc}", stacklevel=2)
 
@@ -158,7 +158,9 @@ def benchmark(quick: bool = False) -> None:
         status = "✓" if passed == total else "✗"
         print(f"  {status} {category}: {passed}/{total}")
 
-    print(f"\nTotal: {total_passed}/{total_tests} ({100 * total_passed / total_tests:.1f}%)")
+    print(
+        f"\nTotal: {total_passed}/{total_tests} ({100 * total_passed / total_tests:.1f}%)"
+    )
     print(f"Time: {elapsed:.2f}s")
 
     # Show failures
@@ -181,6 +183,8 @@ def benchmark(quick: bool = False) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--quick", action="store_true", help="Quick synthetic-only benchmark")
+    parser.add_argument(
+        "--quick", action="store_true", help="Quick synthetic-only benchmark"
+    )
     args = parser.parse_args()
     benchmark(quick=args.quick)

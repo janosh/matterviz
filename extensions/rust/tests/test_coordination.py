@@ -217,12 +217,12 @@ class TestVoronoiErrors:
 class TestRocksaltElementTypes:
     """Verify correct element identification in mixed structures."""
 
-    @pytest.mark.parametrize(("site_idx", "expected_element", "expected_neighbor"), [
-        (0, "Na", "Cl"),  # Na at origin
-        (4, "Cl", "Na"),  # Cl at (0.5,0,0)
+    @pytest.mark.parametrize(("site_idx", "expected_neighbor"), [
+        (0, "Cl"),  # Na at origin has Cl neighbors
+        (4, "Na"),  # Cl at (0.5,0,0) has Na neighbors
     ])
     def test_neighbor_elements(
-        self, rocksalt_nacl_json: str, site_idx: int, expected_element: str, expected_neighbor: str
+        self, rocksalt_nacl_json: str, site_idx: int, expected_neighbor: str
     ) -> None:
         """Each site has 6 neighbors of the opposite element type."""
         neighbors = ferrox.get_local_environment(rocksalt_nacl_json, site_idx, 3.5)

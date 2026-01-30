@@ -100,8 +100,14 @@ fn check_site_idx(structure: &Structure, site_idx: usize) {
 /// assert!(cns.iter().all(|&cn| cn == 12));
 /// ```
 pub fn get_coordination_numbers(structure: &Structure, cutoff: f64) -> Vec<usize> {
-    if structure.num_sites() == 0 || cutoff <= 0.0 {
+    if structure.num_sites() == 0 {
         return vec![];
+    }
+    if cutoff < 0.0 {
+        return vec![];
+    }
+    if cutoff == 0.0 {
+        return vec![0; structure.num_sites()];
     }
 
     let (centers, _, _, _) = structure.get_neighbor_list(cutoff, NEIGHBOR_TOL, true);
@@ -252,13 +258,13 @@ fn build_voronoi(structure: &Structure) -> Option<Voronoi> {
 }
 
 /// Helper to compute solid angle fraction from a face.
-/// Returns (neighbor_idx, solid_angle_fraction) or None if it's a boundary face.
+/// Returns (neighbor_idx, solid_angle_fraction, distance) or None if it's a boundary face.
 fn compute_face_solid_angle(
     face: &meshless_voronoi::VoronoiFace,
     cell_idx: usize,
     cart_coords: &[nalgebra::Vector3<f64>],
     num_sites: usize,
-) -> Option<(usize, f64)> {
+) -> Option<(usize, f64, f64)> {
     // Determine if we're on the left or right side of this face
     let is_left = face.left() == cell_idx;
 
@@ -293,7 +299,7 @@ fn compute_face_solid_angle(
     // Solid angle fraction: Ω / (4π)
     let solid_angle_fraction = face_area / (4.0 * std::f64::consts::PI * dist_sq);
 
-    Some((actual_neighbor_idx, solid_angle_fraction))
+    Some((actual_neighbor_idx, solid_angle_fraction, dist))
 }
 
 /// Get Voronoi-weighted coordination number for a single site.
@@ -320,7 +326,7 @@ pub fn get_cn_voronoi(
     voronoi.cells()[site_idx]
         .faces(&voronoi)
         .filter_map(|face| compute_face_solid_angle(face, site_idx, &cart_coords, num_sites))
-        .filter(|(_, solid_angle)| *solid_angle >= config.min_solid_angle)
+        .filter(|(_, solid_angle, _)| *solid_angle >= config.min_solid_angle)
         .count() as f64
 }
 
@@ -343,7 +349,7 @@ pub fn get_cn_voronoi_all(structure: &Structure, config: Option<&VoronoiConfig>)
                 .filter_map(|face| {
                     compute_face_solid_angle(face, site_idx, &cart_coords, num_sites)
                 })
-                .filter(|(_, solid_angle)| *solid_angle >= config.min_solid_angle)
+                .filter(|(_, solid_angle, _)| *solid_angle >= config.min_solid_angle)
                 .count() as f64
         })
         .collect()
@@ -369,7 +375,8 @@ pub fn get_voronoi_neighbors(
     let mut neighbors: Vec<_> = voronoi.cells()[site_idx]
         .faces(&voronoi)
         .filter_map(|face| compute_face_solid_angle(face, site_idx, &cart_coords, num_sites))
-        .filter(|(_, solid_angle)| *solid_angle >= config.min_solid_angle)
+        .filter(|(_, solid_angle, _)| *solid_angle >= config.min_solid_angle)
+        .map(|(idx, solid_angle, _)| (idx, solid_angle))
         .collect();
 
     neighbors.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -393,14 +400,12 @@ pub fn get_local_environment_voronoi(
 
     let cart_coords = structure.cart_coords();
     let num_sites = structure.num_sites();
-    let center_pos = &cart_coords[site_idx];
 
     let mut neighbors: Vec<LocalEnvNeighbor> = voronoi.cells()[site_idx]
         .faces(&voronoi)
         .filter_map(|face| compute_face_solid_angle(face, site_idx, &cart_coords, num_sites))
-        .filter(|(_, solid_angle)| *solid_angle >= config.min_solid_angle)
-        .map(|(neighbor_idx, solid_angle)| {
-            let distance = (cart_coords[neighbor_idx] - center_pos).norm();
+        .filter(|(_, solid_angle, _)| *solid_angle >= config.min_solid_angle)
+        .map(|(neighbor_idx, solid_angle, distance)| {
             let species = *structure.site_occupancies[neighbor_idx].dominant_species();
             LocalEnvNeighbor {
                 species,
