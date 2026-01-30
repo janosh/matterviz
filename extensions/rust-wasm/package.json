@@ -1,6 +1,6 @@
 {
   "name": "@matterviz/wasm",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "WASM bindings for ferrox structure matching library",
   "type": "module",
   "main": "index.js",
