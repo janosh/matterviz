@@ -123,8 +123,9 @@ impl Ewald {
         // η ≈ (π^2 * N / V^2)^(1/6)
         let eta = (PI.powi(2) * n_atoms / volume.powi(2)).powf(1.0 / 6.0);
 
-        // Adjust based on accuracy requirement
-        // Higher accuracy -> smaller η -> more real-space terms
+        // Scale η based on accuracy requirement
+        // Smaller accuracy value (e.g., 1e-8) = higher precision = larger -ln(accuracy)
+        // This increases η, shifting work to reciprocal space for better convergence
         Ok(eta * (-self.accuracy.ln()).sqrt().max(1.0))
     }
 
@@ -148,6 +149,19 @@ impl Ewald {
                             idx, species
                         ),
                     })?;
+                // Validate oxidation state is within reasonable bounds
+                // Typical range is -4 to +8, but allow up to ±20 for edge cases
+                const MAX_OXIDATION: i8 = 20;
+                if oxi.abs() > MAX_OXIDATION {
+                    return Err(FerroxError::InvalidStructure {
+                        index: idx,
+                        reason: format!(
+                            "Site {} has species {} with unreasonable oxidation state {} \
+                             (expected |oxi| <= {})",
+                            idx, species, oxi, MAX_OXIDATION
+                        ),
+                    });
+                }
                 site_charge += (oxi as f64) * occ;
             }
             charges.push(site_charge);
@@ -212,6 +226,8 @@ impl Ewald {
         // Real space contribution - use upper triangle like real_space_energy()
         // to ensure consistency and avoid double-counting issues
         let real_cutoff_sq = self.real_cutoff.powi(2);
+        let (n_a, n_b, n_c) = self.compute_image_range(structure, self.real_cutoff);
+
         for (idx_i, frac_i) in structure.frac_coords.iter().enumerate() {
             let pos_i = structure.lattice.get_cartesian_coord(frac_i);
 
@@ -221,10 +237,10 @@ impl Ewald {
                 // since upper triangle visits each pair once.
                 let factor = if idx_i == idx_j { 0.5 } else { 1.0 };
 
-                // Include periodic images
-                for na in -3i32..=3 {
-                    for nb in -3i32..=3 {
-                        for nc in -3i32..=3 {
+                // Include periodic images with dynamic range
+                for na in -n_a..=n_a {
+                    for nb in -n_b..=n_b {
+                        for nc in -n_c..=n_c {
                             // Skip self-interaction in central cell
                             if idx_i == idx_j && na == 0 && nb == 0 && nc == 0 {
                                 continue;
@@ -272,10 +288,11 @@ impl Ewald {
         let volume = structure.volume();
         let recip_lattice = structure.lattice.reciprocal_lattice();
         let prefactor = 4.0 * PI / volume;
+        let (k_a, k_b, k_c) = self.compute_recip_range(&recip_lattice);
 
-        for ha in -5i32..=5 {
-            for hb in -5i32..=5 {
-                for hc in -5i32..=5 {
+        for ha in -k_a..=k_a {
+            for hb in -k_b..=k_b {
+                for hc in -k_c..=k_c {
                     if ha == 0 && hb == 0 && hc == 0 {
                         continue;
                     }
@@ -331,6 +348,7 @@ impl Ewald {
 
         let mut matrix = vec![vec![0.0; n_sites]; n_sites];
         let real_cutoff_sq = self.real_cutoff.powi(2);
+        let (n_a, n_b, n_c) = self.compute_image_range(structure, self.real_cutoff);
 
         // Real space contribution
         for (idx_i, frac_i) in structure.frac_coords.iter().enumerate() {
@@ -339,10 +357,10 @@ impl Ewald {
             for (idx_j, frac_j) in structure.frac_coords.iter().enumerate().skip(idx_i) {
                 let mut e_ij = 0.0;
 
-                // Sum over periodic images
-                for na in -3i32..=3 {
-                    for nb in -3i32..=3 {
-                        for nc in -3i32..=3 {
+                // Sum over periodic images with dynamic range
+                for na in -n_a..=n_a {
+                    for nb in -n_b..=n_b {
+                        for nc in -n_c..=n_c {
                             if idx_i == idx_j && na == 0 && nb == 0 && nc == 0 {
                                 continue;
                             }
@@ -379,11 +397,12 @@ impl Ewald {
         let recip_lattice = structure.lattice.reciprocal_lattice();
         let volume = structure.volume();
         let prefactor = 4.0 * PI / volume;
+        let (k_a, k_b, k_c) = self.compute_recip_range(&recip_lattice);
 
-        // Generate k-vectors
-        for ha in -5i32..=5 {
-            for hb in -5i32..=5 {
-                for hc in -5i32..=5 {
+        // Generate k-vectors with dynamic range
+        for ha in -k_a..=k_a {
+            for hb in -k_b..=k_b {
+                for hc in -k_c..=k_c {
                     if ha == 0 && hb == 0 && hc == 0 {
                         continue;
                     }
@@ -422,10 +441,31 @@ impl Ewald {
         Ok(matrix)
     }
 
+    /// Compute number of periodic images needed to cover the cutoff distance.
+    ///
+    /// Returns (na, nb, nc) where each is the number of images needed along that axis.
+    fn compute_image_range(&self, structure: &Structure, cutoff: f64) -> (i32, i32, i32) {
+        let lattice = &structure.lattice;
+        // Get lattice vector lengths
+        let a_len = lattice.matrix().column(0).norm();
+        let b_len = lattice.matrix().column(1).norm();
+        let c_len = lattice.matrix().column(2).norm();
+
+        // Number of images = ceil(cutoff / lattice_length) + 1 for safety
+        let na = (cutoff / a_len).ceil() as i32 + 1;
+        let nb = (cutoff / b_len).ceil() as i32 + 1;
+        let nc = (cutoff / c_len).ceil() as i32 + 1;
+
+        (na, nb, nc)
+    }
+
     /// Real-space sum contribution.
     fn real_space_energy(&self, structure: &Structure, charges: &[f64], eta: f64) -> f64 {
         let mut energy = 0.0;
         let real_cutoff_sq = self.real_cutoff.powi(2);
+
+        // Compute dynamic image range based on cutoff and lattice
+        let (n_a, n_b, n_c) = self.compute_image_range(structure, self.real_cutoff);
 
         for (idx_i, frac_i) in structure.frac_coords.iter().enumerate() {
             let pos_i = structure.lattice.get_cartesian_coord(frac_i);
@@ -433,10 +473,10 @@ impl Ewald {
             for (idx_j, frac_j) in structure.frac_coords.iter().enumerate().skip(idx_i) {
                 let factor = if idx_i == idx_j { 0.5 } else { 1.0 };
 
-                // Sum over periodic images
-                for na in -3i32..=3 {
-                    for nb in -3i32..=3 {
-                        for nc in -3i32..=3 {
+                // Sum over periodic images with dynamic range
+                for na in -n_a..=n_a {
+                    for nb in -n_b..=n_b {
+                        for nc in -n_c..=n_c {
                             // Skip self-interaction in central cell
                             if idx_i == idx_j && na == 0 && nb == 0 && nc == 0 {
                                 continue;
@@ -466,18 +506,36 @@ impl Ewald {
         energy
     }
 
+    /// Compute number of k-vectors needed to cover the reciprocal cutoff.
+    fn compute_recip_range(&self, recip_lattice: &crate::lattice::Lattice) -> (i32, i32, i32) {
+        // Get reciprocal lattice vector lengths
+        let a_len = recip_lattice.matrix().column(0).norm();
+        let b_len = recip_lattice.matrix().column(1).norm();
+        let c_len = recip_lattice.matrix().column(2).norm();
+
+        // Number of k-vectors = ceil(cutoff / recip_length) + 1 for safety
+        let na = (self.recip_cutoff / a_len).ceil() as i32 + 1;
+        let nb = (self.recip_cutoff / b_len).ceil() as i32 + 1;
+        let nc = (self.recip_cutoff / c_len).ceil() as i32 + 1;
+
+        (na, nb, nc)
+    }
+
     /// Reciprocal-space sum contribution.
     fn reciprocal_space_energy(&self, structure: &Structure, charges: &[f64], eta: f64) -> f64 {
         let volume = structure.volume();
         let recip_lattice = structure.lattice.reciprocal_lattice();
         let prefactor = 4.0 * PI / volume;
 
+        // Compute dynamic k-vector range based on cutoff and reciprocal lattice
+        let (n_a, n_b, n_c) = self.compute_recip_range(&recip_lattice);
+
         let mut energy = 0.0;
 
-        // Generate k-vectors
-        for ha in -5i32..=5 {
-            for hb in -5i32..=5 {
-                for hc in -5i32..=5 {
+        // Generate k-vectors with dynamic range
+        for ha in -n_a..=n_a {
+            for hb in -n_b..=n_b {
+                for hc in -n_c..=n_c {
                     // Skip k=0
                     if ha == 0 && hb == 0 && hc == 0 {
                         continue;
