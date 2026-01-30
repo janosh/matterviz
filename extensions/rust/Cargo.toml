@@ -30,6 +30,7 @@ getrandom = { version = "0.2", features = ["js"] }
 
 # Math
 nalgebra = "0.34"
+glam = "0.27"  # Vector math for Voronoi (compatible with meshless_voronoi)
 
 # Symmetry - same underlying Rust crate as moyopy
 moyo = "0.7"
@@ -42,10 +43,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Algorithms
-pathfinding = "4.14" # Hungarian algorithm (kuhn_munkres)
-itertools = "0.14"   # permutations for fit_anonymous
-rand = "0.8"         # random perturbations (0.8 uses getrandom 0.2 with simpler WASM support)
-regex = "1.12"       # formula parsing
+pathfinding = "4.14"      # Hungarian algorithm (kuhn_munkres)
+itertools = "0.14"        # permutations for fit_anonymous
+rand = "0.8"              # random perturbations (0.8 uses getrandom 0.2 with simpler WASM support)
+regex = "1.12"            # formula parsing
+meshless_voronoi = "0.7"  # Voronoi tessellation for coordination analysis
 
 # Utilities
 indexmap = { version = "2.13", features = ["serde"] }

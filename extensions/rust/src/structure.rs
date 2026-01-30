@@ -687,6 +687,114 @@ impl Structure {
     }
 
     // =========================================================================
+    // Coordination Analysis
+    // =========================================================================
+
+    /// Get coordination numbers for all sites using a distance cutoff.
+    ///
+    /// Counts the number of neighbors within the specified cutoff distance for each site.
+    /// Uses periodic boundary conditions.
+    ///
+    /// # Arguments
+    ///
+    /// * `cutoff` - Maximum distance (in Angstroms) to consider a site as a neighbor
+    ///
+    /// # Returns
+    ///
+    /// A vector of coordination numbers, one for each site in the structure.
+    pub fn get_coordination_numbers(&self, cutoff: f64) -> Vec<usize> {
+        crate::coordination::get_coordination_numbers(self, cutoff)
+    }
+
+    /// Get coordination number for a single site using a distance cutoff.
+    ///
+    /// # Arguments
+    ///
+    /// * `site_idx` - Index of the site to analyze
+    /// * `cutoff` - Maximum distance (in Angstroms) to consider a site as a neighbor
+    ///
+    /// # Returns
+    ///
+    /// The coordination number for the specified site.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `site_idx` is out of bounds.
+    pub fn get_coordination_number(&self, site_idx: usize, cutoff: f64) -> usize {
+        crate::coordination::get_coordination_number(self, site_idx, cutoff)
+    }
+
+    /// Get the local environment (detailed neighbor information) for a site.
+    ///
+    /// Returns detailed information about each neighbor including species, distance,
+    /// and periodic image offset.
+    ///
+    /// # Arguments
+    ///
+    /// * `site_idx` - Index of the site to analyze
+    /// * `cutoff` - Maximum distance (in Angstroms) to consider a site as a neighbor
+    ///
+    /// # Returns
+    ///
+    /// A vector of `LocalEnvNeighbor` structs describing each neighbor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `site_idx` is out of bounds.
+    pub fn get_local_environment(
+        &self,
+        site_idx: usize,
+        cutoff: f64,
+    ) -> Vec<crate::coordination::LocalEnvNeighbor> {
+        crate::coordination::get_local_environment(self, site_idx, cutoff)
+    }
+
+    /// Get Voronoi-weighted coordination number for a single site.
+    ///
+    /// Uses Voronoi tessellation to determine neighbors based on solid angle.
+    ///
+    /// # Arguments
+    ///
+    /// * `site_idx` - Index of the site to analyze
+    ///
+    /// # Returns
+    ///
+    /// The effective coordination number (can be fractional).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `site_idx` is out of bounds.
+    pub fn get_cn_voronoi(&self, site_idx: usize) -> f64 {
+        crate::coordination::get_cn_voronoi(self, site_idx, None)
+    }
+
+    /// Get Voronoi-weighted coordination numbers for all sites.
+    ///
+    /// Uses Voronoi tessellation to determine neighbors based on solid angle.
+    ///
+    /// # Returns
+    ///
+    /// A vector of effective coordination numbers, one for each site.
+    pub fn get_cn_voronoi_all(&self) -> Vec<f64> {
+        crate::coordination::get_cn_voronoi_all(self, None)
+    }
+
+    /// Get Voronoi neighbors with their solid angle fractions for a site.
+    ///
+    /// Returns neighbors sorted by solid angle (largest first).
+    ///
+    /// # Arguments
+    ///
+    /// * `site_idx` - Index of the site to analyze
+    ///
+    /// # Returns
+    ///
+    /// A vector of tuples `(neighbor_idx, solid_angle_fraction)`.
+    pub fn get_voronoi_neighbors(&self, site_idx: usize) -> Vec<(usize, f64)> {
+        crate::coordination::get_voronoi_neighbors(self, site_idx, None)
+    }
+
+    // =========================================================================
     // Structure Interpolation (NEB)
     // =========================================================================
 

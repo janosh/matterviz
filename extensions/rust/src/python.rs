@@ -2071,6 +2071,226 @@ fn enumerate_derivatives(
         .collect()
 }
 
+// ============================================================================
+// Coordination Analysis Functions
+// ============================================================================
+
+/// Get coordination numbers for all sites using a distance cutoff.
+///
+/// Counts the number of neighbors within the specified cutoff distance for each site.
+/// Uses periodic boundary conditions.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     cutoff (float): Maximum distance in Angstroms to consider a site as a neighbor
+///
+/// Returns:
+///     list[int]: Coordination numbers for each site
+///
+/// Example:
+///     >>> from ferrox import get_coordination_numbers
+///     >>> import json
+///     >>> # FCC Cu has 12 nearest neighbors at ~2.55 Å
+///     >>> cns = get_coordination_numbers(json.dumps(fcc_cu.as_dict()), 3.0)
+///     >>> assert all(cn == 12 for cn in cns)
+#[pyfunction]
+fn get_coordination_numbers(structure: &str, cutoff: f64) -> PyResult<Vec<usize>> {
+    if cutoff < 0.0 {
+        return Err(PyValueError::new_err("Cutoff must be non-negative"));
+    }
+    Ok(parse_struct(structure)?.get_coordination_numbers(cutoff))
+}
+
+/// Get coordination number for a single site using a distance cutoff.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     site_idx (int): Index of the site to analyze
+///     cutoff (float): Maximum distance in Angstroms to consider a site as a neighbor
+///
+/// Returns:
+///     int: Coordination number for the specified site
+#[pyfunction]
+fn get_coordination_number(structure: &str, site_idx: usize, cutoff: f64) -> PyResult<usize> {
+    if cutoff < 0.0 {
+        return Err(PyValueError::new_err("Cutoff must be non-negative"));
+    }
+    let s = parse_struct(structure)?;
+    check_site_bounds(s.num_sites(), &[site_idx])?;
+    Ok(crate::coordination::get_coordination_number(
+        &s, site_idx, cutoff,
+    ))
+}
+
+/// Get the local environment (neighbor information) for a site.
+///
+/// Returns detailed information about each neighbor including element,
+/// distance, and periodic image offset.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     site_idx (int): Index of the site to analyze
+///     cutoff (float): Maximum distance in Angstroms to consider a site as a neighbor
+///
+/// Returns:
+///     list[dict]: List of neighbor dicts with keys: element, species, distance, image, site_idx
+///
+/// Example:
+///     >>> neighbors = get_local_environment(json.dumps(s.as_dict()), 0, 3.0)
+///     >>> for n in neighbors:
+///     ...     print(f"{n['element']} at {n['distance']:.2f} Å")
+#[pyfunction]
+fn get_local_environment(
+    py: Python<'_>,
+    structure: &str,
+    site_idx: usize,
+    cutoff: f64,
+) -> PyResult<Py<PyList>> {
+    if cutoff < 0.0 {
+        return Err(PyValueError::new_err("Cutoff must be non-negative"));
+    }
+    let s = parse_struct(structure)?;
+    check_site_bounds(s.num_sites(), &[site_idx])?;
+
+    let neighbors = crate::coordination::get_local_environment(&s, site_idx, cutoff);
+
+    let result = PyList::empty(py);
+    for n in neighbors {
+        let dict = PyDict::new(py);
+        dict.set_item("element", n.element().symbol())?;
+        dict.set_item("species", n.species.to_string())?;
+        dict.set_item("distance", n.distance)?;
+        dict.set_item("image", PyList::new(py, n.image)?)?;
+        dict.set_item("site_idx", n.site_idx)?;
+        if let Some(solid_angle) = n.solid_angle {
+            dict.set_item("solid_angle", solid_angle)?;
+        }
+        result.append(dict)?;
+    }
+    Ok(result.unbind())
+}
+
+/// Validate and create VoronoiConfig from min_solid_angle.
+fn make_voronoi_config(min_solid_angle: f64) -> PyResult<crate::coordination::VoronoiConfig> {
+    if min_solid_angle < 0.0 {
+        return Err(PyValueError::new_err(
+            "min_solid_angle must be non-negative",
+        ));
+    }
+    Ok(crate::coordination::VoronoiConfig { min_solid_angle })
+}
+
+/// Get Voronoi-weighted coordination numbers for all sites.
+///
+/// Uses Voronoi tessellation to determine neighbors based on solid angle.
+/// Each Voronoi face above a minimum solid angle threshold contributes to coordination.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     min_solid_angle (float): Minimum solid angle fraction to count a neighbor (default: 0.01)
+///
+/// Returns:
+///     list[float]: Effective coordination numbers for each site
+#[pyfunction]
+#[pyo3(signature = (structure, min_solid_angle = 0.01))]
+fn get_cn_voronoi_all(structure: &str, min_solid_angle: f64) -> PyResult<Vec<f64>> {
+    let config = make_voronoi_config(min_solid_angle)?;
+    Ok(crate::coordination::get_cn_voronoi_all(
+        &parse_struct(structure)?,
+        Some(&config),
+    ))
+}
+
+/// Get Voronoi-weighted coordination number for a single site.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     site_idx (int): Index of the site to analyze
+///     min_solid_angle (float): Minimum solid angle fraction to count a neighbor (default: 0.01)
+///
+/// Returns:
+///     float: Effective coordination number for the site
+#[pyfunction]
+#[pyo3(signature = (structure, site_idx, min_solid_angle = 0.01))]
+fn get_cn_voronoi(structure: &str, site_idx: usize, min_solid_angle: f64) -> PyResult<f64> {
+    let config = make_voronoi_config(min_solid_angle)?;
+    let s = parse_struct(structure)?;
+    check_site_bounds(s.num_sites(), &[site_idx])?;
+    Ok(crate::coordination::get_cn_voronoi(
+        &s,
+        site_idx,
+        Some(&config),
+    ))
+}
+
+/// Get Voronoi neighbors with their solid angle fractions for a site.
+///
+/// Returns neighbors sorted by solid angle (largest first).
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     site_idx (int): Index of the site to analyze
+///     min_solid_angle (float): Minimum solid angle fraction to include a neighbor (default: 0.01)
+///
+/// Returns:
+///     list[tuple[int, float]]: List of (neighbor_idx, solid_angle_fraction) tuples
+#[pyfunction]
+#[pyo3(signature = (structure, site_idx, min_solid_angle = 0.01))]
+fn get_voronoi_neighbors(
+    structure: &str,
+    site_idx: usize,
+    min_solid_angle: f64,
+) -> PyResult<Vec<(usize, f64)>> {
+    let config = make_voronoi_config(min_solid_angle)?;
+    let s = parse_struct(structure)?;
+    check_site_bounds(s.num_sites(), &[site_idx])?;
+    Ok(crate::coordination::get_voronoi_neighbors(
+        &s,
+        site_idx,
+        Some(&config),
+    ))
+}
+
+/// Get local environment using Voronoi tessellation.
+///
+/// Similar to get_local_environment but uses Voronoi faces to determine neighbors
+/// instead of a distance cutoff. Includes solid angle information.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     site_idx (int): Index of the site to analyze
+///     min_solid_angle (float): Minimum solid angle fraction to include a neighbor (default: 0.01)
+///
+/// Returns:
+///     list[dict]: List of neighbor dicts with keys: element, species, distance, site_idx, solid_angle
+#[pyfunction]
+#[pyo3(signature = (structure, site_idx, min_solid_angle = 0.01))]
+fn get_local_environment_voronoi(
+    py: Python<'_>,
+    structure: &str,
+    site_idx: usize,
+    min_solid_angle: f64,
+) -> PyResult<Py<PyList>> {
+    let config = make_voronoi_config(min_solid_angle)?;
+    let s = parse_struct(structure)?;
+    check_site_bounds(s.num_sites(), &[site_idx])?;
+    let neighbors = crate::coordination::get_local_environment_voronoi(&s, site_idx, Some(&config));
+
+    let result = PyList::empty(py);
+    for n in neighbors {
+        let dict = PyDict::new(py);
+        dict.set_item("element", n.element().symbol())?;
+        dict.set_item("species", n.species.to_string())?;
+        dict.set_item("distance", n.distance)?;
+        dict.set_item("site_idx", n.site_idx)?;
+        if let Some(solid_angle) = n.solid_angle {
+            dict.set_item("solid_angle", solid_angle)?;
+        }
+        result.append(dict)?;
+    }
+    Ok(result.unbind())
+}
+
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
@@ -2151,5 +2371,13 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ewald_energy, m)?)?;
     m.add_function(wrap_pyfunction!(order_disordered, m)?)?;
     m.add_function(wrap_pyfunction!(enumerate_derivatives, m)?)?;
+    // Coordination analysis functions
+    m.add_function(wrap_pyfunction!(get_coordination_numbers, m)?)?;
+    m.add_function(wrap_pyfunction!(get_coordination_number, m)?)?;
+    m.add_function(wrap_pyfunction!(get_local_environment, m)?)?;
+    m.add_function(wrap_pyfunction!(get_cn_voronoi_all, m)?)?;
+    m.add_function(wrap_pyfunction!(get_cn_voronoi, m)?)?;
+    m.add_function(wrap_pyfunction!(get_voronoi_neighbors, m)?)?;
+    m.add_function(wrap_pyfunction!(get_local_environment_voronoi, m)?)?;
     Ok(())
 }
