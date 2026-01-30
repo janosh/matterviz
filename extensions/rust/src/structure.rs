@@ -2614,10 +2614,10 @@ impl Structure {
                 reason: "min_slab_size must be positive and finite".to_string(),
             });
         }
-        if config.min_vacuum_size < 0.0 {
+        if !config.min_vacuum_size.is_finite() || config.min_vacuum_size < 0.0 {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
-                reason: "min_vacuum_size must be non-negative".to_string(),
+                reason: "min_vacuum_size must be non-negative and finite".to_string(),
             });
         }
         if !config.symprec.is_finite() || config.symprec <= 0.0 {
@@ -5143,6 +5143,12 @@ mod tests {
             .make_slab(&SlabConfig::new([1, 0, 0]).with_min_vacuum_size(-5.0))
             .unwrap_err();
         assert!(err.to_string().contains("non-negative"));
+
+        // NaN vacuum rejected
+        let err = cubic
+            .make_slab(&SlabConfig::new([1, 0, 0]).with_min_vacuum_size(f64::NAN))
+            .unwrap_err();
+        assert!(err.to_string().contains("finite"));
 
         // Empty structure rejected
         let err = empty.make_slab(&SlabConfig::new([1, 0, 0])).unwrap_err();
