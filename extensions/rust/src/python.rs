@@ -2063,7 +2063,9 @@ fn warn_primitive_unimplemented(py: Python<'_>, primitive: bool) -> PyResult<()>
 ///
 /// Creates a slab with the specified Miller indices, thickness, and vacuum layer.
 /// The resulting structure has lattice vectors a,b in the surface plane and c
-/// perpendicular to the surface (into vacuum), with `pbc = [true, true, false]`.
+/// along the [hkl] direction (into vacuum), with `pbc = [true, true, false]`.
+/// For orthogonal lattices (cubic, tetragonal, orthorhombic), c is perpendicular
+/// to the surface. For non-orthogonal lattices, c may be tilted.
 ///
 /// Args:
 ///     structure (str): Structure as JSON string (from Structure.as_dict())
@@ -2072,7 +2074,7 @@ fn warn_primitive_unimplemented(py: Python<'_>, primitive: bool) -> PyResult<()>
 ///     min_vacuum_size (float): Minimum vacuum layer thickness in Angstroms
 ///     center_slab (bool): If True, center the slab in the vacuum region (default: True)
 ///     in_unit_planes (bool): If True, min_slab_size is in unit planes, not Angstroms (default: False)
-///     primitive (bool): Not yet implemented, has no effect (default: True)
+///     primitive (bool): Not yet implemented, has no effect (default: False)
 ///
 /// Returns:
 ///     dict: Slab structure as pymatgen-compatible dict
@@ -2126,6 +2128,8 @@ fn make_slab(
 ///
 /// Creates multiple slabs with different surface terminations for the specified
 /// Miller indices. Each termination exposes a different atomic layer at the surface.
+/// The resulting structures have lattice vectors a,b in the surface plane and c
+/// along the [hkl] direction, with `pbc = [true, true, false]`.
 ///
 /// Args:
 ///     structure (str): Structure as JSON string (from Structure.as_dict())
@@ -2134,7 +2138,7 @@ fn make_slab(
 ///     min_vacuum_size (float): Minimum vacuum layer thickness in Angstroms
 ///     center_slab (bool): If True, center the slab in the vacuum region (default: True)
 ///     in_unit_planes (bool): If True, min_slab_size is in unit planes, not Angstroms (default: False)
-///     primitive (bool): Not yet implemented, has no effect (default: True)
+///     primitive (bool): Not yet implemented, has no effect (default: False)
 ///     symprec (float): Symmetry precision for identifying unique terminations (default: 0.01)
 ///
 /// Returns:
