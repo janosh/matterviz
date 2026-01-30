@@ -2369,6 +2369,316 @@ pub(crate) fn spacegroup_to_crystal_system(sg: i32) -> &'static str {
     }
 }
 
+// =============================================================================
+// Slab Generation
+// =============================================================================
+
+/// Configuration for slab generation.
+#[derive(Debug, Clone)]
+pub struct SlabConfig {
+    /// Miller indices (h, k, l) defining the surface orientation.
+    pub miller_index: [i32; 3],
+    /// Minimum thickness of the slab in Angstroms (or unit planes if in_unit_planes=true).
+    pub min_slab_size: f64,
+    /// Minimum vacuum layer thickness in Angstroms.
+    pub min_vacuum_size: f64,
+    /// If true, center the slab in the vacuum region.
+    pub center_slab: bool,
+    /// If true, min_slab_size is interpreted as number of unit planes, not Angstroms.
+    pub in_unit_planes: bool,
+    /// If true, reduce to primitive surface unit cell (not yet implemented).
+    pub primitive: bool,
+    /// Symmetry precision for identifying unique terminations.
+    pub symprec: f64,
+}
+
+impl Default for SlabConfig {
+    fn default() -> Self {
+        Self {
+            miller_index: [1, 0, 0],
+            min_slab_size: 10.0,
+            min_vacuum_size: 10.0,
+            center_slab: true,
+            in_unit_planes: false,
+            primitive: true,
+            symprec: 0.01,
+        }
+    }
+}
+
+impl SlabConfig {
+    /// Create a new SlabConfig with the given Miller indices.
+    #[must_use]
+    pub fn new(miller_index: [i32; 3]) -> Self {
+        Self {
+            miller_index,
+            ..Default::default()
+        }
+    }
+
+    /// Set the minimum slab thickness in Angstroms.
+    #[must_use]
+    pub fn with_min_slab_size(mut self, size: f64) -> Self {
+        self.min_slab_size = size;
+        self
+    }
+
+    /// Set the minimum vacuum layer thickness in Angstroms.
+    #[must_use]
+    pub fn with_min_vacuum_size(mut self, size: f64) -> Self {
+        self.min_vacuum_size = size;
+        self
+    }
+
+    /// Set whether to center the slab in the vacuum region.
+    #[must_use]
+    pub fn with_center_slab(mut self, center: bool) -> Self {
+        self.center_slab = center;
+        self
+    }
+
+    /// Set whether min_slab_size is in unit planes (true) or Angstroms (false).
+    #[must_use]
+    pub fn with_in_unit_planes(mut self, in_planes: bool) -> Self {
+        self.in_unit_planes = in_planes;
+        self
+    }
+
+    /// Set whether to reduce to primitive surface unit cell (not yet implemented).
+    #[must_use]
+    pub fn with_primitive(mut self, primitive: bool) -> Self {
+        self.primitive = primitive;
+        self
+    }
+
+    /// Set the symmetry precision for identifying unique terminations.
+    #[must_use]
+    pub fn with_symprec(mut self, symprec: f64) -> Self {
+        self.symprec = symprec;
+        self
+    }
+}
+
+/// Compute the interplanar spacing (d-spacing) for the given Miller indices.
+///
+/// # Panics
+/// Panics if `hkl` is `[0, 0, 0]` (division by zero).
+fn compute_d_spacing(lattice: &Lattice, hkl: [i32; 3]) -> f64 {
+    debug_assert!(hkl != [0, 0, 0], "Miller indices cannot all be zero");
+    // d = 1 / |G| where G = h*b1 + k*b2 + l*b3 (reciprocal lattice vector)
+    let inv_t = lattice.inv_matrix().transpose();
+    let hkl_vec = Vector3::new(hkl[0] as f64, hkl[1] as f64, hkl[2] as f64);
+    let g_vec = inv_t * hkl_vec;
+    1.0 / g_vec.norm()
+}
+
+/// Reduce Miller indices to their smallest integer representation (coprime).
+fn reduce_miller_indices(hkl: [i32; 3]) -> [i32; 3] {
+    fn gcd(a: i32, b: i32) -> i32 {
+        if b == 0 { a.abs() } else { gcd(b, a % b) }
+    }
+    let g = gcd(gcd(hkl[0], hkl[1]), hkl[2]);
+    if g == 0 {
+        hkl
+    } else {
+        [hkl[0] / g, hkl[1] / g, hkl[2] / g]
+    }
+}
+
+/// Find two linearly independent in-plane lattice vectors for the given Miller indices.
+/// Returns (a_vec, b_vec) as integer linear combinations of the original lattice vectors.
+fn find_in_plane_vectors(hkl: [i32; 3]) -> ([i32; 3], [i32; 3]) {
+    let [h, k, l] = reduce_miller_indices(hkl);
+
+    // Find first in-plane vector: [uvw] where h*u + k*v + l*w = 0
+    let a_vec = if h != 0 {
+        [-k, h, 0] // Satisfies: h*(-k) + k*h + l*0 = 0
+    } else if k != 0 {
+        [0, -l, k] // Satisfies: 0 + k*(-l) + l*k = 0
+    } else {
+        [1, 0, 0] // l != 0, any vector with w=0 works
+    };
+
+    // Second in-plane vector: cross product [h,k,l] × a_vec
+    let b_vec = [
+        k * a_vec[2] - l * a_vec[1],
+        l * a_vec[0] - h * a_vec[2],
+        h * a_vec[1] - k * a_vec[0],
+    ];
+
+    (reduce_miller_indices(a_vec), reduce_miller_indices(b_vec))
+}
+
+/// Get the transformation matrix that creates an oriented unit cell.
+/// The new lattice will have a,b in the surface plane and c perpendicular to it.
+fn get_slab_transformation(hkl: [i32; 3]) -> [[i32; 3]; 3] {
+    let hkl = reduce_miller_indices(hkl);
+    let (a_int, b_int) = find_in_plane_vectors(hkl);
+    [a_int, b_int, hkl]
+}
+
+/// Identify unique atomic layers along the c-axis (surface normal direction).
+/// Returns fractional z-coordinates of each layer, sorted ascending.
+/// Uses single-linkage clustering: atoms are in same layer if within `tol` of first atom in layer.
+fn identify_layer_positions(frac_coords: &[Vector3<f64>], tol: f64) -> Vec<f64> {
+    if frac_coords.is_empty() {
+        return vec![];
+    }
+
+    let mut z_coords: Vec<f64> = frac_coords.iter().map(|fc| fc.z).collect();
+    z_coords.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Group into layers - compare to first z in layer (not rolling average)
+    let mut layer_positions = Vec::new();
+    let mut layer_start = z_coords[0];
+    let mut layer_sum = z_coords[0];
+    let mut layer_count = 1usize;
+
+    for &z_coord in &z_coords[1..] {
+        // Compare to first atom in layer, not rolling average (fixes clustering bug)
+        if (z_coord - layer_start).abs() < tol {
+            layer_sum += z_coord;
+            layer_count += 1;
+        } else {
+            layer_positions.push(layer_sum / layer_count as f64);
+            layer_start = z_coord;
+            layer_sum = z_coord;
+            layer_count = 1;
+        }
+    }
+    layer_positions.push(layer_sum / layer_count as f64);
+
+    layer_positions
+}
+
+/// Maximum allowed n_layers to prevent integer overflow when casting to i32.
+const MAX_SLAB_LAYERS: usize = 10_000;
+
+impl Structure {
+    /// Generate a surface slab with the specified configuration.
+    ///
+    /// Returns a single slab structure with the default (bottom) termination.
+    /// For all unique terminations, use `generate_slabs()`.
+    pub fn make_slab(&self, config: &SlabConfig) -> Result<Self> {
+        let slabs = self.generate_slabs(config)?;
+        slabs
+            .into_iter()
+            .next()
+            .ok_or_else(|| FerroxError::InvalidStructure {
+                index: 0,
+                reason: "No slab could be generated".to_string(),
+            })
+    }
+
+    /// Generate all unique surface terminations for the given slab configuration.
+    ///
+    /// Returns a vector of slab structures, each with a different surface termination.
+    pub fn generate_slabs(&self, config: &SlabConfig) -> Result<Vec<Self>> {
+        let hkl = config.miller_index;
+        if hkl == [0, 0, 0] {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: "Miller indices cannot all be zero".to_string(),
+            });
+        }
+        if self.num_sites() == 0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: "Cannot generate slab from empty structure".to_string(),
+            });
+        }
+        if config.min_vacuum_size < 0.0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: "min_vacuum_size must be non-negative".to_string(),
+            });
+        }
+
+        // Create oriented unit cell with a,b in surface plane
+        let oriented = self.make_supercell(get_slab_transformation(hkl))?;
+
+        // Determine slab thickness in number of unit cells
+        let d_spacing = compute_d_spacing(&self.lattice, hkl);
+        let n_layers = if config.in_unit_planes {
+            config.min_slab_size.ceil() as usize
+        } else {
+            (config.min_slab_size / d_spacing).ceil() as usize
+        }
+        .max(1);
+
+        // Prevent integer overflow when casting to i32
+        if n_layers > MAX_SLAB_LAYERS {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "Slab would require {} layers, exceeding maximum of {}",
+                    n_layers, MAX_SLAB_LAYERS
+                ),
+            });
+        }
+
+        // Stack along c-axis
+        let slab_supercell = if n_layers > 1 {
+            oriented.make_supercell([[1, 0, 0], [0, 1, 0], [0, 0, n_layers as i32]])?
+        } else {
+            oriented
+        };
+
+        // Identify unique layer positions for terminations
+        let layer_positions = identify_layer_positions(&slab_supercell.frac_coords, config.symprec);
+        let termination_count = layer_positions.len().min(n_layers).max(1);
+
+        let mut slabs = Vec::with_capacity(termination_count);
+
+        for (term_idx, &shift) in layer_positions.iter().enumerate().take(termination_count) {
+            let mut slab = slab_supercell.clone();
+
+            // Shift z-coordinates and wrap
+            for fc in &mut slab.frac_coords {
+                fc.z -= shift;
+            }
+            slab.wrap_to_unit_cell();
+
+            // Add vacuum by scaling c-axis
+            let current_c = slab.lattice.lengths().z;
+            let total_c = current_c + config.min_vacuum_size;
+            let scale = total_c / current_c;
+
+            let mut new_matrix = *slab.lattice.matrix();
+            for idx in 0..3 {
+                new_matrix[(2, idx)] *= scale;
+            }
+
+            // Rescale z-coordinates to account for vacuum
+            let slab_frac = current_c / total_c;
+            for fc in &mut slab.frac_coords {
+                fc.z *= slab_frac;
+            }
+
+            // Center slab in vacuum if requested
+            if config.center_slab {
+                let shift_z = (config.min_vacuum_size / total_c) / 2.0;
+                for fc in &mut slab.frac_coords {
+                    fc.z += shift_z;
+                }
+            }
+
+            // Set lattice with non-periodic c-axis
+            slab.lattice = Lattice::from_matrix_with_pbc(new_matrix, [true, true, false]);
+
+            // Store metadata
+            slab.properties
+                .insert("termination_index".to_string(), serde_json::json!(term_idx));
+            slab.properties
+                .insert("miller_index".to_string(), serde_json::json!(hkl));
+
+            slabs.push(slab);
+        }
+
+        Ok(slabs)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4478,6 +4788,340 @@ mod tests {
             .unwrap();
         for &c in reduced.frac_coords[0].iter() {
             assert!((0.0..1.0).contains(&c), "coord {c} not in [0,1)");
+        }
+    }
+
+    // =========================================================================
+    // Slab Generation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_reduce_miller_indices() {
+        use super::reduce_miller_indices;
+
+        let cases: [([i32; 3], [i32; 3]); 14] = [
+            // Already reduced
+            ([1, 0, 0], [1, 0, 0]),
+            ([1, 1, 1], [1, 1, 1]),
+            // Needs reduction
+            ([2, 0, 0], [1, 0, 0]),
+            ([2, 2, 2], [1, 1, 1]),
+            ([4, 2, 6], [2, 1, 3]),
+            ([6, 9, 12], [2, 3, 4]),
+            // Negatives
+            ([-2, 0, 0], [-1, 0, 0]),
+            ([2, -4, 2], [1, -2, 1]),
+            ([-3, -6, -9], [-1, -2, -3]),
+            // Zeros
+            ([0, 0, 0], [0, 0, 0]),
+            ([0, 2, 0], [0, 1, 0]),
+            ([0, 0, 4], [0, 0, 1]),
+            // Mixed
+            ([1, 2, 3], [1, 2, 3]),
+            ([-1, 1, 0], [-1, 1, 0]),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                reduce_miller_indices(input),
+                expected,
+                "reduce({:?})",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_find_in_plane_vectors() {
+        use super::find_in_plane_vectors;
+
+        let dot = |hkl: [i32; 3], v: [i32; 3]| hkl[0] * v[0] + hkl[1] * v[1] + hkl[2] * v[2];
+        let cross_nonzero = |a: [i32; 3], b: [i32; 3]| {
+            let c = [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0],
+            ];
+            c.iter().any(|&x| x != 0)
+        };
+
+        for hkl in [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [1, 1, 0],
+            [1, 1, 1],
+            [2, 1, 0],
+            [1, 2, 3],
+            [-1, 1, 0],
+            [1, -1, 1],
+        ] {
+            let (a, b) = find_in_plane_vectors(hkl);
+            assert_eq!(dot(hkl, a), 0, "a not in plane {:?}", hkl);
+            assert_eq!(dot(hkl, b), 0, "b not in plane {:?}", hkl);
+            assert!(cross_nonzero(a, b), "a,b collinear for {:?}", hkl);
+        }
+    }
+
+    #[test]
+    fn test_slab_transformation_nonsingular() {
+        use super::get_slab_transformation;
+
+        let det3 = |m: [[i32; 3]; 3]| {
+            m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+                - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+                + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+        };
+
+        for hkl in [
+            [1, 0, 0],
+            [0, 1, 0],
+            [1, 1, 0],
+            [1, 1, 1],
+            [2, 1, 0],
+            [3, 1, 1],
+        ] {
+            assert!(
+                det3(get_slab_transformation(hkl)) != 0,
+                "{:?} singular",
+                hkl
+            );
+        }
+    }
+
+    #[test]
+    fn test_compute_d_spacing() {
+        use super::compute_d_spacing;
+
+        let a = 4.0;
+        let cubic = Lattice::cubic(a);
+
+        // d(hkl) = a / sqrt(h² + k² + l²)
+        for (hkl, divisor) in [
+            ([1, 0, 0], 1.0),
+            ([1, 1, 0], 2.0_f64.sqrt()),
+            ([1, 1, 1], 3.0_f64.sqrt()),
+            ([2, 0, 0], 2.0),
+            ([2, 1, 1], 6.0_f64.sqrt()),
+        ] {
+            let d = compute_d_spacing(&cubic, hkl);
+            assert!((d - a / divisor).abs() < 1e-10, "d{:?}", hkl);
+        }
+
+        // Tetragonal: d(001)=c, d(100)=a
+        let tetra = Lattice::tetragonal(4.0, 6.0);
+        assert!((compute_d_spacing(&tetra, [0, 0, 1]) - 6.0).abs() < 1e-10);
+        assert!((compute_d_spacing(&tetra, [1, 0, 0]) - 4.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_identify_layer_positions() {
+        use super::identify_layer_positions;
+
+        // Empty
+        assert!(identify_layer_positions(&[], 0.01).is_empty());
+
+        // Single layer
+        let single = vec![Vector3::new(0.0, 0.0, 0.5), Vector3::new(0.5, 0.5, 0.5)];
+        let layers = identify_layer_positions(&single, 0.01);
+        assert_eq!(layers.len(), 1);
+        assert!((layers[0] - 0.5).abs() < 1e-10);
+
+        // Multiple layers
+        let multi = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 0.33),
+            Vector3::new(0.0, 0.0, 0.67),
+        ];
+        assert_eq!(identify_layer_positions(&multi, 0.05).len(), 3);
+
+        // Tolerance sensitivity: [0.0, 0.02, 0.04]
+        let chain = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 0.02),
+            Vector3::new(0.0, 0.0, 0.04),
+        ];
+        assert_eq!(identify_layer_positions(&chain, 0.05).len(), 1); // large tol = 1 layer
+        assert_eq!(identify_layer_positions(&chain, 0.01).len(), 3); // small tol = 3 layers
+    }
+
+    #[test]
+    fn test_slab_config() {
+        use super::SlabConfig;
+
+        // Default values
+        let def = SlabConfig::default();
+        assert_eq!(def.miller_index, [1, 0, 0]);
+        assert_eq!(def.min_slab_size, 10.0);
+        assert!(def.center_slab);
+
+        // Builder
+        let cfg = SlabConfig::new([1, 1, 0])
+            .with_min_slab_size(15.0)
+            .with_min_vacuum_size(20.0)
+            .with_center_slab(false)
+            .with_in_unit_planes(true)
+            .with_symprec(0.001);
+
+        assert_eq!(cfg.miller_index, [1, 1, 0]);
+        assert_eq!(cfg.min_slab_size, 15.0);
+        assert_eq!(cfg.min_vacuum_size, 20.0);
+        assert!(!cfg.center_slab);
+        assert!(cfg.in_unit_planes);
+    }
+
+    fn make_simple_cubic() -> Structure {
+        Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        )
+    }
+
+    #[test]
+    fn test_make_slab_basic() {
+        use super::SlabConfig;
+
+        let cubic = make_simple_cubic();
+        let slab = cubic
+            .make_slab(
+                &SlabConfig::new([1, 0, 0])
+                    .with_min_slab_size(8.0)
+                    .with_min_vacuum_size(10.0),
+            )
+            .unwrap();
+
+        assert_eq!(slab.lattice.pbc, [true, true, false]);
+        assert!(slab.num_sites() >= 2);
+        assert_eq!(
+            slab.properties["miller_index"],
+            serde_json::json!([1, 0, 0])
+        );
+        assert_eq!(slab.properties["termination_index"], serde_json::json!(0));
+    }
+
+    #[test]
+    fn test_make_slab_various_surfaces() {
+        use super::SlabConfig;
+
+        let cubic = make_simple_cubic();
+
+        for hkl in [[1, 0, 0], [1, 1, 0], [1, 1, 1], [2, 1, 0], [2, 1, 1]] {
+            let slab = cubic
+                .make_slab(
+                    &SlabConfig::new(hkl)
+                        .with_min_slab_size(8.0)
+                        .with_min_vacuum_size(10.0),
+                )
+                .unwrap_or_else(|_| panic!("{:?} failed", hkl));
+
+            assert_eq!(slab.lattice.pbc, [true, true, false]);
+            assert!(slab.num_sites() > 0);
+
+            // All coords approximately in [0,1) (allowing small floating point tolerance)
+            for fc in &slab.frac_coords {
+                assert!(fc.x >= -1e-10 && fc.x < 1.0 + 1e-10, "x={}", fc.x);
+                assert!(fc.y >= -1e-10 && fc.y < 1.0 + 1e-10, "y={}", fc.y);
+                assert!(fc.z >= -1e-10 && fc.z < 1.0 + 1e-10, "z={}", fc.z);
+            }
+        }
+    }
+
+    #[test]
+    fn test_make_slab_in_unit_planes() {
+        use super::SlabConfig;
+
+        let cubic = make_simple_cubic();
+        let slab = cubic
+            .make_slab(
+                &SlabConfig::new([1, 0, 0])
+                    .with_min_slab_size(3.0)
+                    .with_in_unit_planes(true)
+                    .with_min_vacuum_size(10.0),
+            )
+            .unwrap();
+
+        // 3 planes * 4Å + 10Å vacuum ≈ 22Å
+        let c = slab.lattice.lengths().z;
+        assert!((c - 22.0).abs() < 1.0, "c={}", c);
+    }
+
+    #[test]
+    fn test_make_slab_centering() {
+        use super::SlabConfig;
+
+        let cubic = make_simple_cubic();
+        let avg_z =
+            |s: &Structure| s.frac_coords.iter().map(|c| c.z).sum::<f64>() / s.num_sites() as f64;
+
+        let centered = cubic
+            .make_slab(
+                &SlabConfig::new([1, 0, 0])
+                    .with_min_slab_size(4.0)
+                    .with_min_vacuum_size(20.0)
+                    .with_center_slab(true),
+            )
+            .unwrap();
+        let bottom = cubic
+            .make_slab(
+                &SlabConfig::new([1, 0, 0])
+                    .with_min_slab_size(4.0)
+                    .with_min_vacuum_size(20.0)
+                    .with_center_slab(false),
+            )
+            .unwrap();
+
+        assert!(avg_z(&centered) > avg_z(&bottom));
+        assert!(
+            avg_z(&centered) > 0.3,
+            "centered avg_z={}",
+            avg_z(&centered)
+        );
+    }
+
+    #[test]
+    fn test_make_slab_errors() {
+        use super::SlabConfig;
+
+        let cubic = make_simple_cubic();
+        let empty = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
+
+        // [0,0,0] rejected
+        let err = cubic.make_slab(&SlabConfig::new([0, 0, 0])).unwrap_err();
+        assert!(err.to_string().contains("zero"));
+
+        // Negative vacuum rejected
+        let err = cubic
+            .make_slab(&SlabConfig::new([1, 0, 0]).with_min_vacuum_size(-5.0))
+            .unwrap_err();
+        assert!(err.to_string().contains("non-negative"));
+
+        // Empty structure rejected
+        let err = empty.make_slab(&SlabConfig::new([1, 0, 0])).unwrap_err();
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn test_generate_slabs_terminations() {
+        use super::SlabConfig;
+
+        let nacl = make_nacl();
+        let slabs = nacl
+            .generate_slabs(
+                &SlabConfig::new([1, 0, 0])
+                    .with_min_slab_size(10.0)
+                    .with_min_vacuum_size(10.0),
+            )
+            .unwrap();
+
+        assert!(!slabs.is_empty());
+
+        for (idx, slab) in slabs.iter().enumerate() {
+            assert_eq!(slab.lattice.pbc, [true, true, false]);
+            assert_eq!(
+                slab.properties["termination_index"].as_u64().unwrap(),
+                idx as u64
+            );
         }
     }
 }

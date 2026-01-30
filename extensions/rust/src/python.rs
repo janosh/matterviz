@@ -2040,6 +2040,155 @@ fn order_disordered(
         .collect()
 }
 
+// ============================================================================
+// Slab Generation Functions
+// ============================================================================
+
+/// Validate slab generation parameters.
+fn validate_slab_params(min_slab_size: f64, min_vacuum_size: f64) -> PyResult<()> {
+    if min_slab_size <= 0.0 {
+        return Err(PyValueError::new_err("min_slab_size must be positive"));
+    }
+    if min_vacuum_size < 0.0 {
+        return Err(PyValueError::new_err(
+            "min_vacuum_size must be non-negative",
+        ));
+    }
+    Ok(())
+}
+
+/// Generate a surface slab from a bulk structure.
+///
+/// Creates a slab with the specified Miller indices, thickness, and vacuum layer.
+/// The resulting structure has lattice vectors a,b in the surface plane and c
+/// perpendicular to the surface (into vacuum), with `pbc = [true, true, false]`.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     miller_index (list[int]): Miller indices [h, k, l] defining the surface
+///     min_slab_size (float): Minimum slab thickness in Angstroms (or unit planes if in_unit_planes=True)
+///     min_vacuum_size (float): Minimum vacuum layer thickness in Angstroms
+///     center_slab (bool): If True, center the slab in the vacuum region (default: True)
+///     in_unit_planes (bool): If True, min_slab_size is in unit planes, not Angstroms (default: False)
+///     primitive (bool): Not yet implemented, has no effect (default: True)
+///
+/// Returns:
+///     dict: Slab structure as pymatgen-compatible dict
+///
+/// Example:
+///     >>> from ferrox import make_slab
+///     >>> import json
+///     >>> slab_dict = make_slab(json.dumps(bulk.as_dict()), [1, 1, 1], 10.0, 15.0)
+///     >>> slab = Structure.from_dict(slab_dict)
+#[pyfunction]
+#[pyo3(signature = (
+    structure,
+    miller_index,
+    min_slab_size,
+    min_vacuum_size,
+    center_slab = true,
+    in_unit_planes = false,
+    primitive = true
+))]
+fn make_slab(
+    py: Python<'_>,
+    structure: &str,
+    miller_index: [i32; 3],
+    min_slab_size: f64,
+    min_vacuum_size: f64,
+    center_slab: bool,
+    in_unit_planes: bool,
+    primitive: bool,
+) -> PyResult<Py<PyDict>> {
+    use crate::structure::SlabConfig;
+
+    validate_slab_params(min_slab_size, min_vacuum_size)?;
+
+    let config = SlabConfig::new(miller_index)
+        .with_min_slab_size(min_slab_size)
+        .with_min_vacuum_size(min_vacuum_size)
+        .with_center_slab(center_slab)
+        .with_in_unit_planes(in_unit_planes)
+        .with_primitive(primitive);
+
+    let slab = parse_struct(structure)?
+        .make_slab(&config)
+        .map_err(|e| PyValueError::new_err(format!("Error generating slab: {e}")))?;
+
+    Ok(structure_to_pydict(py, &slab)?.unbind())
+}
+
+/// Generate all unique surface terminations for a slab.
+///
+/// Creates multiple slabs with different surface terminations for the specified
+/// Miller indices. Each termination exposes a different atomic layer at the surface.
+///
+/// Args:
+///     structure (str): Structure as JSON string (from Structure.as_dict())
+///     miller_index (list[int]): Miller indices [h, k, l] defining the surface
+///     min_slab_size (float): Minimum slab thickness in Angstroms (or unit planes if in_unit_planes=True)
+///     min_vacuum_size (float): Minimum vacuum layer thickness in Angstroms
+///     center_slab (bool): If True, center the slab in the vacuum region (default: True)
+///     in_unit_planes (bool): If True, min_slab_size is in unit planes, not Angstroms (default: False)
+///     primitive (bool): Not yet implemented, has no effect (default: True)
+///     symprec (float): Symmetry precision for identifying unique terminations (default: 0.01)
+///
+/// Returns:
+///     list[dict]: List of slab structures as pymatgen-compatible dicts, one per termination
+///
+/// Example:
+///     >>> from ferrox import generate_slabs
+///     >>> import json
+///     >>> slabs = generate_slabs(json.dumps(bulk.as_dict()), [1, 0, 0], 10.0, 15.0)
+///     >>> for slab_dict in slabs:
+///     ...     print(f"Termination {slab_dict['properties']['termination_index']}")
+#[pyfunction]
+#[pyo3(signature = (
+    structure,
+    miller_index,
+    min_slab_size,
+    min_vacuum_size,
+    center_slab = true,
+    in_unit_planes = false,
+    primitive = true,
+    symprec = 0.01
+))]
+fn generate_slabs(
+    py: Python<'_>,
+    structure: &str,
+    miller_index: [i32; 3],
+    min_slab_size: f64,
+    min_vacuum_size: f64,
+    center_slab: bool,
+    in_unit_planes: bool,
+    primitive: bool,
+    symprec: f64,
+) -> PyResult<Vec<Py<PyDict>>> {
+    use crate::structure::SlabConfig;
+
+    validate_slab_params(min_slab_size, min_vacuum_size)?;
+    if symprec <= 0.0 {
+        return Err(PyValueError::new_err("symprec must be positive"));
+    }
+
+    let config = SlabConfig::new(miller_index)
+        .with_min_slab_size(min_slab_size)
+        .with_min_vacuum_size(min_vacuum_size)
+        .with_center_slab(center_slab)
+        .with_in_unit_planes(in_unit_planes)
+        .with_primitive(primitive)
+        .with_symprec(symprec);
+
+    let slabs = parse_struct(structure)?
+        .generate_slabs(&config)
+        .map_err(|e| PyValueError::new_err(format!("Error generating slabs: {e}")))?;
+
+    slabs
+        .iter()
+        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
+        .collect()
+}
+
 /// Enumerate derivative structures from a parent structure.
 ///
 /// Generates all symmetrically unique supercells up to a given size.
@@ -2151,5 +2300,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ewald_energy, m)?)?;
     m.add_function(wrap_pyfunction!(order_disordered, m)?)?;
     m.add_function(wrap_pyfunction!(enumerate_derivatives, m)?)?;
+    // Slab generation functions
+    m.add_function(wrap_pyfunction!(make_slab, m)?)?;
+    m.add_function(wrap_pyfunction!(generate_slabs, m)?)?;
     Ok(())
 }
