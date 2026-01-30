@@ -473,19 +473,32 @@ impl PartialRemoveTransform {
 /// Scale structure so fractional occupancies become integral site counts.
 ///
 /// Creates the smallest supercell where fractional occupancies can be represented
-/// as whole numbers of fully-occupied sites. After transformation, all sites have
-/// occupancy 1.0, ready for use with `OrderDisorderedTransform`.
+/// as whole numbers of sites. Fractional occupancies are preserved on each site,
+/// representing the probability of each species being present. The actual 0/1
+/// species assignment is performed by [`OrderDisorderedTransform`] during enumeration.
+///
+/// This transform prepares disordered structures for enumeration by ensuring the
+/// supercell size matches the least common multiple of all occupancy denominators.
+/// For example, a site with 0.25 Li and 0.75 Na requires a 4x supercell so that
+/// across all possible orderings, statistically 1 site would have Li and 3 would
+/// have Na.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// use ferrox::transformations::{Transform, DiscretizeOccupanciesTransform};
+/// use ferrox::transformations::{Transform, TransformMany, DiscretizeOccupanciesTransform, OrderDisorderedTransform};
 ///
 /// // Structure with 1 site at 0.75 Li, 0.25 vacancy
-/// let transform = DiscretizeOccupanciesTransform::new(10, 0.01);
-/// let discretized = transform.applied(&structure)?;
-/// // Now has 4x supercell with 4 sites, each at 1.0 occupancy
-/// // (representing 3 Li sites + 1 vacancy that can be enumerated)
+/// let discretize = DiscretizeOccupanciesTransform::new(10, 0.01);
+/// let discretized = discretize.applied(&structure)?;
+/// // Now has 4x supercell with 4 disordered sites (fractional occupancies preserved)
+///
+/// // Use OrderDisorderedTransform to enumerate actual species assignments
+/// let order = OrderDisorderedTransform::default();
+/// for result in order.iter_apply(&discretized) {
+///     let ordered = result?;
+///     // Each site now has exactly one species at 1.0 occupancy
+/// }
 /// ```
 #[derive(Debug, Clone)]
 pub struct DiscretizeOccupanciesTransform {
@@ -547,19 +560,11 @@ impl Transform for DiscretizeOccupanciesTransform {
             });
         }
 
-        // Create supercell
+        // Create supercell - occupancies are preserved (still fractional),
+        // representing the probability of each species on each replicated site.
+        // OrderDisorderedTransform handles the actual species selection.
         let supercell_matrix = [[lcm as i32, 0, 0], [0, 1, 0], [0, 0, 1]];
-        let mut supercell = structure.make_supercell(supercell_matrix)?;
-
-        // Set all occupancies to 1.0 (sites are now discrete)
-        for site_occ in &mut supercell.site_occupancies {
-            for (_, occ) in &mut site_occ.species {
-                *occ = 1.0;
-            }
-        }
-
-        // Update structure
-        *structure = supercell;
+        *structure = structure.make_supercell(supercell_matrix)?;
         Ok(())
     }
 }
@@ -884,12 +889,20 @@ mod tests {
         // Should have 2 sites (2x supercell along first axis)
         assert_eq!(discretized.num_sites(), 2);
 
-        // Each species on each site should now have occupancy 1.0
+        // Fractional occupancies are preserved (representing probability of each species).
+        // OrderDisorderedTransform handles the actual species selection.
         for site_occ in &discretized.site_occupancies {
+            assert_eq!(site_occ.species.len(), 2, "Should still have 2 species");
+            let total_occ: f64 = site_occ.species.iter().map(|(_, occ)| occ).sum();
+            assert!(
+                (total_occ - 1.0).abs() < 1e-10,
+                "Total occupancy should be 1.0, got {}",
+                total_occ
+            );
             for (_, occ) in &site_occ.species {
                 assert!(
-                    (*occ - 1.0).abs() < 1e-10,
-                    "Each species occupancy should be 1.0, got {}",
+                    (*occ - 0.5).abs() < 1e-10,
+                    "Each species should retain 0.5 occupancy, got {}",
                     occ
                 );
             }
@@ -913,10 +926,27 @@ mod tests {
         // Should have 4 sites (4x supercell)
         assert_eq!(discretized.num_sites(), 4);
 
-        // All occupancies should be 1.0
+        // Fractional occupancies are preserved on each site
         for site_occ in &discretized.site_occupancies {
-            for (_, occ) in &site_occ.species {
-                assert!((*occ - 1.0).abs() < 1e-10);
+            let total_occ: f64 = site_occ.species.iter().map(|(_, occ)| occ).sum();
+            assert!(
+                (total_occ - 1.0).abs() < 1e-10,
+                "Total occupancy should be 1.0"
+            );
+            // Check original occupancies are preserved
+            for (species, occ) in &site_occ.species {
+                let expected = if species.element == Element::Li {
+                    0.25
+                } else {
+                    0.75
+                };
+                assert!(
+                    (*occ - expected).abs() < 1e-10,
+                    "Expected {} occupancy {}, got {}",
+                    species,
+                    expected,
+                    occ
+                );
             }
         }
     }
@@ -935,6 +965,51 @@ mod tests {
 
         // Should still have 1 site (no supercell needed)
         assert_eq!(discretized.num_sites(), 1);
+    }
+
+    #[test]
+    fn test_discretize_then_order_workflow() {
+        // Test the full workflow: discretize -> order_disordered
+        let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(3.0, 3.0, 3.0)));
+
+        let li = Species::new(Element::Li, Some(1));
+        let fe = Species::new(Element::Fe, Some(2));
+
+        // 0.5 Li, 0.5 Fe on one site
+        let site = SiteOccupancy::new(vec![(li, 0.5), (fe, 0.5)]);
+        let structure =
+            Structure::new_from_occupancies(lattice, vec![site], vec![Vector3::new(0.0, 0.0, 0.0)]);
+
+        // Step 1: Discretize - creates 2x supercell with preserved fractional occupancies
+        let discretized = structure.discretize_occupancies(10, 0.01).unwrap();
+        assert_eq!(discretized.num_sites(), 2);
+        assert!(!discretized.is_ordered(), "Should still be disordered");
+
+        // Step 2: Order - enumerate all possible orderings
+        let config = OrderDisorderedConfig {
+            compute_energy: false, // Skip Ewald for this test
+            ..Default::default()
+        };
+        let orderings = discretized.order_disordered(config).unwrap();
+
+        // 2 sites x 2 species = 4 orderings (LiLi, LiFe, FeLi, FeFe)
+        assert_eq!(orderings.len(), 4);
+
+        // All orderings should be fully ordered with 1.0 occupancy per site
+        for ordered in &orderings {
+            assert!(
+                ordered.is_ordered(),
+                "Each ordering should be fully ordered"
+            );
+            for site_occ in &ordered.site_occupancies {
+                assert_eq!(site_occ.species.len(), 1, "Should have exactly 1 species");
+                let (_, occ) = site_occ.species[0];
+                assert!(
+                    (occ - 1.0).abs() < 1e-10,
+                    "Ordered site should have 1.0 occupancy"
+                );
+            }
+        }
     }
 
     // ========== Internal helper function tests ==========

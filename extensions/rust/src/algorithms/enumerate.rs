@@ -89,71 +89,42 @@ impl Default for EnumerateDerivativesTransform {
     }
 }
 
-/// Iterator over derivative structures.
+/// Lazy iterator over derivative structures.
+///
+/// Generates derivative structures on demand rather than collecting them all
+/// upfront, reducing memory usage for large size ranges.
 pub struct DerivativeIterator {
-    structures: std::vec::IntoIter<Result<Structure>>,
+    /// Source structure to create supercells from
+    structure: Structure,
+    /// Configuration for enumeration
+    config: EnumConfig,
+    /// Current determinant (supercell size)
+    current_det: usize,
+    /// HNF matrices for the current determinant
+    current_hnfs: Vec<[[i32; 3]; 3]>,
+    /// Index into current_hnfs
+    hnf_index: usize,
+    /// Whether we've already yielded an error for invalid config
+    yielded_error: bool,
 }
 
-impl Iterator for DerivativeIterator {
-    type Item = Result<Structure>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.structures.next()
-    }
-}
-
-impl TransformMany for EnumerateDerivativesTransform {
-    type Iter = DerivativeIterator;
-
-    fn iter_apply(&self, structure: &Structure) -> Self::Iter {
-        let results = self.enumerate_derivatives(structure);
-        DerivativeIterator {
-            structures: results.into_iter(),
+impl DerivativeIterator {
+    /// Create a new lazy derivative iterator.
+    fn new(structure: Structure, config: EnumConfig) -> Self {
+        let current_det = config.min_size;
+        let current_hnfs = if current_det <= config.max_size {
+            generate_hnf(current_det as i32)
+        } else {
+            Vec::new()
+        };
+        Self {
+            structure,
+            config,
+            current_det,
+            current_hnfs,
+            hnf_index: 0,
+            yielded_error: false,
         }
-    }
-}
-
-impl EnumerateDerivativesTransform {
-    /// Enumerate all derivative structures.
-    fn enumerate_derivatives(&self, structure: &Structure) -> Vec<Result<Structure>> {
-        let mut results = Vec::new();
-
-        // Validate size range fits in i32 (generate_hnf takes i32 determinant)
-        let max_det = i32::MAX as usize;
-        if self.config.max_size > max_det {
-            results.push(Err(FerroxError::InvalidStructure {
-                index: 0,
-                reason: format!(
-                    "max_size {} exceeds i32::MAX ({}), cannot enumerate supercells this large",
-                    self.config.max_size, max_det
-                ),
-            }));
-            return results;
-        }
-
-        // For each supercell size
-        for det in self.config.min_size..=self.config.max_size {
-            // Generate HNF matrices with this determinant
-            // Safe: validated above that det <= i32::MAX
-            let hnf_matrices = generate_hnf(det as i32);
-
-            for hnf in hnf_matrices {
-                // Create supercell
-                match structure.make_supercell(hnf) {
-                    Ok(supercell) => {
-                        // Check concentration constraints
-                        if self.satisfies_concentration(&supercell) {
-                            results.push(Ok(supercell));
-                        }
-                    }
-                    Err(e) => {
-                        results.push(Err(e));
-                    }
-                }
-            }
-        }
-
-        results
     }
 
     /// Check if structure satisfies concentration constraints.
@@ -185,6 +156,70 @@ impl EnumerateDerivativesTransform {
         }
 
         true
+    }
+
+    /// Advance to the next determinant, returning false if exhausted.
+    fn advance_to_next_det(&mut self) -> bool {
+        self.current_det += 1;
+        if self.current_det > self.config.max_size {
+            return false;
+        }
+        self.current_hnfs = generate_hnf(self.current_det as i32);
+        self.hnf_index = 0;
+        true
+    }
+}
+
+impl Iterator for DerivativeIterator {
+    type Item = Result<Structure>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Validate size range fits in i32 (generate_hnf takes i32 determinant)
+        let max_det = i32::MAX as usize;
+        if !self.yielded_error && self.config.max_size > max_det {
+            self.yielded_error = true;
+            return Some(Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "max_size {} exceeds i32::MAX ({}), cannot enumerate supercells this large",
+                    self.config.max_size, max_det
+                ),
+            }));
+        }
+
+        loop {
+            // Try to get the next HNF matrix at current determinant
+            if self.hnf_index < self.current_hnfs.len() {
+                let hnf = self.current_hnfs[self.hnf_index];
+                self.hnf_index += 1;
+
+                // Create supercell and check constraints
+                match self.structure.make_supercell(hnf) {
+                    Ok(supercell) => {
+                        if self.satisfies_concentration(&supercell) {
+                            return Some(Ok(supercell));
+                        }
+                        // Didn't satisfy constraints, continue to next HNF
+                    }
+                    Err(err) => {
+                        return Some(Err(err));
+                    }
+                }
+            } else {
+                // Exhausted HNFs at current determinant, advance
+                if !self.advance_to_next_det() {
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+impl TransformMany for EnumerateDerivativesTransform {
+    type Iter = DerivativeIterator;
+
+    fn iter_apply(&self, structure: &Structure) -> Self::Iter {
+        DerivativeIterator::new(structure.clone(), self.config.clone())
     }
 }
 
