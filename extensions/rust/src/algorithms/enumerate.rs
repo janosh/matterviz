@@ -81,14 +81,6 @@ impl EnumerateDerivativesTransform {
     pub fn new(config: EnumConfig) -> Self {
         Self { config }
     }
-
-    /// Create with default config but specified max size.
-    pub fn with_max_size(max_size: usize) -> Self {
-        Self::new(EnumConfig {
-            max_size,
-            ..Default::default()
-        })
-    }
 }
 
 impl Default for EnumerateDerivativesTransform {

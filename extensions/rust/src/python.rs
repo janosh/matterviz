@@ -1420,7 +1420,6 @@ fn substitute_species(
     to_species: &str,
 ) -> PyResult<Py<PyDict>> {
     use crate::species::Species;
-    use crate::transformations::{SubstituteTransform, Transform};
 
     let from_sp = Species::from_string(from_species).ok_or_else(|| {
         PyValueError::new_err(format!(
@@ -1433,10 +1432,8 @@ fn substitute_species(
         ))
     })?;
 
-    let mut s = parse_struct(structure)?;
-    let transform = SubstituteTransform::single(from_sp, to_sp);
-    transform
-        .apply(&mut s)
+    let s = parse_struct(structure)?
+        .substitute(from_sp, to_sp)
         .map_err(|e| PyValueError::new_err(format!("Error substituting: {e}")))?;
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
@@ -1452,20 +1449,17 @@ fn substitute_species(
 #[pyfunction]
 fn remove_species(py: Python<'_>, structure: &str, species: Vec<String>) -> PyResult<Py<PyDict>> {
     use crate::species::Species;
-    use crate::transformations::{RemoveSpeciesTransform, Transform};
 
-    let species_vec: Result<Vec<Species>, _> = species
+    let species_vec: Vec<Species> = species
         .iter()
         .map(|s| {
             Species::from_string(s)
                 .ok_or_else(|| PyValueError::new_err(format!("Invalid species: {s}")))
         })
-        .collect();
+        .collect::<Result<_, _>>()?;
 
-    let mut s = parse_struct(structure)?;
-    let transform = RemoveSpeciesTransform::new(species_vec?);
-    transform
-        .apply(&mut s)
+    let s = parse_struct(structure)?
+        .remove_species(&species_vec)
         .map_err(|e| PyValueError::new_err(format!("Error removing species: {e}")))?;
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
@@ -1480,12 +1474,8 @@ fn remove_species(py: Python<'_>, structure: &str, species: Vec<String>) -> PyRe
 ///     dict: Structure with sites removed
 #[pyfunction]
 fn remove_sites(py: Python<'_>, structure: &str, indices: Vec<usize>) -> PyResult<Py<PyDict>> {
-    use crate::transformations::{RemoveSitesTransform, Transform};
-
-    let mut s = parse_struct(structure)?;
-    let transform = RemoveSitesTransform::new(indices);
-    transform
-        .apply(&mut s)
+    let s = parse_struct(structure)?
+        .remove_sites(&indices)
         .map_err(|e| PyValueError::new_err(format!("Error removing sites: {e}")))?;
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
@@ -1500,13 +1490,9 @@ fn remove_sites(py: Python<'_>, structure: &str, indices: Vec<usize>) -> PyResul
 ///     dict: Deformed structure
 #[pyfunction]
 fn deform(py: Python<'_>, structure: &str, gradient: [[f64; 3]; 3]) -> PyResult<Py<PyDict>> {
-    use crate::transformations::{DeformTransform, Transform};
-
     let grad_matrix = Matrix3::from_row_slice(&gradient.concat());
-    let mut s = parse_struct(structure)?;
-    let transform = DeformTransform::new(grad_matrix);
-    transform
-        .apply(&mut s)
+    let s = parse_struct(structure)?
+        .deform(grad_matrix)
         .map_err(|e| PyValueError::new_err(format!("Error deforming: {e}")))?;
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
@@ -1565,7 +1551,7 @@ fn order_disordered(
     max_structures: Option<usize>,
     sort_by_energy: bool,
 ) -> PyResult<Vec<Py<PyDict>>> {
-    use crate::transformations::{OrderDisorderedConfig, OrderDisorderedTransform, TransformMany};
+    use crate::transformations::OrderDisorderedConfig;
 
     let s = parse_struct(structure)?;
     let config = OrderDisorderedConfig {
@@ -1574,10 +1560,9 @@ fn order_disordered(
         compute_energy: sort_by_energy,
         ..Default::default()
     };
-    let transform = OrderDisorderedTransform::new(config);
 
     // Release GIL during heavy computation
-    let results = py.detach(|| transform.apply_all(&s));
+    let results = py.detach(|| s.order_disordered(config));
 
     results
         .map_err(|e| PyValueError::new_err(format!("Error ordering: {e}")))?
@@ -1605,19 +1590,10 @@ fn enumerate_derivatives(
     min_size: usize,
     max_size: usize,
 ) -> PyResult<Vec<Py<PyDict>>> {
-    use crate::algorithms::EnumConfig;
-    use crate::transformations::TransformMany;
-
     let s = parse_struct(structure)?;
-    let config = EnumConfig {
-        min_size,
-        max_size,
-        ..Default::default()
-    };
-    let transform = crate::algorithms::EnumerateDerivativesTransform::new(config);
 
     // Release GIL during heavy computation
-    let results = py.detach(|| transform.apply_all(&s));
+    let results = py.detach(|| s.enumerate_derivatives(min_size, max_size));
 
     results
         .map_err(|e| PyValueError::new_err(format!("Error enumerating: {e}")))?

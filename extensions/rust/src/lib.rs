@@ -45,8 +45,12 @@ pub mod batch;
 pub mod matcher;
 pub mod pbc;
 
-// Transformations
-pub mod transformations;
+// Transformations (internal - public API is via Structure methods)
+pub(crate) mod transformations;
+
+// Re-export config structs for use with Structure transformation methods
+pub use algorithms::EnumConfig;
+pub use transformations::{OrderDisorderedConfig, PartialRemoveConfig, RemovalAlgo};
 
 // I/O
 pub mod cif;

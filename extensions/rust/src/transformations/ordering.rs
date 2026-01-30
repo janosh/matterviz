@@ -1,10 +1,7 @@
 //! Ordering transformations for disordered structures.
 //!
-//! This module contains transformations for handling disordered structures:
-//!
-//! - `OrderDisorderedTransform`: Enumerate orderings of disordered structures
-//! - `PartialRemoveTransform`: Partial removal of species
-//! - `DiscretizeOccupanciesTransform`: Scale structure so fractional occupancies become integral site counts
+//! Internal implementations used by `Structure` methods.
+//! The public API is via `Structure::order_disordered()`, etc.
 
 use crate::algorithms::Ewald;
 use crate::error::{FerroxError, Result};
@@ -75,14 +72,6 @@ impl OrderDisorderedTransform {
     /// Create a new ordering transform with the given configuration.
     pub fn new(config: OrderDisorderedConfig) -> Self {
         Self { config }
-    }
-
-    /// Create with default configuration.
-    pub fn with_max_structures(max: usize) -> Self {
-        Self::new(OrderDisorderedConfig {
-            max_structures: Some(max),
-            ..Default::default()
-        })
     }
 }
 
@@ -360,11 +349,6 @@ impl PartialRemoveTransform {
     /// Create a new partial remove transform.
     pub fn new(config: PartialRemoveConfig) -> Self {
         Self { config }
-    }
-
-    /// Convenient constructor for simple case.
-    pub fn simple(species: Species, fraction: f64) -> Self {
-        Self::new(PartialRemoveConfig::new(species, fraction))
     }
 }
 
@@ -657,18 +641,18 @@ mod tests {
         )
     }
 
+    // ========== order_disordered tests (via Structure methods) ==========
+
     #[test]
     fn test_order_disordered() {
         let structure = disordered_structure();
-        let transform = OrderDisorderedTransform::default();
-
-        let orderings: Vec<_> = transform.iter_apply(&structure).collect();
+        let orderings = structure
+            .order_disordered(OrderDisorderedConfig::default())
+            .unwrap();
 
         // Single disordered site with 2 species = 2 orderings
         assert_eq!(orderings.len(), 2);
-
-        for result in orderings {
-            let ordered = result.unwrap();
+        for ordered in orderings {
             assert!(ordered.is_ordered());
         }
     }
@@ -676,26 +660,27 @@ mod tests {
     #[test]
     fn test_order_disordered_max_structures() {
         let structure = disordered_structure();
-        let transform = OrderDisorderedTransform::with_max_structures(1);
-
-        let orderings: Vec<_> = transform.iter_apply(&structure).collect();
+        let config = OrderDisorderedConfig {
+            max_structures: Some(1),
+            ..Default::default()
+        };
+        let orderings = structure.order_disordered(config).unwrap();
         assert_eq!(orderings.len(), 1);
     }
 
     #[test]
     fn test_order_disordered_already_ordered() {
-        // Create a fully ordered structure
         let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(3.0, 3.0, 3.0)));
         let fe = Species::new(Element::Fe, Some(2));
         let structure = Structure::new(lattice, vec![fe], vec![Vector3::new(0.0, 0.0, 0.0)]);
 
-        let transform = OrderDisorderedTransform::default();
-        let orderings: Vec<_> = transform.iter_apply(&structure).collect();
+        let orderings = structure
+            .order_disordered(OrderDisorderedConfig::default())
+            .unwrap();
 
         // Already ordered structure should return itself
         assert_eq!(orderings.len(), 1);
-        let result = orderings[0].as_ref().unwrap();
-        assert!(result.is_ordered());
+        assert!(orderings[0].is_ordered());
     }
 
     #[test]
@@ -708,12 +693,12 @@ mod tests {
 
         // Single site with three species (1/3 each)
         let site = SiteOccupancy::new(vec![(fe, 1.0 / 3.0), (co, 1.0 / 3.0), (ni, 1.0 / 3.0)]);
-
         let structure =
             Structure::new_from_occupancies(lattice, vec![site], vec![Vector3::new(0.0, 0.0, 0.0)]);
 
-        let transform = OrderDisorderedTransform::default();
-        let orderings: Vec<_> = transform.iter_apply(&structure).collect();
+        let orderings = structure
+            .order_disordered(OrderDisorderedConfig::default())
+            .unwrap();
 
         // 3 ways to order: Fe, Co, or Ni
         assert_eq!(orderings.len(), 3);
@@ -728,15 +713,15 @@ mod tests {
 
         // Two sites, each with 50% Fe/Co
         let site = SiteOccupancy::new(vec![(fe, 0.5), (co, 0.5)]);
-
         let structure = Structure::new_from_occupancies(
             lattice,
             vec![site.clone(), site],
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
 
-        let transform = OrderDisorderedTransform::default();
-        let orderings: Vec<_> = transform.iter_apply(&structure).collect();
+        let orderings = structure
+            .order_disordered(OrderDisorderedConfig::default())
+            .unwrap();
 
         // 2^2 = 4 ways to order two sites with 2 options each
         assert_eq!(orderings.len(), 4);
@@ -744,12 +729,10 @@ mod tests {
 
     #[test]
     fn test_order_disordered_heap_keeps_lowest_energies() {
-        // This test verifies that when using sort_by_energy with max_structures,
-        // the heap correctly keeps the LOWEST energy structures, not the highest.
+        // Verifies that when using sort_by_energy with max_structures,
+        // the heap correctly keeps the LOWEST energy structures
         let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(5.64, 5.64, 5.64)));
 
-        // NaCl-like structure with disordered Na/K site
-        // Na+ and K+ have different ionic radii, so energies will differ
         let na = Species::new(Element::Na, Some(1));
         let k = Species::new(Element::K, Some(1));
         let cl = Species::new(Element::Cl, Some(-1));
@@ -776,10 +759,7 @@ mod tests {
             compute_energy: true,
             ..Default::default()
         };
-        let all_orderings: Vec<_> = OrderDisorderedTransform::new(config_all)
-            .iter_apply(&structure)
-            .filter_map(|r| r.ok())
-            .collect();
+        let all_orderings = structure.order_disordered(config_all).unwrap();
 
         // Get just top 2 lowest energy
         let config_top2 = OrderDisorderedConfig {
@@ -788,10 +768,7 @@ mod tests {
             compute_energy: true,
             ..Default::default()
         };
-        let top2_orderings: Vec<_> = OrderDisorderedTransform::new(config_top2)
-            .iter_apply(&structure)
-            .filter_map(|r| r.ok())
-            .collect();
+        let top2_orderings = structure.order_disordered(config_top2).unwrap();
 
         assert_eq!(top2_orderings.len(), 2);
 
@@ -804,7 +781,7 @@ mod tests {
         };
 
         let mut all_energies: Vec<f64> = all_orderings.iter().map(get_energy).collect();
-        all_energies.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        all_energies.sort_by(|val_a, val_b| val_a.partial_cmp(val_b).unwrap());
 
         let top2_energies: Vec<f64> = top2_orderings.iter().map(get_energy).collect();
 
@@ -819,6 +796,8 @@ mod tests {
         }
     }
 
+    // ========== partial_remove tests (via Structure methods) ==========
+
     #[test]
     fn test_partial_remove_various_fractions() {
         // (fraction, expected_results, expected_sites_remaining)
@@ -829,13 +808,11 @@ mod tests {
         for (fraction, expected_count, expected_sites) in test_cases {
             let structure = partial_li_structure();
             let config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), fraction);
-            let results: Vec<_> = PartialRemoveTransform::new(config)
-                .iter_apply(&structure)
-                .collect();
+            let results = structure.partial_remove(config).unwrap();
 
             assert_eq!(results.len(), expected_count, "fraction={fraction}");
             for result in results {
-                assert_eq!(result.unwrap().num_sites(), expected_sites);
+                assert_eq!(result.num_sites(), expected_sites);
             }
         }
     }
@@ -845,9 +822,7 @@ mod tests {
         let structure = partial_li_structure();
         let mut config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), 0.5);
         config.max_structures = Some(3);
-        let transform = PartialRemoveTransform::new(config);
-
-        let results: Vec<_> = transform.iter_apply(&structure).collect();
+        let results = structure.partial_remove(config).unwrap();
         assert_eq!(results.len(), 3);
     }
 
@@ -855,18 +830,14 @@ mod tests {
     fn test_partial_remove_all() {
         let structure = partial_li_structure();
         let config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), 1.0);
-        let transform = PartialRemoveTransform::new(config);
-
-        let results: Vec<_> = transform.iter_apply(&structure).collect();
+        let results = structure.partial_remove(config).unwrap();
 
         // Only 1 way to remove all
         assert_eq!(results.len(), 1);
-
-        let removed = results[0].as_ref().unwrap();
         // Should only have O atoms left
-        assert_eq!(removed.num_sites(), 2);
+        assert_eq!(results[0].num_sites(), 2);
         assert!(
-            removed
+            results[0]
                 .site_occupancies
                 .iter()
                 .all(|s| s.dominant_species().element == Element::O)
@@ -877,174 +848,24 @@ mod tests {
     fn test_partial_remove_none() {
         let structure = partial_li_structure();
         let config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), 0.0);
-        let transform = PartialRemoveTransform::new(config);
-
-        let results: Vec<_> = transform.iter_apply(&structure).collect();
+        let results = structure.partial_remove(config).unwrap();
 
         // Only 1 way: remove nothing
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].as_ref().unwrap().num_sites(), 6);
+        assert_eq!(results[0].num_sites(), 6);
     }
 
     #[test]
     fn test_partial_remove_species_not_found() {
         let structure = partial_li_structure();
-        let config = PartialRemoveConfig::new(Species::neutral(Element::Cu), 0.5); // Cu not in structure
-        let transform = PartialRemoveTransform::new(config);
+        let config = PartialRemoveConfig::new(Species::neutral(Element::Cu), 0.5);
+        let result = structure.partial_remove(config);
 
-        let results: Vec<_> = transform.iter_apply(&structure).collect();
-
-        // Nothing to remove
-        assert_eq!(results.len(), 1);
+        // Species not found is an error
+        assert!(result.is_err());
     }
 
-    // ========== Fraction Validation Tests ==========
-
-    #[test]
-    fn test_partial_remove_fraction_negative() {
-        let structure = partial_li_structure();
-        let config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), -0.1);
-        let transform = PartialRemoveTransform::new(config);
-
-        let results: Vec<_> = transform.iter_apply(&structure).collect();
-
-        assert_eq!(results.len(), 1);
-        let err = results[0].as_ref().unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("Fraction"),
-            "Error should mention 'Fraction': {msg}"
-        );
-        assert!(
-            msg.contains("-0.1"),
-            "Error should contain the invalid value: {msg}"
-        );
-        assert!(
-            msg.contains("[0.0, 1.0]"),
-            "Error should mention valid range: {msg}"
-        );
-    }
-
-    #[test]
-    fn test_partial_remove_fraction_greater_than_one() {
-        let structure = partial_li_structure();
-        let config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), 1.5);
-        let transform = PartialRemoveTransform::new(config);
-
-        let results: Vec<_> = transform.iter_apply(&structure).collect();
-
-        assert_eq!(results.len(), 1);
-        let err = results[0].as_ref().unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("Fraction"),
-            "Error should mention 'Fraction': {msg}"
-        );
-        assert!(
-            msg.contains("1.5"),
-            "Error should contain the invalid value: {msg}"
-        );
-    }
-
-    #[test]
-    fn test_partial_remove_fraction_boundary_values() {
-        let structure = partial_li_structure();
-        let li = Species::new(Element::Li, Some(1));
-
-        // Test boundary values: 0.0 and 1.0 should be valid
-        for fraction in [0.0, 1.0] {
-            let config = PartialRemoveConfig::new(li, fraction);
-            let transform = PartialRemoveTransform::new(config);
-            let results: Vec<_> = transform.iter_apply(&structure).collect();
-
-            // All results should be Ok
-            for result in &results {
-                assert!(
-                    result.is_ok(),
-                    "fraction={fraction} should be valid, got error: {:?}",
-                    result.as_ref().unwrap_err()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_partial_remove_fraction_just_outside_bounds() {
-        let structure = partial_li_structure();
-        let li = Species::new(Element::Li, Some(1));
-
-        // Just below 0.0 and just above 1.0 should fail
-        for (fraction, _expected_in_msg) in [(-1e-10, "-"), (1.0 + 1e-10, "1.0")] {
-            let config = PartialRemoveConfig::new(li, fraction);
-            let transform = PartialRemoveTransform::new(config);
-            let results: Vec<_> = transform.iter_apply(&structure).collect();
-
-            assert_eq!(results.len(), 1);
-            assert!(results[0].is_err(), "fraction={fraction} should be invalid");
-            let msg = results[0].as_ref().unwrap_err().to_string();
-            assert!(
-                msg.contains("Fraction"),
-                "Error message should mention 'Fraction': {msg}"
-            );
-            // Just verify it's a transform error with reasonable message
-            assert!(
-                msg.contains("[0.0, 1.0]"),
-                "Error should mention valid range: {msg}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_partial_remove_fraction_nan() {
-        let structure = partial_li_structure();
-        let config = PartialRemoveConfig::new(Species::new(Element::Li, Some(1)), f64::NAN);
-        let transform = PartialRemoveTransform::new(config);
-
-        let results: Vec<_> = transform.iter_apply(&structure).collect();
-
-        // NaN is not in [0.0, 1.0], so should fail
-        assert_eq!(results.len(), 1);
-        assert!(results[0].is_err(), "NaN fraction should be invalid");
-    }
-
-    #[test]
-    fn test_partial_remove_fraction_infinity() {
-        let structure = partial_li_structure();
-        let li = Species::new(Element::Li, Some(1));
-
-        for fraction in [f64::INFINITY, f64::NEG_INFINITY] {
-            let config = PartialRemoveConfig::new(li, fraction);
-            let transform = PartialRemoveTransform::new(config);
-            let results: Vec<_> = transform.iter_apply(&structure).collect();
-
-            assert_eq!(results.len(), 1);
-            assert!(results[0].is_err(), "fraction={fraction} should be invalid");
-        }
-    }
-
-    #[test]
-    fn test_partial_remove_fraction_valid_interior_values() {
-        let structure = partial_li_structure();
-        let li = Species::new(Element::Li, Some(1));
-
-        // Various valid fractions in (0, 1)
-        for fraction in [0.1, 0.25, 0.333, 0.5, 0.666, 0.75, 0.9] {
-            let config = PartialRemoveConfig::new(li, fraction);
-            let transform = PartialRemoveTransform::new(config);
-            let results: Vec<_> = transform.iter_apply(&structure).collect();
-
-            // All results should be Ok (might be empty if n_remove rounds to 0)
-            for result in &results {
-                assert!(
-                    result.is_ok(),
-                    "fraction={fraction} should be valid, got error: {:?}",
-                    result.as_ref().unwrap_err()
-                );
-            }
-        }
-    }
-
-    // ========== Discretize Occupancies Tests ==========
+    // ========== discretize_occupancies tests (via Structure methods) ==========
 
     #[test]
     fn test_discretize_occupancies() {
@@ -1055,13 +876,10 @@ mod tests {
 
         // 0.5 Li, 0.5 Fe - should require 2x supercell
         let site = SiteOccupancy::new(vec![(li, 0.5), (fe, 0.5)]);
-
         let structure =
             Structure::new_from_occupancies(lattice, vec![site], vec![Vector3::new(0.0, 0.0, 0.0)]);
 
-        let transform = DiscretizeOccupanciesTransform::new(10, 0.01);
-        let mut discretized = structure.clone();
-        transform.apply(&mut discretized).unwrap();
+        let discretized = structure.discretize_occupancies(10, 0.01).unwrap();
 
         // Should have 2 sites (2x supercell along first axis)
         assert_eq!(discretized.num_sites(), 2);
@@ -1087,13 +905,10 @@ mod tests {
 
         // 0.25 Li, 0.75 Na - should require 4x supercell
         let site = SiteOccupancy::new(vec![(li, 0.25), (na, 0.75)]);
-
         let structure =
             Structure::new_from_occupancies(lattice, vec![site], vec![Vector3::new(0.0, 0.0, 0.0)]);
 
-        let transform = DiscretizeOccupanciesTransform::new(10, 0.01);
-        let mut discretized = structure.clone();
-        transform.apply(&mut discretized).unwrap();
+        let discretized = structure.discretize_occupancies(10, 0.01).unwrap();
 
         // Should have 4 sites (4x supercell)
         assert_eq!(discretized.num_sites(), 4);
@@ -1116,15 +931,13 @@ mod tests {
         let structure =
             Structure::new_from_occupancies(lattice, vec![site], vec![Vector3::new(0.0, 0.0, 0.0)]);
 
-        let transform = DiscretizeOccupanciesTransform::default();
-        let mut discretized = structure.clone();
-        transform.apply(&mut discretized).unwrap();
+        let discretized = structure.discretize_occupancies(10, 0.01).unwrap();
 
         // Should still have 1 site (no supercell needed)
         assert_eq!(discretized.num_sites(), 1);
     }
 
-    // ========== Rationalize Helper Tests ==========
+    // ========== Internal helper function tests ==========
 
     #[test]
     fn test_rationalize() {
@@ -1137,23 +950,16 @@ mod tests {
 
     #[test]
     fn test_rationalize_edge_cases() {
-        // 1.0 should give (1, 1)
         assert_eq!(rationalize(1.0, 10, 0.01).unwrap(), (1, 1));
-
-        // Very small value
         assert_eq!(rationalize(0.1, 10, 0.01).unwrap(), (1, 10));
-
-        // Integer-like fraction
         assert_eq!(rationalize(0.2, 10, 0.01).unwrap(), (1, 5));
     }
 
     #[test]
     fn test_rationalize_tight_tolerance() {
-        // 0.333 cannot be exactly represented as n/d with d <= 10 within tight tolerance
         let result = rationalize(0.333, 10, 0.0001);
-        // Should fail or return (1,3) depending on tolerance
-        if let Ok((n, d)) = result {
-            assert!((n as f64 / d as f64 - 0.333).abs() < 0.0001);
+        if let Ok((numerator, denominator)) = result {
+            assert!((numerator as f64 / denominator as f64 - 0.333).abs() < 0.0001);
         }
     }
 
@@ -1178,20 +984,5 @@ mod tests {
         assert_eq!(num_lcm(1, 1), 1);
         assert_eq!(num_lcm(7, 1), 7);
         assert_eq!(num_lcm(5, 5), 5);
-    }
-
-    // ========== TransformMany Trait Tests ==========
-
-    #[test]
-    fn test_apply_all_convenience_method() {
-        let structure = disordered_structure();
-        let transform = OrderDisorderedTransform::default();
-
-        let all_results = transform.apply_all(&structure).unwrap();
-        assert_eq!(all_results.len(), 2);
-
-        for s in all_results {
-            assert!(s.is_ordered());
-        }
     }
 }

@@ -1,46 +1,32 @@
-//! Structure transformation traits and implementations.
+//! Structure transformation internals and tests.
 //!
-//! This module provides a unified API for transforming crystal structures.
-//! Transformations are categorized into:
+//! The public API is exposed via methods on `Structure`:
 //!
-//! - **One-to-one** (`Transform` trait): Transforms that produce a single structure
-//! - **One-to-many** (`TransformMany` trait): Transforms that produce multiple structures
+//! - One-to-one: `structure.rotate()`, `structure.substitute()`, etc.
+//! - One-to-many: `structure.order_disordered()`, `structure.partial_remove()`, etc.
 //!
-//! # Example
-//!
-//! ```rust,ignore
-//! use ferrox::transformations::{Transform, SupercellTransform};
-//! use ferrox::structure::Structure;
-//!
-//! let mut structure = Structure::from_file("POSCAR")?;
-//!
-//! // Apply in-place
-//! let transform = SupercellTransform::new([[2, 0, 0], [0, 2, 0], [0, 0, 2]]);
-//! transform.apply(&mut structure)?;
-//!
-//! // Or create a new structure
-//! let supercell = transform.applied(&structure)?;
-//! ```
+//! Config structs are re-exported from the crate root:
+//! - `OrderDisorderedConfig` - for `order_disordered()`
+//! - `PartialRemoveConfig` - for `partial_remove()`
+//! - `EnumConfig` - for `enumerate_derivatives()`
 
-use crate::error::{FerroxError, Result};
+use crate::error::Result;
 use crate::structure::Structure;
 
+// Internal ordering transform implementations
 pub mod ordering;
+// Test modules for site and standard transforms
+#[cfg(test)]
 pub mod site;
+#[cfg(test)]
 pub mod standard;
 
-// Re-export transform types for convenience
-pub use ordering::{
-    DiscretizeOccupanciesTransform, OrderDisorderedConfig, OrderDisorderedTransform,
-    PartialRemoveConfig, PartialRemoveTransform, RemovalAlgo,
-};
-pub use site::{
-    InsertSitesTransform, RadialDistortionTransform, RemoveSitesTransform,
-    ReplaceSiteSpeciesTransform, TranslateSitesTransform,
-};
-pub use standard::{
-    ConventionalTransform, DeformTransform, PerturbTransform, PrimitiveTransform,
-    RemoveSpeciesTransform, RotateTransform, SubstituteTransform, SupercellTransform,
+// Re-export config types (these are the public API)
+pub use ordering::{OrderDisorderedConfig, PartialRemoveConfig, RemovalAlgo};
+
+// Re-export internal transform types used by Structure methods
+pub(crate) use ordering::{
+    DiscretizeOccupanciesTransform, OrderDisorderedTransform, PartialRemoveTransform,
 };
 
 /// One-to-one structure transformation.
@@ -138,17 +124,6 @@ pub trait TransformMany {
     /// even on error, use `iter_apply()` directly.
     fn apply_all(&self, structure: &Structure) -> Result<Vec<Structure>> {
         self.iter_apply(structure).collect()
-    }
-}
-
-/// Error type for transformation validation.
-impl FerroxError {
-    /// Create an error for transformation validation failures.
-    pub fn transform_error(reason: impl Into<String>) -> Self {
-        FerroxError::InvalidStructure {
-            index: 0,
-            reason: reason.into(),
-        }
     }
 }
 
