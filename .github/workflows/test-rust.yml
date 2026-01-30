@@ -3,10 +3,10 @@ name: Rust Extension Tests
 on:
   pull_request:
     branches: [main]
-    paths: [extensions/rust/**, .github/workflows/test-rust.yml]
+    paths: [extensions/rust/**, extensions/rust-wasm/**, .github/workflows/test-rust.yml]
   push:
     branches: [main]
-    paths: [extensions/rust/**, .github/workflows/test-rust.yml]
+    paths: [extensions/rust/**, extensions/rust-wasm/**, .github/workflows/test-rust.yml]
   workflow_dispatch:
     inputs:
       publish:
@@ -161,3 +161,31 @@ jobs:
           args: --non-interactive dist/*
         env:
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+
+  publish-wasm:
+    name: Publish WASM to npm
+    needs: [rust-tests, check-version]
+    if: needs.check-version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install wasm-pack
+        run: cargo install wasm-pack@0.13.1 --locked
+      - name: Build WASM
+        run: |
+          wasm-pack build extensions/rust --target web --features wasm --no-default-features
+          rm -rf extensions/rust-wasm/pkg
+          cp -r extensions/rust/pkg extensions/rust-wasm/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        working-directory: extensions/rust-wasm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
