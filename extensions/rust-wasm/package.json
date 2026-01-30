@@ -18,8 +18,8 @@
     "pkg/"
   ],
   "scripts": {
-    "build": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features && cd ../rust-wasm && mkdir -p pkg && cp -r ../rust/pkg/* pkg/",
-    "build:dev": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features --dev && cd ../rust-wasm && mkdir -p pkg && cp -r ../rust/pkg/* pkg/"
+    "build": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg .",
+    "build:dev": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features --dev && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg ."
   },
   "repository": {
     "type": "git",
