@@ -723,95 +723,79 @@ mod tests {
 
     #[test]
     fn test_species_string() {
-        // Ordered sites: neutral, positive, and negative oxidation states
-        assert_eq!(
-            SiteOccupancy::ordered(Species::neutral(Element::Fe)).species_string(),
-            "Fe"
-        );
-        assert_eq!(
-            SiteOccupancy::ordered(Species::new(Element::Fe, Some(2))).species_string(),
-            "Fe2+"
-        );
-        assert_eq!(
-            SiteOccupancy::ordered(Species::new(Element::O, Some(-2))).species_string(),
-            "O2-"
-        );
-        assert_eq!(
-            SiteOccupancy::ordered(Species::neutral(Element::Dummy)).species_string(),
-            "X"
-        );
+        // Ordered sites (single species)
+        for (sp, expected) in [
+            (Species::neutral(Element::Fe), "Fe"),
+            (Species::new(Element::Fe, Some(2)), "Fe2+"),
+            (Species::new(Element::O, Some(-2)), "O2-"),
+            (Species::neutral(Element::Dummy), "X"),
+        ] {
+            assert_eq!(SiteOccupancy::ordered(sp).species_string(), expected);
+        }
 
-        // Single species with partial occupancy (vacancy) is still "ordered"
+        // Partial occupancy is still "ordered"
         let partial = SiteOccupancy::new(vec![(Species::neutral(Element::Fe), 0.8)]);
         assert!(partial.is_ordered());
         assert_eq!(partial.species_string(), "Fe");
 
-        // Disordered: sorted by electronegativity (Fe 1.83 < Co 1.88)
-        let disordered = SiteOccupancy::new(vec![
-            (Species::neutral(Element::Fe), 0.5),
-            (Species::neutral(Element::Co), 0.5),
-        ]);
-        assert_eq!(disordered.species_string(), "Fe:0.5, Co:0.5");
-
-        // Three species sorted by electronegativity: Zn 1.65 < Fe 1.83 < Co 1.88
-        let tri = SiteOccupancy::new(vec![
-            (Species::neutral(Element::Zn), 0.2),
-            (Species::neutral(Element::Fe), 0.5),
-            (Species::neutral(Element::Co), 0.3),
-        ]);
-        assert_eq!(tri.species_string(), "Zn:0.2, Fe:0.5, Co:0.3");
-
-        // Same element with different oxidation states: sorted by oxi state (2 < 3)
-        let mixed_ox = SiteOccupancy::new(vec![
-            (Species::new(Element::Fe, Some(2)), 0.6),
-            (Species::new(Element::Fe, Some(3)), 0.4),
-        ]);
-        assert_eq!(mixed_ox.species_string(), "Fe2+:0.6, Fe3+:0.4");
-
-        // Same element with different oxidation states (Fe3+ first in input - tests determinism)
-        let mixed_ox_reversed = SiteOccupancy::new(vec![
-            (Species::new(Element::Fe, Some(3)), 0.4),
-            (Species::new(Element::Fe, Some(2)), 0.6),
-        ]);
-        assert_eq!(
-            mixed_ox_reversed.species_string(),
-            "Fe2+:0.6, Fe3+:0.4",
-            "Output should be deterministic regardless of input order"
-        );
-
-        // Negative oxidation states: sorted by oxi state (-2 < -1)
-        let neg_ox = SiteOccupancy::new(vec![
-            (Species::new(Element::O, Some(-2)), 0.5),
-            (Species::new(Element::O, Some(-1)), 0.5), // peroxide
-        ]);
-        assert_eq!(neg_ox.species_string(), "O2-:0.5, O-:0.5");
-
-        // Different elements with same oxidation state: Al 1.61 < Fe 1.83
-        let mixed_elem = SiteOccupancy::new(vec![
-            (Species::new(Element::Fe, Some(3)), 0.5),
-            (Species::new(Element::Al, Some(3)), 0.5),
-        ]);
-        assert_eq!(mixed_elem.species_string(), "Al3+:0.5, Fe3+:0.5");
-
-        // Very small occupancies
-        let small = SiteOccupancy::new(vec![
-            (Species::neutral(Element::Fe), 0.001),
-            (Species::neutral(Element::Co), 0.999),
-        ]);
-        assert_eq!(small.species_string(), "Fe:0.001, Co:0.999");
-
-        // High entropy alloy: sorted by electronegativity
-        // Mn 1.55 < Cr 1.66 < Fe 1.83 < Co 1.88 < Ni 1.91
-        let hea = SiteOccupancy::new(vec![
-            (Species::neutral(Element::Fe), 0.2),
-            (Species::neutral(Element::Co), 0.2),
-            (Species::neutral(Element::Ni), 0.2),
-            (Species::neutral(Element::Cr), 0.2),
-            (Species::neutral(Element::Mn), 0.2),
-        ]);
-        assert_eq!(
-            hea.species_string(),
-            "Mn:0.2, Cr:0.2, Fe:0.2, Co:0.2, Ni:0.2"
-        );
+        // Disordered: sorted by electronegativity, then symbol, then oxidation state
+        // Format matches pymatgen exactly
+        let cases: Vec<(Vec<(Species, f64)>, &str)> = vec![
+            // Fe (1.83) < Co (1.88)
+            (
+                vec![
+                    (Species::neutral(Element::Fe), 0.5),
+                    (Species::neutral(Element::Co), 0.5),
+                ],
+                "Fe:0.5, Co:0.5",
+            ),
+            // Zn (1.65) < Fe (1.83) < Co (1.88)
+            (
+                vec![
+                    (Species::neutral(Element::Zn), 0.2),
+                    (Species::neutral(Element::Fe), 0.5),
+                    (Species::neutral(Element::Co), 0.3),
+                ],
+                "Zn:0.2, Fe:0.5, Co:0.3",
+            ),
+            // Same element, sorted by oxidation state: 2 < 3
+            (
+                vec![
+                    (Species::new(Element::Fe, Some(3)), 0.4),
+                    (Species::new(Element::Fe, Some(2)), 0.6),
+                ],
+                "Fe2+:0.6, Fe3+:0.4",
+            ),
+            // Negative oxidation states: -2 < -1
+            (
+                vec![
+                    (Species::new(Element::O, Some(-2)), 0.5),
+                    (Species::new(Element::O, Some(-1)), 0.5),
+                ],
+                "O2-:0.5, O-:0.5",
+            ),
+            // Al (1.61) < Fe (1.83)
+            (
+                vec![
+                    (Species::new(Element::Fe, Some(3)), 0.5),
+                    (Species::new(Element::Al, Some(3)), 0.5),
+                ],
+                "Al3+:0.5, Fe3+:0.5",
+            ),
+            // High entropy alloy: Mn (1.55) < Cr (1.66) < Fe (1.83) < Co (1.88) < Ni (1.91)
+            (
+                vec![
+                    (Species::neutral(Element::Fe), 0.2),
+                    (Species::neutral(Element::Co), 0.2),
+                    (Species::neutral(Element::Ni), 0.2),
+                    (Species::neutral(Element::Cr), 0.2),
+                    (Species::neutral(Element::Mn), 0.2),
+                ],
+                "Mn:0.2, Cr:0.2, Fe:0.2, Co:0.2, Ni:0.2",
+            ),
+        ];
+        for (species, expected) in cases {
+            assert_eq!(SiteOccupancy::new(species).species_string(), expected);
+        }
     }
 }

@@ -824,6 +824,11 @@ fn distance_from_point(structure: &str, idx: usize, point: [f64; 3]) -> PyResult
 #[pyfunction]
 #[pyo3(signature = (structure, i, j, tolerance = 1e-8))]
 fn is_periodic_image(structure: &str, i: usize, j: usize, tolerance: f64) -> PyResult<bool> {
+    if tolerance < 0.0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "tolerance must be non-negative",
+        ));
+    }
     let parsed = parse_struct(structure)?;
     check_site_bounds(parsed.num_sites(), &[i, j])?;
     Ok(parsed.is_periodic_image(i, j, tolerance))

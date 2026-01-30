@@ -488,33 +488,24 @@ mod tests {
     #[test]
     fn test_wrap_frac_coords_pbc() {
         let v = Vector3::new(-0.5, 1.5, 2.3);
-
-        // All periodic: wraps all axes
-        let all_pbc = wrap_frac_coords_pbc(&v, [true, true, true]);
-        assert!((all_pbc[0] - 0.5).abs() < 1e-10);
-        assert!((all_pbc[1] - 0.5).abs() < 1e-10);
-        assert!((all_pbc[2] - 0.3).abs() < 1e-10);
-
-        // z non-periodic: x,y wrap, z unchanged
-        let slab_pbc = wrap_frac_coords_pbc(&v, [true, true, false]);
-        assert!((slab_pbc[0] - 0.5).abs() < 1e-10);
-        assert!((slab_pbc[1] - 0.5).abs() < 1e-10);
-        assert!(
-            (slab_pbc[2] - 2.3).abs() < 1e-10,
-            "Non-periodic z should NOT wrap"
-        );
-
-        // Only x periodic
-        let x_only = wrap_frac_coords_pbc(&v, [true, false, false]);
-        assert!((x_only[0] - 0.5).abs() < 1e-10);
-        assert!((x_only[1] - 1.5).abs() < 1e-10);
-        assert!((x_only[2] - 2.3).abs() < 1e-10);
-
-        // None periodic: all unchanged
-        let no_pbc = wrap_frac_coords_pbc(&v, [false, false, false]);
-        assert!((no_pbc[0] - (-0.5)).abs() < 1e-10);
-        assert!((no_pbc[1] - 1.5).abs() < 1e-10);
-        assert!((no_pbc[2] - 2.3).abs() < 1e-10);
+        // (pbc flags, expected x, expected y, expected z)
+        let cases = [
+            ([true, true, true], [0.5, 0.5, 0.3]), // all periodic: all wrap
+            ([true, true, false], [0.5, 0.5, 2.3]), // slab: z unchanged
+            ([true, false, false], [0.5, 1.5, 2.3]), // wire: only x wraps
+            ([false, false, false], [-0.5, 1.5, 2.3]), // none: all unchanged
+        ];
+        for (pbc, expected) in cases {
+            let result = wrap_frac_coords_pbc(&v, pbc);
+            for axis in 0..3 {
+                assert!(
+                    (result[axis] - expected[axis]).abs() < 1e-10,
+                    "pbc={pbc:?} axis={axis}: expected {}, got {}",
+                    expected[axis],
+                    result[axis]
+                );
+            }
+        }
     }
 
     #[test]

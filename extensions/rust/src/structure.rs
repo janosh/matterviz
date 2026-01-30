@@ -2514,6 +2514,9 @@ mod tests {
             vec![Vector3::new(0.5, 0.5, 0.5)],
         );
         assert!(s.is_periodic_image(0, 0, 1e-8));
+
+        // Negative tolerance always fails (validated at Python layer, but document Rust behavior)
+        assert!(!s.is_periodic_image(0, 0, -1.0));
     }
 
     #[test]
