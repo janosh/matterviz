@@ -2044,14 +2044,14 @@ fn order_disordered(
 // Slab Generation Functions
 // ============================================================================
 
-/// Emit a deprecation warning for unimplemented primitive parameter.
+/// Emit a warning that primitive parameter is not yet implemented.
 fn warn_primitive_unimplemented(py: Python<'_>, primitive: bool) -> PyResult<()> {
-    if !primitive {
+    if primitive {
         let warnings = py.import("warnings")?;
         warnings.call_method1(
             "warn",
             (
-                "primitive=False has no effect; primitive cell reduction is not yet implemented",
+                "primitive=True has no effect; primitive cell reduction is not yet implemented",
                 py.import("builtins")?.getattr("FutureWarning")?,
             ),
         )?;
@@ -2090,7 +2090,7 @@ fn warn_primitive_unimplemented(py: Python<'_>, primitive: bool) -> PyResult<()>
     min_vacuum_size,
     center_slab = true,
     in_unit_planes = false,
-    primitive = true
+    primitive = false
 ))]
 fn make_slab(
     py: Python<'_>,
@@ -2154,7 +2154,7 @@ fn make_slab(
     min_vacuum_size,
     center_slab = true,
     in_unit_planes = false,
-    primitive = true,
+    primitive = false,
     symprec = 0.01
 ))]
 fn generate_slabs(

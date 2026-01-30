@@ -2403,7 +2403,7 @@ impl Default for SlabConfig {
             min_vacuum_size: 10.0,
             center_slab: true,
             in_unit_planes: false,
-            primitive: true,
+            primitive: false,
             symprec: 0.01,
             termination_index: None,
         }
@@ -2663,16 +2663,9 @@ impl Structure {
         };
 
         // Use layer positions from supercell for shifting, but limit to unique terminations
-        // Scale symprec by z-range to maintain consistent absolute tolerance in original cell units
-        let z_range = slab_supercell
-            .frac_coords
-            .iter()
-            .map(|fc| fc.z)
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), z| {
-                (min.min(z), max.max(z))
-            });
-        let z_span = (z_range.1 - z_range.0).max(1.0);
-        let scaled_symprec = config.symprec / z_span;
+        // Scale symprec by n_layers: fractional layer spacing is compressed by factor of n_layers
+        // in the supercell, so tolerance must shrink proportionally to avoid merging distinct layers
+        let scaled_symprec = config.symprec / n_layers as f64;
         let layer_positions = identify_layer_positions(&slab_supercell.frac_coords, scaled_symprec);
         let termination_count = unique_terminations.min(layer_positions.len()).max(1);
 
