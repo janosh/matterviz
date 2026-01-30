@@ -3,8 +3,17 @@ name: Tests
 on:
   pull_request:
     branches: [main]
+    paths: &paths
+      - src/**
+      - tests/**
+      - '*.config.*' # vite, svelte, playwright, eslint
+      - tsconfig*.json
+      - deno.jsonc
+      - package.json
+      - .github/workflows/test.yml
   push:
     branches: [main]
+    paths: *paths
   workflow_dispatch:
   release:
     types: [published]
