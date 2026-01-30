@@ -4,7 +4,9 @@
 //! e.g., Fe2+ or O2-.
 
 use crate::element::Element;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -196,6 +198,26 @@ impl PartialEq for Species {
 
 impl Eq for Species {}
 
+impl PartialOrd for Species {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Species {
+    /// Sort order matches pymatgen: electronegativity, then symbol, then oxidation state.
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Electronegativity (None/NaN treated as infinity), then symbol, then oxidation state
+        let en_self = self.electronegativity().unwrap_or(f64::INFINITY);
+        let en_other = other.electronegativity().unwrap_or(f64::INFINITY);
+        en_self
+            .partial_cmp(&en_other)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| self.element.symbol().cmp(other.element.symbol()))
+            .then_with(|| self.oxidation_state.cmp(&other.oxidation_state))
+    }
+}
+
 impl Hash for Species {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.element.hash(state);
@@ -305,6 +327,25 @@ impl SiteOccupancy {
     /// Get the total occupancy.
     pub fn total_occupancy(&self) -> f64 {
         self.species.iter().map(|(_, occ)| occ).sum()
+    }
+
+    /// Get human-readable species string.
+    ///
+    /// For ordered sites: returns the species string (e.g., "Fe" or "Fe2+")
+    /// For disordered sites: returns sorted species with occupancies
+    /// (e.g., "Fe:0.5, Co:0.5", sorted by electronegativity then symbol then oxidation state)
+    ///
+    /// This matches pymatgen's `species_string` property format and sorting order.
+    pub fn species_string(&self) -> String {
+        if self.is_ordered() {
+            self.dominant_species().to_string()
+        } else {
+            self.species
+                .iter()
+                .sorted_by(|(sp_a, _), (sp_b, _)| sp_a.cmp(sp_b))
+                .map(|(sp, occ)| format!("{sp}:{occ}"))
+                .join(", ")
+        }
     }
 }
 
@@ -506,6 +547,47 @@ mod tests {
     }
 
     #[test]
+    fn test_species_ordering() {
+        // Species Ord matches pymatgen: electronegativity, then symbol, then oxidation state
+
+        // Different electronegativity: Fe (1.83) < Co (1.88) < O (3.44)
+        let fe = Species::neutral(Element::Fe);
+        let co = Species::neutral(Element::Co);
+        let o = Species::neutral(Element::O);
+        assert!(fe < co);
+        assert!(co < o);
+
+        // Same element, different oxidation: sorted numerically
+        let fe2 = Species::new(Element::Fe, Some(2));
+        let fe3 = Species::new(Element::Fe, Some(3));
+        assert!(fe2 < fe3);
+
+        // Negative oxidation states: -2 < -1
+        let o2_minus = Species::new(Element::O, Some(-2));
+        let o1_minus = Species::new(Element::O, Some(-1));
+        assert!(o2_minus < o1_minus);
+
+        // Species sorting is stable and deterministic
+        let mut species = [
+            Species::neutral(Element::Co),
+            Species::neutral(Element::Fe),
+            Species::new(Element::Fe, Some(3)),
+            Species::new(Element::Fe, Some(2)),
+        ];
+        species.sort();
+        assert_eq!(
+            species.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            vec!["Fe", "Fe2+", "Fe3+", "Co"]
+        );
+
+        // Noble gases (no electronegativity) sort last, then by symbol
+        let he = Species::neutral(Element::He);
+        let ne = Species::neutral(Element::Ne);
+        assert!(o < he); // O has EN, He doesn't
+        assert!(he < ne); // Both no EN, sorted alphabetically by symbol
+    }
+
+    #[test]
     fn test_species_radii_and_properties() {
         let fe = Species::neutral(Element::Fe);
         let fe2 = Species::new(Element::Fe, Some(2));
@@ -633,5 +715,83 @@ mod tests {
             "Total occupancy should be 0.7, got {}",
             so.total_occupancy()
         );
+    }
+
+    #[test]
+    fn test_species_string() {
+        // Ordered sites (single species)
+        for (sp, expected) in [
+            (Species::neutral(Element::Fe), "Fe"),
+            (Species::new(Element::Fe, Some(2)), "Fe2+"),
+            (Species::new(Element::O, Some(-2)), "O2-"),
+            (Species::neutral(Element::Dummy), "X"),
+        ] {
+            assert_eq!(SiteOccupancy::ordered(sp).species_string(), expected);
+        }
+
+        // Partial occupancy is still "ordered"
+        let partial = SiteOccupancy::new(vec![(Species::neutral(Element::Fe), 0.8)]);
+        assert!(partial.is_ordered());
+        assert_eq!(partial.species_string(), "Fe");
+
+        // Disordered: sorted by electronegativity, then symbol, then oxidation state
+        // Format matches pymatgen exactly
+        let cases: Vec<(Vec<(Species, f64)>, &str)> = vec![
+            // Fe (1.83) < Co (1.88)
+            (
+                vec![
+                    (Species::neutral(Element::Fe), 0.5),
+                    (Species::neutral(Element::Co), 0.5),
+                ],
+                "Fe:0.5, Co:0.5",
+            ),
+            // Zn (1.65) < Fe (1.83) < Co (1.88)
+            (
+                vec![
+                    (Species::neutral(Element::Zn), 0.2),
+                    (Species::neutral(Element::Fe), 0.5),
+                    (Species::neutral(Element::Co), 0.3),
+                ],
+                "Zn:0.2, Fe:0.5, Co:0.3",
+            ),
+            // Same element, sorted by oxidation state: 2 < 3
+            (
+                vec![
+                    (Species::new(Element::Fe, Some(3)), 0.4),
+                    (Species::new(Element::Fe, Some(2)), 0.6),
+                ],
+                "Fe2+:0.6, Fe3+:0.4",
+            ),
+            // Negative oxidation states: -2 < -1
+            (
+                vec![
+                    (Species::new(Element::O, Some(-2)), 0.5),
+                    (Species::new(Element::O, Some(-1)), 0.5),
+                ],
+                "O2-:0.5, O-:0.5",
+            ),
+            // Al (1.61) < Fe (1.83)
+            (
+                vec![
+                    (Species::new(Element::Fe, Some(3)), 0.5),
+                    (Species::new(Element::Al, Some(3)), 0.5),
+                ],
+                "Al3+:0.5, Fe3+:0.5",
+            ),
+            // High entropy alloy: Mn (1.55) < Cr (1.66) < Fe (1.83) < Co (1.88) < Ni (1.91)
+            (
+                vec![
+                    (Species::neutral(Element::Fe), 0.2),
+                    (Species::neutral(Element::Co), 0.2),
+                    (Species::neutral(Element::Ni), 0.2),
+                    (Species::neutral(Element::Cr), 0.2),
+                    (Species::neutral(Element::Mn), 0.2),
+                ],
+                "Mn:0.2, Cr:0.2, Fe:0.2, Co:0.2, Ni:0.2",
+            ),
+        ];
+        for (species, expected) in cases {
+            assert_eq!(SiteOccupancy::new(species).species_string(), expected);
+        }
     }
 }

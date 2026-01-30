@@ -42,6 +42,18 @@ fn to_str_refs(strings: &[String]) -> Vec<&str> {
     strings.iter().map(|s| s.as_str()).collect()
 }
 
+/// Check if site indices are within bounds, returning PyIndexError if not.
+fn check_site_bounds(num_sites: usize, indices: &[usize]) -> PyResult<()> {
+    for &idx in indices {
+        if idx >= num_sites {
+            return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+                "Site index {idx} out of bounds (num_sites={num_sites})"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Python wrapper for StructureMatcher.
 ///
 /// Provides structure matching functionality from Python, accepting
@@ -744,6 +756,127 @@ fn distance_matrix(structure: &str) -> PyResult<Vec<Vec<f64>>> {
     Ok(parse_struct(structure)?.distance_matrix())
 }
 
+/// Get distance and periodic image between two sites.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     i (int): First site index
+///     j (int): Second site index
+///
+/// Returns:
+///     tuple[float, list[int]]: (distance, [da, db, dc]) where the image tells
+///     which periodic image of site j is closest to site i.
+#[pyfunction]
+fn get_distance_and_image(structure: &str, i: usize, j: usize) -> PyResult<(f64, [i32; 3])> {
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[i, j])?;
+    Ok(parsed.get_distance_and_image(i, j))
+}
+
+/// Get distance to a specific periodic image of site j.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     i (int): First site index
+///     j (int): Second site index
+///     jimage (list[int]): Lattice translation [da, db, dc]
+///
+/// Returns:
+///     float: Distance to the specified periodic image
+#[pyfunction]
+fn get_distance_with_image(structure: &str, i: usize, j: usize, jimage: [i32; 3]) -> PyResult<f64> {
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[i, j])?;
+    Ok(parsed.get_distance_with_image(i, j, jimage))
+}
+
+/// Get Cartesian distance from a site to an arbitrary point.
+///
+/// This is a simple Euclidean distance, not using periodic boundary conditions.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     idx (int): Site index
+///     point (list[float]): Cartesian coordinates [x, y, z]
+///
+/// Returns:
+///     float: Distance in Angstroms
+#[pyfunction]
+fn distance_from_point(structure: &str, idx: usize, point: [f64; 3]) -> PyResult<f64> {
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[idx])?;
+    Ok(parsed.distance_from_point(idx, point.into()))
+}
+
+/// Check if two sites are periodic images of each other.
+///
+/// Sites are periodic images if they have the same species and their fractional
+/// coordinates differ by integers (within tolerance).
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     i (int): First site index
+///     j (int): Second site index
+///     tolerance (float): Tolerance for coordinate comparison (default: 1e-8)
+///
+/// Returns:
+///     bool: True if sites are periodic images
+#[pyfunction]
+#[pyo3(signature = (structure, i, j, tolerance = 1e-8))]
+fn is_periodic_image(structure: &str, i: usize, j: usize, tolerance: f64) -> PyResult<bool> {
+    if tolerance < 0.0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "tolerance must be non-negative",
+        ));
+    }
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[i, j])?;
+    Ok(parsed.is_periodic_image(i, j, tolerance))
+}
+
+/// Get label for a specific site.
+///
+/// Returns the explicit label if set, otherwise the species string.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     idx (int): Site index
+///
+/// Returns:
+///     str: Site label
+#[pyfunction]
+fn site_label(structure: &str, idx: usize) -> PyResult<String> {
+    let parsed = parse_struct(structure)?;
+    check_site_bounds(parsed.num_sites(), &[idx])?;
+    Ok(parsed.site_label(idx))
+}
+
+/// Get labels for all sites.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///
+/// Returns:
+///     list[str]: Site labels
+#[pyfunction]
+fn site_labels(structure: &str) -> PyResult<Vec<String>> {
+    Ok(parse_struct(structure)?.site_labels())
+}
+
+/// Get species strings for all sites.
+///
+/// For ordered sites: "Fe" or "Fe2+". For disordered: "Co:0.500, Fe:0.500".
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///
+/// Returns:
+///     list[str]: Species strings
+#[pyfunction]
+fn species_strings(structure: &str) -> PyResult<Vec<String>> {
+    Ok(parse_struct(structure)?.species_strings())
+}
+
 // ============================================================================
 // Structure Interpolation Functions
 // ============================================================================
@@ -1371,10 +1504,18 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Reduction functions
     m.add_function(wrap_pyfunction!(get_reduced_structure, m)?)?;
     m.add_function(wrap_pyfunction!(get_reduced_structure_with_params, m)?)?;
-    // Neighbor finding functions
+    // Neighbor finding and distance functions
     m.add_function(wrap_pyfunction!(get_neighbor_list, m)?)?;
     m.add_function(wrap_pyfunction!(get_distance, m)?)?;
+    m.add_function(wrap_pyfunction!(get_distance_and_image, m)?)?;
+    m.add_function(wrap_pyfunction!(get_distance_with_image, m)?)?;
+    m.add_function(wrap_pyfunction!(distance_from_point, m)?)?;
     m.add_function(wrap_pyfunction!(distance_matrix, m)?)?;
+    m.add_function(wrap_pyfunction!(is_periodic_image, m)?)?;
+    // Site label and species functions
+    m.add_function(wrap_pyfunction!(site_label, m)?)?;
+    m.add_function(wrap_pyfunction!(site_labels, m)?)?;
+    m.add_function(wrap_pyfunction!(species_strings, m)?)?;
     // Interpolation functions
     m.add_function(wrap_pyfunction!(interpolate, m)?)?;
     // Matching convenience functions
