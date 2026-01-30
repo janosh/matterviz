@@ -3,109 +3,24 @@
 //! This module provides JavaScript-accessible wrappers for Element, Species,
 //! Structure, and StructureMatcher types via wasm-bindgen.
 //!
-//! All structure functions accept and return JS values that can be serialized
-//! with serde. Results are returned as `{ ok: T }` or `{ error: string }`.
+//! All structure functions use strongly-typed `JsCrystal` inputs/outputs.
+//! Results are returned as `WasmResult<T>` = `{ ok: T }` | `{ error: string }`.
 
 use std::path::Path;
 
 use nalgebra::Vector3;
-use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use crate::cif::parse_cif_str;
 use crate::element::Element;
-use crate::io::{parse_poscar_str, parse_structure_json, structure_to_pymatgen_json};
+use crate::io::parse_poscar_str;
 use crate::matcher::{ComparatorType, StructureMatcher};
 use crate::species::Species;
-use crate::structure::{ReductionAlgo, Structure};
-
-// =============================================================================
-// Result Type for WASM (matches TypeScript WasmResult<T>)
-// =============================================================================
-
-/// Result wrapper that serializes to { ok: T } | { error: string }
-#[derive(Serialize)]
-#[serde(untagged)]
-enum WasmResult<T: Serialize> {
-    Ok { ok: T },
-    Err { error: String },
-}
-
-impl<T: Serialize> WasmResult<T> {
-    fn ok(value: T) -> Self {
-        WasmResult::Ok { ok: value }
-    }
-
-    fn err(msg: impl Into<String>) -> Self {
-        WasmResult::Err { error: msg.into() }
-    }
-}
-
-/// Convert a Result to WasmResult
-fn to_wasm_result<T: Serialize, E: std::fmt::Display>(result: Result<T, E>) -> WasmResult<T> {
-    match result {
-        Ok(value) => WasmResult::ok(value),
-        Err(e) => WasmResult::err(e.to_string()),
-    }
-}
-
-/// Serialize WasmResult to JsValue
-fn serialize_result<T: Serialize>(result: WasmResult<T>) -> JsValue {
-    serde_wasm_bindgen::to_value(&result).unwrap_or_else(|e| {
-        let err: WasmResult<()> = WasmResult::err(format!("Serialization error: {e}"));
-        serde_wasm_bindgen::to_value(&err).unwrap()
-    })
-}
-
-// =============================================================================
-// Structure Parsing Helpers
-// =============================================================================
-
-/// Parse a JS value as a Structure (from pymatgen-style JSON object)
-fn parse_structure_from_js(value: &JsValue) -> Result<Structure, String> {
-    let json_str = js_sys::JSON::stringify(value)
-        .map_err(|_| "Failed to stringify JS value")?
-        .as_string()
-        .ok_or("Failed to convert to string")?;
-    parse_structure_json(&json_str).map_err(|e| e.to_string())
-}
-
-/// Convert Structure to JS value (pymatgen-style JSON object)
-fn structure_to_js(structure: &Structure) -> Result<JsValue, String> {
-    let json_str = structure_to_pymatgen_json(structure);
-    let parsed: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| e.to_string())?;
-    serde_wasm_bindgen::to_value(&parsed).map_err(|e| e.to_string())
-}
-
-/// Parse a JS array of structures
-fn parse_js_array(arr: &JsValue) -> Result<Vec<Structure>, String> {
-    js_sys::Array::from(arr)
-        .iter()
-        .map(|item| parse_structure_from_js(&item))
-        .collect()
-}
-
-// =============================================================================
-// Neighbor List Result Type
-// =============================================================================
-
-#[derive(Serialize)]
-struct NeighborListResult {
-    center_indices: Vec<usize>,
-    neighbor_indices: Vec<usize>,
-    image_offsets: Vec<[i32; 3]>,
-    distances: Vec<f64>,
-}
-
-// =============================================================================
-// RMS Distance Result Type
-// =============================================================================
-
-#[derive(Serialize)]
-struct RmsDistResult {
-    rms: f64,
-    max_dist: f64,
-}
+use crate::wasm_types::{
+    JsCrystal, JsIntMatrix3x3, JsLocalEnvironment, JsMatrix3x3, JsMillerIndex, JsNeighborInfo,
+    JsNeighborList, JsReductionAlgo, JsRmsDistResult, JsStructureMetadata, JsSymmetryDataset,
+    JsSymmetryOperation, JsVector3, WasmResult,
+};
 
 // =============================================================================
 // Element WASM bindings
@@ -126,7 +41,7 @@ impl JsElement {
     #[wasm_bindgen(constructor)]
     pub fn new(symbol: &str) -> Result<JsElement, JsError> {
         Element::from_symbol(symbol)
-            .map(|e| JsElement { inner: e })
+            .map(|elem| JsElement { inner: elem })
             .ok_or_else(|| JsError::new(&format!("Unknown element symbol: {symbol}")))
     }
 
@@ -137,10 +52,14 @@ impl JsElement {
     /// - 120: D (Deuterium)
     /// - 121: T (Tritium)
     #[wasm_bindgen(js_name = "fromAtomicNumber")]
-    pub fn from_atomic_number(z: u8) -> Result<JsElement, JsError> {
-        Element::from_atomic_number(z)
-            .map(|e| JsElement { inner: e })
-            .ok_or_else(|| JsError::new(&format!("Invalid atomic number: {z} (valid: 1-121)")))
+    pub fn from_atomic_number(atomic_num: u8) -> Result<JsElement, JsError> {
+        Element::from_atomic_number(atomic_num)
+            .map(|elem| JsElement { inner: elem })
+            .ok_or_else(|| {
+                JsError::new(&format!(
+                    "Invalid atomic number: {atomic_num} (valid: 1-121)"
+                ))
+            })
     }
 
     /// Get the element symbol.
@@ -350,7 +269,7 @@ impl JsSpecies {
     #[wasm_bindgen(constructor)]
     pub fn new(species_str: &str) -> Result<JsSpecies, JsError> {
         Species::from_string(species_str)
-            .map(|s| JsSpecies { inner: s })
+            .map(|species| JsSpecies { inner: species })
             .ok_or_else(|| JsError::new(&format!("Invalid species string: {species_str}")))
     }
 
@@ -486,61 +405,89 @@ impl WasmStructureMatcher {
 
     /// Check if two structures match.
     #[wasm_bindgen]
-    pub fn fit(&self, struct1: &JsValue, struct2: &JsValue) -> JsValue {
+    pub fn fit(&self, struct1: JsCrystal, struct2: JsCrystal) -> WasmResult<bool> {
         let result: Result<bool, String> = (|| {
-            let s1 = parse_structure_from_js(struct1)?;
-            let s2 = parse_structure_from_js(struct2)?;
+            let s1 = struct1.to_structure()?;
+            let s2 = struct2.to_structure()?;
             Ok(self.inner.fit(&s1, &s2))
         })();
-        serialize_result(to_wasm_result(result))
+        result.into()
     }
 
     /// Check if two structures match under any species permutation.
     #[wasm_bindgen]
-    pub fn fit_anonymous(&self, struct1: &JsValue, struct2: &JsValue) -> JsValue {
+    pub fn fit_anonymous(&self, struct1: JsCrystal, struct2: JsCrystal) -> WasmResult<bool> {
         let result: Result<bool, String> = (|| {
-            let s1 = parse_structure_from_js(struct1)?;
-            let s2 = parse_structure_from_js(struct2)?;
+            let s1 = struct1.to_structure()?;
+            let s2 = struct2.to_structure()?;
             Ok(self.inner.fit_anonymous(&s1, &s2))
         })();
-        serialize_result(to_wasm_result(result))
+        result.into()
     }
 
     /// Get RMS distance between two structures.
     #[wasm_bindgen]
-    pub fn get_rms_dist(&self, struct1: &JsValue, struct2: &JsValue) -> JsValue {
-        let result: Result<Option<RmsDistResult>, String> = (|| {
-            let s1 = parse_structure_from_js(struct1)?;
-            let s2 = parse_structure_from_js(struct2)?;
+    pub fn get_rms_dist(
+        &self,
+        struct1: JsCrystal,
+        struct2: JsCrystal,
+    ) -> WasmResult<Option<JsRmsDistResult>> {
+        let result: Result<Option<JsRmsDistResult>, String> = (|| {
+            let s1 = struct1.to_structure()?;
+            let s2 = struct2.to_structure()?;
             Ok(self
                 .inner
                 .get_rms_dist(&s1, &s2)
-                .map(|(rms, max_dist)| RmsDistResult { rms, max_dist }))
+                .map(|(rms, max_dist)| JsRmsDistResult { rms, max_dist }))
         })();
-        serialize_result(to_wasm_result(result))
+        result.into()
     }
 
     /// Deduplicate a list of structures.
     /// Returns array where result[i] is the index of the first matching structure.
     #[wasm_bindgen]
-    pub fn deduplicate(&self, structures: &JsValue) -> JsValue {
-        let result = parse_js_array(structures)
-            .and_then(|parsed| self.inner.deduplicate(&parsed).map_err(|e| e.to_string()));
-        serialize_result(to_wasm_result(result))
+    pub fn deduplicate(&self, structures: Vec<JsCrystal>) -> WasmResult<Vec<u32>> {
+        let result: Result<Vec<u32>, String> = (|| {
+            let structs: Vec<_> = structures
+                .into_iter()
+                .map(|js| js.to_structure())
+                .collect::<Result<Vec<_>, _>>()?;
+            let indices = self
+                .inner
+                .deduplicate(&structs)
+                .map_err(|err| err.to_string())?;
+            Ok(indices.into_iter().map(|idx| idx as u32).collect())
+        })();
+        result.into()
     }
 
     /// Find matches for new structures against existing structures.
     /// Returns array where result[i] is the index of matching existing structure or null.
     #[wasm_bindgen]
-    pub fn find_matches(&self, new_structures: &JsValue, existing_structures: &JsValue) -> JsValue {
-        let result = parse_js_array(new_structures).and_then(|new_parsed| {
-            parse_js_array(existing_structures).and_then(|existing_parsed| {
-                self.inner
-                    .find_matches(&new_parsed, &existing_parsed)
-                    .map_err(|e| e.to_string())
-            })
-        });
-        serialize_result(to_wasm_result(result))
+    pub fn find_matches(
+        &self,
+        new_structures: Vec<JsCrystal>,
+        existing_structures: Vec<JsCrystal>,
+    ) -> WasmResult<Vec<Option<u32>>> {
+        let result: Result<Vec<Option<u32>>, String> = (|| {
+            let new_structs: Vec<_> = new_structures
+                .into_iter()
+                .map(|js| js.to_structure())
+                .collect::<Result<Vec<_>, _>>()?;
+            let existing_structs: Vec<_> = existing_structures
+                .into_iter()
+                .map(|js| js.to_structure())
+                .collect::<Result<Vec<_>, _>>()?;
+            let matches = self
+                .inner
+                .find_matches(&new_structs, &existing_structs)
+                .map_err(|err| err.to_string())?;
+            Ok(matches
+                .into_iter()
+                .map(|opt| opt.map(|idx| idx as u32))
+                .collect())
+        })();
+        result.into()
     }
 }
 
@@ -554,44 +501,22 @@ impl Default for WasmStructureMatcher {
 // Structure Parsing Functions
 // =============================================================================
 
-/// Helper to wrap Result<JsValue, String> as { ok: value } or { error: string }
-fn wrap_js_result(result: Result<JsValue, String>) -> JsValue {
-    let obj = js_sys::Object::new();
-    match result {
-        Ok(value) => {
-            js_sys::Reflect::set(&obj, &"ok".into(), &value).unwrap();
-        }
-        Err(e) => {
-            js_sys::Reflect::set(&obj, &"error".into(), &e.into()).unwrap();
-        }
-    }
-    obj.into()
-}
-
-/// Parse a structure from a pymatgen-style JSON object.
-#[wasm_bindgen]
-pub fn parse_structure(input: &JsValue) -> JsValue {
-    wrap_js_result(parse_structure_from_js(input).and_then(|s| structure_to_js(&s)))
-}
-
 /// Parse a structure from CIF format string.
 #[wasm_bindgen]
-pub fn parse_cif(content: &str) -> JsValue {
-    wrap_js_result(
-        parse_cif_str(content, Path::new("inline.cif"))
-            .map_err(|e| e.to_string())
-            .and_then(|s| structure_to_js(&s)),
-    )
+pub fn parse_cif(content: &str) -> WasmResult<JsCrystal> {
+    let result = parse_cif_str(content, Path::new("inline.cif"))
+        .map_err(|err| err.to_string())
+        .map(|structure| JsCrystal::from_structure(&structure));
+    result.into()
 }
 
 /// Parse a structure from POSCAR format string.
 #[wasm_bindgen]
-pub fn parse_poscar(content: &str) -> JsValue {
-    wrap_js_result(
-        parse_poscar_str(content)
-            .map_err(|e| e.to_string())
-            .and_then(|s| structure_to_js(&s)),
-    )
+pub fn parse_poscar(content: &str) -> WasmResult<JsCrystal> {
+    let result = parse_poscar_str(content)
+        .map_err(|err| err.to_string())
+        .map(|structure| JsCrystal::from_structure(&structure));
+    result.into()
 }
 
 // =============================================================================
@@ -600,29 +525,36 @@ pub fn parse_poscar(content: &str) -> JsValue {
 
 /// Create a diagonal supercell (nx × ny × nz).
 #[wasm_bindgen]
-pub fn make_supercell_diag(structure: &JsValue, nx: i32, ny: i32, nz: i32) -> JsValue {
-    wrap_js_result((|| {
+pub fn make_supercell_diag(
+    structure: JsCrystal,
+    nx: i32,
+    ny: i32,
+    nz: i32,
+) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
         if nx <= 0 || ny <= 0 || nz <= 0 {
             return Err(format!(
                 "Supercell factors must be positive, got [{nx}, {ny}, {nz}]"
             ));
         }
-        let s = parse_structure_from_js(structure)?;
-        let supercell = s.make_supercell_diag([nx, ny, nz]);
-        structure_to_js(&supercell)
-    })())
+        let struc = structure.to_structure()?;
+        let supercell = struc.make_supercell_diag([nx, ny, nz]);
+        Ok(JsCrystal::from_structure(&supercell))
+    })();
+    result.into()
 }
 
 /// Create a supercell using a 3x3 transformation matrix.
 #[wasm_bindgen]
-pub fn make_supercell(structure: &JsValue, matrix: &JsValue) -> JsValue {
-    wrap_js_result((|| {
-        let s = parse_structure_from_js(structure)?;
-        let mat: [[i32; 3]; 3] =
-            serde_wasm_bindgen::from_value(matrix.clone()).map_err(|e| e.to_string())?;
-        let supercell = s.make_supercell(mat).map_err(|e| e.to_string())?;
-        structure_to_js(&supercell)
-    })())
+pub fn make_supercell(structure: JsCrystal, matrix: JsIntMatrix3x3) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let supercell = struc
+            .make_supercell(matrix.0)
+            .map_err(|err| err.to_string())?;
+        Ok(JsCrystal::from_structure(&supercell))
+    })();
+    result.into()
 }
 
 // =============================================================================
@@ -631,47 +563,155 @@ pub fn make_supercell(structure: &JsValue, matrix: &JsValue) -> JsValue {
 
 /// Get structure with reduced lattice (Niggli or LLL algorithm).
 #[wasm_bindgen]
-pub fn get_reduced_structure(structure: &JsValue, algo: &str) -> JsValue {
-    wrap_js_result((|| {
-        let s = parse_structure_from_js(structure)?;
-        let algo = match algo.to_lowercase().as_str() {
-            "niggli" => ReductionAlgo::Niggli,
-            "lll" => ReductionAlgo::LLL,
-            _ => return Err(format!("Invalid algorithm: {algo}. Use 'niggli' or 'lll'")),
-        };
-        let reduced = s.get_reduced_structure(algo).map_err(|e| e.to_string())?;
-        structure_to_js(&reduced)
-    })())
+pub fn get_reduced_structure(structure: JsCrystal, algo: JsReductionAlgo) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let reduced = struc
+            .get_reduced_structure(algo.to_internal())
+            .map_err(|err| err.to_string())?;
+        Ok(JsCrystal::from_structure(&reduced))
+    })();
+    result.into()
 }
 
 /// Get the primitive cell of a structure.
 #[wasm_bindgen]
-pub fn get_primitive(structure: &JsValue, symprec: f64) -> JsValue {
-    wrap_js_result((|| {
-        let s = parse_structure_from_js(structure)?;
-        let primitive = s.get_primitive(symprec).map_err(|e| e.to_string())?;
-        structure_to_js(&primitive)
-    })())
+pub fn get_primitive(structure: JsCrystal, symprec: f64) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let primitive = struc
+            .get_primitive(symprec)
+            .map_err(|err| err.to_string())?;
+        Ok(JsCrystal::from_structure(&primitive))
+    })();
+    result.into()
 }
+
+/// Get the conventional cell of a structure.
+#[wasm_bindgen]
+pub fn get_conventional(structure: JsCrystal, symprec: f64) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let conventional = struc
+            .get_conventional_structure(symprec)
+            .map_err(|err| err.to_string())?;
+        Ok(JsCrystal::from_structure(&conventional))
+    })();
+    result.into()
+}
+
+// =============================================================================
+// Symmetry Functions
+// =============================================================================
 
 /// Get the spacegroup number of a structure.
 #[wasm_bindgen]
-pub fn get_spacegroup_number(structure: &JsValue, symprec: f64) -> JsValue {
-    let result = (|| {
-        let s = parse_structure_from_js(structure)?;
-        s.get_spacegroup_number(symprec).map_err(|e| e.to_string())
+pub fn get_spacegroup_number(structure: JsCrystal, symprec: f64) -> WasmResult<u16> {
+    let result: Result<u16, String> = (|| {
+        let struc = structure.to_structure()?;
+        let sg = struc
+            .get_spacegroup_number(symprec)
+            .map_err(|err| err.to_string())?;
+        Ok(sg as u16)
     })();
-    serialize_result(to_wasm_result(result))
+    result.into()
 }
 
-/// Serialize structure to pymatgen-compatible JSON string.
+/// Get the spacegroup symbol of a structure.
 #[wasm_bindgen]
-pub fn structure_to_json(structure: &JsValue) -> JsValue {
+pub fn get_spacegroup_symbol(structure: JsCrystal, symprec: f64) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
-        let s = parse_structure_from_js(structure)?;
-        Ok(structure_to_pymatgen_json(&s))
+        let struc = structure.to_structure()?;
+        struc
+            .get_spacegroup_symbol(symprec)
+            .map_err(|err| err.to_string())
     })();
-    serialize_result(to_wasm_result(result))
+    result.into()
+}
+
+/// Get the crystal system of a structure.
+#[wasm_bindgen]
+pub fn get_crystal_system(structure: JsCrystal, symprec: f64) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        struc
+            .get_crystal_system(symprec)
+            .map_err(|err| err.to_string())
+    })();
+    result.into()
+}
+
+/// Get Wyckoff letters for each site in the structure.
+#[wasm_bindgen]
+pub fn get_wyckoff_letters(structure: JsCrystal, symprec: f64) -> WasmResult<Vec<String>> {
+    let result: Result<Vec<String>, String> = (|| {
+        let struc = structure.to_structure()?;
+        let letters = struc
+            .get_wyckoff_letters(symprec)
+            .map_err(|err| err.to_string())?;
+        Ok(letters
+            .into_iter()
+            .map(|letter| letter.to_string())
+            .collect())
+    })();
+    result.into()
+}
+
+/// Get symmetry operations for the structure.
+#[wasm_bindgen]
+pub fn get_symmetry_operations(
+    structure: JsCrystal,
+    symprec: f64,
+) -> WasmResult<Vec<JsSymmetryOperation>> {
+    let result: Result<Vec<JsSymmetryOperation>, String> = (|| {
+        let struc = structure.to_structure()?;
+        let ops = struc
+            .get_symmetry_operations(symprec)
+            .map_err(|err| err.to_string())?;
+        Ok(ops
+            .into_iter()
+            .map(|(rot, trans)| JsSymmetryOperation {
+                rotation: rot,
+                translation: trans,
+            })
+            .collect())
+    })();
+    result.into()
+}
+
+/// Get the full symmetry dataset for a structure.
+#[wasm_bindgen]
+pub fn get_symmetry_dataset(structure: JsCrystal, symprec: f64) -> WasmResult<JsSymmetryDataset> {
+    use crate::structure::{moyo_ops_to_arrays, spacegroup_to_crystal_system};
+
+    let result: Result<JsSymmetryDataset, String> = (|| {
+        let struc = structure.to_structure()?;
+        let dataset = struc
+            .get_symmetry_dataset(symprec)
+            .map_err(|err| err.to_string())?;
+        let operations = moyo_ops_to_arrays(&dataset.operations);
+        Ok(JsSymmetryDataset {
+            spacegroup_number: dataset.number as u16,
+            spacegroup_symbol: dataset.hm_symbol,
+            hall_number: dataset.hall_number as u16,
+            crystal_system: spacegroup_to_crystal_system(dataset.number).to_string(),
+            wyckoff_letters: dataset
+                .wyckoffs
+                .into_iter()
+                .map(|letter| letter.to_string())
+                .collect(),
+            site_symmetry_symbols: dataset.site_symmetry_symbols,
+            equivalent_atoms: dataset.orbits.into_iter().map(|idx| idx as u32).collect(),
+            operations: operations
+                .into_iter()
+                .map(|(rot, trans)| JsSymmetryOperation {
+                    rotation: rot,
+                    translation: trans,
+                })
+                .collect(),
+        })
+    })();
+    result.into()
 }
 
 // =============================================================================
@@ -680,27 +720,48 @@ pub fn structure_to_json(structure: &JsValue) -> JsValue {
 
 /// Get the volume of the unit cell in Angstrom³.
 #[wasm_bindgen]
-pub fn get_volume(structure: &JsValue) -> JsValue {
-    let result = parse_structure_from_js(structure).map(|s| s.volume());
-    serialize_result(to_wasm_result(result))
+pub fn get_volume(structure: JsCrystal) -> WasmResult<f64> {
+    let result = structure.to_structure().map(|struc| struc.volume());
+    result.into()
 }
 
 /// Get the total mass of the structure in atomic mass units.
 #[wasm_bindgen]
-pub fn get_total_mass(structure: &JsValue) -> JsValue {
-    let result = parse_structure_from_js(structure).map(|s| s.total_mass());
-    serialize_result(to_wasm_result(result))
+pub fn get_total_mass(structure: JsCrystal) -> WasmResult<f64> {
+    let result = structure.to_structure().map(|struc| struc.total_mass());
+    result.into()
 }
 
 /// Get the density of the structure in g/cm³.
 #[wasm_bindgen]
-pub fn get_density(structure: &JsValue) -> JsValue {
-    let result = (|| {
-        let s = parse_structure_from_js(structure)?;
-        s.density()
+pub fn get_density(structure: JsCrystal) -> WasmResult<f64> {
+    let result: Result<f64, String> = (|| {
+        let struc = structure.to_structure()?;
+        struc
+            .density()
             .ok_or_else(|| "Cannot compute density for zero-volume structure".to_string())
     })();
-    serialize_result(to_wasm_result(result))
+    result.into()
+}
+
+/// Get metadata about a structure (formula, volume, etc.).
+#[wasm_bindgen]
+pub fn get_structure_metadata(structure: JsCrystal) -> WasmResult<JsStructureMetadata> {
+    let result: Result<JsStructureMetadata, String> = (|| {
+        let struc = structure.to_structure()?;
+        let lattice_lengths = struc.lattice.lengths();
+        let lattice_angles = struc.lattice.angles();
+        Ok(JsStructureMetadata {
+            num_sites: struc.num_sites() as u32,
+            formula: struc.composition().reduced_formula(),
+            volume: struc.volume(),
+            density: struc.density(),
+            lattice_params: [lattice_lengths.x, lattice_lengths.y, lattice_lengths.z],
+            lattice_angles: [lattice_angles.x, lattice_angles.y, lattice_angles.z],
+            is_ordered: struc.is_ordered(),
+        })
+    })();
+    result.into()
 }
 
 // =============================================================================
@@ -710,49 +771,126 @@ pub fn get_density(structure: &JsValue) -> JsValue {
 /// Get neighbor list for a structure.
 #[wasm_bindgen]
 pub fn get_neighbor_list(
-    structure: &JsValue,
+    structure: JsCrystal,
     r: f64,
     numerical_tol: f64,
     exclude_self: bool,
-) -> JsValue {
-    let result = (|| {
+) -> WasmResult<JsNeighborList> {
+    let result: Result<JsNeighborList, String> = (|| {
         if r < 0.0 {
             return Err("Cutoff radius must be non-negative".to_string());
         }
-        let s = parse_structure_from_js(structure)?;
+        let struc = structure.to_structure()?;
         let (center_indices, neighbor_indices, image_offsets, distances) =
-            s.get_neighbor_list(r, numerical_tol, exclude_self);
-        Ok(NeighborListResult {
-            center_indices,
-            neighbor_indices,
+            struc.get_neighbor_list(r, numerical_tol, exclude_self);
+        Ok(JsNeighborList {
+            center_indices: center_indices.into_iter().map(|idx| idx as u32).collect(),
+            neighbor_indices: neighbor_indices.into_iter().map(|idx| idx as u32).collect(),
             image_offsets,
             distances,
         })
     })();
-    serialize_result(to_wasm_result(result))
+    result.into()
 }
 
 /// Get distance between two sites using minimum image convention.
 #[wasm_bindgen]
-pub fn get_distance(structure: &JsValue, i: usize, j: usize) -> JsValue {
-    let result = (|| {
-        let s = parse_structure_from_js(structure)?;
-        let n = s.num_sites();
+pub fn get_distance(structure: JsCrystal, i: u32, j: u32) -> WasmResult<f64> {
+    let result: Result<f64, String> = (|| {
+        let struc = structure.to_structure()?;
+        let n = struc.num_sites();
+        let i = i as usize;
+        let j = j as usize;
         if i >= n || j >= n {
             return Err(format!(
                 "Site indices ({i}, {j}) out of bounds for structure with {n} sites"
             ));
         }
-        Ok(s.get_distance(i, j))
+        Ok(struc.get_distance(i, j))
     })();
-    serialize_result(to_wasm_result(result))
+    result.into()
 }
 
 /// Get the full distance matrix between all sites.
 #[wasm_bindgen]
-pub fn get_distance_matrix(structure: &JsValue) -> JsValue {
-    let result = parse_structure_from_js(structure).map(|s| s.distance_matrix());
-    serialize_result(to_wasm_result(result))
+pub fn get_distance_matrix(structure: JsCrystal) -> WasmResult<Vec<Vec<f64>>> {
+    let result = structure
+        .to_structure()
+        .map(|struc| struc.distance_matrix());
+    result.into()
+}
+
+// =============================================================================
+// Coordination Analysis Functions
+// =============================================================================
+
+/// Get coordination numbers for all sites using cutoff-based method.
+#[wasm_bindgen]
+pub fn get_coordination_numbers(structure: JsCrystal, cutoff: f64) -> WasmResult<Vec<u32>> {
+    let result: Result<Vec<u32>, String> = (|| {
+        let struc = structure.to_structure()?;
+        let cns = struc.get_coordination_numbers(cutoff);
+        Ok(cns.into_iter().map(|cn| cn as u32).collect())
+    })();
+    result.into()
+}
+
+/// Get coordination number for a specific site.
+#[wasm_bindgen]
+pub fn get_coordination_number(
+    structure: JsCrystal,
+    site_index: u32,
+    cutoff: f64,
+) -> WasmResult<u32> {
+    let result: Result<u32, String> = (|| {
+        let struc = structure.to_structure()?;
+        let idx = site_index as usize;
+        if idx >= struc.num_sites() {
+            return Err(format!(
+                "Site index {idx} out of bounds for structure with {} sites",
+                struc.num_sites()
+            ));
+        }
+        Ok(struc.get_coordination_number(idx, cutoff) as u32)
+    })();
+    result.into()
+}
+
+/// Get local environment (neighbors) for a specific site.
+#[wasm_bindgen]
+pub fn get_local_environment(
+    structure: JsCrystal,
+    site_index: u32,
+    cutoff: f64,
+) -> WasmResult<JsLocalEnvironment> {
+    let result: Result<JsLocalEnvironment, String> = (|| {
+        let struc = structure.to_structure()?;
+        let idx = site_index as usize;
+        if idx >= struc.num_sites() {
+            return Err(format!(
+                "Site index {idx} out of bounds for structure with {} sites",
+                struc.num_sites()
+            ));
+        }
+        let neighbors_raw = struc.get_local_environment(idx, cutoff);
+        let neighbors: Vec<JsNeighborInfo> = neighbors_raw
+            .into_iter()
+            .map(|neighbor| JsNeighborInfo {
+                site_index: neighbor.site_idx as u32,
+                element: neighbor.species.element.symbol().to_string(),
+                distance: neighbor.distance,
+                image: neighbor.image,
+            })
+            .collect();
+        let center_species = struc.species()[idx];
+        Ok(JsLocalEnvironment {
+            center_index: idx as u32,
+            center_element: center_species.element.symbol().to_string(),
+            coordination_number: neighbors.len() as u32,
+            neighbors,
+        })
+    })();
+    result.into()
 }
 
 // =============================================================================
@@ -761,22 +899,27 @@ pub fn get_distance_matrix(structure: &JsValue) -> JsValue {
 
 /// Get a sorted copy of the structure by atomic number.
 #[wasm_bindgen]
-pub fn get_sorted_structure(structure: &JsValue, reverse: bool) -> JsValue {
-    wrap_js_result((|| {
-        let s = parse_structure_from_js(structure)?;
-        let sorted = s.get_sorted_structure(reverse);
-        structure_to_js(&sorted)
-    })())
+pub fn get_sorted_structure(structure: JsCrystal, reverse: bool) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let sorted = struc.get_sorted_structure(reverse);
+        Ok(JsCrystal::from_structure(&sorted))
+    })();
+    result.into()
 }
 
 /// Get a sorted copy of the structure by electronegativity.
 #[wasm_bindgen]
-pub fn get_sorted_by_electronegativity(structure: &JsValue, reverse: bool) -> JsValue {
-    wrap_js_result((|| {
-        let s = parse_structure_from_js(structure)?;
-        let sorted = s.get_sorted_by_electronegativity(reverse);
-        structure_to_js(&sorted)
-    })())
+pub fn get_sorted_by_electronegativity(
+    structure: JsCrystal,
+    reverse: bool,
+) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let sorted = struc.get_sorted_by_electronegativity(reverse);
+        Ok(JsCrystal::from_structure(&sorted))
+    })();
+    result.into()
 }
 
 // =============================================================================
@@ -786,25 +929,21 @@ pub fn get_sorted_by_electronegativity(structure: &JsValue, reverse: bool) -> Js
 /// Interpolate between two structures.
 #[wasm_bindgen]
 pub fn interpolate_structures(
-    start: &JsValue,
-    end: &JsValue,
-    n_images: usize,
+    start: JsCrystal,
+    end: JsCrystal,
+    n_images: u32,
     interpolate_lattices: bool,
     use_pbc: bool,
-) -> JsValue {
-    let result = (|| {
-        let s1 = parse_structure_from_js(start)?;
-        let s2 = parse_structure_from_js(end)?;
+) -> WasmResult<Vec<JsCrystal>> {
+    let result: Result<Vec<JsCrystal>, String> = (|| {
+        let s1 = start.to_structure()?;
+        let s2 = end.to_structure()?;
         let images = s1
-            .interpolate(&s2, n_images, interpolate_lattices, use_pbc)
-            .map_err(|e| e.to_string())?;
-        let arr = js_sys::Array::new();
-        for img in &images {
-            arr.push(&structure_to_js(img)?);
-        }
-        Ok(arr.into())
+            .interpolate(&s2, n_images as usize, interpolate_lattices, use_pbc)
+            .map_err(|err| err.to_string())?;
+        Ok(images.iter().map(JsCrystal::from_structure).collect())
     })();
-    wrap_js_result(result)
+    result.into()
 }
 
 // =============================================================================
@@ -813,22 +952,24 @@ pub fn interpolate_structures(
 
 /// Create a copy of the structure, optionally sanitized.
 #[wasm_bindgen]
-pub fn copy_structure(structure: &JsValue, sanitize: bool) -> JsValue {
-    wrap_js_result((|| {
-        let s = parse_structure_from_js(structure)?;
-        let copied = s.copy(sanitize);
-        structure_to_js(&copied)
-    })())
+pub fn copy_structure(structure: JsCrystal, sanitize: bool) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let copied = struc.copy(sanitize);
+        Ok(JsCrystal::from_structure(&copied))
+    })();
+    result.into()
 }
 
 /// Wrap all fractional coordinates to [0, 1).
 #[wasm_bindgen]
-pub fn wrap_to_unit_cell(structure: &JsValue) -> JsValue {
-    wrap_js_result((|| {
-        let mut s = parse_structure_from_js(structure)?;
-        s.wrap_to_unit_cell();
-        structure_to_js(&s)
-    })())
+pub fn wrap_to_unit_cell(structure: JsCrystal) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let mut struc = structure.to_structure()?;
+        struc.wrap_to_unit_cell();
+        Ok(JsCrystal::from_structure(&struc))
+    })();
+    result.into()
 }
 
 // =============================================================================
@@ -838,41 +979,39 @@ pub fn wrap_to_unit_cell(structure: &JsValue) -> JsValue {
 /// Translate specific sites by a vector.
 #[wasm_bindgen]
 pub fn translate_sites(
-    structure: &JsValue,
-    indices: &JsValue,
-    vector: &JsValue,
+    structure: JsCrystal,
+    indices: Vec<u32>,
+    vector: JsVector3,
     fractional: bool,
-) -> JsValue {
-    wrap_js_result((|| {
-        let mut s = parse_structure_from_js(structure)?;
-        let idx: Vec<usize> =
-            serde_wasm_bindgen::from_value(indices.clone()).map_err(|e| e.to_string())?;
-        let vec: [f64; 3] =
-            serde_wasm_bindgen::from_value(vector.clone()).map_err(|e| e.to_string())?;
+) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let mut struc = structure.to_structure()?;
+        let idx: Vec<usize> = indices.into_iter().map(|idx| idx as usize).collect();
 
-        let n = s.num_sites();
-        for &i in &idx {
-            if i >= n {
+        let num_sites = struc.num_sites();
+        for &site_idx in &idx {
+            if site_idx >= num_sites {
                 return Err(format!(
-                    "Index {i} out of bounds for structure with {n} sites"
+                    "Index {site_idx} out of bounds for structure with {num_sites} sites"
                 ));
             }
         }
 
-        s.translate_sites(&idx, Vector3::from(vec), fractional);
-        structure_to_js(&s)
-    })())
+        struc.translate_sites(&idx, Vector3::from(vector.0), fractional);
+        Ok(JsCrystal::from_structure(&struc))
+    })();
+    result.into()
 }
 
 /// Perturb all sites by random vectors.
 #[wasm_bindgen]
 pub fn perturb_structure(
-    structure: &JsValue,
+    structure: JsCrystal,
     distance: f64,
     min_distance: Option<f64>,
     seed: Option<u64>,
-) -> JsValue {
-    wrap_js_result((|| {
+) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
         if distance < 0.0 {
             return Err("distance must be non-negative".to_string());
         }
@@ -886,10 +1025,11 @@ pub fn perturb_structure(
                 ));
             }
         }
-        let mut s = parse_structure_from_js(structure)?;
-        s.perturb(distance, min_distance, seed);
-        structure_to_js(&s)
-    })())
+        let mut struc = structure.to_structure()?;
+        struc.perturb(distance, min_distance, seed);
+        Ok(JsCrystal::from_structure(&struc))
+    })();
+    result.into()
 }
 
 // =============================================================================
@@ -898,21 +1038,223 @@ pub fn perturb_structure(
 
 /// Get atomic mass for an element by symbol.
 #[wasm_bindgen]
-pub fn get_atomic_mass(symbol: &str) -> JsValue {
+pub fn get_atomic_mass(symbol: &str) -> WasmResult<f64> {
     let result = Element::from_symbol(symbol)
-        .map(|e| e.atomic_mass())
+        .map(|elem| elem.atomic_mass())
         .ok_or_else(|| format!("Unknown element: {symbol}"));
-    serialize_result(to_wasm_result(result))
+    result.into()
 }
 
 /// Get electronegativity for an element by symbol.
 #[wasm_bindgen]
-pub fn get_electronegativity(symbol: &str) -> JsValue {
+pub fn get_electronegativity(symbol: &str) -> WasmResult<f64> {
     let result = Element::from_symbol(symbol)
         .ok_or_else(|| format!("Unknown element: {symbol}"))
-        .and_then(|e| {
-            e.electronegativity()
+        .and_then(|elem| {
+            elem.electronegativity()
                 .ok_or_else(|| format!("No electronegativity data for {symbol}"))
         });
-    serialize_result(to_wasm_result(result))
+    result.into()
+}
+
+// =============================================================================
+// Slab Generation Functions
+// =============================================================================
+
+/// Generate a single slab from a bulk structure.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn make_slab(
+    structure: JsCrystal,
+    miller_index: JsMillerIndex,
+    min_slab_size: f64,
+    min_vacuum_size: f64,
+    center_slab: bool,
+    in_unit_planes: bool,
+    primitive: bool,
+    symprec: f64,
+    termination_index: Option<u32>,
+) -> WasmResult<JsCrystal> {
+    use crate::structure::SlabConfig;
+
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let config = SlabConfig {
+            miller_index: miller_index.0,
+            min_slab_size,
+            min_vacuum_size,
+            center_slab,
+            in_unit_planes,
+            primitive,
+            symprec,
+            termination_index: termination_index.map(|idx| idx as usize),
+        };
+        let slab = struc.make_slab(&config).map_err(|err| err.to_string())?;
+        Ok(JsCrystal::from_structure(&slab))
+    })();
+    result.into()
+}
+
+/// Generate multiple slabs with different terminations.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn generate_slabs(
+    structure: JsCrystal,
+    miller_index: JsMillerIndex,
+    min_slab_size: f64,
+    min_vacuum_size: f64,
+    center_slab: bool,
+    in_unit_planes: bool,
+    primitive: bool,
+    symprec: f64,
+) -> WasmResult<Vec<JsCrystal>> {
+    use crate::structure::SlabConfig;
+
+    let result: Result<Vec<JsCrystal>, String> = (|| {
+        let struc = structure.to_structure()?;
+        let config = SlabConfig {
+            miller_index: miller_index.0,
+            min_slab_size,
+            min_vacuum_size,
+            center_slab,
+            in_unit_planes,
+            primitive,
+            symprec,
+            termination_index: None,
+        };
+        let slabs = struc
+            .generate_slabs(&config)
+            .map_err(|err| err.to_string())?;
+        Ok(slabs.iter().map(JsCrystal::from_structure).collect())
+    })();
+    result.into()
+}
+
+// =============================================================================
+// Transformation Functions
+// =============================================================================
+
+/// Apply a symmetry operation to the structure.
+/// The rotation matrix should be a 3x3 float matrix, and translation is a 3D vector.
+/// If fractional is true, the operation is applied in fractional coordinates.
+#[wasm_bindgen]
+pub fn apply_operation(
+    structure: JsCrystal,
+    rotation: JsMatrix3x3,
+    translation: JsVector3,
+    fractional: bool,
+) -> WasmResult<JsCrystal> {
+    use crate::structure::SymmOp;
+    use nalgebra::Matrix3;
+
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let rot_mat = Matrix3::from_row_slice(&[
+            rotation.0[0][0],
+            rotation.0[0][1],
+            rotation.0[0][2],
+            rotation.0[1][0],
+            rotation.0[1][1],
+            rotation.0[1][2],
+            rotation.0[2][0],
+            rotation.0[2][1],
+            rotation.0[2][2],
+        ]);
+        let trans_vec = Vector3::from(translation.0);
+        let op = SymmOp::new(rot_mat, trans_vec);
+        let transformed = struc.apply_operation_copy(&op, fractional);
+        Ok(JsCrystal::from_structure(&transformed))
+    })();
+    result.into()
+}
+
+/// Apply inversion symmetry to the structure.
+#[wasm_bindgen]
+pub fn apply_inversion(structure: JsCrystal, fractional: bool) -> WasmResult<JsCrystal> {
+    use crate::structure::SymmOp;
+
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let inverted = struc.apply_operation_copy(&SymmOp::inversion(), fractional);
+        Ok(JsCrystal::from_structure(&inverted))
+    })();
+    result.into()
+}
+
+/// Substitute one species with another throughout the structure.
+#[wasm_bindgen]
+pub fn substitute_species(
+    structure: JsCrystal,
+    old_species: &str,
+    new_species: &str,
+) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let old = Species::from_string(old_species)
+            .ok_or_else(|| format!("Invalid species string: {old_species}"))?;
+        let new = Species::from_string(new_species)
+            .ok_or_else(|| format!("Invalid species string: {new_species}"))?;
+        let substituted = struc.substitute(old, new).map_err(|err| err.to_string())?;
+        Ok(JsCrystal::from_structure(&substituted))
+    })();
+    result.into()
+}
+
+/// Remove all sites containing a specific species.
+#[wasm_bindgen]
+pub fn remove_species(structure: JsCrystal, species: &str) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let sp = Species::from_string(species)
+            .ok_or_else(|| format!("Invalid species string: {species}"))?;
+        let new_s = struc.remove_species(&[sp]).map_err(|err| err.to_string())?;
+        Ok(JsCrystal::from_structure(&new_s))
+    })();
+    result.into()
+}
+
+/// Remove sites at specific indices.
+#[wasm_bindgen]
+pub fn remove_sites(structure: JsCrystal, indices: Vec<u32>) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let struc = structure.to_structure()?;
+        let idx: Vec<usize> = indices.into_iter().map(|idx| idx as usize).collect();
+        let new_s = struc.remove_sites(&idx).map_err(|err| err.to_string())?;
+        Ok(JsCrystal::from_structure(&new_s))
+    })();
+    result.into()
+}
+
+// =============================================================================
+// I/O Functions
+// =============================================================================
+
+/// Serialize structure to pymatgen-compatible JSON string.
+#[wasm_bindgen]
+pub fn structure_to_json(structure: JsCrystal) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        Ok(crate::io::structure_to_pymatgen_json(&struc))
+    })();
+    result.into()
+}
+
+/// Convert structure to CIF format string.
+#[wasm_bindgen]
+pub fn structure_to_cif(structure: JsCrystal) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        Ok(crate::cif::structure_to_cif(&struc, None))
+    })();
+    result.into()
+}
+
+/// Convert structure to POSCAR format string.
+#[wasm_bindgen]
+pub fn structure_to_poscar(structure: JsCrystal) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        Ok(crate::io::structure_to_poscar(&struc, None))
+    })();
+    result.into()
 }

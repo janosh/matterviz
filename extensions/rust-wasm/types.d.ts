@@ -1,335 +1,239 @@
-// Type definitions for @matterviz/wasm
-// Comprehensive types for ferrox WASM bindings
+// Type augmentation for @matterviz/wasm
+// Auto-generated types in pkg/ferrox.d.ts provide input types,
+// this file provides return type information
+
+// Re-export all types from auto-generated file
+export * from './pkg/ferrox.d.ts'
+
+// Import types for augmentation
+import type {
+  JsCrystal,
+  JsLocalEnvironment,
+  JsNeighborList,
+  JsReductionAlgo,
+  JsRmsDistResult,
+  JsStructureMetadata,
+  JsSymmetryDataset,
+  JsSymmetryOperation,
+  WasmResult,
+} from './pkg/ferrox.d.ts'
 
 // =============================================================================
-// Result Types
+// Function Return Type Declarations
+// These augment the auto-generated types with precise return types
 // =============================================================================
 
-// All WASM functions return WasmResult<T> = { ok: T } | { error: string }
-export type WasmResult<T> = { ok: T } | { error: string }
+// Structure parsing
+export function parse_cif(content: string): WasmResult<JsCrystal>
+export function parse_poscar(content: string): WasmResult<JsCrystal>
 
-// =============================================================================
-// Structure Types (pymatgen-compatible)
-// =============================================================================
-
-export interface Crystal {
-  lattice: Lattice
-  sites: Site[]
-  properties?: Record<string, unknown>
-}
-
-export interface Lattice {
-  matrix: [[number, number, number], [number, number, number], [number, number, number]]
-  a: number
-  b: number
-  c: number
-  alpha: number
-  beta: number
-  gamma: number
-  pbc: [boolean, boolean, boolean]
-  volume: number
-}
-
-export interface Site {
-  species: SpeciesOccupancy[]
-  abc: [number, number, number]
-  xyz: [number, number, number]
-  label: string
-  properties: Record<string, unknown>
-}
-
-export interface SpeciesOccupancy {
-  element: string
-  occu: number
-  oxidation_state?: number
-}
-
-// =============================================================================
-// Neighbor List Result
-// =============================================================================
-
-export interface NeighborListResult {
-  center_indices: number[]
-  neighbor_indices: number[]
-  image_offsets: [number, number, number][]
-  distances: number[]
-}
-
-// =============================================================================
-// RMS Distance Result
-// =============================================================================
-
-export interface RmsDistResult {
-  rms: number
-  max_dist: number
-}
-
-// =============================================================================
-// WasmStructureMatcher Class
-// =============================================================================
-
-export class WasmStructureMatcher {
-  constructor()
-  with_latt_len_tol(tol: number): WasmStructureMatcher
-  with_site_pos_tol(tol: number): WasmStructureMatcher
-  with_angle_tol(tol: number): WasmStructureMatcher
-  with_primitive_cell(val: boolean): WasmStructureMatcher
-  with_scale(val: boolean): WasmStructureMatcher
-  with_element_comparator(val: boolean): WasmStructureMatcher
-  fit(struct1: Crystal, struct2: Crystal): WasmResult<boolean>
-  fit_anonymous(struct1: Crystal, struct2: Crystal): WasmResult<boolean>
-  get_rms_dist(struct1: Crystal, struct2: Crystal): WasmResult<RmsDistResult | null>
-  deduplicate(structures: Crystal[]): WasmResult<number[]>
-  find_matches(
-    new_structures: Crystal[],
-    existing: Crystal[],
-  ): WasmResult<(number | null)[]>
-}
-
-// =============================================================================
-// Element Class
-// =============================================================================
-
-export class JsElement {
-  constructor(symbol: string)
-  static fromAtomicNumber(z: number): JsElement
-  readonly symbol: string
-  readonly atomicNumber: number
-  readonly name: string
-  readonly atomicMass: number
-  readonly electronegativity: number
-  readonly row: number
-  readonly group: number
-  readonly block: string
-  readonly atomicRadius: number
-  readonly covalentRadius: number
-  readonly maxOxidationState: number
-  readonly minOxidationState: number
-  isNobleGas(): boolean
-  isAlkali(): boolean
-  isAlkaline(): boolean
-  isHalogen(): boolean
-  isChalcogen(): boolean
-  isLanthanoid(): boolean
-  isActinoid(): boolean
-  isTransitionMetal(): boolean
-  isPostTransitionMetal(): boolean
-  isMetalloid(): boolean
-  isMetal(): boolean
-  isRadioactive(): boolean
-  isRareEarth(): boolean
-  isPseudo(): boolean
-  oxidationStates(): number[]
-  commonOxidationStates(): number[]
-  icsdOxidationStates(): number[]
-  ionicRadius(oxidation_state: number): number
-  shannonIonicRadius(oxidation_state: number, coordination: string, spin: string): number
-}
-
-// =============================================================================
-// Species Class
-// =============================================================================
-
-export class JsSpecies {
-  constructor(species_str: string)
-  readonly symbol: string
-  readonly atomicNumber: number
-  readonly oxidationState: number | undefined
-  readonly ionicRadius: number
-  readonly atomicRadius: number
-  readonly electronegativity: number
-  readonly covalentRadius: number
-  readonly name: string
-  toString(): string
-  shannonIonicRadius(coordination: string, spin: string): number
-}
-
-// =============================================================================
-// Structure Parsing Functions
-// =============================================================================
-
-export function parse_structure(input: unknown): WasmResult<Crystal>
-export function parse_cif(content: string): WasmResult<Crystal>
-export function parse_poscar(content: string): WasmResult<Crystal>
-
-// =============================================================================
-// Supercell Functions
-// =============================================================================
-
+// Supercell functions
 export function make_supercell_diag(
-  structure: Crystal,
+  structure: JsCrystal,
   nx: number,
   ny: number,
   nz: number,
-): WasmResult<Crystal>
-
+): WasmResult<JsCrystal>
 export function make_supercell(
-  structure: Crystal,
+  structure: JsCrystal,
   matrix: [[number, number, number], [number, number, number], [number, number, number]],
-): WasmResult<Crystal>
+): WasmResult<JsCrystal>
 
-// =============================================================================
-// Lattice Reduction Functions
-// =============================================================================
-
+// Lattice reduction
 export function get_reduced_structure(
-  structure: Crystal,
-  algo: 'niggli' | 'lll',
-): WasmResult<Crystal>
+  structure: JsCrystal,
+  algo: JsReductionAlgo,
+): WasmResult<JsCrystal>
+export function get_primitive(
+  structure: JsCrystal,
+  symprec: number,
+): WasmResult<JsCrystal>
+export function get_conventional(
+  structure: JsCrystal,
+  symprec: number,
+): WasmResult<JsCrystal>
 
-export function get_primitive(structure: Crystal, symprec: number): WasmResult<Crystal>
-
+// Symmetry analysis
 export function get_spacegroup_number(
-  structure: Crystal,
+  structure: JsCrystal,
   symprec: number,
 ): WasmResult<number>
+export function get_spacegroup_symbol(
+  structure: JsCrystal,
+  symprec: number,
+): WasmResult<string>
+export function get_crystal_system(
+  structure: JsCrystal,
+  symprec: number,
+): WasmResult<string>
+export function get_wyckoff_letters(
+  structure: JsCrystal,
+  symprec: number,
+): WasmResult<string[]>
+export function get_symmetry_operations(
+  structure: JsCrystal,
+  symprec: number,
+): WasmResult<JsSymmetryOperation[]>
+export function get_symmetry_dataset(
+  structure: JsCrystal,
+  symprec: number,
+): WasmResult<JsSymmetryDataset>
 
-export function structure_to_json(structure: Crystal): WasmResult<string>
+// Physical properties
+export function get_volume(structure: JsCrystal): WasmResult<number>
+export function get_total_mass(structure: JsCrystal): WasmResult<number>
+export function get_density(structure: JsCrystal): WasmResult<number>
+export function get_structure_metadata(
+  structure: JsCrystal,
+): WasmResult<JsStructureMetadata>
 
-// =============================================================================
-// Physical Property Functions
-// =============================================================================
-
-export function get_volume(structure: Crystal): WasmResult<number>
-export function get_total_mass(structure: Crystal): WasmResult<number>
-export function get_density(structure: Crystal): WasmResult<number>
-
-// =============================================================================
-// Neighbor Finding Functions
-// =============================================================================
-
+// Neighbor finding
 export function get_neighbor_list(
-  structure: Crystal,
+  structure: JsCrystal,
   r: number,
   numerical_tol: number,
   exclude_self: boolean,
-): WasmResult<NeighborListResult>
+): WasmResult<JsNeighborList>
+export function get_distance(
+  structure: JsCrystal,
+  i: number,
+  j: number,
+): WasmResult<number>
+export function get_distance_matrix(structure: JsCrystal): WasmResult<number[][]>
 
-export function get_distance(structure: Crystal, i: number, j: number): WasmResult<number>
+// Coordination analysis
+export function get_coordination_numbers(
+  structure: JsCrystal,
+  cutoff: number,
+): WasmResult<number[]>
+export function get_coordination_number(
+  structure: JsCrystal,
+  site_index: number,
+  cutoff: number,
+): WasmResult<number>
+export function get_local_environment(
+  structure: JsCrystal,
+  site_index: number,
+  cutoff: number,
+): WasmResult<JsLocalEnvironment>
 
-export function get_distance_matrix(structure: Crystal): WasmResult<number[][]>
-
-// =============================================================================
-// Sorting Functions
-// =============================================================================
-
+// Sorting
 export function get_sorted_structure(
-  structure: Crystal,
+  structure: JsCrystal,
   reverse: boolean,
-): WasmResult<Crystal>
-
+): WasmResult<JsCrystal>
 export function get_sorted_by_electronegativity(
-  structure: Crystal,
+  structure: JsCrystal,
   reverse: boolean,
-): WasmResult<Crystal>
+): WasmResult<JsCrystal>
 
-// =============================================================================
-// Interpolation Functions
-// =============================================================================
-
+// Interpolation
 export function interpolate_structures(
-  start: Crystal,
-  end: Crystal,
+  start: JsCrystal,
+  end: JsCrystal,
   n_images: number,
   interpolate_lattices: boolean,
   use_pbc: boolean,
-): WasmResult<Crystal[]>
+): WasmResult<JsCrystal[]>
 
-// =============================================================================
-// Copy and Wrap Functions
-// =============================================================================
+// Copy and wrap
+export function copy_structure(
+  structure: JsCrystal,
+  sanitize: boolean,
+): WasmResult<JsCrystal>
+export function wrap_to_unit_cell(structure: JsCrystal): WasmResult<JsCrystal>
 
-export function copy_structure(structure: Crystal, sanitize: boolean): WasmResult<Crystal>
-
-export function wrap_to_unit_cell(structure: Crystal): WasmResult<Crystal>
-
-// =============================================================================
-// Site Manipulation Functions
-// =============================================================================
-
+// Site manipulation
 export function translate_sites(
-  structure: Crystal,
+  structure: JsCrystal,
   indices: number[],
   vector: [number, number, number],
   fractional: boolean,
-): WasmResult<Crystal>
-
+): WasmResult<JsCrystal>
 export function perturb_structure(
-  structure: Crystal,
+  structure: JsCrystal,
   distance: number,
   min_distance?: number | null,
   seed?: bigint | null,
-): WasmResult<Crystal>
+): WasmResult<JsCrystal>
 
-// =============================================================================
-// Element Information Functions
-// =============================================================================
-
+// Element info
 export function get_atomic_mass(symbol: string): WasmResult<number>
 export function get_electronegativity(symbol: string): WasmResult<number>
 
+// Slab generation
+export function make_slab(
+  structure: JsCrystal,
+  miller_index: [number, number, number],
+  min_slab_size: number,
+  min_vacuum_size: number,
+  center_slab: boolean,
+  in_unit_planes: boolean,
+  primitive: boolean,
+  symprec: number,
+  termination_index?: number | null,
+): WasmResult<JsCrystal>
+export function generate_slabs(
+  structure: JsCrystal,
+  miller_index: [number, number, number],
+  min_slab_size: number,
+  min_vacuum_size: number,
+  center_slab: boolean,
+  in_unit_planes: boolean,
+  primitive: boolean,
+  symprec: number,
+): WasmResult<JsCrystal[]>
+
+// Transformations
+export function apply_operation(
+  structure: JsCrystal,
+  rotation: [
+    [number, number, number],
+    [number, number, number],
+    [number, number, number],
+  ],
+  translation: [number, number, number],
+  fractional: boolean,
+): WasmResult<JsCrystal>
+export function apply_inversion(
+  structure: JsCrystal,
+  fractional: boolean,
+): WasmResult<JsCrystal>
+export function substitute_species(
+  structure: JsCrystal,
+  old_species: string,
+  new_species: string,
+): WasmResult<JsCrystal>
+export function remove_species(
+  structure: JsCrystal,
+  species: string,
+): WasmResult<JsCrystal>
+export function remove_sites(
+  structure: JsCrystal,
+  indices: number[],
+): WasmResult<JsCrystal>
+
+// I/O
+export function structure_to_json(structure: JsCrystal): WasmResult<string>
+export function structure_to_cif(structure: JsCrystal): WasmResult<string>
+export function structure_to_poscar(structure: JsCrystal): WasmResult<string>
+
 // =============================================================================
-// WASM Module Interface
+// WasmStructureMatcher Method Return Types
 // =============================================================================
 
-export interface WasmModule {
-  // Default init function
-  default: (options?: { module_or_path?: string | URL }) => Promise<void>
-
-  // Classes
-  WasmStructureMatcher: typeof WasmStructureMatcher
-  JsElement: typeof JsElement
-  JsSpecies: typeof JsSpecies
-
-  // Structure parsing
-  parse_structure: typeof parse_structure
-  parse_cif: typeof parse_cif
-  parse_poscar: typeof parse_poscar
-
-  // Supercell
-  make_supercell_diag: typeof make_supercell_diag
-  make_supercell: typeof make_supercell
-
-  // Lattice reduction
-  get_reduced_structure: typeof get_reduced_structure
-  get_primitive: typeof get_primitive
-  get_spacegroup_number: typeof get_spacegroup_number
-  structure_to_json: typeof structure_to_json
-
-  // Physical properties
-  get_volume: typeof get_volume
-  get_total_mass: typeof get_total_mass
-  get_density: typeof get_density
-
-  // Neighbor finding
-  get_neighbor_list: typeof get_neighbor_list
-  get_distance: typeof get_distance
-  get_distance_matrix: typeof get_distance_matrix
-
-  // Sorting
-  get_sorted_structure: typeof get_sorted_structure
-  get_sorted_by_electronegativity: typeof get_sorted_by_electronegativity
-
-  // Interpolation
-  interpolate_structures: typeof interpolate_structures
-
-  // Copy and wrap
-  copy_structure: typeof copy_structure
-  wrap_to_unit_cell: typeof wrap_to_unit_cell
-
-  // Site manipulation
-  translate_sites: typeof translate_sites
-  perturb_structure: typeof perturb_structure
-
-  // Element info
-  get_atomic_mass: typeof get_atomic_mass
-  get_electronegativity: typeof get_electronegativity
+declare module './pkg/ferrox.d.ts' {
+  interface WasmStructureMatcher {
+    fit(struct1: JsCrystal, struct2: JsCrystal): WasmResult<boolean>
+    fit_anonymous(struct1: JsCrystal, struct2: JsCrystal): WasmResult<boolean>
+    get_rms_dist(
+      struct1: JsCrystal,
+      struct2: JsCrystal,
+    ): WasmResult<JsRmsDistResult | null>
+    deduplicate(structures: JsCrystal[]): WasmResult<number[]>
+    find_matches(
+      new_structures: JsCrystal[],
+      existing: JsCrystal[],
+    ): WasmResult<(number | null)[]>
+  }
 }
-
-// =============================================================================
-// Default Export (init function)
-// =============================================================================
-
-// Init loads pkg/ferrox.js, initializes WASM, and returns the module
-declare const init: (options?: { module_or_path?: string | URL }) => Promise<WasmModule>
-export default init
