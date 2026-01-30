@@ -2499,26 +2499,49 @@ fn reduce_miller_indices(hkl: [i32; 3]) -> [i32; 3] {
 
 /// Find two linearly independent in-plane lattice vectors for the given Miller indices.
 /// Returns (a_vec, b_vec) as integer linear combinations of the original lattice vectors.
+/// Produces minimal vectors to avoid unnecessarily large supercells.
 fn find_in_plane_vectors(hkl: [i32; 3]) -> ([i32; 3], [i32; 3]) {
     let [h, k, l] = reduce_miller_indices(hkl);
 
-    // Find first in-plane vector: [uvw] where h*u + k*v + l*w = 0
-    let a_vec = if h != 0 {
-        [-k, h, 0] // Satisfies: h*(-k) + k*h + l*0 = 0
-    } else if k != 0 {
-        [0, -l, k] // Satisfies: 0 + k*(-l) + l*k = 0
-    } else {
-        [1, 0, 0] // l != 0, any vector with w=0 works
-    };
-
-    // Second in-plane vector: cross product [h,k,l] × a_vec
-    let b_vec = [
-        k * a_vec[2] - l * a_vec[1],
-        l * a_vec[0] - h * a_vec[2],
-        h * a_vec[1] - k * a_vec[0],
+    // Find two linearly independent vectors satisfying h*u + k*v + l*w = 0
+    // Strategy: for each pair of non-zero Miller indices, construct a simple in-plane vector
+    let candidates: Vec<[i32; 3]> = vec![
+        [-k, h, 0], // satisfies if h or k != 0
+        [-l, 0, h], // satisfies if h or l != 0
+        [0, -l, k], // satisfies if k or l != 0
+        [1, 0, 0],  // satisfies if h == 0
+        [0, 1, 0],  // satisfies if k == 0
+        [0, 0, 1],  // satisfies if l == 0
     ];
 
-    (reduce_miller_indices(a_vec), reduce_miller_indices(b_vec))
+    // Filter to valid in-plane vectors (dot product with hkl == 0, non-zero vector)
+    let valid: Vec<[i32; 3]> = candidates
+        .into_iter()
+        .filter(|v| {
+            let dot = h * v[0] + k * v[1] + l * v[2];
+            let nonzero = v[0] != 0 || v[1] != 0 || v[2] != 0;
+            dot == 0 && nonzero
+        })
+        .map(reduce_miller_indices)
+        .collect();
+
+    // Pick two linearly independent vectors (cross product non-zero)
+    let a_vec = valid[0];
+    let mut b_vec = valid[1];
+
+    for v in &valid[1..] {
+        let cross = [
+            a_vec[1] * v[2] - a_vec[2] * v[1],
+            a_vec[2] * v[0] - a_vec[0] * v[2],
+            a_vec[0] * v[1] - a_vec[1] * v[0],
+        ];
+        if cross.iter().any(|&x| x != 0) {
+            b_vec = *v;
+            break;
+        }
+    }
+
+    (a_vec, b_vec)
 }
 
 /// Get the transformation matrix that creates an oriented unit cell.
@@ -2594,6 +2617,15 @@ impl Structure {
     /// Generate all unique surface terminations for the given slab configuration.
     ///
     /// Returns a vector of slab structures, each with a different surface termination.
+    ///
+    /// # Differences from pymatgen's SlabGenerator
+    ///
+    /// - **Unit cell size**: The transformation matrix may produce larger supercells than
+    ///   pymatgen's minimal algorithm for some Miller indices (e.g., (111)). The surface
+    ///   is mathematically equivalent but with more atoms in the periodic unit.
+    /// - **Layer counting**: Uses `ceil(min_slab_size / d_spacing)` to determine the number
+    ///   of layers, which may differ slightly from pymatgen's calculation.
+    /// - **Primitive reduction**: The `primitive` option is not yet implemented.
     pub fn generate_slabs(&self, config: &SlabConfig) -> Result<Vec<Self>> {
         let hkl = config.miller_index;
         if hkl == [0, 0, 0] {

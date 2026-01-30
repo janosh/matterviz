@@ -179,6 +179,14 @@
       "types": "./dist/structure/index.d.ts",
       "default": "./dist/structure/index.js"
     },
+    "./structure/ferrox-wasm": {
+      "types": "./dist/structure/ferrox-wasm.d.ts",
+      "default": "./dist/structure/ferrox-wasm.js"
+    },
+    "./structure/parse": {
+      "types": "./dist/structure/parse.d.ts",
+      "default": "./dist/structure/parse.js"
+    },
     "./symmetry": {
       "types": "./dist/symmetry/index.d.ts",
       "default": "./dist/symmetry/index.js"
