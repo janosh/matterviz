@@ -110,8 +110,6 @@ interface FerroxWasmModule {
 }
 
 // Lazy Initialization
-import { browser } from '$app/environment'
-
 let wasm_module: FerroxWasmModule | null = null
 let init_promise: Promise<FerroxWasmModule> | null = null
 
@@ -120,7 +118,7 @@ let init_promise: Promise<FerroxWasmModule> | null = null
 // triggering duplicate WASM initialization.
 export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
   // WASM only works in browser
-  if (!browser) {
+  if (typeof window === `undefined`) {
     return Promise.reject(new Error(`ferrox-wasm can only be used in the browser`))
   }
 

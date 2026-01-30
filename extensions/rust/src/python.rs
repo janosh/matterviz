@@ -2044,15 +2044,17 @@ fn order_disordered(
 // Slab Generation Functions
 // ============================================================================
 
-/// Validate slab generation parameters.
-fn validate_slab_params(min_slab_size: f64, min_vacuum_size: f64) -> PyResult<()> {
-    if min_slab_size <= 0.0 {
-        return Err(PyValueError::new_err("min_slab_size must be positive"));
-    }
-    if min_vacuum_size < 0.0 {
-        return Err(PyValueError::new_err(
-            "min_vacuum_size must be non-negative",
-        ));
+/// Emit a deprecation warning for unimplemented primitive parameter.
+fn warn_primitive_unimplemented(py: Python<'_>, primitive: bool) -> PyResult<()> {
+    if !primitive {
+        let warnings = py.import("warnings")?;
+        warnings.call_method1(
+            "warn",
+            (
+                "primitive=False has no effect; primitive cell reduction is not yet implemented",
+                py.import("builtins")?.getattr("FutureWarning")?,
+            ),
+        )?;
     }
     Ok(())
 }
@@ -2102,7 +2104,7 @@ fn make_slab(
 ) -> PyResult<Py<PyDict>> {
     use crate::structure::SlabConfig;
 
-    validate_slab_params(min_slab_size, min_vacuum_size)?;
+    warn_primitive_unimplemented(py, primitive)?;
 
     let config = SlabConfig::new(miller_index)
         .with_min_slab_size(min_slab_size)
@@ -2166,10 +2168,7 @@ fn generate_slabs(
 ) -> PyResult<Vec<Py<PyDict>>> {
     use crate::structure::SlabConfig;
 
-    validate_slab_params(min_slab_size, min_vacuum_size)?;
-    if symprec <= 0.0 {
-        return Err(PyValueError::new_err("symprec must be positive"));
-    }
+    warn_primitive_unimplemented(py, primitive)?;
 
     let config = SlabConfig::new(miller_index)
         .with_min_slab_size(min_slab_size)
@@ -2184,8 +2183,8 @@ fn generate_slabs(
         .map_err(|e| PyValueError::new_err(format!("Error generating slabs: {e}")))?;
 
     slabs
-        .iter()
-        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
+        .into_iter()
+        .map(|s| Ok(structure_to_pydict(py, &s)?.unbind()))
         .collect()
 }
 

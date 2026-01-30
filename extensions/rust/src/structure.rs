@@ -2390,6 +2390,9 @@ pub struct SlabConfig {
     pub primitive: bool,
     /// Symmetry precision for identifying unique terminations.
     pub symprec: f64,
+    /// If Some(idx), only generate the termination at this index (0-indexed).
+    /// This avoids computing all terminations when only one is needed.
+    pub termination_index: Option<usize>,
 }
 
 impl Default for SlabConfig {
@@ -2402,6 +2405,7 @@ impl Default for SlabConfig {
             in_unit_planes: false,
             primitive: true,
             symprec: 0.01,
+            termination_index: None,
         }
     }
 }
@@ -2455,6 +2459,14 @@ impl SlabConfig {
     #[must_use]
     pub fn with_symprec(mut self, symprec: f64) -> Self {
         self.symprec = symprec;
+        self
+    }
+
+    /// Set a specific termination index to generate (0-indexed).
+    /// When set, only this termination is computed, avoiding unnecessary work.
+    #[must_use]
+    pub fn with_termination_index(mut self, index: usize) -> Self {
+        self.termination_index = Some(index);
         self
     }
 }
@@ -2564,7 +2576,12 @@ impl Structure {
     /// Returns a single slab structure with the default (bottom) termination.
     /// For all unique terminations, use `generate_slabs()`.
     pub fn make_slab(&self, config: &SlabConfig) -> Result<Self> {
-        let slabs = self.generate_slabs(config)?;
+        // Use termination_index=0 to avoid generating all terminations
+        let mut config = config.clone();
+        if config.termination_index.is_none() {
+            config.termination_index = Some(0);
+        }
+        let slabs = self.generate_slabs(&config)?;
         slabs
             .into_iter()
             .next()
@@ -2649,9 +2666,29 @@ impl Structure {
         let layer_positions = identify_layer_positions(&slab_supercell.frac_coords, config.symprec);
         let termination_count = unique_terminations.min(layer_positions.len()).max(1);
 
-        let mut slabs = Vec::with_capacity(termination_count);
+        // Determine which terminations to generate
+        let (start_idx, end_idx) = match config.termination_index {
+            Some(idx) if idx < termination_count => (idx, idx + 1),
+            Some(idx) => {
+                return Err(FerroxError::InvalidStructure {
+                    index: 0,
+                    reason: format!(
+                        "termination_index {} out of range (0..{})",
+                        idx, termination_count
+                    ),
+                });
+            }
+            None => (0, termination_count),
+        };
 
-        for (term_idx, &shift) in layer_positions.iter().enumerate().take(termination_count) {
+        let mut slabs = Vec::with_capacity(end_idx - start_idx);
+
+        for (term_idx, &shift) in layer_positions
+            .iter()
+            .enumerate()
+            .skip(start_idx)
+            .take(end_idx - start_idx)
+        {
             let mut slab = slab_supercell.clone();
 
             // Shift z-coordinates and wrap
@@ -4968,8 +5005,6 @@ mod tests {
 
     #[test]
     fn test_slab_config() {
-        use super::SlabConfig;
-
         // Default values
         let def = SlabConfig::default();
         assert_eq!(def.miller_index, [1, 0, 0]);
@@ -4993,8 +5028,6 @@ mod tests {
 
     #[test]
     fn test_make_slab_basic() {
-        use super::SlabConfig;
-
         let cubic = make_cu_cubic(4.0);
         let slab = cubic
             .make_slab(
@@ -5015,8 +5048,6 @@ mod tests {
 
     #[test]
     fn test_make_slab_various_surfaces() {
-        use super::SlabConfig;
-
         let cubic = make_cu_cubic(4.0);
 
         for hkl in [[1, 0, 0], [1, 1, 0], [1, 1, 1], [2, 1, 0], [2, 1, 1]] {
@@ -5042,8 +5073,6 @@ mod tests {
 
     #[test]
     fn test_make_slab_in_unit_planes() {
-        use super::SlabConfig;
-
         let cubic = make_cu_cubic(4.0);
         let slab = cubic
             .make_slab(
@@ -5061,8 +5090,6 @@ mod tests {
 
     #[test]
     fn test_make_slab_centering() {
-        use super::SlabConfig;
-
         let cubic = make_cu_cubic(4.0);
         let avg_z =
             |s: &Structure| s.frac_coords.iter().map(|c| c.z).sum::<f64>() / s.num_sites() as f64;
@@ -5094,8 +5121,6 @@ mod tests {
 
     #[test]
     fn test_make_slab_errors() {
-        use super::SlabConfig;
-
         let cubic = make_cu_cubic(4.0);
         let empty = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
 
@@ -5128,8 +5153,6 @@ mod tests {
 
     #[test]
     fn test_generate_slabs_terminations() {
-        use super::SlabConfig;
-
         let nacl = make_nacl();
         let slabs = nacl
             .generate_slabs(
