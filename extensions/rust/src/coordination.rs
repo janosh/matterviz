@@ -223,11 +223,6 @@ impl Default for VoronoiConfig {
     }
 }
 
-/// Get config or default.
-fn voronoi_config(config: Option<&VoronoiConfig>) -> VoronoiConfig {
-    config.copied().unwrap_or_default()
-}
-
 /// Build a Voronoi tessellation from a structure with periodic boundary conditions.
 fn build_voronoi(structure: &Structure) -> Option<Voronoi> {
     if structure.num_sites() == 0 {
@@ -315,7 +310,7 @@ pub fn get_cn_voronoi(
     config: Option<&VoronoiConfig>,
 ) -> f64 {
     check_site_idx(structure, site_idx);
-    let config = voronoi_config(config);
+    let config = config.copied().unwrap_or_default();
     let Some(voronoi) = build_voronoi(structure) else {
         return 0.0;
     };
@@ -332,7 +327,7 @@ pub fn get_cn_voronoi(
 
 /// Get Voronoi-weighted coordination numbers for all sites.
 pub fn get_cn_voronoi_all(structure: &Structure, config: Option<&VoronoiConfig>) -> Vec<f64> {
-    let config = voronoi_config(config);
+    let config = config.copied().unwrap_or_default();
     let Some(voronoi) = build_voronoi(structure) else {
         return vec![];
     };
@@ -364,7 +359,7 @@ pub fn get_voronoi_neighbors(
     config: Option<&VoronoiConfig>,
 ) -> Vec<(usize, f64)> {
     check_site_idx(structure, site_idx);
-    let config = voronoi_config(config);
+    let config = config.copied().unwrap_or_default();
     let Some(voronoi) = build_voronoi(structure) else {
         return vec![];
     };
@@ -393,7 +388,7 @@ pub fn get_local_environment_voronoi(
     config: Option<&VoronoiConfig>,
 ) -> Vec<LocalEnvNeighbor> {
     check_site_idx(structure, site_idx);
-    let config = voronoi_config(config);
+    let config = config.copied().unwrap_or_default();
     let Some(voronoi) = build_voronoi(structure) else {
         return vec![];
     };
@@ -515,7 +510,6 @@ mod tests {
         let expected_dist = 3.61 / 2.0_f64.sqrt();
         for n in &neighbors {
             assert_eq!(n.element(), Element::Cu);
-            assert_eq!(n.element(), n.species.element);
             assert!((n.distance - expected_dist).abs() < 0.1);
         }
 

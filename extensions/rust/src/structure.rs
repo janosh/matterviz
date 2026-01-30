@@ -753,6 +753,9 @@ impl Structure {
     ///
     /// Uses Voronoi tessellation to determine neighbors based on solid angle.
     ///
+    /// **Note**: Results are only geometrically correct for orthogonal lattices
+    /// (cubic/tetragonal/orthorhombic). Use cutoff-based methods for non-orthogonal cells.
+    ///
     /// # Arguments
     ///
     /// * `site_idx` - Index of the site to analyze
@@ -772,6 +775,9 @@ impl Structure {
     ///
     /// Uses Voronoi tessellation to determine neighbors based on solid angle.
     ///
+    /// **Note**: Results are only geometrically correct for orthogonal lattices
+    /// (cubic/tetragonal/orthorhombic). Use cutoff-based methods for non-orthogonal cells.
+    ///
     /// # Returns
     ///
     /// A vector of effective coordination numbers, one for each site.
@@ -782,6 +788,9 @@ impl Structure {
     /// Get Voronoi neighbors with their solid angle fractions for a site.
     ///
     /// Returns neighbors sorted by solid angle (largest first).
+    ///
+    /// **Note**: Results are only geometrically correct for orthogonal lattices
+    /// (cubic/tetragonal/orthorhombic). Use cutoff-based methods for non-orthogonal cells.
     ///
     /// # Arguments
     ///
