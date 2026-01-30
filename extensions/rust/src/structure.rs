@@ -2647,6 +2647,32 @@ mod tests {
     }
 
     #[test]
+    fn test_distance_with_image_wraps_coordinates() {
+        // Test that coordinates outside [0,1) are wrapped correctly
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![
+                Vector3::new(0.25, 0.35, 0.45),
+                Vector3::new(1.0, 1.0, 1.0), // Wraps to (0, 0, 0)
+            ],
+        );
+
+        // With wrapping: site 1 is at (0,0,0), image [0,0,0] should give ~6.22
+        let (dist, img) = s.get_distance_and_image(0, 1);
+        let dist_with_img = s.get_distance_with_image(0, 1, img);
+
+        // These must match because get_distance_with_image wraps coords
+        assert!(
+            (dist - dist_with_img).abs() < 1e-10,
+            "Wrapped coords should match: {} vs {}",
+            dist,
+            dist_with_img
+        );
+    }
+
+    #[test]
     fn test_is_periodic_image_same_position_different_cells() {
         let lattice = Lattice::cubic(10.0);
         let s = Structure::new(
