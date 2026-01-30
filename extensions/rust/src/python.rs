@@ -2113,8 +2113,10 @@ fn make_slab(
         .with_in_unit_planes(in_unit_planes)
         .with_primitive(primitive);
 
-    let slab = parse_struct(structure)?
-        .make_slab(&config)
+    let s = parse_struct(structure)?;
+    // Release GIL during heavy computation
+    let slab = py
+        .detach(|| s.make_slab(&config))
         .map_err(|e| PyValueError::new_err(format!("Error generating slab: {e}")))?;
 
     Ok(structure_to_pydict(py, &slab)?.unbind())
@@ -2178,8 +2180,10 @@ fn generate_slabs(
         .with_primitive(primitive)
         .with_symprec(symprec);
 
-    let slabs = parse_struct(structure)?
-        .generate_slabs(&config)
+    let s = parse_struct(structure)?;
+    // Release GIL during heavy computation
+    let slabs = py
+        .detach(|| s.generate_slabs(&config))
         .map_err(|e| PyValueError::new_err(format!("Error generating slabs: {e}")))?;
 
     slabs
