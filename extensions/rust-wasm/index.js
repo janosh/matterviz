@@ -16,8 +16,8 @@ export default async function init(options) {
   let mod
   try {
     mod = await import(`./pkg/ferrox.js`)
-  } catch {
-    throw new Error(NOT_BUILT)
+  } catch (err) {
+    throw new Error(NOT_BUILT, { cause: err })
   }
 
   // Initialize the WASM binary

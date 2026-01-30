@@ -1,5 +1,6 @@
 // Type definitions for @matterviz/wasm
-// Hand-maintained types for the dynamic loader (index.js)
+// Minimal types for the dynamic loader (index.js)
+// For detailed typed wrappers, use $lib/structure/ferrox-wasm.ts in matterviz
 
 // The module returned by init() - all WASM exports are synchronous after init
 export interface WasmModule {
