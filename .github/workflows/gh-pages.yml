@@ -16,4 +16,9 @@ jobs:
       build-cmd: |
         rm -rf static/{molecules,structures,trajectories}
         cp -r src/site/{molecules,structures,trajectories} static/
+        # Build ferrox WASM package before vite build
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        . "$HOME/.cargo/env"
+        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        pnpm --filter @matterviz/ferrox-wasm build
         deno task build

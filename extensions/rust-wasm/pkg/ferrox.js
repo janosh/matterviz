@@ -5,7 +5,7 @@ const STUB_ERROR =
   `ferrox-wasm not built. Run 'cd extensions/rust-wasm && pnpm build' to compile the WASM module.`
 
 export default function init() {
-  throw new Error(STUB_ERROR)
+  return Promise.reject(new Error(STUB_ERROR))
 }
 
 export class WasmStructureMatcher {

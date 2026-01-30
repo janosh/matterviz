@@ -70,7 +70,3 @@ fn _ferrox(m: &Bound<'_, PyModule>) -> PyResult<()> {
     python::register(m)?;
     Ok(())
 }
-
-// WASM bindings (optional)
-#[cfg(feature = "wasm")]
-pub mod wasm;

@@ -114,7 +114,7 @@
     const click_sel = params.get(`click_selection`)
     if (click_sel !== null) enable_click_selection = click_sel !== `false`
     const title_param = params.get(`title`)
-    if (title_param !== null) custom_title = decodeURIComponent(title_param)
+    if (title_param !== null) custom_title = title_param
     // Initial generation after URL params are loaded
     regenerate()
   })
@@ -126,7 +126,7 @@
     params.set(`count`, String(entry_count))
     params.set(`hull_dist`, String(max_hull_dist))
     if (!enable_click_selection) params.set(`click_selection`, `false`)
-    if (custom_title) params.set(`title`, encodeURIComponent(custom_title))
+    if (custom_title) params.set(`title`, custom_title)
     replaceState(`?${params.toString()}`, {})
   }
 

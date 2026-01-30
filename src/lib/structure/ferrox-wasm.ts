@@ -4,31 +4,17 @@
 // for the ferrox structure matching library compiled to WebAssembly.
 
 import type { Crystal } from '$lib/structure'
+import type {
+  MatcherOptions,
+  NeighborListResult,
+  ReductionAlgorithm,
+  StructureFormat,
+  WasmResult,
+} from './ferrox-wasm-types'
+import { is_ok } from './ferrox-wasm-types'
 
-// Result Type Utilities
-// The WASM module returns discriminated unions: { ok: T } | { error: string }
-export type WasmResult<T> = { ok: T } | { error: string }
-
-// Type guard to check if result is successful
-export function is_ok<T>(result: WasmResult<T>): result is { ok: T } {
-  return `ok` in result
-}
-
-// Type guard to check if result is an error
-export function is_error<T>(result: WasmResult<T>): result is { error: string } {
-  return `error` in result
-}
-
-// Unwrap a successful result or throw an error
-export function unwrap<T>(result: WasmResult<T>): T {
-  if (is_ok(result)) return result.ok
-  throw new Error(result.error)
-}
-
-// Unwrap with a default value on error
-export function unwrap_or<T>(result: WasmResult<T>, default_value: T): T {
-  return is_ok(result) ? result.ok : default_value
-}
+// Re-export all types and utilities (no WASM side effects)
+export * from './ferrox-wasm-types'
 
 // WASM Module Types (from wasm-bindgen generated types)
 interface WasmStructureMatcherClass {
@@ -53,14 +39,6 @@ interface WasmStructureMatcherInstance {
     new_structures: unknown[],
     existing: unknown[],
   ): WasmResult<(number | null)[]>
-}
-
-// Neighbor list result from WASM
-export interface NeighborListResult {
-  center_indices: number[]
-  neighbor_indices: number[]
-  image_offsets: [number, number, number][]
-  distances: number[]
 }
 
 // WASM module exports
@@ -91,6 +69,7 @@ interface FerroxWasmModule {
   get_neighbor_list: (
     structure: unknown,
     r: number,
+    numerical_tol: number,
     exclude_self: boolean,
   ) => WasmResult<NeighborListResult>
   get_distance: (structure: unknown, i: number, j: number) => WasmResult<number>
@@ -133,59 +112,60 @@ interface FerroxWasmModule {
 // Lazy Initialization
 import { browser } from '$app/environment'
 
-let initialized = false
 let wasm_module: FerroxWasmModule | null = null
-let init_error: Error | null = null
+let init_promise: Promise<FerroxWasmModule> | null = null
 
-// Ensure the WASM module is loaded and initialized
-export async function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
+// Ensure the WASM module is loaded and initialized.
+// Memoizes the init promise to prevent concurrent callers from racing and
+// triggering duplicate WASM initialization.
+export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
   // WASM only works in browser
   if (!browser) {
-    throw new Error(`ferrox-wasm can only be used in the browser`)
+    return Promise.reject(new Error(`ferrox-wasm can only be used in the browser`))
   }
 
-  if (init_error) throw init_error
-  if (initialized && wasm_module) return wasm_module
+  // Fast path: already initialized
+  if (wasm_module) return Promise.resolve(wasm_module)
 
-  try {
-    // Dynamic import to avoid loading WASM until needed
-    // @vite-ignore prevents Vite from trying to resolve this during SSR
-    const mod = (await import(
-      /* @vite-ignore */ `@matterviz/ferrox-wasm`
-    )) as unknown as FerroxWasmModule
+  // Memoize the init promise to prevent race conditions where concurrent
+  // callers both start initialization before the first one completes
+  if (!init_promise) {
+    init_promise = (async () => {
+      try {
+        // Dynamic import to avoid loading WASM until needed
+        // @vite-ignore prevents Vite from trying to resolve this during SSR
+        const mod = (await import(
+          /* @vite-ignore */ `@matterviz/ferrox-wasm`
+        )) as unknown as FerroxWasmModule
 
-    // Get the WASM binary URL and initialize
-    const wasm_url_module = await import(
-      /* @vite-ignore */ `@matterviz/ferrox-wasm/ferrox_bg.wasm?url`
-    )
-    const wasm_url = wasm_url_module.default as string
-    await mod.default({ module_or_path: wasm_url })
+        // Get the WASM binary URL and initialize
+        const wasm_url_module = await import(
+          /* @vite-ignore */ `@matterviz/ferrox-wasm/ferrox_bg.wasm?url`
+        )
+        const wasm_url = wasm_url_module.default as string
+        await mod.default({ module_or_path: wasm_url })
 
-    wasm_module = mod
-    initialized = true
-    return mod
-  } catch (err) {
-    init_error = new Error(
-      `Failed to load ferrox-wasm. Make sure the WASM package is built: cd extensions/rust-wasm && pnpm build. Original error: ${err}`,
-    )
-    throw init_error
+        wasm_module = mod
+        return mod
+      } catch (err) {
+        // Clear the promise on failure so retry is possible
+        init_promise = null
+        throw new Error(
+          `Failed to load ferrox-wasm. Make sure the WASM package is built: cd extensions/rust-wasm && pnpm build. Original error: ${err}`,
+        )
+      }
+    })()
   }
+
+  return init_promise
 }
 
 // Check if the module is already initialized
 export function is_ferrox_wasm_ready(): boolean {
-  return initialized && wasm_module !== null
+  return wasm_module !== null
 }
 
 // Typed Wrapper Functions
-export interface MatcherOptions {
-  latt_len_tol?: number
-  site_pos_tol?: number
-  angle_tol?: number
-  primitive_cell?: boolean
-  scale?: boolean
-  element_only?: boolean
-}
 
 // Create a configured matcher instance with builder pattern
 function create_matcher(
@@ -262,8 +242,6 @@ export async function deduplicate_structures(
 }
 
 // Parse structure from file content
-export type StructureFormat = `cif` | `poscar` | `json`
-
 export async function parse_structure_file(
   content: string,
   format: StructureFormat,
@@ -274,8 +252,18 @@ export async function parse_structure_file(
       return mod.parse_cif(content)
     case `poscar`:
       return mod.parse_poscar(content)
-    case `json`:
-      return mod.parse_structure(JSON.parse(content))
+    case `json`: {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(content)
+      } catch (exc) {
+        const msg = exc instanceof Error ? exc.message : String(exc)
+        return { error: `Invalid JSON: ${msg}` }
+      }
+      return mod.parse_structure(parsed)
+    }
+    default:
+      return { error: `Unknown structure format: ${format}` }
   }
 }
 
@@ -291,8 +279,6 @@ export async function create_supercell(
 }
 
 // Reduce lattice using Niggli or LLL algorithm
-export type ReductionAlgorithm = `niggli` | `lll`
-
 export async function reduce_lattice(
   structure: Crystal,
   algo: ReductionAlgorithm = `niggli`,
@@ -349,10 +335,11 @@ export async function get_density(structure: Crystal): Promise<WasmResult<number
 export async function get_neighbor_list(
   structure: Crystal,
   cutoff_radius: number,
+  numerical_tol: number = 1e-8,
   exclude_self: boolean = true,
 ): Promise<WasmResult<NeighborListResult>> {
   const mod = await ensure_ferrox_wasm_ready()
-  return mod.get_neighbor_list(structure, cutoff_radius, exclude_self)
+  return mod.get_neighbor_list(structure, cutoff_radius, numerical_tol, exclude_self)
 }
 
 // Get minimum image distance between two sites

@@ -110,9 +110,15 @@
     const params = page.url.searchParams
     reference_id = params.get(`ref`) ?? null
     candidate_ids = params.get(`candidates`)?.split(`,`).filter(Boolean) ?? []
-    latt_len_tol = parseFloat(params.get(`latt_tol`) ?? `0.2`)
-    site_pos_tol = parseFloat(params.get(`site_tol`) ?? `0.3`)
-    angle_tol = parseFloat(params.get(`angle_tol`) ?? `5.0`)
+    // Parse numeric params with NaN guard, falling back to defaults
+    const parse_float_safe = (val: string | null, fallback: number): number => {
+      if (val === null) return fallback
+      const parsed = parseFloat(val)
+      return Number.isFinite(parsed) ? parsed : fallback
+    }
+    latt_len_tol = parse_float_safe(params.get(`latt_tol`), 0.2)
+    site_pos_tol = parse_float_safe(params.get(`site_tol`), 0.3)
+    angle_tol = parse_float_safe(params.get(`angle_tol`), 5.0)
     primitive_cell = params.get(`primitive`) !== `false`
     scale = params.get(`scale`) !== `false`
     anonymous = params.get(`anon`) === `true`
@@ -330,7 +336,9 @@
   function add_perturbed_version() {
     if (!reference || !reference_id) return
     const base_id = reference_id.replace(/^perturb:\d+:/, ``)
-    const count = [...perturbed.keys()].filter((id) => id.includes(base_id)).length
+    // Use endsWith to avoid overcounting when base_id is a substring of another ID
+    const count =
+      [...perturbed.keys()].filter((id) => id.endsWith(`:${base_id}`)).length
     const id = `perturb:${count + 1}:${base_id}`
     // Increasing displacement for each perturbed version (0.05Å, 0.10Å, 0.15Å, ...)
     const perturbed_struct = perturb_structure(reference, 0.05 * (count + 1))

@@ -1,40 +1,14 @@
 import type { Crystal } from '$lib/structure'
+// Import types and utilities from the pure types module (no WASM side effects)
+import {
+  is_error,
+  is_ok,
+  type NeighborListResult,
+  unwrap,
+  unwrap_or,
+  type WasmResult,
+} from '$lib/structure/ferrox-wasm-types'
 import { describe, expect, it } from 'vitest'
-
-// ============================================================================
-// Result Type Utilities
-// These are copied from ferrox-wasm.ts rather than imported because importing
-// the main module would trigger WASM resolution, which fails in vitest since
-// the @matterviz/ferrox-wasm package isn't built/installed during unit tests.
-// Integration tests with the real WASM module should use Playwright instead.
-// ============================================================================
-
-type WasmResult<T> = { ok: T } | { error: string }
-
-function is_ok<T>(result: WasmResult<T>): result is { ok: T } {
-  return `ok` in result
-}
-
-function is_error<T>(result: WasmResult<T>): result is { error: string } {
-  return `error` in result
-}
-
-function unwrap<T>(result: WasmResult<T>): T {
-  if (is_ok(result)) return result.ok
-  throw new Error(result.error)
-}
-
-function unwrap_or<T>(result: WasmResult<T>, default_value: T): T {
-  return is_ok(result) ? result.ok : default_value
-}
-
-// Neighbor list result type (copied from ferrox-wasm.ts)
-interface NeighborListResult {
-  center_indices: number[]
-  neighbor_indices: number[]
-  image_offsets: [number, number, number][]
-  distances: number[]
-}
 
 describe(`WasmResult utilities`, () => {
   it(`is_ok correctly identifies success results`, () => {

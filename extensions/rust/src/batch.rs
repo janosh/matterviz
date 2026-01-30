@@ -146,6 +146,47 @@ fn parse_json_structures(json_strings: &[&str]) -> Result<Vec<Structure>> {
         .collect()
 }
 
+// Helper macro to reduce cfg-gated code duplication between parallel and sequential paths
+macro_rules! maybe_par_iter {
+    ($collection:expr, $body:expr) => {{
+        #[cfg(feature = "rayon")]
+        {
+            $collection.par_iter().for_each($body);
+        }
+        #[cfg(not(feature = "rayon"))]
+        {
+            $collection.iter().for_each($body);
+        }
+    }};
+}
+
+macro_rules! maybe_par_map {
+    ($collection:expr, $body:expr) => {{
+        #[cfg(feature = "rayon")]
+        {
+            $collection.par_iter().enumerate().map($body).collect()
+        }
+        #[cfg(not(feature = "rayon"))]
+        {
+            $collection.iter().enumerate().map($body).collect()
+        }
+    }};
+}
+
+// Simpler variant without enumerate for cases where index isn't needed
+macro_rules! maybe_par_map_ref {
+    ($collection:expr, $body:expr) => {{
+        #[cfg(feature = "rayon")]
+        {
+            $collection.par_iter().map($body).collect()
+        }
+        #[cfg(not(feature = "rayon"))]
+        {
+            $collection.iter().map($body).collect()
+        }
+    }};
+}
+
 // Batch Processing Methods
 
 impl StructureMatcher {
@@ -179,27 +220,11 @@ impl StructureMatcher {
 
         // Step 1: Reduce all structures (parallel when rayon enabled), then group by composition hash.
         // Reducing first ensures supercells are properly grouped with their primitive cells.
-        #[cfg(feature = "rayon")]
-        let reduced: Vec<_> = structures
-            .par_iter()
-            .enumerate()
-            .map(|(idx, s)| {
-                let reduced = self.reduce_structure(s);
-                let hash = self.composition_hash(&reduced);
-                (idx, hash, reduced)
-            })
-            .collect();
-
-        #[cfg(not(feature = "rayon"))]
-        let reduced: Vec<_> = structures
-            .iter()
-            .enumerate()
-            .map(|(idx, s)| {
-                let reduced = self.reduce_structure(s);
-                let hash = self.composition_hash(&reduced);
-                (idx, hash, reduced)
-            })
-            .collect();
+        let reduced: Vec<_> = maybe_par_map!(structures, |(idx, s)| {
+            let reduced = self.reduce_structure(s);
+            let hash = self.composition_hash(&reduced);
+            (idx, hash, reduced)
+        });
 
         let mut comp_groups: IndexMap<u64, Vec<(usize, Structure)>> = IndexMap::new();
         for (idx, hash, reduced) in reduced {
@@ -207,42 +232,21 @@ impl StructureMatcher {
         }
 
         // Step 2: Within each composition group, compare pairwise (parallel when rayon enabled)
-        #[cfg(feature = "rayon")]
-        {
-            let groups_vec: Vec<_> = comp_groups.values().collect();
-            groups_vec.par_iter().for_each(|group| {
-                // Generate all pairs within this group
-                for idx in 0..group.len() {
-                    for jdx in (idx + 1)..group.len() {
-                        let (idx_i, reduced_i) = &group[idx];
-                        let (idx_j, reduced_j) = &group[jdx];
+        let groups_vec: Vec<_> = comp_groups.values().collect();
+        maybe_par_iter!(groups_vec, |group| {
+            // Generate all pairs within this group
+            for idx in 0..group.len() {
+                for jdx in (idx + 1)..group.len() {
+                    let (idx_i, reduced_i) = &group[idx];
+                    let (idx_j, reduced_j) = &group[jdx];
 
-                        // Compare pre-reduced structures (avoids redundant reduction)
-                        if self.fit_preprocessed(reduced_i, reduced_j) {
-                            uf.union(*idx_i, *idx_j);
-                        }
-                    }
-                }
-            });
-        }
-
-        #[cfg(not(feature = "rayon"))]
-        {
-            for group in comp_groups.values() {
-                // Generate all pairs within this group
-                for idx in 0..group.len() {
-                    for jdx in (idx + 1)..group.len() {
-                        let (idx_i, reduced_i) = &group[idx];
-                        let (idx_j, reduced_j) = &group[jdx];
-
-                        // Compare pre-reduced structures (avoids redundant reduction)
-                        if self.fit_preprocessed(reduced_i, reduced_j) {
-                            uf.union(*idx_i, *idx_j);
-                        }
+                    // Compare pre-reduced structures (avoids redundant reduction)
+                    if self.fit_preprocessed(reduced_i, reduced_j) {
+                        uf.union(*idx_i, *idx_j);
                     }
                 }
             }
-        }
+        });
 
         // Step 3: Build result - for each structure, find the minimum index in its group
         let groups = uf.get_groups();
@@ -350,27 +354,11 @@ impl StructureMatcher {
         }
 
         // Step 1: Reduce existing structures (parallel when rayon enabled), then group by composition hash
-        #[cfg(feature = "rayon")]
-        let existing_reduced: Vec<_> = existing_structures
-            .par_iter()
-            .enumerate()
-            .map(|(idx, s)| {
-                let reduced = self.reduce_structure(s);
-                let hash = self.composition_hash(&reduced);
-                (idx, hash, reduced)
-            })
-            .collect();
-
-        #[cfg(not(feature = "rayon"))]
-        let existing_reduced: Vec<_> = existing_structures
-            .iter()
-            .enumerate()
-            .map(|(idx, s)| {
-                let reduced = self.reduce_structure(s);
-                let hash = self.composition_hash(&reduced);
-                (idx, hash, reduced)
-            })
-            .collect();
+        let existing_reduced: Vec<_> = maybe_par_map!(existing_structures, |(idx, s)| {
+            let reduced = self.reduce_structure(s);
+            let hash = self.composition_hash(&reduced);
+            (idx, hash, reduced)
+        });
 
         let mut existing_by_comp: IndexMap<u64, Vec<(usize, Structure)>> = IndexMap::new();
         for (idx, hash, reduced) in existing_reduced {
@@ -381,43 +369,20 @@ impl StructureMatcher {
         }
 
         // Step 2: For each new structure, find first matching existing structure
-        #[cfg(feature = "rayon")]
-        let results: Vec<Option<usize>> = new_structures
-            .par_iter()
-            .map(|new_struct| {
-                let reduced_new = self.reduce_structure(new_struct);
-                let new_hash = self.composition_hash(&reduced_new);
+        let results: Vec<Option<usize>> = maybe_par_map_ref!(new_structures, |new_struct| {
+            let reduced_new = self.reduce_structure(new_struct);
+            let new_hash = self.composition_hash(&reduced_new);
 
-                // Find first match among candidates with same composition (early termination)
-                existing_by_comp.get(&new_hash).and_then(|candidates| {
-                    candidates
-                        .iter()
-                        .find(|(_, reduced_existing)| {
-                            self.fit_preprocessed(&reduced_new, reduced_existing)
-                        })
-                        .map(|(idx, _)| *idx)
-                })
+            // Find first match among candidates with same composition (early termination)
+            existing_by_comp.get(&new_hash).and_then(|candidates| {
+                candidates
+                    .iter()
+                    .find(|(_, reduced_existing)| {
+                        self.fit_preprocessed(&reduced_new, reduced_existing)
+                    })
+                    .map(|(idx, _)| *idx)
             })
-            .collect();
-
-        #[cfg(not(feature = "rayon"))]
-        let results: Vec<Option<usize>> = new_structures
-            .iter()
-            .map(|new_struct| {
-                let reduced_new = self.reduce_structure(new_struct);
-                let new_hash = self.composition_hash(&reduced_new);
-
-                // Find first match among candidates with same composition (early termination)
-                existing_by_comp.get(&new_hash).and_then(|candidates| {
-                    candidates
-                        .iter()
-                        .find(|(_, reduced_existing)| {
-                            self.fit_preprocessed(&reduced_new, reduced_existing)
-                        })
-                        .map(|(idx, _)| *idx)
-                })
-            })
-            .collect();
+        });
 
         Ok(results)
     }

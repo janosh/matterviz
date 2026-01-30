@@ -4,12 +4,12 @@
   import { normalize_show_controls } from '$lib/controls'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
+  import { sanitize_html } from '$lib/labels'
   import {
     set_fullscreen_bg,
     setup_fullscreen_effect,
     toggle_fullscreen,
   } from '$lib/layout'
-  import { sanitize_html } from '$lib/labels'
   import { ColorBar, PlotTooltip } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'

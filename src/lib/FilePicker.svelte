@@ -3,6 +3,9 @@
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
 
+  // Delay for distinguishing click from double-click (ms)
+  const CLICK_DELAY = 250
+
   let {
     files = [],
     active_files = [],
@@ -44,6 +47,16 @@
   let active_category_filter = $state<string | null>(null)
   let active_type_filter = $state<string | null>(null)
   type FilterKind = `category` | `type`
+
+  // Timer for distinguishing click from double-click (per-component state)
+  let click_timer: ReturnType<typeof setTimeout> | null = null
+  let click_timer_file: string | null = null
+
+  const clear_click_timer = () => {
+    if (click_timer) clearTimeout(click_timer)
+    click_timer = null
+    click_timer_file = null
+  }
 
   // Helper function to get the base file type (removing .gz extension)
   const get_base_file_type = (file: FileInfo): string => {
@@ -175,11 +188,30 @@
       draggable="true"
       ondragstart={handle_drag_start(file)}
       ondragend={() => on_drag_end?.()}
-      onclick={(event) => on_click?.(file, event)}
-      ondblclick={(event) => on_dblclick?.(file, event)}
+      onclick={(event) => {
+        clear_click_timer()
+        if (on_dblclick) {
+          // Delay click to allow double-click to cancel it
+          const target_file = file.name
+          click_timer_file = target_file
+          click_timer = setTimeout(() => {
+            if (click_timer_file === target_file) {
+              clear_click_timer()
+              on_click?.(file, event)
+            }
+          }, CLICK_DELAY)
+        } else {
+          on_click?.(file, event)
+        }
+      }}
+      ondblclick={(event) => {
+        clear_click_timer()
+        on_dblclick?.(file, event)
+      }}
       onkeydown={(event) => {
         if ([`Enter`, ` `].includes(event.key)) {
           event.preventDefault()
+          clear_click_timer()
           on_click?.(file, event)
         }
       }}
