@@ -41,9 +41,8 @@ interface WasmStructureMatcherInstance {
   ): WasmResult<(number | null)[]>
 }
 
-// WASM module exports
+// WASM module exports (post-initialization API)
 interface FerroxWasmModule {
-  default: (options?: { module_or_path?: string | URL }) => Promise<void>
   WasmStructureMatcher: WasmStructureMatcherClass
   // Parsing
   parse_structure: (input: unknown) => WasmResult<Crystal>
