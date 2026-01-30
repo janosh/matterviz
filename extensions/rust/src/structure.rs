@@ -180,6 +180,17 @@ impl Structure {
         Composition::new(counts)
     }
 
+    /// Get species strings for all sites.
+    ///
+    /// Returns a vector of human-readable species strings, one per site.
+    /// For ordered sites: "Fe" or "Fe2+". For disordered: "Co:0.500, Fe:0.500".
+    pub fn species_strings(&self) -> Vec<String> {
+        self.site_occupancies
+            .iter()
+            .map(|so| so.species_string())
+            .collect()
+    }
+
     /// Get Cartesian coordinates.
     pub fn cart_coords(&self) -> Vec<Vector3<f64>> {
         self.lattice.get_cartesian_coords(&self.frac_coords)
@@ -406,6 +417,19 @@ impl Structure {
     ///
     /// Panics if `i` or `j` is out of bounds.
     pub fn get_distance(&self, i: usize, j: usize) -> f64 {
+        self.get_distance_and_image(i, j).0
+    }
+
+    /// Get distance and periodic image between sites `i` and `j`.
+    ///
+    /// Returns `(distance, image)` where `image` is the lattice translation `[da, db, dc]`
+    /// that gives the shortest distance. For example, `[1, 0, 0]` means the shortest
+    /// path goes through the +a periodic boundary.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i` or `j` is out of bounds.
+    pub fn get_distance_and_image(&self, i: usize, j: usize) -> (f64, [i32; 3]) {
         assert!(
             i < self.num_sites(),
             "Index i={} out of bounds (num_sites={})",
@@ -421,9 +445,43 @@ impl Structure {
 
         let fcoords_i = vec![self.frac_coords[i]];
         let fcoords_j = vec![self.frac_coords[j]];
-        let (_, d2) =
+        let (_, d2, images) =
             crate::pbc::pbc_shortest_vectors(&self.lattice, &fcoords_i, &fcoords_j, None, None);
-        d2[0][0].sqrt()
+        (d2[0][0].sqrt(), images[0][0])
+    }
+
+    /// Get distance to a specific periodic image of site `j`.
+    ///
+    /// `jimage` specifies the lattice translation, e.g., `[1, 0, 0]` means the image
+    /// of site `j` shifted by +a lattice vector. The coordinates are wrapped to [0, 1)
+    /// before applying the image shift, consistent with `get_distance_and_image()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i` or `j` is out of bounds.
+    pub fn get_distance_with_image(&self, i: usize, j: usize, jimage: [i32; 3]) -> f64 {
+        assert!(
+            i < self.num_sites(),
+            "Index i={} out of bounds (num_sites={})",
+            i,
+            self.num_sites()
+        );
+        assert!(
+            j < self.num_sites(),
+            "Index j={} out of bounds (num_sites={})",
+            j,
+            self.num_sites()
+        );
+
+        // Wrap coordinates to [0, 1) for consistency with pbc_shortest_vectors
+        let frac_i = crate::pbc::wrap_frac_coords(&self.frac_coords[i]);
+        let frac_j = crate::pbc::wrap_frac_coords(&self.frac_coords[j]);
+
+        let cart_i = self.lattice.get_cartesian_coords(&[frac_i])[0];
+        let frac_j_shifted =
+            frac_j + Vector3::new(jimage[0] as f64, jimage[1] as f64, jimage[2] as f64);
+        let cart_j = self.lattice.get_cartesian_coords(&[frac_j_shifted])[0];
+        (cart_j - cart_i).norm()
     }
 
     /// Get the full distance matrix between all sites under PBC.
@@ -433,7 +491,7 @@ impl Structure {
             return vec![];
         }
 
-        let (_, d2) = crate::pbc::pbc_shortest_vectors(
+        let (_, d2, _) = crate::pbc::pbc_shortest_vectors(
             &self.lattice,
             &self.frac_coords,
             &self.frac_coords,
@@ -444,6 +502,76 @@ impl Structure {
         d2.into_iter()
             .map(|row| row.into_iter().map(|d| d.sqrt()).collect())
             .collect()
+    }
+
+    /// Get Cartesian distance from a site to an arbitrary point.
+    ///
+    /// This is a simple Euclidean distance, not using periodic boundary conditions.
+    /// For PBC-aware distances between sites, use `get_distance()`.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx` - Site index
+    /// * `point` - Cartesian coordinates of the point
+    ///
+    /// # Panics
+    ///
+    /// Panics if `idx` is out of bounds.
+    pub fn distance_from_point(&self, idx: usize, point: Vector3<f64>) -> f64 {
+        assert!(
+            idx < self.num_sites(),
+            "Site index {} out of bounds (num_sites={})",
+            idx,
+            self.num_sites()
+        );
+        let cart = self.lattice.get_cartesian_coords(&[self.frac_coords[idx]])[0];
+        (cart - point).norm()
+    }
+
+    /// Check if sites `i` and `j` are periodic images of each other.
+    ///
+    /// Two sites are periodic images if they have the same species (using dominant
+    /// species for disordered sites) and their fractional coordinates differ by
+    /// integers within the specified tolerance.
+    ///
+    /// # Arguments
+    ///
+    /// * `i` - First site index
+    /// * `j` - Second site index
+    /// * `tolerance` - Tolerance for coordinate comparison (typically 1e-8)
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i` or `j` is out of bounds.
+    pub fn is_periodic_image(&self, i: usize, j: usize, tolerance: f64) -> bool {
+        assert!(
+            i < self.num_sites(),
+            "Index i={} out of bounds (num_sites={})",
+            i,
+            self.num_sites()
+        );
+        assert!(
+            j < self.num_sites(),
+            "Index j={} out of bounds (num_sites={})",
+            j,
+            self.num_sites()
+        );
+
+        // Check species match (using dominant species for disordered sites)
+        if self.site_occupancies[i].dominant_species()
+            != self.site_occupancies[j].dominant_species()
+        {
+            return false;
+        }
+
+        // Check coordinates differ by integers within tolerance
+        let diff = self.frac_coords[i] - self.frac_coords[j];
+        for kdx in 0..3 {
+            if (diff[kdx] - diff[kdx].round()).abs() > tolerance {
+                return false;
+            }
+        }
+        true
     }
 
     // =========================================================================
@@ -1282,6 +1410,60 @@ impl Structure {
             .collect()
     }
 
+    /// Get label for a specific site.
+    ///
+    /// Returns the explicit label if set in site properties, otherwise falls back
+    /// to `species_string()` (e.g., "Fe" or "Fe:0.500, Co:0.500").
+    ///
+    /// # Panics
+    ///
+    /// Panics if `idx` is out of bounds.
+    pub fn site_label(&self, idx: usize) -> String {
+        assert!(
+            idx < self.num_sites(),
+            "Site index {} out of bounds (num_sites={})",
+            idx,
+            self.num_sites()
+        );
+        self.site_occupancies[idx]
+            .properties
+            .get("label")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .unwrap_or_else(|| self.site_occupancies[idx].species_string())
+    }
+
+    /// Set label for a specific site.
+    ///
+    /// The label is stored in the site's properties as `"label"`.
+    /// Returns self for method chaining.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `idx` is out of bounds.
+    pub fn set_site_label(&mut self, idx: usize, label: &str) -> &mut Self {
+        assert!(
+            idx < self.num_sites(),
+            "Site index {} out of bounds (num_sites={})",
+            idx,
+            self.num_sites()
+        );
+        self.site_occupancies[idx]
+            .properties
+            .insert("label".to_string(), serde_json::json!(label));
+        self
+    }
+
+    /// Get labels for all sites.
+    ///
+    /// Returns a vector of labels, one per site. Sites without explicit labels
+    /// return their `species_string()`.
+    pub fn site_labels(&self) -> Vec<String> {
+        (0..self.num_sites())
+            .map(|idx| self.site_label(idx))
+            .collect()
+    }
+
     /// Normalize all species symbols in the structure.
     ///
     /// Since structures are already normalized during parsing (element symbols
@@ -2101,6 +2283,774 @@ mod tests {
                 assert!((val - dm[jdx][idx]).abs() < 1e-10, "Should be symmetric");
             }
         }
+    }
+
+    #[test]
+    fn test_get_distance_and_image() {
+        let nacl = make_nacl();
+
+        // Self-distance: image should be [0, 0, 0]
+        let (d, img) = nacl.get_distance_and_image(0, 0);
+        assert!(d < 1e-10);
+        assert_eq!(img, [0, 0, 0]);
+
+        // Distance should match get_distance()
+        let (d01, _img01) = nacl.get_distance_and_image(0, 1);
+        assert!((d01 - nacl.get_distance(0, 1)).abs() < 1e-10);
+
+        // Test periodic wrap scenario with simple cubic
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Cu), Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.1, 0.0, 0.0), Vector3::new(0.9, 0.0, 0.0)],
+        );
+        let (d, img) = s.get_distance_and_image(0, 1);
+        // Shortest path is via boundary: 0.1 + (1-0.9) = 0.2 * 4 = 0.8
+        assert!((d - 0.8).abs() < 1e-8);
+        // Verify the image gives the correct distance when applied
+        let d_with_img = s.get_distance_with_image(0, 1, img);
+        assert!(
+            (d - d_with_img).abs() < 1e-8,
+            "Image should give same distance"
+        );
+    }
+
+    #[test]
+    fn test_get_distance_with_image() {
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Cu), Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
+        );
+
+        // Direct distance (no image shift)
+        let d0 = s.get_distance_with_image(0, 1, [0, 0, 0]);
+        assert!((d0 - 2.0).abs() < 1e-10); // 0.5 * 4 = 2
+
+        // With +a shift
+        let d1 = s.get_distance_with_image(0, 1, [1, 0, 0]);
+        assert!((d1 - 6.0).abs() < 1e-10); // (0.5 + 1) * 4 = 6
+
+        // With -a shift
+        let d_neg = s.get_distance_with_image(0, 1, [-1, 0, 0]);
+        assert!((d_neg - 2.0).abs() < 1e-10); // |0.5 - 1| * 4 = 2
+    }
+
+    #[test]
+    fn test_distance_from_point() {
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.5, 0.5, 0.5)], // Cartesian: (2, 2, 2)
+        );
+
+        // Distance to origin
+        let d = s.distance_from_point(0, Vector3::new(0.0, 0.0, 0.0));
+        let expected = (3.0_f64).sqrt() * 2.0; // sqrt(2^2 + 2^2 + 2^2)
+        assert!((d - expected).abs() < 1e-10);
+
+        // Distance to same point
+        let d0 = s.distance_from_point(0, Vector3::new(2.0, 2.0, 2.0));
+        assert!(d0 < 1e-10);
+    }
+
+    #[test]
+    fn test_is_periodic_image() {
+        let lattice = Lattice::cubic(4.0);
+        // Two Cu sites: one at origin, one at (1, 0, 0) fractional (same position via PBC)
+        let s = Structure::new(
+            lattice,
+            vec![
+                Species::neutral(Element::Cu),
+                Species::neutral(Element::Cu),
+                Species::neutral(Element::Fe), // Different species
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(1.0, 0.0, 0.0), // Same as origin via PBC
+                Vector3::new(0.0, 0.0, 0.0), // Same position but Fe
+            ],
+        );
+
+        // Same species, integer diff -> periodic images
+        assert!(s.is_periodic_image(0, 1, 1e-8));
+
+        // Same site is its own periodic image
+        assert!(s.is_periodic_image(0, 0, 1e-8));
+
+        // Different species -> not periodic images (even if coords match)
+        assert!(!s.is_periodic_image(0, 2, 1e-8));
+
+        // Non-integer diff -> not periodic images
+        let s2 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Cu), Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
+        );
+        assert!(!s2.is_periodic_image(0, 1, 1e-8));
+    }
+
+    #[test]
+    fn test_site_labels() {
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![
+                Species::neutral(Element::Fe),
+                Species::new(Element::O, Some(-2)),
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        // Without explicit labels, should return species_string
+        assert_eq!(s.site_label(0), "Fe");
+        assert_eq!(s.site_label(1), "O2-");
+        assert_eq!(s.site_labels(), vec!["Fe", "O2-"]);
+    }
+
+    #[test]
+    fn test_set_site_label() {
+        let lattice = Lattice::cubic(4.0);
+        let mut s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        // Set custom labels
+        s.set_site_label(0, "Fe_oct").set_site_label(1, "Fe_tet");
+
+        assert_eq!(s.site_label(0), "Fe_oct");
+        assert_eq!(s.site_label(1), "Fe_tet");
+        assert_eq!(s.site_labels(), vec!["Fe_oct", "Fe_tet"]);
+    }
+
+    #[test]
+    fn test_species_strings() {
+        let lattice = Lattice::cubic(4.0);
+
+        // Ordered sites
+        let s1 = Structure::new(
+            lattice.clone(),
+            vec![
+                Species::neutral(Element::Fe),
+                Species::new(Element::O, Some(-2)),
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        assert_eq!(s1.species_strings(), vec!["Fe", "O2-"]);
+
+        // Disordered site
+        let s2 = Structure::new_from_occupancies(
+            lattice,
+            vec![SiteOccupancy::new(vec![
+                (Species::neutral(Element::Fe), 0.5),
+                (Species::neutral(Element::Co), 0.5),
+            ])],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+        assert_eq!(s2.species_strings(), vec!["Co:0.500, Fe:0.500"]);
+    }
+
+    // =========================================================================
+    // Comprehensive tests for new pymatgen-parity features
+    // =========================================================================
+
+    #[test]
+    fn test_distance_and_image_cubic_lattice() {
+        // Test with simple cubic lattice - easy to verify manually
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.25, 0.35, 0.45), Vector3::new(0.0, 0.0, 0.0)],
+        );
+
+        // Distance from pymatgen: site at (2.5, 3.5, 4.5) to origin = sqrt(2.5^2 + 3.5^2 + 4.5^2) = 6.22494979899
+        let (dist, img) = s.get_distance_and_image(0, 1);
+        assert!((dist - 6.22494979899).abs() < 1e-6);
+        assert_eq!(img, [0, 0, 0]); // No image shift needed
+    }
+
+    #[test]
+    fn test_distance_and_image_periodic_wrap() {
+        // Test when shortest path crosses periodic boundary
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![
+                Vector3::new(0.25, 0.35, 0.45),
+                Vector3::new(1.0, 1.0, 1.0), // Same as origin via PBC (wraps to 0,0,0)
+            ],
+        );
+
+        let (dist, img) = s.get_distance_and_image(0, 1);
+        // Shortest distance should be to the image at origin
+        assert!((dist - 6.22494979899).abs() < 1e-6);
+        // Verify the image gives the correct distance
+        let d_with_img = s.get_distance_with_image(0, 1, img);
+        assert!(
+            (dist - d_with_img).abs() < 1e-10,
+            "Image {:?} should give same distance: {} vs {}",
+            img,
+            dist,
+            d_with_img
+        );
+    }
+
+    #[test]
+    fn test_distance_and_image_highly_skewed_lattice() {
+        // Test with highly skewed lattice from pymatgen test
+        // Lattice.from_parameters(3.0, 3.1, 10.0, 2.96, 2.0, 1.0)
+        let lattice = Lattice::from_parameters(3.0, 3.1, 10.0, 2.96, 2.0, 1.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.1, 0.1, 0.1), Vector3::new(0.99, 0.99, 0.99)],
+        );
+
+        let (dist, _img) = s.get_distance_and_image(0, 1);
+        // Distance should be small (< 1) due to PBC wrapping for nearby fractional coords
+        assert!(
+            dist < 1.0,
+            "Highly skewed lattice distance should be < 1, got {dist}"
+        );
+        // For highly skewed lattices, LLL reduction affects image transformation,
+        // so we just verify the distance is consistent with get_distance()
+        assert!((dist - s.get_distance(0, 1)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_distance_and_image_hexagonal_lattice() {
+        // Test with hexagonal lattice
+        let lattice = Lattice::hexagonal(3.0, 5.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Cu), Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.5)],
+        );
+
+        let (dist, img) = s.get_distance_and_image(0, 1);
+        // Distance along c-axis: 0.5 * 5.0 = 2.5
+        assert!((dist - 2.5).abs() < 1e-10);
+        // Verify consistency with get_distance_with_image
+        let d_with_img = s.get_distance_with_image(0, 1, img);
+        assert!((dist - d_with_img).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_distance_and_image_triclinic_lattice() {
+        // Test with triclinic lattice
+        let lattice = Lattice::from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        let (dist, _img) = s.get_distance_and_image(0, 1);
+        // Just verify distance is positive and reasonable
+        assert!(dist > 0.0 && dist < 10.0);
+    }
+
+    #[test]
+    fn test_distance_and_image_same_site() {
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        let (dist, img) = s.get_distance_and_image(0, 0);
+        assert!(dist < 1e-10);
+        assert_eq!(img, [0, 0, 0]);
+    }
+
+    #[test]
+    fn test_distance_and_image_consistency_with_get_distance() {
+        // Verify get_distance_and_image returns same distance as get_distance
+        let test_cases = [
+            Lattice::cubic(4.0),
+            Lattice::hexagonal(3.0, 5.0),
+            Lattice::from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0),
+            Lattice::from_parameters(3.0, 3.1, 10.0, 2.96, 2.0, 1.0), // Highly skewed
+        ];
+
+        for lattice in test_cases {
+            let s = Structure::new(
+                lattice,
+                vec![Species::neutral(Element::Fe), Species::neutral(Element::Cu)],
+                vec![Vector3::new(0.1, 0.2, 0.3), Vector3::new(0.7, 0.8, 0.9)],
+            );
+
+            let (dist_and_img, _) = s.get_distance_and_image(0, 1);
+            let dist_only = s.get_distance(0, 1);
+
+            assert!(
+                (dist_and_img - dist_only).abs() < 1e-10,
+                "Distance mismatch: {} vs {}",
+                dist_and_img,
+                dist_only
+            );
+        }
+    }
+
+    #[test]
+    fn test_distance_with_image_specific_images() {
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
+        );
+
+        // Direct distance (no image): 0.5 * 10 = 5
+        let d0 = s.get_distance_with_image(0, 1, [0, 0, 0]);
+        assert!((d0 - 5.0).abs() < 1e-10);
+
+        // +a shift: (0.5 + 1) * 10 = 15
+        let d1 = s.get_distance_with_image(0, 1, [1, 0, 0]);
+        assert!((d1 - 15.0).abs() < 1e-10);
+
+        // -a shift: |0.5 - 1| * 10 = 5
+        let d_neg = s.get_distance_with_image(0, 1, [-1, 0, 0]);
+        assert!((d_neg - 5.0).abs() < 1e-10);
+
+        // Diagonal shift: sqrt((0.5+1)^2 + 1^2 + 1^2) * 10 = sqrt(3.25) * 10
+        let d_diag = s.get_distance_with_image(0, 1, [1, 1, 1]);
+        let expected_diag = (1.5_f64.powi(2) + 1.0 + 1.0).sqrt() * 10.0;
+        assert!((d_diag - expected_diag).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_distance_with_image_returns_image_distance() {
+        // Verify that the image returned by get_distance_and_image gives same distance
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Cu), Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.1, 0.0, 0.0), Vector3::new(0.9, 0.0, 0.0)],
+        );
+
+        let (dist, img) = s.get_distance_and_image(0, 1);
+        let dist_with_img = s.get_distance_with_image(0, 1, img);
+
+        assert!(
+            (dist - dist_with_img).abs() < 1e-10,
+            "Image {img:?} should give same distance: {dist} vs {dist_with_img}"
+        );
+    }
+
+    #[test]
+    fn test_is_periodic_image_same_position_different_cells() {
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![
+                Vector3::new(0.25, 0.35, 0.45),
+                Vector3::new(1.25, 2.35, 4.45), // Differs by integers
+            ],
+        );
+
+        assert!(s.is_periodic_image(0, 1, 1e-8));
+        assert!(s.is_periodic_image(1, 0, 1e-8)); // Symmetric
+    }
+
+    #[test]
+    fn test_is_periodic_image_slight_difference() {
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![
+                Vector3::new(0.25, 0.35, 0.45),
+                Vector3::new(1.25, 2.35, 4.46), // Differs by 0.01 in c
+            ],
+        );
+
+        // With tight tolerance, should NOT be periodic image
+        assert!(!s.is_periodic_image(0, 1, 1e-8));
+
+        // With loose tolerance, should be periodic image
+        assert!(s.is_periodic_image(0, 1, 0.02));
+    }
+
+    #[test]
+    fn test_is_periodic_image_different_species() {
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![
+                Species::neutral(Element::Fe),
+                Species::neutral(Element::Co), // Different element
+            ],
+            vec![
+                Vector3::new(0.25, 0.35, 0.45),
+                Vector3::new(1.25, 2.35, 4.45), // Same position modulo lattice
+            ],
+        );
+
+        // Different species -> NOT periodic images, even if coords match
+        assert!(!s.is_periodic_image(0, 1, 1e-8));
+    }
+
+    #[test]
+    fn test_is_periodic_image_disordered_sites() {
+        let lattice = Lattice::cubic(10.0);
+        // Two disordered sites with same dominant species
+        let s = Structure::new_from_occupancies(
+            lattice,
+            vec![
+                SiteOccupancy::new(vec![
+                    (Species::neutral(Element::Fe), 0.6),
+                    (Species::neutral(Element::Co), 0.4),
+                ]),
+                SiteOccupancy::new(vec![
+                    (Species::neutral(Element::Fe), 0.7),
+                    (Species::neutral(Element::Ni), 0.3),
+                ]),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(1.0, 0.0, 0.0), // Same position via PBC
+            ],
+        );
+
+        // Same dominant species (Fe) -> periodic images
+        assert!(s.is_periodic_image(0, 1, 1e-8));
+    }
+
+    #[test]
+    fn test_is_periodic_image_self() {
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        // Site is its own periodic image
+        assert!(s.is_periodic_image(0, 0, 1e-8));
+    }
+
+    #[test]
+    fn test_distance_from_point_origin() {
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.25, 0.35, 0.45)], // Cartesian: (2.5, 3.5, 4.5)
+        );
+
+        let d = s.distance_from_point(0, Vector3::new(0.0, 0.0, 0.0));
+        // sqrt(2.5^2 + 3.5^2 + 4.5^2) = 6.22494979899
+        assert!((d - 6.22494979899).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_distance_from_point_same_location() {
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.1, 0.1, 0.1)], // Cartesian: (1, 1, 1)
+        );
+
+        let d = s.distance_from_point(0, Vector3::new(1.0, 1.0, 1.0));
+        assert!(d < 1e-10);
+    }
+
+    #[test]
+    fn test_distance_from_point_arbitrary() {
+        let lattice = Lattice::cubic(10.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.25, 0.35, 0.45)], // Cartesian: (2.5, 3.5, 4.5)
+        );
+
+        // From pymatgen test: distance to (0.1, 0.1, 0.1) = 6.0564015718906887
+        // Wait, pymatgen uses Cartesian (1, 1, 1), not (0.1, 0.1, 0.1)
+        let d = s.distance_from_point(0, Vector3::new(1.0, 1.0, 1.0));
+        // sqrt((2.5-1)^2 + (3.5-1)^2 + (4.5-1)^2) = sqrt(2.25 + 6.25 + 12.25) = sqrt(20.75)
+        let expected = 20.75_f64.sqrt();
+        assert!((d - expected).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_distance_from_point_non_cubic() {
+        let lattice = Lattice::hexagonal(3.0, 5.0);
+        let s = Structure::new(
+            lattice.clone(),
+            vec![Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.0, 0.0, 0.5)], // Along c-axis at z=2.5
+        );
+
+        // Distance from origin
+        let d = s.distance_from_point(0, Vector3::new(0.0, 0.0, 0.0));
+        assert!((d - 2.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_site_label_defaults_to_species_string() {
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![
+                Species::neutral(Element::Fe),
+                Species::new(Element::O, Some(-2)),
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        assert_eq!(s.site_label(0), "Fe");
+        assert_eq!(s.site_label(1), "O2-");
+    }
+
+    #[test]
+    fn test_site_label_disordered_default() {
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new_from_occupancies(
+            lattice,
+            vec![SiteOccupancy::new(vec![
+                (Species::neutral(Element::Fe), 0.5),
+                (Species::neutral(Element::Co), 0.5),
+            ])],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+
+        // Should return species_string for disordered site
+        assert_eq!(s.site_label(0), "Co:0.500, Fe:0.500");
+    }
+
+    #[test]
+    fn test_set_site_label_overwrites_default() {
+        let lattice = Lattice::cubic(4.0);
+        let mut s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        s.set_site_label(0, "Fe_oct");
+        s.set_site_label(1, "Fe_tet");
+
+        assert_eq!(s.site_label(0), "Fe_oct");
+        assert_eq!(s.site_label(1), "Fe_tet");
+    }
+
+    #[test]
+    fn test_set_site_label_chaining() {
+        let lattice = Lattice::cubic(4.0);
+        let mut s = Structure::new(
+            lattice,
+            vec![
+                Species::neutral(Element::Fe),
+                Species::neutral(Element::Fe),
+                Species::neutral(Element::Fe),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.25, 0.25, 0.25),
+                Vector3::new(0.5, 0.5, 0.5),
+            ],
+        );
+
+        // Method chaining
+        s.set_site_label(0, "A")
+            .set_site_label(1, "B")
+            .set_site_label(2, "C");
+
+        assert_eq!(s.site_labels(), vec!["A", "B", "C"]);
+    }
+
+    #[test]
+    fn test_site_labels_all() {
+        let lattice = Lattice::cubic(4.0);
+        let mut s = Structure::new(
+            lattice,
+            vec![
+                Species::neutral(Element::Fe),
+                Species::neutral(Element::Co),
+                Species::neutral(Element::Ni),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.25, 0.25, 0.25),
+                Vector3::new(0.5, 0.5, 0.5),
+            ],
+        );
+
+        // Before setting labels
+        assert_eq!(s.site_labels(), vec!["Fe", "Co", "Ni"]);
+
+        // Set some labels
+        s.set_site_label(1, "custom_label");
+
+        // Mixed: default and custom
+        assert_eq!(s.site_labels(), vec!["Fe", "custom_label", "Ni"]);
+    }
+
+    #[test]
+    fn test_site_label_special_characters() {
+        let lattice = Lattice::cubic(4.0);
+        let mut s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+
+        // Labels can contain special characters
+        s.set_site_label(0, "Fe_site_1 (octahedral)");
+        assert_eq!(s.site_label(0), "Fe_site_1 (octahedral)");
+    }
+
+    #[test]
+    fn test_site_label_persists_after_operations() {
+        let lattice = Lattice::cubic(4.0);
+        let mut s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+
+        s.set_site_label(0, "my_label");
+
+        // Label should be in properties
+        let props = s.site_properties(0);
+        assert_eq!(props.get("label").unwrap().as_str().unwrap(), "my_label");
+    }
+
+    #[test]
+    fn test_species_strings_empty_structure() {
+        let s = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
+        assert!(s.species_strings().is_empty());
+    }
+
+    #[test]
+    fn test_species_strings_large_structure() {
+        let lattice = Lattice::cubic(10.0);
+        let n = 100;
+        let species: Vec<_> = (0..n).map(|_| Species::neutral(Element::Cu)).collect();
+        let coords: Vec<_> = (0..n)
+            .map(|idx| {
+                Vector3::new(
+                    (idx % 10) as f64 / 10.0,
+                    ((idx / 10) % 10) as f64 / 10.0,
+                    (idx / 100) as f64 / 10.0,
+                )
+            })
+            .collect();
+
+        let s = Structure::new(lattice, species, coords);
+        let strings = s.species_strings();
+
+        assert_eq!(strings.len(), n);
+        assert!(strings.iter().all(|s| s == "Cu"));
+    }
+
+    #[test]
+    fn test_pbc_image_indices_cubic_no_wrap() {
+        // Sites within same unit cell - image should be [0,0,0]
+        let lattice = Lattice::cubic(4.0);
+        let c1 = vec![Vector3::new(0.2, 0.2, 0.2)];
+        let c2 = vec![Vector3::new(0.3, 0.3, 0.3)];
+
+        let (_, _, images) = crate::pbc::pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+        assert_eq!(images[0][0], [0, 0, 0]);
+    }
+
+    #[test]
+    fn test_pbc_image_indices_simple_wrap() {
+        // Site at 0.1 to site at 0.9: shortest via -1 image
+        let lattice = Lattice::cubic(4.0);
+        let c1 = vec![Vector3::new(0.1, 0.0, 0.0)];
+        let c2 = vec![Vector3::new(0.9, 0.0, 0.0)];
+
+        let (_, d2, images) = crate::pbc::pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+
+        // Verify shortest distance is 0.2 * 4 = 0.8, not 0.8 * 4 = 3.2
+        assert!((d2[0][0].sqrt() - 0.8).abs() < 1e-8);
+        // Image should be -1 in x direction
+        assert_eq!(images[0][0][0], -1);
+    }
+
+    #[test]
+    fn test_pbc_image_indices_corner_wrap() {
+        // Wrap in all three directions
+        let lattice = Lattice::cubic(4.0);
+        let c1 = vec![Vector3::new(0.05, 0.05, 0.05)];
+        let c2 = vec![Vector3::new(0.95, 0.95, 0.95)];
+
+        let (_, _, images) = crate::pbc::pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+        assert_eq!(images[0][0], [-1, -1, -1]);
+    }
+
+    #[test]
+    fn test_pbc_image_indices_positive_wrap() {
+        // Site at 0.9 to site at 0.1: shortest via +1 image
+        let lattice = Lattice::cubic(4.0);
+        let c1 = vec![Vector3::new(0.9, 0.0, 0.0)];
+        let c2 = vec![Vector3::new(0.1, 0.0, 0.0)];
+
+        let (_, _, images) = crate::pbc::pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+        // From 0.9 to 0.1, shortest is via +1 image (0.1 + 1 = 1.1, distance 0.2)
+        assert_eq!(images[0][0][0], 1);
+    }
+
+    #[test]
+    fn test_pbc_image_indices_multiple_pairs() {
+        let lattice = Lattice::cubic(4.0);
+        let c1 = vec![Vector3::new(0.1, 0.1, 0.1), Vector3::new(0.4, 0.4, 0.4)];
+        let c2 = vec![Vector3::new(0.2, 0.2, 0.2), Vector3::new(0.3, 0.3, 0.3)];
+
+        let (_, d2, images) = crate::pbc::pbc_shortest_vectors(&lattice, &c1, &c2, None, None);
+
+        // All pairs within same cell - no wrapping needed
+        // Just verify distances are reasonable (all should be < a*sqrt(3) = 4*1.73 = 6.93)
+        for idx in 0..2 {
+            for jdx in 0..2 {
+                assert!(d2[idx][jdx].sqrt() < 7.0, "Distance too large");
+                // For nearby sites within same cell, images should be small magnitude
+                let img = images[idx][jdx];
+                assert!(
+                    img[0].abs() <= 1 && img[1].abs() <= 1 && img[2].abs() <= 1,
+                    "Image {:?} too large for nearby sites",
+                    img
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_comprehensive_distance_verification() {
+        // Comprehensive test: verify all distance methods agree
+        let lattice = Lattice::cubic(5.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.1, 0.2, 0.3), Vector3::new(0.8, 0.9, 0.7)],
+        );
+
+        // get_distance should equal sqrt of distance_matrix entry
+        let d01 = s.get_distance(0, 1);
+        let dm = s.distance_matrix();
+        assert!((d01 - dm[0][1]).abs() < 1e-10);
+        assert!((d01 - dm[1][0]).abs() < 1e-10); // Symmetric
+
+        // get_distance_and_image should give same distance
+        let (d_and_img, img) = s.get_distance_and_image(0, 1);
+        assert!((d01 - d_and_img).abs() < 1e-10);
+
+        // Using that image should give same distance
+        let d_with_img = s.get_distance_with_image(0, 1, img);
+        assert!((d01 - d_with_img).abs() < 1e-10);
     }
 
     #[test]

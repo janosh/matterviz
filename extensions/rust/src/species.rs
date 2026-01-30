@@ -306,6 +306,27 @@ impl SiteOccupancy {
     pub fn total_occupancy(&self) -> f64 {
         self.species.iter().map(|(_, occ)| occ).sum()
     }
+
+    /// Get human-readable species string.
+    ///
+    /// For ordered sites: returns the species string (e.g., "Fe" or "Fe2+")
+    /// For disordered sites: returns sorted species with occupancies
+    /// (e.g., "Co:0.500, Fe:0.500", sorted alphabetically by symbol, 3 decimal places)
+    ///
+    /// This matches pymatgen's `species_string` property format.
+    pub fn species_string(&self) -> String {
+        if self.is_ordered() {
+            self.dominant_species().to_string()
+        } else {
+            let mut sorted: Vec<_> = self.species.iter().collect();
+            sorted.sort_by(|a, b| a.0.element.symbol().cmp(b.0.element.symbol()));
+            sorted
+                .iter()
+                .map(|(sp, occ)| format!("{}:{:.3}", sp, occ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    }
 }
 
 impl From<Species> for SiteOccupancy {
@@ -633,5 +654,101 @@ mod tests {
             "Total occupancy should be 0.7, got {}",
             so.total_occupancy()
         );
+    }
+
+    #[test]
+    fn test_species_string_ordered() {
+        // Neutral element
+        let so = SiteOccupancy::ordered(Species::neutral(Element::Fe));
+        assert_eq!(so.species_string(), "Fe");
+
+        // Element with oxidation state
+        let so2 = SiteOccupancy::ordered(Species::new(Element::Fe, Some(2)));
+        assert_eq!(so2.species_string(), "Fe2+");
+
+        // Negative oxidation state
+        let so3 = SiteOccupancy::ordered(Species::new(Element::O, Some(-2)));
+        assert_eq!(so3.species_string(), "O2-");
+    }
+
+    #[test]
+    fn test_species_string_disordered() {
+        // Disordered site - should be alphabetically sorted
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.5),
+            (Species::neutral(Element::Co), 0.5),
+        ]);
+        assert_eq!(so.species_string(), "Co:0.500, Fe:0.500");
+
+        // Three species
+        let so2 = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Zn), 0.2),
+            (Species::neutral(Element::Fe), 0.5),
+            (Species::neutral(Element::Co), 0.3),
+        ]);
+        assert_eq!(so2.species_string(), "Co:0.300, Fe:0.500, Zn:0.200");
+    }
+
+    #[test]
+    fn test_species_string_with_oxidation_states() {
+        // Disordered site with oxidation states
+        let so = SiteOccupancy::new(vec![
+            (Species::new(Element::Fe, Some(2)), 0.6),
+            (Species::new(Element::Fe, Some(3)), 0.4),
+        ]);
+        // Both are Fe, but with different oxidation states
+        assert_eq!(so.species_string(), "Fe2+:0.600, Fe3+:0.400");
+    }
+
+    #[test]
+    fn test_species_string_partial_occupancy() {
+        // Single species with partial occupancy (vacancy)
+        let so = SiteOccupancy::new(vec![(Species::neutral(Element::Fe), 0.8)]);
+        // Should still return just "Fe" since it's ordered (single species)
+        assert_eq!(so.species_string(), "Fe");
+        assert!(so.is_ordered());
+    }
+
+    #[test]
+    fn test_species_string_very_small_occupancies() {
+        // Test formatting with very small occupancies
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.001),
+            (Species::neutral(Element::Co), 0.999),
+        ]);
+        assert_eq!(so.species_string(), "Co:0.999, Fe:0.001");
+    }
+
+    #[test]
+    fn test_species_string_many_species() {
+        // High entropy alloy: 5 elements
+        let so = SiteOccupancy::new(vec![
+            (Species::neutral(Element::Fe), 0.2),
+            (Species::neutral(Element::Co), 0.2),
+            (Species::neutral(Element::Ni), 0.2),
+            (Species::neutral(Element::Cr), 0.2),
+            (Species::neutral(Element::Mn), 0.2),
+        ]);
+        assert_eq!(
+            so.species_string(),
+            "Co:0.200, Cr:0.200, Fe:0.200, Mn:0.200, Ni:0.200"
+        );
+    }
+
+    #[test]
+    fn test_species_string_mixed_oxidation_different_elements() {
+        // Mixed species with different oxidation states
+        let so = SiteOccupancy::new(vec![
+            (Species::new(Element::Fe, Some(3)), 0.5),
+            (Species::new(Element::Al, Some(3)), 0.5),
+        ]);
+        assert_eq!(so.species_string(), "Al3+:0.500, Fe3+:0.500");
+    }
+
+    #[test]
+    fn test_species_string_pseudo_element() {
+        // Dummy/vacancy element
+        let so = SiteOccupancy::ordered(Species::neutral(Element::Dummy));
+        assert_eq!(so.species_string(), "X");
     }
 }
