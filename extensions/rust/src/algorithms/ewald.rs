@@ -186,12 +186,10 @@ impl Ewald {
         // Real space contribution - use upper triangle like real_space_energy()
         // to ensure consistency and avoid double-counting issues
         let real_cutoff_sq = self.real_cutoff.powi(2);
-        for idx_i in 0..n_sites {
-            let pos_i = structure
-                .lattice
-                .get_cartesian_coord(&structure.frac_coords[idx_i]);
+        for (idx_i, frac_i) in structure.frac_coords.iter().enumerate() {
+            let pos_i = structure.lattice.get_cartesian_coord(frac_i);
 
-            for idx_j in idx_i..n_sites {
+            for (idx_j, frac_j) in structure.frac_coords.iter().enumerate().skip(idx_i) {
                 // For diagonal (i==j), we use factor 0.5 because periodic images
                 // come in symmetric pairs (L and -L). For off-diagonal, factor 1.0
                 // since upper triangle visits each pair once.
@@ -207,7 +205,7 @@ impl Ewald {
                             }
 
                             let offset = Vector3::new(na as f64, nb as f64, nc as f64);
-                            let pos_j_frac = structure.frac_coords[idx_j] + offset;
+                            let pos_j_frac = frac_j + offset;
                             let pos_j = structure.lattice.get_cartesian_coord(&pos_j_frac);
 
                             let r_vec = pos_j - pos_i;
@@ -359,16 +357,13 @@ impl Ewald {
 
     /// Real-space sum contribution.
     fn real_space_energy(&self, structure: &Structure, charges: &[f64], eta: f64) -> f64 {
-        let n_sites = structure.num_sites();
         let mut energy = 0.0;
         let real_cutoff_sq = self.real_cutoff.powi(2);
 
-        for idx_i in 0..n_sites {
-            let pos_i = structure
-                .lattice
-                .get_cartesian_coord(&structure.frac_coords[idx_i]);
+        for (idx_i, frac_i) in structure.frac_coords.iter().enumerate() {
+            let pos_i = structure.lattice.get_cartesian_coord(frac_i);
 
-            for idx_j in idx_i..n_sites {
+            for (idx_j, frac_j) in structure.frac_coords.iter().enumerate().skip(idx_i) {
                 let factor = if idx_i == idx_j { 0.5 } else { 1.0 };
 
                 // Sum over periodic images
@@ -381,7 +376,7 @@ impl Ewald {
                             }
 
                             let offset = Vector3::new(na as f64, nb as f64, nc as f64);
-                            let pos_j_frac = structure.frac_coords[idx_j] + offset;
+                            let pos_j_frac = frac_j + offset;
                             let pos_j = structure.lattice.get_cartesian_coord(&pos_j_frac);
 
                             let r_vec = pos_j - pos_i;

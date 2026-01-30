@@ -15,6 +15,10 @@ use itertools::Itertools;
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::{BinaryHeap, HashSet};
 
+/// Default initial capacity for ordering result vectors.
+/// Balances memory allocation overhead vs. over-allocation for typical use cases.
+const INITIAL_ORDERING_CAPACITY: usize = 1024;
+
 /// Configuration for ordering disordered structures.
 #[derive(Debug, Clone)]
 pub struct OrderDisorderedConfig {
@@ -138,6 +142,7 @@ impl Ord for EnergyStructure {
         // Standard ordering: highest energy at top of heap
         // When heap exceeds capacity, pop() removes highest energy (worst)
         // This keeps the k lowest-energy (best) structures
+        // NaN energies are treated as equal (both represent invalid/failed computations)
         self.energy
             .partial_cmp(&other.energy)
             .unwrap_or(CmpOrdering::Equal)
@@ -188,7 +193,7 @@ impl OrderDisorderedTransform {
         I: Iterator<Item = Vec<Species>>,
     {
         let max = self.config.max_structures.unwrap_or(usize::MAX);
-        let mut results = Vec::with_capacity(max.min(1024)); // Reasonable initial capacity
+        let mut results = Vec::with_capacity(max.min(INITIAL_ORDERING_CAPACITY));
 
         for species_list in orderings_iter {
             if results.len() >= max {
@@ -241,7 +246,7 @@ impl OrderDisorderedTransform {
                 ordered_struct.site_occupancies[idx] = SiteOccupancy::ordered(*species);
             }
 
-            // Compute energy
+            // Compute energy (mark failures so callers can distinguish from high energy)
             let energy = match ewald.energy(&ordered_struct) {
                 Ok(energy) => {
                     ordered_struct
@@ -249,7 +254,12 @@ impl OrderDisorderedTransform {
                         .insert("ewald_energy".to_string(), serde_json::json!(energy));
                     energy
                 }
-                Err(_) => f64::INFINITY, // High energy for structures without oxi states
+                Err(_) => {
+                    ordered_struct
+                        .properties
+                        .insert("ewald_failed".to_string(), serde_json::json!(true));
+                    f64::INFINITY
+                }
             };
 
             // Add to heap
@@ -265,8 +275,9 @@ impl OrderDisorderedTransform {
         }
 
         // Extract results sorted by energy (lowest first)
+        // BinaryHeap::into_vec() returns elements in arbitrary order, so we must sort.
+        // (into_sorted_vec is nightly-only as of Rust 1.75)
         let mut results: Vec<_> = heap.into_vec();
-        // Sort ascending by energy
         results.sort_by(|a, b| {
             a.energy
                 .partial_cmp(&b.energy)
@@ -425,8 +436,8 @@ impl PartialRemoveTransform {
         let mut results: Vec<(f64, Structure)> = Vec::new();
         let ewald = Ewald::new().with_accuracy(self.config.ewald_accuracy);
 
-        for removal_combo in target_sites.iter().combinations(n_remove) {
-            let removal_set: HashSet<usize> = removal_combo.iter().copied().copied().collect();
+        for removal_combo in target_sites.iter().copied().combinations(n_remove) {
+            let removal_set: HashSet<usize> = removal_combo.into_iter().collect();
 
             // Create structure without removed sites
             let (new_occupancies, new_coords): (Vec<_>, Vec<_>) = structure
@@ -447,7 +458,7 @@ impl PartialRemoveTransform {
             // Copy properties
             removed_struct.properties = structure.properties.clone();
 
-            // Compute energy
+            // Compute energy (mark failures so callers can distinguish from high energy)
             let energy = match ewald.energy(&removed_struct) {
                 Ok(e) => {
                     removed_struct
@@ -455,7 +466,12 @@ impl PartialRemoveTransform {
                         .insert("ewald_energy".to_string(), serde_json::json!(e));
                     e
                 }
-                Err(_) => f64::INFINITY,
+                Err(_) => {
+                    removed_struct
+                        .properties
+                        .insert("ewald_failed".to_string(), serde_json::json!(true));
+                    f64::INFINITY
+                }
             };
 
             results.push((energy, removed_struct));
