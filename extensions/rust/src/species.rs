@@ -312,7 +312,7 @@ impl SiteOccupancy {
     ///
     /// For ordered sites: returns the species string (e.g., "Fe" or "Fe2+")
     /// For disordered sites: returns sorted species with occupancies
-    /// (e.g., "Co:0.500, Fe:0.500", sorted alphabetically by symbol, 3 decimal places)
+    /// (e.g., "Co:0.500, Fe:0.500", sorted alphabetically by full species string, 3 decimal places)
     ///
     /// This matches pymatgen's `species_string` property format.
     pub fn species_string(&self) -> String {
@@ -321,7 +321,7 @@ impl SiteOccupancy {
         } else {
             self.species
                 .iter()
-                .sorted_by(|a, b| a.0.element.symbol().cmp(b.0.element.symbol()))
+                .sorted_by(|a, b| a.0.to_string().cmp(&b.0.to_string()))
                 .map(|(sp, occ)| format!("{sp}:{occ:.3}"))
                 .join(", ")
         }
@@ -695,12 +695,23 @@ mod tests {
         ]);
         assert_eq!(tri.species_string(), "Co:0.300, Fe:0.500, Zn:0.200");
 
-        // Same element with different oxidation states
+        // Same element with different oxidation states (Fe2+ first in input)
         let mixed_ox = SiteOccupancy::new(vec![
             (Species::new(Element::Fe, Some(2)), 0.6),
             (Species::new(Element::Fe, Some(3)), 0.4),
         ]);
         assert_eq!(mixed_ox.species_string(), "Fe2+:0.600, Fe3+:0.400");
+
+        // Same element with different oxidation states (Fe3+ first in input - tests determinism)
+        let mixed_ox_reversed = SiteOccupancy::new(vec![
+            (Species::new(Element::Fe, Some(3)), 0.4),
+            (Species::new(Element::Fe, Some(2)), 0.6),
+        ]);
+        assert_eq!(
+            mixed_ox_reversed.species_string(),
+            "Fe2+:0.600, Fe3+:0.400",
+            "Output should be deterministic regardless of input order"
+        );
 
         // Different elements with same oxidation state
         let mixed_elem = SiteOccupancy::new(vec![
