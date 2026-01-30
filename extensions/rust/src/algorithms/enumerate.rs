@@ -104,26 +104,57 @@ pub struct DerivativeIterator {
     current_hnfs: Vec<[[i32; 3]; 3]>,
     /// Index into current_hnfs
     hnf_index: usize,
-    /// Whether we've already yielded an error for invalid config
-    yielded_error: bool,
+    /// Pending error to yield on first next() call
+    pending_error: Option<FerroxError>,
+    /// Whether iteration should stop (after yielding error or exhausting range)
+    exhausted: bool,
 }
+
+/// Maximum supercell size we can enumerate (i32::MAX)
+const MAX_ENUMERABLE_SIZE: usize = i32::MAX as usize;
 
 impl DerivativeIterator {
     /// Create a new lazy derivative iterator.
     fn new(structure: Structure, config: EnumConfig) -> Self {
-        let current_det = config.min_size;
-        let current_hnfs = if current_det <= config.max_size {
-            generate_hnf(current_det as i32)
+        // Validate size range fits in i32 (generate_hnf takes i32 determinant)
+        let pending_error = if config.min_size > MAX_ENUMERABLE_SIZE {
+            Some(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "min_size {} exceeds i32::MAX ({}), cannot enumerate supercells this large",
+                    config.min_size, MAX_ENUMERABLE_SIZE
+                ),
+            })
+        } else if config.max_size > MAX_ENUMERABLE_SIZE {
+            Some(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "max_size {} exceeds i32::MAX ({}), cannot enumerate supercells this large",
+                    config.max_size, MAX_ENUMERABLE_SIZE
+                ),
+            })
         } else {
-            Vec::new()
+            None
         };
+
+        let has_error = pending_error.is_some();
+        let current_det = config.min_size;
+        // Only generate HNFs if we don't have a pending error and min_size is valid
+        let current_hnfs =
+            if !has_error && current_det <= config.max_size && current_det <= MAX_ENUMERABLE_SIZE {
+                generate_hnf(current_det as i32)
+            } else {
+                Vec::new()
+            };
+
         Self {
             structure,
             config,
             current_det,
             current_hnfs,
             hnf_index: 0,
-            yielded_error: false,
+            pending_error,
+            exhausted: has_error,
         }
     }
 
@@ -161,7 +192,9 @@ impl DerivativeIterator {
     /// Advance to the next determinant, returning false if exhausted.
     fn advance_to_next_det(&mut self) -> bool {
         self.current_det += 1;
-        if self.current_det > self.config.max_size {
+        // Stop if we exceed max_size or would overflow i32
+        if self.current_det > self.config.max_size || self.current_det > MAX_ENUMERABLE_SIZE {
+            self.exhausted = true;
             return false;
         }
         self.current_hnfs = generate_hnf(self.current_det as i32);
@@ -174,17 +207,14 @@ impl Iterator for DerivativeIterator {
     type Item = Result<Structure>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Validate size range fits in i32 (generate_hnf takes i32 determinant)
-        let max_det = i32::MAX as usize;
-        if !self.yielded_error && self.config.max_size > max_det {
-            self.yielded_error = true;
-            return Some(Err(FerroxError::InvalidStructure {
-                index: 0,
-                reason: format!(
-                    "max_size {} exceeds i32::MAX ({}), cannot enumerate supercells this large",
-                    self.config.max_size, max_det
-                ),
-            }));
+        // Yield pending error and stop iteration
+        if let Some(err) = self.pending_error.take() {
+            return Some(Err(err));
+        }
+
+        // Stop if exhausted (after error or range exhausted)
+        if self.exhausted {
+            return None;
         }
 
         loop {
@@ -760,6 +790,39 @@ mod tests {
                 .next()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn test_enumerate_overflow_validation() {
+        let structure = simple_cubic();
+
+        // min_size exceeding i32::MAX should yield error then stop
+        let min_overflow = EnumConfig {
+            min_size: usize::MAX,
+            max_size: usize::MAX,
+            ..Default::default()
+        };
+        let mut iter = EnumerateDerivativesTransform::new(min_overflow).iter_apply(&structure);
+        let first = iter.next();
+        assert!(first.is_some(), "Should yield an error");
+        assert!(first.unwrap().is_err(), "First item should be an error");
+        assert!(iter.next().is_none(), "Should stop after error");
+
+        // max_size exceeding i32::MAX should yield error then stop
+        let max_overflow = EnumConfig {
+            min_size: 1,
+            max_size: (i32::MAX as usize) + 1,
+            ..Default::default()
+        };
+        let mut iter = EnumerateDerivativesTransform::new(max_overflow).iter_apply(&structure);
+        let first = iter.next();
+        assert!(first.is_some(), "Should yield an error");
+        let err = first.unwrap().unwrap_err();
+        assert!(
+            format!("{err}").contains("exceeds i32::MAX"),
+            "Error should mention overflow: {err}"
+        );
+        assert!(iter.next().is_none(), "Should stop after error");
     }
 
     #[test]
