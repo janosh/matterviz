@@ -12,14 +12,15 @@ jobs:
     uses: janosh/workflows/.github/workflows/deno-gh-pages.yml@main
     with:
       deno-version: 2.3.7
-      # TODO remove once site build no longer fails without, started 2025-11-06 with sveltekit 2.48
+      # TODO remove WASM build once @matterviz/wasm is published to npm
       build-cmd: |
         rm -rf static/{molecules,structures,trajectories}
         cp -r src/site/{molecules,structures,trajectories} static/
-        # Build ferrox WASM package before vite build
+        # Build WASM package (remove once published to npm)
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         . "$HOME/.cargo/env"
-        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        cargo install wasm-pack@0.13.1 --locked
         wasm-pack build extensions/rust --target web --features wasm --no-default-features
+        mkdir -p extensions/rust-wasm/pkg/
         cp -r extensions/rust/pkg/* extensions/rust-wasm/pkg/
         deno task build
