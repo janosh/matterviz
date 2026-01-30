@@ -130,6 +130,15 @@ class TestLocalEnvironment:
         with pytest.raises((ValueError, IndexError)):
             ferrox.get_local_environment(fcc_cu_json, 100, 3.0)
 
+    def test_get_neighbors(self, bcc_fe_json: str) -> None:
+        """get_neighbors returns (site_idx, distance, image) tuples."""
+        neighbors = ferrox.get_neighbors(bcc_fe_json, 0, 2.6)
+        assert len(neighbors) == 8
+        for site_idx, dist, image in neighbors:
+            assert isinstance(site_idx, int)
+            assert 2.0 < dist < 2.7
+            assert len(image) == 3
+
 
 # ============================================================================
 # Voronoi-based coordination tests
@@ -189,9 +198,9 @@ class TestVoronoiErrors:
     """Tests for Voronoi method error handling."""
 
     @pytest.mark.parametrize("func", [
-        lambda s: ferrox.get_cn_voronoi(s, 0, min_solid_angle=-0.1),
-        lambda s: ferrox.get_cn_voronoi_all(s, min_solid_angle=-0.1),
-        lambda s: ferrox.get_voronoi_neighbors(s, 0, min_solid_angle=-0.1),
+        pytest.param(lambda s: ferrox.get_cn_voronoi(s, 0, min_solid_angle=-0.1), id="get_cn_voronoi"),
+        pytest.param(lambda s: ferrox.get_cn_voronoi_all(s, min_solid_angle=-0.1), id="get_cn_voronoi_all"),
+        pytest.param(lambda s: ferrox.get_voronoi_neighbors(s, 0, min_solid_angle=-0.1), id="get_voronoi_neighbors"),
     ])
     def test_negative_solid_angle_error(self, fcc_cu_json: str, func) -> None:
         """Negative min_solid_angle raises ValueError."""
@@ -199,9 +208,9 @@ class TestVoronoiErrors:
             func(fcc_cu_json)
 
     @pytest.mark.parametrize("func", [
-        lambda s: ferrox.get_cn_voronoi(s, 100),
-        lambda s: ferrox.get_voronoi_neighbors(s, 100),
-        lambda s: ferrox.get_local_environment_voronoi(s, 100),
+        pytest.param(lambda s: ferrox.get_cn_voronoi(s, 100), id="get_cn_voronoi"),
+        pytest.param(lambda s: ferrox.get_voronoi_neighbors(s, 100), id="get_voronoi_neighbors"),
+        pytest.param(lambda s: ferrox.get_local_environment_voronoi(s, 100), id="get_local_environment_voronoi"),
     ])
     def test_site_bounds_error(self, fcc_cu_json: str, func) -> None:
         """Out of bounds site raises error."""
@@ -233,7 +242,7 @@ class TestRocksaltElementTypes:
         """Voronoi also identifies correct neighbor elements."""
         neighbors = ferrox.get_local_environment_voronoi(rocksalt_nacl_json, 0)
         cl_count = sum(1 for n in neighbors if n["element"] == "Cl")
-        assert cl_count >= 4  # Na should have mostly Cl neighbors
+        assert cl_count >= 5  # Na should have 6 Cl neighbors in rocksalt
 
 
 # ============================================================================

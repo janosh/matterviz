@@ -103,10 +103,7 @@ pub fn get_coordination_numbers(structure: &Structure, cutoff: f64) -> Vec<usize
     if structure.num_sites() == 0 {
         return vec![];
     }
-    if cutoff < 0.0 {
-        return vec![];
-    }
-    if cutoff == 0.0 {
+    if cutoff <= 0.0 {
         return vec![0; structure.num_sites()];
     }
 
@@ -170,7 +167,7 @@ pub fn get_local_environment(
         })
         .collect();
 
-    result.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
+    result.sort_by(|a, b| a.distance.total_cmp(&b.distance));
     result
 }
 
@@ -197,7 +194,7 @@ pub fn get_neighbors(
         .map(|(idx, _)| (neighbors[idx], distances[idx], images[idx]))
         .collect();
 
-    result.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    result.sort_by(|a, b| a.1.total_cmp(&b.1));
     result
 }
 
@@ -223,10 +220,28 @@ impl Default for VoronoiConfig {
     }
 }
 
+/// Check if a lattice is orthogonal (all angles ≈ 90°).
+fn is_orthogonal(structure: &Structure) -> bool {
+    const ANGLE_TOL: f64 = 1.0; // degrees
+    let angles = structure.lattice.angles();
+    (angles.x - 90.0).abs() < ANGLE_TOL
+        && (angles.y - 90.0).abs() < ANGLE_TOL
+        && (angles.z - 90.0).abs() < ANGLE_TOL
+}
+
 /// Build a Voronoi tessellation from a structure with periodic boundary conditions.
 fn build_voronoi(structure: &Structure) -> Option<Voronoi> {
     if structure.num_sites() == 0 {
         return None;
+    }
+
+    // Warn about non-orthogonal lattices in debug builds
+    #[cfg(debug_assertions)]
+    if !is_orthogonal(structure) {
+        eprintln!(
+            "Warning: Voronoi coordination analysis on non-orthogonal lattice may be inaccurate. \
+             Use cutoff-based methods for triclinic/monoclinic/rhombohedral cells."
+        );
     }
 
     let cart_coords = structure.cart_coords();
@@ -374,7 +389,7 @@ pub fn get_voronoi_neighbors(
         .map(|(idx, solid_angle, _)| (idx, solid_angle))
         .collect();
 
-    neighbors.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    neighbors.sort_by(|a, b| b.1.total_cmp(&a.1));
     neighbors
 }
 
@@ -413,7 +428,11 @@ pub fn get_local_environment_voronoi(
         .collect();
 
     // Sort by solid angle (largest first)
-    neighbors.sort_by(|a, b| b.solid_angle.partial_cmp(&a.solid_angle).unwrap());
+    neighbors.sort_by(|a, b| {
+        let a_val = a.solid_angle.unwrap_or(0.0);
+        let b_val = b.solid_angle.unwrap_or(0.0);
+        b_val.total_cmp(&a_val)
+    });
     neighbors
 }
 
@@ -540,13 +559,17 @@ mod tests {
     fn test_edge_cases() {
         let fcc = make_fcc(Element::Cu, 3.61);
 
-        // Zero/negative cutoff
+        // Zero/negative cutoff both return zeros
         assert!(
             get_coordination_numbers(&fcc, 0.0)
                 .iter()
                 .all(|&cn| cn == 0)
         );
-        assert!(get_coordination_numbers(&fcc, -1.0).is_empty());
+        assert!(
+            get_coordination_numbers(&fcc, -1.0)
+                .iter()
+                .all(|&cn| cn == 0)
+        );
 
         // Empty structure
         let empty = Structure::new(Lattice::cubic(5.0), vec![], vec![]);

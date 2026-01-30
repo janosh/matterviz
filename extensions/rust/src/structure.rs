@@ -759,6 +759,7 @@ impl Structure {
     /// # Arguments
     ///
     /// * `site_idx` - Index of the site to analyze
+    /// * `config` - Optional configuration (min_solid_angle threshold)
     ///
     /// # Returns
     ///
@@ -767,8 +768,12 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `site_idx` is out of bounds.
-    pub fn get_cn_voronoi(&self, site_idx: usize) -> f64 {
-        crate::coordination::get_cn_voronoi(self, site_idx, None)
+    pub fn get_cn_voronoi(
+        &self,
+        site_idx: usize,
+        config: Option<&crate::coordination::VoronoiConfig>,
+    ) -> f64 {
+        crate::coordination::get_cn_voronoi(self, site_idx, config)
     }
 
     /// Get Voronoi-weighted coordination numbers for all sites.
@@ -778,11 +783,18 @@ impl Structure {
     /// **Note**: Results are only geometrically correct for orthogonal lattices
     /// (cubic/tetragonal/orthorhombic). Use cutoff-based methods for non-orthogonal cells.
     ///
+    /// # Arguments
+    ///
+    /// * `config` - Optional configuration (min_solid_angle threshold)
+    ///
     /// # Returns
     ///
     /// A vector of effective coordination numbers, one for each site.
-    pub fn get_cn_voronoi_all(&self) -> Vec<f64> {
-        crate::coordination::get_cn_voronoi_all(self, None)
+    pub fn get_cn_voronoi_all(
+        &self,
+        config: Option<&crate::coordination::VoronoiConfig>,
+    ) -> Vec<f64> {
+        crate::coordination::get_cn_voronoi_all(self, config)
     }
 
     /// Get Voronoi neighbors with their solid angle fractions for a site.
@@ -795,12 +807,17 @@ impl Structure {
     /// # Arguments
     ///
     /// * `site_idx` - Index of the site to analyze
+    /// * `config` - Optional configuration (min_solid_angle threshold)
     ///
     /// # Returns
     ///
     /// A vector of tuples `(neighbor_idx, solid_angle_fraction)`.
-    pub fn get_voronoi_neighbors(&self, site_idx: usize) -> Vec<(usize, f64)> {
-        crate::coordination::get_voronoi_neighbors(self, site_idx, None)
+    pub fn get_voronoi_neighbors(
+        &self,
+        site_idx: usize,
+        config: Option<&crate::coordination::VoronoiConfig>,
+    ) -> Vec<(usize, f64)> {
+        crate::coordination::get_voronoi_neighbors(self, site_idx, config)
     }
 
     // =========================================================================

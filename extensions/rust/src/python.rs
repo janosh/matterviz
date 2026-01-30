@@ -2075,6 +2075,14 @@ fn enumerate_derivatives(
 // Coordination Analysis Functions
 // ============================================================================
 
+/// Validate that cutoff is non-negative.
+fn check_cutoff(cutoff: f64) -> PyResult<()> {
+    if cutoff < 0.0 {
+        return Err(PyValueError::new_err("Cutoff must be non-negative"));
+    }
+    Ok(())
+}
+
 /// Get coordination numbers for all sites using a distance cutoff.
 ///
 /// Counts the number of neighbors within the specified cutoff distance for each site.
@@ -2095,9 +2103,7 @@ fn enumerate_derivatives(
 ///     >>> assert all(cn == 12 for cn in cns)
 #[pyfunction]
 fn get_coordination_numbers(structure: &str, cutoff: f64) -> PyResult<Vec<usize>> {
-    if cutoff < 0.0 {
-        return Err(PyValueError::new_err("Cutoff must be non-negative"));
-    }
+    check_cutoff(cutoff)?;
     Ok(parse_struct(structure)?.get_coordination_numbers(cutoff))
 }
 
@@ -2112,9 +2118,7 @@ fn get_coordination_numbers(structure: &str, cutoff: f64) -> PyResult<Vec<usize>
 ///     int: Coordination number for the specified site
 #[pyfunction]
 fn get_coordination_number(structure: &str, site_idx: usize, cutoff: f64) -> PyResult<usize> {
-    if cutoff < 0.0 {
-        return Err(PyValueError::new_err("Cutoff must be non-negative"));
-    }
+    check_cutoff(cutoff)?;
     let s = parse_struct(structure)?;
     check_site_bounds(s.num_sites(), &[site_idx])?;
     Ok(crate::coordination::get_coordination_number(
@@ -2146,9 +2150,7 @@ fn get_local_environment(
     site_idx: usize,
     cutoff: f64,
 ) -> PyResult<Py<PyList>> {
-    if cutoff < 0.0 {
-        return Err(PyValueError::new_err("Cutoff must be non-negative"));
-    }
+    check_cutoff(cutoff)?;
     let s = parse_struct(structure)?;
     check_site_bounds(s.num_sites(), &[site_idx])?;
 
@@ -2168,6 +2170,30 @@ fn get_local_environment(
         result.append(dict)?;
     }
     Ok(result.unbind())
+}
+
+/// Get neighbors for a site as (site_idx, distance, image) tuples.
+///
+/// A simpler, more efficient alternative to get_local_environment that returns
+/// only indices, distances, and periodic images without element/species info.
+///
+/// Args:
+///     structure (str): Structure as JSON string
+///     site_idx (int): Index of the site to analyze
+///     cutoff (float): Maximum distance in Angstroms to consider a site as a neighbor
+///
+/// Returns:
+///     list[tuple[int, float, list[int]]]: List of (neighbor_idx, distance, [da, db, dc]) tuples
+#[pyfunction]
+fn get_neighbors(
+    structure: &str,
+    site_idx: usize,
+    cutoff: f64,
+) -> PyResult<Vec<(usize, f64, [i32; 3])>> {
+    check_cutoff(cutoff)?;
+    let s = parse_struct(structure)?;
+    check_site_bounds(s.num_sites(), &[site_idx])?;
+    Ok(crate::coordination::get_neighbors(&s, site_idx, cutoff))
 }
 
 /// Validate and create VoronoiConfig from min_solid_angle.
@@ -2375,6 +2401,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_coordination_numbers, m)?)?;
     m.add_function(wrap_pyfunction!(get_coordination_number, m)?)?;
     m.add_function(wrap_pyfunction!(get_local_environment, m)?)?;
+    m.add_function(wrap_pyfunction!(get_neighbors, m)?)?;
     m.add_function(wrap_pyfunction!(get_cn_voronoi_all, m)?)?;
     m.add_function(wrap_pyfunction!(get_cn_voronoi, m)?)?;
     m.add_function(wrap_pyfunction!(get_voronoi_neighbors, m)?)?;
