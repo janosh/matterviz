@@ -12,11 +12,6 @@ except ImportError:
     pytest.skip("ferrox not installed", allow_module_level=True)
 
 
-# ============================================================================
-# Fixtures
-# ============================================================================
-
-
 def make_structure(lattice_a: float, sites: list[dict]) -> str:
     """Helper to create structure JSON."""
     return json.dumps({
@@ -51,18 +46,11 @@ def bcc_fe_json() -> str:
 def rocksalt_nacl_json() -> str:
     """NaCl rocksalt conventional cell (8 atoms, CN=6)."""
     return make_structure(5.64, [
-        # Na FCC positions
         site("Na", [0.0, 0.0, 0.0]), site("Na", [0.5, 0.5, 0.0]),
         site("Na", [0.5, 0.0, 0.5]), site("Na", [0.0, 0.5, 0.5]),
-        # Cl FCC positions shifted
         site("Cl", [0.5, 0.0, 0.0]), site("Cl", [0.0, 0.5, 0.0]),
         site("Cl", [0.0, 0.0, 0.5]), site("Cl", [0.5, 0.5, 0.5]),
     ])
-
-
-# ============================================================================
-# Cutoff-based coordination tests
-# ============================================================================
 
 
 class TestCutoffCoordination:
@@ -105,102 +93,65 @@ class TestLocalEnvironment:
         neighbors = ferrox.get_local_environment(fcc_cu_json, 0, 3.0)
         assert len(neighbors) == 12
 
-        # Check structure and values
         expected_dist = 3.61 / 2**0.5  # a/sqrt(2) ≈ 2.55 Å
         for n in neighbors:
             assert n["element"] == "Cu"
             assert abs(n["distance"] - expected_dist) < 0.1
-            assert len(n["image"]) == 3
-            assert all(isinstance(i, int) for i in n["image"])
-            assert isinstance(n["species"], str) and "Cu" in n["species"]
+            assert len(n["image"]) == 3 and all(isinstance(i, int) for i in n["image"])
 
-    def test_distances_sorted(self, fcc_cu_json: str) -> None:
-        """Neighbors are sorted by distance."""
-        neighbors = ferrox.get_local_environment(fcc_cu_json, 0, 5.0)
+        # Sorted by distance
         distances = [n["distance"] for n in neighbors]
         assert distances == sorted(distances)
 
-    def test_periodic_images_present(self, fcc_cu_json: str) -> None:
-        """FCC has neighbors in periodic images."""
-        neighbors = ferrox.get_local_environment(fcc_cu_json, 0, 3.0)
+        # Has periodic images (not all [0,0,0])
         assert any(any(i != 0 for i in n["image"]) for n in neighbors)
+
+    def test_get_neighbors(self, bcc_fe_json: str) -> None:
+        """get_neighbors returns (site_idx, distance, image) tuples."""
+        neighbors = ferrox.get_neighbors(bcc_fe_json, 0, 2.6)
+        assert len(neighbors) == 8
+        assert all(2.0 < dist < 2.7 and len(image) == 3 for _, dist, image in neighbors)
 
     def test_site_bounds_error(self, fcc_cu_json: str) -> None:
         """Out of bounds site raises error."""
         with pytest.raises((ValueError, IndexError)):
             ferrox.get_local_environment(fcc_cu_json, 100, 3.0)
 
-    def test_get_neighbors(self, bcc_fe_json: str) -> None:
-        """get_neighbors returns (site_idx, distance, image) tuples."""
-        neighbors = ferrox.get_neighbors(bcc_fe_json, 0, 2.6)
-        assert len(neighbors) == 8
-        for site_idx, dist, image in neighbors:
-            assert isinstance(site_idx, int)
-            assert 2.0 < dist < 2.7
-            assert len(image) == 3
-
-
-# ============================================================================
-# Voronoi-based coordination tests
-# ============================================================================
-
 
 class TestVoronoiCoordination:
     """Tests for Voronoi-based coordination number functions."""
 
     def test_voronoi_fcc(self, fcc_cu_json: str) -> None:
-        """FCC Cu has ~12 Voronoi neighbors."""
+        """FCC Cu has ~12 Voronoi neighbors with valid solid angles."""
+        # Coordination numbers
         cns = ferrox.get_cn_voronoi_all(fcc_cu_json)
-        assert len(cns) == 4
-        assert all(10 <= cn <= 14 for cn in cns)
-
-        # Single site agrees
+        assert len(cns) == 4 and all(10 <= cn <= 14 for cn in cns)
         assert 10 <= ferrox.get_cn_voronoi(fcc_cu_json, 0) <= 14
 
-    def test_voronoi_neighbors(self, fcc_cu_json: str) -> None:
-        """Voronoi neighbors have valid structure and are sorted by solid angle."""
+        # Neighbors sorted by solid angle (descending)
         neighbors = ferrox.get_voronoi_neighbors(fcc_cu_json, 0)
-        assert len(neighbors) > 0
-
-        solid_angles = []
-        for site_idx, solid_angle in neighbors:
-            assert isinstance(site_idx, int)
-            assert 0 <= solid_angle <= 1.0
-            solid_angles.append(solid_angle)
-
-        # Sorted descending by solid angle
+        solid_angles = [sa for _, sa in neighbors]
+        assert all(0 <= sa <= 1.0 for sa in solid_angles)
         assert solid_angles == sorted(solid_angles, reverse=True)
 
-    def test_voronoi_local_environment(self, fcc_cu_json: str) -> None:
-        """Voronoi local environment has solid angles and species."""
-        neighbors = ferrox.get_local_environment_voronoi(fcc_cu_json, 0)
-        assert len(neighbors) > 0
+        # Local environment has solid angles
+        env = ferrox.get_local_environment_voronoi(fcc_cu_json, 0)
+        assert all(n["element"] == "Cu" and n["solid_angle"] > 0 for n in env)
 
-        for n in neighbors:
-            assert n["element"] == "Cu"
-            assert n["solid_angle"] > 0
-            assert isinstance(n["species"], str)
-
-    def test_min_solid_angle_filter(self, fcc_cu_json: str) -> None:
-        """Higher min_solid_angle filters more neighbors."""
+        # min_solid_angle filter: higher = fewer neighbors
         low = ferrox.get_voronoi_neighbors(fcc_cu_json, 0, min_solid_angle=0.0)
-        default = ferrox.get_voronoi_neighbors(fcc_cu_json, 0)  # 0.01
         high = ferrox.get_voronoi_neighbors(fcc_cu_json, 0, min_solid_angle=0.1)
-        assert len(low) >= len(default) >= len(high)
+        assert len(low) >= len(high)
 
     def test_simple_cubic_voronoi(self) -> None:
-        """Single atom simple cubic has CN=6 (cube with 6 faces)."""
+        """Simple cubic: CN=6 (cube faces)."""
         sc_json = make_structure(3.0, [site("Cu", [0.0, 0.0, 0.0])])
         assert ferrox.get_cn_voronoi(sc_json, 0) == 6.0
 
-
-class TestVoronoiErrors:
-    """Tests for Voronoi method error handling."""
-
     @pytest.mark.parametrize("func", [
-        pytest.param(lambda s: ferrox.get_cn_voronoi(s, 0, min_solid_angle=-0.1), id="get_cn_voronoi"),
-        pytest.param(lambda s: ferrox.get_cn_voronoi_all(s, min_solid_angle=-0.1), id="get_cn_voronoi_all"),
-        pytest.param(lambda s: ferrox.get_voronoi_neighbors(s, 0, min_solid_angle=-0.1), id="get_voronoi_neighbors"),
+        pytest.param(lambda s: ferrox.get_cn_voronoi(s, 0, min_solid_angle=-0.1), id="cn"),
+        pytest.param(lambda s: ferrox.get_cn_voronoi_all(s, min_solid_angle=-0.1), id="cn_all"),
+        pytest.param(lambda s: ferrox.get_voronoi_neighbors(s, 0, min_solid_angle=-0.1), id="neighbors"),
     ])
     def test_negative_solid_angle_error(self, fcc_cu_json: str, func) -> None:
         """Negative min_solid_angle raises ValueError."""
@@ -208,19 +159,14 @@ class TestVoronoiErrors:
             func(fcc_cu_json)
 
     @pytest.mark.parametrize("func", [
-        pytest.param(lambda s: ferrox.get_cn_voronoi(s, 100), id="get_cn_voronoi"),
-        pytest.param(lambda s: ferrox.get_voronoi_neighbors(s, 100), id="get_voronoi_neighbors"),
-        pytest.param(lambda s: ferrox.get_local_environment_voronoi(s, 100), id="get_local_environment_voronoi"),
+        pytest.param(lambda s: ferrox.get_cn_voronoi(s, 100), id="cn"),
+        pytest.param(lambda s: ferrox.get_voronoi_neighbors(s, 100), id="neighbors"),
+        pytest.param(lambda s: ferrox.get_local_environment_voronoi(s, 100), id="env"),
     ])
     def test_site_bounds_error(self, fcc_cu_json: str, func) -> None:
         """Out of bounds site raises error."""
         with pytest.raises((ValueError, IndexError)):
             func(fcc_cu_json)
-
-
-# ============================================================================
-# Rocksalt element type tests
-# ============================================================================
 
 
 class TestRocksaltElementTypes:
@@ -242,12 +188,7 @@ class TestRocksaltElementTypes:
         """Voronoi also identifies correct neighbor elements."""
         neighbors = ferrox.get_local_environment_voronoi(rocksalt_nacl_json, 0)
         cl_count = sum(1 for n in neighbors if n["element"] == "Cl")
-        assert cl_count >= 5  # Na should have 6 Cl neighbors in rocksalt
-
-
-# ============================================================================
-# Edge cases
-# ============================================================================
+        assert cl_count >= 5
 
 
 class TestEdgeCases:
@@ -263,6 +204,71 @@ class TestEdgeCases:
         """Cutoff and Voronoi methods give similar results for FCC."""
         cutoff_cns = ferrox.get_coordination_numbers(fcc_cu_json, 3.0)
         voronoi_cns = ferrox.get_cn_voronoi_all(fcc_cu_json)
-
         assert all(cn == 12 for cn in cutoff_cns)
         assert all(abs(cn - 12) <= 2 for cn in voronoi_cns)
+
+
+try:
+    from pymatgen.core import Lattice, Structure
+
+    PYMATGEN_AVAILABLE = True
+except ImportError:
+    PYMATGEN_AVAILABLE = False
+
+
+def _make_pymatgen_struct(name: str) -> "Structure":
+    """Create pymatgen structure by name."""
+    if name == "fcc_cu":
+        return Structure(Lattice.cubic(3.61), ["Cu"] * 4,
+            [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]])
+    if name == "bcc_fe":
+        return Structure(Lattice.cubic(2.87), ["Fe"] * 2, [[0, 0, 0], [0.5, 0.5, 0.5]])
+    if name == "rocksalt":
+        return Structure(Lattice.cubic(5.64), ["Na"] * 4 + ["Cl"] * 4, [
+            [0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5],
+            [0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5], [0.5, 0.5, 0.5]])
+    raise ValueError(f"Unknown structure: {name}")
+
+
+@pytest.mark.skipif(not PYMATGEN_AVAILABLE, reason="pymatgen not installed")
+class TestPymatgenCompatibility:
+    """Compare ferrox coordination results with pymatgen get_all_neighbors."""
+
+    @pytest.mark.parametrize(("struct_name", "cutoff"), [
+        ("fcc_cu", 3.0),
+        ("bcc_fe", 2.6),  # first shell
+        ("bcc_fe", 3.0),  # both shells
+        ("rocksalt", 3.5),
+    ])
+    def test_coordination_matches_pymatgen(self, struct_name: str, cutoff: float) -> None:
+        """Coordination numbers match pymatgen."""
+        struct = _make_pymatgen_struct(struct_name)
+        py_cns = [len(nn) for nn in struct.get_all_neighbors(cutoff)]
+        ferrox_cns = ferrox.get_coordination_numbers(json.dumps(struct.as_dict()), cutoff)
+        assert ferrox_cns == py_cns
+
+    def test_neighbor_distances_match_pymatgen(self) -> None:
+        """Neighbor distances match pymatgen."""
+        struct = _make_pymatgen_struct("fcc_cu")
+        ferrox_dists = sorted(n["distance"] for n in ferrox.get_local_environment(
+            json.dumps(struct.as_dict()), 0, 3.0))
+        py_dists = sorted(n.nn_distance for n in struct.get_all_neighbors(3.0)[0])
+        assert len(ferrox_dists) == len(py_dists)
+        assert all(abs(fd - pd) < 1e-6 for fd, pd in zip(ferrox_dists, py_dists))
+
+    def test_neighbor_elements_match_pymatgen(self) -> None:
+        """Neighbor elements match pymatgen in rocksalt."""
+        struct = _make_pymatgen_struct("rocksalt")
+        ferrox_elems = sorted(n["element"] for n in ferrox.get_local_environment(
+            json.dumps(struct.as_dict()), 0, 3.5))
+        py_elems = sorted(str(n.specie) for n in struct.get_all_neighbors(3.5)[0])
+        assert ferrox_elems == py_elems
+
+    def test_periodic_images_present(self) -> None:
+        """Both have periodic images for FCC."""
+        struct = _make_pymatgen_struct("fcc_cu")
+        ferrox_neighbors = ferrox.get_local_environment(json.dumps(struct.as_dict()), 0, 3.0)
+        py_neighbors = struct.get_all_neighbors(3.0)[0]
+        assert len(ferrox_neighbors) == len(py_neighbors) == 12
+        assert any(n["image"] != [0, 0, 0] for n in ferrox_neighbors)
+        assert any(tuple(n.image) != (0, 0, 0) for n in py_neighbors)

@@ -578,6 +578,17 @@ mod tests {
         let cl_neighbors = get_local_environment(&nacl, 4, 3.5);
         assert_eq!(cl_neighbors.len(), 6);
         assert!(cl_neighbors.iter().all(|n| n.element() == Element::Na));
+
+        // Voronoi should also correctly identify neighbor elements
+        let na_voronoi = get_local_environment_voronoi(&nacl, 0, None);
+        let cl_count = na_voronoi
+            .iter()
+            .filter(|n| n.element() == Element::Cl)
+            .count();
+        assert!(
+            cl_count >= 5,
+            "Na site should have mostly Cl neighbors via Voronoi, got {cl_count}"
+        );
     }
 
     #[test]
@@ -645,11 +656,8 @@ mod tests {
             assert_eq!(n.element(), Element::Cu);
             assert!(n.solid_angle.is_some());
         }
-    }
 
-    #[test]
-    fn test_voronoi_min_solid_angle_filter() {
-        let fcc = make_fcc(Element::Cu, 3.61);
+        // min_solid_angle filter: higher threshold = fewer neighbors
         let low = get_voronoi_neighbors(
             &fcc,
             0,
@@ -669,13 +677,31 @@ mod tests {
 
     #[test]
     fn test_simple_cubic_voronoi() {
-        let lattice = Lattice::cubic(3.0);
+        // Simple cubic: 1 atom, CN=6, all neighbors at lattice parameter distance
         let sc = Structure::new(
-            lattice,
+            Lattice::cubic(3.0),
             vec![Species::neutral(Element::Cu)],
             vec![Vector3::zeros()],
         );
+
+        // CN = 6 (cube faces)
         assert_eq!(get_cn_voronoi(&sc, 0, None), 6.0);
+
+        // Distance = lattice parameter
+        let neighbors = get_local_environment_voronoi(&sc, 0, None);
+        assert_eq!(neighbors.len(), 6);
+        assert!(neighbors.iter().all(|n| (n.distance - 3.0).abs() < 0.1));
+
+        // Boundary condition: >= includes exact matches
+        let exact_angle = get_voronoi_neighbors(&sc, 0, None)[0].1;
+        let cn = get_cn_voronoi(
+            &sc,
+            0,
+            Some(&VoronoiConfig {
+                min_solid_angle: exact_angle,
+            }),
+        );
+        assert_eq!(cn, 6.0, ">= should include exact matches");
     }
 
     #[test]
