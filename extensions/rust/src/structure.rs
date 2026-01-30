@@ -254,6 +254,12 @@ impl Structure {
 
     /// Get the primitive cell using moyo symmetry analysis.
     pub fn get_primitive(&self, symprec: f64) -> Result<Self> {
+        if !symprec.is_finite() || symprec <= 0.0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!("symprec must be positive and finite, got {symprec}"),
+            });
+        }
         let moyo_cell = self.to_moyo_cell();
         let dataset = MoyoDataset::new(
             &moyo_cell,
@@ -271,6 +277,12 @@ impl Structure {
 
     /// Get the conventional (standardized) cell using moyo symmetry analysis.
     pub fn get_conventional_structure(&self, symprec: f64) -> Result<Self> {
+        if !symprec.is_finite() || symprec <= 0.0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!("symprec must be positive and finite, got {symprec}"),
+            });
+        }
         let moyo_cell = self.to_moyo_cell();
         let dataset = MoyoDataset::new(
             &moyo_cell,
@@ -288,6 +300,7 @@ impl Structure {
 
     /// Get the spacegroup number using moyo.
     pub fn get_spacegroup_number(&self, symprec: f64) -> Result<i32> {
+        // symprec validated by get_symmetry_dataset
         Ok(self.get_symmetry_dataset(symprec)?.number)
     }
 
@@ -296,6 +309,12 @@ impl Structure {
     /// This is more efficient when you need multiple symmetry properties,
     /// as it only runs the symmetry analysis once.
     pub fn get_symmetry_dataset(&self, symprec: f64) -> Result<MoyoDataset> {
+        if !symprec.is_finite() || symprec <= 0.0 {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!("symprec must be positive and finite, got {symprec}"),
+            });
+        }
         if self.num_sites() == 0 {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
@@ -2577,7 +2596,7 @@ mod tests {
                 - rot[0][1] * (rot[1][0] * rot[2][2] - rot[1][2] * rot[2][0])
                 + rot[0][2] * (rot[1][0] * rot[2][1] - rot[1][1] * rot[2][0]);
             assert!(det == 1 || det == -1);
-            // Translation should be in [0, 1)
+            // Translation should be within the conventional [-0.5, 0.5] range
             for &t in trans {
                 assert!((-0.5..=0.5 + 1e-8).contains(&t));
             }
