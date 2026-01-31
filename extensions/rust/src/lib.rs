@@ -59,6 +59,7 @@ pub mod cif;
 pub mod io;
 
 // Analysis
+pub mod oxidation;
 pub mod xrd;
 
 // Re-exports for convenience
