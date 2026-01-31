@@ -48,15 +48,15 @@
     "three": "^0.182.0"
   },
   "peerDependencies": {
-    "@matterviz/wasm": ">=0.0.1"
+    "matterviz-wasm": ">=0.0.1"
   },
   "peerDependenciesMeta": {
-    "@matterviz/wasm": {
+    "matterviz-wasm": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@matterviz/wasm": "file:extensions/rust-wasm",
+    "matterviz-wasm": "file:extensions/rust-wasm",
     "@playwright/test": "^1.58.0",
     "@rollup/plugin-yaml": "^4.1.2",
     "@stylistic/eslint-plugin": "^5.7.1",
