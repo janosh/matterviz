@@ -279,13 +279,42 @@ fn get_unique_families(hkls: &[[i32; 3]]) -> Vec<HklInfo> {
 pub fn compute_xrd(structure: &Structure, config: &XrdConfig) -> XrdPattern {
     let wavelength = config.wavelength;
 
+    // Validate wavelength: must be finite and positive
+    if !wavelength.is_finite() || wavelength <= 0.0 {
+        return XrdPattern {
+            two_theta: vec![],
+            intensities: vec![],
+            hkls: vec![],
+            d_spacings: vec![],
+        };
+    }
+
+    // Validate two_theta_range if provided
+    let two_theta_range = match config.two_theta_range {
+        Some((t_min, t_max)) => {
+            // Check for finite values and valid range
+            if !t_min.is_finite()
+                || !t_max.is_finite()
+                || t_min > t_max
+                || t_min < 0.0
+                || t_max > 180.0
+            {
+                // Fall back to default range for invalid input
+                Some((0.0, 180.0))
+            } else {
+                Some((t_min, t_max))
+            }
+        }
+        None => None,
+    };
+
     // Get lattice matrix (rows are a, b, c vectors)
     let lattice_matrix = structure.lattice.matrix();
     let recip_matrix = compute_reciprocal_lattice(lattice_matrix);
 
     // Compute radius bounds from 2θ range using Bragg's law
     // r = 2 sin(θ) / λ
-    let (min_radius, max_radius) = match config.two_theta_range {
+    let (min_radius, max_radius) = match two_theta_range {
         Some((t_min, t_max)) => {
             let r_min = (2.0 * (t_min / 2.0).to_radians().sin()) / wavelength;
             let r_max = (2.0 * (t_max / 2.0).to_radians().sin()) / wavelength;
@@ -442,6 +471,14 @@ pub fn compute_xrd(structure: &Structure, config: &XrdConfig) -> XrdPattern {
         .values()
         .map(|p| p.intensity)
         .fold(f64::NEG_INFINITY, f64::max);
+
+    // Guard against division by zero: if max_intensity is 0 or negative, use 1.0
+    // This ensures scaled_val calculation never produces NaN
+    let max_intensity = if max_intensity <= 0.0 {
+        1.0
+    } else {
+        max_intensity
+    };
 
     let mut sorted_indices: Vec<i64> = peaks.keys().copied().collect();
     sorted_indices.sort_by(|&a, &b| {
