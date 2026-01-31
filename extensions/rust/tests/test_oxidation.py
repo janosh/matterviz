@@ -260,10 +260,9 @@ class TestComparisonWithPymatgen:
             ferrox_best = ferrox_guesses[0]["oxidation_states"]
             pymatgen_best = pymatgen_guesses[0]
 
-            # Convert pymatgen format
+            # pymatgen returns dicts with string keys
             for elem_str in ferrox_best:
-                elem = Element(elem_str)
-                pymatgen_val = pymatgen_best.get(elem, 0)
+                pymatgen_val = pymatgen_best.get(elem_str, 0)
                 ferrox_val = ferrox_best[elem_str]
                 assert np.isclose(ferrox_val, pymatgen_val, atol=0.5), (
                     f"{formula}: {elem_str} ferrox={ferrox_val}, pymatgen={pymatgen_val}"
