@@ -131,66 +131,47 @@ def test_formula_anonymous(formula: str, expected: str) -> None:
 class TestSymmetryFunctions:
     """Tests for symmetry analysis functions."""
 
-    def test_get_spacegroup_number(self, fcc_cu_json: str, bcc_fe_json: str) -> None:
-        """Test spacegroup number detection."""
-        assert ferrox.get_spacegroup_number(fcc_cu_json) == 225  # Fm-3m
-        assert ferrox.get_spacegroup_number(bcc_fe_json) == 229  # Im-3m
+    @pytest.mark.parametrize(("fixture", "sg_num", "sg_sym", "pearson", "crystal_sys"), [
+        ("fcc_cu_json", 225, "F m -3 m", "cF4", "cubic"),
+        ("bcc_fe_json", 229, "I m -3 m", "cI2", "cubic"),
+    ])
+    def test_symmetry_properties(
+        self, fixture: str, sg_num: int, sg_sym: str, pearson: str, crystal_sys: str,
+        request: pytest.FixtureRequest
+    ) -> None:
+        """Test spacegroup, Pearson symbol, and crystal system."""
+        struct = request.getfixturevalue(fixture)
+        assert ferrox.get_spacegroup_number(struct) == sg_num
+        assert ferrox.get_spacegroup_symbol(struct) == sg_sym
+        assert ferrox.get_pearson_symbol(struct) == pearson
+        assert ferrox.get_crystal_system(struct) == crystal_sys
 
-    def test_get_spacegroup_symbol(self, fcc_cu_json: str, bcc_fe_json: str) -> None:
-        """Test spacegroup symbol detection (moyo uses spaces)."""
-        assert ferrox.get_spacegroup_symbol(fcc_cu_json) == "F m -3 m"
-        assert ferrox.get_spacegroup_symbol(bcc_fe_json) == "I m -3 m"
+    def test_hall_number_range(self, fcc_cu_json: str) -> None:
+        """Hall number is in valid range (1-530)."""
+        assert 1 <= ferrox.get_hall_number(fcc_cu_json) <= 530
 
-    def test_get_hall_number(self, fcc_cu_json: str) -> None:
-        """Test Hall number is in valid range."""
-        hall = ferrox.get_hall_number(fcc_cu_json)
-        assert 1 <= hall <= 530
+    def test_wyckoff_and_site_symmetry(self, fcc_cu_json: str) -> None:
+        """FCC Cu: all 4 atoms have same Wyckoff position and site symmetry."""
+        assert len(set(ferrox.get_wyckoff_letters(fcc_cu_json))) == 1
+        assert len(set(ferrox.get_site_symmetry_symbols(fcc_cu_json))) == 1
 
-    def test_get_pearson_symbol(self, fcc_cu_json: str, bcc_fe_json: str) -> None:
-        """Test Pearson symbol detection."""
-        assert ferrox.get_pearson_symbol(fcc_cu_json) == "cF4"  # cubic, F-centered, 4 atoms
-        assert ferrox.get_pearson_symbol(bcc_fe_json) == "cI2"  # cubic, I-centered, 2 atoms
+    def test_symmetry_operations(self, fcc_cu_json: str) -> None:
+        """Symmetry operations: each is (3x3 rotation, 3-vector translation)."""
+        for rot, trans in ferrox.get_symmetry_operations(fcc_cu_json):
+            assert len(rot) == 3 and all(len(row) == 3 for row in rot)
+            assert len(trans) == 3
 
-    def test_get_wyckoff_letters(self, fcc_cu_json: str) -> None:
-        """Test Wyckoff letter assignment."""
-        wyckoffs = ferrox.get_wyckoff_letters(fcc_cu_json)
-        assert len(wyckoffs) == 4
-        # All Cu atoms in FCC should have same Wyckoff position
-        assert len(set(wyckoffs)) == 1
-
-    def test_get_site_symmetry_symbols(self, fcc_cu_json: str) -> None:
-        """Test site symmetry symbol assignment."""
-        symbols = ferrox.get_site_symmetry_symbols(fcc_cu_json)
-        assert len(symbols) == 4
-        # All Cu atoms in FCC should have same site symmetry
-        assert len(set(symbols)) == 1
-
-    def test_get_symmetry_operations(self, fcc_cu_json: str) -> None:
-        """Test symmetry operations retrieval."""
-        ops = ferrox.get_symmetry_operations(fcc_cu_json)
-        assert len(ops) > 0
-        # Each operation is (rotation, translation) tuple
-        for rot, trans in ops:
-            assert len(rot) == 3  # 3x3 matrix
-            assert len(rot[0]) == 3
-            assert len(trans) == 3  # 3-vector
-
-    def test_get_equivalent_sites(self, fcc_cu_json: str, nacl_json: str) -> None:
-        """Test equivalent site detection."""
-        # FCC Cu: all 4 atoms equivalent
-        orbits_cu = ferrox.get_equivalent_sites(fcc_cu_json)
-        assert len(orbits_cu) == 4
-        assert len(set(orbits_cu)) == 1  # All map to same representative
-
-        # NaCl: 2 inequivalent sites (Na and Cl)
-        orbits_nacl = ferrox.get_equivalent_sites(nacl_json)
-        assert len(orbits_nacl) == 2
-        assert len(set(orbits_nacl)) == 2  # Different representatives
-
-    def test_get_crystal_system(self, fcc_cu_json: str, bcc_fe_json: str) -> None:
-        """Test crystal system detection."""
-        assert ferrox.get_crystal_system(fcc_cu_json) == "cubic"
-        assert ferrox.get_crystal_system(bcc_fe_json) == "cubic"
+    @pytest.mark.parametrize(("fixture", "n_sites", "n_unique"), [
+        ("fcc_cu_json", 4, 1),  # all equivalent
+        ("nacl_json", 2, 2),    # Na and Cl inequivalent
+    ])
+    def test_equivalent_sites(
+        self, fixture: str, n_sites: int, n_unique: int, request: pytest.FixtureRequest
+    ) -> None:
+        """Equivalent site detection."""
+        orbits = ferrox.get_equivalent_sites(request.getfixturevalue(fixture))
+        assert len(orbits) == n_sites
+        assert len(set(orbits)) == n_unique
 
 
 class TestGetSymmetryDataset:
