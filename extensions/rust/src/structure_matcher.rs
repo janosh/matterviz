@@ -683,20 +683,13 @@ impl StructureMatcher {
         let elem2: Vec<_> = s2.species().iter().map(|s| s.element).collect();
 
         // Use smaller as source, larger as target (for consistent matching direction)
-        let (
-            source_frac,
-            target_frac,
-            source_elem,
-            target_elem,
-            source_latt,
-            _target_latt,
-            n_source,
-            n_target,
-        ) = if n1 <= n2 {
-            (frac1, frac2, &elem1, &elem2, &lattice1, &lattice2, n1, n2)
-        } else {
-            (frac2, frac1, &elem2, &elem1, &lattice2, &lattice1, n2, n1)
-        };
+        // We use source_latt for all Cartesian conversions as a consistent reference frame
+        let (source_frac, target_frac, source_elem, target_elem, source_latt, n_source, n_target) =
+            if n1 <= n2 {
+                (frac1, frac2, &elem1, &elem2, &lattice1, n1, n2)
+            } else {
+                (frac2, frac1, &elem2, &elem1, &lattice2, n2, n1)
+            };
 
         // Greedy matching: for each source site, find nearest compatible target site
         let mut total_sq_dist = 0.0;

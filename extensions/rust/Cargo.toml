@@ -2,11 +2,17 @@
 name = "ferrox"
 version = "0.0.3"
 edition = "2024"
-authors = ["Janosh Riebesell <janosh@lbl.gov>"]
+authors = ["Janosh Riebesell <janosh.riebesell@gmail.com>"]
 description = "High-performance structure matching for crystallographic data"
 license = "MIT"
 repository = "https://github.com/janosh/matterviz"
 keywords = ["crystallography", "materials-science", "structure-matching"]
+include = [
+  "src/**/*.rs",
+  "src/**/*.json", # atomic scattering params - SSOT shared with TypeScript
+  "Cargo.toml",
+  "readme.md",
+]
 
 [lib]
 name = "ferrox"

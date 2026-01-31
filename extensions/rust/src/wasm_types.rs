@@ -409,3 +409,66 @@ impl JsReductionAlgo {
         }
     }
 }
+
+// === XRD Types ===
+
+/// Miller index information for an XRD peak.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct JsHklInfo {
+    /// Miller indices [h, k, l]
+    pub hkl: [i32; 3],
+    /// Multiplicity (number of symmetry-equivalent reflections)
+    pub multiplicity: usize,
+}
+
+/// XRD pattern result.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct JsXrdPattern {
+    /// 2θ angles in degrees
+    pub two_theta: Vec<f64>,
+    /// Peak intensities (scaled 0-100 if scaled=true)
+    pub intensities: Vec<f64>,
+    /// Miller indices for each peak (grouped by unique families)
+    pub hkls: Vec<Vec<JsHklInfo>>,
+    /// d-spacings in Angstroms
+    pub d_spacings: Vec<f64>,
+}
+
+/// XRD calculation options.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct JsXrdOptions {
+    /// X-ray wavelength in Angstroms (default: Cu Kα = 1.54184)
+    #[serde(default = "default_wavelength")]
+    pub wavelength: f64,
+    /// 2θ range in degrees as [min, max]. None = all accessible angles
+    #[serde(default)]
+    pub two_theta_range: Option<[f64; 2]>,
+    /// Debye-Waller factors per element symbol (thermal damping)
+    #[serde(default)]
+    pub debye_waller_factors: HashMap<String, f64>,
+    /// Whether to scale intensities to 0-100 (default: true)
+    #[serde(default = "default_scaled")]
+    pub scaled: bool,
+}
+
+fn default_wavelength() -> f64 {
+    1.54184
+}
+
+fn default_scaled() -> bool {
+    true
+}
+
+impl Default for JsXrdOptions {
+    fn default() -> Self {
+        Self {
+            wavelength: default_wavelength(),
+            two_theta_range: Some([0.0, 180.0]),
+            debye_waller_factors: HashMap::new(),
+            scaled: true,
+        }
+    }
+}

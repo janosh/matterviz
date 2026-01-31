@@ -58,6 +58,9 @@ pub use transformations::{OrderDisorderedConfig, PartialRemoveConfig};
 pub mod cif;
 pub mod io;
 
+// Analysis
+pub mod xrd;
+
 // Re-exports for convenience
 pub use error::{FerroxError, OnError, Result};
 

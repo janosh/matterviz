@@ -50,3 +50,23 @@ export type StructureFormat = `cif` | `poscar` | `json`
 
 // Lattice reduction algorithm types
 export type ReductionAlgorithm = `niggli` | `lll`
+
+// XRD Types
+export interface HklInfo {
+  hkl: [number, number, number]
+  multiplicity: number
+}
+
+export interface XrdPattern {
+  two_theta: number[]
+  intensities: number[]
+  hkls: HklInfo[][]
+  d_spacings: number[]
+}
+
+export interface XrdOptions {
+  wavelength?: number
+  two_theta_range?: [number, number] | null
+  debye_waller_factors?: Record<string, number>
+  scaled?: boolean
+}
