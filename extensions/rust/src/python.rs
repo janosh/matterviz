@@ -8,11 +8,12 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyDict, PyList, PyString};
 use std::collections::HashMap;
 use std::path::Path;
 
 use crate::composition::Composition;
+use crate::coordination;
 use crate::io::{
     parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_extxyz,
     structure_to_poscar, structure_to_pymatgen_json, write_structure,
@@ -23,20 +24,47 @@ use crate::structure::{
 };
 use nalgebra::{Matrix3, Vector3};
 
+/// A structure input that can be either a JSON string or a dict.
+/// This allows ergonomic Python usage: `ferrox.copy_structure(struct.as_dict())` or
+/// `ferrox.copy_structure(json.dumps(struct.as_dict()))`.
+pub struct StructureJson(String);
+
+impl<'a, 'py> FromPyObject<'a, 'py> for StructureJson {
+    type Error = PyErr;
+
+    fn extract(ob: pyo3::Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        if let Ok(s) = ob.downcast::<PyString>() {
+            Ok(StructureJson(s.to_string()))
+        } else if let Ok(dict) = ob.downcast::<PyDict>() {
+            // Convert dict to JSON string
+            let json_module = ob.py().import("json")?;
+            let json_str: String = json_module.call_method1("dumps", (dict,))?.extract()?;
+            Ok(StructureJson(json_str))
+        } else {
+            Err(PyValueError::new_err(
+                "Expected a JSON string or dict for structure input",
+            ))
+        }
+    }
+}
+
 /// Parse a composition formula string, returning a PyResult.
 fn parse_comp(formula: &str) -> PyResult<Composition> {
     Composition::from_formula(formula)
         .map_err(|e| PyValueError::new_err(format!("Error parsing formula: {e}")))
 }
 
-/// Parse a structure JSON string, returning a PyResult.
-fn parse_struct(json: &str) -> PyResult<Structure> {
-    parse_structure_json(json)
+/// Parse a structure from StructureJson (string or dict), returning a PyResult.
+fn parse_struct(input: &StructureJson) -> PyResult<Structure> {
+    parse_structure_json(&input.0)
         .map_err(|e| PyValueError::new_err(format!("Error parsing structure: {e}")))
 }
 
-/// Parse a pair of structure JSON strings, returning a PyResult.
-fn parse_structure_pair(struct1: &str, struct2: &str) -> PyResult<(Structure, Structure)> {
+/// Parse a pair of structure inputs, returning a PyResult.
+fn parse_structure_pair(
+    struct1: &StructureJson,
+    struct2: &StructureJson,
+) -> PyResult<(Structure, Structure)> {
     Ok((parse_struct(struct1)?, parse_struct(struct2)?))
 }
 
@@ -143,8 +171,13 @@ impl PyStructureMatcher {
     ///     >>> r2 = matcher.reduce_structure(json.dumps(s2.as_dict()))
     ///     >>> matcher.fit(r1, r2, skip_structure_reduction=True)
     #[pyo3(signature = (struct1, struct2, skip_structure_reduction = false))]
-    fn fit(&self, struct1: &str, struct2: &str, skip_structure_reduction: bool) -> PyResult<bool> {
-        let (s1, s2) = parse_structure_pair(struct1, struct2)?;
+    fn fit(
+        &self,
+        struct1: StructureJson,
+        struct2: StructureJson,
+        skip_structure_reduction: bool,
+    ) -> PyResult<bool> {
+        let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
         Ok(if skip_structure_reduction {
             self.inner.fit_preprocessed(&s1, &s2)
         } else {
@@ -160,8 +193,12 @@ impl PyStructureMatcher {
     ///
     /// Returns:
     ///     Tuple of (rms, max_dist) if structures match, None otherwise.
-    fn get_rms_dist(&self, struct1: &str, struct2: &str) -> PyResult<Option<(f64, f64)>> {
-        let (s1, s2) = parse_structure_pair(struct1, struct2)?;
+    fn get_rms_dist(
+        &self,
+        struct1: StructureJson,
+        struct2: StructureJson,
+    ) -> PyResult<Option<(f64, f64)>> {
+        let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
         Ok(self.inner.get_rms_dist(&s1, &s2))
     }
 
@@ -186,8 +223,8 @@ impl PyStructureMatcher {
     ///     >>> mgo = Structure(Lattice.cubic(4.21), ["Mg", "O"], [[0, 0, 0], [0.5, 0.5, 0.5]])
     ///     >>> matcher.fit_anonymous(json.dumps(nacl.as_dict()), json.dumps(mgo.as_dict()))
     ///     True
-    fn fit_anonymous(&self, struct1: &str, struct2: &str) -> PyResult<bool> {
-        let (s1, s2) = parse_structure_pair(struct1, struct2)?;
+    fn fit_anonymous(&self, struct1: StructureJson, struct2: StructureJson) -> PyResult<bool> {
+        let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
         Ok(self.inner.fit_anonymous(&s1, &s2))
     }
 
@@ -325,8 +362,8 @@ impl PyStructureMatcher {
     ///     >>> for i, s1 in enumerate(reduced_structs):
     ///     ...     for s2 in reduced_structs[i+1:]:
     ///     ...         matcher.fit(s1, s2, skip_structure_reduction=True)
-    fn reduce_structure(&self, py: Python<'_>, structure: &str) -> PyResult<String> {
-        let s = parse_struct(structure)?;
+    fn reduce_structure(&self, py: Python<'_>, structure: StructureJson) -> PyResult<String> {
+        let s = parse_struct(&structure)?;
         // Release GIL during reduction (supports batch usage in loops)
         let reduced = py.detach(|| self.inner.reduce_structure(&s));
         Ok(structure_to_pymatgen_json(&reduced))
@@ -588,8 +625,8 @@ fn parse_trajectory(py: Python<'_>, path: &str) -> PyResult<Vec<Py<PyDict>>> {
 ///     >>> import json
 ///     >>> write_structure_file(json.dumps(s.as_dict()), "output.cif")
 #[pyfunction]
-fn write_structure_file(structure: &str, path: &str) -> PyResult<()> {
-    let s = parse_struct(structure)?;
+fn write_structure_file(structure: StructureJson, path: &str) -> PyResult<()> {
+    let s = parse_struct(&structure)?;
     write_structure(&s, Path::new(path))
         .map_err(|e| PyValueError::new_err(format!("Error writing {path}: {e}")))
 }
@@ -610,8 +647,8 @@ fn write_structure_file(structure: &str, path: &str) -> PyResult<()> {
 ///     >>> print(poscar_str)
 #[pyfunction]
 #[pyo3(signature = (structure, comment = None))]
-fn to_poscar(structure: &str, comment: Option<&str>) -> PyResult<String> {
-    let s = parse_struct(structure)?;
+fn to_poscar(structure: StructureJson, comment: Option<&str>) -> PyResult<String> {
+    let s = parse_struct(&structure)?;
     Ok(structure_to_poscar(&s, comment))
 }
 
@@ -631,8 +668,8 @@ fn to_poscar(structure: &str, comment: Option<&str>) -> PyResult<String> {
 ///     >>> print(cif_str)
 #[pyfunction]
 #[pyo3(signature = (structure, data_name = None))]
-fn to_cif(structure: &str, data_name: Option<&str>) -> PyResult<String> {
-    let s = parse_struct(structure)?;
+fn to_cif(structure: StructureJson, data_name: Option<&str>) -> PyResult<String> {
+    let s = parse_struct(&structure)?;
     Ok(crate::cif::structure_to_cif(&s, data_name))
 }
 
@@ -650,8 +687,8 @@ fn to_cif(structure: &str, data_name: Option<&str>) -> PyResult<String> {
 ///     >>> xyz_str = to_extxyz(json.dumps(s.as_dict()))
 ///     >>> print(xyz_str)
 #[pyfunction]
-fn to_extxyz(structure: &str) -> PyResult<String> {
-    let s = parse_struct(structure)?;
+fn to_extxyz(structure: StructureJson) -> PyResult<String> {
+    let s = parse_struct(&structure)?;
     Ok(structure_to_extxyz(&s, None))
 }
 
@@ -668,8 +705,8 @@ fn to_extxyz(structure: &str) -> PyResult<String> {
 ///     >>> import json
 ///     >>> json_str = to_pymatgen_json(json.dumps(s.as_dict()))
 #[pyfunction]
-fn to_pymatgen_json(structure: &str) -> PyResult<String> {
-    let s = parse_struct(structure)?;
+fn to_pymatgen_json(structure: StructureJson) -> PyResult<String> {
+    let s = parse_struct(&structure)?;
     Ok(structure_to_pymatgen_json(&s))
 }
 
@@ -710,10 +747,10 @@ fn parse_reduction_algo(algo: &str) -> PyResult<crate::structure::ReductionAlgo>
 #[pyfunction]
 fn make_supercell(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     scaling_matrix: [[i32; 3]; 3],
 ) -> PyResult<Py<PyDict>> {
-    let supercell = parse_struct(structure)?
+    let supercell = parse_struct(&structure)?
         .make_supercell(scaling_matrix)
         .map_err(|e| PyValueError::new_err(format!("Error creating supercell: {e}")))?;
     Ok(structure_to_pydict(py, &supercell)?.unbind())
@@ -738,7 +775,7 @@ fn make_supercell(
 #[pyfunction]
 fn make_supercell_diag(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     nx: i32,
     ny: i32,
     nz: i32,
@@ -748,7 +785,7 @@ fn make_supercell_diag(
             "make_supercell_diag: scaling factors must be positive, got [{nx}, {ny}, {nz}]"
         )));
     }
-    let supercell = parse_struct(structure)?.make_supercell_diag([nx, ny, nz]);
+    let supercell = parse_struct(&structure)?.make_supercell_diag([nx, ny, nz]);
     Ok(structure_to_pydict(py, &supercell)?.unbind())
 }
 
@@ -770,8 +807,12 @@ fn make_supercell_diag(
 ///     >>> reduced_dict = get_reduced_structure(json.dumps(s.as_dict()), "niggli")
 ///     >>> reduced = Structure.from_dict(reduced_dict)
 #[pyfunction]
-fn get_reduced_structure(py: Python<'_>, structure: &str, algo: &str) -> PyResult<Py<PyDict>> {
-    let reduced = parse_struct(structure)?
+fn get_reduced_structure(
+    py: Python<'_>,
+    structure: StructureJson,
+    algo: &str,
+) -> PyResult<Py<PyDict>> {
+    let reduced = parse_struct(&structure)?
         .get_reduced_structure(parse_reduction_algo(algo)?)
         .map_err(|e| PyValueError::new_err(format!("Error reducing structure: {e}")))?;
     Ok(structure_to_pydict(py, &reduced)?.unbind())
@@ -791,12 +832,12 @@ fn get_reduced_structure(py: Python<'_>, structure: &str, algo: &str) -> PyResul
 #[pyo3(signature = (structure, algo, niggli_tol = 1e-5, lll_delta = 0.75))]
 fn get_reduced_structure_with_params(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     algo: &str,
     niggli_tol: f64,
     lll_delta: f64,
 ) -> PyResult<Py<PyDict>> {
-    let reduced = parse_struct(structure)?
+    let reduced = parse_struct(&structure)?
         .get_reduced_structure_with_params(parse_reduction_algo(algo)?, niggli_tol, lll_delta)
         .map_err(|e| PyValueError::new_err(format!("Error reducing structure: {e}")))?;
     Ok(structure_to_pydict(py, &reduced)?.unbind())
@@ -821,7 +862,7 @@ fn get_reduced_structure_with_params(
 #[pyfunction]
 #[pyo3(signature = (structure, r, numerical_tol = 1e-8, exclude_self = true))]
 fn get_neighbor_list(
-    structure: &str,
+    structure: StructureJson,
     r: f64,
     numerical_tol: f64,
     exclude_self: bool,
@@ -829,7 +870,7 @@ fn get_neighbor_list(
     if r < 0.0 {
         return Err(PyValueError::new_err("Cutoff radius must be non-negative"));
     }
-    Ok(parse_struct(structure)?.get_neighbor_list(r, numerical_tol, exclude_self))
+    Ok(parse_struct(&structure)?.get_neighbor_list(r, numerical_tol, exclude_self))
 }
 
 /// Get distance between two sites using minimum image convention.
@@ -842,8 +883,8 @@ fn get_neighbor_list(
 /// Returns:
 ///     float: Distance in Angstroms
 #[pyfunction]
-fn get_distance(structure: &str, i: usize, j: usize) -> PyResult<f64> {
-    let s = parse_struct(structure)?;
+fn get_distance(structure: StructureJson, i: usize, j: usize) -> PyResult<f64> {
+    let s = parse_struct(&structure)?;
     let n = s.num_sites();
     if i >= n || j >= n {
         return Err(pyo3::exceptions::PyIndexError::new_err(format!(
@@ -861,8 +902,8 @@ fn get_distance(structure: &str, i: usize, j: usize) -> PyResult<f64> {
 /// Returns:
 ///     list[list[float]]: n x n distance matrix where n = num_sites
 #[pyfunction]
-fn distance_matrix(structure: &str) -> PyResult<Vec<Vec<f64>>> {
-    Ok(parse_struct(structure)?.distance_matrix())
+fn distance_matrix(structure: StructureJson) -> PyResult<Vec<Vec<f64>>> {
+    Ok(parse_struct(&structure)?.distance_matrix())
 }
 
 /// Get distance and periodic image between two sites.
@@ -876,8 +917,12 @@ fn distance_matrix(structure: &str) -> PyResult<Vec<Vec<f64>>> {
 ///     tuple[float, list[int]]: (distance, [da, db, dc]) where the image tells
 ///     which periodic image of site j is closest to site i.
 #[pyfunction]
-fn get_distance_and_image(structure: &str, i: usize, j: usize) -> PyResult<(f64, [i32; 3])> {
-    let parsed = parse_struct(structure)?;
+fn get_distance_and_image(
+    structure: StructureJson,
+    i: usize,
+    j: usize,
+) -> PyResult<(f64, [i32; 3])> {
+    let parsed = parse_struct(&structure)?;
     check_site_bounds(parsed.num_sites(), &[i, j])?;
     Ok(parsed.get_distance_and_image(i, j))
 }
@@ -893,8 +938,13 @@ fn get_distance_and_image(structure: &str, i: usize, j: usize) -> PyResult<(f64,
 /// Returns:
 ///     float: Distance to the specified periodic image
 #[pyfunction]
-fn get_distance_with_image(structure: &str, i: usize, j: usize, jimage: [i32; 3]) -> PyResult<f64> {
-    let parsed = parse_struct(structure)?;
+fn get_distance_with_image(
+    structure: StructureJson,
+    i: usize,
+    j: usize,
+    jimage: [i32; 3],
+) -> PyResult<f64> {
+    let parsed = parse_struct(&structure)?;
     check_site_bounds(parsed.num_sites(), &[i, j])?;
     Ok(parsed.get_distance_with_image(i, j, jimage))
 }
@@ -911,8 +961,8 @@ fn get_distance_with_image(structure: &str, i: usize, j: usize, jimage: [i32; 3]
 /// Returns:
 ///     float: Distance in Angstroms
 #[pyfunction]
-fn distance_from_point(structure: &str, idx: usize, point: [f64; 3]) -> PyResult<f64> {
-    let parsed = parse_struct(structure)?;
+fn distance_from_point(structure: StructureJson, idx: usize, point: [f64; 3]) -> PyResult<f64> {
+    let parsed = parse_struct(&structure)?;
     check_site_bounds(parsed.num_sites(), &[idx])?;
     Ok(parsed.distance_from_point(idx, point.into()))
 }
@@ -932,13 +982,18 @@ fn distance_from_point(structure: &str, idx: usize, point: [f64; 3]) -> PyResult
 ///     bool: True if sites are periodic images
 #[pyfunction]
 #[pyo3(signature = (structure, i, j, tolerance = 1e-8))]
-fn is_periodic_image(structure: &str, i: usize, j: usize, tolerance: f64) -> PyResult<bool> {
+fn is_periodic_image(
+    structure: StructureJson,
+    i: usize,
+    j: usize,
+    tolerance: f64,
+) -> PyResult<bool> {
     if tolerance < 0.0 {
         return Err(pyo3::exceptions::PyValueError::new_err(
             "tolerance must be non-negative",
         ));
     }
-    let parsed = parse_struct(structure)?;
+    let parsed = parse_struct(&structure)?;
     check_site_bounds(parsed.num_sites(), &[i, j])?;
     Ok(parsed.is_periodic_image(i, j, tolerance))
 }
@@ -954,8 +1009,8 @@ fn is_periodic_image(structure: &str, i: usize, j: usize, tolerance: f64) -> PyR
 /// Returns:
 ///     str: Site label
 #[pyfunction]
-fn site_label(structure: &str, idx: usize) -> PyResult<String> {
-    let parsed = parse_struct(structure)?;
+fn site_label(structure: StructureJson, idx: usize) -> PyResult<String> {
+    let parsed = parse_struct(&structure)?;
     check_site_bounds(parsed.num_sites(), &[idx])?;
     Ok(parsed.site_label(idx))
 }
@@ -968,8 +1023,8 @@ fn site_label(structure: &str, idx: usize) -> PyResult<String> {
 /// Returns:
 ///     list[str]: Site labels
 #[pyfunction]
-fn site_labels(structure: &str) -> PyResult<Vec<String>> {
-    Ok(parse_struct(structure)?.site_labels())
+fn site_labels(structure: StructureJson) -> PyResult<Vec<String>> {
+    Ok(parse_struct(&structure)?.site_labels())
 }
 
 /// Get species strings for all sites.
@@ -982,8 +1037,8 @@ fn site_labels(structure: &str) -> PyResult<Vec<String>> {
 /// Returns:
 ///     list[str]: Species strings
 #[pyfunction]
-fn species_strings(structure: &str) -> PyResult<Vec<String>> {
-    Ok(parse_struct(structure)?.species_strings())
+fn species_strings(structure: StructureJson) -> PyResult<Vec<String>> {
+    Ok(parse_struct(&structure)?.species_strings())
 }
 
 // ============================================================================
@@ -1008,13 +1063,13 @@ fn species_strings(structure: &str) -> PyResult<Vec<String>> {
 #[pyo3(signature = (struct1, struct2, n_images, interpolate_lattices = false, use_pbc = true))]
 fn interpolate(
     py: Python<'_>,
-    struct1: &str,
-    struct2: &str,
+    struct1: StructureJson,
+    struct2: StructureJson,
     n_images: usize,
     interpolate_lattices: bool,
     use_pbc: bool,
 ) -> PyResult<Vec<Py<PyDict>>> {
-    let (s1, s2) = parse_structure_pair(struct1, struct2)?;
+    let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
     let images = s1
         .interpolate(&s2, n_images, interpolate_lattices, use_pbc)
         .map_err(|e| PyValueError::new_err(format!("Interpolation error: {e}")))?;
@@ -1054,8 +1109,8 @@ fn interpolate(
 ///     True
 #[pyfunction]
 #[pyo3(signature = (struct1, struct2, anonymous = false))]
-fn matches(struct1: &str, struct2: &str, anonymous: bool) -> PyResult<bool> {
-    let (s1, s2) = parse_structure_pair(struct1, struct2)?;
+fn matches(struct1: StructureJson, struct2: StructureJson, anonymous: bool) -> PyResult<bool> {
+    let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
     Ok(s1.matches(&s2, anonymous))
 }
 
@@ -1073,8 +1128,12 @@ fn matches(struct1: &str, struct2: &str, anonymous: bool) -> PyResult<bool> {
 ///     dict: Sorted structure as pymatgen-compatible dict
 #[pyfunction]
 #[pyo3(signature = (structure, reverse = false))]
-fn get_sorted_structure(py: Python<'_>, structure: &str, reverse: bool) -> PyResult<Py<PyDict>> {
-    let sorted = parse_struct(structure)?.get_sorted_structure(reverse);
+fn get_sorted_structure(
+    py: Python<'_>,
+    structure: StructureJson,
+    reverse: bool,
+) -> PyResult<Py<PyDict>> {
+    let sorted = parse_struct(&structure)?.get_sorted_structure(reverse);
     Ok(structure_to_pydict(py, &sorted)?.unbind())
 }
 
@@ -1090,10 +1149,10 @@ fn get_sorted_structure(py: Python<'_>, structure: &str, reverse: bool) -> PyRes
 #[pyo3(signature = (structure, reverse = false))]
 fn get_sorted_by_electronegativity(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     reverse: bool,
 ) -> PyResult<Py<PyDict>> {
-    let sorted = parse_struct(structure)?.get_sorted_by_electronegativity(reverse);
+    let sorted = parse_struct(&structure)?.get_sorted_by_electronegativity(reverse);
     Ok(structure_to_pydict(py, &sorted)?.unbind())
 }
 
@@ -1116,8 +1175,12 @@ fn get_sorted_by_electronegativity(
 ///     dict: Copy of structure as pymatgen-compatible dict
 #[pyfunction]
 #[pyo3(signature = (structure, sanitize = false))]
-fn copy_structure(py: Python<'_>, structure: &str, sanitize: bool) -> PyResult<Py<PyDict>> {
-    let copied = parse_struct(structure)?.copy(sanitize);
+fn copy_structure(
+    py: Python<'_>,
+    structure: StructureJson,
+    sanitize: bool,
+) -> PyResult<Py<PyDict>> {
+    let copied = parse_struct(&structure)?.copy(sanitize);
     Ok(structure_to_pydict(py, &copied)?.unbind())
 }
 
@@ -1129,8 +1192,8 @@ fn copy_structure(py: Python<'_>, structure: &str, sanitize: bool) -> PyResult<P
 /// Returns:
 ///     dict: Structure with wrapped coordinates as pymatgen-compatible dict
 #[pyfunction]
-fn wrap_to_unit_cell(py: Python<'_>, structure: &str) -> PyResult<Py<PyDict>> {
-    let mut s = parse_struct(structure)?;
+fn wrap_to_unit_cell(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
+    let mut s = parse_struct(&structure)?;
     s.wrap_to_unit_cell();
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
@@ -1163,12 +1226,12 @@ fn wrap_to_unit_cell(py: Python<'_>, structure: &str) -> PyResult<Py<PyDict>> {
 #[pyo3(signature = (structure, rotation, translation, fractional = true))]
 fn apply_operation(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     rotation: [[f64; 3]; 3],
     translation: [f64; 3],
     fractional: bool,
 ) -> PyResult<Py<PyDict>> {
-    let mut s = parse_struct(structure)?;
+    let mut s = parse_struct(&structure)?;
     let rot = Matrix3::from_row_slice(&rotation.concat());
     let op = SymmOp::new(rot, Vector3::from(translation));
     s.apply_operation(&op, fractional);
@@ -1185,8 +1248,12 @@ fn apply_operation(
 ///     dict: Inverted structure as pymatgen-compatible dict
 #[pyfunction]
 #[pyo3(signature = (structure, fractional = true))]
-fn apply_inversion(py: Python<'_>, structure: &str, fractional: bool) -> PyResult<Py<PyDict>> {
-    let mut s = parse_struct(structure)?;
+fn apply_inversion(
+    py: Python<'_>,
+    structure: StructureJson,
+    fractional: bool,
+) -> PyResult<Py<PyDict>> {
+    let mut s = parse_struct(&structure)?;
     s.apply_operation(&SymmOp::inversion(), fractional);
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
@@ -1204,11 +1271,11 @@ fn apply_inversion(py: Python<'_>, structure: &str, fractional: bool) -> PyResul
 #[pyo3(signature = (structure, translation, fractional = true))]
 fn apply_translation(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     translation: [f64; 3],
     fractional: bool,
 ) -> PyResult<Py<PyDict>> {
-    let mut s = parse_struct(structure)?;
+    let mut s = parse_struct(&structure)?;
     s.apply_operation(&SymmOp::translation(Vector3::from(translation)), fractional);
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
@@ -1225,8 +1292,8 @@ fn apply_translation(
 /// Returns:
 ///     float: Volume in Angstrom^3
 #[pyfunction]
-fn get_volume(structure: &str) -> PyResult<f64> {
-    Ok(parse_struct(structure)?.volume())
+fn get_volume(structure: StructureJson) -> PyResult<f64> {
+    Ok(parse_struct(&structure)?.volume())
 }
 
 /// Get the total mass of the structure in atomic mass units (u).
@@ -1237,8 +1304,8 @@ fn get_volume(structure: &str) -> PyResult<f64> {
 /// Returns:
 ///     float: Total mass in amu
 #[pyfunction]
-fn get_total_mass(structure: &str) -> PyResult<f64> {
-    Ok(parse_struct(structure)?.total_mass())
+fn get_total_mass(structure: StructureJson) -> PyResult<f64> {
+    Ok(parse_struct(&structure)?.total_mass())
 }
 
 /// Get the density of the structure in g/cm^3.
@@ -1249,8 +1316,8 @@ fn get_total_mass(structure: &str) -> PyResult<f64> {
 /// Returns:
 ///     float | None: Density in g/cm^3, or None if volume is zero
 #[pyfunction]
-fn get_density(structure: &str) -> PyResult<Option<f64>> {
-    Ok(parse_struct(structure)?.density())
+fn get_density(structure: StructureJson) -> PyResult<Option<f64>> {
+    Ok(parse_struct(&structure)?.density())
 }
 
 /// Get all queryable metadata from a structure in a single call.
@@ -1266,8 +1333,8 @@ fn get_density(structure: &str) -> PyResult<Option<f64>> {
 /// Returns:
 ///     dict: Metadata dictionary with keys:
 ///         - formula: reduced formula (e.g., "Fe2O3")
-///         - anonymous_formula: anonymous formula (e.g., "A2B3")
-///         - hill_formula: Hill notation formula
+///         - formula_anonymous: anonymous formula (e.g., "A2B3")
+///         - formula_hill: Hill notation formula
 ///         - chemical_system: element system (e.g., "Fe-O")
 ///         - elements: sorted list of unique element symbols
 ///         - n_elements: number of unique elements
@@ -1281,18 +1348,18 @@ fn get_density(structure: &str) -> PyResult<Option<f64>> {
 #[pyo3(signature = (structure, compute_spacegroup = false, symprec = 0.01))]
 fn get_structure_metadata(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     compute_spacegroup: bool,
     symprec: f64,
 ) -> PyResult<Py<PyDict>> {
-    let s = parse_struct(structure)?;
+    let s = parse_struct(&structure)?;
     let comp = s.composition();
     let dict = PyDict::new(py);
 
-    // Composition-derived properties (keys match parse_composition for consistency)
+    // Composition-derived properties
     dict.set_item("formula", comp.reduced_formula())?;
-    dict.set_item("anonymous_formula", comp.anonymous_formula())?;
-    dict.set_item("hill_formula", comp.hill_formula())?;
+    dict.set_item("formula_anonymous", comp.anonymous_formula())?;
+    dict.set_item("formula_hill", comp.hill_formula())?;
     dict.set_item("chemical_system", comp.chemical_system())?;
 
     // Element list (sorted)
@@ -1333,8 +1400,8 @@ fn get_structure_metadata(
 ///     int: Spacegroup number (1-230)
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_spacegroup_number(structure: &str, symprec: f64) -> PyResult<i32> {
-    parse_struct(structure)?
+fn get_spacegroup_number(structure: StructureJson, symprec: f64) -> PyResult<i32> {
+    parse_struct(&structure)?
         .get_spacegroup_number(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
 }
@@ -1349,8 +1416,8 @@ fn get_spacegroup_number(structure: &str, symprec: f64) -> PyResult<i32> {
 ///     str: Hermann-Mauguin symbol
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_spacegroup_symbol(structure: &str, symprec: f64) -> PyResult<String> {
-    parse_struct(structure)?
+fn get_spacegroup_symbol(structure: StructureJson, symprec: f64) -> PyResult<String> {
+    parse_struct(&structure)?
         .get_spacegroup_symbol(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
 }
@@ -1365,8 +1432,8 @@ fn get_spacegroup_symbol(structure: &str, symprec: f64) -> PyResult<String> {
 ///     int: Hall number
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_hall_number(structure: &str, symprec: f64) -> PyResult<i32> {
-    parse_struct(structure)?
+fn get_hall_number(structure: StructureJson, symprec: f64) -> PyResult<i32> {
+    parse_struct(&structure)?
         .get_hall_number(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
 }
@@ -1384,8 +1451,8 @@ fn get_hall_number(structure: &str, symprec: f64) -> PyResult<i32> {
 ///     str: Pearson symbol
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_pearson_symbol(structure: &str, symprec: f64) -> PyResult<String> {
-    parse_struct(structure)?
+fn get_pearson_symbol(structure: StructureJson, symprec: f64) -> PyResult<String> {
+    parse_struct(&structure)?
         .get_pearson_symbol(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
 }
@@ -1404,8 +1471,8 @@ fn get_pearson_symbol(structure: &str, symprec: f64) -> PyResult<String> {
 ///     list[str]: Wyckoff letters for each site (single-character strings)
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_wyckoff_letters(structure: &str, symprec: f64) -> PyResult<Vec<String>> {
-    let letters = parse_struct(structure)?
+fn get_wyckoff_letters(structure: StructureJson, symprec: f64) -> PyResult<Vec<String>> {
+    let letters = parse_struct(&structure)?
         .get_wyckoff_letters(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))?;
     // Convert chars to strings for Python compatibility
@@ -1425,8 +1492,8 @@ fn get_wyckoff_letters(structure: &str, symprec: f64) -> PyResult<Vec<String>> {
 ///     list[str]: Site symmetry symbols for each site
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_site_symmetry_symbols(structure: &str, symprec: f64) -> PyResult<Vec<String>> {
-    parse_struct(structure)?
+fn get_site_symmetry_symbols(structure: StructureJson, symprec: f64) -> PyResult<Vec<String>> {
+    parse_struct(&structure)?
         .get_site_symmetry_symbols(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
 }
@@ -1447,8 +1514,11 @@ fn get_site_symmetry_symbols(structure: &str, symprec: f64) -> PyResult<Vec<Stri
 ///     list[tuple[list[list[int]], list[float]]]: List of (rotation, translation) pairs
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_symmetry_operations(structure: &str, symprec: f64) -> PyResult<Vec<SymmetryOperation>> {
-    parse_struct(structure)?
+fn get_symmetry_operations(
+    structure: StructureJson,
+    symprec: f64,
+) -> PyResult<Vec<SymmetryOperation>> {
+    parse_struct(&structure)?
         .get_symmetry_operations(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
 }
@@ -1470,8 +1540,8 @@ fn get_symmetry_operations(structure: &str, symprec: f64) -> PyResult<Vec<Symmet
 ///     list[int]: Orbit indices for each site
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_equivalent_sites(structure: &str, symprec: f64) -> PyResult<Vec<usize>> {
-    parse_struct(structure)?
+fn get_equivalent_sites(structure: StructureJson, symprec: f64) -> PyResult<Vec<usize>> {
+    parse_struct(&structure)?
         .get_equivalent_sites(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
 }
@@ -1489,8 +1559,8 @@ fn get_equivalent_sites(structure: &str, symprec: f64) -> PyResult<Vec<usize>> {
 ///     str: Crystal system name
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_crystal_system(structure: &str, symprec: f64) -> PyResult<String> {
-    parse_struct(structure)?
+fn get_crystal_system(structure: StructureJson, symprec: f64) -> PyResult<String> {
+    parse_struct(&structure)?
         .get_crystal_system(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))
 }
@@ -1518,8 +1588,12 @@ fn get_crystal_system(structure: &str, symprec: f64) -> PyResult<String> {
 ///         - num_operations: int
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn get_symmetry_dataset(py: Python<'_>, structure: &str, symprec: f64) -> PyResult<Py<PyDict>> {
-    let dataset = parse_struct(structure)?
+fn get_symmetry_dataset(
+    py: Python<'_>,
+    structure: StructureJson,
+    symprec: f64,
+) -> PyResult<Py<PyDict>> {
+    let dataset = parse_struct(&structure)?
         .get_symmetry_dataset(symprec)
         .map_err(|e| PyValueError::new_err(format!("Symmetry analysis failed: {e}")))?;
 
@@ -1564,12 +1638,12 @@ fn get_symmetry_dataset(py: Python<'_>, structure: &str, symprec: f64) -> PyResu
 #[pyo3(signature = (structure, indices, vector, fractional = true))]
 fn translate_sites(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     indices: Vec<usize>,
     vector: [f64; 3],
     fractional: bool,
 ) -> PyResult<Py<PyDict>> {
-    let mut s = parse_struct(structure)?;
+    let mut s = parse_struct(&structure)?;
     let n = s.num_sites();
     if let Some(&idx) = indices.iter().find(|&&i| i >= n) {
         return Err(pyo3::exceptions::PyIndexError::new_err(format!(
@@ -1597,7 +1671,7 @@ fn translate_sites(
 #[pyo3(signature = (structure, distance, min_distance = None, seed = None))]
 fn perturb(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     distance: f64,
     min_distance: Option<f64>,
     seed: Option<u64>,
@@ -1613,7 +1687,7 @@ fn perturb(
             return Err(PyValueError::new_err("min_distance must be <= distance"));
         }
     }
-    let mut s = parse_struct(structure)?;
+    let mut s = parse_struct(&structure)?;
     s.perturb(distance, min_distance, seed);
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
@@ -1681,8 +1755,12 @@ fn props_to_pydict<'py>(
 /// Returns:
 ///     dict: Site properties as a Python dict
 #[pyfunction]
-fn get_site_properties(py: Python<'_>, structure: &str, idx: usize) -> PyResult<Py<PyDict>> {
-    let s = parse_struct(structure)?;
+fn get_site_properties(
+    py: Python<'_>,
+    structure: StructureJson,
+    idx: usize,
+) -> PyResult<Py<PyDict>> {
+    let s = parse_struct(&structure)?;
     if idx >= s.num_sites() {
         return Err(pyo3::exceptions::PyIndexError::new_err(format!(
             "Site index {idx} out of bounds for structure with {} sites",
@@ -1700,8 +1778,8 @@ fn get_site_properties(py: Python<'_>, structure: &str, idx: usize) -> PyResult<
 /// Returns:
 ///     list[dict]: List of site property dicts (parallel to sites)
 #[pyfunction]
-fn get_all_site_properties(py: Python<'_>, structure: &str) -> PyResult<Py<PyList>> {
-    let s = parse_struct(structure)?;
+fn get_all_site_properties(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyList>> {
+    let s = parse_struct(&structure)?;
     let result: Vec<_> = (0..s.num_sites())
         .map(|idx| props_to_pydict(py, s.site_properties(idx)))
         .collect::<PyResult<_>>()?;
@@ -1721,12 +1799,12 @@ fn get_all_site_properties(py: Python<'_>, structure: &str) -> PyResult<Py<PyLis
 #[pyfunction]
 fn set_site_property(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     idx: usize,
     key: &str,
     value: Bound<'_, pyo3::PyAny>,
 ) -> PyResult<Py<PyDict>> {
-    let mut s = parse_struct(structure)?;
+    let mut s = parse_struct(&structure)?;
     if idx >= s.num_sites() {
         return Err(pyo3::exceptions::PyIndexError::new_err(format!(
             "Site index {idx} out of bounds for structure with {} sites",
@@ -1809,8 +1887,8 @@ fn parse_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
     // Other properties
     dict.set_item("formula", comp.formula())?;
     dict.set_item("reduced_formula", comp.reduced_formula())?;
-    dict.set_item("anonymous_formula", comp.anonymous_formula())?;
-    dict.set_item("hill_formula", comp.hill_formula())?;
+    dict.set_item("formula_anonymous", comp.anonymous_formula())?;
+    dict.set_item("formula_hill", comp.hill_formula())?;
     dict.set_item("alphabetical_formula", comp.alphabetical_formula())?;
     dict.set_item("chemical_system", comp.chemical_system())?;
     dict.set_item("num_atoms", comp.num_atoms())?;
@@ -1845,8 +1923,8 @@ fn parse_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
 ///     dict: Primitive structure as pymatgen-compatible dict
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn to_primitive(py: Python<'_>, structure: &str, symprec: f64) -> PyResult<Py<PyDict>> {
-    let primitive = parse_struct(structure)?
+fn to_primitive(py: Python<'_>, structure: StructureJson, symprec: f64) -> PyResult<Py<PyDict>> {
+    let primitive = parse_struct(&structure)?
         .get_primitive(symprec)
         .map_err(|e| PyValueError::new_err(format!("Error getting primitive: {e}")))?;
     Ok(structure_to_pydict(py, &primitive)?.unbind())
@@ -1865,8 +1943,8 @@ fn to_primitive(py: Python<'_>, structure: &str, symprec: f64) -> PyResult<Py<Py
 ///     dict: Conventional structure as pymatgen-compatible dict
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
-fn to_conventional(py: Python<'_>, structure: &str, symprec: f64) -> PyResult<Py<PyDict>> {
-    let conventional = parse_struct(structure)?
+fn to_conventional(py: Python<'_>, structure: StructureJson, symprec: f64) -> PyResult<Py<PyDict>> {
+    let conventional = parse_struct(&structure)?
         .get_conventional_structure(symprec)
         .map_err(|e| PyValueError::new_err(format!("Error getting conventional: {e}")))?;
     Ok(structure_to_pydict(py, &conventional)?.unbind())
@@ -1884,7 +1962,7 @@ fn to_conventional(py: Python<'_>, structure: &str, symprec: f64) -> PyResult<Py
 #[pyfunction]
 fn substitute_species(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     from_species: &str,
     to_species: &str,
 ) -> PyResult<Py<PyDict>> {
@@ -1901,7 +1979,7 @@ fn substitute_species(
         ))
     })?;
 
-    let s = parse_struct(structure)?
+    let s = parse_struct(&structure)?
         .substitute(from_sp, to_sp)
         .map_err(|e| PyValueError::new_err(format!("Error substituting: {e}")))?;
     Ok(structure_to_pydict(py, &s)?.unbind())
@@ -1916,7 +1994,11 @@ fn substitute_species(
 /// Returns:
 ///     dict: Structure with species removed
 #[pyfunction]
-fn remove_species(py: Python<'_>, structure: &str, species: Vec<String>) -> PyResult<Py<PyDict>> {
+fn remove_species(
+    py: Python<'_>,
+    structure: StructureJson,
+    species: Vec<String>,
+) -> PyResult<Py<PyDict>> {
     use crate::species::Species;
 
     let species_vec: Vec<Species> = species
@@ -1927,7 +2009,7 @@ fn remove_species(py: Python<'_>, structure: &str, species: Vec<String>) -> PyRe
         })
         .collect::<Result<_, _>>()?;
 
-    let s = parse_struct(structure)?
+    let s = parse_struct(&structure)?
         .remove_species(&species_vec)
         .map_err(|e| PyValueError::new_err(format!("Error removing species: {e}")))?;
     Ok(structure_to_pydict(py, &s)?.unbind())
@@ -1942,8 +2024,12 @@ fn remove_species(py: Python<'_>, structure: &str, species: Vec<String>) -> PyRe
 /// Returns:
 ///     dict: Structure with sites removed
 #[pyfunction]
-fn remove_sites(py: Python<'_>, structure: &str, indices: Vec<usize>) -> PyResult<Py<PyDict>> {
-    let s = parse_struct(structure)?
+fn remove_sites(
+    py: Python<'_>,
+    structure: StructureJson,
+    indices: Vec<usize>,
+) -> PyResult<Py<PyDict>> {
+    let s = parse_struct(&structure)?
         .remove_sites(&indices)
         .map_err(|e| PyValueError::new_err(format!("Error removing sites: {e}")))?;
     Ok(structure_to_pydict(py, &s)?.unbind())
@@ -1958,9 +2044,13 @@ fn remove_sites(py: Python<'_>, structure: &str, indices: Vec<usize>) -> PyResul
 /// Returns:
 ///     dict: Deformed structure
 #[pyfunction]
-fn deform(py: Python<'_>, structure: &str, gradient: [[f64; 3]; 3]) -> PyResult<Py<PyDict>> {
+fn deform(
+    py: Python<'_>,
+    structure: StructureJson,
+    gradient: [[f64; 3]; 3],
+) -> PyResult<Py<PyDict>> {
     let grad_matrix = Matrix3::from_row_slice(&gradient.concat());
-    let s = parse_struct(structure)?
+    let s = parse_struct(&structure)?
         .deform(grad_matrix)
         .map_err(|e| PyValueError::new_err(format!("Error deforming: {e}")))?;
     Ok(structure_to_pydict(py, &s)?.unbind())
@@ -1977,7 +2067,7 @@ fn deform(py: Python<'_>, structure: &str, gradient: [[f64; 3]; 3]) -> PyResult<
 ///     float: Coulomb energy in eV
 #[pyfunction]
 #[pyo3(signature = (structure, accuracy = 1e-5, real_cutoff = 10.0))]
-fn ewald_energy(structure: &str, accuracy: f64, real_cutoff: f64) -> PyResult<f64> {
+fn ewald_energy(structure: StructureJson, accuracy: f64, real_cutoff: f64) -> PyResult<f64> {
     use crate::algorithms::Ewald;
 
     if accuracy <= 0.0 || accuracy >= 1.0 {
@@ -1991,7 +2081,7 @@ fn ewald_energy(structure: &str, accuracy: f64, real_cutoff: f64) -> PyResult<f6
         )));
     }
 
-    let s = parse_struct(structure)?;
+    let s = parse_struct(&structure)?;
     let ewald = Ewald::new()
         .with_accuracy(accuracy)
         .with_real_cutoff(real_cutoff);
@@ -2016,13 +2106,13 @@ fn ewald_energy(structure: &str, accuracy: f64, real_cutoff: f64) -> PyResult<f6
 #[pyo3(signature = (structure, max_structures = None, sort_by_energy = true))]
 fn order_disordered(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     max_structures: Option<usize>,
     sort_by_energy: bool,
 ) -> PyResult<Vec<Py<PyDict>>> {
     use crate::transformations::OrderDisorderedConfig;
 
-    let s = parse_struct(structure)?;
+    let s = parse_struct(&structure)?;
     let config = OrderDisorderedConfig {
         max_structures,
         sort_by_energy,
@@ -2037,162 +2127,6 @@ fn order_disordered(
         .map_err(|e| PyValueError::new_err(format!("Error ordering: {e}")))?
         .iter()
         .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
-        .collect()
-}
-
-// ============================================================================
-// Slab Generation Functions
-// ============================================================================
-
-/// Emit a warning that primitive parameter is not yet implemented.
-fn warn_primitive_unimplemented(py: Python<'_>, primitive: bool) -> PyResult<()> {
-    if primitive {
-        let warnings = py.import("warnings")?;
-        warnings.call_method1(
-            "warn",
-            (
-                "primitive=True has no effect; primitive cell reduction is not yet implemented",
-                py.import("builtins")?.getattr("FutureWarning")?,
-            ),
-        )?;
-    }
-    Ok(())
-}
-
-/// Generate a surface slab from a bulk structure.
-///
-/// Creates a slab with the specified Miller indices, thickness, and vacuum layer.
-/// The resulting structure has lattice vectors a,b in the surface plane and c
-/// along the [hkl] direction (into vacuum), with `pbc = [true, true, false]`.
-/// For orthogonal lattices (cubic, tetragonal, orthorhombic), c is perpendicular
-/// to the surface. For non-orthogonal lattices, c may be tilted.
-///
-/// Args:
-///     structure (str): Structure as JSON string (from Structure.as_dict())
-///     miller_index (list[int]): Miller indices [h, k, l] defining the surface
-///     min_slab_size (float): Minimum slab thickness in Angstroms (or unit planes if in_unit_planes=True)
-///     min_vacuum_size (float): Minimum vacuum layer thickness in Angstroms
-///     center_slab (bool): If True, center the slab in the vacuum region (default: True)
-///     in_unit_planes (bool): If True, min_slab_size is in unit planes, not Angstroms (default: False)
-///     primitive (bool): Not yet implemented, has no effect (default: False)
-///
-/// Returns:
-///     dict: Slab structure as pymatgen-compatible dict
-///
-/// Example:
-///     >>> from ferrox import make_slab
-///     >>> import json
-///     >>> slab_dict = make_slab(json.dumps(bulk.as_dict()), [1, 1, 1], 10.0, 15.0)
-///     >>> slab = Structure.from_dict(slab_dict)
-#[pyfunction]
-#[pyo3(signature = (
-    structure,
-    miller_index,
-    min_slab_size,
-    min_vacuum_size,
-    center_slab = true,
-    in_unit_planes = false,
-    primitive = false
-))]
-fn make_slab(
-    py: Python<'_>,
-    structure: &str,
-    miller_index: [i32; 3],
-    min_slab_size: f64,
-    min_vacuum_size: f64,
-    center_slab: bool,
-    in_unit_planes: bool,
-    primitive: bool,
-) -> PyResult<Py<PyDict>> {
-    use crate::structure::SlabConfig;
-
-    warn_primitive_unimplemented(py, primitive)?;
-
-    let config = SlabConfig::new(miller_index)
-        .with_min_slab_size(min_slab_size)
-        .with_min_vacuum_size(min_vacuum_size)
-        .with_center_slab(center_slab)
-        .with_in_unit_planes(in_unit_planes)
-        .with_primitive(primitive);
-
-    let s = parse_struct(structure)?;
-    // Release GIL during heavy computation
-    let slab = py
-        .detach(|| s.make_slab(&config))
-        .map_err(|e| PyValueError::new_err(format!("Error generating slab: {e}")))?;
-
-    Ok(structure_to_pydict(py, &slab)?.unbind())
-}
-
-/// Generate all unique surface terminations for a slab.
-///
-/// Creates multiple slabs with different surface terminations for the specified
-/// Miller indices. Each termination exposes a different atomic layer at the surface.
-/// The resulting structures have lattice vectors a,b in the surface plane and c
-/// along the [hkl] direction, with `pbc = [true, true, false]`.
-///
-/// Args:
-///     structure (str): Structure as JSON string (from Structure.as_dict())
-///     miller_index (list[int]): Miller indices [h, k, l] defining the surface
-///     min_slab_size (float): Minimum slab thickness in Angstroms (or unit planes if in_unit_planes=True)
-///     min_vacuum_size (float): Minimum vacuum layer thickness in Angstroms
-///     center_slab (bool): If True, center the slab in the vacuum region (default: True)
-///     in_unit_planes (bool): If True, min_slab_size is in unit planes, not Angstroms (default: False)
-///     primitive (bool): Not yet implemented, has no effect (default: False)
-///     symprec (float): Symmetry precision for identifying unique terminations (default: 0.01)
-///
-/// Returns:
-///     list[dict]: List of slab structures as pymatgen-compatible dicts, one per termination
-///
-/// Example:
-///     >>> from ferrox import generate_slabs
-///     >>> import json
-///     >>> slabs = generate_slabs(json.dumps(bulk.as_dict()), [1, 0, 0], 10.0, 15.0)
-///     >>> for slab_dict in slabs:
-///     ...     print(f"Termination {slab_dict['properties']['termination_index']}")
-#[pyfunction]
-#[pyo3(signature = (
-    structure,
-    miller_index,
-    min_slab_size,
-    min_vacuum_size,
-    center_slab = true,
-    in_unit_planes = false,
-    primitive = false,
-    symprec = 0.01
-))]
-fn generate_slabs(
-    py: Python<'_>,
-    structure: &str,
-    miller_index: [i32; 3],
-    min_slab_size: f64,
-    min_vacuum_size: f64,
-    center_slab: bool,
-    in_unit_planes: bool,
-    primitive: bool,
-    symprec: f64,
-) -> PyResult<Vec<Py<PyDict>>> {
-    use crate::structure::SlabConfig;
-
-    warn_primitive_unimplemented(py, primitive)?;
-
-    let config = SlabConfig::new(miller_index)
-        .with_min_slab_size(min_slab_size)
-        .with_min_vacuum_size(min_vacuum_size)
-        .with_center_slab(center_slab)
-        .with_in_unit_planes(in_unit_planes)
-        .with_primitive(primitive)
-        .with_symprec(symprec);
-
-    let s = parse_struct(structure)?;
-    // Release GIL during heavy computation
-    let slabs = py
-        .detach(|| s.generate_slabs(&config))
-        .map_err(|e| PyValueError::new_err(format!("Error generating slabs: {e}")))?;
-
-    slabs
-        .into_iter()
-        .map(|s| Ok(structure_to_pydict(py, &s)?.unbind()))
         .collect()
 }
 
@@ -2211,11 +2145,11 @@ fn generate_slabs(
 #[pyo3(signature = (structure, min_size = 1, max_size = 4))]
 fn enumerate_derivatives(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     min_size: usize,
     max_size: usize,
 ) -> PyResult<Vec<Py<PyDict>>> {
-    let s = parse_struct(structure)?;
+    let s = parse_struct(&structure)?;
 
     // Release GIL during heavy computation
     let results = py.detach(|| s.enumerate_derivatives(min_size, max_size));
@@ -2227,250 +2161,320 @@ fn enumerate_derivatives(
         .collect()
 }
 
-// ============================================================================
-// Coordination Analysis Functions
-// ============================================================================
+// ========== SLAB GENERATION ==========
 
-/// Validate that cutoff is non-negative.
-fn check_cutoff(cutoff: f64) -> PyResult<()> {
+/// Generate all unique surface terminations for a given Miller index.
+///
+/// Args:
+///     structure: Structure as JSON string or dict
+///     miller_index: Surface orientation as [h, k, l]
+///     min_slab_size: Minimum slab thickness in Angstroms (default: 10.0)
+///     min_vacuum_size: Minimum vacuum thickness in Angstroms (default: 10.0)
+///     center_slab: Center slab in vacuum (default: True)
+///     in_unit_planes: If True, min_slab_size is number of unit planes (default: False)
+///     symprec: Symmetry precision for unique terminations (default: 0.01)
+///
+/// Returns:
+///     List of slab structures (one per unique termination)
+#[pyfunction]
+#[pyo3(signature = (structure, miller_index, min_slab_size = 10.0, min_vacuum_size = 10.0, center_slab = true, in_unit_planes = false, symprec = 0.01))]
+fn generate_slabs(
+    py: Python<'_>,
+    structure: StructureJson,
+    miller_index: [i32; 3],
+    min_slab_size: f64,
+    min_vacuum_size: f64,
+    center_slab: bool,
+    in_unit_planes: bool,
+    symprec: f64,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let s = parse_struct(&structure)?;
+    let config = crate::structure::SlabConfig {
+        miller_index,
+        min_slab_size,
+        min_vacuum_size,
+        center_slab,
+        in_unit_planes,
+        primitive: false,
+        symprec,
+        termination_index: None,
+    };
+    // Release GIL during heavy computation
+    let slabs = py
+        .detach(|| s.generate_slabs(&config))
+        .map_err(|e| PyValueError::new_err(format!("Error generating slabs: {e}")))?;
+    slabs
+        .iter()
+        .map(|slab| Ok(structure_to_pydict(py, slab)?.unbind()))
+        .collect()
+}
+
+/// Generate a single slab for a given Miller index and termination.
+///
+/// Args:
+///     structure: Structure as JSON string or dict
+///     miller_index: Surface orientation as [h, k, l]
+///     min_slab_size: Minimum slab thickness in Angstroms (default: 10.0)
+///     min_vacuum_size: Minimum vacuum thickness in Angstroms (default: 10.0)
+///     center_slab: Center slab in vacuum (default: True)
+///     in_unit_planes: If True, min_slab_size is number of unit planes (default: False)
+///     symprec: Symmetry precision (default: 0.01)
+///     termination_index: Which termination to use (default: 0)
+///
+/// Returns:
+///     Slab structure dict
+#[pyfunction]
+#[pyo3(signature = (structure, miller_index, min_slab_size = 10.0, min_vacuum_size = 10.0, center_slab = true, in_unit_planes = false, symprec = 0.01, termination_index = 0))]
+fn make_slab(
+    py: Python<'_>,
+    structure: StructureJson,
+    miller_index: [i32; 3],
+    min_slab_size: f64,
+    min_vacuum_size: f64,
+    center_slab: bool,
+    in_unit_planes: bool,
+    symprec: f64,
+    termination_index: usize,
+) -> PyResult<Py<PyDict>> {
+    let s = parse_struct(&structure)?;
+    let config = crate::structure::SlabConfig {
+        miller_index,
+        min_slab_size,
+        min_vacuum_size,
+        center_slab,
+        in_unit_planes,
+        primitive: false,
+        symprec,
+        termination_index: Some(termination_index),
+    };
+    // Release GIL during heavy computation
+    let slab = py
+        .detach(|| s.make_slab(&config))
+        .map_err(|e| PyValueError::new_err(format!("Error making slab: {e}")))?;
+    Ok(structure_to_pydict(py, &slab)?.unbind())
+}
+
+// ========== COORDINATION ANALYSIS ==========
+
+/// Get coordination numbers for all sites using distance cutoff.
+///
+/// Args:
+///     structure: Structure as JSON string or dict
+///     cutoff: Distance cutoff in Angstrom
+///
+/// Returns:
+///     List of coordination numbers (one per site)
+#[pyfunction]
+#[pyo3(name = "get_coordination_numbers")]
+fn py_get_coordination_numbers(structure: StructureJson, cutoff: f64) -> PyResult<Vec<usize>> {
     if cutoff < 0.0 {
         return Err(PyValueError::new_err("Cutoff must be non-negative"));
     }
-    Ok(())
+    let s = parse_struct(&structure)?;
+    Ok(coordination::get_coordination_numbers(&s, cutoff))
 }
 
-/// Get coordination numbers for all sites using a distance cutoff.
-///
-/// Counts the number of neighbors within the specified cutoff distance for each site.
-/// Uses periodic boundary conditions.
+/// Get coordination number for a single site using distance cutoff.
 ///
 /// Args:
-///     structure (str): Structure as JSON string (from Structure.as_dict())
-///     cutoff (float): Maximum distance in Angstroms to consider a site as a neighbor
+///     structure: Structure as JSON string or dict
+///     site_idx: Index of the site
+///     cutoff: Distance cutoff in Angstrom
 ///
 /// Returns:
-///     list[int]: Coordination numbers for each site
-///
-/// Example:
-///     >>> from ferrox import get_coordination_numbers
-///     >>> import json
-///     >>> # FCC Cu has 12 nearest neighbors at ~2.55 Å
-///     >>> cns = get_coordination_numbers(json.dumps(fcc_cu.as_dict()), 3.0)
-///     >>> assert all(cn == 12 for cn in cns)
+///     Coordination number for the site
 #[pyfunction]
-fn get_coordination_numbers(structure: &str, cutoff: f64) -> PyResult<Vec<usize>> {
-    check_cutoff(cutoff)?;
-    Ok(parse_struct(structure)?.get_coordination_numbers(cutoff))
-}
-
-/// Get coordination number for a single site using a distance cutoff.
-///
-/// Args:
-///     structure (str): Structure as JSON string
-///     site_idx (int): Index of the site to analyze
-///     cutoff (float): Maximum distance in Angstroms to consider a site as a neighbor
-///
-/// Returns:
-///     int: Coordination number for the specified site
-#[pyfunction]
-fn get_coordination_number(structure: &str, site_idx: usize, cutoff: f64) -> PyResult<usize> {
-    check_cutoff(cutoff)?;
-    let s = parse_struct(structure)?;
+#[pyo3(name = "get_coordination_number")]
+fn py_get_coordination_number(
+    structure: StructureJson,
+    site_idx: usize,
+    cutoff: f64,
+) -> PyResult<usize> {
+    if cutoff < 0.0 {
+        return Err(PyValueError::new_err("Cutoff must be non-negative"));
+    }
+    let s = parse_struct(&structure)?;
     check_site_bounds(s.num_sites(), &[site_idx])?;
-    Ok(crate::coordination::get_coordination_number(
-        &s, site_idx, cutoff,
-    ))
+    Ok(coordination::get_coordination_number(&s, site_idx, cutoff))
 }
 
-/// Get the local environment (neighbor information) for a site.
-///
-/// Returns detailed information about each neighbor including element,
-/// distance, and periodic image offset.
+/// Get local environment (neighbor info) for a site.
 ///
 /// Args:
-///     structure (str): Structure as JSON string
-///     site_idx (int): Index of the site to analyze
-///     cutoff (float): Maximum distance in Angstroms to consider a site as a neighbor
+///     structure: Structure as JSON string or dict
+///     site_idx: Index of the site
+///     cutoff: Distance cutoff in Angstrom
 ///
 /// Returns:
-///     list[dict]: List of neighbor dicts with keys: element, species, distance, image, site_idx
-///
-/// Example:
-///     >>> neighbors = get_local_environment(json.dumps(s.as_dict()), 0, 3.0)
-///     >>> for n in neighbors:
-///     ...     print(f"{n['element']} at {n['distance']:.2f} Å")
+///     List of dicts with keys: element, species, distance, image, site_idx
 #[pyfunction]
-fn get_local_environment(
+#[pyo3(name = "get_local_environment")]
+fn py_get_local_environment(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     site_idx: usize,
     cutoff: f64,
 ) -> PyResult<Py<PyList>> {
-    check_cutoff(cutoff)?;
-    let s = parse_struct(structure)?;
+    if cutoff < 0.0 {
+        return Err(PyValueError::new_err("Cutoff must be non-negative"));
+    }
+    let s = parse_struct(&structure)?;
     check_site_bounds(s.num_sites(), &[site_idx])?;
-
-    let neighbors = crate::coordination::get_local_environment(&s, site_idx, cutoff);
-
-    let result = PyList::empty(py);
+    let neighbors = coordination::get_local_environment(&s, site_idx, cutoff);
+    let list = PyList::empty(py);
     for n in neighbors {
         let dict = PyDict::new(py);
         dict.set_item("element", n.element().symbol())?;
         dict.set_item("species", n.species.to_string())?;
         dict.set_item("distance", n.distance)?;
-        dict.set_item("image", PyList::new(py, n.image)?)?;
+        dict.set_item("image", n.image)?;
         dict.set_item("site_idx", n.site_idx)?;
-        if let Some(solid_angle) = n.solid_angle {
-            dict.set_item("solid_angle", solid_angle)?;
-        }
-        result.append(dict)?;
+        list.append(dict)?;
     }
-    Ok(result.unbind())
+    Ok(list.unbind())
 }
 
-/// Get neighbors for a site as (site_idx, distance, image) tuples.
-///
-/// A simpler, more efficient alternative to get_local_environment that returns
-/// only indices, distances, and periodic images without element/species info.
+/// Get neighbors for a site (indices and distances).
 ///
 /// Args:
-///     structure (str): Structure as JSON string
-///     site_idx (int): Index of the site to analyze
-///     cutoff (float): Maximum distance in Angstroms to consider a site as a neighbor
+///     structure: Structure as JSON string or dict
+///     site_idx: Index of the site
+///     cutoff: Distance cutoff in Angstrom
 ///
 /// Returns:
-///     list[tuple[int, float, list[int]]]: List of (neighbor_idx, distance, [da, db, dc]) tuples
+///     List of tuples: (neighbor_idx, distance, image)
 #[pyfunction]
-fn get_neighbors(
-    structure: &str,
+#[pyo3(name = "get_neighbors")]
+fn py_get_neighbors(
+    structure: StructureJson,
     site_idx: usize,
     cutoff: f64,
 ) -> PyResult<Vec<(usize, f64, [i32; 3])>> {
-    check_cutoff(cutoff)?;
-    let s = parse_struct(structure)?;
+    if cutoff < 0.0 {
+        return Err(PyValueError::new_err("Cutoff must be non-negative"));
+    }
+    let s = parse_struct(&structure)?;
     check_site_bounds(s.num_sites(), &[site_idx])?;
-    Ok(crate::coordination::get_neighbors(&s, site_idx, cutoff))
+    Ok(coordination::get_neighbors(&s, site_idx, cutoff))
 }
 
-/// Validate and create VoronoiConfig from min_solid_angle.
-fn make_voronoi_config(min_solid_angle: f64) -> PyResult<crate::coordination::VoronoiConfig> {
+/// Get Voronoi-based coordination number for a site.
+///
+/// Args:
+///     structure: Structure as JSON string or dict
+///     site_idx: Index of the site
+///     min_solid_angle: Minimum solid angle fraction to count as neighbor (default: 0.01)
+///
+/// Returns:
+///     Voronoi-weighted coordination number
+#[pyfunction]
+#[pyo3(name = "get_cn_voronoi", signature = (structure, site_idx, min_solid_angle = 0.01))]
+fn py_get_cn_voronoi(
+    structure: StructureJson,
+    site_idx: usize,
+    min_solid_angle: f64,
+) -> PyResult<f64> {
     if !(0.0..=1.0).contains(&min_solid_angle) {
         return Err(PyValueError::new_err(
             "min_solid_angle must be between 0.0 and 1.0 inclusive",
         ));
     }
-    Ok(crate::coordination::VoronoiConfig { min_solid_angle })
-}
-
-/// Get Voronoi-weighted coordination numbers for all sites.
-///
-/// Uses Voronoi tessellation to determine neighbors based on solid angle.
-/// Each Voronoi face above a minimum solid angle threshold contributes to coordination.
-///
-/// Args:
-///     structure (str): Structure as JSON string
-///     min_solid_angle (float): Minimum solid angle fraction to count a neighbor (default: 0.01)
-///
-/// Returns:
-///     list[float]: Effective coordination numbers for each site
-#[pyfunction]
-#[pyo3(signature = (structure, min_solid_angle = 0.01))]
-fn get_cn_voronoi_all(structure: &str, min_solid_angle: f64) -> PyResult<Vec<f64>> {
-    let config = make_voronoi_config(min_solid_angle)?;
-    Ok(crate::coordination::get_cn_voronoi_all(
-        &parse_struct(structure)?,
-        Some(&config),
-    ))
-}
-
-/// Get Voronoi-weighted coordination number for a single site.
-///
-/// Args:
-///     structure (str): Structure as JSON string
-///     site_idx (int): Index of the site to analyze
-///     min_solid_angle (float): Minimum solid angle fraction to count a neighbor (default: 0.01)
-///
-/// Returns:
-///     float: Effective coordination number for the site
-#[pyfunction]
-#[pyo3(signature = (structure, site_idx, min_solid_angle = 0.01))]
-fn get_cn_voronoi(structure: &str, site_idx: usize, min_solid_angle: f64) -> PyResult<f64> {
-    let config = make_voronoi_config(min_solid_angle)?;
-    let s = parse_struct(structure)?;
+    let s = parse_struct(&structure)?;
     check_site_bounds(s.num_sites(), &[site_idx])?;
-    Ok(crate::coordination::get_cn_voronoi(
-        &s,
-        site_idx,
-        Some(&config),
-    ))
+    let config = coordination::VoronoiConfig { min_solid_angle };
+    Ok(coordination::get_cn_voronoi(&s, site_idx, Some(&config)))
 }
 
-/// Get Voronoi neighbors with their solid angle fractions for a site.
-///
-/// Returns neighbors sorted by solid angle (largest first).
+/// Get Voronoi-based coordination numbers for all sites.
 ///
 /// Args:
-///     structure (str): Structure as JSON string
-///     site_idx (int): Index of the site to analyze
-///     min_solid_angle (float): Minimum solid angle fraction to include a neighbor (default: 0.01)
+///     structure: Structure as JSON string or dict
+///     min_solid_angle: Minimum solid angle fraction to count as neighbor (default: 0.01)
 ///
 /// Returns:
-///     list[tuple[int, float]]: List of (neighbor_idx, solid_angle_fraction) tuples
+///     List of Voronoi-weighted coordination numbers
 #[pyfunction]
-#[pyo3(signature = (structure, site_idx, min_solid_angle = 0.01))]
-fn get_voronoi_neighbors(
-    structure: &str,
+#[pyo3(name = "get_cn_voronoi_all", signature = (structure, min_solid_angle = 0.01))]
+fn py_get_cn_voronoi_all(structure: StructureJson, min_solid_angle: f64) -> PyResult<Vec<f64>> {
+    if !(0.0..=1.0).contains(&min_solid_angle) {
+        return Err(PyValueError::new_err(
+            "min_solid_angle must be between 0.0 and 1.0 inclusive",
+        ));
+    }
+    let s = parse_struct(&structure)?;
+    let config = coordination::VoronoiConfig { min_solid_angle };
+    Ok(coordination::get_cn_voronoi_all(&s, Some(&config)))
+}
+
+/// Get Voronoi neighbors for a site.
+///
+/// Args:
+///     structure: Structure as JSON string or dict
+///     site_idx: Index of the site
+///     min_solid_angle: Minimum solid angle fraction to count as neighbor (default: 0.01)
+///
+/// Returns:
+///     List of tuples: (neighbor_idx, solid_angle_weight)
+#[pyfunction]
+#[pyo3(name = "get_voronoi_neighbors", signature = (structure, site_idx, min_solid_angle = 0.01))]
+fn py_get_voronoi_neighbors(
+    structure: StructureJson,
     site_idx: usize,
     min_solid_angle: f64,
 ) -> PyResult<Vec<(usize, f64)>> {
-    let config = make_voronoi_config(min_solid_angle)?;
-    let s = parse_struct(structure)?;
+    if !(0.0..=1.0).contains(&min_solid_angle) {
+        return Err(PyValueError::new_err(
+            "min_solid_angle must be between 0.0 and 1.0 inclusive",
+        ));
+    }
+    let s = parse_struct(&structure)?;
     check_site_bounds(s.num_sites(), &[site_idx])?;
-    Ok(crate::coordination::get_voronoi_neighbors(
+    let config = coordination::VoronoiConfig { min_solid_angle };
+    Ok(coordination::get_voronoi_neighbors(
         &s,
         site_idx,
         Some(&config),
     ))
 }
 
-/// Get local environment using Voronoi tessellation.
-///
-/// Similar to get_local_environment but uses Voronoi faces to determine neighbors
-/// instead of a distance cutoff. Includes solid angle information.
+/// Get Voronoi-based local environment for a site.
 ///
 /// Args:
-///     structure (str): Structure as JSON string
-///     site_idx (int): Index of the site to analyze
-///     min_solid_angle (float): Minimum solid angle fraction to include a neighbor (default: 0.01)
+///     structure: Structure as JSON string or dict
+///     site_idx: Index of the site
+///     min_solid_angle: Minimum solid angle fraction to count as neighbor (default: 0.01)
 ///
 /// Returns:
-///     list[dict]: List of neighbor dicts with keys: element, species, distance, site_idx, solid_angle
+///     List of dicts with keys: element, species, distance, image, site_idx, solid_angle
 #[pyfunction]
-#[pyo3(signature = (structure, site_idx, min_solid_angle = 0.01))]
-fn get_local_environment_voronoi(
+#[pyo3(name = "get_local_environment_voronoi", signature = (structure, site_idx, min_solid_angle = 0.01))]
+fn py_get_local_environment_voronoi(
     py: Python<'_>,
-    structure: &str,
+    structure: StructureJson,
     site_idx: usize,
     min_solid_angle: f64,
 ) -> PyResult<Py<PyList>> {
-    let config = make_voronoi_config(min_solid_angle)?;
-    let s = parse_struct(structure)?;
+    if !(0.0..=1.0).contains(&min_solid_angle) {
+        return Err(PyValueError::new_err(
+            "min_solid_angle must be between 0.0 and 1.0 inclusive",
+        ));
+    }
+    let s = parse_struct(&structure)?;
     check_site_bounds(s.num_sites(), &[site_idx])?;
-    let neighbors = crate::coordination::get_local_environment_voronoi(&s, site_idx, Some(&config));
-
-    let result = PyList::empty(py);
+    let config = coordination::VoronoiConfig { min_solid_angle };
+    let neighbors = coordination::get_local_environment_voronoi(&s, site_idx, Some(&config));
+    let list = PyList::empty(py);
     for n in neighbors {
         let dict = PyDict::new(py);
         dict.set_item("element", n.element().symbol())?;
         dict.set_item("species", n.species.to_string())?;
         dict.set_item("distance", n.distance)?;
+        dict.set_item("image", n.image)?;
         dict.set_item("site_idx", n.site_idx)?;
-        if let Some(solid_angle) = n.solid_angle {
-            dict.set_item("solid_angle", solid_angle)?;
-        }
-        result.append(dict)?;
+        dict.set_item("solid_angle", n.solid_angle)?;
+        list.append(dict)?;
     }
-    Ok(result.unbind())
+    Ok(list.unbind())
 }
 
 /// Register Python module contents.
@@ -2488,6 +2492,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Supercell functions
     m.add_function(wrap_pyfunction!(make_supercell, m)?)?;
     m.add_function(wrap_pyfunction!(make_supercell_diag, m)?)?;
+    // Slab generation functions
+    m.add_function(wrap_pyfunction!(generate_slabs, m)?)?;
+    m.add_function(wrap_pyfunction!(make_slab, m)?)?;
     // Reduction functions
     m.add_function(wrap_pyfunction!(get_reduced_structure, m)?)?;
     m.add_function(wrap_pyfunction!(get_reduced_structure_with_params, m)?)?;
@@ -2499,6 +2506,15 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(distance_from_point, m)?)?;
     m.add_function(wrap_pyfunction!(distance_matrix, m)?)?;
     m.add_function(wrap_pyfunction!(is_periodic_image, m)?)?;
+    // Coordination analysis functions
+    m.add_function(wrap_pyfunction!(py_get_coordination_numbers, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_coordination_number, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_local_environment, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_neighbors, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_cn_voronoi, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_cn_voronoi_all, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_voronoi_neighbors, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_local_environment_voronoi, m)?)?;
     // Site label and species functions
     m.add_function(wrap_pyfunction!(site_label, m)?)?;
     m.add_function(wrap_pyfunction!(site_labels, m)?)?;
@@ -2553,17 +2569,5 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ewald_energy, m)?)?;
     m.add_function(wrap_pyfunction!(order_disordered, m)?)?;
     m.add_function(wrap_pyfunction!(enumerate_derivatives, m)?)?;
-    // Slab generation functions
-    m.add_function(wrap_pyfunction!(make_slab, m)?)?;
-    m.add_function(wrap_pyfunction!(generate_slabs, m)?)?;
-    // Coordination analysis functions
-    m.add_function(wrap_pyfunction!(get_coordination_numbers, m)?)?;
-    m.add_function(wrap_pyfunction!(get_coordination_number, m)?)?;
-    m.add_function(wrap_pyfunction!(get_local_environment, m)?)?;
-    m.add_function(wrap_pyfunction!(get_neighbors, m)?)?;
-    m.add_function(wrap_pyfunction!(get_cn_voronoi_all, m)?)?;
-    m.add_function(wrap_pyfunction!(get_cn_voronoi, m)?)?;
-    m.add_function(wrap_pyfunction!(get_voronoi_neighbors, m)?)?;
-    m.add_function(wrap_pyfunction!(get_local_environment_voronoi, m)?)?;
     Ok(())
 }

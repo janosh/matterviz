@@ -11,129 +11,19 @@ try:
 except ImportError:
     pytest.skip("ferrox not installed", allow_module_level=True)
 
-
-# ============================================================================
-# Fixtures
-# ============================================================================
+# Fixtures from conftest.py: nacl_json, nacl_with_oxi_json, fcc_cu_json, lifepo4_json,
+#                            disordered_json, single_fe_json
 
 
-@pytest.fixture
-def nacl_json() -> str:
-    """NaCl in rocksalt structure as JSON."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]},
-        "sites": [
-            {"species": [{"element": "Na", "occu": 1}], "abc": [0, 0, 0]},
-            {"species": [{"element": "Cl", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
-        ],
-    }
-    return json.dumps(struct)
-
-
-@pytest.fixture
-def nacl_with_oxi_json() -> str:
-    """NaCl with oxidation states as JSON."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]},
-        "sites": [
-            {
-                "species": [{"element": "Na", "oxidation_state": 1, "occu": 1}],
-                "abc": [0, 0, 0],
-            },
-            {
-                "species": [{"element": "Cl", "oxidation_state": -1, "occu": 1}],
-                "abc": [0.5, 0.5, 0.5],
-            },
-        ],
-    }
-    return json.dumps(struct)
-
-
-@pytest.fixture
-def fcc_copper_json() -> str:
-    """FCC Cu (conventional cell) as JSON."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[3.6, 0, 0], [0, 3.6, 0], [0, 0, 3.6]]},
-        "sites": [
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0, 0, 0]},
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.5, 0.5, 0]},
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.5, 0, 0.5]},
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0, 0.5, 0.5]},
-        ],
-    }
-    return json.dumps(struct)
-
-
-@pytest.fixture
-def lifepo4_json() -> str:
-    """Simplified LiFePO4 structure."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[10.3, 0, 0], [0, 6.0, 0], [0, 0, 4.7]]},
-        "sites": [
-            {"species": [{"element": "Li", "occu": 1}], "abc": [0.0, 0.0, 0.0]},
-            {"species": [{"element": "Li", "occu": 1}], "abc": [0.5, 0.0, 0.5]},
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0.25, 0.25, 0.0]},
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0.75, 0.75, 0.0]},
-            {"species": [{"element": "P", "occu": 1}], "abc": [0.1, 0.25, 0.25]},
-            {"species": [{"element": "P", "occu": 1}], "abc": [0.9, 0.75, 0.75]},
-            {"species": [{"element": "O", "occu": 1}], "abc": [0.1, 0.25, 0.75]},
-            {"species": [{"element": "O", "occu": 1}], "abc": [0.2, 0.5, 0.25]},
-        ],
-    }
-    return json.dumps(struct)
-
-
-@pytest.fixture
-def disordered_json() -> str:
-    """Disordered Fe0.5Co0.5 alloy as JSON."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[2.87, 0, 0], [0, 2.87, 0], [0, 0, 2.87]]},
-        "sites": [
-            {
-                "species": [
-                    {"element": "Fe", "oxidation_state": 2, "occu": 0.5},
-                    {"element": "Co", "oxidation_state": 2, "occu": 0.5},
-                ],
-                "abc": [0, 0, 0],
-            },
-        ],
-    }
-    return json.dumps(struct)
-
-
-@pytest.fixture
-def single_fe_json() -> str:
-    """Single Fe atom structure as JSON."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[2.87, 0, 0], [0, 2.87, 0], [0, 0, 2.87]]},
-        "sites": [{"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0]}],
-    }
-    return json.dumps(struct)
-
-
-# ============================================================================
 # to_primitive Tests
-# ============================================================================
 
 
 class TestToPrimitive:
     """Tests for to_primitive function."""
 
-    def test_fcc_reduces_to_primitive(self, fcc_copper_json: str) -> None:
+    def test_fcc_reduces_to_primitive(self, fcc_cu_json: str) -> None:
         """FCC conventional cell with 4 atoms should reduce to primitive with 1."""
-        result = ferrox.to_primitive(fcc_copper_json)
+        result = ferrox.to_primitive(fcc_cu_json)
         # Primitive FCC has 1 atom
         assert len(result["sites"]) < 4
 
@@ -144,18 +34,14 @@ class TestToPrimitive:
         # Should have same number of sites (already primitive)
         assert len(result["sites"]) <= len(original["sites"])
 
-    def test_symprec_parameter(self, fcc_copper_json: str) -> None:
+    def test_symprec_parameter(self, fcc_cu_json: str) -> None:
         """Different symprec should work."""
-        result_tight = ferrox.to_primitive(fcc_copper_json, symprec=0.001)
-        result_loose = ferrox.to_primitive(fcc_copper_json, symprec=0.1)
+        result_tight = ferrox.to_primitive(fcc_cu_json, symprec=0.001)
+        result_loose = ferrox.to_primitive(fcc_cu_json, symprec=0.1)
         # Both should reduce the cell
         assert len(result_tight["sites"]) < 4
         assert len(result_loose["sites"]) < 4
 
-
-# ============================================================================
-# to_conventional Tests
-# ============================================================================
 
 
 class TestToConventional:
@@ -167,10 +53,6 @@ class TestToConventional:
         assert "lattice" in result
         assert "sites" in result
 
-
-# ============================================================================
-# substitute_species Tests
-# ============================================================================
 
 
 class TestSubstituteSpecies:
@@ -198,10 +80,6 @@ class TestSubstituteSpecies:
         assert elements == {"Na", "Cl"}
 
 
-# ============================================================================
-# remove_species Tests
-# ============================================================================
-
 
 class TestRemoveSpecies:
     """Tests for remove_species function."""
@@ -225,10 +103,6 @@ class TestRemoveSpecies:
         assert len(result["sites"]) == 0
 
 
-# ============================================================================
-# remove_sites Tests
-# ============================================================================
-
 
 class TestRemoveSites:
     """Tests for remove_sites function."""
@@ -238,9 +112,9 @@ class TestRemoveSites:
         result = ferrox.remove_sites(nacl_json, [0])
         assert len(result["sites"]) == 1
 
-    def test_remove_multiple_sites(self, fcc_copper_json: str) -> None:
+    def test_remove_multiple_sites(self, fcc_cu_json: str) -> None:
         """Remove multiple sites."""
-        result = ferrox.remove_sites(fcc_copper_json, [0, 1])
+        result = ferrox.remove_sites(fcc_cu_json, [0, 1])
         assert len(result["sites"]) == 2
 
     def test_remove_all_sites(self, nacl_json: str) -> None:
@@ -248,10 +122,6 @@ class TestRemoveSites:
         result = ferrox.remove_sites(nacl_json, [0, 1])
         assert len(result["sites"]) == 0
 
-
-# ============================================================================
-# deform Tests
-# ============================================================================
 
 
 class TestDeform:
@@ -285,23 +155,13 @@ class TestDeform:
     def test_identity_deformation(self, nacl_json: str) -> None:
         """Identity deformation should preserve structure."""
         original = json.loads(nacl_json)
-        gradient = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-        result = ferrox.deform(nacl_json, gradient)
+        result = ferrox.deform(nacl_json, [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        for row_idx in range(3):
+            for col_idx in range(3):
+                orig_val = original["lattice"]["matrix"][row_idx][col_idx]
+                new_val = result["lattice"]["matrix"][row_idx][col_idx]
+                assert abs(new_val - orig_val) < 1e-10
 
-        for idx in range(3):
-            for jdx in range(3):
-                assert (
-                    abs(
-                        result["lattice"]["matrix"][idx][jdx]
-                        - original["lattice"]["matrix"][idx][jdx]
-                    )
-                    < 1e-10
-                )
-
-
-# ============================================================================
-# ewald_energy Tests
-# ============================================================================
 
 
 class TestEwaldEnergy:
@@ -325,10 +185,6 @@ class TestEwaldEnergy:
         # Results should be similar
         assert abs(energy1 - energy2) < 0.5
 
-
-# ============================================================================
-# order_disordered Tests
-# ============================================================================
 
 
 class TestOrderDisordered:
@@ -359,10 +215,6 @@ class TestOrderDisordered:
         assert len(results) == 1
 
 
-# ============================================================================
-# enumerate_derivatives Tests
-# ============================================================================
-
 
 class TestEnumerateDerivatives:
     """Tests for enumerate_derivatives function."""
@@ -385,10 +237,6 @@ class TestEnumerateDerivatives:
         assert len(results[0]["sites"]) == 1
 
 
-# ============================================================================
-# Integration Tests
-# ============================================================================
-
 
 class TestTransformationChains:
     """Tests for chaining multiple transformations."""
@@ -400,18 +248,14 @@ class TestTransformationChains:
         assert len(step2["sites"]) == 1
         assert step2["sites"][0]["species"][0]["element"] == "Cl"
 
-    def test_primitive_then_supercell(self, fcc_copper_json: str) -> None:
+    def test_primitive_then_supercell(self, fcc_cu_json: str) -> None:
         """Get primitive, then make supercell."""
-        primitive = ferrox.to_primitive(fcc_copper_json)
+        primitive = ferrox.to_primitive(fcc_cu_json)
         # Make 2x2x2 supercell using make_supercell
         supercell = ferrox.make_supercell(json.dumps(primitive), [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
         # Should have 8x more atoms than primitive
         assert len(supercell["sites"]) == 8 * len(primitive["sites"])
 
-
-# ============================================================================
-# Edge Cases
-# ============================================================================
 
 
 class TestEdgeCases:

@@ -412,9 +412,7 @@ mod tests {
     use crate::species::Species;
     use nalgebra::Vector3;
 
-    // ========================================================================
-    // Union-Find Tests
-    // ========================================================================
+    // === Union-Find Tests ===
 
     #[test]
     fn test_union_find_basic() {
@@ -469,9 +467,7 @@ mod tests {
         assert_eq!(group_1.len(), 2);
     }
 
-    // ========================================================================
-    // Helper functions for batch tests
-    // ========================================================================
+    // === Helper functions for batch tests ===
 
     fn make_nacl() -> Structure {
         let lattice = Lattice::cubic(5.64);
@@ -511,9 +507,7 @@ mod tests {
         Structure::new(lattice, species, coords)
     }
 
-    // ========================================================================
-    // Batch Processing Tests
-    // ========================================================================
+    // === Batch Processing Tests ===
 
     #[test]
     fn test_deduplicate_identical() {
@@ -635,9 +629,7 @@ mod tests {
         assert_eq!(groups.len(), 3);
     }
 
-    // ========================================================================
-    // find_matches Tests
-    // ========================================================================
+    // === find_matches Tests ===
 
     #[test]
     fn test_find_matches_basic() {
@@ -708,9 +700,7 @@ mod tests {
         assert_eq!(matches, vec![Some(0), Some(0), Some(1)]);
     }
 
-    // ========================================================================
-    // Concurrent Stress Tests
-    // ========================================================================
+    // === Concurrent Stress Tests ===
 
     #[test]
     fn test_union_find_concurrent_stress() {
