@@ -4,17 +4,18 @@ This module provides high-performance crystallographic structure operations
 implemented in Rust with Python bindings via PyO3.
 """
 
+from collections.abc import Sequence
 from typing import Any, Literal
 
 # Type aliases for better readability
 StructureDict = dict[str, Any]  # pymatgen-compatible structure dict
 StructureJson = str | StructureDict  # JSON string or dict (both accepted by Rust)
-Matrix3x3 = list[list[float]]  # 3x3 matrix as nested list
-IntMatrix3x3 = list[list[int]]  # 3x3 integer matrix
-Vector3 = list[float]  # 3-element vector [x, y, z]
-IntVector3 = list[int]  # 3-element integer vector [a, b, c]
-RotationMatrix = list[list[int]]  # 3x3 integer rotation matrix
-TranslationVector = list[float]  # 3-element translation vector
+Matrix3x3 = Sequence[Sequence[float]]  # 3x3 matrix (list or tuple)
+IntMatrix3x3 = Sequence[Sequence[int]]  # 3x3 integer matrix
+Vector3 = Sequence[float]  # 3-element vector [x, y, z]
+IntVector3 = Sequence[int]  # 3-element integer vector [a, b, c]
+RotationMatrix = Sequence[Sequence[int]]  # 3x3 integer rotation matrix
+TranslationVector = Sequence[float]  # 3-element translation vector
 
 __version__: str
 
@@ -265,7 +266,7 @@ def to_pymatgen_json(structure: StructureJson) -> str:
 # === Supercell Functions ===
 
 def make_supercell(
-    structure: StructureJson, scaling_matrix: tuple[tuple[int, int, int], ...]
+    structure: StructureJson, scaling_matrix: IntMatrix3x3
 ) -> StructureDict:
     """Create a supercell from a structure.
 
@@ -404,9 +405,7 @@ def get_distance_with_image(
     """
     ...
 
-def distance_from_point(
-    structure: StructureJson, idx: int, point: tuple[float, float, float]
-) -> float:
+def distance_from_point(structure: StructureJson, idx: int, point: Vector3) -> float:
     """Get Cartesian distance from a site to an arbitrary point.
 
     Simple Euclidean distance, not using periodic boundary conditions.
@@ -566,9 +565,7 @@ def get_sorted_by_electronegativity(
 
 # === Copy/Sanitization Functions ===
 
-def copy_structure(
-    structure: StructureJson, sanitize: bool = False
-) -> StructureDict:
+def copy_structure(structure: StructureJson, sanitize: bool = False) -> StructureDict:
     """Create a copy of the structure, optionally sanitized.
 
     Sanitization applies:
@@ -600,8 +597,8 @@ def wrap_to_unit_cell(structure: StructureJson) -> StructureDict:
 
 def apply_operation(
     structure: StructureJson,
-    rotation: tuple[tuple[float, float, float], ...],
-    translation: tuple[float, float, float],
+    rotation: Matrix3x3,
+    translation: TranslationVector,
     fractional: bool = True,
 ) -> StructureDict:
     """Apply a symmetry operation to a structure.
@@ -619,9 +616,7 @@ def apply_operation(
     """
     ...
 
-def apply_inversion(
-    structure: StructureJson, fractional: bool = True
-) -> StructureDict:
+def apply_inversion(structure: StructureJson, fractional: bool = True) -> StructureDict:
     """Apply inversion through the origin.
 
     Args:
@@ -635,7 +630,7 @@ def apply_inversion(
 
 def apply_translation(
     structure: StructureJson,
-    translation: tuple[float, float, float],
+    translation: TranslationVector,
     fractional: bool = True,
 ) -> StructureDict:
     """Apply a translation to all sites.
@@ -760,9 +755,7 @@ def get_pearson_symbol(structure: StructureJson, symprec: float = 0.01) -> str:
     """
     ...
 
-def get_wyckoff_letters(
-    structure: StructureJson, symprec: float = 0.01
-) -> list[str]:
+def get_wyckoff_letters(structure: StructureJson, symprec: float = 0.01) -> list[str]:
     """Get Wyckoff letters for each site in the structure.
 
     Wyckoff positions describe the site symmetry and multiplicity.
@@ -809,9 +802,7 @@ def get_symmetry_operations(
     """
     ...
 
-def get_equivalent_sites(
-    structure: StructureJson, symprec: float = 0.01
-) -> list[int]:
+def get_equivalent_sites(structure: StructureJson, symprec: float = 0.01) -> list[int]:
     """Get equivalent sites (crystallographic orbits).
 
     Returns a list where orbits[i] is the index of the representative site
@@ -863,8 +854,8 @@ def get_symmetry_dataset(
 
 def translate_sites(
     structure: StructureJson,
-    indices: list[int],
-    vector: tuple[float, float, float],
+    indices: Sequence[int],
+    vector: Vector3,
     fractional: bool = True,
 ) -> StructureDict:
     """Translate specific sites by a vector.
@@ -977,7 +968,7 @@ def parse_composition(formula: str) -> dict[str, Any]:
 
 def make_slab(
     structure: StructureJson,
-    miller_index: tuple[int, int, int],
+    miller_index: IntVector3,
     min_slab_size: float = 10.0,
     min_vacuum_size: float = 10.0,
     center_slab: bool = True,
@@ -1004,7 +995,7 @@ def make_slab(
 
 def generate_slabs(
     structure: StructureJson,
-    miller_index: tuple[int, int, int],
+    miller_index: IntVector3,
     min_slab_size: float = 10.0,
     min_vacuum_size: float = 10.0,
     center_slab: bool = True,
@@ -1100,7 +1091,7 @@ def remove_sites(structure: StructureJson, indices: list[int]) -> StructureDict:
 
 def deform(
     structure: StructureJson,
-    gradient: tuple[tuple[float, float, float], ...],
+    gradient: Matrix3x3,
 ) -> StructureDict:
     """Apply a deformation gradient to the lattice.
 
