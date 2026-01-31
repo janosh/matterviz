@@ -56,10 +56,9 @@ class TestOxiStateGuesses:
         # Best ferrox solution
         ferrox_best = ferrox_guesses[0]["oxidation_states"]
 
-        # Pymatgen returns list of dicts, first is most likely
-        pymatgen_best = pymatgen_guesses[0]
+        # Pymatgen returns list of dicts with Element keys, convert to string keys
+        pymatgen_best = {str(k): v for k, v in pymatgen_guesses[0].items()}
 
-        # Elements should match (pymatgen returns dicts with string keys)
         for elem in ["Li", "P", "O"]:
             pymatgen_val = pymatgen_best.get(elem, 0)
             ferrox_val = ferrox_best.get(elem, 0)

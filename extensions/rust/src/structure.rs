@@ -2803,7 +2803,6 @@ impl Structure {
 ///
 /// * `site_probs` - Oxidation state probabilities for each unique site
 /// * `multiplicities` - Number of sites in each symmetry-equivalent group
-/// * `unique_sites` - Indices of unique site representatives
 ///
 /// # Returns
 ///
@@ -2812,7 +2811,6 @@ fn find_charge_balanced_assignment(
     site_probs: &[Vec<(i8, f64)>],
     multiplicities: &[usize],
 ) -> Option<Vec<i8>> {
-    let max_permutations = 100_000usize;
     let mut permutation_count = 0usize;
     let mut best_score: f64 = 0.0;
     let mut best_assignment: Option<Vec<i8>> = None;
@@ -2881,7 +2879,7 @@ fn find_charge_balanced_assignment(
                 best_score,
                 best_assignment,
                 permutation_count,
-                max_permutations,
+                crate::oxidation::MAX_PERMUTATIONS,
             );
             current_assignment.pop();
         }
@@ -2898,7 +2896,7 @@ fn find_charge_balanced_assignment(
         &mut best_score,
         &mut best_assignment,
         &mut permutation_count,
-        max_permutations,
+        crate::oxidation::MAX_PERMUTATIONS,
     );
 
     best_assignment

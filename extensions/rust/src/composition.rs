@@ -711,15 +711,12 @@ impl Composition {
     /// // neutral composition has neutral Fe and O
     /// ```
     pub fn remove_charges(&self) -> Self {
-        let new_species: IndexMap<Species, f64> = self
-            .species
-            .iter()
-            .map(|(sp, &amt)| (Species::neutral(sp.element), amt))
-            .fold(IndexMap::new(), |mut acc, (sp, amt)| {
-                *acc.entry(sp).or_insert(0.0) += amt;
-                acc
-            });
-
+        let mut new_species: IndexMap<Species, f64> = IndexMap::new();
+        for (sp, &amt) in &self.species {
+            *new_species
+                .entry(Species::neutral(sp.element))
+                .or_insert(0.0) += amt;
+        }
         Self {
             species: new_species,
             allow_negative: self.allow_negative,

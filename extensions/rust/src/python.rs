@@ -62,6 +62,11 @@ fn parse_struct(input: &StructureJson) -> PyResult<Structure> {
         .map_err(|e| PyValueError::new_err(format!("Error parsing structure: {e}")))
 }
 
+/// Convert a JSON string to a Python dict.
+fn json_to_pydict(py: Python<'_>, json: &str) -> PyResult<Py<PyDict>> {
+    py.import("json")?.call_method1("loads", (json,))?.extract()
+}
+
 /// Parse a pair of structure inputs, returning a PyResult.
 fn parse_structure_pair(
     struct1: &StructureJson,
@@ -2677,12 +2682,7 @@ fn py_add_charges_from_oxi_state_guesses(
         .collect();
 
     let result = s.add_oxidation_state_by_element(&oxi_map);
-    let json = structure_to_pymatgen_json(&result);
-    let dict: Py<PyDict> = py
-        .import("json")?
-        .call_method1("loads", (json,))?
-        .extract()?;
-    Ok(dict)
+    json_to_pydict(py, &structure_to_pymatgen_json(&result))
 }
 
 /// Compute bond valence sums for all sites in a structure.
@@ -2763,12 +2763,7 @@ fn py_add_oxidation_state_by_element(
 ) -> PyResult<Py<PyDict>> {
     let s = parse_struct(&structure)?;
     let result = s.add_oxidation_state_by_element(&oxi_states);
-    let json = structure_to_pymatgen_json(&result);
-    let dict: Py<PyDict> = py
-        .import("json")?
-        .call_method1("loads", (json,))?
-        .extract()?;
-    Ok(dict)
+    json_to_pydict(py, &structure_to_pymatgen_json(&result))
 }
 
 /// Add oxidation states to a structure by site index.
@@ -2793,12 +2788,7 @@ fn py_add_oxidation_state_by_site(
     let result = s
         .add_oxidation_state_by_site(&oxi_states)
         .map_err(|e| PyValueError::new_err(format!("Error adding oxidation states: {e}")))?;
-    let json = structure_to_pymatgen_json(&result);
-    let dict: Py<PyDict> = py
-        .import("json")?
-        .call_method1("loads", (json,))?
-        .extract()?;
-    Ok(dict)
+    json_to_pydict(py, &structure_to_pymatgen_json(&result))
 }
 
 /// Remove oxidation states from all sites in a structure.
@@ -2816,12 +2806,7 @@ fn py_add_oxidation_state_by_site(
 fn py_remove_oxidation_states(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let s = parse_struct(&structure)?;
     let result = s.remove_oxidation_states();
-    let json = structure_to_pymatgen_json(&result);
-    let dict: Py<PyDict> = py
-        .import("json")?
-        .call_method1("loads", (json,))?
-        .extract()?;
-    Ok(dict)
+    json_to_pydict(py, &structure_to_pymatgen_json(&result))
 }
 
 // =============================================================================

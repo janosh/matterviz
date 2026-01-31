@@ -25,6 +25,9 @@ use crate::element::Element;
 // Bond valence "softness" parameter (Brown & Altermatt, Acta Cryst. B41, 244, 1985)
 const BV_SOFTNESS: f64 = 0.31;
 
+/// Maximum permutations for charge-balanced enumeration to prevent combinatorial explosion.
+pub const MAX_PERMUTATIONS: usize = 100_000;
+
 // =============================================================================
 // Compressed Data Files (embedded at compile time)
 // =============================================================================
@@ -519,7 +522,6 @@ pub fn oxi_state_guesses(
 
     // Find all combinations of element sums that achieve target charge
     let mut solutions: Vec<OxiStateGuess> = Vec::new();
-    let max_permutations = 100_000;
     let mut permutation_count = 0;
 
     #[allow(clippy::too_many_arguments)]
@@ -534,9 +536,8 @@ pub fn oxi_state_guesses(
         current_combos: &mut Vec<Vec<i8>>,
         solutions: &mut Vec<OxiStateGuess>,
         permutation_count: &mut usize,
-        max_permutations: usize,
     ) {
-        if *permutation_count >= max_permutations {
+        if *permutation_count >= MAX_PERMUTATIONS {
             return;
         }
 
@@ -595,7 +596,6 @@ pub fn oxi_state_guesses(
                 current_combos,
                 solutions,
                 permutation_count,
-                max_permutations,
             );
 
             current_scores.pop();
@@ -617,7 +617,6 @@ pub fn oxi_state_guesses(
         &mut current_combos,
         &mut solutions,
         &mut permutation_count,
-        max_permutations,
     );
 
     // Sort by decreasing probability
