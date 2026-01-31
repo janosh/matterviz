@@ -452,15 +452,11 @@ impl Structure {
             }
         }
 
-        crate::oxidation::calculate_bv_sum(site_element, &neighbors, scale_factor).ok_or_else(
-            || FerroxError::InvalidStructure {
-                index: site_idx,
-                reason: format!(
-                    "BV parameters not available for {} or its neighbors",
-                    site_element.symbol()
-                ),
-            },
-        )
+        Ok(crate::oxidation::calculate_bv_sum(
+            site_element,
+            &neighbors,
+            scale_factor,
+        ))
     }
 
     /// Compute bond valence sums for all sites.
@@ -501,14 +497,7 @@ impl Structure {
         // Calculate BVS for each site
         for (site_idx, neighbors) in site_neighbors.into_iter().enumerate() {
             let site_element = self.site_occupancies[site_idx].dominant_species().element;
-            let bvs = crate::oxidation::calculate_bv_sum(site_element, &neighbors, scale_factor)
-                .ok_or_else(|| FerroxError::InvalidStructure {
-                    index: site_idx,
-                    reason: format!(
-                        "BV parameters not available for {} or its neighbors",
-                        site_element.symbol()
-                    ),
-                })?;
+            let bvs = crate::oxidation::calculate_bv_sum(site_element, &neighbors, scale_factor);
             bv_sums.push(bvs);
         }
 
@@ -591,19 +580,20 @@ impl Structure {
         }
 
         // Find charge-balanced assignment
-        let result = find_charge_balanced_assignment(&site_probs, &site_multiplicities);
+        let assignment = find_charge_balanced_assignment(&site_probs, &site_multiplicities)
+            .ok_or_else(|| FerroxError::CompositionError {
+                reason: "No charge-balanced oxidation state assignment found".into(),
+            })?;
 
         // Expand unique site assignments to all sites
         let mut oxidation_states = vec![0i8; self.num_sites()];
-        if let Some(assignment) = result {
-            for (unique_idx, &site_idx) in unique_sites.iter().enumerate() {
-                let oxi = assignment[unique_idx];
-                // Assign to all sites with same orbit
-                let orbit = orbits[site_idx];
-                for (idx, &o) in orbits.iter().enumerate() {
-                    if o == orbit {
-                        oxidation_states[idx] = oxi;
-                    }
+        for (unique_idx, &site_idx) in unique_sites.iter().enumerate() {
+            let oxi = assignment[unique_idx];
+            // Assign to all sites with same orbit
+            let orbit = orbits[site_idx];
+            for (idx, &o) in orbits.iter().enumerate() {
+                if o == orbit {
+                    oxidation_states[idx] = oxi;
                 }
             }
         }
@@ -619,7 +609,8 @@ impl Structure {
     ///
     /// # Returns
     ///
-    /// New structure with oxidation states applied.
+    /// New structure with oxidation states applied. Elements not found in the
+    /// mapping retain their existing oxidation states (if any).
     pub fn add_oxidation_state_by_element(
         &self,
         oxi_states: &std::collections::HashMap<String, i8>,
@@ -632,7 +623,11 @@ impl Structure {
                     .species
                     .iter()
                     .map(|(sp, occ)| {
-                        let oxi = oxi_states.get(sp.element.symbol()).copied();
+                        // Use mapped oxidation state if available, otherwise preserve existing
+                        let oxi = oxi_states
+                            .get(sp.element.symbol())
+                            .copied()
+                            .or(sp.oxidation_state);
                         (Species::new(sp.element, oxi), *occ)
                     })
                     .collect();
@@ -2797,22 +2792,24 @@ impl Structure {
 /// Find charge-balanced oxidation state assignment using recursive search.
 ///
 /// Recursively enumerates combinations of oxidation states for each unique site,
-/// pruning branches that cannot achieve charge balance.
+/// pruning branches that cannot achieve charge balance. Uses log-probabilities
+/// internally to avoid underflow when multiplying many small probabilities.
 ///
 /// # Arguments
 ///
-/// * `site_probs` - Oxidation state probabilities for each unique site
+/// * `site_probs` - Oxidation state probabilities for each site: Vec of (oxi_state, probability)
 /// * `multiplicities` - Number of sites in each symmetry-equivalent group
 ///
 /// # Returns
 ///
-/// Best charge-balanced assignment, or None if none found.
+/// Best charge-balanced assignment (highest log-probability), or None if none found.
 fn find_charge_balanced_assignment(
     site_probs: &[Vec<(i8, f64)>],
     multiplicities: &[usize],
 ) -> Option<Vec<i8>> {
     let mut permutation_count = 0usize;
-    let mut best_score: f64 = 0.0;
+    // Use NEG_INFINITY as initial best score so any valid solution beats it
+    let mut best_score: f64 = f64::NEG_INFINITY;
     let mut best_assignment: Option<Vec<i8>> = None;
 
     #[allow(clippy::too_many_arguments)]
@@ -2822,7 +2819,7 @@ fn find_charge_balanced_assignment(
         current_idx: usize,
         current_charge: i32,
         current_assignment: &mut Vec<i8>,
-        current_score: f64,
+        current_log_score: f64,
         best_score: &mut f64,
         best_assignment: &mut Option<Vec<i8>>,
         permutation_count: &mut usize,
@@ -2835,8 +2832,8 @@ fn find_charge_balanced_assignment(
         if current_idx == site_probs.len() {
             *permutation_count += 1;
             // Check charge balance
-            if current_charge == 0 && current_score > *best_score {
-                *best_score = current_score;
+            if current_charge == 0 && current_log_score > *best_score {
+                *best_score = current_log_score;
                 *best_assignment = Some(current_assignment.clone());
             }
             return;
@@ -2861,6 +2858,11 @@ fn find_charge_balanced_assignment(
         }
 
         for &(oxi, prob) in &site_probs[current_idx] {
+            // Skip zero probabilities (log(0) = -INF would dominate the score)
+            if prob <= 0.0 {
+                continue;
+            }
+
             let new_charge = current_charge + oxi as i32 * multiplicities[current_idx] as i32;
 
             // Prune if charge balance is unreachable
@@ -2875,7 +2877,7 @@ fn find_charge_balanced_assignment(
                 current_idx + 1,
                 new_charge,
                 current_assignment,
-                current_score * prob,
+                current_log_score + prob.ln(),
                 best_score,
                 best_assignment,
                 permutation_count,
@@ -2892,7 +2894,7 @@ fn find_charge_balanced_assignment(
         0,
         0,
         &mut current_assignment,
-        1.0,
+        0.0, // Start with log(1) = 0
         &mut best_score,
         &mut best_assignment,
         &mut permutation_count,

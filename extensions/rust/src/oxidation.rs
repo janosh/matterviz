@@ -28,6 +28,12 @@ const BV_SOFTNESS: f64 = 0.31;
 /// Maximum permutations for charge-balanced enumeration to prevent combinatorial explosion.
 pub const MAX_PERMUTATIONS: usize = 100_000;
 
+/// Tolerance for detecting non-integer oxidation states (mixed-valence).
+/// Values like 2.33 or 2.67 (from Fe3O4) deviate by 0.33 from the nearest integer,
+/// which exceeds this threshold. Values within 0.25 of an integer are considered
+/// representable as a single oxidation state.
+pub const OXI_INT_TOLERANCE: f64 = 0.25;
+
 // =============================================================================
 // Compressed Data Files (embedded at compile time)
 // =============================================================================
@@ -189,26 +195,34 @@ pub fn is_electronegative(element: Element) -> bool {
 /// vij = exp((R - distance) / BV_SOFTNESS)
 /// ```
 ///
-/// Returns 0 if either element is not in the BV parameters table,
-/// or if neither element is electronegative.
+/// Returns `0.0` if neither element is electronegative, if both elements
+/// are the same, or if either element is missing from the BV parameters table.
+/// Returns the signed bond valence contribution otherwise.
 pub fn calculate_bond_valence(
     element1: Element,
     element2: Element,
     distance: f64,
     scale_factor: f64,
-) -> Option<f64> {
+) -> f64 {
     // BV only contributes if at least one element is electronegative
     if !is_electronegative(element1) && !is_electronegative(element2) {
-        return Some(0.0);
+        return 0.0;
     }
 
     // Same element doesn't contribute
     if element1 == element2 {
-        return Some(0.0);
+        return 0.0;
     }
 
-    let params1 = get_bv_params_for_element(element1)?;
-    let params2 = get_bv_params_for_element(element2)?;
+    // Return 0.0 if BV params are missing for either element
+    let params1 = match get_bv_params_for_element(element1) {
+        Some(p) => p,
+        None => return 0.0,
+    };
+    let params2 = match get_bv_params_for_element(element2) {
+        Some(p) => p,
+        None => return 0.0,
+    };
 
     let r1 = params1.r;
     let r2 = params2.r;
@@ -235,7 +249,7 @@ pub fn calculate_bond_valence(
         0.0
     };
 
-    Some(vij * sign)
+    vij * sign
 }
 
 /// Neighbor information for BVS calculation.
@@ -259,29 +273,20 @@ pub struct BvNeighbor {
 ///
 /// # Returns
 ///
-/// The bond valence sum, or None if BV parameters are missing.
-pub fn calculate_bv_sum(
-    site_element: Element,
-    neighbors: &[BvNeighbor],
-    scale_factor: f64,
-) -> Option<f64> {
-    let mut bv_sum = 0.0;
-
-    for neighbor in neighbors {
-        if let Some(vij) = calculate_bond_valence(
-            site_element,
-            neighbor.element,
-            neighbor.distance,
-            scale_factor,
-        ) {
-            bv_sum += vij * neighbor.occupancy;
-        } else {
-            // Missing BV params - return None
-            return None;
-        }
-    }
-
-    Some(bv_sum)
+/// The bond valence sum. Missing BV parameters contribute 0.0 to the sum.
+pub fn calculate_bv_sum(site_element: Element, neighbors: &[BvNeighbor], scale_factor: f64) -> f64 {
+    neighbors
+        .iter()
+        .map(|neighbor| {
+            let vij = calculate_bond_valence(
+                site_element,
+                neighbor.element,
+                neighbor.distance,
+                scale_factor,
+            );
+            vij * neighbor.occupancy
+        })
+        .sum()
 }
 
 // =============================================================================
@@ -420,9 +425,10 @@ pub fn oxi_state_guesses(
     use_all_oxi_states: bool,
     max_sites: Option<usize>,
 ) -> Vec<OxiStateGuess> {
-    // Single element always has oxidation state 0
+    // Single element: only return oxidation state 0 when target_charge == 0
+    // For non-zero target_charge, let normal enumeration handle it (or return empty if impossible)
     let unique_elements: std::collections::HashSet<_> = elements.iter().collect();
-    if unique_elements.len() == 1 {
+    if unique_elements.len() == 1 && target_charge == 0 {
         return vec![OxiStateGuess {
             oxidation_states: HashMap::from([(elements[0].symbol().to_string(), 0.0)]),
             probability: 1.0,
@@ -708,16 +714,15 @@ mod tests {
     fn test_calculate_bond_valence() {
         // Fe-O bond at ~2.0 Å should give positive BV (Fe is more electropositive)
         let bv = calculate_bond_valence(Element::Fe, Element::O, 2.0, 1.0);
-        assert!(bv.is_some());
-        assert!(bv.unwrap() > 0.0, "Fe-O should have positive BV");
+        assert!(bv > 0.0, "Fe-O should have positive BV");
 
         // Same element should give 0
         let bv_same = calculate_bond_valence(Element::Fe, Element::Fe, 2.5, 1.0);
-        assert_eq!(bv_same, Some(0.0));
+        assert_eq!(bv_same, 0.0);
 
         // Non-electronegative pair should give 0
         let bv_non = calculate_bond_valence(Element::Na, Element::K, 3.0, 1.0);
-        assert_eq!(bv_non, Some(0.0));
+        assert_eq!(bv_non, 0.0);
     }
 
     #[test]
@@ -733,13 +738,11 @@ mod tests {
         ];
 
         let bv_sum = calculate_bv_sum(Element::Fe, &neighbors, 1.0);
-        assert!(bv_sum.is_some());
         // Fe3+ typically has BVS around 3.0
-        let sum = bv_sum.unwrap();
         assert!(
-            sum > 2.0 && sum < 4.0,
+            bv_sum > 2.0 && bv_sum < 4.0,
             "Fe BVS should be reasonable: {}",
-            sum
+            bv_sum
         );
     }
 

@@ -648,7 +648,9 @@ impl Composition {
     ///
     /// # Returns
     ///
-    /// New composition with oxidation states, or `None` if no valid assignment found.
+    /// New composition with oxidation states, or `None` if no valid assignment found
+    /// or if any oxidation state is a non-integer (mixed-valence that cannot be
+    /// represented as a single integer oxidation state).
     ///
     /// # Example
     ///
@@ -675,13 +677,21 @@ impl Composition {
 
         let best = guesses.first()?;
 
+        // Check that all oxidation states are close to integers
+        // Mixed-valence averages (e.g., 2.67 for Fe3O4) cannot be represented as single i8
+        for oxi in best.oxidation_states.values() {
+            if (*oxi - oxi.round()).abs() > crate::oxidation::OXI_INT_TOLERANCE {
+                // Non-integer oxidation state indicates mixed-valence; cannot represent
+                return None;
+            }
+        }
+
         // Create new composition with oxidation states
         let mut new_species: IndexMap<Species, f64> = IndexMap::new();
 
         for (sp, amt) in &self.species {
             // Look up the oxidation state for this element
             let oxi = best.oxidation_states.get(sp.element.symbol())?;
-            // Round to nearest integer for oxidation state
             let oxi_state = oxi.round() as i8;
             let new_sp = Species::new(sp.element, Some(oxi_state));
             *new_species.entry(new_sp).or_insert(0.0) += amt;
@@ -725,7 +735,8 @@ impl Composition {
 
     /// Get the total charge of this composition based on oxidation states.
     ///
-    /// Returns `None` if any species lacks an oxidation state.
+    /// Returns `None` if any species lacks an oxidation state, or if the total
+    /// charge is not close to an integer (e.g., fractional compositions).
     ///
     /// # Example
     ///
@@ -740,12 +751,24 @@ impl Composition {
     /// assert_eq!(comp.charge(), Some(0));
     /// ```
     pub fn charge(&self) -> Option<i32> {
-        let mut total = 0i32;
+        // Epsilon for floating-point comparison. 1e-6 handles rounding errors from
+        // f64 arithmetic while rejecting genuinely fractional charges (e.g., 0.5).
+        const CHARGE_EPSILON: f64 = 1e-6;
+
+        let mut total = 0.0_f64;
         for (sp, &amt) in &self.species {
             let oxi = sp.oxidation_state?;
-            total += oxi as i32 * amt.round() as i32;
+            total += oxi as f64 * amt;
         }
-        Some(total)
+
+        // Check if total is close to an integer
+        let rounded = total.round();
+        if (total - rounded).abs() > CHARGE_EPSILON {
+            // Non-integer charge (e.g., fractional composition)
+            return None;
+        }
+
+        Some(rounded as i32)
     }
 
     /// Check if this composition is charge balanced.

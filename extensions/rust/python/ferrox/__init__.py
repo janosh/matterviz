@@ -5,7 +5,7 @@ coordination analysis, supercells, primitive/conventional cells, composition par
 oxidation state guessing and bond valence analysis.
 """
 
-# ruff: noqa: F401 (re-exports for public API)
+# Re-exports for public API
 from ferrox._ferrox import (
     StructureMatcher,
     __version__,

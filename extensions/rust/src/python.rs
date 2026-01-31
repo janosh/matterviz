@@ -2659,6 +2659,12 @@ fn py_oxi_state_guesses(
 /// Returns:
 ///     Structure dict with oxidation states assigned
 ///
+/// Raises:
+///     ValueError: If no charge-balanced assignment found, or if the best
+///         assignment contains mixed-valence oxidation states (non-integer
+///         averages like 2.67 for Fe3O4) that cannot be represented as
+///         integer oxidation states per element.
+///
 /// Example:
 ///     >>> result = add_charges_from_oxi_state_guesses(s.as_dict())
 #[pyfunction]
@@ -2676,6 +2682,18 @@ fn py_add_charges_from_oxi_state_guesses(
         return Err(PyValueError::new_err(
             "Could not find charge-balanced oxidation state assignment",
         ));
+    }
+
+    // Check for mixed-valence (non-integer average oxidation states)
+    for (elem, oxi) in &guesses[0].oxidation_states {
+        if (*oxi - oxi.round()).abs() > crate::oxidation::OXI_INT_TOLERANCE {
+            return Err(PyValueError::new_err(format!(
+                "Mixed-valence detected: {} has average oxidation state {:.3}, which cannot \
+                 be represented as a single integer. Consider using site-specific oxidation \
+                 state assignment for structures with mixed-valence elements.",
+                elem, oxi
+            )));
+        }
     }
 
     // Convert the best guess to a HashMap for add_oxidation_state_by_element
