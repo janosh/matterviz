@@ -11,41 +11,7 @@ try:
 except ImportError:
     pytest.skip("ferrox not installed", allow_module_level=True)
 
-
-# Fixtures
-
-
-@pytest.fixture
-def nacl_json() -> str:
-    """NaCl in CsCl-type structure (Pm-3m, #221) as JSON."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]},
-        "sites": [
-            {"species": [{"element": "Na", "occu": 1}], "abc": [0, 0, 0]},
-            {"species": [{"element": "Cl", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
-        ],
-    }
-    return json.dumps(struct)
-
-
-@pytest.fixture
-def fe2o3_json() -> str:
-    """Fe2O3 structure as JSON (simplified)."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 13.7]]},
-        "sites": [
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0.35]},
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0.65]},
-            {"species": [{"element": "O", "occu": 1}], "abc": [0.3, 0, 0.25]},
-            {"species": [{"element": "O", "occu": 1}], "abc": [0.7, 0, 0.25]},
-            {"species": [{"element": "O", "occu": 1}], "abc": [0, 0.3, 0.25]},
-        ],
-    }
-    return json.dumps(struct)
+# Fixtures imported from conftest.py: nacl_json, fe2o3_json, fcc_cu_json, bcc_fe_json
 
 
 # parse_composition tests
@@ -65,16 +31,16 @@ class TestParseComposition:
         assert "Fe" in result["species"]
         assert "O" in result["species"]
 
-    def test_anonymous_formula_reduction(self) -> None:
+    def test_formula_anonymous_reduction(self) -> None:
         """Anonymous formula reduces: Fe4O6 and Fe2O3 give same result."""
         large = ferrox.parse_composition("Fe4O6")
         small = ferrox.parse_composition("Fe2O3")
-        assert large["anonymous_formula"] == small["anonymous_formula"] == "A2B3"
+        assert large["formula_anonymous"] == small["formula_anonymous"] == "A2B3"
         assert large["reduced_formula"] == small["reduced_formula"]
 
-    def test_hill_formula(self) -> None:
+    def test_formula_hill(self) -> None:
         """Hill formula: C first, H second, then alphabetical."""
-        assert ferrox.parse_composition("C6H12O6")["hill_formula"] == "C6 H12 O6"
+        assert ferrox.parse_composition("C6H12O6")["formula_hill"] == "C6 H12 O6"
 
     def test_weight(self) -> None:
         """Molecular weight: H2O ≈ 18.015 amu."""
@@ -93,8 +59,8 @@ class TestGetStructureMetadata:
 
         # Formula fields (keys match parse_composition for consistency)
         assert result["formula"] == "NaCl"
-        assert result["anonymous_formula"] == "AB"  # Na (0.93) < Cl (3.16)
-        assert result["hill_formula"] == "Cl Na"
+        assert result["formula_anonymous"] == "AB"  # Na (0.93) < Cl (3.16)
+        assert result["formula_hill"] == "Cl Na"
         assert result["chemical_system"] == "Cl-Na"
 
         # Element/site counts
@@ -111,7 +77,7 @@ class TestGetStructureMetadata:
     def test_binary_structure(self, fe2o3_json: str) -> None:
         """Test Fe2O3 structure metadata."""
         result = ferrox.get_structure_metadata(fe2o3_json)
-        assert result["anonymous_formula"] == "A2B3"  # Fe (1.83) < O (3.44)
+        assert result["formula_anonymous"] == "A2B3"  # Fe (1.83) < O (3.44)
         assert result["n_sites"] == 5
 
     def test_spacegroup_optional(self, nacl_json: str) -> None:
@@ -127,7 +93,7 @@ class TestGetStructureMetadata:
         metadata = ferrox.get_structure_metadata(nacl_json)
         comp = ferrox.parse_composition("NaCl")
         assert metadata["formula"] == comp["reduced_formula"]
-        assert metadata["anonymous_formula"] == comp["anonymous_formula"]
+        assert metadata["formula_anonymous"] == comp["formula_anonymous"]
         assert metadata["chemical_system"] == comp["chemical_system"]
 
 
@@ -154,114 +120,58 @@ class TestGetStructureMetadata:
         ("Fe4O6", "A2B3"),
     ],
 )
-def test_anonymous_formula(formula: str, expected: str) -> None:
+def test_formula_anonymous(formula: str, expected: str) -> None:
     """Anonymous formula: elements sorted by electronegativity, then A, B, C..."""
-    assert ferrox.parse_composition(formula)["anonymous_formula"] == expected
+    assert ferrox.parse_composition(formula)["formula_anonymous"] == expected
 
 
-# Symmetry fixtures
-
-
-@pytest.fixture
-def fcc_cu_json() -> str:
-    """FCC Cu conventional cell (4 atoms, Fm-3m #225) as JSON."""
-    # Lattice constant 3.6 Å
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[3.6, 0, 0], [0, 3.6, 0], [0, 0, 3.6]]},
-        "sites": [
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.0, 0.0, 0.0]},
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.5, 0.5, 0.0]},
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.5, 0.0, 0.5]},
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.0, 0.5, 0.5]},
-        ],
-    }
-    return json.dumps(struct)
-
-
-@pytest.fixture
-def bcc_fe_json() -> str:
-    """BCC Fe conventional cell (2 atoms, Im-3m #229) as JSON."""
-    # Lattice constant 2.87 Å
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[2.87, 0, 0], [0, 2.87, 0], [0, 0, 2.87]]},
-        "sites": [
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0.0, 0.0, 0.0]},
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
-        ],
-    }
-    return json.dumps(struct)
-
-
-# Symmetry tests
+# Symmetry tests (fixtures from conftest.py)
 
 
 class TestSymmetryFunctions:
     """Tests for symmetry analysis functions."""
 
-    def test_get_spacegroup_number(self, fcc_cu_json: str, bcc_fe_json: str) -> None:
-        """Test spacegroup number detection."""
-        assert ferrox.get_spacegroup_number(fcc_cu_json) == 225  # Fm-3m
-        assert ferrox.get_spacegroup_number(bcc_fe_json) == 229  # Im-3m
+    @pytest.mark.parametrize(("fixture", "sg_num", "sg_sym", "pearson", "crystal_sys"), [
+        ("fcc_cu_json", 225, "F m -3 m", "cF4", "cubic"),
+        ("bcc_fe_json", 229, "I m -3 m", "cI2", "cubic"),
+    ])
+    def test_symmetry_properties(
+        self, fixture: str, sg_num: int, sg_sym: str, pearson: str, crystal_sys: str,
+        request: pytest.FixtureRequest
+    ) -> None:
+        """Test spacegroup, Pearson symbol, and crystal system."""
+        struct = request.getfixturevalue(fixture)
+        assert ferrox.get_spacegroup_number(struct) == sg_num
+        assert ferrox.get_spacegroup_symbol(struct) == sg_sym
+        assert ferrox.get_pearson_symbol(struct) == pearson
+        assert ferrox.get_crystal_system(struct) == crystal_sys
 
-    def test_get_spacegroup_symbol(self, fcc_cu_json: str, bcc_fe_json: str) -> None:
-        """Test spacegroup symbol detection (moyo uses spaces)."""
-        assert ferrox.get_spacegroup_symbol(fcc_cu_json) == "F m -3 m"
-        assert ferrox.get_spacegroup_symbol(bcc_fe_json) == "I m -3 m"
+    def test_hall_number_range(self, fcc_cu_json: str) -> None:
+        """Hall number is in valid range (1-530)."""
+        assert 1 <= ferrox.get_hall_number(fcc_cu_json) <= 530
 
-    def test_get_hall_number(self, fcc_cu_json: str) -> None:
-        """Test Hall number is in valid range."""
-        hall = ferrox.get_hall_number(fcc_cu_json)
-        assert 1 <= hall <= 530
+    def test_wyckoff_and_site_symmetry(self, fcc_cu_json: str) -> None:
+        """FCC Cu: all 4 atoms have same Wyckoff position and site symmetry."""
+        assert len(set(ferrox.get_wyckoff_letters(fcc_cu_json))) == 1
+        assert len(set(ferrox.get_site_symmetry_symbols(fcc_cu_json))) == 1
 
-    def test_get_pearson_symbol(self, fcc_cu_json: str, bcc_fe_json: str) -> None:
-        """Test Pearson symbol detection."""
-        assert ferrox.get_pearson_symbol(fcc_cu_json) == "cF4"  # cubic, F-centered, 4 atoms
-        assert ferrox.get_pearson_symbol(bcc_fe_json) == "cI2"  # cubic, I-centered, 2 atoms
+    def test_symmetry_operations(self, fcc_cu_json: str) -> None:
+        """Symmetry operations: each is (3x3 rotation, 3-vector translation)."""
+        for rot, trans in ferrox.get_symmetry_operations(fcc_cu_json):
+            assert len(rot) == 3 and all(len(row) == 3 for row in rot)
+            assert len(trans) == 3
 
-    def test_get_wyckoff_letters(self, fcc_cu_json: str) -> None:
-        """Test Wyckoff letter assignment."""
-        wyckoffs = ferrox.get_wyckoff_letters(fcc_cu_json)
-        assert len(wyckoffs) == 4
-        # All Cu atoms in FCC should have same Wyckoff position
-        assert len(set(wyckoffs)) == 1
-
-    def test_get_site_symmetry_symbols(self, fcc_cu_json: str) -> None:
-        """Test site symmetry symbol assignment."""
-        symbols = ferrox.get_site_symmetry_symbols(fcc_cu_json)
-        assert len(symbols) == 4
-        # All Cu atoms in FCC should have same site symmetry
-        assert len(set(symbols)) == 1
-
-    def test_get_symmetry_operations(self, fcc_cu_json: str) -> None:
-        """Test symmetry operations retrieval."""
-        ops = ferrox.get_symmetry_operations(fcc_cu_json)
-        assert len(ops) > 0
-        # Each operation is (rotation, translation) tuple
-        for rot, trans in ops:
-            assert len(rot) == 3  # 3x3 matrix
-            assert len(rot[0]) == 3
-            assert len(trans) == 3  # 3-vector
-
-    def test_get_equivalent_sites(self, fcc_cu_json: str, nacl_json: str) -> None:
-        """Test equivalent site detection."""
-        # FCC Cu: all 4 atoms equivalent
-        orbits_cu = ferrox.get_equivalent_sites(fcc_cu_json)
-        assert len(orbits_cu) == 4
-        assert len(set(orbits_cu)) == 1  # All map to same representative
-
-        # NaCl: 2 inequivalent sites (Na and Cl)
-        orbits_nacl = ferrox.get_equivalent_sites(nacl_json)
-        assert len(orbits_nacl) == 2
-        assert len(set(orbits_nacl)) == 2  # Different representatives
-
-    def test_get_crystal_system(self, fcc_cu_json: str, bcc_fe_json: str) -> None:
-        """Test crystal system detection."""
-        assert ferrox.get_crystal_system(fcc_cu_json) == "cubic"
-        assert ferrox.get_crystal_system(bcc_fe_json) == "cubic"
+    @pytest.mark.parametrize(("fixture", "n_sites", "n_unique"), [
+        ("fcc_cu_json", 4, 1),  # all equivalent
+        ("nacl_json", 2, 2),    # Na and Cl inequivalent
+    ])
+    def test_equivalent_sites(
+        self, fixture: str, n_sites: int, n_unique: int, request: pytest.FixtureRequest
+    ) -> None:
+        """Equivalent site detection."""
+        orbits = ferrox.get_equivalent_sites(request.getfixturevalue(fixture))
+        assert len(orbits) == n_sites
+        assert len(set(orbits)) == n_unique
 
 
 class TestGetSymmetryDataset:

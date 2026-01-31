@@ -1,11 +1,11 @@
-# @matterviz/wasm
+# matterviz-wasm
 
 WebAssembly bindings for the [ferrox](../rust) structure matching library.
 
 ## Installation
 
 ```bash
-pnpm add @matterviz/wasm
+pnpm add matterviz-wasm
 ```
 
 ## Building from Source
@@ -22,10 +22,19 @@ Then build:
 pnpm build
 ```
 
+## Testing
+
+Build the WASM first, then run tests:
+
+```bash
+pnpm build
+pnpm test
+```
+
 ## Usage
 
 ```typescript
-import init, { parse_cif, parse_poscar, WasmStructureMatcher } from '@matterviz/wasm'
+import init, { parse_cif, parse_poscar, WasmStructureMatcher } from 'matterviz-wasm'
 
 // Initialize the WASM module
 await init()

@@ -1,6 +1,6 @@
 {
-  "name": "@matterviz/wasm",
-  "version": "0.0.1",
+  "name": "matterviz-wasm",
+  "version": "0.0.3",
   "description": "WASM bindings for ferrox structure matching library",
   "type": "module",
   "main": "index.js",
@@ -19,7 +19,12 @@
   ],
   "scripts": {
     "build": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg .",
-    "build:dev": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features --dev && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg ."
+    "build:dev": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features --dev && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
   },
   "repository": {
     "type": "git",

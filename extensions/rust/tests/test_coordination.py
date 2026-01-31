@@ -11,9 +11,11 @@ try:
 except ImportError:
     pytest.skip("ferrox not installed", allow_module_level=True)
 
+# Helpers (fixtures auto-discovered from conftest.py)
+
 
 def make_structure(lattice_a: float, sites: list[dict]) -> str:
-    """Helper to create structure JSON."""
+    """Create structure JSON with cubic lattice."""
     return json.dumps({
         "@module": "pymatgen.core.structure",
         "@class": "Structure",
@@ -23,34 +25,8 @@ def make_structure(lattice_a: float, sites: list[dict]) -> str:
 
 
 def site(element: str, abc: list[float]) -> dict:
-    """Helper to create a site dict."""
+    """Create a site dict."""
     return {"species": [{"element": element, "occu": 1}], "abc": abc}
-
-
-@pytest.fixture
-def fcc_cu_json() -> str:
-    """FCC Cu conventional cell (4 atoms, CN=12)."""
-    return make_structure(3.61, [
-        site("Cu", [0.0, 0.0, 0.0]), site("Cu", [0.5, 0.5, 0.0]),
-        site("Cu", [0.5, 0.0, 0.5]), site("Cu", [0.0, 0.5, 0.5]),
-    ])
-
-
-@pytest.fixture
-def bcc_fe_json() -> str:
-    """BCC Fe conventional cell (2 atoms, CN=8 for first shell)."""
-    return make_structure(2.87, [site("Fe", [0.0, 0.0, 0.0]), site("Fe", [0.5, 0.5, 0.5])])
-
-
-@pytest.fixture
-def rocksalt_nacl_json() -> str:
-    """NaCl rocksalt conventional cell (8 atoms, CN=6)."""
-    return make_structure(5.64, [
-        site("Na", [0.0, 0.0, 0.0]), site("Na", [0.5, 0.5, 0.0]),
-        site("Na", [0.5, 0.0, 0.5]), site("Na", [0.0, 0.5, 0.5]),
-        site("Cl", [0.5, 0.0, 0.0]), site("Cl", [0.0, 0.5, 0.0]),
-        site("Cl", [0.0, 0.0, 0.5]), site("Cl", [0.5, 0.5, 0.5]),
-    ])
 
 
 class TestCutoffCoordination:

@@ -12,7 +12,7 @@ jobs:
     uses: janosh/workflows/.github/workflows/deno-gh-pages.yml@main
     with:
       deno-version: 2.3.7
-      # TODO remove WASM build once @matterviz/wasm is published to npm
+      # TODO remove WASM build once matterviz-wasm is published to npm
       build-cmd: |
         rm -rf static/{molecules,structures,trajectories}
         cp -r src/site/{molecules,structures,trajectories} static/

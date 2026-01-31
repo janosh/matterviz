@@ -71,6 +71,9 @@ use pyo3::prelude::*;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+#[cfg(feature = "wasm")]
+pub mod wasm_types;
+
 /// Python module entry point.
 #[cfg(feature = "python")]
 #[pymodule]
