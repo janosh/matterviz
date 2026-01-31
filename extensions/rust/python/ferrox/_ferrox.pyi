@@ -1302,6 +1302,57 @@ def get_local_environment_voronoi(
     """
     ...
 
+# =============================================================================
+# XRD Functions
+# =============================================================================
+
+# Type alias for XRD pattern result
+XrdPatternDict = dict[str, Any]  # {two_theta, intensities, hkls, d_spacings}
+
+def compute_xrd(
+    structure: StructureJson,
+    wavelength: float = 1.54184,
+    two_theta_range: tuple[float, float] | None = None,
+    debye_waller_factors: dict[str, float] | None = None,
+    scaled: bool = True,
+) -> XrdPatternDict:
+    """Compute powder X-ray diffraction pattern from a structure.
+
+    Uses kinematic diffraction theory with Cromer-Mann atomic scattering factors.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        wavelength: X-ray wavelength in Angstroms (default: 1.54184, Cu Kα).
+        two_theta_range: Tuple of (min, max) 2θ angles in degrees (default: (0, 180)).
+        debye_waller_factors: Dict of element symbol to B factor (optional).
+        scaled: Whether to scale intensities to 0-100 (default: True).
+
+    Returns:
+        Dict with keys:
+            - two_theta: List of 2θ angles in degrees
+            - intensities: List of peak intensities
+            - hkls: List of lists of {hkl, multiplicity} dicts for each peak
+            - d_spacings: List of d-spacings in Angstroms
+    """
+    ...
+
+def get_atomic_scattering_params() -> dict[str, list[list[float]]]:
+    """Get atomic scattering parameters (Cromer-Mann coefficients).
+
+    Returns the scattering coefficients for all elements, which are used
+    in XRD pattern calculation. This is the single source of truth (SSOT)
+    shared with TypeScript/matterviz.
+
+    Returns:
+        Dict mapping element symbols to their scattering coefficients.
+        Each coefficient set is [[a1, b1], [a2, b2], [a3, b3], [a4, b4]].
+    """
+    ...
+
+# =============================================================================
+# RDF Functions
+# =============================================================================
+
 def compute_rdf(
     structure: StructureJson,
     r_max: float = 15.0,

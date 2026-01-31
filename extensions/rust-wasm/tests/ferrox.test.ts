@@ -233,6 +233,70 @@ describe(`WasmStructureMatcher`, () => {
   })
 })
 
+describe(`XRD functions`, () => {
+  it(`computes XRD pattern for NaCl`, () => {
+    const pattern = unwrap(wasm.compute_xrd(nacl_json, {}))
+    expect(pattern.two_theta.length).toBeGreaterThan(0)
+    const n = pattern.two_theta.length
+    expect(pattern.intensities).toHaveLength(n)
+    expect(pattern.hkls).toHaveLength(n)
+    expect(pattern.d_spacings).toHaveLength(n)
+  })
+
+  it(`scales intensities to 100`, () => {
+    const pattern = unwrap(wasm.compute_xrd(nacl_json, { scaled: true }))
+    expect(Math.max(...pattern.intensities)).toBeCloseTo(100, 0)
+  })
+
+  it(`respects two_theta_range`, () => {
+    const pattern = unwrap(wasm.compute_xrd(nacl_json, { two_theta_range: [20, 60] }))
+    expect(pattern.two_theta.every((tt) => tt >= 20 && tt <= 60)).toBe(true)
+  })
+
+  it(`shorter wavelength -> peaks at lower 2θ`, () => {
+    const cu_ka = unwrap(wasm.compute_xrd(nacl_json, { wavelength: 1.54184 }))
+    const mo_ka = unwrap(wasm.compute_xrd(nacl_json, { wavelength: 0.71073 }))
+    expect(Math.min(...mo_ka.two_theta)).toBeLessThan(Math.min(...cu_ka.two_theta))
+  })
+
+  it(`hkl info has correct structure`, () => {
+    const pattern = unwrap(wasm.compute_xrd(nacl_json, {}))
+    for (const peak_hkls of pattern.hkls) {
+      for (const info of peak_hkls) {
+        expect(info.hkl).toHaveLength(3)
+        expect(info.multiplicity).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it(`d_spacings are positive`, () => {
+    const pattern = unwrap(wasm.compute_xrd(nacl_json, {}))
+    expect(pattern.d_spacings.every((d) => d > 0)).toBe(true)
+  })
+
+  it.each([-1, 0])(`rejects invalid wavelength %s`, (wavelength) => {
+    expect(`error` in wasm.compute_xrd(nacl_json, { wavelength })).toBe(true)
+  })
+
+  it.each(
+    [
+      [[-10, 90], `min<0`],
+      [[0, 200], `max>180`],
+      [[90, 10], `min>max`],
+    ] as const,
+  )(`rejects invalid two_theta_range %s (%s)`, (two_theta_range) => {
+    expect(`error` in wasm.compute_xrd(nacl_json, { two_theta_range })).toBe(true)
+  })
+
+  it(`returns atomic scattering params as JSON`, () => {
+    const params = JSON.parse(wasm.get_atomic_scattering_params())
+    expect(params).toHaveProperty(`Fe`)
+    expect(params).toHaveProperty(`Na`)
+    expect(params.Fe).toHaveLength(4)
+    expect(params.D).toEqual(params.H)
+  })
+})
+
 // Perturbed NaCl with shifted sites (for testing non-zero distances)
 const nacl_perturbed = {
   lattice: { matrix: [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]] },

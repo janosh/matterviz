@@ -2502,6 +2502,111 @@ fn py_get_local_environment_voronoi(
 }
 
 // =============================================================================
+// XRD Functions
+// =============================================================================
+
+/// Compute powder X-ray diffraction pattern from a structure.
+///
+/// Args:
+///     structure: Structure as JSON string or dict
+///     wavelength: X-ray wavelength in Angstroms (default: 1.54184, Cu Kα)
+///     two_theta_range: Tuple of (min, max) 2θ angles in degrees (default: (0, 180))
+///     debye_waller_factors: Dict of element symbol to B factor (optional)
+///     scaled: Whether to scale intensities to 0-100 (default: True)
+///
+/// Returns:
+///     Dict with keys: two_theta, intensities, hkls, d_spacings
+///
+/// Example:
+///     >>> import ferrox
+///     >>> pattern = ferrox.compute_xrd(structure, wavelength=1.5406)
+///     >>> two_theta = pattern["two_theta"]
+///     >>> intensities = pattern["intensities"]
+#[pyfunction]
+#[pyo3(name = "compute_xrd", signature = (
+    structure,
+    wavelength = 1.54184,
+    two_theta_range = None,
+    debye_waller_factors = None,
+    scaled = true
+))]
+fn py_compute_xrd(
+    py: Python<'_>,
+    structure: StructureJson,
+    wavelength: f64,
+    two_theta_range: Option<(f64, f64)>,
+    debye_waller_factors: Option<HashMap<String, f64>>,
+    scaled: bool,
+) -> PyResult<Py<PyDict>> {
+    use crate::xrd::{XrdConfig, compute_xrd};
+
+    if wavelength <= 0.0 {
+        return Err(PyValueError::new_err("wavelength must be positive"));
+    }
+
+    if let Some((t_min, t_max)) = two_theta_range {
+        if t_min < 0.0 || t_max > 180.0 || t_min >= t_max {
+            return Err(PyValueError::new_err(
+                "two_theta_range must be (min, max) with 0 <= min < max <= 180",
+            ));
+        }
+    }
+
+    let s = parse_struct(&structure)?;
+
+    let config = XrdConfig {
+        wavelength,
+        two_theta_range,
+        debye_waller_factors: debye_waller_factors.unwrap_or_default(),
+        scaled,
+        ..Default::default()
+    };
+
+    let pattern = py.detach(|| compute_xrd(&s, &config));
+
+    let dict = PyDict::new(py);
+    dict.set_item("two_theta", pattern.two_theta)?;
+    dict.set_item("intensities", pattern.intensities)?;
+
+    // Convert hkls to list of list of dicts
+    let hkls_list = PyList::empty(py);
+    for families in &pattern.hkls {
+        let family_list = PyList::empty(py);
+        for info in families {
+            let info_dict = PyDict::new(py);
+            info_dict.set_item("hkl", info.hkl.to_vec())?;
+            info_dict.set_item("multiplicity", info.multiplicity)?;
+            family_list.append(info_dict)?;
+        }
+        hkls_list.append(family_list)?;
+    }
+    dict.set_item("hkls", hkls_list)?;
+    dict.set_item("d_spacings", pattern.d_spacings)?;
+
+    Ok(dict.unbind())
+}
+
+/// Get atomic scattering parameters (Cromer-Mann coefficients).
+///
+/// Returns a dict mapping element symbols to their scattering coefficients.
+/// Each coefficient set is a list of [a, b] pairs for the Cromer-Mann formula.
+///
+/// Returns:
+///     Dict[str, List[List[float]]]: Element symbol -> [[a1, b1], [a2, b2], [a3, b3], [a4, b4]]
+#[pyfunction]
+#[pyo3(name = "get_atomic_scattering_params")]
+fn py_get_atomic_scattering_params(py: Python<'_>) -> PyResult<Py<PyDict>> {
+    let params = crate::xrd::get_scattering_params();
+
+    let dict = PyDict::new(py);
+    for (element, coeffs) in params {
+        let py_coeffs: Vec<Vec<f64>> = coeffs.iter().map(|pair| pair.to_vec()).collect();
+        dict.set_item(element, py_coeffs)?;
+    }
+    Ok(dict.unbind())
+}
+
+// =============================================================================
 // RDF Functions
 // =============================================================================
 
@@ -2696,5 +2801,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ewald_energy, m)?)?;
     m.add_function(wrap_pyfunction!(order_disordered, m)?)?;
     m.add_function(wrap_pyfunction!(enumerate_derivatives, m)?)?;
+    // XRD functions
+    m.add_function(wrap_pyfunction!(py_compute_xrd, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_atomic_scattering_params, m)?)?;
     Ok(())
 }
