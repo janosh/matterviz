@@ -1272,7 +1272,7 @@ pub fn compute_xrd(
 
         let config = XrdConfig {
             wavelength: opts.wavelength,
-            two_theta_range: two_theta_range.or(Some((0.0, 180.0))),
+            two_theta_range,
             debye_waller_factors: opts.debye_waller_factors,
             scaled: opts.scaled,
             ..Default::default()

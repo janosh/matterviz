@@ -2532,7 +2532,7 @@ fn py_compute_xrd(
 
     let config = XrdConfig {
         wavelength,
-        two_theta_range: two_theta_range.or(Some((0.0, 180.0))),
+        two_theta_range,
         debye_waller_factors: debye_waller_factors.unwrap_or_default(),
         scaled,
         ..Default::default()

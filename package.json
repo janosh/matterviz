@@ -230,7 +230,8 @@
     "./xrd": {
       "types": "./dist/xrd/index.d.ts",
       "default": "./dist/xrd/index.js"
-    }
+    },
+    "./xrd/atomic_scattering_params.json": "./dist/xrd/atomic_scattering_params.json"
   },
   "types": "./dist/index.d.ts",
   "files": [
