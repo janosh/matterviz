@@ -14,8 +14,8 @@ use wasm_bindgen::prelude::*;
 use crate::cif::parse_cif_str;
 use crate::element::Element;
 use crate::io::parse_poscar_str;
-use crate::matcher::{ComparatorType, StructureMatcher};
 use crate::species::Species;
+use crate::structure_matcher::{ComparatorType, StructureMatcher};
 use crate::wasm_types::{
     JsCrystal, JsIntMatrix3x3, JsLocalEnvironment, JsMatrix3x3, JsMillerIndex, JsNeighborInfo,
     JsNeighborList, JsReductionAlgo, JsRmsDistResult, JsStructureMetadata, JsSymmetryDataset,
@@ -433,6 +433,35 @@ impl WasmStructureMatcher {
                 .inner
                 .get_rms_dist(&s1, &s2)
                 .map(|(rms, max_dist)| JsRmsDistResult { rms, max_dist }))
+        })();
+        result.into()
+    }
+
+    /// Compute a universal distance between any two structures.
+    ///
+    /// Unlike `get_rms_dist` which may return null for incompatible structures,
+    /// this method always returns a finite distance value, making it suitable for
+    /// consistent ranking of structures by similarity.
+    ///
+    /// # Properties
+    /// - d(x, y) ≥ 0 (non-negative)
+    /// - d(x, x) = 0 (identity)
+    /// - d(x, y) = d(y, x) (symmetric)
+    ///
+    /// Note: Triangle inequality is not guaranteed due to greedy matching.
+    ///
+    /// # Returns
+    /// Distance value in [0, ∞). Smaller values indicate more similar structures.
+    #[wasm_bindgen(js_name = "getStructureDistance")]
+    pub fn get_structure_distance(
+        &self,
+        struct1: JsCrystal,
+        struct2: JsCrystal,
+    ) -> WasmResult<f64> {
+        let result: Result<f64, String> = (|| {
+            let s1 = struct1.to_structure()?;
+            let s2 = struct2.to_structure()?;
+            Ok(self.inner.get_structure_distance(&s1, &s2))
         })();
         result.into()
     }

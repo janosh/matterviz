@@ -19,11 +19,11 @@ use crate::io::{
     parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_extxyz,
     structure_to_poscar, structure_to_pymatgen_json, write_structure,
 };
-use crate::matcher::{ComparatorType, StructureMatcher};
 use crate::rdf;
 use crate::structure::{
     Structure, SymmOp, SymmetryOperation, moyo_ops_to_arrays, spacegroup_to_crystal_system,
 };
+use crate::structure_matcher::{ComparatorType, StructureMatcher};
 use nalgebra::{Matrix3, Vector3};
 
 /// A structure input that can be either a JSON string or a dict.

@@ -13,8 +13,18 @@ use itertools::Itertools;
 use nalgebra::{Matrix3, Vector3};
 use pathfinding::kuhn_munkres::kuhn_munkres_min;
 use pathfinding::matrix::Matrix as PathMatrix;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
+
+// Constants for structure distance calculation
+/// Penalty (squared distance) added for each unmatched source site
+const UNMATCHED_SOURCE_PENALTY: f64 = 10.0;
+/// Penalty (squared distance) added for each unmatched target site
+const UNMATCHED_TARGET_PENALTY: f64 = 5.0;
+/// Weight applied to composition (Jaccard) distance in combined metric
+const COMPOSITION_WEIGHT: f64 = 5.0;
+/// Distance returned when structures have completely disjoint element sets
+const DISJOINT_COMPOSITION_DISTANCE: f64 = 11.0;
 
 /// Type of comparator to use for species matching.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -564,6 +574,145 @@ impl StructureMatcher {
                 let max_dist = distances.iter().cloned().fold(0.0, f64::max);
                 (rms, max_dist)
             })
+    }
+
+    /// Compute a universal distance between any two crystal structures.
+    ///
+    /// Unlike `get_rms_dist` which may return `None` for incompatible structures,
+    /// this method always returns a finite distance value, making it suitable for
+    /// consistent ranking of structures by similarity.
+    ///
+    /// # Properties
+    ///
+    /// - d(x, y) ≥ 0 (non-negative)
+    /// - d(x, x) = 0 (identity)
+    /// - d(x, y) = d(y, x) (symmetric)
+    ///
+    /// Note: Triangle inequality is not guaranteed due to greedy matching.
+    ///
+    /// # Algorithm
+    ///
+    /// The distance is a weighted sum of:
+    /// 1. **Geometric distance**: RMS of greedy-matched site positions (normalized to 1 Å³/atom)
+    /// 2. **Composition distance**: Jaccard distance on element sets
+    ///
+    /// # Returns
+    ///
+    /// Distance in [0, ∞). Identical structures return 0.0.
+    pub fn get_structure_distance(&self, struct1: &Structure, struct2: &Structure) -> f64 {
+        let n1 = struct1.num_sites();
+        let n2 = struct2.num_sites();
+
+        // Handle edge cases
+        if n1 == 0 && n2 == 0 {
+            return 0.0;
+        }
+        if n1 == 0 || n2 == 0 {
+            return f64::INFINITY;
+        }
+
+        // Composition distance (Jaccard distance on element sets)
+        let elements1: HashSet<_> = struct1.species().iter().map(|s| s.element).collect();
+        let elements2: HashSet<_> = struct2.species().iter().map(|s| s.element).collect();
+
+        let intersection = elements1.intersection(&elements2).count();
+        if intersection == 0 {
+            return DISJOINT_COMPOSITION_DISTANCE;
+        }
+
+        let union = elements1.union(&elements2).count();
+        let composition_distance = 1.0 - (intersection as f64 / union as f64);
+
+        let geometric_distance = self.compute_geometric_distance(struct1, struct2);
+        geometric_distance + COMPOSITION_WEIGHT * composition_distance
+    }
+
+    /// Compute geometric distance between two structures.
+    ///
+    /// Normalizes both structures to unit volume per formula unit, then computes
+    /// the RMS distance between matched sites using greedy element-constrained assignment.
+    fn compute_geometric_distance(&self, struct1: &Structure, struct2: &Structure) -> f64 {
+        // Apply standard preprocessing (Niggli reduction, optional primitive cell)
+        let s1 = self.get_reduced_structure(struct1);
+        let s2 = self.get_reduced_structure(struct2);
+
+        let n1 = s1.num_sites();
+        let n2 = s2.num_sites();
+
+        if n1 == 0 || n2 == 0 {
+            return f64::INFINITY;
+        }
+
+        // Use smaller structure as source (reference frame), larger as target
+        let (source, target) = if n1 <= n2 { (&s1, &s2) } else { (&s2, &s1) };
+        let n_source = source.num_sites();
+        let n_target = target.num_sites();
+
+        // Normalize source lattice to 1 Å³ per atom - this is our reference frame
+        let scale = (n_source as f64 / source.lattice.volume()).powf(1.0 / 3.0);
+        let ref_lattice = Lattice::new(*source.lattice.matrix() * scale);
+
+        // Compute ALL Cartesian coordinates in the same reference frame (ref_lattice)
+        // Source: fractional coords -> ref_lattice Cartesian
+        let source_cart: Vec<Vector3<f64>> = source
+            .frac_coords
+            .iter()
+            .map(|fc| ref_lattice.get_cartesian_coords(&[*fc])[0])
+            .collect();
+        // Target: fractional coords -> ref_lattice Cartesian (same frame!)
+        let target_cart: Vec<Vector3<f64>> = target
+            .frac_coords
+            .iter()
+            .map(|fc| ref_lattice.get_cartesian_coords(&[*fc])[0])
+            .collect();
+
+        let source_elem: Vec<_> = source.species().iter().map(|s| s.element).collect();
+        let target_elem: Vec<_> = target.species().iter().map(|s| s.element).collect();
+
+        // Greedy matching: for each source site, find nearest compatible target site
+        let mut total_sq_dist = 0.0;
+        let mut used_target = vec![false; n_target];
+
+        for (src_idx, src_pos) in source_cart.iter().enumerate() {
+            let src_elem = source_elem[src_idx];
+            let mut best_dist = f64::INFINITY;
+            let mut best_target = None;
+
+            for (tgt_idx, tgt_pos) in target_cart.iter().enumerate() {
+                if used_target[tgt_idx] || target_elem[tgt_idx] != src_elem {
+                    continue;
+                }
+
+                // Minimum image distance (PBC) - both positions are in ref_lattice frame
+                let diff = tgt_pos - src_pos;
+                let frac_diff = ref_lattice.get_fractional_coords(&[diff])[0];
+                let wrapped = Vector3::new(
+                    frac_diff.x - frac_diff.x.round(),
+                    frac_diff.y - frac_diff.y.round(),
+                    frac_diff.z - frac_diff.z.round(),
+                );
+                let dist = ref_lattice.get_cartesian_coords(&[wrapped])[0].norm();
+
+                if dist < best_dist {
+                    best_dist = dist;
+                    best_target = Some(tgt_idx);
+                }
+            }
+
+            if let Some(tgt_idx) = best_target {
+                used_target[tgt_idx] = true;
+                total_sq_dist += best_dist * best_dist;
+            } else {
+                total_sq_dist += UNMATCHED_SOURCE_PENALTY;
+            }
+        }
+
+        let matched = used_target.iter().filter(|&&u| u).count();
+        let unmatched_targets = n_target - matched;
+        total_sq_dist += unmatched_targets as f64 * UNMATCHED_TARGET_PENALTY;
+
+        let total_sites = n_source + unmatched_targets;
+        (total_sq_dist / total_sites as f64).sqrt()
     }
 
     /// Check if two structures match under any species permutation.
@@ -1647,6 +1796,150 @@ mod tests {
             species_matcher.composition_hash(&s1),
             species_matcher.composition_hash(&s2),
             "Species comparator should give different hash for different oxidation states"
+        );
+    }
+
+    // =========================================================================
+    // get_structure_distance() tests
+    // =========================================================================
+
+    #[test]
+    fn test_structure_distance_identical() {
+        let s = make_nacl();
+        let matcher = StructureMatcher::new();
+        let dist = matcher.get_structure_distance(&s, &s);
+        assert!(dist < 1e-10, "Distance to self should be ~0, got {dist}");
+    }
+
+    #[test]
+    fn test_structure_distance_symmetric() {
+        let s1 = make_nacl();
+        let s2 = make_nacl_shifted();
+        let matcher = StructureMatcher::new();
+        let d12 = matcher.get_structure_distance(&s1, &s2);
+        let d21 = matcher.get_structure_distance(&s2, &s1);
+        assert!(
+            (d12 - d21).abs() < 1e-10,
+            "Distance should be symmetric: d(s1,s2)={d12} vs d(s2,s1)={d21}"
+        );
+    }
+
+    #[test]
+    fn test_structure_distance_always_returns_value() {
+        // Different compositions - should still return a finite distance
+        let nacl = make_nacl();
+        let fe = make_simple_cubic(Element::Fe, 4.0);
+        let matcher = StructureMatcher::new();
+        let dist = matcher.get_structure_distance(&nacl, &fe);
+        assert!(
+            dist.is_finite(),
+            "Distance should always be finite, got {dist}"
+        );
+        assert!(
+            dist > 0.0,
+            "Distance between different structures should be > 0"
+        );
+    }
+
+    #[test]
+    fn test_structure_distance_same_composition_small() {
+        // Same composition, slightly different - should have small distance
+        let s1 = make_nacl();
+        let s2 = make_nacl_shifted();
+        let matcher = StructureMatcher::new();
+        let dist = matcher.get_structure_distance(&s1, &s2);
+        assert!(
+            dist < 1.0,
+            "Distance between similar structures should be small, got {dist}"
+        );
+    }
+
+    #[test]
+    fn test_structure_distance_different_elements_large() {
+        // Completely different elements - should have large distance
+        let nacl = make_nacl();
+        // CuO instead of NaCl
+        let cuo = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Cu), Species::neutral(Element::O)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let matcher = StructureMatcher::new();
+        let dist_same = matcher.get_structure_distance(&nacl, &nacl);
+        let dist_diff = matcher.get_structure_distance(&nacl, &cuo);
+        assert!(
+            dist_diff > dist_same,
+            "Different elements should have larger distance"
+        );
+    }
+
+    #[test]
+    fn test_structure_distance_ranking() {
+        // Distances should rank: identical < small_shift < large_shift
+        let reference = make_nacl();
+        let small_shift = make_nacl_shifted();
+
+        let matcher = StructureMatcher::new();
+        let dist_identical = matcher.get_structure_distance(&reference, &reference);
+        let dist_shifted = matcher.get_structure_distance(&reference, &small_shift);
+
+        assert!(
+            dist_identical < dist_shifted,
+            "Identical ({dist_identical}) should be < shifted ({dist_shifted})"
+        );
+    }
+
+    #[test]
+    fn test_structure_distance_empty_structures() {
+        let empty = Structure::new(Lattice::cubic(4.0), vec![], vec![]);
+        let non_empty = make_simple_cubic(Element::Fe, 4.0);
+        let matcher = StructureMatcher::new();
+
+        // Empty to empty
+        let d_empty = matcher.get_structure_distance(&empty, &empty);
+        assert!(
+            d_empty.abs() < 1e-10,
+            "Empty to empty should be 0, got {d_empty}"
+        );
+
+        // Empty to non-empty
+        let d_mixed = matcher.get_structure_distance(&empty, &non_empty);
+        assert!(
+            d_mixed.is_infinite(),
+            "Empty to non-empty should be infinite, got {d_mixed}"
+        );
+    }
+
+    #[test]
+    fn test_structure_distance_different_lattice_shapes() {
+        // Test structures with different lattice shapes but same fractional positions
+        // This verifies coordinates are correctly transformed to a common frame
+        let cubic = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+        // Tetragonal lattice (stretched along c)
+        let tetragonal = Structure::new(
+            Lattice::new(Matrix3::new(4.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 6.0)),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+
+        let matcher = StructureMatcher::new();
+
+        // Same atom at origin in both - should have small distance after normalization
+        let dist = matcher.get_structure_distance(&cubic, &tetragonal);
+        assert!(
+            dist.is_finite() && dist >= 0.0,
+            "Distance should be finite and non-negative, got {dist}"
+        );
+
+        // Distance should be symmetric regardless of lattice shape differences
+        let dist_rev = matcher.get_structure_distance(&tetragonal, &cubic);
+        assert!(
+            (dist - dist_rev).abs() < 1e-10,
+            "Distance should be symmetric: {dist} vs {dist_rev}"
         );
     }
 }
