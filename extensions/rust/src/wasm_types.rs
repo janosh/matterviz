@@ -243,8 +243,12 @@ pub struct JsLocalEnvironment {
 pub struct JsStructureMetadata {
     /// Number of sites
     pub num_sites: u32,
-    /// Reduced chemical formula
+    /// Reduced chemical formula (e.g., "Fe2O3")
     pub formula: String,
+    /// Anonymous formula with elements replaced by A, B, C... (e.g., "A2B3")
+    pub formula_anonymous: String,
+    /// Hill notation formula (C and H first if present, then alphabetical)
+    pub formula_hill: String,
     /// Volume in Å³
     pub volume: f64,
     /// Density in g/cm³ (null if zero volume)

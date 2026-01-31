@@ -725,7 +725,7 @@ def get_structure_metadata(
         symprec: Symmetry precision for spacegroup detection.
 
     Returns:
-        Metadata dict with keys: formula, anonymous_formula, hill_formula,
+        Metadata dict with keys: formula, formula_anonymous, formula_hill,
         chemical_system, elements, n_elements, n_sites, volume, density,
         mass, is_ordered, spacegroup_number (optional).
     """
@@ -999,7 +999,7 @@ def parse_composition(formula: str) -> dict[str, Any]:
 
     Returns:
         Dict with keys: species (dict[str, float]), formula, reduced_formula,
-        anonymous_formula, hill_formula, alphabetical_formula, chemical_system,
+        formula_anonymous, formula_hill, alphabetical_formula, chemical_system,
         num_atoms, num_elements, weight, is_element, average_electroneg,
         total_electrons.
     """
@@ -1012,14 +1012,12 @@ def parse_composition(formula: str) -> dict[str, Any]:
 def make_slab(
     structure: StructureJson,
     miller_index: tuple[int, int, int],
-    min_slab_size: float,
-    min_vacuum_size: float,
-    max_normal_search: int | None = None,
+    min_slab_size: float = 10.0,
+    min_vacuum_size: float = 10.0,
     center_slab: bool = True,
     in_unit_planes: bool = False,
-    primitive: bool = True,
-    lll_reduce: bool = False,
-    reorient_lattice: bool = True,
+    symprec: float = 0.01,
+    termination_index: int = 0,
 ) -> StructureDict:
     """Create a slab from a bulk structure.
 
@@ -1028,12 +1026,10 @@ def make_slab(
         miller_index: Miller indices (h, k, l) for the surface.
         min_slab_size: Minimum slab thickness in Angstroms.
         min_vacuum_size: Minimum vacuum thickness in Angstroms.
-        max_normal_search: Max normal search depth (None for automatic).
         center_slab: Whether to center the slab in the cell.
         in_unit_planes: If True, min_slab_size is in unit planes.
-        primitive: Whether to reduce to primitive cell.
-        lll_reduce: Whether to apply LLL reduction.
-        reorient_lattice: Whether to reorient lattice vectors.
+        symprec: Symmetry precision for termination detection.
+        termination_index: Which termination to use (0 = first).
 
     Returns:
         Slab structure as pymatgen-compatible dict.
@@ -1043,14 +1039,11 @@ def make_slab(
 def generate_slabs(
     structure: StructureJson,
     miller_index: tuple[int, int, int],
-    min_slab_size: float,
-    min_vacuum_size: float,
-    max_normal_search: int | None = None,
+    min_slab_size: float = 10.0,
+    min_vacuum_size: float = 10.0,
     center_slab: bool = True,
     in_unit_planes: bool = False,
-    primitive: bool = True,
-    lll_reduce: bool = False,
-    symmetrize: bool = False,
+    symprec: float = 0.01,
 ) -> list[StructureDict]:
     """Generate all terminations of a slab.
 
@@ -1059,12 +1052,9 @@ def generate_slabs(
         miller_index: Miller indices (h, k, l) for the surface.
         min_slab_size: Minimum slab thickness in Angstroms.
         min_vacuum_size: Minimum vacuum thickness in Angstroms.
-        max_normal_search: Max normal search depth (None for automatic).
         center_slab: Whether to center the slab in the cell.
         in_unit_planes: If True, min_slab_size is in unit planes.
-        primitive: Whether to reduce to primitive cell.
-        lll_reduce: Whether to apply LLL reduction.
-        symmetrize: Whether to symmetrize the slab.
+        symprec: Symmetry precision for unique termination detection.
 
     Returns:
         List of slab structures for all unique terminations.
@@ -1337,6 +1327,6 @@ def get_local_environment_voronoi(
         min_solid_angle: Minimum solid angle fraction to include.
 
     Returns:
-        List of neighbor dicts with keys: element, species, distance, site_idx, solid_angle.
+        List of neighbor dicts with keys: element, species, distance, image, site_idx, solid_angle.
     """
     ...

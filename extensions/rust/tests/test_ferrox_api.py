@@ -11,41 +11,7 @@ try:
 except ImportError:
     pytest.skip("ferrox not installed", allow_module_level=True)
 
-
-# Fixtures
-
-
-@pytest.fixture
-def nacl_json() -> str:
-    """NaCl in CsCl-type structure (Pm-3m, #221) as JSON."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]},
-        "sites": [
-            {"species": [{"element": "Na", "occu": 1}], "abc": [0, 0, 0]},
-            {"species": [{"element": "Cl", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
-        ],
-    }
-    return json.dumps(struct)
-
-
-@pytest.fixture
-def fe2o3_json() -> str:
-    """Fe2O3 structure as JSON (simplified)."""
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 13.7]]},
-        "sites": [
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0.35]},
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0.65]},
-            {"species": [{"element": "O", "occu": 1}], "abc": [0.3, 0, 0.25]},
-            {"species": [{"element": "O", "occu": 1}], "abc": [0.7, 0, 0.25]},
-            {"species": [{"element": "O", "occu": 1}], "abc": [0, 0.3, 0.25]},
-        ],
-    }
-    return json.dumps(struct)
+# Fixtures imported from conftest.py: nacl_json, fe2o3_json, fcc_cu_json, bcc_fe_json
 
 
 # parse_composition tests
@@ -65,16 +31,16 @@ class TestParseComposition:
         assert "Fe" in result["species"]
         assert "O" in result["species"]
 
-    def test_anonymous_formula_reduction(self) -> None:
+    def test_formula_anonymous_reduction(self) -> None:
         """Anonymous formula reduces: Fe4O6 and Fe2O3 give same result."""
         large = ferrox.parse_composition("Fe4O6")
         small = ferrox.parse_composition("Fe2O3")
-        assert large["anonymous_formula"] == small["anonymous_formula"] == "A2B3"
+        assert large["formula_anonymous"] == small["formula_anonymous"] == "A2B3"
         assert large["reduced_formula"] == small["reduced_formula"]
 
-    def test_hill_formula(self) -> None:
+    def test_formula_hill(self) -> None:
         """Hill formula: C first, H second, then alphabetical."""
-        assert ferrox.parse_composition("C6H12O6")["hill_formula"] == "C6 H12 O6"
+        assert ferrox.parse_composition("C6H12O6")["formula_hill"] == "C6 H12 O6"
 
     def test_weight(self) -> None:
         """Molecular weight: H2O ≈ 18.015 amu."""
@@ -93,8 +59,8 @@ class TestGetStructureMetadata:
 
         # Formula fields (keys match parse_composition for consistency)
         assert result["formula"] == "NaCl"
-        assert result["anonymous_formula"] == "AB"  # Na (0.93) < Cl (3.16)
-        assert result["hill_formula"] == "Cl Na"
+        assert result["formula_anonymous"] == "AB"  # Na (0.93) < Cl (3.16)
+        assert result["formula_hill"] == "Cl Na"
         assert result["chemical_system"] == "Cl-Na"
 
         # Element/site counts
@@ -111,7 +77,7 @@ class TestGetStructureMetadata:
     def test_binary_structure(self, fe2o3_json: str) -> None:
         """Test Fe2O3 structure metadata."""
         result = ferrox.get_structure_metadata(fe2o3_json)
-        assert result["anonymous_formula"] == "A2B3"  # Fe (1.83) < O (3.44)
+        assert result["formula_anonymous"] == "A2B3"  # Fe (1.83) < O (3.44)
         assert result["n_sites"] == 5
 
     def test_spacegroup_optional(self, nacl_json: str) -> None:
@@ -127,7 +93,7 @@ class TestGetStructureMetadata:
         metadata = ferrox.get_structure_metadata(nacl_json)
         comp = ferrox.parse_composition("NaCl")
         assert metadata["formula"] == comp["reduced_formula"]
-        assert metadata["anonymous_formula"] == comp["anonymous_formula"]
+        assert metadata["formula_anonymous"] == comp["formula_anonymous"]
         assert metadata["chemical_system"] == comp["chemical_system"]
 
 
@@ -154,49 +120,12 @@ class TestGetStructureMetadata:
         ("Fe4O6", "A2B3"),
     ],
 )
-def test_anonymous_formula(formula: str, expected: str) -> None:
+def test_formula_anonymous(formula: str, expected: str) -> None:
     """Anonymous formula: elements sorted by electronegativity, then A, B, C..."""
-    assert ferrox.parse_composition(formula)["anonymous_formula"] == expected
+    assert ferrox.parse_composition(formula)["formula_anonymous"] == expected
 
 
-# Symmetry fixtures
-
-
-@pytest.fixture
-def fcc_cu_json() -> str:
-    """FCC Cu conventional cell (4 atoms, Fm-3m #225) as JSON."""
-    # Lattice constant 3.6 Å
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[3.6, 0, 0], [0, 3.6, 0], [0, 0, 3.6]]},
-        "sites": [
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.0, 0.0, 0.0]},
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.5, 0.5, 0.0]},
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.5, 0.0, 0.5]},
-            {"species": [{"element": "Cu", "occu": 1}], "abc": [0.0, 0.5, 0.5]},
-        ],
-    }
-    return json.dumps(struct)
-
-
-@pytest.fixture
-def bcc_fe_json() -> str:
-    """BCC Fe conventional cell (2 atoms, Im-3m #229) as JSON."""
-    # Lattice constant 2.87 Å
-    struct = {
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[2.87, 0, 0], [0, 2.87, 0], [0, 0, 2.87]]},
-        "sites": [
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0.0, 0.0, 0.0]},
-            {"species": [{"element": "Fe", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
-        ],
-    }
-    return json.dumps(struct)
-
-
-# Symmetry tests
+# Symmetry tests (fixtures from conftest.py)
 
 
 class TestSymmetryFunctions:

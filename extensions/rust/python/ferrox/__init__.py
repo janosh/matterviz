@@ -30,12 +30,12 @@ from ferrox._ferrox import (
     make_supercell_diag,
     to_conventional,
     to_primitive,
+    # Slab generation
+    generate_slabs,
+    make_slab,
     # Lattice reduction
     get_reduced_structure,
     get_reduced_structure_with_params,
-    # Slabs
-    generate_slabs,
-    make_slab,
     # Symmetry analysis
     get_crystal_system,
     get_equivalent_sites,

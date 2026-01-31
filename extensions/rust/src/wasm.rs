@@ -732,11 +732,14 @@ pub fn get_structure_metadata(structure: JsCrystal) -> WasmResult<JsStructureMet
     structure
         .to_structure()
         .map(|struc| {
+            let comp = struc.composition();
             let lengths = struc.lattice.lengths();
             let angles = struc.lattice.angles();
             JsStructureMetadata {
                 num_sites: struc.num_sites() as u32,
-                formula: struc.composition().reduced_formula(),
+                formula: comp.reduced_formula(),
+                formula_anonymous: comp.anonymous_formula(),
+                formula_hill: comp.hill_formula(),
                 volume: struc.volume(),
                 density: struc.density(),
                 lattice_params: [lengths.x, lengths.y, lengths.z],
@@ -1164,14 +1167,18 @@ pub fn substitute_species(
     result.into()
 }
 
-/// Remove all sites containing a specific species.
+/// Remove all sites containing any of the specified species.
 #[wasm_bindgen]
-pub fn remove_species(structure: JsCrystal, species: &str) -> WasmResult<JsCrystal> {
+pub fn remove_species(structure: JsCrystal, species: Vec<String>) -> WasmResult<JsCrystal> {
     let result: Result<JsCrystal, String> = (|| {
         let struc = structure.to_structure()?;
-        let sp = Species::from_string(species)
-            .ok_or_else(|| format!("Invalid species string: {species}"))?;
-        let new_s = struc.remove_species(&[sp]).map_err(|err| err.to_string())?;
+        let species_vec: Vec<Species> = species
+            .iter()
+            .map(|s| Species::from_string(s).ok_or_else(|| format!("Invalid species string: {s}")))
+            .collect::<Result<_, _>>()?;
+        let new_s = struc
+            .remove_species(&species_vec)
+            .map_err(|err| err.to_string())?;
         Ok(JsCrystal::from_structure(&new_s))
     })();
     result.into()

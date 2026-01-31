@@ -206,7 +206,7 @@ export function substitute_species(
 ): WasmResult<JsCrystal>
 export function remove_species(
   structure: JsCrystal,
-  species: string,
+  species: string[],
 ): WasmResult<JsCrystal>
 export function remove_sites(
   structure: JsCrystal,
