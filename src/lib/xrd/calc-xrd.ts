@@ -5,8 +5,11 @@ import * as math from '$lib/math'
 import type { Crystal } from '$lib/structure/index'
 import { parse_any_structure } from '$lib/structure/parse'
 import { is_crystal } from '$lib/structure/validation'
-// copied from pymatgen/analysis/diffraction/atomic_scattering_params.json
-import { ATOMIC_SCATTERING_PARAMS } from './atomic-scattering-params'
+// Single source of truth for atomic scattering params (shared with Rust/ferrox)
+// Development: imports from extensions/rust/src/, Production: copied to dist/xrd/ by package script
+import ATOMIC_SCATTERING_PARAMS from './atomic_scattering_params.json' with {
+  type: 'json',
+}
 import type {
   Hkl,
   HklObj,
