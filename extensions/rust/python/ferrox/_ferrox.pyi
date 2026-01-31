@@ -102,6 +102,24 @@ class StructureMatcher:
             Tuple of (rms, max_dist) if structures match, None otherwise.
         """
         ...
+    def get_structure_distance(
+        self, struct1: StructureJson, struct2: StructureJson
+    ) -> float:
+        """Compute universal distance between any two structures.
+
+        Unlike get_rms_dist which returns None for incompatible structures,
+        this method always returns a finite distance value, making it suitable
+        for consistent ranking of structures by similarity.
+
+        Args:
+            struct1: First structure as JSON string or dict.
+            struct2: Second structure as JSON string or dict.
+
+        Returns:
+            Finite distance in [0, 1e9]. Identical structures return 0.0.
+            Empty vs non-empty structures return 1e9.
+        """
+        ...
     def fit_anonymous(self, struct1: StructureJson, struct2: StructureJson) -> bool:
         """Check if two structures match under any species permutation.
 

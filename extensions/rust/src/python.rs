@@ -204,6 +204,28 @@ impl PyStructureMatcher {
         Ok(self.inner.get_rms_dist(&s1, &s2))
     }
 
+    /// Compute universal distance between any two structures.
+    ///
+    /// Unlike `get_rms_dist` which returns None for incompatible structures,
+    /// this method always returns a finite distance value, making it suitable
+    /// for consistent ranking of structures by similarity.
+    ///
+    /// Args:
+    ///     struct1: First structure as JSON string or dict.
+    ///     struct2: Second structure as JSON string or dict.
+    ///
+    /// Returns:
+    ///     Finite distance in [0, 1e9]. Identical structures return 0.0.
+    ///     Empty vs non-empty structures return 1e9.
+    fn get_structure_distance(
+        &self,
+        struct1: StructureJson,
+        struct2: StructureJson,
+    ) -> PyResult<f64> {
+        let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
+        Ok(self.inner.get_structure_distance(&s1, &s2))
+    }
+
     /// Check if two structures match under any species permutation.
     ///
     /// This is useful for comparing structures where the identity of species

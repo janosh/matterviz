@@ -25,6 +25,8 @@ const UNMATCHED_TARGET_PENALTY: f64 = 5.0;
 const COMPOSITION_WEIGHT: f64 = 5.0;
 /// Distance returned when structures have completely disjoint element sets
 const DISJOINT_COMPOSITION_DISTANCE: f64 = 11.0;
+/// Maximum finite distance returned when comparing empty vs non-empty structure
+const EMPTY_STRUCTURE_DISTANCE: f64 = 1e9;
 
 /// Type of comparator to use for species matching.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -587,6 +589,7 @@ impl StructureMatcher {
     /// - d(x, y) ≥ 0 (non-negative)
     /// - d(x, x) = 0 (identity)
     /// - d(x, y) = d(y, x) (symmetric)
+    /// - Always finite (empty vs non-empty returns `EMPTY_STRUCTURE_DISTANCE`)
     ///
     /// Note: Triangle inequality is not guaranteed due to greedy matching.
     ///
@@ -598,17 +601,17 @@ impl StructureMatcher {
     ///
     /// # Returns
     ///
-    /// Distance in [0, ∞). Identical structures return 0.0.
+    /// Finite distance in [0, 1e9]. Identical structures return 0.0.
     pub fn get_structure_distance(&self, struct1: &Structure, struct2: &Structure) -> f64 {
         let n1 = struct1.num_sites();
         let n2 = struct2.num_sites();
 
-        // Handle edge cases
+        // Handle edge cases - always return finite values
         if n1 == 0 && n2 == 0 {
             return 0.0;
         }
         if n1 == 0 || n2 == 0 {
-            return f64::INFINITY;
+            return EMPTY_STRUCTURE_DISTANCE;
         }
 
         // Composition distance (Jaccard distance on element sets)
@@ -629,8 +632,8 @@ impl StructureMatcher {
 
     /// Compute geometric distance between two structures.
     ///
-    /// Normalizes both structures to unit volume per formula unit, then computes
-    /// the RMS distance between matched sites using greedy element-constrained assignment.
+    /// Normalizes both structures to unit volume per atom, converts each to Cartesian
+    /// using its own normalized lattice, then computes RMS distance via greedy matching.
     fn compute_geometric_distance(&self, struct1: &Structure, struct2: &Structure) -> f64 {
         // Apply standard preprocessing (Niggli reduction, optional primitive cell)
         let s1 = self.get_reduced_structure(struct1);
@@ -640,34 +643,36 @@ impl StructureMatcher {
         let n2 = s2.num_sites();
 
         if n1 == 0 || n2 == 0 {
-            return f64::INFINITY;
+            return EMPTY_STRUCTURE_DISTANCE;
         }
 
-        // Use smaller structure as source (reference frame), larger as target
-        let (source, target) = if n1 <= n2 { (&s1, &s2) } else { (&s2, &s1) };
-        let n_source = source.num_sites();
-        let n_target = target.num_sites();
+        // Normalize BOTH lattices to 1 Å³ per atom independently
+        let scale1 = (n1 as f64 / s1.lattice.volume()).powf(1.0 / 3.0);
+        let scale2 = (n2 as f64 / s2.lattice.volume()).powf(1.0 / 3.0);
+        let lattice1 = Lattice::new(*s1.lattice.matrix() * scale1);
+        let lattice2 = Lattice::new(*s2.lattice.matrix() * scale2);
 
-        // Normalize source lattice to 1 Å³ per atom - this is our reference frame
-        let scale = (n_source as f64 / source.lattice.volume()).powf(1.0 / 3.0);
-        let ref_lattice = Lattice::new(*source.lattice.matrix() * scale);
-
-        // Compute ALL Cartesian coordinates in the same reference frame (ref_lattice)
-        // Source: fractional coords -> ref_lattice Cartesian
-        let source_cart: Vec<Vector3<f64>> = source
+        // Convert each structure's fractional coords to Cartesian using ITS OWN lattice
+        let cart1: Vec<Vector3<f64>> = s1
             .frac_coords
             .iter()
-            .map(|fc| ref_lattice.get_cartesian_coords(&[*fc])[0])
+            .map(|fc| lattice1.get_cartesian_coords(&[*fc])[0])
             .collect();
-        // Target: fractional coords -> ref_lattice Cartesian (same frame!)
-        let target_cart: Vec<Vector3<f64>> = target
+        let cart2: Vec<Vector3<f64>> = s2
             .frac_coords
             .iter()
-            .map(|fc| ref_lattice.get_cartesian_coords(&[*fc])[0])
+            .map(|fc| lattice2.get_cartesian_coords(&[*fc])[0])
             .collect();
 
-        let source_elem: Vec<_> = source.species().iter().map(|s| s.element).collect();
-        let target_elem: Vec<_> = target.species().iter().map(|s| s.element).collect();
+        let elem1: Vec<_> = s1.species().iter().map(|s| s.element).collect();
+        let elem2: Vec<_> = s2.species().iter().map(|s| s.element).collect();
+
+        // Use smaller as source, larger as target (for consistent matching direction)
+        let (source_cart, target_cart, source_elem, target_elem, n_source, n_target) = if n1 <= n2 {
+            (&cart1, &cart2, &elem1, &elem2, n1, n2)
+        } else {
+            (&cart2, &cart1, &elem2, &elem1, n2, n1)
+        };
 
         // Greedy matching: for each source site, find nearest compatible target site
         let mut total_sq_dist = 0.0;
@@ -683,15 +688,16 @@ impl StructureMatcher {
                     continue;
                 }
 
-                // Minimum image distance (PBC) - both positions are in ref_lattice frame
+                // Minimum image distance - wrap to [-0.5, 0.5] in normalized space
+                // (Since both structures are normalized to 1 Å³/atom, coordinates are
+                // already in a unit-cube frame where fractional = Cartesian)
                 let diff = tgt_pos - src_pos;
-                let frac_diff = ref_lattice.get_fractional_coords(&[diff])[0];
                 let wrapped = Vector3::new(
-                    frac_diff.x - frac_diff.x.round(),
-                    frac_diff.y - frac_diff.y.round(),
-                    frac_diff.z - frac_diff.z.round(),
+                    diff.x - diff.x.round(),
+                    diff.y - diff.y.round(),
+                    diff.z - diff.z.round(),
                 );
-                let dist = ref_lattice.get_cartesian_coords(&[wrapped])[0].norm();
+                let dist = wrapped.norm();
 
                 if dist < best_dist {
                     best_dist = dist;
@@ -1902,11 +1908,11 @@ mod tests {
             "Empty to empty should be 0, got {d_empty}"
         );
 
-        // Empty to non-empty
+        // Empty to non-empty - returns large finite value (not infinity)
         let d_mixed = matcher.get_structure_distance(&empty, &non_empty);
         assert!(
-            d_mixed.is_infinite(),
-            "Empty to non-empty should be infinite, got {d_mixed}"
+            (d_mixed - EMPTY_STRUCTURE_DISTANCE).abs() < 1e-10,
+            "Empty to non-empty should be {EMPTY_STRUCTURE_DISTANCE}, got {d_mixed}"
         );
     }
 

@@ -441,17 +441,18 @@ impl WasmStructureMatcher {
     ///
     /// Unlike `get_rms_dist` which may return null for incompatible structures,
     /// this method always returns a finite distance value, making it suitable for
-    /// consistent ranking of structures by similarity.
+    /// consistent ranking of structures by similarity and compatible with `Number.isFinite()`.
     ///
     /// # Properties
     /// - d(x, y) ≥ 0 (non-negative)
     /// - d(x, x) = 0 (identity)
     /// - d(x, y) = d(y, x) (symmetric)
+    /// - Always finite (empty vs non-empty returns 1e9)
     ///
     /// Note: Triangle inequality is not guaranteed due to greedy matching.
     ///
     /// # Returns
-    /// Distance value in [0, ∞). Smaller values indicate more similar structures.
+    /// Finite distance in [0, 1e9]. Smaller values indicate more similar structures.
     #[wasm_bindgen(js_name = "getStructureDistance")]
     pub fn get_structure_distance(
         &self,
