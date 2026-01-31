@@ -1,16 +1,22 @@
 """ferrox - High-performance crystallographic structure operations in Rust.
 
 Features: I/O (CIF/POSCAR/extXYZ/JSON), structure matching, symmetry analysis,
-coordination analysis, supercells, primitive/conventional cells, composition parsing.
+coordination analysis, supercells, primitive/conventional cells, composition parsing,
+oxidation state guessing and bond valence analysis.
 """
 
 # ruff: noqa: F401 (re-exports for public API)
 from ferrox._ferrox import (
     StructureMatcher,
     __version__,
+    # Oxidation state functions
+    add_charges_from_oxi_state_guesses,
+    add_oxidation_state_by_element,
+    add_oxidation_state_by_site,
     apply_inversion,
     apply_operation,
     apply_translation,
+    compute_bv_sums,
     compute_xrd,
     copy_structure,
     deform,
@@ -52,6 +58,7 @@ from ferrox._ferrox import (
     get_volume,
     get_voronoi_neighbors,
     get_wyckoff_letters,
+    guess_oxidation_states_bvs,
     interpolate,
     is_periodic_image,
     make_slab,
@@ -60,10 +67,12 @@ from ferrox._ferrox import (
     matches,
     normalize_element_symbol,
     order_disordered,
+    oxi_state_guesses,
     parse_composition,
     parse_structure_file,
     parse_trajectory,
     perturb,
+    remove_oxidation_states,
     remove_sites,
     remove_species,
     set_site_property,
