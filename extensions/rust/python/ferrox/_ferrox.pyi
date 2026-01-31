@@ -102,6 +102,24 @@ class StructureMatcher:
             Tuple of (rms, max_dist) if structures match, None otherwise.
         """
         ...
+    def get_structure_distance(
+        self, struct1: StructureJson, struct2: StructureJson
+    ) -> float:
+        """Compute universal distance between any two structures.
+
+        Unlike get_rms_dist which returns None for incompatible structures,
+        this method always returns a finite distance value, making it suitable
+        for consistent ranking of structures by similarity.
+
+        Args:
+            struct1: First structure as JSON string or dict.
+            struct2: Second structure as JSON string or dict.
+
+        Returns:
+            Finite distance in [0, 1e9]. Identical structures return 0.0.
+            Empty vs non-empty structures return 1e9.
+        """
+        ...
     def fit_anonymous(self, struct1: StructureJson, struct2: StructureJson) -> bool:
         """Check if two structures match under any species permutation.
 
@@ -1328,5 +1346,88 @@ def get_atomic_scattering_params() -> dict[str, list[list[float]]]:
     Returns:
         Dict mapping element symbols to their scattering coefficients.
         Each coefficient set is [[a1, b1], [a2, b2], [a3, b3], [a4, b4]].
+    """
+    ...
+
+# =============================================================================
+# RDF Functions
+# =============================================================================
+
+def compute_rdf(
+    structure: StructureJson,
+    r_max: float = 15.0,
+    n_bins: int = 75,
+    normalize: bool = True,
+    auto_expand: bool = True,
+    expansion_factor: float = 2.0,
+) -> tuple[list[float], list[float]]:
+    """Compute the total radial distribution function for all atom pairs.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        r_max: Maximum distance in Angstroms.
+        n_bins: Number of histogram bins.
+        normalize: Whether to normalize by ideal gas density.
+        auto_expand: Whether to auto-expand structure to avoid finite-size effects.
+        expansion_factor: Minimum lattice dimension = r_max × factor.
+
+    Returns:
+        Tuple of (r, g_r) where r is bin centers and g_r is RDF values.
+    """
+    ...
+
+def compute_element_rdf(
+    structure: StructureJson,
+    element_a: str,
+    element_b: str,
+    r_max: float = 15.0,
+    n_bins: int = 75,
+    normalize: bool = True,
+    auto_expand: bool = True,
+    expansion_factor: float = 2.0,
+) -> tuple[list[float], list[float]]:
+    """Compute element-resolved radial distribution function.
+
+    Calculates g(r) for a specific element pair, counting distances from
+    atoms of element_a to atoms of element_b.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        element_a: Center element symbol (e.g., "Fe").
+        element_b: Neighbor element symbol (e.g., "O").
+        r_max: Maximum distance in Angstroms.
+        n_bins: Number of histogram bins.
+        normalize: Whether to normalize by ideal gas density.
+        auto_expand: Whether to auto-expand structure.
+        expansion_factor: Minimum lattice dimension = r_max × factor.
+
+    Returns:
+        Tuple of (r, g_r) where r is bin centers and g_r is RDF values.
+    """
+    ...
+
+def compute_all_element_rdfs(
+    structure: StructureJson,
+    r_max: float = 15.0,
+    n_bins: int = 75,
+    normalize: bool = True,
+    auto_expand: bool = True,
+    expansion_factor: float = 2.0,
+) -> list[dict[str, Any]]:
+    """Compute RDF for all unique element pairs in the structure.
+
+    Returns one RDF for each unique (element_a, element_b) pair where
+    element_a <= element_b (by atomic number), avoiding duplicates.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        r_max: Maximum distance in Angstroms.
+        n_bins: Number of histogram bins.
+        normalize: Whether to normalize by ideal gas density.
+        auto_expand: Whether to auto-expand structure.
+        expansion_factor: Minimum lattice dimension = r_max × factor.
+
+    Returns:
+        List of dicts, each with keys: element_a, element_b, r, g_r.
     """
     ...

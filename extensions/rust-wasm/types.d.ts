@@ -3,6 +3,20 @@
 
 export * from './pkg/ferrox.d.ts'
 
+// Default export: init function that returns the WASM module
+import type { InitInput } from './pkg/ferrox.d.ts'
+import * as ferrox from './pkg/ferrox.d.ts'
+
+// The module returned by init() has all exports from pkg/ferrox.js
+export type FerroxModule = typeof ferrox
+
+export default function init(
+  options?:
+    | { module_or_path?: InitInput | Promise<InitInput> }
+    | InitInput
+    | Promise<InitInput>,
+): Promise<FerroxModule>
+
 import type {
   JsCrystal,
   JsLocalEnvironment,
@@ -222,6 +236,12 @@ declare module './pkg/ferrox.d.ts' {
       struct1: JsCrystal,
       struct2: JsCrystal,
     ): WasmResult<JsRmsDistResult | null>
+    // Universal structure distance - always returns a value (never null)
+    // Suitable for consistent ranking of structures by similarity
+    getStructureDistance(
+      struct1: JsCrystal,
+      struct2: JsCrystal,
+    ): WasmResult<number>
     deduplicate(structures: JsCrystal[]): WasmResult<number[]>
     find_matches(
       new_structures: JsCrystal[],

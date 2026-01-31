@@ -1,0 +1,8 @@
+# Don't exclude pkg/ (overrides .gitignore)
+!pkg/
+
+# Exclude dev/test files from npm package
+tests/
+tsconfig.json
+vitest.config.ts
+*.test.ts

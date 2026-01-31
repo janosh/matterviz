@@ -14,9 +14,9 @@
 use ferrox::element::Element;
 use ferrox::io::{parse_structure_json, structure_to_json};
 use ferrox::lattice::Lattice;
-use ferrox::matcher::StructureMatcher;
 use ferrox::species::Species;
 use ferrox::structure::Structure;
+use ferrox::structure_matcher::StructureMatcher;
 use nalgebra::Vector3;
 
 /// Create a simple cubic structure
