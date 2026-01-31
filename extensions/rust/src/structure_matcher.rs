@@ -683,13 +683,20 @@ impl StructureMatcher {
         let elem2: Vec<_> = s2.species().iter().map(|s| s.element).collect();
 
         // Use smaller as source, larger as target (for consistent matching direction)
-        // We use source_latt for all Cartesian conversions as a consistent reference frame
-        let (source_frac, target_frac, source_elem, target_elem, source_latt, n_source, n_target) =
-            if n1 <= n2 {
-                (frac1, frac2, &elem1, &elem2, &lattice1, n1, n2)
-            } else {
-                (frac2, frac1, &elem2, &elem1, &lattice2, n2, n1)
-            };
+        let (
+            source_frac,
+            target_frac,
+            source_elem,
+            target_elem,
+            source_latt,
+            target_latt,
+            n_source,
+            n_target,
+        ) = if n1 <= n2 {
+            (frac1, frac2, &elem1, &elem2, &lattice1, &lattice2, n1, n2)
+        } else {
+            (frac2, frac1, &elem2, &elem1, &lattice2, &lattice1, n2, n1)
+        };
 
         // Greedy matching: for each source site, find nearest compatible target site
         let mut total_sq_dist = 0.0;
@@ -705,19 +712,25 @@ impl StructureMatcher {
                     continue;
                 }
 
-                // Minimum image distance using fractional coordinates:
-                // 1. Compute fractional difference
-                // 2. Wrap each component to [-0.5, 0.5] (works for ANY lattice shape)
-                // 3. Convert wrapped fractional diff to Cartesian for actual distance
-                let frac_diff = tgt_frac - src_frac;
+                // Minimum image distance handling different lattices:
+                // 1. Convert each site to Cartesian using its OWN lattice
+                // 2. Compute Cartesian difference
+                // 3. Convert to fractional (using source_latt) for PBC wrapping
+                // 4. Wrap to [-0.5, 0.5] and convert back to Cartesian
+                let src_cart = source_latt.get_cartesian_coords(&[*src_frac])[0];
+                let tgt_cart = target_latt.get_cartesian_coords(&[*tgt_frac])[0];
+                let cart_diff = tgt_cart - src_cart;
+
+                // Convert to fractional for wrapping (use source lattice as reference)
+                let frac_diff = source_latt.get_fractional_coords(&[cart_diff])[0];
                 let wrapped_frac = Vector3::new(
                     frac_diff.x - frac_diff.x.round(),
                     frac_diff.y - frac_diff.y.round(),
                     frac_diff.z - frac_diff.z.round(),
                 );
-                // Convert to Cartesian using source's normalized lattice
-                let cart_diff = source_latt.get_cartesian_coords(&[wrapped_frac])[0];
-                let dist = cart_diff.norm();
+                // Convert wrapped fractional diff back to Cartesian for actual distance
+                let wrapped_cart_diff = source_latt.get_cartesian_coords(&[wrapped_frac])[0];
+                let dist = wrapped_cart_diff.norm();
 
                 if dist < best_dist {
                     best_dist = dist;
@@ -2018,5 +2031,63 @@ mod tests {
             assert!(d12.is_finite() && d12 >= 0.0, "{name}: non-negative");
             assert!((d12 - d21).abs() < 1e-10, "{name}: {d12} != {d21}");
         }
+    }
+
+    #[test]
+    fn test_structure_distance_different_lattices_same_frac_coords() {
+        // Regression test: structures with identical fractional coordinates but different
+        // lattice shapes should NOT have zero geometric distance.
+        // Before the fix, subtracting fractional coords directly gave zero distance
+        // because frac_diff = (0,0,0) - (0,0,0) = (0,0,0) regardless of lattice shape.
+        let matcher = StructureMatcher::new();
+
+        // Same fractional coords (0,0,0) but different lattices
+        let cubic = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+        let tetragonal = Structure::new(
+            Lattice::new(Matrix3::new(4.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 8.0)), // c = 2a
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+
+        // Both have atom at origin -> same Cartesian position -> distance should be ~0
+        let d_origin = matcher.get_structure_distance(&cubic, &tetragonal);
+        assert!(
+            d_origin < 0.1,
+            "Origin atoms should have small distance: {d_origin}"
+        );
+
+        // Now test with atom at (0.5, 0.5, 0.5) in each
+        // Cubic: Cartesian = (2, 2, 2)
+        // Tetragonal: Cartesian = (2, 2, 4) - different!
+        let cubic_center = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let tetragonal_center = Structure::new(
+            Lattice::new(Matrix3::new(4.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 8.0)),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        let d_center = matcher.get_structure_distance(&cubic_center, &tetragonal_center);
+        // Cartesian diff = (0, 0, 2) Å between the two center positions.
+        // After PBC wrapping and normalization, expect meaningful non-zero distance.
+        // Before the fix, subtracting frac coords directly gave ~0 distance.
+        assert!(
+            d_center > 0.1,
+            "Same frac coords in different lattices should have non-zero distance: {d_center}"
+        );
+
+        // Verify symmetry holds
+        let d_center_rev = matcher.get_structure_distance(&tetragonal_center, &cubic_center);
+        assert!(
+            (d_center - d_center_rev).abs() < 1e-10,
+            "Distance should be symmetric: {d_center} vs {d_center_rev}"
+        );
     }
 }
