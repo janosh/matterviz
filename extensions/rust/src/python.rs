@@ -14,14 +14,16 @@ use std::path::Path;
 
 use crate::composition::Composition;
 use crate::coordination;
+use crate::element::Element;
 use crate::io::{
     parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_extxyz,
     structure_to_poscar, structure_to_pymatgen_json, write_structure,
 };
-use crate::matcher::{ComparatorType, StructureMatcher};
+use crate::rdf;
 use crate::structure::{
     Structure, SymmOp, SymmetryOperation, moyo_ops_to_arrays, spacegroup_to_crystal_system,
 };
+use crate::structure_matcher::{ComparatorType, StructureMatcher};
 use nalgebra::{Matrix3, Vector3};
 
 /// A structure input that can be either a JSON string or a dict.
@@ -200,6 +202,28 @@ impl PyStructureMatcher {
     ) -> PyResult<Option<(f64, f64)>> {
         let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
         Ok(self.inner.get_rms_dist(&s1, &s2))
+    }
+
+    /// Compute universal distance between any two structures.
+    ///
+    /// Unlike `get_rms_dist` which returns None for incompatible structures,
+    /// this method always returns a finite distance value, making it suitable
+    /// for consistent ranking of structures by similarity.
+    ///
+    /// Args:
+    ///     struct1: First structure as JSON string or dict.
+    ///     struct2: Second structure as JSON string or dict.
+    ///
+    /// Returns:
+    ///     Finite distance in [0, 1e9]. Identical structures return 0.0.
+    ///     Empty vs non-empty structures return 1e9.
+    fn get_structure_distance(
+        &self,
+        struct1: StructureJson,
+        struct2: StructureJson,
+    ) -> PyResult<f64> {
+        let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
+        Ok(self.inner.get_structure_distance(&s1, &s2))
     }
 
     /// Check if two structures match under any species permutation.
@@ -2477,6 +2501,105 @@ fn py_get_local_environment_voronoi(
     Ok(list.unbind())
 }
 
+// =============================================================================
+// RDF Functions
+// =============================================================================
+
+// Helper: validate and construct RDF options
+fn make_rdf_options(
+    r_max: f64,
+    n_bins: usize,
+    normalize: bool,
+    auto_expand: bool,
+    expansion_factor: f64,
+) -> PyResult<rdf::RdfOptions> {
+    if r_max <= 0.0 {
+        return Err(PyValueError::new_err("r_max must be positive"));
+    }
+    if n_bins == 0 {
+        return Err(PyValueError::new_err("n_bins must be at least 1"));
+    }
+    Ok(rdf::RdfOptions {
+        r_max,
+        n_bins,
+        normalize,
+        auto_expand,
+        expansion_factor,
+    })
+}
+
+/// Compute total RDF for all atom pairs. Returns (r, g_r) tuple.
+#[pyfunction]
+#[pyo3(name = "compute_rdf", signature = (structure, r_max=15.0, n_bins=75, normalize=true, auto_expand=true, expansion_factor=2.0))]
+fn py_compute_rdf(
+    py: Python<'_>,
+    structure: StructureJson,
+    r_max: f64,
+    n_bins: usize,
+    normalize: bool,
+    auto_expand: bool,
+    expansion_factor: f64,
+) -> PyResult<(Vec<f64>, Vec<f64>)> {
+    let s = parse_struct(&structure)?;
+    let opts = make_rdf_options(r_max, n_bins, normalize, auto_expand, expansion_factor)?;
+    // Release GIL during heavy computation (especially with auto_expand creating supercells)
+    let result = py.detach(|| rdf::compute_rdf(&s, &opts));
+    Ok((result.radii, result.g_of_r))
+}
+
+/// Compute element-resolved RDF for a specific element pair. Returns (r, g_r) tuple.
+#[pyfunction]
+#[pyo3(name = "compute_element_rdf", signature = (structure, element_a, element_b, r_max=15.0, n_bins=75, normalize=true, auto_expand=true, expansion_factor=2.0))]
+fn py_compute_element_rdf(
+    py: Python<'_>,
+    structure: StructureJson,
+    element_a: &str,
+    element_b: &str,
+    r_max: f64,
+    n_bins: usize,
+    normalize: bool,
+    auto_expand: bool,
+    expansion_factor: f64,
+) -> PyResult<(Vec<f64>, Vec<f64>)> {
+    let elem_a = Element::from_symbol(element_a)
+        .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {element_a}")))?;
+    let elem_b = Element::from_symbol(element_b)
+        .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {element_b}")))?;
+    let s = parse_struct(&structure)?;
+    let opts = make_rdf_options(r_max, n_bins, normalize, auto_expand, expansion_factor)?;
+    // Release GIL during heavy computation
+    let result = py.detach(|| rdf::compute_element_rdf(&s, elem_a, elem_b, &opts));
+    Ok((result.radii, result.g_of_r))
+}
+
+/// Compute RDF for all unique element pairs. Returns list of {element_a, element_b, r, g_r} dicts.
+#[pyfunction]
+#[pyo3(name = "compute_all_element_rdfs", signature = (structure, r_max=15.0, n_bins=75, normalize=true, auto_expand=true, expansion_factor=2.0))]
+fn py_compute_all_element_rdfs(
+    py: Python<'_>,
+    structure: StructureJson,
+    r_max: f64,
+    n_bins: usize,
+    normalize: bool,
+    auto_expand: bool,
+    expansion_factor: f64,
+) -> PyResult<Py<PyList>> {
+    let s = parse_struct(&structure)?;
+    let opts = make_rdf_options(r_max, n_bins, normalize, auto_expand, expansion_factor)?;
+    // Release GIL during heavy computation
+    let results = py.detach(|| rdf::compute_all_element_rdfs(&s, &opts));
+    let list = PyList::empty(py);
+    for (elem_a, elem_b, rdf_result) in results {
+        let dict = PyDict::new(py);
+        dict.set_item("element_a", elem_a.symbol())?;
+        dict.set_item("element_b", elem_b.symbol())?;
+        dict.set_item("r", rdf_result.radii)?;
+        dict.set_item("g_r", rdf_result.g_of_r)?;
+        list.append(dict)?;
+    }
+    Ok(list.unbind())
+}
+
 /// Register Python module contents.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStructureMatcher>()?;
@@ -2515,6 +2638,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_get_cn_voronoi_all, m)?)?;
     m.add_function(wrap_pyfunction!(py_get_voronoi_neighbors, m)?)?;
     m.add_function(wrap_pyfunction!(py_get_local_environment_voronoi, m)?)?;
+    // RDF functions
+    m.add_function(wrap_pyfunction!(py_compute_rdf, m)?)?;
+    m.add_function(wrap_pyfunction!(py_compute_element_rdf, m)?)?;
+    m.add_function(wrap_pyfunction!(py_compute_all_element_rdfs, m)?)?;
     // Site label and species functions
     m.add_function(wrap_pyfunction!(site_label, m)?)?;
     m.add_function(wrap_pyfunction!(site_labels, m)?)?;
