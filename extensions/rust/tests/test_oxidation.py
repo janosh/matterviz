@@ -4,37 +4,42 @@ import json
 
 import numpy as np
 import pytest
-from pymatgen.core import Composition, Element, Structure
+from pymatgen.core import Composition, Structure
 
 import ferrox
+
+
+# Shared fixtures
+@pytest.fixture
+def nacl_structure() -> dict:
+    """Create NaCl structure (Fm-3m, rocksalt)."""
+    struct = Structure.from_spacegroup(
+        225,
+        lattice=[[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]],
+        species=["Na", "Cl"],
+        coords=[[0, 0, 0], [0.5, 0.5, 0.5]],
+    )
+    return json.loads(struct.to_json())
 
 
 class TestOxiStateGuesses:
     """Test composition-based oxidation state guessing."""
 
-    def test_nacl_guesses_correct_oxi_states(self) -> None:
-        """NaCl should guess Na+ and Cl-."""
-        guesses = ferrox.oxi_state_guesses("NaCl")
+    @pytest.mark.parametrize(
+        ("formula", "expected"),
+        [
+            ("NaCl", {"Na": 1.0, "Cl": -1.0}),
+            ("Fe2O3", {"Fe": 3.0, "O": -2.0}),
+            ("MgO", {"Mg": 2.0, "O": -2.0}),
+        ],
+    )
+    def test_common_compounds(self, formula: str, expected: dict) -> None:
+        """Common compounds should give expected oxidation states."""
+        guesses = ferrox.oxi_state_guesses(formula)
         assert len(guesses) > 0
-        best = guesses[0]
-        assert np.isclose(best["oxidation_states"]["Na"], 1.0, atol=0.01)
-        assert np.isclose(best["oxidation_states"]["Cl"], -1.0, atol=0.01)
-
-    def test_fe2o3_guesses_fe3_plus(self) -> None:
-        """Fe2O3 should guess Fe3+ and O2-."""
-        guesses = ferrox.oxi_state_guesses("Fe2O3")
-        assert len(guesses) > 0
-        best = guesses[0]
-        assert np.isclose(best["oxidation_states"]["Fe"], 3.0, atol=0.01)
-        assert np.isclose(best["oxidation_states"]["O"], -2.0, atol=0.01)
-
-    def test_mgo_guesses_correct_oxi_states(self) -> None:
-        """MgO should guess Mg2+ and O2-."""
-        guesses = ferrox.oxi_state_guesses("MgO")
-        assert len(guesses) > 0
-        best = guesses[0]
-        assert np.isclose(best["oxidation_states"]["Mg"], 2.0, atol=0.01)
-        assert np.isclose(best["oxidation_states"]["O"], -2.0, atol=0.01)
+        best = guesses[0]["oxidation_states"]
+        for elem, oxi in expected.items():
+            assert np.isclose(best[elem], oxi, atol=0.01), f"{formula}: {elem}"
 
     def test_lifepo4_matches_pymatgen(self) -> None:
         """Compare LiFePO4 guesses with pymatgen."""
@@ -54,9 +59,9 @@ class TestOxiStateGuesses:
         # Pymatgen returns list of dicts, first is most likely
         pymatgen_best = pymatgen_guesses[0]
 
-        # Elements should match (convert pymatgen to simpler format)
+        # Elements should match (pymatgen returns dicts with string keys)
         for elem in ["Li", "P", "O"]:
-            pymatgen_val = pymatgen_best.get(Element(elem), 0)
+            pymatgen_val = pymatgen_best.get(elem, 0)
             ferrox_val = ferrox_best.get(elem, 0)
             assert np.isclose(ferrox_val, pymatgen_val, atol=0.1), (
                 f"{elem}: ferrox={ferrox_val}, pymatgen={pymatgen_val}"
@@ -81,28 +86,6 @@ class TestOxiStateGuesses:
 
 class TestBvSums:
     """Test bond valence sum calculations."""
-
-    @pytest.fixture
-    def nacl_structure(self) -> dict:
-        """Create NaCl structure."""
-        struct = Structure.from_spacegroup(
-            225,  # Fm-3m
-            lattice=[[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]],
-            species=["Na", "Cl"],
-            coords=[[0, 0, 0], [0.5, 0.5, 0.5]],
-        )
-        return json.loads(struct.to_json())
-
-    @pytest.fixture
-    def fe2o3_structure(self) -> dict:
-        """Create Fe2O3 corundum structure (simplified)."""
-        struct = Structure.from_spacegroup(
-            167,  # R-3c (corundum)
-            lattice=[[5.038, 0, 0], [0, 5.038, 0], [0, 0, 13.772]],
-            species=["Fe", "O"],
-            coords=[[0, 0, 0.3553], [0.3064, 0, 0.25]],
-        )
-        return json.loads(struct.to_json())
 
     def test_bv_sums_positive_for_cation(self, nacl_structure: dict) -> None:
         """BV sum should be positive for cations like Na+."""
@@ -137,17 +120,6 @@ class TestBvSums:
 class TestGuessOxidationStatesBvs:
     """Test BVS-based oxidation state guessing."""
 
-    @pytest.fixture
-    def nacl_structure(self) -> dict:
-        """Create NaCl structure."""
-        struct = Structure.from_spacegroup(
-            225,
-            lattice=[[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]],
-            species=["Na", "Cl"],
-            coords=[[0, 0, 0], [0.5, 0.5, 0.5]],
-        )
-        return json.loads(struct.to_json())
-
     def test_guess_oxi_states_returns_list(self, nacl_structure: dict) -> None:
         """Should return oxidation states for each site."""
         oxi_states = ferrox.guess_oxidation_states_bvs(nacl_structure)
@@ -163,17 +135,6 @@ class TestGuessOxidationStatesBvs:
 
 class TestAddOxidationStates:
     """Test adding/removing oxidation states."""
-
-    @pytest.fixture
-    def nacl_structure(self) -> dict:
-        """Create NaCl structure."""
-        struct = Structure.from_spacegroup(
-            225,
-            lattice=[[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]],
-            species=["Na", "Cl"],
-            coords=[[0, 0, 0], [0.5, 0.5, 0.5]],
-        )
-        return json.loads(struct.to_json())
 
     def test_add_oxidation_state_by_element(self, nacl_structure: dict) -> None:
         """Test adding oxidation states by element."""
@@ -229,16 +190,6 @@ class TestAddOxidationStates:
 class TestComparisonWithPymatgen:
     """Compare ferrox results with pymatgen for verification."""
 
-    @pytest.fixture
-    def fe2o3_structure(self) -> Structure:
-        """Create Fe2O3 structure."""
-        return Structure.from_spacegroup(
-            167,  # R-3c (corundum)
-            lattice=[[5.038, 0, 0], [0, 5.038, 0], [0, 0, 13.772]],
-            species=["Fe", "O"],
-            coords=[[0, 0, 0.3553], [0.3064, 0, 0.25]],
-        )
-
     def test_composition_guesses_match_pymatgen(self) -> None:
         """Verify composition guesses match pymatgen for common compounds."""
         test_cases = [
@@ -258,12 +209,12 @@ class TestComparisonWithPymatgen:
             assert len(pymatgen_guesses) > 0, f"No pymatgen guesses for {formula}"
 
             ferrox_best = ferrox_guesses[0]["oxidation_states"]
-            pymatgen_best = pymatgen_guesses[0]
+            # Convert pymatgen dict (Element keys) to string keys
+            pymatgen_best = {str(k): v for k, v in pymatgen_guesses[0].items()}
 
-            # pymatgen returns dicts with string keys
             for elem_str in ferrox_best:
-                pymatgen_val = pymatgen_best.get(elem_str, 0)
                 ferrox_val = ferrox_best[elem_str]
+                pymatgen_val = pymatgen_best.get(elem_str, 0)
                 assert np.isclose(ferrox_val, pymatgen_val, atol=0.5), (
                     f"{formula}: {elem_str} ferrox={ferrox_val}, pymatgen={pymatgen_val}"
                 )
