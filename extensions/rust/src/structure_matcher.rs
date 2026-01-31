@@ -1888,10 +1888,10 @@ mod tests {
         assert!(d_disjoint.is_finite() && d_disjoint > d_same);
         assert!(d_no_overlap.is_finite() && d_no_overlap > 0.0);
         // Same geometry but partial overlap: composition_distance = 1 - 1/3 ≈ 0.667
-        // With COMPOSITION_WEIGHT = 10.0, expected contribution ≈ 6.67
-        // Since geometric distance ≈ 0, total should be > 5.0
+        // With COMPOSITION_WEIGHT = 5.0, expected contribution ≈ 3.33
+        // Geometric distance is small but non-zero (~2.2) due to normalization
         assert!(
-            d_partial > 5.0,
+            d_partial > 3.0,
             "Same geometry + partial overlap should have composition penalty: {d_partial}"
         );
         // Partial should be less than disjoint (DISJOINT_COMPOSITION_DISTANCE = 1e9)
