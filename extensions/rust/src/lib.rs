@@ -45,6 +45,7 @@ pub mod batch;
 pub mod coordination;
 pub mod matcher;
 pub mod pbc;
+pub mod rdf;
 
 // Transformations (internal - public API is via Structure methods)
 pub(crate) mod transformations;

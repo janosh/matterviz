@@ -1283,3 +1283,82 @@ def get_local_environment_voronoi(
         List of neighbor dicts with keys: element, species, distance, image, site_idx, solid_angle.
     """
     ...
+
+def compute_rdf(
+    structure: StructureJson,
+    r_max: float = 15.0,
+    n_bins: int = 75,
+    normalize: bool = True,
+    auto_expand: bool = True,
+    expansion_factor: float = 2.0,
+) -> tuple[list[float], list[float]]:
+    """Compute the total radial distribution function for all atom pairs.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        r_max: Maximum distance in Angstroms.
+        n_bins: Number of histogram bins.
+        normalize: Whether to normalize by ideal gas density.
+        auto_expand: Whether to auto-expand structure to avoid finite-size effects.
+        expansion_factor: Minimum lattice dimension = r_max × factor.
+
+    Returns:
+        Tuple of (r, g_r) where r is bin centers and g_r is RDF values.
+    """
+    ...
+
+def compute_element_rdf(
+    structure: StructureJson,
+    element_a: str,
+    element_b: str,
+    r_max: float = 15.0,
+    n_bins: int = 75,
+    normalize: bool = True,
+    auto_expand: bool = True,
+    expansion_factor: float = 2.0,
+) -> tuple[list[float], list[float]]:
+    """Compute element-resolved radial distribution function.
+
+    Calculates g(r) for a specific element pair, counting distances from
+    atoms of element_a to atoms of element_b.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        element_a: Center element symbol (e.g., "Fe").
+        element_b: Neighbor element symbol (e.g., "O").
+        r_max: Maximum distance in Angstroms.
+        n_bins: Number of histogram bins.
+        normalize: Whether to normalize by ideal gas density.
+        auto_expand: Whether to auto-expand structure.
+        expansion_factor: Minimum lattice dimension = r_max × factor.
+
+    Returns:
+        Tuple of (r, g_r) where r is bin centers and g_r is RDF values.
+    """
+    ...
+
+def compute_all_element_rdfs(
+    structure: StructureJson,
+    r_max: float = 15.0,
+    n_bins: int = 75,
+    normalize: bool = True,
+    auto_expand: bool = True,
+    expansion_factor: float = 2.0,
+) -> list[dict[str, Any]]:
+    """Compute RDF for all unique element pairs in the structure.
+
+    Returns one RDF for each unique (element_a, element_b) pair where
+    element_a <= element_b (by atomic number), avoiding duplicates.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        r_max: Maximum distance in Angstroms.
+        n_bins: Number of histogram bins.
+        normalize: Whether to normalize by ideal gas density.
+        auto_expand: Whether to auto-expand structure.
+        expansion_factor: Minimum lattice dimension = r_max × factor.
+
+    Returns:
+        List of dicts, each with keys: element_a, element_b, r, g_r.
+    """
+    ...
