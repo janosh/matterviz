@@ -91,12 +91,12 @@ impl RdfOptions {
     }
 }
 
-// Helper: get occupancy of a specific element at a site (returns 0.0 if element not present)
+// Helper: get occupancy at a site - total occupancy if element is None, else element-specific
 fn get_element_occupancy(structure: &Structure, site_idx: usize, element: Option<Element>) -> f64 {
+    let site = &structure.site_occupancies[site_idx].species;
     match element {
-        None => 1.0,
-        Some(elem) => structure.site_occupancies[site_idx]
-            .species
+        None => site.iter().map(|(_, occ)| occ).sum(),
+        Some(elem) => site
             .iter()
             .filter_map(|(sp, occ)| (sp.element == elem).then_some(occ))
             .sum(),
@@ -683,5 +683,49 @@ mod tests {
         assert_eq!(expanded.radii.len(), not_expanded.radii.len());
         assert!(expanded.g_of_r.iter().any(|&g| g > 0.0));
         assert!(not_expanded.g_of_r.iter().any(|&g| g > 0.0));
+    }
+
+    #[test]
+    fn test_partial_occupancy_weighting() {
+        use crate::species::SiteOccupancy;
+
+        // Create dimer with partial occupancy: site A has 0.5 Fe, site B has 1.0 Fe
+        // Total RDF should weight pair by 0.5 * 1.0 = 0.5
+        let lattice = Lattice::cubic(4.0);
+        let site_a = SiteOccupancy::new(vec![(Species::neutral(Element::Fe), 0.5)]);
+        let site_b = SiteOccupancy::new(vec![(Species::neutral(Element::Fe), 1.0)]);
+        let frac_coords = vec![[0.0, 0.0, 0.0].into(), [0.5, 0.0, 0.0].into()];
+        let partial_struct = Structure::try_new_from_occupancies(
+            lattice.clone(),
+            vec![site_a, site_b],
+            frac_coords.clone(),
+        )
+        .unwrap();
+
+        // Create same structure with full occupancy for comparison
+        let full_struct =
+            Structure::new(lattice, vec![Species::neutral(Element::Fe); 2], frac_coords);
+
+        let options = rdf_opts(5.0, 50).with_normalize(false);
+
+        let partial_rdf = compute_rdf(&partial_struct, &options);
+        let full_rdf = compute_rdf(&full_struct, &options);
+
+        // Find bin with the 2.0 Å peak
+        let peak_bin = 20; // 2.0 Å / 0.1 Å bin_size = bin 20
+
+        // Partial occupancy should give half the count of full occupancy
+        // (0.5 * 1.0 = 0.5 vs 1.0 * 1.0 = 1.0 for the pair)
+        let partial_count = partial_rdf.g_of_r[peak_bin];
+        let full_count = full_rdf.g_of_r[peak_bin];
+
+        assert!(
+            partial_count > 0.0 && full_count > 0.0,
+            "Both should have counts at 2.0 Å"
+        );
+        assert!(
+            (partial_count / full_count - 0.5).abs() < 0.1,
+            "Partial occupancy count ({partial_count}) should be ~0.5x full ({full_count})"
+        );
     }
 }
