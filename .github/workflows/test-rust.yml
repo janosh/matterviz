@@ -24,26 +24,16 @@ jobs:
       run:
         working-directory: ${{ env.WORKING_DIR }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ${{ env.WORKING_DIR }}/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('extensions/rust/Cargo.toml') }}
-      - name: Check formatting
-        run: cargo fmt --check
-      - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
-      - name: Run tests
-        run: cargo test
+          workspaces: extensions/rust
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
 
   python-tests:
     runs-on: ubuntu-latest
@@ -51,16 +41,16 @@ jobs:
       run:
         working-directory: ${{ env.WORKING_DIR }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: extensions/rust
+          cache-on-failure: true
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v5
       - name: Build and install ferrox
         run: |
           uv pip install maturin --system
@@ -69,13 +59,55 @@ jobs:
       - name: Run Python tests
         run: |
           python tests/test_pymatgen_compat.py --regression
-          pytest tests/test_ferrox_api.py tests/test_transformations.py -v
+          pytest tests/test_ferrox_api.py tests/test_transformations.py tests/test_coordination.py -v
+
+  wasm-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: extensions/rust
+          cache-targets: false
+      - name: Cache wasm-pack
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-pack
+          key: wasm-pack-0.13.1
+      - name: Install wasm-pack
+        run: command -v wasm-pack || cargo install wasm-pack@0.13.1 --locked
+      - name: Build WASM
+        run: |
+          wasm-pack build extensions/rust --target web --features wasm --no-default-features
+          rm -rf extensions/rust-wasm/pkg
+          cp -r extensions/rust/pkg extensions/rust-wasm/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Install dependencies and run tests
+        working-directory: extensions/rust-wasm
+        run: |
+          pnpm install
+          pnpm test
+      - name: Upload WASM artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-pkg
+          path: extensions/rust-wasm/pkg
 
   check-version:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     outputs:
-      should_publish: ${{ steps.check.outputs.should_publish }}
+      should_publish_pypi: ${{ steps.check.outputs.should_publish_pypi }}
+      should_publish_npm: ${{ steps.check.outputs.should_publish_npm }}
       version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -84,17 +116,25 @@ jobs:
         run: |
           VERSION=$(grep '^version' ${{ env.WORKING_DIR }}/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          # Check if version exists on PyPI
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/ferrox/$VERSION/json")
-          if [ "$HTTP_STATUS" = "404" ] || [ "${{ github.event.inputs.publish }}" = "true" ]; then
-            echo "should_publish=true" >> $GITHUB_OUTPUT
+          FORCE="${{ github.event.inputs.publish }}"
+          # Check PyPI
+          PYPI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/ferrox/$VERSION/json")
+          if [ "$PYPI_STATUS" = "404" ] || [ "$FORCE" = "true" ]; then
+            echo "should_publish_pypi=true" >> $GITHUB_OUTPUT
           else
-            echo "should_publish=false" >> $GITHUB_OUTPUT
+            echo "should_publish_pypi=false" >> $GITHUB_OUTPUT
+          fi
+          # Check npm
+          NPM_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/matterviz-wasm/$VERSION")
+          if [ "$NPM_STATUS" = "404" ] || [ "$FORCE" = "true" ]; then
+            echo "should_publish_npm=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish_npm=false" >> $GITHUB_OUTPUT
           fi
 
   build-wheels:
-    needs: [rust-tests, python-tests, check-version]
-    if: needs.check-version.outputs.should_publish == 'true'
+    needs: [rust-tests, python-tests, wasm-tests, check-version]
+    if: needs.check-version.outputs.should_publish_pypi == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -122,8 +162,8 @@ jobs:
           path: ${{ env.WORKING_DIR }}/dist
 
   build-sdist:
-    needs: [rust-tests, python-tests, check-version]
-    if: needs.check-version.outputs.should_publish == 'true'
+    needs: [rust-tests, python-tests, wasm-tests, check-version]
+    if: needs.check-version.outputs.should_publish_pypi == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -164,22 +204,19 @@ jobs:
 
   publish-wasm:
     name: Publish WASM to npm
-    needs: [rust-tests, check-version]
-    if: needs.check-version.outputs.should_publish == 'true'
+    needs: [rust-tests, wasm-tests, check-version]
+    if: needs.check-version.outputs.should_publish_npm == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install wasm-pack
-        run: cargo install wasm-pack@0.13.1 --locked
-      - name: Build WASM
-        run: |
-          wasm-pack build extensions/rust --target web --features wasm --no-default-features
-          rm -rf extensions/rust-wasm/pkg
-          cp -r extensions/rust/pkg extensions/rust-wasm/
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-pkg
+          path: extensions/rust-wasm/pkg
       - uses: actions/setup-node@v4
         with:
           node-version: 22
