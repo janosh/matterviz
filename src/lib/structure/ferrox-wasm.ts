@@ -174,15 +174,23 @@ function create_matcher(
   mod: FerroxWasmModule,
   opts?: MatcherOptions,
 ): WasmStructureMatcherInstance {
-  let m = new mod.WasmStructureMatcher()
-  if (!opts) return m
-  if (opts.latt_len_tol !== undefined) m = m.with_latt_len_tol(opts.latt_len_tol)
-  if (opts.site_pos_tol !== undefined) m = m.with_site_pos_tol(opts.site_pos_tol)
-  if (opts.angle_tol !== undefined) m = m.with_angle_tol(opts.angle_tol)
-  if (opts.primitive_cell !== undefined) m = m.with_primitive_cell(opts.primitive_cell)
-  if (opts.scale !== undefined) m = m.with_scale(opts.scale)
-  if (opts.element_only !== undefined) m = m.with_element_comparator(opts.element_only)
-  return m
+  let matcher = new mod.WasmStructureMatcher()
+  if (!opts) return matcher
+  if (opts.latt_len_tol !== undefined) {
+    matcher = matcher.with_latt_len_tol(opts.latt_len_tol)
+  }
+  if (opts.site_pos_tol !== undefined) {
+    matcher = matcher.with_site_pos_tol(opts.site_pos_tol)
+  }
+  if (opts.angle_tol !== undefined) matcher = matcher.with_angle_tol(opts.angle_tol)
+  if (opts.primitive_cell !== undefined) {
+    matcher = matcher.with_primitive_cell(opts.primitive_cell)
+  }
+  if (opts.scale !== undefined) matcher = matcher.with_scale(opts.scale)
+  if (opts.element_only !== undefined) {
+    matcher = matcher.with_element_comparator(opts.element_only)
+  }
+  return matcher
 }
 
 // Check if two structures are equivalent

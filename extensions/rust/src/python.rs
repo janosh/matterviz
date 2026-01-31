@@ -62,6 +62,15 @@ fn parse_struct(input: &StructureJson) -> PyResult<Structure> {
         .map_err(|e| PyValueError::new_err(format!("Error parsing structure: {e}")))
 }
 
+/// Convert a JSON string to a Python dict.
+fn json_to_pydict(py: Python<'_>, json: &str) -> PyResult<Py<PyDict>> {
+    let result = py.import("json")?.call_method1("loads", (json,))?;
+    result
+        .downcast::<PyDict>()
+        .map(|d| d.clone().unbind())
+        .map_err(|e| PyValueError::new_err(format!("Expected dict from JSON: {e}")))
+}
+
 /// Parse a pair of structure inputs, returning a PyResult.
 fn parse_structure_pair(
     struct1: &StructureJson,
@@ -2591,6 +2600,160 @@ fn py_compute_xrd(
 /// Returns a dict mapping element symbols to their scattering coefficients.
 /// Each coefficient set is a list of [a, b] pairs for the Cromer-Mann formula.
 ///
+// =============================================================================
+// Oxidation State Functions
+// =============================================================================
+
+fn validate_bvs_params(max_radius: f64, scale_factor: f64) -> PyResult<()> {
+    if max_radius <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "max_radius must be positive, got {max_radius}"
+        )));
+    }
+    if scale_factor <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "scale_factor must be positive, got {scale_factor}"
+        )));
+    }
+    Ok(())
+}
+
+/// Guess oxidation states for a composition, ranked by ICSD probability.
+#[pyfunction]
+#[pyo3(name = "oxi_state_guesses", signature = (formula, target_charge = 0, use_all_oxi_states = false, max_sites = None))]
+fn py_oxi_state_guesses(
+    py: Python<'_>,
+    formula: &str,
+    target_charge: i8,
+    use_all_oxi_states: bool,
+    max_sites: Option<usize>,
+) -> PyResult<Py<PyList>> {
+    let guesses =
+        parse_comp(formula)?.oxi_state_guesses(target_charge, None, use_all_oxi_states, max_sites);
+    let result = PyList::empty(py);
+    for guess in guesses {
+        let dict = PyDict::new(py);
+        let oxi_dict = PyDict::new(py);
+        for (elem, oxi) in &guess.oxidation_states {
+            oxi_dict.set_item(elem, oxi)?;
+        }
+        dict.set_item("oxidation_states", oxi_dict)?;
+        dict.set_item("probability", guess.probability)?;
+        result.append(dict)?;
+    }
+    Ok(result.unbind())
+}
+
+/// Add oxidation states to a structure based on composition guessing.
+/// Raises ValueError for mixed-valence (non-integer average oxi states like Fe3O4).
+#[pyfunction]
+#[pyo3(name = "add_charges_from_oxi_state_guesses", signature = (structure, target_charge = 0))]
+fn py_add_charges_from_oxi_state_guesses(
+    py: Python<'_>,
+    structure: StructureJson,
+    target_charge: i8,
+) -> PyResult<Py<PyDict>> {
+    let s = parse_struct(&structure)?;
+    let guesses = s
+        .composition()
+        .oxi_state_guesses(target_charge, None, false, None);
+    let best = guesses.first().ok_or_else(|| {
+        PyValueError::new_err("Could not find charge-balanced oxidation state assignment")
+    })?;
+
+    // Check for mixed-valence
+    for (elem, oxi) in &best.oxidation_states {
+        if (*oxi - oxi.round()).abs() > crate::oxidation::OXI_INT_TOLERANCE {
+            return Err(PyValueError::new_err(format!(
+                "Mixed-valence: {elem} has average oxi state {oxi:.2} (non-integer)"
+            )));
+        }
+    }
+
+    let oxi_map: std::collections::HashMap<String, i8> = best
+        .oxidation_states
+        .iter()
+        .map(|(e, o)| (e.clone(), o.round() as i8))
+        .collect();
+    json_to_pydict(
+        py,
+        &structure_to_pymatgen_json(&s.add_oxidation_state_by_element(&oxi_map)),
+    )
+}
+
+/// Compute bond valence sums for all sites using O'Keeffe & Brese parameters.
+#[pyfunction]
+#[pyo3(name = "compute_bv_sums", signature = (structure, max_radius = 4.0, scale_factor = 1.015))]
+fn py_compute_bv_sums(
+    structure: StructureJson,
+    max_radius: f64,
+    scale_factor: f64,
+) -> PyResult<Vec<f64>> {
+    validate_bvs_params(max_radius, scale_factor)?;
+    parse_struct(&structure)?
+        .compute_all_bv_sums(max_radius, scale_factor)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Guess oxidation states using BVS-based MAP estimation with symmetry.
+#[pyfunction]
+#[pyo3(name = "guess_oxidation_states_bvs", signature = (structure, symprec = 0.1, max_radius = 4.0, scale_factor = 1.015))]
+fn py_guess_oxidation_states_bvs(
+    structure: StructureJson,
+    symprec: f64,
+    max_radius: f64,
+    scale_factor: f64,
+) -> PyResult<Vec<i8>> {
+    validate_bvs_params(max_radius, scale_factor)?;
+    parse_struct(&structure)?
+        .guess_oxidation_states_bvs(symprec, max_radius, scale_factor)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Add oxidation states to a structure by element symbol mapping.
+#[pyfunction]
+#[pyo3(name = "add_oxidation_state_by_element")]
+fn py_add_oxidation_state_by_element(
+    py: Python<'_>,
+    structure: StructureJson,
+    oxi_states: std::collections::HashMap<String, i8>,
+) -> PyResult<Py<PyDict>> {
+    json_to_pydict(
+        py,
+        &structure_to_pymatgen_json(
+            &parse_struct(&structure)?.add_oxidation_state_by_element(&oxi_states),
+        ),
+    )
+}
+
+/// Add oxidation states to a structure by site index.
+#[pyfunction]
+#[pyo3(name = "add_oxidation_state_by_site")]
+fn py_add_oxidation_state_by_site(
+    py: Python<'_>,
+    structure: StructureJson,
+    oxi_states: Vec<i8>,
+) -> PyResult<Py<PyDict>> {
+    let result = parse_struct(&structure)?
+        .add_oxidation_state_by_site(&oxi_states)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    json_to_pydict(py, &structure_to_pymatgen_json(&result))
+}
+
+/// Remove oxidation states from all sites in a structure.
+#[pyfunction]
+#[pyo3(name = "remove_oxidation_states")]
+fn py_remove_oxidation_states(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
+    json_to_pydict(
+        py,
+        &structure_to_pymatgen_json(&parse_struct(&structure)?.remove_oxidation_states()),
+    )
+}
+
+// =============================================================================
+// XRD Functions (continued)
+// =============================================================================
+
 /// Returns:
 ///     Dict[str, List[List[float]]]: Element symbol -> [[a1, b1], [a2, b2], [a3, b3], [a4, b4]]
 #[pyfunction]
@@ -2706,103 +2869,114 @@ fn py_compute_all_element_rdfs(
 }
 
 /// Register Python module contents.
-pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PyStructureMatcher>()?;
+pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
+    py_mod.add_class::<PyStructureMatcher>()?;
     // I/O functions (reading)
-    m.add_function(wrap_pyfunction!(parse_structure_file, m)?)?;
-    m.add_function(wrap_pyfunction!(parse_trajectory, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(parse_structure_file, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(parse_trajectory, py_mod)?)?;
     // I/O functions (writing)
-    m.add_function(wrap_pyfunction!(write_structure_file, m)?)?;
-    m.add_function(wrap_pyfunction!(to_poscar, m)?)?;
-    m.add_function(wrap_pyfunction!(to_cif, m)?)?;
-    m.add_function(wrap_pyfunction!(to_extxyz, m)?)?;
-    m.add_function(wrap_pyfunction!(to_pymatgen_json, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(write_structure_file, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(to_poscar, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(to_cif, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(to_extxyz, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(to_pymatgen_json, py_mod)?)?;
     // Supercell functions
-    m.add_function(wrap_pyfunction!(make_supercell, m)?)?;
-    m.add_function(wrap_pyfunction!(make_supercell_diag, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(make_supercell, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(make_supercell_diag, py_mod)?)?;
     // Slab generation functions
-    m.add_function(wrap_pyfunction!(generate_slabs, m)?)?;
-    m.add_function(wrap_pyfunction!(make_slab, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(generate_slabs, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(make_slab, py_mod)?)?;
     // Reduction functions
-    m.add_function(wrap_pyfunction!(get_reduced_structure, m)?)?;
-    m.add_function(wrap_pyfunction!(get_reduced_structure_with_params, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_reduced_structure, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_reduced_structure_with_params, py_mod)?)?;
     // Neighbor finding and distance functions
-    m.add_function(wrap_pyfunction!(get_neighbor_list, m)?)?;
-    m.add_function(wrap_pyfunction!(get_distance, m)?)?;
-    m.add_function(wrap_pyfunction!(get_distance_and_image, m)?)?;
-    m.add_function(wrap_pyfunction!(get_distance_with_image, m)?)?;
-    m.add_function(wrap_pyfunction!(distance_from_point, m)?)?;
-    m.add_function(wrap_pyfunction!(distance_matrix, m)?)?;
-    m.add_function(wrap_pyfunction!(is_periodic_image, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_neighbor_list, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_distance, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_distance_and_image, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_distance_with_image, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(distance_from_point, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(distance_matrix, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(is_periodic_image, py_mod)?)?;
     // Coordination analysis functions
-    m.add_function(wrap_pyfunction!(py_get_coordination_numbers, m)?)?;
-    m.add_function(wrap_pyfunction!(py_get_coordination_number, m)?)?;
-    m.add_function(wrap_pyfunction!(py_get_local_environment, m)?)?;
-    m.add_function(wrap_pyfunction!(py_get_neighbors, m)?)?;
-    m.add_function(wrap_pyfunction!(py_get_cn_voronoi, m)?)?;
-    m.add_function(wrap_pyfunction!(py_get_cn_voronoi_all, m)?)?;
-    m.add_function(wrap_pyfunction!(py_get_voronoi_neighbors, m)?)?;
-    m.add_function(wrap_pyfunction!(py_get_local_environment_voronoi, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_get_coordination_numbers, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_get_coordination_number, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_get_local_environment, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_get_neighbors, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_get_cn_voronoi, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_get_cn_voronoi_all, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_get_voronoi_neighbors, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_get_local_environment_voronoi, py_mod)?)?;
     // RDF functions
-    m.add_function(wrap_pyfunction!(py_compute_rdf, m)?)?;
-    m.add_function(wrap_pyfunction!(py_compute_element_rdf, m)?)?;
-    m.add_function(wrap_pyfunction!(py_compute_all_element_rdfs, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_compute_rdf, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_compute_element_rdf, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_compute_all_element_rdfs, py_mod)?)?;
     // Site label and species functions
-    m.add_function(wrap_pyfunction!(site_label, m)?)?;
-    m.add_function(wrap_pyfunction!(site_labels, m)?)?;
-    m.add_function(wrap_pyfunction!(species_strings, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(site_label, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(site_labels, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(species_strings, py_mod)?)?;
     // Interpolation functions
-    m.add_function(wrap_pyfunction!(interpolate, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(interpolate, py_mod)?)?;
     // Matching convenience functions
-    m.add_function(wrap_pyfunction!(matches, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(matches, py_mod)?)?;
     // Sorting functions
-    m.add_function(wrap_pyfunction!(get_sorted_structure, m)?)?;
-    m.add_function(wrap_pyfunction!(get_sorted_by_electronegativity, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_sorted_structure, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_sorted_by_electronegativity, py_mod)?)?;
     // Copy/sanitization functions
-    m.add_function(wrap_pyfunction!(copy_structure, m)?)?;
-    m.add_function(wrap_pyfunction!(wrap_to_unit_cell, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(copy_structure, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(wrap_to_unit_cell, py_mod)?)?;
     // Symmetry operation functions
-    m.add_function(wrap_pyfunction!(apply_operation, m)?)?;
-    m.add_function(wrap_pyfunction!(apply_inversion, m)?)?;
-    m.add_function(wrap_pyfunction!(apply_translation, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(apply_operation, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(apply_inversion, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(apply_translation, py_mod)?)?;
     // Property functions
-    m.add_function(wrap_pyfunction!(get_volume, m)?)?;
-    m.add_function(wrap_pyfunction!(get_total_mass, m)?)?;
-    m.add_function(wrap_pyfunction!(get_density, m)?)?;
-    m.add_function(wrap_pyfunction!(get_structure_metadata, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_volume, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_total_mass, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_density, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_structure_metadata, py_mod)?)?;
     // Symmetry analysis functions
-    m.add_function(wrap_pyfunction!(get_spacegroup_number, m)?)?;
-    m.add_function(wrap_pyfunction!(get_spacegroup_symbol, m)?)?;
-    m.add_function(wrap_pyfunction!(get_hall_number, m)?)?;
-    m.add_function(wrap_pyfunction!(get_pearson_symbol, m)?)?;
-    m.add_function(wrap_pyfunction!(get_wyckoff_letters, m)?)?;
-    m.add_function(wrap_pyfunction!(get_site_symmetry_symbols, m)?)?;
-    m.add_function(wrap_pyfunction!(get_symmetry_operations, m)?)?;
-    m.add_function(wrap_pyfunction!(get_equivalent_sites, m)?)?;
-    m.add_function(wrap_pyfunction!(get_crystal_system, m)?)?;
-    m.add_function(wrap_pyfunction!(get_symmetry_dataset, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_spacegroup_number, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_spacegroup_symbol, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_hall_number, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_pearson_symbol, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_wyckoff_letters, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_site_symmetry_symbols, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_symmetry_operations, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_equivalent_sites, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_crystal_system, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_symmetry_dataset, py_mod)?)?;
     // Site manipulation functions
-    m.add_function(wrap_pyfunction!(translate_sites, m)?)?;
-    m.add_function(wrap_pyfunction!(perturb, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(translate_sites, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(perturb, py_mod)?)?;
     // Normalization and site property functions
-    m.add_function(wrap_pyfunction!(normalize_element_symbol, m)?)?;
-    m.add_function(wrap_pyfunction!(get_site_properties, m)?)?;
-    m.add_function(wrap_pyfunction!(get_all_site_properties, m)?)?;
-    m.add_function(wrap_pyfunction!(set_site_property, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(normalize_element_symbol, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_site_properties, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_all_site_properties, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(set_site_property, py_mod)?)?;
     // Composition functions
-    m.add_function(wrap_pyfunction!(parse_composition, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(parse_composition, py_mod)?)?;
     // Transformation functions
-    m.add_function(wrap_pyfunction!(to_primitive, m)?)?;
-    m.add_function(wrap_pyfunction!(to_conventional, m)?)?;
-    m.add_function(wrap_pyfunction!(substitute_species, m)?)?;
-    m.add_function(wrap_pyfunction!(remove_species, m)?)?;
-    m.add_function(wrap_pyfunction!(remove_sites, m)?)?;
-    m.add_function(wrap_pyfunction!(deform, m)?)?;
-    m.add_function(wrap_pyfunction!(ewald_energy, m)?)?;
-    m.add_function(wrap_pyfunction!(order_disordered, m)?)?;
-    m.add_function(wrap_pyfunction!(enumerate_derivatives, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(to_primitive, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(to_conventional, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(substitute_species, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(remove_species, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(remove_sites, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(deform, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(ewald_energy, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(order_disordered, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(enumerate_derivatives, py_mod)?)?;
     // XRD functions
-    m.add_function(wrap_pyfunction!(py_compute_xrd, m)?)?;
-    m.add_function(wrap_pyfunction!(py_get_atomic_scattering_params, m)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_compute_xrd, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_get_atomic_scattering_params, py_mod)?)?;
+    // Oxidation state functions
+    py_mod.add_function(wrap_pyfunction!(py_oxi_state_guesses, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(
+        py_add_charges_from_oxi_state_guesses,
+        py_mod
+    )?)?;
+    py_mod.add_function(wrap_pyfunction!(py_compute_bv_sums, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_guess_oxidation_states_bvs, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_add_oxidation_state_by_element, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_add_oxidation_state_by_site, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(py_remove_oxidation_states, py_mod)?)?;
     Ok(())
 }

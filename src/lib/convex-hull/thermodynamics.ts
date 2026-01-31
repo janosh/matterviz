@@ -343,10 +343,10 @@ export function calculate_e_above_hull(
     })
 
     // Map back
-    for (let i = 0; i < interest_data.length; i++) {
-      const { entry } = interest_data[i]
+    for (let idx = 0; idx < interest_data.length; idx++) {
+      const { entry } = interest_data[idx]
       const id = entry.entry_id ?? JSON.stringify(entry.composition)
-      const point_idx = idx_to_point_idx.get(i) ?? -1
+      const point_idx = idx_to_point_idx.get(idx) ?? -1
       if (point_idx !== -1) {
         results[id] = Math.max(0, distances[point_idx])
       } else {
@@ -546,9 +546,9 @@ export function interpolate_hull_2d(hull: Point2D[], x: number): number | null {
   if (x <= hull[0].x) return hull[0].y
   if (x >= hull[hull.length - 1].x) return hull[hull.length - 1].y
 
-  for (let i = 0; i < hull.length - 1; i++) {
-    const p1 = hull[i]
-    const p2 = hull[i + 1]
+  for (let idx = 0; idx < hull.length - 1; idx++) {
+    const p1 = hull[idx]
+    const p2 = hull[idx + 1]
     if (x >= p1.x && x <= p2.x) {
       const t = (x - p1.x) / Math.max(1e-12, p2.x - p1.x)
       return p1.y * (1 - t) + p2.y * t
@@ -1801,8 +1801,8 @@ function solve_linear_system(matrix_a: number[][], vec_b: number[]): number[] | 
     // Eliminate
     for (let row = col + 1; row < n; row++) {
       const factor = aug[row][col] / aug[col][col]
-      for (let k = col; k <= n; k++) {
-        aug[row][k] -= factor * aug[col][k]
+      for (let elim_col = col; elim_col <= n; elim_col++) {
+        aug[row][elim_col] -= factor * aug[col][elim_col]
       }
     }
   }
