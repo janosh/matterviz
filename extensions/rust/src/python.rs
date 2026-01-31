@@ -64,7 +64,11 @@ fn parse_struct(input: &StructureJson) -> PyResult<Structure> {
 
 /// Convert a JSON string to a Python dict.
 fn json_to_pydict(py: Python<'_>, json: &str) -> PyResult<Py<PyDict>> {
-    py.import("json")?.call_method1("loads", (json,))?.extract()
+    let result = py.import("json")?.call_method1("loads", (json,))?;
+    result
+        .downcast::<PyDict>()
+        .map(|d| d.clone().unbind())
+        .map_err(|e| PyValueError::new_err(format!("Expected dict from JSON: {e}")))
 }
 
 /// Parse a pair of structure inputs, returning a PyResult.
