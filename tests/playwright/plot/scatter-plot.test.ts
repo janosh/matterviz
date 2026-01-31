@@ -2273,13 +2273,13 @@ test.describe(`ScatterPlot Component Tests`, () => {
         document.querySelectorAll(`.scatter g[data-series-id] text`),
       )
       const snap = labels.map((el) => el.getBoundingClientRect())
-      const w = window as Window & { __lblSnap__?: DOMRect[] }
-      const prev = w.__lblSnap__
-      w.__lblSnap__ = snap
+      const win = window as Window & { __lblSnap__?: DOMRect[] }
+      const prev = win.__lblSnap__
+      win.__lblSnap__ = snap
       if (!prev || prev.length !== snap.length) return false
-      const moved = snap.some((r, i) => {
-        const p = prev[i]
-        return Math.hypot(r.x - p.x, r.y - p.y) > 0.5
+      const moved = snap.some((rect, idx) => {
+        const prev_rect = prev[idx]
+        return Math.hypot(rect.x - prev_rect.x, rect.y - prev_rect.y) > 0.5
       })
       return !moved
     }, { timeout: 2000 })
