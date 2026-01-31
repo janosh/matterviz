@@ -582,6 +582,182 @@ impl Composition {
         self.reduced_composition().hash(&mut hasher);
         hasher.finish()
     }
+
+    // =========================================================================
+    // Oxidation State Methods
+    // =========================================================================
+
+    /// Guess charge-balanced oxidation state assignments for this composition.
+    ///
+    /// Returns possible oxidation state assignments sorted by ICSD probability.
+    /// The first result is the most likely assignment.
+    ///
+    /// # Arguments
+    ///
+    /// * `target_charge` - Desired total charge (default 0 for charge balance)
+    /// * `oxi_states_override` - Override oxidation states for specific elements
+    /// * `use_all_oxi_states` - If true, consider all known oxidation states (not just common/ICSD)
+    /// * `max_sites` - Maximum number of sites to enumerate (None = no limit)
+    ///
+    /// # Returns
+    ///
+    /// Vector of [`OxiStateGuess`] with oxidation states and probability scores.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ferrox::composition::Composition;
+    ///
+    /// let comp = Composition::from_formula("Fe2O3").unwrap();
+    /// let guesses = comp.oxi_state_guesses(0, None, false, None);
+    /// // Best guess should be Fe3+ and O2-
+    /// ```
+    pub fn oxi_state_guesses(
+        &self,
+        target_charge: i8,
+        oxi_states_override: Option<&std::collections::HashMap<Element, Vec<i8>>>,
+        use_all_oxi_states: bool,
+        max_sites: Option<usize>,
+    ) -> Vec<crate::oxidation::OxiStateGuess> {
+        // Collect unique elements and their amounts
+        let elem_comp = self.element_composition();
+        let elements: Vec<Element> = elem_comp.species.keys().map(|sp| sp.element).collect();
+        let amounts: Vec<f64> = elem_comp.species.values().copied().collect();
+
+        crate::oxidation::oxi_state_guesses(
+            &elements,
+            &amounts,
+            target_charge,
+            oxi_states_override,
+            use_all_oxi_states,
+            max_sites,
+        )
+    }
+
+    /// Return a new composition with oxidation states assigned from guessing.
+    ///
+    /// Uses `oxi_state_guesses()` to find the most likely oxidation state assignment,
+    /// then returns a new composition with those oxidation states applied.
+    ///
+    /// # Arguments
+    ///
+    /// * `target_charge` - Desired total charge (default 0 for charge balance)
+    /// * `oxi_states_override` - Override oxidation states for specific elements
+    /// * `use_all_oxi_states` - If true, consider all known oxidation states
+    /// * `max_sites` - Maximum number of sites to enumerate
+    ///
+    /// # Returns
+    ///
+    /// New composition with oxidation states, or `None` if no valid assignment found.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ferrox::composition::Composition;
+    ///
+    /// let comp = Composition::from_formula("NaCl").unwrap();
+    /// let charged = comp.add_charges_from_oxi_state_guesses(0, None, false, None);
+    /// // charged will have Na+ and Cl-
+    /// ```
+    pub fn add_charges_from_oxi_state_guesses(
+        &self,
+        target_charge: i8,
+        oxi_states_override: Option<&std::collections::HashMap<Element, Vec<i8>>>,
+        use_all_oxi_states: bool,
+        max_sites: Option<usize>,
+    ) -> Option<Self> {
+        let guesses = self.oxi_state_guesses(
+            target_charge,
+            oxi_states_override,
+            use_all_oxi_states,
+            max_sites,
+        );
+
+        let best = guesses.first()?;
+
+        // Create new composition with oxidation states
+        let mut new_species: IndexMap<Species, f64> = IndexMap::new();
+
+        for (sp, amt) in &self.species {
+            // Look up the oxidation state for this element
+            let oxi = best.oxidation_states.get(sp.element.symbol())?;
+            // Round to nearest integer for oxidation state
+            let oxi_state = oxi.round() as i8;
+            let new_sp = Species::new(sp.element, Some(oxi_state));
+            *new_species.entry(new_sp).or_insert(0.0) += amt;
+        }
+
+        Some(Self {
+            species: new_species,
+            allow_negative: self.allow_negative,
+        })
+    }
+
+    /// Remove oxidation states from all species in this composition.
+    ///
+    /// Returns a new composition where all species are neutral (no oxidation state).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ferrox::composition::Composition;
+    /// use ferrox::element::Element;
+    /// use ferrox::species::Species;
+    ///
+    /// let fe3 = Species::new(Element::Fe, Some(3));
+    /// let o2 = Species::new(Element::O, Some(-2));
+    /// let comp = Composition::new([(fe3, 2.0), (o2, 3.0)]);
+    /// let neutral = comp.remove_charges();
+    /// // neutral composition has neutral Fe and O
+    /// ```
+    pub fn remove_charges(&self) -> Self {
+        let new_species: IndexMap<Species, f64> = self
+            .species
+            .iter()
+            .map(|(sp, &amt)| (Species::neutral(sp.element), amt))
+            .fold(IndexMap::new(), |mut acc, (sp, amt)| {
+                *acc.entry(sp).or_insert(0.0) += amt;
+                acc
+            });
+
+        Self {
+            species: new_species,
+            allow_negative: self.allow_negative,
+        }
+    }
+
+    /// Get the total charge of this composition based on oxidation states.
+    ///
+    /// Returns `None` if any species lacks an oxidation state.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ferrox::composition::Composition;
+    /// use ferrox::element::Element;
+    /// use ferrox::species::Species;
+    ///
+    /// let na = Species::new(Element::Na, Some(1));
+    /// let cl = Species::new(Element::Cl, Some(-1));
+    /// let comp = Composition::new([(na, 1.0), (cl, 1.0)]);
+    /// assert_eq!(comp.charge(), Some(0));
+    /// ```
+    pub fn charge(&self) -> Option<i32> {
+        let mut total = 0i32;
+        for (sp, &amt) in &self.species {
+            let oxi = sp.oxidation_state?;
+            total += oxi as i32 * amt.round() as i32;
+        }
+        Some(total)
+    }
+
+    /// Check if this composition is charge balanced.
+    ///
+    /// Returns `true` if the total charge is zero, `false` otherwise.
+    /// Returns `None` if any species lacks an oxidation state.
+    pub fn is_charge_balanced(&self) -> Option<bool> {
+        self.charge().map(|c| c == 0)
+    }
 }
 
 // =============================================================================
@@ -1294,5 +1470,118 @@ mod tests {
         let parts: Vec<&str> = hill.split_whitespace().collect();
         assert_eq!(parts[0], "C32");
         assert_eq!(parts[1], "H102");
+    }
+
+    // =========================================================================
+    // Oxidation State Tests
+    // =========================================================================
+
+    #[test]
+    fn test_oxi_state_guesses() {
+        // NaCl: Na+ and Cl-
+        let nacl = Composition::from_formula("NaCl").unwrap();
+        let guesses = nacl.oxi_state_guesses(0, None, false, None);
+        assert!(!guesses.is_empty());
+        let best = &guesses[0];
+        assert!(
+            (best.oxidation_states.get("Na").unwrap() - 1.0).abs() < 0.01,
+            "Na should be +1"
+        );
+        assert!(
+            (best.oxidation_states.get("Cl").unwrap() - (-1.0)).abs() < 0.01,
+            "Cl should be -1"
+        );
+    }
+
+    #[test]
+    fn test_oxi_state_guesses_oxide() {
+        // Fe2O3: Fe3+ and O2-
+        let fe2o3 = Composition::from_formula("Fe2O3").unwrap();
+        let guesses = fe2o3.oxi_state_guesses(0, None, false, None);
+        assert!(!guesses.is_empty());
+        let best = &guesses[0];
+        assert!(
+            (best.oxidation_states.get("Fe").unwrap() - 3.0).abs() < 0.01,
+            "Fe should be +3"
+        );
+        assert!(
+            (best.oxidation_states.get("O").unwrap() - (-2.0)).abs() < 0.01,
+            "O should be -2"
+        );
+    }
+
+    #[test]
+    fn test_add_charges_from_oxi_state_guesses() {
+        let nacl = Composition::from_formula("NaCl").unwrap();
+        let charged = nacl.add_charges_from_oxi_state_guesses(0, None, false, None);
+
+        assert!(charged.is_some(), "Should find a valid assignment");
+        let charged = charged.unwrap();
+
+        // Check that species now have oxidation states
+        let na_sp = Species::new(Element::Na, Some(1));
+        let cl_sp = Species::new(Element::Cl, Some(-1));
+        assert_eq!(charged.get(na_sp), 1.0, "Should have Na+");
+        assert_eq!(charged.get(cl_sp), 1.0, "Should have Cl-");
+    }
+
+    #[test]
+    fn test_remove_charges() {
+        // Create composition with oxidation states
+        let na = Species::new(Element::Na, Some(1));
+        let cl = Species::new(Element::Cl, Some(-1));
+        let charged = Composition::new([(na, 1.0), (cl, 1.0)]);
+
+        // Remove charges
+        let neutral = charged.remove_charges();
+
+        // Should have neutral species now
+        let na_neutral = Species::neutral(Element::Na);
+        let cl_neutral = Species::neutral(Element::Cl);
+        assert_eq!(neutral.get(na_neutral), 1.0);
+        assert_eq!(neutral.get(cl_neutral), 1.0);
+
+        // Original charged species should not be found
+        assert_eq!(neutral.get(na), 0.0);
+        assert_eq!(neutral.get(cl), 0.0);
+    }
+
+    #[test]
+    fn test_charge() {
+        // Neutral composition should have None charge (no oxidation states)
+        let nacl = Composition::from_formula("NaCl").unwrap();
+        assert!(nacl.charge().is_none());
+
+        // Charged composition
+        let na = Species::new(Element::Na, Some(1));
+        let cl = Species::new(Element::Cl, Some(-1));
+        let charged = Composition::new([(na, 1.0), (cl, 1.0)]);
+        assert_eq!(charged.charge(), Some(0), "NaCl should be charge balanced");
+
+        // Unbalanced composition
+        let na2 = Composition::new([(na, 2.0), (cl, 1.0)]);
+        assert_eq!(na2.charge(), Some(1), "Na2Cl should have +1 charge");
+    }
+
+    #[test]
+    fn test_is_charge_balanced() {
+        let na = Species::new(Element::Na, Some(1));
+        let cl = Species::new(Element::Cl, Some(-1));
+        let o = Species::new(Element::O, Some(-2));
+
+        // Balanced
+        let nacl = Composition::new([(na, 1.0), (cl, 1.0)]);
+        assert_eq!(nacl.is_charge_balanced(), Some(true));
+
+        // Unbalanced
+        let na2o = Composition::new([(na, 2.0), (o, 1.0)]);
+        assert_eq!(na2o.is_charge_balanced(), Some(true), "Na2O is balanced");
+
+        let na_o = Composition::new([(na, 1.0), (o, 1.0)]);
+        assert_eq!(
+            na_o.is_charge_balanced(),
+            Some(false),
+            "NaO is not balanced"
+        );
     }
 }

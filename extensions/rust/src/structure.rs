@@ -390,6 +390,331 @@ impl Structure {
         Ok(spacegroup_to_crystal_system(self.get_symmetry_dataset(symprec)?.number).to_string())
     }
 
+    // =========================================================================
+    // Bond Valence Sum Methods
+    // =========================================================================
+
+    /// Compute bond valence sum for a single site.
+    ///
+    /// Uses O'Keeffe & Brese formula (JACS 1991) to calculate the bond valence
+    /// contribution from each neighbor bond.
+    ///
+    /// # Arguments
+    ///
+    /// * `site_idx` - Index of the site to calculate BVS for
+    /// * `max_radius` - Cutoff radius for neighbor search (Å)
+    /// * `scale_factor` - Distance scaling factor (default 1.015 for GGA, 1.0 for experimental)
+    ///
+    /// # Returns
+    ///
+    /// The bond valence sum, or an error if BV parameters are missing.
+    pub fn compute_bv_sum(
+        &self,
+        site_idx: usize,
+        max_radius: f64,
+        scale_factor: f64,
+    ) -> Result<f64> {
+        if site_idx >= self.num_sites() {
+            return Err(FerroxError::InvalidStructure {
+                index: site_idx,
+                reason: format!(
+                    "Site index {} out of bounds (num_sites={})",
+                    site_idx,
+                    self.num_sites()
+                ),
+            });
+        }
+
+        let site_occu = &self.site_occupancies[site_idx];
+        let site_element = site_occu.dominant_species().element;
+
+        // Get neighbors within cutoff
+        let (center_indices, neighbor_indices, _, distances) =
+            self.get_neighbor_list(max_radius, 1e-8, true);
+
+        // Build neighbor list for this site
+        let mut neighbors: Vec<crate::oxidation::BvNeighbor> = Vec::new();
+
+        for (idx, &center_idx) in center_indices.iter().enumerate() {
+            if center_idx == site_idx {
+                let neighbor_idx = neighbor_indices[idx];
+                let distance = distances[idx];
+                let neighbor_occu = &self.site_occupancies[neighbor_idx];
+
+                // Handle partial occupancies
+                for (sp, occ) in &neighbor_occu.species {
+                    neighbors.push(crate::oxidation::BvNeighbor {
+                        element: sp.element,
+                        distance,
+                        occupancy: *occ,
+                    });
+                }
+            }
+        }
+
+        crate::oxidation::calculate_bv_sum(site_element, &neighbors, scale_factor).ok_or_else(
+            || FerroxError::InvalidStructure {
+                index: site_idx,
+                reason: format!(
+                    "BV parameters not available for {} or its neighbors",
+                    site_element.symbol()
+                ),
+            },
+        )
+    }
+
+    /// Compute bond valence sums for all sites.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_radius` - Cutoff radius for neighbor search (Å, default 4.0)
+    /// * `scale_factor` - Distance scaling factor (default 1.015 for GGA, 1.0 for experimental)
+    ///
+    /// # Returns
+    ///
+    /// Vector of BV sums, one per site.
+    pub fn compute_all_bv_sums(&self, max_radius: f64, scale_factor: f64) -> Result<Vec<f64>> {
+        let mut bv_sums = Vec::with_capacity(self.num_sites());
+
+        // Get full neighbor list once (more efficient than per-site)
+        let (center_indices, neighbor_indices, _, distances) =
+            self.get_neighbor_list(max_radius, 1e-8, true);
+
+        // Group neighbors by center site
+        let mut site_neighbors: Vec<Vec<crate::oxidation::BvNeighbor>> =
+            vec![Vec::new(); self.num_sites()];
+
+        for (idx, &center_idx) in center_indices.iter().enumerate() {
+            let neighbor_idx = neighbor_indices[idx];
+            let distance = distances[idx];
+            let neighbor_occu = &self.site_occupancies[neighbor_idx];
+
+            for (sp, occ) in &neighbor_occu.species {
+                site_neighbors[center_idx].push(crate::oxidation::BvNeighbor {
+                    element: sp.element,
+                    distance,
+                    occupancy: *occ,
+                });
+            }
+        }
+
+        // Calculate BVS for each site
+        for (site_idx, neighbors) in site_neighbors.into_iter().enumerate() {
+            let site_element = self.site_occupancies[site_idx].dominant_species().element;
+            let bvs = crate::oxidation::calculate_bv_sum(site_element, &neighbors, scale_factor)
+                .ok_or_else(|| FerroxError::InvalidStructure {
+                    index: site_idx,
+                    reason: format!(
+                        "BV parameters not available for {} or its neighbors",
+                        site_element.symbol()
+                    ),
+                })?;
+            bv_sums.push(bvs);
+        }
+
+        Ok(bv_sums)
+    }
+
+    /// Guess oxidation states using bond valence sum analysis.
+    ///
+    /// This method uses a Maximum A Posteriori (MAP) estimation:
+    /// 1. Calculate BVS for each symmetrically unique site
+    /// 2. Calculate posterior probability for each oxidation state using ICSD priors
+    /// 3. Find charge-balanced assignment with highest probability
+    ///
+    /// # Arguments
+    ///
+    /// * `symprec` - Symmetry precision for identifying equivalent sites (default 0.1)
+    /// * `max_radius` - Cutoff radius for neighbor search (default 4.0 Å)
+    /// * `scale_factor` - Distance scaling factor (default 1.015 for GGA-relaxed)
+    ///
+    /// # Returns
+    ///
+    /// Vector of oxidation states, one per site.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let oxi_states = structure.guess_oxidation_states_bvs(0.1, 4.0, 1.015)?;
+    /// ```
+    pub fn guess_oxidation_states_bvs(
+        &self,
+        symprec: f64,
+        max_radius: f64,
+        scale_factor: f64,
+    ) -> Result<Vec<i8>> {
+        if self.num_sites() == 0 {
+            return Ok(vec![]);
+        }
+
+        // Get symmetry-equivalent sites to reduce computation
+        let orbits = self.get_equivalent_sites(symprec)?;
+
+        // Find unique orbit representatives
+        let mut unique_sites: Vec<usize> = Vec::new();
+        let mut seen_orbits: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        for (site_idx, &orbit) in orbits.iter().enumerate() {
+            if !seen_orbits.contains(&orbit) {
+                seen_orbits.insert(orbit);
+                unique_sites.push(site_idx);
+            }
+        }
+
+        // Calculate BVS for each unique site
+        let bv_sums = self.compute_all_bv_sums(max_radius, scale_factor)?;
+
+        // For each unique site, get oxidation state probabilities
+        let mut site_probs: Vec<Vec<(i8, f64)>> = Vec::new();
+        let mut site_multiplicities: Vec<usize> = Vec::new();
+
+        for &site_idx in &unique_sites {
+            let element = self.site_occupancies[site_idx].dominant_species().element;
+            let bvs = bv_sums[site_idx];
+            let probs = crate::oxidation::get_oxi_state_probabilities(element, bvs);
+
+            // Count how many sites share this orbit
+            let multiplicity = orbits.iter().filter(|&&o| o == orbits[site_idx]).count();
+
+            if probs.is_empty() {
+                // No valid oxidation states found - fall back to neutral
+                site_probs.push(vec![(0, 1.0)]);
+            } else {
+                // Filter to top candidates (prob > 1% of max)
+                let max_prob = probs.first().map(|(_, p)| *p).unwrap_or(0.0);
+                let filtered: Vec<_> = probs
+                    .into_iter()
+                    .filter(|(_, p)| *p > 0.01 * max_prob)
+                    .collect();
+                site_probs.push(filtered);
+            }
+            site_multiplicities.push(multiplicity);
+        }
+
+        // Find charge-balanced assignment
+        let result =
+            find_charge_balanced_assignment(&site_probs, &site_multiplicities, &unique_sites);
+
+        // Expand unique site assignments to all sites
+        let mut oxidation_states = vec![0i8; self.num_sites()];
+        if let Some(assignment) = result {
+            for (unique_idx, &site_idx) in unique_sites.iter().enumerate() {
+                let oxi = assignment[unique_idx];
+                // Assign to all sites with same orbit
+                let orbit = orbits[site_idx];
+                for (idx, &o) in orbits.iter().enumerate() {
+                    if o == orbit {
+                        oxidation_states[idx] = oxi;
+                    }
+                }
+            }
+        }
+
+        Ok(oxidation_states)
+    }
+
+    /// Add oxidation states to all sites based on element-wise mapping.
+    ///
+    /// # Arguments
+    ///
+    /// * `oxi_states` - Map from element symbol to oxidation state
+    ///
+    /// # Returns
+    ///
+    /// New structure with oxidation states applied.
+    pub fn add_oxidation_state_by_element(
+        &self,
+        oxi_states: &std::collections::HashMap<String, i8>,
+    ) -> Self {
+        let new_site_occupancies: Vec<SiteOccupancy> = self
+            .site_occupancies
+            .iter()
+            .map(|so| {
+                let new_species: Vec<(Species, f64)> = so
+                    .species
+                    .iter()
+                    .map(|(sp, occ)| {
+                        let oxi = oxi_states.get(sp.element.symbol()).copied();
+                        (Species::new(sp.element, oxi), *occ)
+                    })
+                    .collect();
+                SiteOccupancy::new(new_species)
+            })
+            .collect();
+
+        Self {
+            lattice: self.lattice.clone(),
+            site_occupancies: new_site_occupancies,
+            frac_coords: self.frac_coords.clone(),
+            properties: self.properties.clone(),
+        }
+    }
+
+    /// Add oxidation states by site index.
+    ///
+    /// # Arguments
+    ///
+    /// * `oxi_states` - Oxidation state for each site
+    ///
+    /// # Returns
+    ///
+    /// New structure with oxidation states applied.
+    pub fn add_oxidation_state_by_site(&self, oxi_states: &[i8]) -> Result<Self> {
+        if oxi_states.len() != self.num_sites() {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "oxidation_states length ({}) must match num_sites ({})",
+                    oxi_states.len(),
+                    self.num_sites()
+                ),
+            });
+        }
+
+        let new_site_occupancies: Vec<SiteOccupancy> = self
+            .site_occupancies
+            .iter()
+            .zip(oxi_states)
+            .map(|(so, &oxi)| {
+                let new_species: Vec<(Species, f64)> = so
+                    .species
+                    .iter()
+                    .map(|(sp, occ)| (Species::new(sp.element, Some(oxi)), *occ))
+                    .collect();
+                SiteOccupancy::new(new_species)
+            })
+            .collect();
+
+        Ok(Self {
+            lattice: self.lattice.clone(),
+            site_occupancies: new_site_occupancies,
+            frac_coords: self.frac_coords.clone(),
+            properties: self.properties.clone(),
+        })
+    }
+
+    /// Remove oxidation states from all sites.
+    pub fn remove_oxidation_states(&self) -> Self {
+        let new_site_occupancies: Vec<SiteOccupancy> = self
+            .site_occupancies
+            .iter()
+            .map(|so| {
+                let new_species: Vec<(Species, f64)> = so
+                    .species
+                    .iter()
+                    .map(|(sp, occ)| (Species::neutral(sp.element), *occ))
+                    .collect();
+                SiteOccupancy::new(new_species)
+            })
+            .collect();
+
+        Self {
+            lattice: self.lattice.clone(),
+            site_occupancies: new_site_occupancies,
+            frac_coords: self.frac_coords.clone(),
+            properties: self.properties.clone(),
+        }
+    }
+
     /// Get unique elements in this structure.
     pub fn unique_elements(&self) -> Vec<Element> {
         self.site_occupancies
@@ -2464,6 +2789,121 @@ impl Structure {
 
         Ok(result)
     }
+}
+
+// =============================================================================
+// BVS Helper Functions
+// =============================================================================
+
+/// Find charge-balanced oxidation state assignment using recursive search.
+///
+/// Recursively enumerates combinations of oxidation states for each unique site,
+/// pruning branches that cannot achieve charge balance.
+///
+/// # Arguments
+///
+/// * `site_probs` - Oxidation state probabilities for each unique site
+/// * `multiplicities` - Number of sites in each symmetry-equivalent group
+/// * `unique_sites` - Indices of unique site representatives
+///
+/// # Returns
+///
+/// Best charge-balanced assignment, or None if none found.
+fn find_charge_balanced_assignment(
+    site_probs: &[Vec<(i8, f64)>],
+    multiplicities: &[usize],
+    _unique_sites: &[usize],
+) -> Option<Vec<i8>> {
+    let max_permutations = 100_000usize;
+    let mut permutation_count = 0usize;
+    let mut best_score: f64 = 0.0;
+    let mut best_assignment: Option<Vec<i8>> = None;
+
+    #[allow(clippy::too_many_arguments)]
+    fn recurse(
+        site_probs: &[Vec<(i8, f64)>],
+        multiplicities: &[usize],
+        current_idx: usize,
+        current_charge: i32,
+        current_assignment: &mut Vec<i8>,
+        current_score: f64,
+        best_score: &mut f64,
+        best_assignment: &mut Option<Vec<i8>>,
+        permutation_count: &mut usize,
+        max_permutations: usize,
+    ) {
+        if *permutation_count >= max_permutations {
+            return;
+        }
+
+        if current_idx == site_probs.len() {
+            *permutation_count += 1;
+            // Check charge balance
+            if current_charge == 0 && current_score > *best_score {
+                *best_score = current_score;
+                *best_assignment = Some(current_assignment.clone());
+            }
+            return;
+        }
+
+        // Compute bounds for remaining sites
+        // Note: site_probs is sorted by probability, not by oxidation state value,
+        // so we must iterate to find actual min/max oxidation states
+        let mut min_remaining = 0i32;
+        let mut max_remaining = 0i32;
+        for idx in (current_idx + 1)..site_probs.len() {
+            let mult = multiplicities[idx] as i32;
+            if !site_probs[idx].is_empty() {
+                let (min_oxi, max_oxi) = site_probs[idx]
+                    .iter()
+                    .fold((i8::MAX, i8::MIN), |(min, max), &(oxi, _)| {
+                        (min.min(oxi), max.max(oxi))
+                    });
+                min_remaining += min_oxi as i32 * mult;
+                max_remaining += max_oxi as i32 * mult;
+            }
+        }
+
+        for &(oxi, prob) in &site_probs[current_idx] {
+            let new_charge = current_charge + oxi as i32 * multiplicities[current_idx] as i32;
+
+            // Prune if charge balance is unreachable
+            if new_charge + min_remaining > 0 || new_charge + max_remaining < 0 {
+                continue;
+            }
+
+            current_assignment.push(oxi);
+            recurse(
+                site_probs,
+                multiplicities,
+                current_idx + 1,
+                new_charge,
+                current_assignment,
+                current_score * prob,
+                best_score,
+                best_assignment,
+                permutation_count,
+                max_permutations,
+            );
+            current_assignment.pop();
+        }
+    }
+
+    let mut current_assignment = Vec::new();
+    recurse(
+        site_probs,
+        multiplicities,
+        0,
+        0,
+        &mut current_assignment,
+        1.0,
+        &mut best_score,
+        &mut best_assignment,
+        &mut permutation_count,
+        max_permutations,
+    );
+
+    best_assignment
 }
 
 // =============================================================================
