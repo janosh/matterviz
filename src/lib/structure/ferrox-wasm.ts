@@ -10,6 +10,8 @@ import type {
   ReductionAlgorithm,
   StructureFormat,
   WasmResult,
+  XrdOptions,
+  XrdPattern,
 } from './ferrox-wasm-types'
 import { is_ok } from './ferrox-wasm-types'
 
@@ -106,6 +108,10 @@ interface FerroxWasmModule {
   // Element info
   get_atomic_mass: (symbol: string) => WasmResult<number>
   get_electronegativity: (symbol: string) => WasmResult<number>
+  // XRD calculation
+  compute_xrd: (structure: unknown, options?: XrdOptions) => WasmResult<XrdPattern>
+  // Atomic scattering params (SSOT shared with Rust/Python)
+  get_atomic_scattering_params: () => string
 }
 
 // Lazy Initialization
@@ -455,4 +461,20 @@ export async function get_electronegativity(
 ): Promise<WasmResult<number>> {
   const mod = await ensure_ferrox_wasm_ready()
   return mod.get_electronegativity(symbol)
+}
+
+// XRD calculation using Rust WASM
+export async function compute_xrd_wasm(
+  structure: Crystal,
+  options?: XrdOptions,
+): Promise<WasmResult<XrdPattern>> {
+  const mod = await ensure_ferrox_wasm_ready()
+  return mod.compute_xrd(structure, options)
+}
+
+// Get atomic scattering params (SSOT shared with Rust/Python)
+// Returns the raw JSON string of Cromer-Mann coefficients
+export async function get_atomic_scattering_params_wasm(): Promise<string> {
+  const mod = await ensure_ferrox_wasm_ready()
+  return mod.get_atomic_scattering_params()
 }

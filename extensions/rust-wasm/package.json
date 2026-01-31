@@ -10,16 +10,18 @@
       "types": "./types.d.ts",
       "import": "./index.js"
     },
-    "./ferrox_bg.wasm": "./pkg/ferrox_bg.wasm"
+    "./ferrox_bg.wasm": "./pkg/ferrox_bg.wasm",
+    "./atomic_scattering_params.json": "./data/atomic_scattering_params.json"
   },
   "files": [
     "index.js",
     "types.d.ts",
-    "pkg/"
+    "pkg/",
+    "data/"
   ],
   "scripts": {
-    "build": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg .",
-    "build:dev": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features --dev && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg .",
+    "build": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg . && mkdir -p data && cp ../rust/src/atomic_scattering_params.json data/",
+    "build:dev": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features --dev && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg . && mkdir -p data && cp ../rust/src/atomic_scattering_params.json data/",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -37,7 +39,7 @@
     "structure-matching",
     "materials-science"
   ],
-  "author": "Janosh Riebesell <janosh@lbl.gov>",
+  "author": "Janosh Riebesell <janosh.riebesell@gmail.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/janosh/matterviz/issues"
