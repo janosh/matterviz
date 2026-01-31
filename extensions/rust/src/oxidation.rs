@@ -692,19 +692,29 @@ mod tests {
 
     #[test]
     fn test_species_key() {
-        assert_eq!(species_key(Element::Fe, 3), "Fe:3");
-        assert_eq!(species_key(Element::O, -2), "O:-2");
-        assert_eq!(species_key(Element::Na, 1), "Na:1");
+        for (elem, oxi, expected) in [
+            (Element::Fe, 3, "Fe:3"),
+            (Element::O, -2, "O:-2"),
+            (Element::Na, 1, "Na:1"),
+        ] {
+            assert_eq!(species_key(elem, oxi), expected);
+        }
     }
 
     #[test]
     fn test_is_electronegative() {
-        assert!(is_electronegative(Element::O));
-        assert!(is_electronegative(Element::F));
-        assert!(is_electronegative(Element::Cl));
-        assert!(!is_electronegative(Element::Na));
-        assert!(!is_electronegative(Element::Fe));
-        assert!(!is_electronegative(Element::Ca));
+        for elem in [Element::O, Element::F, Element::Cl] {
+            assert!(
+                is_electronegative(elem),
+                "{elem:?} should be electronegative"
+            );
+        }
+        for elem in [Element::Na, Element::Fe, Element::Ca] {
+            assert!(
+                !is_electronegative(elem),
+                "{elem:?} should NOT be electronegative"
+            );
+        }
     }
 
     #[test]
@@ -748,74 +758,56 @@ mod tests {
 
     #[test]
     fn test_get_oxi_probability() {
-        // Fe3+ should have high probability
-        let fe3_prob = get_oxi_probability(Element::Fe, 3);
-        assert!(fe3_prob.is_some());
-        assert!(fe3_prob.unwrap() > 0);
-
-        // O2- should be very common
-        let o2_prob = get_oxi_probability(Element::O, -2);
-        assert!(o2_prob.is_some());
-        assert!(o2_prob.unwrap() > 10000);
-
-        // Unlikely oxidation state should be rare or missing
-        let fe10 = get_oxi_probability(Element::Fe, 10);
-        assert!(fe10.is_none() || fe10.unwrap() == 0);
+        // Common oxidation states should have high probability
+        assert!(
+            get_oxi_probability(Element::Fe, 3).unwrap() > 0,
+            "Fe3+ common"
+        );
+        assert!(
+            get_oxi_probability(Element::O, -2).unwrap() > 10000,
+            "O2- very common"
+        );
+        // Unlikely oxidation state should be missing
+        assert!(
+            get_oxi_probability(Element::Fe, 10).is_none(),
+            "Fe10+ doesn't exist"
+        );
     }
 
-    #[test]
-    fn test_oxi_state_guesses_simple() {
-        // NaCl: should guess Na+ and Cl-
-        let elements = vec![Element::Na, Element::Cl];
-        let amounts = vec![1.0, 1.0];
-
-        let guesses = oxi_state_guesses(&elements, &amounts, 0, None, false, None);
-
-        assert!(!guesses.is_empty(), "Should find at least one solution");
+    // Helper to verify oxidation state guesses
+    fn check_oxi_guess(
+        name: &str,
+        elements: &[Element],
+        amounts: &[f64],
+        expected: &[(&str, f64)],
+    ) {
+        let guesses = oxi_state_guesses(elements, amounts, 0, None, false, None);
+        assert!(!guesses.is_empty(), "{name}: should find solution");
         let best = &guesses[0];
-        assert!(
-            (best.oxidation_states.get("Na").unwrap() - 1.0).abs() < 0.01,
-            "Na should be +1"
-        );
-        assert!(
-            (best.oxidation_states.get("Cl").unwrap() - (-1.0)).abs() < 0.01,
-            "Cl should be -1"
-        );
+        for (elem, oxi) in expected {
+            let actual = *best.oxidation_states.get(*elem).unwrap();
+            assert!(
+                (actual - oxi).abs() < 0.01,
+                "{name}: {elem} should be {oxi:+}, got {actual:+}"
+            );
+        }
     }
 
     #[test]
-    fn test_oxi_state_guesses_binary_oxide() {
-        // Fe2O3: should guess Fe3+ and O2-
-        let elements = vec![Element::Fe, Element::O];
-        let amounts = vec![2.0, 3.0];
-
-        let guesses = oxi_state_guesses(&elements, &amounts, 0, None, false, None);
-
-        assert!(!guesses.is_empty(), "Should find at least one solution");
-        let best = &guesses[0];
-        assert!(
-            (best.oxidation_states.get("Fe").unwrap() - 3.0).abs() < 0.01,
-            "Fe should be +3"
+    fn test_oxi_state_guesses_common_compounds() {
+        check_oxi_guess(
+            "NaCl",
+            &[Element::Na, Element::Cl],
+            &[1.0, 1.0],
+            &[("Na", 1.0), ("Cl", -1.0)],
         );
-        assert!(
-            (best.oxidation_states.get("O").unwrap() - (-2.0)).abs() < 0.01,
-            "O should be -2"
+        check_oxi_guess(
+            "Fe2O3",
+            &[Element::Fe, Element::O],
+            &[2.0, 3.0],
+            &[("Fe", 3.0), ("O", -2.0)],
         );
-    }
-
-    #[test]
-    fn test_oxi_state_guesses_single_element() {
-        // Single element should return oxidation state 0
-        let elements = vec![Element::Fe];
-        let amounts = vec![2.0];
-
-        let guesses = oxi_state_guesses(&elements, &amounts, 0, None, false, None);
-
-        assert_eq!(guesses.len(), 1);
-        assert!(
-            (guesses[0].oxidation_states.get("Fe").unwrap() - 0.0).abs() < 0.01,
-            "Single element should be 0"
-        );
+        check_oxi_guess("Fe (single)", &[Element::Fe], &[2.0], &[("Fe", 0.0)]);
     }
 
     #[test]
@@ -857,22 +849,18 @@ mod tests {
 
     #[test]
     fn test_combinations_with_replacement() {
-        let items = vec![1, 2];
-        let combos = combinations_with_replacement(&items, 2);
-
-        // Should have 4 combinations: [1,1], [1,2], [2,1], [2,2]
-        assert_eq!(combos.len(), 4);
+        // [1,2] choose 2 with replacement: [1,1], [1,2], [2,1], [2,2]
+        assert_eq!(combinations_with_replacement(&[1, 2], 2).len(), 4);
     }
 
     #[test]
     fn test_get_candidate_oxi_states() {
-        // Fe should have ICSD states
         let fe_states = get_candidate_oxi_states(Element::Fe, false);
-        assert!(!fe_states.is_empty());
-        assert!(fe_states.contains(&3), "Fe should have +3");
-        assert!(fe_states.contains(&2), "Fe should have +2");
+        assert!(
+            fe_states.contains(&3) && fe_states.contains(&2),
+            "Fe should have +2/+3"
+        );
 
-        // O should have -2
         let o_states = get_candidate_oxi_states(Element::O, false);
         assert!(o_states.contains(&-2), "O should have -2");
     }
