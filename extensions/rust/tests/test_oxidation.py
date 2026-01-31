@@ -59,7 +59,7 @@ class TestOxiStateGuesses:
         # Pymatgen returns list of dicts with Element keys, convert to string keys
         pymatgen_best = {str(k): v for k, v in pymatgen_guesses[0].items()}
 
-        for elem in ["Li", "P", "O"]:
+        for elem in ["Li", "Fe", "P", "O"]:
             pymatgen_val = pymatgen_best.get(elem, 0)
             ferrox_val = ferrox_best.get(elem, 0)
             assert np.isclose(ferrox_val, pymatgen_val, atol=0.1), (
@@ -112,7 +112,8 @@ class TestBvSums:
         bv_sums_2 = ferrox.compute_bv_sums(nacl_structure, scale_factor=1.015)
         # Different scale factors should give different results
         assert not all(
-            np.isclose(a, b, atol=0.001) for a, b in zip(bv_sums_1, bv_sums_2)
+            np.isclose(a, b, atol=0.001)
+            for a, b in zip(bv_sums_1, bv_sums_2, strict=True)
         ), "Scale factor should affect BV sums"
 
 
