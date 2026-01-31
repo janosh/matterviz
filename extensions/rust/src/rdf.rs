@@ -110,7 +110,16 @@ fn prepare_structure(structure: &Structure, options: &RdfOptions) -> Structure {
     }
     let lengths = structure.lattice.lengths();
     let min_size = options.r_max * options.expansion_factor;
-    let ns: [i32; 3] = std::array::from_fn(|idx| (min_size / lengths[idx]).ceil() as i32);
+    // Clamp supercell size to avoid overflow and unreasonably large expansions
+    const MAX_SUPERCELL: i32 = 100;
+    let ns: [i32; 3] = std::array::from_fn(|idx| {
+        let n = (min_size / lengths[idx]).ceil();
+        if n.is_finite() && n <= MAX_SUPERCELL as f64 {
+            n as i32
+        } else {
+            MAX_SUPERCELL
+        }
+    });
 
     if ns.iter().any(|&n| n > 1) {
         structure.make_supercell_diag(ns)
@@ -128,6 +137,15 @@ fn compute_rdf_internal(
 ) -> RdfResult {
     let n_bins = options.n_bins;
     let r_max = options.r_max;
+
+    // Guard against n_bins=0 or invalid r_max
+    if n_bins == 0 || r_max <= 0.0 {
+        return RdfResult {
+            radii: vec![],
+            g_of_r: vec![],
+        };
+    }
+
     let bin_size = r_max / n_bins as f64;
 
     // Bin centers
@@ -365,9 +383,9 @@ mod tests {
         g_of_r
             .iter()
             .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(idx, _)| idx)
-            .unwrap()
+            .expect("find_peak_idx found no valid maximum")
     }
 
     fn rdf_opts(r_max: f64, n_bins: usize) -> RdfOptions {
