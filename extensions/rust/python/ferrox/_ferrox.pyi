@@ -7,8 +7,8 @@ implemented in Rust with Python bindings via PyO3.
 from typing import Any, Literal
 
 # Type aliases for better readability
-StructureJson = str  # JSON string from pymatgen Structure.as_dict()
 StructureDict = dict[str, Any]  # pymatgen-compatible structure dict
+StructureJson = str | StructureDict  # JSON string or dict (both accepted by Rust)
 Matrix3x3 = list[list[float]]  # 3x3 matrix as nested list
 IntMatrix3x3 = list[list[int]]  # 3x3 integer matrix
 Vector3 = list[float]  # 3-element vector [x, y, z]
@@ -24,7 +24,7 @@ class StructureMatcher:
     Compares crystal structures accounting for lattice transformations,
     periodic boundary conditions, and optional volume scaling.
 
-    Accepts structures as JSON strings (from pymatgen's Structure.as_dict()).
+    Accepts structures as JSON strings or dicts (from pymatgen's Structure.as_dict()).
 
     Attributes:
         latt_len_tol: Fractional length tolerance for lattice vectors.
@@ -177,9 +177,7 @@ class StructureMatcher:
         ...
     def __repr__(self) -> str: ...
 
-# =============================================================================
-# I/O Functions - Reading
-# =============================================================================
+# === I/O Functions - Reading ===
 
 def parse_structure_file(path: str) -> StructureDict:
     """Parse a structure file (auto-detects format from extension).
@@ -205,9 +203,7 @@ def parse_trajectory(path: str) -> list[StructureDict]:
     """
     ...
 
-# =============================================================================
-# I/O Functions - Writing
-# =============================================================================
+# === I/O Functions - Writing ===
 
 def write_structure_file(structure: StructureJson, path: str) -> None:
     """Write a structure to a file with automatic format detection.
@@ -266,9 +262,7 @@ def to_pymatgen_json(structure: StructureJson) -> str:
     """
     ...
 
-# =============================================================================
-# Supercell Functions
-# =============================================================================
+# === Supercell Functions ===
 
 def make_supercell(
     structure: StructureJson, scaling_matrix: tuple[tuple[int, int, int], ...]
@@ -301,9 +295,7 @@ def make_supercell_diag(
     """
     ...
 
-# =============================================================================
-# Lattice Reduction Functions
-# =============================================================================
+# === Lattice Reduction Functions ===
 
 def get_reduced_structure(
     structure: StructureJson, algo: Literal["niggli", "lll"]
@@ -341,9 +333,7 @@ def get_reduced_structure_with_params(
     """
     ...
 
-# =============================================================================
-# Neighbor Finding and Distance Functions
-# =============================================================================
+# === Neighbor Finding and Distance Functions ===
 
 def get_neighbor_list(
     structure: StructureJson,
@@ -461,9 +451,7 @@ def is_periodic_image(
     """
     ...
 
-# =============================================================================
-# Site Label and Species Functions
-# =============================================================================
+# === Site Label and Species Functions ===
 
 def site_label(structure: StructureJson, idx: int) -> str:
     """Get label for a specific site.
@@ -503,9 +491,7 @@ def species_strings(structure: StructureJson) -> list[str]:
     """
     ...
 
-# =============================================================================
-# Interpolation Functions
-# =============================================================================
+# === Interpolation Functions ===
 
 def interpolate(
     struct1: StructureJson,
@@ -531,9 +517,7 @@ def interpolate(
     """
     ...
 
-# =============================================================================
-# Matching Convenience Functions
-# =============================================================================
+# === Matching Convenience Functions ===
 
 def matches(
     struct1: StructureJson, struct2: StructureJson, anonymous: bool = False
@@ -550,9 +534,7 @@ def matches(
     """
     ...
 
-# =============================================================================
-# Sorting Functions
-# =============================================================================
+# === Sorting Functions ===
 
 def get_sorted_structure(
     structure: StructureJson, reverse: bool = False
@@ -582,9 +564,7 @@ def get_sorted_by_electronegativity(
     """
     ...
 
-# =============================================================================
-# Copy/Sanitization Functions
-# =============================================================================
+# === Copy/Sanitization Functions ===
 
 def copy_structure(
     structure: StructureJson, sanitize: bool = False
@@ -616,9 +596,7 @@ def wrap_to_unit_cell(structure: StructureJson) -> StructureDict:
     """
     ...
 
-# =============================================================================
-# Symmetry Operation Functions
-# =============================================================================
+# === Symmetry Operation Functions ===
 
 def apply_operation(
     structure: StructureJson,
@@ -672,9 +650,7 @@ def apply_translation(
     """
     ...
 
-# =============================================================================
-# Structure Property Functions
-# =============================================================================
+# === Structure Property Functions ===
 
 def get_volume(structure: StructureJson) -> float:
     """Get the volume of the unit cell in Angstrom³.
@@ -731,9 +707,7 @@ def get_structure_metadata(
     """
     ...
 
-# =============================================================================
-# Symmetry Analysis Functions
-# =============================================================================
+# === Symmetry Analysis Functions ===
 
 def get_spacegroup_number(structure: StructureJson, symprec: float = 0.01) -> int:
     """Get the spacegroup number of a structure.
@@ -885,9 +859,7 @@ def get_symmetry_dataset(
     """
     ...
 
-# =============================================================================
-# Site Manipulation Functions
-# =============================================================================
+# === Site Manipulation Functions ===
 
 def translate_sites(
     structure: StructureJson,
@@ -930,9 +902,7 @@ def perturb(
     """
     ...
 
-# =============================================================================
-# Normalization and Site Property Functions
-# =============================================================================
+# === Normalization and Site Property Functions ===
 
 def normalize_element_symbol(symbol: str) -> dict[str, Any]:
     """Normalize an element symbol string.
@@ -987,9 +957,7 @@ def set_site_property(
     """
     ...
 
-# =============================================================================
-# Composition Functions
-# =============================================================================
+# === Composition Functions ===
 
 def parse_composition(formula: str) -> dict[str, Any]:
     """Parse a chemical formula and return composition data.
@@ -1005,9 +973,7 @@ def parse_composition(formula: str) -> dict[str, Any]:
     """
     ...
 
-# =============================================================================
-# Slab Functions
-# =============================================================================
+# === Slab Functions ===
 
 def make_slab(
     structure: StructureJson,
@@ -1061,9 +1027,7 @@ def generate_slabs(
     """
     ...
 
-# =============================================================================
-# Transformation Functions
-# =============================================================================
+# === Transformation Functions ===
 
 def to_primitive(structure: StructureJson, symprec: float = 0.01) -> StructureDict:
     """Get the primitive cell of a structure.
@@ -1201,9 +1165,7 @@ def enumerate_derivatives(
     """
     ...
 
-# =============================================================================
-# Coordination Analysis Functions
-# =============================================================================
+# === Coordination Analysis Functions ===
 
 def get_coordination_numbers(structure: StructureJson, cutoff: float) -> list[int]:
     """Get coordination numbers for all sites using a distance cutoff.

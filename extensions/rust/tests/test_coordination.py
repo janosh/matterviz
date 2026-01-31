@@ -11,8 +11,22 @@ try:
 except ImportError:
     pytest.skip("ferrox not installed", allow_module_level=True)
 
-# Import helpers and fixtures from conftest.py
-from conftest import make_structure, site
+# Helpers (fixtures auto-discovered from conftest.py)
+
+
+def make_structure(lattice_a: float, sites: list[dict]) -> str:
+    """Create structure JSON with cubic lattice."""
+    return json.dumps({
+        "@module": "pymatgen.core.structure",
+        "@class": "Structure",
+        "lattice": {"matrix": [[lattice_a, 0, 0], [0, lattice_a, 0], [0, 0, lattice_a]]},
+        "sites": sites,
+    })
+
+
+def site(element: str, abc: list[float]) -> dict:
+    """Create a site dict."""
+    return {"species": [{"element": element, "occu": 1}], "abc": abc}
 
 
 class TestCutoffCoordination:

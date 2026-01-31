@@ -1,12 +1,8 @@
-//! TypeScript-compatible types for WASM bindings.
-//!
-//! These types use `tsify` to auto-generate precise TypeScript definitions.
+//! TypeScript-compatible types for WASM bindings using `tsify`.
 //! All types match pymatgen's JSON structure for interoperability.
 
 use serde::{Deserialize, Serialize};
 use tsify_next::Tsify;
-
-// === Result Types ===
 
 /// Result wrapper that serializes to `{ ok: T }` on success or `{ error: string }` on failure.
 /// TypeScript: `WasmResult<T> = { ok: T } | { error: string }`

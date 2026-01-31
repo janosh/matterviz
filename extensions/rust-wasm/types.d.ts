@@ -1,11 +1,8 @@
-// Type augmentation for @matterviz/wasm
-// Auto-generated types in pkg/ferrox.d.ts provide input types,
-// this file provides return type information
+// Type augmentation for @matterviz/wasm - return type declarations
+// Auto-generated pkg/ferrox.d.ts provides input types; this adds return types
 
-// Re-export all types from auto-generated file
 export * from './pkg/ferrox.d.ts'
 
-// Import types for augmentation
 import type {
   JsCrystal,
   JsLocalEnvironment,
@@ -17,11 +14,6 @@ import type {
   JsSymmetryOperation,
   WasmResult,
 } from './pkg/ferrox.d.ts'
-
-// =============================================================================
-// Function Return Type Declarations
-// These augment the auto-generated types with precise return types
-// =============================================================================
 
 // Structure parsing
 export function parse_cif(content: string): WasmResult<JsCrystal>
