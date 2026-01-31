@@ -8,9 +8,9 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use ferrox::element::Element;
 use ferrox::lattice::Lattice;
-use ferrox::matcher::StructureMatcher;
 use ferrox::species::Species;
 use ferrox::structure::Structure;
+use ferrox::structure_matcher::StructureMatcher;
 use nalgebra::Vector3;
 use std::hint::black_box;
 

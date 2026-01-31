@@ -954,7 +954,7 @@ impl Structure {
     /// assert!(nacl.matches(&mgo, true));
     /// ```
     pub fn matches(&self, other: &Structure, anonymous: bool) -> bool {
-        let matcher = crate::matcher::StructureMatcher::new();
+        let matcher = crate::structure_matcher::StructureMatcher::new();
         self.matches_with(other, &matcher, anonymous)
     }
 
@@ -972,7 +972,7 @@ impl Structure {
     pub fn matches_with(
         &self,
         other: &Structure,
-        matcher: &crate::matcher::StructureMatcher,
+        matcher: &crate::structure_matcher::StructureMatcher,
         anonymous: bool,
     ) -> bool {
         if anonymous {
