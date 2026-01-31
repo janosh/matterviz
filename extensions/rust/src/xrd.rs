@@ -506,12 +506,10 @@ pub fn compute_xrd(structure: &Structure, config: &XrdConfig) -> XrdPattern {
     }
 
     // Scale intensities if requested
-    if config.scaled && !result_intensities.is_empty() {
-        let max_y = result_intensities.iter().copied().reduce(f64::max).unwrap();
-        if max_y > 0.0 {
-            for intensity in &mut result_intensities {
-                *intensity = (*intensity / max_y) * 100.0;
-            }
+    // Use max_intensity (same reference as filtering) for consistency
+    if config.scaled && !result_intensities.is_empty() && max_intensity > 0.0 {
+        for intensity in &mut result_intensities {
+            *intensity = (*intensity / max_intensity) * 100.0;
         }
     }
 
