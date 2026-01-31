@@ -501,17 +501,20 @@ pub fn oxi_state_guesses(
         for combo in combinations_with_replacement(oxis, count) {
             let sum: i32 = combo.iter().map(|&o| o as i32).sum();
 
-            // Calculate score based on ICSD probability
+            // Calculate log-probability score (sum of logs = log of product)
+            // Using log-space for numerical stability with large ICSD counts
             let score: f64 = combo
                 .iter()
                 .filter_map(|&o| {
                     let key = species_key(el, o);
-                    icsd_prob.get(&key).map(|&p| p as f64)
+                    icsd_prob.get(&key).map(|&p| (p as f64).ln())
                 })
                 .sum();
 
-            // Keep the best-scoring combination for each sum
-            let entry = sum_map.entry(sum).or_insert((0.0, combo.clone()));
+            // Keep the best-scoring combination for each sum (higher log-prob = better)
+            let entry = sum_map
+                .entry(sum)
+                .or_insert((f64::NEG_INFINITY, combo.clone()));
             if score > entry.0 {
                 *entry = (score, combo);
             }
@@ -551,10 +554,12 @@ pub fn oxi_state_guesses(
                         combo.iter().map(|&o| o as f64).sum::<f64>() / int_amounts[idx] as f64;
                     oxi_states.insert(el.symbol().to_string(), avg);
                 }
-                let total_score: f64 = current_scores.iter().sum();
+                // Sum log-probabilities (equivalent to multiplying probabilities)
+                // Convert back to probability space for output (exp of log-prob)
+                let log_prob: f64 = current_scores.iter().sum();
                 solutions.push(OxiStateGuess {
                     oxidation_states: oxi_states,
-                    probability: total_score,
+                    probability: log_prob.exp(),
                 });
             }
             *permutation_count += 1;
