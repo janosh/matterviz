@@ -385,9 +385,13 @@ pub fn get_candidate_oxi_states(element: Element, use_all: bool) -> Vec<i8> {
 /// to prevent OOM from materializing huge vectors before pruning.
 fn combinations_with_replacement(items: &[i8], count: usize) -> Vec<Vec<i8>> {
     // Guard against k^n blow-ups (overflow or exceeding cap returns early)
+    // First check count fits in u32 to avoid truncation in checked_pow
+    let Ok(count_u32) = u32::try_from(count) else {
+        return vec![]; // count > u32::MAX, way too large
+    };
     if items
         .len()
-        .checked_pow(count as u32)
+        .checked_pow(count_u32)
         .is_none_or(|n| n > MAX_PERMUTATIONS)
     {
         return vec![];
@@ -656,16 +660,92 @@ pub fn oxi_state_guesses(
     solutions
 }
 
-/// Helper: compute GCD of two integers.
 fn gcd_i32(mut a: i32, mut b: i32) -> i32 {
     a = a.abs();
     b = b.abs();
     while b != 0 {
-        let temp = b;
-        b = a % b;
-        a = temp;
+        (a, b) = (b, a % b);
     }
     a
+}
+
+/// Find charge-balanced oxidation state assignment using recursive search with pruning.
+/// Returns the highest log-probability assignment, or None if none found.
+pub fn find_charge_balanced_assignment(
+    site_probs: &[Vec<(i8, f64)>],
+    multiplicities: &[usize],
+) -> Option<Vec<i8>> {
+    let mut best = (f64::NEG_INFINITY, None);
+    let mut count = 0usize;
+
+    #[allow(clippy::too_many_arguments)]
+    fn recurse(
+        site_probs: &[Vec<(i8, f64)>],
+        mults: &[usize],
+        idx: usize,
+        charge: i32,
+        assignment: &mut Vec<i8>,
+        log_score: f64,
+        best: &mut (f64, Option<Vec<i8>>),
+        count: &mut usize,
+    ) {
+        if *count >= MAX_PERMUTATIONS {
+            return;
+        }
+        if idx == site_probs.len() {
+            *count += 1;
+            if charge == 0 && log_score > best.0 {
+                *best = (log_score, Some(assignment.clone()));
+            }
+            return;
+        }
+        // Compute reachable charge bounds for remaining sites
+        let (min_rem, max_rem) = site_probs[idx + 1..]
+            .iter()
+            .zip(&mults[idx + 1..])
+            .filter(|(probs, _)| !probs.is_empty())
+            .map(|(probs, &mult)| {
+                let (lo, hi) = probs.iter().fold((i8::MAX, i8::MIN), |(lo, hi), &(o, _)| {
+                    (lo.min(o), hi.max(o))
+                });
+                (lo as i32 * mult as i32, hi as i32 * mult as i32)
+            })
+            .fold((0, 0), |(a, b), (c, d)| (a + c, b + d));
+
+        for &(oxi, prob) in &site_probs[idx] {
+            if prob <= 0.0 {
+                continue;
+            }
+            let new_charge = charge + oxi as i32 * mults[idx] as i32;
+            if new_charge + min_rem > 0 || new_charge + max_rem < 0 {
+                continue;
+            }
+            assignment.push(oxi);
+            recurse(
+                site_probs,
+                mults,
+                idx + 1,
+                new_charge,
+                assignment,
+                log_score + (mults[idx] as f64) * prob.ln(),
+                best,
+                count,
+            );
+            assignment.pop();
+        }
+    }
+
+    recurse(
+        site_probs,
+        multiplicities,
+        0,
+        0,
+        &mut vec![],
+        0.0,
+        &mut best,
+        &mut count,
+    );
+    best.1
 }
 
 // =============================================================================
@@ -678,20 +758,16 @@ mod tests {
 
     #[test]
     fn test_data_loading() {
-        // Test that all data files load successfully
         let oxi_prob = get_icsd_oxi_prob();
-        assert!(!oxi_prob.is_empty(), "ICSD oxi prob should not be empty");
-        assert!(oxi_prob.contains_key("Fe:3"), "Should have Fe3+");
-        assert!(oxi_prob.contains_key("O:-2"), "Should have O2-");
-
+        assert!(
+            !oxi_prob.is_empty() && oxi_prob.contains_key("Fe:3") && oxi_prob.contains_key("O:-2")
+        );
         let bv_stats = get_icsd_bv_stats();
-        assert!(!bv_stats.is_empty(), "BV stats should not be empty");
-        assert!(bv_stats.contains_key("Fe:3"), "Should have Fe3+ stats");
-
+        assert!(!bv_stats.is_empty() && bv_stats.contains_key("Fe:3"));
         let bv_params = get_bv_params();
-        assert!(!bv_params.is_empty(), "BV params should not be empty");
-        assert!(bv_params.contains_key("Fe"), "Should have Fe params");
-        assert!(bv_params.contains_key("O"), "Should have O params");
+        assert!(
+            !bv_params.is_empty() && bv_params.contains_key("Fe") && bv_params.contains_key("O")
+        );
     }
 
     #[test]
@@ -707,72 +783,51 @@ mod tests {
 
     #[test]
     fn test_is_electronegative() {
-        for elem in [Element::O, Element::F, Element::Cl] {
-            assert!(
-                is_electronegative(elem),
-                "{elem:?} should be electronegative"
-            );
-        }
-        for elem in [Element::Na, Element::Fe, Element::Ca] {
-            assert!(
-                !is_electronegative(elem),
-                "{elem:?} should NOT be electronegative"
-            );
-        }
+        assert!(
+            [Element::O, Element::F, Element::Cl]
+                .iter()
+                .all(|&e| is_electronegative(e))
+        );
+        assert!(
+            [Element::Na, Element::Fe, Element::Ca]
+                .iter()
+                .all(|&e| !is_electronegative(e))
+        );
     }
 
     #[test]
     fn test_calculate_bond_valence() {
-        // Fe-O bond at ~2.0 Å should give positive BV (Fe is more electropositive)
-        let bv = calculate_bond_valence(Element::Fe, Element::O, 2.0, 1.0);
-        assert!(bv > 0.0, "Fe-O should have positive BV");
-
-        // Same element should give 0
-        let bv_same = calculate_bond_valence(Element::Fe, Element::Fe, 2.5, 1.0);
-        assert_eq!(bv_same, 0.0);
-
-        // Non-electronegative pair should give 0
-        let bv_non = calculate_bond_valence(Element::Na, Element::K, 3.0, 1.0);
-        assert_eq!(bv_non, 0.0);
+        assert!(calculate_bond_valence(Element::Fe, Element::O, 2.0, 1.0) > 0.0); // Fe-O positive
+        assert_eq!(
+            calculate_bond_valence(Element::Fe, Element::Fe, 2.5, 1.0),
+            0.0
+        ); // same elem
+        assert_eq!(
+            calculate_bond_valence(Element::Na, Element::K, 3.0, 1.0),
+            0.0
+        ); // non-electroneg
     }
 
     #[test]
     fn test_calculate_bv_sum() {
-        // Fe with 6 O neighbors at ~2.0 Å (octahedral coordination)
+        // Fe with 6 O neighbors at 2.0 Å (octahedral) should give BVS ~3
         let neighbors = vec![
             BvNeighbor {
                 element: Element::O,
                 distance: 2.0,
-                occupancy: 1.0,
+                occupancy: 1.0
             };
             6
         ];
-
-        let bv_sum = calculate_bv_sum(Element::Fe, &neighbors, 1.0);
-        // Fe3+ typically has BVS around 3.0
-        assert!(
-            bv_sum > 2.0 && bv_sum < 4.0,
-            "Fe BVS should be reasonable: {}",
-            bv_sum
-        );
+        let bvs = calculate_bv_sum(Element::Fe, &neighbors, 1.0);
+        assert!((2.0..4.0).contains(&bvs), "Fe BVS={bvs}");
     }
 
     #[test]
     fn test_get_oxi_probability() {
-        // Common oxidation states should have high probability
-        assert!(
-            get_oxi_probability(Element::Fe, 3).unwrap() > 0,
-            "Fe3+ common"
-        );
-        assert!(
-            get_oxi_probability(Element::O, -2).unwrap() > 10000,
-            "O2- very common"
-        );
-        // Unlikely oxidation state should be missing
-        assert!(
-            get_oxi_probability(Element::Fe, 10).is_none(),
-            "Fe10+ doesn't exist"
-        );
+        assert!(get_oxi_probability(Element::Fe, 3).unwrap() > 0);
+        assert!(get_oxi_probability(Element::O, -2).unwrap() > 10000);
+        assert!(get_oxi_probability(Element::Fe, 10).is_none());
     }
 
     // Helper to verify oxidation state guesses
@@ -813,79 +868,47 @@ mod tests {
 
     #[test]
     fn test_oxi_state_guesses_ternary() {
-        // LiFePO4
-        let elements = vec![Element::Li, Element::Fe, Element::P, Element::O];
-        let amounts = vec![1.0, 1.0, 1.0, 4.0];
-
-        let guesses = oxi_state_guesses(&elements, &amounts, 0, None, false, None);
-
-        assert!(!guesses.is_empty(), "Should find solutions for LiFePO4");
-
-        // Verify results are sorted by decreasing probability
-        for window in guesses.windows(2) {
-            assert!(
-                window[0].probability >= window[1].probability,
-                "Results should be sorted by decreasing probability: {} < {}",
-                window[0].probability,
-                window[1].probability
-            );
-        }
-
-        // Best solution should have Li+, Fe2+, P5+, O2-
-        let best = &guesses[0];
-        assert!(
-            (best.oxidation_states.get("Li").unwrap() - 1.0).abs() < 0.01,
-            "Li should be +1"
+        // LiFePO4: Li+, Fe2+, P5+, O2-
+        let guesses = oxi_state_guesses(
+            &[Element::Li, Element::Fe, Element::P, Element::O],
+            &[1.0, 1.0, 1.0, 4.0],
+            0,
+            None,
+            false,
+            None,
         );
+        assert!(!guesses.is_empty());
+        // Verify sorted by decreasing probability
         assert!(
-            (best.oxidation_states.get("P").unwrap() - 5.0).abs() < 0.01,
-            "P should be +5"
+            guesses
+                .windows(2)
+                .all(|w| w[0].probability >= w[1].probability)
         );
-        assert!(
-            (best.oxidation_states.get("O").unwrap() - (-2.0)).abs() < 0.01,
-            "O should be -2"
+        check_oxi_guess(
+            "LiFePO4",
+            &[Element::Li, Element::Fe, Element::P, Element::O],
+            &[1.0, 1.0, 1.0, 4.0],
+            &[("Li", 1.0), ("P", 5.0), ("O", -2.0)],
         );
-        // Fe could be +2 or +3 depending on scoring
     }
 
     #[test]
     fn test_combinations_with_replacement() {
-        // [1,2] choose 2 with replacement: [1,1], [1,2], [2,1], [2,2]
         assert_eq!(combinations_with_replacement(&[1, 2], 2).len(), 4);
-
-        // Empty items returns empty
         assert!(combinations_with_replacement(&[], 3).is_empty());
-
-        // Count 0 returns single empty vec
         assert_eq!(
             combinations_with_replacement(&[1, 2, 3], 0),
             vec![Vec::<i8>::new()]
         );
-
-        // Guard against k^n blow-ups: 10 items ^ 10 count = 10 billion > MAX_PERMUTATIONS
-        // Should return empty to prevent OOM
-        let many_items: Vec<i8> = (0..10).collect();
-        assert!(
-            combinations_with_replacement(&many_items, 10).is_empty(),
-            "Should return empty when k^n exceeds MAX_PERMUTATIONS"
-        );
-
-        // Overflow case: 2^100 overflows u32, should return empty
-        assert!(
-            combinations_with_replacement(&[1, 2], 100).is_empty(),
-            "Should return empty on overflow"
-        );
+        // Guard against k^n blow-ups and overflow
+        assert!(combinations_with_replacement(&(0..10).collect::<Vec<i8>>(), 10).is_empty());
+        assert!(combinations_with_replacement(&[1, 2], 100).is_empty());
     }
 
     #[test]
     fn test_get_candidate_oxi_states() {
-        let fe_states = get_candidate_oxi_states(Element::Fe, false);
-        assert!(
-            fe_states.contains(&3) && fe_states.contains(&2),
-            "Fe should have +2/+3"
-        );
-
-        let o_states = get_candidate_oxi_states(Element::O, false);
-        assert!(o_states.contains(&-2), "O should have -2");
+        let fe = get_candidate_oxi_states(Element::Fe, false);
+        assert!(fe.contains(&2) && fe.contains(&3));
+        assert!(get_candidate_oxi_states(Element::O, false).contains(&-2));
     }
 }

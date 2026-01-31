@@ -2604,23 +2604,21 @@ fn py_compute_xrd(
 // Oxidation State Functions
 // =============================================================================
 
-/// Guess oxidation states for a composition.
-///
-/// Returns charge-balanced oxidation state assignments ranked by ICSD probability.
-///
-/// Args:
-///     formula: Chemical formula string (e.g., "Fe2O3", "NaCl")
-///     target_charge: Desired total charge (default 0 for charge balance)
-///     use_all_oxi_states: If True, use all known oxidation states (default False)
-///     max_sites: Maximum sites to enumerate (default None)
-///
-/// Returns:
-///     List of dicts with keys: oxidation_states (Dict[str, float]), probability (float)
-///
-/// Example:
-///     >>> guesses = oxi_state_guesses("Fe2O3")
-///     >>> print(guesses[0]["oxidation_states"])
-///     {'Fe': 3.0, 'O': -2.0}
+fn validate_bvs_params(max_radius: f64, scale_factor: f64) -> PyResult<()> {
+    if max_radius <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "max_radius must be positive, got {max_radius}"
+        )));
+    }
+    if scale_factor <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "scale_factor must be positive, got {scale_factor}"
+        )));
+    }
+    Ok(())
+}
+
+/// Guess oxidation states for a composition, ranked by ICSD probability.
 #[pyfunction]
 #[pyo3(name = "oxi_state_guesses", signature = (formula, target_charge = 0, use_all_oxi_states = false, max_sites = None))]
 fn py_oxi_state_guesses(
@@ -2630,9 +2628,8 @@ fn py_oxi_state_guesses(
     use_all_oxi_states: bool,
     max_sites: Option<usize>,
 ) -> PyResult<Py<PyList>> {
-    let comp = parse_comp(formula)?;
-    let guesses = comp.oxi_state_guesses(target_charge, None, use_all_oxi_states, max_sites);
-
+    let guesses =
+        parse_comp(formula)?.oxi_state_guesses(target_charge, None, use_all_oxi_states, max_sites);
     let result = PyList::empty(py);
     for guess in guesses {
         let dict = PyDict::new(py);
@@ -2648,25 +2645,7 @@ fn py_oxi_state_guesses(
 }
 
 /// Add oxidation states to a structure based on composition guessing.
-///
-/// Uses composition-based guessing to assign the most likely oxidation states
-/// to all atoms in the structure.
-///
-/// Args:
-///     structure: Structure as JSON string or dict
-///     target_charge: Desired total charge (default 0)
-///
-/// Returns:
-///     Structure dict with oxidation states assigned
-///
-/// Raises:
-///     ValueError: If no charge-balanced assignment found, or if the best
-///         assignment contains mixed-valence oxidation states (non-integer
-///         averages like 2.67 for Fe3O4) that cannot be represented as
-///         integer oxidation states per element.
-///
-/// Example:
-///     >>> result = add_charges_from_oxi_state_guesses(s.as_dict())
+/// Raises ValueError for mixed-valence (non-integer average oxi states like Fe3O4).
 #[pyfunction]
 #[pyo3(name = "add_charges_from_oxi_state_guesses", signature = (structure, target_charge = 0))]
 fn py_add_charges_from_oxi_state_guesses(
@@ -2675,54 +2654,34 @@ fn py_add_charges_from_oxi_state_guesses(
     target_charge: i8,
 ) -> PyResult<Py<PyDict>> {
     let s = parse_struct(&structure)?;
-    let comp = s.composition();
-    let guesses = comp.oxi_state_guesses(target_charge, None, false, None);
+    let guesses = s
+        .composition()
+        .oxi_state_guesses(target_charge, None, false, None);
+    let best = guesses.first().ok_or_else(|| {
+        PyValueError::new_err("Could not find charge-balanced oxidation state assignment")
+    })?;
 
-    if guesses.is_empty() {
-        return Err(PyValueError::new_err(
-            "Could not find charge-balanced oxidation state assignment",
-        ));
-    }
-
-    // Check for mixed-valence (non-integer average oxidation states)
-    for (elem, oxi) in &guesses[0].oxidation_states {
+    // Check for mixed-valence
+    for (elem, oxi) in &best.oxidation_states {
         if (*oxi - oxi.round()).abs() > crate::oxidation::OXI_INT_TOLERANCE {
             return Err(PyValueError::new_err(format!(
-                "Mixed-valence detected: {} has average oxidation state {:.3}, which cannot \
-                 be represented as a single integer. Consider using site-specific oxidation \
-                 state assignment for structures with mixed-valence elements.",
-                elem, oxi
+                "Mixed-valence: {elem} has average oxi state {oxi:.2} (non-integer)"
             )));
         }
     }
 
-    // Convert the best guess to a HashMap for add_oxidation_state_by_element
-    let oxi_map: std::collections::HashMap<String, i8> = guesses[0]
+    let oxi_map: std::collections::HashMap<String, i8> = best
         .oxidation_states
         .iter()
-        .map(|(elem, oxi)| (elem.clone(), oxi.round() as i8))
+        .map(|(e, o)| (e.clone(), o.round() as i8))
         .collect();
-
-    let result = s.add_oxidation_state_by_element(&oxi_map);
-    json_to_pydict(py, &structure_to_pymatgen_json(&result))
+    json_to_pydict(
+        py,
+        &structure_to_pymatgen_json(&s.add_oxidation_state_by_element(&oxi_map)),
+    )
 }
 
-/// Compute bond valence sums for all sites in a structure.
-///
-/// Uses O'Keeffe & Brese parameters to calculate bond valence sums
-/// from actual bond distances.
-///
-/// Args:
-///     structure: Structure as JSON string or dict
-///     max_radius: Cutoff radius for neighbor search (default 4.0 Å)
-///     scale_factor: Distance scaling (default 1.015 for GGA, 1.0 for experimental)
-///
-/// Returns:
-///     List of bond valence sums, one per site
-///
-/// Example:
-///     >>> bv_sums = compute_bv_sums(s.as_dict())
-///     >>> print(bv_sums)  # e.g., [2.95, 2.97, -1.98, -2.01, ...]
+/// Compute bond valence sums for all sites using O'Keeffe & Brese parameters.
 #[pyfunction]
 #[pyo3(name = "compute_bv_sums", signature = (structure, max_radius = 4.0, scale_factor = 1.015))]
 fn py_compute_bv_sums(
@@ -2730,40 +2689,13 @@ fn py_compute_bv_sums(
     max_radius: f64,
     scale_factor: f64,
 ) -> PyResult<Vec<f64>> {
-    // Validate parameters before parsing structure
-    if max_radius <= 0.0 {
-        return Err(PyValueError::new_err(format!(
-            "max_radius must be positive, got {max_radius}"
-        )));
-    }
-    if scale_factor <= 0.0 {
-        return Err(PyValueError::new_err(format!(
-            "scale_factor must be positive, got {scale_factor}"
-        )));
-    }
-
-    let s = parse_struct(&structure)?;
-    s.compute_all_bv_sums(max_radius, scale_factor)
-        .map_err(|e| PyValueError::new_err(format!("Error computing BV sums: {e}")))
+    validate_bvs_params(max_radius, scale_factor)?;
+    parse_struct(&structure)?
+        .compute_all_bv_sums(max_radius, scale_factor)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-/// Guess oxidation states using bond valence sum analysis.
-///
-/// Uses BVS-based Maximum A Posteriori estimation with symmetry optimization
-/// to assign oxidation states based on actual bond distances.
-///
-/// Args:
-///     structure: Structure as JSON string or dict
-///     symprec: Symmetry precision (default 0.1)
-///     max_radius: Cutoff radius for neighbors (default 4.0 Å)
-///     scale_factor: Distance scaling (default 1.015 for GGA)
-///
-/// Returns:
-///     List of oxidation states, one per site
-///
-/// Example:
-///     >>> oxi_states = guess_oxidation_states_bvs(s.as_dict())
-///     >>> print(oxi_states)  # e.g., [3, 3, -2, -2, -2]
+/// Guess oxidation states using BVS-based MAP estimation with symmetry.
 #[pyfunction]
 #[pyo3(name = "guess_oxidation_states_bvs", signature = (structure, symprec = 0.1, max_radius = 4.0, scale_factor = 1.015))]
 fn py_guess_oxidation_states_bvs(
@@ -2772,34 +2704,13 @@ fn py_guess_oxidation_states_bvs(
     max_radius: f64,
     scale_factor: f64,
 ) -> PyResult<Vec<i8>> {
-    // Validate parameters before parsing structure
-    if max_radius <= 0.0 {
-        return Err(PyValueError::new_err(format!(
-            "max_radius must be positive, got {max_radius}"
-        )));
-    }
-    if scale_factor <= 0.0 {
-        return Err(PyValueError::new_err(format!(
-            "scale_factor must be positive, got {scale_factor}"
-        )));
-    }
-
-    let s = parse_struct(&structure)?;
-    s.guess_oxidation_states_bvs(symprec, max_radius, scale_factor)
-        .map_err(|e| PyValueError::new_err(format!("Error guessing oxidation states: {e}")))
+    validate_bvs_params(max_radius, scale_factor)?;
+    parse_struct(&structure)?
+        .guess_oxidation_states_bvs(symprec, max_radius, scale_factor)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-/// Add oxidation states to a structure by element.
-///
-/// Args:
-///     structure: Structure as JSON string or dict
-///     oxi_states: Dict mapping element symbol to oxidation state
-///
-/// Returns:
-///     Structure dict with oxidation states assigned
-///
-/// Example:
-///     >>> result = add_oxidation_state_by_element(s.as_dict(), {"Fe": 3, "O": -2})
+/// Add oxidation states to a structure by element symbol mapping.
 #[pyfunction]
 #[pyo3(name = "add_oxidation_state_by_element")]
 fn py_add_oxidation_state_by_element(
@@ -2807,22 +2718,15 @@ fn py_add_oxidation_state_by_element(
     structure: StructureJson,
     oxi_states: std::collections::HashMap<String, i8>,
 ) -> PyResult<Py<PyDict>> {
-    let s = parse_struct(&structure)?;
-    let result = s.add_oxidation_state_by_element(&oxi_states);
-    json_to_pydict(py, &structure_to_pymatgen_json(&result))
+    json_to_pydict(
+        py,
+        &structure_to_pymatgen_json(
+            &parse_struct(&structure)?.add_oxidation_state_by_element(&oxi_states),
+        ),
+    )
 }
 
 /// Add oxidation states to a structure by site index.
-///
-/// Args:
-///     structure: Structure as JSON string or dict
-///     oxi_states: List of oxidation states, one per site
-///
-/// Returns:
-///     Structure dict with oxidation states assigned
-///
-/// Example:
-///     >>> result = add_oxidation_state_by_site(s.as_dict(), [3, 3, -2, -2, -2])
 #[pyfunction]
 #[pyo3(name = "add_oxidation_state_by_site")]
 fn py_add_oxidation_state_by_site(
@@ -2830,29 +2734,20 @@ fn py_add_oxidation_state_by_site(
     structure: StructureJson,
     oxi_states: Vec<i8>,
 ) -> PyResult<Py<PyDict>> {
-    let s = parse_struct(&structure)?;
-    let result = s
+    let result = parse_struct(&structure)?
         .add_oxidation_state_by_site(&oxi_states)
-        .map_err(|e| PyValueError::new_err(format!("Error adding oxidation states: {e}")))?;
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     json_to_pydict(py, &structure_to_pymatgen_json(&result))
 }
 
 /// Remove oxidation states from all sites in a structure.
-///
-/// Args:
-///     structure: Structure as JSON string or dict
-///
-/// Returns:
-///     Structure dict with oxidation states removed
-///
-/// Example:
-///     >>> neutral = remove_oxidation_states(s.as_dict())
 #[pyfunction]
 #[pyo3(name = "remove_oxidation_states")]
 fn py_remove_oxidation_states(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
-    let s = parse_struct(&structure)?;
-    let result = s.remove_oxidation_states();
-    json_to_pydict(py, &structure_to_pymatgen_json(&result))
+    json_to_pydict(
+        py,
+        &structure_to_pymatgen_json(&parse_struct(&structure)?.remove_oxidation_states()),
+    )
 }
 
 // =============================================================================

@@ -390,143 +390,50 @@ impl Structure {
         Ok(spacegroup_to_crystal_system(self.get_symmetry_dataset(symprec)?.number).to_string())
     }
 
-    // =========================================================================
-    // Bond Valence Sum Methods
-    // =========================================================================
+    // === Bond Valence Sum Methods ===
 
-    /// Compute bond valence sum for a single site.
+    /// Compute bond valence sums for all sites using O'Keeffe & Brese formula.
     ///
-    /// Uses O'Keeffe & Brese formula (JACS 1991) to calculate the bond valence
-    /// contribution from each neighbor bond. Missing BV parameters are treated
-    /// as zero contribution (the function does not error for missing parameters).
+    /// For disordered sites, calculates occupancy-weighted average BVS.
     ///
     /// # Arguments
-    ///
-    /// * `site_idx` - Index of the site to calculate BVS for
     /// * `max_radius` - Cutoff radius for neighbor search (Å)
-    /// * `scale_factor` - Distance scaling factor (default 1.015 for GGA, 1.0 for experimental)
-    ///
-    /// # Returns
-    ///
-    /// Always returns `Ok(bv_sum)`. Only errors if `site_idx` is out of bounds.
-    pub fn compute_bv_sum(
-        &self,
-        site_idx: usize,
-        max_radius: f64,
-        scale_factor: f64,
-    ) -> Result<f64> {
-        if site_idx >= self.num_sites() {
-            return Err(FerroxError::InvalidStructure {
-                index: site_idx,
-                reason: format!(
-                    "Site index {} out of bounds (num_sites={})",
-                    site_idx,
-                    self.num_sites()
-                ),
-            });
-        }
-
-        let site_occu = &self.site_occupancies[site_idx];
-        let site_element = site_occu.dominant_species().element;
-
-        // Get neighbors within cutoff
-        let (center_indices, neighbor_indices, _, distances) =
-            self.get_neighbor_list(max_radius, 1e-8, true);
-
-        // Build neighbor list for this site
-        let mut neighbors: Vec<crate::oxidation::BvNeighbor> = Vec::new();
-
-        for (idx, &center_idx) in center_indices.iter().enumerate() {
-            if center_idx == site_idx {
-                let neighbor_idx = neighbor_indices[idx];
-                let distance = distances[idx];
-                let neighbor_occu = &self.site_occupancies[neighbor_idx];
-
-                // Handle partial occupancies
-                for (sp, occ) in &neighbor_occu.species {
-                    neighbors.push(crate::oxidation::BvNeighbor {
-                        element: sp.element,
-                        distance,
-                        occupancy: *occ,
-                    });
-                }
-            }
-        }
-
-        Ok(crate::oxidation::calculate_bv_sum(
-            site_element,
-            &neighbors,
-            scale_factor,
-        ))
-    }
-
-    /// Compute bond valence sums for all sites.
-    ///
-    /// # Arguments
-    ///
-    /// * `max_radius` - Cutoff radius for neighbor search (Å, default 4.0)
-    /// * `scale_factor` - Distance scaling factor (default 1.015 for GGA, 1.0 for experimental)
-    ///
-    /// # Returns
-    ///
-    /// Vector of BV sums, one per site.
+    /// * `scale_factor` - Distance scaling (1.015 for GGA, 1.0 for experimental)
     pub fn compute_all_bv_sums(&self, max_radius: f64, scale_factor: f64) -> Result<Vec<f64>> {
-        let mut bv_sums = Vec::with_capacity(self.num_sites());
-
-        // Get full neighbor list once (more efficient than per-site)
         let (center_indices, neighbor_indices, _, distances) =
             self.get_neighbor_list(max_radius, 1e-8, true);
 
         // Group neighbors by center site
         let mut site_neighbors: Vec<Vec<crate::oxidation::BvNeighbor>> =
             vec![Vec::new(); self.num_sites()];
-
         for (idx, &center_idx) in center_indices.iter().enumerate() {
-            let neighbor_idx = neighbor_indices[idx];
-            let distance = distances[idx];
-            let neighbor_occu = &self.site_occupancies[neighbor_idx];
-
-            for (sp, occ) in &neighbor_occu.species {
+            for (sp, occ) in &self.site_occupancies[neighbor_indices[idx]].species {
                 site_neighbors[center_idx].push(crate::oxidation::BvNeighbor {
                     element: sp.element,
-                    distance,
+                    distance: distances[idx],
                     occupancy: *occ,
                 });
             }
         }
 
-        // Calculate BVS for each site
-        for (site_idx, neighbors) in site_neighbors.into_iter().enumerate() {
-            let site_element = self.site_occupancies[site_idx].dominant_species().element;
-            let bvs = crate::oxidation::calculate_bv_sum(site_element, &neighbors, scale_factor);
-            bv_sums.push(bvs);
-        }
-
-        Ok(bv_sums)
+        // Calculate occupancy-weighted BVS for each site
+        Ok(site_neighbors
+            .into_iter()
+            .zip(&self.site_occupancies)
+            .map(|(neighbors, site_occu)| {
+                site_occu
+                    .species
+                    .iter()
+                    .map(|(sp, occ)| {
+                        crate::oxidation::calculate_bv_sum(sp.element, &neighbors, scale_factor)
+                            * occ
+                    })
+                    .sum()
+            })
+            .collect())
     }
 
-    /// Guess oxidation states using bond valence sum analysis.
-    ///
-    /// This method uses a Maximum A Posteriori (MAP) estimation:
-    /// 1. Calculate BVS for each symmetrically unique site
-    /// 2. Calculate posterior probability for each oxidation state using ICSD priors
-    /// 3. Find charge-balanced assignment with highest probability
-    ///
-    /// # Arguments
-    ///
-    /// * `symprec` - Symmetry precision for identifying equivalent sites (default 0.1)
-    /// * `max_radius` - Cutoff radius for neighbor search (default 4.0 Å)
-    /// * `scale_factor` - Distance scaling factor (default 1.015 for GGA-relaxed)
-    ///
-    /// # Returns
-    ///
-    /// Vector of oxidation states, one per site.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let oxi_states = structure.guess_oxidation_states_bvs(0.1, 4.0, 1.015)?;
-    /// ```
+    /// Guess oxidation states using BVS-based MAP estimation with symmetry.
     pub fn guess_oxidation_states_bvs(
         &self,
         symprec: f64,
@@ -537,174 +444,138 @@ impl Structure {
             return Ok(vec![]);
         }
 
-        // Get symmetry-equivalent sites to reduce computation
         let orbits = self.get_equivalent_sites(symprec)?;
-
-        // Find unique orbit representatives
-        let mut unique_sites: Vec<usize> = Vec::new();
-        let mut seen_orbits: std::collections::HashSet<usize> = std::collections::HashSet::new();
-        for (site_idx, &orbit) in orbits.iter().enumerate() {
-            if !seen_orbits.contains(&orbit) {
-                seen_orbits.insert(orbit);
-                unique_sites.push(site_idx);
-            }
-        }
-
-        // Calculate BVS for each unique site
         let bv_sums = self.compute_all_bv_sums(max_radius, scale_factor)?;
 
-        // For each unique site, get oxidation state probabilities
-        let mut site_probs: Vec<Vec<(i8, f64)>> = Vec::new();
-        let mut site_multiplicities: Vec<usize> = Vec::new();
+        // Find unique orbit representatives and their multiplicities
+        let mut seen = std::collections::HashSet::new();
+        let unique_sites: Vec<_> = orbits
+            .iter()
+            .enumerate()
+            .filter(|&(_, &orbit)| seen.insert(orbit))
+            .map(|(idx, _)| idx)
+            .collect();
 
-        for &site_idx in &unique_sites {
-            let element = self.site_occupancies[site_idx].dominant_species().element;
-            let bvs = bv_sums[site_idx];
-            let probs = crate::oxidation::get_oxi_state_probabilities(element, bvs);
+        let (site_probs, multiplicities): (Vec<_>, Vec<_>) = unique_sites
+            .iter()
+            .map(|&idx| {
+                let elem = self.site_occupancies[idx].dominant_species().element;
+                let probs = crate::oxidation::get_oxi_state_probabilities(elem, bv_sums[idx]);
+                let mult = orbits.iter().filter(|&&o| o == orbits[idx]).count();
+                // Filter to top candidates (>1% of max prob), fallback to neutral
+                let filtered = if probs.is_empty() {
+                    vec![(0, 1.0)]
+                } else {
+                    let max_p = probs[0].1;
+                    probs
+                        .into_iter()
+                        .filter(|(_, p)| *p > 0.01 * max_p)
+                        .collect()
+                };
+                (filtered, mult)
+            })
+            .unzip();
 
-            // Count how many sites share this orbit
-            let multiplicity = orbits.iter().filter(|&&o| o == orbits[site_idx]).count();
+        let assignment =
+            crate::oxidation::find_charge_balanced_assignment(&site_probs, &multiplicities)
+                .ok_or_else(|| FerroxError::CompositionError {
+                    reason: "No charge-balanced oxidation state assignment found".into(),
+                })?;
 
-            if probs.is_empty() {
-                // No valid oxidation states found - fall back to neutral
-                site_probs.push(vec![(0, 1.0)]);
-            } else {
-                // Filter to top candidates (prob > 1% of max)
-                let max_prob = probs.first().map(|(_, p)| *p).unwrap_or(0.0);
-                let filtered: Vec<_> = probs
-                    .into_iter()
-                    .filter(|(_, p)| *p > 0.01 * max_prob)
-                    .collect();
-                site_probs.push(filtered);
-            }
-            site_multiplicities.push(multiplicity);
-        }
-
-        // Find charge-balanced assignment
-        let assignment = find_charge_balanced_assignment(&site_probs, &site_multiplicities)
-            .ok_or_else(|| FerroxError::CompositionError {
-                reason: "No charge-balanced oxidation state assignment found".into(),
-            })?;
-
-        // Expand unique site assignments to all sites
-        let mut oxidation_states = vec![0i8; self.num_sites()];
+        // Expand to all sites via orbit mapping
+        let mut result = vec![0i8; self.num_sites()];
         for (unique_idx, &site_idx) in unique_sites.iter().enumerate() {
-            let oxi = assignment[unique_idx];
-            // Assign to all sites with same orbit
             let orbit = orbits[site_idx];
             for (idx, &o) in orbits.iter().enumerate() {
                 if o == orbit {
-                    oxidation_states[idx] = oxi;
+                    result[idx] = assignment[unique_idx];
                 }
             }
         }
-
-        Ok(oxidation_states)
+        Ok(result)
     }
 
-    /// Add oxidation states to all sites based on element-wise mapping.
-    ///
-    /// # Arguments
-    ///
-    /// * `oxi_states` - Map from element symbol to oxidation state
-    ///
-    /// # Returns
-    ///
-    /// New structure with oxidation states applied. Elements not found in the
-    /// mapping retain their existing oxidation states (if any).
+    /// Add oxidation states by element symbol mapping.
     pub fn add_oxidation_state_by_element(
         &self,
         oxi_states: &std::collections::HashMap<String, i8>,
     ) -> Self {
-        let new_site_occupancies: Vec<SiteOccupancy> = self
-            .site_occupancies
-            .iter()
-            .map(|so| {
-                let new_species: Vec<(Species, f64)> = so
-                    .species
-                    .iter()
-                    .map(|(sp, occ)| {
-                        // Use mapped oxidation state if available, otherwise preserve existing
-                        let oxi = oxi_states
-                            .get(sp.element.symbol())
-                            .copied()
-                            .or(sp.oxidation_state);
-                        (Species::new(sp.element, oxi), *occ)
-                    })
-                    .collect();
-                SiteOccupancy::new(new_species)
-            })
-            .collect();
-
-        Self {
-            lattice: self.lattice.clone(),
-            site_occupancies: new_site_occupancies,
-            frac_coords: self.frac_coords.clone(),
-            properties: self.properties.clone(),
-        }
+        self.map_species(|sp| {
+            let oxi = oxi_states
+                .get(sp.element.symbol())
+                .copied()
+                .or(sp.oxidation_state);
+            Species::new(sp.element, oxi)
+        })
     }
 
-    /// Add oxidation states by site index.
-    ///
-    /// # Arguments
-    ///
-    /// * `oxi_states` - Oxidation state for each site
-    ///
-    /// # Returns
-    ///
-    /// New structure with oxidation states applied.
+    /// Add oxidation states by site index. Errors if any site is disordered.
     pub fn add_oxidation_state_by_site(&self, oxi_states: &[i8]) -> Result<Self> {
+        if let Some(idx) = self.site_occupancies.iter().position(|so| !so.is_ordered()) {
+            return Err(FerroxError::InvalidStructure {
+                index: idx,
+                reason: "add_oxidation_state_by_site requires ordered sites".into(),
+            });
+        }
         if oxi_states.len() != self.num_sites() {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
                 reason: format!(
-                    "oxidation_states length ({}) must match num_sites ({})",
+                    "oxi_states length ({}) != num_sites ({})",
                     oxi_states.len(),
                     self.num_sites()
                 ),
             });
         }
-
-        let new_site_occupancies: Vec<SiteOccupancy> = self
-            .site_occupancies
-            .iter()
-            .zip(oxi_states)
-            .map(|(so, &oxi)| {
-                let new_species: Vec<(Species, f64)> = so
-                    .species
-                    .iter()
-                    .map(|(sp, occ)| (Species::new(sp.element, Some(oxi)), *occ))
-                    .collect();
-                SiteOccupancy::new(new_species)
-            })
-            .collect();
-
-        Ok(Self {
-            lattice: self.lattice.clone(),
-            site_occupancies: new_site_occupancies,
-            frac_coords: self.frac_coords.clone(),
-            properties: self.properties.clone(),
-        })
+        Ok(self.map_species_by_site(|site_idx, sp| {
+            Species::new(sp.element, Some(oxi_states[site_idx]))
+        }))
     }
 
     /// Remove oxidation states from all sites.
     pub fn remove_oxidation_states(&self) -> Self {
-        let new_site_occupancies: Vec<SiteOccupancy> = self
-            .site_occupancies
-            .iter()
-            .map(|so| {
-                let new_species: Vec<(Species, f64)> = so
-                    .species
-                    .iter()
-                    .map(|(sp, occ)| (Species::neutral(sp.element), *occ))
-                    .collect();
-                SiteOccupancy::new(new_species)
-            })
-            .collect();
+        self.map_species(|sp| Species::neutral(sp.element))
+    }
 
+    // Helper: transform all species with a mapping function
+    fn map_species<F>(&self, f: F) -> Self
+    where
+        F: Fn(&Species) -> Species,
+    {
         Self {
             lattice: self.lattice.clone(),
-            site_occupancies: new_site_occupancies,
+            site_occupancies: self
+                .site_occupancies
+                .iter()
+                .map(|so| {
+                    SiteOccupancy::new(so.species.iter().map(|(sp, occ)| (f(sp), *occ)).collect())
+                })
+                .collect(),
+            frac_coords: self.frac_coords.clone(),
+            properties: self.properties.clone(),
+        }
+    }
+
+    // Helper: transform species with site index context
+    fn map_species_by_site<F>(&self, f: F) -> Self
+    where
+        F: Fn(usize, &Species) -> Species,
+    {
+        Self {
+            lattice: self.lattice.clone(),
+            site_occupancies: self
+                .site_occupancies
+                .iter()
+                .enumerate()
+                .map(|(idx, so)| {
+                    SiteOccupancy::new(
+                        so.species
+                            .iter()
+                            .map(|(sp, occ)| (f(idx, sp), *occ))
+                            .collect(),
+                    )
+                })
+                .collect(),
             frac_coords: self.frac_coords.clone(),
             properties: self.properties.clone(),
         }
@@ -750,9 +621,7 @@ impl Structure {
         }
     }
 
-    // =========================================================================
-    // Neighbor Finding Methods
-    // =========================================================================
+    // === Neighbor Finding Methods ===
 
     /// Get neighbor list as arrays: (center_indices, neighbor_indices, offset_vectors, distances).
     ///
@@ -1009,9 +878,7 @@ impl Structure {
         true
     }
 
-    // =========================================================================
-    // Coordination Analysis
-    // =========================================================================
+    // === Coordination Analysis ===
 
     /// Get coordination numbers for all sites using a distance cutoff.
     ///
@@ -1143,9 +1010,7 @@ impl Structure {
         crate::coordination::get_voronoi_neighbors(self, site_idx, config)
     }
 
-    // =========================================================================
-    // Structure Interpolation (NEB)
-    // =========================================================================
+    // === Structure Interpolation (NEB) ===
 
     /// Interpolate between this structure and end_structure for NEB calculations.
     ///
@@ -1246,9 +1111,7 @@ impl Structure {
         Ok(images)
     }
 
-    // =========================================================================
-    // Structure Matching Convenience Methods
-    // =========================================================================
+    // === Structure Matching Convenience Methods ===
 
     /// Check if this structure matches another using default matcher settings.
     ///
@@ -1302,9 +1165,7 @@ impl Structure {
         }
     }
 
-    // =========================================================================
-    // Structure Sorting
-    // =========================================================================
+    // === Structure Sorting ===
 
     /// Sort sites in place by atomic number (ascending by default).
     ///
@@ -1406,9 +1267,7 @@ impl Structure {
         copy
     }
 
-    // =========================================================================
-    // Copy and Sanitization
-    // =========================================================================
+    // === Copy and Sanitization ===
 
     /// Create a copy, optionally sanitized.
     ///
@@ -1463,9 +1322,7 @@ impl Structure {
         self
     }
 
-    // =========================================================================
-    // Supercell Methods
-    // =========================================================================
+    // === Supercell Methods ===
 
     /// Create a supercell from a 3x3 integer scaling matrix.
     ///
@@ -1571,9 +1428,7 @@ impl Structure {
             .expect("Diagonal supercell matrix cannot have zero determinant")
     }
 
-    // =========================================================================
-    // Lattice Reduction Methods
-    // =========================================================================
+    // === Lattice Reduction Methods ===
 
     /// Get structure with reduced lattice.
     ///
@@ -1625,9 +1480,7 @@ impl Structure {
     }
 }
 
-// =============================================================================
-// Supercell Helper Functions
-// =============================================================================
+// === Supercell Helper Functions ===
 
 /// Generate all fractional lattice points inside a supercell.
 ///
@@ -1740,9 +1593,7 @@ fn lattice_points_in_supercell(scaling_matrix: &[[i32; 3]; 3]) -> Vec<Vector3<f6
     points
 }
 
-// =============================================================================
-// Mul Trait Implementations for Supercell
-// =============================================================================
+// === Mul Trait Implementations for Supercell ===
 
 impl std::ops::Mul<i32> for &Structure {
     type Output = Structure;
@@ -1775,9 +1626,7 @@ impl std::ops::Mul<[i32; 3]> for &Structure {
     }
 }
 
-// =============================================================================
-// Symmetry Operations
-// =============================================================================
+// === Symmetry Operations ===
 
 /// A crystallographic symmetry operation: rotation + translation.
 ///
@@ -1882,9 +1731,7 @@ impl Structure {
         copy
     }
 
-    // =========================================================================
-    // Physical Properties
-    // =========================================================================
+    // === Physical Properties ===
 
     /// Volume of the unit cell in Angstrom^3.
     #[inline]
@@ -1914,9 +1761,7 @@ impl Structure {
         Some(self.total_mass() * AMU_TO_G_PER_CM3 / volume)
     }
 
-    // =========================================================================
-    // Site Properties
-    // =========================================================================
+    // === Site Properties ===
 
     /// Get site properties for a specific site index.
     ///
@@ -2045,9 +1890,7 @@ impl Structure {
         self
     }
 
-    // =========================================================================
-    // Site Manipulation
-    // =========================================================================
+    // === Site Manipulation ===
 
     /// Translate specific sites by a vector.
     ///
@@ -2126,9 +1969,7 @@ impl Structure {
     }
 }
 
-// =============================================================================
-// Ordering and Enumeration Methods
-// =============================================================================
+// === Ordering and Enumeration Methods ===
 
 impl Structure {
     /// Scale structure so fractional occupancies become integral site counts.
@@ -2255,9 +2096,7 @@ impl Structure {
     }
 }
 
-// =============================================================================
-// Random Vector Generation for Perturbation
-// =============================================================================
+// === Random Vector Generation for Perturbation ===
 
 /// Generate a random vector with magnitude uniformly distributed in [min_dist, max_dist].
 ///
@@ -2314,9 +2153,7 @@ fn interpolate_lattices_linear(start: &Lattice, end: &Lattice, x: f64) -> Lattic
     )
 }
 
-// =============================================================================
-// Transformation Methods
-// =============================================================================
+// === Transformation Methods ===
 
 impl Structure {
     /// Rotate the structure around an arbitrary axis by a given angle.
@@ -2786,130 +2623,7 @@ impl Structure {
     }
 }
 
-// =============================================================================
-// BVS Helper Functions
-// =============================================================================
-
-/// Find charge-balanced oxidation state assignment using recursive search.
-///
-/// Recursively enumerates combinations of oxidation states for each unique site,
-/// pruning branches that cannot achieve charge balance. Uses log-probabilities
-/// internally to avoid underflow when multiplying many small probabilities.
-///
-/// # Arguments
-///
-/// * `site_probs` - Oxidation state probabilities for each site: Vec of (oxi_state, probability)
-/// * `multiplicities` - Number of sites in each symmetry-equivalent group
-///
-/// # Returns
-///
-/// Best charge-balanced assignment (highest log-probability), or None if none found.
-fn find_charge_balanced_assignment(
-    site_probs: &[Vec<(i8, f64)>],
-    multiplicities: &[usize],
-) -> Option<Vec<i8>> {
-    let mut permutation_count = 0usize;
-    // Use NEG_INFINITY as initial best score so any valid solution beats it
-    let mut best_score: f64 = f64::NEG_INFINITY;
-    let mut best_assignment: Option<Vec<i8>> = None;
-
-    #[allow(clippy::too_many_arguments)]
-    fn recurse(
-        site_probs: &[Vec<(i8, f64)>],
-        multiplicities: &[usize],
-        current_idx: usize,
-        current_charge: i32,
-        current_assignment: &mut Vec<i8>,
-        current_log_score: f64,
-        best_score: &mut f64,
-        best_assignment: &mut Option<Vec<i8>>,
-        permutation_count: &mut usize,
-        max_permutations: usize,
-    ) {
-        if *permutation_count >= max_permutations {
-            return;
-        }
-
-        if current_idx == site_probs.len() {
-            *permutation_count += 1;
-            // Check charge balance
-            if current_charge == 0 && current_log_score > *best_score {
-                *best_score = current_log_score;
-                *best_assignment = Some(current_assignment.clone());
-            }
-            return;
-        }
-
-        // Compute bounds for remaining sites
-        // Note: site_probs is sorted by probability, not by oxidation state value,
-        // so we must iterate to find actual min/max oxidation states
-        let mut min_remaining = 0i32;
-        let mut max_remaining = 0i32;
-        for idx in (current_idx + 1)..site_probs.len() {
-            let mult = multiplicities[idx] as i32;
-            if !site_probs[idx].is_empty() {
-                let (min_oxi, max_oxi) = site_probs[idx]
-                    .iter()
-                    .fold((i8::MAX, i8::MIN), |(min, max), &(oxi, _)| {
-                        (min.min(oxi), max.max(oxi))
-                    });
-                min_remaining += min_oxi as i32 * mult;
-                max_remaining += max_oxi as i32 * mult;
-            }
-        }
-
-        for &(oxi, prob) in &site_probs[current_idx] {
-            // Skip zero probabilities (log(0) = -INF would dominate the score)
-            if prob <= 0.0 {
-                continue;
-            }
-
-            let new_charge = current_charge + oxi as i32 * multiplicities[current_idx] as i32;
-
-            // Prune if charge balance is unreachable
-            if new_charge + min_remaining > 0 || new_charge + max_remaining < 0 {
-                continue;
-            }
-
-            current_assignment.push(oxi);
-            // Multiply log-probability by multiplicity to account for all equivalent sites
-            let log_prob_contribution = (multiplicities[current_idx] as f64) * prob.ln();
-            recurse(
-                site_probs,
-                multiplicities,
-                current_idx + 1,
-                new_charge,
-                current_assignment,
-                current_log_score + log_prob_contribution,
-                best_score,
-                best_assignment,
-                permutation_count,
-                crate::oxidation::MAX_PERMUTATIONS,
-            );
-            current_assignment.pop();
-        }
-    }
-
-    let mut current_assignment = Vec::new();
-    recurse(
-        site_probs,
-        multiplicities,
-        0,
-        0,
-        &mut current_assignment,
-        0.0, // Start with log(1) = 0
-        &mut best_score,
-        &mut best_assignment,
-        &mut permutation_count,
-        crate::oxidation::MAX_PERMUTATIONS,
-    );
-
-    best_assignment
-}
-
-// =============================================================================
-// Symmetry Helper Functions
-// =============================================================================
+// === Symmetry Helper Functions ===
 
 /// Validate symprec parameter for symmetry operations.
 fn validate_symprec(symprec: f64) -> Result<()> {
@@ -2947,9 +2661,7 @@ pub(crate) fn spacegroup_to_crystal_system(sg: i32) -> &'static str {
     }
 }
 
-// =============================================================================
-// Slab Generation
-// =============================================================================
+// === Slab Generation ===
 
 /// Configuration for slab generation.
 #[derive(Debug, Clone)]
@@ -3488,9 +3200,7 @@ mod tests {
     use super::*;
     use crate::element::Element;
 
-    // =========================================================================
-    // Test Structure Factories
-    // =========================================================================
+    // === Test Structure Factories ===
 
     // NaCl primitive cell (rocksalt, a=5.64Å)
     fn make_nacl() -> Structure {
@@ -3982,9 +3692,7 @@ mod tests {
         assert!(elements.contains(&Element::Co));
     }
 
-    // =========================================================================
-    // remap_species() tests
-    // =========================================================================
+    // === remap_species() tests ===
 
     #[test]
     fn test_remap_species_basic() {
@@ -4087,9 +3795,7 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Neighbor Finding Tests
-    // =========================================================================
+    // === Neighbor Finding Tests ===
 
     #[test]
     fn test_neighbor_list_edge_cases() {
@@ -4291,9 +3997,7 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Comprehensive tests for pymatgen-parity features
-    // =========================================================================
+    // === Comprehensive tests for pymatgen-parity features ===
 
     #[test]
     fn test_distance_and_image_cubic() {
@@ -4766,9 +4470,7 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // SymmOp and apply_operation tests
-    // =========================================================================
+    // === SymmOp and apply_operation tests ===
 
     #[test]
     fn test_symmop_constructors() {
@@ -4843,9 +4545,7 @@ mod tests {
         assert_eq!(transformed.species()[0].element, nacl.species()[0].element);
     }
 
-    // =========================================================================
-    // Physical Properties Tests (volume, total_mass, density)
-    // =========================================================================
+    // === Physical Properties Tests (volume, total_mass, density) ===
 
     #[test]
     fn test_volume() {
@@ -4892,9 +4592,7 @@ mod tests {
         assert!((tiny.density().unwrap() - 105.5).abs() < 1.0);
     }
 
-    // =========================================================================
-    // Site Manipulation Tests (translate_sites, perturb)
-    // =========================================================================
+    // === Site Manipulation Tests (translate_sites, perturb) ===
 
     #[test]
     fn test_translate_sites() {
@@ -5000,9 +4698,7 @@ mod tests {
         make_nacl().perturb(0.1, Some(0.5), None); // min > max
     }
 
-    // =========================================================================
-    // Sorting tests
-    // =========================================================================
+    // === Sorting tests ===
 
     #[test]
     fn test_sort_by_atomic_number() {
@@ -5115,9 +4811,7 @@ mod tests {
         assert_eq!(sorted.species()[1].element, Element::Cu);
     }
 
-    // =========================================================================
-    // Copy and sanitization tests
-    // =========================================================================
+    // === Copy and sanitization tests ===
 
     #[test]
     fn test_copy() {
@@ -5206,9 +4900,7 @@ mod tests {
         assert!((niggli.lattice.volume() - skewed.lattice.volume()).abs() < 1e-6);
     }
 
-    // =========================================================================
-    // interpolate() tests
-    // =========================================================================
+    // === interpolate() tests ===
 
     #[test]
     fn test_interpolate_identical_structures() {
@@ -5320,9 +5012,7 @@ mod tests {
         assert!(images.iter().all(|img| img.num_sites() == 0));
     }
 
-    // =========================================================================
-    // matches() and matches_with() tests
-    // =========================================================================
+    // === matches() and matches_with() tests ===
 
     #[test]
     fn test_matches() {
@@ -5360,9 +5050,7 @@ mod tests {
         assert!(cu_fcc.matches(&al_fcc, true), "FCC prototype match");
     }
 
-    // =========================================================================
-    // Supercell Tests
-    // =========================================================================
+    // === Supercell Tests ===
 
     #[test]
     fn test_supercell_scaling() {
@@ -5595,9 +5283,7 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Slab Generation Tests
-    // =========================================================================
+    // === Slab Generation Tests ===
 
     #[test]
     fn test_reduce_miller_indices() {

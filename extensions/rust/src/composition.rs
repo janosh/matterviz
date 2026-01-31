@@ -1496,112 +1496,76 @@ mod tests {
     // Oxidation State Tests
     // =========================================================================
 
-    #[test]
-    fn test_oxi_state_guesses() {
-        // NaCl: Na+ and Cl-
-        let nacl = Composition::from_formula("NaCl").unwrap();
-        let guesses = nacl.oxi_state_guesses(0, None, false, None);
-        assert!(!guesses.is_empty());
+    fn check_oxi(formula: &str, expected: &[(&str, f64)]) {
+        let guesses = Composition::from_formula(formula)
+            .unwrap()
+            .oxi_state_guesses(0, None, false, None);
+        assert!(!guesses.is_empty(), "{formula}");
         let best = &guesses[0];
-        assert!(
-            (best.oxidation_states.get("Na").unwrap() - 1.0).abs() < 0.01,
-            "Na should be +1"
-        );
-        assert!(
-            (best.oxidation_states.get("Cl").unwrap() - (-1.0)).abs() < 0.01,
-            "Cl should be -1"
-        );
+        for (elem, oxi) in expected {
+            let actual = *best.oxidation_states.get(*elem).unwrap();
+            assert!(
+                (actual - oxi).abs() < 0.01,
+                "{formula}: {elem}={actual}, expected {oxi}"
+            );
+        }
     }
 
     #[test]
-    fn test_oxi_state_guesses_oxide() {
-        // Fe2O3: Fe3+ and O2-
-        let fe2o3 = Composition::from_formula("Fe2O3").unwrap();
-        let guesses = fe2o3.oxi_state_guesses(0, None, false, None);
-        assert!(!guesses.is_empty());
-        let best = &guesses[0];
-        assert!(
-            (best.oxidation_states.get("Fe").unwrap() - 3.0).abs() < 0.01,
-            "Fe should be +3"
-        );
-        assert!(
-            (best.oxidation_states.get("O").unwrap() - (-2.0)).abs() < 0.01,
-            "O should be -2"
-        );
+    fn test_oxi_state_guesses() {
+        check_oxi("NaCl", &[("Na", 1.0), ("Cl", -1.0)]);
+        check_oxi("Fe2O3", &[("Fe", 3.0), ("O", -2.0)]);
     }
 
     #[test]
     fn test_add_charges_from_oxi_state_guesses() {
-        let nacl = Composition::from_formula("NaCl").unwrap();
-        let charged = nacl.add_charges_from_oxi_state_guesses(0, None, false, None);
-
-        assert!(charged.is_some(), "Should find a valid assignment");
-        let charged = charged.unwrap();
-
-        // Check that species now have oxidation states
-        let na_sp = Species::new(Element::Na, Some(1));
-        let cl_sp = Species::new(Element::Cl, Some(-1));
-        assert_eq!(charged.get(na_sp), 1.0, "Should have Na+");
-        assert_eq!(charged.get(cl_sp), 1.0, "Should have Cl-");
+        let charged = Composition::from_formula("NaCl")
+            .unwrap()
+            .add_charges_from_oxi_state_guesses(0, None, false, None)
+            .unwrap();
+        assert_eq!(charged.get(Species::new(Element::Na, Some(1))), 1.0);
+        assert_eq!(charged.get(Species::new(Element::Cl, Some(-1))), 1.0);
     }
 
     #[test]
     fn test_remove_charges() {
-        // Create composition with oxidation states
         let na = Species::new(Element::Na, Some(1));
         let cl = Species::new(Element::Cl, Some(-1));
-        let charged = Composition::new([(na, 1.0), (cl, 1.0)]);
-
-        // Remove charges
-        let neutral = charged.remove_charges();
-
-        // Should have neutral species now
-        let na_neutral = Species::neutral(Element::Na);
-        let cl_neutral = Species::neutral(Element::Cl);
-        assert_eq!(neutral.get(na_neutral), 1.0);
-        assert_eq!(neutral.get(cl_neutral), 1.0);
-
-        // Original charged species should not be found
-        assert_eq!(neutral.get(na), 0.0);
-        assert_eq!(neutral.get(cl), 0.0);
+        let neutral = Composition::new([(na, 1.0), (cl, 1.0)]).remove_charges();
+        assert_eq!(neutral.get(Species::neutral(Element::Na)), 1.0);
+        assert_eq!(neutral.get(Species::neutral(Element::Cl)), 1.0);
+        assert_eq!(neutral.get(na), 0.0); // charged species gone
     }
 
     #[test]
-    fn test_charge() {
-        // Neutral composition should have None charge (no oxidation states)
-        let nacl = Composition::from_formula("NaCl").unwrap();
-        assert!(nacl.charge().is_none());
-
-        // Charged composition
-        let na = Species::new(Element::Na, Some(1));
-        let cl = Species::new(Element::Cl, Some(-1));
-        let charged = Composition::new([(na, 1.0), (cl, 1.0)]);
-        assert_eq!(charged.charge(), Some(0), "NaCl should be charge balanced");
-
-        // Unbalanced composition
-        let na2 = Composition::new([(na, 2.0), (cl, 1.0)]);
-        assert_eq!(na2.charge(), Some(1), "Na2Cl should have +1 charge");
-    }
-
-    #[test]
-    fn test_is_charge_balanced() {
+    fn test_charge_and_balance() {
         let na = Species::new(Element::Na, Some(1));
         let cl = Species::new(Element::Cl, Some(-1));
         let o = Species::new(Element::O, Some(-2));
 
-        // Balanced
-        let nacl = Composition::new([(na, 1.0), (cl, 1.0)]);
-        assert_eq!(nacl.is_charge_balanced(), Some(true));
-
-        // Unbalanced
-        let na2o = Composition::new([(na, 2.0), (o, 1.0)]);
-        assert_eq!(na2o.is_charge_balanced(), Some(true), "Na2O is balanced");
-
-        let na_o = Composition::new([(na, 1.0), (o, 1.0)]);
+        // No oxi states -> None
+        assert!(
+            Composition::from_formula("NaCl")
+                .unwrap()
+                .charge()
+                .is_none()
+        );
+        // Balanced: Na+ + Cl- = 0
+        assert_eq!(Composition::new([(na, 1.0), (cl, 1.0)]).charge(), Some(0));
         assert_eq!(
-            na_o.is_charge_balanced(),
-            Some(false),
-            "NaO is not balanced"
+            Composition::new([(na, 1.0), (cl, 1.0)]).is_charge_balanced(),
+            Some(true)
+        );
+        // Unbalanced: 2Na+ + Cl- = +1
+        assert_eq!(Composition::new([(na, 2.0), (cl, 1.0)]).charge(), Some(1));
+        // Na2O is balanced, NaO is not
+        assert_eq!(
+            Composition::new([(na, 2.0), (o, 1.0)]).is_charge_balanced(),
+            Some(true)
+        );
+        assert_eq!(
+            Composition::new([(na, 1.0), (o, 1.0)]).is_charge_balanced(),
+            Some(false)
         );
     }
 }
