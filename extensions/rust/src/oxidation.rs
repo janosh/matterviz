@@ -499,17 +499,22 @@ pub fn oxi_state_guesses(
         let mut sum_map: HashMap<i32, (f64, Vec<i8>)> = HashMap::new();
 
         for combo in combinations_with_replacement(oxis, count) {
-            let sum: i32 = combo.iter().map(|&o| o as i32).sum();
-
-            // Calculate log-probability score (sum of logs = log of product)
-            // Using log-space for numerical stability with large ICSD counts
-            let score: f64 = combo
+            // Try to get ALL priors for this combo; skip if any are missing
+            let log_probs: Option<Vec<f64>> = combo
                 .iter()
-                .filter_map(|&o| {
+                .map(|&o| {
                     let key = species_key(el, o);
                     icsd_prob.get(&key).map(|&p| (p as f64).ln())
                 })
-                .sum();
+                .collect();
+
+            let Some(log_probs) = log_probs else {
+                // Missing ICSD data for at least one oxidation state; skip this combo
+                continue;
+            };
+
+            let sum: i32 = combo.iter().map(|&o| o as i32).sum();
+            let score: f64 = log_probs.iter().sum();
 
             // Keep the best-scoring combination for each sum (higher log-prob = better)
             let entry = sum_map
