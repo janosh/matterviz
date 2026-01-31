@@ -255,6 +255,8 @@ fn get_unique_families(hkls: &[[i32; 3]]) -> Vec<HklInfo> {
         });
     }
 
+    // Sort for deterministic output (HashMap iteration order is nondeterministic)
+    families.sort_by(|a, b| a.hkl.cmp(&b.hkl));
     families
 }
 
