@@ -517,18 +517,18 @@ pub fn parse_poscar(content: &str) -> WasmResult<JsCrystal> {
 #[wasm_bindgen]
 pub fn make_supercell_diag(
     structure: JsCrystal,
-    nx: i32,
-    ny: i32,
-    nz: i32,
+    scale_a: i32,
+    scale_b: i32,
+    scale_c: i32,
 ) -> WasmResult<JsCrystal> {
     let result: Result<JsCrystal, String> = (|| {
-        if nx <= 0 || ny <= 0 || nz <= 0 {
+        if scale_a <= 0 || scale_b <= 0 || scale_c <= 0 {
             return Err(format!(
-                "Supercell factors must be positive, got [{nx}, {ny}, {nz}]"
+                "Supercell factors must be positive, got [{scale_a}, {scale_b}, {scale_c}]"
             ));
         }
         let struc = structure.to_structure()?;
-        let supercell = struc.make_supercell_diag([nx, ny, nz]);
+        let supercell = struc.make_supercell_diag([scale_a, scale_b, scale_c]);
         Ok(JsCrystal::from_structure(&supercell))
     })();
     result.into()
@@ -776,18 +776,18 @@ pub fn get_neighbor_list(
 
 /// Get distance between two sites using minimum image convention.
 #[wasm_bindgen]
-pub fn get_distance(structure: JsCrystal, i: u32, j: u32) -> WasmResult<f64> {
+pub fn get_distance(structure: JsCrystal, site_idx_1: u32, site_idx_2: u32) -> WasmResult<f64> {
     let result: Result<f64, String> = (|| {
         let struc = structure.to_structure()?;
-        let n = struc.num_sites();
-        let i = i as usize;
-        let j = j as usize;
-        if i >= n || j >= n {
+        let num_sites = struc.num_sites();
+        let idx_1 = site_idx_1 as usize;
+        let idx_2 = site_idx_2 as usize;
+        if idx_1 >= num_sites || idx_2 >= num_sites {
             return Err(format!(
-                "Site indices ({i}, {j}) out of bounds for structure with {n} sites"
+                "Site indices ({idx_1}, {idx_2}) out of bounds for structure with {num_sites} sites"
             ));
         }
-        Ok(struc.get_distance(i, j))
+        Ok(struc.get_distance(idx_1, idx_2))
     })();
     result.into()
 }
@@ -828,6 +828,9 @@ pub fn get_coordination_number(
     site_index: u32,
     cutoff: f64,
 ) -> WasmResult<u32> {
+    if cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be non-negative");
+    }
     let result: Result<u32, String> = (|| {
         let struc = structure.to_structure()?;
         let idx = site_index as usize;
@@ -849,6 +852,9 @@ pub fn get_local_environment(
     site_index: u32,
     cutoff: f64,
 ) -> WasmResult<JsLocalEnvironment> {
+    if cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be non-negative");
+    }
     let result: Result<JsLocalEnvironment, String> = (|| {
         let struc = structure.to_structure()?;
         let idx = site_index as usize;

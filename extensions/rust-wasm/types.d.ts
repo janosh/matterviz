@@ -30,9 +30,9 @@ export function parse_poscar(content: string): WasmResult<JsCrystal>
 // Supercell functions
 export function make_supercell_diag(
   structure: JsCrystal,
-  nx: number,
-  ny: number,
-  nz: number,
+  scale_a: number,
+  scale_b: number,
+  scale_c: number,
 ): WasmResult<JsCrystal>
 export function make_supercell(
   structure: JsCrystal,
@@ -96,8 +96,8 @@ export function get_neighbor_list(
 ): WasmResult<JsNeighborList>
 export function get_distance(
   structure: JsCrystal,
-  i: number,
-  j: number,
+  site_idx_1: number,
+  site_idx_2: number,
 ): WasmResult<number>
 export function get_distance_matrix(structure: JsCrystal): WasmResult<number[][]>
 
