@@ -381,7 +381,18 @@ pub fn get_candidate_oxi_states(element: Element, use_all: bool) -> Vec<i8> {
 /// Generate all combinations of oxidation states with replacement.
 ///
 /// For n sites with k possible oxidation states, generates all k^n combinations.
+/// Returns empty vec if the number of combinations would exceed MAX_PERMUTATIONS
+/// to prevent OOM from materializing huge vectors before pruning.
 fn combinations_with_replacement(items: &[i8], count: usize) -> Vec<Vec<i8>> {
+    // Guard against k^n blow-ups (overflow or exceeding cap returns early)
+    if items
+        .len()
+        .checked_pow(count as u32)
+        .is_none_or(|n| n > MAX_PERMUTATIONS)
+    {
+        return vec![];
+    }
+
     if count == 0 {
         return vec![vec![]];
     }
@@ -841,6 +852,29 @@ mod tests {
     fn test_combinations_with_replacement() {
         // [1,2] choose 2 with replacement: [1,1], [1,2], [2,1], [2,2]
         assert_eq!(combinations_with_replacement(&[1, 2], 2).len(), 4);
+
+        // Empty items returns empty
+        assert!(combinations_with_replacement(&[], 3).is_empty());
+
+        // Count 0 returns single empty vec
+        assert_eq!(
+            combinations_with_replacement(&[1, 2, 3], 0),
+            vec![Vec::<i8>::new()]
+        );
+
+        // Guard against k^n blow-ups: 10 items ^ 10 count = 10 billion > MAX_PERMUTATIONS
+        // Should return empty to prevent OOM
+        let many_items: Vec<i8> = (0..10).collect();
+        assert!(
+            combinations_with_replacement(&many_items, 10).is_empty(),
+            "Should return empty when k^n exceeds MAX_PERMUTATIONS"
+        );
+
+        // Overflow case: 2^100 overflows u32, should return empty
+        assert!(
+            combinations_with_replacement(&[1, 2], 100).is_empty(),
+            "Should return empty on overflow"
+        );
     }
 
     #[test]

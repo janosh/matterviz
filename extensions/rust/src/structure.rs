@@ -397,7 +397,8 @@ impl Structure {
     /// Compute bond valence sum for a single site.
     ///
     /// Uses O'Keeffe & Brese formula (JACS 1991) to calculate the bond valence
-    /// contribution from each neighbor bond.
+    /// contribution from each neighbor bond. Missing BV parameters are treated
+    /// as zero contribution (the function does not error for missing parameters).
     ///
     /// # Arguments
     ///
@@ -407,7 +408,7 @@ impl Structure {
     ///
     /// # Returns
     ///
-    /// The bond valence sum, or an error if BV parameters are missing.
+    /// Always returns `Ok(bv_sum)`. Only errors if `site_idx` is out of bounds.
     pub fn compute_bv_sum(
         &self,
         site_idx: usize,
@@ -2871,13 +2872,15 @@ fn find_charge_balanced_assignment(
             }
 
             current_assignment.push(oxi);
+            // Multiply log-probability by multiplicity to account for all equivalent sites
+            let log_prob_contribution = (multiplicities[current_idx] as f64) * prob.ln();
             recurse(
                 site_probs,
                 multiplicities,
                 current_idx + 1,
                 new_charge,
                 current_assignment,
-                current_log_score + prob.ln(),
+                current_log_score + log_prob_contribution,
                 best_score,
                 best_assignment,
                 permutation_count,

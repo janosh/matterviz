@@ -2730,6 +2730,18 @@ fn py_compute_bv_sums(
     max_radius: f64,
     scale_factor: f64,
 ) -> PyResult<Vec<f64>> {
+    // Validate parameters before parsing structure
+    if max_radius <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "max_radius must be positive, got {max_radius}"
+        )));
+    }
+    if scale_factor <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "scale_factor must be positive, got {scale_factor}"
+        )));
+    }
+
     let s = parse_struct(&structure)?;
     s.compute_all_bv_sums(max_radius, scale_factor)
         .map_err(|e| PyValueError::new_err(format!("Error computing BV sums: {e}")))
@@ -2760,6 +2772,18 @@ fn py_guess_oxidation_states_bvs(
     max_radius: f64,
     scale_factor: f64,
 ) -> PyResult<Vec<i8>> {
+    // Validate parameters before parsing structure
+    if max_radius <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "max_radius must be positive, got {max_radius}"
+        )));
+    }
+    if scale_factor <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "scale_factor must be positive, got {scale_factor}"
+        )));
+    }
+
     let s = parse_struct(&structure)?;
     s.guess_oxidation_states_bvs(symprec, max_radius, scale_factor)
         .map_err(|e| PyValueError::new_err(format!("Error guessing oxidation states: {e}")))
