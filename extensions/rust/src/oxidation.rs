@@ -828,6 +828,16 @@ mod tests {
 
         assert!(!guesses.is_empty(), "Should find solutions for LiFePO4");
 
+        // Verify results are sorted by decreasing probability
+        for window in guesses.windows(2) {
+            assert!(
+                window[0].probability >= window[1].probability,
+                "Results should be sorted by decreasing probability: {} < {}",
+                window[0].probability,
+                window[1].probability
+            );
+        }
+
         // Best solution should have Li+, Fe2+, P5+, O2-
         let best = &guesses[0];
         assert!(
