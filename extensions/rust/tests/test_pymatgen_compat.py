@@ -37,9 +37,7 @@ PYMATGEN_CIF_DIR = Path(
 )
 
 
-# ============================================================================
-# Fixtures
-# ============================================================================
+# === Fixtures ===
 
 
 @pytest.fixture
@@ -73,9 +71,7 @@ def compare(py_matcher: PyMatcher, rust_matcher: RustMatcher) -> Callable:
     return _compare
 
 
-# ============================================================================
-# Structure Generators
-# ============================================================================
+# === Structure Generators ===
 
 
 def make_cubic(element: str, a: float) -> Structure:
@@ -167,9 +163,7 @@ BASE_STRUCTURE_IDS = [name for name, _ in _BASE_STRUCTURE_DATA]
 BASE_STRUCTURES = [struct for _, struct in _BASE_STRUCTURE_DATA]
 
 
-# ============================================================================
-# Structure Transformations
-# ============================================================================
+# === Structure Transformations ===
 
 
 def perturb(s: Structure, magnitude: float, seed: int = 42) -> Structure:
@@ -206,16 +200,16 @@ def translate(s: Structure, vec: list[float]) -> Structure:
     return Structure(s.lattice, s.species, [(fc + vec) % 1.0 for fc in s.frac_coords])
 
 
-# ============================================================================
-# Test Classes
-# ============================================================================
+# === Test Classes ===
 
 
 class TestSelfMatching:
     """Identical structures should always match."""
 
     @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
-    def test_base_structures(self, compare: Callable, name: str, struct: Structure) -> None:
+    def test_base_structures(
+        self, compare: Callable, name: str, struct: Structure
+    ) -> None:
         """Base structures match themselves."""
         assert compare(struct, struct) is True, f"{name} should self-match"
 
@@ -247,7 +241,9 @@ class TestPerturbations:
         self, compare: Callable, name: str, struct: Structure, magnitude: float
     ) -> None:
         """Small coordinate perturbations should match."""
-        assert compare(struct, perturb(struct, magnitude)) is True, f"{name} +/-{magnitude}"
+        assert compare(struct, perturb(struct, magnitude)) is True, (
+            f"{name} +/-{magnitude}"
+        )
 
     @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
     @pytest.mark.parametrize("factor", [0.98, 1.02, 1.05])
@@ -255,7 +251,9 @@ class TestPerturbations:
         self, compare: Callable, name: str, struct: Structure, factor: float
     ) -> None:
         """Lattice scaling within tolerance should match."""
-        assert compare(struct, scale_lattice(struct, factor)) is True, f"{name} x{factor}"
+        assert compare(struct, scale_lattice(struct, factor)) is True, (
+            f"{name} x{factor}"
+        )
 
     @pytest.mark.parametrize(("name", "struct"), _BASE_STRUCTURE_DATA)
     @pytest.mark.parametrize("strain", [0.01, 0.02])
@@ -682,9 +680,7 @@ class TestAPIs:
         assert normal_result == skip_result
 
 
-# ============================================================================
-# External File Tests (skipped if files not available)
-# ============================================================================
+# === External File Tests (skipped if files not available) ===
 
 
 @pytest.mark.skipif(
@@ -703,7 +699,13 @@ class TestMattervizStructures:
                 data = json.loads(json_file.read_text())
                 if data.get("@class") == "Structure":
                     result[json_file.stem] = Structure.from_dict(data)
-            except (json.JSONDecodeError, ValueError, TypeError, KeyError, OSError) as exc:
+            except (
+                json.JSONDecodeError,
+                ValueError,
+                TypeError,
+                KeyError,
+                OSError,
+            ) as exc:
                 warnings.warn(f"Failed to load {json_file.stem}: {exc}", stacklevel=2)
         return result
 

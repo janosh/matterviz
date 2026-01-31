@@ -246,6 +246,7 @@ fn validated_config(config: Option<&VoronoiConfig>) -> VoronoiConfig {
 }
 
 /// Check if a lattice is orthogonal (all angles ≈ 90°).
+#[cfg(debug_assertions)]
 fn is_orthogonal(structure: &Structure) -> bool {
     const ANGLE_TOL: f64 = 1.0; // degrees
     let angles = structure.lattice.angles();

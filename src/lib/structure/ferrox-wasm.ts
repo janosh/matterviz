@@ -1,4 +1,4 @@
-// TypeScript wrapper for @matterviz/wasm WASM bindings
+// TypeScript wrapper for matterviz-wasm WASM bindings
 //
 // Provides lazy initialization, typed wrappers, and result handling utilities
 // for the matterviz WASM module (structure matching, analysis, etc).
@@ -132,14 +132,14 @@ export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
         // Dynamic import to avoid loading WASM until needed
         // @vite-ignore prevents Vite from trying to resolve this during SSR
         const { default: init } = (await import(
-          /* @vite-ignore */ `@matterviz/wasm`
+          /* @vite-ignore */ `matterviz-wasm`
         )) as unknown as {
           default: (opts?: { module_or_path?: string }) => Promise<FerroxWasmModule>
         }
 
         // Get WASM binary URL and initialize
         const { default: wasm_url } = await import(
-          /* @vite-ignore */ `@matterviz/wasm/ferrox_bg.wasm?url`
+          /* @vite-ignore */ `matterviz-wasm/ferrox_bg.wasm?url`
         )
         wasm_module = await init({ module_or_path: wasm_url })
         return wasm_module
@@ -147,7 +147,7 @@ export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
         // Clear the promise on failure so retry is possible
         init_promise = null
         throw new Error(
-          `Failed to load @matterviz/wasm. Install with: pnpm add @matterviz/wasm. Original error: ${err}`,
+          `Failed to load matterviz-wasm. Install with: pnpm add matterviz-wasm. Original error: ${err}`,
         )
       }
     })()
