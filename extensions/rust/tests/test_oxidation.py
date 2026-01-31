@@ -189,34 +189,23 @@ class TestAddOxidationStates:
 class TestComparisonWithPymatgen:
     """Compare ferrox results with pymatgen for verification."""
 
-    def test_composition_guesses_match_pymatgen(self) -> None:
+    @pytest.mark.parametrize("formula", ["NaCl", "Fe2O3", "TiO2", "Al2O3", "CaO"])
+    def test_composition_guesses_match_pymatgen(self, formula: str) -> None:
         """Verify composition guesses match pymatgen for common compounds."""
-        test_cases = [
-            "NaCl",
-            "Fe2O3",
-            "TiO2",
-            "Al2O3",
-            "CaO",
-        ]
+        ferrox_guesses = ferrox.oxi_state_guesses(formula)
+        pymatgen_guesses = Composition(formula).oxi_state_guesses()
 
-        for formula in test_cases:
-            ferrox_guesses = ferrox.oxi_state_guesses(formula)
-            comp = Composition(formula)
-            pymatgen_guesses = comp.oxi_state_guesses()
+        assert len(ferrox_guesses) > 0, f"No ferrox guesses for {formula}"
+        assert len(pymatgen_guesses) > 0, f"No pymatgen guesses for {formula}"
 
-            assert len(ferrox_guesses) > 0, f"No ferrox guesses for {formula}"
-            assert len(pymatgen_guesses) > 0, f"No pymatgen guesses for {formula}"
+        ferrox_best = ferrox_guesses[0]["oxidation_states"]
+        pymatgen_best = {str(k): v for k, v in pymatgen_guesses[0].items()}
 
-            ferrox_best = ferrox_guesses[0]["oxidation_states"]
-            # Convert pymatgen dict (Element keys) to string keys
-            pymatgen_best = {str(k): v for k, v in pymatgen_guesses[0].items()}
-
-            for elem_str in ferrox_best:
-                ferrox_val = ferrox_best[elem_str]
-                pymatgen_val = pymatgen_best.get(elem_str, 0)
-                assert np.isclose(ferrox_val, pymatgen_val, atol=0.5), (
-                    f"{formula}: {elem_str} ferrox={ferrox_val}, pymatgen={pymatgen_val}"
-                )
+        for elem_str, ferrox_val in ferrox_best.items():
+            pymatgen_val = pymatgen_best.get(elem_str, 0)
+            assert np.isclose(ferrox_val, pymatgen_val, atol=0.5), (
+                f"{formula}: {elem_str} ferrox={ferrox_val}, pymatgen={pymatgen_val}"
+            )
 
 
 if __name__ == "__main__":
