@@ -591,8 +591,7 @@ impl Structure {
         }
 
         // Find charge-balanced assignment
-        let result =
-            find_charge_balanced_assignment(&site_probs, &site_multiplicities, &unique_sites);
+        let result = find_charge_balanced_assignment(&site_probs, &site_multiplicities);
 
         // Expand unique site assignments to all sites
         let mut oxidation_states = vec![0i8; self.num_sites()];
@@ -2812,7 +2811,6 @@ impl Structure {
 fn find_charge_balanced_assignment(
     site_probs: &[Vec<(i8, f64)>],
     multiplicities: &[usize],
-    _unique_sites: &[usize],
 ) -> Option<Vec<i8>> {
     let max_permutations = 100_000usize;
     let mut permutation_count = 0usize;

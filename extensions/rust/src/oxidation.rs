@@ -21,7 +21,9 @@ use std::io::Read;
 use std::sync::OnceLock;
 
 use crate::element::Element;
-use crate::species::Species;
+
+// Bond valence "softness" parameter (Brown & Altermatt, Acta Cryst. B41, 244, 1985)
+const BV_SOFTNESS: f64 = 0.31;
 
 // =============================================================================
 // Compressed Data Files (embedded at compile time)
@@ -181,7 +183,7 @@ pub fn is_electronegative(element: Element) -> bool {
 /// Uses O'Keeffe & Brese formula:
 /// ```text
 /// R = r1 + r2 - r1*r2*(sqrt(c1) - sqrt(c2))^2 / (c1*r1 + c2*r2)
-/// vij = exp((R - distance) / 0.31)
+/// vij = exp((R - distance) / BV_SOFTNESS)
 /// ```
 ///
 /// Returns 0 if either element is not in the BV parameters table,
@@ -216,7 +218,7 @@ pub fn calculate_bond_valence(
     let r_ideal = r1 + r2 - r1 * r2 * (sqrt_c1 - sqrt_c2).powi(2) / (c1 * r1 + c2 * r2);
 
     // Bond valence
-    let vij = ((r_ideal - distance * scale_factor) / 0.31).exp();
+    let vij = ((r_ideal - distance * scale_factor) / BV_SOFTNESS).exp();
 
     // Sign based on electronegativity (positive if element1 is more electropositive)
     let en1 = element1.electronegativity().unwrap_or(2.0);
@@ -638,30 +640,6 @@ fn gcd_i32(mut a: i32, mut b: i32) -> i32 {
         a = temp;
     }
     a
-}
-
-// =============================================================================
-// Convenience Functions for Species
-// =============================================================================
-
-/// Add oxidation states to a list of species based on provided assignments.
-pub fn add_oxidation_states_to_species(
-    species: &[Species],
-    oxidation_states: &[i8],
-) -> Vec<Species> {
-    species
-        .iter()
-        .zip(oxidation_states)
-        .map(|(sp, &oxi)| Species::new(sp.element, Some(oxi)))
-        .collect()
-}
-
-/// Remove oxidation states from a list of species (make neutral).
-pub fn remove_oxidation_states_from_species(species: &[Species]) -> Vec<Species> {
-    species
-        .iter()
-        .map(|sp| Species::neutral(sp.element))
-        .collect()
 }
 
 // =============================================================================
