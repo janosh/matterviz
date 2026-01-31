@@ -6,8 +6,8 @@
 
 use crate::error::{FerroxError, Result};
 use crate::io::parse_structure_json;
-use crate::matcher::StructureMatcher;
 use crate::structure::Structure;
+use crate::structure_matcher::StructureMatcher;
 use indexmap::IndexMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

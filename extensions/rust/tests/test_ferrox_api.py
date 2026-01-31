@@ -285,3 +285,134 @@ class TestStructureWriters:
             path = tmp_path / filename
             ferrox.write_structure_file(nacl_json, str(path))
             assert path.read_text(), f"{filename} should not be empty"
+
+
+# RDF Tests
+
+# Skip RDF tests if module not rebuilt with RDF functions
+rdf_available = hasattr(ferrox, "compute_rdf")
+
+
+@pytest.mark.skipif(not rdf_available, reason="ferrox not rebuilt with RDF functions")
+class TestRdf:
+    """Tests for radial distribution function calculations."""
+
+    def test_compute_rdf_returns_correct_shape(self, rocksalt_nacl_json: str) -> None:
+        """RDF returns correct number of bins."""
+        radii, g_of_r = ferrox.compute_rdf(rocksalt_nacl_json, r_max=6.0, n_bins=30)
+        assert len(radii) == 30
+        assert len(g_of_r) == 30
+
+    def test_compute_rdf_bin_centers(self, rocksalt_nacl_json: str) -> None:
+        """Bin centers are correctly positioned."""
+        r_max, n_bins = 6.0, 30
+        radii, _ = ferrox.compute_rdf(rocksalt_nacl_json, r_max=r_max, n_bins=n_bins)
+        bin_size = r_max / n_bins
+        # First bin center
+        assert abs(radii[0] - bin_size / 2) < 1e-10
+        # Last bin center
+        assert abs(radii[-1] - (r_max - bin_size / 2)) < 1e-10
+
+    def test_compute_rdf_has_peaks(self, rocksalt_nacl_json: str) -> None:
+        """RDF should have non-zero peaks for crystal structure."""
+        _, g_of_r = ferrox.compute_rdf(rocksalt_nacl_json, r_max=6.0, n_bins=30)
+        assert any(g > 0 for g in g_of_r), "RDF should have non-zero values"
+
+    def test_compute_element_rdf(self, rocksalt_nacl_json: str) -> None:
+        """Element-resolved RDF for Na-Cl pair."""
+        radii, g_of_r = ferrox.compute_element_rdf(
+            rocksalt_nacl_json, "Na", "Cl", r_max=6.0, n_bins=30
+        )
+        assert len(radii) == 30
+        assert any(g > 0 for g in g_of_r), "Na-Cl RDF should have peaks"
+
+    def test_compute_element_rdf_nonexistent_element(
+        self, rocksalt_nacl_json: str
+    ) -> None:
+        """RDF for non-existent element returns zeros."""
+        _, g_of_r = ferrox.compute_element_rdf(
+            rocksalt_nacl_json, "Fe", "O", r_max=6.0, n_bins=30
+        )
+        assert all(g == 0 for g in g_of_r), "Non-existent element pair should be zero"
+
+    def test_compute_all_element_rdfs(self, rocksalt_nacl_json: str) -> None:
+        """All element pair RDFs for NaCl (3 pairs: Na-Na, Na-Cl, Cl-Cl)."""
+        results = ferrox.compute_all_element_rdfs(rocksalt_nacl_json, r_max=6.0, n_bins=30)
+        assert len(results) == 3
+        pairs = {(rdf["element_a"], rdf["element_b"]) for rdf in results}
+        assert ("Na", "Na") in pairs
+        assert ("Na", "Cl") in pairs
+        assert ("Cl", "Cl") in pairs
+
+    def test_compute_all_element_rdfs_single_element(self, fcc_cu_json: str) -> None:
+        """Single element structure has 1 RDF pair."""
+        results = ferrox.compute_all_element_rdfs(fcc_cu_json, r_max=5.0, n_bins=25)
+        assert len(results) == 1
+        assert results[0]["element_a"] == "Cu"
+        assert results[0]["element_b"] == "Cu"
+
+    def test_rdf_normalize_option(self, rocksalt_nacl_json: str) -> None:
+        """Normalization affects g(r) values."""
+        _, g_norm = ferrox.compute_rdf(
+            rocksalt_nacl_json, r_max=6.0, n_bins=30, normalize=True
+        )
+        _, g_raw = ferrox.compute_rdf(
+            rocksalt_nacl_json, r_max=6.0, n_bins=30, normalize=False
+        )
+        # Raw counts should be different from normalized
+        assert g_norm != g_raw
+
+    def test_rdf_auto_expand_option(self, nacl_json: str) -> None:
+        """Auto-expand option runs without error."""
+        # Small structure with auto_expand should work
+        radii1, g1 = ferrox.compute_rdf(
+            nacl_json, r_max=6.0, n_bins=30, auto_expand=True, expansion_factor=1.5
+        )
+        radii2, g2 = ferrox.compute_rdf(
+            nacl_json, r_max=6.0, n_bins=30, auto_expand=False
+        )
+        # Both should return valid data
+        assert len(radii1) == len(radii2) == 30
+
+    def test_rdf_invalid_r_max(self, nacl_json: str) -> None:
+        """Negative r_max raises error."""
+        with pytest.raises(ValueError, match="r_max must be positive"):
+            ferrox.compute_rdf(nacl_json, r_max=-1.0)
+
+    def test_rdf_invalid_n_bins(self, nacl_json: str) -> None:
+        """Zero n_bins raises error."""
+        with pytest.raises(ValueError, match="n_bins must be at least 1"):
+            ferrox.compute_rdf(nacl_json, n_bins=0)
+
+    def test_element_rdf_invalid_element(self, nacl_json: str) -> None:
+        """Invalid element symbol raises error."""
+        with pytest.raises(ValueError, match="Unknown element"):
+            ferrox.compute_element_rdf(nacl_json, "Xx", "Yy")
+
+    def test_rdf_fcc_first_peak_position(self, fcc_cu_json: str) -> None:
+        """FCC Cu first peak near a/√2 ≈ 2.55 Å."""
+        lattice_const = 3.6
+        expected_nn = lattice_const / (2**0.5)  # ~2.546 Å
+
+        radii, g_of_r = ferrox.compute_rdf(
+            fcc_cu_json, r_max=5.0, n_bins=50, auto_expand=False
+        )
+
+        # Find peak position
+        peak_idx = max(range(len(g_of_r)), key=lambda idx: g_of_r[idx])
+        peak_r = radii[peak_idx]
+
+        assert abs(peak_r - expected_nn) < 0.3, (
+            f"FCC Cu peak at {peak_r:.2f} Å, expected ~{expected_nn:.2f} Å"
+        )
+
+    def test_rdf_empty_structure(self) -> None:
+        """Empty structure returns zero RDF."""
+        empty_json = json.dumps({
+            "@module": "pymatgen.core.structure",
+            "@class": "Structure",
+            "lattice": {"matrix": [[5, 0, 0], [0, 5, 0], [0, 0, 5]]},
+            "sites": [],
+        })
+        _, g_of_r = ferrox.compute_rdf(empty_json, r_max=5.0, n_bins=25)
+        assert all(g == 0 for g in g_of_r)
