@@ -447,7 +447,7 @@ impl WasmStructureMatcher {
     /// - d(x, y) ≥ 0 (non-negative)
     /// - d(x, x) = 0 (identity)
     /// - d(x, y) = d(y, x) (symmetric)
-    /// - Always finite (empty vs non-empty returns 1e9)
+    /// - Always finite (clamped to 1e9 if underlying computation yields non-finite)
     ///
     /// Note: Triangle inequality is not guaranteed due to greedy matching.
     ///
@@ -462,7 +462,9 @@ impl WasmStructureMatcher {
         let result: Result<f64, String> = (|| {
             let s1 = struct1.to_structure()?;
             let s2 = struct2.to_structure()?;
-            Ok(self.inner.get_structure_distance(&s1, &s2))
+            let dist = self.inner.get_structure_distance(&s1, &s2);
+            // Clamp non-finite values to ensure JS compatibility with Number.isFinite()
+            Ok(if dist.is_finite() { dist } else { 1e9 })
         })();
         result.into()
     }

@@ -2532,6 +2532,7 @@ fn make_rdf_options(
 #[pyfunction]
 #[pyo3(name = "compute_rdf", signature = (structure, r_max=15.0, n_bins=75, normalize=true, auto_expand=true, expansion_factor=2.0))]
 fn py_compute_rdf(
+    py: Python<'_>,
     structure: StructureJson,
     r_max: f64,
     n_bins: usize,
@@ -2539,10 +2540,10 @@ fn py_compute_rdf(
     auto_expand: bool,
     expansion_factor: f64,
 ) -> PyResult<(Vec<f64>, Vec<f64>)> {
-    let result = rdf::compute_rdf(
-        &parse_struct(&structure)?,
-        &make_rdf_options(r_max, n_bins, normalize, auto_expand, expansion_factor)?,
-    );
+    let s = parse_struct(&structure)?;
+    let opts = make_rdf_options(r_max, n_bins, normalize, auto_expand, expansion_factor)?;
+    // Release GIL during heavy computation (especially with auto_expand creating supercells)
+    let result = py.detach(|| rdf::compute_rdf(&s, &opts));
     Ok((result.radii, result.g_of_r))
 }
 
@@ -2550,6 +2551,7 @@ fn py_compute_rdf(
 #[pyfunction]
 #[pyo3(name = "compute_element_rdf", signature = (structure, element_a, element_b, r_max=15.0, n_bins=75, normalize=true, auto_expand=true, expansion_factor=2.0))]
 fn py_compute_element_rdf(
+    py: Python<'_>,
     structure: StructureJson,
     element_a: &str,
     element_b: &str,
@@ -2563,12 +2565,10 @@ fn py_compute_element_rdf(
         .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {element_a}")))?;
     let elem_b = Element::from_symbol(element_b)
         .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {element_b}")))?;
-    let result = rdf::compute_element_rdf(
-        &parse_struct(&structure)?,
-        elem_a,
-        elem_b,
-        &make_rdf_options(r_max, n_bins, normalize, auto_expand, expansion_factor)?,
-    );
+    let s = parse_struct(&structure)?;
+    let opts = make_rdf_options(r_max, n_bins, normalize, auto_expand, expansion_factor)?;
+    // Release GIL during heavy computation
+    let result = py.detach(|| rdf::compute_element_rdf(&s, elem_a, elem_b, &opts));
     Ok((result.radii, result.g_of_r))
 }
 
@@ -2584,10 +2584,10 @@ fn py_compute_all_element_rdfs(
     auto_expand: bool,
     expansion_factor: f64,
 ) -> PyResult<Py<PyList>> {
-    let results = rdf::compute_all_element_rdfs(
-        &parse_struct(&structure)?,
-        &make_rdf_options(r_max, n_bins, normalize, auto_expand, expansion_factor)?,
-    );
+    let s = parse_struct(&structure)?;
+    let opts = make_rdf_options(r_max, n_bins, normalize, auto_expand, expansion_factor)?;
+    // Release GIL during heavy computation
+    let results = py.detach(|| rdf::compute_all_element_rdfs(&s, &opts));
     let list = PyList::empty(py);
     for (elem_a, elem_b, rdf_result) in results {
         let dict = PyDict::new(py);
