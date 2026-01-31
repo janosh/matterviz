@@ -458,57 +458,27 @@ impl Structure {
         numerical_tol: f64,
         exclude_self: bool,
     ) -> (Vec<usize>, Vec<usize>, Vec<[i32; 3]>, Vec<f64>) {
-        let num_sites = self.num_sites();
-        if num_sites == 0 || r <= 0.0 {
+        use crate::neighbors::{NeighborListConfig, build_neighbor_list};
+
+        if self.num_sites() == 0 || r <= 0.0 {
             return (vec![], vec![], vec![], vec![]);
         }
 
-        // Compute the search range for periodic images
-        let lattice_vecs = [
-            self.lattice.matrix().row(0).transpose(),
-            self.lattice.matrix().row(1).transpose(),
-            self.lattice.matrix().row(2).transpose(),
-        ];
+        let config = NeighborListConfig {
+            cutoff: r,
+            self_interaction: !exclude_self,
+            numerical_tol,
+            ..Default::default()
+        };
 
-        // For each axis, compute how many images we need
-        let volume = self.lattice.volume();
-        let max_range: [i32; 3] = std::array::from_fn(|idx| {
-            let cross = lattice_vecs[(idx + 1) % 3].cross(&lattice_vecs[(idx + 2) % 3]);
-            let height = volume / cross.norm();
-            (r / height).ceil() as i32 + 1
-        });
+        let nl = build_neighbor_list(self, &config);
 
-        let cart_coords = self.cart_coords();
-        let mut center_indices = Vec::new();
-        let mut neighbor_indices = Vec::new();
-        let mut image_offsets = Vec::new();
-        let mut distances = Vec::new();
-
-        for (idx, cart_i) in cart_coords.iter().enumerate() {
-            for (jdx, cart_j) in cart_coords.iter().enumerate() {
-                for dx in -max_range[0]..=max_range[0] {
-                    for dy in -max_range[1]..=max_range[1] {
-                        for dz in -max_range[2]..=max_range[2] {
-                            let offset = (dx as f64) * lattice_vecs[0]
-                                + (dy as f64) * lattice_vecs[1]
-                                + (dz as f64) * lattice_vecs[2];
-                            let dist = (cart_j + offset - cart_i).norm();
-                            if dist <= r {
-                                if exclude_self && dist < numerical_tol && idx == jdx {
-                                    continue;
-                                }
-                                center_indices.push(idx);
-                                neighbor_indices.push(jdx);
-                                image_offsets.push([dx, dy, dz]);
-                                distances.push(dist);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        (center_indices, neighbor_indices, image_offsets, distances)
+        (
+            nl.center_indices,
+            nl.neighbor_indices,
+            nl.images,
+            nl.distances,
+        )
     }
 
     /// Get all neighbors for each site within radius `r`.
