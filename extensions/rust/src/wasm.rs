@@ -1264,3 +1264,85 @@ pub fn structure_to_poscar(structure: JsCrystal) -> WasmResult<String> {
         .map(|struc| crate::io::structure_to_poscar(&struc, None))
         .into()
 }
+
+// === XRD Functions ===
+
+use crate::wasm_types::{JsHklInfo, JsXrdOptions, JsXrdPattern};
+
+/// Compute powder X-ray diffraction pattern from a structure.
+///
+/// Options:
+/// - wavelength: X-ray wavelength in Angstroms (default: 1.54184, Cu Kα)
+/// - two_theta_range: [min, max] 2θ angles in degrees (default: [0, 180])
+/// - debye_waller_factors: Element symbol -> B factor mapping
+/// - scaled: Whether to scale intensities to 0-100 (default: true)
+#[wasm_bindgen]
+pub fn compute_xrd(
+    structure: JsCrystal,
+    options: Option<JsXrdOptions>,
+) -> WasmResult<JsXrdPattern> {
+    use crate::xrd::{XrdConfig, compute_xrd as xrd_compute};
+
+    let result: Result<JsXrdPattern, String> = (|| {
+        let struc = structure.to_structure()?;
+        let opts = options.unwrap_or_default();
+
+        if opts.wavelength <= 0.0 {
+            return Err("wavelength must be positive".to_string());
+        }
+
+        let two_theta_range = opts
+            .two_theta_range
+            .map(|[min, max]| {
+                if min < 0.0 || max > 180.0 || min >= max {
+                    Err("two_theta_range must be [min, max] with 0 <= min < max <= 180".to_string())
+                } else {
+                    Ok((min, max))
+                }
+            })
+            .transpose()?;
+
+        let config = XrdConfig {
+            wavelength: opts.wavelength,
+            two_theta_range,
+            debye_waller_factors: opts.debye_waller_factors,
+            scaled: opts.scaled,
+            ..Default::default()
+        };
+
+        let pattern = xrd_compute(&struc, &config);
+
+        // Convert HklInfo to JsHklInfo
+        let hkls: Vec<Vec<JsHklInfo>> = pattern
+            .hkls
+            .into_iter()
+            .map(|families| {
+                families
+                    .into_iter()
+                    .map(|info| JsHklInfo {
+                        hkl: info.hkl,
+                        multiplicity: info.multiplicity,
+                    })
+                    .collect()
+            })
+            .collect();
+
+        Ok(JsXrdPattern {
+            two_theta: pattern.two_theta,
+            intensities: pattern.intensities,
+            hkls,
+            d_spacings: pattern.d_spacings,
+        })
+    })();
+    result.into()
+}
+
+/// Get atomic scattering parameters (Cromer-Mann coefficients).
+///
+/// Returns the raw JSON string of scattering parameters for all elements.
+/// This is the same data embedded in the WASM module, exposed for users
+/// who need programmatic access to the coefficients.
+#[wasm_bindgen]
+pub fn get_atomic_scattering_params() -> String {
+    crate::xrd::SCATTERING_PARAMS_JSON.to_string()
+}
