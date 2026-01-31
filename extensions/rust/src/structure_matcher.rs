@@ -1872,14 +1872,33 @@ mod tests {
             vec![Species::neutral(Element::Cu), Species::neutral(Element::O)],
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
+        // NaBr with SAME geometry as NaCl (tests composition_weight in isolation)
+        let nabr_same_geom = Structure::new(
+            Lattice::cubic(5.64), // Same as NaCl
+            vec![Species::neutral(Element::Na), Species::neutral(Element::Br)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
         let matcher = StructureMatcher::new();
 
         let d_same = matcher.get_structure_distance(&nacl, &nacl);
-        let d_diff_elem = matcher.get_structure_distance(&nacl, &cuo);
-        let d_diff_comp = matcher.get_structure_distance(&nacl, &fe);
+        let d_disjoint = matcher.get_structure_distance(&nacl, &cuo);
+        let d_partial = matcher.get_structure_distance(&nacl, &nabr_same_geom);
+        let d_no_overlap = matcher.get_structure_distance(&nacl, &fe);
 
-        assert!(d_diff_elem.is_finite() && d_diff_elem > d_same);
-        assert!(d_diff_comp.is_finite() && d_diff_comp > 0.0);
+        assert!(d_disjoint.is_finite() && d_disjoint > d_same);
+        assert!(d_no_overlap.is_finite() && d_no_overlap > 0.0);
+        // Same geometry but partial overlap: composition_distance = 1 - 1/3 ≈ 0.667
+        // With COMPOSITION_WEIGHT = 10.0, expected contribution ≈ 6.67
+        // Since geometric distance ≈ 0, total should be > 5.0
+        assert!(
+            d_partial > 5.0,
+            "Same geometry + partial overlap should have composition penalty: {d_partial}"
+        );
+        // Partial should be less than disjoint (DISJOINT_COMPOSITION_DISTANCE = 1e9)
+        assert!(
+            d_partial < d_disjoint,
+            "Partial ({d_partial}) < disjoint ({d_disjoint})"
+        );
     }
 
     #[test]
@@ -1891,31 +1910,6 @@ mod tests {
         assert!(matcher.get_structure_distance(&empty, &empty) < 1e-10);
         let d = matcher.get_structure_distance(&empty, &non_empty);
         assert!((d - EMPTY_STRUCTURE_DISTANCE).abs() < 1e-10, "Got {d}");
-    }
-
-    #[test]
-    fn test_structure_distance_lattice_shapes() {
-        // Cubic vs tetragonal - tests symmetry across different lattice shapes
-        let cubic = Structure::new(
-            Lattice::cubic(4.0),
-            vec![Species::neutral(Element::Fe)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
-        let tetragonal = Structure::new(
-            Lattice::new(Matrix3::new(4.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 6.0)),
-            vec![Species::neutral(Element::Fe)],
-            vec![Vector3::new(0.0, 0.0, 0.0)],
-        );
-        let matcher = StructureMatcher::new();
-
-        let d = matcher.get_structure_distance(&cubic, &tetragonal);
-        let d_rev = matcher.get_structure_distance(&tetragonal, &cubic);
-
-        assert!(d.is_finite() && d >= 0.0);
-        assert!(
-            (d - d_rev).abs() < 1e-10,
-            "Should be symmetric: {d} vs {d_rev}"
-        );
     }
 
     #[test]
@@ -1988,5 +1982,48 @@ mod tests {
         // Symmetry must hold
         let d_rev = matcher.get_structure_distance(&hex_boundary, &hex_origin);
         assert!((d - d_rev).abs() < 1e-10, "Asymmetric: {d} vs {d_rev}");
+    }
+
+    #[test]
+    fn test_structure_distance_symmetry_various_cases() {
+        // Tests d(A,B) = d(B,A) across: equal sizes, unequal sizes, different lattice shapes
+        let matcher = StructureMatcher::new();
+
+        // Case 1: Different lattice shapes (cubic vs tetragonal)
+        let cubic = make_simple_cubic(Element::Fe, 4.0);
+        let tetragonal = Structure::new(
+            Lattice::new(Matrix3::new(4.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 6.0)),
+            vec![Species::neutral(Element::Fe)],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+        );
+
+        // Case 2: Unequal sizes (1 vs 3 sites, same lattice)
+        let large = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe); 3],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.0, 0.0),
+                Vector3::new(0.0, 0.5, 0.0),
+            ],
+        );
+
+        // Case 3: Different lattices + unequal sizes (most rigorous)
+        let hex_large = Structure::new(
+            Lattice::new(Matrix3::new(4.0, 0.0, 0.0, -2.0, 3.464, 0.0, 0.0, 0.0, 6.0)),
+            vec![Species::neutral(Element::Fe); 2],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.333, 0.667, 0.5)],
+        );
+
+        for (name, s1, s2) in [
+            ("cubic-tetragonal", &cubic, &tetragonal),
+            ("equal-unequal", &cubic, &large),
+            ("cubic-hexagonal", &cubic, &hex_large),
+        ] {
+            let d12 = matcher.get_structure_distance(s1, s2);
+            let d21 = matcher.get_structure_distance(s2, s1);
+            assert!(d12.is_finite() && d12 >= 0.0, "{name}: non-negative");
+            assert!((d12 - d21).abs() < 1e-10, "{name}: {d12} != {d21}");
+        }
     }
 }

@@ -233,7 +233,7 @@ describe(`WasmStructureMatcher`, () => {
   })
 })
 
-// Test structures for get_rms_dist - perturbed NaCl with shifted sites
+// Perturbed NaCl with shifted sites (for testing non-zero distances)
 const nacl_perturbed = {
   lattice: { matrix: [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]] },
   sites: [
@@ -247,62 +247,42 @@ describe(`WasmStructureMatcher.get_rms_dist`, () => {
     [`nacl`, nacl_json],
     [`fcc_cu`, fcc_cu_json],
     [`bcc_fe`, bcc_fe_json],
-  ])(`returns rms=0 for identical %s structures`, (_, struct) => {
-    const result = unwrap(new wasm.WasmStructureMatcher().get_rms_dist(struct, struct))
+  ])(`returns rms=0, symmetric for identical %s structures`, (_, struct) => {
+    const matcher = new wasm.WasmStructureMatcher()
+    const result = unwrap(matcher.get_rms_dist(struct, struct))
     if (!result) throw new Error(`expected result`)
     expect(result.rms).toBeCloseTo(0, 14)
     expect(result.max_dist).toBeCloseTo(0, 14)
   })
 
-  it(`returns non-zero rms for perturbed structures`, () => {
-    const result = unwrap(
-      new wasm.WasmStructureMatcher().get_rms_dist(nacl_json, nacl_perturbed),
-    )
-    if (!result) throw new Error(`expected result`)
-    expect(result.rms).toBeGreaterThan(0)
-    expect(result.rms).toBeLessThan(0.2)
-  })
-
-  it(`is symmetric`, () => {
+  it(`perturbed: non-zero rms, symmetric`, () => {
     const matcher = new wasm.WasmStructureMatcher()
     const r1 = unwrap(matcher.get_rms_dist(nacl_json, nacl_perturbed))
     const r2 = unwrap(matcher.get_rms_dist(nacl_perturbed, nacl_json))
     if (!r1 || !r2) throw new Error(`expected results`)
+    expect(r1.rms).toBeGreaterThan(0)
+    expect(r1.rms).toBeLessThan(0.2)
     expect(r1.rms).toBeCloseTo(r2.rms, 10)
   })
 
   it(`returns falsy for incompatible structures`, () => {
-    const matcher = new wasm.WasmStructureMatcher()
-    expect(unwrap(matcher.get_rms_dist(nacl_json, fcc_cu_json))).toBeFalsy()
+    expect(unwrap(new wasm.WasmStructureMatcher().get_rms_dist(nacl_json, fcc_cu_json)))
+      .toBeFalsy()
   })
 })
 
 describe(`WasmStructureMatcher.getStructureDistance`, () => {
-  it(`returns 0 for identical structures`, () => {
+  it(`identical=0, symmetric, finite for incompatible`, () => {
     const matcher = new wasm.WasmStructureMatcher()
-    const dist = unwrap(matcher.getStructureDistance(nacl_json, nacl_json))
-    expect(dist).toBeCloseTo(0, 10)
-  })
-
-  it(`is symmetric`, () => {
-    const matcher = new wasm.WasmStructureMatcher()
+    // Identical = 0
+    expect(unwrap(matcher.getStructureDistance(nacl_json, nacl_json))).toBeCloseTo(0, 10)
+    // Symmetric
     const d12 = unwrap(matcher.getStructureDistance(nacl_json, nacl_perturbed))
     const d21 = unwrap(matcher.getStructureDistance(nacl_perturbed, nacl_json))
     expect(d12).toBeCloseTo(d21, 10)
-  })
-
-  it(`returns finite value for incompatible structures (unlike get_rms_dist)`, () => {
-    const matcher = new wasm.WasmStructureMatcher()
-    const dist = unwrap(matcher.getStructureDistance(nacl_json, fcc_cu_json))
-    expect(Number.isFinite(dist)).toBe(true)
-    expect(dist).toBeGreaterThan(0)
-  })
-
-  it(`returns larger distance for different compositions`, () => {
-    const matcher = new wasm.WasmStructureMatcher()
-    const dist_same_comp = unwrap(matcher.getStructureDistance(nacl_json, nacl_perturbed))
-    const dist_diff_comp = unwrap(matcher.getStructureDistance(nacl_json, fcc_cu_json))
-    // Different composition should always be further than same composition
-    expect(dist_diff_comp).toBeGreaterThan(dist_same_comp)
+    // Incompatible returns finite (unlike get_rms_dist which returns null)
+    const dist_diff = unwrap(matcher.getStructureDistance(nacl_json, fcc_cu_json))
+    expect(Number.isFinite(dist_diff)).toBe(true)
+    expect(dist_diff).toBeGreaterThan(d12) // Different composition > same composition
   })
 })
