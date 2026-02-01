@@ -35,6 +35,7 @@
 //! ```
 
 use crate::element::Element;
+use crate::neighbors::{NeighborListConfig, build_neighbor_list};
 use crate::species::Species;
 use crate::structure::Structure;
 
@@ -110,9 +111,15 @@ pub fn get_coordination_numbers(structure: &Structure, cutoff: f64) -> Vec<usize
         return vec![0; structure.num_sites()];
     }
 
-    let (centers, _, _, _) = structure.get_neighbor_list(cutoff, NEIGHBOR_TOL, true);
+    let config = NeighborListConfig {
+        cutoff,
+        self_interaction: false,
+        numerical_tol: NEIGHBOR_TOL,
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(structure, &config);
     let mut counts = vec![0usize; structure.num_sites()];
-    for center in centers {
+    for center in nl.center_indices {
         counts[center] += 1;
     }
     counts
@@ -128,8 +135,13 @@ pub fn get_coordination_number(structure: &Structure, site_idx: usize, cutoff: f
     if cutoff <= 0.0 {
         return 0;
     }
-    let (centers, _, _, _) = structure.get_neighbor_list(cutoff, NEIGHBOR_TOL, true);
-    centers.iter().filter(|&&c| c == site_idx).count()
+    let config = NeighborListConfig {
+        cutoff,
+        numerical_tol: NEIGHBOR_TOL,
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(structure, &config);
+    nl.center_indices.iter().filter(|&&c| c == site_idx).count()
 }
 
 /// Get the local environment (detailed neighbor information) for a site.
@@ -150,20 +162,25 @@ pub fn get_local_environment(
         return vec![];
     }
 
-    let (centers, neighbors, images, distances) =
-        structure.get_neighbor_list(cutoff, NEIGHBOR_TOL, true);
+    let config = NeighborListConfig {
+        cutoff,
+        numerical_tol: NEIGHBOR_TOL,
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(structure, &config);
 
-    let mut result: Vec<LocalEnvNeighbor> = centers
+    let mut result: Vec<LocalEnvNeighbor> = nl
+        .center_indices
         .iter()
         .enumerate()
         .filter(|(_, center)| **center == site_idx)
         .map(|(idx, _)| {
-            let neighbor_idx = neighbors[idx];
+            let neighbor_idx = nl.neighbor_indices[idx];
             let species = *structure.site_occupancies[neighbor_idx].dominant_species();
             LocalEnvNeighbor {
                 species,
-                distance: distances[idx],
-                image: images[idx],
+                distance: nl.distances[idx],
+                image: nl.images[idx],
                 site_idx: neighbor_idx,
                 solid_angle: None,
             }
@@ -187,14 +204,19 @@ pub fn get_neighbors(
         return vec![];
     }
 
-    let (centers, neighbors, images, distances) =
-        structure.get_neighbor_list(cutoff, NEIGHBOR_TOL, true);
+    let config = NeighborListConfig {
+        cutoff,
+        numerical_tol: NEIGHBOR_TOL,
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(structure, &config);
 
-    let mut result: Vec<_> = centers
+    let mut result: Vec<_> = nl
+        .center_indices
         .iter()
         .enumerate()
         .filter(|(_, c)| **c == site_idx)
-        .map(|(idx, _)| (neighbors[idx], distances[idx], images[idx]))
+        .map(|(idx, _)| (nl.neighbor_indices[idx], nl.distances[idx], nl.images[idx]))
         .collect();
 
     result.sort_by(|a, b| a.1.total_cmp(&b.1));

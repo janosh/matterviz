@@ -58,6 +58,7 @@ itertools = "0.14"        # permutations for fit_anonymous
 rand = "0.8"              # random perturbations (0.8 uses getrandom 0.2 with simpler WASM support)
 regex = "1.12"            # formula parsing
 meshless_voronoi = "0.7"  # Voronoi tessellation for coordination analysis
+num-complex = "0.4"       # complex numbers for spherical harmonics
 
 # Utilities
 indexmap = { version = "2.13", features = ["serde"] }

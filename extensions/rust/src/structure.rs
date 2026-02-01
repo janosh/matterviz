@@ -640,11 +640,11 @@ impl Structure {
 
     /// Get neighbor list as arrays: (center_indices, neighbor_indices, offset_vectors, distances).
     ///
-    /// Finds all atom pairs within cutoff radius `r` using periodic boundary conditions.
+    /// Finds all atom pairs within cutoff radius using periodic boundary conditions.
     ///
     /// # Arguments
     ///
-    /// * `r` - Cutoff radius in Angstroms
+    /// * `cutoff` - Cutoff radius in Angstroms
     /// * `numerical_tol` - Tolerance for distance comparisons (typically 1e-8)
     /// * `exclude_self` - If true, exclude self-pairs (distance ~0)
     ///
@@ -654,73 +654,53 @@ impl Structure {
     ///
     /// # Performance
     ///
-    /// Uses O(n² × images) brute-force search. For large structures with long cutoffs,
-    /// consider using specialized neighbor-finding libraries.
+    /// Uses the shared NeighborList implementation (cell-list for larger systems,
+    /// brute-force fallback based on `NeighborListConfig::cell_list_threshold`).
     pub fn get_neighbor_list(
         &self,
-        r: f64,
+        cutoff: f64,
         numerical_tol: f64,
         exclude_self: bool,
     ) -> (Vec<usize>, Vec<usize>, Vec<[i32; 3]>, Vec<f64>) {
-        let num_sites = self.num_sites();
-        if num_sites == 0 || r <= 0.0 {
+        use crate::neighbors::{NeighborListConfig, build_neighbor_list};
+
+        // Validate inputs to avoid silent NaN/inf behavior
+        assert!(
+            cutoff.is_finite(),
+            "get_neighbor_list: cutoff must be finite, got {cutoff}"
+        );
+        assert!(
+            numerical_tol.is_finite() && numerical_tol >= 0.0,
+            "get_neighbor_list: numerical_tol must be finite and >= 0, got {numerical_tol}"
+        );
+
+        if self.num_sites() == 0 || cutoff <= 0.0 {
             return (vec![], vec![], vec![], vec![]);
         }
 
-        // Compute the search range for periodic images
-        let lattice_vecs = [
-            self.lattice.matrix().row(0).transpose(),
-            self.lattice.matrix().row(1).transpose(),
-            self.lattice.matrix().row(2).transpose(),
-        ];
+        let config = NeighborListConfig {
+            cutoff,
+            self_interaction: !exclude_self,
+            numerical_tol,
+            ..Default::default()
+        };
 
-        // For each axis, compute how many images we need
-        let volume = self.lattice.volume();
-        let max_range: [i32; 3] = std::array::from_fn(|idx| {
-            let cross = lattice_vecs[(idx + 1) % 3].cross(&lattice_vecs[(idx + 2) % 3]);
-            let height = volume / cross.norm();
-            (r / height).ceil() as i32 + 1
-        });
+        let nl = build_neighbor_list(self, &config);
 
-        let cart_coords = self.cart_coords();
-        let mut center_indices = Vec::new();
-        let mut neighbor_indices = Vec::new();
-        let mut image_offsets = Vec::new();
-        let mut distances = Vec::new();
-
-        for (idx, cart_i) in cart_coords.iter().enumerate() {
-            for (jdx, cart_j) in cart_coords.iter().enumerate() {
-                for dx in -max_range[0]..=max_range[0] {
-                    for dy in -max_range[1]..=max_range[1] {
-                        for dz in -max_range[2]..=max_range[2] {
-                            let offset = (dx as f64) * lattice_vecs[0]
-                                + (dy as f64) * lattice_vecs[1]
-                                + (dz as f64) * lattice_vecs[2];
-                            let dist = (cart_j + offset - cart_i).norm();
-                            if dist <= r {
-                                if exclude_self && dist < numerical_tol && idx == jdx {
-                                    continue;
-                                }
-                                center_indices.push(idx);
-                                neighbor_indices.push(jdx);
-                                image_offsets.push([dx, dy, dz]);
-                                distances.push(dist);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        (center_indices, neighbor_indices, image_offsets, distances)
+        (
+            nl.center_indices,
+            nl.neighbor_indices,
+            nl.images,
+            nl.distances,
+        )
     }
 
-    /// Get all neighbors for each site within radius `r`.
-    pub fn get_all_neighbors(&self, r: f64) -> Vec<Vec<(usize, f64, [i32; 3])>> {
+    /// Get all neighbors for each site within cutoff radius.
+    pub fn get_all_neighbors(&self, cutoff: f64) -> Vec<Vec<(usize, f64, [i32; 3])>> {
         let num_sites = self.num_sites();
         let mut result = vec![Vec::new(); num_sites];
 
-        let (centers, neighbors, images, dists) = self.get_neighbor_list(r, 1e-8, true);
+        let (centers, neighbors, images, dists) = self.get_neighbor_list(cutoff, 1e-8, true);
 
         for (kdx, &center) in centers.iter().enumerate() {
             result[center].push((neighbors[kdx], dists[kdx], images[kdx]));
@@ -2335,7 +2315,7 @@ impl Structure {
     /// Apply a deformation gradient to the lattice.
     ///
     /// The deformation gradient F transforms the lattice as:
-    /// `new_lattice = F * old_lattice`
+    /// `new_lattice = old_lattice * F` (row-vector convention)
     ///
     /// Fractional coordinates remain unchanged (they're relative to the lattice).
     ///
@@ -2355,7 +2335,8 @@ impl Structure {
     /// let deformed = structure.deform(f)?;
     /// ```
     pub fn deform(&self, gradient: Matrix3<f64>) -> Result<Self> {
-        let new_matrix = gradient * self.lattice.matrix();
+        // Right-multiply: rows are lattice vectors (row-vector convention)
+        let new_matrix = self.lattice.matrix() * gradient;
         let new_lattice = Lattice::from_matrix_with_pbc(new_matrix, self.lattice.pbc);
 
         let mut result = self.clone();

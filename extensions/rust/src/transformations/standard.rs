@@ -523,6 +523,36 @@ mod tests {
         assert_relative_eq!(deformed.volume(), original_volume * 1.5, epsilon = 1e-8);
     }
 
+    #[test]
+    fn test_deform_triclinic_shear() {
+        // Test shear on non-orthogonal lattice - this catches left vs right multiply bugs
+        // For row-vector convention: deformed = cell * gradient (right multiply)
+        let structure = triclinic_li2o();
+        let cell = structure.lattice.matrix();
+
+        // Apply shear in xy
+        let shear = Matrix3::new(1.0, 0.05, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
+        let deformed = structure.deform(shear).unwrap();
+        let new_cell = deformed.lattice.matrix();
+
+        // With right-multiply: new_cell = cell * shear
+        // Row 0 (a-vector): a_new = a * shear = [a0, a1, a2] * [[1,0.05,0],[0,1,0],[0,0,1]]
+        //                        = [a0, a0*0.05 + a1, a2]
+        let expected_cell = cell * shear;
+        for row in 0..3 {
+            for col in 0..3 {
+                assert_relative_eq!(
+                    new_cell[(row, col)],
+                    expected_cell[(row, col)],
+                    epsilon = 1e-10
+                );
+            }
+        }
+
+        // Volume should be preserved for shear (det(shear) = 1)
+        assert_relative_eq!(deformed.volume(), structure.volume(), epsilon = 1e-10);
+    }
+
     // ========== perturb tests ==========
 
     #[test]

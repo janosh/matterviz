@@ -43,9 +43,15 @@ pub mod structure;
 pub mod algorithms;
 pub mod batch;
 pub mod coordination;
+pub mod elastic;
+pub mod integrators;
+pub mod neighbors;
+pub mod optimizers;
+pub mod order_params;
 pub mod pbc;
 pub mod rdf;
 pub mod structure_matcher;
+pub mod trajectory;
 
 // Transformations (internal - public API is via Structure methods)
 pub(crate) mod transformations;

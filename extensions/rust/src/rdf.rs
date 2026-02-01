@@ -23,6 +23,7 @@
 //! ```
 
 use crate::element::Element;
+use crate::neighbors::{NeighborListConfig, build_neighbor_list};
 use crate::structure::Structure;
 use std::f64::consts::PI;
 
@@ -164,9 +165,15 @@ fn compute_rdf_internal(
     // Prepare structure (auto-expand if enabled)
     let work_struct = prepare_structure(structure, options);
 
-    // Get neighbor list (use the expanded structure, so no need for PBC - but the method
-    // handles it correctly anyway)
-    let (centers, neighbors, _images, distances) = work_struct.get_neighbor_list(r_max, 1e-8, true);
+    // Get neighbor list using the new O(n) cell-list algorithm
+    let config = NeighborListConfig {
+        cutoff: r_max,
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(&work_struct, &config);
+    let centers = &nl.center_indices;
+    let neighbors = &nl.neighbor_indices;
+    let distances = &nl.distances;
 
     // Build histogram with occupancy weighting
     let mut g_of_r = vec![0.0; n_bins];
