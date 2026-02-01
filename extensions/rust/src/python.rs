@@ -603,7 +603,7 @@ impl PyElement {
             Some(radii) => {
                 let dict = PyDict::new(py);
                 for (oxi, radius) in radii {
-                    dict.set_item(oxi, radius)?;
+                    dict.set_item(oxi.to_string(), radius)?;
                 }
                 Ok(Some(dict.unbind()))
             }
@@ -634,7 +634,7 @@ impl PyElement {
                         }
                         coord_dict.set_item(coordination, spin_dict)?;
                     }
-                    outer_dict.set_item(oxi_state, coord_dict)?;
+                    outer_dict.set_item(oxi_state.to_string(), coord_dict)?;
                 }
                 Ok(Some(outer_dict.unbind()))
             }
