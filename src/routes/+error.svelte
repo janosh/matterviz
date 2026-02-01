@@ -3,7 +3,7 @@
   import Icon from '$lib/Icon.svelte'
   import pkg from '$root/package.json'
 
-  let online: boolean = $state(true)
+  let online = $state<boolean>(true)
 </script>
 
 <svelte:head>

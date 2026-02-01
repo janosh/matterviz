@@ -2299,7 +2299,9 @@
                         pt?.stroke_opacity ?? 1,
                     fill_opacity: (tc(`point.opacity`) ? styles.point?.opacity : null) ??
                       pt?.fill_opacity ?? 1,
-                    cursor: on_point_click ? `pointer` : undefined,
+                    cursor: (on_point_click || point_events?.onclick)
+                      ? `pointer`
+                      : undefined,
                   }}
                   hover={point.point_hover ?? {}}
                   label={final_label}

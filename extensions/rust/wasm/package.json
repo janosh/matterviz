@@ -25,7 +25,11 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "peerDependencies": {
+    "matterviz": ">=0.2.0"
+  },
   "devDependencies": {
+    "matterviz": "^0.2.3",
     "vitest": "^3.0.0"
   },
   "repository": {
