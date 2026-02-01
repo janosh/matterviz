@@ -1554,13 +1554,13 @@ pub fn fractional_composition(formula: &str) -> WasmResult<Vec<JsElementAmount>>
 
 /// Check if two compositions are approximately equal.
 ///
-/// Uses relative tolerance of 0.1 and absolute tolerance of 1e-8.
+/// Uses relative tolerance of 0.01 (1%) and absolute tolerance of 1e-8.
 #[wasm_bindgen]
 pub fn compositions_almost_equal(formula1: &str, formula2: &str) -> WasmResult<bool> {
     use crate::composition::Composition;
     Composition::from_formula(formula1)
         .and_then(|c1| {
-            Composition::from_formula(formula2).map(|c2| c1.almost_equals(&c2, 0.1, 1e-8))
+            Composition::from_formula(formula2).map(|c2| c1.almost_equals(&c2, 0.01, 1e-8))
         })
         .map_err(|e| e.to_string())
         .into()

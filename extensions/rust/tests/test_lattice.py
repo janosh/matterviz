@@ -173,6 +173,18 @@ class TestLatticeEdgeCases:
         assert abs(g[0][0] - expected_g00) < 0.01
         assert ferrox.get_lattice_inv_matrix(struct) is not None
 
+    def test_singular_matrix_inverse(self) -> None:
+        """Singular matrix returns identity as safe fallback."""
+        # Truly singular: third row is all zeros (det = 0)
+        struct = {
+            "lattice": {"matrix": [[1.0, 0, 0], [0, 1.0, 0], [0, 0, 0]]},
+            "sites": [{"species": [{"element": "C", "occu": 1.0}], "abc": [0, 0, 0]}],
+        }
+        inv = ferrox.get_lattice_inv_matrix(struct)
+        # Should return identity matrix as fallback for singular input
+        assert inv is not None
+        assert np.allclose(inv, np.eye(3))
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

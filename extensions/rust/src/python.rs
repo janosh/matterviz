@@ -811,8 +811,8 @@ impl PyElement {
         self.inner == other.inner
     }
 
-    fn __hash__(&self) -> u64 {
-        self.inner.atomic_number() as u64
+    fn __hash__(&self) -> isize {
+        self.inner.atomic_number() as isize
     }
 }
 
