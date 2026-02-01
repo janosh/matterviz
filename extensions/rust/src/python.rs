@@ -27,26 +27,40 @@ use crate::structure_matcher::{ComparatorType, StructureMatcher};
 use nalgebra::{Matrix3, Vector3};
 
 /// A structure input that can be either a JSON string or a dict.
-/// This allows ergonomic Python usage: `ferrox.copy_structure(struct.as_dict())` or
-/// `ferrox.copy_structure(json.dumps(struct.as_dict()))`.
+/// This allows ergonomic Python usage:
+/// - `ferrox.copy_structure(struct)` (pymatgen Structure/Molecule directly)
+/// - `ferrox.copy_structure(struct.as_dict())` (dict from as_dict())
+/// - `ferrox.copy_structure(json.dumps(struct.as_dict()))` (JSON string)
 pub struct StructureJson(String);
 
 impl<'a, 'py> FromPyObject<'a, 'py> for StructureJson {
     type Error = PyErr;
 
     fn extract(ob: pyo3::Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        let py = ob.py();
+        let json_module = py.import("json")?;
+
+        // Case 1: JSON string
         if let Ok(s) = ob.cast::<PyString>() {
-            Ok(StructureJson(s.to_string()))
-        } else if let Ok(dict) = ob.cast::<PyDict>() {
-            // Convert dict to JSON string
-            let json_module = ob.py().import("json")?;
-            let json_str: String = json_module.call_method1("dumps", (dict,))?.extract()?;
-            Ok(StructureJson(json_str))
-        } else {
-            Err(PyValueError::new_err(
-                "Expected a JSON string or dict for structure input",
-            ))
+            return Ok(StructureJson(s.to_string()));
         }
+
+        // Case 2: Dict (e.g. from struct.as_dict())
+        if let Ok(dict) = ob.cast::<PyDict>() {
+            let json_str: String = json_module.call_method1("dumps", (dict,))?.extract()?;
+            return Ok(StructureJson(json_str));
+        }
+
+        // Case 3: Object with as_dict() method (e.g. pymatgen Structure/Molecule)
+        if ob.hasattr("as_dict")? {
+            let dict = ob.call_method0("as_dict")?;
+            let json_str: String = json_module.call_method1("dumps", (dict,))?.extract()?;
+            return Ok(StructureJson(json_str));
+        }
+
+        Err(PyValueError::new_err(
+            "Expected a JSON string, dict, or object with as_dict() method (e.g. pymatgen Structure/Molecule)",
+        ))
     }
 }
 
@@ -1302,6 +1316,329 @@ fn parse_xyz_flexible_py(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyD
     let result = crate::io::parse_xyz_flexible(Path::new(path))
         .map_err(|e| PyValueError::new_err(format!("Error parsing XYZ: {e}")))?;
     struct_or_mol_to_pydict(py, result)
+}
+
+// ============================================================================
+// Direct Object Conversion (pymatgen <-> ferrox <-> ASE)
+// ============================================================================
+
+/// Convert a pymatgen Structure directly to ferrox dict format.
+///
+/// This extracts lattice, species, and coordinates directly from the pymatgen
+/// object without JSON serialization overhead.
+///
+/// Args:
+///     structure: pymatgen Structure object
+///
+/// Returns:
+///     dict: Structure in ferrox/pymatgen dict format
+///
+/// Example:
+///     >>> from pymatgen.core import Structure
+///     >>> from ferrox import from_pymatgen_structure
+///     >>> struct = Structure.from_file("POSCAR")
+///     >>> ferrox_dict = from_pymatgen_structure(struct)
+#[pyfunction]
+fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyResult<Py<PyDict>> {
+    // Extract lattice matrix directly
+    let lattice = structure.getattr("lattice")?;
+    let matrix: Vec<Vec<f64>> = lattice.getattr("matrix")?.extract()?;
+    let pbc: [bool; 3] = lattice
+        .getattr("pbc")
+        .and_then(|p| p.extract())
+        .unwrap_or([true, true, true]);
+
+    // Extract species and coords
+    let species_list: Vec<String> = structure
+        .getattr("species")?
+        .iter()?
+        .map(|s| {
+            s.and_then(|sp| {
+                sp.getattr("symbol")
+                    .or_else(|_| sp.str().map(|s| s.into()))
+                    .and_then(|s| s.extract())
+            })
+        })
+        .collect::<PyResult<_>>()?;
+    let frac_coords: Vec<[f64; 3]> = structure.getattr("frac_coords")?.extract()?;
+
+    // Extract charge if present
+    let charge: f64 = structure
+        .getattr("charge")
+        .and_then(|c| c.extract())
+        .unwrap_or(0.0);
+
+    // Extract properties
+    let properties = structure
+        .getattr("properties")
+        .and_then(|p| p.extract::<Py<PyDict>>())
+        .unwrap_or_else(|_| PyDict::new(py).unbind());
+
+    // Build the ferrox Structure
+    let lattice_obj = crate::lattice::Lattice::new_with_pbc(
+        nalgebra::Matrix3::from_row_slice(&[
+            matrix[0][0],
+            matrix[0][1],
+            matrix[0][2],
+            matrix[1][0],
+            matrix[1][1],
+            matrix[1][2],
+            matrix[2][0],
+            matrix[2][1],
+            matrix[2][2],
+        ]),
+        pbc,
+    );
+
+    let species: Vec<crate::species::Species> = species_list
+        .iter()
+        .map(|s| {
+            let elem = crate::element::Element::from_symbol(s)
+                .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {s}")))?;
+            Ok(crate::species::Species::neutral(elem))
+        })
+        .collect::<PyResult<_>>()?;
+
+    let coords: Vec<nalgebra::Vector3<f64>> = frac_coords
+        .iter()
+        .map(|c| nalgebra::Vector3::new(c[0], c[1], c[2]))
+        .collect();
+
+    let s = crate::structure::Structure::try_new_full(
+        lattice_obj,
+        species
+            .into_iter()
+            .map(crate::structure::SiteOccupancy::ordered)
+            .collect(),
+        coords,
+        pbc,
+        charge,
+        std::collections::HashMap::new(),
+    )
+    .map_err(|e| PyValueError::new_err(format!("Error creating structure: {e}")))?;
+
+    let json = structure_to_pymatgen_json(&s);
+    json_to_pydict(py, &json)
+}
+
+/// Convert a ferrox dict to a pymatgen Structure object.
+///
+/// Args:
+///     structure (str | dict): Structure in ferrox/pymatgen dict format
+///
+/// Returns:
+///     pymatgen.core.Structure: pymatgen Structure object
+///
+/// Example:
+///     >>> from ferrox import to_pymatgen_structure, from_pymatgen_structure
+///     >>> struct = to_pymatgen_structure(ferrox_dict)
+#[pyfunction]
+fn to_pymatgen_structure(py: Python<'_>, structure: StructureJson) -> PyResult<PyObject> {
+    let pymatgen = py.import("pymatgen.core.structure")?;
+    let structure_cls = pymatgen.getattr("Structure")?;
+
+    // Parse to get validated structure, then serialize
+    let s = parse_struct(&structure)?;
+    let json_str = structure_to_pymatgen_json(&s);
+    let dict = json_to_pydict(py, &json_str)?;
+
+    // Call Structure.from_dict()
+    structure_cls
+        .call_method1("from_dict", (dict,))
+        .map(|o| o.unbind())
+}
+
+/// Convert a ferrox dict to a pymatgen Molecule object.
+///
+/// Args:
+///     molecule (str | dict): Molecule in ferrox/pymatgen dict format
+///
+/// Returns:
+///     pymatgen.core.Molecule: pymatgen Molecule object
+///
+/// Example:
+///     >>> from ferrox import to_pymatgen_molecule
+///     >>> mol = to_pymatgen_molecule(ferrox_mol_dict)
+#[pyfunction]
+fn to_pymatgen_molecule(py: Python<'_>, molecule: StructureJson) -> PyResult<PyObject> {
+    let pymatgen = py.import("pymatgen.core.structure")?;
+    let molecule_cls = pymatgen.getattr("Molecule")?;
+
+    let mol = crate::io::parse_molecule_json(&molecule.0)
+        .map_err(|e| PyValueError::new_err(format!("Error parsing molecule: {e}")))?;
+    let json_str = crate::io::molecule_to_pymatgen_json(&mol);
+    let dict = json_to_pydict(py, &json_str)?;
+
+    molecule_cls
+        .call_method1("from_dict", (dict,))
+        .map(|o| o.unbind())
+}
+
+/// Convert an ASE Atoms object directly to ferrox dict format.
+///
+/// This extracts cell, symbols, and positions directly from the ASE Atoms
+/// object without JSON serialization overhead.
+///
+/// Args:
+///     atoms: ASE Atoms object
+///
+/// Returns:
+///     dict: Structure or Molecule in ferrox/pymatgen dict format
+///
+/// Example:
+///     >>> from ase.io import read
+///     >>> from ferrox import from_ase_atoms
+///     >>> atoms = read("POSCAR")
+///     >>> ferrox_dict = from_ase_atoms(atoms)
+#[pyfunction]
+fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDict>> {
+    // Extract symbols
+    let symbols: Vec<String> = atoms.call_method0("get_chemical_symbols")?.extract()?;
+
+    // Extract positions (Cartesian)
+    let positions: Vec<[f64; 3]> = atoms.call_method0("get_positions")?.extract()?;
+
+    // Extract cell
+    let cell_obj = atoms.call_method0("get_cell")?;
+    let cell: Vec<Vec<f64>> = cell_obj.extract().unwrap_or_else(|_| vec![vec![0.0; 3]; 3]);
+    let has_cell = cell.iter().any(|row| row.iter().any(|&v| v.abs() > 1e-10));
+
+    // Extract pbc
+    let pbc: [bool; 3] = atoms
+        .call_method0("get_pbc")
+        .and_then(|p| p.extract())
+        .unwrap_or([false, false, false]);
+    let is_periodic = pbc.iter().any(|&p| p) && has_cell;
+
+    // Extract info dict
+    let info: Py<PyDict> = atoms
+        .getattr("info")
+        .and_then(|i| i.extract())
+        .unwrap_or_else(|_| PyDict::new(py).unbind());
+
+    // Extract charge if present
+    let charge: f64 = atoms
+        .getattr("charge")
+        .and_then(|c| c.extract())
+        .unwrap_or(0.0);
+
+    if is_periodic {
+        // Build periodic Structure
+        let lattice = crate::lattice::Lattice::new_with_pbc(
+            nalgebra::Matrix3::from_row_slice(&[
+                cell[0][0], cell[0][1], cell[0][2], cell[1][0], cell[1][1], cell[1][2], cell[2][0],
+                cell[2][1], cell[2][2],
+            ]),
+            pbc,
+        );
+
+        let species: Vec<crate::species::Species> = symbols
+            .iter()
+            .map(|s| {
+                let elem = crate::element::Element::from_symbol(s)
+                    .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {s}")))?;
+                Ok(crate::species::Species::neutral(elem))
+            })
+            .collect::<PyResult<_>>()?;
+
+        // Convert Cartesian to fractional
+        let inv = lattice.inv_matrix();
+        let frac_coords: Vec<nalgebra::Vector3<f64>> = positions
+            .iter()
+            .map(|p| inv * nalgebra::Vector3::new(p[0], p[1], p[2]))
+            .collect();
+
+        let s = crate::structure::Structure::try_new_full(
+            lattice,
+            species
+                .into_iter()
+                .map(crate::structure::SiteOccupancy::ordered)
+                .collect(),
+            frac_coords,
+            pbc,
+            charge,
+            std::collections::HashMap::new(),
+        )
+        .map_err(|e| PyValueError::new_err(format!("Error creating structure: {e}")))?;
+
+        let json = structure_to_pymatgen_json(&s);
+        json_to_pydict(py, &json)
+    } else {
+        // Build non-periodic Molecule
+        let species: Vec<crate::species::Species> = symbols
+            .iter()
+            .map(|s| {
+                let elem = crate::element::Element::from_symbol(s)
+                    .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {s}")))?;
+                Ok(crate::species::Species::neutral(elem))
+            })
+            .collect::<PyResult<_>>()?;
+
+        let cart_coords: Vec<nalgebra::Vector3<f64>> = positions
+            .iter()
+            .map(|p| nalgebra::Vector3::new(p[0], p[1], p[2]))
+            .collect();
+
+        let mol = crate::structure::Structure::try_new_molecule(
+            species,
+            cart_coords,
+            charge,
+            std::collections::HashMap::new(),
+        )
+        .map_err(|e| PyValueError::new_err(format!("Error creating molecule: {e}")))?;
+
+        let json = crate::io::molecule_to_pymatgen_json(&mol);
+        json_to_pydict(py, &json)
+    }
+}
+
+/// Convert a ferrox dict to an ASE Atoms object.
+///
+/// Args:
+///     structure (str | dict): Structure or Molecule in ferrox/pymatgen dict format
+///
+/// Returns:
+///     ase.Atoms: ASE Atoms object
+///
+/// Example:
+///     >>> from ferrox import to_ase_atoms
+///     >>> atoms = to_ase_atoms(ferrox_dict)
+#[pyfunction]
+fn to_ase_atoms(py: Python<'_>, structure: StructureJson) -> PyResult<PyObject> {
+    let ase = py.import("ase")?;
+    let atoms_cls = ase.getattr("Atoms")?;
+
+    // Try to parse as structure first, then as molecule
+    let (symbols, positions, cell, pbc) = if let Ok(s) = parse_structure_json(&structure.0) {
+        let symbols: Vec<String> = s.species_strings();
+        let positions: Vec<[f64; 3]> = s.cart_coords().iter().map(|c| [c.x, c.y, c.z]).collect();
+        let mat = s.lattice.matrix();
+        let cell = vec![
+            vec![mat[(0, 0)], mat[(0, 1)], mat[(0, 2)]],
+            vec![mat[(1, 0)], mat[(1, 1)], mat[(1, 2)]],
+            vec![mat[(2, 0)], mat[(2, 1)], mat[(2, 2)]],
+        ];
+        (symbols, positions, Some(cell), s.pbc)
+    } else if let Ok(mol) = crate::io::parse_molecule_json(&structure.0) {
+        let symbols: Vec<String> = mol.species_strings();
+        let positions: Vec<[f64; 3]> = mol.cart_coords().iter().map(|c| [c.x, c.y, c.z]).collect();
+        (symbols, positions, None, [false, false, false])
+    } else {
+        return Err(PyValueError::new_err(
+            "Could not parse input as Structure or Molecule",
+        ));
+    };
+
+    // Build kwargs
+    let kwargs = PyDict::new(py);
+    kwargs.set_item("symbols", symbols)?;
+    kwargs.set_item("positions", positions)?;
+    kwargs.set_item("pbc", pbc)?;
+    if let Some(cell) = cell {
+        kwargs.set_item("cell", cell)?;
+    }
+
+    atoms_cls.call((), Some(&kwargs)).map(|o| o.unbind())
 }
 
 // ============================================================================
@@ -4747,6 +5084,12 @@ pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add_function(wrap_pyfunction!(structures_to_ase_dicts, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(parse_ase_dict, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(parse_xyz_flexible_py, py_mod)?)?;
+    // Direct object conversion (pymatgen <-> ferrox <-> ASE)
+    py_mod.add_function(wrap_pyfunction!(from_pymatgen_structure, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(to_pymatgen_structure, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(to_pymatgen_molecule, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(from_ase_atoms, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(to_ase_atoms, py_mod)?)?;
     // Supercell functions
     py_mod.add_function(wrap_pyfunction!(make_supercell, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(make_supercell_diag, py_mod)?)?;
