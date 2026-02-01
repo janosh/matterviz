@@ -227,9 +227,9 @@ Filter and display a materials table:
   let bg_max = $state()
 
   const filtered = $derived(
-    materials.filter((m) =>
-      (bg_min === undefined || m.bandgap >= bg_min) &&
-      (bg_max === undefined || m.bandgap <= bg_max)
+    materials.filter((mat) =>
+      (bg_min === undefined || mat.bandgap >= bg_min) &&
+      (bg_max === undefined || mat.bandgap <= bg_max)
     ),
   )
 </script>
@@ -238,7 +238,7 @@ Filter and display a materials table:
   label="Band Gap"
   bind:min_value={bg_min}
   bind:max_value={bg_max}
-  histogram_data={materials.map((m) => m.bandgap)}
+  histogram_data={materials.map((mat) => mat.bandgap)}
   histogram_height={40}
   unit="eV"
   style="margin-bottom: 1em"
@@ -254,12 +254,12 @@ Filter and display a materials table:
     </tr>
   </thead>
   <tbody>
-    {#each filtered as m (m.name)}
+    {#each filtered as mat (mat.name)}
       <tr style="border-bottom: 1px solid rgba(128, 128, 128, 0.1)">
-        <td style="padding: 8pt; font-family: monospace">{m.name}</td>
-        <td style="padding: 8pt; text-align: right">{m.bandgap}</td>
-        <td style="padding: 8pt; text-align: right">{m.energy}</td>
-        <td style="padding: 8pt; text-align: right">{m.volume}</td>
+        <td style="padding: 8pt; font-family: monospace">{mat.name}</td>
+        <td style="padding: 8pt; text-align: right">{mat.bandgap}</td>
+        <td style="padding: 8pt; text-align: right">{mat.energy}</td>
+        <td style="padding: 8pt; text-align: right">{mat.volume}</td>
       </tr>
     {:else}
       <tr>

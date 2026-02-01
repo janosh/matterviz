@@ -28,3 +28,4 @@ static/tmp
 extensions/vscode/deno.jsonc
 extensions/dash/deno.jsonc
 src/lib/element/data.json
+extensions/rust/uv.lock
