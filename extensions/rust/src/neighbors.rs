@@ -1697,22 +1697,14 @@ mod tests {
 
         // Verify indices are valid
         let n_atoms = sc.num_sites();
-        for &center_idx in &nl.center_indices {
-            assert!(
-                center_idx < n_atoms,
-                "center index {} >= n_atoms {}",
-                center_idx,
-                n_atoms
-            );
-        }
-        for &neighbor_idx in &nl.neighbor_indices {
-            assert!(
-                neighbor_idx < n_atoms,
-                "neighbor index {} >= n_atoms {}",
-                neighbor_idx,
-                n_atoms
-            );
-        }
+        assert!(
+            nl.center_indices.iter().all(|&idx| idx < n_atoms),
+            "All center indices should be < n_atoms"
+        );
+        assert!(
+            nl.neighbor_indices.iter().all(|&idx| idx < n_atoms),
+            "All neighbor indices should be < n_atoms"
+        );
 
         // Verify distances are consistent with positions + images
         let positions = sc.cart_coords();

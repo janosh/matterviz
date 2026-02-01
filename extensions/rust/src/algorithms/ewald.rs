@@ -1070,21 +1070,18 @@ mod tests {
         let ewald = Ewald::new().with_accuracy(1e-5);
         let site_energies = ewald.site_energies(&structure).unwrap();
 
-        // Fe sites are indices 0-3 (pymatgen gives ~-24 eV for Fe2+ sites)
-        let fe_ref = site_energies[0];
-        for (idx, &fe_energy) in site_energies.iter().enumerate().take(4) {
-            assert!(
-                (-50.0..-10.0).contains(&fe_energy),
-                "Fe site {idx} energy {fe_energy:.2} should be ~-24 eV"
-            );
-        }
+        // Fe sites (indices 0-3): pymatgen gives ~-24 eV for Fe2+ sites
+        let fe_energies = &site_energies[0..4];
+        assert!(
+            fe_energies.iter().all(|e| (-50.0..-10.0).contains(e)),
+            "Fe site energies {fe_energies:?} should all be ~-24 eV"
+        );
 
-        // Li sites are indices 4-7, should have smaller magnitude than Fe2+
-        for (idx, &li_energy) in site_energies.iter().enumerate().skip(4).take(4) {
-            assert!(
-                li_energy.abs() < fe_ref.abs(),
-                "Li site {idx} energy {li_energy:.2} should be smaller than Fe energy"
-            );
-        }
+        // Li sites (indices 4-7): smaller magnitude than Fe2+
+        let fe_ref_abs = fe_energies[0].abs();
+        assert!(
+            site_energies[4..8].iter().all(|e| e.abs() < fe_ref_abs),
+            "Li site energies should be smaller than Fe"
+        );
     }
 }

@@ -848,17 +848,15 @@ mod tests {
         // Matches torch-sim test_calculate_momenta_basic:
         // After velocity initialization, each system should have zero COM momentum
 
+        let mut rng = StdRng::seed_from_u64(42);
         let n_atoms = 8;
         let positions: Vec<Vector3<f64>> = (0..n_atoms)
             .map(|idx| Vector3::new(idx as f64, 0.0, 0.0))
             .collect();
-        let masses = (0..n_atoms)
-            .map(|_| 12.0 + rand::random::<f64>() * 10.0)
-            .collect();
+        let masses: Vec<f64> = (0..n_atoms).map(|_| rng.gen_range(12.0..22.0)).collect();
         let mut state = MDState::new(positions, masses);
 
         // Initialize velocities
-        let mut rng = StdRng::seed_from_u64(42);
         state = init_velocities(state, 300.0, &mut rng);
 
         // Zero COM momentum

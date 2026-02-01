@@ -720,27 +720,19 @@ mod tests {
 
     // === pymatgen Reference Tests ===
 
-    /// Create graphite structure (hexagonal)
+    /// Create graphite structure (hexagonal, P6_3/mmc)
     fn make_graphite() -> Structure {
-        // Graphite hexagonal structure: space group P6_3/mmc
-        // a = 2.464 Å, c = 6.711 Å
-        let lattice = Lattice::hexagonal(2.464, 6.711);
-        let species = vec![
-            Species::neutral(Element::C),
-            Species::neutral(Element::C),
-            Species::neutral(Element::C),
-            Species::neutral(Element::C),
-        ];
-        // Graphite has C atoms at Wyckoff positions
-        // 2a: (0, 0, 0) and (0, 0, 0.5)
-        // 2b: (1/3, 2/3, 0) and (2/3, 1/3, 0.5)
-        let frac_coords = vec![
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(0.0, 0.0, 0.5),
-            Vector3::new(1.0 / 3.0, 2.0 / 3.0, 0.0),
-            Vector3::new(2.0 / 3.0, 1.0 / 3.0, 0.5),
-        ];
-        Structure::new(lattice, species, frac_coords)
+        Structure::new(
+            Lattice::hexagonal(2.464, 6.711),
+            vec![Species::neutral(Element::C); 4],
+            // Wyckoff 2a: (0,0,0), (0,0,0.5); 2b: (1/3,2/3,0), (2/3,1/3,0.5)
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.0, 0.0, 0.5),
+                Vector3::new(1.0 / 3.0, 2.0 / 3.0, 0.0),
+                Vector3::new(2.0 / 3.0, 1.0 / 3.0, 0.5),
+            ],
+        )
     }
 
     #[test]
@@ -786,16 +778,13 @@ mod tests {
         assert!(has_002, "Graphite should have (002) reflection");
     }
 
-    /// Create CsCl structure (cubic, reference from pymatgen test)
+    /// Create CsCl structure (Pm-3m, a = 4.209 Å)
     fn make_cscl() -> Structure {
-        // CsCl: Pm-3m, a = 4.209 Å
-        let lattice = Lattice::cubic(4.209);
-        let species = vec![Species::neutral(Element::Cs), Species::neutral(Element::Cl)];
-        let frac_coords = vec![
-            Vector3::new(0.0, 0.0, 0.0), // Cs at corner
-            Vector3::new(0.5, 0.5, 0.5), // Cl at body center
-        ];
-        Structure::new(lattice, species, frac_coords)
+        Structure::new(
+            Lattice::cubic(4.209),
+            vec![Species::neutral(Element::Cs), Species::neutral(Element::Cl)],
+            vec![Vector3::zeros(), Vector3::new(0.5, 0.5, 0.5)], // corner + body center
+        )
     }
 
     #[test]
@@ -837,28 +826,25 @@ mod tests {
         );
     }
 
-    /// Create tetragonal test structure (from pymatgen test)
+    /// Create tetragonal Si2Ru2Pr2 test structure (from pymatgen test)
     fn make_tetragonal_test() -> Structure {
-        // Tetragonal structure from pymatgen test
-        // a = 4.192 Å, c = 6.88 Å
-        let lattice = Lattice::tetragonal(4.192, 6.88);
-        let species = vec![
-            Species::neutral(Element::Si),
-            Species::neutral(Element::Si),
-            Species::neutral(Element::Ru),
-            Species::neutral(Element::Ru),
-            Species::neutral(Element::Pr),
-            Species::neutral(Element::Pr),
-        ];
-        let frac_coords = vec![
-            Vector3::new(0.25, 0.25, 0.173),
-            Vector3::new(0.75, 0.75, 0.827),
-            Vector3::new(0.75, 0.25, 0.0),
-            Vector3::new(0.25, 0.75, 0.0),
-            Vector3::new(0.25, 0.25, 0.676),
-            Vector3::new(0.75, 0.75, 0.324),
-        ];
-        Structure::new(lattice, species, frac_coords)
+        // 2 each of Si, Ru, Pr
+        let species = [Element::Si, Element::Ru, Element::Pr]
+            .iter()
+            .flat_map(|&el| [Species::neutral(el), Species::neutral(el)])
+            .collect();
+        Structure::new(
+            Lattice::tetragonal(4.192, 6.88),
+            species,
+            vec![
+                Vector3::new(0.25, 0.25, 0.173),
+                Vector3::new(0.75, 0.75, 0.827),
+                Vector3::new(0.75, 0.25, 0.0),
+                Vector3::new(0.25, 0.75, 0.0),
+                Vector3::new(0.25, 0.25, 0.676),
+                Vector3::new(0.75, 0.75, 0.324),
+            ],
+        )
     }
 
     #[test]

@@ -2110,18 +2110,20 @@ mod tests {
 
         let li2o_neutral = Structure::new(
             lattice.clone(),
-            vec![Species::neutral(Element::Li); 2]
-                .into_iter()
-                .chain(std::iter::once(Species::neutral(Element::O)))
-                .collect(),
+            vec![
+                Species::neutral(Element::Li),
+                Species::neutral(Element::Li),
+                Species::neutral(Element::O),
+            ],
             coords.clone(),
         );
         let li2o_charged = Structure::new(
             lattice,
-            vec![Species::new(Element::Li, Some(1)); 2]
-                .into_iter()
-                .chain(std::iter::once(Species::new(Element::O, Some(-2))))
-                .collect(),
+            vec![
+                Species::new(Element::Li, Some(1)),
+                Species::new(Element::Li, Some(1)),
+                Species::new(Element::O, Some(-2)),
+            ],
             coords,
         );
 
