@@ -265,6 +265,12 @@ describe(`ScatterPlot`, () => {
     expect(document.querySelector(`.scatter`)).toBeTruthy()
   })
 
+  // NOTE: Cursor behavior tests for ScatterPlot SVG and points are in Playwright
+  // since vitest/happy-dom lacks proper dimensions for rendering points.
+  // The cursor logic is tested indirectly via:
+  // - FillArea.test.ts (cursor based on click handlers and hover_style.cursor)
+  // - ScatterPoint.test.ts (style.cursor prop application)
+
   describe(`auto-cycling series colors and symbols`, () => {
     test(`DEFAULT_SERIES_COLORS and DEFAULT_SERIES_SYMBOLS are valid`, () => {
       // Colors: 10 distinct valid hex

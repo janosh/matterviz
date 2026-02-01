@@ -974,7 +974,7 @@
       {@render bottom_left?.({ structure: displayed_structure })}
     </div>
 
-    {#if measure_mode === `edit-bonds` &&
+    {#if (measure_mode as string) === `edit-bonds` &&
       (added_bonds.length > 0 || removed_bonds.length > 0)}
       <div class="bond-edit-status">
         {#if added_bonds.length > 0}
