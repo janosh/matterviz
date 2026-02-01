@@ -92,35 +92,31 @@ class TestMoleculeToXyz:
 class TestParseAseDict:
     """Tests for parse_ase_dict function."""
 
-    @pytest.mark.parametrize(("pbc", "expected_type", "n_sites"), [
-        ([True, True, True], "Structure", 2),    # fully periodic
-        ([False, False, False], "Molecule", 3),  # non-periodic
-        ([True, True, False], "Structure", 2),   # 2D material
+    @pytest.mark.parametrize(("pbc", "expected_type"), [
+        ([True, True, True], "Structure"),    # fully periodic
+        ([False, False, False], "Molecule"),  # non-periodic
+        ([True, True, False], "Structure"),   # 2D material (slab)
     ])
-    def test_periodicity_detection(self, pbc: list, expected_type: str, n_sites: int) -> None:
+    def test_periodicity_detection(self, pbc: list[bool], expected_type: str) -> None:
         """Parse ASE dict with various PBC settings."""
         ase_dict = {
-            "symbols": ["Na", "Cl"][:n_sites] if expected_type == "Structure" else ["O", "H", "H"],
-            "positions": [[0.0, 0.0, 0.0], [2.82, 2.82, 2.82]][:n_sites] if expected_type == "Structure"
-                else [[0.0, 0.0, 0.0], [0.96, 0.0, 0.0], [-0.24, 0.93, 0.0]],
-            "cell": [[5.64, 0.0, 0.0], [0.0, 5.64, 0.0], [0.0, 0.0, 5.64]] if any(pbc)
-                else [[0.0, 0.0, 0.0]] * 3,
+            "symbols": ["Na", "Cl"],
+            "positions": [[0.0, 0.0, 0.0], [2.82, 2.82, 2.82]],
+            "cell": [[5.64, 0.0, 0.0], [0.0, 5.64, 0.0], [0.0, 0.0, 5.64]],
             "pbc": pbc,
-            "info": {},
         }
         type_name, result = ferrox.parse_ase_dict(ase_dict)
         assert type_name == expected_type
-        assert len(result["sites"]) == n_sites
+        assert len(result["sites"]) == 2
 
     def test_charge_from_info(self) -> None:
         """Charge is extracted from info dict."""
-        ase_charged = {
+        type_name, result = ferrox.parse_ase_dict({
             "symbols": ["Na"],
             "positions": [[0.0, 0.0, 0.0]],
             "pbc": [False, False, False],
             "info": {"charge": 1.0},
-        }
-        type_name, result = ferrox.parse_ase_dict(ase_charged)
+        })
         assert type_name == "Molecule"
         assert result["charge"] == 1.0
 
@@ -160,31 +156,33 @@ class TestRoundtrips:
         parsed = ferrox.parse_xyz_str(xyz)
         assert len(parsed["sites"]) == 3
 
-    @pytest.mark.parametrize(("charge", "is_structure"), [
-        (1.0, True), (-1.0, True), (2.5, True),   # structures
-        (1.0, False), (-1.0, False), (0.5, False), # molecules
-        (0.0, False),  # zero charge should not be in info
-    ])
-    def test_to_ase_atoms_charge_roundtrip(self, charge: float, is_structure: bool) -> None:
-        """to_ase_atoms -> from_ase_atoms preserves charge for structures and molecules."""
+    @pytest.mark.parametrize("charge", [1.0, -1.0, 2.5, 0.5])
+    def test_to_ase_atoms_charge_roundtrip_structure(self, charge: float) -> None:
+        """to_ase_atoms -> from_ase_atoms preserves charge for structures."""
         pytest.importorskip("ase")
-        if is_structure:
-            input_json = json.dumps({
-                "@class": "Structure",
-                "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
-                "sites": [{"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]}],
-                "charge": charge,
-            })
-        else:
-            input_json = _mol_json("Na", charge=charge)
+        input_json = json.dumps({
+            "@class": "Structure",
+            "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
+            "sites": [{"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]}],
+            "charge": charge,
+        })
         atoms = ferrox.to_ase_atoms(input_json)
-        # Zero charge should not be in info dict (consistent with Rust side)
-        if abs(charge) < 1e-10:
-            assert "charge" not in atoms.info
-        else:
-            assert atoms.info.get("charge") == charge
-            result = ferrox.from_ase_atoms(atoms)
-            assert abs(result["charge"] - charge) < 1e-10
+        assert atoms.info["charge"] == charge
+        assert abs(ferrox.from_ase_atoms(atoms)["charge"] - charge) < 1e-10
+
+    @pytest.mark.parametrize("charge", [1.0, -1.0, 0.5])
+    def test_to_ase_atoms_charge_roundtrip_molecule(self, charge: float) -> None:
+        """to_ase_atoms -> from_ase_atoms preserves charge for molecules."""
+        pytest.importorskip("ase")
+        atoms = ferrox.to_ase_atoms(_mol_json("Na", charge=charge))
+        assert atoms.info["charge"] == charge
+        assert abs(ferrox.from_ase_atoms(atoms)["charge"] - charge) < 1e-10
+
+    def test_to_ase_atoms_zero_charge_not_in_info(self) -> None:
+        """Zero charge should not appear in atoms.info (Rust convention)."""
+        pytest.importorskip("ase")
+        atoms = ferrox.to_ase_atoms(_mol_json("Na", charge=0.0))
+        assert "charge" not in atoms.info
 
 
 # === Edge Cases ===
