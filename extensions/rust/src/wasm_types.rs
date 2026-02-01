@@ -475,13 +475,23 @@ impl Default for JsXrdOptions {
 
 // === Composition Types ===
 
+/// Element-amount pair for composition results.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct JsElementAmount {
+    /// Element symbol
+    pub element: String,
+    /// Amount (count or fraction)
+    pub amount: f64,
+}
+
 /// Information about a parsed chemical composition.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct JsCompositionInfo {
-    /// Species and their amounts as [symbol, amount] pairs
-    pub species: Vec<(String, f64)>,
+    /// Species and their amounts as {element, amount} objects
+    pub species: Vec<JsElementAmount>,
     /// Full formula string
     pub formula: String,
     /// Reduced formula string (e.g., "Fe2O3" from "Fe4O6")

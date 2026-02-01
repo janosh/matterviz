@@ -21,7 +21,7 @@ def cubic_structure() -> dict:
 
 @pytest.fixture
 def hexagonal_structure() -> dict:
-    """Create a hexagonal structure (α = β = 90°, γ = 120°)."""
+    """Create a hexagonal structure (alpha = beta = 90 deg, gamma = 120 deg)."""
     a, c = 3.0, 5.0
     return {  # Hexagonal lattice vectors
         "lattice": {

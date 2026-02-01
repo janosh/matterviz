@@ -17,9 +17,9 @@ use crate::io::parse_poscar_str;
 use crate::species::Species;
 use crate::structure_matcher::{ComparatorType, StructureMatcher};
 use crate::wasm_types::{
-    JsCompositionInfo, JsCrystal, JsIntMatrix3x3, JsLocalEnvironment, JsMatrix3x3, JsMillerIndex,
-    JsNeighborInfo, JsNeighborList, JsReductionAlgo, JsRmsDistResult, JsStructureMetadata,
-    JsSymmetryDataset, JsSymmetryOperation, JsVector3, WasmResult,
+    JsCompositionInfo, JsCrystal, JsElementAmount, JsIntMatrix3x3, JsLocalEnvironment, JsMatrix3x3,
+    JsMillerIndex, JsNeighborInfo, JsNeighborList, JsReductionAlgo, JsRmsDistResult,
+    JsStructureMetadata, JsSymmetryDataset, JsSymmetryOperation, JsVector3, WasmResult,
 };
 
 // === Element WASM bindings ===
@@ -1467,10 +1467,13 @@ pub fn parse_composition(formula: &str) -> WasmResult<JsCompositionInfo> {
     let result: Result<JsCompositionInfo, String> = (|| {
         let comp = Composition::from_formula(formula).map_err(|e| e.to_string())?;
 
-        // Build species map as Vec of (symbol, amount) tuples
-        let species: Vec<(String, f64)> = comp
+        // Build species as Vec of {element, amount} objects
+        let species: Vec<JsElementAmount> = comp
             .iter()
-            .map(|(sp, amt)| (sp.to_string(), *amt))
+            .map(|(sp, amt)| JsElementAmount {
+                element: sp.to_string(),
+                amount: *amt,
+            })
             .collect();
 
         Ok(JsCompositionInfo {
@@ -1520,16 +1523,6 @@ pub fn get_wt_fraction(formula: &str, element: &str) -> WasmResult<f64> {
     parse_comp_and_elem(formula, element)
         .map(|(comp, elem)| comp.get_wt_fraction(elem))
         .into()
-}
-
-/// Element-amount pair for composition results.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, tsify_next::Tsify)]
-#[tsify(into_wasm_abi)]
-pub struct JsElementAmount {
-    /// Element symbol
-    pub element: String,
-    /// Amount (count or fraction)
-    pub amount: f64,
 }
 
 fn comp_to_element_amounts(comp: &crate::composition::Composition) -> Vec<JsElementAmount> {
@@ -1728,8 +1721,27 @@ pub fn is_periodic_image(
     site_j: u32,
     tolerance: f64,
 ) -> WasmResult<bool> {
+    // Validate tolerance
+    if !tolerance.is_finite() || tolerance < 0.0 {
+        return WasmResult::err(format!(
+            "tolerance must be finite and >= 0, got {tolerance}"
+        ));
+    }
     structure
         .to_structure()
-        .map(|struc| struc.is_periodic_image(site_i as usize, site_j as usize, tolerance))
+        .and_then(|struc| {
+            let num_sites = struc.num_sites();
+            if site_i as usize >= num_sites {
+                return Err(format!(
+                    "site_i={site_i} out of bounds for structure with {num_sites} sites"
+                ));
+            }
+            if site_j as usize >= num_sites {
+                return Err(format!(
+                    "site_j={site_j} out of bounds for structure with {num_sites} sites"
+                ));
+            }
+            Ok(struc.is_periodic_image(site_i as usize, site_j as usize, tolerance))
+        })
         .into()
 }

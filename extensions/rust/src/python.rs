@@ -2505,13 +2505,13 @@ fn composition_charge(formula: &str) -> PyResult<Option<i32>> {
 /// Args:
 ///     formula1: First chemical formula
 ///     formula2: Second chemical formula
-///     rtol: Relative tolerance (default 0.1)
+///     rtol: Relative tolerance (default 0.01, i.e. 1%)
 ///     atol: Absolute tolerance (default 1e-8)
 ///
 /// Returns:
 ///     True if compositions are approximately equal.
 #[pyfunction]
-#[pyo3(signature = (formula1, formula2, rtol = 0.1, atol = 1e-8))]
+#[pyo3(signature = (formula1, formula2, rtol = 0.01, atol = 1e-8))]
 fn compositions_almost_equal(
     formula1: &str,
     formula2: &str,
@@ -3391,7 +3391,15 @@ fn py_add_oxidation_state_by_site(
     structure: StructureJson,
     oxi_states: Vec<i8>,
 ) -> PyResult<Py<PyDict>> {
-    let result = parse_struct(&structure)?
+    let struc = parse_struct(&structure)?;
+    if oxi_states.len() != struc.num_sites() {
+        return Err(PyValueError::new_err(format!(
+            "oxi_states length ({}) must match number of sites ({})",
+            oxi_states.len(),
+            struc.num_sites()
+        )));
+    }
+    let result = struc
         .add_oxidation_state_by_site(&oxi_states)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     json_to_pydict(py, &structure_to_pymatgen_json(&result))
