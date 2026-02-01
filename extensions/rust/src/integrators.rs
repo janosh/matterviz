@@ -878,37 +878,6 @@ mod tests {
     }
 
     #[test]
-    fn test_nvt_langevin_temperature_torch_sim_style() {
-        // NVT Langevin should maintain temperature near target (torch-sim style)
-        let mut state = make_diatomic();
-        let target_temp = 300.0;
-        let k = 1.0;
-        let r0 = 1.2;
-
-        state.positions[1] = Vector3::new(r0, 0.0, 0.0);
-        let forces = harmonic_forces(&state.positions, k, r0);
-        state = set_forces(state, &forces);
-
-        let config = LangevinConfig::new(target_temp, 0.01, 1.0);
-        let mut rng = StdRng::seed_from_u64(42);
-
-        let mut temps = Vec::new();
-        for _ in 0..2000 {
-            state = langevin_step(state, &config, &mut rng, |pos| harmonic_forces(pos, k, r0));
-            temps.push(temperature(&state));
-        }
-
-        let avg_temp: f64 = temps[1000..].iter().sum::<f64>() / 1000.0;
-
-        // For small systems, temperature fluctuations are large
-        // Check that we're in a reasonable range (similar to existing test)
-        assert!(
-            avg_temp > target_temp * 0.1 && avg_temp < target_temp * 10.0,
-            "Avg temp {avg_temp} K should be in reasonable range of {target_temp} K"
-        );
-    }
-
-    #[test]
     fn test_nve_energy_conservation_torch_sim_style() {
         // NVE (velocity Verlet) should conserve energy (torch-sim style)
         let mut state = make_diatomic();

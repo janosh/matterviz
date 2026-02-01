@@ -671,7 +671,8 @@ mod tests {
 
     #[test]
     fn test_conventional_from_primitive() {
-        // Start with single-atom cubic Fe (primitive BCC has 1 atom)
+        // Simple cubic Fe: 1 atom at origin with cubic lattice vectors
+        // Note: This is NOT a BCC primitive cell (which would use rhombohedral vectors)
         let a = 2.87;
         let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(a, a, a)));
         let fe = Species::neutral(Element::Fe);
@@ -679,12 +680,11 @@ mod tests {
 
         let conventional = structure.get_conventional_structure(0.01).unwrap();
 
-        // Single-atom primitive cubic stays as 1 atom (it's already conventional)
-        // BCC primitive -> conventional would be 1 -> 2, but this is simple cubic
+        // Simple cubic is already in conventional form, stays as 1 atom
         assert_eq!(
             conventional.num_sites(),
             1,
-            "Simple cubic primitive stays 1 atom in conventional form"
+            "Simple cubic stays 1 atom in conventional form"
         );
     }
 

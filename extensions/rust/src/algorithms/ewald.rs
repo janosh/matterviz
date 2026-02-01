@@ -1073,8 +1073,8 @@ mod tests {
         // Fe sites (indices 0-3): pymatgen gives ~-24 eV for Fe2+ sites
         let fe_energies = &site_energies[0..4];
         assert!(
-            fe_energies.iter().all(|e| (-50.0..-10.0).contains(e)),
-            "Fe site energies {fe_energies:?} should all be ~-24 eV"
+            fe_energies.iter().all(|e| (-35.0..-15.0).contains(e)),
+            "Fe site energies {fe_energies:?} should be in range -35 to -15 eV (pymatgen ~-24)"
         );
 
         // Li sites (indices 4-7): smaller magnitude than Fe2+

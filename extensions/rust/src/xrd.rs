@@ -789,11 +789,8 @@ mod tests {
 
     #[test]
     fn test_compute_xrd_cscl_pymatgen_reference() {
-        // pymatgen test_get_pattern for CsCl:
-        // First peak at 2θ ≈ 21.11° with intensity ≈ 36.48
-        // Second peak at 2θ ≈ 30.02° with intensity = 100 (strongest)
-        // d_hkls[0] ≈ 4.209 Å (the lattice constant)
-
+        // pymatgen test_get_pattern for CsCl: first peak ~21.1°, second ~30.0°
+        // Note: Intensities may differ due to normalization/settings
         let structure = make_cscl();
         let config = XrdConfig {
             two_theta_range: Some((0.0, 90.0)),
@@ -818,7 +815,7 @@ mod tests {
             pattern.d_spacings[0]
         );
 
-        // Second peak: (110) at ~30.02° (strongest)
+        // Second peak: (110) at ~30.02°
         assert!(
             (pattern.two_theta[1] - 30.0).abs() < 0.5,
             "Second peak at {:.2}° should be ~30.0°",
@@ -849,12 +846,8 @@ mod tests {
 
     #[test]
     fn test_compute_xrd_tetragonal_pymatgen_reference() {
-        // pymatgen test for tetragonal structure:
-        // xrd.x[0] ≈ 12.87°
-        // xrd.y[0] ≈ 31.45
-        // xrd.d_hkls[0] ≈ 6.88 Å (the c lattice parameter)
-        // len(xrd) == 42 peaks total
-
+        // pymatgen test for tetragonal structure: first peak ~12.87°, d-spacing ~6.88 Å
+        // Note: Peak count/intensity may differ due to two_theta range and merging settings
         let structure = make_tetragonal_test();
         let config = XrdConfig::default();
         let pattern = compute_xrd(&structure, &config);
