@@ -2181,13 +2181,16 @@ mod tests {
     #[test]
     fn test_anonymous_matching_different_stoichiometry() {
         // Anonymous matching should fail for different stoichiometries
-        // AB vs A2B should not match anonymously
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+
+        // AB structure (FeO-like)
         let ab = Structure::new(
             Lattice::cubic(4.0),
             vec![Species::neutral(Element::Fe), Species::neutral(Element::O)],
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
 
+        // A2B structure (Cu2S-like)
         let a2b = Structure::new(
             Lattice::cubic(4.0),
             vec![
@@ -2202,10 +2205,50 @@ mod tests {
             ],
         );
 
-        let matcher = StructureMatcher::new().with_primitive_cell(false);
-        assert!(
-            !matcher.fit_anonymous(&ab, &a2b),
-            "Different stoichiometries should not match anonymously"
+        // AB2 structure (TiO2-like)
+        let ab2 = Structure::new(
+            Lattice::cubic(4.0),
+            vec![
+                Species::neutral(Element::Ti),
+                Species::neutral(Element::O),
+                Species::neutral(Element::O),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.25, 0.25, 0.0),
+                Vector3::new(0.75, 0.75, 0.0),
+            ],
         );
+
+        // ABC structure (ternary)
+        let abc = Structure::new(
+            Lattice::cubic(4.0),
+            vec![
+                Species::neutral(Element::Li),
+                Species::neutral(Element::Mn),
+                Species::neutral(Element::O),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+                Vector3::new(0.25, 0.25, 0.25),
+            ],
+        );
+
+        // Test all pairwise combinations of different stoichiometries
+        let cases = [
+            (&ab, &a2b, "AB vs A2B"),
+            (&ab, &ab2, "AB vs AB2"),
+            (&a2b, &ab2, "A2B vs AB2"),
+            (&ab, &abc, "AB vs ABC"),
+            (&a2b, &abc, "A2B vs ABC"),
+        ];
+
+        for (struct1, struct2, label) in cases {
+            assert!(
+                !matcher.fit_anonymous(struct1, struct2),
+                "{label} should not match anonymously"
+            );
+        }
     }
 }

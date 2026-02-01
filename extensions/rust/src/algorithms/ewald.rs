@@ -1072,16 +1072,23 @@ mod tests {
 
         // Fe sites (indices 0-3): pymatgen gives ~-24 eV for Fe2+ sites
         let fe_energies = &site_energies[0..4];
-        assert!(
-            fe_energies.iter().all(|e| (-35.0..-15.0).contains(e)),
-            "Fe site energies {fe_energies:?} should be in range -35 to -15 eV (pymatgen ~-24)"
-        );
+        let fe_ref = -24.0;
+        for (idx, &energy) in fe_energies.iter().enumerate() {
+            assert!(
+                (energy - fe_ref).abs() < 4.0, // ±15% tolerance
+                "Fe site {idx} energy {energy:.2} eV should be ~{fe_ref} eV (pymatgen reference)"
+            );
+        }
 
-        // Li sites (indices 4-7): smaller magnitude than Fe2+
-        let fe_ref_abs = fe_energies[0].abs();
-        assert!(
-            site_energies[4..8].iter().all(|e| e.abs() < fe_ref_abs),
-            "Li site energies should be smaller than Fe"
-        );
+        // Li sites (indices 4-7): Li+ has charge +1, so smaller magnitude than Fe2+
+        // pymatgen gives ~-6 eV for Li+ sites
+        let li_energies = &site_energies[4..8];
+        let li_ref = -6.0;
+        for (idx, &energy) in li_energies.iter().enumerate() {
+            assert!(
+                (energy - li_ref).abs() < 2.0,
+                "Li site {idx} energy {energy:.2} eV should be ~{li_ref} eV"
+            );
+        }
     }
 }

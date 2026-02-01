@@ -846,7 +846,7 @@ mod tests {
     #[test]
     fn test_calculate_momenta_zero_com_torch_sim_style() {
         // Matches torch-sim test_calculate_momenta_basic:
-        // After velocity initialization, each system should have zero COM momentum
+        // Test that zero_com_momentum removes COM drift while preserving kinetic energy
 
         let mut rng = StdRng::seed_from_u64(42);
         let n_atoms = 8;
@@ -856,25 +856,56 @@ mod tests {
         let masses: Vec<f64> = (0..n_atoms).map(|_| rng.gen_range(12.0..22.0)).collect();
         let mut state = MDState::new(positions, masses);
 
-        // Initialize velocities
-        state = init_velocities(state, 300.0, &mut rng);
+        // Manually set velocities with significant COM drift (don't use init_velocities
+        // which already zeroes COM)
+        for (idx, vel) in state.velocities.iter_mut().enumerate() {
+            // Add systematic drift (all atoms moving +x) plus some variation
+            *vel = Vector3::new(
+                10.0 + (idx as f64) * 0.1, // Strong x-drift
+                (idx as f64) * 0.5,
+                0.0,
+            );
+        }
 
-        // Zero COM momentum
-        state = zero_com_momentum(state);
-
-        // Check COM momentum is zero
-        let total_momentum: Vector3<f64> = state
+        // Verify COM momentum is non-zero before zeroing
+        let momentum_before: Vector3<f64> = state
             .velocities
             .iter()
             .zip(&state.masses)
             .map(|(vel, mass)| *mass * vel)
             .sum();
-
         assert!(
-            total_momentum.norm() < 1e-10,
-            "COM momentum should be zero, got {:?}",
-            total_momentum
+            momentum_before.norm() > 100.0,
+            "Should have significant COM momentum before zeroing, got {:?}",
+            momentum_before
         );
+
+        let ke_before = kinetic_energy(&state);
+
+        // Zero COM momentum
+        state = zero_com_momentum(state);
+
+        // Check COM momentum is now zero
+        let momentum_after: Vector3<f64> = state
+            .velocities
+            .iter()
+            .zip(&state.masses)
+            .map(|(vel, mass)| *mass * vel)
+            .sum();
+        assert!(
+            momentum_after.norm() < 1e-10,
+            "COM momentum should be zero after zeroing, got {:?}",
+            momentum_after
+        );
+
+        // Kinetic energy should be reduced (COM kinetic energy removed)
+        // but not zero (thermal motion remains)
+        let ke_after = kinetic_energy(&state);
+        assert!(
+            ke_after < ke_before,
+            "KE should decrease after removing COM motion"
+        );
+        assert!(ke_after > 0.0, "KE should remain non-zero (thermal motion)");
     }
 
     #[test]
