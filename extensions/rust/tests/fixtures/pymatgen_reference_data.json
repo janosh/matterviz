@@ -1,10 +1,9 @@
 {
   "_metadata": {
-    "generated_at": "2026-02-01T16:58:33.110544+00:00",
+    "generated_at": "2026-02-01T17:21:32.997255+00:00",
     "package_versions": {
       "python": "3.12.11",
       "pymatgen": "2025.10.7",
-      "ase": "3.27.0",
       "numpy": "2.5.0.dev0"
     },
     "description": "Reference values for ferrox Rust unit tests"

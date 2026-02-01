@@ -33,7 +33,7 @@ keywords = [
 Repository = "https://github.com/janosh/matterviz"
 
 [project.optional-dependencies]
-dev = ["pymatgen>=2025.10.7", "pytest>=8.0"]
+dev = ["numpy", "pymatgen>=2025.10.7", "pytest>=8.0"]
 
 [tool.maturin]
 features = ["python"]

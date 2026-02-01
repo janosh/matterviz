@@ -1,5 +1,5 @@
 """
-Generate reference values from pymatgen, torch-sim, and ASE for Rust unit tests.
+Generate reference values from pymatgen for Rust unit tests.
 
 This script generates expected values for various computational chemistry algorithms
 and stores them in JSON format with version metadata for traceability.
@@ -8,8 +8,7 @@ Usage:
     python generate_reference_data.py
 
 Requirements:
-    pip install pymatgen numpy ase
-    # Optional: pip install torch-sim (if available)
+    pip install pymatgen numpy
 
 The generated JSON file includes:
 - Package versions used to generate the data
@@ -21,20 +20,75 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 import numpy as np
 
 
+# === Type Definitions ===
+
+
+class EwaldRef(TypedDict, total=False):
+    """Reference data for Ewald summation test."""
+
+    description: str
+    total_energy_eV: float
+    site_energy_fe_0_eV: float
+    real_space_energy_eV: float
+    reciprocal_energy_eV: float
+    point_energy_eV: float
+    n_atoms: int
+
+
+class ElasticRef(TypedDict, total=False):
+    """Reference data for elastic tensor test."""
+
+    description: str
+    voigt_matrix: list[list[float]]
+    c11: float
+    c12: float
+    c44: float
+    k_voigt: float
+    k_reuss: float
+    k_vrh: float
+    g_voigt: float
+    g_reuss: float
+    g_vrh: float
+    youngs_modulus: float
+    poisson_ratio: float
+    is_stable: bool
+    zener_ratio: float
+
+
+class SteinhardtRef(TypedDict):
+    """Reference data for Steinhardt order parameters test."""
+
+    description: str
+    q4: float | None
+    q6: float | None
+    coordination: int
+    cutoff: float
+
+
+class XrdRef(TypedDict):
+    """Reference data for XRD pattern test."""
+
+    description: str
+    two_theta: list[float]
+    intensities: list[float]
+    d_spacings: list[float]
+    n_peaks: int
+
+
 def get_package_versions() -> dict[str, str]:
     """Get versions of packages used to generate reference data."""
-    from importlib.metadata import version
+    from importlib.metadata import PackageNotFoundError, version
 
     versions = {"python": sys.version.split()[0]}
-    for pkg in ["pymatgen", "ase", "numpy"]:
+    for pkg in ["pymatgen", "numpy"]:
         try:
             versions[pkg] = version(pkg)
-        except Exception:
+        except PackageNotFoundError:
             versions[pkg] = "not installed"
     return versions
 
@@ -42,7 +96,7 @@ def get_package_versions() -> dict[str, str]:
 # === Ewald Summation Reference Data ===
 
 
-def generate_ewald_references() -> dict[str, Any]:
+def generate_ewald_references() -> dict[str, EwaldRef]:
     """Generate Ewald summation reference values from pymatgen."""
     from pymatgen.analysis.ewald import EwaldSummation
     from pymatgen.core import Lattice, Structure
@@ -132,7 +186,7 @@ def generate_ewald_references() -> dict[str, Any]:
 # === Elastic Tensor Reference Data ===
 
 
-def generate_elastic_references() -> dict[str, Any]:
+def generate_elastic_references() -> dict[str, ElasticRef]:
     """Generate elastic tensor reference values from pymatgen."""
     from pymatgen.analysis.elasticity import ElasticTensor
 
@@ -191,7 +245,7 @@ def generate_elastic_references() -> dict[str, Any]:
 # === Steinhardt Order Parameters Reference Data ===
 
 
-def generate_steinhardt_references() -> dict[str, Any]:
+def generate_steinhardt_references() -> dict[str, SteinhardtRef]:
     """Generate Steinhardt order parameter reference values from pymatgen."""
     from pymatgen.analysis.local_env import LocalStructOrderParams
     from pymatgen.core import Lattice, Structure
@@ -269,7 +323,7 @@ def generate_steinhardt_references() -> dict[str, Any]:
 # === XRD Reference Data ===
 
 
-def generate_xrd_references() -> dict[str, Any]:
+def generate_xrd_references() -> dict[str, XrdRef]:
     """Generate XRD pattern reference values from pymatgen."""
     from pymatgen.analysis.diffraction.xrd import XRDCalculator
     from pymatgen.core import Lattice, Structure
@@ -349,7 +403,7 @@ def main() -> None:
             print(f"  ✓ {name}: {len(reference_data[name])} entries")
         except Exception as exc:
             print(f"  ✗ {name}: {exc}")
-            reference_data[name] = {"error": str(exc)}
+            raise
 
     # Save to JSON
     output_dir = Path(__file__).parent
