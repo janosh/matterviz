@@ -375,33 +375,31 @@
     {/if}
 
     <!-- Tooltip -->
-    {#if tooltip_visible && tooltip_element && tooltip !== false}
+    {#if tooltip_visible && tooltip_element}
+      {@const el = tooltip_element as ChemicalElement}
       {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
-      <div class="tooltip" {style}>
-        {#if typeof tooltip == `function`}
-          {@const tooltip_value = heat_values[tooltip_element.number - 1]}
+      {@const tooltip_value = heat_values[el.number - 1] ?? 0}
+      {#if typeof tooltip == `function`}
+        <div class="tooltip" {style}>
           {@render tooltip({
-          element: tooltip_element,
+          element: el,
           value: tooltip_value,
-          active: active_category === tooltip_element.category ||
-            active_element?.name === tooltip_element.name,
-          bg_color: color_overrides[tooltip_element.symbol] ??
-            bg_color(tooltip_value, tooltip_element),
+          active: active_category === el.category ||
+            active_element?.name === el.name,
+          bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
           scale_context: { min: cs_min, max: cs_max, color_scale },
         })}
-        {:else}
-          {tooltip_element.name}<br />
-          <small>{tooltip_element.symbol} • {tooltip_element.number}</small>
-          {#if Array.isArray(heat_values[tooltip_element.number - 1])}
+        </div>
+      {:else if tooltip !== false}
+        <div class="tooltip" {style}>
+          {el.name}<br />
+          <small>{el.symbol} • {el.number}</small>
+          {#if Array.isArray(tooltip_value)}
             <br />
-            <small>Values: {
-                (heat_values[tooltip_element.number - 1] as number[]).join(
-                  `, `,
-                )
-              }</small>
+            <small>Values: {(tooltip_value as number[]).join(`, `)}</small>
           {/if}
-        {/if}
-      </div>
+        </div>
+      {/if}
     {/if}
 
     {@render children?.()}

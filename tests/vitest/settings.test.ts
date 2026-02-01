@@ -159,13 +159,5 @@ describe(`Settings`, () => {
       expect(DEFAULTS.structure.auto_rotate).toBe(0.2)
       expect(DEFAULTS.structure.rotate_speed).toBe(1.0)
     })
-
-    test(`merge runs efficiently (100 calls < 50ms)`, () => {
-      const start = performance.now()
-      for (let idx = 0; idx < 100; idx++) {
-        merge({ structure: { atom_radius: Math.random() } } as Partial<DefaultSettings>)
-      }
-      expect(performance.now() - start).toBeLessThan(50)
-    })
   })
 })

@@ -503,7 +503,6 @@
           {#each results as r, idx (r.id)}
             <tr
               tabindex="0"
-              aria-selected={r.id === selected_id}
               class:selected={r.id === selected_id}
               class:err={!!r.error}
               onclick={() => (selected_id = r.id)}

@@ -74,7 +74,7 @@
     "mdsvex": "^0.12.6",
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
-    "svelte-check-rs": "0.7.3",
+    "svelte-check-rs": "0.7.4",
     "svelte-preprocess": "^6.0.3",
     "svelte2tsx": "^0.7.47",
     "typescript": "5.9.3",
