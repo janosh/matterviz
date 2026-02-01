@@ -430,27 +430,29 @@ pub fn classify_local_structure(q4: f64, q6: f64, tolerance: f64) -> LocalStruct
     let dist_hcp = ((q4 - HCP_Q4).powi(2) + (q6 - HCP_Q6).powi(2)).sqrt();
     let dist_ico = ((q4 - ICO_Q4).powi(2) + (q6 - ICO_Q6).powi(2)).sqrt();
 
-    // Find minimum distance
-    let min_dist = dist_fcc.min(dist_bcc).min(dist_hcp).min(dist_ico);
-
-    // Check for liquid (both q4 and q6 low)
+    // Check for liquid first (both q4 and q6 low)
     if q4 < 0.05 && q6 < 0.2 {
         return LocalStructure::Liquid;
     }
 
-    // Classify based on closest structure
-    if min_dist > tolerance {
-        return LocalStructure::Unknown;
-    }
+    // Find closest structure by comparing distances directly
+    // This avoids floating-point equality issues with min_dist comparison
+    let candidates = [
+        (dist_fcc, LocalStructure::Fcc),
+        (dist_bcc, LocalStructure::Bcc),
+        (dist_hcp, LocalStructure::Hcp),
+        (dist_ico, LocalStructure::Icosahedral),
+    ];
 
-    if (min_dist - dist_fcc).abs() < 1e-10 {
-        LocalStructure::Fcc
-    } else if (min_dist - dist_bcc).abs() < 1e-10 {
-        LocalStructure::Bcc
-    } else if (min_dist - dist_hcp).abs() < 1e-10 {
-        LocalStructure::Hcp
+    let (min_dist, closest) = candidates
+        .into_iter()
+        .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+        .unwrap(); // Safe: array is non-empty
+
+    if min_dist > tolerance {
+        LocalStructure::Unknown
     } else {
-        LocalStructure::Icosahedral
+        closest
     }
 }
 

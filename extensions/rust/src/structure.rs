@@ -640,11 +640,11 @@ impl Structure {
 
     /// Get neighbor list as arrays: (center_indices, neighbor_indices, offset_vectors, distances).
     ///
-    /// Finds all atom pairs within cutoff radius `r` using periodic boundary conditions.
+    /// Finds all atom pairs within cutoff radius using periodic boundary conditions.
     ///
     /// # Arguments
     ///
-    /// * `r` - Cutoff radius in Angstroms
+    /// * `cutoff` - Cutoff radius in Angstroms
     /// * `numerical_tol` - Tolerance for distance comparisons (typically 1e-8)
     /// * `exclude_self` - If true, exclude self-pairs (distance ~0)
     ///
@@ -658,18 +658,28 @@ impl Structure {
     /// brute-force fallback based on `NeighborListConfig::cell_list_threshold`).
     pub fn get_neighbor_list(
         &self,
-        r: f64,
+        cutoff: f64,
         numerical_tol: f64,
         exclude_self: bool,
     ) -> (Vec<usize>, Vec<usize>, Vec<[i32; 3]>, Vec<f64>) {
         use crate::neighbors::{NeighborListConfig, build_neighbor_list};
 
-        if self.num_sites() == 0 || r <= 0.0 {
+        // Validate inputs to avoid silent NaN/inf behavior
+        assert!(
+            cutoff.is_finite(),
+            "get_neighbor_list: cutoff must be finite, got {cutoff}"
+        );
+        assert!(
+            numerical_tol.is_finite() && numerical_tol >= 0.0,
+            "get_neighbor_list: numerical_tol must be finite and >= 0, got {numerical_tol}"
+        );
+
+        if self.num_sites() == 0 || cutoff <= 0.0 {
             return (vec![], vec![], vec![], vec![]);
         }
 
         let config = NeighborListConfig {
-            cutoff: r,
+            cutoff,
             self_interaction: !exclude_self,
             numerical_tol,
             ..Default::default()
@@ -685,12 +695,12 @@ impl Structure {
         )
     }
 
-    /// Get all neighbors for each site within radius `r`.
-    pub fn get_all_neighbors(&self, r: f64) -> Vec<Vec<(usize, f64, [i32; 3])>> {
+    /// Get all neighbors for each site within cutoff radius.
+    pub fn get_all_neighbors(&self, cutoff: f64) -> Vec<Vec<(usize, f64, [i32; 3])>> {
         let num_sites = self.num_sites();
         let mut result = vec![Vec::new(); num_sites];
 
-        let (centers, neighbors, images, dists) = self.get_neighbor_list(r, 1e-8, true);
+        let (centers, neighbors, images, dists) = self.get_neighbor_list(cutoff, 1e-8, true);
 
         for (kdx, &center) in centers.iter().enumerate() {
             result[center].push((neighbors[kdx], dists[kdx], images[kdx]));
