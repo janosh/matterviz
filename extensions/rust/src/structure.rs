@@ -1164,6 +1164,26 @@ impl Structure {
             }
         }
 
+        // Check periodicity matches
+        if self.pbc != end.pbc {
+            return Err(FerroxError::MatchingError {
+                reason: format!(
+                    "Cannot interpolate structures with different periodicity: {:?} vs {:?}",
+                    self.pbc, end.pbc
+                ),
+            });
+        }
+
+        // Check charge matches
+        if (self.charge - end.charge).abs() > 1e-10 {
+            return Err(FerroxError::MatchingError {
+                reason: format!(
+                    "Cannot interpolate structures with different charges: {} vs {}",
+                    self.charge, end.charge
+                ),
+            });
+        }
+
         // Edge case: n_images=0 returns just the start structure
         if n_images == 0 {
             return Ok(vec![self.clone()]);
@@ -5181,6 +5201,25 @@ mod tests {
         assert!(
             err.to_string().contains("Species mismatch"),
             "Expected species error"
+        );
+
+        // Periodicity mismatch
+        let mut mol = nacl.clone();
+        mol.pbc = [false, false, false];
+        mol.lattice.pbc = [false, false, false];
+        let err = nacl.interpolate(&mol, 5, false, true).unwrap_err();
+        assert!(
+            err.to_string().contains("different periodicity"),
+            "Expected pbc mismatch error"
+        );
+
+        // Charge mismatch
+        let mut charged = nacl.clone();
+        charged.charge = 1.0;
+        let err = nacl.interpolate(&charged, 5, false, true).unwrap_err();
+        assert!(
+            err.to_string().contains("different charges"),
+            "Expected charge mismatch error"
         );
     }
 

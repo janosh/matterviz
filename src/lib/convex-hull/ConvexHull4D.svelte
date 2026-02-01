@@ -416,6 +416,28 @@
   const handle_keydown = (event: KeyboardEvent) => {
     if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
 
+    // Handle Enter for keyboard accessibility - select hovered entry
+    if (event.key === `Enter`) {
+      const entry = hover_data?.entry
+      if (entry) {
+        on_point_click?.(entry)
+        if (enable_click_selection) {
+          selected_entry = entry
+          if (enable_structure_preview) {
+            const structure = extract_structure_from_entry(entry)
+            if (structure) {
+              selected_structure = structure
+              modal_place_right = helpers.calculate_modal_side(wrapper)
+              modal_open = true
+            }
+          }
+        }
+      } else if (modal_open) {
+        close_structure_popup()
+      }
+      return
+    }
+
     const actions: Record<string, () => void> = {
       r: reset_camera,
       b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
@@ -912,32 +934,6 @@
     modal_open = false
     selected_structure = null
     selected_entry = null
-  }
-
-  // Keyboard handler for accessibility - uses currently hovered entry
-  const handle_keydown = (event: KeyboardEvent) => {
-    if (event.key !== `Enter`) return
-    event.stopPropagation()
-
-    const entry = hover_data?.entry
-    if (!entry) {
-      if (modal_open) close_structure_popup()
-      return
-    }
-
-    on_point_click?.(entry)
-
-    if (enable_click_selection) {
-      selected_entry = entry
-      if (enable_structure_preview) {
-        const structure = extract_structure_from_entry(entry)
-        if (structure) {
-          selected_structure = structure
-          modal_place_right = helpers.calculate_modal_side(wrapper)
-          modal_open = true
-        }
-      }
-    }
   }
 
   const handle_double_click = (event: MouseEvent) => {
