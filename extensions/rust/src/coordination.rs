@@ -662,7 +662,12 @@ mod tests {
         let fcc = make_fcc(Element::Cu, 3.61);
         let neighbors = get_voronoi_neighbors(&fcc, 0, None);
 
-        assert!(!neighbors.is_empty());
+        // FCC has exactly 12 nearest neighbors (coordination number 12)
+        assert_eq!(
+            neighbors.len(),
+            12,
+            "FCC should have exactly 12 Voronoi neighbors"
+        );
         // Valid solid angles, sorted descending
         let angles: Vec<f64> = neighbors.iter().map(|(_, sa)| *sa).collect();
         assert!(angles.iter().all(|&sa| (0.0..=1.0).contains(&sa)));

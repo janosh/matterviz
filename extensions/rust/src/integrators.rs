@@ -840,4 +840,110 @@ mod tests {
         // Also verify dt was updated
         assert_eq!(config2.dt_fs, dt2);
     }
+
+    // === torch-sim Compatible Tests ===
+
+    #[test]
+    fn test_calculate_momenta_zero_com_torch_sim_style() {
+        // Matches torch-sim test_calculate_momenta_basic:
+        // Test that zero_com_momentum removes COM drift while preserving kinetic energy
+
+        let mut rng = StdRng::seed_from_u64(42);
+        let n_atoms = 8;
+        let positions: Vec<Vector3<f64>> = (0..n_atoms)
+            .map(|idx| Vector3::new(idx as f64, 0.0, 0.0))
+            .collect();
+        let masses: Vec<f64> = (0..n_atoms).map(|_| rng.gen_range(12.0..22.0)).collect();
+        let mut state = MDState::new(positions, masses);
+
+        // Manually set velocities with significant COM drift (don't use init_velocities
+        // which already zeroes COM)
+        for (idx, vel) in state.velocities.iter_mut().enumerate() {
+            // Add systematic drift (all atoms moving +x) plus some variation
+            *vel = Vector3::new(
+                10.0 + (idx as f64) * 0.1, // Strong x-drift
+                (idx as f64) * 0.5,
+                0.0,
+            );
+        }
+
+        // Verify COM momentum is non-zero before zeroing
+        let momentum_before: Vector3<f64> = state
+            .velocities
+            .iter()
+            .zip(&state.masses)
+            .map(|(vel, mass)| *mass * vel)
+            .sum();
+        assert!(
+            momentum_before.norm() > 100.0,
+            "Should have significant COM momentum before zeroing, got {:?}",
+            momentum_before
+        );
+
+        let ke_before = kinetic_energy(&state);
+
+        // Zero COM momentum
+        state = zero_com_momentum(state);
+
+        // Check COM momentum is now zero
+        let momentum_after: Vector3<f64> = state
+            .velocities
+            .iter()
+            .zip(&state.masses)
+            .map(|(vel, mass)| *mass * vel)
+            .sum();
+        assert!(
+            momentum_after.norm() < 1e-10,
+            "COM momentum should be zero after zeroing, got {:?}",
+            momentum_after
+        );
+
+        // Kinetic energy should be reduced (COM kinetic energy removed)
+        // but not zero (thermal motion remains)
+        let ke_after = kinetic_energy(&state);
+        assert!(
+            ke_after < ke_before,
+            "KE should decrease after removing COM motion"
+        );
+        assert!(ke_after > 0.0, "KE should remain non-zero (thermal motion)");
+    }
+
+    #[test]
+    fn test_nve_energy_conservation_torch_sim_style() {
+        // NVE (velocity Verlet) should conserve energy (torch-sim style)
+        let mut state = make_diatomic();
+        let k = 1.0;
+        let r0 = 1.2;
+
+        state.positions[1] = Vector3::new(1.4, 0.0, 0.0);
+        let forces = harmonic_forces(&state.positions, k, r0);
+        state = set_forces(state, &forces);
+
+        let dt = 1.0;
+        let mut energies = Vec::new();
+
+        for _ in 0..500 {
+            state = velocity_verlet_step(state, dt, |pos| harmonic_forces(pos, k, r0));
+            let ke = kinetic_energy(&state);
+            let dist = (state.positions[1] - state.positions[0]).norm();
+            let pe = 0.5 * k * (dist - r0).powi(2);
+            energies.push(ke + pe);
+        }
+
+        // For harmonic oscillator, energy should be very well conserved
+        let n = energies.len() as f64;
+        let mean_energy = energies.iter().sum::<f64>() / n;
+        let std_energy = (energies
+            .iter()
+            .map(|e| (e - mean_energy).powi(2))
+            .sum::<f64>()
+            / n)
+            .sqrt();
+        let e_drift = std_energy / mean_energy.max(1e-10);
+        assert!(
+            e_drift < 0.01,
+            "Energy drift {:.2}% should be < 1% (NVE conservation)",
+            e_drift * 100.0
+        );
+    }
 }

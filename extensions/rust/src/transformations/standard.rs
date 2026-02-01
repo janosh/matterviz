@@ -651,9 +651,10 @@ mod tests {
         let primitive = structure.get_primitive(0.01).unwrap();
 
         // FCC conventional cell with 4 atoms should reduce to primitive with 1 atom
-        assert!(
-            primitive.num_sites() < structure.num_sites(),
-            "Primitive cell should have fewer atoms"
+        assert_eq!(
+            primitive.num_sites(),
+            1,
+            "FCC conventional (4 atoms) -> primitive (1 atom)"
         );
     }
 
@@ -670,7 +671,8 @@ mod tests {
 
     #[test]
     fn test_conventional_from_primitive() {
-        // Start with BCC Fe
+        // Simple cubic Fe: 1 atom at origin with cubic lattice vectors
+        // Note: This is NOT a BCC primitive cell (which would use rhombohedral vectors)
         let a = 2.87;
         let lattice = Lattice::new(Matrix3::from_diagonal(&Vector3::new(a, a, a)));
         let fe = Species::neutral(Element::Fe);
@@ -678,8 +680,12 @@ mod tests {
 
         let conventional = structure.get_conventional_structure(0.01).unwrap();
 
-        // BCC conventional cell should exist
-        assert!(conventional.num_sites() >= 1);
+        // Simple cubic is already in conventional form, stays as 1 atom
+        assert_eq!(
+            conventional.num_sites(),
+            1,
+            "Simple cubic stays 1 atom in conventional form"
+        );
     }
 
     // ========== Chained transform tests ==========

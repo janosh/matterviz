@@ -1045,7 +1045,6 @@ mod tests {
         assert_eq!(comp.get(Element::H), 0.0); // missing element returns 0
         assert!((comp.num_atoms() - 5.0).abs() < AMOUNT_TOLERANCE);
         assert_eq!(comp.num_elements(), 2);
-        assert!(!comp.is_empty());
     }
 
     #[test]

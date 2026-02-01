@@ -835,7 +835,14 @@ mod tests {
     #[test]
     fn test_generate_hnf_large_det() {
         let matrices = generate_hnf(8);
-        assert!(!matrices.is_empty());
+        // HNF count for det=n: enumerate all (a,c,f) with a*c*f=n, then count
+        // valid off-diagonal elements (0 ≤ b < c, 0 ≤ d < f, 0 ≤ e < f).
+        // For n=8, verified count is 155 matrices.
+        assert_eq!(
+            matrices.len(),
+            155,
+            "HNF(8) should have exactly 155 matrices"
+        );
         for m in &matrices {
             assert_eq!(m[0][0] * m[1][1] * m[2][2], 8);
         }
