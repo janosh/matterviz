@@ -1052,6 +1052,7 @@
     onmousedown={handle_mouse_down}
     onmousemove={handle_hover}
     onclick={handle_click}
+    onkeydown={(e) => e.key === `Enter` && handle_click(e)}
     ondblclick={handle_double_click}
     onwheel={handle_wheel}
   ></canvas>

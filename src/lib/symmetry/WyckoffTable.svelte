@@ -45,7 +45,6 @@
         <tr
           class="wyckoff-row"
           class:selected={is_selected}
-          tabindex="0"
           aria-selected={is_selected}
           style:--active-color={active_color}
           style:--hover-color="#6cf0ff"

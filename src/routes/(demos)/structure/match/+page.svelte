@@ -484,10 +484,10 @@
       </div>
     </details>
 
-    <h3>
+    <h2>
       Results {#if loading}⏳{/if}
       {#if results.length}({results.length}){/if}
-    </h3>
+    </h2>
     {#if results.length > 0}
       <table>
         <thead>
@@ -505,6 +505,7 @@
               class:selected={r.id === selected_id}
               class:err={!!r.error}
               onclick={() => (selected_id = r.id)}
+              onkeydown={(e) => e.key === `Enter` && (selected_id = r.id)}
             >
               <td>{idx + 1}</td>
               <td class="mono">{r.id.replace(`upload:`, ``)}</td>
@@ -670,7 +671,7 @@
     margin: 0;
   }
 
-  h3 {
+  h2 {
     margin: 0.5em 0 0.3em;
     font-size: 1em;
   }
