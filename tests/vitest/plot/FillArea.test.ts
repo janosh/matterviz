@@ -123,6 +123,39 @@ describe(`FillArea`, () => {
     expect(on_hover).toHaveBeenLastCalledWith(null)
   })
 
+  test.each([`click`, `hover`] as const)(
+    `region.on_%s called alongside prop`,
+    async (type) => {
+      const region_handler = vi.fn()
+      const prop_handler = vi.fn()
+      const region = { ...base_region, [`on_${type}`]: region_handler }
+      const props = make_props({ region, [`on_${type}`]: prop_handler })
+      mount(FillArea, { target: document.body, props })
+
+      const group = doc_query(`.fill-region`)
+      const mouse_event = type === `click`
+        ? new MouseEvent(`click`, { bubbles: true, clientX: 50, clientY: 50 })
+        : new MouseEvent(`mouseenter`, { bubbles: true })
+      group.dispatchEvent(mouse_event)
+      await tick()
+
+      expect(region_handler).toHaveBeenCalledWith(
+        expect.objectContaining({ region_idx: 0 }),
+      )
+      expect(prop_handler).toHaveBeenCalledWith(
+        expect.objectContaining({ region_idx: 0 }),
+      )
+
+      // Hover also tests mouseleave → null
+      if (type === `hover`) {
+        group.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+        await tick()
+        expect(region_handler).toHaveBeenLastCalledWith(null)
+        expect(prop_handler).toHaveBeenLastCalledWith(null)
+      }
+    },
+  )
+
   test(`applies hover style when region is hovered`, () => {
     const region: FillRegion = {
       ...base_region,
@@ -139,10 +172,14 @@ describe(`FillArea`, () => {
   })
 
   test.each([
-    [`pointer`, base_region, { on_click: () => {} }],
+    [`pointer`, base_region, { on_click: () => {} }], // on_click prop
+    [`pointer`, { ...base_region, on_click: () => {} }, {}], // region.on_click
+    [`grab`, { ...base_region, hover_style: { cursor: `grab` } }, { on_click: () => {} }], // override
     [`crosshair`, { ...base_region, hover_style: { cursor: `crosshair` } }, {}],
-    [`default`, base_region, {}],
-  ])(`cursor is %s based on config`, (expected, region, extra) => {
+    [`move`, { ...base_region, hover_style: { cursor: `move` } }, {}],
+    [`not-allowed`, { ...base_region, hover_style: { cursor: `not-allowed` } }, {}],
+    [`default`, base_region, {}], // no click, no hover_style
+  ])(`cursor is '%s'`, (expected, region, extra) => {
     mount(FillArea, { target: document.body, props: make_props({ region, ...extra }) })
     expect(doc_query(`.fill-region`).style.cursor).toBe(expected)
   })
