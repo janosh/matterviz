@@ -2736,6 +2736,14 @@ impl PyMDState {
         masses: Vec<f64>,
         velocities: Option<Vec<[f64; 3]>>,
     ) -> PyResult<Self> {
+        if positions.len() != masses.len() {
+            return Err(PyValueError::new_err(format!(
+                "Masses length ({}) must match positions length ({})",
+                masses.len(),
+                positions.len()
+            )));
+        }
+
         let pos_vec: Vec<Vector3<f64>> = positions.iter().map(|p| Vector3::from(*p)).collect();
         let mut state = MDState::new(pos_vec, masses);
 
@@ -3518,6 +3526,13 @@ impl PyMsdCalculator {
     /// Args:
     ///     positions: Nx3 array of atomic positions
     fn add_frame(&mut self, positions: Vec<[f64; 3]>) -> PyResult<()> {
+        if positions.len() != self.inner.n_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Positions length ({}) must match n_atoms ({})",
+                positions.len(),
+                self.inner.n_atoms()
+            )));
+        }
         let pos_vec: Vec<Vector3<f64>> = positions.iter().map(|p| Vector3::from(*p)).collect();
         self.inner.add_frame(&pos_vec);
         Ok(())
@@ -3566,6 +3581,13 @@ impl PyVacfCalculator {
     /// Args:
     ///     velocities: Nx3 array of atomic velocities
     fn add_frame(&mut self, velocities: Vec<[f64; 3]>) -> PyResult<()> {
+        if velocities.len() != self.inner.n_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Velocities length ({}) must match n_atoms ({})",
+                velocities.len(),
+                self.inner.n_atoms()
+            )));
+        }
         let vel_vec: Vec<Vector3<f64>> = velocities.iter().map(|v| Vector3::from(*v)).collect();
         self.inner.add_frame(&vel_vec);
         Ok(())

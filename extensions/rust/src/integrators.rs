@@ -26,9 +26,7 @@
 use nalgebra::{Matrix3, Vector3};
 use rand::prelude::*;
 
-// ============================================================================
-// Unit conversion constants
-// ============================================================================
+// === Unit conversion constants ===
 
 /// ASE unit conversion constants.
 pub mod units {
@@ -45,9 +43,7 @@ pub mod units {
     pub const INTERNAL_TO_FS: f64 = INTERNAL_TIME_FS;
 }
 
-// ============================================================================
-// MD State - plain data struct
-// ============================================================================
+// === MD State ===
 
 /// State of a molecular dynamics simulation.
 ///
@@ -127,16 +123,14 @@ impl MDState {
         temperature(self)
     }
 
-    /// Set forces (method wrapper).
+    /// Set forces directly.
     pub fn set_forces(&mut self, forces: &[Vector3<f64>]) {
-        let new_state = set_forces(std::mem::take(self), forces);
-        *self = new_state;
+        assert_eq!(forces.len(), self.num_atoms());
+        self.forces = forces.to_vec();
     }
 }
 
-// ============================================================================
-// Pure functions operating on MDState
-// ============================================================================
+// === Pure functions operating on MDState ===
 
 /// Compute kinetic energy in eV.
 pub fn kinetic_energy(state: &MDState) -> f64 {
@@ -224,9 +218,7 @@ pub fn set_forces(mut state: MDState, forces: &[Vector3<f64>]) -> MDState {
     state
 }
 
-// ============================================================================
-// Velocity Verlet integrator (NVE)
-// ============================================================================
+// === Velocity Verlet integrator (NVE) ===
 
 /// First half of velocity Verlet: update velocities and positions.
 /// After this, compute new forces and call `velocity_verlet_finalize`.
@@ -265,12 +257,10 @@ where
     velocity_verlet_finalize(state, dt_fs, &new_forces)
 }
 
-// ============================================================================
-// Langevin integrator (NVT) - BAOAB scheme
-// ============================================================================
+// === Langevin integrator (NVT) - BAOAB scheme ===
 
 /// Configuration for Langevin thermostat.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LangevinConfig {
     /// Target temperature in Kelvin.
     pub temperature_k: f64,
@@ -387,9 +377,7 @@ where
     state
 }
 
-// ============================================================================
-// Stateful Langevin integrator (for Python bindings)
-// ============================================================================
+// === Stateful Langevin integrator (for Python bindings) ===
 
 /// Stateful Langevin integrator with internal RNG.
 ///
@@ -428,30 +416,23 @@ impl LangevinIntegrator {
         *state = new_state;
     }
 
-    /// Set target temperature (no recomputation needed).
+    /// Set target temperature.
     pub fn set_temperature(&mut self, temperature_k: f64) {
-        self.config.temperature_k = temperature_k;
+        self.config = std::mem::take(&mut self.config).with_temperature(temperature_k);
     }
 
-    /// Set friction coefficient (1/fs), recomputes c1/c2.
+    /// Set friction coefficient (1/fs).
     pub fn set_friction(&mut self, friction: f64) {
-        self.config.friction_int = friction * units::INTERNAL_TO_FS;
-        self.config.c1 = (-self.config.friction_int * self.config.dt_int).exp();
-        self.config.c2 = (1.0 - self.config.c1 * self.config.c1).sqrt();
+        self.config = std::mem::take(&mut self.config).with_friction(friction);
     }
 
-    /// Set time step (fs), recomputes c1/c2.
+    /// Set time step (fs).
     pub fn set_dt(&mut self, dt_fs: f64) {
-        self.config.dt_fs = dt_fs;
-        self.config.dt_int = dt_fs * units::FS_TO_INTERNAL;
-        self.config.c1 = (-self.config.friction_int * self.config.dt_int).exp();
-        self.config.c2 = (1.0 - self.config.c1 * self.config.c1).sqrt();
+        self.config = std::mem::take(&mut self.config).with_dt(dt_fs);
     }
 }
 
-// ============================================================================
-// Utilities
-// ============================================================================
+// === Utilities ===
 
 /// Box-Muller transform for standard normal random number.
 fn box_muller_normal<R: Rng>(rng: &mut R) -> f64 {
@@ -460,9 +441,7 @@ fn box_muller_normal<R: Rng>(rng: &mut R) -> f64 {
     (-2.0 * u1.ln()).sqrt() * u2.cos()
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
+// === Tests ===
 
 #[cfg(test)]
 mod tests {

@@ -20,9 +20,7 @@
 
 use nalgebra::{Matrix3, Vector3};
 
-// ============================================================================
-// Configuration
-// ============================================================================
+// === Configuration ===
 
 /// FIRE optimizer configuration parameters.
 ///
@@ -62,9 +60,7 @@ impl Default for FireConfig {
     }
 }
 
-// ============================================================================
-// FIRE state - plain data struct with optimizer state
-// ============================================================================
+// === FIRE state ===
 
 /// FIRE optimizer state.
 #[derive(Debug, Clone, Default)]
@@ -123,9 +119,7 @@ impl FireState {
     }
 }
 
-// ============================================================================
-// Pure functions for FIRE optimization
-// ============================================================================
+// === Pure functions for FIRE optimization ===
 
 /// Compute maximum force component magnitude.
 pub fn max_force(state: &FireState) -> f64 {
@@ -153,6 +147,11 @@ where
 
     // Compute forces (move into state, reference from there)
     state.last_forces = compute_forces(&state.positions);
+    debug_assert_eq!(
+        state.last_forces.len(),
+        n_atoms,
+        "compute_forces must return one force per atom"
+    );
 
     // Compute power: P = F · v
     let power: f64 = state
@@ -221,9 +220,7 @@ where
     state
 }
 
-// ============================================================================
-// Cell FIRE state and functions
-// ============================================================================
+// === Cell FIRE state and functions ===
 
 /// FIRE optimizer state with cell optimization.
 #[derive(Debug, Clone, Default)]
@@ -341,6 +338,11 @@ where
 
     // Compute forces and stress (move forces into state)
     let (forces, stress) = compute_forces_and_stress(&state.positions, &state.cell);
+    debug_assert_eq!(
+        forces.len(),
+        n_atoms,
+        "compute_forces_and_stress must return one force per atom"
+    );
     state.last_forces = forces;
     state.last_stress = stress;
 
@@ -434,9 +436,7 @@ where
     state
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
+// === Tests ===
 
 #[cfg(test)]
 mod tests {

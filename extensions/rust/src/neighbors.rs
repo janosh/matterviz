@@ -836,7 +836,7 @@ mod tests {
         }
     }
 
-    // ========== Additional comprehensive tests ==========
+    // === Additional comprehensive tests ===
 
     /// Helper to create a triclinic lattice structure.
     fn make_triclinic(element: Element) -> Structure {

@@ -397,23 +397,6 @@ mod tests {
     }
 
     #[test]
-    fn test_voigt_roundtrip() {
-        let original = Matrix3::new(1.0, 2.0, 3.0, 2.0, 4.0, 5.0, 3.0, 5.0, 6.0);
-
-        let voigt = stress_to_voigt(&original);
-        let recovered = voigt_to_tensor(&voigt, false);
-
-        for idx in 0..3 {
-            for jdx in 0..3 {
-                assert!(
-                    (original[(idx, jdx)] - recovered[(idx, jdx)]).abs() < 1e-10,
-                    "Mismatch at ({idx}, {jdx})"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn test_isotropic_material() {
         // For isotropic material: C44 = (C11 - C12) / 2
         let c11 = 200.0;
@@ -490,78 +473,45 @@ mod tests {
         assert!((deformed[(2, 2)] - 5.0).abs() < 1e-10);
     }
 
-    // =========================================================================
-    // Voigt notation roundtrip tests
-    // =========================================================================
+    // === Voigt notation roundtrip tests ===
 
     #[test]
-    fn test_voigt_roundtrip_stress() {
-        // Test roundtrip: tensor -> voigt -> tensor for stress
-        let original = Matrix3::new(150.0, 25.0, 35.0, 25.0, 180.0, 45.0, 35.0, 45.0, 200.0);
-
-        let voigt = stress_to_voigt(&original);
-        let recovered = voigt_to_tensor(&voigt, false);
-
-        for idx in 0..3 {
-            for jdx in 0..3 {
-                assert!(
-                    (original[(idx, jdx)] - recovered[(idx, jdx)]).abs() < 1e-10,
-                    "Stress roundtrip mismatch at ({idx}, {jdx}): {} vs {}",
-                    original[(idx, jdx)],
-                    recovered[(idx, jdx)]
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_voigt_roundtrip_strain() {
-        // Test roundtrip: tensor -> voigt -> tensor for strain
-        // For strain, off-diagonal elements are multiplied by 2 when converting to Voigt
-        let original = Matrix3::new(0.01, 0.002, 0.003, 0.002, 0.015, 0.004, 0.003, 0.004, 0.02);
-
-        let voigt = strain_to_voigt(&original);
-        let recovered = voigt_to_tensor(&voigt, true);
-
-        for idx in 0..3 {
-            for jdx in 0..3 {
-                assert!(
-                    (original[(idx, jdx)] - recovered[(idx, jdx)]).abs() < 1e-10,
-                    "Strain roundtrip mismatch at ({idx}, {jdx}): {} vs {}",
-                    original[(idx, jdx)],
-                    recovered[(idx, jdx)]
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_voigt_roundtrip_random_symmetric() {
-        // Test with random symmetric tensors to ensure robustness
-        let test_cases = [
-            Matrix3::new(1.0, 0.5, 0.3, 0.5, 2.0, 0.7, 0.3, 0.7, 3.0),
+    fn test_voigt_roundtrip() {
+        // Test roundtrip for multiple symmetric tensors (stress convention)
+        let stress_cases = [
+            Matrix3::new(1.0, 2.0, 3.0, 2.0, 4.0, 5.0, 3.0, 5.0, 6.0),
+            Matrix3::new(150.0, 25.0, 35.0, 25.0, 180.0, 45.0, 35.0, 45.0, 200.0),
             Matrix3::new(100.0, -10.0, 20.0, -10.0, 200.0, -30.0, 20.0, -30.0, 150.0),
-            Matrix3::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            Matrix3::zeros(),
         ];
-
-        for original in &test_cases {
-            // Stress roundtrip
+        for original in &stress_cases {
             let voigt = stress_to_voigt(original);
             let recovered = voigt_to_tensor(&voigt, false);
             for idx in 0..3 {
                 for jdx in 0..3 {
                     assert!(
                         (original[(idx, jdx)] - recovered[(idx, jdx)]).abs() < 1e-10,
-                        "Random symmetric tensor roundtrip failed"
+                        "Stress roundtrip mismatch"
                     );
                 }
             }
         }
+
+        // Test strain roundtrip (off-diagonal x2 convention)
+        let strain = Matrix3::new(0.01, 0.002, 0.003, 0.002, 0.015, 0.004, 0.003, 0.004, 0.02);
+        let voigt = strain_to_voigt(&strain);
+        let recovered = voigt_to_tensor(&voigt, true);
+        for idx in 0..3 {
+            for jdx in 0..3 {
+                assert!(
+                    (strain[(idx, jdx)] - recovered[(idx, jdx)]).abs() < 1e-10,
+                    "Strain roundtrip mismatch"
+                );
+            }
+        }
     }
 
-    // =========================================================================
-    // Known materials tests (literature values)
-    // =========================================================================
+    // === Known materials tests (literature values) ===
 
     #[test]
     fn test_copper_elastic_constants() {
@@ -695,9 +645,7 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Singular tensor handling tests
-    // =========================================================================
+    // === Singular tensor handling tests ===
 
     #[test]
     fn test_singular_tensor_reuss_moduli() {
@@ -810,9 +758,7 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Strain generation verification tests
-    // =========================================================================
+    // === Strain generation verification tests ===
 
     #[test]
     fn test_strain_symmetry() {
@@ -889,9 +835,7 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Moduli relationship verification tests
-    // =========================================================================
+    // === Moduli relationship verification tests ===
 
     #[test]
     fn test_moduli_relationship_youngs() {

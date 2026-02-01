@@ -476,7 +476,7 @@ mod tests {
     use crate::structure::Structure;
     use nalgebra::Vector3;
 
-    // ========== Factorial Tests ==========
+    // === Factorial Tests ===
 
     #[test]
     fn test_factorial() {
@@ -486,7 +486,7 @@ mod tests {
         assert!((factorial(10) - 3628800.0).abs() < 1e-5);
     }
 
-    // ========== Spherical Harmonics Tests ==========
+    // === Spherical Harmonics Tests ===
 
     #[test]
     fn test_spherical_harmonic_y00() {
@@ -755,7 +755,7 @@ mod tests {
         );
     }
 
-    // ========== Associated Legendre Polynomial Tests ==========
+    // === Associated Legendre Polynomial Tests ===
 
     #[test]
     fn test_associated_legendre_p00() {
@@ -791,7 +791,7 @@ mod tests {
         }
     }
 
-    // ========== Crystal Structure Helper Functions ==========
+    // === Crystal Structure Helper Functions ===
 
     /// Create an FCC structure (conventional cell with 4 atoms).
     fn make_fcc(a: f64, element: Element, nx: usize, ny: usize, nz: usize) -> Structure {
@@ -849,7 +849,7 @@ mod tests {
         }
     }
 
-    // ========== Steinhardt Order Parameter Tests for FCC ==========
+    // === Steinhardt Tests: FCC ===
 
     #[test]
     fn test_fcc_q4_q6_values() {
@@ -881,7 +881,7 @@ mod tests {
         );
     }
 
-    // ========== Steinhardt Order Parameter Tests for BCC ==========
+    // === Steinhardt Tests: BCC ===
 
     #[test]
     #[ignore] // TODO: BCC q values don't match literature values - needs investigation
@@ -915,7 +915,7 @@ mod tests {
         );
     }
 
-    // ========== Steinhardt Order Parameter Tests for HCP ==========
+    // === Steinhardt Tests: HCP ===
 
     #[test]
     fn test_hcp_q4_q6_values() {
@@ -944,7 +944,7 @@ mod tests {
         );
     }
 
-    // ========== Large l Value Stability Tests ==========
+    // === Large l Value Stability Tests ===
 
     #[test]
     fn test_large_l_numerical_stability() {
@@ -964,7 +964,7 @@ mod tests {
         }
     }
 
-    // ========== Edge Cases ==========
+    // === Edge Cases ===
 
     #[test]
     fn test_empty_structure() {
@@ -1008,7 +1008,7 @@ mod tests {
         assert!(q4[0].abs() < 1e-10 && q4[1].abs() < 1e-10);
     }
 
-    // ========== Classification Tests ==========
+    // === Classification Tests ===
 
     #[test]
     fn test_classify_liquid() {
@@ -1062,7 +1062,7 @@ mod tests {
         assert_eq!(LocalStructure::Unknown.as_str(), "unknown");
     }
 
-    // ========== Global Steinhardt Tests ==========
+    // === Global Steinhardt Tests ===
 
     #[test]
     fn test_global_steinhardt_empty() {
@@ -1116,7 +1116,7 @@ mod tests {
         assert!((q6 - 0.0).abs() < 1e-10);
     }
 
-    // ========== Classify All Atoms Tests ==========
+    // === Classify All Atoms Tests ===
 
     #[test]
     fn test_classify_all_atoms_fcc() {

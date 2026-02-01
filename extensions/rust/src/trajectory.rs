@@ -26,9 +26,7 @@
 
 use nalgebra::Vector3;
 
-// ============================================================================
-// Batch functions for full trajectories
-// ============================================================================
+// === Batch functions for full trajectories ===
 
 /// Compute MSD from a complete trajectory (batch mode).
 ///
@@ -146,9 +144,7 @@ pub fn compute_vacf_batch(
     vacf
 }
 
-// ============================================================================
-// Streaming MSD calculator - state struct + functions
-// ============================================================================
+// === Streaming MSD calculator ===
 
 /// State for streaming MSD calculation.
 #[derive(Debug, Clone)]
@@ -192,7 +188,8 @@ pub fn msd_new(n_atoms: usize, max_lag: usize, origin_interval: usize) -> MsdSta
 }
 
 /// Add a frame to MSD calculation, returning updated state.
-pub fn msd_add_frame(mut state: MsdState, positions: &[Vector3<f64>]) -> MsdState {
+/// Add a frame to the MSD state (in-place).
+pub fn msd_add_frame_inplace(state: &mut MsdState, positions: &[Vector3<f64>]) {
     assert_eq!(
         positions.len(),
         state.n_atoms,
@@ -221,6 +218,11 @@ pub fn msd_add_frame(mut state: MsdState, positions: &[Vector3<f64>]) -> MsdStat
     }
 
     state.current_frame += 1;
+}
+
+/// Add a frame to the MSD state (ownership version for functional API).
+pub fn msd_add_frame(mut state: MsdState, positions: &[Vector3<f64>]) -> MsdState {
+    msd_add_frame_inplace(&mut state, positions);
     state
 }
 
@@ -257,9 +259,7 @@ pub fn msd_compute_per_atom(state: &MsdState) -> Vec<Vec<f64>> {
         .collect()
 }
 
-// ============================================================================
-// Streaming VACF calculator - state struct + functions
-// ============================================================================
+// === Streaming VACF calculator ===
 
 /// State for streaming VACF calculation.
 #[derive(Debug, Clone)]
@@ -303,7 +303,8 @@ pub fn vacf_new(n_atoms: usize, max_lag: usize, origin_interval: usize) -> VacfS
 }
 
 /// Add a frame to VACF calculation, returning updated state.
-pub fn vacf_add_frame(mut state: VacfState, velocities: &[Vector3<f64>]) -> VacfState {
+/// Add a frame to the VACF state (in-place).
+pub fn vacf_add_frame_inplace(state: &mut VacfState, velocities: &[Vector3<f64>]) {
     assert_eq!(
         velocities.len(),
         state.n_atoms,
@@ -335,6 +336,11 @@ pub fn vacf_add_frame(mut state: VacfState, velocities: &[Vector3<f64>]) -> Vacf
     }
 
     state.current_frame += 1;
+}
+
+/// Add a frame to the VACF state (ownership version for functional API).
+pub fn vacf_add_frame(mut state: VacfState, velocities: &[Vector3<f64>]) -> VacfState {
+    vacf_add_frame_inplace(&mut state, velocities);
     state
 }
 
@@ -364,9 +370,7 @@ pub fn vacf_compute_normalized(state: &VacfState) -> Vec<f64> {
     vacf.iter().map(|v| v / vacf0).collect()
 }
 
-// ============================================================================
-// Analysis functions
-// ============================================================================
+// === Analysis functions ===
 
 /// Compute diffusion coefficient from MSD using Einstein relation.
 ///
@@ -486,9 +490,7 @@ pub fn diffusion_coefficient_from_vacf(vacf: &[f64], dt: f64, dim: usize) -> f64
     integral / dim as f64
 }
 
-// ============================================================================
-// Legacy API compatibility (wrapper types)
-// ============================================================================
+// === Legacy API compatibility ===
 
 /// Streaming MSD calculator (legacy wrapper around MsdState).
 #[derive(Debug, Clone)]
@@ -500,12 +502,14 @@ impl MsdCalculator {
         Self(msd_new(n_atoms, max_lag, origin_interval))
     }
 
+    /// Number of atoms expected per frame.
+    pub fn n_atoms(&self) -> usize {
+        self.0.n_atoms
+    }
+
     /// Add a frame.
     pub fn add_frame(&mut self, positions: &[Vector3<f64>]) {
-        // Create dummy with valid params from current state to satisfy assertions
-        let dummy = msd_new(self.0.n_atoms, self.0.max_lag, self.0.origin_interval);
-        let state = std::mem::replace(&mut self.0, dummy);
-        self.0 = msd_add_frame(state, positions);
+        msd_add_frame_inplace(&mut self.0, positions);
     }
 
     /// Compute MSD.
@@ -529,12 +533,14 @@ impl VacfCalculator {
         Self(vacf_new(n_atoms, max_lag, origin_interval))
     }
 
+    /// Number of atoms expected per frame.
+    pub fn n_atoms(&self) -> usize {
+        self.0.n_atoms
+    }
+
     /// Add a frame.
     pub fn add_frame(&mut self, velocities: &[Vector3<f64>]) {
-        // Create dummy with valid params from current state to satisfy assertions
-        let dummy = vacf_new(self.0.n_atoms, self.0.max_lag, self.0.origin_interval);
-        let state = std::mem::replace(&mut self.0, dummy);
-        self.0 = vacf_add_frame(state, velocities);
+        vacf_add_frame_inplace(&mut self.0, velocities);
     }
 
     /// Compute VACF.
@@ -548,9 +554,7 @@ impl VacfCalculator {
     }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
+// === Tests ===
 
 #[cfg(test)]
 mod tests {
