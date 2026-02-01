@@ -378,7 +378,14 @@
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
-    if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
+    const target = event.target as HTMLElement
+    if (target.tagName.match(/INPUT|TEXTAREA/)) return
+
+    // Stop propagation if event came from canvas to prevent wrapper's handler
+    // from running again (both have onkeydown, causing duplicate handling)
+    if (target === canvas) {
+      event.stopPropagation()
+    }
 
     // Handle Enter for keyboard accessibility - select hovered entry
     if (event.key === `Enter`) {
@@ -1129,6 +1136,7 @@
   </h3>
   <canvas
     bind:this={canvas}
+    tabindex="0"
     aria-label={merged_controls.title || phase_stats?.chemical_system || `3D Convex Hull`}
     onmousedown={handle_mouse_down}
     onmousemove={handle_hover}

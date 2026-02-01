@@ -39,30 +39,27 @@ def _water_json() -> str:
 
 
 class TestParseMoleculeJson:
-    """Tests for parse_molecule_json_py function."""
+    """Tests for parse_molecule_json function."""
 
-    def test_basic_molecule(self) -> None:
-        """Parse water molecule and verify structure."""
-        result = ferrox.parse_molecule_json_py(_water_json())
+    def test_water_molecule(self) -> None:
+        """Parse water molecule: verify sites, species, and coordinates."""
+        result = ferrox.parse_molecule_json(_water_json())
         assert len(result["sites"]) == 3
-        species = [s["species"][0]["element"] for s in result["sites"]]
-        assert sorted(species) == ["H", "H", "O"]
-
-    def test_coordinates_preserved(self) -> None:
-        """Verify Cartesian coordinates are preserved exactly."""
-        result = ferrox.parse_molecule_json_py(_water_json())
+        species = sorted(s["species"][0]["element"] for s in result["sites"])
+        assert species == ["H", "H", "O"]
+        # Check H coordinate preserved
         h_coords = [s["xyz"] for s in result["sites"] if s["species"][0]["element"] == "H"]
         assert any(abs(c[0] - 0.96) < 1e-10 for c in h_coords)
 
     def test_invalid_json_error(self) -> None:
         """Invalid JSON raises error."""
         with pytest.raises(ValueError, match="Error parsing molecule"):
-            ferrox.parse_molecule_json_py("not valid json")
+            ferrox.parse_molecule_json("not valid json")
 
     @pytest.mark.parametrize("charge", [0.0, 1.0, -1.0, 2.5, -0.5])
     def test_charge_preserved(self, charge: float) -> None:
         """Various charge values are preserved."""
-        result = ferrox.parse_molecule_json_py(_mol_json(charge=charge))
+        result = ferrox.parse_molecule_json(_mol_json(charge=charge))
         assert abs(result["charge"] - charge) < 1e-10
 
 
@@ -128,6 +125,21 @@ class TestParseAseDict:
         assert result["charge"] == 1.0
 
 
+class TestFromAseAtoms:
+    """Tests for from_ase_atoms function with actual ASE Atoms objects."""
+
+    @pytest.mark.parametrize(("charge", "pbc"), [(1.0, False), (-1.0, True), (None, False)])
+    def test_charge_extraction(self, charge: float | None, pbc: bool) -> None:
+        """Charge is extracted from atoms.info or defaults to 0."""
+        ase = pytest.importorskip("ase")
+        atoms = ase.Atoms("NaCl", positions=[[0, 0, 0], [2.8, 2.8, 2.8]],
+                          cell=[5.6, 5.6, 5.6] if pbc else None, pbc=pbc)
+        if charge is not None:
+            atoms.info["charge"] = charge
+        result = ferrox.from_ase_atoms(atoms)
+        assert result.get("charge", 0.0) == (charge or 0.0)
+
+
 # === Roundtrip Tests ===
 
 
@@ -136,17 +148,43 @@ class TestRoundtrips:
 
     def test_molecule_json_roundtrip(self) -> None:
         """Molecule JSON -> parse -> JSON preserves data."""
-        parsed = ferrox.parse_molecule_json_py(_water_json())
+        parsed = ferrox.parse_molecule_json(_water_json())
         json_str = ferrox.molecule_to_json(json.dumps(parsed))
-        reparsed = ferrox.parse_molecule_json_py(json_str)
+        reparsed = ferrox.parse_molecule_json(json_str)
         assert len(reparsed["sites"]) == len(parsed["sites"])
         assert reparsed["charge"] == parsed["charge"]
 
     def test_xyz_roundtrip(self) -> None:
         """Molecule JSON -> XYZ -> parse preserves atoms."""
         xyz = ferrox.molecule_to_xyz(_water_json())
-        parsed = ferrox.parse_xyz_str_py(xyz)
+        parsed = ferrox.parse_xyz_str(xyz)
         assert len(parsed["sites"]) == 3
+
+    @pytest.mark.parametrize(("charge", "is_structure"), [
+        (1.0, True), (-1.0, True), (2.5, True),   # structures
+        (1.0, False), (-1.0, False), (0.5, False), # molecules
+        (0.0, False),  # zero charge should not be in info
+    ])
+    def test_to_ase_atoms_charge_roundtrip(self, charge: float, is_structure: bool) -> None:
+        """to_ase_atoms -> from_ase_atoms preserves charge for structures and molecules."""
+        pytest.importorskip("ase")
+        if is_structure:
+            input_json = json.dumps({
+                "@class": "Structure",
+                "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
+                "sites": [{"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]}],
+                "charge": charge,
+            })
+        else:
+            input_json = _mol_json("Na", charge=charge)
+        atoms = ferrox.to_ase_atoms(input_json)
+        # Zero charge should not be in info dict (consistent with Rust side)
+        if abs(charge) < 1e-10:
+            assert "charge" not in atoms.info
+        else:
+            assert atoms.info.get("charge") == charge
+            result = ferrox.from_ase_atoms(atoms)
+            assert abs(result["charge"] - charge) < 1e-10
 
 
 # === Edge Cases ===
@@ -155,17 +193,14 @@ class TestRoundtrips:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    def test_empty_molecule(self) -> None:
-        """Molecule with no sites - either works or raises clear error."""
-        empty_mol = json.dumps({"@class": "Molecule", "sites": [], "charge": 0})
+    @pytest.mark.parametrize(("element", "n_sites"), [("He", 1), (None, 0)])
+    def test_small_molecules(self, element: str | None, n_sites: int) -> None:
+        """Single-atom and empty molecules are handled."""
+        mol = _mol_json(element) if element else json.dumps({"@class": "Molecule", "sites": [], "charge": 0})
         try:
-            result = ferrox.parse_molecule_json_py(empty_mol)
-            assert len(result["sites"]) == 0
+            result = ferrox.parse_molecule_json(mol)
+            assert len(result["sites"]) == n_sites
+            if element:
+                assert result["sites"][0]["species"][0]["element"] == element
         except ValueError:
-            pass  # Also acceptable
-
-    def test_single_atom_molecule(self) -> None:
-        """Single atom molecule works correctly."""
-        result = ferrox.parse_molecule_json_py(_mol_json("He"))
-        assert len(result["sites"]) == 1
-        assert result["sites"][0]["species"][0]["element"] == "He"
+            assert n_sites == 0  # Empty molecule may raise

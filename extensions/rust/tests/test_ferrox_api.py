@@ -123,6 +123,61 @@ class TestStructureCharge:
             assert parsed.get("charge", 0.0) == 0.0
 
 
+class TestFromPymatgenStructure:
+    """Tests for from_pymatgen_structure oxidation state extraction."""
+
+    @pytest.mark.parametrize(("element", "oxi_state"), [
+        ("Fe", 3),
+        ("Fe", 2),
+        ("O", -2),
+        ("Na", 1),
+        ("Cl", -1),
+    ])
+    def test_oxidation_states_preserved(self, element: str, oxi_state: int) -> None:
+        """Oxidation states from pymatgen Species are preserved."""
+        pytest.importorskip("pymatgen")
+        from pymatgen.core import Lattice, Species, Structure
+        # Create pymatgen Structure with oxidation state
+        lattice = Lattice.cubic(5.0)
+        species = Species(element, oxi_state)
+        struct = Structure(lattice, [species], [[0, 0, 0]])
+        # Convert to ferrox and check oxidation state preserved
+        result = ferrox.from_pymatgen_structure(struct)
+        site_species = result["sites"][0]["species"][0]
+        assert site_species["element"] == element
+        assert site_species.get("oxidation_state") == oxi_state
+
+    def test_neutral_species_no_oxi_state(self) -> None:
+        """Neutral species (no oxidation state) preserved as neutral."""
+        pytest.importorskip("pymatgen")
+        from pymatgen.core import Element, Lattice, Structure
+        lattice = Lattice.cubic(5.0)
+        struct = Structure(lattice, [Element("Fe")], [[0, 0, 0]])
+        result = ferrox.from_pymatgen_structure(struct)
+        site_species = result["sites"][0]["species"][0]
+        assert site_species["element"] == "Fe"
+        assert site_species.get("oxidation_state") is None
+
+    def test_mixed_oxi_states_in_structure(self) -> None:
+        """Structure with multiple species at different oxidation states."""
+        pytest.importorskip("pymatgen")
+        from pymatgen.core import Lattice, Species, Structure
+        lattice = Lattice.cubic(5.0)
+        # Fe2O3: Fe3+ and O2-
+        species = [Species("Fe", 3), Species("Fe", 3), Species("O", -2),
+                   Species("O", -2), Species("O", -2)]
+        coords = [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25],
+                  [0.75, 0.75, 0.25], [0.25, 0.75, 0.75]]
+        struct = Structure(lattice, species, coords)
+        result = ferrox.from_pymatgen_structure(struct)
+        # Check all Fe sites have oxi_state +3
+        fe_sites = [s for s in result["sites"] if s["species"][0]["element"] == "Fe"]
+        assert all(s["species"][0]["oxidation_state"] == 3 for s in fe_sites)
+        # Check all O sites have oxi_state -2
+        o_sites = [s for s in result["sites"] if s["species"][0]["element"] == "O"]
+        assert all(s["species"][0]["oxidation_state"] == -2 for s in o_sites)
+
+
 # Parametrized anonymous formula tests
 
 

@@ -169,6 +169,67 @@ fn default_occu() -> f64 {
     1.0
 }
 
+/// Parse a species entry from pymatgen JSON, returning the Species with occupancy and metadata.
+///
+/// Handles element symbol normalization, oxidation state validation/conflict detection,
+/// and occupancy validation.
+fn parse_species_entry(
+    sp_json: &PymatgenSpecies,
+    site_idx: usize,
+) -> Result<(Species, f64, HashMap<String, serde_json::Value>)> {
+    // Use normalize_symbol for comprehensive element parsing
+    let normalized =
+        crate::element::normalize_symbol(&sp_json.element).map_err(|e| FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!("Invalid element symbol '{}': {}", sp_json.element, e),
+        })?;
+
+    // Validate oxidation state range BEFORE casting to i8 (to avoid silent truncation)
+    if let Some(oxi) = sp_json.oxidation_state
+        && (oxi < i8::MIN as i32 || oxi > i8::MAX as i32)
+    {
+        return Err(FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!("Oxidation state {oxi} out of range [-128, 127]"),
+        });
+    }
+
+    // Check for oxidation state conflict (safe to cast now - range validated above)
+    let json_oxi = sp_json.oxidation_state.map(|o| o as i8);
+    let final_oxi = match (json_oxi, normalized.oxidation_state) {
+        (Some(json), Some(sym)) if json != sym => {
+            return Err(FerroxError::JsonError {
+                path: "inline".to_string(),
+                reason: format!(
+                    "Conflicting oxidation states for '{}': symbol implies {}, but JSON has {}",
+                    sp_json.element,
+                    sym,
+                    sp_json.oxidation_state.unwrap()
+                ),
+            });
+        }
+        (Some(json), _) => Some(json),
+        (None, Some(sym)) => Some(sym),
+        (None, None) => None,
+    };
+
+    let sp = Species::new(normalized.element, final_oxi);
+
+    // Validate occupancy: must be finite and in range (0.0, 1.0]
+    let occu = sp_json.occu;
+    if !occu.is_finite() || occu <= 0.0 || occu > 1.0 {
+        return Err(FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!(
+                "Site {site_idx} species {} has invalid occupancy {occu} (must be in (0.0, 1.0])",
+                sp_json.element
+            ),
+        });
+    }
+
+    Ok((sp, occu, normalized.metadata))
+}
+
 /// Represents a site in pymatgen JSON.
 ///
 /// For structures, `abc` (fractional coords) is required.
@@ -271,70 +332,16 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
             });
         }
 
-        // Parse all species with their occupancies
+        // Parse all species with their occupancies using shared helper
         let mut species_vec = Vec::with_capacity(site.species.len());
         let mut site_props: HashMap<String, serde_json::Value> = HashMap::new();
-        // Collect metadata from each species separately to handle multi-species sites
         let mut species_metadata: Vec<HashMap<String, serde_json::Value>> =
             Vec::with_capacity(site.species.len());
 
         for sp_json in &site.species {
-            // Use normalize_symbol for comprehensive element parsing
-            let normalized = crate::element::normalize_symbol(&sp_json.element).map_err(|e| {
-                FerroxError::JsonError {
-                    path: "inline".to_string(),
-                    reason: format!("Invalid element symbol '{}': {}", sp_json.element, e),
-                }
-            })?;
-
-            // Validate oxidation state range BEFORE casting to i8 (to avoid silent truncation)
-            if let Some(oxi) = sp_json.oxidation_state
-                && (oxi < i8::MIN as i32 || oxi > i8::MAX as i32)
-            {
-                return Err(FerroxError::JsonError {
-                    path: "inline".to_string(),
-                    reason: format!("Oxidation state {oxi} out of range [-128, 127]"),
-                });
-            }
-
-            // Check for oxidation state conflict (safe to cast now - range validated above)
-            let json_oxi = sp_json.oxidation_state.map(|o| o as i8);
-            let final_oxi = match (json_oxi, normalized.oxidation_state) {
-                (Some(json), Some(sym)) if json != sym => {
-                    // Use original i32 value in error message for clarity (even though
-                    // range check above ensures no truncation, this is defense-in-depth)
-                    return Err(FerroxError::JsonError {
-                        path: "inline".to_string(),
-                        reason: format!(
-                            "Conflicting oxidation states for '{}': symbol implies {}, but JSON has {}",
-                            sp_json.element,
-                            sym,
-                            sp_json.oxidation_state.unwrap()
-                        ),
-                    });
-                }
-                (Some(json), _) => Some(json),
-                (None, Some(sym)) => Some(sym),
-                (None, None) => None,
-            };
-
-            let sp = Species::new(normalized.element, final_oxi);
-
-            // Validate occupancy: must be finite and in range (0.0, 1.0]
-            let occu = sp_json.occu;
-            if !occu.is_finite() || occu <= 0.0 || occu > 1.0 {
-                return Err(FerroxError::JsonError {
-                    path: "inline".to_string(),
-                    reason: format!(
-                        "Site {idx} species {} has invalid occupancy {occu} (must be in (0.0, 1.0])",
-                        sp_json.element
-                    ),
-                });
-            }
-
-            // Store metadata for later (don't merge yet to avoid overwrites in multi-species sites)
-            species_metadata.push(normalized.metadata);
+            let (sp, occu, metadata) = parse_species_entry(sp_json, idx)?;
             species_vec.push((sp, occu));
+            species_metadata.push(metadata);
         }
 
         // Only merge species metadata for single-species sites (no conflict possible)
@@ -827,16 +834,26 @@ fn frame_to_structure(frame: &str, path: &Path) -> Result<Structure> {
     // Convert Cartesian to fractional using Lattice method
     let frac_coords = lattice.get_fractional_coords(&cart_coords);
 
-    // Extract properties (energy, etc.)
+    // Extract properties (energy, charge, etc.)
     let mut properties = HashMap::new();
+    let mut charge = 0.0;
+
     if let Some(energy_value) = info.get("energy")
         && let Some(energy) = energy_value.as_f64()
     {
         properties.insert("energy".to_string(), serde_json::json!(energy));
     }
-    // Store other info as properties
+
+    if let Some(charge_value) = info.get("charge")
+        && let Some(ch) = charge_value.as_f64()
+    {
+        charge = ch;
+    }
+
+    // Store other info as properties (exclude structure-specific and already-handled keys)
+    let skip_keys = ["Lattice", "pbc", "energy", "charge", "Properties"];
     for (key, value) in info.raw_map().iter() {
-        if key != "Lattice" && key != "pbc" && key != "energy" && key != "Properties" {
+        if !skip_keys.contains(&key.as_str()) {
             properties.insert(key.to_string(), value.clone());
         }
     }
@@ -848,7 +865,7 @@ fn frame_to_structure(frame: &str, path: &Path) -> Result<Structure> {
         species.into_iter().map(SiteOccupancy::ordered).collect(),
         frac_coords,
         pbc,
-        0.0, // charge defaults to 0.0 for structures
+        charge,
         properties,
     )
 }
@@ -1222,66 +1239,16 @@ pub fn parse_molecule_json(json: &str) -> Result<Structure> {
             });
         }
 
-        // Parse all species with their occupancies
+        // Parse all species with their occupancies using shared helper
         let mut species_vec = Vec::with_capacity(site.species.len());
         let mut site_props: HashMap<String, serde_json::Value> = HashMap::new();
         let mut species_metadata: Vec<HashMap<String, serde_json::Value>> =
             Vec::with_capacity(site.species.len());
 
         for sp_json in &site.species {
-            // Use normalize_symbol for comprehensive element parsing
-            let normalized = crate::element::normalize_symbol(&sp_json.element).map_err(|e| {
-                FerroxError::JsonError {
-                    path: "inline".to_string(),
-                    reason: format!("Invalid element symbol '{}': {}", sp_json.element, e),
-                }
-            })?;
-
-            // Validate oxidation state range BEFORE casting to i8
-            if let Some(oxi) = sp_json.oxidation_state
-                && (oxi < i8::MIN as i32 || oxi > i8::MAX as i32)
-            {
-                return Err(FerroxError::JsonError {
-                    path: "inline".to_string(),
-                    reason: format!("Oxidation state {oxi} out of range [-128, 127]"),
-                });
-            }
-
-            // Check for oxidation state conflict
-            let json_oxi = sp_json.oxidation_state.map(|o| o as i8);
-            let final_oxi = match (json_oxi, normalized.oxidation_state) {
-                (Some(json), Some(sym)) if json != sym => {
-                    return Err(FerroxError::JsonError {
-                        path: "inline".to_string(),
-                        reason: format!(
-                            "Conflicting oxidation states for '{}': symbol implies {}, but JSON has {}",
-                            sp_json.element,
-                            sym,
-                            sp_json.oxidation_state.unwrap()
-                        ),
-                    });
-                }
-                (Some(json), _) => Some(json),
-                (None, Some(sym)) => Some(sym),
-                (None, None) => None,
-            };
-
-            let sp = Species::new(normalized.element, final_oxi);
-
-            // Validate occupancy: must be finite and in range (0.0, 1.0]
-            let occu = sp_json.occu;
-            if !occu.is_finite() || occu <= 0.0 || occu > 1.0 {
-                return Err(FerroxError::JsonError {
-                    path: "inline".to_string(),
-                    reason: format!(
-                        "Site {idx} species {} has invalid occupancy {occu} (must be in (0.0, 1.0])",
-                        sp_json.element
-                    ),
-                });
-            }
-
-            species_metadata.push(normalized.metadata);
+            let (sp, occu, metadata) = parse_species_entry(sp_json, idx)?;
             species_vec.push((sp, occu));
+            species_metadata.push(metadata);
         }
 
         // Only merge species metadata for single-species sites
@@ -3571,6 +3538,26 @@ Mg 0.0 0.0 0.0
         temp.write_all(xyz.as_bytes()).unwrap();
         let s2 = parse_extxyz(temp.path()).unwrap();
         assert_eq!(s2.properties.get("energy"), Some(&serde_json::json!(-5.5)));
+    }
+
+    #[test]
+    fn test_extxyz_preserves_charge() {
+        use std::io::Write;
+        // Create extXYZ with charge in info
+        let xyz = r#"1
+Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" charge=1.0 Properties=species:S:1:pos:R:3
+Li 0.0 0.0 0.0
+"#;
+        let mut temp = NamedTempFile::with_suffix(".xyz").unwrap();
+        temp.write_all(xyz.as_bytes()).unwrap();
+        let s = parse_extxyz(temp.path()).unwrap();
+
+        // Charge should be extracted from info, not stored in properties
+        assert!((s.charge - 1.0).abs() < 1e-10, "charge should be 1.0");
+        assert!(
+            !s.properties.contains_key("charge"),
+            "charge should not be in properties"
+        );
     }
 
     // === Molecule IO Tests ===

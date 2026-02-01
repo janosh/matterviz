@@ -19,8 +19,8 @@ use crate::io::parse_poscar_str;
 use crate::species::Species;
 use crate::structure_matcher::{ComparatorType, StructureMatcher};
 use crate::wasm_types::{
-    JsCompositionInfo, JsCrystal, JsElementAmount, JsIntMatrix3x3, JsLocalEnvironment, JsMatrix3x3,
-    JsMillerIndex, JsNeighborInfo, JsNeighborList, JsReductionAlgo, JsRmsDistResult,
+    JsAseAtoms, JsCompositionInfo, JsCrystal, JsElementAmount, JsIntMatrix3x3, JsLocalEnvironment,
+    JsMatrix3x3, JsMillerIndex, JsNeighborInfo, JsNeighborList, JsReductionAlgo, JsRmsDistResult,
     JsStructureMetadata, JsSymmetryDataset, JsSymmetryOperation, JsVector3, WasmResult,
 };
 
@@ -1757,8 +1757,6 @@ pub fn is_periodic_image(
 }
 
 // === Molecule I/O Functions ===
-
-use crate::wasm_types::JsAseAtoms;
 
 /// Parse a molecule from pymatgen Molecule JSON string.
 ///

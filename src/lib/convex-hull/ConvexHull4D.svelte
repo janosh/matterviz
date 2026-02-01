@@ -414,7 +414,11 @@
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
-    if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
+    const target = event.target as HTMLElement
+    // Skip if focus is on an interactive element that handles Enter natively
+    const interactive_selector =
+      `input,textarea,select,button,a,[contenteditable="true"],[role="button"],[tabindex]:not([tabindex="-1"])`
+    if (target.matches(interactive_selector) && target !== canvas) return
 
     // Handle Enter for keyboard accessibility - select hovered entry
     if (event.key === `Enter`) {
@@ -1070,11 +1074,11 @@
 
   <canvas
     bind:this={canvas}
+    tabindex="0"
     aria-label={merged_controls.title || phase_stats?.chemical_system || `4D Convex Hull`}
     onmousedown={handle_mouse_down}
     onmousemove={handle_hover}
     onclick={handle_click}
-    onkeydown={handle_keydown}
     ondblclick={handle_double_click}
     onwheel={handle_wheel}
   ></canvas>

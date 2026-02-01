@@ -502,10 +502,20 @@
         <tbody>
           {#each results as r, idx (r.id)}
             <tr
+              tabindex="0"
+              aria-selected={r.id === selected_id}
               class:selected={r.id === selected_id}
               class:err={!!r.error}
               onclick={() => (selected_id = r.id)}
-              onkeydown={(e) => e.key === `Enter` && (selected_id = r.id)}
+              onkeydown={(event) => {
+                if (
+                  event.key === `Enter` || event.key === ` ` ||
+                  event.key === `Spacebar`
+                ) {
+                  if (event.key !== `Enter`) event.preventDefault()
+                  selected_id = r.id
+                }
+              }}
             >
               <td>{idx + 1}</td>
               <td class="mono">{r.id.replace(`upload:`, ``)}</td>

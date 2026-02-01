@@ -665,39 +665,6 @@ def apply_translation(
 
 # === Structure Property Functions ===
 
-def get_volume(structure: StructureJson) -> float:
-    """Get the volume of the unit cell in Angstrom³.
-
-    Args:
-        structure: Structure as JSON string.
-
-    Returns:
-        Volume in Angstrom³.
-    """
-    ...
-
-def get_total_mass(structure: StructureJson) -> float:
-    """Get the total mass of the structure in atomic mass units (u).
-
-    Args:
-        structure: Structure as JSON string.
-
-    Returns:
-        Total mass in amu.
-    """
-    ...
-
-def get_density(structure: StructureJson) -> float | None:
-    """Get the density of the structure in g/cm³.
-
-    Args:
-        structure: Structure as JSON string.
-
-    Returns:
-        Density in g/cm³, or None if volume is zero.
-    """
-    ...
-
 def get_structure_metadata(
     structure: StructureJson,
     compute_spacegroup: bool = False,

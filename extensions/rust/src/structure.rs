@@ -39,8 +39,12 @@ pub enum ReductionAlgo {
 /// Each site can have multiple species with partial occupancies (disordered sites).
 /// For ordered sites, there is a single species with occupancy 1.0.
 ///
-/// For non-periodic systems (molecules), set `pbc` to `[false, false, false]`.
+/// For non-periodic systems (molecules), use `set_pbc([false, false, false])`.
 /// The lattice is still required but can be a dummy/bounding-box lattice.
+///
+/// **Important**: Always use `set_pbc()` to modify periodicity - this keeps
+/// `Structure.pbc` and `Lattice.pbc` synchronized. Direct field assignment
+/// may cause desync issues.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Structure {
     /// The crystal lattice.
@@ -50,6 +54,7 @@ pub struct Structure {
     /// Fractional coordinates for each site.
     pub frac_coords: Vec<Vector3<f64>>,
     /// Periodic boundary conditions for each axis (default: all true).
+    /// Use `set_pbc()` to modify - keeps lattice.pbc in sync.
     #[serde(default = "default_pbc")]
     pub pbc: [bool; 3],
     /// Total charge (relevant for molecules, default: 0.0).
@@ -232,6 +237,15 @@ impl Structure {
     /// Check if the structure is a molecule (non-periodic in all dimensions).
     pub fn is_molecule(&self) -> bool {
         !self.is_periodic()
+    }
+
+    /// Set periodic boundary conditions, keeping Structure.pbc and Lattice.pbc in sync.
+    ///
+    /// Always use this method instead of direct field assignment to prevent desync
+    /// between the structure and lattice PBC settings.
+    pub fn set_pbc(&mut self, pbc: [bool; 3]) {
+        self.pbc = pbc;
+        self.lattice.pbc = pbc;
     }
 
     /// Get the number of sites in the structure.
@@ -1572,18 +1586,19 @@ impl Structure {
     ///
     /// # Errors
     ///
-    /// Returns an error if the structure is non-periodic (molecule), since lattice
-    /// reduction is meaningless without periodicity.
+    /// Returns an error if the structure is not fully periodic (pbc != [true, true, true]).
+    /// Lattice reduction can mix axes and alter vacuum layers in slabs/wires, so it's
+    /// only safe for fully 3D-periodic bulk structures.
     pub fn get_reduced_structure_with_params(
         &self,
         algo: ReductionAlgo,
         niggli_tol: f64,
         lll_delta: f64,
     ) -> Result<Self> {
-        if !self.is_periodic() {
+        if self.pbc != [true, true, true] {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
-                reason: "Cannot reduce lattice of non-periodic structure (molecule)".to_string(),
+                reason: "Cannot reduce lattice unless structure is fully periodic (pbc must be [true, true, true])".to_string(),
             });
         }
         // Get reduced lattice
@@ -1881,8 +1896,15 @@ impl Structure {
             .sum()
     }
 
-    /// Density in g/cm^3, or `None` for zero-volume structures.
+    /// Density in g/cm^3, or `None` for zero-volume structures or molecules.
+    ///
+    /// Returns `None` for non-periodic structures (molecules) since density
+    /// is only meaningful for bulk materials with a well-defined unit cell.
     pub fn density(&self) -> Option<f64> {
+        // Density is meaningless for molecules (non-periodic systems)
+        if self.is_molecule() {
+            return None;
+        }
         let volume = self.volume();
         if volume <= 0.0 {
             return None;
@@ -3313,8 +3335,9 @@ impl Structure {
                 }
             }
 
-            // Set lattice with non-periodic c-axis
-            slab.lattice = Lattice::from_matrix_with_pbc(new_matrix, [true, true, false]);
+            // Update lattice matrix and set slab PBC (periodic in a,b but not c)
+            slab.lattice = Lattice::new(new_matrix);
+            slab.set_pbc([true, true, false]);
 
             // Store metadata
             slab.properties
@@ -3453,7 +3476,12 @@ mod tests {
                 result.is_err(),
                 "Non-finite charge {bad_charge} should error"
             );
-            assert!(result.unwrap_err().to_string().contains("charge must be finite"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("charge must be finite")
+            );
         }
     }
 
@@ -5065,8 +5093,8 @@ mod tests {
     }
 
     #[test]
-    fn test_reduced_structure_errors_for_molecule() {
-        // Non-periodic structure (molecule) should error on lattice reduction
+    fn test_reduced_structure_errors_for_partial_pbc() {
+        // Molecule (fully non-periodic) should error on lattice reduction
         let molecule = Structure::try_new_full(
             Lattice::cubic(10.0),
             vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
@@ -5078,18 +5106,46 @@ mod tests {
         .unwrap();
 
         let result = molecule.get_reduced_structure(ReductionAlgo::Niggli);
-        assert!(result.is_err(), "Should error for non-periodic structure");
+        assert!(result.is_err(), "Should error for molecule");
         let err_msg = result.unwrap_err().to_string();
         assert!(
-            err_msg.contains("non-periodic"),
-            "Error should mention non-periodic: {err_msg}"
+            err_msg.contains("fully periodic"),
+            "Error should mention fully periodic: {err_msg}"
         );
 
-        let result_lll = molecule.get_reduced_structure(ReductionAlgo::LLL);
+        // Slab (partial periodicity) should also error - reduction could mix axes
+        let slab = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+            [true, true, false], // slab: periodic in xy, vacuum in z
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+
+        let result_slab = slab.get_reduced_structure(ReductionAlgo::Niggli);
+        assert!(result_slab.is_err(), "Should error for slab (partial PBC)");
+
+        let result_slab_lll = slab.get_reduced_structure(ReductionAlgo::LLL);
         assert!(
-            result_lll.is_err(),
-            "Should also error for LLL on non-periodic structure"
+            result_slab_lll.is_err(),
+            "Should also error for LLL on slab"
         );
+
+        // Wire (1D periodic) should also error
+        let wire = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+            [true, false, false], // wire: periodic only in x
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+
+        let result_wire = wire.get_reduced_structure(ReductionAlgo::Niggli);
+        assert!(result_wire.is_err(), "Should error for wire (1D PBC)");
     }
 
     #[test]
@@ -5205,8 +5261,7 @@ mod tests {
 
         // Periodicity mismatch
         let mut mol = nacl.clone();
-        mol.pbc = [false, false, false];
-        mol.lattice.pbc = [false, false, false];
+        mol.set_pbc([false, false, false]);
         let err = nacl.interpolate(&mol, 5, false, true).unwrap_err();
         assert!(
             err.to_string().contains("different periodicity"),

@@ -1139,6 +1139,7 @@ fn to_pymatgen_json(structure: StructureJson) -> PyResult<String> {
 ///     >>> import json
 ///     >>> mol_dict = parse_molecule_json(json.dumps(mol.as_dict()))
 #[pyfunction]
+#[pyo3(name = "parse_molecule_json")]
 fn parse_molecule_json_py(py: Python<'_>, json_str: &str) -> PyResult<Py<PyDict>> {
     let mol = crate::io::parse_molecule_json(json_str)
         .map_err(|e| PyValueError::new_err(format!("Error parsing molecule: {e}")))?;
@@ -1184,6 +1185,7 @@ fn molecule_to_xyz(molecule: StructureJson, comment: Option<&str>) -> PyResult<S
 /// Returns:
 ///     dict: Parsed molecule in pymatgen Molecule.as_dict() format
 #[pyfunction]
+#[pyo3(name = "parse_xyz_str")]
 fn parse_xyz_str_py(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
     let mol = crate::io::parse_xyz_str(content)
         .map_err(|e| PyValueError::new_err(format!("Error parsing XYZ: {e}")))?;
@@ -1232,6 +1234,7 @@ fn parse_ase_dict(py: Python<'_>, ase_dict: &Bound<'_, PyDict>) -> PyResult<(Str
 /// Returns:
 ///     tuple[str, dict]: Tuple of ("Structure" or "Molecule", dict in pymatgen format)
 #[pyfunction]
+#[pyo3(name = "parse_xyz_flexible")]
 fn parse_xyz_flexible_py(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyDict>)> {
     let result = crate::io::parse_xyz_flexible(Path::new(path))
         .map_err(|e| PyValueError::new_err(format!("Error parsing XYZ: {e}")))?;
@@ -1268,29 +1271,13 @@ fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyRe
         .and_then(|p| p.extract())
         .unwrap_or([true, true, true]);
 
-    // Extract species symbols
-    let species_obj = structure.getattr("species")?;
-    let species_list: Vec<String> = species_obj
-        .try_iter()?
-        .map(|sp_result| -> PyResult<String> {
-            let sp = sp_result?;
-            // Try to get symbol attribute, fall back to str()
-            if let Ok(sym) = sp.getattr("symbol") {
-                sym.extract::<String>()
-            } else {
-                Ok(sp.str()?.to_string())
-            }
-        })
-        .collect::<PyResult<_>>()?;
-    let frac_coords: Vec<[f64; 3]> = structure.getattr("frac_coords")?.extract()?;
-
     // Extract charge if present
     let charge: f64 = structure
         .getattr("charge")
         .and_then(|c| c.extract())
         .unwrap_or(0.0);
 
-    // Build the ferrox Structure
+    // Build the ferrox lattice
     let mut lattice_obj = crate::lattice::Lattice::new(nalgebra::Matrix3::from_row_slice(&[
         matrix[0][0],
         matrix[0][1],
@@ -1304,27 +1291,61 @@ fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyRe
     ]));
     lattice_obj.pbc = pbc;
 
-    let species: Vec<crate::species::Species> = species_list
-        .iter()
-        .map(|s| {
-            let elem = crate::element::Element::from_symbol(s)
-                .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {s}")))?;
-            Ok(crate::species::Species::neutral(elem))
-        })
-        .collect::<PyResult<_>>()?;
+    // Extract sites with full species info (oxidation states, occupancies, disordered sites)
+    let sites = structure.getattr("sites")?;
+    let mut site_occupancies = Vec::new();
+    let mut frac_coords = Vec::new();
 
-    let coords: Vec<nalgebra::Vector3<f64>> = frac_coords
-        .iter()
-        .map(|c| nalgebra::Vector3::new(c[0], c[1], c[2]))
-        .collect();
+    for site_result in sites.try_iter()? {
+        let site = site_result?;
+
+        // Get fractional coordinates
+        let frac: [f64; 3] = site.getattr("frac_coords")?.extract()?;
+        frac_coords.push(nalgebra::Vector3::new(frac[0], frac[1], frac[2]));
+
+        // Get species with occupancies - site.species is a Composition-like object
+        let species_comp = site.getattr("species")?;
+        let mut species_vec: Vec<(crate::species::Species, f64)> = Vec::new();
+
+        // Iterate over (Species, occupancy) pairs - handles disordered sites
+        for item_result in species_comp.call_method0("items")?.try_iter()? {
+            let item = item_result?;
+            let (sp, occu): (pyo3::Bound<'_, PyAny>, f64) = item.extract()?;
+
+            // Extract element symbol
+            let symbol: String = sp.getattr("symbol")?.extract()?;
+            let elem = crate::element::Element::from_symbol(&symbol)
+                .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {symbol}")))?;
+
+            // Extract oxidation state from sp.getattr("oxi_state"):
+            // - pymatgen Species.oxi_state returns None for unspecified/neutral species
+            // - When present, oxi_state is a float (e.g., 2.0 for Fe2+, -2.0 for O2-)
+            // - We treat None (fails extract) or zero-like values as no oxidation state
+            // - Only integer-valued oxidation states are accepted (non-integer -> None)
+            let oxi_state: Option<i8> = sp
+                .getattr("oxi_state")
+                .and_then(|o| o.extract::<f64>())
+                .ok()
+                .and_then(|oxi| {
+                    if oxi.abs() < 1e-10 {
+                        None // Zero treated as neutral/unspecified
+                    } else if oxi.fract().abs() < 1e-10 {
+                        Some(oxi.round() as i8)
+                    } else {
+                        None // Non-integer oxidation states not supported
+                    }
+                });
+
+            species_vec.push((crate::species::Species::new(elem, oxi_state), occu));
+        }
+
+        site_occupancies.push(crate::species::SiteOccupancy::new(species_vec));
+    }
 
     let s = crate::structure::Structure::try_new_full(
         lattice_obj,
-        species
-            .into_iter()
-            .map(crate::species::SiteOccupancy::ordered)
-            .collect(),
-        coords,
+        site_occupancies,
+        frac_coords,
         pbc,
         charge,
         std::collections::HashMap::new(),
@@ -1424,11 +1445,13 @@ fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDic
         .unwrap_or([false, false, false]);
     let is_periodic = pbc.iter().any(|&p| p) && has_cell;
 
-    // Extract charge if present
-    let charge: f64 = atoms
-        .getattr("charge")
-        .and_then(|c| c.extract())
-        .unwrap_or(0.0);
+    // Extract charge from atoms.info["charge"] if present (ASE stores charge in info dict)
+    let charge: f64 = (|| -> Option<f64> {
+        let info = atoms.getattr("info").ok()?;
+        let charge_val = info.get_item("charge").ok()?;
+        charge_val.extract::<f64>().ok()
+    })()
+    .unwrap_or(0.0);
 
     // Convert symbols to species (shared by both branches)
     let species: Vec<crate::species::Species> = symbols
@@ -1454,11 +1477,10 @@ fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDic
         ]));
         lattice.pbc = pbc;
 
-        // Convert Cartesian to fractional
-        let frac_coords: Vec<nalgebra::Vector3<f64>> = cart_coords
-            .iter()
-            .map(|p| lattice.inv_matrix() * p)
-            .collect();
+        // Convert Cartesian to fractional (cache inverse to avoid repeated inversion)
+        let inv = lattice.inv_matrix();
+        let frac_coords: Vec<nalgebra::Vector3<f64>> =
+            cart_coords.iter().map(|p| inv * p).collect();
 
         let s = crate::structure::Structure::try_new_full(
             lattice,
@@ -1507,7 +1529,8 @@ fn to_ase_atoms(py: Python<'_>, structure: StructureJson) -> PyResult<PyObject> 
     let atoms_cls = ase.getattr("Atoms")?;
 
     // Try to parse as structure first, then as molecule
-    let (symbols, positions, cell, pbc) = if let Ok(s) = parse_structure_json(&structure.0) {
+    let (symbols, positions, cell, pbc, charge) = if let Ok(s) = parse_structure_json(&structure.0)
+    {
         let symbols: Vec<String> = s.species_strings();
         let positions: Vec<[f64; 3]> = s.cart_coords().iter().map(|c| [c.x, c.y, c.z]).collect();
         let mat = s.lattice.matrix();
@@ -1516,11 +1539,11 @@ fn to_ase_atoms(py: Python<'_>, structure: StructureJson) -> PyResult<PyObject> 
             vec![mat[(1, 0)], mat[(1, 1)], mat[(1, 2)]],
             vec![mat[(2, 0)], mat[(2, 1)], mat[(2, 2)]],
         ];
-        (symbols, positions, Some(cell), s.pbc)
+        (symbols, positions, Some(cell), s.pbc, s.charge)
     } else if let Ok(mol) = crate::io::parse_molecule_json(&structure.0) {
         let symbols: Vec<String> = mol.species_strings();
         let positions: Vec<[f64; 3]> = mol.cart_coords().iter().map(|c| [c.x, c.y, c.z]).collect();
-        (symbols, positions, None, [false, false, false])
+        (symbols, positions, None, [false, false, false], mol.charge)
     } else {
         return Err(PyValueError::new_err(
             "Could not parse input as Structure or Molecule",
@@ -1536,7 +1559,15 @@ fn to_ase_atoms(py: Python<'_>, structure: StructureJson) -> PyResult<PyObject> 
         kwargs.set_item("cell", cell)?;
     }
 
-    atoms_cls.call((), Some(&kwargs)).map(|o| o.unbind())
+    let atoms = atoms_cls.call((), Some(&kwargs))?;
+
+    // Set charge in info dict if non-zero (consistent with structure_to_ase_atoms_dict)
+    if charge.abs() > 1e-10 {
+        let info = atoms.getattr("info")?;
+        info.set_item("charge", charge)?;
+    }
+
+    Ok(atoms.unbind())
 }
 
 // ============================================================================
