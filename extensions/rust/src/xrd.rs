@@ -586,9 +586,10 @@ mod tests {
     fn test_enumerate_reciprocal_points() {
         let recip = Matrix3::from_row_slice(&[0.2, 0.0, 0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 0.2]);
         let points = enumerate_reciprocal_points(&recip, 0.0, 0.5);
-        // Should have points like (1,0,0), (0,1,0), etc.
-        assert!(!points.is_empty());
-        // (1,0,0) has |g| = 0.2
+        // Cubic with |g|_max = 0.5, g = 0.2*hkl, so |hkl| <= 2.5
+        // Includes all points with |hkl| ≤ 2 (h²+k²+l² ≤ 6.25)
+        assert_eq!(points.len(), 80, "Cubic reciprocal lattice with |g| <= 0.5");
+        // (1,0,0) has |g| = 0.2, should be present
         let has_100 = points
             .iter()
             .any(|p| p.hkl == [1, 0, 0] || p.hkl == [-1, 0, 0]);
@@ -715,5 +716,178 @@ mod tests {
         for &intensity in &pattern.intensities {
             assert!(intensity > 0.0);
         }
+    }
+
+    // === pymatgen Reference Tests ===
+
+    /// Create graphite structure (hexagonal)
+    fn make_graphite() -> Structure {
+        // Graphite hexagonal structure: space group P6_3/mmc
+        // a = 2.464 Å, c = 6.711 Å
+        let lattice = Lattice::hexagonal(2.464, 6.711);
+        let species = vec![
+            Species::neutral(Element::C),
+            Species::neutral(Element::C),
+            Species::neutral(Element::C),
+            Species::neutral(Element::C),
+        ];
+        // Graphite has C atoms at Wyckoff positions
+        // 2a: (0, 0, 0) and (0, 0, 0.5)
+        // 2b: (1/3, 2/3, 0) and (2/3, 1/3, 0.5)
+        let frac_coords = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 0.5),
+            Vector3::new(1.0 / 3.0, 2.0 / 3.0, 0.0),
+            Vector3::new(2.0 / 3.0, 1.0 / 3.0, 0.5),
+        ];
+        Structure::new(lattice, species, frac_coords)
+    }
+
+    #[test]
+    fn test_compute_xrd_hexagonal_graphite_pymatgen() {
+        // pymatgen reference: strongest peak at ~26.21° (002), intensity 100
+        let structure = make_graphite();
+        let config = XrdConfig {
+            two_theta_range: Some((0.0, 90.0)),
+            ..Default::default()
+        };
+        let pattern = compute_xrd(&structure, &config);
+
+        assert!(
+            !pattern.two_theta.is_empty(),
+            "Graphite should have XRD peaks"
+        );
+
+        // Find strongest peak (002 reflection for graphite, pymatgen gives ~26.21°)
+        let max_idx = pattern
+            .intensities
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(idx, _)| idx)
+            .unwrap();
+
+        assert!(
+            (pattern.two_theta[max_idx] - 26.5).abs() < 2.0,
+            "Strongest peak at {:.1}° should be near 26.5° (002)",
+            pattern.two_theta[max_idx]
+        );
+        assert!(
+            (pattern.intensities[max_idx] - 100.0).abs() < 0.1,
+            "Strongest peak intensity should be 100"
+        );
+
+        // Check for (002) reflection
+        let has_002 = pattern.hkls.iter().any(|families| {
+            families
+                .iter()
+                .any(|info| info.hkl == [0, 0, 2] || info.hkl == [0, 0, -2])
+        });
+        assert!(has_002, "Graphite should have (002) reflection");
+    }
+
+    /// Create CsCl structure (cubic, reference from pymatgen test)
+    fn make_cscl() -> Structure {
+        // CsCl: Pm-3m, a = 4.209 Å
+        let lattice = Lattice::cubic(4.209);
+        let species = vec![Species::neutral(Element::Cs), Species::neutral(Element::Cl)];
+        let frac_coords = vec![
+            Vector3::new(0.0, 0.0, 0.0), // Cs at corner
+            Vector3::new(0.5, 0.5, 0.5), // Cl at body center
+        ];
+        Structure::new(lattice, species, frac_coords)
+    }
+
+    #[test]
+    fn test_compute_xrd_cscl_pymatgen_reference() {
+        // pymatgen test_get_pattern for CsCl:
+        // First peak at 2θ ≈ 21.11° with intensity ≈ 36.48
+        // Second peak at 2θ ≈ 30.02° with intensity = 100 (strongest)
+        // d_hkls[0] ≈ 4.209 Å (the lattice constant)
+
+        let structure = make_cscl();
+        let config = XrdConfig {
+            two_theta_range: Some((0.0, 90.0)),
+            ..Default::default()
+        };
+        let pattern = compute_xrd(&structure, &config);
+
+        assert!(
+            pattern.two_theta.len() >= 2,
+            "CsCl should have at least 2 XRD peaks"
+        );
+
+        // First peak: (100) at ~21.11°, d-spacing = lattice constant
+        assert!(
+            (pattern.two_theta[0] - 21.1).abs() < 0.5,
+            "First peak at {:.2}° should be ~21.1°",
+            pattern.two_theta[0]
+        );
+        assert!(
+            (pattern.d_spacings[0] - 4.209).abs() < 0.01,
+            "First d-spacing {:.3} Å should be ~4.209 Å",
+            pattern.d_spacings[0]
+        );
+
+        // Second peak: (110) at ~30.02° (strongest)
+        assert!(
+            (pattern.two_theta[1] - 30.0).abs() < 0.5,
+            "Second peak at {:.2}° should be ~30.0°",
+            pattern.two_theta[1]
+        );
+    }
+
+    /// Create tetragonal test structure (from pymatgen test)
+    fn make_tetragonal_test() -> Structure {
+        // Tetragonal structure from pymatgen test
+        // a = 4.192 Å, c = 6.88 Å
+        let lattice = Lattice::tetragonal(4.192, 6.88);
+        let species = vec![
+            Species::neutral(Element::Si),
+            Species::neutral(Element::Si),
+            Species::neutral(Element::Ru),
+            Species::neutral(Element::Ru),
+            Species::neutral(Element::Pr),
+            Species::neutral(Element::Pr),
+        ];
+        let frac_coords = vec![
+            Vector3::new(0.25, 0.25, 0.173),
+            Vector3::new(0.75, 0.75, 0.827),
+            Vector3::new(0.75, 0.25, 0.0),
+            Vector3::new(0.25, 0.75, 0.0),
+            Vector3::new(0.25, 0.25, 0.676),
+            Vector3::new(0.75, 0.75, 0.324),
+        ];
+        Structure::new(lattice, species, frac_coords)
+    }
+
+    #[test]
+    fn test_compute_xrd_tetragonal_pymatgen_reference() {
+        // pymatgen test for tetragonal structure:
+        // xrd.x[0] ≈ 12.87°
+        // xrd.y[0] ≈ 31.45
+        // xrd.d_hkls[0] ≈ 6.88 Å (the c lattice parameter)
+        // len(xrd) == 42 peaks total
+
+        let structure = make_tetragonal_test();
+        let config = XrdConfig::default();
+        let pattern = compute_xrd(&structure, &config);
+
+        assert!(
+            !pattern.two_theta.is_empty(),
+            "Tetragonal structure should have XRD peaks"
+        );
+
+        // First peak at ~12.87°, d-spacing = c parameter (~6.88 Å)
+        assert!(
+            (pattern.two_theta[0] - 12.87).abs() < 0.5,
+            "First peak at {:.2}° should be ~12.87°",
+            pattern.two_theta[0]
+        );
+        assert!(
+            (pattern.d_spacings[0] - 6.88).abs() < 0.1,
+            "First d-spacing {:.2} Å should be ~6.88 Å",
+            pattern.d_spacings[0]
+        );
     }
 }

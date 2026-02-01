@@ -3388,7 +3388,11 @@ mod tests {
         let fcc = make_fcc_conventional(Element::Cu, 3.6);
         let ops = fcc.get_symmetry_operations(1e-4).unwrap();
         // Fm-3m has 192 operations in the conventional cell
-        assert!(!ops.is_empty());
+        assert_eq!(
+            ops.len(),
+            192,
+            "FCC Fm-3m should have 192 symmetry operations"
+        );
         // Check that operations have valid structure
         for (rot, trans) in &ops {
             // Rotation determinant should be +/- 1

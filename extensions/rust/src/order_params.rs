@@ -409,9 +409,9 @@ impl LocalStructure {
 
 /// Classify local structure based on q4 and q6 values.
 ///
-/// Uses characteristic values from literature:
+/// Uses characteristic values from pymatgen LocalStructOrderParams tests:
 /// - FCC: q4 ≈ 0.19, q6 ≈ 0.57
-/// - BCC: q4 ≈ 0.04, q6 ≈ 0.51
+/// - BCC: q4 ≈ 0.509, q6 ≈ 0.628 (pymatgen reference, 8 nearest neighbors)
 /// - HCP: q4 ≈ 0.10, q6 ≈ 0.48
 /// - Icosahedral: q4 ≈ 0.0, q6 ≈ 0.66
 /// - Liquid: q4 ≈ 0.0, q6 ≈ 0.0
@@ -422,11 +422,13 @@ impl LocalStructure {
 /// * `q6` - Local q6 value
 /// * `tolerance` - Tolerance for classification (default: 0.1)
 pub fn classify_local_structure(q4: f64, q6: f64, tolerance: f64) -> LocalStructure {
-    // Reference values from Lechner & Dellago, JCP 2008
+    // Reference values from pymatgen LocalStructOrderParams
     const FCC_Q4: f64 = 0.19;
     const FCC_Q6: f64 = 0.57;
-    const BCC_Q4: f64 = 0.04;
-    const BCC_Q6: f64 = 0.51;
+    // BCC values from pymatgen tests (test_local_env.py line 1081):
+    // ops_087.get_order_parameters(self.bcc, 0) gives q4=0.509, q6=0.628
+    const BCC_Q4: f64 = 0.509;
+    const BCC_Q6: f64 = 0.628;
     const HCP_Q4: f64 = 0.10;
     const HCP_Q6: f64 = 0.48;
     const ICO_Q4: f64 = 0.0;
@@ -906,20 +908,11 @@ mod tests {
     // === Steinhardt Tests: BCC ===
 
     #[test]
-    #[ignore] // TODO: BCC q values don't match literature values - needs investigation
     fn test_bcc_q4_q6_values() {
-        // BCC Fe: a = 2.87 Å, nearest neighbor = a*sqrt(3)/2 ≈ 2.48 Å
-        // Literature values: q4 ≈ 0.036, q6 ≈ 0.51 (first shell only, 8 neighbors)
-        //
-        // Note: Currently computing q4 ≈ 0.509, q6 ≈ 0.629 which don't match.
-        // The FCC and HCP tests pass, so the issue is specific to BCC geometry.
-        // This needs further investigation - possible issues:
-        // 1. Neighbor finding for BCC conventional cell
-        // 2. Spherical coordinate conversion for body-diagonal directions
-        // 3. Different conventions between implementations
+        // BCC Fe: pymatgen reference q4=0.509, q6=0.628 (8 nearest neighbors)
         let a = 2.87;
         let structure = make_bcc(a, Element::Fe, 3, 3, 3);
-        let cutoff = 2.6;
+        let cutoff = 2.6; // Between 1st shell (2.48 Å) and 2nd shell (2.87 Å)
 
         let q4 = compute_steinhardt_q(&structure, 4, cutoff);
         let q6 = compute_steinhardt_q(&structure, 6, cutoff);
@@ -928,12 +921,12 @@ mod tests {
         let avg_q6: f64 = q6.iter().sum::<f64>() / q6.len() as f64;
 
         assert!(
-            (avg_q4 - 0.036).abs() < 0.05,
-            "BCC avg q4 = {avg_q4}, expected ~0.036"
+            (avg_q4 - 0.509).abs() < 0.05,
+            "BCC avg q4 = {avg_q4}, expected ~0.509"
         );
         assert!(
-            (avg_q6 - 0.51).abs() < 0.05,
-            "BCC avg q6 = {avg_q6}, expected ~0.51"
+            (avg_q6 - 0.628).abs() < 0.05,
+            "BCC avg q6 = {avg_q6}, expected ~0.628"
         );
     }
 
@@ -1048,8 +1041,8 @@ mod tests {
 
     #[test]
     fn test_classify_bcc() {
-        // q4 ≈ 0.04, q6 ≈ 0.51 should be BCC
-        let structure = classify_local_structure(0.04, 0.51, 0.15);
+        // q4 ≈ 0.509, q6 ≈ 0.628 should be BCC (pymatgen reference values)
+        let structure = classify_local_structure(0.509, 0.628, 0.15);
         assert_eq!(structure, LocalStructure::Bcc);
     }
 
@@ -1162,11 +1155,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // TODO: Depends on BCC q values which need investigation
     fn test_classify_all_atoms_bcc() {
+        // BCC with pymatgen-compatible reference values
         let a = 2.87;
         let nn_dist = a * 3.0_f64.sqrt() / 2.0;
         let structure = make_bcc(a, Element::Fe, 4, 4, 4);
+        // Cutoff between first and second shell (2.48 to 2.87 Å)
         let cutoff = 0.5 * (nn_dist + a);
         let classifications = classify_all_atoms(&structure, cutoff, 0.15);
 

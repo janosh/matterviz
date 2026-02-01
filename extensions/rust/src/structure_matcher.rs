@@ -2090,4 +2090,120 @@ mod tests {
             "Distance should be symmetric: {d_center} vs {d_center_rev}"
         );
     }
+
+    // =========================================================================
+    // pymatgen-compatible Oxidation State Tests
+    // =========================================================================
+
+    #[test]
+    fn test_oxi_state_matching_pymatgen_compatible() {
+        // Matches pymatgen test_oxi: same structure with different oxidation states
+        // Species comparator should NOT match, Element comparator SHOULD match
+
+        // Li2O antifluorite: Li at (1/4, 1/4, 1/4) etc., O at (0,0,0)
+        let lattice = Lattice::cubic(4.619);
+        let coords = vec![
+            Vector3::new(0.25, 0.25, 0.25),
+            Vector3::new(0.75, 0.75, 0.75),
+            Vector3::new(0.0, 0.0, 0.0),
+        ];
+
+        let li2o_neutral = Structure::new(
+            lattice.clone(),
+            vec![Species::neutral(Element::Li); 2]
+                .into_iter()
+                .chain(std::iter::once(Species::neutral(Element::O)))
+                .collect(),
+            coords.clone(),
+        );
+        let li2o_charged = Structure::new(
+            lattice,
+            vec![Species::new(Element::Li, Some(1)); 2]
+                .into_iter()
+                .chain(std::iter::once(Species::new(Element::O, Some(-2))))
+                .collect(),
+            coords,
+        );
+
+        // Species comparator: should NOT match (different oxidation states)
+        let species_matcher = StructureMatcher::new()
+            .with_primitive_cell(false)
+            .with_comparator(ComparatorType::Species);
+        assert!(
+            !species_matcher.fit(&li2o_neutral, &li2o_charged),
+            "Species comparator should reject different oxidation states"
+        );
+
+        // Element comparator: SHOULD match (same elements, ignores oxidation states)
+        let element_matcher = StructureMatcher::new()
+            .with_primitive_cell(false)
+            .with_comparator(ComparatorType::Element);
+        assert!(
+            element_matcher.fit(&li2o_neutral, &li2o_charged),
+            "Element comparator should match same elements regardless of oxidation state"
+        );
+    }
+
+    #[test]
+    fn test_primitive_cell_supercell_matching_pymatgen() {
+        // Matches pymatgen test_primitive: primitive cell should match its supercell
+        let primitive = make_simple_cubic(Element::Fe, 4.0);
+
+        // Create a 2x2x2 supercell using itertools-style iteration
+        let (supercell_species, supercell_coords): (Vec<_>, Vec<_>) = (0..8)
+            .map(|idx| {
+                let (idx_x, idx_y, idx_z) = (idx / 4, (idx / 2) % 2, idx % 2);
+                (
+                    Species::neutral(Element::Fe),
+                    Vector3::new(idx_x as f64 * 0.5, idx_y as f64 * 0.5, idx_z as f64 * 0.5),
+                )
+            })
+            .unzip();
+        let supercell = Structure::new(Lattice::cubic(8.0), supercell_species, supercell_coords);
+
+        // Without primitive cell reduction, they shouldn't match
+        let no_prim = StructureMatcher::new().with_primitive_cell(false);
+        assert!(
+            !no_prim.fit(&primitive, &supercell),
+            "Without primitive_cell, different sizes shouldn't match directly"
+        );
+
+        // With primitive cell reduction, they should match
+        let with_prim = StructureMatcher::new().with_primitive_cell(true);
+        assert!(
+            with_prim.fit(&primitive, &supercell),
+            "With primitive_cell, supercell should reduce to match primitive"
+        );
+    }
+
+    #[test]
+    fn test_anonymous_matching_different_stoichiometry() {
+        // Anonymous matching should fail for different stoichiometries
+        // AB vs A2B should not match anonymously
+        let ab = Structure::new(
+            Lattice::cubic(4.0),
+            vec![Species::neutral(Element::Fe), Species::neutral(Element::O)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        let a2b = Structure::new(
+            Lattice::cubic(4.0),
+            vec![
+                Species::neutral(Element::Cu),
+                Species::neutral(Element::Cu),
+                Species::neutral(Element::S),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+            ],
+        );
+
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        assert!(
+            !matcher.fit_anonymous(&ab, &a2b),
+            "Different stoichiometries should not match anonymously"
+        );
+    }
 }

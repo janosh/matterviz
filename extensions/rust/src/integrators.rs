@@ -840,4 +840,112 @@ mod tests {
         // Also verify dt was updated
         assert_eq!(config2.dt_fs, dt2);
     }
+
+    // === torch-sim Compatible Tests ===
+
+    #[test]
+    fn test_calculate_momenta_zero_com_torch_sim_style() {
+        // Matches torch-sim test_calculate_momenta_basic:
+        // After velocity initialization, each system should have zero COM momentum
+
+        let n_atoms = 8;
+        let positions: Vec<Vector3<f64>> = (0..n_atoms)
+            .map(|idx| Vector3::new(idx as f64, 0.0, 0.0))
+            .collect();
+        let masses = (0..n_atoms)
+            .map(|_| 12.0 + rand::random::<f64>() * 10.0)
+            .collect();
+        let mut state = MDState::new(positions, masses);
+
+        // Initialize velocities
+        let mut rng = StdRng::seed_from_u64(42);
+        state = init_velocities(state, 300.0, &mut rng);
+
+        // Zero COM momentum
+        state = zero_com_momentum(state);
+
+        // Check COM momentum is zero
+        let total_momentum: Vector3<f64> = state
+            .velocities
+            .iter()
+            .zip(&state.masses)
+            .map(|(vel, mass)| *mass * vel)
+            .sum();
+
+        assert!(
+            total_momentum.norm() < 1e-10,
+            "COM momentum should be zero, got {:?}",
+            total_momentum
+        );
+    }
+
+    #[test]
+    fn test_nvt_langevin_temperature_torch_sim_style() {
+        // NVT Langevin should maintain temperature near target (torch-sim style)
+        let mut state = make_diatomic();
+        let target_temp = 300.0;
+        let k = 1.0;
+        let r0 = 1.2;
+
+        state.positions[1] = Vector3::new(r0, 0.0, 0.0);
+        let forces = harmonic_forces(&state.positions, k, r0);
+        state = set_forces(state, &forces);
+
+        let config = LangevinConfig::new(target_temp, 0.01, 1.0);
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let mut temps = Vec::new();
+        for _ in 0..2000 {
+            state = langevin_step(state, &config, &mut rng, |pos| harmonic_forces(pos, k, r0));
+            temps.push(temperature(&state));
+        }
+
+        let avg_temp: f64 = temps[1000..].iter().sum::<f64>() / 1000.0;
+
+        // For small systems, temperature fluctuations are large
+        // Check that we're in a reasonable range (similar to existing test)
+        assert!(
+            avg_temp > target_temp * 0.1 && avg_temp < target_temp * 10.0,
+            "Avg temp {avg_temp} K should be in reasonable range of {target_temp} K"
+        );
+    }
+
+    #[test]
+    fn test_nve_energy_conservation_torch_sim_style() {
+        // NVE (velocity Verlet) should conserve energy (torch-sim style)
+        let mut state = make_diatomic();
+        let k = 1.0;
+        let r0 = 1.2;
+
+        state.positions[1] = Vector3::new(1.4, 0.0, 0.0);
+        let forces = harmonic_forces(&state.positions, k, r0);
+        state = set_forces(state, &forces);
+
+        let dt = 1.0;
+        let mut energies = Vec::new();
+
+        for _ in 0..500 {
+            state = velocity_verlet_step(state, dt, |pos| harmonic_forces(pos, k, r0));
+            let ke = kinetic_energy(&state);
+            let dist = (state.positions[1] - state.positions[0]).norm();
+            let pe = 0.5 * k * (dist - r0).powi(2);
+            energies.push(ke + pe);
+        }
+
+        // For harmonic oscillator, energy should be very well conserved
+        let n = energies.len() as f64;
+        let mean_energy = energies.iter().sum::<f64>() / n;
+        let std_energy = (energies
+            .iter()
+            .map(|e| (e - mean_energy).powi(2))
+            .sum::<f64>()
+            / n)
+            .sqrt();
+        let e_drift = std_energy / mean_energy.max(1e-10);
+        assert!(
+            e_drift < 0.01,
+            "Energy drift {:.2}% should be < 1% (NVE conservation)",
+            e_drift * 100.0
+        );
+    }
 }

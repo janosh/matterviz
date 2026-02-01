@@ -835,7 +835,13 @@ mod tests {
     #[test]
     fn test_generate_hnf_large_det() {
         let matrices = generate_hnf(8);
-        assert!(!matrices.is_empty());
+        // HNF matrices with det=8: counts all upper-triangular integer matrices
+        // with diagonal product = 8 and off-diagonal elements in valid ranges
+        assert_eq!(
+            matrices.len(),
+            155,
+            "HNF(8) should have exactly 155 matrices"
+        );
         for m in &matrices {
             assert_eq!(m[0][0] * m[1][1] * m[2][2], 8);
         }

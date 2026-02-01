@@ -2077,81 +2077,34 @@ Mg 0.0 0.0 0.0
 
     #[test]
     fn test_format_detection() {
-        assert_eq!(
-            StructureFormat::from_path(Path::new("structure.json")),
-            Some(StructureFormat::PymatgenJson)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("structure.cif")),
-            Some(StructureFormat::Cif)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("trajectory.xyz")),
-            Some(StructureFormat::ExtXyz)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("structure.extxyz")),
-            Some(StructureFormat::ExtXyz)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("structure.vasp")),
-            Some(StructureFormat::Poscar)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("POSCAR")),
-            Some(StructureFormat::Poscar)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("CONTCAR")),
-            Some(StructureFormat::Poscar)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("POSCAR.vasp")),
-            Some(StructureFormat::Poscar)
-        );
-        assert_eq!(StructureFormat::from_path(Path::new("unknown.txt")), None);
-    }
-
-    #[test]
-    fn test_format_detection_case_insensitive() {
-        // Extensions should be case-insensitive
-        assert_eq!(
-            StructureFormat::from_path(Path::new("structure.JSON")),
-            Some(StructureFormat::PymatgenJson)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("structure.CIF")),
-            Some(StructureFormat::Cif)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("structure.XYZ")),
-            Some(StructureFormat::ExtXyz)
-        );
-    }
-
-    #[test]
-    fn test_format_detection_poscar_variants() {
-        // Various POSCAR naming conventions
-        assert_eq!(
-            StructureFormat::from_path(Path::new("POSCAR")),
-            Some(StructureFormat::Poscar)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("POSCAR.vasp")),
-            Some(StructureFormat::Poscar)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("CONTCAR")),
-            Some(StructureFormat::Poscar)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("CONTCAR.relax")),
-            Some(StructureFormat::Poscar)
-        );
-        assert_eq!(
-            StructureFormat::from_path(Path::new("structure.vasp")),
-            Some(StructureFormat::Poscar)
-        );
+        // Consolidated format detection test covering all cases:
+        // - basic extensions, case-insensitive, POSCAR variants, and unknown
+        let cases: &[(&str, Option<StructureFormat>)] = &[
+            // Basic extensions
+            ("structure.json", Some(StructureFormat::PymatgenJson)),
+            ("structure.cif", Some(StructureFormat::Cif)),
+            ("trajectory.xyz", Some(StructureFormat::ExtXyz)),
+            ("structure.extxyz", Some(StructureFormat::ExtXyz)),
+            ("structure.vasp", Some(StructureFormat::Poscar)),
+            // Case-insensitive
+            ("structure.JSON", Some(StructureFormat::PymatgenJson)),
+            ("structure.CIF", Some(StructureFormat::Cif)),
+            ("structure.XYZ", Some(StructureFormat::ExtXyz)),
+            // POSCAR variants
+            ("POSCAR", Some(StructureFormat::Poscar)),
+            ("POSCAR.vasp", Some(StructureFormat::Poscar)),
+            ("CONTCAR", Some(StructureFormat::Poscar)),
+            ("CONTCAR.relax", Some(StructureFormat::Poscar)),
+            // Unknown
+            ("unknown.txt", None),
+        ];
+        for (path, expected) in cases {
+            assert_eq!(
+                StructureFormat::from_path(Path::new(path)),
+                *expected,
+                "Format detection failed for '{path}'"
+            );
+        }
     }
 
     // =========================================================================
@@ -2423,11 +2376,23 @@ Mg 0.0 0.0 0.0
             vec![Vector3::new(0.0, 0.0, 0.0)],
         );
 
-        for filename in ["test.json", "POSCAR", "test.xyz", "test.cif"] {
+        let format_checks: &[(&str, &str)] = &[
+            ("test.json", "{"),           // JSON starts with {
+            ("POSCAR", "Cu"),             // POSCAR contains element symbol
+            ("test.xyz", "Lattice="),     // extxyz has Lattice= in comment line
+            ("test.cif", "_cell_length"), // CIF has cell parameters
+        ];
+        for (filename, expected_substr) in format_checks {
             let path = temp_dir.path().join(filename);
             write_structure(&s, &path).unwrap();
             let content = std::fs::read_to_string(&path).unwrap();
-            assert!(!content.is_empty(), "{} should not be empty", filename);
+            assert!(
+                content.contains(expected_substr),
+                "{} should contain '{}', got: {}",
+                filename,
+                expected_substr,
+                &content[..content.len().min(100)]
+            );
         }
     }
 
