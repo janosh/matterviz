@@ -587,7 +587,7 @@ mod tests {
         let recip = Matrix3::from_row_slice(&[0.2, 0.0, 0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 0.2]);
         let points = enumerate_reciprocal_points(&recip, 0.0, 0.5);
         // Cubic with |g|_max = 0.5, g = 0.2*hkl, so |hkl| <= 2.5
-        // Includes all points with |hkl| ≤ 2 (h²+k²+l² ≤ 6.25)
+        // Includes all points with |hkl| ≤ 2.5 (h²+k²+l² ≤ 6.25)
         assert_eq!(points.len(), 80, "Cubic reciprocal lattice with |g| <= 0.5");
         // (1,0,0) has |g| = 0.2, should be present
         let has_100 = points

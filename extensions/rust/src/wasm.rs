@@ -1765,17 +1765,22 @@ use crate::elastic;
 /// Returns 6 or 12 strain matrices depending on whether shear strains are included.
 /// Each strain type is applied in both positive and negative directions.
 #[wasm_bindgen]
-pub fn elastic_generate_strains(magnitude: f64, shear: bool) -> Vec<JsMatrix3x3> {
-    elastic::generate_strains(magnitude, shear)
-        .into_iter()
-        .map(|m| {
-            JsMatrix3x3([
-                [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
-                [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
-                [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
-            ])
-        })
-        .collect()
+pub fn elastic_generate_strains(magnitude: f64, shear: bool) -> WasmResult<Vec<JsMatrix3x3>> {
+    if !magnitude.is_finite() || magnitude < 0.0 {
+        return WasmResult::err("magnitude must be finite and non-negative");
+    }
+    WasmResult::ok(
+        elastic::generate_strains(magnitude, shear)
+            .into_iter()
+            .map(|m| {
+                JsMatrix3x3([
+                    [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
+                    [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
+                    [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
+                ])
+            })
+            .collect(),
+    )
 }
 
 /// Apply strain to a cell matrix.
@@ -1859,6 +1864,9 @@ pub fn elastic_tensor_from_stresses(
     use nalgebra::Matrix3;
     if strains.len() != stresses.len() {
         return WasmResult::err("Strains and stresses must have same length");
+    }
+    if strains.is_empty() {
+        return WasmResult::err("At least one strain-stress pair required");
     }
 
     let strain_mats: Vec<Matrix3<f64>> = strains
@@ -1970,6 +1978,9 @@ pub fn compute_steinhardt_q(
     degree: i32,
     cutoff: f64,
 ) -> WasmResult<Vec<f64>> {
+    if cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be non-negative");
+    }
     structure
         .to_structure()
         .map(|struc| order_params::compute_steinhardt_q(&struc, degree, cutoff))
@@ -1995,6 +2006,9 @@ pub fn classify_all_atoms(
     cutoff: f64,
     tolerance: f64,
 ) -> WasmResult<Vec<String>> {
+    if cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be non-negative");
+    }
     structure
         .to_structure()
         .map(|struc| {
@@ -2024,14 +2038,24 @@ pub struct JsMsdCalculator {
 impl JsMsdCalculator {
     /// Create a new MSD calculator.
     ///
-    /// n_atoms: number of atoms in each frame
+    /// n_atoms: number of atoms in each frame (must be > 0)
     /// max_lag: maximum lag time in frames
-    /// origin_interval: frames between time origins (smaller = more samples, more memory)
+    /// origin_interval: frames between time origins (must be > 0, smaller = more samples)
     #[wasm_bindgen(constructor)]
-    pub fn new(n_atoms: usize, max_lag: usize, origin_interval: usize) -> JsMsdCalculator {
-        JsMsdCalculator {
-            inner: MsdCalculator::new(n_atoms, max_lag, origin_interval),
+    pub fn new(
+        n_atoms: usize,
+        max_lag: usize,
+        origin_interval: usize,
+    ) -> WasmResult<JsMsdCalculator> {
+        if n_atoms == 0 {
+            return WasmResult::err("n_atoms must be > 0");
         }
+        if origin_interval == 0 {
+            return WasmResult::err("origin_interval must be > 0");
+        }
+        WasmResult::ok(JsMsdCalculator {
+            inner: MsdCalculator::new(n_atoms, max_lag, origin_interval),
+        })
     }
 
     /// Add a frame to the MSD calculation.
@@ -2092,11 +2116,25 @@ pub struct JsVacfCalculator {
 #[wasm_bindgen]
 impl JsVacfCalculator {
     /// Create a new VACF calculator.
+    ///
+    /// n_atoms: number of atoms in each frame (must be > 0)
+    /// max_lag: maximum lag time in frames
+    /// origin_interval: frames between time origins (must be > 0, smaller = more samples)
     #[wasm_bindgen(constructor)]
-    pub fn new(n_atoms: usize, max_lag: usize, origin_interval: usize) -> JsVacfCalculator {
-        JsVacfCalculator {
-            inner: VacfCalculator::new(n_atoms, max_lag, origin_interval),
+    pub fn new(
+        n_atoms: usize,
+        max_lag: usize,
+        origin_interval: usize,
+    ) -> WasmResult<JsVacfCalculator> {
+        if n_atoms == 0 {
+            return WasmResult::err("n_atoms must be > 0");
         }
+        if origin_interval == 0 {
+            return WasmResult::err("origin_interval must be > 0");
+        }
+        WasmResult::ok(JsVacfCalculator {
+            inner: VacfCalculator::new(n_atoms, max_lag, origin_interval),
+        })
     }
 
     /// Add a frame to the VACF calculation.
@@ -2155,6 +2193,15 @@ pub fn diffusion_from_msd(
     if msd.len() != times.len() {
         return WasmResult::err("MSD and times must have same length");
     }
+    if dim == 0 {
+        return WasmResult::err("dim must be > 0");
+    }
+    if !(0.0..=1.0).contains(&start_fraction) || !(0.0..=1.0).contains(&end_fraction) {
+        return WasmResult::err("start_fraction and end_fraction must be in [0, 1]");
+    }
+    if start_fraction >= end_fraction {
+        return WasmResult::err("start_fraction must be < end_fraction");
+    }
     let (diff, r2) = crate::trajectory::diffusion_coefficient_from_msd(
         &msd,
         &times,
@@ -2169,6 +2216,14 @@ pub fn diffusion_from_msd(
 ///
 /// D = (1/dim) * integral_0^inf VACF(t) dt
 #[wasm_bindgen]
-pub fn diffusion_from_vacf(vacf: Vec<f64>, dt: f64, dim: usize) -> f64 {
-    crate::trajectory::diffusion_coefficient_from_vacf(&vacf, dt, dim)
+pub fn diffusion_from_vacf(vacf: Vec<f64>, dt: f64, dim: usize) -> WasmResult<f64> {
+    if dim == 0 {
+        return WasmResult::err("dim must be > 0");
+    }
+    if dt <= 0.0 {
+        return WasmResult::err("dt must be positive");
+    }
+    WasmResult::ok(crate::trajectory::diffusion_coefficient_from_vacf(
+        &vacf, dt, dim,
+    ))
 }
