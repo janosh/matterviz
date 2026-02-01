@@ -434,6 +434,10 @@ impl Structure {
     }
 
     /// Guess oxidation states using BVS-based MAP estimation with symmetry.
+    ///
+    /// # Errors
+    /// Returns an error if any site is disordered (multiple species), since
+    /// BVS analysis requires a single element per site.
     pub fn guess_oxidation_states_bvs(
         &self,
         symprec: f64,
@@ -442,6 +446,16 @@ impl Structure {
     ) -> Result<Vec<i8>> {
         if self.num_sites() == 0 {
             return Ok(vec![]);
+        }
+
+        // Guard against disordered sites - BVS requires single element per site
+        if let Some(idx) = self.site_occupancies.iter().position(|so| !so.is_ordered()) {
+            return Err(FerroxError::InvalidStructure {
+                index: idx,
+                reason: "BVS-based oxidation state guessing requires ordered sites; \
+                         use composition-based guessing for disordered structures"
+                    .into(),
+            });
         }
 
         let orbits = self.get_equivalent_sites(symprec)?;
@@ -537,7 +551,7 @@ impl Structure {
         self.map_species(|sp| Species::neutral(sp.element))
     }
 
-    // Helper: transform all species with a mapping function
+    // Helper: transform all species with a mapping function, preserving site properties
     fn map_species<F>(&self, f: F) -> Self
     where
         F: Fn(&Species) -> Species,
@@ -548,7 +562,8 @@ impl Structure {
                 .site_occupancies
                 .iter()
                 .map(|so| {
-                    SiteOccupancy::new(so.species.iter().map(|(sp, occ)| (f(sp), *occ)).collect())
+                    let new_species = so.species.iter().map(|(sp, occ)| (f(sp), *occ)).collect();
+                    SiteOccupancy::with_properties(new_species, so.properties.clone())
                 })
                 .collect(),
             frac_coords: self.frac_coords.clone(),
@@ -556,7 +571,7 @@ impl Structure {
         }
     }
 
-    // Helper: transform species with site index context
+    // Helper: transform species with site index context, preserving site properties
     fn map_species_by_site<F>(&self, f: F) -> Self
     where
         F: Fn(usize, &Species) -> Species,
@@ -568,12 +583,12 @@ impl Structure {
                 .iter()
                 .enumerate()
                 .map(|(idx, so)| {
-                    SiteOccupancy::new(
-                        so.species
-                            .iter()
-                            .map(|(sp, occ)| (f(idx, sp), *occ))
-                            .collect(),
-                    )
+                    let new_species = so
+                        .species
+                        .iter()
+                        .map(|(sp, occ)| (f(idx, sp), *occ))
+                        .collect();
+                    SiteOccupancy::with_properties(new_species, so.properties.clone())
                 })
                 .collect(),
             frac_coords: self.frac_coords.clone(),

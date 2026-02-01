@@ -378,25 +378,14 @@ pub fn get_candidate_oxi_states(element: Element, use_all: bool) -> Vec<i8> {
     }
 }
 
-/// Generate all combinations of oxidation states with replacement.
+/// Generate non-decreasing combinations with replacement (multiset combinations).
 ///
-/// For n sites with k possible oxidation states, generates all k^n combinations.
-/// Returns empty vec if the number of combinations would exceed MAX_PERMUTATIONS
-/// to prevent OOM from materializing huge vectors before pruning.
+/// For k items choosing n, generates C(k+n-1, n) combinations where each
+/// combination is a non-decreasing sequence. This avoids permutational
+/// duplicates for indistinguishable atoms.
+///
+/// Returns empty vec if the number of combinations would exceed MAX_PERMUTATIONS.
 fn combinations_with_replacement(items: &[i8], count: usize) -> Vec<Vec<i8>> {
-    // Guard against k^n blow-ups (overflow or exceeding cap returns early)
-    // First check count fits in u32 to avoid truncation in checked_pow
-    let Ok(count_u32) = u32::try_from(count) else {
-        return vec![]; // count > u32::MAX, way too large
-    };
-    if items
-        .len()
-        .checked_pow(count_u32)
-        .is_none_or(|n| n > MAX_PERMUTATIONS)
-    {
-        return vec![];
-    }
-
     if count == 0 {
         return vec![vec![]];
     }
@@ -404,18 +393,47 @@ fn combinations_with_replacement(items: &[i8], count: usize) -> Vec<Vec<i8>> {
         return vec![];
     }
 
-    let mut result = Vec::new();
-    let sub_combinations = combinations_with_replacement(items, count - 1);
-
-    for item in items {
-        for combo in &sub_combinations {
-            let mut new_combo = vec![*item];
-            new_combo.extend(combo);
-            result.push(new_combo);
-        }
+    // Compute C(k+n-1, n) using the smaller of n and k-1 as the iteration count
+    // to check against MAX_PERMUTATIONS before generating
+    let k = items.len();
+    let num_combinations = binomial(k + count - 1, count.min(k - 1));
+    if num_combinations.is_none_or(|n| n > MAX_PERMUTATIONS) {
+        return vec![];
     }
 
+    let mut result = Vec::new();
+    fn recurse(
+        items: &[i8],
+        count: usize,
+        start: usize,
+        current: &mut Vec<i8>,
+        result: &mut Vec<Vec<i8>>,
+    ) {
+        if count == 0 {
+            result.push(current.clone());
+            return;
+        }
+        for idx in start..items.len() {
+            current.push(items[idx]);
+            recurse(items, count - 1, idx, current, result);
+            current.pop();
+        }
+    }
+    recurse(items, count, 0, &mut Vec::with_capacity(count), &mut result);
     result
+}
+
+/// Compute binomial coefficient C(n, k), returning None on overflow.
+fn binomial(n: usize, k: usize) -> Option<usize> {
+    if k > n {
+        return Some(0);
+    }
+    let k = k.min(n - k); // Use symmetry: C(n,k) = C(n, n-k)
+    let mut result: usize = 1;
+    for i in 0..k {
+        result = result.checked_mul(n - i)?.checked_div(i + 1)?;
+    }
+    Some(result)
 }
 
 /// Find charge-balanced oxidation state assignments for a composition.
@@ -894,15 +912,21 @@ mod tests {
 
     #[test]
     fn test_combinations_with_replacement() {
-        assert_eq!(combinations_with_replacement(&[1, 2], 2).len(), 4);
+        // C(2+2-1, 2) = C(3,2) = 3 non-decreasing combinations: [1,1], [1,2], [2,2]
+        let combos = combinations_with_replacement(&[1, 2], 2);
+        assert_eq!(combos.len(), 3);
+        assert!(combos.iter().all(|c| c.windows(2).all(|w| w[0] <= w[1]))); // non-decreasing
         assert!(combinations_with_replacement(&[], 3).is_empty());
         assert_eq!(
             combinations_with_replacement(&[1, 2, 3], 0),
             vec![Vec::<i8>::new()]
         );
-        // Guard against k^n blow-ups and overflow
-        assert!(combinations_with_replacement(&(0..10).collect::<Vec<i8>>(), 10).is_empty());
-        assert!(combinations_with_replacement(&[1, 2], 100).is_empty());
+        // C(3+3-1, 3) = C(5,3) = 10
+        assert_eq!(combinations_with_replacement(&[1, 2, 3], 3).len(), 10);
+        // Guard against blow-ups: C(10+10-1, 10) = C(19,10) = 92378, under limit
+        assert!(!combinations_with_replacement(&(0..10).collect::<Vec<i8>>(), 10).is_empty());
+        // But C(2+100-1, 100) = C(101,2) = 5050 is fine, check large count doesn't overflow
+        assert_eq!(combinations_with_replacement(&[1, 2], 100).len(), 101); // C(101,1) = 101
     }
 
     #[test]
