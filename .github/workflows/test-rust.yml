@@ -3,10 +3,10 @@ name: Rust Extension Tests
 on:
   pull_request:
     branches: [main]
-    paths: [extensions/rust/**, extensions/rust-wasm/**, .github/workflows/test-rust.yml]
+    paths: [extensions/rust/**, .github/workflows/test-rust.yml]
   push:
     branches: [main]
-    paths: [extensions/rust/**, extensions/rust-wasm/**, .github/workflows/test-rust.yml]
+    paths: [extensions/rust/**, .github/workflows/test-rust.yml]
   workflow_dispatch:
     inputs:
       publish:
@@ -80,8 +80,8 @@ jobs:
       - name: Build WASM
         run: |
           wasm-pack build extensions/rust --target web --features wasm --no-default-features
-          rm -rf extensions/rust-wasm/pkg
-          cp -r extensions/rust/pkg extensions/rust-wasm/
+          rm -rf extensions/rust/wasm/pkg
+          cp -r extensions/rust/pkg extensions/rust/wasm/
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -89,7 +89,7 @@ jobs:
         with:
           version: 9
       - name: Install dependencies and run tests
-        working-directory: extensions/rust-wasm
+        working-directory: extensions/rust/wasm
         run: |
           pnpm install
           pnpm test
@@ -98,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wasm-pkg
-          path: extensions/rust-wasm/pkg
+          path: extensions/rust/wasm/pkg
 
   check-version:
     runs-on: ubuntu-latest
@@ -188,8 +188,13 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: wheels-*
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
       - name: List artifacts
         run: ls -la dist/
       - name: Publish to PyPI
@@ -214,13 +219,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: wasm-pkg
-          path: extensions/rust-wasm/pkg
+          path: extensions/rust/wasm/pkg
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - name: Publish to npm
-        working-directory: extensions/rust-wasm
+        working-directory: extensions/rust/wasm
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

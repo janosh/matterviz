@@ -57,9 +57,16 @@ export default defineConfig(({ mode }) => ({
     conditions: mode === `test` ? [`browser`] : undefined,
   },
 
-  // Externalize WASM package for SSR - it only works in browser
+  // matterviz-wasm is browser-only and optional for consumers
+  optimizeDeps: {
+    exclude: [`matterviz-wasm`],
+  },
   ssr: {
-    noExternal: [], // Let SvelteKit handle most packages
     external: [`matterviz-wasm`],
+  },
+  build: {
+    rollupOptions: {
+      external: [`matterviz-wasm`],
+    },
   },
 }))
