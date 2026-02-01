@@ -18,6 +18,9 @@ from ferrox._ferrox import (
     apply_inversion,
     apply_operation,
     apply_translation,
+    classify_all_atoms,
+    classify_local_structure,
+    compute_steinhardt_q,
     # RDF functions
     compute_all_element_rdfs,
     compute_bv_sums,

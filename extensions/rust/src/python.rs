@@ -35,9 +35,9 @@ impl<'a, 'py> FromPyObject<'a, 'py> for StructureJson {
     type Error = PyErr;
 
     fn extract(ob: pyo3::Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
-        if let Ok(s) = ob.downcast::<PyString>() {
+        if let Ok(s) = ob.cast::<PyString>() {
             Ok(StructureJson(s.to_string()))
-        } else if let Ok(dict) = ob.downcast::<PyDict>() {
+        } else if let Ok(dict) = ob.cast::<PyDict>() {
             // Convert dict to JSON string
             let json_module = ob.py().import("json")?;
             let json_str: String = json_module.call_method1("dumps", (dict,))?.extract()?;
@@ -3215,12 +3215,12 @@ fn py_compute_xrd(
         return Err(PyValueError::new_err("wavelength must be positive"));
     }
 
-    if let Some((t_min, t_max)) = two_theta_range {
-        if t_min < 0.0 || t_max > 180.0 || t_min >= t_max {
-            return Err(PyValueError::new_err(
-                "two_theta_range must be (min, max) with 0 <= min < max <= 180",
-            ));
-        }
+    if let Some((t_min, t_max)) = two_theta_range
+        && (t_min < 0.0 || t_max > 180.0 || t_min >= t_max)
+    {
+        return Err(PyValueError::new_err(
+            "two_theta_range must be (min, max) with 0 <= min < max <= 180",
+        ));
     }
 
     let s = parse_struct(&structure)?;
@@ -3525,10 +3525,988 @@ fn py_compute_all_element_rdfs(
     Ok(list.unbind())
 }
 
+// =============================================================================
+// MD Integrators
+// =============================================================================
+
+use crate::elastic;
+use crate::integrators::{self, LangevinIntegrator, MDState};
+use crate::optimizers::{CellFireState, FireConfig, FireState};
+use crate::order_params;
+use crate::trajectory::{MsdCalculator, VacfCalculator};
+
+/// Python wrapper for MD state.
+#[pyclass(name = "MDState")]
+pub struct PyMDState {
+    inner: MDState,
+}
+
+#[pymethods]
+impl PyMDState {
+    /// Create a new MD state.
+    ///
+    /// Args:
+    ///     positions: Nx3 array of atomic positions in Angstrom
+    ///     masses: N-element array of atomic masses in amu
+    ///     velocities: Optional Nx3 array of velocities (default: zeros)
+    #[new]
+    #[pyo3(signature = (positions, masses, velocities = None))]
+    fn new(
+        positions: Vec<[f64; 3]>,
+        masses: Vec<f64>,
+        velocities: Option<Vec<[f64; 3]>>,
+    ) -> PyResult<Self> {
+        if positions.len() != masses.len() {
+            return Err(PyValueError::new_err(format!(
+                "Masses length ({}) must match positions length ({})",
+                masses.len(),
+                positions.len()
+            )));
+        }
+
+        let pos_vec: Vec<Vector3<f64>> = positions.iter().map(|p| Vector3::from(*p)).collect();
+        let mut state = MDState::new(pos_vec, masses);
+
+        if let Some(vels) = velocities {
+            if vels.len() != state.num_atoms() {
+                return Err(PyValueError::new_err(format!(
+                    "Velocities length ({}) must match positions length ({})",
+                    vels.len(),
+                    state.num_atoms()
+                )));
+            }
+            state.velocities = vels.iter().map(|v| Vector3::from(*v)).collect();
+        }
+
+        Ok(Self { inner: state })
+    }
+
+    /// Initialize velocities from Maxwell-Boltzmann distribution.
+    ///
+    /// Args:
+    ///     temperature_k: Target temperature in Kelvin
+    ///     seed: Optional random seed for reproducibility
+    #[pyo3(signature = (temperature_k, seed = None))]
+    fn init_velocities(&mut self, temperature_k: f64, seed: Option<u64>) {
+        self.inner.init_velocities(temperature_k, seed);
+    }
+
+    /// Get kinetic energy in eV.
+    fn kinetic_energy(&self) -> f64 {
+        self.inner.kinetic_energy()
+    }
+
+    /// Get temperature in Kelvin.
+    fn temperature(&self) -> f64 {
+        self.inner.temperature()
+    }
+
+    /// Get number of atoms.
+    fn num_atoms(&self) -> usize {
+        self.inner.num_atoms()
+    }
+
+    /// Get positions as Nx3 array.
+    #[getter]
+    fn positions(&self) -> Vec<[f64; 3]> {
+        self.inner
+            .positions
+            .iter()
+            .map(|p| [p.x, p.y, p.z])
+            .collect()
+    }
+
+    /// Set positions from Nx3 array.
+    #[setter]
+    fn set_positions(&mut self, positions: Vec<[f64; 3]>) -> PyResult<()> {
+        if positions.len() != self.inner.num_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Positions length ({}) must match num_atoms ({})",
+                positions.len(),
+                self.inner.num_atoms()
+            )));
+        }
+        self.inner.positions = positions.iter().map(|p| Vector3::from(*p)).collect();
+        Ok(())
+    }
+
+    /// Get velocities as Nx3 array (in internal units: Angstrom/10.18fs).
+    #[getter]
+    fn velocities(&self) -> Vec<[f64; 3]> {
+        self.inner
+            .velocities
+            .iter()
+            .map(|v| [v.x, v.y, v.z])
+            .collect()
+    }
+
+    /// Set velocities from Nx3 array.
+    #[setter]
+    fn set_velocities(&mut self, velocities: Vec<[f64; 3]>) -> PyResult<()> {
+        if velocities.len() != self.inner.num_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Velocities length ({}) must match num_atoms ({})",
+                velocities.len(),
+                self.inner.num_atoms()
+            )));
+        }
+        self.inner.velocities = velocities.iter().map(|v| Vector3::from(*v)).collect();
+        Ok(())
+    }
+
+    /// Get forces as Nx3 array (in eV/Angstrom).
+    #[getter]
+    fn forces(&self) -> Vec<[f64; 3]> {
+        self.inner.forces.iter().map(|f| [f.x, f.y, f.z]).collect()
+    }
+
+    /// Set forces from Nx3 array.
+    #[setter]
+    fn set_forces(&mut self, forces: Vec<[f64; 3]>) -> PyResult<()> {
+        if forces.len() != self.inner.num_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Forces length ({}) must match num_atoms ({})",
+                forces.len(),
+                self.inner.num_atoms()
+            )));
+        }
+        let force_vec: Vec<Vector3<f64>> = forces.iter().map(|f| Vector3::from(*f)).collect();
+        self.inner.set_forces(&force_vec);
+        Ok(())
+    }
+}
+
+/// Python wrapper for Langevin integrator.
+#[pyclass(name = "LangevinIntegrator")]
+pub struct PyLangevinIntegrator {
+    inner: LangevinIntegrator,
+}
+
+#[pymethods]
+impl PyLangevinIntegrator {
+    /// Create a new Langevin integrator.
+    ///
+    /// Args:
+    ///     temperature_k: Target temperature in Kelvin
+    ///     friction: Friction coefficient in 1/fs (typical: 0.001 to 0.01)
+    ///     dt: Time step in fs
+    ///     seed: Optional random seed for reproducibility
+    #[new]
+    #[pyo3(signature = (temperature_k, friction, dt, seed = None))]
+    fn new(temperature_k: f64, friction: f64, dt: f64, seed: Option<u64>) -> Self {
+        Self {
+            inner: LangevinIntegrator::new(temperature_k, friction, dt, seed),
+        }
+    }
+
+    /// Perform one Langevin dynamics step.
+    ///
+    /// Args:
+    ///     state: MDState to update
+    ///     compute_forces: Python callable that takes positions (Nx3 array)
+    ///                     and returns forces (Nx3 array in eV/Angstrom)
+    fn step(
+        &mut self,
+        state: &mut PyMDState,
+        compute_forces: Py<PyAny>,
+        py: Python<'_>,
+    ) -> PyResult<()> {
+        self.inner.step(&mut state.inner, |positions| {
+            // Convert positions to Python array
+            let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
+
+            // Call Python function
+            let result = compute_forces
+                .call1(py, (pos_arr,))
+                .expect("Force computation failed");
+            let forces: Vec<[f64; 3]> = result.extract(py).expect("Failed to extract forces");
+
+            // Convert back to Vector3
+            forces.iter().map(|f| Vector3::from(*f)).collect()
+        });
+        Ok(())
+    }
+
+    /// Set target temperature.
+    fn set_temperature(&mut self, temperature_k: f64) {
+        self.inner.set_temperature(temperature_k);
+    }
+
+    /// Set friction coefficient.
+    fn set_friction(&mut self, friction: f64) {
+        self.inner.set_friction(friction);
+    }
+
+    /// Set time step.
+    fn set_dt(&mut self, dt: f64) {
+        self.inner.set_dt(dt);
+    }
+}
+
+/// Perform one velocity Verlet step (NVE ensemble).
+///
+/// Args:
+///     state: MDState to update
+///     dt: Time step in fs
+///     compute_forces: Python callable that takes positions (Nx3 array)
+///                     and returns forces (Nx3 array in eV/Angstrom)
+#[pyfunction]
+fn md_velocity_verlet_step(
+    state: &mut PyMDState,
+    dt: f64,
+    compute_forces: Py<PyAny>,
+    py: Python<'_>,
+) -> PyResult<()> {
+    let new_state =
+        integrators::velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
+            let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
+            let result = compute_forces
+                .call1(py, (pos_arr,))
+                .expect("Force computation failed");
+            let forces: Vec<[f64; 3]> = result.extract(py).expect("Failed to extract forces");
+            forces.iter().map(|f| Vector3::from(*f)).collect()
+        });
+    state.inner = new_state;
+    Ok(())
+}
+
+// =============================================================================
+// FIRE Optimizer
+// =============================================================================
+
+/// Python wrapper for FIRE configuration.
+#[pyclass(name = "FireConfig")]
+#[derive(Clone)]
+pub struct PyFireConfig {
+    inner: FireConfig,
+}
+
+#[pymethods]
+impl PyFireConfig {
+    /// Create a new FIRE configuration with default values.
+    ///
+    /// Args:
+    ///     dt_start: Initial timestep (default: 0.1)
+    ///     dt_max: Maximum timestep (default: 1.0)
+    ///     n_min: Min steps before dt increase (default: 5)
+    ///     f_inc: Factor to increase dt (default: 1.1)
+    ///     f_dec: Factor to decrease dt (default: 0.5)
+    ///     alpha_start: Initial mixing parameter (default: 0.1)
+    ///     f_alpha: Factor to decrease alpha (default: 0.99)
+    ///     max_step: Maximum step size in Angstrom (default: 0.2)
+    #[new]
+    #[pyo3(signature = (dt_start=None, dt_max=None, n_min=None, f_inc=None, f_dec=None, alpha_start=None, f_alpha=None, max_step=None))]
+    fn new(
+        dt_start: Option<f64>,
+        dt_max: Option<f64>,
+        n_min: Option<usize>,
+        f_inc: Option<f64>,
+        f_dec: Option<f64>,
+        alpha_start: Option<f64>,
+        f_alpha: Option<f64>,
+        max_step: Option<f64>,
+    ) -> Self {
+        let mut config = FireConfig::default();
+        if let Some(v) = dt_start {
+            config.dt_start = v;
+        }
+        if let Some(v) = dt_max {
+            config.dt_max = v;
+        }
+        if let Some(v) = n_min {
+            config.n_min = v;
+        }
+        if let Some(v) = f_inc {
+            config.f_inc = v;
+        }
+        if let Some(v) = f_dec {
+            config.f_dec = v;
+        }
+        if let Some(v) = alpha_start {
+            config.alpha_start = v;
+        }
+        if let Some(v) = f_alpha {
+            config.f_alpha = v;
+        }
+        if let Some(v) = max_step {
+            config.max_step = v;
+        }
+        Self { inner: config }
+    }
+
+    #[getter]
+    fn dt_start(&self) -> f64 {
+        self.inner.dt_start
+    }
+
+    #[getter]
+    fn dt_max(&self) -> f64 {
+        self.inner.dt_max
+    }
+
+    #[getter]
+    fn max_step(&self) -> f64 {
+        self.inner.max_step
+    }
+}
+
+/// Python wrapper for FIRE optimizer state.
+#[pyclass(name = "FireState")]
+pub struct PyFireState {
+    inner: FireState,
+    config: FireConfig,
+}
+
+#[pymethods]
+impl PyFireState {
+    /// Create a new FIRE optimizer state.
+    ///
+    /// Args:
+    ///     positions: Nx3 array of atomic positions in Angstrom
+    ///     config: Optional FireConfig (uses defaults if not provided)
+    #[new]
+    #[pyo3(signature = (positions, config = None))]
+    fn new(positions: Vec<[f64; 3]>, config: Option<PyFireConfig>) -> Self {
+        let pos_vec: Vec<Vector3<f64>> = positions.iter().map(|p| Vector3::from(*p)).collect();
+        let fire_config = config.map(|c| c.inner).unwrap_or_default();
+        let state = FireState::new(pos_vec, &fire_config);
+        Self {
+            inner: state,
+            config: fire_config,
+        }
+    }
+
+    /// Perform one FIRE optimization step.
+    ///
+    /// Args:
+    ///     compute_forces: Python callable that takes positions (Nx3 array)
+    ///                     and returns forces (Nx3 array in eV/Angstrom)
+    fn step(&mut self, compute_forces: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
+        let config = self.config.clone();
+        self.inner.step(
+            |positions| {
+                let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
+                let result = compute_forces
+                    .call1(py, (pos_arr,))
+                    .expect("Force computation failed");
+                let forces: Vec<[f64; 3]> = result.extract(py).expect("Failed to extract forces");
+                forces.iter().map(|f| Vector3::from(*f)).collect()
+            },
+            &config,
+        );
+        Ok(())
+    }
+
+    /// Check if optimization has converged.
+    ///
+    /// Args:
+    ///     fmax: Maximum force component threshold in eV/Angstrom
+    fn is_converged(&self, fmax: f64) -> bool {
+        self.inner.is_converged(fmax)
+    }
+
+    /// Get maximum force component magnitude.
+    fn max_force(&self) -> f64 {
+        self.inner.max_force()
+    }
+
+    /// Get number of atoms.
+    fn num_atoms(&self) -> usize {
+        self.inner.num_atoms()
+    }
+
+    /// Get positions as Nx3 array.
+    #[getter]
+    fn positions(&self) -> Vec<[f64; 3]> {
+        self.inner
+            .positions
+            .iter()
+            .map(|p| [p.x, p.y, p.z])
+            .collect()
+    }
+}
+
+/// Python wrapper for FIRE optimizer with cell optimization.
+#[pyclass(name = "CellFireState")]
+pub struct PyCellFireState {
+    inner: CellFireState,
+    config: FireConfig,
+}
+
+#[pymethods]
+impl PyCellFireState {
+    /// Create a new FIRE optimizer state with cell optimization.
+    ///
+    /// Args:
+    ///     positions: Nx3 array of atomic positions in Angstrom
+    ///     cell: 3x3 cell matrix (rows are lattice vectors)
+    ///     config: Optional FireConfig
+    ///     cell_factor: Scaling factor for cell DOF (default: 1.0)
+    #[new]
+    #[pyo3(signature = (positions, cell, config = None, cell_factor = 1.0))]
+    fn new(
+        positions: Vec<[f64; 3]>,
+        cell: [[f64; 3]; 3],
+        config: Option<PyFireConfig>,
+        cell_factor: f64,
+    ) -> Self {
+        let pos_vec: Vec<Vector3<f64>> = positions.iter().map(|p| Vector3::from(*p)).collect();
+        let cell_mat = Matrix3::from_row_slice(&[
+            cell[0][0], cell[0][1], cell[0][2], cell[1][0], cell[1][1], cell[1][2], cell[2][0],
+            cell[2][1], cell[2][2],
+        ]);
+        let fire_config = config.map(|c| c.inner).unwrap_or_default();
+        let state = CellFireState::new(pos_vec, cell_mat, &fire_config, cell_factor);
+        Self {
+            inner: state,
+            config: fire_config,
+        }
+    }
+
+    /// Perform one FIRE optimization step with cell optimization.
+    ///
+    /// Args:
+    ///     compute_forces_and_stress: Python callable that takes (positions, cell)
+    ///         and returns (forces, stress) where stress is 3x3 in eV/Angstrom^3
+    fn step(&mut self, compute_forces_and_stress: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
+        let config = self.config.clone();
+        self.inner.step(
+            |positions, cell| {
+                let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
+                let cell_arr = [
+                    [cell[(0, 0)], cell[(0, 1)], cell[(0, 2)]],
+                    [cell[(1, 0)], cell[(1, 1)], cell[(1, 2)]],
+                    [cell[(2, 0)], cell[(2, 1)], cell[(2, 2)]],
+                ];
+
+                let result = compute_forces_and_stress
+                    .call1(py, (pos_arr, cell_arr))
+                    .expect("Force/stress computation failed");
+                let (forces, stress): (Vec<[f64; 3]>, [[f64; 3]; 3]) =
+                    result.extract(py).expect("Failed to extract forces/stress");
+
+                let force_vec: Vec<Vector3<f64>> =
+                    forces.iter().map(|f| Vector3::from(*f)).collect();
+                let stress_mat = Matrix3::from_row_slice(&[
+                    stress[0][0],
+                    stress[0][1],
+                    stress[0][2],
+                    stress[1][0],
+                    stress[1][1],
+                    stress[1][2],
+                    stress[2][0],
+                    stress[2][1],
+                    stress[2][2],
+                ]);
+
+                (force_vec, stress_mat)
+            },
+            &config,
+        );
+        Ok(())
+    }
+
+    /// Check if optimization has converged.
+    fn is_converged(&self, fmax: f64, smax: f64) -> bool {
+        self.inner.is_converged(fmax, smax)
+    }
+
+    /// Get maximum force component magnitude.
+    fn max_force(&self) -> f64 {
+        self.inner.max_force()
+    }
+
+    /// Get maximum stress component magnitude.
+    fn max_stress(&self) -> f64 {
+        self.inner.max_stress()
+    }
+
+    /// Get positions as Nx3 array.
+    #[getter]
+    fn positions(&self) -> Vec<[f64; 3]> {
+        self.inner
+            .positions
+            .iter()
+            .map(|p| [p.x, p.y, p.z])
+            .collect()
+    }
+
+    /// Get cell as 3x3 array.
+    #[getter]
+    fn cell(&self) -> [[f64; 3]; 3] {
+        let c = &self.inner.cell;
+        [
+            [c[(0, 0)], c[(0, 1)], c[(0, 2)]],
+            [c[(1, 0)], c[(1, 1)], c[(1, 2)]],
+            [c[(2, 0)], c[(2, 1)], c[(2, 2)]],
+        ]
+    }
+}
+
+// =============================================================================
+// Elastic Tensor Analysis
+// =============================================================================
+
+/// Generate strain matrices for elastic tensor calculation.
+///
+/// Args:
+///     magnitude: Strain magnitude (typical: 0.005 to 0.01)
+///     shear: Whether to include shear strains (default: True)
+///
+/// Returns:
+///     List of 3x3 strain matrices
+#[pyfunction]
+#[pyo3(signature = (magnitude, shear = true))]
+fn elastic_generate_strains(magnitude: f64, shear: bool) -> Vec<[[f64; 3]; 3]> {
+    elastic::generate_strains(magnitude, shear)
+        .into_iter()
+        .map(|m| {
+            [
+                [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
+                [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
+                [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
+            ]
+        })
+        .collect()
+}
+
+/// Apply strain to a cell matrix.
+///
+/// Args:
+///     cell: 3x3 cell matrix (rows are lattice vectors)
+///     strain: 3x3 strain tensor
+///
+/// Returns:
+///     Deformed cell matrix
+#[pyfunction]
+fn elastic_apply_strain(cell: [[f64; 3]; 3], strain: [[f64; 3]; 3]) -> [[f64; 3]; 3] {
+    let cell_mat = Matrix3::from_row_slice(&[
+        cell[0][0], cell[0][1], cell[0][2], cell[1][0], cell[1][1], cell[1][2], cell[2][0],
+        cell[2][1], cell[2][2],
+    ]);
+    let strain_mat = Matrix3::from_row_slice(&[
+        strain[0][0],
+        strain[0][1],
+        strain[0][2],
+        strain[1][0],
+        strain[1][1],
+        strain[1][2],
+        strain[2][0],
+        strain[2][1],
+        strain[2][2],
+    ]);
+    let result = elastic::apply_strain(&cell_mat, &strain_mat);
+    [
+        [result[(0, 0)], result[(0, 1)], result[(0, 2)]],
+        [result[(1, 0)], result[(1, 1)], result[(1, 2)]],
+        [result[(2, 0)], result[(2, 1)], result[(2, 2)]],
+    ]
+}
+
+/// Convert stress tensor to Voigt notation.
+///
+/// Args:
+///     stress: 3x3 stress tensor
+///
+/// Returns:
+///     6-element Voigt vector [xx, yy, zz, yz, xz, xy]
+#[pyfunction]
+fn elastic_stress_to_voigt(stress: [[f64; 3]; 3]) -> [f64; 6] {
+    let stress_mat = Matrix3::from_row_slice(&[
+        stress[0][0],
+        stress[0][1],
+        stress[0][2],
+        stress[1][0],
+        stress[1][1],
+        stress[1][2],
+        stress[2][0],
+        stress[2][1],
+        stress[2][2],
+    ]);
+    elastic::stress_to_voigt(&stress_mat)
+}
+
+/// Convert strain tensor to Voigt notation.
+///
+/// Args:
+///     strain: 3x3 strain tensor
+///
+/// Returns:
+///     6-element Voigt vector [xx, yy, zz, 2*yz, 2*xz, 2*xy]
+#[pyfunction]
+fn elastic_strain_to_voigt(strain: [[f64; 3]; 3]) -> [f64; 6] {
+    let strain_mat = Matrix3::from_row_slice(&[
+        strain[0][0],
+        strain[0][1],
+        strain[0][2],
+        strain[1][0],
+        strain[1][1],
+        strain[1][2],
+        strain[2][0],
+        strain[2][1],
+        strain[2][2],
+    ]);
+    elastic::strain_to_voigt(&strain_mat)
+}
+
+/// Compute elastic tensor from stress-strain data.
+///
+/// Args:
+///     strains: List of 3x3 strain matrices
+///     stresses: List of 3x3 stress matrices (same length as strains)
+///
+/// Returns:
+///     6x6 elastic tensor in Voigt notation
+#[pyfunction]
+fn elastic_tensor_from_stresses(
+    strains: Vec<[[f64; 3]; 3]>,
+    stresses: Vec<[[f64; 3]; 3]>,
+) -> PyResult<[[f64; 6]; 6]> {
+    if strains.len() != stresses.len() {
+        return Err(PyValueError::new_err(
+            "Strains and stresses must have same length",
+        ));
+    }
+
+    let strain_mats: Vec<Matrix3<f64>> = strains
+        .iter()
+        .map(|s| {
+            Matrix3::from_row_slice(&[
+                s[0][0], s[0][1], s[0][2], s[1][0], s[1][1], s[1][2], s[2][0], s[2][1], s[2][2],
+            ])
+        })
+        .collect();
+
+    let stress_mats: Vec<Matrix3<f64>> = stresses
+        .iter()
+        .map(|s| {
+            Matrix3::from_row_slice(&[
+                s[0][0], s[0][1], s[0][2], s[1][0], s[1][1], s[1][2], s[2][0], s[2][1], s[2][2],
+            ])
+        })
+        .collect();
+
+    Ok(elastic::elastic_tensor_from_stresses(
+        &strain_mats,
+        &stress_mats,
+    ))
+}
+
+/// Compute Voigt-Reuss-Hill bulk modulus from elastic tensor.
+///
+/// Args:
+///     c: 6x6 elastic tensor in Voigt notation
+///
+/// Returns:
+///     Bulk modulus (same units as input elastic tensor)
+#[pyfunction]
+fn elastic_bulk_modulus(c: [[f64; 6]; 6]) -> f64 {
+    elastic::bulk_modulus(&c)
+}
+
+/// Compute Voigt-Reuss-Hill shear modulus from elastic tensor.
+///
+/// Args:
+///     c: 6x6 elastic tensor in Voigt notation
+///
+/// Returns:
+///     Shear modulus (same units as input elastic tensor)
+#[pyfunction]
+fn elastic_shear_modulus(c: [[f64; 6]; 6]) -> f64 {
+    elastic::shear_modulus(&c)
+}
+
+/// Compute Young's modulus from bulk and shear moduli.
+///
+/// E = 9KG / (3K + G)
+#[pyfunction]
+fn elastic_youngs_modulus(k: f64, g: f64) -> f64 {
+    elastic::youngs_modulus(k, g)
+}
+
+/// Compute Poisson's ratio from bulk and shear moduli.
+///
+/// nu = (3K - 2G) / (6K + 2G)
+#[pyfunction]
+fn elastic_poisson_ratio(k: f64, g: f64) -> f64 {
+    elastic::poisson_ratio(k, g)
+}
+
+/// Check if elastic tensor satisfies mechanical stability.
+///
+/// Args:
+///     c: 6x6 elastic tensor in Voigt notation
+///
+/// Returns:
+///     True if all eigenvalues are positive (positive definite)
+#[pyfunction]
+fn elastic_is_stable(c: [[f64; 6]; 6]) -> bool {
+    elastic::is_mechanically_stable(&c)
+}
+
+/// Compute Zener anisotropy ratio for cubic crystals.
+///
+/// A = 2 * C44 / (C11 - C12)
+/// A = 1 for isotropic materials
+#[pyfunction]
+fn elastic_zener_ratio(c11: f64, c12: f64, c44: f64) -> f64 {
+    elastic::zener_ratio(c11, c12, c44)
+}
+
+// =============================================================================
+// Bond Order Parameters
+// =============================================================================
+
+/// Compute Steinhardt q_l order parameter for each atom.
+///
+/// Args:
+///     structure: pymatgen-style structure dict or JSON string
+///     l: Degree of spherical harmonics (typical: 4 or 6)
+///     cutoff: Neighbor cutoff distance in Angstrom
+///
+/// Returns:
+///     List of q_l values for each atom
+#[pyfunction]
+fn compute_steinhardt_q(structure: StructureJson, l: i32, cutoff: f64) -> PyResult<Vec<f64>> {
+    let rust_structure = parse_struct(&structure)?;
+    Ok(order_params::compute_steinhardt_q(
+        &rust_structure,
+        l,
+        cutoff,
+    ))
+}
+
+/// Classify local structure based on q4 and q6 values.
+///
+/// Args:
+///     q4: Local q4 value
+///     q6: Local q6 value
+///     tolerance: Classification tolerance (default: 0.1)
+///
+/// Returns:
+///     Structure type string: "fcc", "bcc", "hcp", "icosahedral", "liquid", or "unknown"
+#[pyfunction]
+#[pyo3(signature = (q4, q6, tolerance = 0.1))]
+fn classify_local_structure(q4: f64, q6: f64, tolerance: f64) -> &'static str {
+    order_params::classify_local_structure(q4, q6, tolerance).as_str()
+}
+
+/// Classify all atoms in a structure based on their local order parameters.
+///
+/// Args:
+///     structure: pymatgen-style structure dict or JSON string
+///     cutoff: Neighbor cutoff distance in Angstrom
+///     tolerance: Classification tolerance (default: 0.1)
+///
+/// Returns:
+///     List of structure type strings for each atom
+#[pyfunction]
+#[pyo3(signature = (structure, cutoff, tolerance = 0.1))]
+fn classify_all_atoms(
+    structure: StructureJson,
+    cutoff: f64,
+    tolerance: f64,
+) -> PyResult<Vec<&'static str>> {
+    let rust_structure = parse_struct(&structure)?;
+    Ok(
+        order_params::classify_all_atoms(&rust_structure, cutoff, tolerance)
+            .iter()
+            .map(|s| s.as_str())
+            .collect(),
+    )
+}
+
+// =============================================================================
+// Trajectory Analysis
+// =============================================================================
+
+/// Streaming MSD calculator for large trajectories.
+#[pyclass(name = "MsdCalculator")]
+pub struct PyMsdCalculator {
+    inner: MsdCalculator,
+}
+
+#[pymethods]
+impl PyMsdCalculator {
+    /// Create a new MSD calculator.
+    ///
+    /// Args:
+    ///     n_atoms: Number of atoms
+    ///     max_lag: Maximum lag time in frames
+    ///     origin_interval: Frames between time origins (smaller = more samples)
+    #[new]
+    fn new(n_atoms: usize, max_lag: usize, origin_interval: usize) -> Self {
+        Self {
+            inner: MsdCalculator::new(n_atoms, max_lag, origin_interval),
+        }
+    }
+
+    /// Add a frame to the MSD calculation.
+    ///
+    /// Args:
+    ///     positions: Nx3 array of atomic positions
+    fn add_frame(&mut self, positions: Vec<[f64; 3]>) -> PyResult<()> {
+        if positions.len() != self.inner.n_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Positions length ({}) must match n_atoms ({})",
+                positions.len(),
+                self.inner.n_atoms()
+            )));
+        }
+        let pos_vec: Vec<Vector3<f64>> = positions.iter().map(|p| Vector3::from(*p)).collect();
+        self.inner.add_frame(&pos_vec);
+        Ok(())
+    }
+
+    /// Compute final MSD values averaged over all atoms.
+    ///
+    /// Returns:
+    ///     List of MSD values for each lag time
+    fn compute_msd(&self) -> Vec<f64> {
+        self.inner.compute_msd()
+    }
+
+    /// Compute MSD for each atom separately.
+    ///
+    /// Returns:
+    ///     2D list: [lag][atom]
+    fn compute_msd_per_atom(&self) -> Vec<Vec<f64>> {
+        self.inner.compute_msd_per_atom()
+    }
+}
+
+/// Streaming VACF calculator for large trajectories.
+#[pyclass(name = "VacfCalculator")]
+pub struct PyVacfCalculator {
+    inner: VacfCalculator,
+}
+
+#[pymethods]
+impl PyVacfCalculator {
+    /// Create a new VACF calculator.
+    ///
+    /// Args:
+    ///     n_atoms: Number of atoms
+    ///     max_lag: Maximum lag time in frames
+    ///     origin_interval: Frames between time origins
+    #[new]
+    fn new(n_atoms: usize, max_lag: usize, origin_interval: usize) -> Self {
+        Self {
+            inner: VacfCalculator::new(n_atoms, max_lag, origin_interval),
+        }
+    }
+
+    /// Add a frame to the VACF calculation.
+    ///
+    /// Args:
+    ///     velocities: Nx3 array of atomic velocities
+    fn add_frame(&mut self, velocities: Vec<[f64; 3]>) -> PyResult<()> {
+        if velocities.len() != self.inner.n_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Velocities length ({}) must match n_atoms ({})",
+                velocities.len(),
+                self.inner.n_atoms()
+            )));
+        }
+        let vel_vec: Vec<Vector3<f64>> = velocities.iter().map(|v| Vector3::from(*v)).collect();
+        self.inner.add_frame(&vel_vec);
+        Ok(())
+    }
+
+    /// Compute final VACF values.
+    ///
+    /// Returns:
+    ///     List of VACF values for each lag time
+    fn compute_vacf(&self) -> Vec<f64> {
+        self.inner.compute_vacf()
+    }
+
+    /// Compute normalized VACF (VACF(t) / VACF(0)).
+    fn compute_normalized_vacf(&self) -> Vec<f64> {
+        self.inner.compute_normalized_vacf()
+    }
+}
+
+/// Compute diffusion coefficient from MSD using Einstein relation.
+///
+/// Args:
+///     msd: MSD values for each lag time
+///     times: Time values for each lag
+///     dim: Dimensionality (default: 3)
+///     start_fraction: Start of fitting region (default: 0.1)
+///     end_fraction: End of fitting region (default: 0.9)
+///
+/// Returns:
+///     (diffusion_coefficient, r_squared)
+#[pyfunction]
+#[pyo3(signature = (msd, times, dim = 3, start_fraction = 0.1, end_fraction = 0.9))]
+fn diffusion_from_msd(
+    msd: Vec<f64>,
+    times: Vec<f64>,
+    dim: usize,
+    start_fraction: f64,
+    end_fraction: f64,
+) -> PyResult<(f64, f64)> {
+    if msd.len() != times.len() {
+        return Err(PyValueError::new_err("MSD and times must have same length"));
+    }
+    Ok(crate::trajectory::diffusion_coefficient_from_msd(
+        &msd,
+        &times,
+        dim,
+        start_fraction,
+        end_fraction,
+    ))
+}
+
+/// Compute diffusion coefficient from VACF using Green-Kubo relation.
+///
+/// Args:
+///     vacf: VACF values for each lag time
+///     dt: Time step between frames
+///     dim: Dimensionality (default: 3)
+///
+/// Returns:
+///     Diffusion coefficient
+#[pyfunction]
+#[pyo3(signature = (vacf, dt, dim = 3))]
+fn diffusion_from_vacf(vacf: Vec<f64>, dt: f64, dim: usize) -> f64 {
+    crate::trajectory::diffusion_coefficient_from_vacf(&vacf, dt, dim)
+}
+
 /// Register Python module contents.
 pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add_class::<PyStructureMatcher>()?;
     py_mod.add_class::<PyElement>()?;
+    // MD integrators
+    py_mod.add_class::<PyMDState>()?;
+    py_mod.add_class::<PyLangevinIntegrator>()?;
+    py_mod.add_function(wrap_pyfunction!(md_velocity_verlet_step, py_mod)?)?;
+    // FIRE optimizer
+    py_mod.add_class::<PyFireConfig>()?;
+    py_mod.add_class::<PyFireState>()?;
+    py_mod.add_class::<PyCellFireState>()?;
+    // Elastic tensor analysis
+    py_mod.add_function(wrap_pyfunction!(elastic_generate_strains, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_apply_strain, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_stress_to_voigt, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_strain_to_voigt, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_tensor_from_stresses, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_bulk_modulus, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_shear_modulus, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_youngs_modulus, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_poisson_ratio, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_is_stable, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(elastic_zener_ratio, py_mod)?)?;
+    // Order parameters
+    py_mod.add_function(wrap_pyfunction!(compute_steinhardt_q, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(classify_local_structure, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(classify_all_atoms, py_mod)?)?;
+    // Trajectory analysis
+    py_mod.add_class::<PyMsdCalculator>()?;
+    py_mod.add_class::<PyVacfCalculator>()?;
+    py_mod.add_function(wrap_pyfunction!(diffusion_from_msd, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(diffusion_from_vacf, py_mod)?)?;
     // I/O functions (reading)
     py_mod.add_function(wrap_pyfunction!(parse_structure_file, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(parse_trajectory, py_mod)?)?;
