@@ -2153,7 +2153,8 @@ impl Structure {
     /// let deformed = structure.deform(f)?;
     /// ```
     pub fn deform(&self, gradient: Matrix3<f64>) -> Result<Self> {
-        let new_matrix = gradient * self.lattice.matrix();
+        // Right-multiply: rows are lattice vectors (row-vector convention)
+        let new_matrix = self.lattice.matrix() * gradient;
         let new_lattice = Lattice::from_matrix_with_pbc(new_matrix, self.lattice.pbc);
 
         let mut result = self.clone();

@@ -66,14 +66,16 @@ pub fn generate_strains(magnitude: f64, shear: bool) -> Vec<Matrix3<f64>> {
 
 /// Apply strain to a cell matrix.
 ///
-/// Returns the deformed cell: cell_new = (I + strain) * cell
+/// Returns the deformed cell: cell_new = cell * (I + strain)
+///
+/// Uses right-multiplication because rows are lattice vectors (row-vector convention).
 ///
 /// # Arguments
 ///
 /// * `cell` - Original cell matrix (rows are lattice vectors)
 /// * `strain` - Strain tensor
 pub fn apply_strain(cell: &Matrix3<f64>, strain: &Matrix3<f64>) -> Matrix3<f64> {
-    (Matrix3::identity() + strain) * cell
+    cell * (Matrix3::identity() + strain)
 }
 
 /// Convert symmetric 3x3 stress/strain tensor to Voigt notation.
@@ -187,50 +189,37 @@ pub fn try_elastic_tensor_from_stresses(
     let strain_voigt: Vec<[f64; 6]> = strains.iter().map(strain_to_voigt).collect();
     let stress_voigt: Vec<[f64; 6]> = stresses.iter().map(stress_to_voigt).collect();
 
-    // Solve for C using least squares: stress = C * strain
-    // For each row idx of C, we solve: stress[idx] = sum_j C[idx][j] * strain[j]
-    // This is a linear regression problem
+    // Build design matrix X (n_samples x 6)
+    // Solve: stress = X * C^T, via SVD pseudoinverse
+    use nalgebra::{DMatrix, SVD};
+
+    let x_mat = DMatrix::from_fn(n_samples, 6, |row, col| strain_voigt[row][col]);
+
+    // Compute SVD of X and solve via pseudoinverse
+    // Use eps = 1e-10 to filter out near-zero singular values
+    let svd = SVD::new(x_mat, true, true);
+    let eps = 1e-10;
+
+    // Count rank deficiency from singular values
+    let singular_values = &svd.singular_values;
+    let max_sv = singular_values.iter().cloned().fold(0.0_f64, f64::max);
+    let threshold = eps * max_sv;
+    let rank = singular_values.iter().filter(|&&sv| sv > threshold).count();
+    let n_singular = 6 - rank.min(6);
 
     let mut c_matrix = [[0.0; 6]; 6];
-    let mut n_singular = 0;
 
+    // Solve X * C_T = B for each stress component column
+    // C_T has shape 6 x 6, we solve column by column
     for stress_idx in 0..6 {
-        // Collect data for this stress component
-        let y: Vec<f64> = stress_voigt.iter().map(|s| s[stress_idx]).collect();
+        let b_col = DMatrix::from_fn(n_samples, 1, |row, _| stress_voigt[row][stress_idx]);
 
-        // Solve using normal equations: C[idx] = (X^T X)^{-1} X^T y
-        // where X is the matrix of strains
-
-        // Build X^T X (6x6)
-        let mut xtx = [[0.0; 6]; 6];
-        for idx in 0..6 {
-            for jdx in 0..6 {
-                xtx[idx][jdx] = strain_voigt.iter().map(|s| s[idx] * s[jdx]).sum();
-            }
-        }
-
-        // Build X^T y (6x1)
-        let mut xty = [0.0; 6];
-        for idx in 0..6 {
-            xty[idx] = strain_voigt
-                .iter()
-                .zip(&y)
-                .map(|(s, &y_val)| s[idx] * y_val)
-                .sum();
-        }
-
-        // Solve using nalgebra
-        let xtx_mat = Matrix6::from_fn(|idx, jdx| xtx[idx][jdx]);
-        let xty_vec = nalgebra::Vector6::from_fn(|idx, _| xty[idx]);
-
-        if let Some(xtx_inv) = xtx_mat.try_inverse() {
-            let coeffs = xtx_inv * xty_vec;
+        if let Ok(solution) = svd.solve(&b_col, eps) {
             for strain_idx in 0..6 {
-                c_matrix[stress_idx][strain_idx] = coeffs[strain_idx];
+                c_matrix[stress_idx][strain_idx] = solution[(strain_idx, 0)];
             }
-        } else {
-            n_singular += 1;
         }
+        // If solve returns Err, row remains zeros (handled by init)
     }
 
     (c_matrix, n_singular)

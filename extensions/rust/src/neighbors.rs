@@ -1600,12 +1600,16 @@ mod tests {
         // Now test at cutoff + epsilon
         let adjusted_a_plus = cutoff + epsilon;
         let sc_plus = make_simple_cubic(Element::Cu, adjusted_a_plus);
-        let _nl_plus = build_neighbor_list(&sc_plus, &config);
+        let nl_plus = build_neighbor_list(&sc_plus, &config);
 
-        // The distance is cutoff + epsilon, but within floating-point tolerance
-        // Behavior depends on whether distance <= cutoff is used
-        // If the implementation uses <=, atoms at exactly cutoff are included
-        // This test ensures consistent behavior at the boundary
+        // Atoms at distance > cutoff should be excluded
+        // The neighbor distance is adjusted_a_plus = cutoff + epsilon > cutoff
+        // So neighbors should NOT be included (strict < or <= cutoff policy)
+        assert!(
+            nl_plus.len() <= 6,
+            "Neighbors at cutoff + epsilon should be excluded or at boundary, found {}",
+            nl_plus.len()
+        );
     }
 
     #[test]

@@ -177,6 +177,68 @@ fn test_strain_to_deformed_cell_consistency() {
     }
 }
 
+#[test]
+fn test_apply_strain_non_orthogonal_lattice() {
+    // Test apply_strain with a non-orthogonal (triclinic) cell
+    // This verifies the row-vector convention: rows are lattice vectors
+    // Deformed cell = cell * (I + strain) [right multiplication]
+    //
+    // A triclinic cell with non-zero off-diagonal elements:
+    // a = [5, 0, 0], b = [1, 4, 0], c = [0.5, 0.3, 6]
+    let cell = Matrix3::new(
+        5.0, 0.0, 0.0, // a vector (row 0)
+        1.0, 4.0, 0.0, // b vector (row 1)
+        0.5, 0.3, 6.0, // c vector (row 2)
+    );
+
+    // Apply a pure shear strain in xy (off-diagonal)
+    let strain = Matrix3::new(0.0, 0.05, 0.0, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+    let deformed = apply_strain(&cell, &strain);
+
+    // With right multiplication: new_cell = cell * (I + strain)
+    // Row 0 (a): [5, 0, 0] * [[1.0, 0.05, 0], [0.05, 1, 0], [0, 0, 1]] = [5, 0.25, 0]
+    // Row 1 (b): [1, 4, 0] * ... = [1 + 0.2, 0.05 + 4, 0] = [1.2, 4.05, 0]
+    // Row 2 (c): [0.5, 0.3, 6] * ... = [0.5 + 0.015, 0.025 + 0.3, 6] = [0.515, 0.325, 6]
+    let expected = Matrix3::new(5.0, 0.25, 0.0, 1.2, 4.05, 0.0, 0.515, 0.325, 6.0);
+
+    for idx in 0..3 {
+        for jdx in 0..3 {
+            assert!(
+                (deformed[(idx, jdx)] - expected[(idx, jdx)]).abs() < 1e-10,
+                "Non-orthogonal cell shear: element ({idx},{jdx}) expected {}, got {}",
+                expected[(idx, jdx)],
+                deformed[(idx, jdx)]
+            );
+        }
+    }
+
+    // Also test uniaxial strain on non-orthogonal cell
+    let uniaxial = Matrix3::new(0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    let deformed_uni = apply_strain(&cell, &uniaxial);
+
+    // Row 0: [5, 0, 0] stretched by 1.1 in x -> [5.5, 0, 0]
+    // Row 1: [1, 4, 0] -> x component stretched -> [1.1, 4, 0]
+    // Row 2: [0.5, 0.3, 6] -> x component stretched -> [0.55, 0.3, 6]
+    assert!(
+        (deformed_uni[(0, 0)] - 5.5).abs() < 1e-10,
+        "a_x should be 5.5 after 10% x-strain"
+    );
+    assert!(
+        (deformed_uni[(1, 0)] - 1.1).abs() < 1e-10,
+        "b_x should be 1.1 after 10% x-strain (tilted b vector)"
+    );
+    assert!(
+        (deformed_uni[(2, 0)] - 0.55).abs() < 1e-10,
+        "c_x should be 0.55 after 10% x-strain"
+    );
+    // y and z components should be unchanged
+    assert!(
+        (deformed_uni[(1, 1)] - 4.0).abs() < 1e-10,
+        "b_y should remain 4.0"
+    );
+}
+
 // =============================================================================
 // Singular tensor handling tests
 // =============================================================================
