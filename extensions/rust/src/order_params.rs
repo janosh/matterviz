@@ -12,10 +12,16 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use ferrox::order_params::{compute_steinhardt_q, classify_local_structure};
+//! use ferrox::order_params::{compute_steinhardt_q, classify_local_structure, classify_all_atoms};
 //!
+//! let q4 = compute_steinhardt_q(&structure, 4, 3.5);
 //! let q6 = compute_steinhardt_q(&structure, 6, 3.5);
-//! let classification = classify_local_structure(&q6);
+//!
+//! // Classify a single atom (index 0)
+//! let classification = classify_local_structure(q4[0], q6[0], 0.1);
+//!
+//! // Or classify all atoms at once
+//! let all_classifications = classify_all_atoms(&q4, &q6, 0.1);
 //! ```
 
 use num_complex::Complex64;
@@ -213,8 +219,9 @@ pub fn compute_steinhardt_q(structure: &Structure, deg: i32, cutoff: f64) -> Vec
                 continue;
             }
 
-            // Convert to spherical coordinates
-            let theta = (delta.z / dist).acos();
+            // Convert to spherical coordinates (clamp to avoid NaN from floating error)
+            let cos_theta = (delta.z / dist).clamp(-1.0, 1.0);
+            let theta = cos_theta.acos();
             let phi = delta.y.atan2(delta.x);
 
             // Add contribution from each m
@@ -320,8 +327,9 @@ pub fn compute_global_steinhardt_q(structure: &Structure, deg: i32, cutoff: f64)
                 continue;
             }
 
-            // Convert to spherical coordinates
-            let theta = (delta.z / dist).acos();
+            // Convert to spherical coordinates (clamp to avoid NaN from floating error)
+            let cos_theta = (delta.z / dist).clamp(-1.0, 1.0);
+            let theta = cos_theta.acos();
             let phi = delta.y.atan2(delta.x);
 
             // Add contribution from each ord

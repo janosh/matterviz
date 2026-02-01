@@ -35,7 +35,8 @@ use nalgebra::{Matrix3, Matrix6};
 /// Vector of strain matrices. If `shear` is true, returns 12 matrices (6 types × 2 signs),
 /// otherwise returns 6 matrices (3 types × 2 signs).
 pub fn generate_strains(magnitude: f64, shear: bool) -> Vec<Matrix3<f64>> {
-    let mut strains = Vec::new();
+    let capacity = if shear { 12 } else { 6 };
+    let mut strains = Vec::with_capacity(capacity);
 
     // Normal strains: xx, yy, zz
     for axis in 0..3 {
@@ -167,9 +168,9 @@ pub fn elastic_tensor_from_stresses(
 ///
 /// A tuple of (elastic_tensor, n_singular) where:
 /// - `elastic_tensor`: 6x6 elastic tensor in Voigt notation
-/// - `n_singular`: Number of stress components that could not be fit due to
-///   singular or under-determined strain data. If > 0, some rows of the tensor
-///   will be zeros.
+/// - `n_singular`: Number of strain components (columns) that could not be
+///   determined due to rank deficiency in the SVD of the strain matrix.
+///   If > 0, some columns of the tensor will be zeros.
 pub fn try_elastic_tensor_from_stresses(
     strains: &[Matrix3<f64>],
     stresses: &[Matrix3<f64>],
@@ -317,9 +318,13 @@ pub fn poisson_ratio(k: f64, g: f64) -> f64 {
 pub fn is_mechanically_stable(c: &[[f64; 6]; 6]) -> bool {
     let c_mat = Matrix6::from_fn(|idx, jdx| c[idx][jdx]);
 
+    // Symmetrize to handle numerical noise from fitting
+    // (fitted tensors can be slightly asymmetric)
+    let c_sym = 0.5 * (c_mat + c_mat.transpose());
+
     // Check positive definiteness via Cholesky decomposition
     // If Cholesky succeeds, matrix is positive definite
-    c_mat.cholesky().is_some()
+    c_sym.cholesky().is_some()
 }
 
 /// Check mechanical stability for cubic crystals (simplified criteria).
