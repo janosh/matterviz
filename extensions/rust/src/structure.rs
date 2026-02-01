@@ -81,31 +81,28 @@ impl Structure {
     }
 
     /// Create a structure with site occupancies and properties.
+    /// Uses the lattice's pbc field for periodicity.
     pub fn try_new_from_occupancies_with_properties(
         lattice: Lattice,
         site_occupancies: Vec<SiteOccupancy>,
         frac_coords: Vec<Vector3<f64>>,
         properties: HashMap<String, serde_json::Value>,
     ) -> Result<Self> {
-        Self::try_new_full(
-            lattice,
-            site_occupancies,
-            frac_coords,
-            [true, true, true],
-            0.0,
-            properties,
-        )
+        let pbc = lattice.pbc;
+        Self::try_new_full(lattice, site_occupancies, frac_coords, pbc, 0.0, properties)
     }
 
     /// Full constructor with all fields.
+    /// Syncs lattice.pbc with the provided pbc argument.
     pub fn try_new_full(
-        lattice: Lattice,
+        mut lattice: Lattice,
         site_occupancies: Vec<SiteOccupancy>,
         frac_coords: Vec<Vector3<f64>>,
         pbc: [bool; 3],
         charge: f64,
         properties: HashMap<String, serde_json::Value>,
     ) -> Result<Self> {
+        lattice.pbc = pbc;
         if site_occupancies.len() != frac_coords.len() {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
@@ -181,8 +178,8 @@ impl Structure {
 
     /// Create a non-periodic structure (molecule) from Cartesian coordinates.
     ///
-    /// Creates a lattice from the bounding box of the coordinates (with padding).
-    /// Sets `pbc = [false, false, false]`.
+    /// Uses a unit cubic lattice where fractional coords equal Cartesian coords,
+    /// ensuring exact coordinate preservation. Sets `pbc = [false, false, false]`.
     pub fn try_new_molecule(
         species: Vec<Species>,
         cart_coords: Vec<Vector3<f64>>,
@@ -195,36 +192,28 @@ impl Structure {
     }
 
     /// Create a non-periodic structure (molecule) from site occupancies and Cartesian coordinates.
+    ///
+    /// Uses an identity lattice (1 Å cubic) so that `frac_coords == cart_coords`.
+    /// This ensures exact coordinate preservation through roundtrips.
+    ///
+    /// Note: For molecules, `frac_coords` may exceed [0, 1) which is intentional -
+    /// molecules are non-periodic so coordinate wrapping would be incorrect.
     pub fn try_new_molecule_from_occupancies(
         site_occupancies: Vec<SiteOccupancy>,
         cart_coords: Vec<Vector3<f64>>,
         charge: f64,
         properties: HashMap<String, serde_json::Value>,
     ) -> Result<Self> {
-        // Create a cubic lattice from bounding box with 10 Å padding
-        let (lattice, frac_coords) = Self::lattice_from_cart_coords(&cart_coords, 10.0);
+        // Use identity lattice so frac_coords == cart_coords
+        let lattice = Lattice::cubic(1.0);
         Self::try_new_full(
             lattice,
             site_occupancies,
-            frac_coords,
+            cart_coords, // stored directly as frac_coords
             [false, false, false],
             charge,
             properties,
         )
-    }
-
-    /// Create lattice and fractional coords from Cartesian coordinates.
-    ///
-    /// For molecules, uses an identity lattice so frac_coords == cart_coords.
-    /// This preserves exact coordinate values through roundtrips.
-    fn lattice_from_cart_coords(
-        cart_coords: &[Vector3<f64>],
-        _padding: f64,
-    ) -> (Lattice, Vec<Vector3<f64>>) {
-        // Use identity lattice: frac_coords == cart_coords
-        // This ensures exact coordinate preservation for molecules
-        let lattice = Lattice::cubic(1.0);
-        (lattice, cart_coords.to_vec())
     }
 
     // === Periodicity helpers ===

@@ -376,11 +376,14 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
     // Extract charge (default 0.0 for structures)
     let charge = parsed.charge.unwrap_or(0.0);
 
+    // Use pbc from lattice (defaults to [true, true, true] if not specified)
+    let pbc = parsed.lattice.pbc;
+
     Structure::try_new_full(
         lattice,
         site_occupancies,
         frac_coords,
-        [true, true, true], // structures are periodic by default
+        pbc,
         charge,
         properties,
     )
@@ -838,7 +841,16 @@ fn frame_to_structure(frame: &str, path: &Path) -> Result<Structure> {
         }
     }
 
-    Structure::try_new_with_properties(lattice, species, frac_coords, properties)
+    // Use try_new_full to preserve pbc from lattice
+    let pbc = lattice.pbc;
+    Structure::try_new_full(
+        lattice,
+        species.into_iter().map(SiteOccupancy::ordered).collect(),
+        frac_coords,
+        pbc,
+        0.0, // charge defaults to 0.0 for structures
+        properties,
+    )
 }
 
 fn parse_pbc_value(pbc_value: &serde_json::Value) -> [bool; 3] {
@@ -1728,6 +1740,13 @@ pub fn parse_ase_atoms_json(json: &str) -> Result<StructureOrMolecule> {
     // Check if periodic (has cell and at least one pbc direction)
     let is_periodic = parsed.cell.is_some() && parsed.pbc.iter().any(|&p| p);
 
+    // Extract charge from info (used by both branches)
+    let charge = parsed
+        .info
+        .get("charge")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+
     if is_periodic {
         // Create periodic Structure
         // ASE cell is row-major: cell[0] = a vector, cell[1] = b vector, cell[2] = c vector
@@ -1742,21 +1761,26 @@ pub fn parse_ase_atoms_json(json: &str) -> Result<StructureOrMolecule> {
         // Convert Cartesian to fractional
         let frac_coords = lattice.get_fractional_coords(&cart_coords);
 
-        // Extract properties from info
-        let properties: HashMap<String, serde_json::Value> = parsed.info;
+        // Extract properties from info (excluding charge which is a dedicated field)
+        let properties: HashMap<String, serde_json::Value> = parsed
+            .info
+            .into_iter()
+            .filter(|(k, _)| k != "charge")
+            .collect();
 
+        // Use try_new_full to preserve pbc and charge from ASE
+        let pbc = parsed.pbc;
         #[allow(deprecated)]
-        Ok(StructureOrMolecule::Structure(
-            Structure::try_new_with_properties(lattice, species, frac_coords, properties)?,
-        ))
+        Ok(StructureOrMolecule::Structure(Structure::try_new_full(
+            lattice,
+            species.into_iter().map(SiteOccupancy::ordered).collect(),
+            frac_coords,
+            pbc,
+            charge,
+            properties,
+        )?))
     } else {
         // Create non-periodic Structure (molecule)
-        let charge = parsed
-            .info
-            .get("charge")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-
         let properties: HashMap<String, serde_json::Value> = parsed
             .info
             .into_iter()
@@ -3837,9 +3861,40 @@ Fe 2.0 2.0 2.0
                 assert_eq!(s.num_sites(), 2);
                 assert_eq!(s.species()[0].element, Element::Fe);
                 assert!((s.lattice.volume() - 2.87_f64.powi(3)).abs() < 1e-6);
+                // Verify pbc is correctly set on Structure
+                assert_eq!(s.pbc, [true, true, true]);
+                assert!(s.is_periodic());
+                assert!(!s.is_molecule());
             }
             StructureOrMolecule::Molecule(_) => {
                 panic!("Expected Structure, got Molecule");
+            }
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_parse_ase_atoms_partial_pbc() {
+        // 2D material with pbc only in x and y directions
+        let json = r#"{
+            "symbols": ["C", "C"],
+            "positions": [[0, 0, 0], [1.23, 0.71, 0]],
+            "cell": [[2.46, 0, 0], [1.23, 2.13, 0], [0, 0, 20]],
+            "pbc": [true, true, false]
+        }"#;
+
+        match parse_ase_atoms_json(json).unwrap() {
+            StructureOrMolecule::Structure(s) => {
+                assert_eq!(s.num_sites(), 2);
+                // Verify pbc is correctly propagated to Structure
+                assert_eq!(s.pbc, [true, true, false]);
+                assert_eq!(s.lattice.pbc, [true, true, false]);
+                // is_periodic should be true (any pbc dimension)
+                assert!(s.is_periodic());
+                assert!(!s.is_molecule());
+            }
+            StructureOrMolecule::Molecule(_) => {
+                panic!("Expected Structure with partial pbc, got Molecule");
             }
         }
     }
