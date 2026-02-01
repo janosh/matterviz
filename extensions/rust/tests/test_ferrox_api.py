@@ -97,6 +97,32 @@ class TestGetStructureMetadata:
         assert metadata["chemical_system"] == comp["chemical_system"]
 
 
+class TestStructureCharge:
+    """Tests for structure charge field preservation."""
+
+    def test_default_charge_is_zero(self, nacl_json: str) -> None:
+        """Structure without charge field defaults to 0.0."""
+        result = ferrox.to_pymatgen_json(nacl_json)
+        parsed = json.loads(result)
+        assert parsed.get("charge", 0.0) == 0.0
+
+    @pytest.mark.parametrize("charge", [0.0, 1.0, -1.0, 2.5, -0.5])
+    def test_charge_roundtrip(self, charge: float) -> None:
+        """Various charge values are preserved through JSON roundtrip."""
+        struct = json.dumps({
+            "@class": "Structure",
+            "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
+            "sites": [{"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]}],
+            "charge": charge,
+        })
+        result = ferrox.to_pymatgen_json(struct)
+        parsed = json.loads(result)
+        if abs(charge) > 1e-10:
+            assert abs(parsed["charge"] - charge) < 1e-10
+        else:
+            assert parsed.get("charge", 0.0) == 0.0
+
+
 # Parametrized anonymous formula tests
 
 

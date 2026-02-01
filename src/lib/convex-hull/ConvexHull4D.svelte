@@ -914,6 +914,32 @@
     selected_entry = null
   }
 
+  // Keyboard handler for accessibility - uses currently hovered entry
+  const handle_keydown = (event: KeyboardEvent) => {
+    if (event.key !== `Enter`) return
+    event.stopPropagation()
+
+    const entry = hover_data?.entry
+    if (!entry) {
+      if (modal_open) close_structure_popup()
+      return
+    }
+
+    on_point_click?.(entry)
+
+    if (enable_click_selection) {
+      selected_entry = entry
+      if (enable_structure_preview) {
+        const structure = extract_structure_from_entry(entry)
+        if (structure) {
+          selected_structure = structure
+          modal_place_right = helpers.calculate_modal_side(wrapper)
+          modal_open = true
+        }
+      }
+    }
+  }
+
   const handle_double_click = (event: MouseEvent) => {
     const entry = find_entry_at_mouse(event)
     if (entry) {
@@ -1052,7 +1078,7 @@
     onmousedown={handle_mouse_down}
     onmousemove={handle_hover}
     onclick={handle_click}
-    onkeydown={(e) => e.key === `Enter` && handle_click(e)}
+    onkeydown={handle_keydown}
     ondblclick={handle_double_click}
     onwheel={handle_wheel}
   ></canvas>

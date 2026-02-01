@@ -1828,15 +1828,18 @@ pub fn structure_to_ase_atoms_dict(structure: &Structure) -> serde_json::Value {
         [mat[(2, 0)], mat[(2, 1)], mat[(2, 2)]],
     ];
 
-    // Build info dict from properties
-    let info: serde_json::Map<String, serde_json::Value> =
+    // Build info dict from properties, including charge if non-zero
+    let mut info: serde_json::Map<String, serde_json::Value> =
         structure.properties.clone().into_iter().collect();
+    if structure.charge.abs() > 1e-10 {
+        info.insert("charge".to_string(), json!(structure.charge));
+    }
 
     json!({
         "symbols": symbols,
         "positions": positions,
         "cell": cell,
-        "pbc": structure.lattice.pbc,
+        "pbc": structure.pbc,
         "info": info
     })
 }
@@ -3961,6 +3964,45 @@ Fe 2.0 2.0 2.0
         );
         assert!(ase_dict["cell"].is_array());
         assert_eq!(ase_dict["pbc"], serde_json::json!([true, true, true]));
+    }
+
+    #[test]
+    fn test_structure_to_ase_atoms_dict_with_charge() {
+        // Charged structure should include charge in info dict
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::try_new_full(
+            lattice,
+            vec![
+                SiteOccupancy::ordered(Species::neutral(Element::Li)),
+                SiteOccupancy::ordered(Species::neutral(Element::Li)),
+            ],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+            [true, true, true],
+            1.0, // positive charge
+            HashMap::new(),
+        )
+        .unwrap();
+
+        let ase_dict = structure_to_ase_atoms_dict(&s);
+
+        // Charge should be in info dict
+        assert_eq!(ase_dict["info"]["charge"], serde_json::json!(1.0));
+    }
+
+    #[test]
+    fn test_structure_to_ase_atoms_dict_zero_charge() {
+        // Zero charge should NOT be in info dict
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Cu), Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        let ase_dict = structure_to_ase_atoms_dict(&s);
+
+        // info dict should not have charge key when charge is zero
+        assert!(!ase_dict["info"].as_object().unwrap().contains_key("charge"));
     }
 
     #[test]

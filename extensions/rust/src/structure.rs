@@ -103,6 +103,12 @@ impl Structure {
         properties: HashMap<String, serde_json::Value>,
     ) -> Result<Self> {
         lattice.pbc = pbc;
+        if !charge.is_finite() {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!("charge must be finite, got {charge}"),
+            });
+        }
         if site_occupancies.len() != frac_coords.len() {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
@@ -1399,14 +1405,17 @@ impl Structure {
         result
     }
 
-    /// Wrap all fractional coordinates to [0, 1).
+    /// Wrap fractional coordinates to [0, 1) along periodic axes.
+    ///
+    /// Only coordinates along periodic dimensions (where `pbc[axis] == true`)
+    /// are wrapped. Non-periodic axes retain their original values.
     ///
     /// # Returns
     ///
     /// Mutable reference to self for method chaining.
     pub fn wrap_to_unit_cell(&mut self) -> &mut Self {
         for fc in &mut self.frac_coords {
-            *fc = crate::pbc::wrap_frac_coords(fc);
+            *fc = crate::pbc::wrap_frac_coords_pbc(fc, self.pbc);
         }
         self
     }
@@ -1540,12 +1549,23 @@ impl Structure {
     /// * `algo` - Reduction algorithm (Niggli or LLL)
     /// * `niggli_tol` - Tolerance for Niggli reduction (ignored if LLL)
     /// * `lll_delta` - Delta parameter for LLL reduction (ignored if Niggli)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the structure is non-periodic (molecule), since lattice
+    /// reduction is meaningless without periodicity.
     pub fn get_reduced_structure_with_params(
         &self,
         algo: ReductionAlgo,
         niggli_tol: f64,
         lll_delta: f64,
     ) -> Result<Self> {
+        if !self.is_periodic() {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: "Cannot reduce lattice of non-periodic structure (molecule)".to_string(),
+            });
+        }
         // Get reduced lattice
         let reduced_lattice = match algo {
             ReductionAlgo::Niggli => self.lattice.get_niggli_reduced(niggli_tol)?,
@@ -1555,11 +1575,11 @@ impl Structure {
         // Convert current fractional coords to Cartesian
         let cart_coords = self.lattice.get_cartesian_coords(&self.frac_coords);
 
-        // Convert Cartesian to new fractional coords and wrap to [0, 1)
+        // Convert Cartesian to new fractional coords and wrap periodic axes to [0, 1)
         let new_frac_coords: Vec<Vector3<f64>> = reduced_lattice
             .get_fractional_coords(&cart_coords)
             .into_iter()
-            .map(|fc| crate::pbc::wrap_frac_coords(&fc))
+            .map(|fc| crate::pbc::wrap_frac_coords_pbc(&fc, self.pbc))
             .collect();
 
         Structure::try_new_full(
@@ -3398,6 +3418,23 @@ mod tests {
                 .to_string()
                 .contains("at least one species")
         );
+
+        // Non-finite charge should error
+        for bad_charge in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let result = Structure::try_new_full(
+                Lattice::cubic(4.0),
+                vec![SiteOccupancy::ordered(Species::neutral(Element::Na))],
+                vec![Vector3::new(0.0, 0.0, 0.0)],
+                [true, true, true],
+                bad_charge,
+                HashMap::new(),
+            );
+            assert!(
+                result.is_err(),
+                "Non-finite charge {bad_charge} should error"
+            );
+            assert!(result.unwrap_err().to_string().contains("charge must be finite"));
+        }
     }
 
     #[test]
@@ -4960,6 +4997,79 @@ mod tests {
         let orig = s.frac_coords[0];
         s.wrap_to_unit_cell();
         assert!((s.frac_coords[0] - orig).norm() < 1e-10);
+    }
+
+    #[test]
+    fn test_wrap_to_unit_cell_respects_pbc() {
+        // Non-periodic structure (molecule) - coordinates should not be wrapped
+        let mut molecule = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(1.5, -0.3, 2.7)], // outside [0,1)
+            [false, false, false],              // molecule: no periodicity
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+        molecule.wrap_to_unit_cell();
+        // Coordinates should remain unchanged for non-periodic structure
+        assert!(
+            (molecule.frac_coords[0] - Vector3::new(1.5, -0.3, 2.7)).norm() < 1e-10,
+            "Molecule coords should not be wrapped"
+        );
+
+        // Partial periodicity (slab: periodic in x,y but not z)
+        let mut slab = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(1.5, -0.3, 2.7)],
+            [true, true, false], // slab: periodic in xy, not z
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+        slab.wrap_to_unit_cell();
+        // x,y should be wrapped but z should remain unchanged
+        assert!(
+            (slab.frac_coords[0][0] - 0.5).abs() < 1e-10,
+            "x should wrap to 0.5"
+        );
+        assert!(
+            (slab.frac_coords[0][1] - 0.7).abs() < 1e-10,
+            "y should wrap to 0.7"
+        );
+        assert!(
+            (slab.frac_coords[0][2] - 2.7).abs() < 1e-10,
+            "z should NOT wrap (not periodic)"
+        );
+    }
+
+    #[test]
+    fn test_reduced_structure_errors_for_molecule() {
+        // Non-periodic structure (molecule) should error on lattice reduction
+        let molecule = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+            [false, false, false], // molecule
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+
+        let result = molecule.get_reduced_structure(ReductionAlgo::Niggli);
+        assert!(result.is_err(), "Should error for non-periodic structure");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("non-periodic"),
+            "Error should mention non-periodic: {err_msg}"
+        );
+
+        let result_lll = molecule.get_reduced_structure(ReductionAlgo::LLL);
+        assert!(
+            result_lll.is_err(),
+            "Should also error for LLL on non-periodic structure"
+        );
     }
 
     #[test]
