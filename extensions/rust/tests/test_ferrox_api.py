@@ -97,6 +97,84 @@ class TestGetStructureMetadata:
         assert metadata["chemical_system"] == comp["chemical_system"]
 
 
+class TestStructureCharge:
+    """Tests for structure charge field preservation."""
+
+    def test_default_charge_is_zero(self, nacl_json: str) -> None:
+        """Structure without charge field defaults to 0.0."""
+        result = ferrox.to_pymatgen_json(nacl_json)
+        parsed = json.loads(result)
+        assert parsed.get("charge", 0.0) == 0.0
+
+    @pytest.mark.parametrize("charge", [0.0, 1.0, -1.0, 2.5, -0.5])
+    def test_charge_roundtrip(self, charge: float) -> None:
+        """Various charge values are preserved through JSON roundtrip."""
+        struct = json.dumps({
+            "@class": "Structure",
+            "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
+            "sites": [{"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]}],
+            "charge": charge,
+        })
+        result = ferrox.to_pymatgen_json(struct)
+        parsed = json.loads(result)
+        if abs(charge) > 1e-10:
+            assert abs(parsed["charge"] - charge) < 1e-10
+        else:
+            assert parsed.get("charge", 0.0) == 0.0
+
+
+class TestFromPymatgenStructure:
+    """Tests for from_pymatgen_structure oxidation state extraction."""
+
+    @pytest.mark.parametrize(("element", "oxi_state"), [
+        ("Fe", 3),
+        ("Fe", 2),
+        ("O", -2),
+        ("Na", 1),
+        ("Cl", -1),
+    ])
+    def test_oxidation_states_preserved(self, element: str, oxi_state: int) -> None:
+        """Oxidation states from pymatgen Species are preserved."""
+        pytest.importorskip("pymatgen")
+        from pymatgen.core import Lattice, Species, Structure
+        # Create pymatgen Structure with oxidation state
+        lattice = Lattice.cubic(5.0)
+        species = Species(element, oxi_state)
+        struct = Structure(lattice, [species], [[0, 0, 0]])
+        # Convert to ferrox and check oxidation state preserved
+        result = ferrox.from_pymatgen_structure(struct)
+        site_species = result["sites"][0]["species"][0]
+        assert site_species["element"] == element
+        assert site_species.get("oxidation_state") == oxi_state
+
+    def test_neutral_species_no_oxi_state(self) -> None:
+        """Neutral species (no oxidation state) preserved as neutral."""
+        pytest.importorskip("pymatgen")
+        from pymatgen.core import Element, Lattice, Structure
+        lattice = Lattice.cubic(5.0)
+        struct = Structure(lattice, [Element("Fe")], [[0, 0, 0]])
+        result = ferrox.from_pymatgen_structure(struct)
+        site_species = result["sites"][0]["species"][0]
+        assert site_species["element"] == "Fe"
+        assert site_species.get("oxidation_state") is None
+
+    def test_mixed_oxi_states_in_structure(self) -> None:
+        """Structure with multiple species at different oxidation states (Fe2O3)."""
+        pytest.importorskip("pymatgen")
+        from pymatgen.core import Lattice, Species, Structure
+        # Fe2O3: 2x Fe3+ and 3x O2-
+        struct = Structure(
+            Lattice.cubic(5.0),
+            [Species("Fe", 3)] * 2 + [Species("O", -2)] * 3,
+            [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25], [0.75, 0.75, 0.25], [0.25, 0.75, 0.75]],
+        )
+        result = ferrox.from_pymatgen_structure(struct)
+        # Verify oxidation states by element
+        for elem, expected_oxi in [("Fe", 3), ("O", -2)]:
+            sites = [s for s in result["sites"] if s["species"][0]["element"] == elem]
+            assert all(s["species"][0]["oxidation_state"] == expected_oxi for s in sites)
+
+
 # Parametrized anonymous formula tests
 
 

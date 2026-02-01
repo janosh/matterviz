@@ -38,6 +38,13 @@ pub enum ReductionAlgo {
 ///
 /// Each site can have multiple species with partial occupancies (disordered sites).
 /// For ordered sites, there is a single species with occupancy 1.0.
+///
+/// For non-periodic systems (molecules), use `set_pbc([false, false, false])`.
+/// The lattice is still required but can be a dummy/bounding-box lattice.
+///
+/// **Important**: Always use `set_pbc()` to modify periodicity - this keeps
+/// `Structure.pbc` and `Lattice.pbc` synchronized. Direct field assignment
+/// may cause desync issues.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Structure {
     /// The crystal lattice.
@@ -46,9 +53,21 @@ pub struct Structure {
     pub site_occupancies: Vec<SiteOccupancy>,
     /// Fractional coordinates for each site.
     pub frac_coords: Vec<Vector3<f64>>,
+    /// Periodic boundary conditions for each axis (default: all true).
+    /// Use `set_pbc()` to modify - keeps lattice.pbc in sync.
+    #[serde(default = "default_pbc")]
+    pub pbc: [bool; 3],
+    /// Total charge (relevant for molecules, default: 0.0).
+    #[serde(default)]
+    pub charge: f64,
     /// Optional properties (for caching).
     #[serde(default)]
     pub properties: HashMap<String, serde_json::Value>,
+}
+
+/// Default PBC is fully periodic.
+fn default_pbc() -> [bool; 3] {
+    [true, true, true]
 }
 
 impl Structure {
@@ -67,12 +86,34 @@ impl Structure {
     }
 
     /// Create a structure with site occupancies and properties.
+    /// Uses the lattice's pbc field for periodicity.
     pub fn try_new_from_occupancies_with_properties(
         lattice: Lattice,
         site_occupancies: Vec<SiteOccupancy>,
         frac_coords: Vec<Vector3<f64>>,
         properties: HashMap<String, serde_json::Value>,
     ) -> Result<Self> {
+        let pbc = lattice.pbc;
+        Self::try_new_full(lattice, site_occupancies, frac_coords, pbc, 0.0, properties)
+    }
+
+    /// Full constructor with all fields.
+    /// Syncs lattice.pbc with the provided pbc argument.
+    pub fn try_new_full(
+        mut lattice: Lattice,
+        site_occupancies: Vec<SiteOccupancy>,
+        frac_coords: Vec<Vector3<f64>>,
+        pbc: [bool; 3],
+        charge: f64,
+        properties: HashMap<String, serde_json::Value>,
+    ) -> Result<Self> {
+        lattice.pbc = pbc;
+        if !charge.is_finite() {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!("charge must be finite, got {charge}"),
+            });
+        }
         if site_occupancies.len() != frac_coords.len() {
             return Err(FerroxError::InvalidStructure {
                 index: 0,
@@ -97,6 +138,8 @@ impl Structure {
             lattice,
             site_occupancies,
             frac_coords,
+            pbc,
+            charge,
             properties,
         })
     }
@@ -140,6 +183,69 @@ impl Structure {
     ) -> Self {
         Self::try_new_from_occupancies(lattice, site_occupancies, frac_coords)
             .expect("site_occupancies and frac_coords must have same length")
+    }
+
+    // === Non-periodic (molecule) constructors ===
+
+    /// Create a non-periodic structure (molecule) from Cartesian coordinates.
+    ///
+    /// Uses a unit cubic lattice where fractional coords equal Cartesian coords,
+    /// ensuring exact coordinate preservation. Sets `pbc = [false, false, false]`.
+    pub fn try_new_molecule(
+        species: Vec<Species>,
+        cart_coords: Vec<Vector3<f64>>,
+        charge: f64,
+        properties: HashMap<String, serde_json::Value>,
+    ) -> Result<Self> {
+        let site_occupancies: Vec<SiteOccupancy> =
+            species.into_iter().map(SiteOccupancy::ordered).collect();
+        Self::try_new_molecule_from_occupancies(site_occupancies, cart_coords, charge, properties)
+    }
+
+    /// Create a non-periodic structure (molecule) from site occupancies and Cartesian coordinates.
+    ///
+    /// Uses an identity lattice (1 Å cubic) so that `frac_coords == cart_coords`.
+    /// This ensures exact coordinate preservation through roundtrips.
+    ///
+    /// Note: For molecules, `frac_coords` may exceed [0, 1) which is intentional -
+    /// molecules are non-periodic so coordinate wrapping would be incorrect.
+    pub fn try_new_molecule_from_occupancies(
+        site_occupancies: Vec<SiteOccupancy>,
+        cart_coords: Vec<Vector3<f64>>,
+        charge: f64,
+        properties: HashMap<String, serde_json::Value>,
+    ) -> Result<Self> {
+        // Use identity lattice so frac_coords == cart_coords
+        let lattice = Lattice::cubic(1.0);
+        Self::try_new_full(
+            lattice,
+            site_occupancies,
+            cart_coords, // stored directly as frac_coords
+            [false, false, false],
+            charge,
+            properties,
+        )
+    }
+
+    // === Periodicity helpers ===
+
+    /// Check if the structure is periodic in any dimension.
+    pub fn is_periodic(&self) -> bool {
+        self.pbc.iter().any(|&p| p)
+    }
+
+    /// Check if the structure is a molecule (non-periodic in all dimensions).
+    pub fn is_molecule(&self) -> bool {
+        !self.is_periodic()
+    }
+
+    /// Set periodic boundary conditions, keeping Structure.pbc and Lattice.pbc in sync.
+    ///
+    /// Always use this method instead of direct field assignment to prevent desync
+    /// between the structure and lattice PBC settings.
+    pub fn set_pbc(&mut self, pbc: [bool; 3]) {
+        self.pbc = pbc;
+        self.lattice.pbc = pbc;
     }
 
     /// Get the number of sites in the structure.
@@ -567,6 +673,8 @@ impl Structure {
                 })
                 .collect(),
             frac_coords: self.frac_coords.clone(),
+            pbc: self.pbc,
+            charge: self.charge,
             properties: self.properties.clone(),
         }
     }
@@ -592,6 +700,8 @@ impl Structure {
                 })
                 .collect(),
             frac_coords: self.frac_coords.clone(),
+            pbc: self.pbc,
+            charge: self.charge,
             properties: self.properties.clone(),
         }
     }
@@ -632,6 +742,8 @@ impl Structure {
             lattice: self.lattice.clone(),
             site_occupancies: new_site_occupancies,
             frac_coords: self.frac_coords.clone(),
+            pbc: self.pbc,
+            charge: self.charge,
             properties: self.properties.clone(),
         }
     }
@@ -1066,6 +1178,26 @@ impl Structure {
             }
         }
 
+        // Check periodicity matches
+        if self.pbc != end.pbc {
+            return Err(FerroxError::MatchingError {
+                reason: format!(
+                    "Cannot interpolate structures with different periodicity: {:?} vs {:?}",
+                    self.pbc, end.pbc
+                ),
+            });
+        }
+
+        // Check charge matches
+        if (self.charge - end.charge).abs() > 1e-10 {
+            return Err(FerroxError::MatchingError {
+                reason: format!(
+                    "Cannot interpolate structures with different charges: {} vs {}",
+                    self.charge, end.charge
+                ),
+            });
+        }
+
         // Edge case: n_images=0 returns just the start structure
         if n_images == 0 {
             return Ok(vec![self.clone()]);
@@ -1095,10 +1227,12 @@ impl Structure {
                 self.lattice.clone()
             };
 
-            images.push(Structure::try_new_from_occupancies_with_properties(
+            images.push(Structure::try_new_full(
                 new_lattice,
                 self.site_occupancies.clone(),
                 new_frac_coords,
+                self.pbc,
+                self.charge,
                 self.properties.clone(),
             )?);
         }
@@ -1305,14 +1439,17 @@ impl Structure {
         result
     }
 
-    /// Wrap all fractional coordinates to [0, 1).
+    /// Wrap fractional coordinates to [0, 1) along periodic axes.
+    ///
+    /// Only coordinates along periodic dimensions (where `pbc[axis] == true`)
+    /// are wrapped. Non-periodic axes retain their original values.
     ///
     /// # Returns
     ///
     /// Mutable reference to self for method chaining.
     pub fn wrap_to_unit_cell(&mut self) -> &mut Self {
         for fc in &mut self.frac_coords {
-            *fc = crate::pbc::wrap_frac_coords(fc);
+            *fc = crate::pbc::wrap_frac_coords_pbc(fc, self.pbc);
         }
         self
     }
@@ -1397,10 +1534,12 @@ impl Structure {
             }
         }
 
-        Structure::try_new_from_occupancies_with_properties(
+        Structure::try_new_full(
             new_lattice,
             new_site_occupancies,
             new_frac_coords,
+            self.pbc,
+            self.charge,
             self.properties.clone(),
         )
     }
@@ -1444,12 +1583,24 @@ impl Structure {
     /// * `algo` - Reduction algorithm (Niggli or LLL)
     /// * `niggli_tol` - Tolerance for Niggli reduction (ignored if LLL)
     /// * `lll_delta` - Delta parameter for LLL reduction (ignored if Niggli)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the structure is not fully periodic (pbc != [true, true, true]).
+    /// Lattice reduction can mix axes and alter vacuum layers in slabs/wires, so it's
+    /// only safe for fully 3D-periodic bulk structures.
     pub fn get_reduced_structure_with_params(
         &self,
         algo: ReductionAlgo,
         niggli_tol: f64,
         lll_delta: f64,
     ) -> Result<Self> {
+        if self.pbc != [true, true, true] {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: "Cannot reduce lattice unless structure is fully periodic (pbc must be [true, true, true])".to_string(),
+            });
+        }
         // Get reduced lattice
         let reduced_lattice = match algo {
             ReductionAlgo::Niggli => self.lattice.get_niggli_reduced(niggli_tol)?,
@@ -1459,17 +1610,19 @@ impl Structure {
         // Convert current fractional coords to Cartesian
         let cart_coords = self.lattice.get_cartesian_coords(&self.frac_coords);
 
-        // Convert Cartesian to new fractional coords and wrap to [0, 1)
+        // Convert Cartesian to new fractional coords and wrap periodic axes to [0, 1)
         let new_frac_coords: Vec<Vector3<f64>> = reduced_lattice
             .get_fractional_coords(&cart_coords)
             .into_iter()
-            .map(|fc| crate::pbc::wrap_frac_coords(&fc))
+            .map(|fc| crate::pbc::wrap_frac_coords_pbc(&fc, self.pbc))
             .collect();
 
-        Structure::try_new_from_occupancies_with_properties(
+        Structure::try_new_full(
             reduced_lattice,
             self.site_occupancies.clone(),
             new_frac_coords,
+            self.pbc,
+            self.charge,
             self.properties.clone(),
         )
     }
@@ -1743,8 +1896,20 @@ impl Structure {
             .sum()
     }
 
-    /// Density in g/cm^3, or `None` for zero-volume structures.
+    /// Density in g/cm^3, or `None` for non-fully-periodic or zero-volume structures.
+    ///
+    /// Returns `None` for:
+    /// - Molecules (non-periodic systems)
+    /// - Slabs/wires (partially periodic) - vacuum makes density misleading
+    /// - Zero-volume structures
+    ///
+    /// Density is only meaningful for fully 3D-periodic bulk materials.
     pub fn density(&self) -> Option<f64> {
+        // Density is only meaningful for fully periodic (3D) bulk materials
+        // Slabs (2D) and wires (1D) have vacuum that makes density misleading
+        if self.pbc != [true, true, true] {
+            return None;
+        }
         let volume = self.volume();
         if volume <= 0.0 {
             return None;
@@ -3175,8 +3340,9 @@ impl Structure {
                 }
             }
 
-            // Set lattice with non-periodic c-axis
-            slab.lattice = Lattice::from_matrix_with_pbc(new_matrix, [true, true, false]);
+            // Update lattice matrix and set slab PBC (periodic in a,b but not c)
+            slab.lattice = Lattice::new(new_matrix);
+            slab.set_pbc([true, true, false]);
 
             // Store metadata
             slab.properties
@@ -3300,6 +3466,28 @@ mod tests {
                 .to_string()
                 .contains("at least one species")
         );
+
+        // Non-finite charge should error
+        for bad_charge in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let result = Structure::try_new_full(
+                Lattice::cubic(4.0),
+                vec![SiteOccupancy::ordered(Species::neutral(Element::Na))],
+                vec![Vector3::new(0.0, 0.0, 0.0)],
+                [true, true, true],
+                bad_charge,
+                HashMap::new(),
+            );
+            assert!(
+                result.is_err(),
+                "Non-finite charge {bad_charge} should error"
+            );
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("charge must be finite")
+            );
+        }
     }
 
     #[test]
@@ -4870,6 +5058,107 @@ mod tests {
     }
 
     #[test]
+    fn test_wrap_to_unit_cell_respects_pbc() {
+        // Non-periodic structure (molecule) - coordinates should not be wrapped
+        let mut molecule = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(1.5, -0.3, 2.7)], // outside [0,1)
+            [false, false, false],              // molecule: no periodicity
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+        molecule.wrap_to_unit_cell();
+        // Coordinates should remain unchanged for non-periodic structure
+        assert!(
+            (molecule.frac_coords[0] - Vector3::new(1.5, -0.3, 2.7)).norm() < 1e-10,
+            "Molecule coords should not be wrapped"
+        );
+
+        // Partial periodicity (slab: periodic in x,y but not z)
+        let mut slab = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(1.5, -0.3, 2.7)],
+            [true, true, false], // slab: periodic in xy, not z
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+        slab.wrap_to_unit_cell();
+        // x,y should be wrapped but z should remain unchanged
+        assert!(
+            (slab.frac_coords[0][0] - 0.5).abs() < 1e-10,
+            "x should wrap to 0.5"
+        );
+        assert!(
+            (slab.frac_coords[0][1] - 0.7).abs() < 1e-10,
+            "y should wrap to 0.7"
+        );
+        assert!(
+            (slab.frac_coords[0][2] - 2.7).abs() < 1e-10,
+            "z should NOT wrap (not periodic)"
+        );
+    }
+
+    #[test]
+    fn test_reduced_structure_errors_for_partial_pbc() {
+        // Molecule (fully non-periodic) should error on lattice reduction
+        let molecule = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+            [false, false, false], // molecule
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+
+        let result = molecule.get_reduced_structure(ReductionAlgo::Niggli);
+        assert!(result.is_err(), "Should error for molecule");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("fully periodic"),
+            "Error should mention fully periodic: {err_msg}"
+        );
+
+        // Slab (partial periodicity) should also error - reduction could mix axes
+        let slab = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+            [true, true, false], // slab: periodic in xy, vacuum in z
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+
+        let result_slab = slab.get_reduced_structure(ReductionAlgo::Niggli);
+        assert!(result_slab.is_err(), "Should error for slab (partial PBC)");
+
+        let result_slab_lll = slab.get_reduced_structure(ReductionAlgo::LLL);
+        assert!(
+            result_slab_lll.is_err(),
+            "Should also error for LLL on slab"
+        );
+
+        // Wire (1D periodic) should also error
+        let wire = Structure::try_new_full(
+            Lattice::cubic(10.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::C))],
+            vec![Vector3::new(0.5, 0.5, 0.5)],
+            [true, false, false], // wire: periodic only in x
+            0.0,
+            HashMap::new(),
+        )
+        .unwrap();
+
+        let result_wire = wire.get_reduced_structure(ReductionAlgo::Niggli);
+        assert!(result_wire.is_err(), "Should error for wire (1D PBC)");
+    }
+
+    #[test]
     fn test_sort_method_chaining() {
         let mut s = Structure::new(
             Lattice::cubic(5.0),
@@ -4978,6 +5267,24 @@ mod tests {
         assert!(
             err.to_string().contains("Species mismatch"),
             "Expected species error"
+        );
+
+        // Periodicity mismatch
+        let mut mol = nacl.clone();
+        mol.set_pbc([false, false, false]);
+        let err = nacl.interpolate(&mol, 5, false, true).unwrap_err();
+        assert!(
+            err.to_string().contains("different periodicity"),
+            "Expected pbc mismatch error"
+        );
+
+        // Charge mismatch
+        let mut charged = nacl.clone();
+        charged.charge = 1.0;
+        let err = nacl.interpolate(&charged, 5, false, true).unwrap_err();
+        assert!(
+            err.to_string().contains("different charges"),
+            "Expected charge mismatch error"
         );
     }
 
