@@ -1815,11 +1815,14 @@ pub fn elastic_strain_to_voigt(strain: JsMatrix3x3) -> Vec<f64> {
 }
 
 /// Compute 6x6 elastic tensor from stress-strain data using SVD pseudoinverse.
+///
+/// Returns flat array of 36 elements in row-major order (compatible with
+/// elastic_bulk_modulus, elastic_shear_modulus, elastic_is_stable).
 #[wasm_bindgen]
 pub fn elastic_tensor_from_stresses(
     strains: Vec<JsMatrix3x3>,
     stresses: Vec<JsMatrix3x3>,
-) -> WasmResult<Vec<Vec<f64>>> {
+) -> WasmResult<Vec<f64>> {
     if strains.len() != stresses.len() {
         return WasmResult::err("Strains and stresses must have same length");
     }
@@ -1829,7 +1832,8 @@ pub fn elastic_tensor_from_stresses(
     let strain_mats: Vec<_> = strains.iter().map(js_to_matrix3).collect();
     let stress_mats: Vec<_> = stresses.iter().map(js_to_matrix3).collect();
     let tensor = elastic::elastic_tensor_from_stresses(&strain_mats, &stress_mats);
-    WasmResult::ok(tensor.iter().map(|row| row.to_vec()).collect())
+    // Flatten to row-major for consistency with modulus functions
+    WasmResult::ok(tensor.iter().flat_map(|row| row.iter().copied()).collect())
 }
 
 /// Compute Voigt-Reuss-Hill bulk modulus from 6x6 elastic tensor.
@@ -1965,6 +1969,22 @@ pub fn classify_all_atoms(
 
 use crate::trajectory::{MsdCalculator, VacfCalculator};
 
+// Helper to parse flat [x0,y0,z0,x1,y1,z1,...] to Vec<Vector3>
+fn parse_flat_vec3(data: &[f64], n_atoms: usize) -> Result<Vec<Vector3<f64>>, String> {
+    if data.len() != n_atoms * 3 {
+        return Err(format!(
+            "Expected {} values ({}*3), got {}",
+            n_atoms * 3,
+            n_atoms,
+            data.len()
+        ));
+    }
+    Ok(data
+        .chunks(3)
+        .map(|c| Vector3::new(c[0], c[1], c[2]))
+        .collect())
+}
+
 /// Streaming MSD calculator for large trajectories.
 ///
 /// Usage: create with new(), add frames with add_frame(), get result with compute_msd().
@@ -2002,21 +2022,13 @@ impl JsMsdCalculator {
     /// positions: flat array of [x0, y0, z0, x1, y1, z1, ...] for all atoms
     #[wasm_bindgen]
     pub fn add_frame(&mut self, positions: Vec<f64>) -> WasmResult<()> {
-        let n_atoms = self.inner.n_atoms();
-        if positions.len() != n_atoms * 3 {
-            return WasmResult::err(format!(
-                "Expected {} values ({}*3), got {}",
-                n_atoms * 3,
-                n_atoms,
-                positions.len()
-            ));
+        match parse_flat_vec3(&positions, self.inner.n_atoms()) {
+            Ok(pos_vec) => {
+                self.inner.add_frame(&pos_vec);
+                WasmResult::ok(())
+            }
+            Err(err) => WasmResult::err(err),
         }
-        let pos_vec: Vec<Vector3<f64>> = positions
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-        self.inner.add_frame(&pos_vec);
-        WasmResult::ok(())
     }
 
     /// Compute final MSD values averaged over all atoms.
@@ -2029,7 +2041,10 @@ impl JsMsdCalculator {
 
     /// Compute MSD for each atom separately.
     ///
-    /// Returns flattened array: [lag0_atom0, lag0_atom1, ..., lag1_atom0, ...]
+    /// Returns flattened array of shape (max_lag+1, n_atoms) in row-major order:
+    /// `[msd_lag0_atom0, msd_lag0_atom1, ..., msd_lag1_atom0, msd_lag1_atom1, ...]`
+    ///
+    /// To access MSD for atom `a` at lag `t`: `result[t * n_atoms + a]`
     #[wasm_bindgen]
     pub fn compute_msd_per_atom(&self) -> Vec<f64> {
         self.inner
@@ -2043,6 +2058,12 @@ impl JsMsdCalculator {
     #[wasm_bindgen]
     pub fn n_atoms(&self) -> usize {
         self.inner.n_atoms()
+    }
+
+    /// Get maximum lag time in frames.
+    #[wasm_bindgen]
+    pub fn max_lag(&self) -> usize {
+        self.inner.max_lag()
     }
 }
 
@@ -2081,21 +2102,13 @@ impl JsVacfCalculator {
     /// velocities: flat array of [vx0, vy0, vz0, vx1, vy1, vz1, ...] for all atoms
     #[wasm_bindgen]
     pub fn add_frame(&mut self, velocities: Vec<f64>) -> WasmResult<()> {
-        let n_atoms = self.inner.n_atoms();
-        if velocities.len() != n_atoms * 3 {
-            return WasmResult::err(format!(
-                "Expected {} values ({}*3), got {}",
-                n_atoms * 3,
-                n_atoms,
-                velocities.len()
-            ));
+        match parse_flat_vec3(&velocities, self.inner.n_atoms()) {
+            Ok(vel_vec) => {
+                self.inner.add_frame(&vel_vec);
+                WasmResult::ok(())
+            }
+            Err(err) => WasmResult::err(err),
         }
-        let vel_vec: Vec<Vector3<f64>> = velocities
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-        self.inner.add_frame(&vel_vec);
-        WasmResult::ok(())
     }
 
     /// Compute final VACF values.
@@ -2115,12 +2128,20 @@ impl JsVacfCalculator {
     pub fn n_atoms(&self) -> usize {
         self.inner.n_atoms()
     }
+
+    /// Get maximum lag time in frames.
+    #[wasm_bindgen]
+    pub fn max_lag(&self) -> usize {
+        self.inner.max_lag()
+    }
 }
 
 /// Compute diffusion coefficient from MSD using Einstein relation.
 ///
 /// D = MSD / (2 * dim * t) fitted in the linear regime.
-/// Returns [diffusion_coefficient, r_squared].
+///
+/// Returns array of length 2: `[diffusion_coefficient, r_squared]`
+/// where r_squared indicates fit quality (1.0 = perfect linear fit).
 #[wasm_bindgen]
 pub fn diffusion_from_msd(
     msd: Vec<f64>,

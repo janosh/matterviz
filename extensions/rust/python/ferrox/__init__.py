@@ -11,6 +11,31 @@ from ferrox._ferrox import (
     Element,
     StructureMatcher,
     __version__,
+    # MD integrators
+    MDState,
+    LangevinIntegrator,
+    md_velocity_verlet_step,
+    # FIRE optimizer
+    FireConfig,
+    FireState,
+    CellFireState,
+    # Trajectory analysis
+    MsdCalculator,
+    VacfCalculator,
+    diffusion_from_msd,
+    diffusion_from_vacf,
+    # Elastic tensor
+    elastic_generate_strains,
+    elastic_apply_strain,
+    elastic_stress_to_voigt,
+    elastic_strain_to_voigt,
+    elastic_tensor_from_stresses,
+    elastic_bulk_modulus,
+    elastic_shear_modulus,
+    elastic_youngs_modulus,
+    elastic_poisson_ratio,
+    elastic_is_stable,
+    elastic_zener_ratio,
     # Oxidation state functions
     add_charges_from_oxi_state_guesses,
     add_oxidation_state_by_element,

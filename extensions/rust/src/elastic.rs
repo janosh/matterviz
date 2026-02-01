@@ -967,29 +967,14 @@ mod tests {
     fn test_pymatgen_elastic_tensor_reference() {
         // Sn-like material from pymatgen test_elastic.py
         // Reference: K_vrh=38.49, G_vrh=21.37, nu=0.266
-        let c11 = 59.33;
-        let c22 = 59.31;
-        let c33 = 59.32;
-        let c12 = 28.08;
-        let c13 = 28.08;
-        let c23 = 28.07;
-        let c44 = 26.35;
-        let c55 = 26.35;
-        let c66 = 26.35;
-
-        let mut tensor = [[0.0; 6]; 6];
-        tensor[0][0] = c11;
-        tensor[1][1] = c22;
-        tensor[2][2] = c33;
-        tensor[0][1] = c12;
-        tensor[1][0] = c12;
-        tensor[0][2] = c13;
-        tensor[2][0] = c13;
-        tensor[1][2] = c23;
-        tensor[2][1] = c23;
-        tensor[3][3] = c44;
-        tensor[4][4] = c55;
-        tensor[5][5] = c66;
+        let tensor = [
+            [59.33, 28.08, 28.08, 0.0, 0.0, 0.0],
+            [28.08, 59.31, 28.07, 0.0, 0.0, 0.0],
+            [28.08, 28.07, 59.32, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 26.35, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 26.35, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 26.35],
+        ];
 
         // Test Voigt moduli
         let k_voigt = voigt_bulk_modulus(&tensor);
