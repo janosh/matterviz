@@ -201,6 +201,21 @@ describe(`ScatterPoint`, () => {
   })
 
   test.each([
+    [`pointer`, `pointer`],
+    [`grab`, `grab`],
+    [`crosshair`, `crosshair`],
+    [`move`, `move`],
+    [`not-allowed`, `not-allowed`],
+    [undefined, ``],
+  ])(`cursor style %s renders as '%s'`, (cursor, expected) => {
+    mount(ScatterPoint, {
+      target: doc_query(`div`),
+      props: { x: 100, y: 100, style: { cursor } },
+    })
+    expect(doc_query(`path.marker`).style.cursor).toBe(expected)
+  })
+
+  test.each([
     { is_selected: false, desc: `is_selected=false` },
     { is_selected: undefined, desc: `is_selected omitted (defaults false)` },
   ])(`no effect ring when $desc`, ({ is_selected }) => {

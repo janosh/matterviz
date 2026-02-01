@@ -12,7 +12,7 @@
     <Icon icon="HandsClapping" /> Acknowledgements
   </a>
   <strong>&ensp;&bull;&ensp;</strong>
-  <a href="/contributing">
+  <a href="{pkg.repository}/blob/main/contributing.md">
     <Icon icon="RepoFork" /> Contributing
   </a>
   <small>

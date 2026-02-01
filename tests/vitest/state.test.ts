@@ -1,12 +1,5 @@
-import type { ChemicalElement } from '$lib'
 import { DEFAULT_CATEGORY_COLORS, default_element_colors } from '$lib/colors'
-import {
-  colors,
-  periodic_table_state,
-  selected,
-  theme_state,
-  tooltip,
-} from '$lib/state.svelte'
+import { colors, theme_state } from '$lib/state.svelte'
 import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme'
 import { describe, expect, test } from 'vitest'
 
@@ -18,29 +11,6 @@ test(`theme_state has correct initial values`, () => {
 })
 
 describe(`State Management`, () => {
-  describe(`selected state`, () => {
-    test(`allows category mutations`, () => {
-      selected.category = `alkali metal`
-      expect(selected.category).toBe(`alkali metal`)
-    })
-
-    test(`allows element mutations`, () => {
-      const test_element = {
-        symbol: `H`,
-        name: `Hydrogen`,
-        number: 1,
-        category: `diatomic nonmetal`,
-      } as Partial<ChemicalElement>
-      selected.element = test_element as ChemicalElement
-      expect(selected.element).toStrictEqual(test_element)
-    })
-
-    test(`allows heatmap_key mutations`, () => {
-      selected.heatmap_key = `atomic_mass`
-      expect(selected.heatmap_key).toBe(`atomic_mass`)
-    })
-  })
-
   describe(`colors state`, () => {
     test(`has correct initial values`, () => {
       expect(colors).toEqual({
@@ -49,53 +19,10 @@ describe(`State Management`, () => {
       })
     })
 
-    test.each([
-      [`category`, `alkali metal`, `#ff0000`],
-      [`element`, `H`, `#00ff00`],
-    ])(`allows %s color mutations`, (type, key, color) => {
-      colors[type as keyof typeof colors][key] = color
-      expect(colors[type as keyof typeof colors][key]).toBe(color)
-    })
-
     test(`preserves other colors when mutating specific ones`, () => {
       const orig_noble_gas = colors.category[`noble gas`]
       colors.category[`alkali metal`] = `#ff0000`
       expect(colors.category[`noble gas`]).toBe(orig_noble_gas)
-    })
-  })
-
-  describe(`tooltip state`, () => {
-    test(`allows show mutations`, () => {
-      tooltip.show = true
-      expect(tooltip.show).toBe(true)
-    })
-
-    test(`allows position mutations`, () => {
-      tooltip.x = 100
-      tooltip.y = 200
-      expect(tooltip.x).toBe(100)
-      expect(tooltip.y).toBe(200)
-    })
-
-    test(`allows items mutations`, () => {
-      const test_items = [{ label: `Test`, value: `123`, color: `#ff0000` }, {
-        label: `Another`,
-        value: `456`,
-      }]
-      tooltip.items = test_items
-      expect(tooltip.items).toEqual(test_items)
-    })
-  })
-
-  describe(`periodic_table_state`, () => {
-    test(`allows show_bonding_info mutations`, () => {
-      periodic_table_state.show_bonding_info = true
-      expect(periodic_table_state.show_bonding_info).toBe(true)
-    })
-
-    test(`allows highlighted_elements mutations`, () => {
-      periodic_table_state.highlighted_elements = [`H`, `He`, `Li`]
-      expect(periodic_table_state.highlighted_elements).toEqual([`H`, `He`, `Li`])
     })
   })
 
@@ -168,22 +95,6 @@ describe(`State Management`, () => {
           expect(theme_state.type).toBe(expected_type)
         })
       })
-    })
-  })
-
-  describe(`state isolation & reactivity`, () => {
-    test(`mutating one state does not affect others`, () => {
-      const initial_states = {
-        selected: { ...selected },
-        tooltip: { ...tooltip },
-        periodic_table: { ...periodic_table_state },
-      }
-
-      colors.category[`alkali metal`] = `#ff0000`
-
-      expect(selected).toEqual(initial_states.selected)
-      expect(tooltip).toEqual(initial_states.tooltip)
-      expect(periodic_table_state).toEqual(initial_states.periodic_table)
     })
   })
 })

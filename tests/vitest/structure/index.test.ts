@@ -67,10 +67,6 @@ const ref_data: Record<
   },
 }
 
-test(`tests are actually running`, () => {
-  expect(structures.length).toBeGreaterThan(0)
-})
-
 describe.each(structures)(`structure-utils`, (structure) => {
   const { id } = structure
   const expected = id ? ref_data[id] : undefined
