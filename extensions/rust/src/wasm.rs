@@ -2041,15 +2041,21 @@ impl JsMsdCalculator {
     /// n_atoms: number of atoms in each frame (must be > 0)
     /// max_lag: maximum lag time in frames
     /// origin_interval: frames between time origins (must be > 0, smaller = more samples)
-    ///
-    /// Panics if n_atoms == 0 or origin_interval == 0.
     #[wasm_bindgen(constructor)]
-    pub fn new(n_atoms: usize, max_lag: usize, origin_interval: usize) -> JsMsdCalculator {
-        assert!(n_atoms > 0, "n_atoms must be > 0");
-        assert!(origin_interval > 0, "origin_interval must be > 0");
-        JsMsdCalculator {
-            inner: MsdCalculator::new(n_atoms, max_lag, origin_interval),
+    pub fn new(
+        n_atoms: usize,
+        max_lag: usize,
+        origin_interval: usize,
+    ) -> Result<JsMsdCalculator, JsError> {
+        if n_atoms == 0 {
+            return Err(JsError::new("n_atoms must be > 0"));
         }
+        if origin_interval == 0 {
+            return Err(JsError::new("origin_interval must be > 0"));
+        }
+        Ok(JsMsdCalculator {
+            inner: MsdCalculator::new(n_atoms, max_lag, origin_interval),
+        })
     }
 
     /// Add a frame to the MSD calculation.
@@ -2114,15 +2120,21 @@ impl JsVacfCalculator {
     /// n_atoms: number of atoms in each frame (must be > 0)
     /// max_lag: maximum lag time in frames
     /// origin_interval: frames between time origins (must be > 0, smaller = more samples)
-    ///
-    /// Panics if n_atoms == 0 or origin_interval == 0.
     #[wasm_bindgen(constructor)]
-    pub fn new(n_atoms: usize, max_lag: usize, origin_interval: usize) -> JsVacfCalculator {
-        assert!(n_atoms > 0, "n_atoms must be > 0");
-        assert!(origin_interval > 0, "origin_interval must be > 0");
-        JsVacfCalculator {
-            inner: VacfCalculator::new(n_atoms, max_lag, origin_interval),
+    pub fn new(
+        n_atoms: usize,
+        max_lag: usize,
+        origin_interval: usize,
+    ) -> Result<JsVacfCalculator, JsError> {
+        if n_atoms == 0 {
+            return Err(JsError::new("n_atoms must be > 0"));
         }
+        if origin_interval == 0 {
+            return Err(JsError::new("origin_interval must be > 0"));
+        }
+        Ok(JsVacfCalculator {
+            inner: VacfCalculator::new(n_atoms, max_lag, origin_interval),
+        })
     }
 
     /// Add a frame to the VACF calculation.
