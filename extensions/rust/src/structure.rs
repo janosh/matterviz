@@ -3401,8 +3401,9 @@ mod tests {
                 + rot[0][2] * (rot[1][0] * rot[2][1] - rot[1][1] * rot[2][0]);
             assert!(det == 1 || det == -1);
             // Translation should be within the conventional [-0.5, 0.5] range
+            // (with symmetric tolerance for floating-point rounding)
             for &t in trans {
-                assert!((-0.5..=0.5 + 1e-8).contains(&t));
+                assert!((-0.5 - 1e-8..=0.5 + 1e-8).contains(&t));
             }
         }
     }
