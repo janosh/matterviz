@@ -1,5 +1,46 @@
 # Changelog
 
+## [v0.3.0](https://github.com/janosh/matterviz/compare/v0.2.2...v0.3.0)
+
+> 1 February 2026
+
+### 🛠 Enhancements
+
+- Extend convex hull to support 5+ element systems by @janosh in https://github.com/janosh/matterviz/pull/254
+- Add sync_y_zoom for Bands/DOS plots, Formula copy, and plot padding fix by @janosh in https://github.com/janosh/matterviz/pull/257
+- Pseudo-binary phase diagrams with chemical formula rendering by @janosh in https://github.com/janosh/matterviz/pull/259
+- Add JsonTree controls and HeatmapTable uncertainty parsing by @janosh in https://github.com/janosh/matterviz/pull/260
+- Add Y2 axis synchronization for dual-axis plots by @janosh in https://github.com/janosh/matterviz/pull/261
+- Add irreducible Brillouin zone visualization by @janosh in https://github.com/janosh/matterviz/pull/263
+- Add gas-phase thermodynamics for atmosphere-controlled convex hulls by @killiansheriff in https://github.com/janosh/matterviz/pull/270
+- Add supercell creation, lattice reduction, and atomic mass to Rust extension by @janosh in https://github.com/janosh/matterviz/pull/272
+- Add structure normalization, pseudo-elements, and site properties by @janosh in https://github.com/janosh/matterviz/pull/273
+- Add ferrox WASM package and structure matching demo by @janosh in https://github.com/janosh/matterviz/pull/275
+- `pymatgen` `sites.py` feature parity in `ferrox` by @janosh in https://github.com/janosh/matterviz/pull/276
+- Add Rust structure transformations and Ewald summation by @janosh in https://github.com/janosh/matterviz/pull/277
+- Add coordination analysis module to ferrox by @janosh in https://github.com/janosh/matterviz/pull/279
+- Add RDF calculation module to ferrox by @janosh in https://github.com/janosh/matterviz/pull/282
+- `ferrox` powder XRD pattern calculation by @janosh in https://github.com/janosh/matterviz/pull/283
+- Add Element class, oxidation state guessing, and composition utilities by @janosh in https://github.com/janosh/matterviz/pull/284
+- Add atomistic simulation features to ferrox by @janosh in https://github.com/janosh/matterviz/pull/285
+- Add molecule support and fix structure charge parsing by @janosh in https://github.com/janosh/matterviz/pull/287
+
+### 🐛 Bug Fixes
+
+- Extract PortalSelect component, fix ColorBar rollback bugs by @janosh in https://github.com/janosh/matterviz/pull/252
+
+### 📖 Documentation
+
+- Migrate to `svelte-multiselect/live-examples` allowing upgrade demos to TypeScript by @janosh in https://github.com/janosh/matterviz/pull/262
+
+### 🧪 Tests
+
+- Port pymatgen and torch-sim reference tests to Rust by @janosh in https://github.com/janosh/matterviz/pull/286
+
+## New Contributors
+
+- @killiansheriff made their first contribution in https://github.com/janosh/matterviz/pull/270
+
 ## [v0.2.2](https://github.com/janosh/matterviz/compare/v0.2.1...v0.2.2)
 
 > 14 January 2026
