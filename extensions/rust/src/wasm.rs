@@ -17,9 +17,9 @@ use crate::io::parse_poscar_str;
 use crate::species::Species;
 use crate::structure_matcher::{ComparatorType, StructureMatcher};
 use crate::wasm_types::{
-    JsCrystal, JsIntMatrix3x3, JsLocalEnvironment, JsMatrix3x3, JsMillerIndex, JsNeighborInfo,
-    JsNeighborList, JsReductionAlgo, JsRmsDistResult, JsStructureMetadata, JsSymmetryDataset,
-    JsSymmetryOperation, JsVector3, WasmResult,
+    JsCompositionInfo, JsCrystal, JsIntMatrix3x3, JsLocalEnvironment, JsMatrix3x3, JsMillerIndex,
+    JsNeighborInfo, JsNeighborList, JsReductionAlgo, JsRmsDistResult, JsStructureMetadata,
+    JsSymmetryDataset, JsSymmetryOperation, JsVector3, WasmResult,
 };
 
 // === Element WASM bindings ===
@@ -242,12 +242,107 @@ impl JsElement {
         self.inner.ionic_radius(oxidation_state).unwrap_or(f64::NAN)
     }
 
+    /// Get all ionic radii as JSON string: {"oxi_state": radius, ...}.
+    ///
+    /// Returns null if no ionic radii data is available.
+    #[wasm_bindgen(js_name = "ionicRadii")]
+    pub fn ionic_radii(&self) -> Option<String> {
+        self.inner
+            .ionic_radii()
+            .map(|radii| serde_json::to_string(radii).unwrap_or_default())
+    }
+
     /// Get Shannon ionic radius (or NaN if not defined).
     #[wasm_bindgen(js_name = "shannonIonicRadius")]
     pub fn shannon_ionic_radius(&self, oxidation_state: i8, coordination: &str, spin: &str) -> f64 {
         self.inner
             .shannon_ionic_radius(oxidation_state, coordination, spin)
             .unwrap_or(f64::NAN)
+    }
+
+    /// Get full Shannon radii as JSON string.
+    ///
+    /// Structure: {oxi_state: {coordination: {spin: {crystal_radius, ionic_radius}}}}
+    /// Returns null if no Shannon radii data is available.
+    #[wasm_bindgen(js_name = "shannonRadii")]
+    pub fn shannon_radii(&self) -> Option<String> {
+        self.inner
+            .shannon_radii()
+            .map(|radii| serde_json::to_string(radii).unwrap_or_default())
+    }
+
+    // Physical properties
+
+    /// Get melting point in Kelvin (or NaN if not defined).
+    #[wasm_bindgen(getter, js_name = "meltingPoint")]
+    pub fn melting_point(&self) -> f64 {
+        self.inner.melting_point().unwrap_or(f64::NAN)
+    }
+
+    /// Get boiling point in Kelvin (or NaN if not defined).
+    #[wasm_bindgen(getter, js_name = "boilingPoint")]
+    pub fn boiling_point(&self) -> f64 {
+        self.inner.boiling_point().unwrap_or(f64::NAN)
+    }
+
+    /// Get density in g/cm³ (or NaN if not defined).
+    #[wasm_bindgen(getter)]
+    pub fn density(&self) -> f64 {
+        self.inner.density().unwrap_or(f64::NAN)
+    }
+
+    /// Get electron affinity in kJ/mol (or NaN if not defined).
+    #[wasm_bindgen(getter, js_name = "electronAffinity")]
+    pub fn electron_affinity(&self) -> f64 {
+        self.inner.electron_affinity().unwrap_or(f64::NAN)
+    }
+
+    /// Get first ionization energy in kJ/mol (or NaN if not defined).
+    #[wasm_bindgen(getter, js_name = "firstIonizationEnergy")]
+    pub fn first_ionization_energy(&self) -> f64 {
+        self.inner.first_ionization_energy().unwrap_or(f64::NAN)
+    }
+
+    /// Get all ionization energies in kJ/mol.
+    #[wasm_bindgen(js_name = "ionizationEnergies")]
+    pub fn ionization_energies(&self) -> Vec<f64> {
+        self.inner.ionization_energies().to_vec()
+    }
+
+    /// Get molar heat capacity (Cp) in J/(mol·K) (or NaN if not defined).
+    #[wasm_bindgen(getter, js_name = "molarHeat")]
+    pub fn molar_heat(&self) -> f64 {
+        self.inner.molar_heat().unwrap_or(f64::NAN)
+    }
+
+    /// Get specific heat capacity in J/(g·K) (or NaN if not defined).
+    #[wasm_bindgen(getter, js_name = "specificHeat")]
+    pub fn specific_heat(&self) -> f64 {
+        self.inner.specific_heat().unwrap_or(f64::NAN)
+    }
+
+    /// Get number of valence electrons (or 0 if not defined).
+    #[wasm_bindgen(getter, js_name = "nValence")]
+    pub fn n_valence(&self) -> u8 {
+        self.inner.n_valence().unwrap_or(0)
+    }
+
+    /// Get electron configuration string (or empty string if not defined).
+    #[wasm_bindgen(getter, js_name = "electronConfiguration")]
+    pub fn electron_configuration(&self) -> String {
+        self.inner
+            .electron_configuration()
+            .unwrap_or("")
+            .to_string()
+    }
+
+    /// Get semantic electron configuration with noble gas core (or empty string if not defined).
+    #[wasm_bindgen(getter, js_name = "electronConfigurationSemantic")]
+    pub fn electron_configuration_semantic(&self) -> String {
+        self.inner
+            .electron_configuration_semantic()
+            .unwrap_or("")
+            .to_string()
     }
 }
 
@@ -1345,4 +1440,296 @@ pub fn compute_xrd(
 #[wasm_bindgen]
 pub fn get_atomic_scattering_params() -> String {
     crate::xrd::SCATTERING_PARAMS_JSON.to_string()
+}
+
+// === Composition Functions ===
+
+/// Parse a chemical formula and return composition information.
+///
+/// Returns an object with:
+/// - species: object mapping element/species symbols to amounts
+/// - formula: the input formula normalized
+/// - reducedFormula: reduced formula string
+/// - formulaAnonymous: anonymous formula (e.g., "A2B3")
+/// - formulaHill: Hill notation formula
+/// - alphabeticalFormula: alphabetically sorted formula
+/// - chemicalSystem: element system (e.g., "Fe-O")
+/// - numAtoms: total number of atoms
+/// - numElements: number of distinct elements
+/// - weight: molecular weight in atomic mass units
+/// - isElement: true if composition is a single element
+/// - averageElectronegativity: average electronegativity (or null)
+/// - totalElectrons: total number of electrons
+#[wasm_bindgen]
+pub fn parse_composition(formula: &str) -> WasmResult<JsCompositionInfo> {
+    use crate::composition::Composition;
+
+    let result: Result<JsCompositionInfo, String> = (|| {
+        let comp = Composition::from_formula(formula).map_err(|e| e.to_string())?;
+
+        // Build species map as Vec of (symbol, amount) tuples
+        let species: Vec<(String, f64)> = comp
+            .iter()
+            .map(|(sp, amt)| (sp.to_string(), *amt))
+            .collect();
+
+        Ok(JsCompositionInfo {
+            species,
+            formula: comp.formula(),
+            reduced_formula: comp.reduced_formula(),
+            formula_anonymous: comp.anonymous_formula(),
+            formula_hill: comp.hill_formula(),
+            alphabetical_formula: comp.alphabetical_formula(),
+            chemical_system: comp.chemical_system(),
+            num_atoms: comp.num_atoms(),
+            num_elements: comp.num_elements() as u32,
+            weight: comp.weight(),
+            is_element: comp.is_element(),
+            average_electronegativity: comp.average_electroneg(),
+            total_electrons: comp.total_electrons() as u32,
+        })
+    })();
+    result.into()
+}
+
+fn parse_comp_and_elem(
+    formula: &str,
+    element: &str,
+) -> Result<(crate::composition::Composition, Element), String> {
+    let comp = crate::composition::Composition::from_formula(formula).map_err(|e| e.to_string())?;
+    let elem =
+        Element::from_symbol(element).ok_or_else(|| format!("Unknown element: {element}"))?;
+    Ok((comp, elem))
+}
+
+/// Get atomic fraction of an element in a composition.
+///
+/// Returns the atomic fraction (0.0 to 1.0) or 0.0 if element not present.
+#[wasm_bindgen]
+pub fn get_atomic_fraction(formula: &str, element: &str) -> WasmResult<f64> {
+    parse_comp_and_elem(formula, element)
+        .map(|(comp, elem)| comp.get_atomic_fraction(elem))
+        .into()
+}
+
+/// Get weight fraction of an element in a composition.
+///
+/// Returns the weight fraction (0.0 to 1.0) or 0.0 if element not present.
+#[wasm_bindgen]
+pub fn get_wt_fraction(formula: &str, element: &str) -> WasmResult<f64> {
+    parse_comp_and_elem(formula, element)
+        .map(|(comp, elem)| comp.get_wt_fraction(elem))
+        .into()
+}
+
+/// Element-amount pair for composition results.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, tsify_next::Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct JsElementAmount {
+    /// Element symbol
+    pub element: String,
+    /// Amount (count or fraction)
+    pub amount: f64,
+}
+
+fn comp_to_element_amounts(comp: &crate::composition::Composition) -> Vec<JsElementAmount> {
+    comp.iter()
+        .map(|(sp, amt)| JsElementAmount {
+            element: sp.element.symbol().to_string(),
+            amount: *amt,
+        })
+        .collect()
+}
+
+/// Get reduced composition as array of {element, amount} objects.
+#[wasm_bindgen]
+pub fn reduced_composition(formula: &str) -> WasmResult<Vec<JsElementAmount>> {
+    crate::composition::Composition::from_formula(formula)
+        .map(|c| comp_to_element_amounts(&c.reduced_composition()))
+        .map_err(|e| e.to_string())
+        .into()
+}
+
+/// Get fractional composition (atomic fractions) as array of {element, amount} objects.
+#[wasm_bindgen]
+pub fn fractional_composition(formula: &str) -> WasmResult<Vec<JsElementAmount>> {
+    crate::composition::Composition::from_formula(formula)
+        .map(|c| comp_to_element_amounts(&c.fractional_composition()))
+        .map_err(|e| e.to_string())
+        .into()
+}
+
+/// Check if two compositions are approximately equal.
+///
+/// Uses relative tolerance of 0.1 and absolute tolerance of 1e-8.
+#[wasm_bindgen]
+pub fn compositions_almost_equal(formula1: &str, formula2: &str) -> WasmResult<bool> {
+    use crate::composition::Composition;
+    Composition::from_formula(formula1)
+        .and_then(|c1| {
+            Composition::from_formula(formula2).map(|c2| c1.almost_equals(&c2, 0.1, 1e-8))
+        })
+        .map_err(|e| e.to_string())
+        .into()
+}
+
+/// Check if a composition is charge-balanced.
+///
+/// Returns null if any species lacks an oxidation state.
+#[wasm_bindgen]
+pub fn is_charge_balanced(formula: &str) -> WasmResult<Option<bool>> {
+    crate::composition::Composition::from_formula(formula)
+        .map(|c| c.is_charge_balanced())
+        .map_err(|e| e.to_string())
+        .into()
+}
+
+/// Get the net charge of a composition.
+///
+/// Returns null if any species lacks an oxidation state, or if the charge is non-integer.
+#[wasm_bindgen]
+pub fn composition_charge(formula: &str) -> WasmResult<Option<i32>> {
+    crate::composition::Composition::from_formula(formula)
+        .map(|c| c.charge())
+        .map_err(|e| e.to_string())
+        .into()
+}
+
+/// Get a hash of the reduced formula (ignores oxidation states).
+///
+/// Useful for grouping compositions by formula.
+#[wasm_bindgen]
+pub fn formula_hash(formula: &str) -> WasmResult<String> {
+    crate::composition::Composition::from_formula(formula)
+        .map(|c| c.formula_hash().to_string())
+        .map_err(|e| e.to_string())
+        .into()
+}
+
+/// Get a hash of the composition including oxidation states.
+///
+/// Useful for exact matching of compositions.
+#[wasm_bindgen]
+pub fn species_hash(formula: &str) -> WasmResult<String> {
+    crate::composition::Composition::from_formula(formula)
+        .map(|c| c.species_hash().to_string())
+        .map_err(|e| e.to_string())
+        .into()
+}
+
+// === Lattice Property Functions ===
+
+// Helper to convert nalgebra Matrix3 to [[f64; 3]; 3]
+fn mat3_to_array(m: &nalgebra::Matrix3<f64>) -> [[f64; 3]; 3] {
+    [
+        [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
+        [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
+        [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
+    ]
+}
+
+/// Get the metric tensor G = A * A^T of the lattice.
+#[wasm_bindgen]
+pub fn get_lattice_metric_tensor(structure: JsCrystal) -> WasmResult<[[f64; 3]; 3]> {
+    structure
+        .to_structure()
+        .map(|s| mat3_to_array(&s.lattice.metric_tensor()))
+        .into()
+}
+
+/// Get the inverse of the lattice matrix.
+#[wasm_bindgen]
+pub fn get_lattice_inv_matrix(structure: JsCrystal) -> WasmResult<[[f64; 3]; 3]> {
+    structure
+        .to_structure()
+        .map(|s| mat3_to_array(&s.lattice.inv_matrix()))
+        .into()
+}
+
+/// Get the reciprocal lattice matrix (2π convention).
+#[wasm_bindgen]
+pub fn get_reciprocal_lattice(structure: JsCrystal) -> WasmResult<[[f64; 3]; 3]> {
+    structure
+        .to_structure()
+        .map(|s| mat3_to_array(s.lattice.reciprocal().matrix()))
+        .into()
+}
+
+/// Get the LLL-reduced lattice matrix.
+#[wasm_bindgen]
+pub fn get_lll_reduced_lattice(structure: JsCrystal) -> WasmResult<[[f64; 3]; 3]> {
+    structure
+        .to_structure()
+        .map(|s| mat3_to_array(&s.lattice.lll_matrix()))
+        .into()
+}
+
+/// Get the transformation matrix to LLL-reduced basis.
+#[wasm_bindgen]
+pub fn get_lll_mapping(structure: JsCrystal) -> WasmResult<[[f64; 3]; 3]> {
+    structure
+        .to_structure()
+        .map(|s| mat3_to_array(&s.lattice.lll_mapping()))
+        .into()
+}
+
+// === Structure Symmetry Functions ===
+
+/// Get the Pearson symbol (e.g., "cF8" for FCC).
+#[wasm_bindgen]
+pub fn get_pearson_symbol(structure: JsCrystal, symprec: f64) -> WasmResult<String> {
+    structure
+        .to_structure()
+        .and_then(|struc| struc.get_pearson_symbol(symprec).map_err(|e| e.to_string()))
+        .into()
+}
+
+/// Get the Hall number for spacegroup identification.
+#[wasm_bindgen]
+pub fn get_hall_number(structure: JsCrystal, symprec: f64) -> WasmResult<i32> {
+    structure
+        .to_structure()
+        .and_then(|struc| struc.get_hall_number(symprec).map_err(|e| e.to_string()))
+        .into()
+}
+
+/// Get site symmetry symbols for each site.
+#[wasm_bindgen]
+pub fn get_site_symmetry_symbols(structure: JsCrystal, symprec: f64) -> WasmResult<Vec<String>> {
+    structure
+        .to_structure()
+        .and_then(|struc| {
+            struc
+                .get_site_symmetry_symbols(symprec)
+                .map_err(|e| e.to_string())
+        })
+        .into()
+}
+
+/// Get equivalent site indices (orbits from symmetry analysis).
+#[wasm_bindgen]
+pub fn get_equivalent_sites(structure: JsCrystal, symprec: f64) -> WasmResult<Vec<u32>> {
+    structure
+        .to_structure()
+        .and_then(|struc| {
+            struc
+                .get_equivalent_sites(symprec)
+                .map(|v| v.into_iter().map(|x| x as u32).collect())
+                .map_err(|e| e.to_string())
+        })
+        .into()
+}
+
+/// Check if two sites are periodic images of each other.
+#[wasm_bindgen]
+pub fn is_periodic_image(
+    structure: JsCrystal,
+    site_i: u32,
+    site_j: u32,
+    tolerance: f64,
+) -> WasmResult<bool> {
+    structure
+        .to_structure()
+        .map(|struc| struc.is_periodic_image(site_i as usize, site_j as usize, tolerance))
+        .into()
 }

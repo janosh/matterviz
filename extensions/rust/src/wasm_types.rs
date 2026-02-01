@@ -472,3 +472,38 @@ impl Default for JsXrdOptions {
         }
     }
 }
+
+// === Composition Types ===
+
+/// Information about a parsed chemical composition.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi)]
+#[serde(rename_all = "camelCase")]
+pub struct JsCompositionInfo {
+    /// Species and their amounts as [symbol, amount] pairs
+    pub species: Vec<(String, f64)>,
+    /// Full formula string
+    pub formula: String,
+    /// Reduced formula string (e.g., "Fe2O3" from "Fe4O6")
+    pub reduced_formula: String,
+    /// Anonymous formula (e.g., "A2B3")
+    pub formula_anonymous: String,
+    /// Hill notation formula
+    pub formula_hill: String,
+    /// Alphabetically sorted formula
+    pub alphabetical_formula: String,
+    /// Chemical system (e.g., "Fe-O")
+    pub chemical_system: String,
+    /// Total number of atoms
+    pub num_atoms: f64,
+    /// Number of distinct elements
+    pub num_elements: u32,
+    /// Molecular weight in atomic mass units
+    pub weight: f64,
+    /// True if composition is a single element
+    pub is_element: bool,
+    /// Average electronegativity (null if undefined)
+    pub average_electronegativity: Option<f64>,
+    /// Total number of electrons
+    pub total_electrons: u32,
+}

@@ -456,6 +456,367 @@ impl PyStructureMatcher {
 }
 
 // ============================================================================
+// Element Class
+// ============================================================================
+
+/// Python wrapper for Element.
+///
+/// Provides access to element properties like atomic number, mass, electronegativity,
+/// oxidation states, radii, and physical properties.
+#[pyclass(name = "Element")]
+pub struct PyElement {
+    inner: Element,
+}
+
+#[pymethods]
+impl PyElement {
+    /// Create an Element from symbol or atomic number.
+    ///
+    /// Args:
+    ///     symbol_or_z: Element symbol (str like "Fe") or atomic number (int like 26)
+    ///
+    /// Returns:
+    ///     Element object
+    ///
+    /// Raises:
+    ///     ValueError: If the symbol or atomic number is invalid
+    #[new]
+    fn new(symbol_or_z: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if let Ok(symbol) = symbol_or_z.extract::<&str>() {
+            Element::from_symbol(symbol)
+                .map(|e| Self { inner: e })
+                .ok_or_else(|| PyValueError::new_err(format!("Unknown element symbol: {symbol}")))
+        } else if let Ok(z) = symbol_or_z.extract::<u8>() {
+            Element::from_atomic_number(z)
+                .map(|e| Self { inner: e })
+                .ok_or_else(|| PyValueError::new_err(format!("Invalid atomic number: {z}")))
+        } else {
+            Err(PyValueError::new_err(
+                "Expected element symbol (str) or atomic number (int)",
+            ))
+        }
+    }
+
+    /// Element symbol (e.g., "Fe", "O").
+    #[getter]
+    fn symbol(&self) -> &'static str {
+        self.inner.symbol()
+    }
+
+    /// Atomic number (1-118 for real elements, 119+ for pseudo-elements).
+    #[getter]
+    fn atomic_number(&self) -> u8 {
+        self.inner.atomic_number()
+    }
+
+    /// Atomic mass in atomic mass units (u).
+    #[getter]
+    fn atomic_mass(&self) -> f64 {
+        self.inner.atomic_mass()
+    }
+
+    /// Full element name (e.g., "Iron", "Oxygen").
+    #[getter]
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    /// Pauling electronegativity (None for noble gases, transactinides).
+    #[getter]
+    fn electronegativity(&self) -> Option<f64> {
+        self.inner.electronegativity()
+    }
+
+    /// Periodic table row (1-7).
+    #[getter]
+    fn row(&self) -> u8 {
+        self.inner.row()
+    }
+
+    /// Periodic table group (1-18).
+    #[getter]
+    fn group(&self) -> u8 {
+        self.inner.group()
+    }
+
+    /// Periodic table block ("S", "P", "D", or "F").
+    #[getter]
+    fn block(&self) -> &'static str {
+        self.inner.block().as_str()
+    }
+
+    /// Atomic radius in Angstroms.
+    #[getter]
+    fn atomic_radius(&self) -> Option<f64> {
+        self.inner.atomic_radius()
+    }
+
+    /// Covalent radius in Angstroms.
+    #[getter]
+    fn covalent_radius(&self) -> Option<f64> {
+        self.inner.covalent_radius()
+    }
+
+    /// All known oxidation states.
+    #[getter]
+    fn oxidation_states(&self) -> Vec<i8> {
+        self.inner.oxidation_states().to_vec()
+    }
+
+    /// Common oxidation states.
+    #[getter]
+    fn common_oxidation_states(&self) -> Vec<i8> {
+        self.inner.common_oxidation_states().to_vec()
+    }
+
+    /// ICSD oxidation states (with >= 10 instances in ICSD).
+    #[getter]
+    fn icsd_oxidation_states(&self) -> Vec<i8> {
+        self.inner.icsd_oxidation_states().to_vec()
+    }
+
+    /// Maximum oxidation state.
+    #[getter]
+    fn max_oxidation_state(&self) -> Option<i8> {
+        self.inner.max_oxidation_state()
+    }
+
+    /// Minimum oxidation state.
+    #[getter]
+    fn min_oxidation_state(&self) -> Option<i8> {
+        self.inner.min_oxidation_state()
+    }
+
+    /// Ionic radius for a specific oxidation state (Angstroms).
+    #[pyo3(signature = (oxidation_state))]
+    fn ionic_radius(&self, oxidation_state: i8) -> Option<f64> {
+        self.inner.ionic_radius(oxidation_state)
+    }
+
+    /// All ionic radii as dict mapping oxidation state (str) to radius (float).
+    ///
+    /// Returns:
+    ///     dict[str, float]: Oxidation state -> ionic radius in Angstroms
+    #[getter]
+    fn ionic_radii(&self, py: Python<'_>) -> PyResult<Option<Py<PyDict>>> {
+        match self.inner.ionic_radii() {
+            Some(radii) => {
+                let dict = PyDict::new(py);
+                for (oxi, radius) in radii {
+                    dict.set_item(oxi, radius)?;
+                }
+                Ok(Some(dict.unbind()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Full Shannon radii data structure.
+    ///
+    /// Returns nested dict: oxidation_state -> coordination -> spin -> {crystal_radius, ionic_radius}
+    ///
+    /// Returns:
+    ///     dict[str, dict[str, dict[str, dict[str, float]]]]: Shannon radii data
+    #[getter]
+    fn shannon_radii(&self, py: Python<'_>) -> PyResult<Option<Py<PyDict>>> {
+        match self.inner.shannon_radii() {
+            Some(shannon) => {
+                let outer_dict = PyDict::new(py);
+                for (oxi_state, coord_map) in shannon {
+                    let coord_dict = PyDict::new(py);
+                    for (coordination, spin_map) in coord_map {
+                        let spin_dict = PyDict::new(py);
+                        for (spin, radii_pair) in spin_map {
+                            let radii_dict = PyDict::new(py);
+                            radii_dict.set_item("crystal_radius", radii_pair.crystal_radius)?;
+                            radii_dict.set_item("ionic_radius", radii_pair.ionic_radius)?;
+                            spin_dict.set_item(spin, radii_dict)?;
+                        }
+                        coord_dict.set_item(coordination, spin_dict)?;
+                    }
+                    outer_dict.set_item(oxi_state, coord_dict)?;
+                }
+                Ok(Some(outer_dict.unbind()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Shannon ionic radius for specific oxidation state, coordination, and spin.
+    ///
+    /// Args:
+    ///     oxidation_state: Oxidation state (e.g., 2 for Fe2+)
+    ///     coordination: Coordination number as Roman numeral (e.g., "VI" for octahedral)
+    ///     spin: Spin state ("High Spin", "Low Spin", or "" for none)
+    #[pyo3(signature = (oxidation_state, coordination, spin = ""))]
+    fn shannon_ionic_radius(
+        &self,
+        oxidation_state: i8,
+        coordination: &str,
+        spin: &str,
+    ) -> Option<f64> {
+        self.inner
+            .shannon_ionic_radius(oxidation_state, coordination, spin)
+    }
+
+    // Physical properties
+
+    /// Melting point in Kelvin.
+    #[getter]
+    fn melting_point(&self) -> Option<f64> {
+        self.inner.melting_point()
+    }
+
+    /// Boiling point in Kelvin.
+    #[getter]
+    fn boiling_point(&self) -> Option<f64> {
+        self.inner.boiling_point()
+    }
+
+    /// Density in g/cm³ (or g/L for gases at STP).
+    #[getter]
+    fn density(&self) -> Option<f64> {
+        self.inner.density()
+    }
+
+    /// Electron affinity in kJ/mol.
+    #[getter]
+    fn electron_affinity(&self) -> Option<f64> {
+        self.inner.electron_affinity()
+    }
+
+    /// First ionization energy in kJ/mol.
+    #[getter]
+    fn first_ionization_energy(&self) -> Option<f64> {
+        self.inner.first_ionization_energy()
+    }
+
+    /// All ionization energies in kJ/mol (index 0 = first ionization).
+    #[getter]
+    fn ionization_energies(&self) -> Vec<f64> {
+        self.inner.ionization_energies().to_vec()
+    }
+
+    /// Molar heat capacity (Cp) in J/(mol·K).
+    #[getter]
+    fn molar_heat(&self) -> Option<f64> {
+        self.inner.molar_heat()
+    }
+
+    /// Specific heat capacity in J/(g·K).
+    #[getter]
+    fn specific_heat(&self) -> Option<f64> {
+        self.inner.specific_heat()
+    }
+
+    /// Number of valence electrons.
+    #[getter]
+    fn n_valence(&self) -> Option<u8> {
+        self.inner.n_valence()
+    }
+
+    /// Electron configuration (e.g., "1s2 2s2 2p6 3s2 3p6 4s2 3d6").
+    #[getter]
+    fn electron_configuration(&self) -> Option<&'static str> {
+        self.inner.electron_configuration()
+    }
+
+    /// Semantic electron configuration with noble gas core (e.g., "[Ar] 4s2 3d6").
+    #[getter]
+    fn electron_configuration_semantic(&self) -> Option<&'static str> {
+        self.inner.electron_configuration_semantic()
+    }
+
+    // Classification methods
+
+    /// True if element is a noble gas (He, Ne, Ar, Kr, Xe, Rn, Og).
+    fn is_noble_gas(&self) -> bool {
+        self.inner.is_noble_gas()
+    }
+
+    /// True if element is an alkali metal (Li, Na, K, Rb, Cs, Fr).
+    fn is_alkali(&self) -> bool {
+        self.inner.is_alkali()
+    }
+
+    /// True if element is an alkaline earth metal (Be, Mg, Ca, Sr, Ba, Ra).
+    fn is_alkaline(&self) -> bool {
+        self.inner.is_alkaline()
+    }
+
+    /// True if element is a halogen (F, Cl, Br, I, At).
+    fn is_halogen(&self) -> bool {
+        self.inner.is_halogen()
+    }
+
+    /// True if element is a chalcogen (O, S, Se, Te, Po).
+    fn is_chalcogen(&self) -> bool {
+        self.inner.is_chalcogen()
+    }
+
+    /// True if element is a lanthanoid (La-Lu).
+    fn is_lanthanoid(&self) -> bool {
+        self.inner.is_lanthanoid()
+    }
+
+    /// True if element is an actinoid (Ac-Lr).
+    fn is_actinoid(&self) -> bool {
+        self.inner.is_actinoid()
+    }
+
+    /// True if element is a transition metal.
+    fn is_transition_metal(&self) -> bool {
+        self.inner.is_transition_metal()
+    }
+
+    /// True if element is a post-transition metal (Al, Ga, In, Tl, Sn, Pb, Bi).
+    fn is_post_transition_metal(&self) -> bool {
+        self.inner.is_post_transition_metal()
+    }
+
+    /// True if element is a metalloid (B, Si, Ge, As, Sb, Te, Po).
+    fn is_metalloid(&self) -> bool {
+        self.inner.is_metalloid()
+    }
+
+    /// True if element is a metal.
+    fn is_metal(&self) -> bool {
+        self.inner.is_metal()
+    }
+
+    /// True if element is radioactive.
+    fn is_radioactive(&self) -> bool {
+        self.inner.is_radioactive()
+    }
+
+    /// True if element is a rare earth (lanthanoid, actinoid, Sc, or Y).
+    fn is_rare_earth(&self) -> bool {
+        self.inner.is_rare_earth()
+    }
+
+    /// True if element is a pseudo-element (Dummy, D, or T).
+    fn is_pseudo(&self) -> bool {
+        self.inner.is_pseudo()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Element(\"{}\")", self.inner.symbol())
+    }
+
+    fn __str__(&self) -> &'static str {
+        self.inner.symbol()
+    }
+
+    fn __eq__(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+
+    fn __hash__(&self) -> u64 {
+        self.inner.atomic_number() as u64
+    }
+}
+
+// ============================================================================
 // Structure I/O Functions
 // ============================================================================
 
@@ -874,6 +1235,114 @@ fn get_reduced_structure_with_params(
         .get_reduced_structure_with_params(parse_reduction_algo(algo)?, niggli_tol, lll_delta)
         .map_err(|e| PyValueError::new_err(format!("Error reducing structure: {e}")))?;
     Ok(structure_to_pydict(py, &reduced)?.unbind())
+}
+
+// ============================================================================
+// Lattice Property Functions
+// ============================================================================
+
+/// Get the metric tensor G = A * A^T of the lattice.
+///
+/// The metric tensor is fundamental for crystallographic calculations,
+/// relating fractional and Cartesian coordinates.
+///
+/// Args:
+///     structure (dict): Structure as a Python dict (from Structure.as_dict())
+///
+/// Returns:
+///     list[list[float]]: 3x3 metric tensor matrix
+#[pyfunction]
+fn get_lattice_metric_tensor(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
+    let struc = parse_struct(&structure)?;
+    let g = struc.lattice.metric_tensor();
+    Ok([
+        [g[(0, 0)], g[(0, 1)], g[(0, 2)]],
+        [g[(1, 0)], g[(1, 1)], g[(1, 2)]],
+        [g[(2, 0)], g[(2, 1)], g[(2, 2)]],
+    ])
+}
+
+/// Get the inverse of the lattice matrix.
+///
+/// Useful for coordinate transformations between Cartesian and fractional.
+///
+/// Args:
+///     structure (dict): Structure as a Python dict (from Structure.as_dict())
+///
+/// Returns:
+///     list[list[float]]: 3x3 inverse lattice matrix
+#[pyfunction]
+fn get_lattice_inv_matrix(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
+    let struc = parse_struct(&structure)?;
+    let inv = struc.lattice.inv_matrix();
+    Ok([
+        [inv[(0, 0)], inv[(0, 1)], inv[(0, 2)]],
+        [inv[(1, 0)], inv[(1, 1)], inv[(1, 2)]],
+        [inv[(2, 0)], inv[(2, 1)], inv[(2, 2)]],
+    ])
+}
+
+/// Get the reciprocal lattice.
+///
+/// Returns the reciprocal lattice matrix (2π convention) as lattice vectors.
+///
+/// Args:
+///     structure (dict): Structure as a Python dict (from Structure.as_dict())
+///
+/// Returns:
+///     list[list[float]]: 3x3 reciprocal lattice matrix
+#[pyfunction]
+fn get_reciprocal_lattice(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
+    let struc = parse_struct(&structure)?;
+    let recip = struc.lattice.reciprocal();
+    let m = recip.matrix();
+    Ok([
+        [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
+        [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
+        [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
+    ])
+}
+
+/// Get the LLL-reduced lattice matrix.
+///
+/// The Lenstra-Lenstra-Lovász (LLL) algorithm produces a basis with
+/// nearly orthogonal vectors, useful for PBC calculations.
+///
+/// Args:
+///     structure (dict): Structure as a Python dict (from Structure.as_dict())
+///
+/// Returns:
+///     list[list[float]]: 3x3 LLL-reduced lattice matrix
+#[pyfunction]
+fn get_lll_reduced_lattice(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
+    let struc = parse_struct(&structure)?;
+    let lll = struc.lattice.lll_matrix();
+    Ok([
+        [lll[(0, 0)], lll[(0, 1)], lll[(0, 2)]],
+        [lll[(1, 0)], lll[(1, 1)], lll[(1, 2)]],
+        [lll[(2, 0)], lll[(2, 1)], lll[(2, 2)]],
+    ])
+}
+
+/// Get the transformation matrix to LLL-reduced basis.
+///
+/// The mapping M transforms original fractional coords to LLL coords:
+/// frac_lll = M^(-1) @ frac_orig
+///
+/// Args:
+///     structure (dict): Structure as a Python dict (from Structure.as_dict())
+///
+/// Returns:
+///     list[list[float]]: 3x3 LLL transformation matrix
+#[pyfunction]
+fn get_lll_mapping(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
+    let struc = parse_struct(&structure)?;
+    let mapping = struc.lattice.lll_mapping();
+    Ok([
+        [mapping[(0, 0)], mapping[(0, 1)], mapping[(0, 2)]],
+        [mapping[(1, 0)], mapping[(1, 1)], mapping[(1, 2)]],
+        [mapping[(2, 0)], mapping[(2, 1)], mapping[(2, 2)]],
+    ])
 }
 
 // ============================================================================
@@ -1939,6 +2408,199 @@ fn parse_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
     Ok(dict.unbind())
 }
 
+/// Get atomic fraction of an element in a composition.
+///
+/// Args:
+///     formula: Chemical formula string
+///     element: Element symbol (e.g., "Fe")
+///
+/// Returns:
+///     Atomic fraction (0.0 to 1.0) or 0.0 if element not present.
+#[pyfunction]
+fn get_atomic_fraction(formula: &str, element: &str) -> PyResult<f64> {
+    let comp = parse_comp(formula)?;
+    let elem = Element::from_symbol(element)
+        .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {element}")))?;
+    Ok(comp.get_atomic_fraction(elem))
+}
+
+/// Get weight fraction of an element in a composition.
+///
+/// Args:
+///     formula: Chemical formula string
+///     element: Element symbol (e.g., "Fe")
+///
+/// Returns:
+///     Weight fraction (0.0 to 1.0) or 0.0 if element not present.
+#[pyfunction]
+fn get_wt_fraction(formula: &str, element: &str) -> PyResult<f64> {
+    let comp = parse_comp(formula)?;
+    let elem = Element::from_symbol(element)
+        .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {element}")))?;
+    Ok(comp.get_wt_fraction(elem))
+}
+
+/// Get reduced composition as a dict.
+///
+/// Args:
+///     formula: Chemical formula string
+///
+/// Returns:
+///     dict mapping element symbols to amounts in reduced form.
+#[pyfunction]
+fn reduced_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
+    let comp = parse_comp(formula)?.reduced_composition();
+    let dict = PyDict::new(py);
+    for (sp, amt) in comp.iter() {
+        dict.set_item(sp.element.symbol(), *amt)?;
+    }
+    Ok(dict.unbind())
+}
+
+/// Get fractional composition (atomic fractions) as a dict.
+///
+/// Args:
+///     formula: Chemical formula string
+///
+/// Returns:
+///     dict mapping element symbols to atomic fractions (sum to 1.0).
+#[pyfunction]
+fn fractional_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
+    let comp = parse_comp(formula)?.fractional_composition();
+    let dict = PyDict::new(py);
+    for (sp, amt) in comp.iter() {
+        dict.set_item(sp.element.symbol(), *amt)?;
+    }
+    Ok(dict.unbind())
+}
+
+/// Check if a composition is charge balanced.
+///
+/// Args:
+///     formula: Chemical formula string with oxidation states (e.g., "Na+Cl-", "Fe3+2O2-3")
+///
+/// Returns:
+///     True if charge balanced, False if not, None if species lack oxidation states.
+#[pyfunction]
+fn is_charge_balanced(formula: &str) -> PyResult<Option<bool>> {
+    let comp = parse_comp(formula)?;
+    Ok(comp.is_charge_balanced())
+}
+
+/// Get the total charge of a composition.
+///
+/// Args:
+///     formula: Chemical formula string with oxidation states
+///
+/// Returns:
+///     Total charge as integer, or None if species lack oxidation states.
+#[pyfunction]
+fn composition_charge(formula: &str) -> PyResult<Option<i32>> {
+    let comp = parse_comp(formula)?;
+    Ok(comp.charge())
+}
+
+/// Check if two compositions are approximately equal.
+///
+/// Args:
+///     formula1: First chemical formula
+///     formula2: Second chemical formula
+///     rtol: Relative tolerance (default 0.1)
+///     atol: Absolute tolerance (default 1e-8)
+///
+/// Returns:
+///     True if compositions are approximately equal.
+#[pyfunction]
+#[pyo3(signature = (formula1, formula2, rtol = 0.1, atol = 1e-8))]
+fn compositions_almost_equal(
+    formula1: &str,
+    formula2: &str,
+    rtol: f64,
+    atol: f64,
+) -> PyResult<bool> {
+    let comp1 = parse_comp(formula1)?;
+    let comp2 = parse_comp(formula2)?;
+    Ok(comp1.almost_equals(&comp2, rtol, atol))
+}
+
+/// Get a hash of the reduced formula (ignores oxidation states).
+///
+/// Useful for grouping compositions by formula regardless of oxidation states.
+///
+/// Args:
+///     formula (str): Chemical formula
+///
+/// Returns:
+///     int: Hash value for the reduced formula
+#[pyfunction]
+fn formula_hash(formula: &str) -> PyResult<u64> {
+    Ok(parse_comp(formula)?.formula_hash())
+}
+
+/// Get a hash of the composition including oxidation states.
+///
+/// Useful for exact matching of compositions.
+///
+/// Args:
+///     formula (str): Chemical formula
+///
+/// Returns:
+///     int: Hash value for the species composition
+#[pyfunction]
+fn species_hash(formula: &str) -> PyResult<u64> {
+    Ok(parse_comp(formula)?.species_hash())
+}
+
+/// Remap elements in a composition according to a mapping.
+///
+/// Args:
+///     formula (str): Chemical formula
+///     mapping (dict): Element symbol -> new element symbol mapping
+///
+/// Returns:
+///     dict: New composition with remapped elements
+#[pyfunction]
+fn remap_elements(
+    py: Python<'_>,
+    formula: &str,
+    mapping: &Bound<'_, PyDict>,
+) -> PyResult<Py<PyDict>> {
+    use std::collections::HashMap;
+
+    // Convert Python dict to HashMap<Element, Element>
+    let mut elem_mapping = HashMap::new();
+    for (key, value) in mapping.iter() {
+        let from_sym: &str = key.extract()?;
+        let to_sym: &str = value.extract()?;
+        let from_elem = Element::from_symbol(from_sym)
+            .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {from_sym}")))?;
+        let to_elem = Element::from_symbol(to_sym)
+            .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {to_sym}")))?;
+        elem_mapping.insert(from_elem, to_elem);
+    }
+
+    let comp = parse_comp(formula)?;
+    let remapped = comp.remap_elements(&elem_mapping);
+
+    let dict = PyDict::new(py);
+    for (sp, amt) in remapped.iter() {
+        dict.set_item(sp.element.symbol(), amt)?;
+    }
+    Ok(dict.unbind())
+}
+
+/// Get the GCD reduction factor used in reduced_composition.
+///
+/// Args:
+///     formula (str): Chemical formula
+///
+/// Returns:
+///     float: The factor by which amounts were divided to get the reduced formula
+#[pyfunction]
+fn get_reduced_factor(formula: &str) -> PyResult<f64> {
+    Ok(parse_comp(formula)?.get_reduced_factor())
+}
+
 // ============================================================================
 // Transformation Functions
 // ============================================================================
@@ -2595,11 +3257,6 @@ fn py_compute_xrd(
     Ok(dict.unbind())
 }
 
-/// Get atomic scattering parameters (Cromer-Mann coefficients).
-///
-/// Returns a dict mapping element symbols to their scattering coefficients.
-/// Each coefficient set is a list of [a, b] pairs for the Cromer-Mann formula.
-///
 // =============================================================================
 // Oxidation State Functions
 // =============================================================================
@@ -2871,6 +3528,7 @@ fn py_compute_all_element_rdfs(
 /// Register Python module contents.
 pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add_class::<PyStructureMatcher>()?;
+    py_mod.add_class::<PyElement>()?;
     // I/O functions (reading)
     py_mod.add_function(wrap_pyfunction!(parse_structure_file, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(parse_trajectory, py_mod)?)?;
@@ -2889,6 +3547,12 @@ pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     // Reduction functions
     py_mod.add_function(wrap_pyfunction!(get_reduced_structure, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(get_reduced_structure_with_params, py_mod)?)?;
+    // Lattice property functions
+    py_mod.add_function(wrap_pyfunction!(get_lattice_metric_tensor, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_lattice_inv_matrix, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_reciprocal_lattice, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_lll_reduced_lattice, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_lll_mapping, py_mod)?)?;
     // Neighbor finding and distance functions
     py_mod.add_function(wrap_pyfunction!(get_neighbor_list, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(get_distance, py_mod)?)?;
@@ -2954,6 +3618,17 @@ pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add_function(wrap_pyfunction!(set_site_property, py_mod)?)?;
     // Composition functions
     py_mod.add_function(wrap_pyfunction!(parse_composition, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_atomic_fraction, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_wt_fraction, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(reduced_composition, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(fractional_composition, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(is_charge_balanced, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(composition_charge, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(compositions_almost_equal, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(formula_hash, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(species_hash, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(remap_elements, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(get_reduced_factor, py_mod)?)?;
     // Transformation functions
     py_mod.add_function(wrap_pyfunction!(to_primitive, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(to_conventional, py_mod)?)?;
