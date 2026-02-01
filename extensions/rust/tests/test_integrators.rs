@@ -73,17 +73,17 @@ fn test_kinetic_energy_units() {
 }
 
 /// Verify velocity standard deviation from Maxwell-Boltzmann.
+/// At 300K with m=1 amu: v_std = sqrt(kT/m) ≈ 0.161 Å/internal_time
 #[test]
 fn test_maxwell_boltzmann_velocity_scale() {
     let temp = 300.0;
     let mass = 1.0;
     let v_std = (units::KB * temp / mass).sqrt();
-    let expected = (units::KB * temp / mass).sqrt();
+    // Expected: sqrt(8.617e-5 * 300 / 1) ≈ 0.1608
     assert!(
-        (v_std - expected).abs() / expected < 1e-10,
-        "v_std = {:.6}, expected {:.6}",
-        v_std,
-        expected
+        (v_std - 0.1608).abs() < 0.001,
+        "v_std = {:.4}, expected ~0.1608",
+        v_std
     );
 }
 

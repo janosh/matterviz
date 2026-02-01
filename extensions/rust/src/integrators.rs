@@ -52,7 +52,7 @@ pub mod units {
 /// State of a molecular dynamics simulation.
 ///
 /// Plain data container - all operations are standalone functions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MDState {
     /// Atomic positions in Angstrom.
     pub positions: Vec<Vector3<f64>>,
@@ -104,6 +104,33 @@ impl MDState {
     #[inline]
     pub fn num_atoms(&self) -> usize {
         self.positions.len()
+    }
+
+    /// Initialize velocities from Maxwell-Boltzmann distribution (method wrapper).
+    pub fn init_velocities(&mut self, temperature_k: f64, seed: Option<u64>) {
+        use rand::SeedableRng;
+        let mut rng = match seed {
+            Some(s) => rand::rngs::StdRng::seed_from_u64(s),
+            None => rand::rngs::StdRng::from_entropy(),
+        };
+        let new_state = init_velocities(std::mem::take(self), temperature_k, &mut rng);
+        *self = new_state;
+    }
+
+    /// Compute kinetic energy in eV (method wrapper).
+    pub fn kinetic_energy(&self) -> f64 {
+        kinetic_energy(self)
+    }
+
+    /// Compute temperature in Kelvin (method wrapper).
+    pub fn temperature(&self) -> f64 {
+        temperature(self)
+    }
+
+    /// Set forces (method wrapper).
+    pub fn set_forces(&mut self, forces: &[Vector3<f64>]) {
+        let new_state = set_forces(std::mem::take(self), forces);
+        *self = new_state;
     }
 }
 
@@ -251,6 +278,8 @@ pub struct LangevinConfig {
     pub dt_fs: f64,
     /// Pre-computed: dt in internal units.
     dt_int: f64,
+    /// Friction coefficient in internal units (stored to avoid ln recovery).
+    friction_int: f64,
     /// Pre-computed: c1 = exp(-friction * dt).
     c1: f64,
     /// Pre-computed: c2 = sqrt(1 - c1²).
@@ -273,6 +302,7 @@ impl LangevinConfig {
             temperature_k,
             dt_fs,
             dt_int,
+            friction_int,
             c1,
             c2,
         }
@@ -286,8 +316,8 @@ impl LangevinConfig {
 
     /// Update friction coefficient (1/fs).
     pub fn with_friction(mut self, friction: f64) -> Self {
-        let friction_int = friction * units::INTERNAL_TO_FS;
-        self.c1 = (-friction_int * self.dt_int).exp();
+        self.friction_int = friction * units::INTERNAL_TO_FS;
+        self.c1 = (-self.friction_int * self.dt_int).exp();
         self.c2 = (1.0 - self.c1 * self.c1).sqrt();
         self
     }
@@ -296,9 +326,8 @@ impl LangevinConfig {
     pub fn with_dt(mut self, dt_fs: f64) -> Self {
         self.dt_fs = dt_fs;
         self.dt_int = dt_fs * units::FS_TO_INTERNAL;
-        // Recalculate c1, c2 with current friction
-        let friction_int = (-self.c1.ln()) / self.dt_int; // recover friction_int
-        self.c1 = (-friction_int * self.dt_int).exp();
+        // Recompute c1, c2 using stored friction_int (avoids numerically unstable ln)
+        self.c1 = (-self.friction_int * self.dt_int).exp();
         self.c2 = (1.0 - self.c1 * self.c1).sqrt();
         self
     }
@@ -356,6 +385,68 @@ where
     }
 
     state
+}
+
+// ============================================================================
+// Stateful Langevin integrator (for Python bindings)
+// ============================================================================
+
+/// Stateful Langevin integrator with internal RNG.
+///
+/// This wrapper is for use with Python bindings where we need mutable state.
+/// For pure Rust code, prefer the functional `langevin_step` API.
+pub struct LangevinIntegrator {
+    config: LangevinConfig,
+    rng: rand::rngs::StdRng,
+}
+
+impl LangevinIntegrator {
+    /// Create a new Langevin integrator.
+    pub fn new(temperature_k: f64, friction: f64, dt_fs: f64, seed: Option<u64>) -> Self {
+        use rand::SeedableRng;
+        let rng = match seed {
+            Some(s) => rand::rngs::StdRng::seed_from_u64(s),
+            None => rand::rngs::StdRng::from_entropy(),
+        };
+        Self {
+            config: LangevinConfig::new(temperature_k, friction, dt_fs),
+            rng,
+        }
+    }
+
+    /// Perform one Langevin dynamics step, mutating the state in place.
+    pub fn step<F>(&mut self, state: &mut MDState, mut compute_forces: F)
+    where
+        F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
+    {
+        let new_state = langevin_step(
+            std::mem::take(state),
+            &self.config,
+            &mut self.rng,
+            &mut compute_forces,
+        );
+        *state = new_state;
+    }
+
+    /// Set target temperature (no recomputation needed).
+    pub fn set_temperature(&mut self, temperature_k: f64) {
+        self.config.temperature_k = temperature_k;
+    }
+
+    /// Set friction coefficient (1/fs), recomputes c1/c2.
+    pub fn set_friction(&mut self, friction: f64) {
+        self.config.friction_int = friction * units::INTERNAL_TO_FS;
+        self.config.c1 = (-self.config.friction_int * self.config.dt_int).exp();
+        self.config.c2 = (1.0 - self.config.c1 * self.config.c1).sqrt();
+    }
+
+    /// Set time step (fs), recomputes c1/c2.
+    pub fn set_dt(&mut self, dt_fs: f64) {
+        self.config.dt_fs = dt_fs;
+        self.config.dt_int = dt_fs * units::FS_TO_INTERNAL;
+        self.config.c1 = (-self.config.friction_int * self.config.dt_int).exp();
+        self.config.c2 = (1.0 - self.config.c1 * self.config.c1).sqrt();
+    }
 }
 
 // ============================================================================
@@ -735,5 +826,39 @@ mod tests {
             change2 > change1,
             "Higher friction should cause larger velocity change: low={change1}, high={change2}"
         );
+    }
+
+    #[test]
+    fn test_langevin_config_with_dt_preserves_friction() {
+        // Test that with_dt correctly preserves the friction coefficient
+        let friction = 0.02;
+        let dt1 = 1.0;
+        let dt2 = 2.0;
+
+        // Create config with known friction and dt
+        let config1 = LangevinConfig::new(300.0, friction, dt1);
+
+        // Update dt - friction should be preserved
+        let config2 = config1.clone().with_dt(dt2);
+
+        // Create a fresh config with same friction but new dt for comparison
+        let config_fresh = LangevinConfig::new(300.0, friction, dt2);
+
+        // c1 and c2 should match the fresh config (same friction, same dt)
+        assert!(
+            (config2.c1 - config_fresh.c1).abs() < 1e-14,
+            "c1 mismatch after with_dt: {} vs {} (fresh)",
+            config2.c1,
+            config_fresh.c1
+        );
+        assert!(
+            (config2.c2 - config_fresh.c2).abs() < 1e-14,
+            "c2 mismatch after with_dt: {} vs {} (fresh)",
+            config2.c2,
+            config_fresh.c2
+        );
+
+        // Also verify dt was updated
+        assert_eq!(config2.dt_fs, dt2);
     }
 }

@@ -2929,14 +2929,16 @@ fn md_velocity_verlet_step(
     compute_forces: Py<PyAny>,
     py: Python<'_>,
 ) -> PyResult<()> {
-    integrators::velocity_verlet_step(&mut state.inner, dt, |positions| {
-        let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
-        let result = compute_forces
-            .call1(py, (pos_arr,))
-            .expect("Force computation failed");
-        let forces: Vec<[f64; 3]> = result.extract(py).expect("Failed to extract forces");
-        forces.iter().map(|f| Vector3::from(*f)).collect()
-    });
+    let new_state =
+        integrators::velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
+            let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
+            let result = compute_forces
+                .call1(py, (pos_arr,))
+                .expect("Force computation failed");
+            let forces: Vec<[f64; 3]> = result.extract(py).expect("Failed to extract forces");
+            forces.iter().map(|f| Vector3::from(*f)).collect()
+        });
+    state.inner = new_state;
     Ok(())
 }
 

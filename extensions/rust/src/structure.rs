@@ -450,8 +450,8 @@ impl Structure {
     ///
     /// # Performance
     ///
-    /// Uses O(n² × images) brute-force search. For large structures with long cutoffs,
-    /// consider using specialized neighbor-finding libraries.
+    /// Uses the shared NeighborList implementation (cell-list for larger systems,
+    /// brute-force fallback based on `NeighborListConfig::cell_list_threshold`).
     pub fn get_neighbor_list(
         &self,
         r: f64,
@@ -2133,7 +2133,7 @@ impl Structure {
     /// Apply a deformation gradient to the lattice.
     ///
     /// The deformation gradient F transforms the lattice as:
-    /// `new_lattice = F * old_lattice`
+    /// `new_lattice = old_lattice * F` (row-vector convention)
     ///
     /// Fractional coordinates remain unchanged (they're relative to the lattice).
     ///

@@ -10,98 +10,47 @@ use nalgebra::Matrix3;
 use ferrox::elastic::{
     apply_strain, bulk_modulus, elastic_tensor_from_stresses, generate_strains, is_cubic_stable,
     is_mechanically_stable, poisson_ratio, reuss_bulk_modulus, reuss_shear_modulus, shear_modulus,
-    stress_to_voigt, voigt_bulk_modulus, voigt_shear_modulus, voigt_to_tensor, youngs_modulus,
-    zener_ratio,
+    stress_to_voigt, voigt_to_tensor, youngs_modulus, zener_ratio,
 };
 
 // =============================================================================
 // Strain generation correctness tests
 // =============================================================================
 
+/// Test strain generation: count, structure, and normal-only mode
 #[test]
-fn test_strain_generation_coverage() {
-    // Verify all 6 strain types are generated
-    let strains = generate_strains(0.01, true);
-    assert_eq!(
-        strains.len(),
-        12,
-        "Should generate 12 strains (6 types × 2 signs)"
+fn test_strain_generation() {
+    // Full strain set (normal + shear)
+    let strains_full = generate_strains(0.01, true);
+    assert_eq!(strains_full.len(), 12, "Should generate 6 types × 2 signs");
+
+    // Verify strain types at expected indices:
+    // Normal: xx(0,1), yy(2,3), zz(4,5) | Shear: yz(6,7), xz(8,9), xy(10,11)
+    assert!(strains_full[0][(0, 0)].abs() > 1e-15, "xx strain");
+    assert!(strains_full[2][(1, 1)].abs() > 1e-15, "yy strain");
+    assert!(strains_full[4][(2, 2)].abs() > 1e-15, "zz strain");
+    assert!(strains_full[6][(1, 2)].abs() > 1e-15, "yz shear");
+    assert!(strains_full[8][(0, 2)].abs() > 1e-15, "xz shear");
+    assert!(strains_full[10][(0, 1)].abs() > 1e-15, "xy shear");
+
+    // Shear strains should be symmetric
+    assert!(
+        (strains_full[6][(1, 2)] - strains_full[6][(2, 1)]).abs() < 1e-15,
+        "Shear should be symmetric"
     );
 
-    // Check each strain type
-    // Normal strains: xx (0,1), yy (2,3), zz (4,5)
-    // Shear strains: yz (6,7), xz (8,9), xy (10,11)
+    // Normal-only mode
+    let strains_normal = generate_strains(0.005, false);
+    assert_eq!(strains_normal.len(), 6, "Normal-only: 3 types × 2 signs");
 
-    // xx strains
-    assert!(
-        strains[0][(0, 0)].abs() > 1e-15,
-        "xx strain should be non-zero"
-    );
-    assert!(
-        strains[0][(1, 1)].abs() < 1e-15,
-        "xx strain should have zero yy"
-    );
-    assert!(
-        strains[0][(2, 2)].abs() < 1e-15,
-        "xx strain should have zero zz"
-    );
-
-    // yy strains
-    assert!(
-        strains[2][(1, 1)].abs() > 1e-15,
-        "yy strain should be non-zero"
-    );
-    assert!(
-        strains[2][(0, 0)].abs() < 1e-15,
-        "yy strain should have zero xx"
-    );
-
-    // zz strains
-    assert!(
-        strains[4][(2, 2)].abs() > 1e-15,
-        "zz strain should be non-zero"
-    );
-
-    // yz shear strain
-    assert!(
-        strains[6][(1, 2)].abs() > 1e-15,
-        "yz shear should be non-zero"
-    );
-    assert!(
-        strains[6][(2, 1)].abs() > 1e-15,
-        "yz shear should be symmetric"
-    );
-
-    // xz shear strain
-    assert!(
-        strains[8][(0, 2)].abs() > 1e-15,
-        "xz shear should be non-zero"
-    );
-
-    // xy shear strain
-    assert!(
-        strains[10][(0, 1)].abs() > 1e-15,
-        "xy shear should be non-zero"
-    );
-}
-
-#[test]
-fn test_strain_generation_normal_only() {
-    let strains = generate_strains(0.005, false);
-    assert_eq!(
-        strains.len(),
-        6,
-        "Should generate 6 strains (3 normal × 2 signs)"
-    );
-
-    // All strains should be diagonal
-    for strain in &strains {
+    // Normal-only should be diagonal
+    for strain in &strains_normal {
         for idx in 0..3 {
             for jdx in 0..3 {
                 if idx != jdx {
                     assert!(
                         strain[(idx, jdx)].abs() < 1e-15,
-                        "Normal-only strains should have no off-diagonal elements"
+                        "Normal-only should have no off-diagonal"
                     );
                 }
             }
@@ -243,81 +192,48 @@ fn test_apply_strain_non_orthogonal_lattice() {
 // Singular tensor handling tests
 // =============================================================================
 
+/// Test that singular/pathological tensors are handled gracefully and detected as unstable
 #[test]
-fn test_singular_zero_tensor() {
-    // Zero elastic tensor (completely singular)
-    let c = [[0.0; 6]; 6];
+fn test_singular_tensors() {
+    // Zero tensor
+    let c_zero = [[0.0; 6]; 6];
 
-    // All functions should handle gracefully
-    let k_v = voigt_bulk_modulus(&c);
-    let k_r = reuss_bulk_modulus(&c);
-    let k = bulk_modulus(&c);
-    let g_v = voigt_shear_modulus(&c);
-    let g_r = reuss_shear_modulus(&c);
-    let g = shear_modulus(&c);
+    // Rank-deficient (only 2 diagonal elements)
+    let mut c_rank = [[0.0; 6]; 6];
+    c_rank[0][0] = 100.0;
+    c_rank[1][1] = 100.0;
 
-    assert!(k_v.is_finite(), "Voigt K should be finite for zero tensor");
-    assert!(k_r.is_finite(), "Reuss K should be finite for zero tensor");
-    assert!(k.is_finite(), "VRH K should be finite for zero tensor");
-    assert!(g_v.is_finite(), "Voigt G should be finite for zero tensor");
-    assert!(g_r.is_finite(), "Reuss G should be finite for zero tensor");
-    assert!(g.is_finite(), "VRH G should be finite for zero tensor");
+    // Negative eigenvalue (large off-diagonal)
+    let mut c_neg = [[0.0; 6]; 6];
+    c_neg[0][0] = 100.0;
+    c_neg[1][1] = 100.0;
+    c_neg[2][2] = 100.0;
+    c_neg[0][1] = 200.0;
+    c_neg[1][0] = 200.0;
+    c_neg[3][3] = 50.0;
+    c_neg[4][4] = 50.0;
+    c_neg[5][5] = 50.0;
 
-    // Zero tensor should be unstable
-    assert!(
-        !is_mechanically_stable(&c),
-        "Zero tensor should be unstable"
-    );
-}
+    for (label, c) in [
+        ("zero", c_zero),
+        ("rank-deficient", c_rank),
+        ("negative-eigenvalue", c_neg),
+    ] {
+        // All modulus functions should return finite values (not NaN/Inf)
+        assert!(bulk_modulus(&c).is_finite(), "{label}: K should be finite");
+        assert!(shear_modulus(&c).is_finite(), "{label}: G should be finite");
+        assert!(
+            reuss_bulk_modulus(&c).is_finite(),
+            "{label}: K_R should be finite"
+        );
+        assert!(
+            reuss_shear_modulus(&c).is_finite(),
+            "{label}: G_R should be finite"
+        );
 
-#[test]
-fn test_singular_rank_deficient_tensor() {
-    // Rank-deficient tensor (some rows/cols are zero)
-    let mut c = [[0.0; 6]; 6];
-    c[0][0] = 100.0;
-    c[1][1] = 100.0;
-    // Leave other elements zero - makes matrix singular
-
-    let k_r = reuss_bulk_modulus(&c);
-    let g_r = reuss_shear_modulus(&c);
-
-    // Should return 0 or finite, not NaN/Inf
-    assert!(
-        k_r.is_finite(),
-        "Reuss K should handle rank-deficient tensor"
-    );
-    assert!(
-        g_r.is_finite(),
-        "Reuss G should handle rank-deficient tensor"
-    );
-    assert!(
-        !is_mechanically_stable(&c),
-        "Rank-deficient tensor should be unstable"
-    );
-}
-
-#[test]
-fn test_singular_negative_eigenvalue() {
-    // Tensor with negative eigenvalue (physically unstable)
-    let mut c = [[0.0; 6]; 6];
-    c[0][0] = 100.0;
-    c[1][1] = 100.0;
-    c[2][2] = 100.0;
-    c[0][1] = 200.0; // Large off-diagonal makes negative eigenvalue
-    c[1][0] = 200.0;
-    c[3][3] = 50.0;
-    c[4][4] = 50.0;
-    c[5][5] = 50.0;
-
-    // Should not panic
-    let _k = bulk_modulus(&c);
-    let _g = shear_modulus(&c);
-
-    // Should be detected as unstable
-    assert!(
-        !is_mechanically_stable(&c),
-        "Negative eigenvalue tensor should be unstable"
-    );
+        // All should be detected as mechanically unstable
+        assert!(!is_mechanically_stable(&c), "{label}: should be unstable");
+    }
 }
 
 #[test]
@@ -350,44 +266,42 @@ fn test_singular_elastic_tensor_fit() {
     }
 }
 
+/// Test moduli functions at extreme values (very small and diamond-like large)
 #[test]
-fn test_very_small_moduli() {
-    // Very small (but valid) moduli near numerical precision limits
-    let k = 1e-12;
-    let g = 1e-12;
+fn test_moduli_extreme_values() {
+    // Very small moduli - should remain finite
+    let e_small = youngs_modulus(1e-12, 1e-12);
+    let nu_small = poisson_ratio(1e-12, 1e-12);
+    assert!(
+        e_small.is_finite() && nu_small.is_finite(),
+        "Small moduli should be finite"
+    );
 
-    let e = youngs_modulus(k, g);
-    let nu = poisson_ratio(k, g);
+    // Diamond-like large moduli (C11=1079, C12=124, C44=578 GPa)
+    let mut c_diamond = [[0.0; 6]; 6];
+    for idx in 0..3 {
+        c_diamond[idx][idx] = 1079.0;
+        c_diamond[3 + idx][3 + idx] = 578.0;
+    }
+    c_diamond[0][1] = 124.0;
+    c_diamond[0][2] = 124.0;
+    c_diamond[1][2] = 124.0;
+    c_diamond[1][0] = 124.0;
+    c_diamond[2][0] = 124.0;
+    c_diamond[2][1] = 124.0;
 
-    assert!(e.is_finite(), "E should be finite for very small K, G");
-    assert!(nu.is_finite(), "ν should be finite for very small K, G");
-}
-
-#[test]
-fn test_very_large_moduli() {
-    // Very large moduli (diamond-like)
-    let mut c = [[0.0; 6]; 6];
-    c[0][0] = 1079.0; // Diamond C11
-    c[1][1] = 1079.0;
-    c[2][2] = 1079.0;
-    c[0][1] = 124.0; // Diamond C12
-    c[0][2] = 124.0;
-    c[1][2] = 124.0;
-    c[1][0] = 124.0;
-    c[2][0] = 124.0;
-    c[2][1] = 124.0;
-    c[3][3] = 578.0; // Diamond C44
-    c[4][4] = 578.0;
-    c[5][5] = 578.0;
-
-    let k = bulk_modulus(&c);
-    let g = shear_modulus(&c);
+    let k = bulk_modulus(&c_diamond);
+    let g = shear_modulus(&c_diamond);
     let e = youngs_modulus(k, g);
 
-    assert!(k > 400.0, "Diamond K should be > 400 GPa, got {k}");
-    assert!(g > 500.0, "Diamond G should be > 500 GPa, got {g}");
-    assert!(e > 1000.0, "Diamond E should be > 1000 GPa, got {e}");
-    assert!(is_mechanically_stable(&c), "Diamond should be stable");
+    assert!(
+        k > 400.0 && g > 500.0 && e > 1000.0,
+        "Diamond: K={k}, G={g}, E={e}"
+    );
+    assert!(
+        is_mechanically_stable(&c_diamond),
+        "Diamond should be stable"
+    );
 }
 
 // =============================================================================

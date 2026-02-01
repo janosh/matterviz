@@ -10,6 +10,9 @@
 //! let config = FireConfig::default();
 //! let mut state = FireState::new(positions, &config);
 //!
+//! // Perform initial step to compute forces (last_forces starts at zero)
+//! state = fire_step(state, |pos| compute_forces(pos), &config);
+//!
 //! while !is_converged(&state, 0.01) {
 //!     state = fire_step(state, |pos| compute_forces(pos), &config);
 //! }
@@ -64,7 +67,7 @@ impl Default for FireConfig {
 // ============================================================================
 
 /// FIRE optimizer state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FireState {
     /// Atomic positions in Angstrom.
     pub positions: Vec<Vector3<f64>>,
@@ -98,6 +101,25 @@ impl FireState {
     #[inline]
     pub fn num_atoms(&self) -> usize {
         self.positions.len()
+    }
+
+    /// Perform one FIRE step (method wrapper for Python bindings).
+    pub fn step<F>(&mut self, compute_forces: F, config: &FireConfig)
+    where
+        F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
+    {
+        let new_state = fire_step(std::mem::take(self), compute_forces, config);
+        *self = new_state;
+    }
+
+    /// Check if optimization has converged (method wrapper).
+    pub fn is_converged(&self, fmax: f64) -> bool {
+        is_converged(self, fmax)
+    }
+
+    /// Get maximum force component (method wrapper).
+    pub fn max_force(&self) -> f64 {
+        max_force(self)
     }
 }
 
@@ -204,7 +226,7 @@ where
 // ============================================================================
 
 /// FIRE optimizer state with cell optimization.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CellFireState {
     /// Atomic positions in Angstrom.
     pub positions: Vec<Vector3<f64>>,
@@ -255,6 +277,30 @@ impl CellFireState {
     #[inline]
     pub fn num_atoms(&self) -> usize {
         self.positions.len()
+    }
+
+    /// Perform one cell FIRE step (method wrapper for Python bindings).
+    pub fn step<F>(&mut self, compute_forces_and_stress: F, config: &FireConfig)
+    where
+        F: FnMut(&[Vector3<f64>], &Matrix3<f64>) -> (Vec<Vector3<f64>>, Matrix3<f64>),
+    {
+        let new_state = cell_fire_step(std::mem::take(self), compute_forces_and_stress, config);
+        *self = new_state;
+    }
+
+    /// Check if optimization has converged (method wrapper).
+    pub fn is_converged(&self, fmax: f64, smax: f64) -> bool {
+        cell_is_converged(self, fmax, smax)
+    }
+
+    /// Get maximum force component (method wrapper).
+    pub fn max_force(&self) -> f64 {
+        cell_max_force(self)
+    }
+
+    /// Get maximum stress component (method wrapper).
+    pub fn max_stress(&self) -> f64 {
+        cell_max_stress(self)
     }
 }
 

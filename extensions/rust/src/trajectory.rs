@@ -49,6 +49,12 @@ pub fn compute_msd_batch(
     }
 
     let n_atoms = trajectory[0].len();
+
+    // Validate: all frames must have the same non-zero atom count
+    if n_atoms == 0 || trajectory.iter().any(|frame| frame.len() != n_atoms) {
+        return vec![0.0; max_lag + 1];
+    }
+
     let n_frames = trajectory.len();
     let max_lag = max_lag.min(n_frames - 1);
 
@@ -102,6 +108,12 @@ pub fn compute_vacf_batch(
     }
 
     let n_atoms = trajectory[0].len();
+
+    // Validate: all frames must have the same non-zero atom count
+    if n_atoms == 0 || trajectory.iter().any(|frame| frame.len() != n_atoms) {
+        return vec![0.0; max_lag + 1];
+    }
+
     let n_frames = trajectory.len();
     let max_lag = max_lag.min(n_frames - 1);
 
