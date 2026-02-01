@@ -414,7 +414,33 @@
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
-    if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
+    const target = event.target as HTMLElement
+    // Skip if focus is on an interactive element that handles Enter natively
+    const interactive_selector =
+      `input,textarea,select,button,a,[contenteditable="true"],[role="button"],[tabindex]:not([tabindex="-1"])`
+    if (target.matches(interactive_selector) && target !== canvas) return
+
+    // Handle Enter for keyboard accessibility - select hovered entry
+    if (event.key === `Enter`) {
+      const entry = hover_data?.entry
+      if (entry) {
+        on_point_click?.(entry)
+        if (enable_click_selection) {
+          selected_entry = entry
+          if (enable_structure_preview) {
+            const structure = extract_structure_from_entry(entry)
+            if (structure) {
+              selected_structure = structure
+              modal_place_right = helpers.calculate_modal_side(wrapper)
+              modal_open = true
+            }
+          }
+        }
+      } else if (modal_open) {
+        close_structure_popup()
+      }
+      return
+    }
 
     const actions: Record<string, () => void> = {
       r: reset_camera,
@@ -1048,6 +1074,7 @@
 
   <canvas
     bind:this={canvas}
+    tabindex="0"
     aria-label={merged_controls.title || phase_stats?.chemical_system || `4D Convex Hull`}
     onmousedown={handle_mouse_down}
     onmousemove={handle_hover}

@@ -44,8 +44,8 @@
         JSON.stringify(selected_wyckoff) === JSON.stringify(wyckoff_pos)}
         <tr
           class="wyckoff-row"
-          class:selected={is_selected}
           tabindex="0"
+          class:selected={is_selected}
           aria-selected={is_selected}
           style:--active-color={active_color}
           style:--hover-color="#6cf0ff"
