@@ -1896,13 +1896,18 @@ impl Structure {
             .sum()
     }
 
-    /// Density in g/cm^3, or `None` for zero-volume structures or molecules.
+    /// Density in g/cm^3, or `None` for non-fully-periodic or zero-volume structures.
     ///
-    /// Returns `None` for non-periodic structures (molecules) since density
-    /// is only meaningful for bulk materials with a well-defined unit cell.
+    /// Returns `None` for:
+    /// - Molecules (non-periodic systems)
+    /// - Slabs/wires (partially periodic) - vacuum makes density misleading
+    /// - Zero-volume structures
+    ///
+    /// Density is only meaningful for fully 3D-periodic bulk materials.
     pub fn density(&self) -> Option<f64> {
-        // Density is meaningless for molecules (non-periodic systems)
-        if self.is_molecule() {
+        // Density is only meaningful for fully periodic (3D) bulk materials
+        // Slabs (2D) and wires (1D) have vacuum that makes density misleading
+        if self.pbc != [true, true, true] {
             return None;
         }
         let volume = self.volume();

@@ -19,6 +19,116 @@ TranslationVector = Sequence[float]  # 3-element translation vector
 
 __version__: str
 
+class Element:
+    """Python wrapper for Element.
+
+    Provides access to element properties like atomic number, mass, electronegativity,
+    oxidation states, radii, and physical properties.
+    """
+
+    def __init__(self, symbol_or_z: str | int) -> None:
+        """Create an Element from symbol or atomic number.
+
+        Args:
+            symbol_or_z: Element symbol (str like "Fe") or atomic number (int like 26).
+
+        Raises:
+            ValueError: If the symbol or atomic number is invalid.
+        """
+        ...
+    @property
+    def symbol(self) -> str:
+        """Element symbol (e.g., "Fe")."""
+        ...
+    @property
+    def z(self) -> int:
+        """Atomic number (1-118)."""
+        ...
+    @property
+    def atomic_mass(self) -> float:
+        """Atomic mass in atomic mass units."""
+        ...
+    @property
+    def electronegativity(self) -> float | None:
+        """Pauling electronegativity."""
+        ...
+    @property
+    def common_oxidation_states(self) -> list[int]:
+        """Most common oxidation states."""
+        ...
+    @property
+    def oxidation_states(self) -> list[int]:
+        """All known oxidation states."""
+        ...
+    @property
+    def atomic_radius(self) -> float | None:
+        """Atomic radius in Angstroms."""
+        ...
+    @property
+    def ionic_radii(self) -> dict[int, float]:
+        """Ionic radii by oxidation state."""
+        ...
+    @property
+    def van_der_waals_radius(self) -> float | None:
+        """Van der Waals radius in Angstroms."""
+        ...
+    @property
+    def covalent_radius(self) -> float | None:
+        """Covalent radius in Angstroms."""
+        ...
+    @property
+    def group(self) -> int | None:
+        """Periodic table group (1-18)."""
+        ...
+    @property
+    def period(self) -> int:
+        """Periodic table period (1-7)."""
+        ...
+    @property
+    def block(self) -> str:
+        """Periodic table block (s, p, d, f)."""
+        ...
+    @property
+    def name(self) -> str:
+        """Full element name (e.g., "Iron")."""
+        ...
+    @property
+    def is_metal(self) -> bool:
+        """Whether element is a metal."""
+        ...
+    @property
+    def is_metalloid(self) -> bool:
+        """Whether element is a metalloid."""
+        ...
+    @property
+    def is_noble_gas(self) -> bool:
+        """Whether element is a noble gas."""
+        ...
+    @property
+    def is_rare_earth(self) -> bool:
+        """Whether element is a rare earth (lanthanide or actinide)."""
+        ...
+    @property
+    def is_lanthanoid(self) -> bool:
+        """Whether element is a lanthanoid."""
+        ...
+    @property
+    def is_actinoid(self) -> bool:
+        """Whether element is an actinoid."""
+        ...
+    @property
+    def is_transition_metal(self) -> bool:
+        """Whether element is a transition metal."""
+        ...
+    @property
+    def is_pseudo(self) -> bool:
+        """Whether element is a pseudo-element (dummy)."""
+        ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
+
 class StructureMatcher:
     """High-performance structure matcher for crystallographic comparisons.
 
@@ -195,6 +305,148 @@ class StructureMatcher:
         """
         ...
     def __repr__(self) -> str: ...
+
+# === Molecule I/O Functions ===
+
+def parse_molecule_json(json_str: str) -> StructureDict:
+    """Parse a molecule from pymatgen Molecule JSON format.
+
+    Args:
+        json_str: JSON string in pymatgen Molecule.as_dict() format.
+
+    Returns:
+        Parsed molecule as dict (same format as input).
+    """
+    ...
+
+def molecule_to_json(molecule: StructureJson) -> str:
+    """Convert a molecule to pymatgen JSON format string.
+
+    Args:
+        molecule: Molecule as JSON string or dict.
+
+    Returns:
+        JSON format string compatible with pymatgen's Molecule.from_dict().
+    """
+    ...
+
+def molecule_to_xyz(molecule: StructureJson, comment: str | None = None) -> str:
+    """Convert a molecule to XYZ format string.
+
+    Args:
+        molecule: Molecule as JSON string or dict.
+        comment: Optional comment line (defaults to formula).
+
+    Returns:
+        XYZ format string.
+    """
+    ...
+
+def parse_xyz_str(content: str) -> StructureDict:
+    """Parse a molecule from XYZ file content.
+
+    Args:
+        content: XYZ file content as string.
+
+    Returns:
+        Parsed molecule in pymatgen Molecule.as_dict() format.
+    """
+    ...
+
+def parse_xyz_file(path: str) -> StructureDict:
+    """Parse a molecule from an XYZ file.
+
+    Args:
+        path: Path to the XYZ file.
+
+    Returns:
+        Parsed molecule in pymatgen Molecule.as_dict() format.
+    """
+    ...
+
+def parse_xyz_flexible(path: str) -> tuple[str, StructureDict]:
+    """Parse XYZ content flexibly, returning Structure if lattice present, Molecule otherwise.
+
+    Args:
+        path: Path to XYZ file.
+
+    Returns:
+        Tuple of ("Structure" or "Molecule", dict in pymatgen format).
+    """
+    ...
+
+# === ASE Conversion Functions ===
+
+def parse_ase_dict(ase_dict: dict[str, Any]) -> tuple[str, StructureDict]:
+    """Parse ASE Atoms dict, returning either a Structure or Molecule dict.
+
+    Args:
+        ase_dict: ASE Atoms dict with symbols, positions, cell, pbc, info.
+
+    Returns:
+        Tuple of ("Structure" or "Molecule", dict in pymatgen format).
+    """
+    ...
+
+def from_ase_atoms(atoms: Any) -> StructureDict:
+    """Convert an ASE Atoms object directly to ferrox dict format.
+
+    Args:
+        atoms: ASE Atoms object.
+
+    Returns:
+        Structure or Molecule in ferrox/pymatgen dict format.
+    """
+    ...
+
+def to_ase_atoms(structure: StructureJson) -> Any:
+    """Convert a ferrox dict to an ASE Atoms object.
+
+    Args:
+        structure: Structure or Molecule as JSON string or dict.
+
+    Returns:
+        ASE Atoms object.
+    """
+    ...
+
+# === Pymatgen Direct Conversion ===
+
+def from_pymatgen_structure(structure: Any) -> StructureDict:
+    """Convert a pymatgen Structure directly to ferrox dict format.
+
+    Extracts lattice, species, and coordinates directly from the pymatgen
+    object without JSON serialization overhead.
+
+    Args:
+        structure: pymatgen Structure object.
+
+    Returns:
+        Structure in ferrox/pymatgen dict format.
+    """
+    ...
+
+def to_pymatgen_structure(structure: StructureJson) -> Any:
+    """Convert a ferrox dict to a pymatgen Structure object.
+
+    Args:
+        structure: Structure as JSON string or dict.
+
+    Returns:
+        pymatgen Structure object.
+    """
+    ...
+
+def to_pymatgen_molecule(molecule: StructureJson) -> Any:
+    """Convert a ferrox dict to a pymatgen Molecule object.
+
+    Args:
+        molecule: Molecule as JSON string or dict.
+
+    Returns:
+        pymatgen Molecule object.
+    """
+    ...
 
 # === I/O Functions - Reading ===
 
@@ -663,6 +915,75 @@ def apply_translation(
     """
     ...
 
+# === Lattice Property Functions ===
+
+def get_lattice_metric_tensor(structure: StructureJson) -> list[list[float]]:
+    """Get the metric tensor of the lattice.
+
+    The metric tensor G = M @ M.T where M is the lattice matrix.
+
+    Args:
+        structure: Structure as JSON string or dict.
+
+    Returns:
+        3x3 metric tensor matrix.
+    """
+    ...
+
+def get_lattice_inv_matrix(structure: StructureJson) -> list[list[float]]:
+    """Get the inverse of the lattice matrix.
+
+    Useful for coordinate transformations between Cartesian and fractional.
+
+    Args:
+        structure: Structure as JSON string or dict.
+
+    Returns:
+        3x3 inverse lattice matrix.
+    """
+    ...
+
+def get_reciprocal_lattice(structure: StructureJson) -> list[list[float]]:
+    """Get the reciprocal lattice.
+
+    Returns the reciprocal lattice matrix (2π convention) as lattice vectors.
+
+    Args:
+        structure: Structure as JSON string or dict.
+
+    Returns:
+        3x3 reciprocal lattice matrix.
+    """
+    ...
+
+def get_lll_reduced_lattice(structure: StructureJson) -> list[list[float]]:
+    """Get the LLL-reduced lattice matrix.
+
+    The Lenstra-Lenstra-Lovász (LLL) algorithm produces a basis with
+    nearly orthogonal vectors, useful for PBC calculations.
+
+    Args:
+        structure: Structure as JSON string or dict.
+
+    Returns:
+        3x3 LLL-reduced lattice matrix.
+    """
+    ...
+
+def get_lll_mapping(structure: StructureJson) -> list[list[float]]:
+    """Get the transformation matrix to LLL-reduced basis.
+
+    The mapping M transforms original fractional coords to LLL coords:
+    frac_lll = M^(-1) @ frac_orig
+
+    Args:
+        structure: Structure as JSON string or dict.
+
+    Returns:
+        3x3 LLL transformation matrix.
+    """
+    ...
+
 # === Structure Property Functions ===
 
 def get_structure_metadata(
@@ -946,6 +1267,139 @@ def parse_composition(formula: str) -> dict[str, Any]:
         formula_anonymous, formula_hill, alphabetical_formula, chemical_system,
         num_atoms, num_elements, weight, is_element, average_electroneg,
         total_electrons.
+    """
+    ...
+
+def get_atomic_fraction(formula: str, element: str) -> float:
+    """Get atomic fraction of an element in a composition.
+
+    Args:
+        formula: Chemical formula string.
+        element: Element symbol (e.g., "Fe").
+
+    Returns:
+        Atomic fraction (0.0 to 1.0) or 0.0 if element not present.
+    """
+    ...
+
+def get_wt_fraction(formula: str, element: str) -> float:
+    """Get weight fraction of an element in a composition.
+
+    Args:
+        formula: Chemical formula string.
+        element: Element symbol (e.g., "Fe").
+
+    Returns:
+        Weight fraction (0.0 to 1.0) or 0.0 if element not present.
+    """
+    ...
+
+def reduced_composition(formula: str) -> dict[str, float]:
+    """Get reduced composition as a dict.
+
+    Args:
+        formula: Chemical formula string.
+
+    Returns:
+        Dict mapping element symbols to amounts in reduced form.
+    """
+    ...
+
+def get_reduced_factor(formula: str) -> float:
+    """Get the reduction factor for a composition.
+
+    Args:
+        formula: Chemical formula string.
+
+    Returns:
+        The factor by which amounts were divided to get the reduced formula.
+    """
+    ...
+
+def is_charge_balanced(formula: str) -> bool | None:
+    """Check if a composition is charge balanced.
+
+    Args:
+        formula: Chemical formula string with oxidation states (e.g., "Fe2+O2-").
+
+    Returns:
+        True if charge balanced, False if not, None if species lack oxidation states.
+    """
+    ...
+
+def species_hash(formula: str) -> int:
+    """Get a hash value for the species composition.
+
+    Useful for grouping structures by composition regardless of ordering.
+
+    Args:
+        formula: Chemical formula string.
+
+    Returns:
+        Hash value for the species composition.
+    """
+    ...
+
+def remap_elements(formula: str, mapping: dict[str, str]) -> dict[str, float]:
+    """Remap elements in a composition according to a mapping.
+
+    Args:
+        formula: Chemical formula string.
+        mapping: Element symbol -> new element symbol mapping.
+
+    Returns:
+        New composition dict with remapped elements.
+    """
+    ...
+
+def fractional_composition(formula: str) -> dict[str, float]:
+    """Get fractional composition (atomic fractions) as a dict.
+
+    Args:
+        formula: Chemical formula string.
+
+    Returns:
+        Dict mapping element symbols to atomic fractions (sum to 1.0).
+    """
+    ...
+
+def composition_charge(formula: str) -> int | None:
+    """Get the total charge of a composition.
+
+    Args:
+        formula: Chemical formula string with oxidation states.
+
+    Returns:
+        Total charge as integer, or None if species lack oxidation states.
+    """
+    ...
+
+def compositions_almost_equal(
+    formula1: str, formula2: str, rtol: float = 0.01, atol: float = 1e-8
+) -> bool:
+    """Check if two compositions are approximately equal.
+
+    Args:
+        formula1: First chemical formula.
+        formula2: Second chemical formula.
+        rtol: Relative tolerance (default 0.01, i.e. 1%).
+        atol: Absolute tolerance (default 1e-8).
+
+    Returns:
+        True if compositions are approximately equal.
+    """
+    ...
+
+def formula_hash(formula: str) -> int:
+    """Get a hash of the reduced formula (ignores oxidation states).
+
+    Useful for grouping compositions by formula regardless of oxidation states.
+
+    Args:
+        formula: Chemical formula string.
+
+    Returns:
+        Hash value for the reduced formula.
     """
     ...
 
@@ -1396,5 +1850,162 @@ def compute_all_element_rdfs(
 
     Returns:
         List of dicts, each with keys: element_a, element_b, r, g_r.
+    """
+    ...
+
+# =============================================================================
+# Oxidation State Functions
+# =============================================================================
+
+def oxi_state_guesses(
+    formula: str,
+    target_charge: int = 0,
+    use_all_oxi_states: bool = False,
+    max_sites: int | None = None,
+) -> list[dict[str, Any]]:
+    """Guess oxidation states for a composition, ranked by ICSD probability.
+
+    Args:
+        formula: Chemical formula string.
+        target_charge: Target total charge (default 0 for neutral).
+        use_all_oxi_states: Whether to use all possible oxidation states.
+        max_sites: Maximum number of sites to consider (for performance).
+
+    Returns:
+        List of dicts with keys: oxidation_states (dict), probability (float).
+    """
+    ...
+
+def guess_oxidation_states_bvs(
+    structure: StructureJson,
+    symprec: float = 0.1,
+    max_radius: float = 4.0,
+    scale_factor: float = 1.015,
+) -> list[int]:
+    """Guess oxidation states using BVS-based MAP estimation with symmetry.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        symprec: Symmetry precision for equivalent site detection.
+        max_radius: Maximum radius for BVS calculation.
+        scale_factor: Scale factor for BVS parameters.
+
+    Returns:
+        List of oxidation states for each site.
+    """
+    ...
+
+def add_charges_from_oxi_state_guesses(
+    structure: StructureJson, target_charge: int = 0
+) -> StructureDict:
+    """Add oxidation states to a structure based on composition guessing.
+
+    Raises ValueError for mixed-valence (non-integer average oxi states).
+
+    Args:
+        structure: Structure as JSON string or dict.
+        target_charge: Target total charge (default 0 for neutral).
+
+    Returns:
+        Structure with oxidation states added.
+    """
+    ...
+
+def add_oxidation_state_by_element(
+    structure: StructureJson, oxi_states: dict[str, int]
+) -> StructureDict:
+    """Add oxidation states to a structure by element symbol mapping.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        oxi_states: Dict mapping element symbols to oxidation states.
+
+    Returns:
+        Structure with oxidation states added.
+    """
+    ...
+
+def add_oxidation_state_by_site(
+    structure: StructureJson, oxi_states: Sequence[int]
+) -> StructureDict:
+    """Add oxidation states to a structure by site index.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        oxi_states: List of oxidation states for each site.
+
+    Returns:
+        Structure with oxidation states added.
+    """
+    ...
+
+def remove_oxidation_states(structure: StructureJson) -> StructureDict:
+    """Remove oxidation states from all sites in a structure.
+
+    Args:
+        structure: Structure as JSON string or dict.
+
+    Returns:
+        Structure with oxidation states removed.
+    """
+    ...
+
+def compute_bv_sums(
+    structure: StructureJson, max_radius: float = 4.0, scale_factor: float = 1.015
+) -> list[float]:
+    """Compute bond valence sums for all sites using O'Keeffe & Brese parameters.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        max_radius: Maximum radius for BVS calculation.
+        scale_factor: Scale factor for BVS parameters.
+
+    Returns:
+        List of bond valence sums for each site.
+    """
+    ...
+
+# =============================================================================
+# Order Parameter Functions
+# =============================================================================
+
+def compute_steinhardt_q(structure: StructureJson, l: int, cutoff: float) -> list[float]:
+    """Compute Steinhardt order parameter q_l for all atoms.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        l: Angular momentum quantum number (typically 4 or 6).
+        cutoff: Neighbor cutoff distance in Angstroms.
+
+    Returns:
+        List of q_l values for each atom.
+    """
+    ...
+
+def classify_local_structure(q4: float, q6: float, tolerance: float = 0.1) -> str:
+    """Classify local structure based on q4 and q6 values.
+
+    Args:
+        q4: Local q4 value.
+        q6: Local q6 value.
+        tolerance: Classification tolerance (default: 0.1).
+
+    Returns:
+        Structure type: "fcc", "bcc", "hcp", "icosahedral", "liquid", or "unknown".
+    """
+    ...
+
+def classify_all_atoms(
+    structure: StructureJson, cutoff: float, tolerance: float = 0.1
+) -> list[str]:
+    """Classify all atoms in a structure based on their local order parameters.
+
+    Args:
+        structure: Structure as JSON string or dict.
+        cutoff: Neighbor cutoff distance in Angstroms.
+        tolerance: Classification tolerance (default: 0.1).
+
+    Returns:
+        List of structure type strings for each atom.
     """
     ...

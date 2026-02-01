@@ -193,14 +193,16 @@ class TestRoundtrips:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    @pytest.mark.parametrize(("element", "n_sites"), [("He", 1), (None, 0)])
-    def test_small_molecules(self, element: str | None, n_sites: int) -> None:
-        """Single-atom and empty molecules are handled."""
-        mol = _mol_json(element) if element else json.dumps({"@class": "Molecule", "sites": [], "charge": 0})
-        try:
-            result = ferrox.parse_molecule_json(mol)
-            assert len(result["sites"]) == n_sites
-            if element:
-                assert result["sites"][0]["species"][0]["element"] == element
-        except ValueError:
-            assert n_sites == 0  # Empty molecule may raise
+    def test_single_atom_molecule(self) -> None:
+        """Single-atom molecule is parsed correctly."""
+        mol = _mol_json("He")
+        result = ferrox.parse_molecule_json(mol)
+        assert len(result["sites"]) == 1
+        assert result["sites"][0]["species"][0]["element"] == "He"
+
+    def test_empty_molecule_returns_empty(self) -> None:
+        """Empty molecule (no atoms) returns a molecule with zero sites."""
+        mol = json.dumps({"@class": "Molecule", "sites": [], "charge": 0})
+        result = ferrox.parse_molecule_json(mol)
+        assert len(result["sites"]) == 0
+        assert result["charge"] == 0

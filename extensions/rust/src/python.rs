@@ -1149,8 +1149,11 @@ fn parse_molecule_json_py(py: Python<'_>, json_str: &str) -> PyResult<Py<PyDict>
 
 /// Convert a molecule to pymatgen JSON format string.
 ///
+/// Note: Input must be in pymatgen Molecule format (non-periodic, with "xyz" coords).
+/// Passing a periodic Structure will raise an error.
+///
 /// Args:
-///     molecule (str | dict): Molecule as JSON string or dict
+///     molecule (str | dict): Molecule as JSON string or dict (pymatgen Molecule format)
 ///
 /// Returns:
 ///     str: JSON format string compatible with pymatgen's Molecule.from_dict()
@@ -1163,8 +1166,11 @@ fn molecule_to_json(molecule: StructureJson) -> PyResult<String> {
 
 /// Convert a molecule to XYZ format string.
 ///
+/// Note: Input must be in pymatgen Molecule format (non-periodic, with "xyz" coords).
+/// Passing a periodic Structure will raise an error.
+///
 /// Args:
-///     molecule (str | dict): Molecule as JSON string or dict
+///     molecule (str | dict): Molecule as JSON string or dict (pymatgen Molecule format)
 ///     comment (str, optional): Comment line (defaults to formula)
 ///
 /// Returns:
@@ -1433,7 +1439,8 @@ fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDic
     // Extract positions (Cartesian)
     let positions: Vec<[f64; 3]> = atoms.call_method0("get_positions")?.extract()?;
 
-    // Extract cell
+    // Extract cell - falls back to zero matrix if extraction fails (e.g., non-standard cell type)
+    // This is intentional: has_cell check below correctly handles zero matrices as "no cell"
     let cell_obj = atoms.call_method0("get_cell")?;
     let cell: Vec<Vec<f64>> = cell_obj.extract().unwrap_or_else(|_| vec![vec![0.0; 3]; 3]);
     let has_cell = cell.iter().any(|row| row.iter().any(|&v| v.abs() > 1e-10));
