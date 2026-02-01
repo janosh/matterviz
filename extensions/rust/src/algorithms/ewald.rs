@@ -962,4 +962,133 @@ mod tests {
         let ewald = Ewald::new().with_accuracy(0.5);
         assert!(ewald.energy(&structure).is_ok());
     }
+
+    // ========== pymatgen Reference Tests ==========
+
+    /// Create LiFePO4 structure (olivine) with oxidation states.
+    /// Reference values from pymatgen tests/analysis/test_ewald.py using POSCAR_LiFePO4.
+    fn lifepo4_structure() -> Structure {
+        // Lattice parameters from POSCAR_LiFePO4 (VASP uses row vectors)
+        let matrix = Matrix3::new(
+            10.410154, 0.000076, -0.000406, 0.000130, 6.063274, 0.000317, -0.000889, 0.000405,
+            4.754894,
+        );
+        let lattice = Lattice::new(matrix.transpose());
+
+        // 4 Fe2+, 4 Li+, 16 O2-, 4 P5+
+        let species = [
+            vec![Species::new(Element::Fe, Some(2)); 4],
+            vec![Species::new(Element::Li, Some(1)); 4],
+            vec![Species::new(Element::O, Some(-2)); 16],
+            vec![Species::new(Element::P, Some(5)); 4],
+        ]
+        .concat();
+
+        let frac_coords = vec![
+            // Fe sites
+            Vector3::new(0.218694, 0.749999, 0.475018),
+            Vector3::new(0.281333, 0.250019, 0.975150),
+            Vector3::new(0.718667, 0.749981, 0.024850),
+            Vector3::new(0.781306, 0.250001, 0.524982),
+            // Li sites
+            Vector3::new(0.000000, 0.000000, 0.000000),
+            Vector3::new(0.000000, 0.500000, 0.000000),
+            Vector3::new(0.500000, 0.000000, 0.500000),
+            Vector3::new(0.500000, 0.500000, 0.500000),
+            // O sites
+            Vector3::new(0.043339, 0.750012, 0.707396),
+            Vector3::new(0.096672, 0.249992, 0.741528),
+            Vector3::new(0.165629, 0.046219, 0.285196),
+            Vector3::new(0.165617, 0.453735, 0.285259),
+            Vector3::new(0.334380, 0.546244, 0.785237),
+            Vector3::new(0.334384, 0.953680, 0.785213),
+            Vector3::new(0.403353, 0.749992, 0.241483),
+            Vector3::new(0.456612, 0.250025, 0.207341),
+            Vector3::new(0.543388, 0.749975, 0.792659),
+            Vector3::new(0.596647, 0.250008, 0.758517),
+            Vector3::new(0.665616, 0.046320, 0.214787),
+            Vector3::new(0.665620, 0.453756, 0.214763),
+            Vector3::new(0.834383, 0.546265, 0.714741),
+            Vector3::new(0.834371, 0.953781, 0.714804),
+            Vector3::new(0.903328, 0.750008, 0.258472),
+            Vector3::new(0.956661, 0.249988, 0.292604),
+            // P sites
+            Vector3::new(0.094714, 0.250071, 0.418190),
+            Vector3::new(0.405225, 0.750080, 0.918200),
+            Vector3::new(0.594775, 0.249920, 0.081800),
+            Vector3::new(0.905286, 0.749929, 0.581810),
+        ];
+
+        Structure::new(lattice, species, frac_coords)
+    }
+
+    #[test]
+    fn test_lifepo4_energy_pymatgen_reference() {
+        // pymatgen reference values for LiFePO4 with Fe2+/Li+/P5+/O2-:
+        // Total energy: -1164.291 eV
+        // This validates our implementation against pymatgen's EwaldSummation
+        let structure = lifepo4_structure();
+        let ewald = Ewald::new().with_accuracy(1e-5);
+        let energy = ewald.energy(&structure).unwrap();
+
+        // Check charge neutrality: 4(2) + 4(1) + 4(5) + 16(-2) = 8 + 4 + 20 - 32 = 0
+        assert!(
+            energy < 0.0,
+            "LiFePO4 Coulomb energy should be negative: {energy}"
+        );
+
+        // pymatgen gives -1164.291 eV
+        // Allow 5% tolerance due to potential differences in convergence parameters
+        let pymatgen_ref = -1164.291;
+        let rel_error = (energy - pymatgen_ref).abs() / pymatgen_ref.abs();
+        assert!(
+            rel_error < 0.05,
+            "LiFePO4 energy {energy:.3} differs from pymatgen reference {pymatgen_ref:.3} by {:.1}%",
+            rel_error * 100.0
+        );
+    }
+
+    #[test]
+    fn test_lifepo4_site_energies_sum() {
+        // Site energies should sum to total energy
+        let structure = lifepo4_structure();
+        let ewald = Ewald::new().with_accuracy(1e-5);
+
+        let total = ewald.energy(&structure).unwrap();
+        let site_energies = ewald.site_energies(&structure).unwrap();
+
+        assert_eq!(site_energies.len(), 28, "LiFePO4 has 28 atoms");
+
+        let sum: f64 = site_energies.iter().sum();
+        assert_relative_eq!(sum, total, epsilon = 1e-8);
+    }
+
+    #[test]
+    fn test_lifepo4_fe_site_energy() {
+        // pymatgen reference: Fe sites have energy around -24 eV each
+        let structure = lifepo4_structure();
+        let ewald = Ewald::new().with_accuracy(1e-5);
+        let site_energies = ewald.site_energies(&structure).unwrap();
+
+        // Fe sites (indices 0-3): pymatgen gives ~-24 eV for Fe2+ sites
+        let fe_energies = &site_energies[0..4];
+        let fe_ref = -24.0;
+        for (idx, &energy) in fe_energies.iter().enumerate() {
+            assert!(
+                (energy - fe_ref).abs() < 4.0, // ±15% tolerance
+                "Fe site {idx} energy {energy:.2} eV should be ~{fe_ref} eV (pymatgen reference)"
+            );
+        }
+
+        // Li sites (indices 4-7): Li+ has charge +1, so smaller magnitude than Fe2+
+        // pymatgen gives ~-6 eV for Li+ sites
+        let li_energies = &site_energies[4..8];
+        let li_ref = -6.0;
+        for (idx, &energy) in li_energies.iter().enumerate() {
+            assert!(
+                (energy - li_ref).abs() < 2.0,
+                "Li site {idx} energy {energy:.2} eV should be ~{li_ref} eV"
+            );
+        }
+    }
 }

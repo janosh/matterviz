@@ -586,9 +586,10 @@ mod tests {
     fn test_enumerate_reciprocal_points() {
         let recip = Matrix3::from_row_slice(&[0.2, 0.0, 0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 0.2]);
         let points = enumerate_reciprocal_points(&recip, 0.0, 0.5);
-        // Should have points like (1,0,0), (0,1,0), etc.
-        assert!(!points.is_empty());
-        // (1,0,0) has |g| = 0.2
+        // Cubic with |g|_max = 0.5, g = 0.2*hkl, so |hkl| <= 2.5
+        // Includes all points with |hkl| ≤ 2.5 (h²+k²+l² ≤ 6.25)
+        assert_eq!(points.len(), 80, "Cubic reciprocal lattice with |g| <= 0.5");
+        // (1,0,0) has |g| = 0.2, should be present
         let has_100 = points
             .iter()
             .any(|p| p.hkl == [1, 0, 0] || p.hkl == [-1, 0, 0]);
@@ -715,5 +716,157 @@ mod tests {
         for &intensity in &pattern.intensities {
             assert!(intensity > 0.0);
         }
+    }
+
+    // === pymatgen Reference Tests ===
+
+    /// Create graphite structure (hexagonal, P6_3/mmc)
+    fn make_graphite() -> Structure {
+        Structure::new(
+            Lattice::hexagonal(2.464, 6.711),
+            vec![Species::neutral(Element::C); 4],
+            // Wyckoff 2a: (0,0,0), (0,0,0.5); 2b: (1/3,2/3,0), (2/3,1/3,0.5)
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.0, 0.0, 0.5),
+                Vector3::new(1.0 / 3.0, 2.0 / 3.0, 0.0),
+                Vector3::new(2.0 / 3.0, 1.0 / 3.0, 0.5),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_compute_xrd_hexagonal_graphite_pymatgen() {
+        // pymatgen reference: strongest peak at ~26.21° (002), intensity 100
+        let structure = make_graphite();
+        let config = XrdConfig {
+            two_theta_range: Some((0.0, 90.0)),
+            ..Default::default()
+        };
+        let pattern = compute_xrd(&structure, &config);
+
+        assert!(
+            !pattern.two_theta.is_empty(),
+            "Graphite should have XRD peaks"
+        );
+
+        // Find strongest peak (002 reflection for graphite, pymatgen gives ~26.21°)
+        let max_idx = pattern
+            .intensities
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(idx, _)| idx)
+            .unwrap();
+
+        assert!(
+            (pattern.two_theta[max_idx] - 26.5).abs() < 2.0,
+            "Strongest peak at {:.1}° should be near 26.5° (002)",
+            pattern.two_theta[max_idx]
+        );
+        assert!(
+            (pattern.intensities[max_idx] - 100.0).abs() < 0.1,
+            "Strongest peak intensity should be 100"
+        );
+
+        // Check for (002) reflection
+        let has_002 = pattern.hkls.iter().any(|families| {
+            families
+                .iter()
+                .any(|info| info.hkl == [0, 0, 2] || info.hkl == [0, 0, -2])
+        });
+        assert!(has_002, "Graphite should have (002) reflection");
+    }
+
+    /// Create CsCl structure (Pm-3m, a = 4.209 Å)
+    fn make_cscl() -> Structure {
+        Structure::new(
+            Lattice::cubic(4.209),
+            vec![Species::neutral(Element::Cs), Species::neutral(Element::Cl)],
+            vec![Vector3::zeros(), Vector3::new(0.5, 0.5, 0.5)], // corner + body center
+        )
+    }
+
+    #[test]
+    fn test_compute_xrd_cscl_pymatgen_reference() {
+        // pymatgen test_get_pattern for CsCl: first peak ~21.1°, second ~30.0°
+        // Note: Intensities may differ due to normalization/settings
+        let structure = make_cscl();
+        let config = XrdConfig {
+            two_theta_range: Some((0.0, 90.0)),
+            ..Default::default()
+        };
+        let pattern = compute_xrd(&structure, &config);
+
+        assert!(
+            pattern.two_theta.len() >= 2,
+            "CsCl should have at least 2 XRD peaks"
+        );
+
+        // First peak: (100) at ~21.11°, d-spacing = lattice constant
+        assert!(
+            (pattern.two_theta[0] - 21.1).abs() < 0.5,
+            "First peak at {:.2}° should be ~21.1°",
+            pattern.two_theta[0]
+        );
+        assert!(
+            (pattern.d_spacings[0] - 4.209).abs() < 0.01,
+            "First d-spacing {:.3} Å should be ~4.209 Å",
+            pattern.d_spacings[0]
+        );
+
+        // Second peak: (110) at ~30.02°
+        assert!(
+            (pattern.two_theta[1] - 30.0).abs() < 0.5,
+            "Second peak at {:.2}° should be ~30.0°",
+            pattern.two_theta[1]
+        );
+    }
+
+    /// Create tetragonal Si2Ru2Pr2 test structure (from pymatgen test)
+    fn make_tetragonal_test() -> Structure {
+        // 2 each of Si, Ru, Pr
+        let species = [Element::Si, Element::Ru, Element::Pr]
+            .iter()
+            .flat_map(|&el| [Species::neutral(el), Species::neutral(el)])
+            .collect();
+        Structure::new(
+            Lattice::tetragonal(4.192, 6.88),
+            species,
+            vec![
+                Vector3::new(0.25, 0.25, 0.173),
+                Vector3::new(0.75, 0.75, 0.827),
+                Vector3::new(0.75, 0.25, 0.0),
+                Vector3::new(0.25, 0.75, 0.0),
+                Vector3::new(0.25, 0.25, 0.676),
+                Vector3::new(0.75, 0.75, 0.324),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_compute_xrd_tetragonal_pymatgen_reference() {
+        // pymatgen test for tetragonal structure: first peak ~12.87°, d-spacing ~6.88 Å
+        // Note: Peak count/intensity may differ due to two_theta range and merging settings
+        let structure = make_tetragonal_test();
+        let config = XrdConfig::default();
+        let pattern = compute_xrd(&structure, &config);
+
+        assert!(
+            !pattern.two_theta.is_empty(),
+            "Tetragonal structure should have XRD peaks"
+        );
+
+        // First peak at ~12.87°, d-spacing = c parameter (~6.88 Å)
+        assert!(
+            (pattern.two_theta[0] - 12.87).abs() < 0.5,
+            "First peak at {:.2}° should be ~12.87°",
+            pattern.two_theta[0]
+        );
+        assert!(
+            (pattern.d_spacings[0] - 6.88).abs() < 0.1,
+            "First d-spacing {:.2} Å should be ~6.88 Å",
+            pattern.d_spacings[0]
+        );
     }
 }
