@@ -390,6 +390,212 @@ impl Structure {
         Ok(spacegroup_to_crystal_system(self.get_symmetry_dataset(symprec)?.number).to_string())
     }
 
+    // === Bond Valence Sum Methods ===
+
+    /// Compute bond valence sums for all sites using O'Keeffe & Brese formula.
+    ///
+    /// For disordered sites, calculates occupancy-weighted average BVS.
+    ///
+    /// # Arguments
+    /// * `max_radius` - Cutoff radius for neighbor search (Å)
+    /// * `scale_factor` - Distance scaling (1.015 for GGA, 1.0 for experimental)
+    pub fn compute_all_bv_sums(&self, max_radius: f64, scale_factor: f64) -> Result<Vec<f64>> {
+        let (center_indices, neighbor_indices, _, distances) =
+            self.get_neighbor_list(max_radius, 1e-8, true);
+
+        // Group neighbors by center site
+        let mut site_neighbors: Vec<Vec<crate::oxidation::BvNeighbor>> =
+            vec![Vec::new(); self.num_sites()];
+        for (idx, &center_idx) in center_indices.iter().enumerate() {
+            for (sp, occ) in &self.site_occupancies[neighbor_indices[idx]].species {
+                site_neighbors[center_idx].push(crate::oxidation::BvNeighbor {
+                    element: sp.element,
+                    distance: distances[idx],
+                    occupancy: *occ,
+                });
+            }
+        }
+
+        // Calculate occupancy-weighted BVS for each site
+        Ok(site_neighbors
+            .into_iter()
+            .zip(&self.site_occupancies)
+            .map(|(neighbors, site_occu)| {
+                site_occu
+                    .species
+                    .iter()
+                    .map(|(sp, occ)| {
+                        crate::oxidation::calculate_bv_sum(sp.element, &neighbors, scale_factor)
+                            * occ
+                    })
+                    .sum()
+            })
+            .collect())
+    }
+
+    /// Guess oxidation states using BVS-based MAP estimation with symmetry.
+    ///
+    /// # Errors
+    /// Returns an error if any site is disordered (multiple species), since
+    /// BVS analysis requires a single element per site.
+    pub fn guess_oxidation_states_bvs(
+        &self,
+        symprec: f64,
+        max_radius: f64,
+        scale_factor: f64,
+    ) -> Result<Vec<i8>> {
+        if self.num_sites() == 0 {
+            return Ok(vec![]);
+        }
+
+        // Guard against disordered sites - BVS requires single element per site
+        if let Some(idx) = self.site_occupancies.iter().position(|so| !so.is_ordered()) {
+            return Err(FerroxError::InvalidStructure {
+                index: idx,
+                reason: "BVS-based oxidation state guessing requires ordered sites; \
+                         use composition-based guessing for disordered structures"
+                    .into(),
+            });
+        }
+
+        let orbits = self.get_equivalent_sites(symprec)?;
+        let bv_sums = self.compute_all_bv_sums(max_radius, scale_factor)?;
+
+        // Find unique orbit representatives and their multiplicities
+        let mut seen = std::collections::HashSet::new();
+        let unique_sites: Vec<_> = orbits
+            .iter()
+            .enumerate()
+            .filter(|&(_, &orbit)| seen.insert(orbit))
+            .map(|(idx, _)| idx)
+            .collect();
+
+        let (site_probs, multiplicities): (Vec<_>, Vec<_>) = unique_sites
+            .iter()
+            .map(|&idx| {
+                let elem = self.site_occupancies[idx].dominant_species().element;
+                let probs = crate::oxidation::get_oxi_state_probabilities(elem, bv_sums[idx]);
+                let mult = orbits.iter().filter(|&&o| o == orbits[idx]).count();
+                // Filter to top candidates (>1% of max prob), fallback to neutral
+                let filtered = if probs.is_empty() {
+                    vec![(0, 1.0)]
+                } else {
+                    let max_p = probs[0].1;
+                    probs
+                        .into_iter()
+                        .filter(|(_, p)| *p > 0.01 * max_p)
+                        .collect()
+                };
+                (filtered, mult)
+            })
+            .unzip();
+
+        let assignment =
+            crate::oxidation::find_charge_balanced_assignment(&site_probs, &multiplicities)
+                .ok_or_else(|| FerroxError::CompositionError {
+                    reason: "No charge-balanced oxidation state assignment found".into(),
+                })?;
+
+        // Expand to all sites via orbit mapping
+        let mut result = vec![0i8; self.num_sites()];
+        for (unique_idx, &site_idx) in unique_sites.iter().enumerate() {
+            let orbit = orbits[site_idx];
+            for (idx, &o) in orbits.iter().enumerate() {
+                if o == orbit {
+                    result[idx] = assignment[unique_idx];
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Add oxidation states by element symbol mapping.
+    pub fn add_oxidation_state_by_element(
+        &self,
+        oxi_states: &std::collections::HashMap<String, i8>,
+    ) -> Self {
+        self.map_species(|sp| {
+            let oxi = oxi_states
+                .get(sp.element.symbol())
+                .copied()
+                .or(sp.oxidation_state);
+            Species::new(sp.element, oxi)
+        })
+    }
+
+    /// Add oxidation states by site index. Errors if any site is disordered.
+    pub fn add_oxidation_state_by_site(&self, oxi_states: &[i8]) -> Result<Self> {
+        if let Some(idx) = self.site_occupancies.iter().position(|so| !so.is_ordered()) {
+            return Err(FerroxError::InvalidStructure {
+                index: idx,
+                reason: "add_oxidation_state_by_site requires ordered sites".into(),
+            });
+        }
+        if oxi_states.len() != self.num_sites() {
+            return Err(FerroxError::InvalidStructure {
+                index: 0,
+                reason: format!(
+                    "oxi_states length ({}) != num_sites ({})",
+                    oxi_states.len(),
+                    self.num_sites()
+                ),
+            });
+        }
+        Ok(self.map_species_by_site(|site_idx, sp| {
+            Species::new(sp.element, Some(oxi_states[site_idx]))
+        }))
+    }
+
+    /// Remove oxidation states from all sites.
+    pub fn remove_oxidation_states(&self) -> Self {
+        self.map_species(|sp| Species::neutral(sp.element))
+    }
+
+    // Helper: transform all species with a mapping function, preserving site properties
+    fn map_species<F>(&self, f: F) -> Self
+    where
+        F: Fn(&Species) -> Species,
+    {
+        Self {
+            lattice: self.lattice.clone(),
+            site_occupancies: self
+                .site_occupancies
+                .iter()
+                .map(|so| {
+                    let new_species = so.species.iter().map(|(sp, occ)| (f(sp), *occ)).collect();
+                    SiteOccupancy::with_properties(new_species, so.properties.clone())
+                })
+                .collect(),
+            frac_coords: self.frac_coords.clone(),
+            properties: self.properties.clone(),
+        }
+    }
+
+    // Helper: transform species with site index context, preserving site properties
+    fn map_species_by_site<F>(&self, f: F) -> Self
+    where
+        F: Fn(usize, &Species) -> Species,
+    {
+        Self {
+            lattice: self.lattice.clone(),
+            site_occupancies: self
+                .site_occupancies
+                .iter()
+                .enumerate()
+                .map(|(idx, so)| {
+                    let new_species = so
+                        .species
+                        .iter()
+                        .map(|(sp, occ)| (f(idx, sp), *occ))
+                        .collect();
+                    SiteOccupancy::with_properties(new_species, so.properties.clone())
+                })
+                .collect(),
+            frac_coords: self.frac_coords.clone(),
+            properties: self.properties.clone(),
+        }
+    }
+
     /// Get unique elements in this structure.
     pub fn unique_elements(&self) -> Vec<Element> {
         self.site_occupancies
@@ -430,9 +636,7 @@ impl Structure {
         }
     }
 
-    // =========================================================================
-    // Neighbor Finding Methods
-    // =========================================================================
+    // === Neighbor Finding Methods ===
 
     /// Get neighbor list as arrays: (center_indices, neighbor_indices, offset_vectors, distances).
     ///
@@ -659,9 +863,7 @@ impl Structure {
         true
     }
 
-    // =========================================================================
-    // Coordination Analysis
-    // =========================================================================
+    // === Coordination Analysis ===
 
     /// Get coordination numbers for all sites using a distance cutoff.
     ///
@@ -793,9 +995,7 @@ impl Structure {
         crate::coordination::get_voronoi_neighbors(self, site_idx, config)
     }
 
-    // =========================================================================
-    // Structure Interpolation (NEB)
-    // =========================================================================
+    // === Structure Interpolation (NEB) ===
 
     /// Interpolate between this structure and end_structure for NEB calculations.
     ///
@@ -896,9 +1096,7 @@ impl Structure {
         Ok(images)
     }
 
-    // =========================================================================
-    // Structure Matching Convenience Methods
-    // =========================================================================
+    // === Structure Matching Convenience Methods ===
 
     /// Check if this structure matches another using default matcher settings.
     ///
@@ -952,9 +1150,7 @@ impl Structure {
         }
     }
 
-    // =========================================================================
-    // Structure Sorting
-    // =========================================================================
+    // === Structure Sorting ===
 
     /// Sort sites in place by atomic number (ascending by default).
     ///
@@ -1056,9 +1252,7 @@ impl Structure {
         copy
     }
 
-    // =========================================================================
-    // Copy and Sanitization
-    // =========================================================================
+    // === Copy and Sanitization ===
 
     /// Create a copy, optionally sanitized.
     ///
@@ -1113,9 +1307,7 @@ impl Structure {
         self
     }
 
-    // =========================================================================
-    // Supercell Methods
-    // =========================================================================
+    // === Supercell Methods ===
 
     /// Create a supercell from a 3x3 integer scaling matrix.
     ///
@@ -1221,9 +1413,7 @@ impl Structure {
             .expect("Diagonal supercell matrix cannot have zero determinant")
     }
 
-    // =========================================================================
-    // Lattice Reduction Methods
-    // =========================================================================
+    // === Lattice Reduction Methods ===
 
     /// Get structure with reduced lattice.
     ///
@@ -1275,9 +1465,7 @@ impl Structure {
     }
 }
 
-// =============================================================================
-// Supercell Helper Functions
-// =============================================================================
+// === Supercell Helper Functions ===
 
 /// Generate all fractional lattice points inside a supercell.
 ///
@@ -1390,9 +1578,7 @@ fn lattice_points_in_supercell(scaling_matrix: &[[i32; 3]; 3]) -> Vec<Vector3<f6
     points
 }
 
-// =============================================================================
-// Mul Trait Implementations for Supercell
-// =============================================================================
+// === Mul Trait Implementations for Supercell ===
 
 impl std::ops::Mul<i32> for &Structure {
     type Output = Structure;
@@ -1425,9 +1611,7 @@ impl std::ops::Mul<[i32; 3]> for &Structure {
     }
 }
 
-// =============================================================================
-// Symmetry Operations
-// =============================================================================
+// === Symmetry Operations ===
 
 /// A crystallographic symmetry operation: rotation + translation.
 ///
@@ -1532,9 +1716,7 @@ impl Structure {
         copy
     }
 
-    // =========================================================================
-    // Physical Properties
-    // =========================================================================
+    // === Physical Properties ===
 
     /// Volume of the unit cell in Angstrom^3.
     #[inline]
@@ -1564,9 +1746,7 @@ impl Structure {
         Some(self.total_mass() * AMU_TO_G_PER_CM3 / volume)
     }
 
-    // =========================================================================
-    // Site Properties
-    // =========================================================================
+    // === Site Properties ===
 
     /// Get site properties for a specific site index.
     ///
@@ -1695,9 +1875,7 @@ impl Structure {
         self
     }
 
-    // =========================================================================
-    // Site Manipulation
-    // =========================================================================
+    // === Site Manipulation ===
 
     /// Translate specific sites by a vector.
     ///
@@ -1776,9 +1954,7 @@ impl Structure {
     }
 }
 
-// =============================================================================
-// Ordering and Enumeration Methods
-// =============================================================================
+// === Ordering and Enumeration Methods ===
 
 impl Structure {
     /// Scale structure so fractional occupancies become integral site counts.
@@ -1905,9 +2081,7 @@ impl Structure {
     }
 }
 
-// =============================================================================
-// Random Vector Generation for Perturbation
-// =============================================================================
+// === Random Vector Generation for Perturbation ===
 
 /// Generate a random vector with magnitude uniformly distributed in [min_dist, max_dist].
 ///
@@ -1964,9 +2138,7 @@ fn interpolate_lattices_linear(start: &Lattice, end: &Lattice, x: f64) -> Lattic
     )
 }
 
-// =============================================================================
-// Transformation Methods
-// =============================================================================
+// === Transformation Methods ===
 
 impl Structure {
     /// Rotate the structure around an arbitrary axis by a given angle.
@@ -2437,9 +2609,7 @@ impl Structure {
     }
 }
 
-// =============================================================================
-// Symmetry Helper Functions
-// =============================================================================
+// === Symmetry Helper Functions ===
 
 /// Validate symprec parameter for symmetry operations.
 fn validate_symprec(symprec: f64) -> Result<()> {
@@ -2477,9 +2647,7 @@ pub(crate) fn spacegroup_to_crystal_system(sg: i32) -> &'static str {
     }
 }
 
-// =============================================================================
-// Slab Generation
-// =============================================================================
+// === Slab Generation ===
 
 /// Configuration for slab generation.
 #[derive(Debug, Clone)]
@@ -3018,9 +3186,7 @@ mod tests {
     use super::*;
     use crate::element::Element;
 
-    // =========================================================================
-    // Test Structure Factories
-    // =========================================================================
+    // === Test Structure Factories ===
 
     // NaCl primitive cell (rocksalt, a=5.64Å)
     fn make_nacl() -> Structure {
@@ -3512,9 +3678,7 @@ mod tests {
         assert!(elements.contains(&Element::Co));
     }
 
-    // =========================================================================
-    // remap_species() tests
-    // =========================================================================
+    // === remap_species() tests ===
 
     #[test]
     fn test_remap_species_basic() {
@@ -3617,9 +3781,7 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Neighbor Finding Tests
-    // =========================================================================
+    // === Neighbor Finding Tests ===
 
     #[test]
     fn test_neighbor_list_edge_cases() {
@@ -3821,9 +3983,7 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Comprehensive tests for pymatgen-parity features
-    // =========================================================================
+    // === Comprehensive tests for pymatgen-parity features ===
 
     #[test]
     fn test_distance_and_image_cubic() {
@@ -4296,9 +4456,7 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // SymmOp and apply_operation tests
-    // =========================================================================
+    // === SymmOp and apply_operation tests ===
 
     #[test]
     fn test_symmop_constructors() {
@@ -4373,9 +4531,7 @@ mod tests {
         assert_eq!(transformed.species()[0].element, nacl.species()[0].element);
     }
 
-    // =========================================================================
-    // Physical Properties Tests (volume, total_mass, density)
-    // =========================================================================
+    // === Physical Properties Tests (volume, total_mass, density) ===
 
     #[test]
     fn test_volume() {
@@ -4422,9 +4578,7 @@ mod tests {
         assert!((tiny.density().unwrap() - 105.5).abs() < 1.0);
     }
 
-    // =========================================================================
-    // Site Manipulation Tests (translate_sites, perturb)
-    // =========================================================================
+    // === Site Manipulation Tests (translate_sites, perturb) ===
 
     #[test]
     fn test_translate_sites() {
@@ -4530,9 +4684,7 @@ mod tests {
         make_nacl().perturb(0.1, Some(0.5), None); // min > max
     }
 
-    // =========================================================================
-    // Sorting tests
-    // =========================================================================
+    // === Sorting tests ===
 
     #[test]
     fn test_sort_by_atomic_number() {
@@ -4645,9 +4797,7 @@ mod tests {
         assert_eq!(sorted.species()[1].element, Element::Cu);
     }
 
-    // =========================================================================
-    // Copy and sanitization tests
-    // =========================================================================
+    // === Copy and sanitization tests ===
 
     #[test]
     fn test_copy() {
@@ -4736,9 +4886,7 @@ mod tests {
         assert!((niggli.lattice.volume() - skewed.lattice.volume()).abs() < 1e-6);
     }
 
-    // =========================================================================
-    // interpolate() tests
-    // =========================================================================
+    // === interpolate() tests ===
 
     #[test]
     fn test_interpolate_identical_structures() {
@@ -4850,9 +4998,7 @@ mod tests {
         assert!(images.iter().all(|img| img.num_sites() == 0));
     }
 
-    // =========================================================================
-    // matches() and matches_with() tests
-    // =========================================================================
+    // === matches() and matches_with() tests ===
 
     #[test]
     fn test_matches() {
@@ -4890,9 +5036,7 @@ mod tests {
         assert!(cu_fcc.matches(&al_fcc, true), "FCC prototype match");
     }
 
-    // =========================================================================
-    // Supercell Tests
-    // =========================================================================
+    // === Supercell Tests ===
 
     #[test]
     fn test_supercell_scaling() {
@@ -5125,9 +5269,7 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Slab Generation Tests
-    // =========================================================================
+    // === Slab Generation Tests ===
 
     #[test]
     fn test_reduce_miller_indices() {

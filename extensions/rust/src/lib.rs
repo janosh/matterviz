@@ -65,6 +65,7 @@ pub mod cif;
 pub mod io;
 
 // Analysis
+pub mod oxidation;
 pub mod xrd;
 
 // Re-exports for convenience
@@ -87,8 +88,8 @@ pub mod wasm_types;
 /// Python module entry point.
 #[cfg(feature = "python")]
 #[pymodule]
-fn _ferrox(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    python::register(m)?;
+fn _ferrox(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
+    py_mod.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    python::register(py_mod)?;
     Ok(())
 }
