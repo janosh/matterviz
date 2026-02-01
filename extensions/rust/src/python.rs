@@ -3391,15 +3391,7 @@ fn py_add_oxidation_state_by_site(
     structure: StructureJson,
     oxi_states: Vec<i8>,
 ) -> PyResult<Py<PyDict>> {
-    let struc = parse_struct(&structure)?;
-    if oxi_states.len() != struc.num_sites() {
-        return Err(PyValueError::new_err(format!(
-            "oxi_states length ({}) must match number of sites ({})",
-            oxi_states.len(),
-            struc.num_sites()
-        )));
-    }
-    let result = struc
+    let result = parse_struct(&structure)?
         .add_oxidation_state_by_site(&oxi_states)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     json_to_pydict(py, &structure_to_pymatgen_json(&result))
