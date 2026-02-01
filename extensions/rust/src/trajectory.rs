@@ -433,19 +433,16 @@ mod tests {
 
     #[test]
     fn test_msd_linear_motion() {
-        // Particle moving linearly: r(t) = v*t
-        // MSD(tau) = v^2 * tau^2 (for single time origin)
-        let mut calc = MsdCalculator::new(1, 10, 100); // Large origin interval = single origin
+        // Particle moving linearly: r(t) = v*t => MSD(tau) = v^2 * tau^2 (single time origin)
+        let mut calc = MsdCalculator::new(1, 10, 100);
 
-        let v = 1.0; // velocity in x direction
+        let velocity = 1.0;
         for frame in 0..11 {
-            let pos = vec![Vector3::new(v * frame as f64, 0.0, 0.0)];
+            let pos = vec![Vector3::new(velocity * frame as f64, 0.0, 0.0)];
             calc.add_frame(&pos);
         }
 
         let msd = calc.compute_msd();
-
-        // MSD(t) should be approximately t^2 for constant velocity
         for lag in 1..=10 {
             let expected = (lag as f64).powi(2);
             assert!(
@@ -504,16 +501,18 @@ mod tests {
 
     #[test]
     fn test_diffusion_from_vacf() {
-        // For constant VACF = v^2, D = v^2 * t_max / dim
-        let v_sq = 1.0;
-        let vacf = vec![v_sq; 10];
+        // For constant VACF = v², D = v² * t_max / dim
+        let vel_squared = 1.0;
+        let vacf = vec![vel_squared; 10];
         let dt = 0.1;
 
-        let d = diffusion_coefficient_from_vacf(&vacf, dt, 3);
+        let diffusion = diffusion_coefficient_from_vacf(&vacf, dt, 3);
 
-        // integral of constant = v^2 * (n-1) * dt = 1.0 * 9 * 0.1 = 0.9
-        // D = 0.9 / 3 = 0.3
-        assert!((d - 0.3).abs() < 0.01, "D should be ~0.3, got {d}");
+        // integral of constant = v² * (n-1) * dt = 1.0 * 9 * 0.1 = 0.9, D = 0.9 / 3 = 0.3
+        assert!(
+            (diffusion - 0.3).abs() < 0.01,
+            "D should be ~0.3, got {diffusion}"
+        );
     }
 
     #[test]
@@ -596,16 +595,17 @@ mod tests {
 
         let mut calc = MsdCalculator::new(n_atoms, max_lag, 100); // single origin
 
-        // Construct trajectory where each atom has MSD(t) = 6*D*t
-        // Position at time t: (sqrt(2Dt), sqrt(2Dt), sqrt(2Dt))
-        // This gives displacement^2 = 3 * 2Dt = 6Dt
+        // Construct trajectory: MSD(t) = 6*D*t with position at time t: (sqrt(2Dt), sqrt(2Dt), sqrt(2Dt))
         for frame in 0..=max_lag {
-            let r = (2.0 * d_input * frame as f64 * dt).sqrt();
+            let displacement = (2.0 * d_input * frame as f64 * dt).sqrt();
             let positions: Vec<Vector3<f64>> = (0..n_atoms)
                 .map(|atom_idx| {
-                    // Add small per-atom offset to make positions distinct
-                    let offset = atom_idx as f64 * 0.001;
-                    Vector3::new(r + offset, r + offset, r + offset)
+                    let offset = atom_idx as f64 * 0.001; // Small per-atom offset for distinct positions
+                    Vector3::new(
+                        displacement + offset,
+                        displacement + offset,
+                        displacement + offset,
+                    )
                 })
                 .collect();
             calc.add_frame(&positions);

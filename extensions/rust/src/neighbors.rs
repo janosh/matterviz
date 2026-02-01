@@ -1101,30 +1101,29 @@ mod tests {
     #[test]
     fn test_large_system_scaling() {
         // Test with 1000+ atoms to verify O(n) scaling
-        // Create a large supercell of FCC Cu
-        let a = 3.61;
-        let n = 6; // 6x6x6 supercell = 6^3 * 4 = 864 atoms (close to 1000)
+        let lattice_const = 3.61;
+        let supercell_size = 6; // 6x6x6 supercell = 6^3 * 4 = 864 atoms
 
-        let supercell_lattice = Lattice::cubic(a * n as f64);
-        let mut species = Vec::with_capacity(n * n * n * 4);
-        let mut frac_coords = Vec::with_capacity(n * n * n * 4);
+        let supercell_lattice = Lattice::cubic(lattice_const * supercell_size as f64);
+        let num_cells = supercell_size * supercell_size * supercell_size;
+        let mut species = Vec::with_capacity(num_cells * 4);
+        let mut frac_coords = Vec::with_capacity(num_cells * 4);
 
-        // FCC basis positions
-        let basis = [
+        let fcc_basis = [
             Vector3::new(0.0, 0.0, 0.0),
             Vector3::new(0.5, 0.5, 0.0),
             Vector3::new(0.5, 0.0, 0.5),
             Vector3::new(0.0, 0.5, 0.5),
         ];
 
-        for idx_a in 0..n {
-            for idx_b in 0..n {
-                for idx_c in 0..n {
-                    for base in &basis {
+        for idx_a in 0..supercell_size {
+            for idx_b in 0..supercell_size {
+                for idx_c in 0..supercell_size {
+                    for base in &fcc_basis {
                         let frac = Vector3::new(
-                            (base.x + idx_a as f64) / n as f64,
-                            (base.y + idx_b as f64) / n as f64,
-                            (base.z + idx_c as f64) / n as f64,
+                            (base.x + idx_a as f64) / supercell_size as f64,
+                            (base.y + idx_b as f64) / supercell_size as f64,
+                            (base.z + idx_c as f64) / supercell_size as f64,
                         );
                         frac_coords.push(frac);
                         species.push(Species::neutral(Element::Cu));

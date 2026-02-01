@@ -360,6 +360,24 @@ pub fn zener_ratio(c11: f64, c12: f64, c44: f64) -> f64 {
 mod tests {
     use super::*;
 
+    // Helper to build cubic elastic tensor from C11, C12, C44
+    fn make_cubic_tensor(c11: f64, c12: f64, c44: f64) -> [[f64; 6]; 6] {
+        let mut tensor = [[0.0; 6]; 6];
+        tensor[0][0] = c11;
+        tensor[1][1] = c11;
+        tensor[2][2] = c11;
+        tensor[0][1] = c12;
+        tensor[0][2] = c12;
+        tensor[1][2] = c12;
+        tensor[1][0] = c12;
+        tensor[2][0] = c12;
+        tensor[2][1] = c12;
+        tensor[3][3] = c44;
+        tensor[4][4] = c44;
+        tensor[5][5] = c44;
+        tensor
+    }
+
     #[test]
     fn test_generate_strains_normal_only() {
         let strains = generate_strains(0.01, false);
@@ -408,58 +426,45 @@ mod tests {
 
     #[test]
     fn test_isotropic_material() {
-        // For isotropic material: C11 = C22 = C33, C12 = C13 = C23, C44 = C55 = C66
-        // C44 = (C11 - C12) / 2
+        // For isotropic material: C44 = (C11 - C12) / 2
         let c11 = 200.0;
         let c12 = 100.0;
-        let c44 = 50.0; // = (200 - 100) / 2
+        let c44 = 50.0;
 
-        // Build isotropic elastic tensor
-        let mut c = [[0.0; 6]; 6];
-        c[0][0] = c11;
-        c[1][1] = c11;
-        c[2][2] = c11;
-        c[0][1] = c12;
-        c[0][2] = c12;
-        c[1][2] = c12;
-        c[1][0] = c12;
-        c[2][0] = c12;
-        c[2][1] = c12;
-        c[3][3] = c44;
-        c[4][4] = c44;
-        c[5][5] = c44;
+        let tensor = make_cubic_tensor(c11, c12, c44);
+        let bulk = bulk_modulus(&tensor);
+        let shear = shear_modulus(&tensor);
 
-        let k = bulk_modulus(&c);
-        let g = shear_modulus(&c);
-
-        // For isotropic: K = (C11 + 2*C12) / 3 = (200 + 200) / 3 = 133.33
-        // For isotropic: G = C44 = 50
+        // For isotropic: K = (C11 + 2*C12) / 3 = (200 + 200) / 3 = 133.33, G = C44 = 50
         assert!(
-            (k - 133.333).abs() < 1.0,
-            "Bulk modulus {k} should be ~133.33"
+            (bulk - 133.333).abs() < 1.0,
+            "Bulk modulus {bulk} should be ~133.33"
         );
-        assert!((g - 50.0).abs() < 1.0, "Shear modulus {g} should be ~50");
-
-        // Check Zener ratio = 1 for isotropic
-        let aniso = zener_ratio(c11, c12, c44);
-        assert!((aniso - 1.0).abs() < 0.01, "Zener ratio should be 1.0");
+        assert!(
+            (shear - 50.0).abs() < 1.0,
+            "Shear modulus {shear} should be ~50"
+        );
+        assert!(
+            (zener_ratio(c11, c12, c44) - 1.0).abs() < 0.01,
+            "Zener ratio should be 1.0"
+        );
     }
 
     #[test]
     fn test_youngs_modulus() {
-        let k = 100.0;
-        let g = 50.0;
-        let e = youngs_modulus(k, g);
+        let bulk = 100.0;
+        let shear = 50.0;
+        let youngs = youngs_modulus(bulk, shear);
 
         // E = 9KG / (3K + G) = 9 * 100 * 50 / (300 + 50) = 45000 / 350 ≈ 128.57
-        assert!((e - 128.57).abs() < 0.1);
+        assert!((youngs - 128.57).abs() < 0.1);
     }
 
     #[test]
     fn test_poisson_ratio() {
-        let k = 100.0;
-        let g = 50.0;
-        let nu = poisson_ratio(k, g);
+        let bulk = 100.0;
+        let shear = 50.0;
+        let nu = poisson_ratio(bulk, shear);
 
         // nu = (3K - 2G) / (6K + 2G) = (300 - 100) / (600 + 100) = 200 / 700 ≈ 0.286
         assert!((nu - 0.286).abs() < 0.01);
@@ -467,22 +472,8 @@ mod tests {
 
     #[test]
     fn test_mechanical_stability() {
-        // Positive definite matrix
-        let mut c = [[0.0; 6]; 6];
-        c[0][0] = 200.0;
-        c[1][1] = 200.0;
-        c[2][2] = 200.0;
-        c[0][1] = 80.0;
-        c[0][2] = 80.0;
-        c[1][2] = 80.0;
-        c[1][0] = 80.0;
-        c[2][0] = 80.0;
-        c[2][1] = 80.0;
-        c[3][3] = 60.0;
-        c[4][4] = 60.0;
-        c[5][5] = 60.0;
-
-        assert!(is_mechanically_stable(&c), "Should be stable");
+        let tensor = make_cubic_tensor(200.0, 80.0, 60.0);
+        assert!(is_mechanically_stable(&tensor), "Should be stable");
     }
 
     #[test]
@@ -585,51 +576,28 @@ mod tests {
 
     #[test]
     fn test_copper_elastic_constants() {
-        // Cu elastic constants from literature (GPa):
-        // C11 = 168.4, C12 = 121.4, C44 = 75.4
-        // Source: Simmons & Wang, Single Crystal Elastic Constants
-        let c11 = 168.4;
-        let c12 = 121.4;
-        let c44 = 75.4;
+        // Cu elastic constants from literature (GPa), source: Simmons & Wang
+        let (c11, c12, c44) = (168.4, 121.4, 75.4);
+        let tensor = make_cubic_tensor(c11, c12, c44);
 
-        let mut c_cu = [[0.0; 6]; 6];
-        c_cu[0][0] = c11;
-        c_cu[1][1] = c11;
-        c_cu[2][2] = c11;
-        c_cu[0][1] = c12;
-        c_cu[0][2] = c12;
-        c_cu[1][2] = c12;
-        c_cu[1][0] = c12;
-        c_cu[2][0] = c12;
-        c_cu[2][1] = c12;
-        c_cu[3][3] = c44;
-        c_cu[4][4] = c44;
-        c_cu[5][5] = c44;
+        let bulk = bulk_modulus(&tensor);
+        let shear = shear_modulus(&tensor);
+        let youngs = youngs_modulus(bulk, shear);
 
-        // VRH bulk modulus for Cu: ~137 GPa
-        let k = bulk_modulus(&c_cu);
         assert!(
-            (k - 137.0).abs() < 2.0,
-            "Cu bulk modulus {k:.2} GPa should be ~137 GPa"
+            (bulk - 137.0).abs() < 2.0,
+            "Cu bulk ~137 GPa, got {bulk:.2}"
         );
-
-        // VRH shear modulus for Cu: ~48 GPa
-        let g = shear_modulus(&c_cu);
         assert!(
-            (g - 48.0).abs() < 3.0,
-            "Cu shear modulus {g:.2} GPa should be ~48 GPa"
+            (shear - 48.0).abs() < 3.0,
+            "Cu shear ~48 GPa, got {shear:.2}"
         );
-
-        // Young's modulus for Cu: ~130 GPa
-        let e = youngs_modulus(k, g);
         assert!(
-            (e - 130.0).abs() < 5.0,
-            "Cu Young's modulus {e:.2} GPa should be ~130 GPa"
+            (youngs - 130.0).abs() < 5.0,
+            "Cu Young's ~130 GPa, got {youngs:.2}"
         );
-
-        // Stability check
         assert!(
-            is_mechanically_stable(&c_cu),
+            is_mechanically_stable(&tensor),
             "Cu should be mechanically stable"
         );
         assert!(
@@ -640,43 +608,23 @@ mod tests {
 
     #[test]
     fn test_iron_elastic_constants() {
-        // Fe (BCC) elastic constants from literature (GPa):
-        // C11 = 230, C12 = 134, C44 = 117
-        let c11 = 230.0;
-        let c12 = 134.0;
-        let c44 = 117.0;
+        // Fe (BCC) elastic constants from literature (GPa)
+        let (c11, c12, c44) = (230.0, 134.0, 117.0);
+        let tensor = make_cubic_tensor(c11, c12, c44);
 
-        let mut c_fe = [[0.0; 6]; 6];
-        c_fe[0][0] = c11;
-        c_fe[1][1] = c11;
-        c_fe[2][2] = c11;
-        c_fe[0][1] = c12;
-        c_fe[0][2] = c12;
-        c_fe[1][2] = c12;
-        c_fe[1][0] = c12;
-        c_fe[2][0] = c12;
-        c_fe[2][1] = c12;
-        c_fe[3][3] = c44;
-        c_fe[4][4] = c44;
-        c_fe[5][5] = c44;
+        let bulk = bulk_modulus(&tensor);
+        let shear = shear_modulus(&tensor);
 
-        // VRH bulk modulus for Fe: ~166 GPa
-        let k = bulk_modulus(&c_fe);
         assert!(
-            (k - 166.0).abs() < 3.0,
-            "Fe bulk modulus {k:.2} GPa should be ~166 GPa"
+            (bulk - 166.0).abs() < 3.0,
+            "Fe bulk ~166 GPa, got {bulk:.2}"
         );
-
-        // VRH shear modulus for Fe: ~82 GPa
-        let g = shear_modulus(&c_fe);
         assert!(
-            (g - 82.0).abs() < 5.0,
-            "Fe shear modulus {g:.2} GPa should be ~82 GPa"
+            (shear - 82.0).abs() < 5.0,
+            "Fe shear ~82 GPa, got {shear:.2}"
         );
-
-        // Stability
         assert!(
-            is_mechanically_stable(&c_fe),
+            is_mechanically_stable(&tensor),
             "Fe should be mechanically stable"
         );
         assert!(
@@ -694,99 +642,52 @@ mod tests {
 
     #[test]
     fn test_silicon_elastic_constants() {
-        // Si elastic constants from literature (GPa):
-        // C11 = 166, C12 = 64, C44 = 80
-        let c11 = 166.0;
-        let c12 = 64.0;
-        let c44 = 80.0;
+        // Si elastic constants from literature (GPa)
+        let (c11, c12, c44) = (166.0, 64.0, 80.0);
+        let tensor = make_cubic_tensor(c11, c12, c44);
 
-        let mut c_si = [[0.0; 6]; 6];
-        c_si[0][0] = c11;
-        c_si[1][1] = c11;
-        c_si[2][2] = c11;
-        c_si[0][1] = c12;
-        c_si[0][2] = c12;
-        c_si[1][2] = c12;
-        c_si[1][0] = c12;
-        c_si[2][0] = c12;
-        c_si[2][1] = c12;
-        c_si[3][3] = c44;
-        c_si[4][4] = c44;
-        c_si[5][5] = c44;
+        let bulk = bulk_modulus(&tensor);
+        let shear = shear_modulus(&tensor);
 
-        // VRH bulk modulus for Si: ~98 GPa
-        let k = bulk_modulus(&c_si);
+        assert!((bulk - 98.0).abs() < 2.0, "Si bulk ~98 GPa, got {bulk:.2}");
         assert!(
-            (k - 98.0).abs() < 2.0,
-            "Si bulk modulus {k:.2} GPa should be ~98 GPa"
+            (shear - 66.0).abs() < 3.0,
+            "Si shear ~66 GPa, got {shear:.2}"
         );
-
-        // VRH shear modulus for Si: ~66 GPa
-        let g = shear_modulus(&c_si);
         assert!(
-            (g - 66.0).abs() < 3.0,
-            "Si shear modulus {g:.2} GPa should be ~66 GPa"
-        );
-
-        // Stability
-        assert!(
-            is_mechanically_stable(&c_si),
+            is_mechanically_stable(&tensor),
             "Si should be mechanically stable"
         );
     }
 
-    // =========================================================================
-    // Isotropy check tests
-    // =========================================================================
-
     #[test]
     fn test_isotropy_condition() {
         // For isotropic material: C44 = (C11 - C12) / 2
-        // Test various isotropic configurations
-        let test_cases = [
-            (200.0, 100.0), // C11, C12 -> C44 = 50
-            (300.0, 150.0), // C44 = 75
-            (150.0, 50.0),  // C44 = 50
-        ];
+        let test_cases = [(200.0, 100.0), (300.0, 150.0), (150.0, 50.0)];
 
         for (c11, c12) in test_cases {
-            let c44_isotropic = (c11 - c12) / 2.0;
-
-            // Build isotropic elastic tensor
-            let mut c = [[0.0; 6]; 6];
-            c[0][0] = c11;
-            c[1][1] = c11;
-            c[2][2] = c11;
-            c[0][1] = c12;
-            c[0][2] = c12;
-            c[1][2] = c12;
-            c[1][0] = c12;
-            c[2][0] = c12;
-            c[2][1] = c12;
-            c[3][3] = c44_isotropic;
-            c[4][4] = c44_isotropic;
-            c[5][5] = c44_isotropic;
+            let c44 = (c11 - c12) / 2.0;
+            let tensor = make_cubic_tensor(c11, c12, c44);
 
             // Zener ratio should be exactly 1.0 for isotropic materials
-            let zener = zener_ratio(c11, c12, c44_isotropic);
             assert!(
-                (zener - 1.0).abs() < 1e-10,
-                "Isotropic material should have Zener ratio = 1.0, got {zener}"
+                (zener_ratio(c11, c12, c44) - 1.0).abs() < 1e-10,
+                "Isotropic material should have Zener ratio = 1.0"
             );
 
             // Voigt and Reuss bounds should be equal for isotropic
-            let k_v = voigt_bulk_modulus(&c);
-            let k_r = reuss_bulk_modulus(&c);
-            let g_v = voigt_shear_modulus(&c);
-            let g_r = reuss_shear_modulus(&c);
+            let bulk_voigt = voigt_bulk_modulus(&tensor);
+            let bulk_reuss = reuss_bulk_modulus(&tensor);
+            let shear_voigt = voigt_shear_modulus(&tensor);
+            let shear_reuss = reuss_shear_modulus(&tensor);
 
             assert!(
-                (k_v - k_r).abs() < 0.01,
-                "K_Voigt {k_v:.4} should equal K_Reuss {k_r:.4} for isotropic"
+                (bulk_voigt - bulk_reuss).abs() < 0.01,
+                "Bulk Voigt {bulk_voigt:.4} should equal Reuss {bulk_reuss:.4}"
             );
             assert!(
-                (g_v - g_r).abs() < 0.01,
-                "G_Voigt {g_v:.4} should equal G_Reuss {g_r:.4} for isotropic"
+                (shear_voigt - shear_reuss).abs() < 0.01,
+                "Shear Voigt {shear_voigt:.4} should equal Reuss {shear_reuss:.4}"
             );
         }
     }
@@ -1060,86 +961,59 @@ mod tests {
         ];
 
         for (c11, c12, c44, name) in test_materials {
-            let mut c = [[0.0; 6]; 6];
-            c[0][0] = c11;
-            c[1][1] = c11;
-            c[2][2] = c11;
-            c[0][1] = c12;
-            c[0][2] = c12;
-            c[1][2] = c12;
-            c[1][0] = c12;
-            c[2][0] = c12;
-            c[2][1] = c12;
-            c[3][3] = c44;
-            c[4][4] = c44;
-            c[5][5] = c44;
+            let tensor = make_cubic_tensor(c11, c12, c44);
+            let bulk = bulk_modulus(&tensor);
+            let shear = shear_modulus(&tensor);
+            let youngs = youngs_modulus(bulk, shear);
+            let poisson = poisson_ratio(bulk, shear);
 
-            let k = bulk_modulus(&c);
-            let g = shear_modulus(&c);
-            let e = youngs_modulus(k, g);
-            let nu = poisson_ratio(k, g);
-
-            assert!(k > 0.0, "{name}: K should be positive, got {k}");
-            assert!(g > 0.0, "{name}: G should be positive, got {g}");
-            assert!(e > 0.0, "{name}: E should be positive, got {e}");
+            assert!(bulk > 0.0, "{name}: K should be positive, got {bulk}");
+            assert!(shear > 0.0, "{name}: G should be positive, got {shear}");
+            assert!(youngs > 0.0, "{name}: E should be positive, got {youngs}");
             assert!(
-                nu > -1.0 && nu < 0.5,
-                "{name}: ν should be in (-1, 0.5), got {nu}"
+                poisson > -1.0 && poisson < 0.5,
+                "{name}: ν should be in (-1, 0.5), got {poisson}"
             );
         }
     }
 
     #[test]
     fn test_voigt_reuss_ordering() {
-        // Voigt bound >= VRH >= Reuss bound for both K and G
-        // This is a mathematical property of the averaging
-        let mut c = [[0.0; 6]; 6];
-        c[0][0] = 168.4;
-        c[1][1] = 168.4;
-        c[2][2] = 168.4;
-        c[0][1] = 121.4;
-        c[0][2] = 121.4;
-        c[1][2] = 121.4;
-        c[1][0] = 121.4;
-        c[2][0] = 121.4;
-        c[2][1] = 121.4;
-        c[3][3] = 75.4;
-        c[4][4] = 75.4;
-        c[5][5] = 75.4;
+        // Voigt bound >= VRH >= Reuss bound (mathematical property of the averaging)
+        let tensor = make_cubic_tensor(168.4, 121.4, 75.4);
 
-        let k_v = voigt_bulk_modulus(&c);
-        let k_r = reuss_bulk_modulus(&c);
-        let k_vrh = bulk_modulus(&c);
+        let bulk_voigt = voigt_bulk_modulus(&tensor);
+        let bulk_reuss = reuss_bulk_modulus(&tensor);
+        let bulk_vrh = bulk_modulus(&tensor);
 
-        let g_v = voigt_shear_modulus(&c);
-        let g_r = reuss_shear_modulus(&c);
-        let g_vrh = shear_modulus(&c);
+        let shear_voigt = voigt_shear_modulus(&tensor);
+        let shear_reuss = reuss_shear_modulus(&tensor);
+        let shear_vrh = shear_modulus(&tensor);
 
-        // Voigt >= VRH >= Reuss
         assert!(
-            k_v >= k_vrh - 1e-10,
-            "K_Voigt ({k_v}) should >= K_VRH ({k_vrh})"
+            bulk_voigt >= bulk_vrh - 1e-10,
+            "K_Voigt ({bulk_voigt}) should >= K_VRH ({bulk_vrh})"
         );
         assert!(
-            k_vrh >= k_r - 1e-10,
-            "K_VRH ({k_vrh}) should >= K_Reuss ({k_r})"
+            bulk_vrh >= bulk_reuss - 1e-10,
+            "K_VRH ({bulk_vrh}) should >= K_Reuss ({bulk_reuss})"
         );
         assert!(
-            g_v >= g_vrh - 1e-10,
-            "G_Voigt ({g_v}) should >= G_VRH ({g_vrh})"
+            shear_voigt >= shear_vrh - 1e-10,
+            "G_Voigt ({shear_voigt}) should >= G_VRH ({shear_vrh})"
         );
         assert!(
-            g_vrh >= g_r - 1e-10,
-            "G_VRH ({g_vrh}) should >= G_Reuss ({g_r})"
+            shear_vrh >= shear_reuss - 1e-10,
+            "G_VRH ({shear_vrh}) should >= G_Reuss ({shear_reuss})"
         );
 
         // VRH should be the average
         assert!(
-            ((k_v + k_r) / 2.0 - k_vrh).abs() < 1e-10,
+            ((bulk_voigt + bulk_reuss) / 2.0 - bulk_vrh).abs() < 1e-10,
             "K_VRH should be average of Voigt and Reuss"
         );
         assert!(
-            ((g_v + g_r) / 2.0 - g_vrh).abs() < 1e-10,
+            ((shear_voigt + shear_reuss) / 2.0 - shear_vrh).abs() < 1e-10,
             "G_VRH should be average of Voigt and Reuss"
         );
     }
