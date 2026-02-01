@@ -2376,22 +2376,23 @@ Mg 0.0 0.0 0.0
             vec![Vector3::new(0.0, 0.0, 0.0)],
         );
 
-        let format_checks: &[(&str, &str)] = &[
-            ("test.json", "{"),           // JSON starts with {
-            ("POSCAR", "Cu"),             // POSCAR contains element symbol
-            ("test.xyz", "Lattice="),     // extxyz has Lattice= in comment line
-            ("test.cif", "_cell_length"), // CIF has cell parameters
-        ];
-        for (filename, expected_substr) in format_checks {
+        // Test that each format writes non-empty content and can be read back
+        for filename in ["test.json", "POSCAR", "test.xyz", "test.cif"] {
             let path = temp_dir.path().join(filename);
             write_structure(&s, &path).unwrap();
             let content = std::fs::read_to_string(&path).unwrap();
             assert!(
-                content.contains(expected_substr),
-                "{} should contain '{}', got: {}",
-                filename,
-                expected_substr,
-                &content[..content.len().min(100)]
+                !content.is_empty(),
+                "{} should produce non-empty output",
+                filename
+            );
+            // Verify roundtrip: read back and check structure properties
+            let read_back = parse_structure(&path).unwrap();
+            assert_eq!(
+                read_back.num_sites(),
+                s.num_sites(),
+                "{} roundtrip should preserve atom count",
+                filename
             );
         }
     }

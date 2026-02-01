@@ -1775,11 +1775,17 @@ mod tests {
 
         let nl = build_neighbor_list(&si_diamond, &config);
 
-        // 8-atom cell, 4 neighbors per atom = 32 pairs total
+        // Diamond has coordination number 4 (tetrahedral)
+        let n_atoms = si_diamond.num_sites();
+        let coordination = 4;
+        let expected_pairs = n_atoms * coordination;
         assert_eq!(
             nl.len(),
-            32,
-            "Si diamond: expected 32 pairs (4 neighbors × 8 atoms), got {}",
+            expected_pairs,
+            "Si diamond: expected {} pairs ({} neighbors × {} atoms), got {}",
+            expected_pairs,
+            coordination,
+            n_atoms,
             nl.len()
         );
 

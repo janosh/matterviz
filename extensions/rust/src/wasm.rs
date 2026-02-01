@@ -1760,6 +1760,23 @@ pub fn is_periodic_image(
 
 use crate::elastic;
 
+// Helper to convert JsMatrix3x3 to nalgebra Matrix3
+fn js_to_matrix3(m: &JsMatrix3x3) -> nalgebra::Matrix3<f64> {
+    nalgebra::Matrix3::from_row_slice(&[
+        m.0[0][0], m.0[0][1], m.0[0][2], m.0[1][0], m.0[1][1], m.0[1][2], m.0[2][0], m.0[2][1],
+        m.0[2][2],
+    ])
+}
+
+// Helper to convert nalgebra Matrix3 to JsMatrix3x3
+fn matrix3_to_js(m: &nalgebra::Matrix3<f64>) -> JsMatrix3x3 {
+    JsMatrix3x3([
+        [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
+        [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
+        [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
+    ])
+}
+
 /// Generate strain matrices for elastic tensor calculation.
 ///
 /// Returns 6 or 12 strain matrices depending on whether shear strains are included.
@@ -1769,18 +1786,11 @@ pub fn elastic_generate_strains(magnitude: f64, shear: bool) -> WasmResult<Vec<J
     if !magnitude.is_finite() || magnitude < 0.0 {
         return WasmResult::err("magnitude must be finite and non-negative");
     }
-    WasmResult::ok(
-        elastic::generate_strains(magnitude, shear)
-            .into_iter()
-            .map(|m| {
-                JsMatrix3x3([
-                    [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
-                    [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
-                    [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
-                ])
-            })
-            .collect(),
-    )
+    let strains: Vec<_> = elastic::generate_strains(magnitude, shear)
+        .iter()
+        .map(matrix3_to_js)
+        .collect();
+    WasmResult::ok(strains)
 }
 
 /// Apply strain to a cell matrix.
@@ -1788,71 +1798,20 @@ pub fn elastic_generate_strains(magnitude: f64, shear: bool) -> WasmResult<Vec<J
 /// Returns the deformed cell: cell_new = cell * (I + strain)
 #[wasm_bindgen]
 pub fn elastic_apply_strain(cell: JsMatrix3x3, strain: JsMatrix3x3) -> JsMatrix3x3 {
-    use nalgebra::Matrix3;
-    let cell_mat = Matrix3::from_row_slice(&[
-        cell.0[0][0],
-        cell.0[0][1],
-        cell.0[0][2],
-        cell.0[1][0],
-        cell.0[1][1],
-        cell.0[1][2],
-        cell.0[2][0],
-        cell.0[2][1],
-        cell.0[2][2],
-    ]);
-    let strain_mat = Matrix3::from_row_slice(&[
-        strain.0[0][0],
-        strain.0[0][1],
-        strain.0[0][2],
-        strain.0[1][0],
-        strain.0[1][1],
-        strain.0[1][2],
-        strain.0[2][0],
-        strain.0[2][1],
-        strain.0[2][2],
-    ]);
-    let result = elastic::apply_strain(&cell_mat, &strain_mat);
-    JsMatrix3x3([
-        [result[(0, 0)], result[(0, 1)], result[(0, 2)]],
-        [result[(1, 0)], result[(1, 1)], result[(1, 2)]],
-        [result[(2, 0)], result[(2, 1)], result[(2, 2)]],
-    ])
+    let result = elastic::apply_strain(&js_to_matrix3(&cell), &js_to_matrix3(&strain));
+    matrix3_to_js(&result)
 }
 
 /// Convert 3x3 stress tensor to 6-element Voigt notation [xx, yy, zz, yz, xz, xy].
 #[wasm_bindgen]
 pub fn elastic_stress_to_voigt(stress: JsMatrix3x3) -> Vec<f64> {
-    use nalgebra::Matrix3;
-    let stress_mat = Matrix3::from_row_slice(&[
-        stress.0[0][0],
-        stress.0[0][1],
-        stress.0[0][2],
-        stress.0[1][0],
-        stress.0[1][1],
-        stress.0[1][2],
-        stress.0[2][0],
-        stress.0[2][1],
-        stress.0[2][2],
-    ]);
-    elastic::stress_to_voigt(&stress_mat).to_vec()
+    elastic::stress_to_voigt(&js_to_matrix3(&stress)).to_vec()
 }
 
 /// Convert 3x3 strain tensor to 6-element Voigt notation [xx, yy, zz, 2*yz, 2*xz, 2*xy].
 #[wasm_bindgen]
 pub fn elastic_strain_to_voigt(strain: JsMatrix3x3) -> Vec<f64> {
-    use nalgebra::Matrix3;
-    let strain_mat = Matrix3::from_row_slice(&[
-        strain.0[0][0],
-        strain.0[0][1],
-        strain.0[0][2],
-        strain.0[1][0],
-        strain.0[1][1],
-        strain.0[1][2],
-        strain.0[2][0],
-        strain.0[2][1],
-        strain.0[2][2],
-    ]);
-    elastic::strain_to_voigt(&strain_mat).to_vec()
+    elastic::strain_to_voigt(&js_to_matrix3(&strain)).to_vec()
 }
 
 /// Compute 6x6 elastic tensor from stress-strain data using SVD pseudoinverse.
@@ -1861,34 +1820,14 @@ pub fn elastic_tensor_from_stresses(
     strains: Vec<JsMatrix3x3>,
     stresses: Vec<JsMatrix3x3>,
 ) -> WasmResult<Vec<Vec<f64>>> {
-    use nalgebra::Matrix3;
     if strains.len() != stresses.len() {
         return WasmResult::err("Strains and stresses must have same length");
     }
     if strains.is_empty() {
         return WasmResult::err("At least one strain-stress pair required");
     }
-
-    let strain_mats: Vec<Matrix3<f64>> = strains
-        .iter()
-        .map(|s| {
-            Matrix3::from_row_slice(&[
-                s.0[0][0], s.0[0][1], s.0[0][2], s.0[1][0], s.0[1][1], s.0[1][2], s.0[2][0],
-                s.0[2][1], s.0[2][2],
-            ])
-        })
-        .collect();
-
-    let stress_mats: Vec<Matrix3<f64>> = stresses
-        .iter()
-        .map(|s| {
-            Matrix3::from_row_slice(&[
-                s.0[0][0], s.0[0][1], s.0[0][2], s.0[1][0], s.0[1][1], s.0[1][2], s.0[2][0],
-                s.0[2][1], s.0[2][2],
-            ])
-        })
-        .collect();
-
+    let strain_mats: Vec<_> = strains.iter().map(js_to_matrix3).collect();
+    let stress_mats: Vec<_> = stresses.iter().map(js_to_matrix3).collect();
     let tensor = elastic::elastic_tensor_from_stresses(&strain_mats, &stress_mats);
     WasmResult::ok(tensor.iter().map(|row| row.to_vec()).collect())
 }
