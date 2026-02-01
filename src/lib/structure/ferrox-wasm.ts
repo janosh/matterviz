@@ -36,6 +36,9 @@ interface WasmStructureMatcherInstance {
     struct1: unknown,
     struct2: unknown,
   ): WasmResult<{ rms: number; max_dist: number } | null>
+  // Universal structure distance - always returns a value (never null)
+  // Suitable for consistent ranking of structures by similarity
+  get_structure_distance(struct1: unknown, struct2: unknown): WasmResult<number>
   deduplicate(structures: unknown[]): WasmResult<number[]>
   find_matches(
     new_structures: unknown[],
@@ -136,18 +139,14 @@ export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
     init_promise = (async () => {
       try {
         // Dynamic import to avoid loading WASM until needed
-        // @vite-ignore prevents Vite from trying to resolve this during SSR
         const { default: init } = (await import(
           /* @vite-ignore */ `matterviz-wasm`
         )) as unknown as {
           default: (opts?: { module_or_path?: string }) => Promise<FerroxWasmModule>
         }
 
-        // Get WASM binary URL and initialize
-        const { default: wasm_url } = await import(
-          /* @vite-ignore */ `matterviz-wasm/ferrox_bg.wasm?url`
-        )
-        wasm_module = await init({ module_or_path: wasm_url })
+        // Initialize WASM module (the package handles WASM loading internally)
+        wasm_module = await init()
         return wasm_module
       } catch (err) {
         // Clear the promise on failure so retry is possible
@@ -224,6 +223,18 @@ export async function get_structure_rms_dist(
   const mod = await ensure_ferrox_wasm_ready()
   const matcher = create_matcher(mod, options)
   return matcher.get_rms_dist(struct1, struct2)
+}
+
+// Get universal structure distance (always returns a value, never null)
+// Use this for consistent ranking - returns Infinity for incompatible structures
+export async function get_structure_distance(
+  struct1: Crystal,
+  struct2: Crystal,
+  options?: MatcherOptions,
+): Promise<WasmResult<number>> {
+  const mod = await ensure_ferrox_wasm_ready()
+  const matcher = create_matcher(mod, options)
+  return matcher.get_structure_distance(struct1, struct2)
 }
 
 // Find a matching structure from a database

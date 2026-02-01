@@ -238,7 +238,7 @@ declare module './pkg/ferrox.d.ts' {
     ): WasmResult<JsRmsDistResult | null>
     // Universal structure distance - always returns a value (never null)
     // Suitable for consistent ranking of structures by similarity
-    getStructureDistance(
+    get_structure_distance(
       struct1: JsCrystal,
       struct2: JsCrystal,
     ): WasmResult<number>

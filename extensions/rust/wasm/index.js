@@ -1,7 +1,7 @@
 // Entry point for matterviz-wasm
 // Loads wasm-pack output dynamically, throws helpful error if not built
 
-const NOT_BUILT = `matterviz-wasm not built. Run 'pnpm build' in extensions/rust-wasm`
+const NOT_BUILT = `matterviz-wasm not built. Run 'pnpm build' in extensions/rust/wasm`
 
 let cached_module = null
 let init_promise = null

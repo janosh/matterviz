@@ -20,8 +20,8 @@
     "data/"
   ],
   "scripts": {
-    "build": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../rust/src/atomic_scattering_params.json data/",
-    "build:dev": "cd ../rust && wasm-pack build --target web --features wasm --no-default-features --dev && cd ../rust-wasm && rm -rf pkg && cp -r ../rust/pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../rust/src/atomic_scattering_params.json data/",
+    "build": "cd .. && wasm-pack build --target web --features wasm --no-default-features && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/",
+    "build:dev": "cd .. && wasm-pack build --target web --features wasm --no-default-features --dev && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -31,7 +31,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/janosh/matterviz.git",
-    "directory": "extensions/rust-wasm"
+    "directory": "extensions/rust/wasm"
   },
   "keywords": [
     "wasm",
