@@ -1,6 +1,6 @@
 import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
-import { createRawSnippet, mount } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 
 const basic: BarSeries = {
@@ -11,7 +11,7 @@ const basic: BarSeries = {
 }
 
 describe(`BarPlot`, () => {
-  test.each<{ series: BarSeries[]; [key: string]: unknown }>([
+  test.each([
     { series: [basic], x_axis: { label: `Category` }, y_axis: { label: `Value` } },
     { series: [], orientation: `vertical` },
     { series: [{ ...basic, labels: [`A`, `B`, `C`, `D`, `E`] }] },
@@ -64,7 +64,7 @@ describe(`BarPlot`, () => {
       series: [basic, { ...basic, color: `orangered`, label: `S2` }],
       legend: { title: `Test` },
     },
-  ])(`renders various configs`, (props) => {
+  ] as Partial<ComponentProps<typeof BarPlot>>[])(`renders various configs`, (props) => {
     mount(BarPlot, { target: document.body, props })
   })
 

@@ -9,6 +9,8 @@
 use std::path::Path;
 
 use nalgebra::Vector3;
+use serde::{Deserialize, Serialize};
+use tsify_next::Tsify;
 use wasm_bindgen::prelude::*;
 
 use crate::cif::parse_cif_str;
@@ -17,8 +19,8 @@ use crate::io::parse_poscar_str;
 use crate::species::Species;
 use crate::structure_matcher::{ComparatorType, StructureMatcher};
 use crate::wasm_types::{
-    JsCompositionInfo, JsCrystal, JsElementAmount, JsIntMatrix3x3, JsLocalEnvironment, JsMatrix3x3,
-    JsMillerIndex, JsNeighborInfo, JsNeighborList, JsReductionAlgo, JsRmsDistResult,
+    JsAseAtoms, JsCompositionInfo, JsCrystal, JsElementAmount, JsIntMatrix3x3, JsLocalEnvironment,
+    JsMatrix3x3, JsMillerIndex, JsNeighborInfo, JsNeighborList, JsReductionAlgo, JsRmsDistResult,
     JsStructureMetadata, JsSymmetryDataset, JsSymmetryOperation, JsVector3, WasmResult,
 };
 
@@ -1752,4 +1754,116 @@ pub fn is_periodic_image(
             Ok(struc.is_periodic_image(site_i as usize, site_j as usize, tolerance))
         })
         .into()
+}
+
+// === Molecule I/O Functions ===
+
+/// Parse a molecule from pymatgen Molecule JSON string.
+///
+/// Returns the parsed molecule JSON string in pymatgen-compatible format.
+#[wasm_bindgen]
+pub fn parse_molecule_json(json: &str) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let mol = crate::io::parse_molecule_json(json).map_err(|e| e.to_string())?;
+        Ok(crate::io::molecule_to_pymatgen_json(&mol))
+    })();
+    result.into()
+}
+
+/// Convert a molecule to XYZ format string.
+#[wasm_bindgen]
+pub fn molecule_to_xyz_str(json: &str, comment: Option<String>) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let mol = crate::io::parse_molecule_json(json).map_err(|e| e.to_string())?;
+        Ok(crate::io::molecule_to_xyz(&mol, comment.as_deref()))
+    })();
+    result.into()
+}
+
+/// Parse a molecule from XYZ format string.
+///
+/// Returns the molecule JSON string in pymatgen Molecule.as_dict() format.
+#[wasm_bindgen]
+pub fn parse_xyz_str(content: &str) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let mol = crate::io::parse_xyz_str(content).map_err(|e| e.to_string())?;
+        Ok(crate::io::molecule_to_pymatgen_json(&mol))
+    })();
+    result.into()
+}
+
+// === ASE Atoms Conversion Functions ===
+
+/// Convert an ASE Atoms dict to pymatgen format.
+///
+/// Returns JSON string for either a Structure or Molecule depending on periodicity.
+#[wasm_bindgen]
+pub fn ase_to_pymatgen(ase_atoms: JsAseAtoms) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let json = serde_json::to_string(&ase_atoms).map_err(|e| e.to_string())?;
+        crate::io::ase_atoms_to_pymatgen_json(&json).map_err(|e| e.to_string())
+    })();
+    result.into()
+}
+
+/// Convert a pymatgen Structure to ASE Atoms dict format.
+#[wasm_bindgen]
+pub fn structure_to_ase(structure: JsCrystal) -> WasmResult<JsAseAtoms> {
+    let result: Result<JsAseAtoms, String> = (|| {
+        let struc = structure.to_structure()?;
+        let ase_dict = crate::io::structure_to_ase_atoms_dict(&struc);
+        serde_json::from_value(ase_dict).map_err(|e| format!("Deserialization error: {e}"))
+    })();
+    result.into()
+}
+
+/// Convert a pymatgen Molecule JSON to ASE Atoms dict format.
+#[wasm_bindgen]
+pub fn molecule_to_ase(molecule_json: &str) -> WasmResult<JsAseAtoms> {
+    let result: Result<JsAseAtoms, String> = (|| {
+        let mol = crate::io::parse_molecule_json(molecule_json).map_err(|e| e.to_string())?;
+        let ase_dict = crate::io::molecule_to_ase_atoms_dict(&mol);
+        serde_json::from_value(ase_dict).map_err(|e| format!("Deserialization error: {e}"))
+    })();
+    result.into()
+}
+
+/// Result type for parse_ase_atoms containing type name and JSON data.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct JsAseParseResult {
+    /// "Structure" or "Molecule"
+    #[serde(rename = "type")]
+    pub type_name: String,
+    /// JSON string in pymatgen format
+    pub data: String,
+}
+
+/// Parse ASE Atoms dict and determine if it's a Structure or Molecule.
+///
+/// Returns { type: "Structure" | "Molecule", data: pymatgen_json_string }.
+#[wasm_bindgen]
+#[allow(deprecated)]
+pub fn parse_ase_atoms(ase_atoms: JsAseAtoms) -> WasmResult<JsAseParseResult> {
+    let result: Result<JsAseParseResult, String> = (|| {
+        let json = serde_json::to_string(&ase_atoms).map_err(|e| e.to_string())?;
+
+        let (type_name, pymatgen_json) =
+            match crate::io::parse_ase_atoms_json(&json).map_err(|e| e.to_string())? {
+                crate::io::StructureOrMolecule::Structure(s) => (
+                    "Structure".to_string(),
+                    crate::io::structure_to_pymatgen_json(&s),
+                ),
+                crate::io::StructureOrMolecule::Molecule(m) => (
+                    "Molecule".to_string(),
+                    crate::io::molecule_to_pymatgen_json(&m),
+                ),
+            };
+
+        Ok(JsAseParseResult {
+            type_name,
+            data: pymatgen_json,
+        })
+    })();
+    result.into()
 }
