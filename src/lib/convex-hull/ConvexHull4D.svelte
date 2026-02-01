@@ -1079,6 +1079,7 @@
     onmousedown={handle_mouse_down}
     onmousemove={handle_hover}
     onclick={handle_click}
+    onkeydown={handle_keydown}
     ondblclick={handle_double_click}
     onwheel={handle_wheel}
   ></canvas>

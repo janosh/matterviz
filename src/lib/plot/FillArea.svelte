@@ -56,8 +56,9 @@
   let path_fill = $derived(
     typeof effective_fill === `object` ? `url(#${gradient_id})` : effective_fill,
   )
+  let is_clickable = $derived(Boolean(on_click || region.on_click))
   let cursor_style = $derived(
-    region.hover_style?.cursor ?? (on_click ? `pointer` : `default`),
+    region.hover_style?.cursor ?? (is_clickable ? `pointer` : `default`),
   )
 
   // Path animation using Tween - create once, update target via effect
@@ -75,18 +76,28 @@
     tweened_path.target = path
   })
 
-  // Event handlers - extracted to avoid recreating on every render
-  const handle_mouse_enter = (event: MouseEvent) => on_hover?.(construct_event(event))
-  const handle_mouse_leave = () => on_hover?.(null)
+  // Emit helpers - call both region-level and prop-level handlers
+  const emit_hover = (evt: FillHandlerEvent | null) => {
+    region.on_hover?.(evt)
+    on_hover?.(evt)
+  }
+  const emit_click = (evt: FillHandlerEvent) => {
+    region.on_click?.(evt)
+    on_click?.(evt)
+  }
+
+  // Event handlers
+  const handle_mouse_enter = (event: MouseEvent) => emit_hover(construct_event(event))
+  const handle_mouse_leave = () => emit_hover(null)
   const handle_mouse_move = (event: MouseEvent) =>
-    is_hovered && on_hover?.(construct_event(event))
-  const handle_click = (event: MouseEvent) => on_click?.(construct_event(event))
+    is_hovered && emit_hover(construct_event(event))
+  const handle_click = (event: MouseEvent) => emit_click(construct_event(event))
 
   // Keyboard handler - creates event with default coordinates since no mouse position
   function handle_keydown(event: KeyboardEvent) {
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
-      if (!on_click) return
+      if (!is_clickable) return
 
       // For keyboard activation, use center of element or default coordinates
       const target = event.currentTarget as SVGElement
@@ -105,7 +116,7 @@
       const data_x = raw_x instanceof Date ? raw_x.getTime() : raw_x
       const data_y = y_scale_fn.invert?.(py) ?? 0
 
-      on_click({
+      emit_click({
         event,
         region_idx,
         region_id: region.id,
@@ -163,7 +174,7 @@
   onclick={handle_click}
   onkeydown={handle_keydown}
   role="img"
-  tabindex={on_click ? 0 : -1}
+  tabindex={is_clickable ? 0 : -1}
   aria-label={region.label ?? `Fill region ${region_idx}`}
 >
   {#snippet gradient_stops(stops: readonly [number, string][])}

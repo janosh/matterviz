@@ -715,6 +715,18 @@ test.describe(`ScatterPlot Component Tests`, () => {
     )
   })
 
+  test(`point cursor is pointer when click handler is provided`, async ({ page }) => {
+    const get_cursor = async (selector: string) => {
+      const point = page.locator(`${selector} path.marker`).first()
+      await expect(point).toBeVisible()
+      return point.evaluate((el) => globalThis.getComputedStyle(el).cursor)
+    }
+    // With click handler → pointer
+    expect(await get_cursor(`#point-event-test .scatter`)).toBe(`pointer`)
+    // Without click handler → not pointer
+    expect(await get_cursor(`#basic-example .scatter`)).not.toBe(`pointer`)
+  })
+
   test(`zooms correctly inside and outside plot area and resets`, async ({ page }) => {
     const plot_locator = page.locator(`#basic-example .scatter`)
     const svg = plot_locator.locator(`> svg[role="application"]`).first()
