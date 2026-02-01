@@ -173,6 +173,20 @@ class TestSymmetryFunctions:
         assert len(orbits) == n_sites
         assert len(set(orbits)) == n_unique
 
+    def test_is_periodic_image_same_site(self, fcc_cu_json: str) -> None:
+        """Same site is always a periodic image of itself."""
+        assert ferrox.is_periodic_image(fcc_cu_json, 0, 0, tolerance=0.01)
+
+    def test_is_periodic_image_different_elements(self, nacl_json: str) -> None:
+        """Na and Cl sites are not periodic images."""
+        # First site is Na, second is Cl (or vice versa)
+        assert not ferrox.is_periodic_image(nacl_json, 0, 1, tolerance=0.01)
+
+    def test_is_periodic_image_tolerance(self, fcc_cu_json: str) -> None:
+        """Tolerance parameter affects detection."""
+        # With very small tolerance, might still find self as periodic image
+        assert ferrox.is_periodic_image(fcc_cu_json, 0, 0, tolerance=1e-6)
+
 
 class TestGetSymmetryDataset:
     """Tests for get_symmetry_dataset function (returns all symmetry info)."""

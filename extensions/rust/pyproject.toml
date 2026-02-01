@@ -41,5 +41,8 @@ python-source = "python"
 module-name = "ferrox._ferrox"
 # Include atomic scattering params JSON (SSOT shared with TypeScript and Rust crate)
 include = [
-  { path = "src/atomic_scattering_params.json", format = ["sdist", "wheel"] },
+    { path = "src/atomic_scattering_params.json", format = [
+        "sdist",
+        "wheel",
+    ] },
 ]
