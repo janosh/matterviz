@@ -139,6 +139,27 @@ pub struct JsCrystal {
     pub properties: serde_json::Map<String, serde_json::Value>,
 }
 
+// === ASE Atoms Types ===
+
+/// ASE Atoms dict format for interoperability.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct JsAseAtoms {
+    /// Element symbols for each atom
+    pub symbols: Vec<String>,
+    /// Cartesian positions [[x1, y1, z1], ...] in Ångströms
+    pub positions: Vec<[f64; 3]>,
+    /// Cell matrix (3x3), null for molecules
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cell: Option<[[f64; 3]; 3]>,
+    /// Periodic boundary conditions
+    #[serde(default)]
+    pub pbc: [bool; 3],
+    /// Additional info dict
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub info: serde_json::Map<String, serde_json::Value>,
+}
+
 // === Neighbor List Types ===
 
 /// Result of neighbor list calculation.

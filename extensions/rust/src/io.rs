@@ -20,9 +20,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-// ============================================================================
-// Unified API
-// ============================================================================
+// === Unified API ===
 
 /// Supported structure file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,11 +170,17 @@ fn default_occu() -> f64 {
 }
 
 /// Represents a site in pymatgen JSON.
+///
+/// For structures, `abc` (fractional coords) is required.
+/// For molecules, `xyz` (Cartesian coords) is used and `abc` may be absent.
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)] // Fields parsed for compatibility but not all used
 struct PymatgenSite {
     species: Vec<PymatgenSpecies>,
-    abc: [f64; 3],
+    /// Fractional coordinates (required for structures, optional for molecules)
+    #[serde(default)]
+    abc: Option<[f64; 3]>,
+    /// Cartesian coordinates (optional for structures, required for molecules)
     #[serde(default)]
     xyz: Option<[f64; 3]>,
     #[serde(default)]
@@ -354,24 +358,30 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
         }
 
         site_occupancies.push(SiteOccupancy::with_properties(species_vec, site_props));
-        frac_coords.push(Vector3::new(site.abc[0], site.abc[1], site.abc[2]));
+
+        // For structures, abc (fractional coords) is required
+        let abc = site.abc.ok_or_else(|| FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!("Site {idx} missing 'abc' (fractional coordinates)"),
+        })?;
+        frac_coords.push(Vector3::new(abc[0], abc[1], abc[2]));
     }
 
     // Extract structure-level properties from JSON
-    let mut properties: HashMap<String, serde_json::Value> = match parsed.properties {
+    let properties: HashMap<String, serde_json::Value> = match parsed.properties {
         serde_json::Value::Object(map) => map.into_iter().collect(),
         _ => HashMap::new(),
     };
 
-    // Store charge in properties if present
-    if let Some(charge) = parsed.charge {
-        properties.insert("charge".to_string(), serde_json::json!(charge));
-    }
+    // Extract charge (default 0.0 for structures)
+    let charge = parsed.charge.unwrap_or(0.0);
 
-    Structure::try_new_from_occupancies_with_properties(
+    Structure::try_new_full(
         lattice,
         site_occupancies,
         frac_coords,
+        [true, true, true], // structures are periodic by default
+        charge,
         properties,
     )
 }
@@ -464,13 +474,18 @@ pub fn structure_to_pymatgen_json(structure: &Structure) -> String {
         structure.properties.clone().into_iter().collect();
 
     // Build full structure
-    let result = json!({
+    let mut result = json!({
         "@module": "pymatgen.core.structure",
         "@class": "Structure",
         "lattice": lattice,
         "sites": sites,
         "properties": properties
     });
+
+    // Include charge if non-zero
+    if structure.charge.abs() > 1e-10 {
+        result["charge"] = json!(structure.charge);
+    }
 
     result.to_string()
 }
@@ -542,9 +557,7 @@ pub fn structure_to_json(structure: &Structure) -> String {
     structure_to_pymatgen_json(structure)
 }
 
-// ============================================================================
-// POSCAR Parser
-// ============================================================================
+// === POSCAR Parser ===
 
 /// Parse a structure from VASP POSCAR format.
 ///
@@ -669,9 +682,7 @@ fn poscar_to_structure(poscar: &vasp_poscar::Poscar, path: &Path) -> Result<Stru
     Structure::try_new(lattice, species, frac_coords)
 }
 
-// ============================================================================
-// extXYZ Parser
-// ============================================================================
+// === extXYZ Parser ===
 
 /// Parse a single structure from an extXYZ file.
 ///
@@ -853,9 +864,7 @@ fn parse_pbc_value(pbc_value: &serde_json::Value) -> [bool; 3] {
     }
 }
 
-// ============================================================================
-// Structure Writers
-// ============================================================================
+// === Structure Writers ===
 
 /// Convert a structure to VASP POSCAR format string.
 ///
@@ -1140,6 +1149,806 @@ pub fn write_structure(structure: &Structure, path: &Path) -> Result<()> {
     Ok(())
 }
 
+// === Molecule Parsers ===
+
+/// Represents a pymatgen Molecule JSON structure.
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields parsed for compatibility but not all used
+struct PymatgenMolecule {
+    #[serde(rename = "@module")]
+    _module: Option<String>,
+    #[serde(rename = "@class")]
+    _class: Option<String>,
+    sites: Vec<PymatgenSite>,
+    #[serde(default)]
+    charge: f64,
+    #[serde(default)]
+    properties: serde_json::Value,
+}
+
+/// Parse a molecule from pymatgen's Molecule JSON format.
+///
+/// Supports the format produced by `Molecule.as_dict()` in pymatgen.
+///
+/// # Arguments
+///
+/// * `json` - JSON string in pymatgen Molecule.as_dict() format
+///
+/// # Returns
+///
+/// The parsed molecule or an error if parsing fails.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let json = r#"{
+///     "sites": [
+///         {"species": [{"element": "O"}], "xyz": [0, 0, 0]},
+///         {"species": [{"element": "H"}], "xyz": [0.96, 0, 0]},
+///         {"species": [{"element": "H"}], "xyz": [-0.24, 0.93, 0]}
+///     ],
+///     "charge": 0
+/// }"#;
+/// let molecule = parse_molecule_json(json)?;
+/// ```
+pub fn parse_molecule_json(json: &str) -> Result<Structure> {
+    let parsed: PymatgenMolecule =
+        serde_json::from_str(json).map_err(|e| FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: e.to_string(),
+        })?;
+
+    // Build site occupancies and coordinates
+    let mut site_occupancies = Vec::with_capacity(parsed.sites.len());
+    let mut cart_coords = Vec::with_capacity(parsed.sites.len());
+
+    for (idx, site) in parsed.sites.iter().enumerate() {
+        if site.species.is_empty() {
+            return Err(FerroxError::JsonError {
+                path: "inline".to_string(),
+                reason: format!("Site {idx} has no species"),
+            });
+        }
+
+        // Parse all species with their occupancies
+        let mut species_vec = Vec::with_capacity(site.species.len());
+        let mut site_props: HashMap<String, serde_json::Value> = HashMap::new();
+        let mut species_metadata: Vec<HashMap<String, serde_json::Value>> =
+            Vec::with_capacity(site.species.len());
+
+        for sp_json in &site.species {
+            // Use normalize_symbol for comprehensive element parsing
+            let normalized = crate::element::normalize_symbol(&sp_json.element).map_err(|e| {
+                FerroxError::JsonError {
+                    path: "inline".to_string(),
+                    reason: format!("Invalid element symbol '{}': {}", sp_json.element, e),
+                }
+            })?;
+
+            // Validate oxidation state range BEFORE casting to i8
+            if let Some(oxi) = sp_json.oxidation_state
+                && (oxi < i8::MIN as i32 || oxi > i8::MAX as i32)
+            {
+                return Err(FerroxError::JsonError {
+                    path: "inline".to_string(),
+                    reason: format!("Oxidation state {oxi} out of range [-128, 127]"),
+                });
+            }
+
+            // Check for oxidation state conflict
+            let json_oxi = sp_json.oxidation_state.map(|o| o as i8);
+            let final_oxi = match (json_oxi, normalized.oxidation_state) {
+                (Some(json), Some(sym)) if json != sym => {
+                    return Err(FerroxError::JsonError {
+                        path: "inline".to_string(),
+                        reason: format!(
+                            "Conflicting oxidation states for '{}': symbol implies {}, but JSON has {}",
+                            sp_json.element,
+                            sym,
+                            sp_json.oxidation_state.unwrap()
+                        ),
+                    });
+                }
+                (Some(json), _) => Some(json),
+                (None, Some(sym)) => Some(sym),
+                (None, None) => None,
+            };
+
+            let sp = Species::new(normalized.element, final_oxi);
+
+            // Validate occupancy: must be finite and in range (0.0, 1.0]
+            let occu = sp_json.occu;
+            if !occu.is_finite() || occu <= 0.0 || occu > 1.0 {
+                return Err(FerroxError::JsonError {
+                    path: "inline".to_string(),
+                    reason: format!(
+                        "Site {idx} species {} has invalid occupancy {occu} (must be in (0.0, 1.0])",
+                        sp_json.element
+                    ),
+                });
+            }
+
+            species_metadata.push(normalized.metadata);
+            species_vec.push((sp, occu));
+        }
+
+        // Only merge species metadata for single-species sites
+        if species_metadata.len() == 1 {
+            for (key, val) in species_metadata.into_iter().next().unwrap() {
+                site_props.insert(key, val);
+            }
+        }
+
+        // Add site label if present
+        if let Some(ref label) = site.label {
+            site_props.insert("label".to_string(), serde_json::json!(label));
+        }
+
+        // Merge site properties from JSON
+        if let serde_json::Value::Object(map) = &site.properties {
+            for (key, val) in map {
+                site_props.insert(key.clone(), val.clone());
+            }
+        }
+
+        site_occupancies.push(SiteOccupancy::with_properties(species_vec, site_props));
+
+        // Molecules require Cartesian (xyz) coordinates - fractional (abc) coordinates
+        // don't make sense without a lattice to convert them
+        let coords = site.xyz.ok_or_else(|| FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!(
+                "Site {idx} missing 'xyz' (Cartesian coordinates required for molecules)"
+            ),
+        })?;
+        cart_coords.push(Vector3::new(coords[0], coords[1], coords[2]));
+    }
+
+    // Extract molecule-level properties from JSON
+    let properties: HashMap<String, serde_json::Value> = match parsed.properties {
+        serde_json::Value::Object(map) => map.into_iter().collect(),
+        _ => HashMap::new(),
+    };
+
+    Structure::try_new_molecule_from_occupancies(
+        site_occupancies,
+        cart_coords,
+        parsed.charge,
+        properties,
+    )
+}
+
+/// Serialize a non-periodic structure (molecule) to pymatgen's Molecule JSON format.
+///
+/// Produces JSON compatible with pymatgen's `Molecule.from_dict()`.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to serialize (should have `pbc = [false, false, false]`)
+///
+/// # Returns
+///
+/// JSON string in pymatgen Molecule format.
+pub fn molecule_to_pymatgen_json(structure: &Structure) -> String {
+    use serde_json::{Value, json};
+
+    let cart_coords = structure.cart_coords();
+
+    // Build sites with all species and their occupancies
+    let sites: Vec<Value> = structure
+        .site_occupancies
+        .iter()
+        .zip(cart_coords.iter())
+        .map(|(site_occ, cart)| {
+            let species_list: Vec<Value> = site_occ
+                .species
+                .iter()
+                .map(|(sp, occ)| {
+                    let mut entry = json!({
+                        "element": sp.element.symbol(),
+                        "occu": occ
+                    });
+                    if let Some(oxi) = sp.oxidation_state {
+                        entry["oxidation_state"] = json!(oxi);
+                    }
+                    entry
+                })
+                .collect();
+
+            // Extract label from properties if present
+            let label = site_occ
+                .properties
+                .get("label")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            // Build site properties (excluding label which is at top level)
+            let props: serde_json::Map<String, Value> = site_occ
+                .properties
+                .iter()
+                .filter(|(k, _)| k.as_str() != "label")
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+            // Generate default label from species symbols if not present
+            let default_label: String = site_occ
+                .species
+                .iter()
+                .map(|(sp, _)| sp.element.symbol())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            json!({
+                "species": species_list,
+                "xyz": [cart.x, cart.y, cart.z],
+                "label": label.unwrap_or(default_label),
+                "properties": Value::Object(props)
+            })
+        })
+        .collect();
+
+    // Build molecule properties
+    let properties: serde_json::Map<String, Value> =
+        structure.properties.clone().into_iter().collect();
+
+    // Build full molecule
+    let result = json!({
+        "@module": "pymatgen.core.structure",
+        "@class": "Molecule",
+        "charge": structure.charge,
+        "sites": sites,
+        "properties": properties
+    });
+
+    result.to_string()
+}
+
+/// Parse a molecule from a plain XYZ file (no lattice required).
+///
+/// This function parses standard XYZ format with Cartesian coordinates.
+/// For files with lattice information, use [`parse_extxyz`] instead.
+///
+/// # Arguments
+///
+/// * `path` - Path to the XYZ file
+///
+/// # Returns
+///
+/// The parsed structure (non-periodic) or an error if parsing fails.
+pub fn parse_xyz(path: &Path) -> Result<Structure> {
+    let frames = parse_xyz_molecules(path)?;
+    frames
+        .into_iter()
+        .next()
+        .ok_or_else(|| FerroxError::EmptyFile {
+            path: path.display().to_string(),
+        })?
+}
+
+/// Parse a molecule from XYZ content string.
+///
+/// # Arguments
+///
+/// * `content` - XYZ file content as string
+///
+/// # Returns
+///
+/// The parsed structure (non-periodic) or an error if parsing fails.
+pub fn parse_xyz_str(content: &str) -> Result<Structure> {
+    frame_to_molecule(content, Path::new("inline"))
+}
+
+/// Parse all frames from an XYZ file as molecules.
+///
+/// Returns a vector of molecules for all frames in the file.
+///
+/// # Arguments
+///
+/// * `path` - Path to the XYZ file
+///
+/// # Returns
+///
+/// Vector of Result<Structure> (non-periodic) for each frame.
+pub fn parse_xyz_molecules(path: &Path) -> Result<Vec<Result<Structure>>> {
+    let path_str = path.to_string_lossy().to_string();
+    let frames = extxyz::read_xyz_frames(&path_str, 0..).map_err(|e| FerroxError::ParseError {
+        path: path.display().to_string(),
+        reason: format!("XYZ read error: {e}"),
+    })?;
+
+    Ok(frames
+        .map(|frame| frame_to_molecule(&frame, path))
+        .collect())
+}
+
+fn frame_to_molecule(frame: &str, path: &Path) -> Result<Structure> {
+    let atoms = extxyz::RawAtoms::parse_from(frame).map_err(|e| FerroxError::ParseError {
+        path: path.display().to_string(),
+        reason: format!("XYZ parse error: {e}"),
+    })?;
+
+    // Try to parse comment line for properties (but NOT lattice - this is for molecules)
+    // Plain XYZ comments (like "Water" or "Methane") won't parse as extXYZ info - that's OK
+    let info: extxyz::Info = atoms.comment.parse().unwrap_or_default();
+
+    // Parse species and coordinates
+    let mut species = Vec::with_capacity(atoms.atoms.len());
+    let mut cart_coords = Vec::with_capacity(atoms.atoms.len());
+
+    for atom in &atoms.atoms {
+        let element =
+            Element::from_symbol(atom.element).ok_or_else(|| FerroxError::ParseError {
+                path: path.display().to_string(),
+                reason: format!("Unknown element symbol: {}", atom.element),
+            })?;
+        species.push(Species::neutral(element));
+        cart_coords.push(Vector3::new(
+            atom.position[0],
+            atom.position[1],
+            atom.position[2],
+        ));
+    }
+
+    // Extract properties (energy, charge, etc.)
+    let mut properties = HashMap::new();
+    let mut charge = 0.0;
+
+    if let Some(energy_value) = info.get("energy")
+        && let Some(energy) = energy_value.as_f64()
+    {
+        properties.insert("energy".to_string(), serde_json::json!(energy));
+    }
+
+    if let Some(charge_value) = info.get("charge")
+        && let Some(ch) = charge_value.as_f64()
+    {
+        charge = ch;
+    }
+
+    // Store other info as properties (exclude structure-specific and already-handled keys)
+    let skip_keys = ["Lattice", "pbc", "energy", "charge", "Properties"];
+    for (key, value) in info.raw_map().iter() {
+        if !skip_keys.contains(&key.as_str()) {
+            properties.insert(key.to_string(), value.clone());
+        }
+    }
+
+    Structure::try_new_molecule(species, cart_coords, charge, properties)
+}
+
+/// Convert a non-periodic structure (molecule) to plain XYZ format string.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to serialize (should have `pbc = [false, false, false]`)
+/// * `comment` - Optional comment (defaults to formula)
+///
+/// # Returns
+///
+/// XYZ format string.
+pub fn molecule_to_xyz(structure: &Structure, comment: Option<&str>) -> String {
+    let mut lines = vec![structure.num_sites().to_string()];
+
+    // Comment line (second line)
+    let comment_str = comment
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| structure.composition().reduced_formula());
+    lines.push(comment_str);
+
+    // Atom lines: Element X Y Z
+    let cart_coords = structure.cart_coords();
+    for (site_occ, cart) in structure.site_occupancies.iter().zip(cart_coords.iter()) {
+        let symbol = site_occ.dominant_species().element.symbol();
+        lines.push(format!(
+            "{} {:20.16} {:20.16} {:20.16}",
+            symbol, cart.x, cart.y, cart.z
+        ));
+    }
+
+    lines.join("\n") + "\n"
+}
+
+/// Convert a non-periodic structure (molecule) to extXYZ format string with properties.
+///
+/// This produces an extXYZ file but without lattice information,
+/// suitable for molecular data with attached properties.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to serialize (should have `pbc = [false, false, false]`)
+/// * `properties` - Optional additional properties for the comment line
+///
+/// # Returns
+///
+/// extXYZ format string (without lattice).
+pub fn molecule_to_extxyz(
+    structure: &Structure,
+    properties: Option<&HashMap<String, serde_json::Value>>,
+) -> String {
+    // Line 1: Number of atoms
+    let mut lines = vec![structure.num_sites().to_string()];
+
+    // Line 2: Comment with properties (no lattice for molecules)
+    // Format: pbc="F F F" [other properties]
+    let mut comment_parts = vec!["pbc=\"F F F\"".to_string()];
+
+    // Add charge if non-zero
+    if structure.charge.abs() > 1e-10 {
+        comment_parts.push(format!("charge={}", structure.charge));
+    }
+
+    // Add molecule properties and additional properties
+    let all_props = structure
+        .properties
+        .iter()
+        .chain(properties.into_iter().flatten());
+    for (key, value) in all_props {
+        if key != "pbc"
+            && key != "charge"
+            && let Some(value_str) = format_extxyz_value(value)
+        {
+            comment_parts.push(format!("{key}={value_str}"));
+        }
+    }
+
+    lines.push(comment_parts.join(" "));
+
+    // Atom lines: Element X Y Z (Cartesian coordinates)
+    let cart_coords = structure.cart_coords();
+    for (site_occ, cart) in structure.site_occupancies.iter().zip(cart_coords.iter()) {
+        let symbol = site_occ.dominant_species().element.symbol();
+        lines.push(format!(
+            "{} {:20.16} {:20.16} {:20.16}",
+            symbol, cart.x, cart.y, cart.z
+        ));
+    }
+
+    lines.join("\n") + "\n"
+}
+
+/// Write a non-periodic structure (molecule) to an XYZ file.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to write (should have `pbc = [false, false, false]`)
+/// * `path` - Path to the output file
+/// * `comment` - Optional comment line
+///
+/// # Returns
+///
+/// Result indicating success or file I/O error.
+pub fn write_xyz(structure: &Structure, path: &Path, comment: Option<&str>) -> Result<()> {
+    let content = molecule_to_xyz(structure, comment);
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+/// Deprecated: Use `Structure` with `is_molecule()` instead.
+///
+/// This enum is kept for backward compatibility but will be removed in a future version.
+/// Since `Structure` now has `pbc` and `charge` fields, it can represent both periodic
+/// and non-periodic systems.
+#[derive(Debug, Clone)]
+#[deprecated(
+    since = "0.1.0",
+    note = "Use Structure with is_molecule() check instead"
+)]
+pub enum StructureOrMolecule {
+    /// A periodic crystal structure with lattice
+    Structure(Structure),
+    /// A non-periodic structure (molecule) - internally just Structure with pbc=[false,false,false]
+    Molecule(Structure),
+}
+
+// === ASE Atoms Dict Conversion ===
+
+/// Represents an ASE Atoms dict structure.
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct AseAtomsDict {
+    /// Element symbols for each atom
+    symbols: Vec<String>,
+    /// Cartesian positions [[x1, y1, z1], ...]
+    positions: Vec<[f64; 3]>,
+    /// Cell matrix (3x3), optional for molecules
+    #[serde(default)]
+    cell: Option<[[f64; 3]; 3]>,
+    /// Periodic boundary conditions [pbc_x, pbc_y, pbc_z]
+    #[serde(default = "default_ase_pbc")]
+    pbc: [bool; 3],
+    /// Additional info dict (charge, energy, etc.)
+    #[serde(default)]
+    info: HashMap<String, serde_json::Value>,
+}
+
+fn default_ase_pbc() -> [bool; 3] {
+    [false, false, false]
+}
+
+/// Parse ASE Atoms dict format from JSON.
+///
+/// Returns a Structure if a cell is present and pbc contains at least one true,
+/// otherwise returns a Molecule.
+///
+/// # Arguments
+///
+/// * `json` - JSON string in ASE Atoms dict format
+///
+/// # Returns
+///
+/// Either a Structure or Molecule depending on periodicity.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let json = r#"{
+///     "symbols": ["Fe", "O"],
+///     "positions": [[0, 0, 0], [2, 0, 0]],
+///     "cell": [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
+///     "pbc": [true, true, true]
+/// }"#;
+/// let result = parse_ase_atoms_json(json)?;
+/// ```
+#[allow(deprecated)]
+pub fn parse_ase_atoms_json(json: &str) -> Result<StructureOrMolecule> {
+    let parsed: AseAtomsDict = serde_json::from_str(json).map_err(|e| FerroxError::JsonError {
+        path: "inline".to_string(),
+        reason: e.to_string(),
+    })?;
+
+    // Validate lengths match
+    if parsed.symbols.len() != parsed.positions.len() {
+        return Err(FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!(
+                "symbols and positions must have same length: {} vs {}",
+                parsed.symbols.len(),
+                parsed.positions.len()
+            ),
+        });
+    }
+
+    // Parse species
+    let mut species = Vec::with_capacity(parsed.symbols.len());
+    for symbol in &parsed.symbols {
+        let element = Element::from_symbol(symbol).ok_or_else(|| FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!("Unknown element symbol: {symbol}"),
+        })?;
+        species.push(Species::neutral(element));
+    }
+
+    // Parse coordinates
+    let cart_coords: Vec<Vector3<f64>> = parsed
+        .positions
+        .iter()
+        .map(|pos| Vector3::new(pos[0], pos[1], pos[2]))
+        .collect();
+
+    // Check if periodic (has cell and at least one pbc direction)
+    let is_periodic = parsed.cell.is_some() && parsed.pbc.iter().any(|&p| p);
+
+    if is_periodic {
+        // Create periodic Structure
+        // ASE cell is row-major: cell[0] = a vector, cell[1] = b vector, cell[2] = c vector
+        let cell = parsed.cell.unwrap();
+        let matrix = nalgebra::Matrix3::from_row_slice(&[
+            cell[0][0], cell[0][1], cell[0][2], cell[1][0], cell[1][1], cell[1][2], cell[2][0],
+            cell[2][1], cell[2][2],
+        ]);
+        let mut lattice = Lattice::new(matrix);
+        lattice.pbc = parsed.pbc;
+
+        // Convert Cartesian to fractional
+        let frac_coords = lattice.get_fractional_coords(&cart_coords);
+
+        // Extract properties from info
+        let properties: HashMap<String, serde_json::Value> = parsed.info;
+
+        #[allow(deprecated)]
+        Ok(StructureOrMolecule::Structure(
+            Structure::try_new_with_properties(lattice, species, frac_coords, properties)?,
+        ))
+    } else {
+        // Create non-periodic Structure (molecule)
+        let charge = parsed
+            .info
+            .get("charge")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let properties: HashMap<String, serde_json::Value> = parsed
+            .info
+            .into_iter()
+            .filter(|(k, _)| k != "charge")
+            .collect();
+
+        #[allow(deprecated)]
+        Ok(StructureOrMolecule::Molecule(Structure::try_new_molecule(
+            species,
+            cart_coords,
+            charge,
+            properties,
+        )?))
+    }
+}
+
+/// Convert a Structure to ASE Atoms dict format.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to convert
+///
+/// # Returns
+///
+/// JSON Value in ASE Atoms dict format.
+pub fn structure_to_ase_atoms_dict(structure: &Structure) -> serde_json::Value {
+    use serde_json::json;
+
+    // Get symbols (dominant species for each site)
+    let symbols: Vec<&str> = structure
+        .site_occupancies
+        .iter()
+        .map(|so| so.dominant_species().element.symbol())
+        .collect();
+
+    // Get Cartesian positions
+    let cart_coords = structure.cart_coords();
+    let positions: Vec<[f64; 3]> = cart_coords.iter().map(|c| [c.x, c.y, c.z]).collect();
+
+    // Get cell matrix (row vectors)
+    let mat = structure.lattice.matrix();
+    let cell = [
+        [mat[(0, 0)], mat[(0, 1)], mat[(0, 2)]],
+        [mat[(1, 0)], mat[(1, 1)], mat[(1, 2)]],
+        [mat[(2, 0)], mat[(2, 1)], mat[(2, 2)]],
+    ];
+
+    // Build info dict from properties
+    let info: serde_json::Map<String, serde_json::Value> =
+        structure.properties.clone().into_iter().collect();
+
+    json!({
+        "symbols": symbols,
+        "positions": positions,
+        "cell": cell,
+        "pbc": structure.lattice.pbc,
+        "info": info
+    })
+}
+
+/// Convert a non-periodic structure (molecule) to ASE Atoms dict format.
+///
+/// # Arguments
+///
+/// * `structure` - The structure to convert (should have `pbc = [false, false, false]`)
+///
+/// # Returns
+///
+/// JSON Value in ASE Atoms dict format (with pbc=[false, false, false]).
+pub fn molecule_to_ase_atoms_dict(structure: &Structure) -> serde_json::Value {
+    use serde_json::json;
+
+    // Get symbols (dominant species for each site)
+    let symbols: Vec<&str> = structure
+        .site_occupancies
+        .iter()
+        .map(|so| so.dominant_species().element.symbol())
+        .collect();
+
+    // Get Cartesian positions
+    let cart_coords = structure.cart_coords();
+    let positions: Vec<[f64; 3]> = cart_coords.iter().map(|c| [c.x, c.y, c.z]).collect();
+
+    // Build info dict from properties, including charge
+    let mut info: serde_json::Map<String, serde_json::Value> =
+        structure.properties.clone().into_iter().collect();
+    if structure.charge.abs() > 1e-10 {
+        info.insert("charge".to_string(), json!(structure.charge));
+    }
+
+    json!({
+        "symbols": symbols,
+        "positions": positions,
+        "cell": serde_json::Value::Null,
+        "pbc": [false, false, false],
+        "info": info
+    })
+}
+
+/// Batch convert structures to ASE Atoms dicts.
+///
+/// # Arguments
+///
+/// * `structures` - Slice of structures to convert
+///
+/// # Returns
+///
+/// Vector of JSON Values in ASE Atoms dict format.
+pub fn structures_to_ase_atoms_dicts(structures: &[Structure]) -> Vec<serde_json::Value> {
+    structures.iter().map(structure_to_ase_atoms_dict).collect()
+}
+
+/// Batch convert non-periodic structures (molecules) to ASE Atoms dicts.
+///
+/// # Arguments
+///
+/// * `structures` - Slice of structures to convert (should have `pbc = [false, false, false]`)
+///
+/// # Returns
+///
+/// Vector of JSON Values in ASE Atoms dict format.
+pub fn molecules_to_ase_atoms_dicts(structures: &[Structure]) -> Vec<serde_json::Value> {
+    structures.iter().map(molecule_to_ase_atoms_dict).collect()
+}
+
+/// Convert ASE Atoms dict JSON string to pymatgen JSON.
+///
+/// This is a convenience function for conversion between formats.
+/// Returns Structure JSON for periodic systems, Molecule JSON for non-periodic.
+///
+/// # Arguments
+///
+/// * `ase_json` - JSON string in ASE Atoms dict format
+///
+/// # Returns
+///
+/// JSON string in pymatgen format (Structure or Molecule based on pbc).
+#[allow(deprecated)]
+pub fn ase_atoms_to_pymatgen_json(ase_json: &str) -> Result<String> {
+    match parse_ase_atoms_json(ase_json)? {
+        StructureOrMolecule::Structure(s) => Ok(structure_to_pymatgen_json(&s)),
+        StructureOrMolecule::Molecule(m) => Ok(molecule_to_pymatgen_json(&m)),
+    }
+}
+
+/// Parse an XYZ file, returning either a Structure or Molecule.
+///
+/// If the file contains lattice information (extXYZ format), returns a Structure.
+/// Otherwise, returns a Molecule.
+///
+/// # Arguments
+///
+/// * `path` - Path to the XYZ file
+///
+/// # Returns
+///
+/// Either a Structure (if lattice present) or non-periodic Structure (if no lattice).
+#[allow(deprecated)]
+pub fn parse_xyz_flexible(path: &Path) -> Result<StructureOrMolecule> {
+    let path_str = path.to_string_lossy().to_string();
+    let mut frames =
+        extxyz::read_xyz_frames(&path_str, 0..).map_err(|e| FerroxError::ParseError {
+            path: path.display().to_string(),
+            reason: format!("XYZ read error: {e}"),
+        })?;
+
+    let frame = frames.next().ok_or_else(|| FerroxError::EmptyFile {
+        path: path.display().to_string(),
+    })?;
+
+    let atoms = extxyz::RawAtoms::parse_from(&frame).map_err(|e| FerroxError::ParseError {
+        path: path.display().to_string(),
+        reason: format!("XYZ parse error: {e}"),
+    })?;
+
+    // Try to parse comment line - plain XYZ comments won't parse as extXYZ info, that's OK
+    let info: extxyz::Info = atoms.comment.parse().unwrap_or_default();
+
+    // Check if lattice is present
+    if info.get("Lattice").is_some() {
+        // Has lattice - parse as periodic structure
+        Ok(StructureOrMolecule::Structure(frame_to_structure(
+            &frame, path,
+        )?))
+    } else {
+        // No lattice - parse as non-periodic structure (molecule)
+        Ok(StructureOrMolecule::Molecule(frame_to_molecule(
+            &frame, path,
+        )?))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1403,19 +2212,35 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_structure_charge() {
-        // Structure-level charge should be stored in properties
-        let json = r#"{
-            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
-            "sites": [{"species": [{"element": "Na"}], "abc": [0,0,0]}],
-            "charge": 1.0
-        }"#;
+    fn test_structure_charge() {
+        // Helper to build minimal structure JSON with optional charge
+        let make_json = |charge: Option<f64>| {
+            let base = r#"{"lattice":{"matrix":[[4,0,0],[0,4,0],[0,0,4]]},"sites":[{"species":[{"element":"Na"}],"abc":[0,0,0]}]"#;
+            charge.map_or(format!("{base}}}"), |c| format!("{base},\"charge\":{c}}}"))
+        };
 
-        let s = parse_structure_json(json).unwrap();
-        assert_eq!(
-            s.properties.get("charge").and_then(|v| v.as_f64()),
-            Some(1.0)
-        );
+        // Parse: positive, negative, missing charge
+        for (input, expected) in [(Some(1.0), 1.0), (Some(-1.5), -1.5), (None, 0.0)] {
+            let s = parse_structure_json(&make_json(input)).unwrap();
+            assert!((s.charge - expected).abs() < 1e-10, "input={input:?}");
+            assert!(
+                !s.properties.contains_key("charge"),
+                "charge not in properties"
+            );
+        }
+
+        // Roundtrip: charge survives serialize -> parse
+        let s = Structure::try_new_full(
+            Lattice::cubic(4.0),
+            vec![SiteOccupancy::ordered(Species::neutral(Element::Li))],
+            vec![Vector3::new(0.0, 0.0, 0.0)],
+            [true, true, true],
+            2.5,
+            HashMap::new(),
+        )
+        .unwrap();
+        let parsed = parse_structure_json(&structure_to_pymatgen_json(&s)).unwrap();
+        assert!((parsed.charge - 2.5).abs() < 1e-10);
     }
 
     #[test]
@@ -1669,9 +2494,7 @@ mod tests {
         assert!((s.lattice.volume() - 27.0).abs() < 1e-10);
     }
 
-    // ========================================================================
-    // POSCAR Parser Tests
-    // ========================================================================
+    // === POSCAR Parser Tests ===
 
     #[test]
     fn test_parse_poscar_cubic_diamond() {
@@ -1881,9 +2704,7 @@ Direct
         assert!((s.frac_coords[4].x - 0.25).abs() < 1e-10);
     }
 
-    // ========================================================================
-    // extXYZ Parser Tests
-    // ========================================================================
+    // === extXYZ Parser Tests ===
 
     #[test]
     fn test_parse_extxyz_quartz() {
@@ -2071,9 +2892,7 @@ Mg 0.0 0.0 0.0
         assert!((s.frac_coords[0].z - 0.0).abs() < 1e-10);
     }
 
-    // ========================================================================
-    // Format Detection Tests
-    // ========================================================================
+    // === Format Detection Tests ===
 
     #[test]
     fn test_format_detection() {
@@ -2154,9 +2973,7 @@ Mg 0.0 0.0 0.0
         );
     }
 
-    // =========================================================================
-    // parse_structure() auto-detection tests
-    // =========================================================================
+    // === parse_structure() auto-detection tests ===
 
     #[test]
     fn test_parse_structure_detects_json() {
@@ -2187,9 +3004,7 @@ Mg 0.0 0.0 0.0
         );
     }
 
-    // =========================================================================
-    // parse_structures_glob() tests
-    // =========================================================================
+    // === parse_structures_glob() tests ===
 
     #[test]
     fn test_parse_structures_glob_basic() {
@@ -2221,9 +3036,7 @@ Mg 0.0 0.0 0.0
         assert!(result.is_err(), "Invalid glob pattern should return error");
     }
 
-    // =========================================================================
-    // Pymatgen Edge Case Tests (ported from pymatgen test suite)
-    // =========================================================================
+    // === Pymatgen Edge Case Tests (ported from pymatgen test suite) ===
 
     #[test]
     fn test_poscar_edge_cases() {
@@ -2298,9 +3111,7 @@ Mg 0.0 0.0 0.0
         assert!(!s_dis.is_ordered());
     }
 
-    // =========================================================================
-    // Structure Writer Tests
-    // =========================================================================
+    // === Structure Writer Tests ===
 
     #[test]
     fn test_structure_to_poscar_roundtrip() {
@@ -2472,9 +3283,7 @@ Mg 0.0 0.0 0.0
         );
     }
 
-    // =========================================================================
-    // Fixture-based Roundtrip Tests (matches TypeScript coverage)
-    // =========================================================================
+    // === Fixture-based Roundtrip Tests (matches TypeScript coverage) ===
 
     #[test]
     fn test_roundtrip_poscar_batio3_fixture() {
@@ -2542,9 +3351,7 @@ Mg 0.0 0.0 0.0
         assert!((s1.lattice.volume() - s2.lattice.volume()).abs() < 1e-6);
     }
 
-    // =========================================================================
-    // Triclinic/Non-orthogonal Lattice Tests
-    // =========================================================================
+    // === Triclinic/Non-orthogonal Lattice Tests ===
 
     #[test]
     fn test_poscar_triclinic_lattice() {
@@ -2581,9 +3388,7 @@ Mg 0.0 0.0 0.0
         assert!((a1.z - a2.z).abs() < 1e-4);
     }
 
-    // =========================================================================
-    // High Precision Tests
-    // =========================================================================
+    // === High Precision Tests ===
 
     #[test]
     fn test_poscar_high_precision_coords() {
@@ -2602,9 +3407,7 @@ Mg 0.0 0.0 0.0
         assert!((f1.z - f2.z).abs() < 1e-10, "z precision loss");
     }
 
-    // =========================================================================
-    // Disordered Site Handling (CIF preserves occupancy)
-    // =========================================================================
+    // === Disordered Site Handling (CIF preserves occupancy) ===
 
     #[test]
     fn test_cif_disordered_site_roundtrip() {
@@ -2631,9 +3434,7 @@ Mg 0.0 0.0 0.0
         assert!(cif.contains("0.400000") || cif.contains("0.4"));
     }
 
-    // =========================================================================
-    // CIF Data Block Name Sanitization
-    // =========================================================================
+    // === CIF Data Block Name Sanitization ===
 
     #[test]
     fn test_cif_data_name_sanitization() {
@@ -2653,9 +3454,7 @@ Mg 0.0 0.0 0.0
         assert!(cif2.starts_with("data_H\n"));
     }
 
-    // =========================================================================
-    // Large Structure Handling
-    // =========================================================================
+    // === Large Structure Handling ===
 
     #[test]
     fn test_large_structure_export() {
@@ -2690,9 +3489,7 @@ Mg 0.0 0.0 0.0
         assert!(json.contains("\"sites\""));
     }
 
-    // =========================================================================
-    // POSCAR Default Comment (formula)
-    // =========================================================================
+    // === POSCAR Default Comment (formula) ===
 
     #[test]
     fn test_poscar_default_comment_uses_formula() {
@@ -2721,9 +3518,7 @@ Mg 0.0 0.0 0.0
         );
     }
 
-    // =========================================================================
-    // extXYZ Properties Preservation
-    // =========================================================================
+    // === extXYZ Properties Preservation ===
 
     #[test]
     fn test_extxyz_preserves_properties() {
@@ -2749,5 +3544,518 @@ Mg 0.0 0.0 0.0
         temp.write_all(xyz.as_bytes()).unwrap();
         let s2 = parse_extxyz(temp.path()).unwrap();
         assert_eq!(s2.properties.get("energy"), Some(&serde_json::json!(-5.5)));
+    }
+
+    // === Molecule IO Tests ===
+
+    fn water_molecule() -> Structure {
+        let species = vec![
+            Species::neutral(Element::O),
+            Species::neutral(Element::H),
+            Species::neutral(Element::H),
+        ];
+        let coords = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.96, 0.0, 0.0),
+            Vector3::new(-0.24, 0.93, 0.0),
+        ];
+        Structure::try_new_molecule(species, coords, 0.0, std::collections::HashMap::new()).unwrap()
+    }
+
+    #[test]
+    fn test_parse_molecule_json() {
+        // Water molecule
+        let json = r#"{
+            "sites": [
+                {"species": [{"element": "O"}], "xyz": [0, 0, 0]},
+                {"species": [{"element": "H"}], "xyz": [0.96, 0, 0]},
+                {"species": [{"element": "H"}], "xyz": [-0.24, 0.93, 0]}
+            ],
+            "charge": 0
+        }"#;
+        let mol = parse_molecule_json(json).unwrap();
+        assert_eq!(mol.num_sites(), 3);
+        assert_eq!(mol.composition().reduced_formula(), "H2O");
+        let cart = mol.cart_coords();
+        assert!((cart[1].x - 0.96).abs() < 1e-10);
+        // Charged ion
+        let ion_json =
+            r#"{"sites": [{"species": [{"element": "Na"}], "xyz": [0, 0, 0]}], "charge": 1.0}"#;
+        let ion = parse_molecule_json(ion_json).unwrap();
+        assert!((ion.charge - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_molecule_json_with_oxidation_states() {
+        let json = r#"{
+            "sites": [
+                {"species": [{"element": "Na", "oxidation_state": 1}], "xyz": [0, 0, 0]},
+                {"species": [{"element": "Cl", "oxidation_state": -1}], "xyz": [2.0, 0, 0]}
+            ],
+            "charge": 0
+        }"#;
+
+        let mol = parse_molecule_json(json).unwrap();
+        assert_eq!(mol.species()[0].oxidation_state, Some(1));
+        assert_eq!(mol.species()[1].oxidation_state, Some(-1));
+    }
+
+    #[test]
+    fn test_molecule_to_pymatgen_json_roundtrip() {
+        let mol1 = water_molecule();
+        let json = molecule_to_pymatgen_json(&mol1);
+        let mol2 = parse_molecule_json(&json).unwrap();
+
+        assert_eq!(mol1.num_sites(), mol2.num_sites());
+        assert_eq!(
+            mol1.composition().reduced_formula(),
+            mol2.composition().reduced_formula()
+        );
+
+        // Check coordinates roundtrip
+        let cart1 = mol1.cart_coords();
+        let cart2 = mol2.cart_coords();
+        for idx in 0..mol1.num_sites() {
+            assert!((cart1[idx] - cart2[idx]).norm() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_molecule_to_xyz() {
+        let mol = water_molecule();
+        // Default comment (formula)
+        let xyz = molecule_to_xyz(&mol, None);
+        let lines: Vec<&str> = xyz.lines().collect();
+        assert_eq!(lines[0], "3");
+        assert_eq!(lines[1], "H2O");
+        // Custom comment
+        let xyz2 = molecule_to_xyz(&mol, Some("Water"));
+        assert!(xyz2.lines().nth(1).unwrap() == "Water");
+        // Round-trip preserves coordinates
+        let reparsed = parse_xyz_str(&xyz).unwrap();
+        let cart_orig = mol.cart_coords();
+        let cart_reparsed = reparsed.cart_coords();
+        for idx in 0..mol.num_sites() {
+            assert!((cart_orig[idx] - cart_reparsed[idx]).norm() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_parse_xyz_str() {
+        let xyz = "3\nWater\nO 0.0 0.0 0.0\nH 0.96 0.0 0.0\nH -0.24 0.93 0.0\n";
+        let mol = parse_xyz_str(xyz).unwrap();
+
+        assert_eq!(mol.num_sites(), 3);
+        assert_eq!(mol.species()[0].element, Element::O);
+        assert_eq!(mol.composition().reduced_formula(), "H2O");
+    }
+
+    #[test]
+    fn test_xyz_roundtrip() {
+        use std::io::Write;
+
+        let mol1 = water_molecule();
+        let xyz = molecule_to_xyz(&mol1, None);
+
+        // Write to temp file and parse back
+        let mut temp = NamedTempFile::with_suffix(".xyz").unwrap();
+        temp.write_all(xyz.as_bytes()).unwrap();
+        let mol2 = parse_xyz(temp.path()).unwrap();
+
+        assert_eq!(mol1.num_sites(), mol2.num_sites());
+        let cart1 = mol1.cart_coords();
+        let cart2 = mol2.cart_coords();
+        for idx in 0..mol1.num_sites() {
+            assert!((cart1[idx] - cart2[idx]).norm() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_molecule_to_extxyz() {
+        let mut mol = water_molecule();
+        mol.properties
+            .insert("energy".to_string(), serde_json::json!(-10.5));
+        mol.charge = -1.0;
+
+        let xyz = molecule_to_extxyz(&mol, None);
+
+        let lines: Vec<&str> = xyz.lines().collect();
+        assert_eq!(lines[0], "3");
+        assert!(lines[1].contains("pbc=\"F F F\""));
+        assert!(lines[1].contains("charge=-1"));
+        assert!(lines[1].contains("energy=-10.5"));
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_parse_xyz_flexible_with_lattice() {
+        use std::io::Write;
+
+        // extXYZ with lattice should return Structure
+        let extxyz = r#"1
+Lattice="4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0"
+Fe 2.0 2.0 2.0
+"#;
+        let mut temp = NamedTempFile::with_suffix(".xyz").unwrap();
+        temp.write_all(extxyz.as_bytes()).unwrap();
+
+        match parse_xyz_flexible(temp.path()).unwrap() {
+            StructureOrMolecule::Structure(s) => {
+                assert_eq!(s.num_sites(), 1);
+                assert_eq!(s.species()[0].element, Element::Fe);
+            }
+            StructureOrMolecule::Molecule(_) => {
+                panic!("Expected Structure, got Molecule");
+            }
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_parse_xyz_flexible_without_lattice() {
+        use std::io::Write;
+
+        // XYZ without lattice should return Molecule
+        let xyz = "3\nWater\nO 0.0 0.0 0.0\nH 0.96 0.0 0.0\nH -0.24 0.93 0.0\n";
+        let mut temp = NamedTempFile::with_suffix(".xyz").unwrap();
+        temp.write_all(xyz.as_bytes()).unwrap();
+
+        match parse_xyz_flexible(temp.path()).unwrap() {
+            StructureOrMolecule::Molecule(m) => {
+                assert_eq!(m.num_sites(), 3);
+                assert_eq!(m.composition().reduced_formula(), "H2O");
+            }
+            StructureOrMolecule::Structure(_) => {
+                panic!("Expected Molecule, got Structure");
+            }
+        }
+    }
+
+    #[test]
+    fn test_write_xyz() {
+        let mol = water_molecule();
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("water.xyz");
+
+        write_xyz(&mol, &path, Some("Test water")).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("3\n"));
+        assert!(content.contains("Test water"));
+    }
+
+    #[test]
+    fn test_parse_molecule_json_empty_species_error() {
+        let json = r#"{
+            "sites": [{"species": [], "xyz": [0, 0, 0]}],
+            "charge": 0
+        }"#;
+
+        let result = parse_molecule_json(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_molecule_json_abc_only_error() {
+        // Molecules require xyz (Cartesian) coords - abc (fractional) coords are invalid
+        let json = r#"{
+            "sites": [{"species": [{"element": "H"}], "abc": [0.5, 0.5, 0.5]}],
+            "charge": 0
+        }"#;
+        let result = parse_molecule_json(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("xyz"));
+    }
+
+    #[test]
+    fn test_parse_molecule_json_with_properties() {
+        let json = r#"{
+            "sites": [{"species": [{"element": "C"}], "xyz": [0, 0, 0]}],
+            "charge": 0,
+            "properties": {"source": "test", "computed": true}
+        }"#;
+
+        let mol = parse_molecule_json(json).unwrap();
+        assert_eq!(
+            mol.properties.get("source"),
+            Some(&serde_json::json!("test"))
+        );
+        assert_eq!(
+            mol.properties.get("computed"),
+            Some(&serde_json::json!(true))
+        );
+    }
+
+    #[test]
+    fn test_molecule_json_with_labels() {
+        let json = r#"{
+            "sites": [
+                {"species": [{"element": "C"}], "xyz": [0, 0, 0], "label": "C1"},
+                {"species": [{"element": "H"}], "xyz": [1, 0, 0], "label": "H1"}
+            ],
+            "charge": 0
+        }"#;
+
+        let mol = parse_molecule_json(json).unwrap();
+
+        // Check labels are preserved in site properties
+        assert_eq!(
+            mol.site_occupancies[0]
+                .properties
+                .get("label")
+                .and_then(|v| v.as_str()),
+            Some("C1")
+        );
+        assert_eq!(
+            mol.site_occupancies[1]
+                .properties
+                .get("label")
+                .and_then(|v| v.as_str()),
+            Some("H1")
+        );
+
+        // Roundtrip should preserve labels
+        let json_out = molecule_to_pymatgen_json(&mol);
+        assert!(json_out.contains("C1"));
+        assert!(json_out.contains("H1"));
+    }
+
+    // === ASE Atoms Dict Conversion Tests ===
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_parse_ase_atoms_structure() {
+        let json = r#"{
+            "symbols": ["Fe", "Fe"],
+            "positions": [[0, 0, 0], [1.435, 1.435, 1.435]],
+            "cell": [[2.87, 0, 0], [0, 2.87, 0], [0, 0, 2.87]],
+            "pbc": [true, true, true]
+        }"#;
+
+        match parse_ase_atoms_json(json).unwrap() {
+            StructureOrMolecule::Structure(s) => {
+                assert_eq!(s.num_sites(), 2);
+                assert_eq!(s.species()[0].element, Element::Fe);
+                assert!((s.lattice.volume() - 2.87_f64.powi(3)).abs() < 1e-6);
+            }
+            StructureOrMolecule::Molecule(_) => {
+                panic!("Expected Structure, got Molecule");
+            }
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_parse_ase_atoms_molecule() {
+        let json = r#"{
+            "symbols": ["O", "H", "H"],
+            "positions": [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]],
+            "pbc": [false, false, false],
+            "info": {"charge": 0, "energy": -10.5}
+        }"#;
+
+        match parse_ase_atoms_json(json).unwrap() {
+            StructureOrMolecule::Molecule(m) => {
+                assert_eq!(m.num_sites(), 3);
+                assert_eq!(m.composition().reduced_formula(), "H2O");
+                assert_eq!(m.properties.get("energy"), Some(&serde_json::json!(-10.5)));
+            }
+            StructureOrMolecule::Structure(_) => {
+                panic!("Expected Molecule, got Structure");
+            }
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_parse_ase_atoms_molecule_no_cell() {
+        // ASE molecules often have null cell
+        let json = r#"{
+            "symbols": ["C", "H", "H", "H", "H"],
+            "positions": [[0, 0, 0], [1.09, 0, 0], [-0.36, 1.03, 0], [-0.36, -0.51, 0.89], [-0.36, -0.51, -0.89]]
+        }"#;
+
+        match parse_ase_atoms_json(json).unwrap() {
+            StructureOrMolecule::Molecule(m) => {
+                assert_eq!(m.num_sites(), 5);
+                // Composition should have 1 C and 4 H regardless of formula ordering
+                let comp = m.composition();
+                assert!((comp.get_element_total(Element::C) - 1.0).abs() < 1e-10);
+                assert!((comp.get_element_total(Element::H) - 4.0).abs() < 1e-10);
+            }
+            StructureOrMolecule::Structure(_) => {
+                panic!("Expected Molecule, got Structure");
+            }
+        }
+    }
+
+    #[test]
+    fn test_structure_to_ase_atoms_dict() {
+        let lattice = Lattice::cubic(4.0);
+        let s = Structure::new(
+            lattice,
+            vec![Species::neutral(Element::Cu), Species::neutral(Element::Cu)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        let ase_dict = structure_to_ase_atoms_dict(&s);
+
+        assert_eq!(
+            ase_dict["symbols"].as_array().unwrap(),
+            &vec![serde_json::json!("Cu"), serde_json::json!("Cu")]
+        );
+        assert!(ase_dict["cell"].is_array());
+        assert_eq!(ase_dict["pbc"], serde_json::json!([true, true, true]));
+    }
+
+    #[test]
+    fn test_molecule_to_ase_atoms_dict() {
+        let mol = water_molecule();
+        let ase_dict = molecule_to_ase_atoms_dict(&mol);
+
+        assert_eq!(
+            ase_dict["symbols"].as_array().unwrap(),
+            &vec![
+                serde_json::json!("O"),
+                serde_json::json!("H"),
+                serde_json::json!("H")
+            ]
+        );
+        assert!(ase_dict["cell"].is_null());
+        assert_eq!(ase_dict["pbc"], serde_json::json!([false, false, false]));
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_ase_atoms_roundtrip_structure() {
+        let s1 = Structure::new(
+            Lattice::cubic(5.64),
+            vec![Species::neutral(Element::Na), Species::neutral(Element::Cl)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+
+        let ase_dict = structure_to_ase_atoms_dict(&s1);
+        let json = serde_json::to_string(&ase_dict).unwrap();
+
+        match parse_ase_atoms_json(&json).unwrap() {
+            StructureOrMolecule::Structure(s2) => {
+                assert_eq!(s1.num_sites(), s2.num_sites());
+                assert!((s1.lattice.volume() - s2.lattice.volume()).abs() < 1e-6);
+                // Check positions (Cartesian)
+                let (cart1, cart2) = (s1.cart_coords(), s2.cart_coords());
+                for idx in 0..s1.num_sites() {
+                    assert!((cart1[idx] - cart2[idx]).norm() < 1e-6);
+                }
+            }
+            StructureOrMolecule::Molecule(_) => {
+                panic!("Expected Structure, got Molecule");
+            }
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_ase_atoms_roundtrip_molecule() {
+        let m1 = water_molecule();
+
+        let ase_dict = molecule_to_ase_atoms_dict(&m1);
+        let json = serde_json::to_string(&ase_dict).unwrap();
+
+        match parse_ase_atoms_json(&json).unwrap() {
+            StructureOrMolecule::Molecule(m2) => {
+                assert_eq!(m1.num_sites(), m2.num_sites());
+                let cart1 = m1.cart_coords();
+                let cart2 = m2.cart_coords();
+                for idx in 0..m1.num_sites() {
+                    assert!((cart1[idx] - cart2[idx]).norm() < 1e-6);
+                }
+            }
+            StructureOrMolecule::Structure(_) => {
+                panic!("Expected Molecule, got Structure");
+            }
+        }
+    }
+
+    #[test]
+    fn test_batch_structures_to_ase_dicts() {
+        let structures = vec![
+            Structure::new(
+                Lattice::cubic(4.0),
+                vec![Species::neutral(Element::Fe)],
+                vec![Vector3::zeros()],
+            ),
+            Structure::new(
+                Lattice::cubic(5.0),
+                vec![Species::neutral(Element::Cu)],
+                vec![Vector3::zeros()],
+            ),
+        ];
+
+        let dicts = structures_to_ase_atoms_dicts(&structures);
+        assert_eq!(dicts.len(), 2);
+        assert_eq!(dicts[0]["symbols"], serde_json::json!(["Fe"]));
+        assert_eq!(dicts[1]["symbols"], serde_json::json!(["Cu"]));
+    }
+
+    #[test]
+    fn test_ase_to_pymatgen_conversion() {
+        // Structure
+        let ase_struct = r#"{
+            "symbols": ["Si", "Si"],
+            "positions": [[0, 0, 0], [1.36, 1.36, 1.36]],
+            "cell": [[2.72, 2.72, 0], [2.72, 0, 2.72], [0, 2.72, 2.72]],
+            "pbc": [true, true, true]
+        }"#;
+
+        let pymatgen_json = ase_atoms_to_pymatgen_json(ase_struct).unwrap();
+        assert!(pymatgen_json.contains("\"@class\":\"Structure\""));
+        assert!(pymatgen_json.contains("\"lattice\""));
+
+        // Molecule
+        let ase_mol = r#"{
+            "symbols": ["H", "H"],
+            "positions": [[0, 0, 0], [0.74, 0, 0]],
+            "pbc": [false, false, false]
+        }"#;
+
+        let pymatgen_json = ase_atoms_to_pymatgen_json(ase_mol).unwrap();
+        assert!(pymatgen_json.contains("\"@class\":\"Molecule\""));
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_ase_atoms_with_info() {
+        let json = r#"{
+            "symbols": ["Fe"],
+            "positions": [[0, 0, 0]],
+            "cell": [[2.87, 0, 0], [0, 2.87, 0], [0, 0, 2.87]],
+            "pbc": [true, true, true],
+            "info": {"energy": -5.5, "forces": [[0.1, 0.2, 0.3]], "config_type": "relaxed"}
+        }"#;
+
+        match parse_ase_atoms_json(json).unwrap() {
+            StructureOrMolecule::Structure(s) => {
+                assert_eq!(s.properties.get("energy"), Some(&serde_json::json!(-5.5)));
+                assert_eq!(
+                    s.properties.get("config_type"),
+                    Some(&serde_json::json!("relaxed"))
+                );
+            }
+            StructureOrMolecule::Molecule(_) => {
+                panic!("Expected Structure, got Molecule");
+            }
+        }
+    }
+
+    #[test]
+    fn test_ase_atoms_length_mismatch_error() {
+        let json = r#"{
+            "symbols": ["Fe", "O"],
+            "positions": [[0, 0, 0]]
+        }"#;
+
+        let result = parse_ase_atoms_json(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("same length"));
     }
 }

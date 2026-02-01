@@ -38,6 +38,9 @@ pub enum ReductionAlgo {
 ///
 /// Each site can have multiple species with partial occupancies (disordered sites).
 /// For ordered sites, there is a single species with occupancy 1.0.
+///
+/// For non-periodic systems (molecules), set `pbc` to `[false, false, false]`.
+/// The lattice is still required but can be a dummy/bounding-box lattice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Structure {
     /// The crystal lattice.
@@ -46,9 +49,20 @@ pub struct Structure {
     pub site_occupancies: Vec<SiteOccupancy>,
     /// Fractional coordinates for each site.
     pub frac_coords: Vec<Vector3<f64>>,
+    /// Periodic boundary conditions for each axis (default: all true).
+    #[serde(default = "default_pbc")]
+    pub pbc: [bool; 3],
+    /// Total charge (relevant for molecules, default: 0.0).
+    #[serde(default)]
+    pub charge: f64,
     /// Optional properties (for caching).
     #[serde(default)]
     pub properties: HashMap<String, serde_json::Value>,
+}
+
+/// Default PBC is fully periodic.
+fn default_pbc() -> [bool; 3] {
+    [true, true, true]
 }
 
 impl Structure {
@@ -71,6 +85,25 @@ impl Structure {
         lattice: Lattice,
         site_occupancies: Vec<SiteOccupancy>,
         frac_coords: Vec<Vector3<f64>>,
+        properties: HashMap<String, serde_json::Value>,
+    ) -> Result<Self> {
+        Self::try_new_full(
+            lattice,
+            site_occupancies,
+            frac_coords,
+            [true, true, true],
+            0.0,
+            properties,
+        )
+    }
+
+    /// Full constructor with all fields.
+    pub fn try_new_full(
+        lattice: Lattice,
+        site_occupancies: Vec<SiteOccupancy>,
+        frac_coords: Vec<Vector3<f64>>,
+        pbc: [bool; 3],
+        charge: f64,
         properties: HashMap<String, serde_json::Value>,
     ) -> Result<Self> {
         if site_occupancies.len() != frac_coords.len() {
@@ -97,6 +130,8 @@ impl Structure {
             lattice,
             site_occupancies,
             frac_coords,
+            pbc,
+            charge,
             properties,
         })
     }
@@ -140,6 +175,68 @@ impl Structure {
     ) -> Self {
         Self::try_new_from_occupancies(lattice, site_occupancies, frac_coords)
             .expect("site_occupancies and frac_coords must have same length")
+    }
+
+    // === Non-periodic (molecule) constructors ===
+
+    /// Create a non-periodic structure (molecule) from Cartesian coordinates.
+    ///
+    /// Creates a lattice from the bounding box of the coordinates (with padding).
+    /// Sets `pbc = [false, false, false]`.
+    pub fn try_new_molecule(
+        species: Vec<Species>,
+        cart_coords: Vec<Vector3<f64>>,
+        charge: f64,
+        properties: HashMap<String, serde_json::Value>,
+    ) -> Result<Self> {
+        let site_occupancies: Vec<SiteOccupancy> =
+            species.into_iter().map(SiteOccupancy::ordered).collect();
+        Self::try_new_molecule_from_occupancies(site_occupancies, cart_coords, charge, properties)
+    }
+
+    /// Create a non-periodic structure (molecule) from site occupancies and Cartesian coordinates.
+    pub fn try_new_molecule_from_occupancies(
+        site_occupancies: Vec<SiteOccupancy>,
+        cart_coords: Vec<Vector3<f64>>,
+        charge: f64,
+        properties: HashMap<String, serde_json::Value>,
+    ) -> Result<Self> {
+        // Create a cubic lattice from bounding box with 10 Å padding
+        let (lattice, frac_coords) = Self::lattice_from_cart_coords(&cart_coords, 10.0);
+        Self::try_new_full(
+            lattice,
+            site_occupancies,
+            frac_coords,
+            [false, false, false],
+            charge,
+            properties,
+        )
+    }
+
+    /// Create lattice and fractional coords from Cartesian coordinates.
+    ///
+    /// For molecules, uses an identity lattice so frac_coords == cart_coords.
+    /// This preserves exact coordinate values through roundtrips.
+    fn lattice_from_cart_coords(
+        cart_coords: &[Vector3<f64>],
+        _padding: f64,
+    ) -> (Lattice, Vec<Vector3<f64>>) {
+        // Use identity lattice: frac_coords == cart_coords
+        // This ensures exact coordinate preservation for molecules
+        let lattice = Lattice::cubic(1.0);
+        (lattice, cart_coords.to_vec())
+    }
+
+    // === Periodicity helpers ===
+
+    /// Check if the structure is periodic in any dimension.
+    pub fn is_periodic(&self) -> bool {
+        self.pbc.iter().any(|&p| p)
+    }
+
+    /// Check if the structure is a molecule (non-periodic in all dimensions).
+    pub fn is_molecule(&self) -> bool {
+        !self.is_periodic()
     }
 
     /// Get the number of sites in the structure.
@@ -567,6 +664,8 @@ impl Structure {
                 })
                 .collect(),
             frac_coords: self.frac_coords.clone(),
+            pbc: self.pbc,
+            charge: self.charge,
             properties: self.properties.clone(),
         }
     }
@@ -592,6 +691,8 @@ impl Structure {
                 })
                 .collect(),
             frac_coords: self.frac_coords.clone(),
+            pbc: self.pbc,
+            charge: self.charge,
             properties: self.properties.clone(),
         }
     }
@@ -632,6 +733,8 @@ impl Structure {
             lattice: self.lattice.clone(),
             site_occupancies: new_site_occupancies,
             frac_coords: self.frac_coords.clone(),
+            pbc: self.pbc,
+            charge: self.charge,
             properties: self.properties.clone(),
         }
     }
@@ -1095,10 +1198,12 @@ impl Structure {
                 self.lattice.clone()
             };
 
-            images.push(Structure::try_new_from_occupancies_with_properties(
+            images.push(Structure::try_new_full(
                 new_lattice,
                 self.site_occupancies.clone(),
                 new_frac_coords,
+                self.pbc,
+                self.charge,
                 self.properties.clone(),
             )?);
         }
@@ -1397,10 +1502,12 @@ impl Structure {
             }
         }
 
-        Structure::try_new_from_occupancies_with_properties(
+        Structure::try_new_full(
             new_lattice,
             new_site_occupancies,
             new_frac_coords,
+            self.pbc,
+            self.charge,
             self.properties.clone(),
         )
     }
@@ -1466,10 +1573,12 @@ impl Structure {
             .map(|fc| crate::pbc::wrap_frac_coords(&fc))
             .collect();
 
-        Structure::try_new_from_occupancies_with_properties(
+        Structure::try_new_full(
             reduced_lattice,
             self.site_occupancies.clone(),
             new_frac_coords,
+            self.pbc,
+            self.charge,
             self.properties.clone(),
         )
     }

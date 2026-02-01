@@ -1105,8 +1105,226 @@ fn to_pymatgen_json(structure: StructureJson) -> PyResult<String> {
 }
 
 // ============================================================================
+// Molecule I/O Functions
+// ============================================================================
+
+/// Parse a molecule from pymatgen Molecule JSON format.
+///
+/// Args:
+///     json_str (str): JSON string in pymatgen Molecule.as_dict() format
+///
+/// Returns:
+///     dict: Parsed molecule as dict (same format as input)
+///
+/// Example:
+///     >>> from ferrox import parse_molecule_json
+///     >>> import json
+///     >>> mol_dict = parse_molecule_json(json.dumps(mol.as_dict()))
+#[pyfunction]
+fn parse_molecule_json_py(py: Python<'_>, json_str: &str) -> PyResult<Py<PyDict>> {
+    let mol = crate::io::parse_molecule_json(json_str)
+        .map_err(|e| PyValueError::new_err(format!("Error parsing molecule: {e}")))?;
+    let mol_json = crate::io::molecule_to_pymatgen_json(&mol);
+    json_to_pydict(py, &mol_json)
+}
+
+/// Convert a molecule to pymatgen JSON format string.
+///
+/// Args:
+///     molecule (str | dict): Molecule as JSON string or dict
+///
+/// Returns:
+///     str: JSON format string compatible with pymatgen's Molecule.from_dict()
+#[pyfunction]
+fn molecule_to_json(molecule: StructureJson) -> PyResult<String> {
+    let mol = crate::io::parse_molecule_json(&molecule.0)
+        .map_err(|e| PyValueError::new_err(format!("Error parsing molecule: {e}")))?;
+    Ok(crate::io::molecule_to_pymatgen_json(&mol))
+}
+
+/// Convert a molecule to XYZ format string.
+///
+/// Args:
+///     molecule (str | dict): Molecule as JSON string or dict
+///     comment (str, optional): Comment line (defaults to formula)
+///
+/// Returns:
+///     str: XYZ format string
+#[pyfunction]
+#[pyo3(signature = (molecule, comment = None))]
+fn molecule_to_xyz(molecule: StructureJson, comment: Option<&str>) -> PyResult<String> {
+    let mol = crate::io::parse_molecule_json(&molecule.0)
+        .map_err(|e| PyValueError::new_err(format!("Error parsing molecule: {e}")))?;
+    Ok(crate::io::molecule_to_xyz(&mol, comment))
+}
+
+/// Parse a molecule from XYZ file content.
+///
+/// Args:
+///     content (str): XYZ file content as string
+///
+/// Returns:
+///     dict: Parsed molecule in pymatgen Molecule.as_dict() format
+#[pyfunction]
+fn parse_xyz_str_py(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
+    let mol = crate::io::parse_xyz_str(content)
+        .map_err(|e| PyValueError::new_err(format!("Error parsing XYZ: {e}")))?;
+    let mol_json = crate::io::molecule_to_pymatgen_json(&mol);
+    json_to_pydict(py, &mol_json)
+}
+
+/// Parse a molecule from an XYZ file.
+///
+/// Args:
+///     path (str): Path to the XYZ file
+///
+/// Returns:
+///     dict: Parsed molecule in pymatgen Molecule.as_dict() format
+#[pyfunction]
+fn parse_xyz_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
+    let mol = crate::io::parse_xyz(Path::new(path))
+        .map_err(|e| PyValueError::new_err(format!("Error parsing XYZ file: {e}")))?;
+    let mol_json = crate::io::molecule_to_pymatgen_json(&mol);
+    json_to_pydict(py, &mol_json)
+}
+
+// ============================================================================
+// ASE Atoms Conversion Functions
+// ============================================================================
+
+/// Convert an ASE Atoms dict to pymatgen format.
+///
+/// Args:
+///     ase_dict (dict): ASE Atoms dict with keys: symbols, positions, cell, pbc, info
+///
+/// Returns:
+///     dict: Structure or Molecule in pymatgen format (depending on periodicity)
+///
+/// Example:
+///     >>> from ferrox import ase_dict_to_pymatgen
+///     >>> import json
+///     >>> # For periodic systems
+///     >>> ase_dict = {"symbols": ["Fe"], "positions": [[0,0,0]], "cell": [[2.87,0,0],[0,2.87,0],[0,0,2.87]], "pbc": [True, True, True]}
+///     >>> pymatgen_dict = ase_dict_to_pymatgen(ase_dict)
+#[pyfunction]
+fn ase_dict_to_pymatgen(py: Python<'_>, ase_dict: &Bound<'_, PyDict>) -> PyResult<Py<PyDict>> {
+    let json_module = py.import("json")?;
+    let json_str: String = json_module.call_method1("dumps", (ase_dict,))?.extract()?;
+
+    let pymatgen_json = crate::io::ase_atoms_to_pymatgen_json(&json_str)
+        .map_err(|e| PyValueError::new_err(format!("Error converting ASE dict: {e}")))?;
+
+    json_to_pydict(py, &pymatgen_json)
+}
+
+/// Convert a pymatgen Structure to ASE Atoms dict format.
+///
+/// Args:
+///     structure (str | dict): Structure as JSON string or dict
+///
+/// Returns:
+///     dict: ASE Atoms dict with keys: symbols, positions, cell, pbc, info
+#[pyfunction]
+fn structure_to_ase_dict(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
+    let s = parse_struct(&structure)?;
+    let ase_dict = crate::io::structure_to_ase_atoms_dict(&s);
+    let json_str = serde_json::to_string(&ase_dict)
+        .map_err(|e| PyValueError::new_err(format!("JSON serialization error: {e}")))?;
+    json_to_pydict(py, &json_str)
+}
+
+/// Convert a pymatgen Molecule to ASE Atoms dict format.
+///
+/// Args:
+///     molecule (str | dict): Molecule as JSON string or dict
+///
+/// Returns:
+///     dict: ASE Atoms dict with keys: symbols, positions, cell (None), pbc, info
+#[pyfunction]
+fn molecule_to_ase_dict(py: Python<'_>, molecule: StructureJson) -> PyResult<Py<PyDict>> {
+    let mol = crate::io::parse_molecule_json(&molecule.0)
+        .map_err(|e| PyValueError::new_err(format!("Error parsing molecule: {e}")))?;
+    let ase_dict = crate::io::molecule_to_ase_atoms_dict(&mol);
+    let json_str = serde_json::to_string(&ase_dict)
+        .map_err(|e| PyValueError::new_err(format!("JSON serialization error: {e}")))?;
+    json_to_pydict(py, &json_str)
+}
+
+/// Batch convert structures to ASE Atoms dicts.
+///
+/// Args:
+///     structures (list[str | dict]): List of structures as JSON strings or dicts
+///
+/// Returns:
+///     list[dict]: List of ASE Atoms dicts
+#[pyfunction]
+fn structures_to_ase_dicts(py: Python<'_>, structures: Vec<String>) -> PyResult<Vec<Py<PyDict>>> {
+    structures
+        .iter()
+        .map(|json_str| {
+            let s = parse_structure_json(json_str)
+                .map_err(|e| PyValueError::new_err(format!("Error parsing structure: {e}")))?;
+            let ase_dict = crate::io::structure_to_ase_atoms_dict(&s);
+            let json = serde_json::to_string(&ase_dict)
+                .map_err(|e| PyValueError::new_err(format!("JSON serialization error: {e}")))?;
+            json_to_pydict(py, &json)
+        })
+        .collect()
+}
+
+/// Parse ASE Atoms dict, returning either a Structure or Molecule dict.
+///
+/// This is useful when you don't know if the input is periodic or not.
+///
+/// Args:
+///     ase_dict (dict): ASE Atoms dict
+///
+/// Returns:
+///     tuple[str, dict]: Tuple of ("Structure" or "Molecule", dict in pymatgen format)
+#[pyfunction]
+fn parse_ase_dict(py: Python<'_>, ase_dict: &Bound<'_, PyDict>) -> PyResult<(String, Py<PyDict>)> {
+    let json_module = py.import("json")?;
+    let json_str: String = json_module.call_method1("dumps", (ase_dict,))?.extract()?;
+    let result = crate::io::parse_ase_atoms_json(&json_str)
+        .map_err(|e| PyValueError::new_err(format!("Error parsing ASE dict: {e}")))?;
+    struct_or_mol_to_pydict(py, result)
+}
+
+/// Parse XYZ content flexibly, returning Structure if lattice present, Molecule otherwise.
+///
+/// Args:
+///     path (str): Path to XYZ file
+///
+/// Returns:
+///     tuple[str, dict]: Tuple of ("Structure" or "Molecule", dict in pymatgen format)
+#[pyfunction]
+fn parse_xyz_flexible_py(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyDict>)> {
+    let result = crate::io::parse_xyz_flexible(Path::new(path))
+        .map_err(|e| PyValueError::new_err(format!("Error parsing XYZ: {e}")))?;
+    struct_or_mol_to_pydict(py, result)
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
+
+/// Convert StructureOrMolecule to a (type_name, pydict) tuple.
+#[allow(deprecated)]
+fn struct_or_mol_to_pydict(
+    py: Python<'_>,
+    result: crate::io::StructureOrMolecule,
+) -> PyResult<(String, Py<PyDict>)> {
+    match result {
+        crate::io::StructureOrMolecule::Structure(s) => {
+            let json = structure_to_pymatgen_json(&s);
+            Ok(("Structure".to_string(), json_to_pydict(py, &json)?))
+        }
+        crate::io::StructureOrMolecule::Molecule(m) => {
+            let json = crate::io::molecule_to_pymatgen_json(&m);
+            Ok(("Molecule".to_string(), json_to_pydict(py, &json)?))
+        }
+    }
+}
 
 /// Parse reduction algorithm from string ("niggli" or "lll").
 fn parse_reduction_algo(algo: &str) -> PyResult<crate::structure::ReductionAlgo> {
@@ -4516,6 +4734,19 @@ pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add_function(wrap_pyfunction!(to_cif, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(to_extxyz, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(to_pymatgen_json, py_mod)?)?;
+    // Molecule I/O functions
+    py_mod.add_function(wrap_pyfunction!(parse_molecule_json_py, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(molecule_to_json, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(molecule_to_xyz, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(parse_xyz_str_py, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(parse_xyz_file, py_mod)?)?;
+    // ASE Atoms conversion functions
+    py_mod.add_function(wrap_pyfunction!(ase_dict_to_pymatgen, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(structure_to_ase_dict, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(molecule_to_ase_dict, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(structures_to_ase_dicts, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(parse_ase_dict, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(parse_xyz_flexible_py, py_mod)?)?;
     // Supercell functions
     py_mod.add_function(wrap_pyfunction!(make_supercell, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(make_supercell_diag, py_mod)?)?;
