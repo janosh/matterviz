@@ -956,418 +956,114 @@ mod tests {
 
     #[test]
     fn test_niggli_acute_angles() {
-        // rhomb_3478 - angles (28°, 28°, 28°)
-        let lattice = Lattice::from_parameters(5.0, 5.0, 5.0, 28.0, 28.0, 28.0);
-        let niggli = lattice.get_niggli_reduced(1e-5).unwrap();
-
-        // Niggli should produce angles in [60, 120]
-        let angles = niggli.angles();
-        println!("Input angles: (28°, 28°, 28°)");
-        println!(
-            "Niggli angles: ({:.2}°, {:.2}°, {:.2}°)",
-            angles[0], angles[1], angles[2]
-        );
-        println!("Niggli lengths: {:?}", niggli.lengths());
-
-        for (idx, &angle) in angles.iter().enumerate() {
-            assert!(
-                (59.0..=121.0).contains(&angle),
-                "Niggli angle[{}] = {} out of valid range [60, 120]",
-                idx,
-                angle
-            );
-        }
-
-        // Also test MgNiF6 case - angles (56.5°, 56.5°, 56.5°)
-        let lattice2 = Lattice::from_parameters(5.0, 5.0, 5.0, 56.5, 56.5, 56.5);
-        let niggli2 = lattice2.get_niggli_reduced(1e-5).unwrap();
-        let angles2 = niggli2.angles();
-        println!("\nInput angles: (56.5°, 56.5°, 56.5°)");
-        println!(
-            "Niggli angles: ({:.2}°, {:.2}°, {:.2}°)",
-            angles2[0], angles2[1], angles2[2]
-        );
-
-        for (idx, &angle) in angles2.iter().enumerate() {
-            assert!(
-                (59.0..=121.0).contains(&angle),
-                "Niggli angle[{}] = {} out of valid range [60, 120]",
-                idx,
-                angle
-            );
-        }
-    }
-
-    #[test]
-    fn test_from_parameters_consistency() {
-        // Test that from_parameters produces correct matrix orientation
-        // Using simple cubic case where we know the answer
-        let cubic = Lattice::from_parameters(4.0, 4.0, 4.0, 90.0, 90.0, 90.0);
-        let m = cubic.matrix();
-        println!("Cubic (4, 4, 4, 90, 90, 90):");
-        println!(
-            "  row0 = ({:.4}, {:.4}, {:.4})",
-            m[(0, 0)],
-            m[(0, 1)],
-            m[(0, 2)]
-        );
-        println!(
-            "  row1 = ({:.4}, {:.4}, {:.4})",
-            m[(1, 0)],
-            m[(1, 1)],
-            m[(1, 2)]
-        );
-        println!(
-            "  row2 = ({:.4}, {:.4}, {:.4})",
-            m[(2, 0)],
-            m[(2, 1)],
-            m[(2, 2)]
-        );
-
-        // For cubic, should have:
-        // a = [4, 0, 0]
-        // b = [0, 4, 0]
-        // c = [0, 0, 4]
-        assert_relative_eq!(m[(0, 0)], 4.0, epsilon = 1e-10);
-        assert_relative_eq!(m[(0, 1)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(m[(0, 2)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(m[(1, 0)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(m[(1, 1)], 4.0, epsilon = 1e-10);
-        assert_relative_eq!(m[(1, 2)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(m[(2, 0)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(m[(2, 1)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(m[(2, 2)], 4.0, epsilon = 1e-10);
-
-        // Test hexagonal
-        let hex = Lattice::from_parameters(3.0, 3.0, 5.0, 90.0, 90.0, 120.0);
-        let mh = hex.matrix();
-        println!("\nHexagonal (3, 3, 5, 90, 90, 120):");
-        println!(
-            "  row0 = ({:.4}, {:.4}, {:.4})",
-            mh[(0, 0)],
-            mh[(0, 1)],
-            mh[(0, 2)]
-        );
-        println!(
-            "  row1 = ({:.4}, {:.4}, {:.4})",
-            mh[(1, 0)],
-            mh[(1, 1)],
-            mh[(1, 2)]
-        );
-        println!(
-            "  row2 = ({:.4}, {:.4}, {:.4})",
-            mh[(2, 0)],
-            mh[(2, 1)],
-            mh[(2, 2)]
-        );
-
-        // For hexagonal:
-        // a = [3, 0, 0]
-        // b = [3*cos(120), 3*sin(120), 0] = [-1.5, 2.598, 0]
-        // c = [0, 0, 5]
-        assert_relative_eq!(mh[(0, 0)], 3.0, epsilon = 1e-10);
-        assert_relative_eq!(mh[(0, 1)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(mh[(1, 0)], -1.5, epsilon = 1e-10);
-        assert_relative_eq!(mh[(1, 1)], 2.598, epsilon = 0.001); // 3*sin(120) ≈ 2.598
-        assert_relative_eq!(mh[(2, 2)], 5.0, epsilon = 1e-10);
-
-        // Test acute angles (rhomb_3478-like)
-        let acute = Lattice::from_parameters(5.935, 5.935, 5.935, 28.05, 28.05, 28.05);
-        let ma = acute.matrix();
-        println!("\nAcute (5.935, 5.935, 5.935, 28.05, 28.05, 28.05):");
-        println!(
-            "  row0 = ({:.4}, {:.4}, {:.4})",
-            ma[(0, 0)],
-            ma[(0, 1)],
-            ma[(0, 2)]
-        );
-        println!(
-            "  row1 = ({:.4}, {:.4}, {:.4})",
-            ma[(1, 0)],
-            ma[(1, 1)],
-            ma[(1, 2)]
-        );
-        println!(
-            "  row2 = ({:.4}, {:.4}, {:.4})",
-            ma[(2, 0)],
-            ma[(2, 1)],
-            ma[(2, 2)]
-        );
-        println!("  lengths: {:?}", acute.lengths());
-        println!("  angles: {:?}", acute.angles());
-
-        // With pymatgen convention (vesta=False):
-        // c along z, a in xz-plane
-        // Third vector should be along z (c)
-        assert_relative_eq!(ma[(2, 0)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(ma[(2, 1)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(ma[(2, 2)], 5.935, epsilon = 1e-10);
-        // Verify angles and lengths are correct
-        let angles = acute.angles();
-        assert_relative_eq!(angles[0], 28.05, epsilon = 0.001);
-        assert_relative_eq!(angles[1], 28.05, epsilon = 0.001);
-        assert_relative_eq!(angles[2], 28.05, epsilon = 0.001);
-    }
-
-    #[test]
-    fn test_niggli_pymatgen_compat() {
-        // EXACT matrix from pymatgen for rhomb_3478.cif
-        // This is what pymatgen produces when loading the CIF
-        let matrix = Matrix3::from_rows(&[
-            [2.790935, 0.000000, 5.238132].into(),
-            [1.308401, 2.465239, 5.238132].into(),
-            [0.000000, 0.000000, 5.935263].into(),
-        ]);
-        let lattice = Lattice::new(matrix);
-
-        println!("Input matrix (same as pymatgen):");
-        let m = lattice.matrix();
-        println!(
-            "  row0 = ({:.6}, {:.6}, {:.6})",
-            m[(0, 0)],
-            m[(0, 1)],
-            m[(0, 2)]
-        );
-        println!(
-            "  row1 = ({:.6}, {:.6}, {:.6})",
-            m[(1, 0)],
-            m[(1, 1)],
-            m[(1, 2)]
-        );
-        println!(
-            "  row2 = ({:.6}, {:.6}, {:.6})",
-            m[(2, 0)],
-            m[(2, 1)],
-            m[(2, 2)]
-        );
-        println!("  angles: {:?}", lattice.angles());
-        println!("  lengths: {:?}", lattice.lengths());
-
-        // Get Niggli reduced
-        let niggli = lattice.get_niggli_reduced(1e-5).unwrap();
-        println!("\nRust Niggli matrix:");
-        let mn = niggli.matrix();
-        println!(
-            "  row0 = ({:.6}, {:.6}, {:.6})",
-            mn[(0, 0)],
-            mn[(0, 1)],
-            mn[(0, 2)]
-        );
-        println!(
-            "  row1 = ({:.6}, {:.6}, {:.6})",
-            mn[(1, 0)],
-            mn[(1, 1)],
-            mn[(1, 2)]
-        );
-        println!(
-            "  row2 = ({:.6}, {:.6}, {:.6})",
-            mn[(2, 0)],
-            mn[(2, 1)],
-            mn[(2, 2)]
-        );
-        println!("  angles: {:?}", niggli.angles());
-        println!("  lengths: {:?}", niggli.lengths());
-        println!("  determinant: {:?}", mn.determinant());
-
-        // pymatgen Niggli result:
-        // row0 = (1.308401, 2.465239, -0.697131)
-        // row1 = (2.790935, -0.000000, -0.697131)
-        // row2 = (-0.000000, -0.000000, -5.935263)
-        // angles: (75.975, 75.975, 60.0)
-        // determinant: 40.8365
-
-        // Verify angles match pymatgen
-        let angles = niggli.angles();
-        assert_relative_eq!(angles[0], 75.975, epsilon = 0.01);
-        assert_relative_eq!(angles[1], 75.975, epsilon = 0.01);
-        assert_relative_eq!(angles[2], 60.0, epsilon = 0.01);
-
-        // Verify lengths match pymatgen
-        let lengths = niggli.lengths();
-        assert_relative_eq!(lengths[0], 2.8767, epsilon = 0.001);
-        assert_relative_eq!(lengths[1], 2.8767, epsilon = 0.001);
-        assert_relative_eq!(lengths[2], 5.9353, epsilon = 0.001);
-
-        // Verify positive determinant (same volume as original)
-        assert!(
-            mn.determinant() > 0.0,
-            "Niggli determinant should be positive"
-        );
-    }
-
-    #[test]
-    fn test_niggli_consistency() {
-        // Verify Niggli reduction produces consistent results for the same input
-        let matrix = Matrix3::from_rows(&[
-            [2.790935, 0.000000, 5.238132].into(),
-            [1.308401, 2.465239, 5.238132].into(),
-            [0.000000, 0.000000, 5.935263].into(),
-        ]);
-        let lattice = Lattice::new(matrix);
-
-        // Run Niggli reduction multiple times
-        let niggli1 = lattice.get_niggli_reduced(1e-5).unwrap();
-        let niggli2 = lattice.get_niggli_reduced(1e-5).unwrap();
-        let niggli3 = lattice.get_niggli_reduced(1e-5).unwrap();
-
-        // All should produce identical matrices
-        let m1 = niggli1.matrix();
-        let m2 = niggli2.matrix();
-        let m3 = niggli3.matrix();
-
-        println!(
-            "Run 1: row0 = ({:.6}, {:.6}, {:.6})",
-            m1[(0, 0)],
-            m1[(0, 1)],
-            m1[(0, 2)]
-        );
-        println!(
-            "Run 2: row0 = ({:.6}, {:.6}, {:.6})",
-            m2[(0, 0)],
-            m2[(0, 1)],
-            m2[(0, 2)]
-        );
-        println!(
-            "Run 3: row0 = ({:.6}, {:.6}, {:.6})",
-            m3[(0, 0)],
-            m3[(0, 1)],
-            m3[(0, 2)]
-        );
-
-        for idx in 0..3 {
-            for jdx in 0..3 {
-                assert_relative_eq!(m1[(idx, jdx)], m2[(idx, jdx)], epsilon = 1e-10);
-                assert_relative_eq!(m2[(idx, jdx)], m3[(idx, jdx)], epsilon = 1e-10);
+        // Niggli reduction should produce angles in [60, 120] for acute inputs
+        for input_angle in [28.0, 56.5] {
+            let lattice =
+                Lattice::from_parameters(5.0, 5.0, 5.0, input_angle, input_angle, input_angle);
+            let niggli = lattice.get_niggli_reduced(1e-5).unwrap();
+            for (idx, &angle) in niggli.angles().iter().enumerate() {
+                assert!(
+                    (59.0..=121.0).contains(&angle),
+                    "input {input_angle}°: Niggli angle[{idx}] = {angle} out of [60, 120]"
+                );
             }
         }
     }
 
     #[test]
-    fn test_find_mapping_alignment() {
-        // Test that find_mapping returns same alignment as pymatgen
+    fn test_from_parameters_consistency() {
+        // Cubic: a=[4,0,0], b=[0,4,0], c=[0,0,4]
+        let m = *Lattice::from_parameters(4.0, 4.0, 4.0, 90.0, 90.0, 90.0).matrix();
+        assert_relative_eq!(
+            m,
+            Matrix3::from_diagonal(&Vector3::new(4.0, 4.0, 4.0)),
+            epsilon = 1e-10
+        );
+
+        // Hexagonal: a=[3,0,0], b=[-1.5, 2.598, 0], c=[0,0,5]
+        let mh = *Lattice::from_parameters(3.0, 3.0, 5.0, 90.0, 90.0, 120.0).matrix();
+        assert_relative_eq!(mh[(0, 0)], 3.0, epsilon = 1e-10);
+        assert_relative_eq!(mh[(1, 0)], -1.5, epsilon = 1e-10);
+        assert_relative_eq!(mh[(1, 1)], 2.598, epsilon = 0.001);
+        assert_relative_eq!(mh[(2, 2)], 5.0, epsilon = 1e-10);
+
+        // Acute rhombohedral: c along z (pymatgen convention)
+        let acute = Lattice::from_parameters(5.935, 5.935, 5.935, 28.05, 28.05, 28.05);
+        let ma = acute.matrix();
+        assert_relative_eq!(ma[(2, 0)], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(ma[(2, 1)], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(ma[(2, 2)], 5.935, epsilon = 1e-10);
+        for &angle in acute.angles().iter() {
+            assert_relative_eq!(angle, 28.05, epsilon = 0.001);
+        }
+    }
+
+    #[test]
+    fn test_niggli_pymatgen_compat() {
+        // EXACT matrix from pymatgen for rhomb_3478.cif
+        let matrix = Matrix3::from_rows(&[
+            [2.790935, 0.000000, 5.238132].into(),
+            [1.308401, 2.465239, 5.238132].into(),
+            [0.000000, 0.000000, 5.935263].into(),
+        ]);
+        let niggli = Lattice::new(matrix).get_niggli_reduced(1e-5).unwrap();
+
+        // pymatgen Niggli: angles (75.975, 75.975, 60.0), lengths (2.8767, 2.8767, 5.9353)
+        let angles = niggli.angles();
+        assert_relative_eq!(angles[0], 75.975, epsilon = 0.01);
+        assert_relative_eq!(angles[1], 75.975, epsilon = 0.01);
+        assert_relative_eq!(angles[2], 60.0, epsilon = 0.01);
+        let lengths = niggli.lengths();
+        assert_relative_eq!(lengths[0], 2.8767, epsilon = 0.001);
+        assert_relative_eq!(lengths[1], 2.8767, epsilon = 0.001);
+        assert_relative_eq!(lengths[2], 5.9353, epsilon = 0.001);
+        assert!(niggli.matrix().determinant() > 0.0, "positive det");
+    }
+
+    #[test]
+    fn test_niggli_consistency() {
+        // Verify Niggli reduction is deterministic
         let matrix = Matrix3::from_rows(&[
             [2.790935, 0.000000, 5.238132].into(),
             [1.308401, 2.465239, 5.238132].into(),
             [0.000000, 0.000000, 5.935263].into(),
         ]);
         let lattice = Lattice::new(matrix);
+        let m1 = *lattice.get_niggli_reduced(1e-5).unwrap().matrix();
+        let m2 = *lattice.get_niggli_reduced(1e-5).unwrap().matrix();
+        assert_relative_eq!(m1, m2, epsilon = 1e-10);
+    }
 
-        // Create ideal Niggli from parameters (same as pymatgen does internally)
+    #[test]
+    fn test_find_mapping_alignment() {
+        // Test that find_mapping returns mapping from rhomb_3478 to its ideal Niggli
+        let matrix = Matrix3::from_rows(&[
+            [2.790935, 0.000000, 5.238132].into(),
+            [1.308401, 2.465239, 5.238132].into(),
+            [0.000000, 0.000000, 5.935263].into(),
+        ]);
+        let lattice = Lattice::new(matrix);
         let ideal_niggli = Lattice::from_parameters(2.8767, 2.8767, 5.9353, 75.975, 75.975, 60.0);
 
-        println!("Ideal Niggli matrix:");
-        let mi = ideal_niggli.matrix();
-        println!(
-            "  row0 = ({:.6}, {:.6}, {:.6})",
-            mi[(0, 0)],
-            mi[(0, 1)],
-            mi[(0, 2)]
-        );
-        println!(
-            "  row1 = ({:.6}, {:.6}, {:.6})",
-            mi[(1, 0)],
-            mi[(1, 1)],
-            mi[(1, 2)]
-        );
-        println!(
-            "  row2 = ({:.6}, {:.6}, {:.6})",
-            mi[(2, 0)],
-            mi[(2, 1)],
-            mi[(2, 2)]
-        );
-
-        // Find mapping from original to ideal Niggli
         let tol = 1e-5 * lattice.volume().powf(1.0 / 3.0);
-        if let Some((aligned, _, scale)) = lattice.find_mapping(
-            &ideal_niggli,
-            tol,
-            5.0 * tol * 180.0 / std::f64::consts::PI,
-            true,
-        ) {
-            let ma = aligned.matrix();
-            println!("\nAligned lattice from find_mapping:");
-            println!(
-                "  row0 = ({:.6}, {:.6}, {:.6})",
-                ma[(0, 0)],
-                ma[(0, 1)],
-                ma[(0, 2)]
-            );
-            println!(
-                "  row1 = ({:.6}, {:.6}, {:.6})",
-                ma[(1, 0)],
-                ma[(1, 1)],
-                ma[(1, 2)]
-            );
-            println!(
-                "  row2 = ({:.6}, {:.6}, {:.6})",
-                ma[(2, 0)],
-                ma[(2, 1)],
-                ma[(2, 2)]
-            );
-            println!("  determinant: {:.6}", ma.determinant());
-            println!("  scale_matrix: {:?}", scale);
-
-            // pymatgen aligned lattice:
-            // [[-1.308401, -2.465239,  0.697131],
-            //  [-2.790935,  0.,        0.697131],
-            //  [ 0.,        0.,        5.935263]]
-            // with det = -40.8365 and scale = [[0, -1, 1], [-1, 0, 1], [0, 0, 1]]
-
-            // After negation (since det < 0):
-            // [[1.308401, 2.465239, -0.697131],
-            //  [2.790935, 0.,       -0.697131],
-            //  [0.,       0.,       -5.935263]]
-        } else {
-            panic!("No mapping found!");
-        }
+        let result = lattice.find_mapping(&ideal_niggli, tol, 5.0 * tol * 180.0 / PI, true);
+        assert!(result.is_some(), "should find mapping to ideal Niggli");
     }
 
     #[test]
     fn test_find_mapping_acute_angles() {
-        // Real rhomb_3478 lattice parameters
+        // rhomb_3478 lattice: acute angles should still find self-mappings
         let lattice = Lattice::from_parameters(5.935, 5.935, 5.935, 28.05, 28.05, 28.05);
-
-        // Get Niggli-reduced
         let niggli = lattice.get_niggli_reduced(1e-5).unwrap();
-        println!("Niggli lattice:");
-        let m = niggli.matrix();
-        println!(
-            "  row0 = ({:.4}, {:.4}, {:.4})",
-            m[(0, 0)],
-            m[(0, 1)],
-            m[(0, 2)]
-        );
-        println!(
-            "  row1 = ({:.4}, {:.4}, {:.4})",
-            m[(1, 0)],
-            m[(1, 1)],
-            m[(1, 2)]
-        );
-        println!(
-            "  row2 = ({:.4}, {:.4}, {:.4})",
-            m[(2, 0)],
-            m[(2, 1)],
-            m[(2, 2)]
-        );
-        println!("  angles: {:?}", niggli.angles());
-        println!("  lengths: {:?}", niggli.lengths());
-
-        // Find self-mappings from Niggli lattice
-        let mappings = niggli.find_all_mappings(&niggli, 0.2, 5.0, true);
-        println!("  Niggli->Niggli mappings: {}", mappings.len());
-
-        // Should find at least identity mapping
         assert!(
-            !mappings.is_empty(),
-            "Expected to find at least identity mapping for Niggli reduced acute angle lattice"
+            !niggli.find_all_mappings(&niggli, 0.2, 5.0, true).is_empty(),
+            "Niggli"
         );
-
-        // Also test from original lattice
-        let orig_mappings = lattice.find_all_mappings(&lattice, 0.2, 5.0, true);
-        println!("  Original->Original mappings: {}", orig_mappings.len());
         assert!(
-            !orig_mappings.is_empty(),
-            "Expected to find mappings for acute angle lattice"
+            !lattice
+                .find_all_mappings(&lattice, 0.2, 5.0, true)
+                .is_empty(),
+            "original"
         );
     }
 
@@ -1405,29 +1101,10 @@ mod tests {
 
     #[test]
     fn test_find_mapping_obtuse_angles() {
-        // Co8-like lattice: angles (103.4°, 103.4°, 90°), c/a = 2.15
-        // This tests that find_all_mappings handles oblique cells properly
+        // Co8-like lattice: obtuse angles (103°, 103°, 90°)
         let lattice = Lattice::from_parameters(3.7, 3.7, 8.0, 103.0, 103.0, 90.0);
-
-        let angles = lattice.angles();
-        eprintln!(
-            "Lattice: lengths={:?}, angles=[{:.1}°, {:.1}°, {:.1}°]",
-            lattice.lengths(),
-            angles[0],
-            angles[1],
-            angles[2]
-        );
-
-        // Should find at least the identity mapping to itself
         let mappings = lattice.find_all_mappings(&lattice, 0.2, 5.0, true);
-        eprintln!("Found {} mappings", mappings.len());
-
-        assert!(
-            !mappings.is_empty(),
-            "Should find at least one mapping for obtuse angle lattice"
-        );
-
-        // Verify we found a valid mapping
+        assert!(!mappings.is_empty(), "should find self-mapping");
         let (aligned, _, scale) = &mappings[0];
         assert_relative_eq!(aligned.volume(), lattice.volume(), epsilon = 0.1);
         // Scale matrix determinant should be ±1 (no supercell)
@@ -1437,34 +1114,18 @@ mod tests {
 
     #[test]
     fn test_find_mapping_obtuse_la2coo4() {
-        // La2CoO4-like lattice: angles (90°, 90°, 132.8°)
+        // La2CoO4-like lattice: obtuse angles (90°, 90°, 132.8°)
         let lattice = Lattice::from_parameters(5.5, 5.5, 12.5, 90.0, 90.0, 132.8);
-
-        let angles = lattice.angles();
-        eprintln!(
-            "La2CoO4 Lattice: lengths={:?}, angles=[{:.1}°, {:.1}°, {:.1}°]",
-            lattice.lengths(),
-            angles[0],
-            angles[1],
-            angles[2]
-        );
-
-        let mappings = lattice.find_all_mappings(&lattice, 0.2, 5.0, true);
-        eprintln!("Found {} mappings", mappings.len());
-
         assert!(
-            !mappings.is_empty(),
-            "Should find at least one mapping for La2CoO4-like lattice"
+            !lattice
+                .find_all_mappings(&lattice, 0.2, 5.0, true)
+                .is_empty()
         );
     }
 
     #[test]
     fn test_niggli_co8_lattice() {
-        // Co8 lattice: angles (103.4°, 103.4°, 90°), c/a = 2.15
-        // Matrix from pymatgen:
-        // [[ 3.60626994  0.         -0.85837136]
-        //  [-0.20223523  3.60059493 -0.85837136]
-        //  [ 0.          0.          7.98790154]]
+        // Co8 lattice: angles (103.4°, 103.4°, 90°)
         let matrix = Matrix3::new(
             3.60626994,
             0.0,
@@ -1476,51 +1137,14 @@ mod tests {
             0.0,
             7.98790154,
         );
-        let lattice = Lattice::new(matrix);
-
-        eprintln!(
-            "Original: lengths={:?}, angles={:?}",
-            lattice.lengths(),
-            lattice.angles()
-        );
-
-        let niggli = lattice.get_niggli_reduced(1e-5).unwrap();
-        eprintln!(
-            "Niggli: lengths={:?}, angles={:?}",
-            niggli.lengths(),
-            niggli.angles()
-        );
-        eprintln!("Niggli matrix:\n{}", niggli.matrix());
-
-        // Test that Niggli self-mapping includes identity
-        let mappings = niggli.find_all_mappings(&niggli, 0.2, 5.0, true);
-        eprintln!("Niggli self-mappings: {}", mappings.len());
-        let has_identity = mappings.iter().any(|(_, _, scale)| {
-            scale[(0, 0)].abs() == 1
-                && scale[(1, 1)].abs() == 1
-                && scale[(2, 2)].abs() == 1
-                && scale[(0, 1)] == 0
-                && scale[(0, 2)] == 0
-                && scale[(1, 0)] == 0
-                && scale[(1, 2)] == 0
-                && scale[(2, 0)] == 0
-                && scale[(2, 1)] == 0
-        });
-        eprintln!("Has diagonal identity-like mapping: {}", has_identity);
-        for m in &mappings {
-            eprintln!("  scale_m: {:?}", m.2);
-        }
+        let niggli = Lattice::new(matrix).get_niggli_reduced(1e-5).unwrap();
 
         // Niggli angles should be in [60°, 120°]
-        let angles = niggli.angles();
-        for idx in 0..3 {
-            let angle = angles[idx];
-            assert!(
-                (59.0..=121.0).contains(&angle),
-                "Niggli angle {} out of expected range [60°, 120°]",
-                angle
-            );
+        for (idx, &angle) in niggli.angles().iter().enumerate() {
+            assert!((59.0..=121.0).contains(&angle), "angle[{idx}] = {angle}");
         }
+        // Should find self-mappings
+        assert!(!niggli.find_all_mappings(&niggli, 0.2, 5.0, true).is_empty());
     }
 
     #[test]
