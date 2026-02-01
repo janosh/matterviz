@@ -7,7 +7,7 @@
   import type { Crystal } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import {
-    get_structure_rms_dist,
+    get_structure_distance,
     is_ok,
     match_structures,
     match_structures_anonymous,
@@ -19,8 +19,7 @@
 
   interface MatchResult {
     id: string
-    rms: number | null
-    max_dist: number | null
+    distance: number // Universal structure distance (always defined, Infinity if incompatible)
     matches: boolean
     error?: string
   }
@@ -148,7 +147,7 @@
   // Auto-matching
   let debounce_timer: ReturnType<typeof setTimeout>
 
-  $effect(() => {
+  $effect(() => { // Re-run matching when any dependency changes (debounced)
     const deps = [
       wasm_ready,
       reference,
@@ -198,37 +197,39 @@
         const opts = is_perturbed_structure
           ? { ...options, primitive_cell: false }
           : options
-        const [rms_result, match_result] = await Promise.all([
-          get_structure_rms_dist(reference, candidate, opts),
+
+        // Use get_structure_distance for consistent ranking (always returns a value)
+        // and match_fn for strict crystallographic matching
+        const [dist_result, match_result] = await Promise.all([
+          get_structure_distance(reference, candidate, opts),
           match_fn(reference, candidate, opts),
         ])
 
-        const error = !is_ok(rms_result)
-          ? rms_result.error
+        const error = !is_ok(dist_result)
+          ? dist_result.error
           : !is_ok(match_result)
           ? match_result.error
           : undefined
 
-        const rms_data = is_ok(rms_result) ? rms_result.ok : null
+        const distance = is_ok(dist_result) ? dist_result.ok : Infinity
         new_results.push({
           id,
-          rms: rms_data?.rms ?? null,
-          max_dist: rms_data?.max_dist ?? null,
+          distance,
           matches: is_ok(match_result) && match_result.ok,
           error,
         })
       } catch (exc) {
         new_results.push({
           id,
-          rms: null,
-          max_dist: null,
+          distance: Infinity,
           matches: false,
           error: String(exc),
         })
       }
     }
 
-    new_results.sort((a, b) => (a.rms ?? Infinity) - (b.rms ?? Infinity))
+    // Sort by distance ascending (lower = more similar)
+    new_results.sort((a, b) => a.distance - b.distance)
     results = new_results
     loading = false
     if (new_results.length > 0 && !selected_id) selected_id = new_results[0].id
@@ -289,8 +290,8 @@
     }
   }
 
-  function format_num(val: number | null | undefined): string {
-    if (val == null) return `—` // em dash indicates no match possible
+  function format_num(val: number): string {
+    if (!Number.isFinite(val)) return `—` // em dash indicates incompatible structures
     return val.toFixed(4)
   }
 
@@ -494,8 +495,7 @@
           <tr>
             <th>#</th>
             <th>Structure</th>
-            <th title="Root Mean Square distance (Å)">RMS</th>
-            <th title="Maximum site distance (Å)">Max</th>
+            <th title="Universal structure distance (lower = more similar)">Distance</th>
             <th title="Match status: ✓ = match, ✗ = no match">Match</th>
           </tr>
         </thead>
@@ -521,19 +521,11 @@
               <td class="mono">{r.id.replace(`upload:`, ``)}</td>
               <td
                 class="mono"
-                title={r.rms == null
+                title={!Number.isFinite(r.distance)
                 ? `Incompatible structures`
-                : `RMS distance: ${r.rms.toFixed(4)} Å`}
+                : `Structure distance: ${r.distance.toFixed(4)}`}
               >
-                {format_num(r.rms)}
-              </td>
-              <td
-                class="mono"
-                title={r.max_dist == null
-                ? `Incompatible structures`
-                : `Max distance: ${r.max_dist.toFixed(4)} Å`}
-              >
-                {format_num(r.max_dist)}
+                {format_num(r.distance)}
               </td>
               <td>{#if r.error}❌{:else if r.matches}✓{:else}✗{/if}</td>
             </tr>
