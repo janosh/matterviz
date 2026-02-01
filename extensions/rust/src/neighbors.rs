@@ -1256,8 +1256,19 @@ mod tests {
 
         let nl = build_neighbor_list(&small, &config);
 
-        // Should handle multiple periodic images correctly
-        assert!(!nl.is_empty(), "Should find neighbors in small cell");
+        // 2-atom cell (a=1.5 Å) with cutoff=5.0 Å spans many periodic images
+        // Each atom should have many neighbors due to the large cutoff/cell ratio
+        // Key invariant: neighbor count should be symmetric (each atom has same count)
+        let count_0 = nl.center_indices.iter().filter(|&&c| c == 0).count();
+        let count_1 = nl.center_indices.iter().filter(|&&c| c == 1).count();
+        assert_eq!(
+            count_0, count_1,
+            "Both atoms should have same neighbor count"
+        );
+        assert!(
+            count_0 > 100,
+            "Should have many neighbors with cutoff >> cell size"
+        );
 
         // Verify no duplicates (same center-neighbor-image triple)
         let mut pairs: std::collections::HashSet<(usize, usize, [i32; 3])> =
@@ -1644,6 +1655,186 @@ mod tests {
                     pairs_per_atom
                 );
             }
+        }
+    }
+
+    // === ASE/torch-sim Compatible Tests ===
+
+    #[test]
+    fn test_ase_compatible_neighbor_list_format() {
+        // Tests that our neighbor list format matches ASE's NeighborList output:
+        // - center_indices[i]: index of center atom for pair i
+        // - neighbor_indices[i]: index of neighbor atom for pair i
+        // - distances[i]: distance between center and neighbor
+        // - images[i]: periodic image shift [n_a, n_b, n_c]
+        //
+        // This is the standard format used by ASE and torch-sim
+
+        let sc = make_simple_cubic(Element::Cu, 4.0);
+        let config = NeighborListConfig {
+            cutoff: 5.0,
+            ..Default::default()
+        };
+
+        let nl = build_neighbor_list(&sc, &config);
+
+        // Verify format: all arrays same length
+        assert_eq!(
+            nl.center_indices.len(),
+            nl.neighbor_indices.len(),
+            "center and neighbor indices must have same length"
+        );
+        assert_eq!(
+            nl.center_indices.len(),
+            nl.distances.len(),
+            "indices and distances must have same length"
+        );
+        assert_eq!(
+            nl.center_indices.len(),
+            nl.images.len(),
+            "indices and images must have same length"
+        );
+
+        // Verify indices are valid
+        let n_atoms = sc.num_sites();
+        assert!(
+            nl.center_indices.iter().all(|&idx| idx < n_atoms),
+            "All center indices should be < n_atoms"
+        );
+        assert!(
+            nl.neighbor_indices.iter().all(|&idx| idx < n_atoms),
+            "All neighbor indices should be < n_atoms"
+        );
+
+        // Verify distances are consistent with positions + images
+        let positions = sc.cart_coords();
+        let lattice_matrix = sc.lattice.matrix();
+        let lattice_vecs = [
+            lattice_matrix.row(0).transpose(),
+            lattice_matrix.row(1).transpose(),
+            lattice_matrix.row(2).transpose(),
+        ];
+
+        for (idx, (&center, &neighbor)) in nl
+            .center_indices
+            .iter()
+            .zip(&nl.neighbor_indices)
+            .enumerate()
+        {
+            let image = nl.images[idx];
+            let expected_dist = nl.distances[idx];
+
+            let center_pos = &positions[center];
+            let neighbor_pos = &positions[neighbor];
+
+            // Apply periodic image
+            let image_offset = (image[0] as f64) * lattice_vecs[0]
+                + (image[1] as f64) * lattice_vecs[1]
+                + (image[2] as f64) * lattice_vecs[2];
+
+            let actual_dist = (neighbor_pos + image_offset - center_pos).norm();
+
+            assert!(
+                (actual_dist - expected_dist).abs() < 1e-10,
+                "Distance mismatch: computed {}, stored {}",
+                actual_dist,
+                expected_dist
+            );
+        }
+    }
+
+    #[test]
+    fn test_torch_sim_diamond_si_neighbor_count() {
+        // Si diamond: 4 tetrahedral neighbors per atom at a*sqrt(3)/4 ≈ 2.35 Å
+        let a = 5.431;
+        let nn_dist = a * 3.0_f64.sqrt() / 4.0; // ~2.35 Å
+
+        // Build Si diamond with 8-atom conventional cell (FCC + basis)
+        let lattice = Lattice::cubic(a);
+        let species = vec![Species::neutral(Element::Si); 8];
+        // Diamond structure: FCC lattice with 2-atom basis at (0,0,0) and (1/4,1/4,1/4)
+        // FCC positions: (0,0,0), (0.5,0.5,0), (0.5,0,0.5), (0,0.5,0.5)
+        // Plus same shifted by (1/4,1/4,1/4)
+        let frac_coords = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.5, 0.5, 0.0),
+            Vector3::new(0.5, 0.0, 0.5),
+            Vector3::new(0.0, 0.5, 0.5),
+            Vector3::new(0.25, 0.25, 0.25),
+            Vector3::new(0.75, 0.75, 0.25),
+            Vector3::new(0.75, 0.25, 0.75),
+            Vector3::new(0.25, 0.75, 0.75),
+        ];
+        let si_diamond = Structure::new(lattice, species, frac_coords);
+
+        // Cutoff just above first shell
+        let config = NeighborListConfig {
+            cutoff: nn_dist * 1.1,
+            ..Default::default()
+        };
+
+        let nl = build_neighbor_list(&si_diamond, &config);
+
+        // Diamond has coordination number 4 (tetrahedral)
+        let n_atoms = si_diamond.num_sites();
+        let coordination = 4;
+        let expected_pairs = n_atoms * coordination;
+        assert_eq!(
+            nl.len(),
+            expected_pairs,
+            "Si diamond: expected {} pairs ({} neighbors × {} atoms), got {}",
+            expected_pairs,
+            coordination,
+            n_atoms,
+            nl.len()
+        );
+
+        // All distances should be approximately nn_dist
+        for &dist in &nl.distances {
+            assert!(
+                (dist - nn_dist).abs() < 0.05,
+                "Si neighbor distance {} should be ~{} Å",
+                dist,
+                nn_dist
+            );
+        }
+    }
+
+    #[test]
+    fn test_torch_sim_fcc_cu_neighbor_count() {
+        // torch-sim tests FCC Cu structure
+        // First shell: each atom has 12 nearest neighbors
+        // Distance: a/sqrt(2) ≈ 2.55 Å for a=3.61 Å
+
+        let a = 3.61; // Cu lattice constant
+        let nn_dist = a / 2.0_f64.sqrt(); // ~2.55 Å
+
+        let fcc_cu = make_fcc(Element::Cu, a);
+
+        // Cutoff just above first shell
+        let config = NeighborListConfig {
+            cutoff: nn_dist * 1.1,
+            ..Default::default()
+        };
+
+        let nl = build_neighbor_list(&fcc_cu, &config);
+
+        // 4-atom FCC cell, 12 neighbors per atom = 48 pairs total
+        assert_eq!(
+            nl.len(),
+            48,
+            "FCC Cu: expected 48 pairs (12 neighbors × 4 atoms), got {}",
+            nl.len()
+        );
+
+        // All distances should be approximately nn_dist
+        for &dist in &nl.distances {
+            assert!(
+                (dist - nn_dist).abs() < 0.01,
+                "Cu neighbor distance {} should be ~{} Å",
+                dist,
+                nn_dist
+            );
         }
     }
 }

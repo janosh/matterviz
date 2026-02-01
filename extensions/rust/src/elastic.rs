@@ -960,4 +960,112 @@ mod tests {
             "G_VRH should be average of Voigt and Reuss"
         );
     }
+
+    // === pymatgen Reference Tests ===
+
+    #[test]
+    fn test_pymatgen_elastic_tensor_reference() {
+        // Sn-like material from pymatgen test_elastic.py
+        // Reference: K_vrh=38.49, G_vrh=21.37, nu=0.266
+        let tensor = [
+            [59.33, 28.08, 28.08, 0.0, 0.0, 0.0],
+            [28.08, 59.31, 28.07, 0.0, 0.0, 0.0],
+            [28.08, 28.07, 59.32, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 26.35, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 26.35, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 26.35],
+        ];
+
+        // Test Voigt moduli
+        let k_voigt = voigt_bulk_modulus(&tensor);
+        let g_voigt = voigt_shear_modulus(&tensor);
+
+        assert!(
+            (k_voigt - 38.491).abs() < 0.01,
+            "K_Voigt {k_voigt:.3} should match pymatgen reference 38.491"
+        );
+        assert!(
+            (g_voigt - 22.059).abs() < 0.01,
+            "G_Voigt {g_voigt:.3} should match pymatgen reference 22.059"
+        );
+
+        // Test Reuss moduli
+        let k_reuss = reuss_bulk_modulus(&tensor);
+        let g_reuss = reuss_shear_modulus(&tensor);
+
+        assert!(
+            (k_reuss - 38.491).abs() < 0.01,
+            "K_Reuss {k_reuss:.3} should match pymatgen reference 38.491"
+        );
+        assert!(
+            (g_reuss - 20.671).abs() < 0.01,
+            "G_Reuss {g_reuss:.3} should match pymatgen reference 20.671"
+        );
+
+        // Test VRH averages
+        let k_vrh = bulk_modulus(&tensor);
+        let g_vrh = shear_modulus(&tensor);
+
+        assert!(
+            (k_vrh - 38.491).abs() < 0.01,
+            "K_VRH {k_vrh:.3} should match pymatgen reference 38.491"
+        );
+        assert!(
+            (g_vrh - 21.365).abs() < 0.01,
+            "G_VRH {g_vrh:.3} should match pymatgen reference 21.365"
+        );
+
+        // Test Poisson's ratio
+        let nu = poisson_ratio(k_vrh, g_vrh);
+        assert!(
+            (nu - 0.266).abs() < 0.01,
+            "Poisson's ratio {nu:.3} should match pymatgen reference 0.266"
+        );
+
+        // Verify mechanical stability
+        assert!(
+            is_mechanically_stable(&tensor),
+            "Sn-like material should be mechanically stable"
+        );
+    }
+
+    #[test]
+    fn test_torch_sim_elastic_reference() {
+        // Reference values from torch-sim test_elastic.py for Copper
+        // Cu elastic tensor (GPa):
+        //   C11 = 171.22, C12 = 130.50, C44 = 70.80
+        //   Bulk modulus: 144.12 GPa
+        //   Shear modulus: 43.11 GPa
+        let c11 = 171.22;
+        let c12 = 130.50;
+        let c44 = 70.80;
+
+        let tensor = make_cubic_tensor(c11, c12, c44);
+        let bulk = bulk_modulus(&tensor);
+        let shear = shear_modulus(&tensor);
+
+        // torch-sim reference values (from test_copper_elastic_properties)
+        assert!(
+            (bulk - 144.12).abs() < 1.0,
+            "Cu bulk modulus {bulk:.2} GPa should match torch-sim reference 144.12"
+        );
+        assert!(
+            (shear - 43.11).abs() < 2.0,
+            "Cu shear modulus {shear:.2} GPa should match torch-sim reference 43.11"
+        );
+
+        // Verify cubic stability conditions
+        assert!(
+            is_cubic_stable(c11, c12, c44),
+            "Cu should satisfy cubic stability criteria"
+        );
+
+        // Zener ratio for Cu (anisotropic)
+        let zener = zener_ratio(c11, c12, c44);
+        // A = 2*C44/(C11-C12) = 2*70.8/(171.22-130.50) = 141.6/40.72 ≈ 3.48
+        assert!(
+            (zener - 3.48).abs() < 0.1,
+            "Cu Zener ratio {zener:.2} should be ~3.48"
+        );
+    }
 }

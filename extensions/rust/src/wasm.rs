@@ -1756,6 +1756,440 @@ pub fn is_periodic_image(
         .into()
 }
 
+// =============================================================================
+// Elastic Tensor Analysis
+// =============================================================================
+
+use crate::elastic;
+
+// Helper to convert JsMatrix3x3 to nalgebra Matrix3
+fn js_to_matrix3(m: &JsMatrix3x3) -> nalgebra::Matrix3<f64> {
+    nalgebra::Matrix3::from_row_slice(&[
+        m.0[0][0], m.0[0][1], m.0[0][2], m.0[1][0], m.0[1][1], m.0[1][2], m.0[2][0], m.0[2][1],
+        m.0[2][2],
+    ])
+}
+
+// Helper to convert nalgebra Matrix3 to JsMatrix3x3
+fn matrix3_to_js(m: &nalgebra::Matrix3<f64>) -> JsMatrix3x3 {
+    JsMatrix3x3([
+        [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
+        [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
+        [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
+    ])
+}
+
+/// Generate strain matrices for elastic tensor calculation.
+///
+/// Returns 6 or 12 strain matrices depending on whether shear strains are included.
+/// Each strain type is applied in both positive and negative directions.
+#[wasm_bindgen]
+pub fn elastic_generate_strains(magnitude: f64, shear: bool) -> WasmResult<Vec<JsMatrix3x3>> {
+    if !magnitude.is_finite() || magnitude < 0.0 {
+        return WasmResult::err("magnitude must be finite and non-negative");
+    }
+    let strains: Vec<_> = elastic::generate_strains(magnitude, shear)
+        .iter()
+        .map(matrix3_to_js)
+        .collect();
+    WasmResult::ok(strains)
+}
+
+/// Apply strain to a cell matrix.
+///
+/// Returns the deformed cell: cell_new = cell * (I + strain)
+#[wasm_bindgen]
+pub fn elastic_apply_strain(cell: JsMatrix3x3, strain: JsMatrix3x3) -> JsMatrix3x3 {
+    let result = elastic::apply_strain(&js_to_matrix3(&cell), &js_to_matrix3(&strain));
+    matrix3_to_js(&result)
+}
+
+/// Convert 3x3 stress tensor to 6-element Voigt notation [xx, yy, zz, yz, xz, xy].
+#[wasm_bindgen]
+pub fn elastic_stress_to_voigt(stress: JsMatrix3x3) -> Vec<f64> {
+    elastic::stress_to_voigt(&js_to_matrix3(&stress)).to_vec()
+}
+
+/// Convert 3x3 strain tensor to 6-element Voigt notation [xx, yy, zz, 2*yz, 2*xz, 2*xy].
+#[wasm_bindgen]
+pub fn elastic_strain_to_voigt(strain: JsMatrix3x3) -> Vec<f64> {
+    elastic::strain_to_voigt(&js_to_matrix3(&strain)).to_vec()
+}
+
+/// Compute 6x6 elastic tensor from stress-strain data using SVD pseudoinverse.
+///
+/// Returns flat array of 36 elements in row-major order (compatible with
+/// elastic_bulk_modulus, elastic_shear_modulus, elastic_is_stable).
+#[wasm_bindgen]
+pub fn elastic_tensor_from_stresses(
+    strains: Vec<JsMatrix3x3>,
+    stresses: Vec<JsMatrix3x3>,
+) -> WasmResult<Vec<f64>> {
+    if strains.len() != stresses.len() {
+        return WasmResult::err("Strains and stresses must have same length");
+    }
+    if strains.is_empty() {
+        return WasmResult::err("At least one strain-stress pair required");
+    }
+    let strain_mats: Vec<_> = strains.iter().map(js_to_matrix3).collect();
+    let stress_mats: Vec<_> = stresses.iter().map(js_to_matrix3).collect();
+    let tensor = elastic::elastic_tensor_from_stresses(&strain_mats, &stress_mats);
+    // Flatten to row-major for consistency with modulus functions
+    WasmResult::ok(tensor.iter().flat_map(|row| row.iter().copied()).collect())
+}
+
+/// Compute Voigt-Reuss-Hill bulk modulus from 6x6 elastic tensor.
+///
+/// tensor: flat array of 36 elements in row-major order
+#[wasm_bindgen]
+pub fn elastic_bulk_modulus(tensor: Vec<f64>) -> WasmResult<f64> {
+    match tensor_flat_to_array(&tensor) {
+        Ok(arr) => WasmResult::ok(elastic::bulk_modulus(&arr)),
+        Err(err) => WasmResult::err(err),
+    }
+}
+
+/// Compute Voigt-Reuss-Hill shear modulus from 6x6 elastic tensor.
+///
+/// tensor: flat array of 36 elements in row-major order
+#[wasm_bindgen]
+pub fn elastic_shear_modulus(tensor: Vec<f64>) -> WasmResult<f64> {
+    match tensor_flat_to_array(&tensor) {
+        Ok(arr) => WasmResult::ok(elastic::shear_modulus(&arr)),
+        Err(err) => WasmResult::err(err),
+    }
+}
+
+/// Compute Young's modulus from bulk (k) and shear (g) moduli: E = 9KG / (3K + G).
+#[wasm_bindgen]
+pub fn elastic_youngs_modulus(bulk: f64, shear: f64) -> f64 {
+    elastic::youngs_modulus(bulk, shear)
+}
+
+/// Compute Poisson's ratio from bulk (k) and shear (g) moduli: nu = (3K - 2G) / (6K + 2G).
+#[wasm_bindgen]
+pub fn elastic_poisson_ratio(bulk: f64, shear: f64) -> f64 {
+    elastic::poisson_ratio(bulk, shear)
+}
+
+/// Check if elastic tensor satisfies mechanical stability (positive definite).
+///
+/// tensor: flat array of 36 elements in row-major order
+#[wasm_bindgen]
+pub fn elastic_is_stable(tensor: Vec<f64>) -> WasmResult<bool> {
+    match tensor_flat_to_array(&tensor) {
+        Ok(arr) => WasmResult::ok(elastic::is_mechanically_stable(&arr)),
+        Err(err) => WasmResult::err(err),
+    }
+}
+
+/// Compute Zener anisotropy ratio for cubic crystals: A = 2*C44 / (C11 - C12).
+/// A = 1 for isotropic materials.
+#[wasm_bindgen]
+pub fn elastic_zener_ratio(c11: f64, c12: f64, c44: f64) -> f64 {
+    elastic::zener_ratio(c11, c12, c44)
+}
+
+// Helper to convert flat Vec<f64> (36 elements) to [[f64; 6]; 6]
+fn tensor_flat_to_array(tensor: &[f64]) -> Result<[[f64; 6]; 6], String> {
+    if tensor.len() != 36 {
+        return Err(format!(
+            "Expected 36 elements for 6x6 tensor, got {}",
+            tensor.len()
+        ));
+    }
+    let mut arr = [[0.0; 6]; 6];
+    for row in 0..6 {
+        for col in 0..6 {
+            arr[row][col] = tensor[row * 6 + col];
+        }
+    }
+    Ok(arr)
+}
+
+// =============================================================================
+// Bond Orientational Order Parameters (Steinhardt)
+// =============================================================================
+
+use crate::order_params;
+
+/// Compute Steinhardt q_l order parameter for each atom.
+///
+/// l is typically 4 or 6. cutoff is the neighbor distance in Angstrom.
+/// Returns q_l values for each atom.
+#[wasm_bindgen]
+pub fn compute_steinhardt_q(
+    structure: JsCrystal,
+    degree: i32,
+    cutoff: f64,
+) -> WasmResult<Vec<f64>> {
+    if cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be non-negative");
+    }
+    structure
+        .to_structure()
+        .map(|struc| order_params::compute_steinhardt_q(&struc, degree, cutoff))
+        .into()
+}
+
+/// Classify local structure based on q4 and q6 values.
+///
+/// Returns structure type: "fcc", "bcc", "hcp", "icosahedral", "liquid", or "unknown".
+#[wasm_bindgen]
+pub fn classify_local_structure(q4: f64, q6: f64, tolerance: f64) -> String {
+    order_params::classify_local_structure(q4, q6, tolerance)
+        .as_str()
+        .to_string()
+}
+
+/// Classify all atoms in a structure based on their local order parameters.
+///
+/// Returns structure type string for each atom.
+#[wasm_bindgen]
+pub fn classify_all_atoms(
+    structure: JsCrystal,
+    cutoff: f64,
+    tolerance: f64,
+) -> WasmResult<Vec<String>> {
+    if cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be non-negative");
+    }
+    structure
+        .to_structure()
+        .map(|struc| {
+            order_params::classify_all_atoms(&struc, cutoff, tolerance)
+                .iter()
+                .map(|s| s.as_str().to_string())
+                .collect()
+        })
+        .into()
+}
+
+// =============================================================================
+// Trajectory Analysis (MSD, VACF, Diffusion)
+// =============================================================================
+
+use crate::trajectory::{MsdCalculator, VacfCalculator};
+
+// Helper to parse flat [x0,y0,z0,x1,y1,z1,...] to Vec<Vector3>
+fn parse_flat_vec3(data: &[f64], n_atoms: usize) -> Result<Vec<Vector3<f64>>, String> {
+    if data.len() != n_atoms * 3 {
+        return Err(format!(
+            "Expected {} values ({}*3), got {}",
+            n_atoms * 3,
+            n_atoms,
+            data.len()
+        ));
+    }
+    Ok(data
+        .chunks(3)
+        .map(|c| Vector3::new(c[0], c[1], c[2]))
+        .collect())
+}
+
+/// Streaming MSD calculator for large trajectories.
+///
+/// Usage: create with new(), add frames with add_frame(), get result with compute_msd().
+#[wasm_bindgen]
+pub struct JsMsdCalculator {
+    inner: MsdCalculator,
+}
+
+#[wasm_bindgen]
+impl JsMsdCalculator {
+    /// Create a new MSD calculator.
+    ///
+    /// n_atoms: number of atoms in each frame (must be > 0)
+    /// max_lag: maximum lag time in frames
+    /// origin_interval: frames between time origins (must be > 0, smaller = more samples)
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        n_atoms: usize,
+        max_lag: usize,
+        origin_interval: usize,
+    ) -> Result<JsMsdCalculator, JsError> {
+        if n_atoms == 0 {
+            return Err(JsError::new("n_atoms must be > 0"));
+        }
+        if origin_interval == 0 {
+            return Err(JsError::new("origin_interval must be > 0"));
+        }
+        Ok(JsMsdCalculator {
+            inner: MsdCalculator::new(n_atoms, max_lag, origin_interval),
+        })
+    }
+
+    /// Add a frame to the MSD calculation.
+    ///
+    /// positions: flat array of [x0, y0, z0, x1, y1, z1, ...] for all atoms
+    #[wasm_bindgen]
+    pub fn add_frame(&mut self, positions: Vec<f64>) -> WasmResult<()> {
+        match parse_flat_vec3(&positions, self.inner.n_atoms()) {
+            Ok(pos_vec) => {
+                self.inner.add_frame(&pos_vec);
+                WasmResult::ok(())
+            }
+            Err(err) => WasmResult::err(err),
+        }
+    }
+
+    /// Compute final MSD values averaged over all atoms.
+    ///
+    /// Returns MSD values for each lag time (length = max_lag + 1).
+    #[wasm_bindgen]
+    pub fn compute_msd(&self) -> Vec<f64> {
+        self.inner.compute_msd()
+    }
+
+    /// Compute MSD for each atom separately.
+    ///
+    /// Returns flattened array of shape (max_lag+1, n_atoms) in row-major order:
+    /// `[msd_lag0_atom0, msd_lag0_atom1, ..., msd_lag1_atom0, msd_lag1_atom1, ...]`
+    ///
+    /// To access MSD for atom `a` at lag `t`: `result[t * n_atoms + a]`
+    #[wasm_bindgen]
+    pub fn compute_msd_per_atom(&self) -> Vec<f64> {
+        self.inner
+            .compute_msd_per_atom()
+            .into_iter()
+            .flatten()
+            .collect()
+    }
+
+    /// Get number of atoms.
+    #[wasm_bindgen]
+    pub fn n_atoms(&self) -> usize {
+        self.inner.n_atoms()
+    }
+
+    /// Get maximum lag time in frames.
+    #[wasm_bindgen]
+    pub fn max_lag(&self) -> usize {
+        self.inner.max_lag()
+    }
+}
+
+/// Streaming VACF calculator for large trajectories.
+#[wasm_bindgen]
+pub struct JsVacfCalculator {
+    inner: VacfCalculator,
+}
+
+#[wasm_bindgen]
+impl JsVacfCalculator {
+    /// Create a new VACF calculator.
+    ///
+    /// n_atoms: number of atoms in each frame (must be > 0)
+    /// max_lag: maximum lag time in frames
+    /// origin_interval: frames between time origins (must be > 0, smaller = more samples)
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        n_atoms: usize,
+        max_lag: usize,
+        origin_interval: usize,
+    ) -> Result<JsVacfCalculator, JsError> {
+        if n_atoms == 0 {
+            return Err(JsError::new("n_atoms must be > 0"));
+        }
+        if origin_interval == 0 {
+            return Err(JsError::new("origin_interval must be > 0"));
+        }
+        Ok(JsVacfCalculator {
+            inner: VacfCalculator::new(n_atoms, max_lag, origin_interval),
+        })
+    }
+
+    /// Add a frame to the VACF calculation.
+    ///
+    /// velocities: flat array of [vx0, vy0, vz0, vx1, vy1, vz1, ...] for all atoms
+    #[wasm_bindgen]
+    pub fn add_frame(&mut self, velocities: Vec<f64>) -> WasmResult<()> {
+        match parse_flat_vec3(&velocities, self.inner.n_atoms()) {
+            Ok(vel_vec) => {
+                self.inner.add_frame(&vel_vec);
+                WasmResult::ok(())
+            }
+            Err(err) => WasmResult::err(err),
+        }
+    }
+
+    /// Compute final VACF values.
+    #[wasm_bindgen]
+    pub fn compute_vacf(&self) -> Vec<f64> {
+        self.inner.compute_vacf()
+    }
+
+    /// Compute normalized VACF (VACF(t) / VACF(0)).
+    #[wasm_bindgen]
+    pub fn compute_normalized_vacf(&self) -> Vec<f64> {
+        self.inner.compute_normalized_vacf()
+    }
+
+    /// Get number of atoms.
+    #[wasm_bindgen]
+    pub fn n_atoms(&self) -> usize {
+        self.inner.n_atoms()
+    }
+
+    /// Get maximum lag time in frames.
+    #[wasm_bindgen]
+    pub fn max_lag(&self) -> usize {
+        self.inner.max_lag()
+    }
+}
+
+/// Compute diffusion coefficient from MSD using Einstein relation.
+///
+/// D = MSD / (2 * dim * t) fitted in the linear regime.
+///
+/// Returns array of length 2: `[diffusion_coefficient, r_squared]`
+/// where r_squared indicates fit quality (1.0 = perfect linear fit).
+#[wasm_bindgen]
+pub fn diffusion_from_msd(
+    msd: Vec<f64>,
+    times: Vec<f64>,
+    dim: usize,
+    start_fraction: f64,
+    end_fraction: f64,
+) -> WasmResult<Vec<f64>> {
+    if msd.len() != times.len() {
+        return WasmResult::err("MSD and times must have same length");
+    }
+    if dim == 0 {
+        return WasmResult::err("dim must be > 0");
+    }
+    if !(0.0..=1.0).contains(&start_fraction) || !(0.0..=1.0).contains(&end_fraction) {
+        return WasmResult::err("start_fraction and end_fraction must be in [0, 1]");
+    }
+    if start_fraction >= end_fraction {
+        return WasmResult::err("start_fraction must be < end_fraction");
+    }
+    let (diff, r2) = crate::trajectory::diffusion_coefficient_from_msd(
+        &msd,
+        &times,
+        dim,
+        start_fraction,
+        end_fraction,
+    );
+    WasmResult::ok(vec![diff, r2])
+}
+
+/// Compute diffusion coefficient from VACF using Green-Kubo relation.
+///
+/// D = (1/dim) * integral_0^inf VACF(t) dt
+#[wasm_bindgen]
+pub fn diffusion_from_vacf(vacf: Vec<f64>, dt: f64, dim: usize) -> WasmResult<f64> {
+    if dim == 0 {
+        return WasmResult::err("dim must be > 0");
+    }
+    if dt <= 0.0 {
+        return WasmResult::err("dt must be positive");
+    }
+    WasmResult::ok(crate::trajectory::diffusion_coefficient_from_vacf(
+        &vacf, dt, dim,
+    ))
+}
+
 // === Molecule I/O Functions ===
 
 /// Parse a molecule from pymatgen Molecule JSON string.

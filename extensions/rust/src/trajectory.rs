@@ -512,6 +512,11 @@ impl MsdCalculator {
         self.0.n_atoms
     }
 
+    /// Maximum lag time in frames.
+    pub fn max_lag(&self) -> usize {
+        self.0.max_lag
+    }
+
     /// Add a frame.
     pub fn add_frame(&mut self, positions: &[Vector3<f64>]) {
         msd_add_frame_inplace(&mut self.0, positions);
@@ -541,6 +546,11 @@ impl VacfCalculator {
     /// Number of atoms expected per frame.
     pub fn n_atoms(&self) -> usize {
         self.0.n_atoms
+    }
+
+    /// Maximum lag time in frames.
+    pub fn max_lag(&self) -> usize {
+        self.0.max_lag
     }
 
     /// Add a frame.
