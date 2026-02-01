@@ -51,7 +51,7 @@ impl JsElement {
     /// - 119: Dummy (placeholder atom)
     /// - 120: D (Deuterium)
     /// - 121: T (Tritium)
-    #[wasm_bindgen(js_name = "fromAtomicNumber")]
+    #[wasm_bindgen(js_name = "from_atomic_number")]
     pub fn from_atomic_number(atomic_num: u8) -> Result<JsElement, JsError> {
         Element::from_atomic_number(atomic_num)
             .map(|elem| JsElement { inner: elem })
@@ -69,7 +69,7 @@ impl JsElement {
     }
 
     /// Get the atomic number.
-    #[wasm_bindgen(getter, js_name = "atomicNumber")]
+    #[wasm_bindgen(getter, js_name = "atomic_number")]
     pub fn atomic_number(&self) -> u8 {
         self.inner.atomic_number()
     }
@@ -81,7 +81,7 @@ impl JsElement {
     }
 
     /// Get the atomic mass in atomic mass units.
-    #[wasm_bindgen(getter, js_name = "atomicMass")]
+    #[wasm_bindgen(getter, js_name = "atomic_mass")]
     pub fn atomic_mass(&self) -> f64 {
         self.inner.atomic_mass()
     }
@@ -111,13 +111,13 @@ impl JsElement {
     }
 
     /// Get atomic radius in Angstroms (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "atomicRadius")]
+    #[wasm_bindgen(getter, js_name = "atomic_radius")]
     pub fn atomic_radius(&self) -> f64 {
         self.inner.atomic_radius().unwrap_or(f64::NAN)
     }
 
     /// Get covalent radius in Angstroms (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "covalentRadius")]
+    #[wasm_bindgen(getter, js_name = "covalent_radius")]
     pub fn covalent_radius(&self) -> f64 {
         self.inner.covalent_radius().unwrap_or(f64::NAN)
     }
@@ -125,121 +125,121 @@ impl JsElement {
     // Classification methods
 
     /// Check if element is a noble gas.
-    #[wasm_bindgen(js_name = "isNobleGas")]
+    #[wasm_bindgen(js_name = "is_noble_gas")]
     pub fn is_noble_gas(&self) -> bool {
         self.inner.is_noble_gas()
     }
 
     /// Check if element is an alkali metal.
-    #[wasm_bindgen(js_name = "isAlkali")]
+    #[wasm_bindgen(js_name = "is_alkali")]
     pub fn is_alkali(&self) -> bool {
         self.inner.is_alkali()
     }
 
     /// Check if element is an alkaline earth metal.
-    #[wasm_bindgen(js_name = "isAlkaline")]
+    #[wasm_bindgen(js_name = "is_alkaline")]
     pub fn is_alkaline(&self) -> bool {
         self.inner.is_alkaline()
     }
 
     /// Check if element is a halogen.
-    #[wasm_bindgen(js_name = "isHalogen")]
+    #[wasm_bindgen(js_name = "is_halogen")]
     pub fn is_halogen(&self) -> bool {
         self.inner.is_halogen()
     }
 
     /// Check if element is a chalcogen.
-    #[wasm_bindgen(js_name = "isChalcogen")]
+    #[wasm_bindgen(js_name = "is_chalcogen")]
     pub fn is_chalcogen(&self) -> bool {
         self.inner.is_chalcogen()
     }
 
     /// Check if element is a lanthanoid.
-    #[wasm_bindgen(js_name = "isLanthanoid")]
+    #[wasm_bindgen(js_name = "is_lanthanoid")]
     pub fn is_lanthanoid(&self) -> bool {
         self.inner.is_lanthanoid()
     }
 
     /// Check if element is an actinoid.
-    #[wasm_bindgen(js_name = "isActinoid")]
+    #[wasm_bindgen(js_name = "is_actinoid")]
     pub fn is_actinoid(&self) -> bool {
         self.inner.is_actinoid()
     }
 
     /// Check if element is a transition metal.
-    #[wasm_bindgen(js_name = "isTransitionMetal")]
+    #[wasm_bindgen(js_name = "is_transition_metal")]
     pub fn is_transition_metal(&self) -> bool {
         self.inner.is_transition_metal()
     }
 
     /// Check if element is a post-transition metal.
-    #[wasm_bindgen(js_name = "isPostTransitionMetal")]
+    #[wasm_bindgen(js_name = "is_post_transition_metal")]
     pub fn is_post_transition_metal(&self) -> bool {
         self.inner.is_post_transition_metal()
     }
 
     /// Check if element is a metalloid.
-    #[wasm_bindgen(js_name = "isMetalloid")]
+    #[wasm_bindgen(js_name = "is_metalloid")]
     pub fn is_metalloid(&self) -> bool {
         self.inner.is_metalloid()
     }
 
     /// Check if element is a metal.
-    #[wasm_bindgen(js_name = "isMetal")]
+    #[wasm_bindgen(js_name = "is_metal")]
     pub fn is_metal(&self) -> bool {
         self.inner.is_metal()
     }
 
     /// Check if element is radioactive.
-    #[wasm_bindgen(js_name = "isRadioactive")]
+    #[wasm_bindgen(js_name = "is_radioactive")]
     pub fn is_radioactive(&self) -> bool {
         self.inner.is_radioactive()
     }
 
     /// Check if element is a rare earth element.
-    #[wasm_bindgen(js_name = "isRareEarth")]
+    #[wasm_bindgen(js_name = "is_rare_earth")]
     pub fn is_rare_earth(&self) -> bool {
         self.inner.is_rare_earth()
     }
 
     /// Check if this is a pseudo-element (Dummy, D, T).
-    #[wasm_bindgen(js_name = "isPseudo")]
+    #[wasm_bindgen(js_name = "is_pseudo")]
     pub fn is_pseudo(&self) -> bool {
         self.inner.is_pseudo()
     }
 
     /// Get oxidation states as a JavaScript array.
-    #[wasm_bindgen(js_name = "oxidationStates")]
+    #[wasm_bindgen(js_name = "oxidation_states")]
     pub fn oxidation_states(&self) -> Vec<i8> {
         self.inner.oxidation_states().to_vec()
     }
 
     /// Get common oxidation states as a JavaScript array.
-    #[wasm_bindgen(js_name = "commonOxidationStates")]
+    #[wasm_bindgen(js_name = "common_oxidation_states")]
     pub fn common_oxidation_states(&self) -> Vec<i8> {
         self.inner.common_oxidation_states().to_vec()
     }
 
     /// Get ICSD oxidation states (with at least 10 instances in ICSD) as a JavaScript array.
-    #[wasm_bindgen(js_name = "icsdOxidationStates")]
+    #[wasm_bindgen(js_name = "icsd_oxidation_states")]
     pub fn icsd_oxidation_states(&self) -> Vec<i8> {
         self.inner.icsd_oxidation_states().to_vec()
     }
 
     /// Get maximum oxidation state (or 0 if none).
-    #[wasm_bindgen(getter, js_name = "maxOxidationState")]
+    #[wasm_bindgen(getter, js_name = "max_oxidation_state")]
     pub fn max_oxidation_state(&self) -> i8 {
         self.inner.max_oxidation_state().unwrap_or(0)
     }
 
     /// Get minimum oxidation state (or 0 if none).
-    #[wasm_bindgen(getter, js_name = "minOxidationState")]
+    #[wasm_bindgen(getter, js_name = "min_oxidation_state")]
     pub fn min_oxidation_state(&self) -> i8 {
         self.inner.min_oxidation_state().unwrap_or(0)
     }
 
     /// Get ionic radius for a specific oxidation state (or NaN if not defined).
-    #[wasm_bindgen(js_name = "ionicRadius")]
+    #[wasm_bindgen(js_name = "ionic_radius")]
     pub fn ionic_radius(&self, oxidation_state: i8) -> f64 {
         self.inner.ionic_radius(oxidation_state).unwrap_or(f64::NAN)
     }
@@ -247,7 +247,7 @@ impl JsElement {
     /// Get all ionic radii as JSON string: {"oxi_state": radius, ...}.
     ///
     /// Returns null if no ionic radii data is available.
-    #[wasm_bindgen(js_name = "ionicRadii")]
+    #[wasm_bindgen(js_name = "ionic_radii")]
     pub fn ionic_radii(&self) -> Option<String> {
         self.inner
             .ionic_radii()
@@ -255,7 +255,7 @@ impl JsElement {
     }
 
     /// Get Shannon ionic radius (or NaN if not defined).
-    #[wasm_bindgen(js_name = "shannonIonicRadius")]
+    #[wasm_bindgen(js_name = "shannon_ionic_radius")]
     pub fn shannon_ionic_radius(&self, oxidation_state: i8, coordination: &str, spin: &str) -> f64 {
         self.inner
             .shannon_ionic_radius(oxidation_state, coordination, spin)
@@ -266,7 +266,7 @@ impl JsElement {
     ///
     /// Structure: {oxi_state: {coordination: {spin: {crystal_radius, ionic_radius}}}}
     /// Returns null if no Shannon radii data is available.
-    #[wasm_bindgen(js_name = "shannonRadii")]
+    #[wasm_bindgen(js_name = "shannon_radii")]
     pub fn shannon_radii(&self) -> Option<String> {
         self.inner
             .shannon_radii()
@@ -276,13 +276,13 @@ impl JsElement {
     // Physical properties
 
     /// Get melting point in Kelvin (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "meltingPoint")]
+    #[wasm_bindgen(getter, js_name = "melting_point")]
     pub fn melting_point(&self) -> f64 {
         self.inner.melting_point().unwrap_or(f64::NAN)
     }
 
     /// Get boiling point in Kelvin (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "boilingPoint")]
+    #[wasm_bindgen(getter, js_name = "boiling_point")]
     pub fn boiling_point(&self) -> f64 {
         self.inner.boiling_point().unwrap_or(f64::NAN)
     }
@@ -294,43 +294,43 @@ impl JsElement {
     }
 
     /// Get electron affinity in kJ/mol (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "electronAffinity")]
+    #[wasm_bindgen(getter, js_name = "electron_affinity")]
     pub fn electron_affinity(&self) -> f64 {
         self.inner.electron_affinity().unwrap_or(f64::NAN)
     }
 
     /// Get first ionization energy in kJ/mol (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "firstIonizationEnergy")]
+    #[wasm_bindgen(getter, js_name = "first_ionization_energy")]
     pub fn first_ionization_energy(&self) -> f64 {
         self.inner.first_ionization_energy().unwrap_or(f64::NAN)
     }
 
     /// Get all ionization energies in kJ/mol.
-    #[wasm_bindgen(js_name = "ionizationEnergies")]
+    #[wasm_bindgen(js_name = "ionization_energies")]
     pub fn ionization_energies(&self) -> Vec<f64> {
         self.inner.ionization_energies().to_vec()
     }
 
     /// Get molar heat capacity (Cp) in J/(mol·K) (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "molarHeat")]
+    #[wasm_bindgen(getter, js_name = "molar_heat")]
     pub fn molar_heat(&self) -> f64 {
         self.inner.molar_heat().unwrap_or(f64::NAN)
     }
 
     /// Get specific heat capacity in J/(g·K) (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "specificHeat")]
+    #[wasm_bindgen(getter, js_name = "specific_heat")]
     pub fn specific_heat(&self) -> f64 {
         self.inner.specific_heat().unwrap_or(f64::NAN)
     }
 
     /// Get number of valence electrons (or 0 if not defined).
-    #[wasm_bindgen(getter, js_name = "nValence")]
+    #[wasm_bindgen(getter, js_name = "n_valence")]
     pub fn n_valence(&self) -> u8 {
         self.inner.n_valence().unwrap_or(0)
     }
 
     /// Get electron configuration string (or empty string if not defined).
-    #[wasm_bindgen(getter, js_name = "electronConfiguration")]
+    #[wasm_bindgen(getter, js_name = "electron_configuration")]
     pub fn electron_configuration(&self) -> String {
         self.inner
             .electron_configuration()
@@ -339,7 +339,7 @@ impl JsElement {
     }
 
     /// Get semantic electron configuration with noble gas core (or empty string if not defined).
-    #[wasm_bindgen(getter, js_name = "electronConfigurationSemantic")]
+    #[wasm_bindgen(getter, js_name = "electron_configuration_semantic")]
     pub fn electron_configuration_semantic(&self) -> String {
         self.inner
             .electron_configuration_semantic()
@@ -373,31 +373,31 @@ impl JsSpecies {
     }
 
     /// Get the element's atomic number.
-    #[wasm_bindgen(getter, js_name = "atomicNumber")]
+    #[wasm_bindgen(getter, js_name = "atomic_number")]
     pub fn atomic_number(&self) -> u8 {
         self.inner.element.atomic_number()
     }
 
     /// Get the oxidation state (or null/undefined if not set).
-    #[wasm_bindgen(getter, js_name = "oxidationState")]
+    #[wasm_bindgen(getter, js_name = "oxidation_state")]
     pub fn oxidation_state(&self) -> Option<i8> {
         self.inner.oxidation_state
     }
 
     /// Get the species string representation (e.g., "Fe2+").
-    #[wasm_bindgen(js_name = "toString")]
+    #[wasm_bindgen(js_name = "to_string")]
     pub fn to_string_js(&self) -> String {
         self.inner.to_string()
     }
 
     /// Get ionic radius for this species' oxidation state (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "ionicRadius")]
+    #[wasm_bindgen(getter, js_name = "ionic_radius")]
     pub fn ionic_radius(&self) -> f64 {
         self.inner.ionic_radius().unwrap_or(f64::NAN)
     }
 
     /// Get atomic radius (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "atomicRadius")]
+    #[wasm_bindgen(getter, js_name = "atomic_radius")]
     pub fn atomic_radius(&self) -> f64 {
         self.inner.atomic_radius().unwrap_or(f64::NAN)
     }
@@ -409,7 +409,7 @@ impl JsSpecies {
     }
 
     /// Get Shannon ionic radius with coordination and spin (or NaN if not defined).
-    #[wasm_bindgen(js_name = "shannonIonicRadius")]
+    #[wasm_bindgen(js_name = "shannon_ionic_radius")]
     pub fn shannon_ionic_radius(&self, coordination: &str, spin: &str) -> f64 {
         self.inner
             .shannon_ionic_radius(coordination, spin)
@@ -417,7 +417,7 @@ impl JsSpecies {
     }
 
     /// Get covalent radius (or NaN if not defined).
-    #[wasm_bindgen(getter, js_name = "covalentRadius")]
+    #[wasm_bindgen(getter, js_name = "covalent_radius")]
     pub fn covalent_radius(&self) -> f64 {
         self.inner.covalent_radius().unwrap_or(f64::NAN)
     }
@@ -550,7 +550,7 @@ impl WasmStructureMatcher {
     ///
     /// # Returns
     /// Finite distance in [0, 1e9]. Smaller values indicate more similar structures.
-    #[wasm_bindgen(js_name = "getStructureDistance")]
+    #[wasm_bindgen(js_name = "get_structure_distance")]
     pub fn get_structure_distance(
         &self,
         struct1: JsCrystal,

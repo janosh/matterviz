@@ -12,15 +12,13 @@ jobs:
     uses: janosh/workflows/.github/workflows/deno-gh-pages.yml@main
     with:
       deno-version: 2.3.7
-      # TODO remove WASM build once matterviz-wasm is published to npm
       build-cmd: |
         rm -rf static/{molecules,structures,trajectories}
         cp -r src/site/{molecules,structures,trajectories} static/
-        # Build WASM package (remove once published to npm)
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         . "$HOME/.cargo/env"
         cargo install wasm-pack@0.13.1 --locked
         wasm-pack build extensions/rust --target web --features wasm --no-default-features
-        mkdir -p extensions/rust-wasm/pkg/
-        cp -r extensions/rust/pkg/* extensions/rust-wasm/pkg/
+        mkdir -p extensions/rust/wasm/pkg/
+        cp -r extensions/rust/pkg/* extensions/rust/wasm/pkg/
         deno task build

@@ -52,9 +52,9 @@ describe(`JsElement`, () => {
   it(`creates element from symbol with correct properties`, () => {
     const fe = new wasm.JsElement(`Fe`)
     expect(fe.symbol).toBe(`Fe`)
-    expect(fe.atomicNumber).toBe(26)
+    expect(fe.atomic_number).toBe(26)
     expect(fe.name).toBe(`Iron`)
-    expect(fe.atomicMass).toBeCloseTo(55.845, 2)
+    expect(fe.atomic_mass).toBeCloseTo(55.845, 2)
     expect(fe.row).toBe(4)
     expect(fe.group).toBe(8)
     expect(fe.block).toBe(`D`)
@@ -63,10 +63,10 @@ describe(`JsElement`, () => {
 
   it.each(
     [
-      [`Fe`, `isTransitionMetal`],
-      [`Na`, `isAlkali`],
-      [`He`, `isNobleGas`],
-      [`Cl`, `isHalogen`],
+      [`Fe`, `is_transition_metal`],
+      [`Na`, `is_alkali`],
+      [`He`, `is_noble_gas`],
+      [`Cl`, `is_halogen`],
     ] as const,
   )(`%s is classified correctly via %s()`, (symbol, method) => {
     const elem = new wasm.JsElement(symbol)
@@ -88,7 +88,7 @@ describe(`JsSpecies`, () => {
   )(`parses %s as %s with oxidation %s`, (input, symbol, oxi) => {
     const sp = new wasm.JsSpecies(input)
     expect(sp.symbol).toBe(symbol)
-    expect(sp.oxidationState).toBe(oxi)
+    expect(sp.oxidation_state).toBe(oxi)
   })
 })
 
@@ -335,17 +335,20 @@ describe(`WasmStructureMatcher.get_rms_dist`, () => {
   })
 })
 
-describe(`WasmStructureMatcher.getStructureDistance`, () => {
+describe(`WasmStructureMatcher.get_structure_distance`, () => {
   it(`identical=0, symmetric, finite for incompatible`, () => {
     const matcher = new wasm.WasmStructureMatcher()
     // Identical = 0
-    expect(unwrap(matcher.getStructureDistance(nacl_json, nacl_json))).toBeCloseTo(0, 10)
+    expect(unwrap(matcher.get_structure_distance(nacl_json, nacl_json))).toBeCloseTo(
+      0,
+      10,
+    )
     // Symmetric
-    const d12 = unwrap(matcher.getStructureDistance(nacl_json, nacl_perturbed))
-    const d21 = unwrap(matcher.getStructureDistance(nacl_perturbed, nacl_json))
+    const d12 = unwrap(matcher.get_structure_distance(nacl_json, nacl_perturbed))
+    const d21 = unwrap(matcher.get_structure_distance(nacl_perturbed, nacl_json))
     expect(d12).toBeCloseTo(d21, 10)
     // Incompatible returns finite (unlike get_rms_dist which returns null)
-    const dist_diff = unwrap(matcher.getStructureDistance(nacl_json, fcc_cu_json))
+    const dist_diff = unwrap(matcher.get_structure_distance(nacl_json, fcc_cu_json))
     expect(Number.isFinite(dist_diff)).toBe(true)
     expect(dist_diff).toBeGreaterThan(d12) // Different composition > same composition
   })
