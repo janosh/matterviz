@@ -416,6 +416,11 @@ pub fn diffusion_coefficient_from_msd(
         return (0.0, 0.0);
     }
 
+    // Validate times are strictly increasing (required for regression)
+    if times.windows(2).any(|w| w[0] >= w[1]) {
+        return (0.0, 0.0);
+    }
+
     let start_idx = (n_points as f64 * start_fraction) as usize;
     let end_idx = ((n_points as f64 * end_fraction) as usize).min(n_points - 1);
     if start_idx >= end_idx {

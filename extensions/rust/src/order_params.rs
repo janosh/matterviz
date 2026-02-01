@@ -21,8 +21,19 @@
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
-use crate::neighbors::{NeighborListConfig, build_neighbor_list};
+use crate::neighbors::{NeighborList, NeighborListConfig, build_neighbor_list};
 use crate::structure::Structure;
+
+/// Pre-index a neighbor list by center atom for O(1) lookup.
+///
+/// Returns a Vec where index i contains all (neighbor_idx, image) pairs for atom i.
+fn index_neighbor_list(nl: &NeighborList, n_atoms: usize) -> Vec<Vec<(usize, [i32; 3])>> {
+    let mut indexed = vec![Vec::new(); n_atoms];
+    for (pair_idx, &center) in nl.center_indices.iter().enumerate() {
+        indexed[center].push((nl.neighbor_indices[pair_idx], nl.images[pair_idx]));
+    }
+    indexed
+}
 
 /// Compute factorial.
 fn factorial(n: i32) -> f64 {
@@ -36,55 +47,55 @@ fn factorial(n: i32) -> f64 {
 /// Compute associated Legendre polynomial P_l^m(x).
 ///
 /// Uses recurrence relations for numerical stability.
-fn associated_legendre(l: i32, m: i32, x: f64) -> f64 {
-    let m_abs = m.abs();
+fn associated_legendre(deg: i32, ord: i32, x: f64) -> f64 {
+    let ord_abs = ord.abs();
 
-    if m_abs > l {
+    if ord_abs > deg {
         return 0.0;
     }
 
     // Start with P_m^m
     let mut pmm = 1.0;
-    if m_abs > 0 {
+    if ord_abs > 0 {
         let somx2 = (1.0 - x * x).sqrt();
         let mut fact = 1.0;
-        for _idx in 0..m_abs {
+        for _idx in 0..ord_abs {
             pmm *= -fact * somx2;
             fact += 2.0;
         }
     }
 
-    if l == m_abs {
-        if m < 0 {
-            let sign = if m_abs % 2 == 0 { 1.0 } else { -1.0 };
-            return sign * factorial(l - m_abs) / factorial(l + m_abs) * pmm;
+    if deg == ord_abs {
+        if ord < 0 {
+            let sign = if ord_abs % 2 == 0 { 1.0 } else { -1.0 };
+            return sign * factorial(deg - ord_abs) / factorial(deg + ord_abs) * pmm;
         }
         return pmm;
     }
 
     // Compute P_{m+1}^m
-    let mut pmmp1 = x * (2 * m_abs + 1) as f64 * pmm;
+    let mut pmmp1 = x * (2 * ord_abs + 1) as f64 * pmm;
 
-    if l == m_abs + 1 {
-        if m < 0 {
-            let sign = if m_abs % 2 == 0 { 1.0 } else { -1.0 };
-            return sign * factorial(l - m_abs) / factorial(l + m_abs) * pmmp1;
+    if deg == ord_abs + 1 {
+        if ord < 0 {
+            let sign = if ord_abs % 2 == 0 { 1.0 } else { -1.0 };
+            return sign * factorial(deg - ord_abs) / factorial(deg + ord_abs) * pmmp1;
         }
         return pmmp1;
     }
 
     // Use recurrence to reach P_l^m
     let mut pll = 0.0;
-    for ll in (m_abs + 2)..=l {
-        pll =
-            (x * (2 * ll - 1) as f64 * pmmp1 - (ll + m_abs - 1) as f64 * pmm) / (ll - m_abs) as f64;
+    for ll in (ord_abs + 2)..=deg {
+        pll = (x * (2 * ll - 1) as f64 * pmmp1 - (ll + ord_abs - 1) as f64 * pmm)
+            / (ll - ord_abs) as f64;
         pmm = pmmp1;
         pmmp1 = pll;
     }
 
-    if m < 0 {
-        let sign = if m_abs % 2 == 0 { 1.0 } else { -1.0 };
-        return sign * factorial(l - m_abs) / factorial(l + m_abs) * pll;
+    if ord < 0 {
+        let sign = if ord_abs % 2 == 0 { 1.0 } else { -1.0 };
+        return sign * factorial(deg - ord_abs) / factorial(deg + ord_abs) * pll;
     }
     pll
 }
@@ -95,29 +106,30 @@ fn associated_legendre(l: i32, m: i32, x: f64) -> f64 {
 ///
 /// # Arguments
 ///
-/// * `l` - Degree (l >= 0)
-/// * `m` - Order (-l <= m <= l)
+/// * `deg` - Degree (deg >= 0)
+/// * `ord` - Order (-deg <= ord <= deg)
 /// * `theta` - Polar angle (0 to pi)
 /// * `phi` - Azimuthal angle (0 to 2*pi)
-pub fn spherical_harmonic(l: i32, m: i32, theta: f64, phi: f64) -> Complex64 {
-    if m.abs() > l {
+pub fn spherical_harmonic(deg: i32, ord: i32, theta: f64, phi: f64) -> Complex64 {
+    if ord.abs() > deg {
         return Complex64::new(0.0, 0.0);
     }
 
     // Normalization factor
-    let norm =
-        ((2 * l + 1) as f64 / (4.0 * PI) * factorial(l - m.abs()) / factorial(l + m.abs())).sqrt();
+    let norm = ((2 * deg + 1) as f64 / (4.0 * PI) * factorial(deg - ord.abs())
+        / factorial(deg + ord.abs()))
+    .sqrt();
 
     // Associated Legendre polynomial
-    let plm = associated_legendre(l, m.abs(), theta.cos());
+    let plm = associated_legendre(deg, ord.abs(), theta.cos());
 
-    // Phase factor exp(i*m*φ)
-    let phase = Complex64::from_polar(1.0, m as f64 * phi);
+    // Phase factor exp(i*ord*φ)
+    let phase = Complex64::from_polar(1.0, ord as f64 * phi);
 
-    // For m < 0, include the Condon-Shortley phase factor (-1)^|m|
-    // This ensures Y_l^{-m} = (-1)^m * conj(Y_l^m)
-    let coefficient = if m < 0 {
-        let sign = if m.abs() % 2 == 0 { 1.0 } else { -1.0 };
+    // For ord < 0, include the Condon-Shortley phase factor (-1)^|ord|
+    // This ensures Y_l^{-ord} = (-1)^ord * conj(Y_l^ord)
+    let coefficient = if ord < 0 {
+        let sign = if ord.abs() % 2 == 0 { 1.0 } else { -1.0 };
         sign * norm * plm
     } else {
         norm * plm
@@ -128,20 +140,25 @@ pub fn spherical_harmonic(l: i32, m: i32, theta: f64, phi: f64) -> Complex64 {
 
 /// Compute local Steinhardt q_l for each atom.
 ///
-/// q_l(i) = sqrt(4*pi / (2*l+1) * sum_m |q_lm(i)|^2)
+/// q_l(i) = sqrt(4*pi / (2*deg+1) * sum_m |q_lm(i)|^2)
 ///
 /// where q_lm(i) = (1/N_b) * sum_j Y_l^m(theta_ij, phi_ij)
 ///
 /// # Arguments
 ///
 /// * `structure` - The atomic structure
-/// * `l` - Degree of spherical harmonics (typical: 4 or 6)
+/// * `deg` - Degree of spherical harmonics (typical: 4 or 6)
 /// * `cutoff` - Neighbor cutoff distance in Angstrom
 ///
 /// # Returns
 ///
 /// Vector of q_l values for each atom
-pub fn compute_steinhardt_q(structure: &Structure, l: i32, cutoff: f64) -> Vec<f64> {
+pub fn compute_steinhardt_q(structure: &Structure, deg: i32, cutoff: f64) -> Vec<f64> {
+    // Guard against invalid deg to prevent signed-to-usize wrap in (2*deg+1)
+    if deg < 0 {
+        return vec![];
+    }
+
     let n_atoms = structure.num_sites();
     if n_atoms == 0 {
         return vec![];
@@ -163,30 +180,25 @@ pub fn compute_steinhardt_q(structure: &Structure, l: i32, cutoff: f64) -> Vec<f
         matrix.row(2).transpose(),
     ];
 
+    // Pre-index neighbor list for O(1) lookup per atom
+    let neighbors_by_atom = index_neighbor_list(&nl, n_atoms);
+
     // For each atom, compute q_lm values
-    let mut q_l = vec![0.0; n_atoms];
+    let mut q_deg = vec![0.0; n_atoms];
 
     for center_idx in 0..n_atoms {
-        // Find all neighbors of this atom with their periodic images
-        let neighbors: Vec<(usize, [i32; 3])> = nl
-            .center_indices
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| **c == center_idx)
-            .map(|(pair_idx, _)| (nl.neighbor_indices[pair_idx], nl.images[pair_idx]))
-            .collect();
-
+        let neighbors = &neighbors_by_atom[center_idx];
         let num_neighbors = neighbors.len();
         if num_neighbors == 0 {
             continue;
         }
 
         // Compute q_lm for each m
-        let mut q_lm_sum = vec![Complex64::new(0.0, 0.0); (2 * l + 1) as usize];
+        let mut q_lm_sum = vec![Complex64::new(0.0, 0.0); (2 * deg + 1) as usize];
 
         let center_pos = &positions[center_idx];
 
-        for (neighbor_idx, image) in &neighbors {
+        for (neighbor_idx, image) in neighbors {
             let neighbor_pos = &positions[*neighbor_idx];
 
             // Apply periodic image offset
@@ -195,42 +207,42 @@ pub fn compute_steinhardt_q(structure: &Structure, l: i32, cutoff: f64) -> Vec<f
                 + (image[2] as f64) * lattice_vecs[2];
 
             let delta = neighbor_pos + image_offset - center_pos;
-            let r = delta.norm();
+            let dist = delta.norm();
 
-            if r < 1e-10 {
+            if dist < 1e-10 {
                 continue;
             }
 
             // Convert to spherical coordinates
-            let theta = (delta.z / r).acos();
+            let theta = (delta.z / dist).acos();
             let phi = delta.y.atan2(delta.x);
 
             // Add contribution from each m
-            for m in -l..=l {
-                let ylm = spherical_harmonic(l, m, theta, phi);
-                q_lm_sum[(m + l) as usize] += ylm;
+            for ord in -deg..=deg {
+                let ylm = spherical_harmonic(deg, ord, theta, phi);
+                q_lm_sum[(ord + deg) as usize] += ylm;
             }
         }
 
         // Normalize by number of neighbors
         let n_neigh_f64 = num_neighbors as f64;
-        for q in &mut q_lm_sum {
-            *q /= n_neigh_f64;
+        for q_val in &mut q_lm_sum {
+            *q_val /= n_neigh_f64;
         }
 
         // Compute |q_l|^2 = sum_m |q_lm|^2
-        let q_l_sq: f64 = q_lm_sum.iter().map(|q| q.norm_sqr()).sum();
+        let q_deg_sq: f64 = q_lm_sum.iter().map(|q_val| q_val.norm_sqr()).sum();
 
-        // q_l = sqrt(4*pi / (2*l+1) * sum_m |q_lm|^2)
-        q_l[center_idx] = (4.0 * PI / (2 * l + 1) as f64 * q_l_sq).sqrt();
+        // q_l = sqrt(4*pi / (2*deg+1) * sum_m |q_lm|^2)
+        q_deg[center_idx] = (4.0 * PI / (2 * deg + 1) as f64 * q_deg_sq).sqrt();
     }
 
-    q_l
+    q_deg
 }
 
 /// Compute global Steinhardt Q_l for a structure.
 ///
-/// Q_l = sqrt(4*pi / (2*l+1) * sum_m |<q_lm>|^2)
+/// Q_l = sqrt(4*pi / (2*deg+1) * sum_m |<q_lm>|^2)
 ///
 /// where <q_lm> is the average of q_lm(i) over all atoms i.
 ///
@@ -240,13 +252,18 @@ pub fn compute_steinhardt_q(structure: &Structure, l: i32, cutoff: f64) -> Vec<f
 /// # Arguments
 ///
 /// * `structure` - The atomic structure
-/// * `l` - Degree of spherical harmonics (typical: 4 or 6)
+/// * `deg` - Degree of spherical harmonics (typical: 4 or 6)
 /// * `cutoff` - Neighbor cutoff distance in Angstrom
 ///
 /// # Returns
 ///
 /// Global Q_l value for the entire structure
-pub fn compute_global_steinhardt_q(structure: &Structure, l: i32, cutoff: f64) -> f64 {
+pub fn compute_global_steinhardt_q(structure: &Structure, deg: i32, cutoff: f64) -> f64 {
+    // Guard against invalid deg to prevent signed-to-usize wrap in (2*deg+1)
+    if deg < 0 {
+        return 0.0;
+    }
+
     let n_atoms = structure.num_sites();
     if n_atoms == 0 {
         return 0.0;
@@ -268,20 +285,15 @@ pub fn compute_global_steinhardt_q(structure: &Structure, l: i32, cutoff: f64) -
         matrix.row(2).transpose(),
     ];
 
+    // Pre-index neighbor list for O(1) lookup per atom
+    let neighbors_by_atom = index_neighbor_list(&nl, n_atoms);
+
     // Accumulate q_lm values from all atoms
-    let mut global_qlm = vec![Complex64::new(0.0, 0.0); (2 * l + 1) as usize];
+    let mut global_qlm = vec![Complex64::new(0.0, 0.0); (2 * deg + 1) as usize];
     let mut atoms_with_neighbors = 0usize;
 
     for center_idx in 0..n_atoms {
-        // Find all neighbors of this atom with their periodic images
-        let neighbors: Vec<(usize, [i32; 3])> = nl
-            .center_indices
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| **c == center_idx)
-            .map(|(pair_idx, _)| (nl.neighbor_indices[pair_idx], nl.images[pair_idx]))
-            .collect();
-
+        let neighbors = &neighbors_by_atom[center_idx];
         let num_neighbors = neighbors.len();
         if num_neighbors == 0 {
             continue;
@@ -290,10 +302,10 @@ pub fn compute_global_steinhardt_q(structure: &Structure, l: i32, cutoff: f64) -
         atoms_with_neighbors += 1;
 
         // Compute q_lm for this atom
-        let mut q_lm_sum = vec![Complex64::new(0.0, 0.0); (2 * l + 1) as usize];
+        let mut q_lm_sum = vec![Complex64::new(0.0, 0.0); (2 * deg + 1) as usize];
         let center_pos = &positions[center_idx];
 
-        for (neighbor_idx, image) in &neighbors {
+        for (neighbor_idx, image) in neighbors {
             let neighbor_pos = &positions[*neighbor_idx];
 
             // Apply periodic image offset
@@ -302,27 +314,27 @@ pub fn compute_global_steinhardt_q(structure: &Structure, l: i32, cutoff: f64) -
                 + (image[2] as f64) * lattice_vecs[2];
 
             let delta = neighbor_pos + image_offset - center_pos;
-            let r = delta.norm();
+            let dist = delta.norm();
 
-            if r < 1e-10 {
+            if dist < 1e-10 {
                 continue;
             }
 
             // Convert to spherical coordinates
-            let theta = (delta.z / r).acos();
+            let theta = (delta.z / dist).acos();
             let phi = delta.y.atan2(delta.x);
 
-            // Add contribution from each m
-            for m in -l..=l {
-                let ylm = spherical_harmonic(l, m, theta, phi);
-                q_lm_sum[(m + l) as usize] += ylm;
+            // Add contribution from each ord
+            for ord in -deg..=deg {
+                let ylm = spherical_harmonic(deg, ord, theta, phi);
+                q_lm_sum[(ord + deg) as usize] += ylm;
             }
         }
 
         // Normalize by number of neighbors and add to global sum
         let n_neigh_f64 = num_neighbors as f64;
-        for (m_idx, q) in q_lm_sum.iter().enumerate() {
-            global_qlm[m_idx] += q / n_neigh_f64;
+        for (ord_idx, q_val) in q_lm_sum.iter().enumerate() {
+            global_qlm[ord_idx] += q_val / n_neigh_f64;
         }
     }
 
@@ -332,13 +344,13 @@ pub fn compute_global_steinhardt_q(structure: &Structure, l: i32, cutoff: f64) -
 
     // Average over all atoms with neighbors
     let n_atoms_f64 = atoms_with_neighbors as f64;
-    for q in &mut global_qlm {
-        *q /= n_atoms_f64;
+    for q_val in &mut global_qlm {
+        *q_val /= n_atoms_f64;
     }
 
-    // Compute Q_l = sqrt(4*pi / (2*l+1) * sum_m |<q_lm>|^2)
-    let q_l_sq: f64 = global_qlm.iter().map(|q| q.norm_sqr()).sum();
-    (4.0 * PI / (2 * l + 1) as f64 * q_l_sq).sqrt()
+    // Compute Q_l = sqrt(4*pi / (2*deg+1) * sum_m |<q_lm>|^2)
+    let q_deg_sq: f64 = global_qlm.iter().map(|q_val| q_val.norm_sqr()).sum();
+    (4.0 * PI / (2 * deg + 1) as f64 * q_deg_sq).sqrt()
 }
 
 /// Average of local q_l values (simple arithmetic mean).
@@ -547,24 +559,24 @@ mod tests {
         let theta = 0.8;
         let phi = 1.2;
 
-        for l in 0..=6 {
-            for m in 1..=l {
-                let ylm = spherical_harmonic(l, m, theta, phi);
-                let ylmn = spherical_harmonic(l, -m, theta, phi);
-                let sign = if m % 2 == 0 { 1.0 } else { -1.0 };
+        for deg in 0..=6 {
+            for ord in 1..=deg {
+                let ylm = spherical_harmonic(deg, ord, theta, phi);
+                let ylmn = spherical_harmonic(deg, -ord, theta, phi);
+                let sign = if ord % 2 == 0 { 1.0 } else { -1.0 };
                 let expected = ylm.conj() * sign;
 
                 assert!(
                     (ylmn.re - expected.re).abs() < 1e-10,
                     "Y_{}^{{{}}}: real part mismatch",
-                    l,
-                    -m
+                    deg,
+                    -ord
                 );
                 assert!(
                     (ylmn.im - expected.im).abs() < 1e-10,
                     "Y_{}^{{{}}}: imag part mismatch",
-                    l,
-                    -m
+                    deg,
+                    -ord
                 );
             }
         }
@@ -577,14 +589,14 @@ mod tests {
         let theta = 1.0;
         let phi = 2.0;
 
-        for l in 0..=6 {
-            let sum_sq: f64 = (-l..=l)
-                .map(|m| spherical_harmonic(l, m, theta, phi).norm_sqr())
+        for deg in 0..=6 {
+            let sum_sq: f64 = (-deg..=deg)
+                .map(|ord| spherical_harmonic(deg, ord, theta, phi).norm_sqr())
                 .sum();
-            let expected = (2 * l + 1) as f64 / (4.0 * PI);
+            let expected = (2 * deg + 1) as f64 / (4.0 * PI);
             assert!(
                 (sum_sq - expected).abs() < 1e-10,
-                "l={l}: sum |Y_l^m|^2 = {sum_sq}, expected {expected}"
+                "deg={deg}: sum |Y_l^m|^2 = {sum_sq}, expected {expected}"
             );
         }
     }
@@ -691,22 +703,22 @@ mod tests {
 
     #[test]
     fn test_spherical_harmonic_grid() {
-        // Test at grid of (l, m, theta, phi) values
-        let ls = [0, 2, 4, 6];
+        // Test at grid of (deg, ord, theta, phi) values
+        let degs = [0, 2, 4, 6];
         let thetas = [0.0, PI / 4.0, PI / 2.0, 3.0 * PI / 4.0, PI];
         let phis = [0.0, PI / 2.0, PI, 3.0 * PI / 2.0];
 
-        for &l in &ls {
-            for m in -l..=l {
+        for &deg in &degs {
+            for ord in -deg..=deg {
                 for &theta in &thetas {
                     for &phi in &phis {
-                        let ylm = spherical_harmonic(l, m, theta, phi);
+                        let ylm = spherical_harmonic(deg, ord, theta, phi);
                         // Check that result is finite
                         assert!(
                             ylm.re.is_finite() && ylm.im.is_finite(),
                             "Y_{}^{}({}, {}) is not finite",
-                            l,
-                            m,
+                            deg,
+                            ord,
                             theta,
                             phi
                         );
@@ -717,23 +729,23 @@ mod tests {
     }
 
     #[test]
-    fn test_spherical_harmonic_large_l() {
-        // Test numerical stability for large l values
-        for l in [8, 10, 12] {
-            for m in -l..=l {
-                let ylm = spherical_harmonic(l, m, PI / 3.0, PI / 4.0);
+    fn test_spherical_harmonic_large_deg() {
+        // Test numerical stability for large deg values
+        for deg in [8, 10, 12] {
+            for ord in -deg..=deg {
+                let ylm = spherical_harmonic(deg, ord, PI / 3.0, PI / 4.0);
                 assert!(
                     ylm.re.is_finite() && ylm.im.is_finite(),
-                    "Y_{}^{} is not finite for large l",
-                    l,
-                    m
+                    "Y_{}^{} is not finite for large deg",
+                    deg,
+                    ord
                 );
                 // Also check magnitude is reasonable (shouldn't explode)
                 assert!(
                     ylm.norm() < 10.0,
                     "Y_{}^{} has unexpectedly large magnitude: {}",
-                    l,
-                    m,
+                    deg,
+                    ord,
                     ylm.norm()
                 );
             }

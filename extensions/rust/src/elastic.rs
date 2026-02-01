@@ -744,17 +744,22 @@ mod tests {
             }
         }
 
-        // Normal strains only (no shear) - check that we get a result
+        // Normal strains only (no shear) - use isotropic response: σ = λ*tr(ε)*I + 2μ*ε
         let strains = generate_strains(0.01, false); // Only normal strains
+        let lambda = 100.0;
+        let mu = 50.0;
         let stresses: Vec<Matrix3<f64>> = strains
             .iter()
-            .map(|_| Matrix3::zeros()) // Dummy stresses
+            .map(|strain| {
+                let trace = strain[(0, 0)] + strain[(1, 1)] + strain[(2, 2)];
+                Matrix3::identity() * lambda * trace + strain * 2.0 * mu
+            })
             .collect();
         let (_, n_singular) = try_elastic_tensor_from_stresses(&strains, &stresses);
-        // With only normal strains, the shear components should be singular
-        assert!(
-            n_singular <= 6,
-            "Normal strains only should have some singular components"
+        // With only normal strains, rank is 3 (xx, yy, zz), so n_singular = 3 (shear)
+        assert_eq!(
+            n_singular, 3,
+            "Normal strains only should have 3 singular components (shear directions)"
         );
     }
 
