@@ -1525,6 +1525,8 @@ pub fn get_wt_fraction(formula: &str, element: &str) -> WasmResult<f64> {
         .into()
 }
 
+// Converts composition to element amounts, stripping oxidation states.
+// This is intentional for reduced/fractional composition which work at element level.
 fn comp_to_element_amounts(comp: &crate::composition::Composition) -> Vec<JsElementAmount> {
     comp.iter()
         .map(|(sp, amt)| JsElementAmount {
@@ -1535,6 +1537,9 @@ fn comp_to_element_amounts(comp: &crate::composition::Composition) -> Vec<JsElem
 }
 
 /// Get reduced composition as array of {element, amount} objects.
+///
+/// Note: Returns element symbols only (e.g., "Fe"), stripping any oxidation states.
+/// Use `parse_composition` if you need to preserve species with oxidation states.
 #[wasm_bindgen]
 pub fn reduced_composition(formula: &str) -> WasmResult<Vec<JsElementAmount>> {
     crate::composition::Composition::from_formula(formula)
@@ -1544,6 +1549,9 @@ pub fn reduced_composition(formula: &str) -> WasmResult<Vec<JsElementAmount>> {
 }
 
 /// Get fractional composition (atomic fractions) as array of {element, amount} objects.
+///
+/// Note: Returns element symbols only (e.g., "Fe"), stripping any oxidation states.
+/// Use `parse_composition` if you need to preserve species with oxidation states.
 #[wasm_bindgen]
 pub fn fractional_composition(formula: &str) -> WasmResult<Vec<JsElementAmount>> {
     crate::composition::Composition::from_formula(formula)
