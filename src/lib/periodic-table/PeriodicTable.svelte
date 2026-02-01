@@ -378,8 +378,8 @@
     {#if tooltip_visible && tooltip_element}
       {@const el = tooltip_element as ChemicalElement}
       {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
+      {@const tooltip_value = heat_values[el.number - 1] ?? 0}
       {#if typeof tooltip == `function`}
-        {@const tooltip_value = heat_values[el.number - 1]}
         <div class="tooltip" {style}>
           {@render tooltip({
           element: el,
@@ -394,9 +394,9 @@
         <div class="tooltip" {style}>
           {el.name}<br />
           <small>{el.symbol} • {el.number}</small>
-          {#if Array.isArray(heat_values[el.number - 1])}
+          {#if Array.isArray(tooltip_value)}
             <br />
-            <small>Values: {(heat_values[el.number - 1] as number[]).join(`, `)}</small>
+            <small>Values: {(tooltip_value as number[]).join(`, `)}</small>
           {/if}
         </div>
       {/if}

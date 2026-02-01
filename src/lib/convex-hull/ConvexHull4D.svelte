@@ -420,6 +420,9 @@
       `input,textarea,select,button,a,[contenteditable="true"],[role="button"],[tabindex]:not([tabindex="-1"])`
     if (target.matches(interactive_selector) && target !== canvas) return
 
+    // Prevent double handling from canvas + wrapper bubbling
+    if (event.target !== event.currentTarget && event.currentTarget !== canvas) return
+
     // Handle Enter for keyboard accessibility - select hovered entry
     if (event.key === `Enter`) {
       const entry = hover_data?.entry

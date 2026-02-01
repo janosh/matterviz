@@ -76,14 +76,14 @@
     tweened_path.target = path
   })
 
-  // Emit helpers - call both region-level and prop-level handlers
+  // Emit helpers - call both region-level and prop-level handlers when distinct
   const emit_hover = (evt: FillHandlerEvent | null) => {
     region.on_hover?.(evt)
-    on_hover?.(evt)
+    if (on_hover !== region.on_hover) on_hover?.(evt)
   }
   const emit_click = (evt: FillHandlerEvent) => {
     region.on_click?.(evt)
-    on_click?.(evt)
+    if (on_click !== region.on_click) on_click?.(evt)
   }
 
   // Event handlers
