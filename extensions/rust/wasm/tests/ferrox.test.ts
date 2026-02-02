@@ -362,10 +362,10 @@ describe(`compute_lennard_jones`, () => {
     const positions = new Float64Array([0, 0, 0, sigma, 0, 0])
     const result = unwrap(wasm.compute_lennard_jones(
       positions,
-      null,
-      true,
-      true,
-      true,
+      null, // no cell
+      false, // pbc_x
+      false, // pbc_y
+      false, // pbc_z
       sigma,
       1.0,
       null,
@@ -381,10 +381,10 @@ describe(`compute_lennard_jones`, () => {
     const positions = new Float64Array([0, 0, 0, r_eq, 0, 0])
     const result = unwrap(wasm.compute_lennard_jones(
       positions,
-      null,
-      true,
-      true,
-      true,
+      null, // no cell
+      false, // pbc_x
+      false, // pbc_y
+      false, // pbc_z
       sigma,
       epsilon,
       null,
@@ -400,10 +400,10 @@ describe(`compute_lennard_jones`, () => {
     const positions = new Float64Array([0, 0, 0, 1.5, 0.5, 0.2, 2.5, 1.0, 0.5])
     const result = unwrap(wasm.compute_lennard_jones(
       positions,
-      null,
-      true, // compute forces
-      false,
-      false,
+      null, // no cell
+      false, // pbc_x
+      false, // pbc_y
+      false, // pbc_z
       1.0,
       1.0,
       null,
@@ -542,10 +542,10 @@ describe(`compute_soft_sphere`, () => {
     const positions = new Float64Array([0, 0, 0, 0.8, 0, 0])
     const result = unwrap(wasm.compute_soft_sphere(
       positions,
-      null,
-      true, // compute forces
-      false,
-      false,
+      null, // no cell
+      false, // pbc_x
+      false, // pbc_y
+      false, // pbc_z
       1.0,
       1.0,
       6.0,
@@ -603,11 +603,11 @@ describe(`compute_harmonic_bonds`, () => {
     const result = unwrap(wasm.compute_harmonic_bonds(
       positions,
       bonds,
-      null,
-      true, // compute forces
-      false,
-      false,
-      false,
+      null, // no cell
+      false, // pbc_x
+      false, // pbc_y
+      false, // pbc_z
+      false, // compute_stress
     ))
     // F = -k(r - r0), negative because stretched
     const expected_force = -spring_k * (dist - r0)
@@ -646,11 +646,11 @@ describe(`compute_harmonic_bonds`, () => {
     const result = unwrap(wasm.compute_harmonic_bonds(
       positions,
       bonds,
-      null,
-      true, // compute forces
-      false,
-      false,
-      false,
+      null, // no cell
+      false, // pbc_x
+      false, // pbc_y
+      false, // pbc_z
+      false, // compute_stress
     ))
     let sum_x = 0
     let sum_y = 0
