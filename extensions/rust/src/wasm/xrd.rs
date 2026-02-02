@@ -22,7 +22,7 @@ pub fn compute_xrd(
         let two_theta_range = opts
             .two_theta_range
             .map(|[min, max]| {
-                if min < 0.0 || max > 180.0 || min >= max {
+                if !min.is_finite() || !max.is_finite() || min < 0.0 || max > 180.0 || min >= max {
                     Err("two_theta_range must be [min, max] with 0 <= min < max <= 180".to_string())
                 } else {
                     Ok((min, max))

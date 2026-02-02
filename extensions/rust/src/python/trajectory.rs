@@ -31,6 +31,16 @@ fn diffusion_from_msd(
     if msd.len() != times.len() {
         return Err(PyValueError::new_err("MSD and times must have same length"));
     }
+    if !(0.0..=1.0).contains(&start_fraction) || !(0.0..=1.0).contains(&end_fraction) {
+        return Err(PyValueError::new_err(
+            "start_fraction and end_fraction must be in [0.0, 1.0]",
+        ));
+    }
+    if start_fraction >= end_fraction {
+        return Err(PyValueError::new_err(
+            "start_fraction must be less than end_fraction",
+        ));
+    }
     validate_dim(dim)?;
     Ok(trajectory::diffusion_coefficient_from_msd(
         &msd,
@@ -48,8 +58,8 @@ fn diffusion_from_vacf(vacf: Vec<f64>, dt: f64, dim: usize) -> PyResult<f64> {
     if vacf.len() < 2 {
         return Err(PyValueError::new_err("VACF must have at least 2 points"));
     }
-    if dt <= 0.0 {
-        return Err(PyValueError::new_err("dt must be positive"));
+    if !dt.is_finite() || dt <= 0.0 {
+        return Err(PyValueError::new_err("dt must be a finite positive number"));
     }
     validate_dim(dim)?;
     Ok(trajectory::diffusion_coefficient_from_vacf(&vacf, dt, dim))

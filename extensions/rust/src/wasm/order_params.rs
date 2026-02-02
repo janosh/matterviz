@@ -11,8 +11,8 @@ pub fn compute_steinhardt_q(
     degree: i32,
     cutoff: f64,
 ) -> WasmResult<Vec<f64>> {
-    if cutoff < 0.0 {
-        return WasmResult::err("Cutoff must be non-negative");
+    if !cutoff.is_finite() || cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be a finite non-negative number");
     }
     structure
         .to_structure()
@@ -33,8 +33,8 @@ pub fn classify_all_atoms(
     cutoff: f64,
     tolerance: f64,
 ) -> WasmResult<Vec<String>> {
-    if cutoff < 0.0 {
-        return WasmResult::err("Cutoff must be non-negative");
+    if !cutoff.is_finite() || cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be a finite non-negative number");
     }
     structure
         .to_structure()
