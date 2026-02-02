@@ -15,6 +15,12 @@ fn validate_cutoff(cutoff: f64) -> PyResult<()> {
     Ok(())
 }
 
+/// Create VoronoiConfig with the given min_solid_angle.
+#[cfg(not(target_arch = "wasm32"))]
+fn voronoi_config(min_solid_angle: f64) -> coordination::VoronoiConfig {
+    coordination::VoronoiConfig { min_solid_angle }
+}
+
 /// Get coordination numbers for all sites.
 #[pyfunction]
 fn get_coordination_numbers(structure: StructureJson, cutoff: f64) -> PyResult<Vec<usize>> {
@@ -98,11 +104,7 @@ fn get_cn_voronoi(
 ) -> PyResult<f64> {
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
-    let config = coordination::VoronoiConfig {
-        min_solid_angle,
-        ..Default::default()
-    };
-    Ok(struc.get_cn_voronoi(site_idx, Some(&config)))
+    Ok(struc.get_cn_voronoi(site_idx, Some(&voronoi_config(min_solid_angle))))
 }
 
 /// Get Voronoi coordination numbers for all sites.
@@ -111,11 +113,7 @@ fn get_cn_voronoi(
 #[pyo3(signature = (structure, min_solid_angle = 0.1))]
 fn get_cn_voronoi_all(structure: StructureJson, min_solid_angle: f64) -> PyResult<Vec<f64>> {
     let struc = parse_struct(&structure)?;
-    let config = coordination::VoronoiConfig {
-        min_solid_angle,
-        ..Default::default()
-    };
-    Ok(struc.get_cn_voronoi_all(Some(&config)))
+    Ok(struc.get_cn_voronoi_all(Some(&voronoi_config(min_solid_angle))))
 }
 
 /// Get Voronoi neighbors for a site.
@@ -129,14 +127,10 @@ fn get_voronoi_neighbors(
 ) -> PyResult<Vec<(usize, f64)>> {
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
-    let config = coordination::VoronoiConfig {
-        min_solid_angle,
-        ..Default::default()
-    };
     Ok(coordination::get_voronoi_neighbors(
         &struc,
         site_idx,
-        Some(&config),
+        Some(&voronoi_config(min_solid_angle)),
     ))
 }
 
@@ -152,11 +146,11 @@ fn get_local_environment_voronoi(
 ) -> PyResult<Vec<Py<PyDict>>> {
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
-    let config = coordination::VoronoiConfig {
-        min_solid_angle,
-        ..Default::default()
-    };
-    let env = coordination::get_local_environment_voronoi(&struc, site_idx, Some(&config));
+    let env = coordination::get_local_environment_voronoi(
+        &struc,
+        site_idx,
+        Some(&voronoi_config(min_solid_angle)),
+    );
 
     env.into_iter()
         .map(|neighbor| {

@@ -4,6 +4,7 @@
 
 use wasm_bindgen::prelude::*;
 
+use super::helpers::validate_cutoff_nonneg;
 use crate::wasm_types::{
     JsCrystal, JsLocalEnvironment, JsNeighborInfo, JsNeighborList, WasmResult,
 };
@@ -16,9 +17,7 @@ pub fn get_neighbor_list(
     exclude_self: bool,
 ) -> WasmResult<JsNeighborList> {
     let result: Result<JsNeighborList, String> = (|| {
-        if !cutoff_radius.is_finite() || cutoff_radius < 0.0 {
-            return Err("Cutoff radius must be finite and non-negative".to_string());
-        }
+        validate_cutoff_nonneg(cutoff_radius)?;
         if !numerical_tol.is_finite() || numerical_tol < 0.0 {
             return Err("Numerical tolerance must be finite and non-negative".to_string());
         }
@@ -66,8 +65,8 @@ pub fn get_local_environment(
     site_index: u32,
     cutoff: f64,
 ) -> WasmResult<JsLocalEnvironment> {
-    if !cutoff.is_finite() || cutoff < 0.0 {
-        return WasmResult::err("Cutoff must be finite and non-negative");
+    if let Err(err) = validate_cutoff_nonneg(cutoff) {
+        return WasmResult::err(&err);
     }
     let result: Result<JsLocalEnvironment, String> = (|| {
         let struc = structure.to_structure()?;

@@ -2,6 +2,24 @@
 
 use nalgebra::{Matrix3, Vector3};
 
+/// Validate cutoff is finite and positive.
+#[inline]
+pub fn validate_cutoff(cutoff: f64) -> Result<(), String> {
+    if !cutoff.is_finite() || cutoff <= 0.0 {
+        return Err("Cutoff must be a finite positive number".to_string());
+    }
+    Ok(())
+}
+
+/// Validate cutoff is finite and non-negative (allows zero).
+#[inline]
+pub fn validate_cutoff_nonneg(cutoff: f64) -> Result<(), String> {
+    if !cutoff.is_finite() || cutoff < 0.0 {
+        return Err("Cutoff must be a finite non-negative number".to_string());
+    }
+    Ok(())
+}
+
 /// Parse flat [x0,y0,z0,x1,y1,z1,...] to Vec<Vector3>.
 pub fn parse_flat_vec3(data: &[f64], n_atoms: usize) -> Result<Vec<Vector3<f64>>, String> {
     if data.len() != n_atoms * 3 {
