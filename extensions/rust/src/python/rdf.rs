@@ -44,7 +44,7 @@ fn compute_rdf(
     };
 
     // Release GIL during heavy computation (especially with auto_expand creating supercells)
-    let result = py.allow_threads(|| rdf::compute_rdf(&struc, &options));
+    let result = py.detach(|| rdf::compute_rdf(&struc, &options));
     Ok((result.radii, result.g_of_r))
 }
 
@@ -80,7 +80,7 @@ fn compute_element_rdf(
         expansion_factor,
     };
 
-    let result = py.allow_threads(|| rdf::compute_element_rdf(&struc, elem1, elem2, &options));
+    let result = py.detach(|| rdf::compute_element_rdf(&struc, elem1, elem2, &options));
     Ok((result.radii, result.g_of_r))
 }
 
@@ -107,7 +107,7 @@ fn compute_all_element_rdfs(
         expansion_factor,
     };
 
-    let results = py.allow_threads(|| rdf::compute_all_element_rdfs(&struc, &options));
+    let results = py.detach(|| rdf::compute_all_element_rdfs(&struc, &options));
 
     // Return a dict keyed by "Element1-Element2" with (radii, g_of_r) tuples as values
     let dict = PyDict::new(py);

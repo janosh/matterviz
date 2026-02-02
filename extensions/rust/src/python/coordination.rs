@@ -138,8 +138,6 @@ fn get_local_environment_voronoi(
     site_idx: usize,
     min_solid_angle: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
-    use pyo3::types::PyList;
-
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
     let config = coordination::VoronoiConfig {
@@ -154,8 +152,8 @@ fn get_local_environment_voronoi(
             dict.set_item("site_idx", neighbor.site_idx)?;
             dict.set_item("species", neighbor.species.to_string())?;
             dict.set_item("distance", neighbor.distance)?;
-            dict.set_item("weight", neighbor.weight)?;
             dict.set_item("solid_angle", neighbor.solid_angle)?;
+            dict.set_item("image", neighbor.image)?;
             Ok(dict.unbind())
         })
         .collect()

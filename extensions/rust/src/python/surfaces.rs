@@ -35,7 +35,7 @@ fn generate_slabs(
         termination_index: None,
     };
     let slabs = py
-        .allow_threads(|| struc.generate_slabs(&config))
+        .detach(|| struc.generate_slabs(&config))
         .map_err(|err| PyValueError::new_err(format!("Error generating slabs: {err}")))?;
     slabs
         .iter()
@@ -69,7 +69,7 @@ fn make_slab(
         termination_index: Some(termination_index),
     };
     let slab = py
-        .allow_threads(|| struc.make_slab(&config))
+        .detach(|| struc.make_slab(&config))
         .map_err(|err| PyValueError::new_err(format!("Error making slab: {err}")))?;
     Ok(structure_to_pydict(py, &slab)?.unbind())
 }
