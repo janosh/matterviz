@@ -8,11 +8,15 @@ use crate::potentials;
 use crate::wasm::{parse_flat_cell, parse_flat_vec3};
 use crate::wasm_types::WasmResult;
 
+/// Result from potential energy/force calculation.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi)]
 pub struct JsPotentialResult {
+    /// Total potential energy in eV.
     pub energy: f64,
+    /// Flattened forces [fx0, fy0, fz0, fx1, fy1, fz1, ...] in eV/Å.
     pub forces: Vec<f64>,
+    /// Stress tensor in Voigt order: [xx, yy, zz, yz, xz, xy] in eV/Å³.
     pub stress: Option<[f64; 6]>,
 }
 
@@ -40,8 +44,8 @@ fn validate_lj_params(sigma: f64, epsilon: f64, cutoff: Option<f64>) -> Result<(
     if sigma <= 0.0 || !sigma.is_finite() {
         return Err("sigma must be positive and finite".to_string());
     }
-    if !epsilon.is_finite() {
-        return Err("epsilon must be finite".to_string());
+    if epsilon < 0.0 || !epsilon.is_finite() {
+        return Err("epsilon must be non-negative and finite".to_string());
     }
     if cutoff.is_some_and(|cut| cut <= 0.0 || !cut.is_finite()) {
         return Err("cutoff must be positive and finite".to_string());
@@ -166,8 +170,8 @@ pub fn compute_soft_sphere(
         if sigma <= 0.0 || !sigma.is_finite() {
             return Err("sigma must be positive and finite".to_string());
         }
-        if !epsilon.is_finite() {
-            return Err("epsilon must be finite".to_string());
+        if epsilon < 0.0 || !epsilon.is_finite() {
+            return Err("epsilon must be non-negative and finite".to_string());
         }
         if alpha <= 0.0 || !alpha.is_finite() {
             return Err("alpha (exponent) must be positive and finite".to_string());

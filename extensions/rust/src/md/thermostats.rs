@@ -10,41 +10,7 @@ use super::units;
 
 // === Error Types ===
 
-/// Error type for thermostat step failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ThermostatStepError<E> {
-    /// Force computation callback returned an error
-    Callback(E),
-    /// Forces vector has wrong length
-    ForcesLengthMismatch {
-        /// Expected number of force vectors
-        expected: usize,
-        /// Actual number of force vectors received
-        got: usize,
-    },
-}
-
-impl<E: fmt::Display> fmt::Display for ThermostatStepError<E> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Callback(err) => write!(f, "Force computation failed: {err}"),
-            Self::ForcesLengthMismatch { expected, got } => {
-                write!(f, "Forces length mismatch: expected {expected}, got {got}")
-            }
-        }
-    }
-}
-
-impl<E: std::error::Error + 'static> std::error::Error for ThermostatStepError<E> {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Callback(err) => Some(err),
-            Self::ForcesLengthMismatch { .. } => None,
-        }
-    }
-}
-
-/// Error for step_finalize when forces length is wrong.
+/// Error for when forces have wrong length.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForcesLengthError {
     /// Expected number of force vectors
@@ -65,7 +31,52 @@ impl fmt::Display for ForcesLengthError {
 
 impl std::error::Error for ForcesLengthError {}
 
+/// Error type for thermostat step failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThermostatStepError<E> {
+    /// Force computation callback returned an error
+    Callback(E),
+    /// Forces vector has wrong length
+    ForcesLength(ForcesLengthError),
+}
+
+impl<E: fmt::Display> fmt::Display for ThermostatStepError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Callback(err) => write!(f, "Force computation failed: {err}"),
+            Self::ForcesLength(err) => err.fmt(f),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for ThermostatStepError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Callback(err) => Some(err),
+            Self::ForcesLength(err) => Some(err),
+        }
+    }
+}
+
+impl<E> From<ForcesLengthError> for ThermostatStepError<E> {
+    fn from(err: ForcesLengthError) -> Self {
+        Self::ForcesLength(err)
+    }
+}
+
 // === Utilities ===
+
+/// Validate forces length matches expected, returning error if not.
+#[inline]
+pub fn validate_forces_len<T>(forces: &[T], expected: usize) -> Result<(), ForcesLengthError> {
+    if forces.len() != expected {
+        return Err(ForcesLengthError {
+            expected,
+            got: forces.len(),
+        });
+    }
+    Ok(())
+}
 
 /// Compute twice the kinetic energy (sum of m*v²).
 /// Used in thermostats where 2*KE = sum_i m_i * |v_i|².
@@ -168,8 +179,8 @@ impl NoseHooverChain {
     {
         let result: Result<(), ThermostatStepError<std::convert::Infallible>> =
             self.try_step(state, |positions| Ok(compute_forces(positions)));
-        if let Err(ThermostatStepError::ForcesLengthMismatch { expected, got }) = result {
-            panic!("Forces length mismatch: expected {expected}, got {got}");
+        if let Err(ThermostatStepError::ForcesLength(err)) = result {
+            panic!("{err}");
         }
     }
 
@@ -181,7 +192,7 @@ impl NoseHooverChain {
     ///
     /// # Errors
     /// Returns `ThermostatStepError::Callback` if compute_forces fails, or
-    /// `ThermostatStepError::ForcesLengthMismatch` if forces have wrong length.
+    /// `ThermostatStepError::ForcesLength` if forces have wrong length.
     pub fn try_step<F, E>(
         &mut self,
         state: &mut MDState,
@@ -244,10 +255,11 @@ impl NoseHooverChain {
             *state = original_state;
             self.xi = original_xi;
             self.v_xi = original_v_xi;
-            return Err(ThermostatStepError::ForcesLengthMismatch {
+            return Err(ForcesLengthError {
                 expected,
                 got: new_forces.len(),
-            });
+            }
+            .into());
         }
         state.forces = new_forces;
 
@@ -342,14 +354,7 @@ impl NoseHooverChain {
         state: &mut MDState,
         new_forces: &[Vector3<f64>],
     ) -> Result<(), ForcesLengthError> {
-        // Validate forces length
-        let expected = state.positions.len();
-        if new_forces.len() != expected {
-            return Err(ForcesLengthError {
-                expected,
-                got: new_forces.len(),
-            });
-        }
+        validate_forces_len(new_forces, state.positions.len())?;
 
         let dt = self.dt_fs * units::FS_TO_INTERNAL;
         let dt2 = dt / 2.0;
@@ -457,8 +462,8 @@ impl VelocityRescale {
     {
         let result: Result<(), ThermostatStepError<std::convert::Infallible>> =
             self.try_step(state, |positions| Ok(compute_forces(positions)));
-        if let Err(ThermostatStepError::ForcesLengthMismatch { expected, got }) = result {
-            panic!("Forces length mismatch: expected {expected}, got {got}");
+        if let Err(ThermostatStepError::ForcesLength(err)) = result {
+            panic!("{err}");
         }
     }
 
@@ -470,7 +475,7 @@ impl VelocityRescale {
     ///
     /// # Errors
     /// Returns `ThermostatStepError::Callback` if compute_forces fails, or
-    /// `ThermostatStepError::ForcesLengthMismatch` if forces have wrong length.
+    /// `ThermostatStepError::ForcesLength` if forces have wrong length.
     pub fn try_step<F, E>(
         &mut self,
         state: &mut MDState,
@@ -504,10 +509,11 @@ impl VelocityRescale {
         let expected = state.positions.len();
         if new_forces.len() != expected {
             *state = original_state;
-            return Err(ThermostatStepError::ForcesLengthMismatch {
+            return Err(ForcesLengthError {
                 expected,
                 got: new_forces.len(),
-            });
+            }
+            .into());
         }
         state.forces = new_forces;
 
@@ -592,14 +598,7 @@ impl VelocityRescale {
         state: &mut MDState,
         new_forces: &[Vector3<f64>],
     ) -> Result<(), ForcesLengthError> {
-        // Validate forces length
-        let expected = state.positions.len();
-        if new_forces.len() != expected {
-            return Err(ForcesLengthError {
-                expected,
-                got: new_forces.len(),
-            });
-        }
+        validate_forces_len(new_forces, state.positions.len())?;
 
         let dt = self.dt_fs * units::FS_TO_INTERNAL;
 

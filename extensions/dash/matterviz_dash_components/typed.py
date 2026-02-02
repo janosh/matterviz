@@ -9,6 +9,7 @@ from typing import Any
 
 from .MatterViz import MatterViz
 
+
 class Structure(MatterViz):
     """3D crystal structure / molecule viewer.
 
@@ -157,6 +158,7 @@ class Structure(MatterViz):
             **kwargs,
         )
 
+
 class PeriodicTable(MatterViz):
     """Interactive periodic table with heatmaps and tooltips.
 
@@ -252,6 +254,7 @@ class PeriodicTable(MatterViz):
             **kwargs,
         )
 
+
 class Composition(MatterViz):
     """Composition chart (pie/bubble/bar) for a chemical formula or composition dict.
 
@@ -302,6 +305,7 @@ class Composition(MatterViz):
             style=style,
             **kwargs,
         )
+
 
 class Trajectory(MatterViz):
     """Molecular dynamics trajectory viewer with structure + plots.
@@ -403,6 +407,7 @@ class Trajectory(MatterViz):
             style=style,
             **kwargs,
         )
+
 
 class BrillouinZone(MatterViz):
     """3D Brillouin zone visualization.
@@ -535,6 +540,7 @@ class BrillouinZone(MatterViz):
             style=style,
             **kwargs,
         )
+
 
 class ConvexHull2D(MatterViz):
     """2D convex hull phase diagram plot.
@@ -676,6 +682,7 @@ class ConvexHull2D(MatterViz):
             **kwargs,
         )
 
+
 class ConvexHull3D(MatterViz):
     """3D convex hull phase diagram plot.
 
@@ -815,6 +822,7 @@ class ConvexHull3D(MatterViz):
             style=style,
             **kwargs,
         )
+
 
 class ConvexHull4D(MatterViz):
     """4D convex hull phase diagram plot (for quaternary systems).
@@ -956,6 +964,7 @@ class ConvexHull4D(MatterViz):
             **kwargs,
         )
 
+
 class IsobaricBinaryPhaseDiagram(MatterViz):
     """Binary isobaric phase diagram.
 
@@ -1054,6 +1063,7 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
             **kwargs,
         )
 
+
 class XrdPlot(MatterViz):
     """X-ray diffraction pattern plot.
 
@@ -1131,6 +1141,7 @@ class XrdPlot(MatterViz):
             style=style,
             **kwargs,
         )
+
 
 class Bands(MatterViz):
     """Band structure dispersion plot (phonon or electronic).
@@ -1250,6 +1261,7 @@ class Bands(MatterViz):
             style=style,
             **kwargs,
         )
+
 
 class Dos(MatterViz):
     """Density of states plot (electronic or phonon).
@@ -1397,6 +1409,7 @@ class Dos(MatterViz):
             **kwargs,
         )
 
+
 class ScatterPlot(MatterViz):
     """General-purpose scatter plot with customizable axes and tooltips.
 
@@ -1501,6 +1514,7 @@ class ScatterPlot(MatterViz):
             **kwargs,
         )
 
+
 class Histogram(MatterViz):
     """Histogram plot for data distributions.
 
@@ -1568,6 +1582,7 @@ class Histogram(MatterViz):
             style=style,
             **kwargs,
         )
+
 
 class RdfPlot(MatterViz):
     """Radial distribution function (RDF) plot.

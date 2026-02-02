@@ -76,6 +76,7 @@ fn make_slab(
     symprec: f64,
     termination_index: usize,
 ) -> PyResult<Py<PyDict>> {
+    validate_slab_params(min_slab_size, min_vacuum_size, symprec)?;
     let struc = parse_struct(&structure)?;
     let config = crate::structure::SlabConfig {
         miller_index,
@@ -106,17 +107,7 @@ fn enumerate_terminations(
     min_vacuum: f64,
     symprec: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
-    if !min_slab.is_finite() || min_slab <= 0.0 {
-        return Err(PyValueError::new_err(
-            "min_slab must be positive and finite",
-        ));
-    }
-    if !min_vacuum.is_finite() || min_vacuum <= 0.0 {
-        return Err(PyValueError::new_err(
-            "min_vacuum must be positive and finite",
-        ));
-    }
-
+    validate_slab_params(min_slab, min_vacuum, symprec)?;
     let struc = parse_struct(&structure)?;
     let miller = surfaces::MillerIndex::new(h, k, l);
     let config = surfaces::SlabConfigExt::new(miller)
@@ -248,8 +239,10 @@ fn calculate_energy(
     n_atoms: usize,
     surface_area: f64,
 ) -> PyResult<f64> {
-    if surface_area <= 0.0 {
-        return Err(PyValueError::new_err("surface_area must be positive"));
+    if !surface_area.is_finite() || surface_area <= 0.0 {
+        return Err(PyValueError::new_err(
+            "surface_area must be positive and finite",
+        ));
     }
     if n_atoms == 0 {
         return Err(PyValueError::new_err("n_atoms must be greater than 0"));

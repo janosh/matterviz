@@ -4,11 +4,14 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
-use crate::md::{self, LangevinIntegrator, MDState, NoseHooverChain, VelocityRescale};
+use crate::md::{
+    self, LangevinIntegrator, MDState, NoseHooverChain, ThermostatStepError, VelocityRescale,
+};
 use crate::optimizers::{CellFireState, FireConfig, FireState};
 
 use super::helpers::{
-    array_to_mat3, default_pbc, mat3_to_array, positions_to_vec3, vec3_to_positions,
+    array_to_mat3, default_pbc, mat3_to_array, positions_to_vec3, validate_opt,
+    validate_positive_f64, vec3_to_positions,
 };
 
 // === Validation Helpers ===
@@ -24,17 +27,6 @@ fn validate_temperature(temp: f64) -> PyResult<()> {
     Ok(())
 }
 
-/// Validate a positive f64 parameter (finite and > 0).
-#[inline]
-fn validate_positive_f64(value: f64, name: &str) -> PyResult<()> {
-    if !value.is_finite() || value <= 0.0 {
-        return Err(PyValueError::new_err(format!(
-            "{name} must be finite and positive, got {value}"
-        )));
-    }
-    Ok(())
-}
-
 /// Validate degrees of freedom is positive.
 #[inline]
 fn validate_n_dof(n_dof: usize) -> PyResult<()> {
@@ -44,6 +36,15 @@ fn validate_n_dof(n_dof: usize) -> PyResult<()> {
         ));
     }
     Ok(())
+}
+
+/// Convert ThermostatStepError to PyErr.
+#[inline]
+fn thermostat_step_err_to_pyerr(err: ThermostatStepError<PyErr>) -> PyErr {
+    match err {
+        ThermostatStepError::Callback(py_err) => py_err,
+        ThermostatStepError::ForcesLength(err) => PyValueError::new_err(err.to_string()),
+    }
 }
 
 /// Extract and validate forces from Python callback result.
@@ -334,11 +335,13 @@ impl PyNoseHooverChain {
 
     /// Perform one NVT step.
     fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner.try_step(&mut state.inner, |positions| {
-            let n_atoms = positions.len();
-            let result = compute_forces.call1((vec3_to_positions(positions),))?;
-            extract_and_validate_forces(&result, n_atoms)
-        })
+        self.inner
+            .try_step(&mut state.inner, |positions| {
+                let n_atoms = positions.len();
+                let result = compute_forces.call1((vec3_to_positions(positions),))?;
+                extract_and_validate_forces(&result, n_atoms)
+            })
+            .map_err(thermostat_step_err_to_pyerr)
     }
 
     /// Set target temperature.
@@ -381,11 +384,13 @@ impl PyVelocityRescale {
 
     /// Perform one NVT step.
     fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner.try_step(&mut state.inner, |positions| {
-            let n_atoms = positions.len();
-            let result = compute_forces.call1((vec3_to_positions(positions),))?;
-            extract_and_validate_forces(&result, n_atoms)
-        })
+        self.inner
+            .try_step(&mut state.inner, |positions| {
+                let n_atoms = positions.len();
+                let result = compute_forces.call1((vec3_to_positions(positions),))?;
+                extract_and_validate_forces(&result, n_atoms)
+            })
+            .map_err(thermostat_step_err_to_pyerr)
     }
 
     /// Set target temperature.
@@ -476,33 +481,37 @@ impl PyFireConfig {
         alpha_start: Option<f64>,
         f_alpha: Option<f64>,
         max_step: Option<f64>,
-    ) -> Self {
+    ) -> PyResult<Self> {
+        validate_opt(dt_start, "dt_start", "positive", |v| v > 0.0)?;
+        validate_opt(dt_max, "dt_max", "positive", |v| v > 0.0)?;
+        if n_min == Some(0) {
+            return Err(PyValueError::new_err("n_min must be greater than 0"));
+        }
+        validate_opt(f_inc, "f_inc", "> 1", |v| v > 1.0)?;
+        validate_opt(f_dec, "f_dec", "in (0, 1)", |v| v > 0.0 && v < 1.0)?;
+        validate_opt(alpha_start, "alpha_start", "in (0, 1]", |v| {
+            v > 0.0 && v <= 1.0
+        })?;
+        validate_opt(f_alpha, "f_alpha", "in (0, 1)", |v| v > 0.0 && v < 1.0)?;
+        validate_opt(max_step, "max_step", "positive", |v| v > 0.0)?;
+
         let mut config = FireConfig::default();
-        if let Some(val) = dt_start {
-            config.dt_start = val;
+        config.dt_start = dt_start.unwrap_or(config.dt_start);
+        config.dt_max = dt_max.unwrap_or(config.dt_max);
+        config.n_min = n_min.unwrap_or(config.n_min);
+        config.f_inc = f_inc.unwrap_or(config.f_inc);
+        config.f_dec = f_dec.unwrap_or(config.f_dec);
+        config.alpha_start = alpha_start.unwrap_or(config.alpha_start);
+        config.f_alpha = f_alpha.unwrap_or(config.f_alpha);
+        config.max_step = max_step.unwrap_or(config.max_step);
+
+        if config.dt_max < config.dt_start {
+            return Err(PyValueError::new_err(format!(
+                "dt_max ({}) must be >= dt_start ({})",
+                config.dt_max, config.dt_start
+            )));
         }
-        if let Some(val) = dt_max {
-            config.dt_max = val;
-        }
-        if let Some(val) = n_min {
-            config.n_min = val;
-        }
-        if let Some(val) = f_inc {
-            config.f_inc = val;
-        }
-        if let Some(val) = f_dec {
-            config.f_dec = val;
-        }
-        if let Some(val) = alpha_start {
-            config.alpha_start = val;
-        }
-        if let Some(val) = f_alpha {
-            config.f_alpha = val;
-        }
-        if let Some(val) = max_step {
-            config.max_step = val;
-        }
-        Self { inner: config }
+        Ok(Self { inner: config })
     }
 
     #[getter]

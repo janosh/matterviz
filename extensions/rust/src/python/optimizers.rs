@@ -6,7 +6,43 @@ use pyo3::prelude::*;
 
 use crate::optimizers;
 
-use super::helpers::mat3_to_array;
+use super::helpers::{mat3_to_array, validate_opt, validate_positive_f64};
+
+// === Validation Helpers ===
+
+/// Parse and validate forces array, checking length and finiteness.
+fn parse_forces(forces: &[[f64; 3]], expected_len: usize) -> PyResult<Vec<Vector3<f64>>> {
+    if forces.len() != expected_len {
+        return Err(PyValueError::new_err(format!(
+            "forces length {} must be {} (n_atoms)",
+            forces.len(),
+            expected_len
+        )));
+    }
+    forces
+        .iter()
+        .enumerate()
+        .map(|(idx, f)| {
+            if !f.iter().all(|v| v.is_finite()) {
+                Err(PyValueError::new_err(format!(
+                    "forces[{idx}] contains non-finite values: {f:?}"
+                )))
+            } else {
+                Ok(Vector3::new(f[0], f[1], f[2]))
+            }
+        })
+        .collect()
+}
+
+/// Parse and validate stress tensor, checking finiteness.
+fn parse_stress(stress: &[[f64; 3]; 3]) -> PyResult<Matrix3<f64>> {
+    if !stress.iter().flatten().all(|v| v.is_finite()) {
+        return Err(PyValueError::new_err(format!(
+            "stress contains non-finite values: {stress:?}"
+        )));
+    }
+    Ok(super::helpers::array_to_mat3(*stress))
+}
 
 /// FIRE optimizer configuration.
 #[pyclass(name = "FireConfig")]
@@ -26,58 +62,25 @@ impl PyFireConfig {
         n_min: Option<usize>,
         max_step: Option<f64>,
     ) -> PyResult<Self> {
-        // Validate dt_start: must be finite and positive
-        if let Some(val) = dt_start {
-            if !val.is_finite() || val <= 0.0 {
-                return Err(PyValueError::new_err(format!(
-                    "dt_start must be finite and positive, got {val}"
-                )));
-            }
+        validate_opt(dt_start, "dt_start", "positive", |v| v > 0.0)?;
+        validate_opt(dt_max, "dt_max", "positive", |v| v > 0.0)?;
+        if n_min == Some(0) {
+            return Err(PyValueError::new_err("n_min must be greater than 0"));
         }
-        // Validate dt_max: must be finite and positive
-        if let Some(val) = dt_max {
-            if !val.is_finite() || val <= 0.0 {
-                return Err(PyValueError::new_err(format!(
-                    "dt_max must be finite and positive, got {val}"
-                )));
-            }
-        }
-        // Validate n_min: must be > 0
-        if let Some(val) = n_min {
-            if val == 0 {
-                return Err(PyValueError::new_err("n_min must be greater than 0"));
-            }
-        }
-        // Validate max_step: must be finite and positive
-        if let Some(val) = max_step {
-            if !val.is_finite() || val <= 0.0 {
-                return Err(PyValueError::new_err(format!(
-                    "max_step must be finite and positive, got {val}"
-                )));
-            }
-        }
-        let mut config = optimizers::FireConfig::default();
-        if let Some(val) = dt_start {
-            config.dt_start = val;
-        }
-        if let Some(val) = dt_max {
-            config.dt_max = val;
-        }
-        if let Some(val) = n_min {
-            config.n_min = val;
-        }
-        if let Some(val) = max_step {
-            config.max_step = val;
-        }
+        validate_opt(max_step, "max_step", "positive", |v| v > 0.0)?;
 
-        // Validate dt_max >= dt_start on final config (not just when both inputs are Some)
+        let mut config = optimizers::FireConfig::default();
+        config.dt_start = dt_start.unwrap_or(config.dt_start);
+        config.dt_max = dt_max.unwrap_or(config.dt_max);
+        config.n_min = n_min.unwrap_or(config.n_min);
+        config.max_step = max_step.unwrap_or(config.max_step);
+
         if config.dt_max < config.dt_start {
             return Err(PyValueError::new_err(format!(
                 "dt_max ({}) must be >= dt_start ({})",
                 config.dt_max, config.dt_start
             )));
         }
-
         Ok(PyFireConfig { inner: config })
     }
 
@@ -88,11 +91,7 @@ impl PyFireConfig {
 
     #[setter]
     fn set_dt_start(&mut self, val: f64) -> PyResult<()> {
-        if !val.is_finite() || val <= 0.0 {
-            return Err(PyValueError::new_err(format!(
-                "dt_start must be finite and positive, got {val}"
-            )));
-        }
+        validate_positive_f64(val, "dt_start")?;
         if val > self.inner.dt_max {
             return Err(PyValueError::new_err(format!(
                 "dt_start ({val}) must be <= dt_max ({})",
@@ -110,11 +109,7 @@ impl PyFireConfig {
 
     #[setter]
     fn set_dt_max(&mut self, val: f64) -> PyResult<()> {
-        if !val.is_finite() || val <= 0.0 {
-            return Err(PyValueError::new_err(format!(
-                "dt_max must be finite and positive, got {val}"
-            )));
-        }
+        validate_positive_f64(val, "dt_max")?;
         if val < self.inner.dt_start {
             return Err(PyValueError::new_err(format!(
                 "dt_max ({val}) must be >= dt_start ({})",
@@ -146,11 +141,7 @@ impl PyFireConfig {
 
     #[setter]
     fn set_max_step(&mut self, val: f64) -> PyResult<()> {
-        if !val.is_finite() || val <= 0.0 {
-            return Err(PyValueError::new_err(format!(
-                "max_step must be finite and positive, got {val}"
-            )));
-        }
+        validate_positive_f64(val, "max_step")?;
         self.inner.max_step = val;
         Ok(())
     }
@@ -234,18 +225,7 @@ impl PyFireState {
 
     /// Perform one FIRE step with provided forces.
     fn step(&mut self, forces: Vec<[f64; 3]>) -> PyResult<()> {
-        let n_atoms = self.inner.num_atoms();
-        if forces.len() != n_atoms {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "forces length {} must be {} (n_atoms)",
-                forces.len(),
-                n_atoms
-            )));
-        }
-        let force_vec: Vec<Vector3<f64>> = forces
-            .iter()
-            .map(|f| Vector3::new(f[0], f[1], f[2]))
-            .collect();
+        let force_vec = parse_forces(&forces, self.inner.num_atoms())?;
         self.inner
             .step(|_positions| force_vec.clone(), &self.config);
         Ok(())
@@ -345,29 +325,8 @@ impl PyCellFireState {
 
     /// Perform one CellFIRE step with provided forces and stress.
     fn step(&mut self, forces: Vec<[f64; 3]>, stress: [[f64; 3]; 3]) -> PyResult<()> {
-        let n_atoms = self.inner.positions.len();
-        if forces.len() != n_atoms {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "forces length {} must be {} (n_atoms)",
-                forces.len(),
-                n_atoms
-            )));
-        }
-        let force_vec: Vec<Vector3<f64>> = forces
-            .iter()
-            .map(|f| Vector3::new(f[0], f[1], f[2]))
-            .collect();
-        let stress_mat = Matrix3::new(
-            stress[0][0],
-            stress[0][1],
-            stress[0][2],
-            stress[1][0],
-            stress[1][1],
-            stress[1][2],
-            stress[2][0],
-            stress[2][1],
-            stress[2][2],
-        );
+        let force_vec = parse_forces(&forces, self.inner.positions.len())?;
+        let stress_mat = parse_stress(&stress)?;
         self.inner
             .step(|_, _| (force_vec.clone(), stress_mat), &self.config);
         Ok(())

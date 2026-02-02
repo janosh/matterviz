@@ -316,6 +316,33 @@ pub fn default_pbc(pbc: Option<[bool; 3]>, has_cell: bool) -> [bool; 3] {
 /// Maximum safe integer that can be exactly represented in f64.
 pub const MAX_SAFE_F64_INT: f64 = (1_u64 << 53) as f64; // 2^53
 
+/// Validate optional f64 with custom constraint.
+#[inline]
+pub fn validate_opt<F>(value: Option<f64>, name: &str, constraint: &str, check: F) -> PyResult<()>
+where
+    F: FnOnce(f64) -> bool,
+{
+    if let Some(val) = value {
+        if !val.is_finite() || !check(val) {
+            return Err(PyValueError::new_err(format!(
+                "{name} must be finite and {constraint}, got {val}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Validate a required f64 parameter (finite and positive).
+#[inline]
+pub fn validate_positive_f64(value: f64, name: &str) -> PyResult<()> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "{name} must be finite and positive, got {value}"
+        )));
+    }
+    Ok(())
+}
+
 /// Validate a float value as a valid array index, returning usize.
 /// Returns error if value is not finite, negative, non-integer, or exceeds MAX_SAFE_F64_INT.
 pub fn validate_array_index(value: f64, context: &str) -> PyResult<usize> {

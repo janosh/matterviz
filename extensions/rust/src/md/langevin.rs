@@ -326,15 +326,7 @@ impl LangevinIntegrator {
         state: &mut MDState,
         new_forces: &[Vector3<f64>],
     ) -> Result<(), super::thermostats::ForcesLengthError> {
-        // Validate forces length
-        let expected = state.positions.len();
-        if new_forces.len() != expected {
-            return Err(super::thermostats::ForcesLengthError {
-                expected,
-                got: new_forces.len(),
-            });
-        }
-
+        super::thermostats::validate_forces_len(new_forces, state.positions.len())?;
         state.forces = new_forces.to_vec();
         let half_dt = 0.5 * self.config.dt_int;
         for idx in 0..state.num_atoms() {
