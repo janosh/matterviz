@@ -12,71 +12,41 @@ use nalgebra::Vector3;
 
 /// Test that multiple time origins improve statistics (reduce variance).
 ///
-/// With more time origins, we average over more independent samples,
-/// which should reduce statistical fluctuations.
+/// Test MSD with linear motion where the answer is analytically known.
+/// For constant velocity v, MSD(t) = v² * t² = 3 * (v_x² + v_y² + v_z²) * t²
 #[test]
-fn test_multiple_origins_reduces_variance() {
-    // Generate pseudo-random trajectory using deterministic noise
-    let n_atoms = 10;
-    let n_frames = 500;
-    let max_lag = 50;
+fn test_msd_linear_motion_analytical() {
+    let n_atoms = 5;
+    let n_frames = 100;
+    let max_lag = 20;
+    let origin_interval = 1; // Use all origins for best statistics
 
-    // Run multiple independent "experiments" with different origin intervals
-    let origin_intervals = [1, 5, 25, 100]; // More origins -> smaller variance
+    let velocity = Vector3::new(0.1, 0.2, 0.3);
+    let v_squared = velocity.norm_squared();
 
-    // Generate same trajectory for all
-    let trajectory: Vec<Vec<Vector3<f64>>> = (0..n_frames)
-        .map(|frame| {
-            (0..n_atoms)
-                .map(|atom| {
-                    // Deterministic pseudo-brownian using sine-based "noise"
-                    let seed = (frame * n_atoms + atom) as f64;
-                    let x = (seed * 0.123).sin() * (frame as f64).sqrt();
-                    let y = (seed * 0.456 + 1.0).sin() * (frame as f64).sqrt();
-                    let z = (seed * 0.789 + 2.0).sin() * (frame as f64).sqrt();
-                    Vector3::new(x, y, z)
-                })
-                .collect()
-        })
-        .collect();
+    let mut calc = MsdCalculator::new(n_atoms, max_lag, origin_interval);
 
-    // Compute MSD with different origin intervals
-    let mut msd_results = Vec::new();
-
-    for &interval in &origin_intervals {
-        let mut calc = MsdCalculator::new(n_atoms, max_lag, interval);
-        for frame in &trajectory {
-            calc.add_frame(frame);
-        }
-        msd_results.push(calc.compute_msd());
+    for frame in 0..n_frames {
+        let t = frame as f64;
+        let positions: Vec<Vector3<f64>> = (0..n_atoms).map(|_| velocity * t).collect();
+        calc.add_frame(&positions);
     }
 
-    // With more origins (smaller interval), we have more samples
-    // The MSD values should be similar but with different sample counts
-    // For deterministic trajectory, they should all agree
+    let msd = calc.compute_msd();
 
-    // Check that all methods give similar MSD at various lag times
-    for lag in [10, 20, 30, 40] {
-        let msd_values: Vec<f64> = msd_results.iter().map(|msd| msd[lag]).collect();
-        let mean_msd: f64 = msd_values.iter().sum::<f64>() / msd_values.len() as f64;
-
-        // All should be within 20% of mean for this deterministic case
-        for (idx, &msd_val) in msd_values.iter().enumerate() {
-            let rel_diff = (msd_val - mean_msd).abs() / mean_msd.max(1e-10);
-            assert!(
-                rel_diff < 0.5, // Relaxed tolerance due to different sampling
-                "Origin interval {}: MSD[{}] = {}, mean = {}, diff = {:.1}%",
-                origin_intervals[idx],
-                lag,
-                msd_val,
-                mean_msd,
-                rel_diff * 100.0
-            );
-        }
+    // Verify MSD matches analytical result: MSD(lag) = v² * lag²
+    for lag in 1..=max_lag {
+        let expected = v_squared * (lag as f64).powi(2);
+        let rel_err = (msd[lag] - expected).abs() / expected;
+        assert!(
+            rel_err < 1e-10,
+            "MSD[{}] = {}, expected {} (error {:.2e})",
+            lag,
+            msd[lag],
+            expected,
+            rel_err
+        );
     }
-
-    // Verify that smallest interval gives most samples (sanity check)
-    // This is implicitly tested by the convergence of MSD values
 }
 
 /// Test handling of large trajectories (10000+ frames).

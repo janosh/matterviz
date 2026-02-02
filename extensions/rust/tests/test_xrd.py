@@ -47,11 +47,23 @@ def test_pattern_structure(nacl_json: str) -> None:
 
 
 def test_scaling(nacl_json: str) -> None:
-    """Scaled max=100, unscaled all positive."""
-    assert max(compute_xrd(nacl_json, scaled=True)["intensities"]) == pytest.approx(
-        100.0, abs=0.1
-    )
-    assert all(i > 0 for i in compute_xrd(nacl_json, scaled=False)["intensities"])
+    """Scaled intensities normalized to max=100, preserving relative ratios."""
+    scaled = compute_xrd(nacl_json, scaled=True)["intensities"]
+    unscaled = compute_xrd(nacl_json, scaled=False)["intensities"]
+
+    # Scaled max should be 100
+    assert max(scaled) == pytest.approx(100.0, abs=0.1)
+    # Unscaled should all be positive
+    assert all(i > 0 for i in unscaled)
+
+    # Relative intensities should be preserved (same ratios)
+    if len(scaled) >= 2 and max(unscaled) > 0:
+        scale_factor = 100.0 / max(unscaled)
+        for idx in range(min(5, len(scaled))):  # Check first 5 peaks
+            expected = unscaled[idx] * scale_factor
+            assert scaled[idx] == pytest.approx(expected, rel=0.01), (
+                f"Peak {idx}: scaled={scaled[idx]}, expected={expected}"
+            )
 
 
 def test_two_theta_range(nacl_json: str) -> None:
@@ -93,7 +105,7 @@ def test_silicon_111_peak(si_diamond_json: str) -> None:
         for peak_hkls in pattern["hkls"]
         for info in peak_hkls
     )
-    assert has_111, "Silicon should have (111) reflection"
+    assert has_111
 
 
 @pytest.mark.parametrize("wavelength", [-1.0, 0.0])
@@ -128,6 +140,14 @@ def test_scattering_params_structure() -> None:
 
 
 def test_deuterium_equals_hydrogen() -> None:
-    """Deuterium has same scattering as hydrogen."""
+    """Deuterium has same X-ray scattering as hydrogen (same electron count).
+
+    This is physically correct: X-ray scattering depends on electron density,
+    and D has the same 1 electron as H. Neutron scattering would differ.
+    """
     params = get_atomic_scattering_params()
-    assert params["D"] == params["H"]
+    assert "D" in params and "H" in params, "Missing D or H in scattering params"
+    assert params["D"] == params["H"], (
+        f"D and H should have identical X-ray scattering coefficients: "
+        f"D={params['D']}, H={params['H']}"
+    )

@@ -74,6 +74,18 @@ pub enum FerroxError {
     /// Transformation error.
     #[error("Transform error: {reason}")]
     TransformError { reason: String },
+
+    /// Cell matrix is singular (non-invertible).
+    #[error(
+        "Cell matrix is singular (non-invertible) and cannot be used for periodic boundary conditions"
+    )]
+    SingularCell,
+
+    /// PBC requested without cell matrix.
+    #[error(
+        "Periodic boundary conditions require a cell matrix, but cell is None. Either provide a cell matrix or disable PBC."
+    )]
+    PbcWithoutCell,
 }
 
 /// Result type alias for ferrox operations.
@@ -247,6 +259,11 @@ mod tests {
                     reason: "zero-length axis".to_string(),
                 },
                 &["Transform error", "zero-length axis"],
+            ),
+            (FerroxError::SingularCell, &["singular", "non-invertible"]),
+            (
+                FerroxError::PbcWithoutCell,
+                &["Periodic", "boundary", "cell", "None"],
             ),
         ];
 

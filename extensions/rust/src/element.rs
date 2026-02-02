@@ -12,9 +12,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::sync::OnceLock;
 
-// =============================================================================
-// Extended Element Data (loaded from gzipped JSON)
-// =============================================================================
+// === Extended Element Data (loaded from gzipped JSON) ===
 
 /// Compile-time embedded gzipped JSON data (single source of truth shared with TypeScript).
 const ELEMENT_DATA_GZ: &[u8] = include_bytes!("../../../src/lib/element/data.json.gz");
@@ -1278,9 +1276,7 @@ impl std::fmt::Display for Element {
     }
 }
 
-// =============================================================================
-// Symbol Normalization
-// =============================================================================
+// === Symbol Normalization ===
 
 /// Result of normalizing an element symbol string.
 ///

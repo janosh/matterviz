@@ -190,7 +190,7 @@ class TestDistortBonds:
 
         # Verify the structure is valid (coordinates are finite, not NaN)
         new_coords = get_cart_coords(result["structure"])
-        assert np.isfinite(new_coords).all(), "Coordinates should be finite"
+        assert np.isfinite(new_coords).all()
 
         # Verify at least one atom moved (with factor 0.3, something should change)
         orig_coords = get_cart_coords(small_cell)
@@ -293,7 +293,7 @@ class TestRattleStructure:
         orig_coords = get_cart_coords(fcc_cu)
         new_coords = get_cart_coords(result["structure"])
         diff = np.linalg.norm(new_coords - orig_coords)
-        assert diff > 1e-6, "Positions should change after rattling"
+        assert diff > 1e-6
 
     def test_rattle_is_reproducible(self, fcc_cu: dict) -> None:
         """Same seed produces same rattled structure."""
@@ -320,7 +320,7 @@ class TestRattleStructure:
         coords1 = get_cart_coords(result1["structure"])
         coords2 = get_cart_coords(result2["structure"])
         diff = np.linalg.norm(coords1 - coords2)
-        assert diff > 1e-6, "Different seeds should give different results"
+        assert diff > 1e-6
 
     def test_zero_stdev_unchanged(self, fcc_cu: dict) -> None:
         """Zero stdev leaves structure unchanged."""
@@ -502,7 +502,7 @@ class TestEdgeCases:
         assert len(result["structure"]["sites"]) == 1
         # Verify returned coordinates are valid (finite)
         new_coords = np.array(result["structure"]["sites"][0]["abc"])
-        assert np.all(np.isfinite(new_coords)), "Coordinates should be finite"
+        assert np.all(np.isfinite(new_coords))
         # For single atom, min_distance constraint may prevent movement, so just verify
         # the structure is valid - position change is not guaranteed
 
